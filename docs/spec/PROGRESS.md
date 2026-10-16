@@ -6,7 +6,7 @@ Allowed states: `not_started`, `in_progress`, `blocked`, `done`. A partially imp
 
 | Phase | Status | Evidence / commit | Blocker / notes |
 | --- | --- | --- | --- |
-| [P01](phases/P01-PROJECT-FOUNDATION.md) | in_progress | Local checks pass on Ubuntu 24.04 host; see [VERIFICATION.md](../VERIFICATION.md#p01--project-foundation) | Waiting for CI on the pull request |
+| [P01](phases/P01-PROJECT-FOUNDATION.md) | done | [PR #1](https://github.com/kurasis/launcher/pull/1); host checks + CI on 4 targets, see [VERIFICATION.md](../VERIFICATION.md#p01--project-foundation) | Host GUI checked on Linux x64 only; Microsoft client ID not supplied (does not block P01) |
 | [P02](phases/P02-CORE-STORAGE-AND-IPC.md) | in_progress | Local checks pass; see [VERIFICATION.md](../VERIFICATION.md#p02--rust-state-storage-and-typed-ipc) | Waiting for CI on the pull request |
 | [P03](phases/P03-LIFECYCLE-SPIKE.md) | not_started | — | — |
 | [P04](phases/P04-AUTHENTICATION-AND-ACCESS.md) | not_started | — | — |
@@ -32,7 +32,23 @@ Allowed states: `not_started`, `in_progress`, `blocked`, `done`. A partially imp
 
 ## Last completed phase report
 
-None. Implementation has not started.
+```text
+Phase: P01 — Project foundation and external prerequisites
+Status: done
+Implemented: Tauri 2 + React 19 + TypeScript + Vite shell; Rust core with module layout from
+  doc 02; typed IPC command get_app_info; build-time Microsoft client ID configuration
+  (status only); strict CSP and per-command permissions; pinned toolchains and lockfiles;
+  CI on Linux x64, Windows x64, macOS arm64, macOS x64; DECISIONS, AUTH-SETUP, DEVELOPMENT,
+  VERIFICATION docs.
+Checks: typecheck, lint, format, 8 frontend tests, rustfmt, clippy -D warnings, 13 Rust tests,
+  release build (host) - pass; CI 5/5 jobs pass.
+Demo: npm run tauri dev; edit src/lib/strings.ts and observe hot reload.
+Evidence limits: GUI run on the Linux x64 development host under Xvfb only; other targets
+  compile and test in CI without a GUI run.
+Blockers: Microsoft client ID and Minecraft service approval (owner action, docs/AUTH-SETUP.md);
+  no target desktop machines available for qualification.
+Next eligible phase: P02
+```
 
 ## Decisions / deviations
 
