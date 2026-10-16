@@ -49,15 +49,18 @@ Exact target OS versions for qualification are recorded here before P13 starts.
 
 ### CI results
 
-Filled in from the pull request's checks before merge.
+Workflow run [38977807206](https://github.com/kurasis/launcher/actions/runs/38977807206) on
+commit `6fbcbb0` (PR #1). Earlier runs on the same PR failed on Windows and were fixed
+in the PR: the integration test executable lacked the Common Controls v6 manifest
+(`STATUS_ENTRYPOINT_NOT_FOUND`, see D-011), and the IPC test used a non-Windows origin.
 
-| Job                                  | Result  |
-| ------------------------------------ | ------- |
-| Frontend checks (ubuntu-24.04)       | Pending |
-| Rust core linux-x64 (ubuntu-24.04)   | Pending |
-| Rust core windows-x64 (windows-2025) | Pending |
-| Rust core macos-arm64 (macos-15)     | Pending |
-| Rust core macos-x64 (macos-15-intel) | Pending |
+| Job                                                                   | Result |
+| --------------------------------------------------------------------- | ------ |
+| Frontend checks (ubuntu-24.04)                                        | Pass   |
+| Rust core linux-x64 (ubuntu-24.04): fmt, clippy, tests, release build | Pass   |
+| Rust core windows-x64 (windows-2025): clippy, tests, release build    | Pass   |
+| Rust core macos-arm64 (macos-15): clippy, tests, release build        | Pass   |
+| Rust core macos-x64 (macos-15-intel): clippy, tests, release build    | Pass   |
 
 ### Not verified in P01
 
