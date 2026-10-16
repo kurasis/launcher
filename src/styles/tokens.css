@@ -1,0 +1,71 @@
+/* Design tokens. Every color, spacing, radius, font and motion value used by components
+   comes from here, so a redesign only needs to change this file. */
+:root {
+  color-scheme: light dark;
+
+  --font-sans:
+    system-ui, -apple-system, 'Segoe UI', Roboto, Ubuntu, Cantarell, 'Noto Sans', sans-serif;
+  --font-mono: ui-monospace, 'SFMono-Regular', 'Cascadia Mono', 'DejaVu Sans Mono', monospace;
+  --font-size-sm: 0.875rem;
+  --font-size-md: 1rem;
+  --font-size-lg: 1.25rem;
+  --font-size-xl: 1.75rem;
+  --line-height: 1.5;
+
+  --space-1: 0.25rem;
+  --space-2: 0.5rem;
+  --space-3: 0.75rem;
+  --space-4: 1rem;
+  --space-6: 1.5rem;
+  --space-8: 2rem;
+
+  --radius-sm: 4px;
+  --radius-md: 8px;
+  --radius-pill: 999px;
+
+  --motion-duration: 150ms;
+
+  --color-bg: #f5f6f8;
+  --color-surface: #ffffff;
+  --color-border: #d6dae1;
+  --color-text: #1b1f24;
+  --color-text-muted: #545c68;
+  --color-accent: #2f6f4f;
+  --color-accent-contrast: #ffffff;
+  --color-focus: #1f5fd1;
+  --color-warning-bg: #fff4d6;
+  --color-warning-text: #6b4a00;
+  --color-success-bg: #dff3e6;
+  --color-success-text: #1d5634;
+  --color-danger-bg: #fde3e1;
+  --color-danger-text: #8a1c14;
+  --color-neutral-bg: #e8ebf0;
+  --color-neutral-text: #343a44;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --color-bg: #15181d;
+    --color-surface: #1e2228;
+    --color-border: #343a44;
+    --color-text: #e8ebf0;
+    --color-text-muted: #a3abb7;
+    --color-accent: #5fbf8a;
+    --color-accent-contrast: #0d1a12;
+    --color-focus: #7aa7ff;
+    --color-warning-bg: #3d3214;
+    --color-warning-text: #f4d58a;
+    --color-success-bg: #173826;
+    --color-success-text: #9be0b6;
+    --color-danger-bg: #43201d;
+    --color-danger-text: #f5aba4;
+    --color-neutral-bg: #2b3038;
+    --color-neutral-text: #d3d8e0;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  :root {
+    --motion-duration: 0ms;
+  }
+}
