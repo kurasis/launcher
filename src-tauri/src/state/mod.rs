@@ -61,6 +61,8 @@ struct Data {
     accounts: AccountsFile,
     instances: BTreeMap<InstanceId, InstanceFile>,
     issues: Vec<StorageIssue>,
+    current_run: Option<RunSummary>,
+    last_run: Option<RunSummary>,
 }
 
 pub struct AppState {
@@ -99,6 +101,8 @@ impl AppState {
                 accounts: AccountsFile::default(),
                 instances: BTreeMap::new(),
                 issues: Vec::new(),
+                current_run: None,
+                last_run: None,
             },
         };
         match root.and_then(Store::open) {
@@ -167,7 +171,7 @@ impl AppState {
     pub fn snapshot(&self) -> AppSnapshot {
         let inner = self.lock();
         let active = self.activity.current();
-        let busy = |id: InstanceId| active.as_ref().is_some_and(|a| a.instance_id == id);
+        let busy = |id: InstanceId| active.as_ref().is_some_and(|a| a.instance_id == Some(id));
         let data = &inner.data;
         let mut instances: Vec<InstanceSummary> = data
             .instances
@@ -203,6 +207,9 @@ impl AppState {
             microsoft_client_id: client_id::build_time_status(),
             instances,
             active_operation: active,
+            current_run: data.current_run.clone(),
+            last_run: data.last_run.clone(),
+            lifecycle_harness_available: cfg!(debug_assertions),
             supported_versions: compatibility::SUPPORTED_VERSIONS,
             memory: MemoryLimits {
                 policy: self.memory.as_ref().ok().copied(),
@@ -271,7 +278,10 @@ impl AppState {
         let timestamp = Utc::now();
         match change {
             Change::Instance(id) => {
-                let busy = self.activity.current().is_some_and(|a| a.instance_id == id);
+                let busy = self
+                    .activity
+                    .current()
+                    .is_some_and(|a| a.instance_id == Some(id));
                 let instance = data
                     .instances
                     .get(&id)
@@ -284,6 +294,16 @@ impl AppState {
                     body: InstanceChanged { instance },
                 })
             }
+            Change::Runs => BackendEvent::GameStateChanged(Box::new(EventEnvelope {
+                session_epoch,
+                revision,
+                timestamp,
+                body: GameStateChanged {
+                    current_run: data.current_run.clone(),
+                    last_run: data.last_run.clone(),
+                    active_operation: self.activity.current(),
+                },
+            })),
             Change::Settings => BackendEvent::SettingsChanged(EventEnvelope {
                 session_epoch,
                 revision,
@@ -293,6 +313,73 @@ impl AppState {
                 },
             }),
         }
+    }
+
+    /// Applies a backend-initiated change (not a user request) and emits its event.
+    fn publish(&self, apply: impl FnOnce(&mut Data) -> bool, change: Change) {
+        let mut guard = self.lock();
+        let inner = &mut *guard;
+        if apply(&mut inner.data) {
+            inner.revision += 1;
+            let event = self.event_for(inner.revision, &inner.data, change);
+            self.sink.emit(&event);
+        }
+    }
+
+    /// Records the start of a supervised run.
+    pub fn begin_run(&self, run: RunSummary) {
+        self.publish(
+            |data| {
+                data.current_run = Some(run);
+                true
+            },
+            Change::Runs,
+        );
+    }
+
+    /// Updates the current run if it is still `run_id`.
+    pub fn update_run(&self, run_id: &str, update: impl FnOnce(&mut RunSummary)) {
+        self.publish(
+            |data| match data.current_run.as_mut() {
+                Some(run) if run.run_id == run_id => {
+                    update(run);
+                    true
+                }
+                _ => false,
+            },
+            Change::Runs,
+        );
+    }
+
+    /// Moves the current run to `last_run` with its final state.
+    pub fn finish_run(&self, run_id: &str, finish: impl FnOnce(&mut RunSummary)) {
+        self.publish(
+            |data| match data.current_run.take() {
+                Some(mut run) if run.run_id == run_id => {
+                    finish(&mut run);
+                    data.last_run = Some(run);
+                    true
+                }
+                other => {
+                    data.current_run = other;
+                    false
+                }
+            },
+            Change::Runs,
+        );
+    }
+
+    /// Re-announces run state, for example after the activity permit was released.
+    pub fn announce_runs(&self) {
+        self.publish(|_| true, Change::Runs);
+    }
+
+    pub fn current_run(&self) -> Option<RunSummary> {
+        self.lock().data.current_run.clone()
+    }
+
+    pub fn during_game_mode(&self) -> crate::storage::models::DuringGameMode {
+        self.lock().data.settings.during_game_mode
     }
 
     pub fn create_instance(
@@ -428,6 +515,7 @@ impl AppState {
 enum Change {
     Instance(InstanceId),
     Settings,
+    Runs,
 }
 
 fn instance_not_found() -> LauncherError {

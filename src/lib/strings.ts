@@ -3,6 +3,8 @@
 import type {
   AccountState,
   BuildProfile,
+  LifecycleScenario,
+  RunState,
   DuringGameMode,
   InstallationHealth,
   MicrosoftClientIdStatus,
@@ -113,6 +115,56 @@ export const strings = {
 
   storage: {
     issuesTitle: 'Storage notices',
+  },
+
+  runs: {
+    currentTitle: 'Running',
+    lastTitle: 'Last run',
+    kind: {
+      lifecycle_test: 'Lifecycle test child',
+      game: 'Minecraft',
+    },
+    state: {
+      preflight: 'Preparing',
+      spawning: 'Starting',
+      running: 'Running',
+      stopping: 'Stopping',
+      exited: 'Exited normally',
+      failed: 'Exited with an error',
+      cancelled: 'Cancelled',
+    } satisfies Record<RunState, string>,
+    exitCode: 'Exit code',
+    duration: 'Duration',
+    seconds: (ms: number) => `${(ms / 1000).toFixed(1)} s`,
+    drainTimedOut:
+      'Output capture was closed 2 seconds after exit because another process kept the output open.',
+    outputTitle: 'Last output lines',
+    dropped: (n: number) => `${String(n)} earlier lines not shown.`,
+    stop: 'Stop',
+  },
+
+  harness: {
+    title: 'Lifecycle test (debug build only)',
+    explanation:
+      'Starts a harmless copy of this launcher as a child process to test closing and reopening the window. It cannot run any other program and is not part of release builds.',
+    scenarios: {
+      immediate_exit: 'Exit immediately',
+      short: 'Run 4 seconds',
+      long: 'Run 12 seconds',
+      crash: 'Crash after 4 seconds',
+      inherited_pipe: 'Keep output pipes open',
+      noisy: 'Heavy output',
+    } satisfies Record<LifecycleScenario, string>,
+  },
+
+  quit: {
+    button: 'Quit',
+    dialogTitle: 'A run is still active',
+    dialogBody:
+      'Quitting now would stop it. Stopping a game may lose unsaved progress. You can keep the launcher running in the background instead; open it again to return.',
+    keep: 'Keep running in background',
+    stop: 'Stop and quit',
+    cancel: 'Cancel',
   },
 
   foundation: {

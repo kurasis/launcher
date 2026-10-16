@@ -176,9 +176,39 @@ export interface SupportedVersion {
 
 export interface ActiveActivity {
   kind: OperationKind;
-  instanceId: string;
+  instanceId: string | null;
   operationId: string;
 }
+
+export type RunState =
+  'preflight' | 'spawning' | 'running' | 'stopping' | 'exited' | 'failed' | 'cancelled';
+
+export type RunKind = 'lifecycle_test' | 'game';
+
+export interface RunSummary {
+  runId: string;
+  kind: RunKind;
+  instanceId: string | null;
+  state: RunState;
+  startedAt: string;
+  endedAt: string | null;
+  exitCode: number | null;
+  durationMs: number | null;
+  drainTimedOut: boolean;
+  outputTail: string[];
+  outputLinesDropped: number;
+  error: LauncherError | null;
+}
+
+export type LifecycleScenario =
+  'immediate_exit' | 'short' | 'long' | 'crash' | 'inherited_pipe' | 'noisy';
+
+export type QuitAction = 'quit' | 'keep_in_background' | 'stop_and_quit';
+
+export type QuitResult =
+  | { status: 'quitting' }
+  | { status: 'in_background' }
+  | { status: 'choice_required'; operationId: string };
 
 export interface StorageIssue {
   code: ErrorCode;
@@ -197,6 +227,9 @@ export interface AppSnapshot {
   microsoftClientId: MicrosoftClientIdStatus;
   instances: InstanceSummary[];
   activeOperation: ActiveActivity | null;
+  currentRun: RunSummary | null;
+  lastRun: RunSummary | null;
+  lifecycleHarnessAvailable: boolean;
   supportedVersions: SupportedVersion[];
   memory: MemoryLimits;
   storageIssues: StorageIssue[];
@@ -241,13 +274,21 @@ export interface SettingsChangedEvent extends EventEnvelope {
   settings: SettingsView;
 }
 
+export interface GameStateChangedEvent extends EventEnvelope {
+  currentRun: RunSummary | null;
+  lastRun: RunSummary | null;
+  activeOperation: ActiveActivity | null;
+}
+
 export type BackendEvent =
   | { name: 'instance_changed'; payload: InstanceChangedEvent }
-  | { name: 'settings_changed'; payload: SettingsChangedEvent };
+  | { name: 'settings_changed'; payload: SettingsChangedEvent }
+  | { name: 'game_state_changed'; payload: GameStateChangedEvent };
 
 export type BackendEventName = BackendEvent['name'];
 
 export const BACKEND_EVENT_NAMES: readonly BackendEventName[] = [
   'instance_changed',
   'settings_changed',
+  'game_state_changed',
 ];

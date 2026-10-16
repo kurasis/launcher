@@ -13,6 +13,11 @@ fn main() {
         "create_instance",
         "update_instance_settings",
         "set_app_settings",
+        "show_main_window",
+        "request_quit",
+        // Registered only in debug builds; release builds have no handler for them.
+        "start_lifecycle_test",
+        "stop_lifecycle_test",
     ]);
     let mut attributes = tauri_build::Attributes::new().app_manifest(manifest);
 

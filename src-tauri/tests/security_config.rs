@@ -130,6 +130,10 @@ fn main_window_capability_grants_only_app_commands() {
             "allow-create-instance",
             "allow-update-instance-settings",
             "allow-set-app-settings",
+            "allow-show-main-window",
+            "allow-request-quit",
+            "allow-start-lifecycle-test",
+            "allow-stop-lifecycle-test",
         ]
     );
 }
@@ -142,4 +146,19 @@ fn versions_are_consistent() {
         "tauri.conf.json inherits the Cargo version"
     );
     assert_eq!(json(PACKAGE_JSON)["version"], env!("CARGO_PKG_VERSION"));
+}
+
+/// The lifecycle test harness must not exist in release builds (P03 "test controls
+/// cannot launch arbitrary processes from the release UI").
+#[test]
+fn harness_commands_are_registered_only_in_debug_builds() {
+    let lib = include_str!("../src/lib.rs");
+    let release = lib
+        .split("#[cfg(not(debug_assertions))]")
+        .nth(1)
+        .expect("release handler list");
+    let release_handlers = &release[..release.find("}\n}").unwrap_or(release.len())];
+    assert!(!release_handlers.contains("lifecycle_test"));
+    let main = include_str!("../src/main.rs");
+    assert!(main.contains("#[cfg(debug_assertions)]"));
 }

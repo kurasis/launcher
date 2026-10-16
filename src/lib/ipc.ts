@@ -11,7 +11,11 @@ import {
   type CreateInstancePayload,
   type InstanceSummary,
   type LauncherError,
+  type LifecycleScenario,
   type MutationRequest,
+  type QuitAction,
+  type QuitResult,
+  type RunSummary,
   type SettingsPatch,
   type SettingsView,
   type UpdateInstanceSettingsPayload,
@@ -37,6 +41,15 @@ export const ipc = {
     invoke<InstanceSummary>('update_instance_settings', { request: mutation(payload, requestId) }),
   setAppSettings: (patch: SettingsPatch, requestId?: string): Promise<SettingsView> =>
     invoke<SettingsView>('set_app_settings', { request: mutation(patch, requestId) }),
+  showMainWindow: (): Promise<void> => invoke('show_main_window'),
+  requestQuit: (action: QuitAction, requestId?: string): Promise<QuitResult> =>
+    invoke<QuitResult>('request_quit', { request: mutation({ action }, requestId) }),
+  /** Debug builds only; release builds have no handler for this command. */
+  startLifecycleTest: (scenario: LifecycleScenario, requestId?: string): Promise<RunSummary> =>
+    invoke<RunSummary>('start_lifecycle_test', { request: mutation(scenario, requestId) }),
+  /** Debug builds only. */
+  stopLifecycleTest: (runId: string): Promise<boolean> =>
+    invoke<boolean>('stop_lifecycle_test', { runId }),
 };
 
 /** True when a rejected IPC value is the backend's typed error envelope. */
@@ -113,5 +126,15 @@ export function subscribeBackendEvents(handler: EventHandler): {
         });
       }
     },
+  };
+}
+
+/** Fires when the operating system or app menu asked to quit during a run. */
+export function onQuitRequested(handler: () => void): () => void {
+  const pending = listen('quit_requested', () => {
+    handler();
+  });
+  return () => {
+    void pending.then((unlisten) => Promise.resolve().then(unlisten)).catch(() => undefined);
   };
 }

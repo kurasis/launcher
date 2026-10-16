@@ -98,6 +98,13 @@ npx tauri build --debug --no-bundle
 KURASIS_DATA_ROOT="$PWD/.dev-data" ./src-tauri/target/debug/kurasis-launcher
 ```
 
+### Lifecycle test harness (debug builds only)
+
+Debug builds show a "Lifecycle test" panel on the About page. It starts a harmless copy of
+the launcher as a child process (scenarios: 4 s, 12 s, immediate exit, crash, inherited
+pipes, heavy output) to exercise window unloading and restoration exactly like a game run.
+Release builds contain neither the panel's commands nor the child entry point.
+
 ### Adding an IPC command
 
 1. Implement the handler in `src-tauri/src/commands/` and register it in `lib.rs`.

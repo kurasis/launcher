@@ -1,10 +1,11 @@
-import type { ButtonHTMLAttributes } from 'react';
+import type { ButtonHTMLAttributes, Ref } from 'react';
 import styles from './Button.module.css';
 
 type ButtonProps = Omit<ButtonHTMLAttributes<HTMLButtonElement>, 'type'> & {
   variant?: 'primary' | 'secondary';
   /** Defaults to "button" so a button never submits a form by accident. */
   type?: 'button' | 'submit';
+  ref?: Ref<HTMLButtonElement>;
 };
 
 export function Button({
