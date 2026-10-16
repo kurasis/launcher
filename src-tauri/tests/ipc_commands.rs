@@ -6,8 +6,14 @@ use tauri::ipc::{CallbackFn, InvokeBody};
 use tauri::test::{INVOKE_KEY, get_ipc_response, mock_builder, mock_context, noop_assets};
 use tauri::webview::InvokeRequest;
 
-#[test]
-fn get_app_info_returns_the_frontend_contract() {
+// Packaged assets are served from this origin; any other origin counts as remote and
+// receives no capabilities.
+#[cfg(windows)]
+const LOCAL_ORIGIN: &str = "http://tauri.localhost";
+#[cfg(not(windows))]
+const LOCAL_ORIGIN: &str = "tauri://localhost";
+
+fn invoke_get_app_info(origin: &str) -> Result<tauri::ipc::InvokeResponseBody, Value> {
     let app = mock_builder()
         .invoke_handler(tauri::generate_handler![commands::get_app_info])
         .build(mock_context(noop_assets()))
@@ -16,19 +22,29 @@ fn get_app_info_returns_the_frontend_contract() {
         .build()
         .expect("mock window");
 
-    let response = get_ipc_response(
+    get_ipc_response(
         &webview,
         InvokeRequest {
             cmd: "get_app_info".into(),
             callback: CallbackFn(0),
             error: CallbackFn(1),
-            url: "tauri://localhost".parse().expect("url"),
+            url: origin.parse().expect("url"),
             body: InvokeBody::default(),
             headers: Default::default(),
             invoke_key: INVOKE_KEY.to_string(),
         },
     )
-    .expect("command succeeds");
+}
+
+#[test]
+fn remote_origin_cannot_invoke_commands() {
+    let error = invoke_get_app_info("https://example.com").expect_err("remote origin denied");
+    assert!(error.to_string().contains("not allowed"), "{error}");
+}
+
+#[test]
+fn get_app_info_returns_the_frontend_contract() {
+    let response = invoke_get_app_info(LOCAL_ORIGIN).expect("command succeeds");
     let info: Value = response.deserialize().expect("JSON response");
 
     let object = info.as_object().expect("object");
