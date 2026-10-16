@@ -118,3 +118,14 @@ replaces it), `superseded`.
 - **Status:** open (owner decision) · **Phase:** P01 · **Affects:** About screen (doc 06), P14 handover
 - **Decision:** No `LICENSE` file is added. Choosing the project's license is the owner's
   decision. Third-party dependency notices are collected before distribution (P12/P14).
+
+## D-011 — Windows application manifest embedded for every target
+
+- **Status:** accepted · **Phase:** P01 · **Affects:** A25 (Windows CI)
+- **Decision:** `build.rs` disables tauri-build's own manifest and, on Windows MSVC, embeds
+  the identical Common Controls v6 manifest (`src-tauri/windows-app-manifest.xml`) through
+  linker arguments for all targets, including test executables.
+- **Reason:** tauri-build adds its manifest only to the binary target. Rust integration test
+  executables that link Tauri then fail on Windows with `STATUS_ENTRYPOINT_NOT_FOUND`
+  (0xc0000139), observed in the first CI run of PR #1.
+- **Verification:** Windows CI job runs `cargo test` and the release build.
