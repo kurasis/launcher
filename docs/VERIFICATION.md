@@ -97,7 +97,11 @@ in the PR: the integration test executable lacked the Common Controls v6 manifes
 
 ### CI results
 
-Filled in from the pull request's checks before merge.
+Workflow run [38981697137](https://github.com/kurasis/launcher/actions/runs/38981697137) on
+commit `f919cc0` (PR #2): frontend checks, and clippy, tests and release shell build on
+linux-x64 (ubuntu-24.04), windows-x64 (windows-2025), macos-arm64 (macos-15) and macos-x64
+(macos-15-intel) — all 5 jobs pass. The cross-process lock test and the atomic replacement
+tests therefore also ran on Windows and both macOS architectures.
 
 ## P03 — Early window and process lifecycle proof
 

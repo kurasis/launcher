@@ -7,7 +7,7 @@ Allowed states: `not_started`, `in_progress`, `blocked`, `done`. A partially imp
 | Phase | Status | Evidence / commit | Blocker / notes |
 | --- | --- | --- | --- |
 | [P01](phases/P01-PROJECT-FOUNDATION.md) | done | [PR #1](https://github.com/kurasis/launcher/pull/1); host checks + CI on 4 targets, see [VERIFICATION.md](../VERIFICATION.md#p01--project-foundation) | Host GUI checked on Linux x64 only; Microsoft client ID not supplied (does not block P01) |
-| [P02](phases/P02-CORE-STORAGE-AND-IPC.md) | in_progress | Local checks pass; see [VERIFICATION.md](../VERIFICATION.md#p02--rust-state-storage-and-typed-ipc) | Waiting for CI on the pull request |
+| [P02](phases/P02-CORE-STORAGE-AND-IPC.md) | done | [PR #2](https://github.com/kurasis/launcher/pull/2); 89 Rust + 19 frontend tests, CI 5/5, host GUI demo; see [VERIFICATION.md](../VERIFICATION.md#p02--rust-state-storage-and-typed-ipc) | GUI demo on Linux x64 only; other targets via CI tests |
 | [P03](phases/P03-LIFECYCLE-SPIKE.md) | in_progress | Linux x64 host scenarios pass; see [VERIFICATION.md](../VERIFICATION.md#p03--early-window-and-process-lifecycle-proof) | Waiting for CI on the pull request |
 | [P04](phases/P04-AUTHENTICATION-AND-ACCESS.md) | not_started | — | — |
 | [P05](phases/P05-CATALOG-AND-INSTALL-PLAN.md) | not_started | — | — |
@@ -33,21 +33,22 @@ Allowed states: `not_started`, `in_progress`, `blocked`, `done`. A partially imp
 ## Last completed phase report
 
 ```text
-Phase: P01 — Project foundation and external prerequisites
+Phase: P02 — Rust state, storage and typed IPC
 Status: done
-Implemented: Tauri 2 + React 19 + TypeScript + Vite shell; Rust core with module layout from
-  doc 02; typed IPC command get_app_info; build-time Microsoft client ID configuration
-  (status only); strict CSP and per-command permissions; pinned toolchains and lockfiles;
-  CI on Linux x64, Windows x64, macOS arm64, macOS x64; DECISIONS, AUTH-SETUP, DEVELOPMENT,
-  VERIFICATION docs.
-Checks: typecheck, lint, format, 8 frontend tests, rustfmt, clippy -D warnings, 13 Rust tests,
-  release build (host) - pass; CI 5/5 jobs pass.
-Demo: npm run tauri dev; edit src/lib/strings.ts and observe hot reload.
-Evidence limits: GUI run on the Linux x64 development host under Xvfb only; other targets
-  compile and test in CI without a GUI run.
-Blockers: Microsoft client ID and Minecraft service approval (owner action, docs/AUTH-SETUP.md);
-  no target desktop machines available for qualification.
-Next eligible phase: P02
+Implemented: validated DATA_ROOT with OS-backed lifetime lock; atomic versioned JSON
+  documents with corrupt-file preservation, settings backup and read-only newer schemas;
+  canonical digest-keyed cache paths; settings/accounts/instance/install-lock models with
+  lock-authoritative reconciliation; AppState with epoch/revision events, MutationRequest
+  idempotency and the global activity permit; error envelope, secret types and redaction;
+  validated memory/resolution/name bounds; shipped compatibility list; typed frontend store
+  and installations/settings UI.
+Checks: 80 Rust unit + 9 integration tests (incl. cross-process lock), 19 frontend tests,
+  clippy/rustfmt/typecheck/lint/format - pass; CI 5/5 jobs pass.
+Demo: create an installation, change memory, restart: values and selection restored; a
+  second process against the same DATA_ROOT shows DATA_ROOT_LOCKED.
+Evidence limits: GUI demo on the Linux x64 host under Xvfb; Windows/macOS via CI tests only.
+Blockers: none for P02. External: Microsoft client ID / service approval; target desktops.
+Next eligible phase: P03 (P04 and P05 are also eligible)
 ```
 
 ## Decisions / deviations
