@@ -21,3 +21,6 @@ src-tauri/gen/schemas/
 # Never commit game files, Java runtimes or user data
 *.jar
 *.part
+
+# Local development data directory
+.dev-data/

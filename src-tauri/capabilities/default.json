@@ -3,5 +3,13 @@
   "identifier": "default",
   "description": "Minimal permissions for the main launcher window. Grant each new command explicitly.",
   "windows": ["main"],
-  "permissions": ["allow-get-app-info"]
+  "permissions": [
+    "core:event:allow-listen",
+    "core:event:allow-unlisten",
+    "allow-get-app-info",
+    "allow-get-app-snapshot",
+    "allow-create-instance",
+    "allow-update-instance-settings",
+    "allow-set-app-settings"
+  ]
 }

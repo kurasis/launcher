@@ -1,27 +1,80 @@
-import { Panel } from '../components/Panel';
+import { useState } from 'react';
+import { Button } from '../components/Button';
+import { Notice } from '../components/Notice';
 import { StatusBadge } from '../components/StatusBadge';
-import { MicrosoftSetupPanel } from '../features/accounts/MicrosoftSetupPanel';
-import { SystemInfoPanel } from '../features/diagnostics/SystemInfoPanel';
+import { AccountChip } from '../features/accounts/AccountChip';
+import { StorageIssues } from '../features/diagnostics/StorageIssues';
+import { InstancesView } from '../features/instances/InstancesView';
+import { SettingsView } from '../features/settings/SettingsView';
+import { appStore, useAppStore } from '../lib/store';
 import { strings } from '../lib/strings';
+import { AboutView } from './AboutView';
 import styles from './App.module.css';
-import { useAppInfo } from './useAppInfo';
+import { useTheme } from './useTheme';
+
+type View = 'home' | 'settings' | 'about';
+const views: View[] = ['home', 'settings', 'about'];
 
 export function App() {
-  const { state, reload } = useAppInfo();
+  const state = useAppStore();
+  const [view, setView] = useState<View>('home');
+  const snapshot = state.status === 'ready' ? state.snapshot : null;
+  useTheme(snapshot?.settings.theme);
 
   return (
     <div className={styles.shell}>
       <header className={styles.topbar}>
-        <h1 className={styles.brand}>{strings.productName}</h1>
-        <StatusBadge tone="neutral" label={strings.buildTag} />
+        <div className={styles.brandRow}>
+          <h1 className={styles.brand}>{strings.productName}</h1>
+          <StatusBadge tone="neutral" label={strings.buildTag} />
+        </div>
+        {snapshot !== null && <AccountChip account={snapshot.account} />}
+        <nav aria-label={strings.nav.label} className={styles.nav}>
+          {views.map((item) => (
+            <button
+              key={item}
+              type="button"
+              className={styles.navItem}
+              aria-current={view === item ? 'page' : undefined}
+              onClick={() => {
+                setView(item);
+              }}
+            >
+              {strings.nav[item]}
+            </button>
+          ))}
+        </nav>
       </header>
 
       <main className={styles.content}>
-        <Panel title={strings.foundation.title}>
-          <p>{strings.foundation.body}</p>
-        </Panel>
-        <SystemInfoPanel state={state} onRetry={reload} />
-        {state.status === 'ready' && <MicrosoftSetupPanel status={state.info.microsoftClientId} />}
+        {view === 'about' ? (
+          <AboutView />
+        ) : state.status === 'loading' ? (
+          <p role="status">{strings.bootstrap.loading}</p>
+        ) : state.status === 'error' ? (
+          <Notice tone="danger">
+            <p>
+              {strings.bootstrap.errorTitle}: {state.message}
+            </p>
+            <Button onClick={appStore.refresh}>{strings.bootstrap.retry}</Button>
+          </Notice>
+        ) : state.snapshot.dataRoot.status === 'unavailable' ? (
+          <Notice tone="danger">
+            <p>
+              <strong>{strings.bootstrap.unavailableTitle}</strong>
+            </p>
+            <p>{state.snapshot.dataRoot.error?.message}</p>
+          </Notice>
+        ) : (
+          <>
+            <StorageIssues issues={state.snapshot.storageIssues} />
+            {view === 'home' ? (
+              <InstancesView snapshot={state.snapshot} />
+            ) : (
+              <SettingsView snapshot={state.snapshot} />
+            )}
+          </>
+        )}
       </main>
 
       <footer className={styles.footer}>

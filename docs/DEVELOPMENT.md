@@ -56,9 +56,10 @@ release shell build on Linux x64, Windows x64, macOS arm64 and macOS x64.
 
 ## Configuration
 
-| Variable                | When it is read   | Purpose                                                                                    |
-| ----------------------- | ----------------- | ------------------------------------------------------------------------------------------ |
-| `KURASIS_MSA_CLIENT_ID` | Rust compile time | Project-owned Microsoft public-client ID (non-secret). See [AUTH-SETUP.md](AUTH-SETUP.md). |
+| Variable                | When it is read                  | Purpose                                                                                    |
+| ----------------------- | -------------------------------- | ------------------------------------------------------------------------------------------ |
+| `KURASIS_MSA_CLIENT_ID` | Rust compile time                | Project-owned Microsoft public-client ID (non-secret). See [AUTH-SETUP.md](AUTH-SETUP.md). |
+| `KURASIS_DATA_ROOT`     | App start, **debug builds only** | Uses another data directory, for tests and demonstrations. Release builds ignore it.       |
 
 Example: `KURASIS_MSA_CLIENT_ID=<your-guid> npm run tauri dev`. Never put secrets, tokens or
 passwords into environment files that are committed; `.env*` files are git-ignored.
@@ -82,6 +83,20 @@ The layout follows [docs/spec/02-ARCHITECTURE-AND-STORAGE.md](spec/02-ARCHITECTU
 | `src-tauri/tests/`                                                       | Integration tests (IPC through the mock runtime, security configuration)    |
 | `tests/fixtures/`                                                        | Synthetic, non-secret test data (added from P04/P05)                        |
 | `assets/app-icon.svg`                                                    | Source of the generated icons in `src-tauri/icons/`                         |
+
+### Application data
+
+The Rust core stores everything under the per-user application data directory
+(`DATA_ROOT`, for example `~/.local/share/io.github.kurasis.launcher` on Linux), never in
+the official `.minecraft` folder. The layout is defined in
+[spec/02](spec/02-ARCHITECTURE-AND-STORAGE.md) and implemented in
+`src-tauri/src/storage/paths.rs`. Only one launcher process may own a DATA_ROOT at a time.
+To try the app without touching your real data:
+
+```sh
+npx tauri build --debug --no-bundle
+KURASIS_DATA_ROOT="$PWD/.dev-data" ./src-tauri/target/debug/kurasis-launcher
+```
 
 ### Adding an IPC command
 

@@ -7,7 +7,13 @@ fn main() {
 
     // Declaring the app's commands makes Tauri generate one permission per command,
     // so each window must be granted every command explicitly in capabilities/.
-    let manifest = tauri_build::AppManifest::new().commands(&["get_app_info"]);
+    let manifest = tauri_build::AppManifest::new().commands(&[
+        "get_app_info",
+        "get_app_snapshot",
+        "create_instance",
+        "update_instance_settings",
+        "set_app_settings",
+    ]);
     let mut attributes = tauri_build::Attributes::new().app_manifest(manifest);
 
     if is_windows_msvc() {

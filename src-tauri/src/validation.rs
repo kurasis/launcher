@@ -1,0 +1,234 @@
+//! Shared input bounds (docs/spec/06 "Snapshot and control details").
+//!
+//! The frontend mirrors these limits for convenience, but only these checks are
+//! authoritative.
+
+use serde::Serialize;
+
+use crate::error::{ErrorCode, LauncherError, LauncherResult};
+use crate::storage::models::Resolution;
+
+pub const MIN_HEAP_MIB: u32 = 1024;
+pub const MAX_HEAP_CAP_MIB: u32 = 32 * 1024;
+pub const INITIAL_HEAP_MIB: u32 = 512;
+pub const MIN_WIDTH: u32 = 640;
+pub const MAX_WIDTH: u32 = 7680;
+pub const MIN_HEIGHT: u32 = 480;
+pub const MAX_HEIGHT: u32 = 4320;
+pub const MAX_DISPLAY_NAME_CHARS: usize = 64;
+
+const MIB: u64 = 1024 * 1024;
+const LARGE_MACHINE_MIB: u64 = 8 * 1024;
+const LARGE_MACHINE_DEFAULT_HEAP_MIB: u32 = 4096;
+const SMALL_MACHINE_DEFAULT_HEAP_MIB: u32 = 2048;
+
+/// Heap limits for this machine.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct MemoryPolicy {
+    pub physical_mib: u64,
+    pub min_heap_mib: u32,
+    pub max_heap_mib: u32,
+    pub recommended_heap_mib: u32,
+    /// True on machines below 8 GiB, where the default is lowered.
+    pub low_memory: bool,
+}
+
+impl MemoryPolicy {
+    /// Upper bound: `min(32768, physical − max(2048, 20 % of physical))` MiB.
+    pub fn from_physical_bytes(bytes: u64) -> LauncherResult<Self> {
+        let physical_mib = bytes / MIB;
+        let reserve = (physical_mib / 5).max(2048);
+        let available = physical_mib.saturating_sub(reserve);
+        let max_heap_mib =
+            u32::try_from(available.min(u64::from(MAX_HEAP_CAP_MIB))).unwrap_or(MAX_HEAP_CAP_MIB);
+        if max_heap_mib < MIN_HEAP_MIB {
+            return Err(LauncherError::new(
+                ErrorCode::InsufficientMemory,
+                format!(
+                    "This computer reports {physical_mib} MiB of memory, which leaves less than \
+                     {MIN_HEAP_MIB} MiB for the game after the operating system reserve."
+                ),
+            )
+            .with_detail(
+                "physicalMib",
+                i64::try_from(physical_mib).unwrap_or(i64::MAX),
+            ));
+        }
+        let low_memory = physical_mib < LARGE_MACHINE_MIB;
+        let preferred = if low_memory {
+            SMALL_MACHINE_DEFAULT_HEAP_MIB
+        } else {
+            LARGE_MACHINE_DEFAULT_HEAP_MIB
+        };
+        Ok(Self {
+            physical_mib,
+            min_heap_mib: MIN_HEAP_MIB,
+            max_heap_mib,
+            recommended_heap_mib: preferred.clamp(MIN_HEAP_MIB, max_heap_mib),
+            low_memory,
+        })
+    }
+
+    /// Reads physical memory from the operating system.
+    pub fn detect() -> LauncherResult<Self> {
+        use sysinfo::{MemoryRefreshKind, RefreshKind, System};
+        let system = System::new_with_specifics(
+            RefreshKind::nothing().with_memory(MemoryRefreshKind::nothing().with_ram()),
+        );
+        Self::from_physical_bytes(system.total_memory())
+    }
+
+    pub fn validate_heap(&self, mib: u32) -> LauncherResult<u32> {
+        if (self.min_heap_mib..=self.max_heap_mib).contains(&mib) {
+            Ok(mib)
+        } else {
+            Err(LauncherError::invalid_input(format!(
+                "Maximum memory must be between {} and {} MiB on this computer.",
+                self.min_heap_mib, self.max_heap_mib
+            )))
+        }
+    }
+
+    /// Initial heap for a launch: never above the maximum.
+    pub fn initial_heap_mib(max_heap_mib: u32) -> u32 {
+        INITIAL_HEAP_MIB.min(max_heap_mib)
+    }
+}
+
+/// Bounds reported to the UI.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ResolutionBounds {
+    pub min_width: u32,
+    pub max_width: u32,
+    pub min_height: u32,
+    pub max_height: u32,
+}
+
+pub const RESOLUTION_BOUNDS: ResolutionBounds = ResolutionBounds {
+    min_width: MIN_WIDTH,
+    max_width: MAX_WIDTH,
+    min_height: MIN_HEIGHT,
+    max_height: MAX_HEIGHT,
+};
+
+pub fn validate_resolution(resolution: Resolution) -> LauncherResult<Resolution> {
+    if (MIN_WIDTH..=MAX_WIDTH).contains(&resolution.width)
+        && (MIN_HEIGHT..=MAX_HEIGHT).contains(&resolution.height)
+    {
+        Ok(resolution)
+    } else {
+        Err(LauncherError::invalid_input(format!(
+            "Window size must be {MIN_WIDTH}–{MAX_WIDTH} × {MIN_HEIGHT}–{MAX_HEIGHT} pixels."
+        )))
+    }
+}
+
+/// Trims surrounding whitespace and enforces 1–64 characters without control
+/// characters. The name is display text only and never becomes a path.
+pub fn validate_display_name(raw: &str) -> LauncherResult<String> {
+    let name = raw.trim();
+    let length = name.chars().count();
+    if length == 0 || length > MAX_DISPLAY_NAME_CHARS {
+        return Err(LauncherError::invalid_input(format!(
+            "The installation name must be 1–{MAX_DISPLAY_NAME_CHARS} characters."
+        )));
+    }
+    if name.chars().any(char::is_control) {
+        return Err(LauncherError::invalid_input(
+            "The installation name cannot contain control characters.",
+        ));
+    }
+    Ok(name.to_owned())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    const GIB: u64 = 1024 * MIB;
+
+    #[test]
+    fn memory_policy_matches_specified_formula() {
+        let p16 = MemoryPolicy::from_physical_bytes(16 * GIB).unwrap();
+        // reserve = max(2048, 3276) = 3276; max = 16384 - 3276
+        assert_eq!(p16.max_heap_mib, 16384 - 3276);
+        assert_eq!(p16.recommended_heap_mib, 4096);
+        assert!(!p16.low_memory);
+
+        let p8 = MemoryPolicy::from_physical_bytes(8 * GIB).unwrap();
+        assert_eq!(p8.max_heap_mib, 8192 - 2048);
+        assert_eq!(p8.recommended_heap_mib, 4096);
+
+        let p4 = MemoryPolicy::from_physical_bytes(4 * GIB).unwrap();
+        assert_eq!(p4.max_heap_mib, 2048);
+        assert_eq!(p4.recommended_heap_mib, 2048);
+        assert!(p4.low_memory);
+
+        let p256 = MemoryPolicy::from_physical_bytes(256 * GIB).unwrap();
+        assert_eq!(p256.max_heap_mib, MAX_HEAP_CAP_MIB);
+    }
+
+    #[test]
+    fn small_machines_get_a_clear_error() {
+        let error = MemoryPolicy::from_physical_bytes(3 * GIB - 1).unwrap_err();
+        assert_eq!(error.code, ErrorCode::InsufficientMemory);
+        assert!(MemoryPolicy::from_physical_bytes(3 * GIB).is_ok());
+    }
+
+    #[test]
+    fn heap_bounds_are_enforced() {
+        let policy = MemoryPolicy::from_physical_bytes(16 * GIB).unwrap();
+        assert!(policy.validate_heap(1023).is_err());
+        assert!(policy.validate_heap(1024).is_ok());
+        assert!(policy.validate_heap(policy.max_heap_mib).is_ok());
+        assert!(policy.validate_heap(policy.max_heap_mib + 1).is_err());
+        assert_eq!(MemoryPolicy::initial_heap_mib(4096), 512);
+        assert_eq!(MemoryPolicy::initial_heap_mib(256), 256);
+    }
+
+    #[test]
+    fn detected_memory_is_plausible() {
+        // The CI and development hosts have well over 3 GiB.
+        let policy = MemoryPolicy::detect().unwrap();
+        assert!(policy.physical_mib > 1024);
+    }
+
+    #[test]
+    fn resolution_bounds_are_inclusive() {
+        let ok = |w, h| {
+            validate_resolution(Resolution {
+                width: w,
+                height: h,
+            })
+            .is_ok()
+        };
+        assert!(ok(640, 480));
+        assert!(ok(7680, 4320));
+        assert!(!ok(639, 480));
+        assert!(!ok(640, 479));
+        assert!(!ok(7681, 720));
+        assert!(!ok(1280, 4321));
+        assert!(!ok(0, 0));
+    }
+
+    #[test]
+    fn display_names_are_trimmed_and_bounded() {
+        assert_eq!(validate_display_name("  My world  ").unwrap(), "My world");
+        assert_eq!(
+            validate_display_name(&"é".repeat(64))
+                .unwrap()
+                .chars()
+                .count(),
+            64
+        );
+        assert!(validate_display_name(&"é".repeat(65)).is_err());
+        assert!(validate_display_name("   ").is_err());
+        assert!(validate_display_name("a\nb").is_err());
+        assert!(
+            validate_display_name("../../etc").is_ok(),
+            "names are not paths"
+        );
+    }
+}

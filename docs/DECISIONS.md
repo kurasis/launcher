@@ -129,3 +129,75 @@ replaces it), `superseded`.
   executables that link Tauri then fail on Windows with `STATUS_ENTRYPOINT_NOT_FOUND`
   (0xc0000139), observed in the first CI run of PR #1.
 - **Verification:** Windows CI job runs `cargo test` and the release build.
+
+## D-012 — Application state, revisions and events
+
+- **Status:** accepted · **Phase:** P02 · **Affects:** doc 06 bootstrap, A21
+- **Decision:** `AppState` in Rust is the only authority. Each mutating command takes a
+  `MutationRequest { requestId, payload }`, persists its change before it becomes visible,
+  then advances the monotonic `revision` by one per emitted event (`instance_changed`,
+  `settings_changed`). Snapshots carry `sessionEpoch` (a UUID per backend process) and
+  `revision`. The frontend store subscribes before fetching the snapshot, buffers events,
+  applies only `revision + 1`, ignores older revisions and refetches on gaps or a new epoch.
+  After a successful command the frontend also refreshes the snapshot, so a lost event
+  costs one extra read instead of stale UI.
+- **Idempotency:** the last 512 request IDs per epoch are remembered with a canonical
+  fingerprint of the typed payload; identical replays return the recorded result (success
+  or error) and different payloads return `REQUEST_ID_CONFLICT`.
+- **Verification:** `src-tauri/src/state/tests.rs`, `src/lib/store.test.ts`, `src/lib/ipc.test.ts`.
+
+## D-013 — Error codes added to the doc 06 vocabulary
+
+- **Status:** accepted · **Phase:** P02 · **Affects:** doc 06 error vocabulary
+- **Decision:** In addition to the required codes, the backend uses `AUTH_NOT_CONFIGURED`,
+  `INSTANCE_NOT_FOUND`, `OPERATION_NOT_FOUND`, `INVALID_INPUT`, `INSUFFICIENT_MEMORY`,
+  `DATA_ROOT_LOCKED`, `STORAGE_UNAVAILABLE`, `STORAGE_ERROR` and `INTERNAL`. Doc 06 lists a
+  minimum set; none of these replaces a required code.
+
+## D-014 — DATA_ROOT lifetime lock and debug-only relocation
+
+- **Status:** accepted · **Phase:** P02 · **Affects:** doc 02, doc 10 MV09, A16
+- **Decision:** The supervisor takes an exclusive OS file lock on
+  `DATA_ROOT/locks/supervisor.lock` (Rust `File::try_lock`: `flock` on Unix, `LockFileEx` on
+  Windows) before any recovery or write, and holds it for its lifetime. A second process
+  starts read-only with `DATA_ROOT_LOCKED` shown and never writes. The OS releases the lock
+  on exit or crash; the lock file is never deleted. P03 adds the single-instance handoff
+  on top of this lock, not instead of it.
+- **Relocation:** debug builds honour `KURASIS_DATA_ROOT` for tests and demonstrations.
+  Release builds ignore it; DATA_ROOT relocation stays out of MVP scope (doc 02).
+- **Path policy:** DATA_ROOT must be absolute, valid Unicode and free of the platform
+  classpath separator (`:` on Unix, `;` on Windows), otherwise `UNSUPPORTED_DATA_PATH` /
+  `UNSUPPORTED_PATH_ENCODING` is reported before any write. Spaces and non-ASCII text are
+  allowed and exercised by tests and the P02 demonstration.
+
+## D-015 — Persistent document handling
+
+- **Status:** accepted · **Phase:** P02 · **Affects:** doc 02 persistent models, MV08
+- **Decision:** App-owned documents carry `schemaVersion: 1` and are written through a
+  flushed temporary sibling plus `std::fs::rename` (which replaces the destination
+  atomically on Linux/macOS and via `MoveFileExW(MOVEFILE_REPLACE_EXISTING)` semantics on
+  Windows; the previous file is never deleted first). Stray temporaries are removed at
+  startup. A corrupt document is renamed to `<name>.corrupt-<UTC timestamp>` before any
+  fallback; settings keep one `settings.json.bak` last-good copy. A newer schema is never
+  rewritten and makes that document read-only. Documents above 1 MiB are treated as corrupt.
+- **Install lock authority:** `install.lock.json` is the committed installation; the
+  instance summary is reconciled from it at startup (a `ready` summary without a complete,
+  matching lock becomes `not_installed`; a complete lock with a stale draft summary becomes
+  `ready`; an unreadable or foreign lock becomes `repair_required`). The lock schema is
+  defined now and filled by P08.
+- **Upstream bytes:** catalog, descriptors and asset indexes will be stored byte-for-byte
+  under their hash with separate app-owned receipts (P05); they never pass through the
+  app-document serializer.
+- **Windows verification:** replacement semantics are exercised by unit tests on the
+  Windows CI runner; interrupted-replacement behaviour on a real Windows desktop is part of
+  P13.
+
+## D-016 — Memory and input bounds
+
+- **Status:** accepted · **Phase:** P02 · **Affects:** FR09, doc 06 bounds
+- **Decision:** Implemented exactly as doc 06 specifies: heap 1024 MiB to
+  `min(32768, physical − max(2048, 20 %))`; recommended default 4096 MiB on machines with at
+  least 8 GiB, otherwise 2048 MiB clamped into range with a low-memory warning; initial heap
+  `min(512, max)`. Machines leaving less than 1024 MiB get `INSUFFICIENT_MEMORY` when creating
+  an installation. Resolution 640–7680 × 480–4320. Names 1–64 characters without control
+  characters; names are never used as paths. Physical memory comes from `sysinfo`.
