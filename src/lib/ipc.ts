@@ -1,14 +1,59 @@
-// The single typed entry point for Tauri IPC. UI code must not call `invoke` directly,
-// so every command name and payload shape is declared in one place.
+// The single typed entry point for Tauri IPC. UI code must not call `invoke` or
+// `listen` directly, so every command name, payload shape and event subscription is
+// declared in one place.
 import { invoke } from '@tauri-apps/api/core';
-import type { AppInfo } from './contracts';
+import { listen, type UnlistenFn } from '@tauri-apps/api/event';
+import {
+  BACKEND_EVENT_NAMES,
+  type AppInfo,
+  type AppSnapshot,
+  type BackendEvent,
+  type CreateInstancePayload,
+  type InstanceSummary,
+  type LauncherError,
+  type MutationRequest,
+  type SettingsPatch,
+  type SettingsView,
+  type UpdateInstanceSettingsPayload,
+} from './contracts';
+
+function newRequestId(): string {
+  return crypto.randomUUID();
+}
+
+function mutation<T>(payload: T, requestId: string = newRequestId()): MutationRequest<T> {
+  return { requestId, payload };
+}
 
 export const ipc = {
   getAppInfo: (): Promise<AppInfo> => invoke<AppInfo>('get_app_info'),
+  getAppSnapshot: (): Promise<AppSnapshot> => invoke<AppSnapshot>('get_app_snapshot'),
+  createInstance: (payload: CreateInstancePayload, requestId?: string): Promise<InstanceSummary> =>
+    invoke<InstanceSummary>('create_instance', { request: mutation(payload, requestId) }),
+  updateInstanceSettings: (
+    payload: UpdateInstanceSettingsPayload,
+    requestId?: string,
+  ): Promise<InstanceSummary> =>
+    invoke<InstanceSummary>('update_instance_settings', { request: mutation(payload, requestId) }),
+  setAppSettings: (patch: SettingsPatch, requestId?: string): Promise<SettingsView> =>
+    invoke<SettingsView>('set_app_settings', { request: mutation(patch, requestId) }),
 };
+
+/** True when a rejected IPC value is the backend's typed error envelope. */
+export function isLauncherError(error: unknown): error is LauncherError {
+  return (
+    typeof error === 'object' &&
+    error !== null &&
+    typeof (error as { code?: unknown }).code === 'string' &&
+    typeof (error as { message?: unknown }).message === 'string'
+  );
+}
 
 /** Converts an unknown IPC rejection into a message that is safe to show. */
 export function describeIpcError(error: unknown): string {
+  if (isLauncherError(error) && error.message.length > 0) {
+    return error.message;
+  }
   if (typeof error === 'string' && error.length > 0) {
     return error;
   }
@@ -16,4 +61,57 @@ export function describeIpcError(error: unknown): string {
     return error.message;
   }
   return 'The launcher core did not respond.';
+}
+
+type EventHandler = (event: BackendEvent) => void;
+
+const handlers = new Set<EventHandler>();
+let registration: Promise<UnlistenFn[]> | null = null;
+
+function dispatch(event: BackendEvent): void {
+  for (const handler of handlers) {
+    handler(event);
+  }
+}
+
+/**
+ * Subscribes to all backend events. However many components subscribe (including
+ * React development double-mounts), exactly one Tauri listener exists per event
+ * name; it is removed when the last subscriber unsubscribes. Returns the
+ * unsubscribe function and a promise that resolves once listening has started.
+ */
+export function subscribeBackendEvents(handler: EventHandler): {
+  unsubscribe: () => void;
+  ready: Promise<void>;
+} {
+  handlers.add(handler);
+  registration ??= Promise.all(
+    BACKEND_EVENT_NAMES.map((name) =>
+      listen(name, (event) => {
+        dispatch({ name, payload: event.payload } as BackendEvent);
+      }),
+    ),
+  );
+  const current = registration;
+  let active = true;
+  return {
+    ready: current.then(() => undefined),
+    unsubscribe: () => {
+      if (!active) return;
+      active = false;
+      handlers.delete(handler);
+      if (handlers.size === 0 && registration === current) {
+        registration = null;
+        void current.then((unlisteners) => {
+          for (const unlisten of unlisteners) {
+            // UnlistenFn returns a promise in Tauri 2. It rejects when the webview
+            // is being torn down, in which case its listeners are gone already.
+            void Promise.resolve()
+              .then(unlisten)
+              .catch(() => undefined);
+          }
+        });
+      }
+    },
+  };
 }

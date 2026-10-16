@@ -120,7 +120,18 @@ fn main_window_capability_grants_only_app_commands() {
         .iter()
         .map(|p| p.as_str().expect("plain permission identifier"))
         .collect();
-    assert_eq!(permissions, ["allow-get-app-info"]);
+    assert_eq!(
+        permissions,
+        [
+            "core:event:allow-listen",
+            "core:event:allow-unlisten",
+            "allow-get-app-info",
+            "allow-get-app-snapshot",
+            "allow-create-instance",
+            "allow-update-instance-settings",
+            "allow-set-app-settings",
+        ]
+    );
 }
 
 #[test]

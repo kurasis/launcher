@@ -7,7 +7,7 @@ Allowed states: `not_started`, `in_progress`, `blocked`, `done`. A partially imp
 | Phase | Status | Evidence / commit | Blocker / notes |
 | --- | --- | --- | --- |
 | [P01](phases/P01-PROJECT-FOUNDATION.md) | in_progress | Local checks pass on Ubuntu 24.04 host; see [VERIFICATION.md](../VERIFICATION.md#p01--project-foundation) | Waiting for CI on the pull request |
-| [P02](phases/P02-CORE-STORAGE-AND-IPC.md) | not_started | — | — |
+| [P02](phases/P02-CORE-STORAGE-AND-IPC.md) | in_progress | Local checks pass; see [VERIFICATION.md](../VERIFICATION.md#p02--rust-state-storage-and-typed-ipc) | Waiting for CI on the pull request |
 | [P03](phases/P03-LIFECYCLE-SPIKE.md) | not_started | — | — |
 | [P04](phases/P04-AUTHENTICATION-AND-ACCESS.md) | not_started | — | — |
 | [P05](phases/P05-CATALOG-AND-INSTALL-PLAN.md) | not_started | — | — |

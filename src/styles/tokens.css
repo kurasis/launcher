@@ -43,8 +43,9 @@
   --color-neutral-text: #343a44;
 }
 
+/* Dark palette: follows the OS unless the user picked a theme in Settings. */
 @media (prefers-color-scheme: dark) {
-  :root {
+  :root:not([data-theme='light']) {
     --color-bg: #15181d;
     --color-surface: #1e2228;
     --color-border: #343a44;
@@ -64,8 +65,35 @@
   }
 }
 
+:root[data-theme='dark'] {
+  --color-bg: #15181d;
+  --color-surface: #1e2228;
+  --color-border: #343a44;
+  --color-text: #e8ebf0;
+  --color-text-muted: #a3abb7;
+  --color-accent: #5fbf8a;
+  --color-accent-contrast: #0d1a12;
+  --color-focus: #7aa7ff;
+  --color-warning-bg: #3d3214;
+  --color-warning-text: #f4d58a;
+  --color-success-bg: #173826;
+  --color-success-text: #9be0b6;
+  --color-danger-bg: #43201d;
+  --color-danger-text: #f5aba4;
+  --color-neutral-bg: #2b3038;
+  --color-neutral-text: #d3d8e0;
+}
+
 @media (prefers-reduced-motion: reduce) {
   :root {
     --motion-duration: 0ms;
   }
+}
+
+:root[data-theme='light'] {
+  color-scheme: light;
+}
+
+:root[data-theme='dark'] {
+  color-scheme: dark;
 }

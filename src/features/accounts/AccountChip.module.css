@@ -1,0 +1,8 @@
+.chip {
+  font-size: var(--font-size-sm);
+  color: var(--color-text-muted);
+}
+
+.label {
+  font-weight: 600;
+}

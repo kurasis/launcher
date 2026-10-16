@@ -2,8 +2,15 @@
 //! logic. Every command must also be listed in build.rs and granted in capabilities/.
 
 use serde::Serialize;
+use tauri::State;
 
 use crate::auth::client_id::{self, ClientIdStatus};
+use crate::error::LauncherResult;
+use crate::state::AppState;
+use crate::state::dto::{
+    AppSnapshot, CreateInstancePayload, InstanceSummary, MutationRequest, SettingsPatch,
+    SettingsView, UpdateInstanceSettingsPayload,
+};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "snake_case")]
@@ -52,4 +59,33 @@ impl AppInfo {
 #[tauri::command]
 pub fn get_app_info<R: tauri::Runtime>(app: tauri::AppHandle<R>) -> AppInfo {
     AppInfo::collect(app.package_info())
+}
+
+#[tauri::command]
+pub fn get_app_snapshot(state: State<'_, AppState>) -> AppSnapshot {
+    state.snapshot()
+}
+
+#[tauri::command]
+pub fn create_instance(
+    state: State<'_, AppState>,
+    request: MutationRequest<CreateInstancePayload>,
+) -> LauncherResult<InstanceSummary> {
+    state.create_instance(request)
+}
+
+#[tauri::command]
+pub fn update_instance_settings(
+    state: State<'_, AppState>,
+    request: MutationRequest<UpdateInstanceSettingsPayload>,
+) -> LauncherResult<InstanceSummary> {
+    state.update_instance_settings(request)
+}
+
+#[tauri::command]
+pub fn set_app_settings(
+    state: State<'_, AppState>,
+    request: MutationRequest<SettingsPatch>,
+) -> LauncherResult<SettingsView> {
+    state.set_app_settings(request)
 }

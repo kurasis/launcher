@@ -1,0 +1,58 @@
+/* Shared form control styling used by feature forms. */
+.input,
+.select {
+  font: inherit;
+  color: var(--color-text);
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+  padding: var(--space-2) var(--space-3);
+  min-width: 0;
+}
+
+.input:disabled,
+.select:disabled {
+  opacity: 0.6;
+}
+
+.row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-4);
+}
+
+.row > * {
+  flex: 1 1 10rem;
+}
+
+.actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-3);
+  align-items: center;
+}
+
+.form {
+  display: grid;
+  gap: var(--space-4);
+}
+
+.choices {
+  border: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: var(--space-2);
+}
+
+.choices legend {
+  font-weight: 600;
+  margin-bottom: var(--space-1);
+  padding: 0;
+}
+
+.choice {
+  display: flex;
+  gap: var(--space-2);
+  align-items: baseline;
+}
