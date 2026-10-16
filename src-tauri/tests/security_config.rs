@@ -1,0 +1,134 @@
+//! Guards the trust boundaries from docs/spec/07-PACKAGING-AND-SECURITY.md against
+//! accidental loosening of the checked-in Tauri configuration.
+
+use serde_json::Value;
+
+const TAURI_CONF: &str = include_str!("../tauri.conf.json");
+const DEFAULT_CAPABILITY: &str = include_str!("../capabilities/default.json");
+const PACKAGE_JSON: &str = include_str!("../../package.json");
+
+fn json(source: &str) -> Value {
+    serde_json::from_str(source).expect("valid JSON")
+}
+
+fn directives(csp: &str) -> Vec<(String, Vec<String>)> {
+    csp.split(';')
+        .map(str::trim)
+        .filter(|d| !d.is_empty())
+        .map(|d| {
+            let mut parts = d.split_whitespace().map(str::to_owned);
+            let name = parts.next().expect("directive name");
+            (name, parts.collect())
+        })
+        .collect()
+}
+
+fn source_list<'a>(csp: &'a [(String, Vec<String>)], name: &str) -> &'a [String] {
+    &csp.iter()
+        .find(|(n, _)| n == name)
+        .unwrap_or_else(|| panic!("CSP lacks {name}"))
+        .1
+}
+
+#[test]
+fn production_csp_allows_only_packaged_assets_and_ipc() {
+    let conf = json(TAURI_CONF);
+    let csp = conf["app"]["security"]["csp"]
+        .as_str()
+        .expect("production CSP must be set");
+    let csp = directives(csp);
+
+    for name in [
+        "default-src",
+        "script-src",
+        "style-src",
+        "connect-src",
+        "object-src",
+        "base-uri",
+    ] {
+        source_list(&csp, name);
+    }
+    assert_eq!(source_list(&csp, "script-src"), ["'self'"]);
+    assert_eq!(source_list(&csp, "object-src"), ["'none'"]);
+    assert_eq!(source_list(&csp, "base-uri"), ["'none'"]);
+
+    for (name, sources) in &csp {
+        for source in sources {
+            assert!(
+                !matches!(
+                    source.as_str(),
+                    "'unsafe-eval'" | "'unsafe-inline'" | "*" | "http:" | "https:" | "data:"
+                ) || (name == "img-src" && source == "data:"),
+                "{name} must not allow {source}"
+            );
+            if source.starts_with("http://") || source.starts_with("https://") {
+                // Windows serves Tauri IPC from this origin; nothing remote is allowed.
+                assert_eq!(
+                    source, "http://ipc.localhost",
+                    "{name} allows remote {source}"
+                );
+            }
+        }
+    }
+}
+
+#[test]
+fn development_csp_is_separate_and_local_only() {
+    let conf = json(TAURI_CONF);
+    let dev = conf["app"]["security"]["devCsp"]
+        .as_str()
+        .expect("dev CSP must be explicit");
+    assert_ne!(Some(dev), conf["app"]["security"]["csp"].as_str());
+    for (name, sources) in directives(dev) {
+        for source in sources {
+            assert_ne!(source, "'unsafe-eval'", "{name}");
+            if source.contains("://") {
+                assert!(
+                    source == "http://ipc.localhost" || source == "ws://localhost:1420",
+                    "{name} allows non-local {source}"
+                );
+            }
+        }
+    }
+}
+
+#[test]
+fn frontend_is_packaged_locally() {
+    let conf = json(TAURI_CONF);
+    assert_eq!(conf["build"]["frontendDist"], "../dist");
+    assert_eq!(conf["build"]["devUrl"], "http://localhost:1420");
+    let windows = conf["app"]["windows"].as_array().expect("windows");
+    assert_eq!(windows.len(), 1);
+    assert_eq!(windows[0]["label"], "main");
+    assert!(
+        windows[0].get("url").is_none(),
+        "window must load packaged UI"
+    );
+}
+
+#[test]
+fn main_window_capability_grants_only_app_commands() {
+    let capability = json(DEFAULT_CAPABILITY);
+    assert_eq!(capability["windows"], serde_json::json!(["main"]));
+    assert!(
+        capability.get("remote").is_none(),
+        "no remote origin may receive capabilities"
+    );
+    let permissions: Vec<&str> = capability["permissions"]
+        .as_array()
+        .expect("permissions")
+        .iter()
+        .map(|p| p.as_str().expect("plain permission identifier"))
+        .collect();
+    assert_eq!(permissions, ["allow-get-app-info"]);
+}
+
+#[test]
+fn versions_are_consistent() {
+    let conf = json(TAURI_CONF);
+    assert!(
+        conf.get("version").is_none(),
+        "tauri.conf.json inherits the Cargo version"
+    );
+    assert_eq!(json(PACKAGE_JSON)["version"], env!("CARGO_PKG_VERSION"));
+}

@@ -1,0 +1,41 @@
+[package]
+name = "kurasis-launcher"
+version = "0.1.0"
+description = "Independent desktop launcher for Minecraft: Java Edition (provisional name)"
+authors = ["Kurasis Launcher contributors"]
+edition = "2024"
+rust-version = "1.97"
+publish = false
+
+[lib]
+# The `_lib` suffix keeps the library name distinct from the binary on Windows,
+# see https://github.com/rust-lang/cargo/issues/8519
+name = "kurasis_launcher_lib"
+crate-type = ["staticlib", "cdylib", "rlib"]
+
+[build-dependencies]
+tauri-build = { version = "2.7.3", features = [] }
+
+[dependencies]
+tauri = { version = "2.12.4", features = [] }
+serde = { version = "1.0.229", features = ["derive"] }
+serde_json = "1.0.154"
+
+[dev-dependencies]
+tauri = { version = "2.12.4", features = ["test"] }
+
+[lints.rust]
+unsafe_code = "forbid"
+
+[lints.clippy]
+dbg_macro = "deny"
+print_stdout = "warn"
+todo = "deny"
+unwrap_used = "warn"
+
+[profile.release]
+codegen-units = 1
+lto = true
+opt-level = 3
+panic = "abort"
+strip = true

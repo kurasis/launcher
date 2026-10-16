@@ -6,7 +6,7 @@ Allowed states: `not_started`, `in_progress`, `blocked`, `done`. A partially imp
 
 | Phase | Status | Evidence / commit | Blocker / notes |
 | --- | --- | --- | --- |
-| [P01](phases/P01-PROJECT-FOUNDATION.md) | not_started | — | — |
+| [P01](phases/P01-PROJECT-FOUNDATION.md) | done | [PR #1](https://github.com/kurasis/launcher/pull/1); host checks + CI on 4 targets, see [VERIFICATION.md](../VERIFICATION.md#p01--project-foundation) | Host GUI checked on Linux x64 only; Microsoft client ID not supplied (does not block P01) |
 | [P02](phases/P02-CORE-STORAGE-AND-IPC.md) | not_started | — | — |
 | [P03](phases/P03-LIFECYCLE-SPIKE.md) | not_started | — | — |
 | [P04](phases/P04-AUTHENTICATION-AND-ACCESS.md) | not_started | — | — |
@@ -25,14 +25,30 @@ Allowed states: `not_started`, `in_progress`, `blocked`, `done`. A partially imp
 
 | Dependency | State | Required owner contribution |
 | --- | --- | --- |
-| Project-owned Microsoft public client and service access | Unverified | Supply registered client ID and confirm accepted auth configuration/access |
+| Project-owned Microsoft public client and service access | Not supplied (tracked in [AUTH-SETUP.md](../AUTH-SETUP.md); does not block P01–P03, P05–P08) | Supply registered client ID and confirm accepted auth configuration/access |
 | Real owned / no-access / active subscription test accounts | Unverified | Owner-operated tests; never put credentials into this file |
-| Target OS/hardware test environments | Unverified | Identify available Windows, macOS Intel/arm64 and Linux sessions |
-| Release identity and signing | Unverified | Choose stable app identity and supply signing configuration when distributing |
+| Target OS/hardware test environments | Only an Ubuntu 24.04 container host and GitHub-hosted CI runners are available; no target desktops (see [VERIFICATION.md](../VERIFICATION.md#test-environments)) | Identify available Windows, macOS Intel/arm64 and Linux sessions |
+| Release identity and signing | Provisional identity `io.github.kurasis.launcher` / "Kurasis Launcher" ([D-001](../DECISIONS.md#d-001--provisional-application-identity)); no signing | Choose stable app identity and supply signing configuration when distributing |
 
 ## Last completed phase report
 
-None. Implementation has not started.
+```text
+Phase: P01 — Project foundation and external prerequisites
+Status: done
+Implemented: Tauri 2 + React 19 + TypeScript + Vite shell; Rust core with module layout from
+  doc 02; typed IPC command get_app_info; build-time Microsoft client ID configuration
+  (status only); strict CSP and per-command permissions; pinned toolchains and lockfiles;
+  CI on Linux x64, Windows x64, macOS arm64, macOS x64; DECISIONS, AUTH-SETUP, DEVELOPMENT,
+  VERIFICATION docs.
+Checks: typecheck, lint, format, 8 frontend tests, rustfmt, clippy -D warnings, 13 Rust tests,
+  release build (host) - pass; CI 5/5 jobs pass.
+Demo: npm run tauri dev; edit src/lib/strings.ts and observe hot reload.
+Evidence limits: GUI run on the Linux x64 development host under Xvfb only; other targets
+  compile and test in CI without a GUI run.
+Blockers: Microsoft client ID and Minecraft service approval (owner action, docs/AUTH-SETUP.md);
+  no target desktop machines available for qualification.
+Next eligible phase: P02
+```
 
 ## Decisions / deviations
 

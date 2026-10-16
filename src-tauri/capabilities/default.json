@@ -1,0 +1,7 @@
+{
+  "$schema": "../gen/schemas/desktop-schema.json",
+  "identifier": "default",
+  "description": "Minimal permissions for the main launcher window. Grant each new command explicitly.",
+  "windows": ["main"],
+  "permissions": ["allow-get-app-info"]
+}
