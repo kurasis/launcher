@@ -335,9 +335,13 @@ impl SafeName {
             && text != "."
             && text != ".."
             && !text.starts_with('.')
+            // Windows drops trailing dots and spaces from names.
+            && !text.starts_with(' ')
+            && !text.ends_with([' ', '.'])
+            // Spaces occur in old pre-release IDs such as "1.14 Pre-Release 5".
             && text
                 .bytes()
-                .all(|b| b.is_ascii_alphanumeric() || matches!(b, b'.' | b'_' | b'-'));
+                .all(|b| b.is_ascii_alphanumeric() || matches!(b, b'.' | b'_' | b'-' | b' '));
         if valid && !is_windows_reserved(text) {
             Ok(Self(text.to_owned()))
         } else {
@@ -596,7 +600,14 @@ mod tests {
 
     #[test]
     fn safe_names_reject_traversal_and_reserved_names() {
-        for good in ["1.21.1", "26.3", "17", "client-1.12.xml", "26.4-snapshot-4"] {
+        for good in [
+            "1.21.1",
+            "26.3",
+            "17",
+            "client-1.12.xml",
+            "26.4-snapshot-4",
+            "1.14 Pre-Release 5",
+        ] {
             assert!(SafeName::parse(good).is_ok(), "{good}");
         }
         for bad in [
@@ -610,7 +621,10 @@ mod tests {
             "CON",
             "nul.txt",
             "COM1",
-            "a b",
+            " a",
+            "a ",
+            "a.",
+            "a\tb",
             "x:y",
             &"a".repeat(65),
         ] {

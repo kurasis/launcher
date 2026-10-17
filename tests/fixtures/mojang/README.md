@@ -9,3 +9,8 @@
   rejection rules; it is not Mojang data.
 
 These files are excluded from Prettier so their bytes (and hashes) never change.
+
+`1.6.4.json` (SHA-1 `b71bae449192fbbe1582ff32fb3765edf0b9b0a8`) and `b1.7.3.json`
+(SHA-1 `44f6969326bd45aa00dcd3c4ca3a7c05ebb24c04`) are unmodified legacy-format
+descriptors (`minecraftArguments`, native classifier jars, no `javaVersion` in the
+beta) for the D-035 tests.

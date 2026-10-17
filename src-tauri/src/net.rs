@@ -30,9 +30,14 @@ pub enum SourcePolicy {
     Adoptium,
 }
 
-const MOJANG_METADATA_HOSTS: &[&str] = &["piston-meta.mojang.com"];
+// `launchermeta` is Mojang's previous metadata host; older descriptors still
+// point their asset indexes there.
+const MOJANG_METADATA_HOSTS: &[&str] = &["piston-meta.mojang.com", "launchermeta.mojang.com"];
 const MOJANG_ARTIFACT_HOSTS: &[&str] = &[
     "piston-data.mojang.com",
+    "launchermeta.mojang.com",
+    // Mojang's previous artifact host; descriptors of older versions still use it.
+    "launcher.mojang.com",
     "piston-meta.mojang.com",
     "libraries.minecraft.net",
     "resources.download.minecraft.net",
@@ -48,6 +53,8 @@ const ADOPTIUM_HOSTS: &[&str] = &[
 const ALL_SOURCE_HOSTS: &[&str] = &[
     "piston-meta.mojang.com",
     "piston-data.mojang.com",
+    "launcher.mojang.com",
+    "launchermeta.mojang.com",
     "libraries.minecraft.net",
     "resources.download.minecraft.net",
     "api.adoptium.net",

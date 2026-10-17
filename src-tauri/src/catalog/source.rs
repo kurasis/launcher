@@ -16,7 +16,7 @@ use tokio::sync::Mutex;
 use super::compatibility;
 use super::manifest::{self, Catalog, CatalogEntry};
 use crate::error::{ErrorCode, LauncherError, LauncherResult};
-use crate::install::descriptor::MAX_DESCRIPTOR_BYTES;
+use crate::install::descriptor::{self, MAX_DESCRIPTOR_BYTES};
 use crate::install::plan::{self, GamePlan, MAX_ASSET_INDEX_BYTES, PlannedArtifact};
 use crate::install::rules::RuleContext;
 use crate::net::{self, PublicClient, SourcePolicy};
@@ -105,39 +105,46 @@ pub struct CatalogReceipt {
     pub sha256: String,
 }
 
-/// Availability of one supported version for a new installation.
+/// Whether a version can be installed now.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "snake_case")]
 pub enum Availability {
-    /// Catalog descriptor hash is on the accepted list.
+    /// Listed in the catalog; its descriptor hash is the trust anchor.
     Available,
-    /// The catalog now lists another descriptor hash: a new candidate that is not
-    /// trusted until qualified.
-    DescriptorChanged,
     NotInCatalog,
     CatalogUnavailable,
 }
 
+/// One version for the picker (D-035).
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
-pub struct SupportedVersionView {
-    pub id: &'static str,
-    pub status: compatibility::QualificationStatus,
-    pub expected_java_major: u16,
+pub struct VersionView {
+    pub id: String,
+    /// `release`, `snapshot`, `old_beta` or `old_alpha`.
+    pub version_type: String,
+    pub release_time: Option<String>,
+    /// On the shipped list with this exact descriptor hash: launched and
+    /// checked by this project (doc 01 "Supported release policy").
+    pub verified: bool,
     pub availability: Availability,
-    pub catalog_sha1: Option<Sha1>,
 }
 
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct CatalogView {
-    pub versions: Vec<SupportedVersionView>,
+    /// Newest first, as Mojang lists them.
+    pub versions: Vec<VersionView>,
     pub fetched_at: Option<DateTime<Utc>>,
     /// True when shown from cache because the refresh failed.
     pub stale: bool,
     pub error: Option<LauncherError>,
     /// Informational; never installed automatically.
     pub latest_release: Option<String>,
+    pub latest_snapshot: Option<String>,
+}
+
+fn verified(id: &str, sha1: &Sha1) -> bool {
+    compatibility::find(id).is_some_and(|v| v.accepted_descriptor_sha1.contains(&sha1.as_str()))
 }
 
 /// Summary for the UI before installation (P05 demonstration).
@@ -282,39 +289,43 @@ impl<F: Fetch> MetadataService<F> {
         Ok((catalog, now))
     }
 
-    /// The supported versions intersected with the catalog.
+    /// Every vanilla version in the catalog, newest first. Without a catalog the
+    /// shipped verified versions are listed as unavailable.
     pub async fn supported_versions(&self, refresh: bool) -> CatalogView {
         let (catalog, fetched_at, stale, error) = self.catalog(refresh).await;
-        let versions = compatibility::SUPPORTED_VERSIONS
-            .iter()
-            .map(|supported| {
-                let entry = catalog.as_ref().and_then(|c| c.find(supported.id));
-                let availability = match (&catalog, entry) {
-                    (None, _) => Availability::CatalogUnavailable,
-                    (Some(_), None) => Availability::NotInCatalog,
-                    (Some(_), Some(entry))
-                        if supported
-                            .accepted_descriptor_sha1
-                            .contains(&entry.sha1.as_str()) =>
-                    {
-                        Availability::Available
-                    }
-                    (Some(_), Some(_)) => Availability::DescriptorChanged,
-                };
-                SupportedVersionView {
-                    id: supported.id,
-                    status: supported.status,
-                    expected_java_major: supported.expected_java_major,
-                    availability,
-                    catalog_sha1: entry.map(|e| e.sha1.clone()),
-                }
-            })
-            .collect();
+        let versions = match &catalog {
+            Some(catalog) => catalog
+                .versions
+                .iter()
+                .filter(|e| descriptor::VERSION_TYPES.contains(&e.version_type.as_str()))
+                .map(|entry| VersionView {
+                    id: entry.id.clone(),
+                    version_type: entry.version_type.clone(),
+                    release_time: entry.release_time.clone(),
+                    verified: verified(&entry.id, &entry.sha1),
+                    availability: Availability::Available,
+                })
+                .collect(),
+            None => compatibility::SUPPORTED_VERSIONS
+                .iter()
+                .map(|v| VersionView {
+                    id: v.id.to_owned(),
+                    version_type: "release".to_owned(),
+                    release_time: None,
+                    verified: true,
+                    availability: Availability::CatalogUnavailable,
+                })
+                .collect(),
+        };
+        let (latest_release, latest_snapshot) = catalog
+            .map(|c| (c.latest_release, c.latest_snapshot))
+            .unwrap_or_default();
         CatalogView {
             versions,
             fetched_at,
             stale,
-            latest_release: catalog.and_then(|c| c.latest_release),
+            latest_release,
+            latest_snapshot,
             error,
         }
     }
@@ -367,12 +378,10 @@ impl<F: Fetch> MetadataService<F> {
         Ok(fetched.body)
     }
 
-    /// Resolves a complete game plan for a supported version whose catalog
-    /// descriptor hash is accepted. Never selects `latest.release` on its own.
+    /// Resolves a complete game plan for a catalog version; the catalog's
+    /// descriptor hash is verified on download. Never selects `latest.release` on
+    /// its own.
     pub async fn plan(&self, version_id: &str, ctx: &RuleContext) -> LauncherResult<GamePlan> {
-        let supported = compatibility::find(version_id).ok_or_else(|| {
-            LauncherError::invalid_input("This Minecraft version is not supported.")
-        })?;
         let (catalog, _, _, error) = self.catalog(false).await;
         let catalog = catalog.ok_or_else(|| {
             error.unwrap_or_else(|| {
@@ -388,16 +397,8 @@ impl<F: Fetch> MetadataService<F> {
                 "This version is no longer listed by Mojang.",
             )
         })?;
-        if !supported
-            .accepted_descriptor_sha1
-            .contains(&entry.sha1.as_str())
-        {
-            return Err(LauncherError::new(
-                ErrorCode::UnsupportedVersionMetadata,
-                "Mojang changed this version's metadata. The new metadata has not been \
-                 qualified for this launcher yet.",
-            )
-            .with_detail("catalogSha1", entry.sha1.to_string()));
+        if !descriptor::VERSION_TYPES.contains(&entry.version_type.as_str()) {
+            return Err(descriptor::unsupported("version type"));
         }
         let bytes = self.descriptor(entry).await?;
         let mut plan = plan::plan_game(&bytes, &entry.url, &entry.sha1, version_id, ctx)?;
@@ -417,9 +418,11 @@ impl<F: Fetch> MetadataService<F> {
     ) -> LauncherResult<GamePlan> {
         let entry = CatalogEntry {
             id: version_id.to_owned(),
-            version_type: "release".into(),
+            // Not used for planning; the descriptor states its own type.
+            version_type: String::new(),
             url: descriptor_url.to_owned(),
             sha1: descriptor_sha1.clone(),
+            release_time: None,
         };
         let bytes = self.descriptor(&entry).await?;
         let mut plan = plan::plan_game(&bytes, &entry.url, &entry.sha1, version_id, ctx)?;

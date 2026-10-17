@@ -54,7 +54,6 @@ export function InstancesView({ snapshot }: InstancesViewProps) {
       <div className={styles.column}>
         {creating && (
           <CreateInstanceForm
-            versions={snapshot.supportedVersions}
             onDone={() => {
               setCreating(false);
             }}

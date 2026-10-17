@@ -16,12 +16,15 @@ pub struct CatalogEntry {
     pub version_type: String,
     pub url: String,
     pub sha1: Sha1,
+    /// ISO 8601 release time; display and ordering only.
+    pub release_time: Option<String>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Catalog {
     /// Informational only; never used to choose or upgrade a version.
     pub latest_release: Option<String>,
+    pub latest_snapshot: Option<String>,
     pub versions: Vec<CatalogEntry>,
 }
 
@@ -57,12 +60,20 @@ pub fn parse(bytes: &[u8]) -> LauncherResult<Catalog> {
                 version_type: v.get("type")?.as_str()?.to_owned(),
                 url: v.get("url")?.as_str()?.to_owned(),
                 sha1: Sha1::parse(v.get("sha1")?.as_str()?).ok()?,
+                release_time: v
+                    .get("releaseTime")
+                    .and_then(Value::as_str)
+                    .map(str::to_owned),
             })
         })
         .collect();
     Ok(Catalog {
         latest_release: value
             .pointer("/latest/release")
+            .and_then(Value::as_str)
+            .map(str::to_owned),
+        latest_snapshot: value
+            .pointer("/latest/snapshot")
             .and_then(Value::as_str)
             .map(str::to_owned),
         versions: entries,

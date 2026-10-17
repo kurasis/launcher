@@ -1,12 +1,15 @@
-//! Strict parsing of a verified modern vanilla version descriptor
-//! (docs/spec/04 "Metadata resolution").
+//! Strict parsing of a verified vanilla version descriptor (docs/spec/04
+//! "Metadata resolution", D-035).
 //!
-//! Only the pinned modern shape is supported. Inheritance, legacy
-//! `minecraftArguments`, classifier/natives extraction, snapshots and missing
-//! download metadata are rejected with `UNSUPPORTED_VERSION_METADATA` instead of
-//! being guessed. Unknown optional fields are tolerated.
+//! Every vanilla version type Mojang lists is accepted: releases, snapshots and
+//! the old beta and alpha versions. Both argument formats are parsed: the modern
+//! `arguments` object and the legacy `minecraftArguments` string (before 1.13),
+//! as are native libraries shipped as classifier jars that must be extracted.
+//! Inheritance (`inheritsFrom`, used only by mod loaders) and missing download
+//! metadata are rejected with `UNSUPPORTED_VERSION_METADATA` instead of being
+//! guessed. Unknown optional fields are tolerated.
 
-use serde_json::{Map, Value};
+use serde_json::Value;
 
 use crate::error::{ErrorCode, LauncherError, LauncherResult};
 use crate::storage::paths::{SafeName, Sha1};
@@ -21,14 +24,49 @@ pub struct Download {
     pub size: u64,
 }
 
+/// Version types Mojang's catalog uses for vanilla versions.
+pub const VERSION_TYPES: &[&str] = &["release", "snapshot", "old_beta", "old_alpha"];
+
+/// Java major for descriptors that predate the `javaVersion` field.
+pub const LEGACY_JAVA_MAJOR: u16 = 8;
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Library {
     /// Maven coordinate, provenance only.
     pub name: String,
+    /// The classpath jar; native-only libraries have none.
+    pub artifact: Option<LibraryArtifact>,
+    /// Native jars to extract before launch, by classifier.
+    pub natives: Option<Natives>,
+    pub rules: Option<Value>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct LibraryArtifact {
     /// Declared relative Maven path, validated but never used as a destination.
     pub path: String,
     pub download: Download,
-    pub rules: Option<Value>,
+}
+
+/// A library's native jars (`natives` + `downloads.classifiers` + `extract`).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Natives {
+    /// Metadata OS name (`windows`, `osx`, `linux`) to classifier template; the
+    /// template may contain `${arch}`.
+    pub classifiers: std::collections::BTreeMap<String, String>,
+    pub downloads: std::collections::BTreeMap<String, Download>,
+    /// Entry-name prefixes not to extract, e.g. `META-INF/`.
+    pub exclude: Vec<String>,
+}
+
+/// The two argument formats.
+#[derive(Debug, Clone, PartialEq)]
+pub enum Arguments {
+    /// `arguments.jvm` and `arguments.game` with rules.
+    Modern { jvm: Vec<Value>, game: Vec<Value> },
+    /// `minecraftArguments`: whitespace-separated game arguments; the launcher
+    /// supplies the JVM arguments.
+    Legacy(String),
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -55,8 +93,7 @@ pub struct Descriptor {
     pub asset_index: AssetIndexRef,
     pub logging: Option<Logging>,
     pub libraries: Vec<Library>,
-    pub jvm_arguments: Vec<Value>,
-    pub game_arguments: Vec<Value>,
+    pub arguments: Arguments,
 }
 
 pub fn unsupported(reason: &str) -> LauncherError {
@@ -65,13 +102,6 @@ pub fn unsupported(reason: &str) -> LauncherError {
         "This Minecraft version's metadata uses a format the launcher does not support.",
     )
     .with_detail("reason", reason.to_owned())
-}
-
-fn obj<'a>(value: &'a Value, key: &str) -> LauncherResult<&'a Map<String, Value>> {
-    value
-        .get(key)
-        .and_then(Value::as_object)
-        .ok_or_else(|| unsupported(&format!("missing object {key}")))
 }
 
 fn string<'a>(value: &'a Value, key: &str) -> LauncherResult<&'a str> {
@@ -133,29 +163,31 @@ pub fn parse(bytes: &[u8], expected_id: &str) -> LauncherResult<Descriptor> {
         return Err(unsupported("descriptor too large"));
     }
     let value: Value = serde_json::from_slice(bytes).map_err(|_| unsupported("invalid JSON"))?;
-    for legacy in ["inheritsFrom", "minecraftArguments"] {
-        if value.get(legacy).is_some() {
-            return Err(unsupported(legacy));
-        }
+    if value.get("inheritsFrom").is_some() {
+        return Err(unsupported("inheritsFrom"));
     }
     let id = string(&value, "id")?;
     if id != expected_id {
         return Err(unsupported("unexpected version id"));
     }
     let version_type = string(&value, "type")?;
-    if version_type != "release" {
-        return Err(unsupported("only release versions are supported"));
+    if !VERSION_TYPES.contains(&version_type) {
+        return Err(unsupported("version type"));
     }
     let main_class = string(&value, "mainClass")?;
     if !valid_main_class(main_class) {
         return Err(unsupported("mainClass"));
     }
-    let java_major = obj(&value, "javaVersion")?
-        .get("majorVersion")
-        .and_then(Value::as_u64)
-        .and_then(|m| u16::try_from(m).ok())
-        .filter(|m| (8..=99).contains(m))
-        .ok_or_else(|| unsupported("javaVersion.majorVersion"))?;
+    // The oldest descriptors have no javaVersion; they all run on Java 8.
+    let java_major = match value.get("javaVersion") {
+        None => LEGACY_JAVA_MAJOR,
+        Some(java) => java
+            .get("majorVersion")
+            .and_then(Value::as_u64)
+            .and_then(|m| u16::try_from(m).ok())
+            .filter(|m| (8..=99).contains(m))
+            .ok_or_else(|| unsupported("javaVersion.majorVersion"))?,
+    };
     let downloads = value
         .get("downloads")
         .ok_or_else(|| unsupported("downloads"))?;
@@ -207,38 +239,51 @@ pub fn parse(bytes: &[u8], expected_id: &str) -> LauncherResult<Descriptor> {
         .and_then(Value::as_array)
         .ok_or_else(|| unsupported("libraries"))?
     {
-        for legacy in ["natives", "extract"] {
-            if library.get(legacy).is_some() {
-                return Err(unsupported("legacy native extraction"));
-            }
-        }
         let name = string(library, "name")?;
         let library_downloads = library
             .get("downloads")
             .ok_or_else(|| unsupported("library without downloads"))?;
-        if library_downloads.get("classifiers").is_some() {
-            return Err(unsupported("library classifiers"));
+        let artifact = match library_downloads.get("artifact") {
+            None => None,
+            Some(artifact) => {
+                let path = string(artifact, "path")?;
+                validate_relative_path(path)?;
+                Some(LibraryArtifact {
+                    path: path.to_owned(),
+                    download: download(artifact, "library")?,
+                })
+            }
+        };
+        let natives = parse_natives(library, library_downloads)?;
+        if artifact.is_none() && natives.is_none() {
+            return Err(unsupported("library without artifact"));
         }
-        let artifact = library_downloads
-            .get("artifact")
-            .ok_or_else(|| unsupported("library without artifact"))?;
-        let path = string(artifact, "path")?;
-        validate_relative_path(path)?;
         libraries.push(Library {
             name: name.to_owned(),
-            path: path.to_owned(),
-            download: download(artifact, "library")?,
+            artifact,
+            natives,
             rules: library.get("rules").cloned(),
         });
     }
 
-    let arguments = obj(&value, "arguments")?;
-    let list = |key: &str| {
-        arguments
-            .get(key)
-            .and_then(Value::as_array)
-            .cloned()
-            .ok_or_else(|| unsupported(&format!("arguments.{key}")))
+    let arguments = match (value.get("arguments"), value.get("minecraftArguments")) {
+        (Some(arguments), _) => {
+            let list = |key: &str| {
+                arguments
+                    .get(key)
+                    .and_then(Value::as_array)
+                    .cloned()
+                    .ok_or_else(|| unsupported(&format!("arguments.{key}")))
+            };
+            Arguments::Modern {
+                jvm: list("jvm")?,
+                game: list("game")?,
+            }
+        }
+        (None, Some(Value::String(legacy))) if !legacy.trim().is_empty() => {
+            Arguments::Legacy(legacy.clone())
+        }
+        _ => return Err(unsupported("arguments")),
     };
     Ok(Descriptor {
         id: id.to_owned(),
@@ -249,7 +294,57 @@ pub fn parse(bytes: &[u8], expected_id: &str) -> LauncherResult<Descriptor> {
         asset_index,
         logging,
         libraries,
-        jvm_arguments: list("jvm")?,
-        game_arguments: list("game")?,
+        arguments,
     })
+}
+
+/// `natives`, `downloads.classifiers` and `extract` of one library, if present.
+fn parse_natives(library: &Value, downloads: &Value) -> LauncherResult<Option<Natives>> {
+    let Some(map) = library.get("natives") else {
+        if downloads.get("classifiers").is_some() {
+            return Err(unsupported("classifiers without natives"));
+        }
+        return Ok(None);
+    };
+    let map = map
+        .as_object()
+        .ok_or_else(|| unsupported("library natives"))?;
+    let mut classifiers = std::collections::BTreeMap::new();
+    for (os, classifier) in map {
+        let classifier = classifier
+            .as_str()
+            .filter(|c| !c.is_empty())
+            .ok_or_else(|| unsupported("native classifier"))?;
+        classifiers.insert(os.clone(), classifier.to_owned());
+    }
+    let mut native_downloads = std::collections::BTreeMap::new();
+    if let Some(declared) = downloads.get("classifiers") {
+        let declared = declared
+            .as_object()
+            .ok_or_else(|| unsupported("library classifiers"))?;
+        for (classifier, entry) in declared {
+            let path = string(entry, "path")?;
+            validate_relative_path(path)?;
+            native_downloads.insert(classifier.clone(), download(entry, "native")?);
+        }
+    }
+    let exclude = match library.pointer("/extract/exclude") {
+        None => Vec::new(),
+        Some(list) => list
+            .as_array()
+            .ok_or_else(|| unsupported("extract.exclude"))?
+            .iter()
+            .map(|e| {
+                e.as_str()
+                    .filter(|e| !e.is_empty())
+                    .map(str::to_owned)
+                    .ok_or_else(|| unsupported("extract.exclude"))
+            })
+            .collect::<LauncherResult<_>>()?,
+    };
+    Ok(Some(Natives {
+        classifiers,
+        downloads: native_downloads,
+        exclude,
+    }))
 }

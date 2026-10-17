@@ -72,7 +72,11 @@ fn property<'a>(output: &'a str, name: &str) -> Option<&'a str> {
 
 /// Parses `-XshowSettings:properties` output.
 pub fn parse(output: &str) -> Option<JavaProbe> {
-    let specification_version = property(output, "java.specification.version")?
+    // Java 8 and older report `1.8`; later releases report the plain major.
+    let specification = property(output, "java.specification.version")?;
+    let specification_version = specification
+        .strip_prefix("1.")
+        .unwrap_or(specification)
         .parse()
         .ok()?;
     Some(JavaProbe {
@@ -195,6 +199,16 @@ mod tests {
         assert!(parse("garbage").is_none());
         let arm = SAMPLE.replace("amd64", "aarch64");
         assert!(check(&parse(&arm).unwrap(), 21, TargetArch::Aarch64).is_ok());
+        // Java 8 reports its specification version as 1.8.
+        let java8 = SAMPLE
+            .replace(
+                "java.specification.version = 21",
+                "java.specification.version = 1.8",
+            )
+            .replace("java.version = 21.0.12", "java.version = 1.8.0_504");
+        let probe = parse(&java8).unwrap();
+        assert_eq!(probe.specification_version, 8);
+        assert!(check(&probe, 8, TargetArch::X64).is_ok());
     }
 
     #[test]

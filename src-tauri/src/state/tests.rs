@@ -145,7 +145,7 @@ fn invalid_inputs_are_rejected_without_changes() {
     let dir = tempfile::tempdir().unwrap();
     let sink = RecordingSink::default();
     let state = state_at(dir.path(), sink.clone());
-    for (name, version) in [("", "1.21.1"), ("ok", "1.21"), ("ok", "26.4-snapshot-4")] {
+    for (name, version) in [("", "1.21.1"), ("ok", "../1.21"), ("ok", "a/b"), ("ok", "")] {
         assert_eq!(
             create(&state, name, version).unwrap_err().code,
             ErrorCode::InvalidInput

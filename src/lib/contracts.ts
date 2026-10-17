@@ -34,6 +34,7 @@ export type ErrorCode =
   | 'AUTH_PROTOCOL_ERROR'
   | 'AUTH_NOT_CONFIGURED'
   | 'NO_GAME_ACCESS'
+  | 'DEMO_UNAVAILABLE'
   | 'PROFILE_SETUP_REQUIRED'
   | 'SERVICE_UNAVAILABLE'
   | 'SECRET_STORE_UNAVAILABLE'
@@ -196,24 +197,29 @@ export interface SupportedVersion {
 }
 
 /** Mirrors `catalog::source::Availability`. */
-export type VersionAvailability =
-  'available' | 'descriptor_changed' | 'not_in_catalog' | 'catalog_unavailable';
+export type VersionAvailability = 'available' | 'not_in_catalog' | 'catalog_unavailable';
 
-export interface SupportedVersionView {
+/** Mojang's vanilla version types (D-035). */
+export type VersionType = 'release' | 'snapshot' | 'old_beta' | 'old_alpha';
+
+export interface VersionView {
   id: string;
-  status: SupportedVersion['status'];
-  expectedJavaMajor: number;
+  versionType: VersionType;
+  releaseTime: string | null;
+  /** Shipped, pinned and checked by this project. */
+  verified: boolean;
   availability: VersionAvailability;
-  catalogSha1: string | null;
 }
 
-/** Returned by `list_supported_versions`. `latestRelease` is informational only. */
+/** Returned by `list_supported_versions`: every vanilla version, newest first.
+ * `latestRelease` and `latestSnapshot` are informational only. */
 export interface CatalogView {
-  versions: SupportedVersionView[];
+  versions: VersionView[];
   fetchedAt: string | null;
   stale: boolean;
   error: LauncherError | null;
   latestRelease: string | null;
+  latestSnapshot: string | null;
 }
 
 /** Returned by `preview_install_plan`; nothing is downloaded to produce it. */

@@ -38,6 +38,8 @@ pub struct LaunchInputs<'a> {
     pub plan: &'a GamePlan,
     pub root: &'a DataRoot,
     pub game_dir: &'a Path,
+    /// `${game_assets}`: the by-name asset directory of legacy versions.
+    pub game_assets: &'a Path,
     pub natives_dir: &'a Path,
     pub max_heap_mib: u32,
     pub resolution: Resolution,
@@ -168,6 +170,9 @@ pub fn compile(inputs: &LaunchInputs<'_>) -> LauncherResult<CompiledLaunch> {
     values.insert("game_directory", path_text(inputs.game_dir)?);
     values.insert("assets_root", path_text(&inputs.root.assets_root())?);
     values.insert("assets_index_name", plan.asset_index.id.as_str().to_owned());
+    values.insert("game_assets", path_text(inputs.game_assets)?);
+    // Legacy arguments: no Twitch or skin properties are passed.
+    values.insert("user_properties", "{}".into());
     values.insert("natives_directory", natives.clone());
     values.insert("launcher_name", LAUNCHER_NAME.into());
     values.insert("launcher_version", inputs.launcher_version.to_owned());
@@ -183,11 +188,14 @@ pub fn compile(inputs: &LaunchInputs<'_>) -> LauncherResult<CompiledLaunch> {
     let mut jvm_values = values.clone();
     jvm_values.remove("auth_access_token");
     values.insert("auth_access_token", token.clone());
+    // The pre-1.7 session format; it contains the token, so game arguments only.
+    let session = format!("token:{token}:{}", identity.uuid);
+    values.insert("auth_session", session.clone());
 
     let mut jvm_args = vec![format!("-Xmx{}M", inputs.max_heap_mib)];
     let mut native_dirs = Vec::new();
     for template in &plan.jvm_arguments {
-        if template.contains("${auth_access_token}") {
+        if template.contains("${auth_access_token}") || template.contains("${auth_session}") {
             return Err(unresolved("auth_access_token in JVM arguments"));
         }
         if let Some(index) = template.find("${natives_directory}/") {
@@ -224,7 +232,7 @@ pub fn compile(inputs: &LaunchInputs<'_>) -> LauncherResult<CompiledLaunch> {
         main_class: plan.main_class.clone(),
         game_args,
         native_dirs,
-        secrets: vec![token],
+        secrets: vec![session, token],
     })
 }
 

@@ -24,6 +24,7 @@ pub enum ErrorCode {
     AuthProtocolError,
     AuthNotConfigured,
     NoGameAccess,
+    DemoUnavailable,
     ProfileSetupRequired,
     ServiceUnavailable,
     SecretStoreUnavailable,

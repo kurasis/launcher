@@ -11,6 +11,7 @@ import type {
   MicrosoftClientIdStatus,
   OperationKind,
   Theme,
+  VersionType,
 } from './contracts';
 
 export const strings = {
@@ -164,14 +165,33 @@ export const strings = {
     title: 'New installation',
     name: 'Name',
     version: 'Minecraft version',
-    pending: 'pending verification',
+    versionTypes: {
+      release: 'Releases',
+      snapshot: 'Snapshots',
+      old_beta: 'Beta',
+      old_alpha: 'Alpha',
+    } satisfies Record<VersionType, string>,
+    typeHints: {
+      release: 'Stable versions.',
+      snapshot:
+        'Test versions before a release. They can damage worlds; keep copies of worlds you care about.',
+      old_beta:
+        'Beta versions from 2010–2011. They run on Java 8 and have no demo mode, so playing needs a signed-in account.',
+      old_alpha:
+        'Alpha, Classic and pre-Classic versions from 2009–2010. They run on Java 8 and have no demo mode, so playing needs a signed-in account.',
+    } satisfies Record<VersionType, string>,
+    search: 'Find a version',
+    noMatch: 'No version matches.',
+    verified: 'Verified',
+    latest: 'Latest',
+    selected: (id: string) => `Selected: ${id}`,
+    noneSelected: 'Choose a version.',
     isolation:
       'Each installation gets its own game folder for worlds, options and screenshots. The version cannot be changed later; create another installation to play a different version.',
     submit: 'Create installation',
     cancel: 'Cancel',
     availability: {
       available: 'Available from Mojang',
-      descriptor_changed: 'Changed upstream; waiting for verification',
       not_in_catalog: 'Not in the Mojang catalog',
       catalog_unavailable: 'Mojang catalog not reachable',
       checking: 'Checking the Mojang catalog…',

@@ -335,8 +335,7 @@ fn asset_index_problems_are_rejected() {
         ErrorCode::MetadataConflict
     );
     for bad in [
-        json!({"virtual": true, "objects": {}}),
-        json!({"map_to_resources": true, "objects": {}}),
+        json!({"virtual": true, "objects": {"../escape": {"hash": "0000000000000000000000000000000000000001", "size": 1}}}),
         json!({"objects": {"a": {"hash": "xyz", "size": 1}}}),
         json!({"objects": {"a": {"hash": "0000000000000000000000000000000000000001"}}}),
         json!({}),
@@ -384,21 +383,20 @@ type Edit = Box<dyn FnOnce(&mut Value)>;
 fn unsupported_formats_and_unsafe_metadata_are_rejected() {
     let cases: Vec<Edit> = vec![
         Box::new(|v| v["inheritsFrom"] = json!("1.21")),
-        Box::new(|v| v["minecraftArguments"] = json!("--username ${auth_player_name}")),
-        Box::new(|v| v["type"] = json!("snapshot")),
+        Box::new(|v| v["type"] = json!("experiment")),
+        Box::new(|v| {
+            v.as_object_mut().unwrap().remove("arguments");
+        }),
+        Box::new(|v| {
+            v.as_object_mut().unwrap().remove("arguments");
+            v["minecraftArguments"] = json!("--username ${auth_player_name} ${unknown}");
+        }),
         Box::new(|v| v["id"] = json!("1.21.2")),
         Box::new(|v| {
             v["downloads"]
                 .as_object_mut()
                 .unwrap()
                 .remove("client")
-                .map(|_| ())
-                .unwrap()
-        }),
-        Box::new(|v| {
-            v.as_object_mut()
-                .unwrap()
-                .remove("javaVersion")
                 .map(|_| ())
                 .unwrap()
         }),
@@ -519,4 +517,121 @@ fn unsupported_targets_are_explicit() {
         .code,
         ErrorCode::UnsupportedPlatform
     );
+}
+
+/// A pre-1.13 descriptor in the legacy shape: `minecraftArguments`, native
+/// classifier jars with `${arch}`, no `javaVersion`.
+fn legacy_descriptor() -> Vec<u8> {
+    let lib = |sha: &str| json!({"url": format!("https://libraries.minecraft.net/{sha}.jar"), "sha1": sha, "size": 10, "path": format!("x/{sha}.jar")});
+    json!({
+        "id": "1.12.2", "type": "release", "mainClass": "net.minecraft.client.main.Main",
+        "minecraftArguments": "--username ${auth_player_name} --version ${version_name} --gameDir ${game_directory} --assetsDir ${assets_root} --assetIndex ${assets_index_name} --uuid ${auth_uuid} --accessToken ${auth_access_token} --userType ${user_type} --versionType ${version_type}",
+        "downloads": {"client": {"url": "https://piston-data.mojang.com/c.jar", "sha1": "1111111111111111111111111111111111111111", "size": 5}},
+        "assetIndex": {"id": "1.12", "url": "https://piston-meta.mojang.com/i.json", "sha1": "2222222222222222222222222222222222222222", "size": 3, "totalSize": 4},
+        "libraries": [
+            {"name": "org.lwjgl.lwjgl:lwjgl:2.9.4", "downloads": {"artifact": lib("3333333333333333333333333333333333333333")}},
+            {"name": "org.lwjgl.lwjgl:lwjgl-platform:2.9.4",
+             "natives": {"linux": "natives-linux", "osx": "natives-osx", "windows": "natives-windows-${arch}"},
+             "extract": {"exclude": ["META-INF/"]},
+             "downloads": {"classifiers": {
+                 "natives-linux": lib("4444444444444444444444444444444444444444"),
+                 "natives-osx": lib("5555555555555555555555555555555555555555"),
+                 "natives-windows-64": lib("6666666666666666666666666666666666666666")}}}
+        ]
+    })
+    .to_string()
+    .into_bytes()
+}
+
+fn plan_legacy(os: MetaOs, arch: &'static str) -> LauncherResult<GamePlan> {
+    plan_game(
+        &legacy_descriptor(),
+        "https://piston-meta.mojang.com/1.12.2.json",
+        &Sha1::parse(SHA_1_21_1).unwrap(),
+        "1.12.2",
+        &ctx(os, arch),
+    )
+}
+
+#[test]
+fn legacy_descriptors_plan_natives_and_launcher_jvm_arguments() {
+    let linux = plan_legacy(MetaOs::Linux, "x86_64").unwrap();
+    assert_eq!(linux.runtime.major, 8, "no javaVersion means Java 8");
+    assert_eq!(linux.natives.len(), 1);
+    assert_eq!(
+        linux.natives[0].path,
+        "shared/libraries/4444444444444444444444444444444444444444/artifact.jar"
+    );
+    assert_eq!(linux.natives[0].exclude, ["META-INF/"]);
+    // Native jars are downloaded but never on the classpath.
+    assert!(
+        linux
+            .libraries
+            .iter()
+            .any(|l| l.path == linux.natives[0].path)
+    );
+    assert!(!linux.classpath.contains(&linux.natives[0].path));
+    assert_eq!(linux.classpath.len(), 2, "lwjgl jar and client");
+    assert_eq!(linux.game_arguments[0], "--username");
+    assert_eq!(linux.game_arguments[1], "${auth_player_name}");
+    let cp = linux.jvm_arguments.iter().position(|a| a == "-cp").unwrap();
+    assert_eq!(linux.jvm_arguments[cp + 1], "${classpath}");
+    assert!(
+        linux
+            .jvm_arguments
+            .contains(&"-Djava.library.path=${natives_directory}".to_owned())
+    );
+
+    let windows = plan_legacy(MetaOs::Windows, "x86_64").unwrap();
+    assert!(
+        windows.natives[0].path.contains("6666"),
+        "the arch template resolves to 64"
+    );
+    assert!(windows.jvm_arguments[0].starts_with("-XX:HeapDumpPath="));
+    let mac = plan_legacy(MetaOs::Osx, "x86_64").unwrap();
+    assert!(mac.natives[0].path.contains("5555"));
+
+    // Intel-only natives cannot run on Apple silicon.
+    assert_eq!(
+        plan_legacy(MetaOs::Osx, "arm64").unwrap_err().code,
+        ErrorCode::UnsupportedPlatform
+    );
+}
+
+#[test]
+fn snapshots_and_old_versions_are_accepted_and_java_16_runs_on_17() {
+    for version_type in ["snapshot", "old_beta", "old_alpha"] {
+        let p = try_plan(&mutate(|v| v["type"] = json!(version_type))).unwrap();
+        assert_eq!(p.version_type, version_type);
+    }
+    let p = try_plan(&mutate(|v| v["javaVersion"]["majorVersion"] = json!(16))).unwrap();
+    assert_eq!(p.runtime.major, 17);
+}
+
+#[test]
+fn legacy_asset_indexes_choose_their_layout() {
+    let mut p = plan(V1_21_1, "1.21.1", SHA_1_21_1, MetaOs::Linux, "x86_64");
+    let object = json!({"hash": "0000000000000000000000000000000000000001", "size": 1});
+    plan_assets(
+        &mut p,
+        json!({"virtual": true, "objects": {"sound/a.ogg": object}})
+            .to_string()
+            .as_bytes(),
+    )
+    .unwrap();
+    assert_eq!(p.asset_layout, AssetLayout::Virtual);
+    plan_assets(
+        &mut p,
+        json!({"map_to_resources": true, "objects": {"sound/a.ogg": object}})
+            .to_string()
+            .as_bytes(),
+    )
+    .unwrap();
+    assert_eq!(p.asset_layout, AssetLayout::Resources);
+    plan_assets(
+        &mut p,
+        json!({"objects": {"x": object}}).to_string().as_bytes(),
+    )
+    .unwrap();
+    assert_eq!(p.asset_layout, AssetLayout::Modern);
 }

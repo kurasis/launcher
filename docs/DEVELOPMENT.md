@@ -68,6 +68,7 @@ its evidence with `--nocapture`.
 | `cargo test --test live_runtime -- --ignored --nocapture --test-threads=1`                                      | Adoptium resolution, extraction and Java probes                  |
 | `LAUNCHER_LIVE_ROOT=<dir> LAUNCHER_LIVE_VERSION=1.21.1 cargo test --test live_install -- --ignored --nocapture` | Full installation (`LAUNCHER_LIVE_REPAIR=1` repairs instead)     |
 | `LAUNCHER_LIVE_ROOT=<dir> cargo test --test live_launch_args -- --ignored --nocapture --test-threads=1`         | Real Java accepts the compiled arguments of an installed version |
+| `cargo test --test live_all_versions -- --ignored --nocapture`                                                  | Every Mojang version plans on Windows, Linux and both Macs       |
 
 `live_install` needs about 1.2 GB of free space per version in `<dir>`. Use a scratch
 directory, never your real launcher data.
@@ -88,6 +89,12 @@ npx tauri build --debug --no-bundle
 LAUNCHER_DATA_ROOT="$PWD/.dev-data" LAUNCHER_NOTOKEN_PROFILE=TestPlayer \
   ./src-tauri/target/debug/launcher
 ```
+
+Versions without a demo mode (before 1.6: 1.0–1.5.2, beta, alpha, Classic) refuse a
+demo identity. To check that they start, `LAUNCHER_LIVE_FULL=1` makes `live_play` use a
+test-only identity without `--demo` that exists only in that test binary; the 2009
+pre-Classic versions log nothing on start, so add `LAUNCHER_LIVE_READY_AFTER_SECS=20`.
+LWJGL 2 versions (before 1.13) need `xrandr` on Linux (`x11-xserver-utils`).
 
 `LAUNCHER_LIVE_HOLD_SECS` keeps the game running for screenshots. On a headless Linux
 machine run Xvfb with Mesa; Minecraft 26.3 additionally needs the Mesa Vulkan driver

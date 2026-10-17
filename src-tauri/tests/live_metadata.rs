@@ -18,13 +18,15 @@ async fn live_catalog_and_plans() {
     let view = service.supported_versions(true).await;
     assert!(view.error.is_none(), "{:?}", view.error);
     println!("latest.release (informational): {:?}", view.latest_release);
-    for version in &view.versions {
-        println!(
-            "{} {:?} catalog sha1 {:?}",
-            version.id, version.availability, version.catalog_sha1
-        );
-        assert_eq!(version.availability, Availability::Available);
+    for version in view.versions.iter().filter(|v| v.verified) {
+        println!("verified: {} ({})", version.id, version.version_type);
     }
+    println!("{} versions listed", view.versions.len());
+    assert!(
+        view.versions
+            .iter()
+            .all(|v| v.availability == Availability::Available)
+    );
     for (id, os, arch) in [
         ("1.21.1", MetaOs::Windows, "x86_64"),
         ("1.21.1", MetaOs::Linux, "x86_64"),

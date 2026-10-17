@@ -605,12 +605,13 @@ impl AppState {
             request,
             |data, store, payload, changes| {
                 let display_name = validation::validate_display_name(&payload.display_name)?;
-                let version = compatibility::find(&payload.version_id).ok_or_else(|| {
-                    LauncherError::invalid_input(
-                        "This Minecraft version is not in the launcher's supported list.",
-                    )
-                    .with_detail("versionId", payload.version_id.clone())
-                })?;
+                // Any version ID that is safe as a name; installing checks it
+                // against Mojang's catalog (D-035).
+                let version = crate::storage::paths::SafeName::parse(payload.version_id.trim())
+                    .map_err(|_| {
+                        LauncherError::invalid_input("This is not a valid Minecraft version.")
+                            .with_detail("versionId", payload.version_id.clone())
+                    })?;
                 let memory = memory?;
                 let max_heap_mib = data
                     .settings
@@ -622,7 +623,7 @@ impl AppState {
                     schema_version: SCHEMA_VERSION,
                     id: InstanceId::generate(),
                     display_name,
-                    version_id: version.id.to_owned(),
+                    version_id: version.as_str().to_owned(),
                     manifest_sha1: None,
                     created_at: Utc::now(),
                     last_played_at: None,
