@@ -65,6 +65,7 @@ impl Authorizer for TestAuth {
                 access_token: SecretString::new(TOKEN),
                 xuid: None,
                 client_id: "test-client".into(),
+                demo: false,
             })
         })
     }
@@ -290,7 +291,8 @@ async fn one_game_at_a_time_and_stop_targets_the_owned_process() {
         crate::launch::orphan::read(&s.f.root).is_none(),
         "record cleared after exit"
     );
-    assert_eq!(done.state, RunState::Failed, "terminated by Stop");
+    assert_eq!(done.state, RunState::Stopped, "ended by the user");
+    assert!(done.error.is_none(), "a stop is not a game error");
     assert!(s.f.state.activity().current().is_none());
 }
 

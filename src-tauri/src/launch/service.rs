@@ -11,7 +11,7 @@
 //! released only after the game exited, output was drained and the run folder
 //! was cleaned up.
 
-use std::collections::{HashMap, VecDeque};
+use std::collections::{HashMap, HashSet, VecDeque};
 use std::path::PathBuf;
 use std::process::Command;
 use std::sync::{Arc, Mutex, PoisonError};
@@ -60,6 +60,7 @@ impl Authorizer for Arc<crate::auth::service::AuthService> {
                 access_token: auth.access_token,
                 xuid: auth.xuid,
                 client_id: auth.client_id,
+                demo: false,
             })
         })
     }
@@ -86,6 +87,8 @@ pub struct LaunchService {
     launcher_version: String,
     pending: Mutex<Option<(String, CancelToken)>>,
     requests: Mutex<Requests>,
+    /// Runs the user asked to stop; their end is "stopped", not a game error.
+    stop_requested: Arc<Mutex<HashSet<String>>>,
     force_argfile: bool,
 }
 
@@ -118,6 +121,7 @@ impl LaunchService {
             launcher_version: launcher_version.to_owned(),
             pending: Mutex::default(),
             requests: Mutex::default(),
+            stop_requested: Arc::default(),
             force_argfile: false,
         }
     }
@@ -179,9 +183,11 @@ impl LaunchService {
     /// Requests termination of the owned game process of `run_id`, or of a game
     /// that survived a launcher restart (after re-checking its identity).
     pub fn stop(&self, run_id: &str) -> bool {
+        lock_or(&self.stop_requested).insert(run_id.to_owned());
         if self.host.kill(run_id) {
             return true;
         }
+        lock_or(&self.stop_requested).remove(run_id);
         let Some(root) = self.host.app_state().data_root() else {
             return false;
         };
@@ -575,6 +581,7 @@ impl LaunchService {
         let finish_host = Arc::clone(&self.host);
         let finish_id = run_id.to_owned();
         let finish_root = root.clone();
+        let stop_requested = Arc::clone(&self.stop_requested);
         let spawned = child::spawn(
             command,
             sink,
@@ -585,7 +592,9 @@ impl LaunchService {
                 let dropped = lock_or(&tail).dropped();
                 let start = lines.len().saturating_sub(SUMMARY_TAIL_LINES);
                 let degraded = lock_or(&log).degraded();
+                let stopped = lock_or(&stop_requested).remove(&finish_id);
                 let (run_state, exit_code, error) = match &outcome.status {
+                    Ok(status) if stopped => (RunState::Stopped, status.code(), None),
                     Ok(status) if status.success() => (RunState::Exited, status.code(), None),
                     Ok(status) => (
                         RunState::Failed,
@@ -612,10 +621,10 @@ impl LaunchService {
                 let _ = state.update_instance(instance_id, |i| {
                     i.last_result = Some(LastResult {
                         kind: OperationKind::Launch,
-                        outcome: if run_state == RunState::Exited {
-                            Outcome::Succeeded
-                        } else {
-                            Outcome::Failed
+                        outcome: match run_state {
+                            RunState::Exited => Outcome::Succeeded,
+                            RunState::Stopped => Outcome::Cancelled,
+                            _ => Outcome::Failed,
                         },
                         finished_at,
                         error_code: error.as_ref().map(|e| e.code),

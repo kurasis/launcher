@@ -172,6 +172,7 @@ fn real_jvm_arguments_are_accepted_by_the_managed_java() {
         access_token: SecretString::new("unused-never-passed"),
         xuid: None,
         client_id: "unused".into(),
+        demo: false,
     };
     let compiled = compile::compile(&LaunchInputs {
         plan: &plan,

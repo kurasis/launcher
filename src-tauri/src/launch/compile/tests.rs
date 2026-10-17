@@ -28,6 +28,7 @@ fn identity() -> LaunchIdentity {
         access_token: SecretString::new(TOKEN),
         xuid: Some("2535400000000000".into()),
         client_id: "00000000-0000-0000-0000-000000000000".into(),
+        demo: false,
     }
 }
 
@@ -41,6 +42,10 @@ fn root() -> DataRoot {
 }
 
 fn compile_for(plan: &GamePlan) -> CompiledLaunch {
+    compile_as(plan, &identity())
+}
+
+fn compile_as(plan: &GamePlan, identity: &LaunchIdentity) -> CompiledLaunch {
     let root = root();
     let id = "0f1e2d3c-4b5a-4978-8796-a5b4c3d2e1f0";
     let game_dir = root.path().join("instances").join(id).join("game");
@@ -61,7 +66,7 @@ fn compile_for(plan: &GamePlan) -> CompiledLaunch {
             width: 1280,
             height: 720,
         },
-        identity: &identity(),
+        identity,
         launcher_version: "0.1.0",
     })
     .unwrap()
@@ -108,6 +113,28 @@ fn all_placeholders_resolve_and_order_is_kept() {
                 assert!(pairs.contains(&expected), "{version} {os:?} {expected:?}");
             }
         }
+    }
+}
+
+#[test]
+fn demo_mode_adds_exactly_one_demo_argument() {
+    for (bytes, version) in [(V1_21_1, "1.21.1"), (V26_3, "26.3")] {
+        let p = plan(bytes, version, MetaOs::Linux, "x86_64");
+        let normal = compile_for(&p);
+        assert!(!normal.game_args.iter().any(|a| a == "--demo"), "{version}");
+        let demo = compile_as(
+            &p,
+            &LaunchIdentity {
+                demo: true,
+                ..identity()
+            },
+        );
+        assert_eq!(demo.game_args.iter().filter(|a| *a == "--demo").count(), 1);
+        assert_eq!(
+            demo.game_args.len(),
+            normal.game_args.len() + 1,
+            "{version}"
+        );
     }
 }
 

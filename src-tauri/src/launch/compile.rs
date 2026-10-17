@@ -29,6 +29,9 @@ pub struct LaunchIdentity {
     /// Only from the authenticated XSTS claim; empty when the service gave none.
     pub xuid: Option<String>,
     pub client_id: String,
+    /// Minecraft's demo mode (`--demo`). Only the debug-build test profile sets it;
+    /// a signed-in account never does.
+    pub demo: bool,
 }
 
 pub struct LaunchInputs<'a> {
@@ -205,11 +208,16 @@ pub fn compile(inputs: &LaunchInputs<'_>) -> LauncherResult<CompiledLaunch> {
         logging_values.insert("path", path_text(&path)?);
         jvm_args.push(substitute(&logging.argument, &logging_values)?);
     }
-    let game_args = plan
+    let mut game_args = plan
         .game_arguments
         .iter()
         .map(|template| substitute(template, &values))
         .collect::<LauncherResult<Vec<_>>>()?;
+    // Plans are evaluated with `is_demo_user` false; both qualified descriptors
+    // map that feature to exactly this argument.
+    if identity.demo {
+        game_args.push("--demo".to_owned());
+    }
     Ok(CompiledLaunch {
         working_dir: inputs.game_dir.to_path_buf(),
         jvm_args,

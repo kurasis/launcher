@@ -47,6 +47,9 @@ pub struct AppInfo {
     pub arch: String,
     pub build_profile: BuildProfile,
     pub microsoft_client_id: ClientIdStatus,
+    /// Name of the debug-build test profile that authorizes launches, if active.
+    /// Always `None` in release builds.
+    pub test_profile: Option<String>,
 }
 
 impl AppInfo {
@@ -59,8 +62,19 @@ impl AppInfo {
             arch: std::env::consts::ARCH.to_owned(),
             build_profile: BuildProfile::current(),
             microsoft_client_id: client_id::build_time_status(),
+            test_profile: active_test_profile(),
         }
     }
+}
+
+#[cfg(debug_assertions)]
+fn active_test_profile() -> Option<String> {
+    crate::launch::test_profile::TestProfile::from_env().map(|p| p.name().to_owned())
+}
+
+#[cfg(not(debug_assertions))]
+fn active_test_profile() -> Option<String> {
+    None
 }
 
 #[tauri::command]

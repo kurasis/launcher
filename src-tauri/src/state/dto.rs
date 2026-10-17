@@ -201,6 +201,8 @@ pub enum RunState {
     Exited,
     Failed,
     Cancelled,
+    /// Ended by the user's Stop; not an error of the game.
+    Stopped,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]

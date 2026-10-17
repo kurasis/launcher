@@ -23,7 +23,9 @@ smoke-tested in CI.
 **What does not work yet:** signing in and playing. Microsoft sign-in needs a
 project-owned Microsoft application (client) ID and Minecraft service access approval,
 both owner actions ([`docs/AUTH-SETUP.md`](docs/AUTH-SETUP.md)). Without them the Play
-button explains that sign-in is required; no fake session is ever used.
+button explains that sign-in is required; no fake session is ever used in release
+builds. For automated tests, debug builds can launch the real game in Minecraft's demo
+mode with a test profile ([`docs/DEVELOPMENT.md`](docs/DEVELOPMENT.md#test-profile-debug-builds-only), D-030).
 
 **Not qualified yet:** real Windows, macOS and Wayland machines, real accounts and signed
 packages. The MVP is not complete until those checks pass (P13 in

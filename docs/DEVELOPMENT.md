@@ -72,6 +72,28 @@ its evidence with `--nocapture`.
 `live_install` needs about 1.2 GB of free space per version in `<dir>`. Use a scratch
 directory, never your real launcher data.
 
+### Test profile (debug builds only)
+
+Without a signed-in account the launcher cannot authorize a game launch. For automated
+download and launch tests, debug builds accept a test profile that starts Minecraft in
+its demo mode (D-030). Release builds and packages do not contain it.
+
+```sh
+# Real game in demo mode through the launch service, then Stop (needs a display):
+KURASIS_LIVE_ROOT=<dir> KURASIS_LIVE_VERSION=1.21.1 \
+  cargo test --manifest-path src-tauri/Cargo.toml --test live_play -- --ignored --nocapture
+
+# The whole app with the profile: Play starts the demo, the window returns on exit.
+npx tauri build --debug --no-bundle
+KURASIS_DATA_ROOT="$PWD/.dev-data" KURASIS_TEST_PROFILE=KurasisTest \
+  ./src-tauri/target/debug/kurasis-launcher
+```
+
+`KURASIS_LIVE_HOLD_SECS` keeps the game running for screenshots. On a headless Linux
+machine run Xvfb with Mesa; Minecraft 26.3 additionally needs the Mesa Vulkan driver
+(`mesa-vulkan-drivers`), because Xvfb offers no sRGB GLX visual. Results are demo-mode
+evidence, never account evidence.
+
 ## Configuration
 
 | Variable                | When it is read                  | Purpose                                                                                    |

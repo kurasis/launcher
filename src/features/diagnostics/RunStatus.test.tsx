@@ -53,6 +53,12 @@ describe('RunStatus', () => {
     expect(screen.getByText('Not started')).toBeVisible();
   });
 
+  it('shows a game ended by Stop as stopped, not as an error', () => {
+    render(<RunStatus current={null} last={{ ...base, kind: 'game', state: 'stopped' }} />);
+    expect(screen.getByText('Stopped by you')).toBeVisible();
+    expect(screen.queryByText('Exited with an error')).toBeNull();
+  });
+
   it('reports degraded logging', () => {
     render(<RunStatus current={null} last={{ ...base, state: 'exited', loggingDegraded: true }} />);
     expect(screen.getByText(/could not be written to disk/)).toBeVisible();

@@ -17,6 +17,7 @@ const tones: Record<RunState, StatusTone> = {
   exited: 'success',
   failed: 'danger',
   cancelled: 'neutral',
+  stopped: 'neutral',
 };
 
 interface RunStatusProps {

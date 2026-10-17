@@ -523,3 +523,27 @@ replaces it), `superseded`.
 - **Live installation test:** `tests/live_install.rs` drives the real install service for
   any supported version in any data directory (ignored by default), which makes the
   multi-version cache checks (MV01, MV02 install side, MV08) repeatable.
+
+## D-030 — Debug-build test profile for automated launch tests
+
+- **Status:** accepted (owner-approved, 2026-10-17) · **Affects:** A12, A17, A18, A23, MV02
+- **Context:** without a project-owned Microsoft client ID no launch can be authorized,
+  so nothing after preflight could be tested automatically. The owner approved a test
+  profile for automated download and launch tests.
+- **Decision:** `launch::test_profile` exists only in debug builds and tests
+  (`cfg(debug_assertions)`); packages are release builds and contain no code path to
+  it. A debug build started with `KURASIS_TEST_PROFILE=<name>` authorizes launches with
+  that name, a UUID derived from it and a placeholder token, and always adds Minecraft's
+  `--demo` argument (`LaunchIdentity.demo`). The header shows "Test profile <name> ·
+  demo mode". `tests/live_play.rs` drives the real game through the launch service with
+  the profile.
+- **Limits:** demo mode only (5 in-game days, no multiplayer); the placeholder token is
+  rejected by every Minecraft service. Evidence gathered with the profile is labelled
+  "test profile, demo" and never counts as account verification: A03–A06 and A13 still
+  need real accounts, and the Microsoft client ID blocker is unchanged.
+- **Found with it:** a game ended through Stop was recorded as "Exited with an error";
+  runs now have a `stopped` state ("Stopped by you") and the last result reads
+  "Cancelled" instead of "Failed".
+- **Graphics on headless Linux:** Minecraft 26.3 needs an sRGB-capable GLX visual that
+  Xvfb and the Xorg dummy driver do not offer; with the Mesa software Vulkan driver
+  (lavapipe) it uses its Vulkan backend instead. 1.21.1 runs on GLX with llvmpipe.
