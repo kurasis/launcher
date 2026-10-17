@@ -82,9 +82,9 @@ export const ipc = {
     invoke('open_instance_folder', { request: mutation({ instanceId }, requestId) }),
   exportDiagnostics: (runId: string | null, requestId?: string): Promise<ExportResult> =>
     invoke<ExportResult>('export_diagnostics', { request: mutation({ runId }, requestId) }),
-  /** `demo` starts Minecraft's demo without an account (D-033). */
-  launchGame: (instanceId: string, requestId?: string, demo = false): Promise<RunSummary> =>
-    invoke<RunSummary>('launch_game', { request: mutation({ instanceId, demo }, requestId) }),
+  /** `notoken` plays with the no-token profile: Minecraft's demo without an account (D-033). */
+  launchGame: (instanceId: string, requestId?: string, notoken = false): Promise<RunSummary> =>
+    invoke<RunSummary>('launch_game', { request: mutation({ instanceId, notoken }, requestId) }),
   stopGame: (runId: string, requestId?: string): Promise<boolean> =>
     invoke<boolean>('stop_game', { request: mutation({ runId }, requestId) }),
   listSupportedVersions: (refresh: boolean): Promise<CatalogView> =>

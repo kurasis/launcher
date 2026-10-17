@@ -1030,19 +1030,19 @@ descriptors.
 
 ### Real installs and launches (Linux x64)
 
-| Version           | Era / format                                  | Java | Install | Launch                                                                                    |
-| ----------------- | --------------------------------------------- | ---- | ------- | ----------------------------------------------------------------------------------------- |
-| `rd-132211`       | pre-Classic 2009, own main class              | 8    | Pass    | Pass (harness, no demo mode); world rendered                                              |
-| `c0.30_01c`       | Classic, launch wrapper                       | 8    | Pass    | Pass (harness); in game                                                                   |
-| `a1.0.4`          | Alpha, `pre-1.6` resources                    | 8    | Pass    | Pass (harness); title screen                                                              |
-| `b1.7.3`          | Beta, `pre-1.6` resources                     | 8    | Pass    | Pass (harness); title screen. Demo identity refused (`DEMO_UNAVAILABLE`, no Java started) |
-| `1.5.2`           | launch wrapper, `pre-1.6` resources           | 8    | Pass    | Pass (harness); title screen with resources                                               |
-| `1.6.4`           | `minecraftArguments`, `virtual` legacy assets | 8    | Pass    | Pass, demo mode; `--session` redacted in the log                                          |
-| `1.7.10`          | `minecraftArguments`, LWJGL 2 natives         | 8    | Pass    | Pass, demo mode                                                                           |
-| `1.12.2`          | `minecraftArguments`, LWJGL 2 natives         | 8    | Pass    | Pass, demo mode, 22.7 s to the title screen                                               |
-| `1.16.5`          | modern arguments, LWJGL 3 native jars         | 8    | Pass    | Pass, demo mode                                                                           |
-| `1.17.1`          | declares Java 16                              | 17   | Pass    | Pass, demo mode                                                                           |
-| `26.4-snapshot-4` | current snapshot                              | 25   | Pass    | Pass, demo mode (first-start screen)                                                      |
+| Version           | Era / format                                  | Java | Install | Launch                                                                                       |
+| ----------------- | --------------------------------------------- | ---- | ------- | -------------------------------------------------------------------------------------------- |
+| `rd-132211`       | pre-Classic 2009, own main class              | 8    | Pass    | Pass (harness, no demo mode); world rendered                                                 |
+| `c0.30_01c`       | Classic, launch wrapper                       | 8    | Pass    | Pass (harness); in game                                                                      |
+| `a1.0.4`          | Alpha, `pre-1.6` resources                    | 8    | Pass    | Pass (harness); title screen                                                                 |
+| `b1.7.3`          | Beta, `pre-1.6` resources                     | 8    | Pass    | Pass (harness); title screen. Demo identity refused (`NOTOKEN_UNAVAILABLE`, no Java started) |
+| `1.5.2`           | launch wrapper, `pre-1.6` resources           | 8    | Pass    | Pass (harness); title screen with resources                                                  |
+| `1.6.4`           | `minecraftArguments`, `virtual` legacy assets | 8    | Pass    | Pass, demo mode; `--session` redacted in the log                                             |
+| `1.7.10`          | `minecraftArguments`, LWJGL 2 natives         | 8    | Pass    | Pass, demo mode                                                                              |
+| `1.12.2`          | `minecraftArguments`, LWJGL 2 natives         | 8    | Pass    | Pass, demo mode, 22.7 s to the title screen                                                  |
+| `1.16.5`          | modern arguments, LWJGL 3 native jars         | 8    | Pass    | Pass, demo mode                                                                              |
+| `1.17.1`          | declares Java 16                              | 17   | Pass    | Pass, demo mode                                                                              |
+| `26.4-snapshot-4` | current snapshot                              | 25   | Pass    | Pass, demo mode (first-start screen)                                                         |
 
 All eleven share one cache: the Java 8 runtime was downloaded once (0.1 GiB) and reused
 by nine versions. Screenshots: [all-versions-launch.jpg](verification/all-versions-launch.jpg);
@@ -1208,7 +1208,7 @@ installation's runtime from its lock, and choosing a source writes `javaProvider
   - **Found and fixed:** Forge 1.12.2 runs through Mojang's launchwrapper, whose Forge
     tweaker drops `--demo`: the game opened the full title screen (Singleplayer,
     Multiplayer). Demo launches of launchwrapper loaders are now refused
-    (`DEMO_UNAVAILABLE`, checked live); with an account they start as before.
+    (`NOTOKEN_UNAVAILABLE`, checked live); with an account they start as before.
   - NeoForge 26.3's early loading window asks for an OpenGL visual this Xvfb does not
     offer ("Couldn't find matching GLX visual"); with `earlyWindowControl = false` in
     the installation's `config/fml.toml` it started normally. Vanilla 26.3 needs no

@@ -31,7 +31,7 @@ fn identity() -> LaunchIdentity {
         access_token: SecretString::new(TOKEN),
         xuid: Some("2535400000000000".into()),
         client_id: "00000000-0000-0000-0000-000000000000".into(),
-        demo: false,
+        notoken: false,
     }
 }
 
@@ -121,21 +121,24 @@ fn all_placeholders_resolve_and_order_is_kept() {
 }
 
 #[test]
-fn demo_mode_adds_exactly_one_demo_argument() {
+fn notoken_mode_adds_exactly_one_demo_argument() {
     for (bytes, version) in [(V1_21_1, "1.21.1"), (V26_3, "26.3")] {
         let p = plan(bytes, version, MetaOs::Linux, "x86_64");
         let normal = compile_for(&p);
         assert!(!normal.game_args.iter().any(|a| a == "--demo"), "{version}");
-        let demo = compile_as(
+        let notoken = compile_as(
             &p,
             &LaunchIdentity {
-                demo: true,
+                notoken: true,
                 ..identity()
             },
         );
-        assert_eq!(demo.game_args.iter().filter(|a| *a == "--demo").count(), 1);
         assert_eq!(
-            demo.game_args.len(),
+            notoken.game_args.iter().filter(|a| *a == "--demo").count(),
+            1
+        );
+        assert_eq!(
+            notoken.game_args.len(),
             normal.game_args.len() + 1,
             "{version}"
         );

@@ -2,7 +2,8 @@
 //! run on a machine with a display (Xvfb works) and an installed version:
 //! `LAUNCHER_LIVE_ROOT=<data dir> LAUNCHER_LIVE_VERSION=26.3 cargo test --test live_play -- --ignored --nocapture`
 //!
-//! Starts the real Minecraft client through the launch service in demo mode, waits
+//! Starts the real Minecraft client through the launch service with the no-token
+//! profile (Minecraft's demo mode), waits
 //! until its log shows that the client finished loading its resources (the title
 //! screen follows), optionally keeps it running for `LAUNCHER_LIVE_HOLD_SECS` (for
 //! screenshots or manual steps), then stops it through the service and checks the
@@ -24,7 +25,7 @@ use launcher_lib::error::LauncherResult;
 use launcher_lib::install::service::BoxFuture;
 use launcher_lib::install::service::{LiveSource, PlanSource, StateAccess};
 use launcher_lib::launch::compile::LaunchIdentity;
-use launcher_lib::launch::demo::DemoProfile;
+use launcher_lib::launch::notoken::NoTokenProfile;
 use launcher_lib::launch::service::{Authorizer, LaunchHost, LaunchService};
 use launcher_lib::lifecycle::child::Supervised;
 use launcher_lib::net::{PublicClient, SourcePolicy};
@@ -50,20 +51,20 @@ const SETTLE: Duration = Duration::from_secs(15);
 
 /// Test-only identity without `--demo`, for versions that have no demo mode
 /// (`LAUNCHER_LIVE_FULL=1`). It exists only in this test binary; the product
-/// refuses demo launches of such versions (D-035).
-struct NoDemoHarness;
+/// refuses no-token launches of such versions (D-035).
+struct FullGameHarness;
 
-impl Authorizer for NoDemoHarness {
+impl Authorizer for FullGameHarness {
     fn authorize(&self) -> BoxFuture<'_, LauncherResult<LaunchIdentity>> {
         Box::pin(async {
-            let profile = DemoProfile::new("TestPlayer").unwrap();
+            let profile = NoTokenProfile::new("TestPlayer").unwrap();
             Ok(LaunchIdentity {
                 player_name: profile.name().to_owned(),
                 uuid: profile.uuid(),
                 access_token: SecretString::new("notoken-profile"),
                 xuid: None,
                 client_id: String::new(),
-                demo: false,
+                notoken: false,
             })
         })
     }
@@ -108,7 +109,7 @@ impl LaunchHost for Host {
 
 #[tokio::test(flavor = "multi_thread")]
 #[ignore = "starts the real game; needs a display and an installed version"]
-async fn the_game_starts_in_demo_mode_and_stops_cleanly() {
+async fn the_game_starts_without_a_token_and_stops_cleanly() {
     let root = DataRoot::new(PathBuf::from(
         std::env::var("LAUNCHER_LIVE_ROOT").expect("set LAUNCHER_LIVE_ROOT"),
     ))
@@ -146,9 +147,9 @@ async fn the_game_starts_in_demo_mode_and_stops_cleanly() {
     let source: Arc<dyn PlanSource> = Arc::new(LiveSource::new(metadata, VERSION).unwrap());
     let full = std::env::var_os("LAUNCHER_LIVE_FULL").is_some();
     let authorizer: Arc<dyn Authorizer> = if full {
-        Arc::new(NoDemoHarness)
+        Arc::new(FullGameHarness)
     } else {
-        Arc::new(DemoProfile::new("TestPlayer").unwrap())
+        Arc::new(NoTokenProfile::new("TestPlayer").unwrap())
     };
     let service = LaunchService::new(
         Arc::clone(&host) as Arc<dyn LaunchHost>,
@@ -211,7 +212,7 @@ async fn the_game_starts_in_demo_mode_and_stops_cleanly() {
     let text = std::fs::read_to_string(&log).unwrap();
     // Versions from 1.6 log the user; older ones print nothing about it.
     println!(
-        "{version}: profile name in log: {}, demo: {}",
+        "{version}: profile name in log: {}, notoken: {}",
         text.contains("TestPlayer"),
         !full
     );

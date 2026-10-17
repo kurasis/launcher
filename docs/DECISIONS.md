@@ -533,7 +533,7 @@ replaces it), `superseded`.
 - **Context:** without a project-owned Microsoft client ID no launch can be authorized,
   so nothing after preflight could be tested automatically. The owner approved a test
   profile for automated download and launch tests.
-- **Decision** (the profile now lives in `launch::demo`, see D-033): `launch::test_profile` exists only in debug builds and tests
+- **Decision** (the profile now lives in `launch::notoken`, see D-033 and D-040): `launch::test_profile` exists only in debug builds and tests
   (`cfg(debug_assertions)`); packages are release builds and contain no code path to
   it. A debug build started with `LAUNCHER_NOTOKEN_PROFILE=<name>` authorizes launches with
   that name, a UUID derived from it and a placeholder token, and always adds Minecraft's
@@ -598,14 +598,14 @@ replaces it), `superseded`.
 - **Decision:** when the account does not have verified access, the Play button becomes
   **Play demo**. It launches Minecraft's demo edition (`--demo`: five in-game days, no
   multiplayer) under the local player name "Player" with a placeholder token that every
-  Minecraft service rejects. `launch_game` takes `demo: true` for it; the Rust core then
-  uses `launch::demo::DemoProfile` instead of the account (`LaunchMode::Demo`), with the
+  Minecraft service rejects. `launch_game` takes `notoken: true` for it; the Rust core then
+  uses `launch::notoken::NoTokenProfile` instead of the account (`LaunchMode::NoToken`), with the
   same installation, integrity and supervision checks as any launch. The debug test
   profile of D-030 is the same profile under another name.
 - **Limits:** full play is unchanged: it always goes through the signed-in account and a
   fresh access check, and no build path removes `--demo` from a demo launch. Demo
   evidence never counts as account verification (A03–A06, A13).
-- **Verification:** unit tests (`demo_launches_need_no_account_and_always_run_the_demo`,
+- **Verification:** unit tests (`notoken_launches_need_no_account_and_always_run_the_demo`,
   `InstallPanel` demo and Play cases); a release build started the real demo.
 
 ## D-034 — Client ID as a repository variable
@@ -657,7 +657,7 @@ replaces it), `superseded`.
     has no Java 8 for Apple silicon.
   - Demo: only clients started through `net.minecraft.client.main.Main` (1.6 and
     later) know `--demo`. A demo identity cannot start older versions
-    (`DEMO_UNAVAILABLE`); they need a signed-in account.
+    (`NOTOKEN_UNAVAILABLE`); they need a signed-in account.
   - Mod loaders (`inheritsFrom`) were out of scope here; D-039 adds them.
 - **Verification:** every catalog version plans on Windows, Linux and Intel macOS, and
   on Apple silicon from 1.19 (`live_all_versions`); real installs and launches on Linux
@@ -794,7 +794,9 @@ message` plus a stack trace), with the event's level.
   `meta.quiltmc.org/v3`); Forge's `maven-metadata.json` and `promotions_slim.json`
   (files.minecraftforge.net); NeoForge's Maven API. NeoForge versions name their game
   version (`21.1.262` → 1.21.1, `26.3.0.88` → 26.3); its 1.20.1 builds use the old
-  `net.neoforged:forge` artifact. Snapshot and April Fools builds are left out.
+  `net.neoforged:forge` artifact. Snapshot and April Fools builds are left out. Forge
+  builds before a game version's recommended build are marked beta, as Forge itself
+  labels them.
 - **Supported range:** what each project's metadata lists, except Forge before
   1.12.2 build 14.23.5.2851: those installers use the old format (`install` +
   `versionInfo`) and are neither listed nor installed; a chosen one fails with a clear
@@ -819,7 +821,7 @@ message` plus a stack trace), with the event's level.
   the loader's main class. Demo mode still requires the _game's_ main class to be
   Minecraft's own; the loaders pass `--demo` on to it, except Forge on Mojang's
   launchwrapper (1.12.2), whose tweaker drops it: demo launches of those are refused
-  (`DEMO_UNAVAILABLE`).
+  (`NOTOKEN_UNAVAILABLE`).
 - **Maven tree:** loader installations keep their libraries under
   `shared/maven/<Maven path>` with their real file names, because Forge and NeoForge
   build a Java module layer from file names and find libraries and patched game files
@@ -851,3 +853,18 @@ message` plus a stack trace), with the event's level.
   allowlist names its host.
 - **Not included:** installing or updating mods, modpacks, changing the loader of an
   existing installation, Forge before 1.12.2 build 14.23.5.2851, LiteLoader, Rift.
+
+## D-040 — "No token" names in code; Microsoft setup panel removed from About
+
+- **Status:** accepted (owner request, 2026-10-17) · **Affects:** D-030, D-033, D-035,
+  D-039 (names only), the About screen
+- **Decision:** the code calls the profile that plays without an account the **no-token
+  profile** (`launch::notoken::NoTokenProfile`, `LaunchMode::NoToken`,
+  `LaunchIdentity::notoken`, the `notoken` field of `launch_game`), matching the
+  existing `LAUNCHER_NOTOKEN_PROFILE`. The error code is `NOTOKEN_UNAVAILABLE`; an
+  installation record written with the old `DEMO_UNAVAILABLE` still reads.
+- **Not renamed:** what belongs to Minecraft, not to the launcher: the `--demo` argument,
+  the `is_demo_user` rule feature, and the interface texts ("Play demo"), which name the
+  game's demo mode that this profile plays.
+- **About:** the "Microsoft sign-in setup" panel is gone. The Account screen still tells
+  whether sign-in is available in this build.

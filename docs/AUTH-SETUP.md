@@ -64,9 +64,10 @@ The ID is read when the Rust core is compiled:
 LAUNCHER_MSA_CLIENT_ID=<application-client-id-guid> npm run tauri dev
 ```
 
-The UI panel "Microsoft sign-in setup" then shows **Configured, not yet verified**. A
-malformed value shows **Invalid client ID**; no value shows **Not configured**. The status
-never says "verified": verification requires a real sign-in (still outstanding, A03).
+The **Account** screen then offers **Sign in**; without a valid ID it explains that
+sign-in is not set up in this build. The core reports the ID as `not_configured`,
+`invalid` or `configured_unverified`, never "verified": verification requires a real
+sign-in (still outstanding, A03). (The About screen no longer shows this status, D-040.)
 
 Once the owner approves publishing the ID, it can be committed as non-secret build
 configuration (for example a CI variable or a checked-in config file); record that change

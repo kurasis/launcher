@@ -31,7 +31,7 @@ pub struct LaunchIdentity {
     pub client_id: String,
     /// Minecraft's demo mode (`--demo`). Only the debug-build test profile sets it;
     /// a signed-in account never does.
-    pub demo: bool,
+    pub notoken: bool,
 }
 
 pub struct LaunchInputs<'a> {
@@ -233,7 +233,7 @@ pub fn compile(inputs: &LaunchInputs<'_>) -> LauncherResult<CompiledLaunch> {
     // Plans are evaluated with `is_demo_user` false; both qualified descriptors
     // map that feature to exactly this argument. Mod loaders pass it on to the
     // game's own main class.
-    if identity.demo {
+    if identity.notoken {
         game_args.push("--demo".to_owned());
     }
     Ok(CompiledLaunch {

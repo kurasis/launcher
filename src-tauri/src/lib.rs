@@ -184,22 +184,23 @@ fn resolve_data_root(app: &tauri::AppHandle) -> LauncherResult<DataRoot> {
 }
 
 /// The account that authorizes launches. Debug builds started with
-/// `LAUNCHER_NOTOKEN_PROFILE` use the demo-only test profile instead (D-030).
+/// `LAUNCHER_NOTOKEN_PROFILE` use the no-token test profile instead (D-030).
 fn launch_authorizer(auth: &Arc<AuthService>) -> Arc<dyn launch::service::Authorizer> {
     #[cfg(debug_assertions)]
-    if let Some(profile) = launch::demo::DemoProfile::from_env() {
+    if let Some(profile) = launch::notoken::NoTokenProfile::from_env() {
         return Arc::new(profile);
     }
     Arc::new(Arc::clone(auth))
 }
 
-/// The profile of "Play demo" (D-033); in debug builds the test profile's name if set.
-fn demo_authorizer() -> Arc<dyn launch::service::Authorizer> {
+/// The no-token profile of "Play demo" (D-033); in debug builds the test profile's
+/// name if set.
+fn notoken_authorizer() -> Arc<dyn launch::service::Authorizer> {
     #[cfg(debug_assertions)]
-    if let Some(profile) = launch::demo::DemoProfile::from_env() {
+    if let Some(profile) = launch::notoken::NoTokenProfile::from_env() {
         return Arc::new(profile);
     }
-    Arc::new(launch::demo::DemoProfile::default())
+    Arc::new(launch::notoken::NoTokenProfile::default())
 }
 
 /// Creates state and services; any failure stops the launcher before a window opens.
@@ -253,7 +254,7 @@ fn setup(app: &mut tauri::App) -> Result<(), Box<dyn std::error::Error>> {
                 launch_authorizer(&auth),
                 &version,
             )
-            .with_demo(demo_authorizer()),
+            .with_notoken(notoken_authorizer()),
         )
     });
     // A game that outlived a previous launcher keeps everything blocked

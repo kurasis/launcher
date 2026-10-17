@@ -12,8 +12,8 @@ function backend() {
     if (cmd === 'install_instance' || cmd === 'repair_instance') return { operationId: 'op-1' };
     if (cmd === 'cancel_operation') return { state: 'cancel_requested' };
     if (cmd === 'launch_game') {
-      // The demo needs no account; a normal launch fails without sign-in setup.
-      if ((args as { request: { payload: { demo: boolean } } }).request.payload.demo) {
+      // The no-token profile needs no account; a normal launch fails without sign-in setup.
+      if ((args as { request: { payload: { notoken: boolean } } }).request.payload.notoken) {
         return { runId: 'run-1', kind: 'game', state: 'preflight' };
       }
       // eslint-disable-next-line @typescript-eslint/only-throw-error -- mirrors the IPC error envelope
@@ -170,7 +170,7 @@ describe('InstallPanel', () => {
     expect(screen.getByText(/Another operation is running/)).toBeVisible();
   });
 
-  it('offers the demo without an account and Play with verified access', async () => {
+  it('offers the no-token demo without an account and Play with verified access', async () => {
     const calls = backend();
     const { rerender } = render(
       <InstallPanel
@@ -186,7 +186,7 @@ describe('InstallPanel', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Play demo' }));
     await waitFor(() => {
       expect(calls.find((c) => c.cmd === 'launch_game')?.args).toMatchObject({
-        request: { payload: { instanceId: instanceFixture().id, demo: true } },
+        request: { payload: { instanceId: instanceFixture().id, notoken: true } },
       });
     });
 
@@ -203,7 +203,7 @@ describe('InstallPanel', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Play' }));
     expect(await screen.findByText('Sign-in is not configured in this build.')).toBeVisible();
     expect(calls.filter((c) => c.cmd === 'launch_game').at(-1)?.args).toMatchObject({
-      request: { payload: { instanceId: instanceFixture().id, demo: false } },
+      request: { payload: { instanceId: instanceFixture().id, notoken: false } },
     });
   });
 });

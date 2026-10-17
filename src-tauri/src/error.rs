@@ -24,7 +24,10 @@ pub enum ErrorCode {
     AuthProtocolError,
     AuthNotConfigured,
     NoGameAccess,
-    DemoUnavailable,
+    /// The no-token profile cannot start this version (Minecraft has no demo
+    /// mode there). Earlier launchers wrote `DEMO_UNAVAILABLE`.
+    #[serde(rename = "NOTOKEN_UNAVAILABLE", alias = "DEMO_UNAVAILABLE")]
+    NoTokenUnavailable,
     ProfileSetupRequired,
     ServiceUnavailable,
     SecretStoreUnavailable,
@@ -272,6 +275,16 @@ pub type LauncherResult<T> = Result<T, LauncherError>;
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn the_notoken_code_reads_its_old_name() {
+        let code: ErrorCode = serde_json::from_str("\"DEMO_UNAVAILABLE\"").unwrap();
+        assert_eq!(code, ErrorCode::NoTokenUnavailable);
+        assert_eq!(
+            serde_json::to_string(&code).unwrap(),
+            "\"NOTOKEN_UNAVAILABLE\""
+        );
+    }
 
     #[test]
     fn serializes_to_the_frontend_envelope() {

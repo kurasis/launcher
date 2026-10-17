@@ -102,8 +102,8 @@ export type Messages = {
     readonly repair: string;
     readonly verify: string;
     readonly play: string;
-    readonly playDemo: string;
-    readonly demoHint: string;
+    readonly playNoToken: string;
+    readonly noTokenHint: string;
     readonly starting: string;
     readonly cancel: string;
     readonly cancelling: string;
@@ -456,19 +456,6 @@ export type Messages = {
       readonly release: string;
     };
   };
-  readonly microsoftSetup: {
-    readonly title: string;
-    readonly status: {
-      readonly not_configured: string;
-      readonly invalid: string;
-      readonly configured_unverified: string;
-    };
-    readonly explanation: {
-      readonly not_configured: string;
-      readonly invalid: string;
-      readonly configured_unverified: string;
-    };
-  };
   readonly errorCodes: {
     readonly AUTH_CANCELLED: string;
     readonly AUTH_TIMEOUT: string;
@@ -480,7 +467,7 @@ export type Messages = {
     readonly AUTH_PROTOCOL_ERROR: string;
     readonly AUTH_NOT_CONFIGURED: string;
     readonly NO_GAME_ACCESS: string;
-    readonly DEMO_UNAVAILABLE: string;
+    readonly NOTOKEN_UNAVAILABLE: string;
     readonly PROFILE_SETUP_REQUIRED: string;
     readonly SERVICE_UNAVAILABLE: string;
     readonly SECRET_STORE_UNAVAILABLE: string;
