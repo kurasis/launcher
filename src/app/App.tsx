@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Button } from '../components/Button';
 import { Logo } from '../components/Logo';
 import { Notice } from '../components/Notice';
@@ -51,6 +51,19 @@ export function App() {
   const [settingsInstance, setSettingsInstance] = useState<string | null>(null);
   const snapshot = state.status === 'ready' ? state.snapshot : null;
   useTheme(snapshot?.settings.theme);
+  // Ctrl+Shift+L (Cmd+Shift+L on macOS) opens the console window (D-037).
+  useEffect(() => {
+    const onKey = (event: KeyboardEvent) => {
+      if ((event.ctrlKey || event.metaKey) && event.shiftKey && event.code === 'KeyL') {
+        event.preventDefault();
+        void ipc.openConsole().catch(() => undefined);
+      }
+    };
+    window.addEventListener('keydown', onKey);
+    return () => {
+      window.removeEventListener('keydown', onKey);
+    };
+  }, []);
 
   return (
     <div className={styles.shell}>

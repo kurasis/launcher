@@ -40,6 +40,12 @@ export function DiagnosticsView({ snapshot }: { snapshot: AppSnapshot }) {
 
   return (
     <>
+      <Panel
+        title={strings.console.title}
+        aside={<Button onClick={() => void ipc.openConsole()}>{strings.console.open}</Button>}
+      >
+        <p className={styles.muted}>{strings.console.openHint}</p>
+      </Panel>
       <RunStatus current={snapshot.currentRun} last={snapshot.lastRun} />
       <Panel title={t.recentTitle}>
         {snapshot.recentOperations.length === 0 ? (

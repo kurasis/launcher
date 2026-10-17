@@ -27,7 +27,7 @@ use crate::download::CancelToken;
 use crate::error::{ErrorCode, LauncherError, LauncherResult};
 use crate::install::lock;
 use crate::install::service::{BoxFuture, PlanSource, StateAccess};
-use crate::lifecycle::child::{self, OutputLine, OutputTail, Supervised};
+use crate::lifecycle::child::{self, OutputLine, OutputTail, Stream, Supervised};
 use crate::runtime::{self, Verification};
 use crate::state::dto::{RunKind, RunState, RunSummary};
 use crate::storage::models::{InstallLock, InstallationHealth, LastResult, OperationKind, Outcome};
@@ -352,6 +352,12 @@ impl LaunchService {
             error: None,
             logging_degraded: false,
         });
+        state.console().info(match mode {
+            LaunchMode::Demo => "Launch in demo mode: checking the installation",
+            LaunchMode::Account => {
+                "Launch with the signed-in account: checking the installation and access"
+            }
+        });
 
         let prepared = self
             .preflight(
@@ -645,9 +651,37 @@ impl LaunchService {
         let log = Arc::new(Mutex::new(RunLog::open(&logs_dir)));
         let tail = Arc::new(Mutex::new(OutputTail::default()));
         let redactor = Redactor::new(secrets);
+        // The command as the console shows it: secrets replaced, one argument per
+        // line (the classpath alone can be several kilobytes).
+        let console = state.console();
+        console.info(format!("Java: {}", java.display()));
+        let args: Vec<String> = command
+            .get_args()
+            .map(|a| redactor.redact(&a.to_string_lossy()))
+            .collect();
+        console.info(format!("Arguments ({}):", args.len()));
+        // An option and its value on one line: `--username Player`.
+        let mut rest = args.iter().peekable();
+        while let Some(arg) = rest.next() {
+            match rest.peek() {
+                Some(value) if arg.starts_with('-') && !value.starts_with('-') => {
+                    console.info(format!("  {arg} {value}"));
+                    rest.next();
+                }
+                _ => console.info(format!("  {arg}")),
+            }
+        }
         let (sink_log, sink_tail) = (Arc::clone(&log), Arc::clone(&tail));
+        let console_host = Arc::clone(&self.host);
+        let mut events = crate::console::GameLines::default();
         let sink = Box::new(move |line: OutputLine| {
             let text = redactor.redact(&line.text);
+            let console = console_host.app_state().console();
+            if line.stream == Stream::Stderr {
+                console.game(true, &text);
+            } else if let Some((level, folded)) = events.feed(&text) {
+                console.game_event(level, &folded);
+            }
             lock_or(&sink_log).write_line(&text);
             lock_or(&sink_tail).push(OutputLine {
                 stream: line.stream,

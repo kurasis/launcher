@@ -12,6 +12,7 @@
     "allow-update-instance-settings",
     "allow-set-app-settings",
     "allow-show-main-window",
+    "allow-open-console",
     "allow-request-quit",
     "allow-begin-login",
     "allow-cancel-login",

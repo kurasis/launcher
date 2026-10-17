@@ -492,10 +492,28 @@ impl Operation {
         let plan = match receipt::resumable_plan(&self.root, self.instance_id)? {
             Some(plan) if plan.game.version_id == self.version_id => plan,
             _ => {
+                let java = self.state().java_provider();
                 let (game, runtime) = tokio::select! {
-                    resolved = self.source.resolve(&self.version_id, self.state().java_provider()) => resolved?,
+                    resolved = self.source.resolve(&self.version_id, java) => resolved?,
                     () = self.cancel.cancelled() => return Err(cancelled()),
                 };
+                let console = self.state().console();
+                console.info(format!(
+                    "Minecraft {}: {} libraries, {} asset objects; Java {} from {} ({}, {})",
+                    game.version_id,
+                    game.libraries.len(),
+                    game.assets.len(),
+                    runtime.key.major,
+                    runtime.provider,
+                    runtime.release_name,
+                    runtime.archive_name
+                ));
+                if java == JavaProvider::Mojang && runtime.key.provider != JavaProvider::Mojang {
+                    console.warn(format!(
+                        "Mojang publishes no Java {} for this computer; using Temurin",
+                        game.runtime.major
+                    ));
+                }
                 FinalInstallPlan {
                     instance_id: self.instance_id,
                     game,

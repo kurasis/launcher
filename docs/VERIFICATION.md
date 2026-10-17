@@ -1111,3 +1111,30 @@ Release build against the data directory above: the Java section lists each
 installation's runtime from its lock, and choosing a source writes `javaProvider` to
 `settings.json` (toggled to Temurin and back by clicking). Screenshots:
 [Java](verification/settings-java.png), [Installations](verification/settings-installations.png).
+
+## Console window (D-037)
+
+- **Date / host:** 2026-10-17, same development host, release build, branch
+  `claude/debug-console`.
+- **Automated:**
+  - journal paging, dropped-entry counts, long-line cuts and log4j folding (unit);
+  - a launch whose fake game prints its access token: the journal has the
+    redacted arguments (`--accessToken <redacted>`) and game line, and never the
+    token;
+  - the console capability grants only `allow-read-console`
+    (`security_config`);
+  - the window's polling, source/level/text filters, clear and the core-unreachable
+    notice (Vitest).
+- **Live (Xvfb, real game):**
+  - Ctrl+Shift+L and **Diagnostics → Open console** both open the window, and a
+    second request focuses it.
+  - Minecraft 1.12.2 demo started from the app with the console open. The main
+    window unloaded while the console kept updating with the game's lines, folded
+    from 132 XML lines to 70 entries with warnings highlighted. After **Quit Game**
+    the main window returned and the console recorded `exited, exit code 0`.
+  - The Launcher filter shows the Java path and every argument with the token
+    redacted.
+  - Closing the main window with the close button (WM_DELETE_WINDOW) and no game
+    running closed the console and ended the process.
+  - Screenshots: [game output](verification/console-game.jpg),
+    [launcher journal](verification/console-launcher.jpg).

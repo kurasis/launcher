@@ -8,6 +8,7 @@
 pub mod auth;
 pub mod catalog;
 pub mod commands;
+pub mod console;
 pub mod diagnostics;
 pub mod download;
 pub mod error;
@@ -286,6 +287,16 @@ pub fn run() {
             }
             Ok(())
         })
+        .on_window_event(|window, event| {
+            if window.label() == lifecycle::MAIN_WINDOW
+                && matches!(event, tauri::WindowEvent::CloseRequested { .. })
+            {
+                let app = window.app_handle();
+                let supervising = app.state::<AppState>().activity().current().is_some();
+                app.state::<LifecycleController>()
+                    .main_window_closed(app, supervising);
+            }
+        })
         .invoke_handler(handlers())
         .build(tauri::generate_context!())
         .expect("error while building the Tauri application");
@@ -327,6 +338,8 @@ fn handlers<R: tauri::Runtime>() -> impl Fn(tauri::ipc::Invoke<R>) -> bool + Sen
         commands::update_instance_settings,
         commands::set_app_settings,
         commands::show_main_window,
+        commands::open_console,
+        commands::read_console,
         commands::request_quit,
         commands::begin_login,
         commands::cancel_login,
@@ -357,6 +370,8 @@ fn handlers<R: tauri::Runtime>() -> impl Fn(tauri::ipc::Invoke<R>) -> bool + Sen
         commands::update_instance_settings,
         commands::set_app_settings,
         commands::show_main_window,
+        commands::open_console,
+        commands::read_console,
         commands::request_quit,
         commands::begin_login,
         commands::cancel_login,

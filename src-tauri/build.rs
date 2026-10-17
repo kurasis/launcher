@@ -14,6 +14,8 @@ fn main() {
         "update_instance_settings",
         "set_app_settings",
         "show_main_window",
+        "open_console",
+        "read_console",
         "request_quit",
         "begin_login",
         "cancel_login",

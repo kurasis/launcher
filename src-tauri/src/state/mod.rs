@@ -19,6 +19,7 @@ use uuid::Uuid;
 
 use crate::auth::client_id;
 use crate::catalog::compatibility;
+use crate::console::{self, Console};
 use crate::error::{ErrorCode, LauncherError, LauncherResult};
 use crate::storage::document::SCHEMA_VERSION;
 use crate::storage::models::{
@@ -80,6 +81,7 @@ pub struct AppState {
     inner: Mutex<Inner>,
     activity: ActivityRegistry,
     sink: Box<dyn EventSink>,
+    console: Console,
 }
 
 impl AppState {
@@ -181,14 +183,68 @@ impl AppState {
             }
             Err(error) => inner.availability = Availability::Unavailable(error),
         }
-        Self {
+        let state = Self {
             epoch: Uuid::new_v4().to_string(),
             app_version: app_version.into(),
             memory,
             inner: Mutex::new(inner),
             activity: ActivityRegistry::new(),
             sink,
+            console: Console::default(),
+        };
+        state.log_startup();
+        state
+    }
+
+    /// The console journal (D-037).
+    pub fn console(&self) -> &Console {
+        &self.console
+    }
+
+    fn log_startup(&self) {
+        let inner = self.lock();
+        let data = &inner.data;
+        self.console.info(format!(
+            "Launcher {} started on {} {}",
+            self.app_version,
+            std::env::consts::OS,
+            std::env::consts::ARCH
+        ));
+        match &inner.availability {
+            Availability::Ready(_) => self.console.info(format!(
+                "Data directory {}; {} installation(s); Java from {}",
+                data.data_root_path.as_deref().unwrap_or("?"),
+                data.instances.len(),
+                data.settings.java_provider.as_str()
+            )),
+            Availability::Unavailable(error) => self
+                .console
+                .error(format!("Data directory unavailable: {}", error.message)),
         }
+        if let Ok(memory) = &self.memory {
+            self.console.info(format!(
+                "Memory {} MiB; game heap {}–{} MiB, recommended {} MiB",
+                memory.physical_mib,
+                memory.min_heap_mib,
+                memory.max_heap_mib,
+                memory.recommended_heap_mib
+            ));
+        }
+        for issue in &data.issues {
+            self.console.warn(format!(
+                "Storage notice ({}): {}",
+                issue.document, issue.message
+            ));
+        }
+    }
+
+    /// `"Name" (Minecraft 1.21.1)` for journal lines.
+    fn instance_label(&self, id: Option<InstanceId>) -> String {
+        let inner = self.lock();
+        id.and_then(|id| inner.data.instances.get(&id)).map_or_else(
+            || "the launcher".to_owned(),
+            |i| format!("\"{}\" (Minecraft {})", i.display_name, i.version_id),
+        )
     }
 
     fn lock(&self) -> MutexGuard<'_, Inner> {
@@ -383,6 +439,12 @@ impl AppState {
 
     /// Records the start of a supervised run.
     pub fn begin_run(&self, run: RunSummary) {
+        self.console.info(format!(
+            "Run {} of {}: {}",
+            short(&run.run_id),
+            self.instance_label(run.instance_id),
+            console::name(&run.state)
+        ));
         self.publish(
             |data| {
                 data.current_run = Some(run);
@@ -394,10 +456,19 @@ impl AppState {
 
     /// Updates the current run if it is still `run_id`.
     pub fn update_run(&self, run_id: &str, update: impl FnOnce(&mut RunSummary)) {
+        let console = &self.console;
         self.publish(
             |data| match data.current_run.as_mut() {
                 Some(run) if run.run_id == run_id => {
+                    let before = run.state;
                     update(run);
+                    if run.state != before {
+                        console.info(format!(
+                            "Run {}: {}",
+                            short(run_id),
+                            console::name(&run.state)
+                        ));
+                    }
                     true
                 }
                 _ => false,
@@ -412,6 +483,7 @@ impl AppState {
             |data| match data.current_run.take() {
                 Some(mut run) if run.run_id == run_id => {
                     finish(&mut run);
+                    log_run_end(&self.console, &run);
                     data.last_run = Some(run);
                     true
                 }
@@ -436,11 +508,19 @@ impl AppState {
 
     /// Replaces the account display state and announces it.
     pub fn set_account(&self, account: AccountSummary) {
+        let console = &self.console;
         self.publish(
             |data| {
                 if data.account == account {
                     false
                 } else {
+                    if data.account.state != account.state {
+                        let text = format!("Account: {}", console::name(&account.state));
+                        match &account.error {
+                            Some(error) => console.warn(format!("{text} — {}", error.message)),
+                            None => console.info(text),
+                        }
+                    }
                     data.account = account;
                     true
                 }
@@ -539,11 +619,27 @@ impl AppState {
         {
             return;
         }
-        let sequence = data
+        let previous = data
             .operation_progress
             .as_ref()
-            .filter(|p| p.operation_id == update.operation_id)
-            .map_or(1, |p| p.sequence + 1);
+            .filter(|p| p.operation_id == update.operation_id);
+        let sequence = previous.map_or(1, |p| p.sequence + 1);
+        if previous.is_none_or(|p| p.phase != update.phase) {
+            let mut text = format!(
+                "{} {}: {}",
+                console::name(&update.kind),
+                short(&update.operation_id),
+                console::name(&update.phase)
+            );
+            if let Some(files) = update.total_files {
+                text.push_str(&format!(" ({files} files"));
+                if let Some(bytes) = update.total_download_bytes {
+                    text.push_str(&format!(", {} to download", mib(bytes)));
+                }
+                text.push(')');
+            }
+            self.console.info(text);
+        }
         let progress = OperationProgress {
             session_epoch: self.epoch.clone(),
             operation_id: update.operation_id,
@@ -566,6 +662,24 @@ impl AppState {
 
     /// Records the single terminal outcome of an operation and announces it.
     pub fn finish_operation(&self, result: OperationResult) {
+        let text = format!(
+            "{} {} of {}: {}; downloaded {} file(s) ({}), reused {}",
+            console::name(&result.kind),
+            short(&result.operation_id),
+            self.instance_label(result.instance_id),
+            console::name(&result.outcome),
+            result.downloaded_files,
+            mib(result.network_bytes),
+            result.reused_files
+        );
+        match &result.error {
+            Some(error) if result.outcome == Outcome::Failed => self.console.error(format!(
+                "{text} — {} ({})",
+                error.message,
+                console::name(&error.code)
+            )),
+            _ => self.console.info(text),
+        }
         self.publish(
             |data| {
                 if data
@@ -601,6 +715,23 @@ impl AppState {
     }
 
     pub fn create_instance(
+        &self,
+        request: MutationRequest<CreateInstancePayload>,
+    ) -> LauncherResult<InstanceSummary> {
+        let result = self.create_instance_inner(request);
+        match &result {
+            Ok(i) => self.console.info(format!(
+                "Created installation \"{}\" (Minecraft {})",
+                i.display_name, i.version_id
+            )),
+            Err(e) => self
+                .console
+                .warn(format!("Creating an installation failed: {}", e.message)),
+        }
+        result
+    }
+
+    fn create_instance_inner(
         &self,
         request: MutationRequest<CreateInstancePayload>,
     ) -> LauncherResult<InstanceSummary> {
@@ -662,6 +793,24 @@ impl AppState {
         &self,
         request: MutationRequest<UpdateInstanceSettingsPayload>,
     ) -> LauncherResult<InstanceSummary> {
+        let result = self.update_instance_settings_inner(request);
+        match &result {
+            Ok(i) => self.console.info(format!(
+                "Settings of \"{}\": {} MiB, {}×{}",
+                i.display_name, i.max_heap_mib, i.resolution.width, i.resolution.height
+            )),
+            Err(e) => self.console.warn(format!(
+                "Changing installation settings failed: {}",
+                e.message
+            )),
+        }
+        result
+    }
+
+    fn update_instance_settings_inner(
+        &self,
+        request: MutationRequest<UpdateInstanceSettingsPayload>,
+    ) -> LauncherResult<InstanceSummary> {
         let memory = self.memory.clone();
         let activity = self.activity.clone();
         self.mutate(
@@ -687,6 +836,27 @@ impl AppState {
     }
 
     pub fn set_app_settings(
+        &self,
+        request: MutationRequest<SettingsPatch>,
+    ) -> LauncherResult<SettingsView> {
+        // Selecting an installation is not worth a journal line.
+        let mut patch = serde_json::to_value(&request.payload).unwrap_or_default();
+        if let Some(fields) = patch.as_object_mut() {
+            fields.remove("selectedInstanceId");
+        }
+        let result = self.set_app_settings_inner(request);
+        let changed = patch.as_object().is_some_and(|f| !f.is_empty());
+        match &result {
+            Ok(_) if changed => self.console.info(format!("Settings: {patch}")),
+            Ok(_) => {}
+            Err(e) => self
+                .console
+                .warn(format!("Changing settings failed: {}", e.message)),
+        }
+        result
+    }
+
+    fn set_app_settings_inner(
         &self,
         request: MutationRequest<SettingsPatch>,
     ) -> LauncherResult<SettingsView> {
@@ -806,6 +976,32 @@ fn record_interrupted(
         reused_files: 0,
     });
     data.recent_operations.truncate(RECENT_OPERATIONS);
+}
+
+/// The first block of an operation or run ID, enough to tell them apart.
+fn short(id: &str) -> &str {
+    id.split('-').next().unwrap_or(id)
+}
+
+fn mib(bytes: u64) -> String {
+    format!("{:.1} MiB", bytes as f64 / (1024.0 * 1024.0))
+}
+
+fn log_run_end(console: &Console, run: &RunSummary) {
+    let mut text = format!("Run {}: {}", short(&run.run_id), console::name(&run.state));
+    if let Some(code) = run.exit_code {
+        text.push_str(&format!(", exit code {code}"));
+    }
+    if let Some(ms) = run.duration_ms {
+        text.push_str(&format!(", ran {:.1} s", ms as f64 / 1000.0));
+    }
+    if run.logging_degraded {
+        text.push_str("; the output log could not be written");
+    }
+    match &run.error {
+        Some(error) => console.error(format!("{text} — {}", error.message)),
+        None => console.info(text),
+    }
 }
 
 fn instance_not_found() -> LauncherError {

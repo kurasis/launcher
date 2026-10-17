@@ -19,11 +19,15 @@ use std::sync::Mutex;
 use std::sync::PoisonError;
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 
-use tauri::{AppHandle, Manager, Runtime, WebviewWindowBuilder};
+use tauri::{AppHandle, Manager, Runtime, WebviewUrl, WebviewWindowBuilder};
 
 /// Label of the single launcher window. Capabilities are bound to this label, so a
 /// recreated window receives exactly the same permissions.
 pub const MAIN_WINDOW: &str = "main";
+
+/// Label of the console window (D-037). Its capability grants only reading the
+/// console journal.
+pub const CONSOLE_WINDOW: &str = "console";
 
 /// Event asking the UI to show the Quit choice (an OS or menu Quit arrived while a
 /// run needs supervision).
@@ -172,6 +176,43 @@ impl LifecycleController {
                 let _ = window.set_focus();
             }
         });
+    }
+
+    /// Shows the console window, creating it on first use. It loads the same
+    /// packaged UI, which renders the console for this window label.
+    pub fn show_console_window<R: Runtime>(&self, app: &AppHandle<R>) {
+        let handle = app.clone();
+        let _ = app.run_on_main_thread(move || {
+            if let Some(window) = handle.get_webview_window(CONSOLE_WINDOW) {
+                let _ = window.unminimize();
+                let _ = window.show();
+                let _ = window.set_focus();
+                return;
+            }
+            if let Ok(window) = WebviewWindowBuilder::new(
+                &handle,
+                CONSOLE_WINDOW,
+                WebviewUrl::App("index.html".into()),
+            )
+            .title("Launcher console")
+            .inner_size(980.0, 620.0)
+            .min_inner_size(560.0, 320.0)
+            .build()
+            {
+                let _ = window.set_focus();
+            }
+        });
+    }
+
+    /// The user closed the main window. Without a run to supervise the launcher
+    /// is ending, so the console closes too instead of keeping the process alive.
+    pub fn main_window_closed<R: Runtime>(&self, app: &AppHandle<R>, supervising: bool) {
+        if supervising || self.quit_intended() {
+            return;
+        }
+        if let Some(console) = app.get_webview_window(CONSOLE_WINDOW) {
+            let _ = console.destroy();
+        }
     }
 
     /// Destroys the main window if `run_id` still owns the unload. Runs on the main

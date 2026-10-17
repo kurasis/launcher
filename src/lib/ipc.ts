@@ -10,6 +10,7 @@ import {
   type BackendEvent,
   type CancelAck,
   type CatalogView,
+  type ConsolePage,
   type CreateInstancePayload,
   type ExportResult,
   type ExternalLink,
@@ -48,6 +49,11 @@ export const ipc = {
   setAppSettings: (patch: SettingsPatch, requestId?: string): Promise<SettingsView> =>
     invoke<SettingsView>('set_app_settings', { request: mutation(patch, requestId) }),
   showMainWindow: (): Promise<void> => invoke('show_main_window'),
+  /** Opens or focuses the console window (D-037). */
+  openConsole: (): Promise<void> => invoke('open_console'),
+  /** Console entries after `after`; only the console window may call this. */
+  readConsole: (after: number): Promise<ConsolePage> =>
+    invoke<ConsolePage>('read_console', { after }),
   beginLogin: (requestId?: string): Promise<{ operationId: string }> =>
     invoke<{ operationId: string }>('begin_login', { request: mutation({}, requestId) }),
   cancelLogin: (operationId: string, requestId?: string): Promise<void> =>

@@ -158,6 +158,22 @@ async fn a_launch_is_supervised_redacted_and_recorded() {
     .unwrap();
     assert!(log.contains("ARG:<redacted>") && !log.contains(TOKEN));
     assert!(!done.logging_degraded);
+    // The console journal (D-037) has the command and the game's lines, never
+    // the token.
+    let journal: Vec<_> = s.f.state.console().read(0).entries;
+    let text: String = journal.iter().map(|e| format!("{}\n", e.text)).collect();
+    assert!(!text.contains(TOKEN), "{text}");
+    assert!(text.contains("Arguments ("));
+    assert!(
+        text.contains("  --accessToken <redacted>"),
+        "the token argument is redacted: {text}"
+    );
+    assert!(
+        journal
+            .iter()
+            .any(|e| e.source == crate::console::Source::Game && e.text == "ARG:<redacted>")
+    );
+    assert!(text.contains(": exited, exit code 0"), "{text}");
     // Run folder (natives, argfile) removed; permit released; result recorded.
     assert!(
         !s.f.root

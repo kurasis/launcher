@@ -703,3 +703,36 @@ replaces it), `superseded`.
 - **Recorded per installation:** `instance.json` gains a display-only `java` field
   (provider, major, release) taken from the lock after an install or repair and at
   startup; the lock stays authoritative.
+
+## D-037 — Console window
+
+- **Status:** accepted (owner request, 2026-10-17) · **Affects:** docs/spec/05
+  ("Process supervision"), docs/spec/07 (capabilities), the Diagnostics screen
+- **Decision:** a separate **Console** window shows, live, what the launcher does and
+  everything the game prints. It opens from **Diagnostics → Open console** or with
+  Ctrl+Shift+L (Cmd+Shift+L on macOS), in every build.
+- **What is recorded:** a journal kept only in memory (the newest 10,000 entries; a
+  line longer than 64 KiB is cut):
+  - launcher start (version, OS, data directory, installations, memory limits) and
+    storage notices;
+  - settings changes, created installations and their memory/window changes;
+  - each install or repair phase with file counts, the resolved plan (libraries,
+    assets, Java provider, release and component, a Temurin fallback), the result
+    with downloaded and reused files, and errors with their code;
+  - account state changes (state names and error messages only);
+  - each launch: mode, the Java executable, every argument (an option and its value
+    on one line) after redaction, run state changes, exit code and duration;
+  - every game output line after the same redaction as the run log. Minecraft's
+    log4j XML events are folded into one entry each (`[thread/LEVEL] logger:
+message` plus a stack trace), with the event's level.
+- **Secrets:** game lines and arguments pass through the launch redactor first;
+  launcher entries are built from values that never hold a token, an authorization
+  code or a password. A test launches a fake game that prints its access token and
+  checks that the journal never contains it.
+- **Window and permissions:** the console window (label `console`) loads the same
+  packaged UI, which renders the console for that label. Its capability grants only
+  `read_console`; the main window gains only `open_console`. The window polls
+  `read_console(after)` every 300 ms. It stays open while the main window is unloaded
+  for a game; closing the main window without a running game closes it too.
+- **Not included:** the journal is not written to disk and not part of the
+  diagnostics export (the run logs already are).

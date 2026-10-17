@@ -5,6 +5,7 @@ use serde_json::Value;
 
 const TAURI_CONF: &str = include_str!("../tauri.conf.json");
 const DEFAULT_CAPABILITY: &str = include_str!("../capabilities/default.json");
+const CONSOLE_CAPABILITY: &str = include_str!("../capabilities/console.json");
 const PACKAGE_JSON: &str = include_str!("../../package.json");
 
 fn json(source: &str) -> Value {
@@ -131,6 +132,7 @@ fn main_window_capability_grants_only_app_commands() {
             "allow-update-instance-settings",
             "allow-set-app-settings",
             "allow-show-main-window",
+            "allow-open-console",
             "allow-request-quit",
             "allow-begin-login",
             "allow-cancel-login",
@@ -150,6 +152,27 @@ fn main_window_capability_grants_only_app_commands() {
             "allow-stop-lifecycle-test",
         ]
     );
+}
+
+/// The console window (D-037) reads the journal and nothing else: no events, no
+/// commands that change state or open anything.
+#[test]
+fn console_window_capability_only_reads_the_journal() {
+    let capability = json(CONSOLE_CAPABILITY);
+    assert_eq!(capability["windows"], serde_json::json!(["console"]));
+    assert!(capability.get("remote").is_none());
+    assert_eq!(
+        capability["permissions"],
+        serde_json::json!(["allow-read-console"])
+    );
+    let capabilities: Vec<_> =
+        std::fs::read_dir(concat!(env!("CARGO_MANIFEST_DIR"), "/capabilities"))
+            .expect("capabilities")
+            .map(|e| e.expect("entry").file_name().to_string_lossy().into_owned())
+            .collect();
+    let mut sorted = capabilities.clone();
+    sorted.sort();
+    assert_eq!(sorted, ["console.json", "default.json"]);
 }
 
 #[test]
