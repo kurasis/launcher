@@ -82,6 +82,8 @@ export interface LauncherError {
 
 export type Theme = 'system' | 'light' | 'dark';
 export type DuringGameMode = 'unload_and_return' | 'keep_open';
+/** Interface language (D-038). */
+export type Language = 'en' | 'ru';
 /** Where private Java runtimes come from (D-036). */
 export type JavaProvider = 'mojang' | 'temurin';
 
@@ -145,6 +147,7 @@ export interface SettingsView {
   defaultMaxHeapMib: number | null;
   defaultResolution: Resolution;
   javaProvider: JavaProvider;
+  language: Language;
   writable: boolean;
 }
 
@@ -384,6 +387,7 @@ export interface SettingsPatch {
   defaultMaxHeapMib?: number;
   defaultResolution?: Resolution;
   javaProvider?: JavaProvider;
+  language?: Language;
 }
 
 interface EventEnvelope {

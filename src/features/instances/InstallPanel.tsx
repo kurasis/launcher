@@ -14,6 +14,7 @@ import { ipc } from '../../lib/ipc';
 import { strings } from '../../lib/strings';
 import { useCommand } from '../../lib/useCommand';
 import styles from './Instances.module.css';
+import { localizeError } from '../../lib/i18n/errors';
 
 interface InstallPanelProps {
   instance: InstanceSummary;
@@ -73,7 +74,11 @@ function ResultView({ result }: { result: OperationResult }) {
     case 'interrupted':
       return <Notice tone="warning">{t.result.interrupted}</Notice>;
     case 'failed':
-      return <Notice tone="danger">{result.error?.message ?? t.result.interrupted}</Notice>;
+      return (
+        <Notice tone="danger">
+          {result.error ? localizeError(result.error) : t.result.interrupted}
+        </Notice>
+      );
   }
 }
 

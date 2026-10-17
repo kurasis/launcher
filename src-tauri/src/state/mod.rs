@@ -557,6 +557,11 @@ impl AppState {
         self.lock().data.settings.during_game_mode
     }
 
+    /// Interface language (D-038).
+    pub fn language(&self) -> crate::storage::models::Language {
+        self.lock().data.settings.language
+    }
+
     /// Runtime provider for new installations.
     pub fn java_provider(&self) -> crate::storage::paths::JavaProvider {
         self.lock().data.settings.java_provider
@@ -893,6 +898,9 @@ impl AppState {
                 }
                 if let Some(provider) = patch.java_provider {
                     settings.java_provider = provider;
+                }
+                if let Some(language) = patch.language {
+                    settings.language = language;
                 }
                 if settings != data.settings {
                     store.save_settings(&settings)?;

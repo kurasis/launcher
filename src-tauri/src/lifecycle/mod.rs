@@ -29,6 +29,21 @@ pub const MAIN_WINDOW: &str = "main";
 /// console journal.
 pub const CONSOLE_WINDOW: &str = "console";
 
+/// The console window's native title in the interface language (D-038).
+pub fn console_title(language: crate::storage::models::Language) -> &'static str {
+    match language {
+        crate::storage::models::Language::En => "Launcher console",
+        crate::storage::models::Language::Ru => "Консоль лаунчера",
+    }
+}
+
+/// Retitles an open console window after the language changed.
+pub fn retitle_console<R: Runtime>(app: &AppHandle<R>, language: crate::storage::models::Language) {
+    if let Some(console) = app.get_webview_window(CONSOLE_WINDOW) {
+        let _ = console.set_title(console_title(language));
+    }
+}
+
 /// Event asking the UI to show the Quit choice (an OS or menu Quit arrived while a
 /// run needs supervision).
 pub const QUIT_REQUESTED_EVENT: &str = "quit_requested";
@@ -189,12 +204,16 @@ impl LifecycleController {
                 let _ = window.set_focus();
                 return;
             }
+            let language = handle
+                .try_state::<crate::state::AppState>()
+                .map(|state| state.language())
+                .unwrap_or_default();
             if let Ok(window) = WebviewWindowBuilder::new(
                 &handle,
                 CONSOLE_WINDOW,
                 WebviewUrl::App("index.html".into()),
             )
-            .title("Launcher console")
+            .title(console_title(language))
             .inner_size(980.0, 620.0)
             .min_inner_size(560.0, 320.0)
             .build()

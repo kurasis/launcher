@@ -13,12 +13,13 @@ import { SettingsView } from '../features/settings/SettingsView';
 import type { AppSnapshot } from '../lib/contracts';
 import { DiagnosticsView } from '../features/diagnostics/DiagnosticsView';
 import { appStore, useAppStore } from '../lib/store';
-import { type SettingsSection, strings } from '../lib/strings';
+import { language, setLanguage, type SettingsSection, strings } from '../lib/strings';
 import { AboutView } from './AboutView';
 import styles from './App.module.css';
 import { QuitControl } from './QuitControl';
 import { useTheme } from './useTheme';
 import { useAppInfo } from './useAppInfo';
+import { localizeError } from '../lib/i18n/errors';
 
 type View = 'home' | 'account' | 'settings' | 'diagnostics' | 'about';
 const views: View[] = ['home', 'account', 'settings', 'diagnostics', 'about'];
@@ -51,6 +52,10 @@ export function App() {
   const [settingsInstance, setSettingsInstance] = useState<string | null>(null);
   const snapshot = state.status === 'ready' ? state.snapshot : null;
   useTheme(snapshot?.settings.theme);
+  // The language setting (D-038) applies before anything below renders; a change
+  // remounts the screens so every text is read again.
+  const lang = snapshot?.settings.language ?? language();
+  if (lang !== language()) setLanguage(lang);
   // Ctrl+Shift+L (Cmd+Shift+L on macOS) opens the console window (D-037).
   useEffect(() => {
     const onKey = (event: KeyboardEvent) => {
@@ -66,7 +71,7 @@ export function App() {
   }, []);
 
   return (
-    <div className={styles.shell}>
+    <div className={styles.shell} key={lang}>
       <header className={styles.topbar}>
         <div className={styles.brandRow}>
           <Logo />
@@ -118,7 +123,9 @@ export function App() {
             <p>
               <strong>{strings.bootstrap.unavailableTitle}</strong>
             </p>
-            <p>{state.snapshot.dataRoot.error?.message}</p>
+            <p>
+              {state.snapshot.dataRoot.error ? localizeError(state.snapshot.dataRoot.error) : null}
+            </p>
           </Notice>
         ) : (
           <>

@@ -1138,3 +1138,24 @@ installation's runtime from its lock, and choosing a source writes `javaProvider
     running closed the console and ended the process.
   - Screenshots: [game output](verification/console-game.jpg),
     [launcher journal](verification/console-launcher.jpg).
+
+## Interface language (D-038)
+
+- **Date / host:** 2026-10-17, release build, branch `claude/i18n`.
+- **Automated:**
+  - English is the default (Rust settings test, Vitest);
+  - Russian has every English text and none empty;
+  - references taken before a switch follow it;
+  - Russian plural forms and units are correct;
+  - every message and storage notice in the Rust sources has a translation or a
+    pattern (118 messages, 26 file-operation contexts);
+  - in Russian, the app shows a core validation error with its values translated;
+  - the language radio saves `language`.
+- **Live (Xvfb):**
+  - Settings → General → Русский switched every screen at once; `settings.json` got
+    `"language": "ru"`.
+  - The open console window switched too, without reopening. Its title changed
+    between "Launcher console" and "Консоль лаунчера" both ways.
+  - The next start opened in Russian.
+  - Screenshots: [home](verification/home-ru.png),
+    [Java settings](verification/java-ru.png).

@@ -6,6 +6,7 @@ import { StatusBadge, type StatusTone } from '../../components/StatusBadge';
 import type { RunState, RunSummary } from '../../lib/contracts';
 import { strings } from '../../lib/strings';
 import styles from './RunStatus.module.css';
+import { localizeError } from '../../lib/i18n/errors';
 
 const t = strings.runs;
 
@@ -94,7 +95,7 @@ export function RunStatus({ current, last, onStop }: RunStatusProps) {
         <dt>{t.duration}</dt>
         <dd>{last.durationMs === null ? '—' : t.seconds(last.durationMs)}</dd>
       </dl>
-      {last.error !== null && <Notice tone="danger">{last.error.message}</Notice>}
+      {last.error !== null && <Notice tone="danger">{localizeError(last.error)}</Notice>}
       {last.drainTimedOut && <Notice tone="info">{t.drainTimedOut}</Notice>}
       {last.loggingDegraded && <Notice tone="warning">{t.loggingDegraded}</Notice>}
       {last.outputTail.length > 0 && (

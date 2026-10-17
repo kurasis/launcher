@@ -19,6 +19,15 @@ pub enum Theme {
     Dark,
 }
 
+/// Interface language (D-038). English is the default.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
+#[serde(rename_all = "snake_case")]
+pub enum Language {
+    #[default]
+    En,
+    Ru,
+}
+
 /// What happens to the launcher window while a game runs.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
 #[serde(rename_all = "snake_case")]
@@ -64,6 +73,8 @@ pub struct Settings {
     /// the runtime recorded in their lock.
     #[serde(default)]
     pub java_provider: JavaProvider,
+    #[serde(default)]
+    pub language: Language,
 }
 
 impl Default for Settings {
@@ -76,6 +87,7 @@ impl Default for Settings {
             default_max_heap_mib: None,
             default_resolution: Resolution::default(),
             java_provider: JavaProvider::default(),
+            language: Language::default(),
         }
     }
 }
@@ -305,6 +317,10 @@ mod tests {
         let settings: Settings = serde_json::from_str(r#"{"schemaVersion":1}"#).unwrap();
         assert_eq!(settings, Settings::default());
         assert_eq!(settings.during_game_mode, DuringGameMode::UnloadAndReturn);
+        assert_eq!(settings.language, Language::En, "English unless chosen");
+        let russian: Settings =
+            serde_json::from_str(r#"{"schemaVersion":1,"language":"ru"}"#).unwrap();
+        assert_eq!(russian.language, Language::Ru);
     }
 
     #[test]

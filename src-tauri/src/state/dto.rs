@@ -13,8 +13,8 @@ use crate::catalog::compatibility::SupportedVersion;
 use crate::error::LauncherError;
 use crate::storage::StorageIssue;
 use crate::storage::models::{
-    DuringGameMode, InstallationHealth, InstalledJava, InstanceFile, LastResult, OperationKind,
-    Outcome, Resolution, Settings, Theme,
+    DuringGameMode, InstallationHealth, InstalledJava, InstanceFile, Language, LastResult,
+    OperationKind, Outcome, Resolution, Settings, Theme,
 };
 use crate::storage::paths::{InstanceId, JavaProvider, Sha1};
 use crate::validation::{MemoryPolicy, ResolutionBounds};
@@ -61,6 +61,8 @@ pub struct SettingsPatch {
     pub default_resolution: Option<Resolution>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub java_provider: Option<JavaProvider>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub language: Option<Language>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -72,6 +74,7 @@ pub struct SettingsView {
     pub default_max_heap_mib: Option<u32>,
     pub default_resolution: Resolution,
     pub java_provider: JavaProvider,
+    pub language: Language,
     /// False when settings were written by a newer launcher or could not be read.
     pub writable: bool,
 }
@@ -85,6 +88,7 @@ impl SettingsView {
             default_max_heap_mib: settings.default_max_heap_mib,
             default_resolution: settings.default_resolution,
             java_provider: settings.java_provider,
+            language: settings.language,
             writable,
         }
     }

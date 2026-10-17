@@ -7,6 +7,7 @@ import type { AccountState, AppSnapshot, ExternalLink } from '../../lib/contract
 import { ipc } from '../../lib/ipc';
 import { strings } from '../../lib/strings';
 import { useCommand } from '../../lib/useCommand';
+import { localizeError } from '../../lib/i18n/errors';
 
 const t = strings.accountView;
 
@@ -66,7 +67,9 @@ export function AccountView({ snapshot }: { snapshot: AppSnapshot }) {
       {state === 'refreshing' && <p role="status">{t.checking}</p>}
       {!configured && state === 'signed_out' && <Notice tone="info">{t.notConfigured}</Notice>}
       {account.error !== null && state !== 'verified_access' && (
-        <Notice tone={state === 'signed_out' ? 'info' : 'warning'}>{account.error.message}</Notice>
+        <Notice tone={state === 'signed_out' ? 'info' : 'warning'}>
+          {localizeError(account.error)}
+        </Notice>
       )}
       {account.sessionOnly && <Notice tone="info">{t.sessionOnly}</Notice>}
       {commandError !== null && <Notice tone="danger">{commandError}</Notice>}

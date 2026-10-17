@@ -736,3 +736,28 @@ message` plus a stack trace), with the event's level.
   for a game; closing the main window without a running game closes it too.
 - **Not included:** the journal is not written to disk and not part of the
   diagnostics export (the run logs already are).
+
+## D-038 — Interface language: English and Russian
+
+- **Status:** accepted (owner request, 2026-10-17) · **Affects:** every screen, the
+  console window, `settings.json`
+- **Decision:** the interface is available in **English** (the default) and
+  **Russian**. The choice is `language` in `settings.json` (`en` or `ru`), changed in
+  **Settings → General → Language**; each language is named in itself. A change
+  applies at once, without a restart, and the screens keep their place.
+- **How:**
+  - English text lives in `src/lib/i18n/en.ts`, Russian in `ru.ts`; the compiler
+    checks that Russian has exactly English's keys and function signatures.
+    Components keep importing `strings`, which always reads the current language.
+  - Russian plural forms (1 файл, 2 файла, 5 файлов), binary units (КиБ, МиБ) and the
+    decimal comma are handled in the strings and `formatBytes`.
+  - Messages from the Rust core stay English in the core. The interface translates
+    them (`src/lib/i18n/errors.ts`): exact messages, patterns for messages with
+    values (memory limits, HTTP status, file-operation contexts), then a sentence per
+    error code. A test reads the Rust sources and fails when a message has no
+    translation.
+  - The console window cannot read settings (its capability only reads the
+    journal). It follows the language through a copy in local storage, which the
+    main window also uses for its first paint; the core retitles the console window.
+- **Not translated:** the console journal's own lines and game output (diagnostic
+  text, kept as written), product and service names, and documentation.

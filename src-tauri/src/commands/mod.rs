@@ -104,11 +104,17 @@ pub fn update_instance_settings(
 }
 
 #[tauri::command]
-pub fn set_app_settings(
+pub fn set_app_settings<R: Runtime>(
+    app: AppHandle<R>,
     state: State<'_, AppState>,
     request: MutationRequest<SettingsPatch>,
 ) -> LauncherResult<SettingsView> {
-    state.set_app_settings(request)
+    let language = request.payload.language;
+    let view = state.set_app_settings(request)?;
+    if let Some(language) = language {
+        crate::lifecycle::retitle_console(&app, language);
+    }
+    Ok(view)
 }
 
 /// Opens (or focuses) the console window (D-037).

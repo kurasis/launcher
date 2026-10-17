@@ -4,7 +4,7 @@ import { Panel } from '../../components/Panel';
 import forms from '../../components/forms.module.css';
 import type { AppSnapshot, DuringGameMode, SettingsPatch, Theme } from '../../lib/contracts';
 import { ipc } from '../../lib/ipc';
-import { type SettingsSection, strings } from '../../lib/strings';
+import { LANGUAGES, type SettingsSection, strings } from '../../lib/strings';
 import { useCommand } from '../../lib/useCommand';
 import { DefaultsForm } from './DefaultsForm';
 import { InstallationForm } from './InstallationForm';
@@ -79,6 +79,23 @@ function GeneralSettings({ snapshot }: { snapshot: AppSnapshot }) {
 
   return (
     <div className={styles.section}>
+      <fieldset className={forms.choices} disabled={disabled}>
+        <legend>{t.language}</legend>
+        {LANGUAGES.map((item) => (
+          <label key={item} className={forms.choice} lang={item}>
+            <input
+              type="radio"
+              name="language"
+              value={item}
+              checked={settings.language === item}
+              onChange={() => {
+                void update.run({ language: item });
+              }}
+            />
+            {t.languages[item]}
+          </label>
+        ))}
+      </fieldset>
       <fieldset className={forms.choices} disabled={disabled}>
         <legend>{t.theme}</legend>
         {themes.map((theme) => (

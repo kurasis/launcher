@@ -3,6 +3,8 @@
 // declared in one place.
 import { invoke } from '@tauri-apps/api/core';
 import { listen, type UnlistenFn } from '@tauri-apps/api/event';
+import { localizeError } from './i18n/errors';
+import { strings } from './strings';
 import {
   BACKEND_EVENT_NAMES,
   type AppInfo,
@@ -109,7 +111,7 @@ export function isLauncherError(error: unknown): error is LauncherError {
 /** Converts an unknown IPC rejection into a message that is safe to show. */
 export function describeIpcError(error: unknown): string {
   if (isLauncherError(error) && error.message.length > 0) {
-    return error.message;
+    return localizeError(error);
   }
   if (typeof error === 'string' && error.length > 0) {
     return error;
@@ -117,7 +119,7 @@ export function describeIpcError(error: unknown): string {
   if (error instanceof Error && error.message.length > 0) {
     return error.message;
   }
-  return 'The launcher core did not respond.';
+  return strings.bootstrap.noResponse;
 }
 
 type EventHandler = (event: BackendEvent) => void;

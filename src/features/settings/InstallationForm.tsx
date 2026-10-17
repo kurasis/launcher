@@ -8,6 +8,7 @@ import { ipc } from '../../lib/ipc';
 import { strings } from '../../lib/strings';
 import { useCommand } from '../../lib/useCommand';
 import styles from './SettingsView.module.css';
+import { localizeError } from '../../lib/i18n/errors';
 
 interface InstallationFormProps {
   instance: InstanceSummary;
@@ -51,7 +52,7 @@ export function InstallationForm({ instance, memory }: InstallationFormProps) {
       }}
     >
       {policy?.lowMemory === true && <Notice tone="warning">{t.lowMemory}</Notice>}
-      {memory.error !== null && <Notice tone="danger">{memory.error.message}</Notice>}
+      {memory.error !== null && <Notice tone="danger">{localizeError(memory.error)}</Notice>}
       {instance.busy && <Notice tone="info">{t.busy}</Notice>}
       <Field
         label={t.memory}

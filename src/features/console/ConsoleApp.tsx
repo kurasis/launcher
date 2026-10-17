@@ -1,7 +1,13 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import type { ConsoleEntry } from '../../lib/contracts';
 import { ipc } from '../../lib/ipc';
-import { strings } from '../../lib/strings';
+import {
+  LANGUAGE_STORAGE_KEY,
+  language,
+  setLanguage,
+  storedLanguage,
+  strings,
+} from '../../lib/strings';
 import styles from './ConsoleApp.module.css';
 
 const t = strings.console;
@@ -36,9 +42,23 @@ export function ConsoleApp() {
   const [follow, setFollow] = useState(true);
   const [copied, setCopied] = useState(false);
   const list = useRef<HTMLDivElement>(null);
+  // The console has no access to settings; it follows the language the main
+  // window mirrors into local storage (D-038). The core sets the window title.
+  const [, setLang] = useState(language);
+  useEffect(() => {
+    const onStorage = (event: StorageEvent) => {
+      if (event.key !== LANGUAGE_STORAGE_KEY) return;
+      const next = storedLanguage();
+      setLanguage(next);
+      setLang(next);
+    };
+    window.addEventListener('storage', onStorage);
+    return () => {
+      window.removeEventListener('storage', onStorage);
+    };
+  }, []);
 
   useEffect(() => {
-    document.title = `Launcher ${t.title.toLowerCase()}`;
     let stopped = false;
     let after = 0;
     let timer: ReturnType<typeof setTimeout> | undefined;
