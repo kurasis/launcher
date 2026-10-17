@@ -111,6 +111,18 @@ pub fn set_app_settings(
     state.set_app_settings(request)
 }
 
+/// Opens (or focuses) the console window (D-037).
+#[tauri::command]
+pub fn open_console<R: Runtime>(app: AppHandle<R>) {
+    app.state::<LifecycleController>().show_console_window(&app);
+}
+
+/// Console journal entries after `after`; the console window polls this.
+#[tauri::command]
+pub fn read_console(state: State<'_, AppState>, after: u64) -> crate::console::Page {
+    state.console().read(after)
+}
+
 #[tauri::command]
 pub fn show_main_window<R: Runtime>(app: AppHandle<R>) {
     app.state::<LifecycleController>().show_main_window(&app);

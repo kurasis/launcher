@@ -375,6 +375,27 @@ export const strings = {
     percent: (n: number) => `${String(n)}%`,
   },
 
+  console: {
+    title: 'Console',
+    open: 'Open console',
+    openHint:
+      'Everything the launcher does and everything the game prints, live, in a separate window (Ctrl+Shift+L).',
+    sources: { all: 'All', launcher: 'Launcher', game: 'Game' },
+    levels: { all: 'All levels', warn: 'Warnings and errors', error: 'Errors only' },
+    search: 'Filter lines',
+    follow: 'Follow',
+    clear: 'Clear',
+    copy: 'Copy',
+    copied: 'Copied',
+    empty: 'Nothing yet. Install or start a game to see its output here.',
+    noMatch: 'No line matches the filters.',
+    count: (shown: number, total: number) => `${String(shown)} of ${String(total)} lines`,
+    missed: (n: number) =>
+      `${String(n)} older lines were dropped (the console keeps the newest 10,000).`,
+    unreachable: 'The launcher core does not answer. Lines will appear again when it does.',
+    sourceTag: { launcher: 'LAUNCHER', game: 'GAME' },
+  },
+
   diagnostics: {
     title: 'Diagnostics',
     recentTitle: 'Recent operations',

@@ -433,3 +433,20 @@ export const BACKEND_EVENT_NAMES: readonly BackendEventName[] = [
   'operation_progress',
   'operation_finished',
 ];
+
+/** One console journal entry (D-037). Game lines are already redacted. */
+export interface ConsoleEntry {
+  seq: number;
+  at: string;
+  source: 'launcher' | 'game';
+  level: 'info' | 'warn' | 'error';
+  stderr?: boolean;
+  text: string;
+}
+
+export interface ConsolePage {
+  entries: ConsoleEntry[];
+  lastSeq: number;
+  /** Entries dropped from the journal before this reader saw them. */
+  missed: number;
+}
