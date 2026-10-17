@@ -189,7 +189,7 @@ describe('InstallPanel', () => {
     expect(screen.getByText(/Another operation is running/)).toBeVisible();
   });
 
-  it('plays the demo as the default player and in full as a Microsoft account', async () => {
+  it('plays as the default player or the chosen one, always labelled Play', async () => {
     const calls = backend();
     const instance = instanceFixture({ health: 'ready' });
     const { rerender } = render(
@@ -201,10 +201,10 @@ describe('InstallPanel', () => {
         recentOperations={[]}
       />,
     );
-    expect(screen.queryByRole('button', { name: 'Play' })).toBeNull();
-    expect(screen.getByText(/five in-game days, no multiplayer/)).toBeVisible();
+    // One "Play" label for every player; the demo hint is gone.
+    expect(screen.queryByText(/five in-game days/)).toBeNull();
     expect(screen.getByLabelText('Play as')).toHaveDisplayValue('Default: Player (demo)');
-    fireEvent.click(screen.getByRole('button', { name: 'Play demo' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Play' }));
     await waitFor(() => {
       expect(calls.find((c) => c.cmd === 'launch_game')?.args).toMatchObject({
         request: { payload: { instanceId: instance.id } },
@@ -232,7 +232,6 @@ describe('InstallPanel', () => {
         recentOperations={[]}
       />,
     );
-    expect(screen.queryByText(/five in-game days/)).toBeNull();
     launchFails = true;
     fireEvent.click(screen.getByRole('button', { name: 'Play' }));
     expect(await screen.findByText('Sign-in is not configured in this build.')).toBeVisible();
@@ -255,7 +254,7 @@ describe('InstallPanel', () => {
         recentOperations={[]}
       />,
     );
-    expect(screen.getByRole('button', { name: 'Play demo' })).toBeVisible();
+    expect(screen.getByRole('button', { name: 'Play' })).toBeVisible();
     expect(screen.getByLabelText('Play as')).toHaveDisplayValue('Alex (demo)');
   });
 });

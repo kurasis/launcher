@@ -17,7 +17,6 @@ import styles from './Instances.module.css';
 import { localizeError } from '../../lib/strings';
 import { gameLabel } from './loaderLabel';
 import { PlayAs } from './PlayAs';
-import { playerFor } from '../accounts/players';
 
 interface InstallPanelProps {
   instance: InstanceSummary;
@@ -98,9 +97,6 @@ export function InstallPanel({
   const install = useCommand((requestId: string, id: string) => ipc.installInstance(id, requestId));
   const repair = useCommand((requestId: string, id: string) => ipc.repairInstance(id, requestId));
   const play = useCommand((requestId: string, id: string) => ipc.launchGame(id, requestId));
-  // A Microsoft account plays in full after a fresh check; a no-token profile
-  // plays Minecraft's demo.
-  const notoken = playerFor(instance, account).kind === 'notoken';
   const cancel = useCommand((requestId: string, operationId: string) =>
     ipc.cancelOperation(operationId, requestId),
   );
@@ -168,7 +164,7 @@ export function InstallPanel({
                   disabled={otherBusy || play.pending}
                   onClick={() => void play.run(instance.id)}
                 >
-                  {play.pending ? t.starting : notoken ? t.playNoToken : t.play}
+                  {play.pending ? t.starting : t.play}
                 </Button>
               )}
               <Button
@@ -183,9 +179,6 @@ export function InstallPanel({
         </div>
       )}
       {health === 'ready' && <PlayAs instance={instance} account={account} />}
-      {mine === null && health === 'ready' && notoken && (
-        <p className={styles.muted}>{t.noTokenHint}</p>
-      )}
       {health !== 'not_installed' && <p className={styles.muted}>{t.userData}</p>}
       {error !== null && <Notice tone="danger">{error}</Notice>}
     </Panel>

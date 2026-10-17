@@ -34,8 +34,9 @@ a Java installed on the computer after a compatibility check, with extra JVM opt
 profile, with several of each on the **Accounts** screen (D-045). The launcher can close once the game window opens
 (D-042), and its data folder can be moved or kept beside it in portable mode (D-043).
 
-**Without an account:** **Play demo** starts Minecraft's free demo (five in-game days, no
-multiplayer) under a local player name, in every build (D-033).
+**Without an account:** **Play** with a no-token profile (or the built-in player) starts
+Minecraft's free demo (five in-game days, no multiplayer) under a local player name, in
+every build (D-033, D-045, D-046).
 
 **What does not work yet:** playing the full game. The project's Microsoft application is
 registered and packages are built with its client ID, but Minecraft services have not yet

@@ -127,8 +127,6 @@
       "repair": "Repair",
       "verify": "Verify files",
       "play": "Play",
-      "playNoToken": "Play demo",
-      "noTokenHint": "Without a signed-in account you can play the Minecraft demo: five in-game days, no multiplayer. Sign in with an account that owns Minecraft for the full game.",
       "starting": "Starting…",
       "cancel": "Cancel",
       "cancelling": "Cancelling…",
