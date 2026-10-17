@@ -1,7 +1,8 @@
 //! Live checks of launch arguments against real managed Java. Ignored by default;
 //! run with
 //! `KURASIS_LIVE_ROOT=<installed data dir> cargo test --test live_launch_args -- --ignored --nocapture --test-threads=1`
-//! where the data directory holds a completed installation (P08).
+//! where the data directory holds a completed installation (P08). With several
+//! installations, `KURASIS_LIVE_VERSION` selects one.
 //!
 //! 1. Argument echo: tricky values reach Java unchanged through an argfile and as
 //!    direct arguments (`-XshowSettings:properties -version` prints them back).
@@ -35,9 +36,13 @@ fn installed() -> (
     PathBuf,
 ) {
     let root = root();
+    // KURASIS_LIVE_VERSION picks one version when several are installed.
+    let wanted = std::env::var("KURASIS_LIVE_VERSION").ok();
     let instances = std::fs::read_dir(root.instances_dir()).unwrap();
     for entry in instances.flatten() {
-        if let Ok(LockState::Complete(lock)) = read_lock(&entry.path().join("install.lock.json")) {
+        if let Ok(LockState::Complete(lock)) = read_lock(&entry.path().join("install.lock.json"))
+            && wanted.as_ref().is_none_or(|v| *v == lock.version_id)
+        {
             let package = runtime_from_lock(&lock).unwrap();
             let Verification::Valid(runtime) = verify_installed(&root, &package).unwrap() else {
                 panic!("runtime not valid");
@@ -210,12 +215,19 @@ fn real_jvm_arguments_are_accepted_by_the_managed_java() {
     for entry in &classpath {
         assert!(std::path::Path::new(entry).is_file(), "{entry}");
     }
+    // 1.21.1 uses the natives directory itself; 26.3 names `${natives_directory}/java`.
+    let library_path = compiled
+        .jvm_args
+        .iter()
+        .find_map(|a| a.strip_prefix("-Djava.library.path="))
+        .expect("descriptor sets java.library.path");
+    assert!(library_path.starts_with(natives.to_str().unwrap()));
     assert_eq!(
         get(&props, "java.library.path"),
-        vec![natives.to_str().unwrap().to_owned()]
+        vec![library_path.to_owned()]
     );
     println!(
-        "Java {} accepted all {} JVM arguments for {} (classpath {} entries, all present; log4j config {})",
+        "Java {} accepted all {} JVM arguments for {} (classpath {} entries, all present; library path {library_path}; log4j config {})",
         get(&props, "java.version").join(""),
         compiled.jvm_args.len(),
         lock.version_id,

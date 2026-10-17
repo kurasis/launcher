@@ -688,4 +688,167 @@ request.
 
 ### CI results
 
+Commit `d200ec0` (PR #12), all 11 jobs pass:
+[CI 39020749073](https://github.com/kurasis/launcher/actions/runs/39020749073) (5 jobs) and
+[Package 39020749070](https://github.com/kurasis/launcher/actions/runs/39020749070) (6 jobs).
+Earlier runs on this pull request failed the Linux smoke jobs with status 141: `head -1`
+closed the pipe before `ldd` finished under `pipefail`. Fixed in the script.
+
+| Job                         | Runner system                                  | Result                                                                                                                                                                                                                                             |
+| --------------------------- | ---------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Build and smoke windows-x64 | Windows Server 2025 (10.0.26100), WebView2 154 | `Kurasis Launcher_0.1.0_x64-setup.exe`, 3,662,855 bytes, SHA-256 `66d123de5120bd397a3182a7e46c18e52d25edc2a7cd3ef17c78080c2362e2a2`, unsigned; silent per-user install, launcher running after 20 s with DATA_ROOT, silent uninstall kept the data |
+| Build and smoke macos-arm64 | macOS 15.7.9 (24G830), arm64                   | DMG mounts; `Mach-O 64-bit executable arm64`, minimum 11.0, signature ad-hoc (linker), no team; running after 20 s; deleting the app kept the data                                                                                                 |
+| Build and smoke macos-x64   | macos-15-intel                                 | Pass (same steps)                                                                                                                                                                                                                                  |
+| Build linux-x64             | debian:12 container                            | `.deb` and AppImage with `SHA256SUMS` and `build-info.json`                                                                                                                                                                                        |
+| Smoke linux-x64             | fresh debian:12 and ubuntu:24.04 containers    | Pass (same steps as the local roots above)                                                                                                                                                                                                         |
+
+Each artifact set holds its own `SHA256SUMS` and `build-info.json`; pull-request artifacts
+expire after 7 days. These are CI runners, not consumer machines.
+
+## P13 — Compatibility, security and performance qualification
+
+- **Date / host:** 2026-10-17; development host (Ubuntu 24.04.5 container, 4 vCPU Intel
+  Xeon @ 2.10 GHz, 15 GiB RAM, Xvfb + openbox, X11 only); packaged runs in a Debian 12
+  chroot. App commit `e06b52a` plus the P13 changes on `claude/p13-qualification`.
+- **Status:** **blocked.** Everything that needs a signed-in Microsoft account (sign-in,
+  Play, worlds, servers) and every check that needs real Windows, macOS, Wayland or Apple
+  silicon/Intel machines is still open. Nothing below relabels fixture or host results as
+  real-machine or real-account results.
+
+### Second baseline and shared cache (live, Linux x64)
+
+`tests/live_install.rs` (new, ignored by default) runs the real install service against
+Mojang and Adoptium in a given data directory. Both descriptors match the live manifest
+(1.21.1 `499680d6…`, 26.3 `11f1aefe…`, Java 21 and 25).
+
+| Step (one data directory)                                                        | Result                                                                                           |
+| -------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------ |
+| Install 26.3 next to an installed 1.21.1                                         | Succeeded in 57.7 s: 5,020 files downloaded (568.8 MB), 197 reused                               |
+| Repair 1.21.1, then 26.3 (alternating)                                           | 0 bytes downloaded each; 3,947 and 5,216 files reused; cache size unchanged                      |
+| Second installation of 1.21.1 (MV01)                                             | 0 bytes downloaded, 3,947 reused; separate empty game folder                                     |
+| Real JVM arguments, 26.3 with Java 25.0.4.1                                      | All 14 accepted; 67 classpath entries present; `java.library.path` = `${natives_directory}/java` |
+| Real JVM arguments, 1.21.1 with Java 21.0.12.1                                   | All 10 accepted; 57 classpath entries present                                                    |
+| Data root at a 221-character path with spaces, `Jürgen Ä 世界 игрок` (A16, MV12) | Repair of both versions and both real-Java argument checks pass                                  |
+
+Found and fixed: the live argument test assumed the natives directory itself as library
+path; 26.3 names a subdirectory. The test now takes the expected value from the compiled
+arguments.
+
+### Failure injection (A22)
+
+| Failure                                                      | Observed outcome                                                                                                             |
+| ------------------------------------------------------------ | ---------------------------------------------------------------------------------------------------------------------------- |
+| No network (`unshare -n`)                                    | `NETWORK_ERROR` "A download source could not be reached…" after 0.5 s, retryable, nothing written as ready                   |
+| Data root on a 64 MiB filesystem                             | `DISK_FULL` before any artifact download: 1,183,037,018 bytes required, 64,716,800 available; 2.3 MB metadata written        |
+| Read-only data root                                          | `PERMISSION_DENIED` "Creating the launcher data directory: permission denied by the operating system."                       |
+| `kill -9` 25 s into a 26.3 install, then retry               | Job receipt reconciled to `interrupted`; retry succeeded in 39.1 s reusing 2,753 verified files; no `.part` files left       |
+| Corrupted library jar and corrupted `libjvm.so`, then Repair | Repair downloaded 2 files (the jar and the Java archive, 61.9 MB), reused 5,215; jar listed as corrupt; runtime re-extracted |
+| Expired token                                                | Covered by auth fixture tests only (no real account)                                                                         |
+
+Found and fixed: the free-space check asked sysinfo's disk list, which leaves out tmpfs
+and similar filesystems, so a data root there was measured against its parent mount and
+the install ran into `StorageFull` mid-download. The check now uses `statvfs` of the data
+root itself on Unix (D-029). The new unit test then failed on Windows CI: there the check
+had never worked, because the canonical `\\?\D:\…` path never matched a volume such as
+`D:\`. Windows now matches the absolute path without the verbatim prefix.
+
+### Multiple processes (MV09)
+
+| Case                                              | Result                                                                                                                                                                                                  |
+| ------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Second packaged launch with the same session bus  | Exits at once (code 0); one process, one window                                                                                                                                                         |
+| Second launch without a shared bus (signal fails) | Second process does not touch the data: "Launcher data is unavailable — another launcher process is already using the launcher data directory" ([screenshot](verification/p13-mv09-second-process.png)) |
+
+### Lifecycle stress (A23, test child)
+
+20 unload/return cycles with the debug harness ("Run 4 seconds", default mode), current
+code ([CSV](verification/p13-lifecycle-cycles.csv)): 20/20 unloaded and restored, exactly
+one window and one supervisor after each cycle, no leftover child, WebKit process count
+constant (3), supervisor threads stable (29), RSS 193.4 → 216.1 MiB (growth flattening,
+≈ 0.1 MiB per cycle in cycles 9–20).
+
+Found, not fixed: each webview destroy/recreate leaves one `timerfd` and one
+`WebKitSharedMemory` memfd open in the supervisor (+2 descriptors per cycle, 45 → 83). In
+"Keep the launcher open" mode, six cycles kept the count flat (42), so the descriptors
+belong to WebKitGTK's webview teardown, not to child supervision (pipes and pidfds are
+closed). With a soft limit of 1,024 descriptors this allows about 490 unload cycles per
+launcher run. Recorded as a known limitation; Windows and macOS are unmeasured.
+
+### Performance (packaged release build, Debian 12 chroot, Xvfb, software rendering)
+
+| Measurement                                                                                       | Result             |
+| ------------------------------------------------------------------------------------------------- | ------------------ |
+| Process start to visible window, 3 runs                                                           | 155, 134, 119 ms   |
+| Whole process tree (launcher, WebKitWebProcess, WebKitNetworkProcess), PSS after 10 s / 70 s idle | 347 / 345 MiB      |
+| Idle CPU of the whole tree over 60 s                                                              | 0.11 % of one core |
+
+Method: shell measurement (`/proc/<pid>/smaps_rollup` PSS summed over the tree; utime +
+stime over 60 s; window visibility polled with `xdotool`). Xvfb forces Mesa software rendering, which inflates
+WebKit memory; numbers on real GPUs and other OSes are not measured.
+
+### Security checks
+
+| Check                                                                      | Result                                                                                                                                                         |
+| -------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Release binary contains no harness, fixtures or test-only transports       | `kurasis-lifecycle-test-child`, `127.0.0.1`, `KURASIS_DATA_ROOT`, fixture names: absent; `start_lifecycle_test` only in ACL text without a handler (as in P03) |
+| Unsafe archives (traversal, absolute paths, links out of the tree, limits) | Extractor tests (P07) pass on all CI targets                                                                                                                   |
+| Tokens never in frontend, logs, argfile previews or exports                | Redaction, argfile and export tests pass; no real token exists to test end to end                                                                              |
+| Production auth has no bypass                                              | Play refuses without a session (P09 GUI); no session fixture compiled into release                                                                             |
+
+### Acceptance checklist (A01–A26)
+
+| Item | Status  | Evidence / blocker                                                                                                                              |
+| ---- | ------- | ----------------------------------------------------------------------------------------------------------------------------------------------- |
+| A01  | Partial | Fresh Debian 12/Ubuntu 24.04 roots and CI runners (P12); consumer machines not tested                                                           |
+| A02  | Partial | Linux dependencies verified (P12); Windows uses the WebView2 bootstrapper (config + CI runner with WebView2); missing-WebView2 machine untested |
+| A03  | Blocked | No project-owned Microsoft client ID (P04)                                                                                                      |
+| A04  | Blocked | As A03                                                                                                                                          |
+| A05  | Blocked | As A03; no Game Pass test account                                                                                                               |
+| A06  | Partial | Distinct outcomes in fixture tests (P04); live check blocked                                                                                    |
+| A07  | Partial | Redaction/export/argfile tests; no real token yet                                                                                               |
+| A08  | Partial | Vault and session-only fallback tests (P04); real sign-in blocked                                                                               |
+| A09  | Pass    | Live catalog filtered by the compatibility list (P05); instances keep their pinned descriptor                                                   |
+| A10  | Pass    | Live installs of 1.21.1 (P08) and 26.3 (above) with digest verification and private Java                                                        |
+| A11  | Pass    | 1.21.1 → Java 21.0.12.1, 26.3 → Java 25.0.4.1, both accepting real JVM arguments                                                                |
+| A12  | Blocked | Playing needs sign-in                                                                                                                           |
+| A13  | Blocked | Needs sign-in and an authorized test server                                                                                                     |
+| A14  | Pass    | Cancel/resume (P08) and `kill -9` resume (above)                                                                                                |
+| A15  | Partial | Library and runtime corruption repaired (above, P08); worlds unchanged (P08); repair blocked while a game runs: unit tests only                 |
+| A16  | Pass    | Unicode/space/221-character data root (above); classpath-delimiter roots rejected (P02)                                                         |
+| A17  | Partial | Test child and survivor guard (P03, P10); real game blocked                                                                                     |
+| A18  | Partial | Webview destroyed and recreated after exit and crash with the test child; real game blocked                                                     |
+| A19  | Partial | Linux X11 host (P03, P10); Windows/macOS/Wayland untested                                                                                       |
+| A20  | Pass    | Bounded logs, drained pipes, degraded logging (P09 tests, P03 heavy-output scenario)                                                            |
+| A21  | Partial | All controls call real commands (P11); sign-in/Play paths cannot complete                                                                       |
+| A22  | Partial | Network, disk full, permissions, corruption and abrupt exit pass (above); expired token fixture-only                                            |
+| A23  | Partial | 20 cycles pass for windows/processes/threads; descriptor growth from WebKitGTK documented; real-game exit/crash blocked                         |
+| A24  | Partial | Linux upgrade/uninstall keeps data (P12); Windows/macOS upgrade untested; credentials need sign-in                                              |
+| A25  | Pass    | Lockfile-enforced CI and package builds (P01–P12)                                                                                               |
+| A26  | Partial | Package metadata and checksums (P12); final signed packages and target smoke tests pending                                                      |
+
+### MV01–MV12
+
+| Case | Status  | Evidence                                                                                                |
+| ---- | ------- | ------------------------------------------------------------------------------------------------------- |
+| MV01 | Pass    | Second 1.21.1 installation: 0 bytes, own game folder (above)                                            |
+| MV02 | Partial | Both versions installed with their own Java and arguments; alternating play blocked                     |
+| MV03 | Pass    | Fixture tests (P05, P06)                                                                                |
+| MV04 | Pass    | Fixture tests (P05, P06)                                                                                |
+| MV05 | Pass    | Runtime key tests (P07)                                                                                 |
+| MV06 | Pass    | Asset-index projection tests (P05, P08)                                                                 |
+| MV07 | Partial | Corruption repaired once for both users of the file (above); APP_BUSY during a running game: unit tests |
+| MV08 | Pass    | Interruption tests (P02, P08) and live `kill -9` resume (above)                                         |
+| MV09 | Pass    | Second process exits or fails closed (above)                                                            |
+| MV10 | Partial | Background install return and cancel-and-quit (P10); login-time close blocked                           |
+| MV11 | Pass    | Degraded-logging tests with heavy output (P09)                                                          |
+| MV12 | Partial | Unicode/space paths with real Java (above); cancel races in unit tests; real spawn blocked              |
+
+### Not verified in P13
+
+- Every real-account item (A03–A08, A12, A13) and real game play, save, exit and crash.
+- Windows 10/11, macOS on Apple silicon and Intel, Linux Wayland, HiDPI and 200 % text.
+- Signed packages and final-package rebuild and smoke tests (owner signing credentials).
+
+### CI results
+
 Recorded by the next phase's pull request.

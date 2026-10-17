@@ -2188,6 +2188,7 @@ dependencies = [
  "keyring",
  "regex",
  "reqwest",
+ "rustix",
  "serde",
  "serde_json",
  "sha1",

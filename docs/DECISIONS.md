@@ -501,3 +501,25 @@ replaces it), `superseded`.
   present; Windows signing is an owner decision (docs/PACKAGING.md).
 - **Limitation:** CI runners and chroot systems are not consumer machines. Target-machine
   qualification, including Wayland, HiDPI and missing WebView2, is P13.
+
+## D-029 — Qualification findings: free space and webview descriptors
+
+- **Status:** accepted · **Phase:** P13 · **Affects:** A22, A23, MV11
+- **Free space:** on Unix the pre-download space check now uses `statvfs` of the data
+  directory itself (`rustix`, already in the dependency tree, safe API). sysinfo's disk
+  list omits tmpfs and other filesystems, so a data root on one was measured against its
+  parent mount and a full disk was only noticed mid-download. Windows keeps the volume
+  list, which includes every volume, but no longer canonicalizes the path first: the
+  verbatim `\\?\D:\…` form never matched a mount point such as `D:\`, so since P06
+  the Windows check silently returned "unknown" and was skipped. The new unit test
+  exposed it in CI.
+- **Webview descriptors:** destroying and recreating the webview (default "unload and
+  return" mode) leaves one `timerfd` and one `WebKitSharedMemory` memfd open per cycle on
+  Linux. Child supervision closes its own pipes and pidfds, and "keep open" mode shows no
+  growth, so the leak is inside WebKitGTK's teardown. It is documented rather than worked
+  around: about 490 cycles fit under a 1,024-descriptor soft limit, and restarting the
+  launcher releases them. Re-measure on Windows and macOS, and after WebKitGTK/wry
+  updates.
+- **Live installation test:** `tests/live_install.rs` drives the real install service for
+  any supported version in any data directory (ignored by default), which makes the
+  multi-version cache checks (MV01, MV02 install side, MV08) repeatable.
