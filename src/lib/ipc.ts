@@ -31,6 +31,8 @@ import {
   type QuitResult,
   type RunSummary,
   type SettingsPatch,
+  type JavaCheck,
+  type SetInstanceJavaPayload,
   type SetInstanceNotesPayload,
   type SettingsView,
   type UpdateInstanceSettingsPayload,
@@ -59,6 +61,14 @@ export const ipc = {
     invoke<DataLocation>('move_data_location', {
       request: mutation({ target, path }, requestId),
     }),
+  checkJava: (instanceId: string, path: string): Promise<JavaCheck> =>
+    invoke<JavaCheck>('check_java', { payload: { instanceId, path } }),
+  pickJavaFile: (): Promise<string | null> => invoke<string | null>('pick_java_file'),
+  setInstanceJava: (
+    payload: SetInstanceJavaPayload,
+    requestId?: string,
+  ): Promise<InstanceSummary> =>
+    invoke<InstanceSummary>('set_instance_java', { request: mutation(payload, requestId) }),
   setInstanceNotes: (
     payload: SetInstanceNotesPayload,
     requestId?: string,

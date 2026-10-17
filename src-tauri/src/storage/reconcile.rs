@@ -114,6 +114,9 @@ mod tests {
             java: None,
             loader: None,
             notes: String::new(),
+            java_provider: None,
+            custom_java: None,
+            jvm_arguments: String::new(),
         }
     }
 

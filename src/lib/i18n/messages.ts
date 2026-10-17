@@ -241,6 +241,7 @@ export type Messages = {
     readonly saved: string;
     readonly busy: string;
     readonly java: string;
+    readonly jvmArguments: string;
     readonly javaNone: string;
     readonly window: string;
     readonly windowValue: (values: { mib: number; width: number; height: number }) => string;
@@ -284,6 +285,40 @@ export type Messages = {
       major: string | number;
       release: string | number;
     }) => string;
+    readonly instanceJava: {
+      readonly title: string;
+      readonly now: (values: { value: string | number }) => string;
+      readonly managed: (values: { provider: string | number }) => string;
+      readonly managedHint: string;
+      readonly custom: string;
+      readonly customHint: string;
+      readonly path: string;
+      readonly pathHint: string;
+      readonly browse: string;
+      readonly installFirst: string;
+      readonly jvmArguments: string;
+      readonly jvmHint: string;
+      readonly save: string;
+      readonly checking: string;
+      readonly checked: (values: {
+        version: string | number;
+        vendor: string | number;
+        arch: string | number;
+        required: string | number;
+      }) => string;
+      readonly unknownVendor: string;
+      readonly issues: {
+        readonly older: (values: { required: string | number }) => string;
+        readonly newer: (values: { required: string | number }) => string;
+        readonly architecture: (values: { arch: string | number }) => string;
+      };
+      readonly confirm: string;
+      readonly useAnyway: string;
+      readonly accepted: string;
+      readonly pendingSwitch: (values: { provider: string | number }) => string;
+      readonly repairNow: string;
+      readonly customValue: (values: { version: string | number }) => string;
+    };
     readonly noInstallations: string;
     readonly installation: string;
     readonly language: string;

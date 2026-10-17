@@ -229,6 +229,7 @@
       "saved": "تم الحفظ.",
       "busy": "هذا التثبيت مشغول؛ لا يمكن تغيير إعداداته الآن.",
       "java": "Java",
+      "jvmArguments": "خيارات JVM",
       "javaNone": "يُختار عند التثبيت",
       "window": "الذاكرة والنافذة",
       "windowValue": "⁦{mib, number, ::group-off} MiB⁩ · ⁦{width, number, ::group-off}×{height, number, ::group-off}⁩",
@@ -250,7 +251,7 @@
         "general": "اللغة والمظهر ونافذة المشغّل أثناء اللعب ومكان حفظ البيانات.",
         "java": "من أين ينزّل المشغّل بيئة Java للتثبيتات الجديدة.",
         "defaults": "الذاكرة وحجم النافذة لكل تثبيت جديد.",
-        "installations": "الذاكرة وحجم النافذة لتثبيت موجود."
+        "installations": "الذاكرة وحجم النافذة وJava لتثبيت موجود."
       },
       "javaProvider": "مصدر Java",
       "javaProviders": {
@@ -261,13 +262,42 @@
         "mojang": "بيئات Java التي يستخدمها مشغّل Minecraft الرسمي، وهي إصدار Java الذي يطلبه كل إصدار بالضبط. إن لم تنشر Mojang بيئة لهذا الحاسوب، يُستخدم Temurin.",
         "temurin": "أحدث إصدارات Eclipse Temurin من إصدار Java الذي يحتاجه كل إصدار من Minecraft."
       },
-      "javaApplies": "ينطبق على التثبيتات الجديدة. يحتفظ الإصدار المثبّت بـ Java التي ثُبّت بها، ويعيد الإصلاح البيئة نفسها بالضبط.",
+      "javaApplies": "ينطبق على التثبيتات الجديدة. لتغيير Java لإصدار مثبّت أو استخدام Java خاصة بك، افتح «التثبيتات».",
       "javaInstalled": "Java لكل تثبيت",
       "javaShort": {
         "mojang": "Mojang",
         "temurin": "Temurin"
       },
       "javaValue": "⁦{provider} · Java {major} ({release})⁩",
+      "instanceJava": {
+        "title": "Java لهذا التثبيت",
+        "now": "الآن: {value}",
+        "managed": "بيئة خاصة من {provider}",
+        "managedHint": "ينزّلها المشغّل ويتحقق منها. يُنزَّل المصدر الآخر عند الإصلاح التالي.",
+        "custom": "Java الخاصة بي",
+        "customHint": "Java مثبتة على هذا الكمبيوتر. يقارن المشغّل إصدارها باللعبة وينبّه عند عدم التطابق.",
+        "path": "مسار برنامج Java",
+        "pathHint": "مثلًا C:\\Program Files\\Java\\jdk-21\\bin\\javaw.exe أو /usr/lib/jvm/java-21/bin/java.",
+        "browse": "استعراض…",
+        "installFirst": "ثبّت هذا الإصدار أولًا، ثم اختر Java الخاصة بك.",
+        "jvmArguments": "خيارات JVM",
+        "jvmHint": "تُضاف بعد خيارات الإصدار نفسه؛ وعند التكرار يسري الأخير. يبدأ كل خيار بـ \"-\" وتُكتب قيمته بعد \"=\"، مثل -XX:+UseG1GC -Dfile.encoding=UTF-8.",
+        "save": "احفظ إعدادات Java",
+        "checking": "جارٍ فحص Java هذه…",
+        "checked": "Java {version} ({vendor}، {arch}). صُممت هذه اللعبة لـ Java {required}.",
+        "unknownVendor": "مورّد غير معروف",
+        "issues": {
+          "older": "Java هذه أقدم من Java {required} التي تحتاجها اللعبة. على الأرجح لن تعمل اللعبة.",
+          "newer": "Java هذه أحدث من Java {required} التي صُممت لها اللعبة. تعمل الإصدارات الحديثة عادةً، أما القديمة ومحمّلات التعديلات فكثيرًا ما تفشل.",
+          "architecture": "Java هذه مبنية لمعالج آخر ({arch}). قد لا تعمل اللعبة أو تعمل ببطء."
+        },
+        "confirm": "هل تستخدم Java هذه على أي حال؟",
+        "useAnyway": "استخدمها",
+        "accepted": "اخترت Java هذه رغم التحذير:",
+        "pendingSwitch": "تُنزَّل Java من {provider} عند الإصلاح التالي.",
+        "repairNow": "أصلح الآن",
+        "customValue": "Java الخاصة بك {version}"
+      },
       "noInstallations": "لا توجد تثبيتات بعد.",
       "installation": "التثبيت",
       "language": "اللغة",
@@ -751,6 +781,19 @@
     "version metadata": "وصف الإصدار",
     "{context}: a file operation failed.": "{context}: فشلت عملية على الملفات.",
     "{context}: permission denied by the operating system.": "{context}: رفض نظام التشغيل الوصول.",
-    "{context}: the disk is full. Free some space and try again.": "{context}: القرص ممتلئ. أفرغ بعض المساحة وحاول مجددًا."
+    "{context}: the disk is full. Free some space and try again.": "{context}: القرص ممتلئ. أفرغ بعض المساحة وحاول مجددًا.",
+    "A quote in the JVM options is not closed.": "علامة اقتباس في خيارات JVM غير مغلقة.",
+    "Each JVM option must start with \"-\"; put a value after \"=\": {option}": "يجب أن يبدأ كل خيار JVM بـ \"-\"، وتُكتب القيمة بعد \"=\": {option}",
+    "Enter the full path to the Java program.": "أدخل المسار الكامل لبرنامج Java.",
+    "Install this version first, then choose your own Java.": "ثبّت هذا الإصدار أولًا، ثم اختر Java الخاصة بك.",
+    "JVM options can be at most {max} characters long.": "يمكن أن تصل خيارات JVM إلى {max} حرفًا على الأكثر.",
+    "JVM options must be on one line, without control characters.": "يجب أن تكون خيارات JVM في سطر واحد، دون أحرف تحكم.",
+    "No Java program was found at this path.": "لم يُعثر على برنامج Java في هذا المسار.",
+    "The Java check is missing.": "نتيجة فحص Java مفقودة.",
+    "The Java chosen for this installation could not be started. Choose another one in the installation settings.": "تعذّر تشغيل Java المختارة لهذا التثبيت. اختر غيرها في إعدادات التثبيت.",
+    "The file dialog failed.": "تعذّر فتح نافذة اختيار الملف.",
+    "This Java may not run this game. Confirm the choice to use it anyway.": "قد لا تشغّل Java هذه اللعبة. أكّد الاختيار لاستخدامها على أي حال.",
+    "This program could not be started as Java.": "تعذّر تشغيل هذا البرنامج بوصفه Java.",
+    "Use at most {max} JVM options.": "استخدم {max} من خيارات JVM على الأكثر."
   }
 }
