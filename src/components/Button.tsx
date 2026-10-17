@@ -3,6 +3,8 @@ import styles from './Button.module.css';
 
 type ButtonProps = Omit<ButtonHTMLAttributes<HTMLButtonElement>, 'type'> & {
   variant?: 'primary' | 'secondary';
+  /** "large" is for the screen's main call to action, such as Play. */
+  size?: 'normal' | 'large';
   /** Defaults to "button" so a button never submits a form by accident. */
   type?: 'button' | 'submit';
   ref?: Ref<HTMLButtonElement>;
@@ -10,10 +12,13 @@ type ButtonProps = Omit<ButtonHTMLAttributes<HTMLButtonElement>, 'type'> & {
 
 export function Button({
   variant = 'secondary',
+  size = 'normal',
   type = 'button',
   className,
   ...rest
 }: ButtonProps) {
-  const classes = [styles.button, styles[variant], className].filter(Boolean).join(' ');
+  const classes = [styles.button, styles[variant], size === 'large' && styles.large, className]
+    .filter(Boolean)
+    .join(' ');
   return <button type={type} className={classes} {...rest} />;
 }

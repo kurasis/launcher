@@ -4,7 +4,8 @@
   display: grid;
   place-items: center;
   padding: var(--space-4);
-  background: rgb(0 0 0 / 45%);
+  background: rgb(0 0 0 / 55%);
+  backdrop-filter: blur(4px);
   z-index: 10;
 }
 
@@ -13,10 +14,11 @@
   gap: var(--space-4);
   max-width: 32rem;
   padding: var(--space-6);
-  background: var(--color-surface);
+  background: var(--color-surface-raised);
   color: var(--color-text);
-  border: 1px solid var(--color-border);
-  border-radius: var(--radius-md);
+  border: 1px solid var(--color-border-strong);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-raised);
 }
 
 .dialog h2 {

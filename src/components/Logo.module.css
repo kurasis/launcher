@@ -1,0 +1,25 @@
+.logo {
+  width: 2.25rem;
+  height: 2.25rem;
+  flex: none;
+  filter: drop-shadow(0 4px 12px var(--color-glow));
+}
+
+.top {
+  fill: var(--color-accent);
+}
+
+.left {
+  fill: var(--color-accent-2);
+  opacity: 0.85;
+}
+
+.right {
+  fill: var(--color-accent-2);
+  opacity: 0.55;
+}
+
+.shine {
+  fill: #ffffff;
+  opacity: 0.25;
+}

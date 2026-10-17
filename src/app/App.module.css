@@ -5,14 +5,18 @@
 }
 
 .topbar {
+  position: sticky;
+  top: 0;
+  z-index: 5;
   display: flex;
   flex-wrap: wrap;
   align-items: center;
   justify-content: space-between;
   gap: var(--space-3) var(--space-6);
-  padding: var(--space-4) var(--space-6);
+  padding: var(--space-3) var(--space-6);
   background: var(--color-surface);
   border-bottom: 1px solid var(--color-border);
+  backdrop-filter: blur(var(--blur)) saturate(140%);
 }
 
 .brandRow {
@@ -23,29 +27,80 @@
 }
 
 .brand {
+  display: flex;
+  align-items: baseline;
+  gap: var(--space-2);
+  text-transform: uppercase;
+  line-height: 1;
+}
+
+.brandName {
   font-size: var(--font-size-xl);
+  font-weight: 900;
+  letter-spacing: 0.1em;
+  background: linear-gradient(90deg, var(--color-accent), var(--color-accent-2));
+  background-clip: text;
+  -webkit-background-clip: text;
+  color: transparent;
+}
+
+.brandSuffix {
+  font-size: var(--font-size-sm);
   font-weight: 700;
+  letter-spacing: 0.3em;
+  color: var(--color-text-muted);
 }
 
 .nav {
   display: flex;
   flex-wrap: wrap;
+  align-items: center;
   gap: var(--space-1);
+  padding: var(--space-1);
+  border-radius: var(--radius-md);
+  background: var(--color-neutral-bg);
+  border: 1px solid var(--color-border);
 }
 
 .navItem {
+  position: relative;
   border: 1px solid transparent;
   background: transparent;
-  color: var(--color-text);
-  padding: var(--space-2) var(--space-3);
+  color: var(--color-text-muted);
+  padding: var(--space-2) var(--space-4);
   border-radius: var(--radius-sm);
   cursor: pointer;
-  font-weight: 600;
+  font-size: var(--font-size-sm);
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  transition:
+    color var(--motion-duration) ease-out,
+    background-color var(--motion-duration) ease-out;
+}
+
+.navItem:hover {
+  color: var(--color-text);
 }
 
 .navItem[aria-current='page'] {
-  background: var(--color-neutral-bg);
+  color: var(--color-text);
+  background: var(--color-surface-raised);
   border-color: var(--color-border);
+  box-shadow: 0 4px 14px -6px rgb(0 0 0 / 35%);
+}
+
+/* Glowing underline on the current tab. */
+.navItem[aria-current='page']::after {
+  content: '';
+  position: absolute;
+  left: 25%;
+  right: 25%;
+  bottom: -1px;
+  height: 2px;
+  border-radius: var(--radius-pill);
+  background: var(--color-accent);
+  box-shadow: 0 0 8px var(--color-glow);
 }
 
 .content {
@@ -53,7 +108,7 @@
   align-content: start;
   gap: var(--space-6);
   width: 100%;
-  max-width: 72rem;
+  max-width: 76rem;
   margin: 0 auto;
   padding: var(--space-6);
 }
@@ -61,7 +116,8 @@
 .footer {
   padding: var(--space-4) var(--space-6);
   color: var(--color-text-muted);
-  font-size: var(--font-size-sm);
+  font-size: var(--font-size-xs);
+  text-align: center;
   border-top: 1px solid var(--color-border);
 }
 

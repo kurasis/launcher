@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { Button } from '../components/Button';
+import { Logo } from '../components/Logo';
 import { Notice } from '../components/Notice';
 import { StatusBadge } from '../components/StatusBadge';
 import { AccountChip } from '../features/accounts/AccountChip';
@@ -53,9 +54,13 @@ export function App() {
     <div className={styles.shell}>
       <header className={styles.topbar}>
         <div className={styles.brandRow}>
-          <h1 className={styles.brand}>{strings.productName}</h1>
-          {appInfo.status === 'ready' && (
-            <StatusBadge tone="neutral" label={strings.buildTag(appInfo.info.buildProfile)} />
+          <Logo />
+          <h1 className={styles.brand}>
+            <span className={styles.brandName}>{strings.brand.name}</span>{' '}
+            <span className={styles.brandSuffix}>{strings.brand.suffix}</span>
+          </h1>
+          {appInfo.status === 'ready' && appInfo.info.buildProfile === 'debug' && (
+            <StatusBadge tone="neutral" label={strings.devBuildTag} />
           )}
           {appInfo.status === 'ready' && appInfo.info.testProfile !== null && (
             <StatusBadge tone="warning" label={strings.testProfileTag(appInfo.info.testProfile)} />

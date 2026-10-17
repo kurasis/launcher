@@ -11,7 +11,19 @@ body {
 }
 
 body {
-  background: var(--color-bg);
+  background-color: var(--color-bg);
+  /* Two soft glows over a faint block grid. */
+  background-image:
+    radial-gradient(60rem 40rem at 10% -10%, var(--color-bg-glow-1), transparent 70%),
+    radial-gradient(50rem 36rem at 100% 0%, var(--color-bg-glow-2), transparent 70%),
+    linear-gradient(var(--color-grid) 1px, transparent 1px),
+    linear-gradient(90deg, var(--color-grid) 1px, transparent 1px);
+  background-size:
+    auto,
+    auto,
+    32px 32px,
+    32px 32px;
+  background-attachment: fixed;
   color: var(--color-text);
   font-family: var(--font-sans);
   font-size: var(--font-size-md);
@@ -34,7 +46,15 @@ button {
   font: inherit;
 }
 
+a {
+  color: var(--color-accent);
+}
+
 :focus-visible {
   outline: 3px solid var(--color-focus);
   outline-offset: 2px;
+}
+
+::selection {
+  background: var(--color-accent-soft);
 }

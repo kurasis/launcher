@@ -495,7 +495,8 @@ replaces it), `superseded`.
   installation has them; the smoke test installs exactly these on a stripped system.
 - **Build label:** taken from the Rust core's build profile (`get_app_info`): release
   cores show "Qualification build" (doc 01: packages are private qualification builds
-  until P13), debug cores "Development build".
+  until P13), debug cores "Development build". Superseded by D-032: release builds show
+  no label.
 - **Package workflow:** `.github/workflows/package.yml` builds every target, writes
   `SHA256SUMS` and `build-info.json`, smoke-tests (install, start, data root, uninstall
   keeps data) and keeps packages as workflow artifacts only. It never creates a release.
@@ -571,3 +572,18 @@ replaces it), `superseded`.
   evidence recorded before this change quotes the names that were in use then.
 - **Verification:** `src-tauri/tauri.conf.json`; `npm run check`; release binary scan
   (docs/VERIFICATION.md).
+
+## D-032 — Game-style interface and header mark
+
+- **Status:** accepted (owner request, 2026-10-17) · **Affects:** FR13, A24
+- **Decision:** The interface takes a darker, game-like look built only from the design
+  tokens: glass panels over a glowing block-grid background, a green-to-cyan accent,
+  uppercase tabs and status lights. The selected installation is a hero panel with a
+  large Play button over a decorative block landscape drawn as inline SVG from theme
+  colors; installations get colored block tiles. The header shows a block logo and the
+  mark "Sferum Launcher" ("Sferum" large). Release builds show no build label; debug
+  builds keep "Development build" so development windows stay recognizable.
+- **Limits:** no external fonts or images (the CSP allows only bundled assets); system
+  fonts are used. Light and dark themes both remain; reduced-motion disables
+  transitions. The window title, package and binary names stay as in D-031.
+- **Verification:** `npm run check`; release build screenshot in the README.
