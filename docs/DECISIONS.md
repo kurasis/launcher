@@ -866,6 +866,9 @@ message` plus a stack trace), with the event's level.
 - **Not renamed:** what belongs to Minecraft, not to the launcher: the `--demo` argument,
   the `is_demo_user` rule feature, and the interface texts ("Play demo"), which name the
   game's demo mode that this profile plays.
+- **Release builds:** the type name `NoTokenProfile` now appears in release binaries (it
+  is the shared profile's name); the debug-only switch `LAUNCHER_NOTOKEN_PROFILE`
+  stays absent (`strings` check, 2026-10-17).
 - **About:** the "Microsoft sign-in setup" panel is gone. The Account screen still tells
   whether sign-in is available in this build.
 
@@ -896,3 +899,31 @@ message` plus a stack trace), with the event's level.
   and blocks installing and playing until it ends (D-026's survivor handling).
 - **Also fixed:** while a game ran, the installation panel showed install progress
   ("Reading version metadata") and a Cancel button; it now says the game is running.
+
+## D-043 — Choosing the data folder; portable mode
+
+- **Status:** accepted (owner request, 2026-10-17) · **Affects:** docs/spec/02 ("Data
+  directories"), Settings → General
+- **Decision:** the data folder is chosen at start, in this order:
+  1. **Portable mode:** a `portable.txt` file next to the launcher (next to the `.app`
+     on macOS, next to the AppImage on Linux) keeps all data in `launcher-data` beside
+     it, so the whole folder can move to another computer.
+  2. **Chosen folder:** `data-location.json` in the per-user configuration directory
+     (separate from the data) names a folder picked in Settings.
+  3. **Default:** the per-user application data directory, as before.
+- **Moving:** Settings → General → _Launcher data location_ shows the folder and how it
+  was chosen, and offers _Move to another folder…_ (native folder picker), _Move back to
+  the default folder_ and _Make portable_. After a confirmation the launcher copies its
+  data while nothing else may run (a new activity kind, `relocate`), skipping the
+  instance lock and download staging, then records the choice (or writes/removes
+  `portable.txt`). The new folder is used from the next start; the old folder is kept
+  for the user to delete. A target that already holds launcher data (for example the
+  folder left behind by an earlier move) is used as it is, without copying. Otherwise the
+  target must be empty or missing. It must not contain or lie
+  inside the current folder, and must pass the usual data-root checks; symbolic links
+  stop the copy, and a failed copy is removed.
+- **Portable mode and sign-in:** Microsoft sign-in secrets stay in the operating
+  system's credential store, never in the portable folder; on another computer the
+  account has to sign in again. The system web view keeps its own cache in the user
+  profile.
+- **Debug builds:** `LAUNCHER_DATA_ROOT` still overrides everything for tests.

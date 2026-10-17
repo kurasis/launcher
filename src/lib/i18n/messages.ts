@@ -300,12 +300,29 @@ export type Messages = {
       readonly close_launcher: string;
     };
     readonly dataLocation: string;
-    readonly dataLocationHint: string;
     readonly defaultsTitle: string;
     readonly defaultsSave: string;
     readonly defaultsSaved: string;
     readonly readOnly: string;
     readonly languageIncomplete: (values: { percent: string | number }) => string;
+    readonly dataFolder: {
+      readonly modes: {
+        readonly default: string;
+        readonly custom: string;
+        readonly portable: string;
+      };
+      readonly choose: string;
+      readonly toDefault: string;
+      readonly toPortable: string;
+      readonly confirm: string;
+      readonly confirmHint: string;
+      readonly copy: string;
+      readonly copying: string;
+      readonly pending: string;
+      readonly busy: string;
+      readonly portableHint: string;
+      readonly pendingReused: string;
+    };
   };
   readonly storage: {
     readonly issuesTitle: string;
@@ -368,6 +385,7 @@ export type Messages = {
     readonly install: string;
     readonly repair: string;
     readonly launch: string;
+    readonly relocate: string;
     readonly percent: (values: { percent: string | number }) => string;
   };
   readonly console: {
@@ -414,6 +432,7 @@ export type Messages = {
       readonly install: string;
       readonly repair: string;
       readonly launch: string;
+      readonly relocate: string;
     };
     readonly outcome: {
       readonly succeeded: string;

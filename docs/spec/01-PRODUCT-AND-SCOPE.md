@@ -31,7 +31,7 @@ The launcher replaces the official launcher's interface. Minecraft remains an un
 
 No Forge/Fabric/NeoForge/Quilt installation, mods catalog, modpacks, snapshots, legacy pre-modern argument formats, version inheritance, Bedrock, server hosting, skin editing, embedded game window, friend/social feed, telemetry, cloud sync, multiple concurrent games, or offline launch in MVP. No automatic launcher updater. No arbitrary JVM-argument text box or custom Java executable selector initially.
 
-Keep interfaces extensible, but do not implement speculative plugin systems. Manual installation deletion and data-directory relocation are deferred to avoid adding destructive flows. Users may open their installation folder; explain that deleting it manually deletes its worlds.
+Keep interfaces extensible, but do not implement speculative plugin systems. Manual installation deletion and data-directory relocation are deferred to avoid adding destructive flows. (Relocation was added later as a copy that keeps the old folder, with a portable mode: DECISIONS.md D-043.) Users may open their installation folder; explain that deleting it manually deletes its worlds.
 
 ## Supported release policy
 
