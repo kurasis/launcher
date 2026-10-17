@@ -113,6 +113,15 @@
   overflow-wrap: anywhere;
 }
 
+.itemNote {
+  grid-column: 2;
+  color: var(--color-text-muted);
+  font-size: var(--font-size-sm);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
 .itemMeta {
   display: flex;
   flex-wrap: wrap;
@@ -121,6 +130,12 @@
   justify-content: space-between;
   color: var(--color-text-muted);
   font-size: var(--font-size-sm);
+}
+
+.notes {
+  resize: vertical;
+  min-height: 5rem;
+  font: inherit;
 }
 
 .muted {

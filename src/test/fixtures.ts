@@ -27,6 +27,7 @@ export function instanceFixture(overrides: Partial<InstanceSummary> = {}): Insta
     busy: false,
     java: null,
     loader: null,
+    notes: '',
     ...overrides,
   };
 }

@@ -1,4 +1,6 @@
+import { useState } from 'react';
 import { Button } from '../../components/Button';
+import { Field } from '../../components/Field';
 import { Notice } from '../../components/Notice';
 import { Panel } from '../../components/Panel';
 import { StatusBadge } from '../../components/StatusBadge';
@@ -76,6 +78,51 @@ export function InstanceDetails({ instance, onEditSettings }: InstanceDetailsPro
       </div>
       <p className={styles.muted}>{t.openFolderHint}</p>
       {openFolder.error !== null && <Notice tone="danger">{openFolder.error}</Notice>}
+      <NotesEditor key={instance.id} instance={instance} />
     </Panel>
+  );
+}
+
+/** The installation's notes; saved on request, also while it is busy. */
+function NotesEditor({ instance }: { instance: InstanceSummary }) {
+  const [draft, setDraft] = useState(instance.notes);
+  const [saved, setSaved] = useState(false);
+  const save = useCommand((requestId: string, notes: string) =>
+    ipc.setInstanceNotes({ instanceId: instance.id, notes }, requestId),
+  );
+  const changed = draft.trim() !== instance.notes;
+  return (
+    <form
+      className={forms.form}
+      onSubmit={(event) => {
+        event.preventDefault();
+        void save.run(draft).then((result) => {
+          if (result) setSaved(true);
+        });
+      }}
+    >
+      <Field label={t.notes} hint={t.notesHint}>
+        {(props) => (
+          <textarea
+            {...props}
+            className={[forms.input, styles.notes].join(' ')}
+            value={draft}
+            maxLength={4000}
+            rows={4}
+            onChange={(event) => {
+              setDraft(event.target.value);
+              setSaved(false);
+            }}
+          />
+        )}
+      </Field>
+      <div className={forms.actions}>
+        <Button type="submit" disabled={save.pending || !changed}>
+          {t.notesSave}
+        </Button>
+        {saved && !changed && <span role="status">{t.saved}</span>}
+      </div>
+      {save.error !== null && <Notice tone="danger">{save.error}</Notice>}
+    </form>
   );
 }

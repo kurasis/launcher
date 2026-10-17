@@ -158,9 +158,45 @@ pub fn validate_display_name(raw: &str) -> LauncherResult<String> {
     Ok(name.to_owned())
 }
 
+/// Longest installation note, in characters.
+pub const MAX_NOTES_CHARS: usize = 4000;
+
+/// Installation notes: up to [`MAX_NOTES_CHARS`] characters of text, with line
+/// breaks and tabs but no other control characters. Line endings become `\n`
+/// and surrounding blank space is dropped.
+pub fn validate_notes(raw: &str) -> LauncherResult<String> {
+    let notes = raw.replace("\r\n", "\n").replace('\r', "\n");
+    let notes = notes.trim();
+    if notes.chars().count() > MAX_NOTES_CHARS {
+        return Err(LauncherError::templated(
+            ErrorCode::InvalidInput,
+            "Notes can be at most {max} characters long.",
+            crate::error::params([("max", (MAX_NOTES_CHARS as u64).into())]),
+        ));
+    }
+    if notes
+        .chars()
+        .any(|c| c.is_control() && c != '\n' && c != '\t')
+    {
+        return Err(LauncherError::invalid_input(
+            "Notes cannot contain control characters.",
+        ));
+    }
+    Ok(notes.to_owned())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn notes_keep_lines_and_refuse_control_characters() {
+        assert_eq!(validate_notes("  a\r\nb\tc\n ").unwrap(), "a\nb\tc");
+        assert_eq!(validate_notes("").unwrap(), "");
+        assert!(validate_notes("a\u{0007}").is_err());
+        assert!(validate_notes(&"x".repeat(MAX_NOTES_CHARS + 1)).is_err());
+        assert!(validate_notes(&"ж".repeat(MAX_NOTES_CHARS)).is_ok());
+    }
 
     const GIB: u64 = 1024 * MIB;
 

@@ -144,6 +144,8 @@ export interface InstanceSummary {
   java: InstalledJava | null;
   /** The mod loader on top of the game; null for vanilla (D-039). */
   loader: LoaderChoice | null;
+  /** The user's own notes; empty when none. */
+  notes: string;
 }
 
 /** Mod loaders the launcher installs (D-039). */
@@ -401,6 +403,11 @@ export interface CreateInstancePayload {
   displayName: string;
   versionId: string;
   loader?: LoaderChoice | null;
+}
+
+export interface SetInstanceNotesPayload {
+  instanceId: string;
+  notes: string;
 }
 
 export interface UpdateInstanceSettingsPayload {

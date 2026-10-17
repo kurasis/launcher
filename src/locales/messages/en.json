@@ -230,7 +230,10 @@
       "javaNone": "Chosen when it is installed",
       "window": "Memory and window",
       "windowValue": "{mib, number, ::group-off} MiB · {width, number, ::group-off}×{height, number, ::group-off}",
-      "edit": "Change settings"
+      "edit": "Change settings",
+      "notes": "Notes",
+      "notesHint": "Only for you: what this installation is for, its mods, servers or anything to remember.",
+      "notesSave": "Save notes"
     },
     "settings": {
       "title": "Settings",
@@ -554,6 +557,8 @@
     "No Java {major} runtime is available for this computer from the runtime provider.": "No Java {major} runtime is available for this computer from the runtime provider.",
     "No client for source.": "No client for source.",
     "No saved sign-in was found. Sign in again.": "No saved sign-in was found. Sign in again.",
+    "Notes can be at most {max} characters long.": "Notes can be at most {max} characters long.",
+    "Notes cannot contain control characters.": "Notes cannot contain control characters.",
     "Opening the game folder": "Opening the game folder",
     "Preparing assets stopped unexpectedly.": "Preparing assets stopped unexpectedly.",
     "Preparing native libraries stopped unexpectedly.": "Preparing native libraries stopped unexpectedly.",

@@ -42,6 +42,13 @@ pub struct CreateInstancePayload {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct SetInstanceNotesPayload {
+    pub instance_id: InstanceId,
+    pub notes: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct UpdateInstanceSettingsPayload {
     pub instance_id: InstanceId,
     pub max_heap_mib: u32,
@@ -114,6 +121,7 @@ pub struct InstanceSummary {
     pub busy: bool,
     pub java: Option<InstalledJava>,
     pub loader: Option<crate::loader::LoaderChoice>,
+    pub notes: String,
 }
 
 impl InstanceSummary {
@@ -132,6 +140,7 @@ impl InstanceSummary {
             busy,
             java: instance.java.clone(),
             loader: instance.loader.clone(),
+            notes: instance.notes.clone(),
         }
     }
 }

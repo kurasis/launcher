@@ -868,3 +868,14 @@ message` plus a stack trace), with the event's level.
   game's demo mode that this profile plays.
 - **About:** the "Microsoft sign-in setup" panel is gone. The Account screen still tells
   whether sign-in is available in this build.
+
+## D-041 — Installation notes
+
+- **Status:** accepted (owner request, 2026-10-17) · **Affects:** docs/spec/02
+  (`InstanceFile`), the Installations screen
+- **Decision:** every installation has free-text notes (`notes` in `instance.json`, up to
+  4,000 characters; line breaks and tabs kept, other control characters refused, line
+  endings normalized). They are edited under the installation's details and saved with
+  **Save notes** (`set_instance_notes`); the list shows their first line. Saving is
+  allowed while the installation is installing or playing, because notes affect
+  neither.
