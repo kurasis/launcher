@@ -1361,3 +1361,10 @@ installation's runtime from its lock, and choosing a source writes `javaProvider
   because its remaining files were already stored.
 - **Not verified:** Windows and macOS (CI builds only), very large worlds (time
   and memory were not measured).
+
+## One Play button (D-046)
+
+- **Automated:** `InstallPanel.test.tsx`: the button reads **Play** for the built-in
+  player, a demo profile and a Microsoft account, and the demo hint is gone.
+- **Release build, Linux x64:** the installation panel shows **PLAY** with _Play as_
+  "Default: Alex_Tester (demo)" and no demo hint ([panel](verification/play-label.png)).
