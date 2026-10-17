@@ -1233,11 +1233,12 @@ installation's runtime from its lock, and choosing a source writes `javaProvider
 ## Installation notes (D-041)
 
 - **Automated:** `validate_notes` (line endings, control characters, the 4000-character
-  limit, non-Latin text), the `set_instance_notes` state test (saved while the
-  installation is busy, refused with control characters), and the interface test of
-  the notes editor (`InstanceDetails.test.tsx`: shows, edits and saves notes; the list
-  shows the first line).
-- **Not verified live:** the notes editor was not exercised in the release build.
+  limit, non-Latin text); the state test `notes_are_saved_while_busy_and_survive_restart`
+  (saved while a launch holds the installation, refused with control characters, kept
+  after a restart); the interface test of the notes editor (`InstanceDetails.test.tsx`:
+  edits and saves notes).
+- **Not verified:** the first-line preview in the installation list has no test, and
+  the notes editor was not exercised in the release build.
 
 ## Closing the launcher once the game opens (D-042)
 
