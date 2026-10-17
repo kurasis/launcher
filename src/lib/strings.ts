@@ -48,7 +48,7 @@ export const strings = {
       'Sign-in opens your web browser. The launcher never sees your password; it only receives a sign-in code from Microsoft.',
     notConfigured:
       'Sign-in is unavailable in this build because no project-owned Microsoft application ID is configured (see docs/AUTH-SETUP.md).',
-    waiting: 'Finish signing in in your web browser. This window updates automatically.',
+    waiting: 'Finish signing in with your web browser. This window updates automatically.',
     cancel: 'Cancel sign-in',
     checking: 'Checking your account…',
     verified: 'Minecraft: Java Edition access verified for this session.',

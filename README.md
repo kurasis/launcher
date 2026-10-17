@@ -27,11 +27,13 @@ need an Intel Mac or Windows/Linux; Apple silicon runs 1.19 and later.
 **Without an account:** **Play demo** starts Minecraft's free demo (five in-game days, no
 multiplayer) under a local player name, in every build (D-033).
 
-**What does not work yet:** signing in and playing the full game. Microsoft sign-in needs
-a project-owned Microsoft application (client) ID and Minecraft service access approval,
-both owner actions ([`docs/AUTH-SETUP.md`](docs/AUTH-SETUP.md)). Full play always goes
-through the signed-in account and its fresh access check. For automated tests, debug
-builds can route every launch to the demo with a test profile
+**What does not work yet:** playing the full game. The project's Microsoft application is
+registered and packages are built with its client ID, but Minecraft services have not yet
+approved it, so a sign-in is expected to end with their refusal until then; no account
+has been verified yet
+([`docs/AUTH-SETUP.md`](docs/AUTH-SETUP.md)). Full play always goes through the signed-in
+account and its fresh access check. For automated tests, debug builds can route every
+launch to the demo with a test profile
 ([`docs/DEVELOPMENT.md`](docs/DEVELOPMENT.md#test-profile-debug-builds-only), D-030).
 
 **Not qualified yet:** real Windows, macOS and Wayland machines, real accounts and signed

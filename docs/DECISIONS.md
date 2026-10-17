@@ -608,6 +608,21 @@ replaces it), `superseded`.
 - **Verification:** unit tests (`demo_launches_need_no_account_and_always_run_the_demo`,
   `InstallPanel` demo and Play cases); a release build started the real demo.
 
+## D-034 — Client ID as a repository variable
+
+- **Status:** accepted (owner action, 2026-10-17) · **Affects:** P04, A03
+- **Decision:** the project-owned Microsoft client ID
+  (`96c77e97-0788-4e3a-8eaf-91c8b143ba86`, a public, non-secret value) is supplied as the
+  GitHub repository variable `LAUNCHER_MSA_CLIENT_ID`. The package workflow compiles it
+  into every package; local builds pass the same environment variable. It is not
+  committed to source, so a fork never ships this project's ID by accident.
+- **Registration:** personal Microsoft accounts only (`requestedAccessTokenVersion` 2),
+  platform "Mobile and desktop applications", redirect `http://localhost`, no secret.
+- **Status of access:** Microsoft's authorization endpoint accepts the launcher's request
+  (sign-in form shown); Minecraft service access is pending, so a sign-in is expected to
+  end with the Minecraft refusal (`AUTH_FORBIDDEN` / `AUTH_APP_NOT_APPROVED`). **Play demo**
+  (D-033) is unaffected.
+
 ## D-035 — Every vanilla version: releases, snapshots, beta and alpha
 
 - **Status:** accepted (owner request, 2026-10-17) · **Affects:** FR (version choice),

@@ -992,6 +992,21 @@ returns `testProfile: null` in release builds by construction.
 | Play demo (1.21.1)             | Game window after 15 s; title screen reads "Minecraft 1.21.1 Demo" with "Play Demo World" ([png](verification/demo-release-title.png)); log: `Setting user: Player`; placeholder token absent from the run log |
 | Ending the run                 | The headless X server stopped answering clients while the game ran, so the game was ended with SIGTERM; the run was recorded as failed with exit code 143, as expected                                         |
 
+## Microsoft client ID (D-034, gate G0 in part)
+
+- **Date / host:** 2026-10-17, development host; client ID `96c77e97-0788-4e3a-8eaf-91c8b143ba86`
+  from the repository variable. Minecraft service access pending; no account signed in.
+
+| Check                                   | Result                                                                                                                                                                                                                                     |
+| --------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| Package workflow (manual run on `main`) | [Run 39037754548](https://github.com/kurasis/launcher/actions/runs/39037754548) builds with `LAUNCHER_MSA_CLIENT_ID` set                                                                                                                   |
+| Release core with the ID                | The ID is compiled in; Account shows **Sign in with Microsoft**                                                                                                                                                                            |
+| Sign in                                 | Opens the system browser with the consumers authorize URL: the client ID, `redirect_uri=http://localhost:<port>/`, scopes `XboxLive.SignIn XboxLive.offline_access`, PKCE S256, `prompt=select_account`; UI shows "Signing in" with Cancel |
+| That URL against Microsoft              | `login.microsoftonline.com` 302 → `login.live.com` 200 with the account sign-in form; the alternative scope set behaves the same                                                                                                           |
+| Negative controls                       | The same request with an unregistered redirect or an unknown client ID ends on Microsoft's `invalid_request` "redirect_uri is not valid" page, so the positive result reflects this registration                                           |
+| Loopback callback                       | A callback without the attempt's `state` is answered with 400; Cancel ends the attempt ("Sign-in was cancelled")                                                                                                                           |
+| Not checked                             | Entering credentials, the token, Xbox, XSTS and Minecraft steps (owner-operated account test, after Minecraft service approval)                                                                                                            |
+
 ## Every vanilla version (D-035)
 
 - **Date / host:** 2026-10-17, development host (Ubuntu 24.04.5 container, Xvfb with

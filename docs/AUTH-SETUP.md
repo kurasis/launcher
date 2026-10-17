@@ -6,8 +6,11 @@ services. This document lists what the project owner must set up and what must b
 before the authentication phase (P04) can be completed. Normative requirements:
 [spec/03-AUTHENTICATION.md](spec/03-AUTHENTICATION.md).
 
-**Current status:** no project-owned client ID has been supplied; nothing in this document
-has been verified against live services. Development of non-auth phases is not blocked.
+**Current status (2026-10-17):** the owner registered the application and supplied its
+client ID as the repository variable `LAUNCHER_MSA_CLIENT_ID`, so CI packages are built
+with it. Microsoft accepts the launcher's authorization request (registration, redirect
+and scopes reach the sign-in form; see the owner record below). Minecraft service access
+is requested but **not yet approved**, and no account has signed in yet (A03 open).
 
 ## Hard rules
 
@@ -33,6 +36,11 @@ In the Microsoft Entra admin center (or Azure portal) → **App registrations** 
 | API permissions             | No Microsoft Graph permissions are needed                                                                   | —                                                                                                                                   |
 
 After registration copy the **Application (client) ID** (a GUID). It is not a secret.
+
+If saving **Personal accounts only** fails with "Property api.requestedAccessTokenVersion
+is invalid", open **Manifest**, set `"requestedAccessTokenVersion": 2` in the `api` block
+(`"accessTokenAcceptedVersion": 2` in the older AAD Graph manifest), save, and change the
+supported account types again. Personal Microsoft accounts only accept version 2 tokens.
 
 ## 2. Request Minecraft service access
 
@@ -70,28 +78,28 @@ These are taken from the specification's source review (Prism Launcher at commit
 `60bcc2694d7433e2d2a657fbf62b0d022f9116e0`) and Microsoft documentation. They have **not**
 been called with credentials yet.
 
-| Item                   | Candidate                                                                                                                                                                    | Status            |
-| ---------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------- |
-| Authorization endpoint | `https://login.microsoftonline.com/consumers/oauth2/v2.0/authorize`                                                                                                          | Unverified        |
-| Token endpoint         | `https://login.microsoftonline.com/consumers/oauth2/v2.0/token`                                                                                                              | Unverified        |
-| Scopes                 | `XboxLive.SignIn XboxLive.offline_access` (Prism) or `XboxLive.signin offline_access` (Microsoft refresh-token convention) — choose the minimal set the registration accepts | Unverified        |
-| PKCE                   | S256, fresh verifier and `state` per attempt                                                                                                                                 | Implemented (P04) |
-| Xbox user token        | `POST https://user.auth.xboxlive.com/user/authenticate` (`RpsTicket=d=<token>`, relying party `http://auth.xboxlive.com`)                                                    | Unverified        |
-| XSTS                   | `POST https://xsts.auth.xboxlive.com/xsts/authorize` (`RETAIL`, relying party `rp://api.minecraftservices.com/`)                                                             | Unverified        |
-| Minecraft token        | `POST https://api.minecraftservices.com/launcher/login` (`platform: PC_LAUNCHER`); the older `/authentication/login_with_xbox` is not the default                            | Unverified        |
-| Access check           | `GET https://api.minecraftservices.com/entitlements/license?requestId=<uuid>`                                                                                                | Unverified        |
-| Profile                | `GET https://api.minecraftservices.com/minecraft/profile`                                                                                                                    | Unverified        |
+| Item                   | Candidate                                                                                                                                                                    | Status                                                                         |
+| ---------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------ |
+| Authorization endpoint | `https://login.microsoftonline.com/consumers/oauth2/v2.0/authorize`                                                                                                          | Accepted: the launcher request reaches the Microsoft sign-in form (2026-10-17) |
+| Token endpoint         | `https://login.microsoftonline.com/consumers/oauth2/v2.0/token`                                                                                                              | Unverified                                                                     |
+| Scopes                 | `XboxLive.SignIn XboxLive.offline_access` (Prism) or `XboxLive.signin offline_access` (Microsoft refresh-token convention) — choose the minimal set the registration accepts | Both sets reach the sign-in form; confirm with a real sign-in                  |
+| PKCE                   | S256, fresh verifier and `state` per attempt                                                                                                                                 | Implemented (P04)                                                              |
+| Xbox user token        | `POST https://user.auth.xboxlive.com/user/authenticate` (`RpsTicket=d=<token>`, relying party `http://auth.xboxlive.com`)                                                    | Unverified                                                                     |
+| XSTS                   | `POST https://xsts.auth.xboxlive.com/xsts/authorize` (`RETAIL`, relying party `rp://api.minecraftservices.com/`)                                                             | Unverified                                                                     |
+| Minecraft token        | `POST https://api.minecraftservices.com/launcher/login` (`platform: PC_LAUNCHER`); the older `/authentication/login_with_xbox` is not the default                            | Unverified                                                                     |
+| Access check           | `GET https://api.minecraftservices.com/entitlements/license?requestId=<uuid>`                                                                                                | Unverified                                                                     |
+| Profile                | `GET https://api.minecraftservices.com/minecraft/profile`                                                                                                                    | Unverified                                                                     |
 
 The implemented contract and its validation rules are described in
 [AUTH-CONTRACT.md](AUTH-CONTRACT.md).
 
 ## 5. Owner record (fill in; no secrets)
 
-| Field                                                                             | Value                      |
-| --------------------------------------------------------------------------------- | -------------------------- |
-| Client ID (non-secret)                                                            | Not supplied               |
-| Supported account types                                                           | —                          |
-| Registered redirect URI(s)                                                        | —                          |
-| Minecraft service access request date / outcome                                   | —                          |
-| First positive own-client sign-in (date, OS, commit)                              | — (required for P04 / A03) |
-| Accounts available for owner-operated tests: owned / no access / active Game Pass | — (A03–A06)                |
+| Field                                                                             | Value                                                                                 |
+| --------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------- |
+| Client ID (non-secret)                                                            | `96c77e97-0788-4e3a-8eaf-91c8b143ba86` (repository variable `LAUNCHER_MSA_CLIENT_ID`) |
+| Supported account types                                                           | Personal accounts only (`requestedAccessTokenVersion` 2)                              |
+| Registered redirect URI(s)                                                        | `http://localhost` (Mobile and desktop applications)                                  |
+| Minecraft service access request date / outcome                                   | Requested by 2026-10-17 / pending                                                     |
+| First positive own-client sign-in (date, OS, commit)                              | — (required for P04 / A03)                                                            |
+| Accounts available for owner-operated tests: owned / no access / active Game Pass | — (A03–A06)                                                                           |
