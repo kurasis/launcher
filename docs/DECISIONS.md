@@ -447,7 +447,9 @@ replaces it), `superseded`.
 - **No tray icon in the MVP.** Reopening the executable (single instance) or the macOS
   Dock restores the window; nothing depends on a tray extension.
 - **Surviving games:** the active game's PID, OS process start time and executable are
-  stored in `locks/active-run.json`. Only an exact match is treated as the game; it is
+  stored in `locks/active-run.json`. Only a match of PID, executable and start time
+  (within 5 s: Linux reports start times relative to a boot time that moves with clock
+  corrections) is treated as the game; it is
   watched every 2 s while holding the activity permit and can be stopped by the user
   after the identity is checked again. It is not adopted (no output, no exit code).
 
