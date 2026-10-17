@@ -1107,3 +1107,33 @@ message` plus a stack trace), with the event's level.
 - **Commands:** `list_screenshots`, `delete_screenshot`, and `open_screenshot`
   (opens it or, with `reveal`, shows it in the file manager), each taking an
   installation ID and a file name that Rust checks.
+
+## D-051 — Metered connections: asking before big downloads, traffic count and a monthly limit
+
+- **Status:** accepted (owner request, 2026-10-17) · **Affects:** Settings → **Network**,
+  `settings.json` (`metered`, `meteredWarnMib`, `monthlyLimitMib`),
+  `DATA_ROOT/traffic.json`, installs and repairs (a new phase `awaiting_approval`),
+  the download manager
+- **Switch:** _Metered connection_ is off by default and set by the user. The
+  launcher does not read the system's metered flag: each platform reports it
+  differently, and a wrong guess would either nag or download over a capped plan
+  without asking.
+- **Asking first:** on a metered connection, once an install or repair knows which
+  files are missing, a download of at least _N_ MiB (default 100; 0 asks before every
+  download) or one that would take this month's traffic past the monthly limit
+  waits for the user. The installation panel and the download manager (which opens by
+  itself, its corner button highlighted) show the size and file count, or the limit
+  and what was used, with **Download** and **Don't download**. Declining cancels the
+  operation like **Cancel**: nothing is downloaded and verified files are kept.
+  Once allowed, the rest of that operation (for example its Java) does not ask again.
+  The check happens before any byte of the files is fetched, after the free disk space
+  check.
+- **Traffic count:** every response body the launcher reads is counted where it is
+  read, by source: game files and Mojang's Java, Java from Adoptium, mod loaders, and
+  version lists. Counts are written to `traffic.json` every 5 seconds and on exit,
+  under the current month in local time; twelve months are kept. The Network section
+  shows this month by source, the limit as a bar, earlier months, and can reset the
+  count. Sign-in requests and the game's own traffic (multiplayer, skins, Realms) are
+  not counted.
+- **Monthly limit:** 0 (the default) is no limit. The limit never blocks a download
+  silently; passing it always needs the user's answer.

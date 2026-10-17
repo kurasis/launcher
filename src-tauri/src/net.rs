@@ -305,6 +305,7 @@ impl PublicClient {
             .await
             .map_err(|e| map_transport_error(&e))?
         {
+            crate::traffic::record(self.policy, chunk.len() as u64);
             if body.len() + chunk.len() > max_bytes {
                 return Err(too_large());
             }

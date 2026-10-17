@@ -26,6 +26,7 @@ const progress: OperationProgress = {
   totalFiles: 4000,
   bytesPerSecond: 8 * 1024 * 1024,
   currentFiles: ['client.jar', 'lwjgl-3.3.3.jar'],
+  approval: null,
   timestamp: '2026-10-17T00:00:00Z',
 };
 
@@ -105,6 +106,49 @@ describe('DownloadManager', () => {
     expect(screen.getByText('Downloading c.ogg')).toBeVisible();
     rerender(view([]));
     expect(screen.queryByText(/Downloading .*\.ogg/)).toBeNull();
+  });
+
+  it('opens by itself when a download waits for permission', async () => {
+    const calls: { cmd: string; args: unknown }[] = [];
+    mockIPC((cmd, args) => {
+      calls.push({ cmd, args });
+      if (cmd === 'get_app_snapshot') return snapshotFixture();
+      return null;
+    });
+    render(
+      <DownloadManager
+        snapshot={snapshotFixture({
+          instances: [a],
+          activeOperation: { kind: 'install', instanceId: a.id, operationId: 'op-1' },
+          operationProgress: {
+            ...progress,
+            phase: 'awaiting_approval',
+            downloadedBytes: 0,
+            currentFiles: [],
+            approval: {
+              bytes: 550 * 1024 * 1024,
+              files: 3955,
+              reason: 'over_limit',
+              monthBytes: 900 * 1024 * 1024,
+              monthlyLimitMib: 1024,
+            },
+          },
+        })}
+      />,
+    );
+    const button = screen.getByRole('button', { name: 'Downloads' });
+    expect(button).toHaveAttribute('data-asking', 'true');
+    expect(screen.getByText('Download 550.0 MiB?')).toBeVisible();
+    expect(screen.getByText(/would pass your monthly limit: 900\.0 MiB of 1\.0 GiB/)).toBeVisible();
+    fireEvent.click(screen.getByRole('button', { name: 'Download' }));
+    await waitFor(() => {
+      expect(calls.find((c) => c.cmd === 'answer_download')?.args).toMatchObject({
+        request: { payload: { operationId: 'op-1', allow: true } },
+      });
+    });
+    // Closing keeps it closed for this download.
+    fireEvent.click(button);
+    expect(screen.queryByText('Download 550.0 MiB?')).toBeNull();
   });
 
   it('counts checked files before anything downloads', () => {

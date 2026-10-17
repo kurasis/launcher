@@ -1431,3 +1431,34 @@ the world), both started from the launcher with a no-token profile.
   the file manager (this test system has no `xdg-open`, and clicking showed no
   error); the Windows address `http://gallery.localhost/…` beyond a unit test.
 - Screenshots: `docs/verification/gallery.png`, `docs/verification/gallery-viewer.png`.
+
+## Metered connections (D-051)
+
+Release build on Linux (Xvfb), the live data folder from the D-039 tests. Asset
+objects were deleted from the shared store before the repairs, so that a repair of the
+Quilt 1.21.1 installation had 129.7 MiB to download.
+
+- **Over the limit:** with _Metered connection_ on and a monthly limit of 1 MiB, the
+  repair checked the files and then waited ("Waiting for your permission") with
+  "Download 129.7 MiB? This download of 129.7 MiB would pass your monthly limit:
+  0 bytes of 1.0 MiB used so far." in the installation panel and in the download
+  manager, which opened by itself with its corner button highlighted.
+  **Don't download** ended the repair as "Cancelled. Files verified so far were
+  kept"; the asset store stayed at 668 MiB, so nothing was downloaded.
+- **Large download:** with no limit and the default 100 MiB, the next repair asked
+  "Download 129.7 MiB? 940 files (129.7 MiB) will be downloaded over a metered
+  connection." **Download** let it finish: "Repair finished. Downloaded 940 files
+  (129.7 MiB)".
+- **Count:** `traffic.json` then held 135,983,852 bytes (129.7 MiB) under
+  `2026-10` as game files, exactly the repair's download, and the Network section
+  showed "129.7 MiB downloaded this month" with the split by source, also after the
+  launcher was restarted.
+- **Tests:** the install service waits for the answer, downloads nothing before it,
+  finishes after **Download** and cancels after **Don't download**; the rule (size,
+  limit, 0 asks always, not metered never asks); the monthly file (by source and
+  month, twelve months kept, reset); the panel and settings components.
+- **Not verified live:** the count of version lists and other metadata (they come
+  through the same counted function, but no live run fetched them here), Java from
+  Adoptium and mod loader files.
+- Screenshots: `docs/verification/metered-approval.png` (over the limit),
+  `docs/verification/metered-large.png`, `docs/verification/metered-settings.png`.

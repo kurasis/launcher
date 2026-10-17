@@ -106,6 +106,13 @@ pub struct SettingsPatch {
     pub backup_after_play: Option<bool>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub backup_keep: Option<u32>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub metered: Option<bool>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub metered_warn_mib: Option<u32>,
+    /// 0 removes the limit.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub monthly_limit_mib: Option<u32>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -120,6 +127,9 @@ pub struct SettingsView {
     pub language: Language,
     pub backup_after_play: bool,
     pub backup_keep: u32,
+    pub metered: bool,
+    pub metered_warn_mib: u32,
+    pub monthly_limit_mib: u32,
     /// False when settings were written by a newer launcher or could not be read.
     pub writable: bool,
 }
@@ -136,6 +146,9 @@ impl SettingsView {
             language: settings.language.clone(),
             backup_after_play: settings.backup_after_play,
             backup_keep: settings.backup_keep,
+            metered: settings.metered,
+            metered_warn_mib: settings.metered_warn_mib,
+            monthly_limit_mib: settings.monthly_limit_mib,
             writable,
         }
     }
@@ -427,6 +440,21 @@ pub enum InstallState {
     PreparingLoader,
     Finalizing,
     CancelRequested,
+    /// Waiting for the user to allow a download on a metered connection (D-051).
+    AwaitingApproval,
+}
+
+/// A download that waits for the user's answer on a metered connection.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ApprovalRequest {
+    pub bytes: u64,
+    pub files: u64,
+    pub reason: crate::traffic::Caution,
+    /// Downloaded this month before this download.
+    pub month_bytes: u64,
+    /// 0 is no limit.
+    pub monthly_limit_mib: u32,
 }
 
 /// Coalesced progress of one install/repair operation. Published without a new
@@ -448,6 +476,8 @@ pub struct OperationProgress {
     pub bytes_per_second: Option<u64>,
     /// Names of the files being downloaded right now.
     pub current_files: Vec<String>,
+    /// Set while the operation waits for the user's answer (D-051).
+    pub approval: Option<ApprovalRequest>,
     pub timestamp: DateTime<Utc>,
 }
 

@@ -11,6 +11,7 @@ import { InstallationForm } from './InstallationForm';
 import { InstanceJavaForm } from './InstanceJavaForm';
 import { DataFolderSettings } from './DataFolderSettings';
 import { JavaSettings } from './JavaSettings';
+import { NetworkSettings } from '../network/NetworkSettings';
 import styles from './SettingsView.module.css';
 import { gameLabel } from '../instances/loaderLabel';
 
@@ -23,7 +24,7 @@ interface SettingsViewProps {
 }
 
 const t = strings.settings;
-const sections: SettingsSection[] = ['general', 'java', 'defaults', 'installations'];
+const sections: SettingsSection[] = ['general', 'java', 'defaults', 'network', 'installations'];
 const themes: Theme[] = ['system', 'light', 'dark'];
 const modes: DuringGameMode[] = ['unload_and_return', 'keep_open', 'close_launcher'];
 
@@ -61,6 +62,7 @@ export function SettingsView({ snapshot, section, onSection, instanceId }: Setti
             <JavaSettings settings={settings} instances={snapshot.instances} />
           )}
           {section === 'defaults' && <DefaultsForm settings={settings} memory={snapshot.memory} />}
+          {section === 'network' && <NetworkSettings snapshot={snapshot} />}
           {section === 'installations' && (
             <InstallationsSettings
               snapshot={snapshot}

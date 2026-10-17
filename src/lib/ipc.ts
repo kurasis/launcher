@@ -34,6 +34,7 @@ import {
   type BackupInfo,
   type BackupOverview,
   type Gallery,
+  type TrafficSummary,
   type BackupScope,
   type JavaCheck,
   type NoTokenProfile,
@@ -140,6 +141,13 @@ export const ipc = {
     }),
   cancelOperation: (operationId: string, requestId?: string): Promise<CancelAck> =>
     invoke<CancelAck>('cancel_operation', { request: mutation({ operationId }, requestId) }),
+  answerDownload: (operationId: string, allow: boolean, requestId?: string): Promise<true> =>
+    invoke('answer_download', { request: mutation({ operationId, allow }, requestId) }).then(
+      () => true as const,
+    ),
+  getTraffic: (): Promise<TrafficSummary> => invoke<TrafficSummary>('get_traffic'),
+  resetTraffic: (requestId?: string): Promise<TrafficSummary> =>
+    invoke<TrafficSummary>('reset_traffic', { request: mutation({}, requestId) }),
   listScreenshots: (): Promise<Gallery> => invoke<Gallery>('list_screenshots'),
   deleteScreenshot: (instanceId: string, file: string, requestId?: string): Promise<true> =>
     invoke('delete_screenshot', { request: mutation({ instanceId, file }, requestId) }).then(

@@ -57,6 +57,11 @@
   stroke-linejoin: round;
 }
 
+.button[data-asking] {
+  color: var(--color-warning-text);
+  background: var(--color-warning-bg);
+}
+
 .button[data-working] .arrow {
   animation: drop 1.2s ease-in-out infinite;
 }

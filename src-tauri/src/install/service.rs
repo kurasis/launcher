@@ -258,6 +258,15 @@ struct Active {
     operation_id: String,
     cancel: CancelToken,
     progress: Arc<Mutex<ProgressUpdate>>,
+    gate: Arc<Gate>,
+}
+
+/// The user's answer to a download that waits on a metered connection (D-051).
+#[derive(Default)]
+struct Gate {
+    answer: Mutex<Option<tokio::sync::oneshot::Sender<bool>>>,
+    /// Allowed once: the rest of this operation downloads without asking again.
+    granted: std::sync::atomic::AtomicBool,
 }
 
 /// Remembers accepted request IDs so a retried IPC call returns the same operation.
@@ -357,11 +366,14 @@ impl InstallService {
             total_files: None,
             bytes_per_second: None,
             current_files: Vec::new(),
+            approval: None,
         }));
+        let gate = Arc::new(Gate::default());
         *lock_or(&self.active) = Some(Active {
             operation_id: operation_id.clone(),
             cancel: cancel.clone(),
             progress: Arc::clone(&progress),
+            gate: Arc::clone(&gate),
         });
         state.announce_runs();
         state.publish_progress(lock_or(&progress).clone());
@@ -379,6 +391,7 @@ impl InstallService {
             loader: instance.loader,
             cancel,
             progress,
+            gate,
         };
         let active = Arc::clone(&self.active);
         tokio::spawn(async move {
@@ -516,6 +529,24 @@ impl InstallService {
         }
     }
 
+    /// Allows or declines the download the running operation waits for (D-051).
+    pub fn answer_download(&self, operation_id: &str, allow: bool) -> LauncherResult<()> {
+        let sender = lock_or(&self.active)
+            .as_ref()
+            .filter(|active| active.operation_id == operation_id)
+            .and_then(|active| lock_or(&active.gate.answer).take());
+        match sender {
+            Some(sender) => {
+                let _ = sender.send(allow);
+                Ok(())
+            }
+            None => Err(LauncherError::new(
+                ErrorCode::OperationNotFound,
+                "No download is waiting for an answer.",
+            )),
+        }
+    }
+
     /// Requests cooperative cancellation, or reports the recorded outcome.
     pub fn cancel(&self, operation_id: &str) -> LauncherResult<CancelAck> {
         let state = self.host.app_state();
@@ -550,6 +581,7 @@ struct Forward<'a> {
     host: &'a dyn StateAccess,
     progress: &'a Mutex<ProgressUpdate>,
     cancel: &'a CancelToken,
+    gate: &'a Gate,
     stage: InstallState,
     corrupt: Mutex<BTreeSet<String>>,
 }
@@ -579,6 +611,72 @@ impl ProgressSink for Forward<'_> {
     fn corrupt(&self, path: &str) {
         lock_or(&self.corrupt).insert(path.to_owned());
     }
+
+    /// On a metered connection, a download that reaches the warning size or
+    /// would pass the monthly limit waits until the user allows or declines it.
+    fn approve(&self, bytes: u64, files: u64) -> crate::download::Approval<'_> {
+        Box::pin(async move {
+            use std::sync::atomic::Ordering;
+            if self.gate.granted.load(Ordering::Relaxed) {
+                return true;
+            }
+            let state = self.host.app_state();
+            let settings = state.settings();
+            let month_bytes = state
+                .data_root()
+                .map_or(0, |root| crate::traffic::month_total(&root));
+            let Some(reason) = crate::traffic::caution(
+                settings.metered,
+                settings.metered_warn_mib,
+                settings.monthly_limit_mib,
+                month_bytes,
+                bytes,
+            ) else {
+                return true;
+            };
+            let (sender, receiver) = tokio::sync::oneshot::channel();
+            *lock_or(&self.gate.answer) = Some(sender);
+            {
+                let mut update = lock_or(self.progress);
+                update.phase = InstallState::AwaitingApproval;
+                update.total_download_bytes = Some(bytes);
+                update.approval = Some(crate::state::dto::ApprovalRequest {
+                    bytes,
+                    files,
+                    reason,
+                    month_bytes,
+                    monthly_limit_mib: settings.monthly_limit_mib,
+                });
+                state.publish_progress(update.clone());
+            }
+            state.console().info(format!(
+                "Metered connection: waiting for permission to download {} in {files} file(s)",
+                crate::state::mib(bytes)
+            ));
+            let approved = tokio::select! {
+                answer = receiver => answer.unwrap_or(false),
+                () = self.cancel.cancelled() => false,
+            };
+            *lock_or(&self.gate.answer) = None;
+            {
+                let mut update = lock_or(self.progress);
+                update.approval = None;
+                update.phase = if approved {
+                    InstallState::Downloading
+                } else {
+                    InstallState::CancelRequested
+                };
+                state.publish_progress(update.clone());
+            }
+            state.console().info(if approved {
+                "Download allowed"
+            } else {
+                "Download declined"
+            });
+            self.gate.granted.store(approved, Ordering::Relaxed);
+            approved
+        })
+    }
 }
 
 struct Operation {
@@ -594,6 +692,7 @@ struct Operation {
     loader: Option<LoaderChoice>,
     cancel: CancelToken,
     progress: Arc<Mutex<ProgressUpdate>>,
+    gate: Arc<Gate>,
 }
 
 fn cancelled() -> LauncherError {
@@ -679,6 +778,7 @@ impl Operation {
             host: self.host.as_ref(),
             progress: &self.progress,
             cancel: &self.cancel,
+            gate: &self.gate,
             stage,
             corrupt: Mutex::default(),
         }

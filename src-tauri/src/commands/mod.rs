@@ -665,6 +665,54 @@ pub async fn repair_instance(
     )
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct AnswerDownloadPayload {
+    pub operation_id: String,
+    pub allow: bool,
+}
+
+/// Allows or declines a download that waits on a metered connection (D-051).
+#[tauri::command]
+pub fn answer_download(
+    installer: State<'_, Installer>,
+    request: MutationRequest<AnswerDownloadPayload>,
+) -> LauncherResult<()> {
+    crate::state::ledger::validate_request_id(&request.request_id)?;
+    installer
+        .get()?
+        .answer_download(&request.payload.operation_id, request.payload.allow)
+}
+
+fn traffic_root(state: &AppState) -> LauncherResult<crate::storage::paths::DataRoot> {
+    state.data_root().ok_or_else(|| {
+        crate::error::LauncherError::new(
+            crate::error::ErrorCode::StorageUnavailable,
+            "Launcher data is unavailable.",
+        )
+    })
+}
+
+/// Traffic the launcher downloaded this month and earlier (D-051).
+#[tauri::command]
+pub fn get_traffic(state: State<'_, AppState>) -> LauncherResult<crate::traffic::TrafficSummary> {
+    Ok(crate::traffic::summary(&traffic_root(&state)?))
+}
+
+/// Starts counting traffic from zero.
+#[tauri::command]
+pub fn reset_traffic(
+    state: State<'_, AppState>,
+    request: MutationRequest<EmptyPayload>,
+) -> LauncherResult<crate::traffic::TrafficSummary> {
+    crate::state::ledger::validate_request_id(&request.request_id)?;
+    let root = traffic_root(&state)?;
+    crate::traffic::reset(&root)
+        .map_err(|e| crate::error::LauncherError::from_io(&e, "Resetting the traffic count"))?;
+    state.console().info("Traffic count reset");
+    Ok(crate::traffic::summary(&root))
+}
+
 /// Requests cancellation of an install, a repair or a launch that has not
 /// started Java yet. A running game is not stopped here; use `stop_game`.
 #[tauri::command]

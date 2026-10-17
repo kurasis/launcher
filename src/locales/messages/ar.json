@@ -149,7 +149,8 @@
         "extracting_runtime": "تجهيز Java",
         "preparing_loader": "يعمل مثبّت مُحمِّل التعديلات",
         "finalizing": "الإنهاء",
-        "cancel_requested": "الإلغاء"
+        "cancel_requested": "الإلغاء",
+        "awaiting_approval": "بانتظار إذنك"
       },
       "progressLabel": "تقدّم التنزيل",
       "bytes": "{done} من {total}",
@@ -269,12 +270,14 @@
         "general": "عام",
         "java": "Java",
         "defaults": "التثبيتات الجديدة",
+        "network": "الشبكة",
         "installations": "التثبيتات"
       },
       "sectionHints": {
         "general": "اللغة والمظهر ونافذة المشغّل أثناء اللعب ومكان حفظ البيانات.",
         "java": "من أين ينزّل المشغّل بيئة Java للتثبيتات الجديدة.",
         "defaults": "الذاكرة وحجم النافذة لكل تثبيت جديد.",
+        "network": "الاتصالات محدودة البيانات وحركة البيانات التي ينزّلها المشغّل.",
         "installations": "الذاكرة وحجم النافذة وJava لتثبيت موجود."
       },
       "javaProvider": "مصدر Java",
@@ -635,6 +638,35 @@
       "deleted": "حُذفت لقطة الشاشة.",
       "cancel": "إلغاء"
     },
+    "metered": {
+      "toggle": "اتصال محدود البيانات",
+      "toggleHint": "اسأل قبل التنزيلات الكبيرة وتابع حركة البيانات. فعّله لبيانات الجوال أو لباقة ذات حد للبيانات.",
+      "warn": "اسأل قبل التنزيلات التي لا تقل عن (MiB)",
+      "warnHint": "القيمة 0 تسأل قبل كل تنزيل.",
+      "limit": "الحد الشهري (MiB)",
+      "limitHint": "التنزيل الذي يتجاوز الحد يسأل دائمًا أولًا. القيمة 0 تعني بلا حد.",
+      "save": "حفظ",
+      "saved": "تم الحفظ.",
+      "usage": "حركة البيانات هذا الشهر",
+      "used": "نُزِّل هذا الشهر: {used}",
+      "usedOfLimit": "نُزِّل هذا الشهر: {used} من {limit}",
+      "sources": {
+        "game": "ملفات اللعبة وJava من Mojang",
+        "java": "Java من Adoptium",
+        "loaders": "محمّلات التعديلات",
+        "metadata": "قوائم الإصدارات"
+      },
+      "earlier": "الأشهر السابقة",
+      "notCounted": "تُحتسب تنزيلات المشغّل فقط، لا حركة بيانات اللعبة نفسها مثل اللعب الجماعي.",
+      "reset": "تصفير العداد",
+      "confirmReset": "هل تريد نسيان كل حركة البيانات المحتسبة حتى الآن؟",
+      "cancel": "إلغاء",
+      "approvalTitle": "تنزيل {size}؟",
+      "approvalLarge": "سيُنزَّل {files, plural, zero {# ملف} one {ملف واحد} two {ملفان} few {# ملفات} many {# ملفًا} other {# ملف}} ({size}) عبر اتصال محدود البيانات.",
+      "approvalOverLimit": "تنزيل {size} هذا سيتجاوز حدك الشهري: استُخدم {used} من {limit} حتى الآن.",
+      "allow": "تنزيل",
+      "decline": "عدم التنزيل"
+    },
     "downloads": {
       "title": "التنزيلات",
       "open": "التنزيلات",
@@ -923,6 +955,10 @@
     "The screenshot could not be opened.": "تعذّر فتح لقطة الشاشة.",
     "This screenshot is not a PNG image the launcher can read.": "لقطة الشاشة هذه ليست صورة PNG يستطيع المشغّل قراءتها.",
     "This screenshot name is invalid.": "اسم لقطة الشاشة هذا غير صالح.",
-    "This screenshot no longer exists.": "لقطة الشاشة هذه لم تعد موجودة."
+    "This screenshot no longer exists.": "لقطة الشاشة هذه لم تعد موجودة.",
+    "Ask before downloads of at most {max} MiB.": "لا يمكن أن يتجاوز حد التنبيه {max} MiB.",
+    "No download is waiting for an answer.": "لا يوجد تنزيل بانتظار إجابة.",
+    "Resetting the traffic count": "تصفير عداد حركة البيانات",
+    "The monthly limit can be at most {max} MiB.": "لا يمكن أن يتجاوز الحد الشهري {max} MiB."
   }
 }

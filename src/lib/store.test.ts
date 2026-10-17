@@ -59,6 +59,7 @@ describe('reconcile', () => {
         totalFiles: 5,
         bytesPerSecond: null,
         currentFiles: [],
+        approval: null,
         timestamp: '',
       },
     });

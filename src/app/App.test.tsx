@@ -274,6 +274,7 @@ describe('App', () => {
           totalFiles: 10,
           bytesPerSecond: null,
           currentFiles: [],
+          approval: null,
           timestamp: '',
         },
       }),

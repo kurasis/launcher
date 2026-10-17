@@ -148,7 +148,8 @@
         "extracting_runtime": "Подготовка Java",
         "preparing_loader": "Работает установщик загрузчика модов",
         "finalizing": "Завершение",
-        "cancel_requested": "Отмена"
+        "cancel_requested": "Отмена",
+        "awaiting_approval": "Ждёт вашего разрешения"
       },
       "progressLabel": "Ход загрузки",
       "bytes": "{done} из {total}",
@@ -268,12 +269,14 @@
         "general": "Общие",
         "java": "Java",
         "defaults": "Новые установки",
+        "network": "Сеть",
         "installations": "Установки"
       },
       "sectionHints": {
         "general": "Язык, оформление, окно лаунчера во время игры и место хранения данных.",
         "java": "Откуда лаунчер загружает Java для новых установок.",
         "defaults": "Память и размер окна для каждой новой установки.",
+        "network": "Лимитное подключение и трафик, который скачивает лаунчер.",
         "installations": "Память, размер окна и Java существующей установки."
       },
       "javaProvider": "Источник Java",
@@ -634,6 +637,35 @@
       "deleted": "Скриншот удалён.",
       "cancel": "Отмена"
     },
+    "metered": {
+      "toggle": "Лимитное подключение",
+      "toggleHint": "Спрашивать перед большими загрузками и следить за трафиком. Включите для мобильного интернета или тарифа с ограничением трафика.",
+      "warn": "Спрашивать перед загрузками от, МиБ",
+      "warnHint": "0 — спрашивать перед каждой загрузкой.",
+      "limit": "Лимит в месяц, МиБ",
+      "limitHint": "Загрузка, которая превысит лимит, всегда требует подтверждения. 0 — без лимита.",
+      "save": "Сохранить",
+      "saved": "Сохранено.",
+      "usage": "Трафик за этот месяц",
+      "used": "Скачано в этом месяце: {used}",
+      "usedOfLimit": "Скачано в этом месяце: {used} из {limit}",
+      "sources": {
+        "game": "Файлы игры и Java от Mojang",
+        "java": "Java от Adoptium",
+        "loaders": "Загрузчики модов",
+        "metadata": "Списки версий"
+      },
+      "earlier": "Прошлые месяцы",
+      "notCounted": "Учитываются только загрузки лаунчера, а не собственный трафик игры, например сетевая игра.",
+      "reset": "Сбросить счётчик",
+      "confirmReset": "Забыть весь учтённый трафик?",
+      "cancel": "Отмена",
+      "approvalTitle": "Скачать {size}?",
+      "approvalLarge": "По лимитному подключению будет скачано {files, plural, one {# файл} few {# файла} many {# файлов} other {# файла}} ({size}).",
+      "approvalOverLimit": "Эта загрузка ({size}) превысит месячный лимит: уже использовано {used} из {limit}.",
+      "allow": "Скачать",
+      "decline": "Не скачивать"
+    },
     "downloads": {
       "title": "Загрузки",
       "open": "Загрузки",
@@ -922,6 +954,10 @@
     "The screenshot could not be opened.": "Не удалось открыть скриншот.",
     "This screenshot is not a PNG image the launcher can read.": "Этот скриншот не является PNG-изображением, которое лаунчер может прочитать.",
     "This screenshot name is invalid.": "Недопустимое имя скриншота.",
-    "This screenshot no longer exists.": "Этого скриншота больше нет."
+    "This screenshot no longer exists.": "Этого скриншота больше нет.",
+    "Ask before downloads of at most {max} MiB.": "Порог предупреждения — не больше {max} МиБ.",
+    "No download is waiting for an answer.": "Нет загрузки, ожидающей ответа.",
+    "Resetting the traffic count": "Сброс счётчика трафика",
+    "The monthly limit can be at most {max} MiB.": "Месячный лимит — не больше {max} МиБ."
   }
 }

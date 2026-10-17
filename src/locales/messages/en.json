@@ -148,7 +148,8 @@
         "extracting_runtime": "Preparing Java",
         "preparing_loader": "Running the mod loader installer",
         "finalizing": "Finishing",
-        "cancel_requested": "Cancelling"
+        "cancel_requested": "Cancelling",
+        "awaiting_approval": "Waiting for your permission"
       },
       "progressLabel": "Download progress",
       "bytes": "{done} of {total}",
@@ -268,12 +269,14 @@
         "general": "General",
         "java": "Java",
         "defaults": "New installations",
+        "network": "Network",
         "installations": "Installations"
       },
       "sectionHints": {
         "general": "Language, appearance, the launcher window while you play, and where data is kept.",
         "java": "Which Java runtimes the launcher downloads for new installations.",
         "defaults": "Memory and window size given to each new installation.",
+        "network": "Metered connections and the traffic the launcher downloads.",
         "installations": "Memory, window size and Java of an existing installation."
       },
       "javaProvider": "Java runtime source",
@@ -634,6 +637,35 @@
       "deleted": "Screenshot deleted.",
       "cancel": "Cancel"
     },
+    "metered": {
+      "toggle": "Metered connection",
+      "toggleHint": "Ask before big downloads and watch the traffic. Turn it on for mobile data or a plan with a data cap.",
+      "warn": "Ask before downloads of at least, MiB",
+      "warnHint": "0 asks before every download.",
+      "limit": "Monthly limit, MiB",
+      "limitHint": "A download that would pass it always asks first. 0 means no limit.",
+      "save": "Save",
+      "saved": "Saved.",
+      "usage": "Traffic this month",
+      "used": "{used} downloaded this month",
+      "usedOfLimit": "{used} of {limit} downloaded this month",
+      "sources": {
+        "game": "Game files and Mojang Java",
+        "java": "Java from Adoptium",
+        "loaders": "Mod loaders",
+        "metadata": "Version lists"
+      },
+      "earlier": "Earlier months",
+      "notCounted": "Only the launcher’s downloads are counted, not the game’s own traffic such as multiplayer.",
+      "reset": "Reset the count",
+      "confirmReset": "Forget all traffic counted so far?",
+      "cancel": "Cancel",
+      "approvalTitle": "Download {size}?",
+      "approvalLarge": "{files, plural, one {# file} other {# files}} ({size}) will be downloaded over a metered connection.",
+      "approvalOverLimit": "This download of {size} would pass your monthly limit: {used} of {limit} used so far.",
+      "allow": "Download",
+      "decline": "Don’t download"
+    },
     "downloads": {
       "title": "Downloads",
       "open": "Downloads",
@@ -689,6 +721,7 @@
     "An interrupted operation could not be recorded.": "An interrupted operation could not be recorded.",
     "Another launcher process is already using the launcher data directory. Close it, or switch to its window.": "Another launcher process is already using the launcher data directory. Close it, or switch to its window.",
     "Another operation is in progress. Wait for it to finish, or cancel it.": "Another operation is in progress. Wait for it to finish, or cancel it.",
+    "Ask before downloads of at most {max} MiB.": "Ask before downloads of at most {max} MiB.",
     "Building the diagnostic export failed.": "Building the diagnostic export failed.",
     "Checking the Java runtime failed": "Checking the Java runtime failed",
     "Choose a Minecraft version.": "Choose a Minecraft version.",
@@ -736,6 +769,7 @@
     "No Java program was found at this path.": "No Java program was found at this path.",
     "No Java {major} runtime is available for this computer from the runtime provider.": "No Java {major} runtime is available for this computer from the runtime provider.",
     "No client for source.": "No client for source.",
+    "No download is waiting for an answer.": "No download is waiting for an answer.",
     "No saved sign-in was found. Sign in again.": "No saved sign-in was found. Sign in again.",
     "Notes can be at most {max} characters long.": "Notes can be at most {max} characters long.",
     "Notes cannot contain control characters.": "Notes cannot contain control characters.",
@@ -757,6 +791,7 @@
     "Reading the job record failed": "Reading the job record failed",
     "Reading the new data folder": "Reading the new data folder",
     "Removing incomplete downloads failed": "Removing incomplete downloads failed",
+    "Resetting the traffic count": "Resetting the traffic count",
     "Saved sign-in credentials could not be removed from the system credential store. Try signing out again.": "Saved sign-in credentials could not be removed from the system credential store. Try signing out again.",
     "Saving Minecraft metadata": "Saving Minecraft metadata",
     "Saving account metadata": "Saving account metadata",
@@ -823,6 +858,7 @@
     "The mod loader installer stopped unexpectedly.": "The mod loader installer stopped unexpectedly.",
     "The mod loader record is missing. Repair the installation.": "The mod loader record is missing. Repair the installation.",
     "The mod loader's published files changed since this installation was made. Create a new installation for this loader version.": "The mod loader's published files changed since this installation was made. Create a new installation for this loader version.",
+    "The monthly limit can be at most {max} MiB.": "The monthly limit can be at most {max} MiB.",
     "The new folder cannot be inside the current data folder, or contain it.": "The new folder cannot be inside the current data folder, or contain it.",
     "The operating system did not provide a per-user application data directory.": "The operating system did not provide a per-user application data directory.",
     "The operation was cancelled.": "The operation was cancelled.",
