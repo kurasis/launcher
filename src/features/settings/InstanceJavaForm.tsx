@@ -86,7 +86,11 @@ export function InstanceJavaForm({ instance }: { instance: InstanceSummary }) {
   };
 
   const shown = pendingCheck ?? lastCheck;
-  const accepted = instance.customJava?.accepted ?? [];
+  // The saved Java's accepted warnings, while that Java is still the one shown.
+  const accepted =
+    mode === 'custom' && instance.customJava?.path === path.trim()
+      ? instance.customJava.accepted
+      : [];
   const required = shown?.requiredMajor ?? instance.java?.major ?? 0;
 
   return (
@@ -209,7 +213,7 @@ export function InstanceJavaForm({ instance }: { instance: InstanceSummary }) {
           </div>
         </Notice>
       )}
-      {pendingCheck === null && instance.customJava !== null && accepted.length > 0 && (
+      {pendingCheck === null && accepted.length > 0 && (
         <Notice tone="warning">
           <p>{t.accepted}</p>
           {accepted.map((issue) => (

@@ -125,6 +125,11 @@ describe('InstanceJavaForm', () => {
     expect(screen.getByRole('radio', { name: /My own Java/ })).toBeChecked();
     expect(screen.getByLabelText('Path to the Java program')).toHaveValue('/opt/jdk-25/bin/java');
     expect(screen.getByText(/newer than the Java 21/)).toBeVisible();
+    // Another path is not the Java whose warning was accepted.
+    fireEvent.change(screen.getByLabelText('Path to the Java program'), {
+      target: { value: '/opt/jdk-21/bin/java' },
+    });
+    expect(screen.queryByText(/newer than the Java 21/)).toBeNull();
   });
 
   it('asks to install first before choosing an own Java', () => {
