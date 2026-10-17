@@ -399,6 +399,7 @@ mod tests {
             health: InstallationHealth::NotInstalled,
             last_result: None,
             java: None,
+            loader: None,
         }
     }
 

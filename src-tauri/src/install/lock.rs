@@ -18,8 +18,8 @@ use crate::runtime::adoptium::{ArchiveFormat, RuntimePackage};
 use crate::storage::atomic;
 use crate::storage::document::SCHEMA_VERSION;
 use crate::storage::models::{
-    HashAlgorithm, InstallLock, LockedArtifact, LockedAssetIndex, LockedDescriptor, LockedLogging,
-    LockedRuntime,
+    HashAlgorithm, InstallLock, LockedArtifact, LockedAssetIndex, LockedDescriptor, LockedLoader,
+    LockedLogging, LockedRuntime,
 };
 use crate::storage::paths::{DataRoot, InstanceId, JavaProvider, RuntimeKey, SafeName, Sha1};
 
@@ -70,6 +70,13 @@ pub fn build_lock(plan: &FinalInstallPlan, runtime: LockedRuntime) -> InstallLoc
             argument: l.argument.clone(),
         }),
         artifacts: game.artifacts().map(locked_artifact).collect(),
+        // The installer's outputs are added once it has run.
+        loader: game.loader.as_ref().map(|l| LockedLoader {
+            kind: l.kind,
+            version: l.version.clone(),
+            manifest_sha1: l.manifest_sha1.clone(),
+            generated: Vec::new(),
+        }),
         validated_at: Utc::now(),
         complete: true,
     }

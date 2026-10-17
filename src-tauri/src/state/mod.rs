@@ -727,8 +727,13 @@ impl AppState {
         let result = self.create_instance_inner(request);
         match &result {
             Ok(i) => self.console.info(format!(
-                "Created installation \"{}\" (Minecraft {})",
-                i.display_name, i.version_id
+                "Created installation \"{}\" (Minecraft {}{})",
+                i.display_name,
+                i.version_id,
+                i.loader
+                    .as_ref()
+                    .map(|l| format!(", {} {}", l.kind.name(), l.version))
+                    .unwrap_or_default()
             )),
             Err(e) => self
                 .console
@@ -754,6 +759,9 @@ impl AppState {
                         LauncherError::invalid_input("This is not a valid Minecraft version.")
                             .with_detail("versionId", payload.version_id.clone())
                     })?;
+                if let Some(loader) = &payload.loader {
+                    loader.validate()?;
+                }
                 let memory = memory?;
                 let max_heap_mib = data
                     .settings
@@ -775,6 +783,7 @@ impl AppState {
                     health: InstallationHealth::NotInstalled,
                     last_result: None,
                     java: None,
+                    loader: payload.loader.clone(),
                 };
                 store.create_instance(&instance)?;
                 let id = instance.id;

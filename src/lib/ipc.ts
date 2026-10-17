@@ -19,6 +19,9 @@ import {
   type InstanceSummary,
   type LauncherError,
   type LifecycleScenario,
+  type LoaderChoice,
+  type LoaderKind,
+  type LoaderVersion,
   type MutationRequest,
   type OperationStarted,
   type PlanSummary,
@@ -86,8 +89,12 @@ export const ipc = {
     invoke<boolean>('stop_game', { request: mutation({ runId }, requestId) }),
   listSupportedVersions: (refresh: boolean): Promise<CatalogView> =>
     invoke<CatalogView>('list_supported_versions', { refresh }),
-  previewInstallPlan: (versionId: string): Promise<PlanSummary> =>
-    invoke<PlanSummary>('preview_install_plan', { versionId }),
+  previewInstallPlan: (versionId: string, loader: LoaderChoice | null): Promise<PlanSummary> =>
+    invoke<PlanSummary>('preview_install_plan', { versionId, loader }),
+  listLoaderGameVersions: (kind: LoaderKind): Promise<string[]> =>
+    invoke<string[]>('list_loader_game_versions', { kind }),
+  listLoaderVersions: (kind: LoaderKind, gameVersion: string): Promise<LoaderVersion[]> =>
+    invoke<LoaderVersion[]>('list_loader_versions', { kind, gameVersion }),
   requestQuit: (action: QuitAction, requestId?: string): Promise<QuitResult> =>
     invoke<QuitResult>('request_quit', { request: mutation({ action }, requestId) }),
   /** Debug builds only; release builds have no handler for this command. */

@@ -420,7 +420,7 @@ fn unsupported_formats_and_unsafe_metadata_are_rejected() {
             v["arguments"]["jvm"]
                 .as_array_mut()
                 .unwrap()
-                .push(json!("-p ${library_directory}"))
+                .push(json!("-p ${launcher_secret_dir}"))
         }),
         Box::new(|v| {
             v["arguments"]["game"]
@@ -634,4 +634,129 @@ fn legacy_asset_indexes_choose_their_layout() {
     )
     .unwrap();
     assert_eq!(p.asset_layout, AssetLayout::Modern);
+}
+
+fn loader_library(name: &str, url: &str) -> crate::loader::manifest::LoaderLibrary {
+    let path = Coordinate::parse(name).unwrap().path();
+    crate::loader::manifest::LoaderLibrary {
+        name: name.into(),
+        url: if url.is_empty() {
+            String::new()
+        } else {
+            format!("{url}{path}")
+        },
+        path,
+        sha1: Some(Sha1::parse(&"c".repeat(40)).unwrap()),
+        size: Some(10),
+        rules: None,
+    }
+}
+
+fn maven_plan() -> GamePlan {
+    plan_game_in(
+        V1_21_1,
+        "https://piston-meta.mojang.com/v1/packages/x/1.21.1.json",
+        &Sha1::parse(SHA_1_21_1).unwrap(),
+        "1.21.1",
+        &ctx(MetaOs::Linux, "x86_64"),
+        LibraryLayout::Maven,
+    )
+    .unwrap()
+}
+
+#[test]
+fn maven_layout_keeps_real_library_names() {
+    let p = maven_plan();
+    assert!(
+        p.classpath
+            .iter()
+            .any(|c| c == "shared/maven/com/mojang/brigadier/1.3.10/brigadier-1.3.10.jar"),
+        "{:?}",
+        p.classpath
+    );
+    assert!(
+        p.libraries
+            .iter()
+            .all(|l| l.path.starts_with("shared/maven/"))
+    );
+    assert!(p.mappings.is_some(), "1.21.1 publishes client mappings");
+    assert!(p.loader.is_none() && p.loader_files.is_empty());
+}
+
+#[test]
+fn a_loader_profile_merges_onto_the_game() {
+    use crate::loader::manifest::LoaderManifest;
+    let base = maven_plan();
+    let manifest = LoaderManifest {
+        schema_version: 1,
+        kind: LoaderKind::Fabric,
+        version: "0.16.14".into(),
+        game_version: "1.21.1".into(),
+        source: "https://meta.fabricmc.net/v2/x".into(),
+        profile_id: "fabric-loader-0.16.14-1.21.1".into(),
+        main_class: "net.fabricmc.loader.impl.launch.knot.KnotClient".into(),
+        libraries: vec![
+            loader_library("org.ow2.asm:asm:9.8", "https://maven.fabricmc.net/"),
+            // Replaces the game's gson 2.11.0.
+            loader_library(
+                "com.google.code.gson:gson:2.99",
+                "https://maven.fabricmc.net/",
+            ),
+            loader_library(
+                "net.fabricmc:fabric-loader:0.16.14",
+                "https://maven.fabricmc.net/",
+            ),
+        ],
+        jvm_arguments: vec![json!("-DFabricMcEmu= net.minecraft.client.main.Main ")],
+        game_arguments: vec![],
+        minecraft_arguments: None,
+        installer: None,
+    };
+    let sha = Sha1::parse(&"d".repeat(40)).unwrap();
+    let merged =
+        apply_loader(base.clone(), &manifest, &sha, &ctx(MetaOs::Linux, "x86_64")).unwrap();
+    assert_eq!(merged.main_class, manifest.main_class);
+    assert_eq!(merged.game_main_class(), "net.minecraft.client.main.Main");
+    assert_eq!(merged.version_name(), "fabric-loader-0.16.14-1.21.1");
+    assert_eq!(
+        merged.classpath[0],
+        "shared/maven/org/ow2/asm/asm/9.8/asm-9.8.jar"
+    );
+    assert!(
+        !merged.classpath.iter().any(|c| c.contains("gson/2.11")),
+        "replaced"
+    );
+    assert!(merged.classpath.iter().any(|c| c.contains("gson/2.99")));
+    assert_eq!(
+        merged.classpath.last().unwrap(),
+        &format!(
+            "shared/clients/{}/fabric-loader-0.16.14-1.21.1.jar",
+            base.client.sha1
+        )
+    );
+    assert_eq!(merged.client.path, *merged.classpath.last().unwrap());
+    assert_eq!(merged.classpath.len(), base.classpath.len() + 2);
+    assert_eq!(
+        merged.jvm_arguments.last().unwrap(),
+        "-DFabricMcEmu= net.minecraft.client.main.Main "
+    );
+    assert_eq!(merged.game_arguments, base.game_arguments);
+    assert!(merged.loader_files.is_empty());
+    let loader = merged.loader.as_ref().unwrap();
+    assert_eq!(loader.manifest_sha1, sha);
+    assert!(loader.provided.is_empty());
+
+    // Another game version, a second loader, or a host off the lists: refused.
+    let mut other = manifest.clone();
+    other.game_version = "1.20.1".into();
+    assert!(apply_loader(base.clone(), &other, &sha, &ctx(MetaOs::Linux, "x86_64")).is_err());
+    assert!(apply_loader(merged, &manifest, &sha, &ctx(MetaOs::Linux, "x86_64")).is_err());
+    let mut evil = manifest.clone();
+    evil.libraries
+        .push(loader_library("a.b:c:1", "https://cdn.example/"));
+    assert!(apply_loader(base.clone(), &evil, &sha, &ctx(MetaOs::Linux, "x86_64")).is_err());
+    // Files only an installer can provide need an installer.
+    let mut provided = manifest;
+    provided.libraries.push(loader_library("a.b:c:1", ""));
+    assert!(apply_loader(base, &provided, &sha, &ctx(MetaOs::Linux, "x86_64")).is_err());
 }

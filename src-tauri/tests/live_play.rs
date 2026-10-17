@@ -7,6 +7,10 @@
 //! screen follows), optionally keeps it running for `LAUNCHER_LIVE_HOLD_SECS` (for
 //! screenshots or manual steps), then stops it through the service and checks the
 //! recorded run. This is a "test profile, demo" result, never account evidence.
+//!
+//! `LAUNCHER_LIVE_LOADER=<kind>` (`fabric`, `quilt`, `forge`, `neoforge`) picks the
+//! installation of the version with that mod loader (D-039); without it the
+//! vanilla one.
 
 #![allow(clippy::print_stdout, clippy::unwrap_used, clippy::expect_used)] // prints the evidence summary
 
@@ -110,6 +114,7 @@ async fn the_game_starts_in_demo_mode_and_stops_cleanly() {
     ))
     .unwrap();
     let version = std::env::var("LAUNCHER_LIVE_VERSION").expect("set LAUNCHER_LIVE_VERSION");
+    let loader = std::env::var("LAUNCHER_LIVE_LOADER").ok();
     let hold = std::env::var("LAUNCHER_LIVE_HOLD_SECS")
         .ok()
         .and_then(|s| s.parse().ok())
@@ -129,7 +134,10 @@ async fn the_game_starts_in_demo_mode_and_stops_cleanly() {
         .snapshot()
         .instances
         .into_iter()
-        .find(|i| i.version_id == version)
+        .find(|i| {
+            i.version_id == version
+                && i.loader.as_ref().map(|l| l.kind.as_str()) == loader.as_deref()
+        })
         .expect("an installation of the version");
     let metadata = Arc::new(MetadataService::new(
         PublicClient::new(SourcePolicy::MojangMetadata, VERSION).unwrap(),
@@ -207,6 +215,14 @@ async fn the_game_starts_in_demo_mode_and_stops_cleanly() {
         text.contains("TestPlayer"),
         !full
     );
+    if let Some(loader) = &instance.loader {
+        let name = loader.kind.name();
+        println!(
+            "{version}: {name} {} named in log: {}",
+            loader.version,
+            text.contains(name) || text.to_lowercase().contains(loader.kind.as_str())
+        );
+    }
     assert!(
         !text.contains("notoken-profile"),
         "the placeholder token is redacted in the run log"

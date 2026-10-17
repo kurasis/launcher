@@ -6,7 +6,7 @@
 //! hashes, sizes and source URLs, plus an unresolved [`RuntimeRequirement`]. Java
 //! runtime totals stay unknown until P07 resolves the runtime.
 
-use std::collections::{BTreeMap, HashMap};
+use std::collections::{BTreeMap, HashMap, HashSet};
 
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
@@ -14,6 +14,9 @@ use serde_json::Value;
 use super::descriptor::{self, Arguments, Descriptor, Download, unsupported};
 use super::rules::{self, MetaOs, RuleContext};
 use crate::error::{ErrorCode, LauncherError, LauncherResult};
+use crate::loader::LoaderKind;
+use crate::loader::coordinate::Coordinate;
+use crate::loader::manifest::{LoaderManifest, maven_path};
 use crate::net::SourcePolicy;
 use crate::storage::models::ArtifactRole;
 use crate::storage::paths::{SafeName, Sha1, TargetArch, TargetOs};
@@ -46,6 +49,8 @@ pub const KNOWN_PLACEHOLDERS: &[&str] = &[
     "game_assets",
     "auth_session",
     "user_properties",
+    // Mod loaders (D-039): the Maven tree of the installation's libraries.
+    "library_directory",
 ];
 
 /// How the game expects its asset files (from the asset index flags).
@@ -152,6 +157,42 @@ pub struct LoggingPlan {
     pub artifact: PlannedArtifact,
 }
 
+/// Where an installation's libraries live.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum LibraryLayout {
+    /// `shared/libraries/<sha1>/artifact.jar`, shared by content (vanilla).
+    Shared,
+    /// `shared/maven/<Maven path>` under their own file names: mod loaders find
+    /// libraries by name and Maven path (D-039).
+    Maven,
+}
+
+/// A classpath file that a loader's installer provides instead of a download.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ProvidedFile {
+    pub path: String,
+    /// When the loader profile states it.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub sha1: Option<Sha1>,
+}
+
+/// The mod loader part of a plan (D-039).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct LoaderPlan {
+    pub kind: LoaderKind,
+    pub version: String,
+    /// The stored loader manifest this plan derives from.
+    pub manifest_sha1: Sha1,
+    /// The loader profile's id: `${version_name}` and the client jar's name.
+    pub profile_id: String,
+    /// The game's own main class (only Minecraft's knows `--demo`).
+    pub game_main_class: String,
+    /// Classpath files the installer provides.
+    pub provided: Vec<ProvidedFile>,
+}
+
 /// Everything needed to install one version for one target, minus the runtime.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -180,6 +221,14 @@ pub struct GamePlan {
     /// Applicable game argument templates in order (placeholders unresolved).
     pub game_arguments: Vec<String>,
     pub runtime: RuntimeRequirement,
+    /// Mojang's client mappings, offered to a loader installer (Maven layout only).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub mappings: Option<PlannedArtifact>,
+    /// Files only a loader installer uses: the installer, its tools and inputs.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub loader_files: Vec<PlannedArtifact>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub loader: Option<LoaderPlan>,
 }
 
 impl GamePlan {
@@ -190,7 +239,22 @@ impl GamePlan {
             .chain(self.libraries.iter())
             .chain(std::iter::once(&self.asset_index.artifact))
             .chain(self.logging.iter().map(|l| &l.artifact))
+            .chain(self.loader_files.iter())
             .chain(self.assets.iter())
+    }
+
+    /// `${version_name}`: the loader profile's id, or the game version.
+    pub fn version_name(&self) -> &str {
+        self.loader
+            .as_ref()
+            .map_or(&self.version_id, |l| &l.profile_id)
+    }
+
+    /// The game's own main class, whatever starts it.
+    pub fn game_main_class(&self) -> &str {
+        self.loader
+            .as_ref()
+            .map_or(&self.main_class, |l| &l.game_main_class)
     }
 
     pub fn total_bytes(&self) -> u64 {
@@ -288,8 +352,7 @@ fn evaluate_arguments(list: &[Value], ctx: &RuleContext) -> LauncherResult<Vec<S
     Ok(out)
 }
 
-/// Every `${name}` must be implemented; `library_directory` is rejected until a
-/// Maven-root adapter exists (doc 05).
+/// Every `${name}` must be implemented.
 pub fn check_placeholders(value: &str) -> LauncherResult<()> {
     let mut rest = value;
     while let Some(start) = rest.find("${") {
@@ -313,6 +376,25 @@ pub fn plan_game(
     descriptor_sha1: &Sha1,
     version_id: &str,
     ctx: &RuleContext,
+) -> LauncherResult<GamePlan> {
+    plan_game_in(
+        descriptor_bytes,
+        descriptor_url,
+        descriptor_sha1,
+        version_id,
+        ctx,
+        LibraryLayout::Shared,
+    )
+}
+
+/// [`plan_game`] with a choice of library layout.
+pub fn plan_game_in(
+    descriptor_bytes: &[u8],
+    descriptor_url: &str,
+    descriptor_sha1: &Sha1,
+    version_id: &str,
+    ctx: &RuleContext,
+    layout: LibraryLayout,
 ) -> LauncherResult<GamePlan> {
     let descriptor: Descriptor = descriptor::parse(descriptor_bytes, version_id)?;
     let (os, arch) = runtime_target(ctx)?;
@@ -345,17 +427,22 @@ pub fn plan_game(
         if let Some(artifact) = &library.artifact {
             SourcePolicy::MojangArtifacts.check(&artifact.download.url)?;
         }
-        for download in library.natives.iter().flat_map(|n| n.downloads.values()) {
-            SourcePolicy::MojangArtifacts.check(&download.url)?;
+        for native in library.natives.iter().flat_map(|n| n.downloads.values()) {
+            SourcePolicy::MojangArtifacts.check(&native.download.url)?;
         }
     }
     let mut libraries = Vec::new();
     let mut classpath = Vec::new();
     let mut natives: Vec<NativeJar> = Vec::new();
-    let library_artifact = |download: &Download, provenance: String| {
+    let library_artifact = |jar: &descriptor::LibraryArtifact, provenance: String| {
+        let download = &jar.download;
+        let path = match layout {
+            LibraryLayout::Shared => format!("shared/libraries/{}/artifact.jar", download.sha1),
+            LibraryLayout::Maven => maven_path(&jar.path),
+        };
         let planned = artifact(
             ArtifactRole::Library,
-            format!("shared/libraries/{}/artifact.jar", download.sha1),
+            path,
             download,
             SourcePolicy::MojangArtifacts,
             Some(provenance),
@@ -373,14 +460,12 @@ pub fn plan_game(
             continue;
         }
         if let Some(jar) = &library.artifact {
-            let planned = library_artifact(&jar.download, library.name.clone())?;
-            let new = check_size_conflict(&mut seen, &planned)?;
+            let planned = library_artifact(jar, library.name.clone())?;
+            check_size_conflict(&mut seen, &planned)?;
             if !classpath.contains(&planned.path) {
                 classpath.push(planned.path.clone());
             }
-            if new {
-                libraries.push(planned);
-            }
+            push_unique(&mut libraries, planned)?;
         }
         let Some(declared) = &library.natives else {
             continue;
@@ -398,14 +483,13 @@ pub fn plan_game(
         }
         // Only 64-bit JVMs are supported.
         let classifier = template.replace("${arch}", "64");
-        let download = declared
+        let jar = declared
             .downloads
             .get(&classifier)
             .ok_or_else(|| unsupported("missing native classifier download"))?;
-        let planned = library_artifact(download, format!("{} {classifier}", library.name))?;
-        if check_size_conflict(&mut seen, &planned)? {
-            libraries.push(planned.clone());
-        }
+        let planned = library_artifact(jar, format!("{} {classifier}", library.name))?;
+        check_size_conflict(&mut seen, &planned)?;
+        push_unique(&mut libraries, planned.clone())?;
         if !natives.iter().any(|n| n.path == planned.path) {
             natives.push(NativeJar {
                 path: planned.path,
@@ -451,6 +535,17 @@ pub fn plan_game(
         })
         .transpose()?;
 
+    let mappings = match (layout, &descriptor.client_mappings) {
+        (LibraryLayout::Maven, Some(download)) => Some(artifact(
+            ArtifactRole::Library,
+            format!("shared/mappings/{}/client.txt", download.sha1),
+            download,
+            SourcePolicy::MojangArtifacts,
+            Some(format!("{} client mappings", descriptor.id)),
+        )?),
+        _ => None,
+    };
+
     Ok(GamePlan {
         version_id: descriptor.id.clone(),
         version_type: descriptor.version_type.clone(),
@@ -473,7 +568,198 @@ pub fn plan_game(
             arch,
             component: descriptor.java_component.clone(),
         },
+        mappings,
+        loader_files: Vec::new(),
+        loader: None,
     })
+}
+
+/// Adds a file unless one with its path is listed; the same path with other
+/// content is a conflict.
+fn push_unique(list: &mut Vec<PlannedArtifact>, planned: PlannedArtifact) -> LauncherResult<()> {
+    match list.iter().find(|a| a.path == planned.path) {
+        Some(existing) if existing.sha1 != planned.sha1 || existing.size != planned.size => {
+            Err(LauncherError::new(
+                ErrorCode::MetadataConflict,
+                "The version metadata lists the same file with two different contents.",
+            )
+            .with_detail("path", planned.path))
+        }
+        Some(_) => Ok(()),
+        None => {
+            list.push(planned);
+            Ok(())
+        }
+    }
+}
+
+/// A download of a loader manifest's library.
+fn loader_artifact(
+    library: &crate::loader::manifest::LoaderLibrary,
+    path: String,
+) -> LauncherResult<PlannedArtifact> {
+    let (Some(sha1), Some(size)) = (&library.sha1, library.size) else {
+        return Err(unsupported("loader library without hash"));
+    };
+    let (policy, _) = SourcePolicy::for_artifact(&library.url)?;
+    artifact(
+        ArtifactRole::Library,
+        path,
+        &Download {
+            url: library.url.clone(),
+            sha1: sha1.clone(),
+            size,
+        },
+        policy,
+        Some(library.name.clone()),
+    )
+}
+
+/// Merges a mod loader onto a vanilla plan in the Maven layout (D-039), the way
+/// a profile's `inheritsFrom` works: the loader's libraries come first and
+/// replace the game's copies of the same library, its arguments follow the
+/// game's (a legacy argument string replaces them), and its main class starts
+/// the game. The client jar is named after the loader profile, as Forge's
+/// module loader expects.
+pub fn apply_loader(
+    mut plan: GamePlan,
+    manifest: &LoaderManifest,
+    manifest_sha1: &Sha1,
+    ctx: &RuleContext,
+) -> LauncherResult<GamePlan> {
+    if manifest.game_version != plan.version_id || plan.loader.is_some() {
+        return Err(unsupported("loader game version"));
+    }
+    let mut keys = HashSet::new();
+    let mut loader_classpath: Vec<String> = Vec::new();
+    let mut downloads = Vec::new();
+    let mut provided = Vec::new();
+    for library in &manifest.libraries {
+        if !rules::evaluate(library.rules.as_ref(), ctx)? {
+            continue;
+        }
+        keys.insert(Coordinate::parse(&library.name)?.key());
+        let path = maven_path(&library.path);
+        if library.url.is_empty() {
+            if !provided.iter().any(|p: &ProvidedFile| p.path == path) {
+                provided.push(ProvidedFile {
+                    path: path.clone(),
+                    sha1: library.sha1.clone(),
+                });
+            }
+        } else {
+            push_unique(&mut downloads, loader_artifact(library, path.clone())?)?;
+        }
+        if !loader_classpath.contains(&path) {
+            loader_classpath.push(path);
+        }
+    }
+    if !provided.is_empty() && manifest.installer.is_none() {
+        return Err(unsupported("loader library url"));
+    }
+
+    // The game's copies of libraries the loader brings in another version.
+    let replaced: HashSet<String> = plan
+        .libraries
+        .iter()
+        .filter(|l| !loader_classpath.contains(&l.path))
+        .filter(|l| {
+            l.provenance
+                .as_deref()
+                .and_then(|name| Coordinate::parse(name).ok())
+                .is_some_and(|c| keys.contains(&c.key()))
+        })
+        .map(|l| l.path.clone())
+        .collect();
+    plan.libraries.retain(|l| !replaced.contains(&l.path));
+    for download in downloads {
+        push_unique(&mut plan.libraries, download)?;
+    }
+
+    let old_client = plan.client.path.clone();
+    plan.client.path = format!(
+        "shared/clients/{}/{}.jar",
+        plan.client.sha1, manifest.profile_id
+    );
+    let game_classpath: Vec<String> = plan
+        .classpath
+        .iter()
+        .filter(|p| !replaced.contains(*p) && !loader_classpath.contains(p))
+        .map(|p| {
+            if *p == old_client {
+                plan.client.path.clone()
+            } else {
+                p.clone()
+            }
+        })
+        .collect();
+    plan.classpath = loader_classpath;
+    plan.classpath.extend(game_classpath);
+
+    match &manifest.minecraft_arguments {
+        Some(text) => {
+            plan.game_arguments = text
+                .split_whitespace()
+                .map(|arg| check_placeholders(arg).map(|()| arg.to_owned()))
+                .collect::<LauncherResult<Vec<_>>>()?;
+        }
+        None => {
+            plan.jvm_arguments
+                .extend(evaluate_arguments(&manifest.jvm_arguments, ctx)?);
+            plan.game_arguments
+                .extend(evaluate_arguments(&manifest.game_arguments, ctx)?);
+        }
+    }
+
+    if let Some(installer) = &manifest.installer {
+        let mut files = vec![artifact(
+            ArtifactRole::Library,
+            maven_path(&installer.path),
+            &Download {
+                url: installer.url.clone(),
+                sha1: installer.sha1.clone(),
+                size: installer.size,
+            },
+            SourcePolicy::ModLoaders,
+            Some(format!(
+                "{} {} installer",
+                manifest.kind.name(),
+                manifest.version
+            )),
+        )?];
+        for tool in &installer.libraries {
+            let path = maven_path(&tool.path);
+            if tool.url.is_empty() {
+                if !installer.embedded.iter().any(|e| e.path == tool.path) {
+                    return Err(unsupported("installer library url"));
+                }
+            } else if !plan.libraries.iter().any(|l| l.path == path) {
+                push_unique(&mut files, loader_artifact(tool, path)?)?;
+            }
+        }
+        let needs_mappings = installer
+            .processors
+            .iter()
+            .any(|p| p.args.iter().any(|a| a == "DOWNLOAD_MOJMAPS"));
+        if needs_mappings {
+            files.push(
+                plan.mappings
+                    .clone()
+                    .ok_or_else(|| unsupported("client mappings"))?,
+            );
+        }
+        plan.loader_files = files;
+    }
+
+    plan.loader = Some(LoaderPlan {
+        kind: manifest.kind,
+        version: manifest.version.clone(),
+        manifest_sha1: manifest_sha1.clone(),
+        profile_id: manifest.profile_id.clone(),
+        game_main_class: std::mem::replace(&mut plan.main_class, manifest.main_class.clone()),
+        provided,
+    });
+    Ok(plan)
 }
 
 /// Adds deduplicated asset objects from the verified asset index bytes.

@@ -9,6 +9,7 @@ use serde::{Deserialize, Serialize};
 use super::document::SCHEMA_VERSION;
 use super::paths::{ImageType, InstanceId, JavaProvider, Sha1, Sha256, TargetArch, TargetOs};
 use crate::error::ErrorCode;
+use crate::loader::{LoaderChoice, LoaderKind};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
 #[serde(rename_all = "snake_case")]
@@ -231,6 +232,10 @@ pub struct InstanceFile {
     /// only (the lock is authoritative).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub java: Option<InstalledJava>,
+    /// The mod loader and loader version; immutable like the game version
+    /// (D-039). None for vanilla.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub loader: Option<LoaderChoice>,
 }
 
 /// Which private Java runtime an installation uses, for display.
@@ -343,8 +348,34 @@ pub struct InstallLock {
     #[serde(default)]
     pub logging: Option<LockedLogging>,
     pub artifacts: Vec<LockedArtifact>,
+    /// The mod loader of a loader installation (D-039).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub loader: Option<LockedLoader>,
     pub validated_at: DateTime<Utc>,
     pub complete: bool,
+}
+
+/// The resolved mod loader of an installation (D-039).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct LockedLoader {
+    pub kind: LoaderKind,
+    pub version: String,
+    /// SHA-1 of the stored loader manifest the plan derives from.
+    pub manifest_sha1: Sha1,
+    /// Files the loader's installer produced (unpacked or built by its
+    /// processors), verified after it ran. Their `url` is empty.
+    #[serde(default)]
+    pub generated: Vec<LockedArtifact>,
+}
+
+impl LockedLoader {
+    pub fn choice(&self) -> LoaderChoice {
+        LoaderChoice {
+            kind: self.kind,
+            version: self.version.clone(),
+        }
+    }
 }
 
 #[cfg(test)]
@@ -412,6 +443,7 @@ mod tests {
             health: InstallationHealth::NotInstalled,
             last_result: None,
             java: None,
+            loader: None,
         };
         let json = serde_json::to_value(&instance).unwrap();
         assert!(json["manifestSha1"].is_null());

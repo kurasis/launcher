@@ -37,7 +37,7 @@ At most one installation/repair job is active globally, and none may run while l
 6. Resolve and validate the asset index and logging configuration. P05 emits a `GamePlan` plus `RuntimeRequirement { major, os, arch }`; P07 resolves that requirement into a pinned `RuntimePlan`. Small bounded metadata requests use the source client and do not depend on the later bulk downloader.
 7. P08 combines both into `FinalInstallPlan` before bulk execution. Plans are deterministic for fixed verified inputs and the target; they include relative paths, hashes/sizes and URLs. Until runtime resolution finishes, show runtime transfer/storage totals as unknown instead of calling the P05 estimate complete. The pure planner consumes fetched metadata; it performs no network I/O or process spawning itself.
 
-Only the pinned modern vanilla metadata shape is mandatory. Version inheritance (`inheritsFrom`), legacy `minecraftArguments`, missing-download Maven fallback, legacy virtual assets and `map_to_resources` must be rejected clearly until deliberately implemented and tested.
+Only the pinned modern vanilla metadata shape is mandatory. Version inheritance (`inheritsFrom`), legacy `minecraftArguments`, missing-download Maven fallback, legacy virtual assets and `map_to_resources` must be rejected clearly until deliberately implemented and tested. (Implemented since: legacy arguments and asset layouts, D-035; inheritance for mod loader profiles, merged onto the vanilla plan, with libraries pinned by Maven `.sha1` files where the profile has no hash, D-039.)
 
 ## Rules engine
 

@@ -324,13 +324,49 @@ pub async fn list_supported_versions(
 /// only metadata; Java runtime size stays unknown until installation (P07).
 #[tauri::command]
 pub async fn preview_install_plan(
-    metadata: State<'_, Metadata>,
+    sources: State<'_, Sources>,
     version_id: String,
+    loader: Option<crate::loader::LoaderChoice>,
 ) -> LauncherResult<PlanSummary> {
-    let service = metadata.get()?;
-    let ctx = crate::install::rules::RuleContext::current()?;
-    let plan = service.plan(&version_id, &ctx).await?;
-    Ok(service.summarize(&plan))
+    let source = sources.get()?;
+    if let Some(loader) = &loader {
+        loader.validate()?;
+    }
+    let plan = source.plan_game(&version_id, loader.as_ref()).await?;
+    Ok(source.metadata().summarize(&plan))
+}
+
+/// Plan sources, absent when DATA_ROOT is unavailable.
+pub struct Sources(pub Option<Arc<crate::install::service::LiveSource>>);
+
+impl Sources {
+    fn get(&self) -> LauncherResult<Arc<crate::install::service::LiveSource>> {
+        self.0.clone().ok_or_else(|| {
+            crate::error::LauncherError::new(
+                crate::error::ErrorCode::StorageUnavailable,
+                "Launcher data is unavailable.",
+            )
+        })
+    }
+}
+
+/// Game versions a mod loader supports (D-039; read-only query).
+#[tauri::command]
+pub async fn list_loader_game_versions(
+    sources: State<'_, Sources>,
+    kind: crate::loader::LoaderKind,
+) -> LauncherResult<Vec<String>> {
+    sources.get()?.loader_game_versions(kind).await
+}
+
+/// Versions of a mod loader for one game version, newest first (D-039).
+#[tauri::command]
+pub async fn list_loader_versions(
+    sources: State<'_, Sources>,
+    kind: crate::loader::LoaderKind,
+    game_version: String,
+) -> LauncherResult<Vec<crate::loader::meta::LoaderVersion>> {
+    sources.get()?.loader_versions(kind, &game_version).await
 }
 
 /// The install service, absent when DATA_ROOT is unavailable.

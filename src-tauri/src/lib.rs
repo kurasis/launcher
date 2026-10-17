@@ -16,6 +16,7 @@ pub mod external;
 pub mod install;
 pub mod launch;
 pub mod lifecycle;
+pub mod loader;
 pub mod net;
 pub mod runtime;
 pub mod secrets;
@@ -239,6 +240,7 @@ fn setup(app: &mut tauri::App) -> Result<(), Box<dyn std::error::Error>> {
         None => None,
     };
     app.manage(commands::Metadata(metadata));
+    app.manage(commands::Sources(source.clone()));
     app.manage(commands::Installer(installer));
     app.manage(state);
     let auth = Arc::new(create_auth_service(app.handle())?);
@@ -348,6 +350,8 @@ fn handlers<R: tauri::Runtime>() -> impl Fn(tauri::ipc::Invoke<R>) -> bool + Sen
         commands::open_external,
         commands::list_supported_versions,
         commands::preview_install_plan,
+        commands::list_loader_game_versions,
+        commands::list_loader_versions,
         commands::install_instance,
         commands::repair_instance,
         commands::cancel_operation,
@@ -380,6 +384,8 @@ fn handlers<R: tauri::Runtime>() -> impl Fn(tauri::ipc::Invoke<R>) -> bool + Sen
         commands::open_external,
         commands::list_supported_versions,
         commands::preview_install_plan,
+        commands::list_loader_game_versions,
+        commands::list_loader_versions,
         commands::install_instance,
         commands::repair_instance,
         commands::cancel_operation,
