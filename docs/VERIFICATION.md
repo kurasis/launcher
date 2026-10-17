@@ -504,7 +504,10 @@ account service.
 
 ### CI results
 
-Recorded by the next phase's pull request.
+Workflow run [39010670846](https://github.com/kurasis/launcher/actions/runs/39010670846) on
+commit `9102f08` (PR #9): all 5 jobs pass. The launch-service tests with the test-double
+`java` ran on Linux and both macOS architectures; compiler, argfile, redaction, log and
+encoding tests also ran on Windows.
 
 ## P10 — Unload GUI during play and return after exit
 

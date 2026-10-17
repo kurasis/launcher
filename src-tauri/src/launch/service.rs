@@ -622,6 +622,10 @@ impl LaunchService {
                         exit_code,
                     });
                 });
+                // Cleanup happens before the result is published, so whoever sees
+                // the finished run also sees no handle or active-run record.
+                finish_host.clear_handle(&finish_id);
+                super::orphan::clear(&finish_root, &finish_id);
                 state.finish_run(&finish_id, |run| {
                     run.state = run_state;
                     run.ended_at = Some(finished_at);
@@ -633,8 +637,6 @@ impl LaunchService {
                     run.logging_degraded = degraded;
                     run.error = error;
                 });
-                finish_host.clear_handle(&finish_id);
-                super::orphan::clear(&finish_root, &finish_id);
                 // Released only after exit, bounded drain and cleanup.
                 drop(permit);
                 state.announce_runs();
