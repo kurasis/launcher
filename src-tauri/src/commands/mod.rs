@@ -156,13 +156,22 @@ pub fn request_quit<R: Runtime>(
             Ok(QuitResult::InBackground)
         }
         QuitAction::StopAndQuit => {
-            app.state::<RunHandles>().kill(&active.operation_id);
+            // Stop exactly the active owned work: a game process (or a game that
+            // survived a restart), a launch still in preflight, or an install/repair.
+            let id = &active.operation_id;
+            let mut stopped = app.state::<RunHandles>().kill(id);
+            if let Some(launcher) = app.state::<Launcher>().0.as_ref() {
+                stopped |= launcher.cancel_pending(id).is_some() || launcher.stop(id);
+            }
+            if !stopped && let Some(installer) = app.state::<Installer>().0.as_ref() {
+                let _ = installer.cancel(id);
+            }
             controller.set_quit_intent();
             let handle = app.clone();
             std::thread::spawn(move || {
                 // Bounded wait for the supervisor to record the result and release
                 // the permit; OS shutdown paths must never hang here indefinitely.
-                let deadline = std::time::Instant::now() + std::time::Duration::from_secs(10);
+                let deadline = std::time::Instant::now() + std::time::Duration::from_secs(30);
                 while handle.state::<AppState>().activity().current().is_some()
                     && std::time::Instant::now() < deadline
                 {

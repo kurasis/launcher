@@ -34,6 +34,14 @@ use crate::storage::models::{InstallLock, InstallationHealth, LastResult, Operat
 use crate::storage::paths::{DataRoot, InstanceId, SafeName};
 use crate::storage::reconcile::{self, LockState};
 
+/// Everything preflight produced for the spawn.
+struct Prepared {
+    command: Command,
+    secrets: Vec<String>,
+    run_dir: PathBuf,
+    java: PathBuf,
+}
+
 /// Lines of output kept in the run summary.
 const SUMMARY_TAIL_LINES: usize = 40;
 
@@ -168,9 +176,70 @@ impl LaunchService {
         }
     }
 
-    /// Requests termination of the owned game process of `run_id`.
+    /// Requests termination of the owned game process of `run_id`, or of a game
+    /// that survived a launcher restart (after re-checking its identity).
     pub fn stop(&self, run_id: &str) -> bool {
-        self.host.kill(run_id)
+        if self.host.kill(run_id) {
+            return true;
+        }
+        let Some(root) = self.host.app_state().data_root() else {
+            return false;
+        };
+        super::orphan::read(&root)
+            .filter(|r| r.run_id == run_id)
+            .is_some_and(|r| super::orphan::stop(&r))
+    }
+
+    /// At startup: a game that outlived the previous supervisor holds the activity
+    /// permit until it exits, so nothing can launch or change shared files.
+    pub fn watch_survivor(&self) -> Option<String> {
+        let state = self.host.app_state();
+        let root = state.data_root()?;
+        let record = super::orphan::survivor(&root)?;
+        let permit = state
+            .activity()
+            .try_acquire(
+                OperationKind::Launch,
+                Some(record.instance_id),
+                record.run_id.clone(),
+            )
+            .ok()?;
+        state.begin_run(RunSummary {
+            run_id: record.run_id.clone(),
+            kind: RunKind::Game,
+            instance_id: Some(record.instance_id),
+            state: RunState::Running,
+            started_at: record.started_at,
+            ended_at: None,
+            exit_code: None,
+            duration_ms: None,
+            drain_timed_out: false,
+            output_tail: Vec::new(),
+            output_lines_dropped: 0,
+            error: Some(super::orphan::interrupted_error()),
+            logging_degraded: false,
+        });
+        let host = Arc::clone(&self.host);
+        let run_id = record.run_id.clone();
+        std::thread::Builder::new()
+            .name("survivor-watch".into())
+            .spawn(move || {
+                while super::orphan::is_alive(&record) {
+                    std::thread::sleep(super::orphan::WATCH_INTERVAL);
+                }
+                let state = host.app_state();
+                super::orphan::clear(&root, &record.run_id);
+                state.finish_run(&record.run_id, |run| {
+                    run.state = RunState::Exited;
+                    run.ended_at = Some(Utc::now());
+                    run.error = Some(super::orphan::interrupted_error());
+                });
+                drop(permit);
+                state.announce_runs();
+                host.run_finished(&record.run_id);
+            })
+            .ok()?;
+        Some(run_id)
     }
 
     pub async fn launch(
@@ -249,7 +318,12 @@ impl LaunchService {
                 &cancel,
             )
             .await;
-        let (command, secrets, run_dir) = match prepared {
+        let Prepared {
+            command,
+            secrets,
+            run_dir,
+            java,
+        } = match prepared {
             Ok(prepared) => prepared,
             Err(error) => {
                 *lock_or(&self.pending) = None;
@@ -289,7 +363,7 @@ impl LaunchService {
                     instance_id,
                     &run_id,
                     run_dir.clone(),
-                    command,
+                    (command, &java),
                     &secrets,
                     permit,
                 )
@@ -328,7 +402,7 @@ impl LaunchService {
         max_heap_mib: u32,
         resolution: crate::storage::models::Resolution,
         cancel: &CancelToken,
-    ) -> LauncherResult<(Command, Vec<String>, PathBuf)> {
+    ) -> LauncherResult<Prepared> {
         let check_cancel = || {
             if cancel.is_cancelled() {
                 Err(LauncherError::new(
@@ -437,7 +511,12 @@ impl LaunchService {
             &run_dir.join("jvm.args"),
             self.force_argfile,
         )?;
-        Ok((command, compiled.secrets().to_vec(), run_dir))
+        Ok(Prepared {
+            command,
+            secrets: compiled.secrets().to_vec(),
+            run_dir,
+            java: installed.java,
+        })
     }
 
     /// The plan from the locked descriptor; must match the lock exactly.
@@ -467,7 +546,7 @@ impl LaunchService {
         instance_id: InstanceId,
         run_id: &str,
         run_dir: PathBuf,
-        command: Command,
+        (command, java): (Command, &std::path::Path),
         secrets: &[String],
         permit: crate::state::activity::ActivityPermit,
     ) -> LauncherResult<()> {
@@ -495,6 +574,7 @@ impl LaunchService {
         let exited_id = run_id.to_owned();
         let finish_host = Arc::clone(&self.host);
         let finish_id = run_id.to_owned();
+        let finish_root = root.clone();
         let spawned = child::spawn(
             command,
             sink,
@@ -542,6 +622,10 @@ impl LaunchService {
                         exit_code,
                     });
                 });
+                // Cleanup happens before the result is published, so whoever sees
+                // the finished run also sees no handle or active-run record.
+                finish_host.clear_handle(&finish_id);
+                super::orphan::clear(&finish_root, &finish_id);
                 state.finish_run(&finish_id, |run| {
                     run.state = run_state;
                     run.ended_at = Some(finished_at);
@@ -553,7 +637,6 @@ impl LaunchService {
                     run.logging_degraded = degraded;
                     run.error = error;
                 });
-                finish_host.clear_handle(&finish_id);
                 // Released only after exit, bounded drain and cleanup.
                 drop(permit);
                 state.announce_runs();
@@ -564,6 +647,8 @@ impl LaunchService {
             LauncherError::new(ErrorCode::GameSpawnFailed, "Java could not be started.")
                 .with_detail("ioKind", format!("{:?}", error.kind()))
         })?;
+        // Lets a restarted launcher recognize this game if the supervisor dies.
+        super::orphan::record(root, run_id, instance_id, supervised.pid(), java);
         self.host.store_handle(run_id, supervised);
         let _ = state.update_instance(instance_id, |i| i.last_played_at = Some(Utc::now()));
         state.update_run(run_id, |run| {

@@ -435,3 +435,18 @@ replaces it), `superseded`.
   only `stop_game`, which kills the owned process after a UI confirmation, ends it.
 - **Window:** the same unload/restore path as the P03 harness (unload after 1.5 s survival
   in the default mode, one window restored with the result).
+
+## D-026 — Background work, quit policy and surviving games
+
+- **Status:** accepted · **Phase:** P10 · **Affects:** FR11, A17–A19, doc 10 rule 6 / MV10
+- **Closing the window** while any operation holds the activity permit keeps the
+  launcher running (no prompt); a finished install/repair restores one window with its
+  result. Explicit Quit asks first: games keep the P03 choice; installs/repairs offer
+  "Keep running in background" (default) or "Cancel and quit", which cancels, waits up
+  to 30 s for the single terminal record and exits without reopening a window.
+- **No tray icon in the MVP.** Reopening the executable (single instance) or the macOS
+  Dock restores the window; nothing depends on a tray extension.
+- **Surviving games:** the active game's PID, OS process start time and executable are
+  stored in `locks/active-run.json`. Only an exact match is treated as the game; it is
+  watched every 2 s while holding the activity permit and can be stopped by the user
+  after the identity is checked again. It is not adopted (no output, no exit code).

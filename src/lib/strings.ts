@@ -280,11 +280,15 @@ export const strings = {
     keep: 'Keep running in background',
     stop: 'Stop and quit',
     cancel: 'Cancel',
+    jobTitle: 'Game files are still being prepared',
+    jobBody:
+      'Quitting now cancels the installation or repair; files verified so far are kept for next time. Keep it running in the background and the launcher window returns when it finishes.',
+    jobStop: 'Cancel and quit',
   },
 
   foundation: {
     title: 'Project status',
-    body: 'Sign-in, game installation and launching are not implemented yet, so no play controls are shown.',
+    body: 'Installing, repairing and launching are implemented. Starting the game needs Microsoft sign-in, which this build cannot offer until the project supplies its own Microsoft application ID.',
   },
 
   systemInfo: {

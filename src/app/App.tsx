@@ -47,7 +47,7 @@ export function App() {
               {strings.nav[item]}
             </button>
           ))}
-          <QuitControl />
+          <QuitControl activeKind={snapshot?.activeOperation?.kind ?? null} />
         </nav>
       </header>
 

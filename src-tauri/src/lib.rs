@@ -56,6 +56,17 @@ impl install::service::StateAccess for TauriStateAccess {
     fn app_state(&self) -> &AppState {
         self.0.state::<AppState>().inner()
     }
+
+    /// A job that finished in the background brings back one window with its
+    /// result, unless the user chose cancel-and-quit.
+    fn operation_finished(&self) {
+        let controller = self.0.state::<LifecycleController>();
+        if !controller.quit_intended()
+            && self.0.get_webview_window(lifecycle::MAIN_WINDOW).is_none()
+        {
+            controller.show_main_window(&self.0);
+        }
+    }
 }
 
 /// Drives the main window around game runs exactly like the lifecycle harness.
@@ -230,6 +241,11 @@ pub fn run() {
                     &version,
                 ))
             });
+            // A game that outlived a previous launcher keeps everything blocked
+            // until it exits.
+            if let Some(launcher) = &launcher {
+                launcher.watch_survivor();
+            }
             app.manage(commands::Launcher(launcher));
             // Finish a pending sign-out or refresh the saved account in the background.
             tauri::async_runtime::spawn(async move { auth.restore().await });
