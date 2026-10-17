@@ -1337,3 +1337,27 @@ installation's runtime from its lock, and choosing a source writes `javaProvider
   build has no client ID, and Minecraft services have not approved the project's
   application yet (see the D-034 section), so the Microsoft part rests on the fixture
   tests above.
+
+## Backups (D-047)
+
+- **Automated:**
+  - `backup::store` tests: identical files stored once; unchanged files not read
+    again; deleting a backup frees only unshared files; exact restore; a damaged
+    object stops the restore and keeps the current folder; automatic backups pruned
+    while manual ones stay; names and manifest paths cannot leave their folder.
+  - `backup` service tests: world backup and in-place restore with the "before a
+    restore" backup; restore as a copy; delete; refusal while the installation's game
+    runs; whole-installation restore in place only; automatic backups after playing
+    only when switched on and only for changed worlds, pruned to the kept count.
+  - `BackupsView.test.tsx`: backing up worlds and installations, restore and delete
+    with confirmation, the switch for automatic backups.
+- **Release build, Linux x64 (Xvfb), Fabric 1.21.1:** with _Back up changed worlds
+  after playing_ on, the demo world was entered and the game closed. A backup "After
+  playing" of `Demo_World` appeared at once (26 files, 16.2 MiB). A backup of the
+  whole installation then held 42.4 MiB but added only 26.2 MiB: the world's files
+  were already stored ([backups](verification/backups-list.png)). After deleting the
+  world's four region files, **Restore** (confirmed) brought all four back. A
+  "Before a restore" backup of the damaged state was made first; it added 0 bytes,
+  because its remaining files were already stored.
+- **Not verified:** Windows and macOS (CI builds only), very large worlds (time
+  and memory were not measured).
