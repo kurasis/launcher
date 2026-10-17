@@ -448,8 +448,10 @@ replaces it), `superseded`.
   Dock restores the window; nothing depends on a tray extension.
 - **Surviving games:** the active game's PID, OS process start time and executable are
   stored in `locks/active-run.json`. Only a match of PID, executable and start time
-  (within 5 s: Linux reports start times relative to a boot time that moves with clock
-  corrections) is treated as the game; it is
+  (within 5 s) is treated as the game. On Linux the start time is kept in seconds since
+  boot (`/proc/<pid>/stat` start tick) together with the boot ID, because the start
+  time Linux reports as wall-clock time is derived from a boot time that moves with
+  every clock correction (NTP, resume); a record from another boot never matches. It is
   watched every 2 s while holding the activity permit and can be stopped by the user
   after the identity is checked again. It is not adopted (no output, no exit code).
 

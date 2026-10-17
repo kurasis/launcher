@@ -614,6 +614,11 @@ commit `a2e2555` (PR #11): all 5 jobs pass. The previous run failed once on linu
 the surviving-game test saw its own `sleep` process as gone because Linux reported its
 start time a second differently (the kernel boot time moves with clock corrections).
 Start times now match within 5 seconds together with PID and executable (D-026).
+A larger clock step on a fresh runner broke the same check again on
+[kurasis/launcher#18](https://github.com/kurasis/launcher/pull/18) (`a_reused_pid_is_never_treated_as_the_game`).
+Linux start times are now counted from boot with the boot ID, so clock corrections no
+longer move them (D-026); unit tests cover the `/proc` parsing and a record from another
+boot.
 
 ## P12 — Windows, macOS and Linux packages
 
