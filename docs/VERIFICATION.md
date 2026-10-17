@@ -604,7 +604,11 @@ Frontend total: 54 tests; Rust unit tests: 244.
 
 ### CI results
 
-Recorded by the next phase's pull request.
+Workflow run [39018163000](https://github.com/kurasis/launcher/actions/runs/39018163000) on
+commit `a2e2555` (PR #11): all 5 jobs pass. The previous run failed once on linux-x64:
+the surviving-game test saw its own `sleep` process as gone because Linux reported its
+start time a second differently (the kernel boot time moves with clock corrections).
+Start times now match within 5 seconds together with PID and executable (D-026).
 
 ## P12 — Windows, macOS and Linux packages
 
@@ -647,8 +651,10 @@ Found and fixed while testing:
 - The AppImage needs the libraries linuxdeploy leaves to the host (ALSA, EGL/GL/GLES,
   GBM, fontconfig, FriBidi, HarfBuzz, Wayland client); the first runs failed without
   them. Documented in INSTALL.md and D-028.
-- Packaged builds said "Development build"; they now say "Qualification build"
-  ([screenshot](verification/p12-packaged-debian12.png)).
+- Packaged builds said "Development build"; the label now follows the Rust core's build
+  profile: "Qualification build" for release cores
+  ([screenshot](verification/p12-packaged-debian12.png)), "Development build" for debug
+  cores even when their frontend is bundled.
 
 ### Upgrade and uninstall (Debian 12, real version change)
 

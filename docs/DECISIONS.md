@@ -491,8 +491,9 @@ replaces it), `superseded`.
 - **AppImage:** relies on the host for the libraries linuxdeploy excludes (glibc, ALSA,
   EGL/GL/GLES, GBM, fontconfig, FriBidi, HarfBuzz, Wayland client, X11). Every desktop
   installation has them; the smoke test installs exactly these on a stripped system.
-- **Build label:** packaged builds show "Qualification build" (doc 01: packages are
-  private qualification builds until P13); development builds keep "Development build".
+- **Build label:** taken from the Rust core's build profile (`get_app_info`): release
+  cores show "Qualification build" (doc 01: packages are private qualification builds
+  until P13), debug cores "Development build".
 - **Package workflow:** `.github/workflows/package.yml` builds every target, writes
   `SHA256SUMS` and `build-info.json`, smoke-tests (install, start, data root, uninstall
   keeps data) and keeps packages as workflow artifacts only. It never creates a release.

@@ -17,6 +17,7 @@ import { AboutView } from './AboutView';
 import styles from './App.module.css';
 import { QuitControl } from './QuitControl';
 import { useTheme } from './useTheme';
+import { useAppInfo } from './useAppInfo';
 
 type View = 'home' | 'account' | 'settings' | 'diagnostics' | 'about';
 const views: View[] = ['home', 'account', 'settings', 'diagnostics', 'about'];
@@ -41,6 +42,9 @@ function ActivityIndicator({ snapshot }: { snapshot: AppSnapshot }) {
 
 export function App() {
   const state = useAppStore();
+  // The Rust core's build profile: a debug core is a development build even
+  // when its frontend was bundled.
+  const { state: appInfo } = useAppInfo();
   const [view, setView] = useState<View>('home');
   const snapshot = state.status === 'ready' ? state.snapshot : null;
   useTheme(snapshot?.settings.theme);
@@ -50,7 +54,9 @@ export function App() {
       <header className={styles.topbar}>
         <div className={styles.brandRow}>
           <h1 className={styles.brand}>{strings.productName}</h1>
-          <StatusBadge tone="neutral" label={strings.buildTag(import.meta.env.DEV)} />
+          {appInfo.status === 'ready' && (
+            <StatusBadge tone="neutral" label={strings.buildTag(appInfo.info.buildProfile)} />
+          )}
         </div>
         {snapshot !== null && <ActivityIndicator snapshot={snapshot} />}
         {snapshot !== null && <AccountChip account={snapshot.account} />}
