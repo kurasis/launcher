@@ -120,6 +120,27 @@ export const strings = {
       'Each installation gets its own game folder for worlds, options and screenshots. The version cannot be changed later; create another installation to play a different version.',
     submit: 'Create installation',
     cancel: 'Cancel',
+    availability: {
+      available: 'Available from Mojang',
+      descriptor_changed: 'Changed upstream; waiting for verification',
+      not_in_catalog: 'Not in the Mojang catalog',
+      catalog_unavailable: 'Mojang catalog not reachable',
+      checking: 'Checking the Mojang catalog…',
+    },
+    stale: 'Showing the last saved catalog because it could not be refreshed.',
+    refresh: 'Check again',
+    estimate: 'Estimate download',
+    estimating: 'Estimating…',
+    planTitle: (version: string) => `Download estimate for ${version}`,
+    planJava: 'Java',
+    planLibraries: 'Libraries',
+    planAssets: 'Asset files',
+    planGameFiles: 'Game files',
+    planMissing: 'Still to download',
+    planRuntime: 'Java runtime size',
+    planRuntimeUnknown: 'Determined when the runtime is prepared',
+    planNote:
+      'Based on the official metadata only. The version has not yet been checked by starting the game.',
   },
 
   details: {

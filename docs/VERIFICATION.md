@@ -193,3 +193,100 @@ supervision tests therefore ran on Windows and both macOS architectures.
 ### CI results
 
 Filled in from the pull request's checks before merge.
+
+## P05 — Minecraft metadata and deterministic install planning
+
+- **Host:** development host (Ubuntu 24.04.5 x86_64 container), outbound HTTPS through the
+  environment's proxy.
+- **Branch / PR:** `claude/p05-catalog-plan`, [kurasis/launcher#5](https://github.com/kurasis/launcher/pull/5).
+- **Evidence kind:** metadata only. Planning proves the official metadata is read and
+  resolved correctly; it says nothing about whether the game starts (that is P09/P13). No
+  game binary was downloaded.
+
+### Deterministic tests (pass)
+
+| Area                     | Tests                                                                                                                                                                                                                                                                                                                                                                     |
+| ------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Rules engine (9)         | No rules = allow; rules start disallowed; **last matching rule wins** (allow-then-disallow and disallow-then-allow); predicates are conjunctive; `os.version` regex; features default to false; unknown actions, OS keys, rule keys and non-boolean features are errors; an `os.version` rule with an unknown OS version is an error                                      |
+| Planner (16)             | Fixtures are byte-identical to the catalog descriptors (SHA-1); library selection per target matches an independent reference (below); Java 21/25 from metadata; foreign-OS libraries excluded; ordered canonical classpath ending in the client; per-OS arguments; logging config and asset index planned; every URL on the allowlist; deterministic serializable output |
+| Assets                   | Objects deduplicated by hash, names never used as paths; legacy `virtual`/`map_to_resources` indexes, bad hashes, missing sizes and conflicting sizes for one hash rejected                                                                                                                                                                                               |
+| Rejection                | `inheritsFrom`, legacy `minecraftArguments`, non-release type, ID mismatch, missing client or `javaVersion`, unsafe main class, legacy `natives`/classifiers, unsafe library paths, off-allowlist or plain-HTTP URLs, invalid hashes, unknown placeholders; unsupported targets explicit                                                                                  |
+| Content identity (1.2.1) | Same coordinate with different digests → distinct content; identical digest reused; conflicting size for one digest rejected; descriptors stored per version and SHA-1                                                                                                                                                                                                    |
+| Catalog / cache (9)      | Entry parsing; ETag revalidation (304) and 6 h freshness; outage shows cached catalog as stale; no cache → "catalog unavailable", nothing invented; changed descriptor hash → not trusted and refused for planning; `latest.release` never adds a version; descriptors verified, stored byte-for-byte, reused, refetched when damaged; wrong bytes never stored           |
+| Network policy (3)       | Exact hosts per source category; special-purpose IPv4/IPv6 ranges are not public                                                                                                                                                                                                                                                                                          |
+| UI (3)                   | Availability badge, metadata-only estimate with runtime size "unknown", no estimate for a changed descriptor, stale notice and forced refresh                                                                                                                                                                                                                             |
+
+### Independent cross-check
+
+Library selection was recomputed by a separate Python script (not sharing code with the
+Rust planner): last matching rule wins, no features, artifacts deduplicated by SHA-1.
+
+```python
+import json, re, sys
+
+def allowed(rules, os_name, arch):
+    if not rules:
+        return True
+    action = False
+    for rule in rules:
+        os_ = rule.get("os", {})
+        if "features" in rule:
+            continue
+        if "name" in os_ and os_["name"] != os_name:
+            continue
+        if "arch" in os_ and not re.fullmatch(os_["arch"], arch):
+            continue
+        action = rule["action"] == "allow"
+    return action
+
+for path in sys.argv[1:]:
+    desc = json.load(open(path))
+    for os_name, arch in [("windows", "x86_64"), ("linux", "x86_64"), ("osx", "x86_64"), ("osx", "arm64")]:
+        seen = {}
+        for lib in desc["libraries"]:
+            art = lib.get("downloads", {}).get("artifact")
+            if art and allowed(lib.get("rules"), os_name, arch):
+                seen[art["sha1"]] = art["size"]
+        print(desc["id"], os_name, arch, len(seen), sum(seen.values()))
+```
+
+Its output equals the expectations in `library_selection_matches_the_independent_reference`
+(e.g. 1.21.1 Windows 70 libraries / 66,739,500 bytes, Linux 56 / 61,944,833; 26.3 Windows 74 /
+87,763,720, macOS 80 / 91,265,044) and the counts in document 10.
+
+### Live metadata check
+
+`cargo test --test live_metadata -- --ignored --nocapture` on 2026-10-17 (catalog,
+two descriptors, two asset indexes; no game files):
+
+| Version | Catalog SHA-1 (accepted) | Target        | Java | Libraries | Asset objects | Game artifacts | Game bytes  |
+| ------- | ------------------------ | ------------- | ---- | --------- | ------------- | -------------- | ----------- |
+| 1.21.1  | `499680d6…ace7d`         | Windows x64   | 21   | 70        | 3,888         | 3,961          | 919,845,786 |
+| 1.21.1  |                          | Linux x64     | 21   | 56        | 3,888         | 3,947          | 915,051,119 |
+| 1.21.1  |                          | macOS x64/arm | 21   | 63        | 3,888         | 3,954          | 918,046,173 |
+| 26.3    | `11f1aefe…b2eb`          | Windows x64   | 25   | 74        | 5,147         | 5,224          | 614,675,500 |
+| 26.3    |                          | Linux x64     | 25   | 66        | 5,147         | 5,216          | 610,265,329 |
+| 26.3    |                          | macOS x64/arm | 25   | 80        | 5,147         | 5,230          | 618,176,824 |
+
+`latest.release` was `26.3` (informational). "Game artifacts" = libraries + asset objects +
+client + logging config + asset index. "Missing" bytes in the run exclude the already
+verified asset index.
+
+### GUI demonstration
+
+Debug build under Xvfb with a fresh data directory: Installations → New installation shows
+"Available from Mojang" from the live catalog; "Estimate download" shows Java major,
+library and asset counts, game files and missing bytes, with the runtime size "Determined
+when the runtime is prepared" ([1.21.1](verification/p05-plan-1.21.1.png),
+[26.3](verification/p05-plan-26.3.png)). Afterwards the data directory held only
+`metadata/` (catalog, receipt, two descriptors, two asset indexes; 1.4 MB in total).
+
+### Not verified in P05
+
+- Redirect handling and the public-address resolver against a live redirecting source
+  (first exercised by artifact and runtime downloads in P06/P07).
+- Game compatibility of either version (P09/P13).
+
+### CI results
+
+Filled in from the pull request's checks before merge.

@@ -185,6 +185,41 @@ export interface SupportedVersion {
   acceptedDescriptorSha1: string[];
 }
 
+/** Mirrors `catalog::source::Availability`. */
+export type VersionAvailability =
+  'available' | 'descriptor_changed' | 'not_in_catalog' | 'catalog_unavailable';
+
+export interface SupportedVersionView {
+  id: string;
+  status: SupportedVersion['status'];
+  expectedJavaMajor: number;
+  availability: VersionAvailability;
+  catalogSha1: string | null;
+}
+
+/** Returned by `list_supported_versions`. `latestRelease` is informational only. */
+export interface CatalogView {
+  versions: SupportedVersionView[];
+  fetchedAt: string | null;
+  stale: boolean;
+  error: LauncherError | null;
+  latestRelease: string | null;
+}
+
+/** Returned by `preview_install_plan`; nothing is downloaded to produce it. */
+export interface PlanSummary {
+  versionId: string;
+  descriptorSha1: string;
+  javaMajor: number;
+  libraries: number;
+  assetObjects: number;
+  gameArtifacts: number;
+  gameBytes: number;
+  missingGameBytes: number;
+  /** Unknown until the Java runtime is resolved. */
+  runtimeBytes: number | null;
+}
+
 export interface ActiveActivity {
   kind: OperationKind;
   instanceId: string | null;

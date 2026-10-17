@@ -274,3 +274,33 @@ replaces it), `superseded`.
 - **XUID:** taken only from the XSTS `xid` claim when present.
 - **Verification:** 44 deterministic tests in `src-tauri/src/auth/` against a local fixture
   server; no live service call has been made.
+
+## D-021 — Public source client and metadata cache
+
+- **Status:** accepted · **Phase:** P05 · **Affects:** doc 07 trust boundaries, FR04, A09
+- **Client:** `net::PublicClient`, separate from the auth client. HTTPS only; each source
+  category (`MojangMetadata`, `MojangArtifacts`, `Adoptium`) has an exact host allowlist that
+  every request URL and every redirect hop must match; at most five redirects; no
+  credentials; 15 s connect and 60 s read timeouts; responses are size-capped per document.
+- **Address policy:** the client's DNS resolver refuses loopback, private, link-local and
+  other special-purpose answers for allowlisted names. Any other name the client resolves
+  can only be the user's configured proxy (requests cannot target other hosts), so proxies
+  on private addresses keep working; the proxy then resolves the destination itself.
+- **Catalog cache:** `metadata/catalog.json` plus a receipt (fetch time, ETag,
+  Last-Modified, SHA-256). Fresh for 6 hours; a forced refresh revalidates with the stored
+  ETag. On an outage the last verified catalog is shown and marked stale; without one, every
+  version is shown as "catalog unavailable". Nothing is ever invented.
+- **Trust:** a version is offered only when it is on the curated compatibility list and the
+  catalog lists one of its accepted descriptor SHA-1 values. A changed hash is shown as a
+  new candidate and refused for planning. `latest.release` is displayed only as
+  information and never adds a version or changes an instance.
+- **Descriptors and asset indexes:** verified by SHA-1 (and size) before parsing, stored
+  byte-for-byte under `metadata/versions/<id>/<sha1>.json` and
+  `metadata/asset-indexes/<sha1>.json`, re-verified on every read and refetched when the
+  cached copy is damaged.
+- **Planner:** a pure function of descriptor bytes, asset index bytes and a target
+  (`RuleContext`). Rules use the last matching action; unknown rule keys, inheritance,
+  legacy argument strings, non-release types, unsafe paths, URLs off the allowlist and
+  unknown placeholders are rejected. Content paths are canonical by digest (doc 10), so the
+  same coordinate with a different digest is distinct content and identical digests are
+  shared; a conflicting size for one digest is an error.
