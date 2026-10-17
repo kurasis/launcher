@@ -25,6 +25,23 @@ use tauri::{AppHandle, Manager, Runtime, WebviewUrl, WebviewWindowBuilder};
 /// recreated window receives exactly the same permissions.
 pub const MAIN_WINDOW: &str = "main";
 
+/// Runs `task` on the main thread as a queued event, never inline.
+///
+/// `run_on_main_thread` runs the task at once when called on the main thread,
+/// for example from a synchronous command, a window event or another plugin's
+/// callback. Creating a window there makes WebView2 wait inside its own callback,
+/// and the new window stays empty on Windows (Tauri's known issue for window
+/// creation in synchronous commands and event handlers). Handing the task over
+/// from another thread always queues it.
+fn queue_on_main_thread<R: Runtime>(app: &AppHandle<R>, task: impl FnOnce() + Send + 'static) {
+    let handle = app.clone();
+    let _ = std::thread::Builder::new()
+        .name("window-request".into())
+        .spawn(move || {
+            let _ = handle.run_on_main_thread(task);
+        });
+}
+
 /// Label of the console window (D-037). Its capability grants only reading the
 /// console journal.
 pub const CONSOLE_WINDOW: &str = "console";
@@ -151,7 +168,7 @@ impl LifecycleController {
     /// Shows the existing main window or creates exactly one new one.
     pub fn show_main_window<R: Runtime>(&self, app: &AppHandle<R>) {
         let handle = app.clone();
-        let _ = app.run_on_main_thread(move || {
+        queue_on_main_thread(app, move || {
             let controller = handle.state::<LifecycleController>();
             if let Some(window) = handle.get_webview_window(MAIN_WINDOW) {
                 let _ = window.unminimize();
@@ -182,7 +199,7 @@ impl LifecycleController {
     /// packaged UI, which renders the console for this window label.
     pub fn show_console_window<R: Runtime>(&self, app: &AppHandle<R>) {
         let handle = app.clone();
-        let _ = app.run_on_main_thread(move || {
+        queue_on_main_thread(app, move || {
             if let Some(window) = handle.get_webview_window(CONSOLE_WINDOW) {
                 let _ = window.unminimize();
                 let _ = window.show();
