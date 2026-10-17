@@ -11,6 +11,22 @@ use std::fs::{self, File, OpenOptions};
 use std::io::Write;
 use std::path::{Path, PathBuf};
 
+/// Log lines that appear once the client window is up, newest era first:
+/// texture atlases (1.13+), the 1.7–1.12 atlas and sound engine, the 1.6 resource
+/// manager, and the launch wrapper of older versions (1.5.2 and before).
+pub const READY_MARKERS: &[&str] = &[
+    "minecraft:textures/atlas/",
+    "textures-atlas",
+    "Sound engine started",
+    "Reloading ResourceManager",
+    "Launching wrapped minecraft",
+];
+
+/// Whether a run's log shows that the game window is up.
+pub fn shows_game_window(text: &str) -> bool {
+    READY_MARKERS.iter().any(|m| text.contains(m))
+}
+
 pub const MAX_FILE_BYTES: u64 = 10 * 1024 * 1024;
 pub const MAX_FILES: usize = 5;
 pub const MAX_RUNS: usize = 20;

@@ -36,16 +36,6 @@ use launcher_lib::storage::paths::DataRoot;
 use launcher_lib::validation::MemoryPolicy;
 
 const VERSION: &str = "0.1.0";
-/// Log lines that appear once the client is up, newest era first: texture atlases
-/// (1.13+), the 1.7–1.12 atlas and sound engine, the 1.6 resource manager, and the
-/// launch wrapper of older versions (1.5.2 and before).
-const READY_MARKERS: &[&str] = &[
-    "minecraft:textures/atlas/",
-    "textures-atlas",
-    "Sound engine started",
-    "Reloading ResourceManager",
-    "Launching wrapped minecraft",
-];
 /// After a marker, the game must keep running this long to count as started.
 const SETTLE: Duration = Duration::from_secs(15);
 
@@ -184,7 +174,7 @@ async fn the_game_starts_without_a_token_and_stops_cleanly() {
         // LAUNCHER_LIVE_READY_AFTER_SECS counts running that long as started.
         let alive_long_enough = ready_after.is_some_and(|after| started.elapsed() >= after);
         if ready_at.is_none()
-            && (alive_long_enough || READY_MARKERS.iter().any(|m| text.contains(m)))
+            && (alive_long_enough || launcher_lib::launch::logs::shows_game_window(&text))
         {
             ready_at = Some(Instant::now());
         }

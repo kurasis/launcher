@@ -879,3 +879,20 @@ message` plus a stack trace), with the event's level.
   **Save notes** (`set_instance_notes`); the list shows their first line. Saving is
   allowed while the installation is installing or playing, because notes affect
   neither.
+
+## D-042 — Close the launcher once the game opens
+
+- **Status:** accepted (owner request, 2026-10-17) · **Affects:** docs/spec/05 ("Window
+  and application states"), Settings → While a game is running
+- **Decision:** a third choice beside "close the window and reopen it" and "keep it
+  open": **Close the launcher once the game window opens; the game keeps running**
+  (`duringGameMode: "close_launcher"`). After the run starts, the launcher waits until
+  the game's log shows its window (the same markers the live tests use) or 60 seconds
+  of running, then quits. A game that ends first keeps the launcher open with the
+  result.
+- **The game afterwards:** it keeps running on its own; output written after the
+  launcher quit is not recorded (the run log ends there). The active-run record stays,
+  so a launcher started while that game runs shows it as running, offers **Stop game**,
+  and blocks installing and playing until it ends (D-026's survivor handling).
+- **Also fixed:** while a game ran, the installation panel showed install progress
+  ("Reading version metadata") and a Cancel button; it now says the game is running.

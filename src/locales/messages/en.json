@@ -134,7 +134,8 @@
         "succeeded": "{kind, select, repair {Repair} other {Installation}} finished. Downloaded {files, plural, one {# file} other {# files}} ({bytes}); reused {reused, plural, one {# verified file} other {# verified files}}.",
         "cancelled": "Cancelled. Files verified so far were kept; continue to resume.",
         "interrupted": "The launcher stopped before this finished. Files verified so far were kept."
-      }
+      },
+      "gameRunning": "The game is running."
     },
     "createForm": {
       "title": "New installation",
@@ -278,7 +279,8 @@
       "duringGame": "While a game is running",
       "duringGameModes": {
         "unload_and_return": "Close the launcher window and reopen it when the game exits",
-        "keep_open": "Keep the launcher window open"
+        "keep_open": "Keep the launcher window open",
+        "close_launcher": "Close the launcher once the game window opens; the game keeps running"
       },
       "dataLocation": "Launcher data location",
       "dataLocationHint": "Chosen by the operating system for this user. It cannot be changed here.",
