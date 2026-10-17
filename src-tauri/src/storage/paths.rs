@@ -189,10 +189,17 @@ impl DataRoot {
         self.jobs_dir().join(format!("{job}.json"))
     }
 
+    pub fn downloads_dir(&self) -> PathBuf {
+        self.root.join("downloads")
+    }
+
+    /// Job-owned staging directory; removed when the job ends.
+    pub fn download_staging(&self, job: Uuid) -> PathBuf {
+        self.downloads_dir().join(job.to_string())
+    }
+
     pub fn download_part(&self, job: Uuid, algorithm: &str, digest: &str) -> PathBuf {
-        self.root
-            .join("downloads")
-            .join(job.to_string())
+        self.download_staging(job)
             .join(format!("{algorithm}-{digest}.part"))
     }
 

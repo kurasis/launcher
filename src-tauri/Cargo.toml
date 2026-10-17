@@ -23,7 +23,7 @@ serde_json = "1.0.154"
 thiserror = "2.0.21"
 uuid = { version = "1.28.0", features = ["v4", "serde"] }
 chrono = { version = "0.4.45", default-features = false, features = ["clock", "serde", "std"] }
-sysinfo = { version = "0.39.6", default-features = false, features = ["system"] }
+sysinfo = { version = "0.39.6", default-features = false, features = ["system", "disk"] }
 regex = "1.13.1"
 zeroize = "1.9.1"
 tauri-plugin-single-instance = "2.5.4"
@@ -36,7 +36,7 @@ sha2 = "0.10.9"
 sha1 = "0.10.7"
 hex = "0.4.3"
 keyring = { version = "3.6.3", features = ["apple-native", "windows-native", "sync-secret-service", "crypto-rust"] }
-tokio = { version = "1.53.3", features = ["sync", "time", "net", "rt", "macros", "io-util"] }
+tokio = { version = "1.53.3", features = ["sync", "time", "net", "rt", "macros", "io-util", "fs"] }
 
 [dev-dependencies]
 tauri = { version = "2.12.4", features = ["test"] }

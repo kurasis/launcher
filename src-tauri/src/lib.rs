@@ -8,6 +8,7 @@
 pub mod auth;
 pub mod catalog;
 pub mod commands;
+pub mod download;
 pub mod error;
 pub mod external;
 pub mod install;

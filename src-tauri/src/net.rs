@@ -20,7 +20,7 @@ use url::Url;
 use crate::error::{ErrorCode, LauncherError, LauncherResult};
 
 /// Source categories with their exact allowed hosts.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum SourcePolicy {
     /// Version catalog, descriptors and asset indexes.
     MojangMetadata,
@@ -160,6 +160,22 @@ impl Resolve for PublicOnlyResolver {
     }
 }
 
+/// Follows at most [`MAX_REDIRECTS`] hops, each of which must pass `allows`.
+pub fn redirect_policy(
+    allows: impl Fn(&Url) -> bool + Send + Sync + 'static,
+) -> reqwest::redirect::Policy {
+    reqwest::redirect::Policy::custom(move |attempt| {
+        // `previous` includes the original request, as in reqwest's own limit.
+        if attempt.previous().len() > MAX_REDIRECTS {
+            attempt.error("too many redirects")
+        } else if allows(attempt.url()) {
+            attempt.follow()
+        } else {
+            attempt.error("redirect to an untrusted host")
+        }
+    })
+}
+
 /// A public-source HTTPS client bound to one source policy.
 #[derive(Clone)]
 pub struct PublicClient {
@@ -196,18 +212,9 @@ pub fn map_transport_error(error: &reqwest::Error) -> LauncherError {
 
 impl PublicClient {
     pub fn new(policy: SourcePolicy, app_version: &str) -> LauncherResult<Self> {
-        let redirect = reqwest::redirect::Policy::custom(move |attempt| {
-            if attempt.previous().len() >= MAX_REDIRECTS {
-                attempt.error("too many redirects")
-            } else if policy.allows(attempt.url()) {
-                attempt.follow()
-            } else {
-                attempt.error("redirect to an untrusted host")
-            }
-        });
         let client = reqwest::Client::builder()
             .https_only(true)
-            .redirect(redirect)
+            .redirect(redirect_policy(move |url| policy.allows(url)))
             .dns_resolver(Arc::new(PublicOnlyResolver))
             .connect_timeout(Duration::from_secs(15))
             .read_timeout(Duration::from_secs(60))

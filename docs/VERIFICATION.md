@@ -6,6 +6,10 @@ runtime), **host GUI** (app run on the development host), **CI** (GitHub-hosted 
 **live API** or **real game**. Nothing here is a target-machine qualification unless it
 says so; the qualification matrix is completed in P13.
 
+From P04 on, a phase's **CI results** are recorded by the following phase's pull request,
+because adding them to the same pull request would start another full CI run. The phase
+is merged only after its own required checks pass.
+
 ## Test environments
 
 | Environment                                            | Available   | Used for                     | Notes                                                                                                |
@@ -192,7 +196,10 @@ supervision tests therefore ran on Windows and both macOS architectures.
 
 ### CI results
 
-Filled in from the pull request's checks before merge.
+Workflow run [38987094069](https://github.com/kurasis/launcher/actions/runs/38987094069) on
+commit `be35772` (PR #4): all 5 jobs pass (frontend; clippy, tests and release build on
+linux-x64, windows-x64, macos-arm64, macos-x64). The OS-vault code paths compiled and the
+synthetic auth tests ran on all four targets; no live Microsoft request was made anywhere.
 
 ## P05 — Minecraft metadata and deterministic install planning
 
@@ -289,4 +296,62 @@ when the runtime is prepared" ([1.21.1](verification/p05-plan-1.21.1.png),
 
 ### CI results
 
-Filled in from the pull request's checks before merge.
+Workflow run [38987645015](https://github.com/kurasis/launcher/actions/runs/38987645015) on
+commit `827a3b7` (PR #5): all 5 jobs pass. The rules engine, planner and catalog tests ran
+on Windows and both macOS architectures; the live metadata test is ignored in CI.
+
+## P06 — Verified, cancellable download engine
+
+- **Host:** development host (Ubuntu 24.04.5 x86_64 container).
+- **Branch / PR:** `claude/p06-download-engine`, [kurasis/launcher#6](https://github.com/kurasis/launcher/pull/6).
+- **Evidence kind:** local fixture HTTP server (deterministic, in `src-tauri/src/download/tests.rs`)
+  plus one live smoke run against the Mojang hosts.
+
+### Fixture suite (18 tests, pass; 15 consecutive runs without failure)
+
+| Case                           | Result                                                                                                                                            |
+| ------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Verify and commit              | Files land at canonical paths only after size + SHA-1 match; staging removed; duplicate requests cause one transfer                               |
+| Reuse (MV01)                   | Second job transfers 0 bytes; identical content under another URL is not fetched again                                                            |
+| Corruption                     | Wrong bytes: one fresh retry, then `HASH_MISMATCH`; final path never created. Corrupt-then-correct succeeds with one retry                        |
+| Wrong size                     | `Content-Length` or body size different from the plan → integrity failure                                                                         |
+| Short read / 5xx               | Truncated body then 503 then success: 3 attempts, failed bytes counted in network bytes only. Persistent 503: exactly 1 + 3 attempts              |
+| Permanent errors               | 404 → one request, no retry                                                                                                                       |
+| `Retry-After`                  | `429` with 1 s honoured; 3600 s fails at once with `RATE_LIMITED` (one request)                                                                   |
+| Stall                          | No bytes for longer than the stall timeout → `NETWORK_ERROR` (`transport: stall`), bounded retries                                                |
+| Cancel and retry               | Cancel during a stalled transfer returns `OPERATION_CANCELLED` within 2 s; verified file kept, partial file absent, staging removed; retry reuses |
+| Redirects                      | Same-source redirect followed; redirect to another host or a loop (more than 5 hops) refused without retry; the foreign target is never contacted |
+| Metadata conflicts (MV03/MV04) | Same digest with two sizes and same path with two digests → `METADATA_CONFLICT`; unsafe relative paths rejected; no request made                  |
+| Disk space                     | Insufficient space → `DISK_FULL` with required/available bytes before any request                                                                 |
+| Existing corrupt file          | Replaced; SHA-256 digests supported (runtime archives)                                                                                            |
+| Bounds                         | With concurrency 3 the server never sees more than 3 transfers; progress events ≤ elapsed/interval + 4; progress monotonic and never above total  |
+| Receipts                       | One terminal outcome (second `finish` ignored); running receipt → `interrupted` at startup and staging removed; idempotent                        |
+
+Also: `CancelToken` wake-up test, `Retry-After` date parsing, and production routes refusing
+URLs outside their source (wrong host, plain HTTP, IP literal) before any connection.
+
+A defect found here was fixed: the redirect limit allowed four hops instead of five
+because reqwest's `previous()` includes the original request.
+
+### Live smoke test
+
+`cargo test --test live_download -- --ignored --nocapture` on 2026-10-17: 125 files from the
+1.21.1 plan for this host (logging config, the four smallest libraries, 120 asset objects;
+6,436,917 bytes) via the production HTTPS transport.
+
+| Step                               | Result                                                                                 |
+| ---------------------------------- | -------------------------------------------------------------------------------------- |
+| Cancel once 30 files were verified | `OPERATION_CANCELLED`; 35/125 committed (in-flight commits completed); no staging left |
+| Retry                              | 35 reused, 90 downloaded, 5,159,602 bytes, 0 retries; 15 progress events               |
+| Third run                          | 125 reused, 0 network bytes                                                            |
+
+### Not verified in P06
+
+- Behaviour on Windows/macOS filesystems beyond the CI test run.
+- Disk-full during a real write (only the pre-check is exercised; write errors map to
+  `DISK_FULL` through the shared I/O mapping).
+- Progress display in the UI (P08).
+
+### CI results
+
+Recorded by the next phase's pull request (see the note at the top of this file).

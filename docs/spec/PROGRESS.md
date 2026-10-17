@@ -9,9 +9,9 @@ Allowed states: `not_started`, `in_progress`, `blocked`, `done`. A partially imp
 | [P01](phases/P01-PROJECT-FOUNDATION.md) | done | [PR #1](https://github.com/kurasis/launcher/pull/1); host checks + CI on 4 targets, see [VERIFICATION.md](../VERIFICATION.md#p01--project-foundation) | Host GUI checked on Linux x64 only; Microsoft client ID not supplied (does not block P01) |
 | [P02](phases/P02-CORE-STORAGE-AND-IPC.md) | done | [PR #2](https://github.com/kurasis/launcher/pull/2); 89 Rust + 19 frontend tests, CI 5/5, host GUI demo; see [VERIFICATION.md](../VERIFICATION.md#p02--rust-state-storage-and-typed-ipc) | GUI demo on Linux x64 only; other targets via CI tests |
 | [P03](phases/P03-LIFECYCLE-SPIKE.md) | done | [PR #3](https://github.com/kurasis/launcher/pull/3); lifecycle scenarios + 40 cycles on Linux x64 host, CI 5/5; see [VERIFICATION.md](../VERIFICATION.md#p03--early-window-and-process-lifecycle-proof) | Window behaviour unverified on Windows/macOS/Wayland (P13); memory growth ≈85 KiB/cycle tracked for A23 |
-| [P04](phases/P04-AUTHENTICATION-AND-ACCESS.md) | blocked | Implementation and 44 synthetic auth tests pass; see [VERIFICATION.md](../VERIFICATION.md#p04--microsoft-login-and-current-game-access) and [AUTH-CONTRACT.md](../AUTH-CONTRACT.md) | Live positive sign-in impossible: no project-owned Microsoft client ID / Minecraft API approval (owner action). P05–P08 proceed meanwhile |
-| [P05](phases/P05-CATALOG-AND-INSTALL-PLAN.md) | in_progress | Live catalog + plans for both baselines on 4 targets, cross-checked independently; see [VERIFICATION.md](../VERIFICATION.md#p05--minecraft-metadata-and-deterministic-install-planning) | Waiting for CI on the pull request; metadata success is not game compatibility (P13) |
-| [P06](phases/P06-DOWNLOAD-ENGINE.md) | not_started | — | — |
+| [P04](phases/P04-AUTHENTICATION-AND-ACCESS.md) | blocked | [PR #4](https://github.com/kurasis/launcher/pull/4) merged; 44 synthetic auth tests, CI 5/5; see [VERIFICATION.md](../VERIFICATION.md#p04--microsoft-login-and-current-game-access) and [AUTH-CONTRACT.md](../AUTH-CONTRACT.md) | Live positive sign-in impossible: no project-owned Microsoft client ID / Minecraft API approval (owner action). P05–P08 proceed meanwhile |
+| [P05](phases/P05-CATALOG-AND-INSTALL-PLAN.md) | done | [PR #5](https://github.com/kurasis/launcher/pull/5); live catalog + plans for both baselines on 4 targets, independent cross-check, CI 5/5; see [VERIFICATION.md](../VERIFICATION.md#p05--minecraft-metadata-and-deterministic-install-planning) | Metadata success is not game compatibility (P13) |
+| [P06](phases/P06-DOWNLOAD-ENGINE.md) | in_progress | 18 fixture tests + live smoke (cancel, retry, reuse); see [VERIFICATION.md](../VERIFICATION.md#p06--verified-cancellable-download-engine) | Waiting for CI; UI progress wiring lands with install in P08 (D-022) |
 | [P07](phases/P07-MANAGED-JAVA.md) | not_started | — | — |
 | [P08](phases/P08-COMPLETE-GAME-INSTALLER.md) | not_started | — | — |
 | [P09](phases/P09-REAL-GAME-LAUNCH.md) | not_started | — | — |
@@ -33,24 +33,21 @@ Allowed states: `not_started`, `in_progress`, `blocked`, `done`. A partially imp
 ## Last completed phase report
 
 ```text
-Phase: P03 — Early window and process lifecycle proof
+Phase: P05 — Minecraft metadata and deterministic install planning
 Status: done
-Implemented: Rust-owned child supervision with bounded concurrent output capture and a
-  2 s post-exit drain; window controller that destroys the main WebviewWindow after a
-  1.5 s survival interval and recreates exactly one window from the same config;
-  ExitRequested policy with explicit quit intent and menu/OS Quit choice; single-instance
-  handoff; request_quit/show_main_window; debug-only harness (own executable, fixed
-  scenarios).
-Checks: 12 GUI scenarios and 40 unload/restore cycles on the Linux x64 host (Xvfb +
-  openbox) - pass after fixing an unload-during-drain defect; release build has no
-  harness; 5 child-supervision integration tests, lifecycle unit tests, 27 frontend
-  tests; CI 5/5.
-Demo: debug build, About -> Lifecycle test -> "Run 12 seconds": the window closes,
-  reappears with the result when the child exits.
-Evidence limits: host-only (Linux x64, X11 under Xvfb). Windows/macOS/Wayland window
-  behaviour, macOS menu Quit and Dock reopen are unverified.
-Blockers: none for P03.
-Next eligible phase: P04 (in progress, blocked on live sign-in); P05
+Implemented: public HTTPS client with exact per-source host allowlists, checked redirects
+  and public-address resolution; catalog fetch with ETag revalidation, 6 h freshness and
+  stale fallback; curated list gated by descriptor SHA-1; verified byte-for-byte metadata
+  cache; last-match rules engine; pure planner (GamePlan + RuntimeRequirement, canonical
+  content paths, ordered classpath, deduplicated assets); list_supported_versions and
+  preview_install_plan with a metadata-only estimate in the new-installation form.
+Checks: 37 Rust tests + 3 frontend tests; independent Python cross-check of library
+  selection for 8 version/target cases; live catalog and plans for both baselines on 4
+  targets; GUI demo on the Linux x64 host; CI 5/5.
+Demo: Installations -> New installation -> pick a version -> "Estimate download".
+Evidence limits: metadata only; game compatibility is P09/P13.
+Blockers: none for P05. P04 stays blocked on the owner-supplied client ID.
+Next eligible phase: P06 (download engine), then P07, P08
 ```
 
 ## Decisions / deviations
