@@ -304,3 +304,32 @@ replaces it), `superseded`.
   unknown placeholders are rejected. Content paths are canonical by digest (doc 10), so the
   same coordinate with a different digest is distinct content and identical digests are
   shared; a conflicting size for one digest is an error.
+
+## D-022 — Download executor and job receipts
+
+- **Status:** accepted · **Phase:** P06 · **Affects:** FR07, A10, A14, A22, doc 10 MV01/MV03/MV04
+- **Transport:** `download::transport::HttpTransport` routes every request through the
+  `PublicClient` of its source category (D-021), so the URL, each redirect hop (at most
+  five) and the resolved addresses are checked; only `200 OK` is accepted. A test-only
+  loopback route exists solely under `cfg(test)` for the fixture suite.
+- **Executor:** requests are deduplicated by canonical path; one digest with two sizes,
+  or one path with two digests, is `METADATA_CONFLICT`. Existing files are reused only
+  after a full size and digest check. Bytes stream to
+  `downloads/<job>/<algorithm>-<digest>.part` while hashed and are renamed into the
+  canonical path only after size and digest match; the rename is the one step cancel
+  does not interrupt. Concurrency 8, stall timeout 60 s, transient failures (connect,
+  timeout, short read, 408/429/5xx) retried three times with ±50 % jittered exponential
+  backoff or `Retry-After` (a wait above 60 s fails instead), digest mismatch retried once
+  from scratch, other 4xx and policy violations never retried. Free space for the missing
+  bytes plus a 256 MiB reserve is checked before the first request.
+- **Measurements:** the report separates unique committed bytes from all network bytes
+  (including failed attempts); progress credits each file with the furthest any attempt
+  reached, so it never exceeds the total, and is emitted at most every 100 ms.
+- **Receipts:** `jobs/<uuid>.json` is written as `running` before work starts and receives
+  exactly one terminal state (the first one wins). On startup, while holding the DATA_ROOT
+  lock, running receipts become `interrupted` and `downloads/` is removed; committed
+  content is untouched and reused by the next attempt.
+- **Scope:** byte-range resume is not implemented (file-level recovery only). The
+  executor has no IPC command of its own: no generic frontend download API exists. The
+  `operation_progress`/`operation_finished` events and snapshot fields are wired in P08,
+  where `install_instance` and `repair_instance` become the first callers.

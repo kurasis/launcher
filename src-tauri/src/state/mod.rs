@@ -124,6 +124,14 @@ impl AppState {
                         document: "compatibility.json".into(),
                     });
                 }
+                // No job can be running yet: unfinished ones were interrupted.
+                if let Err(error) = crate::download::receipt::reconcile_jobs(store.root()) {
+                    issues.push(StorageIssue {
+                        code: error.code,
+                        message: "Unfinished download records could not be cleaned up.".into(),
+                        document: "jobs".into(),
+                    });
+                }
                 let data = &mut inner.data;
                 data.settings = settings.value;
                 data.settings_writable = settings.writable;
