@@ -12,6 +12,7 @@ import { useCommand } from '../../lib/useCommand';
 import { healthTone } from './healthTone';
 import styles from './Instances.module.css';
 import { gameLabel } from './loaderLabel';
+import { javaLabel } from '../settings/javaLabel';
 
 interface InstanceDetailsProps {
   instance: InstanceSummary;
@@ -26,7 +27,6 @@ export function InstanceDetails({ instance, onEditSettings }: InstanceDetailsPro
     ipc.openInstanceFolder(id, requestId),
   );
   const last = instance.lastResult;
-  const java = instance.java;
 
   return (
     <Panel
@@ -42,15 +42,13 @@ export function InstanceDetails({ instance, onEditSettings }: InstanceDetailsPro
         <dt>{t.version}</dt>
         <dd>{gameLabel(instance)}</dd>
         <dt>{t.java}</dt>
-        <dd>
-          {java === null
-            ? t.javaNone
-            : strings.settings.javaValue({
-                provider: strings.settings.javaShort[java.provider],
-                major: java.major,
-                release: java.release,
-              })}
-        </dd>
+        <dd>{javaLabel(instance)}</dd>
+        {instance.jvmArguments !== '' && (
+          <>
+            <dt>{t.jvmArguments}</dt>
+            <dd dir="ltr">{instance.jvmArguments}</dd>
+          </>
+        )}
         <dt>{t.window}</dt>
         <dd>
           {t.windowValue({

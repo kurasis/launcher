@@ -385,12 +385,12 @@ impl AppState {
                     .get(&id)
                     .map(|i| InstanceSummary::new(i, busy))
                     .expect("changed instance exists");
-                BackendEvent::InstanceChanged(EventEnvelope {
+                BackendEvent::InstanceChanged(Box::new(EventEnvelope {
                     session_epoch,
                     revision,
                     timestamp,
                     body: InstanceChanged { instance },
-                })
+                }))
             }
             Change::Runs => BackendEvent::GameStateChanged(Box::new(EventEnvelope {
                 session_epoch,
@@ -785,6 +785,9 @@ impl AppState {
                     java: None,
                     loader: payload.loader.clone(),
                     notes: String::new(),
+                    java_provider: None,
+                    custom_java: None,
+                    jvm_arguments: String::new(),
                 };
                 store.create_instance(&instance)?;
                 let id = instance.id;
@@ -879,6 +882,105 @@ impl AppState {
         if let Err(e) = &result {
             self.console
                 .warn(format!("Saving installation notes failed: {}", e.message));
+        }
+        result
+    }
+
+    /// The Java version an installed version was built for and the computer's
+    /// architecture, from its install lock (D-044).
+    pub fn required_java(
+        &self,
+        id: InstanceId,
+    ) -> LauncherResult<(u16, crate::storage::paths::TargetArch)> {
+        self.instance(id).ok_or_else(instance_not_found)?;
+        let root = self.data_root().ok_or_else(|| {
+            LauncherError::new(
+                ErrorCode::StorageUnavailable,
+                "Launcher data is unavailable.",
+            )
+        })?;
+        match crate::storage::reconcile::read_lock(&root.install_lock(id)) {
+            Ok(crate::storage::reconcile::LockState::Complete(lock)) => {
+                Ok((lock.java_major, lock.arch))
+            }
+            _ => Err(LauncherError::invalid_input(
+                "Install this version first, then choose your own Java.",
+            )),
+        }
+    }
+
+    /// Saves which Java an installation runs and its extra JVM options (D-044).
+    /// `check` is the probe of a custom Java, made by the caller outside the lock.
+    pub fn set_instance_java(
+        &self,
+        request: MutationRequest<SetInstanceJavaPayload>,
+        check: Option<crate::runtime::custom::JavaCheck>,
+    ) -> LauncherResult<InstanceSummary> {
+        let activity = self.activity.clone();
+        let result = self.mutate(
+            "set_instance_java",
+            request,
+            |data, store, payload, changes| {
+                let id = payload.instance_id;
+                let current = data.instances.get(&id).ok_or_else(instance_not_found)?;
+                activity.ensure_instance_idle(id)?;
+                crate::runtime::custom::parse_jvm_arguments(&payload.jvm_arguments)?;
+                let mut updated = current.clone();
+                updated.jvm_arguments = payload.jvm_arguments.trim().to_owned();
+                match &payload.java {
+                    JavaChoice::Managed { provider } => {
+                        let installed = current.java.as_ref().map(|j| j.provider);
+                        updated.custom_java = None;
+                        updated.java_provider = (installed != Some(*provider)).then_some(*provider);
+                    }
+                    JavaChoice::Custom { path } => {
+                        let check = check
+                            .as_ref()
+                            .filter(|c| c.path == *path)
+                            .ok_or_else(|| LauncherError::internal("The Java check is missing."))?;
+                        if !check.issues.is_empty() && !payload.accept_issues {
+                            return Err(LauncherError::new(
+                                ErrorCode::RuntimeMismatch,
+                                "This Java may not run this game. Confirm the choice to use it anyway.",
+                            ));
+                        }
+                        updated.custom_java = Some(crate::storage::models::CustomJava {
+                            path: path.clone(),
+                            java_version: check.java_version.clone(),
+                            major: check.major,
+                            accepted: check.issues.clone(),
+                        });
+                    }
+                }
+                if updated != *current {
+                    store.save_instance(&updated)?;
+                    data.instances.insert(id, updated);
+                    changes.push(Change::Instance(id));
+                }
+                Ok(InstanceSummary::new(&data.instances[&id], false))
+            },
+        );
+        match &result {
+            Ok(i) => self.console.info(format!(
+                "Java of \"{}\": {}{}",
+                i.display_name,
+                match (&i.custom_java, i.java_provider) {
+                    (Some(custom), _) =>
+                        format!("{} (Java {})", custom.path.display(), custom.java_version),
+                    (None, Some(provider)) =>
+                        format!("{} after the next repair", provider.as_str()),
+                    (None, None) => "the private runtime".to_owned(),
+                },
+                if i.jvm_arguments.is_empty() {
+                    String::new()
+                } else {
+                    format!("; JVM options: {}", i.jvm_arguments)
+                }
+            )),
+            Err(e) => self.console.warn(format!(
+                "Changing the Java of an installation failed: {}",
+                e.message
+            )),
         }
         result
     }

@@ -1251,6 +1251,63 @@ installation's runtime from its lock, and choosing a source writes `javaProvider
   again showed "Running: Minecraft" with **Stop game**, which ended the game.
 - **Not verified:** Windows and macOS (CI builds only).
 
+## Data folder and portable mode (D-043)
+
+- **Automated:** `location` unit tests (resolution order portable → chosen → default,
+  the pointer and marker files, nested and non-empty targets refused, reuse of a folder
+  that already holds launcher data, copying that skips locks and download staging and
+  stops at symbolic links) and `DataFolderSettings.test.tsx` (modes, confirmation,
+  the pending notice).
+- **Release build, Linux x64 (Xvfb), a separate copy of the launcher:**
+  - _Make portable_ copied the data next to the launcher and created `portable.txt`;
+    after a restart the launcher ran from `launcher-data` (the Russian interface came
+    from the copied settings).
+  - _Move back to the default folder_ found launcher data there, used it without
+    copying and removed `portable.txt`; after a restart the default folder was in use.
+- **Not verified:** _Move to another folder…_ through the interface: the GTK folder
+  dialog showed no folder listing on this Xvfb, so the copy to a chosen folder is
+  covered by unit tests only. Windows and macOS: CI builds only.
+
+## Java of an installation (D-044)
+
+- **Automated:** `runtime::custom` tests (compatibility verdicts, JVM option parsing
+  and refusals such as `-cp x.jar`, `Main`, `@file`, unclosed quotes, a program that is
+  not Java); `user_jvm_options_come_last_and_are_not_substituted`;
+  `a_custom_java_and_jvm_options_are_used_after_confirmation` (a Java 17 for a Java 21
+  game is refused until accepted, runs instead of the private runtime with the options
+  just before the main class, a deleted Java fails the launch with
+  `RUNTIME_UNAVAILABLE` and leaves the installation ready, switching back runs the
+  private runtime); `repair_switches_the_runtime_provider_the_user_chose` (same
+  provider changes nothing, another one is resolved once by the repair, the lock is
+  rewritten with the same artifacts, the choice is cleared, a later repair resolves
+  nothing); `InstanceJavaForm.test.tsx` (switching the source and Repair now, the
+  warning and Use anyway, a matching Java saved without asking, the accepted warning,
+  own Java unavailable before installing).
+- **Release build, Linux x64 (Xvfb), Fabric 1.21.1, no-token demo:**
+  - _My own Java_ with a copy of a Java 17.0.15 runtime: "Java 17.0.15 (Microsoft,
+    amd64). This game was built for Java 21." and the warning that it will most likely
+    not start ([warning](verification/java-warning.png)). After **Use anyway** the
+    details showed "Your own Java 17.0.15"; **Play demo** started that Java, Fabric
+    stopped with `UnsupportedClassVersionError` (class file version 65.0), and the
+    launcher reported "The game exited with an error" with exit code 1.
+  - The system OpenJDK 21.0.12.1 with `-XX:+UseG1GC "-Dsferum.note=own java"` was saved
+    without a warning ([form](verification/java-own.png)). The game process ran
+    `/usr/lib/jvm/java-21-openjdk-amd64/bin/java` with `-Xmx4096M` first and
+    `-XX:+UseG1GC`, `-Dsferum.note=own java` right before the main class
+    `net.fabricmc.loader.impl.launch.knot.KnotClient`, and reached the demo title
+    screen.
+- **Release build, Quilt 1.21.1 on Mojang Java 21.0.7:** choosing _Private runtime from
+  Eclipse Temurin_ showed "Java from Eclipse Temurin (Adoptium) is downloaded at the
+  next repair." with **Repair now** ([switch](verification/java-switch.png)). The
+  repair downloaded one file (49.6 MiB, Temurin jdk-21.0.12.1+1), reused 3,958 verified
+  files ([result](verification/java-repaired.png)) and rewrote the lock's runtime to
+  `temurin jdk-21.0.12.1+1`; **Play demo** then ran
+  `runtimes/temurin/linux-x64/21/jre/2413149…/bin/java` and Quilt loaded the game.
+- **Not verified:** Windows and macOS (CI builds only); the native file dialog for
+  choosing Java (the GTK dialog on this Xvfb shows no listing, as for D-043); a
+  provider switch on a Forge or NeoForge installation whose processor outputs must be
+  rebuilt.
+
 ## Console window on Windows (D-048)
 
 - **Reproduced:** with the window creation as before, the new console check on

@@ -14,11 +14,13 @@ import {
   type CatalogView,
   type ConsolePage,
   type CreateInstancePayload,
+  type DataLocation,
   type ExportResult,
   type ExternalLink,
   type InstanceSummary,
   type LauncherError,
   type LifecycleScenario,
+  type LocationTarget,
   type LoaderChoice,
   type LoaderKind,
   type LoaderVersion,
@@ -29,6 +31,8 @@ import {
   type QuitResult,
   type RunSummary,
   type SettingsPatch,
+  type JavaCheck,
+  type SetInstanceJavaPayload,
   type SetInstanceNotesPayload,
   type SettingsView,
   type UpdateInstanceSettingsPayload,
@@ -47,6 +51,24 @@ export const ipc = {
   getAppSnapshot: (): Promise<AppSnapshot> => invoke<AppSnapshot>('get_app_snapshot'),
   createInstance: (payload: CreateInstancePayload, requestId?: string): Promise<InstanceSummary> =>
     invoke<InstanceSummary>('create_instance', { request: mutation(payload, requestId) }),
+  getDataLocation: (): Promise<DataLocation> => invoke<DataLocation>('get_data_location'),
+  pickDataFolder: (): Promise<string | null> => invoke<string | null>('pick_data_folder'),
+  moveDataLocation: (
+    target: LocationTarget,
+    path: string | null,
+    requestId?: string,
+  ): Promise<DataLocation> =>
+    invoke<DataLocation>('move_data_location', {
+      request: mutation({ target, path }, requestId),
+    }),
+  checkJava: (instanceId: string, path: string): Promise<JavaCheck> =>
+    invoke<JavaCheck>('check_java', { payload: { instanceId, path } }),
+  pickJavaFile: (): Promise<string | null> => invoke<string | null>('pick_java_file'),
+  setInstanceJava: (
+    payload: SetInstanceJavaPayload,
+    requestId?: string,
+  ): Promise<InstanceSummary> =>
+    invoke<InstanceSummary>('set_instance_java', { request: mutation(payload, requestId) }),
   setInstanceNotes: (
     payload: SetInstanceNotesPayload,
     requestId?: string,

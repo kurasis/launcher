@@ -17,6 +17,7 @@ pub mod install;
 pub mod launch;
 pub mod lifecycle;
 pub mod loader;
+pub mod location;
 pub mod net;
 pub mod runtime;
 pub mod secrets;
@@ -40,7 +41,7 @@ use storage::paths::DataRoot;
 use validation::MemoryPolicy;
 
 /// Debug builds may relocate DATA_ROOT for tests and demonstrations. Release builds
-/// ignore this variable: data-directory relocation is not an MVP feature.
+/// ignore this variable; they choose the folder as described in [`location`] (D-043).
 pub const DEV_DATA_ROOT_ENV: &str = "LAUNCHER_DATA_ROOT";
 
 struct TauriSink(tauri::AppHandle);
@@ -219,13 +220,26 @@ fn resolve_data_root(app: &tauri::AppHandle) -> LauncherResult<DataRoot> {
     {
         return DataRoot::new(PathBuf::from(path));
     }
-    let path = app.path().app_local_data_dir().map_err(|_| {
+    let location = app.state::<commands::Location>();
+    let path = location.current()?.path;
+    DataRoot::new(path)
+}
+
+/// Where the data folder is and how it was chosen (D-043).
+fn resolve_location(app: &tauri::AppHandle) -> LauncherResult<location::DataLocation> {
+    let unavailable = || {
         LauncherError::new(
             ErrorCode::UnsupportedDataPath,
             "The operating system did not provide a per-user application data directory.",
         )
-    })?;
-    DataRoot::new(path)
+    };
+    let default = app.path().app_local_data_dir().map_err(|_| unavailable())?;
+    let config = app.path().app_config_dir().map_err(|_| unavailable())?;
+    Ok(location::resolve(
+        location::launcher_folder().as_deref(),
+        &config,
+        default,
+    ))
 }
 
 /// The account that authorizes launches. Debug builds started with
@@ -251,6 +265,10 @@ fn notoken_authorizer() -> Arc<dyn launch::service::Authorizer> {
 /// Creates state and services; any failure stops the launcher before a window opens.
 fn setup(app: &mut tauri::App) -> Result<(), Box<dyn std::error::Error>> {
     let handle = app.handle().clone();
+    app.manage(
+        commands::Location::new(resolve_location(&handle))
+            .with_config_dir(handle.path().app_config_dir().ok()),
+    );
     let state = AppState::initialize(
         resolve_data_root(&handle),
         app.package_info().version.to_string(),
@@ -388,6 +406,12 @@ fn handlers<R: tauri::Runtime>() -> impl Fn(tauri::ipc::Invoke<R>) -> bool + Sen
         commands::set_app_settings,
         commands::show_main_window,
         commands::open_console,
+        commands::get_data_location,
+        commands::move_data_location,
+        commands::pick_data_folder,
+        commands::check_java,
+        commands::set_instance_java,
+        commands::pick_java_file,
         commands::read_console,
         commands::request_quit,
         commands::begin_login,
@@ -423,6 +447,12 @@ fn handlers<R: tauri::Runtime>() -> impl Fn(tauri::ipc::Invoke<R>) -> bool + Sen
         commands::set_app_settings,
         commands::show_main_window,
         commands::open_console,
+        commands::get_data_location,
+        commands::move_data_location,
+        commands::pick_data_folder,
+        commands::check_java,
+        commands::set_instance_java,
+        commands::pick_java_file,
         commands::read_console,
         commands::request_quit,
         commands::begin_login,

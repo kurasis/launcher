@@ -212,6 +212,127 @@ async fn jvm_arguments_can_go_through_an_argfile() {
     );
 }
 
+fn set_java(
+    s: &Setup,
+    java: crate::state::dto::JavaChoice,
+    jvm_arguments: &str,
+    accept_issues: bool,
+) -> LauncherResult<crate::state::dto::InstanceSummary> {
+    let check = match &java {
+        crate::state::dto::JavaChoice::Custom { path } => {
+            let (major, arch) = s.f.state.required_java(s.instance)?;
+            Some(runtime::custom::check(path, major, arch)?)
+        }
+        crate::state::dto::JavaChoice::Managed { .. } => None,
+    };
+    s.f.state.set_instance_java(
+        crate::state::dto::MutationRequest {
+            request_id: Uuid::new_v4().to_string(),
+            payload: crate::state::dto::SetInstanceJavaPayload {
+                instance_id: s.instance,
+                java,
+                jvm_arguments: jvm_arguments.into(),
+                accept_issues,
+            },
+        },
+        check,
+    )
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn a_custom_java_and_jvm_options_are_used_after_confirmation() {
+    use std::os::unix::fs::PermissionsExt;
+    let s = Setup::new().await;
+    // Java 17 for a game built for Java 21: a warning the user must accept.
+    let custom = s.f._dir.path().join("my-jdk").join("java");
+    std::fs::create_dir_all(custom.parent().unwrap()).unwrap();
+    std::fs::write(
+        &custom,
+        "#!/bin/sh\ncat >&2 <<'X'\n    java.specification.version = 17\n    java.version = 17.0.9\n    os.arch = amd64\nX\necho CUSTOM-JAVA\nfor a in \"$@\"; do echo \"ARG:$a\"; done\n",
+    )
+    .unwrap();
+    std::fs::set_permissions(&custom, std::fs::Permissions::from_mode(0o755)).unwrap();
+    let choice = crate::state::dto::JavaChoice::Custom {
+        path: custom.clone(),
+    };
+    let refused = set_java(&s, choice.clone(), "", false).unwrap_err();
+    assert_eq!(refused.code, ErrorCode::RuntimeMismatch);
+    assert_eq!(
+        set_java(&s, choice.clone(), "-cp x.jar", true)
+            .unwrap_err()
+            .code,
+        ErrorCode::InvalidInput
+    );
+    let saved = set_java(&s, choice, "-XX:+UseG1GC \"-Dsferum.test=a b\"", true).unwrap();
+    let java = saved.custom_java.unwrap();
+    assert_eq!(
+        (java.major, java.accepted.as_slice()),
+        (17, &[crate::storage::models::JavaIssue::Older][..])
+    );
+
+    let run = s
+        .service(auth("Player"))
+        .launch(&Uuid::new_v4().to_string(), s.instance)
+        .await
+        .unwrap();
+    let done = s.finished(&run.run_id).await;
+    assert_eq!(done.state, RunState::Exited, "{:?}", done.error);
+    let tail = done.output_tail.join("\n");
+    assert!(tail.contains("CUSTOM-JAVA"), "{tail}");
+    assert!(!marker(&s.f).exists(), "the private runtime did not run");
+    let args: Vec<&str> = tail
+        .lines()
+        .filter_map(|l| l.strip_prefix("ARG:"))
+        .collect();
+    let main = args
+        .iter()
+        .position(|a| *a == "net.minecraft.client.main.Main")
+        .unwrap();
+    assert_eq!(args[main - 2..main], ["-XX:+UseG1GC", "-Dsferum.test=a b"]);
+    let journal: String =
+        s.f.state
+            .console()
+            .read(0)
+            .entries
+            .iter()
+            .map(|e| format!("{}\n", e.text))
+            .collect();
+    assert!(journal.contains("Your own Java 17.0.9"), "{journal}");
+    assert!(journal.contains("older than required"), "{journal}");
+
+    // A Java that no longer starts fails the launch with a clear error.
+    std::fs::remove_file(&custom).unwrap();
+    let error = s
+        .service(auth("Player"))
+        .launch(&Uuid::new_v4().to_string(), s.instance)
+        .await
+        .unwrap_err();
+    assert_eq!(error.code, ErrorCode::RuntimeUnavailable);
+    assert_eq!(
+        s.f.state.instance(s.instance).unwrap().health,
+        InstallationHealth::Ready
+    );
+
+    // Back to the private runtime.
+    let saved = set_java(
+        &s,
+        crate::state::dto::JavaChoice::Managed {
+            provider: crate::storage::paths::JavaProvider::Temurin,
+        },
+        "",
+        false,
+    )
+    .unwrap();
+    assert!(saved.custom_java.is_none() && saved.java_provider.is_none());
+    let run = s
+        .service(auth("Player"))
+        .launch(&Uuid::new_v4().to_string(), s.instance)
+        .await
+        .unwrap();
+    assert_eq!(s.finished(&run.run_id).await.state, RunState::Exited);
+    assert!(marker(&s.f).exists(), "the private runtime ran");
+}
+
 #[tokio::test(flavor = "multi_thread")]
 async fn without_verified_access_java_never_starts() {
     let s = Setup::new().await;

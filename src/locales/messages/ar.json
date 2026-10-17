@@ -229,6 +229,7 @@
       "saved": "تم الحفظ.",
       "busy": "هذا التثبيت مشغول؛ لا يمكن تغيير إعداداته الآن.",
       "java": "Java",
+      "jvmArguments": "خيارات JVM",
       "javaNone": "يُختار عند التثبيت",
       "window": "الذاكرة والنافذة",
       "windowValue": "⁦{mib, number, ::group-off} MiB⁩ · ⁦{width, number, ::group-off}×{height, number, ::group-off}⁩",
@@ -250,7 +251,7 @@
         "general": "اللغة والمظهر ونافذة المشغّل أثناء اللعب ومكان حفظ البيانات.",
         "java": "من أين ينزّل المشغّل بيئة Java للتثبيتات الجديدة.",
         "defaults": "الذاكرة وحجم النافذة لكل تثبيت جديد.",
-        "installations": "الذاكرة وحجم النافذة لتثبيت موجود."
+        "installations": "الذاكرة وحجم النافذة وJava لتثبيت موجود."
       },
       "javaProvider": "مصدر Java",
       "javaProviders": {
@@ -261,13 +262,42 @@
         "mojang": "بيئات Java التي يستخدمها مشغّل Minecraft الرسمي، وهي إصدار Java الذي يطلبه كل إصدار بالضبط. إن لم تنشر Mojang بيئة لهذا الحاسوب، يُستخدم Temurin.",
         "temurin": "أحدث إصدارات Eclipse Temurin من إصدار Java الذي يحتاجه كل إصدار من Minecraft."
       },
-      "javaApplies": "ينطبق على التثبيتات الجديدة. يحتفظ الإصدار المثبّت بـ Java التي ثُبّت بها، ويعيد الإصلاح البيئة نفسها بالضبط.",
+      "javaApplies": "ينطبق على التثبيتات الجديدة. لتغيير Java لإصدار مثبّت أو استخدام Java خاصة بك، افتح «التثبيتات».",
       "javaInstalled": "Java لكل تثبيت",
       "javaShort": {
         "mojang": "Mojang",
         "temurin": "Temurin"
       },
       "javaValue": "⁦{provider} · Java {major} ({release})⁩",
+      "instanceJava": {
+        "title": "Java لهذا التثبيت",
+        "now": "الآن: {value}",
+        "managed": "بيئة خاصة من {provider}",
+        "managedHint": "ينزّلها المشغّل ويتحقق منها. يُنزَّل المصدر الآخر عند الإصلاح التالي.",
+        "custom": "Java الخاصة بي",
+        "customHint": "Java مثبتة على هذا الكمبيوتر. يقارن المشغّل إصدارها باللعبة وينبّه عند عدم التطابق.",
+        "path": "مسار برنامج Java",
+        "pathHint": "مثلًا C:\\Program Files\\Java\\jdk-21\\bin\\javaw.exe أو /usr/lib/jvm/java-21/bin/java.",
+        "browse": "استعراض…",
+        "installFirst": "ثبّت هذا الإصدار أولًا، ثم اختر Java الخاصة بك.",
+        "jvmArguments": "خيارات JVM",
+        "jvmHint": "تُضاف بعد خيارات الإصدار نفسه؛ وعند التكرار يسري الأخير. يبدأ كل خيار بـ \"-\" وتُكتب قيمته بعد \"=\"، مثل -XX:+UseG1GC -Dfile.encoding=UTF-8.",
+        "save": "احفظ إعدادات Java",
+        "checking": "جارٍ فحص Java هذه…",
+        "checked": "Java {version} ({vendor}، {arch}). صُممت هذه اللعبة لـ Java {required}.",
+        "unknownVendor": "مورّد غير معروف",
+        "issues": {
+          "older": "Java هذه أقدم من Java {required} التي تحتاجها اللعبة. على الأرجح لن تعمل اللعبة.",
+          "newer": "Java هذه أحدث من Java {required} التي صُممت لها اللعبة. تعمل الإصدارات الحديثة عادةً، أما القديمة ومحمّلات التعديلات فكثيرًا ما تفشل.",
+          "architecture": "Java هذه مبنية لمعالج آخر ({arch}). قد لا تعمل اللعبة أو تعمل ببطء."
+        },
+        "confirm": "هل تستخدم Java هذه على أي حال؟",
+        "useAnyway": "استخدمها",
+        "accepted": "اخترت Java هذه رغم التحذير:",
+        "pendingSwitch": "تُنزَّل Java من {provider} عند الإصلاح التالي.",
+        "repairNow": "أصلح الآن",
+        "customValue": "Java الخاصة بك {version}"
+      },
       "noInstallations": "لا توجد تثبيتات بعد.",
       "installation": "التثبيت",
       "language": "اللغة",
@@ -284,12 +314,29 @@
         "close_launcher": "أغلق المشغّل عند فتح نافذة اللعبة؛ تستمر اللعبة في العمل"
       },
       "dataLocation": "مكان بيانات المشغّل",
-      "dataLocationHint": "يختاره نظام التشغيل لهذا المستخدم، ولا يمكن تغييره هنا.",
       "defaultsTitle": "القيم الافتراضية للتثبيتات الجديدة",
       "defaultsSave": "حفظ القيم الافتراضية",
       "defaultsSaved": "تم الحفظ.",
       "readOnly": "الإعدادات للقراءة فقط لأنها كُتبت بإصدار أحدث من المشغّل أو تعذّرت قراءتها.",
-      "languageIncomplete": "مترجمة بنسبة {percent}٪"
+      "languageIncomplete": "مترجمة بنسبة {percent}٪",
+      "dataFolder": {
+        "modes": {
+          "default": "مجلد المستخدم الذي يوفّره نظام التشغيل.",
+          "custom": "مجلد اخترته.",
+          "portable": "الوضع المحمول: البيانات بجوار المشغّل، لذا يمكن نقل المجلد كله إلى حاسوب آخر."
+        },
+        "choose": "نقل إلى مجلد آخر…",
+        "toDefault": "إعادة إلى المجلد الافتراضي",
+        "toPortable": "اجعله محمولًا",
+        "confirm": "نسخ كل بيانات المشغّل إلى",
+        "confirmHint": "إذا كان المجلد يحتوي بالفعل على بيانات سابقة للمشغّل، ينتقل إليها دون نسخ. وإلا تُنسخ التثبيتات وJava وملفات اللعبة والإعدادات، ويبقى المجلد الحالي لتحذفه لاحقًا. يستخدم المشغّل المجلد الجديد من تشغيله التالي. قد يستغرق النسخ وقتًا.",
+        "copy": "نسخ البيانات",
+        "copying": "جارٍ نسخ البيانات… تعرض نافذة وحدة التحكم التقدّم.",
+        "pending": "نُسخت البيانات. أغلق المشغّل وشغّله من جديد لاستخدام",
+        "busy": "انتظر انتهاء العملية الجارية أو اللعبة لنقل البيانات.",
+        "portableHint": "يحفظ الوضع المحمول البيانات في مجلد launcher-data بجوار المشغّل؛ احذف ملف portable.txt هناك لإيقافه. تبقى تسجيلات الدخول في مخزن بيانات الاعتماد على هذا الحاسوب.",
+        "pendingReused": "سيستخدم المشغّل البيانات الموجودة بالفعل في ذلك المجلد. أغلق المشغّل وشغّله من جديد لاستخدام"
+      }
     },
     "storage": {
       "issuesTitle": "ملاحظات التخزين"
@@ -352,6 +399,7 @@
       "install": "جارٍ التثبيت",
       "repair": "جارٍ التحقق من الملفات",
       "launch": "جارٍ اللعب",
+      "relocate": "نقل البيانات",
       "percent": "{percent}٪"
     },
     "console": {
@@ -397,7 +445,8 @@
       "kind": {
         "install": "تثبيت",
         "repair": "إصلاح",
-        "launch": "تشغيل"
+        "launch": "تشغيل",
+        "relocate": "نقل البيانات"
       },
       "outcome": {
         "succeeded": "نجحت",
@@ -529,9 +578,15 @@
     "Building the diagnostic export failed.": "فشل إنشاء ملف تصدير التشخيص.",
     "Checking the Java runtime failed": "فشل التحقق من Java",
     "Choose a Minecraft version.": "اختر إصدار Minecraft.",
+    "Choose a folder.": "اختر مجلدًا.",
+    "Choose a full folder path.": "اختر المسار الكامل للمجلد.",
     "Choose a mod loader version from the list.": "اختر إصدار مُحمِّل التعديلات من القائمة.",
+    "Choose an empty folder, one that does not exist yet, or one that already holds launcher data.": "اختر مجلدًا فارغًا أو غير موجود بعد أو مجلدًا يحتوي بالفعل على بيانات المشغّل.",
+    "Copying launcher data": "نسخ بيانات المشغّل",
+    "Copying stopped unexpectedly.": "توقّف النسخ على نحو غير متوقع.",
     "Creating the installation folder": "إنشاء مجلد التثبيت",
     "Creating the launcher data directory": "إنشاء مجلد بيانات المشغّل",
+    "Creating the new data folder": "إنشاء مجلد البيانات الجديد",
     "Downloaded {what} did not match its expected checksum.": "لم يطابق الملف المُنزَّل ({what}) المجموع الاختباري المتوقع.",
     "Downloading {what} failed (HTTP {status}).": "فشل تنزيل {what} (HTTP {status}).",
     "Extracting the Java runtime failed": "فشل فك ضغط Java",
@@ -574,14 +629,17 @@
     "Reading an installation": "قراءة تثبيت",
     "Reading job records failed": "فشلت قراءة سجلات المهام",
     "Reading settings": "قراءة الإعدادات",
+    "Reading the data folder": "قراءة مجلد البيانات",
     "Reading the installation record": "قراءة سجل التثبيت",
     "Reading the job record failed": "فشلت قراءة سجل المهمة",
+    "Reading the new data folder": "قراءة مجلد البيانات الجديد",
     "Removing incomplete downloads failed": "فشلت إزالة التنزيلات غير المكتملة",
     "Saved sign-in credentials could not be removed from the system credential store. Try signing out again.": "تعذّرت إزالة بيانات تسجيل الدخول المحفوظة من مخزن بيانات الاعتماد في النظام. حاول تسجيل الخروج مجددًا.",
     "Saving Minecraft metadata": "حفظ وصف Minecraft",
     "Saving account metadata": "حفظ بيانات الحساب",
     "Saving mod loader files": "حفظ ملفات مُحمِّل التعديلات",
     "Saving settings": "حفظ الإعدادات",
+    "Saving the data folder choice": "حفظ اختيار مجلد البيانات",
     "Saving the diagnostic export": "حفظ ملف تصدير التشخيص",
     "Saving the installation": "حفظ التثبيت",
     "Saving the installation record": "حفظ سجل التثبيت",
@@ -612,7 +670,12 @@
     "The asset index lists the same object with two different sizes.": "يذكر فهرس الموارد الكائن نفسه بحجمين مختلفين.",
     "The catalog cache is missing.": "ذاكرة الفهرس المؤقتة مفقودة.",
     "The compatibility list copy could not be written.": "تعذّرت كتابة نسخة من قائمة التوافق.",
+    "The configuration folder is unknown.": "مجلد الإعدادات غير معروف.",
+    "The data folder choice could not be saved.": "تعذّر حفظ اختيار مجلد البيانات.",
+    "The data folder contains a symbolic link; it was not copied.": "يحتوي مجلد البيانات على رابط رمزي؛ لم تُنسخ البيانات.",
+    "The data folder was already moved. Restart the launcher to use it.": "نُقل مجلد البيانات بالفعل. أعد تشغيل المشغّل لاستخدامه.",
     "The file manager could not be opened.": "تعذّر فتح مدير الملفات.",
+    "The folder dialog failed.": "فشل مربع حوار اختيار المجلد.",
     "The game exited with an error. The output below may explain why.": "انتهت اللعبة بخطأ. قد توضح المخرجات أدناه السبب.",
     "The installation identifier is invalid.": "معرّف التثبيت غير صالح.",
     "The installation name cannot contain control characters.": "لا يمكن أن يحتوي اسم التثبيت على أحرف تحكم.",
@@ -622,15 +685,18 @@
     "The installation record lists an unsupported checksum.": "يذكر سجل التثبيت مجموعًا اختباريًا غير مدعوم.",
     "The installed Java runtime is not the version or architecture this game needs.": "بيئة Java المثبتة ليست بالإصدار أو البنية التي تحتاجها هذه اللعبة.",
     "The launch was cancelled.": "أُلغي التشغيل.",
+    "The launcher already uses this folder.": "يستخدم المشغّل هذا المجلد بالفعل.",
     "The launcher data directory contains the character {character}, which Java cannot use in a classpath. Use a directory without it.": "يحتوي مسار مجلد بيانات المشغّل على الحرف «{character}» الذي لا تقبله Java في classpath. استخدم مجلدًا لا يحتوي عليه.",
     "The launcher data directory must be an absolute path.": "يجب أن يكون مسار مجلد بيانات المشغّل مسارًا مطلقًا.",
     "The launcher data directory path cannot be represented as Unicode text, which Java requires for game paths.": "لا يمكن تمثيل مسار مجلد بيانات المشغّل كنص Unicode، وهو ما تتطلبه Java لمسارات اللعبة.",
     "The launcher data directory path is invalid.": "مسار مجلد بيانات المشغّل غير صالح.",
     "The launcher restarted while this game was running, so its output and exit code are not available. Installing and playing were blocked until it ended.": "أُعيد تشغيل المشغّل أثناء عمل هذه اللعبة، لذا فمخرجاتها ورمز خروجها غير متاحين. حُظر التثبيت واللعب حتى انتهت.",
     "The launcher stopped before this operation finished. Verified files were kept; start it again to continue.": "توقف المشغّل قبل انتهاء هذه العملية. احتُفظ بالملفات التي تم التحقق منها؛ ابدأها مجددًا للمتابعة.",
+    "The launcher's own folder is unknown.": "مجلد المشغّل نفسه غير معروف.",
     "The mod loader installer stopped unexpectedly.": "توقّف مثبّت مُحمِّل التعديلات على نحو غير متوقع.",
     "The mod loader record is missing. Repair the installation.": "سجل مُحمِّل التعديلات مفقود. أصلح التثبيت.",
     "The mod loader's published files changed since this installation was made. Create a new installation for this loader version.": "تغيّرت الملفات المنشورة لمُحمِّل التعديلات منذ إنشاء هذا التثبيت. أنشئ تثبيتًا جديدًا لهذا الإصدار من المُحمِّل.",
+    "The new folder cannot be inside the current data folder, or contain it.": "لا يمكن أن يكون المجلد الجديد داخل مجلد البيانات الحالي أو يحتويه.",
     "The operating system did not provide a per-user application data directory.": "لم يوفّر نظام التشغيل مجلدًا لبيانات التطبيقات خاصًا بالمستخدم.",
     "The operation was cancelled.": "أُلغيت العملية.",
     "The rebuilt Java runtime differs from the recorded one.": "تختلف بيئة Java المعاد بناؤها عن المسجلة.",
@@ -691,6 +757,8 @@
     "This version's metadata uses a rule the launcher does not support.": "يستخدم وصف هذا الإصدار قاعدة لا يدعمها المشغّل.",
     "This {loader} version is not made for the chosen Minecraft version.": "هذا الإصدار من {loader} غير مخصّص لإصدار Minecraft المختار.",
     "This {loader} version uses an older installer format the launcher does not support. Choose a newer {loader} version.": "يستخدم هذا الإصدار من {loader} تنسيق مثبّت أقدم لا يدعمه المشغّل. اختر إصدارًا أحدث من {loader}.",
+    "Turning off portable mode": "إيقاف الوضع المحمول",
+    "Turning on portable mode": "تشغيل الوضع المحمول",
     "Unfinished download records could not be cleaned up.": "تعذّر تنظيف سجلات التنزيلات غير المكتملة.",
     "Verified game files are damaged. Repair the installation.": "ملفات اللعبة التي جرى التحقق منها تالفة. أصلح التثبيت.",
     "Waiting for the game failed.": "فشل انتظار انتهاء اللعبة.",
@@ -713,6 +781,19 @@
     "version metadata": "وصف الإصدار",
     "{context}: a file operation failed.": "{context}: فشلت عملية على الملفات.",
     "{context}: permission denied by the operating system.": "{context}: رفض نظام التشغيل الوصول.",
-    "{context}: the disk is full. Free some space and try again.": "{context}: القرص ممتلئ. أفرغ بعض المساحة وحاول مجددًا."
+    "{context}: the disk is full. Free some space and try again.": "{context}: القرص ممتلئ. أفرغ بعض المساحة وحاول مجددًا.",
+    "A quote in the JVM options is not closed.": "علامة اقتباس في خيارات JVM غير مغلقة.",
+    "Each JVM option must start with \"-\"; put a value after \"=\": {option}": "يجب أن يبدأ كل خيار JVM بـ \"-\"، وتُكتب القيمة بعد \"=\": {option}",
+    "Enter the full path to the Java program.": "أدخل المسار الكامل لبرنامج Java.",
+    "Install this version first, then choose your own Java.": "ثبّت هذا الإصدار أولًا، ثم اختر Java الخاصة بك.",
+    "JVM options can be at most {max} characters long.": "يمكن أن تصل خيارات JVM إلى {max} حرفًا على الأكثر.",
+    "JVM options must be on one line, without control characters.": "يجب أن تكون خيارات JVM في سطر واحد، دون أحرف تحكم.",
+    "No Java program was found at this path.": "لم يُعثر على برنامج Java في هذا المسار.",
+    "The Java check is missing.": "نتيجة فحص Java مفقودة.",
+    "The Java chosen for this installation could not be started. Choose another one in the installation settings.": "تعذّر تشغيل Java المختارة لهذا التثبيت. اختر غيرها في إعدادات التثبيت.",
+    "The file dialog failed.": "تعذّر فتح نافذة اختيار الملف.",
+    "This Java may not run this game. Confirm the choice to use it anyway.": "قد لا تشغّل Java هذه اللعبة. أكّد الاختيار لاستخدامها على أي حال.",
+    "This program could not be started as Java.": "تعذّر تشغيل هذا البرنامج بوصفه Java.",
+    "Use at most {max} JVM options.": "استخدم {max} من خيارات JVM على الأكثر."
   }
 }

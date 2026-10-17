@@ -185,6 +185,8 @@ pub enum OperationKind {
     Install,
     Repair,
     Launch,
+    /// Copying the launcher data to another folder (D-043).
+    Relocate,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -241,6 +243,41 @@ pub struct InstanceFile {
     /// The user's own notes about the installation.
     #[serde(default, skip_serializing_if = "String::is_empty")]
     pub notes: String,
+    /// A provider for the private runtime that the next install or repair
+    /// switches to (D-044); cleared once the lock records it.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub java_provider: Option<JavaProvider>,
+    /// The user's own Java, used instead of the private runtime (D-044).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub custom_java: Option<CustomJava>,
+    /// Extra JVM options as the user typed them, added after the version's own.
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub jvm_arguments: String,
+}
+
+/// A Java installation the user chose for an installation (D-044).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct CustomJava {
+    pub path: std::path::PathBuf,
+    /// What the Java reported when it was chosen.
+    pub java_version: String,
+    pub major: u16,
+    /// Compatibility warnings the user accepted.
+    #[serde(default)]
+    pub accepted: Vec<JavaIssue>,
+}
+
+/// Why a Java may not suit a game version (D-044).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum JavaIssue {
+    /// Older than the version the game was built for: it will not start.
+    Older,
+    /// Newer: recent versions usually run, older versions and mod loaders often do not.
+    Newer,
+    /// Built for another processor architecture.
+    Architecture,
 }
 
 /// Which private Java runtime an installation uses, for display.
@@ -454,6 +491,9 @@ mod tests {
             java: None,
             loader: None,
             notes: String::new(),
+            java_provider: None,
+            custom_java: None,
+            jvm_arguments: String::new(),
         };
         let json = serde_json::to_value(&instance).unwrap();
         assert!(json["manifestSha1"].is_null());

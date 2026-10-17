@@ -11,6 +11,7 @@
 //! Nothing outside DATA_ROOT is changed: no PATH, JAVA_HOME or registry entries.
 
 pub mod adoptium;
+pub mod custom;
 pub mod extract;
 pub mod mojang;
 pub mod probe;

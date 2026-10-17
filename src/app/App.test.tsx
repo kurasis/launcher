@@ -33,6 +33,15 @@ function fakeBackend(initial: AppSnapshot, info: AppInfo = appInfoFixture) {
           };
         case 'get_app_info':
           return info;
+        case 'get_data_location':
+          return {
+            mode: 'default',
+            path: '/home/test/.local/share/launcher',
+            defaultPath: '/home/test/.local/share/launcher',
+            portablePath: '/opt/launcher/launcher-data',
+            pendingPath: null,
+            pendingReused: false,
+          };
         case 'create_instance': {
           const { request } = args as {
             request: MutationRequest<{ displayName: string; versionId: string }>;
@@ -222,7 +231,8 @@ describe('App', () => {
       'page',
     );
     expect(screen.getByRole('radio', { name: 'Match system' })).toBeChecked();
-    expect(screen.getByText('/home/test/.local/share/launcher')).toBeVisible();
+    expect(await screen.findByText('/home/test/.local/share/launcher')).toBeVisible();
+    expect(screen.getByRole('button', { name: 'Make portable' })).toBeEnabled();
 
     fireEvent.click(screen.getByRole('button', { name: 'About' }));
     expect(await screen.findByText('linux / x86_64')).toBeVisible();

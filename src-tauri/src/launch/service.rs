@@ -65,6 +65,10 @@ struct RunSettings {
     max_heap_mib: u32,
     resolution: crate::storage::models::Resolution,
     mode: LaunchMode,
+    /// The user's own Java instead of the private runtime (D-044).
+    custom_java: Option<PathBuf>,
+    /// The user's JVM options, after the version's own.
+    jvm_arguments: Vec<String>,
 }
 
 /// Fresh account verification for a launch.
@@ -323,6 +327,7 @@ impl LaunchService {
                 return Err(repair_needed("health"));
             }
         }
+        let jvm_arguments = runtime::custom::parse_jvm_arguments(&instance.jvm_arguments)?;
         let root = state.data_root().ok_or_else(|| {
             LauncherError::new(
                 ErrorCode::StorageUnavailable,
@@ -372,6 +377,8 @@ impl LaunchService {
                     max_heap_mib: instance.max_heap_mib,
                     resolution: instance.resolution,
                     mode,
+                    custom_java: instance.custom_java.as_ref().map(|j| j.path.clone()),
+                    jvm_arguments,
                 },
                 &cancel,
             )
@@ -499,20 +506,17 @@ impl LaunchService {
             return Err(repair_needed("files"));
         }
         check_cancel()?;
-        let package = lock::runtime_from_lock(&lock)?;
-        let (verify_root, verify_package) = (root.clone(), package.clone());
-        let installed = match tokio::task::spawn_blocking(move || {
-            runtime::verify_installed(&verify_root, &verify_package)
-        })
-        .await
-        .map_err(|_| LauncherError::internal("A runtime check stopped unexpectedly."))??
-        {
-            Verification::Valid(installed) => *installed,
-            _ => return Err(repair_needed("runtime")),
+        let RunSettings {
+            max_heap_mib,
+            resolution,
+            mode,
+            custom_java,
+            jvm_arguments,
+        } = settings;
+        let java = match custom_java {
+            Some(path) => self.custom_java(path, &lock).await?,
+            None => self.private_java(root, &lock).await?,
         };
-        if installed.receipt.tree_receipt_sha256 != lock.runtime.tree_receipt_sha256 {
-            return Err(repair_needed("runtime receipt"));
-        }
         check_cancel()?;
         let plan = self.locked_plan(&lock).await?;
         lock::project_asset_index(
@@ -523,11 +527,6 @@ impl LaunchService {
         check_cancel()?;
 
         // Fresh access check (or the no-token profile); without it Java is never started.
-        let RunSettings {
-            max_heap_mib,
-            resolution,
-            mode,
-        } = settings;
         let authorizer = match mode {
             LaunchMode::Account => &self.auth,
             LaunchMode::NoToken => &self.notoken,
@@ -580,6 +579,7 @@ impl LaunchService {
             resolution,
             identity: &identity,
             launcher_version: &self.launcher_version,
+            extra_jvm_args: &jvm_arguments,
         })?;
         let storage = |e: std::io::Error| LauncherError::from_io(&e, "Preparing the launch");
         std::fs::create_dir_all(&game_dir).map_err(storage)?;
@@ -598,7 +598,7 @@ impl LaunchService {
             })??;
         }
         // Non-ASCII arguments must survive Java's native decoding.
-        let java = installed.java.clone();
+        let check_java = java.clone();
         let args: Vec<String> = compiled
             .jvm_args
             .iter()
@@ -609,13 +609,13 @@ impl LaunchService {
             .collect();
         tokio::task::spawn_blocking(move || {
             let refs: Vec<&str> = args.iter().map(String::as_str).collect();
-            super::encoding::check(&java, &refs)
+            super::encoding::check(&check_java, &refs)
         })
         .await
         .map_err(|_| LauncherError::internal("An encoding check stopped unexpectedly."))??;
         check_cancel()?;
         let (command, _) = argfile::build_command(
-            &installed.java,
+            &java,
             &compiled,
             &run_dir.join("jvm.args"),
             self.force_argfile,
@@ -624,8 +624,73 @@ impl LaunchService {
             command,
             secrets: compiled.secrets().to_vec(),
             run_dir,
-            java: installed.java,
+            java,
         })
+    }
+
+    /// The installation's private runtime, after checking it is intact.
+    async fn private_java(&self, root: &DataRoot, lock: &InstallLock) -> LauncherResult<PathBuf> {
+        let package = lock::runtime_from_lock(lock)?;
+        let verify_root = root.clone();
+        let installed = match tokio::task::spawn_blocking(move || {
+            runtime::verify_installed(&verify_root, &package)
+        })
+        .await
+        .map_err(|_| LauncherError::internal("A runtime check stopped unexpectedly."))??
+        {
+            Verification::Valid(installed) => *installed,
+            _ => return Err(repair_needed("runtime")),
+        };
+        if installed.receipt.tree_receipt_sha256 != lock.runtime.tree_receipt_sha256 {
+            return Err(repair_needed("runtime receipt"));
+        }
+        Ok(installed.java)
+    }
+
+    /// The user's own Java (D-044): it must still start. Compatibility was
+    /// accepted when it was chosen; a change since then is only reported.
+    async fn custom_java(&self, path: PathBuf, lock: &InstallLock) -> LauncherResult<PathBuf> {
+        let (major, arch) = (lock.java_major, lock.arch);
+        let checked = tokio::task::spawn_blocking(move || {
+            runtime::custom::check(&path, major, arch)
+        })
+        .await
+        .map_err(|_| LauncherError::internal("A runtime check stopped unexpectedly."))?
+        .map_err(|e| {
+            let mut error = LauncherError::new(
+                ErrorCode::RuntimeUnavailable,
+                "The Java chosen for this installation could not be started. Choose another \
+                 one in the installation settings.",
+            );
+            error.safe_details = e.safe_details;
+            error
+        })?;
+        let console = self.host.app_state().console();
+        console.info(format!(
+            "Your own Java {} ({}, {}) for a game built for Java {}",
+            checked.java_version,
+            checked.vendor.as_deref().unwrap_or("unknown vendor"),
+            checked.arch,
+            checked.required_major
+        ));
+        if !checked.issues.is_empty() {
+            console.warn(format!(
+                "This Java may not suit the game: {}",
+                checked
+                    .issues
+                    .iter()
+                    .map(|i| match i {
+                        crate::storage::models::JavaIssue::Older => "older than required",
+                        crate::storage::models::JavaIssue::Newer =>
+                            "newer than the game was built for",
+                        crate::storage::models::JavaIssue::Architecture =>
+                            "another processor architecture",
+                    })
+                    .collect::<Vec<_>>()
+                    .join(", ")
+            ));
+        }
+        Ok(checked.path)
     }
 
     /// The plan from the locked descriptor; must match the lock exactly.

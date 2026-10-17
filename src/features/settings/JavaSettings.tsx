@@ -4,6 +4,7 @@ import type { InstanceSummary, JavaProvider, SettingsView } from '../../lib/cont
 import { ipc } from '../../lib/ipc';
 import { strings } from '../../lib/strings';
 import { useCommand } from '../../lib/useCommand';
+import { javaLabel } from './javaLabel';
 import styles from './SettingsView.module.css';
 
 const t = strings.settings;
@@ -54,15 +55,7 @@ export function JavaSettings({
             {instances.map((instance) => (
               <div key={instance.id} className={styles.fact}>
                 <dt>{instance.displayName}</dt>
-                <dd>
-                  {instance.java === null
-                    ? strings.details.javaNone
-                    : t.javaValue({
-                        provider: t.javaShort[instance.java.provider],
-                        major: instance.java.major,
-                        release: instance.java.release,
-                      })}
-                </dd>
+                <dd>{javaLabel(instance)}</dd>
               </div>
             ))}
           </dl>

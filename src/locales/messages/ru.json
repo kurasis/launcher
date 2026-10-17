@@ -228,6 +228,7 @@
       "saved": "Сохранено.",
       "busy": "Установка занята, её настройки сейчас изменить нельзя.",
       "java": "Java",
+      "jvmArguments": "Параметры JVM",
       "javaNone": "Выбирается при установке",
       "window": "Память и окно",
       "windowValue": "{mib, number, ::group-off} МиБ · {width, number, ::group-off}×{height, number, ::group-off}",
@@ -249,7 +250,7 @@
         "general": "Язык, оформление, окно лаунчера во время игры и место хранения данных.",
         "java": "Откуда лаунчер загружает Java для новых установок.",
         "defaults": "Память и размер окна для каждой новой установки.",
-        "installations": "Память и размер окна существующей установки."
+        "installations": "Память, размер окна и Java существующей установки."
       },
       "javaProvider": "Источник Java",
       "javaProviders": {
@@ -260,13 +261,42 @@
         "mojang": "Сборки Java, которые использует официальный лаунчер Minecraft, — ровно та Java, которую просит каждая версия. Если для этого компьютера у Mojang сборки нет, используется Temurin.",
         "temurin": "Актуальные сборки Eclipse Temurin той версии Java, которая нужна каждой версии Minecraft."
       },
-      "javaApplies": "Применяется к новым установкам. Установленная версия сохраняет ту Java, с которой была установлена, а восстановление возвращает именно её.",
+      "javaApplies": "Действует для новых установок. Чтобы сменить Java уже установленной версии или указать свою, откройте «Установки».",
       "javaInstalled": "Java каждой установки",
       "javaShort": {
         "mojang": "Mojang",
         "temurin": "Temurin"
       },
       "javaValue": "{provider} · Java {major} ({release})",
+      "instanceJava": {
+        "title": "Java этой установки",
+        "now": "Сейчас: {value}",
+        "managed": "Собственная Java лаунчера от {provider}",
+        "managedHint": "Лаунчер скачивает и проверяет её сам. Другой источник будет скачан при следующем восстановлении.",
+        "custom": "Своя Java",
+        "customHint": "Java, установленная на этом компьютере. Лаунчер сверит её версию с игрой и предупредит о несовпадении.",
+        "path": "Путь к программе Java",
+        "pathHint": "Например C:\\Program Files\\Java\\jdk-21\\bin\\javaw.exe или /usr/lib/jvm/java-21/bin/java.",
+        "browse": "Выбрать…",
+        "installFirst": "Сначала установите эту версию, затем выберите свою Java.",
+        "jvmArguments": "Параметры JVM",
+        "jvmHint": "Добавляются после параметров самой версии; при совпадении действует последний. Каждый параметр начинается с «-», значение пишется после «=», например -XX:+UseG1GC -Dfile.encoding=UTF-8.",
+        "save": "Сохранить настройки Java",
+        "checking": "Проверяем эту Java…",
+        "checked": "Java {version} ({vendor}, {arch}). Игра рассчитана на Java {required}.",
+        "unknownVendor": "производитель неизвестен",
+        "issues": {
+          "older": "Эта Java старше нужной игре Java {required}. Скорее всего, игра не запустится.",
+          "newer": "Эта Java новее Java {required}, на которую рассчитана игра. Новые версии обычно работают; старые версии и загрузчики модов часто нет.",
+          "architecture": "Эта Java собрана для другого процессора ({arch}). Игра может не запуститься или работать медленно."
+        },
+        "confirm": "Всё равно использовать эту Java?",
+        "useAnyway": "Использовать",
+        "accepted": "Вы выбрали эту Java, несмотря на предупреждение:",
+        "pendingSwitch": "Java от {provider} будет скачана при следующем восстановлении.",
+        "repairNow": "Восстановить сейчас",
+        "customValue": "Своя Java {version}"
+      },
       "noInstallations": "Установок пока нет.",
       "installation": "Установка",
       "language": "Язык",
@@ -283,12 +313,29 @@
         "close_launcher": "Закрыть лаунчер, когда откроется окно игры; игра продолжит работать"
       },
       "dataLocation": "Где хранятся данные лаунчера",
-      "dataLocationHint": "Папку выбирает операционная система для этого пользователя. Изменить её здесь нельзя.",
       "defaultsTitle": "Значения для новых установок",
       "defaultsSave": "Сохранить",
       "defaultsSaved": "Сохранено.",
       "readOnly": "Настройки доступны только для чтения: они записаны более новой версией лаунчера или не читаются.",
-      "languageIncomplete": "переведено {percent}%"
+      "languageIncomplete": "переведено {percent}%",
+      "dataFolder": {
+        "modes": {
+          "default": "Папка пользователя, которую выделяет операционная система.",
+          "custom": "Выбранная вами папка.",
+          "portable": "Переносимый режим: данные лежат рядом с лаунчером, всю папку можно перенести на другой компьютер."
+        },
+        "choose": "Перенести в другую папку…",
+        "toDefault": "Вернуть в папку по умолчанию",
+        "toPortable": "Сделать переносимым",
+        "confirm": "Скопировать все данные лаунчера в",
+        "confirmHint": "Если в этой папке уже есть данные лаунчера, он переключится на них без копирования. Иначе копируются установки, Java, файлы игры и настройки; текущая папка остаётся, её можно удалить потом. Новая папка используется со следующего запуска. Копирование может занять время.",
+        "copy": "Скопировать данные",
+        "copying": "Данные копируются… Ход видно в окне консоли.",
+        "pending": "Данные скопированы. Закройте и снова запустите лаунчер, чтобы использовать",
+        "busy": "Чтобы перенести данные, дождитесь окончания операции или игры.",
+        "portableHint": "Переносимый режим хранит данные в папке launcher-data рядом с лаунчером; чтобы выключить его, удалите там файл portable.txt. Входы в аккаунты остаются в хранилище учётных данных этого компьютера.",
+        "pendingReused": "Лаунчер будет использовать данные, которые уже есть в этой папке. Закройте и снова запустите лаунчер, чтобы использовать"
+      }
     },
     "storage": {
       "issuesTitle": "Замечания о хранилище"
@@ -351,6 +398,7 @@
       "install": "Установка",
       "repair": "Проверка файлов",
       "launch": "Игра запущена",
+      "relocate": "Перенос данных",
       "percent": "{percent}%"
     },
     "console": {
@@ -396,7 +444,8 @@
       "kind": {
         "install": "Установка",
         "repair": "Восстановление",
-        "launch": "Запуск"
+        "launch": "Запуск",
+        "relocate": "Перенос данных"
       },
       "outcome": {
         "succeeded": "Успешно",
@@ -528,9 +577,15 @@
     "Building the diagnostic export failed.": "Не удалось собрать экспорт диагностики.",
     "Checking the Java runtime failed": "Не удалось проверить Java",
     "Choose a Minecraft version.": "Выберите версию Minecraft.",
+    "Choose a folder.": "Выберите папку.",
+    "Choose a full folder path.": "Укажите полный путь к папке.",
     "Choose a mod loader version from the list.": "Выберите версию загрузчика модов из списка.",
+    "Choose an empty folder, one that does not exist yet, or one that already holds launcher data.": "Выберите пустую папку, ещё не существующую или ту, где уже есть данные лаунчера.",
+    "Copying launcher data": "Копирование данных лаунчера",
+    "Copying stopped unexpectedly.": "Копирование неожиданно остановилось.",
     "Creating the installation folder": "Создание папки установки",
     "Creating the launcher data directory": "Создание папки данных лаунчера",
+    "Creating the new data folder": "Создание новой папки данных",
     "Downloaded {what} did not match its expected checksum.": "Загруженный файл ({what}) не совпал с ожидаемой контрольной суммой.",
     "Downloading {what} failed (HTTP {status}).": "Не удалось загрузить {what} (HTTP {status}).",
     "Extracting the Java runtime failed": "Не удалось распаковать Java",
@@ -573,14 +628,17 @@
     "Reading an installation": "Чтение установки",
     "Reading job records failed": "Не удалось прочитать записи заданий",
     "Reading settings": "Чтение настроек",
+    "Reading the data folder": "Чтение папки данных",
     "Reading the installation record": "Чтение записи установки",
     "Reading the job record failed": "Не удалось прочитать запись задания",
+    "Reading the new data folder": "Чтение новой папки данных",
     "Removing incomplete downloads failed": "Не удалось удалить незавершённые загрузки",
     "Saved sign-in credentials could not be removed from the system credential store. Try signing out again.": "Не удалось удалить сохранённый вход из системного хранилища паролей. Попробуйте выйти ещё раз.",
     "Saving Minecraft metadata": "Сохранение описания Minecraft",
     "Saving account metadata": "Сохранение данных аккаунта",
     "Saving mod loader files": "Сохранение файлов загрузчика модов",
     "Saving settings": "Сохранение настроек",
+    "Saving the data folder choice": "Сохранение выбора папки данных",
     "Saving the diagnostic export": "Сохранение экспорта диагностики",
     "Saving the installation": "Сохранение установки",
     "Saving the installation record": "Сохранение записи установки",
@@ -611,7 +669,12 @@
     "The asset index lists the same object with two different sizes.": "Индекс ресурсов содержит один и тот же объект с двумя разными размерами.",
     "The catalog cache is missing.": "Кэш каталога отсутствует.",
     "The compatibility list copy could not be written.": "Не удалось записать копию списка совместимости.",
+    "The configuration folder is unknown.": "Папка настроек системы неизвестна.",
+    "The data folder choice could not be saved.": "Не удалось сохранить выбор папки данных.",
+    "The data folder contains a symbolic link; it was not copied.": "В папке данных есть символическая ссылка; данные не скопированы.",
+    "The data folder was already moved. Restart the launcher to use it.": "Папка данных уже перенесена. Перезапустите лаунчер, чтобы использовать её.",
     "The file manager could not be opened.": "Не удалось открыть файловый менеджер.",
+    "The folder dialog failed.": "Не удалось открыть выбор папки.",
     "The game exited with an error. The output below may explain why.": "Игра завершилась с ошибкой. Причина может быть видна в выводе ниже.",
     "The installation identifier is invalid.": "Неверный идентификатор установки.",
     "The installation name cannot contain control characters.": "Название установки не может содержать управляющие символы.",
@@ -621,15 +684,18 @@
     "The installation record lists an unsupported checksum.": "Запись установки содержит неподдерживаемую контрольную сумму.",
     "The installed Java runtime is not the version or architecture this game needs.": "Установленная Java не той версии или архитектуры, которая нужна этой игре.",
     "The launch was cancelled.": "Запуск отменён.",
+    "The launcher already uses this folder.": "Лаунчер уже использует эту папку.",
     "The launcher data directory contains the character {character}, which Java cannot use in a classpath. Use a directory without it.": "Путь к папке данных лаунчера содержит символ «{character}», который Java не допускает в classpath. Используйте папку без него.",
     "The launcher data directory must be an absolute path.": "Папка данных лаунчера должна задаваться абсолютным путём.",
     "The launcher data directory path cannot be represented as Unicode text, which Java requires for game paths.": "Путь к папке данных лаунчера нельзя представить текстом Unicode, а Java требует этого для путей игры.",
     "The launcher data directory path is invalid.": "Неверный путь к папке данных лаунчера.",
     "The launcher restarted while this game was running, so its output and exit code are not available. Installing and playing were blocked until it ended.": "Лаунчер перезапустился, пока игра работала, поэтому её вывод и код выхода недоступны. Установка и запуск были заблокированы до её завершения.",
     "The launcher stopped before this operation finished. Verified files were kept; start it again to continue.": "Лаунчер остановился до завершения операции. Проверенные файлы сохранены; запустите её снова, чтобы продолжить.",
+    "The launcher's own folder is unknown.": "Папка самого лаунчера неизвестна.",
     "The mod loader installer stopped unexpectedly.": "Установщик загрузчика модов неожиданно остановился.",
     "The mod loader record is missing. Repair the installation.": "Данные загрузчика модов отсутствуют. Восстановите установку.",
     "The mod loader's published files changed since this installation was made. Create a new installation for this loader version.": "Опубликованные файлы загрузчика модов изменились после создания этой установки. Создайте новую установку с этой версией загрузчика.",
+    "The new folder cannot be inside the current data folder, or contain it.": "Новая папка не может находиться внутри текущей папки данных или содержать её.",
     "The operating system did not provide a per-user application data directory.": "Операционная система не предоставила папку данных приложений для пользователя.",
     "The operation was cancelled.": "Операция отменена.",
     "The rebuilt Java runtime differs from the recorded one.": "Пересобранная Java отличается от записанной.",
@@ -690,6 +756,8 @@
     "This version's metadata uses a rule the launcher does not support.": "Описание этой версии использует правило, которое лаунчер не поддерживает.",
     "This {loader} version is not made for the chosen Minecraft version.": "Эта версия {loader} не предназначена для выбранной версии Minecraft.",
     "This {loader} version uses an older installer format the launcher does not support. Choose a newer {loader} version.": "Эта версия {loader} использует старый формат установщика, который лаунчер не поддерживает. Выберите более новую версию {loader}.",
+    "Turning off portable mode": "Выключение переносимого режима",
+    "Turning on portable mode": "Включение переносимого режима",
     "Unfinished download records could not be cleaned up.": "Не удалось убрать записи о незавершённых загрузках.",
     "Verified game files are damaged. Repair the installation.": "Проверенные файлы игры повреждены. Восстановите установку.",
     "Waiting for the game failed.": "Не удалось дождаться завершения игры.",
@@ -712,6 +780,19 @@
     "version metadata": "описание версии",
     "{context}: a file operation failed.": "{context}: файловая операция не удалась.",
     "{context}: permission denied by the operating system.": "{context}: операционная система запретила доступ.",
-    "{context}: the disk is full. Free some space and try again.": "{context}: диск заполнен. Освободите место и попробуйте снова."
+    "{context}: the disk is full. Free some space and try again.": "{context}: диск заполнен. Освободите место и попробуйте снова.",
+    "A quote in the JVM options is not closed.": "Кавычка в параметрах JVM не закрыта.",
+    "Each JVM option must start with \"-\"; put a value after \"=\": {option}": "Каждый параметр JVM должен начинаться с «-», значение пишется после «=»: {option}",
+    "Enter the full path to the Java program.": "Укажите полный путь к программе Java.",
+    "Install this version first, then choose your own Java.": "Сначала установите эту версию, затем выберите свою Java.",
+    "JVM options can be at most {max} characters long.": "Параметры JVM могут быть длиной не более {max} символов.",
+    "JVM options must be on one line, without control characters.": "Параметры JVM должны быть в одной строке, без управляющих символов.",
+    "No Java program was found at this path.": "По этому пути нет программы Java.",
+    "The Java check is missing.": "Нет результата проверки Java.",
+    "The Java chosen for this installation could not be started. Choose another one in the installation settings.": "Не удалось запустить Java, выбранную для этой установки. Выберите другую в настройках установки.",
+    "The file dialog failed.": "Не удалось открыть окно выбора файла.",
+    "This Java may not run this game. Confirm the choice to use it anyway.": "Эта Java может не запустить игру. Подтвердите выбор, чтобы всё равно её использовать.",
+    "This program could not be started as Java.": "Эту программу не удалось запустить как Java.",
+    "Use at most {max} JVM options.": "Используйте не более {max} параметров JVM."
   }
 }

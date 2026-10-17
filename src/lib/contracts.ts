@@ -99,7 +99,25 @@ export interface InstalledJava {
 }
 export type InstallationHealth =
   'not_installed' | 'ready' | 'needs_verification' | 'repair_required' | 'unsupported';
-export type OperationKind = 'install' | 'repair' | 'launch';
+export type OperationKind = 'install' | 'repair' | 'launch' | 'relocate';
+
+/** How the data folder was chosen (D-043). */
+export type LocationMode = 'default' | 'custom' | 'portable';
+
+/** The data folder in use. */
+export interface DataLocation {
+  mode: LocationMode;
+  path: string;
+  defaultPath: string;
+  /** Where portable mode keeps data, beside the launcher. */
+  portablePath: string | null;
+  /** A move made this session; used from the next start. */
+  pendingPath: string | null;
+  /** The pending folder already held launcher data and is used as it is. */
+  pendingReused: boolean;
+}
+
+export type LocationTarget = 'default' | 'custom' | 'portable';
 export type Outcome = 'succeeded' | 'failed' | 'cancelled' | 'interrupted';
 
 export type AccountState =
@@ -146,6 +164,45 @@ export interface InstanceSummary {
   loader: LoaderChoice | null;
   /** The user's own notes; empty when none. */
   notes: string;
+  /** A provider the next repair switches the private runtime to (D-044). */
+  javaProvider: JavaProvider | null;
+  /** The user's own Java, used instead of the private runtime (D-044). */
+  customJava: CustomJava | null;
+  /** Extra JVM options as typed; empty when none. */
+  jvmArguments: string;
+}
+
+/** Why a Java may not suit a game version (D-044). */
+export type JavaIssue = 'older' | 'newer' | 'architecture';
+
+export interface CustomJava {
+  path: string;
+  javaVersion: string;
+  major: number;
+  /** Compatibility warnings the user accepted. */
+  accepted: JavaIssue[];
+}
+
+/** What a chosen Java reported, and how it suits the game. */
+export interface JavaCheck {
+  path: string;
+  javaVersion: string;
+  major: number;
+  vendor: string | null;
+  arch: string;
+  requiredMajor: number;
+  issues: JavaIssue[];
+}
+
+export type JavaChoice =
+  { kind: 'managed'; provider: JavaProvider } | { kind: 'custom'; path: string };
+
+export interface SetInstanceJavaPayload {
+  instanceId: string;
+  java: JavaChoice;
+  jvmArguments: string;
+  /** The user saw the warnings of a custom Java and chose it anyway. */
+  acceptIssues: boolean;
 }
 
 /** Mod loaders the launcher installs (D-039). */

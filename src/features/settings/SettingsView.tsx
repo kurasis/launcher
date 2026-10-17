@@ -8,6 +8,8 @@ import { LANGUAGES, type SettingsSection, strings } from '../../lib/strings';
 import { useCommand } from '../../lib/useCommand';
 import { DefaultsForm } from './DefaultsForm';
 import { InstallationForm } from './InstallationForm';
+import { InstanceJavaForm } from './InstanceJavaForm';
+import { DataFolderSettings } from './DataFolderSettings';
 import { JavaSettings } from './JavaSettings';
 import styles from './SettingsView.module.css';
 import { gameLabel } from '../instances/loaderLabel';
@@ -72,7 +74,7 @@ export function SettingsView({ snapshot, section, onSection, instanceId }: Setti
 }
 
 function GeneralSettings({ snapshot }: { snapshot: AppSnapshot }) {
-  const { settings, dataRoot } = snapshot;
+  const { settings } = snapshot;
   const update = useCommand((requestId: string, patch: SettingsPatch) =>
     ipc.setAppSettings(patch, requestId),
   );
@@ -140,13 +142,7 @@ function GeneralSettings({ snapshot }: { snapshot: AppSnapshot }) {
         ))}
       </fieldset>
       {update.error !== null && <Notice tone="danger">{update.error}</Notice>}
-      <div>
-        <h3 className={styles.subheading}>{t.dataLocation}</h3>
-        <p className={styles.path} dir="ltr">
-          {dataRoot.path ?? '—'}
-        </p>
-        <p className={styles.hint}>{t.dataLocationHint}</p>
-      </div>
+      <DataFolderSettings busy={snapshot.activeOperation !== null} />
     </div>
   );
 }
@@ -184,6 +180,7 @@ function InstallationsSettings({
         </select>
       </div>
       <InstallationForm key={instance.id} instance={instance} memory={snapshot.memory} />
+      <InstanceJavaForm key={`java-${instance.id}`} instance={instance} />
     </div>
   );
 }

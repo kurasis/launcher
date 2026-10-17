@@ -45,6 +45,8 @@ pub struct LaunchInputs<'a> {
     pub resolution: Resolution,
     pub identity: &'a LaunchIdentity,
     pub launcher_version: &'a str,
+    /// The user's JVM options (D-044); later options win in the JVM.
+    pub extra_jvm_args: &'a [String],
 }
 
 /// A fully resolved launch, ready to spawn.
@@ -225,6 +227,7 @@ pub fn compile(inputs: &LaunchInputs<'_>) -> LauncherResult<CompiledLaunch> {
         logging_values.insert("path", path_text(&path)?);
         jvm_args.push(substitute(&logging.argument, &logging_values)?);
     }
+    jvm_args.extend(inputs.extra_jvm_args.iter().cloned());
     let mut game_args = plan
         .game_arguments
         .iter()

@@ -28,6 +28,9 @@ export function instanceFixture(overrides: Partial<InstanceSummary> = {}): Insta
     java: null,
     loader: null,
     notes: '',
+    javaProvider: null,
+    customJava: null,
+    jvmArguments: '',
     ...overrides,
   };
 }

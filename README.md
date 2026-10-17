@@ -28,7 +28,10 @@ snapshots, beta, alpha and Classic, each type on its own tab (D-035). Versions b
 need an Intel Mac or Windows/Linux; Apple silicon runs 1.19 and later.
 Installations can run a mod loader — Forge, NeoForge, Fabric or Quilt — with a chosen
 loader version; Forge and NeoForge installers run with the installation's private Java
-(D-039).
+(D-039). Each installation can switch its private Java between Mojang and Temurin, or run
+a Java installed on the computer after a compatibility check, with extra JVM options
+(D-044); it can carry notes (D-041). The launcher can close once the game window opens
+(D-042), and its data folder can be moved or kept beside it in portable mode (D-043).
 
 **Without an account:** **Play demo** starts Minecraft's free demo (five in-game days, no
 multiplayer) under a local player name, in every build (D-033).
