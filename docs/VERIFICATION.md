@@ -564,7 +564,11 @@ encoding tests also ran on Windows.
 
 ### CI results
 
-Recorded by the next phase's pull request.
+Workflow run [39011719689](https://github.com/kurasis/launcher/actions/runs/39011719689) on
+commit `5241284` (PR #10): all 5 jobs pass. The first run on this pull request failed on
+macOS x64 only: a test observed the finished run before the active-run record was
+cleared. The exit callback now clears the record and the handle before publishing the
+result; the fix is in the merged code.
 
 ## P11 — Complete web UI, settings and diagnostics
 
