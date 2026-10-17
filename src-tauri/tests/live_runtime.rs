@@ -129,6 +129,7 @@ async fn other_targets_resolve_and_extract_without_running() {
                     path: path.clone(),
                     size: package.archive_size,
                     digest: Digest::Sha256(package.key.archive_sha256.clone()),
+                    label: None,
                 }],
                 &CancelToken::new(),
                 &NoProgress,

@@ -1,9 +1,10 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import type { AppSnapshot, OperationKind } from '../../lib/contracts';
 import { formatBytes } from '../../lib/format';
 import { ipc } from '../../lib/ipc';
 import { strings } from '../../lib/strings';
 import { useCommand } from '../../lib/useCommand';
+import { gameLabel } from '../instances/loaderLabel';
 import styles from './DownloadManager.module.css';
 
 const t = strings.downloads;
@@ -12,20 +13,31 @@ const ROTATE_MS = 1200;
 /** Operations the download manager follows. */
 const DOWNLOADS: OperationKind[] = ['install', 'repair'];
 
-/** Shows the files being downloaded one after another. */
+/**
+ * Shows the files being downloaded one after another. The name changes only on
+ * its own beat, not with every progress update, so each one can be read.
+ */
 function RotatingName({ names }: { names: string[] }) {
-  const [index, setIndex] = useState(0);
+  const latest = useRef(names);
+  const [shown, setShown] = useState<string | null>(names[0] ?? null);
   useEffect(() => {
-    if (names.length < 2) return;
+    latest.current = names;
+  }, [names]);
+  useEffect(() => {
     const timer = setInterval(() => {
-      setIndex((i) => i + 1);
+      setShown((current) => {
+        const list = latest.current;
+        if (list.length === 0) return null;
+        const index = current === null ? -1 : list.indexOf(current);
+        return list[(index + 1) % list.length] ?? null;
+      });
     }, ROTATE_MS);
     return () => {
       clearInterval(timer);
     };
-  }, [names.length]);
+  }, []);
   if (names.length === 0) return null;
-  const name = names[index % names.length] ?? '';
+  const name = shown ?? names[0] ?? '';
   return (
     <p className={styles.file} dir="ltr" key={name}>
       {t.file({ name })}
@@ -51,12 +63,41 @@ export function DownloadManager({ snapshot }: { snapshot: AppSnapshot }) {
       ? snapshot.operationProgress
       : null;
   const total = progress?.totalDownloadBytes ?? null;
+  const ratio = (done: number, all: number | null) =>
+    all !== null && all > 0 ? Math.min(100, Math.floor((done / all) * 100)) : null;
+  // Bytes while downloading; checked files while checking what is present.
   const percent =
-    progress !== null && total !== null && total > 0
-      ? Math.min(100, Math.floor((progress.downloadedBytes / total) * 100))
-      : null;
-  const name = (id: string | null) =>
-    snapshot.instances.find((i) => i.id === id)?.displayName ?? t.unknown;
+    progress === null
+      ? null
+      : progress.phase === 'checking_files'
+        ? ratio(progress.verifiedFiles, progress.totalFiles)
+        : ratio(progress.downloadedBytes, total);
+  const details =
+    progress === null
+      ? []
+      : [
+          total !== null && total > 0
+            ? t.bytes({
+                done: formatBytes(progress.downloadedBytes),
+                total: formatBytes(total),
+              })
+            : null,
+          progress.bytesPerSecond !== null
+            ? t.speed({ rate: formatBytes(progress.bytesPerSecond) })
+            : null,
+          progress.totalFiles !== null
+            ? t.files({ done: progress.verifiedFiles, total: progress.totalFiles })
+            : null,
+        ].filter((part) => part !== null);
+  const find = (id: string | null) => snapshot.instances.find((i) => i.id === id);
+  const name = (id: string | null) => find(id)?.displayName ?? t.unknown;
+  // Installations often share a name; the version tells them apart.
+  const version = (id: string | null) => {
+    const instance = find(id);
+    return instance === undefined ? null : gameLabel(instance);
+  };
+  const about = (id: string | null, kind: OperationKind) =>
+    [version(id), strings.diagnostics.kind[kind]].filter((part) => part !== null).join(' · ');
   const queue = snapshot.queue;
   const recent = snapshot.recentOperations.slice(0, 3);
   const working = active !== null;
@@ -71,8 +112,9 @@ export function DownloadManager({ snapshot }: { snapshot: AppSnapshot }) {
             <div className={styles.item}>
               <p className={styles.itemHead}>
                 <strong>{name(active.instanceId)}</strong>
-                <span className={styles.muted}>{strings.activity[active.kind]}</span>
+                <span className={styles.muted}>{strings.diagnostics.kind[active.kind]}</span>
               </p>
+              <p className={styles.muted}>{version(active.instanceId)}</p>
               <p className={styles.muted}>
                 {progress === null
                   ? strings.install.phase.resolving
@@ -85,20 +127,7 @@ export function DownloadManager({ snapshot }: { snapshot: AppSnapshot }) {
                 max={100}
                 value={percent ?? undefined}
               />
-              {progress !== null && (
-                <p className={styles.muted}>
-                  {total !== null &&
-                    total > 0 &&
-                    t.bytes({
-                      done: formatBytes(progress.downloadedBytes),
-                      total: formatBytes(total),
-                    })}
-                  {progress.bytesPerSecond !== null &&
-                    ` · ${t.speed({ rate: formatBytes(progress.bytesPerSecond) })}`}
-                  {progress.totalFiles !== null &&
-                    ` · ${t.files({ done: progress.verifiedFiles, total: progress.totalFiles })}`}
-                </p>
-              )}
+              {details.length > 0 && <p className={styles.muted}>{details.join(' · ')}</p>}
               {progress !== null && <RotatingName names={progress.currentFiles} />}
               <button
                 type="button"
@@ -118,7 +147,7 @@ export function DownloadManager({ snapshot }: { snapshot: AppSnapshot }) {
                   <li key={item.queueId} className={styles.queued}>
                     <span>
                       <strong>{name(item.instanceId)}</strong>{' '}
-                      <span className={styles.muted}>{strings.activity[item.kind]}</span>
+                      <span className={styles.muted}>{about(item.instanceId, item.kind)}</span>
                     </span>
                     <button
                       type="button"
@@ -141,7 +170,7 @@ export function DownloadManager({ snapshot }: { snapshot: AppSnapshot }) {
                   <li key={result.operationId} className={styles.queued}>
                     <span>
                       <strong>{name(result.instanceId)}</strong>{' '}
-                      <span className={styles.muted}>{strings.diagnostics.kind[result.kind]}</span>
+                      <span className={styles.muted}>{about(result.instanceId, result.kind)}</span>
                     </span>
                     <span className={styles.result} data-outcome={result.outcome}>
                       {strings.diagnostics.outcome[result.outcome]}

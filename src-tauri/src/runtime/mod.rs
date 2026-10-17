@@ -341,6 +341,7 @@ impl RuntimeInstaller {
             path: archive_path.clone(),
             size: package.archive_size,
             digest: Digest::Sha256(package.key.archive_sha256.clone()),
+            label: None,
         };
         let download = self.executor.run(job, vec![request], cancel, sink).await?;
         let archive = resolve_managed_path(&self.root, &archive_path)?;
@@ -393,6 +394,7 @@ impl RuntimeInstaller {
             path: manifest_path.clone(),
             size: package.archive_size,
             digest: Digest::Sha256(package.key.archive_sha256.clone()),
+            label: None,
         };
         let mut download = self.executor.run(job, vec![request], cancel, sink).await?;
         let cleanup = || {
@@ -425,6 +427,8 @@ impl RuntimeInstaller {
                         path: format!("{blobs}/{sha1}"),
                         size: *size,
                         digest: Digest::Sha1(sha1.clone()),
+                        // Blobs are stored by hash; progress names the file.
+                        label: entry.path.rsplit('/').next().map(str::to_owned),
                     });
                 }
             }

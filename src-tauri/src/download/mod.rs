@@ -36,7 +36,7 @@ use uuid::Uuid;
 use crate::error::{ErrorCode, LauncherError, LauncherResult};
 use crate::install::plan::PlannedArtifact;
 use crate::net::SourcePolicy;
-use crate::storage::models::HashAlgorithm;
+use crate::storage::models::{ArtifactRole, HashAlgorithm};
 use crate::storage::paths::{DataRoot, Sha1, Sha256, is_within};
 pub use cancel::CancelToken;
 use transport::{Failure, HttpTransport};
@@ -108,6 +108,9 @@ pub struct DownloadRequest {
     pub path: String,
     pub size: u64,
     pub digest: Digest,
+    /// What progress calls the file instead of its stored name (an asset's
+    /// logical name, since objects are stored by hash); display only.
+    pub label: Option<String>,
 }
 
 impl DownloadRequest {
@@ -119,8 +122,23 @@ impl DownloadRequest {
             path: artifact.path.clone(),
             size: artifact.size,
             digest: Digest::Sha1(artifact.sha1.clone()),
+            label: label(artifact.role, artifact.provenance.as_deref()),
         })
     }
+
+    /// The name progress shows while this file downloads.
+    fn display_name(&self) -> String {
+        self.label.clone().unwrap_or_else(|| file_name(&self.path))
+    }
+}
+
+/// The display label of a planned or locked artifact: asset objects are named
+/// by hash on disk, so they show their logical name instead.
+pub fn label(role: ArtifactRole, provenance: Option<&str>) -> Option<String> {
+    (role == ArtifactRole::AssetObject)
+        .then_some(provenance)
+        .flatten()
+        .map(file_name)
 }
 
 /// Resolves a relative managed path, refusing anything that could leave the root.
@@ -608,7 +626,7 @@ struct Worker {
 
 impl Worker {
     async fn download(&self, request: DownloadRequest, destination: PathBuf) -> WorkerResult {
-        let name = file_name(&request.path);
+        let name = request.display_name();
         self.counters.active().push(name.clone());
         let result = self.download_file(request, destination).await;
         let mut active = self.counters.active();

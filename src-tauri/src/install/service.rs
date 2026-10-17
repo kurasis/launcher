@@ -617,6 +617,7 @@ fn request_from_locked(
         &artifact.path,
         artifact.size,
         crate::download::Digest::Sha1(Sha1::parse(&artifact.digest)?),
+        crate::download::label(artifact.role, artifact.provenance.as_deref()),
     )
 }
 
@@ -628,6 +629,7 @@ fn artifact_request(
     path: &str,
     size: u64,
     digest: crate::download::Digest,
+    label: Option<String>,
 ) -> LauncherResult<DownloadRequest> {
     // Mojang's category unless a loader host is named; the transport refuses
     // anything off the category's allowlist.
@@ -643,6 +645,7 @@ fn artifact_request(
         path: path.to_owned(),
         size,
         digest,
+        label,
     })
 }
 
@@ -803,6 +806,7 @@ impl Operation {
                     &a.path,
                     a.size,
                     crate::download::Digest::Sha1(a.sha1.clone()),
+                    crate::download::label(a.role, a.provenance.as_deref()),
                 )
             })
             .collect::<LauncherResult<Vec<_>>>()?;

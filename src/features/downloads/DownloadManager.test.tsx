@@ -6,7 +6,11 @@ import { instanceFixture, snapshotFixture } from '../../test/fixtures';
 import { DownloadManager } from './DownloadManager';
 
 const a = instanceFixture({ displayName: 'Survival' });
-const b = instanceFixture({ id: '1f1e2d3c-4b5a-4978-8796-a5b4c3d2e1f0', displayName: 'Modded' });
+const b = instanceFixture({
+  id: '1f1e2d3c-4b5a-4978-8796-a5b4c3d2e1f0',
+  displayName: 'Modded',
+  loader: { kind: 'fabric', version: '0.16.14' },
+});
 
 const progress: OperationProgress = {
   sessionEpoch: 'epoch-1',
@@ -56,6 +60,7 @@ describe('DownloadManager', () => {
     expect(button).toHaveTextContent('1');
     fireEvent.click(button);
     expect(screen.getByText('Survival')).toBeVisible();
+    expect(screen.getByText('Minecraft 1.21.1')).toBeVisible();
     expect(screen.getByText(/Downloading · 25%/)).toBeVisible();
     expect(
       screen.getByText(/256\.0 MiB of 1\.0 GiB · 8\.0 MiB\/s · 1,200 of 4,000 files/),
@@ -67,6 +72,7 @@ describe('DownloadManager', () => {
     expect(screen.getByText('Downloading lwjgl-3.3.3.jar')).toBeVisible();
     expect(screen.getByText('Waiting in line: 1')).toBeVisible();
     expect(screen.getByText('Modded')).toBeVisible();
+    expect(screen.getByText('Minecraft 1.21.1 · Fabric 0.16.14 · Repair')).toBeVisible();
     vi.useRealTimers();
     fireEvent.click(screen.getByRole('button', { name: 'Remove' }));
     await waitFor(() => {
@@ -74,6 +80,58 @@ describe('DownloadManager', () => {
         request: { payload: { operationId: 'q-1' } },
       });
     });
+  });
+
+  it('keeps a file name readable between progress updates', () => {
+    vi.useFakeTimers();
+    mockIPC(() => null);
+    const view = (currentFiles: string[]) => (
+      <DownloadManager
+        snapshot={snapshotFixture({
+          instances: [a],
+          activeOperation: { kind: 'install', instanceId: a.id, operationId: 'op-1' },
+          operationProgress: { ...progress, currentFiles },
+        })}
+      />
+    );
+    const { rerender } = render(view(['a.ogg', 'b.ogg']));
+    fireEvent.click(screen.getByRole('button', { name: 'Downloads' }));
+    expect(screen.getByText('Downloading a.ogg')).toBeVisible();
+    rerender(view(['b.ogg', 'a.ogg', 'c.ogg']));
+    expect(screen.getByText('Downloading a.ogg')).toBeVisible();
+    act(() => {
+      vi.advanceTimersByTime(1300);
+    });
+    expect(screen.getByText('Downloading c.ogg')).toBeVisible();
+    rerender(view([]));
+    expect(screen.queryByText(/Downloading .*\.ogg/)).toBeNull();
+  });
+
+  it('counts checked files before anything downloads', () => {
+    mockIPC(() => null);
+    render(
+      <DownloadManager
+        snapshot={snapshotFixture({
+          instances: [a],
+          activeOperation: { kind: 'repair', instanceId: a.id, operationId: 'op-1' },
+          operationProgress: {
+            ...progress,
+            kind: 'repair',
+            phase: 'checking_files',
+            downloadedBytes: 0,
+            totalDownloadBytes: 0,
+            verifiedFiles: 1000,
+            bytesPerSecond: null,
+            currentFiles: [],
+          },
+        })}
+      />,
+    );
+    fireEvent.click(screen.getByRole('button', { name: 'Downloads' }));
+    expect(screen.getByText('Repair')).toBeVisible();
+    expect(screen.getByText(/Checking files · 25%/)).toBeVisible();
+    // No leading separator when there are no bytes to show.
+    expect(screen.getByText('1,000 of 4,000 files')).toBeVisible();
   });
 
   it('is idle without downloads', () => {
