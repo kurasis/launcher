@@ -559,6 +559,7 @@ replaces it), `superseded`.
   `LAUNCHER_LIVE_*`); the debug test profile variable is `LAUNCHER_NOTOKEN_PROFILE`
   (D-030), its test player `TestPlayer`. Receipts are `.launcher-tree.json` and
   `.launcher-runtime.json`.
+  At the owner's request the README names the project "Sferum Launcher".
 - **Reason:** The owner asked for a neutral name. `app.launcher` avoids a repeated
   "launcher.launcher" segment.
 - **Consequence:** DATA_ROOT and the vault service move to the new identifier. No package

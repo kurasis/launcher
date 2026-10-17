@@ -1,9 +1,9 @@
-# Launcher
+# Sferum Launcher
 
 An independent desktop launcher for Minecraft: Java Edition, built with Tauri 2, React,
-TypeScript and Vite on a Rust core. "Launcher" is a provisional name.
+TypeScript and Vite on a Rust core. "Sferum Launcher" is a provisional name.
 
-> This launcher is an independent project. It is not affiliated with or endorsed by
+> Sferum Launcher is an independent project. It is not affiliated with or endorsed by
 > Mojang Studios or Microsoft. It does not include or redistribute any Minecraft game files.
 
 ## Status

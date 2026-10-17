@@ -35,7 +35,13 @@ $stdout = Join-Path $env:RUNNER_TEMP 'launcher-stdout.log'
 $stderr = Join-Path $env:RUNNER_TEMP 'launcher-stderr.log'
 $process = Start-Process -FilePath $exe -PassThru -RedirectStandardOutput $stdout -RedirectStandardError $stderr
 Start-Sleep -Seconds $waitSeconds
-if (-not (Test-Path (Join-Path $dataRoot 'locks\supervisor.lock'))) {
+# A cold runner occasionally needs longer for the first start; allow up to 60 s.
+$lock = Join-Path $dataRoot 'locks\supervisor.lock'
+$deadline = (Get-Date).AddSeconds(60 - $waitSeconds)
+while (-not (Test-Path $lock) -and -not $process.HasExited -and (Get-Date) -lt $deadline) {
+  Start-Sleep -Seconds 1
+}
+if (-not (Test-Path $lock)) {
   # Show what the launcher did instead, so a failure can be diagnosed from the log.
   Write-Host "exited: $($process.HasExited)"
   Get-Process -ErrorAction SilentlyContinue launcher | Format-Table Id, Path, Responding | Out-String | Write-Host
