@@ -689,7 +689,7 @@ fn receipts_record_one_terminal_outcome_and_interruptions() {
     let dir = tempfile::tempdir().unwrap();
     let root = DataRoot::new(dir.path().to_path_buf()).unwrap();
     let done = Uuid::new_v4();
-    let mut receipt = JobReceipt::start(&root, done, OperationKind::Install, None).unwrap();
+    let mut receipt = JobReceipt::start(&root, done, OperationKind::Install, None, None).unwrap();
     assert!(
         receipt
             .finish(&root, &Ok(DownloadReport::default()))
@@ -706,11 +706,18 @@ fn receipts_record_one_terminal_outcome_and_interruptions() {
     );
 
     let crashed = Uuid::new_v4();
-    JobReceipt::start(&root, crashed, OperationKind::Repair, None).unwrap();
+    JobReceipt::start(&root, crashed, OperationKind::Repair, None, None).unwrap();
     let staging = root.download_part(crashed, "sha1", "ab");
     std::fs::create_dir_all(staging.parent().unwrap()).unwrap();
     std::fs::write(&staging, b"partial").unwrap();
-    assert_eq!(reconcile_jobs(&root).unwrap(), vec![crashed]);
+    assert_eq!(
+        reconcile_jobs(&root)
+            .unwrap()
+            .iter()
+            .map(|r| r.job_id)
+            .collect::<Vec<_>>(),
+        vec![crashed]
+    );
     let reloaded = JobReceipt::load(&root, crashed).unwrap().unwrap();
     assert_eq!(reloaded.state, JobState::Interrupted);
     assert_eq!(reloaded.error_code, Some(ErrorCode::OperationInterrupted));

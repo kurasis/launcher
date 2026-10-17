@@ -13,6 +13,7 @@ use uuid::Uuid;
 
 use super::DownloadReport;
 use crate::error::{ErrorCode, LauncherError, LauncherResult};
+use crate::install::lock::FinalInstallPlan;
 use crate::storage::document::{self, Loaded, SCHEMA_VERSION};
 use crate::storage::models::OperationKind;
 use crate::storage::paths::{DataRoot, InstanceId};
@@ -43,6 +44,9 @@ pub struct JobReceipt {
     pub error_code: Option<ErrorCode>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub downloads: Option<DownloadReport>,
+    /// The frozen plan of a new installation; a retry reuses it.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub plan: Option<Box<FinalInstallPlan>>,
 }
 
 fn save(root: &DataRoot, receipt: &JobReceipt) -> LauncherResult<()> {
@@ -57,6 +61,7 @@ impl JobReceipt {
         job_id: Uuid,
         kind: OperationKind,
         instance_id: Option<InstanceId>,
+        plan: Option<FinalInstallPlan>,
     ) -> LauncherResult<Self> {
         let receipt = Self {
             schema_version: SCHEMA_VERSION,
@@ -68,13 +73,18 @@ impl JobReceipt {
             finished_at: None,
             error_code: None,
             downloads: None,
+            plan: plan.map(Box::new),
         };
         save(root, &receipt)?;
         Ok(receipt)
     }
 
     pub fn load(root: &DataRoot, job_id: Uuid) -> LauncherResult<Option<Self>> {
-        match document::load::<Self>(&root.job_receipt(job_id), None) {
+        match document::load_limited::<Self>(
+            &root.job_receipt(job_id),
+            None,
+            document::MAX_LARGE_DOCUMENT_BYTES,
+        ) {
             Ok(Loaded::Valid(receipt)) => Ok(Some(receipt)),
             Ok(_) => Ok(None),
             Err(error) => Err(LauncherError::from_io(
@@ -116,17 +126,15 @@ impl JobReceipt {
     }
 }
 
-/// Startup reconciliation, run while holding the DATA_ROOT lock and before any
-/// job can start: running receipts become interrupted and every staging
-/// directory is removed. Returns the interrupted job IDs.
-pub fn reconcile_jobs(root: &DataRoot) -> LauncherResult<Vec<Uuid>> {
-    let mut interrupted = Vec::new();
+/// All readable receipts (unreadable or newer ones are skipped).
+pub fn list(root: &DataRoot) -> LauncherResult<Vec<JobReceipt>> {
     let entries = match fs::read_dir(root.jobs_dir()) {
-        Ok(entries) => Some(entries),
-        Err(error) if error.kind() == io::ErrorKind::NotFound => None,
+        Ok(entries) => entries,
+        Err(error) if error.kind() == io::ErrorKind::NotFound => return Ok(Vec::new()),
         Err(error) => return Err(LauncherError::from_io(&error, "Reading job records failed")),
     };
-    for entry in entries.into_iter().flatten().flatten() {
+    let mut receipts = Vec::new();
+    for entry in entries.flatten() {
         let name = entry.file_name().to_string_lossy().into_owned();
         let Some(id) = name
             .strip_suffix(".json")
@@ -134,15 +142,41 @@ pub fn reconcile_jobs(root: &DataRoot) -> LauncherResult<Vec<Uuid>> {
         else {
             continue;
         };
-        // Unreadable or newer receipts are left untouched.
-        if let Ok(Some(mut receipt)) = JobReceipt::load(root, id)
-            && receipt.state == JobState::Running
-        {
+        if let Ok(Some(receipt)) = JobReceipt::load(root, id) {
+            receipts.push(receipt);
+        }
+    }
+    receipts.sort_by_key(|r| r.created_at);
+    Ok(receipts)
+}
+
+/// The frozen plan of the most recent unfinished installation of `instance`.
+pub fn resumable_plan(
+    root: &DataRoot,
+    instance: InstanceId,
+) -> LauncherResult<Option<FinalInstallPlan>> {
+    Ok(list(root)?
+        .into_iter()
+        .rev()
+        .filter(|r| r.instance_id == Some(instance) && r.kind == OperationKind::Install)
+        .find_map(|r| match (r.state, r.plan) {
+            (JobState::Succeeded, _) | (_, None) => None,
+            (_, Some(plan)) => Some(*plan),
+        }))
+}
+
+/// Startup reconciliation, run while holding the DATA_ROOT lock and before any
+/// job can start: running receipts become interrupted and every staging
+/// directory is removed. Returns the interrupted receipts.
+pub fn reconcile_jobs(root: &DataRoot) -> LauncherResult<Vec<JobReceipt>> {
+    let mut interrupted = Vec::new();
+    for mut receipt in list(root)? {
+        if receipt.state == JobState::Running {
             receipt.state = JobState::Interrupted;
             receipt.finished_at = Some(Utc::now());
             receipt.error_code = Some(ErrorCode::OperationInterrupted);
             save(root, &receipt)?;
-            interrupted.push(id);
+            interrupted.push(receipt);
         }
     }
     match fs::remove_dir_all(root.downloads_dir()) {

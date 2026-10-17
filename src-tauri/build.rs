@@ -22,6 +22,9 @@ fn main() {
         "open_external",
         "list_supported_versions",
         "preview_install_plan",
+        "install_instance",
+        "repair_instance",
+        "cancel_operation",
         // Registered only in debug builds; release builds have no handler for them.
         "start_lifecycle_test",
         "stop_lifecycle_test",

@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-install-instance"
+description = "Enables the install_instance command without any pre-configured scope."
+commands.allow = ["install_instance"]
+
+[[permission]]
+identifier = "deny-install-instance"
+description = "Denies the install_instance command without any pre-configured scope."
+commands.deny = ["install_instance"]

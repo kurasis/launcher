@@ -23,6 +23,10 @@ pub const SCHEMA_VERSION: u64 = 1;
 /// as corrupt instead of being loaded into memory.
 pub const MAX_DOCUMENT_BYTES: u64 = 1024 * 1024;
 
+/// Upper bound for install locks and job receipts, which list every artifact
+/// (about 1.6 MB for a current release with ~4,000 asset objects).
+pub const MAX_LARGE_DOCUMENT_BYTES: u64 = 64 * 1024 * 1024;
+
 /// Result of loading one document.
 #[derive(Debug)]
 pub enum Loaded<T> {
@@ -48,12 +52,16 @@ enum Problem {
 }
 
 fn parse<T: DeserializeOwned>(path: &Path) -> Result<T, Problem> {
+    parse_limited(path, MAX_DOCUMENT_BYTES)
+}
+
+fn parse_limited<T: DeserializeOwned>(path: &Path, max_bytes: u64) -> Result<T, Problem> {
     let metadata = match fs::metadata(path) {
         Ok(metadata) => metadata,
         Err(error) if error.kind() == io::ErrorKind::NotFound => return Err(Problem::Missing),
         Err(error) => return Err(Problem::Io(error)),
     };
-    if !metadata.is_file() || metadata.len() > MAX_DOCUMENT_BYTES {
+    if !metadata.is_file() || metadata.len() > max_bytes {
         return Err(Problem::Corrupt);
     }
     let bytes = fs::read(path).map_err(Problem::Io)?;
@@ -82,9 +90,19 @@ pub fn preserve_corrupt(path: &Path) -> io::Result<PathBuf> {
 /// I/O errors other than "not found" are returned as errors because they do not
 /// prove the file is bad (for example a temporary permission problem).
 pub fn load<T: DeserializeOwned>(path: &Path, backup: Option<&Path>) -> io::Result<Loaded<T>> {
-    match parse::<T>(path) {
+    load_limited(path, backup, MAX_DOCUMENT_BYTES)
+}
+
+/// [`load`] with a different size limit, for documents that list artifacts.
+pub fn load_limited<T: DeserializeOwned>(
+    path: &Path,
+    backup: Option<&Path>,
+    max_bytes: u64,
+) -> io::Result<Loaded<T>> {
+    let parse = |p: &Path| parse_limited::<T>(p, max_bytes);
+    match parse(path) {
         Ok(value) => Ok(Loaded::Valid(value)),
-        Err(Problem::Missing) => match backup.map(parse::<T>) {
+        Err(Problem::Missing) => match backup.map(parse) {
             // A missing primary with a valid backup means the primary was lost
             // after a crash between backup and replacement; use the backup.
             Some(Ok(value)) => Ok(Loaded::Valid(value)),
@@ -94,7 +112,7 @@ pub fn load<T: DeserializeOwned>(path: &Path, backup: Option<&Path>) -> io::Resu
         Err(Problem::Unsupported(found)) => Ok(Loaded::UnsupportedSchema { found }),
         Err(Problem::Corrupt) => {
             let preserved_as = preserve_corrupt(path)?;
-            match backup.map(parse::<T>) {
+            match backup.map(parse) {
                 Some(Ok(value)) => Ok(Loaded::RecoveredFromBackup {
                     value,
                     preserved_as,

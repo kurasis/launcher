@@ -139,6 +139,9 @@ fn main_window_capability_grants_only_app_commands() {
             "allow-open-external",
             "allow-list-supported-versions",
             "allow-preview-install-plan",
+            "allow-install-instance",
+            "allow-repair-instance",
+            "allow-cancel-operation",
             "allow-start-lifecycle-test",
             "allow-stop-lifecycle-test",
         ]

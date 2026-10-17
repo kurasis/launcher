@@ -13,7 +13,8 @@ use crate::catalog::compatibility::SupportedVersion;
 use crate::error::LauncherError;
 use crate::storage::StorageIssue;
 use crate::storage::models::{
-    DuringGameMode, InstallationHealth, InstanceFile, LastResult, Resolution, Settings, Theme,
+    DuringGameMode, InstallationHealth, InstanceFile, LastResult, OperationKind, Outcome,
+    Resolution, Settings, Theme,
 };
 use crate::storage::paths::{InstanceId, Sha1};
 use crate::validation::{MemoryPolicy, ResolutionBounds};
@@ -250,6 +251,58 @@ pub struct AppSnapshot {
     pub supported_versions: &'static [SupportedVersion],
     pub memory: MemoryLimits,
     pub storage_issues: Vec<StorageIssue>,
+    /// Latest progress of the running install/repair operation, if any.
+    pub operation_progress: Option<OperationProgress>,
+    /// Terminal outcomes of recent install/repair operations, newest first.
+    pub recent_operations: Vec<OperationResult>,
+}
+
+/// Phase of an install or repair operation (doc 06 `InstallState`).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum InstallState {
+    Resolving,
+    CheckingFiles,
+    Downloading,
+    ExtractingRuntime,
+    Finalizing,
+    CancelRequested,
+}
+
+/// Coalesced progress of one install/repair operation. Published without a new
+/// state revision; `sequence` increases per operation.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct OperationProgress {
+    pub session_epoch: String,
+    pub operation_id: String,
+    pub instance_id: Option<InstanceId>,
+    pub kind: OperationKind,
+    pub sequence: u64,
+    pub revision: u64,
+    pub phase: InstallState,
+    pub downloaded_bytes: u64,
+    pub total_download_bytes: Option<u64>,
+    pub verified_files: u64,
+    pub total_files: Option<u64>,
+    pub bytes_per_second: Option<u64>,
+    pub timestamp: DateTime<Utc>,
+}
+
+/// The one terminal outcome of an install/repair operation.
+#[derive(Debug, Clone, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct OperationResult {
+    pub operation_id: String,
+    pub instance_id: Option<InstanceId>,
+    pub kind: OperationKind,
+    pub outcome: Outcome,
+    pub error: Option<LauncherError>,
+    pub finished_at: DateTime<Utc>,
+    /// Files downloaded and network bytes received (including retries).
+    pub downloaded_files: u64,
+    pub network_bytes: u64,
+    pub reused_files: u64,
 }
 
 /// Events pushed to the webview. Each carries the epoch and the revision it
@@ -290,6 +343,13 @@ pub struct GameStateChanged {
     pub active_operation: Option<ActiveActivity>,
 }
 
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct OperationFinished {
+    pub result: OperationResult,
+    pub active_operation: Option<ActiveActivity>,
+}
+
 /// Backend events, named as in doc 06.
 #[derive(Debug, Clone)]
 pub enum BackendEvent {
@@ -297,6 +357,9 @@ pub enum BackendEvent {
     SettingsChanged(EventEnvelope<SettingsChanged>),
     GameStateChanged(Box<EventEnvelope<GameStateChanged>>),
     AccountStateChanged(Box<EventEnvelope<AccountStateChanged>>),
+    /// Carries the current revision; does not advance it.
+    OperationProgress(Box<OperationProgress>),
+    OperationFinished(Box<EventEnvelope<OperationFinished>>),
 }
 
 impl BackendEvent {
@@ -306,6 +369,8 @@ impl BackendEvent {
             Self::SettingsChanged(_) => "settings_changed",
             Self::GameStateChanged(_) => "game_state_changed",
             Self::AccountStateChanged(_) => "account_state_changed",
+            Self::OperationProgress(_) => "operation_progress",
+            Self::OperationFinished(_) => "operation_finished",
         }
     }
 
@@ -315,6 +380,8 @@ impl BackendEvent {
             Self::SettingsChanged(e) => e.revision,
             Self::GameStateChanged(e) => e.revision,
             Self::AccountStateChanged(e) => e.revision,
+            Self::OperationProgress(e) => e.revision,
+            Self::OperationFinished(e) => e.revision,
         }
     }
 
@@ -324,6 +391,8 @@ impl BackendEvent {
             Self::SettingsChanged(e) => serde_json::to_value(e),
             Self::GameStateChanged(e) => serde_json::to_value(e),
             Self::AccountStateChanged(e) => serde_json::to_value(e),
+            Self::OperationProgress(e) => serde_json::to_value(e),
+            Self::OperationFinished(e) => serde_json::to_value(e),
         }
         .unwrap_or(serde_json::Value::Null)
     }

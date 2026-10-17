@@ -8,6 +8,7 @@ import {
   type AppInfo,
   type AppSnapshot,
   type BackendEvent,
+  type CancelAck,
   type CatalogView,
   type CreateInstancePayload,
   type ExternalLink,
@@ -15,6 +16,7 @@ import {
   type LauncherError,
   type LifecycleScenario,
   type MutationRequest,
+  type OperationStarted,
   type PlanSummary,
   type QuitAction,
   type QuitResult,
@@ -54,6 +56,16 @@ export const ipc = {
   verifyAccount: (requestId?: string): Promise<void> =>
     invoke('verify_account', { request: mutation({}, requestId) }),
   openExternal: (link: ExternalLink): Promise<void> => invoke('open_external', { link }),
+  installInstance: (instanceId: string, requestId?: string): Promise<OperationStarted> =>
+    invoke<OperationStarted>('install_instance', {
+      request: mutation({ instanceId }, requestId),
+    }),
+  repairInstance: (instanceId: string, requestId?: string): Promise<OperationStarted> =>
+    invoke<OperationStarted>('repair_instance', {
+      request: mutation({ instanceId }, requestId),
+    }),
+  cancelOperation: (operationId: string, requestId?: string): Promise<CancelAck> =>
+    invoke<CancelAck>('cancel_operation', { request: mutation({ operationId }, requestId) }),
   listSupportedVersions: (refresh: boolean): Promise<CatalogView> =>
     invoke<CatalogView>('list_supported_versions', { refresh }),
   previewInstallPlan: (versionId: string): Promise<PlanSummary> =>

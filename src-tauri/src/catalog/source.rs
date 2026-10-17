@@ -406,6 +406,28 @@ impl<F: Fetch> MetadataService<F> {
         Ok(plan)
     }
 
+    /// Rebuilds the plan of an installed version from its locked descriptor URL and
+    /// hash, without consulting the current catalog (Repair, launch preflight).
+    pub async fn plan_locked(
+        &self,
+        version_id: &str,
+        descriptor_url: &str,
+        descriptor_sha1: &Sha1,
+        ctx: &RuleContext,
+    ) -> LauncherResult<GamePlan> {
+        let entry = CatalogEntry {
+            id: version_id.to_owned(),
+            version_type: "release".into(),
+            url: descriptor_url.to_owned(),
+            sha1: descriptor_sha1.clone(),
+        };
+        let bytes = self.descriptor(&entry).await?;
+        let mut plan = plan::plan_game(&bytes, &entry.url, &entry.sha1, version_id, ctx)?;
+        let index = self.asset_index(&plan.asset_index.artifact).await?;
+        plan::plan_assets(&mut plan, &index)?;
+        Ok(plan)
+    }
+
     /// Summarizes a plan, estimating missing bytes from file presence and size.
     pub fn summarize(&self, plan: &GamePlan) -> PlanSummary {
         let missing = plan

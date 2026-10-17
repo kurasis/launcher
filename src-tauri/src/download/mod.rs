@@ -174,6 +174,9 @@ pub struct DownloadProgress {
 
 pub trait ProgressSink: Send + Sync {
     fn progress(&self, progress: &DownloadProgress);
+
+    /// An existing file had the wrong content and will be replaced.
+    fn corrupt(&self, _path: &str) {}
 }
 
 /// Discards progress.
@@ -196,6 +199,18 @@ pub struct DownloadReport {
     pub network_bytes: u64,
     pub attempts: u64,
     pub retries: u64,
+    /// Files that existed with wrong content and were replaced (at most 100 listed).
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub corrupt_paths: Vec<String>,
+}
+
+const MAX_REPORTED_PATHS: usize = 100;
+
+enum FileCheck {
+    Valid,
+    Missing,
+    /// Present with the wrong type, size or digest.
+    Invalid,
 }
 
 /// Returns available bytes on the filesystem holding `path`, if known.
@@ -375,8 +390,11 @@ impl Executor {
         // Phase 1: verify what is already present.
         sink.progress(&progress(DownloadPhase::CheckingFiles, 0, None));
         let mut missing = Vec::new();
+        let mut corrupt = Vec::new();
         let mut checks = JoinSet::new();
         let mut queue = items.into_iter();
+        let mut check_ticker = tokio::time::interval(self.config.progress_interval);
+        check_ticker.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
         loop {
             while checks.len() < self.config.concurrency {
                 let Some((request, destination)) = queue.next() else {
@@ -389,15 +407,27 @@ impl Executor {
             }
             let next = tokio::select! {
                 next = checks.join_next() => next,
+                _ = check_ticker.tick() => {
+                    sink.progress(&progress(DownloadPhase::CheckingFiles, 0, None));
+                    continue;
+                }
                 () = cancel.cancelled() => return Err(cancelled_error()),
             };
             let Some(joined) = next else { break };
             let (request, destination, valid) = joined
                 .map_err(|_| LauncherError::internal("A file check stopped unexpectedly."))?;
-            if valid? {
-                counters.verified.fetch_add(1, Ordering::Relaxed);
-            } else {
-                missing.push((request, destination));
+            match valid? {
+                FileCheck::Valid => {
+                    counters.verified.fetch_add(1, Ordering::Relaxed);
+                }
+                FileCheck::Missing => missing.push((request, destination)),
+                FileCheck::Invalid => {
+                    sink.corrupt(&request.path);
+                    if corrupt.len() < MAX_REPORTED_PATHS {
+                        corrupt.push(request.path.clone());
+                    }
+                    missing.push((request, destination));
+                }
             }
         }
         let reused = counters.verified.load(Ordering::Relaxed);
@@ -489,19 +519,20 @@ impl Executor {
             network_bytes: counters.network.load(Ordering::Relaxed),
             attempts: counters.attempts.load(Ordering::Relaxed),
             retries: counters.retries.load(Ordering::Relaxed),
+            corrupt_paths: corrupt,
         })
     }
 }
 
-/// True when `path` is a regular file with the expected size and digest.
-fn verify_file(path: &Path, size: u64, digest: &Digest) -> LauncherResult<bool> {
+/// Whether `path` is a regular file with the expected size and digest.
+fn verify_file(path: &Path, size: u64, digest: &Digest) -> LauncherResult<FileCheck> {
     let metadata = match std::fs::symlink_metadata(path) {
         Ok(m) => m,
-        Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(false),
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(FileCheck::Missing),
         Err(e) => return Err(LauncherError::from_io(&e, "Checking a game file failed")),
     };
     if !metadata.is_file() || metadata.len() != size {
-        return Ok(false);
+        return Ok(FileCheck::Invalid);
     }
     let mut file = std::fs::File::open(path)
         .map_err(|e| LauncherError::from_io(&e, "Checking a game file failed"))?;
@@ -516,7 +547,11 @@ fn verify_file(path: &Path, size: u64, digest: &Digest) -> LauncherResult<bool> 
         }
         hasher.update(&buffer[..n]);
     }
-    Ok(hasher.finish() == digest.hex())
+    Ok(if hasher.finish() == digest.hex() {
+        FileCheck::Valid
+    } else {
+        FileCheck::Invalid
+    })
 }
 
 /// Removes the staging file unless the content was committed.

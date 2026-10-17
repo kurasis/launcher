@@ -354,7 +354,9 @@ because reqwest's `previous()` includes the original request.
 
 ### CI results
 
-Recorded by the next phase's pull request (see the note at the top of this file).
+Workflow run [38989542569](https://github.com/kurasis/launcher/actions/runs/38989542569) on
+commit `60b79ed` (PR #6): all 5 jobs pass. The fixture HTTP suite ran on Windows and both
+macOS architectures; the live smoke test is ignored in CI.
 
 ## P07 — Private Java runtime installation
 
@@ -392,6 +394,62 @@ All eight major/target combinations resolve to a JRE (no JDK fallback needed).
 - Executing the managed Java on Windows and macOS (P13 target machines); CI runs the
   fake-`java` install flow on macOS and the extractor/provider tests on Windows.
 - Gatekeeper/quarantine behaviour of an extracted macOS runtime.
+
+### CI results
+
+Workflow run [38989606975](https://github.com/kurasis/launcher/actions/runs/38989606975) on
+commit `930324f` (PR #7): all 5 jobs pass. The extractor and provider tests ran on Windows;
+the fake-`java` install flow ran on both macOS architectures; live tests are ignored in CI.
+
+## P08 — Complete installation, recovery and repair
+
+- **Host:** development host (Ubuntu 24.04.5 x86_64 container), debug build under Xvfb.
+- **Branch / PR:** `claude/p08-install-repair`, [kurasis/launcher#8](https://github.com/kurasis/launcher/pull/8).
+- **Evidence kind:** automated orchestration tests (fixture server, synthetic plan, fake
+  `java`) and a live GUI install/cancel/resume/repair of Minecraft 1.21.1 on Linux x64.
+  No game files are stored in this repository; nothing was launched (P09).
+
+### Automated tests (pass)
+
+| Test                                               | Checks                                                                                                                                                                                                                                                                        |
+| -------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Fresh install, then a second instance (MV01)       | All artifacts and the runtime verified; lock committed before the summary turns `ready`; asset index projected; permit released; progress phases published; exactly one `operation_finished`; second instance transfers 0 bytes and reuses the runtime; separate game folders |
+| Cancel, then resume                                | `cancel_requested` acknowledged, outcome `cancelled`, never `ready`, no lock; a later catalog change is ignored because the frozen plan is reused; files verified before the cancel are not fetched again                                                                     |
+| Repair (A15)                                       | One damaged library replaced (1 download), runtime not rebuilt, world, region and options files byte-identical                                                                                                                                                                |
+| Failed repair of shared corruption (doc 10 rule 4) | Repair fails (404) → this and every other installation using the damaged file become `repair_required`; their locks are not rewritten                                                                                                                                         |
+| Permits and requests                               | Same request ID → same operation; reused ID for another request → `REQUEST_ID_CONFLICT`; second operation → `APP_BUSY` naming the active one; unknown cancel → `OPERATION_NOT_FOUND`; finished cancel → recorded outcome                                                      |
+| Crash during install (MV08)                        | A running receipt from a dead process becomes `interrupted` at startup (instance result and recent operations), staging is removed and the next install reuses the frozen plan                                                                                                |
+| Asset-index projection (MV06)                      | Same index ID with two hashes alternates correctly; immutable sources untouched; a damaged source is refused                                                                                                                                                                  |
+| Large documents (regression)                       | A 6,000-artifact lock and a 6,000-asset frozen plan (> 1 MiB) load as valid                                                                                                                                                                                                   |
+| Frontend (6)                                       | Install/Retry/Repair/Verify/Cancel controls, real progress values, busy elsewhere, result texts; store applies newer progress without a revision, drops late progress after the terminal event                                                                                |
+
+### Live GUI run (2026-10-17, Minecraft 1.21.1, Linux x64)
+
+| Step                                | Result                                                                                                                                                                                                                                         |
+| ----------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Install, then Cancel after ~25 s    | Progress showed 469.8 of 872.2 MiB at 19.7 MiB/s, 2,279 of 3,947 files ([screenshot](verification/p08-install-progress.png)); cancelled, 604 MB of verified files kept, staging removed ([screenshot](verification/p08-install-cancelled.png)) |
+| Retry install                       | Finished: 1,004 files (274.8 MiB) downloaded, 2,943 reused; `ready` ([screenshot](verification/p08-install-resumed.png))                                                                                                                       |
+| Lock                                | 3,947 artifacts, 915,051,119 bytes, 57 classpath entries, descriptor `499680d6…ace7d`, Java 21 `jdk-21.0.12.1+1` (archive `24131497…`, tree receipt `78170dcf…`)                                                                               |
+| Repair with damaged library and JVM | One library byte-patched (SHA-1 changed) and one byte of `lib/libjava.so` in the runtime changed; sentinel `level.dat`, `r.0.0.mca`, `options.txt` created                                                                                     |
+| Repair result                       | 2 downloads (the library and the Java archive, 49.8 MiB), 3,946 reused, `ready` ([screenshot](verification/p08-repair-finished.png)); library hash restored; all three sentinel SHA-256 values unchanged                                       |
+
+Defects found by the live run and fixed before this record:
+
+1. The install lock (1.58 MB) and job receipts with a frozen plan (1.6 MB) exceeded the
+   1 MiB app-document limit, so they were set aside as corrupt when read back. Locks and
+   receipts now use a 64 MiB limit; regression tests cover both. After the fix the app
+   correctly refused to trust the earlier `ready` summary without a lock, and a fresh
+   install verified everything and downloaded 0 files.
+2. Repair rebuilt a valid runtime because the package rebuilt from the lock differs in
+   descriptive fields; runtime reuse now compares identity (key, URL, size, format) only.
+3. Transfer totals excluded the Java archive; they now include it.
+
+### Not verified in P08
+
+- Windows/macOS live installs (CI runs the orchestration tests on macOS; Windows runs the
+  non-Unix parts only).
+- Disk-full during a real install, and a real crash (the crash path is tested with a
+  synthetic running receipt).
 
 ### CI results
 

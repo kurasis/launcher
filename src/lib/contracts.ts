@@ -279,6 +279,56 @@ export interface AppSnapshot {
   supportedVersions: SupportedVersion[];
   memory: MemoryLimits;
   storageIssues: StorageIssue[];
+  operationProgress: OperationProgress | null;
+  recentOperations: OperationResult[];
+}
+
+/** Phase of a running install or repair (doc 06 `InstallState`). */
+export type InstallState =
+  | 'resolving'
+  | 'checking_files'
+  | 'downloading'
+  | 'extracting_runtime'
+  | 'finalizing'
+  | 'cancel_requested';
+
+/** Coalesced progress; does not advance the state revision. */
+export interface OperationProgress {
+  sessionEpoch: string;
+  operationId: string;
+  instanceId: string | null;
+  kind: OperationKind;
+  sequence: number;
+  revision: number;
+  phase: InstallState;
+  downloadedBytes: number;
+  totalDownloadBytes: number | null;
+  verifiedFiles: number;
+  totalFiles: number | null;
+  bytesPerSecond: number | null;
+  timestamp: string;
+}
+
+/** The one terminal outcome of an install or repair. */
+export interface OperationResult {
+  operationId: string;
+  instanceId: string | null;
+  kind: OperationKind;
+  outcome: Outcome;
+  error: LauncherError | null;
+  finishedAt: string;
+  downloadedFiles: number;
+  networkBytes: number;
+  reusedFiles: number;
+}
+
+export interface OperationStarted {
+  operationId: string;
+}
+
+export interface CancelAck {
+  /** `cancel_requested` while running, otherwise the recorded outcome. */
+  state: string;
 }
 
 /** Envelope for every mutating command. */
@@ -330,10 +380,17 @@ export interface AccountStateChangedEvent extends EventEnvelope {
   account: AccountSummary;
 }
 
+export interface OperationFinishedEvent extends EventEnvelope {
+  result: OperationResult;
+  activeOperation: ActiveActivity | null;
+}
+
 export type BackendEvent =
   | { name: 'instance_changed'; payload: InstanceChangedEvent }
   | { name: 'settings_changed'; payload: SettingsChangedEvent }
   | { name: 'game_state_changed'; payload: GameStateChangedEvent }
+  | { name: 'operation_progress'; payload: OperationProgress }
+  | { name: 'operation_finished'; payload: OperationFinishedEvent }
   | { name: 'account_state_changed'; payload: AccountStateChangedEvent };
 
 export type BackendEventName = BackendEvent['name'];
@@ -343,4 +400,6 @@ export const BACKEND_EVENT_NAMES: readonly BackendEventName[] = [
   'settings_changed',
   'game_state_changed',
   'account_state_changed',
+  'operation_progress',
+  'operation_finished',
 ];

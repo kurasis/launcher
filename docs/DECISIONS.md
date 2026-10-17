@@ -368,3 +368,34 @@ replaces it), `superseded`.
   is deleted after installation; Repair downloads the pinned package again.
 - **Never touched:** PATH, JAVA_HOME, registry associations, any system or official
   launcher Java.
+
+## D-024 — Install and repair orchestration
+
+- **Status:** accepted · **Phase:** P08 · **Affects:** FR06–FR08, A10, A14, A15, A22, doc 10 MV01/MV06/MV08
+- **Operations:** `install_instance`, `repair_instance` and `cancel_operation` return
+  promptly; work runs in the background under the global activity permit. A repeated
+  request ID returns the same operation; reuse for another request is
+  `REQUEST_ID_CONFLICT`. Phases follow doc 06 (`resolving`, `checking_files`,
+  `downloading`, `extracting_runtime`, `finalizing`, `cancel_requested`).
+- **Frozen plan:** a new install resolves `FinalInstallPlan` (game plan + pinned
+  `RuntimePackage`) once and stores it in the job receipt before downloading. Retrying
+  after cancel, failure or crash reuses the newest unfinished plan for that instance; a
+  changed catalog does not affect it.
+- **Commit order:** verified artifacts and runtime tree → asset-index projection →
+  `install.lock.json` → instance summary. A cancel after the lock commit reports success.
+  Install on an instance with a complete lock runs the repair path.
+- **Repair:** re-derives the plan from the locked descriptor URL and hash (never the
+  current catalog), requires it to match the locked artifacts and classpath, then fully
+  re-verifies every locked artifact and the runtime tree, replacing only what is wrong.
+  The lock is not rewritten. Health is `needs_verification` while it runs; a failed repair
+  that found damaged shared files marks every installation using them `repair_required`.
+  The instance's game directory is never touched.
+- **Progress:** `operation_progress` events carry the current revision without advancing
+  it and a per-operation sequence; `operation_finished` advances the revision and carries
+  the result and the active operation. The snapshot holds the latest progress and the
+  last 10 results, so a recreated window recovers state. Interrupted jobs found at
+  startup appear as `interrupted` results.
+- **Document limits:** install locks and job receipts list every artifact (≈1.6 MB for
+  1.21.1) and use a 64 MiB limit; other app documents keep 1 MiB.
+- **Runtime reuse** compares package identity (key, URL, size, format), not descriptive
+  fields, so a lock-rebuilt package matches the installed one.

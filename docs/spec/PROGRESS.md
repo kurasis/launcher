@@ -11,9 +11,9 @@ Allowed states: `not_started`, `in_progress`, `blocked`, `done`. A partially imp
 | [P03](phases/P03-LIFECYCLE-SPIKE.md) | done | [PR #3](https://github.com/kurasis/launcher/pull/3); lifecycle scenarios + 40 cycles on Linux x64 host, CI 5/5; see [VERIFICATION.md](../VERIFICATION.md#p03--early-window-and-process-lifecycle-proof) | Window behaviour unverified on Windows/macOS/Wayland (P13); memory growth ≈85 KiB/cycle tracked for A23 |
 | [P04](phases/P04-AUTHENTICATION-AND-ACCESS.md) | blocked | [PR #4](https://github.com/kurasis/launcher/pull/4) merged; 44 synthetic auth tests, CI 5/5; see [VERIFICATION.md](../VERIFICATION.md#p04--microsoft-login-and-current-game-access) and [AUTH-CONTRACT.md](../AUTH-CONTRACT.md) | Live positive sign-in impossible: no project-owned Microsoft client ID / Minecraft API approval (owner action). P05–P08 proceed meanwhile |
 | [P05](phases/P05-CATALOG-AND-INSTALL-PLAN.md) | done | [PR #5](https://github.com/kurasis/launcher/pull/5); live catalog + plans for both baselines on 4 targets, independent cross-check, CI 5/5; see [VERIFICATION.md](../VERIFICATION.md#p05--minecraft-metadata-and-deterministic-install-planning) | Metadata success is not game compatibility (P13) |
-| [P06](phases/P06-DOWNLOAD-ENGINE.md) | in_progress | 18 fixture tests + live smoke (cancel, retry, reuse); see [VERIFICATION.md](../VERIFICATION.md#p06--verified-cancellable-download-engine) | Waiting for CI; UI progress wiring lands with install in P08 (D-022) |
-| [P07](phases/P07-MANAGED-JAVA.md) | in_progress | 25 automated tests; live install + probe of Temurin 21/25 on Linux x64, live extraction of Windows/macOS packages; see [VERIFICATION.md](../VERIFICATION.md#p07--private-java-runtime-installation) | Waiting for CI; Java execution on Windows/macOS unverified (P13) |
-| [P08](phases/P08-COMPLETE-GAME-INSTALLER.md) | not_started | — | — |
+| [P06](phases/P06-DOWNLOAD-ENGINE.md) | done | [PR #6](https://github.com/kurasis/launcher/pull/6); 18 fixture tests + live smoke (cancel, retry, reuse), CI 5/5; see [VERIFICATION.md](../VERIFICATION.md#p06--verified-cancellable-download-engine) | Byte-range resume not implemented (optional) |
+| [P07](phases/P07-MANAGED-JAVA.md) | done | [PR #7](https://github.com/kurasis/launcher/pull/7); 25 tests, live install + probe of Temurin 21/25 on Linux x64, live extraction of Windows/macOS packages, CI 5/5; see [VERIFICATION.md](../VERIFICATION.md#p07--private-java-runtime-installation) | Java execution on Windows/macOS unverified (P13) |
+| [P08](phases/P08-COMPLETE-GAME-INSTALLER.md) | in_progress | 8 orchestration tests + 6 frontend tests; live install/cancel/resume/repair of 1.21.1 on Linux x64; see [VERIFICATION.md](../VERIFICATION.md#p08--complete-installation-recovery-and-repair) | Waiting for CI |
 | [P09](phases/P09-REAL-GAME-LAUNCH.md) | not_started | — | — |
 | [P10](phases/P10-BACKGROUND-AND-RETURN.md) | not_started | — | — |
 | [P11](phases/P11-COMPLETE-PRODUCT-UI.md) | not_started | — | — |
@@ -33,21 +33,19 @@ Allowed states: `not_started`, `in_progress`, `blocked`, `done`. A partially imp
 ## Last completed phase report
 
 ```text
-Phase: P05 — Minecraft metadata and deterministic install planning
+Phase: P07 — Private Java runtime installation
 Status: done
-Implemented: public HTTPS client with exact per-source host allowlists, checked redirects
-  and public-address resolution; catalog fetch with ETag revalidation, 6 h freshness and
-  stale fallback; curated list gated by descriptor SHA-1; verified byte-for-byte metadata
-  cache; last-match rules engine; pure planner (GamePlan + RuntimeRequirement, canonical
-  content paths, ordered classpath, deduplicated assets); list_supported_versions and
-  preview_install_plan with a metadata-only estimate in the new-installation form.
-Checks: 37 Rust tests + 3 frontend tests; independent Python cross-check of library
-  selection for 8 version/target cases; live catalog and plans for both baselines on 4
-  targets; GUI demo on the Linux x64 host; CI 5/5.
-Demo: Installations -> New installation -> pick a version -> "Estimate download".
-Evidence limits: metadata only; game compatibility is P09/P13.
-Blockers: none for P05. P04 stays blocked on the owner-supplied client ID.
-Next eligible phase: P06 (download engine), then P07, P08
+Implemented: Adoptium provider (exact major/OS/arch GA HotSpot JRE, portable package,
+  recorded JDK fallback), safe tar.gz/ZIP extractor, extracted-tree receipts verified
+  before execution and on reuse, sanitized probe, recoverable promotion and startup
+  reconciliation. P06 (verified, cancellable downloads with job receipts) merged before.
+Checks: 25 runtime tests + 18 download fixture tests; live: Temurin 21.0.12.1 and 25.0.4.1
+  installed, probed and reused on Linux x64; Windows and macOS packages verified and
+  extracted without execution; CI 5/5 for P06 and P07.
+Demo: cargo test --test live_runtime -- --ignored --nocapture --test-threads=1
+Evidence limits: Java executed on Linux x64 only.
+Blockers: none for P06/P07. P04 stays blocked on the owner-supplied client ID.
+Next eligible phase: P08 (installer), then P09 (launch; real sign-in blocked by P04)
 ```
 
 ## Decisions / deviations
