@@ -817,7 +817,9 @@ message` plus a stack trace), with the event's level.
   (`group:artifact[:classifier]`); the loader's JVM and game arguments after the
   game's (a legacy `minecraftArguments` string, Forge 1.12.2, replaces the game's);
   the loader's main class. Demo mode still requires the _game's_ main class to be
-  Minecraft's own; the loaders pass `--demo` on to it.
+  Minecraft's own; the loaders pass `--demo` on to it, except Forge on Mojang's
+  launchwrapper (1.12.2), whose tweaker drops it: demo launches of those are refused
+  (`DEMO_UNAVAILABLE`).
 - **Maven tree:** loader installations keep their libraries under
   `shared/maven/<Maven path>` with their real file names, because Forge and NeoForge
   build a Java module layer from file names and find libraries and patched game files

@@ -206,7 +206,8 @@
       "noVersions": "لا يوجد إصدار من {loader} لـ Minecraft {version}.",
       "modsHint": "ضع التعديلات في مجلد mods داخل مجلد اللعبة لهذا التثبيت. لا يمكن تغيير إصدار المُحمِّل لاحقًا.",
       "game": "Minecraft ⁨{version}⁩",
-      "gameWithLoader": "{game} · {loader} ⁨{version}⁩"
+      "gameWithLoader": "{game} · {loader} ⁨{version}⁩",
+      "sources": "تأتي ملفات {loader} من خوادم مشروعه نفسه ويُتحقق منها بالطريقة نفسها."
     },
     "details": {
       "title": "إعدادات التثبيت",
@@ -685,6 +686,7 @@
     "This is not a valid language code.": "هذا ليس رمز لغة صالحًا.",
     "This link is not on the launcher's list of allowed destinations.": "هذا الرابط ليس ضمن قائمة الوجهات المسموح بها في المشغّل.",
     "This loader has no installer.": "لا يملك هذا المُحمِّل مثبّتًا.",
+    "This mod loader version cannot run the demo. Sign in with an account that owns Minecraft to play it.": "لا يمكن لهذا الإصدار من مُحمِّل التعديلات تشغيل النسخة التجريبية. سجّل الدخول بحساب يملك Minecraft للعب.",
     "This operating system or processor is not supported.": "نظام التشغيل أو المعالج هذا غير مدعوم.",
     "This operation is not running.": "هذه العملية لا تعمل.",
     "This processor architecture is not supported on this operating system.": "بنية المعالج هذه غير مدعومة على نظام التشغيل هذا.",

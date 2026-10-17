@@ -47,6 +47,8 @@ const SUMMARY_TAIL_LINES: usize = 40;
 
 /// The main class of every version whose client accepts `--demo` (1.6 and later).
 pub const DEMO_MAIN_CLASS: &str = "net.minecraft.client.main.Main";
+/// Main class of mod loaders started through Mojang's launchwrapper (D-039).
+pub const LAUNCHWRAPPER_MAIN_CLASS: &str = "net.minecraft.launchwrapper.Launch";
 
 /// Who a launch plays as.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
@@ -538,6 +540,15 @@ impl LaunchService {
         // Only versions started through Minecraft's own main class know `--demo`;
         // older ones would run the full game, so a demo identity cannot start them.
         // A mod loader hands the arguments on to that same class.
+        if identity.demo && plan.main_class == LAUNCHWRAPPER_MAIN_CLASS {
+            // Forge's launchwrapper tweaker (1.12.2) drops `--demo` and would
+            // start the full game.
+            return Err(LauncherError::new(
+                ErrorCode::DemoUnavailable,
+                "This mod loader version cannot run the demo. Sign in with an account \
+                 that owns Minecraft to play it.",
+            ));
+        }
         if identity.demo && plan.game_main_class() != DEMO_MAIN_CLASS {
             return Err(LauncherError::new(
                 ErrorCode::DemoUnavailable,

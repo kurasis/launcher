@@ -1170,3 +1170,62 @@ installation's runtime from its lock, and choosing a source writes `javaProvider
     "4096 MiB · 1280×720" values reordered (now isolated).
   - Screenshots: [settings](verification/ar-settings.png), [home](verification/ar-home.png),
     [console](verification/ar-console.png).
+
+## Mod loaders (D-039)
+
+- **Date / host:** 2026-10-17, Linux x64 container, Xvfb, branch `claude/mod-loaders`.
+  Evidence label: **test profile, demo** (no account).
+- **Automated:** Maven coordinates and paths (escapes refused), version ordering,
+  NeoForge → game version mapping, the Forge installer-format cut-off, installer
+  locations, processor argument filling, the Maven library layout of the 1.21.1
+  fixture, and the profile merge (loader libraries first, the game's gson replaced,
+  client named after the profile, arguments appended, a wrong game version, a second
+  loader, a host off the lists and installer-only files without an installer
+  refused). Vitest: the form lists only the loader's game versions, preselects the
+  recommended loader version, marks betas, moves to a supported game version, and
+  sends the loader with _Estimate_ and _Create_.
+- **Live installs** (`live_install` with `LAUNCHER_LIVE_LOADER`, real sources, one data
+  directory, recommended loader versions):
+
+  | Game   | Loader                   | Versions listed | Installed                                   | Installer step                                                  |
+  | ------ | ------------------------ | --------------- | ------------------------------------------- | --------------------------------------------------------------- |
+  | 1.21.1 | Fabric 0.19.5            | 254             | succeeded                                   | —                                                               |
+  | 1.21.1 | Quilt 0.30.1             | 307             | succeeded, 9.5 s                            | —                                                               |
+  | 1.21.1 | Forge 52.1.0             | 69              | succeeded, 28.2 s                           | 3 client processors (sanitized mappings downloaded by the tool) |
+  | 1.21.1 | NeoForge 21.1.262        | 257             | succeeded, 27.6 s                           | 6 processors, mappings from the verified download               |
+  | 1.20.1 | Forge 47.4.10            | 137             | succeeded, 37.8 s                           | 6 processors, 7 files recorded                                  |
+  | 1.20.1 | NeoForge 1.20.1-47.1.106 | 62              | succeeded, 21.6 s                           | as Forge 1.20.1                                                 |
+  | 1.20.1 | Fabric 0.19.5            | 254             | succeeded, 8.0 s                            | —                                                               |
+  | 1.12.2 | Forge 14.23.5.2859       | 13              | succeeded, 29.7 s                           | universal jar unpacked from the installer                       |
+  | 26.3   | NeoForge 26.3.0.88       | 85              | succeeded, 62.4 s (with Java 25 and assets) | 1 processor                                                     |
+
+- **Live launches** (`live_play` with `LAUNCHER_LIVE_LOADER`, demo): all nine reached
+  the title screen in demo mode in 23–44 s and stopped cleanly. The logs name the
+  loader ("Loading Minecraft 1.21.1 with Fabric Loader 0.19.5", "… with Quilt Loader
+  0.30.1", "ModLauncher running … 1.21.1-forge-52.1.0 / neoforge-21.1.262"); the
+  title screens show "Forge 52.1.0 (2 mods loaded)", "NeoForge 21.1.262 (2 mods)",
+  "Minecraft 1.21.1 Demo (Modded)" ([title screens](verification/loaders-menus.png)).
+  - **Found and fixed:** Forge 1.12.2 runs through Mojang's launchwrapper, whose Forge
+    tweaker drops `--demo`: the game opened the full title screen (Singleplayer,
+    Multiplayer). Demo launches of launchwrapper loaders are now refused
+    (`DEMO_UNAVAILABLE`, checked live); with an account they start as before.
+  - NeoForge 26.3's early loading window asks for an OpenGL visual this Xvfb does not
+    offer ("Couldn't find matching GLX visual"); with `earlyWindowControl = false` in
+    the installation's `config/fml.toml` it started normally. Vanilla 26.3 needs no
+    such change here. Not a launcher defect; real displays provide the visual.
+- **Repair:** after deleting the patched `forge-1.21.1-52.1.0-client.jar` and
+  corrupting the remapped client, launch refused with `REPAIR_REQUIRED` before
+  starting Java; Repair skipped the processor whose output was intact, re-ran the
+  other two, and produced the same patched jar (SHA-1 `2d2537d3…`, the hash Forge's
+  install profile declares).
+- **Release build through the interface:** the installation list shows
+  "Minecraft 1.21.1 · Fabric 0.19.5" etc. ([installations](verification/loaders-installations.png));
+  **Play demo** on Fabric started the game, which reported "Demo (Modded)", and the
+  launcher returned after Quit Game ("exited normally"). In **New installation**,
+  choosing Forge limited the releases to 44, choosing 1.21.1 listed its Forge builds
+  with 52.1.0 marked recommended ([form](verification/loaders-form.png)); _Estimate_
+  showed 92 libraries and 28.6 MiB still to download; _Create_ and _Install_ of
+  Forge 52.0.57 showed the phase "Running the mod loader installer" and finished
+  ("Downloaded 9 files (28.6 MiB)").
+- **Not verified:** Windows and macOS installs of loaders (CI builds and unit tests
+  only), launches with a signed-in account, mods themselves.

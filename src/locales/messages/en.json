@@ -205,7 +205,8 @@
       "noVersions": "{loader} has no version for Minecraft {version}.",
       "modsHint": "Put mods into the mods folder inside the installation's game folder. The loader version cannot be changed later.",
       "game": "Minecraft {version}",
-      "gameWithLoader": "{game} · {loader} {version}"
+      "gameWithLoader": "{game} · {loader} {version}",
+      "sources": "The {loader} files come from its project's own servers and are checked the same way."
     },
     "details": {
       "title": "Installation settings",
@@ -684,6 +685,7 @@
     "This is not a valid language code.": "This is not a valid language code.",
     "This link is not on the launcher's list of allowed destinations.": "This link is not on the launcher's list of allowed destinations.",
     "This loader has no installer.": "This loader has no installer.",
+    "This mod loader version cannot run the demo. Sign in with an account that owns Minecraft to play it.": "This mod loader version cannot run the demo. Sign in with an account that owns Minecraft to play it.",
     "This operating system or processor is not supported.": "This operating system or processor is not supported.",
     "This operation is not running.": "This operation is not running.",
     "This processor architecture is not supported on this operating system.": "This processor architecture is not supported on this operating system.",

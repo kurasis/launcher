@@ -214,6 +214,7 @@ export type Messages = {
       loader: string | number;
       version: string | number;
     }) => string;
+    readonly sources: (values: { loader: string | number }) => string;
   };
   readonly details: {
     readonly title: string;

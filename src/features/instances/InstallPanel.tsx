@@ -122,6 +122,11 @@ export function InstallPanel({
       aside={<span className={styles.version}>{gameLabel(instance)}</span>}
     >
       <p className={styles.muted}>{t.explain[health]}</p>
+      {instance.loader !== null && health === 'not_installed' && (
+        <p className={styles.muted}>
+          {strings.loaders.sources({ loader: strings.loaders.names[instance.loader.kind] })}
+        </p>
+      )}
       {mine !== null && (
         <>
           {ownProgress !== null ? (

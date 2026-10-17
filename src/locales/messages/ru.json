@@ -205,7 +205,8 @@
       "noVersions": "У {loader} нет версии для Minecraft {version}.",
       "modsHint": "Моды кладите в папку mods внутри папки игры этой установки. Версию загрузчика потом изменить нельзя.",
       "game": "Minecraft {version}",
-      "gameWithLoader": "{game} · {loader} {version}"
+      "gameWithLoader": "{game} · {loader} {version}",
+      "sources": "Файлы {loader} загружаются с серверов самого проекта и проверяются так же."
     },
     "details": {
       "title": "Настройки установки",
@@ -684,6 +685,7 @@
     "This is not a valid language code.": "Это не код языка.",
     "This link is not on the launcher's list of allowed destinations.": "Этой ссылки нет в списке разрешённых адресов лаунчера.",
     "This loader has no installer.": "У этого загрузчика нет установщика.",
+    "This mod loader version cannot run the demo. Sign in with an account that owns Minecraft to play it.": "Эта версия загрузчика модов не может запустить демо. Чтобы играть, войдите с аккаунтом, которому принадлежит Minecraft.",
     "This operating system or processor is not supported.": "Эта операционная система или процессор не поддерживаются.",
     "This operation is not running.": "Эта операция не выполняется.",
     "This processor architecture is not supported on this operating system.": "Эта архитектура процессора не поддерживается в этой операционной системе.",
