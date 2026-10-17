@@ -1,7 +1,7 @@
 import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { mockIPC } from '@tauri-apps/api/mocks';
 import { describe, expect, it } from 'vitest';
-import type { AccountSummary, AppSnapshot } from '../../lib/contracts';
+import type { AccountSummary, AppSnapshot, MicrosoftAccount } from '../../lib/contracts';
 import { snapshotFixture } from '../../test/fixtures';
 import { AccountView } from './AccountView';
 
@@ -10,6 +10,7 @@ function setup(account: Partial<AccountSummary>, overrides: Partial<AppSnapshot>
   mockIPC((cmd, args) => {
     calls.push({ cmd, args });
     if (cmd === 'begin_login') return { operationId: 'op-1' };
+    if (cmd === 'add_notoken_profile') return { id: 'p-1', name: 'Alex' };
     if (cmd === 'get_app_snapshot') return snapshotFixture();
     return null;
   });
@@ -21,17 +22,28 @@ function setup(account: Partial<AccountSummary>, overrides: Partial<AppSnapshot>
 const named = (cmd: string, calls: { cmd: string; args: unknown }[]) =>
   calls.filter((c) => c.cmd === cmd);
 
+function microsoft(overrides: Partial<MicrosoftAccount> = {}): MicrosoftAccount {
+  return {
+    profileId: 'steve',
+    profileName: 'Steve_Test',
+    state: 'verified_access',
+    error: null,
+    ...overrides,
+  };
+}
+
 describe('AccountView', () => {
   it('explains a missing client ID instead of offering sign-in', () => {
     setup({}, { microsoftClientId: 'not_configured' });
     expect(screen.getByText(/no project-owned Microsoft application ID/)).toBeVisible();
-    expect(screen.queryByRole('button', { name: /Sign in/ })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /Add a Microsoft account/ })).toBeNull();
     expect(screen.queryByLabelText(/password/i)).not.toBeInTheDocument();
   });
 
-  it('starts browser sign-in through the backend', async () => {
+  it('adds a Microsoft account through browser sign-in', async () => {
     const calls = setup({});
-    fireEvent.click(screen.getByRole('button', { name: 'Sign in with Microsoft' }));
+    expect(screen.getByText('No Microsoft account added yet.')).toBeVisible();
+    fireEvent.click(screen.getByRole('button', { name: 'Add a Microsoft account' }));
     await waitFor(() => {
       expect(named('begin_login', calls)).toHaveLength(1);
     });
@@ -39,7 +51,7 @@ describe('AccountView', () => {
   });
 
   it('offers cancel while waiting for the browser', async () => {
-    const calls = setup({ state: 'signing_in', loginOperationId: 'op-7' });
+    const calls = setup({ loginOperationId: 'op-7', loginState: 'signing_in' });
     expect(screen.getByRole('status')).toHaveTextContent('Finish signing in');
     fireEvent.click(screen.getByRole('button', { name: 'Cancel sign-in' }));
     await waitFor(() => {
@@ -49,26 +61,43 @@ describe('AccountView', () => {
     });
   });
 
-  it('shows the verified profile and signs out', async () => {
-    const calls = setup({ state: 'verified_access', profileName: 'Steve_Test', profileId: 'x' });
-    expect(screen.getByText('Steve_Test')).toBeVisible();
-    expect(screen.getByText(/access verified/)).toBeVisible();
-    fireEvent.click(screen.getByRole('button', { name: 'Sign out' }));
-    await waitFor(() => {
-      expect(named('sign_out', calls)).toHaveLength(1);
+  it('lists several accounts, chooses the default and removes one', async () => {
+    const calls = setup({
+      accounts: [microsoft(), microsoft({ profileId: 'alex', profileName: 'Alex_Test' })],
+      defaultProfile: { kind: 'microsoft', id: 'steve' },
     });
+    expect(screen.getByText('Steve_Test')).toBeVisible();
+    expect(screen.getByText('Alex_Test')).toBeVisible();
+    expect(screen.getAllByText('Default')).toHaveLength(1);
+    fireEvent.click(screen.getByRole('button', { name: 'Use by default' }));
+    await waitFor(() => {
+      expect(named('set_default_profile', calls)[0]?.args).toMatchObject({
+        request: { payload: { profile: { kind: 'microsoft', id: 'alex' } } },
+      });
+    });
+    fireEvent.click(screen.getAllByRole('button', { name: 'Remove' })[0] as HTMLElement);
+    await waitFor(() => {
+      expect(named('sign_out', calls)[0]?.args).toMatchObject({
+        request: { payload: { profileId: 'steve' } },
+      });
+    });
+    // Another account can still be added.
+    expect(screen.getByRole('button', { name: 'Add a Microsoft account' })).toBeVisible();
   });
 
   it('keeps no-access distinct from service outage', async () => {
     const calls = setup({
-      state: 'no_access',
-      profileName: 'Steve_Test',
-      error: {
-        code: 'NO_GAME_ACCESS',
-        message: 'This Microsoft account does not currently have access.',
-        retryable: false,
-        diagnosticId: 'd',
-      },
+      accounts: [
+        microsoft({
+          state: 'no_access',
+          error: {
+            code: 'NO_GAME_ACCESS',
+            message: 'This Microsoft account does not currently have access.',
+            retryable: false,
+            diagnosticId: 'd',
+          },
+        }),
+      ],
     });
     expect(screen.getByText('No Java Edition access')).toBeVisible();
     fireEvent.click(screen.getByRole('button', { name: 'Get Minecraft' }));
@@ -77,24 +106,63 @@ describe('AccountView', () => {
     });
   });
 
-  it('service outage offers a re-check, not a purchase', () => {
-    setup({
-      state: 'service_unavailable',
-      profileName: 'Steve_Test',
-      error: {
-        code: 'SERVICE_UNAVAILABLE',
-        message: 'temporarily unavailable',
-        retryable: true,
-        diagnosticId: 'd',
-      },
+  it('service outage offers a re-check of that account, not a purchase', async () => {
+    const calls = setup({
+      accounts: [
+        microsoft({
+          state: 'service_unavailable',
+          error: {
+            code: 'SERVICE_UNAVAILABLE',
+            message: 'temporarily unavailable',
+            retryable: true,
+            diagnosticId: 'd',
+          },
+        }),
+      ],
     });
-    expect(screen.getByRole('button', { name: 'Check again' })).toBeVisible();
     expect(screen.queryByRole('button', { name: 'Get Minecraft' })).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'Check again' }));
+    await waitFor(() => {
+      expect(named('verify_account', calls)[0]?.args).toMatchObject({
+        request: { payload: { profileId: 'steve' } },
+      });
+    });
   });
 
-  it('reports incomplete sign-out and session-only mode', () => {
-    setup({ state: 'sign_out_pending', sessionOnly: true });
-    expect(screen.getByRole('button', { name: 'Try signing out again' })).toBeVisible();
+  it('reports incomplete sign-out and session-only mode', async () => {
+    const calls = setup({
+      pendingSignOuts: [{ profileId: 'gone', profileName: 'Old_Name' }],
+      sessionOnly: true,
+    });
+    expect(screen.getByText(/Old_Name: the saved sign-in could not be removed/)).toBeVisible();
     expect(screen.getByText(/credential store is unavailable/)).toBeVisible();
+    fireEvent.click(screen.getByRole('button', { name: 'Try removing again' }));
+    await waitFor(() => {
+      expect(named('sign_out', calls)[0]?.args).toMatchObject({
+        request: { payload: { profileId: 'gone' } },
+      });
+    });
+  });
+
+  it('adds and removes no-token profiles for the demo', async () => {
+    const calls = setup({ notokenProfiles: [{ id: 'p-0', name: 'Tester' }] });
+    expect(screen.getByText('Tester')).toBeVisible();
+    expect(screen.getByText(/installations play the demo as Player/)).toBeVisible();
+    fireEvent.change(screen.getByLabelText('Player name'), { target: { value: ' Alex ' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Add profile' }));
+    await waitFor(() => {
+      expect(named('add_notoken_profile', calls)[0]?.args).toMatchObject({
+        request: { payload: { name: 'Alex' } },
+      });
+    });
+    await waitFor(() => {
+      expect(screen.getByLabelText('Player name')).toHaveValue('');
+    });
+    fireEvent.click(screen.getByRole('button', { name: 'Remove' }));
+    await waitFor(() => {
+      expect(named('remove_notoken_profile', calls)[0]?.args).toMatchObject({
+        request: { payload: { profileId: 'p-0' } },
+      });
+    });
   });
 });

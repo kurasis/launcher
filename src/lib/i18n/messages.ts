@@ -82,6 +82,30 @@ export type Messages = {
       readonly sign_out_pending: string;
     };
   };
+  readonly accounts: {
+    readonly title: string;
+    readonly microsoftTitle: string;
+    readonly microsoftHint: string;
+    readonly none: string;
+    readonly add: string;
+    readonly notokenTitle: string;
+    readonly notokenHint: string;
+    readonly notokenNone: string;
+    readonly nameLabel: string;
+    readonly nameHint: string;
+    readonly addProfile: string;
+    readonly remove: string;
+    readonly makeDefault: string;
+    readonly isDefault: string;
+    readonly defaultNone: string;
+    readonly pendingSignOut: (values: { name: string | number }) => string;
+    readonly retryRemove: string;
+    readonly microsoftLabel: (values: { name: string | number }) => string;
+    readonly notokenLabel: (values: { name: string | number }) => string;
+    readonly playAs: string;
+    readonly playAsDefault: (values: { name: string | number }) => string;
+    readonly chipLabel: string;
+  };
   readonly instances: {
     readonly title: string;
     readonly empty: string;

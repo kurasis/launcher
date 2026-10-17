@@ -15,7 +15,7 @@
     "nav": {
       "label": "القائمة الرئيسية",
       "home": "التثبيتات",
-      "account": "الحساب",
+      "account": "الحسابات",
       "settings": "الإعدادات",
       "diagnostics": "التشخيص",
       "about": "حول"
@@ -83,6 +83,30 @@
         "protocol_error": "فشل التحقق من الحساب",
         "sign_out_pending": "تسجيل الخروج غير مكتمل"
       }
+    },
+    "accounts": {
+      "title": "الحسابات",
+      "microsoftTitle": "حسابات Microsoft",
+      "microsoftHint": "الحساب الذي يملك Minecraft: Java Edition يشغّل اللعبة الكاملة. يمكنك إضافة عدة حسابات واختيار ما يستخدمه كل تثبيت.",
+      "none": "لم تُضف أي حساب Microsoft بعد.",
+      "add": "أضف حساب Microsoft",
+      "notokenTitle": "ملفات شخصية بلا حساب",
+      "notokenHint": "كل ملف شخصي اسم لاعب للنسخة التجريبية من Minecraft: خمسة أيام في اللعبة، بلا لعب جماعي. تسهّل تجربة التثبيتات دون تسجيل الدخول.",
+      "notokenNone": "لا توجد ملفات شخصية بعد. بدونها تعمل النسخة التجريبية باسم Player.",
+      "nameLabel": "اسم اللاعب",
+      "nameHint": "من 3 إلى 16 حرفًا لاتينيًا أو رقمًا أو شرطة سفلية.",
+      "addProfile": "أضف ملفًا شخصيًا",
+      "remove": "إزالة",
+      "makeDefault": "استخدمه افتراضيًا",
+      "isDefault": "افتراضي",
+      "defaultNone": "لم يُختر ملف افتراضي: تشغّل التثبيتات النسخة التجريبية باسم Player.",
+      "pendingSignOut": "{name}: تعذّر حتى الآن حذف تسجيل الدخول المحفوظ من هذا الكمبيوتر.",
+      "retryRemove": "حاول الإزالة مجددًا",
+      "microsoftLabel": "{name} (Microsoft)",
+      "notokenLabel": "{name} (تجريبي)",
+      "playAs": "العب باسم",
+      "playAsDefault": "الافتراضي: {name}",
+      "chipLabel": "يلعب باسم"
     },
     "instances": {
       "title": "التثبيتات",

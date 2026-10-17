@@ -3,7 +3,7 @@ import { Notice } from '../../components/Notice';
 import { Panel } from '../../components/Panel';
 import forms from '../../components/forms.module.css';
 import type {
-  AccountState,
+  AccountSummary,
   ActiveActivity,
   InstanceSummary,
   OperationProgress,
@@ -16,11 +16,13 @@ import { useCommand } from '../../lib/useCommand';
 import styles from './Instances.module.css';
 import { localizeError } from '../../lib/strings';
 import { gameLabel } from './loaderLabel';
+import { PlayAs } from './PlayAs';
+import { playerFor } from '../accounts/players';
 
 interface InstallPanelProps {
   instance: InstanceSummary;
-  /** Without verified access, Play uses the no-token profile instead (D-033). */
-  accountState: AccountState;
+  /** Accounts and profiles: who plays this installation (D-045). */
+  account: AccountSummary;
   activeOperation: ActiveActivity | null;
   progress: OperationProgress | null;
   recentOperations: OperationResult[];
@@ -88,19 +90,17 @@ function ResultView({ result }: { result: OperationResult }) {
 /** Install, retry, repair and cancel for one installation, with live progress. */
 export function InstallPanel({
   instance,
-  accountState,
+  account,
   activeOperation,
   progress,
   recentOperations,
 }: InstallPanelProps) {
   const install = useCommand((requestId: string, id: string) => ipc.installInstance(id, requestId));
   const repair = useCommand((requestId: string, id: string) => ipc.repairInstance(id, requestId));
-  const play = useCommand((requestId: string, id: string, notoken: boolean) =>
-    ipc.launchGame(id, requestId, notoken),
-  );
-  // An account that is (being re)checked plays in full; any other state plays
-  // without a token (Minecraft's demo).
-  const notoken = accountState !== 'verified_access' && accountState !== 'refreshing';
+  const play = useCommand((requestId: string, id: string) => ipc.launchGame(id, requestId));
+  // A Microsoft account plays in full after a fresh check; a no-token profile
+  // plays Minecraft's demo.
+  const notoken = playerFor(instance, account).kind === 'notoken';
   const cancel = useCommand((requestId: string, operationId: string) =>
     ipc.cancelOperation(operationId, requestId),
   );
@@ -166,7 +166,7 @@ export function InstallPanel({
                   variant="primary"
                   size="large"
                   disabled={otherBusy || play.pending}
-                  onClick={() => void play.run(instance.id, notoken)}
+                  onClick={() => void play.run(instance.id)}
                 >
                   {play.pending ? t.starting : notoken ? t.playNoToken : t.play}
                 </Button>
@@ -182,6 +182,7 @@ export function InstallPanel({
           )}
         </div>
       )}
+      {health === 'ready' && <PlayAs instance={instance} account={account} />}
       {mine === null && health === 'ready' && notoken && (
         <p className={styles.muted}>{t.noTokenHint}</p>
       )}

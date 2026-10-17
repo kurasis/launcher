@@ -14,7 +14,7 @@
     "nav": {
       "label": "Main",
       "home": "Installations",
-      "account": "Account",
+      "account": "Accounts",
       "settings": "Settings",
       "diagnostics": "Diagnostics",
       "about": "About"
@@ -82,6 +82,30 @@
         "protocol_error": "Account check failed",
         "sign_out_pending": "Sign-out incomplete"
       }
+    },
+    "accounts": {
+      "title": "Accounts",
+      "microsoftTitle": "Microsoft accounts",
+      "microsoftHint": "An account that has Minecraft: Java Edition plays the full game. You can add several and choose which one each installation uses.",
+      "none": "No Microsoft account added yet.",
+      "add": "Add a Microsoft account",
+      "notokenTitle": "Profiles without an account",
+      "notokenHint": "Each profile is a player name for Minecraft's demo: five in-game days, no multiplayer. They make it easy to test installations without signing in.",
+      "notokenNone": "No profiles yet. Without one, the demo plays as Player.",
+      "nameLabel": "Player name",
+      "nameHint": "3 to 16 letters, digits or underscores.",
+      "addProfile": "Add profile",
+      "remove": "Remove",
+      "makeDefault": "Use by default",
+      "isDefault": "Default",
+      "defaultNone": "No default is chosen: installations play the demo as Player.",
+      "pendingSignOut": "{name}: the saved sign-in could not be removed from this computer yet.",
+      "retryRemove": "Try removing again",
+      "microsoftLabel": "{name} (Microsoft)",
+      "notokenLabel": "{name} (demo)",
+      "playAs": "Play as",
+      "playAsDefault": "Default: {name}",
+      "chipLabel": "Plays as"
     },
     "instances": {
       "title": "Installations",

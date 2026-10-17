@@ -1,5 +1,5 @@
 // Synthetic, non-secret IPC fixtures for frontend tests only.
-import type { AppInfo, AppSnapshot, InstanceSummary } from '../lib/contracts';
+import type { AccountSummary, AppInfo, AppSnapshot, InstanceSummary } from '../lib/contracts';
 
 export const appInfoFixture: AppInfo = {
   productName: 'Launcher',
@@ -31,6 +31,21 @@ export function instanceFixture(overrides: Partial<InstanceSummary> = {}): Insta
     javaProvider: null,
     customJava: null,
     jvmArguments: '',
+    profile: null,
+    ...overrides,
+  };
+}
+
+export function accountFixture(overrides: Partial<AccountSummary> = {}): AccountSummary {
+  return {
+    accounts: [],
+    loginOperationId: null,
+    loginState: 'signed_out',
+    loginError: null,
+    sessionOnly: false,
+    pendingSignOuts: [],
+    notokenProfiles: [],
+    defaultProfile: null,
     ...overrides,
   };
 }
@@ -52,14 +67,7 @@ export function snapshotFixture(overrides: Partial<AppSnapshot> = {}): AppSnapsh
       language: 'en',
       writable: true,
     },
-    account: {
-      state: 'signed_out',
-      profileName: null,
-      profileId: null,
-      error: null,
-      sessionOnly: false,
-      loginOperationId: null,
-    },
+    account: accountFixture(),
     microsoftClientId: 'not_configured',
     instances: [],
     activeOperation: null,
