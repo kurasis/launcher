@@ -344,12 +344,77 @@ pub async fn repair_instance(
     )
 }
 
-/// Requests cancellation of an install or repair.
+/// Requests cancellation of an install, a repair or a launch that has not
+/// started Java yet. A running game is not stopped here; use `stop_game`.
 #[tauri::command]
 pub fn cancel_operation(
     installer: State<'_, Installer>,
+    launcher: State<'_, Launcher>,
+    state: State<'_, AppState>,
     request: MutationRequest<OperationPayload>,
 ) -> LauncherResult<crate::install::service::CancelAck> {
     crate::state::ledger::validate_request_id(&request.request_id)?;
-    installer.get()?.cancel(&request.payload.operation_id)
+    let operation_id = &request.payload.operation_id;
+    match installer.get()?.cancel(operation_id) {
+        Err(error) if error.code == crate::error::ErrorCode::OperationNotFound => {}
+        other => return other,
+    }
+    if launcher.get()?.cancel_pending(operation_id).is_some() {
+        return Ok(crate::install::service::CancelAck {
+            state: "cancel_requested".into(),
+        });
+    }
+    if let Some(run) = state.current_run().filter(|r| r.run_id == *operation_id) {
+        // After spawn only the explicit Stop action ends the game.
+        let value = serde_json::to_value(run.state).unwrap_or_default();
+        return Ok(crate::install::service::CancelAck {
+            state: value.as_str().unwrap_or_default().to_owned(),
+        });
+    }
+    Err(crate::error::LauncherError::new(
+        crate::error::ErrorCode::OperationNotFound,
+        "This operation is not running.",
+    ))
+}
+
+/// The launch service, absent when DATA_ROOT is unavailable.
+pub struct Launcher(pub Option<Arc<crate::launch::service::LaunchService>>);
+
+impl Launcher {
+    fn get(&self) -> LauncherResult<&crate::launch::service::LaunchService> {
+        self.0.as_deref().ok_or_else(|| {
+            crate::error::LauncherError::new(
+                crate::error::ErrorCode::StorageUnavailable,
+                "Launcher data is unavailable.",
+            )
+        })
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct RunPayload {
+    pub run_id: String,
+}
+
+/// Checks the installation and account, then starts Minecraft under supervision.
+#[tauri::command]
+pub async fn launch_game(
+    launcher: State<'_, Launcher>,
+    request: MutationRequest<InstancePayload>,
+) -> LauncherResult<crate::state::dto::RunSummary> {
+    launcher
+        .get()?
+        .launch(&request.request_id, request.payload.instance_id)
+        .await
+}
+
+/// Terminates the owned game process of `runId` after the user confirmed it.
+#[tauri::command]
+pub fn stop_game(
+    launcher: State<'_, Launcher>,
+    request: MutationRequest<RunPayload>,
+) -> LauncherResult<bool> {
+    crate::state::ledger::validate_request_id(&request.request_id)?;
+    Ok(launcher.get()?.stop(&request.payload.run_id))
 }

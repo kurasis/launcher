@@ -228,6 +228,10 @@ pub struct RunSummary {
     pub output_tail: Vec<String>,
     pub output_lines_dropped: u64,
     pub error: Option<LauncherError>,
+    /// True when the run's output log could not be written (disk full,
+    /// permissions); output was still drained and kept in memory.
+    #[serde(default)]
+    pub logging_degraded: bool,
 }
 
 /// The complete state a freshly created webview needs (doc 06 "Bootstrap").

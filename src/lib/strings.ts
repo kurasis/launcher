@@ -109,7 +109,6 @@ export const strings = {
       unsupported: 'Unsupported',
     } satisfies Record<InstallationHealth, string>,
     busy: 'Busy',
-    notImplemented: 'Playing is not available in this build yet.',
   },
 
   install: {
@@ -118,6 +117,8 @@ export const strings = {
     retry: 'Retry install',
     repair: 'Repair',
     verify: 'Verify files',
+    play: 'Play',
+    starting: 'Starting…',
     cancel: 'Cancel',
     cancelling: 'Cancelling…',
     otherBusy: 'Another operation is running. Wait for it to finish or cancel it.',
@@ -247,6 +248,14 @@ export const strings = {
     outputTitle: 'Last output lines',
     dropped: (n: number) => `${String(n)} earlier lines not shown.`,
     stop: 'Stop',
+    stopGame: 'Stop game',
+    notStarted: 'Not started',
+    stopWarning:
+      'Stopping ends Minecraft immediately. Anything not saved in the current world is lost. Quit from the game menu to save.',
+    stopConfirm: 'Stop without saving',
+    keepPlaying: 'Keep playing',
+    loggingDegraded:
+      'The output log could not be written to disk; the last lines are still shown here.',
   },
 
   harness: {

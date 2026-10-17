@@ -1,3 +1,4 @@
+import { useState } from 'react';
 import { Button } from '../../components/Button';
 import { Notice } from '../../components/Notice';
 import { Panel } from '../../components/Panel';
@@ -26,31 +27,65 @@ interface RunStatusProps {
 
 /** Current run and the recorded result of the last one. */
 export function RunStatus({ current, last, onStop }: RunStatusProps) {
+  const [confirming, setConfirming] = useState<string | null>(null);
   if (current !== null) {
+    const isGame = current.kind === 'game';
+    const asking = isGame && confirming === current.runId;
     return (
       <Panel
         title={`${t.currentTitle}: ${t.kind[current.kind]}`}
         aside={<StatusBadge tone={tones[current.state]} label={t.state[current.state]} />}
       >
-        {onStop !== undefined && current.state === 'running' && (
+        {onStop !== undefined && current.state === 'running' && !asking && (
           <div>
             <Button
               onClick={() => {
-                onStop(current.runId);
+                if (isGame) setConfirming(current.runId);
+                else onStop(current.runId);
               }}
             >
-              {t.stop}
+              {isGame ? t.stopGame : t.stop}
             </Button>
           </div>
+        )}
+        {onStop !== undefined && asking && current.state === 'running' && (
+          <Notice tone="warning">
+            <p>{t.stopWarning}</p>
+            <div className={styles.actions}>
+              <Button
+                onClick={() => {
+                  setConfirming(null);
+                  onStop(current.runId);
+                }}
+              >
+                {t.stopConfirm}
+              </Button>
+              <Button
+                variant="primary"
+                onClick={() => {
+                  setConfirming(null);
+                }}
+              >
+                {t.keepPlaying}
+              </Button>
+            </div>
+          </Notice>
         )}
       </Panel>
     );
   }
   if (last === null) return null;
+  // A run that failed in preflight never had a process.
+  const notStarted = last.state === 'failed' && last.durationMs === null;
   return (
     <Panel
       title={`${t.lastTitle}: ${t.kind[last.kind]}`}
-      aside={<StatusBadge tone={tones[last.state]} label={t.state[last.state]} />}
+      aside={
+        <StatusBadge
+          tone={tones[last.state]}
+          label={notStarted ? t.notStarted : t.state[last.state]}
+        />
+      }
     >
       <dl className={styles.facts}>
         <dt>{t.exitCode}</dt>
@@ -60,6 +95,7 @@ export function RunStatus({ current, last, onStop }: RunStatusProps) {
       </dl>
       {last.error !== null && <Notice tone="danger">{last.error.message}</Notice>}
       {last.drainTimedOut && <Notice tone="info">{t.drainTimedOut}</Notice>}
+      {last.loggingDegraded && <Notice tone="warning">{t.loggingDegraded}</Notice>}
       {last.outputTail.length > 0 && (
         <details>
           <summary>{t.outputTitle}</summary>

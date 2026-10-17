@@ -14,7 +14,7 @@ Allowed states: `not_started`, `in_progress`, `blocked`, `done`. A partially imp
 | [P06](phases/P06-DOWNLOAD-ENGINE.md) | done | [PR #6](https://github.com/kurasis/launcher/pull/6); 18 fixture tests + live smoke (cancel, retry, reuse), CI 5/5; see [VERIFICATION.md](../VERIFICATION.md#p06--verified-cancellable-download-engine) | Byte-range resume not implemented (optional) |
 | [P07](phases/P07-MANAGED-JAVA.md) | done | [PR #7](https://github.com/kurasis/launcher/pull/7); 25 tests, live install + probe of Temurin 21/25 on Linux x64, live extraction of Windows/macOS packages, CI 5/5; see [VERIFICATION.md](../VERIFICATION.md#p07--private-java-runtime-installation) | Java execution on Windows/macOS unverified (P13) |
 | [P08](phases/P08-COMPLETE-GAME-INSTALLER.md) | in_progress | 8 orchestration tests + 6 frontend tests; live install/cancel/resume/repair of 1.21.1 on Linux x64; see [VERIFICATION.md](../VERIFICATION.md#p08--complete-installation-recovery-and-repair) | Waiting for CI |
-| [P09](phases/P09-REAL-GAME-LAUNCH.md) | not_started | — | — |
+| [P09](phases/P09-REAL-GAME-LAUNCH.md) | blocked | Preflight, compiler, argfiles, encoding guard, supervision, Play/Stop UI implemented; 24 automated tests; real Java accepted the compiled 1.21.1 JVM arguments; see [VERIFICATION.md](../VERIFICATION.md#p09--real-authenticated-minecraft-launch) | Real launch, world save/reload and server auth impossible without a project-owned Microsoft client ID (same blocker as P04); no fake session used |
 | [P10](phases/P10-BACKGROUND-AND-RETURN.md) | not_started | — | — |
 | [P11](phases/P11-COMPLETE-PRODUCT-UI.md) | not_started | — | — |
 | [P12](phases/P12-CROSS-PLATFORM-PACKAGING.md) | not_started | — | — |
@@ -25,7 +25,7 @@ Allowed states: `not_started`, `in_progress`, `blocked`, `done`. A partially imp
 
 | Dependency | State | Required owner contribution |
 | --- | --- | --- |
-| Project-owned Microsoft public client and service access | Not supplied (tracked in [AUTH-SETUP.md](../AUTH-SETUP.md); does not block P01–P03, P05–P08) | Supply registered client ID and confirm accepted auth configuration/access |
+| Project-owned Microsoft public client and service access | Not supplied (tracked in [AUTH-SETUP.md](../AUTH-SETUP.md)); blocks P04 live sign-in, the real launch in P09 and the account parts of P13 | Supply registered client ID and confirm accepted auth configuration/access |
 | Real owned / no-access / active subscription test accounts | Unverified | Owner-operated tests; never put credentials into this file |
 | Target OS/hardware test environments | Only an Ubuntu 24.04 container host and GitHub-hosted CI runners are available; no target desktops (see [VERIFICATION.md](../VERIFICATION.md#test-environments)) | Identify available Windows, macOS Intel/arm64 and Linux sessions |
 | Release identity and signing | Provisional identity `io.github.kurasis.launcher` / "Kurasis Launcher" ([D-001](../DECISIONS.md#d-001--provisional-application-identity)); no signing | Choose stable app identity and supply signing configuration when distributing |

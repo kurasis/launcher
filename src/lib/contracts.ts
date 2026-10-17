@@ -244,6 +244,8 @@ export interface RunSummary {
   outputTail: string[];
   outputLinesDropped: number;
   error: LauncherError | null;
+  /** The run's output log could not be written; output was kept in memory. */
+  loggingDegraded: boolean;
 }
 
 export type LifecycleScenario =

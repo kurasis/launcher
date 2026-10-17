@@ -454,3 +454,50 @@ Defects found by the live run and fixed before this record:
 ### CI results
 
 Recorded by the next phase's pull request.
+
+## P09 — Real authenticated Minecraft launch
+
+- **Host:** development host (Ubuntu 24.04.5 x86_64 container), debug build under Xvfb;
+  data directory with the P08 installation of 1.21.1 and Temurin 21.0.12.1.
+- **Branch / PR:** `claude/p09-launch`, [kurasis/launcher#9](https://github.com/kurasis/launcher/pull/9).
+- **Status:** **blocked.** Minecraft was not started: there is no project-owned Microsoft
+  client ID, so no real session exists, and the specification forbids substituting a
+  fake one. Everything up to the account check is implemented and verified below.
+
+### Automated tests (pass)
+
+| Area                                                      | Tests                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                 |
+| --------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Compiler (5)                                              | Both baseline descriptors × Linux/Windows/macOS: no unresolved placeholder, `-Xmx` first, ordered classpath ending in the client, logging argument, expected game arguments; token only in game arguments and never in previews; macOS `-XstartOnFirstThread`; 26.3 native sub-folders; unknown, misplaced and escaping placeholders rejected                                                                                                                                                                                                         |
+| Argfile (2), redaction (2)                                | Quoting of backslashes, quotes, `#`, `@`, tabs; non-ASCII refused where required; secrets replaced, including a prefix cut by truncation                                                                                                                                                                                                                                                                                                                                                                                                              |
+| Run logs (3)                                              | Rotation keeps 5 bounded files; unwritable directory and `/dev/full` degrade without blocking; pruning keeps the newest runs within count and size, never the active run                                                                                                                                                                                                                                                                                                                                                                              |
+| Encoding guard (1)                                        | Substituted characters detected in UTF-8 and Windows-ANSI output                                                                                                                                                                                                                                                                                                                                                                                                                                                                                      |
+| Launch service (7, fake `java` that echoes its arguments) | Supervised run recorded with exit code, redacted tail and log, run folder removed, permit released, `last_played_at` set; JVM arguments via argfile with the token still direct; no spawn without verified access (`AUTH_NOT_CONFIGURED`, `NO_GAME_ACCESS`, `SERVICE_UNAVAILABLE`); missing file → `REPAIR_REQUIRED`, permit released, Repair then Play works; same request ID → same run, second launch → `GAME_ALREADY_RUNNING`, install/repair → `APP_BUSY`, Stop kills the owned process; exit code 3 → failure; cancel before spawn → no process |
+| Frontend (4)                                              | Play calls `launch_game` and shows the reason it cannot start; Stop game asks first with the unsaved-world warning; degraded logging and "Not started" labels                                                                                                                                                                                                                                                                                                                                                                                         |
+
+The fake `java` is a test double for the supervisor only; production always uses the
+account service.
+
+### Live checks with the real managed Java (2026-10-17)
+
+`KURASIS_LIVE_ROOT=<data dir> cargo test --test live_launch_args -- --ignored --nocapture --test-threads=1`:
+
+| Check                                               | Result                                                                                                                                                                                                                                                                              |
+| --------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Argument echo (Temurin 21.0.12.1, `LC_ALL=C.UTF-8`) | 6 values (Windows path with spaces, embedded quote, leading `#`, leading `@`, trailing backslash, `Jürgen игры 世界`) round-trip unchanged via argfile and via direct arguments                                                                                                     |
+| Same under `LC_ALL=POSIX`                           | Non-ASCII arrives as `?`; the preflight guard detects it (would refuse with `UNSUPPORTED_PATH_ENCODING`)                                                                                                                                                                            |
+| Real 1.21.1 JVM arguments                           | Java 21.0.12.1 accepted all 10 compiled JVM arguments from an argfile; `java.class.path` has the 57 locked entries, all present; `java.library.path` is the run's natives folder; log4j configuration path resolved. `-version` replaced the main class, so Minecraft did not start |
+| GUI: Play without sign-in                           | Preflight passed (lock, 3,947 files, runtime tree, metadata), then the account check refused: "Microsoft sign-in is not configured…"; run shown as "Not started"; no `java` process ([screenshot](verification/p09-play-without-sign-in.png))                                       |
+
+### Done-when items (blocked)
+
+| Item                                                             | Status                                                                                                        | Needed                                         |
+| ---------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------- | ---------------------------------------------- |
+| Real game reaches the menu; create, save and reload a test world | **Blocked**                                                                                                   | Project-owned client ID, licensed test account |
+| Authorized online-mode server accepts the session                | **Blocked**                                                                                                   | As above, plus a test server                   |
+| Duplicate launch rejected; no-access never spawns Java           | Verified with the supervisor test double and the GUI (no sign-in)                                             | Reconfirm with a real account (P13)            |
+| Spaces/Unicode/long arguments; bounded, redacted logs            | Verified with real Java (argument echo, encoding guard) and automated tests; Windows/macOS locales unverified | P13 target machines                            |
+
+### CI results
+
+Recorded by the next phase's pull request.

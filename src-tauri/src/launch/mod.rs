@@ -1,1 +1,9 @@
-//! Launch argument compiler, child process supervisor and log redaction. Implemented in P09.
+//! Launch argument compiler, argument files, output redaction, run logs and the
+//! launch service (docs/spec/05).
+
+pub mod argfile;
+pub mod compile;
+pub mod encoding;
+pub mod logs;
+pub mod redact;
+pub mod service;
