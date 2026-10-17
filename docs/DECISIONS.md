@@ -736,3 +736,45 @@ message` plus a stack trace), with the event's level.
   for a game; closing the main window without a running game closes it too.
 - **Not included:** the journal is not written to disk and not part of the
   diagnostics export (the run logs already are).
+
+## D-038 — Interface languages: built for many, English, Russian and Arabic today
+
+- **Status:** accepted (owner request, 2026-10-17) · **Affects:** every screen, the
+  console window, core error messages, `settings.json`
+- **Decision:** the interface is translatable into any number of languages. It ships
+  in **English** (the default), **Russian** and **Arabic**. The choice is
+  `language` in `settings.json`, a BCP 47 tag (`en`, `ru`, `ar`, `pt-BR`), picked in
+  **Settings → General → Language**; each language is named in itself, with its
+  translated share when below 100 %. A change applies at once, without a restart.
+- **Catalogs:** `src/locales/messages/<tag>.json`, ICU MessageFormat (plurals,
+  selects, number formats), the format translation services read. English is the
+  source; `_meta` gives a language's own name, writing direction and optionally its
+  numbering system (Arabic uses Latin digits, like version numbers and paths).
+  A language is added by adding its file; no code changes. See
+  [TRANSLATING.md](TRANSLATING.md).
+- **Loading:** English is in the main bundle; every other catalog is a separate file
+  loaded when chosen. A missing text comes from the next language in the chain
+  `pt-BR` → `pt` → `en`, so a partial translation works.
+- **Formatting:** plural forms, numbers and dates through `Intl` and ICU for the
+  chosen language; no per-language code.
+- **Core messages:** the Rust core sends the English text plus, when it carries
+  values, its template and the values (`template`, `params`). Catalogs translate
+  templates in their `errors` section; values that are themselves core texts (the
+  file operation that failed, what failed to download) are translated too. A message
+  a catalog lacks falls back to English; one no catalog knows, to a sentence for its
+  error code.
+- **Right-to-left:** a catalog with `"dir": "rtl"` sets `dir="rtl"` on the page. The
+  CSS uses logical properties (`inline-start`, `text-align: start`); the few visual
+  directions (selection marks, hover nudge, the hero scene and its scrim) have
+  mirrored rules. Paths and the console journal stay left-to-right.
+- **Tooling:** `npm run i18n` copies every user-facing template from the Rust sources
+  into the English catalog and regenerates `src/lib/i18n/messages.ts` (typed texts)
+  and `src/locales/languages.json` (languages and completeness). `npm run i18n:check`
+  (in `npm run check` and CI) fails on invalid ICU, keys English lacks, values a
+  source text lacks, a formatted Rust error message, or outdated generated files.
+- **Console window:** it cannot read settings, so it follows the language through a
+  copy in local storage and retitles itself (`core:window:allow-set-title`).
+- **Not translated:** the console journal's own lines, game output, product and
+  service names, documentation.
+- **Translations:** Russian and Arabic were written for this change and have not yet
+  been reviewed by native speakers.

@@ -11,6 +11,7 @@ import { useCommand } from '../../lib/useCommand';
 import { LifecycleHarnessPanel } from './LifecycleHarnessPanel';
 import { RunStatus } from './RunStatus';
 import styles from './RunStatus.module.css';
+import { localizeError } from '../../lib/strings';
 
 const t = strings.diagnostics;
 
@@ -34,7 +35,9 @@ export function DiagnosticsView({ snapshot }: { snapshot: AppSnapshot }) {
     const result = await exporter.run(snapshot.lastRun?.runId ?? null);
     if (result === undefined) return;
     setMessage(
-      result.saved && result.fileName !== null ? t.exported(result.fileName) : t.exportCancelled,
+      result.saved && result.fileName !== null
+        ? t.exported({ name: result.fileName })
+        : t.exportCancelled,
     );
   };
 
@@ -67,7 +70,9 @@ export function DiagnosticsView({ snapshot }: { snapshot: AppSnapshot }) {
                   <td>{op.instanceId === null ? '—' : (names.get(op.instanceId) ?? '—')}</td>
                   <td>
                     <StatusBadge tone={outcomeTone[op.outcome]} label={t.outcome[op.outcome]} />
-                    {op.error !== null && <span className={styles.muted}> {op.error.message}</span>}
+                    {op.error !== null && (
+                      <span className={styles.muted}> {localizeError(op.error)}</span>
+                    )}
                   </td>
                   <td>{formatBytes(op.networkBytes)}</td>
                 </tr>

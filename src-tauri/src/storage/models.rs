@@ -19,6 +19,54 @@ pub enum Theme {
     Dark,
 }
 
+/// Interface language as a BCP 47 tag such as `en`, `ru`, `ar` or `pt-BR`
+/// (D-038). The core checks only the form; the interface knows which languages
+/// it has and falls back to English for the rest. English is the default.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[serde(transparent)]
+pub struct Language(String);
+
+impl Language {
+    pub const ENGLISH: &'static str = "en";
+
+    /// `language[-Script][-REGION]`: `en`, `zh-Hant`, `pt-BR`, `es-419`.
+    pub fn parse(tag: &str) -> Option<Self> {
+        let mut parts = tag.split('-');
+        let language = parts.next()?;
+        let mut ok =
+            (2..=3).contains(&language.len()) && language.bytes().all(|b| b.is_ascii_lowercase());
+        let mut seen_region = false;
+        for part in parts {
+            let script = part.len() == 4
+                && part.as_bytes()[0].is_ascii_uppercase()
+                && part.bytes().skip(1).all(|b| b.is_ascii_lowercase());
+            let region = (part.len() == 2 && part.bytes().all(|b| b.is_ascii_uppercase()))
+                || (part.len() == 3 && part.bytes().all(|b| b.is_ascii_digit()));
+            ok &= !seen_region && (script || region);
+            seen_region |= region;
+        }
+        (ok && tag.len() <= 16).then(|| Self(tag.to_owned()))
+    }
+
+    pub fn as_str(&self) -> &str {
+        &self.0
+    }
+}
+
+impl Default for Language {
+    fn default() -> Self {
+        Self(Self::ENGLISH.to_owned())
+    }
+}
+
+/// A malformed tag in `settings.json` means English, not unreadable settings.
+impl<'de> Deserialize<'de> for Language {
+    fn deserialize<D: serde::Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        let tag = String::deserialize(deserializer)?;
+        Ok(Self::parse(&tag).unwrap_or_default())
+    }
+}
+
 /// What happens to the launcher window while a game runs.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
 #[serde(rename_all = "snake_case")]
@@ -64,6 +112,8 @@ pub struct Settings {
     /// the runtime recorded in their lock.
     #[serde(default)]
     pub java_provider: JavaProvider,
+    #[serde(default)]
+    pub language: Language,
 }
 
 impl Default for Settings {
@@ -76,6 +126,7 @@ impl Default for Settings {
             default_max_heap_mib: None,
             default_resolution: Resolution::default(),
             java_provider: JavaProvider::default(),
+            language: Language::default(),
         }
     }
 }
@@ -305,6 +356,45 @@ mod tests {
         let settings: Settings = serde_json::from_str(r#"{"schemaVersion":1}"#).unwrap();
         assert_eq!(settings, Settings::default());
         assert_eq!(settings.during_game_mode, DuringGameMode::UnloadAndReturn);
+        assert_eq!(settings.language.as_str(), "en", "English unless chosen");
+        let arabic: Settings =
+            serde_json::from_str(r#"{"schemaVersion":1,"language":"ar"}"#).unwrap();
+        assert_eq!(arabic.language.as_str(), "ar");
+        let broken: Settings =
+            serde_json::from_str(r#"{"schemaVersion":1,"language":"../x"}"#).unwrap();
+        assert_eq!(broken.language.as_str(), "en", "a bad tag means English");
+    }
+
+    #[test]
+    fn language_tags_are_checked_for_form() {
+        for good in [
+            "en",
+            "ru",
+            "ar",
+            "fil",
+            "pt-BR",
+            "zh-Hant",
+            "zh-Hant-TW",
+            "es-419",
+        ] {
+            assert!(Language::parse(good).is_some(), "{good}");
+        }
+        for bad in [
+            "",
+            "e",
+            "EN",
+            "en_US",
+            "en-us",
+            "pt-BR-x",
+            "zh-hant",
+            "en-BR-US",
+            "../../etc",
+            "en-",
+            "-en",
+            "abcd",
+        ] {
+            assert!(Language::parse(bad).is_none(), "{bad}");
+        }
     }
 
     #[test]

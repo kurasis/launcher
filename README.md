@@ -21,7 +21,7 @@ resume and repair, a private Java runtime per version (Mojang's own runtimes by 
 Eclipse Temurin as a choice in **Settings → Java**, D-036), the launch compiler (real Java
 accepts the real arguments of both versions), game supervision with window unload and
 return, a live console window with the launcher's journal and the game's output
-(Ctrl+Shift+L, D-037), diagnostics export, one Settings screen for the launcher and every installation,
+(Ctrl+Shift+L, D-037), interface in English, Russian and Arabic, translatable into any language ([TRANSLATING.md](docs/TRANSLATING.md), D-038), diagnostics export, one Settings screen for the launcher and every installation,
 and packages for Windows, macOS and Linux built and
 smoke-tested in CI. Every vanilla version Mojang lists can be installed: releases,
 snapshots, beta, alpha and Classic, each type on its own tab (D-035). Versions before 1.19

@@ -43,12 +43,14 @@ impl MemoryPolicy {
         let max_heap_mib =
             u32::try_from(available.min(u64::from(MAX_HEAP_CAP_MIB))).unwrap_or(MAX_HEAP_CAP_MIB);
         if max_heap_mib < MIN_HEAP_MIB {
-            return Err(LauncherError::new(
+            return Err(LauncherError::templated(
                 ErrorCode::InsufficientMemory,
-                format!(
-                    "This computer reports {physical_mib} MiB of memory, which leaves less than \
-                     {MIN_HEAP_MIB} MiB for the game after the operating system reserve."
-                ),
+                "This computer reports {physicalMib} MiB of memory, which leaves less than \
+                 {minHeapMib} MiB for the game after the operating system reserve.",
+                crate::error::params([
+                    ("physicalMib", physical_mib.into()),
+                    ("minHeapMib", MIN_HEAP_MIB.into()),
+                ]),
             )
             .with_detail(
                 "physicalMib",
@@ -83,10 +85,14 @@ impl MemoryPolicy {
         if (self.min_heap_mib..=self.max_heap_mib).contains(&mib) {
             Ok(mib)
         } else {
-            Err(LauncherError::invalid_input(format!(
-                "Maximum memory must be between {} and {} MiB on this computer.",
-                self.min_heap_mib, self.max_heap_mib
-            )))
+            Err(LauncherError::templated(
+                ErrorCode::InvalidInput,
+                "Maximum memory must be between {min} and {max} MiB on this computer.",
+                crate::error::params([
+                    ("min", self.min_heap_mib.into()),
+                    ("max", self.max_heap_mib.into()),
+                ]),
+            ))
         }
     }
 
@@ -119,9 +125,16 @@ pub fn validate_resolution(resolution: Resolution) -> LauncherResult<Resolution>
     {
         Ok(resolution)
     } else {
-        Err(LauncherError::invalid_input(format!(
-            "Window size must be {MIN_WIDTH}–{MAX_WIDTH} × {MIN_HEIGHT}–{MAX_HEIGHT} pixels."
-        )))
+        Err(LauncherError::templated(
+            ErrorCode::InvalidInput,
+            "Window size must be {minWidth}–{maxWidth} × {minHeight}–{maxHeight} pixels.",
+            crate::error::params([
+                ("minWidth", MIN_WIDTH.into()),
+                ("maxWidth", MAX_WIDTH.into()),
+                ("minHeight", MIN_HEIGHT.into()),
+                ("maxHeight", MAX_HEIGHT.into()),
+            ]),
+        ))
     }
 }
 
@@ -131,9 +144,11 @@ pub fn validate_display_name(raw: &str) -> LauncherResult<String> {
     let name = raw.trim();
     let length = name.chars().count();
     if length == 0 || length > MAX_DISPLAY_NAME_CHARS {
-        return Err(LauncherError::invalid_input(format!(
-            "The installation name must be 1–{MAX_DISPLAY_NAME_CHARS} characters."
-        )));
+        return Err(LauncherError::templated(
+            ErrorCode::InvalidInput,
+            "The installation name must be 1–{max} characters.",
+            crate::error::params([("max", (MAX_DISPLAY_NAME_CHARS as u64).into())]),
+        ));
     }
     if name.chars().any(char::is_control) {
         return Err(LauncherError::invalid_input(

@@ -87,6 +87,21 @@
   );
 }
 
+/* Right-to-left languages (D-038): the scene and the scrim mirror, so the sun
+   and the clear side stay away from the text. */
+:global([dir='rtl']) .art {
+  transform: scaleX(-1);
+}
+
+:global([dir='rtl']) .hero::before {
+  background: linear-gradient(
+    270deg,
+    var(--color-hero-scrim) 0%,
+    var(--color-hero-scrim) 40%,
+    transparent 85%
+  );
+}
+
 .hero > .art {
   z-index: -1;
 }

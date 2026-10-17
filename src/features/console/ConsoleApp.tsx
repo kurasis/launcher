@@ -1,7 +1,9 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import type { ConsoleEntry } from '../../lib/contracts';
 import { ipc } from '../../lib/ipc';
-import { strings } from '../../lib/strings';
+import { getCurrentWebviewWindow } from '@tauri-apps/api/webviewWindow';
+import { LANGUAGE_STORAGE_KEY, storedLanguage, strings } from '../../lib/strings';
+import { useLanguage } from '../../lib/useLanguage';
 import styles from './ConsoleApp.module.css';
 
 const t = strings.console;
@@ -36,9 +38,30 @@ export function ConsoleApp() {
   const [follow, setFollow] = useState(true);
   const [copied, setCopied] = useState(false);
   const list = useRef<HTMLDivElement>(null);
+  // The console has no access to settings; it follows the language the main
+  // window mirrors into local storage (D-038).
+  const [wanted, setWanted] = useState(storedLanguage);
+  const lang = useLanguage(wanted);
+  useEffect(() => {
+    const onStorage = (event: StorageEvent) => {
+      if (event.key === LANGUAGE_STORAGE_KEY) setWanted(storedLanguage());
+    };
+    window.addEventListener('storage', onStorage);
+    return () => {
+      window.removeEventListener('storage', onStorage);
+    };
+  }, []);
+  useEffect(() => {
+    try {
+      void getCurrentWebviewWindow()
+        .setTitle(t.windowTitle)
+        .catch(() => undefined);
+    } catch {
+      // Outside the app (tests) there is no window to retitle.
+    }
+  }, [lang]);
 
   useEffect(() => {
-    document.title = `Launcher ${t.title.toLowerCase()}`;
     let stopped = false;
     let after = 0;
     let timer: ReturnType<typeof setTimeout> | undefined;
@@ -170,10 +193,11 @@ export function ConsoleApp() {
           {t.unreachable}
         </p>
       )}
-      {missed > 0 && <p className={styles.banner}>{t.missed(missed)}</p>}
+      {missed > 0 && <p className={styles.banner}>{t.missed({ count: missed })}</p>}
       <div
         ref={list}
         className={styles.lines}
+        dir="ltr"
         role="log"
         aria-live="off"
         onScroll={(event) => {
@@ -199,7 +223,9 @@ export function ConsoleApp() {
           </div>
         ))}
       </div>
-      <footer className={styles.status}>{t.count(shown.length, entries.length)}</footer>
+      <footer className={styles.status}>
+        {t.count({ shown: shown.length, total: entries.length })}
+      </footer>
     </div>
   );
 }

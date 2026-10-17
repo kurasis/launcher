@@ -1,8 +1,9 @@
 import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { mockIPC } from '@tauri-apps/api/mocks';
-import { describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it } from 'vitest';
 import type { AppInfo, AppSnapshot, InstanceSummary, MutationRequest } from '../lib/contracts';
 import { appInfoFixture, instanceFixture, snapshotFixture } from '../test/fixtures';
+import { setLanguage } from '../lib/strings';
 import { App } from './App';
 
 // Test-only fake backend. Production code always talks to the real Rust core.
@@ -55,6 +56,8 @@ function fakeBackend(initial: AppSnapshot, info: AppInfo = appInfoFixture) {
           throw {
             code: 'INVALID_INPUT',
             message: 'Maximum memory must be between 1024 and 13108 MiB on this computer.',
+            template: 'Maximum memory must be between {min} and {max} MiB on this computer.',
+            params: { min: 1024, max: 13108 },
             retryable: false,
             diagnosticId: 'diag-1',
           };
@@ -68,6 +71,49 @@ function fakeBackend(initial: AppSnapshot, info: AppInfo = appInfoFixture) {
 }
 
 describe('App', () => {
+  afterEach(() => {
+    setLanguage('en');
+  });
+
+  it('shows the interface and core errors in the chosen language', async () => {
+    const instance = instanceFixture();
+    fakeBackend(
+      snapshotFixture({
+        instances: [instance],
+        settings: {
+          ...snapshotFixture().settings,
+          language: 'ru',
+          selectedInstanceId: instance.id,
+        },
+      }),
+    );
+    render(<App />);
+    expect(await screen.findByRole('button', { name: 'Настройки' })).toBeVisible();
+    fireEvent.click(screen.getByRole('button', { name: 'Изменить настройки' }));
+    fireEvent.change(await screen.findByLabelText('Максимум памяти (МиБ)'), {
+      target: { value: '2048' },
+    });
+    fireEvent.click(screen.getByRole('button', { name: 'Сохранить' }));
+    expect(await screen.findByRole('alert')).toHaveTextContent(
+      'Максимум памяти на этом компьютере — от 1024 до 13108 МиБ.',
+    );
+  });
+
+  it('saves the language chosen in settings', async () => {
+    const calls = fakeBackend(snapshotFixture());
+    render(<App />);
+    fireEvent.click(await screen.findByRole('button', { name: 'Settings' }));
+    const picker = screen.getByRole('combobox', { name: 'Language' });
+    expect(picker).toHaveValue('en');
+    expect(within(picker).getByRole('option', { name: 'العربية' })).toBeInTheDocument();
+    fireEvent.change(picker, { target: { value: 'ru' } });
+    await waitFor(() => {
+      expect(calls.find((c) => c.cmd === 'set_app_settings')?.args).toMatchObject({
+        request: { payload: { language: 'ru' } },
+      });
+    });
+  });
+
   it('marks a debug build running with the test profile', async () => {
     fakeBackend(snapshotFixture(), { ...appInfoFixture, testProfile: 'TestPlayer' });
     render(<App />);

@@ -57,11 +57,11 @@ export function JavaSettings({
                 <dd>
                   {instance.java === null
                     ? strings.details.javaNone
-                    : t.javaValue(
-                        t.javaShort[instance.java.provider],
-                        instance.java.major,
-                        instance.java.release,
-                      )}
+                    : t.javaValue({
+                        provider: t.javaShort[instance.java.provider],
+                        major: instance.java.major,
+                        release: instance.java.release,
+                      })}
                 </dd>
               </div>
             ))}

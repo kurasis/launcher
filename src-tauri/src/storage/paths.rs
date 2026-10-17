@@ -41,12 +41,11 @@ impl DataRoot {
         };
         // Windows drive prefixes contain ':', which is not the Windows separator.
         if text.contains(CLASSPATH_SEPARATOR) {
-            return Err(LauncherError::new(
+            return Err(LauncherError::templated(
                 ErrorCode::UnsupportedDataPath,
-                format!(
-                    "The launcher data directory contains the character '{CLASSPATH_SEPARATOR}', \
-                     which Java cannot use in a classpath. Use a directory without it."
-                ),
+                "The launcher data directory contains the character {character}, which Java \
+                 cannot use in a classpath. Use a directory without it.",
+                crate::error::params([("character", CLASSPATH_SEPARATOR.into())]),
             ));
         }
         if text.contains('\0') {

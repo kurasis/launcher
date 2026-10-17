@@ -130,6 +130,8 @@ impl AppState {
                     &compatibility::policy_document(),
                 ) {
                     issues.push(StorageIssue {
+                        template: None,
+                        params: std::collections::BTreeMap::new(),
                         code: error.code,
                         message: "The compatibility list copy could not be written.".into(),
                         document: "compatibility.json".into(),
@@ -138,6 +140,8 @@ impl AppState {
                 // No job can be running yet: unfinished ones were interrupted.
                 if let Err(error) = crate::runtime::reconcile_runtimes(store.root()) {
                     issues.push(StorageIssue {
+                        template: None,
+                        params: std::collections::BTreeMap::new(),
                         code: error.code,
                         message:
                             "An interrupted Java runtime installation could not be cleaned up."
@@ -149,6 +153,8 @@ impl AppState {
                     Ok(interrupted) => interrupted,
                     Err(error) => {
                         issues.push(StorageIssue {
+                            template: None,
+                            params: std::collections::BTreeMap::new(),
                             code: error.code,
                             message: "Unfinished download records could not be cleaned up.".into(),
                             document: "jobs".into(),
@@ -894,6 +900,12 @@ impl AppState {
                 if let Some(provider) = patch.java_provider {
                     settings.java_provider = provider;
                 }
+                if let Some(tag) = patch.language {
+                    settings.language =
+                        crate::storage::models::Language::parse(&tag).ok_or_else(|| {
+                            LauncherError::invalid_input("This is not a valid language code.")
+                        })?;
+                }
                 if settings != data.settings {
                     store.save_settings(&settings)?;
                     data.settings = settings;
@@ -953,6 +965,8 @@ fn record_interrupted(
         }
         if store.save_instance(&updated).is_err() {
             issues.push(StorageIssue {
+                template: None,
+                params: std::collections::BTreeMap::new(),
                 code: ErrorCode::StorageError,
                 message: "An interrupted operation could not be recorded.".into(),
                 document: format!("instances/{id}/instance.json"),

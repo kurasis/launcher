@@ -78,10 +78,15 @@ export interface LauncherError {
   operationId?: string;
   diagnosticId: string;
   safeDetails?: Record<string, string | number | boolean>;
+  /** English template of `message` with `{name}` values (D-038). */
+  template?: string;
+  params?: Record<string, string | number | boolean>;
 }
 
 export type Theme = 'system' | 'light' | 'dark';
 export type DuringGameMode = 'unload_and_return' | 'keep_open';
+/** Interface language as a BCP 47 tag, e.g. `en`, `ru`, `ar`, `pt-BR` (D-038). */
+export type Language = string;
 /** Where private Java runtimes come from (D-036). */
 export type JavaProvider = 'mojang' | 'temurin';
 
@@ -145,6 +150,7 @@ export interface SettingsView {
   defaultMaxHeapMib: number | null;
   defaultResolution: Resolution;
   javaProvider: JavaProvider;
+  language: Language;
   writable: boolean;
 }
 
@@ -289,6 +295,8 @@ export interface StorageIssue {
   code: ErrorCode;
   message: string;
   document: string;
+  template?: string;
+  params?: Record<string, string>;
 }
 
 export interface AppSnapshot {
@@ -384,6 +392,7 @@ export interface SettingsPatch {
   defaultMaxHeapMib?: number;
   defaultResolution?: Resolution;
   javaProvider?: JavaProvider;
+  language?: Language;
 }
 
 interface EventEnvelope {

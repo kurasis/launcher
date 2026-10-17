@@ -5,7 +5,7 @@ import { StatusBadge } from '../../components/StatusBadge';
 import forms from '../../components/forms.module.css';
 import type { InstanceSummary } from '../../lib/contracts';
 import { ipc } from '../../lib/ipc';
-import { strings } from '../../lib/strings';
+import { numberLocale, strings } from '../../lib/strings';
 import { useCommand } from '../../lib/useCommand';
 import { healthTone } from './healthTone';
 import styles from './Instances.module.css';
@@ -42,19 +42,19 @@ export function InstanceDetails({ instance, onEditSettings }: InstanceDetailsPro
         <dd>
           {java === null
             ? t.javaNone
-            : strings.settings.javaValue(
-                strings.settings.javaShort[java.provider],
-                java.major,
-                java.release,
-              )}
+            : strings.settings.javaValue({
+                provider: strings.settings.javaShort[java.provider],
+                major: java.major,
+                release: java.release,
+              })}
         </dd>
         <dt>{t.window}</dt>
         <dd>
-          {t.windowValue(
-            instance.maxHeapMib,
-            instance.resolution.width,
-            instance.resolution.height,
-          )}
+          {t.windowValue({
+            mib: instance.maxHeapMib,
+            width: instance.resolution.width,
+            height: instance.resolution.height,
+          })}
         </dd>
         <dt>{t.lastResult}</dt>
         <dd>
@@ -64,7 +64,7 @@ export function InstanceDetails({ instance, onEditSettings }: InstanceDetailsPro
                 last.exitCode !== undefined
                   ? ` (${strings.runs.exitCode.toLowerCase()} ${String(last.exitCode)})`
                   : ''
-              } · ${new Date(last.finishedAt).toLocaleString()}`}
+              } · ${new Date(last.finishedAt).toLocaleString(numberLocale())}`}
         </dd>
       </dl>
       <div className={forms.actions}>

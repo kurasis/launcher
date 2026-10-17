@@ -1,0 +1,20 @@
+[
+  {
+    "tag": "en",
+    "name": "English",
+    "dir": "ltr",
+    "translated": 100
+  },
+  {
+    "tag": "ar",
+    "name": "العربية",
+    "dir": "rtl",
+    "translated": 100
+  },
+  {
+    "tag": "ru",
+    "name": "Русский",
+    "dir": "ltr",
+    "translated": 100
+  }
+]
