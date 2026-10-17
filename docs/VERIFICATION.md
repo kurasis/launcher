@@ -1229,3 +1229,23 @@ installation's runtime from its lock, and choosing a source writes `javaProvider
   ("Downloaded 9 files (28.6 MiB)").
 - **Not verified:** Windows and macOS installs of loaders (CI builds and unit tests
   only), launches with a signed-in account, mods themselves.
+
+## Installation notes (D-041)
+
+- **Automated:** `validate_notes` (line endings, control characters, the 4000-character
+  limit, non-Latin text), the `set_instance_notes` state test (saved while the
+  installation is busy, refused with control characters), and the interface test of
+  the notes editor (`InstanceDetails.test.tsx`: shows, edits and saves notes; the list
+  shows the first line).
+- **Not verified live:** the notes editor was not exercised in the release build.
+
+## Closing the launcher once the game opens (D-042)
+
+- **Automated:** `launch::logs::shows_game_window` against the ready markers, and the
+  installation panel test: while a launch holds the installation it says "The game is
+  running." and offers no Cancel.
+- **Release build, Linux x64 (Xvfb), no-token demo of 1.21.1:** with _Close the
+  launcher once the game window opens_ selected, the launcher quit about 12 s after
+  **Play demo**; the game kept running and entered the demo world. A launcher started
+  again showed "Running: Minecraft" with **Stop game**, which ended the game.
+- **Not verified:** Windows and macOS (CI builds only).
