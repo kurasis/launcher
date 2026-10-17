@@ -662,7 +662,9 @@ async fn concurrency_and_progress_stay_bounded() {
     );
     assert_eq!(report.retries, 8);
     let events = recorder.0.lock().unwrap();
-    let max_events = (elapsed.as_millis() / 20) as usize + 4;
+    // One event per 20 ms interval across both phases, plus each phase ticker's
+    // immediate first tick and the three explicit phase/final events.
+    let max_events = (elapsed.as_millis() / 20) as usize + 6;
     assert!(
         events.len() <= max_events,
         "{} > {max_events}",
