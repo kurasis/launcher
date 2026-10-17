@@ -7,7 +7,7 @@ use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 
 use super::document::SCHEMA_VERSION;
-use super::paths::{ImageType, InstanceId, Sha1, Sha256, TargetArch, TargetOs};
+use super::paths::{ImageType, InstanceId, JavaProvider, Sha1, Sha256, TargetArch, TargetOs};
 use crate::error::ErrorCode;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
@@ -60,6 +60,10 @@ pub struct Settings {
     pub default_max_heap_mib: Option<u32>,
     #[serde(default)]
     pub default_resolution: Resolution,
+    /// Provider for runtimes of new installations (D-036). Installed versions keep
+    /// the runtime recorded in their lock.
+    #[serde(default)]
+    pub java_provider: JavaProvider,
 }
 
 impl Default for Settings {
@@ -71,6 +75,7 @@ impl Default for Settings {
             selected_instance_id: None,
             default_max_heap_mib: None,
             default_resolution: Resolution::default(),
+            java_provider: JavaProvider::default(),
         }
     }
 }
@@ -171,6 +176,30 @@ pub struct InstanceFile {
     pub health: InstallationHealth,
     #[serde(default)]
     pub last_result: Option<LastResult>,
+    /// The private Java runtime of the last verified install or repair; display
+    /// only (the lock is authoritative).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub java: Option<InstalledJava>,
+}
+
+/// Which private Java runtime an installation uses, for display.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct InstalledJava {
+    pub provider: JavaProvider,
+    pub major: u16,
+    /// Provider release label, e.g. `21.0.7` or `jdk-21.0.12.1+1`.
+    pub release: String,
+}
+
+impl InstalledJava {
+    pub fn from_lock(runtime: &LockedRuntime) -> Option<Self> {
+        Some(Self {
+            provider: JavaProvider::parse(&runtime.provider)?,
+            major: runtime.major,
+            release: runtime.release_name.clone(),
+        })
+    }
 }
 
 /// Locked descriptor identity.
@@ -292,6 +321,7 @@ mod tests {
             resolution: Resolution::default(),
             health: InstallationHealth::NotInstalled,
             last_result: None,
+            java: None,
         };
         let json = serde_json::to_value(&instance).unwrap();
         assert!(json["manifestSha1"].is_null());

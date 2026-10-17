@@ -177,7 +177,7 @@ impl DataRoot {
 
     pub fn runtime_dir(&self, key: &RuntimeKey) -> PathBuf {
         self.runtimes_dir()
-            .join("temurin")
+            .join(key.provider.as_str())
             .join(format!("{}-{}", key.os.as_str(), key.arch.as_str()))
             .join(key.major.to_string())
             .join(key.image_type.as_str())
@@ -429,12 +429,48 @@ impl ImageType {
     }
 }
 
+/// Where private Java runtimes come from (D-036).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize, Default)]
+#[serde(rename_all = "snake_case")]
+pub enum JavaProvider {
+    /// Mojang's own runtimes, the ones the official launcher uses.
+    #[default]
+    Mojang,
+    /// Eclipse Temurin from Adoptium.
+    Temurin,
+}
+
+impl JavaProvider {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::Mojang => "mojang",
+            Self::Temurin => "temurin",
+        }
+    }
+
+    pub fn parse(value: &str) -> Option<Self> {
+        match value {
+            "mojang" => Some(Self::Mojang),
+            "temurin" => Some(Self::Temurin),
+            _ => None,
+        }
+    }
+
+    /// Keys written before Mojang runtimes existed are Temurin's.
+    fn legacy() -> Self {
+        Self::Temurin
+    }
+}
+
 /// Identity of an extracted private Java runtime (doc 10, R2-01): two packages with
 /// the same release label but a different image type or archive digest never share
-/// a directory.
+/// a directory. For Mojang runtimes the digest is the SHA-256 of the component
+/// manifest, which pins every file.
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct RuntimeKey {
+    #[serde(default = "JavaProvider::legacy")]
+    pub provider: JavaProvider,
     pub os: TargetOs,
     pub arch: TargetArch,
     pub major: u16,
@@ -556,6 +592,7 @@ mod tests {
         let root = root();
         let digest = Sha256::parse(&"ab".repeat(32)).unwrap();
         let jre = RuntimeKey {
+            provider: JavaProvider::Temurin,
             os: TargetOs::Linux,
             arch: TargetArch::X64,
             major: 21,
@@ -570,10 +607,15 @@ mod tests {
             archive_sha256: Sha256::parse(&"cd".repeat(32)).unwrap(),
             ..jre.clone()
         };
+        let mojang = RuntimeKey {
+            provider: JavaProvider::Mojang,
+            ..jre.clone()
+        };
         let paths = [
             root.runtime_dir(&jre),
             root.runtime_dir(&jdk),
             root.runtime_dir(&other),
+            root.runtime_dir(&mojang),
         ];
         assert_ne!(paths[0], paths[1]);
         assert_ne!(paths[0], paths[2]);
@@ -581,6 +623,23 @@ mod tests {
             paths[0]
                 .ends_with(Path::new("runtimes/temurin/linux-x64/21/jre").join("ab".repeat(32)))
         );
+        assert!(
+            paths[3].ends_with(Path::new("runtimes/mojang/linux-x64/21/jre").join("ab".repeat(32)))
+        );
+    }
+
+    #[test]
+    fn runtime_keys_without_a_provider_are_temurin() {
+        let key: RuntimeKey = serde_json::from_value(serde_json::json!({
+            "os": "linux",
+            "arch": "x64",
+            "major": 21,
+            "imageType": "jre",
+            "archiveSha256": "ab".repeat(32),
+        }))
+        .unwrap();
+        assert_eq!(key.provider, JavaProvider::Temurin);
+        assert_eq!(JavaProvider::default(), JavaProvider::Mojang);
     }
 
     #[test]

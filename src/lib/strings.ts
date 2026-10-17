@@ -8,11 +8,15 @@ import type {
   DuringGameMode,
   InstallationHealth,
   InstallState,
+  JavaProvider,
   MicrosoftClientIdStatus,
   OperationKind,
   Theme,
   VersionType,
 } from './contracts';
+
+/** Sections of the Settings screen. */
+export type SettingsSection = 'general' | 'java' | 'defaults' | 'installations';
 
 export const strings = {
   // The header mark (D-032): "Sferum" large, "Launcher" small.
@@ -214,6 +218,7 @@ export const strings = {
 
   details: {
     title: 'Installation settings',
+    summaryTitle: 'Details',
     version: 'Version',
     status: 'Status',
     openFolder: 'Open game folder',
@@ -232,10 +237,50 @@ export const strings = {
     save: 'Save changes',
     saved: 'Saved.',
     busy: 'This installation is busy; its settings cannot change right now.',
+    java: 'Java',
+    javaNone: 'Chosen when it is installed',
+    window: 'Memory and window',
+    windowValue: (mib: number, width: number, height: number) =>
+      `${String(mib)} MiB · ${String(width)}×${String(height)}`,
+    edit: 'Change settings',
   },
 
   settings: {
     title: 'Settings',
+    sectionsLabel: 'Settings sections',
+    sections: {
+      general: 'General',
+      java: 'Java',
+      defaults: 'New installations',
+      installations: 'Installations',
+    } satisfies Record<SettingsSection, string>,
+    sectionHints: {
+      general: 'Appearance, the launcher window while you play, and where data is kept.',
+      java: 'Which Java runtimes the launcher downloads for new installations.',
+      defaults: 'Memory and window size given to each new installation.',
+      installations: 'Memory and window size of an existing installation.',
+    } satisfies Record<SettingsSection, string>,
+    javaProvider: 'Java runtime source',
+    javaProviders: {
+      mojang: 'Mojang (recommended)',
+      temurin: 'Eclipse Temurin (Adoptium)',
+    } satisfies Record<JavaProvider, string>,
+    javaProviderHints: {
+      mojang:
+        'The runtimes the official Minecraft launcher uses, with the exact Java each version asks for. Where Mojang publishes none for this computer, Temurin is used.',
+      temurin: 'Current Eclipse Temurin builds of the Java version each Minecraft version needs.',
+    } satisfies Record<JavaProvider, string>,
+    javaApplies:
+      'Applies to new installations. An installed version keeps the Java it was installed with, and Repair restores exactly that runtime.',
+    javaInstalled: 'Java of each installation',
+    javaShort: {
+      mojang: 'Mojang',
+      temurin: 'Temurin',
+    } satisfies Record<JavaProvider, string>,
+    javaValue: (provider: string, major: number, release: string) =>
+      `${provider} · Java ${String(major)} (${release})`,
+    noInstallations: 'No installations yet.',
+    installation: 'Installation',
     theme: 'Theme',
     themes: {
       system: 'Match system',

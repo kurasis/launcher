@@ -12,7 +12,7 @@ use url::Url;
 use crate::error::{ErrorCode, LauncherError, LauncherResult};
 use crate::install::plan::RuntimeRequirement;
 use crate::net::{PublicClient, SourcePolicy, status_error};
-use crate::storage::paths::{ImageType, RuntimeKey, Sha256, TargetOs};
+use crate::storage::paths::{ImageType, JavaProvider, RuntimeKey, Sha256, TargetOs};
 
 pub const API_BASE: &str = "https://api.adoptium.net/v3/assets/latest";
 pub const MAX_API_BYTES: usize = 1024 * 1024;
@@ -24,6 +24,8 @@ pub const MAX_ARCHIVE_BYTES: u64 = 512 * 1024 * 1024;
 pub enum ArchiveFormat {
     TarGz,
     Zip,
+    /// A Mojang component manifest listing every file by SHA-1 (D-036).
+    MojangManifest,
 }
 
 impl ArchiveFormat {
@@ -31,6 +33,7 @@ impl ArchiveFormat {
         match self {
             Self::TarGz => "tar.gz",
             Self::Zip => "zip",
+            Self::MojangManifest => "json",
         }
     }
 }
@@ -141,6 +144,7 @@ fn candidate(
         RuntimePackage {
             provider: "temurin".into(),
             key: RuntimeKey {
+                provider: JavaProvider::Temurin,
                 os: req.os,
                 arch: req.arch,
                 major: req.major,
@@ -236,7 +240,12 @@ mod tests {
         include_bytes!("../../../tests/fixtures/adoptium/25-mac-aarch64.json");
 
     fn req(major: u16, os: TargetOs, arch: TargetArch) -> RuntimeRequirement {
-        RuntimeRequirement { major, os, arch }
+        RuntimeRequirement {
+            major,
+            os,
+            arch,
+            component: None,
+        }
     }
 
     #[test]

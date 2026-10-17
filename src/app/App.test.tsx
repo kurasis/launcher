@@ -130,6 +130,15 @@ describe('App', () => {
       }),
     );
     render(<App />);
+    // Installation settings live on the Settings screen.
+    expect(await screen.findByText('4096 MiB · 1280×720')).toBeVisible();
+    expect(screen.queryByLabelText('Maximum memory (MiB)')).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'Change settings' }));
+    expect(screen.getByRole('tab', { name: 'Installations' })).toHaveAttribute(
+      'aria-selected',
+      'true',
+    );
+    expect(screen.getByLabelText('Installation')).toHaveValue(instance.id);
     const memory = await screen.findByLabelText('Maximum memory (MiB)');
     expect(memory).toHaveValue(4096);
     expect(screen.getByText(/Between 1024 and 13108 MiB/)).toBeVisible();

@@ -13,11 +13,13 @@ import styles from './Instances.module.css';
 
 interface InstancesViewProps {
   snapshot: AppSnapshot;
+  /** Opens the settings of an installation on the Settings screen. */
+  onEditSettings: (instanceId: string) => void;
 }
 
 const t = strings.instances;
 
-export function InstancesView({ snapshot }: InstancesViewProps) {
+export function InstancesView({ snapshot, onEditSettings }: InstancesViewProps) {
   const [creating, setCreating] = useState(false);
   const select = useCommand((requestId: string, id: string) =>
     ipc.setAppSettings({ selectedInstanceId: id }, requestId),
@@ -69,7 +71,13 @@ export function InstancesView({ snapshot }: InstancesViewProps) {
               progress={snapshot.operationProgress}
               recentOperations={snapshot.recentOperations}
             />
-            <InstanceDetails key={selected.id} instance={selected} memory={snapshot.memory} />
+            <InstanceDetails
+              key={selected.id}
+              instance={selected}
+              onEditSettings={() => {
+                onEditSettings(selected.id);
+              }}
+            />
           </>
         )}
       </div>

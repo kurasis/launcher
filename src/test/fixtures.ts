@@ -25,6 +25,7 @@ export function instanceFixture(overrides: Partial<InstanceSummary> = {}): Insta
     health: 'not_installed',
     lastResult: null,
     busy: false,
+    java: null,
     ...overrides,
   };
 }
@@ -42,6 +43,7 @@ export function snapshotFixture(overrides: Partial<AppSnapshot> = {}): AppSnapsh
       selectedInstanceId: null,
       defaultMaxHeapMib: null,
       defaultResolution: { width: 1280, height: 720 },
+      javaProvider: 'mojang',
       writable: true,
     },
     account: {

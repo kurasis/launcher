@@ -662,3 +662,44 @@ replaces it), `superseded`.
 - **Verification:** every catalog version plans on Windows, Linux and Intel macOS, and
   on Apple silicon from 1.19 (`live_all_versions`); real installs and launches on Linux
   from rd-132211 (2009) to 26.4-snapshot-4 (docs/VERIFICATION.md).
+
+## D-036 — Mojang Java runtimes and one Settings screen
+
+- **Status:** accepted (owner request, 2026-10-17) · **Affects:** docs/spec/04
+  ("Managed Java"), D-035 (Java 16 → 17 and Java 8 on Apple silicon), the Settings
+  screen
+- **Decision:** private Java runtimes come from **Mojang** by default, the runtimes the
+  official launcher uses; **Eclipse Temurin** (Adoptium) stays available. The choice is
+  `javaProvider` in `settings.json` and applies to new installations; an installed
+  version keeps the runtime pinned in its lock, and Repair restores exactly that one.
+- **How a Mojang runtime is chosen and installed:**
+  - Mojang's runtime index (`piston-meta.mojang.com/v1/products/java-runtime/…/all.json`)
+    lists one build per platform (`linux`, `windows-x64`, `windows-arm64`, `mac-os`,
+    `mac-os-arm64`) and component. The version descriptor names the component
+    (`javaVersion.component`); descriptors without `javaVersion` use `jre-legacy`.
+  - When the component is not published for this platform, another component of the
+    same Java major is used (Apple silicon has `java-runtime-gamma` instead of
+    `-beta`). When none exists — Java 8 on Apple silicon and Windows on ARM, anything
+    on Linux ARM — Temurin is used. A failed request is an error, never a silent switch.
+  - The component manifest is downloaded at resolve time, checked against the index's
+    SHA-1 and size, and pinned by its SHA-256 (`RuntimeKey.archiveSha256`), so a job
+    retry or repair installs the same files. Every listed file must be on Mojang's
+    download hosts.
+  - Install: the manifest by SHA-256, then each listed file by SHA-1 through the
+    download executor (identical files once), then the tree is assembled with the
+    archive extractor's rules (path checks, case collisions, links only inside the
+    runtime, size limits), described by the tree receipt, probed and promoted to
+    `runtimes/mojang/<os>-<arch>/<major>/jre/<sha256>`. The downloaded files are
+    removed afterwards. Java runs from `bin/java`, `bin/java.exe` or
+    `jre.bundle/Contents/Home/bin/java` (macOS).
+  - Minecraft 1.17 now gets the Java 16 it declares; Temurin keeps the Java 17
+    substitute of D-035.
+- **Settings screen:** sections **General** (theme, window while playing, data
+  location), **Java** (runtime source and the Java of each installation), **New
+  installations** (default memory and window size) and **Installations** (memory and
+  window size of an existing installation, moved from the home screen). The home screen
+  shows an installation's version, Java, memory and window size, and **Change
+  settings** opens its section.
+- **Recorded per installation:** `instance.json` gains a display-only `java` field
+  (provider, major, release) taken from the lock after an install or repair and at
+  startup; the lock stays authoritative.

@@ -46,6 +46,7 @@ impl PlanSource for FakeSource {
     fn resolve<'a>(
         &'a self,
         _version: &'a str,
+        _java: crate::storage::paths::JavaProvider,
     ) -> BoxFuture<'a, LauncherResult<(GamePlan, RuntimePackage)>> {
         self.resolves.fetch_add(1, Ordering::SeqCst);
         let plan = lock_or(&self.plan).clone();
@@ -129,6 +130,7 @@ fn java_package(server: &Server, marker: &Path) -> RuntimePackage {
     RuntimePackage {
         provider: "temurin".into(),
         key: RuntimeKey {
+            provider: crate::storage::paths::JavaProvider::Temurin,
             os: TargetOs::Linux,
             arch: TargetArch::X64,
             major: 21,
@@ -256,6 +258,7 @@ impl Fixture {
                 major: 21,
                 os: TargetOs::Linux,
                 arch: TargetArch::X64,
+                component: None,
             },
         };
         before(&root, (game.clone(), runtime.clone()));

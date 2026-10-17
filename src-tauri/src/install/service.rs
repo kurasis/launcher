@@ -30,25 +30,29 @@ use crate::download::{
 use crate::error::{ErrorCode, LauncherError, LauncherResult};
 use crate::net::{PublicClient, SourcePolicy};
 use crate::runtime::adoptium::{Adoptium, RuntimePackage};
+use crate::runtime::mojang::Mojang;
 use crate::runtime::{InstalledRuntime, RuntimeInstaller};
 use crate::state::dto::{InstallState, OperationResult};
 use crate::state::{AppState, ProgressUpdate};
 use crate::storage::document;
 use crate::storage::models::{
-    HashAlgorithm, InstallLock, InstallationHealth, LastResult, OperationKind, Outcome,
+    HashAlgorithm, InstallLock, InstallationHealth, InstalledJava, LastResult, OperationKind,
+    Outcome,
 };
-use crate::storage::paths::{InstanceId, SafeName, Sha1};
+use crate::storage::paths::{InstanceId, JavaProvider, SafeName, Sha1};
 use crate::storage::reconcile::{self, LockState};
 
 pub type BoxFuture<'a, T> = Pin<Box<dyn Future<Output = T> + Send + 'a>>;
 
-/// Where plans come from. Production uses Mojang metadata and Adoptium; tests use
-/// a local fixture server.
+/// Where plans come from. Production uses Mojang metadata and Mojang or Adoptium
+/// runtimes; tests use a local fixture server.
 pub trait PlanSource: Send + Sync {
-    /// Resolves a new installation: accepted descriptor and a pinned runtime.
+    /// Resolves a new installation: accepted descriptor and a pinned runtime from
+    /// the preferred provider.
     fn resolve<'a>(
         &'a self,
         version_id: &'a str,
+        java: JavaProvider,
     ) -> BoxFuture<'a, LauncherResult<(GamePlan, RuntimePackage)>>;
 
     /// Re-derives the plan of an installed version from its locked descriptor,
@@ -58,6 +62,7 @@ pub trait PlanSource: Send + Sync {
 
 pub struct LiveSource {
     metadata: Arc<MetadataService<PublicClient>>,
+    mojang: Mojang,
     adoptium: Adoptium,
 }
 
@@ -68,6 +73,10 @@ impl LiveSource {
     ) -> LauncherResult<Self> {
         Ok(Self {
             metadata,
+            mojang: Mojang::new(PublicClient::new(
+                SourcePolicy::MojangMetadata,
+                app_version,
+            )?)?,
             adoptium: Adoptium::new(PublicClient::new(SourcePolicy::Adoptium, app_version)?)?,
         })
     }
@@ -77,11 +86,21 @@ impl PlanSource for LiveSource {
     fn resolve<'a>(
         &'a self,
         version_id: &'a str,
+        java: JavaProvider,
     ) -> BoxFuture<'a, LauncherResult<(GamePlan, RuntimePackage)>> {
         Box::pin(async move {
             let ctx = RuleContext::current()?;
             let game = self.metadata.plan(version_id, &ctx).await?;
-            let runtime = self.adoptium.resolve(&game.runtime).await?;
+            // Temurin covers what Mojang does not publish for this computer (for
+            // example Java 8 on Apple silicon); a failed request is an error.
+            let mojang = match java {
+                JavaProvider::Mojang => self.mojang.resolve(&game.runtime).await?,
+                JavaProvider::Temurin => None,
+            };
+            let runtime = match mojang {
+                Some(runtime) => runtime,
+                None => self.adoptium.resolve(&game.runtime).await?,
+            };
             Ok((game, runtime))
         })
     }
@@ -408,6 +427,7 @@ struct RunReport {
     corrupt: BTreeSet<String>,
     /// Descriptor hash of the committed (or verified) lock.
     committed: Option<Sha1>,
+    java: Option<InstalledJava>,
 }
 
 impl Operation {
@@ -473,7 +493,7 @@ impl Operation {
             Some(plan) if plan.game.version_id == self.version_id => plan,
             _ => {
                 let (game, runtime) = tokio::select! {
-                    resolved = self.source.resolve(&self.version_id) => resolved?,
+                    resolved = self.source.resolve(&self.version_id, self.state().java_provider()) => resolved?,
                     () = self.cancel.cancelled() => return Err(cancelled()),
                 };
                 FinalInstallPlan {
@@ -533,6 +553,7 @@ impl Operation {
         document::save(&self.root.install_lock(self.instance_id), &lock, None)
             .map_err(|e| LauncherError::from_io(&e, "Saving the installation record"))?;
         report.committed = Some(lock.descriptor.sha1);
+        report.java = InstalledJava::from_lock(&lock.runtime);
         Ok(())
     }
 
@@ -602,6 +623,7 @@ impl Operation {
         let index_id = SafeName::parse(&lock.asset_index.id)?;
         lock::project_asset_index(&self.root, &index_id, &lock.asset_index.sha1)?;
         report.committed = Some(lock.descriptor.sha1.clone());
+        report.java = InstalledJava::from_lock(&lock.runtime);
         Ok(())
     }
 
@@ -656,10 +678,12 @@ impl Operation {
         let kind = self.kind;
         let installed_before = !committed && self.root.install_lock(self.instance_id).exists();
         let descriptor = report.committed.clone();
+        let java = report.java.clone();
         let _ = state.update_instance(self.instance_id, |instance| {
             if let Some(sha1) = descriptor {
                 instance.health = InstallationHealth::Ready;
                 instance.manifest_sha1 = Some(sha1);
+                instance.java = java;
             } else if installed_before {
                 instance.health = if found_corrupt {
                     InstallationHealth::RepairRequired

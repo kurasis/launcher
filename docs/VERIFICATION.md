@@ -1050,3 +1050,64 @@ the picker in a release build: [releases](verification/version-picker-releases.p
 [alpha](verification/version-picker-alpha.png).
 "Harness" means `live_play` with `LAUNCHER_LIVE_FULL=1`, a test-only identity without
 `--demo` for versions that have no demo mode; the product refuses a demo launch of them.
+
+## Mojang Java runtimes and the Settings screen (D-036)
+
+- **Date / host:** 2026-10-17, same development host, branch `claude/settings-and-java`.
+
+### Automated
+
+- Unit tests: index selection per platform (named component, same-major substitute,
+  none on Linux ARM and for Java 8 on Apple silicon), version-name majors, unusable
+  index entries, the real `jre-legacy` Linux manifest (300 files, 3 links), manifest
+  checksum, unsafe paths, foreign hosts and size limits.
+- Installer against the local fixture server: a manifest-built runtime installs, keeps
+  its executable bits and links, downloads identical files once, removes its downloads,
+  is reused without network, and is rebuilt after damage; wrong file bytes, an escaping
+  link or a missing `java` fail before anything runs.
+- Every current Mojang manifest (29: Linux, Windows x64/ARM, both Macs, every component)
+  satisfies the extractor's path and link rules; Windows manifests have no links.
+
+### Live (`live_runtime`)
+
+| Component              | Release    | Files / bytes downloaded | Probe                         |
+| ---------------------- | ---------- | ------------------------ | ----------------------------- |
+| `jre-legacy`           | 8u202      | 262 / 235 MB             | `1.8.0_202`, spec 8, Oracle   |
+| `java-runtime-alpha`   | 16.0.1.9.1 | 133 / 105 MB             | `16.0.1`, spec 16, Microsoft  |
+| `java-runtime-gamma`   | 17.0.15    | 132 / 100 MB             | `17.0.15`, spec 17, Microsoft |
+| `java-runtime-delta`   | 21.0.7     | 135 / 109 MB             | `21.0.7`, spec 21, Microsoft  |
+| `java-runtime-epsilon` | 25.0.1     | 146 / 116 MB             | `25.0.1`, spec 25, Microsoft  |
+
+Each was reused on a second request. Manifests resolve for Windows x64 (all five
+components), Windows ARM and Apple silicon (17, 21, 25; `-alpha`/`-beta` map to
+`-gamma`; Java 8 falls back to Temurin), Intel macOS (all five, Java at
+`jre.bundle/Contents/Home/bin/java`) and none for Linux ARM (Temurin).
+
+### Real installs and launches on Mojang runtimes (Linux x64)
+
+A fresh data directory with the default setting:
+
+| Version           | Component              | Java           | Install                 | Launch          |
+| ----------------- | ---------------------- | -------------- | ----------------------- | --------------- |
+| `b1.7.3`          | `jre-legacy` (default) | Mojang 8u202   | Pass, runtime 262 files | Pass (harness)  |
+| `1.12.2`          | `jre-legacy`           | Mojang 8u202   | Pass, runtime reused    | Pass, demo mode |
+| `1.17.1`          | `java-runtime-alpha`   | Mojang 16.0.1  | Pass                    | Pass, demo mode |
+| `1.20.1`          | `java-runtime-gamma`   | Mojang 17.0.15 | Pass                    | Pass, demo mode |
+| `26.4-snapshot-4` | `java-runtime-epsilon` | Mojang 25.0.1  | Pass                    | Pass, demo mode |
+
+That data directory has no Temurin runtime at all. Then:
+
+- **Repair:** one file of the Java 16 runtime overwritten → Repair downloaded the
+  runtime's 133 files again and rebuilt a tree with the locked receipt hash; Pass.
+- **Switch:** `javaProvider` set to Temurin → a new 1.17.1 installation got Temurin
+  `jdk-17.0.20.1+1`; the existing 1.17.1 kept Mojang 16. Pass.
+- **Older data:** four installations made with Temurin before this change (locks and
+  runtime receipts without a provider field) still verify and launch (1.12.2, 1.17.1,
+  26.4-snapshot-4, b1.7.3). Pass.
+
+### Settings screen (release build)
+
+Release build against the data directory above: the Java section lists each
+installation's runtime from its lock, and choosing a source writes `javaProvider` to
+`settings.json` (toggled to Temurin and back by clicking). Screenshots:
+[Java](verification/settings-java.png), [Installations](verification/settings-installations.png).

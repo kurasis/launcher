@@ -123,12 +123,16 @@ pub struct PlannedArtifact {
 }
 
 /// The Java runtime a plan needs; P07 turns it into a pinned runtime plan.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct RuntimeRequirement {
+    /// Major for Temurin (see [`runtime_major`]).
     pub major: u16,
     pub os: TargetOs,
     pub arch: TargetArch,
+    /// Mojang runtime component the version names, when it names one.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub component: Option<String>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -467,6 +471,7 @@ pub fn plan_game(
             major: runtime_major(descriptor.java_major),
             os,
             arch,
+            component: descriptor.java_component.clone(),
         },
     })
 }

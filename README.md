@@ -17,9 +17,11 @@ evidence is in [`docs/VERIFICATION.md`](docs/VERIFICATION.md).
 **What works (verified on Linux x64):** creating installations of the supported releases
 (Minecraft 1.21.1 with Java 21 and 26.3 with Java 25), installing them from the official
 Mojang and Adoptium sources with digest verification, a shared verified cache, cancel,
-resume and repair, a private Java runtime per version, the launch compiler (real Java
+resume and repair, a private Java runtime per version (Mojang's own runtimes by default,
+Eclipse Temurin as a choice in **Settings → Java**, D-036), the launch compiler (real Java
 accepts the real arguments of both versions), game supervision with window unload and
-return, diagnostics export, settings, and packages for Windows, macOS and Linux built and
+return, diagnostics export, one Settings screen for the launcher and every installation,
+and packages for Windows, macOS and Linux built and
 smoke-tested in CI. Every vanilla version Mojang lists can be installed: releases,
 snapshots, beta, alpha and Classic, each type on its own tab (D-035). Versions before 1.19
 need an Intel Mac or Windows/Linux; Apple silicon runs 1.19 and later.

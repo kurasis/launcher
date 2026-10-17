@@ -316,6 +316,47 @@ pub fn extract(
     match format {
         ArchiveFormat::TarGz => extract_tar(file, &mut extractor)?,
         ArchiveFormat::Zip => extract_zip(file, &mut extractor)?,
+        ArchiveFormat::MojangManifest => {
+            return Err(LauncherError::internal("A file list is not an archive."));
+        }
+    }
+    extractor.finish()
+}
+
+/// One entry of a package delivered as a file list instead of an archive.
+pub enum Listed<'a> {
+    Dir,
+    /// A verified downloaded file to copy in.
+    File {
+        source: PathBuf,
+        size: u64,
+        executable: bool,
+    },
+    Link(&'a str),
+}
+
+/// Builds a package from a file list into the empty directory `dest`, with the
+/// same path, link and size rules as archive extraction.
+pub fn materialize<'a>(
+    entries: impl IntoIterator<Item = (&'a str, Listed<'a>)>,
+    dest: &Path,
+    limits: Limits,
+) -> LauncherResult<()> {
+    let mut extractor = Extractor::new(dest, limits);
+    for (path, entry) in entries {
+        let parts = normalize(path)?;
+        match entry {
+            Listed::Dir => extractor.dir(&parts)?,
+            Listed::File {
+                source,
+                size,
+                executable,
+            } => {
+                let mut reader = File::open(source).map_err(|e| io_error(&e))?;
+                extractor.file(&parts, size, executable, &mut reader)?;
+            }
+            Listed::Link(target) => extractor.symlink(&parts, target)?,
+        }
     }
     extractor.finish()
 }
