@@ -30,7 +30,9 @@ use crate::install::service::{BoxFuture, PlanSource, StateAccess};
 use crate::lifecycle::child::{self, OutputLine, OutputTail, Stream, Supervised};
 use crate::runtime::{self, Verification};
 use crate::state::dto::{RunKind, RunState, RunSummary};
-use crate::storage::models::{InstallLock, InstallationHealth, LastResult, OperationKind, Outcome};
+use crate::storage::models::{
+    InstallLock, InstallationHealth, LastResult, OperationKind, Outcome, ProfileRef,
+};
 use crate::storage::paths::{DataRoot, InstanceId, SafeName};
 use crate::storage::reconcile::{self, LockState};
 
@@ -51,13 +53,13 @@ pub const NOTOKEN_MAIN_CLASS: &str = "net.minecraft.client.main.Main";
 pub const LAUNCHWRAPPER_MAIN_CLASS: &str = "net.minecraft.launchwrapper.Launch";
 
 /// Who a launch plays as.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub enum LaunchMode {
-    /// The signed-in account, after a fresh access check.
-    #[default]
-    Account,
-    /// The no-token profile: Minecraft's demo without an account (D-033).
-    NoToken,
+    /// A signed-in Microsoft account (its Minecraft profile ID), after a fresh
+    /// access check.
+    Account(String),
+    /// A no-token profile: Minecraft's demo without an account (D-033, D-045).
+    NoToken(super::notoken::NoTokenProfile),
 }
 
 /// Per-run inputs taken from the installation and the request.
@@ -73,13 +75,19 @@ struct RunSettings {
 
 /// Fresh account verification for a launch.
 pub trait Authorizer: Send + Sync {
-    fn authorize(&self) -> BoxFuture<'_, LauncherResult<LaunchIdentity>>;
+    fn authorize<'a>(
+        &'a self,
+        profile_id: &'a str,
+    ) -> BoxFuture<'a, LauncherResult<LaunchIdentity>>;
 }
 
 impl Authorizer for Arc<crate::auth::service::AuthService> {
-    fn authorize(&self) -> BoxFuture<'_, LauncherResult<LaunchIdentity>> {
+    fn authorize<'a>(
+        &'a self,
+        profile_id: &'a str,
+    ) -> BoxFuture<'a, LauncherResult<LaunchIdentity>> {
         Box::pin(async move {
-            let auth = self.verify_for_launch().await?;
+            let auth = self.verify_for_launch(profile_id).await?;
             Ok(LaunchIdentity {
                 player_name: auth.profile.name,
                 uuid: auth.profile.id,
@@ -110,7 +118,6 @@ pub struct LaunchService {
     host: Arc<dyn LaunchHost>,
     source: Arc<dyn PlanSource>,
     auth: Arc<dyn Authorizer>,
-    notoken: Arc<dyn Authorizer>,
     launcher_version: String,
     pending: Mutex<Option<(String, CancelToken)>>,
     requests: Mutex<Requests>,
@@ -145,19 +152,12 @@ impl LaunchService {
             host,
             source,
             auth,
-            notoken: Arc::new(super::notoken::NoTokenProfile::default()),
             launcher_version: launcher_version.to_owned(),
             pending: Mutex::default(),
             requests: Mutex::default(),
             stop_requested: Arc::default(),
             force_argfile: false,
         }
-    }
-
-    /// Uses `notoken` for no-token launches instead of the default profile.
-    pub fn with_notoken(mut self, notoken: Arc<dyn Authorizer>) -> Self {
-        self.notoken = notoken;
-        self
     }
 
     /// Always pass JVM arguments through an argfile (tests and diagnostics).
@@ -282,13 +282,28 @@ impl LaunchService {
         Some(run_id)
     }
 
-    /// Launches as the signed-in account.
+    /// Who plays `instance_id`: its own profile, else the default one, else the
+    /// built-in demo player (D-045).
+    pub fn mode_for(&self, instance_id: InstanceId) -> LaunchMode {
+        let state = self.host.app_state();
+        match state.profile_for(instance_id) {
+            Some(ProfileRef::Microsoft { id }) => LaunchMode::Account(id),
+            Some(ProfileRef::NoToken { id }) => state
+                .notoken_name(&id)
+                .and_then(|name| super::notoken::NoTokenProfile::new(&name).ok())
+                .map(LaunchMode::NoToken)
+                .unwrap_or_else(|| LaunchMode::NoToken(Default::default())),
+            None => LaunchMode::NoToken(Default::default()),
+        }
+    }
+
+    /// Launches as the installation's profile.
     pub async fn launch(
         &self,
         request_id: &str,
         instance_id: InstanceId,
     ) -> LauncherResult<RunSummary> {
-        self.launch_as(request_id, instance_id, LaunchMode::Account)
+        self.launch_as(request_id, instance_id, self.mode_for(instance_id))
             .await
     }
 
@@ -359,12 +374,13 @@ impl LaunchService {
             error: None,
             logging_degraded: false,
         });
-        state.console().info(match mode {
-            LaunchMode::NoToken => {
-                "Launch without a token (Minecraft demo): checking the installation"
-            }
-            LaunchMode::Account => {
-                "Launch with the signed-in account: checking the installation and access"
+        state.console().info(match &mode {
+            LaunchMode::NoToken(profile) => format!(
+                "Launch without a token (Minecraft demo) as {}: checking the installation",
+                profile.name()
+            ),
+            LaunchMode::Account(_) => {
+                "Launch with a Microsoft account: checking the installation and access".to_owned()
             }
         });
 
@@ -527,12 +543,15 @@ impl LaunchService {
         check_cancel()?;
 
         // Fresh access check (or the no-token profile); without it Java is never started.
-        let authorizer = match mode {
-            LaunchMode::Account => &self.auth,
-            LaunchMode::NoToken => &self.notoken,
+        let identity: BoxFuture<'_, LauncherResult<LaunchIdentity>> = match &mode {
+            LaunchMode::Account(profile_id) => self.auth.authorize(profile_id),
+            LaunchMode::NoToken(profile) => {
+                let identity = profile.identity();
+                Box::pin(async move { Ok(identity) })
+            }
         };
         let identity = tokio::select! {
-            identity = authorizer.authorize() => identity?,
+            identity = identity => identity?,
             () = cancel.cancelled() => {
                 return Err(LauncherError::new(ErrorCode::OperationCancelled, "The launch was cancelled."));
             }

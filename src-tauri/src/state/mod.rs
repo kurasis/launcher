@@ -23,7 +23,8 @@ use crate::console::{self, Console};
 use crate::error::{ErrorCode, LauncherError, LauncherResult};
 use crate::storage::document::SCHEMA_VERSION;
 use crate::storage::models::{
-    AccountsFile, InstallationHealth, InstanceFile, LastResult, OperationKind, Outcome, Settings,
+    AccountsFile, InstallationHealth, InstanceFile, LastResult, NoTokenRecord, OperationKind,
+    Outcome, ProfileRef, Settings,
 };
 use crate::storage::paths::{DataRoot, InstanceId};
 use crate::storage::{StorageIssue, Store};
@@ -66,7 +67,7 @@ struct Data {
     issues: Vec<StorageIssue>,
     current_run: Option<RunSummary>,
     last_run: Option<RunSummary>,
-    account: AccountSummary,
+    auth: AuthStatus,
     operation_progress: Option<OperationProgress>,
     recent_operations: VecDeque<OperationResult>,
 }
@@ -113,7 +114,7 @@ impl AppState {
                 issues: Vec::new(),
                 current_run: None,
                 last_run: None,
-                account: AccountSummary::signed_out(),
+                auth: AuthStatus::signed_out(),
                 operation_progress: None,
                 recent_operations: VecDeque::new(),
             },
@@ -165,15 +166,24 @@ impl AppState {
                 let data = &mut inner.data;
                 data.settings = settings.value;
                 data.settings_writable = settings.writable;
-                data.accounts = accounts.value;
-                data.account.state = if data.accounts.sign_out_pending {
-                    AccountState::SignOutPending
-                } else if data.accounts.active.is_some() {
-                    // The auth service restores and re-verifies the saved account.
-                    AccountState::Refreshing
-                } else {
-                    AccountState::SignedOut
-                };
+                data.accounts = accounts.value.clone().migrated();
+                if data.accounts != accounts.value && accounts.writable {
+                    // Best effort: the earlier format is read again next time.
+                    let _ = store.save_accounts(&data.accounts);
+                }
+                // The auth service restores and re-verifies the saved accounts.
+                data.auth.accounts = data
+                    .accounts
+                    .accounts
+                    .iter()
+                    .map(|a| MicrosoftAccount {
+                        profile_id: a.profile_id.clone(),
+                        profile_name: a.profile_name.clone(),
+                        state: AccountState::Refreshing,
+                        error: None,
+                    })
+                    .collect();
+                data.auth.pending_sign_outs = pending_view(&data.accounts);
                 data.instances = instances.into_iter().map(|i| (i.id, i)).collect();
                 for receipt in interrupted {
                     record_interrupted(data, &store, &receipt, &mut issues);
@@ -299,7 +309,7 @@ impl AppState {
                 error,
             },
             settings: SettingsView::new(&data.settings, data.settings_writable),
-            account: data.account.clone(),
+            account: account_summary(data),
             microsoft_client_id: client_id::build_time_status(),
             instances,
             active_operation: active,
@@ -407,7 +417,7 @@ impl AppState {
                 revision,
                 timestamp,
                 body: AccountStateChanged {
-                    account: data.account.clone(),
+                    account: account_summary(data),
                 },
             })),
             Change::OperationFinished(result) => {
@@ -507,29 +517,50 @@ impl AppState {
         self.publish(|_| true, Change::Runs);
     }
 
-    /// Current account display state.
+    /// Accounts and profiles as the interface shows them.
     pub fn account(&self) -> AccountSummary {
-        self.lock().data.account.clone()
+        account_summary(&self.lock().data)
     }
 
-    /// Replaces the account display state and announces it.
-    pub fn set_account(&self, account: AccountSummary) {
+    /// What the auth service last reported.
+    pub fn auth_status(&self) -> AuthStatus {
+        self.lock().data.auth.clone()
+    }
+
+    /// Replaces the auth service's report and announces it.
+    pub fn set_auth_status(&self, status: AuthStatus) {
         let console = &self.console;
         self.publish(
             |data| {
-                if data.account == account {
-                    false
-                } else {
-                    if data.account.state != account.state {
-                        let text = format!("Account: {}", console::name(&account.state));
+                if data.auth == status {
+                    return false;
+                }
+                for account in &status.accounts {
+                    let before = data
+                        .auth
+                        .accounts
+                        .iter()
+                        .find(|a| a.profile_id == account.profile_id)
+                        .map(|a| a.state);
+                    if before != Some(account.state) {
+                        let text = format!(
+                            "Account {}: {}",
+                            account.profile_name,
+                            console::name(&account.state)
+                        );
                         match &account.error {
                             Some(error) => console.warn(format!("{text} — {}", error.message)),
                             None => console.info(text),
                         }
                     }
-                    data.account = account;
-                    true
                 }
+                if status.login_error != data.auth.login_error
+                    && let Some(error) = &status.login_error
+                {
+                    console.warn(format!("Sign-in: {}", error.message));
+                }
+                data.auth = status;
+                true
             },
             Change::Account,
         );
@@ -540,19 +571,34 @@ impl AppState {
         self.lock().data.accounts.clone()
     }
 
-    /// Persists account metadata. Contains no secrets.
-    pub fn save_accounts_file(&self, accounts: AccountsFile) -> LauncherResult<()> {
-        let mut guard = self.lock();
-        let inner = &mut *guard;
-        let Availability::Ready(store) = &inner.availability else {
-            return Err(LauncherError::new(
-                ErrorCode::StorageUnavailable,
-                "Launcher data is unavailable.",
-            ));
+    /// Changes and persists account metadata in one step, so the auth service
+    /// and profile commands never overwrite each other. Contains no secrets.
+    pub fn update_accounts_file(
+        &self,
+        change: Box<dyn FnOnce(&mut AccountsFile) + Send + '_>,
+    ) -> LauncherResult<()> {
+        let result = {
+            let mut guard = self.lock();
+            let inner = &mut *guard;
+            let Availability::Ready(store) = &inner.availability else {
+                return Err(LauncherError::new(
+                    ErrorCode::StorageUnavailable,
+                    "Launcher data is unavailable.",
+                ));
+            };
+            let mut accounts = inner.data.accounts.clone();
+            change(&mut accounts);
+            if accounts == inner.data.accounts {
+                return Ok(());
+            }
+            store.save_accounts(&accounts).map(|()| {
+                inner.data.accounts = accounts;
+            })
         };
-        store.save_accounts(&accounts)?;
-        inner.data.accounts = accounts;
-        Ok(())
+        if result.is_ok() {
+            self.publish(|_| true, Change::Account);
+        }
+        result
     }
 
     pub fn current_run(&self) -> Option<RunSummary> {
@@ -788,6 +834,7 @@ impl AppState {
                     java_provider: None,
                     custom_java: None,
                     jvm_arguments: String::new(),
+                    profile: None,
                 };
                 store.create_instance(&instance)?;
                 let id = instance.id;
@@ -985,6 +1032,182 @@ impl AppState {
         result
     }
 
+    /// Adds a named no-token profile for the demo (D-045); the first one becomes
+    /// the default when no default is set.
+    pub fn add_notoken_profile(
+        &self,
+        request: MutationRequest<AddNoTokenProfilePayload>,
+    ) -> LauncherResult<NoTokenProfileView> {
+        let result = self.mutate(
+            "add_notoken_profile",
+            request,
+            |data, store, payload, changes| {
+                let profile = crate::launch::notoken::NoTokenProfile::new(payload.name.trim())?;
+                if data
+                    .accounts
+                    .notoken_profiles
+                    .iter()
+                    .any(|p| p.name.eq_ignore_ascii_case(profile.name()))
+                {
+                    return Err(LauncherError::invalid_input(
+                        "A profile with this name already exists.",
+                    ));
+                }
+                let mut accounts = data.accounts.clone();
+                let id = Uuid::new_v4().to_string();
+                accounts.notoken_profiles.push(NoTokenRecord {
+                    id: id.clone(),
+                    name: profile.name().to_owned(),
+                });
+                accounts
+                    .default_profile
+                    .get_or_insert(ProfileRef::NoToken { id: id.clone() });
+                store.save_accounts(&accounts)?;
+                data.accounts = accounts;
+                changes.push(Change::Account);
+                Ok(NoTokenProfileView {
+                    id,
+                    name: profile.name().to_owned(),
+                })
+            },
+        );
+        match &result {
+            Ok(p) => self
+                .console
+                .info(format!("No-token profile added: {}", p.name)),
+            Err(e) => self
+                .console
+                .warn(format!("Adding a no-token profile failed: {}", e.message)),
+        }
+        result
+    }
+
+    /// Removes a no-token profile; installations that named it use the default.
+    pub fn remove_notoken_profile(
+        &self,
+        request: MutationRequest<ProfileIdPayload>,
+    ) -> LauncherResult<()> {
+        let result = self.mutate(
+            "remove_notoken_profile",
+            request,
+            |data, store, payload, changes| {
+                let profile = ProfileRef::NoToken {
+                    id: payload.profile_id,
+                };
+                if !data.accounts.contains(&profile) {
+                    return Err(profile_not_found());
+                }
+                let mut accounts = data.accounts.clone();
+                accounts.remove(&profile);
+                store.save_accounts(&accounts)?;
+                data.accounts = accounts;
+                changes.push(Change::Account);
+                Ok(())
+            },
+        );
+        self.log_profile_change("Removing a no-token profile", &result);
+        result
+    }
+
+    /// Chooses who plays installations that name no profile; `None` leaves it to
+    /// the built-in demo player.
+    pub fn set_default_profile(
+        &self,
+        request: MutationRequest<SetDefaultProfilePayload>,
+    ) -> LauncherResult<()> {
+        let result = self.mutate(
+            "set_default_profile",
+            request,
+            |data, store, payload, changes| {
+                if let Some(profile) = &payload.profile
+                    && !known_profile(data, profile)
+                {
+                    return Err(profile_not_found());
+                }
+                if data.accounts.default_profile != payload.profile {
+                    let mut accounts = data.accounts.clone();
+                    accounts.default_profile = payload.profile;
+                    store.save_accounts(&accounts)?;
+                    data.accounts = accounts;
+                    changes.push(Change::Account);
+                }
+                Ok(())
+            },
+        );
+        self.log_profile_change("Choosing the default profile", &result);
+        result
+    }
+
+    /// Chooses who plays one installation; `None` uses the default profile.
+    /// Allowed while the installation is busy: it applies to the next launch.
+    pub fn set_instance_profile(
+        &self,
+        request: MutationRequest<SetInstanceProfilePayload>,
+    ) -> LauncherResult<InstanceSummary> {
+        let busy = self.activity.clone();
+        let result = self.mutate(
+            "set_instance_profile",
+            request,
+            |data, store, payload, changes| {
+                let id = payload.instance_id;
+                let current = data.instances.get(&id).ok_or_else(instance_not_found)?;
+                if let Some(profile) = &payload.profile
+                    && !known_profile(data, profile)
+                {
+                    return Err(profile_not_found());
+                }
+                if current.profile != payload.profile {
+                    let mut updated = current.clone();
+                    updated.profile = payload.profile;
+                    store.save_instance(&updated)?;
+                    data.instances.insert(id, updated);
+                    changes.push(Change::Instance(id));
+                }
+                let busy = busy.current().is_some_and(|a| a.instance_id == Some(id));
+                Ok(InstanceSummary::new(&data.instances[&id], busy))
+            },
+        );
+        if let Err(e) = &result {
+            self.console
+                .warn(format!("Choosing who plays failed: {}", e.message));
+        }
+        result
+    }
+
+    /// Who plays `instance`: its own profile if it still exists, else the
+    /// default, else nobody (the built-in demo player).
+    pub fn profile_for(&self, instance: InstanceId) -> Option<ProfileRef> {
+        let inner = self.lock();
+        let data = &inner.data;
+        data.instances
+            .get(&instance)
+            .and_then(|i| i.profile.clone())
+            .filter(|p| known_profile(data, p))
+            .or_else(|| {
+                data.accounts
+                    .default_profile
+                    .clone()
+                    .filter(|p| known_profile(data, p))
+            })
+    }
+
+    /// The name of a no-token profile.
+    pub fn notoken_name(&self, id: &str) -> Option<String> {
+        self.lock()
+            .data
+            .accounts
+            .notoken_profiles
+            .iter()
+            .find(|p| p.id == id)
+            .map(|p| p.name.clone())
+    }
+
+    fn log_profile_change(&self, what: &str, result: &LauncherResult<()>) {
+        if let Err(e) = result {
+            self.console.warn(format!("{what} failed: {}", e.message));
+        }
+    }
+
     pub fn set_app_settings(
         &self,
         request: MutationRequest<SettingsPatch>,
@@ -1159,6 +1382,50 @@ fn log_run_end(console: &Console, run: &RunSummary) {
     match &run.error {
         Some(error) => console.error(format!("{text} — {}", error.message)),
         None => console.info(text),
+    }
+}
+
+fn profile_not_found() -> LauncherError {
+    LauncherError::invalid_input("This account or profile no longer exists.")
+}
+
+/// A saved no-token profile, or a Microsoft account the auth service knows
+/// (saved, or kept in memory only).
+fn known_profile(data: &Data, profile: &ProfileRef) -> bool {
+    match profile {
+        ProfileRef::Microsoft { id } => data.auth.accounts.iter().any(|a| a.profile_id == *id),
+        ProfileRef::NoToken { .. } => data.accounts.contains(profile),
+    }
+}
+
+fn pending_view(accounts: &AccountsFile) -> Vec<PendingSignOut> {
+    accounts
+        .pending_sign_outs
+        .iter()
+        .map(|a| PendingSignOut {
+            profile_id: a.profile_id.clone(),
+            profile_name: a.profile_name.clone(),
+        })
+        .collect()
+}
+
+fn account_summary(data: &Data) -> AccountSummary {
+    AccountSummary {
+        auth: data.auth.clone(),
+        notoken_profiles: data
+            .accounts
+            .notoken_profiles
+            .iter()
+            .map(|p| NoTokenProfileView {
+                id: p.id.clone(),
+                name: p.name.clone(),
+            })
+            .collect(),
+        default_profile: data
+            .accounts
+            .default_profile
+            .clone()
+            .filter(|p| known_profile(data, p)),
     }
 }
 

@@ -322,7 +322,8 @@ fn snapshot_exposes_no_secret_fields() {
         match value {
             serde_json::Value::Object(map) => {
                 for (key, child) in map {
-                    let lower = key.to_ascii_lowercase();
+                    // "notoken" names the profiles that have no token (D-040).
+                    let lower = key.to_ascii_lowercase().replace("notoken", "");
                     for forbidden in [
                         "token", "secret", "password", "verifier", "refresh", "vault",
                     ] {
@@ -341,7 +342,8 @@ fn snapshot_exposes_no_secret_fields() {
     }
     walk(&json, "snapshot");
     assert_eq!(json["apiSchemaVersion"], 1);
-    assert_eq!(json["account"]["state"], "signed_out");
+    assert_eq!(json["account"]["loginState"], "signed_out");
+    assert_eq!(json["account"]["accounts"], serde_json::json!([]));
 }
 
 #[test]
@@ -362,4 +364,94 @@ fn malformed_payloads_are_rejected_by_deserialization() {
         serde_json::from_value::<MutationRequest<UpdateInstanceSettingsPayload>>(traversal_id)
             .is_err()
     );
+}
+
+#[test]
+fn notoken_profiles_defaults_and_installation_choices() {
+    let dir = tempfile::tempdir().unwrap();
+    let (alex, id) = {
+        let state = state_at(dir.path(), RecordingSink::default());
+        let instance = create(&state, "A", "1.21.1").unwrap().id;
+        assert_eq!(
+            state.profile_for(instance),
+            None,
+            "nobody: the built-in demo player"
+        );
+        let add = |name: &str| {
+            state.add_notoken_profile(request(AddNoTokenProfilePayload { name: name.into() }))
+        };
+        let alex = add(" Alex ").unwrap();
+        assert_eq!(alex.name, "Alex");
+        for bad in ["alex", "a", "Has space", "Jürgen"] {
+            assert_eq!(add(bad).unwrap_err().code, ErrorCode::InvalidInput, "{bad}");
+        }
+        let steve = add("Steve").unwrap();
+        let account = state.account();
+        assert_eq!(account.notoken_profiles.len(), 2);
+        let alex_ref = ProfileRef::NoToken {
+            id: alex.id.clone(),
+        };
+        let steve_ref = ProfileRef::NoToken {
+            id: steve.id.clone(),
+        };
+        assert_eq!(
+            account.default_profile,
+            Some(alex_ref.clone()),
+            "the first is the default"
+        );
+        assert_eq!(state.profile_for(instance), Some(alex_ref.clone()));
+
+        // An installation can name another profile, even while it is busy.
+        let _permit = state
+            .activity()
+            .try_acquire(OperationKind::Launch, Some(instance), "run-1")
+            .unwrap();
+        let chosen = state
+            .set_instance_profile(request(SetInstanceProfilePayload {
+                instance_id: instance,
+                profile: Some(steve_ref.clone()),
+            }))
+            .unwrap();
+        assert_eq!(chosen.profile, Some(steve_ref.clone()));
+        assert_eq!(state.profile_for(instance), Some(steve_ref.clone()));
+        assert_eq!(
+            state
+                .set_instance_profile(request(SetInstanceProfilePayload {
+                    instance_id: instance,
+                    profile: Some(ProfileRef::Microsoft {
+                        id: "nobody".into()
+                    }),
+                }))
+                .unwrap_err()
+                .code,
+            ErrorCode::InvalidInput
+        );
+
+        // Removing its profile sends the installation back to the default.
+        state
+            .remove_notoken_profile(request(ProfileIdPayload {
+                profile_id: steve.id.clone(),
+            }))
+            .unwrap();
+        assert_eq!(state.profile_for(instance), Some(alex_ref.clone()));
+        state
+            .set_default_profile(request(SetDefaultProfilePayload { profile: None }))
+            .unwrap();
+        assert_eq!(state.profile_for(instance), None);
+        state
+            .set_default_profile(request(SetDefaultProfilePayload {
+                profile: Some(alex_ref),
+            }))
+            .unwrap();
+        (alex, instance)
+    };
+    // Everything survives a restart; the name is what a demo launch plays as.
+    let state = state_at(dir.path(), RecordingSink::default());
+    assert_eq!(
+        state.profile_for(id),
+        Some(ProfileRef::NoToken {
+            id: alex.id.clone()
+        })
+    );
+    assert_eq!(state.notoken_name(&alex.id).as_deref(), Some("Alex"));
 }

@@ -793,6 +793,9 @@
     "The file dialog failed.": "Не удалось открыть окно выбора файла.",
     "This Java may not run this game. Confirm the choice to use it anyway.": "Эта Java может не запустить игру. Подтвердите выбор, чтобы всё равно её использовать.",
     "This program could not be started as Java.": "Эту программу не удалось запустить как Java.",
-    "Use at most {max} JVM options.": "Используйте не более {max} параметров JVM."
+    "Use at most {max} JVM options.": "Используйте не более {max} параметров JVM.",
+    "A profile with this name already exists.": "Профиль с таким именем уже есть.",
+    "The account answered with a different Minecraft profile.": "Аккаунт ответил другим профилем Minecraft.",
+    "This account or profile no longer exists.": "Этого аккаунта или профиля больше нет."
   }
 }

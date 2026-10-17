@@ -26,7 +26,7 @@ use launcher_lib::install::service::BoxFuture;
 use launcher_lib::install::service::{LiveSource, PlanSource, StateAccess};
 use launcher_lib::launch::compile::LaunchIdentity;
 use launcher_lib::launch::notoken::NoTokenProfile;
-use launcher_lib::launch::service::{Authorizer, LaunchHost, LaunchService};
+use launcher_lib::launch::service::{Authorizer, LaunchHost, LaunchMode, LaunchService};
 use launcher_lib::lifecycle::child::Supervised;
 use launcher_lib::net::{PublicClient, SourcePolicy};
 use launcher_lib::secrets::SecretString;
@@ -45,7 +45,10 @@ const SETTLE: Duration = Duration::from_secs(15);
 struct FullGameHarness;
 
 impl Authorizer for FullGameHarness {
-    fn authorize(&self) -> BoxFuture<'_, LauncherResult<LaunchIdentity>> {
+    fn authorize<'a>(
+        &'a self,
+        _profile_id: &'a str,
+    ) -> BoxFuture<'a, LauncherResult<LaunchIdentity>> {
         Box::pin(async {
             let profile = NoTokenProfile::new("TestPlayer").unwrap();
             Ok(LaunchIdentity {
@@ -136,21 +139,21 @@ async fn the_game_starts_without_a_token_and_stops_cleanly() {
     ));
     let source: Arc<dyn PlanSource> = Arc::new(LiveSource::new(metadata, VERSION).unwrap());
     let full = std::env::var_os("LAUNCHER_LIVE_FULL").is_some();
-    let authorizer: Arc<dyn Authorizer> = if full {
-        Arc::new(FullGameHarness)
-    } else {
-        Arc::new(NoTokenProfile::new("TestPlayer").unwrap())
-    };
     let service = LaunchService::new(
         Arc::clone(&host) as Arc<dyn LaunchHost>,
         source,
-        authorizer,
+        Arc::new(FullGameHarness),
         VERSION,
     );
+    let mode = if full {
+        LaunchMode::Account("full-game-harness".into())
+    } else {
+        LaunchMode::NoToken(NoTokenProfile::new("TestPlayer").unwrap())
+    };
 
     let started = Instant::now();
     let run = service
-        .launch(&uuid::Uuid::new_v4().to_string(), instance.id)
+        .launch_as(&uuid::Uuid::new_v4().to_string(), instance.id, mode)
         .await
         .expect("preflight passes and the game starts");
     println!(

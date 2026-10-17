@@ -33,7 +33,7 @@ use tauri::{Emitter, Manager, RunEvent};
 use auth::service::{AccountHost, AuthService};
 use error::{ErrorCode, LauncherError, LauncherResult};
 use lifecycle::{ExitDecision, LifecycleController, RunHandles};
-use state::dto::AccountSummary;
+use state::dto::AuthStatus;
 use state::dto::BackendEvent;
 use state::{AppState, EventSink};
 use storage::models::{AccountsFile, OperationKind};
@@ -171,17 +171,20 @@ fn close_after_game_opens(handle: tauri::AppHandle, run_id: String) {
 struct TauriAccountHost(tauri::AppHandle);
 
 impl AccountHost for TauriAccountHost {
-    fn account(&self) -> AccountSummary {
-        self.0.state::<AppState>().account()
+    fn auth_status(&self) -> AuthStatus {
+        self.0.state::<AppState>().auth_status()
     }
-    fn set_account(&self, account: AccountSummary) {
-        self.0.state::<AppState>().set_account(account);
+    fn set_auth_status(&self, status: AuthStatus) {
+        self.0.state::<AppState>().set_auth_status(status);
     }
     fn accounts_file(&self) -> AccountsFile {
         self.0.state::<AppState>().accounts_file()
     }
-    fn save_accounts_file(&self, accounts: AccountsFile) -> LauncherResult<()> {
-        self.0.state::<AppState>().save_accounts_file(accounts)
+    fn update_accounts_file(
+        &self,
+        change: Box<dyn FnOnce(&mut AccountsFile) + Send + '_>,
+    ) -> LauncherResult<()> {
+        self.0.state::<AppState>().update_accounts_file(change)
     }
     fn launch_owns_account(&self) -> bool {
         self.0
@@ -242,26 +245,6 @@ fn resolve_location(app: &tauri::AppHandle) -> LauncherResult<location::DataLoca
     ))
 }
 
-/// The account that authorizes launches. Debug builds started with
-/// `LAUNCHER_NOTOKEN_PROFILE` use the no-token test profile instead (D-030).
-fn launch_authorizer(auth: &Arc<AuthService>) -> Arc<dyn launch::service::Authorizer> {
-    #[cfg(debug_assertions)]
-    if let Some(profile) = launch::notoken::NoTokenProfile::from_env() {
-        return Arc::new(profile);
-    }
-    Arc::new(Arc::clone(auth))
-}
-
-/// The no-token profile of "Play demo" (D-033); in debug builds the test profile's
-/// name if set.
-fn notoken_authorizer() -> Arc<dyn launch::service::Authorizer> {
-    #[cfg(debug_assertions)]
-    if let Some(profile) = launch::notoken::NoTokenProfile::from_env() {
-        return Arc::new(profile);
-    }
-    Arc::new(launch::notoken::NoTokenProfile::default())
-}
-
 /// Creates state and services; any failure stops the launcher before a window opens.
 fn setup(app: &mut tauri::App) -> Result<(), Box<dyn std::error::Error>> {
     let handle = app.handle().clone();
@@ -310,15 +293,12 @@ fn setup(app: &mut tauri::App) -> Result<(), Box<dyn std::error::Error>> {
     let auth = Arc::new(create_auth_service(app.handle())?);
     app.manage(Arc::clone(&auth));
     let launcher = source.map(|source| {
-        Arc::new(
-            launch::service::LaunchService::new(
-                Arc::new(TauriLaunchHost(app.handle().clone())),
-                source as Arc<dyn install::service::PlanSource>,
-                launch_authorizer(&auth),
-                &version,
-            )
-            .with_notoken(notoken_authorizer()),
-        )
+        Arc::new(launch::service::LaunchService::new(
+            Arc::new(TauriLaunchHost(app.handle().clone())),
+            source as Arc<dyn install::service::PlanSource>,
+            Arc::new(Arc::clone(&auth)),
+            &version,
+        ))
     });
     // A game that outlived a previous launcher keeps everything blocked
     // until it exits.
@@ -418,6 +398,10 @@ fn handlers<R: tauri::Runtime>() -> impl Fn(tauri::ipc::Invoke<R>) -> bool + Sen
         commands::cancel_login,
         commands::sign_out,
         commands::verify_account,
+        commands::add_notoken_profile,
+        commands::remove_notoken_profile,
+        commands::set_default_profile,
+        commands::set_instance_profile,
         commands::open_external,
         commands::list_supported_versions,
         commands::preview_install_plan,
@@ -459,6 +443,10 @@ fn handlers<R: tauri::Runtime>() -> impl Fn(tauri::ipc::Invoke<R>) -> bool + Sen
         commands::cancel_login,
         commands::sign_out,
         commands::verify_account,
+        commands::add_notoken_profile,
+        commands::remove_notoken_profile,
+        commands::set_default_profile,
+        commands::set_instance_profile,
         commands::open_external,
         commands::list_supported_versions,
         commands::preview_install_plan,

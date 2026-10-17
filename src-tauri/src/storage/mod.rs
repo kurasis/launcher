@@ -404,6 +404,7 @@ mod tests {
             java_provider: None,
             custom_java: None,
             jvm_arguments: String::new(),
+            profile: None,
         }
     }
 

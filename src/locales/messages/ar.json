@@ -794,6 +794,9 @@
     "The file dialog failed.": "تعذّر فتح نافذة اختيار الملف.",
     "This Java may not run this game. Confirm the choice to use it anyway.": "قد لا تشغّل Java هذه اللعبة. أكّد الاختيار لاستخدامها على أي حال.",
     "This program could not be started as Java.": "تعذّر تشغيل هذا البرنامج بوصفه Java.",
-    "Use at most {max} JVM options.": "استخدم {max} من خيارات JVM على الأكثر."
+    "Use at most {max} JVM options.": "استخدم {max} من خيارات JVM على الأكثر.",
+    "A profile with this name already exists.": "يوجد ملف شخصي بهذا الاسم بالفعل.",
+    "The account answered with a different Minecraft profile.": "أجاب الحساب بملف Minecraft شخصي مختلف.",
+    "This account or profile no longer exists.": "لم يعد هذا الحساب أو الملف الشخصي موجودًا."
   }
 }
