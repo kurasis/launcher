@@ -123,6 +123,9 @@ export const strings = {
     repair: 'Repair',
     verify: 'Verify files',
     play: 'Play',
+    playDemo: 'Play demo',
+    demoHint:
+      'Without a signed-in account you can play the Minecraft demo: five in-game days, no multiplayer. Sign in with an account that owns Minecraft for the full game.',
     starting: 'Starting…',
     cancel: 'Cancel',
     cancelling: 'Cancelling…',

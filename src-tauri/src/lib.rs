@@ -185,10 +185,19 @@ fn resolve_data_root(app: &tauri::AppHandle) -> LauncherResult<DataRoot> {
 /// `LAUNCHER_NOTOKEN_PROFILE` use the demo-only test profile instead (D-030).
 fn launch_authorizer(auth: &Arc<AuthService>) -> Arc<dyn launch::service::Authorizer> {
     #[cfg(debug_assertions)]
-    if let Some(profile) = launch::test_profile::TestProfile::from_env() {
+    if let Some(profile) = launch::demo::DemoProfile::from_env() {
         return Arc::new(profile);
     }
     Arc::new(Arc::clone(auth))
+}
+
+/// The profile of "Play demo" (D-033); in debug builds the test profile's name if set.
+fn demo_authorizer() -> Arc<dyn launch::service::Authorizer> {
+    #[cfg(debug_assertions)]
+    if let Some(profile) = launch::demo::DemoProfile::from_env() {
+        return Arc::new(profile);
+    }
+    Arc::new(launch::demo::DemoProfile::default())
 }
 
 /// Creates state and services; any failure stops the launcher before a window opens.
@@ -234,12 +243,15 @@ fn setup(app: &mut tauri::App) -> Result<(), Box<dyn std::error::Error>> {
     let auth = Arc::new(create_auth_service(app.handle())?);
     app.manage(Arc::clone(&auth));
     let launcher = source.map(|source| {
-        Arc::new(launch::service::LaunchService::new(
-            Arc::new(TauriLaunchHost(app.handle().clone())),
-            source as Arc<dyn install::service::PlanSource>,
-            launch_authorizer(&auth),
-            &version,
-        ))
+        Arc::new(
+            launch::service::LaunchService::new(
+                Arc::new(TauriLaunchHost(app.handle().clone())),
+                source as Arc<dyn install::service::PlanSource>,
+                launch_authorizer(&auth),
+                &version,
+            )
+            .with_demo(demo_authorizer()),
+        )
     });
     // A game that outlived a previous launcher keeps everything blocked
     // until it exits.

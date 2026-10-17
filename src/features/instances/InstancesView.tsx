@@ -65,6 +65,7 @@ export function InstancesView({ snapshot }: InstancesViewProps) {
             <InstallPanel
               key={`install-${selected.id}`}
               instance={selected}
+              accountState={snapshot.account.state}
               activeOperation={snapshot.activeOperation}
               progress={snapshot.operationProgress}
               recentOperations={snapshot.recentOperations}

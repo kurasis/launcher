@@ -1,17 +1,18 @@
-//! Test profile for automated download and launch tests (debug builds only).
+//! Minecraft demo mode without an account (D-033).
 //!
-//! With `LAUNCHER_NOTOKEN_PROFILE=<name>` a debug build launches the game in
-//! Minecraft's demo mode under that name instead of asking the signed-in account,
-//! so installation, launch, supervision and window return can be tested on
-//! machines without a licensed account. It is owner-approved (D-030) and
-//! deliberately narrow:
+//! Minecraft's demo is the free, time-limited edition (five in-game days, no
+//! multiplayer). "Play demo" launches it under a local player name with Minecraft's
+//! `--demo` argument, so it works before or without a Microsoft sign-in:
 //!
-//! - the module does not exist in release builds (`cfg(debug_assertions)`), and
-//!   packages are release builds;
 //! - the game always runs with `--demo`; the profile has no token the Minecraft
 //!   services would accept, so online play and server joins fail as they should;
-//! - it never stands in for account verification: evidence gathered with it is
-//!   labelled "test profile, demo" and does not satisfy A03–A06 or A13.
+//! - full play still goes only through the signed-in account and its fresh access
+//!   check; nothing here unlocks it.
+//!
+//! Debug builds started with `LAUNCHER_NOTOKEN_PROFILE=<name>` use the same profile
+//! for every launch, so automated download and launch tests need no account (D-030).
+//! Evidence gathered that way is labelled "test profile, demo" and does not satisfy
+//! A03–A06 or A13.
 
 use sha1::{Digest, Sha1};
 
@@ -21,22 +22,34 @@ use crate::error::{LauncherError, LauncherResult};
 use crate::install::service::BoxFuture;
 use crate::secrets::SecretString;
 
-/// Environment variable naming the test profile.
+/// Environment variable naming the debug-build test profile.
+#[cfg(debug_assertions)]
 pub const ENV: &str = "LAUNCHER_NOTOKEN_PROFILE";
 
+/// Player name of demo launches.
+pub const DEFAULT_NAME: &str = "Player";
+
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct TestProfile {
+pub struct DemoProfile {
     name: String,
 }
 
-impl TestProfile {
+impl Default for DemoProfile {
+    fn default() -> Self {
+        Self {
+            name: DEFAULT_NAME.to_owned(),
+        }
+    }
+}
+
+impl DemoProfile {
     /// Accepts Minecraft player names: 3–16 ASCII letters, digits or `_`.
     pub fn new(name: &str) -> LauncherResult<Self> {
         let valid = (3..=16).contains(&name.len())
             && name.bytes().all(|b| b.is_ascii_alphanumeric() || b == b'_');
         if !valid {
             return Err(LauncherError::invalid_input(
-                "A test profile name has 3 to 16 letters, digits or underscores.",
+                "A demo player name has 3 to 16 letters, digits or underscores.",
             ));
         }
         Ok(Self {
@@ -44,7 +57,8 @@ impl TestProfile {
         })
     }
 
-    /// The profile named by `LAUNCHER_NOTOKEN_PROFILE`, if set and valid.
+    /// The debug-build test profile named by `LAUNCHER_NOTOKEN_PROFILE`, if set and valid.
+    #[cfg(debug_assertions)]
     pub fn from_env() -> Option<Self> {
         let name = std::env::var(ENV).ok()?;
         Self::new(name.trim()).ok()
@@ -66,7 +80,7 @@ impl TestProfile {
     }
 }
 
-impl Authorizer for TestProfile {
+impl Authorizer for DemoProfile {
     fn authorize(&self) -> BoxFuture<'_, LauncherResult<LaunchIdentity>> {
         Box::pin(async move {
             Ok(LaunchIdentity {
@@ -88,17 +102,17 @@ mod tests {
 
     #[test]
     fn names_follow_minecraft_rules() {
-        for ok in ["Abc", "TestPlayer_01", "abcdefghijklmnop"] {
-            assert!(TestProfile::new(ok).is_ok(), "{ok}");
+        for ok in ["Abc", "TestPlayer_01", "abcdefghijklmnop", DEFAULT_NAME] {
+            assert!(DemoProfile::new(ok).is_ok(), "{ok}");
         }
         for bad in ["", "ab", "abcdefghijklmnopq", "has space", "Jürgen", "a-b"] {
-            assert!(TestProfile::new(bad).is_err(), "{bad}");
+            assert!(DemoProfile::new(bad).is_err(), "{bad}");
         }
     }
 
     #[tokio::test]
     async fn the_identity_is_demo_only_and_stable() {
-        let profile = TestProfile::new("TestPlayer").unwrap();
+        let profile = DemoProfile::new("TestPlayer").unwrap();
         let identity = profile.authorize().await.unwrap();
         assert!(identity.demo);
         assert_eq!(identity.player_name, "TestPlayer");
@@ -106,9 +120,10 @@ mod tests {
         assert_eq!(identity.uuid.len(), 32);
         assert_eq!(&identity.uuid[12..13], "5", "version nibble");
         assert_ne!(
-            TestProfile::new("Other").unwrap().uuid(),
+            DemoProfile::new("Other").unwrap().uuid(),
             identity.uuid,
             "names map to different players"
         );
+        assert_eq!(DemoProfile::default().name(), DEFAULT_NAME);
     }
 }

@@ -45,6 +45,23 @@ struct Prepared {
 /// Lines of output kept in the run summary.
 const SUMMARY_TAIL_LINES: usize = 40;
 
+/// Who a launch plays as.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum LaunchMode {
+    /// The signed-in account, after a fresh access check.
+    #[default]
+    Account,
+    /// Minecraft's demo without an account (D-033).
+    Demo,
+}
+
+/// Per-run inputs taken from the installation and the request.
+struct RunSettings {
+    max_heap_mib: u32,
+    resolution: crate::storage::models::Resolution,
+    mode: LaunchMode,
+}
+
 /// Fresh account verification for a launch.
 pub trait Authorizer: Send + Sync {
     fn authorize(&self) -> BoxFuture<'_, LauncherResult<LaunchIdentity>>;
@@ -84,6 +101,7 @@ pub struct LaunchService {
     host: Arc<dyn LaunchHost>,
     source: Arc<dyn PlanSource>,
     auth: Arc<dyn Authorizer>,
+    demo: Arc<dyn Authorizer>,
     launcher_version: String,
     pending: Mutex<Option<(String, CancelToken)>>,
     requests: Mutex<Requests>,
@@ -118,12 +136,19 @@ impl LaunchService {
             host,
             source,
             auth,
+            demo: Arc::new(super::demo::DemoProfile::default()),
             launcher_version: launcher_version.to_owned(),
             pending: Mutex::default(),
             requests: Mutex::default(),
             stop_requested: Arc::default(),
             force_argfile: false,
         }
+    }
+
+    /// Uses `demo` for demo launches instead of the default demo profile.
+    pub fn with_demo(mut self, demo: Arc<dyn Authorizer>) -> Self {
+        self.demo = demo;
+        self
     }
 
     /// Always pass JVM arguments through an argfile (tests and diagnostics).
@@ -248,10 +273,21 @@ impl LaunchService {
         Some(run_id)
     }
 
+    /// Launches as the signed-in account.
     pub async fn launch(
         &self,
         request_id: &str,
         instance_id: InstanceId,
+    ) -> LauncherResult<RunSummary> {
+        self.launch_as(request_id, instance_id, LaunchMode::Account)
+            .await
+    }
+
+    pub async fn launch_as(
+        &self,
+        request_id: &str,
+        instance_id: InstanceId,
+        mode: LaunchMode,
     ) -> LauncherResult<RunSummary> {
         crate::state::ledger::validate_request_id(request_id)?;
         if let Some(run) = self.known_run(request_id, instance_id)? {
@@ -319,8 +355,11 @@ impl LaunchService {
                 &root,
                 instance_id,
                 run_uuid,
-                instance.max_heap_mib,
-                instance.resolution,
+                RunSettings {
+                    max_heap_mib: instance.max_heap_mib,
+                    resolution: instance.resolution,
+                    mode,
+                },
                 &cancel,
             )
             .await;
@@ -405,8 +444,7 @@ impl LaunchService {
         root: &DataRoot,
         instance_id: InstanceId,
         run: Uuid,
-        max_heap_mib: u32,
-        resolution: crate::storage::models::Resolution,
+        settings: RunSettings,
         cancel: &CancelToken,
     ) -> LauncherResult<Prepared> {
         let check_cancel = || {
@@ -466,9 +504,18 @@ impl LaunchService {
         )?;
         check_cancel()?;
 
-        // Fresh access check; without it Java is never started.
+        // Fresh access check (or the demo profile); without it Java is never started.
+        let RunSettings {
+            max_heap_mib,
+            resolution,
+            mode,
+        } = settings;
+        let authorizer = match mode {
+            LaunchMode::Account => &self.auth,
+            LaunchMode::Demo => &self.demo,
+        };
         let identity = tokio::select! {
-            identity = self.auth.authorize() => identity?,
+            identity = authorizer.authorize() => identity?,
             () = cancel.cancelled() => {
                 return Err(LauncherError::new(ErrorCode::OperationCancelled, "The launch was cancelled."));
             }

@@ -533,7 +533,7 @@ replaces it), `superseded`.
 - **Context:** without a project-owned Microsoft client ID no launch can be authorized,
   so nothing after preflight could be tested automatically. The owner approved a test
   profile for automated download and launch tests.
-- **Decision:** `launch::test_profile` exists only in debug builds and tests
+- **Decision** (the profile now lives in `launch::demo`, see D-033): `launch::test_profile` exists only in debug builds and tests
   (`cfg(debug_assertions)`); packages are release builds and contain no code path to
   it. A debug build started with `LAUNCHER_NOTOKEN_PROFILE=<name>` authorizes launches with
   that name, a UUID derived from it and a placeholder token, and always adds Minecraft's
@@ -587,3 +587,23 @@ replaces it), `superseded`.
   fonts are used. Light and dark themes both remain; reduced-motion disables
   transitions. The window title, package and binary names stay as in D-031.
 - **Verification:** `npm run check`; release build screenshot in the README.
+
+## D-033 — Demo play without an account
+
+- **Status:** accepted (owner decision, 2026-10-17) · **Affects:** A11, A12; supersedes the
+  "no demo bypass" rule of docs/spec/README.md and P04 for the demo only
+- **Context:** without a project-owned Microsoft client ID nobody can sign in, so a
+  packaged build could install the game but never start it. The owner asked for the demo
+  to be playable without keys.
+- **Decision:** when the account does not have verified access, the Play button becomes
+  **Play demo**. It launches Minecraft's demo edition (`--demo`: five in-game days, no
+  multiplayer) under the local player name "Player" with a placeholder token that every
+  Minecraft service rejects. `launch_game` takes `demo: true` for it; the Rust core then
+  uses `launch::demo::DemoProfile` instead of the account (`LaunchMode::Demo`), with the
+  same installation, integrity and supervision checks as any launch. The debug test
+  profile of D-030 is the same profile under another name.
+- **Limits:** full play is unchanged: it always goes through the signed-in account and a
+  fresh access check, and no build path removes `--demo` from a demo launch. Demo
+  evidence never counts as account verification (A03–A06, A13).
+- **Verification:** unit tests (`demo_launches_need_no_account_and_always_run_the_demo`,
+  `InstallPanel` demo and Play cases); a release build started the real demo.
