@@ -2,7 +2,8 @@
 //! access and recovery", doc 10 rule 6).
 //!
 //! While a game runs, `locks/active-run.json` names its PID and the process
-//! start time reported by the OS. At startup a record whose PID still exists
+//! start time reported by the OS (on Linux relative to boot, with the boot ID).
+//! At startup a record whose PID still exists
 //! with the same start time and executable is a surviving game: it is not
 //! adopted (its pipes are gone), but it holds the global activity permit until it
 //! exits, so no launch, install or repair can touch shared files meanwhile. A
@@ -24,11 +25,9 @@ use crate::storage::paths::{DataRoot, InstanceId};
 /// Poll interval while waiting for a surviving game to exit.
 pub const WATCH_INTERVAL: Duration = Duration::from_secs(2);
 
-/// Allowed difference between recorded and observed process start times. Linux
-/// derives them from the kernel's boot time, which is wall clock minus uptime and
-/// moves when the clock is corrected (NTP), so the same process can be reported
-/// a second or more apart. A reused PID would also need the same executable and
-/// a start within this window of a game that had to exit first.
+/// Allowed difference between recorded and observed process start times, for
+/// rounding in the OS report. A reused PID would also need the same executable
+/// and a start within this window of a game that had to exit first.
 pub const START_TOLERANCE_SECS: u64 = 5;
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -38,8 +37,13 @@ pub struct ActiveRunRecord {
     pub run_id: String,
     pub instance_id: InstanceId,
     pub pid: u32,
-    /// Process start time in seconds since the epoch, as reported by the OS.
+    /// Process start time in seconds: since boot on Linux, otherwise since the
+    /// epoch as reported by the OS.
     pub process_start: u64,
+    /// Linux boot ID when the record was written; a record from another boot
+    /// never matches.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub boot_id: Option<String>,
     pub executable: PathBuf,
     pub started_at: DateTime<Utc>,
 }
@@ -58,7 +62,46 @@ pub fn process_identity(pid: u32) -> Option<(u64, Option<PathBuf>)> {
         ProcessRefreshKind::nothing().with_exe(UpdateKind::Always),
     );
     let process = system.process(pid)?;
-    Some((process.start_time(), process.exe().map(Path::to_path_buf)))
+    let start = boot_relative_start(pid.as_u32()).unwrap_or_else(|| process.start_time());
+    Some((start, process.exe().map(Path::to_path_buf)))
+}
+
+/// Linux reports start times as boot time plus the process's start tick, and its
+/// boot time is wall clock minus uptime, so it moves whenever the clock is
+/// corrected (NTP, resume from sleep). The start tick itself never changes:
+/// seconds since boot from `/proc/<pid>/stat`.
+#[cfg(target_os = "linux")]
+fn boot_relative_start(pid: u32) -> Option<u64> {
+    let stat = std::fs::read_to_string(format!("/proc/{pid}/stat")).ok()?;
+    let ticks = start_ticks(&stat)?;
+    let per_second = rustix::param::clock_ticks_per_second();
+    (per_second > 0).then(|| ticks / per_second)
+}
+
+#[cfg(not(target_os = "linux"))]
+fn boot_relative_start(_pid: u32) -> Option<u64> {
+    None
+}
+
+/// Field 22 (`starttime`) of a `/proc/<pid>/stat` line. The command name in field
+/// 2 may contain spaces and parentheses, so fields are counted after its last `)`.
+#[cfg_attr(not(target_os = "linux"), allow(dead_code))]
+fn start_ticks(stat: &str) -> Option<u64> {
+    let rest = &stat[stat.rfind(')')? + 1..];
+    // After the name come field 3 (state) onwards: starttime is the 20th.
+    rest.split_whitespace().nth(19)?.parse().ok()
+}
+
+/// The current Linux boot ID; `None` elsewhere.
+fn boot_id() -> Option<String> {
+    if cfg!(target_os = "linux") {
+        std::fs::read_to_string("/proc/sys/kernel/random/boot_id")
+            .ok()
+            .map(|id| id.trim().to_owned())
+            .filter(|id| !id.is_empty())
+    } else {
+        None
+    }
 }
 
 /// Records the running game. Best effort: a failure only weakens recovery.
@@ -78,6 +121,7 @@ pub fn record(
         instance_id,
         pid,
         process_start,
+        boot_id: boot_id(),
         executable: executable.to_path_buf(),
         started_at: Utc::now(),
     };
@@ -102,6 +146,9 @@ pub fn read(root: &DataRoot) -> Option<ActiveRunRecord> {
 
 /// True while the recorded process is still the same process.
 pub fn is_alive(record: &ActiveRunRecord) -> bool {
+    if record.boot_id.is_some() && record.boot_id != boot_id() {
+        return false;
+    }
     process_identity(record.pid).is_some_and(|(start, exe)| {
         start.abs_diff(record.process_start) <= START_TOLERANCE_SECS
             && exe.is_none_or(|exe| same_executable(&exe, &record.executable))
@@ -217,6 +264,42 @@ mod tests {
         let mut other = read(&root).unwrap();
         other.executable = PathBuf::from("/definitely/not/java");
         assert!(!is_alive(&other));
+        let _ = child.kill();
+        let _ = child.wait();
+    }
+
+    #[test]
+    fn start_ticks_skip_command_names_with_spaces_and_parentheses() {
+        let stat = "4242 (my (odd) game) S 1 4242 4242 0 -1 4194560 100 0 0 0 5 3 0 0 \
+                    20 0 1 0 987654 1000 200";
+        assert_eq!(start_ticks(stat), Some(987_654));
+        assert_eq!(start_ticks("4242 (cut short) S 1"), None);
+        assert_eq!(start_ticks("no parentheses"), None);
+    }
+
+    #[cfg(target_os = "linux")]
+    #[test]
+    fn linux_start_times_count_from_boot_and_records_from_another_boot_never_match() {
+        let (_dir, root) = root();
+        let (mut child, exe) = sleeper();
+        let (start, _) = process_identity(child.id()).unwrap();
+        // Seconds since boot, not since the epoch: unaffected by clock corrections.
+        assert!(start <= System::uptime(), "{start}");
+        assert!(record(
+            &root,
+            "run-4",
+            InstanceId::generate(),
+            child.id(),
+            &exe
+        ));
+        let mut recorded = read(&root).unwrap();
+        assert!(recorded.boot_id.is_some());
+        assert!(is_alive(&recorded));
+        recorded.boot_id = Some("00000000-0000-0000-0000-000000000000".to_owned());
+        assert!(
+            !is_alive(&recorded),
+            "same PID after a reboot is another process"
+        );
         let _ = child.kill();
         let _ = child.wait();
     }
