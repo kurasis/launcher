@@ -111,8 +111,18 @@ jobs:
       - run: scripts/smoke/linux.sh packages/*.deb packages/*.AppImage
 
   windows:
-    name: Build and smoke windows-x64
-    runs-on: windows-2025
+    name: Build and smoke ${{ matrix.name }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: windows-x64
+            os: windows-2025
+          # Windows 11 on ARM: the native arm64 build, and the place where the
+          # interface is checked on Windows 11.
+          - name: windows-arm64
+            os: windows-11-arm
+    runs-on: ${{ matrix.os }}
     defaults:
       run:
         shell: bash
@@ -124,8 +134,19 @@ jobs:
           node-version-file: .nvmrc
           cache: npm
 
+      - name: Install rustup (Windows on ARM images may lack it)
+        run: |
+          if ! command -v rustup >/dev/null; then
+            curl -sSfL -o "$RUNNER_TEMP/rustup-init.exe" \
+              https://static.rust-lang.org/rustup/dist/aarch64-pc-windows-msvc/rustup-init.exe
+            "$RUNNER_TEMP/rustup-init.exe" -y --default-toolchain none --profile minimal
+            echo "$USERPROFILE\\.cargo\\bin" >> "$GITHUB_PATH"
+          fi
+
       - name: Install pinned Rust toolchain
-        run: rustup show active-toolchain || rustup toolchain install
+        run: |
+          rustup show active-toolchain || rustup toolchain install
+          rustc -vV
 
       - uses: Swatinem/rust-cache@v2
         with:
@@ -138,7 +159,7 @@ jobs:
 
       - name: Checksums and build metadata
         run: |
-          node scripts/package-metadata.mjs --target windows-x64 --out dist-packages \
+          node scripts/package-metadata.mjs --target ${{ matrix.name }} --out dist-packages \
             --signing "unsigned (no code-signing certificate configured)" \
             src-tauri/target/release/bundle/nsis/*-setup.exe
 
@@ -150,14 +171,14 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v5
         with:
-          name: console-window-windows-x64
+          name: console-window-${{ matrix.name }}
           path: ${{ runner.temp }}/console-window.png
           retention-days: ${{ env.RETENTION_DAYS }}
           if-no-files-found: ignore
 
       - uses: actions/upload-artifact@v5
         with:
-          name: launcher-windows-x64
+          name: launcher-${{ matrix.name }}
           path: dist-packages
           retention-days: ${{ env.RETENTION_DAYS }}
           if-no-files-found: error
