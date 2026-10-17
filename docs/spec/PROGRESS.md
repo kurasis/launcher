@@ -10,7 +10,7 @@ Allowed states: `not_started`, `in_progress`, `blocked`, `done`. A partially imp
 | [P02](phases/P02-CORE-STORAGE-AND-IPC.md) | done | [PR #2](https://github.com/kurasis/launcher/pull/2); 89 Rust + 19 frontend tests, CI 5/5, host GUI demo; see [VERIFICATION.md](../VERIFICATION.md#p02--rust-state-storage-and-typed-ipc) | GUI demo on Linux x64 only; other targets via CI tests |
 | [P03](phases/P03-LIFECYCLE-SPIKE.md) | done | [PR #3](https://github.com/kurasis/launcher/pull/3); lifecycle scenarios + 40 cycles on Linux x64 host, CI 5/5; see [VERIFICATION.md](../VERIFICATION.md#p03--early-window-and-process-lifecycle-proof) | Window behaviour unverified on Windows/macOS/Wayland (P13); memory growth ≈85 KiB/cycle tracked for A23 |
 | [P04](phases/P04-AUTHENTICATION-AND-ACCESS.md) | blocked | Implementation and 44 synthetic auth tests pass; see [VERIFICATION.md](../VERIFICATION.md#p04--microsoft-login-and-current-game-access) and [AUTH-CONTRACT.md](../AUTH-CONTRACT.md) | Live positive sign-in impossible: no project-owned Microsoft client ID / Minecraft API approval (owner action). P05–P08 proceed meanwhile |
-| [P05](phases/P05-CATALOG-AND-INSTALL-PLAN.md) | not_started | — | — |
+| [P05](phases/P05-CATALOG-AND-INSTALL-PLAN.md) | in_progress | Live catalog + plans for both baselines on 4 targets, cross-checked independently; see [VERIFICATION.md](../VERIFICATION.md#p05--minecraft-metadata-and-deterministic-install-planning) | Waiting for CI on the pull request; metadata success is not game compatibility (P13) |
 | [P06](phases/P06-DOWNLOAD-ENGINE.md) | not_started | — | — |
 | [P07](phases/P07-MANAGED-JAVA.md) | not_started | — | — |
 | [P08](phases/P08-COMPLETE-GAME-INSTALLER.md) | not_started | — | — |

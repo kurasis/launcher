@@ -13,6 +13,7 @@ pub mod external;
 pub mod install;
 pub mod launch;
 pub mod lifecycle;
+pub mod net;
 pub mod runtime;
 pub mod secrets;
 pub mod state;
@@ -129,6 +130,18 @@ pub fn run() {
                 MemoryPolicy::detect(),
                 Box::new(TauriSink(handle)),
             );
+            let metadata = match state.data_root() {
+                Some(root) => Some(Arc::new(catalog::source::MetadataService::new(
+                    net::PublicClient::new(
+                        net::SourcePolicy::MojangMetadata,
+                        &app.package_info().version.to_string(),
+                    )
+                    .map_err(|e| e.message)?,
+                    root,
+                ))),
+                None => None,
+            };
+            app.manage(commands::Metadata(metadata));
             app.manage(state);
             let auth = Arc::new(create_auth_service(app.handle())?);
             app.manage(Arc::clone(&auth));
@@ -183,6 +196,8 @@ fn handlers<R: tauri::Runtime>() -> impl Fn(tauri::ipc::Invoke<R>) -> bool + Sen
         commands::sign_out,
         commands::verify_account,
         commands::open_external,
+        commands::list_supported_versions,
+        commands::preview_install_plan,
         commands::start_lifecycle_test,
         commands::stop_lifecycle_test,
     ]
@@ -204,5 +219,7 @@ fn handlers<R: tauri::Runtime>() -> impl Fn(tauri::ipc::Invoke<R>) -> bool + Sen
         commands::sign_out,
         commands::verify_account,
         commands::open_external,
+        commands::list_supported_versions,
+        commands::preview_install_plan,
     ]
 }

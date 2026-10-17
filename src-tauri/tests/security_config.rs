@@ -137,6 +137,8 @@ fn main_window_capability_grants_only_app_commands() {
             "allow-sign-out",
             "allow-verify-account",
             "allow-open-external",
+            "allow-list-supported-versions",
+            "allow-preview-install-plan",
             "allow-start-lifecycle-test",
             "allow-stop-lifecycle-test",
         ]

@@ -196,7 +196,7 @@ pub struct LockedRuntime {
     pub tree_receipt_sha256: Sha256,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum ArtifactRole {
     Client,

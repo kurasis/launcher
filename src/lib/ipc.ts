@@ -8,12 +8,14 @@ import {
   type AppInfo,
   type AppSnapshot,
   type BackendEvent,
+  type CatalogView,
   type CreateInstancePayload,
   type ExternalLink,
   type InstanceSummary,
   type LauncherError,
   type LifecycleScenario,
   type MutationRequest,
+  type PlanSummary,
   type QuitAction,
   type QuitResult,
   type RunSummary,
@@ -52,6 +54,10 @@ export const ipc = {
   verifyAccount: (requestId?: string): Promise<void> =>
     invoke('verify_account', { request: mutation({}, requestId) }),
   openExternal: (link: ExternalLink): Promise<void> => invoke('open_external', { link }),
+  listSupportedVersions: (refresh: boolean): Promise<CatalogView> =>
+    invoke<CatalogView>('list_supported_versions', { refresh }),
+  previewInstallPlan: (versionId: string): Promise<PlanSummary> =>
+    invoke<PlanSummary>('preview_install_plan', { versionId }),
   requestQuit: (action: QuitAction, requestId?: string): Promise<QuitResult> =>
     invoke<QuitResult>('request_quit', { request: mutation({ action }, requestId) }),
   /** Debug builds only; release builds have no handler for this command. */

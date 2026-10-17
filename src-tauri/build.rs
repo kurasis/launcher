@@ -20,6 +20,8 @@ fn main() {
         "sign_out",
         "verify_account",
         "open_external",
+        "list_supported_versions",
+        "preview_install_plan",
         // Registered only in debug builds; release builds have no handler for them.
         "start_lifecycle_test",
         "stop_lifecycle_test",

@@ -1,4 +1,6 @@
-//! Version manifest parsing and supported-version filtering. The live catalog is
-//! implemented in P05; the shipped compatibility policy exists from P02.
+//! Version catalog, supported-version filtering and metadata caching
+//! (docs/spec/04 "Metadata resolution", doc 01 "Supported release policy").
 
 pub mod compatibility;
+pub mod manifest;
+pub mod source;

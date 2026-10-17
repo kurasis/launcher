@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-preview-install-plan"
+description = "Enables the preview_install_plan command without any pre-configured scope."
+commands.allow = ["preview_install_plan"]
+
+[[permission]]
+identifier = "deny-preview-install-plan"
+description = "Denies the preview_install_plan command without any pre-configured scope."
+commands.deny = ["preview_install_plan"]

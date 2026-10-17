@@ -8,9 +8,11 @@ use std::sync::Arc;
 
 use crate::auth::client_id::{self, ClientIdStatus};
 use crate::auth::service::AuthService;
+use crate::catalog::source::{CatalogView, MetadataService, PlanSummary};
 use crate::error::LauncherResult;
 use crate::external::{self, ExternalLink};
 use crate::lifecycle::{LifecycleController, RunHandles};
+use crate::net::PublicClient;
 use crate::state::AppState;
 use crate::state::dto::{
     AppSnapshot, CreateInstancePayload, InstanceSummary, MutationRequest, SettingsPatch,
@@ -258,4 +260,40 @@ pub fn open_external<R: Runtime>(app: AppHandle<R>, link: ExternalLink) -> Launc
         .map_err(|_| {
             crate::error::LauncherError::internal("The system browser could not be opened.")
         })
+}
+
+/// The metadata service, absent when DATA_ROOT is unavailable.
+pub struct Metadata(pub Option<Arc<MetadataService<PublicClient>>>);
+
+impl Metadata {
+    fn get(&self) -> LauncherResult<Arc<MetadataService<PublicClient>>> {
+        self.0.clone().ok_or_else(|| {
+            crate::error::LauncherError::new(
+                crate::error::ErrorCode::StorageUnavailable,
+                "Launcher data is unavailable.",
+            )
+        })
+    }
+}
+
+/// Supported versions intersected with the Mojang catalog (read-only query).
+#[tauri::command]
+pub async fn list_supported_versions(
+    metadata: State<'_, Metadata>,
+    refresh: bool,
+) -> LauncherResult<CatalogView> {
+    Ok(metadata.get()?.supported_versions(refresh).await)
+}
+
+/// Resolves the real game plan for this computer and summarizes it. Downloads
+/// only metadata; Java runtime size stays unknown until installation (P07).
+#[tauri::command]
+pub async fn preview_install_plan(
+    metadata: State<'_, Metadata>,
+    version_id: String,
+) -> LauncherResult<PlanSummary> {
+    let service = metadata.get()?;
+    let ctx = crate::install::rules::RuleContext::current()?;
+    let plan = service.plan(&version_id, &ctx).await?;
+    Ok(service.summarize(&plan))
 }
