@@ -733,7 +733,9 @@ arguments.
 Found and fixed: the free-space check asked sysinfo's disk list, which leaves out tmpfs
 and similar filesystems, so a data root there was measured against its parent mount and
 the install ran into `StorageFull` mid-download. The check now uses `statvfs` of the data
-root itself on Unix (D-029).
+root itself on Unix (D-029). The new unit test then failed on Windows CI: there the check
+had never worked, because the canonical `\\?\D:\…` path never matched a volume such as
+`D:\`. Windows now matches the absolute path without the verbatim prefix.
 
 ### Multiple processes (MV09)
 

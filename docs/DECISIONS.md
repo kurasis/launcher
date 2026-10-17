@@ -509,7 +509,10 @@ replaces it), `superseded`.
   directory itself (`rustix`, already in the dependency tree, safe API). sysinfo's disk
   list omits tmpfs and other filesystems, so a data root on one was measured against its
   parent mount and a full disk was only noticed mid-download. Windows keeps the volume
-  list, which includes every volume.
+  list, which includes every volume, but no longer canonicalizes the path first: the
+  verbatim `\\?\D:\…` form never matched a mount point such as `D:\`, so since P06
+  the Windows check silently returned "unknown" and was skipped. The new unit test
+  exposed it in CI.
 - **Webview descriptors:** destroying and recreating the webview (default "unload and
   return" mode) leaves one `timerfd` and one `WebKitSharedMemory` memfd open per cycle on
   Linux. Child supervision closes its own pipes and pidfds, and "keep open" mode shows no
