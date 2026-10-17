@@ -125,6 +125,15 @@ impl AppState {
                     });
                 }
                 // No job can be running yet: unfinished ones were interrupted.
+                if let Err(error) = crate::runtime::reconcile_runtimes(store.root()) {
+                    issues.push(StorageIssue {
+                        code: error.code,
+                        message:
+                            "An interrupted Java runtime installation could not be cleaned up."
+                                .into(),
+                        document: "runtimes".into(),
+                    });
+                }
                 if let Err(error) = crate::download::receipt::reconcile_jobs(store.root()) {
                     issues.push(StorageIssue {
                         code: error.code,

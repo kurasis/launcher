@@ -355,3 +355,44 @@ because reqwest's `previous()` includes the original request.
 ### CI results
 
 Recorded by the next phase's pull request (see the note at the top of this file).
+
+## P07 — Private Java runtime installation
+
+- **Host:** development host (Ubuntu 24.04.5 x86_64 container).
+- **Branch / PR:** `claude/p07-managed-java`, [kurasis/launcher#7](https://github.com/kurasis/launcher/pull/7).
+- **Evidence kind:** automated fixture tests (synthetic archives, fake `java` script) and
+  live API/download/execution on the Linux x64 host; other targets live-extracted only.
+
+### Automated tests (25, pass)
+
+| Area                   | Tests                                                                                                                                                                                                                                                                                                                                                                                                                                                                            |
+| ---------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Provider (4)           | Real API responses select the portable package (Windows: `d35f31e7…1636`, 48,999,141 bytes, as in doc 09); installer `.pkg` never chosen; other major/arch/OS/image type never substituted; bad links, hashes, sizes, names, vendor, JVM and EA releases ignored                                                                                                                                                                                                                 |
+| Extractor (8)          | Path normalization; link resolution; files/dirs/modes/internal links/hard links; escaping or absolute links, `..` and absolute entries, FIFOs and missing hard-link targets rejected; no write through a link; dangling links and loops; duplicates and case collisions; entry/file/total limits including a ZIP bomb; ZIP rules; single package root                                                                                                                            |
+| Probe (5)              | Property parsing and major/arch checks; Java paths per OS; filtered environment variables; output capped while the pipe keeps draining; hung process killed                                                                                                                                                                                                                                                                                                                      |
+| Install flow (5, Unix) | Download + SHA-256 + extract + receipt + probe + promote, notices kept, nothing left in staging; second install reuses without download and re-probes; changed, extra, re-linked file or damaged receipt detected **before execution** and rebuilt from the pinned archive; wrong archive bytes or an escaping link never extract or run Java; wrong major or missing `java` never promoted; JRE, JDK and a second digest with one release label get separate directories (MV05) |
+| Reconciliation (1)     | Interrupted promotion restored or cleaned; staging and archives removed                                                                                                                                                                                                                                                                                                                                                                                                          |
+
+### Live checks (2026-10-17)
+
+`cargo test --test live_runtime -- --ignored --nocapture --test-threads=1`:
+
+| Target (host = Linux x64) | Package                                                                                          | Result                                                                                                                                                      |
+| ------------------------- | ------------------------------------------------------------------------------------------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Java 21 Linux x64         | `OpenJDK21U-jre_x64_linux_hotspot_21.0.12.1_1.tar.gz`, 52,059,408 bytes, SHA-256 `24131497…b500` | Installed in 22.7 s; probe `java.version=21.0.12.1`, spec 21, `os.arch=amd64`, vendor Eclipse Adoptium; tree receipt `78170dcf…056e`; second install reused |
+| Java 25 Linux x64         | `OpenJDK25U-jre_x64_linux_hotspot_25.0.4.1_1.tar.gz`, 61,718,288 bytes, SHA-256 `1731a34b…a219`  | Installed in 27.0 s; probe `25.0.4.1`, spec 25, `amd64`; tree receipt `c94c7b1e…ad87`; second install reused                                                |
+| Java 21 Windows x64       | `OpenJDK21U-jre_x64_windows_hotspot_21.0.12.1_1.zip`                                             | SHA-256 verified, extracted: 315 files, 62 dirs, 0 links, 151.5 MB; `bin/java.exe` present; **not executed**                                                |
+| Java 25 macOS aarch64     | `OpenJDK25U-jre_aarch64_mac_hotspot_25.0.4.1_1.tar.gz`                                           | SHA-256 verified, extracted: 268 files, 64 dirs, 0 links, 189.6 MB; `Contents/Home/bin/java` present; **not executed**                                      |
+| Java 21 macOS x64         | `OpenJDK21U-jre_x64_mac_hotspot_21.0.12.1_1.tar.gz`                                              | SHA-256 verified, extracted: 260 files, 65 dirs, 0 links, 132.5 MB; `Contents/Home/bin/java` present; **not executed**                                      |
+
+All eight major/target combinations resolve to a JRE (no JDK fallback needed).
+
+### Not verified in P07
+
+- Executing the managed Java on Windows and macOS (P13 target machines); CI runs the
+  fake-`java` install flow on macOS and the extractor/provider tests on Windows.
+- Gatekeeper/quarantine behaviour of an extracted macOS runtime.
+
+### CI results
+
+Recorded by the next phase's pull request.

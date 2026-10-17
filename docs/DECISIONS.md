@@ -333,3 +333,38 @@ replaces it), `superseded`.
   executor has no IPC command of its own: no generic frontend download API exists. The
   `operation_progress`/`operation_finished` events and snapshot fields are wired in P08,
   where `install_instance` and `repair_instance` become the first callers.
+
+## D-023 — Managed Java runtime installation
+
+- **Status:** accepted · **Phase:** P07 · **Affects:** FR06, A10, A11, A16, doc 10 MV05
+- **Provider:** Adoptium `v3/assets/latest/<major>/hotspot` with exact `os`, `architecture`,
+  `image_type=jre`, `vendor=eclipse`. Only `binary.package` (ZIP on Windows, tar.gz on
+  Linux/macOS) is used; entries must match vendor, major, OS, architecture, image type,
+  HotSpot, normal heap and GA (when a release type is supplied). Package links must pass
+  the Adoptium source policy; SHA-256 and a size of at most 512 MiB are required. When no
+  JRE exists, a JDK of the same major is chosen and recorded (`jdkFallback`); a different
+  major or architecture is never substituted. The resolved `RuntimePackage` is the pinned
+  record for job receipts and install locks (P08).
+- **Archives:** `tar` 0.4.46 + `flate2` 1.1.10 and `zip` 8.6.0 (9.x was less than two weeks
+  old). The extractor normalizes every path, rejects absolute paths, `..`, drive and
+  alternate-stream syntax, NUL/control characters, Windows device names, duplicates and
+  case collisions, special files, entries below files or links, and links that leave the
+  package or dangle; hard links become copies of earlier files. Limits: 20,000 entries,
+  512 MiB per file, 1 GiB in total, counted on the bytes actually written. Links are
+  created on Unix only (current Windows packages contain none).
+- **Tree receipt:** `.kurasis-tree.json` lists every directory, file (size, SHA-256,
+  executable bit) and link target, sorted by path; its SHA-256 is stored in
+  `.kurasis-runtime.json` together with the pinned package and the probe result, and goes
+  into the install lock as `treeReceiptSha256`. Reuse requires both receipts and every
+  file to match; any difference rebuilds the runtime from the pinned archive in fresh
+  staging.
+- **Probe:** `java -XshowSettings:properties -version` with `JDK_JAVA_OPTIONS`,
+  `JAVA_TOOL_OPTIONS`, `_JAVA_OPTIONS` and `CLASSPATH` removed, no shell, no console window
+  on Windows, 64 KiB capture per stream, 30 s timeout. `java.specification.version` must
+  equal the required major and `os.arch` the target architecture.
+- **Promotion:** staging lives under `runtimes/` (same filesystem); an existing directory
+  is moved to `.old-<sha256>-<uuid>` until the new one is in place. Startup reconciliation
+  removes staging and archives and restores or deletes `.old-*` directories. The archive
+  is deleted after installation; Repair downloads the pinned package again.
+- **Never touched:** PATH, JAVA_HOME, registry associations, any system or official
+  launcher Java.

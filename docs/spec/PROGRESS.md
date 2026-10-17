@@ -12,7 +12,7 @@ Allowed states: `not_started`, `in_progress`, `blocked`, `done`. A partially imp
 | [P04](phases/P04-AUTHENTICATION-AND-ACCESS.md) | blocked | [PR #4](https://github.com/kurasis/launcher/pull/4) merged; 44 synthetic auth tests, CI 5/5; see [VERIFICATION.md](../VERIFICATION.md#p04--microsoft-login-and-current-game-access) and [AUTH-CONTRACT.md](../AUTH-CONTRACT.md) | Live positive sign-in impossible: no project-owned Microsoft client ID / Minecraft API approval (owner action). P05–P08 proceed meanwhile |
 | [P05](phases/P05-CATALOG-AND-INSTALL-PLAN.md) | done | [PR #5](https://github.com/kurasis/launcher/pull/5); live catalog + plans for both baselines on 4 targets, independent cross-check, CI 5/5; see [VERIFICATION.md](../VERIFICATION.md#p05--minecraft-metadata-and-deterministic-install-planning) | Metadata success is not game compatibility (P13) |
 | [P06](phases/P06-DOWNLOAD-ENGINE.md) | in_progress | 18 fixture tests + live smoke (cancel, retry, reuse); see [VERIFICATION.md](../VERIFICATION.md#p06--verified-cancellable-download-engine) | Waiting for CI; UI progress wiring lands with install in P08 (D-022) |
-| [P07](phases/P07-MANAGED-JAVA.md) | not_started | — | — |
+| [P07](phases/P07-MANAGED-JAVA.md) | in_progress | 25 automated tests; live install + probe of Temurin 21/25 on Linux x64, live extraction of Windows/macOS packages; see [VERIFICATION.md](../VERIFICATION.md#p07--private-java-runtime-installation) | Waiting for CI; Java execution on Windows/macOS unverified (P13) |
 | [P08](phases/P08-COMPLETE-GAME-INSTALLER.md) | not_started | — | — |
 | [P09](phases/P09-REAL-GAME-LAUNCH.md) | not_started | — | — |
 | [P10](phases/P10-BACKGROUND-AND-RETURN.md) | not_started | — | — |
