@@ -614,6 +614,11 @@ impl AppState {
         self.lock().data.settings.java_provider
     }
 
+    /// The current settings.
+    pub fn settings(&self) -> Settings {
+        self.lock().data.settings.clone()
+    }
+
     pub fn instance(&self, id: InstanceId) -> Option<InstanceFile> {
         self.lock().data.instances.get(&id).cloned()
     }
@@ -1263,6 +1268,12 @@ impl AppState {
                 }
                 if let Some(resolution) = patch.default_resolution {
                     settings.default_resolution = validation::validate_resolution(resolution)?;
+                }
+                if let Some(on) = patch.backup_after_play {
+                    settings.backup_after_play = on;
+                }
+                if let Some(keep) = patch.backup_keep {
+                    settings.backup_keep = crate::backup::validate_keep(keep)?;
                 }
                 if let Some(provider) = patch.java_provider {
                     settings.java_provider = provider;

@@ -64,6 +64,8 @@ export function snapshotFixture(overrides: Partial<AppSnapshot> = {}): AppSnapsh
       defaultMaxHeapMib: null,
       defaultResolution: { width: 1280, height: 720 },
       javaProvider: 'mojang',
+      backupAfterPlay: false,
+      backupKeep: 10,
       language: 'en',
       writable: true,
     },

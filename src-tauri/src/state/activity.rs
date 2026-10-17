@@ -103,6 +103,8 @@ fn busy_error(active: &ActiveActivity, requested: OperationKind) -> LauncherErro
         OperationKind::Repair => "repair",
         OperationKind::Launch => "launch",
         OperationKind::Relocate => "relocate",
+        OperationKind::Backup => "backup",
+        OperationKind::Restore => "restore",
     };
     let error = if active.kind == OperationKind::Launch && requested == OperationKind::Launch {
         LauncherError::new(

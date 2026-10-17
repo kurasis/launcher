@@ -6,6 +6,7 @@
 //! still empty are filled by the phase named in their documentation.
 
 pub mod auth;
+pub mod backup;
 pub mod catalog;
 pub mod commands;
 pub mod console;
@@ -125,6 +126,20 @@ impl launch::service::LaunchHost for TauriLaunchHost {
         self.0
             .state::<LifecycleController>()
             .restore_after_run(&self.0, run_id);
+        // Back up the worlds the session changed, if switched on (D-047).
+        let instance = self
+            .0
+            .state::<AppState>()
+            .snapshot()
+            .last_run
+            .filter(|r| r.run_id == run_id)
+            .and_then(|r| r.instance_id);
+        if let Some(instance) = instance {
+            let handle = self.0.clone();
+            std::thread::spawn(move || {
+                backup::after_play(&handle.state::<AppState>(), instance);
+            });
+        }
     }
 }
 
@@ -392,6 +407,10 @@ fn handlers<R: tauri::Runtime>() -> impl Fn(tauri::ipc::Invoke<R>) -> bool + Sen
         commands::check_java,
         commands::set_instance_java,
         commands::pick_java_file,
+        commands::list_backups,
+        commands::create_backup,
+        commands::restore_backup,
+        commands::delete_backup,
         commands::read_console,
         commands::request_quit,
         commands::begin_login,
@@ -437,6 +456,10 @@ fn handlers<R: tauri::Runtime>() -> impl Fn(tauri::ipc::Invoke<R>) -> bool + Sen
         commands::check_java,
         commands::set_instance_java,
         commands::pick_java_file,
+        commands::list_backups,
+        commands::create_backup,
+        commands::restore_backup,
+        commands::delete_backup,
         commands::read_console,
         commands::request_quit,
         commands::begin_login,

@@ -15,6 +15,7 @@
       "label": "Главное меню",
       "home": "Установки",
       "account": "Аккаунты",
+      "backups": "Копии",
       "settings": "Настройки",
       "diagnostics": "Диагностика",
       "about": "О программе"
@@ -421,7 +422,9 @@
       "repair": "Проверка файлов",
       "launch": "Игра запущена",
       "relocate": "Перенос данных",
-      "percent": "{percent}%"
+      "percent": "{percent}%",
+      "backup": "Резервное копирование",
+      "restore": "Восстановление копии"
     },
     "console": {
       "title": "Консоль",
@@ -467,7 +470,9 @@
         "install": "Установка",
         "repair": "Восстановление",
         "launch": "Запуск",
-        "relocate": "Перенос данных"
+        "relocate": "Перенос данных",
+        "backup": "Резервная копия",
+        "restore": "Восстановление копии"
       },
       "outcome": {
         "succeeded": "Успешно",
@@ -563,6 +568,45 @@
       "STORAGE_UNAVAILABLE": "Данные лаунчера недоступны.",
       "STORAGE_ERROR": "Файловая операция не удалась.",
       "INTERNAL": "Внутренняя ошибка лаунчера."
+    },
+    "backups": {
+      "title": "Резервные копии",
+      "hint": "Копия хранит каждый файл один раз: новая копия добавляет только то, что изменилось с прошлых. Можно сохранять отдельные миры или всю установку. Файлы игры, которые можно заново скачать через «Восстановить», не входят.",
+      "storage": "Копии занимают {size}",
+      "afterPlay": "Сохранять изменённые миры после игры",
+      "afterPlayHint": "Когда игровая сессия заканчивается, каждый изменённый мир копируется автоматически.",
+      "keep": "Сколько автокопий хранить на мир",
+      "keepHint": "Более старые автокопии удаляются. Копии, сделанные вами, остаются, пока вы их не удалите.",
+      "save": "Сохранить",
+      "installation": "Установка",
+      "worlds": "Миры",
+      "noWorlds": "В этой установке ещё нет миров.",
+      "backUp": "Сделать копию",
+      "lastBackup": "Последняя копия: {date}",
+      "never": "Копий ещё нет",
+      "whole": "Копия всей установки",
+      "wholeHint": "Миры, моды, настройки, наборы ресурсов и шейдеров этой установки.",
+      "list": "Копии этой установки",
+      "none": "Копий пока нет.",
+      "scopeWorld": "Мир «{name}»",
+      "scopeInstallation": "Вся установка",
+      "reason": {
+        "manual": "Вручную",
+        "after_play": "После игры",
+        "before_restore": "Перед восстановлением"
+      },
+      "size": "{files, number} файлов · {total} · новых {added}",
+      "restore": "Восстановить",
+      "restoreCopy": "Восстановить как копию",
+      "delete": "Удалить",
+      "confirmRestore": "Заменить {what} копией от {date}? Текущее состояние сначала будет сохранено.",
+      "confirmDelete": "Удалить копию от {date}? Файлы, которые нужны другим копиям, останутся.",
+      "working": "Выполняется…",
+      "created": "{what}: копия сделана.",
+      "restored": "Восстановлено.",
+      "restoredCopy": "Восстановлено как мир «{name}».",
+      "deleted": "Удалено; освобождено {size}.",
+      "busy": "Копирование и восстановление ждут, пока закончится текущая операция или игра."
     }
   },
   "errors": {
@@ -818,6 +862,14 @@
     "Use at most {max} JVM options.": "Используйте не более {max} параметров JVM.",
     "A profile with this name already exists.": "Профиль с таким именем уже есть.",
     "The account answered with a different Minecraft profile.": "Аккаунт ответил другим профилем Minecraft.",
-    "This account or profile no longer exists.": "Этого аккаунта или профиля больше нет."
+    "This account or profile no longer exists.": "Этого аккаунта или профиля больше нет.",
+    "Keep between 1 and {max} automatic backups.": "Храните от 1 до {max} автокопий.",
+    "There is nothing to back up yet.": "Копировать пока нечего.",
+    "This backup no longer exists.": "Этой копии больше нет.",
+    "This backup is damaged and cannot be restored.": "Копия повреждена, восстановить её нельзя.",
+    "This world name is invalid.": "Недопустимое имя мира.",
+    "A whole installation can only be restored in its place.": "Всю установку можно восстановить только на её место.",
+    "A file operation stopped unexpectedly.": "Файловая операция неожиданно прервалась.",
+    "The restore target already exists.": "Папка для восстановления уже существует."
   }
 }

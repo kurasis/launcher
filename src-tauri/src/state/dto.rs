@@ -102,6 +102,10 @@ pub struct SettingsPatch {
     pub java_provider: Option<JavaProvider>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub language: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub backup_after_play: Option<bool>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub backup_keep: Option<u32>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -114,6 +118,8 @@ pub struct SettingsView {
     pub default_resolution: Resolution,
     pub java_provider: JavaProvider,
     pub language: Language,
+    pub backup_after_play: bool,
+    pub backup_keep: u32,
     /// False when settings were written by a newer launcher or could not be read.
     pub writable: bool,
 }
@@ -128,6 +134,8 @@ impl SettingsView {
             default_resolution: settings.default_resolution,
             java_provider: settings.java_provider,
             language: settings.language.clone(),
+            backup_after_play: settings.backup_after_play,
+            backup_keep: settings.backup_keep,
             writable,
         }
     }

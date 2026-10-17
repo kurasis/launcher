@@ -99,7 +99,7 @@ export interface InstalledJava {
 }
 export type InstallationHealth =
   'not_installed' | 'ready' | 'needs_verification' | 'repair_required' | 'unsupported';
-export type OperationKind = 'install' | 'repair' | 'launch' | 'relocate';
+export type OperationKind = 'install' | 'repair' | 'launch' | 'relocate' | 'backup' | 'restore';
 
 /** How the data folder was chosen (D-043). */
 export type LocationMode = 'default' | 'custom' | 'portable';
@@ -234,6 +234,10 @@ export interface SettingsView {
   defaultResolution: Resolution;
   javaProvider: JavaProvider;
   language: Language;
+  /** Back up the worlds a game session changed, after it ends (D-047). */
+  backupAfterPlay: boolean;
+  /** Automatic backups kept per world. */
+  backupKeep: number;
   writable: boolean;
 }
 
@@ -513,6 +517,8 @@ export interface SettingsPatch {
   defaultResolution?: Resolution;
   javaProvider?: JavaProvider;
   language?: Language;
+  backupAfterPlay?: boolean;
+  backupKeep?: number;
 }
 
 interface EventEnvelope {
@@ -578,4 +584,30 @@ export interface ConsolePage {
   lastSeq: number;
   /** Entries dropped from the journal before this reader saw them. */
   missed: number;
+}
+
+/** What a backup holds (D-047). */
+export type BackupScope = { kind: 'world'; name: string } | { kind: 'installation' };
+
+export type BackupReason = 'manual' | 'after_play' | 'before_restore';
+
+export interface BackupInfo {
+  id: string;
+  instanceId: string;
+  instanceName: string;
+  versionLabel: string;
+  scope: BackupScope;
+  reason: BackupReason;
+  createdAt: string;
+  fileCount: number;
+  totalBytes: number;
+  /** Bytes this backup added; files shared with other backups count once. */
+  newBytes: number;
+}
+
+export interface BackupOverview {
+  /** Newest first. */
+  backups: BackupInfo[];
+  worlds: { instanceId: string; worlds: string[] }[];
+  storeBytes: number;
 }
