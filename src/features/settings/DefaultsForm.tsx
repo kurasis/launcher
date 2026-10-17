@@ -51,7 +51,6 @@ export function DefaultsForm({
         });
       }}
     >
-      <h3>{t.defaultsTitle}</h3>
       <Field
         label={d.memory}
         hint={

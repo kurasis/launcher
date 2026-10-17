@@ -29,6 +29,8 @@ pub const VERSION_TYPES: &[&str] = &["release", "snapshot", "old_beta", "old_alp
 
 /// Java major for descriptors that predate the `javaVersion` field.
 pub const LEGACY_JAVA_MAJOR: u16 = 8;
+/// Mojang runtime component for those descriptors (what Mojang's launcher uses).
+pub const LEGACY_JAVA_COMPONENT: &str = "jre-legacy";
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Library {
@@ -89,6 +91,8 @@ pub struct Descriptor {
     pub version_type: String,
     pub main_class: String,
     pub java_major: u16,
+    /// Mojang runtime component (`javaVersion.component`), e.g. `java-runtime-delta`.
+    pub java_component: Option<String>,
     pub client: Download,
     pub asset_index: AssetIndexRef,
     pub logging: Option<Logging>,
@@ -146,6 +150,16 @@ pub fn validate_relative_path(path: &str) -> LauncherResult<()> {
     }
 }
 
+/// Runtime component names are lowercase words joined by `-`.
+pub fn valid_component(name: &str) -> bool {
+    !name.is_empty()
+        && name.len() <= 64
+        && !name.starts_with('-')
+        && name
+            .chars()
+            .all(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || c == '-')
+}
+
 fn valid_main_class(name: &str) -> bool {
     !name.is_empty()
         && name.len() <= 256
@@ -179,14 +193,25 @@ pub fn parse(bytes: &[u8], expected_id: &str) -> LauncherResult<Descriptor> {
         return Err(unsupported("mainClass"));
     }
     // The oldest descriptors have no javaVersion; they all run on Java 8.
-    let java_major = match value.get("javaVersion") {
-        None => LEGACY_JAVA_MAJOR,
-        Some(java) => java
-            .get("majorVersion")
-            .and_then(Value::as_u64)
-            .and_then(|m| u16::try_from(m).ok())
-            .filter(|m| (8..=99).contains(m))
-            .ok_or_else(|| unsupported("javaVersion.majorVersion"))?,
+    let (java_major, java_component) = match value.get("javaVersion") {
+        None => (LEGACY_JAVA_MAJOR, Some(LEGACY_JAVA_COMPONENT.to_owned())),
+        Some(java) => (
+            java.get("majorVersion")
+                .and_then(Value::as_u64)
+                .and_then(|m| u16::try_from(m).ok())
+                .filter(|m| (8..=99).contains(m))
+                .ok_or_else(|| unsupported("javaVersion.majorVersion"))?,
+            match java.get("component") {
+                None => None,
+                Some(component) => Some(
+                    component
+                        .as_str()
+                        .filter(|c| valid_component(c))
+                        .ok_or_else(|| unsupported("javaVersion.component"))?
+                        .to_owned(),
+                ),
+            },
+        ),
     };
     let downloads = value
         .get("downloads")
@@ -290,6 +315,7 @@ pub fn parse(bytes: &[u8], expected_id: &str) -> LauncherResult<Descriptor> {
         version_type: version_type.to_owned(),
         main_class: main_class.to_owned(),
         java_major,
+        java_component,
         client,
         asset_index,
         logging,

@@ -82,6 +82,15 @@ export interface LauncherError {
 
 export type Theme = 'system' | 'light' | 'dark';
 export type DuringGameMode = 'unload_and_return' | 'keep_open';
+/** Where private Java runtimes come from (D-036). */
+export type JavaProvider = 'mojang' | 'temurin';
+
+/** The private Java runtime an installation uses. */
+export interface InstalledJava {
+  provider: JavaProvider;
+  major: number;
+  release: string;
+}
 export type InstallationHealth =
   'not_installed' | 'ready' | 'needs_verification' | 'repair_required' | 'unsupported';
 export type OperationKind = 'install' | 'repair' | 'launch';
@@ -126,6 +135,7 @@ export interface InstanceSummary {
   health: InstallationHealth;
   lastResult: LastResult | null;
   busy: boolean;
+  java: InstalledJava | null;
 }
 
 export interface SettingsView {
@@ -134,6 +144,7 @@ export interface SettingsView {
   selectedInstanceId: string | null;
   defaultMaxHeapMib: number | null;
   defaultResolution: Resolution;
+  javaProvider: JavaProvider;
   writable: boolean;
 }
 
@@ -372,6 +383,7 @@ export interface SettingsPatch {
   selectedInstanceId?: string;
   defaultMaxHeapMib?: number;
   defaultResolution?: Resolution;
+  javaProvider?: JavaProvider;
 }
 
 interface EventEnvelope {

@@ -65,7 +65,7 @@ its evidence with `--nocapture`.
 | --------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------- |
 | `cargo test --test live_metadata -- --ignored --nocapture`                                                      | Live version catalog and install plans                           |
 | `cargo test --test live_download -- --ignored --nocapture`                                                      | Verified downloads from the official hosts                       |
-| `cargo test --test live_runtime -- --ignored --nocapture --test-threads=1`                                      | Adoptium resolution, extraction and Java probes                  |
+| `cargo test --test live_runtime -- --ignored --nocapture --test-threads=1`                                      | Adoptium and Mojang runtime resolution, installs and Java probes |
 | `LAUNCHER_LIVE_ROOT=<dir> LAUNCHER_LIVE_VERSION=1.21.1 cargo test --test live_install -- --ignored --nocapture` | Full installation (`LAUNCHER_LIVE_REPAIR=1` repairs instead)     |
 | `LAUNCHER_LIVE_ROOT=<dir> cargo test --test live_launch_args -- --ignored --nocapture --test-threads=1`         | Real Java accepts the compiled arguments of an installed version |
 | `cargo test --test live_all_versions -- --ignored --nocapture`                                                  | Every Mojang version plans on Windows, Linux and both Macs       |

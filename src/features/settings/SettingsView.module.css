@@ -1,11 +1,139 @@
+.layout {
+  display: grid;
+  gap: var(--space-6);
+  grid-template-columns: minmax(12rem, 14rem) minmax(0, 1fr);
+  align-items: start;
+}
+
+@media (max-width: 760px) {
+  .layout {
+    grid-template-columns: 1fr;
+  }
+}
+
+.sections {
+  display: grid;
+  gap: var(--space-1);
+  padding: var(--space-2);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  background: var(--color-surface);
+  backdrop-filter: blur(var(--blur));
+}
+
+@media (max-width: 760px) {
+  .sections {
+    display: flex;
+    flex-wrap: wrap;
+  }
+}
+
+.sectionTab {
+  padding: var(--space-2) var(--space-3);
+  border: 1px solid transparent;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--color-text-muted);
+  font: inherit;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  font-size: var(--font-size-sm);
+  text-align: left;
+  cursor: pointer;
+}
+
+.sectionTab:hover {
+  color: var(--color-text);
+}
+
+.sectionTab[aria-selected='true'] {
+  color: var(--color-text);
+  border-color: var(--color-border);
+  background: var(--color-surface-raised);
+  box-shadow: inset 3px 0 0 var(--color-accent);
+}
+
+.section {
+  display: grid;
+  gap: var(--space-6);
+}
+
 .subheading {
   font-size: var(--font-size-md);
   font-weight: 600;
-  margin-bottom: var(--space-1);
+  margin-bottom: var(--space-2);
+}
+
+.hint {
+  display: block;
+  color: var(--color-text-muted);
+  font-size: var(--font-size-sm);
 }
 
 .path {
   font-family: var(--font-mono);
   overflow-wrap: anywhere;
   color: var(--color-text-muted);
+}
+
+.option {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  gap: var(--space-3);
+  align-items: start;
+  padding: var(--space-3);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  background: var(--color-neutral-bg);
+  cursor: pointer;
+}
+
+.option:has(input:checked) {
+  border-color: var(--color-accent);
+  background: var(--color-accent-soft);
+}
+
+.option input {
+  margin-top: 0.2rem;
+}
+
+.optionTitle {
+  display: block;
+  font-weight: 600;
+  margin-bottom: var(--space-1);
+}
+
+.facts {
+  display: grid;
+  gap: var(--space-2);
+  margin: 0;
+}
+
+.fact {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  gap: var(--space-2);
+  padding: var(--space-2) var(--space-3);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+  background: var(--color-neutral-bg);
+}
+
+.fact dt {
+  font-weight: 600;
+}
+
+.fact dd {
+  margin: 0;
+  color: var(--color-text-muted);
+  font-family: var(--font-mono);
+  font-size: var(--font-size-sm);
+}
+
+.field {
+  display: grid;
+  gap: var(--space-1);
+  font-weight: 600;
 }

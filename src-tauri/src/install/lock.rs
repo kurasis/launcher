@@ -21,7 +21,7 @@ use crate::storage::models::{
     HashAlgorithm, InstallLock, LockedArtifact, LockedAssetIndex, LockedDescriptor, LockedLogging,
     LockedRuntime,
 };
-use crate::storage::paths::{DataRoot, InstanceId, RuntimeKey, SafeName, Sha1};
+use crate::storage::paths::{DataRoot, InstanceId, JavaProvider, RuntimeKey, SafeName, Sha1};
 
 /// Game plan plus pinned runtime package for one instance.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -85,19 +85,23 @@ pub fn runtime_from_lock(lock: &InstallLock) -> LauncherResult<RuntimePackage> {
         .next()
         .unwrap_or_default()
         .to_owned();
-    let format = if name.ends_with(".zip") {
-        ArchiveFormat::Zip
-    } else if name.ends_with(".tar.gz") {
-        ArchiveFormat::TarGz
-    } else {
-        return Err(LauncherError::new(
+    let unusable = || {
+        LauncherError::new(
             crate::error::ErrorCode::RepairRequired,
             "The installation record names a runtime package the launcher cannot use.",
-        ));
+        )
+    };
+    let provider = JavaProvider::parse(&runtime.provider).ok_or_else(unusable)?;
+    let format = match provider {
+        JavaProvider::Mojang => ArchiveFormat::MojangManifest,
+        JavaProvider::Temurin if name.ends_with(".zip") => ArchiveFormat::Zip,
+        JavaProvider::Temurin if name.ends_with(".tar.gz") => ArchiveFormat::TarGz,
+        JavaProvider::Temurin => return Err(unusable()),
     };
     Ok(RuntimePackage {
         provider: runtime.provider.clone(),
         key: RuntimeKey {
+            provider,
             os: lock.os,
             arch: lock.arch,
             major: runtime.major,

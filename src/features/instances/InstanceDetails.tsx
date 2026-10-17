@@ -1,11 +1,9 @@
-import { useState } from 'react';
 import { Button } from '../../components/Button';
-import { Field } from '../../components/Field';
 import { Notice } from '../../components/Notice';
 import { Panel } from '../../components/Panel';
 import { StatusBadge } from '../../components/StatusBadge';
 import forms from '../../components/forms.module.css';
-import type { InstanceSummary, MemoryLimits } from '../../lib/contracts';
+import type { InstanceSummary } from '../../lib/contracts';
 import { ipc } from '../../lib/ipc';
 import { strings } from '../../lib/strings';
 import { useCommand } from '../../lib/useCommand';
@@ -14,43 +12,22 @@ import styles from './Instances.module.css';
 
 interface InstanceDetailsProps {
   instance: InstanceSummary;
-  memory: MemoryLimits;
+  onEditSettings: () => void;
 }
 
 const t = strings.details;
 
-function toInt(text: string): number {
-  return /^\d+$/.test(text.trim()) ? Number(text.trim()) : Number.NaN;
-}
-
-/** Editable settings of one installation. Keyed by instance id by the parent. */
-export function InstanceDetails({ instance, memory }: InstanceDetailsProps) {
-  const [heap, setHeap] = useState(String(instance.maxHeapMib));
-  const [width, setWidth] = useState(String(instance.resolution.width));
-  const [height, setHeight] = useState(String(instance.resolution.height));
-  const [saved, setSaved] = useState(false);
-  const save = useCommand((requestId: string, maxHeapMib: number, w: number, h: number) =>
-    ipc.updateInstanceSettings(
-      { instanceId: instance.id, maxHeapMib, resolution: { width: w, height: h } },
-      requestId,
-    ),
-  );
+/** Facts about one installation; its settings are edited on the Settings screen. */
+export function InstanceDetails({ instance, onEditSettings }: InstanceDetailsProps) {
   const openFolder = useCommand((requestId: string, id: string) =>
     ipc.openInstanceFolder(id, requestId),
   );
-  const bounds = memory.resolution;
   const last = instance.lastResult;
-  const policy = memory.policy;
-
-  const submit = async () => {
-    setSaved(false);
-    const result = await save.run(toInt(heap), toInt(width), toInt(height));
-    if (result) setSaved(true);
-  };
+  const java = instance.java;
 
   return (
     <Panel
-      title={t.title}
+      title={t.summaryTitle}
       aside={
         <StatusBadge
           tone={healthTone[instance.health]}
@@ -61,6 +38,24 @@ export function InstanceDetails({ instance, memory }: InstanceDetailsProps) {
       <dl className={styles.facts}>
         <dt>{t.version}</dt>
         <dd>Minecraft {instance.versionId}</dd>
+        <dt>{t.java}</dt>
+        <dd>
+          {java === null
+            ? t.javaNone
+            : strings.settings.javaValue(
+                strings.settings.javaShort[java.provider],
+                java.major,
+                java.release,
+              )}
+        </dd>
+        <dt>{t.window}</dt>
+        <dd>
+          {t.windowValue(
+            instance.maxHeapMib,
+            instance.resolution.width,
+            instance.resolution.height,
+          )}
+        </dd>
         <dt>{t.lastResult}</dt>
         <dd>
           {last === null
@@ -73,97 +68,13 @@ export function InstanceDetails({ instance, memory }: InstanceDetailsProps) {
         </dd>
       </dl>
       <div className={forms.actions}>
+        <Button onClick={onEditSettings}>{t.edit}</Button>
         <Button onClick={() => void openFolder.run(instance.id)} disabled={openFolder.pending}>
           {t.openFolder}
         </Button>
-        <span className={styles.muted}>{t.openFolderHint}</span>
       </div>
+      <p className={styles.muted}>{t.openFolderHint}</p>
       {openFolder.error !== null && <Notice tone="danger">{openFolder.error}</Notice>}
-      {policy?.lowMemory === true && <Notice tone="warning">{t.lowMemory}</Notice>}
-      {memory.error !== null && <Notice tone="danger">{memory.error.message}</Notice>}
-      {instance.busy && <Notice tone="info">{t.busy}</Notice>}
-      <form
-        className={forms.form}
-        onSubmit={(event) => {
-          event.preventDefault();
-          void submit();
-        }}
-      >
-        <Field
-          label={t.memory}
-          hint={
-            policy
-              ? t.memoryHint(policy.minHeapMib, policy.maxHeapMib, policy.recommendedHeapMib)
-              : undefined
-          }
-        >
-          {(props) => (
-            <input
-              {...props}
-              className={forms.input}
-              type="number"
-              inputMode="numeric"
-              min={policy?.minHeapMib}
-              max={policy?.maxHeapMib}
-              step={256}
-              value={heap}
-              disabled={instance.busy}
-              onChange={(event) => {
-                setHeap(event.target.value);
-                setSaved(false);
-              }}
-            />
-          )}
-        </Field>
-        <div className={forms.row}>
-          <Field label={t.width}>
-            {(props) => (
-              <input
-                {...props}
-                className={forms.input}
-                type="number"
-                inputMode="numeric"
-                min={bounds.minWidth}
-                max={bounds.maxWidth}
-                value={width}
-                disabled={instance.busy}
-                onChange={(event) => {
-                  setWidth(event.target.value);
-                  setSaved(false);
-                }}
-              />
-            )}
-          </Field>
-          <Field label={t.height}>
-            {(props) => (
-              <input
-                {...props}
-                className={forms.input}
-                type="number"
-                inputMode="numeric"
-                min={bounds.minHeight}
-                max={bounds.maxHeight}
-                value={height}
-                disabled={instance.busy}
-                onChange={(event) => {
-                  setHeight(event.target.value);
-                  setSaved(false);
-                }}
-              />
-            )}
-          </Field>
-        </div>
-        <p className={styles.muted}>
-          {t.resolutionHint(bounds.minWidth, bounds.maxWidth, bounds.minHeight, bounds.maxHeight)}
-        </p>
-        {save.error !== null && <Notice tone="danger">{save.error}</Notice>}
-        <div className={forms.actions}>
-          <Button variant="primary" type="submit" disabled={save.pending || instance.busy}>
-            {t.save}
-          </Button>
-          {saved && <span role="status">{t.saved}</span>}
-        </div>
-      </form>
     </Panel>
   );
 }

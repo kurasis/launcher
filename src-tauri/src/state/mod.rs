@@ -477,6 +477,11 @@ impl AppState {
         self.lock().data.settings.during_game_mode
     }
 
+    /// Runtime provider for new installations.
+    pub fn java_provider(&self) -> crate::storage::paths::JavaProvider {
+        self.lock().data.settings.java_provider
+    }
+
     pub fn instance(&self, id: InstanceId) -> Option<InstanceFile> {
         self.lock().data.instances.get(&id).cloned()
     }
@@ -632,6 +637,7 @@ impl AppState {
                         .unwrap_or_default(),
                     health: InstallationHealth::NotInstalled,
                     last_result: None,
+                    java: None,
                 };
                 store.create_instance(&instance)?;
                 let id = instance.id;
@@ -714,6 +720,9 @@ impl AppState {
                 }
                 if let Some(resolution) = patch.default_resolution {
                     settings.default_resolution = validation::validate_resolution(resolution)?;
+                }
+                if let Some(provider) = patch.java_provider {
+                    settings.java_provider = provider;
                 }
                 if settings != data.settings {
                     store.save_settings(&settings)?;

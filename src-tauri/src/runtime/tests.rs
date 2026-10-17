@@ -1,13 +1,13 @@
 //! End-to-end runtime installation against the local fixture server with a fake
 //! `java` script (Unix only: the script relies on `/bin/sh`).
 
-use sha2::Digest as _;
+use sha1::Digest as _;
 
 use super::extract::tests::{E, tar_gz};
 use super::*;
 use crate::download::NoProgress;
 use crate::download::tests::{Server, fast_config};
-use crate::storage::paths::{ImageType, RuntimeKey, TargetArch, TargetOs};
+use crate::storage::paths::{ImageType, JavaProvider, RuntimeKey, TargetArch, TargetOs};
 
 struct Fixture {
     dir: tempfile::TempDir,
@@ -56,6 +56,7 @@ impl Fixture {
         RuntimePackage {
             provider: "temurin".into(),
             key: RuntimeKey {
+                provider: crate::storage::paths::JavaProvider::Temurin,
                 os: TargetOs::Linux,
                 arch: TargetArch::X64,
                 major: 21,
@@ -69,6 +70,75 @@ impl Fixture {
             archive_size: bytes.len() as u64,
             archive_format: adoptium::ArchiveFormat::TarGz,
             jdk_fallback: image == ImageType::Jdk,
+        }
+    }
+
+    fn java_script(&self, major: u16) -> String {
+        format!(
+            "#!/bin/sh\ntouch '{}'\ncat >&2 <<'X'\nProperty settings:\n    java.specification.version = {major}\n    java.version = {major}.0.1\n    os.arch = amd64\nX\n",
+            self.marker().display()
+        )
+    }
+
+    /// A Mojang runtime manifest served with its files; `served` overrides the
+    /// bytes the server returns for a path.
+    fn mojang_package(
+        &self,
+        name: &str,
+        files: &[(&str, &[u8], bool)],
+        links: &[(&str, &str)],
+        served: &[(&str, &[u8])],
+    ) -> RuntimePackage {
+        let mut listed = serde_json::Map::new();
+        listed.insert("legal".into(), serde_json::json!({ "type": "directory" }));
+        for (path, bytes, executable) in files {
+            let sha1 = hex::encode(sha1::Sha1::digest(bytes));
+            let object = format!("/{name}/objects/{sha1}");
+            let body = served
+                .iter()
+                .find(|(p, _)| p == path)
+                .map_or(*bytes, |(_, b)| *b);
+            self.server.serve(&object, body);
+            listed.insert(
+                (*path).to_owned(),
+                serde_json::json!({
+                    "type": "file",
+                    "executable": executable,
+                    "downloads": { "raw": {
+                        "sha1": sha1,
+                        "size": bytes.len(),
+                        "url": self.server.url(&object).to_string(),
+                    } },
+                }),
+            );
+        }
+        for (path, target) in links {
+            listed.insert(
+                (*path).to_owned(),
+                serde_json::json!({ "type": "link", "target": target }),
+            );
+        }
+        let manifest = serde_json::to_vec(&serde_json::json!({ "files": listed })).unwrap();
+        let path = format!("/{name}/manifest.json");
+        self.server.serve(&path, &manifest);
+        RuntimePackage {
+            provider: "mojang".into(),
+            key: RuntimeKey {
+                provider: JavaProvider::Mojang,
+                os: TargetOs::Linux,
+                arch: TargetArch::X64,
+                major: 21,
+                image_type: ImageType::Jre,
+                archive_sha256: Sha256::parse(&hex::encode(sha2::Sha256::digest(&manifest)))
+                    .unwrap(),
+            },
+            release_name: "21.0.7".into(),
+            openjdk_version: "21.0.7 (java-runtime-delta)".into(),
+            archive_name: "java-runtime-delta".into(),
+            archive_url: self.server.url(&path).to_string(),
+            archive_size: manifest.len() as u64,
+            archive_format: ArchiveFormat::MojangManifest,
+            jdk_fallback: false,
         }
     }
 
@@ -87,7 +157,7 @@ impl Fixture {
         if let Ok(entries) = fs::read_dir(self.root.runtimes_dir()) {
             for entry in entries.flatten() {
                 let name = entry.file_name().to_string_lossy().into_owned();
-                if name != "temurin" {
+                if name != "temurin" && name != "mojang" {
                     found.push(name);
                 }
             }
@@ -240,4 +310,113 @@ async fn jre_and_jdk_with_one_release_label_never_share_a_directory() {
         ));
     }
     assert!(b.receipt.package.jdk_fallback);
+}
+
+#[tokio::test]
+async fn mojang_runtime_installs_from_its_manifest_and_is_reused() {
+    let f = Fixture::new().await;
+    let script = f.java_script(21);
+    let package = f.mojang_package(
+        "delta",
+        &[
+            ("bin/java", script.as_bytes(), true),
+            ("lib/libjli.so", b"native library", false),
+            // Same bytes under two names: downloaded once.
+            ("legal/NOTICE", b"license notices", false),
+            ("legal/COPY", b"license notices", false),
+        ],
+        &[("lib/alias.so", "libjli.so")],
+        &[],
+    );
+    let installed = f.ensure(&package).await.unwrap();
+    assert!(!installed.reused);
+    assert_eq!(installed.dir, f.root.runtime_dir(&package.key));
+    assert!(
+        installed
+            .dir
+            .starts_with(f.root.runtimes_dir().join("mojang"))
+    );
+    assert!(installed.java.ends_with("bin/java"));
+    assert!(extract::is_executable(&installed.java));
+    assert!(!extract::is_executable(
+        &installed.dir.join("lib/libjli.so")
+    ));
+    assert_eq!(
+        fs::read_link(installed.dir.join("lib/alias.so")).unwrap(),
+        Path::new("libjli.so")
+    );
+    assert_eq!(installed.receipt.probe.specification_version, 21);
+    assert!(f.marker().exists());
+    let notices = format!(
+        "/delta/objects/{}",
+        hex::encode(sha1::Sha1::digest(b"license notices"))
+    );
+    assert_eq!(f.server.hits(&notices), 1);
+    let report = installed.archive_download.clone().unwrap();
+    assert_eq!(
+        report.downloaded_files, 4,
+        "manifest and three unique files"
+    );
+    assert!(f.leftovers().is_empty(), "{:?}", f.leftovers());
+    let locked = installed.locked();
+    assert_eq!(locked.provider, "mojang");
+    assert_eq!(locked.archive_url, package.archive_url);
+
+    fs::remove_file(f.marker()).unwrap();
+    let again = f.ensure(&package).await.unwrap();
+    assert!(again.reused);
+    assert_eq!(f.server.hits("/delta/manifest.json"), 1);
+    assert!(f.marker().exists());
+
+    // Damage is found by the tree receipt and rebuilt from the same manifest.
+    fs::write(installed.dir.join("lib/libjli.so"), b"tampered!!!!!!").unwrap();
+    assert_eq!(
+        verify_installed(&f.root, &package).unwrap(),
+        Verification::Invalid("lib/libjli.so".into())
+    );
+    let repaired = f.ensure(&package).await.unwrap();
+    assert!(!repaired.reused);
+    assert_eq!(
+        fs::read(installed.dir.join("lib/libjli.so")).unwrap(),
+        b"native library"
+    );
+}
+
+#[tokio::test]
+async fn mojang_files_with_wrong_bytes_or_escaping_links_never_execute() {
+    let f = Fixture::new().await;
+    let script = f.java_script(21);
+    let tampered = f.mojang_package(
+        "tampered",
+        &[
+            ("bin/java", script.as_bytes(), true),
+            ("lib/libjli.so", b"native library", false),
+        ],
+        &[],
+        &[("lib/libjli.so", b"native librarX")],
+    );
+    assert_eq!(
+        f.ensure(&tampered).await.unwrap_err().code,
+        ErrorCode::HashMismatch
+    );
+    let escaping = f.mojang_package(
+        "escaping",
+        &[("bin/java", script.as_bytes(), true)],
+        &[("lib/evil", "../../../outside")],
+        &[],
+    );
+    assert_eq!(
+        f.ensure(&escaping).await.unwrap_err().code,
+        ErrorCode::UnsafeArchive
+    );
+    let no_java = f.mojang_package("nojava", &[("lib/x", b"x", false)], &[], &[]);
+    assert_eq!(
+        f.ensure(&no_java).await.unwrap_err().code,
+        ErrorCode::UnsafeArchive
+    );
+    assert!(!f.marker().exists(), "java never ran");
+    for package in [&tampered, &escaping, &no_java] {
+        assert!(!f.root.runtime_dir(&package.key).exists());
+    }
+    assert!(f.leftovers().is_empty(), "{:?}", f.leftovers());
 }

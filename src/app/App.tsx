@@ -13,7 +13,7 @@ import { SettingsView } from '../features/settings/SettingsView';
 import type { AppSnapshot } from '../lib/contracts';
 import { DiagnosticsView } from '../features/diagnostics/DiagnosticsView';
 import { appStore, useAppStore } from '../lib/store';
-import { strings } from '../lib/strings';
+import { type SettingsSection, strings } from '../lib/strings';
 import { AboutView } from './AboutView';
 import styles from './App.module.css';
 import { QuitControl } from './QuitControl';
@@ -47,6 +47,8 @@ export function App() {
   // when its frontend was bundled.
   const { state: appInfo } = useAppInfo();
   const [view, setView] = useState<View>('home');
+  const [settingsSection, setSettingsSection] = useState<SettingsSection>('general');
+  const [settingsInstance, setSettingsInstance] = useState<string | null>(null);
   const snapshot = state.status === 'ready' ? state.snapshot : null;
   useTheme(snapshot?.settings.theme);
 
@@ -117,11 +119,26 @@ export function App() {
                     void ipc.stopGame(runId).catch(() => undefined);
                   }}
                 />
-                <InstancesView snapshot={state.snapshot} />
+                <InstancesView
+                  snapshot={state.snapshot}
+                  onEditSettings={(instanceId) => {
+                    setSettingsInstance(instanceId);
+                    setSettingsSection('installations');
+                    setView('settings');
+                  }}
+                />
               </>
             )}
             {view === 'account' && <AccountView snapshot={state.snapshot} />}
-            {view === 'settings' && <SettingsView snapshot={state.snapshot} />}
+            {view === 'settings' && (
+              <SettingsView
+                key={settingsInstance ?? ''}
+                snapshot={state.snapshot}
+                section={settingsSection}
+                onSection={setSettingsSection}
+                instanceId={settingsInstance}
+              />
+            )}
             {view === 'diagnostics' && <DiagnosticsView snapshot={state.snapshot} />}
           </>
         )}

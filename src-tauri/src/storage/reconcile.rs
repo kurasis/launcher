@@ -8,7 +8,7 @@
 use std::path::Path;
 
 use super::document::{self, Loaded};
-use super::models::{InstallLock, InstallationHealth, InstanceFile};
+use super::models::{InstallLock, InstallationHealth, InstalledJava, InstanceFile};
 
 /// What was found at `install.lock.json`.
 #[derive(Debug)]
@@ -57,6 +57,7 @@ pub fn reconcile(summary: &InstanceFile, lock: &LockState) -> Reconciled {
             if lock.instance_id == summary.id && lock.version_id == summary.version_id =>
         {
             instance.manifest_sha1 = Some(lock.descriptor.sha1.clone());
+            instance.java = InstalledJava::from_lock(&lock.runtime);
             instance.health = match summary.health {
                 // Interrupted verification or a known corruption stays visible; the
                 // lock is historical evidence, not proof of current file health.
@@ -110,6 +111,7 @@ mod tests {
             resolution: Resolution::default(),
             health,
             last_result: None,
+            java: None,
         }
     }
 

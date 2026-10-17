@@ -3,12 +3,16 @@
 //! A pinned [`RuntimePackage`] is downloaded through the verified download
 //! executor (SHA-256), extracted safely into a fresh staging directory, described
 //! by an extracted-tree receipt, verified, probed with a sanitized environment and
-//! only then promoted to `runtimes/temurin/<os>-<arch>/<major>/<image>/<sha256>/`.
+//! only then promoted to `runtimes/<provider>/<os>-<arch>/<major>/<image>/<sha256>/`.
+//! A Mojang runtime (D-036) is a manifest instead of an archive: the manifest is
+//! downloaded by its pinned SHA-256, every file it lists by SHA-1, and the tree is
+//! assembled with the same path and link rules as an archive.
 //! An installed runtime is reused only after its receipts and every file match.
 //! Nothing outside DATA_ROOT is changed: no PATH, JAVA_HOME or registry entries.
 
 pub mod adoptium;
 pub mod extract;
+pub mod mojang;
 pub mod probe;
 pub mod tree;
 
@@ -36,9 +40,10 @@ use crate::net::SourcePolicy;
 use crate::storage::atomic;
 use crate::storage::document::SCHEMA_VERSION;
 use crate::storage::models::LockedRuntime;
-use crate::storage::paths::{DataRoot, Sha256};
-pub use adoptium::RuntimePackage;
-use extract::{Limits, unsafe_archive};
+use crate::storage::paths::{DataRoot, JavaProvider, Sha256};
+pub use adoptium::{ArchiveFormat, RuntimePackage};
+use extract::{Limits, Listed, unsafe_archive};
+use mojang::ManifestKind;
 use probe::JavaProbe;
 use tree::{EntryKind, TreeReceipt};
 
@@ -134,8 +139,7 @@ pub fn verify_installed(root: &DataRoot, package: &RuntimePackage) -> LauncherRe
     if !has_java(&expected, &receipt.java) {
         return invalid(&receipt.java);
     }
-    let mut java = dir.clone();
-    java.extend(receipt.java.split('/'));
+    let java = join_relative(&dir, &receipt.java);
     Ok(Verification::Valid(Box::new(InstalledRuntime {
         dir,
         java,
@@ -152,6 +156,30 @@ impl PartialEq for InstalledRuntime {
 }
 
 impl Eq for InstalledRuntime {}
+
+/// Java executable relative to the runtime root.
+pub fn java_relative_path(package: &RuntimePackage) -> &'static str {
+    match package.key.provider {
+        JavaProvider::Mojang => mojang::java_relative_path(package.key.os),
+        JavaProvider::Temurin => probe::java_relative_path(package.key.os),
+    }
+}
+
+fn join_relative(dir: &Path, relative: &str) -> PathBuf {
+    let mut path = dir.to_path_buf();
+    path.extend(relative.split('/'));
+    path
+}
+
+fn add_report(total: &mut crate::download::DownloadReport, part: &crate::download::DownloadReport) {
+    total.unique_files += part.unique_files;
+    total.reused_files += part.reused_files;
+    total.downloaded_files += part.downloaded_files;
+    total.committed_bytes += part.committed_bytes;
+    total.network_bytes += part.network_bytes;
+    total.attempts += part.attempts;
+    total.retries += part.retries;
+}
 
 /// The Java executable must be a regular (and on Unix executable) file.
 fn has_java(tree: &TreeReceipt, java: &str) -> bool {
@@ -217,8 +245,11 @@ pub fn reconcile_runtimes(root: &DataRoot) -> LauncherResult<()> {
             fs::remove_dir_all(entry.path()).map_err(|e| io_error(&e))?;
         }
     }
-    // runtimes/temurin/<os-arch>/<major>/<image>/<sha256 | .old-...>
-    let mut level = vec![runtimes.join("temurin")];
+    // runtimes/<provider>/<os-arch>/<major>/<image>/<sha256 | .old-...>
+    let mut level = vec![
+        runtimes.join(JavaProvider::Temurin.as_str()),
+        runtimes.join(JavaProvider::Mojang.as_str()),
+    ];
     for _ in 0..3 {
         let mut next = Vec::new();
         for dir in &level {
@@ -289,6 +320,9 @@ impl RuntimeInstaller {
             probe::check(&probe, package.key.major, package.key.arch)?;
             return Ok(*installed);
         }
+        if package.archive_format == ArchiveFormat::MojangManifest {
+            return self.ensure_listed(package, job, cancel, sink).await;
+        }
 
         let archive_path = format!(
             "runtimes/.archives/{}.{}",
@@ -334,6 +368,90 @@ impl RuntimeInstaller {
             ..installed
         })
     }
+
+    /// Installs a Mojang runtime: the pinned manifest, then every file it lists.
+    async fn ensure_listed(
+        &self,
+        package: &RuntimePackage,
+        job: Uuid,
+        cancel: &CancelToken,
+        sink: &dyn ProgressSink,
+    ) -> LauncherResult<InstalledRuntime> {
+        let invalid = || {
+            LauncherError::new(
+                ErrorCode::RuntimeUnavailable,
+                "The runtime location is invalid.",
+            )
+        };
+        let sha256 = package.key.archive_sha256.as_str();
+        let manifest_path = format!("runtimes/.archives/{sha256}.json");
+        let blobs = format!("runtimes/.archives/{sha256}");
+        let request = DownloadRequest {
+            source: SourcePolicy::MojangArtifacts,
+            url: Url::parse(&package.archive_url).map_err(|_| invalid())?,
+            path: manifest_path.clone(),
+            size: package.archive_size,
+            digest: Digest::Sha256(package.key.archive_sha256.clone()),
+        };
+        let mut download = self.executor.run(job, vec![request], cancel, sink).await?;
+        let cleanup = || {
+            if let Ok(path) = resolve_managed_path(&self.root, &manifest_path) {
+                let _ = fs::remove_file(path);
+            }
+            if let Ok(path) = resolve_managed_path(&self.root, &blobs) {
+                let _ = fs::remove_dir_all(&path);
+                if let Some(parent) = path.parent() {
+                    let _ = fs::remove_dir(parent);
+                }
+            }
+        };
+        let result = async {
+            let manifest = fs::read(resolve_managed_path(&self.root, &manifest_path)?)
+                .map_err(|e| io_error(&e))?;
+            let entries = mojang::parse_manifest(&manifest, self.limits)?;
+            // Identical files are downloaded once.
+            let mut seen = std::collections::HashSet::new();
+            let mut requests = Vec::new();
+            for entry in &entries {
+                if let ManifestKind::File {
+                    url, sha1, size, ..
+                } = &entry.kind
+                    && seen.insert(sha1.clone())
+                {
+                    requests.push(DownloadRequest {
+                        source: SourcePolicy::MojangArtifacts,
+                        url: url.clone(),
+                        path: format!("{blobs}/{sha1}"),
+                        size: *size,
+                        digest: Digest::Sha1(sha1.clone()),
+                    });
+                }
+            }
+            let files = self.executor.run(job, requests, cancel, sink).await?;
+            add_report(&mut download, &files);
+            let blob_dir = resolve_managed_path(&self.root, &blobs)?;
+            let (root, pinned, limits, timeout, cancel) = (
+                self.root.clone(),
+                package.clone(),
+                self.limits,
+                self.probe_timeout,
+                cancel.clone(),
+            );
+            tokio::task::spawn_blocking(move || {
+                install_from_listing(
+                    &root, &pinned, &entries, &blob_dir, limits, timeout, &cancel,
+                )
+            })
+            .await
+            .map_err(|_| join_error())?
+        }
+        .await;
+        cleanup();
+        result.map(|installed| InstalledRuntime {
+            archive_download: Some(download),
+            ..installed
+        })
+    }
 }
 
 /// Blocking part of an install: extract, describe, verify, probe, promote.
@@ -354,15 +472,66 @@ fn install_from_archive(
 
     extract::extract(archive, package.archive_format, &staging, limits)?;
     let top = extract::single_root(&staging)?;
-    let tree = tree::build(&top)?;
-    let java_rel = probe::java_relative_path(package.key.os);
+    finish_install(root, package, &top, timeout, cancel)
+}
+
+/// Blocking part of a Mojang install: assemble the listed files, then as above.
+fn install_from_listing(
+    root: &DataRoot,
+    package: &RuntimePackage,
+    entries: &[mojang::ManifestEntry],
+    blobs: &Path,
+    limits: Limits,
+    timeout: Duration,
+    cancel: &CancelToken,
+) -> LauncherResult<InstalledRuntime> {
+    let staging = root
+        .runtimes_dir()
+        .join(format!(".staging-{}", Uuid::new_v4().simple()));
+    fs::create_dir_all(root.runtimes_dir()).map_err(|e| io_error(&e))?;
+    fs::create_dir(&staging).map_err(|e| io_error(&e))?;
+    let _guard = DirGuard(Some(staging.clone()));
+    let top = staging.join("runtime");
+    fs::create_dir(&top).map_err(|e| io_error(&e))?;
+
+    let listed = entries.iter().map(|entry| {
+        let item = match &entry.kind {
+            ManifestKind::Dir => Listed::Dir,
+            ManifestKind::File {
+                sha1,
+                size,
+                executable,
+                ..
+            } => Listed::File {
+                source: blobs.join(sha1.as_str()),
+                size: *size,
+                executable: *executable,
+            },
+            ManifestKind::Link { target } => Listed::Link(target),
+        };
+        (entry.path.as_str(), item)
+    });
+    extract::materialize(listed, &top, limits)?;
+    finish_install(root, package, &top, timeout, cancel)
+}
+
+/// Describes, verifies, probes and promotes an extracted tree at `top`.
+fn finish_install(
+    root: &DataRoot,
+    package: &RuntimePackage,
+    top: &Path,
+    timeout: Duration,
+    cancel: &CancelToken,
+) -> LauncherResult<InstalledRuntime> {
+    let tree = tree::build(top)?;
+    let java_rel = java_relative_path(package);
     if !has_java(&tree, java_rel) {
         return Err(unsafe_archive("java executable not found"));
     }
     let tree_bytes = tree::to_bytes(&tree);
     atomic::write(&top.join(TREE_RECEIPT), &tree_bytes).map_err(|e| io_error(&e))?;
     // The receipt is verified against the files before anything is executed.
-    if tree::verify(&top, &tree)?.is_some() {
+    if tree::verify(top, &tree)?.is_some() {
         return Err(unsafe_archive("extracted files changed"));
     }
     if cancel.is_cancelled() {
@@ -371,7 +540,7 @@ fn install_from_archive(
             "The installation was cancelled.",
         ));
     }
-    let probe = probe::run(&probe::java_path(&top, package.key.os), timeout)?;
+    let probe = probe::run(&join_relative(top, java_rel), timeout)?;
     probe::check(&probe, package.key.major, package.key.arch)?;
     let receipt = RuntimeReceipt {
         schema_version: SCHEMA_VERSION,
@@ -387,8 +556,8 @@ fn install_from_archive(
     atomic::write(&top.join(RUNTIME_RECEIPT), &receipt_bytes).map_err(|e| io_error(&e))?;
 
     let dir = root.runtime_dir(&package.key);
-    promote(&top, &dir)?;
-    let java = probe::java_path(&dir, package.key.os);
+    promote(top, &dir)?;
+    let java = join_relative(&dir, java_rel);
     Ok(InstalledRuntime {
         dir,
         java,
