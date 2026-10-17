@@ -144,17 +144,50 @@ pub struct AccountRecord {
     pub vault_key: String,
 }
 
+/// A local player name for Minecraft's demo, playable without an account (D-045).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct NoTokenRecord {
+    pub id: String,
+    pub name: String,
+}
+
+/// Who plays: a Microsoft account (by Minecraft profile ID) or a no-token profile.
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[serde(tag = "kind", rename_all = "snake_case")]
+pub enum ProfileRef {
+    Microsoft {
+        id: String,
+    },
+    #[serde(rename = "notoken")]
+    NoToken {
+        id: String,
+    },
+}
+
 /// `accounts.json`
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct AccountsFile {
     pub schema_version: u64,
-    #[serde(default)]
+    /// The single account of launchers before D-045; moved into `accounts` on load.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub active: Option<AccountRecord>,
-    /// Set when local sign-out could not delete vault credentials (doc 03); while
-    /// set, saved credentials must not be restored automatically.
-    #[serde(default)]
+    /// Before D-045: `active` could not be signed out yet.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub sign_out_pending: bool,
+    /// Saved Microsoft accounts, in the order they were added.
+    #[serde(default)]
+    pub accounts: Vec<AccountRecord>,
+    #[serde(default)]
+    pub notoken_profiles: Vec<NoTokenRecord>,
+    /// The profile installations play as unless they name another one.
+    #[serde(default)]
+    pub default_profile: Option<ProfileRef>,
+    /// Accounts whose vault credential could not be deleted at sign-out (doc 03):
+    /// retried at start and never restored.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub pending_sign_outs: Vec<AccountRecord>,
 }
 
 impl Default for AccountsFile {
@@ -163,6 +196,51 @@ impl Default for AccountsFile {
             schema_version: SCHEMA_VERSION,
             active: None,
             sign_out_pending: false,
+            accounts: Vec::new(),
+            notoken_profiles: Vec::new(),
+            default_profile: None,
+            pending_sign_outs: Vec::new(),
+        }
+    }
+}
+
+impl AccountsFile {
+    /// Moves the single account of the earlier format into the account list.
+    pub fn migrated(mut self) -> Self {
+        if let Some(active) = self.active.take() {
+            if self.sign_out_pending {
+                self.pending_sign_outs.push(active);
+            } else if !self
+                .accounts
+                .iter()
+                .any(|a| a.profile_id == active.profile_id)
+            {
+                self.default_profile.get_or_insert(ProfileRef::Microsoft {
+                    id: active.profile_id.clone(),
+                });
+                self.accounts.push(active);
+            }
+        }
+        self.sign_out_pending = false;
+        self
+    }
+
+    /// Whether `profile` names a saved account or profile.
+    pub fn contains(&self, profile: &ProfileRef) -> bool {
+        match profile {
+            ProfileRef::Microsoft { id } => self.accounts.iter().any(|a| a.profile_id == *id),
+            ProfileRef::NoToken { id } => self.notoken_profiles.iter().any(|p| p.id == *id),
+        }
+    }
+
+    /// Forgets a removed account or profile, and the default if it named it.
+    pub fn remove(&mut self, profile: &ProfileRef) {
+        match profile {
+            ProfileRef::Microsoft { id } => self.accounts.retain(|a| a.profile_id != *id),
+            ProfileRef::NoToken { id } => self.notoken_profiles.retain(|p| p.id != *id),
+        }
+        if self.default_profile.as_ref() == Some(profile) {
+            self.default_profile = None;
         }
     }
 }
@@ -253,6 +331,9 @@ pub struct InstanceFile {
     /// Extra JVM options as the user typed them, added after the version's own.
     #[serde(default, skip_serializing_if = "String::is_empty")]
     pub jvm_arguments: String,
+    /// Who plays this installation; `None` uses the default profile (D-045).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub profile: Option<ProfileRef>,
 }
 
 /// A Java installation the user chose for an installation (D-044).
@@ -494,6 +575,7 @@ mod tests {
             java_provider: None,
             custom_java: None,
             jvm_arguments: String::new(),
+            profile: None,
         };
         let json = serde_json::to_value(&instance).unwrap();
         assert!(json["manifestSha1"].is_null());
@@ -505,16 +587,61 @@ mod tests {
     #[test]
     fn account_document_has_no_secret_fields() {
         let accounts = AccountsFile {
-            active: Some(AccountRecord {
+            accounts: vec![AccountRecord {
                 profile_id: "id".into(),
                 profile_name: "Player".into(),
                 vault_key: "key".into(),
-            }),
+            }],
+            notoken_profiles: vec![NoTokenRecord {
+                id: "p".into(),
+                name: "Alex".into(),
+            }],
+            default_profile: Some(ProfileRef::NoToken { id: "p".into() }),
             ..AccountsFile::default()
         };
-        let text = serde_json::to_string(&accounts).unwrap().to_lowercase();
+        // "notoken" names the profiles that have no token (D-040).
+        let text = serde_json::to_string(&accounts)
+            .unwrap()
+            .to_lowercase()
+            .replace("notoken", "");
         for forbidden in ["token", "secret", "password", "verifier", "code\""] {
             assert!(!text.contains(forbidden), "{forbidden}");
         }
+    }
+
+    #[test]
+    fn the_single_account_of_the_earlier_format_is_migrated() {
+        let record = AccountRecord {
+            profile_id: "id".into(),
+            profile_name: "Player".into(),
+            vault_key: "key".into(),
+        };
+        let old: AccountsFile = serde_json::from_value(serde_json::json!({
+            "schemaVersion": 1,
+            "active": {"profileId": "id", "profileName": "Player", "vaultKey": "key"},
+            "signOutPending": false
+        }))
+        .unwrap();
+        let new = old.migrated();
+        assert_eq!(new.accounts, std::slice::from_ref(&record));
+        assert_eq!(
+            new.default_profile,
+            Some(ProfileRef::Microsoft { id: "id".into() })
+        );
+        let text = serde_json::to_value(&new).unwrap();
+        assert!(text.get("active").is_none() && text.get("signOutPending").is_none());
+
+        let pending = AccountsFile {
+            active: Some(record.clone()),
+            sign_out_pending: true,
+            ..AccountsFile::default()
+        }
+        .migrated();
+        assert!(pending.accounts.is_empty());
+        assert_eq!(pending.pending_sign_outs, [record]);
+
+        let mut file = new;
+        file.remove(&ProfileRef::Microsoft { id: "id".into() });
+        assert!(file.accounts.is_empty() && file.default_profile.is_none());
     }
 }

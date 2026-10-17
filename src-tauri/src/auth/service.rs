@@ -1,13 +1,17 @@
 //! Account transactions (docs/spec/03 "Timing and refresh", "OAuth callback and
-//! account concurrency details", "Sign-out transaction entry").
+//! account concurrency details", "Sign-out transaction entry"), for any number of
+//! Microsoft accounts (D-045).
 //!
 //! - One login or refresh transaction at a time (`transaction`).
-//! - Every async result is bound to an account generation; cancel and sign-out
-//!   advance it, so a late callback or refresh can never restore a signed-out account.
+//! - Every async result is bound to a generation: a sign-in to the login
+//!   generation (advanced by cancel), a refresh to its account's generation
+//!   (advanced by that account's sign-out), so a late callback or refresh can never
+//!   restore a signed-out account.
 //! - The generation check and every vault write happen under `commit`, the same lock
 //!   sign-out holds while deleting credentials.
 //! - Launch authorization is always re-verified with a fresh entitlement response.
 
+use std::collections::HashMap;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, Mutex, PoisonError};
 use std::time::Duration;
@@ -27,16 +31,20 @@ use super::protocol::Profile;
 use super::vault::{MemoryStore, SecretStore};
 use crate::error::{ErrorCode, LauncherError, LauncherResult};
 use crate::secrets::SecretString;
-use crate::state::dto::{AccountState, AccountSummary};
-use crate::storage::models::{AccountRecord, AccountsFile};
+use crate::state::dto::{AccountState, AuthStatus, MicrosoftAccount, PendingSignOut};
+use crate::storage::models::{AccountRecord, AccountsFile, ProfileRef};
 
 /// What the auth service needs from application state. Implemented for `AppState`.
 pub trait AccountHost: Send + Sync {
-    fn account(&self) -> AccountSummary;
-    fn set_account(&self, account: AccountSummary);
+    fn auth_status(&self) -> AuthStatus;
+    fn set_auth_status(&self, status: AuthStatus);
     fn accounts_file(&self) -> AccountsFile;
-    fn save_accounts_file(&self, accounts: AccountsFile) -> LauncherResult<()>;
-    /// True while a launch preflight, game or test run owns the account.
+    /// Changes `accounts.json` in one step under the state lock.
+    fn update_accounts_file(
+        &self,
+        change: Box<dyn FnOnce(&mut AccountsFile) + Send + '_>,
+    ) -> LauncherResult<()>;
+    /// True while a launch preflight, game or test run owns the accounts.
     fn launch_owns_account(&self) -> bool;
 }
 
@@ -62,17 +70,25 @@ struct Attempt {
     cancel: watch::Sender<bool>,
 }
 
+/// Which work a result belongs to; it commits only while still current.
+enum Ticket {
+    Login(u64),
+    Account(String, u64),
+}
+
 pub struct AuthService {
     http: AuthHttp,
     client_id: Result<Option<ClientId>, client_id::InvalidClientId>,
     host: Arc<dyn AccountHost>,
     opener: BrowserOpener,
     store: Mutex<Arc<dyn SecretStore>>,
-    generation: AtomicU64,
+    login_generation: AtomicU64,
+    generations: Mutex<HashMap<String, u64>>,
     transaction: tokio::sync::Mutex<()>,
     commit: Mutex<()>,
-    session: Mutex<Option<Session>>,
+    sessions: Mutex<HashMap<String, Session>>,
     attempt: Mutex<Option<Attempt>>,
+    status: Mutex<AuthStatus>,
     login_timeout: Duration,
 }
 
@@ -91,6 +107,10 @@ fn superseded() -> LauncherError {
     )
 }
 
+fn sign_in_to_play() -> LauncherError {
+    LauncherError::new(ErrorCode::AuthReauthRequired, "Sign in to play.")
+}
+
 impl AuthService {
     pub fn new(
         http: AuthHttp,
@@ -99,17 +119,20 @@ impl AuthService {
         opener: BrowserOpener,
         store: Arc<dyn SecretStore>,
     ) -> Self {
+        let status = host.auth_status();
         Self {
             http,
             client_id,
             host,
             opener,
             store: Mutex::new(store),
-            generation: AtomicU64::new(0),
+            login_generation: AtomicU64::new(0),
+            generations: Mutex::default(),
             transaction: tokio::sync::Mutex::new(()),
             commit: Mutex::new(()),
-            session: Mutex::new(None),
+            sessions: Mutex::default(),
             attempt: Mutex::new(None),
+            status: Mutex::new(status),
             login_timeout: Duration::from_secs(contract::LOGIN_TIMEOUT_SECONDS),
         }
     }
@@ -139,44 +162,73 @@ impl AuthService {
         }
     }
 
-    fn publish(
+    fn generation(&self, profile_id: &str) -> u64 {
+        lock(&self.generations)
+            .get(profile_id)
+            .copied()
+            .unwrap_or(0)
+    }
+
+    fn current(&self, ticket: &Ticket) -> bool {
+        match ticket {
+            Ticket::Login(g) => self.login_generation.load(Ordering::SeqCst) == *g,
+            Ticket::Account(id, g) => self.generation(id) == *g,
+        }
+    }
+
+    /// Changes the reported status and hands it to the host, in order.
+    fn update_status(&self, change: impl FnOnce(&mut AuthStatus)) {
+        let mut status = lock(&self.status);
+        change(&mut status);
+        status.session_only = !self.store().persistent();
+        self.host.set_auth_status(status.clone());
+    }
+
+    fn publish_account(
         &self,
+        profile: &Profile,
         state: AccountState,
-        profile: Option<&Profile>,
         error: Option<LauncherError>,
-        login_operation_id: Option<String>,
     ) {
-        let session_only = !self.store().persistent();
-        let fallback = self.host.account();
-        let (profile_name, profile_id) = match profile {
-            Some(p) => (Some(p.name.clone()), Some(p.id.clone())),
-            None => (fallback.profile_name, fallback.profile_id),
-        };
-        let keep_identity = matches!(
-            state,
-            AccountState::VerifiedAccess
-                | AccountState::Refreshing
-                | AccountState::ServiceUnavailable
-                | AccountState::ProtocolError
-                | AccountState::NoAccess
-                | AccountState::Restricted
-        );
-        self.host.set_account(AccountSummary {
-            state,
-            profile_name: if keep_identity { profile_name } else { None },
-            profile_id: if keep_identity { profile_id } else { None },
-            error,
-            session_only,
-            login_operation_id,
+        self.update_status(|status| {
+            status.upsert(MicrosoftAccount {
+                profile_id: profile.id.clone(),
+                profile_name: profile.name.clone(),
+                state,
+                error,
+            });
         });
     }
 
-    fn publish_error(&self, error: &LauncherError) {
-        self.publish(state_for_error(error.code), None, Some(error.clone()), None);
+    /// Reports an error for a known account, keeping its name.
+    fn publish_account_error(&self, profile_id: &str, error: &LauncherError) {
+        self.update_status(|status| {
+            if let Some(account) = status
+                .accounts
+                .iter_mut()
+                .find(|a| a.profile_id == profile_id)
+            {
+                account.state = state_for_error(error.code);
+                account.error = Some(error.clone());
+            }
+        });
     }
 
-    /// Starts a browser sign-in and returns its operation ID. A second call while an
-    /// attempt is pending returns the same ID.
+    fn publish_login(&self, operation_id: Option<String>, error: Option<LauncherError>) {
+        self.update_status(|status| {
+            status.login_state = match (&operation_id, &error) {
+                (Some(_), _) => AccountState::SigningIn,
+                (None, Some(error)) => state_for_error(error.code),
+                (None, None) => AccountState::SignedOut,
+            };
+            status.login_operation_id = operation_id;
+            status.login_error = error;
+        });
+    }
+
+    /// Starts a browser sign-in that adds an account (or renews a saved one) and
+    /// returns its operation ID. A second call while an attempt is pending returns
+    /// the same ID.
     pub async fn begin_login(self: &Arc<Self>) -> LauncherResult<String> {
         let client_id = self.client_id()?;
         if self.host.launch_owns_account() {
@@ -217,16 +269,11 @@ impl AuthService {
                 cancel: cancel_tx,
             });
         }
-        let generation = self.generation.load(Ordering::SeqCst);
-        self.publish(
-            AccountState::SigningIn,
-            None,
-            None,
-            Some(operation_id.clone()),
-        );
+        let generation = self.login_generation.load(Ordering::SeqCst);
+        self.publish_login(Some(operation_id.clone()), None);
         if let Err(error) = (self.opener)(url.as_str()) {
             self.finish_attempt(&operation_id);
-            self.publish_error(&error);
+            self.publish_login(None, Some(error.clone()));
             return Err(error);
         }
 
@@ -246,11 +293,9 @@ impl AuthService {
                 )
                 .await;
             this.finish_attempt(&op);
-            if let Err(error) = result {
-                // A superseded attempt must not overwrite the newer state.
-                if this.generation.load(Ordering::SeqCst) == generation {
-                    this.publish_error(&error);
-                }
+            // A superseded attempt must not overwrite the newer state.
+            if this.login_generation.load(Ordering::SeqCst) == generation {
+                this.publish_login(None, result.err());
             }
         });
         Ok(operation_id)
@@ -285,7 +330,7 @@ impl AuthService {
             }
         };
         let _transaction = self.transaction.lock().await;
-        if self.generation.load(Ordering::SeqCst) != generation {
+        if self.login_generation.load(Ordering::SeqCst) != generation {
             return Err(superseded());
         }
         let tokens = flow::exchange_code(
@@ -304,55 +349,84 @@ impl AuthService {
         };
         let minecraft = flow::minecraft_session(&self.http, &tokens.access_token).await?;
         let profile = flow::check_access(&self.http, &minecraft.access_token).await?;
-        self.commit_session(generation, Some(refresh_token), profile, minecraft)
+        self.commit_session(
+            &Ticket::Login(generation),
+            Some(refresh_token),
+            profile,
+            minecraft,
+        )
     }
 
-    /// Stores the session if `generation` is still current. Holds `commit` across the
+    /// Stores the session if `ticket` is still current. Holds `commit` across the
     /// generation check and the vault write.
     fn commit_session(
         &self,
-        generation: u64,
+        ticket: &Ticket,
         refresh_token: Option<SecretString>,
         profile: Profile,
         minecraft: MinecraftSession,
     ) -> LauncherResult<()> {
         let _commit = lock(&self.commit);
-        if self.generation.load(Ordering::SeqCst) != generation {
+        if !self.current(ticket) {
             return Err(superseded());
         }
+        if let Ticket::Account(id, _) = ticket
+            && *id != profile.id
+        {
+            return Err(LauncherError::new(
+                ErrorCode::AuthProtocolError,
+                "The account answered with a different Minecraft profile.",
+            ));
+        }
         let key = vault_key(&profile.id);
-        let previous = self.host.accounts_file().active;
         if let Some(refresh_token) = &refresh_token {
             let store = self.store();
             if let Err(error) = store.put(&key, refresh_token) {
                 if error.code != ErrorCode::SecretStoreUnavailable || !store.persistent() {
                     return Err(error);
                 }
-                // Explicit session-only mode: the secret stays in memory only.
+                // Explicit session-only mode: secrets stay in memory only. Saved
+                // accounts cannot be restored from it, so they are not kept either.
                 let memory: Arc<dyn SecretStore> = Arc::new(MemoryStore::default());
                 memory.put(&key, refresh_token)?;
                 *lock(&self.store) = memory;
             }
         }
         let persistent = self.store().persistent();
-        // Replacing a different saved account removes its stored credential.
-        if let Some(previous) = previous.as_ref().filter(|p| p.vault_key != key) {
-            let _ = self.store().delete(&previous.vault_key);
-        }
-        self.host.save_accounts_file(AccountsFile {
-            active: persistent.then(|| AccountRecord {
-                profile_id: profile.id.clone(),
-                profile_name: profile.name.clone(),
-                vault_key: key.clone(),
-            }),
-            ..AccountsFile::default()
-        })?;
-        *lock(&self.session) = Some(Session {
-            profile: profile.clone(),
-            vault_key: key,
-            minecraft,
-        });
-        self.publish(AccountState::VerifiedAccess, Some(&profile), None, None);
+        let record = AccountRecord {
+            profile_id: profile.id.clone(),
+            profile_name: profile.name.clone(),
+            vault_key: key.clone(),
+        };
+        let first = self.host.accounts_file().default_profile.is_none();
+        self.host.update_accounts_file(Box::new(move |file| {
+            if persistent {
+                match file
+                    .accounts
+                    .iter_mut()
+                    .find(|a| a.profile_id == record.profile_id)
+                {
+                    Some(existing) => *existing = record.clone(),
+                    None => file.accounts.push(record.clone()),
+                }
+            } else {
+                file.accounts.clear();
+            }
+            if first {
+                file.default_profile = Some(ProfileRef::Microsoft {
+                    id: record.profile_id,
+                });
+            }
+        }))?;
+        lock(&self.sessions).insert(
+            profile.id.clone(),
+            Session {
+                profile: profile.clone(),
+                vault_key: key,
+                minecraft,
+            },
+        );
+        self.publish_account(&profile, AccountState::VerifiedAccess, None);
         Ok(())
     }
 
@@ -371,16 +445,14 @@ impl AuthService {
         let attempt = lock(&self.attempt).take();
         match attempt {
             Some(attempt) if attempt.operation_id == operation_id => {
-                self.generation.fetch_add(1, Ordering::SeqCst);
+                self.login_generation.fetch_add(1, Ordering::SeqCst);
                 let _ = attempt.cancel.send(true);
-                self.publish(
-                    AccountState::SignedOut,
+                self.publish_login(
                     None,
                     Some(LauncherError::new(
                         ErrorCode::AuthCancelled,
                         "Sign-in was cancelled.",
                     )),
-                    None,
                 );
                 Ok(())
             }
@@ -394,42 +466,45 @@ impl AuthService {
         }
     }
 
-    /// Restores a saved account at startup: finishes a pending sign-out first, then
-    /// refreshes and re-verifies access. Network failures keep the account.
+    /// Restores saved accounts at startup: finishes pending sign-outs first, then
+    /// refreshes and re-verifies each account. Network failures keep the account.
     pub async fn restore(&self) {
         let file = self.host.accounts_file();
-        if file.sign_out_pending {
-            let _ = self.complete_sign_out(file.active);
-            return;
+        for record in file.pending_sign_outs.clone() {
+            let _ = self.complete_sign_out(&record.profile_id, Some(record.clone()));
         }
-        let Some(record) = file.active else {
-            return;
-        };
         if let Err(error) = self.client_id() {
-            self.publish(AccountState::ReauthRequired, None, Some(error), None);
+            for record in &file.accounts {
+                self.publish_account(
+                    &Profile {
+                        id: record.profile_id.clone(),
+                        name: record.profile_name.clone(),
+                    },
+                    AccountState::ReauthRequired,
+                    Some(error.clone()),
+                );
+            }
             return;
         }
         let _transaction = self.transaction.lock().await;
-        let generation = self.generation.load(Ordering::SeqCst);
-        let profile = Profile {
-            id: record.profile_id.clone(),
-            name: record.profile_name.clone(),
-        };
-        self.publish(AccountState::Refreshing, Some(&profile), None, None);
-        if let Err(error) = self.refresh_locked(generation, &record.vault_key).await
-            && self.generation.load(Ordering::SeqCst) == generation
-        {
-            self.publish(
-                state_for_error(error.code),
-                Some(&profile),
-                Some(error),
-                None,
-            );
+        for record in &file.accounts {
+            let generation = self.generation(&record.profile_id);
+            let profile = Profile {
+                id: record.profile_id.clone(),
+                name: record.profile_name.clone(),
+            };
+            self.publish_account(&profile, AccountState::Refreshing, None);
+            let ticket = Ticket::Account(record.profile_id.clone(), generation);
+            if let Err(error) = self.refresh_locked(&ticket, &record.vault_key).await
+                && self.current(&ticket)
+            {
+                self.publish_account(&profile, state_for_error(error.code), Some(error));
+            }
         }
     }
 
     /// Full refresh chain; the caller holds `transaction`.
-    async fn refresh_locked(&self, generation: u64, vault_key: &str) -> LauncherResult<()> {
+    async fn refresh_locked(&self, ticket: &Ticket, vault_key: &str) -> LauncherResult<()> {
         let client_id = self.client_id()?;
         let refresh_token = self.store().get(vault_key)?.ok_or_else(|| {
             LauncherError::new(
@@ -441,7 +516,7 @@ impl AuthService {
             Ok(tokens) => tokens,
             Err(error) if error.code == ErrorCode::AuthReauthRequired => {
                 // Confirmed revocation or invalid grant: clear the saved login.
-                self.forget_revoked(generation, vault_key);
+                self.forget_revoked(ticket, vault_key);
                 return Err(error);
             }
             Err(error) => return Err(error),
@@ -450,78 +525,85 @@ impl AuthService {
         let profile = flow::check_access(&self.http, &minecraft.access_token).await?;
         // Persist a rotated refresh token before the old one is discarded; when the
         // response does not rotate it, the existing vault entry stays.
-        self.commit_session(generation, tokens.refresh_token, profile, minecraft)
+        self.commit_session(ticket, tokens.refresh_token, profile, minecraft)
     }
 
-    fn forget_revoked(&self, generation: u64, vault_key: &str) {
+    /// Forgets a revoked login; the account stays listed so it can sign in again.
+    fn forget_revoked(&self, ticket: &Ticket, vault_key: &str) {
         let _commit = lock(&self.commit);
-        if self.generation.load(Ordering::SeqCst) != generation {
+        let Ticket::Account(id, _) = ticket else {
+            return;
+        };
+        if !self.current(ticket) {
             return;
         }
         if self.store().delete(vault_key).is_ok() {
-            let _ = self.host.save_accounts_file(AccountsFile::default());
+            let id = id.clone();
+            let _ = self.host.update_accounts_file(Box::new(move |file| {
+                file.accounts.retain(|a| a.profile_id != id);
+            }));
         }
-        *lock(&self.session) = None;
+        lock(&self.sessions).remove(id);
     }
 
-    /// Re-verifies current access for one launch attempt (doc 03 "Timing and
-    /// refresh"). Uses the cached Minecraft token only while it is valid with a skew
-    /// margin, and always asks for fresh entitlements and profile.
-    pub async fn verify_for_launch(&self) -> LauncherResult<LaunchAuthorization> {
+    /// Re-verifies current access of one account for one launch attempt (doc 03
+    /// "Timing and refresh"). Uses the cached Minecraft token only while it is
+    /// valid with a skew margin, and always asks for fresh entitlements and profile.
+    pub async fn verify_for_launch(&self, profile_id: &str) -> LauncherResult<LaunchAuthorization> {
         let client_id = self.client_id()?;
         let _transaction = self.transaction.lock().await;
-        let generation = self.generation.load(Ordering::SeqCst);
-        let vault_key = {
-            let session = lock(&self.session);
-            match session.as_ref() {
-                Some(s) => s.vault_key.clone(),
-                None => {
-                    let error =
-                        LauncherError::new(ErrorCode::AuthReauthRequired, "Sign in to play.");
-                    return Err(error);
-                }
-            }
-        };
+        let ticket = Ticket::Account(profile_id.to_owned(), self.generation(profile_id));
+        // A saved account whose restore failed (for example offline) refreshes now.
+        let vault_key = lock(&self.sessions)
+            .get(profile_id)
+            .map(|s| s.vault_key.clone())
+            .or_else(|| {
+                self.host
+                    .accounts_file()
+                    .accounts
+                    .into_iter()
+                    .find(|a| a.profile_id == profile_id)
+                    .map(|a| a.vault_key)
+            })
+            .ok_or_else(sign_in_to_play)?;
         let token_valid = |expires_at: DateTime<Utc>| {
             expires_at - chrono::Duration::seconds(contract::EXPIRY_SKEW_SECONDS) > Utc::now()
         };
-        let needs_refresh = lock(&self.session)
-            .as_ref()
-            .is_none_or(|s| !token_valid(s.minecraft.expires_at));
-        if needs_refresh {
-            self.refresh_locked(generation, &vault_key)
+        let cached = lock(&self.sessions).get(profile_id).and_then(|s| {
+            token_valid(s.minecraft.expires_at)
+                .then(|| SecretString::new(s.minecraft.access_token.expose()))
+        });
+        let fail = |e: LauncherError| {
+            self.publish_account_error(profile_id, &e);
+            e
+        };
+        match cached {
+            None => self
+                .refresh_locked(&ticket, &vault_key)
                 .await
-                .inspect_err(|e| self.publish_error(e))?;
-        } else {
-            let token = lock(&self.session)
-                .as_ref()
-                .map(|s| SecretString::new(s.minecraft.access_token.expose()))
-                .ok_or_else(superseded)?;
-            match flow::check_access(&self.http, &token).await {
+                .map_err(fail)?,
+            Some(token) => match flow::check_access(&self.http, &token).await {
                 Ok(profile) => {
                     let _commit = lock(&self.commit);
-                    if self.generation.load(Ordering::SeqCst) != generation {
+                    if !self.current(&ticket) {
                         return Err(superseded());
                     }
-                    if let Some(session) = lock(&self.session).as_mut() {
+                    if let Some(session) = lock(&self.sessions).get_mut(profile_id) {
                         session.profile = profile.clone();
                     }
-                    self.publish(AccountState::VerifiedAccess, Some(&profile), None, None);
+                    self.publish_account(&profile, AccountState::VerifiedAccess, None);
                 }
                 // An expired or revoked Minecraft token: refresh once, then retry.
                 Err(error) if error.code == ErrorCode::AuthReauthRequired => {
-                    self.refresh_locked(generation, &vault_key)
+                    self.refresh_locked(&ticket, &vault_key)
                         .await
-                        .inspect_err(|e| self.publish_error(e))?;
+                        .map_err(fail)?;
                 }
-                Err(error) => {
-                    self.publish_error(&error);
-                    return Err(error);
-                }
-            }
+                Err(error) => return Err(fail(error)),
+            },
         }
-        let session = lock(&self.session);
-        let session = session.as_ref().ok_or_else(superseded)?;
+        let sessions = lock(&self.sessions);
+        let session = sessions.get(profile_id).ok_or_else(superseded)?;
         Ok(LaunchAuthorization {
             profile: session.profile.clone(),
             access_token: SecretString::new(session.minecraft.access_token.expose()),
@@ -530,8 +612,9 @@ impl AuthService {
         })
     }
 
-    /// Local sign-out. Refused while a launch or game owns the account.
-    pub async fn sign_out(&self) -> LauncherResult<()> {
+    /// Local sign-out of one account, or a retry of a pending one. Refused while a
+    /// launch or game owns the accounts.
+    pub async fn sign_out(&self, profile_id: &str) -> LauncherResult<()> {
         if self.host.launch_owns_account() {
             return Err(LauncherError::new(
                 ErrorCode::AppBusy,
@@ -539,48 +622,75 @@ impl AuthService {
             ));
         }
         // Invalidate pending work first so no late result can repopulate the vault.
-        self.generation.fetch_add(1, Ordering::SeqCst);
-        if let Some(attempt) = lock(&self.attempt).take() {
-            let _ = attempt.cancel.send(true);
-        }
-        let record = self.host.accounts_file().active.or_else(|| {
-            lock(&self.session).as_ref().map(|s| AccountRecord {
-                profile_id: s.profile.id.clone(),
-                profile_name: s.profile.name.clone(),
-                vault_key: s.vault_key.clone(),
-            })
-        });
-        self.complete_sign_out(record)
+        *lock(&self.generations)
+            .entry(profile_id.to_owned())
+            .or_default() += 1;
+        let file = self.host.accounts_file();
+        let record = file
+            .accounts
+            .iter()
+            .chain(&file.pending_sign_outs)
+            .find(|a| a.profile_id == profile_id)
+            .cloned()
+            .or_else(|| {
+                lock(&self.sessions).get(profile_id).map(|s| AccountRecord {
+                    profile_id: s.profile.id.clone(),
+                    profile_name: s.profile.name.clone(),
+                    vault_key: s.vault_key.clone(),
+                })
+            });
+        self.complete_sign_out(profile_id, record)
     }
 
-    fn complete_sign_out(&self, record: Option<AccountRecord>) -> LauncherResult<()> {
+    fn complete_sign_out(
+        &self,
+        profile_id: &str,
+        record: Option<AccountRecord>,
+    ) -> LauncherResult<()> {
         let _commit = lock(&self.commit);
-        *lock(&self.session) = None;
+        lock(&self.sessions).remove(profile_id);
+        let forget = |status: &mut AuthStatus| {
+            status.accounts.retain(|a| a.profile_id != profile_id);
+            status
+                .pending_sign_outs
+                .retain(|a| a.profile_id != profile_id);
+        };
+        let id = profile_id.to_owned();
         let Some(record) = record else {
-            let _ = self.host.save_accounts_file(AccountsFile::default());
-            self.publish(AccountState::SignedOut, None, None, None);
+            let _ = self.host.update_accounts_file(Box::new(move |file| {
+                file.remove(&ProfileRef::Microsoft { id });
+            }));
+            self.update_status(forget);
             return Ok(());
         };
         match self.store().delete(&record.vault_key) {
             Ok(()) => {
-                self.host.save_accounts_file(AccountsFile::default())?;
-                self.publish(AccountState::SignedOut, None, None, None);
+                self.host.update_accounts_file(Box::new(move |file| {
+                    file.remove(&ProfileRef::Microsoft { id: id.clone() });
+                    file.pending_sign_outs.retain(|a| a.profile_id != id);
+                }))?;
+                self.update_status(forget);
                 Ok(())
             }
             Err(error) => {
                 // Keep a non-secret marker so restart retries deletion and never
                 // restores the credential.
-                let _ = self.host.save_accounts_file(AccountsFile {
-                    active: Some(record),
-                    sign_out_pending: true,
-                    ..AccountsFile::default()
+                let pending = record.clone();
+                let _ = self.host.update_accounts_file(Box::new(move |file| {
+                    file.remove(&ProfileRef::Microsoft { id: id.clone() });
+                    if !file.pending_sign_outs.iter().any(|a| a.profile_id == id) {
+                        file.pending_sign_outs.push(pending);
+                    }
+                }));
+                self.update_status(|status| {
+                    forget(status);
+                    status.pending_sign_outs.push(PendingSignOut {
+                        profile_id: record.profile_id.clone(),
+                        profile_name: record.profile_name.clone(),
+                    });
+                    status.login_error = Some(error.clone());
+                    status.login_state = AccountState::SignOutPending;
                 });
-                self.publish(
-                    AccountState::SignOutPending,
-                    None,
-                    Some(error.clone()),
-                    None,
-                );
                 Err(error)
             }
         }

@@ -14,7 +14,7 @@ use crate::error::LauncherError;
 use crate::storage::StorageIssue;
 use crate::storage::models::{
     DuringGameMode, InstallationHealth, InstalledJava, InstanceFile, Language, LastResult,
-    OperationKind, Outcome, Resolution, Settings, Theme,
+    OperationKind, Outcome, ProfileRef, Resolution, Settings, Theme,
 };
 use crate::storage::paths::{InstanceId, JavaProvider, Sha1};
 use crate::validation::{MemoryPolicy, ResolutionBounds};
@@ -155,6 +155,8 @@ pub struct InstanceSummary {
     pub java_provider: Option<JavaProvider>,
     pub custom_java: Option<crate::storage::models::CustomJava>,
     pub jvm_arguments: String,
+    /// Who plays this installation; `None` is the default profile (D-045).
+    pub profile: Option<ProfileRef>,
 }
 
 impl InstanceSummary {
@@ -177,6 +179,7 @@ impl InstanceSummary {
             java_provider: instance.java_provider,
             custom_java: instance.custom_java.clone(),
             jvm_arguments: instance.jvm_arguments.clone(),
+            profile: instance.profile.clone(),
         }
     }
 }
@@ -198,32 +201,111 @@ pub enum AccountState {
     SignOutPending,
 }
 
-/// Account display state. Never contains tokens or vault contents.
+/// One Microsoft account as the interface shows it. Never contains tokens.
+#[derive(Debug, Clone, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct MicrosoftAccount {
+    pub profile_id: String,
+    pub profile_name: String,
+    pub state: AccountState,
+    /// The last verification failure, if the state is an error state.
+    pub error: Option<LauncherError>,
+}
+
+/// An account whose saved credential could not be deleted yet.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PendingSignOut {
+    pub profile_id: String,
+    pub profile_name: String,
+}
+
+/// What the auth service reports: Microsoft accounts and the browser sign-in.
+#[derive(Debug, Clone, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct AuthStatus {
+    pub accounts: Vec<MicrosoftAccount>,
+    /// The active browser sign-in attempt, cancellable with `cancel_login`.
+    pub login_operation_id: Option<String>,
+    /// `signing_in` during a browser sign-in; after a failed one, the state its
+    /// error stands for; otherwise `signed_out`.
+    pub login_state: AccountState,
+    /// Why the last sign-in did not add an account.
+    pub login_error: Option<LauncherError>,
+    /// True when credentials are kept in memory only (no usable OS vault).
+    pub session_only: bool,
+    pub pending_sign_outs: Vec<PendingSignOut>,
+}
+
+impl AuthStatus {
+    pub fn signed_out() -> Self {
+        Self {
+            accounts: Vec::new(),
+            login_operation_id: None,
+            login_state: AccountState::SignedOut,
+            login_error: None,
+            session_only: false,
+            pending_sign_outs: Vec::new(),
+        }
+    }
+
+    /// Adds or updates one account.
+    pub fn upsert(&mut self, account: MicrosoftAccount) {
+        match self
+            .accounts
+            .iter_mut()
+            .find(|a| a.profile_id == account.profile_id)
+        {
+            Some(existing) => *existing = account,
+            None => self.accounts.push(account),
+        }
+    }
+}
+
+/// A no-token profile as the interface shows it.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct NoTokenProfileView {
+    pub id: String,
+    pub name: String,
+}
+
+/// Everything about accounts and profiles (D-045). Never contains tokens or vault
+/// contents.
 #[derive(Debug, Clone, PartialEq, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct AccountSummary {
-    pub state: AccountState,
-    pub profile_name: Option<String>,
-    pub profile_id: Option<String>,
-    /// The last sign-in or verification failure, if the state is an error state.
-    pub error: Option<LauncherError>,
-    /// True when credentials are kept in memory only (no usable OS vault).
-    pub session_only: bool,
-    /// The active browser sign-in attempt, cancellable with `cancel_login`.
-    pub login_operation_id: Option<String>,
+    #[serde(flatten)]
+    pub auth: AuthStatus,
+    pub notoken_profiles: Vec<NoTokenProfileView>,
+    /// The profile installations play as unless they name another one.
+    pub default_profile: Option<ProfileRef>,
 }
 
-impl AccountSummary {
-    pub fn signed_out() -> Self {
-        Self {
-            state: AccountState::SignedOut,
-            profile_name: None,
-            profile_id: None,
-            error: None,
-            session_only: false,
-            login_operation_id: None,
-        }
-    }
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct ProfileIdPayload {
+    pub profile_id: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct AddNoTokenProfilePayload {
+    pub name: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct SetDefaultProfilePayload {
+    pub profile: Option<ProfileRef>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct SetInstanceProfilePayload {
+    pub instance_id: InstanceId,
+    /// `None` plays as the default profile.
+    pub profile: Option<ProfileRef>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]

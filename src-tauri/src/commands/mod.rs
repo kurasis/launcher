@@ -15,9 +15,10 @@ use crate::lifecycle::{LifecycleController, RunHandles};
 use crate::net::PublicClient;
 use crate::state::AppState;
 use crate::state::dto::{
-    AppSnapshot, CheckJavaPayload, CreateInstancePayload, InstanceSummary, JavaChoice,
-    MutationRequest, SetInstanceJavaPayload, SetInstanceNotesPayload, SettingsPatch, SettingsView,
-    UpdateInstanceSettingsPayload,
+    AddNoTokenProfilePayload, AppSnapshot, CheckJavaPayload, CreateInstancePayload,
+    InstanceSummary, JavaChoice, MutationRequest, NoTokenProfileView, ProfileIdPayload,
+    SetDefaultProfilePayload, SetInstanceJavaPayload, SetInstanceNotesPayload,
+    SetInstanceProfilePayload, SettingsPatch, SettingsView, UpdateInstanceSettingsPayload,
 };
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
@@ -330,25 +331,63 @@ pub fn cancel_login(
     auth.cancel_login(&request.payload.operation_id)
 }
 
-/// Local sign-out: clears launch authorization and removes saved credentials.
+/// Local sign-out of one account: clears its launch authorization and removes
+/// its saved credentials (or retries a pending removal).
 #[tauri::command]
 pub async fn sign_out(
     auth: State<'_, Arc<AuthService>>,
-    request: MutationRequest<EmptyPayload>,
+    request: MutationRequest<ProfileIdPayload>,
 ) -> LauncherResult<()> {
     crate::state::ledger::validate_request_id(&request.request_id)?;
-    auth.sign_out().await
+    auth.sign_out(&request.payload.profile_id).await
 }
 
-/// Re-checks current access with fresh service data (for "Check again"). The
-/// launch token is not exposed; launches re-verify independently.
+/// Re-checks one account's access with fresh service data (for "Check again").
+/// The launch token is not exposed; launches re-verify independently.
 #[tauri::command]
 pub async fn verify_account(
     auth: State<'_, Arc<AuthService>>,
-    request: MutationRequest<EmptyPayload>,
+    request: MutationRequest<ProfileIdPayload>,
 ) -> LauncherResult<()> {
     crate::state::ledger::validate_request_id(&request.request_id)?;
-    auth.verify_for_launch().await.map(|_| ())
+    auth.verify_for_launch(&request.payload.profile_id)
+        .await
+        .map(|_| ())
+}
+
+/// Adds a named no-token profile for the demo (D-045).
+#[tauri::command]
+pub fn add_notoken_profile(
+    state: State<'_, AppState>,
+    request: MutationRequest<AddNoTokenProfilePayload>,
+) -> LauncherResult<NoTokenProfileView> {
+    state.add_notoken_profile(request)
+}
+
+#[tauri::command]
+pub fn remove_notoken_profile(
+    state: State<'_, AppState>,
+    request: MutationRequest<ProfileIdPayload>,
+) -> LauncherResult<()> {
+    state.remove_notoken_profile(request)
+}
+
+/// Chooses the profile installations play as unless they name another one.
+#[tauri::command]
+pub fn set_default_profile(
+    state: State<'_, AppState>,
+    request: MutationRequest<SetDefaultProfilePayload>,
+) -> LauncherResult<()> {
+    state.set_default_profile(request)
+}
+
+/// Chooses who plays one installation.
+#[tauri::command]
+pub fn set_instance_profile(
+    state: State<'_, AppState>,
+    request: MutationRequest<SetInstanceProfilePayload>,
+) -> LauncherResult<InstanceSummary> {
+    state.set_instance_profile(request)
 }
 
 /// Opens one of the fixed official destinations in the system browser.
@@ -538,28 +577,26 @@ pub struct RunPayload {
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct LaunchPayload {
     pub instance_id: crate::storage::paths::InstanceId,
-    /// The no-token profile, which plays Minecraft's demo without an account
-    /// (D-033); otherwise the signed-in account.
-    #[serde(default)]
-    pub notoken: bool,
 }
 
-/// Checks the installation and account (or uses the no-token profile), then starts
-/// Minecraft under supervision.
+/// Checks the installation and the account of the installation's profile (or
+/// uses a no-token profile), then starts Minecraft under supervision (D-045).
+/// Debug builds started with `LAUNCHER_NOTOKEN_PROFILE` always play as that
+/// test profile (D-030).
 #[tauri::command]
 pub async fn launch_game(
     launcher: State<'_, Launcher>,
     request: MutationRequest<LaunchPayload>,
 ) -> LauncherResult<crate::state::dto::RunSummary> {
-    let mode = if request.payload.notoken {
-        crate::launch::service::LaunchMode::NoToken
-    } else {
-        crate::launch::service::LaunchMode::Account
-    };
-    launcher
-        .get()?
-        .launch_as(&request.request_id, request.payload.instance_id, mode)
-        .await
+    let launcher = launcher.get()?;
+    let id = request.payload.instance_id;
+    #[cfg(debug_assertions)]
+    let mode = crate::launch::notoken::NoTokenProfile::from_env()
+        .map(crate::launch::service::LaunchMode::NoToken)
+        .unwrap_or_else(|| launcher.mode_for(id));
+    #[cfg(not(debug_assertions))]
+    let mode = launcher.mode_for(id);
+    launcher.launch_as(&request.request_id, id, mode).await
 }
 
 /// Terminates the owned game process of `runId` after the user confirmed it.

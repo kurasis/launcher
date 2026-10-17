@@ -2,28 +2,31 @@ import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { mockIPC } from '@tauri-apps/api/mocks';
 import { describe, expect, it } from 'vitest';
 import type { OperationProgress, OperationResult } from '../../lib/contracts';
-import { instanceFixture, snapshotFixture } from '../../test/fixtures';
+import { accountFixture, instanceFixture, snapshotFixture } from '../../test/fixtures';
 import { InstallPanel } from './InstallPanel';
 
+let launchFails = false;
+
 function backend() {
+  launchFails = false;
   const calls: { cmd: string; args: unknown }[] = [];
   mockIPC((cmd, args) => {
     calls.push({ cmd, args });
     if (cmd === 'install_instance' || cmd === 'repair_instance') return { operationId: 'op-1' };
     if (cmd === 'cancel_operation') return { state: 'cancel_requested' };
     if (cmd === 'launch_game') {
-      // The no-token profile needs no account; a normal launch fails without sign-in setup.
-      if ((args as { request: { payload: { notoken: boolean } } }).request.payload.notoken) {
-        return { runId: 'run-1', kind: 'game', state: 'preflight' };
+      if (launchFails) {
+        // eslint-disable-next-line @typescript-eslint/only-throw-error -- mirrors the IPC error envelope
+        throw {
+          code: 'AUTH_NOT_CONFIGURED',
+          message: 'Sign-in is not configured in this build.',
+          retryable: false,
+          diagnosticId: 'd',
+        };
       }
-      // eslint-disable-next-line @typescript-eslint/only-throw-error -- mirrors the IPC error envelope
-      throw {
-        code: 'AUTH_NOT_CONFIGURED',
-        message: 'Sign-in is not configured in this build.',
-        retryable: false,
-        diagnosticId: 'd',
-      };
+      return { runId: 'run-1', kind: 'game', state: 'preflight' };
     }
+    if (cmd === 'set_instance_profile') return instanceFixture();
     if (cmd === 'get_app_snapshot') return snapshotFixture();
     return null;
   });
@@ -66,7 +69,7 @@ describe('InstallPanel', () => {
     backend();
     render(
       <InstallPanel
-        accountState="signed_out"
+        account={accountFixture()}
         instance={instanceFixture({ health: 'ready', busy: true })}
         activeOperation={{ kind: 'launch', instanceId: instanceFixture().id, operationId: 'run-1' }}
         progress={null}
@@ -82,7 +85,7 @@ describe('InstallPanel', () => {
     const calls = backend();
     render(
       <InstallPanel
-        accountState="signed_out"
+        account={accountFixture()}
         instance={instanceFixture()}
         activeOperation={null}
         progress={null}
@@ -102,7 +105,7 @@ describe('InstallPanel', () => {
     const instance = instanceFixture({ busy: true });
     render(
       <InstallPanel
-        accountState="signed_out"
+        account={accountFixture()}
         instance={instance}
         activeOperation={{ kind: 'install', instanceId: instance.id, operationId: 'op-1' }}
         progress={progress}
@@ -129,7 +132,7 @@ describe('InstallPanel', () => {
     backend();
     render(
       <InstallPanel
-        accountState="signed_out"
+        account={accountFixture()}
         instance={instanceFixture()}
         activeOperation={null}
         progress={null}
@@ -144,7 +147,7 @@ describe('InstallPanel', () => {
     const calls = backend();
     const { rerender } = render(
       <InstallPanel
-        accountState="signed_out"
+        account={accountFixture()}
         instance={instanceFixture({ health: 'repair_required' })}
         activeOperation={null}
         progress={null}
@@ -158,7 +161,7 @@ describe('InstallPanel', () => {
     });
     rerender(
       <InstallPanel
-        accountState="signed_out"
+        account={accountFixture()}
         instance={instanceFixture({ health: 'ready' })}
         activeOperation={null}
         progress={null}
@@ -175,7 +178,7 @@ describe('InstallPanel', () => {
     backend();
     render(
       <InstallPanel
-        accountState="signed_out"
+        account={accountFixture()}
         instance={instanceFixture()}
         activeOperation={{ kind: 'install', instanceId: 'other', operationId: 'op-9' }}
         progress={null}
@@ -186,12 +189,13 @@ describe('InstallPanel', () => {
     expect(screen.getByText(/Another operation is running/)).toBeVisible();
   });
 
-  it('offers the no-token demo without an account and Play with verified access', async () => {
+  it('plays the demo as the default player and in full as a Microsoft account', async () => {
     const calls = backend();
+    const instance = instanceFixture({ health: 'ready' });
     const { rerender } = render(
       <InstallPanel
-        accountState="signed_out"
-        instance={instanceFixture({ health: 'ready' })}
+        account={accountFixture()}
+        instance={instance}
         activeOperation={null}
         progress={null}
         recentOperations={[]}
@@ -199,27 +203,59 @@ describe('InstallPanel', () => {
     );
     expect(screen.queryByRole('button', { name: 'Play' })).toBeNull();
     expect(screen.getByText(/five in-game days, no multiplayer/)).toBeVisible();
+    expect(screen.getByLabelText('Play as')).toHaveDisplayValue('Default: Player (demo)');
     fireEvent.click(screen.getByRole('button', { name: 'Play demo' }));
     await waitFor(() => {
       expect(calls.find((c) => c.cmd === 'launch_game')?.args).toMatchObject({
-        request: { payload: { instanceId: instanceFixture().id, notoken: true } },
+        request: { payload: { instanceId: instance.id } },
       });
     });
 
+    const account = accountFixture({
+      accounts: [
+        {
+          profileId: 'steve',
+          profileName: 'Steve_Test',
+          state: 'verified_access',
+          error: null,
+        },
+      ],
+      notokenProfiles: [{ id: 'alex', name: 'Alex' }],
+      defaultProfile: { kind: 'microsoft', id: 'steve' },
+    });
     rerender(
       <InstallPanel
-        accountState="verified_access"
-        instance={instanceFixture({ health: 'ready' })}
+        account={account}
+        instance={instance}
         activeOperation={null}
         progress={null}
         recentOperations={[]}
       />,
     );
     expect(screen.queryByText(/five in-game days/)).toBeNull();
+    launchFails = true;
     fireEvent.click(screen.getByRole('button', { name: 'Play' }));
     expect(await screen.findByText('Sign-in is not configured in this build.')).toBeVisible();
-    expect(calls.filter((c) => c.cmd === 'launch_game').at(-1)?.args).toMatchObject({
-      request: { payload: { instanceId: instanceFixture().id, notoken: false } },
+
+    // The installation can play as the demo profile instead.
+    fireEvent.change(screen.getByLabelText('Play as'), { target: { value: 'notoken:alex' } });
+    await waitFor(() => {
+      expect(calls.find((c) => c.cmd === 'set_instance_profile')?.args).toMatchObject({
+        request: {
+          payload: { instanceId: instance.id, profile: { kind: 'notoken', id: 'alex' } },
+        },
+      });
     });
+    rerender(
+      <InstallPanel
+        account={account}
+        instance={{ ...instance, profile: { kind: 'notoken', id: 'alex' } }}
+        activeOperation={null}
+        progress={null}
+        recentOperations={[]}
+      />,
+    );
+    expect(screen.getByRole('button', { name: 'Play demo' })).toBeVisible();
+    expect(screen.getByLabelText('Play as')).toHaveDisplayValue('Alex (demo)');
   });
 });

@@ -116,7 +116,11 @@ fn summary(state: &AppState) -> Value {
             "defaultResolution": snapshot.settings.default_resolution,
         },
         "dataRoot": snapshot.data_root.status,
-        "account": { "state": snapshot.account.state, "sessionOnly": snapshot.account.session_only },
+        "account": {
+            "accounts": snapshot.account.auth.accounts.iter().map(|a| a.state).collect::<Vec<_>>(),
+            "noTokenProfiles": snapshot.account.notoken_profiles.len(),
+            "sessionOnly": snapshot.account.auth.session_only,
+        },
         "instances": instances,
         "activeOperation": snapshot.active_operation,
         "currentRun": snapshot.current_run,

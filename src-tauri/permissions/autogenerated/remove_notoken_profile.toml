@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-remove-notoken-profile"
+description = "Enables the remove_notoken_profile command without any pre-configured scope."
+commands.allow = ["remove_notoken_profile"]
+
+[[permission]]
+identifier = "deny-remove-notoken-profile"
+description = "Denies the remove_notoken_profile command without any pre-configured scope."
+commands.deny = ["remove_notoken_profile"]

@@ -23,17 +23,20 @@ struct Host {
 }
 
 impl AccountHost for Host {
-    fn account(&self) -> AccountSummary {
-        self.app.account()
+    fn auth_status(&self) -> AuthStatus {
+        self.app.auth_status()
     }
-    fn set_account(&self, account: AccountSummary) {
-        self.app.set_account(account);
+    fn set_auth_status(&self, status: AuthStatus) {
+        self.app.set_auth_status(status);
     }
     fn accounts_file(&self) -> AccountsFile {
         self.app.accounts_file()
     }
-    fn save_accounts_file(&self, accounts: AccountsFile) -> LauncherResult<()> {
-        self.app.save_accounts_file(accounts)
+    fn update_accounts_file(
+        &self,
+        change: Box<dyn FnOnce(&mut AccountsFile) + Send + '_>,
+    ) -> LauncherResult<()> {
+        self.app.update_accounts_file(change)
     }
     fn launch_owns_account(&self) -> bool {
         self.launch_owned.load(Ordering::SeqCst)
@@ -178,19 +181,24 @@ impl Fixture {
             .insert(path.to_owned(), (status, body.to_string()));
     }
 
-    fn state(&self) -> AccountState {
-        self.host.account().state
+    /// The single account these tests use, or the sign-in result.
+    fn view(&self) -> View {
+        View::of(&self.host.app.auth_status())
     }
 
-    async fn wait_for(&self, predicate: impl Fn(&AccountSummary) -> bool) -> AccountSummary {
+    fn state(&self) -> AccountState {
+        self.view().state
+    }
+
+    async fn wait_for(&self, predicate: impl Fn(&View) -> bool) -> View {
         for _ in 0..200 {
-            let account = self.host.account();
-            if predicate(&account) {
-                return account;
+            let view = self.view();
+            if predicate(&view) {
+                return view;
             }
             tokio::time::sleep(Duration::from_millis(25)).await;
         }
-        panic!("timed out; account = {:?}", self.host.account());
+        panic!("timed out; status = {:?}", self.host.app.auth_status());
     }
 
     /// Acts as the browser: follows the opened authorization URL's redirect.
@@ -218,11 +226,49 @@ impl Fixture {
         response
     }
 
-    async fn sign_in(&self) -> AccountSummary {
+    async fn sign_in(&self) -> View {
         self.service.begin_login().await.unwrap();
         self.browser_callback(|state| format!("code=auth-code&state={state}"))
             .await;
         self.wait_for(|a| a.state != AccountState::SigningIn).await
+    }
+}
+
+/// One account's state as the interface shows it: a pending sign-in or sign-out
+/// first, then the account, then the last sign-in result.
+#[derive(Debug)]
+struct View {
+    state: AccountState,
+    profile_name: Option<String>,
+    error: Option<LauncherError>,
+    session_only: bool,
+}
+
+impl View {
+    fn of(status: &AuthStatus) -> Self {
+        let (state, profile_name, error) = if status.login_operation_id.is_some() {
+            (AccountState::SigningIn, None, None)
+        } else if !status.pending_sign_outs.is_empty() {
+            (
+                AccountState::SignOutPending,
+                None,
+                status.login_error.clone(),
+            )
+        } else if let Some(account) = status.accounts.first() {
+            (
+                account.state,
+                Some(account.profile_name.clone()),
+                account.error.clone(),
+            )
+        } else {
+            (status.login_state, None, status.login_error.clone())
+        };
+        Self {
+            state,
+            profile_name,
+            error,
+            session_only: status.session_only,
+        }
     }
 }
 
@@ -384,7 +430,7 @@ async fn negative_outcomes_get_distinct_states() {
         );
         // Nothing is saved for a failed verification.
         assert!(f.store.get(&vault_key(PROFILE_ID)).unwrap().is_none());
-        assert!(f.host.accounts_file().active.is_none());
+        assert!(f.host.accounts_file().accounts.is_empty());
     }
 }
 
@@ -489,13 +535,17 @@ async fn not_configured_client_id_is_explicit() {
 async fn sign_out_removes_credentials_and_launch_authorization() {
     let f = fixture().await;
     f.sign_in().await;
-    assert!(f.service.verify_for_launch().await.is_ok());
-    f.service.sign_out().await.unwrap();
+    assert!(f.service.verify_for_launch(PROFILE_ID).await.is_ok());
+    f.service.sign_out(PROFILE_ID).await.unwrap();
     assert_eq!(f.state(), AccountState::SignedOut);
     assert!(f.store.get(&vault_key(PROFILE_ID)).unwrap().is_none());
-    assert!(f.host.accounts_file().active.is_none());
+    assert!(f.host.accounts_file().accounts.is_empty());
     assert_eq!(
-        f.service.verify_for_launch().await.err().map(|e| e.code),
+        f.service
+            .verify_for_launch(PROFILE_ID)
+            .await
+            .err()
+            .map(|e| e.code),
         Some(ErrorCode::AuthReauthRequired)
     );
 }
@@ -506,7 +556,7 @@ async fn account_changes_are_refused_while_a_launch_owns_it() {
     f.sign_in().await;
     f.host.launch_owned.store(true, Ordering::SeqCst);
     assert_eq!(
-        f.service.sign_out().await.unwrap_err().code,
+        f.service.sign_out(PROFILE_ID).await.unwrap_err().code,
         ErrorCode::AppBusy
     );
     assert_eq!(
@@ -524,12 +574,12 @@ async fn vault_deletion_failure_is_reported_and_retried_after_restart() {
     let f = fixture_with(Some(CLIENT_ID), Arc::clone(&store), Some(dir)).await;
     f.sign_in().await;
     store.fail_delete.store(true, Ordering::SeqCst);
-    let error = f.service.sign_out().await.unwrap_err();
+    let error = f.service.sign_out(PROFILE_ID).await.unwrap_err();
     assert_eq!(error.code, ErrorCode::SecretStoreDeleteFailed);
     assert_eq!(f.state(), AccountState::SignOutPending);
-    assert!(f.host.accounts_file().sign_out_pending);
+    assert_eq!(f.host.accounts_file().pending_sign_outs.len(), 1);
     // Launch authorization is cleared even though deletion failed.
-    assert!(f.service.verify_for_launch().await.is_err());
+    assert!(f.service.verify_for_launch(PROFILE_ID).await.is_err());
     let dir = f.into_dir();
 
     // "Restart": a new app state and service over the same data root and vault.
@@ -540,7 +590,7 @@ async fn vault_deletion_failure_is_reported_and_retried_after_restart() {
     f.service.restore().await;
     assert_eq!(f.state(), AccountState::SignedOut);
     assert!(store.get(&vault_key(PROFILE_ID)).unwrap().is_none());
-    assert!(!f.host.accounts_file().sign_out_pending);
+    assert!(f.host.accounts_file().pending_sign_outs.is_empty());
     assert_eq!(f.server.count("/token"), 0, "never restored while pending");
 }
 
@@ -601,7 +651,7 @@ async fn invalid_grant_clears_but_outage_keeps_the_account() {
         store.get(&vault_key(PROFILE_ID)).unwrap().is_some(),
         "outage keeps the login"
     );
-    assert!(f.host.accounts_file().active.is_some());
+    assert!(!f.host.accounts_file().accounts.is_empty());
     let dir = f.into_dir();
 
     let f = fixture_with(Some(CLIENT_ID), Arc::clone(&store), Some(dir)).await;
@@ -609,7 +659,7 @@ async fn invalid_grant_clears_but_outage_keeps_the_account() {
     f.service.restore().await;
     assert_eq!(f.state(), AccountState::ReauthRequired);
     assert!(store.get(&vault_key(PROFILE_ID)).unwrap().is_none());
-    assert!(f.host.accounts_file().active.is_none());
+    assert!(f.host.accounts_file().accounts.is_empty());
 }
 
 #[tokio::test]
@@ -617,13 +667,13 @@ async fn launch_verification_is_fresh_and_refreshes_once_on_401() {
     let f = fixture().await;
     f.sign_in().await;
     let before = f.server.count("/entitlements/license");
-    let auth = f.service.verify_for_launch().await.unwrap();
+    let auth = f.service.verify_for_launch(PROFILE_ID).await.unwrap();
     assert_eq!(auth.profile.name, "Steve_Test");
     assert_eq!(auth.access_token.expose(), "mc-token-1");
     assert_eq!(auth.xuid.as_deref(), Some("2535400000000001"));
     assert_eq!(auth.client_id, CLIENT_ID);
     // Each launch asks for fresh entitlements; the cached token is reused.
-    f.service.verify_for_launch().await.unwrap();
+    f.service.verify_for_launch(PROFILE_ID).await.unwrap();
     assert_eq!(f.server.count("/entitlements/license"), before + 2);
     assert_eq!(f.server.count("/token"), 1);
 
@@ -646,13 +696,13 @@ async fn launch_verification_is_fresh_and_refreshes_once_on_401() {
             .cloned()
             .unwrap_or((404, "{}".into()))
     }));
-    f.service.verify_for_launch().await.unwrap();
+    f.service.verify_for_launch(PROFILE_ID).await.unwrap();
     assert_eq!(f.server.count("/token"), 2, "one refresh");
     assert_eq!(f.state(), AccountState::VerifiedAccess);
 
     // Revoked access between launches is caught by the fresh check.
     f.route("/entitlements/license", 200, json!({"items": []}));
-    let error = f.service.verify_for_launch().await.err().unwrap();
+    let error = f.service.verify_for_launch(PROFILE_ID).await.err().unwrap();
     assert_eq!(error.code, ErrorCode::NoGameAccess);
     assert_eq!(f.state(), AccountState::NoAccess);
 }
@@ -679,12 +729,12 @@ async fn a_late_refresh_cannot_restore_a_signed_out_account() {
     let service = Arc::clone(&f.service);
     let restore = tokio::spawn(async move { service.restore().await });
     tokio::time::sleep(Duration::from_millis(100)).await;
-    f.service.sign_out().await.unwrap();
+    f.service.sign_out(PROFILE_ID).await.unwrap();
     restore.await.unwrap();
     assert_eq!(f.state(), AccountState::SignedOut);
     assert!(store.get(&vault_key(PROFILE_ID)).unwrap().is_none());
-    assert!(f.host.accounts_file().active.is_none());
-    assert!(f.service.verify_for_launch().await.is_err());
+    assert!(f.host.accounts_file().accounts.is_empty());
+    assert!(f.service.verify_for_launch(PROFILE_ID).await.is_err());
 }
 
 #[tokio::test]
@@ -697,8 +747,118 @@ async fn unavailable_vault_switches_to_explicit_session_only_mode() {
     assert!(account.session_only);
     // Nothing persisted: no vault entry, no saved account record.
     assert!(store.get(&vault_key(PROFILE_ID)).unwrap().is_none());
-    assert!(f.host.accounts_file().active.is_none());
-    assert!(f.service.verify_for_launch().await.is_ok());
-    f.service.sign_out().await.unwrap();
+    assert!(f.host.accounts_file().accounts.is_empty());
+    assert!(f.service.verify_for_launch(PROFILE_ID).await.is_ok());
+    f.service.sign_out(PROFILE_ID).await.unwrap();
     assert_eq!(f.state(), AccountState::SignedOut);
+}
+
+#[tokio::test]
+async fn several_accounts_are_kept_verified_and_removed_independently() {
+    const OTHER_ID: &str = "1f1e2d3c4b5a69788796a5b4c3d2e1f0";
+    let dir = tempfile::tempdir().unwrap();
+    let store = Arc::new(FlakyStore::default());
+    let f = fixture_with(Some(CLIENT_ID), Arc::clone(&store), Some(dir)).await;
+    f.sign_in().await;
+    // A second Microsoft account signs in through the browser.
+    f.route(
+        "/token",
+        200,
+        json!({"token_type": "Bearer", "expires_in": 3600, "access_token": "msa-b", "refresh_token": "refresh-b"}),
+    );
+    f.route(
+        "/minecraft/profile",
+        200,
+        json!({"id": OTHER_ID, "name": "Alex_Test", "skins": []}),
+    );
+    f.sign_in().await;
+    let status = f.host.app.auth_status();
+    let names: Vec<_> = status
+        .accounts
+        .iter()
+        .map(|a| a.profile_name.as_str())
+        .collect();
+    assert_eq!(names, ["Steve_Test", "Alex_Test"]);
+    assert!(
+        status
+            .accounts
+            .iter()
+            .all(|a| a.state == AccountState::VerifiedAccess)
+    );
+    let file = f.host.accounts_file();
+    assert_eq!(file.accounts.len(), 2);
+    assert_eq!(
+        file.default_profile,
+        Some(ProfileRef::Microsoft {
+            id: PROFILE_ID.into()
+        }),
+        "the first account became the default"
+    );
+    assert_eq!(
+        store.get(&vault_key(OTHER_ID)).unwrap().unwrap().expose(),
+        "refresh-b"
+    );
+    assert!(store.get(&vault_key(PROFILE_ID)).unwrap().is_some());
+
+    // Each launch verifies the account it names.
+    let alex = f.service.verify_for_launch(OTHER_ID).await.unwrap();
+    assert_eq!(alex.profile.name, "Alex_Test");
+    assert_eq!(
+        f.service
+            .verify_for_launch("unknown")
+            .await
+            .err()
+            .map(|e| e.code),
+        Some(ErrorCode::AuthReauthRequired)
+    );
+
+    // Removing the default account keeps the other one and clears the default.
+    f.service.sign_out(PROFILE_ID).await.unwrap();
+    assert!(store.get(&vault_key(PROFILE_ID)).unwrap().is_none());
+    assert!(store.get(&vault_key(OTHER_ID)).unwrap().is_some());
+    let file = f.host.accounts_file();
+    assert_eq!(file.accounts.len(), 1);
+    assert_eq!(file.default_profile, None);
+    assert!(f.service.verify_for_launch(OTHER_ID).await.is_ok());
+    assert!(f.service.verify_for_launch(PROFILE_ID).await.is_err());
+    let dir = f.into_dir();
+
+    // After a restart the remaining account is restored on its own.
+    let f = fixture_with(Some(CLIENT_ID), Arc::clone(&store), Some(dir)).await;
+    f.route(
+        "/minecraft/profile",
+        200,
+        json!({"id": OTHER_ID, "name": "Alex_Test", "skins": []}),
+    );
+    f.service.restore().await;
+    let status = f.host.app.auth_status();
+    assert_eq!(status.accounts.len(), 1);
+    assert_eq!(status.accounts[0].profile_name, "Alex_Test");
+    assert_eq!(status.accounts[0].state, AccountState::VerifiedAccess);
+}
+
+#[tokio::test]
+async fn the_single_account_of_an_earlier_version_is_restored() {
+    let dir = tempfile::tempdir().unwrap();
+    let store = Arc::new(FlakyStore::default());
+    store
+        .put(&vault_key(PROFILE_ID), &SecretString::new("refresh-1"))
+        .unwrap();
+    std::fs::write(
+        dir.path().join("accounts.json"),
+        json!({"schemaVersion": 1, "active": {"profileId": PROFILE_ID,
+               "profileName": "Steve_Test", "vaultKey": vault_key(PROFILE_ID)},
+               "signOutPending": false})
+        .to_string(),
+    )
+    .unwrap();
+    let f = fixture_with(Some(CLIENT_ID), Arc::clone(&store), Some(dir)).await;
+    assert_eq!(f.state(), AccountState::Refreshing);
+    f.service.restore().await;
+    assert_eq!(f.state(), AccountState::VerifiedAccess);
+    let saved = std::fs::read_to_string(f.root.accounts()).unwrap();
+    assert!(
+        saved.contains("\"accounts\"") && !saved.contains("\"active\""),
+        "{saved}"
+    );
 }

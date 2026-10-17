@@ -32,6 +32,8 @@ import {
   type RunSummary,
   type SettingsPatch,
   type JavaCheck,
+  type NoTokenProfile,
+  type ProfileRef,
   type SetInstanceJavaPayload,
   type SetInstanceNotesPayload,
   type SettingsView,
@@ -91,10 +93,25 @@ export const ipc = {
     invoke<{ operationId: string }>('begin_login', { request: mutation({}, requestId) }),
   cancelLogin: (operationId: string, requestId?: string): Promise<void> =>
     invoke('cancel_login', { request: mutation({ operationId }, requestId) }),
-  signOut: (requestId?: string): Promise<void> =>
-    invoke('sign_out', { request: mutation({}, requestId) }),
-  verifyAccount: (requestId?: string): Promise<void> =>
-    invoke('verify_account', { request: mutation({}, requestId) }),
+  /** Removes one Microsoft account (or retries a pending removal). */
+  signOut: (profileId: string, requestId?: string): Promise<void> =>
+    invoke('sign_out', { request: mutation({ profileId }, requestId) }),
+  verifyAccount: (profileId: string, requestId?: string): Promise<void> =>
+    invoke('verify_account', { request: mutation({ profileId }, requestId) }),
+  addNoTokenProfile: (name: string, requestId?: string): Promise<NoTokenProfile> =>
+    invoke<NoTokenProfile>('add_notoken_profile', { request: mutation({ name }, requestId) }),
+  removeNoTokenProfile: (profileId: string, requestId?: string): Promise<void> =>
+    invoke('remove_notoken_profile', { request: mutation({ profileId }, requestId) }),
+  setDefaultProfile: (profile: ProfileRef | null, requestId?: string): Promise<void> =>
+    invoke('set_default_profile', { request: mutation({ profile }, requestId) }),
+  setInstanceProfile: (
+    instanceId: string,
+    profile: ProfileRef | null,
+    requestId?: string,
+  ): Promise<InstanceSummary> =>
+    invoke<InstanceSummary>('set_instance_profile', {
+      request: mutation({ instanceId, profile }, requestId),
+    }),
   openExternal: (link: ExternalLink): Promise<void> => invoke('open_external', { link }),
   installInstance: (instanceId: string, requestId?: string): Promise<OperationStarted> =>
     invoke<OperationStarted>('install_instance', {
@@ -110,9 +127,9 @@ export const ipc = {
     invoke('open_instance_folder', { request: mutation({ instanceId }, requestId) }),
   exportDiagnostics: (runId: string | null, requestId?: string): Promise<ExportResult> =>
     invoke<ExportResult>('export_diagnostics', { request: mutation({ runId }, requestId) }),
-  /** `notoken` plays with the no-token profile: Minecraft's demo without an account (D-033). */
-  launchGame: (instanceId: string, requestId?: string, notoken = false): Promise<RunSummary> =>
-    invoke<RunSummary>('launch_game', { request: mutation({ instanceId, notoken }, requestId) }),
+  /** Plays as the installation's profile: a Microsoft account, or the demo (D-045). */
+  launchGame: (instanceId: string, requestId?: string): Promise<RunSummary> =>
+    invoke<RunSummary>('launch_game', { request: mutation({ instanceId }, requestId) }),
   stopGame: (runId: string, requestId?: string): Promise<boolean> =>
     invoke<boolean>('stop_game', { request: mutation({ runId }, requestId) }),
   listSupportedVersions: (refresh: boolean): Promise<CatalogView> =>

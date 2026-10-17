@@ -17,9 +17,7 @@
 use sha1::{Digest, Sha1};
 
 use super::compile::LaunchIdentity;
-use super::service::Authorizer;
 use crate::error::{LauncherError, LauncherResult};
-use crate::install::service::BoxFuture;
 use crate::secrets::SecretString;
 
 /// Environment variable naming the debug-build test profile.
@@ -80,19 +78,18 @@ impl NoTokenProfile {
     }
 }
 
-impl Authorizer for NoTokenProfile {
-    fn authorize(&self) -> BoxFuture<'_, LauncherResult<LaunchIdentity>> {
-        Box::pin(async move {
-            Ok(LaunchIdentity {
-                player_name: self.name.clone(),
-                uuid: self.uuid(),
-                // Never a real credential; the game only needs a non-empty value.
-                access_token: SecretString::new("notoken-profile"),
-                xuid: None,
-                client_id: String::new(),
-                notoken: true,
-            })
-        })
+impl NoTokenProfile {
+    /// The identity a demo launch plays as.
+    pub fn identity(&self) -> LaunchIdentity {
+        LaunchIdentity {
+            player_name: self.name.clone(),
+            uuid: self.uuid(),
+            // Never a real credential; the game only needs a non-empty value.
+            access_token: SecretString::new("notoken-profile"),
+            xuid: None,
+            client_id: String::new(),
+            notoken: true,
+        }
     }
 }
 
@@ -110,10 +107,10 @@ mod tests {
         }
     }
 
-    #[tokio::test]
-    async fn the_identity_is_notoken_only_and_stable() {
+    #[test]
+    fn the_identity_is_notoken_only_and_stable() {
         let profile = NoTokenProfile::new("TestPlayer").unwrap();
-        let identity = profile.authorize().await.unwrap();
+        let identity = profile.identity();
         assert!(identity.notoken);
         assert_eq!(identity.player_name, "TestPlayer");
         assert_eq!(identity.uuid, profile.uuid());

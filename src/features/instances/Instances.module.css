@@ -212,3 +212,10 @@
   gap: var(--space-3);
   margin-top: var(--space-2);
 }
+
+.playAs {
+  display: grid;
+  gap: var(--space-1);
+  max-width: 26rem;
+  font-size: var(--font-size-sm);
+}

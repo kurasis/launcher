@@ -53,7 +53,10 @@ struct TestAuth {
 }
 
 impl Authorizer for TestAuth {
-    fn authorize(&self) -> BoxFuture<'_, LauncherResult<LaunchIdentity>> {
+    fn authorize<'a>(
+        &'a self,
+        _profile_id: &'a str,
+    ) -> BoxFuture<'a, LauncherResult<LaunchIdentity>> {
         Box::pin(async move {
             tokio::time::sleep(self.delay).await;
             if let Some(code) = self.fail {
@@ -124,6 +127,11 @@ fn marker(f: &Fixture) -> PathBuf {
     f._dir.path().join("java-ran")
 }
 
+/// A Microsoft account; `TestAuth` stands in for its verification.
+fn account() -> LaunchMode {
+    LaunchMode::Account("0123456789abcdef0123456789abcdef".into())
+}
+
 fn auth(name: &'static str) -> TestAuth {
     TestAuth {
         name,
@@ -137,7 +145,7 @@ async fn a_launch_is_supervised_redacted_and_recorded() {
     let s = Setup::new().await;
     let service = s.service(auth("Player"));
     let run = service
-        .launch(&Uuid::new_v4().to_string(), s.instance)
+        .launch_as(&Uuid::new_v4().to_string(), s.instance, account())
         .await
         .unwrap();
     assert_eq!(run.kind, RunKind::Game);
@@ -199,7 +207,7 @@ async fn jvm_arguments_can_go_through_an_argfile() {
     let s = Setup::new().await;
     let service = s.service(auth("Player")).with_argfile();
     let run = service
-        .launch(&Uuid::new_v4().to_string(), s.instance)
+        .launch_as(&Uuid::new_v4().to_string(), s.instance, account())
         .await
         .unwrap();
     let done = s.finished(&run.run_id).await;
@@ -272,7 +280,7 @@ async fn a_custom_java_and_jvm_options_are_used_after_confirmation() {
 
     let run = s
         .service(auth("Player"))
-        .launch(&Uuid::new_v4().to_string(), s.instance)
+        .launch_as(&Uuid::new_v4().to_string(), s.instance, account())
         .await
         .unwrap();
     let done = s.finished(&run.run_id).await;
@@ -304,7 +312,7 @@ async fn a_custom_java_and_jvm_options_are_used_after_confirmation() {
     std::fs::remove_file(&custom).unwrap();
     let error = s
         .service(auth("Player"))
-        .launch(&Uuid::new_v4().to_string(), s.instance)
+        .launch_as(&Uuid::new_v4().to_string(), s.instance, account())
         .await
         .unwrap_err();
     assert_eq!(error.code, ErrorCode::RuntimeUnavailable);
@@ -326,7 +334,7 @@ async fn a_custom_java_and_jvm_options_are_used_after_confirmation() {
     assert!(saved.custom_java.is_none() && saved.java_provider.is_none());
     let run = s
         .service(auth("Player"))
-        .launch(&Uuid::new_v4().to_string(), s.instance)
+        .launch_as(&Uuid::new_v4().to_string(), s.instance, account())
         .await
         .unwrap();
     assert_eq!(s.finished(&run.run_id).await.state, RunState::Exited);
@@ -347,7 +355,7 @@ async fn without_verified_access_java_never_starts() {
             delay: Duration::ZERO,
         });
         let error = service
-            .launch(&Uuid::new_v4().to_string(), s.instance)
+            .launch_as(&Uuid::new_v4().to_string(), s.instance, account())
             .await
             .unwrap_err();
         assert_eq!(error.code, code);
@@ -372,7 +380,11 @@ async fn notoken_launches_need_no_account_and_always_run_the_demo() {
         delay: Duration::ZERO,
     });
     let run = service
-        .launch_as(&Uuid::new_v4().to_string(), s.instance, LaunchMode::NoToken)
+        .launch_as(
+            &Uuid::new_v4().to_string(),
+            s.instance,
+            LaunchMode::NoToken(Default::default()),
+        )
         .await
         .unwrap();
     let done = s.finished(&run.run_id).await;
@@ -386,7 +398,7 @@ async fn notoken_launches_need_no_account_and_always_run_the_demo() {
     );
     // A normal launch still requires the account.
     let error = service
-        .launch_as(&Uuid::new_v4().to_string(), s.instance, LaunchMode::Account)
+        .launch_as(&Uuid::new_v4().to_string(), s.instance, account())
         .await
         .unwrap_err();
     assert_eq!(error.code, ErrorCode::AuthNotConfigured);
@@ -398,7 +410,7 @@ async fn missing_files_require_repair_before_any_spawn() {
     std::fs::remove_file(s.f.library_path()).unwrap();
     let service = s.service(auth("Player"));
     let error = service
-        .launch(&Uuid::new_v4().to_string(), s.instance)
+        .launch_as(&Uuid::new_v4().to_string(), s.instance, account())
         .await
         .unwrap_err();
     assert_eq!(error.code, ErrorCode::RepairRequired);
@@ -417,7 +429,7 @@ async fn missing_files_require_repair_before_any_spawn() {
         Outcome::Succeeded
     );
     let run = service
-        .launch(&Uuid::new_v4().to_string(), s.instance)
+        .launch_as(&Uuid::new_v4().to_string(), s.instance, account())
         .await
         .unwrap();
     assert_eq!(s.finished(&run.run_id).await.state, RunState::Exited);
@@ -428,15 +440,22 @@ async fn one_game_at_a_time_and_stop_targets_the_owned_process() {
     let s = Setup::new().await;
     let service = s.service(auth("Sleeper"));
     let request = Uuid::new_v4().to_string();
-    let run = service.launch(&request, s.instance).await.unwrap();
+    let run = service
+        .launch_as(&request, s.instance, account())
+        .await
+        .unwrap();
     assert_eq!(run.state, RunState::Running);
     // Same request: same run. Another request: refused, nothing spawned.
     assert_eq!(
-        service.launch(&request, s.instance).await.unwrap().run_id,
+        service
+            .launch_as(&request, s.instance, account())
+            .await
+            .unwrap()
+            .run_id,
         run.run_id
     );
     let second = service
-        .launch(&Uuid::new_v4().to_string(), s.instance)
+        .launch_as(&Uuid::new_v4().to_string(), s.instance, account())
         .await
         .unwrap_err();
     assert_eq!(second.code, ErrorCode::GameAlreadyRunning);
@@ -468,7 +487,7 @@ async fn a_nonzero_exit_is_reported_as_failure() {
     let s = Setup::new().await;
     let service = s.service(auth("Failing"));
     let run = service
-        .launch(&Uuid::new_v4().to_string(), s.instance)
+        .launch_as(&Uuid::new_v4().to_string(), s.instance, account())
         .await
         .unwrap();
     let done = s.finished(&run.run_id).await;
@@ -488,7 +507,11 @@ async fn cancel_before_spawn_prevents_the_process() {
     }));
     let task = tokio::spawn({
         let (service, instance) = (Arc::clone(&service), s.instance);
-        async move { service.launch(&Uuid::new_v4().to_string(), instance).await }
+        async move {
+            service
+                .launch_as(&Uuid::new_v4().to_string(), instance, account())
+                .await
+        }
     });
     let run_id = loop {
         if let Some(run) = s.f.state.current_run() {
@@ -541,7 +564,7 @@ async fn a_game_that_survived_a_restart_blocks_everything_until_it_exits() {
     );
     // No second game and no shared-file changes while it lives.
     let launch = service
-        .launch(&Uuid::new_v4().to_string(), s.instance)
+        .launch_as(&Uuid::new_v4().to_string(), s.instance, account())
         .await
         .unwrap_err();
     assert_eq!(launch.code, ErrorCode::GameAlreadyRunning);
@@ -562,4 +585,38 @@ async fn a_game_that_survived_a_restart_blocks_everything_until_it_exits() {
     assert!(s.f.state.activity().current().is_none());
     assert!(crate::launch::orphan::read(&s.f.root).is_none());
     assert!(service.watch_survivor().is_none(), "nothing left to watch");
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn the_installation_profile_decides_who_plays() {
+    let s = Setup::new().await;
+    let service = s.service(auth("Player"));
+    assert_eq!(
+        service.mode_for(s.instance),
+        LaunchMode::NoToken(Default::default())
+    );
+    let alex =
+        s.f.state
+            .add_notoken_profile(crate::state::dto::MutationRequest {
+                request_id: Uuid::new_v4().to_string(),
+                payload: crate::state::dto::AddNoTokenProfilePayload {
+                    name: "Alex_Demo".into(),
+                },
+            })
+            .unwrap();
+    assert_eq!(
+        service.mode_for(s.instance),
+        LaunchMode::NoToken(crate::launch::notoken::NoTokenProfile::new("Alex_Demo").unwrap())
+    );
+    let run = service
+        .launch(&Uuid::new_v4().to_string(), s.instance)
+        .await
+        .unwrap();
+    let done = s.finished(&run.run_id).await;
+    let tail = done.output_tail.join("\n");
+    assert!(
+        tail.contains("ARG:Alex_Demo") && tail.contains("ARG:--demo"),
+        "{tail}"
+    );
+    assert!(!alex.id.is_empty());
 }

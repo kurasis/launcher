@@ -170,6 +170,8 @@ export interface InstanceSummary {
   customJava: CustomJava | null;
   /** Extra JVM options as typed; empty when none. */
   jvmArguments: string;
+  /** Who plays this installation; null plays as the default profile (D-045). */
+  profile: ProfileRef | null;
 }
 
 /** Why a Java may not suit a game version (D-044). */
@@ -235,13 +237,43 @@ export interface SettingsView {
   writable: boolean;
 }
 
-export interface AccountSummary {
+/** Who plays: a Microsoft account (Minecraft profile ID) or a no-token profile (D-045). */
+export type ProfileRef = { kind: 'microsoft'; id: string } | { kind: 'notoken'; id: string };
+
+/** One Microsoft account. Never contains tokens. */
+export interface MicrosoftAccount {
+  profileId: string;
+  profileName: string;
   state: AccountState;
-  profileName: string | null;
-  profileId: string | null;
   error: LauncherError | null;
-  sessionOnly: boolean;
+}
+
+/** An account whose saved credential could not be deleted yet. */
+export interface PendingSignOut {
+  profileId: string;
+  profileName: string;
+}
+
+/** A local player name for Minecraft's demo. */
+export interface NoTokenProfile {
+  id: string;
+  name: string;
+}
+
+/** Accounts and profiles (D-045). */
+export interface AccountSummary {
+  accounts: MicrosoftAccount[];
+  /** The active browser sign-in, cancellable with `cancel_login`. */
   loginOperationId: string | null;
+  /** `signing_in`, the state of the last failed sign-in, or `signed_out`. */
+  loginState: AccountState;
+  loginError: LauncherError | null;
+  /** Credentials are kept in memory only (no usable OS vault). */
+  sessionOnly: boolean;
+  pendingSignOuts: PendingSignOut[];
+  notokenProfiles: NoTokenProfile[];
+  /** Who installations play as unless they name another profile. */
+  defaultProfile: ProfileRef | null;
 }
 
 export type ExternalLink =

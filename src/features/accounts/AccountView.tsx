@@ -1,15 +1,25 @@
+import { useState } from 'react';
 import { Button } from '../../components/Button';
+import { Field } from '../../components/Field';
 import { Notice } from '../../components/Notice';
 import { Panel } from '../../components/Panel';
 import { StatusBadge, type StatusTone } from '../../components/StatusBadge';
 import forms from '../../components/forms.module.css';
-import type { AccountState, AppSnapshot, ExternalLink } from '../../lib/contracts';
+import type {
+  AccountState,
+  AppSnapshot,
+  ExternalLink,
+  MicrosoftAccount,
+  ProfileRef,
+} from '../../lib/contracts';
 import { ipc } from '../../lib/ipc';
-import { strings } from '../../lib/strings';
+import { localizeError, strings } from '../../lib/strings';
 import { useCommand } from '../../lib/useCommand';
-import { localizeError } from '../../lib/strings';
+import styles from './Accounts.module.css';
+import { sameProfile } from './players';
 
 const t = strings.accountView;
+const a = strings.accounts;
 
 const tones: Record<AccountState, StatusTone> = {
   signed_out: 'neutral',
@@ -34,101 +44,238 @@ const helpLinks: Partial<Record<AccountState, ExternalLink[]>> = {
   app_not_approved: ['minecraft_help'],
 };
 
+function HelpLinks({ state }: { state: AccountState }) {
+  return (
+    <>
+      {(helpLinks[state] ?? []).map((link) => (
+        <Button
+          key={link}
+          onClick={() => {
+            void ipc.openExternal(link);
+          }}
+        >
+          {t.links[link]}
+        </Button>
+      ))}
+    </>
+  );
+}
+
+interface RowProps {
+  account: MicrosoftAccount;
+  isDefault: boolean;
+  busy: boolean;
+  canSignIn: boolean;
+  onSignIn: () => void;
+  onDefault: () => void;
+}
+
+/** One Microsoft account: its state, help, check again, default and removal. */
+function AccountRow({ account, isDefault, busy, canSignIn, onSignIn, onDefault }: RowProps) {
+  const signOut = useCommand((requestId: string, id: string) => ipc.signOut(id, requestId));
+  const check = useCommand((requestId: string, id: string) => ipc.verifyAccount(id, requestId));
+  const state = account.state;
+  const error = signOut.error ?? check.error;
+  const disabled = busy || signOut.pending || check.pending;
+  return (
+    <li className={styles.row}>
+      <div className={styles.rowHead}>
+        <strong>{account.profileName}</strong>
+        {isDefault && <span className={styles.tag}>{a.isDefault}</span>}
+        <StatusBadge tone={tones[state]} label={t.stateTitle[state]} />
+      </div>
+      {state === 'verified_access' && <p className={styles.hint}>{t.verifiedNote}</p>}
+      {state === 'refreshing' && <p role="status">{t.checking}</p>}
+      {account.error !== null && state !== 'verified_access' && (
+        <Notice tone="warning">{localizeError(account.error)}</Notice>
+      )}
+      {error !== null && <Notice tone="danger">{error}</Notice>}
+      <div className={forms.actions}>
+        {!isDefault && (
+          <Button disabled={disabled} onClick={onDefault}>
+            {a.makeDefault}
+          </Button>
+        )}
+        {state === 'reauth_required' && canSignIn && (
+          <Button variant="primary" disabled={disabled} onClick={onSignIn}>
+            {t.signInAgain}
+          </Button>
+        )}
+        {(state === 'service_unavailable' || state === 'protocol_error') && (
+          <Button disabled={disabled} onClick={() => void check.run(account.profileId)}>
+            {t.checkAgain}
+          </Button>
+        )}
+        <Button disabled={disabled} onClick={() => void signOut.run(account.profileId)}>
+          {a.remove}
+        </Button>
+        <HelpLinks state={state} />
+      </div>
+    </li>
+  );
+}
+
+/**
+ * Microsoft accounts and no-token profiles (D-045): add several of each, remove
+ * them, and choose the default player of installations that name none.
+ */
 export function AccountView({ snapshot }: { snapshot: AppSnapshot }) {
   const { account } = snapshot;
   const configured = snapshot.microsoftClientId === 'configured_unverified';
+  const [name, setName] = useState('');
   const signIn = useCommand((requestId: string) => ipc.beginLogin(requestId));
   const cancel = useCommand((requestId: string, operationId: string) =>
     ipc.cancelLogin(operationId, requestId),
   );
-  const signOut = useCommand((requestId: string) => ipc.signOut(requestId));
-  const check = useCommand((requestId: string) => ipc.verifyAccount(requestId));
-  const busy = signIn.pending || cancel.pending || signOut.pending || check.pending;
-  const commandError = signIn.error ?? cancel.error ?? signOut.error ?? check.error;
-
-  const state = account.state;
-  const canSignIn = configured && ['signed_out', 'reauth_required'].includes(state);
-  const signedIn = account.profileName !== null && state !== 'signing_in';
+  const retry = useCommand((requestId: string, id: string) => ipc.signOut(id, requestId));
+  const setDefault = useCommand((requestId: string, profile: ProfileRef | null) =>
+    ipc.setDefaultProfile(profile, requestId),
+  );
+  const addProfile = useCommand((requestId: string, profileName: string) =>
+    ipc.addNoTokenProfile(profileName, requestId),
+  );
+  const removeProfile = useCommand((requestId: string, id: string) =>
+    ipc.removeNoTokenProfile(id, requestId),
+  );
+  const signingIn = account.loginOperationId !== null;
+  const busy = signIn.pending || cancel.pending || setDefault.pending;
+  const loginState = account.loginState;
+  const isDefault = (profile: ProfileRef) => sameProfile(account.defaultProfile, profile);
 
   return (
-    <Panel title={t.title} aside={<StatusBadge tone={tones[state]} label={t.stateTitle[state]} />}>
-      {account.profileName !== null && (
-        <p>
-          <strong>{account.profileName}</strong>
-        </p>
-      )}
-      {state === 'verified_access' && (
-        <>
-          <p>{t.verified}</p>
-          <p>{t.verifiedNote}</p>
-        </>
-      )}
-      {state === 'signing_in' && <p role="status">{t.waiting}</p>}
-      {state === 'refreshing' && <p role="status">{t.checking}</p>}
-      {!configured && state === 'signed_out' && <Notice tone="info">{t.notConfigured}</Notice>}
-      {account.error !== null && state !== 'verified_access' && (
-        <Notice tone={state === 'signed_out' ? 'info' : 'warning'}>
-          {localizeError(account.error)}
-        </Notice>
-      )}
-      {account.sessionOnly && <Notice tone="info">{t.sessionOnly}</Notice>}
-      {commandError !== null && <Notice tone="danger">{commandError}</Notice>}
-
-      <div className={forms.actions}>
-        {canSignIn && (
-          <Button
-            variant="primary"
-            disabled={busy}
-            onClick={() => {
-              void signIn.run();
-            }}
-          >
-            {state === 'reauth_required' ? t.signInAgain : t.signIn}
-          </Button>
+    <>
+      <Panel title={a.microsoftTitle}>
+        <p className={styles.hint}>{a.microsoftHint}</p>
+        {account.accounts.length === 0 && !signingIn && <p>{a.none}</p>}
+        {account.accounts.length > 0 && (
+          <ul className={styles.list}>
+            {account.accounts.map((item) => (
+              <AccountRow
+                key={item.profileId}
+                account={item}
+                isDefault={isDefault({ kind: 'microsoft', id: item.profileId })}
+                busy={busy}
+                canSignIn={configured && !signingIn}
+                onSignIn={() => void signIn.run()}
+                onDefault={() => void setDefault.run({ kind: 'microsoft', id: item.profileId })}
+              />
+            ))}
+          </ul>
         )}
-        {state === 'signing_in' && account.loginOperationId !== null && (
-          <Button
-            disabled={busy}
-            onClick={() => {
-              if (account.loginOperationId !== null) void cancel.run(account.loginOperationId);
-            }}
-          >
-            {t.cancel}
-          </Button>
-        )}
-        {(state === 'service_unavailable' || state === 'protocol_error') && signedIn && (
-          <Button
-            disabled={busy}
-            onClick={() => {
-              void check.run();
-            }}
-          >
-            {t.checkAgain}
-          </Button>
-        )}
-        {(signedIn || state === 'sign_out_pending') && (
-          <Button
-            disabled={busy}
-            onClick={() => {
-              void signOut.run();
-            }}
-          >
-            {state === 'sign_out_pending' ? t.retrySignOut : t.signOut}
-          </Button>
-        )}
-        {(helpLinks[state] ?? []).map((link) => (
-          <Button
-            key={link}
-            onClick={() => {
-              void ipc.openExternal(link);
-            }}
-          >
-            {t.links[link]}
-          </Button>
+        {account.pendingSignOuts.map((pending) => (
+          <Notice key={pending.profileId} tone="danger">
+            <p>{a.pendingSignOut({ name: pending.profileName })}</p>
+            <div className={forms.actions}>
+              <Button disabled={retry.pending} onClick={() => void retry.run(pending.profileId)}>
+                {a.retryRemove}
+              </Button>
+            </div>
+          </Notice>
         ))}
-      </div>
-      {canSignIn && <p>{t.signInHint}</p>}
-      {signedIn && <p>{t.signOutHint}</p>}
-    </Panel>
+        {signingIn && <p role="status">{t.waiting}</p>}
+        {!configured && <Notice tone="info">{t.notConfigured}</Notice>}
+        {account.loginError !== null && !signingIn && (
+          <Notice tone={loginState === 'signed_out' ? 'info' : 'warning'}>
+            {localizeError(account.loginError)}
+          </Notice>
+        )}
+        {account.sessionOnly && <Notice tone="info">{t.sessionOnly}</Notice>}
+        {(signIn.error ?? cancel.error ?? retry.error ?? setDefault.error) !== null && (
+          <Notice tone="danger">
+            {signIn.error ?? cancel.error ?? retry.error ?? setDefault.error}
+          </Notice>
+        )}
+        <div className={forms.actions}>
+          {configured && !signingIn && (
+            <Button variant="primary" disabled={busy} onClick={() => void signIn.run()}>
+              {a.add}
+            </Button>
+          )}
+          {signingIn && account.loginOperationId !== null && (
+            <Button
+              disabled={busy}
+              onClick={() => {
+                if (account.loginOperationId !== null) void cancel.run(account.loginOperationId);
+              }}
+            >
+              {t.cancel}
+            </Button>
+          )}
+          {!signingIn && <HelpLinks state={loginState} />}
+        </div>
+        {configured && <p className={styles.hint}>{t.signInHint}</p>}
+        {account.accounts.length > 0 && <p className={styles.hint}>{t.signOutHint}</p>}
+      </Panel>
+
+      <Panel title={a.notokenTitle}>
+        <p className={styles.hint}>{a.notokenHint}</p>
+        {account.notokenProfiles.length === 0 ? (
+          <p>{a.notokenNone}</p>
+        ) : (
+          <ul className={styles.list}>
+            {account.notokenProfiles.map((profile) => {
+              const ref: ProfileRef = { kind: 'notoken', id: profile.id };
+              return (
+                <li key={profile.id} className={styles.row}>
+                  <div className={styles.rowHead}>
+                    <strong>{profile.name}</strong>
+                    {isDefault(ref) && <span className={styles.tag}>{a.isDefault}</span>}
+                  </div>
+                  <div className={forms.actions}>
+                    {!isDefault(ref) && (
+                      <Button disabled={busy} onClick={() => void setDefault.run(ref)}>
+                        {a.makeDefault}
+                      </Button>
+                    )}
+                    <Button
+                      disabled={removeProfile.pending}
+                      onClick={() => void removeProfile.run(profile.id)}
+                    >
+                      {a.remove}
+                    </Button>
+                  </div>
+                </li>
+              );
+            })}
+          </ul>
+        )}
+        <form
+          className={forms.form}
+          aria-label={a.addProfile}
+          onSubmit={(event) => {
+            event.preventDefault();
+            void addProfile.run(name.trim()).then((added) => {
+              if (added) setName('');
+            });
+          }}
+        >
+          <Field label={a.nameLabel} hint={a.nameHint}>
+            {(props) => (
+              <input
+                {...props}
+                className={forms.input}
+                dir="ltr"
+                maxLength={16}
+                spellCheck={false}
+                value={name}
+                onChange={(event) => {
+                  setName(event.target.value);
+                  addProfile.reset();
+                }}
+              />
+            )}
+          </Field>
+          {(addProfile.error ?? removeProfile.error) !== null && (
+            <Notice tone="danger">{addProfile.error ?? removeProfile.error}</Notice>
+          )}
+          <div className={forms.actions}>
+            <Button type="submit" disabled={addProfile.pending || name.trim() === ''}>
+              {a.addProfile}
+            </Button>
+          </div>
+        </form>
+        {account.defaultProfile === null && <p className={styles.hint}>{a.defaultNone}</p>}
+      </Panel>
+    </>
   );
 }
