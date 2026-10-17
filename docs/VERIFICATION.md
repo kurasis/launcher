@@ -835,3 +835,54 @@ WebKit memory; numbers on real GPUs and other OSes are not measured.
 ### CI results
 
 Recorded by the next phase's pull request.
+
+## P14 — Handover and reproducibility
+
+- **Date / host:** 2026-10-17, development host (Ubuntu 24.04.5 x86_64 container).
+- **Status:** **blocked.** The source, documentation and build reproduction are complete;
+  a user cannot yet sign in and play, and P13 is not passed, so the MVP is not claimed.
+
+### Clean-checkout reproduction (pass)
+
+A fresh `git clone` of `claude/p13-qualification` at `057a999` into an empty directory,
+then exactly the commands from README/DEVELOPMENT.md with Node 24.21.0 and the pinned Rust
+1.97.0:
+
+| Command                                   | Result                                                                                                                   |
+| ----------------------------------------- | ------------------------------------------------------------------------------------------------------------------------ |
+| `npm ci`                                  | 236 packages from `package-lock.json`                                                                                    |
+| `npm run check`                           | typecheck, lint, format, 55 frontend tests, rustfmt, clippy, 245 Rust unit tests + integration tests; live tests ignored |
+| `npx tauri build --no-bundle -- --locked` | Release binary built in 6 m 22 s (14,832,728 bytes)                                                                      |
+| `git status` afterwards                   | Clean: the build changes no tracked file                                                                                 |
+
+Installer packages are reproduced by the `Package` workflow from the same lockfiles
+(P12).
+
+### Source deliverable check (pass)
+
+282 tracked files. No archives, jars, Java runtimes, game files, packages, keys or
+environment files are tracked; a pattern search for JWTs, private keys, GitHub/AWS tokens
+and client secrets finds nothing. The Microsoft client ID is not in the repository (build
+configuration only).
+
+### Documentation
+
+| Audience   | Documents                                                                                                               |
+| ---------- | ----------------------------------------------------------------------------------------------------------------------- |
+| Users      | [INSTALL.md](INSTALL.md), [TROUBLESHOOTING.md](TROUBLESHOOTING.md), [RELEASE-NOTES.md](RELEASE-NOTES.md)                |
+| Owner      | [AUTH-SETUP.md](AUTH-SETUP.md) (Microsoft application, service access), [PACKAGING.md](PACKAGING.md) (signing secrets)  |
+| Developers | [README.md](../README.md), [DEVELOPMENT.md](DEVELOPMENT.md) (incl. live tests), [DECISIONS.md](DECISIONS.md), this file |
+
+Stale statements removed: README "P01" status, the lifecycle panel location (now
+Diagnostics), "PKCE to implement" in AUTH-SETUP.
+
+### Not done
+
+- A user cannot sign in, play and return (Microsoft client ID, P04).
+- No final package checksums: final packages must be rebuilt from the qualified commit
+  and smoke-tested on target machines after P13; no release was published (separate
+  owner decision).
+
+### CI results
+
+Recorded by the pull request that merges this phase.

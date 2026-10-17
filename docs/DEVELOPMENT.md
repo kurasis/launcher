@@ -52,7 +52,25 @@ All commands run from the repository root.
 | `npx tauri build --no-bundle`     | Release binary only, at `src-tauri/target/release/kurasis-launcher`    |
 
 CI (`.github/workflows/ci.yml`) runs the frontend checks once and the Rust checks plus a
-release shell build on Linux x64, Windows x64, macOS arm64 and macOS x64.
+release shell build on Linux x64, Windows x64, macOS arm64 and macOS x64. The `Package`
+workflow (`.github/workflows/package.yml`) builds and smoke-tests the installers; see
+[PACKAGING.md](PACKAGING.md).
+
+### Live tests (network, ignored by default)
+
+These talk to the real Mojang and Adoptium services and are never run in CI. Each prints
+its evidence with `--nocapture`.
+
+| Command (from `src-tauri/`)                                                                                   | Checks                                                           |
+| ------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------- |
+| `cargo test --test live_metadata -- --ignored --nocapture`                                                    | Live version catalog and install plans                           |
+| `cargo test --test live_download -- --ignored --nocapture`                                                    | Verified downloads from the official hosts                       |
+| `cargo test --test live_runtime -- --ignored --nocapture --test-threads=1`                                    | Adoptium resolution, extraction and Java probes                  |
+| `KURASIS_LIVE_ROOT=<dir> KURASIS_LIVE_VERSION=1.21.1 cargo test --test live_install -- --ignored --nocapture` | Full installation (`KURASIS_LIVE_REPAIR=1` repairs instead)      |
+| `KURASIS_LIVE_ROOT=<dir> cargo test --test live_launch_args -- --ignored --nocapture --test-threads=1`        | Real Java accepts the compiled arguments of an installed version |
+
+`live_install` needs about 1.2 GB of free space per version in `<dir>`. Use a scratch
+directory, never your real launcher data.
 
 ## Configuration
 
@@ -81,7 +99,7 @@ The layout follows [docs/spec/02-ARCHITECTURE-AND-STORAGE.md](spec/02-ARCHITECTU
 | `src-tauri/src/{auth,catalog,install,runtime,launch,storage,lifecycle}/` | Core modules; each module doc comment names the phase that implements it    |
 | `src-tauri/capabilities/`                                                | Window permissions; each command is granted explicitly                      |
 | `src-tauri/tests/`                                                       | Integration tests (IPC through the mock runtime, security configuration)    |
-| `tests/fixtures/`                                                        | Synthetic, non-secret test data (added from P04/P05)                        |
+| `tests/fixtures/`                                                        | Synthetic, non-secret test data                                             |
 | `assets/app-icon.svg`                                                    | Source of the generated icons in `src-tauri/icons/`                         |
 
 ### Application data
@@ -100,7 +118,7 @@ KURASIS_DATA_ROOT="$PWD/.dev-data" ./src-tauri/target/debug/kurasis-launcher
 
 ### Lifecycle test harness (debug builds only)
 
-Debug builds show a "Lifecycle test" panel on the About page. It starts a harmless copy of
+Debug builds show a "Lifecycle test" panel on the Diagnostics page. It starts a harmless copy of
 the launcher as a child process (scenarios: 4 s, 12 s, immediate exit, crash, inherited
 pipes, heavy output) to exercise window unloading and restoration exactly like a game run.
 Release builds contain neither the panel's commands nor the child entry point.
