@@ -226,9 +226,12 @@ pub fn available_space(path: &Path) -> Option<u64> {
 }
 
 /// Windows lists every volume, so the longest matching mount point is the one.
+/// `canonicalize` would return a verbatim `\\?\D:\…` path that never starts
+/// with a mount point such as `D:\`, so the existing path is only made absolute.
 #[cfg(not(unix))]
 pub fn available_space(path: &Path) -> Option<u64> {
-    let path = std::fs::canonicalize(path).ok()?;
+    std::fs::metadata(path).ok()?;
+    let path = std::path::absolute(path).ok()?;
     let disks = sysinfo::Disks::new_with_refreshed_list();
     disks
         .list()
