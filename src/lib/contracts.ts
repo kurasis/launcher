@@ -149,7 +149,15 @@ export type ExternalLink =
   | 'xbox_profile'
   | 'family_settings'
   | 'minecraft_help'
-  | 'minecraft_eula';
+  | 'minecraft_eula'
+  | 'source_code';
+
+/** Result of `export_diagnostics`. */
+export interface ExportResult {
+  /** False when the save dialog was closed. */
+  saved: boolean;
+  fileName: string | null;
+}
 
 export interface DataRootInfo {
   status: 'ready' | 'unavailable';

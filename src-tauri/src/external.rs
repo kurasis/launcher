@@ -17,6 +17,8 @@ pub enum ExternalLink {
     FamilySettings,
     MinecraftHelp,
     MinecraftEula,
+    /// This project's source repository.
+    SourceCode,
 }
 
 impl ExternalLink {
@@ -30,6 +32,7 @@ impl ExternalLink {
             Self::FamilySettings => "https://account.microsoft.com/family",
             Self::MinecraftHelp => "https://help.minecraft.net/",
             Self::MinecraftEula => "https://www.minecraft.net/en-us/eula",
+            Self::SourceCode => "https://github.com/kurasis/launcher",
         }
     }
 }
@@ -44,6 +47,9 @@ const ALLOWED_HOSTS: &[&str] = &[
 ];
 const SIGN_IN_HOST: &str = "login.microsoftonline.com";
 const SIGN_IN_PATH: &str = "/consumers/oauth2/v2.0/authorize";
+/// github.com is allowed only for this project's repository.
+const SOURCE_HOST: &str = "github.com";
+const SOURCE_PATH: &str = "/kurasis/launcher";
 
 /// Validates a URL against the allowlist: HTTPS, exact host, default port, no
 /// credentials.
@@ -56,8 +62,11 @@ pub fn check_allowed(raw: &str) -> LauncherResult<Url> {
     };
     let url = Url::parse(raw).map_err(|_| refuse())?;
     let host = url.host_str().ok_or_else(refuse)?;
-    let host_ok =
-        ALLOWED_HOSTS.contains(&host) || (host == SIGN_IN_HOST && url.path() == SIGN_IN_PATH);
+    let source_ok = host == SOURCE_HOST
+        && (url.path() == SOURCE_PATH || url.path().starts_with(&format!("{SOURCE_PATH}/")));
+    let host_ok = ALLOWED_HOSTS.contains(&host)
+        || (host == SIGN_IN_HOST && url.path() == SIGN_IN_PATH)
+        || source_ok;
     if url.scheme() != "https"
         || !host_ok
         || url.port().is_some()
@@ -82,6 +91,7 @@ mod tests {
             ExternalLink::FamilySettings,
             ExternalLink::MinecraftHelp,
             ExternalLink::MinecraftEula,
+            ExternalLink::SourceCode,
         ] {
             assert!(check_allowed(link.url()).is_ok(), "{link:?}");
         }
@@ -105,6 +115,8 @@ mod tests {
             "file:///etc/passwd",
             "javascript:alert(1)",
             "minecraft://launch",
+            "https://github.com/other/repo",
+            "https://github.com/kurasis/launcher-evil",
             "",
         ] {
             assert!(check_allowed(bad).is_err(), "{bad}");

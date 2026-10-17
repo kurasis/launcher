@@ -8,6 +8,7 @@
 pub mod auth;
 pub mod catalog;
 pub mod commands;
+pub mod diagnostics;
 pub mod download;
 pub mod error;
 pub mod external;
@@ -190,6 +191,7 @@ pub fn run() {
             app.state::<LifecycleController>().show_main_window(app);
         }))
         .plugin(tauri_plugin_opener::init())
+        .plugin(tauri_plugin_dialog::init())
         .manage(LifecycleController::new())
         .manage(RunHandles::default())
         .setup(|app| {
@@ -305,6 +307,8 @@ fn handlers<R: tauri::Runtime>() -> impl Fn(tauri::ipc::Invoke<R>) -> bool + Sen
         commands::cancel_operation,
         commands::launch_game,
         commands::stop_game,
+        commands::open_instance_folder,
+        commands::export_diagnostics,
         commands::start_lifecycle_test,
         commands::stop_lifecycle_test,
     ]
@@ -333,5 +337,7 @@ fn handlers<R: tauri::Runtime>() -> impl Fn(tauri::ipc::Invoke<R>) -> bool + Sen
         commands::cancel_operation,
         commands::launch_game,
         commands::stop_game,
+        commands::open_instance_folder,
+        commands::export_diagnostics,
     ]
 }

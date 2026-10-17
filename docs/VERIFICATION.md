@@ -565,3 +565,39 @@ encoding tests also ran on Windows.
 ### CI results
 
 Recorded by the next phase's pull request.
+
+## P11 — Complete web UI, settings and diagnostics
+
+- **Host:** development host (Ubuntu 24.04.5 x86_64 container), debug build under Xvfb.
+- **Branch / PR:** `claude/p11-product-ui`, [kurasis/launcher#11](https://github.com/kurasis/launcher/pull/11).
+- **Status:** **blocked** only for the end-to-end first-use journey, which stops at
+  Microsoft sign-in (P04). All screens and controls are wired to real commands.
+
+### Automated tests (pass)
+
+| Area                        | Tests                                                                                                                                                                                                                                                  |
+| --------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| Diagnostic export (Rust, 2) | Sanitizer removes home/data paths, JWTs, `--accessToken`, `refresh_token=`, `Authorization: Bearer`; the archive contains exactly README, summary, jobs and the run's `output.log` (redacted), never `accounts.json`, the vault key or a run's argfile |
+| External links (Rust)       | Source link allowed only for `github.com/kurasis/launcher[/…]`; other repositories and look-alike paths refused                                                                                                                                        |
+| Frontend (6 new)            | Diagnostics table and export (saved / cancelled); defaults form saves through `set_app_settings`; navigation to Diagnostics and the source link via `open_external`; header indicator shows "Installing 45%" on every screen                           |
+
+Frontend total: 54 tests; Rust unit tests: 244.
+
+### GUI checks (Linux x64 host)
+
+| Check                                 | Result                                                                                                                                                                                                                       |
+| ------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Keyboard                              | Tab reaches the navigation with a visible focus ring; Enter opens Diagnostics ([screenshot](verification/p11-diagnostics-keyboard-focus.png)); the Quit and Stop dialogs focus the safe choice and close with Escape (tests) |
+| Export through the native save dialog | `diag.zip` written (1,951 bytes): `README.txt`, `summary.json`, `jobs.json`; no data-directory path, no account data                                                                                                         |
+| Settings                              | Theme, during-game mode, defaults and read-only data location ([screenshot](verification/p11-settings.png))                                                                                                                  |
+| Window                                | 1100 × 720 default, 820 × 560 minimum (configuration); reduced-motion rule in the design tokens                                                                                                                              |
+
+### Not verified in P11
+
+- 200 % text scaling and screen readers (P13 on target desktops).
+- Open game folder with a desktop file manager (the container has none).
+- The full first-use journey through sign-in and Play (blocked by P04).
+
+### CI results
+
+Recorded by the next phase's pull request.

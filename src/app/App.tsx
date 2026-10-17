@@ -9,6 +9,8 @@ import { ipc } from '../lib/ipc';
 import { StorageIssues } from '../features/diagnostics/StorageIssues';
 import { InstancesView } from '../features/instances/InstancesView';
 import { SettingsView } from '../features/settings/SettingsView';
+import type { AppSnapshot } from '../lib/contracts';
+import { DiagnosticsView } from '../features/diagnostics/DiagnosticsView';
 import { appStore, useAppStore } from '../lib/store';
 import { strings } from '../lib/strings';
 import { AboutView } from './AboutView';
@@ -16,8 +18,26 @@ import styles from './App.module.css';
 import { QuitControl } from './QuitControl';
 import { useTheme } from './useTheme';
 
-type View = 'home' | 'account' | 'settings' | 'about';
-const views: View[] = ['home', 'account', 'settings', 'about'];
+type View = 'home' | 'account' | 'settings' | 'diagnostics' | 'about';
+const views: View[] = ['home', 'account', 'settings', 'diagnostics', 'about'];
+
+/** Compact header status of the running operation, visible on every screen. */
+function ActivityIndicator({ snapshot }: { snapshot: AppSnapshot }) {
+  const active = snapshot.activeOperation;
+  if (active === null) return null;
+  const progress = snapshot.operationProgress;
+  const total = progress?.operationId === active.operationId ? progress.totalDownloadBytes : null;
+  const percent =
+    total !== null && total > 0 && progress !== null
+      ? Math.min(100, Math.floor((progress.downloadedBytes / total) * 100))
+      : null;
+  return (
+    <p className={styles.activity} role="status">
+      <StatusBadge tone="neutral" label={strings.activity[active.kind]} />
+      {percent !== null && strings.activity.percent(percent)}
+    </p>
+  );
+}
 
 export function App() {
   const state = useAppStore();
@@ -32,6 +52,7 @@ export function App() {
           <h1 className={styles.brand}>{strings.productName}</h1>
           <StatusBadge tone="neutral" label={strings.buildTag} />
         </div>
+        {snapshot !== null && <ActivityIndicator snapshot={snapshot} />}
         {snapshot !== null && <AccountChip account={snapshot.account} />}
         <nav aria-label={strings.nav.label} className={styles.nav}>
           {views.map((item) => (
@@ -53,7 +74,7 @@ export function App() {
 
       <main className={styles.content}>
         {view === 'about' ? (
-          <AboutView snapshot={snapshot} />
+          <AboutView />
         ) : state.status === 'loading' ? (
           <p role="status">{strings.bootstrap.loading}</p>
         ) : state.status === 'error' ? (
@@ -87,6 +108,7 @@ export function App() {
             )}
             {view === 'account' && <AccountView snapshot={state.snapshot} />}
             {view === 'settings' && <SettingsView snapshot={state.snapshot} />}
+            {view === 'diagnostics' && <DiagnosticsView snapshot={state.snapshot} />}
           </>
         )}
       </main>

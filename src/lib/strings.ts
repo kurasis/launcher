@@ -24,6 +24,7 @@ export const strings = {
     home: 'Installations',
     account: 'Account',
     settings: 'Settings',
+    diagnostics: 'Diagnostics',
     about: 'About',
   },
 
@@ -61,6 +62,7 @@ export const strings = {
       family_settings: 'Microsoft family settings',
       minecraft_help: 'Minecraft help',
       minecraft_eula: 'Minecraft EULA',
+      source_code: 'Source code',
     },
     stateTitle: {
       signed_out: 'Not signed in',
@@ -188,6 +190,10 @@ export const strings = {
     title: 'Installation settings',
     version: 'Version',
     status: 'Status',
+    openFolder: 'Open game folder',
+    openFolderHint: 'Worlds, screenshots and options of this installation are stored there.',
+    lastResult: 'Last result',
+    noResult: 'None yet',
     memory: 'Maximum memory (MiB)',
     memoryHint: (min: number, max: number, recommended: number) =>
       `Between ${String(min)} and ${String(max)} MiB on this computer. Recommended: ${String(recommended)} MiB.`,
@@ -216,6 +222,10 @@ export const strings = {
       keep_open: 'Keep the launcher window open',
     } satisfies Record<DuringGameMode, string>,
     dataLocation: 'Launcher data location',
+    dataLocationHint: 'Chosen by the operating system for this user. It cannot be changed here.',
+    defaultsTitle: 'Defaults for new installations',
+    defaultsSave: 'Save defaults',
+    defaultsSaved: 'Saved.',
     readOnly:
       'Settings are read-only because they were written by a newer launcher version or could not be read.',
   },
@@ -284,6 +294,50 @@ export const strings = {
     jobBody:
       'Quitting now cancels the installation or repair; files verified so far are kept for next time. Keep it running in the background and the launcher window returns when it finishes.',
     jobStop: 'Cancel and quit',
+  },
+
+  activity: {
+    install: 'Installing',
+    repair: 'Checking files',
+    launch: 'Playing',
+    percent: (n: number) => `${String(n)}%`,
+  },
+
+  diagnostics: {
+    title: 'Diagnostics',
+    recentTitle: 'Recent operations',
+    columns: {
+      operation: 'Operation',
+      installation: 'Installation',
+      result: 'Result',
+      transferred: 'Downloaded',
+    },
+    none: 'No operations yet.',
+    kind: { install: 'Install', repair: 'Repair', launch: 'Launch' },
+    outcome: {
+      succeeded: 'Succeeded',
+      failed: 'Failed',
+      cancelled: 'Cancelled',
+      interrupted: 'Interrupted',
+    },
+    exportTitle: 'Export diagnostics',
+    exportExplanation:
+      'Creates a ZIP file you can attach to a support request. It contains launcher and system information, installation versions and health, recent operation results and the launcher-captured output of the last three runs. Home and launcher folder paths are shortened and sign-in tokens are removed.',
+    exportExcluded:
+      'Never included: account records, sign-in tokens, launch argument files, worlds, screenshots, options or other files from game folders.',
+    exportButton: 'Export…',
+    exported: (name: string) => `Saved ${name}. Review it before sharing.`,
+    exportCancelled: 'Export cancelled.',
+  },
+
+  about: {
+    title: 'About',
+    sourceCode: 'Source code',
+    license:
+      'License: not chosen yet. The project owner has not published a license for this source code.',
+    officialTitle: 'Official Minecraft information',
+    eula: 'Minecraft EULA',
+    help: 'Minecraft Help',
   },
 
   foundation: {

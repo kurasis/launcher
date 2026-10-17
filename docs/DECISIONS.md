@@ -450,3 +450,24 @@ replaces it), `superseded`.
   stored in `locks/active-run.json`. Only an exact match is treated as the game; it is
   watched every 2 s while holding the activity permit and can be stopped by the user
   after the identity is checked again. It is not adopted (no output, no exit code).
+
+## D-027 — Product UI completion and diagnostic export
+
+- **Status:** accepted · **Phase:** P11 · **Affects:** FR09, FR14, FR16, A07, A21, A22
+- **Screens:** Installations (list, create, game-files panel with Install/Retry/Repair/
+  Verify/Play/Cancel and live progress, details with RAM, resolution, last result and
+  Open game folder), Account, Settings (theme, during-game mode, defaults for new
+  installations, read-only data location), Diagnostics (last run with output, recent
+  operations, export; debug-only lifecycle harness moved here), About (status,
+  independent-project notice, licence status, source link, official EULA/help links).
+  A header indicator shows the running operation and its percentage on every screen.
+- **Open game folder:** the path is resolved in Rust from the instance ID and opened with
+  the opener plugin from Rust; the webview has no path or opener permission.
+- **Diagnostic export:** `tauri-plugin-dialog` 2.8.1 save dialog (called from Rust only;
+  no dialog permission is granted to the webview) and a ZIP built from an explicit file
+  list: README, summary, job outcomes and the output logs of the last three runs. Texts
+  are re-sanitized (data and home paths shortened; JWT-shaped values and token arguments
+  replaced). Account records, tokens, argfiles, install locks and anything from game
+  folders are never read.
+- **Licence:** none has been chosen by the project owner; About says so instead of
+  inventing one.

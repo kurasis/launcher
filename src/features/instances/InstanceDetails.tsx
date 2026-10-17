@@ -35,7 +35,11 @@ export function InstanceDetails({ instance, memory }: InstanceDetailsProps) {
       requestId,
     ),
   );
+  const openFolder = useCommand((requestId: string, id: string) =>
+    ipc.openInstanceFolder(id, requestId),
+  );
   const bounds = memory.resolution;
+  const last = instance.lastResult;
   const policy = memory.policy;
 
   const submit = async () => {
@@ -57,7 +61,24 @@ export function InstanceDetails({ instance, memory }: InstanceDetailsProps) {
       <dl className={styles.facts}>
         <dt>{t.version}</dt>
         <dd>Minecraft {instance.versionId}</dd>
+        <dt>{t.lastResult}</dt>
+        <dd>
+          {last === null
+            ? t.noResult
+            : `${strings.diagnostics.kind[last.kind]}: ${strings.diagnostics.outcome[last.outcome]}${
+                last.exitCode !== undefined
+                  ? ` (${strings.runs.exitCode.toLowerCase()} ${String(last.exitCode)})`
+                  : ''
+              } · ${new Date(last.finishedAt).toLocaleString()}`}
+        </dd>
       </dl>
+      <div className={forms.actions}>
+        <Button onClick={() => void openFolder.run(instance.id)} disabled={openFolder.pending}>
+          {t.openFolder}
+        </Button>
+        <span className={styles.muted}>{t.openFolderHint}</span>
+      </div>
+      {openFolder.error !== null && <Notice tone="danger">{openFolder.error}</Notice>}
       {policy?.lowMemory === true && <Notice tone="warning">{t.lowMemory}</Notice>}
       {memory.error !== null && <Notice tone="danger">{memory.error.message}</Notice>}
       {instance.busy && <Notice tone="info">{t.busy}</Notice>}
