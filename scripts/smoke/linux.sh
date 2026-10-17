@@ -18,7 +18,8 @@ step() { printf '\n== %s\n' "$*"; }
 
 step "System"
 grep PRETTY_NAME /etc/os-release
-ldd --version | head -1
+# sed reads all input: with pipefail, head could end ldd with SIGPIPE.
+ldd --version | sed -n 1p
 
 step "Install $(basename "$deb") with declared dependencies only"
 export DEBIAN_FRONTEND=noninteractive
