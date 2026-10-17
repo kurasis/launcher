@@ -282,8 +282,14 @@ async fn one_game_at_a_time_and_stop_targets_the_owned_process() {
             )
             .unwrap_err();
     assert_eq!(busy.code, ErrorCode::AppBusy);
+    let record = crate::launch::orphan::read(&s.f.root).expect("active run recorded");
+    assert_eq!(record.run_id, run.run_id);
     assert!(service.stop(&run.run_id));
     let done = s.finished(&run.run_id).await;
+    assert!(
+        crate::launch::orphan::read(&s.f.root).is_none(),
+        "record cleared after exit"
+    );
     assert_eq!(done.state, RunState::Failed, "terminated by Stop");
     assert!(s.f.state.activity().current().is_none());
 }
@@ -334,4 +340,54 @@ async fn cancel_before_spawn_prevents_the_process() {
         RunState::Cancelled
     );
     assert!(service.cancel_pending("unknown").is_none());
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn a_game_that_survived_a_restart_blocks_everything_until_it_exits() {
+    let s = Setup::new().await;
+    // A game left behind by a previous supervisor: a real process with a record.
+    let mut child = std::process::Command::new("sleep")
+        .arg("30")
+        .spawn()
+        .unwrap();
+    let exe = crate::launch::orphan::process_identity(child.id())
+        .and_then(|(_, exe)| exe)
+        .unwrap();
+    assert!(crate::launch::orphan::record(
+        &s.f.root,
+        "old-run",
+        s.instance,
+        child.id(),
+        &exe
+    ));
+    let service = s.service(auth("Player"));
+    assert_eq!(service.watch_survivor().as_deref(), Some("old-run"));
+    let current = s.f.state.current_run().unwrap();
+    assert_eq!(
+        (current.run_id.as_str(), current.state),
+        ("old-run", RunState::Running)
+    );
+    // No second game and no shared-file changes while it lives.
+    let launch = service
+        .launch(&Uuid::new_v4().to_string(), s.instance)
+        .await
+        .unwrap_err();
+    assert_eq!(launch.code, ErrorCode::GameAlreadyRunning);
+    let repair =
+        s.f.service
+            .start(
+                &Uuid::new_v4().to_string(),
+                OperationKind::Repair,
+                s.instance,
+            )
+            .unwrap_err();
+    assert_eq!(repair.code, ErrorCode::AppBusy);
+    // User-directed recovery: Stop re-checks the identity, then ends it.
+    assert!(service.stop("old-run"));
+    let _ = child.wait();
+    let done = s.finished("old-run").await;
+    assert_eq!(done.error.unwrap().code, ErrorCode::OperationInterrupted);
+    assert!(s.f.state.activity().current().is_none());
+    assert!(crate::launch::orphan::read(&s.f.root).is_none());
+    assert!(service.watch_survivor().is_none(), "nothing left to watch");
 }

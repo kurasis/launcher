@@ -13,9 +13,9 @@ Allowed states: `not_started`, `in_progress`, `blocked`, `done`. A partially imp
 | [P05](phases/P05-CATALOG-AND-INSTALL-PLAN.md) | done | [PR #5](https://github.com/kurasis/launcher/pull/5); live catalog + plans for both baselines on 4 targets, independent cross-check, CI 5/5; see [VERIFICATION.md](../VERIFICATION.md#p05--minecraft-metadata-and-deterministic-install-planning) | Metadata success is not game compatibility (P13) |
 | [P06](phases/P06-DOWNLOAD-ENGINE.md) | done | [PR #6](https://github.com/kurasis/launcher/pull/6); 18 fixture tests + live smoke (cancel, retry, reuse), CI 5/5; see [VERIFICATION.md](../VERIFICATION.md#p06--verified-cancellable-download-engine) | Byte-range resume not implemented (optional) |
 | [P07](phases/P07-MANAGED-JAVA.md) | done | [PR #7](https://github.com/kurasis/launcher/pull/7); 25 tests, live install + probe of Temurin 21/25 on Linux x64, live extraction of Windows/macOS packages, CI 5/5; see [VERIFICATION.md](../VERIFICATION.md#p07--private-java-runtime-installation) | Java execution on Windows/macOS unverified (P13) |
-| [P08](phases/P08-COMPLETE-GAME-INSTALLER.md) | in_progress | 8 orchestration tests + 6 frontend tests; live install/cancel/resume/repair of 1.21.1 on Linux x64; see [VERIFICATION.md](../VERIFICATION.md#p08--complete-installation-recovery-and-repair) | Waiting for CI |
+| [P08](phases/P08-COMPLETE-GAME-INSTALLER.md) | done | [PR #8](https://github.com/kurasis/launcher/pull/8); 8 orchestration + 6 frontend tests; live install/cancel/resume/repair of 1.21.1 on Linux x64; CI 5/5; see [VERIFICATION.md](../VERIFICATION.md#p08--complete-installation-recovery-and-repair) | Live installs on Windows/macOS unverified (P13) |
 | [P09](phases/P09-REAL-GAME-LAUNCH.md) | blocked | Preflight, compiler, argfiles, encoding guard, supervision, Play/Stop UI implemented; 24 automated tests; real Java accepted the compiled 1.21.1 JVM arguments; see [VERIFICATION.md](../VERIFICATION.md#p09--real-authenticated-minecraft-launch) | Real launch, world save/reload and server auth impossible without a project-owned Microsoft client ID (same blocker as P04); no fake session used |
-| [P10](phases/P10-BACKGROUND-AND-RETURN.md) | not_started | — | — |
+| [P10](phases/P10-BACKGROUND-AND-RETURN.md) | blocked | Background job return, reopen, quit policies and survivor guard verified on Linux x64; see [VERIFICATION.md](../VERIFICATION.md#p10--unload-gui-during-play-and-return-after-exit) | Real Minecraft unload/return blocked by the missing Microsoft client ID (P04/P09) |
 | [P11](phases/P11-COMPLETE-PRODUCT-UI.md) | not_started | — | — |
 | [P12](phases/P12-CROSS-PLATFORM-PACKAGING.md) | not_started | — | — |
 | [P13](phases/P13-FINAL-QUALIFICATION.md) | not_started | — | — |
@@ -33,19 +33,20 @@ Allowed states: `not_started`, `in_progress`, `blocked`, `done`. A partially imp
 ## Last completed phase report
 
 ```text
-Phase: P07 — Private Java runtime installation
+Phase: P08 — Complete installation, recovery and repair
 Status: done
-Implemented: Adoptium provider (exact major/OS/arch GA HotSpot JRE, portable package,
-  recorded JDK fallback), safe tar.gz/ZIP extractor, extracted-tree receipts verified
-  before execution and on reuse, sanitized probe, recoverable promotion and startup
-  reconciliation. P06 (verified, cancellable downloads with job receipts) merged before.
-Checks: 25 runtime tests + 18 download fixture tests; live: Temurin 21.0.12.1 and 25.0.4.1
-  installed, probed and reused on Linux x64; Windows and macOS packages verified and
-  extracted without execution; CI 5/5 for P06 and P07.
-Demo: cargo test --test live_runtime -- --ignored --nocapture --test-threads=1
-Evidence limits: Java executed on Linux x64 only.
-Blockers: none for P06/P07. P04 stays blocked on the owner-supplied client ID.
-Next eligible phase: P08 (installer), then P09 (launch; real sign-in blocked by P04)
+Implemented: install/repair/cancel operations under the global permit, frozen plans in
+  job receipts, commit order artifacts → runtime → lock → summary, repair from the lock
+  only, shared-corruption invalidation, operation progress/finished events, minimal
+  Install/Retry/Repair/Verify/Cancel UI.
+Checks: 8 orchestration + 6 frontend tests; live install of 1.21.1 with cancel/resume
+  (1,004 downloaded, 2,943 reused) and repair of a damaged library and runtime file with
+  byte-identical sentinel world/options files; CI 5/5. Three defects found by the live
+  run were fixed (document size limit, runtime reuse identity, transfer totals).
+Demo: Installations -> select -> Install / Verify files.
+Evidence limits: Linux x64 host only for live installs.
+Blockers: none for P08. P09/P10 real-game items blocked on the Microsoft client ID.
+Next eligible phase: P11 (complete product UI); P09/P10 code merged as blocked
 ```
 
 ## Decisions / deviations

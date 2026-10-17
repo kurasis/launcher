@@ -5,5 +5,6 @@ pub mod argfile;
 pub mod compile;
 pub mod encoding;
 pub mod logs;
+pub mod orphan;
 pub mod redact;
 pub mod service;

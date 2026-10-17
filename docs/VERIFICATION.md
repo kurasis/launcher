@@ -453,7 +453,11 @@ Defects found by the live run and fixed before this record:
 
 ### CI results
 
-Recorded by the next phase's pull request.
+Workflow run [39010026310](https://github.com/kurasis/launcher/actions/runs/39010026310) on
+commit `0e73f96` (PR #8): all 5 jobs pass. The first run failed on macOS x64: the
+download progress-bound test allowed too few events after the new file-check ticker
+(two tickers, each with an immediate first tick). The bound was corrected with that
+reasoning; it then passed on all runners.
 
 ## P09 — Real authenticated Minecraft launch
 
@@ -497,6 +501,63 @@ account service.
 | Authorized online-mode server accepts the session                | **Blocked**                                                                                                   | As above, plus a test server                   |
 | Duplicate launch rejected; no-access never spawns Java           | Verified with the supervisor test double and the GUI (no sign-in)                                             | Reconfirm with a real account (P13)            |
 | Spaces/Unicode/long arguments; bounded, redacted logs            | Verified with real Java (argument echo, encoding guard) and automated tests; Windows/macOS locales unverified | P13 target machines                            |
+
+### CI results
+
+Recorded by the next phase's pull request.
+
+## P10 — Unload GUI during play and return after exit
+
+- **Host:** development host (Ubuntu 24.04.5 x86_64 container), debug build under Xvfb +
+  openbox; data directory with the installed 1.21.1.
+- **Branch / PR:** `claude/p10-background`, [kurasis/launcher#10](https://github.com/kurasis/launcher/pull/10).
+- **Status:** **blocked** for the real-game items (no sign-in → no Minecraft run, as in
+  P09). The game path uses the same window controller as the P03 harness, whose 12
+  scenarios and 40 unload/restore cycles passed on this host (P03 section).
+
+### Implemented here
+
+- Game runs drive the P03 window controller (unload after 1.5 s survival in the default
+  mode; keep-open mode only updates the existing window; one window restored after exit).
+- A background install/repair that finishes with no window brings one window back with
+  its result, unless the user chose cancel-and-quit.
+- Quit while busy: games keep the P03 choice (keep in background / confirmed stop and
+  quit); installs and repairs offer keep in background / cancel and quit; a launch still
+  in preflight is cancelled. The exit waits at most 30 s for the work to record its result.
+- Supervisor restart: `locks/active-run.json` stores the game's PID, OS start time and
+  executable. At startup a matching live process holds the activity permit (no launch,
+  install or repair) until it exits, with an explanatory run record; Stop re-checks the
+  identity before ending it. A PID that now belongs to another process is never signalled
+  and the stale record is removed.
+- No tray icon: reopening the launcher (second invocation, macOS Dock reopen) is the
+  documented way back; it does not depend on a tray extension.
+
+### Automated tests (pass)
+
+| Area                            | Tests                                                                                                                                                                                                    |
+| ------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Active-run record (3)           | Live recorded process is a survivor until it exits; reused PID (other start time or executable) is never treated as the game or signalled; clearing only removes the own record                          |
+| Launch service (2 new/extended) | Record written while a game runs and cleared after exit; a survivor blocks launch (`GAME_ALREADY_RUNNING`) and repair (`APP_BUSY`), Stop ends it after re-checking identity, then everything is released |
+| Frontend (1)                    | Quit dialog wording and "Cancel and quit" for an install/repair                                                                                                                                          |
+
+### Live GUI scenarios (Linux x64 host)
+
+| Scenario                                                                                | Result                                                                                                                                |
+| --------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------- |
+| Verify files, close the window                                                          | Window gone, supervisor alive, job continued (`windows=0 supervisors=1`)                                                              |
+| Second launcher invocation during the job                                               | Exactly one window recreated showing live progress ([screenshot](verification/p10-reopened-during-job.png))                           |
+| Close again, wait                                                                       | Job finished in the background; one window returned by itself with the result ([screenshot](verification/p10-returned-after-job.png)) |
+| Quit during a repair → Cancel and quit ([dialog](verification/p10-quit-during-job.png)) | Repair recorded once as `cancelled`, installation `needs_verification`, process exited 3.6 s later, no window reopened                |
+| Quit while idle                                                                         | Process exited within 0.1 s (not trapped)                                                                                             |
+
+### Done-when items
+
+| Item                                                                         | Status                                                                            |
+| ---------------------------------------------------------------------------- | --------------------------------------------------------------------------------- |
+| Real Minecraft survives GUI destruction and returns to the same installation | **Blocked** (no sign-in); same controller verified with the P03 harness           |
+| Crash/early exit restores one usable error view                              | Verified with the P03 harness and the launch supervisor tests; real crash blocked |
+| Second invocation restores the existing supervisor                           | Verified (during a background job)                                                |
+| Idle quit not trapped; tray absence does not strand the app                  | Verified on Linux X11; Windows/macOS/Wayland in P13                               |
 
 ### CI results
 

@@ -104,6 +104,9 @@ impl PlanSource for LiveSource {
 /// Access to the application state from background tasks.
 pub trait StateAccess: Send + Sync + 'static {
     fn app_state(&self) -> &AppState;
+
+    /// An install or repair recorded its result; the UI host may need to show it.
+    fn operation_finished(&self) {}
 }
 
 impl StateAccess for Arc<AppState> {
@@ -688,6 +691,7 @@ impl Operation {
             network_bytes: report.downloads.network_bytes,
             reused_files: report.downloads.reused_files,
         });
+        self.host.operation_finished();
     }
 
     fn invalidate_users_of(&self, corrupt: &BTreeSet<String>) {

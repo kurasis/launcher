@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { Button } from '../components/Button';
 import { Notice } from '../components/Notice';
-import type { QuitAction } from '../lib/contracts';
+import type { OperationKind, QuitAction } from '../lib/contracts';
 import { describeIpcError, ipc, onQuitRequested } from '../lib/ipc';
 import { strings } from '../lib/strings';
 import styles from './QuitControl.module.css';
@@ -9,10 +9,16 @@ import styles from './QuitControl.module.css';
 const t = strings.quit;
 
 /** Explicit Quit. With an active run the backend asks for a choice first. */
-export function QuitControl() {
+interface QuitControlProps {
+  /** Kind of the active operation, which decides the wording of the choice. */
+  activeKind?: OperationKind | null;
+}
+
+export function QuitControl({ activeKind = null }: QuitControlProps) {
   const [choosing, setChoosing] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const keepRef = useRef<HTMLButtonElement>(null);
+  const job = activeKind === 'install' || activeKind === 'repair';
 
   useEffect(() => {
     if (choosing) keepRef.current?.focus();
@@ -57,8 +63,8 @@ export function QuitControl() {
               if (event.key === 'Escape') setChoosing(false);
             }}
           >
-            <h2 id="quit-title">{t.dialogTitle}</h2>
-            <p id="quit-body">{t.dialogBody}</p>
+            <h2 id="quit-title">{job ? t.jobTitle : t.dialogTitle}</h2>
+            <p id="quit-body">{job ? t.jobBody : t.dialogBody}</p>
             {error !== null && <Notice tone="danger">{error}</Notice>}
             <div className={styles.actions}>
               <Button
@@ -75,7 +81,7 @@ export function QuitControl() {
                   void send('stop_and_quit');
                 }}
               >
-                {t.stop}
+                {job ? t.jobStop : t.stop}
               </Button>
               <Button
                 onClick={() => {

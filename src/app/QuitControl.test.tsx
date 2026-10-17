@@ -73,4 +73,15 @@ describe('QuitControl', () => {
     expect(await screen.findByRole('dialog', { name: 'A run is still active' })).toBeVisible();
     expect(actions).toEqual([]);
   });
+
+  it('words the choice for an installation that is still running', async () => {
+    const actions = backend([{ status: 'choice_required', operationId: 'op-1' }]);
+    render(<QuitControl activeKind="install" />);
+    fireEvent.click(screen.getByRole('button', { name: 'Quit' }));
+    expect(
+      await screen.findByRole('dialog', { name: 'Game files are still being prepared' }),
+    ).toBeVisible();
+    expect(screen.getByRole('button', { name: 'Cancel and quit' })).toBeVisible();
+    expect(actions).toEqual(['quit']);
+  });
 });
