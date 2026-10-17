@@ -5,6 +5,7 @@ import type { AppSnapshot, DuringGameMode, SettingsPatch, Theme } from '../../li
 import { ipc } from '../../lib/ipc';
 import { strings } from '../../lib/strings';
 import { useCommand } from '../../lib/useCommand';
+import { DefaultsForm } from './DefaultsForm';
 import styles from './SettingsView.module.css';
 
 interface SettingsViewProps {
@@ -60,9 +61,11 @@ export function SettingsView({ snapshot }: SettingsViewProps) {
         ))}
       </fieldset>
       {update.error !== null && <Notice tone="danger">{update.error}</Notice>}
+      <DefaultsForm settings={settings} memory={snapshot.memory} />
       <div>
         <h3 className={styles.subheading}>{t.dataLocation}</h3>
         <p className={styles.path}>{dataRoot.path ?? '—'}</p>
+        <p>{t.dataLocationHint}</p>
       </div>
     </Panel>
   );

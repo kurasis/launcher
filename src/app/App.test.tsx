@@ -137,6 +137,53 @@ describe('App', () => {
     expect(screen.getByText('linux / x86_64')).toBeVisible();
   });
 
+  it('opens diagnostics and the project source link from the UI only', async () => {
+    const calls = fakeBackend(snapshotFixture());
+    render(<App />);
+    await screen.findByText(/No installations yet/);
+    fireEvent.click(screen.getByRole('button', { name: 'Diagnostics' }));
+    expect(await screen.findByRole('region', { name: 'Export diagnostics' })).toBeVisible();
+    fireEvent.click(screen.getByRole('button', { name: 'About' }));
+    fireEvent.click(await screen.findByRole('button', { name: 'Source code' }));
+    await waitFor(() => {
+      expect(calls.find((c) => c.cmd === 'open_external')?.args).toEqual({
+        link: 'source_code',
+      });
+    });
+    expect(screen.getByText(/License: not chosen yet/)).toBeVisible();
+  });
+
+  it('shows the running operation in the header on every screen', async () => {
+    fakeBackend(
+      snapshotFixture({
+        instances: [instanceFixture({ busy: true })],
+        activeOperation: { kind: 'install', instanceId: instanceFixture().id, operationId: 'op-1' },
+        operationProgress: {
+          sessionEpoch: 'epoch-1',
+          operationId: 'op-1',
+          instanceId: instanceFixture().id,
+          kind: 'install',
+          sequence: 3,
+          revision: 0,
+          phase: 'downloading',
+          downloadedBytes: 450,
+          totalDownloadBytes: 1000,
+          verifiedFiles: 1,
+          totalFiles: 10,
+          bytesPerSecond: null,
+          timestamp: '',
+        },
+      }),
+    );
+    render(<App />);
+    const header = await screen.findByRole('banner');
+    await waitFor(() => {
+      expect(within(header).getByRole('status')).toHaveTextContent('Installing45%');
+    });
+    fireEvent.click(screen.getByRole('button', { name: 'Settings' }));
+    expect(within(header).getByRole('status')).toHaveTextContent('Installing45%');
+  });
+
   it('applies the theme chosen in settings', async () => {
     fakeBackend(snapshotFixture({ settings: { ...snapshotFixture().settings, theme: 'dark' } }));
     render(<App />);

@@ -27,6 +27,8 @@ fn main() {
         "cancel_operation",
         "launch_game",
         "stop_game",
+        "open_instance_folder",
+        "export_diagnostics",
         // Registered only in debug builds; release builds have no handler for them.
         "start_lifecycle_test",
         "stop_lifecycle_test",

@@ -427,3 +427,103 @@ pub fn stop_game(
     crate::state::ledger::validate_request_id(&request.request_id)?;
     Ok(launcher.get()?.stop(&request.payload.run_id))
 }
+
+/// Opens an installation's game folder in the system file manager. The path is
+/// resolved in Rust from the instance ID; the webview never supplies a path.
+#[tauri::command]
+pub fn open_instance_folder<R: Runtime>(
+    app: AppHandle<R>,
+    state: State<'_, AppState>,
+    request: MutationRequest<InstancePayload>,
+) -> LauncherResult<()> {
+    use tauri_plugin_opener::OpenerExt;
+    crate::state::ledger::validate_request_id(&request.request_id)?;
+    let id = request.payload.instance_id;
+    state.instance(id).ok_or_else(|| {
+        crate::error::LauncherError::new(
+            crate::error::ErrorCode::InstanceNotFound,
+            "The installation no longer exists.",
+        )
+    })?;
+    let root = state.data_root().ok_or_else(|| {
+        crate::error::LauncherError::new(
+            crate::error::ErrorCode::StorageUnavailable,
+            "Launcher data is unavailable.",
+        )
+    })?;
+    let dir = root.game_dir(id);
+    std::fs::create_dir_all(&dir)
+        .map_err(|e| crate::error::LauncherError::from_io(&e, "Opening the game folder"))?;
+    app.opener()
+        .open_path(dir.to_string_lossy(), None::<&str>)
+        .map_err(|_| crate::error::LauncherError::internal("The file manager could not be opened."))
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct ExportPayload {
+    #[serde(default)]
+    pub run_id: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ExportResult {
+    /// False when the user closed the save dialog.
+    pub saved: bool,
+    /// File name of the written archive (not the full path).
+    pub file_name: Option<String>,
+}
+
+/// Builds the redacted diagnostic archive and saves it where the user chooses.
+#[tauri::command]
+pub async fn export_diagnostics<R: Runtime>(
+    app: AppHandle<R>,
+    request: MutationRequest<ExportPayload>,
+) -> LauncherResult<ExportResult> {
+    use tauri_plugin_dialog::DialogExt;
+    crate::state::ledger::validate_request_id(&request.request_id)?;
+    let handle = app.clone();
+    let run = request.payload.run_id;
+    let target = tauri::async_runtime::spawn_blocking(move || {
+        handle
+            .dialog()
+            .file()
+            .set_title("Save diagnostic export")
+            .set_file_name(format!(
+                "kurasis-diagnostics-{}.zip",
+                chrono::Utc::now().format("%Y%m%d-%H%M%S")
+            ))
+            .add_filter("ZIP archive", &["zip"])
+            .blocking_save_file()
+    })
+    .await
+    .map_err(|_| crate::error::LauncherError::internal("The save dialog failed."))?;
+    let Some(target) = target else {
+        return Ok(ExportResult {
+            saved: false,
+            file_name: None,
+        });
+    };
+    let path = target.into_path().map_err(|_| {
+        crate::error::LauncherError::new(
+            crate::error::ErrorCode::InvalidInput,
+            "This location cannot be used for the export.",
+        )
+    })?;
+    let state = app.state::<AppState>();
+    let root = state.data_root().ok_or_else(|| {
+        crate::error::LauncherError::new(
+            crate::error::ErrorCode::StorageUnavailable,
+            "Launcher data is unavailable.",
+        )
+    })?;
+    let home = app.path().home_dir().ok();
+    let bytes = crate::diagnostics::build(state.inner(), &root, run.as_deref(), home.as_deref())?;
+    crate::storage::atomic::write(&path, &bytes)
+        .map_err(|e| crate::error::LauncherError::from_io(&e, "Saving the diagnostic export"))?;
+    Ok(ExportResult {
+        saved: true,
+        file_name: path.file_name().map(|n| n.to_string_lossy().into_owned()),
+    })
+}

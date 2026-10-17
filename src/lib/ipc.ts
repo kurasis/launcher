@@ -11,6 +11,7 @@ import {
   type CancelAck,
   type CatalogView,
   type CreateInstancePayload,
+  type ExportResult,
   type ExternalLink,
   type InstanceSummary,
   type LauncherError,
@@ -66,6 +67,10 @@ export const ipc = {
     }),
   cancelOperation: (operationId: string, requestId?: string): Promise<CancelAck> =>
     invoke<CancelAck>('cancel_operation', { request: mutation({ operationId }, requestId) }),
+  openInstanceFolder: (instanceId: string, requestId?: string): Promise<void> =>
+    invoke('open_instance_folder', { request: mutation({ instanceId }, requestId) }),
+  exportDiagnostics: (runId: string | null, requestId?: string): Promise<ExportResult> =>
+    invoke<ExportResult>('export_diagnostics', { request: mutation({ runId }, requestId) }),
   launchGame: (instanceId: string, requestId?: string): Promise<RunSummary> =>
     invoke<RunSummary>('launch_game', { request: mutation({ instanceId }, requestId) }),
   stopGame: (runId: string, requestId?: string): Promise<boolean> =>

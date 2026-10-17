@@ -24,6 +24,13 @@ use crate::storage::paths::{DataRoot, InstanceId};
 /// Poll interval while waiting for a surviving game to exit.
 pub const WATCH_INTERVAL: Duration = Duration::from_secs(2);
 
+/// Allowed difference between recorded and observed process start times. Linux
+/// derives them from the kernel's boot time, which is wall clock minus uptime and
+/// moves when the clock is corrected (NTP), so the same process can be reported
+/// a second or more apart. A reused PID would also need the same executable and
+/// a start within this window of a game that had to exit first.
+pub const START_TOLERANCE_SECS: u64 = 5;
+
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ActiveRunRecord {
@@ -96,7 +103,7 @@ pub fn read(root: &DataRoot) -> Option<ActiveRunRecord> {
 /// True while the recorded process is still the same process.
 pub fn is_alive(record: &ActiveRunRecord) -> bool {
     process_identity(record.pid).is_some_and(|(start, exe)| {
-        start == record.process_start
+        start.abs_diff(record.process_start) <= START_TOLERANCE_SECS
             && exe.is_none_or(|exe| same_executable(&exe, &record.executable))
     })
 }
@@ -195,6 +202,12 @@ mod tests {
             child.id(),
             &exe
         ));
+        // A start time reported slightly differently is still the same process.
+        let mut drifted = read(&root).unwrap();
+        drifted.process_start += 1;
+        assert!(is_alive(&drifted));
+        drifted.process_start -= 2;
+        assert!(is_alive(&drifted));
         // Same PID, different start time: another process now.
         let mut stale = read(&root).unwrap();
         stale.process_start += 3600;
