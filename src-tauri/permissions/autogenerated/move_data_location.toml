@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-move-data-location"
+description = "Enables the move_data_location command without any pre-configured scope."
+commands.allow = ["move_data_location"]
+
+[[permission]]
+identifier = "deny-move-data-location"
+description = "Denies the move_data_location command without any pre-configured scope."
+commands.deny = ["move_data_location"]

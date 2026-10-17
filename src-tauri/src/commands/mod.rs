@@ -614,3 +614,197 @@ pub async fn export_diagnostics<R: Runtime>(
         file_name: path.file_name().map(|n| n.to_string_lossy().into_owned()),
     })
 }
+
+/// The data folder in use (D-043).
+pub struct Location {
+    current: std::sync::Mutex<LauncherResult<crate::location::DataLocation>>,
+    config_dir: Option<std::path::PathBuf>,
+}
+
+impl Location {
+    pub fn new(found: LauncherResult<crate::location::DataLocation>) -> Self {
+        Self {
+            current: std::sync::Mutex::new(found),
+            config_dir: None,
+        }
+    }
+
+    pub fn with_config_dir(mut self, dir: Option<std::path::PathBuf>) -> Self {
+        self.config_dir = dir;
+        self
+    }
+
+    pub fn current(&self) -> LauncherResult<crate::location::DataLocation> {
+        self.current
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .clone()
+    }
+}
+
+/// Where the launcher keeps its data and how it was chosen.
+#[tauri::command]
+pub fn get_data_location(
+    location: State<'_, Location>,
+) -> LauncherResult<crate::location::DataLocation> {
+    location.current()
+}
+
+/// Where to move the launcher data.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum LocationTarget {
+    /// The per-user default folder.
+    Default,
+    /// A folder the user chose.
+    Custom,
+    /// Beside the launcher, in portable mode.
+    Portable,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct MoveDataPayload {
+    pub target: LocationTarget,
+    /// The folder for `custom`.
+    #[serde(default)]
+    pub path: Option<String>,
+}
+
+/// Copies the launcher data to another folder while nothing else runs and
+/// records it for the next start. The old folder is kept.
+#[tauri::command]
+pub async fn move_data_location<R: Runtime>(
+    app: AppHandle<R>,
+    state: State<'_, AppState>,
+    location: State<'_, Location>,
+    request: MutationRequest<MoveDataPayload>,
+) -> LauncherResult<crate::location::DataLocation> {
+    use crate::location::{self as loc, LocationMode};
+    crate::state::ledger::validate_request_id(&request.request_id)?;
+    let current = location.current()?;
+    if current.pending_path.is_some() {
+        return Err(crate::error::LauncherError::invalid_input(
+            "The data folder was already moved. Restart the launcher to use it.",
+        ));
+    }
+    let config_dir = location.config_dir.clone().ok_or_else(|| {
+        crate::error::LauncherError::internal("The configuration folder is unknown.")
+    })?;
+    let launcher_dir = loc::launcher_folder();
+    let payload = request.payload;
+    let target = match payload.target {
+        LocationTarget::Default => current.default_path.clone(),
+        LocationTarget::Portable => current.portable_path.clone().ok_or_else(|| {
+            crate::error::LauncherError::internal("The launcher's own folder is unknown.")
+        })?,
+        LocationTarget::Custom => std::path::PathBuf::from(
+            payload
+                .path
+                .as_deref()
+                .map(str::trim)
+                .filter(|p| !p.is_empty())
+                .ok_or_else(|| crate::error::LauncherError::invalid_input("Choose a folder."))?,
+        ),
+    };
+    let (target_root, target_state) = loc::check_target(&current.path, &target)?;
+    let reuse = target_state == loc::TargetState::LauncherData;
+    let operation_id = uuid::Uuid::new_v4().to_string();
+    let permit = state.activity().try_acquire(
+        crate::storage::models::OperationKind::Relocate,
+        None,
+        operation_id,
+    )?;
+    state.announce_runs();
+    state.console().info(if reuse {
+        format!("Switching to the launcher data in {}", target.display())
+    } else {
+        format!(
+            "Copying launcher data from {} to {}",
+            current.path.display(),
+            target.display()
+        )
+    });
+    let (from, to) = (current.path.clone(), target_root.path().to_path_buf());
+    let progress_app = app.clone();
+    let copied = tauri::async_runtime::spawn_blocking(move || {
+        let report = |files: u64, bytes: u64| {
+            progress_app.state::<AppState>().console().info(format!(
+                "Copied {files} files ({} MiB)",
+                bytes / (1024 * 1024)
+            ));
+        };
+        if reuse {
+            return Ok(());
+        }
+        let result = loc::copy_tree(&from, &to, &report);
+        if result.is_err() {
+            // The target was empty or missing; leave nothing half-copied.
+            let _ = std::fs::remove_dir_all(&to);
+        }
+        result
+    })
+    .await
+    .map_err(|_| crate::error::LauncherError::internal("Copying stopped unexpectedly."));
+    let result = copied.and_then(|r| r).and_then(|()| match payload.target {
+        LocationTarget::Portable => {
+            let dir = launcher_dir.as_deref().ok_or_else(|| {
+                crate::error::LauncherError::internal("The launcher's own folder is unknown.")
+            })?;
+            loc::write_marker(dir)
+        }
+        LocationTarget::Default | LocationTarget::Custom => {
+            if current.mode == LocationMode::Portable
+                && let Some(dir) = launcher_dir.as_deref()
+            {
+                std::fs::remove_file(dir.join(loc::PORTABLE_MARKER)).map_err(|e| {
+                    crate::error::LauncherError::from_io(&e, "Turning off portable mode")
+                })?;
+            }
+            let pointer = (payload.target == LocationTarget::Custom).then_some(target.as_path());
+            loc::write_pointer(&config_dir, pointer)
+        }
+    });
+    drop(permit);
+    state.announce_runs();
+    match result {
+        Ok(()) => {
+            state
+                .console()
+                .info("Launcher data copied; the new folder is used from the next start");
+            let mut guard = location
+                .current
+                .lock()
+                .unwrap_or_else(std::sync::PoisonError::into_inner);
+            if let Ok(found) = guard.as_mut() {
+                found.pending_path = Some(target);
+                found.pending_reused = reuse;
+            }
+            guard.clone()
+        }
+        Err(error) => {
+            state.console().warn(format!(
+                "Moving the launcher data failed: {}",
+                error.message
+            ));
+            Err(error)
+        }
+    }
+}
+
+/// Lets the user pick a folder for the launcher data; `None` when cancelled.
+#[tauri::command]
+pub async fn pick_data_folder<R: Runtime>(app: AppHandle<R>) -> LauncherResult<Option<String>> {
+    use tauri_plugin_dialog::DialogExt;
+    let picked = tauri::async_runtime::spawn_blocking(move || {
+        app.dialog()
+            .file()
+            .set_title("Choose a folder for the launcher data")
+            .blocking_pick_folder()
+    })
+    .await
+    .map_err(|_| crate::error::LauncherError::internal("The folder dialog failed."))?;
+    Ok(picked
+        .and_then(|p| p.into_path().ok())
+        .and_then(|p| p.to_str().map(str::to_owned)))
+}

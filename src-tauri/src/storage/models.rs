@@ -185,6 +185,8 @@ pub enum OperationKind {
     Install,
     Repair,
     Launch,
+    /// Copying the launcher data to another folder (D-043).
+    Relocate,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]

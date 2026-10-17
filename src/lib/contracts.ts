@@ -99,7 +99,25 @@ export interface InstalledJava {
 }
 export type InstallationHealth =
   'not_installed' | 'ready' | 'needs_verification' | 'repair_required' | 'unsupported';
-export type OperationKind = 'install' | 'repair' | 'launch';
+export type OperationKind = 'install' | 'repair' | 'launch' | 'relocate';
+
+/** How the data folder was chosen (D-043). */
+export type LocationMode = 'default' | 'custom' | 'portable';
+
+/** The data folder in use. */
+export interface DataLocation {
+  mode: LocationMode;
+  path: string;
+  defaultPath: string;
+  /** Where portable mode keeps data, beside the launcher. */
+  portablePath: string | null;
+  /** A move made this session; used from the next start. */
+  pendingPath: string | null;
+  /** The pending folder already held launcher data and is used as it is. */
+  pendingReused: boolean;
+}
+
+export type LocationTarget = 'default' | 'custom' | 'portable';
 export type Outcome = 'succeeded' | 'failed' | 'cancelled' | 'interrupted';
 
 export type AccountState =
