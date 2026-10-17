@@ -967,3 +967,41 @@ message` plus a stack trace), with the event's level.
   The lock still pins exactly one verified runtime at all times; only an explicit
   repair replaces it, under the global activity permit, and the commit point is the
   new lock written after the new runtime is verified.
+
+## D-045 — Several accounts, no-token profiles and who plays each installation
+
+- **Status:** accepted (owner request, 2026-10-17) · **Affects:** docs/spec/03 (one
+  account, sign-out transaction), D-033 (demo play), the Account screen (now
+  **Accounts**), `accounts.json`
+- **Decision:**
+  - **Microsoft accounts:** any number. _Add a Microsoft account_ runs the same browser
+    sign-in as before; a sign-in for an account that is already saved renews it. Each
+    account has its own session, refresh credential (vault key
+    `msa-refresh:<profile ID>`), state, error and help links, **Check again** and
+    **Remove**. Removing one
+    account deletes only its credential; a deletion that fails is kept as a pending
+    sign-out per account and retried at start, never restored. Every launch
+    re-verifies the account it plays as, as before.
+  - **No-token profiles:** named local players for Minecraft's demo (3–16 letters,
+    digits or `_`, unique ignoring case), added and removed on the Accounts screen.
+    They play only the demo, exactly like D-033's built-in player, whose name stays
+    `Player`.
+  - **Who plays:** one **default** profile (the first account or profile added
+    becomes it; any other can be chosen with _Use by default_), and a **Play as**
+    choice under each installation's Play button: the default, an account or a
+    profile. The launch resolves the installation's profile, else the default, else
+    the built-in demo player; a removed profile falls back the same way. A Microsoft
+    account plays the full game after its fresh access check; a profile plays the
+    demo. The `launch_game` request carries only the installation.
+  - **Storage:** `accounts.json` keeps `accounts`, `notokenProfiles`,
+    `defaultProfile` and `pendingSignOuts`; an installation keeps `profile`. The single
+    `active` account (and `signOutPending`) of earlier versions is moved into the list,
+    made the default, and saved in the new form at start.
+- **Concurrency:** a sign-in result commits only while the sign-in generation is
+  current (cancel advances it); a refresh commits only while its account's generation
+  is current (that account's removal advances it), so removing one account never
+  disturbs another and a late refresh cannot bring a removed account back.
+  `accounts.json` is changed in one step under the state lock by both the auth service
+  and the profile commands.
+- **Debug builds:** `LAUNCHER_NOTOKEN_PROFILE` still makes every launch a demo as that
+  test profile (D-030).

@@ -30,7 +30,8 @@ Installations can run a mod loader — Forge, NeoForge, Fabric or Quilt — with
 loader version; Forge and NeoForge installers run with the installation's private Java
 (D-039). Each installation can switch its private Java between Mojang and Temurin, or run
 a Java installed on the computer after a compatibility check, with extra JVM options
-(D-044); it can carry notes (D-041). The launcher can close once the game window opens
+(D-044); it can carry notes (D-041) and play as a chosen Microsoft account or a named demo
+profile, with several of each on the **Accounts** screen (D-045). The launcher can close once the game window opens
 (D-042), and its data folder can be moved or kept beside it in portable mode (D-043).
 
 **Without an account:** **Play demo** starts Minecraft's free demo (five in-game days, no

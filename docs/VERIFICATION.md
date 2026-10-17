@@ -1307,3 +1307,33 @@ installation's runtime from its lock, and choosing a source writes `javaProvider
   choosing Java (the GTK dialog on this Xvfb shows no listing, as for D-043); a
   provider switch on a Forge or NeoForge installation whose processor outputs must be
   rebuilt.
+
+## Several accounts and no-token profiles (D-045)
+
+- **Automated (fixture server, not live Microsoft services):**
+  `several_accounts_are_kept_verified_and_removed_independently` (two accounts signed
+  in through the browser flow, both verified, separate vault entries, the first became
+  the default, each launch verifies the account it names, removing one keeps the
+  other's credential and session, after a restart only the remaining account is
+  restored); `the_single_account_of_an_earlier_version_is_restored` (an `accounts.json`
+  with `active` is migrated, restored and saved in the new form); the earlier account
+  tests (refused sign-in outcomes, cancel, timeout, pending sign-out retried after a
+  restart, a late refresh cannot restore a removed account, session-only mode) now run
+  per account; `notoken_profiles_defaults_and_installation_choices` (name rules,
+  duplicates, the first profile becomes the default, a choice per installation also
+  while it is busy, removal falls back to the default, everything survives a restart);
+  `the_installation_profile_decides_who_plays` (the demo runs with the chosen
+  profile's name and `--demo`); `AccountView.test.tsx` and `InstallPanel.test.tsx`
+  (lists, default, removal, retry of a pending removal, adding profiles, Play as).
+- **Release build, Linux x64 (Xvfb):** on **Accounts**, adding `Alex_Tester` made it
+  the default (the top bar showed "Plays as: Alex_Tester (demo)"), `Steve_Tester` was
+  added, and `alex_tester` was refused as a duplicate
+  ([accounts](verification/accounts-profiles.png)). On the Quilt 1.21.1 installation
+  _Play as_ was set to `Steve_Tester (demo)` ([play as](verification/accounts-playas.png));
+  **Play demo** started the game with `--username Steve_Tester` and `--demo`, and the
+  log read "Setting user: Steve_Tester". The Fabric 1.21.1 installation, left on the
+  default, started as "Setting user: Alex_Tester".
+- **Not verified:** a live Microsoft sign-in of one or several accounts. The local
+  build has no client ID, and Minecraft services have not approved the project's
+  application yet (see the D-034 section), so the Microsoft part rests on the fixture
+  tests above.
