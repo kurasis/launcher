@@ -17,7 +17,7 @@ use std::time::Duration;
 use crate::error::{ErrorCode, LauncherError, LauncherResult};
 use crate::runtime::probe;
 
-const PROPERTY: &str = "kurasis.argument.check";
+const PROPERTY: &str = "launcher.argument.check";
 
 /// The value of `PROPERTY` in raw `-XshowSettings` output bytes.
 fn echoed(output: &[u8]) -> Option<&[u8]> {
@@ -81,14 +81,14 @@ mod tests {
 
     #[test]
     fn substituted_characters_are_detected() {
-        let ok = b"    kurasis.argument.check = /home/J\xc3\xbcrgen?x\n    java.version = 21\n";
+        let ok = b"    launcher.argument.check = /home/J\xc3\xbcrgen?x\n    java.version = 21\n";
         assert!(intact("/home/Jürgen?x", ok));
         // Windows ANSI output of a correctly decoded value: not UTF-8, still intact.
         assert!(intact(
             "C:\\Users\\Jürgen",
-            b"    kurasis.argument.check = C:\\Users\\J\xfcrgen\r\n"
+            b"    launcher.argument.check = C:\\Users\\J\xfcrgen\r\n"
         ));
-        let lossy = b"    kurasis.argument.check = /home/J??rgen?x\n";
+        let lossy = b"    launcher.argument.check = /home/J??rgen?x\n";
         assert!(!intact("/home/Jürgen?x", lossy));
         assert!(!intact("x", b"no property here"));
     }

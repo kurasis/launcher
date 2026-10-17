@@ -218,7 +218,7 @@ impl PublicClient {
             .dns_resolver(Arc::new(PublicOnlyResolver))
             .connect_timeout(Duration::from_secs(15))
             .read_timeout(Duration::from_secs(60))
-            .user_agent(format!("KurasisLauncher/{app_version}"))
+            .user_agent(format!("Launcher/{app_version}"))
             .build()
             .map_err(|_| LauncherError::internal(
                 "The HTTPS client could not be created. Check that the system CA certificates are installed.",

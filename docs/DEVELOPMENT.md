@@ -49,7 +49,7 @@ All commands run from the repository root.
 | `npm run rust:test`               | `cargo test --locked` (unit, IPC and configuration tests)              |
 | `npm run check`                   | All of the above checks in sequence (no release build)                 |
 | `npm run tauri build`             | Release binary plus installers configured for the current OS           |
-| `npx tauri build --no-bundle`     | Release binary only, at `src-tauri/target/release/kurasis-launcher`    |
+| `npx tauri build --no-bundle`     | Release binary only, at `src-tauri/target/release/launcher`            |
 
 CI (`.github/workflows/ci.yml`) runs the frontend checks once and the Rust checks plus a
 release shell build on Linux x64, Windows x64, macOS arm64 and macOS x64. The `Package`
@@ -61,13 +61,13 @@ workflow (`.github/workflows/package.yml`) builds and smoke-tests the installers
 These talk to the real Mojang and Adoptium services and are never run in CI. Each prints
 its evidence with `--nocapture`.
 
-| Command (from `src-tauri/`)                                                                                   | Checks                                                           |
-| ------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------- |
-| `cargo test --test live_metadata -- --ignored --nocapture`                                                    | Live version catalog and install plans                           |
-| `cargo test --test live_download -- --ignored --nocapture`                                                    | Verified downloads from the official hosts                       |
-| `cargo test --test live_runtime -- --ignored --nocapture --test-threads=1`                                    | Adoptium resolution, extraction and Java probes                  |
-| `KURASIS_LIVE_ROOT=<dir> KURASIS_LIVE_VERSION=1.21.1 cargo test --test live_install -- --ignored --nocapture` | Full installation (`KURASIS_LIVE_REPAIR=1` repairs instead)      |
-| `KURASIS_LIVE_ROOT=<dir> cargo test --test live_launch_args -- --ignored --nocapture --test-threads=1`        | Real Java accepts the compiled arguments of an installed version |
+| Command (from `src-tauri/`)                                                                                     | Checks                                                           |
+| --------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------- |
+| `cargo test --test live_metadata -- --ignored --nocapture`                                                      | Live version catalog and install plans                           |
+| `cargo test --test live_download -- --ignored --nocapture`                                                      | Verified downloads from the official hosts                       |
+| `cargo test --test live_runtime -- --ignored --nocapture --test-threads=1`                                      | Adoptium resolution, extraction and Java probes                  |
+| `LAUNCHER_LIVE_ROOT=<dir> LAUNCHER_LIVE_VERSION=1.21.1 cargo test --test live_install -- --ignored --nocapture` | Full installation (`LAUNCHER_LIVE_REPAIR=1` repairs instead)     |
+| `LAUNCHER_LIVE_ROOT=<dir> cargo test --test live_launch_args -- --ignored --nocapture --test-threads=1`         | Real Java accepts the compiled arguments of an installed version |
 
 `live_install` needs about 1.2 GB of free space per version in `<dir>`. Use a scratch
 directory, never your real launcher data.
@@ -80,28 +80,28 @@ its demo mode (D-030). Release builds and packages do not contain it.
 
 ```sh
 # Real game in demo mode through the launch service, then Stop (needs a display):
-KURASIS_LIVE_ROOT=<dir> KURASIS_LIVE_VERSION=1.21.1 \
+LAUNCHER_LIVE_ROOT=<dir> LAUNCHER_LIVE_VERSION=1.21.1 \
   cargo test --manifest-path src-tauri/Cargo.toml --test live_play -- --ignored --nocapture
 
 # The whole app with the profile: Play starts the demo, the window returns on exit.
 npx tauri build --debug --no-bundle
-KURASIS_DATA_ROOT="$PWD/.dev-data" KURASIS_TEST_PROFILE=KurasisTest \
-  ./src-tauri/target/debug/kurasis-launcher
+LAUNCHER_DATA_ROOT="$PWD/.dev-data" LAUNCHER_NOTOKEN_PROFILE=TestPlayer \
+  ./src-tauri/target/debug/launcher
 ```
 
-`KURASIS_LIVE_HOLD_SECS` keeps the game running for screenshots. On a headless Linux
+`LAUNCHER_LIVE_HOLD_SECS` keeps the game running for screenshots. On a headless Linux
 machine run Xvfb with Mesa; Minecraft 26.3 additionally needs the Mesa Vulkan driver
 (`mesa-vulkan-drivers`), because Xvfb offers no sRGB GLX visual. Results are demo-mode
 evidence, never account evidence.
 
 ## Configuration
 
-| Variable                | When it is read                  | Purpose                                                                                    |
-| ----------------------- | -------------------------------- | ------------------------------------------------------------------------------------------ |
-| `KURASIS_MSA_CLIENT_ID` | Rust compile time                | Project-owned Microsoft public-client ID (non-secret). See [AUTH-SETUP.md](AUTH-SETUP.md). |
-| `KURASIS_DATA_ROOT`     | App start, **debug builds only** | Uses another data directory, for tests and demonstrations. Release builds ignore it.       |
+| Variable                 | When it is read                  | Purpose                                                                                    |
+| ------------------------ | -------------------------------- | ------------------------------------------------------------------------------------------ |
+| `LAUNCHER_MSA_CLIENT_ID` | Rust compile time                | Project-owned Microsoft public-client ID (non-secret). See [AUTH-SETUP.md](AUTH-SETUP.md). |
+| `LAUNCHER_DATA_ROOT`     | App start, **debug builds only** | Uses another data directory, for tests and demonstrations. Release builds ignore it.       |
 
-Example: `KURASIS_MSA_CLIENT_ID=<your-guid> npm run tauri dev`. Never put secrets, tokens or
+Example: `LAUNCHER_MSA_CLIENT_ID=<your-guid> npm run tauri dev`. Never put secrets, tokens or
 passwords into environment files that are committed; `.env*` files are git-ignored.
 
 ## Project layout
@@ -127,7 +127,7 @@ The layout follows [docs/spec/02-ARCHITECTURE-AND-STORAGE.md](spec/02-ARCHITECTU
 ### Application data
 
 The Rust core stores everything under the per-user application data directory
-(`DATA_ROOT`, for example `~/.local/share/io.github.kurasis.launcher` on Linux), never in
+(`DATA_ROOT`, for example `~/.local/share/app.launcher` on Linux), never in
 the official `.minecraft` folder. The layout is defined in
 [spec/02](spec/02-ARCHITECTURE-AND-STORAGE.md) and implemented in
 `src-tauri/src/storage/paths.rs`. Only one launcher process may own a DATA_ROOT at a time.
@@ -135,7 +135,7 @@ To try the app without touching your real data:
 
 ```sh
 npx tauri build --debug --no-bundle
-KURASIS_DATA_ROOT="$PWD/.dev-data" ./src-tauri/target/debug/kurasis-launcher
+LAUNCHER_DATA_ROOT="$PWD/.dev-data" ./src-tauri/target/debug/launcher
 ```
 
 ### Lifecycle test harness (debug builds only)
@@ -168,7 +168,7 @@ For automated screenshots the app runs under Xvfb, for example:
 
 ```sh
 Xvfb :99 -screen 0 1280x800x24 &
-DISPLAY=:99 dbus-run-session -- ./src-tauri/target/release/kurasis-launcher
+DISPLAY=:99 dbus-run-session -- ./src-tauri/target/release/launcher
 ```
 
 AT-SPI and portal warnings in that environment are expected and harmless.

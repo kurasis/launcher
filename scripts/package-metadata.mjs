@@ -66,7 +66,7 @@ const info = {
   target: options.target,
   builtAt: new Date().toISOString(),
   signing: options.signing,
-  microsoftClientIdConfigured: (process.env.KURASIS_MSA_CLIENT_ID ?? '').trim().length > 0,
+  microsoftClientIdConfigured: (process.env.LAUNCHER_MSA_CLIENT_ID ?? '').trim().length > 0,
   toolchain: {
     rustc: run('rustc', ['--version']),
     cargo: run('cargo', ['--version']),

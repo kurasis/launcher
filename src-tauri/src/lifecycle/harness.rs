@@ -25,7 +25,7 @@ use crate::state::dto::{RunKind, RunState, RunSummary};
 use crate::storage::models::{DuringGameMode, OperationKind};
 
 /// First argument that turns the executable into a test child.
-pub const CHILD_FLAG: &str = "--kurasis-lifecycle-test-child";
+pub const CHILD_FLAG: &str = "--launcher-lifecycle-test-child";
 
 /// Lines from the end of the output kept in the run summary shown to the UI.
 const SUMMARY_TAIL_LINES: usize = 20;

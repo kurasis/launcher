@@ -1,16 +1,16 @@
 //! Build-time configuration of the project-owned Microsoft public-client ID.
 //!
 //! The ID is non-secret configuration (a public client has no secret). It is read from
-//! the `KURASIS_MSA_CLIENT_ID` environment variable when the Rust core is compiled.
+//! the `LAUNCHER_MSA_CLIENT_ID` environment variable when the Rust core is compiled.
 //! There is deliberately no fallback value: the launcher must never borrow another
 //! application's client ID. See docs/AUTH-SETUP.md.
 
 use serde::Serialize;
 
 /// Environment variable read at compile time.
-pub const CLIENT_ID_ENV: &str = "KURASIS_MSA_CLIENT_ID";
+pub const CLIENT_ID_ENV: &str = "LAUNCHER_MSA_CLIENT_ID";
 
-const BUILD_TIME_VALUE: Option<&str> = option_env!("KURASIS_MSA_CLIENT_ID");
+const BUILD_TIME_VALUE: Option<&str> = option_env!("LAUNCHER_MSA_CLIENT_ID");
 
 /// A syntactically valid Microsoft application (client) ID, normalized to lowercase.
 #[derive(Debug, Clone, PartialEq, Eq)]

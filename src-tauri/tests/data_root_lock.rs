@@ -5,11 +5,11 @@
 
 use std::process::Command;
 
-use kurasis_launcher_lib::error::ErrorCode;
-use kurasis_launcher_lib::storage::Store;
-use kurasis_launcher_lib::storage::paths::DataRoot;
+use launcher_lib::error::ErrorCode;
+use launcher_lib::storage::Store;
+use launcher_lib::storage::paths::DataRoot;
 
-const PROBE_ENV: &str = "KURASIS_LOCK_PROBE_ROOT";
+const PROBE_ENV: &str = "LAUNCHER_LOCK_PROBE_ROOT";
 
 /// Runs only inside the child process; reports whether it could open the store.
 #[test]

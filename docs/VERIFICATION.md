@@ -10,6 +10,11 @@ From P04 on, a phase's **CI results** are recorded by the following phase's pull
 because adding them to the same pull request would start another full CI run. The phase
 is merged only after its own required checks pass.
 
+Entries recorded before [D-031](DECISIONS.md#d-031--neutral-application-identity) quote
+the provisional names in use at the time (product, binary and package names, environment
+variables, the test player name); screenshots show them too. Commands below use the
+current `LAUNCHER_` names.
+
 ## Test environments
 
 | Environment                                            | Available   | Used for                     | Notes                                                                                                |
@@ -112,7 +117,7 @@ tests therefore also ran on Windows and both macOS architectures.
 - **Host:** development host (Ubuntu 24.04.5 x86_64 container) with Xvfb, the openbox
   window manager (so window close requests are real `WM_DELETE_WINDOW` messages) and a
   shared D-Bus session bus for the single-instance plugin. Debug build with embedded assets
-  (`npx tauri build --debug --no-bundle`), `KURASIS_DATA_ROOT` pointing to a scratch
+  (`npx tauri build --debug --no-bundle`), `LAUNCHER_DATA_ROOT` pointing to a scratch
   directory. Window, supervisor and child counts come from `xdotool` and `pgrep`.
 - **Branch / PR:** `claude/p03-lifecycle-spike`, [kurasis/launcher#3](https://github.com/kurasis/launcher/pull/3).
 
@@ -484,7 +489,7 @@ account service.
 
 ### Live checks with the real managed Java (2026-10-17)
 
-`KURASIS_LIVE_ROOT=<data dir> cargo test --test live_launch_args -- --ignored --nocapture --test-threads=1`:
+`LAUNCHER_LIVE_ROOT=<data dir> cargo test --test live_launch_args -- --ignored --nocapture --test-threads=1`:
 
 | Check                                               | Result                                                                                                                                                                                                                                                                              |
 | --------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
@@ -955,3 +960,15 @@ A release core built from this branch (`npx tauri build --no-bundle -- --locked`
 contains none of `KURASIS_TEST_PROFILE`, `kurasis-test-profile`, `KurasisTestProfile`,
 `--demo` or `lifecycle-test-child` (`strings` scan, 0 matches each); `get_app_info`
 returns `testProfile: null` in release builds by construction.
+
+## Neutral identity (D-031)
+
+- **Date / host:** 2026-10-17, development host (Ubuntu 24.04.5 container, Xvfb, Mesa
+  25.2.8), branch `claude/neutral-naming`.
+
+| Check                                                    | Result                                                                                                                                                                                                                                                                           |
+| -------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `npm run check`                                          | Pass: 58 frontend tests, 248 Rust unit tests and the integration tests                                                                                                                                                                                                           |
+| Release core (`npx tauri build --no-bundle -- --locked`) | Binary `src-tauri/target/release/launcher`. `strings` scan: the old name appears only in the repository address `github.com/kurasis/launcher`; `LAUNCHER_NOTOKEN_PROFILE`, `notoken-profile`, `NoTokenProfile`, `LAUNCHER_DATA_ROOT`, `lifecycle-test-child` and `--demo` absent |
+| Existing development data after rename                   | Launch refused with "Some game files are missing or damaged" because the Java receipt is now `.launcher-runtime.json`; `live_install` repair re-downloaded only the runtime archive (1.21.1: 1 file, 52 MB, 3,947 reused; 26.3: 1 file, 62 MB, 5,216 reused)                     |
+| `live_play` (test profile, demo)                         | 1.21.1: started 3.8 s, resources loaded 14.3 s, `stopped`; 26.3 (Vulkan, lavapipe): started 4.6 s, loaded 22.7 s, `stopped`. Profile name `TestPlayer` reached the client; the placeholder token is not in the run log                                                           |

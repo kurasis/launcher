@@ -2,7 +2,7 @@
 import type { AppInfo, AppSnapshot, InstanceSummary } from '../lib/contracts';
 
 export const appInfoFixture: AppInfo = {
-  productName: 'Kurasis Launcher',
+  productName: 'Launcher',
   appVersion: '0.1.0',
   tauriVersion: '2.12.4',
   os: 'linux',

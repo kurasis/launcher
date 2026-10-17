@@ -54,9 +54,9 @@ function fakeBackend(initial: AppSnapshot, info: AppInfo = appInfoFixture) {
 
 describe('App', () => {
   it('marks a debug build running with the test profile', async () => {
-    fakeBackend(snapshotFixture(), { ...appInfoFixture, testProfile: 'KurasisTest' });
+    fakeBackend(snapshotFixture(), { ...appInfoFixture, testProfile: 'TestPlayer' });
     render(<App />);
-    expect(await screen.findByText('Test profile KurasisTest · demo mode')).toBeVisible();
+    expect(await screen.findByText('Test profile TestPlayer · demo mode')).toBeVisible();
     expect(screen.getByText('Development build')).toBeVisible();
   });
 
@@ -70,7 +70,7 @@ describe('App', () => {
   it('shows the empty state and the account status', async () => {
     fakeBackend(snapshotFixture());
     render(<App />);
-    expect(screen.getByRole('heading', { level: 1, name: 'Kurasis Launcher' })).toBeVisible();
+    expect(screen.getByRole('heading', { level: 1, name: 'Launcher' })).toBeVisible();
     expect(await screen.findByText(/No installations yet/)).toBeVisible();
     expect(screen.getByText('Not signed in')).toBeVisible();
     expect(screen.queryByRole('button', { name: /play/i })).not.toBeInTheDocument();

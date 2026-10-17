@@ -34,9 +34,9 @@ fn identity() -> LaunchIdentity {
 
 fn root() -> DataRoot {
     let base = if cfg!(windows) {
-        r"C:\Data\Kurasis Launcher"
+        r"C:\Data\Launcher"
     } else {
-        "/home/Jürgen A/.local/share/kurasis"
+        "/home/Jürgen A/.local/share/launcher"
     };
     DataRoot::new(PathBuf::from(base)).unwrap()
 }

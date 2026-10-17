@@ -16,7 +16,7 @@ use crate::secrets::SecretString;
 use crate::storage::models::Resolution;
 use crate::storage::paths::{CLASSPATH_SEPARATOR, DataRoot};
 
-pub const LAUNCHER_NAME: &str = "kurasis-launcher";
+pub const LAUNCHER_NAME: &str = "launcher";
 pub const REDACTED: &str = "<redacted>";
 
 /// The verified account data a launch needs. Built from a fresh launch

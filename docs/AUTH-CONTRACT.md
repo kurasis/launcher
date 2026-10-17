@@ -73,7 +73,7 @@ project and must be confirmed in G0.
 
 ## Tokens and storage
 
-- Microsoft refresh token: OS credential vault, service `io.github.kurasis.launcher`,
+- Microsoft refresh token: OS credential vault, service `app.launcher`,
   account `msa-refresh:<profile id>`. Persisted before an older token is discarded; when a
   refresh response does not rotate it, the existing entry stays.
 - Microsoft access token, Xbox tokens and the Minecraft token: Rust memory only.

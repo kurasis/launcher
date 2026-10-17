@@ -1,9 +1,9 @@
 //! Live installation through the real install service (Mojang and Adoptium).
 //! Ignored by default; run with
-//! `KURASIS_LIVE_ROOT=<data dir> KURASIS_LIVE_VERSION=26.3 cargo test --test live_install -- --ignored --nocapture`
+//! `LAUNCHER_LIVE_ROOT=<data dir> LAUNCHER_LIVE_VERSION=26.3 cargo test --test live_install -- --ignored --nocapture`
 //!
 //! Installs the version into the data directory, reusing an existing installation
-//! of it (`KURASIS_LIVE_REPAIR=1` repairs instead), waits for the result and prints
+//! of it (`LAUNCHER_LIVE_REPAIR=1` repairs instead), waits for the result and prints
 //! what was downloaded and what was reused from the shared cache, so alternating
 //! versions in one data directory show their cache sharing (docs/spec/10).
 
@@ -13,16 +13,16 @@ use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 
-use kurasis_launcher_lib::catalog::source::MetadataService;
-use kurasis_launcher_lib::download::ExecutorConfig;
-use kurasis_launcher_lib::download::transport::HttpTransport;
-use kurasis_launcher_lib::install::service::{InstallService, LiveSource, PlanSource, StateAccess};
-use kurasis_launcher_lib::net::{PublicClient, SourcePolicy};
-use kurasis_launcher_lib::state::dto::{CreateInstancePayload, MutationRequest};
-use kurasis_launcher_lib::state::{AppState, NoopSink};
-use kurasis_launcher_lib::storage::models::{OperationKind, Outcome};
-use kurasis_launcher_lib::storage::paths::DataRoot;
-use kurasis_launcher_lib::validation::MemoryPolicy;
+use launcher_lib::catalog::source::MetadataService;
+use launcher_lib::download::ExecutorConfig;
+use launcher_lib::download::transport::HttpTransport;
+use launcher_lib::install::service::{InstallService, LiveSource, PlanSource, StateAccess};
+use launcher_lib::net::{PublicClient, SourcePolicy};
+use launcher_lib::state::dto::{CreateInstancePayload, MutationRequest};
+use launcher_lib::state::{AppState, NoopSink};
+use launcher_lib::storage::models::{OperationKind, Outcome};
+use launcher_lib::storage::paths::DataRoot;
+use launcher_lib::validation::MemoryPolicy;
 
 const VERSION: &str = "0.1.0";
 
@@ -53,11 +53,11 @@ fn usage(root: &DataRoot) -> String {
 #[ignore = "downloads Minecraft and Java from the official sources"]
 async fn install_a_version_into_a_data_directory() {
     let root = DataRoot::new(PathBuf::from(
-        std::env::var("KURASIS_LIVE_ROOT").expect("set KURASIS_LIVE_ROOT"),
+        std::env::var("LAUNCHER_LIVE_ROOT").expect("set LAUNCHER_LIVE_ROOT"),
     ))
     .unwrap();
-    let version = std::env::var("KURASIS_LIVE_VERSION").expect("set KURASIS_LIVE_VERSION");
-    let repair = std::env::var_os("KURASIS_LIVE_REPAIR").is_some();
+    let version = std::env::var("LAUNCHER_LIVE_VERSION").expect("set LAUNCHER_LIVE_VERSION");
+    let repair = std::env::var_os("LAUNCHER_LIVE_REPAIR").is_some();
     let state = Arc::new(AppState::initialize(
         Ok(root.clone()),
         VERSION,
@@ -75,15 +75,15 @@ async fn install_a_version_into_a_data_directory() {
         HttpTransport::public(VERSION).unwrap(),
         ExecutorConfig::default(),
     );
-    // KURASIS_LIVE_NEW adds another installation of the same version (MV01).
+    // LAUNCHER_LIVE_NEW adds another installation of the same version (MV01).
     let existing = state
         .snapshot()
         .instances
         .into_iter()
         .find(|i| i.version_id == version)
-        .filter(|_| std::env::var_os("KURASIS_LIVE_NEW").is_none());
+        .filter(|_| std::env::var_os("LAUNCHER_LIVE_NEW").is_none());
     // An existing installation of the version is installed again (resuming an
-    // interrupted install) or, with KURASIS_LIVE_REPAIR, repaired.
+    // interrupted install) or, with LAUNCHER_LIVE_REPAIR, repaired.
     let kind = if repair {
         OperationKind::Repair
     } else {

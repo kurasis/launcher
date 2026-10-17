@@ -8,9 +8,9 @@ param([Parameter(Mandatory = $true)][string]$Installer)
 
 $ErrorActionPreference = 'Stop'
 $waitSeconds = if ($env:SMOKE_WAIT_SECONDS) { [int]$env:SMOKE_WAIT_SECONDS } else { 20 }
-$installDir = Join-Path $env:LOCALAPPDATA 'Kurasis Launcher'
-$exe = Join-Path $installDir 'kurasis-launcher.exe'
-$dataRoot = Join-Path $env:LOCALAPPDATA 'io.github.kurasis.launcher'
+$installDir = Join-Path $env:LOCALAPPDATA 'Launcher'
+$exe = Join-Path $installDir 'launcher.exe'
+$dataRoot = Join-Path $env:LOCALAPPDATA 'app.launcher'
 
 function Step($text) { Write-Host "`n== $text" }
 
@@ -25,7 +25,7 @@ $install = Start-Process -FilePath $Installer -ArgumentList '/S' -Wait -PassThru
 if ($install.ExitCode -ne 0) { throw "installer exited with $($install.ExitCode)" }
 if (-not (Test-Path $exe)) { throw "launcher not found at $exe" }
 $entry = Get-ChildItem 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Uninstall' |
-  Get-ItemProperty | Where-Object { $_.DisplayName -eq 'Kurasis Launcher' }
+  Get-ItemProperty | Where-Object { $_.DisplayName -eq 'Launcher' }
 if (-not $entry) { throw 'no per-user uninstall entry' }
 Write-Host "Installed $($entry.DisplayVersion) to $installDir"
 

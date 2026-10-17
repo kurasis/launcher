@@ -1,8 +1,8 @@
 [package]
-name = "kurasis-launcher"
+name = "launcher"
 version = "0.1.0"
 description = "Independent desktop launcher for Minecraft: Java Edition (provisional name)"
-authors = ["Kurasis Launcher contributors"]
+authors = ["Launcher contributors"]
 edition = "2024"
 rust-version = "1.97"
 publish = false
@@ -10,7 +10,7 @@ publish = false
 [lib]
 # The `_lib` suffix keeps the library name distinct from the binary on Windows,
 # see https://github.com/rust-lang/cargo/issues/8519
-name = "kurasis_launcher_lib"
+name = "launcher_lib"
 crate-type = ["staticlib", "cdylib", "rlib"]
 
 [build-dependencies]

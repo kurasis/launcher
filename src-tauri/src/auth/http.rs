@@ -77,7 +77,7 @@ fn builder(app_version: &str) -> reqwest::ClientBuilder {
         .redirect(reqwest::redirect::Policy::none())
         .connect_timeout(Duration::from_secs(15))
         .timeout(Duration::from_secs(30))
-        .user_agent(format!("KurasisLauncher/{app_version}"))
+        .user_agent(format!("Launcher/{app_version}"))
 }
 
 impl AuthHttp {

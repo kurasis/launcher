@@ -505,7 +505,7 @@ pub async fn export_diagnostics<R: Runtime>(
             .file()
             .set_title("Save diagnostic export")
             .set_file_name(format!(
-                "kurasis-diagnostics-{}.zip",
+                "launcher-diagnostics-{}.zip",
                 chrono::Utc::now().format("%Y%m%d-%H%M%S")
             ))
             .add_filter("ZIP archive", &["zip"])

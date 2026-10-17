@@ -1,6 +1,6 @@
 //! Exercises command registration and serialization through Tauri's mock runtime.
 
-use kurasis_launcher_lib::commands;
+use launcher_lib::commands;
 use serde_json::Value;
 use tauri::ipc::{CallbackFn, InvokeBody};
 use tauri::test::{INVOKE_KEY, get_ipc_response, mock_builder, mock_context, noop_assets};
@@ -67,7 +67,7 @@ fn get_app_info_returns_the_frontend_contract() {
     assert_eq!(info["arch"], std::env::consts::ARCH);
     assert_eq!(info["tauriVersion"], tauri::VERSION);
     assert_eq!(info["buildProfile"], "debug");
-    // Set only when the debug build runs with KURASIS_TEST_PROFILE.
+    // Set only when the debug build runs with LAUNCHER_NOTOKEN_PROFILE.
     assert!(info["testProfile"].is_null() || info["testProfile"].is_string());
     assert!(
         ["not_configured", "invalid", "configured_unverified"]

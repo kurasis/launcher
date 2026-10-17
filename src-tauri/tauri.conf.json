@@ -1,8 +1,8 @@
 {
   "$schema": "https://schema.tauri.app/config/2",
-  "productName": "Kurasis Launcher",
-  "mainBinaryName": "kurasis-launcher",
-  "identifier": "io.github.kurasis.launcher",
+  "productName": "Launcher",
+  "mainBinaryName": "launcher",
+  "identifier": "app.launcher",
   "build": {
     "beforeDevCommand": "npm run dev",
     "devUrl": "http://localhost:1420",
@@ -13,7 +13,7 @@
     "windows": [
       {
         "label": "main",
-        "title": "Kurasis Launcher",
+        "title": "Launcher",
         "width": 1100,
         "height": 720,
         "minWidth": 820,
@@ -31,7 +31,7 @@
   "bundle": {
     "active": true,
     "targets": ["deb", "appimage", "nsis", "app", "dmg"],
-    "publisher": "Kurasis Launcher contributors",
+    "publisher": "Launcher contributors",
     "category": "Game",
     "shortDescription": "Independent Minecraft: Java Edition launcher",
     "icon": [
@@ -42,8 +42,8 @@
       "icons/icon.ico"
     ],
     "homepage": "https://github.com/kurasis/launcher",
-    "copyright": "Copyright 2026 Kurasis Launcher contributors",
-    "longDescription": "Kurasis Launcher is an independent launcher for Minecraft: Java Edition. It signs in with a Microsoft account, installs vanilla releases and a private Java runtime, and starts the game. Not an official Minecraft product; not approved by or associated with Mojang or Microsoft.",
+    "copyright": "Copyright 2026 Launcher contributors",
+    "longDescription": "An independent launcher for Minecraft: Java Edition. It signs in with a Microsoft account, installs vanilla releases and a private Java runtime, and starts the game. Not an official Minecraft product; not approved by or associated with Mojang or Microsoft.",
     "windows": {
       "webviewInstallMode": {
         "type": "downloadBootstrapper",

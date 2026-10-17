@@ -10,19 +10,19 @@
 
 #![allow(clippy::print_stdout, clippy::unwrap_used)] // prints the evidence summary
 
-use kurasis_launcher_lib::download::transport::HttpTransport;
-use kurasis_launcher_lib::download::{
+use launcher_lib::download::transport::HttpTransport;
+use launcher_lib::download::{
     CancelToken, Digest, DownloadRequest, Executor, ExecutorConfig, NoProgress,
     resolve_managed_path,
 };
-use kurasis_launcher_lib::install::plan::{RuntimeRequirement, runtime_target};
-use kurasis_launcher_lib::install::rules::RuleContext;
-use kurasis_launcher_lib::net::{PublicClient, SourcePolicy};
-use kurasis_launcher_lib::runtime::adoptium::Adoptium;
-use kurasis_launcher_lib::runtime::extract::{self, Limits};
-use kurasis_launcher_lib::runtime::tree::{self, EntryKind};
-use kurasis_launcher_lib::runtime::{RuntimeInstaller, Verification, probe, verify_installed};
-use kurasis_launcher_lib::storage::paths::{DataRoot, TargetArch, TargetOs};
+use launcher_lib::install::plan::{RuntimeRequirement, runtime_target};
+use launcher_lib::install::rules::RuleContext;
+use launcher_lib::net::{PublicClient, SourcePolicy};
+use launcher_lib::runtime::adoptium::Adoptium;
+use launcher_lib::runtime::extract::{self, Limits};
+use launcher_lib::runtime::tree::{self, EntryKind};
+use launcher_lib::runtime::{RuntimeInstaller, Verification, probe, verify_installed};
+use launcher_lib::storage::paths::{DataRoot, TargetArch, TargetOs};
 use url::Url;
 use uuid::Uuid;
 

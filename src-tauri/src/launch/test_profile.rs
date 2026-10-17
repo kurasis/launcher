@@ -1,6 +1,6 @@
 //! Test profile for automated download and launch tests (debug builds only).
 //!
-//! With `KURASIS_TEST_PROFILE=<name>` a debug build launches the game in
+//! With `LAUNCHER_NOTOKEN_PROFILE=<name>` a debug build launches the game in
 //! Minecraft's demo mode under that name instead of asking the signed-in account,
 //! so installation, launch, supervision and window return can be tested on
 //! machines without a licensed account. It is owner-approved (D-030) and
@@ -22,7 +22,7 @@ use crate::install::service::BoxFuture;
 use crate::secrets::SecretString;
 
 /// Environment variable naming the test profile.
-pub const ENV: &str = "KURASIS_TEST_PROFILE";
+pub const ENV: &str = "LAUNCHER_NOTOKEN_PROFILE";
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct TestProfile {
@@ -44,7 +44,7 @@ impl TestProfile {
         })
     }
 
-    /// The profile named by `KURASIS_TEST_PROFILE`, if set and valid.
+    /// The profile named by `LAUNCHER_NOTOKEN_PROFILE`, if set and valid.
     pub fn from_env() -> Option<Self> {
         let name = std::env::var(ENV).ok()?;
         Self::new(name.trim()).ok()
@@ -57,7 +57,7 @@ impl TestProfile {
     /// Stable 32-hex UUID derived from the name (version 5 layout over SHA-1),
     /// so worlds keep the same player data between runs.
     pub fn uuid(&self) -> String {
-        let digest = Sha1::digest(format!("KurasisTestProfile:{}", self.name).as_bytes());
+        let digest = Sha1::digest(format!("NoTokenProfile:{}", self.name).as_bytes());
         let mut bytes = [0u8; 16];
         bytes.copy_from_slice(&digest[..16]);
         bytes[6] = (bytes[6] & 0x0f) | 0x50;
@@ -73,7 +73,7 @@ impl Authorizer for TestProfile {
                 player_name: self.name.clone(),
                 uuid: self.uuid(),
                 // Never a real credential; the game only needs a non-empty value.
-                access_token: SecretString::new("kurasis-test-profile"),
+                access_token: SecretString::new("notoken-profile"),
                 xuid: None,
                 client_id: String::new(),
                 demo: true,
@@ -88,7 +88,7 @@ mod tests {
 
     #[test]
     fn names_follow_minecraft_rules() {
-        for ok in ["Kur", "KurasisTest_01", "abcdefghijklmnop"] {
+        for ok in ["Abc", "TestPlayer_01", "abcdefghijklmnop"] {
             assert!(TestProfile::new(ok).is_ok(), "{ok}");
         }
         for bad in ["", "ab", "abcdefghijklmnopq", "has space", "Jürgen", "a-b"] {
@@ -98,10 +98,10 @@ mod tests {
 
     #[tokio::test]
     async fn the_identity_is_demo_only_and_stable() {
-        let profile = TestProfile::new("KurasisTest").unwrap();
+        let profile = TestProfile::new("TestPlayer").unwrap();
         let identity = profile.authorize().await.unwrap();
         assert!(identity.demo);
-        assert_eq!(identity.player_name, "KurasisTest");
+        assert_eq!(identity.player_name, "TestPlayer");
         assert_eq!(identity.uuid, profile.uuid());
         assert_eq!(identity.uuid.len(), 32);
         assert_eq!(&identity.uuid[12..13], "5", "version nibble");

@@ -14,14 +14,14 @@ import type {
 } from './contracts';
 
 export const strings = {
-  productName: 'Kurasis Launcher',
+  productName: 'Launcher',
   // Packages are private qualification builds until P13 (docs/spec/01).
   // Debug-build test profile (D-030): launches run in Minecraft's demo mode.
   testProfileTag: (name: string) => `Test profile ${name} · demo mode`,
   buildTag: (profile: BuildProfile) =>
     profile === 'debug' ? 'Development build' : 'Qualification build',
   independentNotice:
-    'Kurasis Launcher is an independent project. It is not affiliated with or endorsed by Mojang Studios or Microsoft.',
+    'This launcher is an independent project. It is not affiliated with or endorsed by Mojang Studios or Microsoft.',
 
   nav: {
     label: 'Main',

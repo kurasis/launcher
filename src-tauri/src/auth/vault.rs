@@ -12,7 +12,7 @@ use crate::error::{ErrorCode, LauncherError, LauncherResult};
 use crate::secrets::SecretString;
 
 /// Vault service name; one entry per account under this service.
-pub const SERVICE: &str = "io.github.kurasis.launcher";
+pub const SERVICE: &str = "app.launcher";
 
 /// The owned secret store abstraction (doc 02 own interfaces).
 pub trait SecretStore: Send + Sync {
