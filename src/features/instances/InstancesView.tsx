@@ -70,6 +70,7 @@ export function InstancesView({ snapshot, onEditSettings }: InstancesViewProps) 
               activeOperation={snapshot.activeOperation}
               progress={snapshot.operationProgress}
               recentOperations={snapshot.recentOperations}
+              queue={snapshot.queue}
             />
             <InstanceDetails
               key={selected.id}

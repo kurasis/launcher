@@ -131,7 +131,7 @@
       "starting": "Запуск…",
       "cancel": "Отменить",
       "cancelling": "Отмена…",
-      "otherBusy": "Идёт другая операция. Дождитесь её завершения или отмените её.",
+      "otherBusy": "Выполняется другая операция. Установка и восстановление встанут в очередь и начнутся после неё.",
       "explain": {
         "not_installed": "Файлы игры, Java и описание версии загружаются с серверов Mojang и Adoptium и проверяются перед использованием.",
         "ready": "Все файлы проверены. Восстановление проверит каждый файл заново и заменит повреждённые.",
@@ -607,6 +607,24 @@
       "restoredCopy": "Восстановлено как мир «{name}».",
       "deleted": "Удалено; освобождено {size}.",
       "busy": "Копирование и восстановление ждут, пока закончится текущая операция или игра."
+    },
+    "downloads": {
+      "title": "Загрузки",
+      "open": "Загрузки",
+      "none": "Сейчас ничего не загружается.",
+      "unknown": "Удалённая установка",
+      "progress": "Ход загрузки",
+      "percent": "{percent}%",
+      "bytes": "{done} из {total}",
+      "speed": "{rate}/с",
+      "files": "{done, number} из {total, number} файлов",
+      "file": "Загружается {name}",
+      "cancel": "Отменить",
+      "queue": "В очереди: {count, number}",
+      "remove": "Убрать",
+      "recent": "Недавно",
+      "queued": "В очереди: начнётся, когда закончится текущая операция.",
+      "addToQueue": "Добавить в очередь"
     }
   },
   "errors": {
@@ -870,6 +888,7 @@
     "This world name is invalid.": "Недопустимое имя мира.",
     "A whole installation can only be restored in its place.": "Всю установку можно восстановить только на её место.",
     "A file operation stopped unexpectedly.": "Файловая операция неожиданно прервалась.",
-    "The restore target already exists.": "Папка для восстановления уже существует."
+    "The restore target already exists.": "Папка для восстановления уже существует.",
+    "This installation is already being installed or waiting in the queue.": "Эта установка уже устанавливается или ждёт в очереди."
   }
 }

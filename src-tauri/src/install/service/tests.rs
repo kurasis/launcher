@@ -739,3 +739,87 @@ async fn repair_switches_the_runtime_provider_the_user_chose() {
     );
     assert_eq!(f.source.resolves.load(Ordering::SeqCst), resolves + 1);
 }
+
+#[tokio::test(flavor = "multi_thread")]
+async fn requests_wait_in_the_queue_and_start_in_order() {
+    let f = Fixture::new().await;
+    let (a, b) = (f.create("A"), f.create("B"));
+    // A game holds the permit: both installs wait.
+    let game = f
+        .state
+        .activity()
+        .try_acquire(OperationKind::Launch, None, "run-1")
+        .unwrap();
+    let first = f
+        .service
+        .enqueue(&Uuid::new_v4().to_string(), OperationKind::Install, a)
+        .unwrap();
+    let second = f
+        .service
+        .enqueue(&Uuid::new_v4().to_string(), OperationKind::Install, b)
+        .unwrap();
+    assert!(first.queued && second.queued);
+    assert_eq!(
+        f.service
+            .enqueue(&Uuid::new_v4().to_string(), OperationKind::Repair, a)
+            .unwrap_err()
+            .code,
+        ErrorCode::InstanceBusy,
+        "one entry per installation"
+    );
+    let queue: Vec<InstanceId> = f.state.queue().iter().map(|q| q.instance_id).collect();
+    assert_eq!(queue, [a, b]);
+    f.service.start_queued();
+    assert_eq!(f.state.queue().len(), 2, "nothing starts beside the game");
+
+    // A queued request can be removed.
+    assert!(f.service.dequeue(&second.operation_id));
+    assert!(!f.service.dequeue(&second.operation_id));
+    drop(game);
+
+    f.service.start_queued();
+    assert!(f.state.queue().is_empty());
+    let running = f.state.activity().current().unwrap();
+    assert_eq!(running.instance_id, Some(a));
+    let result = f.wait(&running.operation_id).await;
+    assert_eq!(result.outcome, Outcome::Succeeded);
+    assert_eq!(
+        f.state.instance(b).unwrap().health,
+        InstallationHealth::NotInstalled
+    );
+
+    // With nothing running, a request starts at once.
+    let started = f
+        .service
+        .enqueue(&Uuid::new_v4().to_string(), OperationKind::Install, b)
+        .unwrap();
+    assert!(!started.queued);
+    assert_eq!(
+        f.wait(&started.operation_id).await.outcome,
+        Outcome::Succeeded
+    );
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn progress_names_the_files_being_downloaded() {
+    let f = Fixture::new().await;
+    let a = f.create("A");
+    assert_eq!(
+        f.run(OperationKind::Install, a).await.outcome,
+        Outcome::Succeeded
+    );
+    let names: Vec<String> = f
+        .events
+        .named("operation_progress")
+        .iter()
+        .flat_map(|p| {
+            p["currentFiles"]
+                .as_array()
+                .cloned()
+                .unwrap_or_default()
+                .into_iter()
+                .filter_map(|n| n.as_str().map(str::to_owned))
+        })
+        .collect();
+    assert!(names.iter().all(|n| !n.contains('/')), "{names:?}");
+}

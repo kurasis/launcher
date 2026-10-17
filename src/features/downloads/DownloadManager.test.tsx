@@ -1,0 +1,87 @@
+import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { mockIPC } from '@tauri-apps/api/mocks';
+import { afterEach, describe, expect, it, vi } from 'vitest';
+import type { OperationProgress } from '../../lib/contracts';
+import { instanceFixture, snapshotFixture } from '../../test/fixtures';
+import { DownloadManager } from './DownloadManager';
+
+const a = instanceFixture({ displayName: 'Survival' });
+const b = instanceFixture({ id: '1f1e2d3c-4b5a-4978-8796-a5b4c3d2e1f0', displayName: 'Modded' });
+
+const progress: OperationProgress = {
+  sessionEpoch: 'epoch-1',
+  operationId: 'op-1',
+  instanceId: a.id,
+  kind: 'install',
+  sequence: 3,
+  revision: 1,
+  phase: 'downloading',
+  downloadedBytes: 256 * 1024 * 1024,
+  totalDownloadBytes: 1024 * 1024 * 1024,
+  verifiedFiles: 1200,
+  totalFiles: 4000,
+  bytesPerSecond: 8 * 1024 * 1024,
+  currentFiles: ['client.jar', 'lwjgl-3.3.3.jar'],
+  timestamp: '2026-10-17T00:00:00Z',
+};
+
+afterEach(() => {
+  vi.useRealTimers();
+});
+
+describe('DownloadManager', () => {
+  it('shows the running download, its files and the queue', async () => {
+    vi.useFakeTimers();
+    const calls: { cmd: string; args: unknown }[] = [];
+    mockIPC((cmd, args) => {
+      calls.push({ cmd, args });
+      if (cmd === 'cancel_operation') return { state: 'removed' };
+      if (cmd === 'get_app_snapshot') return snapshotFixture();
+      return null;
+    });
+    render(
+      <DownloadManager
+        snapshot={snapshotFixture({
+          instances: [a, b],
+          activeOperation: { kind: 'install', instanceId: a.id, operationId: 'op-1' },
+          operationProgress: progress,
+          queue: [
+            { queueId: 'q-1', instanceId: b.id, kind: 'repair', queuedAt: '2026-10-17T00:00:00Z' },
+          ],
+        })}
+      />,
+    );
+    const button = screen.getByRole('button', { name: 'Downloads' });
+    expect(button).toHaveAttribute('data-working', 'true');
+    expect(button).toHaveTextContent('1');
+    fireEvent.click(button);
+    expect(screen.getByText('Survival')).toBeVisible();
+    expect(screen.getByText(/Downloading · 25%/)).toBeVisible();
+    expect(
+      screen.getByText(/256\.0 MiB of 1\.0 GiB · 8\.0 MiB\/s · 1,200 of 4,000 files/),
+    ).toBeVisible();
+    expect(screen.getByText('Downloading client.jar')).toBeVisible();
+    act(() => {
+      vi.advanceTimersByTime(1300);
+    });
+    expect(screen.getByText('Downloading lwjgl-3.3.3.jar')).toBeVisible();
+    expect(screen.getByText('Waiting in line: 1')).toBeVisible();
+    expect(screen.getByText('Modded')).toBeVisible();
+    vi.useRealTimers();
+    fireEvent.click(screen.getByRole('button', { name: 'Remove' }));
+    await waitFor(() => {
+      expect(calls.find((c) => c.cmd === 'cancel_operation')?.args).toMatchObject({
+        request: { payload: { operationId: 'q-1' } },
+      });
+    });
+  });
+
+  it('is idle without downloads', () => {
+    mockIPC(() => null);
+    render(<DownloadManager snapshot={snapshotFixture()} />);
+    const button = screen.getByRole('button', { name: 'Downloads' });
+    expect(button).not.toHaveAttribute('data-working');
+    fireEvent.click(button);
+    expect(screen.getByText('Nothing is downloading.')).toBeVisible();
+  });
+});

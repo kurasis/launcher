@@ -303,6 +303,15 @@ fn setup(app: &mut tauri::App) -> Result<(), Box<dyn std::error::Error>> {
     };
     app.manage(commands::Metadata(metadata));
     app.manage(commands::Sources(source.clone()));
+    // Queued installs and repairs start as soon as nothing else runs (D-049).
+    if let Some(queue) = installer.clone() {
+        tauri::async_runtime::spawn(async move {
+            loop {
+                tokio::time::sleep(std::time::Duration::from_millis(500)).await;
+                queue.start_queued();
+            }
+        });
+    }
     app.manage(commands::Installer(installer));
     app.manage(state);
     let auth = Arc::new(create_auth_service(app.handle())?);

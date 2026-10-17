@@ -19,6 +19,7 @@ import { AboutView } from './AboutView';
 import styles from './App.module.css';
 import { QuitControl } from './QuitControl';
 import { BackupsView } from '../features/backups/BackupsView';
+import { DownloadManager } from '../features/downloads/DownloadManager';
 import { useTheme } from './useTheme';
 import { useAppInfo } from './useAppInfo';
 import { localizeError } from '../lib/strings';
@@ -168,6 +169,7 @@ export function App() {
         )}
       </main>
 
+      {snapshot !== null && <DownloadManager snapshot={snapshot} />}
       <footer className={styles.footer}>
         <p>{strings.independentNotice}</p>
       </footer>

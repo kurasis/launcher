@@ -58,6 +58,7 @@ describe('reconcile', () => {
         verifiedFiles: 0,
         totalFiles: 5,
         bytesPerSecond: null,
+        currentFiles: [],
         timestamp: '',
       },
     });
@@ -113,6 +114,7 @@ describe('reconcile', () => {
         currentRun: null,
         lastRun: null,
         activeOperation: { kind: 'install', instanceId: instance.id, operationId: 'op' },
+        queue: [],
       },
     });
     expect(result.kind === 'apply' && result.snapshot.instances[0]?.busy).toBe(true);
