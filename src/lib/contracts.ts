@@ -138,7 +138,18 @@ export interface AccountSummary {
   state: AccountState;
   profileName: string | null;
   profileId: string | null;
+  error: LauncherError | null;
+  sessionOnly: boolean;
+  loginOperationId: string | null;
 }
+
+export type ExternalLink =
+  | 'buy_minecraft'
+  | 'create_profile'
+  | 'xbox_profile'
+  | 'family_settings'
+  | 'minecraft_help'
+  | 'minecraft_eula';
 
 export interface DataRootInfo {
   status: 'ready' | 'unavailable';
@@ -280,10 +291,15 @@ export interface GameStateChangedEvent extends EventEnvelope {
   activeOperation: ActiveActivity | null;
 }
 
+export interface AccountStateChangedEvent extends EventEnvelope {
+  account: AccountSummary;
+}
+
 export type BackendEvent =
   | { name: 'instance_changed'; payload: InstanceChangedEvent }
   | { name: 'settings_changed'; payload: SettingsChangedEvent }
-  | { name: 'game_state_changed'; payload: GameStateChangedEvent };
+  | { name: 'game_state_changed'; payload: GameStateChangedEvent }
+  | { name: 'account_state_changed'; payload: AccountStateChangedEvent };
 
 export type BackendEventName = BackendEvent['name'];
 
@@ -291,4 +307,5 @@ export const BACKEND_EVENT_NAMES: readonly BackendEventName[] = [
   'instance_changed',
   'settings_changed',
   'game_state_changed',
+  'account_state_changed',
 ];

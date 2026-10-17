@@ -252,3 +252,25 @@ replaces it), `superseded`.
   and 2,000-line / 2 MiB tail bounds; exit is awaited with a 250 ms `try_wait` interval so an
   explicit Stop can kill exactly the owned child; after exit, pipes are drained for at most
   2 s. Stop never targets processes by name or PID lookup.
+
+## D-020 — Authentication implementation choices
+
+- **Status:** accepted (contract itself is a candidate until G0) · **Phase:** P04 · **Affects:** FR01–FR03, FR15, A03–A08
+- **Contract:** documented in [AUTH-CONTRACT.md](AUTH-CONTRACT.md) and pinned in
+  `src-tauri/src/auth/contract.rs`. One adapter, no fallback chain to older endpoints.
+- **PKCE/state:** generated from the OS random source (`getrandom`), S256 per RFC 7636 (test
+  vector from Appendix B), implemented directly instead of through an OAuth crate because
+  only the code and refresh grants are needed and every step is covered by tests.
+- **HTTP:** `reqwest` 0.13 with rustls and the platform certificate verifier (system trust
+  store on every OS, honours system proxies). The auth client is HTTPS-only, follows no
+  redirects and is separate from future artifact clients.
+- **Vault:** `keyring` 3.6.3 (Windows Credential Manager, macOS Keychain, Linux Secret
+  Service). keyring 4.x was not used because it restructured into separate store crates; the
+  3.x API is stable and sufficient. No usable vault → explicit session-only mode.
+- **Not configured:** without a build-time client ID every sign-in path returns
+  `AUTH_NOT_CONFIGURED` and the UI explains it; nothing contacts Microsoft.
+- **External links:** the browser is opened only from Rust through `external::check_allowed`
+  (HTTPS, exact hosts, no ports or credentials). The webview has no opener permission.
+- **XUID:** taken only from the XSTS `xid` claim when present.
+- **Verification:** 44 deterministic tests in `src-tauri/src/auth/` against a local fixture
+  server; no live service call has been made.

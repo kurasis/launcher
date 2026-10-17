@@ -4,8 +4,12 @@
 use serde::{Deserialize, Serialize};
 use tauri::{AppHandle, Manager, Runtime, State};
 
+use std::sync::Arc;
+
 use crate::auth::client_id::{self, ClientIdStatus};
+use crate::auth::service::AuthService;
 use crate::error::LauncherResult;
+use crate::external::{self, ExternalLink};
 use crate::lifecycle::{LifecycleController, RunHandles};
 use crate::state::AppState;
 use crate::state::dto::{
@@ -185,4 +189,73 @@ pub fn start_lifecycle_test<R: Runtime>(
 #[tauri::command]
 pub fn stop_lifecycle_test<R: Runtime>(app: AppHandle<R>, run_id: String) -> bool {
     app.state::<RunHandles>().kill(&run_id)
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct EmptyPayload {}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct OperationPayload {
+    pub operation_id: String,
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct OperationStarted {
+    pub operation_id: String,
+}
+
+/// Starts the system-browser Microsoft sign-in. The browser is opened by Rust.
+#[tauri::command]
+pub async fn begin_login(
+    auth: State<'_, Arc<AuthService>>,
+    request: MutationRequest<EmptyPayload>,
+) -> LauncherResult<OperationStarted> {
+    crate::state::ledger::validate_request_id(&request.request_id)?;
+    let operation_id = auth.inner().begin_login().await?;
+    Ok(OperationStarted { operation_id })
+}
+
+#[tauri::command]
+pub fn cancel_login(
+    auth: State<'_, Arc<AuthService>>,
+    request: MutationRequest<OperationPayload>,
+) -> LauncherResult<()> {
+    crate::state::ledger::validate_request_id(&request.request_id)?;
+    auth.cancel_login(&request.payload.operation_id)
+}
+
+/// Local sign-out: clears launch authorization and removes saved credentials.
+#[tauri::command]
+pub async fn sign_out(
+    auth: State<'_, Arc<AuthService>>,
+    request: MutationRequest<EmptyPayload>,
+) -> LauncherResult<()> {
+    crate::state::ledger::validate_request_id(&request.request_id)?;
+    auth.sign_out().await
+}
+
+/// Re-checks current access with fresh service data (for "Check again"). The
+/// launch token is not exposed; launches re-verify independently.
+#[tauri::command]
+pub async fn verify_account(
+    auth: State<'_, Arc<AuthService>>,
+    request: MutationRequest<EmptyPayload>,
+) -> LauncherResult<()> {
+    crate::state::ledger::validate_request_id(&request.request_id)?;
+    auth.verify_for_launch().await.map(|_| ())
+}
+
+/// Opens one of the fixed official destinations in the system browser.
+#[tauri::command]
+pub fn open_external<R: Runtime>(app: AppHandle<R>, link: ExternalLink) -> LauncherResult<()> {
+    use tauri_plugin_opener::OpenerExt;
+    let url = external::check_allowed(link.url())?;
+    app.opener()
+        .open_url(url.as_str(), None::<&str>)
+        .map_err(|_| {
+            crate::error::LauncherError::internal("The system browser could not be opened.")
+        })
 }

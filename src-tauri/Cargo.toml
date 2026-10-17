@@ -27,6 +27,14 @@ sysinfo = { version = "0.39.6", default-features = false, features = ["system"] 
 regex = "1.13.1"
 zeroize = "1.9.1"
 tauri-plugin-single-instance = "2.5.4"
+tauri-plugin-opener = "2.7.2"
+reqwest = { version = "0.13.5", default-features = false, features = ["rustls", "json", "form", "stream", "system-proxy", "http2"] }
+url = "2.5.8"
+base64 = "0.22.1"
+getrandom = "0.3.4"
+sha2 = "0.10.9"
+keyring = { version = "3.6.3", features = ["apple-native", "windows-native", "sync-secret-service", "crypto-rust"] }
+tokio = { version = "1.53.3", features = ["sync", "time", "net", "rt", "macros", "io-util"] }
 
 [dev-dependencies]
 tauri = { version = "2.12.4", features = ["test"] }
@@ -47,3 +55,8 @@ lto = true
 opt-level = 3
 panic = "abort"
 strip = true
+
+# Dependencies are built without debug info in dev builds: it keeps target/
+# several times smaller while the launcher's own code stays fully debuggable.
+[profile.dev.package."*"]
+debug = false

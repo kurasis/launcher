@@ -9,6 +9,7 @@ import {
   type AppSnapshot,
   type BackendEvent,
   type CreateInstancePayload,
+  type ExternalLink,
   type InstanceSummary,
   type LauncherError,
   type LifecycleScenario,
@@ -42,6 +43,15 @@ export const ipc = {
   setAppSettings: (patch: SettingsPatch, requestId?: string): Promise<SettingsView> =>
     invoke<SettingsView>('set_app_settings', { request: mutation(patch, requestId) }),
   showMainWindow: (): Promise<void> => invoke('show_main_window'),
+  beginLogin: (requestId?: string): Promise<{ operationId: string }> =>
+    invoke<{ operationId: string }>('begin_login', { request: mutation({}, requestId) }),
+  cancelLogin: (operationId: string, requestId?: string): Promise<void> =>
+    invoke('cancel_login', { request: mutation({ operationId }, requestId) }),
+  signOut: (requestId?: string): Promise<void> =>
+    invoke('sign_out', { request: mutation({}, requestId) }),
+  verifyAccount: (requestId?: string): Promise<void> =>
+    invoke('verify_account', { request: mutation({}, requestId) }),
+  openExternal: (link: ExternalLink): Promise<void> => invoke('open_external', { link }),
   requestQuit: (action: QuitAction, requestId?: string): Promise<QuitResult> =>
     invoke<QuitResult>('request_quit', { request: mutation({ action }, requestId) }),
   /** Debug builds only; release builds have no handler for this command. */

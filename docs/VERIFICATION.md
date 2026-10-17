@@ -154,3 +154,42 @@ linux-x64, windows-x64, macos-arm64, macos-x64). The first run on this PR failed
 thread had not yet released its channel. Fixed by recording exit in a flag set right after
 `wait()`; the test then passed 15 times in a row locally and on all CI runners. The child
 supervision tests therefore ran on Windows and both macOS architectures.
+
+## P04 — Microsoft login and current game access
+
+- **Host:** development host (Ubuntu 24.04.5 x86_64 container). No Secret Service is running
+  in this container, so the OS-vault test exercises the explicit "unavailable" path here.
+- **Branch / PR:** `claude/p04-auth-access`, [kurasis/launcher#4](https://github.com/kurasis/launcher/pull/4).
+- **Evidence kind:** synthetic only. All flows ran against a local fixture HTTP server. **No
+  live Microsoft, Xbox or Minecraft request was made**: no project-owned client ID exists.
+
+### Synthetic tests (pass)
+
+| Area                       | Tests                                                                                                                                                                                                                                                                                                                                                                                             |
+| -------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| PKCE/state                 | RFC 7636 Appendix B vector; fresh 43-char verifiers; constant-time state comparison                                                                                                                                                                                                                                                                                                               |
+| Loopback callback          | Only the matching state on `/` is accepted; wrong state, other path, duplicate parameter and garbage are answered 400/404 without consuming the attempt; the code is never echoed; provider `access_denied`; timeout; cancel; late callback after cancel reaches no listener; oversized request                                                                                                   |
+| Protocol parsing           | Token, Xbox, XSTS, Minecraft token, entitlements (missing `items` = protocol error), profile; OAuth error classification without copying descriptions; request bodies match the contract; no client secret                                                                                                                                                                                        |
+| Access decision            | Owned and subscription (no `product_minecraft`) accepted; no play access denied even with ownership item; profile not requested without play access                                                                                                                                                                                                                                               |
+| End-to-end flows (fixture) | Successful login (PKCE verifier matches challenge, same redirect URI, Bearer only to Minecraft endpoints, refresh token only in the vault, no secret in `accounts.json` or the snapshot); no access ×2; malformed entitlements; profile 404; `Invalid app registration` 403 → app not approved; other 403 → forbidden; XSTS restricted and missing Xbox profile; 503; 429; XSTS identity mismatch |
+| Concurrency                | Repeated begin returns the same attempt; wrong state does not consume the attempt; a late refresh finishing after sign-out cannot restore the account; sign-in/sign-out refused while a launch owns the account                                                                                                                                                                                   |
+| Refresh                    | Restore refreshes and verifies; rotated refresh token is persisted; non-rotated keeps the old one; `invalid_grant` clears the saved login; outage keeps it                                                                                                                                                                                                                                        |
+| Launch authorization       | Fresh entitlements for every launch, cached Minecraft token reused, one refresh on 401, revoked access caught on the next launch                                                                                                                                                                                                                                                                  |
+| Sign-out                   | Removes vault entry, record and launch authorization; vault deletion failure → `SIGN_OUT_PENDING` marker, retried on restart before any restore                                                                                                                                                                                                                                                   |
+| Session-only mode          | Vault write failure → in-memory credential, nothing persisted, UI notice                                                                                                                                                                                                                                                                                                                          |
+| External links             | Allowlist accepts only fixed HTTPS hosts and the authorize path                                                                                                                                                                                                                                                                                                                                   |
+| UI                         | Not-configured explanation without sign-in button or password field; sign-in, cancel, sign-out, check-again, help links; no-access vs outage presentation ([screenshot](verification/p04-account-not-configured.png))                                                                                                                                                                             |
+
+### Live checks (blocked)
+
+| Check                                                                                                   | Status        | Needed from the owner                                        |
+| ------------------------------------------------------------------------------------------------------- | ------------- | ------------------------------------------------------------ |
+| Real licensed account reaches `verified_access` with this project's client ID (P04 done criterion, A03) | **Blocked**   | Project-owned Microsoft client ID and Minecraft API approval |
+| Real no-access account denied (A04)                                                                     | Blocked (P13) | Test account without Java access                             |
+| Active Game Pass accepted (A05)                                                                         | Blocked (P13) | Test account with an active subscription                     |
+| Profile-not-created and outage seen live (A06)                                                          | Blocked (P13) | As above                                                     |
+| Accepted redirect form, scope spelling, `Invalid app registration` wording                              | Unverified    | First live sign-in                                           |
+
+### CI results
+
+Filled in from the pull request's checks before merge.

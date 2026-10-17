@@ -15,6 +15,11 @@ fn main() {
         "set_app_settings",
         "show_main_window",
         "request_quit",
+        "begin_login",
+        "cancel_login",
+        "sign_out",
+        "verify_account",
+        "open_external",
         // Registered only in debug builds; release builds have no handler for them.
         "start_lifecycle_test",
         "stop_lifecycle_test",

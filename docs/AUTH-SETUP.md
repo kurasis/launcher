@@ -82,6 +82,9 @@ been called with credentials yet.
 | Access check           | `GET https://api.minecraftservices.com/entitlements/license?requestId=<uuid>`                                                                                                | Unverified          |
 | Profile                | `GET https://api.minecraftservices.com/minecraft/profile`                                                                                                                    | Unverified          |
 
+The implemented contract and its validation rules are described in
+[AUTH-CONTRACT.md](AUTH-CONTRACT.md).
+
 ## 5. Owner record (fill in; no secrets)
 
 | Field                                                                             | Value                      |

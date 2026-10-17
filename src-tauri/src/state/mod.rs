@@ -63,6 +63,7 @@ struct Data {
     issues: Vec<StorageIssue>,
     current_run: Option<RunSummary>,
     last_run: Option<RunSummary>,
+    account: AccountSummary,
 }
 
 pub struct AppState {
@@ -103,6 +104,7 @@ impl AppState {
                 issues: Vec::new(),
                 current_run: None,
                 last_run: None,
+                account: AccountSummary::signed_out(),
             },
         };
         match root.and_then(Store::open) {
@@ -126,6 +128,14 @@ impl AppState {
                 data.settings = settings.value;
                 data.settings_writable = settings.writable;
                 data.accounts = accounts.value;
+                data.account.state = if data.accounts.sign_out_pending {
+                    AccountState::SignOutPending
+                } else if data.accounts.active.is_some() {
+                    // The auth service restores and re-verifies the saved account.
+                    AccountState::Refreshing
+                } else {
+                    AccountState::SignedOut
+                };
                 data.instances = instances.into_iter().map(|i| (i.id, i)).collect();
                 data.issues = issues;
                 // A selection that no longer exists is dropped in memory only.
@@ -194,16 +204,7 @@ impl AppState {
                 error,
             },
             settings: SettingsView::new(&data.settings, data.settings_writable),
-            account: AccountSummary {
-                // Authentication arrives in P04; nothing is restored before then.
-                state: if data.accounts.sign_out_pending {
-                    AccountState::SignOutPending
-                } else {
-                    AccountState::SignedOut
-                },
-                profile_name: None,
-                profile_id: None,
-            },
+            account: data.account.clone(),
             microsoft_client_id: client_id::build_time_status(),
             instances,
             active_operation: active,
@@ -304,6 +305,14 @@ impl AppState {
                     active_operation: self.activity.current(),
                 },
             })),
+            Change::Account => BackendEvent::AccountStateChanged(Box::new(EventEnvelope {
+                session_epoch,
+                revision,
+                timestamp,
+                body: AccountStateChanged {
+                    account: data.account.clone(),
+                },
+            })),
             Change::Settings => BackendEvent::SettingsChanged(EventEnvelope {
                 session_epoch,
                 revision,
@@ -372,6 +381,46 @@ impl AppState {
     /// Re-announces run state, for example after the activity permit was released.
     pub fn announce_runs(&self) {
         self.publish(|_| true, Change::Runs);
+    }
+
+    /// Current account display state.
+    pub fn account(&self) -> AccountSummary {
+        self.lock().data.account.clone()
+    }
+
+    /// Replaces the account display state and announces it.
+    pub fn set_account(&self, account: AccountSummary) {
+        self.publish(
+            |data| {
+                if data.account == account {
+                    false
+                } else {
+                    data.account = account;
+                    true
+                }
+            },
+            Change::Account,
+        );
+    }
+
+    /// The persisted account metadata (`accounts.json`).
+    pub fn accounts_file(&self) -> AccountsFile {
+        self.lock().data.accounts.clone()
+    }
+
+    /// Persists account metadata. Contains no secrets.
+    pub fn save_accounts_file(&self, accounts: AccountsFile) -> LauncherResult<()> {
+        let mut guard = self.lock();
+        let inner = &mut *guard;
+        let Availability::Ready(store) = &inner.availability else {
+            return Err(LauncherError::new(
+                ErrorCode::StorageUnavailable,
+                "Launcher data is unavailable.",
+            ));
+        };
+        store.save_accounts(&accounts)?;
+        inner.data.accounts = accounts;
+        Ok(())
     }
 
     pub fn current_run(&self) -> Option<RunSummary> {
@@ -516,6 +565,7 @@ enum Change {
     Instance(InstanceId),
     Settings,
     Runs,
+    Account,
 }
 
 fn instance_not_found() -> LauncherError {

@@ -3,6 +3,7 @@ import { Button } from '../components/Button';
 import { Notice } from '../components/Notice';
 import { StatusBadge } from '../components/StatusBadge';
 import { AccountChip } from '../features/accounts/AccountChip';
+import { AccountView } from '../features/accounts/AccountView';
 import { RunStatus } from '../features/diagnostics/RunStatus';
 import { StorageIssues } from '../features/diagnostics/StorageIssues';
 import { InstancesView } from '../features/instances/InstancesView';
@@ -14,8 +15,8 @@ import styles from './App.module.css';
 import { QuitControl } from './QuitControl';
 import { useTheme } from './useTheme';
 
-type View = 'home' | 'settings' | 'about';
-const views: View[] = ['home', 'settings', 'about'];
+type View = 'home' | 'account' | 'settings' | 'about';
+const views: View[] = ['home', 'account', 'settings', 'about'];
 
 export function App() {
   const state = useAppStore();
@@ -71,14 +72,14 @@ export function App() {
         ) : (
           <>
             <StorageIssues issues={state.snapshot.storageIssues} />
-            {view === 'home' ? (
+            {view === 'home' && (
               <>
                 <RunStatus current={state.snapshot.currentRun} last={state.snapshot.lastRun} />
                 <InstancesView snapshot={state.snapshot} />
               </>
-            ) : (
-              <SettingsView snapshot={state.snapshot} />
             )}
+            {view === 'account' && <AccountView snapshot={state.snapshot} />}
+            {view === 'settings' && <SettingsView snapshot={state.snapshot} />}
           </>
         )}
       </main>
