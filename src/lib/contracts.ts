@@ -19,6 +19,8 @@ export interface AppInfo {
   arch: string;
   buildProfile: BuildProfile;
   microsoftClientId: MicrosoftClientIdStatus;
+  /** Debug builds only: the demo-mode test profile that authorizes launches. */
+  testProfile: string | null;
 }
 
 export type ErrorCode =
@@ -235,7 +237,7 @@ export interface ActiveActivity {
 }
 
 export type RunState =
-  'preflight' | 'spawning' | 'running' | 'stopping' | 'exited' | 'failed' | 'cancelled';
+  'preflight' | 'spawning' | 'running' | 'stopping' | 'exited' | 'failed' | 'cancelled' | 'stopped';
 
 export type RunKind = 'lifecycle_test' | 'game';
 

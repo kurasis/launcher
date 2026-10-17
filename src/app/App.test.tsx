@@ -1,12 +1,12 @@
 import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { mockIPC } from '@tauri-apps/api/mocks';
 import { describe, expect, it } from 'vitest';
-import type { AppSnapshot, InstanceSummary, MutationRequest } from '../lib/contracts';
+import type { AppInfo, AppSnapshot, InstanceSummary, MutationRequest } from '../lib/contracts';
 import { appInfoFixture, instanceFixture, snapshotFixture } from '../test/fixtures';
 import { App } from './App';
 
 // Test-only fake backend. Production code always talks to the real Rust core.
-function fakeBackend(initial: AppSnapshot) {
+function fakeBackend(initial: AppSnapshot, info: AppInfo = appInfoFixture) {
   let snapshot = initial;
   const calls: { cmd: string; args: unknown }[] = [];
   mockIPC(
@@ -16,7 +16,7 @@ function fakeBackend(initial: AppSnapshot) {
         case 'get_app_snapshot':
           return snapshot;
         case 'get_app_info':
-          return appInfoFixture;
+          return info;
         case 'create_instance': {
           const { request } = args as {
             request: MutationRequest<{ displayName: string; versionId: string }>;
@@ -53,6 +53,20 @@ function fakeBackend(initial: AppSnapshot) {
 }
 
 describe('App', () => {
+  it('marks a debug build running with the test profile', async () => {
+    fakeBackend(snapshotFixture(), { ...appInfoFixture, testProfile: 'KurasisTest' });
+    render(<App />);
+    expect(await screen.findByText('Test profile KurasisTest · demo mode')).toBeVisible();
+    expect(screen.getByText('Development build')).toBeVisible();
+  });
+
+  it('shows no test profile mark normally', async () => {
+    fakeBackend(snapshotFixture());
+    render(<App />);
+    expect(await screen.findByText('Development build')).toBeVisible();
+    expect(screen.queryByText(/Test profile/)).toBeNull();
+  });
+
   it('shows the empty state and the account status', async () => {
     fakeBackend(snapshotFixture());
     render(<App />);

@@ -810,38 +810,38 @@ WebKit memory; numbers on real GPUs and other OSes are not measured.
 | A09  | Pass    | Live catalog filtered by the compatibility list (P05); instances keep their pinned descriptor                                                   |
 | A10  | Pass    | Live installs of 1.21.1 (P08) and 26.3 (above) with digest verification and private Java                                                        |
 | A11  | Pass    | 1.21.1 → Java 21.0.12.1, 26.3 → Java 25.0.4.1, both accepting real JVM arguments                                                                |
-| A12  | Blocked | Playing needs sign-in                                                                                                                           |
+| A12  | Partial | Demo mode with the test profile on Linux X11: menu, world created, saved, reloaded (D-030); licensed play on every target blocked by sign-in    |
 | A13  | Blocked | Needs sign-in and an authorized test server                                                                                                     |
 | A14  | Pass    | Cancel/resume (P08) and `kill -9` resume (above)                                                                                                |
 | A15  | Partial | Library and runtime corruption repaired (above, P08); worlds unchanged (P08); repair blocked while a game runs: unit tests only                 |
 | A16  | Pass    | Unicode/space/221-character data root (above); classpath-delimiter roots rejected (P02)                                                         |
-| A17  | Partial | Test child and survivor guard (P03, P10); real game blocked                                                                                     |
-| A18  | Partial | Webview destroyed and recreated after exit and crash with the test child; real game blocked                                                     |
+| A17  | Partial | Real 1.21.1 kept running after the GUI was destroyed, one supervisor (test profile, demo); Windows/macOS untested                               |
+| A18  | Partial | Real game: webview destroyed during play and one window restored after normal exit and after a crash (test profile, demo, Linux X11)            |
 | A19  | Partial | Linux X11 host (P03, P10); Windows/macOS/Wayland untested                                                                                       |
 | A20  | Pass    | Bounded logs, drained pipes, degraded logging (P09 tests, P03 heavy-output scenario)                                                            |
 | A21  | Partial | All controls call real commands (P11); sign-in/Play paths cannot complete                                                                       |
 | A22  | Partial | Network, disk full, permissions, corruption and abrupt exit pass (above); expired token fixture-only                                            |
-| A23  | Partial | 20 cycles pass for windows/processes/threads; descriptor growth from WebKitGTK documented; real-game exit/crash blocked                         |
+| A23  | Partial | 20 test-child cycles; real-game exit and crash return on Linux X11 (demo); WebKitGTK descriptor growth documented; other targets open           |
 | A24  | Partial | Linux upgrade/uninstall keeps data (P12); Windows/macOS upgrade untested; credentials need sign-in                                              |
 | A25  | Pass    | Lockfile-enforced CI and package builds (P01–P12)                                                                                               |
 | A26  | Partial | Package metadata and checksums (P12); final signed packages and target smoke tests pending                                                      |
 
 ### MV01–MV12
 
-| Case | Status  | Evidence                                                                                                |
-| ---- | ------- | ------------------------------------------------------------------------------------------------------- |
-| MV01 | Pass    | Second 1.21.1 installation: 0 bytes, own game folder (above)                                            |
-| MV02 | Partial | Both versions installed with their own Java and arguments; alternating play blocked                     |
-| MV03 | Pass    | Fixture tests (P05, P06)                                                                                |
-| MV04 | Pass    | Fixture tests (P05, P06)                                                                                |
-| MV05 | Pass    | Runtime key tests (P07)                                                                                 |
-| MV06 | Pass    | Asset-index projection tests (P05, P08)                                                                 |
-| MV07 | Partial | Corruption repaired once for both users of the file (above); APP_BUSY during a running game: unit tests |
-| MV08 | Pass    | Interruption tests (P02, P08) and live `kill -9` resume (above)                                         |
-| MV09 | Pass    | Second process exits or fails closed (above)                                                            |
-| MV10 | Partial | Background install return and cancel-and-quit (P10); login-time close blocked                           |
-| MV11 | Pass    | Degraded-logging tests with heavy output (P09)                                                          |
-| MV12 | Partial | Unicode/space paths with real Java (above); cancel races in unit tests; real spawn blocked              |
+| Case | Status  | Evidence                                                                                                             |
+| ---- | ------- | -------------------------------------------------------------------------------------------------------------------- |
+| MV01 | Pass    | Second 1.21.1 installation: 0 bytes, own game folder (above)                                                         |
+| MV02 | Partial | Both versions launched with their own Java (1.21.1/GLX, 26.3/Vulkan) in demo mode; alternating licensed play blocked |
+| MV03 | Pass    | Fixture tests (P05, P06)                                                                                             |
+| MV04 | Pass    | Fixture tests (P05, P06)                                                                                             |
+| MV05 | Pass    | Runtime key tests (P07)                                                                                              |
+| MV06 | Pass    | Asset-index projection tests (P05, P08)                                                                              |
+| MV07 | Partial | Corruption repaired once for both users of the file (above); APP_BUSY during a running game: unit tests              |
+| MV08 | Pass    | Interruption tests (P02, P08) and live `kill -9` resume (above)                                                      |
+| MV09 | Pass    | Second process exits or fails closed (above)                                                                         |
+| MV10 | Partial | Background install return and cancel-and-quit (P10); login-time close blocked                                        |
+| MV11 | Pass    | Degraded-logging tests with heavy output (P09)                                                                       |
+| MV12 | Partial | Unicode/space paths with real Java (above); cancel races in unit tests; real spawn blocked                           |
 
 ### Not verified in P13
 
@@ -903,3 +903,55 @@ Diagnostics), "PKCE to implement" in AUTH-SETUP.
 ### CI results
 
 Recorded by the pull request that merges this phase.
+
+## Test profile — automated launch tests in demo mode (D-030)
+
+- **Date / host:** 2026-10-17, development host (Ubuntu 24.04.5 container, Xvfb, Mesa
+  25.2.8 llvmpipe/lavapipe), debug builds of branch `claude/test-profile`.
+- **Label:** every result below is **test profile, demo mode**. No Microsoft account was
+  used; none of this is account evidence (A03–A06, A13 stay open).
+
+### Automated: `tests/live_play.rs` (real game through the launch service)
+
+| Version | Graphics         | Process started | Resources loaded | Stop                                |
+| ------- | ---------------- | --------------- | ---------------- | ----------------------------------- |
+| 1.21.1  | GLX, llvmpipe    | 3.7 s           | 12.7 s           | Run recorded as `stopped`, no error |
+| 26.3    | Vulkan, lavapipe | 4.6 s           | 16.1 s           | Run recorded as `stopped`, no error |
+
+Each run checks that the profile name reached the client (`Setting user: KurasisTest`)
+and that the placeholder token does not appear in the run log. Screenshots: 1.21.1 demo
+title screen ([png](verification/test-profile-1.21.1-title.png)), 26.3 first-start
+screen ([png](verification/test-profile-26.3-first-start.png)).
+
+Found while getting there:
+
+- Stop was recorded as "Exited with an error" (`failed`). Runs now end as `stopped`
+  ("Stopped by you"); the instance's last result is "Cancelled".
+- 26.3 could not create an OpenGL window on Xvfb or the Xorg dummy driver ("Couldn't find
+  matching GLX visual"; neither offers sRGB-capable visuals). With the Mesa Vulkan driver
+  it selects its Vulkan backend and runs. Environment requirement, not a launcher defect.
+
+### End to end through the app (1.21.1, default "unload and return" mode)
+
+| Step                                               | Result                                                                                                                                         |
+| -------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------- |
+| Debug app with `KURASIS_TEST_PROFILE=KurasisTest`  | Header shows "Test profile KurasisTest · demo mode" ([png](verification/test-profile-tp-1-home.png))                                           |
+| Play                                               | Launcher window unloaded after 6 s; game window after 11 s; title screen after 21 s                                                            |
+| Play Demo World                                    | Integrated server started, 1,399 advancements loaded, player in the world ([png](verification/test-profile-tp-3-world.png))                    |
+| Save and Quit to Title                             | "All dimensions are saved"; `saves/Demo_World/level.dat` written ([png](verification/test-profile-tp-5-pause.png))                             |
+| Play Demo World again (reload)                     | Saved world loaded, "KurasisTest joined the game" ([png](verification/test-profile-tp-7-reloaded-ingame.png))                                  |
+| Save and Quit, then Quit Game                      | Saved again; one launcher window back 1 s after the game exited, no game process left                                                          |
+| Result view                                        | "Exited normally", exit code 0, 400.2 s; last result "Launch: Succeeded (exit code 0)" ([png](verification/test-profile-tp-8-returned.png))    |
+| Play again, then `kill -9` the game's Java process | One launcher window back immediately; "Exited with an error" with the explanation and output ([png](verification/test-profile-tp-9-crash.png)) |
+
+This covers, in demo mode on Linux X11: A12 (menu, create/save/reload a world), A17 and
+A18 (GUI destroyed during play, game unaffected, one window restored after normal exit
+and after a crash) and the launch side of MV02 (each version with its own Java).
+Windows, macOS and Wayland remain open.
+
+### Release builds
+
+A release core built from this branch (`npx tauri build --no-bundle -- --locked`)
+contains none of `KURASIS_TEST_PROFILE`, `kurasis-test-profile`, `KurasisTestProfile`,
+`--demo` or `lifecycle-test-child` (`strings` scan, 0 matches each); `get_app_info`
+returns `testProfile: null` in release builds by construction.

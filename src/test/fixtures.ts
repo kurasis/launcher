@@ -9,6 +9,7 @@ export const appInfoFixture: AppInfo = {
   arch: 'x86_64',
   buildProfile: 'debug',
   microsoftClientId: 'not_configured',
+  testProfile: null,
 };
 
 export function instanceFixture(overrides: Partial<InstanceSummary> = {}): InstanceSummary {

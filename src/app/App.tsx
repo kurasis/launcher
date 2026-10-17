@@ -57,6 +57,9 @@ export function App() {
           {appInfo.status === 'ready' && (
             <StatusBadge tone="neutral" label={strings.buildTag(appInfo.info.buildProfile)} />
           )}
+          {appInfo.status === 'ready' && appInfo.info.testProfile !== null && (
+            <StatusBadge tone="warning" label={strings.testProfileTag(appInfo.info.testProfile)} />
+          )}
         </div>
         {snapshot !== null && <ActivityIndicator snapshot={snapshot} />}
         {snapshot !== null && <AccountChip account={snapshot.account} />}

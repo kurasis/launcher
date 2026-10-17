@@ -59,13 +59,16 @@ fn get_app_info_returns_the_frontend_contract() {
             "microsoftClientId",
             "os",
             "productName",
-            "tauriVersion"
+            "tauriVersion",
+            "testProfile"
         ]
     );
     assert_eq!(info["os"], std::env::consts::OS);
     assert_eq!(info["arch"], std::env::consts::ARCH);
     assert_eq!(info["tauriVersion"], tauri::VERSION);
     assert_eq!(info["buildProfile"], "debug");
+    // Set only when the debug build runs with KURASIS_TEST_PROFILE.
+    assert!(info["testProfile"].is_null() || info["testProfile"].is_string());
     assert!(
         ["not_configured", "invalid", "configured_unverified"]
             .contains(&info["microsoftClientId"].as_str().expect("status")),

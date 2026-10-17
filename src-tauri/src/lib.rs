@@ -181,6 +181,16 @@ fn resolve_data_root(app: &tauri::AppHandle) -> LauncherResult<DataRoot> {
     DataRoot::new(path)
 }
 
+/// The account that authorizes launches. Debug builds started with
+/// `KURASIS_TEST_PROFILE` use the demo-only test profile instead (D-030).
+fn launch_authorizer(auth: &Arc<AuthService>) -> Arc<dyn launch::service::Authorizer> {
+    #[cfg(debug_assertions)]
+    if let Some(profile) = launch::test_profile::TestProfile::from_env() {
+        return Arc::new(profile);
+    }
+    Arc::new(Arc::clone(auth))
+}
+
 /// Creates state and services; any failure stops the launcher before a window opens.
 fn setup(app: &mut tauri::App) -> Result<(), Box<dyn std::error::Error>> {
     let handle = app.handle().clone();
@@ -227,7 +237,7 @@ fn setup(app: &mut tauri::App) -> Result<(), Box<dyn std::error::Error>> {
         Arc::new(launch::service::LaunchService::new(
             Arc::new(TauriLaunchHost(app.handle().clone())),
             source as Arc<dyn install::service::PlanSource>,
-            Arc::new(Arc::clone(&auth)),
+            launch_authorizer(&auth),
             &version,
         ))
     });
