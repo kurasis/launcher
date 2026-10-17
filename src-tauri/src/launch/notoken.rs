@@ -1,4 +1,4 @@
-//! Minecraft demo mode without an account (D-033).
+//! The no-token profile: Minecraft's demo mode without an account (D-033).
 //!
 //! Minecraft's demo is the free, time-limited edition (five in-game days, no
 //! multiplayer). "Play demo" launches it under a local player name with Minecraft's
@@ -26,15 +26,15 @@ use crate::secrets::SecretString;
 #[cfg(debug_assertions)]
 pub const ENV: &str = "LAUNCHER_NOTOKEN_PROFILE";
 
-/// Player name of demo launches.
+/// Player name of no-token launches.
 pub const DEFAULT_NAME: &str = "Player";
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct DemoProfile {
+pub struct NoTokenProfile {
     name: String,
 }
 
-impl Default for DemoProfile {
+impl Default for NoTokenProfile {
     fn default() -> Self {
         Self {
             name: DEFAULT_NAME.to_owned(),
@@ -42,7 +42,7 @@ impl Default for DemoProfile {
     }
 }
 
-impl DemoProfile {
+impl NoTokenProfile {
     /// Accepts Minecraft player names: 3–16 ASCII letters, digits or `_`.
     pub fn new(name: &str) -> LauncherResult<Self> {
         let valid = (3..=16).contains(&name.len())
@@ -80,7 +80,7 @@ impl DemoProfile {
     }
 }
 
-impl Authorizer for DemoProfile {
+impl Authorizer for NoTokenProfile {
     fn authorize(&self) -> BoxFuture<'_, LauncherResult<LaunchIdentity>> {
         Box::pin(async move {
             Ok(LaunchIdentity {
@@ -90,7 +90,7 @@ impl Authorizer for DemoProfile {
                 access_token: SecretString::new("notoken-profile"),
                 xuid: None,
                 client_id: String::new(),
-                demo: true,
+                notoken: true,
             })
         })
     }
@@ -103,27 +103,27 @@ mod tests {
     #[test]
     fn names_follow_minecraft_rules() {
         for ok in ["Abc", "TestPlayer_01", "abcdefghijklmnop", DEFAULT_NAME] {
-            assert!(DemoProfile::new(ok).is_ok(), "{ok}");
+            assert!(NoTokenProfile::new(ok).is_ok(), "{ok}");
         }
         for bad in ["", "ab", "abcdefghijklmnopq", "has space", "Jürgen", "a-b"] {
-            assert!(DemoProfile::new(bad).is_err(), "{bad}");
+            assert!(NoTokenProfile::new(bad).is_err(), "{bad}");
         }
     }
 
     #[tokio::test]
-    async fn the_identity_is_demo_only_and_stable() {
-        let profile = DemoProfile::new("TestPlayer").unwrap();
+    async fn the_identity_is_notoken_only_and_stable() {
+        let profile = NoTokenProfile::new("TestPlayer").unwrap();
         let identity = profile.authorize().await.unwrap();
-        assert!(identity.demo);
+        assert!(identity.notoken);
         assert_eq!(identity.player_name, "TestPlayer");
         assert_eq!(identity.uuid, profile.uuid());
         assert_eq!(identity.uuid.len(), 32);
         assert_eq!(&identity.uuid[12..13], "5", "version nibble");
         assert_ne!(
-            DemoProfile::new("Other").unwrap().uuid(),
+            NoTokenProfile::new("Other").unwrap().uuid(),
             identity.uuid,
             "names map to different players"
         );
-        assert_eq!(DemoProfile::default().name(), DEFAULT_NAME);
+        assert_eq!(NoTokenProfile::default().name(), DEFAULT_NAME);
     }
 }

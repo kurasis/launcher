@@ -19,7 +19,7 @@ export interface AppInfo {
   arch: string;
   buildProfile: BuildProfile;
   microsoftClientId: MicrosoftClientIdStatus;
-  /** Debug builds only: the demo-mode test profile that authorizes launches. */
+  /** Debug builds only: the no-token test profile that authorizes launches. */
   testProfile: string | null;
 }
 
@@ -34,7 +34,7 @@ export type ErrorCode =
   | 'AUTH_PROTOCOL_ERROR'
   | 'AUTH_NOT_CONFIGURED'
   | 'NO_GAME_ACCESS'
-  | 'DEMO_UNAVAILABLE'
+  | 'NOTOKEN_UNAVAILABLE'
   | 'PROFILE_SETUP_REQUIRED'
   | 'SERVICE_UNAVAILABLE'
   | 'SECRET_STORE_UNAVAILABLE'

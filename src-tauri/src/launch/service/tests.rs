@@ -65,7 +65,7 @@ impl Authorizer for TestAuth {
                 access_token: SecretString::new(TOKEN),
                 xuid: None,
                 client_id: "test-client".into(),
-                demo: false,
+                notoken: false,
             })
         })
     }
@@ -242,23 +242,23 @@ async fn without_verified_access_java_never_starts() {
 }
 
 #[tokio::test(flavor = "multi_thread")]
-async fn demo_launches_need_no_account_and_always_run_the_demo() {
+async fn notoken_launches_need_no_account_and_always_run_the_demo() {
     let s = Setup::new().await;
-    // The account cannot play, but the demo does not ask it.
+    // The account cannot play, but the no-token profile does not ask it.
     let service = s.service(TestAuth {
         name: "Player",
         fail: Some(ErrorCode::AuthNotConfigured),
         delay: Duration::ZERO,
     });
     let run = service
-        .launch_as(&Uuid::new_v4().to_string(), s.instance, LaunchMode::Demo)
+        .launch_as(&Uuid::new_v4().to_string(), s.instance, LaunchMode::NoToken)
         .await
         .unwrap();
     let done = s.finished(&run.run_id).await;
     assert_eq!(done.state, RunState::Exited, "{:?}", done.error);
     let tail = done.output_tail.join("\n");
     assert!(tail.contains("ARG:--demo"));
-    assert!(tail.contains(&format!("ARG:{}", crate::launch::demo::DEFAULT_NAME)));
+    assert!(tail.contains(&format!("ARG:{}", crate::launch::notoken::DEFAULT_NAME)));
     assert!(
         !tail.contains("notoken-profile"),
         "placeholder token redacted"

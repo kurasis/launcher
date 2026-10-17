@@ -69,7 +69,7 @@ impl AppInfo {
 
 #[cfg(debug_assertions)]
 fn active_test_profile() -> Option<String> {
-    crate::launch::demo::DemoProfile::from_env().map(|p| p.name().to_owned())
+    crate::launch::notoken::NoTokenProfile::from_env().map(|p| p.name().to_owned())
 }
 
 #[cfg(not(debug_assertions))]
@@ -472,20 +472,21 @@ pub struct RunPayload {
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct LaunchPayload {
     pub instance_id: crate::storage::paths::InstanceId,
-    /// Minecraft's demo without an account (D-033); otherwise the signed-in account.
+    /// The no-token profile, which plays Minecraft's demo without an account
+    /// (D-033); otherwise the signed-in account.
     #[serde(default)]
-    pub demo: bool,
+    pub notoken: bool,
 }
 
-/// Checks the installation and account (or uses the demo profile), then starts
+/// Checks the installation and account (or uses the no-token profile), then starts
 /// Minecraft under supervision.
 #[tauri::command]
 pub async fn launch_game(
     launcher: State<'_, Launcher>,
     request: MutationRequest<LaunchPayload>,
 ) -> LauncherResult<crate::state::dto::RunSummary> {
-    let mode = if request.payload.demo {
-        crate::launch::service::LaunchMode::Demo
+    let mode = if request.payload.notoken {
+        crate::launch::service::LaunchMode::NoToken
     } else {
         crate::launch::service::LaunchMode::Account
     };

@@ -1,6 +1,5 @@
 import { Button } from '../components/Button';
 import { Panel } from '../components/Panel';
-import { MicrosoftSetupPanel } from '../features/accounts/MicrosoftSetupPanel';
 import { SystemInfoPanel } from '../features/diagnostics/SystemInfoPanel';
 import type { ExternalLink } from '../lib/contracts';
 import { ipc } from '../lib/ipc';
@@ -41,7 +40,6 @@ export function AboutView() {
         </div>
       </Panel>
       <SystemInfoPanel state={state} onRetry={reload} />
-      {state.status === 'ready' && <MicrosoftSetupPanel status={state.info.microsoftClientId} />}
     </>
   );
 }

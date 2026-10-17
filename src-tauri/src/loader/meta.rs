@@ -157,7 +157,8 @@ pub async fn loader_versions(
                     .and_then(Value::as_str)
                     .map(|v| format!("{game}-{v}"))
             };
-            let recommended = promoted("recommended").or_else(|| promoted("latest"));
+            let first_recommended = promoted("recommended");
+            let recommended = first_recommended.clone().or_else(|| promoted("latest"));
             builds
                 .into_iter()
                 .filter(|b| forge_supported(game, b))
@@ -167,7 +168,7 @@ pub async fn loader_versions(
                         .unwrap_or(&id)
                         .to_owned(),
                     recommended: recommended.as_deref() == Some(id.as_str()),
-                    stable: true,
+                    stable: forge_stable(&id, first_recommended.as_deref()),
                     id,
                 })
                 .collect()
@@ -234,6 +235,12 @@ async fn forge_metadata(fetcher: &dyn Fetch) -> LauncherResult<Vec<(String, Vec<
             (game.clone(), builds)
         })
         .collect())
+}
+
+/// Forge calls every build before a game version's recommended build a beta
+/// (its title screen says "Forge Beta"); without a recommended build, all are.
+pub fn forge_stable(build: &str, recommended: Option<&str>) -> bool {
+    recommended.is_some_and(|r| compare_versions(build, r) != std::cmp::Ordering::Less)
 }
 
 /// Forge builds whose installer holds a version profile: Minecraft 1.13 and
@@ -310,6 +317,15 @@ mod tests {
         assert_eq!(neoforge_game("26.1.0.0-alpha.1+snapshot-1"), None);
         assert_eq!(neoforge_game("0.25w14craftmine.3-beta"), None);
         assert_eq!(neoforge_game("1.20.1-47.1.5"), None);
+    }
+
+    #[test]
+    fn forge_betas_come_before_the_recommended_build() {
+        let recommended = Some("1.21.1-52.1.0");
+        assert!(forge_stable("1.21.1-52.1.0", recommended));
+        assert!(forge_stable("1.21.1-52.1.20", recommended));
+        assert!(!forge_stable("1.21.1-52.0.57", recommended));
+        assert!(!forge_stable("26.3-64.0.1", None));
     }
 
     #[test]

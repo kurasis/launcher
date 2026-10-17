@@ -225,9 +225,8 @@ describe('App', () => {
     expect(screen.getByText('/home/test/.local/share/launcher')).toBeVisible();
 
     fireEvent.click(screen.getByRole('button', { name: 'About' }));
-    const setup = await screen.findByRole('region', { name: 'Microsoft sign-in setup' });
-    expect(setup).toHaveTextContent('Not configured');
-    expect(screen.getByText('linux / x86_64')).toBeVisible();
+    expect(await screen.findByText('linux / x86_64')).toBeVisible();
+    expect(screen.queryByRole('region', { name: 'Microsoft sign-in setup' })).toBeNull();
   });
 
   it('opens diagnostics and the project source link from the UI only', async () => {

@@ -19,7 +19,7 @@ import { gameLabel } from './loaderLabel';
 
 interface InstallPanelProps {
   instance: InstanceSummary;
-  /** Without verified access, Play starts the demo instead (D-033). */
+  /** Without verified access, Play uses the no-token profile instead (D-033). */
   accountState: AccountState;
   activeOperation: ActiveActivity | null;
   progress: OperationProgress | null;
@@ -95,11 +95,12 @@ export function InstallPanel({
 }: InstallPanelProps) {
   const install = useCommand((requestId: string, id: string) => ipc.installInstance(id, requestId));
   const repair = useCommand((requestId: string, id: string) => ipc.repairInstance(id, requestId));
-  const play = useCommand((requestId: string, id: string, demo: boolean) =>
-    ipc.launchGame(id, requestId, demo),
+  const play = useCommand((requestId: string, id: string, notoken: boolean) =>
+    ipc.launchGame(id, requestId, notoken),
   );
-  // An account that is (being re)checked plays in full; any other state gets the demo.
-  const demo = accountState !== 'verified_access' && accountState !== 'refreshing';
+  // An account that is (being re)checked plays in full; any other state plays
+  // without a token (Minecraft's demo).
+  const notoken = accountState !== 'verified_access' && accountState !== 'refreshing';
   const cancel = useCommand((requestId: string, operationId: string) =>
     ipc.cancelOperation(operationId, requestId),
   );
@@ -164,9 +165,9 @@ export function InstallPanel({
                   variant="primary"
                   size="large"
                   disabled={otherBusy || play.pending}
-                  onClick={() => void play.run(instance.id, demo)}
+                  onClick={() => void play.run(instance.id, notoken)}
                 >
-                  {play.pending ? t.starting : demo ? t.playDemo : t.play}
+                  {play.pending ? t.starting : notoken ? t.playNoToken : t.play}
                 </Button>
               )}
               <Button
@@ -180,7 +181,9 @@ export function InstallPanel({
           )}
         </div>
       )}
-      {mine === null && health === 'ready' && demo && <p className={styles.muted}>{t.demoHint}</p>}
+      {mine === null && health === 'ready' && notoken && (
+        <p className={styles.muted}>{t.noTokenHint}</p>
+      )}
       {health !== 'not_installed' && <p className={styles.muted}>{t.userData}</p>}
       {error !== null && <Notice tone="danger">{error}</Notice>}
     </Panel>

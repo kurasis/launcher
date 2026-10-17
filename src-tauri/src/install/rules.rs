@@ -257,8 +257,8 @@ mod tests {
 
     #[test]
     fn features_default_to_false() {
-        let demo = json!([{"action": "allow", "features": {"is_demo_user": true}}]);
-        assert!(!eval(demo, MetaOs::Linux));
+        let demo_user = json!([{"action": "allow", "features": {"is_demo_user": true}}]);
+        assert!(!eval(demo_user, MetaOs::Linux));
         let resolution = json!([{"action": "allow", "features": {"has_custom_resolution": true}}]);
         assert!(eval(resolution, MetaOs::Linux));
         let unknown_false = json!([{"action": "allow", "features": {"some_new_feature": false}}]);

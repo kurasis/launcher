@@ -46,7 +46,7 @@ struct Prepared {
 const SUMMARY_TAIL_LINES: usize = 40;
 
 /// The main class of every version whose client accepts `--demo` (1.6 and later).
-pub const DEMO_MAIN_CLASS: &str = "net.minecraft.client.main.Main";
+pub const NOTOKEN_MAIN_CLASS: &str = "net.minecraft.client.main.Main";
 /// Main class of mod loaders started through Mojang's launchwrapper (D-039).
 pub const LAUNCHWRAPPER_MAIN_CLASS: &str = "net.minecraft.launchwrapper.Launch";
 
@@ -56,8 +56,8 @@ pub enum LaunchMode {
     /// The signed-in account, after a fresh access check.
     #[default]
     Account,
-    /// Minecraft's demo without an account (D-033).
-    Demo,
+    /// The no-token profile: Minecraft's demo without an account (D-033).
+    NoToken,
 }
 
 /// Per-run inputs taken from the installation and the request.
@@ -82,7 +82,7 @@ impl Authorizer for Arc<crate::auth::service::AuthService> {
                 access_token: auth.access_token,
                 xuid: auth.xuid,
                 client_id: auth.client_id,
-                demo: false,
+                notoken: false,
             })
         })
     }
@@ -106,7 +106,7 @@ pub struct LaunchService {
     host: Arc<dyn LaunchHost>,
     source: Arc<dyn PlanSource>,
     auth: Arc<dyn Authorizer>,
-    demo: Arc<dyn Authorizer>,
+    notoken: Arc<dyn Authorizer>,
     launcher_version: String,
     pending: Mutex<Option<(String, CancelToken)>>,
     requests: Mutex<Requests>,
@@ -141,7 +141,7 @@ impl LaunchService {
             host,
             source,
             auth,
-            demo: Arc::new(super::demo::DemoProfile::default()),
+            notoken: Arc::new(super::notoken::NoTokenProfile::default()),
             launcher_version: launcher_version.to_owned(),
             pending: Mutex::default(),
             requests: Mutex::default(),
@@ -150,9 +150,9 @@ impl LaunchService {
         }
     }
 
-    /// Uses `demo` for demo launches instead of the default demo profile.
-    pub fn with_demo(mut self, demo: Arc<dyn Authorizer>) -> Self {
-        self.demo = demo;
+    /// Uses `notoken` for no-token launches instead of the default profile.
+    pub fn with_notoken(mut self, notoken: Arc<dyn Authorizer>) -> Self {
+        self.notoken = notoken;
         self
     }
 
@@ -355,7 +355,9 @@ impl LaunchService {
             logging_degraded: false,
         });
         state.console().info(match mode {
-            LaunchMode::Demo => "Launch in demo mode: checking the installation",
+            LaunchMode::NoToken => {
+                "Launch without a token (Minecraft demo): checking the installation"
+            }
             LaunchMode::Account => {
                 "Launch with the signed-in account: checking the installation and access"
             }
@@ -520,7 +522,7 @@ impl LaunchService {
         )?;
         check_cancel()?;
 
-        // Fresh access check (or the demo profile); without it Java is never started.
+        // Fresh access check (or the no-token profile); without it Java is never started.
         let RunSettings {
             max_heap_mib,
             resolution,
@@ -528,7 +530,7 @@ impl LaunchService {
         } = settings;
         let authorizer = match mode {
             LaunchMode::Account => &self.auth,
-            LaunchMode::Demo => &self.demo,
+            LaunchMode::NoToken => &self.notoken,
         };
         let identity = tokio::select! {
             identity = authorizer.authorize() => identity?,
@@ -538,20 +540,20 @@ impl LaunchService {
         };
         check_cancel()?;
         // Only versions started through Minecraft's own main class know `--demo`;
-        // older ones would run the full game, so a demo identity cannot start them.
+        // older ones would run the full game, so a no-token identity cannot start them.
         // A mod loader hands the arguments on to that same class.
-        if identity.demo && plan.main_class == LAUNCHWRAPPER_MAIN_CLASS {
+        if identity.notoken && plan.main_class == LAUNCHWRAPPER_MAIN_CLASS {
             // Forge's launchwrapper tweaker (1.12.2) drops `--demo` and would
             // start the full game.
             return Err(LauncherError::new(
-                ErrorCode::DemoUnavailable,
+                ErrorCode::NoTokenUnavailable,
                 "This mod loader version cannot run the demo. Sign in with an account \
                  that owns Minecraft to play it.",
             ));
         }
-        if identity.demo && plan.game_main_class() != DEMO_MAIN_CLASS {
+        if identity.notoken && plan.game_main_class() != NOTOKEN_MAIN_CLASS {
             return Err(LauncherError::new(
-                ErrorCode::DemoUnavailable,
+                ErrorCode::NoTokenUnavailable,
                 "This Minecraft version has no demo mode. Sign in with an account that \
                  owns Minecraft to play it.",
             ));

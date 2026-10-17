@@ -104,8 +104,8 @@
       "repair": "إصلاح",
       "verify": "التحقق من الملفات",
       "play": "العب",
-      "playDemo": "العب النسخة التجريبية",
-      "demoHint": "دون تسجيل الدخول يمكنك لعب النسخة التجريبية من Minecraft: خمسة أيام داخل اللعبة دون لعب جماعي. سجّل الدخول بحساب يملك Minecraft للعبة الكاملة.",
+      "playNoToken": "العب النسخة التجريبية",
+      "noTokenHint": "دون تسجيل الدخول يمكنك لعب النسخة التجريبية من Minecraft: خمسة أيام داخل اللعبة دون لعب جماعي. سجّل الدخول بحساب يملك Minecraft للعبة الكاملة.",
       "starting": "جارٍ البدء…",
       "cancel": "إلغاء",
       "cancelling": "جارٍ الإلغاء…",
@@ -440,19 +440,6 @@
         "release": "نهائي"
       }
     },
-    "microsoftSetup": {
-      "title": "إعداد تسجيل الدخول عبر Microsoft",
-      "status": {
-        "not_configured": "غير مضبوط",
-        "invalid": "معرّف العميل غير صالح",
-        "configured_unverified": "مضبوط، ولم يُتحقق منه بعد"
-      },
-      "explanation": {
-        "not_configured": "لا يحتوي هذا الإصدار على معرّف تطبيق Microsoft خاص بالمشروع. سيبقى تسجيل الدخول غير متاح حتى يسجّل مالك المشروع معرّفًا. راجع docs/AUTH-SETUP.md.",
-        "invalid": "معرّف تطبيق Microsoft المقدَّم وقت البناء ليس GUID صالحًا. أعد البناء بقيمة صحيحة. راجع docs/AUTH-SETUP.md.",
-        "configured_unverified": "يوجد معرّف تطبيق Microsoft، لكن لم يُتحقق منه بعد لدى خدمات Microsoft وMinecraft."
-      }
-    },
     "errorCodes": {
       "AUTH_CANCELLED": "أُلغي تسجيل الدخول.",
       "AUTH_TIMEOUT": "لم يكتمل تسجيل الدخول في الوقت المحدد. ابدأ تسجيل الدخول مجددًا.",
@@ -464,7 +451,7 @@
       "AUTH_PROTOCOL_ERROR": "أعادت خدمة تسجيل الدخول استجابة لا يفهمها المشغّل.",
       "AUTH_NOT_CONFIGURED": "تسجيل الدخول غير متاح في هذا الإصدار.",
       "NO_GAME_ACCESS": "لا يملك هذا الحساب وصولًا إلى Minecraft: Java Edition.",
-      "DEMO_UNAVAILABLE": "ليس لهذا الإصدار وضع تجريبي.",
+      "NOTOKEN_UNAVAILABLE": "ليس لهذا الإصدار وضع تجريبي.",
       "PROFILE_SETUP_REQUIRED": "لا يملك هذا الحساب ملف Minecraft: Java Edition شخصيًا بعد.",
       "SERVICE_UNAVAILABLE": "الخدمة غير متاحة مؤقتًا. حاول لاحقًا.",
       "SECRET_STORE_UNAVAILABLE": "مخزن بيانات الاعتماد في النظام غير متاح.",
