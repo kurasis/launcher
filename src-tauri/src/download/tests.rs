@@ -16,7 +16,7 @@ use crate::storage::models::OperationKind;
 
 /// What the fixture server sends for one request.
 #[derive(Clone)]
-enum Reply {
+pub(crate) enum Reply {
     Body(Vec<u8>),
     Status(u16, Vec<(&'static str, String)>),
     /// Declares `declared` bytes, sends `body`, then closes.
@@ -35,7 +35,7 @@ enum Reply {
 
 type Route = Arc<dyn Fn(usize) -> Reply + Send + Sync>;
 
-struct Server {
+pub(crate) struct Server {
     base: String,
     routes: Arc<Mutex<HashMap<String, Route>>>,
     hits: Arc<Mutex<HashMap<String, usize>>>,
@@ -44,7 +44,7 @@ struct Server {
 }
 
 impl Server {
-    async fn start() -> Self {
+    pub(crate) async fn start() -> Self {
         let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
         let base = format!("http://{}", listener.local_addr().unwrap());
         let server = Self {
@@ -97,27 +97,27 @@ impl Server {
         server
     }
 
-    fn route(&self, path: &str, route: impl Fn(usize) -> Reply + Send + Sync + 'static) {
+    pub(crate) fn route(&self, path: &str, route: impl Fn(usize) -> Reply + Send + Sync + 'static) {
         self.routes
             .lock()
             .unwrap()
             .insert(path.to_owned(), Arc::new(route));
     }
 
-    fn serve(&self, path: &str, body: &[u8]) {
+    pub(crate) fn serve(&self, path: &str, body: &[u8]) {
         let body = body.to_vec();
         self.route(path, move |_| Reply::Body(body.clone()));
     }
 
-    fn hits(&self, path: &str) -> usize {
+    pub(crate) fn hits(&self, path: &str) -> usize {
         self.hits.lock().unwrap().get(path).copied().unwrap_or(0)
     }
 
-    fn total_hits(&self) -> usize {
+    pub(crate) fn total_hits(&self) -> usize {
         self.hits.lock().unwrap().values().sum()
     }
 
-    fn url(&self, path: &str) -> Url {
+    pub(crate) fn url(&self, path: &str) -> Url {
         Url::parse(&format!("{}{path}", self.base)).unwrap()
     }
 }
@@ -167,7 +167,7 @@ fn sha1_of(bytes: &[u8]) -> Sha1 {
     Sha1::parse(&hex::encode(sha1::Sha1::digest(bytes))).unwrap()
 }
 
-fn content(seed: u8, len: usize) -> Vec<u8> {
+pub(crate) fn content(seed: u8, len: usize) -> Vec<u8> {
     (0..len)
         .map(|i| seed.wrapping_add((i % 251) as u8))
         .collect()
@@ -184,7 +184,7 @@ fn request(server: &Server, path: &str, body: &[u8]) -> DownloadRequest {
     }
 }
 
-fn fast_config() -> ExecutorConfig {
+pub(crate) fn fast_config() -> ExecutorConfig {
     ExecutorConfig {
         backoff_base: Duration::from_millis(5),
         stall_timeout: Duration::from_secs(5),

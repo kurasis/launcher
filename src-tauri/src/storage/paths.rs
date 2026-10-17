@@ -171,9 +171,12 @@ impl DataRoot {
             .join(id.as_str())
     }
 
+    pub fn runtimes_dir(&self) -> PathBuf {
+        self.root.join("runtimes")
+    }
+
     pub fn runtime_dir(&self, key: &RuntimeKey) -> PathBuf {
-        self.root
-            .join("runtimes")
+        self.runtimes_dir()
             .join("temurin")
             .join(format!("{}-{}", key.os.as_str(), key.arch.as_str()))
             .join(key.major.to_string())

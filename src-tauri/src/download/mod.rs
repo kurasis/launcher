@@ -17,7 +17,7 @@ pub mod receipt;
 pub mod transport;
 
 #[cfg(test)]
-mod tests;
+pub(crate) mod tests;
 
 use std::collections::BTreeMap;
 use std::io::Read;
