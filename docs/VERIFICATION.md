@@ -147,7 +147,13 @@ watch item for A23, which must be measured on release builds on every target in 
 
 ### CI results
 
-Filled in from the pull request's checks before merge.
+Workflow run [38985482313](https://github.com/kurasis/launcher/actions/runs/38985482313) on
+commit `bb8e7a7` (PR #3): all 5 jobs pass (frontend; clippy, tests and release build on
+linux-x64, windows-x64, macos-arm64, macos-x64). The first run on this PR failed on Windows:
+`Supervised::kill` could report success after the child had exited because the supervisor
+thread had not yet released its channel. Fixed by recording exit in a flag set right after
+`wait()`; the test then passed 15 times in a row locally and on all CI runners. The child
+supervision tests therefore ran on Windows and both macOS architectures.
 
 ## P04 — Microsoft login and current game access
 
