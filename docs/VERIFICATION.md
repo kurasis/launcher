@@ -688,7 +688,22 @@ request.
 
 ### CI results
 
-Recorded by the next phase's pull request.
+Commit `d200ec0` (PR #12), all 11 jobs pass:
+[CI 39020749073](https://github.com/kurasis/launcher/actions/runs/39020749073) (5 jobs) and
+[Package 39020749070](https://github.com/kurasis/launcher/actions/runs/39020749070) (6 jobs).
+Earlier runs on this pull request failed the Linux smoke jobs with status 141: `head -1`
+closed the pipe before `ldd` finished under `pipefail`. Fixed in the script.
+
+| Job                         | Runner system                                  | Result                                                                                                                                                                                                                                             |
+| --------------------------- | ---------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Build and smoke windows-x64 | Windows Server 2025 (10.0.26100), WebView2 154 | `Kurasis Launcher_0.1.0_x64-setup.exe`, 3,662,855 bytes, SHA-256 `66d123de5120bd397a3182a7e46c18e52d25edc2a7cd3ef17c78080c2362e2a2`, unsigned; silent per-user install, launcher running after 20 s with DATA_ROOT, silent uninstall kept the data |
+| Build and smoke macos-arm64 | macOS 15.7.9 (24G830), arm64                   | DMG mounts; `Mach-O 64-bit executable arm64`, minimum 11.0, signature ad-hoc (linker), no team; running after 20 s; deleting the app kept the data                                                                                                 |
+| Build and smoke macos-x64   | macos-15-intel                                 | Pass (same steps)                                                                                                                                                                                                                                  |
+| Build linux-x64             | debian:12 container                            | `.deb` and AppImage with `SHA256SUMS` and `build-info.json`                                                                                                                                                                                        |
+| Smoke linux-x64             | fresh debian:12 and ubuntu:24.04 containers    | Pass (same steps as the local roots above)                                                                                                                                                                                                         |
+
+Each artifact set holds its own `SHA256SUMS` and `build-info.json`; pull-request artifacts
+expire after 7 days. These are CI runners, not consumer machines.
 
 ## P13 — Compatibility, security and performance qualification
 
