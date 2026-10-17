@@ -93,8 +93,13 @@ impl launch::service::LaunchHost for TauriLaunchHost {
     }
     fn run_started(&self, run_id: &str) {
         let state = self.0.state::<AppState>();
-        if state.during_game_mode() != storage::models::DuringGameMode::UnloadAndReturn {
-            return;
+        match state.during_game_mode() {
+            storage::models::DuringGameMode::UnloadAndReturn => {}
+            storage::models::DuringGameMode::KeepOpen => return,
+            storage::models::DuringGameMode::CloseLauncher => {
+                close_after_game_opens(self.0.clone(), run_id.to_owned());
+                return;
+            }
         }
         self.0.state::<LifecycleController>().arm_unload(run_id);
         let handle = self.0.clone();
@@ -120,6 +125,46 @@ impl launch::service::LaunchHost for TauriLaunchHost {
             .state::<LifecycleController>()
             .restore_after_run(&self.0, run_id);
     }
+}
+
+/// Longest wait for the game window before the launcher closes anyway.
+const CLOSE_AFTER_START_LIMIT: std::time::Duration = std::time::Duration::from_secs(60);
+
+/// "Close the launcher after the game opens": once the game's log shows its
+/// window (or after [`CLOSE_AFTER_START_LIMIT`] while it still runs), the
+/// launcher quits and leaves the game running. Its active-run record stays, so
+/// a launcher started before the game exits waits for it (launch::orphan). A
+/// game that ends first keeps the launcher open to show the result.
+fn close_after_game_opens(handle: tauri::AppHandle, run_id: String) {
+    std::thread::spawn(move || {
+        let started = std::time::Instant::now();
+        let log = handle.state::<AppState>().data_root().map(|root| {
+            root.run_logs(uuid::Uuid::parse_str(&run_id).unwrap_or_default())
+                .join("output.log")
+        });
+        loop {
+            std::thread::sleep(std::time::Duration::from_millis(500));
+            let state = handle.state::<AppState>();
+            let running = state
+                .current_run()
+                .is_some_and(|r| r.run_id == run_id && r.state == state::dto::RunState::Running);
+            if !running {
+                return;
+            }
+            let window_up = log
+                .as_ref()
+                .and_then(|path| std::fs::read_to_string(path).ok())
+                .is_some_and(|text| launch::logs::shows_game_window(&text));
+            if window_up || started.elapsed() >= CLOSE_AFTER_START_LIMIT {
+                state
+                    .console()
+                    .info("The game is running; the launcher closes as set in Settings");
+                handle.state::<LifecycleController>().set_quit_intent();
+                handle.exit(0);
+                return;
+            }
+        }
+    });
 }
 
 struct TauriAccountHost(tauri::AppHandle);

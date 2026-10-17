@@ -139,6 +139,7 @@ export type Messages = {
       readonly cancelled: string;
       readonly interrupted: string;
     };
+    readonly gameRunning: string;
   };
   readonly createForm: {
     readonly title: string;
@@ -296,6 +297,7 @@ export type Messages = {
     readonly duringGameModes: {
       readonly unload_and_return: string;
       readonly keep_open: string;
+      readonly close_launcher: string;
     };
     readonly dataLocation: string;
     readonly dataLocationHint: string;

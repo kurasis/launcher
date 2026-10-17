@@ -75,6 +75,8 @@ pub enum DuringGameMode {
     #[default]
     UnloadAndReturn,
     KeepOpen,
+    /// Quit the launcher once the game window is up; the game keeps running.
+    CloseLauncher,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -390,6 +392,10 @@ mod tests {
         let settings: Settings = serde_json::from_str(r#"{"schemaVersion":1}"#).unwrap();
         assert_eq!(settings, Settings::default());
         assert_eq!(settings.during_game_mode, DuringGameMode::UnloadAndReturn);
+        let closing: Settings =
+            serde_json::from_str(r#"{"schemaVersion":1,"duringGameMode":"close_launcher"}"#)
+                .unwrap();
+        assert_eq!(closing.during_game_mode, DuringGameMode::CloseLauncher);
         assert_eq!(settings.language.as_str(), "en", "English unless chosen");
         let arabic: Settings =
             serde_json::from_str(r#"{"schemaVersion":1,"language":"ar"}"#).unwrap();

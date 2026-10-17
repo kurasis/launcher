@@ -23,7 +23,7 @@ interface SettingsViewProps {
 const t = strings.settings;
 const sections: SettingsSection[] = ['general', 'java', 'defaults', 'installations'];
 const themes: Theme[] = ['system', 'light', 'dark'];
-const modes: DuringGameMode[] = ['unload_and_return', 'keep_open'];
+const modes: DuringGameMode[] = ['unload_and_return', 'keep_open', 'close_launcher'];
 
 /** Every launcher and installation setting, one section at a time. */
 export function SettingsView({ snapshot, section, onSection, instanceId }: SettingsViewProps) {

@@ -128,7 +128,8 @@ export function InstallPanel({
           {strings.loaders.sources({ loader: strings.loaders.names[instance.loader.kind] })}
         </p>
       )}
-      {mine !== null && (
+      {mine?.kind === 'launch' && <p role="status">{t.gameRunning}</p>}
+      {mine !== null && mine.kind !== 'launch' && (
         <>
           {ownProgress !== null ? (
             <ProgressView progress={ownProgress} />

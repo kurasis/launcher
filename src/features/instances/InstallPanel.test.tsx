@@ -62,6 +62,22 @@ function result(overrides: Partial<OperationResult>): OperationResult {
 }
 
 describe('InstallPanel', () => {
+  it('says the game is running instead of showing install progress', () => {
+    backend();
+    render(
+      <InstallPanel
+        accountState="signed_out"
+        instance={instanceFixture({ health: 'ready', busy: true })}
+        activeOperation={{ kind: 'launch', instanceId: instanceFixture().id, operationId: 'run-1' }}
+        progress={null}
+        recentOperations={[]}
+      />,
+    );
+    expect(screen.getByRole('status')).toHaveTextContent('The game is running.');
+    expect(screen.queryByRole('button', { name: 'Cancel' })).toBeNull();
+    expect(screen.queryByText('Reading version metadata')).toBeNull();
+  });
+
   it('starts an install for a new installation', async () => {
     const calls = backend();
     render(

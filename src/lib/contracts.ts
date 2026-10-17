@@ -85,7 +85,7 @@ export interface LauncherError {
 }
 
 export type Theme = 'system' | 'light' | 'dark';
-export type DuringGameMode = 'unload_and_return' | 'keep_open';
+export type DuringGameMode = 'unload_and_return' | 'keep_open' | 'close_launcher';
 /** Interface language as a BCP 47 tag, e.g. `en`, `ru`, `ar`, `pt-BR` (D-038). */
 export type Language = string;
 /** Where private Java runtimes come from (D-036). */
