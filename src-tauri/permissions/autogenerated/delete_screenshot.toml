@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-delete-screenshot"
+description = "Enables the delete_screenshot command without any pre-configured scope."
+commands.allow = ["delete_screenshot"]
+
+[[permission]]
+identifier = "deny-delete-screenshot"
+description = "Denies the delete_screenshot command without any pre-configured scope."
+commands.deny = ["delete_screenshot"]

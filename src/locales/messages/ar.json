@@ -17,6 +17,7 @@
       "home": "التثبيتات",
       "account": "الحسابات",
       "backups": "النسخ",
+      "screenshots": "لقطات الشاشة",
       "settings": "الإعدادات",
       "diagnostics": "التشخيص",
       "about": "حول"
@@ -609,6 +610,31 @@
       "deleted": "تم الحذف؛ تحرّر {size}.",
       "busy": "تنتظر النسخ والاستعادة انتهاء العملية الجارية أو اللعبة."
     },
+    "gallery": {
+      "title": "لقطات الشاشة",
+      "hint": "لقطات الشاشة من كل التثبيتات، مجمّعة حسب التثبيت وإصدار اللعبة. اضغط F2 في اللعبة لالتقاط لقطة.",
+      "summary": "{count, plural, zero {لا لقطات} one {لقطة واحدة} two {لقطتان} few {# لقطات} many {# لقطة} other {# لقطة}} · {size}",
+      "filter": "التثبيت",
+      "all": "كل التثبيتات",
+      "none": "لا توجد لقطات شاشة بعد. اضغط F2 في اللعبة لالتقاط لقطة.",
+      "noneHere": "لا توجد لقطات شاشة في هذا التثبيت بعد.",
+      "count": "{count, plural, zero {لا لقطات} one {لقطة واحدة} two {لقطتان} few {# لقطات} many {# لقطة} other {# لقطة}}",
+      "refresh": "تحديث",
+      "open": "فتح لقطة الشاشة من {date}",
+      "viewer": "لقطة شاشة",
+      "details": "{date} · {size}",
+      "dimensions": "{width} × {height}",
+      "position": "{index, number} من {count, number}",
+      "previous": "السابقة",
+      "next": "التالية",
+      "close": "إغلاق",
+      "openFile": "فتح في عارض الصور",
+      "reveal": "إظهار في المجلد",
+      "delete": "حذف",
+      "confirmDelete": "هل تريد حذف لقطة الشاشة هذه؟ لا يمكن استعادتها.",
+      "deleted": "حُذفت لقطة الشاشة.",
+      "cancel": "إلغاء"
+    },
     "downloads": {
       "title": "التنزيلات",
       "open": "التنزيلات",
@@ -890,6 +916,13 @@
     "A whole installation can only be restored in its place.": "لا يمكن استعادة التثبيت كاملًا إلا في مكانه.",
     "A file operation stopped unexpectedly.": "توقفت عملية الملفات بشكل غير متوقع.",
     "The restore target already exists.": "مجلد الاستعادة موجود بالفعل.",
-    "This installation is already being installed or waiting in the queue.": "هذا التثبيت قيد التثبيت بالفعل أو ينتظر في قائمة الانتظار."
+    "This installation is already being installed or waiting in the queue.": "هذا التثبيت قيد التثبيت بالفعل أو ينتظر في قائمة الانتظار.",
+    "A thumbnail could not be made.": "تعذّر إنشاء صورة مصغّرة.",
+    "Deleting a screenshot": "حذف لقطة شاشة",
+    "Reading a screenshot": "قراءة لقطة شاشة",
+    "The screenshot could not be opened.": "تعذّر فتح لقطة الشاشة.",
+    "This screenshot is not a PNG image the launcher can read.": "لقطة الشاشة هذه ليست صورة PNG يستطيع المشغّل قراءتها.",
+    "This screenshot name is invalid.": "اسم لقطة الشاشة هذا غير صالح.",
+    "This screenshot no longer exists.": "لقطة الشاشة هذه لم تعد موجودة."
   }
 }

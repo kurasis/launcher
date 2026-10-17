@@ -36,6 +36,8 @@ getrandom = "0.3.4"
 sha2 = "0.10.9"
 sha1 = "0.10.7"
 hex = "0.4.3"
+png = "0.18.1"
+percent-encoding = "2.3.2"
 tar = "0.4.46"
 flate2 = "1.1.10"
 zip = { version = "8.6.0", default-features = false, features = ["deflate"] }

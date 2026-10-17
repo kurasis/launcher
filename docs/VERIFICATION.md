@@ -1394,3 +1394,40 @@ download them again.
   file name only, and none after the last file.
 - Screenshots: `docs/verification/download-manager.png` (repair with a file name),
   `docs/verification/download-queue.png` (a waiting repair; first build, faint name).
+
+## Screenshot gallery (D-050)
+
+Release build on Linux (Xvfb), the live data folder from the D-039 tests. The
+screenshots are real: F2 in Minecraft 1.21.1 with Quilt 0.30.1 (title screen and two
+in the demo world) and in Minecraft 1.20.1 with Forge 47.4.10 (title screen and one in
+the world), both started from the launcher with a no-token profile.
+
+- **First build:** the screen showed "Command list_screenshots not allowed by ACL":
+  the new commands were registered but not granted. They are now listed in `build.rs`
+  and `capabilities/default.json`.
+- **Gallery:** "5 screenshots · 3.6 MiB"; the group "Live 1.20.1 · Minecraft 1.20.1 ·
+  Forge 47.4.10 · 2 screenshots" came first (newest), then "Live 1.21.1 · Minecraft
+  1.21.1 · Quilt 0.30.1 · 3 screenshots", each with thumbnails and the time taken.
+  The five thumbnails in `cache/thumbnails` are 146–168 KiB, against 520–939 KiB
+  for the screenshots.
+- **Viewer:** the first build drew the viewer inside the screen's panel (the panel's
+  backdrop filter contains fixed elements) and pushed the buttons below the window;
+  it is now placed on the page body and the image is limited to the window height.
+  It showed "Live 1.20.1 · Minecraft 1.20.1 · Forge 47.4.10",
+  "2026-10-17_23.14.16.png · … · 599.3 KiB · 1280 × 720" and "1 of 5"; the right
+  arrow key moved on into the Quilt group.
+- **Delete:** after confirmation `2026-10-17_23.01.41.png` was deleted, with its
+  thumbnail (five cached files became four), and the viewer showed the next
+  screenshot ("4 of 4"). Escape did not close the viewer after that, because the
+  focused button was gone. Keys now work wherever focus is: in the next build,
+  deleting a copy and pressing Escape closed the viewer, and the screen showed
+  "Screenshot deleted." and "4 screenshots · 3.1 MiB" (the component test also
+  presses Escape on the page body after a delete).
+- **Rust tests:** grouping and order, names that could leave the folder (`..`,
+  separators, `:`, hidden files, other extensions, control characters), links not
+  served, one installation unable to read another's files, thumbnails (size, colors,
+  no upscaling, cache reuse, pruning) and files that are not PNG.
+- **Not verified:** opening a screenshot in the system image viewer and showing it in
+  the file manager (this test system has no `xdg-open`, and clicking showed no
+  error); the Windows address `http://gallery.localhost/…` beyond a unit test.
+- Screenshots: `docs/verification/gallery.png`, `docs/verification/gallery-viewer.png`.

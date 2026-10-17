@@ -76,18 +76,6 @@ pub fn worlds(game_dir: &Path) -> Vec<String> {
     names
 }
 
-fn version_label(instance: &InstanceFile) -> String {
-    match &instance.loader {
-        Some(loader) => format!(
-            "Minecraft {} · {} {}",
-            instance.version_id,
-            loader.kind.name(),
-            loader.version
-        ),
-        None => format!("Minecraft {}", instance.version_id),
-    }
-}
-
 fn source(root: &DataRoot, id: InstanceId, scope: &Scope) -> LauncherResult<PathBuf> {
     let game = root.game_dir(id);
     match scope {
@@ -166,7 +154,7 @@ fn create_locked(
         Origin {
             instance_id: instance.id,
             instance_name: instance.display_name.clone(),
-            version_label: version_label(instance),
+            version_label: instance.version_label(),
             scope,
             reason,
         },

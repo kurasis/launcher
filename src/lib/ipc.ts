@@ -33,6 +33,7 @@ import {
   type SettingsPatch,
   type BackupInfo,
   type BackupOverview,
+  type Gallery,
   type BackupScope,
   type JavaCheck,
   type NoTokenProfile,
@@ -139,6 +140,18 @@ export const ipc = {
     }),
   cancelOperation: (operationId: string, requestId?: string): Promise<CancelAck> =>
     invoke<CancelAck>('cancel_operation', { request: mutation({ operationId }, requestId) }),
+  listScreenshots: (): Promise<Gallery> => invoke<Gallery>('list_screenshots'),
+  deleteScreenshot: (instanceId: string, file: string, requestId?: string): Promise<true> =>
+    invoke('delete_screenshot', { request: mutation({ instanceId, file }, requestId) }).then(
+      () => true as const,
+    ),
+  openScreenshot: (
+    instanceId: string,
+    file: string,
+    reveal: boolean,
+    requestId?: string,
+  ): Promise<void> =>
+    invoke('open_screenshot', { request: mutation({ instanceId, file, reveal }, requestId) }),
   openInstanceFolder: (instanceId: string, requestId?: string): Promise<void> =>
     invoke('open_instance_folder', { request: mutation({ instanceId }, requestId) }),
   exportDiagnostics: (runId: string | null, requestId?: string): Promise<ExportResult> =>

@@ -141,5 +141,7 @@ describe('DownloadManager', () => {
     expect(button).not.toHaveAttribute('data-working');
     fireEvent.click(button);
     expect(screen.getByText('Nothing is downloading.')).toBeVisible();
+    fireEvent.keyDown(button, { key: 'Escape' });
+    expect(screen.queryByText('Nothing is downloading.')).toBeNull();
   });
 });

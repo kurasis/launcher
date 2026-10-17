@@ -14,6 +14,7 @@ pub mod diagnostics;
 pub mod download;
 pub mod error;
 pub mod external;
+pub mod gallery;
 pub mod install;
 pub mod launch;
 pub mod lifecycle;
@@ -335,6 +336,35 @@ fn setup(app: &mut tauri::App) -> Result<(), Box<dyn std::error::Error>> {
     Ok(())
 }
 
+/// Answers a `gallery:` request with a screenshot or its thumbnail (D-050).
+fn gallery_response<R: tauri::Runtime>(
+    app: &tauri::AppHandle<R>,
+    path: &str,
+) -> tauri::http::Response<Vec<u8>> {
+    use tauri::http::{Response, StatusCode, header};
+    let status = |code: StatusCode| {
+        let mut response = Response::new(Vec::new());
+        *response.status_mut() = code;
+        response
+    };
+    let Some((size, id, file)) = gallery::parse_request(path) else {
+        return status(StatusCode::BAD_REQUEST);
+    };
+    let Some(state) = app.try_state::<AppState>() else {
+        return status(StatusCode::SERVICE_UNAVAILABLE);
+    };
+    match gallery::serve(&state, size, id, &file) {
+        Ok(bytes) => Response::builder()
+            .header(header::CONTENT_TYPE, "image/png")
+            // The page adds the file's time to the address, so a changed file
+            // gets a new address.
+            .header(header::CACHE_CONTROL, "private, max-age=3600")
+            .body(bytes)
+            .unwrap_or_else(|_| status(StatusCode::INTERNAL_SERVER_ERROR)),
+        Err(_) => status(StatusCode::NOT_FOUND),
+    }
+}
+
 /// Builds and runs the Tauri application.
 pub fn run() {
     let app = tauri::Builder::default()
@@ -346,6 +376,13 @@ pub fn run() {
         }))
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_dialog::init())
+        .register_asynchronous_uri_scheme_protocol(gallery::PROTOCOL, |ctx, request, responder| {
+            let app = ctx.app_handle().clone();
+            let path = request.uri().path().to_owned();
+            tauri::async_runtime::spawn_blocking(move || {
+                responder.respond(gallery_response(&app, &path));
+            });
+        })
         .manage(LifecycleController::new())
         .manage(RunHandles::default())
         .setup(|app| {
@@ -420,6 +457,9 @@ fn handlers<R: tauri::Runtime>() -> impl Fn(tauri::ipc::Invoke<R>) -> bool + Sen
         commands::create_backup,
         commands::restore_backup,
         commands::delete_backup,
+        commands::list_screenshots,
+        commands::delete_screenshot,
+        commands::open_screenshot,
         commands::read_console,
         commands::request_quit,
         commands::begin_login,
@@ -469,6 +509,9 @@ fn handlers<R: tauri::Runtime>() -> impl Fn(tauri::ipc::Invoke<R>) -> bool + Sen
         commands::create_backup,
         commands::restore_backup,
         commands::delete_backup,
+        commands::list_screenshots,
+        commands::delete_screenshot,
+        commands::open_screenshot,
         commands::read_console,
         commands::request_quit,
         commands::begin_login,

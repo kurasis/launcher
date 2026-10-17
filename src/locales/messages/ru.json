@@ -16,6 +16,7 @@
       "home": "Установки",
       "account": "Аккаунты",
       "backups": "Копии",
+      "screenshots": "Скриншоты",
       "settings": "Настройки",
       "diagnostics": "Диагностика",
       "about": "О программе"
@@ -608,6 +609,31 @@
       "deleted": "Удалено; освобождено {size}.",
       "busy": "Копирование и восстановление ждут, пока закончится текущая операция или игра."
     },
+    "gallery": {
+      "title": "Скриншоты",
+      "hint": "Скриншоты всех установок, сгруппированные по установке и версии игры. Чтобы сделать снимок, нажмите F2 в игре.",
+      "summary": "{count, plural, one {# скриншот} few {# скриншота} many {# скриншотов} other {# скриншота}} · {size}",
+      "filter": "Установка",
+      "all": "Все установки",
+      "none": "Скриншотов пока нет. Чтобы сделать снимок, нажмите F2 в игре.",
+      "noneHere": "В этой установке пока нет скриншотов.",
+      "count": "{count, plural, one {# скриншот} few {# скриншота} many {# скриншотов} other {# скриншота}}",
+      "refresh": "Обновить",
+      "open": "Открыть скриншот от {date}",
+      "viewer": "Скриншот",
+      "details": "{date} · {size}",
+      "dimensions": "{width} × {height}",
+      "position": "{index, number} из {count, number}",
+      "previous": "Предыдущий",
+      "next": "Следующий",
+      "close": "Закрыть",
+      "openFile": "Открыть в просмотрщике",
+      "reveal": "Показать в папке",
+      "delete": "Удалить",
+      "confirmDelete": "Удалить этот скриншот? Вернуть его будет нельзя.",
+      "deleted": "Скриншот удалён.",
+      "cancel": "Отмена"
+    },
     "downloads": {
       "title": "Загрузки",
       "open": "Загрузки",
@@ -889,6 +915,13 @@
     "A whole installation can only be restored in its place.": "Всю установку можно восстановить только на её место.",
     "A file operation stopped unexpectedly.": "Файловая операция неожиданно прервалась.",
     "The restore target already exists.": "Папка для восстановления уже существует.",
-    "This installation is already being installed or waiting in the queue.": "Эта установка уже устанавливается или ждёт в очереди."
+    "This installation is already being installed or waiting in the queue.": "Эта установка уже устанавливается или ждёт в очереди.",
+    "A thumbnail could not be made.": "Не удалось создать миниатюру.",
+    "Deleting a screenshot": "Удаление скриншота",
+    "Reading a screenshot": "Чтение скриншота",
+    "The screenshot could not be opened.": "Не удалось открыть скриншот.",
+    "This screenshot is not a PNG image the launcher can read.": "Этот скриншот не является PNG-изображением, которое лаунчер может прочитать.",
+    "This screenshot name is invalid.": "Недопустимое имя скриншота.",
+    "This screenshot no longer exists.": "Этого скриншота больше нет."
   }
 }
