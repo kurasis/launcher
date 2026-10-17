@@ -12,6 +12,8 @@ interface InstanceListProps {
 }
 
 const t = strings.instances;
+/** Tile colors cycle through the list so neighbouring installations differ. */
+const tiles = [styles.tile0, styles.tile1, styles.tile2, styles.tile3];
 
 export function InstanceList({ instances, selectedId, onSelect, disabled }: InstanceListProps) {
   if (instances.length === 0) {
@@ -19,7 +21,7 @@ export function InstanceList({ instances, selectedId, onSelect, disabled }: Inst
   }
   return (
     <ul className={styles.list}>
-      {instances.map((instance) => {
+      {instances.map((instance, index) => {
         const selected = instance.id === selectedId;
         return (
           <li key={instance.id}>
@@ -32,6 +34,10 @@ export function InstanceList({ instances, selectedId, onSelect, disabled }: Inst
                 onSelect(instance.id);
               }}
             >
+              <span
+                className={[styles.tile, tiles[index % tiles.length]].join(' ')}
+                aria-hidden="true"
+              />
               <span className={styles.itemName}>{instance.displayName}</span>
               <span className={styles.itemMeta}>
                 <span>Minecraft {instance.versionId}</span>

@@ -60,6 +60,15 @@ describe('App', () => {
     expect(screen.getByText('Development build')).toBeVisible();
   });
 
+  it('labels only development builds', async () => {
+    fakeBackend(snapshotFixture(), { ...appInfoFixture, buildProfile: 'release' });
+    render(<App />);
+    fireEvent.click(await screen.findByRole('button', { name: 'About' }));
+    // The About view shows the same core info once it has loaded.
+    expect(await screen.findByText('Release')).toBeVisible();
+    expect(screen.queryByText(/build$/)).toBeNull();
+  });
+
   it('shows no test profile mark normally', async () => {
     fakeBackend(snapshotFixture());
     render(<App />);
@@ -70,7 +79,7 @@ describe('App', () => {
   it('shows the empty state and the account status', async () => {
     fakeBackend(snapshotFixture());
     render(<App />);
-    expect(screen.getByRole('heading', { level: 1, name: 'Launcher' })).toBeVisible();
+    expect(screen.getByRole('heading', { level: 1, name: 'Sferum Launcher' })).toBeVisible();
     expect(await screen.findByText(/No installations yet/)).toBeVisible();
     expect(screen.getByText('Not signed in')).toBeVisible();
     expect(screen.queryByRole('button', { name: /play/i })).not.toBeInTheDocument();

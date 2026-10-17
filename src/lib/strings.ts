@@ -14,12 +14,12 @@ import type {
 } from './contracts';
 
 export const strings = {
-  productName: 'Launcher',
-  // Packages are private qualification builds until P13 (docs/spec/01).
+  // The header mark (D-032): "Sferum" large, "Launcher" small.
+  brand: { name: 'Sferum', suffix: 'Launcher' },
   // Debug-build test profile (D-030): launches run in Minecraft's demo mode.
   testProfileTag: (name: string) => `Test profile ${name} · demo mode`,
-  buildTag: (profile: BuildProfile) =>
-    profile === 'debug' ? 'Development build' : 'Qualification build',
+  // Only debug cores are labelled; release builds show no build tag (D-032).
+  devBuildTag: 'Development build',
   independentNotice:
     'This launcher is an independent project. It is not affiliated with or endorsed by Mojang Studios or Microsoft.',
 
@@ -118,7 +118,6 @@ export const strings = {
   },
 
   install: {
-    title: 'Game files',
     install: 'Install',
     retry: 'Retry install',
     repair: 'Repair',

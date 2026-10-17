@@ -6,6 +6,8 @@ TypeScript and Vite on a Rust core. "Sferum Launcher" is a provisional name.
 > Sferum Launcher is an independent project. It is not affiliated with or endorsed by
 > Mojang Studios or Microsoft. It does not include or redistribute any Minecraft game files.
 
+![Sferum Launcher: installations and the Play screen](docs/images/home.png)
+
 ## Status
 
 Implementation follows the phased specification in [`docs/spec/`](docs/spec/README.md).

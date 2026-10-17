@@ -100,7 +100,11 @@ export function InstallPanel({
   const error = play.error ?? install.error ?? repair.error ?? cancel.error;
 
   return (
-    <Panel title={t.title}>
+    <Panel
+      variant="hero"
+      title={instance.displayName}
+      aside={<span className={styles.version}>Minecraft {instance.versionId}</span>}
+    >
       <p className={styles.muted}>{t.explain[health]}</p>
       {mine !== null && (
         <>
@@ -122,10 +126,11 @@ export function InstallPanel({
       {mine === null && last !== null && <ResultView result={last} />}
       {otherBusy && <Notice tone="info">{t.otherBusy}</Notice>}
       {mine === null && health !== 'unsupported' && (
-        <div className={forms.actions}>
+        <div className={styles.heroActions}>
           {health === 'not_installed' ? (
             <Button
               variant="primary"
+              size="large"
               disabled={otherBusy || install.pending}
               onClick={() => void install.run(instance.id)}
             >
@@ -136,6 +141,7 @@ export function InstallPanel({
               {health === 'ready' && (
                 <Button
                   variant="primary"
+                  size="large"
                   disabled={otherBusy || play.pending}
                   onClick={() => void play.run(instance.id)}
                 >

@@ -1,15 +1,36 @@
 .badge {
-  display: inline-block;
-  padding: var(--space-1) var(--space-3);
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4em;
+  padding: 0.2rem 0.65rem;
   border-radius: var(--radius-pill);
-  font-size: var(--font-size-sm);
-  font-weight: 600;
+  border: 1px solid currentcolor;
+  border-color: color-mix(in srgb, currentcolor 25%, transparent);
+  font-size: var(--font-size-xs);
+  font-weight: 700;
+  letter-spacing: var(--letter-spacing-caps);
+  text-transform: uppercase;
   white-space: nowrap;
+}
+
+/* Status light. */
+.badge::before {
+  content: '';
+  width: 0.45rem;
+  height: 0.45rem;
+  border-radius: 50%;
+  background: currentcolor;
+  box-shadow: 0 0 6px currentcolor;
 }
 
 .neutral {
   background: var(--color-neutral-bg);
   color: var(--color-neutral-text);
+}
+
+.neutral::before {
+  box-shadow: none;
+  opacity: 0.6;
 }
 
 .success {
