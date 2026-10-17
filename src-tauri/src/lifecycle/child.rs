@@ -10,6 +10,7 @@
 use std::collections::VecDeque;
 use std::io::{BufRead, BufReader, Read};
 use std::process::{Child, ChildStderr, ChildStdout, Command, ExitStatus, Stdio};
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::mpsc;
 use std::sync::{Arc, Mutex, PoisonError};
 use std::thread;
@@ -144,6 +145,7 @@ pub struct Supervised {
     pid: u32,
     started: Instant,
     kill_tx: mpsc::Sender<()>,
+    exited: Arc<AtomicBool>,
 }
 
 impl Supervised {
@@ -156,9 +158,9 @@ impl Supervised {
     }
 
     /// Requests termination of this exact owned child. Never targets other
-    /// processes. Returns false when the supervisor already finished.
+    /// processes. Returns false once the child has exited.
     pub fn kill(&self) -> bool {
-        self.kill_tx.send(()).is_ok()
+        !self.exited.load(Ordering::SeqCst) && self.kill_tx.send(()).is_ok()
     }
 }
 
@@ -182,6 +184,8 @@ pub fn spawn(
     let stdout = child.stdout.take();
     let stderr = child.stderr.take();
     let (kill_tx, kill_rx) = mpsc::channel::<()>();
+    let exited = Arc::new(AtomicBool::new(false));
+    let exited_flag = Arc::clone(&exited);
 
     let sink = Arc::new(Mutex::new(sink));
     let (done_tx, done_rx) = mpsc::channel::<()>();
@@ -192,6 +196,7 @@ pub fn spawn(
         .name(format!("child-{pid}"))
         .spawn(move || {
             let status = wait_or_kill(&mut child, &kill_rx);
+            exited_flag.store(true, Ordering::SeqCst);
             on_process_exit();
             let deadline = Instant::now() + DRAIN_LIMIT;
             let mut finished = 0;
@@ -218,6 +223,7 @@ pub fn spawn(
         pid,
         started,
         kill_tx,
+        exited,
     })
 }
 
