@@ -165,7 +165,16 @@ pub fn compile(inputs: &LaunchInputs<'_>) -> LauncherResult<CompiledLaunch> {
     values.insert("auth_xuid", identity.xuid.clone().unwrap_or_default());
     values.insert("clientid", identity.client_id.clone());
     values.insert("user_type", "msa".into());
-    values.insert("version_name", plan.version_id.clone());
+    values.insert("version_name", plan.version_name().to_owned());
+    // Mod loaders (D-039); unused by vanilla arguments.
+    let library_directory = path_text(&inputs.root.maven_root())?;
+    if library_directory.contains(CLASSPATH_SEPARATOR) {
+        return Err(LauncherError::new(
+            ErrorCode::UnsupportedDataPath,
+            "A game file path contains the Java classpath separator.",
+        ));
+    }
+    values.insert("library_directory", library_directory);
     values.insert("version_type", plan.version_type.clone());
     values.insert("game_directory", path_text(inputs.game_dir)?);
     values.insert("assets_root", path_text(&inputs.root.assets_root())?);
@@ -222,7 +231,8 @@ pub fn compile(inputs: &LaunchInputs<'_>) -> LauncherResult<CompiledLaunch> {
         .map(|template| substitute(template, &values))
         .collect::<LauncherResult<Vec<_>>>()?;
     // Plans are evaluated with `is_demo_user` false; both qualified descriptors
-    // map that feature to exactly this argument.
+    // map that feature to exactly this argument. Mod loaders pass it on to the
+    // game's own main class.
     if identity.demo {
         game_args.push("--demo".to_owned());
     }

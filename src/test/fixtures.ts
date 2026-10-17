@@ -26,6 +26,7 @@ export function instanceFixture(overrides: Partial<InstanceSummary> = {}): Insta
     lastResult: null,
     busy: false,
     java: null,
+    loader: null,
     ...overrides,
   };
 }

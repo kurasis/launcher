@@ -11,11 +11,17 @@ interface VersionPickerProps {
   catalog: CatalogView;
   value: string;
   onChange: (version: VersionView) => void;
+  /** Only these versions, when a mod loader limits them (D-039). */
+  allowed?: ReadonlySet<string> | null;
 }
 
 /** Every Mojang version, one tab per version type (D-035). */
-export function VersionPicker({ catalog, value, onChange }: VersionPickerProps) {
-  const selected = catalog.versions.find((v) => v.id === value);
+export function VersionPicker({ catalog, value, onChange, allowed = null }: VersionPickerProps) {
+  const versions = useMemo(
+    () => (allowed === null ? catalog.versions : catalog.versions.filter((v) => allowed.has(v.id))),
+    [catalog.versions, allowed],
+  );
+  const selected = versions.find((v) => v.id === value);
   const [type, setType] = useState<VersionType>(selected?.versionType ?? 'release');
   const [query, setQuery] = useState('');
   const searchId = useId();
@@ -26,11 +32,11 @@ export function VersionPicker({ catalog, value, onChange }: VersionPickerProps) 
       old_beta: 0,
       old_alpha: 0,
     };
-    for (const version of catalog.versions) result[version.versionType] += 1;
+    for (const version of versions) result[version.versionType] += 1;
     return result;
-  }, [catalog.versions]);
+  }, [versions]);
   const needle = query.trim().toLowerCase();
-  const shown = catalog.versions.filter(
+  const shown = versions.filter(
     (v) => v.versionType === type && (needle === '' || v.id.toLowerCase().includes(needle)),
   );
   const latest = type === 'snapshot' ? catalog.latestSnapshot : catalog.latestRelease;

@@ -121,6 +121,7 @@ export type Messages = {
       readonly checking_files: string;
       readonly downloading: string;
       readonly extracting_runtime: string;
+      readonly preparing_loader: string;
       readonly finalizing: string;
       readonly cancel_requested: string;
     };
@@ -183,6 +184,36 @@ export type Messages = {
     readonly planRuntime: string;
     readonly planRuntimeUnknown: string;
     readonly planNote: string;
+  };
+  readonly loaders: {
+    readonly loader: string;
+    readonly none: string;
+    readonly names: {
+      readonly fabric: string;
+      readonly quilt: string;
+      readonly forge: string;
+      readonly neoforge: string;
+    };
+    readonly hints: {
+      readonly none: string;
+      readonly fabric: string;
+      readonly quilt: string;
+      readonly forge: string;
+      readonly neoforge: string;
+    };
+    readonly gamesHint: (values: { loader: string | number }) => string;
+    readonly version: (values: { loader: string | number }) => string;
+    readonly loading: string;
+    readonly recommended: (values: { label: string | number }) => string;
+    readonly unstable: (values: { label: string | number }) => string;
+    readonly noVersions: (values: { loader: string | number; version: string | number }) => string;
+    readonly modsHint: string;
+    readonly game: (values: { version: string | number }) => string;
+    readonly gameWithLoader: (values: {
+      game: string | number;
+      loader: string | number;
+      version: string | number;
+    }) => string;
   };
   readonly details: {
     readonly title: string;
@@ -477,6 +508,7 @@ export type Messages = {
     readonly OPERATION_NOT_FOUND: string;
     readonly APP_BUSY: string;
     readonly REPAIR_REQUIRED: string;
+    readonly LOADER_INSTALL_FAILED: string;
     readonly REQUEST_ID_CONFLICT: string;
     readonly INVALID_INPUT: string;
     readonly INSUFFICIENT_MEMORY: string;

@@ -21,6 +21,8 @@
     "allow-open-external",
     "allow-list-supported-versions",
     "allow-preview-install-plan",
+    "allow-list-loader-game-versions",
+    "allow-list-loader-versions",
     "allow-install-instance",
     "allow-repair-instance",
     "allow-cancel-operation",

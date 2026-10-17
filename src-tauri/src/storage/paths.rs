@@ -146,6 +146,20 @@ impl DataRoot {
             .join("artifact.jar")
     }
 
+    /// Maven-layout library tree for mod-loader installations (D-039): Forge and
+    /// NeoForge find libraries and patched game files by their Maven path.
+    pub fn maven_root(&self) -> PathBuf {
+        self.shared().join("maven")
+    }
+
+    /// A resolved mod-loader manifest, stored under its SHA-1 (D-039).
+    pub fn loader_manifest(&self, sha1: &Sha1) -> PathBuf {
+        self.root
+            .join("metadata")
+            .join("loaders")
+            .join(format!("{sha1}.json"))
+    }
+
     pub fn assets_root(&self) -> PathBuf {
         self.shared().join("assets")
     }

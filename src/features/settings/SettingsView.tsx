@@ -10,6 +10,7 @@ import { DefaultsForm } from './DefaultsForm';
 import { InstallationForm } from './InstallationForm';
 import { JavaSettings } from './JavaSettings';
 import styles from './SettingsView.module.css';
+import { gameLabel } from '../instances/loaderLabel';
 
 interface SettingsViewProps {
   snapshot: AppSnapshot;
@@ -177,7 +178,7 @@ function InstallationsSettings({
         >
           {instances.map((item) => (
             <option key={item.id} value={item.id}>
-              {item.displayName} · Minecraft {item.versionId}
+              {item.displayName} · {gameLabel(item)}
             </option>
           ))}
         </select>

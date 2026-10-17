@@ -53,6 +53,7 @@ pub enum ErrorCode {
     OperationNotFound,
     AppBusy,
     RepairRequired,
+    LoaderInstallFailed,
     RequestIdConflict,
     InvalidInput,
     InsufficientMemory,

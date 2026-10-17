@@ -472,8 +472,13 @@ impl LaunchService {
             LockState::Complete(lock) if lock.instance_id == instance_id => *lock,
             _ => return Err(repair_needed("lock")),
         };
-        // Locked files: existence and size (full hashes are Repair's job).
-        let (files_root, files) = (root.clone(), lock.artifacts.clone());
+        // Locked files, and what a loader installer produced: existence and size
+        // (full hashes are Repair's job).
+        let mut files = lock.artifacts.clone();
+        if let Some(loader) = &lock.loader {
+            files.extend(loader.generated.iter().cloned());
+        }
+        let files_root = root.clone();
         let missing = tokio::task::spawn_blocking(move || {
             files.iter().find_map(|a| {
                 let mut path = files_root.path().to_path_buf();
@@ -532,7 +537,8 @@ impl LaunchService {
         check_cancel()?;
         // Only versions started through Minecraft's own main class know `--demo`;
         // older ones would run the full game, so a demo identity cannot start them.
-        if identity.demo && plan.main_class != DEMO_MAIN_CLASS {
+        // A mod loader hands the arguments on to that same class.
+        if identity.demo && plan.game_main_class() != DEMO_MAIN_CLASS {
             return Err(LauncherError::new(
                 ErrorCode::DemoUnavailable,
                 "This Minecraft version has no demo mode. Sign in with an account that \

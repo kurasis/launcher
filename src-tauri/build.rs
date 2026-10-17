@@ -24,6 +24,8 @@ fn main() {
         "open_external",
         "list_supported_versions",
         "preview_install_plan",
+        "list_loader_game_versions",
+        "list_loader_versions",
         "install_instance",
         "repair_instance",
         "cancel_operation",

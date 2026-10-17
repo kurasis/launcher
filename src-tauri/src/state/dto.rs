@@ -35,6 +35,9 @@ pub struct MutationRequest<T> {
 pub struct CreateInstancePayload {
     pub display_name: String,
     pub version_id: String,
+    /// A mod loader to install on top of the game (D-039).
+    #[serde(default)]
+    pub loader: Option<crate::loader::LoaderChoice>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -110,6 +113,7 @@ pub struct InstanceSummary {
     /// True while an operation holds this instance.
     pub busy: bool,
     pub java: Option<InstalledJava>,
+    pub loader: Option<crate::loader::LoaderChoice>,
 }
 
 impl InstanceSummary {
@@ -127,6 +131,7 @@ impl InstanceSummary {
             last_result: instance.last_result.clone(),
             busy,
             java: instance.java.clone(),
+            loader: instance.loader.clone(),
         }
     }
 }
@@ -281,6 +286,8 @@ pub enum InstallState {
     CheckingFiles,
     Downloading,
     ExtractingRuntime,
+    /// Running a mod loader's installer step (D-039).
+    PreparingLoader,
     Finalizing,
     CancelRequested,
 }

@@ -5,9 +5,10 @@
 //! the old beta and alpha versions. Both argument formats are parsed: the modern
 //! `arguments` object and the legacy `minecraftArguments` string (before 1.13),
 //! as are native libraries shipped as classifier jars that must be extracted.
-//! Inheritance (`inheritsFrom`, used only by mod loaders) and missing download
-//! metadata are rejected with `UNSUPPORTED_VERSION_METADATA` instead of being
-//! guessed. Unknown optional fields are tolerated.
+//! Missing download metadata is rejected with `UNSUPPORTED_VERSION_METADATA`
+//! instead of being guessed, and so is inheritance (`inheritsFrom`): a mod
+//! loader's profile is never parsed here but merged onto the vanilla plan by
+//! [`super::plan::apply_loader`] (D-039). Unknown optional fields are tolerated.
 
 use serde_json::Value;
 
@@ -56,7 +57,7 @@ pub struct Natives {
     /// Metadata OS name (`windows`, `osx`, `linux`) to classifier template; the
     /// template may contain `${arch}`.
     pub classifiers: std::collections::BTreeMap<String, String>,
-    pub downloads: std::collections::BTreeMap<String, Download>,
+    pub downloads: std::collections::BTreeMap<String, LibraryArtifact>,
     /// Entry-name prefixes not to extract, e.g. `META-INF/`.
     pub exclude: Vec<String>,
 }
@@ -94,6 +95,8 @@ pub struct Descriptor {
     /// Mojang runtime component (`javaVersion.component`), e.g. `java-runtime-delta`.
     pub java_component: Option<String>,
     pub client: Download,
+    /// Mojang's client mappings (1.14.4 and later); Forge's installer needs them.
+    pub client_mappings: Option<Download>,
     pub asset_index: AssetIndexRef,
     pub logging: Option<Logging>,
     pub libraries: Vec<Library>,
@@ -160,7 +163,7 @@ pub fn valid_component(name: &str) -> bool {
             .all(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || c == '-')
 }
 
-fn valid_main_class(name: &str) -> bool {
+pub fn valid_main_class(name: &str) -> bool {
     !name.is_empty()
         && name.len() <= 256
         && name.split('.').all(|part| {
@@ -222,6 +225,10 @@ pub fn parse(bytes: &[u8], expected_id: &str) -> LauncherResult<Descriptor> {
             .ok_or_else(|| unsupported("downloads.client"))?,
         "downloads.client",
     )?;
+    let client_mappings = match downloads.get("client_mappings") {
+        None => None,
+        Some(mappings) => Some(download(mappings, "downloads.client_mappings")?),
+    };
 
     let asset_value = value
         .get("assetIndex")
@@ -317,6 +324,7 @@ pub fn parse(bytes: &[u8], expected_id: &str) -> LauncherResult<Descriptor> {
         java_major,
         java_component,
         client,
+        client_mappings,
         asset_index,
         logging,
         libraries,
@@ -351,7 +359,13 @@ fn parse_natives(library: &Value, downloads: &Value) -> LauncherResult<Option<Na
         for (classifier, entry) in declared {
             let path = string(entry, "path")?;
             validate_relative_path(path)?;
-            native_downloads.insert(classifier.clone(), download(entry, "native")?);
+            native_downloads.insert(
+                classifier.clone(),
+                LibraryArtifact {
+                    path: path.to_owned(),
+                    download: download(entry, "native")?,
+                },
+            );
         }
     }
     let exclude = match library.pointer("/extract/exclude") {

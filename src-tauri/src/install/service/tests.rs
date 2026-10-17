@@ -46,6 +46,7 @@ impl PlanSource for FakeSource {
     fn resolve<'a>(
         &'a self,
         _version: &'a str,
+        _loader: Option<&'a crate::loader::LoaderChoice>,
         _java: crate::storage::paths::JavaProvider,
     ) -> BoxFuture<'a, LauncherResult<(GamePlan, RuntimePackage)>> {
         self.resolves.fetch_add(1, Ordering::SeqCst);
@@ -81,6 +82,7 @@ pub(crate) fn create_in(state: &AppState, name: &str) -> InstanceId {
             payload: crate::state::dto::CreateInstancePayload {
                 display_name: name.into(),
                 version_id: "1.21.1".into(),
+                loader: None,
             },
         })
         .unwrap()
@@ -260,6 +262,9 @@ impl Fixture {
                 arch: TargetArch::X64,
                 component: None,
             },
+            mappings: None,
+            loader_files: Vec::new(),
+            loader: None,
         };
         before(&root, (game.clone(), runtime.clone()));
         let events = Events::default();

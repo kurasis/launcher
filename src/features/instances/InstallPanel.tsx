@@ -15,6 +15,7 @@ import { strings } from '../../lib/strings';
 import { useCommand } from '../../lib/useCommand';
 import styles from './Instances.module.css';
 import { localizeError } from '../../lib/strings';
+import { gameLabel } from './loaderLabel';
 
 interface InstallPanelProps {
   instance: InstanceSummary;
@@ -118,7 +119,7 @@ export function InstallPanel({
     <Panel
       variant="hero"
       title={instance.displayName}
-      aside={<span className={styles.version}>Minecraft {instance.versionId}</span>}
+      aside={<span className={styles.version}>{gameLabel(instance)}</span>}
     >
       <p className={styles.muted}>{t.explain[health]}</p>
       {mine !== null && (

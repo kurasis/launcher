@@ -658,7 +658,7 @@ replaces it), `superseded`.
   - Demo: only clients started through `net.minecraft.client.main.Main` (1.6 and
     later) know `--demo`. A demo identity cannot start older versions
     (`DEMO_UNAVAILABLE`); they need a signed-in account.
-  - Mod loaders (`inheritsFrom`) stay out of scope.
+  - Mod loaders (`inheritsFrom`) were out of scope here; D-039 adds them.
 - **Verification:** every catalog version plans on Windows, Linux and Intel macOS, and
   on Apple silicon from 1.19 (`live_all_versions`); real installs and launches on Linux
   from rd-132211 (2009) to 26.4-snapshot-4 (docs/VERIFICATION.md).
@@ -778,3 +778,74 @@ message` plus a stack trace), with the event's level.
   service names, documentation.
 - **Translations:** Russian and Arabic were written for this change and have not yet
   been reviewed by native speakers.
+
+## D-039 — Mod loaders: Forge, NeoForge, Fabric and Quilt
+
+- **Status:** accepted (owner request, 2026-10-17) · **Affects:** docs/spec/04
+  ("Metadata resolution": inheritance), docs/spec/05 (`${library_directory}`),
+  docs/spec/07 (hosts), D-035 (inheritance was out of scope)
+- **Decision:** a new installation can run a mod loader on top of a vanilla
+  version. The form offers **Mod loader** (None, Forge, Fabric, Quilt, NeoForge), then
+  the Minecraft version (only versions that loader supports are listed), then the
+  **loader version** (newest first, the project's recommended build preselected,
+  betas marked). Game version and loader version are fixed for the installation's
+  lifetime, like the game version alone before.
+- **Version lists:** Fabric and Quilt meta (`meta.fabricmc.net/v2`,
+  `meta.quiltmc.org/v3`); Forge's `maven-metadata.json` and `promotions_slim.json`
+  (files.minecraftforge.net); NeoForge's Maven API. NeoForge versions name their game
+  version (`21.1.262` → 1.21.1, `26.3.0.88` → 26.3); its 1.20.1 builds use the old
+  `net.neoforged:forge` artifact. Snapshot and April Fools builds are left out.
+- **Supported range:** what each project's metadata lists, except Forge before
+  1.12.2 build 14.23.5.2851: those installers use the old format (`install` +
+  `versionInfo`) and are neither listed nor installed; a chosen one fails with a clear
+  message.
+- **How a loader is resolved (`src-tauri/src/loader`):**
+  - Fabric and Quilt: the loader's version profile from its meta service. Libraries
+    without a published SHA-1 (Fabric's intermediary and loader, every Quilt library)
+    are pinned by the `.sha1` file next to them on the project's Maven repository;
+    files fetched to learn their size are verified and kept.
+  - Forge and NeoForge: the installer jar, pinned by its Maven `.sha1` file. The
+    launcher reads its `install_profile.json` (spec 0 or 1) and version profile itself;
+    it does not run the installer's own GUI or `main`.
+  - The result is stored as a launcher-owned **loader manifest** under its SHA-1
+    (`metadata/loaders/<sha1>.json`); the install lock records the loader kind,
+    version and that hash. Repair and launch re-derive the exact plan from it without
+    the network; if it is missing, the loader is resolved again and must produce the
+    same hash, otherwise the installation must be recreated.
+- **Plan merge (`install::plan::apply_loader`):** as `inheritsFrom` intends: the
+  loader's libraries first, replacing the game's copy of the same library
+  (`group:artifact[:classifier]`); the loader's JVM and game arguments after the
+  game's (a legacy `minecraftArguments` string, Forge 1.12.2, replaces the game's);
+  the loader's main class. Demo mode still requires the _game's_ main class to be
+  Minecraft's own; the loaders pass `--demo` on to it.
+- **Maven tree:** loader installations keep their libraries under
+  `shared/maven/<Maven path>` with their real file names, because Forge and NeoForge
+  build a Java module layer from file names and find libraries and patched game files
+  by Maven path (`-p ${library_directory}/…`, `-DlibraryDirectory`). Paths come from
+  strictly validated Maven coordinates only. The client jar is named after the loader
+  profile (`shared/clients/<sha1>/<profile id>.jar`), which Forge's module loader
+  expects on its ignore list. `${library_directory}` is now a known placeholder.
+  Vanilla installations keep the content-addressed layout.
+- **Forge and NeoForge installer step (`loader::processors`):** after downloads and
+  the Java runtime, a new phase _Running the mod loader installer_:
+  - files packed under `maven/` in the installer are unpacked after a hash check;
+  - each client-side processor runs with the installation's private Java, its tool
+    jar and classpath from verified downloads, its arguments from the install
+    profile's `data`; declared output hashes are checked, and a processor whose
+    outputs already match is skipped;
+  - `DOWNLOAD_MOJMAPS` that would copy Mojang's mappings unchanged is replaced by the
+    verified `client_mappings` download from the plan. The sanitizing variant (Forge
+    1.21+) runs as shipped and downloads the mappings from Mojang itself, through the
+    system proxy;
+  - tool output goes to the console as a line count, and its last 200 lines when a
+    step fails (`LOADER_INSTALL_FAILED`);
+  - every file the step produced is hashed into the install lock. Launch checks their
+    presence and size like downloaded files; Repair checks their hashes and runs the
+    step again when one is damaged, then requires the same hashes.
+- **Hosts:** a new source category `ModLoaders`: `meta.fabricmc.net`,
+  `maven.fabricmc.net`, `meta.quiltmc.org`, `maven.quiltmc.org`,
+  `maven.minecraftforge.net`, `files.minecraftforge.net`, `maven.neoforged.net`. Loader
+  profiles also name Mojang's library host; each download uses the category whose
+  allowlist names its host.
+- **Not included:** installing or updating mods, modpacks, changing the loader of an
+  existing installation, Forge before 1.12.2 build 14.23.5.2851, LiteLoader, Rift.

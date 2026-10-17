@@ -112,6 +112,7 @@ mod tests {
             health,
             last_result: None,
             java: None,
+            loader: None,
         }
     }
 
@@ -144,6 +145,7 @@ mod tests {
             },
             logging: None,
             artifacts: vec![],
+            loader: None,
             validated_at: Utc::now(),
             complete: true,
         }

@@ -18,7 +18,7 @@ use serde::Serialize;
 use uuid::Uuid;
 
 use super::lock::{self, FinalInstallPlan};
-use super::plan::GamePlan;
+use super::plan::{self, GamePlan, LibraryLayout};
 use super::rules::RuleContext;
 use crate::catalog::source::MetadataService;
 use crate::download::receipt::{self, JobReceipt};
@@ -28,6 +28,9 @@ use crate::download::{
     ExecutorConfig, ProgressSink,
 };
 use crate::error::{ErrorCode, LauncherError, LauncherResult};
+use crate::loader::manifest::{self, Resolver};
+use crate::loader::processors;
+use crate::loader::{LoaderChoice, LoaderKind, meta};
 use crate::net::{PublicClient, SourcePolicy};
 use crate::runtime::adoptium::{Adoptium, RuntimePackage};
 use crate::runtime::mojang::Mojang;
@@ -36,8 +39,8 @@ use crate::state::dto::{InstallState, OperationResult};
 use crate::state::{AppState, ProgressUpdate};
 use crate::storage::document;
 use crate::storage::models::{
-    HashAlgorithm, InstallLock, InstallationHealth, InstalledJava, LastResult, OperationKind,
-    Outcome,
+    HashAlgorithm, InstallLock, InstallationHealth, InstalledJava, LastResult, LockedLoader,
+    OperationKind, Outcome,
 };
 use crate::storage::paths::{InstanceId, JavaProvider, SafeName, Sha1};
 use crate::storage::reconcile::{self, LockState};
@@ -52,11 +55,13 @@ pub trait PlanSource: Send + Sync {
     fn resolve<'a>(
         &'a self,
         version_id: &'a str,
+        loader: Option<&'a LoaderChoice>,
         java: JavaProvider,
     ) -> BoxFuture<'a, LauncherResult<(GamePlan, RuntimePackage)>>;
 
-    /// Re-derives the plan of an installed version from its locked descriptor,
-    /// re-verifying (and if needed refetching by locked URL) the metadata sources.
+    /// Re-derives the plan of an installed version from its locked descriptor
+    /// (and locked loader manifest), re-verifying (and if needed refetching by
+    /// locked URL) the metadata sources.
     fn locked<'a>(&'a self, lock: &'a InstallLock) -> BoxFuture<'a, LauncherResult<GamePlan>>;
 }
 
@@ -64,6 +69,9 @@ pub struct LiveSource {
     metadata: Arc<MetadataService<PublicClient>>,
     mojang: Mojang,
     adoptium: Adoptium,
+    /// Mod loader hosts and Mojang's artifact hosts, for loader profiles (D-039).
+    loaders: PublicClient,
+    artifacts: PublicClient,
 }
 
 impl LiveSource {
@@ -78,7 +86,55 @@ impl LiveSource {
                 app_version,
             )?)?,
             adoptium: Adoptium::new(PublicClient::new(SourcePolicy::Adoptium, app_version)?)?,
+            loaders: PublicClient::new(SourcePolicy::ModLoaders, app_version)?,
+            artifacts: PublicClient::new(SourcePolicy::MojangArtifacts, app_version)?,
         })
+    }
+
+    /// The game plan for a version, with a mod loader merged on top when chosen.
+    pub async fn plan_game(
+        &self,
+        version_id: &str,
+        loader: Option<&LoaderChoice>,
+    ) -> LauncherResult<GamePlan> {
+        let ctx = RuleContext::current()?;
+        match loader {
+            None => self.metadata.plan(version_id, &ctx).await,
+            Some(choice) => {
+                let base = self
+                    .metadata
+                    .plan_in(version_id, &ctx, LibraryLayout::Maven)
+                    .await?;
+                let (manifest, sha1) = self.resolver().resolve(choice, version_id).await?;
+                plan::apply_loader(base, &manifest, &sha1, &ctx)
+            }
+        }
+    }
+
+    pub fn metadata(&self) -> &MetadataService<PublicClient> {
+        &self.metadata
+    }
+
+    /// Game versions a loader supports (D-039).
+    pub async fn loader_game_versions(&self, kind: LoaderKind) -> LauncherResult<Vec<String>> {
+        meta::game_versions(&self.loaders, kind).await
+    }
+
+    /// Versions of a loader for a game version, newest first (D-039).
+    pub async fn loader_versions(
+        &self,
+        kind: LoaderKind,
+        game: &str,
+    ) -> LauncherResult<Vec<meta::LoaderVersion>> {
+        meta::loader_versions(&self.loaders, kind, game).await
+    }
+
+    fn resolver(&self) -> Resolver<'_> {
+        Resolver {
+            loaders: &self.loaders,
+            mojang: &self.artifacts,
+            root: self.metadata.root(),
+        }
     }
 }
 
@@ -86,11 +142,11 @@ impl PlanSource for LiveSource {
     fn resolve<'a>(
         &'a self,
         version_id: &'a str,
+        loader: Option<&'a LoaderChoice>,
         java: JavaProvider,
     ) -> BoxFuture<'a, LauncherResult<(GamePlan, RuntimePackage)>> {
         Box::pin(async move {
-            let ctx = RuleContext::current()?;
-            let game = self.metadata.plan(version_id, &ctx).await?;
+            let game = self.plan_game(version_id, loader).await?;
             // Temurin covers what Mojang does not publish for this computer (for
             // example Java 8 on Apple silicon); a failed request is an error.
             let mojang = match java {
@@ -108,14 +164,43 @@ impl PlanSource for LiveSource {
     fn locked<'a>(&'a self, lock: &'a InstallLock) -> BoxFuture<'a, LauncherResult<GamePlan>> {
         Box::pin(async move {
             let ctx = RuleContext::current()?;
-            self.metadata
+            let layout = if lock.loader.is_some() {
+                LibraryLayout::Maven
+            } else {
+                LibraryLayout::Shared
+            };
+            let base = self
+                .metadata
                 .plan_locked(
                     &lock.version_id,
                     &lock.descriptor.url,
                     &lock.descriptor.sha1,
                     &ctx,
+                    layout,
                 )
-                .await
+                .await?;
+            let Some(locked) = &lock.loader else {
+                return Ok(base);
+            };
+            // The stored manifest, or the same one resolved again.
+            let manifest = match manifest::load(self.metadata.root(), &locked.manifest_sha1) {
+                Some(manifest) => manifest,
+                None => {
+                    let (manifest, sha1) = self
+                        .resolver()
+                        .resolve(&locked.choice(), &lock.version_id)
+                        .await?;
+                    if sha1 != locked.manifest_sha1 {
+                        return Err(LauncherError::new(
+                            ErrorCode::RepairRequired,
+                            "The mod loader's published files changed since this installation \
+                             was made. Create a new installation for this loader version.",
+                        ));
+                    }
+                    manifest
+                }
+            };
+            plan::apply_loader(base, &manifest, &locked.manifest_sha1, &ctx)
         })
     }
 }
@@ -269,6 +354,7 @@ impl InstallService {
             kind,
             instance_id,
             version_id: instance.version_id,
+            loader: instance.loader,
             cancel,
             progress,
         };
@@ -370,6 +456,7 @@ struct Operation {
     kind: OperationKind,
     instance_id: InstanceId,
     version_id: String,
+    loader: Option<LoaderChoice>,
     cancel: CancelToken,
     progress: Arc<Mutex<ProgressUpdate>>,
 }
@@ -398,16 +485,20 @@ fn request_from_locked(
     )
 }
 
-/// A Mojang artifact download. The production transport enforces the source
-/// allowlist on the URL and every redirect; the planner checked it already.
+/// A game or mod loader artifact download. The production transport enforces
+/// the source allowlist on the URL and every redirect; the planner checked it
+/// already.
 fn artifact_request(
     url: &str,
     path: &str,
     size: u64,
     digest: crate::download::Digest,
 ) -> LauncherResult<DownloadRequest> {
+    // Mojang's category unless a loader host is named; the transport refuses
+    // anything off the category's allowlist.
+    let source = SourcePolicy::for_artifact(url).map_or(SourcePolicy::MojangArtifacts, |(p, _)| p);
     Ok(DownloadRequest {
-        source: SourcePolicy::MojangArtifacts,
+        source,
         url: url::Url::parse(url).map_err(|_| {
             LauncherError::new(
                 ErrorCode::UnsupportedVersionMetadata,
@@ -474,7 +565,9 @@ impl Operation {
             .map_err(|e| LauncherError::from_io(&e, "Reading the installation record"))?;
         match lock_state {
             LockState::Complete(lock)
-                if lock.instance_id == self.instance_id && lock.version_id == self.version_id =>
+                if lock.instance_id == self.instance_id
+                    && lock.version_id == self.version_id
+                    && lock.loader.as_ref().map(LockedLoader::choice) == self.loader =>
             {
                 self.repair(*lock, report).await
             }
@@ -490,11 +583,19 @@ impl Operation {
     async fn install(&self, report: &mut RunReport) -> LauncherResult<()> {
         self.phase(InstallState::Resolving);
         let plan = match receipt::resumable_plan(&self.root, self.instance_id)? {
-            Some(plan) if plan.game.version_id == self.version_id => plan,
+            Some(plan)
+                if plan.game.version_id == self.version_id
+                    && plan.game.loader.as_ref().map(|l| LoaderChoice {
+                        kind: l.kind,
+                        version: l.version.clone(),
+                    }) == self.loader =>
+            {
+                plan
+            }
             _ => {
                 let java = self.state().java_provider();
                 let (game, runtime) = tokio::select! {
-                    resolved = self.source.resolve(&self.version_id, java) => resolved?,
+                    resolved = self.source.resolve(&self.version_id, self.loader.as_ref(), java) => resolved?,
                     () = self.cancel.cancelled() => return Err(cancelled()),
                 };
                 let console = self.state().console();
@@ -508,6 +609,15 @@ impl Operation {
                     runtime.release_name,
                     runtime.archive_name
                 ));
+                if let Some(loader) = &game.loader {
+                    console.info(format!(
+                        "{} {} on Minecraft {}: {} files from the loader",
+                        loader.kind.name(),
+                        loader.version,
+                        game.version_id,
+                        game.loader_files.len() + loader.provided.len()
+                    ));
+                }
                 if java == JavaProvider::Mojang && runtime.key.provider != JavaProvider::Mojang {
                     console.warn(format!(
                         "Mojang publishes no Java {} for this computer; using Temurin",
@@ -559,6 +669,7 @@ impl Operation {
         let installed = self
             .files_and_runtime(requests, &plan.runtime, report)
             .await?;
+        let generated = self.prepare_loader(&plan.game, &installed).await?;
         self.phase(InstallState::Finalizing);
         lock::project_asset_index(
             &self.root,
@@ -567,7 +678,10 @@ impl Operation {
         )?;
         self.check_cancel()?;
         // Commit point: from here on the result is success.
-        let lock = lock::build_lock(plan, installed.locked());
+        let mut lock = lock::build_lock(plan, installed.locked());
+        if let Some(loader) = &mut lock.loader {
+            loader.generated = generated;
+        }
         document::save(&self.root.install_lock(self.instance_id), &lock, None)
             .map_err(|e| LauncherError::from_io(&e, "Saving the installation record"))?;
         report.committed = Some(lock.descriptor.sha1);
@@ -637,12 +751,95 @@ impl Operation {
                 "The rebuilt Java runtime differs from the recorded one.",
             ));
         }
+        if let Some(locked) = &lock.loader {
+            let (root, generated) = (self.root.clone(), locked.generated.clone());
+            let intact = tokio::task::spawn_blocking(move || {
+                processors::verify_generated(&root, &generated)
+            })
+            .await
+            .map_err(|_| LauncherError::internal("A file check stopped unexpectedly."))?;
+            if !intact {
+                // Rebuilt by the same installer from the same inputs.
+                self.prepare_loader(&game, &installed).await?;
+                if !processors::verify_generated(&self.root, &locked.generated) {
+                    return Err(LauncherError::new(
+                        ErrorCode::RepairRequired,
+                        "The rebuilt mod loader files differ from the recorded ones. Create a \
+                         new installation for this loader version.",
+                    ));
+                }
+            }
+        }
         self.phase(InstallState::Finalizing);
         let index_id = SafeName::parse(&lock.asset_index.id)?;
         lock::project_asset_index(&self.root, &index_id, &lock.asset_index.sha1)?;
         report.committed = Some(lock.descriptor.sha1.clone());
         report.java = InstalledJava::from_lock(&lock.runtime);
         Ok(())
+    }
+
+    /// Runs a Forge or NeoForge installer step after the downloads (D-039) and
+    /// returns the files it produced. Nothing to do for other plans.
+    async fn prepare_loader(
+        &self,
+        game: &GamePlan,
+        installed: &InstalledRuntime,
+    ) -> LauncherResult<Vec<crate::storage::models::LockedArtifact>> {
+        let Some(loader) = &game.loader else {
+            return Ok(Vec::new());
+        };
+        if !loader.kind.uses_installer() {
+            return Ok(Vec::new());
+        }
+        self.phase(InstallState::PreparingLoader);
+        let manifest = manifest::load(&self.root, &loader.manifest_sha1).ok_or_else(|| {
+            LauncherError::new(
+                ErrorCode::RepairRequired,
+                "The mod loader record is missing. Repair the installation.",
+            )
+        })?;
+        let console = self.state().console();
+        console.info(format!(
+            "Running the {} {} installer",
+            loader.kind.name(),
+            loader.version
+        ));
+        let (root, game, java, cancel) = (
+            self.root.clone(),
+            game.clone(),
+            installed.java.clone(),
+            self.cancel.clone(),
+        );
+        let work_dir = self.root.download_staging(self.job).join("loader");
+        let host = Arc::clone(&self.host);
+        let result = tokio::task::spawn_blocking(move || {
+            let log = move |line: String| host.app_state().console().info(line);
+            processors::prepare(&processors::Inputs {
+                root: &root,
+                manifest: &manifest,
+                plan: &game,
+                java: &java,
+                work_dir,
+                cancel: &cancel,
+                log: &log,
+            })
+        })
+        .await
+        .map_err(|_| LauncherError::internal("The mod loader installer stopped unexpectedly."))?;
+        match &result {
+            Ok(files) => console.info(format!(
+                "{} installer finished: {} files verified",
+                loader.kind.name(),
+                files.len()
+            )),
+            Err(error) => console.warn(format!(
+                "{} installer failed: {}",
+                loader.kind.name(),
+                error.message
+            )),
+        }
+        self.check_cancel()?;
+        result
     }
 
     /// Verifies or downloads game files, then installs or verifies the runtime.

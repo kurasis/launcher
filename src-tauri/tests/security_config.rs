@@ -141,6 +141,8 @@ fn main_window_capability_grants_only_app_commands() {
             "allow-open-external",
             "allow-list-supported-versions",
             "allow-preview-install-plan",
+            "allow-list-loader-game-versions",
+            "allow-list-loader-versions",
             "allow-install-instance",
             "allow-repair-instance",
             "allow-cancel-operation",

@@ -28,6 +28,9 @@ pub enum SourcePolicy {
     MojangArtifacts,
     /// Adoptium API and runtime archives (including the GitHub release redirect).
     Adoptium,
+    /// Mod loader metadata, installers and libraries: Fabric, Quilt, Forge and
+    /// NeoForge (D-039).
+    ModLoaders,
 }
 
 // `launchermeta` is Mojang's previous metadata host; older descriptors still
@@ -48,6 +51,15 @@ const ADOPTIUM_HOSTS: &[&str] = &[
     "objects.githubusercontent.com",
     "release-assets.githubusercontent.com",
 ];
+const MOD_LOADER_HOSTS: &[&str] = &[
+    "meta.fabricmc.net",
+    "maven.fabricmc.net",
+    "meta.quiltmc.org",
+    "maven.quiltmc.org",
+    "maven.minecraftforge.net",
+    "files.minecraftforge.net",
+    "maven.neoforged.net",
+];
 
 /// Every host any policy allows; these names must resolve to public addresses.
 const ALL_SOURCE_HOSTS: &[&str] = &[
@@ -61,6 +73,13 @@ const ALL_SOURCE_HOSTS: &[&str] = &[
     "github.com",
     "objects.githubusercontent.com",
     "release-assets.githubusercontent.com",
+    "meta.fabricmc.net",
+    "maven.fabricmc.net",
+    "meta.quiltmc.org",
+    "maven.quiltmc.org",
+    "maven.minecraftforge.net",
+    "files.minecraftforge.net",
+    "maven.neoforged.net",
 ];
 
 pub const MAX_REDIRECTS: usize = 5;
@@ -71,6 +90,22 @@ impl SourcePolicy {
             Self::MojangMetadata => MOJANG_METADATA_HOSTS,
             Self::MojangArtifacts => MOJANG_ARTIFACT_HOSTS,
             Self::Adoptium => ADOPTIUM_HOSTS,
+            Self::ModLoaders => MOD_LOADER_HOSTS,
+        }
+    }
+
+    /// The artifact source whose allowlist names this URL's host: Mojang's
+    /// artifact hosts or a mod loader's. Loader profiles list both.
+    pub fn for_artifact(raw: &str) -> LauncherResult<(Self, Url)> {
+        let url = Url::parse(raw).map_err(|_| untrusted_url())?;
+        match [Self::MojangArtifacts, Self::ModLoaders]
+            .into_iter()
+            .find(|policy| policy.allows(&url))
+        {
+            Some(policy) => Ok((policy, url)),
+            None => {
+                Err(untrusted_url().with_detail("host", url.host_str().unwrap_or("").to_owned()))
+            }
         }
     }
 
@@ -344,6 +379,20 @@ mod tests {
             SourcePolicy::Adoptium,
             "https://libraries.minecraft.net/x"
         ));
+        assert!(ok(
+            SourcePolicy::ModLoaders,
+            "https://maven.neoforged.net/releases/net/neoforged/neoforge/21.1.262/x.jar"
+        ));
+        assert!(!ok(
+            SourcePolicy::ModLoaders,
+            "https://maven.fabricmc.net.evil.example/x"
+        ));
+        let (policy, _) =
+            SourcePolicy::for_artifact("https://libraries.minecraft.net/a/b.jar").unwrap();
+        assert_eq!(policy, SourcePolicy::MojangArtifacts);
+        let (policy, _) = SourcePolicy::for_artifact("https://maven.fabricmc.net/a/b.jar").unwrap();
+        assert_eq!(policy, SourcePolicy::ModLoaders);
+        assert!(SourcePolicy::for_artifact("https://api.adoptium.net/x").is_err());
         assert!(SourcePolicy::MojangArtifacts.check("not a url").is_err());
     }
 
@@ -391,6 +440,7 @@ mod tests {
             SourcePolicy::MojangMetadata,
             SourcePolicy::MojangArtifacts,
             SourcePolicy::Adoptium,
+            SourcePolicy::ModLoaders,
         ] {
             for host in policy.hosts() {
                 assert!(ALL_SOURCE_HOSTS.contains(host), "{host}");

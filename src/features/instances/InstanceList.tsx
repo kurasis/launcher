@@ -3,6 +3,7 @@ import type { InstanceSummary } from '../../lib/contracts';
 import { strings } from '../../lib/strings';
 import { healthTone } from './healthTone';
 import styles from './Instances.module.css';
+import { gameLabel } from './loaderLabel';
 
 interface InstanceListProps {
   instances: InstanceSummary[];
@@ -40,7 +41,7 @@ export function InstanceList({ instances, selectedId, onSelect, disabled }: Inst
               />
               <span className={styles.itemName}>{instance.displayName}</span>
               <span className={styles.itemMeta}>
-                <span>Minecraft {instance.versionId}</span>
+                <span>{gameLabel(instance)}</span>
                 <StatusBadge
                   tone={healthTone[instance.health]}
                   label={instance.busy ? t.busy : t.health[instance.health]}

@@ -63,6 +63,7 @@ export type ErrorCode =
   | 'OPERATION_NOT_FOUND'
   | 'APP_BUSY'
   | 'REPAIR_REQUIRED'
+  | 'LOADER_INSTALL_FAILED'
   | 'REQUEST_ID_CONFLICT'
   | 'INVALID_INPUT'
   | 'INSUFFICIENT_MEMORY'
@@ -141,6 +142,27 @@ export interface InstanceSummary {
   lastResult: LastResult | null;
   busy: boolean;
   java: InstalledJava | null;
+  /** The mod loader on top of the game; null for vanilla (D-039). */
+  loader: LoaderChoice | null;
+}
+
+/** Mod loaders the launcher installs (D-039). */
+export type LoaderKind = 'fabric' | 'quilt' | 'forge' | 'neoforge';
+
+/** A loader and its exact version. */
+export interface LoaderChoice {
+  kind: LoaderKind;
+  /** The loader's own id, e.g. `0.16.14`, `1.21.1-52.1.0` (Forge) or `21.1.262`. */
+  version: string;
+}
+
+/** One loader version for the picker, newest first. */
+export interface LoaderVersion {
+  id: string;
+  /** What people call it, e.g. Forge `52.1.0`. */
+  label: string;
+  stable: boolean;
+  recommended: boolean;
 }
 
 export interface SettingsView {
@@ -326,6 +348,7 @@ export type InstallState =
   | 'checking_files'
   | 'downloading'
   | 'extracting_runtime'
+  | 'preparing_loader'
   | 'finalizing'
   | 'cancel_requested';
 
@@ -377,6 +400,7 @@ export interface MutationRequest<T> {
 export interface CreateInstancePayload {
   displayName: string;
   versionId: string;
+  loader?: LoaderChoice | null;
 }
 
 export interface UpdateInstanceSettingsPayload {

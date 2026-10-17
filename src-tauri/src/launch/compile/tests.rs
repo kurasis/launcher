@@ -172,7 +172,7 @@ fn platform_flags_and_native_directories() {
 #[test]
 fn unknown_or_misplaced_placeholders_are_errors() {
     let mut p = plan(V1_21_1, "1.21.1", MetaOs::Linux, "x86_64");
-    p.game_arguments.push("${library_directory}".into());
+    p.game_arguments.push("${launcher_secret_dir}".into());
     let root = root();
     let dir = PathBuf::from("/tmp/g");
     let id = identity();

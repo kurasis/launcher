@@ -3,6 +3,7 @@ import { mockIPC } from '@tauri-apps/api/mocks';
 import { describe, expect, it } from 'vitest';
 import type {
   CatalogView,
+  LoaderVersion,
   PlanSummary,
   VersionAvailability,
   VersionView,
@@ -50,10 +51,30 @@ const plan: PlanSummary = {
   runtimeBytes: null,
 };
 
+const loaderGames: Record<string, string[]> = {
+  fabric: ['1.21.1', '1.21'],
+  forge: ['1.12.2', '1.20.1'],
+};
+
+const loaderVersions: Record<string, LoaderVersion[]> = {
+  'fabric:1.21.1': [
+    { id: '0.17.0-beta.1', label: '0.17.0-beta.1', stable: false, recommended: false },
+    { id: '0.16.14', label: '0.16.14', stable: true, recommended: true },
+  ],
+  'forge:1.12.2': [
+    { id: '1.12.2-14.23.5.2860', label: '14.23.5.2860', stable: true, recommended: false },
+    { id: '1.12.2-14.23.5.2859', label: '14.23.5.2859', stable: true, recommended: true },
+  ],
+};
+
 function setup(view: CatalogView) {
   const calls: { cmd: string; args: unknown }[] = [];
   mockIPC((cmd, args) => {
     calls.push({ cmd, args });
+    const a = args as { kind?: string; gameVersion?: string };
+    if (cmd === 'list_loader_game_versions') return loaderGames[a.kind ?? ''] ?? [];
+    if (cmd === 'list_loader_versions')
+      return loaderVersions[`${a.kind ?? ''}:${a.gameVersion ?? ''}`] ?? [];
     if (cmd === 'list_supported_versions') return view;
     if (cmd === 'preview_install_plan') return plan;
     if (cmd === 'get_app_snapshot') return snapshotFixture();
@@ -76,6 +97,7 @@ describe('CreateInstanceForm', () => {
     expect(summary).toHaveTextContent(/not yet been checked by starting the game/);
     expect(calls.find((c) => c.cmd === 'preview_install_plan')?.args).toEqual({
       versionId: '1.21.1',
+      loader: null,
     });
   });
 
@@ -123,6 +145,57 @@ describe('CreateInstanceForm', () => {
     await waitFor(() => {
       expect(calls.filter((c) => c.cmd === 'list_supported_versions').at(-1)?.args).toEqual({
         refresh: true,
+      });
+    });
+  });
+
+  it('installs a mod loader with a chosen game and loader version', async () => {
+    const calls = setup(catalog('available'));
+    expect(await screen.findByText('Selected: 1.21.1')).toBeVisible();
+    fireEvent.change(screen.getByLabelText('Mod loader'), { target: { value: 'fabric' } });
+    expect(
+      await screen.findByText('Only Minecraft versions that Fabric supports are listed.'),
+    ).toBeVisible();
+    // Only what Fabric supports; 1.12.2 is hidden.
+    const releases = screen.getByRole('list', { name: 'Releases' });
+    expect(releases).toHaveTextContent('1.21.1');
+    expect(releases).not.toHaveTextContent('1.12.2');
+    const version = screen.getByLabelText('Fabric version');
+    await waitFor(() => {
+      expect(version).toHaveValue('0.16.14');
+    });
+    expect(screen.getByRole('option', { name: '0.16.14 (recommended)' })).toBeVisible();
+    expect(screen.getByRole('option', { name: '0.17.0-beta.1 (beta)' })).toBeVisible();
+    expect(screen.getByLabelText('Name')).toHaveValue('1.21.1 Fabric');
+    fireEvent.change(version, { target: { value: '0.17.0-beta.1' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Create installation' }));
+    await waitFor(() => {
+      expect(calls.find((c) => c.cmd === 'create_instance')?.args).toMatchObject({
+        request: {
+          payload: {
+            displayName: '1.21.1 Fabric',
+            versionId: '1.21.1',
+            loader: { kind: 'fabric', version: '0.17.0-beta.1' },
+          },
+        },
+      });
+    });
+  });
+
+  it('moves to a game version the loader supports', async () => {
+    const calls = setup(catalog('available'));
+    expect(await screen.findByText('Selected: 1.21.1')).toBeVisible();
+    fireEvent.change(screen.getByLabelText('Mod loader'), { target: { value: 'forge' } });
+    expect(await screen.findByText('Selected: 1.12.2')).toBeVisible();
+    await waitFor(() => {
+      expect(screen.getByLabelText('Forge version')).toHaveValue('1.12.2-14.23.5.2859');
+    });
+    expect(screen.getByRole('option', { name: '14.23.5.2859 (recommended)' })).toBeVisible();
+    fireEvent.click(screen.getByRole('button', { name: 'Estimate download' }));
+    await waitFor(() => {
+      expect(calls.find((c) => c.cmd === 'preview_install_plan')?.args).toEqual({
+        versionId: '1.12.2',
+        loader: { kind: 'forge', version: '1.12.2-14.23.5.2859' },
       });
     });
   });

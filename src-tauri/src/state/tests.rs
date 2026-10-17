@@ -43,6 +43,7 @@ fn create(state: &AppState, name: &str, version: &str) -> LauncherResult<Instanc
     state.create_instance(request(CreateInstancePayload {
         display_name: name.into(),
         version_id: version.into(),
+        loader: None,
     }))
 }
 
@@ -113,6 +114,7 @@ fn repeated_request_id_is_idempotent_and_conflicts_are_rejected() {
     let req = request(CreateInstancePayload {
         display_name: "Once".into(),
         version_id: "1.21.1".into(),
+        loader: None,
     });
     let first = state.create_instance(req.clone()).unwrap();
     let second = state.create_instance(req.clone()).unwrap();
@@ -124,6 +126,7 @@ fn repeated_request_id_is_idempotent_and_conflicts_are_rejected() {
         payload: CreateInstancePayload {
             display_name: "Other".into(),
             version_id: "1.21.1".into(),
+            loader: None,
         },
     };
     assert_eq!(

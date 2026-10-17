@@ -17,7 +17,7 @@ use super::compatibility;
 use super::manifest::{self, Catalog, CatalogEntry};
 use crate::error::{ErrorCode, LauncherError, LauncherResult};
 use crate::install::descriptor::{self, MAX_DESCRIPTOR_BYTES};
-use crate::install::plan::{self, GamePlan, MAX_ASSET_INDEX_BYTES, PlannedArtifact};
+use crate::install::plan::{self, GamePlan, LibraryLayout, MAX_ASSET_INDEX_BYTES, PlannedArtifact};
 use crate::install::rules::RuleContext;
 use crate::net::{self, PublicClient, SourcePolicy};
 use crate::storage::atomic;
@@ -75,7 +75,11 @@ impl Fetch for PublicClient {
                 });
             }
             if !status.is_success() {
-                return Err(net::status_error(status, "Minecraft metadata"));
+                return Err(if self.policy() == SourcePolicy::ModLoaders {
+                    net::status_error(status, "mod loader metadata")
+                } else {
+                    net::status_error(status, "Minecraft metadata")
+                });
             }
             let header = |name| {
                 headers
@@ -383,6 +387,20 @@ impl<F: Fetch> MetadataService<F> {
     /// descriptor hash is verified on download. Never selects `latest.release` on
     /// its own.
     pub async fn plan(&self, version_id: &str, ctx: &RuleContext) -> LauncherResult<GamePlan> {
+        self.plan_in(version_id, ctx, LibraryLayout::Shared).await
+    }
+
+    pub fn root(&self) -> &DataRoot {
+        &self.root
+    }
+
+    /// [`Self::plan`] in a chosen library layout (Maven for mod loaders).
+    pub async fn plan_in(
+        &self,
+        version_id: &str,
+        ctx: &RuleContext,
+        layout: LibraryLayout,
+    ) -> LauncherResult<GamePlan> {
         let (catalog, _, _, error) = self.catalog(false).await;
         let catalog = catalog.ok_or_else(|| {
             error.unwrap_or_else(|| {
@@ -402,7 +420,8 @@ impl<F: Fetch> MetadataService<F> {
             return Err(descriptor::unsupported("version type"));
         }
         let bytes = self.descriptor(entry).await?;
-        let mut plan = plan::plan_game(&bytes, &entry.url, &entry.sha1, version_id, ctx)?;
+        let mut plan =
+            plan::plan_game_in(&bytes, &entry.url, &entry.sha1, version_id, ctx, layout)?;
         let index = self.asset_index(&plan.asset_index.artifact).await?;
         plan::plan_assets(&mut plan, &index)?;
         Ok(plan)
@@ -416,6 +435,7 @@ impl<F: Fetch> MetadataService<F> {
         descriptor_url: &str,
         descriptor_sha1: &Sha1,
         ctx: &RuleContext,
+        layout: LibraryLayout,
     ) -> LauncherResult<GamePlan> {
         let entry = CatalogEntry {
             id: version_id.to_owned(),
@@ -426,7 +446,8 @@ impl<F: Fetch> MetadataService<F> {
             release_time: None,
         };
         let bytes = self.descriptor(&entry).await?;
-        let mut plan = plan::plan_game(&bytes, &entry.url, &entry.sha1, version_id, ctx)?;
+        let mut plan =
+            plan::plan_game_in(&bytes, &entry.url, &entry.sha1, version_id, ctx, layout)?;
         let index = self.asset_index(&plan.asset_index.artifact).await?;
         plan::plan_assets(&mut plan, &index)?;
         Ok(plan)

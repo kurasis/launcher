@@ -9,6 +9,7 @@ import { numberLocale, strings } from '../../lib/strings';
 import { useCommand } from '../../lib/useCommand';
 import { healthTone } from './healthTone';
 import styles from './Instances.module.css';
+import { gameLabel } from './loaderLabel';
 
 interface InstanceDetailsProps {
   instance: InstanceSummary;
@@ -37,7 +38,7 @@ export function InstanceDetails({ instance, onEditSettings }: InstanceDetailsPro
     >
       <dl className={styles.facts}>
         <dt>{t.version}</dt>
-        <dd>Minecraft {instance.versionId}</dd>
+        <dd>{gameLabel(instance)}</dd>
         <dt>{t.java}</dt>
         <dd>
           {java === null

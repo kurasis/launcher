@@ -26,6 +26,9 @@ and packages for Windows, macOS and Linux built and
 smoke-tested in CI. Every vanilla version Mojang lists can be installed: releases,
 snapshots, beta, alpha and Classic, each type on its own tab (D-035). Versions before 1.19
 need an Intel Mac or Windows/Linux; Apple silicon runs 1.19 and later.
+Installations can run a mod loader — Forge, NeoForge, Fabric or Quilt — with a chosen
+loader version; Forge and NeoForge installers run with the installation's private Java
+(D-039).
 
 **Without an account:** **Play demo** starts Minecraft's free demo (five in-game days, no
 multiplayer) under a local player name, in every build (D-033).
