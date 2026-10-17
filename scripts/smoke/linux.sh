@@ -12,7 +12,7 @@ set -euo pipefail
 deb=$(realpath "$1")
 appimage=$(realpath "$2")
 wait_seconds=${SMOKE_WAIT_SECONDS:-20}
-data_root="$HOME/.local/share/io.github.kurasis.launcher"
+data_root="$HOME/.local/share/app.launcher"
 
 step() { printf '\n== %s\n' "$*"; }
 
@@ -26,15 +26,15 @@ export DEBIAN_FRONTEND=noninteractive
 apt-get update -q
 apt-get install -y -q --no-install-recommends "$deb"
 apt-get install -y -q --no-install-recommends xvfb xauth dbus
-dpkg-query -W -f='${Package} ${Version} depends: ${Depends}\n' kurasis-launcher
+dpkg-query -W -f='${Package} ${Version} depends: ${Depends}\n' launcher
 for tool in rustc cargo node npm java; do
   if command -v "$tool" >/dev/null; then
     echo "unexpected developer tool on the test system: $tool" >&2
     exit 1
   fi
 done
-test -x /usr/bin/kurasis-launcher
-desktop=$(dpkg -L kurasis-launcher | grep '\.desktop$')
+test -x /usr/bin/launcher
+desktop=$(dpkg -L launcher | grep '\.desktop$')
 grep -E '^(Name|Exec|Icon|Categories)=' "$desktop"
 
 # Starts a command under a virtual display; succeeds if it is still running after
@@ -56,14 +56,14 @@ start_and_check() {
 }
 
 step "Start the installed launcher"
-start_and_check deb /usr/bin/kurasis-launcher
+start_and_check deb /usr/bin/launcher
 
 step "Purging the package keeps user data"
 mkdir -p "$data_root/instances/smoke"
 echo kept >"$data_root/instances/smoke/sentinel.txt"
 # Purge is removal plus configuration files: the strongest uninstall apt offers.
-apt-get purge -y -q kurasis-launcher
-test ! -e /usr/bin/kurasis-launcher
+apt-get purge -y -q launcher
+test ! -e /usr/bin/launcher
 grep -qx kept "$data_root/instances/smoke/sentinel.txt"
 echo "uninstall left $data_root in place"
 

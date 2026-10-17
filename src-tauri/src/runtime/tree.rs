@@ -15,7 +15,7 @@ use crate::error::{LauncherError, LauncherResult};
 use crate::storage::document::SCHEMA_VERSION;
 
 /// Top-level names starting with this prefix belong to the launcher.
-pub const RECEIPT_PREFIX: &str = ".kurasis-";
+pub const RECEIPT_PREFIX: &str = ".launcher-";
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]

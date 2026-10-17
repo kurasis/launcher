@@ -134,8 +134,7 @@ async fn handle(mut stream: TcpStream, expected_state: &SecretString) -> Option<
         Some(Evaluation::Rejected) | None => ("400 Bad Request", "Invalid request.", None),
     };
     let page = format!(
-        "<!doctype html><html lang=\"en\"><head><meta charset=\"utf-8\"><title>Kurasis \
-         Launcher</title></head><body><p>{body}</p></body></html>"
+        "<!doctype html><html lang=\"en\"><head><meta charset=\"utf-8\"><title>Launcher</title></head><body><p>{body}</p></body></html>"
     );
     let response = format!(
         "HTTP/1.1 {status}\r\nContent-Type: text/html; charset=utf-8\r\nContent-Length: {}\r\n\

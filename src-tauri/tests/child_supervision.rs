@@ -12,9 +12,9 @@ use std::sync::mpsc;
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
-use kurasis_launcher_lib::lifecycle::child::{self, ChildOutcome, OutputLine, OutputTail, Stream};
+use launcher_lib::lifecycle::child::{self, ChildOutcome, OutputLine, OutputTail, Stream};
 
-const MODE_ENV: &str = "KURASIS_CHILD_PROBE";
+const MODE_ENV: &str = "LAUNCHER_CHILD_PROBE";
 
 /// Runs only inside a child process.
 #[test]

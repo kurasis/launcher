@@ -11,10 +11,10 @@ replaces it), `superseded`.
 
 ## D-001 — Provisional application identity
 
-- **Status:** provisional (owner confirmation required before the first distributed package)
+- **Status:** superseded by [D-031](#d-031--neutral-application-identity)
 - **Phase:** P01 · **Affects:** FR13, A24, A26; DATA_ROOT, credential-vault and single-instance namespaces
-- **Decision:** Product name `Kurasis Launcher`, bundle identifier `io.github.kurasis.launcher`,
-  binary `kurasis-launcher`, derived from the repository owner. The name contains no
+- **Decision:** A provisional product name, bundle identifier and binary name derived
+  from the repository owner. The name contains no
   Minecraft or Mojang branding. The UI shows a "Development build" tag.
 - **Reason:** The specification asks for a clearly provisional identity until the owner
   chooses one. A reverse-domain identifier based on the GitHub account avoids collisions.
@@ -50,7 +50,7 @@ replaces it), `superseded`.
 ## D-004 — Microsoft client ID is build-time, non-secret configuration
 
 - **Status:** accepted · **Phase:** P01 (configuration only; auth flow is P04) · **Affects:** FR01, FR03, G0, A03
-- **Decision:** The Rust core reads `KURASIS_MSA_CLIENT_ID` at compile time
+- **Decision:** The Rust core reads `LAUNCHER_MSA_CLIENT_ID` at compile time
   (`option_env!`). The value must be a canonical GUID; the nil GUID is rejected. There is
   no default or fallback ID. The UI receives only a status: `not_configured`, `invalid` or
   `configured_unverified`. Nothing reports the ID as verified until a real sign-in has
@@ -163,7 +163,7 @@ replaces it), `superseded`.
   starts read-only with `DATA_ROOT_LOCKED` shown and never writes. The OS releases the lock
   on exit or crash; the lock file is never deleted. P03 adds the single-instance handoff
   on top of this lock, not instead of it.
-- **Relocation:** debug builds honour `KURASIS_DATA_ROOT` for tests and demonstrations.
+- **Relocation:** debug builds honour `LAUNCHER_DATA_ROOT` for tests and demonstrations.
   Release builds ignore it; DATA_ROOT relocation stays out of MVP scope (doc 02).
 - **Path policy:** DATA_ROOT must be absolute, valid Unicode and free of the platform
   classpath separator (`:` on Unix, `;` on Windows), otherwise `UNSUPPORTED_DATA_PATH` /
@@ -233,7 +233,7 @@ replaces it), `superseded`.
 
 - **Status:** accepted · **Phase:** P03 · **Affects:** doc 05, P03 "test controls"
 - **Decision:** The harmless test child is the launcher executable itself started with
-  `--kurasis-lifecycle-test-child <scenario>`; scenarios are a fixed enum (short, long,
+  `--launcher-lifecycle-test-child <scenario>`; scenarios are a fixed enum (short, long,
   immediate exit, crash, inherited pipe, heavy output). The child entry point, the
   `start_lifecycle_test`/`stop_lifecycle_test` handlers and the UI panel are compiled only
   with `debug_assertions`; release builds register neither handler, and
@@ -352,9 +352,9 @@ replaces it), `superseded`.
   package or dangle; hard links become copies of earlier files. Limits: 20,000 entries,
   512 MiB per file, 1 GiB in total, counted on the bytes actually written. Links are
   created on Unix only (current Windows packages contain none).
-- **Tree receipt:** `.kurasis-tree.json` lists every directory, file (size, SHA-256,
+- **Tree receipt:** `.launcher-tree.json` lists every directory, file (size, SHA-256,
   executable bit) and link target, sorted by path; its SHA-256 is stored in
-  `.kurasis-runtime.json` together with the pinned package and the probe result, and goes
+  `.launcher-runtime.json` together with the pinned package and the probe result, and goes
   into the install lock as `treeReceiptSha256`. Reuse requires both receipts and every
   file to match; any difference rebuilds the runtime from the pinned archive in fresh
   staging.
@@ -532,7 +532,7 @@ replaces it), `superseded`.
   profile for automated download and launch tests.
 - **Decision:** `launch::test_profile` exists only in debug builds and tests
   (`cfg(debug_assertions)`); packages are release builds and contain no code path to
-  it. A debug build started with `KURASIS_TEST_PROFILE=<name>` authorizes launches with
+  it. A debug build started with `LAUNCHER_NOTOKEN_PROFILE=<name>` authorizes launches with
   that name, a UUID derived from it and a placeholder token, and always adds Minecraft's
   `--demo` argument (`LaunchIdentity.demo`). The header shows "Test profile <name> ·
   demo mode". `tests/live_play.rs` drives the real game through the launch service with
@@ -547,3 +547,25 @@ replaces it), `superseded`.
 - **Graphics on headless Linux:** Minecraft 26.3 needs an sRGB-capable GLX visual that
   Xvfb and the Xorg dummy driver do not offer; with the Mesa software Vulkan driver
   (lavapipe) it uses its Vulkan backend instead. 1.21.1 runs on GLX with llvmpipe.
+
+## D-031 — Neutral application identity
+
+- **Status:** accepted (owner request, 2026-10-17) · **Affects:** FR13, A24, A26; DATA_ROOT,
+  credential-vault and single-instance namespaces
+- **Decision:** The code and documentation use a neutral identity: product name
+  `Launcher`, binary, crate and Debian package `launcher` (library `launcher_lib`),
+  bundle identifier `app.launcher`, user agent `Launcher/<version>`. Environment
+  variables use the `LAUNCHER_` prefix (`LAUNCHER_MSA_CLIENT_ID`, `LAUNCHER_DATA_ROOT`,
+  `LAUNCHER_LIVE_*`); the debug test profile variable is `LAUNCHER_NOTOKEN_PROFILE`
+  (D-030), its test player `TestPlayer`. Receipts are `.launcher-tree.json` and
+  `.launcher-runtime.json`.
+  At the owner's request the README names the project "Sferum Launcher".
+- **Reason:** The owner asked for a neutral name. `app.launcher` avoids a repeated
+  "launcher.launcher" segment.
+- **Consequence:** DATA_ROOT and the vault service move to the new identifier. No package
+  has been distributed, so no migration is needed; development data under the old
+  identifier is not read. The packaging workflow reads the repository variable
+  `LAUNCHER_MSA_CLIENT_ID`. Links to the GitHub repository keep its real address, and
+  evidence recorded before this change quotes the names that were in use then.
+- **Verification:** `src-tauri/tauri.conf.json`; `npm run check`; release binary scan
+  (docs/VERIFICATION.md).

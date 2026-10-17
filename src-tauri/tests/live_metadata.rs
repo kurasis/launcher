@@ -4,10 +4,10 @@
 
 #![allow(clippy::print_stdout, clippy::unwrap_used)] // prints the evidence summary
 
-use kurasis_launcher_lib::catalog::source::{Availability, MetadataService};
-use kurasis_launcher_lib::install::rules::{MetaOs, RuleContext};
-use kurasis_launcher_lib::net::{PublicClient, SourcePolicy};
-use kurasis_launcher_lib::storage::paths::DataRoot;
+use launcher_lib::catalog::source::{Availability, MetadataService};
+use launcher_lib::install::rules::{MetaOs, RuleContext};
+use launcher_lib::net::{PublicClient, SourcePolicy};
+use launcher_lib::storage::paths::DataRoot;
 
 #[tokio::test(flavor = "multi_thread")]
 #[ignore = "network: contacts piston-meta.mojang.com"]

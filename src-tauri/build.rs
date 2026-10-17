@@ -3,7 +3,7 @@ use std::path::PathBuf;
 
 fn main() {
     // The Microsoft public-client ID is non-secret build configuration (docs/AUTH-SETUP.md).
-    println!("cargo:rerun-if-env-changed=KURASIS_MSA_CLIENT_ID");
+    println!("cargo:rerun-if-env-changed=LAUNCHER_MSA_CLIENT_ID");
 
     // Declaring the app's commands makes Tauri generate one permission per command,
     // so each window must be granted every command explicitly in capabilities/.

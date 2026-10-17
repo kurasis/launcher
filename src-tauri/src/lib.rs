@@ -39,7 +39,7 @@ use validation::MemoryPolicy;
 
 /// Debug builds may relocate DATA_ROOT for tests and demonstrations. Release builds
 /// ignore this variable: data-directory relocation is not an MVP feature.
-pub const DEV_DATA_ROOT_ENV: &str = "KURASIS_DATA_ROOT";
+pub const DEV_DATA_ROOT_ENV: &str = "LAUNCHER_DATA_ROOT";
 
 struct TauriSink(tauri::AppHandle);
 
@@ -182,7 +182,7 @@ fn resolve_data_root(app: &tauri::AppHandle) -> LauncherResult<DataRoot> {
 }
 
 /// The account that authorizes launches. Debug builds started with
-/// `KURASIS_TEST_PROFILE` use the demo-only test profile instead (D-030).
+/// `LAUNCHER_NOTOKEN_PROFILE` use the demo-only test profile instead (D-030).
 fn launch_authorizer(auth: &Arc<AuthService>) -> Arc<dyn launch::service::Authorizer> {
     #[cfg(debug_assertions)]
     if let Some(profile) = launch::test_profile::TestProfile::from_env() {
@@ -269,7 +269,7 @@ pub fn run() {
             if let Err(error) = setup(app) {
                 // A readable message and exit code instead of a panic. The known
                 // cause is a system without CA certificates, so HTTPS cannot work.
-                eprintln!("Kurasis Launcher cannot start: {error}");
+                eprintln!("The launcher cannot start: {error}");
                 std::process::exit(1);
             }
             Ok(())

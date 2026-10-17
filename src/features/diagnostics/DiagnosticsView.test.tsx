@@ -10,7 +10,7 @@ function backend(saved: boolean) {
     calls.push({ cmd, args });
     if (cmd === 'export_diagnostics') {
       return saved
-        ? { saved: true, fileName: 'kurasis-diagnostics.zip' }
+        ? { saved: true, fileName: 'launcher-diagnostics.zip' }
         : { saved: false, fileName: null };
     }
     if (cmd === 'get_app_snapshot') return snapshotFixture();
@@ -55,7 +55,7 @@ describe('DiagnosticsView', () => {
     render(<DiagnosticsView snapshot={snapshot} />);
     expect(screen.getByText(/Never included: account records, sign-in tokens/)).toBeVisible();
     fireEvent.click(screen.getByRole('button', { name: 'Export…' }));
-    expect(await screen.findByText(/Saved kurasis-diagnostics.zip/)).toBeVisible();
+    expect(await screen.findByText(/Saved launcher-diagnostics.zip/)).toBeVisible();
     expect(calls.find((c) => c.cmd === 'export_diagnostics')?.args).toMatchObject({
       request: { payload: { runId: null } },
     });

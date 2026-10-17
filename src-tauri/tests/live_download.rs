@@ -7,16 +7,16 @@
 
 use std::sync::{Arc, Mutex};
 
-use kurasis_launcher_lib::catalog::source::MetadataService;
-use kurasis_launcher_lib::download::transport::HttpTransport;
-use kurasis_launcher_lib::download::{
+use launcher_lib::catalog::source::MetadataService;
+use launcher_lib::download::transport::HttpTransport;
+use launcher_lib::download::{
     CancelToken, DownloadProgress, DownloadRequest, Executor, ExecutorConfig, ProgressSink,
     resolve_managed_path,
 };
-use kurasis_launcher_lib::error::ErrorCode;
-use kurasis_launcher_lib::install::rules::RuleContext;
-use kurasis_launcher_lib::net::{PublicClient, SourcePolicy};
-use kurasis_launcher_lib::storage::paths::DataRoot;
+use launcher_lib::error::ErrorCode;
+use launcher_lib::install::rules::RuleContext;
+use launcher_lib::net::{PublicClient, SourcePolicy};
+use launcher_lib::storage::paths::DataRoot;
 use uuid::Uuid;
 
 #[derive(Default)]

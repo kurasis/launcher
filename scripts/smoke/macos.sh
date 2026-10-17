@@ -9,7 +9,7 @@ set -euo pipefail
 
 dmg=$1
 wait_seconds=${SMOKE_WAIT_SECONDS:-20}
-data_root="$HOME/Library/Application Support/io.github.kurasis.launcher"
+data_root="$HOME/Library/Application Support/app.launcher"
 apps=$(mktemp -d)
 mount_point=$(mktemp -d)
 
@@ -21,10 +21,10 @@ uname -m
 
 step "Mount $(basename "$dmg") and copy the app"
 hdiutil attach "$dmg" -nobrowse -readonly -mountpoint "$mount_point" >/dev/null
-cp -R "$mount_point/Kurasis Launcher.app" "$apps/"
+cp -R "$mount_point/Launcher.app" "$apps/"
 hdiutil detach "$mount_point" >/dev/null
-app="$apps/Kurasis Launcher.app"
-binary="$app/Contents/MacOS/kurasis-launcher"
+app="$apps/Launcher.app"
+binary="$app/Contents/MacOS/launcher"
 file "$binary"
 /usr/libexec/PlistBuddy -c 'Print :CFBundleShortVersionString' "$app/Contents/Info.plist"
 /usr/libexec/PlistBuddy -c 'Print :LSMinimumSystemVersion' "$app/Contents/Info.plist"

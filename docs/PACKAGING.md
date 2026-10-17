@@ -12,7 +12,7 @@ installation notes are in [INSTALL.md](INSTALL.md).
 | macos-x64   | `.app` in `*_x64.dmg`     | `macos-15-intel`      | Native build; minimum macOS 11.0                          |
 | linux-x64   | `.deb`, `.AppImage`       | `debian:12` container | glibc 2.36 baseline; runtime dependencies generated       |
 
-MSI and RPM are not produced (D-008). The bundle identifier `io.github.kurasis.launcher`
+MSI and RPM are not produced (D-008). The bundle identifier `app.launcher`
 names DATA_ROOT, the credential-store service and the single-instance namespace; changing
 it needs a migration plan (D-001).
 
@@ -49,9 +49,9 @@ Local equivalent for one target: `npx tauri build --bundles deb,appimage` (Linux
 
 ## Build configuration
 
-| Variable                | Kind                         | Effect                                                       |
-| ----------------------- | ---------------------------- | ------------------------------------------------------------ |
-| `KURASIS_MSA_CLIENT_ID` | Repository variable (public) | Microsoft client ID compiled in; blank = sign-in unavailable |
+| Variable                 | Kind                         | Effect                                                       |
+| ------------------------ | ---------------------------- | ------------------------------------------------------------ |
+| `LAUNCHER_MSA_CLIENT_ID` | Repository variable (public) | Microsoft client ID compiled in; blank = sign-in unavailable |
 
 ## Signing (owner actions)
 

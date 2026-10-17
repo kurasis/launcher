@@ -8,9 +8,9 @@ param([Parameter(Mandatory = $true)][string]$Installer)
 
 $ErrorActionPreference = 'Stop'
 $waitSeconds = if ($env:SMOKE_WAIT_SECONDS) { [int]$env:SMOKE_WAIT_SECONDS } else { 20 }
-$installDir = Join-Path $env:LOCALAPPDATA 'Kurasis Launcher'
-$exe = Join-Path $installDir 'kurasis-launcher.exe'
-$dataRoot = Join-Path $env:LOCALAPPDATA 'io.github.kurasis.launcher'
+$installDir = Join-Path $env:LOCALAPPDATA 'Launcher'
+$exe = Join-Path $installDir 'launcher.exe'
+$dataRoot = Join-Path $env:LOCALAPPDATA 'app.launcher'
 
 function Step($text) { Write-Host "`n== $text" }
 
@@ -25,14 +25,35 @@ $install = Start-Process -FilePath $Installer -ArgumentList '/S' -Wait -PassThru
 if ($install.ExitCode -ne 0) { throw "installer exited with $($install.ExitCode)" }
 if (-not (Test-Path $exe)) { throw "launcher not found at $exe" }
 $entry = Get-ChildItem 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Uninstall' |
-  Get-ItemProperty | Where-Object { $_.DisplayName -eq 'Kurasis Launcher' }
+  Get-ItemProperty | Where-Object { $_.DisplayName -eq 'Launcher' }
 if (-not $entry) { throw 'no per-user uninstall entry' }
 Write-Host "Installed $($entry.DisplayVersion) to $installDir"
 
 Step 'Start the installed launcher'
 Remove-Item -Recurse -Force -ErrorAction SilentlyContinue $dataRoot
-$process = Start-Process -FilePath $exe -PassThru
+$stdout = Join-Path $env:RUNNER_TEMP 'launcher-stdout.log'
+$stderr = Join-Path $env:RUNNER_TEMP 'launcher-stderr.log'
+$process = Start-Process -FilePath $exe -PassThru -RedirectStandardOutput $stdout -RedirectStandardError $stderr
 Start-Sleep -Seconds $waitSeconds
+# A cold runner occasionally needs longer for the first start; allow up to 60 s.
+$lock = Join-Path $dataRoot 'locks\supervisor.lock'
+$deadline = (Get-Date).AddSeconds(60 - $waitSeconds)
+while (-not (Test-Path $lock) -and -not $process.HasExited -and (Get-Date) -lt $deadline) {
+  Start-Sleep -Seconds 1
+}
+if (-not (Test-Path $lock)) {
+  # Show what the launcher did instead, so a failure can be diagnosed from the log.
+  Write-Host "exited: $($process.HasExited)"
+  Get-Process -ErrorAction SilentlyContinue launcher | Format-Table Id, Path, Responding | Out-String | Write-Host
+  foreach ($base in $env:LOCALAPPDATA, $env:APPDATA) {
+    Get-ChildItem -Directory $base | Where-Object Name -Like '*launcher*' | ForEach-Object {
+      Write-Host $_.FullName
+      Get-ChildItem -Recurse -Depth 1 -Name $_.FullName | Write-Host
+    }
+  }
+  Write-Host '-- stdout'; Get-Content -ErrorAction SilentlyContinue $stdout | Write-Host
+  Write-Host '-- stderr'; Get-Content -ErrorAction SilentlyContinue $stderr | Write-Host
+}
 if ($process.HasExited) { throw "launcher exited early with $($process.ExitCode)" }
 if (-not (Test-Path (Join-Path $dataRoot 'locks\supervisor.lock'))) { throw 'DATA_ROOT not created' }
 Write-Host "Running after ${waitSeconds}s, DATA_ROOT created"

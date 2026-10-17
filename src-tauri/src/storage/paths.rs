@@ -456,9 +456,9 @@ mod tests {
 
     fn root() -> DataRoot {
         let base = if cfg!(windows) {
-            PathBuf::from(r"C:\Users\Test User\AppData\Local\io.github.kurasis.launcher")
+            PathBuf::from(r"C:\Users\Test User\AppData\Local\app.launcher")
         } else {
-            PathBuf::from("/home/test user/.local/share/io.github.kurasis.launcher")
+            PathBuf::from("/home/test user/.local/share/app.launcher")
         };
         DataRoot::new(base).unwrap()
     }

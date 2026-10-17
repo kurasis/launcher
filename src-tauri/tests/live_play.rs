@@ -1,10 +1,10 @@
 //! Live game launch with the debug-build test profile (D-030). Ignored by default;
 //! run on a machine with a display (Xvfb works) and an installed version:
-//! `KURASIS_LIVE_ROOT=<data dir> KURASIS_LIVE_VERSION=26.3 cargo test --test live_play -- --ignored --nocapture`
+//! `LAUNCHER_LIVE_ROOT=<data dir> LAUNCHER_LIVE_VERSION=26.3 cargo test --test live_play -- --ignored --nocapture`
 //!
 //! Starts the real Minecraft client through the launch service in demo mode, waits
 //! until its log shows that the client finished loading its resources (the title
-//! screen follows), optionally keeps it running for `KURASIS_LIVE_HOLD_SECS` (for
+//! screen follows), optionally keeps it running for `LAUNCHER_LIVE_HOLD_SECS` (for
 //! screenshots or manual steps), then stops it through the service and checks the
 //! recorded run. This is a "test profile, demo" result, never account evidence.
 
@@ -15,16 +15,16 @@ use std::path::PathBuf;
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
-use kurasis_launcher_lib::catalog::source::MetadataService;
-use kurasis_launcher_lib::install::service::{LiveSource, PlanSource, StateAccess};
-use kurasis_launcher_lib::launch::service::{LaunchHost, LaunchService};
-use kurasis_launcher_lib::launch::test_profile::TestProfile;
-use kurasis_launcher_lib::lifecycle::child::Supervised;
-use kurasis_launcher_lib::net::{PublicClient, SourcePolicy};
-use kurasis_launcher_lib::state::dto::RunState;
-use kurasis_launcher_lib::state::{AppState, NoopSink};
-use kurasis_launcher_lib::storage::paths::DataRoot;
-use kurasis_launcher_lib::validation::MemoryPolicy;
+use launcher_lib::catalog::source::MetadataService;
+use launcher_lib::install::service::{LiveSource, PlanSource, StateAccess};
+use launcher_lib::launch::service::{LaunchHost, LaunchService};
+use launcher_lib::launch::test_profile::TestProfile;
+use launcher_lib::lifecycle::child::Supervised;
+use launcher_lib::net::{PublicClient, SourcePolicy};
+use launcher_lib::state::dto::RunState;
+use launcher_lib::state::{AppState, NoopSink};
+use launcher_lib::storage::paths::DataRoot;
+use launcher_lib::validation::MemoryPolicy;
 
 const VERSION: &str = "0.1.0";
 /// Logged once the client has stitched its texture atlases, right before the
@@ -72,11 +72,11 @@ impl LaunchHost for Host {
 #[ignore = "starts the real game; needs a display and an installed version"]
 async fn the_game_starts_in_demo_mode_and_stops_cleanly() {
     let root = DataRoot::new(PathBuf::from(
-        std::env::var("KURASIS_LIVE_ROOT").expect("set KURASIS_LIVE_ROOT"),
+        std::env::var("LAUNCHER_LIVE_ROOT").expect("set LAUNCHER_LIVE_ROOT"),
     ))
     .unwrap();
-    let version = std::env::var("KURASIS_LIVE_VERSION").expect("set KURASIS_LIVE_VERSION");
-    let hold = std::env::var("KURASIS_LIVE_HOLD_SECS")
+    let version = std::env::var("LAUNCHER_LIVE_VERSION").expect("set LAUNCHER_LIVE_VERSION");
+    let hold = std::env::var("LAUNCHER_LIVE_HOLD_SECS")
         .ok()
         .and_then(|s| s.parse().ok())
         .unwrap_or(0u64);
@@ -105,7 +105,7 @@ async fn the_game_starts_in_demo_mode_and_stops_cleanly() {
     let service = LaunchService::new(
         Arc::clone(&host) as Arc<dyn LaunchHost>,
         source,
-        Arc::new(TestProfile::new("KurasisTest").unwrap()),
+        Arc::new(TestProfile::new("TestPlayer").unwrap()),
         VERSION,
     );
 
@@ -149,11 +149,11 @@ async fn the_game_starts_in_demo_mode_and_stops_cleanly() {
     );
     let text = std::fs::read_to_string(&log).unwrap();
     assert!(
-        text.contains("KurasisTest"),
+        text.contains("TestPlayer"),
         "the profile name reached the client"
     );
     assert!(
-        !text.contains("kurasis-test-profile"),
+        !text.contains("notoken-profile"),
         "the placeholder token is redacted in the run log"
     );
     if hold > 0 {

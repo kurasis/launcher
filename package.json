@@ -1,5 +1,5 @@
 {
-  "name": "kurasis-launcher",
+  "name": "launcher",
   "private": true,
   "version": "0.1.0",
   "description": "Independent desktop launcher for Minecraft: Java Edition (provisional name).",

@@ -42,8 +42,8 @@ use extract::{Limits, unsafe_archive};
 use probe::JavaProbe;
 use tree::{EntryKind, TreeReceipt};
 
-pub const RUNTIME_RECEIPT: &str = ".kurasis-runtime.json";
-pub const TREE_RECEIPT: &str = ".kurasis-tree.json";
+pub const RUNTIME_RECEIPT: &str = ".launcher-runtime.json";
+pub const TREE_RECEIPT: &str = ".launcher-tree.json";
 
 /// Written into the runtime root after a successful install.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]

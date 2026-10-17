@@ -23,7 +23,7 @@ env:
   CARGO_TERM_COLOR: always
   CARGO_INCREMENTAL: 0
   # Non-secret build configuration (docs/AUTH-SETUP.md); blank means "not configured".
-  KURASIS_MSA_CLIENT_ID: ${{ vars.KURASIS_MSA_CLIENT_ID }}
+  LAUNCHER_MSA_CLIENT_ID: ${{ vars.LAUNCHER_MSA_CLIENT_ID }}
   RETENTION_DAYS: ${{ github.event_name == 'pull_request' && 7 || 30 }}
 
 jobs:
@@ -82,7 +82,7 @@ jobs:
 
       - uses: actions/upload-artifact@v5
         with:
-          name: kurasis-launcher-linux-x64
+          name: launcher-linux-x64
           path: dist-packages
           retention-days: ${{ env.RETENTION_DAYS }}
           if-no-files-found: error
@@ -106,7 +106,7 @@ jobs:
           sparse-checkout: scripts/smoke
       - uses: actions/download-artifact@v5
         with:
-          name: kurasis-launcher-linux-x64
+          name: launcher-linux-x64
           path: packages
       - run: scripts/smoke/linux.sh packages/*.deb packages/*.AppImage
 
@@ -148,7 +148,7 @@ jobs:
 
       - uses: actions/upload-artifact@v5
         with:
-          name: kurasis-launcher-windows-x64
+          name: launcher-windows-x64
           path: dist-packages
           retention-days: ${{ env.RETENTION_DAYS }}
           if-no-files-found: error
@@ -224,7 +224,7 @@ jobs:
 
       - uses: actions/upload-artifact@v5
         with:
-          name: kurasis-launcher-${{ matrix.name }}
+          name: launcher-${{ matrix.name }}
           path: dist-packages
           retention-days: ${{ env.RETENTION_DAYS }}
           if-no-files-found: error

@@ -24,7 +24,7 @@ In the Microsoft Entra admin center (or Azure portal) → **App registrations** 
 
 | Setting                     | Value to use                                                                                                | Verify in G0                                                                                                                        |
 | --------------------------- | ----------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------- |
-| Name                        | Your launcher's product name (provisional: Kurasis Launcher)                                                | —                                                                                                                                   |
+| Name                        | Your launcher's product name (provisional: Launcher)                                                        | —                                                                                                                                   |
 | Supported account types     | An option that includes **personal Microsoft accounts** (the flow uses the `consumers` authority)           | Record the chosen option                                                                                                            |
 | Platform                    | **Mobile and desktop applications** (public client / native)                                                | —                                                                                                                                   |
 | Redirect URI                | `http://localhost` (loopback, system browser)                                                               | Port handling and the exact host must be confirmed with a real callback; do not assume `127.0.0.1` or IPv6 behave the same (doc 03) |
@@ -53,7 +53,7 @@ the launcher keeps working.
 The ID is read when the Rust core is compiled:
 
 ```sh
-KURASIS_MSA_CLIENT_ID=<application-client-id-guid> npm run tauri dev
+LAUNCHER_MSA_CLIENT_ID=<application-client-id-guid> npm run tauri dev
 ```
 
 The UI panel "Microsoft sign-in setup" then shows **Configured, not yet verified**. A

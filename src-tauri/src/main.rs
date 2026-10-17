@@ -6,9 +6,9 @@ fn main() {
     #[cfg(debug_assertions)]
     {
         let args: Vec<String> = std::env::args().collect();
-        if let Some(code) = kurasis_launcher_lib::lifecycle::harness::child_main(&args) {
+        if let Some(code) = launcher_lib::lifecycle::harness::child_main(&args) {
             std::process::exit(code);
         }
     }
-    kurasis_launcher_lib::run();
+    launcher_lib::run();
 }

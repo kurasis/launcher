@@ -137,7 +137,7 @@ async fn corruption_is_detected_before_execution_and_rebuilt() {
         (0, "lib/libjli.so"),
         (1, "lib/unexpected.so"),
         (2, "lib/alias.so"),
-        (3, ".kurasis-tree.json"),
+        (3, ".launcher-tree.json"),
     ] {
         match damage {
             0 => fs::write(installed.dir.join(path), b"tampered!!!!!!").unwrap(),

@@ -1,8 +1,8 @@
 //! Live checks of launch arguments against real managed Java. Ignored by default;
 //! run with
-//! `KURASIS_LIVE_ROOT=<installed data dir> cargo test --test live_launch_args -- --ignored --nocapture --test-threads=1`
+//! `LAUNCHER_LIVE_ROOT=<installed data dir> cargo test --test live_launch_args -- --ignored --nocapture --test-threads=1`
 //! where the data directory holds a completed installation (P08). With several
-//! installations, `KURASIS_LIVE_VERSION` selects one.
+//! installations, `LAUNCHER_LIVE_VERSION` selects one.
 //!
 //! 1. Argument echo: tricky values reach Java unchanged through an argfile and as
 //!    direct arguments (`-XshowSettings:properties -version` prints them back).
@@ -15,29 +15,29 @@
 
 use std::path::PathBuf;
 
-use kurasis_launcher_lib::install::lock::runtime_from_lock;
-use kurasis_launcher_lib::install::rules::RuleContext;
-use kurasis_launcher_lib::launch::compile::{self, LaunchIdentity, LaunchInputs};
-use kurasis_launcher_lib::launch::{argfile, encoding};
-use kurasis_launcher_lib::runtime::{Verification, probe, verify_installed};
-use kurasis_launcher_lib::secrets::SecretString;
-use kurasis_launcher_lib::storage::models::Resolution;
-use kurasis_launcher_lib::storage::paths::DataRoot;
-use kurasis_launcher_lib::storage::reconcile::{LockState, read_lock};
+use launcher_lib::install::lock::runtime_from_lock;
+use launcher_lib::install::rules::RuleContext;
+use launcher_lib::launch::compile::{self, LaunchIdentity, LaunchInputs};
+use launcher_lib::launch::{argfile, encoding};
+use launcher_lib::runtime::{Verification, probe, verify_installed};
+use launcher_lib::secrets::SecretString;
+use launcher_lib::storage::models::Resolution;
+use launcher_lib::storage::paths::DataRoot;
+use launcher_lib::storage::reconcile::{LockState, read_lock};
 
 fn root() -> DataRoot {
-    let path = std::env::var("KURASIS_LIVE_ROOT").expect("set KURASIS_LIVE_ROOT");
+    let path = std::env::var("LAUNCHER_LIVE_ROOT").expect("set LAUNCHER_LIVE_ROOT");
     DataRoot::new(PathBuf::from(path)).unwrap()
 }
 
 fn installed() -> (
     DataRoot,
-    kurasis_launcher_lib::storage::models::InstallLock,
+    launcher_lib::storage::models::InstallLock,
     PathBuf,
 ) {
     let root = root();
-    // KURASIS_LIVE_VERSION picks one version when several are installed.
-    let wanted = std::env::var("KURASIS_LIVE_VERSION").ok();
+    // LAUNCHER_LIVE_VERSION picks one version when several are installed.
+    let wanted = std::env::var("LAUNCHER_LIVE_VERSION").ok();
     let instances = std::fs::read_dir(root.instances_dir()).unwrap();
     for entry in instances.flatten() {
         if let Ok(LockState::Complete(lock)) = read_lock(&entry.path().join("install.lock.json"))
@@ -50,7 +50,7 @@ fn installed() -> (
             return (root, *lock, runtime.java);
         }
     }
-    panic!("no completed installation under KURASIS_LIVE_ROOT");
+    panic!("no completed installation under LAUNCHER_LIVE_ROOT");
 }
 
 /// Parses `-XshowSettings:properties`; path-like properties continue on the
@@ -94,7 +94,7 @@ fn tricky_values_survive_argfiles_and_direct_arguments() {
     let args: Vec<String> = values
         .iter()
         .enumerate()
-        .map(|(i, v)| format!("-Dkurasis.echo{i}={v}"))
+        .map(|(i, v)| format!("-Dlauncher.echo{i}={v}"))
         .collect();
     let file = dir.path().join("jvm args.txt");
     std::fs::write(&file, argfile::encode(&args, false).unwrap()).unwrap();
@@ -114,7 +114,7 @@ fn tricky_values_survive_argfiles_and_direct_arguments() {
         assert!(output.status.success());
         let props = properties(&output.stderr);
         for (i, value) in values.iter().enumerate() {
-            let got = get(&props, &format!("kurasis.echo{i}"));
+            let got = get(&props, &format!("launcher.echo{i}"));
             assert_eq!(got, vec![(*value).to_owned()], "via_file={via_file} #{i}");
         }
         let how = if via_file {
@@ -132,7 +132,7 @@ fn tricky_values_survive_argfiles_and_direct_arguments() {
     for (locale, expect) in [("C.UTF-8", true), ("POSIX", false)] {
         let output = probe::sanitized_command(&java)
             .env("LC_ALL", locale)
-            .arg(format!("-Dkurasis.argument.check={sent}"))
+            .arg(format!("-Dlauncher.argument.check={sent}"))
             .args(["-XshowSettings:properties", "-version"])
             .output()
             .unwrap();
@@ -149,11 +149,11 @@ fn real_jvm_arguments_are_accepted_by_the_managed_java() {
     let (root, lock, java) = installed();
     let ctx = RuleContext::current().unwrap();
     let descriptor = std::fs::read(root.version_descriptor(
-        &kurasis_launcher_lib::storage::paths::SafeName::parse(&lock.version_id).unwrap(),
+        &launcher_lib::storage::paths::SafeName::parse(&lock.version_id).unwrap(),
         &lock.descriptor.sha1,
     ))
     .unwrap();
-    let plan = kurasis_launcher_lib::install::plan::plan_game(
+    let plan = launcher_lib::install::plan::plan_game(
         &descriptor,
         &lock.descriptor.url,
         &lock.descriptor.sha1,

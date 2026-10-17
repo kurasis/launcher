@@ -25,7 +25,7 @@ pub const MAX_RUNS: usize = 3;
 /// Newest bytes kept from one log file.
 pub const MAX_LOG_BYTES: usize = 2 * 1024 * 1024;
 
-pub const README: &str = "Kurasis Launcher diagnostic export\n\
+pub const README: &str = "Launcher diagnostic export\n\
 \n\
 Included:\n\
 - summary.json: launcher version, OS, settings, installation versions and health,\n\
@@ -246,8 +246,8 @@ mod tests {
     #[test]
     fn tokens_and_private_paths_are_removed() {
         let home = Path::new("/home/jurgen");
-        let root = Path::new("/home/jurgen/.local/share/kurasis");
-        let text = "at /home/jurgen/.local/share/kurasis/shared/x.jar user /home/jurgen/Desktop \
+        let root = Path::new("/home/jurgen/.local/share/launcher");
+        let text = "at /home/jurgen/.local/share/launcher/shared/x.jar user /home/jurgen/Desktop \
                     --accessToken abc.def-123 token eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiIxMjM0In0.sig \
                     refresh_token=0.AAAA-secret Authorization: Bearer xyz";
         let out = sanitize(text, Some(home), root);
