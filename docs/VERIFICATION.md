@@ -601,3 +601,81 @@ Frontend total: 54 tests; Rust unit tests: 244.
 ### CI results
 
 Recorded by the next phase's pull request.
+
+## P12 — Windows, macOS and Linux packages
+
+- **Hosts:** packages built in a Debian 12 chroot (glibc 2.36) on the development host;
+  tested in freshly bootstrapped Debian 12.15 and Ubuntu 24.04 minimal roots (chroot,
+  Xvfb display), not on consumer machines. Windows and macOS packages are built and
+  smoke-tested only by the `Package` workflow in CI.
+- **Branch / PR:** `claude/p12-packaging`.
+- **Status:** **blocked** for the done-when items that need clean target machines (P13)
+  and owner signing credentials; everything else is implemented and verified as below.
+
+### Local Linux packages (unsigned)
+
+Built from commit `04898f0` plus the uncommitted P12 changes (`dirtyWorkingTree: true` in
+`build-info.json`); CI rebuilds them from the pushed commit.
+
+| Artifact                                | Bytes       | SHA-256                                                            |
+| --------------------------------------- | ----------- | ------------------------------------------------------------------ |
+| `Kurasis Launcher_0.1.0_amd64.deb`      | 6,130,524   | `74d3af127d613b1626d953f949703b1d8ea580efe200cb15b102c518cab9dd2f` |
+| `Kurasis Launcher_0.1.0_amd64.AppImage` | 101,640,696 | `1a8b016df6b1e94448eb2217d72c5cc4682c0cfa97fa7ca00085b52fb00b6e15` |
+
+Toolchain: rustc 1.97.0, Node 24.21.0, Tauri CLI 2.12.3, glibc 2.36. The binary needs
+glibc ≥ 2.34. Declared `.deb` dependencies: `ca-certificates, libdbus-1-3,
+libwebkit2gtk-4.1-0, libgtk-3-0`.
+
+### Smoke tests (`scripts/smoke/linux.sh`, pass on both systems)
+
+| Step                                                                 | Debian 12 | Ubuntu 24.04 |
+| -------------------------------------------------------------------- | --------- | ------------ |
+| `.deb` installs with declared dependencies only; no Rust/Node/Java   | pass      | pass         |
+| Installed launcher runs 20 s under Xvfb and holds the DATA_ROOT lock | pass      | pass         |
+| `apt purge` removes the program and keeps user data                  | pass      | pass         |
+| AppImage starts on a stripped system plus host desktop libraries     | pass      | pass         |
+
+Found and fixed while testing:
+
+- On a fresh Debian 12 without `ca-certificates` the launcher panicked at startup ("The
+  HTTPS client could not be created"). The package now depends on `ca-certificates` and
+  `libdbus-1-3`; startup failures exit with a readable message instead of a panic.
+- The AppImage needs the libraries linuxdeploy leaves to the host (ALSA, EGL/GL/GLES,
+  GBM, fontconfig, FriBidi, HarfBuzz, Wayland client); the first runs failed without
+  them. Documented in INSTALL.md and D-028.
+- Packaged builds said "Development build"; they now say "Qualification build"
+  ([screenshot](verification/p12-packaged-debian12.png)).
+
+### Upgrade and uninstall (Debian 12, real version change)
+
+A temporary 0.1.1 build (version bump only, not committed) upgraded an installed 0.1.0
+with an existing data root: an installed Minecraft 1.21.1 instance, a test world
+(`saves/Upgrade World/level.dat`, `region/r.0.0.mca`), `options.txt` and changed settings
+(dark theme, default heap 3072 MiB).
+
+| Check                                                     | Result                                                        |
+| --------------------------------------------------------- | ------------------------------------------------------------- |
+| 0.1.0 starts with the data; settings applied              | pass (dark theme, instance listed)                            |
+| `apt install` of 0.1.1 over 0.1.0                         | "Unpacking kurasis-launcher (0.1.1) over (0.1.0)"             |
+| 0.1.1 starts and reports version 0.1.1                    | pass ([screenshot](verification/p12-upgrade-about-0.1.1.png)) |
+| Settings, world, options and instance files after upgrade | all 8 files byte-identical (SHA-256)                          |
+| `apt purge` after the upgrade                             | program removed; all 8 files still byte-identical             |
+
+### CI package workflow
+
+`.github/workflows/package.yml` builds the NSIS installer (windows-2025), DMGs
+(macos-15 arm64, macos-15-intel x64) and the Linux packages (debian:12), smoke-tests them
+and uploads them as workflow artifacts. Results are recorded by the next phase's pull
+request.
+
+### Not verified in P12
+
+- Clean consumer Windows 10/11, macOS and Linux desktops, Wayland and HiDPI (P13).
+- Missing WebView2 on Windows (bootstrapper download) on a real machine.
+- Signed packages: no Apple Developer ID or Windows code-signing certificate exists
+  (owner action, docs/PACKAGING.md). All packages are unsigned.
+- Upgrade on Windows and macOS (CI installs a single version).
+
+### CI results
+
+Recorded by the next phase's pull request.

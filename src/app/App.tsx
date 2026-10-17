@@ -50,7 +50,7 @@ export function App() {
       <header className={styles.topbar}>
         <div className={styles.brandRow}>
           <h1 className={styles.brand}>{strings.productName}</h1>
-          <StatusBadge tone="neutral" label={strings.buildTag} />
+          <StatusBadge tone="neutral" label={strings.buildTag(import.meta.env.DEV)} />
         </div>
         {snapshot !== null && <ActivityIndicator snapshot={snapshot} />}
         {snapshot !== null && <AccountChip account={snapshot.account} />}

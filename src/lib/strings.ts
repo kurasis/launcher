@@ -15,7 +15,8 @@ import type {
 
 export const strings = {
   productName: 'Kurasis Launcher',
-  buildTag: 'Development build',
+  // Packages are private qualification builds until P13 (docs/spec/01).
+  buildTag: (development: boolean) => (development ? 'Development build' : 'Qualification build'),
   independentNotice:
     'Kurasis Launcher is an independent project. It is not affiliated with or endorsed by Mojang Studios or Microsoft.',
 
