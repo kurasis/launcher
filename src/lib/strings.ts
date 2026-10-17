@@ -20,6 +20,7 @@ export const strings = {
   nav: {
     label: 'Main',
     home: 'Installations',
+    account: 'Account',
     settings: 'Settings',
     about: 'About',
   },
@@ -29,6 +30,50 @@ export const strings = {
     errorTitle: 'The launcher core could not be reached',
     retry: 'Try again',
     unavailableTitle: 'Launcher data is unavailable',
+  },
+
+  accountView: {
+    title: 'Microsoft account',
+    signIn: 'Sign in with Microsoft',
+    signInAgain: 'Sign in again',
+    signInHint:
+      'Sign-in opens your web browser. The launcher never sees your password; it only receives a sign-in code from Microsoft.',
+    notConfigured:
+      'Sign-in is unavailable in this build because no project-owned Microsoft application ID is configured (see docs/AUTH-SETUP.md).',
+    waiting: 'Finish signing in in your web browser. This window updates automatically.',
+    cancel: 'Cancel sign-in',
+    checking: 'Checking your account…',
+    verified: 'Minecraft: Java Edition access verified for this session.',
+    verifiedNote: 'Access is checked again every time you start the game.',
+    signOut: 'Sign out',
+    signOutHint:
+      'Signing out removes the saved sign-in from this computer. It does not sign you out of Microsoft in your browser.',
+    retrySignOut: 'Try signing out again',
+    checkAgain: 'Check again',
+    sessionOnly:
+      'The system credential store is unavailable, so you will need to sign in again after the launcher restarts.',
+    links: {
+      buy_minecraft: 'Get Minecraft',
+      create_profile: 'Create your Java profile',
+      xbox_profile: 'Open Xbox account',
+      family_settings: 'Microsoft family settings',
+      minecraft_help: 'Minecraft help',
+      minecraft_eula: 'Minecraft EULA',
+    },
+    stateTitle: {
+      signed_out: 'Not signed in',
+      signing_in: 'Signing in',
+      refreshing: 'Checking account',
+      verified_access: 'Signed in',
+      no_access: 'No Java Edition access',
+      profile_setup_required: 'Java profile needed',
+      reauth_required: 'Sign-in required',
+      service_unavailable: 'Account service unavailable',
+      app_not_approved: 'Launcher not approved by Minecraft services',
+      restricted: 'Account restricted',
+      protocol_error: 'Account check failed',
+      sign_out_pending: 'Sign-out incomplete',
+    } satisfies Record<AccountState, string>,
   },
 
   account: {

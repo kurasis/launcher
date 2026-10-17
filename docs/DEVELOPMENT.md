@@ -21,7 +21,7 @@ These are needed to build the app, not to run a packaged build.
 
 ```sh
 sudo apt-get install -y build-essential curl wget file libwebkit2gtk-4.1-dev libxdo-dev \
-  libssl-dev libayatana-appindicator3-dev librsvg2-dev
+  libssl-dev libdbus-1-dev libayatana-appindicator3-dev librsvg2-dev
 ```
 
 **Windows 11 x64:** Microsoft C++ Build Tools ("Desktop development with C++") and the

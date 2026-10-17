@@ -137,12 +137,32 @@ pub enum AccountState {
     SignOutPending,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+/// Account display state. Never contains tokens or vault contents.
+#[derive(Debug, Clone, PartialEq, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct AccountSummary {
     pub state: AccountState,
     pub profile_name: Option<String>,
     pub profile_id: Option<String>,
+    /// The last sign-in or verification failure, if the state is an error state.
+    pub error: Option<LauncherError>,
+    /// True when credentials are kept in memory only (no usable OS vault).
+    pub session_only: bool,
+    /// The active browser sign-in attempt, cancellable with `cancel_login`.
+    pub login_operation_id: Option<String>,
+}
+
+impl AccountSummary {
+    pub fn signed_out() -> Self {
+        Self {
+            state: AccountState::SignedOut,
+            profile_name: None,
+            profile_id: None,
+            error: None,
+            session_only: false,
+            login_operation_id: None,
+        }
+    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
@@ -258,6 +278,12 @@ pub struct SettingsChanged {
 
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
+pub struct AccountStateChanged {
+    pub account: AccountSummary,
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
 pub struct GameStateChanged {
     pub current_run: Option<RunSummary>,
     pub last_run: Option<RunSummary>,
@@ -270,6 +296,7 @@ pub enum BackendEvent {
     InstanceChanged(EventEnvelope<InstanceChanged>),
     SettingsChanged(EventEnvelope<SettingsChanged>),
     GameStateChanged(Box<EventEnvelope<GameStateChanged>>),
+    AccountStateChanged(Box<EventEnvelope<AccountStateChanged>>),
 }
 
 impl BackendEvent {
@@ -278,6 +305,7 @@ impl BackendEvent {
             Self::InstanceChanged(_) => "instance_changed",
             Self::SettingsChanged(_) => "settings_changed",
             Self::GameStateChanged(_) => "game_state_changed",
+            Self::AccountStateChanged(_) => "account_state_changed",
         }
     }
 
@@ -286,6 +314,7 @@ impl BackendEvent {
             Self::InstanceChanged(e) => e.revision,
             Self::SettingsChanged(e) => e.revision,
             Self::GameStateChanged(e) => e.revision,
+            Self::AccountStateChanged(e) => e.revision,
         }
     }
 
@@ -294,6 +323,7 @@ impl BackendEvent {
             Self::InstanceChanged(e) => serde_json::to_value(e),
             Self::SettingsChanged(e) => serde_json::to_value(e),
             Self::GameStateChanged(e) => serde_json::to_value(e),
+            Self::AccountStateChanged(e) => serde_json::to_value(e),
         }
         .unwrap_or(serde_json::Value::Null)
     }

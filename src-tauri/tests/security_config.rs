@@ -132,6 +132,11 @@ fn main_window_capability_grants_only_app_commands() {
             "allow-set-app-settings",
             "allow-show-main-window",
             "allow-request-quit",
+            "allow-begin-login",
+            "allow-cancel-login",
+            "allow-sign-out",
+            "allow-verify-account",
+            "allow-open-external",
             "allow-start-lifecycle-test",
             "allow-stop-lifecycle-test",
         ]

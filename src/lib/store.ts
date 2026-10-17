@@ -30,6 +30,8 @@ export function reconcile(snapshot: AppSnapshot, event: BackendEvent): Reconcili
     }
     case 'settings_changed':
       return { kind: 'apply', snapshot: { ...base, settings: event.payload.settings } };
+    case 'account_state_changed':
+      return { kind: 'apply', snapshot: { ...base, account: event.payload.account } };
     case 'game_state_changed': {
       const { currentRun, lastRun, activeOperation } = event.payload;
       const busyId = activeOperation?.instanceId ?? null;

@@ -9,6 +9,7 @@ pub mod auth;
 pub mod catalog;
 pub mod commands;
 pub mod error;
+pub mod external;
 pub mod install;
 pub mod launch;
 pub mod lifecycle;
@@ -19,13 +20,17 @@ pub mod storage;
 pub mod validation;
 
 use std::path::PathBuf;
+use std::sync::Arc;
 
 use tauri::{Emitter, Manager, RunEvent};
 
+use auth::service::{AccountHost, AuthService};
 use error::{ErrorCode, LauncherError, LauncherResult};
 use lifecycle::{ExitDecision, LifecycleController, RunHandles};
+use state::dto::AccountSummary;
 use state::dto::BackendEvent;
 use state::{AppState, EventSink};
+use storage::models::{AccountsFile, OperationKind};
 use storage::paths::DataRoot;
 use validation::MemoryPolicy;
 
@@ -40,6 +45,53 @@ impl EventSink for TauriSink {
         // Delivery to a webview is best-effort; the snapshot stays authoritative.
         let _ = self.0.emit(event.name(), event.payload());
     }
+}
+
+/// Gives the auth service access to the managed application state.
+struct TauriAccountHost(tauri::AppHandle);
+
+impl AccountHost for TauriAccountHost {
+    fn account(&self) -> AccountSummary {
+        self.0.state::<AppState>().account()
+    }
+    fn set_account(&self, account: AccountSummary) {
+        self.0.state::<AppState>().set_account(account);
+    }
+    fn accounts_file(&self) -> AccountsFile {
+        self.0.state::<AppState>().accounts_file()
+    }
+    fn save_accounts_file(&self, accounts: AccountsFile) -> LauncherResult<()> {
+        self.0.state::<AppState>().save_accounts_file(accounts)
+    }
+    fn launch_owns_account(&self) -> bool {
+        self.0
+            .state::<AppState>()
+            .activity()
+            .current()
+            .is_some_and(|a| a.kind == OperationKind::Launch)
+    }
+}
+
+fn create_auth_service(
+    handle: &tauri::AppHandle,
+) -> Result<AuthService, Box<dyn std::error::Error>> {
+    let http = auth::http::AuthHttp::production(&handle.package_info().version.to_string())
+        .map_err(|e| e.message)?;
+    let opener_handle = handle.clone();
+    Ok(AuthService::new(
+        http,
+        auth::client_id::build_time_client_id(),
+        Arc::new(TauriAccountHost(handle.clone())),
+        Box::new(move |url: &str| {
+            use tauri_plugin_opener::OpenerExt;
+            let url = external::check_allowed(url)?;
+            opener_handle
+                .opener()
+                .open_url(url.as_str(), None::<&str>)
+                .map_err(|_| LauncherError::internal("The system browser could not be opened."))
+        }),
+        Arc::new(auth::vault::KeyringStore),
+    ))
 }
 
 fn resolve_data_root(app: &tauri::AppHandle) -> LauncherResult<DataRoot> {
@@ -66,6 +118,7 @@ pub fn run() {
         .plugin(tauri_plugin_single_instance::init(|app, _args, _cwd| {
             app.state::<LifecycleController>().show_main_window(app);
         }))
+        .plugin(tauri_plugin_opener::init())
         .manage(LifecycleController::new())
         .manage(RunHandles::default())
         .setup(|app| {
@@ -77,6 +130,10 @@ pub fn run() {
                 Box::new(TauriSink(handle)),
             );
             app.manage(state);
+            let auth = Arc::new(create_auth_service(app.handle())?);
+            app.manage(Arc::clone(&auth));
+            // Finish a pending sign-out or refresh the saved account in the background.
+            tauri::async_runtime::spawn(async move { auth.restore().await });
             Ok(())
         })
         .invoke_handler(handlers())
@@ -121,6 +178,11 @@ fn handlers<R: tauri::Runtime>() -> impl Fn(tauri::ipc::Invoke<R>) -> bool + Sen
         commands::set_app_settings,
         commands::show_main_window,
         commands::request_quit,
+        commands::begin_login,
+        commands::cancel_login,
+        commands::sign_out,
+        commands::verify_account,
+        commands::open_external,
         commands::start_lifecycle_test,
         commands::stop_lifecycle_test,
     ]
@@ -137,5 +199,10 @@ fn handlers<R: tauri::Runtime>() -> impl Fn(tauri::ipc::Invoke<R>) -> bool + Sen
         commands::set_app_settings,
         commands::show_main_window,
         commands::request_quit,
+        commands::begin_login,
+        commands::cancel_login,
+        commands::sign_out,
+        commands::verify_account,
+        commands::open_external,
     ]
 }
