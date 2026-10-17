@@ -25,7 +25,7 @@ Allowed states: `not_started`, `in_progress`, `blocked`, `done`. A partially imp
 
 | Dependency | State | Required owner contribution |
 | --- | --- | --- |
-| Project-owned Microsoft public client and service access | Not supplied (tracked in [AUTH-SETUP.md](../AUTH-SETUP.md)); blocks P04 live sign-in, the real launch in P09 and the account parts of P13 | Supply registered client ID and confirm accepted auth configuration/access |
+| Project-owned Microsoft public client and service access | Client ID supplied as repository variable and accepted by Microsoft's authorization endpoint (2026-10-17); Minecraft service access pending, no account signed in yet ([AUTH-SETUP.md](../AUTH-SETUP.md)); blocks P04 live sign-in, the real authenticated launch in P09 and the account parts of P13 | Wait for Minecraft service approval, then sign in with real accounts (A03–A06) |
 | Real owned / no-access / active subscription test accounts | Unverified | Owner-operated tests; never put credentials into this file |
 | Target OS/hardware test environments | Only an Ubuntu 24.04 container host and GitHub-hosted CI runners are available; no target desktops (see [VERIFICATION.md](../VERIFICATION.md#test-environments)) | Identify available Windows, macOS Intel/arm64 and Linux sessions |
 | Release identity and signing | Neutral identity `app.launcher` / "Launcher" ([D-031](../DECISIONS.md#d-031--neutral-application-identity)); packaging workflow ready, no Apple Developer ID or Windows certificate ([PACKAGING.md](../PACKAGING.md)) | Choose stable app identity and supply signing configuration when distributing |
