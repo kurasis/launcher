@@ -7,6 +7,11 @@
 //! operations run on the main event loop and are serialized there.
 
 pub mod child;
+
+/// How long a child must survive before the main window is unloaded. A survival
+/// interval only gates the unload; it does not mean the game reached its menu.
+pub const SURVIVAL_INTERVAL: std::time::Duration = std::time::Duration::from_millis(1500);
+
 #[cfg(debug_assertions)]
 pub mod harness;
 

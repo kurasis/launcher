@@ -15,6 +15,7 @@ const base: RunSummary = {
   drainTimedOut: false,
   outputTail: [],
   outputLinesDropped: 0,
+  loggingDegraded: false,
   error: null,
 };
 
@@ -32,6 +33,29 @@ describe('RunStatus', () => {
     );
     fireEvent.click(screen.getByRole('button', { name: 'Stop' }));
     expect(onStop).toHaveBeenCalledWith('run-1');
+  });
+
+  it('asks before stopping a game and explains unsaved progress', () => {
+    const onStop = vi.fn();
+    render(<RunStatus current={{ ...base, kind: 'game' }} last={null} onStop={onStop} />);
+    fireEvent.click(screen.getByRole('button', { name: 'Stop game' }));
+    expect(onStop).not.toHaveBeenCalled();
+    expect(screen.getByText(/not saved in the current world is lost/)).toBeVisible();
+    fireEvent.click(screen.getByRole('button', { name: 'Keep playing' }));
+    expect(onStop).not.toHaveBeenCalled();
+    fireEvent.click(screen.getByRole('button', { name: 'Stop game' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Stop without saving' }));
+    expect(onStop).toHaveBeenCalledWith('run-1');
+  });
+
+  it('labels a run that failed before starting', () => {
+    render(<RunStatus current={null} last={{ ...base, kind: 'game', state: 'failed' }} />);
+    expect(screen.getByText('Not started')).toBeVisible();
+  });
+
+  it('reports degraded logging', () => {
+    render(<RunStatus current={null} last={{ ...base, state: 'exited', loggingDegraded: true }} />);
+    expect(screen.getByText(/could not be written to disk/)).toBeVisible();
   });
 
   it('shows a crash result with exit code, drain notice and output tail', () => {

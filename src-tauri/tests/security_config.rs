@@ -142,6 +142,8 @@ fn main_window_capability_grants_only_app_commands() {
             "allow-install-instance",
             "allow-repair-instance",
             "allow-cancel-operation",
+            "allow-launch-game",
+            "allow-stop-game",
             "allow-start-lifecycle-test",
             "allow-stop-lifecycle-test",
         ]

@@ -25,6 +25,8 @@ fn main() {
         "install_instance",
         "repair_instance",
         "cancel_operation",
+        "launch_game",
+        "stop_game",
         // Registered only in debug builds; release builds have no handler for them.
         "start_lifecycle_test",
         "stop_lifecycle_test",

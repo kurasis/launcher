@@ -23,6 +23,8 @@
     "allow-install-instance",
     "allow-repair-instance",
     "allow-cancel-operation",
+    "allow-launch-game",
+    "allow-stop-game",
     "allow-start-lifecycle-test",
     "allow-stop-lifecycle-test"
   ]

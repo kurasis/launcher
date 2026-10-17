@@ -58,6 +58,56 @@ impl install::service::StateAccess for TauriStateAccess {
     }
 }
 
+/// Drives the main window around game runs exactly like the lifecycle harness.
+struct TauriLaunchHost(tauri::AppHandle);
+
+impl install::service::StateAccess for TauriLaunchHost {
+    fn app_state(&self) -> &AppState {
+        self.0.state::<AppState>().inner()
+    }
+}
+
+impl launch::service::LaunchHost for TauriLaunchHost {
+    fn store_handle(&self, run_id: &str, supervised: lifecycle::child::Supervised) {
+        self.0.state::<RunHandles>().set(run_id, supervised);
+    }
+    fn clear_handle(&self, run_id: &str) {
+        self.0.state::<RunHandles>().clear(run_id);
+    }
+    fn kill(&self, run_id: &str) -> bool {
+        self.0.state::<RunHandles>().kill(run_id)
+    }
+    fn run_started(&self, run_id: &str) {
+        let state = self.0.state::<AppState>();
+        if state.during_game_mode() != storage::models::DuringGameMode::UnloadAndReturn {
+            return;
+        }
+        self.0.state::<LifecycleController>().arm_unload(run_id);
+        let handle = self.0.clone();
+        let run_id = run_id.to_owned();
+        std::thread::spawn(move || {
+            std::thread::sleep(lifecycle::SURVIVAL_INTERVAL);
+            let running = handle
+                .state::<AppState>()
+                .current_run()
+                .is_some_and(|r| r.run_id == run_id && r.state == state::dto::RunState::Running);
+            if running {
+                handle
+                    .state::<LifecycleController>()
+                    .unload_main_window(&handle, run_id);
+            }
+        });
+    }
+    fn process_exited(&self, run_id: &str) {
+        self.0.state::<LifecycleController>().disarm_unload(run_id);
+    }
+    fn run_finished(&self, run_id: &str) {
+        self.0
+            .state::<LifecycleController>()
+            .restore_after_run(&self.0, run_id);
+    }
+}
+
 struct TauriAccountHost(tauri::AppHandle);
 
 impl AccountHost for TauriAccountHost {
@@ -151,13 +201,17 @@ pub fn run() {
                 ))),
                 None => None,
             };
-            let installer = match &metadata {
-                Some(metadata) => Some(Arc::new(install::service::InstallService::new(
+            let source: Option<Arc<install::service::LiveSource>> = match &metadata {
+                Some(metadata) => Some(Arc::new(
+                    install::service::LiveSource::new(Arc::clone(metadata), &version)
+                        .map_err(|e| e.message)?,
+                )),
+                None => None,
+            };
+            let installer = match &source {
+                Some(source) => Some(Arc::new(install::service::InstallService::new(
                     Arc::new(TauriStateAccess(app.handle().clone())),
-                    Arc::new(
-                        install::service::LiveSource::new(Arc::clone(metadata), &version)
-                            .map_err(|e| e.message)?,
-                    ),
+                    Arc::clone(source) as Arc<dyn install::service::PlanSource>,
                     download::transport::HttpTransport::public(&version).map_err(|e| e.message)?,
                     download::ExecutorConfig::default(),
                 ))),
@@ -168,6 +222,15 @@ pub fn run() {
             app.manage(state);
             let auth = Arc::new(create_auth_service(app.handle())?);
             app.manage(Arc::clone(&auth));
+            let launcher = source.map(|source| {
+                Arc::new(launch::service::LaunchService::new(
+                    Arc::new(TauriLaunchHost(app.handle().clone())),
+                    source as Arc<dyn install::service::PlanSource>,
+                    Arc::new(Arc::clone(&auth)),
+                    &version,
+                ))
+            });
+            app.manage(commands::Launcher(launcher));
             // Finish a pending sign-out or refresh the saved account in the background.
             tauri::async_runtime::spawn(async move { auth.restore().await });
             Ok(())
@@ -224,6 +287,8 @@ fn handlers<R: tauri::Runtime>() -> impl Fn(tauri::ipc::Invoke<R>) -> bool + Sen
         commands::install_instance,
         commands::repair_instance,
         commands::cancel_operation,
+        commands::launch_game,
+        commands::stop_game,
         commands::start_lifecycle_test,
         commands::stop_lifecycle_test,
     ]
@@ -250,5 +315,7 @@ fn handlers<R: tauri::Runtime>() -> impl Fn(tauri::ipc::Invoke<R>) -> bool + Sen
         commands::install_instance,
         commands::repair_instance,
         commands::cancel_operation,
+        commands::launch_game,
+        commands::stop_game,
     ]
 }

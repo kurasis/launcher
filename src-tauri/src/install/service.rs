@@ -713,4 +713,4 @@ impl Operation {
 
 #[cfg(test)]
 #[cfg(unix)]
-mod tests;
+pub(crate) mod tests;

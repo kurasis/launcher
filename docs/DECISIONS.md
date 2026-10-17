@@ -399,3 +399,39 @@ replaces it), `superseded`.
   1.21.1) and use a 64 MiB limit; other app documents keep 1 MiB.
 - **Runtime reuse** compares package identity (key, URL, size, format), not descriptive
   fields, so a lock-rebuilt package matches the installed one.
+
+## D-025 — Launch compiler, preflight and supervision
+
+- **Status:** accepted (real-game confirmation blocked by P04) · **Phase:** P09 · **Affects:** FR10, A12, A13, A16, A20
+- **Preflight** (under the global activity permit): instance `ready`; complete install lock;
+  every locked file present with its size (full hashes stay with Repair); runtime tree
+  and receipts valid; plan re-derived from the locked descriptor and equal to the lock;
+  asset-index projection for this run; fresh account verification
+  (`AuthService::verify_for_launch`). Any failure ends the run before a process exists;
+  file or runtime problems mark the installation `repair_required` and release the
+  permit, so Repair can start immediately.
+- **Compiler:** `-Xmx<heap>M`, the metadata JVM arguments in order, the logging argument,
+  the main class, the metadata game arguments. Every placeholder needs an explicit value;
+  `library_directory` and unknown names are errors. `${natives_directory}/<suffix>`
+  directories are created per run. `user_type` is `msa`; `auth_xuid` is the XSTS `xid`
+  claim or empty (launch-compatibility candidate, to be confirmed by the first real
+  launch). The access token may only appear in game arguments.
+- **Arguments on the command line:** direct arguments by default; on Windows JVM arguments
+  move to a per-run argfile (`0600` on Unix) when the command would exceed 30,000
+  characters. Argfile entries are quoted with `\`/`"` escaping; on Windows they must be
+  ASCII. The token is never written to an argfile; the argfile and native folder are
+  removed after exit.
+- **Encoding guard (A16):** the Java launcher decodes arguments with the native encoding,
+  and the live check showed a POSIX locale turning `Jürgen` into `J??rgen`. When any
+  non-secret argument is non-ASCII, preflight passes it to the managed Java once as a
+  property and refuses the launch with `UNSUPPORTED_PATH_ENCODING` if more `?` come
+  back than were sent. This needs no platform-specific code (the crate forbids `unsafe`).
+- **Supervision:** `java` is spawned without a shell, with the filtered environment, in
+  the instance's `game/` folder; stdout and stderr are captured by the P03 supervisor,
+  redacted (including a secret cut by line truncation) and written to
+  `logs/runs/<run>/output.log` (10 MiB × 5); write failures switch to
+  `loggingDegraded` without blocking the pipes. Completed run logs are pruned to 20 runs
+  and 200 MiB. Cancellation is honoured until the spawn (serialized with it); afterwards
+  only `stop_game`, which kills the owned process after a UI confirmation, ends it.
+- **Window:** the same unload/restore path as the P03 harness (unload after 1.5 s survival
+  in the default mode, one window restored with the result).

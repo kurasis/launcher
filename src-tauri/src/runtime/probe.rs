@@ -129,9 +129,15 @@ fn probe_failed(reason: &str) -> LauncherError {
     .with_detail("reason", reason.to_owned())
 }
 
-/// Blocking: runs Java and parses its settings. Kills it after `timeout`.
-pub fn run(java: &Path, timeout: Duration) -> LauncherResult<JavaProbe> {
+/// Blocking: runs `java <extra> -XshowSettings:properties -version` with the
+/// sanitized environment and returns its raw, bounded output (stderr first).
+pub fn settings_output(
+    java: &Path,
+    extra: &[String],
+    timeout: Duration,
+) -> LauncherResult<Vec<u8>> {
     let mut child = sanitized_command(java)
+        .args(extra)
         .args(["-XshowSettings:properties", "-version"])
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())
@@ -157,6 +163,12 @@ pub fn run(java: &Path, timeout: Duration) -> LauncherResult<JavaProbe> {
     if !status.success() {
         return Err(probe_failed("exit status"));
     }
+    Ok(output)
+}
+
+/// Blocking: runs Java and parses its settings. Kills it after `timeout`.
+pub fn run(java: &Path, timeout: Duration) -> LauncherResult<JavaProbe> {
+    let output = settings_output(java, &[], timeout)?;
     parse(&String::from_utf8_lossy(&output)).ok_or_else(|| probe_failed("unrecognized output"))
 }
 

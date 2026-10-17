@@ -58,7 +58,6 @@ export function InstanceDetails({ instance, memory }: InstanceDetailsProps) {
         <dt>{t.version}</dt>
         <dd>Minecraft {instance.versionId}</dd>
       </dl>
-      <p className={styles.muted}>{strings.instances.notImplemented}</p>
       {policy?.lowMemory === true && <Notice tone="warning">{t.lowMemory}</Notice>}
       {memory.error !== null && <Notice tone="danger">{memory.error.message}</Notice>}
       {instance.busy && <Notice tone="info">{t.busy}</Notice>}

@@ -19,7 +19,7 @@ use crate::storage::paths::{DataRoot, ImageType, RuntimeKey, Sha256, TargetArch,
 use crate::validation::MemoryPolicy;
 
 #[derive(Clone, Default)]
-struct Events(Arc<Mutex<Vec<(String, serde_json::Value)>>>);
+pub(crate) struct Events(Arc<Mutex<Vec<(String, serde_json::Value)>>>);
 
 impl EventSink for Events {
     fn emit(&self, event: &BackendEvent) {
@@ -37,9 +37,9 @@ impl Events {
     }
 }
 
-struct FakeSource {
-    plan: Mutex<(GamePlan, RuntimePackage)>,
-    resolves: AtomicUsize,
+pub(crate) struct FakeSource {
+    pub(crate) plan: Mutex<(GamePlan, RuntimePackage)>,
+    pub(crate) resolves: AtomicUsize,
 }
 
 impl PlanSource for FakeSource {
@@ -58,13 +58,13 @@ impl PlanSource for FakeSource {
     }
 }
 
-fn sha1(bytes: &[u8]) -> Sha1 {
+pub(crate) fn sha1(bytes: &[u8]) -> Sha1 {
     Sha1::parse(&hex::encode(sha1::Sha1::digest(bytes))).unwrap()
 }
 
 type FinalInstallPlanParts = (GamePlan, RuntimePackage);
 
-fn state_at(root: &DataRoot, events: Events) -> AppState {
+pub(crate) fn state_at(root: &DataRoot, events: Events) -> AppState {
     AppState::initialize(
         Ok(root.clone()),
         "test",
@@ -73,7 +73,7 @@ fn state_at(root: &DataRoot, events: Events) -> AppState {
     )
 }
 
-fn create_in(state: &AppState, name: &str) -> InstanceId {
+pub(crate) fn create_in(state: &AppState, name: &str) -> InstanceId {
     state
         .create_instance(MutationRequest {
             request_id: Uuid::new_v4().to_string(),
@@ -86,15 +86,15 @@ fn create_in(state: &AppState, name: &str) -> InstanceId {
         .id
 }
 
-struct Fixture {
-    _dir: tempfile::TempDir,
-    root: DataRoot,
-    server: Server,
-    state: Arc<AppState>,
-    events: Events,
-    source: Arc<FakeSource>,
-    service: InstallService,
-    library: Vec<u8>,
+pub(crate) struct Fixture {
+    pub(crate) _dir: tempfile::TempDir,
+    pub(crate) root: DataRoot,
+    pub(crate) server: Server,
+    pub(crate) state: Arc<AppState>,
+    pub(crate) events: Events,
+    pub(crate) source: Arc<FakeSource>,
+    pub(crate) service: InstallService,
+    pub(crate) library: Vec<u8>,
 }
 
 fn artifact(
@@ -117,7 +117,7 @@ fn artifact(
 
 fn java_package(server: &Server, marker: &Path) -> RuntimePackage {
     let script = format!(
-        "#!/bin/sh\ntouch '{}'\ncat >&2 <<'X'\n    java.specification.version = 21\n    java.version = 21.0.1\n    os.arch = amd64\nX\n",
+        "#!/bin/sh\ntouch '{}'\ncat >&2 <<'X'\n    java.specification.version = 21\n    java.version = 21.0.1\n    os.arch = amd64\nX\nfor a in \"$@\"; do echo \"ARG:$a\"; done\ncase \"$*\" in *Sleeper*) exec sleep 30;; *Failing*) exit 3;; esac\n",
         marker.display()
     );
     let bytes = tar_gz(&[
@@ -146,13 +146,13 @@ fn java_package(server: &Server, marker: &Path) -> RuntimePackage {
 }
 
 impl Fixture {
-    async fn new() -> Self {
+    pub(crate) async fn new() -> Self {
         Self::new_after(|_, _| {}).await
     }
 
     /// `before` runs on the data directory before this fixture's app state
     /// takes the DATA_ROOT lock, e.g. to simulate an earlier process.
-    async fn new_after(before: impl FnOnce(&DataRoot, FinalInstallPlanParts)) -> Self {
+    pub(crate) async fn new_after(before: impl FnOnce(&DataRoot, FinalInstallPlanParts)) -> Self {
         let dir = tempfile::tempdir().unwrap();
         let root = DataRoot::new(dir.path().join("data")).unwrap();
         let server = Server::start().await;
@@ -230,8 +230,26 @@ impl Fixture {
                 argument: "-Dlog4j.configurationFile=${path}".into(),
                 artifact: log_a,
             }),
-            jvm_arguments: vec![],
-            game_arguments: vec![],
+            jvm_arguments: vec![
+                "-Djava.library.path=${natives_directory}".into(),
+                "-Djna.tmpdir=${natives_directory}/jna".into(),
+                "-cp".into(),
+                "${classpath}".into(),
+            ],
+            game_arguments: [
+                "--username",
+                "${auth_player_name}",
+                "--version",
+                "${version_name}",
+                "--gameDir",
+                "${game_directory}",
+                "--accessToken",
+                "${auth_access_token}",
+                "--width",
+                "${resolution_width}",
+            ]
+            .map(String::from)
+            .to_vec(),
             runtime: RuntimeRequirement {
                 major: 21,
                 os: TargetOs::Linux,
@@ -263,11 +281,11 @@ impl Fixture {
         }
     }
 
-    fn create(&self, name: &str) -> InstanceId {
+    pub(crate) fn create(&self, name: &str) -> InstanceId {
         create_in(&self.state, name)
     }
 
-    async fn wait(&self, operation_id: &str) -> OperationResult {
+    pub(crate) async fn wait(&self, operation_id: &str) -> OperationResult {
         for _ in 0..500 {
             if let Some(result) = self.state.operation_result(operation_id) {
                 return result;
@@ -277,7 +295,7 @@ impl Fixture {
         panic!("operation did not finish");
     }
 
-    async fn run(&self, kind: OperationKind, id: InstanceId) -> OperationResult {
+    pub(crate) async fn run(&self, kind: OperationKind, id: InstanceId) -> OperationResult {
         let started = self
             .service
             .start(&Uuid::new_v4().to_string(), kind, id)
@@ -285,7 +303,7 @@ impl Fixture {
         self.wait(&started.operation_id).await
     }
 
-    fn library_path(&self) -> std::path::PathBuf {
+    pub(crate) fn library_path(&self) -> std::path::PathBuf {
         self.root.path().join(format!(
             "shared/libraries/{}/artifact.jar",
             sha1(&self.library)

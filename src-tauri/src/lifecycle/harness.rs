@@ -16,6 +16,7 @@ use serde::{Deserialize, Serialize};
 use tauri::{AppHandle, Manager, Runtime};
 use uuid::Uuid;
 
+use super::SURVIVAL_INTERVAL;
 use super::child::{self, OutputLine, OutputTail};
 use super::{LifecycleController, RunHandles};
 use crate::error::{ErrorCode, LauncherError, LauncherResult};
@@ -25,10 +26,6 @@ use crate::storage::models::{DuringGameMode, OperationKind};
 
 /// First argument that turns the executable into a test child.
 pub const CHILD_FLAG: &str = "--kurasis-lifecycle-test-child";
-
-/// How long a run must survive before the window is unloaded. A spawn is not proof
-/// of game readiness; this only avoids hiding the UI for an immediate failure.
-pub const SURVIVAL_INTERVAL: Duration = Duration::from_millis(1500);
 
 /// Lines from the end of the output kept in the run summary shown to the UI.
 const SUMMARY_TAIL_LINES: usize = 20;
@@ -147,6 +144,7 @@ pub fn start<R: Runtime>(app: &AppHandle<R>, scenario: Scenario) -> LauncherResu
         output_tail: Vec::new(),
         output_lines_dropped: 0,
         error: None,
+        logging_degraded: false,
     };
     state.begin_run(run);
 

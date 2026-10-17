@@ -5,6 +5,7 @@ import { StatusBadge } from '../components/StatusBadge';
 import { AccountChip } from '../features/accounts/AccountChip';
 import { AccountView } from '../features/accounts/AccountView';
 import { RunStatus } from '../features/diagnostics/RunStatus';
+import { ipc } from '../lib/ipc';
 import { StorageIssues } from '../features/diagnostics/StorageIssues';
 import { InstancesView } from '../features/instances/InstancesView';
 import { SettingsView } from '../features/settings/SettingsView';
@@ -74,7 +75,13 @@ export function App() {
             <StorageIssues issues={state.snapshot.storageIssues} />
             {view === 'home' && (
               <>
-                <RunStatus current={state.snapshot.currentRun} last={state.snapshot.lastRun} />
+                <RunStatus
+                  current={state.snapshot.currentRun}
+                  last={state.snapshot.lastRun}
+                  onStop={(runId) => {
+                    void ipc.stopGame(runId).catch(() => undefined);
+                  }}
+                />
                 <InstancesView snapshot={state.snapshot} />
               </>
             )}

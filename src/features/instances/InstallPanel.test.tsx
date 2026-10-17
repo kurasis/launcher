@@ -11,6 +11,15 @@ function backend() {
     calls.push({ cmd, args });
     if (cmd === 'install_instance' || cmd === 'repair_instance') return { operationId: 'op-1' };
     if (cmd === 'cancel_operation') return { state: 'cancel_requested' };
+    if (cmd === 'launch_game') {
+      // eslint-disable-next-line @typescript-eslint/only-throw-error -- mirrors the IPC error envelope
+      throw {
+        code: 'AUTH_NOT_CONFIGURED',
+        message: 'Sign-in is not configured in this build.',
+        retryable: false,
+        diagnosticId: 'd',
+      };
+    }
     if (cmd === 'get_app_snapshot') return snapshotFixture();
     return null;
   });
@@ -149,5 +158,22 @@ describe('InstallPanel', () => {
     );
     expect(screen.getByRole('button', { name: 'Install' })).toBeDisabled();
     expect(screen.getByText(/Another operation is running/)).toBeVisible();
+  });
+
+  it('offers Play for a ready installation and shows why it cannot start', async () => {
+    const calls = backend();
+    render(
+      <InstallPanel
+        instance={instanceFixture({ health: 'ready' })}
+        activeOperation={null}
+        progress={null}
+        recentOperations={[]}
+      />,
+    );
+    fireEvent.click(screen.getByRole('button', { name: 'Play' }));
+    expect(await screen.findByText('Sign-in is not configured in this build.')).toBeVisible();
+    expect(calls.find((c) => c.cmd === 'launch_game')?.args).toMatchObject({
+      request: { payload: { instanceId: instanceFixture().id } },
+    });
   });
 });

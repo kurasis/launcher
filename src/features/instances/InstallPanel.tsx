@@ -83,6 +83,7 @@ export function InstallPanel({
 }: InstallPanelProps) {
   const install = useCommand((requestId: string, id: string) => ipc.installInstance(id, requestId));
   const repair = useCommand((requestId: string, id: string) => ipc.repairInstance(id, requestId));
+  const play = useCommand((requestId: string, id: string) => ipc.launchGame(id, requestId));
   const cancel = useCommand((requestId: string, operationId: string) =>
     ipc.cancelOperation(operationId, requestId),
   );
@@ -96,7 +97,7 @@ export function InstallPanel({
     last.kind === 'install' &&
     last.outcome !== 'succeeded' &&
     health === 'not_installed';
-  const error = install.error ?? repair.error ?? cancel.error;
+  const error = play.error ?? install.error ?? repair.error ?? cancel.error;
 
   return (
     <Panel title={t.title}>
@@ -131,13 +132,24 @@ export function InstallPanel({
               {unfinished ? t.retry : t.install}
             </Button>
           ) : (
-            <Button
-              variant={health === 'ready' ? 'secondary' : 'primary'}
-              disabled={otherBusy || repair.pending}
-              onClick={() => void repair.run(instance.id)}
-            >
-              {health === 'ready' ? t.verify : t.repair}
-            </Button>
+            <>
+              {health === 'ready' && (
+                <Button
+                  variant="primary"
+                  disabled={otherBusy || play.pending}
+                  onClick={() => void play.run(instance.id)}
+                >
+                  {play.pending ? t.starting : t.play}
+                </Button>
+              )}
+              <Button
+                variant={health === 'ready' ? 'secondary' : 'primary'}
+                disabled={otherBusy || repair.pending}
+                onClick={() => void repair.run(instance.id)}
+              >
+                {health === 'ready' ? t.verify : t.repair}
+              </Button>
+            </>
           )}
         </div>
       )}

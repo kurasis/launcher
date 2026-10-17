@@ -66,6 +66,10 @@ export const ipc = {
     }),
   cancelOperation: (operationId: string, requestId?: string): Promise<CancelAck> =>
     invoke<CancelAck>('cancel_operation', { request: mutation({ operationId }, requestId) }),
+  launchGame: (instanceId: string, requestId?: string): Promise<RunSummary> =>
+    invoke<RunSummary>('launch_game', { request: mutation({ instanceId }, requestId) }),
+  stopGame: (runId: string, requestId?: string): Promise<boolean> =>
+    invoke<boolean>('stop_game', { request: mutation({ runId }, requestId) }),
   listSupportedVersions: (refresh: boolean): Promise<CatalogView> =>
     invoke<CatalogView>('list_supported_versions', { refresh }),
   previewInstallPlan: (versionId: string): Promise<PlanSummary> =>
