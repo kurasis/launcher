@@ -6,6 +6,10 @@ runtime), **host GUI** (app run on the development host), **CI** (GitHub-hosted 
 **live API** or **real game**. Nothing here is a target-machine qualification unless it
 says so; the qualification matrix is completed in P13.
 
+From P04 on, a phase's **CI results** are recorded by the following phase's pull request,
+because adding them to the same pull request would start another full CI run. The phase
+is merged only after its own required checks pass.
+
 ## Test environments
 
 | Environment                                            | Available   | Used for                     | Notes                                                                                                |
@@ -192,7 +196,10 @@ supervision tests therefore ran on Windows and both macOS architectures.
 
 ### CI results
 
-Filled in from the pull request's checks before merge.
+Workflow run [38987094069](https://github.com/kurasis/launcher/actions/runs/38987094069) on
+commit `be35772` (PR #4): all 5 jobs pass (frontend; clippy, tests and release build on
+linux-x64, windows-x64, macos-arm64, macos-x64). The OS-vault code paths compiled and the
+synthetic auth tests ran on all four targets; no live Microsoft request was made anywhere.
 
 ## P05 — Minecraft metadata and deterministic install planning
 
@@ -289,7 +296,9 @@ when the runtime is prepared" ([1.21.1](verification/p05-plan-1.21.1.png),
 
 ### CI results
 
-Filled in from the pull request's checks before merge.
+Workflow run [38987645015](https://github.com/kurasis/launcher/actions/runs/38987645015) on
+commit `827a3b7` (PR #5): all 5 jobs pass. The rules engine, planner and catalog tests ran
+on Windows and both macOS architectures; the live metadata test is ignored in CI.
 
 ## P06 — Verified, cancellable download engine
 
@@ -345,4 +354,4 @@ because reqwest's `previous()` includes the original request.
 
 ### CI results
 
-Filled in from the pull request's checks before merge.
+Recorded by the next phase's pull request (see the note at the top of this file).
