@@ -727,3 +727,11 @@ fn receipts_record_one_terminal_outcome_and_interruptions() {
     assert!(reconcile_jobs(&root).unwrap().is_empty(), "idempotent");
     drop(dir);
 }
+
+#[test]
+fn free_space_is_read_from_the_directory_itself() {
+    let dir = tempfile::tempdir().unwrap();
+    let available = super::available_space(dir.path()).expect("free space is known");
+    assert!(available > 0);
+    assert!(super::available_space(&dir.path().join("missing")).is_none());
+}
