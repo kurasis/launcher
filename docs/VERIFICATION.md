@@ -1229,3 +1229,41 @@ installation's runtime from its lock, and choosing a source writes `javaProvider
   ("Downloaded 9 files (28.6 MiB)").
 - **Not verified:** Windows and macOS installs of loaders (CI builds and unit tests
   only), launches with a signed-in account, mods themselves.
+
+## Installation notes (D-041)
+
+- **Automated:** `validate_notes` (line endings, control characters, the 4000-character
+  limit, non-Latin text); the state test `notes_are_saved_while_busy_and_survive_restart`
+  (saved while a launch holds the installation, refused with control characters, kept
+  after a restart); the interface test of the notes editor (`InstanceDetails.test.tsx`:
+  edits and saves notes).
+- **Not verified:** the first-line preview in the installation list has no test, and
+  the notes editor was not exercised in the release build.
+
+## Closing the launcher once the game opens (D-042)
+
+- **Automated:** `launch::logs::shows_game_window` against the ready markers, and the
+  installation panel test: while a launch holds the installation it says "The game is
+  running." and offers no Cancel.
+- **Release build, Linux x64 (Xvfb), no-token demo of 1.21.1:** with _Close the
+  launcher once the game window opens_ selected, the launcher quit about 12 s after
+  **Play demo**; the game kept running and entered the demo world. A launcher started
+  again showed "Running: Minecraft" with **Stop game**, which ended the game.
+- **Not verified:** Windows and macOS (CI builds only).
+
+## Data folder and portable mode (D-043)
+
+- **Automated:** `location` unit tests (resolution order portable → chosen → default,
+  the pointer and marker files, nested and non-empty targets refused, reuse of a folder
+  that already holds launcher data, copying that skips locks and download staging and
+  stops at symbolic links) and `DataFolderSettings.test.tsx` (modes, confirmation,
+  the pending notice).
+- **Release build, Linux x64 (Xvfb), a separate copy of the launcher:**
+  - _Make portable_ copied the data next to the launcher and created `portable.txt`;
+    after a restart the launcher ran from `launcher-data` (the Russian interface came
+    from the copied settings).
+  - _Move back to the default folder_ found launcher data there, used it without
+    copying and removed `portable.txt`; after a restart the default folder was in use.
+- **Not verified:** _Move to another folder…_ through the interface: the GTK folder
+  dialog showed no folder listing on this Xvfb, so the copy to a chosen folder is
+  covered by unit tests only. Windows and macOS: CI builds only.

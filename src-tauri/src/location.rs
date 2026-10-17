@@ -381,4 +381,17 @@ mod tests {
             "the old folder is kept"
         );
     }
+
+    #[cfg(unix)]
+    #[test]
+    fn a_symbolic_link_stops_the_copy() {
+        let dir = tempfile::tempdir().unwrap();
+        let (from, to) = (dir.path().join("from"), dir.path().join("to"));
+        fs::create_dir_all(from.join("instances")).unwrap();
+        std::os::unix::fs::symlink("/etc", from.join("instances").join("elsewhere")).unwrap();
+        assert_eq!(
+            copy_tree(&from, &to, &|_, _| {}).unwrap_err().code,
+            ErrorCode::UnsafeArchive
+        );
+    }
 }
