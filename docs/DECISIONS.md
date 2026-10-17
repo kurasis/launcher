@@ -671,7 +671,8 @@ replaces it), `superseded`.
 - **Decision:** private Java runtimes come from **Mojang** by default, the runtimes the
   official launcher uses; **Eclipse Temurin** (Adoptium) stays available. The choice is
   `javaProvider` in `settings.json` and applies to new installations; an installed
-  version keeps the runtime pinned in its lock, and Repair restores exactly that one.
+  version keeps the runtime pinned in its lock, and Repair restores exactly that one
+  (until the user switches it, D-044).
 - **How a Mojang runtime is chosen and installed:**
   - Mojang's runtime index (`piston-meta.mojang.com/v1/products/java-runtime/…/all.json`)
     lists one build per platform (`linux`, `windows-x64`, `windows-arm64`, `mac-os`,
@@ -927,3 +928,42 @@ message` plus a stack trace), with the event's level.
   account has to sign in again. The system web view keeps its own cache in the user
   profile.
 - **Debug builds:** `LAUNCHER_DATA_ROOT` still overrides everything for tests.
+
+## D-044 — Changing an installation's Java; own Java and JVM options
+
+- **Status:** accepted (owner request, 2026-10-17) · **Affects:** D-036 ("an installed
+  version keeps the runtime pinned in its lock"), docs/spec/04 ("Managed Java",
+  "Repair"), docs/spec/10 (runtime lock), Settings → Installations
+- **Decision:** Settings → Installations gets _Java of this installation_ with three
+  choices and a JVM options field:
+  - **Private runtime from Mojang** or **from Eclipse Temurin.** Choosing the other
+    source for an installed version records it (`javaProvider` in the instance) and
+    offers **Repair now**. That repair, and only a repair the user starts, pins a new
+    runtime for the version's Java requirement from that source (Temurin when Mojang
+    publishes none for this computer, with a console warning), downloads and verifies
+    it like any runtime, and then rewrites the `runtime` section of the install lock.
+    Every other part of the lock (descriptor, artifacts, loader files) stays as it was;
+    a repair without a pending choice restores exactly the locked runtime, as before.
+    Until the repair succeeds, the game runs on the runtime in the lock. Before the
+    first install, the choice decides the source of the first runtime.
+  - **My own Java:** a path to a Java program (typed or chosen with the file dialog),
+    available once the version is installed. The launcher starts it once with the
+    sanitized environment and reads its version, vendor and architecture. It compares
+    them with the Java the game was built for (the lock's `javaMajor`) and the
+    computer's architecture. An older Java ("will most likely not start"), a newer one
+    ("recent versions usually run; older versions and mod loaders often fail") and
+    another architecture are **warnings**: the user can still choose **Use anyway**,
+    and the accepted warnings are stored with the choice. A program that does not
+    start or does not report Java settings is refused. At every launch the chosen
+    Java is checked to start again; if it no longer does, the launch fails with a
+    clear message and nothing is marked broken. The private runtime stays installed
+    (mod loader installers still use it during Repair).
+  - **JVM options:** one line, split on spaces, with quotes keeping spaces inside an
+    option. Each option must start with `-` (a bare word would be taken for the main
+    class; values go after `=` or `:`), at most 64 options and 4000 characters. They
+    are added after the version's own JVM options, so for a repeated option such as
+    `-Xmx` the user's value wins; the launcher's token never goes into JVM options.
+- **Why the lock may change:** the user asked to change Java after creating a version.
+  The lock still pins exactly one verified runtime at all times; only an explicit
+  repair replaces it, under the global activity permit, and the commit point is the
+  new lock written after the new runtime is verified.
