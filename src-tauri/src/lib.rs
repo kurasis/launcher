@@ -181,6 +181,67 @@ fn resolve_data_root(app: &tauri::AppHandle) -> LauncherResult<DataRoot> {
     DataRoot::new(path)
 }
 
+/// Creates state and services; any failure stops the launcher before a window opens.
+fn setup(app: &mut tauri::App) -> Result<(), Box<dyn std::error::Error>> {
+    let handle = app.handle().clone();
+    let state = AppState::initialize(
+        resolve_data_root(&handle),
+        app.package_info().version.to_string(),
+        MemoryPolicy::detect(),
+        Box::new(TauriSink(handle)),
+    );
+    let version = app.package_info().version.to_string();
+    let metadata = match state.data_root() {
+        Some(root) => Some(Arc::new(catalog::source::MetadataService::new(
+            net::PublicClient::new(
+                net::SourcePolicy::MojangMetadata,
+                &app.package_info().version.to_string(),
+            )
+            .map_err(|e| e.message)?,
+            root,
+        ))),
+        None => None,
+    };
+    let source: Option<Arc<install::service::LiveSource>> = match &metadata {
+        Some(metadata) => Some(Arc::new(
+            install::service::LiveSource::new(Arc::clone(metadata), &version)
+                .map_err(|e| e.message)?,
+        )),
+        None => None,
+    };
+    let installer = match &source {
+        Some(source) => Some(Arc::new(install::service::InstallService::new(
+            Arc::new(TauriStateAccess(app.handle().clone())),
+            Arc::clone(source) as Arc<dyn install::service::PlanSource>,
+            download::transport::HttpTransport::public(&version).map_err(|e| e.message)?,
+            download::ExecutorConfig::default(),
+        ))),
+        None => None,
+    };
+    app.manage(commands::Metadata(metadata));
+    app.manage(commands::Installer(installer));
+    app.manage(state);
+    let auth = Arc::new(create_auth_service(app.handle())?);
+    app.manage(Arc::clone(&auth));
+    let launcher = source.map(|source| {
+        Arc::new(launch::service::LaunchService::new(
+            Arc::new(TauriLaunchHost(app.handle().clone())),
+            source as Arc<dyn install::service::PlanSource>,
+            Arc::new(Arc::clone(&auth)),
+            &version,
+        ))
+    });
+    // A game that outlived a previous launcher keeps everything blocked
+    // until it exits.
+    if let Some(launcher) = &launcher {
+        launcher.watch_survivor();
+    }
+    app.manage(commands::Launcher(launcher));
+    // Finish a pending sign-out or refresh the saved account in the background.
+    tauri::async_runtime::spawn(async move { auth.restore().await });
+    Ok(())
+}
+
 /// Builds and runs the Tauri application.
 pub fn run() {
     let app = tauri::Builder::default()
@@ -195,62 +256,12 @@ pub fn run() {
         .manage(LifecycleController::new())
         .manage(RunHandles::default())
         .setup(|app| {
-            let handle = app.handle().clone();
-            let state = AppState::initialize(
-                resolve_data_root(&handle),
-                app.package_info().version.to_string(),
-                MemoryPolicy::detect(),
-                Box::new(TauriSink(handle)),
-            );
-            let version = app.package_info().version.to_string();
-            let metadata = match state.data_root() {
-                Some(root) => Some(Arc::new(catalog::source::MetadataService::new(
-                    net::PublicClient::new(
-                        net::SourcePolicy::MojangMetadata,
-                        &app.package_info().version.to_string(),
-                    )
-                    .map_err(|e| e.message)?,
-                    root,
-                ))),
-                None => None,
-            };
-            let source: Option<Arc<install::service::LiveSource>> = match &metadata {
-                Some(metadata) => Some(Arc::new(
-                    install::service::LiveSource::new(Arc::clone(metadata), &version)
-                        .map_err(|e| e.message)?,
-                )),
-                None => None,
-            };
-            let installer = match &source {
-                Some(source) => Some(Arc::new(install::service::InstallService::new(
-                    Arc::new(TauriStateAccess(app.handle().clone())),
-                    Arc::clone(source) as Arc<dyn install::service::PlanSource>,
-                    download::transport::HttpTransport::public(&version).map_err(|e| e.message)?,
-                    download::ExecutorConfig::default(),
-                ))),
-                None => None,
-            };
-            app.manage(commands::Metadata(metadata));
-            app.manage(commands::Installer(installer));
-            app.manage(state);
-            let auth = Arc::new(create_auth_service(app.handle())?);
-            app.manage(Arc::clone(&auth));
-            let launcher = source.map(|source| {
-                Arc::new(launch::service::LaunchService::new(
-                    Arc::new(TauriLaunchHost(app.handle().clone())),
-                    source as Arc<dyn install::service::PlanSource>,
-                    Arc::new(Arc::clone(&auth)),
-                    &version,
-                ))
-            });
-            // A game that outlived a previous launcher keeps everything blocked
-            // until it exits.
-            if let Some(launcher) = &launcher {
-                launcher.watch_survivor();
+            if let Err(error) = setup(app) {
+                // A readable message and exit code instead of a panic. The known
+                // cause is a system without CA certificates, so HTTPS cannot work.
+                eprintln!("Kurasis Launcher cannot start: {error}");
+                std::process::exit(1);
             }
-            app.manage(commands::Launcher(launcher));
-            // Finish a pending sign-out or refresh the saved account in the background.
-            tauri::async_runtime::spawn(async move { auth.restore().await });
             Ok(())
         })
         .invoke_handler(handlers())

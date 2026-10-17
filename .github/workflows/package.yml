@@ -1,0 +1,230 @@
+name: Package
+
+# Builds private qualification packages for every claimed target, smoke-tests
+# them, and records checksums and build metadata (docs/spec/07, phase P12).
+# Nothing here creates a GitHub release or deploys anything: packages are kept
+# as workflow artifacts only. Signing credentials are read only on trusted
+# events (push to main, manual dispatch) and only when the owner configured them.
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: package-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  CARGO_TERM_COLOR: always
+  CARGO_INCREMENTAL: 0
+  # Non-secret build configuration (docs/AUTH-SETUP.md); blank means "not configured".
+  KURASIS_MSA_CLIENT_ID: ${{ vars.KURASIS_MSA_CLIENT_ID }}
+  RETENTION_DAYS: ${{ github.event_name == 'pull_request' && 7 || 30 }}
+
+jobs:
+  linux:
+    name: Build linux-x64 (Debian 12 baseline)
+    runs-on: ubuntu-24.04
+    # The oldest qualified glibc/WebKitGTK baseline (D-008): packages built here
+    # also run on newer distributions, not the other way round.
+    container: debian:12
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - name: Install build dependencies
+        run: |
+          apt-get update
+          apt-get install -y --no-install-recommends \
+            build-essential ca-certificates curl file git pkg-config xz-utils \
+            libwebkit2gtk-4.1-dev libxdo-dev libssl-dev libdbus-1-dev \
+            libayatana-appindicator3-dev librsvg2-dev
+
+      - uses: actions/checkout@v5
+
+      - uses: actions/setup-node@v5
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+
+      - name: Install pinned Rust toolchain
+        run: |
+          curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs \
+            | sh -s -- -y --profile minimal --default-toolchain none
+          echo "$HOME/.cargo/bin" >> "$GITHUB_PATH"
+          "$HOME/.cargo/bin/rustup" toolchain install
+          "$HOME/.cargo/bin/rustc" --version
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: src-tauri
+          key: debian12
+
+      - run: npm ci
+
+      - name: Build .deb and AppImage
+        env:
+          # linuxdeploy is itself an AppImage; containers have no FUSE.
+          APPIMAGE_EXTRACT_AND_RUN: 1
+        run: npx tauri build --ci --bundles deb,appimage -- --locked
+
+      - name: Checksums and build metadata
+        run: |
+          node scripts/package-metadata.mjs --target linux-x64 --out dist-packages \
+            --signing "unsigned (Linux packages are not signed)" \
+            src-tauri/target/release/bundle/deb/*.deb \
+            src-tauri/target/release/bundle/appimage/*.AppImage
+
+      - uses: actions/upload-artifact@v5
+        with:
+          name: kurasis-launcher-linux-x64
+          path: dist-packages
+          retention-days: ${{ env.RETENTION_DAYS }}
+          if-no-files-found: error
+
+  linux-smoke:
+    name: Smoke linux-x64 (${{ matrix.image }})
+    needs: linux
+    runs-on: ubuntu-24.04
+    strategy:
+      fail-fast: false
+      matrix:
+        # Fresh systems: no Rust, Node or Java.
+        image: ['debian:12', 'ubuntu:24.04']
+    container: ${{ matrix.image }}
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          sparse-checkout: scripts/smoke
+      - uses: actions/download-artifact@v5
+        with:
+          name: kurasis-launcher-linux-x64
+          path: packages
+      - run: scripts/smoke/linux.sh packages/*.deb packages/*.AppImage
+
+  windows:
+    name: Build and smoke windows-x64
+    runs-on: windows-2025
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: actions/setup-node@v5
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+
+      - name: Install pinned Rust toolchain
+        run: rustup show active-toolchain || rustup toolchain install
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: src-tauri
+
+      - run: npm ci
+
+      - name: Build NSIS installer
+        run: npx tauri build --ci --bundles nsis -- --locked
+
+      - name: Checksums and build metadata
+        run: |
+          node scripts/package-metadata.mjs --target windows-x64 --out dist-packages \
+            --signing "unsigned (no code-signing certificate configured)" \
+            src-tauri/target/release/bundle/nsis/*-setup.exe
+
+      - name: Smoke test (install, start, uninstall)
+        shell: pwsh
+        run: scripts/smoke/windows.ps1 -Installer (Get-Item dist-packages/*-setup.exe).FullName
+
+      - uses: actions/upload-artifact@v5
+        with:
+          name: kurasis-launcher-windows-x64
+          path: dist-packages
+          retention-days: ${{ env.RETENTION_DAYS }}
+          if-no-files-found: error
+
+  macos:
+    name: Build and smoke ${{ matrix.name }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: macos-arm64
+            os: macos-15
+          - name: macos-x64
+            os: macos-15-intel
+    runs-on: ${{ matrix.os }}
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: actions/setup-node@v5
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+
+      - name: Install pinned Rust toolchain
+        run: rustup show active-toolchain || rustup toolchain install
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: src-tauri
+
+      - run: npm ci
+
+      # Owner-configured signing and notarization (docs/PACKAGING.md). Never on
+      # pull requests; skipped when the secrets are absent.
+      - name: Load signing configuration
+        if: github.event_name != 'pull_request'
+        env:
+          APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
+          APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
+          APPLE_SIGNING_IDENTITY: ${{ secrets.APPLE_SIGNING_IDENTITY }}
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_PASSWORD: ${{ secrets.APPLE_PASSWORD }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+        run: |
+          if [ -n "$APPLE_CERTIFICATE" ] && [ -n "$APPLE_SIGNING_IDENTITY" ]; then
+            for name in APPLE_CERTIFICATE APPLE_CERTIFICATE_PASSWORD APPLE_SIGNING_IDENTITY; do
+              echo "$name=${!name}" >> "$GITHUB_ENV"
+            done
+            status="signed with the owner's Developer ID"
+            if [ -n "$APPLE_ID" ] && [ -n "$APPLE_PASSWORD" ] && [ -n "$APPLE_TEAM_ID" ]; then
+              for name in APPLE_ID APPLE_PASSWORD APPLE_TEAM_ID; do
+                echo "$name=${!name}" >> "$GITHUB_ENV"
+              done
+              status="$status, notarized"
+            fi
+            echo "SIGNING_STATUS=$status" >> "$GITHUB_ENV"
+          fi
+
+      - name: Build app and DMG
+        run: npx tauri build --ci --bundles app,dmg -- --locked
+
+      - name: Checksums and build metadata
+        run: |
+          node scripts/package-metadata.mjs --target ${{ matrix.name }} --out dist-packages \
+            --signing "${SIGNING_STATUS:-unsigned (no Developer ID configured)}" \
+            src-tauri/target/release/bundle/dmg/*.dmg
+
+      - name: Smoke test (mount, start, remove)
+        run: scripts/smoke/macos.sh dist-packages/*.dmg
+
+      - uses: actions/upload-artifact@v5
+        with:
+          name: kurasis-launcher-${{ matrix.name }}
+          path: dist-packages
+          retention-days: ${{ env.RETENTION_DAYS }}
+          if-no-files-found: error

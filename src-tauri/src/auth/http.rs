@@ -85,7 +85,9 @@ impl AuthHttp {
         let client = builder(app_version)
             .https_only(true)
             .build()
-            .map_err(|_| LauncherError::internal("The HTTPS client could not be created."))?;
+            .map_err(|_| LauncherError::internal(
+                "The HTTPS client could not be created. Check that the system CA certificates are installed.",
+            ))?;
         Ok(Self {
             client,
             endpoints: Endpoints::production(),

@@ -220,7 +220,9 @@ impl PublicClient {
             .read_timeout(Duration::from_secs(60))
             .user_agent(format!("KurasisLauncher/{app_version}"))
             .build()
-            .map_err(|_| LauncherError::internal("The HTTPS client could not be created."))?;
+            .map_err(|_| LauncherError::internal(
+                "The HTTPS client could not be created. Check that the system CA certificates are installed.",
+            ))?;
         Ok(Self { client, policy })
     }
 

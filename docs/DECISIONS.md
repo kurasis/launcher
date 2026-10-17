@@ -473,3 +473,31 @@ replaces it), `superseded`.
   folders are never read.
 - **Licence:** none has been chosen by the project owner; About says so instead of
   inventing one.
+
+## D-028 — Packaging, baselines and package tests
+
+- **Status:** accepted · **Phase:** P12 · **Affects:** G5, FR13, A01, A02, A24–A26
+- **Targets:** NSIS per-user installer with the silent WebView2 download bootstrapper
+  (Windows x64); native `.app`/DMG for macOS arm64 and x64 with minimum macOS 11.0 (a
+  provisional floor; P13 sets the final value from the private Java runtimes and real
+  machines); `.deb` and AppImage for Linux
+  x64. Resolves the open item of D-008: Linux packages are built in a `debian:12`
+  container (glibc 2.36), the oldest qualified baseline; the binary needs glibc 2.34.
+- **Declared Linux dependencies:** Tauri's generated `libwebkit2gtk-4.1-0, libgtk-3-0`
+  plus `libdbus-1-3` (linked directly, credential store) and `ca-certificates`. A fresh
+  Debian 12 system without a CA store made the launcher panic at startup because the
+  HTTPS client could not load system roots. Startup failures in the setup hook now exit
+  with a readable message and code 1 instead of a panic.
+- **AppImage:** relies on the host for the libraries linuxdeploy excludes (glibc, ALSA,
+  EGL/GL/GLES, GBM, fontconfig, FriBidi, HarfBuzz, Wayland client, X11). Every desktop
+  installation has them; the smoke test installs exactly these on a stripped system.
+- **Build label:** taken from the Rust core's build profile (`get_app_info`): release
+  cores show "Qualification build" (doc 01: packages are private qualification builds
+  until P13), debug cores "Development build".
+- **Package workflow:** `.github/workflows/package.yml` builds every target, writes
+  `SHA256SUMS` and `build-info.json`, smoke-tests (install, start, data root, uninstall
+  keeps data) and keeps packages as workflow artifacts only. It never creates a release.
+  Apple signing secrets are read only on pushes to `main` and manual runs and only when
+  present; Windows signing is an owner decision (docs/PACKAGING.md).
+- **Limitation:** CI runners and chroot systems are not consumer machines. Target-machine
+  qualification, including Wayland, HiDPI and missing WebView2, is P13.

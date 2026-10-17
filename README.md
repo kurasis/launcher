@@ -37,6 +37,8 @@ npm run tauri build    # release build and installers for the current OS
 | -------------------------------------------- | --------------------------------------------------------------------- |
 | [docs/DEVELOPMENT.md](docs/DEVELOPMENT.md)   | Developer setup, scripts and project layout                           |
 | [docs/AUTH-SETUP.md](docs/AUTH-SETUP.md)     | Microsoft application registration and service access (owner actions) |
+| [docs/INSTALL.md](docs/INSTALL.md)           | Installing, updating and uninstalling the packages                    |
+| [docs/PACKAGING.md](docs/PACKAGING.md)       | Package builds, checksums, smoke tests and signing (owner actions)    |
 | [docs/DECISIONS.md](docs/DECISIONS.md)       | Decision records and deviations                                       |
 | [docs/VERIFICATION.md](docs/VERIFICATION.md) | Actual check results per phase, host and commit                       |
 | [docs/spec/](docs/spec/README.md)            | Product specification v1.2.1 and phase plan                           |
