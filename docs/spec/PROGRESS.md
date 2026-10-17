@@ -8,7 +8,7 @@ Allowed states: `not_started`, `in_progress`, `blocked`, `done`. A partially imp
 | --- | --- | --- | --- |
 | [P01](phases/P01-PROJECT-FOUNDATION.md) | done | [PR #1](https://github.com/kurasis/launcher/pull/1); host checks + CI on 4 targets, see [VERIFICATION.md](../VERIFICATION.md#p01--project-foundation) | Host GUI checked on Linux x64 only; Microsoft client ID not supplied (does not block P01) |
 | [P02](phases/P02-CORE-STORAGE-AND-IPC.md) | done | [PR #2](https://github.com/kurasis/launcher/pull/2); 89 Rust + 19 frontend tests, CI 5/5, host GUI demo; see [VERIFICATION.md](../VERIFICATION.md#p02--rust-state-storage-and-typed-ipc) | GUI demo on Linux x64 only; other targets via CI tests |
-| [P03](phases/P03-LIFECYCLE-SPIKE.md) | in_progress | Linux x64 host scenarios pass; see [VERIFICATION.md](../VERIFICATION.md#p03--early-window-and-process-lifecycle-proof) | Waiting for CI on the pull request |
+| [P03](phases/P03-LIFECYCLE-SPIKE.md) | done | [PR #3](https://github.com/kurasis/launcher/pull/3); lifecycle scenarios + 40 cycles on Linux x64 host, CI 5/5; see [VERIFICATION.md](../VERIFICATION.md#p03--early-window-and-process-lifecycle-proof) | Window behaviour unverified on Windows/macOS/Wayland (P13); memory growth ≈85 KiB/cycle tracked for A23 |
 | [P04](phases/P04-AUTHENTICATION-AND-ACCESS.md) | not_started | — | — |
 | [P05](phases/P05-CATALOG-AND-INSTALL-PLAN.md) | not_started | — | — |
 | [P06](phases/P06-DOWNLOAD-ENGINE.md) | not_started | — | — |
@@ -33,22 +33,24 @@ Allowed states: `not_started`, `in_progress`, `blocked`, `done`. A partially imp
 ## Last completed phase report
 
 ```text
-Phase: P02 — Rust state, storage and typed IPC
+Phase: P03 — Early window and process lifecycle proof
 Status: done
-Implemented: validated DATA_ROOT with OS-backed lifetime lock; atomic versioned JSON
-  documents with corrupt-file preservation, settings backup and read-only newer schemas;
-  canonical digest-keyed cache paths; settings/accounts/instance/install-lock models with
-  lock-authoritative reconciliation; AppState with epoch/revision events, MutationRequest
-  idempotency and the global activity permit; error envelope, secret types and redaction;
-  validated memory/resolution/name bounds; shipped compatibility list; typed frontend store
-  and installations/settings UI.
-Checks: 80 Rust unit + 9 integration tests (incl. cross-process lock), 19 frontend tests,
-  clippy/rustfmt/typecheck/lint/format - pass; CI 5/5 jobs pass.
-Demo: create an installation, change memory, restart: values and selection restored; a
-  second process against the same DATA_ROOT shows DATA_ROOT_LOCKED.
-Evidence limits: GUI demo on the Linux x64 host under Xvfb; Windows/macOS via CI tests only.
-Blockers: none for P02. External: Microsoft client ID / service approval; target desktops.
-Next eligible phase: P03 (P04 and P05 are also eligible)
+Implemented: Rust-owned child supervision with bounded concurrent output capture and a
+  2 s post-exit drain; window controller that destroys the main WebviewWindow after a
+  1.5 s survival interval and recreates exactly one window from the same config;
+  ExitRequested policy with explicit quit intent and menu/OS Quit choice; single-instance
+  handoff; request_quit/show_main_window; debug-only harness (own executable, fixed
+  scenarios).
+Checks: 12 GUI scenarios and 40 unload/restore cycles on the Linux x64 host (Xvfb +
+  openbox) - pass after fixing an unload-during-drain defect; release build has no
+  harness; 5 child-supervision integration tests, lifecycle unit tests, 27 frontend
+  tests; CI 5/5.
+Demo: debug build, About -> Lifecycle test -> "Run 12 seconds": the window closes,
+  reappears with the result when the child exits.
+Evidence limits: host-only (Linux x64, X11 under Xvfb). Windows/macOS/Wayland window
+  behaviour, macOS menu Quit and Dock reopen are unverified.
+Blockers: none for P03.
+Next eligible phase: P04 (in progress, blocked on live sign-in); P05
 ```
 
 ## Decisions / deviations
