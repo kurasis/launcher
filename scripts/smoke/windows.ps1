@@ -3,7 +3,8 @@
 #
 # Installs silently for the current user, checks the per-user location and the
 # uninstall entry, starts the launcher and waits until it holds the supervisor lock,
-# then uninstalls silently and checks that DATA_ROOT is left in place.
+# opens the console window and checks what it shows (windows-console.ps1), then
+# uninstalls silently and checks that DATA_ROOT is left in place.
 param([Parameter(Mandatory = $true)][string]$Installer)
 
 $ErrorActionPreference = 'Stop'
@@ -57,6 +58,16 @@ if (-not (Test-Path $lock)) {
 if ($process.HasExited) { throw "launcher exited early with $($process.ExitCode)" }
 if (-not (Test-Path (Join-Path $dataRoot 'locks\supervisor.lock'))) { throw 'DATA_ROOT not created' }
 Write-Host "Running after ${waitSeconds}s, DATA_ROOT created"
+
+Step 'Console window shows the journal'
+$shot = Join-Path $env:RUNNER_TEMP 'console-window.png'
+& powershell.exe -NoProfile -ExecutionPolicy Bypass -File (Join-Path $PSScriptRoot 'windows-console.ps1') -Screenshot $shot
+$consoleExit = $LASTEXITCODE
+if ($consoleExit -ne 0) {
+  Write-Host '-- stderr'; Get-Content -ErrorAction SilentlyContinue $stderr | Select-Object -Last 40 | Write-Host
+  Stop-Process -Id $process.Id -Force
+  throw "console window check failed ($consoleExit)"
+}
 Stop-Process -Id $process.Id -Force
 $process.WaitForExit()
 
