@@ -32,11 +32,14 @@ function Find-Window([string]$Name) {
   return $AE::RootElement.FindFirst($Scope::Children, $condition)
 }
 
+# WebView2 reports CSS-transformed text ("DIAGNOSTICS"), so names are compared
+# without regard to case.
 function Find-Button($Within, [string]$Name) {
-  $byName = New-Object System.Windows.Automation.PropertyCondition($AE::NameProperty, $Name)
   $byType = New-Object System.Windows.Automation.PropertyCondition($AE::ControlTypeProperty, $Button)
-  $both = New-Object System.Windows.Automation.AndCondition($byName, $byType)
-  return $Within.FindFirst($Scope::Descendants, $both)
+  foreach ($candidate in $Within.FindAll($Scope::Descendants, $byType)) {
+    if ($candidate.Current.Name -ieq $Name) { return $candidate }
+  }
+  return $null
 }
 
 function Get-Texts($Within) {
