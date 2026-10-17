@@ -58,7 +58,7 @@ KURASIS_MSA_CLIENT_ID=<application-client-id-guid> npm run tauri dev
 
 The UI panel "Microsoft sign-in setup" then shows **Configured, not yet verified**. A
 malformed value shows **Invalid client ID**; no value shows **Not configured**. The status
-never says "verified": verification requires a real sign-in in P04.
+never says "verified": verification requires a real sign-in (still outstanding, A03).
 
 Once the owner approves publishing the ID, it can be committed as non-secret build
 configuration (for example a CI variable or a checked-in config file); record that change
@@ -70,17 +70,17 @@ These are taken from the specification's source review (Prism Launcher at commit
 `60bcc2694d7433e2d2a657fbf62b0d022f9116e0`) and Microsoft documentation. They have **not**
 been called with credentials yet.
 
-| Item                   | Candidate                                                                                                                                                                    | Status              |
-| ---------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------- |
-| Authorization endpoint | `https://login.microsoftonline.com/consumers/oauth2/v2.0/authorize`                                                                                                          | Unverified          |
-| Token endpoint         | `https://login.microsoftonline.com/consumers/oauth2/v2.0/token`                                                                                                              | Unverified          |
-| Scopes                 | `XboxLive.SignIn XboxLive.offline_access` (Prism) or `XboxLive.signin offline_access` (Microsoft refresh-token convention) — choose the minimal set the registration accepts | Unverified          |
-| PKCE                   | S256, fresh verifier and `state` per attempt                                                                                                                                 | To implement in P04 |
-| Xbox user token        | `POST https://user.auth.xboxlive.com/user/authenticate` (`RpsTicket=d=<token>`, relying party `http://auth.xboxlive.com`)                                                    | Unverified          |
-| XSTS                   | `POST https://xsts.auth.xboxlive.com/xsts/authorize` (`RETAIL`, relying party `rp://api.minecraftservices.com/`)                                                             | Unverified          |
-| Minecraft token        | `POST https://api.minecraftservices.com/launcher/login` (`platform: PC_LAUNCHER`); the older `/authentication/login_with_xbox` is not the default                            | Unverified          |
-| Access check           | `GET https://api.minecraftservices.com/entitlements/license?requestId=<uuid>`                                                                                                | Unverified          |
-| Profile                | `GET https://api.minecraftservices.com/minecraft/profile`                                                                                                                    | Unverified          |
+| Item                   | Candidate                                                                                                                                                                    | Status            |
+| ---------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------- |
+| Authorization endpoint | `https://login.microsoftonline.com/consumers/oauth2/v2.0/authorize`                                                                                                          | Unverified        |
+| Token endpoint         | `https://login.microsoftonline.com/consumers/oauth2/v2.0/token`                                                                                                              | Unverified        |
+| Scopes                 | `XboxLive.SignIn XboxLive.offline_access` (Prism) or `XboxLive.signin offline_access` (Microsoft refresh-token convention) — choose the minimal set the registration accepts | Unverified        |
+| PKCE                   | S256, fresh verifier and `state` per attempt                                                                                                                                 | Implemented (P04) |
+| Xbox user token        | `POST https://user.auth.xboxlive.com/user/authenticate` (`RpsTicket=d=<token>`, relying party `http://auth.xboxlive.com`)                                                    | Unverified        |
+| XSTS                   | `POST https://xsts.auth.xboxlive.com/xsts/authorize` (`RETAIL`, relying party `rp://api.minecraftservices.com/`)                                                             | Unverified        |
+| Minecraft token        | `POST https://api.minecraftservices.com/launcher/login` (`platform: PC_LAUNCHER`); the older `/authentication/login_with_xbox` is not the default                            | Unverified        |
+| Access check           | `GET https://api.minecraftservices.com/entitlements/license?requestId=<uuid>`                                                                                                | Unverified        |
+| Profile                | `GET https://api.minecraftservices.com/minecraft/profile`                                                                                                                    | Unverified        |
 
 The implemented contract and its validation rules are described in
 [AUTH-CONTRACT.md](AUTH-CONTRACT.md).

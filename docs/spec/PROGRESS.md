@@ -1,6 +1,6 @@
 # Implementation progress
 
-This tracker is intentionally initialized as **not_started**. Creating the specification does not implement any application feature. The coding agent updates this file in place at `SPEC_ROOT/PROGRESS.md` (recommended repository `docs/spec/PROGRESS.md`). Keep it beside PHASES.md so relative links work; do not maintain a second tracker.
+This tracker started as **not_started** for specification version **1.2.1** (delivered in `docs/spec/`, see [README.md](README.md)); it now records the implementation state. The coding agent updates this file in place at `SPEC_ROOT/PROGRESS.md` (recommended repository `docs/spec/PROGRESS.md`). Keep it beside PHASES.md so relative links work; do not maintain a second tracker.
 
 Allowed states: `not_started`, `in_progress`, `blocked`, `done`. A partially implemented phase stays `in_progress` or `blocked`; use Notes to distinguish finished code from missing live verification.
 
@@ -19,7 +19,7 @@ Allowed states: `not_started`, `in_progress`, `blocked`, `done`. A partially imp
 | [P11](phases/P11-COMPLETE-PRODUCT-UI.md) | blocked | [PR #11](https://github.com/kurasis/launcher/pull/11) merged, CI 5/5; all screens wired to real commands; Diagnostics with redacted export; settings defaults; keyboard checks; see [VERIFICATION.md](../VERIFICATION.md#p11--complete-web-ui-settings-and-diagnostics) | First-use journey stops at Microsoft sign-in (P04 client ID); 200 % text scaling unverified (P13) |
 | [P12](phases/P12-CROSS-PLATFORM-PACKAGING.md) | blocked | [PR #12](https://github.com/kurasis/launcher/pull/12) merged, CI 5/5 + Package 6/6 (Windows, macOS arm64/x64 install/start/uninstall smoke on runners); package workflow for all four targets with checksums, build metadata and smoke tests; Linux packages built on Debian 12 and verified on fresh Debian 12/Ubuntu 24.04 roots, including a real 0.1.0 → 0.1.1 upgrade and purge that kept worlds and settings; see [VERIFICATION.md](../VERIFICATION.md#p12--windows-macos-and-linux-packages) | Clean target machines (P13); signing needs owner-provided Apple Developer ID and Windows certificate; packages unsigned |
 | [P13](phases/P13-FINAL-QUALIFICATION.md) | blocked | Second baseline 26.3/Java 25 installed and accepting real JVM arguments; alternating repairs reuse the shared cache; failure injection (network, disk full, permissions, kill -9, corruption); 20 lifecycle cycles; packaged-build performance; A01–A26 and MV01–MV12 status; see [VERIFICATION.md](../VERIFICATION.md#p13--compatibility-security-and-performance-qualification) | Real-account checks (A03–A08, A12, A13) need a project-owned Microsoft client ID and test accounts; Windows, macOS, Wayland and Apple silicon/Intel machines; signing credentials |
-| [P14](phases/P14-HANDOVER.md) | not_started | — | — |
+| [P14](phases/P14-HANDOVER.md) | blocked | Clean-checkout reproduction (npm ci, npm run check, release build), source deliverable scan, user/owner/developer docs (INSTALL, TROUBLESHOOTING, RELEASE-NOTES, AUTH-SETUP, PACKAGING, DEVELOPMENT); see [VERIFICATION.md](../VERIFICATION.md#p14--handover-and-reproducibility) | Users cannot sign in and play until the Microsoft client ID exists; final checksums wait for P13 on target machines; MVP not claimed |
 
 ## External dependencies
 
@@ -28,25 +28,23 @@ Allowed states: `not_started`, `in_progress`, `blocked`, `done`. A partially imp
 | Project-owned Microsoft public client and service access | Not supplied (tracked in [AUTH-SETUP.md](../AUTH-SETUP.md)); blocks P04 live sign-in, the real launch in P09 and the account parts of P13 | Supply registered client ID and confirm accepted auth configuration/access |
 | Real owned / no-access / active subscription test accounts | Unverified | Owner-operated tests; never put credentials into this file |
 | Target OS/hardware test environments | Only an Ubuntu 24.04 container host and GitHub-hosted CI runners are available; no target desktops (see [VERIFICATION.md](../VERIFICATION.md#test-environments)) | Identify available Windows, macOS Intel/arm64 and Linux sessions |
-| Release identity and signing | Provisional identity `io.github.kurasis.launcher` / "Kurasis Launcher" ([D-001](../DECISIONS.md#d-001--provisional-application-identity)); no signing | Choose stable app identity and supply signing configuration when distributing |
+| Release identity and signing | Provisional identity `io.github.kurasis.launcher` / "Kurasis Launcher" ([D-001](../DECISIONS.md#d-001--provisional-application-identity)); packaging workflow ready, no Apple Developer ID or Windows certificate ([PACKAGING.md](../PACKAGING.md)) | Choose stable app identity and supply signing configuration when distributing |
 
 ## Last completed phase report
 
 ```text
-Phase: P08 — Complete installation, recovery and repair
-Status: done
-Implemented: install/repair/cancel operations under the global permit, frozen plans in
-  job receipts, commit order artifacts → runtime → lock → summary, repair from the lock
-  only, shared-corruption invalidation, operation progress/finished events, minimal
-  Install/Retry/Repair/Verify/Cancel UI.
-Checks: 8 orchestration + 6 frontend tests; live install of 1.21.1 with cancel/resume
-  (1,004 downloaded, 2,943 reused) and repair of a damaged library and runtime file with
-  byte-identical sentinel world/options files; CI 5/5. Three defects found by the live
-  run were fixed (document size limit, runtime reuse identity, transfer totals).
-Demo: Installations -> select -> Install / Verify files.
-Evidence limits: Linux x64 host only for live installs.
-Blockers: none for P08. P09/P10 real-game items blocked on the Microsoft client ID.
-Next eligible phase: P11 (complete product UI); P09/P10 code merged as blocked
+Phase: P14 — Final handover and reproducibility
+Status: blocked
+Implemented: README status and known limitations, INSTALL, TROUBLESHOOTING,
+  RELEASE-NOTES (compatibility policy, platforms, package references), developer guide
+  with live tests, owner setup for Microsoft auth and signing.
+Checks: fresh clone -> npm ci, npm run check (55 frontend + 245 Rust tests), release
+  build; tree clean afterwards; no secrets, game files, Java or packages tracked.
+Demo: README -> Quick start; packages from the Package workflow artifacts (INSTALL.md).
+Evidence limits: Linux x64 host and CI runners; no consumer machines, no real account.
+Blockers: Microsoft client ID and Minecraft service access (owner); real-account tests;
+  Windows/macOS/Wayland target machines; signing credentials. MVP not complete.
+Next eligible phase: none; P04, P09-P14 resume when the owner supplies the blockers.
 ```
 
 ## Decisions / deviations
@@ -62,4 +60,4 @@ Record deliberate changes with reason, impacted FR/G/A identifiers and verificat
 | A05: active subscription accepted | Unverified | P13; may be collected in P04 |
 | A06: profile/setup and service failures | Unverified | P13; fixtures start in P04 |
 
-P04's local completion criteria and P13's final evidence requirements are distinct. See document 08. Specification version 1.2.1 changes documentation only; every implementation phase remains not_started.
+P04's local completion criteria and P13's final evidence requirements are distinct. See document 08. Specification version 1.2.1 is the delivered version.
