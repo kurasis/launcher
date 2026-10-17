@@ -991,3 +991,47 @@ returns `testProfile: null` in release builds by construction.
 | Home screen without an account | The ready installation offers **Play demo** with the demo explanation; no Play button                                                                                                                          |
 | Play demo (1.21.1)             | Game window after 15 s; title screen reads "Minecraft 1.21.1 Demo" with "Play Demo World" ([png](verification/demo-release-title.png)); log: `Setting user: Player`; placeholder token absent from the run log |
 | Ending the run                 | The headless X server stopped answering clients while the game ran, so the game was ended with SIGTERM; the run was recorded as failed with exit code 143, as expected                                         |
+
+## Every vanilla version (D-035)
+
+- **Date / host:** 2026-10-17, development host (Ubuntu 24.04.5 container, Xvfb with
+  RANDR and `xrandr`, Mesa llvmpipe/lavapipe, no audio device), branch
+  `claude/all-versions`.
+
+### Planning every catalog version (`live_all_versions`)
+
+919 versions (103 releases, 755 snapshots, 26 beta, 35 alpha) planned against the real
+catalog, descriptors and asset indexes for four targets:
+
+| Target                            | Result                                                                                                          |
+| --------------------------------- | --------------------------------------------------------------------------------------------------------------- |
+| Windows x64, Linux x64, macOS x64 | 919 of 919 plan (Java 8, 17, 21 or 25; modern, virtual and resources asset layouts; native jars where declared) |
+| macOS arm64                       | 287 plan (every version without native classifier jars, 1.19 and later); 632 are refused as Intel-only          |
+
+Failures found and fixed on the way: `os.version` rules need the OS version (the app
+supplies it; the test now does), version IDs with spaces ("1.14 Pre-Release 5"), and
+Mojang's older hosts `launcher.mojang.com` / `launchermeta.mojang.com` used by older
+descriptors.
+
+### Real installs and launches (Linux x64)
+
+| Version           | Era / format                                  | Java | Install | Launch                                                                                    |
+| ----------------- | --------------------------------------------- | ---- | ------- | ----------------------------------------------------------------------------------------- |
+| `rd-132211`       | pre-Classic 2009, own main class              | 8    | Pass    | Pass (harness, no demo mode); world rendered                                              |
+| `c0.30_01c`       | Classic, launch wrapper                       | 8    | Pass    | Pass (harness); in game                                                                   |
+| `a1.0.4`          | Alpha, `pre-1.6` resources                    | 8    | Pass    | Pass (harness); title screen                                                              |
+| `b1.7.3`          | Beta, `pre-1.6` resources                     | 8    | Pass    | Pass (harness); title screen. Demo identity refused (`DEMO_UNAVAILABLE`, no Java started) |
+| `1.5.2`           | launch wrapper, `pre-1.6` resources           | 8    | Pass    | Pass (harness); title screen with resources                                               |
+| `1.6.4`           | `minecraftArguments`, `virtual` legacy assets | 8    | Pass    | Pass, demo mode; `--session` redacted in the log                                          |
+| `1.7.10`          | `minecraftArguments`, LWJGL 2 natives         | 8    | Pass    | Pass, demo mode                                                                           |
+| `1.12.2`          | `minecraftArguments`, LWJGL 2 natives         | 8    | Pass    | Pass, demo mode, 22.7 s to the title screen                                               |
+| `1.16.5`          | modern arguments, LWJGL 3 native jars         | 8    | Pass    | Pass, demo mode                                                                           |
+| `1.17.1`          | declares Java 16                              | 17   | Pass    | Pass, demo mode                                                                           |
+| `26.4-snapshot-4` | current snapshot                              | 25   | Pass    | Pass, demo mode (first-start screen)                                                      |
+
+All eleven share one cache: the Java 8 runtime was downloaded once (0.1 GiB) and reused
+by nine versions. Screenshots: [all-versions-launch.jpg](verification/all-versions-launch.jpg);
+the picker in a release build: [releases](verification/version-picker-releases.png),
+[alpha](verification/version-picker-alpha.png).
+"Harness" means `live_play` with `LAUNCHER_LIVE_FULL=1`, a test-only identity without
+`--demo` for versions that have no demo mode; the product refuses a demo launch of them.

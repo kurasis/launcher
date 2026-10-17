@@ -7,6 +7,8 @@ use crate::storage::paths::Sha1;
 
 const V1_21_1: &[u8] = include_bytes!("../../../../tests/fixtures/mojang/1.21.1.json");
 const V26_3: &[u8] = include_bytes!("../../../../tests/fixtures/mojang/26.3.json");
+const V1_6_4: &[u8] = include_bytes!("../../../../tests/fixtures/mojang/1.6.4.json");
+const B1_7_3: &[u8] = include_bytes!("../../../../tests/fixtures/mojang/b1.7.3.json");
 const TOKEN: &str = "eyJhbGciOi.test-token.not-real";
 
 fn plan(bytes: &[u8], version: &str, os: MetaOs, arch: &'static str) -> GamePlan {
@@ -16,7 +18,8 @@ fn plan(bytes: &[u8], version: &str, os: MetaOs, arch: &'static str) -> GamePlan
         "https://piston-meta.mojang.com/v1/packages/x/v.json",
         &sha,
         version,
-        &RuleContext::with_default_features(os, arch, None),
+        // Old descriptors match libraries on `os.version`, as the app supplies.
+        &RuleContext::with_default_features(os, arch, Some("10.0".to_owned())),
     )
     .unwrap()
 }
@@ -60,6 +63,7 @@ fn compile_as(plan: &GamePlan, identity: &LaunchIdentity) -> CompiledLaunch {
         plan,
         root: &root,
         game_dir: &game_dir,
+        game_assets: &game_dir,
         natives_dir: &natives,
         max_heap_mib: 4096,
         resolution: Resolution {
@@ -176,6 +180,7 @@ fn unknown_or_misplaced_placeholders_are_errors() {
         plan: p,
         root: &root,
         game_dir: &dir,
+        game_assets: &dir,
         natives_dir: &dir,
         max_heap_mib: 2048,
         resolution: Resolution::default(),
@@ -210,4 +215,48 @@ fn substitution_is_exact() {
     );
     assert!(substitute("${c}", &values).is_err());
     assert!(substitute("${a", &values).is_err());
+}
+
+#[test]
+fn legacy_arguments_resolve_and_the_session_stays_secret() {
+    let p = plan(V1_6_4, "1.6.4", MetaOs::Linux, "x86_64");
+    let c = compile_for(&p);
+    let all: Vec<&String> = c.jvm_args.iter().chain(c.game_args.iter()).collect();
+    assert!(all.iter().all(|a| !a.contains("${")));
+    let session = format!("token:{TOKEN}:0123456789abcdef0123456789abcdef");
+    let pairs: Vec<(&str, &str)> = c
+        .game_args
+        .windows(2)
+        .map(|w| (w[0].as_str(), w[1].as_str()))
+        .collect();
+    assert!(pairs.contains(&("--session", session.as_str())));
+    assert!(pairs.contains(&("--username", "Player One")));
+    // The session is a game argument only, and the preview hides all of it.
+    assert!(!c.jvm_args.iter().any(|a| a.contains(TOKEN)));
+    assert!(c.secrets().contains(&session));
+    let preview = c.preview(None).join(" ");
+    assert!(!preview.contains(TOKEN) && !preview.contains("token:"));
+    assert!(
+        c.jvm_args
+            .iter()
+            .any(|a| a.starts_with("-Djava.library.path="))
+    );
+}
+
+#[test]
+fn launch_wrapper_versions_take_positional_name_and_session() {
+    let p = plan(B1_7_3, "b1.7.3", MetaOs::Windows, "x86_64");
+    assert_eq!(p.main_class, "net.minecraft.launchwrapper.Launch");
+    assert!(!p.natives.is_empty(), "LWJGL 2 natives are extracted");
+    assert_eq!(p.runtime.major, 8);
+    let c = compile_for(&p);
+    assert!(c.game_args.iter().all(|a| !a.contains("${")));
+    // `${auth_player_name} ${auth_session} --gameDir … --assetsDir …`
+    assert_eq!(c.game_args[0], "Player One");
+    assert!(c.game_args[1].starts_with("token:"));
+    let assets = c.game_args.iter().position(|a| a == "--assetsDir").unwrap();
+    assert!(
+        c.game_args[assets + 1].ends_with("game"),
+        "the by-name assets directory"
+    );
 }

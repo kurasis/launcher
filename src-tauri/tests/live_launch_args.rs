@@ -178,6 +178,7 @@ fn real_jvm_arguments_are_accepted_by_the_managed_java() {
         plan: &plan,
         root: &root,
         game_dir: &game_dir,
+        game_assets: &game_dir,
         natives_dir: &natives,
         max_heap_mib: 2048,
         resolution: Resolution {

@@ -290,7 +290,7 @@ replaces it), `superseded`.
   Last-Modified, SHA-256). Fresh for 6 hours; a forced refresh revalidates with the stored
   ETag. On an outage the last verified catalog is shown and marked stale; without one, every
   version is shown as "catalog unavailable". Nothing is ever invented.
-- **Trust:** a version is offered only when it is on the curated compatibility list and the
+- **Trust** (superseded by D-035: every catalog version is offered): a version is offered only when it is on the curated compatibility list and the
   catalog lists one of its accepted descriptor SHA-1 values. A changed hash is shown as a
   new candidate and refused for planning. `latest.release` is displayed only as
   information and never adds a version or changes an instance.
@@ -607,3 +607,43 @@ replaces it), `superseded`.
   evidence never counts as account verification (A03–A06, A13).
 - **Verification:** unit tests (`demo_launches_need_no_account_and_always_run_the_demo`,
   `InstallPanel` demo and Play cases); a release build started the real demo.
+
+## D-035 — Every vanilla version: releases, snapshots, beta and alpha
+
+- **Status:** accepted (owner request, 2026-10-17) · **Affects:** FR (version choice),
+  MV01–MV12; supersedes the release-only policy of docs/spec/01 ("Supported release
+  policy", "Deliberate scope limits": snapshots and legacy argument formats) and the
+  curated-list gate of D-021
+- **Decision:** the version list is Mojang's catalog: every entry of type `release`,
+  `snapshot`, `old_beta` or `old_alpha` (919 versions on 2026-10-17). The catalog's
+  descriptor SHA-1 is the trust anchor for every download, as before; the two pinned
+  versions keep a **Verified** mark. The picker shows one tab per type with counts,
+  a search field, release dates and **Latest**.
+- **Older formats supported:**
+  - `minecraftArguments` (before 1.13): game arguments split on whitespace, JVM
+    arguments supplied by the launcher (natives path, launcher brand, classpath; the
+    Intel driver heap-dump flag on Windows);
+  - native classifier jars (`natives`, `${arch}` = 64, `extract.exclude`): downloaded
+    like libraries, never on the classpath, extracted into the run's natives
+    directory with entry names checked;
+  - legacy asset layouts: `virtual` (1.6–1.7.2) under `assets/virtual/<index>` and
+    `map_to_resources` (before 1.6) under the installation's `resources`, both
+    hard-linked (or copied) from the verified objects;
+  - placeholders `auth_session` (`token:<token>:<uuid>`, game arguments only, redacted
+    like the token), `game_assets`, `user_properties` (`{}`);
+  - descriptors without `javaVersion` run on Java 8; Java 16 (Minecraft 1.17), which
+    Temurin never shipped, runs on Java 17; Java 8's `1.8` version string is parsed;
+  - version IDs with spaces (old pre-releases) are safe names;
+  - Mojang's previous hosts `launcher.mojang.com` and `launchermeta.mojang.com`, which
+    older descriptors still use, are allowed sources.
+- **Limits:**
+  - Apple silicon: versions with native classifier jars (everything before 1.19) are
+    refused with a clear message: their natives exist only for Intel, and Temurin
+    has no Java 8 for Apple silicon.
+  - Demo: only clients started through `net.minecraft.client.main.Main` (1.6 and
+    later) know `--demo`. A demo identity cannot start older versions
+    (`DEMO_UNAVAILABLE`); they need a signed-in account.
+  - Mod loaders (`inheritsFrom`) stay out of scope.
+- **Verification:** every catalog version plans on Windows, Linux and Intel macOS, and
+  on Apple silicon from 1.19 (`live_all_versions`); real installs and launches on Linux
+  from rd-132211 (2009) to 26.4-snapshot-4 (docs/VERIFICATION.md).

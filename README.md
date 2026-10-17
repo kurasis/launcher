@@ -20,7 +20,9 @@ Mojang and Adoptium sources with digest verification, a shared verified cache, c
 resume and repair, a private Java runtime per version, the launch compiler (real Java
 accepts the real arguments of both versions), game supervision with window unload and
 return, diagnostics export, settings, and packages for Windows, macOS and Linux built and
-smoke-tested in CI.
+smoke-tested in CI. Every vanilla version Mojang lists can be installed: releases,
+snapshots, beta, alpha and Classic, each type on its own tab (D-035). Versions before 1.19
+need an Intel Mac or Windows/Linux; Apple silicon runs 1.19 and later.
 
 **Without an account:** **Play demo** starts Minecraft's free demo (five in-game days, no
 multiplayer) under a local player name, in every build (D-033).

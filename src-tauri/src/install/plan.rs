@@ -11,7 +11,7 @@ use std::collections::{BTreeMap, HashMap};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
-use super::descriptor::{self, Descriptor, Download, unsupported};
+use super::descriptor::{self, Arguments, Descriptor, Download, unsupported};
 use super::rules::{self, MetaOs, RuleContext};
 use crate::error::{ErrorCode, LauncherError, LauncherResult};
 use crate::net::SourcePolicy;
@@ -42,7 +42,70 @@ pub const KNOWN_PLACEHOLDERS: &[&str] = &[
     "launcher_version",
     "classpath",
     "classpath_separator",
+    // Legacy `minecraftArguments` (before 1.13).
+    "game_assets",
+    "auth_session",
+    "user_properties",
 ];
+
+/// How the game expects its asset files (from the asset index flags).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum AssetLayout {
+    /// `assets/indexes` + `assets/objects`; the game reads the index itself.
+    #[default]
+    Modern,
+    /// `virtual: true` (1.6–1.7.2): files by name under `assets/virtual/<index>`.
+    Virtual,
+    /// `map_to_resources: true` (before 1.6): files by name under
+    /// `<game directory>/resources`.
+    Resources,
+}
+
+/// A native jar extracted into the run's natives directory before launch.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct NativeJar {
+    /// Canonical path of the downloaded jar (also listed in `libraries`).
+    pub path: String,
+    pub sha1: Sha1,
+    /// Entry-name prefixes not to extract.
+    pub exclude: Vec<String>,
+}
+
+/// Java runtime majors the provider no longer publishes, mapped to the nearest
+/// compatible one: Minecraft 1.17 declares Java 16, which Temurin never shipped;
+/// it runs on Java 17 (as Mojang's own runtime later did).
+pub fn runtime_major(declared: u16) -> u16 {
+    match declared {
+        16 => 17,
+        other => other,
+    }
+}
+
+/// JVM arguments for legacy descriptors, which declare none (what Mojang's
+/// launcher supplied for them).
+fn legacy_jvm_arguments(ctx: &RuleContext) -> Vec<String> {
+    let mut args = Vec::new();
+    if ctx.os == MetaOs::Windows {
+        // Selects the Intel graphics driver profile for Minecraft.
+        args.push(
+            "-XX:HeapDumpPath=MojangTricksIntelDriversForPerformance_javaw.exe_minecraft.exe.heapdump"
+                .to_owned(),
+        );
+    }
+    args.extend(
+        [
+            "-Djava.library.path=${natives_directory}",
+            "-Dminecraft.launcher.brand=${launcher_name}",
+            "-Dminecraft.launcher.version=${launcher_version}",
+            "-cp",
+            "${classpath}",
+        ]
+        .map(str::to_owned),
+    );
+    args
+}
 
 /// One managed file with its canonical destination relative to DATA_ROOT.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -102,6 +165,11 @@ pub struct GamePlan {
     pub asset_index: AssetIndexPlan,
     /// Unique asset objects sorted by hash. Empty until the index is planned.
     pub assets: Vec<PlannedArtifact>,
+    #[serde(default)]
+    pub asset_layout: AssetLayout,
+    /// Native jars to extract before launch (legacy natives), in descriptor order.
+    #[serde(default)]
+    pub natives: Vec<NativeJar>,
     pub logging: Option<LoggingPlan>,
     /// Applicable JVM argument templates in order (placeholders unresolved).
     pub jvm_arguments: Vec<String>,
@@ -244,6 +312,19 @@ pub fn plan_game(
 ) -> LauncherResult<GamePlan> {
     let descriptor: Descriptor = descriptor::parse(descriptor_bytes, version_id)?;
     let (os, arch) = runtime_target(ctx)?;
+    let (jvm_arguments, game_arguments) = match &descriptor.arguments {
+        Arguments::Modern { jvm, game } => (
+            evaluate_arguments(jvm, ctx)?,
+            evaluate_arguments(game, ctx)?,
+        ),
+        Arguments::Legacy(text) => {
+            let game = text
+                .split_whitespace()
+                .map(|arg| check_placeholders(arg).map(|()| arg.to_owned()))
+                .collect::<LauncherResult<Vec<_>>>()?;
+            (legacy_jvm_arguments(ctx), game)
+        }
+    };
     let mut seen = HashMap::new();
 
     let client = artifact(
@@ -257,20 +338,23 @@ pub fn plan_game(
 
     // Every declared source must be trusted, even for libraries another OS uses.
     for library in &descriptor.libraries {
-        SourcePolicy::MojangArtifacts.check(&library.download.url)?;
+        if let Some(artifact) = &library.artifact {
+            SourcePolicy::MojangArtifacts.check(&artifact.download.url)?;
+        }
+        for download in library.natives.iter().flat_map(|n| n.downloads.values()) {
+            SourcePolicy::MojangArtifacts.check(&download.url)?;
+        }
     }
     let mut libraries = Vec::new();
     let mut classpath = Vec::new();
-    for library in &descriptor.libraries {
-        if !rules::evaluate(library.rules.as_ref(), ctx)? {
-            continue;
-        }
+    let mut natives: Vec<NativeJar> = Vec::new();
+    let library_artifact = |download: &Download, provenance: String| {
         let planned = artifact(
             ArtifactRole::Library,
-            format!("shared/libraries/{}/artifact.jar", library.download.sha1),
-            &library.download,
+            format!("shared/libraries/{}/artifact.jar", download.sha1),
+            download,
             SourcePolicy::MojangArtifacts,
-            Some(library.name.clone()),
+            Some(provenance),
         )?;
         if planned.sha1 == client.sha1 {
             return Err(LauncherError::new(
@@ -278,12 +362,52 @@ pub fn plan_game(
                 "A library has the same content as the game client.",
             ));
         }
-        let new = check_size_conflict(&mut seen, &planned)?;
-        if !classpath.contains(&planned.path) {
-            classpath.push(planned.path.clone());
+        Ok(planned)
+    };
+    for library in &descriptor.libraries {
+        if !rules::evaluate(library.rules.as_ref(), ctx)? {
+            continue;
         }
-        if new {
-            libraries.push(planned);
+        if let Some(jar) = &library.artifact {
+            let planned = library_artifact(&jar.download, library.name.clone())?;
+            let new = check_size_conflict(&mut seen, &planned)?;
+            if !classpath.contains(&planned.path) {
+                classpath.push(planned.path.clone());
+            }
+            if new {
+                libraries.push(planned);
+            }
+        }
+        let Some(declared) = &library.natives else {
+            continue;
+        };
+        // No classifier for this OS: the library has no natives here.
+        let Some(template) = declared.classifiers.get(ctx.os.as_str()) else {
+            continue;
+        };
+        if ctx.os == MetaOs::Osx && ctx.arch == "arm64" {
+            return Err(LauncherError::new(
+                ErrorCode::UnsupportedPlatform,
+                "This Minecraft version's native libraries exist only for Intel Macs. \
+                 Versions from 1.19 on run on Apple silicon.",
+            ));
+        }
+        // Only 64-bit JVMs are supported.
+        let classifier = template.replace("${arch}", "64");
+        let download = declared
+            .downloads
+            .get(&classifier)
+            .ok_or_else(|| unsupported("missing native classifier download"))?;
+        let planned = library_artifact(download, format!("{} {classifier}", library.name))?;
+        if check_size_conflict(&mut seen, &planned)? {
+            libraries.push(planned.clone());
+        }
+        if !natives.iter().any(|n| n.path == planned.path) {
+            natives.push(NativeJar {
+                path: planned.path,
+                sha1: planned.sha1,
+                exclude: declared.exclude.clone(),
+            });
         }
     }
     classpath.push(client.path.clone());
@@ -334,11 +458,13 @@ pub fn plan_game(
         classpath,
         asset_index,
         assets: Vec::new(),
+        asset_layout: AssetLayout::Modern,
+        natives,
         logging,
-        jvm_arguments: evaluate_arguments(&descriptor.jvm_arguments, ctx)?,
-        game_arguments: evaluate_arguments(&descriptor.game_arguments, ctx)?,
+        jvm_arguments,
+        game_arguments,
         runtime: RuntimeRequirement {
-            major: descriptor.java_major,
+            major: runtime_major(descriptor.java_major),
             os,
             arch,
         },
@@ -352,17 +478,24 @@ pub fn plan_assets(plan: &mut GamePlan, index_bytes: &[u8]) -> LauncherResult<()
     }
     let value: Value =
         serde_json::from_slice(index_bytes).map_err(|_| unsupported("asset index JSON"))?;
-    for legacy in ["virtual", "map_to_resources"] {
-        if value.get(legacy).and_then(Value::as_bool) == Some(true) {
-            return Err(unsupported(legacy));
-        }
-    }
+    let flag = |name: &str| value.get(name).and_then(Value::as_bool) == Some(true);
+    plan.asset_layout = if flag("map_to_resources") {
+        AssetLayout::Resources
+    } else if flag("virtual") {
+        AssetLayout::Virtual
+    } else {
+        AssetLayout::Modern
+    };
     let objects = value
         .get("objects")
         .and_then(Value::as_object)
         .ok_or_else(|| unsupported("asset index objects"))?;
     let mut unique: BTreeMap<Sha1, (u64, String)> = BTreeMap::new();
     for (name, object) in objects {
+        // Legacy layouts turn names into paths; they must be plain relative paths.
+        if plan.asset_layout != AssetLayout::Modern {
+            descriptor::validate_relative_path(name).map_err(|_| unsupported("asset name"))?;
+        }
         let hash = object
             .get("hash")
             .and_then(Value::as_str)

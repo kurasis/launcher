@@ -225,6 +225,8 @@ impl Fixture {
                 declared_total_size: 700,
             },
             assets,
+            asset_layout: crate::install::plan::AssetLayout::Modern,
+            natives: Vec::new(),
             logging: Some(LoggingPlan {
                 id: SafeName::parse("client-1.21.2.xml").unwrap(),
                 argument: "-Dlog4j.configurationFile=${path}".into(),

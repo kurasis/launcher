@@ -173,8 +173,19 @@ async fn outage_uses_the_cache_without_fabricating_versions() {
 }
 
 #[tokio::test]
-async fn changed_or_missing_descriptors_are_not_trusted() {
+async fn every_catalog_version_is_listed_and_only_pinned_ones_are_verified() {
     let (_dir, fetcher, service) = service();
+    let view = service.supported_versions(false).await;
+    let ids: Vec<_> = view.versions.iter().map(|v| v.id.as_str()).collect();
+    assert_eq!(ids, ["26.4-snapshot-4", "26.3", "1.21.1"], "catalog order");
+    let snapshot = &view.versions[0];
+    assert_eq!(snapshot.version_type, "snapshot");
+    assert!(!snapshot.verified);
+    assert_eq!(snapshot.availability, Availability::Available);
+    assert!(view.versions[1].verified && view.versions[2].verified);
+    assert_eq!(view.latest_snapshot.as_deref(), Some("26.4-snapshot-4"));
+
+    // A changed descriptor hash is an ordinary catalog version, no longer verified.
     fetcher.set(
         manifest::CATALOG_URL,
         Ok((
@@ -184,37 +195,21 @@ async fn changed_or_missing_descriptors_are_not_trusted() {
     );
     let view = service.supported_versions(true).await;
     let v26 = view.versions.iter().find(|v| v.id == "26.3").unwrap();
-    assert_eq!(v26.availability, Availability::DescriptorChanged);
-    let error = service
-        .plan(
-            "26.3",
-            &RuleContext::with_default_features(MetaOs::Linux, "x86_64", None),
-        )
-        .await
-        .unwrap_err();
-    assert_eq!(error.code, ErrorCode::UnsupportedVersionMetadata);
+    assert!(!v26.verified);
+    assert_eq!(v26.availability, Availability::Available);
 
-    let only_one = json!({"latest": {"release": "27.0"}, "versions": [
-        {"id": "27.0", "type": "release", "url": descriptor_url(SHA_26_3, "27.0"), "sha1": SHA_26_3}]});
+    // Unknown version types (none exist today) are not offered.
+    let odd = json!({"latest": {"release": "27.0"}, "versions": [
+        {"id": "27.0", "type": "release", "url": descriptor_url(SHA_26_3, "27.0"), "sha1": SHA_26_3},
+        {"id": "x1", "type": "experiment", "url": descriptor_url(SHA_26_3, "x1"), "sha1": SHA_26_3}]});
     fetcher.set(
         manifest::CATALOG_URL,
-        Ok((only_one.to_string().into_bytes(), None)),
+        Ok((odd.to_string().into_bytes(), None)),
     );
     let view = service.supported_versions(true).await;
-    assert_eq!(
-        view.latest_release.as_deref(),
-        Some("27.0"),
-        "informational only"
-    );
-    assert!(
-        view.versions
-            .iter()
-            .all(|v| v.availability == Availability::NotInCatalog)
-    );
-    assert!(
-        !view.versions.iter().any(|v| v.id == "27.0"),
-        "no unqualified release added"
-    );
+    let ids: Vec<_> = view.versions.iter().map(|v| v.id.as_str()).collect();
+    assert_eq!(ids, ["27.0"]);
+    assert!(!view.versions[0].verified);
 }
 
 #[tokio::test]

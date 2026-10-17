@@ -15,6 +15,21 @@ function fakeBackend(initial: AppSnapshot, info: AppInfo = appInfoFixture) {
       switch (cmd) {
         case 'get_app_snapshot':
           return snapshot;
+        case 'list_supported_versions':
+          return {
+            versions: ['26.3', '1.21.1'].map((id) => ({
+              id,
+              versionType: 'release',
+              releaseTime: null,
+              verified: true,
+              availability: 'available',
+            })),
+            fetchedAt: null,
+            stale: false,
+            error: null,
+            latestRelease: '26.3',
+            latestSnapshot: null,
+          };
         case 'get_app_info':
           return info;
         case 'create_instance': {
@@ -91,7 +106,7 @@ describe('App', () => {
     render(<App />);
     fireEvent.click(await screen.findByRole('button', { name: 'New installation' }));
     fireEvent.change(screen.getByLabelText('Name'), { target: { value: '  Creative  ' } });
-    fireEvent.change(screen.getByLabelText('Minecraft version'), { target: { value: '26.3' } });
+    fireEvent.click(await screen.findByRole('button', { name: /^26\.3/ }));
     fireEvent.click(screen.getByRole('button', { name: 'Create installation' }));
 
     const item = await screen.findByRole('button', { name: /Creative/ });

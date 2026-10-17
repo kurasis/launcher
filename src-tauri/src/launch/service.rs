@@ -45,6 +45,9 @@ struct Prepared {
 /// Lines of output kept in the run summary.
 const SUMMARY_TAIL_LINES: usize = 40;
 
+/// The main class of every version whose client accepts `--demo` (1.6 and later).
+pub const DEMO_MAIN_CLASS: &str = "net.minecraft.client.main.Main";
+
 /// Who a launch plays as.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum LaunchMode {
@@ -521,14 +524,32 @@ impl LaunchService {
             }
         };
         check_cancel()?;
+        // Only versions started through Minecraft's own main class know `--demo`;
+        // older ones would run the full game, so a demo identity cannot start them.
+        if identity.demo && plan.main_class != DEMO_MAIN_CLASS {
+            return Err(LauncherError::new(
+                ErrorCode::DemoUnavailable,
+                "This Minecraft version has no demo mode. Sign in with an account that \
+                 owns Minecraft to play it.",
+            ));
+        }
 
         let run_dir = root.run_dir(instance_id, run);
         let natives = run_dir.join("natives");
         let game_dir = root.game_dir(instance_id);
+        let (assets_root, assets_plan, assets_game_dir) =
+            (root.clone(), plan.clone(), game_dir.clone());
+        let game_assets = tokio::task::spawn_blocking(move || {
+            super::legacy::prepare_assets(&assets_root, &assets_plan, &assets_game_dir)
+        })
+        .await
+        .map_err(|_| LauncherError::internal("Preparing assets stopped unexpectedly."))??;
+        check_cancel()?;
         let compiled = compile::compile(&LaunchInputs {
             plan: &plan,
             root,
             game_dir: &game_dir,
+            game_assets: &game_assets,
             natives_dir: &natives,
             max_heap_mib,
             resolution,
@@ -540,6 +561,16 @@ impl LaunchService {
         std::fs::create_dir_all(&natives).map_err(storage)?;
         for dir in &compiled.native_dirs {
             std::fs::create_dir_all(dir).map_err(storage)?;
+        }
+        if !plan.natives.is_empty() {
+            let (native_root, jars, dest) = (root.clone(), plan.natives.clone(), natives.clone());
+            tokio::task::spawn_blocking(move || {
+                super::legacy::extract_natives(&native_root, &jars, &dest)
+            })
+            .await
+            .map_err(|_| {
+                LauncherError::internal("Preparing native libraries stopped unexpectedly.")
+            })??;
         }
         // Non-ASCII arguments must survive Java's native decoding.
         let java = installed.java.clone();
