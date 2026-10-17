@@ -187,6 +187,23 @@ pub fn stop(record: &ActiveRunRecord) -> bool {
     system.process(pid).is_some_and(sysinfo::Process::kill)
 }
 
+/// The executable of a just-spawned child once it has replaced the parent's image.
+/// Linux can resume the parent of a vfork-style spawn before the child's
+/// `/proc/<pid>/exe` changes, so an immediate read may still name the parent.
+#[cfg(test)]
+pub(crate) fn exe_after_exec(pid: u32) -> PathBuf {
+    let parent = std::env::current_exe().ok();
+    for _ in 0..200 {
+        if let Some((_, Some(exe))) = process_identity(pid)
+            && Some(&exe) != parent.as_ref()
+        {
+            return exe;
+        }
+        std::thread::sleep(Duration::from_millis(10));
+    }
+    panic!("process {pid} did not exec within 2 s");
+}
+
 pub fn interrupted_error() -> LauncherError {
     LauncherError::new(
         ErrorCode::OperationInterrupted,
@@ -217,9 +234,7 @@ mod tests {
             ("sleep", &["30"])
         };
         let child = Command::new(program).args(args).spawn().unwrap();
-        let exe = process_identity(child.id())
-            .and_then(|(_, e)| e)
-            .unwrap_or_default();
+        let exe = exe_after_exec(child.id());
         (child, exe)
     }
 
@@ -252,9 +267,17 @@ mod tests {
         // A start time reported slightly differently is still the same process.
         let mut drifted = read(&root).unwrap();
         drifted.process_start += 1;
-        assert!(is_alive(&drifted));
+        assert!(
+            is_alive(&drifted),
+            "{drifted:?} vs {:?}",
+            process_identity(drifted.pid)
+        );
         drifted.process_start -= 2;
-        assert!(is_alive(&drifted));
+        assert!(
+            is_alive(&drifted),
+            "{drifted:?} vs {:?}",
+            process_identity(drifted.pid)
+        );
         // Same PID, different start time: another process now.
         let mut stale = read(&root).unwrap();
         stale.process_start += 3600;
@@ -294,7 +317,11 @@ mod tests {
         ));
         let mut recorded = read(&root).unwrap();
         assert!(recorded.boot_id.is_some());
-        assert!(is_alive(&recorded));
+        assert!(
+            is_alive(&recorded),
+            "{recorded:?} vs {:?}",
+            process_identity(recorded.pid)
+        );
         recorded.boot_id = Some("00000000-0000-0000-0000-000000000000".to_owned());
         assert!(
             !is_alive(&recorded),

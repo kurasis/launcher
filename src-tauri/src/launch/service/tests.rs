@@ -352,9 +352,7 @@ async fn a_game_that_survived_a_restart_blocks_everything_until_it_exits() {
         .arg("30")
         .spawn()
         .unwrap();
-    let exe = crate::launch::orphan::process_identity(child.id())
-        .and_then(|(_, exe)| exe)
-        .unwrap();
+    let exe = crate::launch::orphan::exe_after_exec(child.id());
     assert!(crate::launch::orphan::record(
         &s.f.root,
         "old-run",
@@ -363,7 +361,12 @@ async fn a_game_that_survived_a_restart_blocks_everything_until_it_exits() {
         &exe
     ));
     let service = s.service(auth("Player"));
-    assert_eq!(service.watch_survivor().as_deref(), Some("old-run"));
+    assert_eq!(
+        service.watch_survivor().as_deref(),
+        Some("old-run"),
+        "recorded {exe:?}, now {:?}",
+        crate::launch::orphan::process_identity(child.id())
+    );
     let current = s.f.state.current_run().unwrap();
     assert_eq!(
         (current.run_id.as_str(), current.state),
