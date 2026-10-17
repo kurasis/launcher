@@ -47,6 +47,24 @@ describe('reconcile', () => {
     expect(reconcile(base, instanceEvent(5, 'epoch-2')).kind).toBe('refetch');
   });
 
+  it('applies run state and marks the busy instance', () => {
+    const instance = instanceFixture();
+    const withInstance = snapshotFixture({ revision: 4, instances: [instance] });
+    const result = reconcile(withInstance, {
+      name: 'game_state_changed',
+      payload: {
+        sessionEpoch: 'epoch-1',
+        revision: 5,
+        timestamp: '',
+        currentRun: null,
+        lastRun: null,
+        activeOperation: { kind: 'install', instanceId: instance.id, operationId: 'op' },
+      },
+    });
+    expect(result.kind === 'apply' && result.snapshot.instances[0]?.busy).toBe(true);
+    expect(result.kind === 'apply' && result.snapshot.activeOperation?.operationId).toBe('op');
+  });
+
   it('applies settings changes', () => {
     const settings = { ...base.settings, theme: 'dark' as const };
     const result = reconcile(base, {

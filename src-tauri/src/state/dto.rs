@@ -169,6 +169,46 @@ pub struct MemoryLimits {
     pub resolution: ResolutionBounds,
 }
 
+/// Lifecycle of one supervised process (doc 06 "Snapshot and control details").
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum RunState {
+    Preflight,
+    Spawning,
+    Running,
+    Stopping,
+    Exited,
+    Failed,
+    Cancelled,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum RunKind {
+    /// Harmless child used to prove window lifecycle behaviour (debug builds only).
+    LifecycleTest,
+    Game,
+}
+
+/// A supervised run. Output lines are redacted before they reach this type.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct RunSummary {
+    pub run_id: String,
+    pub kind: RunKind,
+    pub instance_id: Option<InstanceId>,
+    pub state: RunState,
+    pub started_at: DateTime<Utc>,
+    pub ended_at: Option<DateTime<Utc>>,
+    pub exit_code: Option<i32>,
+    pub duration_ms: Option<u64>,
+    /// True when output pipes stayed open after exit and capture was closed.
+    pub drain_timed_out: bool,
+    pub output_tail: Vec<String>,
+    pub output_lines_dropped: u64,
+    pub error: Option<LauncherError>,
+}
+
 /// The complete state a freshly created webview needs (doc 06 "Bootstrap").
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -183,6 +223,10 @@ pub struct AppSnapshot {
     pub microsoft_client_id: ClientIdStatus,
     pub instances: Vec<InstanceSummary>,
     pub active_operation: Option<ActiveActivity>,
+    pub current_run: Option<RunSummary>,
+    pub last_run: Option<RunSummary>,
+    /// True in debug builds, which include the lifecycle test harness.
+    pub lifecycle_harness_available: bool,
     pub supported_versions: &'static [SupportedVersion],
     pub memory: MemoryLimits,
     pub storage_issues: Vec<StorageIssue>,
@@ -212,11 +256,20 @@ pub struct SettingsChanged {
     pub settings: SettingsView,
 }
 
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct GameStateChanged {
+    pub current_run: Option<RunSummary>,
+    pub last_run: Option<RunSummary>,
+    pub active_operation: Option<ActiveActivity>,
+}
+
 /// Backend events, named as in doc 06.
 #[derive(Debug, Clone)]
 pub enum BackendEvent {
     InstanceChanged(EventEnvelope<InstanceChanged>),
     SettingsChanged(EventEnvelope<SettingsChanged>),
+    GameStateChanged(Box<EventEnvelope<GameStateChanged>>),
 }
 
 impl BackendEvent {
@@ -224,6 +277,7 @@ impl BackendEvent {
         match self {
             Self::InstanceChanged(_) => "instance_changed",
             Self::SettingsChanged(_) => "settings_changed",
+            Self::GameStateChanged(_) => "game_state_changed",
         }
     }
 
@@ -231,6 +285,7 @@ impl BackendEvent {
         match self {
             Self::InstanceChanged(e) => e.revision,
             Self::SettingsChanged(e) => e.revision,
+            Self::GameStateChanged(e) => e.revision,
         }
     }
 
@@ -238,6 +293,7 @@ impl BackendEvent {
         match self {
             Self::InstanceChanged(e) => serde_json::to_value(e),
             Self::SettingsChanged(e) => serde_json::to_value(e),
+            Self::GameStateChanged(e) => serde_json::to_value(e),
         }
         .unwrap_or(serde_json::Value::Null)
     }

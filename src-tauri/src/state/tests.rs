@@ -260,7 +260,7 @@ fn busy_instance_cannot_be_reconfigured() {
     let created = create(&state, "Busy", "1.21.1").unwrap();
     let _permit = state
         .activity()
-        .try_acquire(OperationKind::Install, created.id, "op-1")
+        .try_acquire(OperationKind::Install, Some(created.id), "op-1")
         .unwrap();
     assert!(state.snapshot().instances[0].busy);
     let error = state

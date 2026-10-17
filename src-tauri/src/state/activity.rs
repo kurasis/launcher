@@ -17,7 +17,8 @@ use crate::storage::paths::InstanceId;
 #[serde(rename_all = "camelCase")]
 pub struct ActiveActivity {
     pub kind: OperationKind,
-    pub instance_id: InstanceId,
+    /// `None` for the lifecycle test harness, which belongs to no installation.
+    pub instance_id: Option<InstanceId>,
     pub operation_id: String,
 }
 
@@ -57,7 +58,7 @@ impl ActivityRegistry {
     pub fn try_acquire(
         &self,
         kind: OperationKind,
-        instance_id: InstanceId,
+        instance_id: Option<InstanceId>,
         operation_id: impl Into<String>,
     ) -> LauncherResult<ActivityPermit> {
         let mut current = self.current.lock().unwrap_or_else(PoisonError::into_inner);
@@ -86,7 +87,7 @@ impl ActivityRegistry {
     /// Fails with `INSTANCE_BUSY` when the given instance owns the permit.
     pub fn ensure_instance_idle(&self, instance_id: InstanceId) -> LauncherResult<()> {
         match self.current() {
-            Some(active) if active.instance_id == instance_id => Err(LauncherError::new(
+            Some(active) if active.instance_id == Some(instance_id) => Err(LauncherError::new(
                 ErrorCode::InstanceBusy,
                 "This installation is busy. Wait for the current operation to finish.",
             )
@@ -113,10 +114,13 @@ fn busy_error(active: &ActiveActivity, requested: OperationKind) -> LauncherErro
             "Another operation is in progress. Wait for it to finish, or cancel it.",
         )
     };
-    error
+    let error = error
         .with_operation(active.operation_id.clone())
-        .with_detail("activeKind", kind)
-        .with_detail("activeInstanceId", active.instance_id.to_string())
+        .with_detail("activeKind", kind);
+    match active.instance_id {
+        Some(id) => error.with_detail("activeInstanceId", id.to_string()),
+        None => error,
+    }
 }
 
 #[cfg(test)]
@@ -129,22 +133,22 @@ mod tests {
         let a = InstanceId::generate();
         let b = InstanceId::generate();
         let permit = registry
-            .try_acquire(OperationKind::Install, a, "op-1")
+            .try_acquire(OperationKind::Install, Some(a), "op-1")
             .unwrap();
         let error = registry
-            .try_acquire(OperationKind::Repair, b, "op-2")
+            .try_acquire(OperationKind::Repair, Some(b), "op-2")
             .unwrap_err();
         assert_eq!(error.code, ErrorCode::AppBusy);
         assert_eq!(error.operation_id.as_deref(), Some("op-1"));
         let error = registry
-            .try_acquire(OperationKind::Launch, b, "op-3")
+            .try_acquire(OperationKind::Launch, Some(b), "op-3")
             .unwrap_err();
         assert_eq!(error.code, ErrorCode::AppBusy);
-        assert_eq!(permit.activity().instance_id, a);
+        assert_eq!(permit.activity().instance_id, Some(a));
         drop(permit);
         assert!(
             registry
-                .try_acquire(OperationKind::Launch, b, "op-4")
+                .try_acquire(OperationKind::Launch, Some(b), "op-4")
                 .is_ok()
         );
     }
@@ -153,10 +157,10 @@ mod tests {
     fn second_game_is_reported_as_already_running() {
         let registry = ActivityRegistry::new();
         let _game = registry
-            .try_acquire(OperationKind::Launch, InstanceId::generate(), "run-1")
+            .try_acquire(OperationKind::Launch, None, "run-1")
             .unwrap();
         let error = registry
-            .try_acquire(OperationKind::Launch, InstanceId::generate(), "run-2")
+            .try_acquire(OperationKind::Launch, Some(InstanceId::generate()), "run-2")
             .unwrap_err();
         assert_eq!(error.code, ErrorCode::GameAlreadyRunning);
     }
@@ -167,7 +171,7 @@ mod tests {
         let a = InstanceId::generate();
         let b = InstanceId::generate();
         let _permit = registry
-            .try_acquire(OperationKind::Install, a, "op")
+            .try_acquire(OperationKind::Install, Some(a), "op")
             .unwrap();
         assert_eq!(
             registry.ensure_instance_idle(a).unwrap_err().code,
@@ -189,7 +193,7 @@ mod tests {
                     registry
                         .try_acquire(
                             OperationKind::Install,
-                            InstanceId::generate(),
+                            Some(InstanceId::generate()),
                             format!("{i}"),
                         )
                         .ok()

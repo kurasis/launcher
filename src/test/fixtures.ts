@@ -47,6 +47,9 @@ export function snapshotFixture(overrides: Partial<AppSnapshot> = {}): AppSnapsh
     microsoftClientId: 'not_configured',
     instances: [],
     activeOperation: null,
+    currentRun: null,
+    lastRun: null,
+    lifecycleHarnessAvailable: true,
     supportedVersions: [
       {
         id: '1.21.1',

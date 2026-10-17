@@ -20,9 +20,10 @@ pub mod validation;
 
 use std::path::PathBuf;
 
-use tauri::{Emitter, Manager};
+use tauri::{Emitter, Manager, RunEvent};
 
 use error::{ErrorCode, LauncherError, LauncherResult};
+use lifecycle::{ExitDecision, LifecycleController, RunHandles};
 use state::dto::BackendEvent;
 use state::{AppState, EventSink};
 use storage::paths::DataRoot;
@@ -58,7 +59,15 @@ fn resolve_data_root(app: &tauri::AppHandle) -> LauncherResult<DataRoot> {
 
 /// Builds and runs the Tauri application.
 pub fn run() {
-    tauri::Builder::default()
+    let app = tauri::Builder::default()
+        // Must be the first plugin: a second launch hands over to the running
+        // supervisor and exits before any state or window is created. The DATA_ROOT
+        // lock still protects storage if this notification cannot be delivered.
+        .plugin(tauri_plugin_single_instance::init(|app, _args, _cwd| {
+            app.state::<LifecycleController>().show_main_window(app);
+        }))
+        .manage(LifecycleController::new())
+        .manage(RunHandles::default())
         .setup(|app| {
             let handle = app.handle().clone();
             let state = AppState::initialize(
@@ -70,13 +79,63 @@ pub fn run() {
             app.manage(state);
             Ok(())
         })
-        .invoke_handler(tauri::generate_handler![
-            commands::get_app_info,
-            commands::get_app_snapshot,
-            commands::create_instance,
-            commands::update_instance_settings,
-            commands::set_app_settings,
-        ])
-        .run(tauri::generate_context!())
-        .expect("error while running the Tauri application");
+        .invoke_handler(handlers())
+        .build(tauri::generate_context!())
+        .expect("error while building the Tauri application");
+
+    app.run(|handle, event| match event {
+        RunEvent::ExitRequested { api, .. } => {
+            let controller = handle.state::<LifecycleController>();
+            let supervising = handle.state::<AppState>().activity().current().is_some();
+            if lifecycle::exit_decision(controller.quit_intended(), supervising)
+                == ExitDecision::Prevent
+            {
+                api.prevent_exit();
+                // With a window still present this was not "last window closed" but
+                // an application Quit (menu, Cmd+Q). Ask the user instead of silently
+                // ignoring it. Without a window, supervision simply continues and
+                // reopening the app restores the UI.
+                if handle.get_webview_window(lifecycle::MAIN_WINDOW).is_some() {
+                    controller.show_main_window(handle);
+                    let _ = handle.emit(lifecycle::QUIT_REQUESTED_EVENT, ());
+                }
+            }
+        }
+        #[cfg(target_os = "macos")]
+        RunEvent::Reopen { .. } => {
+            handle
+                .state::<LifecycleController>()
+                .show_main_window(handle);
+        }
+        _ => {}
+    });
+}
+
+#[cfg(debug_assertions)]
+fn handlers<R: tauri::Runtime>() -> impl Fn(tauri::ipc::Invoke<R>) -> bool + Send + Sync + 'static {
+    tauri::generate_handler![
+        commands::get_app_info,
+        commands::get_app_snapshot,
+        commands::create_instance,
+        commands::update_instance_settings,
+        commands::set_app_settings,
+        commands::show_main_window,
+        commands::request_quit,
+        commands::start_lifecycle_test,
+        commands::stop_lifecycle_test,
+    ]
+}
+
+/// Release builds register no lifecycle test commands.
+#[cfg(not(debug_assertions))]
+fn handlers<R: tauri::Runtime>() -> impl Fn(tauri::ipc::Invoke<R>) -> bool + Send + Sync + 'static {
+    tauri::generate_handler![
+        commands::get_app_info,
+        commands::get_app_snapshot,
+        commands::create_instance,
+        commands::update_instance_settings,
+        commands::set_app_settings,
+        commands::show_main_window,
+        commands::request_quit,
+    ]
 }

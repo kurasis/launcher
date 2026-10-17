@@ -201,3 +201,54 @@ replaces it), `superseded`.
   `min(512, max)`. Machines leaving less than 1024 MiB get `INSUFFICIENT_MEMORY` when creating
   an installation. Resolution 640–7680 × 480–4320. Names 1–64 characters without control
   characters; names are never used as paths. Physical memory comes from `sysinfo`.
+
+## D-017 — Window lifecycle: destroy and recreate, Rust-owned supervision
+
+- **Status:** accepted (host-verified on Linux x64 only) · **Phase:** P03 · **Affects:** FR11, A17–A19, A23, doc 05
+- **Decision:** In the default `unload_and_return` mode the main `WebviewWindow` is
+  destroyed (not hidden) once a supervised run survives a 1.5 s startup interval, and
+  recreated from the same window configuration (label `main`, so it receives exactly the
+  same capability and packaged URL) when the run ends. In `keep_open` mode the window stays.
+  The child handle, output readers and run state live in Rust (`lifecycle::child`,
+  `RunHandles`, `AppState`), never in a window.
+- **Exit policy:** `RunEvent::ExitRequested` is prevented while the global activity permit
+  is held, unless an explicit quit intent was recorded (Quit command after the user's
+  choice). Quit intent is never inferred from the exit code. If a window still exists when
+  an exit request arrives (application menu Quit, Cmd+Q), the request is prevented, the
+  window is focused and the UI shows the Keep / Stop and quit / Cancel choice.
+- **Ordering:** every window create/destroy runs on the main event loop via
+  `run_on_main_thread`. A delayed unload only proceeds while its run still owns the unload
+  token; the token is cleared the moment the child process exits — before the bounded output
+  drain — so a window is never destroyed after the process has ended (found and fixed
+  during P03 testing with the inherited-pipe scenario).
+- **Single instance:** `tauri-plugin-single-instance` 2.5.4 is the first plugin; a second
+  launch focuses or recreates the existing window and exits. On Linux it uses the D-Bus
+  session bus; if notification fails, the DATA_ROOT lock (D-014) still prevents a second
+  writer. macOS Dock reopen uses `RunEvent::Reopen`.
+- **Not verified yet:** Windows and macOS window behaviour, macOS menu/Cmd+Q, Wayland. No
+  tray icon is implemented; reopening the executable is the background-return path on every
+  platform, as doc 05 requires that a tray is never the only path.
+
+## D-018 — Lifecycle test harness only in debug builds
+
+- **Status:** accepted · **Phase:** P03 · **Affects:** doc 05, P03 "test controls"
+- **Decision:** The harmless test child is the launcher executable itself started with
+  `--kurasis-lifecycle-test-child <scenario>`; scenarios are a fixed enum (short, long,
+  immediate exit, crash, inherited pipe, heavy output). The child entry point, the
+  `start_lifecycle_test`/`stop_lifecycle_test` handlers and the UI panel are compiled only
+  with `debug_assertions`; release builds register neither handler, and
+  `tests/security_config.rs` checks the release handler list. No input can name a program,
+  path or argument.
+
+## D-019 — Pinned Tauri lifecycle APIs
+
+- **Status:** accepted · **Phase:** P03 · **Affects:** doc 05 "pin and test the exit APIs"
+- **APIs relied on (Tauri 2.12.4):** `App::run` with `RunEvent::ExitRequested { api }` and
+  `ExitRequestApi::prevent_exit`; `RunEvent::Reopen` (macOS); `AppHandle::run_on_main_thread`;
+  `WebviewWindowBuilder::from_config` + `build`; `WebviewWindow::destroy`; `AppHandle::exit`;
+  `tauri_plugin_single_instance::init`. Programmatic restart is not used. A Tauri upgrade must
+  re-run the P03 scenarios in docs/VERIFICATION.md.
+- **Child supervision:** stdout and stderr are read on separate threads with 64 KiB line
+  and 2,000-line / 2 MiB tail bounds; exit is awaited with a 250 ms `try_wait` interval so an
+  explicit Stop can kill exactly the owned child; after exit, pipes are drained for at most
+  2 s. Stop never targets processes by name or PID lookup.

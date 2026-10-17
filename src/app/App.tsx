@@ -3,6 +3,7 @@ import { Button } from '../components/Button';
 import { Notice } from '../components/Notice';
 import { StatusBadge } from '../components/StatusBadge';
 import { AccountChip } from '../features/accounts/AccountChip';
+import { RunStatus } from '../features/diagnostics/RunStatus';
 import { StorageIssues } from '../features/diagnostics/StorageIssues';
 import { InstancesView } from '../features/instances/InstancesView';
 import { SettingsView } from '../features/settings/SettingsView';
@@ -10,6 +11,7 @@ import { appStore, useAppStore } from '../lib/store';
 import { strings } from '../lib/strings';
 import { AboutView } from './AboutView';
 import styles from './App.module.css';
+import { QuitControl } from './QuitControl';
 import { useTheme } from './useTheme';
 
 type View = 'home' | 'settings' | 'about';
@@ -43,12 +45,13 @@ export function App() {
               {strings.nav[item]}
             </button>
           ))}
+          <QuitControl />
         </nav>
       </header>
 
       <main className={styles.content}>
         {view === 'about' ? (
-          <AboutView />
+          <AboutView snapshot={snapshot} />
         ) : state.status === 'loading' ? (
           <p role="status">{strings.bootstrap.loading}</p>
         ) : state.status === 'error' ? (
@@ -69,7 +72,10 @@ export function App() {
           <>
             <StorageIssues issues={state.snapshot.storageIssues} />
             {view === 'home' ? (
-              <InstancesView snapshot={state.snapshot} />
+              <>
+                <RunStatus current={state.snapshot.currentRun} last={state.snapshot.lastRun} />
+                <InstancesView snapshot={state.snapshot} />
+              </>
             ) : (
               <SettingsView snapshot={state.snapshot} />
             )}
