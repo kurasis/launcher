@@ -3,10 +3,9 @@
 
 pub mod argfile;
 pub mod compile;
+pub mod demo;
 pub mod encoding;
 pub mod logs;
 pub mod orphan;
 pub mod redact;
 pub mod service;
-#[cfg(debug_assertions)]
-pub mod test_profile;

@@ -226,6 +226,36 @@ async fn without_verified_access_java_never_starts() {
 }
 
 #[tokio::test(flavor = "multi_thread")]
+async fn demo_launches_need_no_account_and_always_run_the_demo() {
+    let s = Setup::new().await;
+    // The account cannot play, but the demo does not ask it.
+    let service = s.service(TestAuth {
+        name: "Player",
+        fail: Some(ErrorCode::AuthNotConfigured),
+        delay: Duration::ZERO,
+    });
+    let run = service
+        .launch_as(&Uuid::new_v4().to_string(), s.instance, LaunchMode::Demo)
+        .await
+        .unwrap();
+    let done = s.finished(&run.run_id).await;
+    assert_eq!(done.state, RunState::Exited, "{:?}", done.error);
+    let tail = done.output_tail.join("\n");
+    assert!(tail.contains("ARG:--demo"));
+    assert!(tail.contains(&format!("ARG:{}", crate::launch::demo::DEFAULT_NAME)));
+    assert!(
+        !tail.contains("notoken-profile"),
+        "placeholder token redacted"
+    );
+    // A normal launch still requires the account.
+    let error = service
+        .launch_as(&Uuid::new_v4().to_string(), s.instance, LaunchMode::Account)
+        .await
+        .unwrap_err();
+    assert_eq!(error.code, ErrorCode::AuthNotConfigured);
+}
+
+#[tokio::test(flavor = "multi_thread")]
 async fn missing_files_require_repair_before_any_spawn() {
     let s = Setup::new().await;
     std::fs::remove_file(s.f.library_path()).unwrap();

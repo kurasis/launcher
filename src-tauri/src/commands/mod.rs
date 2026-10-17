@@ -69,7 +69,7 @@ impl AppInfo {
 
 #[cfg(debug_assertions)]
 fn active_test_profile() -> Option<String> {
-    crate::launch::test_profile::TestProfile::from_env().map(|p| p.name().to_owned())
+    crate::launch::demo::DemoProfile::from_env().map(|p| p.name().to_owned())
 }
 
 #[cfg(not(debug_assertions))]
@@ -420,15 +420,30 @@ pub struct RunPayload {
     pub run_id: String,
 }
 
-/// Checks the installation and account, then starts Minecraft under supervision.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct LaunchPayload {
+    pub instance_id: crate::storage::paths::InstanceId,
+    /// Minecraft's demo without an account (D-033); otherwise the signed-in account.
+    #[serde(default)]
+    pub demo: bool,
+}
+
+/// Checks the installation and account (or uses the demo profile), then starts
+/// Minecraft under supervision.
 #[tauri::command]
 pub async fn launch_game(
     launcher: State<'_, Launcher>,
-    request: MutationRequest<InstancePayload>,
+    request: MutationRequest<LaunchPayload>,
 ) -> LauncherResult<crate::state::dto::RunSummary> {
+    let mode = if request.payload.demo {
+        crate::launch::service::LaunchMode::Demo
+    } else {
+        crate::launch::service::LaunchMode::Account
+    };
     launcher
         .get()?
-        .launch(&request.request_id, request.payload.instance_id)
+        .launch_as(&request.request_id, request.payload.instance_id, mode)
         .await
 }
 

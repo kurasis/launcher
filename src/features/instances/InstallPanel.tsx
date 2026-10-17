@@ -3,6 +3,7 @@ import { Notice } from '../../components/Notice';
 import { Panel } from '../../components/Panel';
 import forms from '../../components/forms.module.css';
 import type {
+  AccountState,
   ActiveActivity,
   InstanceSummary,
   OperationProgress,
@@ -16,6 +17,8 @@ import styles from './Instances.module.css';
 
 interface InstallPanelProps {
   instance: InstanceSummary;
+  /** Without verified access, Play starts the demo instead (D-033). */
+  accountState: AccountState;
   activeOperation: ActiveActivity | null;
   progress: OperationProgress | null;
   recentOperations: OperationResult[];
@@ -77,13 +80,18 @@ function ResultView({ result }: { result: OperationResult }) {
 /** Install, retry, repair and cancel for one installation, with live progress. */
 export function InstallPanel({
   instance,
+  accountState,
   activeOperation,
   progress,
   recentOperations,
 }: InstallPanelProps) {
   const install = useCommand((requestId: string, id: string) => ipc.installInstance(id, requestId));
   const repair = useCommand((requestId: string, id: string) => ipc.repairInstance(id, requestId));
-  const play = useCommand((requestId: string, id: string) => ipc.launchGame(id, requestId));
+  const play = useCommand((requestId: string, id: string, demo: boolean) =>
+    ipc.launchGame(id, requestId, demo),
+  );
+  // An account that is (being re)checked plays in full; any other state gets the demo.
+  const demo = accountState !== 'verified_access' && accountState !== 'refreshing';
   const cancel = useCommand((requestId: string, operationId: string) =>
     ipc.cancelOperation(operationId, requestId),
   );
@@ -143,9 +151,9 @@ export function InstallPanel({
                   variant="primary"
                   size="large"
                   disabled={otherBusy || play.pending}
-                  onClick={() => void play.run(instance.id)}
+                  onClick={() => void play.run(instance.id, demo)}
                 >
-                  {play.pending ? t.starting : t.play}
+                  {play.pending ? t.starting : demo ? t.playDemo : t.play}
                 </Button>
               )}
               <Button
@@ -159,6 +167,7 @@ export function InstallPanel({
           )}
         </div>
       )}
+      {mine === null && health === 'ready' && demo && <p className={styles.muted}>{t.demoHint}</p>}
       {health !== 'not_installed' && <p className={styles.muted}>{t.userData}</p>}
       {error !== null && <Notice tone="danger">{error}</Notice>}
     </Panel>

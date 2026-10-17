@@ -12,6 +12,10 @@ function backend() {
     if (cmd === 'install_instance' || cmd === 'repair_instance') return { operationId: 'op-1' };
     if (cmd === 'cancel_operation') return { state: 'cancel_requested' };
     if (cmd === 'launch_game') {
+      // The demo needs no account; a normal launch fails without sign-in setup.
+      if ((args as { request: { payload: { demo: boolean } } }).request.payload.demo) {
+        return { runId: 'run-1', kind: 'game', state: 'preflight' };
+      }
       // eslint-disable-next-line @typescript-eslint/only-throw-error -- mirrors the IPC error envelope
       throw {
         code: 'AUTH_NOT_CONFIGURED',
@@ -62,6 +66,7 @@ describe('InstallPanel', () => {
     const calls = backend();
     render(
       <InstallPanel
+        accountState="signed_out"
         instance={instanceFixture()}
         activeOperation={null}
         progress={null}
@@ -81,6 +86,7 @@ describe('InstallPanel', () => {
     const instance = instanceFixture({ busy: true });
     render(
       <InstallPanel
+        accountState="signed_out"
         instance={instance}
         activeOperation={{ kind: 'install', instanceId: instance.id, operationId: 'op-1' }}
         progress={progress}
@@ -107,6 +113,7 @@ describe('InstallPanel', () => {
     backend();
     render(
       <InstallPanel
+        accountState="signed_out"
         instance={instanceFixture()}
         activeOperation={null}
         progress={null}
@@ -121,6 +128,7 @@ describe('InstallPanel', () => {
     const calls = backend();
     const { rerender } = render(
       <InstallPanel
+        accountState="signed_out"
         instance={instanceFixture({ health: 'repair_required' })}
         activeOperation={null}
         progress={null}
@@ -134,6 +142,7 @@ describe('InstallPanel', () => {
     });
     rerender(
       <InstallPanel
+        accountState="signed_out"
         instance={instanceFixture({ health: 'ready' })}
         activeOperation={null}
         progress={null}
@@ -150,6 +159,7 @@ describe('InstallPanel', () => {
     backend();
     render(
       <InstallPanel
+        accountState="signed_out"
         instance={instanceFixture()}
         activeOperation={{ kind: 'install', instanceId: 'other', operationId: 'op-9' }}
         progress={null}
@@ -160,20 +170,40 @@ describe('InstallPanel', () => {
     expect(screen.getByText(/Another operation is running/)).toBeVisible();
   });
 
-  it('offers Play for a ready installation and shows why it cannot start', async () => {
+  it('offers the demo without an account and Play with verified access', async () => {
     const calls = backend();
-    render(
+    const { rerender } = render(
       <InstallPanel
+        accountState="signed_out"
         instance={instanceFixture({ health: 'ready' })}
         activeOperation={null}
         progress={null}
         recentOperations={[]}
       />,
     );
+    expect(screen.queryByRole('button', { name: 'Play' })).toBeNull();
+    expect(screen.getByText(/five in-game days, no multiplayer/)).toBeVisible();
+    fireEvent.click(screen.getByRole('button', { name: 'Play demo' }));
+    await waitFor(() => {
+      expect(calls.find((c) => c.cmd === 'launch_game')?.args).toMatchObject({
+        request: { payload: { instanceId: instanceFixture().id, demo: true } },
+      });
+    });
+
+    rerender(
+      <InstallPanel
+        accountState="verified_access"
+        instance={instanceFixture({ health: 'ready' })}
+        activeOperation={null}
+        progress={null}
+        recentOperations={[]}
+      />,
+    );
+    expect(screen.queryByText(/five in-game days/)).toBeNull();
     fireEvent.click(screen.getByRole('button', { name: 'Play' }));
     expect(await screen.findByText('Sign-in is not configured in this build.')).toBeVisible();
-    expect(calls.find((c) => c.cmd === 'launch_game')?.args).toMatchObject({
-      request: { payload: { instanceId: instanceFixture().id } },
+    expect(calls.filter((c) => c.cmd === 'launch_game').at(-1)?.args).toMatchObject({
+      request: { payload: { instanceId: instanceFixture().id, demo: false } },
     });
   });
 });

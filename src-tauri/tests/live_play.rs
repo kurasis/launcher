@@ -17,8 +17,8 @@ use std::time::{Duration, Instant};
 
 use launcher_lib::catalog::source::MetadataService;
 use launcher_lib::install::service::{LiveSource, PlanSource, StateAccess};
+use launcher_lib::launch::demo::DemoProfile;
 use launcher_lib::launch::service::{LaunchHost, LaunchService};
-use launcher_lib::launch::test_profile::TestProfile;
 use launcher_lib::lifecycle::child::Supervised;
 use launcher_lib::net::{PublicClient, SourcePolicy};
 use launcher_lib::state::dto::RunState;
@@ -105,7 +105,7 @@ async fn the_game_starts_in_demo_mode_and_stops_cleanly() {
     let service = LaunchService::new(
         Arc::clone(&host) as Arc<dyn LaunchHost>,
         source,
-        Arc::new(TestProfile::new("TestPlayer").unwrap()),
+        Arc::new(DemoProfile::new("TestPlayer").unwrap()),
         VERSION,
     );
 
