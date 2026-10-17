@@ -57,6 +57,15 @@ impl RuntimePackage {
     pub fn archive_sha256(&self) -> &Sha256 {
         &self.key.archive_sha256
     }
+
+    /// Same installed bytes: identity, source and size. Descriptive fields such as
+    /// the version string may differ when rebuilt from an install lock.
+    pub fn same_package(&self, other: &Self) -> bool {
+        self.key == other.key
+            && self.archive_url == other.archive_url
+            && self.archive_size == other.archive_size
+            && self.archive_format == other.archive_format
+    }
 }
 
 pub fn query_url(req: &RuntimeRequirement, image: ImageType) -> String {

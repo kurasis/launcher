@@ -15,6 +15,19 @@ export type Reconciliation =
 export function reconcile(snapshot: AppSnapshot, event: BackendEvent): Reconciliation {
   const { payload } = event;
   if (payload.sessionEpoch !== snapshot.sessionEpoch) return { kind: 'refetch' };
+  if (event.name === 'operation_progress') {
+    // Progress carries the current revision without advancing it; apply it when
+    // it is newer for its operation and the operation has not finished yet.
+    const progress = event.payload;
+    const current = snapshot.operationProgress;
+    const finished = snapshot.recentOperations.some((r) => r.operationId === progress.operationId);
+    const stale =
+      current !== null &&
+      current.operationId === progress.operationId &&
+      current.sequence >= progress.sequence;
+    if (finished || stale) return { kind: 'ignore' };
+    return { kind: 'apply', snapshot: { ...snapshot, operationProgress: progress } };
+  }
   if (payload.revision <= snapshot.revision) return { kind: 'ignore' };
   if (payload.revision !== snapshot.revision + 1) return { kind: 'refetch' };
 
@@ -32,6 +45,23 @@ export function reconcile(snapshot: AppSnapshot, event: BackendEvent): Reconcili
       return { kind: 'apply', snapshot: { ...base, settings: event.payload.settings } };
     case 'account_state_changed':
       return { kind: 'apply', snapshot: { ...base, account: event.payload.account } };
+    case 'operation_finished': {
+      const { result, activeOperation } = event.payload;
+      const busyId = activeOperation?.instanceId ?? null;
+      const instances = snapshot.instances.map((i) => ({ ...i, busy: i.id === busyId }));
+      const operationProgress =
+        snapshot.operationProgress?.operationId === result.operationId
+          ? null
+          : snapshot.operationProgress;
+      const recentOperations = [
+        result,
+        ...snapshot.recentOperations.filter((r) => r.operationId !== result.operationId),
+      ].slice(0, 10);
+      return {
+        kind: 'apply',
+        snapshot: { ...base, activeOperation, instances, operationProgress, recentOperations },
+      };
+    }
     case 'game_state_changed': {
       const { currentRun, lastRun, activeOperation } = event.payload;
       const busyId = activeOperation?.instanceId ?? null;

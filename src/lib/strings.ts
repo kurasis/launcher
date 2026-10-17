@@ -7,7 +7,9 @@ import type {
   RunState,
   DuringGameMode,
   InstallationHealth,
+  InstallState,
   MicrosoftClientIdStatus,
+  OperationKind,
   Theme,
 } from './contracts';
 
@@ -107,8 +109,46 @@ export const strings = {
       unsupported: 'Unsupported',
     } satisfies Record<InstallationHealth, string>,
     busy: 'Busy',
-    notImplemented:
-      'Installing and playing are not available in this build yet. Installation records and their settings are saved now.',
+    notImplemented: 'Playing is not available in this build yet.',
+  },
+
+  install: {
+    title: 'Game files',
+    install: 'Install',
+    retry: 'Retry install',
+    repair: 'Repair',
+    verify: 'Verify files',
+    cancel: 'Cancel',
+    cancelling: 'Cancelling…',
+    otherBusy: 'Another operation is running. Wait for it to finish or cancel it.',
+    explain: {
+      not_installed:
+        'The game files, the Java runtime and the version metadata are downloaded from Mojang and Adoptium and checked before use.',
+      ready: 'All files were verified. Repair checks every file again and replaces damaged ones.',
+      needs_verification:
+        'The files have not been fully verified since the last change. Verify them before playing.',
+      repair_required: 'Some files are damaged or missing. Repair replaces them.',
+      unsupported: 'This installation was created by a newer launcher version.',
+    } satisfies Record<InstallationHealth, string>,
+    userData: 'Repair never changes worlds, screenshots or options in the game folder.',
+    phase: {
+      resolving: 'Reading version metadata',
+      checking_files: 'Checking files',
+      downloading: 'Downloading',
+      extracting_runtime: 'Preparing Java',
+      finalizing: 'Finishing',
+      cancel_requested: 'Cancelling',
+    } satisfies Record<InstallState, string>,
+    progressLabel: 'Download progress',
+    bytes: (done: string, total: string) => `${done} of ${total}`,
+    files: (done: number, total: number) => `${String(done)} of ${String(total)} files verified`,
+    speed: (rate: string) => `${rate}/s`,
+    result: {
+      succeeded: (kind: OperationKind, files: number, bytes: string, reused: number) =>
+        `${kind === 'repair' ? 'Repair' : 'Installation'} finished. Downloaded ${String(files)} files (${bytes}); reused ${String(reused)} verified files.`,
+      cancelled: 'Cancelled. Files verified so far were kept; continue to resume.',
+      interrupted: 'The launcher stopped before this finished. Files verified so far were kept.',
+    },
   },
 
   createForm: {

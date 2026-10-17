@@ -297,3 +297,59 @@ pub async fn preview_install_plan(
     let plan = service.plan(&version_id, &ctx).await?;
     Ok(service.summarize(&plan))
 }
+
+/// The install service, absent when DATA_ROOT is unavailable.
+pub struct Installer(pub Option<Arc<crate::install::service::InstallService>>);
+
+impl Installer {
+    fn get(&self) -> LauncherResult<&crate::install::service::InstallService> {
+        self.0.as_deref().ok_or_else(|| {
+            crate::error::LauncherError::new(
+                crate::error::ErrorCode::StorageUnavailable,
+                "Launcher data is unavailable.",
+            )
+        })
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct InstancePayload {
+    pub instance_id: crate::storage::paths::InstanceId,
+}
+
+/// Installs (or completes and verifies) an installation in the background.
+#[tauri::command]
+pub async fn install_instance(
+    installer: State<'_, Installer>,
+    request: MutationRequest<InstancePayload>,
+) -> LauncherResult<crate::install::service::OperationStarted> {
+    installer.get()?.start(
+        &request.request_id,
+        crate::storage::models::OperationKind::Install,
+        request.payload.instance_id,
+    )
+}
+
+/// Fully re-verifies an installation against its lock and replaces bad files.
+#[tauri::command]
+pub async fn repair_instance(
+    installer: State<'_, Installer>,
+    request: MutationRequest<InstancePayload>,
+) -> LauncherResult<crate::install::service::OperationStarted> {
+    installer.get()?.start(
+        &request.request_id,
+        crate::storage::models::OperationKind::Repair,
+        request.payload.instance_id,
+    )
+}
+
+/// Requests cancellation of an install or repair.
+#[tauri::command]
+pub fn cancel_operation(
+    installer: State<'_, Installer>,
+    request: MutationRequest<OperationPayload>,
+) -> LauncherResult<crate::install::service::CancelAck> {
+    crate::state::ledger::validate_request_id(&request.request_id)?;
+    installer.get()?.cancel(&request.payload.operation_id)
+}

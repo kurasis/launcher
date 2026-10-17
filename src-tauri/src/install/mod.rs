@@ -3,5 +3,7 @@
 //! download engine follows in P06 and the complete installer in P08.
 
 pub mod descriptor;
+pub mod lock;
 pub mod plan;
 pub mod rules;
+pub mod service;

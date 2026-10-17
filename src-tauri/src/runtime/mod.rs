@@ -65,6 +65,8 @@ pub struct InstalledRuntime {
     pub receipt: RuntimeReceipt,
     /// True when an existing verified runtime was used without downloading.
     pub reused: bool,
+    /// Transfer report of the archive download when the runtime was (re)built.
+    pub archive_download: Option<crate::download::DownloadReport>,
 }
 
 impl InstalledRuntime {
@@ -114,7 +116,7 @@ pub fn verify_installed(root: &DataRoot, package: &RuntimePackage) -> LauncherRe
     let Ok(receipt) = serde_json::from_slice::<RuntimeReceipt>(&bytes) else {
         return invalid(RUNTIME_RECEIPT);
     };
-    if receipt.schema_version != SCHEMA_VERSION || receipt.package != *package {
+    if receipt.schema_version != SCHEMA_VERSION || !receipt.package.same_package(package) {
         return invalid(RUNTIME_RECEIPT);
     }
     let Ok(tree_bytes) = fs::read(dir.join(TREE_RECEIPT)) else {
@@ -139,6 +141,7 @@ pub fn verify_installed(root: &DataRoot, package: &RuntimePackage) -> LauncherRe
         java,
         receipt,
         reused: true,
+        archive_download: None,
     })))
 }
 
@@ -304,7 +307,7 @@ impl RuntimeInstaller {
             size: package.archive_size,
             digest: Digest::Sha256(package.key.archive_sha256.clone()),
         };
-        self.executor.run(job, vec![request], cancel, sink).await?;
+        let download = self.executor.run(job, vec![request], cancel, sink).await?;
         let archive = resolve_managed_path(&self.root, &archive_path)?;
 
         let (root, pinned, limits, timeout, cancel) = (
@@ -326,7 +329,10 @@ impl RuntimeInstaller {
         if let Some(parent) = archive.parent() {
             let _ = fs::remove_dir(parent);
         }
-        result
+        result.map(|installed| InstalledRuntime {
+            archive_download: Some(download),
+            ..installed
+        })
     }
 }
 
@@ -388,6 +394,7 @@ fn install_from_archive(
         java,
         receipt,
         reused: false,
+        archive_download: None,
     })
 }
 

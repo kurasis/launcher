@@ -9,7 +9,7 @@ pub mod activity;
 pub mod dto;
 pub mod ledger;
 
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, VecDeque};
 use std::sync::{Mutex, MutexGuard, PoisonError};
 
 use chrono::Utc;
@@ -21,7 +21,9 @@ use crate::auth::client_id;
 use crate::catalog::compatibility;
 use crate::error::{ErrorCode, LauncherError, LauncherResult};
 use crate::storage::document::SCHEMA_VERSION;
-use crate::storage::models::{AccountsFile, InstallationHealth, InstanceFile, Settings};
+use crate::storage::models::{
+    AccountsFile, InstallationHealth, InstanceFile, LastResult, OperationKind, Outcome, Settings,
+};
 use crate::storage::paths::{DataRoot, InstanceId};
 use crate::storage::{StorageIssue, Store};
 use crate::validation::{self, MemoryPolicy, RESOLUTION_BOUNDS};
@@ -64,7 +66,12 @@ struct Data {
     current_run: Option<RunSummary>,
     last_run: Option<RunSummary>,
     account: AccountSummary,
+    operation_progress: Option<OperationProgress>,
+    recent_operations: VecDeque<OperationResult>,
 }
+
+/// Recent terminal operation outcomes kept for recreated webviews.
+const RECENT_OPERATIONS: usize = 10;
 
 pub struct AppState {
     epoch: String,
@@ -105,6 +112,8 @@ impl AppState {
                 current_run: None,
                 last_run: None,
                 account: AccountSummary::signed_out(),
+                operation_progress: None,
+                recent_operations: VecDeque::new(),
             },
         };
         match root.and_then(Store::open) {
@@ -134,13 +143,17 @@ impl AppState {
                         document: "runtimes".into(),
                     });
                 }
-                if let Err(error) = crate::download::receipt::reconcile_jobs(store.root()) {
-                    issues.push(StorageIssue {
-                        code: error.code,
-                        message: "Unfinished download records could not be cleaned up.".into(),
-                        document: "jobs".into(),
-                    });
-                }
+                let interrupted = match crate::download::receipt::reconcile_jobs(store.root()) {
+                    Ok(interrupted) => interrupted,
+                    Err(error) => {
+                        issues.push(StorageIssue {
+                            code: error.code,
+                            message: "Unfinished download records could not be cleaned up.".into(),
+                            document: "jobs".into(),
+                        });
+                        Vec::new()
+                    }
+                };
                 let data = &mut inner.data;
                 data.settings = settings.value;
                 data.settings_writable = settings.writable;
@@ -154,6 +167,9 @@ impl AppState {
                     AccountState::SignedOut
                 };
                 data.instances = instances.into_iter().map(|i| (i.id, i)).collect();
+                for receipt in interrupted {
+                    record_interrupted(data, &store, &receipt, &mut issues);
+                }
                 data.issues = issues;
                 // A selection that no longer exists is dropped in memory only.
                 if let Some(selected) = data.settings.selected_instance_id
@@ -235,6 +251,8 @@ impl AppState {
                 resolution: RESOLUTION_BOUNDS,
             },
             storage_issues: data.issues.clone(),
+            operation_progress: data.operation_progress.clone(),
+            recent_operations: data.recent_operations.iter().cloned().collect(),
         }
     }
 
@@ -330,6 +348,17 @@ impl AppState {
                     account: data.account.clone(),
                 },
             })),
+            Change::OperationFinished(result) => {
+                BackendEvent::OperationFinished(Box::new(EventEnvelope {
+                    session_epoch,
+                    revision,
+                    timestamp,
+                    body: OperationFinished {
+                        result: *result,
+                        active_operation: self.activity.current(),
+                    },
+                }))
+            }
             Change::Settings => BackendEvent::SettingsChanged(EventEnvelope {
                 session_epoch,
                 revision,
@@ -446,6 +475,124 @@ impl AppState {
 
     pub fn during_game_mode(&self) -> crate::storage::models::DuringGameMode {
         self.lock().data.settings.during_game_mode
+    }
+
+    pub fn instance(&self, id: InstanceId) -> Option<InstanceFile> {
+        self.lock().data.instances.get(&id).cloned()
+    }
+
+    pub fn instance_ids(&self) -> Vec<InstanceId> {
+        self.lock().data.instances.keys().copied().collect()
+    }
+
+    /// Applies a backend-initiated change to an instance, persists it and
+    /// announces it. Used by install/repair and launch bookkeeping.
+    pub fn update_instance(
+        &self,
+        id: InstanceId,
+        update: impl FnOnce(&mut InstanceFile),
+    ) -> LauncherResult<InstanceSummary> {
+        let mut guard = self.lock();
+        let inner = &mut *guard;
+        let Availability::Ready(store) = &inner.availability else {
+            return Err(LauncherError::new(
+                ErrorCode::StorageUnavailable,
+                "Launcher data is unavailable.",
+            ));
+        };
+        let current = inner
+            .data
+            .instances
+            .get(&id)
+            .ok_or_else(instance_not_found)?;
+        let mut updated = current.clone();
+        update(&mut updated);
+        if updated != *current {
+            store.save_instance(&updated)?;
+            inner.data.instances.insert(id, updated);
+            inner.revision += 1;
+            let event = self.event_for(inner.revision, &inner.data, Change::Instance(id));
+            self.sink.emit(&event);
+        }
+        let busy = self
+            .activity
+            .current()
+            .is_some_and(|a| a.instance_id == Some(id));
+        Ok(InstanceSummary::new(&inner.data.instances[&id], busy))
+    }
+
+    /// Publishes coalesced progress for a running operation. Progress does not
+    /// advance the state revision; ignored once the operation has finished.
+    pub fn publish_progress(&self, update: ProgressUpdate) {
+        let mut guard = self.lock();
+        let inner = &mut *guard;
+        let data = &mut inner.data;
+        if data
+            .recent_operations
+            .iter()
+            .any(|r| r.operation_id == update.operation_id)
+        {
+            return;
+        }
+        let sequence = data
+            .operation_progress
+            .as_ref()
+            .filter(|p| p.operation_id == update.operation_id)
+            .map_or(1, |p| p.sequence + 1);
+        let progress = OperationProgress {
+            session_epoch: self.epoch.clone(),
+            operation_id: update.operation_id,
+            instance_id: update.instance_id,
+            kind: update.kind,
+            sequence,
+            revision: inner.revision,
+            phase: update.phase,
+            downloaded_bytes: update.downloaded_bytes,
+            total_download_bytes: update.total_download_bytes,
+            verified_files: update.verified_files,
+            total_files: update.total_files,
+            bytes_per_second: update.bytes_per_second,
+            timestamp: Utc::now(),
+        };
+        data.operation_progress = Some(progress.clone());
+        self.sink
+            .emit(&BackendEvent::OperationProgress(Box::new(progress)));
+    }
+
+    /// Records the single terminal outcome of an operation and announces it.
+    pub fn finish_operation(&self, result: OperationResult) {
+        self.publish(
+            |data| {
+                if data
+                    .recent_operations
+                    .iter()
+                    .any(|r| r.operation_id == result.operation_id)
+                {
+                    return false;
+                }
+                if data
+                    .operation_progress
+                    .as_ref()
+                    .is_some_and(|p| p.operation_id == result.operation_id)
+                {
+                    data.operation_progress = None;
+                }
+                data.recent_operations.push_front(result.clone());
+                data.recent_operations.truncate(RECENT_OPERATIONS);
+                true
+            },
+            Change::OperationFinished(Box::new(result.clone())),
+        );
+    }
+
+    /// A recorded terminal outcome, if the operation finished recently.
+    pub fn operation_result(&self, operation_id: &str) -> Option<OperationResult> {
+        self.lock()
+            .data
+            .recent_operations
+            .iter()
+            .find(|r| r.operation_id == operation_id)
+            .cloned()
     }
 
     pub fn create_instance(
@@ -583,6 +730,72 @@ enum Change {
     Settings,
     Runs,
     Account,
+    OperationFinished(Box<OperationResult>),
+}
+
+/// Progress fields reported by an operation; the state adds epoch, sequence,
+/// revision and time.
+#[derive(Debug, Clone)]
+pub struct ProgressUpdate {
+    pub operation_id: String,
+    pub instance_id: Option<InstanceId>,
+    pub kind: OperationKind,
+    pub phase: InstallState,
+    pub downloaded_bytes: u64,
+    pub total_download_bytes: Option<u64>,
+    pub verified_files: u64,
+    pub total_files: Option<u64>,
+    pub bytes_per_second: Option<u64>,
+}
+
+/// Turns a job interrupted by a crash into a visible, recoverable result.
+fn record_interrupted(
+    data: &mut Data,
+    store: &Store,
+    receipt: &crate::download::receipt::JobReceipt,
+    issues: &mut Vec<StorageIssue>,
+) {
+    let finished_at = receipt.finished_at.unwrap_or_else(Utc::now);
+    if let Some(id) = receipt.instance_id
+        && let Some(instance) = data.instances.get(&id)
+    {
+        let mut updated = instance.clone();
+        updated.last_result = Some(LastResult {
+            kind: receipt.kind,
+            outcome: Outcome::Interrupted,
+            finished_at,
+            error_code: Some(ErrorCode::OperationInterrupted),
+            exit_code: None,
+        });
+        // An interrupted repair proves nothing about the files.
+        if receipt.kind == OperationKind::Repair && updated.health == InstallationHealth::Ready {
+            updated.health = InstallationHealth::NeedsVerification;
+        }
+        if store.save_instance(&updated).is_err() {
+            issues.push(StorageIssue {
+                code: ErrorCode::StorageError,
+                message: "An interrupted operation could not be recorded.".into(),
+                document: format!("instances/{id}/instance.json"),
+            });
+        }
+        data.instances.insert(id, updated);
+    }
+    data.recent_operations.push_back(OperationResult {
+        operation_id: receipt.job_id.to_string(),
+        instance_id: receipt.instance_id,
+        kind: receipt.kind,
+        outcome: Outcome::Interrupted,
+        error: Some(LauncherError::new(
+            ErrorCode::OperationInterrupted,
+            "The launcher stopped before this operation finished. Verified files were kept; \
+             start it again to continue.",
+        )),
+        finished_at,
+        downloaded_files: 0,
+        network_bytes: 0,
+        reused_files: 0,
+    });
+    data.recent_operations.truncate(RECENT_OPERATIONS);
 }
 
 fn instance_not_found() -> LauncherError {

@@ -50,6 +50,14 @@ impl EventSink for TauriSink {
 }
 
 /// Gives the auth service access to the managed application state.
+struct TauriStateAccess(tauri::AppHandle);
+
+impl install::service::StateAccess for TauriStateAccess {
+    fn app_state(&self) -> &AppState {
+        self.0.state::<AppState>().inner()
+    }
+}
+
 struct TauriAccountHost(tauri::AppHandle);
 
 impl AccountHost for TauriAccountHost {
@@ -131,6 +139,7 @@ pub fn run() {
                 MemoryPolicy::detect(),
                 Box::new(TauriSink(handle)),
             );
+            let version = app.package_info().version.to_string();
             let metadata = match state.data_root() {
                 Some(root) => Some(Arc::new(catalog::source::MetadataService::new(
                     net::PublicClient::new(
@@ -142,7 +151,20 @@ pub fn run() {
                 ))),
                 None => None,
             };
+            let installer = match &metadata {
+                Some(metadata) => Some(Arc::new(install::service::InstallService::new(
+                    Arc::new(TauriStateAccess(app.handle().clone())),
+                    Arc::new(
+                        install::service::LiveSource::new(Arc::clone(metadata), &version)
+                            .map_err(|e| e.message)?,
+                    ),
+                    download::transport::HttpTransport::public(&version).map_err(|e| e.message)?,
+                    download::ExecutorConfig::default(),
+                ))),
+                None => None,
+            };
             app.manage(commands::Metadata(metadata));
+            app.manage(commands::Installer(installer));
             app.manage(state);
             let auth = Arc::new(create_auth_service(app.handle())?);
             app.manage(Arc::clone(&auth));
@@ -199,6 +221,9 @@ fn handlers<R: tauri::Runtime>() -> impl Fn(tauri::ipc::Invoke<R>) -> bool + Sen
         commands::open_external,
         commands::list_supported_versions,
         commands::preview_install_plan,
+        commands::install_instance,
+        commands::repair_instance,
+        commands::cancel_operation,
         commands::start_lifecycle_test,
         commands::stop_lifecycle_test,
     ]
@@ -222,5 +247,8 @@ fn handlers<R: tauri::Runtime>() -> impl Fn(tauri::ipc::Invoke<R>) -> bool + Sen
         commands::open_external,
         commands::list_supported_versions,
         commands::preview_install_plan,
+        commands::install_instance,
+        commands::repair_instance,
+        commands::cancel_operation,
     ]
 }

@@ -6,6 +6,7 @@ import { ipc } from '../../lib/ipc';
 import { strings } from '../../lib/strings';
 import { useCommand } from '../../lib/useCommand';
 import { CreateInstanceForm } from './CreateInstanceForm';
+import { InstallPanel } from './InstallPanel';
 import { InstanceDetails } from './InstanceDetails';
 import { InstanceList } from './InstanceList';
 import styles from './Instances.module.css';
@@ -60,7 +61,16 @@ export function InstancesView({ snapshot }: InstancesViewProps) {
           />
         )}
         {selected !== null && (
-          <InstanceDetails key={selected.id} instance={selected} memory={snapshot.memory} />
+          <>
+            <InstallPanel
+              key={`install-${selected.id}`}
+              instance={selected}
+              activeOperation={snapshot.activeOperation}
+              progress={snapshot.operationProgress}
+              recentOperations={snapshot.recentOperations}
+            />
+            <InstanceDetails key={selected.id} instance={selected} memory={snapshot.memory} />
+          </>
         )}
       </div>
     </div>

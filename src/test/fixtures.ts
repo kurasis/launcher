@@ -83,6 +83,8 @@ export function snapshotFixture(overrides: Partial<AppSnapshot> = {}): AppSnapsh
       resolution: { minWidth: 640, maxWidth: 7680, minHeight: 480, maxHeight: 4320 },
     },
     storageIssues: [],
+    operationProgress: null,
+    recentOperations: [],
     ...overrides,
   };
 }

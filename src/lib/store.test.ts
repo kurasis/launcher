@@ -42,6 +42,60 @@ describe('reconcile', () => {
     expect(reconcile(base, instanceEvent(1)).kind).toBe('ignore');
   });
 
+  it('applies newer progress without advancing the revision', () => {
+    const progress = (sequence: number, operationId = 'op-1') => ({
+      name: 'operation_progress' as const,
+      payload: {
+        sessionEpoch: 'epoch-1',
+        operationId,
+        instanceId: null,
+        kind: 'install' as const,
+        sequence,
+        revision: 4,
+        phase: 'downloading' as const,
+        downloadedBytes: sequence * 10,
+        totalDownloadBytes: 100,
+        verifiedFiles: 0,
+        totalFiles: 5,
+        bytesPerSecond: null,
+        timestamp: '',
+      },
+    });
+    const first = reconcile(base, progress(2));
+    expect(first.kind).toBe('apply');
+    if (first.kind !== 'apply') return;
+    expect(first.snapshot.revision).toBe(4);
+    expect(reconcile(first.snapshot, progress(1)).kind).toBe('ignore');
+    expect(reconcile(first.snapshot, progress(3)).kind).toBe('apply');
+
+    // After the terminal event, late progress for that operation is dropped.
+    const finished = reconcile(first.snapshot, {
+      name: 'operation_finished',
+      payload: {
+        sessionEpoch: 'epoch-1',
+        revision: 5,
+        timestamp: '',
+        activeOperation: null,
+        result: {
+          operationId: 'op-1',
+          instanceId: null,
+          kind: 'install',
+          outcome: 'succeeded',
+          error: null,
+          finishedAt: '',
+          downloadedFiles: 5,
+          networkBytes: 100,
+          reusedFiles: 0,
+        },
+      },
+    });
+    expect(finished.kind).toBe('apply');
+    if (finished.kind !== 'apply') return;
+    expect(finished.snapshot.operationProgress).toBeNull();
+    expect(finished.snapshot.recentOperations[0]?.outcome).toBe('succeeded');
+    expect(reconcile(finished.snapshot, progress(9)).kind).toBe('ignore');
+  });
+
   it('refetches on a gap or another backend epoch', () => {
     expect(reconcile(base, instanceEvent(7)).kind).toBe('refetch');
     expect(reconcile(base, instanceEvent(5, 'epoch-2')).kind).toBe('refetch');

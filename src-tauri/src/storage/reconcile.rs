@@ -24,18 +24,21 @@ pub enum LockState {
 /// Reads the install lock without modifying it. A corrupt lock is preserved under a
 /// `.corrupt-*` name by the document loader.
 pub fn read_lock(path: &Path) -> std::io::Result<LockState> {
-    Ok(match document::load::<InstallLock>(path, None)? {
-        Loaded::Missing => LockState::Missing,
-        Loaded::Valid(lock) | Loaded::RecoveredFromBackup { value: lock, .. } => {
-            if lock.complete {
-                LockState::Complete(Box::new(lock))
-            } else {
-                LockState::Incomplete
+    Ok(
+        match document::load_limited::<InstallLock>(path, None, document::MAX_LARGE_DOCUMENT_BYTES)?
+        {
+            Loaded::Missing => LockState::Missing,
+            Loaded::Valid(lock) | Loaded::RecoveredFromBackup { value: lock, .. } => {
+                if lock.complete {
+                    LockState::Complete(Box::new(lock))
+                } else {
+                    LockState::Incomplete
+                }
             }
-        }
-        Loaded::Corrupt { .. } => LockState::Invalid,
-        Loaded::UnsupportedSchema { .. } => LockState::UnsupportedSchema,
-    })
+            Loaded::Corrupt { .. } => LockState::Invalid,
+            Loaded::UnsupportedSchema { .. } => LockState::UnsupportedSchema,
+        },
+    )
 }
 
 /// Outcome of reconciliation.
@@ -142,6 +145,31 @@ mod tests {
             validated_at: Utc::now(),
             complete: true,
         }
+    }
+
+    /// Regression: a real 1.21.1 lock lists ~4,000 artifacts (about 1.6 MB) and
+    /// was once rejected as corrupt by the 1 MiB app-document limit.
+    #[test]
+    fn realistic_large_lock_reads_as_complete() {
+        let dir = tempfile::tempdir().unwrap();
+        let instance = summary(InstallationHealth::NotInstalled);
+        let mut lock = lock_for(&instance);
+        lock.artifacts = (0..6000)
+            .map(|i| LockedArtifact {
+                role: ArtifactRole::AssetObject,
+                path: format!("shared/assets/objects/ab/{i:040}"),
+                size: 1000,
+                algorithm: HashAlgorithm::Sha1,
+                digest: format!("{i:040}"),
+                url: format!("https://resources.download.minecraft.net/ab/{i:040}"),
+                provenance: Some(format!("minecraft/sounds/ambient/cave/cave{i}.ogg")),
+            })
+            .collect();
+        let path = dir.path().join("install.lock.json");
+        crate::storage::document::save(&path, &lock, None).unwrap();
+        assert!(std::fs::metadata(&path).unwrap().len() > 1024 * 1024);
+        assert!(matches!(read_lock(&path).unwrap(), LockState::Complete(_)));
+        assert!(path.exists(), "not set aside");
     }
 
     #[test]
