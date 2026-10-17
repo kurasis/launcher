@@ -47,6 +47,35 @@ pub struct SetInstanceNotesPayload {
     pub notes: String,
 }
 
+/// Which Java an installation runs (D-044).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(tag = "kind", rename_all = "snake_case")]
+pub enum JavaChoice {
+    /// A private runtime from this provider; a change takes effect at the next repair.
+    Managed { provider: JavaProvider },
+    /// The user's own Java program.
+    Custom { path: std::path::PathBuf },
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct SetInstanceJavaPayload {
+    pub instance_id: InstanceId,
+    pub java: JavaChoice,
+    #[serde(default)]
+    pub jvm_arguments: String,
+    /// The user saw the compatibility warnings of a custom Java and chose it anyway.
+    #[serde(default)]
+    pub accept_issues: bool,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct CheckJavaPayload {
+    pub instance_id: InstanceId,
+    pub path: std::path::PathBuf,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct UpdateInstanceSettingsPayload {
@@ -122,6 +151,10 @@ pub struct InstanceSummary {
     pub java: Option<InstalledJava>,
     pub loader: Option<crate::loader::LoaderChoice>,
     pub notes: String,
+    /// A provider the next repair switches the private runtime to.
+    pub java_provider: Option<JavaProvider>,
+    pub custom_java: Option<crate::storage::models::CustomJava>,
+    pub jvm_arguments: String,
 }
 
 impl InstanceSummary {
@@ -141,6 +174,9 @@ impl InstanceSummary {
             java: instance.java.clone(),
             loader: instance.loader.clone(),
             notes: instance.notes.clone(),
+            java_provider: instance.java_provider,
+            custom_java: instance.custom_java.clone(),
+            jvm_arguments: instance.jvm_arguments.clone(),
         }
     }
 }
@@ -385,7 +421,7 @@ pub struct OperationFinished {
 /// Backend events, named as in doc 06.
 #[derive(Debug, Clone)]
 pub enum BackendEvent {
-    InstanceChanged(EventEnvelope<InstanceChanged>),
+    InstanceChanged(Box<EventEnvelope<InstanceChanged>>),
     SettingsChanged(EventEnvelope<SettingsChanged>),
     GameStateChanged(Box<EventEnvelope<GameStateChanged>>),
     AccountStateChanged(Box<EventEnvelope<AccountStateChanged>>),

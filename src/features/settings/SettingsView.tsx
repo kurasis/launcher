@@ -8,6 +8,7 @@ import { LANGUAGES, type SettingsSection, strings } from '../../lib/strings';
 import { useCommand } from '../../lib/useCommand';
 import { DefaultsForm } from './DefaultsForm';
 import { InstallationForm } from './InstallationForm';
+import { InstanceJavaForm } from './InstanceJavaForm';
 import { DataFolderSettings } from './DataFolderSettings';
 import { JavaSettings } from './JavaSettings';
 import styles from './SettingsView.module.css';
@@ -179,6 +180,7 @@ function InstallationsSettings({
         </select>
       </div>
       <InstallationForm key={instance.id} instance={instance} memory={snapshot.memory} />
+      <InstanceJavaForm key={`java-${instance.id}`} instance={instance} />
     </div>
   );
 }

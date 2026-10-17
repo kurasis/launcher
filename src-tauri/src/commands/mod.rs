@@ -15,8 +15,9 @@ use crate::lifecycle::{LifecycleController, RunHandles};
 use crate::net::PublicClient;
 use crate::state::AppState;
 use crate::state::dto::{
-    AppSnapshot, CreateInstancePayload, InstanceSummary, MutationRequest, SetInstanceNotesPayload,
-    SettingsPatch, SettingsView, UpdateInstanceSettingsPayload,
+    AppSnapshot, CheckJavaPayload, CreateInstancePayload, InstanceSummary, JavaChoice,
+    MutationRequest, SetInstanceJavaPayload, SetInstanceNotesPayload, SettingsPatch, SettingsView,
+    UpdateInstanceSettingsPayload,
 };
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
@@ -110,6 +111,62 @@ pub fn set_instance_notes(
     request: MutationRequest<SetInstanceNotesPayload>,
 ) -> LauncherResult<InstanceSummary> {
     state.set_instance_notes(request)
+}
+
+/// Starts a Java program and tells how it suits an installed version (D-044).
+#[tauri::command]
+pub async fn check_java(
+    state: State<'_, AppState>,
+    payload: CheckJavaPayload,
+) -> LauncherResult<crate::runtime::custom::JavaCheck> {
+    let (major, arch) = state.required_java(payload.instance_id)?;
+    probe_java(payload.path, major, arch).await
+}
+
+async fn probe_java(
+    path: std::path::PathBuf,
+    major: u16,
+    arch: crate::storage::paths::TargetArch,
+) -> LauncherResult<crate::runtime::custom::JavaCheck> {
+    tauri::async_runtime::spawn_blocking(move || crate::runtime::custom::check(&path, major, arch))
+        .await
+        .map_err(|_| {
+            crate::error::LauncherError::internal("A runtime check stopped unexpectedly.")
+        })?
+}
+
+/// Chooses an installation's Java and JVM options (D-044). A custom Java is
+/// checked again here; its warnings must have been accepted.
+#[tauri::command]
+pub async fn set_instance_java(
+    state: State<'_, AppState>,
+    request: MutationRequest<SetInstanceJavaPayload>,
+) -> LauncherResult<InstanceSummary> {
+    let check = match &request.payload.java {
+        JavaChoice::Custom { path } => {
+            let (major, arch) = state.required_java(request.payload.instance_id)?;
+            Some(probe_java(path.clone(), major, arch).await?)
+        }
+        JavaChoice::Managed { .. } => None,
+    };
+    state.set_instance_java(request, check)
+}
+
+/// Native file dialog for choosing a Java program.
+#[tauri::command]
+pub async fn pick_java_file<R: Runtime>(app: AppHandle<R>) -> LauncherResult<Option<String>> {
+    use tauri_plugin_dialog::DialogExt;
+    let picked = tauri::async_runtime::spawn_blocking(move || {
+        app.dialog()
+            .file()
+            .set_title("Choose the Java program (java or javaw.exe)")
+            .blocking_pick_file()
+    })
+    .await
+    .map_err(|_| crate::error::LauncherError::internal("The file dialog failed."))?;
+    Ok(picked
+        .and_then(|p| p.into_path().ok())
+        .and_then(|p| p.to_str().map(str::to_owned)))
 }
 
 #[tauri::command]

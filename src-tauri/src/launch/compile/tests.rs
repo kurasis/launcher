@@ -72,6 +72,7 @@ fn compile_as(plan: &GamePlan, identity: &LaunchIdentity) -> CompiledLaunch {
         },
         identity,
         launcher_version: "0.1.0",
+        extra_jvm_args: &[],
     })
     .unwrap()
 }
@@ -189,6 +190,7 @@ fn unknown_or_misplaced_placeholders_are_errors() {
         resolution: Resolution::default(),
         identity: &id,
         launcher_version: "0.1.0",
+        extra_jvm_args: &[],
     };
     let error = compile(&inputs(&p)).err().unwrap();
     assert_eq!(error.code, ErrorCode::UnsupportedVersionMetadata);
@@ -204,6 +206,31 @@ fn unknown_or_misplaced_placeholders_are_errors() {
     p.jvm_arguments
         .push("-Dx=${natives_directory}/../escape".into());
     assert!(compile(&inputs(&p)).is_err());
+}
+
+#[test]
+fn user_jvm_options_come_last_and_are_not_substituted() {
+    let p = plan(V1_21_1, "1.21.1", MetaOs::Linux, "x86_64");
+    let root = root();
+    let dir = PathBuf::from("/tmp/g");
+    let id = identity();
+    let extra = ["-Xmx6G".to_owned(), "-Dlabel=${version_name}".to_owned()];
+    let c = compile(&LaunchInputs {
+        plan: &p,
+        root: &root,
+        game_dir: &dir,
+        game_assets: &dir,
+        natives_dir: &dir,
+        max_heap_mib: 2048,
+        resolution: Resolution::default(),
+        identity: &id,
+        launcher_version: "0.1.0",
+        extra_jvm_args: &extra,
+    })
+    .unwrap();
+    assert_eq!(c.jvm_args[0], "-Xmx2048M");
+    assert_eq!(c.jvm_args[c.jvm_args.len() - 2..], extra);
+    assert_eq!(c.main_class, "net.minecraft.client.main.Main");
 }
 
 #[test]

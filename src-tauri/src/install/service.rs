@@ -18,7 +18,7 @@ use serde::Serialize;
 use uuid::Uuid;
 
 use super::lock::{self, FinalInstallPlan};
-use super::plan::{self, GamePlan, LibraryLayout};
+use super::plan::{self, GamePlan, LibraryLayout, RuntimeRequirement};
 use super::rules::RuleContext;
 use crate::catalog::source::MetadataService;
 use crate::download::receipt::{self, JobReceipt};
@@ -63,6 +63,14 @@ pub trait PlanSource: Send + Sync {
     /// (and locked loader manifest), re-verifying (and if needed refetching by
     /// locked URL) the metadata sources.
     fn locked<'a>(&'a self, lock: &'a InstallLock) -> BoxFuture<'a, LauncherResult<GamePlan>>;
+
+    /// Pins a runtime for `requirement` from the preferred provider, for an
+    /// installed version whose Java the user switched (D-044).
+    fn runtime<'a>(
+        &'a self,
+        requirement: &'a RuntimeRequirement,
+        java: JavaProvider,
+    ) -> BoxFuture<'a, LauncherResult<RuntimePackage>>;
 }
 
 pub struct LiveSource {
@@ -147,17 +155,27 @@ impl PlanSource for LiveSource {
     ) -> BoxFuture<'a, LauncherResult<(GamePlan, RuntimePackage)>> {
         Box::pin(async move {
             let game = self.plan_game(version_id, loader).await?;
+            let runtime = self.runtime(&game.runtime, java).await?;
+            Ok((game, runtime))
+        })
+    }
+
+    fn runtime<'a>(
+        &'a self,
+        requirement: &'a RuntimeRequirement,
+        java: JavaProvider,
+    ) -> BoxFuture<'a, LauncherResult<RuntimePackage>> {
+        Box::pin(async move {
             // Temurin covers what Mojang does not publish for this computer (for
             // example Java 8 on Apple silicon); a failed request is an error.
             let mojang = match java {
-                JavaProvider::Mojang => self.mojang.resolve(&game.runtime).await?,
+                JavaProvider::Mojang => self.mojang.resolve(requirement).await?,
                 JavaProvider::Temurin => None,
             };
-            let runtime = match mojang {
-                Some(runtime) => runtime,
-                None => self.adoptium.resolve(&game.runtime).await?,
-            };
-            Ok((game, runtime))
+            match mojang {
+                Some(runtime) => Ok(runtime),
+                None => self.adoptium.resolve(requirement).await,
+            }
         })
     }
 
@@ -593,7 +611,12 @@ impl Operation {
                 plan
             }
             _ => {
-                let java = self.state().java_provider();
+                // A provider chosen for this installation, else the default.
+                let java = self
+                    .state()
+                    .instance(self.instance_id)
+                    .and_then(|i| i.java_provider)
+                    .unwrap_or_else(|| self.state().java_provider());
                 let (game, runtime) = tokio::select! {
                     resolved = self.source.resolve(&self.version_id, self.loader.as_ref(), java) => resolved?,
                     () = self.cancel.cancelled() => return Err(cancelled()),
@@ -723,12 +746,12 @@ impl Operation {
             game = self.source.locked(lock) => game?,
             () = self.cancel.cancelled() => return Err(cancelled()),
         };
-        let runtime = lock::runtime_from_lock(lock)?;
+        let locked_runtime = lock::runtime_from_lock(lock)?;
         let derived = lock::build_lock(
             &FinalInstallPlan {
                 instance_id: self.instance_id,
                 game: game.clone(),
-                runtime: runtime.clone(),
+                runtime: locked_runtime.clone(),
             },
             lock.runtime.clone(),
         );
@@ -744,8 +767,38 @@ impl Operation {
             .iter()
             .map(request_from_locked)
             .collect::<LauncherResult<Vec<_>>>()?;
+        // The user chose another provider for the private runtime (D-044): pin
+        // a new runtime; everything else stays as locked.
+        let switch = self
+            .state()
+            .instance(self.instance_id)
+            .and_then(|i| i.java_provider)
+            .filter(|p| p.as_str() != lock.runtime.provider);
+        let runtime = match switch {
+            None => locked_runtime,
+            Some(java) => {
+                let runtime = tokio::select! {
+                    runtime = self.source.runtime(&game.runtime, java) => runtime?,
+                    () = self.cancel.cancelled() => return Err(cancelled()),
+                };
+                let console = self.state().console();
+                console.info(format!(
+                    "Switching Java to {} {} ({})",
+                    runtime.provider, runtime.key.major, runtime.release_name
+                ));
+                if java == JavaProvider::Mojang && runtime.key.provider != JavaProvider::Mojang {
+                    console.warn(format!(
+                        "Mojang publishes no Java {} for this computer; using Temurin",
+                        game.runtime.major
+                    ));
+                }
+                runtime
+            }
+        };
         let installed = self.files_and_runtime(requests, &runtime, report).await?;
-        if installed.receipt.tree_receipt_sha256 != lock.runtime.tree_receipt_sha256 {
+        if switch.is_none()
+            && installed.receipt.tree_receipt_sha256 != lock.runtime.tree_receipt_sha256
+        {
             return Err(LauncherError::new(
                 ErrorCode::RuntimeMismatch,
                 "The rebuilt Java runtime differs from the recorded one.",
@@ -773,8 +826,19 @@ impl Operation {
         self.phase(InstallState::Finalizing);
         let index_id = SafeName::parse(&lock.asset_index.id)?;
         lock::project_asset_index(&self.root, &index_id, &lock.asset_index.sha1)?;
+        if switch.is_some() {
+            self.check_cancel()?;
+            // Commit point of the switch: the lock records the new runtime.
+            let mut switched = lock.clone();
+            switched.runtime = installed.locked();
+            switched.validated_at = Utc::now();
+            document::save(&self.root.install_lock(self.instance_id), &switched, None)
+                .map_err(|e| LauncherError::from_io(&e, "Saving the installation record"))?;
+            report.java = InstalledJava::from_lock(&switched.runtime);
+        } else {
+            report.java = InstalledJava::from_lock(&lock.runtime);
+        }
         report.committed = Some(lock.descriptor.sha1.clone());
-        report.java = InstalledJava::from_lock(&lock.runtime);
         Ok(())
     }
 
@@ -899,6 +963,8 @@ impl Operation {
                 instance.health = InstallationHealth::Ready;
                 instance.manifest_sha1 = Some(sha1);
                 instance.java = java;
+                // The lock now records the runtime the user chose.
+                instance.java_provider = None;
             } else if installed_before {
                 instance.health = if found_corrupt {
                     InstallationHealth::RepairRequired

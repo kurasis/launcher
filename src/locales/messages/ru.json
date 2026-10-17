@@ -228,6 +228,7 @@
       "saved": "Сохранено.",
       "busy": "Установка занята, её настройки сейчас изменить нельзя.",
       "java": "Java",
+      "jvmArguments": "Параметры JVM",
       "javaNone": "Выбирается при установке",
       "window": "Память и окно",
       "windowValue": "{mib, number, ::group-off} МиБ · {width, number, ::group-off}×{height, number, ::group-off}",
@@ -249,7 +250,7 @@
         "general": "Язык, оформление, окно лаунчера во время игры и место хранения данных.",
         "java": "Откуда лаунчер загружает Java для новых установок.",
         "defaults": "Память и размер окна для каждой новой установки.",
-        "installations": "Память и размер окна существующей установки."
+        "installations": "Память, размер окна и Java существующей установки."
       },
       "javaProvider": "Источник Java",
       "javaProviders": {
@@ -260,13 +261,42 @@
         "mojang": "Сборки Java, которые использует официальный лаунчер Minecraft, — ровно та Java, которую просит каждая версия. Если для этого компьютера у Mojang сборки нет, используется Temurin.",
         "temurin": "Актуальные сборки Eclipse Temurin той версии Java, которая нужна каждой версии Minecraft."
       },
-      "javaApplies": "Применяется к новым установкам. Установленная версия сохраняет ту Java, с которой была установлена, а восстановление возвращает именно её.",
+      "javaApplies": "Действует для новых установок. Чтобы сменить Java уже установленной версии или указать свою, откройте «Установки».",
       "javaInstalled": "Java каждой установки",
       "javaShort": {
         "mojang": "Mojang",
         "temurin": "Temurin"
       },
       "javaValue": "{provider} · Java {major} ({release})",
+      "instanceJava": {
+        "title": "Java этой установки",
+        "now": "Сейчас: {value}",
+        "managed": "Собственная Java лаунчера от {provider}",
+        "managedHint": "Лаунчер скачивает и проверяет её сам. Другой источник будет скачан при следующем восстановлении.",
+        "custom": "Своя Java",
+        "customHint": "Java, установленная на этом компьютере. Лаунчер сверит её версию с игрой и предупредит о несовпадении.",
+        "path": "Путь к программе Java",
+        "pathHint": "Например C:\\Program Files\\Java\\jdk-21\\bin\\javaw.exe или /usr/lib/jvm/java-21/bin/java.",
+        "browse": "Выбрать…",
+        "installFirst": "Сначала установите эту версию, затем выберите свою Java.",
+        "jvmArguments": "Параметры JVM",
+        "jvmHint": "Добавляются после параметров самой версии; при совпадении действует последний. Каждый параметр начинается с «-», значение пишется после «=», например -XX:+UseG1GC -Dfile.encoding=UTF-8.",
+        "save": "Сохранить настройки Java",
+        "checking": "Проверяем эту Java…",
+        "checked": "Java {version} ({vendor}, {arch}). Игра рассчитана на Java {required}.",
+        "unknownVendor": "производитель неизвестен",
+        "issues": {
+          "older": "Эта Java старше нужной игре Java {required}. Скорее всего, игра не запустится.",
+          "newer": "Эта Java новее Java {required}, на которую рассчитана игра. Новые версии обычно работают; старые версии и загрузчики модов часто нет.",
+          "architecture": "Эта Java собрана для другого процессора ({arch}). Игра может не запуститься или работать медленно."
+        },
+        "confirm": "Всё равно использовать эту Java?",
+        "useAnyway": "Использовать",
+        "accepted": "Вы выбрали эту Java, несмотря на предупреждение:",
+        "pendingSwitch": "Java от {provider} будет скачана при следующем восстановлении.",
+        "repairNow": "Восстановить сейчас",
+        "customValue": "Своя Java {version}"
+      },
       "noInstallations": "Установок пока нет.",
       "installation": "Установка",
       "language": "Язык",
@@ -750,6 +780,19 @@
     "version metadata": "описание версии",
     "{context}: a file operation failed.": "{context}: файловая операция не удалась.",
     "{context}: permission denied by the operating system.": "{context}: операционная система запретила доступ.",
-    "{context}: the disk is full. Free some space and try again.": "{context}: диск заполнен. Освободите место и попробуйте снова."
+    "{context}: the disk is full. Free some space and try again.": "{context}: диск заполнен. Освободите место и попробуйте снова.",
+    "A quote in the JVM options is not closed.": "Кавычка в параметрах JVM не закрыта.",
+    "Each JVM option must start with \"-\"; put a value after \"=\": {option}": "Каждый параметр JVM должен начинаться с «-», значение пишется после «=»: {option}",
+    "Enter the full path to the Java program.": "Укажите полный путь к программе Java.",
+    "Install this version first, then choose your own Java.": "Сначала установите эту версию, затем выберите свою Java.",
+    "JVM options can be at most {max} characters long.": "Параметры JVM могут быть длиной не более {max} символов.",
+    "JVM options must be on one line, without control characters.": "Параметры JVM должны быть в одной строке, без управляющих символов.",
+    "No Java program was found at this path.": "По этому пути нет программы Java.",
+    "The Java check is missing.": "Нет результата проверки Java.",
+    "The Java chosen for this installation could not be started. Choose another one in the installation settings.": "Не удалось запустить Java, выбранную для этой установки. Выберите другую в настройках установки.",
+    "The file dialog failed.": "Не удалось открыть окно выбора файла.",
+    "This Java may not run this game. Confirm the choice to use it anyway.": "Эта Java может не запустить игру. Подтвердите выбор, чтобы всё равно её использовать.",
+    "This program could not be started as Java.": "Эту программу не удалось запустить как Java.",
+    "Use at most {max} JVM options.": "Используйте не более {max} параметров JVM."
   }
 }

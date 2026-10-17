@@ -58,6 +58,16 @@ impl PlanSource for FakeSource {
         let plan = lock_or(&self.plan).0.clone();
         Box::pin(async move { Ok(plan) })
     }
+
+    fn runtime<'a>(
+        &'a self,
+        _requirement: &'a RuntimeRequirement,
+        _java: crate::storage::paths::JavaProvider,
+    ) -> BoxFuture<'a, LauncherResult<RuntimePackage>> {
+        self.resolves.fetch_add(1, Ordering::SeqCst);
+        let runtime = lock_or(&self.plan).1.clone();
+        Box::pin(async move { Ok(runtime) })
+    }
 }
 
 pub(crate) fn sha1(bytes: &[u8]) -> Sha1 {
@@ -653,4 +663,79 @@ async fn large_frozen_plans_survive_a_reload() {
     assert!(std::fs::metadata(&file).unwrap().len() > 1024 * 1024);
     assert_eq!(receipt::resumable_plan(&f.root, a).unwrap(), Some(plan));
     assert!(file.exists(), "not set aside");
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn repair_switches_the_runtime_provider_the_user_chose() {
+    use crate::storage::paths::JavaProvider;
+    let f = Fixture::new().await;
+    let a = f.create("A");
+    assert_eq!(
+        f.run(OperationKind::Install, a).await.outcome,
+        Outcome::Succeeded
+    );
+    let installed = f.state.instance(a).unwrap().java.unwrap();
+    assert_eq!(installed.provider, JavaProvider::Temurin);
+    // The same provider changes nothing; another one waits for a repair.
+    let choose = |provider| {
+        f.state.set_instance_java(
+            MutationRequest {
+                request_id: Uuid::new_v4().to_string(),
+                payload: crate::state::dto::SetInstanceJavaPayload {
+                    instance_id: a,
+                    java: crate::state::dto::JavaChoice::Managed { provider },
+                    jvm_arguments: String::new(),
+                    accept_issues: false,
+                },
+            },
+            None,
+        )
+    };
+    assert_eq!(choose(JavaProvider::Temurin).unwrap().java_provider, None);
+    assert_eq!(
+        choose(JavaProvider::Mojang).unwrap().java_provider,
+        Some(JavaProvider::Mojang)
+    );
+    let before = match reconcile::read_lock(&f.root.install_lock(a)).unwrap() {
+        LockState::Complete(lock) => lock,
+        other => panic!("{other:?}"),
+    };
+    let resolves = f.source.resolves.load(Ordering::SeqCst);
+    assert_eq!(
+        f.run(OperationKind::Repair, a).await.outcome,
+        Outcome::Succeeded
+    );
+    assert_eq!(f.source.resolves.load(Ordering::SeqCst), resolves + 1);
+    let after = match reconcile::read_lock(&f.root.install_lock(a)).unwrap() {
+        LockState::Complete(lock) => lock,
+        other => panic!("{other:?}"),
+    };
+    assert!(
+        after.validated_at > before.validated_at,
+        "the lock was rewritten"
+    );
+    assert_eq!(after.artifacts, before.artifacts);
+    let instance = f.state.instance(a).unwrap();
+    assert_eq!(instance.java_provider, None, "the choice is now recorded");
+    assert_eq!(instance.health, InstallationHealth::Ready);
+    let journal: String = f
+        .state
+        .console()
+        .read(0)
+        .entries
+        .iter()
+        .map(|e| format!("{}\n", e.text))
+        .collect();
+    assert!(
+        journal.contains("Switching Java to temurin 21"),
+        "{journal}"
+    );
+    // Mojang publishes nothing in this fixture, so the console says so.
+    assert!(journal.contains("Mojang publishes no Java"), "{journal}");
+    // Without a new choice, a repair keeps the locked runtime.
+    assert_eq!(
+        f.run(OperationKind::Repair, a).await.outcome,
+        Outcome::Succeeded
+    );
+    assert_eq!(f.source.resolves.load(Ordering::SeqCst), resolves + 1);
 }
