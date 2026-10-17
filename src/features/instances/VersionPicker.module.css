@@ -85,7 +85,7 @@
   border-radius: var(--radius-sm);
   background: transparent;
   color: var(--color-text);
-  text-align: left;
+  text-align: start;
   cursor: pointer;
 }
 
@@ -121,7 +121,7 @@
 }
 
 .date {
-  margin-left: auto;
+  margin-inline-start: auto;
   color: var(--color-text-muted);
   font-size: var(--font-size-sm);
   white-space: nowrap;

@@ -56,6 +56,12 @@ release shell build on Linux x64, Windows x64, macOS arm64 and macOS x64. The `P
 workflow (`.github/workflows/package.yml`) builds and smoke-tests the installers; see
 [PACKAGING.md](PACKAGING.md).
 
+### Interface texts
+
+Texts live in ICU MessageFormat catalogs (`src/locales/messages/`). After changing
+English or a Rust error message, run `npm run i18n`; `npm run check` runs
+`npm run i18n:check`. See [TRANSLATING.md](TRANSLATING.md).
+
 ### Live tests (network, ignored by default)
 
 These talk to the real Mojang and Adoptium services and are never run in CI. Each prints

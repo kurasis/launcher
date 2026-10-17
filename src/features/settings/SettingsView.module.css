@@ -39,7 +39,7 @@
   letter-spacing: 0.04em;
   text-transform: uppercase;
   font-size: var(--font-size-sm);
-  text-align: left;
+  text-align: start;
   cursor: pointer;
 }
 
@@ -52,6 +52,11 @@
   border-color: var(--color-border);
   background: var(--color-surface-raised);
   box-shadow: inset 3px 0 0 var(--color-accent);
+}
+
+/* Right-to-left languages (D-038): the mark sits on the starting edge. */
+:global([dir='rtl']) .sectionTab[aria-selected='true'] {
+  box-shadow: inset -3px 0 0 var(--color-accent);
 }
 
 .section {

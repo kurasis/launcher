@@ -293,9 +293,10 @@ pub fn status_error(status: reqwest::StatusCode, what: &str) -> LauncherError {
         500..=599 => ErrorCode::ServiceUnavailable,
         _ => ErrorCode::NetworkError,
     };
-    LauncherError::new(
+    LauncherError::templated(
         code,
-        format!("Downloading {what} failed (HTTP {}).", status.as_u16()),
+        "Downloading {what} failed (HTTP {status}).",
+        crate::error::params([("what", what.into()), ("status", status.as_u16().into())]),
     )
     .with_detail("httpStatus", i64::from(status.as_u16()))
 }

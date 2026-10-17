@@ -33,5 +33,8 @@ export default defineConfig({
     include: ['src/**/*.test.{ts,tsx}'],
     css: { modules: { classNameStrategy: 'non-scoped' } },
     restoreMocks: true,
+    // The on-disk module cache keeps old `import.meta.glob` results, so a newly
+    // added language catalog (D-038) would stay invisible to tests.
+    fsModuleCache: false,
   },
 });

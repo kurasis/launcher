@@ -62,7 +62,7 @@ pub struct SettingsPatch {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub java_provider: Option<JavaProvider>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub language: Option<Language>,
+    pub language: Option<String>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -88,7 +88,7 @@ impl SettingsView {
             default_max_heap_mib: settings.default_max_heap_mib,
             default_resolution: settings.default_resolution,
             java_provider: settings.java_provider,
-            language: settings.language,
+            language: settings.language.clone(),
             writable,
         }
     }

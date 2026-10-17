@@ -76,26 +76,34 @@ function GeneralSettings({ snapshot }: { snapshot: AppSnapshot }) {
     ipc.setAppSettings(patch, requestId),
   );
   const disabled = update.pending || !settings.writable;
+  const languageId = useId();
 
   return (
     <div className={styles.section}>
-      <fieldset className={forms.choices} disabled={disabled}>
-        <legend>{t.language}</legend>
-        {LANGUAGES.map((item) => (
-          <label key={item} className={forms.choice} lang={item}>
-            <input
-              type="radio"
-              name="language"
-              value={item}
-              checked={settings.language === item}
-              onChange={() => {
-                void update.run({ language: item });
-              }}
-            />
-            {t.languages[item]}
-          </label>
-        ))}
-      </fieldset>
+      <div className={styles.field}>
+        <label htmlFor={languageId}>{t.language}</label>
+        <select
+          id={languageId}
+          className={forms.select}
+          value={settings.language}
+          disabled={disabled}
+          onChange={(event) => {
+            void update.run({ language: event.target.value });
+          }}
+        >
+          {/* A setting naming a language this build lacks still shows. */}
+          {!LANGUAGES.some((l) => l.tag === settings.language) && (
+            <option value={settings.language}>{settings.language}</option>
+          )}
+          {LANGUAGES.map((item) => (
+            <option key={item.tag} value={item.tag} lang={item.tag} dir={item.dir}>
+              {item.translated < 100
+                ? `${item.name} · ${t.languageIncomplete({ percent: item.translated })}`
+                : item.name}
+            </option>
+          ))}
+        </select>
+      </div>
       <fieldset className={forms.choices} disabled={disabled}>
         <legend>{t.theme}</legend>
         {themes.map((theme) => (
@@ -133,7 +141,9 @@ function GeneralSettings({ snapshot }: { snapshot: AppSnapshot }) {
       {update.error !== null && <Notice tone="danger">{update.error}</Notice>}
       <div>
         <h3 className={styles.subheading}>{t.dataLocation}</h3>
-        <p className={styles.path}>{dataRoot.path ?? '—'}</p>
+        <p className={styles.path} dir="ltr">
+          {dataRoot.path ?? '—'}
+        </p>
         <p className={styles.hint}>{t.dataLocationHint}</p>
       </div>
     </div>

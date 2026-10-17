@@ -5,15 +5,12 @@ import './styles/tokens.css';
 import './styles/global.css';
 import { App } from './app/App';
 import { ConsoleApp } from './features/console/ConsoleApp';
-import { setLanguage, storedLanguage } from './lib/strings';
+import { loadLanguage, setLanguage, storedLanguage } from './lib/strings';
 
 const container = document.getElementById('root');
 if (!container) {
   throw new Error('Root element #root is missing from index.html');
 }
-
-// The last chosen language until the core's settings arrive (D-038).
-setLanguage(storedLanguage());
 
 /** Both windows load this bundle; the console window has its own label (D-037). */
 function windowLabel(): string {
@@ -24,6 +21,13 @@ function windowLabel(): string {
   }
 }
 
-createRoot(container).render(
-  <StrictMode>{windowLabel() === 'console' ? <ConsoleApp /> : <App />}</StrictMode>,
-);
+// The last chosen language until the core's settings arrive (D-038).
+void loadLanguage(storedLanguage())
+  .then(setLanguage, () => {
+    setLanguage('en');
+  })
+  .finally(() => {
+    createRoot(container).render(
+      <StrictMode>{windowLabel() === 'console' ? <ConsoleApp /> : <App />}</StrictMode>,
+    );
+  });

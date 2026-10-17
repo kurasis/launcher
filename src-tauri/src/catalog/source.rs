@@ -180,9 +180,10 @@ fn sha256_hex(bytes: &[u8]) -> String {
 }
 
 fn hash_mismatch(what: &str) -> LauncherError {
-    LauncherError::new(
+    LauncherError::templated(
         ErrorCode::HashMismatch,
-        format!("Downloaded {what} did not match its expected checksum."),
+        "Downloaded {what} did not match its expected checksum.",
+        crate::error::params([("what", what.into())]),
     )
 }
 

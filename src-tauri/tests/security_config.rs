@@ -154,8 +154,8 @@ fn main_window_capability_grants_only_app_commands() {
     );
 }
 
-/// The console window (D-037) reads the journal and nothing else: no events, no
-/// commands that change state or open anything.
+/// The console window (D-037) reads the journal and retitles itself (D-038),
+/// nothing else: no events, no commands that change state or open anything.
 #[test]
 fn console_window_capability_only_reads_the_journal() {
     let capability = json(CONSOLE_CAPABILITY);
@@ -163,7 +163,7 @@ fn console_window_capability_only_reads_the_journal() {
     assert!(capability.get("remote").is_none());
     assert_eq!(
         capability["permissions"],
-        serde_json::json!(["allow-read-console"])
+        serde_json::json!(["allow-read-console", "core:window:allow-set-title"])
     );
     let capabilities: Vec<_> =
         std::fs::read_dir(concat!(env!("CARGO_MANIFEST_DIR"), "/capabilities"))

@@ -13,13 +13,14 @@ import { SettingsView } from '../features/settings/SettingsView';
 import type { AppSnapshot } from '../lib/contracts';
 import { DiagnosticsView } from '../features/diagnostics/DiagnosticsView';
 import { appStore, useAppStore } from '../lib/store';
-import { language, setLanguage, type SettingsSection, strings } from '../lib/strings';
+import { type SettingsSection, strings } from '../lib/strings';
+import { useLanguage } from '../lib/useLanguage';
 import { AboutView } from './AboutView';
 import styles from './App.module.css';
 import { QuitControl } from './QuitControl';
 import { useTheme } from './useTheme';
 import { useAppInfo } from './useAppInfo';
-import { localizeError } from '../lib/i18n/errors';
+import { localizeError } from '../lib/strings';
 
 type View = 'home' | 'account' | 'settings' | 'diagnostics' | 'about';
 const views: View[] = ['home', 'account', 'settings', 'diagnostics', 'about'];
@@ -37,7 +38,7 @@ function ActivityIndicator({ snapshot }: { snapshot: AppSnapshot }) {
   return (
     <p className={styles.activity} role="status">
       <StatusBadge tone="neutral" label={strings.activity[active.kind]} />
-      {percent !== null && strings.activity.percent(percent)}
+      {percent !== null && strings.activity.percent({ percent })}
     </p>
   );
 }
@@ -52,10 +53,8 @@ export function App() {
   const [settingsInstance, setSettingsInstance] = useState<string | null>(null);
   const snapshot = state.status === 'ready' ? state.snapshot : null;
   useTheme(snapshot?.settings.theme);
-  // The language setting (D-038) applies before anything below renders; a change
-  // remounts the screens so every text is read again.
-  const lang = snapshot?.settings.language ?? language();
-  if (lang !== language()) setLanguage(lang);
+  // A language change (D-038) remounts the screens so every text is read again.
+  const lang = useLanguage(snapshot?.settings.language);
   // Ctrl+Shift+L (Cmd+Shift+L on macOS) opens the console window (D-037).
   useEffect(() => {
     const onKey = (event: KeyboardEvent) => {
@@ -83,7 +82,10 @@ export function App() {
             <StatusBadge tone="neutral" label={strings.devBuildTag} />
           )}
           {appInfo.status === 'ready' && appInfo.info.testProfile !== null && (
-            <StatusBadge tone="warning" label={strings.testProfileTag(appInfo.info.testProfile)} />
+            <StatusBadge
+              tone="warning"
+              label={strings.testProfileTag({ name: appInfo.info.testProfile })}
+            />
           )}
         </div>
         {snapshot !== null && <ActivityIndicator snapshot={snapshot} />}

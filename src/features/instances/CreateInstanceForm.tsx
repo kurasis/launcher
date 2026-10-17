@@ -134,7 +134,7 @@ export function CreateInstanceForm({ onDone }: CreateInstanceFormProps) {
             />
           )}
           <p role="status" className={styles.muted}>
-            {versionId === '' ? t.noneSelected : t.selected(versionId)}
+            {versionId === '' ? t.noneSelected : t.selected({ id: versionId })}
           </p>
           <p className={styles.muted}>{t.isolation}</p>
         </fieldset>
@@ -185,7 +185,7 @@ export function CreateInstanceForm({ onDone }: CreateInstanceFormProps) {
 
 function PlanFacts({ plan }: { plan: PlanSummary }) {
   return (
-    <section aria-label={t.planTitle(plan.versionId)}>
+    <section aria-label={t.planTitle({ version: plan.versionId })}>
       <dl className={styles.facts}>
         <dt>{t.planJava}</dt>
         <dd>{plan.javaMajor}</dd>

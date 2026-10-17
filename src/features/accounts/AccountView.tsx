@@ -7,7 +7,7 @@ import type { AccountState, AppSnapshot, ExternalLink } from '../../lib/contract
 import { ipc } from '../../lib/ipc';
 import { strings } from '../../lib/strings';
 import { useCommand } from '../../lib/useCommand';
-import { localizeError } from '../../lib/i18n/errors';
+import { localizeError } from '../../lib/strings';
 
 const t = strings.accountView;
 

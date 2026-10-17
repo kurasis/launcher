@@ -30,7 +30,7 @@
   grid-template-columns: auto minmax(0, 1fr);
   align-items: center;
   gap: var(--space-1) var(--space-3);
-  text-align: left;
+  text-align: start;
   padding: var(--space-3);
   border: 1px solid var(--color-border);
   border-radius: var(--radius-md);
@@ -47,6 +47,17 @@
 .item:hover:not(:disabled) {
   border-color: var(--color-border-strong);
   transform: translateX(2px);
+}
+
+/* Right-to-left languages (D-038): nudge and highlight toward the start. */
+:global([dir='rtl']) .item:hover:not(:disabled) {
+  transform: translateX(-2px);
+}
+
+:global([dir='rtl']) .selected,
+:global([dir='rtl']) .selected:hover:not(:disabled) {
+  background:
+    linear-gradient(270deg, var(--color-accent-soft), transparent 70%), var(--color-surface);
 }
 
 .item:disabled {

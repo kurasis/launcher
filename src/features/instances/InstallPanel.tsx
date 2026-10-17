@@ -14,7 +14,7 @@ import { ipc } from '../../lib/ipc';
 import { strings } from '../../lib/strings';
 import { useCommand } from '../../lib/useCommand';
 import styles from './Instances.module.css';
-import { localizeError } from '../../lib/i18n/errors';
+import { localizeError } from '../../lib/strings';
 
 interface InstallPanelProps {
   instance: InstanceSummary;
@@ -43,14 +43,16 @@ function ProgressView({ progress }: { progress: OperationProgress }) {
             value={Math.min(progress.downloadedBytes, total)}
           />
           <p className={styles.muted}>
-            {t.bytes(formatBytes(progress.downloadedBytes), formatBytes(total))}
+            {t.bytes({ done: formatBytes(progress.downloadedBytes), total: formatBytes(total) })}
             {progress.bytesPerSecond !== null &&
-              ` · ${t.speed(formatBytes(progress.bytesPerSecond))}`}
+              ` · ${t.speed({ rate: formatBytes(progress.bytesPerSecond) })}`}
           </p>
         </>
       )}
       {progress.totalFiles !== null && (
-        <p className={styles.muted}>{t.files(progress.verifiedFiles, progress.totalFiles)}</p>
+        <p className={styles.muted}>
+          {t.files({ done: progress.verifiedFiles, total: progress.totalFiles })}
+        </p>
       )}
     </div>
   );
@@ -61,12 +63,12 @@ function ResultView({ result }: { result: OperationResult }) {
     case 'succeeded':
       return (
         <Notice tone="info">
-          {t.result.succeeded(
-            result.kind,
-            result.downloadedFiles,
-            formatBytes(result.networkBytes),
-            result.reusedFiles,
-          )}
+          {t.result.succeeded({
+            kind: result.kind,
+            files: result.downloadedFiles,
+            bytes: formatBytes(result.networkBytes),
+            reused: result.reusedFiles,
+          })}
         </Notice>
       );
     case 'cancelled':

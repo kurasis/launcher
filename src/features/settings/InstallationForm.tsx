@@ -8,7 +8,7 @@ import { ipc } from '../../lib/ipc';
 import { strings } from '../../lib/strings';
 import { useCommand } from '../../lib/useCommand';
 import styles from './SettingsView.module.css';
-import { localizeError } from '../../lib/i18n/errors';
+import { localizeError } from '../../lib/strings';
 
 interface InstallationFormProps {
   instance: InstanceSummary;
@@ -58,7 +58,11 @@ export function InstallationForm({ instance, memory }: InstallationFormProps) {
         label={t.memory}
         hint={
           policy
-            ? t.memoryHint(policy.minHeapMib, policy.maxHeapMib, policy.recommendedHeapMib)
+            ? t.memoryHint({
+                min: policy.minHeapMib,
+                max: policy.maxHeapMib,
+                recommended: policy.recommendedHeapMib,
+              })
             : undefined
         }
       >
@@ -119,7 +123,12 @@ export function InstallationForm({ instance, memory }: InstallationFormProps) {
         </Field>
       </div>
       <p className={styles.hint}>
-        {t.resolutionHint(bounds.minWidth, bounds.maxWidth, bounds.minHeight, bounds.maxHeight)}
+        {t.resolutionHint({
+          minWidth: bounds.minWidth,
+          maxWidth: bounds.maxWidth,
+          minHeight: bounds.minHeight,
+          maxHeight: bounds.maxHeight,
+        })}
       </p>
       {save.error !== null && <Notice tone="danger">{save.error}</Notice>}
       <div className={forms.actions}>

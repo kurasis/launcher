@@ -11,7 +11,7 @@ import { useCommand } from '../../lib/useCommand';
 import { LifecycleHarnessPanel } from './LifecycleHarnessPanel';
 import { RunStatus } from './RunStatus';
 import styles from './RunStatus.module.css';
-import { localizeError } from '../../lib/i18n/errors';
+import { localizeError } from '../../lib/strings';
 
 const t = strings.diagnostics;
 
@@ -35,7 +35,9 @@ export function DiagnosticsView({ snapshot }: { snapshot: AppSnapshot }) {
     const result = await exporter.run(snapshot.lastRun?.runId ?? null);
     if (result === undefined) return;
     setMessage(
-      result.saved && result.fileName !== null ? t.exported(result.fileName) : t.exportCancelled,
+      result.saved && result.fileName !== null
+        ? t.exported({ name: result.fileName })
+        : t.exportCancelled,
     );
   };
 

@@ -3,7 +3,7 @@
 // declared in one place.
 import { invoke } from '@tauri-apps/api/core';
 import { listen, type UnlistenFn } from '@tauri-apps/api/event';
-import { localizeError } from './i18n/errors';
+import { localizeError } from './strings';
 import { strings } from './strings';
 import {
   BACKEND_EVENT_NAMES,

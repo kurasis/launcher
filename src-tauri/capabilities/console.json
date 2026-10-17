@@ -1,7 +1,7 @@
 {
   "$schema": "../gen/schemas/desktop-schema.json",
   "identifier": "console",
-  "description": "The console window (D-037) may only read the console journal.",
+  "description": "The console window (D-037) may only read the console journal and set its own title in the interface language (D-038).",
   "windows": ["console"],
-  "permissions": ["allow-read-console"]
+  "permissions": ["allow-read-console", "core:window:allow-set-title"]
 }

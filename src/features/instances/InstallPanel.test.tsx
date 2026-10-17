@@ -98,7 +98,7 @@ describe('InstallPanel', () => {
       'value',
       String(512 * 1024 * 1024),
     );
-    expect(screen.getByText('1200 of 3961 files verified')).toBeVisible();
+    expect(screen.getByText('1,200 of 3,961 files verified')).toBeVisible();
     expect(screen.getByText(/512\.0 MiB of 1\.0 GiB · 4\.0 MiB\/s/)).toBeVisible();
     expect(screen.queryByRole('button', { name: 'Install' })).not.toBeInTheDocument();
     fireEvent.click(screen.getByRole('button', { name: 'Cancel' }));
@@ -151,7 +151,7 @@ describe('InstallPanel', () => {
     );
     expect(screen.getByRole('button', { name: 'Verify files' })).toBeVisible();
     expect(
-      screen.getByText(/Installation finished\. Downloaded 3961 files \(877\.2 MiB\)/),
+      screen.getByText(/Installation finished\. Downloaded 3,961 files \(877\.2 MiB\)/),
     ).toBeVisible();
   });
 

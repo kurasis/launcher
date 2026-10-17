@@ -172,12 +172,10 @@ fn malformed() -> LauncherError {
 }
 
 pub fn unavailable(req: &RuntimeRequirement) -> LauncherError {
-    LauncherError::new(
+    LauncherError::templated(
         ErrorCode::RuntimeUnavailable,
-        format!(
-            "No Java {} runtime is available for this computer from the runtime provider.",
-            req.major
-        ),
+        "No Java {major} runtime is available for this computer from the runtime provider.",
+        crate::error::params([("major", req.major.into())]),
     )
     .with_detail("javaMajor", i64::from(req.major))
     .with_detail("os", req.os.as_str())

@@ -1139,23 +1139,34 @@ installation's runtime from its lock, and choosing a source writes `javaProvider
   - Screenshots: [game output](verification/console-game.jpg),
     [launcher journal](verification/console-launcher.jpg).
 
-## Interface language (D-038)
+## Interface languages (D-038)
 
 - **Date / host:** 2026-10-17, release build, branch `claude/i18n`.
 - **Automated:**
-  - English is the default (Rust settings test, Vitest);
-  - Russian has every English text and none empty;
-  - references taken before a switch follow it;
-  - Russian plural forms and units are correct;
-  - every message and storage notice in the Rust sources has a translation or a
-    pattern (118 messages, 26 file-operation contexts);
-  - in Russian, the app shows a core validation error with its values translated;
-  - the language radio saves `language`.
-- **Live (Xvfb):**
-  - Settings → General → Русский switched every screen at once; `settings.json` got
-    `"language": "ru"`.
-  - The open console window switched too, without reopening. Its title changed
-    between "Launcher console" and "Консоль лаунчера" both ways.
-  - The next start opened in Russian.
-  - Screenshots: [home](verification/home-ru.png),
-    [Java settings](verification/java-ru.png).
+  - `npm run i18n:check`: 3 catalogs parse as ICU; English has every one of the 194
+    user-facing Rust texts; no stale keys or foreign values; generated files current.
+  - Rust: language tags are checked for form, a malformed tag in `settings.json`
+    means English; templated errors serialize their template and values and read
+    back; storage notices carry templates.
+  - Vitest:
+    - English by default; a language loads when chosen;
+    - `ru-RU` falls back to `ru`, `pt-BR` to English;
+    - Arabic sets `dir="rtl"`;
+    - Russian and Arabic plural forms (Arabic: zero, one, two, few, many, other);
+    - number formats;
+    - core messages translated by template, including a translated value;
+    - an unknown message falls back to its code's sentence;
+    - the language picker saves the tag.
+  - Build: Russian and Arabic are separate files (`ru-*.js` 59 kB, `ar-*.js` 53 kB);
+    the main bundle has English only.
+- **Live (Xvfb, release build):**
+  - Russian applied at start from the setting.
+  - Choosing العربية in the picker wrote `"language": "ar"` and mirrored the whole
+    interface: navigation, settings sections, radio buttons, cards and the hero scene.
+    Paths stayed left-to-right.
+  - The console window's toolbar switched to Arabic and right-to-left, its journal
+    stayed left-to-right, and its title became «وحدة تحكم المشغّل».
+  - Fixed on the way: the hero scene covered the title in right-to-left, and mixed
+    "4096 MiB · 1280×720" values reordered (now isolated).
+  - Screenshots: [settings](verification/ar-settings.png), [home](verification/ar-home.png),
+    [console](verification/ar-console.png).

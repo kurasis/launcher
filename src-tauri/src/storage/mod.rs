@@ -27,6 +27,37 @@ pub struct StorageIssue {
     pub code: ErrorCode,
     pub message: String,
     pub document: String,
+    /// English template of `message` when it carries values (D-038).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub template: Option<String>,
+    #[serde(skip_serializing_if = "std::collections::BTreeMap::is_empty")]
+    pub params: std::collections::BTreeMap<String, String>,
+}
+
+impl StorageIssue {
+    /// A notice whose text carries values named `{name}` in `template`.
+    pub fn templated(
+        code: ErrorCode,
+        template: &str,
+        params: &[(&str, String)],
+        document: String,
+    ) -> Self {
+        let params: std::collections::BTreeMap<String, String> = params
+            .iter()
+            .map(|(name, value)| ((*name).to_owned(), value.clone()))
+            .collect();
+        let mut message = template.to_owned();
+        for (name, value) in &params {
+            message = message.replace(&format!("{{{name}}}"), value);
+        }
+        Self {
+            code,
+            message,
+            document,
+            template: Some(template.to_owned()),
+            params,
+        }
+    }
 }
 
 /// A loaded document plus whether this build may rewrite it.
@@ -111,31 +142,30 @@ impl Store {
             }) => LoadedDocument {
                 value,
                 writable: true,
-                issue: Some(StorageIssue {
-                    code: ErrorCode::StorageError,
-                    message: format!(
-                        "Settings were damaged and restored from the last good copy. The damaged \
-                         file was kept as {}.",
-                        self.relative(&preserved_as)
-                    ),
+                issue: Some(StorageIssue::templated(
+                    ErrorCode::StorageError,
+                    "Settings were damaged and restored from the last good copy. The damaged \
+                     file was kept as {file}.",
+                    &[("file", self.relative(&preserved_as))],
                     document,
-                }),
+                )),
             },
             Ok(Loaded::Corrupt { preserved_as }) => LoadedDocument {
                 value: Settings::default(),
                 writable: true,
-                issue: Some(StorageIssue {
-                    code: ErrorCode::StorageError,
-                    message: format!(
-                        "Settings were damaged and have been reset to defaults. The damaged file \
-                         was kept as {}.",
+                issue: Some(StorageIssue::templated(
+                    ErrorCode::StorageError,
+                    "Settings were damaged and have been reset to defaults. The damaged file \
+                     was kept as {file}.",
+                    &[(
+                        "file",
                         preserved_as
                             .as_deref()
                             .map(|p| self.relative(p))
-                            .unwrap_or_else(|| "-".into())
-                    ),
+                            .unwrap_or_else(|| "-".into()),
+                    )],
                     document,
-                }),
+                )),
             },
             Ok(Loaded::UnsupportedSchema { found }) => LoadedDocument {
                 value: Settings::default(),
@@ -146,6 +176,8 @@ impl Store {
                 value: Settings::default(),
                 writable: false,
                 issue: Some(StorageIssue {
+                    template: None,
+                    params: std::collections::BTreeMap::new(),
                     code: LauncherError::from_io(&error, "Reading settings").code,
                     message: "Settings could not be read; defaults are used and changes will not \
                               be saved until the launcher is restarted."
@@ -190,6 +222,8 @@ impl Store {
                 value: AccountsFile::default(),
                 writable: true,
                 issue: Some(StorageIssue {
+                    template: None,
+                    params: std::collections::BTreeMap::new(),
                     code: ErrorCode::StorageError,
                     message: "The saved account record was damaged and was set aside. Sign in \
                               again."
@@ -206,6 +240,8 @@ impl Store {
                 value: AccountsFile::default(),
                 writable: false,
                 issue: Some(StorageIssue {
+                    template: None,
+                    params: std::collections::BTreeMap::new(),
                     code: LauncherError::from_io(&error, "Reading accounts").code,
                     message: "The saved account record could not be read.".into(),
                     document,
@@ -241,6 +277,8 @@ impl Store {
                 Ok(Loaded::Valid(instance)) if instance.id == id => instance,
                 Ok(Loaded::Valid(_)) => {
                     issues.push(StorageIssue {
+                        template: None,
+                        params: std::collections::BTreeMap::new(),
                         code: ErrorCode::StorageError,
                         message: "An installation record names a different identifier than its \
                                   folder and was ignored."
@@ -256,6 +294,8 @@ impl Store {
                 }
                 Ok(Loaded::Corrupt { .. } | Loaded::RecoveredFromBackup { .. }) => {
                     issues.push(StorageIssue {
+                        template: None,
+                        params: std::collections::BTreeMap::new(),
                         code: ErrorCode::StorageError,
                         message: "An installation record was damaged and was set aside. Its \
                                   game folder and worlds were not touched."
@@ -266,6 +306,8 @@ impl Store {
                 }
                 Err(error) => {
                     issues.push(StorageIssue {
+                        template: None,
+                        params: std::collections::BTreeMap::new(),
                         code: LauncherError::from_io(&error, "Reading an installation").code,
                         message: "An installation record could not be read.".into(),
                         document,
@@ -282,6 +324,8 @@ impl Store {
                 && let Err(error) = self.save_instance(&reconciled.instance)
             {
                 issues.push(StorageIssue {
+                    template: None,
+                    params: std::collections::BTreeMap::new(),
                     code: error.code,
                     message: "An installation summary was corrected in memory but could not \
                               be saved."
@@ -317,14 +361,13 @@ impl Store {
 }
 
 fn unsupported_issue(document: String, found: u64) -> StorageIssue {
-    StorageIssue {
-        code: ErrorCode::UnsupportedSchema,
-        message: format!(
-            "This file was written by a newer launcher version (schema {found}). It is kept \
-             unchanged and is read-only here; update the launcher to use it."
-        ),
+    StorageIssue::templated(
+        ErrorCode::UnsupportedSchema,
+        "This file was written by a newer launcher version (schema {schema}). It is kept \
+         unchanged and is read-only here; update the launcher to use it.",
+        &[("schema", found.to_string())],
         document,
-    }
+    )
 }
 
 #[cfg(test)]

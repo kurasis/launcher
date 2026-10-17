@@ -89,6 +89,59 @@ pub enum SafeValue {
     Text(String),
 }
 
+impl std::fmt::Display for SafeValue {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::Bool(value) => write!(f, "{value}"),
+            Self::Number(value) => write!(f, "{value}"),
+            Self::Text(value) => f.write_str(value),
+        }
+    }
+}
+
+impl From<u32> for SafeValue {
+    fn from(value: u32) -> Self {
+        Self::Number(i64::from(value))
+    }
+}
+
+impl From<u16> for SafeValue {
+    fn from(value: u16) -> Self {
+        Self::Number(i64::from(value))
+    }
+}
+
+impl From<u64> for SafeValue {
+    fn from(value: u64) -> Self {
+        Self::Number(i64::try_from(value).unwrap_or(i64::MAX))
+    }
+}
+
+impl From<char> for SafeValue {
+    fn from(value: char) -> Self {
+        Self::Text(value.to_string())
+    }
+}
+
+/// A user-facing text built from an English template with `{name}` placeholders
+/// (D-038). The interface translates the template and fills in the values; the
+/// rendered English stays in `message` for logs and as the fallback.
+pub fn render(template: &str, params: &BTreeMap<String, SafeValue>) -> String {
+    let mut out = template.to_owned();
+    for (name, value) in params {
+        out = out.replace(&format!("{{{name}}}"), &value.to_string());
+    }
+    out
+}
+
+/// Parameters from `(name, value)` pairs.
+pub fn params<const N: usize>(pairs: [(&str, SafeValue); N]) -> BTreeMap<String, SafeValue> {
+    pairs
+        .into_iter()
+        .map(|(name, value)| (name.to_owned(), value))
+        .collect()
+}
+
 impl From<&str> for SafeValue {
     fn from(value: &str) -> Self {
         Self::Text(value.to_owned())
@@ -126,6 +179,17 @@ pub struct LauncherError {
     pub diagnostic_id: String,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub safe_details: Option<BTreeMap<String, SafeValue>>,
+    /// The translatable form of `message` when it carries values (D-038);
+    /// boxed so a plain error stays small.
+    #[serde(flatten, default, skip_serializing_if = "Option::is_none")]
+    pub text: Option<Box<TemplatedText>>,
+}
+
+/// An English template with `{name}` placeholders and the values to put in them.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct TemplatedText {
+    pub template: String,
+    pub params: BTreeMap<String, SafeValue>,
 }
 
 impl LauncherError {
@@ -137,6 +201,18 @@ impl LauncherError {
             operation_id: None,
             diagnostic_id: Uuid::new_v4().to_string(),
             safe_details: None,
+            text: None,
+        }
+    }
+
+    /// An error whose text carries values: `template` names them `{name}`.
+    pub fn templated(code: ErrorCode, template: &str, params: BTreeMap<String, SafeValue>) -> Self {
+        Self {
+            text: Some(Box::new(TemplatedText {
+                template: template.to_owned(),
+                params: params.clone(),
+            })),
+            ..Self::new(code, render(template, &params))
         }
     }
 
@@ -170,21 +246,23 @@ impl LauncherError {
     /// unrelated paths; `context` describes what was being done.
     pub fn from_io(error: &std::io::Error, context: &str) -> Self {
         use std::io::ErrorKind;
-        let (code, message) = match error.kind() {
+        // `context` is itself a translatable text (a template without values).
+        let (code, template) = match error.kind() {
             ErrorKind::StorageFull | ErrorKind::QuotaExceeded => (
                 ErrorCode::DiskFull,
-                format!("{context}: the disk is full. Free some space and try again."),
+                "{context}: the disk is full. Free some space and try again.",
             ),
             ErrorKind::PermissionDenied | ErrorKind::ReadOnlyFilesystem => (
                 ErrorCode::PermissionDenied,
-                format!("{context}: permission denied by the operating system."),
+                "{context}: permission denied by the operating system.",
             ),
             _ => (
                 ErrorCode::StorageError,
-                format!("{context}: a file operation failed."),
+                "{context}: a file operation failed.",
             ),
         };
-        Self::new(code, message).with_detail("ioKind", format!("{:?}", error.kind()))
+        Self::templated(code, template, params([("context", context.into())]))
+            .with_detail("ioKind", format!("{:?}", error.kind()))
     }
 }
 
@@ -205,6 +283,45 @@ mod tests {
         assert_eq!(json["operationId"], "op-1");
         assert_eq!(json["safeDetails"]["activeKind"], "install");
         assert!(Uuid::parse_str(json["diagnosticId"].as_str().unwrap()).is_ok());
+    }
+
+    #[test]
+    fn templated_errors_carry_the_template_and_values() {
+        let error = LauncherError::templated(
+            ErrorCode::InvalidInput,
+            "Maximum memory must be between {min} and {max} MiB on this computer.",
+            params([("min", 1024u32.into()), ("max", 13108u32.into())]),
+        );
+        assert_eq!(
+            error.message,
+            "Maximum memory must be between 1024 and 13108 MiB on this computer."
+        );
+        let json = serde_json::to_value(&error).unwrap();
+        assert_eq!(
+            json["template"],
+            "Maximum memory must be between {min} and {max} MiB on this computer."
+        );
+        assert_eq!(json["params"]["min"], 1024);
+        // A plain message has neither.
+        let plain = serde_json::to_value(LauncherError::internal("x")).unwrap();
+        assert!(plain.get("template").is_none() && plain.get("params").is_none());
+        let io = LauncherError::from_io(
+            &std::io::Error::from(std::io::ErrorKind::PermissionDenied),
+            "Saving settings",
+        );
+        assert_eq!(
+            io.text.as_ref().map(|t| t.template.as_str()),
+            Some("{context}: permission denied by the operating system.")
+        );
+        // Recorded results are read back with or without a template.
+        let back: LauncherError = serde_json::from_value(json).unwrap();
+        assert_eq!(back.text, error.text);
+        let back: LauncherError = serde_json::from_value(plain).unwrap();
+        assert!(back.text.is_none());
+        assert_eq!(
+            io.message,
+            "Saving settings: permission denied by the operating system."
+        );
     }
 
     #[test]

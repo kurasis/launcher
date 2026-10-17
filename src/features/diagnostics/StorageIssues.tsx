@@ -1,7 +1,7 @@
 import { Notice } from '../../components/Notice';
 import type { StorageIssue } from '../../lib/contracts';
 import { strings } from '../../lib/strings';
-import { localizeError } from '../../lib/i18n/errors';
+import { localizeError } from '../../lib/strings';
 
 export function StorageIssues({ issues }: { issues: StorageIssue[] }) {
   if (issues.length === 0) return null;

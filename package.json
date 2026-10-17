@@ -17,14 +17,18 @@
     "format:check": "prettier --check .",
     "test": "vitest run",
     "test:watch": "vitest",
+    "i18n": "node scripts/i18n.mjs",
+    "i18n:check": "node scripts/i18n.mjs --check",
     "tauri": "tauri",
     "rust:fmt": "cargo fmt --manifest-path src-tauri/Cargo.toml --all -- --check",
     "rust:lint": "cargo clippy --manifest-path src-tauri/Cargo.toml --all-targets --locked -- -D warnings",
     "rust:test": "cargo test --manifest-path src-tauri/Cargo.toml --locked",
-    "check": "npm run typecheck && npm run lint && npm run format:check && npm test && npm run rust:fmt && npm run rust:lint && npm run rust:test"
+    "check": "npm run i18n:check && npm run typecheck && npm run lint && npm run format:check && npm test && npm run rust:fmt && npm run rust:lint && npm run rust:test"
   },
   "dependencies": {
+    "@formatjs/icu-messageformat-parser": "3.5.18",
     "@tauri-apps/api": "2.12.4",
+    "intl-messageformat": "11.2.15",
     "react": "19.3.1",
     "react-dom": "19.3.1"
   },

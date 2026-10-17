@@ -56,6 +56,8 @@ function fakeBackend(initial: AppSnapshot, info: AppInfo = appInfoFixture) {
           throw {
             code: 'INVALID_INPUT',
             message: 'Maximum memory must be between 1024 and 13108 MiB on this computer.',
+            template: 'Maximum memory must be between {min} and {max} MiB on this computer.',
+            params: { min: 1024, max: 13108 },
             retryable: false,
             diagnosticId: 'diag-1',
           };
@@ -101,8 +103,10 @@ describe('App', () => {
     const calls = fakeBackend(snapshotFixture());
     render(<App />);
     fireEvent.click(await screen.findByRole('button', { name: 'Settings' }));
-    expect(screen.getByRole('radio', { name: 'English' })).toBeChecked();
-    fireEvent.click(screen.getByRole('radio', { name: 'Русский' }));
+    const picker = screen.getByRole('combobox', { name: 'Language' });
+    expect(picker).toHaveValue('en');
+    expect(within(picker).getByRole('option', { name: 'العربية' })).toBeInTheDocument();
+    fireEvent.change(picker, { target: { value: 'ru' } });
     await waitFor(() => {
       expect(calls.find((c) => c.cmd === 'set_app_settings')?.args).toMatchObject({
         request: { payload: { language: 'ru' } },

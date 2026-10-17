@@ -55,7 +55,11 @@ export function DefaultsForm({
         label={d.memory}
         hint={
           policy
-            ? d.memoryHint(policy.minHeapMib, policy.maxHeapMib, policy.recommendedHeapMib)
+            ? d.memoryHint({
+                min: policy.minHeapMib,
+                max: policy.maxHeapMib,
+                recommended: policy.recommendedHeapMib,
+              })
             : undefined
         }
       >
