@@ -31,8 +31,23 @@ Write-Host "Installed $($entry.DisplayVersion) to $installDir"
 
 Step 'Start the installed launcher'
 Remove-Item -Recurse -Force -ErrorAction SilentlyContinue $dataRoot
-$process = Start-Process -FilePath $exe -PassThru
+$stdout = Join-Path $env:RUNNER_TEMP 'launcher-stdout.log'
+$stderr = Join-Path $env:RUNNER_TEMP 'launcher-stderr.log'
+$process = Start-Process -FilePath $exe -PassThru -RedirectStandardOutput $stdout -RedirectStandardError $stderr
 Start-Sleep -Seconds $waitSeconds
+if (-not (Test-Path (Join-Path $dataRoot 'locks\supervisor.lock'))) {
+  # Show what the launcher did instead, so a failure can be diagnosed from the log.
+  Write-Host "exited: $($process.HasExited)"
+  Get-Process -ErrorAction SilentlyContinue launcher | Format-Table Id, Path, Responding | Out-String | Write-Host
+  foreach ($base in $env:LOCALAPPDATA, $env:APPDATA) {
+    Get-ChildItem -Directory $base | Where-Object Name -Like '*launcher*' | ForEach-Object {
+      Write-Host $_.FullName
+      Get-ChildItem -Recurse -Depth 1 -Name $_.FullName | Write-Host
+    }
+  }
+  Write-Host '-- stdout'; Get-Content -ErrorAction SilentlyContinue $stdout | Write-Host
+  Write-Host '-- stderr'; Get-Content -ErrorAction SilentlyContinue $stderr | Write-Host
+}
 if ($process.HasExited) { throw "launcher exited early with $($process.ExitCode)" }
 if (-not (Test-Path (Join-Path $dataRoot 'locks\supervisor.lock'))) { throw 'DATA_ROOT not created' }
 Write-Host "Running after ${waitSeconds}s, DATA_ROOT created"
