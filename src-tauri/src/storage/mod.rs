@@ -400,6 +400,7 @@ mod tests {
             last_result: None,
             java: None,
             loader: None,
+            notes: String::new(),
         }
     }
 

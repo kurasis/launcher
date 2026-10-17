@@ -244,6 +244,9 @@ export type Messages = {
     readonly window: string;
     readonly windowValue: (values: { mib: number; width: number; height: number }) => string;
     readonly edit: string;
+    readonly notes: string;
+    readonly notesHint: string;
+    readonly notesSave: string;
   };
   readonly settings: {
     readonly title: string;

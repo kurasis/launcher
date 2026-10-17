@@ -257,6 +257,38 @@ fn locked_data_root_makes_state_unavailable() {
 }
 
 #[test]
+fn notes_are_saved_while_busy_and_survive_restart() {
+    let dir = tempfile::tempdir().unwrap();
+    let id = {
+        let state = state_at(dir.path(), RecordingSink::default());
+        let created = create(&state, "Noted", "1.21.1").unwrap();
+        assert_eq!(created.notes, "");
+        let _permit = state
+            .activity()
+            .try_acquire(OperationKind::Launch, Some(created.id), "run-1")
+            .unwrap();
+        let saved = state
+            .set_instance_notes(request(SetInstanceNotesPayload {
+                instance_id: created.id,
+                notes: "Modpack: test\r\nseed 42 ".into(),
+            }))
+            .unwrap();
+        assert_eq!(saved.notes, "Modpack: test\nseed 42");
+        assert!(saved.busy);
+        let error = state
+            .set_instance_notes(request(SetInstanceNotesPayload {
+                instance_id: created.id,
+                notes: "bad\u{0000}".into(),
+            }))
+            .unwrap_err();
+        assert_eq!(error.code, ErrorCode::InvalidInput);
+        created.id
+    };
+    let state = state_at(dir.path(), RecordingSink::default());
+    assert_eq!(state.instance(id).unwrap().notes, "Modpack: test\nseed 42");
+}
+
+#[test]
 fn busy_instance_cannot_be_reconfigured() {
     let dir = tempfile::tempdir().unwrap();
     let state = state_at(dir.path(), RecordingSink::default());

@@ -15,8 +15,8 @@ use crate::lifecycle::{LifecycleController, RunHandles};
 use crate::net::PublicClient;
 use crate::state::AppState;
 use crate::state::dto::{
-    AppSnapshot, CreateInstancePayload, InstanceSummary, MutationRequest, SettingsPatch,
-    SettingsView, UpdateInstanceSettingsPayload,
+    AppSnapshot, CreateInstancePayload, InstanceSummary, MutationRequest, SetInstanceNotesPayload,
+    SettingsPatch, SettingsView, UpdateInstanceSettingsPayload,
 };
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
@@ -101,6 +101,15 @@ pub fn update_instance_settings(
     request: MutationRequest<UpdateInstanceSettingsPayload>,
 ) -> LauncherResult<InstanceSummary> {
     state.update_instance_settings(request)
+}
+
+/// Saves an installation's notes.
+#[tauri::command]
+pub fn set_instance_notes(
+    state: State<'_, AppState>,
+    request: MutationRequest<SetInstanceNotesPayload>,
+) -> LauncherResult<InstanceSummary> {
+    state.set_instance_notes(request)
 }
 
 #[tauri::command]

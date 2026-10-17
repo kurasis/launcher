@@ -47,6 +47,9 @@ export function InstanceList({ instances, selectedId, onSelect, disabled }: Inst
                   label={instance.busy ? t.busy : t.health[instance.health]}
                 />
               </span>
+              {instance.notes !== '' && (
+                <span className={styles.itemNote}>{instance.notes.split('\n')[0]}</span>
+              )}
             </button>
           </li>
         );

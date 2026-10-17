@@ -236,6 +236,9 @@ pub struct InstanceFile {
     /// (D-039). None for vanilla.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub loader: Option<LoaderChoice>,
+    /// The user's own notes about the installation.
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub notes: String,
 }
 
 /// Which private Java runtime an installation uses, for display.
@@ -444,6 +447,7 @@ mod tests {
             last_result: None,
             java: None,
             loader: None,
+            notes: String::new(),
         };
         let json = serde_json::to_value(&instance).unwrap();
         assert!(json["manifestSha1"].is_null());

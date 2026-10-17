@@ -29,6 +29,7 @@ import {
   type QuitResult,
   type RunSummary,
   type SettingsPatch,
+  type SetInstanceNotesPayload,
   type SettingsView,
   type UpdateInstanceSettingsPayload,
 } from './contracts';
@@ -46,6 +47,11 @@ export const ipc = {
   getAppSnapshot: (): Promise<AppSnapshot> => invoke<AppSnapshot>('get_app_snapshot'),
   createInstance: (payload: CreateInstancePayload, requestId?: string): Promise<InstanceSummary> =>
     invoke<InstanceSummary>('create_instance', { request: mutation(payload, requestId) }),
+  setInstanceNotes: (
+    payload: SetInstanceNotesPayload,
+    requestId?: string,
+  ): Promise<InstanceSummary> =>
+    invoke<InstanceSummary>('set_instance_notes', { request: mutation(payload, requestId) }),
   updateInstanceSettings: (
     payload: UpdateInstanceSettingsPayload,
     requestId?: string,

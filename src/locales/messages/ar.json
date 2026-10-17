@@ -231,7 +231,10 @@
       "javaNone": "يُختار عند التثبيت",
       "window": "الذاكرة والنافذة",
       "windowValue": "⁦{mib, number, ::group-off} MiB⁩ · ⁦{width, number, ::group-off}×{height, number, ::group-off}⁩",
-      "edit": "تغيير الإعدادات"
+      "edit": "تغيير الإعدادات",
+      "notes": "ملاحظات",
+      "notesHint": "لك وحدك: الغرض من هذا التثبيت وتعديلاته وخوادمه وأي شيء تريد تذكّره.",
+      "notesSave": "حفظ الملاحظات"
     },
     "settings": {
       "title": "الإعدادات",
@@ -555,6 +558,8 @@
     "No Java {major} runtime is available for this computer from the runtime provider.": "لا تتوفر لدى هذا المزوّد بيئة Java {major} لهذا الحاسوب.",
     "No client for source.": "لا يوجد عميل لهذا المصدر.",
     "No saved sign-in was found. Sign in again.": "لم يُعثر على تسجيل دخول محفوظ. سجّل الدخول مجددًا.",
+    "Notes can be at most {max} characters long.": "يمكن أن تصل الملاحظات إلى {max} حرفًا على الأكثر.",
+    "Notes cannot contain control characters.": "لا يمكن أن تحتوي الملاحظات على أحرف تحكم.",
     "Opening the game folder": "فتح مجلد اللعبة",
     "Preparing assets stopped unexpectedly.": "توقف تجهيز الموارد بشكل غير متوقع.",
     "Preparing native libraries stopped unexpectedly.": "توقف تجهيز المكتبات الأصلية بشكل غير متوقع.",

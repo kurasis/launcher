@@ -230,7 +230,10 @@
       "javaNone": "Выбирается при установке",
       "window": "Память и окно",
       "windowValue": "{mib, number, ::group-off} МиБ · {width, number, ::group-off}×{height, number, ::group-off}",
-      "edit": "Изменить настройки"
+      "edit": "Изменить настройки",
+      "notes": "Заметки",
+      "notesHint": "Только для вас: для чего эта установка, какие моды, серверы — всё, что стоит запомнить.",
+      "notesSave": "Сохранить заметки"
     },
     "settings": {
       "title": "Настройки",
@@ -554,6 +557,8 @@
     "No Java {major} runtime is available for this computer from the runtime provider.": "Для этого компьютера нет сборки Java {major} у этого поставщика.",
     "No client for source.": "Нет клиента для источника.",
     "No saved sign-in was found. Sign in again.": "Сохранённый вход не найден. Войдите снова.",
+    "Notes can be at most {max} characters long.": "Заметки могут быть не длиннее {max} символов.",
+    "Notes cannot contain control characters.": "Заметки не могут содержать управляющие символы.",
     "Opening the game folder": "Открытие папки игры",
     "Preparing assets stopped unexpectedly.": "Подготовка ресурсов неожиданно остановилась.",
     "Preparing native libraries stopped unexpectedly.": "Подготовка нативных библиотек неожиданно остановилась.",

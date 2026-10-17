@@ -12,6 +12,7 @@ fn main() {
         "get_app_snapshot",
         "create_instance",
         "update_instance_settings",
+        "set_instance_notes",
         "set_app_settings",
         "show_main_window",
         "open_console",

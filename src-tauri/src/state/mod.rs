@@ -784,6 +784,7 @@ impl AppState {
                     last_result: None,
                     java: None,
                     loader: payload.loader.clone(),
+                    notes: String::new(),
                 };
                 store.create_instance(&instance)?;
                 let id = instance.id;
@@ -848,6 +849,38 @@ impl AppState {
                 Ok(InstanceSummary::new(&data.instances[&id], false))
             },
         )
+    }
+
+    /// Saves the notes of an installation. Allowed while it is busy: notes do
+    /// not affect installing or playing.
+    pub fn set_instance_notes(
+        &self,
+        request: MutationRequest<SetInstanceNotesPayload>,
+    ) -> LauncherResult<InstanceSummary> {
+        let busy = self.activity.clone();
+        let result = self.mutate(
+            "set_instance_notes",
+            request,
+            |data, store, payload, changes| {
+                let id = payload.instance_id;
+                let current = data.instances.get(&id).ok_or_else(instance_not_found)?;
+                let notes = validation::validate_notes(&payload.notes)?;
+                if notes != current.notes {
+                    let mut updated = current.clone();
+                    updated.notes = notes;
+                    store.save_instance(&updated)?;
+                    data.instances.insert(id, updated);
+                    changes.push(Change::Instance(id));
+                }
+                let busy = busy.current().is_some_and(|a| a.instance_id == Some(id));
+                Ok(InstanceSummary::new(&data.instances[&id], busy))
+            },
+        );
+        if let Err(e) = &result {
+            self.console
+                .warn(format!("Saving installation notes failed: {}", e.message));
+        }
+        result
     }
 
     pub fn set_app_settings(

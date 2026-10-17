@@ -130,6 +130,7 @@ fn main_window_capability_grants_only_app_commands() {
             "allow-get-app-snapshot",
             "allow-create-instance",
             "allow-update-instance-settings",
+            "allow-set-instance-notes",
             "allow-set-app-settings",
             "allow-show-main-window",
             "allow-open-console",
