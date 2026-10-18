@@ -1,0 +1,36 @@
+# Installed by deploy/crash/bootstrap.sh as /etc/systemd/system/lapi-crash.service.
+[Unit]
+Description=Sferum launcher crash reports (crash.lapi.sh, D-061)
+After=network.target
+
+[Service]
+User=lapi-crash
+Group=lapi-crash
+EnvironmentFile=/home/www/lapi/crash/crash.env
+ExecStart=/home/www/lapi/crash/current/lapi-crash serve
+Restart=on-failure
+RestartSec=3
+UMask=0027
+NoNewPrivileges=yes
+ProtectSystem=strict
+ProtectHome=read-only
+ReadWritePaths=/home/www/lapi/crash/data
+PrivateTmp=yes
+PrivateDevices=yes
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectControlGroups=yes
+ProtectClock=yes
+ProtectHostname=yes
+RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX
+RestrictNamespaces=yes
+RestrictRealtime=yes
+LockPersonality=yes
+MemoryDenyWriteExecute=yes
+SystemCallArchitectures=native
+CapabilityBoundingSet=
+MemoryMax=512M
+TasksMax=256
+
+[Install]
+WantedBy=multi-user.target

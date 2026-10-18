@@ -1455,3 +1455,75 @@ message` plus a stack trace), with the event's level.
   files already checked; a game left running is recognized at the next start.
 - **Not done.** A process the system cannot end (Windows protecting it, or stuck in
   the kernel) keeps its run open; the launcher cannot do more than ask the system.
+
+## D-061 — Crash reports for the developers
+
+- **Status:** accepted (owner request, 2026-10-18) · **Affects:** the launcher's logs,
+  run logs, the diagnostic export, a new "send report" flow, Settings → Privacy, the
+  new service `services/crash` at `https://crash.lapi.sh`. Changes docs/spec/07
+  "Diagnostics and privacy": a report still leaves only when the player sends it, and
+  anonymous statistics are a separate opt-in that is off by default.
+- **Goal.** Collect the launcher's own failures and the games' crashes so that bugs
+  get fixed and the crash analyser (D-059) learns the cases it does not explain yet.
+
+### Stage 1 — kept on the computer
+
+- **Launcher failures.** A panic writes `logs/launcher-crashes/<time>-panic.json`
+  (version, OS, thread, message, place, backtrace, the last console lines). Errors in
+  the window (`error`, `unhandledrejection`) go to the same folder as `frontend`
+  records. A marker `logs/session.json` exists while the launcher runs; one left from
+  an earlier start becomes an `unclean-exit` record (killed, hung, power cut).
+- **Launcher log.** The console is also written to `logs/launcher.log`, rotated at
+  2 MiB, five files, with the `diagnosticId` of every error shown to the player.
+- **Game crashes.** A run that ended with an explanation keeps `diagnosis.json`
+  (cause, details, analyser version) and redacted copies of the crash report and the
+  JVM error file in its run folder.
+- **Export.** The diagnostic ZIP also holds the launcher log's tail, the launcher
+  failure records and these run files.
+
+### Stage 2 — sent when the player chooses
+
+- **Where.** After a game crash, the "Why the game stopped" panel offers **Send a
+  report to the developers**; after a launcher failure, the next start offers the
+  same. A preview lists every file with its text; the player can leave files out.
+- **Scrubbing** on top of the existing token and path redaction: chat lines (`[CHAT]`
+  and `<name> text`), the player's and every saved profile's name, UUIDs, IP addresses
+  and server addresses, world names (`saves/<name>`), and the home folder. Mod names
+  and versions stay: without them a report is useless.
+- **Sending.** The report waits in `reports/outbox/` until the computer is online;
+  on a metered connection only the player's own press sends it. One report is at most
+  1 MiB gzip. Failed sends try again later; nothing is sent twice.
+- **Identity.** A random install ID (Settings → Privacy, can be reset); never the
+  Microsoft account, the player name or the IP address.
+- **Service.** `POST /v1/reports` stores metadata in SQLite and the files gzip on
+  disk, grouped by cause and signature (normalized top stack frames). Reports are
+  kept 90 days. Rate limits in nginx and in the service. Developers read reports with
+  the service's command line on the server (`lapi-crash groups|list|show`) or the
+  "Crash reports" workflow summary; there is no public reading endpoint.
+
+### Stage 3 — learning from them
+
+- **Anonymous statistics**, a separate setting, off by default: cause, loader and
+  versions, Minecraft version, OS, exit code, analyser version and signature, counted
+  per day on the server, no install ID, no files.
+- **"Did this help?"** under an explanation sends yes or no with its cause and
+  signature (with the statistics setting, or with a report).
+- **Rules as data.** The analyser's patterns move into a signed rule bundle the
+  launcher downloads from the service, so a new mod message is explained without a
+  launcher release; the built-in rules stay the fallback.
+- **The loop.** Unexplained groups and "did not help" answers are reviewed; a
+  scrubbed log becomes a fixture in `crash/fixtures`, a rule and a test.
+
+### Server
+
+- Debian 13 at `crash.lapi.sh` behind Cloudflare. Layout under `/home/www/lapi/`
+  (room for other APIs): `crash/releases/<commit>/`, `crash/current` → the running
+  release, `crash/data/` (database and reports, owned by the service user),
+  `crash/crash.env`, and `nginx/crash.conf` included by nginx. The service runs as the
+  system user `lapi-crash` under systemd on `127.0.0.1:8781`; nginx terminates TLS
+  with a Let's Encrypt certificate and forwards to it.
+- A one-time root script (`deploy/crash/bootstrap.sh`) creates the user, folders,
+  systemd unit, nginx include, certificate and a sudoers entry that lets the deploy
+  user only restart the service, test and reload nginx and run the service's command
+  line. After that, the "Crash service" workflow tests, builds on Debian 13 and
+  deploys over SSH on every change to `main`.
