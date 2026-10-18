@@ -102,6 +102,97 @@ impl MemoryPolicy {
     }
 }
 
+/// What an installation runs, for its recommended memory (D-058).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[serde(tag = "kind", rename_all = "snake_case")]
+pub enum Workload {
+    /// Minecraft 1.12.2 and older without a mod loader.
+    Legacy,
+    /// Minecraft 1.13 and newer without a mod loader.
+    Vanilla,
+    /// With a mod loader; the mods in the game folder decide the amount.
+    Modded { mods: u32 },
+}
+
+/// Recommended heap per workload on a machine with room for it. Measured on
+/// Minecraft 1.20.1 (D-058): the game itself keeps about 0.4 GiB live and
+/// peaks near 0.9 GiB in the old generation, a loader adds little, and large
+/// mod packs need several GiB.
+const LEGACY_HEAP_MIB: u32 = 2048;
+const VANILLA_HEAP_MIB: u32 = 3072;
+const FEW_MODS_HEAP_MIB: u32 = 4096;
+const MANY_MODS_HEAP_MIB: u32 = 6144;
+const LARGE_PACK_HEAP_MIB: u32 = 8192;
+/// Up to this many mods count as a few (performance or utility mods).
+const FEW_MODS: u32 = 50;
+/// More than this many mods is a large pack.
+const MANY_MODS: u32 = 150;
+
+/// Release versions before 1.13 and every alpha, beta, classic and indev id.
+fn legacy_version(version_id: &str) -> bool {
+    if let Some(rest) = version_id.strip_prefix("1.") {
+        let minor: String = rest.chars().take_while(char::is_ascii_digit).collect();
+        return minor.parse::<u32>().is_ok_and(|m| m <= 12);
+    }
+    ["a", "b", "c", "rd-", "inf-"]
+        .iter()
+        .any(|p| version_id.starts_with(p) && !version_id.contains('w'))
+}
+
+impl Workload {
+    pub fn of(version_id: &str, modded: bool, mods: u32) -> Self {
+        if modded {
+            Self::Modded { mods }
+        } else if legacy_version(version_id) {
+            Self::Legacy
+        } else {
+            Self::Vanilla
+        }
+    }
+
+    fn heap_mib(self) -> u32 {
+        match self {
+            Self::Legacy => LEGACY_HEAP_MIB,
+            Self::Vanilla => VANILLA_HEAP_MIB,
+            Self::Modded { mods } if mods <= FEW_MODS => FEW_MODS_HEAP_MIB,
+            Self::Modded { mods } if mods <= MANY_MODS => MANY_MODS_HEAP_MIB,
+            Self::Modded { .. } => LARGE_PACK_HEAP_MIB,
+        }
+    }
+}
+
+/// A recommended maximum heap and why.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct MemoryRecommendation {
+    pub mib: u32,
+    pub workload: Workload,
+    /// What the workload asks for, when this computer cannot give that much.
+    pub wanted_mib: Option<u32>,
+}
+
+impl MemoryPolicy {
+    /// The heap for `workload` on this computer: what it needs, but at most
+    /// half of the physical memory (the rest stays for the system, the game's
+    /// native memory and the launcher) and within the allowed range. Physical
+    /// memory counts in whole GiB as people know it: a 16 GiB computer reports
+    /// a little less (16093 MiB here) and still gives 8192 MiB.
+    pub fn recommend(&self, workload: Workload) -> MemoryRecommendation {
+        let wanted = workload.heap_mib();
+        let gib = (self.physical_mib + 512) / 1024;
+        let half = u32::try_from(gib * 1024 / 2).unwrap_or(u32::MAX);
+        let mib = wanted
+            .min(half)
+            .min(self.max_heap_mib)
+            .max(self.min_heap_mib);
+        MemoryRecommendation {
+            mib,
+            workload,
+            wanted_mib: (mib < wanted).then_some(wanted),
+        }
+    }
+}
+
 /// Bounds reported to the UI.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -219,6 +310,41 @@ mod tests {
 
         let p256 = MemoryPolicy::from_physical_bytes(256 * GIB).unwrap();
         assert_eq!(p256.max_heap_mib, MAX_HEAP_CAP_MIB);
+    }
+
+    #[test]
+    fn recommendations_follow_the_workload_and_the_machine() {
+        let p16 = MemoryPolicy::from_physical_bytes(16 * GIB).unwrap();
+        let mib = |w| p16.recommend(w).mib;
+        assert_eq!(mib(Workload::of("1.7.10", false, 0)), 2048);
+        assert_eq!(mib(Workload::of("b1.7.3", false, 0)), 2048);
+        assert_eq!(mib(Workload::of("1.12.2", false, 0)), 2048);
+        assert_eq!(mib(Workload::of("1.13", false, 0)), 3072);
+        assert_eq!(mib(Workload::of("1.21.1", false, 0)), 3072);
+        assert_eq!(mib(Workload::of("26.3", false, 0)), 3072);
+        assert_eq!(mib(Workload::of("24w14a", false, 0)), 3072);
+        assert_eq!(mib(Workload::of("1.20.1", true, 0)), 4096);
+        assert_eq!(mib(Workload::of("1.20.1", true, 50)), 4096);
+        assert_eq!(mib(Workload::of("1.12.2", true, 51)), 6144);
+        assert_eq!(mib(Workload::of("1.20.1", true, 330)), 8192);
+        assert_eq!(
+            p16.recommend(Workload::of("1.20.1", true, 330)).wanted_mib,
+            None
+        );
+
+        // A 16 GiB computer reports a little less and still gets 8192 MiB.
+        let reported = MemoryPolicy::from_physical_bytes(16_093 * MIB).unwrap();
+        assert_eq!(reported.recommend(Workload::Modded { mods: 442 }).mib, 8192);
+
+        // 8 GiB: at most half for the game.
+        let p8 = MemoryPolicy::from_physical_bytes(8 * GIB).unwrap();
+        let large = p8.recommend(Workload::Modded { mods: 330 });
+        assert_eq!((large.mib, large.wanted_mib), (4096, Some(8192)));
+        assert_eq!(p8.recommend(Workload::Vanilla).mib, 3072);
+        // 4 GiB: the allowed maximum (2048) wins.
+        let p4 = MemoryPolicy::from_physical_bytes(4 * GIB).unwrap();
+        assert_eq!(p4.recommend(Workload::Vanilla).mib, 2048);
+        assert_eq!(p4.recommend(Workload::Legacy).wanted_mib, None);
     }
 
     #[test]

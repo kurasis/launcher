@@ -253,7 +253,7 @@ export type Messages = {
     readonly lastResult: string;
     readonly noResult: string;
     readonly memory: string;
-    readonly memoryHint: (values: { min: number; max: number; recommended: number }) => string;
+    readonly memoryHint: (values: { min: number; max: number }) => string;
     readonly lowMemory: string;
     readonly width: string;
     readonly height: string;
@@ -279,6 +279,20 @@ export type Messages = {
     readonly fullscreenShort: string;
     readonly gameArguments: string;
     readonly gameArgumentsHint: string;
+  };
+  readonly memory: {
+    readonly recommended: (values: { mib: number; reason: string | number }) => string;
+    readonly limited: (values: { mib: number; reason: string | number; wanted: number }) => string;
+    readonly use: string;
+    readonly perKind: string;
+    readonly perKindHint: string;
+    readonly fixed: string;
+    readonly fixedLine: (values: { mib: number }) => string;
+    readonly workload: {
+      readonly legacy: string;
+      readonly vanilla: string;
+      readonly modded: (values: { mods: number }) => string;
+    };
   };
   readonly deleteInstance: {
     readonly delete: string;

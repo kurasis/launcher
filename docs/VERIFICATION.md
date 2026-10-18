@@ -1619,3 +1619,30 @@ proxy that was stopped and started to cut and restore the connection.
   temporary files removed, settings reset with the language kept, profiles removed;
   removing game files asks installed versions for a repair and keeps worlds; the
   section lists the data, offers the backup, confirms and sends the choice.
+
+## Memory recommended by the kind of installation (D-058)
+
+- **Measurements** (release launcher on Linux under Xvfb with software rendering;
+  Minecraft 1.20.1 joining the same world with `-Xmx8192M`; `jstat` sampled every
+  1–2 s, the live set read after `jcmd GC.run` 45–60 s after joining): see the table
+  in D-058. The packs came from Modrinth with their SHA-512 checked, into a
+  hard-linked copy of the test data outside the repository; they are not committed.
+  Better MC 4 stopped at its "missing mods" window (CurseForge-only mods) and was
+  replaced by Prominence II (442 mods), which joined the world after 176 s.
+- Release build: Settings → Installations recommends 8192 MiB for the Fabric
+  installation with Prominence II ("a mod loader with 442 mods") on this 16 GiB
+  computer, which reports 16093 MiB (`docs/verification/memory-large-pack.png`);
+  4096 MiB for a loader without mods (`docs/verification/memory-no-mods.png`); on the
+  Forge installation set to 8192 MiB, **Use recommended** put 4096 MiB in the field
+  (`docs/verification/memory-use-recommended.png`).
+- Settings → New installations offers "Recommended for each kind of installation"
+  (chosen) and "The same for every new installation" with the per-kind amounts
+  (`docs/verification/memory-defaults.png`). The new-installation form for Minecraft
+  26.3 said "Recommended: 3072 MiB for Minecraft without mods", and the created
+  installation was saved with 3072 MiB (`docs/verification/memory-create.png`).
+- **Tests:** version classes (1.12.2 and older, alpha and beta, newer releases,
+  snapshots, the new year-based ids), the amounts by mods, the half-of-memory cap on
+  8 and 4 GiB and the whole-GiB rounding on 16 GiB; new installations by kind, a
+  fixed default winning and 0 going back to the recommendation, mods counted from
+  `.jar` files; the forms showing and applying the recommendation and choosing the
+  default.

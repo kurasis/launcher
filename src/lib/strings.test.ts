@@ -81,9 +81,7 @@ describe('interface language', () => {
       '11 بايتًا',
       '100 بايت',
     ]);
-    expect(strings.details.memoryHint({ min: 1024, max: 13108, recommended: 4096 })).toContain(
-      '13108',
-    );
+    expect(strings.details.memoryHint({ min: 1024, max: 13108 })).toContain('13108');
   });
 
   it('translates core messages by template, with their values', async () => {

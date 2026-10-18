@@ -56,7 +56,8 @@ fn created_instance_and_selection_survive_restart() {
         assert_eq!(created.display_name, "Survival");
         assert_eq!(created.health, InstallationHealth::NotInstalled);
         assert!(created.manifest_sha1.is_none());
-        assert_eq!(created.max_heap_mib, 4096);
+        // Recommended for vanilla 1.21.1 on 16 GiB (D-058).
+        assert_eq!(created.max_heap_mib, 3072);
         state
             .update_instance_settings(request(UpdateInstanceSettingsPayload {
                 instance_id: created.id,
@@ -181,7 +182,7 @@ fn invalid_inputs_are_rejected_without_changes() {
         .unwrap_err();
     assert_eq!(missing.code, ErrorCode::InstanceNotFound);
     assert_eq!(sink.events().len(), events_before);
-    assert_eq!(state.snapshot().instances[0].max_heap_mib, 4096);
+    assert_eq!(state.snapshot().instances[0].max_heap_mib, 3072);
 }
 
 #[test]
@@ -571,4 +572,56 @@ fn fullscreen_and_game_arguments_are_saved_and_new_installations_take_the_defaul
         .unwrap();
     assert!(state.settings().default_fullscreen);
     assert!(create(&state, "Fullscreen", "1.21.1").unwrap().fullscreen);
+}
+
+#[test]
+fn new_installations_get_the_memory_their_kind_needs_unless_a_default_is_fixed() {
+    let dir = tempfile::tempdir().unwrap();
+    let state = state_at(dir.path(), RecordingSink::default());
+    let fabric = |name: &str| {
+        state
+            .create_instance(request(CreateInstancePayload {
+                display_name: name.into(),
+                version_id: "1.20.1".into(),
+                loader: Some(crate::loader::LoaderChoice {
+                    kind: crate::loader::LoaderKind::Fabric,
+                    version: "0.16.14".into(),
+                }),
+            }))
+            .unwrap()
+    };
+    assert_eq!(create(&state, "Old", "1.8.9").unwrap().max_heap_mib, 2048);
+    let modded = fabric("Modded");
+    assert_eq!(modded.max_heap_mib, 4096);
+
+    // The installation's recommendation counts its mods.
+    let mods = state.data_root().unwrap().game_dir(modded.id).join("mods");
+    std::fs::create_dir_all(&mods).unwrap();
+    for i in 0..151 {
+        std::fs::write(mods.join(format!("mod{i}.jar")), "").unwrap();
+    }
+    std::fs::write(mods.join("notes.txt"), "").unwrap();
+    let recommended = state.recommend_memory_for(modded.id).unwrap();
+    assert_eq!(recommended.mib, 8192);
+    assert_eq!(
+        recommended.workload,
+        validation::Workload::Modded { mods: 151 }
+    );
+    assert_eq!(state.recommend_memory("1.21.1", false).unwrap().mib, 3072);
+
+    // A fixed default wins; 0 goes back to the recommendation.
+    let patch = |mib| {
+        state.set_app_settings(request(SettingsPatch {
+            default_max_heap_mib: Some(mib),
+            ..SettingsPatch::default()
+        }))
+    };
+    patch(5120).unwrap();
+    assert_eq!(
+        create(&state, "Fixed", "1.21.1").unwrap().max_heap_mib,
+        5120
+    );
+    patch(0).unwrap();
+    assert_eq!(state.settings().default_max_heap_mib, None);
+    assert_eq!(fabric("Again").max_heap_mib, 4096);
 }

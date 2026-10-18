@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-recommend-memory"
+description = "Enables the recommend_memory command without any pre-configured scope."
+commands.allow = ["recommend_memory"]
+
+[[permission]]
+identifier = "deny-recommend-memory"
+description = "Denies the recommend_memory command without any pre-configured scope."
+commands.deny = ["recommend_memory"]

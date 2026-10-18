@@ -262,6 +262,25 @@ pub async fn delete_instance<R: Runtime>(
     .await
 }
 
+/// The memory recommended for an installation (counting its mods) or for a
+/// new one of a version, with or without a mod loader (D-058).
+#[tauri::command]
+pub async fn recommend_memory<R: Runtime>(
+    app: AppHandle<R>,
+    instance_id: Option<crate::storage::paths::InstanceId>,
+    version_id: Option<String>,
+    modded: Option<bool>,
+) -> LauncherResult<crate::validation::MemoryRecommendation> {
+    blocking(app, move |state| match instance_id {
+        Some(id) => state.recommend_memory_for(id),
+        None => state.recommend_memory(
+            version_id.as_deref().unwrap_or_default(),
+            modded.unwrap_or(false),
+        ),
+    })
+    .await
+}
+
 /// What each part of a reset would remove (D-057).
 #[tauri::command]
 pub async fn reset_preview<R: Runtime>(

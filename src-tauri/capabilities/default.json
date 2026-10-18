@@ -29,6 +29,7 @@
     "allow-delete-instance",
     "allow-reset-preview",
     "allow-reset-launcher",
+    "allow-recommend-memory",
     "allow-list-screenshots",
     "allow-delete-screenshot",
     "allow-open-screenshot",

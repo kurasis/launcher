@@ -158,6 +158,7 @@ fn main_window_capability_grants_only_app_commands() {
             "allow-delete-instance",
             "allow-reset-preview",
             "allow-reset-launcher",
+            "allow-recommend-memory",
             "allow-list-screenshots",
             "allow-delete-screenshot",
             "allow-open-screenshot",
