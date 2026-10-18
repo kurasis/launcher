@@ -141,6 +141,10 @@ pub struct SettingsPatch {
     pub share_stats: Option<bool>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub download_source: Option<crate::mirror::DownloadSource>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub update_mode: Option<crate::update::UpdateMode>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub update_channel: Option<crate::update::UpdateChannel>,
     /// True replaces the crash report install ID with a new one (D-061).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub new_install_id: Option<bool>,
@@ -164,6 +168,8 @@ pub struct SettingsView {
     pub monthly_limit_mib: u32,
     pub share_stats: bool,
     pub download_source: crate::mirror::DownloadSource,
+    pub update_mode: crate::update::UpdateMode,
+    pub update_channel: crate::update::UpdateChannel,
     /// The crash report install ID, once a report made one (D-061).
     pub install_id: Option<String>,
     /// False when settings were written by a newer launcher or could not be read.
@@ -188,6 +194,8 @@ impl SettingsView {
             monthly_limit_mib: settings.monthly_limit_mib,
             share_stats: settings.share_stats,
             download_source: settings.download_source,
+            update_mode: settings.update_mode,
+            update_channel: settings.update_channel,
             install_id: settings.install_id.clone(),
             writable,
         }
@@ -469,6 +477,8 @@ pub struct AppSnapshot {
     pub network: NetworkStatus,
     /// Download hosts served by the mirror now (D-062).
     pub mirrored_hosts: Vec<String>,
+    /// A launcher update and where it stands (D-063).
+    pub update: crate::update::UpdateView,
     pub current_run: Option<RunSummary>,
     pub last_run: Option<RunSummary>,
     /// True in debug builds, which include the lifecycle test harness.
@@ -596,6 +606,7 @@ pub struct GameStateChanged {
     pub queue: Vec<QueuedOperation>,
     pub network: NetworkStatus,
     pub mirrored_hosts: Vec<String>,
+    pub update: crate::update::UpdateView,
 }
 
 /// Whether the launcher can reach the internet (D-052).

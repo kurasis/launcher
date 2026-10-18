@@ -31,6 +31,7 @@ pub mod secrets;
 pub mod state;
 pub mod storage;
 pub mod traffic;
+pub mod update;
 pub mod validation;
 
 use std::path::PathBuf;
@@ -278,8 +279,15 @@ fn setup(app: &mut tauri::App) -> Result<(), Box<dyn std::error::Error>> {
         commands::Location::new(resolve_location(&handle))
             .with_config_dir(handle.path().app_config_dir().ok()),
     );
+    let data_root = resolve_data_root(&handle);
+    // A new version that did not start goes back to the one before (D-063),
+    // before its settings are read.
+    let going_back = data_root
+        .as_ref()
+        .ok()
+        .and_then(|root| update::at_start(&handle, root.path()));
     let state = AppState::initialize(
-        resolve_data_root(&handle),
+        data_root,
         app.package_info().version.to_string(),
         MemoryPolicy::detect(),
         Box::new(TauriSink(handle)),
@@ -294,6 +302,9 @@ fn setup(app: &mut tauri::App) -> Result<(), Box<dyn std::error::Error>> {
                 .warn("The launcher did not close normally last time; a record was kept");
         }
         state.console().attach_file(journal::LogFile::open(&logs));
+        if let Some(problem) = going_back {
+            state.console().warn(problem);
+        }
         state.console().info(format!(
             "Launcher {version} started ({} {})",
             std::env::consts::OS,
@@ -374,6 +385,21 @@ fn setup(app: &mut tauri::App) -> Result<(), Box<dyn std::error::Error>> {
             *before = now;
             drop(before);
             state.announce_runs();
+        });
+    }
+    // Launcher updates (D-063): notice a new version, then look for the next.
+    {
+        let updates = Arc::new(update::Updates::default());
+        app.manage(Arc::clone(&updates));
+        update::Updates::after_start(&app.state::<AppState>());
+        let handle = app.handle().clone();
+        tauri::async_runtime::spawn(async move {
+            // Let the start settle (network check, catalog) first.
+            tokio::time::sleep(std::time::Duration::from_secs(30)).await;
+            loop {
+                updates.check(&handle, false).await;
+                tokio::time::sleep(update::EVERY).await;
+            }
         });
     }
     // Crash reports the player sends, and statistics they allowed (D-061).
@@ -499,6 +525,9 @@ pub fn run() {
         }))
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_dialog::init())
+        // Updates (D-063); the key is given per check, so a build without it
+        // never looks.
+        .plugin(tauri_plugin_updater::Builder::new().build())
         .register_asynchronous_uri_scheme_protocol(gallery::PROTOCOL, |ctx, request, responder| {
             let app = ctx.app_handle().clone();
             let path = request.uri().path().to_owned();
@@ -562,6 +591,10 @@ pub fn run() {
                 handle.state::<AppState>().console().info("Launcher closed");
                 journal::end(&root.path().join("logs"));
             }
+            // Last: on Windows the update's installer takes over from here (D-063).
+            let updates = handle.state::<Arc<update::Updates>>();
+            updates.at_exit(&handle.state::<AppState>());
+            updates.install_on_close(&handle.state::<AppState>());
         }
         _ => {}
     });
@@ -630,6 +663,12 @@ fn handlers<R: tauri::Runtime>() -> impl Fn(tauri::ipc::Invoke<R>) -> bool + Sen
         commands::preview_crash_report,
         commands::send_crash_report,
         commands::send_explanation_feedback,
+        commands::check_for_update,
+        commands::download_update,
+        commands::restart_to_update,
+        commands::dismiss_whats_new,
+        commands::open_update_page,
+        commands::interface_ready,
         commands::start_lifecycle_test,
         commands::stop_lifecycle_test,
     ]
@@ -699,5 +738,11 @@ fn handlers<R: tauri::Runtime>() -> impl Fn(tauri::ipc::Invoke<R>) -> bool + Sen
         commands::preview_crash_report,
         commands::send_crash_report,
         commands::send_explanation_feedback,
+        commands::check_for_update,
+        commands::download_update,
+        commands::restart_to_update,
+        commands::dismiss_whats_new,
+        commands::open_update_page,
+        commands::interface_ready,
     ]
 }

@@ -122,6 +122,22 @@ export function DownloadManager({ snapshot }: { snapshot: AppSnapshot }) {
       {shown && (
         <section className={styles.panel} aria-label={t.title}>
           <h2 className={styles.title}>{t.title}</h2>
+          {(snapshot.update.phase === 'downloading' || snapshot.update.phase === 'ready') &&
+            snapshot.update.version !== null && (
+              <div className={styles.item}>
+                <p>
+                  <strong>{strings.updates.manager({ version: snapshot.update.version })}</strong>
+                </p>
+                {snapshot.update.phase === 'ready' ? (
+                  <p className={styles.muted}>{strings.updates.readyShort}</p>
+                ) : (
+                  <progress
+                    value={snapshot.update.downloaded}
+                    max={snapshot.update.total ?? undefined}
+                  />
+                )}
+              </div>
+            )}
           {snapshot.mirroredHosts.length > 0 && (
             <p className={styles.muted} role="status">
               {strings.mirror.inUse({ sites: sourceNames(snapshot.mirroredHosts).join(', ') })}

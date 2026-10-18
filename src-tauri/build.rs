@@ -4,6 +4,9 @@ use std::path::PathBuf;
 fn main() {
     // The Microsoft public-client ID is non-secret build configuration (docs/AUTH-SETUP.md).
     println!("cargo:rerun-if-env-changed=LAUNCHER_MSA_CLIENT_ID");
+    // The update public key (D-063); without it the launcher does not look for updates.
+    println!("cargo:rerun-if-env-changed=LAUNCHER_UPDATE_PUBKEY");
+    println!("cargo:rerun-if-env-changed=LAUNCHER_UPDATE_URL");
 
     // Declaring the app's commands makes Tauri generate one permission per command,
     // so each window must be granted every command explicitly in capabilities/.
@@ -68,6 +71,12 @@ fn main() {
         "preview_crash_report",
         "send_crash_report",
         "send_explanation_feedback",
+        "check_for_update",
+        "download_update",
+        "restart_to_update",
+        "dismiss_whats_new",
+        "open_update_page",
+        "interface_ready",
         // Registered only in debug builds; release builds have no handler for them.
         "start_lifecycle_test",
         "stop_lifecycle_test",

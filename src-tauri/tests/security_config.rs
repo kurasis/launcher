@@ -194,6 +194,12 @@ fn main_window_capability_grants_only_app_commands() {
             "allow-preview-crash-report",
             "allow-send-crash-report",
             "allow-send-explanation-feedback",
+            "allow-check-for-update",
+            "allow-download-update",
+            "allow-restart-to-update",
+            "allow-dismiss-whats-new",
+            "allow-open-update-page",
+            "allow-interface-ready",
             "allow-start-lifecycle-test",
             "allow-stop-lifecycle-test",
         ]

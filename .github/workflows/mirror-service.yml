@@ -12,7 +12,7 @@ name: Mirror service
 
 on:
   push:
-    branches: [main, claude/download-mirror]
+    branches: [main, claude/launcher-updates]
     paths:
       - services/mirror/**
       - deploy/mirror/**
@@ -87,7 +87,7 @@ jobs:
     name: Deploy to mirror.lapi.sh
     needs: test
     if: >-
-      (github.event_name == 'push' && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/claude/download-mirror'))
+      (github.event_name == 'push' && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/claude/launcher-updates'))
       || (github.event_name == 'workflow_dispatch' && inputs.task == 'deploy')
     runs-on: ubuntu-24.04
     steps:

@@ -1801,3 +1801,66 @@ proxy that was stopped and started to cut and restore the connection.
 - **Not tested here:** the slow-origin switch (10 s) only by reading; the
   metadata fallback of `PublicClient::fetch_bounded` against real hosts (it needs
   HTTPS origins).
+
+## Launcher updates (D-063)
+
+- **lapi-upd tests:** a complete signed release becomes current with one manifest
+  per platform and install type (the signature in each verifies the published
+  file; `.deb` is notice-only with its link); a changed file, a foreign key, a
+  signature for another version, a missing platform and a path outside the
+  archive are refused and nothing changes (`--partial` publishes a subset);
+  versions only go forward; rollout, pause, resume and revoke rewrite the
+  manifests (revoking goes back to the previous version, lists the revoked one
+  and makes leaving it mandatory); `pack` signs for the version with a
+  password-protected key in Tauri's form and its archive publishes.
+- **With the real Tauri CLI:** a key from `tauri signer generate` signed six
+  platform files through `lapi-upd pack`; `publish` verified them against the
+  CLI's public key; a wrong password is refused. (`tauri signer sign` itself
+  writes no version, which is why `pack` signs.)
+- **nginx, local, with published data:** manifests are JSON cached a minute;
+  missing ones answer 204 (no update); release files are immutable and
+  byte-identical; `incoming/`, `state.json`, the key and `..` paths are not
+  served; `/` leads to the download page; peers outside Cloudflare are closed.
+- **Launcher tests:** newer versions are offered within the rollout (seed % 100),
+  not when paused, equal or older; a revoked version is offered the channel's
+  even if older, as mandatory; notice-only installs get only HTTPS links; the
+  first start of a version copies settings, accounts and installation records
+  and returns the notes the update left; the interface stays out of the way
+  without an update, offers "Restart now" or "When I close the launcher",
+  downloads on a press, links `.deb` installs, explains a refused signature in
+  the interface language, shows "What's new" once, and switches the update mode.
+- **Stage 2 tests:** every published version keeps its own whole manifest
+  (rollout 100, signature verifying its file; none for `.deb`); stable refuses a
+  pre-release; a stable version reaches beta when beta is behind, an older stable
+  fix leaves a newer beta alone, the final release replaces the beta, and
+  revoking it on stable takes beta back. In the launcher: a new version that
+  never starts well is left on its third start, and the next start tries again
+  if going back failed; a good start ends the watch; a broken or path-like record
+  never sends the launcher anywhere; records are restored from the copy made
+  before the failed version, which a later copy does not replace; a version that
+  did not start is never offered again, not even as the channel's version for a
+  revoked one, while a newer fix is; the interface switches to beta and looks at
+  once, explains staying on the installed version when leaving beta, and tells
+  the player about a return once.
+- **End to end with real AppImages (2026-10-18, Linux x86_64, Xvfb):** three
+  release builds (0.1.0, 0.1.1, 0.1.2) with a throwaway key and
+  `LAUNCHER_UPDATE_URL` pointing at a local copy of upd.lapi.sh (the nginx rules
+  in a small server; manifests and archives made by `lapi-upd pack` and
+  `publish --partial`).
+  - Update: 0.1.0 found 0.1.1 at its first check (30 s), downloaded it, checked
+    the signature and showed "Version 0.1.1 is ready"; closing the window
+    installed it (the AppImage became byte-identical to the 0.1.1 build) and
+    wrote `pending.json` (0.1.0 → 0.1.1). The next start ran 0.1.1, copied the
+    settings to `backups/before-0.1.1`, and 20 s after the interface showed the
+    start counted as good (`pending.json` gone).
+  - Going back: 0.1.1 installed 0.1.2 the same way. 0.1.2 was killed 5 s after
+    starting, twice (starts 1 and 2), and its settings file was changed in
+    between as a newer version might. The third start fetched
+    `releases/0.1.1/linux-x86_64-appimage.json` and the 0.1.1 AppImage, put the
+    settings back as they were before 0.1.2, installed 0.1.1 and restarted
+    into it within 2 s. 0.1.1 showed "Version 0.1.2 did not start properly…",
+    recorded 0.1.2 as skipped, and its next check saw 0.1.2 on the server
+    without offering it. "Got it" removed the notice for good.
+- **Not tested here:** installing for real on Windows and macOS (needs
+  a signed release from the Package workflow and two versions); this is the
+  first check to make after the key is configured.

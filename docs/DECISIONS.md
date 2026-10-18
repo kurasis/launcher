@@ -1650,3 +1650,123 @@ message` plus a stack trace), with the event's level.
   at `/home/www/lapi/mirror/data` (owner `lapi-mirror`, mode 0755).
 - "Run workflow" on "Mirror service" with `task=reports` shows kept files per host,
   the quota and the free disk.
+
+## D-063 — Launcher updates at upd.lapi.sh
+
+- **Status:** accepted (owner request, 2026-10-18) · **Affects:** the launcher's
+  start and exit, Settings → General, the download manager, the Package workflow,
+  the new tool `services/upd` and `https://upd.lapi.sh`.
+- **Goal.** Players get new versions by themselves, without a crash or a broken
+  install on the way; publishing one is uploading a file and running a command.
+- **Owner's choices:** download by itself and install when the launcher closes;
+  a beta channel the player can choose (stage 2); no operating-system code signing
+  for now; `.deb` installs are only told about a new version; publishing is
+  "upload the release archive, run `lapi-upd publish`".
+
+### Trust
+
+- Every update is signed with the launcher's update key (Tauri updater, minisign
+  Ed25519). The public key is built into the launcher (repository variable
+  `UPDATE_PUBLIC_KEY`); the private key is only a GitHub secret
+  (`TAURI_SIGNING_PRIVATE_KEY`, `TAURI_SIGNING_PRIVATE_KEY_PASSWORD`) and the owner's
+  offline copy, never on the server. The launcher installs nothing whose signature
+  does not match, and the signature must name the announced version
+  (`requireSignedVersion`), so an old signed file cannot be passed off as new.
+  The Tauri CLI's own signer does not write the version, so the Package workflow
+  signs with `lapi-upd pack` (minisign, Tauri's key format, `version:` in the
+  trusted comment); the builds themselves need no key.
+- Losing the private key means installed launchers can no longer be updated; they
+  have to be reinstalled by hand. A launcher built without the public key does not
+  look for updates.
+
+### Platforms
+
+| Installed as                        | Update                                                                        |
+| ----------------------------------- | ----------------------------------------------------------------------------- |
+| Windows NSIS (x64, arm64), per user | the new installer runs passively after the launcher closes; no administrator  |
+| macOS app (arm64, x64)              | the `.app` is replaced; the next start is the new version                     |
+| Linux AppImage                      | the AppImage is replaced when its folder is writable, else the player is told |
+| Linux `.deb`                        | the player is told, with a link to the new package (APT repository later)     |
+
+### On the server
+
+- No service process: nginx serves static files from `/home/www/lapi/upd`:
+  `releases/<version>/` (installers, signatures, and the version's own manifest
+  per installable platform, `<target>-<arch>-<bundle>.json`, for a return to it;
+  kept, cached by Cloudflare) and `channels/<channel>/<target>-<arch>-<bundle>.json`
+  (one manifest per platform and install type, cached one minute).
+- Channels: `stable` and `beta`. Stable takes no pre-release (`1.2.0-beta.1`).
+  Beta is never behind stable: publishing a stable version newer than beta's
+  makes it beta's too (same rollout), and revoking it on stable takes beta back
+  if beta got it from stable. Rollout, pause and resume are per channel.
+- A manifest is Tauri's single-platform format (`version`, `notes`, `pub_date`,
+  `url`, `signature`) plus our fields: `rollout` (percent of installs offered the
+  version), `mandatory`, `revoked` (versions to leave even for an older one),
+  `notesByLanguage`, and `download` (the page or package to open where the launcher
+  cannot install itself).
+- `lapi-upd` (run as the user `lapi-upd`):
+  - `publish <version> [--channel stable] [--rollout N] [--mandatory]` reads
+    `incoming/launcher-<version>-release.tar.gz` (built by the Package workflow:
+    every platform's files, their signatures and `release.json`), checks that every
+    platform is there, the checksums match and each signature verifies with the
+    public key and names the version, that the version is newer than the channel's,
+    then copies the files and replaces the manifests, each atomically;
+  - `rollout <channel> <percent>`, `pause <channel>`, `resume <channel>`;
+  - `revoke <channel> <version>`: the channel goes back to the previous version and
+    launchers on the revoked one are offered it;
+  - `status`.
+- `https://upd.lapi.sh/download/` lists the current files for manual download.
+- Security as for crash and mirror: only Cloudflare connects, nginx files are
+  root's, no addresses in logs.
+
+### In the launcher
+
+- **When:** at start and every 6 hours; not offline (D-052); on a metered
+  connection the download asks first (D-051).
+- **Who is offered:** a stable random number per install (never sent) decides
+  whether it falls within `rollout`; a revoked version is always offered the
+  channel's version.
+- **Download:** in the background, shown in the download manager like other
+  downloads; the signature is checked when it ends.
+- **Install:** when the launcher closes, unless a game or an install is running
+  (then at the next close), or at once with "Restart now". Before the first start
+  of a new version, the settings and installation records are copied to
+  `backups/before-<version>/`.
+- **Channel:** Settings → General → Updates → Versions: "Stable" (default) or
+  "Beta: test new versions first". Changing it looks at once. Back to stable, the
+  installed version stays until stable has a newer one (versions only go
+  forward; a revoked one is left as above).
+- **Going back when a new version does not start** (stage 2): before an update
+  installs, the launcher writes `updates/pending.json` (from, to). Each start of
+  the new version counts there, before its settings are read; its first start
+  also copies the settings, accounts and installation records to
+  `backups/before-<version>/`. A start is good when the interface has shown and
+  the launcher stayed up 20 s, or closed normally after showing; then the file
+  goes. After two starts without a good one, the third start downloads the
+  version it came from (`releases/<from>/…json`, signed and checked like any
+  update), puts back the copied records (the older version may not read what the
+  newer one wrote), notes the return in `updates/rolled-back.json` and installs
+  it. That version tells the player once and never takes the failed version
+  again (`skippedVersion` in the settings); a newer one is offered as usual.
+  Offline, the return waits for a start with the internet. Only updates the
+  launcher installed are watched; a failure before our code runs at all (the
+  executable does not open) cannot be caught from inside and needs `revoke`.
+- **Seen by the player:** a header badge "Version X is ready" with what is new (in
+  the interface language when the manifest has it) and "Restart now" / "When I
+  close the launcher"; after the update, "What's new" once; Settings → General →
+  Updates: "Download and install when I close" (default), "Only tell me", "Don't
+  check". Errors say what happened and that the next check retries.
+- **Not now:** an APT repository, Windows and macOS code signing.
+
+### Publishing a version (owner)
+
+`docs/RELEASING.md`: raise the version and add its notes, take the release
+archive from the Package workflow, upload it to
+`/home/www/lapi/upd/data/incoming/` and run `lapi-upd publish <version>`.
+
+### Stages
+
+1. Signing, manifests, `lapi-upd`, the server; the launcher's check, download,
+   install on close, the interface, `.deb` notice, backup before a new version.
+2. Automatic rollback after start failures; the beta channel in Settings (done).
+3. APT repository; code signing.

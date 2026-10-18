@@ -1,0 +1,29 @@
+[package]
+name = "lapi-upd"
+version = "0.1.0"
+edition = "2024"
+rust-version = "1.97"
+description = "Publishes launcher updates to upd.lapi.sh (D-063)"
+publish = false
+
+[dependencies]
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+sha2 = "0.10"
+hex = "0.4"
+flate2 = "1"
+tar = "0.4"
+minisign-verify = "0.2"
+base64 = "0.22"
+semver = "1"
+chrono = { version = "0.4", default-features = false, features = ["clock", "std"] }
+# Signing in CI only (`pack`); the server never holds the key.
+minisign = "0.7"
+
+[dev-dependencies]
+tempfile = "3"
+
+[profile.release]
+lto = "thin"
+codegen-units = 1
+strip = true

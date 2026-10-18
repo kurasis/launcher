@@ -1382,3 +1382,60 @@ pub async fn send_explanation_feedback(
     }
     reports.feedback(&state, &kind, &signature, helpful).await
 }
+
+/// Looks for a launcher update now (D-063).
+#[tauri::command]
+pub async fn check_for_update<R: Runtime>(app: AppHandle<R>) -> crate::update::UpdateView {
+    let updates = Arc::clone(&app.state::<Arc<crate::update::Updates>>());
+    updates.check(&app, true).await;
+    app.state::<AppState>().update()
+}
+
+/// Downloads the offered update (notify mode, metered connection).
+#[tauri::command]
+pub async fn download_update<R: Runtime>(app: AppHandle<R>) -> crate::update::UpdateView {
+    let updates = Arc::clone(&app.state::<Arc<crate::update::Updates>>());
+    updates.download(&app).await;
+    app.state::<AppState>().update()
+}
+
+/// Installs the downloaded update and starts the new version.
+#[tauri::command]
+pub fn restart_to_update<R: Runtime>(app: AppHandle<R>) -> LauncherResult<()> {
+    let updates = Arc::clone(&app.state::<Arc<crate::update::Updates>>());
+    updates.restart_now(&app)
+}
+
+/// "What's new" was read.
+#[tauri::command(async)]
+pub fn dismiss_whats_new(state: State<'_, AppState>) {
+    crate::update::Updates::dismiss_whats_new(&state);
+}
+
+/// The interface has shown: this start of a new version can count as good.
+#[tauri::command(async)]
+pub fn interface_ready<R: Runtime>(app: AppHandle<R>) {
+    app.state::<Arc<crate::update::Updates>>()
+        .interface_shown(&app);
+}
+
+/// Opens where to get the update by hand (a `.deb`, or after installing
+/// failed); only addresses on upd.lapi.sh.
+#[tauri::command(async)]
+pub fn open_update_page<R: Runtime>(app: AppHandle<R>) -> LauncherResult<()> {
+    use tauri_plugin_opener::OpenerExt;
+    let url = app
+        .state::<AppState>()
+        .update()
+        .download_url
+        .and_then(|u| url::Url::parse(&u).ok())
+        .filter(|u| u.scheme() == "https" && u.host_str() == Some("upd.lapi.sh"))
+        .ok_or_else(|| {
+            crate::error::LauncherError::invalid_input("There is no update page to open.")
+        })?;
+    app.opener()
+        .open_url(url.as_str(), None::<&str>)
+        .map_err(|_| {
+            crate::error::LauncherError::internal("The system browser could not be opened.")
+        })
+}

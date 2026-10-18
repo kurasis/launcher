@@ -132,6 +132,7 @@ describe('reconcile', () => {
         queue: [],
         network: 'offline',
         mirroredHosts: ['maven.minecraftforge.net'],
+        update: snapshotFixture().update,
       },
     });
     expect(result.kind === 'apply' && result.snapshot.instances[0]?.busy).toBe(true);

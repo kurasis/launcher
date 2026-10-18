@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-interface-ready"
+description = "Enables the interface_ready command without any pre-configured scope."
+commands.allow = ["interface_ready"]
+
+[[permission]]
+identifier = "deny-interface-ready"
+description = "Denies the interface_ready command without any pre-configured scope."
+commands.deny = ["interface_ready"]
