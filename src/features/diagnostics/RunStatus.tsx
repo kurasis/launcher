@@ -5,6 +5,7 @@ import { Panel } from '../../components/Panel';
 import { StatusBadge, type StatusTone } from '../../components/StatusBadge';
 import type { RunState, RunSummary } from '../../lib/contracts';
 import { strings } from '../../lib/strings';
+import { crashTitle } from './crashText';
 import styles from './RunStatus.module.css';
 import { localizeError } from '../../lib/strings';
 
@@ -91,11 +92,19 @@ export function RunStatus({ current, last, onStop }: RunStatusProps) {
     >
       <dl className={styles.facts}>
         <dt>{t.exitCode}</dt>
-        <dd>{last.exitCode ?? '—'}</dd>
+        <dd>{last.exitCode ?? (last.signal !== null ? `SIG ${String(last.signal)}` : '—')}</dd>
         <dt>{t.duration}</dt>
         <dd>{last.durationMs === null ? '—' : t.seconds({ seconds: last.durationMs / 1000 })}</dd>
       </dl>
-      {last.error !== null && <Notice tone="danger">{localizeError(last.error)}</Notice>}
+      {last.diagnosis !== null ? (
+        <Notice tone="danger">
+          {strings.crash.summary({
+            title: crashTitle(last.diagnosis.kind, last.diagnosis.details),
+          })}
+        </Notice>
+      ) : (
+        last.error !== null && <Notice tone="danger">{localizeError(last.error)}</Notice>
+      )}
       {last.drainTimedOut && <Notice tone="info">{t.drainTimedOut}</Notice>}
       {last.loggingDegraded && <Notice tone="warning">{t.loggingDegraded}</Notice>}
       {last.outputTail.length > 0 && (

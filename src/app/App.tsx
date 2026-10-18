@@ -179,6 +179,9 @@ export function App() {
                     setSettingsSection('installations');
                     setView('settings');
                   }}
+                  onOpenBackups={() => {
+                    setView('backups');
+                  }}
                 />
               </>
             )}

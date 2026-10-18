@@ -17,6 +17,8 @@ const base: RunSummary = {
   outputLinesDropped: 0,
   loggingDegraded: false,
   error: null,
+  signal: null,
+  diagnosis: null,
 };
 
 describe('RunStatus', () => {
@@ -82,5 +84,35 @@ describe('RunStatus', () => {
     expect(region).toHaveTextContent('Output capture was closed 2 seconds after exit');
     expect(region).toHaveTextContent('12 earlier lines not shown.');
     expect(region).toHaveTextContent('simulated crash');
+  });
+
+  it('names the cause of a diagnosed crash and the signal', () => {
+    const last: RunSummary = {
+      ...base,
+      kind: 'game',
+      state: 'failed',
+      durationMs: 1000,
+      signal: 9,
+      error: {
+        code: 'GAME_EXITED_WITH_ERROR',
+        message: 'The game exited with an error.',
+        retryable: false,
+        diagnosticId: 'd-1',
+      },
+      diagnosis: {
+        kind: 'killed',
+        details: { signal: '9' },
+        evidence: [],
+        suspects: [],
+        report: null,
+        actions: ['memory_settings'],
+        notes: [],
+      },
+    };
+    render(<RunStatus current={null} last={last} />);
+    const region = screen.getByRole('region', { name: /Last run/ });
+    expect(region).toHaveTextContent('The game stopped: The game was killed.');
+    expect(region).toHaveTextContent('SIG 9');
+    expect(region).not.toHaveTextContent('The game exited with an error.');
   });
 });

@@ -281,6 +281,207 @@
         "modded": "a mod loader with {mods, plural, =0 {no mods yet} one {# mod} other {# mods}}"
       }
     },
+    "crash": {
+      "title": "Why the game stopped",
+      "summary": "The game stopped: {title}. The cause and what to do are shown with the installation.",
+      "cause": "Cause",
+      "fix": "What to do",
+      "evidence": "Lines that show it",
+      "suspects": "Mods the crash report points at: {mods}",
+      "report": "Crash report: {file}",
+      "exitCode": "Exit code {code}",
+      "signal": "Signal {signal}",
+      "notes": "Also found",
+      "repairStarted": "Repair started.",
+      "actions": {
+        "open_mods": "Open the mods folder",
+        "open_config": "Open the config folder",
+        "open_crash_reports": "Open crash reports",
+        "open_game_folder": "Open the game folder",
+        "memory_settings": "Change memory",
+        "java_settings": "Change Java",
+        "loader_settings": "Change the loader version",
+        "repair": "Repair",
+        "backups": "Open Backups"
+      },
+      "kinds": {
+        "jvm_option": {
+          "title": "Java did not accept a JVM option",
+          "cause": "This Java does not understand the JVM option {option}, so the game could not start.",
+          "fix": "Remove or correct it in the installation's JVM options, or choose a Java that knows it."
+        },
+        "heap_unavailable": {
+          "title": "Java could not reserve the memory",
+          "cause": "Java could not set aside {memory, number, ::group-off} MiB for the game. The computer has less free memory than that, or the Java is 32-bit.",
+          "fix": "Lower the installation's memory or close other programs. The launcher's own Java is 64-bit."
+        },
+        "java_too_old": {
+          "title": "The game needs a newer Java",
+          "cause": "{required, select, none {The game or one of its mods needs a newer Java} other {The game or one of its mods needs Java {required}}}{found, select, none {.} other {, but Java {found} started it.}}",
+          "fix": "Choose the launcher's Java for this installation; it picks the version the game needs. If you chose your own Java, choose a newer one."
+        },
+        "java_too_new": {
+          "title": "The game needs an older Java",
+          "cause": "This Minecraft or mod loader was made for an older Java{found, select, none {} other { and does not run on Java {found}}}. Minecraft 1.16 and older with mod loaders usually needs Java 8.",
+          "fix": "Choose the launcher's Java for this installation, or your own Java 8."
+        },
+        "missing_dependency": {
+          "title": "A mod needs another mod",
+          "cause": "{mod} needs {dependency}{required, select, none {} other { ({required})}}, which is not installed.{count, plural, =1 {} other { # requirements are missing in all.}}",
+          "fix": "Add {dependency} for this Minecraft version and mod loader to the mods folder, or remove {mod}."
+        },
+        "wrong_dependency_version": {
+          "title": "A mod needs another version of a mod",
+          "cause": "{mod} needs {dependency}{required, select, none {} other { {required}}}{found, select, none {} other {, but {found} is installed}}.{count, plural, =1 {} other { # requirements are unmet in all.}}",
+          "fix": "Update {dependency} in the mods folder to the version {mod} asks for, or use an older {mod}."
+        },
+        "wrong_minecraft_version": {
+          "title": "A mod is made for another Minecraft version",
+          "cause": "{mod} needs Minecraft {required}{found, select, none {} other {, but this installation is {found}}}.",
+          "fix": "Download the {mod} file made for this Minecraft version, or remove it."
+        },
+        "loader_too_old": {
+          "title": "A mod needs a newer mod loader",
+          "cause": "{mod, select, none {A mod} other {{mod}}} needs a newer {dependency, select, none {mod loader} other {{dependency}}}{required, select, none {} other { ({required})}}{found, select, none {} other {; this installation has {found}}}.",
+          "fix": "Choose a newer loader version in the installation's settings, or use an older version of the mod."
+        },
+        "incompatible_mods": {
+          "title": "Two mods cannot run together",
+          "cause": "{mod} does not work together with {dependency}.",
+          "fix": "Remove one of them from the mods folder."
+        },
+        "duplicate_mods": {
+          "title": "A mod is installed twice",
+          "cause": "{modId, select, none {The same mod is installed more than once.} other {The mod {modId} is installed more than once{files, select, none {.} other {: {files}.}}}}",
+          "fix": "Keep only one file of it, the newest, in the mods folder."
+        },
+        "mod_for_other_loader": {
+          "title": "A mod is made for another loader",
+          "cause": "{file} is {loader, select, none {made for another loader} other {a {loader} mod}}, so this installation's loader skips it.",
+          "fix": "Remove it, or download the version made for this installation's loader."
+        },
+        "corrupt_mod_file": {
+          "title": "A file is damaged",
+          "cause": "{file, select, none {A game or mod file} other {{file}}} is damaged or incomplete, often after an interrupted download.",
+          "fix": "{place, select, mods {Delete it from the mods folder and download it again.} other {Repair the installation to download it again.}}"
+        },
+        "corrupt_config": {
+          "title": "A config file is damaged",
+          "cause": "{file, select, none {A config file} other {The config file {file}}} could not be read: it is damaged or empty, often after the computer shut down while the game was running.",
+          "fix": "Delete it from the config folder; the game creates it again with default settings."
+        },
+        "mixin_failed": {
+          "title": "A mod could not change the game's code",
+          "cause": "{modId, select, none {A mod} other {The mod {modId}}} failed to apply its changes to the game (Mixin). It is usually made for another version of Minecraft or of another mod, or conflicts with another mod.",
+          "fix": "Update or remove this mod; its page lists the version for this Minecraft and loader."
+        },
+        "mod_failed_to_load": {
+          "title": "A mod failed to start",
+          "cause": "{modId, select, none {A mod} other {The mod {modId}}} hit an error while the loader started it.",
+          "fix": "Update or remove it. If the crash is new, remove the mods you added last."
+        },
+        "optifine_conflict": {
+          "title": "OptiFine does not work here",
+          "cause": "OptiFine does not work with this loader version or with other mods, such as Sodium, Embeddium or Rubidium.",
+          "fix": "Remove OptiFine, or use the OptiFine release made for exactly this Forge version. With Fabric, use Sodium and Iris instead."
+        },
+        "out_of_memory": {
+          "title": "The game ran out of memory",
+          "cause": "The game used all {memory, number, ::group-off} MiB it was given.",
+          "fix": "Give the installation more memory: {suggested, number, ::group-off} MiB is a good start. Many mods, shaders or a long render distance need more."
+        },
+        "system_memory": {
+          "title": "The computer ran out of memory",
+          "cause": "Java could not get memory from the system. Other programs use the rest, or the {memory, number, ::group-off} MiB given to the game leave too little for everything else.",
+          "fix": "Close other programs or lower the installation's memory. On Windows a larger paging file also helps."
+        },
+        "killed": {
+          "title": "The game was killed",
+          "cause": "The system or another program ended the game at once. On Linux this is usually the out-of-memory killer, when the computer runs out of memory.",
+          "fix": "Close other programs or lower the installation's memory, then start again."
+        },
+        "opengl_unsupported": {
+          "title": "The graphics driver offers no suitable OpenGL",
+          "cause": "The game could not open its window because the graphics driver does not offer the OpenGL version Minecraft needs{error, select, none {} other { (GLFW error {error})}}.",
+          "fix": "Install the newest driver from the graphics card's maker (AMD, Intel or NVIDIA), not the one Windows chose. On a laptop, run Java on the dedicated graphics card."
+        },
+        "graphics_driver": {
+          "title": "The graphics driver crashed",
+          "cause": "The game crashed inside the {vendor, select, amd {AMD} intel {Intel} nvidia {NVIDIA} mesa {Mesa} other {graphics}} driver ({module}).",
+          "fix": "Update or reinstall the graphics driver from the maker's site. Shaders and overlays can set it off too: try without them."
+        },
+        "overlay": {
+          "title": "An overlay crashed the game",
+          "cause": "{program, select, none {A program that draws over games} other {{program}, a program that draws over games,}} crashed the game.",
+          "fix": "Turn off overlays and recorders (RivaTuner or MSI Afterburner, the Discord overlay, OBS game capture, D3DGear, the NVIDIA overlay) and start again."
+        },
+        "native_crash": {
+          "title": "The game crashed outside Java",
+          "cause": "The game crashed in native code{module, select, none {} other { ({module})}}{signal, select, none {} other {, {signal}}}. Graphics drivers, overlays, antivirus software or a damaged Java are the usual causes.",
+          "fix": "Update the graphics driver, turn off overlays and repair the installation. The JVM error file (hs_err) in the game folder has the details."
+        },
+        "missing_native_library": {
+          "title": "A game library is missing",
+          "cause": "The game could not load its native library{library, select, none {} other { {library}}}.",
+          "fix": "Repair the installation to download it again. Antivirus software sometimes removes these files."
+        },
+        "broken_installation": {
+          "title": "Game files are incomplete",
+          "cause": "Files the game or Java needs are missing or damaged.",
+          "fix": "Repair the installation."
+        },
+        "disk_full": {
+          "title": "The disk is full",
+          "cause": "The game could not write a file because the disk has no free space.",
+          "fix": "Free space on the disk that holds the launcher's data, then start again."
+        },
+        "file_access": {
+          "title": "A file could not be used",
+          "cause": "{file, select, none {A file} other {The file {file}}} is locked by another program or may not be read or written.",
+          "fix": "Close programs that may use it (another copy of the game, a backup or sync program, antivirus software) and start again."
+        },
+        "world_load_failed": {
+          "title": "The world could not be loaded",
+          "cause": "The game failed while reading a world ({description}).",
+          "fix": "Restore the world from a backup. If a mod was removed or updated, put back the version the world was made with."
+        },
+        "ticking_entity": {
+          "title": "An entity crashes the world",
+          "cause": "{entity, select, none {An entity} other {The entity {entity}}}{position, select, none {} other { at {position}}} crashes the game every time it updates.",
+          "fix": "Restore the world from a backup, or update or remove the mod that adds this entity."
+        },
+        "ticking_block_entity": {
+          "title": "A block crashes the world",
+          "cause": "{block, select, none {A block} other {The block {block}}}{position, select, none {} other { at {position}}} crashes the game every time it updates.",
+          "fix": "Restore the world from a backup, or update or remove the mod that adds this block."
+        },
+        "server_hang": {
+          "title": "The game froze",
+          "cause": "The game stopped responding{seconds, select, none {} other { for {seconds} seconds}} and its watchdog ended it. Large builds, many mods or too little memory cause this.",
+          "fix": "Give the game more memory and update or remove the mods named in the crash report. If one world causes it, restore it from a backup."
+        },
+        "debug_crash": {
+          "title": "Crash by F3 + C",
+          "cause": "The crash was started on purpose by holding F3 + C.",
+          "fix": "Nothing is broken. Holding F3 + C for ten seconds crashes the game to test it."
+        },
+        "game_crash": {
+          "title": "The game crashed",
+          "cause": "The game wrote a crash report: “{description}”{exception, select, none {.} other {: {exception}}}",
+          "fix": "Open the crash report for details. If mods are named here, update or remove them first."
+        },
+        "terminated": {
+          "title": "Another program ended the game",
+          "cause": "Another program asked the game to stop; it was not the launcher's Stop button.",
+          "fix": "If it was not you, look for a program that ends other programs, then start again."
+        },
+        "unknown": {
+          "title": "The game exited with an error",
+          "cause": "{exitCode, select, none {The game stopped} other {The game exited with code {exitCode}}} and printed no cause the launcher knows.",
+          "fix": "Look at the output below and the crash reports. If it started after a change, undo it: remove the mods or options you added last."
+        }
+      }
+    },
     "deleteInstance": {
       "delete": "Delete installation",
       "confirm": "Delete \"{name}\"?",
