@@ -142,7 +142,8 @@ jobs:
       - name: Check from outside
         run: |
           for i in 1 2 3 4 5 6; do
-            if curl -fsS --max-time 10 https://mirror.lapi.sh/v1/health; then echo; exit 0; fi
+            # Another site's answer (nginx's default before bootstrap) is not this.
+            if curl -fsS --max-time 10 https://mirror.lapi.sh/v1/health | tee /dev/stderr | grep -q '"service":"lapi-mirror"'; then echo; exit 0; fi
             sleep 5
           done
           echo "::warning::https://mirror.lapi.sh/v1/health does not answer through Cloudflare yet"
