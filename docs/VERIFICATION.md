@@ -1580,8 +1580,8 @@ proxy that was stopped and started to cut and restore the connection.
 - **Start the game in fullscreen** with `--quickPlaySingleplayer "Demo_World"` was
   saved (`docs/verification/game-arguments-saved.png`); the details show
   "4096 MiB · 1280×720 · fullscreen".
-- **Play**: the game's command line (read from `/proc`) ends with `--demo
-  --fullscreen --quickPlaySingleplayer Demo_World`, after the version's own
+- **Play**: the game's command line (read from `/proc`) ends with
+  `--demo --fullscreen --quickPlaySingleplayer Demo_World`, after the version's own
   `--width 1280 --height 720`. The game window covered the whole 1600×1000 screen
   at 0,0, and the log shows the integrated server starting and the player joining
   Demo_World directly (`docs/verification/game-arguments-fullscreen.png`).
