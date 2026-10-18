@@ -21,6 +21,11 @@ jobs:
     name: Inspect the server (read-only)
     runs-on: ubuntu-24.04
     steps:
+      - name: How the public sees crash.lapi.sh
+        run: |
+          curl -sS -o /dev/null -w 'https %{http_code} %{remote_ip}\n' --max-time 15 https://crash.lapi.sh/ || true
+          curl -sS -I --max-time 15 http://crash.lapi.sh/ | head -5 || true
+          curl -sS --max-time 15 https://crash.lapi.sh/cdn-cgi/trace | grep -E '^(h|ip|colo|tls|http)=' || true
       - name: SSH setup
         env:
           SSH_KEY: ${{ secrets.SSH_KEY }}
@@ -37,20 +42,15 @@ jobs:
         run: |
           ssh -i ~/.ssh/id_deploy -o BatchMode=yes "$SSH_USER@$SSH_HOST" 'bash -s' <<'REMOTE'
           set -u
-          echo "== whoami: $(whoami) groups: $(id -Gn)"
-          echo "== sudo without password: $(sudo -n true 2>/dev/null && echo yes || echo no)"
-          echo "== os"; grep -E '^(PRETTY_NAME|VERSION_ID)=' /etc/os-release
-          echo "== kernel/arch: $(uname -r) $(uname -m)"
-          echo "== glibc: $(ldd --version | head -1)"
-          echo "== cpu/mem/disk"; nproc; free -m | head -2; df -h / /home 2>/dev/null
-          echo "== nginx: $(nginx -v 2>&1)"; systemctl is-active nginx
-          ls -la /etc/nginx/sites-enabled /etc/nginx/conf.d 2>&1
-          echo "== certbot: $(command -v certbot || echo none)"
-          ls /etc/letsencrypt/live 2>&1 | head
-          echo "== listening ports"; ss -ltnp 2>/dev/null | awk 'NR>1{print $4}' | sort -u
-          echo "== /home/www"; ls -la /home/www 2>&1; ls -la /home/www/lapi 2>&1
-          echo "== ufw: $(command -v ufw >/dev/null && sudo -n ufw status 2>/dev/null | head -5 || echo n/a)"
-          echo "== systemd units like lapi"; systemctl list-units --all 'lapi*' --no-legend 2>/dev/null
-          echo "== dns crash.lapi.sh: $(getent hosts crash.lapi.sh)"
-          echo "== public ip: $(curl -s -4 --max-time 5 https://api.ipify.org || echo unknown)"
+          echo "== nginx: $(/usr/sbin/nginx -v 2>&1)"; dpkg-query -W -f='${Package} ${Version} ${Maintainer}\n' 'nginx*' 2>/dev/null
+          systemctl is-enabled nginx 2>&1; systemctl status nginx --no-pager 2>&1 | head -5
+          echo "== nginx.conf includes"; grep -nE 'include|user ' /etc/nginx/nginx.conf
+          echo "== default.conf"; grep -vE '^\s*#|^\s*$' /etc/nginx/conf.d/default.conf
+          echo "== linger: $(loginctl show-user "$(whoami)" -p Linger 2>&1)"
+          echo "== user systemd: $(systemctl --user is-system-running 2>&1)"
+          echo "== home: $HOME $(stat -c '%U %a' "$HOME")"
+          echo "== can write /home/www/lapi/crash: $(test -w /home/www/lapi/crash && echo yes || echo no)"
+          echo "== sudo -l"; sudo -n -l 2>&1 | head -5
+          echo "== apt sources"; grep -rhE '^deb|^URIs' /etc/apt/sources.list /etc/apt/sources.list.d 2>/dev/null | head
+          echo "== firewall"; command -v nft iptables 2>/dev/null
           REMOTE
