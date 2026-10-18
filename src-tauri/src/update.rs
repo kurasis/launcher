@@ -28,6 +28,14 @@ use crate::error::{ErrorCode, LauncherError, LauncherResult};
 use crate::state::AppState;
 
 const BASE: &str = "https://upd.lapi.sh";
+
+/// upd.lapi.sh, or the update server a test build was made for
+/// (`LAUNCHER_UPDATE_URL` at build time; release builds never set it).
+fn base() -> &'static str {
+    option_env!("LAUNCHER_UPDATE_URL")
+        .filter(|u| !u.trim().is_empty())
+        .unwrap_or(BASE)
+}
 /// `{channel}` and, for a return, `{version}` are ours; the updater fills in the rest.
 const ENDPOINT: &str = "/v1/{channel}/{{target}}-{{arch}}-{{bundle_type}}.json";
 const VERSION_ENDPOINT: &str = "/releases/{version}/{{target}}-{{arch}}-{{bundle_type}}.json";
@@ -327,7 +335,8 @@ async fn go_back<R: Runtime>(
 ) -> Result<(), String> {
     let key = public_key().ok_or("this build has no update key")?;
     let url = url::Url::parse(&format!(
-        "{BASE}{}",
+        "{}{}",
+        base(),
         VERSION_ENDPOINT.replace("{version}", to)
     ))
     .map_err(|e| e.to_string())?;
@@ -445,7 +454,8 @@ impl Updates {
             }
         };
         let endpoint = format!(
-            "{BASE}{}",
+            "{}{}",
+            base(),
             ENDPOINT.replace("{channel}", settings.update_channel.path())
         );
         let built = url::Url::parse(&endpoint)

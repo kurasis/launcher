@@ -6,6 +6,7 @@ fn main() {
     println!("cargo:rerun-if-env-changed=LAUNCHER_MSA_CLIENT_ID");
     // The update public key (D-063); without it the launcher does not look for updates.
     println!("cargo:rerun-if-env-changed=LAUNCHER_UPDATE_PUBKEY");
+    println!("cargo:rerun-if-env-changed=LAUNCHER_UPDATE_URL");
 
     // Declaring the app's commands makes Tauri generate one permission per command,
     // so each window must be granted every command explicitly in capabilities/.
