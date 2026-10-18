@@ -790,7 +790,7 @@ message` plus a stack trace), with the event's level.
   the Minecraft version (only versions that loader supports are listed), then the
   **loader version** (newest first, the project's recommended build preselected,
   betas marked). Game version and loader version are fixed for the installation's
-  lifetime, like the game version alone before.
+  lifetime, like the game version alone before. (The loader version can now be changed, see D-054.)
 - **Version lists:** Fabric and Quilt meta (`meta.fabricmc.net/v2`,
   `meta.quiltmc.org/v3`); Forge's `maven-metadata.json` and `promotions_slim.json`
   (files.minecraftforge.net); NeoForge's Maven API. NeoForge versions name their game
@@ -1202,3 +1202,25 @@ message` plus a stack trace), with the event's level.
   accounts**.
 - _While a game is running_ lists: close the launcher window and reopen it after the
   game; close the launcher once the game window opens; keep the launcher window open.
+
+## D-054 — Changing the mod loader version after install
+
+- **Status:** accepted (owner request, 2026-10-18) · **Affects:** Settings →
+  Installations, `set_instance_loader`, D-039
+- An installation with a mod loader shows **Mod loader version** in Settings →
+  Installations: the current version, then the project's versions for this
+  Minecraft version (newest first, recommended and beta builds marked). The installed
+  version stays listed even if the project withdrew it.
+- Choosing another version warns that mods made for the old version may not work and
+  suggests a backup of the worlds first; **Change and install** saves the version and
+  starts an install at once (or leaves it to an install already waiting in the
+  queue, which reads the installation when it starts).
+- Only the version changes; the loader itself (Forge, Fabric, Quilt, NeoForge) and
+  the Minecraft version stay. Switching loader would invalidate every mod, so it
+  remains a new installation.
+- The core validates the version id as at creation, refuses while the installation
+  is busy, and marks the installation _not installed_: it cannot start with the old
+  loader's record. The install sees that the record names another loader and
+  resolves the new one; the game files are reused, and mods, worlds, settings and
+  screenshots are not touched. Libraries of the previous loader stay in the shared
+  library folder and are no longer on the class path.

@@ -21,6 +21,7 @@ fn main() {
         "pick_data_folder",
         "check_java",
         "set_instance_java",
+        "set_instance_loader",
         "pick_java_file",
         "list_backups",
         "create_backup",

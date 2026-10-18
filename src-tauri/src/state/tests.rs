@@ -455,3 +455,74 @@ fn notoken_profiles_defaults_and_installation_choices() {
     );
     assert_eq!(state.notoken_name(&alex.id).as_deref(), Some("Alex"));
 }
+
+#[test]
+fn loader_version_changes_and_asks_for_an_install() {
+    let dir = tempfile::tempdir().unwrap();
+    let state = state_at(dir.path(), RecordingSink::default());
+    let fabric = state
+        .create_instance(request(CreateInstancePayload {
+            display_name: "Fabric".into(),
+            version_id: "1.21.1".into(),
+            loader: Some(crate::loader::LoaderChoice {
+                kind: crate::loader::LoaderKind::Fabric,
+                version: "0.16.14".into(),
+            }),
+        }))
+        .unwrap();
+    // As after an install.
+    state
+        .mutate("test_ready", request(()), |data, store, (), changes| {
+            let mut ready = data.instances[&fabric.id].clone();
+            ready.health = InstallationHealth::Ready;
+            store.save_instance(&ready)?;
+            data.instances.insert(fabric.id, ready);
+            changes.push(Change::Instance(fabric.id));
+            Ok(())
+        })
+        .unwrap();
+    let set = |id, version: &str| {
+        state.set_instance_loader(request(SetInstanceLoaderPayload {
+            instance_id: id,
+            version: version.into(),
+        }))
+    };
+
+    // The same version changes nothing.
+    assert_eq!(
+        set(fabric.id, "0.16.14").unwrap().health,
+        InstallationHealth::Ready
+    );
+    assert_eq!(
+        set(fabric.id, "../evil").unwrap_err().code,
+        ErrorCode::InvalidInput
+    );
+    {
+        let _permit = state
+            .activity()
+            .try_acquire(OperationKind::Launch, Some(fabric.id), "run-1")
+            .unwrap();
+        assert_eq!(
+            set(fabric.id, "0.17.2").unwrap_err().code,
+            ErrorCode::InstanceBusy
+        );
+    }
+    let changed = set(fabric.id, "0.17.2").unwrap();
+    let loader = changed.loader.unwrap();
+    assert_eq!(loader.kind, crate::loader::LoaderKind::Fabric);
+    assert_eq!(loader.version, "0.17.2");
+    assert_eq!(changed.health, InstallationHealth::NotInstalled);
+
+    let vanilla = create(&state, "Vanilla", "1.21.1").unwrap();
+    assert_eq!(
+        set(vanilla.id, "0.17.2").unwrap_err().code,
+        ErrorCode::InvalidInput
+    );
+
+    drop(state);
+    let state = state_at(dir.path(), RecordingSink::default());
+    assert_eq!(
+        state.instance(fabric.id).unwrap().loader.unwrap().version,
+        "0.17.2"
+    );
+}
