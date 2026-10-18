@@ -1369,6 +1369,19 @@ installation's runtime from its lock, and choosing a source writes `javaProvider
 - **Release build, Linux x64:** the installation panel shows **PLAY** with _Play as_
   "Default: Alex_Tester (demo)" and no demo hint ([panel](verification/play-label.png)).
 
+## Console window on Windows (D-048)
+
+- **Reproduced:** with the window creation as before, the new console check on
+  GitHub-hosted Windows 11 Enterprise on ARM (10.0.26200, WebView2 155) found the
+  console window open but with no accessible content at all ("Console window shows 0
+  texts"); the same check on Windows Server 2025 x64 failed the same way.
+- **Fixed:** with window creation queued, the same check on Windows 11 on ARM read the
+  toolbar and all three start lines ("Launcher 0.1.0 started on windows aarch64",
+  the data directory, the memory line) and passed; the arm64 package (3.4 MiB, NSIS)
+  installed, started and uninstalled cleanly.
+- **Linux (Xvfb, release build):** Ctrl+Shift+L and **Open console** still open the
+  console with the journal, and a second request does not open a second window.
+
 ## Download manager and queue (D-049)
 
 Release build on Linux (Xvfb), the live data folder from the D-039 tests. Asset
