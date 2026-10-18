@@ -44,6 +44,8 @@ pub enum Reason {
     AfterPlay,
     /// The state a restore replaced.
     BeforeRestore,
+    /// The installation just before it was deleted (D-055).
+    BeforeDelete,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -64,6 +66,12 @@ pub struct SnapshotInfo {
     pub instance_id: InstanceId,
     pub instance_name: String,
     pub version_label: String,
+    /// The Minecraft version and loader, so a whole-installation backup can
+    /// bring back a deleted installation (D-055). Missing in older backups.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub version_id: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub loader: Option<crate::loader::LoaderChoice>,
     pub scope: Scope,
     pub reason: Reason,
     pub created_at: DateTime<Utc>,
@@ -88,6 +96,8 @@ pub struct Origin {
     pub instance_id: InstanceId,
     pub instance_name: String,
     pub version_label: String,
+    pub version_id: String,
+    pub loader: Option<crate::loader::LoaderChoice>,
     pub scope: Scope,
     pub reason: Reason,
 }
@@ -293,6 +303,8 @@ impl Store {
                 instance_id: origin.instance_id,
                 instance_name: origin.instance_name,
                 version_label: origin.version_label,
+                version_id: Some(origin.version_id),
+                loader: origin.loader,
                 scope: origin.scope,
                 reason: origin.reason,
                 created_at: Utc::now(),
@@ -512,6 +524,8 @@ mod tests {
             instance_id: InstanceId::generate(),
             instance_name: "A".into(),
             version_label: "Minecraft 1.21.1".into(),
+            version_id: "1.21.1".into(),
+            loader: None,
             scope,
             reason,
         }

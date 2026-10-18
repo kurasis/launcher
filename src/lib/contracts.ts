@@ -576,6 +576,11 @@ export interface InstanceChangedEvent extends EventEnvelope {
   instance: InstanceSummary;
 }
 
+/** An installation was deleted (D-055). */
+export interface InstanceRemovedEvent extends EventEnvelope {
+  instanceId: string;
+}
+
 export interface SettingsChangedEvent extends EventEnvelope {
   settings: SettingsView;
 }
@@ -602,6 +607,7 @@ export interface OperationFinishedEvent extends EventEnvelope {
 
 export type BackendEvent =
   | { name: 'instance_changed'; payload: InstanceChangedEvent }
+  | { name: 'instance_removed'; payload: InstanceRemovedEvent }
   | { name: 'settings_changed'; payload: SettingsChangedEvent }
   | { name: 'game_state_changed'; payload: GameStateChangedEvent }
   | { name: 'operation_progress'; payload: OperationProgress }
@@ -612,6 +618,7 @@ export type BackendEventName = BackendEvent['name'];
 
 export const BACKEND_EVENT_NAMES: readonly BackendEventName[] = [
   'instance_changed',
+  'instance_removed',
   'settings_changed',
   'game_state_changed',
   'account_state_changed',
@@ -639,13 +646,16 @@ export interface ConsolePage {
 /** What a backup holds (D-047). */
 export type BackupScope = { kind: 'world'; name: string } | { kind: 'installation' };
 
-export type BackupReason = 'manual' | 'after_play' | 'before_restore';
+export type BackupReason = 'manual' | 'after_play' | 'before_restore' | 'before_delete';
 
 export interface BackupInfo {
   id: string;
   instanceId: string;
   instanceName: string;
   versionLabel: string;
+  /** Game version and loader, to bring back a deleted installation (D-055). */
+  versionId?: string;
+  loader?: LoaderChoice;
   scope: BackupScope;
   reason: BackupReason;
   createdAt: string;
@@ -660,6 +670,17 @@ export interface BackupOverview {
   backups: BackupInfo[];
   worlds: { instanceId: string; worlds: string[] }[];
   storeBytes: number;
+}
+
+/** What deleting an installation would lose (D-055). */
+export interface UserData {
+  worlds: string[];
+  mods: number;
+  resourcePacks: number;
+  shaderPacks: number;
+  screenshots: number;
+  /** Every file of the game folder. */
+  bytes: number;
 }
 
 /** One screenshot file of an installation (D-050). */

@@ -41,6 +41,11 @@ export function reconcile(snapshot: AppSnapshot, event: BackendEvent): Reconcili
         : [...snapshot.instances, incoming];
       return { kind: 'apply', snapshot: { ...base, instances } };
     }
+    case 'instance_removed': {
+      const removed = event.payload.instanceId;
+      const instances = snapshot.instances.filter((i) => i.id !== removed);
+      return { kind: 'apply', snapshot: { ...base, instances } };
+    }
     case 'settings_changed':
       return { kind: 'apply', snapshot: { ...base, settings: event.payload.settings } };
     case 'account_state_changed':

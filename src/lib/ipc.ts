@@ -41,6 +41,7 @@ import {
   type ProfileRef,
   type SetInstanceJavaPayload,
   type SetInstanceLoaderPayload,
+  type UserData,
   type SetInstanceNotesPayload,
   type SettingsView,
   type UpdateInstanceSettingsPayload,
@@ -82,6 +83,17 @@ export const ipc = {
     }),
   deleteBackup: (backupId: string, requestId?: string): Promise<number> =>
     invoke<number>('delete_backup', { request: mutation({ backupId }, requestId) }),
+  inspectInstance: (instanceId: string): Promise<UserData> =>
+    invoke<UserData>('inspect_instance', { instanceId }),
+  /** Deletes an installation, after a backup when `backup`; returns that backup. */
+  deleteInstance: (
+    instanceId: string,
+    backup: boolean,
+    requestId?: string,
+  ): Promise<BackupInfo | null> =>
+    invoke<BackupInfo | null>('delete_instance', {
+      request: mutation({ instanceId, backup }, requestId),
+    }),
   checkJava: (instanceId: string, path: string): Promise<JavaCheck> =>
     invoke<JavaCheck>('check_java', { payload: { instanceId, path } }),
   pickJavaFile: (): Promise<string | null> => invoke<string | null>('pick_java_file'),

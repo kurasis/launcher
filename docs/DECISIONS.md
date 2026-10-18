@@ -1224,3 +1224,28 @@ message` plus a stack trace), with the event's level.
   resolves the new one; the game files are reused, and mods, worlds, settings and
   screenshots are not touched. Libraries of the previous loader stay in the shared
   library folder and are no longer on the class path.
+
+## D-055 — Deleting installations, with a backup of what the player made
+
+- **Status:** accepted (owner request, 2026-10-18) · **Affects:** installation details,
+  Backups, `inspect_instance`, `delete_instance`, `restore_backup`
+- **Delete installation** sits in an installation's details. It first asks the core what
+  the game folder holds: worlds (by name), mods, resource packs, shader packs and
+  screenshots, and the folder's size. With any of them it offers **Back up and
+  delete** (a backup of the whole installation, reason "Before deleting"), **Delete
+  without a backup** and **Cancel**; without them a plain delete and cancel. Settings
+  and logs alone do not count as player data.
+- Deleting is refused while anything runs (the activity permit, as for backups). The
+  installation's folder is first moved aside with one rename and then removed, so an
+  interrupted delete never leaves half an installation; leftovers are removed at the
+  next start. Its queued installs and repairs are dropped and the oldest remaining
+  installation is selected. Game files shared with other installations (libraries,
+  assets, Java runtimes) stay.
+- Backups now record the Minecraft version and loader. Backups of deleted
+  installations are listed under **Deleted installations** on the Backups screen. A
+  backup of a whole installation **brings it back**: the same id and name, the game
+  version and loader from the backup, default memory and window, and its game folder
+  restored; it is then not installed until the user installs it. World backups of a
+  deleted installation (and whole-installation backups made before this change) can
+  only be deleted.
+- A new `instance_removed` event tells the interface to drop the installation.

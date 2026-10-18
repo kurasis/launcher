@@ -387,6 +387,30 @@ impl AppState {
         result
     }
 
+    /// Applies a change the backend makes on its own behalf (no request
+    /// ledger), saving through the store and emitting its events.
+    fn change<R>(
+        &self,
+        apply: impl FnOnce(&mut Data, &Store, &mut Vec<Change>) -> LauncherResult<R>,
+    ) -> LauncherResult<R> {
+        let mut guard = self.lock();
+        let inner = &mut *guard;
+        let store = match &inner.availability {
+            Availability::Ready(store) => store,
+            Availability::Unavailable(error) => {
+                return Err(LauncherError::new(error.code, error.message.clone()));
+            }
+        };
+        let mut changes = Vec::new();
+        let result = apply(&mut inner.data, store, &mut changes);
+        for change in changes {
+            inner.revision += 1;
+            let event = self.event_for(inner.revision, &inner.data, change);
+            self.sink.emit(&event);
+        }
+        result
+    }
+
     fn event_for(&self, revision: u64, data: &Data, change: Change) -> BackendEvent {
         let session_epoch = self.epoch.clone();
         let timestamp = Utc::now();
@@ -406,6 +430,14 @@ impl AppState {
                     revision,
                     timestamp,
                     body: InstanceChanged { instance },
+                }))
+            }
+            Change::InstanceRemoved(instance_id) => {
+                BackendEvent::InstanceRemoved(Box::new(EventEnvelope {
+                    session_epoch,
+                    revision,
+                    timestamp,
+                    body: InstanceRemoved { instance_id },
                 }))
             }
             Change::Runs => BackendEvent::GameStateChanged(Box::new(EventEnvelope {
@@ -863,34 +895,14 @@ impl AppState {
                 if let Some(loader) = &payload.loader {
                     loader.validate()?;
                 }
-                let memory = memory?;
-                let max_heap_mib = data
-                    .settings
-                    .default_max_heap_mib
-                    .map_or(memory.recommended_heap_mib, |mib| {
-                        mib.clamp(memory.min_heap_mib, memory.max_heap_mib)
-                    });
-                let instance = InstanceFile {
-                    schema_version: SCHEMA_VERSION,
-                    id: InstanceId::generate(),
+                let instance = new_instance(
+                    data,
+                    &memory?,
+                    InstanceId::generate(),
                     display_name,
-                    version_id: version.as_str().to_owned(),
-                    manifest_sha1: None,
-                    created_at: Utc::now(),
-                    last_played_at: None,
-                    max_heap_mib,
-                    resolution: validation::validate_resolution(data.settings.default_resolution)
-                        .unwrap_or_default(),
-                    health: InstallationHealth::NotInstalled,
-                    last_result: None,
-                    java: None,
-                    loader: payload.loader.clone(),
-                    notes: String::new(),
-                    java_provider: None,
-                    custom_java: None,
-                    jvm_arguments: String::new(),
-                    profile: None,
-                };
+                    version.as_str().to_owned(),
+                    payload.loader.clone(),
+                );
                 store.create_instance(&instance)?;
                 let id = instance.id;
                 data.instances.insert(id, instance);
@@ -908,6 +920,90 @@ impl AppState {
                 Ok(InstanceSummary::new(&data.instances[&id], false))
             },
         )
+    }
+
+    /// Deletes an installation's record and folder (D-055). The caller holds
+    /// the activity permit for it, so nothing runs there. Its queued installs
+    /// and repairs are dropped, and another installation is selected.
+    pub fn remove_instance(&self, id: InstanceId) -> LauncherResult<()> {
+        let result = self.change(|data, store, changes| {
+            let name = data
+                .instances
+                .get(&id)
+                .ok_or_else(instance_not_found)?
+                .display_name
+                .clone();
+            store.remove_instance(id)?;
+            data.instances.remove(&id);
+            changes.push(Change::InstanceRemoved(id));
+            let before = data.queue.len();
+            data.queue.retain(|q| q.instance_id != id);
+            if data.queue.len() != before {
+                changes.push(Change::Runs);
+            }
+            if data.settings.selected_instance_id == Some(id) {
+                let mut settings = data.settings.clone();
+                settings.selected_instance_id = data
+                    .instances
+                    .values()
+                    .min_by_key(|i| i.created_at)
+                    .map(|i| i.id);
+                // Without a saved selection the next start simply picks none.
+                if !data.settings_writable || store.save_settings(&settings).is_ok() {
+                    data.settings = settings;
+                    changes.push(Change::Settings);
+                }
+            }
+            Ok(name)
+        });
+        match &result {
+            Ok(name) => self
+                .console
+                .info(format!("Deleted installation \"{name}\"")),
+            Err(e) => self
+                .console
+                .warn(format!("Deleting an installation failed: {}", e.message)),
+        }
+        result.map(|_| ())
+    }
+
+    /// Brings back a deleted installation from a backup of it (D-055): the
+    /// same id, name, game version and loader, with default settings. Its game
+    /// folder is then restored from the backup and the game files installed.
+    pub fn recreate_instance(
+        &self,
+        id: InstanceId,
+        display_name: &str,
+        version_id: &str,
+        loader: Option<crate::loader::LoaderChoice>,
+    ) -> LauncherResult<InstanceFile> {
+        let memory = self.memory.clone();
+        self.change(|data, store, changes| {
+            if data.instances.contains_key(&id) {
+                return Err(LauncherError::invalid_input(
+                    "This installation already exists.",
+                ));
+            }
+            let display_name = validation::validate_display_name(display_name)?;
+            let version = crate::storage::paths::SafeName::parse(version_id).map_err(|_| {
+                LauncherError::invalid_input("This is not a valid Minecraft version.")
+            })?;
+            if let Some(loader) = &loader {
+                loader.validate()?;
+            }
+            let instance = new_instance(
+                data,
+                &memory?,
+                id,
+                display_name,
+                version.as_str().to_owned(),
+                loader,
+            );
+            store.create_instance(&instance)?;
+            data.instances.insert(id, instance.clone());
+            changes.push(Change::Instance(id));
+            Ok(instance)
+        })
     }
 
     pub fn update_instance_settings(
@@ -1407,6 +1503,7 @@ impl AppState {
 
 enum Change {
     Instance(InstanceId),
+    InstanceRemoved(InstanceId),
     Settings,
     Runs,
     Account,
@@ -1549,6 +1646,44 @@ fn account_summary(data: &Data) -> AccountSummary {
             .default_profile
             .clone()
             .filter(|p| known_profile(data, p)),
+    }
+}
+
+/// A new installation record with the current defaults, not installed yet.
+fn new_instance(
+    data: &Data,
+    memory: &MemoryPolicy,
+    id: InstanceId,
+    display_name: String,
+    version_id: String,
+    loader: Option<crate::loader::LoaderChoice>,
+) -> InstanceFile {
+    let max_heap_mib = data
+        .settings
+        .default_max_heap_mib
+        .map_or(memory.recommended_heap_mib, |mib| {
+            mib.clamp(memory.min_heap_mib, memory.max_heap_mib)
+        });
+    InstanceFile {
+        schema_version: SCHEMA_VERSION,
+        id,
+        display_name,
+        version_id,
+        manifest_sha1: None,
+        created_at: Utc::now(),
+        last_played_at: None,
+        max_heap_mib,
+        resolution: validation::validate_resolution(data.settings.default_resolution)
+            .unwrap_or_default(),
+        health: InstallationHealth::NotInstalled,
+        last_result: None,
+        java: None,
+        loader,
+        notes: String::new(),
+        java_provider: None,
+        custom_java: None,
+        jvm_arguments: String::new(),
+        profile: None,
     }
 }
 

@@ -263,6 +263,26 @@
       "notesHint": "Only for you: what this installation is for, its mods, servers or anything to remember.",
       "notesSave": "Save notes"
     },
+    "deleteInstance": {
+      "delete": "Delete installation",
+      "confirm": "Delete \"{name}\"?",
+      "holds": "Its game folder holds {size}, including what you made or added:",
+      "worlds": "{count, plural, one {# world} other {# worlds}} ({names})",
+      "mods": "{count, plural, one {# mod} other {# mods}}",
+      "resourcePacks": "{count, plural, one {# resource pack} other {# resource packs}}",
+      "shaderPacks": "{count, plural, one {# shader pack} other {# shader packs}}",
+      "screenshots": "{count, plural, one {# screenshot} other {# screenshots}}",
+      "offerBackup": "Back it up first? A backup of the whole installation can bring it back later from Backups.",
+      "nothing": "It holds no worlds, mods, packs or screenshots.",
+      "shared": "Game files shared with other installations (libraries, assets, Java) stay.",
+      "busy": "Wait until the running operation or game ends.",
+      "backupAndDelete": "Back up and delete",
+      "deleteWithoutBackup": "Delete without a backup",
+      "cancel": "Cancel",
+      "working": "Deleting…",
+      "deleted": "\"{name}\" was deleted.",
+      "deletedWithBackup": "\"{name}\" was backed up and deleted. Backups can bring it back."
+    },
     "settings": {
       "title": "Settings",
       "sectionsLabel": "Settings sections",
@@ -606,7 +626,8 @@
       "reason": {
         "manual": "Made by you",
         "after_play": "After playing",
-        "before_restore": "Before a restore"
+        "before_restore": "Before a restore",
+        "before_delete": "Before deleting"
       },
       "size": "{files, number} files · {total} · {added} new",
       "restore": "Restore",
@@ -619,7 +640,11 @@
       "restored": "Restored.",
       "restoredCopy": "Restored as the world “{name}”.",
       "deleted": "Deleted; {size} freed.",
-      "busy": "Backups and restores wait until the running operation or game ends."
+      "busy": "Backups and restores wait until the running operation or game ends.",
+      "deletedTitle": "Deleted installations",
+      "deletedHint": "Backups of installations that were deleted. A backup of a whole installation brings it back with its worlds, mods and settings; then install it to play.",
+      "bringBack": "Bring back",
+      "broughtBack": "\"{name}\" is back. Install it to play."
     },
     "gallery": {
       "title": "Screenshots",
@@ -750,6 +775,7 @@
     "Creating the launcher data directory": "Creating the launcher data directory",
     "Creating the new data folder": "Creating the new data folder",
     "Deleting a screenshot": "Deleting a screenshot",
+    "Deleting the installation": "Deleting the installation",
     "Downloaded {what} did not match its expected checksum.": "Downloaded {what} did not match its expected checksum.",
     "Downloading {what} failed (HTTP {status}).": "Downloading {what} failed (HTTP {status}).",
     "Each JVM option must start with \"-\"; put a value after \"=\": {option}": "Each JVM option must start with \"-\"; put a value after \"=\": {option}",
@@ -858,6 +884,7 @@
     "The installation name cannot contain control characters.": "The installation name cannot contain control characters.",
     "The installation name must be 1–{max} characters.": "The installation name must be 1–{max} characters.",
     "The installation no longer exists.": "The installation no longer exists.",
+    "The installation of this backup was deleted. Only a backup of a whole installation can bring it back.": "The installation of this backup was deleted. Only a backup of a whole installation can bring it back.",
     "The installation record does not match its version metadata. Create a new installation for this version.": "The installation record does not match its version metadata. Create a new installation for this version.",
     "The installation record lists an unsupported checksum.": "The installation record lists an unsupported checksum.",
     "The installed Java runtime is not the version or architecture this game needs.": "The installed Java runtime is not the version or architecture this game needs.",
@@ -922,6 +949,7 @@
     "This child account must be added to a Microsoft family, or a parent must allow online play.": "This child account must be added to a Microsoft family, or a parent must allow online play.",
     "This computer reports {physicalMib} MiB of memory, which leaves less than {minHeapMib} MiB for the game after the operating system reserve.": "This computer reports {physicalMib} MiB of memory, which leaves less than {minHeapMib} MiB for the game after the operating system reserve.",
     "This file was written by a newer launcher version (schema {schema}). It is kept unchanged and is read-only here; update the launcher to use it.": "This file was written by a newer launcher version (schema {schema}). It is kept unchanged and is read-only here; update the launcher to use it.",
+    "This installation already exists.": "This installation already exists.",
     "This installation has no mod loader.": "This installation has no mod loader.",
     "This installation is already being installed or waiting in the queue.": "This installation is already being installed or waiting in the queue.",
     "This installation is busy. Wait for the current operation to finish.": "This installation is busy. Wait for the current operation to finish.",

@@ -265,6 +265,10 @@ impl Store {
         };
         for entry in entries.flatten() {
             let name = entry.file_name();
+            if name.to_str().is_some_and(|n| n.starts_with(DELETED_PREFIX)) {
+                let _ = fs::remove_dir_all(entry.path());
+                continue;
+            }
             let Some(id) = name.to_str().and_then(|n| n.parse::<InstanceId>().ok()) else {
                 continue;
             };
@@ -346,6 +350,24 @@ impl Store {
         self.save_instance(instance)
     }
 
+    /// Deletes an installation's folder: first moved aside in one rename, so
+    /// an interrupted delete never leaves half an installation behind, then
+    /// removed. What a failed removal leaves is cleared at the next start.
+    pub fn remove_instance(&self, id: InstanceId) -> LauncherResult<()> {
+        let folder = self.root.instance_dir(id);
+        let trash = self
+            .root
+            .instances_dir()
+            .join(format!("{DELETED_PREFIX}{id}-{}", uuid::Uuid::new_v4()));
+        match fs::rename(&folder, &trash) {
+            Ok(()) => {}
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(()),
+            Err(e) => return Err(LauncherError::from_io(&e, "Deleting the installation")),
+        }
+        let _ = fs::remove_dir_all(&trash);
+        Ok(())
+    }
+
     pub fn save_instance(&self, instance: &InstanceFile) -> LauncherResult<()> {
         document::save(&self.root.instance_file(instance.id), instance, None)
             .map_err(|e| LauncherError::from_io(&e, "Saving the installation"))
@@ -359,6 +381,9 @@ impl Store {
         atomic::write(path, &bytes).map_err(|e| LauncherError::from_io(&e, "Writing a cache file"))
     }
 }
+
+/// Folders of deleted installations waiting to be removed.
+const DELETED_PREFIX: &str = ".deleted-";
 
 fn unsupported_issue(document: String, found: u64) -> StorageIssue {
     StorageIssue::templated(

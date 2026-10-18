@@ -16,8 +16,8 @@ use crate::net::PublicClient;
 use crate::state::AppState;
 use crate::state::dto::{
     AddNoTokenProfilePayload, AppSnapshot, CheckJavaPayload, CreateInstancePayload,
-    InstanceSummary, JavaChoice, MutationRequest, NoTokenProfileView, ProfileIdPayload,
-    SetDefaultProfilePayload, SetInstanceJavaPayload, SetInstanceLoaderPayload,
+    DeleteInstancePayload, InstanceSummary, JavaChoice, MutationRequest, NoTokenProfileView,
+    ProfileIdPayload, SetDefaultProfilePayload, SetInstanceJavaPayload, SetInstanceLoaderPayload,
     SetInstanceNotesPayload, SetInstanceProfilePayload, SettingsPatch, SettingsView,
     UpdateInstanceSettingsPayload,
 };
@@ -235,6 +235,31 @@ pub async fn delete_backup<R: Runtime>(
     crate::state::ledger::validate_request_id(&request.request_id)?;
     let id = request.payload.backup_id;
     blocking(app, move |state| crate::backup::delete(state, &id)).await
+}
+
+/// What deleting an installation would lose: worlds, mods, packs and
+/// screenshots (D-055).
+#[tauri::command]
+pub async fn inspect_instance<R: Runtime>(
+    app: AppHandle<R>,
+    instance_id: crate::storage::paths::InstanceId,
+) -> LauncherResult<crate::backup::UserData> {
+    blocking(app, move |state| crate::backup::inspect(state, instance_id)).await
+}
+
+/// Deletes an installation, after a backup of its game folder if asked
+/// (D-055); returns that backup.
+#[tauri::command]
+pub async fn delete_instance<R: Runtime>(
+    app: AppHandle<R>,
+    request: MutationRequest<DeleteInstancePayload>,
+) -> LauncherResult<Option<crate::backup::SnapshotInfo>> {
+    crate::state::ledger::validate_request_id(&request.request_id)?;
+    let payload = request.payload;
+    blocking(app, move |state| {
+        crate::backup::delete_instance(state, payload.instance_id, payload.backup)
+    })
+    .await
 }
 
 /// Every installation's screenshots (D-050).
