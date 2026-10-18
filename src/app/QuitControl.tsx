@@ -51,6 +51,11 @@ export function QuitControl({ activeKind = null }: QuitControlProps) {
       >
         {t.button}
       </Button>
+      {!choosing && error !== null && (
+        <p role="alert" className={styles.error}>
+          {error}
+        </p>
+      )}
       {choosing && (
         <div className={styles.backdrop}>
           <div

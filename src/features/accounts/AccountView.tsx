@@ -52,7 +52,7 @@ function HelpLinks({ state }: { state: AccountState }) {
         <Button
           key={link}
           onClick={() => {
-            void ipc.openExternal(link);
+            void ipc.openExternal(link).catch(() => undefined);
           }}
         >
           {t.links[link]}

@@ -8,13 +8,10 @@ import { ipc } from '../../lib/ipc';
 import { strings } from '../../lib/strings';
 import { useCommand } from '../../lib/useCommand';
 import styles from './SettingsView.module.css';
+import { toInt } from '../../lib/format';
 
 const t = strings.settings;
 const d = strings.details;
-
-function toInt(text: string): number {
-  return /^\d+$/.test(text.trim()) ? Number(text.trim()) : Number.NaN;
-}
 
 /** Memory, window size and fullscreen used for new installations. Rust validates the values. */
 export function DefaultsForm({

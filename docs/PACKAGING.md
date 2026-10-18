@@ -41,8 +41,9 @@ dispatch:
      DATA_ROOT supervisor lock. CI runners are not clean consumer machines; see
      VERIFICATION.md for what each run proves.
 4. Packages are uploaded as workflow artifacts (7 days for pull requests, 30 days
-   otherwise). No workflow creates a GitHub release or deploys anything; publishing
-   needs a separate decision by the owner.
+   otherwise). With the update key configured, a `release` job also builds the signed
+   update archive `launcher-<version>-release.tar.gz` ([RELEASING.md](RELEASING.md)).
+   Nothing creates a GitHub release; publishing an update is a manual step.
 
 Local equivalent for one target: `npx tauri build --bundles deb,appimage` (Linux; set
 `APPIMAGE_EXTRACT_AND_RUN=1` in containers), then

@@ -29,19 +29,14 @@
       "noResponse": "The launcher core did not respond."
     },
     "accountView": {
-      "title": "Microsoft account",
-      "signIn": "Sign in with Microsoft",
       "signInAgain": "Sign in again",
       "signInHint": "Sign-in opens your web browser. The launcher never sees your password; it only receives a sign-in code from Microsoft.",
       "notConfigured": "Sign-in is unavailable in this build because no project-owned Microsoft application ID is configured (see docs/AUTH-SETUP.md).",
       "waiting": "Finish signing in with your web browser. This window updates automatically.",
       "cancel": "Cancel sign-in",
       "checking": "Checking your account…",
-      "verified": "Minecraft: Java Edition access verified for this session.",
       "verifiedNote": "Access is checked again every time you start the game.",
-      "signOut": "Sign out",
       "signOutHint": "Signing out removes the saved sign-in from this computer. It does not sign you out of Microsoft in your browser.",
-      "retrySignOut": "Try signing out again",
       "checkAgain": "Check again",
       "sessionOnly": "The system credential store is unavailable, so you will need to sign in again after the launcher restarts.",
       "links": {
@@ -68,25 +63,7 @@
         "sign_out_pending": "Sign-out incomplete"
       }
     },
-    "account": {
-      "label": "Account",
-      "state": {
-        "signed_out": "Not signed in",
-        "signing_in": "Signing in…",
-        "refreshing": "Checking account…",
-        "verified_access": "Signed in",
-        "no_access": "No Java Edition access",
-        "profile_setup_required": "Profile setup required",
-        "reauth_required": "Sign-in required",
-        "service_unavailable": "Account service unavailable",
-        "app_not_approved": "Launcher not approved",
-        "restricted": "Account restricted",
-        "protocol_error": "Account check failed",
-        "sign_out_pending": "Sign-out incomplete"
-      }
-    },
     "accounts": {
-      "title": "Accounts",
       "microsoftTitle": "Microsoft accounts",
       "microsoftHint": "An account that has Minecraft: Java Edition plays the full game. You can add several and choose which one each installation uses.",
       "none": "No Microsoft account added yet.",
@@ -123,7 +100,6 @@
       "launcherCancel": "Cancel",
       "launcherNickChanged": "The nick is changed.",
       "launcherSignOut": "Sign out",
-      "launcherSignInAgain": "The sign-in has ended. Sign in again.",
       "launcherLabel": "{name} (launcher account)",
       "launcherProblems": {
         "network": "oauth.lapi.sh cannot be reached. Check the connection and try again.",
@@ -139,7 +115,6 @@
     "instances": {
       "title": "Installations",
       "empty": "No installations yet. Create one to choose a Minecraft version.",
-      "selected": "Selected",
       "create": "New installation",
       "health": {
         "not_installed": "Not installed",
@@ -266,7 +241,6 @@
       "title": "Installation settings",
       "summaryTitle": "Details",
       "version": "Version",
-      "status": "Status",
       "openFolder": "Open game folder",
       "openFolderHint": "Worlds, screenshots and options of this installation are stored there.",
       "lastResult": "Last result",
@@ -822,7 +796,6 @@
       "windowTitle": "Launcher console"
     },
     "diagnostics": {
-      "title": "Diagnostics",
       "recentTitle": "Recent operations",
       "columns": {
         "operation": "Operation",
@@ -861,8 +834,7 @@
       "help": "Minecraft Help"
     },
     "foundation": {
-      "title": "Project status",
-      "body": "Installing, repairing and launching are implemented. Starting the game needs Microsoft sign-in, which this build cannot offer until the project supplies its own Microsoft application ID."
+      "body": "Installing, repairing and launching are implemented. Without a Microsoft account the game starts as Minecraft's demo, under a profile without an account or the launcher account."
     },
     "units": {
       "bytes": "{count, plural, one {# byte} other {# bytes}}",
@@ -989,7 +961,6 @@
       "count": "{count, plural, one {# screenshot} other {# screenshots}}",
       "refresh": "Refresh",
       "open": "Open the screenshot of {date}",
-      "viewer": "Screenshot",
       "details": "{date} · {size}",
       "dimensions": "{width} × {height}",
       "position": "{index, number} of {count, number}",

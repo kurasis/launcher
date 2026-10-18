@@ -28,19 +28,14 @@ export type Messages = {
     readonly noResponse: string;
   };
   readonly accountView: {
-    readonly title: string;
-    readonly signIn: string;
     readonly signInAgain: string;
     readonly signInHint: string;
     readonly notConfigured: string;
     readonly waiting: string;
     readonly cancel: string;
     readonly checking: string;
-    readonly verified: string;
     readonly verifiedNote: string;
-    readonly signOut: string;
     readonly signOutHint: string;
-    readonly retrySignOut: string;
     readonly checkAgain: string;
     readonly sessionOnly: string;
     readonly links: {
@@ -67,25 +62,7 @@ export type Messages = {
       readonly sign_out_pending: string;
     };
   };
-  readonly account: {
-    readonly label: string;
-    readonly state: {
-      readonly signed_out: string;
-      readonly signing_in: string;
-      readonly refreshing: string;
-      readonly verified_access: string;
-      readonly no_access: string;
-      readonly profile_setup_required: string;
-      readonly reauth_required: string;
-      readonly service_unavailable: string;
-      readonly app_not_approved: string;
-      readonly restricted: string;
-      readonly protocol_error: string;
-      readonly sign_out_pending: string;
-    };
-  };
   readonly accounts: {
-    readonly title: string;
     readonly microsoftTitle: string;
     readonly microsoftHint: string;
     readonly none: string;
@@ -122,7 +99,6 @@ export type Messages = {
     readonly launcherCancel: string;
     readonly launcherNickChanged: string;
     readonly launcherSignOut: string;
-    readonly launcherSignInAgain: string;
     readonly launcherLabel: (values: { name: string | number }) => string;
     readonly launcherProblems: {
       readonly network: string;
@@ -138,7 +114,6 @@ export type Messages = {
   readonly instances: {
     readonly title: string;
     readonly empty: string;
-    readonly selected: string;
     readonly create: string;
     readonly health: {
       readonly not_installed: string;
@@ -274,7 +249,6 @@ export type Messages = {
     readonly title: string;
     readonly summaryTitle: string;
     readonly version: string;
-    readonly status: string;
     readonly openFolder: string;
     readonly openFolderHint: string;
     readonly lastResult: string;
@@ -880,7 +854,6 @@ export type Messages = {
     readonly windowTitle: string;
   };
   readonly diagnostics: {
-    readonly title: string;
     readonly recentTitle: string;
     readonly columns: {
       readonly operation: string;
@@ -919,7 +892,6 @@ export type Messages = {
     readonly help: string;
   };
   readonly foundation: {
-    readonly title: string;
     readonly body: string;
   };
   readonly units: {
@@ -1051,7 +1023,6 @@ export type Messages = {
     readonly count: (values: { count: number }) => string;
     readonly refresh: string;
     readonly open: (values: { date: string | number }) => string;
-    readonly viewer: string;
     readonly details: (values: { date: string | number; size: string | number }) => string;
     readonly dimensions: (values: { width: string | number; height: string | number }) => string;
     readonly position: (values: { index: number; count: number }) => string;

@@ -30,3 +30,9 @@
   flex-wrap: wrap;
   gap: var(--space-3);
 }
+
+/* A first Quit that failed: there is no dialog to show it in. */
+.error {
+  color: var(--color-danger-text);
+  font-size: var(--font-size-sm);
+}

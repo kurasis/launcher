@@ -29,19 +29,14 @@
       "noResponse": "Ядро лаунчера не ответило."
     },
     "accountView": {
-      "title": "Аккаунт Microsoft",
-      "signIn": "Войти через Microsoft",
       "signInAgain": "Войти снова",
       "signInHint": "Вход открывается в браузере. Лаунчер никогда не видит ваш пароль: он получает от Microsoft только код входа.",
       "notConfigured": "В этой сборке вход недоступен: не задан собственный идентификатор приложения Microsoft (см. docs/AUTH-SETUP.md).",
       "waiting": "Завершите вход в браузере. Это окно обновится само.",
       "cancel": "Отменить вход",
       "checking": "Проверяем аккаунт…",
-      "verified": "Доступ к Minecraft: Java Edition подтверждён для этого сеанса.",
       "verifiedNote": "Доступ проверяется заново при каждом запуске игры.",
-      "signOut": "Выйти",
       "signOutHint": "Выход удаляет сохранённый вход с этого компьютера. Из Microsoft в браузере он вас не выводит.",
-      "retrySignOut": "Попробовать выйти ещё раз",
       "checkAgain": "Проверить снова",
       "sessionOnly": "Системное хранилище паролей недоступно, поэтому после перезапуска лаунчера придётся войти снова.",
       "links": {
@@ -68,25 +63,7 @@
         "sign_out_pending": "Выход не завершён"
       }
     },
-    "account": {
-      "label": "Аккаунт",
-      "state": {
-        "signed_out": "Вход не выполнен",
-        "signing_in": "Вход…",
-        "refreshing": "Проверка аккаунта…",
-        "verified_access": "Вход выполнен",
-        "no_access": "Нет доступа к Java Edition",
-        "profile_setup_required": "Нужно создать профиль",
-        "reauth_required": "Нужно войти снова",
-        "service_unavailable": "Служба аккаунтов недоступна",
-        "app_not_approved": "Лаунчер не одобрен",
-        "restricted": "Аккаунт ограничен",
-        "protocol_error": "Не удалось проверить аккаунт",
-        "sign_out_pending": "Выход не завершён"
-      }
-    },
     "accounts": {
-      "title": "Аккаунты",
       "microsoftTitle": "Аккаунты Microsoft",
       "microsoftHint": "Аккаунт с Minecraft: Java Edition запускает полную игру. Можно добавить несколько и выбрать, какой использует каждая установка.",
       "none": "Аккаунтов Microsoft пока нет.",
@@ -123,7 +100,6 @@
       "launcherCancel": "Отмена",
       "launcherNickChanged": "Ник изменён.",
       "launcherSignOut": "Выйти",
-      "launcherSignInAgain": "Вход завершился. Войдите снова.",
       "launcherLabel": "{name} (аккаунт лаунчера)",
       "launcherProblems": {
         "network": "Нет связи с oauth.lapi.sh. Проверьте подключение и попробуйте снова.",
@@ -139,7 +115,6 @@
     "instances": {
       "title": "Установки",
       "empty": "Установок пока нет. Создайте установку, чтобы выбрать версию Minecraft.",
-      "selected": "Выбрана",
       "create": "Новая установка",
       "health": {
         "not_installed": "Не установлена",
@@ -266,7 +241,6 @@
       "title": "Настройки установки",
       "summaryTitle": "Сведения",
       "version": "Версия",
-      "status": "Состояние",
       "openFolder": "Открыть папку игры",
       "openFolderHint": "Там хранятся миры, скриншоты и настройки этой установки.",
       "lastResult": "Последний результат",
@@ -822,7 +796,6 @@
       "windowTitle": "Консоль лаунчера"
     },
     "diagnostics": {
-      "title": "Диагностика",
       "recentTitle": "Последние операции",
       "columns": {
         "operation": "Операция",
@@ -861,8 +834,7 @@
       "help": "Справка Minecraft"
     },
     "foundation": {
-      "title": "Состояние проекта",
-      "body": "Установка, восстановление и запуск реализованы. Для запуска полной игры нужен вход через Microsoft, который эта сборка не может предложить, пока у проекта нет собственного идентификатора приложения Microsoft."
+      "body": "Установка, восстановление и запуск реализованы. Без учётной записи Microsoft игра запускается как демоверсия Minecraft — под профилем без аккаунта или аккаунтом лаунчера."
     },
     "units": {
       "bytes": "{count, plural, one {# байт} few {# байта} many {# байт} other {# байта}}",
@@ -989,7 +961,6 @@
       "count": "{count, plural, one {# скриншот} few {# скриншота} many {# скриншотов} other {# скриншота}}",
       "refresh": "Обновить",
       "open": "Открыть скриншот от {date}",
-      "viewer": "Скриншот",
       "details": "{date} · {size}",
       "dimensions": "{width} × {height}",
       "position": "{index, number} из {count, number}",

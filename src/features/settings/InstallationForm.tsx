@@ -10,6 +10,7 @@ import { useCommand } from '../../lib/useCommand';
 import styles from './SettingsView.module.css';
 import { localizeError } from '../../lib/strings';
 import { recommendationText, useRecommendation } from './memoryLabel';
+import { toInt } from '../../lib/format';
 
 interface InstallationFormProps {
   instance: InstanceSummary;
@@ -17,10 +18,6 @@ interface InstallationFormProps {
 }
 
 const t = strings.details;
-
-function toInt(text: string): number {
-  return /^\d+$/.test(text.trim()) ? Number(text.trim()) : Number.NaN;
-}
 
 /**
  * Memory, window size, fullscreen and Minecraft arguments of one installation.

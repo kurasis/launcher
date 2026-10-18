@@ -392,14 +392,23 @@ export function subscribeBackendEvents(handler: EventHandler): {
   };
 }
 
-/** Fires when the operating system or app menu asked to quit during a run. */
-export function onQuitRequested(handler: () => void): () => void {
-  const pending = listen('quit_requested', () => {
-    handler();
+/** Listens to one event; returns the function that stops listening. */
+// The payload's type is the event's, which the caller names.
+// eslint-disable-next-line @typescript-eslint/no-unnecessary-type-parameters
+function listenTo<T>(name: string, handler: (payload: T) => void): () => void {
+  const pending = listen<T>(name, (event) => {
+    handler(event.payload);
   });
   return () => {
     void pending.then((unlisten) => Promise.resolve().then(unlisten)).catch(() => undefined);
   };
+}
+
+/** Fires when the operating system or app menu asked to quit during a run. */
+export function onQuitRequested(handler: () => void): () => void {
+  return listenTo('quit_requested', () => {
+    handler();
+  });
 }
 
 /** The FriendsProblem a friends command rejected with (anything else: `server`). */
@@ -411,20 +420,10 @@ export function friendsProblem(error: unknown): FriendsProblem {
 
 /** Friends and chats changed (lists, rooms, unread counts, connection). */
 export function onFriendsState(handler: (view: FriendsView) => void): () => void {
-  const pending = listen<FriendsView>('friends://state', (event) => {
-    handler(event.payload);
-  });
-  return () => {
-    void pending.then((unlisten) => Promise.resolve().then(unlisten)).catch(() => undefined);
-  };
+  return listenTo('friends://state', handler);
 }
 
 /** A new message in one of the account's rooms (its own included). */
 export function onFriendsMessage(handler: (message: ChatMessage) => void): () => void {
-  const pending = listen<ChatMessage>('friends://message', (event) => {
-    handler(event.payload);
-  });
-  return () => {
-    void pending.then((unlisten) => Promise.resolve().then(unlisten)).catch(() => undefined);
-  };
+  return listenTo('friends://message', handler);
 }

@@ -84,9 +84,12 @@ export function DataFolderSettings({ busy }: { busy: boolean }) {
           <Button
             disabled={disabled || location.mode === 'portable'}
             onClick={() => {
-              void ipc.pickDataFolder().then((path) => {
-                if (path !== null) setConfirm({ target: 'custom', path });
-              });
+              void ipc
+                .pickDataFolder()
+                .then((path) => {
+                  if (path !== null) setConfirm({ target: 'custom', path });
+                })
+                .catch(() => undefined);
             }}
           >
             {t.choose}

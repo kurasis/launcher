@@ -68,7 +68,7 @@ function NetworkIndicator({ network }: { network: NetworkStatus }) {
         type="button"
         className={styles.textButton}
         onClick={() => {
-          void ipc.checkNetwork();
+          void ipc.checkNetwork().catch(() => undefined);
         }}
       >
         {strings.network.check}

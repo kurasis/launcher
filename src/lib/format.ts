@@ -19,3 +19,8 @@ export function formatBytes(bytes: number): string {
   }).format(value);
   return strings.units[name]({ value: number });
 }
+
+/** A whole number typed in a form, or `NaN` for anything else. */
+export function toInt(text: string): number {
+  return /^\d+$/.test(text.trim()) ? Number(text.trim()) : Number.NaN;
+}

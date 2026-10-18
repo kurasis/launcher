@@ -19,6 +19,21 @@ function backend(results: unknown[]) {
 }
 
 describe('QuitControl', () => {
+  it('says why quitting failed even without the dialog', async () => {
+    mockIPC((cmd) => {
+      if (cmd === 'request_quit') {
+        // The Rust core rejects with a plain error envelope, not an Error instance.
+        // eslint-disable-next-line @typescript-eslint/only-throw-error
+        throw { code: 'INTERNAL', message: 'Quitting failed.', diagnosticId: 'd-1' };
+      }
+      return null;
+    });
+    render(<QuitControl />);
+    fireEvent.click(screen.getByRole('button', { name: 'Quit' }));
+    expect(await screen.findByRole('alert')).toHaveTextContent('Quitting failed.');
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+  });
+
   it('asks for a choice while a run is active and defaults to keeping it', async () => {
     const actions = backend([
       { status: 'choice_required', operationId: 'run-1' },

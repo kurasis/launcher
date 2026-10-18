@@ -58,7 +58,9 @@ packages. The MVP is not complete until those checks pass (P13 in
 - On Linux each unload/return cycle of the window keeps two WebKitGTK file descriptors
   open until the launcher exits (about 490 game sessions per launcher run; D-029).
 - The AppImage uses the host's glibc (2.36 or newer), graphics and audio libraries.
-- The launcher has no automatic updater; install newer packages over older ones.
+- In-app updates (D-063) work only in builds made with the update public key
+  ([`docs/RELEASING.md`](docs/RELEASING.md)); others are updated by installing the
+  newer package over the older one.
 - No license has been chosen for the source yet (D-010).
 
 ## Quick start

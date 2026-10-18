@@ -3,7 +3,7 @@ import { Button } from '../../components/Button';
 import forms from '../../components/forms.module.css';
 import type { ChatMessage, ChatRoom, FriendsView } from '../../lib/contracts';
 import { friendsProblem, ipc, onFriendsMessage } from '../../lib/ipc';
-import { strings } from '../../lib/strings';
+import { numberLocale, strings } from '../../lib/strings';
 import styles from './Friends.module.css';
 import { problemText, roomTitle } from './useFriends';
 
@@ -24,8 +24,8 @@ function time(seconds: number): string {
   const date = new Date(seconds * 1000);
   const today = new Date().toDateString() === date.toDateString();
   return today
-    ? date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
-    : date.toLocaleString([], {
+    ? date.toLocaleTimeString(numberLocale(), { hour: '2-digit', minute: '2-digit' })
+    : date.toLocaleString(numberLocale(), {
         day: 'numeric',
         month: 'short',
         hour: '2-digit',

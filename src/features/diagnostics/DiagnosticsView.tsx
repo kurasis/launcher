@@ -45,7 +45,11 @@ export function DiagnosticsView({ snapshot }: { snapshot: AppSnapshot }) {
     <>
       <Panel
         title={strings.console.title}
-        aside={<Button onClick={() => void ipc.openConsole()}>{strings.console.open}</Button>}
+        aside={
+          <Button onClick={() => void ipc.openConsole().catch(() => undefined)}>
+            {strings.console.open}
+          </Button>
+        }
       >
         <p className={styles.muted}>{strings.console.openHint}</p>
       </Panel>

@@ -1,9 +1,4 @@
-import type {
-  AccountSummary,
-  InstanceSummary,
-  MicrosoftAccount,
-  ProfileRef,
-} from '../../lib/contracts';
+import type { AccountSummary, MicrosoftAccount, ProfileRef } from '../../lib/contracts';
 import { strings } from '../../lib/strings';
 
 /** Name of the built-in demo player when no profile is chosen (Rust `DEFAULT_NAME`). */
@@ -28,14 +23,6 @@ export function lookup(account: AccountSummary, ref: ProfileRef | null): Player 
   }
   const found = account.notokenProfiles.find((p) => p.id === ref.id);
   return found === undefined ? null : { kind: 'notoken', name: found.name };
-}
-
-/** Who plays an installation: its own profile, the default, or the built-in player. */
-export function playerFor(instance: InstanceSummary, account: AccountSummary): Player {
-  return (
-    lookup(account, instance.profile) ??
-    lookup(account, account.defaultProfile) ?? { kind: 'notoken', name: BUILT_IN_PLAYER }
-  );
 }
 
 /** The default player of new and unassigned installations. */

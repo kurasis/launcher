@@ -30,19 +30,14 @@
       "noResponse": "لم تستجب نواة المشغّل."
     },
     "accountView": {
-      "title": "حساب Microsoft",
-      "signIn": "تسجيل الدخول عبر Microsoft",
       "signInAgain": "سجّل الدخول مجددًا",
       "signInHint": "يُفتح تسجيل الدخول في متصفح الويب. لا يرى المشغّل كلمة مرورك أبدًا، بل يتلقى من Microsoft رمز تسجيل دخول فقط.",
       "notConfigured": "تسجيل الدخول غير متاح في هذا الإصدار لعدم ضبط معرّف تطبيق Microsoft خاص بالمشروع (راجع docs/AUTH-SETUP.md).",
       "waiting": "أكمل تسجيل الدخول في متصفح الويب. ستتحدّث هذه النافذة تلقائيًا.",
       "cancel": "إلغاء تسجيل الدخول",
       "checking": "جارٍ التحقق من حسابك…",
-      "verified": "تم التحقق من الوصول إلى Minecraft: Java Edition لهذه الجلسة.",
       "verifiedNote": "يُتحقق من الوصول مجددًا في كل مرة تبدأ فيها اللعبة.",
-      "signOut": "تسجيل الخروج",
       "signOutHint": "يزيل تسجيل الخروج تسجيل الدخول المحفوظ من هذا الحاسوب، لكنه لا يُخرجك من Microsoft في متصفحك.",
-      "retrySignOut": "حاول تسجيل الخروج مجددًا",
       "checkAgain": "تحقّق مجددًا",
       "sessionOnly": "مخزن بيانات الاعتماد في النظام غير متاح، لذا ستحتاج إلى تسجيل الدخول مجددًا بعد إعادة تشغيل المشغّل.",
       "links": {
@@ -69,25 +64,7 @@
         "sign_out_pending": "تسجيل الخروج غير مكتمل"
       }
     },
-    "account": {
-      "label": "الحساب",
-      "state": {
-        "signed_out": "لم يُسجَّل الدخول",
-        "signing_in": "جارٍ تسجيل الدخول…",
-        "refreshing": "جارٍ التحقق من الحساب…",
-        "verified_access": "تم تسجيل الدخول",
-        "no_access": "لا وصول إلى Java Edition",
-        "profile_setup_required": "يلزم إعداد الملف الشخصي",
-        "reauth_required": "يلزم تسجيل الدخول",
-        "service_unavailable": "خدمة الحسابات غير متاحة",
-        "app_not_approved": "المشغّل غير معتمد",
-        "restricted": "الحساب مقيّد",
-        "protocol_error": "فشل التحقق من الحساب",
-        "sign_out_pending": "تسجيل الخروج غير مكتمل"
-      }
-    },
     "accounts": {
-      "title": "الحسابات",
       "microsoftTitle": "حسابات Microsoft",
       "microsoftHint": "الحساب الذي يملك Minecraft: Java Edition يشغّل اللعبة الكاملة. يمكنك إضافة عدة حسابات واختيار ما يستخدمه كل تثبيت.",
       "none": "لم تُضف أي حساب Microsoft بعد.",
@@ -124,7 +101,6 @@
       "launcherCancel": "إلغاء",
       "launcherNickChanged": "تم تغيير الاسم المستعار.",
       "launcherSignOut": "تسجيل الخروج",
-      "launcherSignInAgain": "انتهى تسجيل الدخول. سجّل الدخول من جديد.",
       "launcherLabel": "{name} (حساب المشغّل)",
       "launcherProblems": {
         "network": "تعذّر الوصول إلى oauth.lapi.sh. تحقّق من الاتصال وحاول مرة أخرى.",
@@ -140,7 +116,6 @@
     "instances": {
       "title": "التثبيتات",
       "empty": "لا توجد تثبيتات بعد. أنشئ تثبيتًا لاختيار إصدار من Minecraft.",
-      "selected": "محدّد",
       "create": "تثبيت جديد",
       "health": {
         "not_installed": "غير مثبّت",
@@ -267,7 +242,6 @@
       "title": "إعدادات التثبيت",
       "summaryTitle": "التفاصيل",
       "version": "الإصدار",
-      "status": "الحالة",
       "openFolder": "فتح مجلد اللعبة",
       "openFolderHint": "تُخزَّن هناك عوالم هذا التثبيت ولقطات الشاشة والإعدادات.",
       "lastResult": "النتيجة الأخيرة",
@@ -823,7 +797,6 @@
       "windowTitle": "وحدة تحكم المشغّل"
     },
     "diagnostics": {
-      "title": "التشخيص",
       "recentTitle": "العمليات الأخيرة",
       "columns": {
         "operation": "العملية",
@@ -862,8 +835,7 @@
       "help": "مساعدة Minecraft"
     },
     "foundation": {
-      "title": "حالة المشروع",
-      "body": "التثبيت والإصلاح والتشغيل منجزة. يتطلب بدء اللعبة تسجيل الدخول عبر Microsoft، وهو ما لا يستطيع هذا الإصدار تقديمه حتى يوفّر المشروع معرّف تطبيق Microsoft الخاص به."
+      "body": "التثبيت والإصلاح والتشغيل منجزة. من دون حساب Microsoft تبدأ اللعبة كنسخة Minecraft التجريبية، باسم ملف شخصي بلا حساب أو بحساب المشغّل."
     },
     "units": {
       "bytes": "{count, plural, zero {# بايت} one {بايت واحد} two {بايتان} few {# بايتات} many {# بايتًا} other {# بايت}}",
@@ -990,7 +962,6 @@
       "count": "{count, plural, zero {لا لقطات} one {لقطة واحدة} two {لقطتان} few {# لقطات} many {# لقطة} other {# لقطة}}",
       "refresh": "تحديث",
       "open": "فتح لقطة الشاشة من {date}",
-      "viewer": "لقطة شاشة",
       "details": "{date} · {size}",
       "dimensions": "{width} × {height}",
       "position": "{index, number} من {count, number}",

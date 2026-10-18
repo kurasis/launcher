@@ -165,12 +165,15 @@ export function InstanceJavaForm({ instance }: { instance: InstanceSummary }) {
             <Button
               disabled={busy}
               onClick={() => {
-                void ipc.pickJavaFile().then((picked) => {
-                  if (picked !== null) {
-                    setPath(picked);
-                    edited();
-                  }
-                });
+                void ipc
+                  .pickJavaFile()
+                  .then((picked) => {
+                    if (picked !== null) {
+                      setPath(picked);
+                      edited();
+                    }
+                  })
+                  .catch(() => undefined);
               }}
             >
               {t.browse}
