@@ -126,8 +126,6 @@ export type Messages = {
     readonly repair: string;
     readonly verify: string;
     readonly play: string;
-    readonly playNoToken: string;
-    readonly noTokenHint: string;
     readonly starting: string;
     readonly cancel: string;
     readonly cancelling: string;

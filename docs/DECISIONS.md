@@ -1006,6 +1006,17 @@ message` plus a stack trace), with the event's level.
 - **Debug builds:** `LAUNCHER_NOTOKEN_PROFILE` still makes every launch a demo as that
   test profile (D-030).
 
+## D-046 — One Play button; no demo hint
+
+- **Status:** accepted (owner request, 2026-10-17) · **Affects:** D-033, D-045, the
+  installation panel
+- **Decision:** the button reads **Play** for every player, a Microsoft account or a
+  no-token profile; the separate "Play demo" label and the hint under it ("Without a
+  signed-in account you can play the Minecraft demo…") are removed in every language.
+  What a launch plays stays visible where the player is chosen: _Play as_ names demo
+  profiles "Name (demo)", and the Accounts screen explains no-token profiles. The
+  launch itself is unchanged: a no-token profile always runs with `--demo`.
+
 ## D-048 — Windows: windows are created outside WebView2 callbacks; Windows 11 on ARM in CI
 
 - **Status:** accepted (owner report and request, 2026-10-17) · **Affects:** D-037
