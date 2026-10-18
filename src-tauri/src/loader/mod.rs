@@ -39,8 +39,6 @@ pub enum LoaderKind {
 }
 
 impl LoaderKind {
-    pub const ALL: [Self; 4] = [Self::Fabric, Self::Quilt, Self::Forge, Self::NeoForge];
-
     pub fn as_str(self) -> &'static str {
         match self {
             Self::Fabric => "fabric",

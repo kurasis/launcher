@@ -206,6 +206,8 @@ impl Friends {
         match account.access_token(&app.state::<AppState>()).await {
             Ok(token) => Ok(token.expose().to_owned()),
             Err(AccountProblem::Network) => Err(FriendsProblem::Network),
+            // The account service failing or busy is not a sign-out: try again.
+            Err(AccountProblem::Server | AccountProblem::TooMany) => Err(FriendsProblem::Server),
             Err(_) => Err(FriendsProblem::SignedOut),
         }
     }
@@ -305,8 +307,13 @@ impl Friends {
                 Ok(()) => 0,
                 Err(FriendsProblem::SignedOut) => {
                     self.set(&app, |view| view.problem = Some(FriendsProblem::SignedOut));
-                    // Nothing to do until the account signs in again.
-                    self.wake.notified().await;
+                    // Until the account signs in again; a refusal the friends
+                    // server had no reason for (its keys not read yet after a
+                    // restart) passes, so try again now and then too.
+                    tokio::select! {
+                        () = self.wake.notified() => {}
+                        () = tokio::time::sleep(Duration::from_secs(300)) => {}
+                    }
                     0
                 }
                 Err(_) => failures.saturating_add(1),

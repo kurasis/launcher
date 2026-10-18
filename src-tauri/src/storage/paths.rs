@@ -229,10 +229,6 @@ impl DataRoot {
         self.root.join("cache").join("thumbnails")
     }
 
-    pub fn launcher_logs(&self) -> PathBuf {
-        self.root.join("logs").join("launcher")
-    }
-
     pub fn run_logs(&self, run: Uuid) -> PathBuf {
         self.root.join("logs").join("runs").join(run.to_string())
     }

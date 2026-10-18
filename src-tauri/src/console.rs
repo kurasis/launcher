@@ -90,7 +90,11 @@ fn bounded(text: &str, max: usize) -> String {
 /// Level of a game line from the logger's usual markers (`[main/WARN]`,
 /// `[Render thread/ERROR]`, `WARN:`); everything else is information.
 pub fn game_level(text: &str) -> Level {
-    let head = &text[..text.len().min(160)];
+    let mut end = text.len().min(160);
+    while !text.is_char_boundary(end) {
+        end -= 1;
+    }
+    let head = &text[..end];
     if head.contains("/ERROR]") || head.contains("/FATAL]") || head.contains("[SEVERE]") {
         Level::Error
     } else if head.contains("/WARN]") || head.contains("[WARNING]") {
@@ -306,6 +310,17 @@ mod tests {
         let last = (CAPACITY + 5) as u64;
         assert_eq!(console.read(last).missed, 0);
         assert_eq!(console.read(last).last_seq, last);
+    }
+
+    #[test]
+    fn a_character_across_the_level_window_is_no_problem() {
+        // "你" is three bytes: byte 160 falls inside one.
+        let line = format!("[12:00:00] [Render thread/ERROR]: x{}", "你".repeat(60));
+        assert!(!line.is_char_boundary(160));
+        assert_eq!(game_level(&line), Level::Error);
+        let console = Console::default();
+        console.game(true, &line);
+        assert_eq!(console.read(0).entries.len(), 1);
     }
 
     #[test]

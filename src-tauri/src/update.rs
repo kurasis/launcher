@@ -611,7 +611,7 @@ impl Updates {
         };
         if Self::busy_now(state) {
             state.console().info(
-                "Update: a game or an install is running; the update waits for the next close",
+                "Update: a game or an install is running; the update is fetched again and installed at a later close",
             );
             return;
         }

@@ -87,15 +87,6 @@ impl RunHandles {
         }
     }
 
-    /// Requests termination of the active run, if any. Returns its identifier.
-    pub fn kill_active(&self) -> Option<String> {
-        let active = self.active.lock().unwrap_or_else(PoisonError::into_inner);
-        active.as_ref().map(|(id, supervised)| {
-            supervised.kill();
-            id.clone()
-        })
-    }
-
     /// Requests termination of `run_id` only.
     pub fn kill(&self, run_id: &str) -> bool {
         let active = self.active.lock().unwrap_or_else(PoisonError::into_inner);

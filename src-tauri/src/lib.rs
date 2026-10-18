@@ -2,8 +2,7 @@
 //! disk access and child processes. The webview only renders state and sends typed
 //! requests through `commands`.
 //!
-//! Module layout follows docs/spec/02-ARCHITECTURE-AND-STORAGE.md. Modules that are
-//! still empty are filled by the phase named in their documentation.
+//! Module layout follows docs/spec/02-ARCHITECTURE-AND-STORAGE.md.
 
 pub mod auth;
 pub mod backup;
@@ -64,7 +63,7 @@ impl EventSink for TauriSink {
     }
 }
 
-/// Gives the auth service access to the managed application state.
+/// Gives the install service access to the managed application state.
 struct TauriStateAccess(tauri::AppHandle);
 
 impl install::service::StateAccess for TauriStateAccess {
@@ -502,6 +501,9 @@ fn setup(app: &mut tauri::App) -> Result<(), Box<dyn std::error::Error>> {
             if monitor.check(&state).await {
                 let auth = Arc::clone(&reconnect_auth);
                 tauri::async_runtime::spawn(async move { auth.restore().await });
+                if let Some(friends) = handle.try_state::<Arc<friends::Friends>>() {
+                    friends.wake();
+                }
             }
             monitor.next(state.network()).await;
         }

@@ -526,6 +526,9 @@ impl LauncherAccount {
     /// Signs out here: ends the session on the server (when it answers) and
     /// forgets the tokens and the account.
     pub async fn sign_out(&self, state: &AppState) {
+        // Held throughout: a refresh in flight finishes first, so the token it
+        // keeps is the one revoked and forgotten here, not one left behind.
+        let mut access = self.access.lock().await;
         if let Some(refresh) = self.refresh_token() {
             let _ = self
                 .send(
@@ -536,7 +539,7 @@ impl LauncherAccount {
                 .await;
         }
         self.forget_tokens();
-        *self.access.lock().await = None;
+        *access = None;
         let _ = state.update_accounts_file(Box::new(|file| {
             if let Some(old) = file.launcher_account.clone() {
                 file.remove(&ProfileRef::Launcher { id: old.id });

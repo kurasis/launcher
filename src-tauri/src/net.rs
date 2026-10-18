@@ -84,6 +84,7 @@ const ALL_SOURCE_HOSTS: &[&str] = &[
     "files.minecraftforge.net",
     "maven.neoforged.net",
     crate::mirror::MIRROR_HOST,
+    "crash.lapi.sh",
 ];
 
 const CRASH_REPORT_HOSTS: &[&str] = &["crash.lapi.sh"];
@@ -583,6 +584,7 @@ mod tests {
             SourcePolicy::MojangArtifacts,
             SourcePolicy::Adoptium,
             SourcePolicy::ModLoaders,
+            SourcePolicy::CrashReports,
         ] {
             for host in policy.hosts() {
                 assert!(ALL_SOURCE_HOSTS.contains(host), "{host}");

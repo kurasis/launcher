@@ -131,9 +131,19 @@ fn safe_relative(path: &str) -> Option<PathBuf> {
 fn read_manifest(path: &Path) -> Option<Snapshot> {
     use crate::storage::document::{self, Loaded};
     match document::load_limited::<Snapshot>(path, None, document::MAX_LARGE_DOCUMENT_BYTES) {
-        Ok(Loaded::Valid(s) | Loaded::RecoveredFromBackup { value: s, .. }) => Some(s),
+        // A hash also names the object's file: anything but 64 hex digits
+        // (a damaged or edited manifest) would point elsewhere.
+        Ok(Loaded::Valid(s) | Loaded::RecoveredFromBackup { value: s, .. })
+            if s.files.iter().all(|f| is_sha256(&f.sha256)) =>
+        {
+            Some(s)
+        }
         _ => None,
     }
+}
+
+fn is_sha256(text: &str) -> bool {
+    text.len() == 64 && text.bytes().all(|b| matches!(b, b'0'..=b'9' | b'a'..=b'f'))
 }
 
 fn modified_ms(meta: &fs::Metadata) -> i64 {
@@ -631,6 +641,33 @@ mod tests {
             fs::read_to_string(world.join("level.dat")).unwrap(),
             "current"
         );
+    }
+
+    #[test]
+    fn a_manifest_with_a_bad_hash_is_damaged_not_followed() {
+        let dir = tempfile::tempdir().unwrap();
+        let store = Store::new(&dir.path().join("data"));
+        let world = dir.path().join("World");
+        write(&world, "level.dat", "x");
+        let (snapshot, _) = store
+            .create(
+                &world,
+                origin(
+                    Scope::World {
+                        name: "World".into(),
+                    },
+                    Reason::Manual,
+                ),
+                None,
+            )
+            .unwrap();
+        let path = store.manifest_path(&snapshot.info.id);
+        let text = fs::read_to_string(&path).unwrap();
+        for bad in ["a", "../../../../outside"] {
+            fs::write(&path, text.replace(&snapshot.files[0].sha256, bad)).unwrap();
+            assert!(store.load(&snapshot.info.id).is_err(), "{bad}");
+            assert!(store.list().is_empty(), "{bad}");
+        }
     }
 
     #[test]
