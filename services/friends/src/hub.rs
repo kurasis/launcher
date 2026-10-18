@@ -78,13 +78,4 @@ impl Hub {
             let _ = sender.try_send(event.clone());
         }
     }
-
-    pub fn connected(&self) -> usize {
-        self.connections
-            .lock()
-            .unwrap_or_else(std::sync::PoisonError::into_inner)
-            .values()
-            .map(Vec::len)
-            .sum()
-    }
 }

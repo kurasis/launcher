@@ -84,6 +84,10 @@ pub fn parse(path: &str, query: Option<&str>) -> Option<Origin> {
     let (host, tail) = rest.split_once('/').unwrap_or((rest, ""));
     let host = *HOSTS.iter().find(|h| **h == host)?;
     let tail = format!("/{tail}");
+    // GitHub hosts anyone's files: only Adoptium's Java releases are ours.
+    if host == "github.com" && (query.is_some_and(|q| !q.is_empty()) || !adoptium_release(&tail)) {
+        return None;
+    }
     let lower = tail.to_ascii_lowercase();
     let unsafe_path = tail.len() > MAX_PATH
         || !plain(&tail)
@@ -136,6 +140,13 @@ fn kept_path(host: &str, tail: &str) -> Option<PathBuf> {
     Some(path)
 }
 
+/// `/adoptium/<repo>/releases/download/<tag>/<file>`: a Java build the
+/// Adoptium API points to.
+fn adoptium_release(tail: &str) -> bool {
+    let parts: Vec<&str> = tail.split('/').collect();
+    parts.len() >= 7 && parts[1] == "adoptium" && parts[3] == "releases" && parts[4] == "download"
+}
+
 /// Content addressed by hash, a fixed version or a release tag.
 fn never_changes(host: &str, tail: &str) -> bool {
     let name = tail.rsplit('/').next().unwrap_or_default();
@@ -145,10 +156,7 @@ fn never_changes(host: &str, tail: &str) -> bool {
         }
         "piston-data.mojang.com" | "launcher.mojang.com" => tail.starts_with("/v1/objects/"),
         "resources.download.minecraft.net" => true,
-        "github.com" => {
-            let parts: Vec<&str> = tail.split('/').collect();
-            parts.len() >= 7 && parts[3] == "releases" && parts[4] == "download"
-        }
+        "github.com" => adoptium_release(tail),
         "libraries.minecraft.net"
         | "maven.fabricmc.net"
         | "maven.quiltmc.org"
@@ -225,6 +233,10 @@ mod tests {
             "/127.0.0.1/x",
             "/objects.githubusercontent.com/x",
             "/github.com.evil.example/x",
+            // GitHub: only Adoptium's release downloads.
+            "/github.com/someone/repo/releases/download/v1/page.html",
+            "/github.com/adoptium/temurin21-binaries",
+            "/github.com/login",
             "/libraries.minecraft.net/../etc/passwd",
             "/libraries.minecraft.net/a/%2e%2e/b",
             "/libraries.minecraft.net/a%2fb",

@@ -46,6 +46,11 @@ async fn origin_handler(State(fake): State<Arc<Fake>>, request: Request) -> Resp
             headers.insert(header::CONTENT_LENGTH, "100000".parse().unwrap());
             (headers, Body::from(vec![1u8; 10])).into_response()
         }
+        "/meta.fabricmc.net/v2/page" => (
+            [(header::CONTENT_TYPE, "text/html; charset=utf-8")],
+            "<script>alert(1)</script>",
+        )
+            .into_response(),
         "/piston-meta.mojang.com/mc/game/version_manifest_v2.json" => (
             [(header::CONTENT_TYPE, "application/json")],
             format!("{{\"v\":{}}}", fake.version.load(Ordering::SeqCst)),
@@ -267,4 +272,59 @@ async fn only_mirrored_addresses_and_get_are_answered() {
     assert_eq!(post.status(), StatusCode::METHOD_NOT_ALLOWED);
     let health = get(&s.app, "/v1/health").await;
     assert_eq!(health.0, StatusCode::OK);
+}
+
+#[tokio::test]
+async fn a_client_leaving_before_the_fetch_does_not_stop_keeping() {
+    let s = setup(1000, Duration::from_secs(600)).await;
+    let path = "/libraries.minecraft.net/org/slow/1.0/slow-1.0.jar";
+    // The first request leaves while its fetch waits for the origin.
+    let first = {
+        let app = Arc::clone(&s.app);
+        tokio::spawn(async move { get(&app, path).await })
+    };
+    tokio::time::sleep(Duration::from_millis(50)).await;
+    first.abort();
+    let _ = first.await;
+    let (status, _, body) = get(&s.app, path).await;
+    assert_eq!((status, body.len()), (StatusCode::OK, 50_000));
+    assert!(
+        settled(
+            &s.data
+                .join("files/libraries.minecraft.net/org/slow/1.0/slow-1.0.jar")
+        )
+        .await,
+        "the next request fetches and keeps it"
+    );
+}
+
+#[tokio::test]
+async fn metadata_never_goes_out_as_a_page_and_is_kept_only_with_room() {
+    let s = setup(1000, Duration::from_secs(600)).await;
+    let response = router(Arc::clone(&s.app))
+        .oneshot(
+            Request::get("/meta.fabricmc.net/v2/page")
+                .header("x-real-ip", "203.0.113.5")
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(
+        response.headers().get(header::CONTENT_TYPE).unwrap(),
+        "application/octet-stream"
+    );
+    let (_, how, _) = get(&s.app, MANIFEST).await;
+    assert_eq!(how, "fetched");
+
+    // No room: metadata passes through without being kept.
+    let s = setup(0, Duration::from_secs(600)).await;
+    let (status, how, _) = get(&s.app, MANIFEST).await;
+    assert_eq!((status, how.as_str()), (StatusCode::OK, "fetched"));
+    let kept = std::fs::read_dir(s.data.join("meta"))
+        .unwrap()
+        .flatten()
+        .flat_map(|d| std::fs::read_dir(d.path()).into_iter().flatten())
+        .count();
+    assert_eq!(kept, 0);
 }

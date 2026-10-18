@@ -15,6 +15,7 @@ limit_req_status 429;
 limit_conn lapi_mirror_conn 64;
 limit_conn_status 429;
 add_header X-Content-Type-Options nosniff always;
+add_header Content-Security-Policy "sandbox" always;
 
 location /.well-known/acme-challenge/ {
     root /home/www/lapi/acme;
@@ -30,12 +31,24 @@ location = /v1/health {
 # service.
 location ~ "^/(piston-meta\.mojang\.com|piston-data\.mojang\.com|launcher\.mojang\.com|launchermeta\.mojang\.com|libraries\.minecraft\.net|resources\.download\.minecraft\.net|api\.adoptium\.net|github\.com|meta\.fabricmc\.net|maven\.fabricmc\.net|meta\.quiltmc\.org|maven\.quiltmc\.org|maven\.minecraftforge\.net|files\.minecraftforge\.net|maven\.neoforged\.net)/" {
     root /home/www/lapi/mirror/data/files;
+    # The service's types (api.rs `content_type`): nothing kept goes out as a
+    # page or an image a browser would render.
+    types {
+        application/json json;
+        application/java-archive jar;
+        application/xml xml pom;
+        application/zip zip;
+        application/gzip gz tgz;
+        text/plain sha1 sha256 sha512 md5 txt;
+    }
+    default_type application/octet-stream;
     error_page 418 = @service;
     if ($args) {
         return 418;
     }
     add_header Cache-Control "public, max-age=31536000, immutable" always;
     add_header X-Content-Type-Options nosniff always;
+    add_header Content-Security-Policy "sandbox" always;
     add_header X-Mirror-Cache kept always;
     try_files $uri @service;
 }

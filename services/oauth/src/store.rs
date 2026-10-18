@@ -768,6 +768,9 @@ impl Store {
     /// Drops what has ended: sign-ins in progress, codes, links, old tokens
     /// and sessions, sent letters after 30 days, events after a year.
     pub fn prune(&self, now: i64) -> Result<(), String> {
+        // Used refresh tokens stay to catch a reused one; after a session's
+        // whole life without a refresh they would not work anyway.
+        let keep_used = crate::app::SESSION_SECONDS;
         let db = self.db();
         db.execute_batch(&format!(
             "DELETE FROM requests WHERE expires < {now} - 3600;
@@ -776,7 +779,8 @@ impl Store {
              DELETE FROM sessions WHERE expires < {now} OR (revoked = 1 AND last_used < {now} - 30 * 86400);
              DELETE FROM outbox WHERE (sent IS NOT NULL AND sent < {now} - 30 * 86400) OR created < {now} - 30 * 86400;
              DELETE FROM events WHERE at < {now} - 365 * 86400;
-             DELETE FROM failures WHERE since < {now} - 86400;"
+             DELETE FROM failures WHERE since < {now} - 86400;
+             DELETE FROM refresh_tokens WHERE used = 1 AND created < {now} - {keep_used};"
         ))
         .map_err(|e| e.to_string())
     }
@@ -795,5 +799,44 @@ impl Store {
             "activeSessions": one("SELECT COUNT(*) FROM sessions WHERE revoked = 0 AND expires > ?1")?,
             "lettersWaiting": one("SELECT COUNT(*) FROM outbox WHERE sent IS NULL AND attempts < 10 AND ?1 = ?1")?,
         }))
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn old_used_refresh_tokens_are_pruned() {
+        let dir = tempfile::tempdir().unwrap();
+        let store = Store::open(dir.path()).unwrap();
+        let now = 100 * 86_400 * 365;
+        let keep = crate::app::SESSION_SECONDS;
+        {
+            let db = store.db();
+            db.execute_batch("PRAGMA foreign_keys = OFF;").unwrap();
+            for (hash, created, used) in [
+                ("old-used", now - keep - 1, 1),
+                ("recent-used", now - keep + 60, 1),
+                ("old-unused", now - keep - 1, 0),
+            ] {
+                db.execute(
+                    "INSERT INTO refresh_tokens (hash, session_id, created, used) VALUES (?1, 's', ?2, ?3)",
+                    params![hash, created, used],
+                )
+                .unwrap();
+            }
+        }
+        store.prune(now).unwrap();
+        let db = store.db();
+        let mut left: Vec<String> = db
+            .prepare("SELECT hash FROM refresh_tokens ORDER BY hash")
+            .unwrap()
+            .query_map([], |r| r.get(0))
+            .unwrap()
+            .map(Result::unwrap)
+            .collect();
+        left.sort();
+        assert_eq!(left, ["old-unused", "recent-used"]);
     }
 }

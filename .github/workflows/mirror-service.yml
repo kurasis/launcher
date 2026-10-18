@@ -12,7 +12,7 @@ name: Mirror service
 
 on:
   push:
-    branches: [main, claude/launcher-updates]
+    branches: [main]
     paths:
       - services/mirror/**
       - deploy/mirror/**
@@ -84,10 +84,14 @@ jobs:
           retention-days: 14
 
   deploy:
+    # One deploy of this service at a time, from any branch or run.
+    concurrency:
+      group: mirror-deploy
+      cancel-in-progress: false
     name: Deploy to mirror.lapi.sh
     needs: test
     if: >-
-      (github.event_name == 'push' && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/claude/launcher-updates'))
+      (github.event_name == 'push' && github.ref == 'refs/heads/main')
       || (github.event_name == 'workflow_dispatch' && inputs.task == 'deploy')
     runs-on: ubuntu-24.04
     steps:
@@ -127,6 +131,8 @@ jobs:
           TARGET: ${{ secrets.SSH_USER }}@${{ secrets.SSH_HOST }}
           QUOTA_GB: ${{ vars.MIRROR_MAX_GB || '1000' }}
         run: |
+          # Checked here too: it becomes part of a command the server's shell reads.
+          [[ "$QUOTA_GB" =~ ^[0-9]{1,6}$ ]] || { echo "::error::MIRROR_MAX_GB must be a number of GB"; exit 1; }
           set +e
           ssh -i ~/.ssh/id_deploy -o BatchMode=yes "$TARGET" \
             "bash ~/.lapi-bootstrap/$SETUP/deploy.sh mirror $RELEASE /tmp/lapi-mirror-$RELEASE.tar.gz $QUOTA_GB" 2>&1 | tee deploy.log
@@ -135,15 +141,18 @@ jobs:
             echo "::warning::The server is not set up yet: run 'sudo bash ~/lapi-bootstrap/bootstrap.sh <deploy-user>' on it once, then re-run this workflow."
             exit 0
           fi
-          if grep -qE 'NGINX_(PENDING|CHANGED)|WARM_TIMER' deploy.log; then
+          if grep -qE 'NGINX_(PENDING|CHANGED)' deploy.log; then
             echo "::warning::The nginx files on the server are not these: run 'sudo bash ~/lapi-bootstrap/bootstrap.sh <deploy-user>' on it to apply them."
+          fi
+          if grep -q WARM_TIMER deploy.log; then
+            echo "::warning::The warming timer did not start: run 'sudo bash ~/lapi-bootstrap/bootstrap.sh <deploy-user>' on the server."
           fi
           exit "$status"
       - name: Check from outside
         run: |
           for i in 1 2 3 4 5 6; do
             # Another site's answer (nginx's default before bootstrap) is not this.
-            if curl -fsS --max-time 10 https://mirror.lapi.sh/v1/health | tee /dev/stderr | grep -q '"service":"lapi-mirror"'; then echo; exit 0; fi
+            if curl -fsS --max-time 10 https://mirror.lapi.sh/v1/health | grep -q '"service":"lapi-mirror"'; then echo; exit 0; fi
             sleep 5
           done
           echo "::warning::https://mirror.lapi.sh/v1/health does not answer through Cloudflare yet"

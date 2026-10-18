@@ -89,6 +89,10 @@ jobs:
           retention-days: 14
 
   deploy:
+    # One deploy of this service at a time, from any branch or run.
+    concurrency:
+      group: oauth-deploy
+      cancel-in-progress: false
     name: Deploy to oauth.lapi.sh
     needs: test
     if: >-
@@ -156,7 +160,7 @@ jobs:
         run: |
           for i in 1 2 3 4 5 6; do
             # Another site's answer (nginx's default before bootstrap) is not this.
-            if curl -fsS --max-time 10 https://oauth.lapi.sh/v1/health | tee /dev/stderr | grep -q '"service":"lapi-oauth"'; then echo; exit 0; fi
+            if curl -fsS --max-time 10 https://oauth.lapi.sh/v1/health | grep -q '"service":"lapi-oauth"'; then echo; exit 0; fi
             sleep 5
           done
           echo "::warning::https://oauth.lapi.sh/v1/health does not answer through Cloudflare yet"

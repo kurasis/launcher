@@ -38,10 +38,16 @@ fi
 [[ "$RELEASE" =~ ^[0-9a-f]{7,40}$ ]] || { echo "bad release id"; exit 1; }
 
 dir=$APP/releases/$RELEASE
-rm -rf "$dir"
-mkdir -p "$dir"
-tar -xzf "$ARCHIVE" -C "$dir"
-chmod 0750 "$dir" "$dir/lapi-$SERVICE"
+if [ "$(readlink "$APP/current" 2>/dev/null || true)" = "releases/$RELEASE" ]; then
+    # A re-run of the same commit (for secrets, a quota): the running release
+    # stays as it is, so there is still something to go back to.
+    echo "== $RELEASE is installed already"
+else
+    rm -rf "$dir"
+    mkdir -p "$dir"
+    tar -xzf "$ARCHIVE" -C "$dir"
+    chmod 0750 "$dir" "$dir/lapi-$SERVICE"
+fi
 "$dir/lapi-$SERVICE" --version
 
 if [ "$SERVICE" = mirror ] && [ -n "$QUOTA_GB" ]; then
@@ -131,10 +137,10 @@ if ! health "http://127.0.0.1:$PORT/v1/health"; then
     fi
     exit 1
 fi
-if grep -q "listen 443" "/etc/nginx/lapi/$SERVICE.conf" 2>/dev/null || [ "$SERVICE" = crash ]; then
+if grep -q "listen 443" "/etc/nginx/lapi/$SERVICE.conf" 2>/dev/null; then
     health http://127.0.0.1/v1/health || { echo "nginx does not reach the service"; exit 1; }
 fi
-echo "== healthy: $(curl -fsS "http://127.0.0.1:$PORT/v1/health")"
+echo "== healthy"
 if [ "$SERVICE" = mirror ]; then
     # The warming timer runs once there is a release; starting it again is harmless.
     sudo -n /usr/bin/systemctl start lapi-mirror-warm.timer || echo "WARM_TIMER: not started (run bootstrap.sh)"

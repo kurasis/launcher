@@ -12,7 +12,7 @@ name: Crash service
 
 on:
   push:
-    branches: [main, claude/launcher-updates]
+    branches: [main]
     paths:
       - services/crash/**
       - deploy/crash/**
@@ -84,10 +84,14 @@ jobs:
           retention-days: 14
 
   deploy:
+    # One deploy of this service at a time, from any branch or run.
+    concurrency:
+      group: crash-deploy
+      cancel-in-progress: false
     name: Deploy to crash.lapi.sh
     needs: test
     if: >-
-      (github.event_name == 'push' && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/claude/launcher-updates'))
+      (github.event_name == 'push' && github.ref == 'refs/heads/main')
       || (github.event_name == 'workflow_dispatch' && inputs.task == 'deploy')
     runs-on: ubuntu-24.04
     steps:
@@ -142,7 +146,7 @@ jobs:
         run: |
           for i in 1 2 3 4 5 6; do
             # Another site's answer (nginx's default before bootstrap) is not this.
-            if curl -fsS --max-time 10 https://crash.lapi.sh/v1/health | tee /dev/stderr | grep -q '"service":"lapi-crash"'; then echo; exit 0; fi
+            if curl -fsS --max-time 10 https://crash.lapi.sh/v1/health | grep -q '"service":"lapi-crash"'; then echo; exit 0; fi
             sleep 5
           done
           echo "::warning::https://crash.lapi.sh/v1/health does not answer through Cloudflare yet"

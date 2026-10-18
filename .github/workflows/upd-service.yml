@@ -9,7 +9,7 @@ name: Update service
 
 on:
   push:
-    branches: [main, claude/launcher-updates]
+    branches: [main]
     paths:
       - services/upd/**
       - deploy/upd/**
@@ -81,10 +81,14 @@ jobs:
           retention-days: 14
 
   deploy:
+    # One deploy of this service at a time, from any branch or run.
+    concurrency:
+      group: upd-deploy
+      cancel-in-progress: false
     name: Deploy to upd.lapi.sh
     needs: test
     if: >-
-      (github.event_name == 'push' && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/claude/launcher-updates'))
+      (github.event_name == 'push' && github.ref == 'refs/heads/main')
       || (github.event_name == 'workflow_dispatch' && inputs.task == 'deploy')
     runs-on: ubuntu-24.04
     steps:
@@ -124,6 +128,10 @@ jobs:
           TARGET: ${{ secrets.SSH_USER }}@${{ secrets.SSH_HOST }}
           UPDATE_PUBLIC_KEY: ${{ vars.UPDATE_PUBLIC_KEY }}
         run: |
+          # Checked here too: it becomes part of a command the server's shell reads.
+          if [ -n "$UPDATE_PUBLIC_KEY" ] && ! [[ "$UPDATE_PUBLIC_KEY" =~ ^[A-Za-z0-9+/=]{40,400}$ ]]; then
+            echo "::error::UPDATE_PUBLIC_KEY is not a base64 key"; exit 1
+          fi
           set +e
           ssh -i ~/.ssh/id_deploy -o BatchMode=yes "$TARGET" \
             "bash ~/.lapi-bootstrap/$SETUP/deploy.sh upd $RELEASE /tmp/lapi-upd-$RELEASE.tar.gz $UPDATE_PUBLIC_KEY" 2>&1 | tee deploy.log

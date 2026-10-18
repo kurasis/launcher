@@ -476,3 +476,13 @@ async fn the_public_overview_holds_counts_only() {
         assert!(!text.contains(leaked), "{leaked} in {text}");
     }
 }
+
+#[tokio::test]
+async fn stats_and_feedback_take_small_bodies_only() {
+    let (_dir, app) = app();
+    let event = json!({ "source": "game", "kind": "out_of_memory", "launcherVersion": "0.1.0", "os": "linux", "loader": "x".repeat(200_000) });
+    for path in ["/v1/stats", "/v1/feedback"] {
+        let (status, _) = send(&app, path, json!({ "schema": 1, "events": [event] }), true).await;
+        assert_eq!(status, StatusCode::PAYLOAD_TOO_LARGE, "{path}");
+    }
+}

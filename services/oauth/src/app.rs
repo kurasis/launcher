@@ -98,11 +98,11 @@ impl Captcha for Turnstile {
     }
 }
 
-/// Requests counted per address (an IPv6 /64 counts as one) and kind within
-/// a window, and over all addresses.
 /// Requests counted since the start of their window, per address and kind.
 type Windows = HashMap<(IpAddr, &'static str), (Instant, u32)>;
 
+/// Requests counted per address (an IPv6 /64 counts as one) and kind within
+/// a window, and over all addresses.
 #[derive(Default)]
 pub struct Limiter {
     windows: Mutex<Windows>,

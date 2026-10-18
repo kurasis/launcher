@@ -27,10 +27,10 @@ pub const MAX_GROUPS: i64 = 50;
 /// People in a group, its owner included.
 pub const MAX_MEMBERS: usize = 20;
 
-/// Actions counted per account in a window.
 /// Actions counted since the start of their window, per account and kind.
 type Windows = HashMap<(String, &'static str), (Instant, u32)>;
 
+/// Actions counted per account in a window.
 #[derive(Default)]
 pub struct Limiter {
     windows: Mutex<Windows>,
@@ -717,7 +717,6 @@ async fn health(State(app): State<Arc<App>>) -> Json<Value> {
         "service": "lapi-friends",
         "version": env!("CARGO_PKG_VERSION"),
         "keys": app.tokens.has_keys(),
-        "connections": app.hub.connected(),
     }))
 }
 

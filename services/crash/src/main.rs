@@ -38,7 +38,8 @@ fn env(name: &str, default: &str) -> String {
     std::env::var(name).unwrap_or_else(|_| default.to_owned())
 }
 
-fn days(name: &str, default: i64) -> i64 {
+/// A whole number from the environment (days, megabytes), or `default`.
+fn env_number(name: &str, default: i64) -> i64 {
     env(name, &default.to_string()).parse().unwrap_or(default)
 }
 
@@ -183,8 +184,8 @@ fn main() -> std::process::ExitCode {
         },
         Some("prune") => open().and_then(|store| {
             let removed = store.prune(
-                days("LAPI_CRASH_KEEP_DAYS", 90),
-                days("LAPI_CRASH_KEEP_STATS_DAYS", 400),
+                env_number("LAPI_CRASH_KEEP_DAYS", 90),
+                env_number("LAPI_CRASH_KEEP_STATS_DAYS", 400),
             )?;
             println!("removed {removed} reports");
             Ok(())
@@ -208,12 +209,12 @@ fn serve() -> Result<(), String> {
     let store = open()?;
     let address = env("LAPI_CRASH_ADDR", "127.0.0.1:8781");
     let keep = (
-        days("LAPI_CRASH_KEEP_DAYS", 90),
-        days("LAPI_CRASH_KEEP_STATS_DAYS", 400),
+        env_number("LAPI_CRASH_KEEP_DAYS", 90),
+        env_number("LAPI_CRASH_KEEP_STATS_DAYS", 400),
     );
     let runtime = tokio::runtime::Runtime::new().map_err(|e| e.to_string())?;
     runtime.block_on(async move {
-        let max_stored = days("LAPI_CRASH_MAX_STORED_MB", 5120).saturating_mul(1024 * 1024);
+        let max_stored = env_number("LAPI_CRASH_MAX_STORED_MB", 5120).saturating_mul(1024 * 1024);
         let app = Arc::new(api::App::new(store, max_stored));
         let pruning = Arc::clone(&app);
         tokio::spawn(async move {
