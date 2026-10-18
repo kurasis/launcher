@@ -262,7 +262,11 @@
       "edit": "تغيير الإعدادات",
       "notes": "ملاحظات",
       "notesHint": "لك وحدك: الغرض من هذا التثبيت وتعديلاته وخوادمه وأي شيء تريد تذكّره.",
-      "notesSave": "حفظ الملاحظات"
+      "notesSave": "حفظ الملاحظات",
+      "fullscreen": "تشغيل اللعبة بملء الشاشة",
+      "fullscreenShort": "ملء الشاشة",
+      "gameArguments": "وسائط Minecraft",
+      "gameArgumentsHint": "تُضاف بعد وسائط اللعبة نفسها، مثل ‎--quickPlaySingleplayer \"عالمي\"‎ لفتح عالم عند البدء. تحافظ علامات الاقتباس على المسافات داخل قيمة واحدة. يحدد المشغّل اللاعب والمجلدات وحجم النافذة وملء الشاشة."
     },
     "deleteInstance": {
       "delete": "حذف التثبيت",
@@ -297,9 +301,9 @@
       "sectionHints": {
         "general": "اللغة والمظهر ونافذة المشغّل أثناء اللعب ومكان حفظ البيانات.",
         "java": "من أين ينزّل المشغّل بيئة Java للتثبيتات الجديدة.",
-        "defaults": "الذاكرة وحجم النافذة لكل تثبيت جديد.",
+        "defaults": "الذاكرة وحجم النافذة وملء الشاشة لكل تثبيت جديد.",
         "network": "الاتصالات محدودة البيانات وحركة البيانات التي ينزّلها المشغّل.",
-        "installations": "الذاكرة وحجم النافذة وإصدار مُحمِّل التعديلات وJava لتثبيت موجود."
+        "installations": "الذاكرة والنافذة وملء الشاشة ووسائط Minecraft وإصدار مُحمِّل التعديلات وJava لتثبيت موجود."
       },
       "javaProvider": "مصدر Java",
       "javaProviders": {
@@ -1003,6 +1007,11 @@
     "This installation has no mod loader.": "لا يحتوي هذا التثبيت على مُحمِّل تعديلات.",
     "This installation already exists.": "هذا التثبيت موجود بالفعل.",
     "The installation of this backup was deleted. Only a backup of a whole installation can bring it back.": "حُذف تثبيت هذه النسخة الاحتياطية. لا يمكن استعادته إلا من نسخة احتياطية للتثبيت الكامل.",
-    "Deleting the installation": "حذف التثبيت"
+    "Deleting the installation": "حذف التثبيت",
+    "Minecraft arguments can be at most {max} characters long.": "يمكن أن يصل طول وسائط Minecraft إلى {max} حرف كحد أقصى.",
+    "Minecraft arguments must be on one line, without control characters.": "يجب أن تكون وسائط Minecraft في سطر واحد دون محارف تحكم.",
+    "A quote in the Minecraft arguments is not closed.": "علامة اقتباس في وسائط Minecraft غير مغلقة.",
+    "Use at most {max} Minecraft arguments.": "استخدم {max} من وسائط Minecraft كحد أقصى.",
+    "The launcher sets {option} itself; window size and fullscreen are separate settings.": "يحدد المشغّل {option} بنفسه؛ حجم النافذة وملء الشاشة إعدادان منفصلان."
   }
 }

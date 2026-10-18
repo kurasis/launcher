@@ -71,6 +71,9 @@ struct RunSettings {
     custom_java: Option<PathBuf>,
     /// The user's JVM options, after the version's own.
     jvm_arguments: Vec<String>,
+    /// The user's Minecraft arguments and fullscreen choice (D-056).
+    game_arguments: Vec<String>,
+    fullscreen: bool,
 }
 
 /// Fresh account verification for a launch.
@@ -344,6 +347,7 @@ impl LaunchService {
             }
         }
         let jvm_arguments = runtime::custom::parse_jvm_arguments(&instance.jvm_arguments)?;
+        let game_arguments = super::arguments::parse_game_arguments(&instance.game_arguments)?;
         let root = state.data_root().ok_or_else(|| {
             LauncherError::new(
                 ErrorCode::StorageUnavailable,
@@ -396,6 +400,8 @@ impl LaunchService {
                     mode,
                     custom_java: instance.custom_java.as_ref().map(|j| j.path.clone()),
                     jvm_arguments,
+                    game_arguments,
+                    fullscreen: instance.fullscreen,
                 },
                 &cancel,
             )
@@ -529,6 +535,8 @@ impl LaunchService {
             mode,
             custom_java,
             jvm_arguments,
+            game_arguments,
+            fullscreen,
         } = settings;
         let java = match custom_java {
             Some(path) => self.custom_java(path, &lock).await?,
@@ -607,6 +615,8 @@ impl LaunchService {
             identity: &identity,
             launcher_version: &self.launcher_version,
             extra_jvm_args: &jvm_arguments,
+            extra_game_args: &game_arguments,
+            fullscreen,
         })?;
         let storage = |e: std::io::Error| LauncherError::from_io(&e, "Preparing the launch");
         std::fs::create_dir_all(&game_dir).map_err(storage)?;

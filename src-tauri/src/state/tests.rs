@@ -65,6 +65,8 @@ fn created_instance_and_selection_survive_restart() {
                     width: 1920,
                     height: 1080,
                 },
+                fullscreen: None,
+                game_arguments: None,
             }))
             .unwrap();
         created.id
@@ -162,6 +164,8 @@ fn invalid_inputs_are_rejected_without_changes() {
                 instance_id: created.id,
                 max_heap_mib: heap,
                 resolution: Resolution { width, height },
+                fullscreen: None,
+                game_arguments: None,
             }))
             .unwrap_err();
         assert_eq!(error.code, ErrorCode::InvalidInput);
@@ -171,6 +175,8 @@ fn invalid_inputs_are_rejected_without_changes() {
             instance_id: InstanceId::generate(),
             max_heap_mib: 4096,
             resolution: Resolution::default(),
+            fullscreen: None,
+            game_arguments: None,
         }))
         .unwrap_err();
     assert_eq!(missing.code, ErrorCode::InstanceNotFound);
@@ -303,6 +309,8 @@ fn busy_instance_cannot_be_reconfigured() {
             instance_id: created.id,
             max_heap_mib: 2048,
             resolution: Resolution::default(),
+            fullscreen: None,
+            game_arguments: None,
         }))
         .unwrap_err();
     assert_eq!(error.code, ErrorCode::InstanceBusy);
@@ -525,4 +533,42 @@ fn loader_version_changes_and_asks_for_an_install() {
         state.instance(fabric.id).unwrap().loader.unwrap().version,
         "0.17.2"
     );
+}
+
+#[test]
+fn fullscreen_and_game_arguments_are_saved_and_new_installations_take_the_default() {
+    let dir = tempfile::tempdir().unwrap();
+    let state = state_at(dir.path(), RecordingSink::default());
+    let first = create(&state, "Windowed", "1.21.1").unwrap();
+    assert!(!first.fullscreen);
+    assert_eq!(first.game_arguments, "");
+    let update = |fullscreen, arguments: Option<&str>| {
+        state.update_instance_settings(request(UpdateInstanceSettingsPayload {
+            instance_id: first.id,
+            max_heap_mib: 4096,
+            resolution: Resolution::default(),
+            fullscreen,
+            game_arguments: arguments.map(str::to_owned),
+        }))
+    };
+    let saved = update(Some(true), Some("  --quickPlaySingleplayer \"My World\" ")).unwrap();
+    assert!(saved.fullscreen);
+    assert_eq!(saved.game_arguments, "--quickPlaySingleplayer \"My World\"");
+    // Omitted fields stay.
+    let kept = update(None, None).unwrap();
+    assert!(kept.fullscreen);
+    assert_eq!(kept.game_arguments, "--quickPlaySingleplayer \"My World\"");
+    assert_eq!(
+        update(None, Some("--username Notch")).unwrap_err().code,
+        ErrorCode::InvalidInput
+    );
+
+    state
+        .set_app_settings(request(SettingsPatch {
+            default_fullscreen: Some(true),
+            ..SettingsPatch::default()
+        }))
+        .unwrap();
+    assert!(state.settings().default_fullscreen);
+    assert!(create(&state, "Fullscreen", "1.21.1").unwrap().fullscreen);
 }

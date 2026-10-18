@@ -2,6 +2,7 @@
 //! launch service (docs/spec/05).
 
 pub mod argfile;
+pub mod arguments;
 pub mod compile;
 pub mod encoding;
 pub mod legacy;

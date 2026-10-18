@@ -1042,6 +1042,13 @@ impl AppState {
                 let mut updated = current.clone();
                 updated.max_heap_mib = max_heap_mib;
                 updated.resolution = resolution;
+                if let Some(fullscreen) = payload.fullscreen {
+                    updated.fullscreen = fullscreen;
+                }
+                if let Some(arguments) = &payload.game_arguments {
+                    crate::launch::arguments::parse_game_arguments(arguments)?;
+                    updated.game_arguments = arguments.trim().to_owned();
+                }
                 if updated != *current {
                     store.save_instance(&updated)?;
                     data.instances.insert(id, updated);
@@ -1466,6 +1473,9 @@ impl AppState {
                 if let Some(resolution) = patch.default_resolution {
                     settings.default_resolution = validation::validate_resolution(resolution)?;
                 }
+                if let Some(fullscreen) = patch.default_fullscreen {
+                    settings.default_fullscreen = fullscreen;
+                }
                 if let Some(on) = patch.backup_after_play {
                     settings.backup_after_play = on;
                 }
@@ -1684,6 +1694,8 @@ fn new_instance(
         custom_java: None,
         jvm_arguments: String::new(),
         profile: None,
+        game_arguments: String::new(),
+        fullscreen: data.settings.default_fullscreen,
     }
 }
 

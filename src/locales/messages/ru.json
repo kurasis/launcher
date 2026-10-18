@@ -261,7 +261,11 @@
       "edit": "Изменить настройки",
       "notes": "Заметки",
       "notesHint": "Только для вас: для чего эта установка, какие моды, серверы — всё, что стоит запомнить.",
-      "notesSave": "Сохранить заметки"
+      "notesSave": "Сохранить заметки",
+      "fullscreen": "Запускать игру в полноэкранном режиме",
+      "fullscreenShort": "полный экран",
+      "gameArguments": "Аргументы Minecraft",
+      "gameArgumentsHint": "Добавляются после аргументов самой игры, например --quickPlaySingleplayer \"Мой мир\", чтобы сразу открыть мир. Кавычки сохраняют пробелы внутри одного значения. Игрока, папки, размер окна и полноэкранный режим задаёт лаунчер."
     },
     "deleteInstance": {
       "delete": "Удалить установку",
@@ -296,9 +300,9 @@
       "sectionHints": {
         "general": "Язык, оформление, окно лаунчера во время игры и место хранения данных.",
         "java": "Откуда лаунчер загружает Java для новых установок.",
-        "defaults": "Память и размер окна для каждой новой установки.",
+        "defaults": "Память, размер окна и полноэкранный режим для каждой новой установки.",
         "network": "Лимитное подключение и трафик, который скачивает лаунчер.",
-        "installations": "Память, размер окна, версия загрузчика модов и Java существующей установки."
+        "installations": "Память, окно, полноэкранный режим, аргументы Minecraft, версия загрузчика модов и Java существующей установки."
       },
       "javaProvider": "Источник Java",
       "javaProviders": {
@@ -1002,6 +1006,11 @@
     "This installation has no mod loader.": "У этой установки нет загрузчика модов.",
     "This installation already exists.": "Такая установка уже существует.",
     "The installation of this backup was deleted. Only a backup of a whole installation can bring it back.": "Установка этой резервной копии удалена. Вернуть её может только копия всей установки.",
-    "Deleting the installation": "Удаление установки"
+    "Deleting the installation": "Удаление установки",
+    "Minecraft arguments can be at most {max} characters long.": "Аргументы Minecraft могут быть длиной не более {max} символов.",
+    "Minecraft arguments must be on one line, without control characters.": "Аргументы Minecraft должны быть в одну строку, без управляющих символов.",
+    "A quote in the Minecraft arguments is not closed.": "В аргументах Minecraft не закрыта кавычка.",
+    "Use at most {max} Minecraft arguments.": "Укажите не более {max} аргументов Minecraft.",
+    "The launcher sets {option} itself; window size and fullscreen are separate settings.": "{option} задаёт сам лаунчер; размер окна и полноэкранный режим — отдельные настройки."
   }
 }

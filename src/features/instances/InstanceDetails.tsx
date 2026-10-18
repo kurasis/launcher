@@ -65,7 +65,14 @@ export function InstanceDetails({
             width: instance.resolution.width,
             height: instance.resolution.height,
           })}
+          {instance.fullscreen && ` · ${t.fullscreenShort}`}
         </dd>
+        {instance.gameArguments !== '' && (
+          <>
+            <dt>{t.gameArguments}</dt>
+            <dd dir="ltr">{instance.gameArguments}</dd>
+          </>
+        )}
         <dt>{t.lastResult}</dt>
         <dd>
           {last === null

@@ -189,6 +189,8 @@ fn real_jvm_arguments_are_accepted_by_the_managed_java() {
         identity: &identity,
         launcher_version: "0.1.0",
         extra_jvm_args: &[],
+        extra_game_args: &[],
+        fullscreen: false,
     })
     .unwrap();
     assert!(

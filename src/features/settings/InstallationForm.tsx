@@ -21,15 +21,26 @@ function toInt(text: string): number {
   return /^\d+$/.test(text.trim()) ? Number(text.trim()) : Number.NaN;
 }
 
-/** Memory and window size of one installation. Keyed by instance id by the parent. */
+/**
+ * Memory, window size, fullscreen and Minecraft arguments of one installation.
+ * Keyed by instance id by the parent.
+ */
 export function InstallationForm({ instance, memory }: InstallationFormProps) {
   const [heap, setHeap] = useState(String(instance.maxHeapMib));
   const [width, setWidth] = useState(String(instance.resolution.width));
   const [height, setHeight] = useState(String(instance.resolution.height));
+  const [fullscreen, setFullscreen] = useState(instance.fullscreen);
+  const [gameArguments, setGameArguments] = useState(instance.gameArguments);
   const [saved, setSaved] = useState(false);
   const save = useCommand((requestId: string, maxHeapMib: number, w: number, h: number) =>
     ipc.updateInstanceSettings(
-      { instanceId: instance.id, maxHeapMib, resolution: { width: w, height: h } },
+      {
+        instanceId: instance.id,
+        maxHeapMib,
+        resolution: { width: w, height: h },
+        fullscreen,
+        gameArguments,
+      },
       requestId,
     ),
   );
@@ -130,6 +141,34 @@ export function InstallationForm({ instance, memory }: InstallationFormProps) {
           maxHeight: bounds.maxHeight,
         })}
       </p>
+      <label className={forms.choice}>
+        <input
+          type="checkbox"
+          checked={fullscreen}
+          disabled={instance.busy}
+          onChange={(event) => {
+            setFullscreen(event.target.checked);
+            setSaved(false);
+          }}
+        />
+        {t.fullscreen}
+      </label>
+      <Field label={t.gameArguments} hint={t.gameArgumentsHint}>
+        {(props) => (
+          <input
+            {...props}
+            className={forms.input}
+            dir="ltr"
+            spellCheck={false}
+            value={gameArguments}
+            disabled={instance.busy}
+            onChange={(event) => {
+              setGameArguments(event.target.value);
+              setSaved(false);
+            }}
+          />
+        )}
+      </Field>
       {save.error !== null && <Notice tone="danger">{save.error}</Notice>}
       <div className={forms.actions}>
         <Button variant="primary" type="submit" disabled={save.pending || instance.busy}>

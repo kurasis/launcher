@@ -172,6 +172,10 @@ export interface InstanceSummary {
   jvmArguments: string;
   /** Who plays this installation; null plays as the default profile (D-045). */
   profile: ProfileRef | null;
+  /** Extra Minecraft arguments as typed; empty when none (D-056). */
+  gameArguments: string;
+  /** Starts the game in fullscreen (D-056). */
+  fullscreen: boolean;
 }
 
 /** Why a Java may not suit a game version (D-044). */
@@ -238,6 +242,8 @@ export interface SettingsView {
   selectedInstanceId: string | null;
   defaultMaxHeapMib: number | null;
   defaultResolution: Resolution;
+  /** New installations start the game in fullscreen (D-056). */
+  defaultFullscreen: boolean;
   javaProvider: JavaProvider;
   language: Language;
   /** Back up the worlds a game session changed, after it ends (D-047). */
@@ -549,6 +555,9 @@ export interface UpdateInstanceSettingsPayload {
   instanceId: string;
   maxHeapMib: number;
   resolution: Resolution;
+  /** Left unchanged when omitted. */
+  fullscreen?: boolean;
+  gameArguments?: string;
 }
 
 export interface SettingsPatch {
@@ -557,6 +566,7 @@ export interface SettingsPatch {
   selectedInstanceId?: string;
   defaultMaxHeapMib?: number;
   defaultResolution?: Resolution;
+  defaultFullscreen?: boolean;
   javaProvider?: JavaProvider;
   language?: Language;
   backupAfterPlay?: boolean;

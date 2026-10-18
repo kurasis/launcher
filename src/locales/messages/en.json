@@ -261,7 +261,11 @@
       "edit": "Change settings",
       "notes": "Notes",
       "notesHint": "Only for you: what this installation is for, its mods, servers or anything to remember.",
-      "notesSave": "Save notes"
+      "notesSave": "Save notes",
+      "fullscreen": "Start the game in fullscreen",
+      "fullscreenShort": "fullscreen",
+      "gameArguments": "Minecraft arguments",
+      "gameArgumentsHint": "Added after the game's own arguments, for example --quickPlaySingleplayer \"My World\" to open a world at start. Quotes keep spaces inside one value. The player, folders, window size and fullscreen are set by the launcher."
     },
     "deleteInstance": {
       "delete": "Delete installation",
@@ -296,9 +300,9 @@
       "sectionHints": {
         "general": "Language, appearance, the launcher window while you play, and where data is kept.",
         "java": "Which Java runtimes the launcher downloads for new installations.",
-        "defaults": "Memory and window size given to each new installation.",
+        "defaults": "Memory, window size and fullscreen given to each new installation.",
         "network": "Metered connections and the traffic the launcher downloads.",
-        "installations": "Memory, window size, mod loader version and Java of an existing installation."
+        "installations": "Memory, window, fullscreen, Minecraft arguments, mod loader version and Java of an existing installation."
       },
       "javaProvider": "Java runtime source",
       "javaProviders": {
@@ -745,6 +749,7 @@
     "A native library archive contains an unsafe entry. Repair the installation.": "A native library archive contains an unsafe entry. Repair the installation.",
     "A profile with this name already exists.": "A profile with this name already exists.",
     "A quote in the JVM options is not closed.": "A quote in the JVM options is not closed.",
+    "A quote in the Minecraft arguments is not closed.": "A quote in the Minecraft arguments is not closed.",
     "A recorded result could not be read.": "A recorded result could not be read.",
     "A runtime check stopped unexpectedly.": "A runtime check stopped unexpectedly.",
     "A thumbnail could not be made.": "A thumbnail could not be made.",
@@ -800,6 +805,8 @@
     "Microsoft rejected this launcher's sign-in configuration. The project owner must check the application registration.": "Microsoft rejected this launcher's sign-in configuration. The project owner must check the application registration.",
     "Microsoft sign-in is not configured in this build. The project owner must supply this launcher's own Microsoft application ID (see docs/AUTH-SETUP.md).": "Microsoft sign-in is not configured in this build. The project owner must supply this launcher's own Microsoft application ID (see docs/AUTH-SETUP.md).",
     "Microsoft sign-in is temporarily unavailable. Try again later.": "Microsoft sign-in is temporarily unavailable. Try again later.",
+    "Minecraft arguments can be at most {max} characters long.": "Minecraft arguments can be at most {max} characters long.",
+    "Minecraft arguments must be on one line, without control characters.": "Minecraft arguments must be on one line, without control characters.",
     "Minecraft metadata": "Minecraft metadata",
     "Minecraft services have not approved this launcher's Microsoft application. The project owner must request access (see docs/AUTH-SETUP.md).": "Minecraft services have not approved this launcher's Microsoft application. The project owner must request access (see docs/AUTH-SETUP.md).",
     "Minecraft services refused this request. This does not mean the account lacks the game.": "Minecraft services refused this request. This does not mean the account lacks the game.",
@@ -895,6 +902,7 @@
     "The launcher data directory path cannot be represented as Unicode text, which Java requires for game paths.": "The launcher data directory path cannot be represented as Unicode text, which Java requires for game paths.",
     "The launcher data directory path is invalid.": "The launcher data directory path is invalid.",
     "The launcher restarted while this game was running, so its output and exit code are not available. Installing and playing were blocked until it ended.": "The launcher restarted while this game was running, so its output and exit code are not available. Installing and playing were blocked until it ended.",
+    "The launcher sets {option} itself; window size and fullscreen are separate settings.": "The launcher sets {option} itself; window size and fullscreen are separate settings.",
     "The launcher stopped before this operation finished. Verified files were kept; start it again to continue.": "The launcher stopped before this operation finished. Verified files were kept; start it again to continue.",
     "The launcher's own folder is unknown.": "The launcher's own folder is unknown.",
     "The mod loader installer stopped unexpectedly.": "The mod loader installer stopped unexpectedly.",
@@ -981,6 +989,7 @@
     "Turning on portable mode": "Turning on portable mode",
     "Unfinished download records could not be cleaned up.": "Unfinished download records could not be cleaned up.",
     "Use at most {max} JVM options.": "Use at most {max} JVM options.",
+    "Use at most {max} Minecraft arguments.": "Use at most {max} Minecraft arguments.",
     "Verified game files are damaged. Repair the installation.": "Verified game files are damaged. Repair the installation.",
     "Waiting for the game failed.": "Waiting for the game failed.",
     "Waiting for the test child failed.": "Waiting for the test child failed.",

@@ -74,6 +74,8 @@ fn compile_as(plan: &GamePlan, identity: &LaunchIdentity) -> CompiledLaunch {
         identity,
         launcher_version: "0.1.0",
         extra_jvm_args: &[],
+        extra_game_args: &[],
+        fullscreen: false,
     })
     .unwrap()
 }
@@ -193,6 +195,8 @@ fn unknown_or_misplaced_placeholders_are_errors() {
         identity: &id,
         launcher_version: "0.1.0",
         extra_jvm_args: &[],
+        extra_game_args: &[],
+        fullscreen: false,
     };
     let error = compile(&inputs(&p)).err().unwrap();
     assert_eq!(error.code, ErrorCode::UnsupportedVersionMetadata);
@@ -228,11 +232,51 @@ fn user_jvm_options_come_last_and_are_not_substituted() {
         identity: &id,
         launcher_version: "0.1.0",
         extra_jvm_args: &extra,
+        extra_game_args: &[],
+        fullscreen: false,
     })
     .unwrap();
     assert_eq!(c.jvm_args[0], "-Xmx2048M");
     assert_eq!(c.jvm_args[c.jvm_args.len() - 2..], extra);
     assert_eq!(c.main_class, "net.minecraft.client.main.Main");
+}
+
+#[test]
+fn fullscreen_and_user_game_arguments_come_last_and_are_not_substituted() {
+    let p = plan(V1_21_1, "1.21.1", MetaOs::Linux, "x86_64");
+    let root = root();
+    let dir = PathBuf::from("/tmp/g");
+    let id = identity();
+    let extra = [
+        "--quickPlaySingleplayer".to_owned(),
+        "My ${version_name}".to_owned(),
+    ];
+    let c = compile(&LaunchInputs {
+        plan: &p,
+        root: &root,
+        game_dir: &dir,
+        game_assets: &dir,
+        natives_dir: &dir,
+        max_heap_mib: 2048,
+        resolution: Resolution::default(),
+        identity: &id,
+        launcher_version: "0.1.0",
+        extra_jvm_args: &[],
+        extra_game_args: &extra,
+        fullscreen: true,
+    })
+    .unwrap();
+    let n = c.game_args.len();
+    assert_eq!(
+        c.game_args[n - 3..],
+        [
+            "--fullscreen",
+            "--quickPlaySingleplayer",
+            "My ${version_name}"
+        ]
+    );
+    // The window size stays for when fullscreen is left.
+    assert!(c.game_args.contains(&"--width".to_owned()));
 }
 
 #[test]

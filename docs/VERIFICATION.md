@@ -1570,3 +1570,24 @@ proxy that was stopped and started to cut and restore the connection.
   interrupted delete finished at the next start; the interface lists the contents,
   backs up or not, cancels, waits while something runs, drops the installation on
   the `instance_removed` event and brings it back from Backups.
+
+## Minecraft arguments and fullscreen (D-056)
+
+- Release build on Linux (Xvfb), installation "Live 1.21.1" (Minecraft 1.21.1,
+  Quilt 0.30.1). Saving `--username Notch` as Minecraft arguments was refused with
+  "The launcher sets --username itself; window size and fullscreen are separate
+  settings." (`docs/verification/game-arguments-refused.png`).
+- **Start the game in fullscreen** with `--quickPlaySingleplayer "Demo_World"` was
+  saved (`docs/verification/game-arguments-saved.png`); the details show
+  "4096 MiB · 1280×720 · fullscreen".
+- **Play**: the game's command line (read from `/proc`) ends with
+  `--demo --fullscreen --quickPlaySingleplayer Demo_World`, after the version's own
+  `--width 1280 --height 720`. The game window covered the whole 1600×1000 screen
+  at 0,0, and the log shows the integrated server starting and the player joining
+  Demo_World directly (`docs/verification/game-arguments-fullscreen.png`).
+- Settings → New installations shows the fullscreen box
+  (`docs/verification/fullscreen-default.png`).
+- **Tests:** splitting, quoting, limits and every reserved option; `--fullscreen` and
+  the typed arguments come last and are not substituted; saving, keeping omitted
+  fields, refusing reserved options, and new installations taking the default; the
+  forms send the fields.
