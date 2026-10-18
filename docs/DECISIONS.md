@@ -1864,7 +1864,35 @@ archive from the Package workflow, upload it to
   2000 characters, shown as plain text, stored without end, delivered over a
   WebSocket held by the launcher's core.
 - friends.lapi.sh checks access tokens with the published key and knows only
-  account IDs and nicks.
+  account IDs and nicks; it asks the account service for nicks over an
+  internal API on 127.0.0.1:8793 that nginx never serves.
+- **Requests:** by exact nick (case-insensitive). A request that meets the
+  other side's is a friendship at once. Decline and cancel are not told.
+  Block removes the friendship and requests; whoever is blocked is not told:
+  their requests read as sent and reach nobody, and their messages in shared
+  groups are hidden from who blocked them.
+- **Rooms:** one per pair of friends, made when one of them first opens it;
+  groups of an owner and 2–19 friends, at most 50 groups per owner. The owner
+  adds friends, removes members and renames; anyone leaves; an owner who
+  leaves passes the group to who joined first. Two people who are no longer
+  friends keep their chat to read, and write no more.
+- **Messages:** 1–2000 characters, control and direction characters taken
+  out, at most 2 empty lines in a row; kept without end, no end-to-end
+  encryption. Unread counts per room; a report of a message goes to the owner
+  (`lapi-friends reports`).
+- **Limits per account:** 20 requests an hour, 120 other actions an hour,
+  messages 5 in 10 s and 600 an hour, 5 live connections.
+- **In the launcher:** the core holds the WebSocket (`/v1/live`, Bearer token
+  in the header, reconnects with a fresh token and backoff, ends when the
+  account signs out), refreshes the lists on each event and sends the
+  interface `friends://state` and `friends://message`. The chat icon sits
+  left of the downloads, with a badge of unread messages plus requests. Its
+  panel: Chats, Friends (add by nick, message, remove and block after a
+  confirmation, the blocked list), Requests (accept, decline, block,
+  cancel), a new group, and a chat with its history a page of 50 at a time,
+  Enter to send and Shift+Enter for a new line, reports, and the owner's
+  member list. Message text is rendered as text only (no markup, no links),
+  each message with its own direction.
 
 ### Stages
 

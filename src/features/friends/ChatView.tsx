@@ -324,6 +324,8 @@ export function ChatView({
                       className={forms.input}
                       aria-label={t.reportReason}
                       placeholder={t.reportReason}
+                      // Opening the form brings it into view and ready to type.
+                      autoFocus
                       value={reason}
                       maxLength={500}
                       onChange={(event) => {

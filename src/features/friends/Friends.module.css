@@ -64,9 +64,15 @@
   padding: var(--space-4);
   border: 1px solid var(--color-border);
   border-radius: var(--radius-md);
-  background: var(--color-surface-raised);
+  /* Solid: text of the screen behind must not show through a chat. */
+  background: var(--color-surface-solid);
   box-shadow: var(--shadow-raised);
   animation: rise 160ms ease-out;
+}
+
+/* A steady height, so the tabs stay put when their content changes. */
+.panel[data-signed-in] {
+  min-height: min(26rem, calc(100vh - 8rem));
 }
 
 .title {
@@ -128,6 +134,7 @@
 }
 
 .count {
+  align-self: center;
   min-width: 1.1rem;
   padding: 0 0.3rem;
   border-radius: 999px;
@@ -324,6 +331,10 @@
   padding: var(--space-2) var(--space-3);
   border-radius: var(--radius-md);
   background: var(--color-neutral-bg);
+}
+
+.message > .quiet {
+  justify-self: end;
 }
 
 .message[data-mine] {

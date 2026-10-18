@@ -143,7 +143,11 @@ function FriendsPanel({ view, onOpenAccounts }: { view: FriendsView; onOpenAccou
   }
 
   return (
-    <section className={styles.panel} aria-label={t.title}>
+    <section
+      className={styles.panel}
+      aria-label={t.title}
+      data-signed-in={view.signedIn ? 'true' : undefined}
+    >
       <h2 className={styles.title}>{t.title}</h2>
       {view.signedIn && view.problem !== null ? (
         <p className={styles.muted} role="status">

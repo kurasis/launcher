@@ -414,6 +414,9 @@ impl LauncherAccount {
             return Ok(SecretString::new(current.token.expose()));
         }
         let Some(refresh) = self.refresh_token() else {
+            // Nothing kept (the vault refused it, or it lived in memory only):
+            // the account stays listed and offers to sign in again.
+            state.set_launcher_account_status(|s| s.needs_sign_in = true);
             return Err(AccountProblem::SignInAgain);
         };
         let answer = self
@@ -674,5 +677,37 @@ mod tests {
             },
         );
         assert!(!view.needs_sign_in, "nothing to sign in again to");
+    }
+
+    /// A sign-in kept only in memory is gone after a restart: the account
+    /// stays listed and offers to sign in again.
+    #[tokio::test]
+    async fn a_lost_sign_in_asks_to_sign_in_again() {
+        let dir = tempfile::tempdir().unwrap();
+        let state = AppState::initialize(
+            crate::storage::paths::DataRoot::new(dir.path().to_path_buf()),
+            "test",
+            crate::validation::MemoryPolicy::from_physical_bytes(16 << 30),
+            Box::new(crate::state::NoopSink),
+        );
+        state
+            .update_accounts_file(Box::new(|file| {
+                file.launcher_account = Some(LauncherAccountRecord {
+                    id: "11111111-2222-4333-8444-555555555555".into(),
+                    nick: "Steve_2".into(),
+                    email_verified: false,
+                });
+            }))
+            .unwrap();
+        let account =
+            LauncherAccount::new("test", Arc::new(crate::auth::vault::MemoryStore::default()))
+                .unwrap();
+        assert_eq!(
+            account.access_token(&state).await.err(),
+            Some(AccountProblem::SignInAgain)
+        );
+        let view = state.snapshot().account.launcher_account;
+        assert_eq!(view.nick.as_deref(), Some("Steve_2"));
+        assert!(view.needs_sign_in);
     }
 }

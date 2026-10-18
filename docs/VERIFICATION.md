@@ -1904,3 +1904,41 @@ proxy that was stopped and started to cut and restore the connection.
 - **Not tested here:** Turnstile itself (needs the real keys and
   oauth.lapi.sh), letters (no SMTP yet), the OS credential vaults on Windows
   and macOS.
+
+## Friends and chats (D-064, stages 2–4)
+
+- **lapi-friends tests (8):** requests, accept, decline, cancel, remove,
+  block and unblock end to end; rooms and groups with owner rules; messages,
+  history pages and unread counts; forged, expired, wrong-audience and junk
+  tokens; SQL-like nicks and IDs, path tricks, oversized and broken bodies;
+  bursts hitting the limits; reports; live events reaching only the right
+  people; a real WebSocket refusing connections without a token. Plus unit
+  tests of the text rules (control and direction characters out, lengths).
+- **Launcher:** Rust tests of the friends client (problems from statuses,
+  events), and 11 interface tests: signed out, badge, hostile HTML and
+  direction characters shown as text with no element made, Enter and
+  Shift+Enter, live messages only into their room, read-only chat with a
+  former friend, requests by nick with a refused SQL-like nick, block only
+  after confirming, accept/decline/cancel, groups of 2+ with a name, state
+  pushed by the core.
+- **Live, end to end (2026-10-18, Linux, Xvfb):** a release launcher built
+  with `LAUNCHER_ACCOUNT_URL` and `LAUNCHER_FRIENDS_URL` pointing at a local
+  lapi-oauth and lapi-friends; Alice signed in through the account window,
+  Bob and Carol used the API with their own tokens. Signed out, the chat icon
+  said to sign in and Open Accounts went there. Bob's request showed at once
+  as a badge; Accept made them friends on both sides. Alice asked
+  `carol_e2e` (other case); Carol accepted and Alice's list changed without a
+  reload. Bob's `<img onerror>`/`<script>` message, a right-to-left override
+  and five blank lines arrived live: the server had taken out the override
+  and kept two blank lines, the launcher showed the markup as text, a very
+  long word wrapped. Opening the chat marked it read. Alice's reply with
+  Shift+Enter and `${7*7} {{7*7}}` reached Bob verbatim; Bob's answer
+  appeared live. A report reached `lapi-friends reports` with its reason as
+  text. A group "Builders <3" with Bob and Carol was made from the panel and
+  Carol's message arrived live. Blocking Bob (after the confirmation) moved
+  him to Blocked; Bob could no longer write in the direct chat (403), his new
+  request answered "sent" and reached no one, and his group message reached
+  Carol but not Alice (no badge). Bob's access token expiring after 10
+  minutes ended his API calls until he signed in again.
+- **Not tested here:** friends.lapi.sh itself (needs the bootstrap run for
+  the new service), Windows and macOS.
