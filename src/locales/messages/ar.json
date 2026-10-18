@@ -105,7 +105,7 @@
       "pendingSignOut": "{name}: تعذّر حتى الآن حذف تسجيل الدخول المحفوظ من هذا الكمبيوتر.",
       "retryRemove": "حاول الإزالة مجددًا",
       "microsoftLabel": "{name} (Microsoft)",
-      "notokenLabel": "{name} (تجريبي)",
+      "notokenLabel": "{name}",
       "playAs": "العب باسم",
       "playAsDefault": "الافتراضي: {name}",
       "chipLabel": "يلعب باسم"

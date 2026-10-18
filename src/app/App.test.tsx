@@ -161,7 +161,7 @@ describe('App', () => {
     render(<App />);
     expect(screen.getByRole('heading', { level: 1, name: 'Sferum Launcher' })).toBeVisible();
     expect(await screen.findByText(/No installations yet/)).toBeVisible();
-    expect(screen.getByText('Player (demo)')).toBeVisible();
+    expect(screen.getByText('Player')).toBeVisible();
     expect(screen.queryByRole('button', { name: /play/i })).not.toBeInTheDocument();
     expect(screen.queryByRole('button', { name: /sign in/i })).not.toBeInTheDocument();
   });

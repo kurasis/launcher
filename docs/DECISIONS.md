@@ -1186,3 +1186,19 @@ message` plus a stack trace), with the event's level.
 - **When the connection returns:** saved accounts are refreshed and checked again,
   queued downloads start, and an open new-installation form fetches the version list
   again.
+
+## D-053 — Smaller interface changes: the default player once, no "(demo)", Accounts order, while-playing order
+
+- **Status:** accepted (owner request, 2026-10-18) · **Affects:** _Play as_, every
+  label of a no-token profile, the Accounts screen, Settings → General
+- _Play as_ lists the default player once, as "Default: <name>"; the same profile is
+  not repeated below it. An installation assigned to the profile that is the default
+  shows as the default.
+- No-token profiles are shown by their name alone, without "(demo)", in every
+  language and everywhere (_Play as_, "Plays as" in the header). Microsoft accounts
+  keep "(Microsoft)", which tells a signed-in account from a profile with the same
+  name. What a no-token profile plays is explained on the Accounts screen.
+- The Accounts screen shows **Profiles without an account** first, then **Microsoft
+  accounts**.
+- _While a game is running_ lists: close the launcher window and reopen it after the
+  game; close the launcher once the game window opens; keep the launcher window open.

@@ -104,7 +104,7 @@
       "pendingSignOut": "{name}: the saved sign-in could not be removed from this computer yet.",
       "retryRemove": "Try removing again",
       "microsoftLabel": "{name} (Microsoft)",
-      "notokenLabel": "{name} (demo)",
+      "notokenLabel": "{name}",
       "playAs": "Play as",
       "playAsDefault": "Default: {name}",
       "chipLabel": "Plays as"
