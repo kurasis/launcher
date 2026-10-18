@@ -278,7 +278,7 @@
         "java": "Which Java runtimes the launcher downloads for new installations.",
         "defaults": "Memory and window size given to each new installation.",
         "network": "Metered connections and the traffic the launcher downloads.",
-        "installations": "Memory, window size and Java of an existing installation."
+        "installations": "Memory, window size, mod loader version and Java of an existing installation."
       },
       "javaProvider": "Java runtime source",
       "javaProviders": {

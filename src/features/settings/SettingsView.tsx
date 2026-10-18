@@ -185,7 +185,7 @@ function InstallationsSettings({
       <InstallationForm key={instance.id} instance={instance} memory={snapshot.memory} />
       {instance.loader !== null && (
         <InstanceLoaderForm
-          key={`loader-${instance.id}-${instance.loader.version}`}
+          key={`loader-${instance.id}`}
           instance={instance}
           loader={instance.loader}
           queued={snapshot.queue.some((q) => q.instanceId === instance.id)}
