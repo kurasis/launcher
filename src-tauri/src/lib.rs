@@ -338,7 +338,19 @@ fn setup(app: &mut tauri::App) -> Result<(), Box<dyn std::error::Error>> {
         });
     }
     app.manage(commands::Installer(installer));
+    // Counted traffic is written every few seconds (D-051).
+    if let Some(root) = state.data_root() {
+        tauri::async_runtime::spawn(async move {
+            loop {
+                tokio::time::sleep(std::time::Duration::from_secs(5)).await;
+                let root = root.clone();
+                let _ = tauri::async_runtime::spawn_blocking(move || traffic::flush(&root)).await;
+            }
+        });
+    }
+    app.manage(state);
     // Crash reports the player sends, and statistics they allowed (D-061).
+    // After AppState is managed: the task below reads it at once.
     let reports = Arc::new(reports::Reports::new(Box::new(
         reports::HttpPoster::new(&version).map_err(|e| e.message)?,
     )));
@@ -379,17 +391,6 @@ fn setup(app: &mut tauri::App) -> Result<(), Box<dyn std::error::Error>> {
             }
         });
     }
-    // Counted traffic is written every few seconds (D-051).
-    if let Some(root) = state.data_root() {
-        tauri::async_runtime::spawn(async move {
-            loop {
-                tokio::time::sleep(std::time::Duration::from_secs(5)).await;
-                let root = root.clone();
-                let _ = tauri::async_runtime::spawn_blocking(move || traffic::flush(&root)).await;
-            }
-        });
-    }
-    app.manage(state);
     let auth = Arc::new(create_auth_service(app.handle())?);
     app.manage(Arc::clone(&auth));
     let launcher = source.map(|source| {
