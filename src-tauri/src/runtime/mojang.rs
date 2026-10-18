@@ -290,8 +290,8 @@ impl Mojang {
     }
 
     async fn fetch(&self, url: &Url, max: usize, what: &str) -> LauncherResult<Vec<u8>> {
-        let request = self.client.get(url)?.header("Accept", "application/json");
-        let (status, _, body) = self.client.get_bounded(request, max).await?;
+        let json = |r: reqwest::RequestBuilder| r.header("Accept", "application/json");
+        let (status, _, body) = self.client.fetch_bounded(url, json, max).await?;
         if status.as_u16() != 200 {
             return Err(status_error(status, what));
         }

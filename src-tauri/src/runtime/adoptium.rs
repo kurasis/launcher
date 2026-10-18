@@ -202,8 +202,8 @@ impl Adoptium {
     ) -> LauncherResult<Option<RuntimePackage>> {
         let url = Url::parse(&query_url(req, image))
             .map_err(|_| LauncherError::internal("Invalid runtime query."))?;
-        let request = self.client.get(&url)?.header("Accept", "application/json");
-        let (status, _, body) = self.client.get_bounded(request, MAX_API_BYTES).await?;
+        let json = |r: reqwest::RequestBuilder| r.header("Accept", "application/json");
+        let (status, _, body) = self.client.fetch_bounded(&url, json, MAX_API_BYTES).await?;
         match status.as_u16() {
             200 => select(&body, req, image),
             // The API answers 404 when nothing matches the filters.

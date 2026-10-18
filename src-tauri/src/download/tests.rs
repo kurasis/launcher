@@ -769,3 +769,146 @@ fn assets_show_their_logical_name_in_progress() {
         None
     );
 }
+
+// ------------------------------------------------------------ mirror (D-062)
+
+impl Fixture {
+    /// Routing with the mirror on the fixture server under `/mirror/`.
+    fn routing(&self, mode: crate::mirror::DownloadSource) -> Arc<crate::mirror::Routing> {
+        let routing = crate::mirror::Routing::new(self.server.url("/mirror/").as_str());
+        routing.set_mode(mode);
+        Arc::new(routing)
+    }
+
+    async fn run_with(
+        &self,
+        routing: &Arc<crate::mirror::Routing>,
+        requests: Vec<DownloadRequest>,
+    ) -> LauncherResult<DownloadReport> {
+        Executor::new(
+            HttpTransport::loopback_with(Arc::clone(routing)),
+            self.root.clone(),
+            fast_config(),
+        )
+        .run(Uuid::new_v4(), requests, &CancelToken::new(), &NoProgress)
+        .await
+    }
+}
+
+/// The mirror's copy of a fixture path.
+fn copy(path: &str) -> String {
+    format!("/mirror/127.0.0.1{path}")
+}
+
+#[tokio::test]
+async fn an_unanswering_origin_hands_the_file_to_the_mirror() {
+    use crate::mirror::{DownloadSource, Route};
+    let f = Fixture::new().await;
+    let body = content(1, 40_000);
+    f.server.route("/down.jar", |_| Reply::Status(503, vec![]));
+    f.server.serve(&copy("/down.jar"), &body);
+    let routing = f.routing(DownloadSource::Automatic);
+    let request = request(&f.server, "/down.jar", &body);
+    f.run_with(&routing, vec![request.clone()]).await.unwrap();
+    assert_eq!(std::fs::read(f.file(&request)).unwrap(), body);
+    assert_eq!(f.server.hits("/down.jar"), 2, "two tries at the origin");
+    assert_eq!(f.server.hits(&copy("/down.jar")), 1);
+    // A second failing file marks the host down: the next goes to the mirror first.
+    let other = content(2, 1000);
+    f.server.route("/down2.jar", |_| Reply::Status(503, vec![]));
+    f.server.serve(&copy("/down2.jar"), &other);
+    f.run_with(
+        &routing,
+        vec![request_at(&f.server, "/down2.jar", &other, "b")],
+    )
+    .await
+    .unwrap();
+    assert_eq!(routing.first("127.0.0.1"), Route::Mirror);
+    assert_eq!(routing.mirrored(), ["127.0.0.1"]);
+}
+
+fn request_at(server: &Server, path: &str, body: &[u8], name: &str) -> DownloadRequest {
+    DownloadRequest {
+        path: format!("shared/libraries/{name}/artifact.jar"),
+        ..request(server, path, body)
+    }
+}
+
+#[tokio::test]
+async fn deleted_or_corrupt_files_come_from_the_mirror() {
+    use crate::mirror::DownloadSource;
+    let f = Fixture::new().await;
+    let body = content(3, 5000);
+    let good = content(6, 5000);
+    // Deleted at the origin.
+    f.server.serve(&copy("/gone.jar"), &body);
+    // Corrupt at the origin.
+    let mut bad = good.clone();
+    bad[10] ^= 0xff;
+    f.server.serve("/bad.jar", &bad);
+    f.server.serve(&copy("/bad.jar"), &good);
+    let routing = f.routing(DownloadSource::Automatic);
+    let gone = request_at(&f.server, "/gone.jar", &body, "gone");
+    let corrupt = request_at(&f.server, "/bad.jar", &good, "bad");
+    f.run_with(&routing, vec![gone.clone(), corrupt.clone()])
+        .await
+        .unwrap();
+    assert_eq!(std::fs::read(f.file(&gone)).unwrap(), body);
+    assert_eq!(std::fs::read(f.file(&corrupt)).unwrap(), good);
+    assert_eq!(
+        f.server.hits("/bad.jar"),
+        1,
+        "no second try of a corrupt origin"
+    );
+}
+
+#[tokio::test]
+async fn mirror_first_falls_back_to_the_origin_and_origin_only_never_asks_the_mirror() {
+    use crate::mirror::DownloadSource;
+    let f = Fixture::new().await;
+    let body = content(4, 3000);
+    f.server.serve("/a.jar", &body);
+    f.server
+        .route(&copy("/a.jar"), |_| Reply::Status(502, vec![]));
+    let routing = f.routing(DownloadSource::MirrorFirst);
+    let a = request_at(&f.server, "/a.jar", &body, "a");
+    f.run_with(&routing, vec![a.clone()]).await.unwrap();
+    assert!(f.server.hits(&copy("/a.jar")) >= 1);
+    assert_eq!(f.server.hits("/a.jar"), 1);
+
+    let routing = f.routing(DownloadSource::OriginOnly);
+    f.server.serve(&copy("/b.jar"), &body);
+    let b = request_at(&f.server, "/b.jar", &body, "b");
+    assert!(
+        f.run_with(&routing, vec![b]).await.is_err(),
+        "the origin has no b.jar"
+    );
+    assert_eq!(f.server.hits(&copy("/b.jar")), 0);
+}
+
+#[tokio::test]
+async fn a_file_missing_everywhere_fails_once_each() {
+    use crate::mirror::DownloadSource;
+    let f = Fixture::new().await;
+    let body = content(5, 100);
+    let routing = f.routing(DownloadSource::Automatic);
+    let error = f
+        .run_with(
+            &routing,
+            vec![request_at(&f.server, "/none.jar", &body, "n")],
+        )
+        .await
+        .unwrap_err();
+    assert_eq!(
+        error.code,
+        crate::error::ErrorCode::NetworkError,
+        "{error:?}"
+    );
+    assert_eq!(
+        (
+            f.server.hits("/none.jar"),
+            f.server.hits(&copy("/none.jar"))
+        ),
+        (1, 1)
+    );
+}

@@ -139,6 +139,8 @@ pub struct SettingsPatch {
     pub monthly_limit_mib: Option<u32>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub share_stats: Option<bool>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub download_source: Option<crate::mirror::DownloadSource>,
     /// True replaces the crash report install ID with a new one (D-061).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub new_install_id: Option<bool>,
@@ -161,6 +163,7 @@ pub struct SettingsView {
     pub metered_warn_mib: u32,
     pub monthly_limit_mib: u32,
     pub share_stats: bool,
+    pub download_source: crate::mirror::DownloadSource,
     /// The crash report install ID, once a report made one (D-061).
     pub install_id: Option<String>,
     /// False when settings were written by a newer launcher or could not be read.
@@ -184,6 +187,7 @@ impl SettingsView {
             metered_warn_mib: settings.metered_warn_mib,
             monthly_limit_mib: settings.monthly_limit_mib,
             share_stats: settings.share_stats,
+            download_source: settings.download_source,
             install_id: settings.install_id.clone(),
             writable,
         }
@@ -463,6 +467,8 @@ pub struct AppSnapshot {
     pub queue: Vec<QueuedOperation>,
     /// Whether the internet can be reached (D-052).
     pub network: NetworkStatus,
+    /// Download hosts served by the mirror now (D-062).
+    pub mirrored_hosts: Vec<String>,
     pub current_run: Option<RunSummary>,
     pub last_run: Option<RunSummary>,
     /// True in debug builds, which include the lifecycle test harness.
@@ -589,6 +595,7 @@ pub struct GameStateChanged {
     pub active_operation: Option<ActiveActivity>,
     pub queue: Vec<QueuedOperation>,
     pub network: NetworkStatus,
+    pub mirrored_hosts: Vec<String>,
 }
 
 /// Whether the launcher can reach the internet (D-052).

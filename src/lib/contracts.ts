@@ -260,8 +260,13 @@ export interface SettingsView {
   shareStats: boolean;
   /** Random ID sent with crash reports only; null until the first report. */
   installId: string | null;
+  /** Where downloads come from (D-062). */
+  downloadSource: DownloadSource;
   writable: boolean;
 }
+
+/** Origins with the mirror as fallback, the mirror first, or never the mirror (D-062). */
+export type DownloadSource = 'automatic' | 'mirror_first' | 'origin_only';
 
 /** Who plays: a Microsoft account (Minecraft profile ID) or a no-token profile (D-045). */
 export type ProfileRef = { kind: 'microsoft'; id: string } | { kind: 'notoken'; id: string };
@@ -543,6 +548,8 @@ export interface AppSnapshot {
   queue: QueuedOperation[];
   /** Whether the internet can be reached (D-052). */
   network: NetworkStatus;
+  /** Download hosts served by the mirror now (D-062). */
+  mirroredHosts: string[];
   currentRun: RunSummary | null;
   lastRun: RunSummary | null;
   lifecycleHarnessAvailable: boolean;
@@ -671,6 +678,7 @@ export interface SettingsPatch {
   shareStats?: boolean;
   /** Replace the install ID with a new random one. */
   newInstallId?: boolean;
+  downloadSource?: DownloadSource;
 }
 
 interface EventEnvelope {
@@ -698,6 +706,7 @@ export interface GameStateChangedEvent extends EventEnvelope {
   activeOperation: ActiveActivity | null;
   queue: QueuedOperation[];
   network: NetworkStatus;
+  mirroredHosts: string[];
 }
 
 /** Whether the launcher can reach the internet; `unknown` until the first check. */

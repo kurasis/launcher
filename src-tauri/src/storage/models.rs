@@ -143,6 +143,10 @@ pub struct Settings {
     /// default.
     #[serde(default)]
     pub share_stats: bool,
+    /// Where downloads come from: origins, the mirror as fallback, or the
+    /// mirror first (D-062).
+    #[serde(default)]
+    pub download_source: crate::mirror::DownloadSource,
 }
 
 fn default_metered_warn_mib() -> u32 {
@@ -172,6 +176,7 @@ impl Default for Settings {
             default_fullscreen: false,
             install_id: None,
             share_stats: false,
+            download_source: crate::mirror::DownloadSource::Automatic,
         }
     }
 }

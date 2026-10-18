@@ -11,6 +11,7 @@ use chrono::{DateTime, Utc};
 use url::Url;
 
 use crate::error::{LauncherError, LauncherResult};
+use crate::mirror::{Route, Routing};
 use crate::net::{self, PublicClient, SourcePolicy};
 
 /// Why one download attempt failed, which decides whether it is retried.
@@ -23,7 +24,11 @@ pub enum Failure {
     },
     /// The received bytes did not match the expected size or digest.
     Integrity(LauncherError),
-    /// Retrying cannot help (policy violation, 4xx, local storage failure).
+    /// The source answered 404 or 410: the mirror may still have it (D-062).
+    Missing(LauncherError),
+    /// The origin is very slow; the mirror may be faster (D-062).
+    Slow(LauncherError),
+    /// Retrying cannot help (policy violation, other 4xx, local storage failure).
     Fatal(LauncherError),
     Cancelled,
 }
@@ -47,6 +52,7 @@ enum Routes {
 #[derive(Clone)]
 pub struct HttpTransport {
     routes: Arc<Routes>,
+    routing: Arc<Routing>,
 }
 
 #[cfg(test)]
@@ -68,13 +74,28 @@ impl HttpTransport {
         }
         Ok(Self {
             routes: Arc::new(Routes::Public(clients)),
+            routing: crate::mirror::shared(),
         })
+    }
+
+    /// Where downloads go first and how failures move them (D-062).
+    pub fn routing(&self) -> &Arc<Routing> {
+        &self.routing
     }
 
     /// A client for the local fixture server: plain HTTP, `127.0.0.1` only, the
     /// same redirect rules as production with the loopback host as the allowlist.
+    /// Without the mirror, as before D-062.
     #[cfg(test)]
     pub fn loopback() -> Self {
+        let routing = Routing::new("http://127.0.0.1/");
+        routing.set_mode(crate::mirror::DownloadSource::OriginOnly);
+        Self::loopback_with(Arc::new(routing))
+    }
+
+    /// With a mirror on the fixture server (`routing`'s base).
+    #[cfg(test)]
+    pub fn loopback_with(routing: Arc<Routing>) -> Self {
         let client = reqwest::Client::builder()
             .no_proxy()
             .redirect(net::redirect_policy(is_loopback))
@@ -83,30 +104,45 @@ impl HttpTransport {
             .expect("loopback client");
         Self {
             routes: Arc::new(Routes::Loopback(client)),
+            routing,
         }
     }
 
-    /// Sends the request and classifies anything but `200 OK`.
+    /// Sends the request to the origin or its mirror copy and classifies
+    /// anything but `200 OK`.
     pub async fn open(
         &self,
         source: SourcePolicy,
         url: &Url,
+        route: Route,
     ) -> Result<reqwest::Response, Failure> {
         let request = match &*self.routes {
-            Routes::Public(clients) => clients
-                .get(&source)
-                .ok_or_else(|| Failure::Fatal(LauncherError::internal("No client for source.")))?
-                .get(url)
-                .map_err(Failure::Fatal)?,
+            Routes::Public(clients) => {
+                let client = clients.get(&source).ok_or_else(|| {
+                    Failure::Fatal(LauncherError::internal("No client for source."))
+                })?;
+                match route {
+                    Route::Origin => client.get(url),
+                    Route::Mirror => client.mirror_get(url),
+                }
+                .map_err(Failure::Fatal)?
+            }
             #[cfg(test)]
             Routes::Loopback(client) => {
-                if !is_loopback(url) {
+                let url = match route {
+                    Route::Origin => url.clone(),
+                    Route::Mirror => self
+                        .routing
+                        .mirror_url(url)
+                        .ok_or_else(|| Failure::Fatal(LauncherError::internal("No mirror URL.")))?,
+                };
+                if !is_loopback(&url) {
                     return Err(Failure::Fatal(LauncherError::new(
                         crate::error::ErrorCode::NetworkError,
                         "Untrusted test URL.",
                     )));
                 }
-                client.get(url.clone())
+                client.get(url)
             }
         };
         let response = request.send().await.map_err(|e| classify(&e))?;
@@ -122,6 +158,7 @@ impl HttpTransport {
         let error = net::status_error(status, "a game file");
         Err(match status.as_u16() {
             408 | 429 | 500 | 502 | 503 | 504 => Failure::Transient { error, retry_after },
+            404 | 410 => Failure::Missing(error),
             _ => Failure::Fatal(error),
         })
     }
@@ -186,7 +223,9 @@ mod tests {
             ),
             (SourcePolicy::MojangArtifacts, "https://127.0.0.1/x"),
         ] {
-            let result = transport.open(source, &Url::parse(url).unwrap()).await;
+            let result = transport
+                .open(source, &Url::parse(url).unwrap(), Route::Origin)
+                .await;
             assert!(matches!(result, Err(Failure::Fatal(_))), "{url}");
         }
     }

@@ -35,6 +35,7 @@ use uuid::Uuid;
 
 use crate::error::{ErrorCode, LauncherError, LauncherResult};
 use crate::install::plan::PlannedArtifact;
+use crate::mirror::Route;
 use crate::net::SourcePolicy;
 use crate::storage::models::{ArtifactRole, HashAlgorithm};
 use crate::storage::paths::{DataRoot, Sha1, Sha256, is_within};
@@ -663,13 +664,30 @@ impl Worker {
         };
         let mut transient = 0u32;
         let mut integrity_retried = false;
+        // Where this file comes from (D-062): the origin or the mirror, and
+        // whether each was tried, so a failing one hands over to the other once.
+        let routing = Arc::clone(self.transport.routing());
+        let host = request.url.host_str().unwrap_or_default().to_owned();
+        let mut route = routing.first(&host);
+        let (mut origin_tried, mut mirror_tried) = (false, false);
+        let mut origin_unanswered = 0u32;
         loop {
             if self.stop.is_cancelled() {
                 return WorkerResult::Cancelled;
             }
             self.counters.attempts.fetch_add(1, Ordering::Relaxed);
-            let failure = match self.attempt(&request, &destination, &mut credit).await {
+            match route {
+                Route::Origin => origin_tried = true,
+                Route::Mirror => mirror_tried = true,
+            }
+            let failure = match self
+                .attempt(&request, &destination, &mut credit, route)
+                .await
+            {
                 Ok(()) => {
+                    if route == Route::Origin {
+                        routing.origin_worked(&host);
+                    }
                     self.counters.verified.fetch_add(1, Ordering::Relaxed);
                     self.counters
                         .downloaded_files
@@ -681,34 +699,66 @@ impl Worker {
                 }
                 Err(failure) => failure,
             };
-            let delay = match failure {
+            // The other source, if it is allowed and was not tried yet.
+            let other = match route {
+                Route::Origin if routing.mirror_allowed() && !mirror_tried => Some(Route::Mirror),
+                Route::Mirror if !origin_tried => Some(Route::Origin),
+                _ => None,
+            };
+            // `Some(to)`: go to the other source at once; `None`: wait and retry.
+            let (switch, delay) = match failure {
                 Failure::Cancelled => return WorkerResult::Cancelled,
                 Failure::Fatal(error) => return WorkerResult::Failed(error),
+                Failure::Missing(error) | Failure::Slow(error) => match other {
+                    Some(to) => (Some(to), Duration::ZERO),
+                    None => return WorkerResult::Failed(error),
+                },
                 Failure::Integrity(error) => {
-                    if integrity_retried {
+                    if let Some(to) = other.filter(|_| route == Route::Origin) {
+                        (Some(to), Duration::ZERO)
+                    } else if integrity_retried {
                         return WorkerResult::Failed(error);
+                    } else {
+                        integrity_retried = true;
+                        (None, Duration::ZERO)
                     }
-                    integrity_retried = true;
-                    Duration::ZERO
                 }
                 Failure::Transient { error, retry_after } => {
-                    if transient >= self.config.max_retries {
-                        return WorkerResult::Failed(error);
+                    if route == Route::Origin {
+                        origin_unanswered += 1;
                     }
-                    let delay = match retry_after {
-                        Some(wait) if wait > self.config.max_retry_after => {
-                            return WorkerResult::Failed(error.with_detail(
-                                "retryAfterSeconds",
-                                i64::try_from(wait.as_secs()).unwrap_or(i64::MAX),
-                            ));
-                        }
-                        Some(wait) => wait,
-                        None => backoff(self.config.backoff_base, transient),
-                    };
-                    transient += 1;
-                    delay
+                    let origin_done = route == Route::Origin
+                        && routing.mirror_allowed()
+                        && origin_unanswered >= crate::mirror::ORIGIN_ATTEMPTS;
+                    if let Some(to) =
+                        other.filter(|_| origin_done || transient >= self.config.max_retries)
+                    {
+                        (Some(to), Duration::ZERO)
+                    } else if transient >= self.config.max_retries {
+                        return WorkerResult::Failed(error);
+                    } else {
+                        let delay = match retry_after {
+                            Some(wait) if wait > self.config.max_retry_after => {
+                                return WorkerResult::Failed(error.with_detail(
+                                    "retryAfterSeconds",
+                                    i64::try_from(wait.as_secs()).unwrap_or(i64::MAX),
+                                ));
+                            }
+                            Some(wait) => wait,
+                            None => backoff(self.config.backoff_base, transient),
+                        };
+                        transient += 1;
+                        (None, delay)
+                    }
                 }
             };
+            if let Some(to) = switch {
+                if route == Route::Origin {
+                    routing.origin_failed(&host);
+                }
+                route = to;
+                transient = 0;
+            }
             self.counters.retries.fetch_add(1, Ordering::Relaxed);
             tokio::select! {
                 () = tokio::time::sleep(delay) => {}
@@ -722,6 +772,7 @@ impl Worker {
         request: &DownloadRequest,
         destination: &Path,
         credit: &mut Credit<'_>,
+        route: Route,
     ) -> Result<(), Failure> {
         let storage = |e: std::io::Error| {
             Failure::Fatal(LauncherError::from_io(&e, "Saving a download failed"))
@@ -733,7 +784,7 @@ impl Worker {
             tokio::fs::create_dir_all(parent).await.map_err(storage)?;
         }
         let mut response = tokio::select! {
-            response = self.transport.open(request.source, &request.url) => response?,
+            response = self.transport.open(request.source, &request.url, route) => response?,
             () = self.stop.cancelled() => return Err(Failure::Cancelled),
         };
         if response
@@ -746,12 +797,21 @@ impl Worker {
         let mut file = tokio::fs::File::create(&part).await.map_err(storage)?;
         let mut hasher = Hasher::new(&request.digest);
         let mut received = 0u64;
+        // A very slow origin hands the file to the mirror (D-062).
+        let watch_slow = route == Route::Origin && self.transport.routing().mirror_allowed();
+        let started = std::time::Instant::now();
+        let wait = if watch_slow {
+            self.config.stall_timeout.min(crate::mirror::SLOW_AFTER)
+        } else {
+            self.config.stall_timeout
+        };
         loop {
             let chunk = tokio::select! {
-                chunk = tokio::time::timeout(self.config.stall_timeout, response.chunk()) => chunk,
+                chunk = tokio::time::timeout(wait, response.chunk()) => chunk,
                 () = self.stop.cancelled() => return Err(Failure::Cancelled),
             };
             let chunk = match chunk {
+                Err(_) if watch_slow => return Err(Failure::Slow(slow())),
                 Err(_) => {
                     return Err(Failure::transient(
                         LauncherError::new(
@@ -776,6 +836,16 @@ impl Worker {
             hasher.update(&chunk);
             file.write_all(&chunk).await.map_err(storage)?;
             credit.reached(received);
+            if watch_slow {
+                let elapsed = started.elapsed();
+                let rate = received.saturating_mul(1000) / (elapsed.as_millis().max(1) as u64);
+                if elapsed >= crate::mirror::SLOW_AFTER
+                    && rate < crate::mirror::SLOW_BYTES_PER_SECOND
+                    && request.size - received > crate::mirror::SLOW_MIN_LEFT
+                {
+                    return Err(Failure::Slow(slow()));
+                }
+            }
         }
         if received < request.size {
             return Err(Failure::transient(
@@ -817,6 +887,14 @@ impl Worker {
         guard.0 = None;
         Ok(())
     }
+}
+
+fn slow() -> LauncherError {
+    LauncherError::new(
+        ErrorCode::NetworkError,
+        "A download source was very slow. Check the internet connection and try again.",
+    )
+    .with_detail("transport", "slow")
 }
 
 fn size_mismatch() -> LauncherError {

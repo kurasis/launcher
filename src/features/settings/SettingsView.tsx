@@ -13,6 +13,7 @@ import { InstanceLoaderForm } from './InstanceLoaderForm';
 import { DataFolderSettings } from './DataFolderSettings';
 import { JavaSettings } from './JavaSettings';
 import { PrivacySettings } from './PrivacySettings';
+import { DownloadSourceSettings } from '../network/DownloadSourceSettings';
 import { NetworkSettings } from '../network/NetworkSettings';
 import { ResetSettings } from './ResetSettings';
 import styles from './SettingsView.module.css';
@@ -73,7 +74,12 @@ export function SettingsView({ snapshot, section, onSection, instanceId }: Setti
             <JavaSettings settings={settings} instances={snapshot.instances} />
           )}
           {section === 'defaults' && <DefaultsForm settings={settings} memory={snapshot.memory} />}
-          {section === 'network' && <NetworkSettings snapshot={snapshot} />}
+          {section === 'network' && (
+            <>
+              <DownloadSourceSettings settings={settings} mirroredHosts={snapshot.mirroredHosts} />
+              <NetworkSettings snapshot={snapshot} />
+            </>
+          )}
           {section === 'privacy' && <PrivacySettings settings={settings} />}
           {section === 'reset' && <ResetSettings busy={snapshot.activeOperation !== null} />}
           {section === 'installations' && (
