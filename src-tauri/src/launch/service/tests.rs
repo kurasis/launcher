@@ -516,6 +516,15 @@ async fn a_crash_is_explained() {
     assert_eq!(diagnosis.kind, CrashKind::OutOfMemory);
     assert_eq!(diagnosis.actions, vec![CrashAction::MemorySettings]);
     assert_eq!(done.signal, None);
+    // Kept with the run's output for the export and a report (D-061).
+    let logs = s.f.root.run_logs(Uuid::parse_str(&run.run_id).unwrap());
+    let kept: serde_json::Value =
+        serde_json::from_slice(&std::fs::read(logs.join("diagnosis.json")).unwrap()).unwrap();
+    assert_eq!(kept["diagnosis"]["kind"], "out_of_memory");
+    assert_eq!(
+        kept["analyzerVersion"],
+        crate::launch::crash::ANALYZER_VERSION
+    );
 }
 
 #[tokio::test(flavor = "multi_thread")]

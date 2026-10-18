@@ -61,6 +61,8 @@ fn main() {
         "stop_game",
         "open_instance_folder",
         "export_diagnostics",
+        "note_shown_error",
+        "report_frontend_error",
         // Registered only in debug builds; release builds have no handler for them.
         "start_lifecycle_test",
         "stop_lifecycle_test",

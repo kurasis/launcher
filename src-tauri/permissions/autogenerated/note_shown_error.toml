@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-note-shown-error"
+description = "Enables the note_shown_error command without any pre-configured scope."
+commands.allow = ["note_shown_error"]
+
+[[permission]]
+identifier = "deny-note-shown-error"
+description = "Denies the note_shown_error command without any pre-configured scope."
+commands.deny = ["note_shown_error"]

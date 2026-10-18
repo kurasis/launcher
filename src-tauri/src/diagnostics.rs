@@ -31,7 +31,11 @@ Included:\n\
 - summary.json: launcher version, OS, settings, installation versions and health,\n\
   recent operation and run results, storage notices, account state (no profile data).\n\
 - jobs.json: install and repair outcomes (no plans or file lists).\n\
-- runs/<run>/output*.log: launcher-captured game output of the most recent runs.\n\
+- runs/<run>/output*.log: launcher-captured game output of the most recent runs;\n\
+  after a crash also diagnosis.json (the explanation), crash-report.txt and\n\
+  jvm-error.log (redacted copies of the game's crash files).\n\
+- launcher.log: the end of the launcher's own log.\n\
+- launcher-crashes/*.json: the launcher's own failures (errors, unclean exits).\n\
 \n\
 Never included: account records, sign-in tokens, launch argument files, install\n\
 records, worlds, screenshots, options or any other file from game folders.\n\
@@ -224,7 +228,15 @@ pub fn build(
         let mut files: Vec<_> = entries
             .flatten()
             .map(|e| e.file_name().to_string_lossy().into_owned())
-            .filter(|n| n.starts_with("output") && n.ends_with(".log"))
+            .filter(|n| {
+                (n.starts_with("output") && n.ends_with(".log"))
+                    || [
+                        crate::launch::crash::DIAGNOSIS_FILE,
+                        crate::launch::crash::REPORT_COPY,
+                        crate::launch::crash::JVM_ERROR_COPY,
+                    ]
+                    .contains(&n.as_str())
+            })
             .collect();
         files.sort();
         for name in files {
@@ -235,6 +247,21 @@ pub fn build(
             let text = sanitize(&String::from_utf8_lossy(tail), home, data_root);
             add(&format!("runs/{run_name}/{name}"), text.as_bytes())?;
         }
+    }
+    let logs = data_root.join("logs");
+    if let Ok(bytes) = std::fs::read(logs.join(crate::journal::LOG_FILE)) {
+        let tail = &bytes[bytes.len().saturating_sub(MAX_LOG_BYTES)..];
+        let text = sanitize(&String::from_utf8_lossy(tail), home, data_root);
+        add("launcher.log", text.as_bytes())?;
+    }
+    for failure in crate::journal::failures(&logs) {
+        let value = serde_json::to_value(&failure).unwrap_or_default();
+        let name = format!(
+            "launcher-crashes/{}-{}.json",
+            failure.at.format("%Y%m%dT%H%M%S"),
+            crate::console::name(&failure.kind)
+        );
+        add(&name, &pretty(&value))?;
     }
     let cursor = zip.finish().map_err(failed)?;
     Ok(cursor.into_inner())
@@ -290,21 +317,50 @@ mod tests {
         )
         .unwrap();
         std::fs::write(logs.join("jvm.args"), b"--secret").unwrap();
+        std::fs::write(logs.join("diagnosis.json"), b"{\"kind\":\"out_of_memory\"}").unwrap();
+        // The launcher's own log and a failure record (D-061).
+        let launcher_logs = root.path().join("logs");
+        std::fs::write(
+            launcher_logs.join("launcher.log"),
+            b"INFO --accessToken eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiIxMjM0In0.sig\n",
+        )
+        .unwrap();
+        crate::journal::record(
+            &launcher_logs,
+            &crate::journal::Failure::new(crate::journal::FailureKind::Panic, "0.1.0", "boom"),
+        )
+        .unwrap();
         let bytes = build(&state, &root, Some(&run.to_string()), None).unwrap();
         let mut archive = zip::ZipArchive::new(Cursor::new(bytes)).unwrap();
         let mut names: Vec<String> = (0..archive.len())
             .map(|i| archive.by_index(i).unwrap().name().to_owned())
             .collect();
         names.sort();
+        let failure = names
+            .iter()
+            .find(|n| n.starts_with("launcher-crashes/"))
+            .cloned()
+            .expect("the failure record");
+        assert!(failure.ends_with("-panic.json"), "{failure}");
         assert_eq!(
             names,
             [
                 "README.txt".to_owned(),
                 "jobs.json".to_owned(),
+                failure,
+                "launcher.log".to_owned(),
+                format!("runs/{run}/diagnosis.json"),
                 format!("runs/{run}/output.log"),
                 "summary.json".to_owned(),
             ]
         );
+        let mut launcher = String::new();
+        archive
+            .by_name("launcher.log")
+            .unwrap()
+            .read_to_string(&mut launcher)
+            .unwrap();
+        assert!(!launcher.contains("eyJ"), "{launcher}");
         let mut log = String::new();
         archive
             .by_name(&format!("runs/{run}/output.log"))

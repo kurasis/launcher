@@ -1,7 +1,7 @@
 // The single typed entry point for Tauri IPC. UI code must not call `invoke` or
 // `listen` directly, so every command name, payload shape and event subscription is
 // declared in one place.
-import { invoke } from '@tauri-apps/api/core';
+import { invoke as tauriInvoke } from '@tauri-apps/api/core';
 import { listen, type UnlistenFn } from '@tauri-apps/api/event';
 import { localizeError } from './strings';
 import { strings } from './strings';
@@ -222,6 +222,33 @@ export const ipc = {
   stopLifecycleTest: (runId: string): Promise<boolean> =>
     invoke<boolean>('stop_lifecycle_test', { runId }),
 };
+
+/** Commands whose failures are not noted again (they are the noting). */
+const UNNOTED = new Set(['note_shown_error', 'report_frontend_error']);
+
+/**
+ * Calls a command; a failure's code and diagnostic ID also go to the
+ * launcher log (D-061), so a report shows what the player saw.
+ */
+function invoke<T>(command: string, args?: Record<string, unknown>): Promise<T> {
+  return tauriInvoke<T>(command, args).catch((error: unknown) => {
+    if (!UNNOTED.has(command) && isLauncherError(error)) {
+      void tauriInvoke('note_shown_error', {
+        command,
+        code: error.code,
+        diagnosticId: error.diagnosticId,
+      }).catch(() => undefined);
+    }
+    throw error;
+  });
+}
+
+/** Records an error in the window's code in the launcher's failure records. */
+export function reportFrontendError(message: string, stack?: string): void {
+  void tauriInvoke('report_frontend_error', { message, stack: stack ?? null }).catch(
+    () => undefined,
+  );
+}
 
 /** True when a rejected IPC value is the backend's typed error envelope. */
 export function isLauncherError(error: unknown): error is LauncherError {

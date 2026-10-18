@@ -861,6 +861,7 @@ impl LaunchService {
         let finish_root = root.clone();
         let stop_requested = Arc::clone(&self.stop_requested);
         let crash_redactor = Redactor::new(secrets);
+        let crash_logs = logs_dir.clone();
         let game_dir = root.game_dir(instance_id);
         let spawned_at = std::time::SystemTime::now();
         let spawned = child::spawn(
@@ -883,7 +884,7 @@ impl LaunchService {
                         instance_id,
                         (exit, asked),
                         &lines,
-                        &game_dir,
+                        (&game_dir, &crash_logs),
                         spawned_at,
                         &crash_redactor,
                     )
@@ -979,7 +980,7 @@ fn explain(
     instance_id: InstanceId,
     (exit, console_question): (super::crash::ExitInfo, bool),
     output: &[String],
-    game_dir: &std::path::Path,
+    (game_dir, logs_dir): (&std::path::Path, &std::path::Path),
     spawned_at: std::time::SystemTime,
     redactor: &Redactor,
 ) -> Option<super::crash::CrashDiagnosis> {
@@ -988,7 +989,7 @@ fn explain(
     fn as_file(file: &Option<(String, String)>) -> Option<RunFile<'_>> {
         file.as_ref().map(|(name, text)| RunFile { name, text })
     }
-    crash::diagnose(&CrashInput {
+    let diagnosis = crash::diagnose(&CrashInput {
         exit,
         output,
         crash_report: as_file(&files.crash_report),
@@ -996,7 +997,26 @@ fn explain(
         max_heap_mib: state.instance(instance_id).map_or(0, |i| i.max_heap_mib),
         recommended_heap_mib: state.recommend_memory_for(instance_id).ok().map(|r| r.mib),
         console_question,
-    })
+    });
+    // Kept with the run's output for the export and a report (D-061).
+    if let Some(diagnosis) = &diagnosis {
+        let record = serde_json::json!({
+            "analyzerVersion": crash::ANALYZER_VERSION,
+            "diagnosis": diagnosis,
+        });
+        if let Ok(json) = serde_json::to_vec_pretty(&record) {
+            let _ = crate::storage::atomic::write(&logs_dir.join(crash::DIAGNOSIS_FILE), &json);
+        }
+        for (file, name) in [
+            (&files.crash_report, crash::REPORT_COPY),
+            (&files.jvm_error, crash::JVM_ERROR_COPY),
+        ] {
+            if let Some((_, text)) = file {
+                let _ = crate::storage::atomic::write(&logs_dir.join(name), text.as_bytes());
+            }
+        }
+    }
+    diagnosis
 }
 
 #[cfg(test)]

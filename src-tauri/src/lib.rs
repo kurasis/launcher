@@ -17,6 +17,7 @@ pub mod error;
 pub mod external;
 pub mod gallery;
 pub mod install;
+pub mod journal;
 pub mod launch;
 pub mod lifecycle;
 pub mod loader;
@@ -282,6 +283,21 @@ fn setup(app: &mut tauri::App) -> Result<(), Box<dyn std::error::Error>> {
         Box::new(TauriSink(handle)),
     );
     let version = app.package_info().version.to_string();
+    // The launcher's own log and failure records (D-061).
+    if let Some(root) = state.data_root() {
+        let logs = root.path().join("logs");
+        if journal::begin(&logs, &version).is_some() {
+            state
+                .console()
+                .warn("The launcher did not close normally last time; a record was kept");
+        }
+        state.console().attach_file(journal::LogFile::open(&logs));
+        state.console().info(format!(
+            "Launcher {version} started ({} {})",
+            std::env::consts::OS,
+            std::env::consts::ARCH
+        ));
+    }
     let metadata = match state.data_root() {
         Some(root) => Some(Arc::new(catalog::source::MetadataService::new(
             net::PublicClient::new(
@@ -403,6 +419,7 @@ fn gallery_response<R: tauri::Runtime>(
 
 /// Builds and runs the Tauri application.
 pub fn run() {
+    journal::install_panic_hook();
     let app = tauri::Builder::default()
         // Must be the first plugin: a second launch hands over to the running
         // supervisor and exits before any state or window is created. The DATA_ROOT
@@ -472,6 +489,8 @@ pub fn run() {
         RunEvent::Exit => {
             if let Some(root) = handle.state::<AppState>().data_root() {
                 traffic::flush(&root);
+                handle.state::<AppState>().console().info("Launcher closed");
+                journal::end(&root.path().join("logs"));
             }
         }
         _ => {}
@@ -534,6 +553,8 @@ fn handlers<R: tauri::Runtime>() -> impl Fn(tauri::ipc::Invoke<R>) -> bool + Sen
         commands::stop_game,
         commands::open_instance_folder,
         commands::export_diagnostics,
+        commands::note_shown_error,
+        commands::report_frontend_error,
         commands::start_lifecycle_test,
         commands::stop_lifecycle_test,
     ]
@@ -596,5 +617,7 @@ fn handlers<R: tauri::Runtime>() -> impl Fn(tauri::ipc::Invoke<R>) -> bool + Sen
         commands::stop_game,
         commands::open_instance_folder,
         commands::export_diagnostics,
+        commands::note_shown_error,
+        commands::report_frontend_error,
     ]
 }

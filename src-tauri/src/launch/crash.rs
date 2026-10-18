@@ -20,6 +20,14 @@ use serde::{Deserialize, Serialize};
 
 pub mod files;
 
+/// Bumped when the rules change, so reports and statistics say which rules
+/// explained a crash (D-061).
+pub const ANALYZER_VERSION: u32 = 2;
+/// Kept in a run's log folder after a crash (D-061).
+pub const DIAGNOSIS_FILE: &str = "diagnosis.json";
+pub const REPORT_COPY: &str = "crash-report.txt";
+pub const JVM_ERROR_COPY: &str = "jvm-error.log";
+
 /// Known causes, most specific first in [`diagnose`].
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]

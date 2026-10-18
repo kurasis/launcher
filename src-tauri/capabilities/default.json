@@ -58,6 +58,8 @@
     "allow-stop-game",
     "allow-open-instance-folder",
     "allow-export-diagnostics",
+    "allow-note-shown-error",
+    "allow-report-frontend-error",
     "allow-start-lifecycle-test",
     "allow-stop-lifecycle-test"
   ]

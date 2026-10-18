@@ -1237,3 +1237,41 @@ pub async fn pick_data_folder<R: Runtime>(app: AppHandle<R>) -> LauncherResult<O
         .and_then(|p| p.into_path().ok())
         .and_then(|p| p.to_str().map(str::to_owned)))
 }
+
+/// An error in the window's code (D-061): written to the console and kept in
+/// the launcher's failure records.
+#[tauri::command(async)]
+pub fn report_frontend_error(state: State<'_, AppState>, message: String, stack: Option<String>) {
+    let first: String = message
+        .lines()
+        .next()
+        .unwrap_or_default()
+        .chars()
+        .take(300)
+        .collect();
+    state
+        .console()
+        .error(format!("Error in the window: {first}"));
+    crate::journal::frontend_error(&message, stack.as_deref());
+}
+
+/// An error the window showed to the player: its code and diagnostic ID go to
+/// the launcher log, so a report can be matched with what the player saw.
+#[tauri::command(async)]
+pub fn note_shown_error(
+    state: State<'_, AppState>,
+    command: String,
+    code: String,
+    diagnostic_id: String,
+) {
+    let plain = |s: &str| {
+        s.len() <= 64
+            && s.bytes()
+                .all(|b| b.is_ascii_alphanumeric() || matches!(b, b'_' | b'-'))
+    };
+    if plain(&command) && plain(&code) && plain(&diagnostic_id) {
+        state.console().warn(format!(
+            "{command} failed: {code} (diagnostic {diagnostic_id})"
+        ));
+    }
+}
