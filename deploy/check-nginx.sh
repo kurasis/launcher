@@ -1,8 +1,8 @@
 #!/bin/bash
-# Checks the nginx files of the crash service (D-061) the way the server's
-# nginx reads them, in the official nginx image; run by the workflow.
+# Checks the nginx files of our services (D-061, D-062) the way the server's
+# nginx reads them, in the official nginx image; run by the workflows.
 #
-#   bash deploy/crash/check-nginx.sh
+#   bash deploy/check-nginx.sh
 set -euo pipefail
 HERE="$(cd "$(dirname "$0")" && pwd)"
 
@@ -17,11 +17,15 @@ fi
 
 work=$(mktemp -d)
 trap 'rm -rf "$work"' EXIT
-mkdir -p "$work/tls"
+mkdir -p "$work/tls" "$work/lapi"
+# Everything bootstrap.sh puts into /etc/nginx/lapi.
+cp "$HERE"/nginx/* "$HERE"/crash/nginx/* "$HERE"/mirror/nginx/* "$work/lapi/"
 openssl req -x509 -newkey rsa:2048 -nodes -days 1 -subj "/CN=crash.lapi.sh" \
     -keyout "$work/tls/key.pem" -out "$work/tls/cert.pem" 2>/dev/null
-printf 'ssl_certificate /etc/nginx/lapi-tls/cert.pem;\nssl_certificate_key /etc/nginx/lapi-tls/key.pem;\n' \
-    > "$work/tls/crash.lapi.sh.conf"
+for domain in crash.lapi.sh mirror.lapi.sh; do
+    printf 'ssl_certificate /etc/nginx/lapi-tls/cert.pem;\nssl_certificate_key /etc/nginx/lapi-tls/key.pem;\n' \
+        > "$work/tls/$domain.conf"
+done
 cat > "$work/nginx.conf" <<'CONF'
 events {}
 http {
@@ -29,7 +33,7 @@ http {
 }
 CONF
 docker run --rm \
-    -v "$HERE/nginx:/etc/nginx/lapi:ro" \
+    -v "$work/lapi:/etc/nginx/lapi:ro" \
     -v "$work/tls:/etc/nginx/lapi-tls:ro" \
     -v "$work/nginx.conf:/etc/nginx/nginx.conf:ro" \
     nginx:1.28 nginx -t

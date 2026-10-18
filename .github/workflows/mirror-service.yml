@@ -1,0 +1,178 @@
+name: Mirror service
+
+# The download mirror at mirror.lapi.sh (docs/DECISIONS.md D-062): tests, a
+# release build, and a deploy over SSH to /home/www/lapi/mirror. The server
+# needs deploy/bootstrap.sh run as root once, and again when the nginx files
+# change (the deploy warns); the deploy uploads deploy/ to ~/lapi-bootstrap.
+#
+# The disk quota is the repository variable MIRROR_MAX_GB (Settings ->
+# Secrets and variables -> Actions -> Variables; 1000 when unset); a deploy
+# writes it, and the service reads it within a minute. "Run workflow" with
+# task=reports shows the kept files per host, the quota and the free disk.
+
+on:
+  push:
+    branches: [main, claude/download-mirror]
+    paths:
+      - services/mirror/**
+      - deploy/mirror/**
+      - deploy/*.sh
+      - deploy/nginx/**
+      - .github/workflows/mirror-service.yml
+  pull_request:
+    paths:
+      - services/mirror/**
+      - deploy/mirror/**
+      - deploy/*.sh
+      - deploy/nginx/**
+      - .github/workflows/mirror-service.yml
+  workflow_dispatch:
+    inputs:
+      task:
+        description: deploy, or reports for kept files and disk use
+        type: choice
+        options: [deploy, reports]
+        default: deploy
+
+permissions:
+  contents: read
+
+concurrency:
+  group: mirror-service-${{ github.ref }}
+  cancel-in-progress: false
+
+env:
+  CARGO_TERM_COLOR: always
+  CARGO_INCREMENTAL: 0
+
+jobs:
+  test:
+    name: Test and build
+    if: github.event_name != 'workflow_dispatch' || inputs.task == 'deploy'
+    runs-on: ubuntu-24.04
+    defaults:
+      run:
+        working-directory: services/mirror
+    steps:
+      - uses: actions/checkout@v5
+      - run: rustup show active-toolchain
+      - uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            services/mirror/target
+          key: mirror-${{ hashFiles('services/mirror/Cargo.lock', 'rust-toolchain.toml') }}
+      - run: cargo fmt --check
+      - run: cargo clippy --locked --all-targets -- -D warnings
+      - run: cargo test --locked
+      # Ubuntu 24.04's glibc (2.39) is older than Debian 13's (2.41), so the
+      # binary runs there.
+      - run: cargo build --locked --release
+      - name: Check the nginx files
+        working-directory: ${{ github.workspace }}
+        run: bash deploy/check-nginx.sh
+      - name: Package the release
+        run: |
+          mkdir -p ../../dist-mirror/nginx
+          cp target/release/lapi-mirror ../../dist-mirror/
+          cp ../../deploy/nginx/* ../../deploy/mirror/nginx/* ../../dist-mirror/nginx/
+          tar -czf ../../lapi-mirror.tar.gz -C ../../dist-mirror .
+      - uses: actions/upload-artifact@v4
+        with:
+          name: lapi-mirror
+          path: lapi-mirror.tar.gz
+          retention-days: 14
+
+  deploy:
+    name: Deploy to mirror.lapi.sh
+    needs: test
+    if: >-
+      (github.event_name == 'push' && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/claude/download-mirror'))
+      || (github.event_name == 'workflow_dispatch' && inputs.task == 'deploy')
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/download-artifact@v4
+        with:
+          name: lapi-mirror
+      - name: SSH setup
+        env:
+          SSH_KEY: ${{ secrets.SSH_KEY }}
+          SSH_KNOWN_HOSTS: ${{ secrets.SSH_KNOWN_HOSTS }}
+        run: |
+          install -d -m 700 ~/.ssh
+          printf '%s\n' "$SSH_KEY" > ~/.ssh/id_deploy
+          chmod 600 ~/.ssh/id_deploy
+          printf '%s\n' "$SSH_KNOWN_HOSTS" > ~/.ssh/known_hosts
+      - name: Upload
+        env:
+          TARGET: ${{ secrets.SSH_USER }}@${{ secrets.SSH_HOST }}
+        run: |
+          release=$(git rev-parse --short=12 HEAD)
+          echo "RELEASE=$release" >> "$GITHUB_ENV"
+          scp -i ~/.ssh/id_deploy -o BatchMode=yes lapi-mirror.tar.gz "$TARGET:/tmp/lapi-mirror-$release.tar.gz"
+          # The setup files stay in the deploy user's home for the root step:
+          # sudo bash ~/lapi-bootstrap/bootstrap.sh <user>
+          tar -cz deploy | ssh -i ~/.ssh/id_deploy -o BatchMode=yes "$TARGET" \
+            'rm -rf ~/lapi-bootstrap && mkdir -p ~/lapi-bootstrap && tar -xz -C ~/lapi-bootstrap --strip-components=1'
+      - name: Deploy
+        env:
+          TARGET: ${{ secrets.SSH_USER }}@${{ secrets.SSH_HOST }}
+          QUOTA_GB: ${{ vars.MIRROR_MAX_GB || '1000' }}
+        run: |
+          set +e
+          ssh -i ~/.ssh/id_deploy -o BatchMode=yes "$TARGET" \
+            "bash ~/lapi-bootstrap/deploy.sh mirror $RELEASE /tmp/lapi-mirror-$RELEASE.tar.gz $QUOTA_GB" 2>&1 | tee deploy.log
+          status=${PIPESTATUS[0]}
+          if grep -q NOT_BOOTSTRAPPED deploy.log; then
+            echo "::warning::The server is not set up yet: run 'sudo bash ~/lapi-bootstrap/bootstrap.sh <deploy-user>' on it once, then re-run this workflow."
+            exit 0
+          fi
+          if grep -qE 'NGINX_(PENDING|CHANGED)' deploy.log; then
+            echo "::warning::The nginx files on the server are not these: run 'sudo bash ~/lapi-bootstrap/bootstrap.sh <deploy-user>' on it to apply them."
+          fi
+          exit "$status"
+      - name: Check from outside
+        run: |
+          for i in 1 2 3 4 5 6; do
+            if curl -fsS --max-time 10 https://mirror.lapi.sh/v1/health; then echo; exit 0; fi
+            sleep 5
+          done
+          echo "::warning::https://mirror.lapi.sh/v1/health does not answer through Cloudflare yet"
+      - name: The origin answers only through Cloudflare
+        env:
+          SSH_HOST: ${{ secrets.SSH_HOST }}
+        run: |
+          ip=$(getent ahostsv4 "$SSH_HOST" | awk 'NR==1 {print $1}')
+          if curl -sk --max-time 10 -o /dev/null --resolve "mirror.lapi.sh:443:$ip" https://mirror.lapi.sh/v1/health; then
+            echo "::warning::The server answers mirror.lapi.sh directly, around Cloudflare: apply the nginx files with bootstrap.sh."
+          else
+            echo "Direct requests to the server are refused."
+          fi
+
+  reports:
+    name: Kept files and disk
+    if: github.event_name == 'workflow_dispatch' && inputs.task == 'reports'
+    runs-on: ubuntu-24.04
+    steps:
+      - name: SSH setup
+        env:
+          SSH_KEY: ${{ secrets.SSH_KEY }}
+          SSH_KNOWN_HOSTS: ${{ secrets.SSH_KNOWN_HOSTS }}
+        run: |
+          install -d -m 700 ~/.ssh
+          printf '%s\n' "$SSH_KEY" > ~/.ssh/id_deploy
+          chmod 600 ~/.ssh/id_deploy
+          printf '%s\n' "$SSH_KNOWN_HOSTS" > ~/.ssh/known_hosts
+      # Counts and sizes per mirrored host only: nothing about players.
+      - name: Overview
+        env:
+          TARGET: ${{ secrets.SSH_USER }}@${{ secrets.SSH_HOST }}
+        run: |
+          {
+            echo '### Mirror: kept files per host, quota and free disk'
+            echo '```json'
+            ssh -i ~/.ssh/id_deploy -o BatchMode=yes "$TARGET" \
+              'sudo -n -u lapi-mirror /home/www/lapi/mirror/current/lapi-mirror overview'
+            echo '```'
+          } | tee -a "$GITHUB_STEP_SUMMARY"

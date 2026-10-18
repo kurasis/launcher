@@ -1,0 +1,33 @@
+[package]
+name = "lapi-mirror"
+version = "0.1.0"
+edition = "2024"
+rust-version = "1.97"
+description = "Download mirror for the Sferum launcher (D-062)"
+publish = false
+
+[dependencies]
+axum = { version = "0.8", default-features = false, features = ["http1", "tokio", "json"] }
+tokio = { version = "1", features = ["rt-multi-thread", "macros", "net", "signal", "time", "fs", "sync", "io-util"] }
+tokio-util = { version = "0.7", features = ["io"] }
+reqwest = { version = "0.13.5", default-features = false, features = ["rustls", "stream", "http2"] }
+futures-util = { version = "0.3", default-features = false, features = ["std"] }
+bytes = "1"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+sha2 = "0.10"
+hex = "0.4"
+percent-encoding = "2"
+uuid = { version = "1", features = ["v4"] }
+chrono = { version = "0.4", default-features = false, features = ["clock", "std", "serde"] }
+rustix = { version = "1", features = ["fs"] }
+
+[dev-dependencies]
+tower = { version = "0.5", features = ["util"] }
+tempfile = "3"
+http-body-util = "0.1"
+
+[profile.release]
+lto = "thin"
+codegen-units = 1
+strip = true
