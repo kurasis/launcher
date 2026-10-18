@@ -1659,7 +1659,7 @@ message` plus a stack trace), with the event's level.
 - **Goal.** Players get new versions by themselves, without a crash or a broken
   install on the way; publishing one is uploading a file and running a command.
 - **Owner's choices:** download by itself and install when the launcher closes;
-  a beta channel is prepared but not offered yet; no operating-system code signing
+  a beta channel the player can choose (stage 2); no operating-system code signing
   for now; `.deb` installs are only told about a new version; publishing is
   "upload the release archive, run `lapi-upd publish`".
 
@@ -1691,9 +1691,14 @@ message` plus a stack trace), with the event's level.
 ### On the server
 
 - No service process: nginx serves static files from `/home/www/lapi/upd`:
-  `releases/<version>/` (installers, signatures; kept, cached by Cloudflare) and
-  `channels/<channel>/<target>-<arch>-<bundle>.json` (one manifest per platform and
-  install type, cached one minute). Channels: `stable` now, `beta` prepared.
+  `releases/<version>/` (installers, signatures, and the version's own manifest
+  per installable platform, `<target>-<arch>-<bundle>.json`, for a return to it;
+  kept, cached by Cloudflare) and `channels/<channel>/<target>-<arch>-<bundle>.json`
+  (one manifest per platform and install type, cached one minute).
+- Channels: `stable` and `beta`. Stable takes no pre-release (`1.2.0-beta.1`).
+  Beta is never behind stable: publishing a stable version newer than beta's
+  makes it beta's too (same rollout), and revoking it on stable takes beta back
+  if beta got it from stable. Rollout, pause and resume are per channel.
 - A manifest is Tauri's single-platform format (`version`, `notes`, `pub_date`,
   `url`, `signature`) plus our fields: `rollout` (percent of installs offered the
   version), `mandatory`, `revoked` (versions to leave even for an older one),
@@ -1727,14 +1732,31 @@ message` plus a stack trace), with the event's level.
   (then at the next close), or at once with "Restart now". Before the first start
   of a new version, the settings and installation records are copied to
   `backups/before-<version>/`.
+- **Channel:** Settings → General → Updates → Versions: "Stable" (default) or
+  "Beta: test new versions first". Changing it looks at once. Back to stable, the
+  installed version stays until stable has a newer one (versions only go
+  forward; a revoked one is left as above).
+- **Going back when a new version does not start** (stage 2): before an update
+  installs, the launcher writes `updates/pending.json` (from, to). Each start of
+  the new version counts there, before its settings are read; its first start
+  also copies the settings, accounts and installation records to
+  `backups/before-<version>/`. A start is good when the interface has shown and
+  the launcher stayed up 20 s, or closed normally after showing; then the file
+  goes. After two starts without a good one, the third start downloads the
+  version it came from (`releases/<from>/…json`, signed and checked like any
+  update), puts back the copied records (the older version may not read what the
+  newer one wrote), notes the return in `updates/rolled-back.json` and installs
+  it. That version tells the player once and never takes the failed version
+  again (`skippedVersion` in the settings); a newer one is offered as usual.
+  Offline, the return waits for a start with the internet. Only updates the
+  launcher installed are watched; a failure before our code runs at all (the
+  executable does not open) cannot be caught from inside and needs `revoke`.
 - **Seen by the player:** a header badge "Version X is ready" with what is new (in
   the interface language when the manifest has it) and "Restart now" / "When I
   close the launcher"; after the update, "What's new" once; Settings → General →
   Updates: "Download and install when I close" (default), "Only tell me", "Don't
   check". Errors say what happened and that the next check retries.
-- **Not now:** automatic return to the previous version after repeated start
-  failures (stage 2, from the D-061 unclean-exit records), the beta channel switch,
-  an APT repository, Windows and macOS code signing.
+- **Not now:** an APT repository, Windows and macOS code signing.
 
 ### Publishing a version (owner)
 
@@ -1746,5 +1768,5 @@ archive from the Package workflow, upload it to
 
 1. Signing, manifests, `lapi-upd`, the server; the launcher's check, download,
    install on close, the interface, `.deb` notice, backup before a new version.
-2. Automatic rollback after start failures; the beta channel in Settings.
+2. Automatic rollback after start failures; the beta channel in Settings (done).
 3. APT repository; code signing.

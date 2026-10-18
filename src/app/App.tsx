@@ -88,6 +88,12 @@ export function App() {
   useTheme(snapshot?.settings.theme);
   // A language change (D-038) remounts the screens so every text is read again.
   const lang = useLanguage(snapshot?.settings.language);
+  // Once the interface shows real content, a new version's start counts as
+  // good; one that never gets here is left after a few starts (D-063).
+  const shown = snapshot !== null;
+  useEffect(() => {
+    if (shown) void ipc.interfaceReady().catch(() => undefined);
+  }, [shown]);
   // Ctrl+Shift+L (Cmd+Shift+L on macOS) opens the console window (D-037).
   useEffect(() => {
     const onKey = (event: KeyboardEvent) => {

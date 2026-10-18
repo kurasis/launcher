@@ -1829,6 +1829,20 @@ proxy that was stopped and started to cut and restore the connection.
   without an update, offers "Restart now" or "When I close the launcher",
   downloads on a press, links `.deb` installs, explains a refused signature in
   the interface language, shows "What's new" once, and switches the update mode.
-- **Not tested here:** installing for real on Windows, macOS and AppImage (needs
+- **Stage 2 tests:** every published version keeps its own whole manifest
+  (rollout 100, signature verifying its file; none for `.deb`); stable refuses a
+  pre-release; a stable version reaches beta when beta is behind, an older stable
+  fix leaves a newer beta alone, the final release replaces the beta, and
+  revoking it on stable takes beta back. In the launcher: a new version that
+  never starts well is left on its third start, and the next start tries again
+  if going back failed; a good start ends the watch; a broken or path-like record
+  never sends the launcher anywhere; records are restored from the copy made
+  before the failed version, which a later copy does not replace; a version that
+  did not start is never offered again, not even as the channel's version for a
+  revoked one, while a newer fix is; the interface switches to beta and looks at
+  once, explains staying on the installed version when leaving beta, and tells
+  the player about a return once.
+- **Not tested here:** going back for real (needs two published versions and a
+  broken third); installing for real on Windows, macOS and AppImage (needs
   a signed release from the Package workflow and two versions); this is the
   first check to make after the key is configured.

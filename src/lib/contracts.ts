@@ -264,10 +264,13 @@ export interface SettingsView {
   downloadSource: DownloadSource;
   /** Launcher updates: install on close, only tell, or never check (D-063). */
   updateMode: UpdateMode;
+  /** Stable versions, or beta ones first (D-063). */
+  updateChannel: UpdateChannel;
   writable: boolean;
 }
 
 export type UpdateMode = 'auto' | 'notify' | 'off';
+export type UpdateChannel = 'stable' | 'beta';
 
 /** Where a launcher update stands (D-063). */
 export type UpdatePhase = 'idle' | 'available' | 'downloading' | 'ready' | 'notice' | 'failed';
@@ -288,6 +291,8 @@ export interface UpdateView {
   error: 'network' | 'signature' | 'install' | null;
   /** Notes of the version now running, shown once after an update. */
   whatsNew: { version: string; notes: Record<string, string> } | null;
+  /** The launcher went back to `version`: `failed` did not start. */
+  rolledBack: { failed: string; version: string } | null;
 }
 
 /** Origins with the mirror as fallback, the mirror first, or never the mirror (D-062). */
@@ -707,6 +712,7 @@ export interface SettingsPatch {
   newInstallId?: boolean;
   downloadSource?: DownloadSource;
   updateMode?: UpdateMode;
+  updateChannel?: UpdateChannel;
 }
 
 interface EventEnvelope {

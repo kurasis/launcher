@@ -1662,6 +1662,9 @@ impl AppState {
                 if let Some(mode) = patch.update_mode {
                     settings.update_mode = mode;
                 }
+                if let Some(channel) = patch.update_channel {
+                    settings.update_channel = channel;
+                }
                 if patch.new_install_id == Some(true) {
                     settings.install_id = Some(uuid::Uuid::new_v4().to_string());
                 }

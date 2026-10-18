@@ -9,9 +9,20 @@ import styles from './Updates.module.css';
 
 const t = strings.updates;
 
-/** Once after an update: what the new version brings (D-063). */
+/** Once after an update: what the new version brings, or that the launcher
+ * went back because the new version did not start (D-063). */
 export function WhatsNew({ update }: { update: UpdateView }) {
   const dismiss = useCommand(() => ipc.dismissWhatsNew());
+  if (update.rolledBack !== null) {
+    return (
+      <Notice tone="warning">
+        <p>{t.rolledBack(update.rolledBack)}</p>
+        <Button disabled={dismiss.pending} onClick={() => void dismiss.run()}>
+          {t.gotIt}
+        </Button>
+      </Notice>
+    );
+  }
   if (update.whatsNew === null) return null;
   const notes = notesFor(update.whatsNew.notes);
   return (

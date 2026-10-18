@@ -395,3 +395,106 @@ fn packed_releases_are_signed_for_their_version_and_publish() {
         .is_err()
     );
 }
+
+#[test]
+fn every_version_keeps_a_manifest_to_return_to() {
+    let s = setup();
+    s.archive("0.2.0", REQUIRED, |_, _| {});
+    s.server.publish("0.2.0", &options(5)).unwrap();
+    s.archive("0.3.0", REQUIRED, |_, _| {});
+    s.server.publish("0.3.0", &options(100)).unwrap();
+    let back: serde_json::Value = serde_json::from_slice(
+        &fs::read(s.root.join("releases/0.2.0/windows-x86_64-nsis.json")).unwrap(),
+    )
+    .unwrap();
+    // Whole, whatever the channel's rollout was.
+    assert_eq!(back["version"], "0.2.0");
+    assert_eq!(back["rollout"], 100);
+    assert_eq!(
+        back["url"],
+        "https://upd.example/releases/0.2.0/Launcher_0.2.0_windows-x86_64.nsis"
+    );
+    let bytes = fs::read(
+        s.root
+            .join("releases/0.2.0/Launcher_0.2.0_windows-x86_64.nsis"),
+    )
+    .unwrap();
+    verify_signature(
+        &s.keys.public(),
+        &bytes,
+        back["signature"].as_str().unwrap(),
+        "0.2.0",
+    )
+    .unwrap();
+    // Nothing to return to where the launcher cannot install itself.
+    assert!(!s.root.join("releases/0.2.0/linux-x86_64-deb.json").exists());
+}
+
+#[test]
+fn pre_releases_stay_on_beta_and_beta_is_never_behind_stable() {
+    let s = setup();
+    let beta = |rollout| Options {
+        channel: "beta".into(),
+        ..options(rollout)
+    };
+    s.archive("0.3.0-beta.1", REQUIRED, |_, _| {});
+    assert!(
+        s.server
+            .publish("0.3.0-beta.1", &options(100))
+            .unwrap_err()
+            .contains("--channel beta")
+    );
+    // Stable versions reach beta installs too.
+    s.archive("0.2.0", REQUIRED, |_, _| {});
+    assert!(
+        s.server
+            .publish("0.2.0", &options(20))
+            .unwrap()
+            .contains("beta has it too")
+    );
+    assert_eq!(
+        s.manifest("beta", "darwin-x86_64-app.json")["version"],
+        "0.2.0"
+    );
+    assert_eq!(s.manifest("beta", "darwin-x86_64-app.json")["rollout"], 20);
+
+    s.server.publish("0.3.0-beta.1", &beta(100)).unwrap();
+    assert_eq!(
+        s.manifest("beta", "darwin-x86_64-app.json")["version"],
+        "0.3.0-beta.1"
+    );
+    assert_eq!(
+        s.manifest("stable", "darwin-x86_64-app.json")["version"],
+        "0.2.0"
+    );
+    // A stable fix older than the beta leaves beta alone...
+    s.archive("0.2.1", REQUIRED, |_, _| {});
+    assert!(
+        !s.server
+            .publish("0.2.1", &options(100))
+            .unwrap()
+            .contains("beta")
+    );
+    assert_eq!(
+        s.manifest("beta", "darwin-x86_64-app.json")["version"],
+        "0.3.0-beta.1"
+    );
+    // ...the final release replaces it.
+    s.archive("0.3.0", REQUIRED, |_, _| {});
+    s.server.publish("0.3.0", &options(100)).unwrap();
+    assert_eq!(
+        s.manifest("beta", "darwin-x86_64-app.json")["version"],
+        "0.3.0"
+    );
+
+    // Revoking it on stable takes beta back as well.
+    assert!(
+        s.server
+            .revoke("stable", "0.3.0")
+            .unwrap()
+            .contains("so is beta")
+    );
+    let back = s.manifest("beta", "darwin-x86_64-app.json");
+    assert_eq!(back["version"], "0.2.1");
+    assert_eq!(back["revoked"], json!(["0.3.0"]));
+}

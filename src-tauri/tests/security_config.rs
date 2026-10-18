@@ -199,6 +199,7 @@ fn main_window_capability_grants_only_app_commands() {
             "allow-restart-to-update",
             "allow-dismiss-whats-new",
             "allow-open-update-page",
+            "allow-interface-ready",
             "allow-start-lifecycle-test",
             "allow-stop-lifecycle-test",
         ]

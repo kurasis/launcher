@@ -1129,12 +1129,20 @@ export type Messages = {
       readonly checking: string;
       readonly upToDate: string;
       readonly notConfigured: string;
+      readonly channel: {
+        readonly title: string;
+        readonly stable: string;
+        readonly beta: string;
+        readonly betaHint: string;
+        readonly stableHint: string;
+      };
     };
     readonly errors: {
       readonly network: string;
       readonly signature: string;
       readonly install: string;
     };
+    readonly rolledBack: (values: { failed: string | number; version: string | number }) => string;
   };
   readonly downloads: {
     readonly title: string;

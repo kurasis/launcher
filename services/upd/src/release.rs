@@ -2,7 +2,10 @@
 //!
 //! ```text
 //! <root>/incoming/launcher-<version>-release.tar.gz   uploaded by the admin
-//! <root>/releases/<version>/                          files + release.json
+//! <root>/releases/<version>/                          files + release.json,
+//!                                                     <target>-<bundle>.json
+//!                                                     (this version alone,
+//!                                                     for a return to it)
 //! <root>/channels/<channel>/state.json                current, history, rollout
 //! <root>/channels/<channel>/<target>-<bundle>.json    what launchers read
 //! <root>/download/index.html                          files for manual download
@@ -284,6 +287,31 @@ impl Server {
         Ok(release)
     }
 
+    /// Tauri's manifest of `platform` in `release`, plus our fields.
+    fn manifest(
+        &self,
+        release: &Release,
+        platform: &Platform,
+        state: &Channel,
+    ) -> serde_json::Value {
+        let version = &release.version;
+        let url = format!("{}/releases/{version}/{}", self.base_url, platform.file);
+        let notice_only = NOTICE_ONLY.contains(&platform.bundle.as_str());
+        json!({
+            "version": version,
+            "notes": release.notes.get("en").cloned().unwrap_or_default(),
+            "pub_date": release.pub_date,
+            "url": url,
+            "signature": if notice_only { "" } else { platform.signature.as_str() },
+            "rollout": if state.paused { 0 } else { state.rollout },
+            "mandatory": state.mandatory,
+            "revoked": state.revoked,
+            "notesByLanguage": release.notes,
+            "download": if notice_only { url.clone() } else { format!("{}/download/", self.base_url) },
+            "installable": !notice_only,
+        })
+    }
+
     /// The manifests of a channel from its state, one per platform of the
     /// current release.
     fn write_manifests(&self, channel: &str, state: &Channel) -> Result<(), String> {
@@ -292,28 +320,38 @@ impl Server {
         };
         let release = self.release(current)?;
         let dir = self.channel_dir(channel)?;
-        let page = format!("{}/download/", self.base_url);
         for platform in &release.platforms {
-            let url = format!("{}/releases/{current}/{}", self.base_url, platform.file);
-            let notice_only = NOTICE_ONLY.contains(&platform.bundle.as_str());
-            let manifest = json!({
-                "version": current,
-                "notes": release.notes.get("en").cloned().unwrap_or_default(),
-                "pub_date": release.pub_date,
-                "url": url,
-                "signature": if notice_only { "" } else { platform.signature.as_str() },
-                "rollout": if state.paused { 0 } else { state.rollout },
-                "mandatory": state.mandatory,
-                "revoked": state.revoked,
-                "notesByLanguage": release.notes,
-                "download": if notice_only { url.clone() } else { page.clone() },
-                "installable": !notice_only,
-            });
             let name = format!("{}-{}.json", platform.target, platform.bundle);
             write_atomic(
                 &dir.join(name),
-                &serde_json::to_vec_pretty(&manifest).unwrap_or_default(),
+                &serde_json::to_vec_pretty(&self.manifest(&release, platform, state))
+                    .unwrap_or_default(),
             )?;
+        }
+        Ok(())
+    }
+
+    /// One manifest per installable platform next to a release's files: a
+    /// launcher whose new version does not start returns to the version it
+    /// came from with it, whatever the channels say by then.
+    fn write_version_manifests(&self, dir: &Path, release: &Release) -> Result<(), String> {
+        let whole = Channel {
+            rollout: 100,
+            ..Channel::default()
+        };
+        for platform in release
+            .platforms
+            .iter()
+            .filter(|p| !NOTICE_ONLY.contains(&p.bundle.as_str()))
+        {
+            let path = dir.join(format!("{}-{}.json", platform.target, platform.bundle));
+            if !path.exists() {
+                write_atomic(
+                    &path,
+                    &serde_json::to_vec_pretty(&self.manifest(release, platform, &whole))
+                        .unwrap_or_default(),
+                )?;
+            }
         }
         Ok(())
     }
@@ -347,6 +385,11 @@ impl Server {
 
     pub fn publish(&self, wanted: &str, options: &Options) -> Result<String, String> {
         let new = version(wanted)?;
+        if options.channel == "stable" && !new.pre.is_empty() {
+            return Err(format!(
+                "{wanted} is a pre-release: publish it with --channel beta"
+            ));
+        }
         let mut state = self.load(&options.channel)?;
         if let Some(current) = &state.current
             && version(current)? >= new
@@ -365,7 +408,8 @@ impl Server {
             let temp = self.root.join("releases").join(format!(".{wanted}.tmp"));
             let _ = fs::remove_dir_all(&temp);
             let checked = Self::unpack(&archive, &temp)
-                .and_then(|()| self.check(&temp, wanted, options.partial));
+                .and_then(|()| self.check(&temp, wanted, options.partial))
+                .and_then(|release| self.write_version_manifests(&temp, &release));
             if let Err(e) = checked {
                 let _ = fs::remove_dir_all(&temp);
                 return Err(e);
@@ -373,7 +417,8 @@ impl Server {
             fs::rename(&temp, &destination).map_err(|e| format!("placing the release: {e}"))?;
         } else {
             // Published to another channel before: checked then.
-            self.release(wanted)?;
+            let release = self.release(wanted)?;
+            self.write_version_manifests(&destination, &release)?;
         }
         if let Some(previous) = state.current.take() {
             state.history.push(previous);
@@ -384,13 +429,45 @@ impl Server {
         state.mandatory = options.mandatory;
         self.write_manifests(&options.channel, &state)?;
         self.save(&options.channel, &state)?;
+        let beta = if options.channel == "stable" {
+            self.beta_follows(wanted, &new, &state)?
+        } else {
+            false
+        };
         self.write_download_page()?;
         Ok(format!(
-            "{wanted} is current on {} for {}% of installs{}",
+            "{wanted} is current on {} for {}% of installs{}{}",
             options.channel,
             options.rollout,
-            if options.mandatory { ", mandatory" } else { "" }
+            if options.mandatory { ", mandatory" } else { "" },
+            if beta { "; beta has it too" } else { "" }
         ))
+    }
+
+    /// Beta is never behind stable: a stable version newer than beta's becomes
+    /// beta's too, with the same rollout.
+    fn beta_follows(
+        &self,
+        wanted: &str,
+        new: &semver::Version,
+        stable: &Channel,
+    ) -> Result<bool, String> {
+        let mut beta = self.load("beta")?;
+        if let Some(current) = &beta.current
+            && version(current)? >= *new
+        {
+            return Ok(false);
+        }
+        if let Some(previous) = beta.current.take() {
+            beta.history.push(previous);
+        }
+        beta.current = Some(wanted.to_owned());
+        beta.rollout = stable.rollout;
+        beta.paused = false;
+        beta.mandatory = stable.mandatory;
+        self.write_manifests("beta", &beta)?;
+        self.save("beta", &beta)?;
+        Ok(true)
     }
 
     fn change(
@@ -460,11 +537,26 @@ impl Server {
             s.mandatory = true;
             Ok(())
         })
-        .map(|s| {
-            format!(
-                "{wanted} revoked; {channel} is back on {}",
-                s.current.unwrap_or_default()
-            )
+        .and_then(|s| {
+            let back = s.current.unwrap_or_default();
+            let mut beta = self.load("beta")?;
+            let follows = channel == "stable" && beta.current.as_deref() == Some(wanted);
+            if follows {
+                // Beta got the version from stable; it leaves it the same way.
+                beta.current = Some(back.clone());
+                if !beta.revoked.iter().any(|v| v == wanted) {
+                    beta.revoked.push(wanted.to_owned());
+                }
+                beta.rollout = 100;
+                beta.paused = false;
+                beta.mandatory = true;
+                self.write_manifests("beta", &beta)?;
+                self.save("beta", &beta)?;
+            }
+            Ok(format!(
+                "{wanted} revoked; {channel} is back on {back}{}",
+                if follows { ", and so is beta" } else { "" }
+            ))
         })
     }
 

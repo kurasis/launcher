@@ -158,6 +158,12 @@ pub struct Settings {
     /// The version that last ran, to notice the first start of a new one.
     #[serde(default)]
     pub last_version: Option<String>,
+    /// Stable versions, or beta ones first (D-063).
+    #[serde(default)]
+    pub update_channel: crate::update::UpdateChannel,
+    /// A version that did not start here; it is not offered again.
+    #[serde(default)]
+    pub skipped_version: Option<String>,
 }
 
 fn default_metered_warn_mib() -> u32 {
@@ -191,6 +197,8 @@ impl Default for Settings {
             update_mode: crate::update::UpdateMode::Auto,
             update_seed: None,
             last_version: None,
+            update_channel: crate::update::UpdateChannel::Stable,
+            skipped_version: None,
         }
     }
 }

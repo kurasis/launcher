@@ -75,6 +75,7 @@ fn main() {
         "restart_to_update",
         "dismiss_whats_new",
         "open_update_page",
+        "interface_ready",
         // Registered only in debug builds; release builds have no handler for them.
         "start_lifecycle_test",
         "stop_lifecycle_test",

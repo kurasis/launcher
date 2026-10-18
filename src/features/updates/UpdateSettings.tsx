@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { Button } from '../../components/Button';
 import { Notice } from '../../components/Notice';
 import forms from '../../components/forms.module.css';
-import type { AppSnapshot, SettingsPatch, UpdateMode } from '../../lib/contracts';
+import type { AppSnapshot, SettingsPatch, UpdateChannel, UpdateMode } from '../../lib/contracts';
 import { ipc } from '../../lib/ipc';
 import { strings } from '../../lib/strings';
 import { useCommand } from '../../lib/useCommand';
@@ -10,6 +10,7 @@ import styles from './Updates.module.css';
 
 const t = strings.updates.settings;
 const modes: UpdateMode[] = ['auto', 'notify', 'off'];
+const channels: UpdateChannel[] = ['stable', 'beta'];
 
 /** Settings → General → Updates (D-063). */
 export function UpdateSettings({ snapshot }: { snapshot: AppSnapshot }) {
@@ -19,6 +20,8 @@ export function UpdateSettings({ snapshot }: { snapshot: AppSnapshot }) {
   );
   const check = useCommand(() => ipc.checkForUpdate());
   const [checked, setChecked] = useState(false);
+  // Shown after leaving beta: the installed version stays until stable catches up.
+  const [leftBeta, setLeftBeta] = useState(false);
   if (!update.configured) {
     return <p className={styles.muted}>{t.notConfigured}</p>;
   }
@@ -39,6 +42,31 @@ export function UpdateSettings({ snapshot }: { snapshot: AppSnapshot }) {
           {t.modes[mode]}
         </label>
       ))}
+      <fieldset className={forms.choices}>
+        <legend>{t.channel.title}</legend>
+        {channels.map((channel) => (
+          <label key={channel} className={forms.choice}>
+            <input
+              type="radio"
+              name="updateChannel"
+              value={channel}
+              checked={settings.updateChannel === channel}
+              onChange={() => {
+                setLeftBeta(channel === 'stable');
+                void save.run({ updateChannel: channel }).then((saved) => {
+                  // Look on the new channel at once.
+                  if (saved !== undefined && settings.updateMode !== 'off') void check.run();
+                });
+              }}
+            />
+            {t.channel[channel]}
+          </label>
+        ))}
+        {settings.updateChannel === 'beta' && <p className={styles.muted}>{t.channel.betaHint}</p>}
+        {settings.updateChannel === 'stable' && leftBeta && (
+          <p className={styles.muted}>{t.channel.stableHint}</p>
+        )}
+      </fieldset>
       <p className={styles.muted}>{t.current({ version: snapshot.appVersion })}</p>
       <div className={styles.actions}>
         <Button

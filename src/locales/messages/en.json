@@ -1062,13 +1062,21 @@
         "check": "Check now",
         "checking": "Checking…",
         "upToDate": "You have the newest version.",
-        "notConfigured": "This build does not look for updates."
+        "notConfigured": "This build does not look for updates.",
+        "channel": {
+          "title": "Versions",
+          "stable": "Stable",
+          "beta": "Beta: test new versions first",
+          "betaHint": "Beta versions come before stable ones and may have problems. If a new version does not start, the launcher goes back to the one before.",
+          "stableHint": "Going back to stable: you keep this version until a newer stable one comes out."
+        }
       },
       "errors": {
         "network": "The update could not be fetched. The launcher tries again later.",
         "signature": "The update's signature did not match, so it was not installed.",
         "install": "The update could not be installed. Download it from the link instead."
-      }
+      },
+      "rolledBack": "Version {failed} did not start properly, so the launcher went back to version {version}. Your settings are as they were before the update. Version {failed} will not be installed again; a fixed version will be."
     },
     "downloads": {
       "title": "Downloads",

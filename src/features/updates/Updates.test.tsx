@@ -116,6 +116,43 @@ describe('launcher updates', () => {
     expect(await screen.findByText('You have the newest version.')).toBeVisible();
   });
 
+  it('switches to beta and looks there at once', async () => {
+    const seen = calls();
+    const snapshot = snapshotFixture();
+    const { rerender } = render(<UpdateSettings snapshot={snapshot} />);
+    expect(screen.getByRole('radio', { name: 'Stable' })).toBeChecked();
+    fireEvent.click(screen.getByRole('radio', { name: /Beta/ }));
+    await waitFor(() => {
+      expect(seen.find((c) => c.cmd === 'set_app_settings')?.args).toMatchObject({
+        request: { payload: { updateChannel: 'beta' } },
+      });
+    });
+    await waitFor(() => {
+      expect(seen.some((c) => c.cmd === 'check_for_update')).toBe(true);
+    });
+    rerender(
+      <UpdateSettings
+        snapshot={{ ...snapshot, settings: { ...snapshot.settings, updateChannel: 'beta' } }}
+      />,
+    );
+    expect(screen.getByText(/may have problems/)).toBeVisible();
+    fireEvent.click(screen.getByRole('radio', { name: 'Stable' }));
+    rerender(<UpdateSettings snapshot={snapshot} />);
+    expect(screen.getByText(/you keep this version until a newer stable one/)).toBeVisible();
+  });
+
+  it('tells the player the launcher went back, and forgets it on "Got it"', async () => {
+    const seen = calls();
+    render(<WhatsNew update={view({ rolledBack: { failed: '0.3.0', version: '0.2.0' } })} />);
+    expect(screen.getByText(/Version 0.3.0 did not start properly/)).toHaveTextContent(
+      'went back to version 0.2.0',
+    );
+    fireEvent.click(screen.getByRole('button', { name: 'Got it' }));
+    await waitFor(() => {
+      expect(seen.some((c) => c.cmd === 'dismiss_whats_new')).toBe(true);
+    });
+  });
+
   it('says when a build does not look for updates', () => {
     const snapshot = snapshotFixture();
     render(

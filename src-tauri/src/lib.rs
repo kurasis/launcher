@@ -279,8 +279,15 @@ fn setup(app: &mut tauri::App) -> Result<(), Box<dyn std::error::Error>> {
         commands::Location::new(resolve_location(&handle))
             .with_config_dir(handle.path().app_config_dir().ok()),
     );
+    let data_root = resolve_data_root(&handle);
+    // A new version that did not start goes back to the one before (D-063),
+    // before its settings are read.
+    let going_back = data_root
+        .as_ref()
+        .ok()
+        .and_then(|root| update::at_start(&handle, root.path()));
     let state = AppState::initialize(
-        resolve_data_root(&handle),
+        data_root,
         app.package_info().version.to_string(),
         MemoryPolicy::detect(),
         Box::new(TauriSink(handle)),
@@ -295,6 +302,9 @@ fn setup(app: &mut tauri::App) -> Result<(), Box<dyn std::error::Error>> {
                 .warn("The launcher did not close normally last time; a record was kept");
         }
         state.console().attach_file(journal::LogFile::open(&logs));
+        if let Some(problem) = going_back {
+            state.console().warn(problem);
+        }
         state.console().info(format!(
             "Launcher {version} started ({} {})",
             std::env::consts::OS,
@@ -582,9 +592,9 @@ pub fn run() {
                 journal::end(&root.path().join("logs"));
             }
             // Last: on Windows the update's installer takes over from here (D-063).
-            handle
-                .state::<Arc<update::Updates>>()
-                .install_on_close(&handle.state::<AppState>());
+            let updates = handle.state::<Arc<update::Updates>>();
+            updates.at_exit(&handle.state::<AppState>());
+            updates.install_on_close(&handle.state::<AppState>());
         }
         _ => {}
     });
@@ -658,6 +668,7 @@ fn handlers<R: tauri::Runtime>() -> impl Fn(tauri::ipc::Invoke<R>) -> bool + Sen
         commands::restart_to_update,
         commands::dismiss_whats_new,
         commands::open_update_page,
+        commands::interface_ready,
         commands::start_lifecycle_test,
         commands::stop_lifecycle_test,
     ]
@@ -732,5 +743,6 @@ fn handlers<R: tauri::Runtime>() -> impl Fn(tauri::ipc::Invoke<R>) -> bool + Sen
         commands::restart_to_update,
         commands::dismiss_whats_new,
         commands::open_update_page,
+        commands::interface_ready,
     ]
 }

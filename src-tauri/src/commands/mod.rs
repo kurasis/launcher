@@ -1412,6 +1412,13 @@ pub fn dismiss_whats_new(state: State<'_, AppState>) {
     crate::update::Updates::dismiss_whats_new(&state);
 }
 
+/// The interface has shown: this start of a new version can count as good.
+#[tauri::command(async)]
+pub fn interface_ready<R: Runtime>(app: AppHandle<R>) {
+    app.state::<Arc<crate::update::Updates>>()
+        .interface_shown(&app);
+}
+
 /// Opens where to get the update by hand (a `.deb`, or after installing
 /// failed); only addresses on upd.lapi.sh.
 #[tauri::command(async)]

@@ -143,6 +143,8 @@ pub struct SettingsPatch {
     pub download_source: Option<crate::mirror::DownloadSource>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub update_mode: Option<crate::update::UpdateMode>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub update_channel: Option<crate::update::UpdateChannel>,
     /// True replaces the crash report install ID with a new one (D-061).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub new_install_id: Option<bool>,
@@ -167,6 +169,7 @@ pub struct SettingsView {
     pub share_stats: bool,
     pub download_source: crate::mirror::DownloadSource,
     pub update_mode: crate::update::UpdateMode,
+    pub update_channel: crate::update::UpdateChannel,
     /// The crash report install ID, once a report made one (D-061).
     pub install_id: Option<String>,
     /// False when settings were written by a newer launcher or could not be read.
@@ -192,6 +195,7 @@ impl SettingsView {
             share_stats: settings.share_stats,
             download_source: settings.download_source,
             update_mode: settings.update_mode,
+            update_channel: settings.update_channel,
             install_id: settings.install_id.clone(),
             writable,
         }

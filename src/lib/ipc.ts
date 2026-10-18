@@ -236,6 +236,8 @@ export const ipc = {
   restartToUpdate: (): Promise<void> => invoke('restart_to_update'),
   dismissWhatsNew: (): Promise<void> => invoke('dismiss_whats_new'),
   openUpdatePage: (): Promise<void> => invoke('open_update_page'),
+  /** The interface has shown: a new version's start can count as good. */
+  interfaceReady: (): Promise<void> => invoke('interface_ready'),
   /** Debug builds only; release builds have no handler for this command. */
   startLifecycleTest: (scenario: LifecycleScenario, requestId?: string): Promise<RunSummary> =>
     invoke<RunSummary>('start_lifecycle_test', { request: mutation(scenario, requestId) }),

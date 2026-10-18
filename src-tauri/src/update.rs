@@ -8,10 +8,13 @@
 //! installed when the launcher closes with nothing running, or at once with
 //! "Restart now". Where the launcher cannot install itself (a `.deb`), the
 //! player is told and given the link. Every step's state is an
-//! [`UpdateView`] in the app snapshot.
+//! [`UpdateView`] in the app snapshot. A new version that does not start goes
+//! back to the one before ([`rollback`]).
+
+pub mod rollback;
 
 use std::collections::BTreeMap;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::sync::Mutex;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::{Duration, Instant};
@@ -24,9 +27,10 @@ use tauri_plugin_updater::{Update, UpdaterExt};
 use crate::error::{ErrorCode, LauncherError, LauncherResult};
 use crate::state::AppState;
 
-/// The channel this build follows; `beta` is prepared on the server (D-063).
-pub const CHANNEL: &str = "stable";
-const ENDPOINT: &str = "https://upd.lapi.sh/v1/{channel}/{{target}}-{{arch}}-{{bundle_type}}.json";
+const BASE: &str = "https://upd.lapi.sh";
+/// `{channel}` and, for a return, `{version}` are ours; the updater fills in the rest.
+const ENDPOINT: &str = "/v1/{channel}/{{target}}-{{arch}}-{{bundle_type}}.json";
+const VERSION_ENDPOINT: &str = "/releases/{version}/{{target}}-{{arch}}-{{bundle_type}}.json";
 pub const EVERY: Duration = Duration::from_secs(6 * 3600);
 const WHATS_NEW_DIR: &str = "updates";
 
@@ -34,6 +38,25 @@ const WHATS_NEW_DIR: &str = "updates";
 /// build does not look for updates.
 pub fn public_key() -> Option<&'static str> {
     option_env!("LAUNCHER_UPDATE_PUBKEY").filter(|k| !k.trim().is_empty())
+}
+
+/// Which versions the player gets (Settings → General).
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum UpdateChannel {
+    #[default]
+    Stable,
+    /// Test versions first; stable ones too, as beta is never behind.
+    Beta,
+}
+
+impl UpdateChannel {
+    fn path(self) -> &'static str {
+        match self {
+            Self::Stable => "stable",
+            Self::Beta => "beta",
+        }
+    }
 }
 
 /// The player's choice in Settings → General.
@@ -101,6 +124,8 @@ pub struct UpdateView {
     pub total: Option<u64>,
     pub error: Option<UpdateError>,
     pub whats_new: Option<WhatsNew>,
+    /// The launcher went back to this version: the newer one did not start.
+    pub rolled_back: Option<rollback::RolledBack>,
 }
 
 /// What the manifest offers this install.
@@ -115,10 +140,13 @@ pub struct Offer {
 
 /// Whether `manifest` offers this install a version: one newer than
 /// `current` when `seed` falls within the rollout percent, or any other when
-/// `current` was revoked.
-pub fn decide(current: &str, manifest: &Value, seed: u32) -> Option<Offer> {
+/// `current` was revoked; never `skipped`, the version that did not start here.
+pub fn decide(current: &str, manifest: &Value, seed: u32, skipped: Option<&str>) -> Option<Offer> {
     let current_version = semver::Version::parse(current).ok()?;
     let version = manifest.get("version")?.as_str()?.trim_start_matches('v');
+    if skipped == Some(version) {
+        return None;
+    }
     let offered = semver::Version::parse(version).ok()?;
     let revoked = manifest
         .get("revoked")
@@ -170,11 +198,37 @@ pub fn decide(current: &str, manifest: &Value, seed: u32) -> Option<Offer> {
     })
 }
 
+fn backup_dir(root: &Path, version: &str) -> PathBuf {
+    root.join("backups").join(format!("before-{version}"))
+}
+
 /// Before the first start of a new version: copies the settings and the
 /// installation records to `backups/before-<version>/`, and returns the
-/// notes the update left for "What's new".
+/// notes the update left for "What's new". A copy made already (before the
+/// settings were read, after an update) stays as it is.
 pub fn first_start(root: &Path, version: &str) -> std::io::Result<Option<WhatsNew>> {
-    let backup = root.join("backups").join(format!("before-{version}"));
+    back_up(root, version)?;
+    let notes = root
+        .join(WHATS_NEW_DIR)
+        .join(format!("notes-{version}.json"));
+    Ok(std::fs::read(&notes)
+        .ok()
+        .and_then(|bytes| serde_json::from_slice(&bytes).ok()))
+}
+
+fn back_up(root: &Path, version: &str) -> std::io::Result<()> {
+    let backup = backup_dir(root, version);
+    if backup.exists() {
+        return Ok(());
+    }
+    let temp = root.join("backups").join(format!(".before-{version}.tmp"));
+    let _ = std::fs::remove_dir_all(&temp);
+    copy_records(root, &temp)?;
+    std::fs::rename(&temp, &backup)
+}
+
+/// Settings, accounts and installation records from `root` into `backup`.
+fn copy_records(root: &Path, backup: &Path) -> std::io::Result<()> {
     std::fs::create_dir_all(backup.join("instances"))?;
     for name in ["settings.json", "accounts.json"] {
         let from = root.join(name);
@@ -196,12 +250,112 @@ pub fn first_start(root: &Path, version: &str) -> std::io::Result<Option<WhatsNe
             }
         }
     }
-    let notes = root
-        .join(WHATS_NEW_DIR)
-        .join(format!("notes-{version}.json"));
-    Ok(std::fs::read(&notes)
-        .ok()
-        .and_then(|bytes| serde_json::from_slice(&bytes).ok()))
+    Ok(())
+}
+
+/// Going back from `failed`: the settings and installation records as they
+/// were before it first started, as the older version may not read what the
+/// newer one wrote.
+fn restore_before(root: &Path, failed: &str) -> std::io::Result<()> {
+    let backup = backup_dir(root, failed);
+    if !backup.is_dir() {
+        return Ok(());
+    }
+    for name in ["settings.json", "accounts.json"] {
+        let from = backup.join(name);
+        if from.is_file() {
+            crate::storage::atomic::write(&root.join(name), &std::fs::read(&from)?)?;
+        }
+    }
+    if let Ok(entries) = std::fs::read_dir(backup.join("instances")) {
+        for entry in entries.flatten() {
+            let name = entry.file_name().to_string_lossy().into_owned();
+            let Some(id) = name.strip_suffix(".json") else {
+                continue;
+            };
+            let folder = root.join("instances").join(id);
+            if folder.is_dir() {
+                crate::storage::atomic::write(
+                    &folder.join("instance.json"),
+                    &std::fs::read(entry.path())?,
+                )?;
+            }
+        }
+    }
+    Ok(())
+}
+
+/// At start, before the settings are read (D-063 stage 2): counts the start of
+/// a new version and backs up what it may change; after the starts that did not
+/// go well, installs the version before and starts it, so this does not return.
+/// What went wrong on the way back is returned for the log.
+pub fn at_start<R: Runtime>(app: &AppHandle<R>, root: &Path) -> Option<String> {
+    let current = app.package_info().version.to_string();
+    let dir = root.join(WHATS_NEW_DIR);
+    match rollback::on_start(&dir, &current) {
+        rollback::Start::Normal => None,
+        rollback::Start::First => back_up(root, &current)
+            .err()
+            .map(|e| format!("Update: copying the settings before {current} failed: {e}")),
+        rollback::Start::GoBack { to, failed } => {
+            eprintln!("Version {failed} did not start; going back to {to}");
+            let handle = app.clone();
+            let root = root.to_path_buf();
+            let back = std::thread::spawn(move || {
+                tauri::async_runtime::block_on(go_back(&handle, &root, &to, &failed))
+            })
+            .join()
+            .unwrap_or_else(|_| Err("going back stopped".to_owned()));
+            match back {
+                // Windows does not get here: the installer starts the version.
+                Ok(()) => app.restart(),
+                Err(e) => Some(format!(
+                    "Update: this version did not start before; going back failed: {e}"
+                )),
+            }
+        }
+    }
+}
+
+/// Downloads the version `to` (signed, its own manifest on upd.lapi.sh),
+/// puts the records back as they were before `failed` and installs it.
+async fn go_back<R: Runtime>(
+    app: &AppHandle<R>,
+    root: &Path,
+    to: &str,
+    failed: &str,
+) -> Result<(), String> {
+    let key = public_key().ok_or("this build has no update key")?;
+    let url = url::Url::parse(&format!(
+        "{BASE}{}",
+        VERSION_ENDPOINT.replace("{version}", to)
+    ))
+    .map_err(|e| e.to_string())?;
+    let update = app
+        .updater_builder()
+        .pubkey(key)
+        .endpoints(vec![url])
+        .and_then(|b| {
+            b.version_comparator(|_, _| true)
+                .timeout(Duration::from_secs(300))
+                .build()
+        })
+        .map_err(|e| e.to_string())?
+        .check()
+        .await
+        .map_err(|e| e.to_string())?
+        .ok_or("upd.lapi.sh has no such version")?;
+    if update.version.trim_start_matches('v') != to {
+        return Err(format!("upd.lapi.sh answered version {}", update.version));
+    }
+    let bytes = update
+        .download(|_, _| {}, || {})
+        .await
+        .map_err(|e| e.to_string())?;
+    restore_before(root, failed).map_err(|e| format!("restoring the settings: {e}"))?;
+    rollback::record_going_back(&root.join(WHATS_NEW_DIR), failed, to)
+        .map_err(|e| e.to_string())?;
+    update.install(&bytes).map_err(|e| e.to_string())
 }
 
 /// The downloaded update waiting for the launcher to close.
@@ -211,6 +365,8 @@ pub struct Updates {
     ready: Mutex<Option<(Update, Vec<u8>)>>,
     /// A check or download runs.
     busy: AtomicBool,
+    /// The interface has shown in this run.
+    started: AtomicBool,
 }
 
 /// Holds [`Updates::busy`] until dropped.
@@ -288,7 +444,10 @@ impl Updates {
                 seed
             }
         };
-        let endpoint = ENDPOINT.replace("{channel}", CHANNEL);
+        let endpoint = format!(
+            "{BASE}{}",
+            ENDPOINT.replace("{channel}", settings.update_channel.path())
+        );
         let built = url::Url::parse(&endpoint)
             .map_err(|_| tauri_plugin_updater::Error::UnsupportedOs)
             .and_then(|url| {
@@ -306,7 +465,12 @@ impl Updates {
         };
         let current = state.app_version().to_owned();
         match found {
-            Ok(Some(update)) => match decide(&current, &update.raw_json, seed) {
+            Ok(Some(update)) => match decide(
+                &current,
+                &update.raw_json,
+                seed,
+                settings.skipped_version.as_deref(),
+            ) {
                 Some(offer) => {
                     let installable = offer.installable;
                     Self::set(&state, |v| {
@@ -444,6 +608,7 @@ impl Updates {
         state
             .console()
             .info(format!("Update: installing version {}", update.version));
+        Self::watch(state, &update.version);
         if let Err(e) = update.restart_after_install(false).install(&bytes) {
             state
                 .console()
@@ -469,6 +634,7 @@ impl Updates {
             "Update: installing version {} and restarting",
             update.version
         ));
+        Self::watch(&state, &update.version);
         match update.install(&bytes) {
             // Windows does not get here: its installer restarts the launcher.
             Ok(()) => app.restart(),
@@ -488,21 +654,82 @@ impl Updates {
         }
     }
 
-    /// "What's new" was read.
-    pub fn dismiss_whats_new(state: &AppState) {
-        if let (Some(root), Some(seen)) = (state.data_root(), Self::view(state).whats_new) {
-            let _ = std::fs::remove_file(
-                root.path()
-                    .join(WHATS_NEW_DIR)
-                    .join(format!("notes-{}.json", seen.version)),
-            );
+    /// The new version's starts are counted until one goes well.
+    fn watch(state: &AppState, to: &str) {
+        if let Some(root) = state.data_root()
+            && let Err(e) =
+                rollback::before_install(&root.path().join(WHATS_NEW_DIR), state.app_version(), to)
+        {
+            state.console().warn(format!(
+                "Update: the launcher could not note the update, so it cannot go back if {to} does not start: {e}"
+            ));
         }
-        Self::set(state, |v| v.whats_new = None);
     }
 
-    /// At start: notices a new version (backup, "What's new") and records it.
+    /// The interface has shown: once the launcher has stayed up a little
+    /// longer, this start went well.
+    pub fn interface_shown<R: Runtime>(&self, app: &AppHandle<R>) {
+        if self.started.swap(true, Ordering::SeqCst) {
+            return;
+        }
+        let handle = app.clone();
+        tauri::async_runtime::spawn(async move {
+            tokio::time::sleep(rollback::HEALTHY_AFTER).await;
+            Self::went_well(&handle.state::<AppState>());
+        });
+    }
+
+    /// A normal close after the interface showed is a good start too.
+    pub fn at_exit(&self, state: &AppState) {
+        if self.started.load(Ordering::SeqCst) {
+            Self::went_well(state);
+        }
+    }
+
+    fn went_well(state: &AppState) {
+        if let Some(root) = state.data_root() {
+            rollback::healthy(&root.path().join(WHATS_NEW_DIR), state.app_version());
+        }
+    }
+
+    /// "What's new", or the note about going back, was read.
+    pub fn dismiss_whats_new(state: &AppState) {
+        let view = Self::view(state);
+        if let Some(root) = state.data_root() {
+            let dir = root.path().join(WHATS_NEW_DIR);
+            if let Some(seen) = view.whats_new {
+                let _ = std::fs::remove_file(dir.join(format!("notes-{}.json", seen.version)));
+            }
+            if view.rolled_back.is_some() {
+                rollback::forget(&dir);
+            }
+        }
+        Self::set(state, |v| {
+            v.whats_new = None;
+            v.rolled_back = None;
+        });
+    }
+
+    /// At start: notices a new version (backup, "What's new") or a return to
+    /// this one, and records it.
     pub fn after_start(state: &AppState) {
         let version = state.app_version().to_owned();
+        let rolled_back = state
+            .data_root()
+            .and_then(|root| rollback::went_back(&root.path().join(WHATS_NEW_DIR), &version));
+        if let Some(back) = &rolled_back {
+            state.console().warn(format!(
+                "Update: version {} did not start, so the launcher went back to {version}; {} will not be offered again",
+                back.failed, back.failed
+            ));
+            let failed = back.failed.clone();
+            let _ = state.edit_settings(|s| {
+                s.skipped_version = Some(failed);
+                s.last_version = Some(version.clone());
+            });
+            Self::set(state, |v| v.rolled_back = rolled_back.clone());
+            return;
+        }
         let last = state.settings().last_version;
         if last.as_deref() == Some(version.as_str()) {
             Self::set(state, |_| {});
@@ -557,32 +784,65 @@ mod tests {
 
     #[test]
     fn newer_versions_are_offered_within_the_rollout() {
-        let offer = decide("0.1.0", &manifest("0.2.0", 100, &[]), 7).unwrap();
+        let offer = decide("0.1.0", &manifest("0.2.0", 100, &[]), 7, None).unwrap();
         assert_eq!(offer.version, "0.2.0");
         assert_eq!(offer.notes["ru"], "Исправления");
         assert!(!offer.mandatory && offer.installable);
         // 10 %: seeds ending 0..9 are in, others wait.
-        assert!(decide("0.1.0", &manifest("0.2.0", 10, &[]), 109).is_some());
-        assert!(decide("0.1.0", &manifest("0.2.0", 10, &[]), 110).is_none());
+        assert!(decide("0.1.0", &manifest("0.2.0", 10, &[]), 109, None).is_some());
+        assert!(decide("0.1.0", &manifest("0.2.0", 10, &[]), 110, None).is_none());
         assert!(
-            decide("0.1.0", &manifest("0.2.0", 0, &[]), 0).is_none(),
+            decide("0.1.0", &manifest("0.2.0", 0, &[]), 0, None).is_none(),
             "paused"
         );
         assert!(
-            decide("0.2.0", &manifest("0.2.0", 100, &[]), 1).is_none(),
+            decide("0.2.0", &manifest("0.2.0", 100, &[]), 1, None).is_none(),
             "same version"
         );
         assert!(
-            decide("0.3.0", &manifest("0.2.0", 100, &[]), 1).is_none(),
+            decide("0.3.0", &manifest("0.2.0", 100, &[]), 1, None).is_none(),
             "older version"
         );
     }
 
     #[test]
     fn a_revoked_version_is_left_even_for_an_older_one() {
-        let offer = decide("0.3.0", &manifest("0.2.0", 0, &["0.3.0"]), 99).unwrap();
+        let offer = decide("0.3.0", &manifest("0.2.0", 0, &["0.3.0"]), 99, None).unwrap();
         assert_eq!(offer.version, "0.2.0");
         assert!(offer.mandatory);
+    }
+
+    #[test]
+    fn a_version_that_did_not_start_here_is_never_offered_again() {
+        let skipped = Some("0.3.0");
+        assert!(decide("0.2.0", &manifest("0.3.0", 100, &[]), 1, skipped).is_none());
+        // Not even when this one is revoked and it is the channel's version.
+        assert!(decide("0.2.0", &manifest("0.3.0", 100, &["0.2.0"]), 1, skipped).is_none());
+        // A newer fix is.
+        assert!(decide("0.2.0", &manifest("0.3.1", 100, &[]), 1, skipped).is_some());
+    }
+
+    #[test]
+    fn going_back_restores_the_records_from_before_the_failed_version() {
+        let dir = tempfile::tempdir().unwrap();
+        let root = dir.path();
+        std::fs::write(root.join("settings.json"), b"old").unwrap();
+        std::fs::create_dir_all(root.join("instances/abc")).unwrap();
+        std::fs::write(root.join("instances/abc/instance.json"), b"old record").unwrap();
+        back_up(root, "0.3.0").unwrap();
+        // The new version rewrites them; a second copy does not replace the first.
+        std::fs::write(root.join("settings.json"), b"new").unwrap();
+        std::fs::write(root.join("instances/abc/instance.json"), b"new record").unwrap();
+        assert_eq!(first_start(root, "0.3.0").unwrap(), None);
+        restore_before(root, "0.3.0").unwrap();
+        assert_eq!(std::fs::read(root.join("settings.json")).unwrap(), b"old");
+        assert_eq!(
+            std::fs::read(root.join("instances/abc/instance.json")).unwrap(),
+            b"old record"
+        );
+        // Without a copy nothing is touched.
+        restore_before(root, "0.9.0").unwrap();
+        assert_eq!(std::fs::read(root.join("settings.json")).unwrap(), b"old");
     }
 
     #[test]
@@ -590,7 +850,7 @@ mod tests {
         let mut deb = manifest("0.2.0", 100, &[]);
         deb["installable"] = json!(false);
         deb["download"] = json!("https://upd.lapi.sh/releases/0.2.0/Launcher_0.2.0_amd64.deb");
-        let offer = decide("0.1.0", &deb, 1).unwrap();
+        let offer = decide("0.1.0", &deb, 1, None).unwrap();
         assert!(!offer.installable);
         assert_eq!(
             offer.download_url.as_deref(),
@@ -598,8 +858,13 @@ mod tests {
         );
         // Only HTTPS links are passed on.
         deb["download"] = json!("javascript:alert(1)");
-        assert!(decide("0.1.0", &deb, 1).unwrap().download_url.is_none());
-        assert!(decide("0.1.0", &json!({"version": "nonsense"}), 1).is_none());
+        assert!(
+            decide("0.1.0", &deb, 1, None)
+                .unwrap()
+                .download_url
+                .is_none()
+        );
+        assert!(decide("0.1.0", &json!({"version": "nonsense"}), 1, None).is_none());
     }
 
     #[test]
