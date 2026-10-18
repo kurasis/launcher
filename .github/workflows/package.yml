@@ -24,6 +24,8 @@ env:
   CARGO_INCREMENTAL: 0
   # Non-secret build configuration (docs/AUTH-SETUP.md); blank means "not configured".
   LAUNCHER_MSA_CLIENT_ID: ${{ vars.LAUNCHER_MSA_CLIENT_ID }}
+  # The update public key built into the launcher (D-063); blank: no updates.
+  LAUNCHER_UPDATE_PUBKEY: ${{ vars.UPDATE_PUBLIC_KEY }}
   RETENTION_DAYS: ${{ github.event_name == 'pull_request' && 7 || 30 }}
 
 jobs:
@@ -249,6 +251,11 @@ jobs:
             --signing "${SIGNING_STATUS:-unsigned (no Developer ID configured)}" \
             src-tauri/target/release/bundle/dmg/*.dmg
 
+      - name: Updater bundle (the .app the updater puts in place, D-063)
+        run: |
+          tar -czf "dist-packages/Launcher-${{ matrix.name }}.app.tar.gz" \
+            -C src-tauri/target/release/bundle/macos Launcher.app
+
       - name: Smoke test (mount, start, remove)
         run: scripts/smoke/macos.sh dist-packages/*.dmg
 
@@ -257,4 +264,67 @@ jobs:
           name: launcher-${{ matrix.name }}
           path: dist-packages
           retention-days: ${{ env.RETENTION_DAYS }}
+          if-no-files-found: error
+
+  # The release archive for upd.lapi.sh (D-063): every platform's files,
+  # signed for the version with the update key, and release.json. Only on
+  # trusted events and only when the owner configured the key; the owner then
+  # uploads it and runs `lapi-upd publish` on the server.
+  release:
+    name: Release archive
+    needs: [linux, windows, macos]
+    if: github.event_name != 'pull_request'
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Signing key configured?
+        id: key
+        env:
+          KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+        run: |
+          if [ -z "$KEY" ]; then
+            echo "::notice::No TAURI_SIGNING_PRIVATE_KEY secret: no release archive (docs/DECISIONS.md D-063)."
+            echo "present=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "present=true" >> "$GITHUB_OUTPUT"
+          fi
+      - uses: actions/checkout@v5
+        if: steps.key.outputs.present == 'true'
+      - uses: actions/download-artifact@v5
+        if: steps.key.outputs.present == 'true'
+        with:
+          pattern: launcher-*
+          path: artifacts
+      - name: Build lapi-upd
+        if: steps.key.outputs.present == 'true'
+        run: cargo build --locked --release --manifest-path services/upd/Cargo.toml
+      - name: Sign and pack
+        if: steps.key.outputs.present == 'true'
+        env:
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+        run: |
+          version=$(sed -n 's/^version = "\(.*\)"/\1/p' src-tauri/Cargo.toml | head -1)
+          echo "VERSION=$version" >> "$GITHUB_ENV"
+          notes=()
+          if [ -f "release-notes/$version.json" ]; then
+            notes=(--notes "release-notes/$version.json")
+          else
+            echo "::warning::No release-notes/$version.json: the update has no notes."
+          fi
+          one() { ls $1 | head -1; }
+          mkdir -p release
+          services/upd/target/release/lapi-upd pack "$version" \
+            --out "release/launcher-$version-release.tar.gz" "${notes[@]}" \
+            "windows-x86_64:nsis:$(one 'artifacts/launcher-windows-x64/*-setup.exe')" \
+            "windows-aarch64:nsis:$(one 'artifacts/launcher-windows-arm64/*-setup.exe')" \
+            "darwin-aarch64:app:$(one 'artifacts/launcher-macos-arm64/*.app.tar.gz')" \
+            "darwin-x86_64:app:$(one 'artifacts/launcher-macos-x64/*.app.tar.gz')" \
+            "linux-x86_64:appimage:$(one 'artifacts/launcher-linux-x64/*.AppImage')" \
+            "linux-x86_64:deb:$(one 'artifacts/launcher-linux-x64/*.deb')"
+      - uses: actions/upload-artifact@v5
+        if: steps.key.outputs.present == 'true'
+        with:
+          name: launcher-${{ env.VERSION }}-release
+          path: release
+          retention-days: 30
           if-no-files-found: error
