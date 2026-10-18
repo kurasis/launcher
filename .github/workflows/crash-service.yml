@@ -2,8 +2,8 @@ name: Crash service
 
 # The crash report service at crash.lapi.sh (docs/DECISIONS.md D-061): tests,
 # a release build, and a deploy over SSH to /home/www/lapi/crash. The server
-# needs deploy/crash/bootstrap.sh run as root once, and again when the nginx
-# files change (the deploy warns); the deploy uploads it to ~/lapi-bootstrap.
+# needs deploy/bootstrap.sh run as root once, and again when the nginx files
+# change (the deploy warns); the deploy uploads deploy/ to ~/lapi-bootstrap.
 #
 # This repository is public, and so are its workflow logs: nothing a player
 # sent and nothing about the server is printed here. "Run workflow" with
@@ -12,15 +12,19 @@ name: Crash service
 
 on:
   push:
-    branches: [main, claude/crash-reports]
+    branches: [main, claude/download-mirror]
     paths:
       - services/crash/**
       - deploy/crash/**
+      - deploy/*.sh
+      - deploy/nginx/**
       - .github/workflows/crash-service.yml
   pull_request:
     paths:
       - services/crash/**
       - deploy/crash/**
+      - deploy/*.sh
+      - deploy/nginx/**
       - .github/workflows/crash-service.yml
   workflow_dispatch:
     inputs:
@@ -66,12 +70,12 @@ jobs:
       - run: cargo build --locked --release
       - name: Check the nginx files
         working-directory: ${{ github.workspace }}
-        run: bash deploy/crash/check-nginx.sh
+        run: bash deploy/check-nginx.sh
       - name: Package the release
         run: |
           mkdir -p ../../dist-crash/nginx
           cp target/release/lapi-crash ../../dist-crash/
-          cp ../../deploy/crash/nginx/* ../../dist-crash/nginx/
+          cp ../../deploy/nginx/* ../../deploy/crash/nginx/* ../../dist-crash/nginx/
           tar -czf ../../lapi-crash.tar.gz -C ../../dist-crash .
       - uses: actions/upload-artifact@v4
         with:
@@ -83,7 +87,7 @@ jobs:
     name: Deploy to crash.lapi.sh
     needs: test
     if: >-
-      (github.event_name == 'push' && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/claude/crash-reports'))
+      (github.event_name == 'push' && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/claude/download-mirror'))
       || (github.event_name == 'workflow_dispatch' && inputs.task == 'deploy')
     runs-on: ubuntu-24.04
     steps:
@@ -107,18 +111,24 @@ jobs:
           release=$(git rev-parse --short=12 HEAD)
           echo "RELEASE=$release" >> "$GITHUB_ENV"
           scp -i ~/.ssh/id_deploy -o BatchMode=yes lapi-crash.tar.gz "$TARGET:/tmp/lapi-crash-$release.tar.gz"
-          # The setup files stay in the deploy user's home for the one-time
+          # deploy/ goes to a folder of its own per run (two workflows may
+          # deploy at once); ~/lapi-bootstrap points at the newest, for the
           # root step: sudo bash ~/lapi-bootstrap/bootstrap.sh <user>
-          ssh -i ~/.ssh/id_deploy -o BatchMode=yes "$TARGET" 'mkdir -p ~/lapi-bootstrap'
-          scp -i ~/.ssh/id_deploy -o BatchMode=yes -r deploy/crash/bootstrap.sh deploy/crash/deploy.sh \
-            deploy/crash/lapi-crash.service deploy/crash/nginx "$TARGET:lapi-bootstrap/"
+          setup="$GITHUB_RUN_ID-$GITHUB_JOB-crash"
+          echo "SETUP=$setup" >> "$GITHUB_ENV"
+          tar -cz deploy | ssh -i ~/.ssh/id_deploy -o BatchMode=yes "$TARGET" "set -e
+            d=\$HOME/.lapi-bootstrap/$setup
+            rm -rf \"\$d\" && mkdir -p \"\$d\" && tar -xz -C \"\$d\" --strip-components=1
+            if [ -d ~/lapi-bootstrap ] && [ ! -L ~/lapi-bootstrap ]; then rm -rf ~/lapi-bootstrap; fi
+            ln -sfn \"\$d\" ~/lapi-bootstrap.$setup && mv -T ~/lapi-bootstrap.$setup ~/lapi-bootstrap
+            ls -1dt ~/.lapi-bootstrap/* | tail -n +11 | xargs -r rm -rf"
       - name: Deploy
         env:
           TARGET: ${{ secrets.SSH_USER }}@${{ secrets.SSH_HOST }}
         run: |
           set +e
           ssh -i ~/.ssh/id_deploy -o BatchMode=yes "$TARGET" \
-            "bash ~/lapi-bootstrap/deploy.sh $RELEASE /tmp/lapi-crash-$RELEASE.tar.gz" 2>&1 | tee deploy.log
+            "bash ~/.lapi-bootstrap/$SETUP/deploy.sh crash $RELEASE /tmp/lapi-crash-$RELEASE.tar.gz" 2>&1 | tee deploy.log
           status=${PIPESTATUS[0]}
           if grep -q NOT_BOOTSTRAPPED deploy.log; then
             echo "::warning::The server is not set up yet: run 'sudo bash ~/lapi-bootstrap/bootstrap.sh <deploy-user>' on it once, then re-run this workflow."

@@ -319,6 +319,7 @@ impl AppState {
             active_operation: active,
             queue: data.queue.clone(),
             network: data.network,
+            mirrored_hosts: crate::mirror::shared().mirrored(),
             current_run: data.current_run.clone(),
             last_run: data.last_run.clone(),
             lifecycle_harness_available: cfg!(debug_assertions),
@@ -450,6 +451,7 @@ impl AppState {
                     active_operation: self.activity.current(),
                     queue: data.queue.clone(),
                     network: data.network,
+                    mirrored_hosts: crate::mirror::shared().mirrored(),
                 },
             })),
             Change::Account => BackendEvent::AccountStateChanged(Box::new(EventEnvelope {
@@ -1539,6 +1541,10 @@ impl AppState {
             fields.remove("selectedInstanceId");
         }
         let result = self.set_app_settings_inner(request);
+        // Outside the state lock: a mode change announces the run state.
+        if let Ok(view) = &result {
+            crate::mirror::shared().set_mode(view.download_source);
+        }
         let changed = patch.as_object().is_some_and(|f| !f.is_empty());
         match &result {
             Ok(_) if changed => self.console.info(format!("Settings: {patch}")),
@@ -1608,6 +1614,9 @@ impl AppState {
                 }
                 if let Some(on) = patch.share_stats {
                     settings.share_stats = on;
+                }
+                if let Some(source) = patch.download_source {
+                    settings.download_source = source;
                 }
                 if patch.new_install_id == Some(true) {
                     settings.install_id = Some(uuid::Uuid::new_v4().to_string());

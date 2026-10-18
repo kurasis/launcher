@@ -1,5 +1,5 @@
 # Cloudflare's ranges (https://www.cloudflare.com/ips/), as in cloudflare-real-ip.inc;
-# the workflow checks that both lists match.
+# deploy/check-nginx.sh checks that both lists match.
 173.245.48.0/20 1;
 103.21.244.0/22 1;
 103.22.200.0/22 1;

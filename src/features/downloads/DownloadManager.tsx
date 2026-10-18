@@ -6,6 +6,7 @@ import { strings } from '../../lib/strings';
 import { useCommand } from '../../lib/useCommand';
 import { gameLabel } from '../instances/loaderLabel';
 import { DownloadApproval } from '../network/DownloadApproval';
+import { sourceNames } from '../network/sourceNames';
 import styles from './DownloadManager.module.css';
 
 const t = strings.downloads;
@@ -121,6 +122,11 @@ export function DownloadManager({ snapshot }: { snapshot: AppSnapshot }) {
       {shown && (
         <section className={styles.panel} aria-label={t.title}>
           <h2 className={styles.title}>{t.title}</h2>
+          {snapshot.mirroredHosts.length > 0 && (
+            <p className={styles.muted} role="status">
+              {strings.mirror.inUse({ sites: sourceNames(snapshot.mirroredHosts).join(', ') })}
+            </p>
+          )}
           {active === null && queue.length === 0 && <p className={styles.muted}>{t.none}</p>}
           {active !== null && (
             <div className={styles.item}>

@@ -131,10 +131,14 @@ describe('reconcile', () => {
         activeOperation: { kind: 'install', instanceId: instance.id, operationId: 'op' },
         queue: [],
         network: 'offline',
+        mirroredHosts: ['maven.minecraftforge.net'],
       },
     });
     expect(result.kind === 'apply' && result.snapshot.instances[0]?.busy).toBe(true);
     expect(result.kind === 'apply' && result.snapshot.network).toBe('offline');
+    expect(result.kind === 'apply' && result.snapshot.mirroredHosts).toEqual([
+      'maven.minecraftforge.net',
+    ]);
     expect(result.kind === 'apply' && result.snapshot.activeOperation?.operationId).toBe('op');
   });
 

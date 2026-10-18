@@ -83,6 +83,7 @@ const ALL_SOURCE_HOSTS: &[&str] = &[
     "maven.minecraftforge.net",
     "files.minecraftforge.net",
     "maven.neoforged.net",
+    crate::mirror::MIRROR_HOST,
 ];
 
 const CRASH_REPORT_HOSTS: &[&str] = &["crash.lapi.sh"];
@@ -224,11 +225,32 @@ pub fn redirect_policy(
     })
 }
 
-/// A public-source HTTPS client bound to one source policy.
+/// A public-source HTTPS client bound to one source policy, with the
+/// download mirror (D-062) as the fallback.
 #[derive(Clone)]
 pub struct PublicClient {
     client: reqwest::Client,
     policy: SourcePolicy,
+    /// HTTPS to mirror.lapi.sh only, no redirects.
+    mirror: reqwest::Client,
+    routing: Arc<crate::mirror::Routing>,
+}
+
+/// Worth asking again or asking the mirror: the request did not get an answer
+/// that means anything about the document.
+fn unanswered(
+    result: &LauncherResult<(reqwest::StatusCode, reqwest::header::HeaderMap, Vec<u8>)>,
+) -> bool {
+    match result {
+        Ok((status, ..)) => matches!(status.as_u16(), 408 | 429 | 500..=599),
+        Err(error) => error.code == ErrorCode::NetworkError,
+    }
+}
+
+fn missing(
+    result: &LauncherResult<(reqwest::StatusCode, reqwest::header::HeaderMap, Vec<u8>)>,
+) -> bool {
+    matches!(result, Ok((status, ..)) if matches!(status.as_u16(), 404 | 410))
 }
 
 /// Network errors with a stable classification and no URLs in the message.
@@ -260,6 +282,28 @@ pub fn map_transport_error(error: &reqwest::Error) -> LauncherError {
 
 impl PublicClient {
     pub fn new(policy: SourcePolicy, app_version: &str) -> LauncherResult<Self> {
+        Self::with_routing(policy, app_version, crate::mirror::shared())
+    }
+
+    pub fn with_routing(
+        policy: SourcePolicy,
+        app_version: &str,
+        routing: Arc<crate::mirror::Routing>,
+    ) -> LauncherResult<Self> {
+        let failed = |_| {
+            LauncherError::internal(
+                "The HTTPS client could not be created. Check that the system CA certificates are installed.",
+            )
+        };
+        let mirror = reqwest::Client::builder()
+            .https_only(true)
+            .redirect(reqwest::redirect::Policy::none())
+            .dns_resolver(Arc::new(PublicOnlyResolver))
+            .connect_timeout(Duration::from_secs(15))
+            .read_timeout(Duration::from_secs(60))
+            .user_agent(format!("Launcher/{app_version}"))
+            .build()
+            .map_err(failed)?;
         let client = reqwest::Client::builder()
             .https_only(true)
             .redirect(redirect_policy(move |url| policy.allows(url)))
@@ -268,10 +312,85 @@ impl PublicClient {
             .read_timeout(Duration::from_secs(60))
             .user_agent(format!("Launcher/{app_version}"))
             .build()
-            .map_err(|_| LauncherError::internal(
-                "The HTTPS client could not be created. Check that the system CA certificates are installed.",
-            ))?;
-        Ok(Self { client, policy })
+            .map_err(failed)?;
+        Ok(Self {
+            client,
+            policy,
+            mirror,
+            routing,
+        })
+    }
+
+    pub fn routing(&self) -> &Arc<crate::mirror::Routing> {
+        &self.routing
+    }
+
+    /// Starts a GET of `url`'s copy on the mirror.
+    pub fn mirror_get(&self, url: &Url) -> LauncherResult<reqwest::RequestBuilder> {
+        if !self.policy.allows(url) {
+            return Err(untrusted_url());
+        }
+        let copy = self.routing.mirror_url(url).ok_or_else(untrusted_url)?;
+        Ok(self.mirror.get(copy))
+    }
+
+    /// A small document with the mirror as the fallback (D-062): the origin
+    /// (twice when unanswered), then the mirror when the origin did not
+    /// answer or does not have it; in "mirror first" the other way round.
+    /// `prepare` adds headers to each request.
+    pub async fn fetch_bounded(
+        &self,
+        url: &Url,
+        prepare: impl Fn(reqwest::RequestBuilder) -> reqwest::RequestBuilder,
+        max_bytes: usize,
+    ) -> LauncherResult<(reqwest::StatusCode, reqwest::header::HeaderMap, Vec<u8>)> {
+        use crate::mirror::{ORIGIN_ATTEMPTS, Route};
+        let host = url.host_str().unwrap_or_default().to_owned();
+        let from_origin = || async {
+            let mut result = self.get_bounded(prepare(self.get(url)?), max_bytes).await;
+            for _ in 1..ORIGIN_ATTEMPTS {
+                if !unanswered(&result) {
+                    break;
+                }
+                tokio::time::sleep(Duration::from_secs(1)).await;
+                result = self.get_bounded(prepare(self.get(url)?), max_bytes).await;
+            }
+            result
+        };
+        let from_mirror = || async {
+            self.get_bounded(prepare(self.mirror_get(url)?), max_bytes)
+                .await
+        };
+        match self.routing.first(&host) {
+            Route::Origin => {
+                let result = from_origin().await;
+                if !(unanswered(&result) || missing(&result)) {
+                    self.routing.origin_worked(&host);
+                    return result;
+                }
+                if !self.routing.mirror_allowed() {
+                    return result;
+                }
+                self.routing.origin_failed(&host);
+                let copy = from_mirror().await;
+                if unanswered(&copy) || missing(&copy) {
+                    result
+                } else {
+                    copy
+                }
+            }
+            Route::Mirror => {
+                let copy = from_mirror().await;
+                if !(unanswered(&copy) || missing(&copy)) {
+                    return copy;
+                }
+                let result = from_origin().await;
+                if !(unanswered(&result) || missing(&result)) {
+                    self.routing.origin_worked(&host);
+                }
+                result
+            }
+        }
     }
 
     pub fn policy(&self) -> SourcePolicy {

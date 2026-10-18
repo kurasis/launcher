@@ -559,7 +559,7 @@
         "general": "Language, appearance, the launcher window while you play, and where data is kept.",
         "java": "Which Java runtimes the launcher downloads for new installations.",
         "defaults": "Memory, window size and fullscreen given to each new installation.",
-        "network": "Metered connections and the traffic the launcher downloads.",
+        "network": "Metered connections, the traffic the launcher downloads, and where downloads come from.",
         "installations": "Memory, window, fullscreen, Minecraft arguments, mod loader version and Java of an existing installation.",
         "privacy": "What the launcher sends to its developers, and only with your consent.",
         "reset": "Put chosen parts of the launcher back to how they were at first start."
@@ -1010,6 +1010,21 @@
       "offlineHint": "No internet connection. Installed versions still start; installs and repairs wait in the queue until it returns.",
       "check": "Check again"
     },
+    "mirror": {
+      "title": "Download source",
+      "sources": {
+        "automatic": "Automatic",
+        "mirror_first": "Mirror first",
+        "origin_only": "Original sites only"
+      },
+      "hints": {
+        "automatic": "Original sites first; the launcher's mirror when one fails, is very slow or lost a file.",
+        "mirror_first": "For connections where original sites are blocked or very slow. They stay the fallback.",
+        "origin_only": "Never use the mirror. Downloads wait when a site is down."
+      },
+      "checked": "Every file is checked against its checksum, whichever site it comes from.",
+      "inUse": "Not reachable now: {sites}. Downloading from the launcher's mirror."
+    },
     "downloads": {
       "title": "Downloads",
       "open": "Downloads",
@@ -1121,6 +1136,7 @@
     "No Java {major} runtime is available for this computer from the runtime provider.": "No Java {major} runtime is available for this computer from the runtime provider.",
     "No client for source.": "No client for source.",
     "No download is waiting for an answer.": "No download is waiting for an answer.",
+    "No mirror URL.": "No mirror URL.",
     "No saved sign-in was found. Sign in again.": "No saved sign-in was found. Sign in again.",
     "Notes can be at most {max} characters long.": "Notes can be at most {max} characters long.",
     "Notes cannot contain control characters.": "Notes cannot contain control characters.",

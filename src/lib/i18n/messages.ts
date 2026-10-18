@@ -1076,6 +1076,21 @@ export type Messages = {
     readonly offlineHint: string;
     readonly check: string;
   };
+  readonly mirror: {
+    readonly title: string;
+    readonly sources: {
+      readonly automatic: string;
+      readonly mirror_first: string;
+      readonly origin_only: string;
+    };
+    readonly hints: {
+      readonly automatic: string;
+      readonly mirror_first: string;
+      readonly origin_only: string;
+    };
+    readonly checked: string;
+    readonly inUse: (values: { sites: string | number }) => string;
+  };
   readonly downloads: {
     readonly title: string;
     readonly open: string;

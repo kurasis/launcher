@@ -58,14 +58,16 @@ impl Fetch for PublicClient {
     ) -> FetchFuture<'a> {
         Box::pin(async move {
             let url = self.policy().check(url)?;
-            let mut request = self.get(&url)?;
-            if let Some(etag) = etag {
-                request = request.header(reqwest::header::IF_NONE_MATCH, etag);
-            }
-            if let Some(last_modified) = last_modified {
-                request = request.header(reqwest::header::IF_MODIFIED_SINCE, last_modified);
-            }
-            let (status, headers, body) = self.get_bounded(request, max_bytes).await?;
+            let conditional = |mut request: reqwest::RequestBuilder| {
+                if let Some(etag) = etag {
+                    request = request.header(reqwest::header::IF_NONE_MATCH, etag);
+                }
+                if let Some(last_modified) = last_modified {
+                    request = request.header(reqwest::header::IF_MODIFIED_SINCE, last_modified);
+                }
+                request
+            };
+            let (status, headers, body) = self.fetch_bounded(&url, conditional, max_bytes).await?;
             if status == reqwest::StatusCode::NOT_MODIFIED {
                 return Ok(Fetched {
                     not_modified: true,

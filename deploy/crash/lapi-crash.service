@@ -1,4 +1,4 @@
-# Installed by deploy/crash/bootstrap.sh as /etc/systemd/system/lapi-crash.service.
+# Installed by deploy/bootstrap.sh as /etc/systemd/system/lapi-crash.service.
 [Unit]
 Description=Sferum launcher crash reports (crash.lapi.sh, D-061)
 After=network.target

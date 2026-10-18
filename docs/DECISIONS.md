@@ -1522,7 +1522,7 @@ message` plus a stack trace), with the event's level.
   `crash/crash.env`, and `nginx/crash.conf` included by nginx. The service runs as the
   system user `lapi-crash` under systemd on `127.0.0.1:8781`; nginx terminates TLS
   with a Let's Encrypt certificate and forwards to it.
-- A one-time root script (`deploy/crash/bootstrap.sh`) creates the user, folders,
+- A one-time root script (`deploy/bootstrap.sh`, shared with D-062) creates the user, folders,
   systemd unit, nginx include, certificate and a sudoers entry that lets the deploy
   user only restart the service, test and reload nginx and run the service's command
   line. After that, the "Crash service" workflow tests, builds on Debian 13 and
@@ -1563,3 +1563,90 @@ message` plus a stack trace), with the event's level.
   its deployment. A launcher failure is offered on the Home screen for 14 days, until
   it is sent or declined ("Don't send"). The rule bundle of stage 3 is left for later:
   first the reports show which rules are missing.
+
+## D-062 — Download mirror at mirror.lapi.sh
+
+- **Status:** accepted (owner request, 2026-10-18) · **Affects:** every download of
+  the launcher (metadata and files), Settings → Network, the new service
+  `services/mirror` at `https://mirror.lapi.sh`.
+- **Goal.** The launcher depends on 17 hosts it does not run (Mojang, Adoptium and
+  GitHub, Fabric, Quilt, Forge, NeoForge). When one is down, slow, blocked in the
+  player's country, or has deleted a file, a feature stops working. Every one of
+  those hosts gets a copy at our mirror, and the launcher switches to it by itself.
+- **Owner's choices:** all hosts are mirrored (Mojang included; the owner accepts the
+  licensing question); 1 TB of disk, changeable; traffic is not limited; a mode for
+  players whose connection to an origin is blocked or very slow; Cloudflare caches.
+
+### The mirror
+
+- **Address.** `https://mirror.lapi.sh/<host>/<path>?<query>` stands for
+  `https://<host>/<path>?<query>`, for the hosts of `src-tauri/src/net.rs` only
+  (no open proxy): HTTPS, no user, no port, no `..`, redirects only to those hosts
+  and GitHub's download hosts, public addresses only.
+- **Files** (jars, libraries, asset objects, Java archives, Maven releases: anything
+  whose content never changes at its address) are kept forever, also after the
+  origin deletes them. nginx serves a kept file from disk; the service fetches a
+  missing one once (concurrent requests wait for that one fetch), streams it while
+  storing it, and keeps it. They are sent with `Cache-Control: immutable` so
+  Cloudflare keeps them at its edge.
+- **Metadata** (version lists, `maven-metadata.xml`, Forge promotions, Adoptium and
+  Fabric/Quilt APIs: anything that changes) is fetched again after 10 minutes, and
+  the last good copy is served for as long as the origin fails or returns 404.
+- **Disk.** The quota (default 1000 GB) is the repository variable `MIRROR_MAX_GB`,
+  written by the deploy; a full mirror and a disk with less than 5 GB free still
+  pass files through, without keeping them. A bigger disk is mounted at
+  `/home/www/lapi/mirror/data` (nginx serves kept files from there).
+- **Warming.** A timer fetches what players will need before they ask: Mojang's
+  releases (version files, client jars, libraries, asset indexes and objects), Java
+  of every major version the launcher uses for every platform, and the loaders'
+  installers and libraries for those releases. Snapshots and old versions are kept
+  when first asked for.
+- **Security** as for crash.lapi.sh (D-061): only Cloudflare may connect, root-only
+  nginx files, a system user that writes only its data folder, limits on
+  connections and on fetches per address and in total, no addresses in logs.
+
+### The launcher
+
+- **Routing per host.** A request goes to the origin first. It goes to the mirror
+  instead when:
+  - the origin fails twice in a row for this file (connection, DNS, TLS, timeout,
+    5xx, 429), with the usual short pauses;
+  - the origin answers 404 or 410 (the file may be deleted there);
+  - the file does not match its checksum;
+  - the origin is very slow: after 10 s a file still arrives at under 64 KiB/s
+    and more than 1 MiB is missing.
+    Two such failures of a host within two minutes mark the host as down for 10
+    minutes: its requests go straight to the mirror, then one request tries the
+    origin again. If the mirror fails too, the origin is tried again.
+- **Checks stay the same.** Every file with a checksum in its metadata is checked
+  wherever it came from. Metadata without one (loader lists) comes from the mirror
+  only when the origin failed; the console and the diagnostic export say which
+  source served what.
+- **Setting** (Settings → Network → Download source): **Automatic** (above,
+  default), **Mirror first** (for blocked or slow origins; the origin is the
+  fallback), **Original sites only** (never the mirror).
+- The download manager says when a host is served by the mirror ("Forge is not
+  reachable — downloading from the launcher's mirror").
+- Not covered: Microsoft sign-in (offline play, D-052, still works).
+
+### Stages
+
+1. The mirror service and its deployment; the launcher's routing and setting.
+   **Built.**
+2. Warming: `lapi-mirror warm`, run by `lapi-mirror-warm.timer` 15 minutes after
+   boot and every 6 hours, through the running service. **Built.**
+3. Statistics of mirror use per host (which origins fail most), in the counts-only
+   overview of the workflow. Not built yet.
+
+### Operating it
+
+- The root step is the shared `deploy/bootstrap.sh` (crash and mirror): run once
+  after the first deploy, and again when a workflow says the nginx files changed.
+- Cloudflare: proxied DNS record for `mirror.lapi.sh`, SSL mode as for crash, and a
+  cache rule "cache everything, respect origin cache headers" for
+  `mirror.lapi.sh/*` (Cloudflare's default skips `.json` and extensionless asset
+  objects).
+- The quota is the repository variable `MIRROR_MAX_GB`; a bigger disk is mounted
+  at `/home/www/lapi/mirror/data` (owner `lapi-mirror`, mode 0755).
+- "Run workflow" on "Mirror service" with `task=reports` shows kept files per host,
+  the quota and the free disk.

@@ -1771,3 +1771,33 @@ proxy that was stopped and started to cut and restore the connection.
 - **Server:** the "Crash service" workflow tests and builds the service and deploys
   it over SSH. `crash.lapi.sh` answers only after the one-time root step
   `sudo bash ~/lapi-bootstrap/bootstrap.sh <deploy user>` on the server.
+
+## Download mirror (D-062)
+
+- **Service tests:** a file is fetched once, kept where nginx looks, and still
+  served after the origin loses it; ten requests for one new file share one fetch;
+  a cut-off file is not kept and leaves no part file; files over the quota pass
+  through without being kept, and the quota follows the settings file; metadata
+  is fresh within its time, fetched again after it, served stale while the origin
+  fails, 404 or 502 when never kept; only listed hosts, plain paths and GET are
+  answered (no `..`, encoded slashes, other hosts or GitHub's download hosts
+  directly); request paths map to files and metadata as intended; Maven names map
+  to paths for warming.
+- **Local, release binary behind the real nginx files:** a kept file comes from
+  disk with `Cache-Control: immutable`; a missing one and any request with a
+  query go to the service; other hosts get 404, `..` paths 400, peers outside
+  Cloudflare a closed connection; a real Mojang library came through with its
+  official SHA-1, was kept, and the next request was served from disk; ten
+  parallel requests for a new library got identical bytes; `warm` walked the real
+  version list.
+- **Launcher tests:** an origin answering 503 twice hands the file to the mirror,
+  and a second failing file marks the host down so the next goes to the mirror
+  first; a file deleted at the origin and a corrupt one come from the mirror (the
+  corrupt origin is not asked twice); "mirror first" falls back to the origin;
+  "original sites only" never asks the mirror; a file missing everywhere is asked
+  once of each; routing marks and clears hosts and announces the change; mirror
+  URLs keep host, path and query; Settings → Network switches the source and
+  names the sites the mirror stands in for.
+- **Not tested here:** the slow-origin switch (10 s) only by reading; the
+  metadata fallback of `PublicClient::fetch_bounded` against real hosts (it needs
+  HTTPS origins).

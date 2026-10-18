@@ -22,6 +22,7 @@ pub mod launch;
 pub mod lifecycle;
 pub mod loader;
 pub mod location;
+pub mod mirror;
 pub mod net;
 pub mod reports;
 pub mod reset;
@@ -349,6 +350,32 @@ fn setup(app: &mut tauri::App) -> Result<(), Box<dyn std::error::Error>> {
         });
     }
     app.manage(state);
+    // Downloads fall back to the mirror (D-062); its hosts show in the interface.
+    {
+        let routing = mirror::shared();
+        routing.set_mode(app.state::<AppState>().settings().download_source);
+        let handle = app.handle().clone();
+        let shown = std::sync::Mutex::new(Vec::<String>::new());
+        routing.on_change(move || {
+            let state = handle.state::<AppState>();
+            let now = mirror::shared().mirrored();
+            let mut before = shown
+                .lock()
+                .unwrap_or_else(std::sync::PoisonError::into_inner);
+            for host in now.iter().filter(|h| !before.contains(h)) {
+                state.console().warn(format!(
+                    "{host} is not reachable; its downloads come from the mirror ({})",
+                    mirror::MIRROR_HOST
+                ));
+            }
+            for host in before.iter().filter(|h| !now.contains(h)) {
+                state.console().info(format!("{host} answers again"));
+            }
+            *before = now;
+            drop(before);
+            state.announce_runs();
+        });
+    }
     // Crash reports the player sends, and statistics they allowed (D-061).
     // After AppState is managed: the task below reads it at once.
     let reports = Arc::new(reports::Reports::new(Box::new(
