@@ -1275,3 +1275,110 @@ pub fn note_shown_error(
         ));
     }
 }
+
+/// The launcher's own failures, newest first, for the "send a report" offer
+/// (D-061).
+#[derive(Debug, Clone, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct FailureSummary {
+    pub id: String,
+    pub kind: crate::journal::FailureKind,
+    pub at: chrono::DateTime<chrono::Utc>,
+    pub version: String,
+    pub message: String,
+    pub reported: bool,
+}
+
+#[tauri::command(async)]
+pub fn list_launcher_failures(state: State<'_, AppState>) -> Vec<FailureSummary> {
+    let Some(root) = state.data_root() else {
+        return Vec::new();
+    };
+    crate::journal::failures(&root.path().join("logs"))
+        .into_iter()
+        .map(|f| FailureSummary {
+            message: f
+                .message
+                .lines()
+                .next()
+                .unwrap_or_default()
+                .chars()
+                .take(300)
+                .collect(),
+            id: f.id,
+            kind: f.kind,
+            at: f.at,
+            version: f.version,
+            reported: f.reported,
+        })
+        .collect()
+}
+
+/// The player chose not to send this failure; it is no longer offered.
+#[tauri::command(async)]
+pub fn dismiss_launcher_failure(state: State<'_, AppState>, id: String) -> LauncherResult<()> {
+    let root = state.data_root().ok_or_else(|| {
+        crate::error::LauncherError::new(
+            crate::error::ErrorCode::StorageUnavailable,
+            "Launcher data is unavailable.",
+        )
+    })?;
+    crate::journal::mark_reported(&root.path().join("logs"), &id)
+        .map_err(|e| crate::error::LauncherError::from_io(&e, "Saving the failure record"))
+}
+
+/// What a crash report would send, scrubbed, for the player to read first.
+#[tauri::command]
+pub async fn preview_crash_report<R: Runtime>(
+    app: AppHandle<R>,
+    subject: crate::reports::Subject,
+) -> LauncherResult<crate::reports::Preview> {
+    tauri::async_runtime::spawn_blocking(move || {
+        let home = app.path().home_dir().ok();
+        let reports = app.state::<Arc<crate::reports::Reports>>();
+        reports.preview(&app.state::<AppState>(), &subject, home.as_deref())
+    })
+    .await
+    .map_err(|_| {
+        crate::error::LauncherError::internal("Preparing the report stopped unexpectedly.")
+    })?
+}
+
+/// Sends the files the player kept, with their note.
+#[tauri::command]
+pub async fn send_crash_report<R: Runtime>(
+    app: AppHandle<R>,
+    preview_id: String,
+    files: Vec<String>,
+    note: String,
+) -> LauncherResult<crate::reports::Delivery> {
+    let home = app.path().home_dir().ok();
+    let reports = Arc::clone(&app.state::<Arc<crate::reports::Reports>>());
+    reports
+        .send(
+            &app.state::<AppState>(),
+            &preview_id,
+            &files,
+            &note,
+            home.as_deref(),
+        )
+        .await
+}
+
+/// "Did this explanation help?" (D-061 stage 3).
+#[tauri::command]
+pub async fn send_explanation_feedback(
+    state: State<'_, AppState>,
+    reports: State<'_, Arc<crate::reports::Reports>>,
+    kind: String,
+    signature: String,
+    helpful: bool,
+) -> LauncherResult<()> {
+    let plain = kind.len() <= 40 && kind.bytes().all(|b| b.is_ascii_lowercase() || b == b'_');
+    if !plain || signature.len() > 300 {
+        return Err(crate::error::LauncherError::invalid_input(
+            "This answer is not valid.",
+        ));
+    }
+    reports.feedback(&state, &kind, &signature, helpful).await
+}

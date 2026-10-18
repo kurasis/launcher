@@ -23,6 +23,7 @@ pub mod lifecycle;
 pub mod loader;
 pub mod location;
 pub mod net;
+pub mod reports;
 pub mod reset;
 pub mod runtime;
 pub mod secrets;
@@ -337,6 +338,47 @@ fn setup(app: &mut tauri::App) -> Result<(), Box<dyn std::error::Error>> {
         });
     }
     app.manage(commands::Installer(installer));
+    // Crash reports the player sends, and statistics they allowed (D-061).
+    let reports = Arc::new(reports::Reports::new(Box::new(
+        reports::HttpPoster::new(&version).map_err(|e| e.message)?,
+    )));
+    app.manage(Arc::clone(&reports));
+    {
+        let handle = app.handle().clone();
+        tauri::async_runtime::spawn(async move {
+            // Failures of earlier sessions count once in the statistics.
+            if let Some(root) = handle.state::<AppState>().data_root() {
+                let state = handle.state::<AppState>();
+                let logs = root.path().join("logs");
+                for failure in journal::failures(&logs).into_iter().filter(|f| !f.counted) {
+                    reports::count(
+                        &state,
+                        reports::Event {
+                            source: "launcher".to_owned(),
+                            kind: console::name(&failure.kind),
+                            signature: failure.signature(),
+                            launcher_version: failure.version.clone(),
+                            os: failure.os.clone(),
+                            game_version: String::new(),
+                            loader: String::new(),
+                            loader_version: String::new(),
+                            analyzer_version: 0,
+                            exit_code: None,
+                        },
+                    );
+                    if state.settings().share_stats {
+                        let _ = journal::update(&logs, &failure.id, |f| f.counted = true);
+                    }
+                }
+            }
+            // Reports left from earlier sessions go soon after start.
+            tokio::time::sleep(std::time::Duration::from_secs(20)).await;
+            loop {
+                reports.flush(&handle.state::<AppState>()).await;
+                reports.wait(std::time::Duration::from_secs(600)).await;
+            }
+        });
+    }
     // Counted traffic is written every few seconds (D-051).
     if let Some(root) = state.data_root() {
         tauri::async_runtime::spawn(async move {
@@ -553,8 +595,13 @@ fn handlers<R: tauri::Runtime>() -> impl Fn(tauri::ipc::Invoke<R>) -> bool + Sen
         commands::stop_game,
         commands::open_instance_folder,
         commands::export_diagnostics,
-        commands::note_shown_error,
         commands::report_frontend_error,
+        commands::note_shown_error,
+        commands::list_launcher_failures,
+        commands::dismiss_launcher_failure,
+        commands::preview_crash_report,
+        commands::send_crash_report,
+        commands::send_explanation_feedback,
         commands::start_lifecycle_test,
         commands::stop_lifecycle_test,
     ]
@@ -617,7 +664,12 @@ fn handlers<R: tauri::Runtime>() -> impl Fn(tauri::ipc::Invoke<R>) -> bool + Sen
         commands::stop_game,
         commands::open_instance_folder,
         commands::export_diagnostics,
-        commands::note_shown_error,
         commands::report_frontend_error,
+        commands::note_shown_error,
+        commands::list_launcher_failures,
+        commands::dismiss_launcher_failure,
+        commands::preview_crash_report,
+        commands::send_crash_report,
+        commands::send_explanation_feedback,
     ]
 }

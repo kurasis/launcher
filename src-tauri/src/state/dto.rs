@@ -137,6 +137,11 @@ pub struct SettingsPatch {
     /// 0 removes the limit.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub monthly_limit_mib: Option<u32>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub share_stats: Option<bool>,
+    /// True replaces the crash report install ID with a new one (D-061).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub new_install_id: Option<bool>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -155,6 +160,9 @@ pub struct SettingsView {
     pub metered: bool,
     pub metered_warn_mib: u32,
     pub monthly_limit_mib: u32,
+    pub share_stats: bool,
+    /// The crash report install ID, once a report made one (D-061).
+    pub install_id: Option<String>,
     /// False when settings were written by a newer launcher or could not be read.
     pub writable: bool,
 }
@@ -175,6 +183,8 @@ impl SettingsView {
             metered: settings.metered,
             metered_warn_mib: settings.metered_warn_mib,
             monthly_limit_mib: settings.monthly_limit_mib,
+            share_stats: settings.share_stats,
+            install_id: settings.install_id.clone(),
             writable,
         }
     }

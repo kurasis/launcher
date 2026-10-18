@@ -699,6 +699,26 @@ impl AppState {
         self.lock().data.settings.clone()
     }
 
+    pub fn app_version(&self) -> &str {
+        &self.app_version
+    }
+
+    /// The crash report install ID (D-061), made and saved on first use.
+    pub fn install_id(&self) -> LauncherResult<String> {
+        if let Some(id) = self.settings().install_id {
+            return Ok(id);
+        }
+        let view = self.set_app_settings_inner(MutationRequest {
+            request_id: uuid::Uuid::new_v4().to_string(),
+            payload: SettingsPatch {
+                new_install_id: Some(true),
+                ..SettingsPatch::default()
+            },
+        })?;
+        view.install_id
+            .ok_or_else(|| LauncherError::internal("The install ID could not be saved."))
+    }
+
     pub fn instance(&self, id: InstanceId) -> Option<InstanceFile> {
         self.lock().data.instances.get(&id).cloned()
     }
@@ -1585,6 +1605,12 @@ impl AppState {
                 }
                 if let Some(mib) = patch.monthly_limit_mib {
                     settings.monthly_limit_mib = crate::traffic::validate_limit(mib)?;
+                }
+                if let Some(on) = patch.share_stats {
+                    settings.share_stats = on;
+                }
+                if patch.new_install_id == Some(true) {
+                    settings.install_id = Some(uuid::Uuid::new_v4().to_string());
                 }
                 if let Some(provider) = patch.java_provider {
                     settings.java_provider = provider;

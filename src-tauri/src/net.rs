@@ -31,6 +31,9 @@ pub enum SourcePolicy {
     /// Mod loader metadata, installers and libraries: Fabric, Quilt, Forge and
     /// NeoForge (D-039).
     ModLoaders,
+    /// Our crash report service; reports leave only when the player sends them
+    /// (D-061).
+    CrashReports,
 }
 
 // `launchermeta` is Mojang's previous metadata host; older descriptors still
@@ -82,6 +85,8 @@ const ALL_SOURCE_HOSTS: &[&str] = &[
     "maven.neoforged.net",
 ];
 
+const CRASH_REPORT_HOSTS: &[&str] = &["crash.lapi.sh"];
+
 pub const MAX_REDIRECTS: usize = 5;
 
 impl SourcePolicy {
@@ -91,6 +96,7 @@ impl SourcePolicy {
             Self::MojangArtifacts => MOJANG_ARTIFACT_HOSTS,
             Self::Adoptium => ADOPTIUM_HOSTS,
             Self::ModLoaders => MOD_LOADER_HOSTS,
+            Self::CrashReports => CRASH_REPORT_HOSTS,
         }
     }
 
@@ -282,6 +288,14 @@ impl PublicClient {
             return Err(untrusted_url());
         }
         Ok(self.client.get(url.clone()))
+    }
+
+    /// Starts a POST after checking the URL against the policy.
+    pub fn post(&self, url: &Url) -> LauncherResult<reqwest::RequestBuilder> {
+        if !self.policy.allows(url) {
+            return Err(untrusted_url());
+        }
+        Ok(self.client.post(url.clone()))
     }
 
     /// Starts a HEAD request (headers only) after checking the URL against the policy.

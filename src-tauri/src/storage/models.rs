@@ -135,6 +135,14 @@ pub struct Settings {
     /// New installations start the game in fullscreen (D-056).
     #[serde(default)]
     pub default_fullscreen: bool,
+    /// Random ID sent with crash reports (D-061); made with the first report,
+    /// replaced on request. Never the account or player.
+    #[serde(default)]
+    pub install_id: Option<String>,
+    /// Anonymous statistics and explanation feedback (D-061 stage 3); off by
+    /// default.
+    #[serde(default)]
+    pub share_stats: bool,
 }
 
 fn default_metered_warn_mib() -> u32 {
@@ -162,6 +170,8 @@ impl Default for Settings {
             metered_warn_mib: default_metered_warn_mib(),
             monthly_limit_mib: 0,
             default_fullscreen: false,
+            install_id: None,
+            share_stats: false,
         }
     }
 }

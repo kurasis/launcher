@@ -187,6 +187,13 @@ fn main_window_capability_grants_only_app_commands() {
             "allow-stop-game",
             "allow-open-instance-folder",
             "allow-export-diagnostics",
+            "allow-report-frontend-error",
+            "allow-note-shown-error",
+            "allow-list-launcher-failures",
+            "allow-dismiss-launcher-failure",
+            "allow-preview-crash-report",
+            "allow-send-crash-report",
+            "allow-send-explanation-feedback",
             "allow-start-lifecycle-test",
             "allow-stop-lifecycle-test",
         ]

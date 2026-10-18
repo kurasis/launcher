@@ -62,9 +62,12 @@ pub struct Failure {
     /// The last lines of `launcher.log` when it happened.
     #[serde(default)]
     pub log_tail: Vec<String>,
-    /// Set once the player sent it (D-061 stage 2).
+    /// Set once the player sent it or chose not to (D-061 stage 2).
     #[serde(default)]
     pub reported: bool,
+    /// Set once counted in the anonymous statistics (stage 3).
+    #[serde(default)]
+    pub counted: bool,
 }
 
 impl Failure {
@@ -82,6 +85,7 @@ impl Failure {
             stack: None,
             log_tail: Vec::new(),
             reported: false,
+            counted: false,
         }
     }
 
@@ -220,8 +224,8 @@ pub fn failures(logs_dir: &Path) -> Vec<Failure> {
     list
 }
 
-/// Marks a failure as sent so the launcher stops offering it.
-pub fn mark_reported(logs_dir: &Path, id: &str) -> io::Result<()> {
+/// Changes one failure record.
+pub fn update(logs_dir: &Path, id: &str, change: impl FnOnce(&mut Failure)) -> io::Result<()> {
     for entry in fs::read_dir(logs_dir.join(FAILURES_DIR))?.flatten() {
         let Ok(bytes) = fs::read(entry.path()) else {
             continue;
@@ -229,12 +233,17 @@ pub fn mark_reported(logs_dir: &Path, id: &str) -> io::Result<()> {
         if let Ok(mut failure) = serde_json::from_slice::<Failure>(&bytes)
             && failure.id == id
         {
-            failure.reported = true;
+            change(&mut failure);
             let json = serde_json::to_vec_pretty(&failure).map_err(io::Error::other)?;
             return crate::storage::atomic::write(&entry.path(), &json);
         }
     }
     Err(io::ErrorKind::NotFound.into())
+}
+
+/// Marks a failure as sent or declined, so the launcher stops offering it.
+pub fn mark_reported(logs_dir: &Path, id: &str) -> io::Result<()> {
+    update(logs_dir, id, |f| f.reported = true)
 }
 
 #[derive(Serialize, Deserialize)]
