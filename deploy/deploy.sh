@@ -84,6 +84,10 @@ if grep -q "listen 443" "/etc/nginx/lapi/$SERVICE.conf" 2>/dev/null || [ "$SERVI
     health http://127.0.0.1/v1/health || { echo "nginx does not reach the service"; exit 1; }
 fi
 echo "== healthy: $(curl -fsS "http://127.0.0.1:$PORT/v1/health")"
+if [ "$SERVICE" = mirror ]; then
+    # The warming timer runs once there is a release; starting it again is harmless.
+    sudo -n /usr/bin/systemctl start lapi-mirror-warm.timer || echo "WARM_TIMER: not started (run bootstrap.sh)"
+fi
 
 # Keep the five newest releases, never the current one.
 current=$(readlink "$APP/current")

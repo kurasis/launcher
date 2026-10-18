@@ -1632,6 +1632,21 @@ message` plus a stack trace), with the event's level.
 ### Stages
 
 1. The mirror service and its deployment; the launcher's routing and setting.
-2. Warming.
+   **Built.**
+2. Warming: `lapi-mirror warm`, run by `lapi-mirror-warm.timer` 15 minutes after
+   boot and every 6 hours, through the running service. **Built.**
 3. Statistics of mirror use per host (which origins fail most), in the counts-only
-   overview of the workflow.
+   overview of the workflow. Not built yet.
+
+### Operating it
+
+- The root step is the shared `deploy/bootstrap.sh` (crash and mirror): run once
+  after the first deploy, and again when a workflow says the nginx files changed.
+- Cloudflare: proxied DNS record for `mirror.lapi.sh`, SSL mode as for crash, and a
+  cache rule "cache everything, respect origin cache headers" for
+  `mirror.lapi.sh/*` (Cloudflare's default skips `.json` and extensionless asset
+  objects).
+- The quota is the repository variable `MIRROR_MAX_GB`; a bigger disk is mounted
+  at `/home/www/lapi/mirror/data` (owner `lapi-mirror`, mode 0755).
+- "Run workflow" on "Mirror service" with `task=reports` shows kept files per host,
+  the quota and the free disk.

@@ -135,7 +135,7 @@ jobs:
             echo "::warning::The server is not set up yet: run 'sudo bash ~/lapi-bootstrap/bootstrap.sh <deploy-user>' on it once, then re-run this workflow."
             exit 0
           fi
-          if grep -qE 'NGINX_(PENDING|CHANGED)' deploy.log; then
+          if grep -qE 'NGINX_(PENDING|CHANGED)|WARM_TIMER' deploy.log; then
             echo "::warning::The nginx files on the server are not these: run 'sudo bash ~/lapi-bootstrap/bootstrap.sh <deploy-user>' on it to apply them."
           fi
           exit "$status"

@@ -3,6 +3,7 @@
 //! ```text
 //! lapi-mirror serve       the HTTP service
 //! lapi-mirror overview    kept files per host, quota, free disk (JSON)
+//! lapi-mirror warm        fetches what players will need (a timer runs it)
 //! ```
 //!
 //! Settings come from the environment: `LAPI_MIRROR_DATA` (data folder,
@@ -14,6 +15,7 @@
 mod api;
 mod origin;
 mod store;
+mod warm;
 
 use std::net::{IpAddr, SocketAddr};
 use std::path::PathBuf;
@@ -62,11 +64,18 @@ fn main() -> std::process::ExitCode {
                 serde_json::to_string_pretty(&store.overview()).unwrap_or_default()
             );
         }),
+        Some("warm") => open().and_then(|store| {
+            let runtime = tokio::runtime::Runtime::new().map_err(|e| e.to_string())?;
+            let service = format!("http://{}", env("LAPI_MIRROR_ADDR", "127.0.0.1:8782"));
+            let summary = runtime.block_on(warm::Warm::new(&store, &service).run());
+            println!("warm: {summary}");
+            Ok(())
+        }),
         Some("--version") => {
             println!("lapi-mirror {}", env!("CARGO_PKG_VERSION"));
             Ok(())
         }
-        _ => Err("usage: lapi-mirror serve|overview".to_owned()),
+        _ => Err("usage: lapi-mirror serve|overview|warm".to_owned()),
     };
     match result {
         Ok(()) => std::process::ExitCode::SUCCESS,

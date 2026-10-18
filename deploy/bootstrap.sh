@@ -15,7 +15,7 @@
 #  2. /home/www/lapi/<service>/{releases,data}: the deploy user writes
 #     releases, the service user alone writes its data; /home/www and
 #     /home/www/lapi become root's;
-#  3. its systemd unit;
+#  3. its systemd units (the mirror also has a warming timer);
 #  4. a Let's Encrypt certificate for <service>.lapi.sh (webroot), with a
 #     self-signed one as the fallback, and nginx reloads on renewal;
 #  5. its nginx files, with the shared ones from ./nginx, in /etc/nginx/lapi;
@@ -85,10 +85,18 @@ for service in "${SERVICES[@]}"; do
     chown "root:$user" "$app/$service.env"
     chmod 0640 "$app/$service.env"
     install -m 0644 "$HERE/$service/lapi-$service.service" "/etc/systemd/system/lapi-$service.service"
+    # Helper units, such as the mirror's warming timer.
+    for unit in "$HERE/$service"/lapi-"$service"-*.service "$HERE/$service"/lapi-"$service"-*.timer; do
+        [ -f "$unit" ] && install -m 0644 "$unit" "/etc/systemd/system/$(basename "$unit")"
+    done
 done
 systemctl daemon-reload
 for service in "${SERVICES[@]}"; do
     systemctl enable "lapi-$service.service"
+    for timer in "$HERE/$service"/lapi-"$service"-*.timer; do
+        # Started by the first deploy, once there is a release to run.
+        [ -f "$timer" ] && systemctl enable "$(basename "$timer")"
+    done
 done
 
 # Puts the shared nginx files and those of every service with a certificate
@@ -174,6 +182,9 @@ sudoers=/etc/sudoers.d/lapi-deploy
     for service in "${SERVICES[@]}"; do
         echo "$DEPLOY_USER ALL=(root) NOPASSWD: /usr/bin/systemctl restart lapi-$service, /usr/bin/systemctl is-active lapi-$service"
         echo "$DEPLOY_USER ALL=(lapi-$service) NOPASSWD: $ROOT/$service/current/lapi-$service"
+        for timer in "$HERE/$service"/lapi-"$service"-*.timer; do
+            [ -f "$timer" ] && echo "$DEPLOY_USER ALL=(root) NOPASSWD: /usr/bin/systemctl start $(basename "$timer")"
+        done
     done
 } > "$sudoers.tmp"
 visudo -cf "$sudoers.tmp"
