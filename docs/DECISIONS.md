@@ -1048,3 +1048,24 @@ message` plus a stack trace), with the event's level.
 - **Safety:** backups and restores hold the activity permit, so they never run while
   the installation's game, an install or another backup runs. Manifest paths are
   checked so a manifest cannot write outside the target folder.
+
+## D-048 — Windows: windows are created outside WebView2 callbacks; Windows 11 on ARM in CI
+
+- **Status:** accepted (owner report and request, 2026-10-17) · **Affects:** D-037
+  (console window), the P03 window lifecycle, `.github/workflows/`
+- **Problem:** on Windows the console window opened empty. `open_console` is a
+  synchronous command, so it runs on the main thread inside WebView2's message
+  callback; `run_on_main_thread` called on the main thread runs its task at once, so
+  the console's WebView2 was created inside that callback, which WebView2 does not
+  support (Tauri documents window creation in synchronous commands and event handlers
+  as hanging on Windows). Linux (WebKitGTK) was not affected.
+- **Decision:** window creation (the console, and the main window when it is created
+  again: after a game, from a second launch or the macOS Dock) is always handed to a
+  short-lived thread that queues it on the main thread's event loop, so it never runs
+  inside a WebView2 or window-procedure callback.
+- **CI:** the Windows package job also runs on **Windows 11 on ARM**
+  (`windows-11-arm`, native arm64 build, owner's request), beside `windows-2025` x64,
+  and the Rust core tests run there too. The Windows smoke test now opens
+  **Diagnostics → Open console** through UI Automation and fails unless the console
+  window shows the journal lines the core wrote at start; it uploads a screenshot of
+  the window.
