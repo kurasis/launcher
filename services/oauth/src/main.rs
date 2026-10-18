@@ -16,11 +16,13 @@
 //! `/home/www/lapi/oauth/data`), `LAPI_OAUTH_ADDR` (`127.0.0.1:8783`),
 //! `LAPI_OAUTH_URL` (`https://oauth.lapi.sh`), `LAPI_OAUTH_TURNSTILE_SITE_KEY`
 //! and `LAPI_OAUTH_TURNSTILE_SECRET` (without the secret nobody can register),
-//! `LAPI_OAUTH_SMTP_URL` and `LAPI_OAUTH_MAIL_FROM` (without them letters wait).
+//! `LAPI_OAUTH_SMTP_URL` and `LAPI_OAUTH_MAIL_FROM` (without them letters wait),
+//! `LAPI_OAUTH_INTERNAL_ADDR` (`127.0.0.1:8793`, for friends.lapi.sh only).
 
 mod api;
 mod app;
 mod crypto;
+mod internal;
 mod mail;
 mod pages;
 mod rules;
@@ -279,6 +281,11 @@ fn serve() -> Result<(), String> {
                 tokio::time::sleep(Duration::from_secs(3600)).await;
             }
         });
+        let internal_address = env("LAPI_OAUTH_INTERNAL_ADDR", "127.0.0.1:8793");
+        let internal = tokio::net::TcpListener::bind(&internal_address)
+            .await
+            .map_err(|e| format!("binding {internal_address}: {e}"))?;
+        tokio::spawn(axum::serve(internal, internal::router(Arc::clone(&app))).into_future());
         let listener = tokio::net::TcpListener::bind(&address)
             .await
             .map_err(|e| format!("binding {address}: {e}"))?;

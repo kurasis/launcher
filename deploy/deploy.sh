@@ -26,6 +26,7 @@ case "$SERVICE" in
     mirror) PORT=8782; QUOTA_GB="$EXTRA" ;;
     upd) PORT="" ;;
     oauth) PORT=8783 ;;
+    friends) PORT=8784 ;;
     *) echo "unknown service $SERVICE"; exit 1 ;;
 esac
 APP=/home/www/lapi/$SERVICE

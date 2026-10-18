@@ -909,3 +909,61 @@ async fn limits_and_switched_off_accounts() {
     // A digest is never a token: the stored hash does not sign in.
     let _ = sha2::Sha256::digest(b"x");
 }
+
+#[tokio::test]
+async fn the_internal_api_tells_only_nicks_and_ids() {
+    let t = setup();
+    let tokens = t.account("Findable", "198.51.100.30").await;
+    let id = tokens["account"]["id"].as_str().unwrap().to_owned();
+    let internal = crate::internal::router(Arc::clone(&t.app));
+    let ask = |request: Request<Body>| {
+        let internal = internal.clone();
+        async move {
+            let response = internal.oneshot(request).await.unwrap();
+            let status = response.status();
+            let bytes = response.into_body().collect().await.unwrap().to_bytes();
+            (
+                status,
+                serde_json::from_slice::<serde_json::Value>(&bytes).unwrap_or_default(),
+            )
+        }
+    };
+    let (status, found) = ask(Request::get("/internal/v1/find?nick=FINDABLE")
+        .body(Body::empty())
+        .unwrap())
+    .await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(found, serde_json::json!({ "id": id, "nick": "Findable" }));
+    for nick in ["nobody", "%27%20OR%201%3D1--", "x"] {
+        let (status, _) = ask(Request::get(format!("/internal/v1/find?nick={nick}"))
+            .body(Body::empty())
+            .unwrap())
+        .await;
+        assert_eq!(status, StatusCode::NOT_FOUND, "{nick}");
+    }
+    let (status, nicks) = ask(Request::post("/internal/v1/nicks")
+        .header(header::CONTENT_TYPE, "application/json")
+        .body(Body::from(
+            serde_json::json!({ "ids": [id, "not-an-id", "00000000-0000-4000-8000-000000000000"] })
+                .to_string(),
+        ))
+        .unwrap())
+    .await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(
+        nicks,
+        serde_json::json!({ "nicks": { id.clone(): "Findable" } })
+    );
+    // Not part of the public routes.
+    let public = t
+        .send(t.get("/internal/v1/find?nick=Findable", "1.2.3.4"))
+        .await;
+    assert_eq!(public.status, StatusCode::NOT_FOUND);
+    // A switched-off account is not found.
+    t.app.store.set_disabled(&id, true).unwrap();
+    let (status, _) = ask(Request::get("/internal/v1/find?nick=findable")
+        .body(Body::empty())
+        .unwrap())
+    .await;
+    assert_eq!(status, StatusCode::NOT_FOUND);
+}
