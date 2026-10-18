@@ -24,7 +24,22 @@ use crate::pages::{self, Field, Form as Page, Lang, texts};
 use crate::rules::{self, Problem};
 use crate::store::{NewAccount, Request, Taken};
 
-const COOKIE: &str = "__Host-flow";
+/// HTTPS (every real server): the cookie is `__Host-flow`, `Secure`. Over
+/// plain HTTP, only a local test server, browsers drop such a cookie, so it
+/// is `flow` there.
+static SECURE: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(true);
+
+pub fn set_secure(secure: bool) {
+    SECURE.store(secure, std::sync::atomic::Ordering::Relaxed);
+}
+
+fn cookie_name() -> &'static str {
+    if SECURE.load(std::sync::atomic::Ordering::Relaxed) {
+        "__Host-flow"
+    } else {
+        "flow"
+    }
+}
 /// Failed sign-ins from one address in 15 minutes, or for one account, before
 /// the captcha is asked.
 const IP_FAILURES_FOR_CAPTCHA: u32 = 3;
@@ -39,13 +54,19 @@ fn cookie(headers: &HeaderMap) -> Option<String> {
         .flat_map(|v| v.split(';'))
         .find_map(|pair| {
             let (name, value) = pair.trim().split_once('=')?;
-            (name == COOKIE).then(|| value.to_owned())
+            (name == cookie_name()).then(|| value.to_owned())
         })
 }
 
 fn with_cookie(mut response: Response, csrf: &str) -> Response {
+    let secure = if SECURE.load(std::sync::atomic::Ordering::Relaxed) {
+        " Secure;"
+    } else {
+        ""
+    };
     if let Ok(value) = HeaderValue::from_str(&format!(
-        "{COOKIE}={csrf}; Path=/; Secure; HttpOnly; SameSite=Strict; Max-Age={REQUEST_SECONDS}"
+        "{}={csrf}; Path=/;{secure} HttpOnly; SameSite=Strict; Max-Age={REQUEST_SECONDS}",
+        cookie_name()
     )) {
         response.headers_mut().append(header::SET_COOKIE, value);
     }

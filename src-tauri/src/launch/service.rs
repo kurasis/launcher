@@ -319,6 +319,13 @@ impl LaunchService {
                 .and_then(|name| super::notoken::NoTokenProfile::new(&name).ok())
                 .map(LaunchMode::NoToken)
                 .unwrap_or_else(|| LaunchMode::NoToken(Default::default())),
+            // The launcher account plays under its nick, without a Minecraft
+            // token (D-064).
+            Some(ProfileRef::Launcher { id }) => state
+                .launcher_account_nick(&id)
+                .and_then(|nick| super::notoken::NoTokenProfile::new(&nick).ok())
+                .map(LaunchMode::NoToken)
+                .unwrap_or_else(|| LaunchMode::NoToken(Default::default())),
             None => LaunchMode::NoToken(Default::default()),
         }
     }

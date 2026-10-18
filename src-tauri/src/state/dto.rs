@@ -353,6 +353,8 @@ pub struct AccountSummary {
     pub notoken_profiles: Vec<NoTokenProfileView>,
     /// The profile installations play as unless they name another one.
     pub default_profile: Option<ProfileRef>,
+    /// The launcher account (D-064).
+    pub launcher_account: crate::launcher_account::LauncherAccountView,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

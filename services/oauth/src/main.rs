@@ -180,6 +180,32 @@ fn main() -> std::process::ExitCode {
             );
             Ok(())
         }),
+        // Debug builds only, for trying the launcher against a local server
+        // (Turnstile cannot run there); release builds have no such command.
+        #[cfg(debug_assertions)]
+        Some("dev-create") => match (arg(1), arg(2), arg(3)) {
+            (Some(nick), Some(email), Some(password)) => open().and_then(|store| {
+                let nick = rules::nick(nick).map_err(|p| format!("{p:?}"))?;
+                let email = rules::email(email).map_err(|p| format!("{p:?}"))?;
+                let created = store.create_account(&store::NewAccount {
+                    nick: &nick,
+                    email: &email,
+                    password_hash: &crypto::hash_password(password),
+                    lang: "en",
+                    ip: "127.0.0.1",
+                    country: "XX",
+                    now,
+                })?;
+                match created {
+                    Ok(a) => {
+                        out!("created {} {}", a.id, a.nick);
+                        Ok(())
+                    }
+                    Err(taken) => Err(format!("{taken:?} taken")),
+                }
+            }),
+            _ => Err("dev-create needs a nick, an email and a password".to_owned()),
+        },
         Some("--version") => {
             println!("lapi-oauth {}", env!("CARGO_PKG_VERSION"));
             Ok(())

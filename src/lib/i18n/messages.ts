@@ -107,6 +107,32 @@ export type Messages = {
     readonly playAs: string;
     readonly playAsDefault: (values: { name: string | number }) => string;
     readonly chipLabel: string;
+    readonly launcherTitle: string;
+    readonly launcherHint: string;
+    readonly launcherSignIn: string;
+    readonly launcherRegister: string;
+    readonly launcherWaiting: string;
+    readonly launcherNick: string;
+    readonly launcherEmailConfirmed: string;
+    readonly launcherEmailNotConfirmed: string;
+    readonly launcherResend: string;
+    readonly launcherResent: string;
+    readonly launcherChangeNick: string;
+    readonly launcherSaveNick: string;
+    readonly launcherCancel: string;
+    readonly launcherNickChanged: string;
+    readonly launcherSignOut: string;
+    readonly launcherSignInAgain: string;
+    readonly launcherLabel: (values: { name: string | number }) => string;
+    readonly launcherProblems: {
+      readonly network: string;
+      readonly sign_in_again: string;
+      readonly nick_taken: string;
+      readonly nick_invalid: string;
+      readonly too_many: string;
+      readonly vault: string;
+      readonly server: string;
+    };
   };
   readonly instances: {
     readonly title: string;

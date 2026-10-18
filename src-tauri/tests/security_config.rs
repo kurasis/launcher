@@ -200,6 +200,10 @@ fn main_window_capability_grants_only_app_commands() {
             "allow-dismiss-whats-new",
             "allow-open-update-page",
             "allow-interface-ready",
+            "allow-launcher-account-open",
+            "allow-launcher-account-sign-out",
+            "allow-launcher-account-set-nick",
+            "allow-launcher-account-resend-confirmation",
             "allow-start-lifecycle-test",
             "allow-stop-lifecycle-test",
         ]

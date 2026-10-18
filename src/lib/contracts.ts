@@ -298,8 +298,29 @@ export interface UpdateView {
 /** Origins with the mirror as fallback, the mirror first, or never the mirror (D-062). */
 export type DownloadSource = 'automatic' | 'mirror_first' | 'origin_only';
 
-/** Who plays: a Microsoft account (Minecraft profile ID) or a no-token profile (D-045). */
-export type ProfileRef = { kind: 'microsoft'; id: string } | { kind: 'notoken'; id: string };
+/** Who plays: a Microsoft account (Minecraft profile ID), a no-token profile (D-045)
+ * or the launcher account (D-064). */
+export type ProfileRef =
+  | { kind: 'microsoft'; id: string }
+  | { kind: 'notoken'; id: string }
+  | { kind: 'launcher'; id: string };
+
+/** What went wrong with the launcher account. */
+export type LauncherAccountProblem =
+  'network' | 'sign_in_again' | 'nick_taken' | 'nick_invalid' | 'too_many' | 'vault' | 'server';
+
+/** The launcher account at oauth.lapi.sh (D-064). Never contains tokens. */
+export interface LauncherAccountView {
+  /** Signed in on this computer. */
+  id: string | null;
+  nick: string | null;
+  emailVerified: boolean;
+  /** The sign-in window is open. */
+  signingIn: boolean;
+  /** The saved sign-in no longer works. */
+  needsSignIn: boolean;
+  problem: LauncherAccountProblem | null;
+}
 
 /** One Microsoft account. Never contains tokens. */
 export interface MicrosoftAccount {
@@ -335,6 +356,7 @@ export interface AccountSummary {
   notokenProfiles: NoTokenProfile[];
   /** Who installations play as unless they name another profile. */
   defaultProfile: ProfileRef | null;
+  launcherAccount: LauncherAccountView;
 }
 
 export type ExternalLink =

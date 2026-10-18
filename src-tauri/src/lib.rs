@@ -19,6 +19,7 @@ pub mod gallery;
 pub mod install;
 pub mod journal;
 pub mod launch;
+pub mod launcher_account;
 pub mod lifecycle;
 pub mod loader;
 pub mod location;
@@ -444,6 +445,19 @@ fn setup(app: &mut tauri::App) -> Result<(), Box<dyn std::error::Error>> {
             }
         });
     }
+    // The launcher account (D-064): check the saved sign-in once the start settles.
+    let launcher_account = Arc::new(launcher_account::LauncherAccount::new(
+        &version,
+        Arc::new(auth::vault::KeyringStore),
+    )?);
+    app.manage(Arc::clone(&launcher_account));
+    {
+        let handle = app.handle().clone();
+        tauri::async_runtime::spawn(async move {
+            tokio::time::sleep(std::time::Duration::from_secs(5)).await;
+            launcher_account.check(&handle.state::<AppState>()).await;
+        });
+    }
     let auth = Arc::new(create_auth_service(app.handle())?);
     app.manage(Arc::clone(&auth));
     let launcher = source.map(|source| {
@@ -669,6 +683,10 @@ fn handlers<R: tauri::Runtime>() -> impl Fn(tauri::ipc::Invoke<R>) -> bool + Sen
         commands::dismiss_whats_new,
         commands::open_update_page,
         commands::interface_ready,
+        commands::launcher_account_open,
+        commands::launcher_account_sign_out,
+        commands::launcher_account_set_nick,
+        commands::launcher_account_resend_confirmation,
         commands::start_lifecycle_test,
         commands::stop_lifecycle_test,
     ]
@@ -744,5 +762,9 @@ fn handlers<R: tauri::Runtime>() -> impl Fn(tauri::ipc::Invoke<R>) -> bool + Sen
         commands::dismiss_whats_new,
         commands::open_update_page,
         commands::interface_ready,
+        commands::launcher_account_open,
+        commands::launcher_account_sign_out,
+        commands::launcher_account_set_nick,
+        commands::launcher_account_resend_confirmation,
     ]
 }

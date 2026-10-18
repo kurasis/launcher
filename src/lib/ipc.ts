@@ -41,6 +41,7 @@ import {
   type Gallery,
   type TrafficSummary,
   type UpdateView,
+  type LauncherAccountProblem,
   type BackupScope,
   type JavaCheck,
   type NoTokenProfile,
@@ -236,6 +237,15 @@ export const ipc = {
   restartToUpdate: (): Promise<void> => invoke('restart_to_update'),
   dismissWhatsNew: (): Promise<void> => invoke('dismiss_whats_new'),
   openUpdatePage: (): Promise<void> => invoke('open_update_page'),
+  /** Opens the launcher account's window on its sign-in or registration page. */
+  launcherAccountOpen: (screen: 'login' | 'register'): Promise<void> =>
+    invoke('launcher_account_open', { screen }),
+  launcherAccountSignOut: (): Promise<void> => invoke('launcher_account_sign_out'),
+  /** Null when the nick changed, else what went wrong. */
+  launcherAccountSetNick: (nick: string): Promise<LauncherAccountProblem | null> =>
+    invoke<LauncherAccountProblem | null>('launcher_account_set_nick', { nick }),
+  launcherAccountResendConfirmation: (): Promise<LauncherAccountProblem | null> =>
+    invoke<LauncherAccountProblem | null>('launcher_account_resend_confirmation'),
   /** The interface has shown: a new version's start can count as good. */
   interfaceReady: (): Promise<void> => invoke('interface_ready'),
   /** Debug builds only; release builds have no handler for this command. */

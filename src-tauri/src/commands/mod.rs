@@ -1419,6 +1419,49 @@ pub fn interface_ready<R: Runtime>(app: AppHandle<R>) {
         .interface_shown(&app);
 }
 
+/// Opens the launcher account's sign-in window on `screen`: `login` or
+/// `register` (D-064).
+#[tauri::command]
+pub fn launcher_account_open<R: Runtime>(app: AppHandle<R>, screen: String) {
+    let account = Arc::clone(&app.state::<Arc<crate::launcher_account::LauncherAccount>>());
+    let handle = app.clone();
+    // Windows are made on the main thread.
+    let _ = app.run_on_main_thread(move || account.open(&handle, &screen));
+}
+
+#[tauri::command]
+pub async fn launcher_account_sign_out<R: Runtime>(app: AppHandle<R>) {
+    let account = Arc::clone(&app.state::<Arc<crate::launcher_account::LauncherAccount>>());
+    account.sign_out(&app.state::<AppState>()).await;
+}
+
+/// Changes the nick; what went wrong comes back as a problem code.
+#[tauri::command]
+pub async fn launcher_account_set_nick<R: Runtime>(
+    app: AppHandle<R>,
+    nick: String,
+) -> Option<crate::launcher_account::AccountProblem> {
+    if nick.len() > 64 {
+        return Some(crate::launcher_account::AccountProblem::NickInvalid);
+    }
+    let account = Arc::clone(&app.state::<Arc<crate::launcher_account::LauncherAccount>>());
+    account
+        .set_nick(&app.state::<AppState>(), nick.trim())
+        .await
+        .err()
+}
+
+#[tauri::command]
+pub async fn launcher_account_resend_confirmation<R: Runtime>(
+    app: AppHandle<R>,
+) -> Option<crate::launcher_account::AccountProblem> {
+    let account = Arc::clone(&app.state::<Arc<crate::launcher_account::LauncherAccount>>());
+    account
+        .resend_confirmation(&app.state::<AppState>())
+        .await
+        .err()
+}
+
 /// Opens where to get the update by hand (a `.deb`, or after installing
 /// failed); only addresses on upd.lapi.sh.
 #[tauri::command(async)]

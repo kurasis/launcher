@@ -48,6 +48,14 @@ export function accountFixture(overrides: Partial<AccountSummary> = {}): Account
     pendingSignOuts: [],
     notokenProfiles: [],
     defaultProfile: null,
+    launcherAccount: {
+      id: null,
+      nick: null,
+      emailVerified: false,
+      signingIn: false,
+      needsSignIn: false,
+      problem: null,
+    },
     ...overrides,
   };
 }

@@ -77,6 +77,10 @@ fn main() {
         "dismiss_whats_new",
         "open_update_page",
         "interface_ready",
+        "launcher_account_open",
+        "launcher_account_sign_out",
+        "launcher_account_set_nick",
+        "launcher_account_resend_confirmation",
         // Registered only in debug builds; release builds have no handler for them.
         "start_lifecycle_test",
         "stop_lifecycle_test",

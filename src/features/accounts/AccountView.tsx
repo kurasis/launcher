@@ -16,6 +16,7 @@ import { ipc } from '../../lib/ipc';
 import { localizeError, strings } from '../../lib/strings';
 import { useCommand } from '../../lib/useCommand';
 import styles from './Accounts.module.css';
+import { LauncherAccountPanel } from './LauncherAccountPanel';
 import { sameProfile } from './players';
 
 const t = strings.accountView;
@@ -142,8 +143,17 @@ export function AccountView({ snapshot }: { snapshot: AppSnapshot }) {
   const loginState = account.loginState;
   const isDefault = (profile: ProfileRef) => sameProfile(account.defaultProfile, profile);
 
+  const own = account.launcherAccount;
   return (
     <>
+      <LauncherAccountPanel
+        view={own}
+        isDefault={own.id !== null && isDefault({ kind: 'launcher', id: own.id })}
+        busy={busy}
+        onDefault={() => {
+          if (own.id !== null) void setDefault.run({ kind: 'launcher', id: own.id });
+        }}
+      />
       <Panel title={a.notokenTitle}>
         <p className={styles.hint}>{a.notokenHint}</p>
         {account.notokenProfiles.length === 0 ? (

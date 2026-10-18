@@ -230,6 +230,10 @@ impl LifecycleController {
         if let Some(console) = app.get_webview_window(CONSOLE_WINDOW) {
             let _ = console.destroy();
         }
+        // A sign-in window left open would keep the launcher running.
+        if let Some(account) = app.get_webview_window(crate::launcher_account::WINDOW) {
+            let _ = account.destroy();
+        }
     }
 
     /// Destroys the main window if `run_id` still owns the unload. Runs on the main

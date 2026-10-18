@@ -173,6 +173,7 @@ pub struct App {
 
 impl App {
     pub fn new(config: Config, store: Store, keys: Keys, captcha: Box<dyn Captcha>) -> Self {
+        crate::web::set_secure(config.base.starts_with("https://"));
         Self {
             config,
             store,
