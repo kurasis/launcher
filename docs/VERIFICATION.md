@@ -1751,6 +1751,23 @@ proxy that was stopped and started to cut and restore the connection.
 - **Tests (service):** a gzip report is stored, grouped and readable from the
   command line; malformed reports are refused; the per-address limit answers 429;
   statistics and answers are counted per day; old reports are pruned.
+- **Attacks (service tests):** a 256 MiB gzip bomb packed into 255 KiB is cut off
+  with 413 and nothing is stored; a limited address gets 429 before its body is
+  read; addresses of one IPv6 /64 share a limit; many addresses together meet
+  the overall limit, and one address over its own limit does not use it up;
+  the storage and daily row limits answer 507; `text/plain` (what a web page
+  can send unasked), broken JSON, false gzip, deep nesting, control characters,
+  13 files, long notes and big summaries are refused; SQL-like and HTML text is
+  stored as text, unknown fields are dropped, IDs like `../../crash.db` find
+  nothing; the public overview holds no signature, note or Markdown.
+- **Attacks (nginx, local, with the release binary):** a peer outside the
+  Cloudflare ranges gets its connection closed over HTTP and HTTPS, also with a
+  forged `CF-Connecting-IP`; through a stand-in for Cloudflare one client gets
+  429 after 21 quick requests while another is served; 3 MB bodies get 413; the
+  gzip bomb gets 413 with the service at 8.6 MiB of memory; `..` paths get 400
+  or 404; the access log shows `198.51.100.0` and `2001:db8:aa::`, the error
+  log no client address; the service's own limit answers 429 on the 21st
+  report of one client.
 - **Server:** the "Crash service" workflow tests and builds the service and deploys
   it over SSH. `crash.lapi.sh` answers only after the one-time root step
   `sudo bash ~/lapi-bootstrap/bootstrap.sh <deploy user>` on the server.

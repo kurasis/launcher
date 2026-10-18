@@ -13,6 +13,21 @@ use rusqlite::{Connection, OptionalExtension, params};
 
 use crate::model::{Event, Feedback, Report};
 
+/// Distinct rows a day may add; beyond them a day's counts stop growing, so
+/// made-up values cannot fill the disk.
+const MAX_STAT_ROWS_PER_DAY: i64 = 100_000;
+const MAX_FEEDBACK_ROWS_PER_DAY: i64 = 20_000;
+
+/// What happened to a report.
+#[derive(Debug, PartialEq, Eq)]
+pub enum Added {
+    Stored(String),
+    /// The install sent its daily allowance.
+    Limited,
+    /// The stored reports reached their size limit.
+    Full,
+}
+
 pub struct Store {
     db: Mutex<Connection>,
     reports: PathBuf,
@@ -66,6 +81,7 @@ CREATE TABLE IF NOT EXISTS reports (
 );
 CREATE INDEX IF NOT EXISTS reports_group ON reports (source, kind, signature);
 CREATE INDEX IF NOT EXISTS reports_received ON reports (received);
+CREATE INDEX IF NOT EXISTS reports_install ON reports (install_id, received);
 CREATE TABLE IF NOT EXISTS stats (
     day TEXT NOT NULL,
     source TEXT NOT NULL,
@@ -124,8 +140,26 @@ impl Store {
             .unwrap_or_else(std::sync::PoisonError::into_inner)
     }
 
-    /// Writes the report's file, then its row. Returns the new ID.
-    pub fn add(&self, report: &Report, now: DateTime<Utc>) -> Result<String, String> {
+    /// Bytes of the stored reports (gzip).
+    pub fn stored_bytes(&self) -> i64 {
+        self.db()
+            .query_row("SELECT coalesce(sum(bytes), 0) FROM reports", [], |r| {
+                r.get(0)
+            })
+            .unwrap_or(i64::MAX)
+    }
+
+    /// Writes the report's file, then its row, unless the stored reports
+    /// already take `max_bytes`.
+    pub fn add(
+        &self,
+        report: &Report,
+        now: DateTime<Utc>,
+        max_bytes: i64,
+    ) -> Result<Added, String> {
+        if self.stored_bytes() >= max_bytes {
+            return Ok(Added::Full);
+        }
         let id = uuid::Uuid::new_v4().to_string();
         let relative = format!("{}/{id}.json.gz", now.format("%Y/%m"));
         let path = self.reports.join(&relative);
@@ -164,7 +198,17 @@ impl Store {
             let _ = fs::remove_file(&path);
             return Err(e.to_string());
         }
-        Ok(id)
+        Ok(Added::Stored(id))
+    }
+
+    /// Rows a table holds for one day.
+    fn rows_on(db: &Connection, table: &str, day: &str) -> i64 {
+        db.query_row(
+            &format!("SELECT count(*) FROM {table} WHERE day = ?1"),
+            [day],
+            |r| r.get(0),
+        )
+        .unwrap_or(i64::MAX)
     }
 
     /// Reports from one install today, for the daily limit.
@@ -179,8 +223,12 @@ impl Store {
             .unwrap_or(0)
     }
 
-    pub fn count(&self, events: &[Event], now: DateTime<Utc>) -> Result<(), String> {
+    /// Counts the events; false when today's rows are at their limit.
+    pub fn count(&self, events: &[Event], now: DateTime<Utc>) -> Result<bool, String> {
         let mut db = self.db();
+        if Self::rows_on(&db, "stats", &day(now)) >= MAX_STAT_ROWS_PER_DAY {
+            return Ok(false);
+        }
         let tx = db.transaction().map_err(|e| e.to_string())?;
         for e in events {
             tx.execute(
@@ -203,25 +251,29 @@ impl Store {
             )
             .map_err(|e| e.to_string())?;
         }
-        tx.commit().map_err(|e| e.to_string())
+        tx.commit().map(|()| true).map_err(|e| e.to_string())
     }
 
-    pub fn feedback(&self, f: &Feedback, now: DateTime<Utc>) -> Result<(), String> {
-        self.db()
-            .execute(
-                "INSERT INTO feedback VALUES (?1, ?2, ?3, ?4, ?5, ?6, 1)
+    /// Counts one answer; false when today's rows are at their limit.
+    pub fn feedback(&self, f: &Feedback, now: DateTime<Utc>) -> Result<bool, String> {
+        let db = self.db();
+        if Self::rows_on(&db, "feedback", &day(now)) >= MAX_FEEDBACK_ROWS_PER_DAY {
+            return Ok(false);
+        }
+        db.execute(
+            "INSERT INTO feedback VALUES (?1, ?2, ?3, ?4, ?5, ?6, 1)
                  ON CONFLICT DO UPDATE SET count = count + 1",
-                params![
-                    day(now),
-                    f.kind,
-                    f.signature,
-                    f.analyzer_version,
-                    f.launcher_version,
-                    f.helpful
-                ],
-            )
-            .map(|_| ())
-            .map_err(|e| e.to_string())
+            params![
+                day(now),
+                f.kind,
+                f.signature,
+                f.analyzer_version,
+                f.launcher_version,
+                f.helpful
+            ],
+        )
+        .map(|_| true)
+        .map_err(|e| e.to_string())
     }
 
     /// The biggest groups of the last `days` days.
@@ -331,6 +383,117 @@ impl Store {
                               sum(CASE WHEN helpful THEN 0 ELSE count END) AS not_helped
                               FROM feedback WHERE day >= ?1 GROUP BY kind ORDER BY not_helped DESC"),
         })
+    }
+
+    #[cfg(test)]
+    pub fn fill_feedback_for_test(&self, day: &str, rows: i64) {
+        let mut db = self.db();
+        let tx = db.transaction().unwrap();
+        for i in 0..rows {
+            tx.execute(
+                "INSERT INTO feedback VALUES (?1, 'k', ?2, 1, '0.1.0', 1, 1)",
+                params![day, i.to_string()],
+            )
+            .unwrap();
+        }
+        tx.commit().unwrap();
+    }
+
+    /// Counts per cause for a public summary: only fixed words (source,
+    /// cause, launcher version), never signatures, notes or files.
+    pub fn overview(&self, days: i64) -> serde_json::Value {
+        let since = Utc::now().timestamp() - days * 86_400;
+        let since_day = day(Utc::now() - chrono::Duration::days(days));
+        let word = |s: String| {
+            if !s.is_empty()
+                && s.len() <= 40
+                && s.bytes()
+                    .all(|b| b.is_ascii_alphanumeric() || matches!(b, b'_' | b'-' | b'.' | b'+'))
+            {
+                s
+            } else {
+                "other".to_owned()
+            }
+        };
+        let db = self.db();
+        let reports: Vec<serde_json::Value> = db
+            .prepare(
+                "SELECT source, kind, count(*), count(DISTINCT install_id), max(launcher_version)
+                 FROM reports WHERE received > ?1 GROUP BY source, kind ORDER BY count(*) DESC",
+            )
+            .and_then(|mut q| {
+                q.query_map([since], |r| {
+                    Ok(serde_json::json!({
+                        "source": word(r.get(0)?),
+                        "kind": word(r.get(1)?),
+                        "reports": r.get::<_, i64>(2)?,
+                        "installs": r.get::<_, i64>(3)?,
+                        "newestLauncher": word(r.get(4)?),
+                    }))
+                })
+                .map(|rows| rows.flatten().collect())
+            })
+            .unwrap_or_default();
+        let counted: Vec<serde_json::Value> = db
+            .prepare(
+                "SELECT source, kind, sum(count) FROM stats WHERE day >= ?1
+                 GROUP BY source, kind ORDER BY sum(count) DESC",
+            )
+            .and_then(|mut q| {
+                q.query_map([&since_day], |r| {
+                    Ok(serde_json::json!({
+                        "source": word(r.get(0)?),
+                        "kind": word(r.get(1)?),
+                        "count": r.get::<_, i64>(2)?,
+                    }))
+                })
+                .map(|rows| rows.flatten().collect())
+            })
+            .unwrap_or_default();
+        let answers: Vec<serde_json::Value> = db
+            .prepare(
+                "SELECT kind, sum(CASE WHEN helpful THEN count ELSE 0 END),
+                        sum(CASE WHEN helpful THEN 0 ELSE count END)
+                 FROM feedback WHERE day >= ?1 GROUP BY kind ORDER BY 3 DESC",
+            )
+            .and_then(|mut q| {
+                q.query_map([&since_day], |r| {
+                    Ok(serde_json::json!({
+                        "kind": word(r.get(0)?),
+                        "helped": r.get::<_, i64>(1)?,
+                        "notHelped": r.get::<_, i64>(2)?,
+                    }))
+                })
+                .map(|rows| rows.flatten().collect())
+            })
+            .unwrap_or_default();
+        serde_json::json!({
+            "days": days,
+            "reports": reports,
+            "statistics": counted,
+            "feedback": answers,
+        })
+    }
+
+    /// Removes every report of one install (a player's request).
+    pub fn forget(&self, install_id: &str) -> Result<usize, String> {
+        let found: Vec<(String, String)> = {
+            let db = self.db();
+            let mut q = db
+                .prepare("SELECT id, path FROM reports WHERE install_id = ?1")
+                .map_err(|e| e.to_string())?;
+            q.query_map([install_id], |r| Ok((r.get(0)?, r.get(1)?)))
+                .map_err(|e| e.to_string())?
+                .flatten()
+                .collect()
+        };
+        for (id, path) in &found {
+            let _ = fs::remove_file(self.reports.join(path));
+            self.db()
+                .execute("DELETE FROM reports WHERE id = ?1", [id])
+                .map_err(|e| e.to_string())?;
+        }
+        Ok(found.len())
     }
 
     /// Removes reports older than `report_days` and counts older than `stat_days`.

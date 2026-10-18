@@ -8,13 +8,21 @@
 //! lapi-crash list [--kind K] [--signature S] [--limit N]
 //! lapi-crash show <id> [--file NAME]
 //! lapi-crash stats [--days N]
+//! lapi-crash overview [--days N]
+//! lapi-crash forget <install-id>
 //! lapi-crash prune
 //! ```
+//!
+//! `overview` prints counts per cause only, nothing a player wrote or a log
+//! held: it is the one output fit for a public place such as the workflow
+//! summary of a public repository. Everything printed is cleaned of control
+//! and direction characters first, so a report cannot drive the terminal.
 //!
 //! Settings come from the environment: `LAPI_CRASH_DATA` (data folder, default
 //! `/home/www/lapi/crash/data`),
 //! `LAPI_CRASH_ADDR` (default `127.0.0.1:8781`), `LAPI_CRASH_KEEP_DAYS`
-//! (reports, default 90) and `LAPI_CRASH_KEEP_STATS_DAYS` (default 400).
+//! (reports, default 90), `LAPI_CRASH_KEEP_STATS_DAYS` (default 400) and
+//! `LAPI_CRASH_MAX_STORED_MB` (stored reports, default 5120).
 
 mod api;
 mod model;
@@ -51,6 +59,25 @@ fn number(args: &[String], name: &str, default: i64) -> i64 {
 /// through `sudo`, which clears the environment, so this is the default.
 const DATA: &str = "/home/www/lapi/crash/data";
 
+/// Text as it is printed: control characters (but newlines and tabs) and the
+/// characters that reorder text become U+FFFD.
+fn plain(text: &str) -> String {
+    text.chars()
+        .map(|c| {
+            let reorders = matches!(c, '\u{202A}'..='\u{202E}' | '\u{2066}'..='\u{2069}');
+            if (c.is_control() && c != '\n' && c != '\t') || reorders {
+                '\u{FFFD}'
+            } else {
+                c
+            }
+        })
+        .collect()
+}
+
+macro_rules! out {
+    ($($arg:tt)*) => { println!("{}", plain(&format!($($arg)*))) };
+}
+
 fn open() -> Result<Store, String> {
     Store::open(&PathBuf::from(env("LAPI_CRASH_DATA", DATA)))
 }
@@ -66,14 +93,14 @@ fn main() -> std::process::ExitCode {
                 number(&args, "--limit", 50),
             );
             if args.iter().any(|a| a == "--json") {
-                println!(
+                out!(
                     "{}",
                     serde_json::to_string_pretty(&groups).unwrap_or_default()
                 );
             } else {
-                println!("reports installs  last             source   kind / signature");
+                out!("reports installs  last             source   kind / signature");
                 for g in groups {
-                    println!(
+                    out!(
                         "{:>7} {:>8}  {}  {:<8} {} / {} (up to {})",
                         g.reports,
                         g.installs,
@@ -93,7 +120,7 @@ fn main() -> std::process::ExitCode {
                 number(&args, "--limit", 30),
             );
             for r in listed {
-                println!(
+                out!(
                     "{}  {}  {} {} {}  {} {}  {}  {} B",
                     r.id,
                     r.received,
@@ -113,7 +140,7 @@ fn main() -> std::process::ExitCode {
                 Some(report) => {
                     match flag(&args, "--file") {
                         Some(name) => match report.files.iter().find(|f| f.name == name) {
-                            Some(file) => print!("{}", file.text),
+                            Some(file) => print!("{}", plain(&file.text)),
                             None => return Err(format!("no file {name} in {id}")),
                         },
                         None => {
@@ -122,7 +149,7 @@ fn main() -> std::process::ExitCode {
                                 file.text =
                                     format!("<{} bytes; --file {}>", file.text.len(), file.name);
                             }
-                            println!(
+                            out!(
                                 "{}",
                                 serde_json::to_string_pretty(&head).unwrap_or_default()
                             );
@@ -135,11 +162,25 @@ fn main() -> std::process::ExitCode {
         },
         Some("stats") => open().map(|store| {
             let summary = store.summary(number(&args, "--days", 30));
-            println!(
+            out!(
                 "{}",
                 serde_json::to_string_pretty(&summary).unwrap_or_default()
             );
         }),
+        Some("overview") => open().map(|store| {
+            out!(
+                "{}",
+                serde_json::to_string_pretty(&store.overview(number(&args, "--days", 30)))
+                    .unwrap_or_default()
+            );
+        }),
+        Some("forget") => match args.get(1) {
+            Some(install) if uuid::Uuid::parse_str(install).is_ok() => open().and_then(|store| {
+                out!("removed {} reports", store.forget(install)?);
+                Ok(())
+            }),
+            _ => Err("forget needs an install ID".to_owned()),
+        },
         Some("prune") => open().and_then(|store| {
             let removed = store.prune(
                 days("LAPI_CRASH_KEEP_DAYS", 90),
@@ -152,7 +193,7 @@ fn main() -> std::process::ExitCode {
             println!("lapi-crash {}", env!("CARGO_PKG_VERSION"));
             Ok(())
         }
-        _ => Err("usage: lapi-crash serve|groups|list|show <id>|stats|prune".to_owned()),
+        _ => Err("usage: lapi-crash serve|groups|list|show <id>|stats|overview|forget <install-id>|prune".to_owned()),
     };
     match result {
         Ok(()) => std::process::ExitCode::SUCCESS,
@@ -172,10 +213,8 @@ fn serve() -> Result<(), String> {
     );
     let runtime = tokio::runtime::Runtime::new().map_err(|e| e.to_string())?;
     runtime.block_on(async move {
-        let app = Arc::new(api::App {
-            store,
-            limiter: api::Limiter::default(),
-        });
+        let max_stored = days("LAPI_CRASH_MAX_STORED_MB", 5120).saturating_mul(1024 * 1024);
+        let app = Arc::new(api::App::new(store, max_stored));
         let pruning = Arc::clone(&app);
         tokio::spawn(async move {
             loop {
@@ -220,3 +259,12 @@ async fn stopped() {
 
 #[cfg(test)]
 mod tests;
+
+#[cfg(test)]
+#[test]
+fn printed_text_cannot_drive_the_terminal() {
+    assert_eq!(
+        plain("a\u{1b}]52;c;cm0gLXJm\u{7}b\u{202E}c\u{9b}d\n\te"),
+        "a\u{FFFD}]52;c;cm0gLXJm\u{FFFD}b\u{FFFD}c\u{FFFD}d\n\te"
+    );
+}

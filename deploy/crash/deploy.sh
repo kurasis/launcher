@@ -4,10 +4,10 @@
 #
 #   bash deploy.sh <release-id> <archive>
 #
-# Unpacks the archive into releases/<release-id>, updates the nginx snippets
-# (kept only if `nginx -t` passes), points `current` at the release, restarts
-# the service and checks /v1/health. A failed check puts the previous release
-# back. The five newest releases are kept.
+# Unpacks the archive into releases/<release-id>, points `current` at the
+# release, restarts the service and checks /v1/health. A failed check puts the
+# previous release back. The five newest releases are kept. nginx files are
+# root's (bootstrap.sh installs them); this only says when they differ.
 set -euo pipefail
 
 RELEASE="${1:?release id}"
@@ -38,17 +38,16 @@ health() {
     return 1
 }
 
-echo "== nginx snippets"
-backup=$(mktemp -d)
-cp -a "$ROOT/nginx/." "$backup/"
-install -m 0644 "$dir"/nginx/* "$ROOT/nginx/"
-if ! sudo -n /usr/sbin/nginx -t; then
-    echo "nginx rejected the new snippets; keeping the old ones"
-    rm -f "$ROOT/nginx/"*
-    cp -a "$backup/." "$ROOT/nginx/"
-    exit 1
+echo "== nginx files"
+if [ ! -f /etc/nginx/lapi/crash.conf ]; then
+    echo "NGINX_PENDING: nginx still uses the old layout"
+else
+    for file in "$dir"/nginx/*; do
+        if ! cmp -s "$file" "/etc/nginx/lapi/$(basename "$file")"; then
+            echo "NGINX_CHANGED: $(basename "$file") differs from the server's"
+        fi
+    done
 fi
-rm -rf "$backup"
 
 echo "== switching to $RELEASE"
 previous=$(readlink "$APP/current" 2>/dev/null || true)
@@ -65,7 +64,6 @@ if ! health http://127.0.0.1:8781/v1/health; then
     fi
     exit 1
 fi
-sudo -n /usr/bin/systemctl reload nginx
 health http://127.0.0.1/v1/health || { echo "nginx does not reach the service"; exit 1; }
 echo "== healthy: $(curl -fsS http://127.0.0.1:8781/v1/health)"
 

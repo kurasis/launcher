@@ -2,9 +2,13 @@ name: Crash service
 
 # The crash report service at crash.lapi.sh (docs/DECISIONS.md D-061): tests,
 # a release build, and a deploy over SSH to /home/www/lapi/crash. The server
-# needs deploy/crash/bootstrap.sh run once as root; until then the deploy step
-# uploads that script and stops with a warning. "Run workflow" with
-# task=reports prints the report groups of the last 30 days.
+# needs deploy/crash/bootstrap.sh run as root once, and again when the nginx
+# files change (the deploy warns); the deploy uploads it to ~/lapi-bootstrap.
+#
+# This repository is public, and so are its workflow logs: nothing a player
+# sent and nothing about the server is printed here. "Run workflow" with
+# task=reports shows counts per cause only; reports are read on the server
+# (docs/CRASH-REPORTS.md).
 
 on:
   push:
@@ -60,6 +64,9 @@ jobs:
       # Ubuntu 24.04's glibc (2.39) is older than Debian 13's (2.41), so the
       # binary runs there.
       - run: cargo build --locked --release
+      - name: Check the nginx files
+        working-directory: ${{ github.workspace }}
+        run: bash deploy/crash/check-nginx.sh
       - name: Package the release
         run: |
           mkdir -p ../../dist-crash/nginx
@@ -103,8 +110,8 @@ jobs:
           # The setup files stay in the deploy user's home for the one-time
           # root step: sudo bash ~/lapi-bootstrap/bootstrap.sh <user>
           ssh -i ~/.ssh/id_deploy -o BatchMode=yes "$TARGET" 'mkdir -p ~/lapi-bootstrap'
-          scp -i ~/.ssh/id_deploy -o BatchMode=yes deploy/crash/bootstrap.sh deploy/crash/deploy.sh \
-            deploy/crash/lapi-crash.service "$TARGET:lapi-bootstrap/"
+          scp -i ~/.ssh/id_deploy -o BatchMode=yes -r deploy/crash/bootstrap.sh deploy/crash/deploy.sh \
+            deploy/crash/lapi-crash.service deploy/crash/nginx "$TARGET:lapi-bootstrap/"
       - name: Deploy
         env:
           TARGET: ${{ secrets.SSH_USER }}@${{ secrets.SSH_HOST }}
@@ -117,6 +124,9 @@ jobs:
             echo "::warning::The server is not set up yet: run 'sudo bash ~/lapi-bootstrap/bootstrap.sh <deploy-user>' on it once, then re-run this workflow."
             exit 0
           fi
+          if grep -qE 'NGINX_(PENDING|CHANGED)' deploy.log; then
+            echo "::warning::The nginx files on the server are not these: run 'sudo bash ~/lapi-bootstrap/bootstrap.sh <deploy-user>' on it to apply them."
+          fi
           exit "$status"
       - name: Check from outside
         run: |
@@ -125,9 +135,19 @@ jobs:
             sleep 5
           done
           echo "::warning::https://crash.lapi.sh/v1/health does not answer through Cloudflare yet"
+      - name: The origin answers only through Cloudflare
+        env:
+          SSH_HOST: ${{ secrets.SSH_HOST }}
+        run: |
+          ip=$(getent ahostsv4 "$SSH_HOST" | awk 'NR==1 {print $1}')
+          if curl -sk --max-time 10 -o /dev/null --resolve "crash.lapi.sh:443:$ip" https://crash.lapi.sh/v1/health; then
+            echo "::warning::The server answers crash.lapi.sh directly, around Cloudflare: apply the nginx files with bootstrap.sh."
+          else
+            echo "Direct requests to the server are refused."
+          fi
 
   reports:
-    name: Report groups
+    name: Counts per cause
     if: github.event_name == 'workflow_dispatch' && inputs.task == 'reports'
     runs-on: ubuntu-24.04
     steps:
@@ -140,19 +160,17 @@ jobs:
           printf '%s\n' "$SSH_KEY" > ~/.ssh/id_deploy
           chmod 600 ~/.ssh/id_deploy
           printf '%s\n' "$SSH_KNOWN_HOSTS" > ~/.ssh/known_hosts
-      - name: Groups of the last 30 days
+      # `overview` prints counts per cause and launcher version only: the logs
+      # of this public repository must not hold signatures, notes or files.
+      - name: The last 30 days
         env:
           TARGET: ${{ secrets.SSH_USER }}@${{ secrets.SSH_HOST }}
         run: |
           {
-            echo '### Crash report groups, last 30 days'
-            echo '```'
-            ssh -i ~/.ssh/id_deploy -o BatchMode=yes "$TARGET" \
-              'sudo -n -u lapi-crash /home/www/lapi/crash/current/lapi-crash groups --days 30'
-            echo '```'
-            echo '### Statistics and feedback'
+            echo '### Crash reports, statistics and answers, last 30 days'
+            echo 'Counts only. Read the reports themselves on the server: docs/CRASH-REPORTS.md.'
             echo '```json'
             ssh -i ~/.ssh/id_deploy -o BatchMode=yes "$TARGET" \
-              'sudo -n -u lapi-crash /home/www/lapi/crash/current/lapi-crash stats --days 30'
+              'sudo -n -u lapi-crash /home/www/lapi/crash/current/lapi-crash overview --days 30'
             echo '```'
           } | tee -a "$GITHUB_STEP_SUMMARY"

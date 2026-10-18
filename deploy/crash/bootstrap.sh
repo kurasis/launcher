@@ -1,34 +1,56 @@
 #!/bin/bash
-# One-time root setup of the crash service on the Debian 13 server (D-061).
+# Root setup of the crash service on the Debian 13 server (D-061).
 #
-#   sudo bash bootstrap.sh <deploy-user>
+#   sudo bash ~/lapi-bootstrap/bootstrap.sh <deploy-user>
 #
 # <deploy-user> is the account in the SSH_USER secret. After this, the
-# "Crash service" workflow deploys without root. Safe to run again: every step
-# checks what is already there.
+# "Crash service" workflow deploys the service without root. Run it again when
+# the workflow says the nginx files changed: nginx config is root's alone,
+# since whoever writes it can make nginx (root) write any file. Safe to run
+# again: every step checks what is already there.
 #
 # What it does:
 #  1. creates the system user `lapi-crash` that runs the service;
-#  2. creates /home/www/lapi/{crash/{releases,data},nginx,acme} with owners and
-#     modes: the deploy user writes releases and nginx snippets, the service
-#     user alone writes its data;
+#  2. makes /home/www and /home/www/lapi root's (others read only) and creates
+#     /home/www/lapi/{crash/{releases,data},acme}: the deploy user writes
+#     releases, the service user alone writes its data;
 #  3. installs the systemd unit lapi-crash.service;
-#  4. makes nginx include /home/www/lapi/nginx/*.conf and starts nginx;
-#  5. gets a Let's Encrypt certificate for crash.lapi.sh (webroot), with a
+#  4. gets a Let's Encrypt certificate for crash.lapi.sh (webroot), with a
 #     self-signed one as the fallback, and reloads nginx on renewal;
-#  6. lets the deploy user run exactly: restart/is-active lapi-crash,
-#     nginx -t, reload nginx, and the service's command line as lapi-crash.
+#  5. installs the nginx files from ./nginx into /etc/nginx/lapi (root's) and
+#     makes nginx include them;
+#  6. lets the deploy user run exactly: restart/is-active lapi-crash, and the
+#     service's command line as lapi-crash.
 set -euo pipefail
 
 DEPLOY_USER="${1:?usage: sudo bash bootstrap.sh <deploy-user>}"
 DOMAIN=crash.lapi.sh
-ROOT=/home/www/lapi
+WWW=/home/www
+ROOT=$WWW/lapi
 APP=$ROOT/crash
+NGINX=/etc/nginx/lapi
 HERE="$(cd "$(dirname "$0")" && pwd)"
 
 [ "$(id -u)" -eq 0 ] || { echo "run as root (sudo)"; exit 1; }
 id "$DEPLOY_USER" >/dev/null || { echo "no user $DEPLOY_USER"; exit 1; }
+[ -f "$HERE/nginx/crash.conf" ] || { echo "no $HERE/nginx: re-run the workflow first"; exit 1; }
 step() { printf '\n== %s\n' "$*"; }
+
+# Puts ./nginx into $NGINX; the files before stay if nginx rejects them.
+install_site() {
+    local backup
+    backup=$(mktemp -d)
+    cp -a "$NGINX/." "$backup/"
+    install -m 0644 -o root -g root "$HERE"/nginx/* "$NGINX/"
+    if ! nginx -t; then
+        echo "nginx rejected the new files; the old ones are back"
+        rm -f "$NGINX"/*
+        cp -a "$backup/." "$NGINX/"
+        rm -rf "$backup"
+        return 1
+    fi
+    rm -rf "$backup"
+}
 
 step "service user"
 if ! id lapi-crash >/dev/null 2>&1; then
@@ -36,10 +58,18 @@ if ! id lapi-crash >/dev/null 2>&1; then
 fi
 
 step "folders under $ROOT"
-install -d -m 0755 "$ROOT"
+# Every folder on the way to what root runs or reads must be root's: an owner
+# of a parent could rename the folder and put their own files in its place.
+for dir in "$WWW" "$ROOT"; do
+    install -d "$dir"
+    if [ "$(stat -c %U:%a "$dir")" != "root:755" ]; then
+        echo "$dir was $(stat -c %U:%G:%a "$dir"); now root:root 755"
+        chown root:root "$dir"
+        chmod 0755 "$dir"
+    fi
+done
 install -d -o "$DEPLOY_USER" -g lapi-crash -m 2750 "$APP" "$APP/releases"
 install -d -o lapi-crash -g lapi-crash -m 0750 "$APP/data"
-install -d -o "$DEPLOY_USER" -g "$DEPLOY_USER" -m 0755 "$ROOT/nginx"
 install -d -o root -g root -m 0755 "$ROOT/acme"
 if [ ! -f "$APP/crash.env" ]; then
     cat > "$APP/crash.env" <<EOF
@@ -47,6 +77,7 @@ LAPI_CRASH_ADDR=127.0.0.1:8781
 LAPI_CRASH_DATA=$APP/data
 LAPI_CRASH_KEEP_DAYS=90
 LAPI_CRASH_KEEP_STATS_DAYS=400
+LAPI_CRASH_MAX_STORED_MB=5120
 EOF
 fi
 chown root:lapi-crash "$APP/crash.env"
@@ -57,15 +88,18 @@ install -m 0644 "$HERE/lapi-crash.service" /etc/systemd/system/lapi-crash.servic
 systemctl daemon-reload
 systemctl enable lapi-crash.service
 
-step "nginx"
-install -d -m 0755 /etc/nginx/lapi-tls
+step "nginx include"
+install -d -o root -g root -m 0755 "$NGINX" /etc/nginx/lapi-tls
 cat > /etc/nginx/conf.d/lapi.conf <<EOF
-# Our APIs under $ROOT (D-061): each one adds its server blocks there.
-include $ROOT/nginx/*.conf;
+# Our APIs (D-061): each one adds its files to $NGINX (root's).
+include $NGINX/*.conf;
 EOF
-# Until a release brings the real config: answer the ACME challenge on port 80.
-if [ ! -f "$ROOT/nginx/crash.conf" ]; then
-    cat > "$ROOT/nginx/crash.conf" <<EOF
+tls=/etc/nginx/lapi-tls/$DOMAIN.conf
+if [ -f "$tls" ]; then
+    install_site
+else
+    # Until there is a certificate: answer the ACME challenge on port 80.
+    cat > "$NGINX/crash.conf" <<EOF
 server {
     listen 80;
     listen [::]:80;
@@ -74,15 +108,15 @@ server {
     location / { return 503; }
 }
 EOF
-    chown "$DEPLOY_USER:$DEPLOY_USER" "$ROOT/nginx/crash.conf"
 fi
+# The layout before root kept nginx files: deploys wrote them.
+rm -rf "$ROOT/nginx"
 nginx -t
 systemctl enable nginx
-systemctl restart nginx
+systemctl reload-or-restart nginx
 
 step "TLS certificate"
 apt-get install -y --no-install-recommends certbot openssl >/dev/null
-tls=/etc/nginx/lapi-tls/$DOMAIN.conf
 if certbot certonly --webroot -w "$ROOT/acme" -d "$DOMAIN" \
         --non-interactive --agree-tos --register-unsafely-without-email --keep-until-expiring; then
     printf 'ssl_certificate /etc/letsencrypt/live/%s/fullchain.pem;\nssl_certificate_key /etc/letsencrypt/live/%s/privkey.pem;\n' \
@@ -104,11 +138,15 @@ else
 fi
 chmod 0644 "$tls"
 
+step "nginx files of the crash service"
+install_site
+systemctl reload nginx
+
 step "sudo rights of $DEPLOY_USER"
 sudoers=/etc/sudoers.d/lapi-deploy
 cat > "$sudoers.tmp" <<EOF
 # Deploys of $ROOT services by GitHub Actions (D-061). Nothing else.
-$DEPLOY_USER ALL=(root) NOPASSWD: /usr/bin/systemctl restart lapi-crash, /usr/bin/systemctl is-active lapi-crash, /usr/sbin/nginx -t, /usr/bin/systemctl reload nginx
+$DEPLOY_USER ALL=(root) NOPASSWD: /usr/bin/systemctl restart lapi-crash, /usr/bin/systemctl is-active lapi-crash
 $DEPLOY_USER ALL=(lapi-crash) NOPASSWD: $APP/current/lapi-crash
 EOF
 visudo -cf "$sudoers.tmp"
@@ -117,4 +155,4 @@ mv "$sudoers.tmp" "$sudoers"
 
 touch "$APP/.bootstrapped"
 step "done"
-echo "Now re-run the 'Crash service' workflow (or push to main) to deploy."
+echo "The workflow deploys the service by itself from now on."

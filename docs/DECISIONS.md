@@ -1528,6 +1528,35 @@ message` plus a stack trace), with the event's level.
   line. After that, the "Crash service" workflow tests, builds on Debian 13 and
   deploys over SSH on every change to `main`.
 
+### Security
+
+- **Only through Cloudflare.** nginx closes connections that do not come from
+  Cloudflare's ranges (or the server itself), so the origin cannot be used
+  around Cloudflare's protection; the client address is taken from
+  `CF-Connecting-IP` only on those connections. The workflow checks from outside
+  that the server refuses direct requests.
+- **Limits before work.** Rate limits per address (an IPv6 /64 counts as one)
+  and over all addresses together run before a body is read or unpacked; at
+  most four reports are read at once; the unpacked body stops at 8.25 MiB (a
+  gzip bomb ends there); stored reports stop at 5 GiB and the daily statistics
+  rows at a fixed number, so a flood can fill neither memory nor disk. nginx
+  adds 30 requests a minute and 8 connections per address and 2 MiB per body.
+- **No reading over HTTP; nothing in public logs.** The repository and its
+  workflow logs are public: the workflow prints counts per cause only, and
+  reports are read on the server (docs/CRASH-REPORTS.md). The command line
+  removes control and direction characters from what it prints, so a crafted
+  report cannot drive a terminal.
+- **Root stays root's.** nginx files live in `/etc/nginx/lapi`, which only root
+  changes (bootstrap.sh); a deploy no longer writes them, since writing nginx
+  config is as good as writing any file as root. `/home/www` and
+  `/home/www/lapi` belong to root for the same reason. The deploy user may only
+  restart the service and run its command line as `lapi-crash`.
+- **No addresses kept.** The access log holds networks (`/24`, `/48`), and
+  nginx does not log messages that would name a client.
+- Validation as before: fixed words for causes and versions, UUID install IDs,
+  file names without paths, sizes and counts bounded, SQL only with
+  parameters, unknown fields dropped.
+
 ### Built
 
 - Stages 1 and 2, the statistics and "Did this help?" of stage 3, the service and
