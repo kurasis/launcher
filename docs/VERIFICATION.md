@@ -1708,4 +1708,6 @@ proxy that was stopped and started to cut and restore the connection.
   report, and console questions repeating on the game's empty input. The run
   outputs are fixtures with tests; the service test
   `a_question_repeated_on_the_console_ends_the_game` checks that only three
-  questions reach the log.
+  questions reach the log. In the release build the NeoForge case ended two
+  seconds after **Play** and showed "Файл повреждён" with the console question as a
+  note (`docs/verification/crash-console-question-ru.png`).
