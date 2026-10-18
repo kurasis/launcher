@@ -427,6 +427,8 @@ export interface AppSnapshot {
   microsoftClientId: MicrosoftClientIdStatus;
   instances: InstanceSummary[];
   activeOperation: ActiveActivity | null;
+  /** Installs and repairs waiting their turn, first first. */
+  queue: QueuedOperation[];
   currentRun: RunSummary | null;
   lastRun: RunSummary | null;
   lifecycleHarnessAvailable: boolean;
@@ -461,7 +463,17 @@ export interface OperationProgress {
   verifiedFiles: number;
   totalFiles: number | null;
   bytesPerSecond: number | null;
+  /** Names of the files being downloaded right now (D-049). */
+  currentFiles: string[];
   timestamp: string;
+}
+
+/** An install or repair waiting its turn (D-049). */
+export interface QueuedOperation {
+  queueId: string;
+  instanceId: string;
+  kind: OperationKind;
+  queuedAt: string;
 }
 
 /** The one terminal outcome of an install or repair. */
@@ -478,7 +490,9 @@ export interface OperationResult {
 }
 
 export interface OperationStarted {
+  /** The operation ID, or the queue ID when `queued`. */
   operationId: string;
+  queued?: boolean;
 }
 
 export interface CancelAck {
@@ -539,6 +553,7 @@ export interface GameStateChangedEvent extends EventEnvelope {
   currentRun: RunSummary | null;
   lastRun: RunSummary | null;
   activeOperation: ActiveActivity | null;
+  queue: QueuedOperation[];
 }
 
 export interface AccountStateChangedEvent extends EventEnvelope {

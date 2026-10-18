@@ -8,6 +8,7 @@ import type {
   InstanceSummary,
   OperationProgress,
   OperationResult,
+  QueuedOperation,
 } from '../../lib/contracts';
 import { formatBytes } from '../../lib/format';
 import { ipc } from '../../lib/ipc';
@@ -25,6 +26,8 @@ interface InstallPanelProps {
   activeOperation: ActiveActivity | null;
   progress: OperationProgress | null;
   recentOperations: OperationResult[];
+  /** Installs and repairs waiting their turn (D-049). */
+  queue?: QueuedOperation[];
 }
 
 const t = strings.install;
@@ -93,6 +96,7 @@ export function InstallPanel({
   activeOperation,
   progress,
   recentOperations,
+  queue = [],
 }: InstallPanelProps) {
   const install = useCommand((requestId: string, id: string) => ipc.installInstance(id, requestId));
   const repair = useCommand((requestId: string, id: string) => ipc.repairInstance(id, requestId));
@@ -102,6 +106,8 @@ export function InstallPanel({
   );
   const mine = activeOperation?.instanceId === instance.id ? activeOperation : null;
   const otherBusy = activeOperation !== null && mine === null;
+  // While something else runs, install and repair wait in the queue (D-049).
+  const queued = queue.find((q) => q.instanceId === instance.id) ?? null;
   const ownProgress = mine !== null && progress?.operationId === mine.operationId ? progress : null;
   const last = recentOperations.find((r) => r.instanceId === instance.id) ?? null;
   const health = instance.health;
@@ -143,17 +149,28 @@ export function InstallPanel({
         </>
       )}
       {mine === null && last !== null && <ResultView result={last} />}
-      {otherBusy && <Notice tone="info">{t.otherBusy}</Notice>}
+      {queued !== null ? (
+        <Notice tone="info">
+          <p>{strings.downloads.queued}</p>
+          <div className={forms.actions}>
+            <Button disabled={cancel.pending} onClick={() => void cancel.run(queued.queueId)}>
+              {strings.downloads.remove}
+            </Button>
+          </div>
+        </Notice>
+      ) : (
+        otherBusy && <Notice tone="info">{t.otherBusy}</Notice>
+      )}
       {mine === null && health !== 'unsupported' && (
         <div className={styles.heroActions}>
           {health === 'not_installed' ? (
             <Button
               variant="primary"
               size="large"
-              disabled={otherBusy || install.pending}
+              disabled={install.pending || queued !== null}
               onClick={() => void install.run(instance.id)}
             >
-              {unfinished ? t.retry : t.install}
+              {otherBusy ? strings.downloads.addToQueue : unfinished ? t.retry : t.install}
             </Button>
           ) : (
             <>
@@ -169,10 +186,14 @@ export function InstallPanel({
               )}
               <Button
                 variant={health === 'ready' ? 'secondary' : 'primary'}
-                disabled={otherBusy || repair.pending}
+                disabled={repair.pending || queued !== null}
                 onClick={() => void repair.run(instance.id)}
               >
-                {health === 'ready' ? t.verify : t.repair}
+                {otherBusy && health !== 'ready'
+                  ? strings.downloads.addToQueue
+                  : health === 'ready'
+                    ? t.verify
+                    : t.repair}
               </Button>
             </>
           )}

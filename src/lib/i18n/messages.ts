@@ -634,4 +634,22 @@ export type Messages = {
     readonly deleted: (values: { size: string | number }) => string;
     readonly busy: string;
   };
+  readonly downloads: {
+    readonly title: string;
+    readonly open: string;
+    readonly none: string;
+    readonly unknown: string;
+    readonly progress: string;
+    readonly percent: (values: { percent: string | number }) => string;
+    readonly bytes: (values: { done: string | number; total: string | number }) => string;
+    readonly speed: (values: { rate: string | number }) => string;
+    readonly files: (values: { done: number; total: number }) => string;
+    readonly file: (values: { name: string | number }) => string;
+    readonly cancel: string;
+    readonly queue: (values: { count: number }) => string;
+    readonly remove: string;
+    readonly recent: string;
+    readonly queued: string;
+    readonly addToQueue: string;
+  };
 };

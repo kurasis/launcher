@@ -131,7 +131,7 @@
       "starting": "Starting…",
       "cancel": "Cancel",
       "cancelling": "Cancelling…",
-      "otherBusy": "Another operation is running. Wait for it to finish or cancel it.",
+      "otherBusy": "Another operation is running. Install and repair are added to the queue and start after it.",
       "explain": {
         "not_installed": "The game files, the Java runtime and the version metadata are downloaded from Mojang and Adoptium and checked before use.",
         "ready": "All files were verified. Repair checks every file again and replaces damaged ones.",
@@ -607,6 +607,24 @@
       "restoredCopy": "Restored as the world “{name}”.",
       "deleted": "Deleted; {size} freed.",
       "busy": "Backups and restores wait until the running operation or game ends."
+    },
+    "downloads": {
+      "title": "Downloads",
+      "open": "Downloads",
+      "none": "Nothing is downloading.",
+      "unknown": "Removed installation",
+      "progress": "Download progress",
+      "percent": "{percent}%",
+      "bytes": "{done} of {total}",
+      "speed": "{rate}/s",
+      "files": "{done, number} of {total, number} files",
+      "file": "Downloading {name}",
+      "cancel": "Cancel",
+      "queue": "Waiting in line: {count, number}",
+      "remove": "Remove",
+      "recent": "Recently",
+      "queued": "Queued: starts when the current operation ends.",
+      "addToQueue": "Add to queue"
     }
   },
   "errors": {
@@ -823,6 +841,7 @@
     "This child account must be added to a Microsoft family, or a parent must allow online play.": "This child account must be added to a Microsoft family, or a parent must allow online play.",
     "This computer reports {physicalMib} MiB of memory, which leaves less than {minHeapMib} MiB for the game after the operating system reserve.": "This computer reports {physicalMib} MiB of memory, which leaves less than {minHeapMib} MiB for the game after the operating system reserve.",
     "This file was written by a newer launcher version (schema {schema}). It is kept unchanged and is read-only here; update the launcher to use it.": "This file was written by a newer launcher version (schema {schema}). It is kept unchanged and is read-only here; update the launcher to use it.",
+    "This installation is already being installed or waiting in the queue.": "This installation is already being installed or waiting in the queue.",
     "This installation is busy. Wait for the current operation to finish.": "This installation is busy. Wait for the current operation to finish.",
     "This installation is not installed yet. Install it, then play.": "This installation is not installed yet. Install it, then play.",
     "This installation record was written by a newer launcher.": "This installation record was written by a newer launcher.",

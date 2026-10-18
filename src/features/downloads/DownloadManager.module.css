@@ -1,0 +1,224 @@
+/* The download manager sits in the bottom corner on every screen (D-049). */
+.corner {
+  position: fixed;
+  inset-inline-end: var(--space-6);
+  inset-block-end: var(--space-6);
+  z-index: 40;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: var(--space-2);
+}
+
+.button {
+  --progress: 0%;
+  position: relative;
+  display: grid;
+  place-items: center;
+  width: 3.25rem;
+  height: 3.25rem;
+  border: none;
+  border-radius: 50%;
+  cursor: pointer;
+  color: var(--color-text-muted);
+  background: var(--color-surface-raised);
+  box-shadow: var(--shadow-raised);
+  transition: transform 150ms ease;
+}
+
+.button:hover {
+  transform: scale(1.05);
+}
+
+/* While downloading: a progress ring around the button and a moving arrow. */
+.button[data-working] {
+  color: var(--color-accent);
+  background:
+    radial-gradient(closest-side, var(--color-surface-raised) 82%, transparent 84%),
+    conic-gradient(var(--color-accent) var(--progress), var(--color-accent-soft) 0);
+}
+
+.button[data-working]::after {
+  content: '';
+  position: absolute;
+  inset: -4px;
+  border-radius: 50%;
+  border: 2px solid var(--color-accent-soft);
+  animation: pulse 1.6s ease-out infinite;
+}
+
+.icon {
+  width: 1.5rem;
+  height: 1.5rem;
+  fill: none;
+  stroke: currentcolor;
+  stroke-width: 2;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.button[data-working] .arrow {
+  animation: drop 1.2s ease-in-out infinite;
+}
+
+.badge {
+  position: absolute;
+  inset-block-start: -2px;
+  inset-inline-end: -2px;
+  min-width: 1.25rem;
+  height: 1.25rem;
+  padding: 0 0.3rem;
+  border-radius: 999px;
+  background: var(--color-accent-2);
+  color: var(--color-accent-contrast);
+  font-size: var(--font-size-xs);
+  font-weight: 700;
+  line-height: 1.25rem;
+}
+
+.panel {
+  width: min(24rem, calc(100vw - 3rem));
+  max-height: min(32rem, calc(100vh - 8rem));
+  overflow: auto;
+  padding: var(--space-4);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  background: var(--color-surface-raised);
+  box-shadow: var(--shadow-raised);
+  animation: rise 160ms ease-out;
+}
+
+.title {
+  font-size: var(--font-size-md);
+  font-weight: 700;
+  margin-bottom: var(--space-2);
+}
+
+.subtitle {
+  font-size: var(--font-size-sm);
+  font-weight: 700;
+  margin: var(--space-3) 0 var(--space-1);
+}
+
+.item {
+  display: grid;
+  gap: var(--space-1);
+}
+
+.itemHead {
+  display: flex;
+  justify-content: space-between;
+  gap: var(--space-2);
+}
+
+.muted {
+  color: var(--color-text-muted);
+  font-size: var(--font-size-sm);
+}
+
+.bar {
+  width: 100%;
+  height: 0.5rem;
+  accent-color: var(--color-accent);
+}
+
+/* The name of each file in flight, one after another. */
+.file {
+  overflow: hidden;
+  color: var(--color-text-muted);
+  font-family: var(--font-mono);
+  font-size: var(--font-size-xs);
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  animation: slide 300ms ease-out;
+}
+
+.queue {
+  display: grid;
+  gap: var(--space-1);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.queued {
+  display: flex;
+  justify-content: space-between;
+  gap: var(--space-2);
+  font-size: var(--font-size-sm);
+}
+
+.link {
+  justify-self: start;
+  padding: 0;
+  border: none;
+  background: none;
+  color: var(--color-accent-2);
+  font-size: var(--font-size-sm);
+  cursor: pointer;
+}
+
+.link:disabled {
+  color: var(--color-text-muted);
+  cursor: default;
+}
+
+.result[data-outcome='failed'] {
+  color: var(--color-danger-text);
+}
+
+.result[data-outcome='succeeded'] {
+  color: var(--color-success-text);
+}
+
+.error {
+  margin-top: var(--space-2);
+  color: var(--color-danger-text);
+  font-size: var(--font-size-sm);
+}
+
+@keyframes drop {
+  0%,
+  100% {
+    transform: translateY(-2px);
+  }
+
+  50% {
+    transform: translateY(2px);
+  }
+}
+
+@keyframes pulse {
+  from {
+    opacity: 1;
+    transform: scale(1);
+  }
+
+  to {
+    opacity: 0;
+    transform: scale(1.25);
+  }
+}
+
+@keyframes rise {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+}
+
+@keyframes slide {
+  from {
+    opacity: 0;
+    transform: translateY(4px);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .button[data-working] .arrow,
+  .button[data-working]::after,
+  .panel,
+  .file {
+    animation: none;
+  }
+}

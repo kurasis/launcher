@@ -1069,3 +1069,30 @@ message` plus a stack trace), with the event's level.
   **Diagnostics → Open console** through UI Automation and fails unless the console
   window shows the journal lines the core wrote at start; it uploads a screenshot of
   the window.
+
+## D-049 — Download manager and a queue for installs and repairs
+
+- **Status:** accepted (owner request, 2026-10-17) · **Affects:** the installation
+  panel, `install_instance`, `repair_instance`, `cancel_operation`, the app snapshot
+  (`queue`) and progress events (`currentFiles`)
+- **Queue:** an install or repair asked for while another operation runs waits in a
+  first-in, first-out queue instead of being refused, and starts by itself when the
+  launcher is free (checked every 500 ms). One entry per installation: asking again
+  for a queued or running installation is refused as before. `cancel_operation`
+  with a queue entry's ID removes it. The queue lives in memory only: closing the
+  launcher forgets it, and nothing half-done is left behind because a queued request
+  has not started.
+- **Corner button:** a download button sits in the lower corner of every screen. It
+  animates (a moving arrow and a progress ring) while an install or repair runs and
+  shows how many requests wait. Clicking it opens a panel with the running operation
+  (installation name, game and loader version, install or repair, phase, percent,
+  downloaded and total bytes, speed, files), the queue (each entry can be removed) and
+  the last three results.
+- **Percent:** bytes while downloading; checked files while the launcher checks what
+  is already present, before any byte is known.
+- **File names:** progress names the files being transferred at that moment, at most
+  as many as there are parallel downloads. Libraries and the client show their file
+  name; game assets, stored by hash, show their logical name (`step5.ogg`); Mojang's
+  Java files show their own name. The panel shows one name at a time and moves to the
+  next every 1.2 s, so a name stays readable however often progress arrives. Names are
+  display only and never paths.

@@ -1381,3 +1381,29 @@ installation's runtime from its lock, and choosing a source writes `javaProvider
   installed, started and uninstalled cleanly.
 - **Linux (Xvfb, release build):** Ctrl+Shift+L and **Open console** still open the
   console with the journal, and a second request does not open a second window.
+
+## Download manager and queue (D-049)
+
+Release build on Linux (Xvfb), the live data folder from the D-039 tests. Asset
+objects were deleted from the shared store before each run, so that a repair had to
+download them again.
+
+- **Queue:** with a repair of the Fabric 1.21.1 installation running, **Verify files**
+  on the Quilt 1.21.1 installation showed "Queued: starts when the current operation
+  ends" with **Remove**; the corner button showed the badge "1" and the panel listed
+  it under "Waiting in line: 1". When the first repair finished (550.9 MiB, 3,955
+  files) the queued one started by itself and also succeeded; the panel listed both
+  under "Recently".
+- **Progress:** the panel showed the installation with its version ("Minecraft 1.21.1
+  · Quilt 0.30.1"), the phase and percent ("Checking files" counted checked files:
+  787, then 1,688 of 3,958), then bytes, speed (14.6–18.7 MiB/s) and files while
+  downloading. The corner ring filled with the percent and the arrow moved while the
+  repair ran.
+- **File names:** the first build showed no names: each progress update started the
+  line's fade-in again, so it was rarely visible. With the name changing only on its
+  own 1.2 s beat, frames 0.8 s apart showed `call5.ogg`, `infinite_amethyst.ogg`,
+  `creator.ogg`, then `pokopoko.ogg` twice: logical asset names, not hashes. The
+  executor test checks that progress names at most as many files as transfers, by
+  file name only, and none after the last file.
+- Screenshots: `docs/verification/download-manager.png` (repair with a file name),
+  `docs/verification/download-queue.png` (a waiting repair; first build, faint name).

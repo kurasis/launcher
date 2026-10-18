@@ -36,7 +36,7 @@ use uuid::Uuid;
 use crate::error::{ErrorCode, LauncherError, LauncherResult};
 use crate::install::plan::PlannedArtifact;
 use crate::net::SourcePolicy;
-use crate::storage::models::HashAlgorithm;
+use crate::storage::models::{ArtifactRole, HashAlgorithm};
 use crate::storage::paths::{DataRoot, Sha1, Sha256, is_within};
 pub use cancel::CancelToken;
 use transport::{Failure, HttpTransport};
@@ -108,6 +108,9 @@ pub struct DownloadRequest {
     pub path: String,
     pub size: u64,
     pub digest: Digest,
+    /// What progress calls the file instead of its stored name (an asset's
+    /// logical name, since objects are stored by hash); display only.
+    pub label: Option<String>,
 }
 
 impl DownloadRequest {
@@ -119,8 +122,23 @@ impl DownloadRequest {
             path: artifact.path.clone(),
             size: artifact.size,
             digest: Digest::Sha1(artifact.sha1.clone()),
+            label: label(artifact.role, artifact.provenance.as_deref()),
         })
     }
+
+    /// The name progress shows while this file downloads.
+    fn display_name(&self) -> String {
+        self.label.clone().unwrap_or_else(|| file_name(&self.path))
+    }
+}
+
+/// The display label of a planned or locked artifact: asset objects are named
+/// by hash on disk, so they show their logical name instead.
+pub fn label(role: ArtifactRole, provenance: Option<&str>) -> Option<String> {
+    (role == ArtifactRole::AssetObject)
+        .then_some(provenance)
+        .flatten()
+        .map(file_name)
 }
 
 /// Resolves a relative managed path, refusing anything that could leave the root.
@@ -170,6 +188,8 @@ pub struct DownloadProgress {
     pub verified_files: u64,
     pub total_files: u64,
     pub bytes_per_second: Option<u64>,
+    /// Names of the files being downloaded right now (D-049).
+    pub current_files: Vec<String>,
 }
 
 pub trait ProgressSink: Send + Sync {
@@ -281,6 +301,21 @@ struct Counters {
     downloaded_files: AtomicU64,
     attempts: AtomicU64,
     retries: AtomicU64,
+    /// File names in flight, for the download manager.
+    active: std::sync::Mutex<Vec<String>>,
+}
+
+impl Counters {
+    fn active(&self) -> std::sync::MutexGuard<'_, Vec<String>> {
+        self.active
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+    }
+}
+
+/// The last path component, the name a user recognizes.
+fn file_name(path: &str) -> String {
+    path.rsplit('/').next().unwrap_or(path).to_owned()
 }
 
 /// Progress credit for one file: the furthest any attempt got, so retries never
@@ -399,6 +434,7 @@ impl Executor {
             verified_files: counters.verified.load(Ordering::Relaxed),
             total_files,
             bytes_per_second: rate,
+            current_files: counters.active().clone(),
         };
 
         // Phase 1: verify what is already present.
@@ -590,6 +626,17 @@ struct Worker {
 
 impl Worker {
     async fn download(&self, request: DownloadRequest, destination: PathBuf) -> WorkerResult {
+        let name = request.display_name();
+        self.counters.active().push(name.clone());
+        let result = self.download_file(request, destination).await;
+        let mut active = self.counters.active();
+        if let Some(index) = active.iter().position(|n| *n == name) {
+            active.remove(index);
+        }
+        result
+    }
+
+    async fn download_file(&self, request: DownloadRequest, destination: PathBuf) -> WorkerResult {
         let mut credit = Credit {
             counters: &self.counters,
             best: 0,

@@ -586,7 +586,7 @@ pub async fn install_instance(
     installer: State<'_, Installer>,
     request: MutationRequest<InstancePayload>,
 ) -> LauncherResult<crate::install::service::OperationStarted> {
-    installer.get()?.start(
+    installer.get()?.enqueue(
         &request.request_id,
         crate::storage::models::OperationKind::Install,
         request.payload.instance_id,
@@ -599,7 +599,7 @@ pub async fn repair_instance(
     installer: State<'_, Installer>,
     request: MutationRequest<InstancePayload>,
 ) -> LauncherResult<crate::install::service::OperationStarted> {
-    installer.get()?.start(
+    installer.get()?.enqueue(
         &request.request_id,
         crate::storage::models::OperationKind::Repair,
         request.payload.instance_id,
@@ -617,6 +617,12 @@ pub fn cancel_operation(
 ) -> LauncherResult<crate::install::service::CancelAck> {
     crate::state::ledger::validate_request_id(&request.request_id)?;
     let operation_id = &request.payload.operation_id;
+    // A request still waiting in the queue is simply removed (D-049).
+    if installer.get()?.dequeue(operation_id) {
+        return Ok(crate::install::service::CancelAck {
+            state: "removed".into(),
+        });
+    }
     match installer.get()?.cancel(operation_id) {
         Err(error) if error.code == crate::error::ErrorCode::OperationNotFound => {}
         other => return other,

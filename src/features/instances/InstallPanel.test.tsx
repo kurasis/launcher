@@ -46,6 +46,7 @@ const progress: OperationProgress = {
   verifiedFiles: 1200,
   totalFiles: 3961,
   bytesPerSecond: 4 * 1024 * 1024,
+  currentFiles: [],
   timestamp: '2026-10-17T00:00:00Z',
 };
 
@@ -174,9 +175,9 @@ describe('InstallPanel', () => {
     ).toBeVisible();
   });
 
-  it('is disabled while another installation is busy', () => {
-    backend();
-    render(
+  it('queues installs while another installation is busy', async () => {
+    const calls = backend();
+    const { rerender } = render(
       <InstallPanel
         account={accountFixture()}
         instance={instanceFixture()}
@@ -185,8 +186,35 @@ describe('InstallPanel', () => {
         recentOperations={[]}
       />,
     );
-    expect(screen.getByRole('button', { name: 'Install' })).toBeDisabled();
-    expect(screen.getByText(/Another operation is running/)).toBeVisible();
+    expect(screen.getByText(/added to the queue/)).toBeVisible();
+    fireEvent.click(screen.getByRole('button', { name: 'Add to queue' }));
+    await waitFor(() => {
+      expect(calls.some((c) => c.cmd === 'install_instance')).toBe(true);
+    });
+    rerender(
+      <InstallPanel
+        account={accountFixture()}
+        instance={instanceFixture()}
+        activeOperation={{ kind: 'install', instanceId: 'other', operationId: 'op-9' }}
+        progress={null}
+        recentOperations={[]}
+        queue={[
+          {
+            queueId: 'q-1',
+            instanceId: instanceFixture().id,
+            kind: 'install',
+            queuedAt: '2026-10-17T00:00:00Z',
+          },
+        ]}
+      />,
+    );
+    expect(screen.getByRole('button', { name: 'Add to queue' })).toBeDisabled();
+    fireEvent.click(screen.getByRole('button', { name: 'Remove' }));
+    await waitFor(() => {
+      expect(calls.find((c) => c.cmd === 'cancel_operation')?.args).toMatchObject({
+        request: { payload: { operationId: 'q-1' } },
+      });
+    });
   });
 
   it('plays as the default player or the chosen one, always labelled Play', async () => {

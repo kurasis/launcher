@@ -68,6 +68,7 @@ struct Data {
     current_run: Option<RunSummary>,
     last_run: Option<RunSummary>,
     auth: AuthStatus,
+    queue: Vec<QueuedOperation>,
     operation_progress: Option<OperationProgress>,
     recent_operations: VecDeque<OperationResult>,
 }
@@ -115,6 +116,7 @@ impl AppState {
                 current_run: None,
                 last_run: None,
                 auth: AuthStatus::signed_out(),
+                queue: Vec::new(),
                 operation_progress: None,
                 recent_operations: VecDeque::new(),
             },
@@ -313,6 +315,7 @@ impl AppState {
             microsoft_client_id: client_id::build_time_status(),
             instances,
             active_operation: active,
+            queue: data.queue.clone(),
             current_run: data.current_run.clone(),
             last_run: data.last_run.clone(),
             lifecycle_harness_available: cfg!(debug_assertions),
@@ -410,6 +413,7 @@ impl AppState {
                     current_run: data.current_run.clone(),
                     last_run: data.last_run.clone(),
                     active_operation: self.activity.current(),
+                    queue: data.queue.clone(),
                 },
             })),
             Change::Account => BackendEvent::AccountStateChanged(Box::new(EventEnvelope {
@@ -506,6 +510,26 @@ impl AppState {
                 other => {
                     data.current_run = other;
                     false
+                }
+            },
+            Change::Runs,
+        );
+    }
+
+    /// Installs and repairs waiting their turn.
+    pub fn queue(&self) -> Vec<QueuedOperation> {
+        self.lock().data.queue.clone()
+    }
+
+    /// Replaces the queue and announces it with the run state.
+    pub fn set_queue(&self, queue: Vec<QueuedOperation>) {
+        self.publish(
+            |data| {
+                if data.queue == queue {
+                    false
+                } else {
+                    data.queue = queue;
+                    true
                 }
             },
             Change::Runs,
@@ -710,6 +734,7 @@ impl AppState {
             verified_files: update.verified_files,
             total_files: update.total_files,
             bytes_per_second: update.bytes_per_second,
+            current_files: update.current_files,
             timestamp: Utc::now(),
         };
         data.operation_progress = Some(progress.clone());
@@ -1316,6 +1341,7 @@ pub struct ProgressUpdate {
     pub verified_files: u64,
     pub total_files: Option<u64>,
     pub bytes_per_second: Option<u64>,
+    pub current_files: Vec<String>,
 }
 
 /// Turns a job interrupted by a crash into a visible, recoverable result.

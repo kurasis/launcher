@@ -132,7 +132,7 @@
       "starting": "جارٍ البدء…",
       "cancel": "إلغاء",
       "cancelling": "جارٍ الإلغاء…",
-      "otherBusy": "تجري عملية أخرى. انتظر حتى تنتهي أو ألغِها.",
+      "otherBusy": "تجري عملية أخرى. يُضاف التثبيت والإصلاح إلى قائمة الانتظار ويبدآن بعدها.",
       "explain": {
         "not_installed": "تُنزَّل ملفات اللعبة وبيئة Java ووصف الإصدار من Mojang وAdoptium ويُتحقق منها قبل الاستخدام.",
         "ready": "تم التحقق من جميع الملفات. يتحقق الإصلاح من كل ملف مجددًا ويستبدل التالف منها.",
@@ -608,6 +608,24 @@
       "restoredCopy": "تمت الاستعادة كالعالم «{name}».",
       "deleted": "تم الحذف؛ تحرّر {size}.",
       "busy": "تنتظر النسخ والاستعادة انتهاء العملية الجارية أو اللعبة."
+    },
+    "downloads": {
+      "title": "التنزيلات",
+      "open": "التنزيلات",
+      "none": "لا يُنزَّل شيء الآن.",
+      "unknown": "تثبيت محذوف",
+      "progress": "تقدم التنزيل",
+      "percent": "{percent}٪",
+      "bytes": "{done} من {total}",
+      "speed": "{rate}/ث",
+      "files": "{done, number} من {total, number} ملف",
+      "file": "جارٍ تنزيل {name}",
+      "cancel": "إلغاء",
+      "queue": "في الانتظار: {count, number}",
+      "remove": "إزالة",
+      "recent": "مؤخرًا",
+      "queued": "في قائمة الانتظار: يبدأ عند انتهاء العملية الحالية.",
+      "addToQueue": "أضف إلى قائمة الانتظار"
     }
   },
   "errors": {
@@ -871,6 +889,7 @@
     "This world name is invalid.": "اسم العالم غير صالح.",
     "A whole installation can only be restored in its place.": "لا يمكن استعادة التثبيت كاملًا إلا في مكانه.",
     "A file operation stopped unexpectedly.": "توقفت عملية الملفات بشكل غير متوقع.",
-    "The restore target already exists.": "مجلد الاستعادة موجود بالفعل."
+    "The restore target already exists.": "مجلد الاستعادة موجود بالفعل.",
+    "This installation is already being installed or waiting in the queue.": "هذا التثبيت قيد التثبيت بالفعل أو ينتظر في قائمة الانتظار."
   }
 }

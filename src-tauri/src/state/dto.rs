@@ -400,6 +400,8 @@ pub struct AppSnapshot {
     pub microsoft_client_id: ClientIdStatus,
     pub instances: Vec<InstanceSummary>,
     pub active_operation: Option<ActiveActivity>,
+    /// Installs and repairs waiting their turn, first first.
+    pub queue: Vec<QueuedOperation>,
     pub current_run: Option<RunSummary>,
     pub last_run: Option<RunSummary>,
     /// True in debug builds, which include the lifecycle test harness.
@@ -444,6 +446,8 @@ pub struct OperationProgress {
     pub verified_files: u64,
     pub total_files: Option<u64>,
     pub bytes_per_second: Option<u64>,
+    /// Names of the files being downloaded right now.
+    pub current_files: Vec<String>,
     pub timestamp: DateTime<Utc>,
 }
 
@@ -499,6 +503,17 @@ pub struct GameStateChanged {
     pub current_run: Option<RunSummary>,
     pub last_run: Option<RunSummary>,
     pub active_operation: Option<ActiveActivity>,
+    pub queue: Vec<QueuedOperation>,
+}
+
+/// An install or repair waiting for the running operation to end (D-049).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct QueuedOperation {
+    pub queue_id: String,
+    pub instance_id: InstanceId,
+    pub kind: OperationKind,
+    pub queued_at: DateTime<Utc>,
 }
 
 #[derive(Debug, Clone, Serialize)]

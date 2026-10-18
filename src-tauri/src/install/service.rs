@@ -241,6 +241,9 @@ impl StateAccess for Arc<AppState> {
 #[serde(rename_all = "camelCase")]
 pub struct OperationStarted {
     pub operation_id: String,
+    /// The request waits in the queue; `operation_id` is its queue ID (D-049).
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub queued: bool,
 }
 
 /// Answer to `cancel_operation`.
@@ -353,6 +356,7 @@ impl InstallService {
             verified_files: 0,
             total_files: None,
             bytes_per_second: None,
+            current_files: Vec::new(),
         }));
         *lock_or(&self.active) = Some(Active {
             operation_id: operation_id.clone(),
@@ -386,7 +390,10 @@ impl InstallService {
             operation.finish(outcome, report);
         });
 
-        let started = OperationStarted { operation_id };
+        let started = OperationStarted {
+            operation_id,
+            queued: false,
+        };
         let mut requests = lock_or(&self.requests);
         requests.order.push_back(request_id.to_owned());
         requests
@@ -398,6 +405,115 @@ impl InstallService {
             }
         }
         Ok(started)
+    }
+
+    /// Starts an install or repair now, or queues it behind the running
+    /// operation or game; queued requests start in order as soon as nothing
+    /// else runs ([`Self::start_queued`]).
+    pub fn enqueue(
+        &self,
+        request_id: &str,
+        kind: OperationKind,
+        instance_id: InstanceId,
+    ) -> LauncherResult<OperationStarted> {
+        crate::state::ledger::validate_request_id(request_id)?;
+        let state = self.host.app_state();
+        if let Some((_, started)) = lock_or(&self.requests).seen.get(request_id) {
+            return Ok(started.clone());
+        }
+        let mut queue = state.queue();
+        if queue.is_empty() && state.activity().current().is_none() {
+            return self.start(request_id, kind, instance_id);
+        }
+        let instance = state.instance(instance_id).ok_or_else(|| {
+            LauncherError::new(
+                ErrorCode::InstanceNotFound,
+                "The installation no longer exists.",
+            )
+        })?;
+        let active_here = state
+            .activity()
+            .current()
+            .is_some_and(|a| a.instance_id == Some(instance_id) && a.kind != OperationKind::Launch);
+        if active_here || queue.iter().any(|q| q.instance_id == instance_id) {
+            return Err(LauncherError::new(
+                ErrorCode::InstanceBusy,
+                "This installation is already being installed or waiting in the queue.",
+            ));
+        }
+        let queued = crate::state::dto::QueuedOperation {
+            queue_id: Uuid::new_v4().to_string(),
+            instance_id,
+            kind,
+            queued_at: chrono::Utc::now(),
+        };
+        let started = OperationStarted {
+            operation_id: queued.queue_id.clone(),
+            queued: true,
+        };
+        queue.push(queued);
+        state.console().info(format!(
+            "{} of \"{}\" queued (position {})",
+            crate::console::name(&kind),
+            instance.display_name,
+            queue.len()
+        ));
+        state.set_queue(queue);
+        lock_or(&self.requests).seen.insert(
+            request_id.to_owned(),
+            (format!("queue:{instance_id}"), started.clone()),
+        );
+        Ok(started)
+    }
+
+    /// Removes a request from the queue. Returns false if it is not queued.
+    pub fn dequeue(&self, queue_id: &str) -> bool {
+        let state = self.host.app_state();
+        let mut queue = state.queue();
+        let before = queue.len();
+        queue.retain(|q| q.queue_id != queue_id);
+        let removed = queue.len() != before;
+        if removed {
+            state.console().info("Removed from the download queue");
+            state.set_queue(queue);
+        }
+        removed
+    }
+
+    /// Starts the first queued request when nothing else runs. Called
+    /// periodically; does nothing while any operation or game holds the permit.
+    pub fn start_queued(&self) {
+        let state = self.host.app_state();
+        while state.activity().current().is_none() {
+            let mut queue = state.queue();
+            if queue.is_empty() {
+                return;
+            }
+            let next = queue.remove(0);
+            state.set_queue(queue);
+            match self.start(&Uuid::new_v4().to_string(), next.kind, next.instance_id) {
+                Ok(_) => return,
+                Err(error)
+                    if matches!(
+                        error.code,
+                        ErrorCode::AppBusy
+                            | ErrorCode::InstanceBusy
+                            | ErrorCode::GameAlreadyRunning
+                    ) =>
+                {
+                    // Something started in between: keep the request first in line.
+                    let mut queue = state.queue();
+                    queue.insert(0, next);
+                    state.set_queue(queue);
+                    return;
+                }
+                Err(error) => state.console().warn(format!(
+                    "A queued {} could not start: {}",
+                    crate::console::name(&next.kind),
+                    error.message
+                )),
+            }
+        }
     }
 
     /// Requests cooperative cancellation, or reports the recorded outcome.
@@ -456,6 +572,7 @@ impl ProgressSink for Forward<'_> {
         update.verified_files = p.verified_files;
         update.total_files = Some(p.total_files);
         update.bytes_per_second = p.bytes_per_second;
+        update.current_files.clone_from(&p.current_files);
         self.host.app_state().publish_progress(update.clone());
     }
 
@@ -500,6 +617,7 @@ fn request_from_locked(
         &artifact.path,
         artifact.size,
         crate::download::Digest::Sha1(Sha1::parse(&artifact.digest)?),
+        crate::download::label(artifact.role, artifact.provenance.as_deref()),
     )
 }
 
@@ -511,6 +629,7 @@ fn artifact_request(
     path: &str,
     size: u64,
     digest: crate::download::Digest,
+    label: Option<String>,
 ) -> LauncherResult<DownloadRequest> {
     // Mojang's category unless a loader host is named; the transport refuses
     // anything off the category's allowlist.
@@ -526,6 +645,7 @@ fn artifact_request(
         path: path.to_owned(),
         size,
         digest,
+        label,
     })
 }
 
@@ -686,6 +806,7 @@ impl Operation {
                     &a.path,
                     a.size,
                     crate::download::Digest::Sha1(a.sha1.clone()),
+                    crate::download::label(a.role, a.provenance.as_deref()),
                 )
             })
             .collect::<LauncherResult<Vec<_>>>()?;

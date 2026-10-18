@@ -181,6 +181,7 @@ fn request(server: &Server, path: &str, body: &[u8]) -> DownloadRequest {
         path: format!("shared/libraries/{sha}/artifact.jar"),
         size: body.len() as u64,
         digest: Digest::Sha1(sha),
+        label: None,
     }
 }
 
@@ -598,6 +599,7 @@ async fn existing_corrupt_files_are_replaced_and_sha256_is_supported() {
         path: format!("downloads-cache/{sha256}.tar.gz"),
         size: body.len() as u64,
         digest: Digest::Sha256(sha256),
+        label: None,
     };
     let path = f.file(&r);
     std::fs::create_dir_all(path.parent().unwrap()).unwrap();
@@ -684,6 +686,21 @@ async fn concurrency_and_progress_stay_bounded() {
     assert_eq!(last.downloaded_bytes, 24 * 20_000);
     assert_eq!(last.total_download_bytes, 24 * 20_000);
     assert_eq!(last.verified_files, 24);
+    // Progress names the files in flight: never more than the transfers, and
+    // nothing once every file is done.
+    assert!(
+        downloading.iter().any(|p| !p.current_files.is_empty()),
+        "some progress names the files being downloaded"
+    );
+    assert!(downloading.iter().all(|p| p.current_files.len() <= 3));
+    // The stored file name, not its path.
+    assert!(
+        downloading
+            .iter()
+            .flat_map(|p| &p.current_files)
+            .all(|name| name == "artifact.jar")
+    );
+    assert!(last.current_files.is_empty());
 }
 
 #[test]
@@ -734,4 +751,21 @@ fn free_space_is_read_from_the_directory_itself() {
     let available = super::available_space(dir.path()).expect("free space is known");
     assert!(available > 0);
     assert!(super::available_space(&dir.path().join("missing")).is_none());
+}
+
+#[test]
+fn assets_show_their_logical_name_in_progress() {
+    assert_eq!(
+        label(
+            ArtifactRole::AssetObject,
+            Some("minecraft/sounds/ambient/cave/cave1.ogg")
+        ),
+        Some("cave1.ogg".to_owned())
+    );
+    assert_eq!(label(ArtifactRole::AssetObject, None), None);
+    // Libraries are named by their stored file; the coordinate is provenance.
+    assert_eq!(
+        label(ArtifactRole::Library, Some("org.lwjgl:lwjgl:3.3.3")),
+        None
+    );
 }
