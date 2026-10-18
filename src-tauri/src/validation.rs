@@ -174,10 +174,13 @@ pub struct MemoryRecommendation {
 impl MemoryPolicy {
     /// The heap for `workload` on this computer: what it needs, but at most
     /// half of the physical memory (the rest stays for the system, the game's
-    /// native memory and the launcher) and within the allowed range.
+    /// native memory and the launcher) and within the allowed range. Physical
+    /// memory counts in whole GiB as people know it: a 16 GiB computer reports
+    /// a little less (16093 MiB here) and still gives 8192 MiB.
     pub fn recommend(&self, workload: Workload) -> MemoryRecommendation {
         let wanted = workload.heap_mib();
-        let half = u32::try_from(self.physical_mib / 2 / 256 * 256).unwrap_or(u32::MAX);
+        let gib = (self.physical_mib + 512) / 1024;
+        let half = u32::try_from(gib * 1024 / 2).unwrap_or(u32::MAX);
         let mib = wanted
             .min(half)
             .min(self.max_heap_mib)
@@ -328,6 +331,10 @@ mod tests {
             p16.recommend(Workload::of("1.20.1", true, 330)).wanted_mib,
             None
         );
+
+        // A 16 GiB computer reports a little less and still gets 8192 MiB.
+        let reported = MemoryPolicy::from_physical_bytes(16_093 * MIB).unwrap();
+        assert_eq!(reported.recommend(Workload::Modded { mods: 442 }).mib, 8192);
 
         // 8 GiB: at most half for the game.
         let p8 = MemoryPolicy::from_physical_bytes(8 * GIB).unwrap();

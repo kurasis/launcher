@@ -245,7 +245,7 @@
       "lastResult": "Последний результат",
       "noResult": "Пока нет",
       "memory": "Максимум памяти (МиБ)",
-      "memoryHint": "От {min, number, ::group-off} до {max, number, ::group-off} МиБ на этом компьютере. Рекомендуется: {recommended, number, ::group-off} МиБ.",
+      "memoryHint": "От {min, number, ::group-off} до {max, number, ::group-off} МиБ на этом компьютере.",
       "lowMemory": "На этом компьютере меньше 8 ГиБ памяти. С доступным объёмом игра может работать плохо.",
       "width": "Ширина окна",
       "height": "Высота окна",

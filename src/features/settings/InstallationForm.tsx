@@ -74,7 +74,6 @@ export function InstallationForm({ instance, memory }: InstallationFormProps) {
             ? t.memoryHint({
                 min: policy.minHeapMib,
                 max: policy.maxHeapMib,
-                recommended: policy.recommendedHeapMib,
               })
             : undefined
         }

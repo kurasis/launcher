@@ -245,7 +245,7 @@
       "lastResult": "Last result",
       "noResult": "None yet",
       "memory": "Maximum memory (MiB)",
-      "memoryHint": "Between {min, number, ::group-off} and {max, number, ::group-off} MiB on this computer. Recommended: {recommended, number, ::group-off} MiB.",
+      "memoryHint": "Between {min, number, ::group-off} and {max, number, ::group-off} MiB on this computer.",
       "lowMemory": "This computer has less than 8 GiB of memory. The game may run poorly with the available amount.",
       "width": "Window width",
       "height": "Window height",

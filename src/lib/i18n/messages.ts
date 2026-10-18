@@ -253,7 +253,7 @@ export type Messages = {
     readonly lastResult: string;
     readonly noResult: string;
     readonly memory: string;
-    readonly memoryHint: (values: { min: number; max: number; recommended: number }) => string;
+    readonly memoryHint: (values: { min: number; max: number }) => string;
     readonly lowMemory: string;
     readonly width: string;
     readonly height: string;

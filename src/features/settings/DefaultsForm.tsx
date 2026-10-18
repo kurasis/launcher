@@ -96,7 +96,6 @@ export function DefaultsForm({
                 ? d.memoryHint({
                     min: policy.minHeapMib,
                     max: policy.maxHeapMib,
-                    recommended: policy.recommendedHeapMib,
                   })
                 : undefined
             }
