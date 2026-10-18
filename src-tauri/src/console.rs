@@ -6,6 +6,9 @@
 //! launcher entries are written from values that never hold a token, an
 //! authorization code or a password. The console window polls [`Console::read`]
 //! with the last sequence number it has seen.
+//!
+//! Launcher entries are also appended to `logs/launcher.log` once the data folder
+//! is known (D-061, journal.rs); game output has its own run logs.
 
 use std::collections::VecDeque;
 use std::sync::{Mutex, PoisonError};
@@ -69,6 +72,7 @@ struct Ring {
 #[derive(Default)]
 pub struct Console {
     ring: Mutex<Ring>,
+    file: Mutex<Option<crate::journal::LogFile>>,
 }
 
 /// Cuts `text` to at most `max` bytes on a character boundary.
@@ -108,10 +112,29 @@ impl Console {
             stderr,
             text: bounded(text, MAX_LINE_BYTES),
         };
+        if source == Source::Launcher
+            && let Some(file) = self
+                .file
+                .lock()
+                .unwrap_or_else(PoisonError::into_inner)
+                .as_mut()
+        {
+            file.write_line(&format!(
+                "{} {:<5} {}",
+                entry.at.format("%Y-%m-%d %H:%M:%S%.3f"),
+                name(&level),
+                entry.text
+            ));
+        }
         if ring.entries.len() == CAPACITY {
             ring.entries.pop_front();
         }
         ring.entries.push_back(entry);
+    }
+
+    /// From now on launcher entries are written to `file` too.
+    pub fn attach_file(&self, file: crate::journal::LogFile) {
+        *self.file.lock().unwrap_or_else(PoisonError::into_inner) = Some(file);
     }
 
     pub fn info(&self, text: impl AsRef<str>) {

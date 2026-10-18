@@ -98,7 +98,8 @@ fn slot(source: SourcePolicy) -> usize {
         SourcePolicy::MojangArtifacts => 0,
         SourcePolicy::Adoptium => 1,
         SourcePolicy::ModLoaders => 2,
-        SourcePolicy::MojangMetadata => 3,
+        // Crash reports are small and count with the metadata (D-061).
+        SourcePolicy::MojangMetadata | SourcePolicy::CrashReports => 3,
     }
 }
 

@@ -20,6 +20,7 @@ import styles from './App.module.css';
 import { QuitControl } from './QuitControl';
 import { BackupsView } from '../features/backups/BackupsView';
 import { GalleryView } from '../features/gallery/GalleryView';
+import { FailureOffer } from '../features/reports/FailureOffer';
 import { DownloadManager } from '../features/downloads/DownloadManager';
 import { useTheme } from './useTheme';
 import { useAppInfo } from './useAppInfo';
@@ -163,6 +164,7 @@ export function App() {
         ) : (
           <>
             <StorageIssues issues={state.snapshot.storageIssues} />
+            {view === 'home' && <FailureOffer />}
             {view === 'home' && (
               <>
                 <RunStatus

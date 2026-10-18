@@ -15,6 +15,8 @@ import { ipc } from '../../lib/ipc';
 import { strings } from '../../lib/strings';
 import { useCommand } from '../../lib/useCommand';
 import { crashText } from '../diagnostics/crashText';
+import { ExplanationFeedback } from '../reports/ExplanationFeedback';
+import { ReportDialog } from '../reports/ReportDialog';
 import styles from './CrashHelp.module.css';
 
 const t = strings.crash;
@@ -44,6 +46,7 @@ export function CrashHelp({ instance, run, onEditSettings, onOpenBackups, busy }
   );
   const repair = useCommand((requestId: string) => ipc.repairInstance(instance.id, requestId));
   const [repairing, setRepairing] = useState(false);
+  const [reporting, setReporting] = useState(false);
   const text = crashText(diagnosis);
   const error = openFolder.error ?? repair.error;
 
@@ -111,6 +114,24 @@ export function CrashHelp({ instance, run, onEditSettings, onOpenBackups, busy }
             </Button>
           ))}
         </div>
+      )}
+      <ExplanationFeedback key={run.runId} diagnosis={diagnosis} />
+      <div className={forms.actions}>
+        <Button
+          onClick={() => {
+            setReporting(true);
+          }}
+        >
+          {strings.reports.offer}
+        </Button>
+      </div>
+      {reporting && (
+        <ReportDialog
+          subject={{ type: 'game', runId: run.runId, instanceId: instance.id }}
+          onClose={() => {
+            setReporting(false);
+          }}
+        />
       )}
       {repairing && <Notice tone="info">{t.repairStarted}</Notice>}
       {error !== null && <Notice tone="danger">{error}</Notice>}

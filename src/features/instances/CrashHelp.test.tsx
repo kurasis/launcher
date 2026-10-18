@@ -149,6 +149,12 @@ describe('CrashHelp', () => {
     expect(calls.find((c) => c.cmd === 'open_instance_folder')?.args).toMatchObject({
       request: { payload: { instanceId: 'i-1', folder: 'crash-reports' } },
     });
+    expect(region).toHaveTextContent('Did this explanation help?');
+    fireEvent.click(screen.getByRole('button', { name: 'Send a report to the developers' }));
+    expect(screen.getByRole('dialog', { name: 'Report to the developers' })).toBeVisible();
+    expect(calls.find((c) => c.cmd === 'preview_crash_report')?.args).toEqual({
+      subject: { type: 'game', runId: 'run-1', instanceId: 'i-1' },
+    });
   });
 
   it('has a sentence for every cause in every language, with or without details', async () => {

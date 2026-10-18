@@ -1730,3 +1730,44 @@ proxy that was stopped and started to cut and restore the connection.
   for a missing file; on Windows (CI), a rename waiting while another handle holds
   the file without sharing; the console question test made safe against the game
   asking before its handle is stored.
+
+## Crash reports for the developers (D-061)
+
+- **Tests (launcher):** the launcher log rotates at its size and keeps five files; a
+  session marker left from an earlier start becomes an `unclean_exit` record; failure
+  records stay bounded. Scrubbing removes chat lines, the player's and saved names,
+  server and IP addresses (IPv4 and IPv6, not versions or times), world names, UUIDs
+  and the home folder, and keeps mod names and versions. A game report is previewed
+  scrubbed and sends only the files the player kept, with the note and the install
+  ID; a preview is used once. An unreachable service keeps the report in
+  `reports/outbox/` and a later retry sends it once. A launcher failure report marks
+  its record sent. Statistics are not sent until the setting is on and never carry
+  the install ID.
+- **Tests (window):** the report dialog shows the scrubbed files and the removal
+  counts before anything is sent, cannot send without a file and says when a report
+  waits for the service; the Home offer shows only the newest unreported recent
+  failure and forgets it on "Don't send"; "Did this help?" sends kind, signature and
+  answer once; Settings → Privacy switches statistics and makes a new install ID.
+- **Tests (service):** a gzip report is stored, grouped and readable from the
+  command line; malformed reports are refused; the per-address limit answers 429;
+  statistics and answers are counted per day; old reports are pruned.
+- **Attacks (service tests):** a 256 MiB gzip bomb packed into 255 KiB is cut off
+  with 413 and nothing is stored; a limited address gets 429 before its body is
+  read; addresses of one IPv6 /64 share a limit; many addresses together meet
+  the overall limit, and one address over its own limit does not use it up;
+  the storage and daily row limits answer 507; `text/plain` (what a web page
+  can send unasked), broken JSON, false gzip, deep nesting, control characters,
+  13 files, long notes and big summaries are refused; SQL-like and HTML text is
+  stored as text, unknown fields are dropped, IDs like `../../crash.db` find
+  nothing; the public overview holds no signature, note or Markdown.
+- **Attacks (nginx, local, with the release binary):** a peer outside the
+  Cloudflare ranges gets its connection closed over HTTP and HTTPS, also with a
+  forged `CF-Connecting-IP`; through a stand-in for Cloudflare one client gets
+  429 after 21 quick requests while another is served; 3 MB bodies get 413; the
+  gzip bomb gets 413 with the service at 8.6 MiB of memory; `..` paths get 400
+  or 404; the access log shows `198.51.100.0` and `2001:db8:aa::`, the error
+  log no client address; the service's own limit answers 429 on the 21st
+  report of one client.
+- **Server:** the "Crash service" workflow tests and builds the service and deploys
+  it over SSH. `crash.lapi.sh` answers only after the one-time root step
+  `sudo bash ~/lapi-bootstrap/bootstrap.sh <deploy user>` on the server.

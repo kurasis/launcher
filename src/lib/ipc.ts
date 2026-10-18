@@ -1,7 +1,7 @@
 // The single typed entry point for Tauri IPC. UI code must not call `invoke` or
 // `listen` directly, so every command name, payload shape and event subscription is
 // declared in one place.
-import { invoke } from '@tauri-apps/api/core';
+import { invoke as tauriInvoke } from '@tauri-apps/api/core';
 import { listen, type UnlistenFn } from '@tauri-apps/api/event';
 import { localizeError } from './strings';
 import { strings } from './strings';
@@ -14,6 +14,10 @@ import {
   type CatalogView,
   type ConsolePage,
   type CreateInstancePayload,
+  type Delivery,
+  type FailureSummary,
+  type ReportPreview,
+  type ReportSubject,
   type DataLocation,
   type ExportResult,
   type ExternalLink,
@@ -215,6 +219,16 @@ export const ipc = {
     invoke<LoaderVersion[]>('list_loader_versions', { kind, gameVersion }),
   requestQuit: (action: QuitAction, requestId?: string): Promise<QuitResult> =>
     invoke<QuitResult>('request_quit', { request: mutation({ action }, requestId) }),
+  listLauncherFailures: (): Promise<FailureSummary[]> =>
+    invoke<FailureSummary[]>('list_launcher_failures'),
+  dismissLauncherFailure: (id: string): Promise<void> => invoke('dismiss_launcher_failure', { id }),
+  /** What a report would send, scrubbed; nothing leaves the computer yet. */
+  previewCrashReport: (subject: ReportSubject): Promise<ReportPreview> =>
+    invoke<ReportPreview>('preview_crash_report', { subject }),
+  sendCrashReport: (previewId: string, files: string[], note: string): Promise<Delivery> =>
+    invoke<Delivery>('send_crash_report', { previewId, files, note }),
+  sendExplanationFeedback: (kind: string, signature: string, helpful: boolean): Promise<void> =>
+    invoke('send_explanation_feedback', { kind, signature, helpful }),
   /** Debug builds only; release builds have no handler for this command. */
   startLifecycleTest: (scenario: LifecycleScenario, requestId?: string): Promise<RunSummary> =>
     invoke<RunSummary>('start_lifecycle_test', { request: mutation(scenario, requestId) }),
@@ -222,6 +236,33 @@ export const ipc = {
   stopLifecycleTest: (runId: string): Promise<boolean> =>
     invoke<boolean>('stop_lifecycle_test', { runId }),
 };
+
+/** Commands whose failures are not noted again (they are the noting). */
+const UNNOTED = new Set(['note_shown_error', 'report_frontend_error']);
+
+/**
+ * Calls a command; a failure's code and diagnostic ID also go to the
+ * launcher log (D-061), so a report shows what the player saw.
+ */
+function invoke<T>(command: string, args?: Record<string, unknown>): Promise<T> {
+  return tauriInvoke<T>(command, args).catch((error: unknown) => {
+    if (!UNNOTED.has(command) && isLauncherError(error)) {
+      void tauriInvoke('note_shown_error', {
+        command,
+        code: error.code,
+        diagnosticId: error.diagnosticId,
+      }).catch(() => undefined);
+    }
+    throw error;
+  });
+}
+
+/** Records an error in the window's code in the launcher's failure records. */
+export function reportFrontendError(message: string, stack?: string): void {
+  void tauriInvoke('report_frontend_error', { message, stack: stack ?? null }).catch(
+    () => undefined,
+  );
+}
 
 /** True when a rejected IPC value is the backend's typed error envelope. */
 export function isLauncherError(error: unknown): error is LauncherError {

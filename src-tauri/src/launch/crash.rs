@@ -20,6 +20,14 @@ use serde::{Deserialize, Serialize};
 
 pub mod files;
 
+/// Bumped when the rules change, so reports and statistics say which rules
+/// explained a crash (D-061).
+pub const ANALYZER_VERSION: u32 = 2;
+/// Kept in a run's log folder after a crash (D-061).
+pub const DIAGNOSIS_FILE: &str = "diagnosis.json";
+pub const REPORT_COPY: &str = "crash-report.txt";
+pub const JVM_ERROR_COPY: &str = "jvm-error.log";
+
 /// Known causes, most specific first in [`diagnose`].
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
@@ -141,6 +149,55 @@ pub struct CrashDiagnosis {
     pub report: Option<String>,
     pub actions: Vec<CrashAction>,
     pub notes: Vec<CrashNote>,
+    /// Groups reports and statistics of this failure (D-061).
+    #[serde(default)]
+    pub signature: String,
+}
+
+impl CrashDiagnosis {
+    /// Groups reports and statistics of the same failure (D-061): the cause and
+    /// the details that tell one failure from another, never paths or numbers
+    /// that change from run to run.
+    pub fn compute_signature(&self) -> String {
+        const KEYS: &[&str] = &[
+            "modId",
+            "mod",
+            "dependencyId",
+            "module",
+            "vendor",
+            "program",
+            "option",
+            "library",
+            "entity",
+            "block",
+            "area",
+            "loader",
+            "description",
+        ];
+        let mut parts: Vec<String> = KEYS
+            .iter()
+            .filter_map(|k| self.details.get(*k).map(|v| format!("{k}={v}")))
+            .collect();
+        if parts.is_empty()
+            && let Some(first) = self.evidence.first()
+        {
+            // Nothing named: the first line that shows it, without numbers.
+            let plain: String = first
+                .chars()
+                .map(|c| if c.is_ascii_digit() { '#' } else { c })
+                .take(120)
+                .collect();
+            parts.push(plain);
+        }
+        let mut signature = format!("{}:{}", crate::console::name(&self.kind), parts.join(","));
+        signature.truncate(
+            (0..=signature.len().min(290))
+                .rev()
+                .find(|i| signature.is_char_boundary(*i))
+                .unwrap_or(0),
+        );
+        signature
+    }
 }
 
 /// How the process ended.
@@ -301,6 +358,7 @@ fn diagnosis(kind: CrashKind, details: &[(&str, String)], lines: Vec<String>) ->
         report: None,
         actions: Vec::new(),
         notes: Vec::new(),
+        signature: String::new(),
     }
 }
 
@@ -1418,6 +1476,7 @@ pub fn diagnose(input: &CrashInput<'_>) -> Option<CrashDiagnosis> {
     if let Some(note) = other_loader(&cx).filter(|_| d.kind != CrashKind::ModForOtherLoader) {
         d.notes.push(note);
     }
+    d.signature = d.compute_signature();
     Some(d)
 }
 

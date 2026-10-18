@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-list-launcher-failures"
+description = "Enables the list_launcher_failures command without any pre-configured scope."
+commands.allow = ["list_launcher_failures"]
+
+[[permission]]
+identifier = "deny-list-launcher-failures"
+description = "Denies the list_launcher_failures command without any pre-configured scope."
+commands.deny = ["list_launcher_failures"]

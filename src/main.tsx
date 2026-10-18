@@ -6,6 +6,23 @@ import './styles/global.css';
 import { App } from './app/App';
 import { ConsoleApp } from './features/console/ConsoleApp';
 import { loadLanguage, setLanguage, storedLanguage } from './lib/strings';
+import { reportFrontendError } from './lib/ipc';
+
+// Errors in the window's code are kept in the launcher's records (D-061).
+window.addEventListener('error', (event) => {
+  const error: unknown = event.error;
+  reportFrontendError(
+    event.message || String(error),
+    error instanceof Error ? error.stack : undefined,
+  );
+});
+window.addEventListener('unhandledrejection', (event) => {
+  const reason: unknown = event.reason;
+  reportFrontendError(
+    reason instanceof Error ? reason.message : `Unhandled rejection: ${String(reason)}`,
+    reason instanceof Error ? reason.stack : undefined,
+  );
+});
 
 const container = document.getElementById('root');
 if (!container) {

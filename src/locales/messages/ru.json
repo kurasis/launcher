@@ -492,6 +492,37 @@
         }
       }
     },
+    "reports": {
+      "offer": "Отправить отчёт разработчикам",
+      "title": "Отчёт разработчикам",
+      "intro": "Отчёт помогает исправлять вылеты и лучше их объяснять. Ниже видно всё, что будет отправлено, до отправки.",
+      "privacy": "Чат, имена игроков, IP и адреса серверов, названия миров, идентификаторы и ваша домашняя папка удаляются. Названия и версии модов остаются.",
+      "loading": "Готовим отчёт…",
+      "removed": "Удалено: строк чата — {chatLines, number}, имён — {names, number}, адресов — {addresses, number}, названий миров — {worlds, number}, идентификаторов — {ids, number}.",
+      "files": "Файлы для отправки",
+      "show": "Показать, что будет отправлено",
+      "note": "Что вы делали? (необязательно)",
+      "noteHint": "Например: игра вылетела, когда я открыл мир после установки модов.",
+      "send": "Отправить",
+      "sending": "Отправка…",
+      "cancel": "Отмена",
+      "close": "Закрыть",
+      "sent": "Спасибо! Отчёт отправлен.",
+      "queued": "Сервис сейчас недоступен. Отчёт сохранён и будет отправлен позже сам.",
+      "helped": "Это объяснение помогло?",
+      "yes": "Да",
+      "no": "Нет",
+      "thanks": "Спасибо за ответ.",
+      "failureTitle": "В лаунчере произошла ошибка",
+      "failureKinds": {
+        "panic": "Внутренняя ошибка остановила часть лаунчера.",
+        "frontend": "Произошла ошибка в окне лаунчера.",
+        "unclean_exit": "В прошлый раз лаунчер закрылся неправильно."
+      },
+      "failureBody": "Можно отправить отчёт, чтобы разработчики это исправили. Перед отправкой вы увидите всё содержимое.",
+      "review": "Просмотреть и отправить",
+      "dismiss": "Не отправлять"
+    },
     "deleteInstance": {
       "delete": "Удалить установку",
       "confirm": "Удалить «{name}»?",
@@ -521,6 +552,7 @@
         "defaults": "Новые установки",
         "network": "Сеть",
         "installations": "Установки",
+        "privacy": "Конфиденциальность",
         "reset": "Сброс"
       },
       "sectionHints": {
@@ -529,6 +561,7 @@
         "defaults": "Память, размер окна и полноэкранный режим для каждой новой установки.",
         "network": "Лимитное подключение и трафик, который скачивает лаунчер.",
         "installations": "Память, окно, полноэкранный режим, аргументы Minecraft, версия загрузчика модов и Java существующей установки.",
+        "privacy": "Что лаунчер отправляет разработчикам, и только с вашего согласия.",
         "reset": "Вернуть выбранные части лаунчера к состоянию первого запуска."
       },
       "javaProvider": "Источник Java",
@@ -655,6 +688,15 @@
         "busy": "Сброс подождёт окончания текущей операции или игры.",
         "done": "Сброс выполнен: удалено установок — {installations} (с копией — {backedUp}), копий — {backups}, выполнен выход из аккаунтов — {accounts}; освобождено {size}."
       }
+    },
+    "privacy": {
+      "shareStats": "Отправлять анонимную статистику вылетов",
+      "shareStatsHint": "После вылета учитываются его тип, версии лаунчера, игры и загрузчика и система. Логи, имена и ID установки не отправляются.",
+      "reports": "Отчёты о вылетах отправляются, только когда вы нажмёте «Отправить», прочитав их. В них есть случайный ID установки, чтобы отчёты с одного компьютера можно было читать вместе.",
+      "installId": "ID установки",
+      "installIdNone": "Ещё не создан: появится с первым отчётом.",
+      "newInstallId": "Создать новый ID",
+      "newInstallIdHint": "С новым ID следующие отчёты не связываются с прежними."
     },
     "storage": {
       "issuesTitle": "Замечания о хранилище"
@@ -1277,6 +1319,15 @@
     "Java was not allowed to start. Antivirus software or the system's security settings may block it: allow the launcher's Java, then try again.": "Java не разрешили запуститься. Её может блокировать антивирус или настройки безопасности системы: разрешите Java лаунчера и повторите попытку.",
     "The {loader} installer stopped responding and was ended. Antivirus software may hold Java: allow the launcher's data folder in it, then try again.": "Установщик {loader} перестал отвечать и был остановлен. Возможно, Java удерживает антивирус: добавьте папку данных лаунчера в его исключения и повторите попытку.",
     "{context}: antivirus software blocked the file. Allow the launcher's data folder in it, then try again.": "{context}: файл заблокировала антивирусная программа. Добавьте папку данных лаунчера в её исключения и повторите попытку.",
-    "Files the last repair restored are missing or damaged again. Antivirus software may be removing them: allow the launcher's data folder in it, then repair the installation.": "Файлы, которые восстановило последнее восстановление, снова отсутствуют или повреждены. Возможно, их удаляет антивирус: добавьте папку данных лаунчера в его исключения, затем восстановите установку."
+    "Files the last repair restored are missing or damaged again. Antivirus software may be removing them: allow the launcher's data folder in it, then repair the installation.": "Файлы, которые восстановило последнее восстановление, снова отсутствуют или повреждены. Возможно, их удаляет антивирус: добавьте папку данных лаунчера в его исключения, затем восстановите установку.",
+    "Preparing the report stopped unexpectedly.": "Подготовка отчёта неожиданно прервалась.",
+    "Saving the failure record": "Сохранение записи об ошибке",
+    "Saving the report": "Сохранение отчёта",
+    "The install ID could not be saved.": "Не удалось сохранить ID установки.",
+    "The output of this game run is no longer kept.": "Вывод этого запуска игры больше не хранится.",
+    "This answer is not valid.": "Этот ответ недопустим.",
+    "This report does not exist.": "Такого отчёта нет.",
+    "This report is too large. Leave out the largest file and send it again.": "Отчёт слишком большой. Уберите самый большой файл и отправьте снова.",
+    "This report preview has expired. Open it again.": "Просмотр отчёта устарел. Откройте его снова."
   }
 }

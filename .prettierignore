@@ -2,7 +2,9 @@ dist
 node_modules
 package-lock.json
 src-tauri/target
+services/crash/target
 src-tauri/gen
 src-tauri/icons
 docs/spec
 tests/fixtures
+deploy/**/*.inc

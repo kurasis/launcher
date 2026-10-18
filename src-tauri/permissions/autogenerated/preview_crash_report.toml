@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-preview-crash-report"
+description = "Enables the preview_crash_report command without any pre-configured scope."
+commands.allow = ["preview_crash_report"]
+
+[[permission]]
+identifier = "deny-preview-crash-report"
+description = "Denies the preview_crash_report command without any pre-configured scope."
+commands.deny = ["preview_crash_report"]

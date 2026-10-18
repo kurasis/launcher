@@ -256,6 +256,10 @@ export interface SettingsView {
   meteredWarnMib: number;
   /** Monthly traffic limit in MiB; 0 is no limit. */
   monthlyLimitMib: number;
+  /** Anonymous crash statistics go to the developers; off by default (D-061). */
+  shareStats: boolean;
+  /** Random ID sent with crash reports only; null until the first report. */
+  installId: string | null;
   writable: boolean;
 }
 
@@ -499,6 +503,8 @@ export interface CrashDiagnosis {
   report: string | null;
   actions: CrashAction[];
   notes: CrashNote[];
+  /** Groups the same crash across players (D-061); empty for older runs. */
+  signature?: string;
 }
 
 /** A folder inside an installation's game folder that the launcher opens. */
@@ -662,6 +668,9 @@ export interface SettingsPatch {
   metered?: boolean;
   meteredWarnMib?: number;
   monthlyLimitMib?: number;
+  shareStats?: boolean;
+  /** Replace the install ID with a new random one. */
+  newInstallId?: boolean;
 }
 
 interface EventEnvelope {
@@ -853,4 +862,56 @@ export interface TrafficSummary {
   thisMonth: TrafficUsage;
   /** Newest first. */
   earlier: { month: string; bytes: number }[];
+}
+
+// ---------------------------------------------------------------- crash reports (D-061)
+
+/** What a report is about: a crashed game run or a failure of the launcher. */
+export type ReportSubject =
+  { type: 'game'; runId: string; instanceId: string } | { type: 'launcher'; failureId: string };
+
+export interface ReportFile {
+  name: string;
+  /** Already scrubbed: what would be sent. */
+  text: string;
+}
+
+/** How much the scrubbing replaced. */
+export interface ScrubCounts {
+  chatLines: number;
+  names: number;
+  addresses: number;
+  worlds: number;
+  ids: number;
+}
+
+export interface ReportPreview {
+  id: string;
+  source: 'game' | 'launcher';
+  kind: string;
+  signature: string;
+  game: {
+    version: string;
+    loader: string;
+    loaderVersion: string;
+    java: string;
+    mods: number;
+  } | null;
+  files: ReportFile[];
+  removed: ScrubCounts;
+}
+
+/** `queued`: the service could not be reached; the report goes later by itself. */
+export type Delivery = 'sent' | 'queued';
+
+export type FailureKind = 'panic' | 'frontend' | 'unclean_exit';
+
+/** A failure of the launcher itself, newest first. */
+export interface FailureSummary {
+  id: string;
+  kind: FailureKind;
+  at: string;
+  version: string;
+  message: string;
+  reported: boolean;
 }
