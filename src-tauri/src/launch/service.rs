@@ -95,6 +95,7 @@ impl Authorizer for Arc<crate::auth::service::AuthService> {
                 xuid: auth.xuid,
                 client_id: auth.client_id,
                 notoken: false,
+                offline: auth.offline,
             })
         })
     }
@@ -557,6 +558,13 @@ impl LaunchService {
             }
         };
         check_cancel()?;
+        if identity.offline {
+            self.host.app_state().console().warn(format!(
+                "Offline: {} starts without the online account check; multiplayer and \
+                 Realms need the connection",
+                identity.player_name
+            ));
+        }
         // Only versions started through Minecraft's own main class know `--demo`;
         // older ones would run the full game, so a no-token identity cannot start them.
         // A mod loader hands the arguments on to that same class.

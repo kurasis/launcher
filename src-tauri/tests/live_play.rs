@@ -58,6 +58,7 @@ impl Authorizer for FullGameHarness {
                 xuid: None,
                 client_id: String::new(),
                 notoken: false,
+                offline: false,
             })
         })
     }

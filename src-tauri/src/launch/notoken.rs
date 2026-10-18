@@ -89,6 +89,7 @@ impl NoTokenProfile {
             xuid: None,
             client_id: String::new(),
             notoken: true,
+            offline: false,
         }
     }
 }

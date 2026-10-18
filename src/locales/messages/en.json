@@ -160,7 +160,8 @@
         "cancelled": "Cancelled. Files verified so far were kept; continue to resume.",
         "interrupted": "The launcher stopped before this finished. Files verified so far were kept."
       },
-      "gameRunning": "The game is running."
+      "gameRunning": "The game is running.",
+      "offline": "No internet connection. Installed versions still start; Microsoft accounts play without the online check, so multiplayer and Realms may not work. Installs and repairs wait in the queue until the connection returns."
     },
     "createForm": {
       "title": "New installation",
@@ -666,6 +667,11 @@
       "allow": "Download",
       "decline": "Don’t download"
     },
+    "network": {
+      "offline": "Offline",
+      "offlineHint": "No internet connection. Installed versions still start; installs and repairs wait in the queue until it returns.",
+      "check": "Check again"
+    },
     "downloads": {
       "title": "Downloads",
       "open": "Downloads",
@@ -682,7 +688,8 @@
       "remove": "Remove",
       "recent": "Recently",
       "queued": "Queued: starts when the current operation ends.",
-      "addToQueue": "Add to queue"
+      "addToQueue": "Add to queue",
+      "waitingForNetwork": "Waiting for the internet connection"
     }
   },
   "errors": {

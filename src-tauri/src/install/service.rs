@@ -435,7 +435,9 @@ impl InstallService {
             return Ok(started.clone());
         }
         let mut queue = state.queue();
-        if queue.is_empty() && state.activity().current().is_none() {
+        // Offline, a request waits in the queue for the connection (D-052).
+        let offline = state.network() == crate::state::dto::NetworkStatus::Offline;
+        if queue.is_empty() && state.activity().current().is_none() && !offline {
             return self.start(request_id, kind, instance_id);
         }
         let instance = state.instance(instance_id).ok_or_else(|| {
@@ -466,10 +468,15 @@ impl InstallService {
         };
         queue.push(queued);
         state.console().info(format!(
-            "{} of \"{}\" queued (position {})",
+            "{} of \"{}\" queued (position {}){}",
             crate::console::name(&kind),
             instance.display_name,
-            queue.len()
+            queue.len(),
+            if offline {
+                "; it starts when the internet connection returns"
+            } else {
+                ""
+            }
         ));
         state.set_queue(queue);
         lock_or(&self.requests).seen.insert(
@@ -497,6 +504,9 @@ impl InstallService {
     /// periodically; does nothing while any operation or game holds the permit.
     pub fn start_queued(&self) {
         let state = self.host.app_state();
+        if state.network() == crate::state::dto::NetworkStatus::Offline {
+            return;
+        }
         while state.activity().current().is_none() {
             let mut queue = state.queue();
             if queue.is_empty() {

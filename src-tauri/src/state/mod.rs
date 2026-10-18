@@ -69,6 +69,7 @@ struct Data {
     last_run: Option<RunSummary>,
     auth: AuthStatus,
     queue: Vec<QueuedOperation>,
+    network: dto::NetworkStatus,
     operation_progress: Option<OperationProgress>,
     recent_operations: VecDeque<OperationResult>,
 }
@@ -117,6 +118,7 @@ impl AppState {
                 last_run: None,
                 auth: AuthStatus::signed_out(),
                 queue: Vec::new(),
+                network: dto::NetworkStatus::Unknown,
                 operation_progress: None,
                 recent_operations: VecDeque::new(),
             },
@@ -316,6 +318,7 @@ impl AppState {
             instances,
             active_operation: active,
             queue: data.queue.clone(),
+            network: data.network,
             current_run: data.current_run.clone(),
             last_run: data.last_run.clone(),
             lifecycle_harness_available: cfg!(debug_assertions),
@@ -414,6 +417,7 @@ impl AppState {
                     last_run: data.last_run.clone(),
                     active_operation: self.activity.current(),
                     queue: data.queue.clone(),
+                    network: data.network,
                 },
             })),
             Change::Account => BackendEvent::AccountStateChanged(Box::new(EventEnvelope {
@@ -529,6 +533,26 @@ impl AppState {
                     false
                 } else {
                     data.queue = queue;
+                    true
+                }
+            },
+            Change::Runs,
+        );
+    }
+
+    /// Whether the internet can be reached, as last checked (D-052).
+    pub fn network(&self) -> dto::NetworkStatus {
+        self.lock().data.network
+    }
+
+    /// Records the network status and announces a change with the run state.
+    pub fn set_network(&self, status: dto::NetworkStatus) {
+        self.publish(
+            |data| {
+                if data.network == status {
+                    false
+                } else {
+                    data.network = status;
                     true
                 }
             },

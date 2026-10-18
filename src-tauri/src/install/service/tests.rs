@@ -905,3 +905,28 @@ async fn metered_downloads_wait_until_the_user_allows_or_declines() {
     assert_eq!(declined.outcome, Outcome::Cancelled);
     assert!(!f.library_path().exists());
 }
+
+#[tokio::test(flavor = "multi_thread")]
+async fn offline_requests_wait_in_the_queue_until_the_connection_returns() {
+    use crate::state::dto::NetworkStatus;
+    let f = Fixture::new().await;
+    let a = f.create("A");
+    f.state.set_network(NetworkStatus::Offline);
+    let started = f
+        .service
+        .enqueue(&Uuid::new_v4().to_string(), OperationKind::Install, a)
+        .unwrap();
+    assert!(started.queued, "nothing runs, but there is no connection");
+    f.service.start_queued();
+    assert!(f.state.activity().current().is_none());
+    assert_eq!(f.state.queue().len(), 1);
+
+    f.state.set_network(NetworkStatus::Online);
+    f.service.start_queued();
+    assert!(f.state.queue().is_empty());
+    let running = f.state.activity().current().expect("started");
+    assert_eq!(
+        f.wait(&running.operation_id).await.outcome,
+        Outcome::Succeeded
+    );
+}

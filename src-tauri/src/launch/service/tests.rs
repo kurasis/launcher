@@ -69,6 +69,7 @@ impl Authorizer for TestAuth {
                 xuid: None,
                 client_id: "test-client".into(),
                 notoken: false,
+                offline: false,
             })
         })
     }

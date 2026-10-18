@@ -1462,3 +1462,39 @@ Quilt 1.21.1 installation had 129.7 MiB to download.
   Adoptium and mod loader files.
 - Screenshots: `docs/verification/metered-approval.png` (over the limit),
   `docs/verification/metered-large.png`, `docs/verification/metered-settings.png`.
+
+## Offline (D-052)
+
+Release build on Linux (Xvfb), the live data folder from the D-039 tests. "Offline"
+was made two ways: the launcher in an empty network namespace (`unshare -n`, only
+`lo`), and the launcher sending all traffic through a local relay to the session's
+proxy that was stopped and started to cut and restore the connection.
+
+- **Start and play offline:** in the empty namespace the launcher started normally,
+  and **Play** started Minecraft 1.21.1 with Quilt 0.30.1 (title screen, demo
+  profile). Through the stopped relay, Minecraft 1.20.1 with Forge 47.4.10 started
+  too. (The first Forge attempt was refused with "Some game files are missing or
+  damaged": asset files deleted for the download tests, not the network; after a
+  repair online it started offline.)
+- **Status:** started with the relay stopped, the header showed **Offline** with
+  **Check again**, and the installation panel explained what works offline. Later,
+  with the relay stopped while the launcher ran, a repair failed with "A download
+  source could not be reached" and the status turned to **Offline** at once.
+- **Queue:** offline, **Verify files** put the repair in the queue ("Waiting for the
+  internet connection" in the panel and in the download manager). After the relay
+  started and **Check again** was pressed, the status cleared, the queued repair
+  started by itself, asked first because the metered setting from the D-051 test was
+  still on (134.2 MiB), and finished: "Repair finished. Downloaded 524 files
+  (134.2 MiB)".
+- **Tests:** the monitor's status changes and a single reconnection report; offline
+  requests waiting in the queue and starting when the connection returns; a saved
+  Microsoft account starting offline with its saved name and the placeholder token
+  after a restart without a connection, while an answer from the services (no licence,
+  a 5xx outage) is never overridden and unknown accounts never play offline; the
+  header status and **Check again**, the panel notice, and the version list fetched
+  again when the connection returns.
+- **Not verified live:** a Microsoft account offline (this build has no client ID; the
+  service tests above cover it), and refreshing accounts on reconnection with a real
+  account.
+- Screenshots: `docs/verification/offline.png`, `docs/verification/offline-queue.png`,
+  `docs/verification/offline-reconnected.png`.

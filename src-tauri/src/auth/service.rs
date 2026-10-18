@@ -57,7 +57,14 @@ pub struct LaunchAuthorization {
     pub access_token: SecretString,
     pub xuid: Option<String>,
     pub client_id: String,
+    /// Started without the online check because the services could not be
+    /// reached (D-052).
+    pub offline: bool,
 }
+
+/// The game's access token when an account plays offline without a token from
+/// this run; Minecraft accepts any value for single-player.
+const OFFLINE_TOKEN: &str = "0";
 
 struct Session {
     profile: Profile,
@@ -549,8 +556,58 @@ impl AuthService {
     /// Re-verifies current access of one account for one launch attempt (doc 03
     /// "Timing and refresh"). Uses the cached Minecraft token only while it is
     /// valid with a skew margin, and always asks for fresh entitlements and profile.
+    /// Without a connection, an account that proved it owns Minecraft when it was
+    /// signed in still starts, offline ([`Self::offline_authorization`]).
     pub async fn verify_for_launch(&self, profile_id: &str) -> LauncherResult<LaunchAuthorization> {
         let client_id = self.client_id()?;
+        match self.verify_online(profile_id, &client_id).await {
+            Err(error) if error.code == ErrorCode::NetworkError => self
+                .offline_authorization(profile_id, &client_id)
+                .ok_or(error),
+            other => other,
+        }
+    }
+
+    /// Offline play (D-052): a saved account starts without the online check
+    /// while the sign-in and Minecraft services cannot be reached. It was
+    /// checked for a Minecraft licence when it was signed in; the game gets the
+    /// last Minecraft token of this run, which may have expired, or a placeholder.
+    /// Single-player works; multiplayer and Realms need the connection.
+    fn offline_authorization(
+        &self,
+        profile_id: &str,
+        client_id: &crate::auth::client_id::ClientId,
+    ) -> Option<LaunchAuthorization> {
+        let record = self
+            .host
+            .accounts_file()
+            .accounts
+            .into_iter()
+            .find(|a| a.profile_id == profile_id)?;
+        let sessions = lock(&self.sessions);
+        let session = sessions.get(profile_id);
+        Some(LaunchAuthorization {
+            profile: session.map_or_else(
+                || Profile {
+                    id: record.profile_id.clone(),
+                    name: record.profile_name.clone(),
+                },
+                |s| s.profile.clone(),
+            ),
+            access_token: SecretString::new(
+                session.map_or(OFFLINE_TOKEN, |s| s.minecraft.access_token.expose()),
+            ),
+            xuid: session.and_then(|s| s.minecraft.xuid.clone()),
+            client_id: client_id.as_str().to_owned(),
+            offline: true,
+        })
+    }
+
+    async fn verify_online(
+        &self,
+        profile_id: &str,
+        client_id: &crate::auth::client_id::ClientId,
+    ) -> LauncherResult<LaunchAuthorization> {
         let _transaction = self.transaction.lock().await;
         let ticket = Ticket::Account(profile_id.to_owned(), self.generation(profile_id));
         // A saved account whose restore failed (for example offline) refreshes now.
@@ -609,6 +666,7 @@ impl AuthService {
             access_token: SecretString::new(session.minecraft.access_token.expose()),
             xuid: session.minecraft.xuid.clone(),
             client_id: client_id.as_str().to_owned(),
+            offline: false,
         })
     }
 

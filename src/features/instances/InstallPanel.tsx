@@ -6,6 +6,7 @@ import type {
   AccountSummary,
   ActiveActivity,
   InstanceSummary,
+  NetworkStatus,
   OperationProgress,
   OperationResult,
   QueuedOperation,
@@ -29,6 +30,8 @@ interface InstallPanelProps {
   recentOperations: OperationResult[];
   /** Installs and repairs waiting their turn (D-049). */
   queue?: QueuedOperation[];
+  /** Offline, installs and repairs wait for the connection (D-052). */
+  network?: NetworkStatus;
 }
 
 const t = strings.install;
@@ -98,6 +101,7 @@ export function InstallPanel({
   progress,
   recentOperations,
   queue = [],
+  network = 'online',
 }: InstallPanelProps) {
   const install = useCommand((requestId: string, id: string) => ipc.installInstance(id, requestId));
   const repair = useCommand((requestId: string, id: string) => ipc.repairInstance(id, requestId));
@@ -107,6 +111,7 @@ export function InstallPanel({
   );
   const mine = activeOperation?.instanceId === instance.id ? activeOperation : null;
   const otherBusy = activeOperation !== null && mine === null;
+  const offline = network === 'offline';
   // While something else runs, install and repair wait in the queue (D-049).
   const queued = queue.find((q) => q.instanceId === instance.id) ?? null;
   const ownProgress = mine !== null && progress?.operationId === mine.operationId ? progress : null;
@@ -156,9 +161,10 @@ export function InstallPanel({
         </>
       )}
       {mine === null && last !== null && <ResultView result={last} />}
+      {offline && mine === null && <Notice tone="warning">{t.offline}</Notice>}
       {queued !== null ? (
         <Notice tone="info">
-          <p>{strings.downloads.queued}</p>
+          <p>{offline ? strings.downloads.waitingForNetwork : strings.downloads.queued}</p>
           <div className={forms.actions}>
             <Button disabled={cancel.pending} onClick={() => void cancel.run(queued.queueId)}>
               {strings.downloads.remove}
@@ -177,7 +183,11 @@ export function InstallPanel({
               disabled={install.pending || queued !== null}
               onClick={() => void install.run(instance.id)}
             >
-              {otherBusy ? strings.downloads.addToQueue : unfinished ? t.retry : t.install}
+              {otherBusy || offline
+                ? strings.downloads.addToQueue
+                : unfinished
+                  ? t.retry
+                  : t.install}
             </Button>
           ) : (
             <>
@@ -196,7 +206,7 @@ export function InstallPanel({
                 disabled={repair.pending || queued !== null}
                 onClick={() => void repair.run(instance.id)}
               >
-                {otherBusy && health !== 'ready'
+                {(otherBusy || offline) && health !== 'ready'
                   ? strings.downloads.addToQueue
                   : health === 'ready'
                     ? t.verify

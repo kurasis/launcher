@@ -48,6 +48,7 @@ fn main() {
         "repair_instance",
         "cancel_operation",
         "answer_download",
+        "check_network",
         "get_traffic",
         "reset_traffic",
         "launch_game",

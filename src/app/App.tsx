@@ -10,7 +10,7 @@ import { ipc } from '../lib/ipc';
 import { StorageIssues } from '../features/diagnostics/StorageIssues';
 import { InstancesView } from '../features/instances/InstancesView';
 import { SettingsView } from '../features/settings/SettingsView';
-import type { AppSnapshot } from '../lib/contracts';
+import type { AppSnapshot, NetworkStatus } from '../lib/contracts';
 import { DiagnosticsView } from '../features/diagnostics/DiagnosticsView';
 import { appStore, useAppStore } from '../lib/store';
 import { type SettingsSection, strings } from '../lib/strings';
@@ -50,6 +50,25 @@ function ActivityIndicator({ snapshot }: { snapshot: AppSnapshot }) {
     <p className={styles.activity} role="status">
       <StatusBadge tone="neutral" label={strings.activity[active.kind]} />
       {percent !== null && strings.activity.percent({ percent })}
+    </p>
+  );
+}
+
+/** Shown while the internet cannot be reached (D-052), with a way to check again. */
+function NetworkIndicator({ network }: { network: NetworkStatus }) {
+  if (network !== 'offline') return null;
+  return (
+    <p className={styles.activity} role="status" title={strings.network.offlineHint}>
+      <StatusBadge tone="warning" label={strings.network.offline} />
+      <button
+        type="button"
+        className={styles.textButton}
+        onClick={() => {
+          void ipc.checkNetwork();
+        }}
+      >
+        {strings.network.check}
+      </button>
     </p>
   );
 }
@@ -100,6 +119,7 @@ export function App() {
           )}
         </div>
         {snapshot !== null && <ActivityIndicator snapshot={snapshot} />}
+        {snapshot !== null && <NetworkIndicator network={snapshot.network} />}
         {snapshot !== null && <AccountChip account={snapshot.account} />}
         <nav aria-label={strings.nav.label} className={styles.nav}>
           {views.map((item) => (

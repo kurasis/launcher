@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { Button } from '../../components/Button';
 import { Field } from '../../components/Field';
 import { Notice } from '../../components/Notice';
@@ -10,6 +10,7 @@ import type {
   LoaderChoice,
   LoaderKind,
   LoaderVersion,
+  NetworkStatus,
   PlanSummary,
   VersionAvailability,
 } from '../../lib/contracts';
@@ -23,6 +24,8 @@ import { LOADER_KINDS } from './loaderLabel';
 
 interface CreateInstanceFormProps {
   onDone: () => void;
+  /** When the connection returns, the version list is fetched again (D-052). */
+  network?: NetworkStatus;
 }
 
 const t = strings.createForm;
@@ -39,7 +42,7 @@ const availabilityTone: Record<VersionAvailability, StatusTone> = {
   catalog_unavailable: 'warning',
 };
 
-export function CreateInstanceForm({ onDone }: CreateInstanceFormProps) {
+export function CreateInstanceForm({ onDone, network = 'online' }: CreateInstanceFormProps) {
   // The name follows the chosen version and loader until the user types one.
   const [typedName, setTypedName] = useState<string | null>(null);
   const [versionId, setVersionId] = useState('');
@@ -107,6 +110,13 @@ export function CreateInstanceForm({ onDone }: CreateInstanceFormProps) {
   useEffect(() => {
     void fetchCatalog(false);
   }, [fetchCatalog]);
+
+  // Back online: check the version list again.
+  const wasOffline = useRef(network === 'offline');
+  useEffect(() => {
+    if (network === 'online' && wasOffline.current) void fetchCatalog(true);
+    wasOffline.current = network === 'offline';
+  }, [network, fetchCatalog]);
 
   const loadCatalog = (refresh: boolean) => {
     setChecking(true);

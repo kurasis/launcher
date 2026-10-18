@@ -110,6 +110,17 @@ async fn fixture_with(
     store: Arc<FlakyStore>,
     dir: Option<tempfile::TempDir>,
 ) -> Fixture {
+    fixture_reaching(client_id, store, dir, true).await
+}
+
+/// `online: false` points every sign-in and Minecraft service at a closed
+/// port, as without a connection.
+async fn fixture_reaching(
+    client_id: Option<&str>,
+    store: Arc<FlakyStore>,
+    dir: Option<tempfile::TempDir>,
+    online: bool,
+) -> Fixture {
     let dir = dir.unwrap_or_else(|| tempfile::tempdir().unwrap());
     let root = DataRoot::new(dir.path().to_path_buf()).unwrap();
     let routes: Routes = Arc::new(Mutex::new(happy_routes()));
@@ -135,7 +146,11 @@ async fn fixture_with(
     let o = Arc::clone(&opened);
     let service = Arc::new(
         AuthService::new(
-            AuthHttp::local(&server.base),
+            AuthHttp::local(if online {
+                &server.base
+            } else {
+                "http://127.0.0.1:1"
+            }),
             client_id_status(client_id),
             Arc::clone(&host) as Arc<dyn AccountHost>,
             Box::new(move |url: &str| {
@@ -861,4 +876,50 @@ async fn the_single_account_of_an_earlier_version_is_restored() {
         saved.contains("\"accounts\"") && !saved.contains("\"active\""),
         "{saved}"
     );
+}
+
+#[tokio::test]
+async fn without_a_connection_a_saved_account_plays_offline() {
+    let store = Arc::new(FlakyStore::default());
+    let f = fixture_with(Some(CLIENT_ID), Arc::clone(&store), None).await;
+    f.sign_in().await;
+    let dir = f.into_dir();
+
+    // A new launcher start without a connection keeps the account.
+    let f = fixture_reaching(Some(CLIENT_ID), Arc::clone(&store), Some(dir), false).await;
+    f.service.restore().await;
+    assert_eq!(f.state(), AccountState::ServiceUnavailable);
+    assert!(!f.host.accounts_file().accounts.is_empty());
+
+    let auth = f.service.verify_for_launch(PROFILE_ID).await.unwrap();
+    assert!(auth.offline);
+    assert_eq!(auth.profile.id, PROFILE_ID);
+    assert_eq!(auth.profile.name, "Steve_Test");
+    // No Minecraft token from this run: the placeholder, never the refresh token.
+    assert_eq!(auth.access_token.expose(), OFFLINE_TOKEN);
+    assert_eq!(auth.xuid, None);
+    assert!(store.get(&vault_key(PROFILE_ID)).unwrap().is_some());
+
+    // Only saved accounts play offline.
+    let error = f
+        .service
+        .verify_for_launch("00000000000000000000000000000000")
+        .await
+        .err()
+        .unwrap();
+    assert_ne!(error.code, ErrorCode::NetworkError);
+}
+
+#[tokio::test]
+async fn an_answer_from_the_services_is_never_overridden_offline() {
+    let f = fixture().await;
+    f.sign_in().await;
+    // Reached, but the licence is gone: no offline fallback.
+    f.route("/entitlements/license", 200, json!({"items": []}));
+    let error = f.service.verify_for_launch(PROFILE_ID).await.err().unwrap();
+    assert_eq!(error.code, ErrorCode::NoGameAccess);
+    // A service outage is an answer too.
+    f.route("/entitlements/license", 503, json!({}));
+    let error = f.service.verify_for_launch(PROFILE_ID).await.err().unwrap();
+    assert_ne!(error.code, ErrorCode::NetworkError);
 }

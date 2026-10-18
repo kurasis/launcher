@@ -9,6 +9,7 @@ pub mod auth;
 pub mod backup;
 pub mod catalog;
 pub mod commands;
+pub mod connectivity;
 pub mod console;
 pub mod diagnostics;
 pub mod download;
@@ -67,6 +68,10 @@ impl install::service::StateAccess for TauriStateAccess {
     /// A job that finished in the background brings back one window with its
     /// result, unless the user chose cancel-and-quit.
     fn operation_finished(&self) {
+        // A failed download may mean the connection is gone: check it now (D-052).
+        if let Some(monitor) = self.0.try_state::<Arc<connectivity::Monitor>>() {
+            monitor.check_soon();
+        }
         let controller = self.0.state::<LifecycleController>();
         if !controller.quit_intended()
             && self.0.get_webview_window(lifecycle::MAIN_WINDOW).is_none()
@@ -343,7 +348,26 @@ fn setup(app: &mut tauri::App) -> Result<(), Box<dyn std::error::Error>> {
     }
     app.manage(commands::Launcher(launcher));
     // Finish a pending sign-out or refresh the saved account in the background.
+    let reconnect_auth = Arc::clone(&auth);
     tauri::async_runtime::spawn(async move { auth.restore().await });
+    // Whether the internet can be reached; when it returns, accounts are checked
+    // again and queued downloads resume (D-052).
+    let monitor = Arc::new(connectivity::Monitor::new(connectivity::https_probe(
+        net::PublicClient::new(net::SourcePolicy::MojangMetadata, &version)
+            .map_err(|e| e.message)?,
+    )));
+    app.manage(Arc::clone(&monitor));
+    let handle = app.handle().clone();
+    tauri::async_runtime::spawn(async move {
+        loop {
+            let state = handle.state::<AppState>();
+            if monitor.check(&state).await {
+                let auth = Arc::clone(&reconnect_auth);
+                tauri::async_runtime::spawn(async move { auth.restore().await });
+            }
+            monitor.next(state.network()).await;
+        }
+    });
     Ok(())
 }
 
@@ -496,6 +520,7 @@ fn handlers<R: tauri::Runtime>() -> impl Fn(tauri::ipc::Invoke<R>) -> bool + Sen
         commands::repair_instance,
         commands::cancel_operation,
         commands::answer_download,
+        commands::check_network,
         commands::get_traffic,
         commands::reset_traffic,
         commands::launch_game,
@@ -551,6 +576,7 @@ fn handlers<R: tauri::Runtime>() -> impl Fn(tauri::ipc::Invoke<R>) -> bool + Sen
         commands::repair_instance,
         commands::cancel_operation,
         commands::answer_download,
+        commands::check_network,
         commands::get_traffic,
         commands::reset_traffic,
         commands::launch_game,

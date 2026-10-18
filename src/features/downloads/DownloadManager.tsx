@@ -159,6 +159,9 @@ export function DownloadManager({ snapshot }: { snapshot: AppSnapshot }) {
           {queue.length > 0 && (
             <>
               <h3 className={styles.subtitle}>{t.queue({ count: queue.length })}</h3>
+              {snapshot.network === 'offline' && (
+                <p className={styles.muted}>{t.waitingForNetwork}</p>
+              )}
               <ol className={styles.queue}>
                 {queue.map((item) => (
                   <li key={item.queueId} className={styles.queued}>

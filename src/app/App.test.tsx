@@ -108,6 +108,16 @@ describe('App', () => {
     );
   });
 
+  it('says when it is offline and checks again on request', async () => {
+    const calls = fakeBackend(snapshotFixture({ network: 'offline' }));
+    render(<App />);
+    expect(await screen.findByText('Offline')).toBeVisible();
+    fireEvent.click(screen.getByRole('button', { name: 'Check again' }));
+    await waitFor(() => {
+      expect(calls.some((c) => c.cmd === 'check_network')).toBe(true);
+    });
+  });
+
   it('saves the language chosen in settings', async () => {
     const calls = fakeBackend(snapshotFixture());
     render(<App />);
