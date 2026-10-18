@@ -417,15 +417,24 @@ fn dependency_kind(dependency_id: &str, missing: bool) -> CrashKind {
     }
 }
 
+/// The other mod of a Fabric requirement: its name and ID.
+fn fabric_dependency(c: &regex::Captures<'_>) -> (String, String) {
+    let id = c.get(6).or(c.get(7)).map_or("", |m| m.as_str());
+    let name = c.get(5).map_or(id, |m| m.as_str());
+    (name.to_owned(), id.to_owned())
+}
+
 fn loader_dependencies(cx: &Context) -> Option<CrashDiagnosis> {
+    // The other mod is "'Fabric API' (fabric-api)" when some version of it is
+    // present, and only its ID ("fabric-api") when it is missing.
     static FABRIC: LazyLock<Regex> = LazyLock::new(|| {
         re(
-            r"Mod '([^']+)' \(([^)]+)\) (\S+) requires (?:version (.+?)|any version) of (?:mod )?'([^']+)' \(([^)]+)\), (?:which is missing|but only the wrong version is present: (.+?))!",
+            r"Mod '([^']+)' \(([^)]+)\) (\S+) requires (?:version (.+?)|any version) of (?:(?:mod )?'([^']+)' \(([^)]+)\)|([^\s,']+)), (?:which is missing|but only the wrong version is present: (.+?))!",
         )
     });
     static FABRIC_BREAKS: LazyLock<Regex> = LazyLock::new(|| {
         re(
-            r"Mod '([^']+)' \(([^)]+)\) (\S+) is incompatible with (?:version (.+?)|any version) of (?:mod )?'([^']+)' \(([^)]+)\)",
+            r"Mod '([^']+)' \(([^)]+)\) (\S+) is incompatible with (?:version (.+?)|any version) of (?:(?:mod )?'([^']+)' \(([^)]+)\)|([^\s,']+))",
         )
     });
     static FORGE: LazyLock<Regex> = LazyLock::new(|| {
@@ -447,14 +456,14 @@ fn loader_dependencies(cx: &Context) -> Option<CrashDiagnosis> {
     // Fabric and Quilt list every unmet requirement; the first explains it.
     let fabric: Vec<_> = cx.all(&FABRIC).collect();
     if let Some((_, c)) = fabric.first() {
-        let did = c[6].to_owned();
-        let missing = c.get(7).is_none();
+        let (name, did) = fabric_dependency(c);
+        let missing = c.get(8).is_none();
         let mut d = diagnosis(
             dependency_kind(&did, missing),
             &[
                 ("mod", c[1].to_owned()),
                 ("modId", c[2].to_owned()),
-                ("dependency", c[5].to_owned()),
+                ("dependency", name),
                 ("dependencyId", did),
                 (
                     "required",
@@ -462,7 +471,7 @@ fn loader_dependencies(cx: &Context) -> Option<CrashDiagnosis> {
                 ),
                 (
                     "found",
-                    c.get(7).map_or_else(String::new, |m| m.as_str().to_owned()),
+                    c.get(8).map_or_else(String::new, |m| m.as_str().to_owned()),
                 ),
                 ("count", fabric.len().to_string()),
             ],
@@ -478,13 +487,14 @@ fn loader_dependencies(cx: &Context) -> Option<CrashDiagnosis> {
         return Some(d);
     }
     if let Some((line, c)) = cx.find(&FABRIC_BREAKS) {
+        let (name, did) = fabric_dependency(&c);
         let mut d = diagnosis(
             CrashKind::IncompatibleMods,
             &[
                 ("mod", c[1].to_owned()),
                 ("modId", c[2].to_owned()),
-                ("dependency", c[5].to_owned()),
-                ("dependencyId", c[6].to_owned()),
+                ("dependency", name),
+                ("dependencyId", did),
             ],
             vec![line],
         );

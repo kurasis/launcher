@@ -1334,3 +1334,58 @@ message` plus a stack trace), with the event's level.
   default and goes back to it. The new-installation form says the memory it gets.
 - **Settings → Installations** shows the recommendation counting the `.jar` files in
   the installation's `mods` folder, with **Use recommended** to take it.
+
+## D-059 — Explaining why the game stopped
+
+- **Status:** accepted (owner request, 2026-10-18) · **Affects:** the end of every
+  game run, `RunSummary.diagnosis` and `signal`, the home screen, `open_instance_folder`
+- **Sources.** Mojang's help on exit codes (0, 1, −1, −805306369 out of memory,
+  −1073741819 access violation, −1073740791 native crash, −1073740777 D3DGear,
+  −1073741515 missing DLL, 134, 139, 255); the crash rules of an open launcher and a
+  log service (HMCL's crash analyser, Aternos' mclo.gs Codex); the
+  loaders' own messages (Fabric and Quilt dependency resolution, Forge and NeoForge
+  `ModLoadingException` and their "Mod loading error" crash reports, Mixin); the
+  Sodium wiki on graphics drivers and overlays; HotSpot's fatal-error file format.
+  Ten crashes were reproduced with this launcher and kept, without tokens and with
+  neutral paths, as test fixtures in `src-tauri/src/launch/crash/fixtures` (wrong
+  JVM option, Java 8 for 1.20.1, Fabric API too old for 22 mods, a damaged mod jar,
+  Forge out of memory, Forge missing dependency, a damaged Forge config, a Fabric
+  mod on NeoForge, a native crash with its `hs_err` file).
+- **When.** After a game process ends, unless the player pressed Stop. A clean exit
+  (code 0) counts only when the run wrote a crash report or JVM error file: Forge
+  and NeoForge show their mod error screen and exit with 0 when it is closed, so
+  such a run is recorded as failed.
+- **What is read.** The game's last 2000 output lines (already redacted, log4j XML
+  unwrapped); the crash report the game names in its output, else the newest
+  `crash-reports/*.txt` written since the start; the newest `hs_err_pid*.log` in the
+  game folder written since the start. Only the file name from the output is used,
+  joined to the installation's own `crash-reports` folder; at most 2 MiB of each
+  file. The JVM error file repeats the command line with the access token, so it is
+  redacted on disk at once, and only its header and native frames are read.
+- **Rules, first match wins:** JVM setup (unknown option, heap too large, missing
+  main class) → Java version (class file version) → loader dependencies (missing,
+  wrong version, Minecraft, Java or loader version, incompatible, duplicate,
+  language provider) → damaged files (zip errors, with the jar's folder deciding
+  between "replace the mod" and Repair) → damaged config (night-config, JSON) →
+  memory (heap; native or system) → graphics (GLFW/OpenGL, RivaTuner, missing LWJGL
+  natives) → native crash (overlay modules, then the graphics driver by module name
+  for AMD, Intel, NVIDIA and Mesa, else the module and signal) → mods at run time
+  (OptiFine, Mixin with the mod from its mixin config, entrypoints, mod
+  construction) → disk full, locked files → crash report category (F3 + C, watchdog,
+  ticking entity or block entity with type and position, world loading, any other
+  description) → the exit code or signal alone (SIGKILL and 137 "killed", usually
+  the out-of-memory killer; SIGTERM; SIGSEGV/SIGABRT and Windows status codes).
+  Suspected mods come from the crash report ("Suspected Mods", `TRANSFORMER/<mod>@`).
+  A Fabric mod skipped by Forge or NeoForge is added as a note.
+- **What the player sees.** The result carries the kind, the values for its text
+  (mod names, versions, files, memory, module), up to five evidence lines, suspects,
+  the report's file name and actions. The installation shows **Why the game
+  stopped**: the cause, what to do, the suspects and notes, the exit code or signal,
+  the evidence under a disclosure, and buttons that open the mods, config or crash
+  reports folder (`open_instance_folder` takes only these names), its settings
+  (memory, Java, loader version), Repair or Backups. Out of memory suggests the
+  installation's recommended memory (D-058), or 2 GiB more. The last run on the home
+  screen names the cause. Texts exist for all 35 kinds in English, Russian and
+  Arabic; values a text needs but a crash lacks read as a shorter sentence.
+- **Not done.** Uploading logs to a paste service; reading the full run log beyond
+  the in-memory tail; guessing which mod caused a crash without a report naming it.

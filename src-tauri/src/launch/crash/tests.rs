@@ -66,6 +66,19 @@ fn fabric_dependency_at_wrong_version() {
 }
 
 #[test]
+fn fabric_missing_dependency_named_by_id() {
+    // Reproduced: GeckoLib for 1.20.1 without Fabric API; Fabric's error window
+    // closed with Exit.
+    let d = run(1, include_str!("fixtures/fabric-missing-dependency.log"));
+    assert_eq!(d.kind, CrashKind::MissingDependency);
+    assert_eq!(detail(&d, "mod"), "GeckoLib 4");
+    assert_eq!(detail(&d, "dependency"), "fabric-api");
+    assert_eq!(detail(&d, "required"), "0.92.0+1.20.1 or later");
+    assert!(!d.details.contains_key("found"));
+    assert_eq!(d.actions, vec![CrashAction::OpenMods]);
+}
+
+#[test]
 fn fabric_corrupt_mod_jar() {
     let d = run(1, include_str!("fixtures/fabric-corrupt-jar.log"));
     assert_eq!(d.kind, CrashKind::CorruptModFile);
