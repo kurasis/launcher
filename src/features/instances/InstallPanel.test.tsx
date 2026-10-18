@@ -304,7 +304,7 @@ describe('InstallPanel', () => {
     expect(await screen.findByText('Sign-in is not configured in this build.')).toBeVisible();
     // The default player is listed once, as the default.
     const options = Array.from(
-      (screen.getByLabelText('Play as') as HTMLSelectElement).options,
+      screen.getByLabelText<HTMLSelectElement>('Play as').options,
       (o) => o.textContent,
     );
     expect(options).toEqual(['Default: Steve_Test (Microsoft)', 'Alex']);
