@@ -1842,7 +1842,25 @@ proxy that was stopped and started to cut and restore the connection.
   revoked one, while a newer fix is; the interface switches to beta and looks at
   once, explains staying on the installed version when leaving beta, and tells
   the player about a return once.
-- **Not tested here:** going back for real (needs two published versions and a
-  broken third); installing for real on Windows, macOS and AppImage (needs
+- **End to end with real AppImages (2026-10-18, Linux x86_64, Xvfb):** three
+  release builds (0.1.0, 0.1.1, 0.1.2) with a throwaway key and
+  `LAUNCHER_UPDATE_URL` pointing at a local copy of upd.lapi.sh (the nginx rules
+  in a small server; manifests and archives made by `lapi-upd pack` and
+  `publish --partial`).
+  - Update: 0.1.0 found 0.1.1 at its first check (30 s), downloaded it, checked
+    the signature and showed "Version 0.1.1 is ready"; closing the window
+    installed it (the AppImage became byte-identical to the 0.1.1 build) and
+    wrote `pending.json` (0.1.0 → 0.1.1). The next start ran 0.1.1, copied the
+    settings to `backups/before-0.1.1`, and 20 s after the interface showed the
+    start counted as good (`pending.json` gone).
+  - Going back: 0.1.1 installed 0.1.2 the same way. 0.1.2 was killed 5 s after
+    starting, twice (starts 1 and 2), and its settings file was changed in
+    between as a newer version might. The third start fetched
+    `releases/0.1.1/linux-x86_64-appimage.json` and the 0.1.1 AppImage, put the
+    settings back as they were before 0.1.2, installed 0.1.1 and restarted
+    into it within 2 s. 0.1.1 showed "Version 0.1.2 did not start properly…",
+    recorded 0.1.2 as skipped, and its next check saw 0.1.2 on the server
+    without offering it. "Got it" removed the notice for good.
+- **Not tested here:** installing for real on Windows and macOS (needs
   a signed release from the Package workflow and two versions); this is the
   first check to make after the key is configured.
