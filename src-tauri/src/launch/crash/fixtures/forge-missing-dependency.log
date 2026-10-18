@@ -1,0 +1,14 @@
+  </log4j:Event>
+  <log4j:Event logger="net.minecraftforge.fml.loading.moddiscovery.JarInJarDependencyLocator" timestamp="1792326138208" level="INFO" thread="main">
+    <log4j:Message><![CDATA[No dependencies to load found. Skipping!]]></log4j:Message>
+  </log4j:Event>
+  <log4j:Event logger="net.minecraftforge.fml.loading.ModSorter" timestamp="1792326138267" level="ERROR" thread="main">
+    <log4j:Message><![CDATA[Missing or unsupported mandatory dependencies:
+	Mod ID: 'jei', Requested by: 'jeresources', Expected range: '[15.2.0,)', Actual version: '[MISSING]']]></log4j:Message>
+  </log4j:Event>
+  <log4j:Event logger="cpw.mods.modlauncher.LaunchServiceHandler" timestamp="1792326139603" level="INFO" thread="main">
+  </log4j:Event>
+  <log4j:Event logger="com.mojang.datafixers.DataFixerBuilder" timestamp="1792326143333" level="INFO" thread="Datafixer Bootstrap">
+    <log4j:Message><![CDATA[188 Datafixer optimizations took 289 milliseconds]]></log4j:Message>
+  </log4j:Event>
+  <log4j:Event logger="net.minecraft.server.packs.VanillaPackResourcesBuilder" timestamp="1792326145344" level="WARN" thread="Render thread">

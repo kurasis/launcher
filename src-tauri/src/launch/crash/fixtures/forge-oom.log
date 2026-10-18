@@ -1,0 +1,60 @@
+    <log4j:Message><![CDATA[Incorrect key client.stabilizeDirectionGetNearest was corrected from null to its default, true. ]]></log4j:Message>
+  </log4j:Event>
+  <log4j:Event logger="net.minecraftforge.common.ForgeConfigSpec" timestamp="1792326101813" level="WARN" thread="modloading-worker-0">
+    <log4j:Message><![CDATA[Incorrect key client.allowMipmapLowering was corrected from null to its default, false. ]]></log4j:Message>
+  </log4j:Event>
+  <log4j:Event logger="net.minecraft.client.gui.font.providers.UnihexProvider" timestamp="1792326102559" level="INFO" thread="Worker-Main-3">
+    <log4j:Message><![CDATA[Found unifont_all_no_pua-15.0.06.hex, loading]]></log4j:Message>
+  </log4j:Event>
+  <log4j:Event logger="net.minecraft.Util" timestamp="1792326113953" level="ERROR" thread="Worker-Main-1">
+    <log4j:Message><![CDATA[Caught exception in thread Thread[Worker-Main-1,5,main]]]></log4j:Message>
+    <log4j:Throwable><![CDATA[java.lang.OutOfMemoryError: Java heap space
+]]></log4j:Throwable>
+  </log4j:Event>
+Exception in thread "Thread-3" java.lang.OutOfMemoryError: Java heap space
+Negative index in crash report handler (0/19)
+  <log4j:Event logger="net.minecraftforge.fml.VersionChecker" timestamp="1792326114456" level="INFO" thread="Forge Version Check">
+    <log4j:Message><![CDATA[[forge] Starting version check at https://files.minecraftforge.net/net/minecraftforge/forge/promotions_slim.json]]></log4j:Message>
+  </log4j:Event>
+  <log4j:Event logger="net.minecraft.client.Minecraft" timestamp="1792326114560" level="FATAL" thread="Render thread">
+    <log4j:Message><![CDATA[Reported exception thrown!]]></log4j:Message>
+    <log4j:Throwable><![CDATA[net.minecraft.ReportedException: Rendering overlay
+	at TRANSFORMER/minecraft@1.20.1/net.minecraft.client.renderer.GameRenderer.m_109093_(GameRenderer.java:961)
+	at TRANSFORMER/minecraft@1.20.1/net.minecraft.client.Minecraft.m_91383_(Minecraft.java:1146)
+	at TRANSFORMER/minecraft@1.20.1/net.minecraft.client.Minecraft.m_91374_(Minecraft.java:718)
+	at TRANSFORMER/minecraft@1.20.1/net.minecraft.client.main.Main.main(Main.java:218)
+	at java.base/jdk.internal.reflect.NativeMethodAccessorImpl.invoke0(Native Method)
+	at java.base/jdk.internal.reflect.NativeMethodAccessorImpl.invoke(NativeMethodAccessorImpl.java:77)
+	at java.base/jdk.internal.reflect.DelegatingMethodAccessorImpl.invoke(DelegatingMethodAccessorImpl.java:43)
+	at java.base/java.lang.reflect.Method.invoke(Method.java:569)
+	at MC-BOOTSTRAP/fmlloader@1.20.1-47.4.10/net.minecraftforge.fml.loading.targets.CommonLaunchHandler.runTarget(CommonLaunchHandler.java:111)
+	at MC-BOOTSTRAP/fmlloader@1.20.1-47.4.10/net.minecraftforge.fml.loading.targets.CommonLaunchHandler.clientService(CommonLaunchHandler.java:99)
+	at MC-BOOTSTRAP/fmlloader@1.20.1-47.4.10/net.minecraftforge.fml.loading.targets.CommonClientLaunchHandler.lambda$makeService$0(CommonClientLaunchHandler.java:25)
+	at MC-BOOTSTRAP/cpw.mods.modlauncher@10.0.9/cpw.mods.modlauncher.LaunchServiceHandlerDecorator.launch(LaunchServiceHandlerDecorator.java:30)
+	at MC-BOOTSTRAP/cpw.mods.modlauncher@10.0.9/cpw.mods.modlauncher.LaunchServiceHandler.launch(LaunchServiceHandler.java:53)
+	at MC-BOOTSTRAP/cpw.mods.modlauncher@10.0.9/cpw.mods.modlauncher.LaunchServiceHandler.launch(LaunchServiceHandler.java:71)
+	at MC-BOOTSTRAP/cpw.mods.modlauncher@10.0.9/cpw.mods.modlauncher.Launcher.run(Launcher.java:108)
+	at MC-BOOTSTRAP/cpw.mods.modlauncher@10.0.9/cpw.mods.modlauncher.Launcher.main(Launcher.java:78)
+	at MC-BOOTSTRAP/cpw.mods.modlauncher@10.0.9/cpw.mods.modlauncher.BootstrapLaunchConsumer.accept(BootstrapLaunchConsumer.java:26)
+	at MC-BOOTSTRAP/cpw.mods.modlauncher@10.0.9/cpw.mods.modlauncher.BootstrapLaunchConsumer.accept(BootstrapLaunchConsumer.java:23)
+	at cpw.mods.bootstraplauncher@1.1.2/cpw.mods.bootstraplauncher.BootstrapLauncher.main(BootstrapLauncher.java:141)
+Caused by: java.lang.OutOfMemoryError: Java heap space
+]]></log4j:Throwable>
+  </log4j:Event>
+  <log4j:Event logger="net.minecraftforge.common.ForgeMod" timestamp="1792326114599" level="FATAL" thread="Render thread">
+    <log4j:Message><![CDATA[Preparing crash report with UUID c3da44e0-0684-4dfc-ba7b-2e6dcd757fe6]]></log4j:Message>
+  </log4j:Event>
+---- Minecraft Crash Report ----
+// I let you down. Sorry :(
+
+Time: 2026-10-18 12:21:54
+Description: Rendering overlay
+
+java.lang.OutOfMemoryError: Java heap space
+
+
+A detailed walkthrough of the error, its code path and all known details is as follows:
+---------------------------------------------------------------------------------------
+
+-- Head --
+Thread: Render thread
