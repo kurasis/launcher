@@ -197,7 +197,16 @@ pub trait ProgressSink: Send + Sync {
 
     /// An existing file had the wrong content and will be replaced.
     fn corrupt(&self, _path: &str) {}
+
+    /// Whether `bytes` in `files` may be downloaded now; `false` cancels the
+    /// run. Asked once the missing files are known (D-051).
+    fn approve(&self, _bytes: u64, _files: u64) -> Approval<'_> {
+        Box::pin(std::future::ready(true))
+    }
 }
+
+/// The answer of [`ProgressSink::approve`].
+pub type Approval<'a> = std::pin::Pin<Box<dyn std::future::Future<Output = bool> + Send + 'a>>;
 
 /// Discards progress.
 pub struct NoProgress;
@@ -501,6 +510,17 @@ impl Executor {
             }
         }
 
+        // On a metered connection a big download waits for the user (D-051).
+        if !missing.is_empty() {
+            let approved = tokio::select! {
+                approved = sink.approve(total_bytes, missing.len() as u64) => approved,
+                () = cancel.cancelled() => false,
+            };
+            if !approved {
+                return Err(cancelled_error());
+            }
+        }
+
         // Phase 3: download with bounded concurrency.
         let stop = CancelToken::new();
         let started = Instant::now();
@@ -749,6 +769,7 @@ impl Worker {
             self.counters
                 .network
                 .fetch_add(chunk.len() as u64, Ordering::Relaxed);
+            crate::traffic::record(request.source, chunk.len() as u64);
             if received > request.size {
                 return Err(Failure::Integrity(size_mismatch()));
             }

@@ -18,6 +18,7 @@ import styles from './Instances.module.css';
 import { localizeError } from '../../lib/strings';
 import { gameLabel } from './loaderLabel';
 import { PlayAs } from './PlayAs';
+import { DownloadApproval } from '../network/DownloadApproval';
 
 interface InstallPanelProps {
   instance: InstanceSummary;
@@ -137,6 +138,12 @@ export function InstallPanel({
             <ProgressView progress={ownProgress} />
           ) : (
             <p role="status">{t.phase.resolving}</p>
+          )}
+          {ownProgress?.approval && (
+            <DownloadApproval
+              operationId={ownProgress.operationId}
+              approval={ownProgress.approval}
+            />
           )}
           <div className={forms.actions}>
             <Button

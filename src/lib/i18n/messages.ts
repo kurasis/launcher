@@ -148,6 +148,7 @@ export type Messages = {
       readonly preparing_loader: string;
       readonly finalizing: string;
       readonly cancel_requested: string;
+      readonly awaiting_approval: string;
     };
     readonly progressLabel: string;
     readonly bytes: (values: { done: string | number; total: string | number }) => string;
@@ -281,12 +282,14 @@ export type Messages = {
       readonly general: string;
       readonly java: string;
       readonly defaults: string;
+      readonly network: string;
       readonly installations: string;
     };
     readonly sectionHints: {
       readonly general: string;
       readonly java: string;
       readonly defaults: string;
+      readonly network: string;
       readonly installations: string;
     };
     readonly javaProvider: string;
@@ -659,6 +662,39 @@ export type Messages = {
     readonly confirmDelete: string;
     readonly deleted: string;
     readonly cancel: string;
+  };
+  readonly metered: {
+    readonly toggle: string;
+    readonly toggleHint: string;
+    readonly warn: string;
+    readonly warnHint: string;
+    readonly limit: string;
+    readonly limitHint: string;
+    readonly save: string;
+    readonly saved: string;
+    readonly usage: string;
+    readonly used: (values: { used: string | number }) => string;
+    readonly usedOfLimit: (values: { used: string | number; limit: string | number }) => string;
+    readonly sources: {
+      readonly game: string;
+      readonly java: string;
+      readonly loaders: string;
+      readonly metadata: string;
+    };
+    readonly earlier: string;
+    readonly notCounted: string;
+    readonly reset: string;
+    readonly confirmReset: string;
+    readonly cancel: string;
+    readonly approvalTitle: (values: { size: string | number }) => string;
+    readonly approvalLarge: (values: { files: number; size: string | number }) => string;
+    readonly approvalOverLimit: (values: {
+      size: string | number;
+      used: string | number;
+      limit: string | number;
+    }) => string;
+    readonly allow: string;
+    readonly decline: string;
   };
   readonly downloads: {
     readonly title: string;

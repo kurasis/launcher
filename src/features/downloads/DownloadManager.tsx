@@ -5,6 +5,7 @@ import { ipc } from '../../lib/ipc';
 import { strings } from '../../lib/strings';
 import { useCommand } from '../../lib/useCommand';
 import { gameLabel } from '../instances/loaderLabel';
+import { DownloadApproval } from '../network/DownloadApproval';
 import styles from './DownloadManager.module.css';
 
 const t = strings.downloads;
@@ -101,15 +102,23 @@ export function DownloadManager({ snapshot }: { snapshot: AppSnapshot }) {
   const queue = snapshot.queue;
   const recent = snapshot.recentOperations.slice(0, 3);
   const working = active !== null;
+  // A download that waits for permission opens the panel until closed (D-051).
+  const [closedFor, setClosedFor] = useState<string | null>(null);
+  const asking = progress?.approval ? progress.operationId : null;
+  const shown = open || (asking !== null && closedFor !== asking);
+  const close = () => {
+    setOpen(false);
+    setClosedFor(asking);
+  };
 
   return (
     <div
       className={styles.corner}
       onKeyDown={(event) => {
-        if (event.key === 'Escape') setOpen(false);
+        if (event.key === 'Escape') close();
       }}
     >
-      {open && (
+      {shown && (
         <section className={styles.panel} aria-label={t.title}>
           <h2 className={styles.title}>{t.title}</h2>
           {active === null && queue.length === 0 && <p className={styles.muted}>{t.none}</p>}
@@ -134,6 +143,9 @@ export function DownloadManager({ snapshot }: { snapshot: AppSnapshot }) {
               />
               {details.length > 0 && <p className={styles.muted}>{details.join(' · ')}</p>}
               {progress !== null && <RotatingName names={progress.currentFiles} />}
+              {progress?.approval && (
+                <DownloadApproval operationId={progress.operationId} approval={progress.approval} />
+              )}
               <button
                 type="button"
                 className={styles.link}
@@ -191,9 +203,10 @@ export function DownloadManager({ snapshot }: { snapshot: AppSnapshot }) {
       <button
         type="button"
         className={styles.button}
-        data-working={working ? 'true' : undefined}
+        data-working={working && asking === null ? 'true' : undefined}
+        data-asking={asking !== null ? 'true' : undefined}
         aria-label={t.open}
-        aria-expanded={open}
+        aria-expanded={shown}
         title={t.open}
         style={
           percent !== null
@@ -201,7 +214,8 @@ export function DownloadManager({ snapshot }: { snapshot: AppSnapshot }) {
             : undefined
         }
         onClick={() => {
-          setOpen((value) => !value);
+          if (shown) close();
+          else setOpen(true);
         }}
       >
         <svg className={styles.icon} viewBox="0 0 24 24" aria-hidden="true">

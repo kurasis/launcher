@@ -123,6 +123,19 @@ pub struct Settings {
     /// Automatic backups kept per world; older ones are deleted.
     #[serde(default = "default_backup_keep")]
     pub backup_keep: u32,
+    /// The connection is metered: big downloads ask first (D-051).
+    #[serde(default)]
+    pub metered: bool,
+    /// On a metered connection, downloads of at least this many MiB ask first.
+    #[serde(default = "default_metered_warn_mib")]
+    pub metered_warn_mib: u32,
+    /// Monthly traffic limit in MiB on a metered connection; 0 is no limit.
+    #[serde(default)]
+    pub monthly_limit_mib: u32,
+}
+
+fn default_metered_warn_mib() -> u32 {
+    crate::traffic::DEFAULT_WARN_MIB
 }
 
 fn default_backup_keep() -> u32 {
@@ -142,6 +155,9 @@ impl Default for Settings {
             language: Language::default(),
             backup_after_play: false,
             backup_keep: default_backup_keep(),
+            metered: false,
+            metered_warn_mib: default_metered_warn_mib(),
+            monthly_limit_mib: 0,
         }
     }
 }

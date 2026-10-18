@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-get-traffic"
+description = "Enables the get_traffic command without any pre-configured scope."
+commands.allow = ["get_traffic"]
+
+[[permission]]
+identifier = "deny-get-traffic"
+description = "Denies the get_traffic command without any pre-configured scope."
+commands.deny = ["get_traffic"]

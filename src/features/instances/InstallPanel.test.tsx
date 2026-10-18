@@ -47,6 +47,7 @@ const progress: OperationProgress = {
   totalFiles: 3961,
   bytesPerSecond: 4 * 1024 * 1024,
   currentFiles: [],
+  approval: null,
   timestamp: '2026-10-17T00:00:00Z',
 };
 

@@ -13,7 +13,10 @@ use crate::install::plan::{AssetIndexPlan, LoggingPlan, PlannedArtifact, Runtime
 use crate::runtime::adoptium::ArchiveFormat;
 use crate::runtime::extract::tests::{E, tar_gz};
 use crate::state::dto::BackendEvent;
-use crate::state::{EventSink, dto::MutationRequest};
+use crate::state::{
+    EventSink,
+    dto::{MutationRequest, SettingsPatch},
+};
 use crate::storage::models::ArtifactRole;
 use crate::storage::paths::{DataRoot, ImageType, RuntimeKey, Sha256, TargetArch, TargetOs};
 use crate::validation::MemoryPolicy;
@@ -822,4 +825,83 @@ async fn progress_names_the_files_being_downloaded() {
         })
         .collect();
     assert!(names.iter().all(|n| !n.contains('/')), "{names:?}");
+}
+
+/// The first progress that waits for the user's answer.
+async fn awaiting_approval(f: &Fixture) -> serde_json::Value {
+    for _ in 0..500 {
+        if let Some(p) = f
+            .events
+            .named("operation_progress")
+            .into_iter()
+            .find(|p| p["phase"] == "awaiting_approval")
+        {
+            return p;
+        }
+        tokio::time::sleep(Duration::from_millis(10)).await;
+    }
+    panic!("no download waited for approval");
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn metered_downloads_wait_until_the_user_allows_or_declines() {
+    let f = Fixture::new().await;
+    f.state
+        .set_app_settings(MutationRequest {
+            request_id: Uuid::new_v4().to_string(),
+            payload: SettingsPatch {
+                metered: Some(true),
+                // Ask before every download.
+                metered_warn_mib: Some(0),
+                ..SettingsPatch::default()
+            },
+        })
+        .unwrap();
+    let a = f.create("A");
+    let started = f
+        .service
+        .start(&Uuid::new_v4().to_string(), OperationKind::Install, a)
+        .unwrap();
+    let waiting = awaiting_approval(&f).await;
+    let approval = &waiting["approval"];
+    assert_eq!(approval["reason"], "large");
+    assert!(approval["bytes"].as_u64().unwrap() > 0);
+    assert!(approval["files"].as_u64().unwrap() > 0);
+    // Nothing is downloaded before the answer.
+    assert!(!f.library_path().exists());
+    assert_eq!(
+        f.service
+            .answer_download("not-this-one", true)
+            .unwrap_err()
+            .code,
+        ErrorCode::OperationNotFound
+    );
+    f.service
+        .answer_download(&started.operation_id, true)
+        .unwrap();
+    let result = f.wait(&started.operation_id).await;
+    assert_eq!(result.outcome, Outcome::Succeeded, "{:?}", result.error);
+
+    // Declining cancels the operation and downloads nothing.
+    std::fs::remove_file(f.library_path()).unwrap();
+    let before = f.events.named("operation_progress").len();
+    let repair = f
+        .service
+        .start(&Uuid::new_v4().to_string(), OperationKind::Repair, a)
+        .unwrap();
+    for _ in 0..500 {
+        if f.events.named("operation_progress")[before..]
+            .iter()
+            .any(|p| p["phase"] == "awaiting_approval")
+        {
+            break;
+        }
+        tokio::time::sleep(Duration::from_millis(10)).await;
+    }
+    f.service
+        .answer_download(&repair.operation_id, false)
+        .unwrap();
+    let declined = f.wait(&repair.operation_id).await;
+    assert_eq!(declined.outcome, Outcome::Cancelled);
+    assert!(!f.library_path().exists());
 }

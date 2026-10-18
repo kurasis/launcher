@@ -238,6 +238,12 @@ export interface SettingsView {
   backupAfterPlay: boolean;
   /** Automatic backups kept per world. */
   backupKeep: number;
+  /** The connection is metered: big downloads ask first (D-051). */
+  metered: boolean;
+  /** Downloads of at least this many MiB ask first; 0 asks before every download. */
+  meteredWarnMib: number;
+  /** Monthly traffic limit in MiB; 0 is no limit. */
+  monthlyLimitMib: number;
   writable: boolean;
 }
 
@@ -447,7 +453,19 @@ export type InstallState =
   | 'extracting_runtime'
   | 'preparing_loader'
   | 'finalizing'
-  | 'cancel_requested';
+  | 'cancel_requested'
+  | 'awaiting_approval';
+
+/** A download that waits for the user's answer on a metered connection (D-051). */
+export interface ApprovalRequest {
+  bytes: number;
+  files: number;
+  reason: 'large' | 'over_limit';
+  /** Downloaded this month before this download. */
+  monthBytes: number;
+  /** 0 is no limit. */
+  monthlyLimitMib: number;
+}
 
 /** Coalesced progress; does not advance the state revision. */
 export interface OperationProgress {
@@ -465,6 +483,8 @@ export interface OperationProgress {
   bytesPerSecond: number | null;
   /** Names of the files being downloaded right now (D-049). */
   currentFiles: string[];
+  /** Set while the operation waits for the user's answer (D-051). */
+  approval: ApprovalRequest | null;
   timestamp: string;
 }
 
@@ -533,6 +553,9 @@ export interface SettingsPatch {
   language?: Language;
   backupAfterPlay?: boolean;
   backupKeep?: number;
+  metered?: boolean;
+  meteredWarnMib?: number;
+  monthlyLimitMib?: number;
 }
 
 interface EventEnvelope {
@@ -640,4 +663,23 @@ export interface Gallery {
   /** Installations with screenshots, the one with the newest first; each newest first. */
   installations: { instanceId: string; screenshots: Screenshot[] }[];
   totalBytes: number;
+}
+
+/** Bytes the launcher downloaded, by source (D-051). */
+export interface TrafficUsage {
+  /** Game files and Mojang's Java. */
+  game: number;
+  /** Java from Adoptium. */
+  java: number;
+  loaders: number;
+  /** Version lists and other metadata. */
+  metadata: number;
+}
+
+export interface TrafficSummary {
+  /** `YYYY-MM`. */
+  month: string;
+  thisMonth: TrafficUsage;
+  /** Newest first. */
+  earlier: { month: string; bytes: number }[];
 }

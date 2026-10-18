@@ -735,6 +735,7 @@ impl AppState {
             total_files: update.total_files,
             bytes_per_second: update.bytes_per_second,
             current_files: update.current_files,
+            approval: update.approval,
             timestamp: Utc::now(),
         };
         data.operation_progress = Some(progress.clone());
@@ -1300,6 +1301,15 @@ impl AppState {
                 if let Some(keep) = patch.backup_keep {
                     settings.backup_keep = crate::backup::validate_keep(keep)?;
                 }
+                if let Some(on) = patch.metered {
+                    settings.metered = on;
+                }
+                if let Some(mib) = patch.metered_warn_mib {
+                    settings.metered_warn_mib = crate::traffic::validate_warn(mib)?;
+                }
+                if let Some(mib) = patch.monthly_limit_mib {
+                    settings.monthly_limit_mib = crate::traffic::validate_limit(mib)?;
+                }
                 if let Some(provider) = patch.java_provider {
                     settings.java_provider = provider;
                 }
@@ -1342,6 +1352,7 @@ pub struct ProgressUpdate {
     pub total_files: Option<u64>,
     pub bytes_per_second: Option<u64>,
     pub current_files: Vec<String>,
+    pub approval: Option<dto::ApprovalRequest>,
 }
 
 /// Turns a job interrupted by a crash into a visible, recoverable result.
@@ -1401,7 +1412,7 @@ fn short(id: &str) -> &str {
     id.split('-').next().unwrap_or(id)
 }
 
-fn mib(bytes: u64) -> String {
+pub(crate) fn mib(bytes: u64) -> String {
     format!("{:.1} MiB", bytes as f64 / (1024.0 * 1024.0))
 }
 

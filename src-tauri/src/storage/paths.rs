@@ -73,6 +73,11 @@ impl DataRoot {
         self.root.join("accounts.json")
     }
 
+    /// Traffic the launcher downloaded, by month (D-051).
+    pub fn traffic(&self) -> PathBuf {
+        self.root.join("traffic.json")
+    }
+
     pub fn compatibility(&self) -> PathBuf {
         self.root.join("compatibility.json")
     }

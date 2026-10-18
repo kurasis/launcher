@@ -25,6 +25,7 @@ pub mod runtime;
 pub mod secrets;
 pub mod state;
 pub mod storage;
+pub mod traffic;
 pub mod validation;
 
 use std::path::PathBuf;
@@ -314,6 +315,16 @@ fn setup(app: &mut tauri::App) -> Result<(), Box<dyn std::error::Error>> {
         });
     }
     app.manage(commands::Installer(installer));
+    // Counted traffic is written every few seconds (D-051).
+    if let Some(root) = state.data_root() {
+        tauri::async_runtime::spawn(async move {
+            loop {
+                tokio::time::sleep(std::time::Duration::from_secs(5)).await;
+                let root = root.clone();
+                let _ = tauri::async_runtime::spawn_blocking(move || traffic::flush(&root)).await;
+            }
+        });
+    }
     app.manage(state);
     let auth = Arc::new(create_auth_service(app.handle())?);
     app.manage(Arc::clone(&auth));
@@ -432,6 +443,12 @@ pub fn run() {
                 .state::<LifecycleController>()
                 .show_main_window(handle);
         }
+        // Write the last counted traffic before the process ends (D-051).
+        RunEvent::Exit => {
+            if let Some(root) = handle.state::<AppState>().data_root() {
+                traffic::flush(&root);
+            }
+        }
         _ => {}
     });
 }
@@ -478,6 +495,9 @@ fn handlers<R: tauri::Runtime>() -> impl Fn(tauri::ipc::Invoke<R>) -> bool + Sen
         commands::install_instance,
         commands::repair_instance,
         commands::cancel_operation,
+        commands::answer_download,
+        commands::get_traffic,
+        commands::reset_traffic,
         commands::launch_game,
         commands::stop_game,
         commands::open_instance_folder,
@@ -530,6 +550,9 @@ fn handlers<R: tauri::Runtime>() -> impl Fn(tauri::ipc::Invoke<R>) -> bool + Sen
         commands::install_instance,
         commands::repair_instance,
         commands::cancel_operation,
+        commands::answer_download,
+        commands::get_traffic,
+        commands::reset_traffic,
         commands::launch_game,
         commands::stop_game,
         commands::open_instance_folder,
