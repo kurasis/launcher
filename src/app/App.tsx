@@ -18,12 +18,13 @@ import { useLanguage } from '../lib/useLanguage';
 import { AboutView } from './AboutView';
 import styles from './App.module.css';
 import { QuitControl } from './QuitControl';
+import { BackupsView } from '../features/backups/BackupsView';
 import { useTheme } from './useTheme';
 import { useAppInfo } from './useAppInfo';
 import { localizeError } from '../lib/strings';
 
-type View = 'home' | 'account' | 'settings' | 'diagnostics' | 'about';
-const views: View[] = ['home', 'account', 'settings', 'diagnostics', 'about'];
+type View = 'home' | 'account' | 'backups' | 'settings' | 'diagnostics' | 'about';
+const views: View[] = ['home', 'account', 'backups', 'settings', 'diagnostics', 'about'];
 
 /** Compact header status of the running operation, visible on every screen. */
 function ActivityIndicator({ snapshot }: { snapshot: AppSnapshot }) {
@@ -152,6 +153,7 @@ export function App() {
               </>
             )}
             {view === 'account' && <AccountView snapshot={state.snapshot} />}
+            {view === 'backups' && <BackupsView snapshot={state.snapshot} />}
             {view === 'settings' && (
               <SettingsView
                 key={settingsInstance ?? ''}

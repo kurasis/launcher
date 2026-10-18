@@ -153,6 +153,92 @@ pub async fn set_instance_java(
     state.set_instance_java(request, check)
 }
 
+/// Every backup, every installation's worlds and the space used (D-047).
+#[tauri::command]
+pub async fn list_backups<R: Runtime>(
+    app: AppHandle<R>,
+) -> LauncherResult<crate::backup::BackupOverview> {
+    blocking(app, crate::backup::overview).await
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct CreateBackupPayload {
+    pub instance_id: crate::storage::paths::InstanceId,
+    pub scope: crate::backup::Scope,
+}
+
+/// Backs up a world or a whole installation now.
+#[tauri::command]
+pub async fn create_backup<R: Runtime>(
+    app: AppHandle<R>,
+    request: MutationRequest<CreateBackupPayload>,
+) -> LauncherResult<crate::backup::SnapshotInfo> {
+    crate::state::ledger::validate_request_id(&request.request_id)?;
+    let payload = request.payload;
+    blocking(app, move |state| {
+        crate::backup::create(
+            state,
+            payload.instance_id,
+            payload.scope,
+            crate::backup::Reason::Manual,
+        )
+    })
+    .await
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct RestoreBackupPayload {
+    pub backup_id: String,
+    /// Restore a world beside the current one instead of replacing it.
+    #[serde(default)]
+    pub as_copy: bool,
+}
+
+/// Restores a backup (the replaced state is backed up first).
+#[tauri::command]
+pub async fn restore_backup<R: Runtime>(
+    app: AppHandle<R>,
+    request: MutationRequest<RestoreBackupPayload>,
+) -> LauncherResult<crate::backup::RestoreResult> {
+    crate::state::ledger::validate_request_id(&request.request_id)?;
+    let payload = request.payload;
+    blocking(app, move |state| {
+        crate::backup::restore(state, &payload.backup_id, payload.as_copy)
+    })
+    .await
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct BackupIdPayload {
+    pub backup_id: String,
+}
+
+/// Deletes a backup; returns the bytes freed.
+#[tauri::command]
+pub async fn delete_backup<R: Runtime>(
+    app: AppHandle<R>,
+    request: MutationRequest<BackupIdPayload>,
+) -> LauncherResult<u64> {
+    crate::state::ledger::validate_request_id(&request.request_id)?;
+    let id = request.payload.backup_id;
+    blocking(app, move |state| crate::backup::delete(state, &id)).await
+}
+
+/// Runs file work for a command off the async runtime.
+async fn blocking<R: Runtime, T: Send + 'static>(
+    app: AppHandle<R>,
+    work: impl FnOnce(&AppState) -> LauncherResult<T> + Send + 'static,
+) -> LauncherResult<T> {
+    tauri::async_runtime::spawn_blocking(move || work(&app.state::<AppState>()))
+        .await
+        .map_err(|_| {
+            crate::error::LauncherError::internal("A file operation stopped unexpectedly.")
+        })?
+}
+
 /// Native file dialog for choosing a Java program.
 #[tauri::command]
 pub async fn pick_java_file<R: Runtime>(app: AppHandle<R>) -> LauncherResult<Option<String>> {

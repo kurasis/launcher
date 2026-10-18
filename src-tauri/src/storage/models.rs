@@ -117,6 +117,16 @@ pub struct Settings {
     pub java_provider: JavaProvider,
     #[serde(default)]
     pub language: Language,
+    /// Back up the worlds a game session changed, after it ends (D-047).
+    #[serde(default)]
+    pub backup_after_play: bool,
+    /// Automatic backups kept per world; older ones are deleted.
+    #[serde(default = "default_backup_keep")]
+    pub backup_keep: u32,
+}
+
+fn default_backup_keep() -> u32 {
+    crate::backup::DEFAULT_KEEP
 }
 
 impl Default for Settings {
@@ -130,6 +140,8 @@ impl Default for Settings {
             default_resolution: Resolution::default(),
             java_provider: JavaProvider::default(),
             language: Language::default(),
+            backup_after_play: false,
+            backup_keep: default_backup_keep(),
         }
     }
 }
@@ -265,6 +277,10 @@ pub enum OperationKind {
     Launch,
     /// Copying the launcher data to another folder (D-043).
     Relocate,
+    /// Making or deleting a backup (D-047).
+    Backup,
+    /// Restoring a backup (D-047).
+    Restore,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]

@@ -14,6 +14,7 @@ export type Messages = {
     readonly label: string;
     readonly home: string;
     readonly account: string;
+    readonly backups: string;
     readonly settings: string;
     readonly diagnostics: string;
     readonly about: string;
@@ -444,6 +445,8 @@ export type Messages = {
     readonly launch: string;
     readonly relocate: string;
     readonly percent: (values: { percent: string | number }) => string;
+    readonly backup: string;
+    readonly restore: string;
   };
   readonly console: {
     readonly title: string;
@@ -490,6 +493,8 @@ export type Messages = {
       readonly repair: string;
       readonly launch: string;
       readonly relocate: string;
+      readonly backup: string;
+      readonly restore: string;
     };
     readonly outcome: {
       readonly succeeded: string;
@@ -585,5 +590,48 @@ export type Messages = {
     readonly STORAGE_UNAVAILABLE: string;
     readonly STORAGE_ERROR: string;
     readonly INTERNAL: string;
+  };
+  readonly backups: {
+    readonly title: string;
+    readonly hint: string;
+    readonly storage: (values: { size: string | number }) => string;
+    readonly afterPlay: string;
+    readonly afterPlayHint: string;
+    readonly keep: string;
+    readonly keepHint: string;
+    readonly save: string;
+    readonly installation: string;
+    readonly worlds: string;
+    readonly noWorlds: string;
+    readonly backUp: string;
+    readonly lastBackup: (values: { date: string | number }) => string;
+    readonly never: string;
+    readonly whole: string;
+    readonly wholeHint: string;
+    readonly list: string;
+    readonly none: string;
+    readonly scopeWorld: (values: { name: string | number }) => string;
+    readonly scopeInstallation: string;
+    readonly reason: {
+      readonly manual: string;
+      readonly after_play: string;
+      readonly before_restore: string;
+    };
+    readonly size: (values: {
+      files: number;
+      total: string | number;
+      added: string | number;
+    }) => string;
+    readonly restore: string;
+    readonly restoreCopy: string;
+    readonly delete: string;
+    readonly confirmRestore: (values: { what: string | number; date: string | number }) => string;
+    readonly confirmDelete: (values: { date: string | number }) => string;
+    readonly working: string;
+    readonly created: (values: { what: string | number }) => string;
+    readonly restored: string;
+    readonly restoredCopy: (values: { name: string | number }) => string;
+    readonly deleted: (values: { size: string | number }) => string;
+    readonly busy: string;
   };
 };

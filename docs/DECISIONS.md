@@ -1017,6 +1017,38 @@ message` plus a stack trace), with the event's level.
   profiles "Name (demo)", and the Accounts screen explains no-token profiles. The
   launch itself is unchanged: a no-token profile always runs with `--demo`.
 
+## D-047 — Incremental backups of worlds and installations
+
+- **Status:** accepted (owner request, 2026-10-17) · **Affects:** a new **Backups**
+  screen, `settings.json`, `DATA_ROOT/backups`, the activity permit (new kinds
+  `backup`, `restore`)
+- **What is backed up:** one world (`saves/<name>` of an installation's game folder)
+  or the whole game folder (worlds, mods, settings, resource and shader packs). The
+  game, libraries and Java that Repair downloads again are not included.
+- **Incremental store:** every file is stored once under `backups/objects/` by its
+  SHA-256, and each backup is a manifest in `backups/snapshots/<id>.json` listing its
+  files (path, size, modification time, SHA-256). A file whose size and modification
+  time match the previous backup of the same world or installation is not read again.
+  Files that did not change, or that another backup already holds, cost nothing: a
+  backup shows its total size and the bytes it added. Symbolic links are skipped.
+- **Restore:** in place, or (for a world) as a copy named "<world> (backup <date>)".
+  A restore writes into a new folder beside the target, checks every file against its
+  SHA-256, and only then swaps it in, so a failed or damaged restore keeps the current
+  folder. Before an in-place restore the current state is backed up ("Before a
+  restore").
+- **Automatic backups:** _Back up changed worlds after playing_ (off by default) backs
+  up, when a game session ends, each world whose files changed since its last backup,
+  and keeps the newest _N_ automatic backups per world (default 10, 1–100). Backups the
+  user makes are kept until deleted.
+- **Management:** the Backups screen lists each installation's worlds with their last
+  backup, and every backup with its reason, date, version and sizes. Restore, restore
+  as a copy and delete ask for confirmation where they replace or remove data. Deleting
+  removes the files no other backup uses, and the screen shows the space all backups
+  take.
+- **Safety:** backups and restores hold the activity permit, so they never run while
+  the installation's game, an install or another backup runs. Manifest paths are
+  checked so a manifest cannot write outside the target folder.
+
 ## D-048 — Windows: windows are created outside WebView2 callbacks; Windows 11 on ARM in CI
 
 - **Status:** accepted (owner report and request, 2026-10-17) · **Affects:** D-037

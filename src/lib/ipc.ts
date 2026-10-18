@@ -31,6 +31,9 @@ import {
   type QuitResult,
   type RunSummary,
   type SettingsPatch,
+  type BackupInfo,
+  type BackupOverview,
+  type BackupScope,
   type JavaCheck,
   type NoTokenProfile,
   type ProfileRef,
@@ -63,6 +66,19 @@ export const ipc = {
     invoke<DataLocation>('move_data_location', {
       request: mutation({ target, path }, requestId),
     }),
+  listBackups: (): Promise<BackupOverview> => invoke<BackupOverview>('list_backups'),
+  createBackup: (instanceId: string, scope: BackupScope, requestId?: string): Promise<BackupInfo> =>
+    invoke<BackupInfo>('create_backup', { request: mutation({ instanceId, scope }, requestId) }),
+  restoreBackup: (
+    backupId: string,
+    asCopy: boolean,
+    requestId?: string,
+  ): Promise<{ world: string | null }> =>
+    invoke<{ world: string | null }>('restore_backup', {
+      request: mutation({ backupId, asCopy }, requestId),
+    }),
+  deleteBackup: (backupId: string, requestId?: string): Promise<number> =>
+    invoke<number>('delete_backup', { request: mutation({ backupId }, requestId) }),
   checkJava: (instanceId: string, path: string): Promise<JavaCheck> =>
     invoke<JavaCheck>('check_java', { payload: { instanceId, path } }),
   pickJavaFile: (): Promise<string | null> => invoke<string | null>('pick_java_file'),

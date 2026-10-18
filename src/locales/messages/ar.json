@@ -16,6 +16,7 @@
       "label": "القائمة الرئيسية",
       "home": "التثبيتات",
       "account": "الحسابات",
+      "backups": "النسخ",
       "settings": "الإعدادات",
       "diagnostics": "التشخيص",
       "about": "حول"
@@ -422,7 +423,9 @@
       "repair": "جارٍ التحقق من الملفات",
       "launch": "جارٍ اللعب",
       "relocate": "نقل البيانات",
-      "percent": "{percent}٪"
+      "percent": "{percent}٪",
+      "backup": "نسخ احتياطي",
+      "restore": "استعادة نسخة"
     },
     "console": {
       "title": "وحدة التحكم",
@@ -468,7 +471,9 @@
         "install": "تثبيت",
         "repair": "إصلاح",
         "launch": "تشغيل",
-        "relocate": "نقل البيانات"
+        "relocate": "نقل البيانات",
+        "backup": "نسخة احتياطية",
+        "restore": "استعادة نسخة"
       },
       "outcome": {
         "succeeded": "نجحت",
@@ -564,6 +569,45 @@
       "STORAGE_UNAVAILABLE": "بيانات المشغّل غير متاحة.",
       "STORAGE_ERROR": "فشلت عملية على الملفات.",
       "INTERNAL": "حدث خطأ داخلي في المشغّل."
+    },
+    "backups": {
+      "title": "النسخ الاحتياطية",
+      "hint": "تحفظ النسخة الاحتياطية كل ملف مرة واحدة: النسخة الجديدة تضيف ما تغيّر فقط منذ النسخ السابقة. انسخ عوالم منفردة أو التثبيت كاملًا. لا تُضمَّن ملفات اللعبة التي يمكن للإصلاح تنزيلها من جديد.",
+      "storage": "تشغل النسخ الاحتياطية {size}",
+      "afterPlay": "انسخ العوالم المتغيرة بعد اللعب",
+      "afterPlayHint": "عند انتهاء جلسة اللعب، يُنسخ كل عالم تغيّر تلقائيًا.",
+      "keep": "عدد النسخ التلقائية المحفوظة لكل عالم",
+      "keepHint": "تُحذف النسخ التلقائية الأقدم. أما النسخ التي تصنعها بنفسك فتبقى حتى تحذفها.",
+      "save": "حفظ",
+      "installation": "التثبيت",
+      "worlds": "العوالم",
+      "noWorlds": "لا توجد عوالم في هذا التثبيت بعد.",
+      "backUp": "انسخ احتياطيًا",
+      "lastBackup": "آخر نسخة: {date}",
+      "never": "لم يُنسخ بعد",
+      "whole": "انسخ التثبيت كاملًا",
+      "wholeHint": "العوالم والتعديلات والإعدادات وحزم الموارد والمظللات لهذا التثبيت.",
+      "list": "النسخ الاحتياطية لهذا التثبيت",
+      "none": "لا توجد نسخ احتياطية بعد.",
+      "scopeWorld": "العالم «{name}»",
+      "scopeInstallation": "التثبيت كاملًا",
+      "reason": {
+        "manual": "صنعتها أنت",
+        "after_play": "بعد اللعب",
+        "before_restore": "قبل الاستعادة"
+      },
+      "size": "{files, number} ملف · {total} · {added} جديد",
+      "restore": "استعادة",
+      "restoreCopy": "استعادة كنسخة",
+      "delete": "حذف",
+      "confirmRestore": "هل تستبدل {what} بالنسخة المؤرخة {date}؟ تُحفظ حالته الحالية أولًا.",
+      "confirmDelete": "هل تحذف النسخة المؤرخة {date}؟ تبقى الملفات التي تحتاجها نسخ أخرى.",
+      "working": "جارٍ العمل…",
+      "created": "{what}: تم النسخ الاحتياطي.",
+      "restored": "تمت الاستعادة.",
+      "restoredCopy": "تمت الاستعادة كالعالم «{name}».",
+      "deleted": "تم الحذف؛ تحرّر {size}.",
+      "busy": "تنتظر النسخ والاستعادة انتهاء العملية الجارية أو اللعبة."
     }
   },
   "errors": {
@@ -819,6 +863,14 @@
     "Use at most {max} JVM options.": "استخدم {max} من خيارات JVM على الأكثر.",
     "A profile with this name already exists.": "يوجد ملف شخصي بهذا الاسم بالفعل.",
     "The account answered with a different Minecraft profile.": "أجاب الحساب بملف Minecraft شخصي مختلف.",
-    "This account or profile no longer exists.": "لم يعد هذا الحساب أو الملف الشخصي موجودًا."
+    "This account or profile no longer exists.": "لم يعد هذا الحساب أو الملف الشخصي موجودًا.",
+    "Keep between 1 and {max} automatic backups.": "احتفظ بين 1 و{max} نسخة تلقائية.",
+    "There is nothing to back up yet.": "لا يوجد ما يُنسخ بعد.",
+    "This backup no longer exists.": "لم تعد هذه النسخة موجودة.",
+    "This backup is damaged and cannot be restored.": "هذه النسخة تالفة ولا يمكن استعادتها.",
+    "This world name is invalid.": "اسم العالم غير صالح.",
+    "A whole installation can only be restored in its place.": "لا يمكن استعادة التثبيت كاملًا إلا في مكانه.",
+    "A file operation stopped unexpectedly.": "توقفت عملية الملفات بشكل غير متوقع.",
+    "The restore target already exists.": "مجلد الاستعادة موجود بالفعل."
   }
 }
