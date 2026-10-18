@@ -43,6 +43,8 @@ flate2 = "1.1.10"
 zip = { version = "8.6.0", default-features = false, features = ["deflate"] }
 keyring = { version = "3.6.3", features = ["apple-native", "windows-native", "sync-secret-service", "crypto-rust"] }
 tokio = { version = "1.53.3", features = ["sync", "time", "net", "rt", "macros", "io-util", "fs"] }
+tauri-plugin-updater = "2"
+semver = "1"
 
 [target.'cfg(unix)'.dependencies]
 # statvfs for free-space checks on the data directory's own filesystem; the clock

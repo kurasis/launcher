@@ -147,6 +147,17 @@ pub struct Settings {
     /// mirror first (D-062).
     #[serde(default)]
     pub download_source: crate::mirror::DownloadSource,
+    /// Download updates and install them on close, only tell, or never check
+    /// (D-063).
+    #[serde(default)]
+    pub update_mode: crate::update::UpdateMode,
+    /// Random, never sent: decides whether this install is within a release's
+    /// rollout percent.
+    #[serde(default)]
+    pub update_seed: Option<u32>,
+    /// The version that last ran, to notice the first start of a new one.
+    #[serde(default)]
+    pub last_version: Option<String>,
 }
 
 fn default_metered_warn_mib() -> u32 {
@@ -177,6 +188,9 @@ impl Default for Settings {
             install_id: None,
             share_stats: false,
             download_source: crate::mirror::DownloadSource::Automatic,
+            update_mode: crate::update::UpdateMode::Auto,
+            update_seed: None,
+            last_version: None,
         }
     }
 }

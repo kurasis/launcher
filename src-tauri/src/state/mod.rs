@@ -70,6 +70,7 @@ struct Data {
     auth: AuthStatus,
     queue: Vec<QueuedOperation>,
     network: dto::NetworkStatus,
+    update: crate::update::UpdateView,
     operation_progress: Option<OperationProgress>,
     recent_operations: VecDeque<OperationResult>,
 }
@@ -119,6 +120,7 @@ impl AppState {
                 auth: AuthStatus::signed_out(),
                 queue: Vec::new(),
                 network: dto::NetworkStatus::Unknown,
+                update: crate::update::UpdateView::default(),
                 operation_progress: None,
                 recent_operations: VecDeque::new(),
             },
@@ -320,6 +322,7 @@ impl AppState {
             queue: data.queue.clone(),
             network: data.network,
             mirrored_hosts: crate::mirror::shared().mirrored(),
+            update: data.update.clone(),
             current_run: data.current_run.clone(),
             last_run: data.last_run.clone(),
             lifecycle_harness_available: cfg!(debug_assertions),
@@ -452,6 +455,7 @@ impl AppState {
                     queue: data.queue.clone(),
                     network: data.network,
                     mirrored_hosts: crate::mirror::shared().mirrored(),
+                    update: data.update.clone(),
                 },
             })),
             Change::Account => BackendEvent::AccountStateChanged(Box::new(EventEnvelope {
@@ -592,6 +596,43 @@ impl AppState {
             },
             Change::Runs,
         );
+    }
+
+    /// The launcher update's state, announced with the run state (D-063).
+    pub fn update(&self) -> crate::update::UpdateView {
+        self.lock().data.update.clone()
+    }
+
+    pub fn set_update(&self, view: crate::update::UpdateView) {
+        self.publish(
+            |data| {
+                if data.update == view {
+                    false
+                } else {
+                    data.update = view;
+                    true
+                }
+            },
+            Change::Runs,
+        );
+    }
+
+    /// Changes settings the launcher keeps for itself (not from the interface).
+    pub fn edit_settings(&self, edit: impl FnOnce(&mut Settings)) -> LauncherResult<()> {
+        let mut guard = self.lock();
+        let inner = &mut *guard;
+        let mut settings = inner.data.settings.clone();
+        edit(&mut settings);
+        if settings == inner.data.settings {
+            return Ok(());
+        }
+        if let Availability::Ready(store) = &inner.availability
+            && inner.data.settings_writable
+        {
+            store.save_settings(&settings)?;
+        }
+        inner.data.settings = settings;
+        Ok(())
     }
 
     /// Re-announces run state, for example after the activity permit was released.
@@ -1617,6 +1658,9 @@ impl AppState {
                 }
                 if let Some(source) = patch.download_source {
                     settings.download_source = source;
+                }
+                if let Some(mode) = patch.update_mode {
+                    settings.update_mode = mode;
                 }
                 if patch.new_install_id == Some(true) {
                     settings.install_id = Some(uuid::Uuid::new_v4().to_string());

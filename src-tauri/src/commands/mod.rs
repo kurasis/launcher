@@ -1382,3 +1382,32 @@ pub async fn send_explanation_feedback(
     }
     reports.feedback(&state, &kind, &signature, helpful).await
 }
+
+/// Looks for a launcher update now (D-063).
+#[tauri::command]
+pub async fn check_for_update<R: Runtime>(app: AppHandle<R>) -> crate::update::UpdateView {
+    let updates = Arc::clone(&app.state::<Arc<crate::update::Updates>>());
+    updates.check(&app, true).await;
+    app.state::<AppState>().update()
+}
+
+/// Downloads the offered update (notify mode, metered connection).
+#[tauri::command]
+pub async fn download_update<R: Runtime>(app: AppHandle<R>) -> crate::update::UpdateView {
+    let updates = Arc::clone(&app.state::<Arc<crate::update::Updates>>());
+    updates.download(&app).await;
+    app.state::<AppState>().update()
+}
+
+/// Installs the downloaded update and starts the new version.
+#[tauri::command]
+pub fn restart_to_update<R: Runtime>(app: AppHandle<R>) -> LauncherResult<()> {
+    let updates = Arc::clone(&app.state::<Arc<crate::update::Updates>>());
+    updates.restart_now(&app)
+}
+
+/// "What's new" was read.
+#[tauri::command(async)]
+pub fn dismiss_whats_new(state: State<'_, AppState>) {
+    crate::update::Updates::dismiss_whats_new(&state);
+}
