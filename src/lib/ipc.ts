@@ -40,6 +40,7 @@ import {
   type BackupOverview,
   type Gallery,
   type TrafficSummary,
+  type UpdateView,
   type BackupScope,
   type JavaCheck,
   type NoTokenProfile,
@@ -229,6 +230,12 @@ export const ipc = {
     invoke<Delivery>('send_crash_report', { previewId, files, note }),
   sendExplanationFeedback: (kind: string, signature: string, helpful: boolean): Promise<void> =>
     invoke('send_explanation_feedback', { kind, signature, helpful }),
+  checkForUpdate: (): Promise<UpdateView> => invoke<UpdateView>('check_for_update'),
+  downloadUpdate: (): Promise<UpdateView> => invoke<UpdateView>('download_update'),
+  /** Installs the downloaded update and starts the new version. */
+  restartToUpdate: (): Promise<void> => invoke('restart_to_update'),
+  dismissWhatsNew: (): Promise<void> => invoke('dismiss_whats_new'),
+  openUpdatePage: (): Promise<void> => invoke('open_update_page'),
   /** Debug builds only; release builds have no handler for this command. */
   startLifecycleTest: (scenario: LifecycleScenario, requestId?: string): Promise<RunSummary> =>
     invoke<RunSummary>('start_lifecycle_test', { request: mutation(scenario, requestId) }),

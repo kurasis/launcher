@@ -1411,3 +1411,24 @@ pub fn restart_to_update<R: Runtime>(app: AppHandle<R>) -> LauncherResult<()> {
 pub fn dismiss_whats_new(state: State<'_, AppState>) {
     crate::update::Updates::dismiss_whats_new(&state);
 }
+
+/// Opens where to get the update by hand (a `.deb`, or after installing
+/// failed); only addresses on upd.lapi.sh.
+#[tauri::command(async)]
+pub fn open_update_page<R: Runtime>(app: AppHandle<R>) -> LauncherResult<()> {
+    use tauri_plugin_opener::OpenerExt;
+    let url = app
+        .state::<AppState>()
+        .update()
+        .download_url
+        .and_then(|u| url::Url::parse(&u).ok())
+        .filter(|u| u.scheme() == "https" && u.host_str() == Some("upd.lapi.sh"))
+        .ok_or_else(|| {
+            crate::error::LauncherError::invalid_input("There is no update page to open.")
+        })?;
+    app.opener()
+        .open_url(url.as_str(), None::<&str>)
+        .map_err(|_| {
+            crate::error::LauncherError::internal("The system browser could not be opened.")
+        })
+}

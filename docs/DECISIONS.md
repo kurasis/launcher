@@ -1672,6 +1672,9 @@ message` plus a stack trace), with the event's level.
   offline copy, never on the server. The launcher installs nothing whose signature
   does not match, and the signature must name the announced version
   (`requireSignedVersion`), so an old signed file cannot be passed off as new.
+  The Tauri CLI's own signer does not write the version, so the Package workflow
+  signs with `lapi-upd pack` (minisign, Tauri's key format, `version:` in the
+  trusted comment); the builds themselves need no key.
 - Losing the private key means installed launchers can no longer be updated; they
   have to be reinstalled by hand. A launcher built without the public key does not
   look for updates.
@@ -1735,12 +1738,9 @@ message` plus a stack trace), with the event's level.
 
 ### Publishing a version (owner)
 
-1. Raise `version` in `src-tauri/Cargo.toml` (and `package.json`), add
-   `release-notes/<version>.json` (`{"en": "...", "ru": "..."}`), merge to `main`.
-2. Run the "Package" workflow; download its `launcher-<version>-release` artifact.
-3. `scp launcher-<version>-release.tar.gz <deploy-user>@<server>:/home/www/lapi/upd/incoming/`
-4. `sudo -u lapi-upd /home/www/lapi/upd/current/lapi-upd publish <version> --rollout 10`,
-   later `rollout stable 100`.
+`docs/RELEASING.md`: raise the version and add its notes, take the release
+archive from the Package workflow, upload it to
+`/home/www/lapi/upd/data/incoming/` and run `lapi-upd publish <version>`.
 
 ### Stages
 

@@ -21,6 +21,7 @@ use serde_json::Value;
 use tauri::{AppHandle, Manager, Runtime};
 use tauri_plugin_updater::{Update, UpdaterExt};
 
+use crate::error::{ErrorCode, LauncherError, LauncherResult};
 use crate::state::AppState;
 
 /// The channel this build follows; `beta` is prepared on the server (D-063).
@@ -64,6 +65,18 @@ pub enum Phase {
     Failed,
 }
 
+/// Why the last step failed; the interface says it in the player's language.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum UpdateError {
+    /// Not reachable or not answered; the next check tries again.
+    Network,
+    /// The signature did not match: nothing was installed.
+    Signature,
+    /// Installing failed; the download link is the way.
+    Install,
+}
+
 /// The notes of the version now running, shown once after an update.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -86,7 +99,7 @@ pub struct UpdateView {
     pub download_url: Option<String>,
     pub downloaded: u64,
     pub total: Option<u64>,
-    pub error: Option<String>,
+    pub error: Option<UpdateError>,
     pub whats_new: Option<WhatsNew>,
 }
 
@@ -111,7 +124,10 @@ pub fn decide(current: &str, manifest: &Value, seed: u32) -> Option<Offer> {
         .get("revoked")
         .and_then(Value::as_array)
         .is_some_and(|list| list.iter().any(|v| v.as_str() == Some(current)));
-    let rollout = manifest.get("rollout").and_then(Value::as_u64).unwrap_or(100);
+    let rollout = manifest
+        .get("rollout")
+        .and_then(Value::as_u64)
+        .unwrap_or(100);
     let within = u64::from(seed % 100) < rollout;
     let wanted = (offered > current_version && within) || (revoked && offered != current_version);
     if !wanted {
@@ -127,14 +143,24 @@ pub fn decide(current: &str, manifest: &Value, seed: u32) -> Option<Offer> {
         })
         .unwrap_or_default();
     if notes.is_empty()
-        && let Some(text) = manifest.get("notes").and_then(Value::as_str).filter(|t| !t.is_empty())
+        && let Some(text) = manifest
+            .get("notes")
+            .and_then(Value::as_str)
+            .filter(|t| !t.is_empty())
     {
         notes.insert("en".into(), text.to_owned());
     }
     Some(Offer {
         version: version.to_owned(),
-        installable: manifest.get("installable").and_then(Value::as_bool).unwrap_or(true),
-        mandatory: revoked || manifest.get("mandatory").and_then(Value::as_bool).unwrap_or(false),
+        installable: manifest
+            .get("installable")
+            .and_then(Value::as_bool)
+            .unwrap_or(true),
+        mandatory: revoked
+            || manifest
+                .get("mandatory")
+                .and_then(Value::as_bool)
+                .unwrap_or(false),
         notes,
         download_url: manifest
             .get("download")
@@ -163,12 +189,16 @@ pub fn first_start(root: &Path, version: &str) -> std::io::Result<Option<WhatsNe
             if record.is_file() {
                 std::fs::copy(
                     &record,
-                    backup.join("instances").join(format!("{}.json", entry.file_name().to_string_lossy())),
+                    backup
+                        .join("instances")
+                        .join(format!("{}.json", entry.file_name().to_string_lossy())),
                 )?;
             }
         }
     }
-    let notes = root.join(WHATS_NEW_DIR).join(format!("notes-{version}.json"));
+    let notes = root
+        .join(WHATS_NEW_DIR)
+        .join(format!("notes-{version}.json"));
     Ok(std::fs::read(&notes)
         .ok()
         .and_then(|bytes| serde_json::from_slice(&bytes).ok()))
@@ -202,18 +232,19 @@ fn lock<T>(m: &Mutex<T>) -> std::sync::MutexGuard<'_, T> {
     m.lock().unwrap_or_else(std::sync::PoisonError::into_inner)
 }
 
-/// A player-facing message for an updater error; the details go to the log.
-fn failure(state: &AppState, what: &str, error: &tauri_plugin_updater::Error) -> String {
-    state.console().warn(format!("Update: {what} failed: {error}"));
+/// What the player is told about an updater error; the details go to the log.
+fn failure(state: &AppState, what: &str, error: &tauri_plugin_updater::Error) -> UpdateError {
+    state
+        .console()
+        .warn(format!("Update: {what} failed: {error}"));
     match error {
         tauri_plugin_updater::Error::Minisign(_)
         | tauri_plugin_updater::Error::SignatureUtf8(_)
         | tauri_plugin_updater::Error::Base64(_)
         | tauri_plugin_updater::Error::SignedVersionMismatch { .. }
-        | tauri_plugin_updater::Error::MissingSignedVersion => {
-            "The update's signature did not match. It was not installed.".to_owned()
-        }
-        _ => "The update could not be fetched. The launcher will try again later.".to_owned(),
+        | tauri_plugin_updater::Error::MissingSignedVersion => UpdateError::Signature,
+        _ if what == "installing" => UpdateError::Install,
+        _ => UpdateError::Network,
     }
 }
 
@@ -279,7 +310,11 @@ impl Updates {
                 Some(offer) => {
                     let installable = offer.installable;
                     Self::set(&state, |v| {
-                        v.phase = if installable { Phase::Available } else { Phase::Notice };
+                        v.phase = if installable {
+                            Phase::Available
+                        } else {
+                            Phase::Notice
+                        };
                         v.version = Some(offer.version.clone());
                         v.notes = offer.notes.clone();
                         v.mandatory = offer.mandatory;
@@ -401,36 +436,39 @@ impl Updates {
             return;
         };
         if Self::busy_now(state) {
-            state
-                .console()
-                .info("Update: a game or an install is running; the update waits for the next close");
+            state.console().info(
+                "Update: a game or an install is running; the update waits for the next close",
+            );
             return;
         }
         state
             .console()
             .info(format!("Update: installing version {}", update.version));
         if let Err(e) = update.restart_after_install(false).install(&bytes) {
-            state.console().warn(format!("Update: installing failed: {e}"));
+            state
+                .console()
+                .warn(format!("Update: installing failed: {e}"));
         }
     }
 
     /// "Restart now": installs the ready update and starts the new version.
-    pub fn restart_now<R: Runtime>(&self, app: &AppHandle<R>) -> crate::error::LauncherResult<()> {
+    pub fn restart_now<R: Runtime>(&self, app: &AppHandle<R>) -> LauncherResult<()> {
         let state = app.state::<AppState>();
         if Self::busy_now(&state) {
-            return Err(crate::error::LauncherError::new(
-                crate::error::ErrorCode::AppBusy,
+            return Err(LauncherError::new(
+                ErrorCode::AppBusy,
                 "Close the game and wait for installs to finish, then restart to update.",
             ));
         }
         let Some((update, bytes)) = lock(&self.ready).take() else {
-            return Err(crate::error::LauncherError::invalid_input(
+            return Err(LauncherError::invalid_input(
                 "No downloaded update is waiting.",
             ));
         };
-        state
-            .console()
-            .info(format!("Update: installing version {} and restarting", update.version));
+        state.console().info(format!(
+            "Update: installing version {} and restarting",
+            update.version
+        ));
         match update.install(&bytes) {
             // Windows does not get here: its installer restarts the launcher.
             Ok(()) => app.restart(),
@@ -442,8 +480,8 @@ impl Updates {
                     v.error = Some(message);
                     v.download_url = download;
                 });
-                Err(crate::error::LauncherError::new(
-                    crate::error::ErrorCode::Internal,
+                Err(LauncherError::new(
+                    ErrorCode::Internal,
                     "The update could not be installed. Download it from the link instead.",
                 ))
             }
@@ -479,9 +517,9 @@ impl Updates {
                     notes
                 }
                 Err(e) => {
-                    state
-                        .console()
-                        .warn(format!("Update: copying the settings before {version} failed: {e}"));
+                    state.console().warn(format!(
+                        "Update: copying the settings before {version} failed: {e}"
+                    ));
                     None
                 }
             },
@@ -526,9 +564,18 @@ mod tests {
         // 10 %: seeds ending 0..9 are in, others wait.
         assert!(decide("0.1.0", &manifest("0.2.0", 10, &[]), 109).is_some());
         assert!(decide("0.1.0", &manifest("0.2.0", 10, &[]), 110).is_none());
-        assert!(decide("0.1.0", &manifest("0.2.0", 0, &[]), 0).is_none(), "paused");
-        assert!(decide("0.2.0", &manifest("0.2.0", 100, &[]), 1).is_none(), "same version");
-        assert!(decide("0.3.0", &manifest("0.2.0", 100, &[]), 1).is_none(), "older version");
+        assert!(
+            decide("0.1.0", &manifest("0.2.0", 0, &[]), 0).is_none(),
+            "paused"
+        );
+        assert!(
+            decide("0.2.0", &manifest("0.2.0", 100, &[]), 1).is_none(),
+            "same version"
+        );
+        assert!(
+            decide("0.3.0", &manifest("0.2.0", 100, &[]), 1).is_none(),
+            "older version"
+        );
     }
 
     #[test]
@@ -575,8 +622,15 @@ mod tests {
         let found = first_start(root, "0.2.0").unwrap();
         assert_eq!(found, Some(notes));
         let backup = root.join("backups/before-0.2.0");
-        assert_eq!(std::fs::read(backup.join("settings.json")).unwrap(), b"{\"theme\":\"dark\"}");
+        assert_eq!(
+            std::fs::read(backup.join("settings.json")).unwrap(),
+            b"{\"theme\":\"dark\"}"
+        );
         assert!(backup.join("instances/abc.json").is_file());
-        assert_eq!(first_start(root, "0.3.0").unwrap(), None, "no notes for 0.3.0");
+        assert_eq!(
+            first_start(root, "0.3.0").unwrap(),
+            None,
+            "no notes for 0.3.0"
+        );
     }
 }

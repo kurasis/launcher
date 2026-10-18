@@ -1026,6 +1026,51 @@
       "checked": "يُتحقق من كل ملف بمجموع اختباره، أيًّا كان الموقع الذي جاء منه.",
       "inUse": "لا يمكن الوصول الآن إلى: {sites}. التنزيل من مرآة المشغّل."
     },
+    "updates": {
+      "badge": {
+        "available": "الإصدار {version} متاح",
+        "downloading": "جارٍ تنزيل الإصدار {version}",
+        "ready": "الإصدار {version} جاهز",
+        "failed": "فشل التحديث"
+      },
+      "title": "المشغّل {version}",
+      "titleUnknown": "تحديث المشغّل",
+      "mandatory": "هذا التحديث إلزامي.",
+      "noNotes": "لا توجد ملاحظات لهذا الإصدار.",
+      "availableBody": "نزّله الآن؛ يُثبَّت عند إغلاق المشغّل.",
+      "download": "تنزيل",
+      "downloading": "جارٍ التنزيل…",
+      "downloadingPercent": "جارٍ التنزيل… {percent}%",
+      "readyBody": "نُزّل التحديث وتُحقِّق منه. يُثبَّت عند إغلاق المشغّل، أو الآن بإعادة التشغيل.",
+      "readyShort": "نُزّل؛ يُثبَّت عند إغلاق المشغّل.",
+      "restartNow": "إعادة التشغيل الآن",
+      "later": "عند إغلاق المشغّل",
+      "noticeBody": "تُحدَّث هذه النسخة من المشغّل عبر مدير حزم النظام. نزّل الحزمة الجديدة وثبّتها.",
+      "openDownload": "تنزيل الإصدار الجديد",
+      "tryAgain": "إعادة المحاولة",
+      "close": "إغلاق",
+      "whatsNew": "ما الجديد في الإصدار {version}",
+      "gotIt": "فهمت",
+      "manager": "تحديث المشغّل {version}",
+      "settings": {
+        "title": "التحديثات",
+        "modes": {
+          "auto": "التنزيل والتثبيت عند إغلاق المشغّل",
+          "notify": "أخبرني فقط",
+          "off": "عدم التحقق"
+        },
+        "current": "هذا هو الإصدار {version}.",
+        "check": "التحقق الآن",
+        "checking": "جارٍ التحقق…",
+        "upToDate": "لديك أحدث إصدار.",
+        "notConfigured": "هذا الإصدار لا يتحقق من التحديثات."
+      },
+      "errors": {
+        "network": "تعذّر جلب التحديث. سيحاول المشغّل لاحقًا.",
+        "signature": "لم يتطابق توقيع التحديث، لذا لم يُثبَّت.",
+        "install": "تعذّر تثبيت التحديث. نزّله من الرابط بدلًا من ذلك."
+      }
+    },
     "downloads": {
       "title": "التنزيلات",
       "open": "التنزيلات",
@@ -1345,6 +1390,10 @@
     "This report does not exist.": "هذا التقرير غير موجود.",
     "This report is too large. Leave out the largest file and send it again.": "التقرير كبير جدًا. استبعد أكبر ملف وأرسله مجددًا.",
     "This report preview has expired. Open it again.": "انتهت صلاحية معاينة التقرير. افتحها مجددًا.",
-    "No mirror URL.": "لا يوجد عنوان على المرآة."
+    "No mirror URL.": "لا يوجد عنوان على المرآة.",
+    "No downloaded update is waiting.": "لا يوجد تحديث منزَّل بانتظار التثبيت.",
+    "Close the game and wait for installs to finish, then restart to update.": "أغلق اللعبة وانتظر انتهاء التثبيتات، ثم أعد التشغيل للتحديث.",
+    "The update could not be installed. Download it from the link instead.": "تعذّر تثبيت التحديث. نزّله من الرابط بدلًا من ذلك.",
+    "There is no update page to open.": "لا توجد صفحة تحديث لفتحها."
   }
 }

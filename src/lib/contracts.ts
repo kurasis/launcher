@@ -262,7 +262,32 @@ export interface SettingsView {
   installId: string | null;
   /** Where downloads come from (D-062). */
   downloadSource: DownloadSource;
+  /** Launcher updates: install on close, only tell, or never check (D-063). */
+  updateMode: UpdateMode;
   writable: boolean;
+}
+
+export type UpdateMode = 'auto' | 'notify' | 'off';
+
+/** Where a launcher update stands (D-063). */
+export type UpdatePhase = 'idle' | 'available' | 'downloading' | 'ready' | 'notice' | 'failed';
+
+export interface UpdateView {
+  /** This build has the update key and looks for updates. */
+  configured: boolean;
+  phase: UpdatePhase;
+  version: string | null;
+  /** Release notes by language tag; `en` is the fallback. */
+  notes: Record<string, string>;
+  mandatory: boolean;
+  /** Where to get the version by hand. */
+  downloadUrl: string | null;
+  downloaded: number;
+  total: number | null;
+  /** Why the last step failed. */
+  error: 'network' | 'signature' | 'install' | null;
+  /** Notes of the version now running, shown once after an update. */
+  whatsNew: { version: string; notes: Record<string, string> } | null;
 }
 
 /** Origins with the mirror as fallback, the mirror first, or never the mirror (D-062). */
@@ -550,6 +575,8 @@ export interface AppSnapshot {
   network: NetworkStatus;
   /** Download hosts served by the mirror now (D-062). */
   mirroredHosts: string[];
+  /** A launcher update and where it stands (D-063). */
+  update: UpdateView;
   currentRun: RunSummary | null;
   lastRun: RunSummary | null;
   lifecycleHarnessAvailable: boolean;
@@ -679,6 +706,7 @@ export interface SettingsPatch {
   /** Replace the install ID with a new random one. */
   newInstallId?: boolean;
   downloadSource?: DownloadSource;
+  updateMode?: UpdateMode;
 }
 
 interface EventEnvelope {
@@ -707,6 +735,7 @@ export interface GameStateChangedEvent extends EventEnvelope {
   queue: QueuedOperation[];
   network: NetworkStatus;
   mirroredHosts: string[];
+  update: UpdateView;
 }
 
 /** Whether the launcher can reach the internet; `unknown` until the first check. */

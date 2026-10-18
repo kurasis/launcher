@@ -1,0 +1,128 @@
+import { fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { mockIPC } from '@tauri-apps/api/mocks';
+import { afterEach, describe, expect, it } from 'vitest';
+import type { UpdateView } from '../../lib/contracts';
+import { loadLanguage, setLanguage } from '../../lib/strings';
+import { snapshotFixture } from '../../test/fixtures';
+import { notesFor } from './notes';
+import { UpdateBadge } from './UpdateBadge';
+import { UpdateSettings } from './UpdateSettings';
+import { WhatsNew } from './WhatsNew';
+
+const view = (overrides: Partial<UpdateView>): UpdateView => ({
+  ...snapshotFixture().update,
+  version: '0.2.0',
+  notes: { en: 'Faster downloads', ru: 'Быстрее загрузки' },
+  ...overrides,
+});
+
+function calls() {
+  const seen: { cmd: string; args: unknown }[] = [];
+  mockIPC((cmd, args) => {
+    seen.push({ cmd, args });
+    if (cmd === 'check_for_update' || cmd === 'download_update') return view({ phase: 'idle' });
+    if (cmd === 'get_app_snapshot') return snapshotFixture();
+    return null;
+  });
+  return seen;
+}
+
+describe('launcher updates', () => {
+  afterEach(() => {
+    setLanguage('en');
+  });
+
+  it('stays out of the way until there is an update', () => {
+    const { container } = render(<UpdateBadge update={view({ phase: 'idle' })} />);
+    expect(container).toBeEmptyDOMElement();
+  });
+
+  it('offers a restart when the update is ready, or waits for the close', async () => {
+    const seen = calls();
+    render(<UpdateBadge update={view({ phase: 'ready', downloaded: 10, total: 10 })} />);
+    fireEvent.click(screen.getByRole('button', { name: 'Version 0.2.0 is ready' }));
+    const dialog = screen.getByRole('dialog', { name: 'Launcher 0.2.0' });
+    expect(dialog).toHaveTextContent('Faster downloads');
+    expect(dialog).toHaveTextContent('installs when you close the launcher');
+    expect(screen.getByRole('button', { name: 'When I close the launcher' })).toBeVisible();
+    fireEvent.click(screen.getByRole('button', { name: 'Restart now' }));
+    await waitFor(() => {
+      expect(seen.some((c) => c.cmd === 'restart_to_update')).toBe(true);
+    });
+  });
+
+  it('downloads on a press, links .deb installs, and says why a step failed', async () => {
+    const seen = calls();
+    const { unmount } = render(
+      <UpdateBadge update={view({ phase: 'available', mandatory: true })} />,
+    );
+    fireEvent.click(screen.getByRole('button', { name: 'Version 0.2.0 is available' }));
+    expect(screen.getByText('This update is required.')).toBeVisible();
+    fireEvent.click(screen.getByRole('button', { name: 'Download' }));
+    await waitFor(() => {
+      expect(seen.some((c) => c.cmd === 'download_update')).toBe(true);
+    });
+    unmount();
+
+    render(
+      <UpdateBadge
+        update={view({ phase: 'notice', downloadUrl: 'https://upd.lapi.sh/releases/0.2.0/x.deb' })}
+      />,
+    );
+    fireEvent.click(screen.getByRole('button', { name: 'Version 0.2.0 is available' }));
+    expect(screen.getByText(/updated by your system's package manager/)).toBeVisible();
+    fireEvent.click(screen.getByRole('button', { name: 'Download the new version' }));
+    await waitFor(() => {
+      expect(seen.some((c) => c.cmd === 'open_update_page')).toBe(true);
+    });
+  });
+
+  it('explains a refused signature in the interface language', async () => {
+    calls();
+    setLanguage(await loadLanguage('ru'));
+    render(<UpdateBadge update={view({ phase: 'failed', error: 'signature' })} />);
+    fireEvent.click(screen.getByRole('button', { name: 'Обновление не удалось' }));
+    expect(
+      screen.getByText('Подпись обновления не совпала, поэтому оно не установлено.'),
+    ).toBeVisible();
+    expect(screen.getByText('Быстрее загрузки')).toBeVisible();
+    expect(notesFor({ en: 'A', ru: 'Б' })).toBe('Б');
+    expect(notesFor({ en: 'A' })).toBe('A');
+    expect(notesFor({})).toBeNull();
+  });
+
+  it('shows what is new once and forgets it on "Got it"', async () => {
+    const seen = calls();
+    render(<WhatsNew update={view({ whatsNew: { version: '0.2.0', notes: { en: 'New' } } })} />);
+    expect(screen.getByText("What's new in version 0.2.0")).toBeVisible();
+    fireEvent.click(screen.getByRole('button', { name: 'Got it' }));
+    await waitFor(() => {
+      expect(seen.some((c) => c.cmd === 'dismiss_whats_new')).toBe(true);
+    });
+  });
+
+  it('lets the player choose the update mode and check now', async () => {
+    const seen = calls();
+    const snapshot = snapshotFixture();
+    render(<UpdateSettings snapshot={snapshot} />);
+    expect(screen.getByRole('radio', { name: /Download and install/ })).toBeChecked();
+    fireEvent.click(screen.getByRole('radio', { name: 'Only tell me' }));
+    await waitFor(() => {
+      expect(seen.find((c) => c.cmd === 'set_app_settings')?.args).toMatchObject({
+        request: { payload: { updateMode: 'notify' } },
+      });
+    });
+    fireEvent.click(screen.getByRole('button', { name: 'Check now' }));
+    expect(await screen.findByText('You have the newest version.')).toBeVisible();
+  });
+
+  it('says when a build does not look for updates', () => {
+    const snapshot = snapshotFixture();
+    render(
+      <UpdateSettings
+        snapshot={{ ...snapshot, update: { ...snapshot.update, configured: false } }}
+      />,
+    );
+    expect(screen.getByText('This build does not look for updates.')).toBeVisible();
+  });
+});

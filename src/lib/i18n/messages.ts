@@ -1091,6 +1091,51 @@ export type Messages = {
     readonly checked: string;
     readonly inUse: (values: { sites: string | number }) => string;
   };
+  readonly updates: {
+    readonly badge: {
+      readonly available: (values: { version: string | number }) => string;
+      readonly downloading: (values: { version: string | number }) => string;
+      readonly ready: (values: { version: string | number }) => string;
+      readonly failed: string;
+    };
+    readonly title: (values: { version: string | number }) => string;
+    readonly titleUnknown: string;
+    readonly mandatory: string;
+    readonly noNotes: string;
+    readonly availableBody: string;
+    readonly download: string;
+    readonly downloading: string;
+    readonly downloadingPercent: (values: { percent: string | number }) => string;
+    readonly readyBody: string;
+    readonly readyShort: string;
+    readonly restartNow: string;
+    readonly later: string;
+    readonly noticeBody: string;
+    readonly openDownload: string;
+    readonly tryAgain: string;
+    readonly close: string;
+    readonly whatsNew: (values: { version: string | number }) => string;
+    readonly gotIt: string;
+    readonly manager: (values: { version: string | number }) => string;
+    readonly settings: {
+      readonly title: string;
+      readonly modes: {
+        readonly auto: string;
+        readonly notify: string;
+        readonly off: string;
+      };
+      readonly current: (values: { version: string | number }) => string;
+      readonly check: string;
+      readonly checking: string;
+      readonly upToDate: string;
+      readonly notConfigured: string;
+    };
+    readonly errors: {
+      readonly network: string;
+      readonly signature: string;
+      readonly install: string;
+    };
+  };
   readonly downloads: {
     readonly title: string;
     readonly open: string;

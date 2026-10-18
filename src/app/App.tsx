@@ -21,6 +21,8 @@ import { QuitControl } from './QuitControl';
 import { BackupsView } from '../features/backups/BackupsView';
 import { GalleryView } from '../features/gallery/GalleryView';
 import { FailureOffer } from '../features/reports/FailureOffer';
+import { UpdateBadge } from '../features/updates/UpdateBadge';
+import { WhatsNew } from '../features/updates/WhatsNew';
 import { DownloadManager } from '../features/downloads/DownloadManager';
 import { useTheme } from './useTheme';
 import { useAppInfo } from './useAppInfo';
@@ -121,6 +123,7 @@ export function App() {
         </div>
         {snapshot !== null && <ActivityIndicator snapshot={snapshot} />}
         {snapshot !== null && <NetworkIndicator network={snapshot.network} />}
+        {snapshot !== null && <UpdateBadge update={snapshot.update} />}
         {snapshot !== null && <AccountChip account={snapshot.account} />}
         <nav aria-label={strings.nav.label} className={styles.nav}>
           {views.map((item) => (
@@ -164,6 +167,7 @@ export function App() {
         ) : (
           <>
             <StorageIssues issues={state.snapshot.storageIssues} />
+            {view === 'home' && <WhatsNew update={state.snapshot.update} />}
             {view === 'home' && <FailureOffer />}
             {view === 'home' && (
               <>

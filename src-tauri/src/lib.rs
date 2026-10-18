@@ -657,6 +657,7 @@ fn handlers<R: tauri::Runtime>() -> impl Fn(tauri::ipc::Invoke<R>) -> bool + Sen
         commands::download_update,
         commands::restart_to_update,
         commands::dismiss_whats_new,
+        commands::open_update_page,
         commands::start_lifecycle_test,
         commands::stop_lifecycle_test,
     ]
@@ -730,5 +731,6 @@ fn handlers<R: tauri::Runtime>() -> impl Fn(tauri::ipc::Invoke<R>) -> bool + Sen
         commands::download_update,
         commands::restart_to_update,
         commands::dismiss_whats_new,
+        commands::open_update_page,
     ]
 }

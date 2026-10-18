@@ -68,7 +68,8 @@ export function reconcile(snapshot: AppSnapshot, event: BackendEvent): Reconcili
       };
     }
     case 'game_state_changed': {
-      const { currentRun, lastRun, activeOperation, queue, network, mirroredHosts } = event.payload;
+      const { currentRun, lastRun, activeOperation, queue, network, mirroredHosts, update } =
+        event.payload;
       const busyId = activeOperation?.instanceId ?? null;
       const instances = snapshot.instances.map((i) => ({ ...i, busy: i.id === busyId }));
       return {
@@ -81,6 +82,7 @@ export function reconcile(snapshot: AppSnapshot, event: BackendEvent): Reconcili
           queue,
           network,
           mirroredHosts,
+          update,
           instances,
         },
       };

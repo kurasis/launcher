@@ -1025,6 +1025,51 @@
       "checked": "Every file is checked against its checksum, whichever site it comes from.",
       "inUse": "Not reachable now: {sites}. Downloading from the launcher's mirror."
     },
+    "updates": {
+      "badge": {
+        "available": "Version {version} is available",
+        "downloading": "Downloading version {version}",
+        "ready": "Version {version} is ready",
+        "failed": "The update failed"
+      },
+      "title": "Launcher {version}",
+      "titleUnknown": "Launcher update",
+      "mandatory": "This update is required.",
+      "noNotes": "No notes for this version.",
+      "availableBody": "Download it now; it installs when you close the launcher.",
+      "download": "Download",
+      "downloading": "Downloading…",
+      "downloadingPercent": "Downloading… {percent}%",
+      "readyBody": "The update is downloaded and checked. It installs when you close the launcher, or now with a restart.",
+      "readyShort": "Downloaded; installs when you close the launcher.",
+      "restartNow": "Restart now",
+      "later": "When I close the launcher",
+      "noticeBody": "This copy of the launcher is updated by your system's package manager. Download the new package and install it.",
+      "openDownload": "Download the new version",
+      "tryAgain": "Try again",
+      "close": "Close",
+      "whatsNew": "What's new in version {version}",
+      "gotIt": "Got it",
+      "manager": "Launcher update {version}",
+      "settings": {
+        "title": "Updates",
+        "modes": {
+          "auto": "Download and install when I close the launcher",
+          "notify": "Only tell me",
+          "off": "Don't check"
+        },
+        "current": "This is version {version}.",
+        "check": "Check now",
+        "checking": "Checking…",
+        "upToDate": "You have the newest version.",
+        "notConfigured": "This build does not look for updates."
+      },
+      "errors": {
+        "network": "The update could not be fetched. The launcher tries again later.",
+        "signature": "The update's signature did not match, so it was not installed.",
+        "install": "The update could not be installed. Download it from the link instead."
+      }
+    },
     "downloads": {
       "title": "Downloads",
       "open": "Downloads",
@@ -1090,6 +1135,7 @@
     "Choose a full folder path.": "Choose a full folder path.",
     "Choose a mod loader version from the list.": "Choose a mod loader version from the list.",
     "Choose an empty folder, one that does not exist yet, or one that already holds launcher data.": "Choose an empty folder, one that does not exist yet, or one that already holds launcher data.",
+    "Close the game and wait for installs to finish, then restart to update.": "Close the game and wait for installs to finish, then restart to update.",
     "Copying launcher data": "Copying launcher data",
     "Copying stopped unexpectedly.": "Copying stopped unexpectedly.",
     "Creating the installation folder": "Creating the installation folder",
@@ -1136,6 +1182,7 @@
     "No Java {major} runtime is available for this computer from the runtime provider.": "No Java {major} runtime is available for this computer from the runtime provider.",
     "No client for source.": "No client for source.",
     "No download is waiting for an answer.": "No download is waiting for an answer.",
+    "No downloaded update is waiting.": "No downloaded update is waiting.",
     "No mirror URL.": "No mirror URL.",
     "No saved sign-in was found. Sign in again.": "No saved sign-in was found. Sign in again.",
     "Notes can be at most {max} characters long.": "Notes can be at most {max} characters long.",
@@ -1261,6 +1308,7 @@
     "The system credential store is not available. You can stay signed in for this session only.": "The system credential store is not available. You can stay signed in for this session only.",
     "The system random number generator failed.": "The system random number generator failed.",
     "The test child could not be started.": "The test child could not be started.",
+    "The update could not be installed. Download it from the link instead.": "The update could not be installed. Download it from the link instead.",
     "The version catalog is unavailable.": "The version catalog is unavailable.",
     "The version metadata lists the same file with two different contents.": "The version metadata lists the same file with two different contents.",
     "The version metadata lists the same file with two different sizes.": "The version metadata lists the same file with two different sizes.",
@@ -1269,6 +1317,7 @@
     "The {loader} installer stopped responding and was ended. Antivirus software may hold Java: allow the launcher's data folder in it, then try again.": "The {loader} installer stopped responding and was ended. Antivirus software may hold Java: allow the launcher's data folder in it, then try again.",
     "The {loader} version list could not be read. Try again later.": "The {loader} version list could not be read. Try again later.",
     "There is no sign-in with that identifier.": "There is no sign-in with that identifier.",
+    "There is no update page to open.": "There is no update page to open.",
     "There is nothing to back up yet.": "There is nothing to back up yet.",
     "This Java may not run this game. Confirm the choice to use it anyway.": "This Java may not run this game. Confirm the choice to use it anyway.",
     "This Microsoft account does not currently have access to Minecraft: Java Edition. You can buy the game or check your subscription on minecraft.net.": "This Microsoft account does not currently have access to Minecraft: Java Edition. You can buy the game or check your subscription on minecraft.net.",

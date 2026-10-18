@@ -13,6 +13,7 @@ import { InstanceLoaderForm } from './InstanceLoaderForm';
 import { DataFolderSettings } from './DataFolderSettings';
 import { JavaSettings } from './JavaSettings';
 import { PrivacySettings } from './PrivacySettings';
+import { UpdateSettings } from '../updates/UpdateSettings';
 import { DownloadSourceSettings } from '../network/DownloadSourceSettings';
 import { NetworkSettings } from '../network/NetworkSettings';
 import { ResetSettings } from './ResetSettings';
@@ -163,6 +164,7 @@ function GeneralSettings({ snapshot }: { snapshot: AppSnapshot }) {
         ))}
       </fieldset>
       {update.error !== null && <Notice tone="danger">{update.error}</Notice>}
+      <UpdateSettings snapshot={snapshot} />
       <DataFolderSettings busy={snapshot.activeOperation !== null} />
     </div>
   );
