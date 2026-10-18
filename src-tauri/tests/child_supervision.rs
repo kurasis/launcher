@@ -57,6 +57,20 @@ fn probe_child() {
     }
 }
 
+/// Tests run in parallel. Where the platform creates a pipe and marks it
+/// close-on-exec in two steps (macOS), a child spawned by another test in
+/// between inherits that pipe; a long-lived one (the `hold-pipe` grandchild, the
+/// `forever` bystander) then keeps it open and the drain times out. Spawning one
+/// child at a time closes that window.
+static SPAWN: Mutex<()> = Mutex::new(());
+
+fn spawning<T>(spawn: impl FnOnce() -> T) -> T {
+    let _one_at_a_time = SPAWN
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner);
+    spawn()
+}
+
 fn probe(mode: &str) -> Command {
     let mut command = Command::new(std::env::current_exe().unwrap());
     command
@@ -70,12 +84,14 @@ fn run(mode: &str) -> (ChildOutcome, Arc<Mutex<OutputTail>>, child::Supervised) 
     let sink = Arc::clone(&tail);
     let (tx, rx) = mpsc::channel();
     let (exited_tx, exited_rx) = mpsc::channel();
-    let supervised = child::spawn(
-        probe(mode),
-        Box::new(move |line: OutputLine| sink.lock().unwrap().push(line)),
-        move || exited_tx.send(Instant::now()).unwrap(),
-        move |outcome| tx.send((outcome, Instant::now())).unwrap(),
-    )
+    let supervised = spawning(|| {
+        child::spawn(
+            probe(mode),
+            Box::new(move |line: OutputLine| sink.lock().unwrap().push(line)),
+            move || exited_tx.send(Instant::now()).unwrap(),
+            move |outcome| tx.send((outcome, Instant::now())).unwrap(),
+        )
+    })
     .expect("spawn");
     let (outcome, finished) = rx.recv_timeout(Duration::from_secs(30)).expect("outcome");
     let exited = exited_rx.try_recv().expect("process exit reported first");
@@ -126,13 +142,15 @@ fn kill_stops_only_the_owned_child() {
     let tail = Arc::new(Mutex::new(OutputTail::default()));
     let sink = Arc::clone(&tail);
     let (tx, rx) = mpsc::channel();
-    let bystander = probe("forever").spawn().expect("bystander");
-    let supervised = child::spawn(
-        probe("forever"),
-        Box::new(move |line: OutputLine| sink.lock().unwrap().push(line)),
-        || {},
-        move |outcome| tx.send(outcome).unwrap(),
-    )
+    let bystander = spawning(|| probe("forever").spawn()).expect("bystander");
+    let supervised = spawning(|| {
+        child::spawn(
+            probe("forever"),
+            Box::new(move |line: OutputLine| sink.lock().unwrap().push(line)),
+            || {},
+            move |outcome| tx.send(outcome).unwrap(),
+        )
+    })
     .expect("spawn");
     std::thread::sleep(Duration::from_millis(300));
     assert!(supervised.kill());
