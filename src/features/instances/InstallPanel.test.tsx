@@ -270,7 +270,7 @@ describe('InstallPanel', () => {
     );
     // One "Play" label for every player; the demo hint is gone.
     expect(screen.queryByText(/five in-game days/)).toBeNull();
-    expect(screen.getByLabelText('Play as')).toHaveDisplayValue('Default: Player (demo)');
+    expect(screen.getByLabelText('Play as')).toHaveDisplayValue('Default: Player');
     fireEvent.click(screen.getByRole('button', { name: 'Play' }));
     await waitFor(() => {
       expect(calls.find((c) => c.cmd === 'launch_game')?.args).toMatchObject({
@@ -302,6 +302,12 @@ describe('InstallPanel', () => {
     launchFails = true;
     fireEvent.click(screen.getByRole('button', { name: 'Play' }));
     expect(await screen.findByText('Sign-in is not configured in this build.')).toBeVisible();
+    // The default player is listed once, as the default.
+    const options = Array.from(
+      screen.getByLabelText<HTMLSelectElement>('Play as').options,
+      (o) => o.textContent,
+    );
+    expect(options).toEqual(['Default: Steve_Test (Microsoft)', 'Alex']);
 
     // The installation can play as the demo profile instead.
     fireEvent.change(screen.getByLabelText('Play as'), { target: { value: 'notoken:alex' } });
@@ -322,6 +328,6 @@ describe('InstallPanel', () => {
       />,
     );
     expect(screen.getByRole('button', { name: 'Play' })).toBeVisible();
-    expect(screen.getByLabelText('Play as')).toHaveDisplayValue('Alex (demo)');
+    expect(screen.getByLabelText('Play as')).toHaveDisplayValue('Alex');
   });
 });

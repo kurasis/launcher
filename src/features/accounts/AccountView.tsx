@@ -144,69 +144,6 @@ export function AccountView({ snapshot }: { snapshot: AppSnapshot }) {
 
   return (
     <>
-      <Panel title={a.microsoftTitle}>
-        <p className={styles.hint}>{a.microsoftHint}</p>
-        {account.accounts.length === 0 && !signingIn && <p>{a.none}</p>}
-        {account.accounts.length > 0 && (
-          <ul className={styles.list}>
-            {account.accounts.map((item) => (
-              <AccountRow
-                key={item.profileId}
-                account={item}
-                isDefault={isDefault({ kind: 'microsoft', id: item.profileId })}
-                busy={busy}
-                canSignIn={configured && !signingIn}
-                onSignIn={() => void signIn.run()}
-                onDefault={() => void setDefault.run({ kind: 'microsoft', id: item.profileId })}
-              />
-            ))}
-          </ul>
-        )}
-        {account.pendingSignOuts.map((pending) => (
-          <Notice key={pending.profileId} tone="danger">
-            <p>{a.pendingSignOut({ name: pending.profileName })}</p>
-            <div className={forms.actions}>
-              <Button disabled={retry.pending} onClick={() => void retry.run(pending.profileId)}>
-                {a.retryRemove}
-              </Button>
-            </div>
-          </Notice>
-        ))}
-        {signingIn && <p role="status">{t.waiting}</p>}
-        {!configured && <Notice tone="info">{t.notConfigured}</Notice>}
-        {account.loginError !== null && !signingIn && (
-          <Notice tone={loginState === 'signed_out' ? 'info' : 'warning'}>
-            {localizeError(account.loginError)}
-          </Notice>
-        )}
-        {account.sessionOnly && <Notice tone="info">{t.sessionOnly}</Notice>}
-        {(signIn.error ?? cancel.error ?? retry.error ?? setDefault.error) !== null && (
-          <Notice tone="danger">
-            {signIn.error ?? cancel.error ?? retry.error ?? setDefault.error}
-          </Notice>
-        )}
-        <div className={forms.actions}>
-          {configured && !signingIn && (
-            <Button variant="primary" disabled={busy} onClick={() => void signIn.run()}>
-              {a.add}
-            </Button>
-          )}
-          {signingIn && account.loginOperationId !== null && (
-            <Button
-              disabled={busy}
-              onClick={() => {
-                if (account.loginOperationId !== null) void cancel.run(account.loginOperationId);
-              }}
-            >
-              {t.cancel}
-            </Button>
-          )}
-          {!signingIn && <HelpLinks state={loginState} />}
-        </div>
-        {configured && <p className={styles.hint}>{t.signInHint}</p>}
-        {account.accounts.length > 0 && <p className={styles.hint}>{t.signOutHint}</p>}
-      </Panel>
-
       <Panel title={a.notokenTitle}>
         <p className={styles.hint}>{a.notokenHint}</p>
         {account.notokenProfiles.length === 0 ? (
@@ -275,6 +212,69 @@ export function AccountView({ snapshot }: { snapshot: AppSnapshot }) {
           </div>
         </form>
         {account.defaultProfile === null && <p className={styles.hint}>{a.defaultNone}</p>}
+      </Panel>
+
+      <Panel title={a.microsoftTitle}>
+        <p className={styles.hint}>{a.microsoftHint}</p>
+        {account.accounts.length === 0 && !signingIn && <p>{a.none}</p>}
+        {account.accounts.length > 0 && (
+          <ul className={styles.list}>
+            {account.accounts.map((item) => (
+              <AccountRow
+                key={item.profileId}
+                account={item}
+                isDefault={isDefault({ kind: 'microsoft', id: item.profileId })}
+                busy={busy}
+                canSignIn={configured && !signingIn}
+                onSignIn={() => void signIn.run()}
+                onDefault={() => void setDefault.run({ kind: 'microsoft', id: item.profileId })}
+              />
+            ))}
+          </ul>
+        )}
+        {account.pendingSignOuts.map((pending) => (
+          <Notice key={pending.profileId} tone="danger">
+            <p>{a.pendingSignOut({ name: pending.profileName })}</p>
+            <div className={forms.actions}>
+              <Button disabled={retry.pending} onClick={() => void retry.run(pending.profileId)}>
+                {a.retryRemove}
+              </Button>
+            </div>
+          </Notice>
+        ))}
+        {signingIn && <p role="status">{t.waiting}</p>}
+        {!configured && <Notice tone="info">{t.notConfigured}</Notice>}
+        {account.loginError !== null && !signingIn && (
+          <Notice tone={loginState === 'signed_out' ? 'info' : 'warning'}>
+            {localizeError(account.loginError)}
+          </Notice>
+        )}
+        {account.sessionOnly && <Notice tone="info">{t.sessionOnly}</Notice>}
+        {(signIn.error ?? cancel.error ?? retry.error ?? setDefault.error) !== null && (
+          <Notice tone="danger">
+            {signIn.error ?? cancel.error ?? retry.error ?? setDefault.error}
+          </Notice>
+        )}
+        <div className={forms.actions}>
+          {configured && !signingIn && (
+            <Button variant="primary" disabled={busy} onClick={() => void signIn.run()}>
+              {a.add}
+            </Button>
+          )}
+          {signingIn && account.loginOperationId !== null && (
+            <Button
+              disabled={busy}
+              onClick={() => {
+                if (account.loginOperationId !== null) void cancel.run(account.loginOperationId);
+              }}
+            >
+              {t.cancel}
+            </Button>
+          )}
+          {!signingIn && <HelpLinks state={loginState} />}
+        </div>
+        {configured && <p className={styles.hint}>{t.signInHint}</p>}
+        {account.accounts.length > 0 && <p className={styles.hint}>{t.signOutHint}</p>}
       </Panel>
     </>
   );

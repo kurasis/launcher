@@ -1511,3 +1511,14 @@ proxy that was stopped and started to cut and restore the connection.
   account.
 - Screenshots: `docs/verification/offline.png`, `docs/verification/offline-queue.png`,
   `docs/verification/offline-reconnected.png`.
+
+## Smaller interface changes (D-053)
+
+- Release build on Linux (Xvfb): the header reads "Plays as: Alex_Tester" and _Play
+  as_ "Default: Alex_Tester", without "(demo)"; the Accounts screen starts with
+  **Profiles without an account** (`docs/verification/accounts-order.png`); _While a
+  game is running_ lists the three choices in the new order
+  (`docs/verification/while-playing-order.png`).
+- The component test checks that _Play as_ lists the default once
+  ("Default: Steve_Test (Microsoft)", then "Alex") and that a profile is labelled by
+  its name alone.

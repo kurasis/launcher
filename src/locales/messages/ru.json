@@ -104,7 +104,7 @@
       "pendingSignOut": "{name}: сохранённый вход ещё не удалось удалить с этого компьютера.",
       "retryRemove": "Удалить ещё раз",
       "microsoftLabel": "{name} (Microsoft)",
-      "notokenLabel": "{name} (демо)",
+      "notokenLabel": "{name}",
       "playAs": "Играть как",
       "playAsDefault": "По умолчанию: {name}",
       "chipLabel": "Играет"

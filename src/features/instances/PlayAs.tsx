@@ -5,7 +5,7 @@ import type { AccountSummary, InstanceSummary, ProfileRef } from '../../lib/cont
 import { ipc } from '../../lib/ipc';
 import { strings } from '../../lib/strings';
 import { useCommand } from '../../lib/useCommand';
-import { defaultPlayer, lookup, playerLabel } from '../accounts/players';
+import { defaultPlayer, lookup, playerLabel, sameProfile } from '../accounts/players';
 import styles from './Instances.module.css';
 
 const a = strings.accounts;
@@ -33,8 +33,14 @@ export function PlayAs({
   const choose = useCommand((requestId: string, profile: ProfileRef | null) =>
     ipc.setInstanceProfile(instance.id, profile, requestId),
   );
-  // A profile that no longer exists plays as the default.
-  const current = lookup(account, instance.profile) === null ? null : instance.profile;
+  // A profile that no longer exists, or the default itself, shows as the default;
+  // the default player is not listed a second time.
+  const isDefault = (ref: ProfileRef) => sameProfile(ref, account.defaultProfile);
+  const current =
+    lookup(account, instance.profile) === null ||
+    (instance.profile !== null && isDefault(instance.profile))
+      ? null
+      : instance.profile;
   return (
     <div className={styles.playAs}>
       <label htmlFor={id}>{a.playAs}</label>
@@ -46,16 +52,20 @@ export function PlayAs({
         onChange={(event) => void choose.run(decode(event.target.value))}
       >
         <option value="">{a.playAsDefault({ name: playerLabel(defaultPlayer(account)) })}</option>
-        {account.accounts.map((item) => (
-          <option key={item.profileId} value={`microsoft:${item.profileId}`}>
-            {a.microsoftLabel({ name: item.profileName })}
-          </option>
-        ))}
-        {account.notokenProfiles.map((item) => (
-          <option key={item.id} value={`notoken:${item.id}`}>
-            {a.notokenLabel({ name: item.name })}
-          </option>
-        ))}
+        {account.accounts
+          .filter((item) => !isDefault({ kind: 'microsoft', id: item.profileId }))
+          .map((item) => (
+            <option key={item.profileId} value={`microsoft:${item.profileId}`}>
+              {a.microsoftLabel({ name: item.profileName })}
+            </option>
+          ))}
+        {account.notokenProfiles
+          .filter((item) => !isDefault({ kind: 'notoken', id: item.id }))
+          .map((item) => (
+            <option key={item.id} value={`notoken:${item.id}`}>
+              {a.notokenLabel({ name: item.name })}
+            </option>
+          ))}
       </select>
       {choose.error !== null && <Notice tone="danger">{choose.error}</Notice>}
     </div>
