@@ -90,6 +90,7 @@ describe('CreateInstanceForm', () => {
     mockIPC((cmd, args) => {
       calls.push({ cmd, args });
       if (cmd === 'list_supported_versions') return catalog('available');
+      if (cmd === 'recommend_memory') return null;
       return [];
     });
     const { rerender } = render(<CreateInstanceForm network="offline" onDone={() => undefined} />);
