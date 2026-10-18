@@ -693,6 +693,46 @@ export interface UserData {
   bytes: number;
 }
 
+/** One installation and what the user made in it (D-057). */
+export interface InstallationData {
+  instanceId: string;
+  displayName: string;
+  versionLabel: string;
+  data: UserData;
+}
+
+/** What each part of a reset would remove (D-057). */
+export interface ResetPreview {
+  installations: InstallationData[];
+  gameFilesBytes: number;
+  backupCount: number;
+  backupBytes: number;
+  microsoftAccounts: number;
+  notokenProfiles: number;
+  temporaryBytes: number;
+}
+
+/** The parts of the launcher to reset. */
+export interface ResetChoice {
+  settings: boolean;
+  installations: boolean;
+  /** Back up installations holding worlds, mods, packs or screenshots first. */
+  backUpInstallations: boolean;
+  gameFiles: boolean;
+  accounts: boolean;
+  backups: boolean;
+  traffic: boolean;
+  temporary: boolean;
+}
+
+export interface ResetReport {
+  backedUp: number;
+  deletedInstallations: number;
+  deletedBackups: number;
+  freedBytes: number;
+  signedOut: number;
+}
+
 /** One screenshot file of an installation (D-050). */
 export interface Screenshot {
   file: string;

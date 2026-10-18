@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-reset-launcher"
+description = "Enables the reset_launcher command without any pre-configured scope."
+commands.allow = ["reset_launcher"]
+
+[[permission]]
+identifier = "deny-reset-launcher"
+description = "Denies the reset_launcher command without any pre-configured scope."
+commands.deny = ["reset_launcher"]

@@ -27,6 +27,8 @@
     "allow-delete-backup",
     "allow-inspect-instance",
     "allow-delete-instance",
+    "allow-reset-preview",
+    "allow-reset-launcher",
     "allow-list-screenshots",
     "allow-delete-screenshot",
     "allow-open-screenshot",

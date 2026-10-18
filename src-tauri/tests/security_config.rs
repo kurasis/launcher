@@ -156,6 +156,8 @@ fn main_window_capability_grants_only_app_commands() {
             "allow-delete-backup",
             "allow-inspect-instance",
             "allow-delete-instance",
+            "allow-reset-preview",
+            "allow-reset-launcher",
             "allow-list-screenshots",
             "allow-delete-screenshot",
             "allow-open-screenshot",

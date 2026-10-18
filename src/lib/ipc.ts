@@ -41,6 +41,9 @@ import {
   type ProfileRef,
   type SetInstanceJavaPayload,
   type SetInstanceLoaderPayload,
+  type ResetChoice,
+  type ResetPreview,
+  type ResetReport,
   type UserData,
   type SetInstanceNotesPayload,
   type SettingsView,
@@ -83,6 +86,9 @@ export const ipc = {
     }),
   deleteBackup: (backupId: string, requestId?: string): Promise<number> =>
     invoke<number>('delete_backup', { request: mutation({ backupId }, requestId) }),
+  resetPreview: (): Promise<ResetPreview> => invoke<ResetPreview>('reset_preview'),
+  resetLauncher: (choice: ResetChoice, requestId?: string): Promise<ResetReport> =>
+    invoke<ResetReport>('reset_launcher', { request: mutation(choice, requestId) }),
   inspectInstance: (instanceId: string): Promise<UserData> =>
     invoke<UserData>('inspect_instance', { instanceId }),
   /** Deletes an installation, after a backup when `backup`; returns that backup. */

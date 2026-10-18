@@ -262,6 +262,43 @@ pub async fn delete_instance<R: Runtime>(
     .await
 }
 
+/// What each part of a reset would remove (D-057).
+#[tauri::command]
+pub async fn reset_preview<R: Runtime>(
+    app: AppHandle<R>,
+) -> LauncherResult<crate::reset::ResetPreview> {
+    blocking(app, crate::reset::preview).await
+}
+
+/// Resets the chosen parts of the launcher (D-057); Microsoft accounts are
+/// signed out last, through the auth service.
+#[tauri::command]
+pub async fn reset_launcher<R: Runtime>(
+    app: AppHandle<R>,
+    auth: State<'_, Arc<AuthService>>,
+    request: MutationRequest<crate::reset::ResetChoice>,
+) -> LauncherResult<crate::reset::ResetReport> {
+    crate::state::ledger::validate_request_id(&request.request_id)?;
+    let choice = request.payload;
+    let accounts = choice.accounts;
+    let state_app = app.clone();
+    let mut report = blocking(app, move |state| crate::reset::run(state, &choice)).await?;
+    if accounts {
+        let profiles: Vec<String> = state_app
+            .state::<AppState>()
+            .accounts_file()
+            .accounts
+            .into_iter()
+            .map(|a| a.profile_id)
+            .collect();
+        for profile in profiles {
+            auth.sign_out(&profile).await?;
+            report.signed_out += 1;
+        }
+    }
+    Ok(report)
+}
+
 /// Every installation's screenshots (D-050).
 #[tauri::command]
 pub async fn list_screenshots<R: Runtime>(

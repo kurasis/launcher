@@ -224,7 +224,7 @@ pub fn overview(state: &AppState) -> LauncherResult<BackupOverview> {
 }
 
 /// Backs up while the caller holds the permit.
-fn create_locked(
+pub(crate) fn create_locked(
     state: &AppState,
     root: &DataRoot,
     instance: &InstanceFile,
