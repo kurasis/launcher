@@ -2,23 +2,26 @@
 # Installs one release of a service; run by the deploy user over SSH from the
 # service's workflow (D-061, D-062).
 #
-#   bash deploy.sh <service> <release-id> <archive> [mirror-quota-gb]
+#   bash deploy.sh <service> <release-id> <archive> [mirror-quota-gb | upd-public-key]
 #
 # Unpacks the archive into /home/www/lapi/<service>/releases/<release-id>,
 # points `current` at it, restarts the service and checks /v1/health; a failed
 # check puts the previous release back. The five newest releases are kept.
 # nginx files are root's (bootstrap.sh installs them); this only says when
 # they differ. For the mirror, the quota goes to settings.json, which the
-# service reads every minute.
+# service reads every minute. upd is a command, not a process: its release is
+# installed with the update public key and nothing is restarted.
 set -euo pipefail
 
 SERVICE="${1:?service}"
 RELEASE="${2:?release id}"
 ARCHIVE="${3:?archive path}"
-QUOTA_GB="${4:-}"
+EXTRA="${4:-}"
+QUOTA_GB=""
 case "$SERVICE" in
     crash) PORT=8781 ;;
-    mirror) PORT=8782 ;;
+    mirror) PORT=8782; QUOTA_GB="$EXTRA" ;;
+    upd) PORT="" ;;
     *) echo "unknown service $SERVICE"; exit 1 ;;
 esac
 APP=/home/www/lapi/$SERVICE
@@ -63,6 +66,28 @@ else
             echo "NGINX_CHANGED: $(basename "$file") differs from the server's"
         fi
     done
+fi
+
+if [ "$SERVICE" = upd ]; then
+    if [ -n "$EXTRA" ]; then
+        [[ "$EXTRA" =~ ^[A-Za-z0-9+/=]{40,400}$ ]] || { echo "bad public key"; exit 1; }
+        printf '%s\n' "$EXTRA" > "$APP/update-key.pub.new"
+        chmod 0644 "$APP/update-key.pub.new"
+        mv "$APP/update-key.pub.new" "$APP/update-key.pub"
+        echo "== update public key installed"
+    else
+        echo "NO_UPDATE_KEY: set the repository variable UPDATE_PUBLIC_KEY"
+    fi
+    ln -sfn "releases/$RELEASE" "$APP/current.new"
+    mv -T "$APP/current.new" "$APP/current"
+    "$APP/current/lapi-upd" --version
+    echo "== installed $RELEASE"
+    current=$(readlink "$APP/current")
+    ls -1t "$APP/releases" | tail -n +6 | while read -r old; do
+        [ "releases/$old" = "$current" ] || rm -rf "${APP:?}/releases/$old"
+    done
+    rm -f "$ARCHIVE"
+    exit 0
 fi
 
 echo "== switching to $RELEASE"

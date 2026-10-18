@@ -1,6 +1,6 @@
 #!/bin/bash
-# Root setup of our services on the Debian 13 server: crash.lapi.sh (D-061)
-# and mirror.lapi.sh (D-062).
+# Root setup of our services on the Debian 13 server: crash.lapi.sh (D-061),
+# mirror.lapi.sh (D-062) and upd.lapi.sh (D-063).
 #
 #   sudo bash ~/lapi-bootstrap/bootstrap.sh <deploy-user>
 #
@@ -10,12 +10,13 @@
 # there: nginx config is root's alone, since whoever writes it can make nginx
 # (root) write any file. Safe to run again: every step checks what is there.
 #
-# For each service folder here (crash/, mirror/):
+# For each service folder here (crash/, mirror/, upd/):
 #  1. a system user lapi-<service> that runs it;
 #  2. /home/www/lapi/<service>/{releases,data}: the deploy user writes
 #     releases, the service user alone writes its data; /home/www and
 #     /home/www/lapi become root's;
-#  3. its systemd units (the mirror also has a warming timer);
+#  3. its systemd units, if it runs as one (upd is static files and a
+#     command; the mirror also has a warming timer);
 #  4. a Let's Encrypt certificate for <service>.lapi.sh (webroot), with a
 #     self-signed one as the fallback, and nginx reloads on renewal;
 #  5. its nginx files, with the shared ones from ./nginx, in /etc/nginx/lapi;
@@ -36,16 +37,18 @@ id "$DEPLOY_USER" >/dev/null || { echo "no user $DEPLOY_USER"; exit 1; }
 step() { printf '\n== %s\n' "$*"; }
 
 SERVICES=()
-for service in crash mirror; do
-    [ -f "$HERE/$service/lapi-$service.service" ] && SERVICES+=("$service")
+for service in crash mirror upd; do
+    [ -d "$HERE/$service/nginx" ] && SERVICES+=("$service")
 done
+# A service with a systemd unit runs as a process.
+daemon() { [ -f "$HERE/$1/lapi-$1.service" ]; }
 [ "${#SERVICES[@]}" -gt 0 ] || { echo "no service folders in $HERE"; exit 1; }
 echo "services: ${SERVICES[*]}"
 
 # Settings per service: folder modes (nginx reads the mirror's kept files) and
 # the first environment file.
-app_mode() { [ "$1" = mirror ] && echo 2755 || echo 2750; }
-data_mode() { [ "$1" = mirror ] && echo 0755 || echo 0750; }
+app_mode() { [ "$1" = crash ] && echo 2750 || echo 2755; }
+data_mode() { [ "$1" = crash ] && echo 0750 || echo 0755; }
 first_env() {
     case "$1" in
         crash) printf 'LAPI_CRASH_ADDR=127.0.0.1:8781\nLAPI_CRASH_DATA=%s/crash/data\nLAPI_CRASH_KEEP_DAYS=90\nLAPI_CRASH_KEEP_STATS_DAYS=400\nLAPI_CRASH_MAX_STORED_MB=5120\n' "$ROOT" ;;
@@ -79,6 +82,11 @@ for service in "${SERVICES[@]}"; do
     install -d "$app/data"
     chown "$user:$user" "$app/data"
     chmod "$(data_mode "$service")" "$app/data"
+    if [ "$service" = upd ]; then
+        # Release archives are uploaded here by the deploy user; lapi-upd reads them.
+        install -d -o "$DEPLOY_USER" -g "$user" -m 2770 "$app/data/incoming"
+    fi
+    daemon "$service" || continue
     if [ ! -f "$app/$service.env" ]; then
         first_env "$service" > "$app/$service.env"
     fi
@@ -92,6 +100,7 @@ for service in "${SERVICES[@]}"; do
 done
 systemctl daemon-reload
 for service in "${SERVICES[@]}"; do
+    daemon "$service" || continue
     systemctl enable "lapi-$service.service"
     for timer in "$HERE/$service"/lapi-"$service"-*.timer; do
         # Started by the first deploy, once there is a release to run.
@@ -180,7 +189,9 @@ sudoers=/etc/sudoers.d/lapi-deploy
 {
     echo "# Deploys of $ROOT services by GitHub Actions (D-061, D-062). Nothing else."
     for service in "${SERVICES[@]}"; do
-        echo "$DEPLOY_USER ALL=(root) NOPASSWD: /usr/bin/systemctl restart lapi-$service, /usr/bin/systemctl is-active lapi-$service"
+        if daemon "$service"; then
+            echo "$DEPLOY_USER ALL=(root) NOPASSWD: /usr/bin/systemctl restart lapi-$service, /usr/bin/systemctl is-active lapi-$service"
+        fi
         echo "$DEPLOY_USER ALL=(lapi-$service) NOPASSWD: $ROOT/$service/current/lapi-$service"
         for timer in "$HERE/$service"/lapi-"$service"-*.timer; do
             [ -f "$timer" ] && echo "$DEPLOY_USER ALL=(root) NOPASSWD: /usr/bin/systemctl start $(basename "$timer")"
