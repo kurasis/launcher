@@ -1307,13 +1307,13 @@ message` plus a stack trace), with the event's level.
   `-Xmx8192M`; heap from `jstat`, live set after a forced full GC; software
   rendering, so load times are long):
 
-  | Installation | Mods | Live after GC | Old-gen peak | Heap peak | Process RSS |
-  | --- | --- | --- | --- | --- | --- |
-  | Vanilla | 0 | 356 MiB | 862 MiB | 1623 MiB | 2.0 GiB |
-  | Fabric 0.19.5 | 0 | 380 MiB | 866 MiB | 1492 MiB | 2.2 GiB |
-  | Forge 47.4.10 | 0 | 428 MiB | 910 MiB | 2178 MiB | 2.4 GiB |
-  | Fabric + Fabulously Optimized | 48 | 328 MiB | 382 MiB | 982 MiB | 2.4 GiB |
-  | Fabric + Prominence II | 442 | 4299 MiB | 3060 MiB | 5125 MiB | 10.7 GiB |
+  | Installation                  | Mods | Live after GC | Old-gen peak | Heap peak | Process RSS |
+  | ----------------------------- | ---- | ------------- | ------------ | --------- | ----------- |
+  | Vanilla                       | 0    | 356 MiB       | 862 MiB      | 1623 MiB  | 2.0 GiB     |
+  | Fabric 0.19.5                 | 0    | 380 MiB       | 866 MiB      | 1492 MiB  | 2.2 GiB     |
+  | Forge 47.4.10                 | 0    | 428 MiB       | 910 MiB      | 2178 MiB  | 2.4 GiB     |
+  | Fabric + Fabulously Optimized | 48   | 328 MiB       | 382 MiB      | 982 MiB   | 2.4 GiB     |
+  | Fabric + Prominence II        | 442  | 4299 MiB      | 3060 MiB     | 5125 MiB  | 10.7 GiB    |
 
   A loader adds little by itself, and a performance pack even lowers the heap; what
   needs memory is many content mods (about 9 MiB live per mod in Prominence II).
@@ -1321,6 +1321,7 @@ message` plus a stack trace), with the event's level.
   heap never gets more than half of the computer's memory. Better MC 4 (Forge, 330
   mods) could not be measured: several of its mods are only on CurseForge and the
   pack stops at a "missing mods" window.
+
 - **Recommendation:** Minecraft 1.12.2 and older (and alpha, beta, classic) without
   a loader 2048 MiB; newer Minecraft without a loader 3072 MiB; with a loader 4096
   MiB up to 50 mods, 6144 MiB up to 150 mods, 8192 MiB above. Never more than half
