@@ -145,6 +145,26 @@ fn repair_needed(what: &str) -> LauncherError {
     .with_detail("check", what.to_owned())
 }
 
+/// Files a repair restored minutes ago are gone again: antivirus software
+/// removing them (often Java, or a mod it misjudges) is the usual cause, and
+/// another repair alone would only go round in a circle.
+fn damaged_again(error: LauncherError, last: Option<&LastResult>) -> LauncherError {
+    let repaired_recently = last.is_some_and(|r| {
+        r.kind == OperationKind::Repair
+            && r.outcome == Outcome::Succeeded
+            && Utc::now().signed_duration_since(r.finished_at) < chrono::Duration::minutes(30)
+    });
+    if error.code != ErrorCode::RepairRequired || !repaired_recently {
+        return error;
+    }
+    let mut again = LauncherError::new(
+        ErrorCode::RepairRequired,
+        "Files the last repair restored are missing or damaged again. Antivirus software may be removing them: allow the launcher's data folder in it, then repair the installation.",
+    );
+    again.safe_details = error.safe_details;
+    again.with_detail("afterRepair", "yes")
+}
+
 impl LaunchService {
     pub fn new(
         host: Arc<dyn LaunchHost>,
@@ -262,6 +282,8 @@ impl LaunchService {
             output_lines_dropped: 0,
             error: Some(super::orphan::interrupted_error()),
             logging_degraded: false,
+            signal: None,
+            diagnosis: None,
         });
         let host = Arc::clone(&self.host);
         let run_id = record.run_id.clone();
@@ -378,6 +400,8 @@ impl LaunchService {
             output_lines_dropped: 0,
             error: None,
             logging_degraded: false,
+            signal: None,
+            diagnosis: None,
         });
         state.console().info(match &mode {
             LaunchMode::NoToken(profile) => format!(
@@ -416,6 +440,7 @@ impl LaunchService {
             Err(error) => {
                 *lock_or(&self.pending) = None;
                 let _ = std::fs::remove_dir_all(root.run_dir(instance_id, run_uuid));
+                let error = damaged_again(error, instance.last_result.as_ref());
                 if error.code == ErrorCode::RepairRequired {
                     let _ = state.update_instance(instance_id, |i| {
                         i.health = InstallationHealth::RepairRequired;
@@ -694,6 +719,9 @@ impl LaunchService {
         .await
         .map_err(|_| LauncherError::internal("A runtime check stopped unexpectedly."))?
         .map_err(|e| {
+            if e.code == ErrorCode::PermissionDenied {
+                return e;
+            }
             let mut error = LauncherError::new(
                 ErrorCode::RuntimeUnavailable,
                 "The Java chosen for this installation could not be started. Choose another \
@@ -795,7 +823,24 @@ impl LaunchService {
         let (sink_log, sink_tail) = (Arc::clone(&log), Arc::clone(&tail));
         let console_host = Arc::clone(&self.host);
         let mut events = crate::console::GameLines::default();
+        // A question on the console repeats forever on the game's empty input;
+        // after a few the launcher ends the game and explains it (D-059).
+        let asked = Arc::new(std::sync::atomic::AtomicBool::new(false));
+        let (sink_asked, question_id) = (Arc::clone(&asked), run_id.to_owned());
+        let (mut questions, mut ended) = (0u32, false);
         let sink = Box::new(move |line: OutputLine| {
+            if super::crash::is_console_question(&line.text) {
+                questions += 1;
+                if questions >= super::crash::CONSOLE_QUESTION_LIMIT && !ended {
+                    sink_asked.store(true, std::sync::atomic::Ordering::SeqCst);
+                    // Before its handle is stored the game cannot be ended yet;
+                    // the next question tries again.
+                    ended = console_host.kill(&question_id);
+                }
+                if questions > super::crash::CONSOLE_QUESTION_LIMIT {
+                    return;
+                }
+            }
             let text = redactor.redact(&line.text);
             let console = console_host.app_state().console();
             if line.stream == Stream::Stderr {
@@ -815,6 +860,9 @@ impl LaunchService {
         let finish_id = run_id.to_owned();
         let finish_root = root.clone();
         let stop_requested = Arc::clone(&self.stop_requested);
+        let crash_redactor = Redactor::new(secrets);
+        let game_dir = root.game_dir(instance_id);
+        let spawned_at = std::time::SystemTime::now();
         let spawned = child::spawn(
             command,
             sink,
@@ -826,9 +874,26 @@ impl LaunchService {
                 let start = lines.len().saturating_sub(SUMMARY_TAIL_LINES);
                 let degraded = lock_or(&log).degraded();
                 let stopped = lock_or(&stop_requested).remove(&finish_id);
+                let exit = outcome.status.as_ref().ok().map(super::crash::ExitInfo::of);
+                // The player's own Stop needs no explanation.
+                let asked = asked.load(std::sync::atomic::Ordering::SeqCst);
+                let diagnosis = exit.filter(|_| !stopped).and_then(|exit| {
+                    explain(
+                        state,
+                        instance_id,
+                        (exit, asked),
+                        &lines,
+                        &game_dir,
+                        spawned_at,
+                        &crash_redactor,
+                    )
+                });
                 let (run_state, exit_code, error) = match &outcome.status {
                     Ok(status) if stopped => (RunState::Stopped, status.code(), None),
-                    Ok(status) if status.success() => (RunState::Exited, status.code(), None),
+                    // A clean exit after a crash report: Forge's mod error screen.
+                    Ok(status) if status.success() && diagnosis.is_none() => {
+                        (RunState::Exited, status.code(), None)
+                    }
                     Ok(status) => (
                         RunState::Failed,
                         status.code(),
@@ -872,6 +937,8 @@ impl LaunchService {
                     run.state = run_state;
                     run.ended_at = Some(finished_at);
                     run.exit_code = exit_code;
+                    run.signal = exit.and_then(|e| e.signal);
+                    run.diagnosis = diagnosis;
                     run.duration_ms = u64::try_from(outcome.duration.as_millis()).ok();
                     run.drain_timed_out = outcome.drain_timed_out;
                     run.output_tail = lines[start..].to_vec();
@@ -886,8 +953,10 @@ impl LaunchService {
             },
         );
         let supervised = spawned.map_err(|error| {
-            LauncherError::new(ErrorCode::GameSpawnFailed, "Java could not be started.")
-                .with_detail("ioKind", format!("{:?}", error.kind()))
+            crate::error::java_blocked(&error).unwrap_or_else(|| {
+                LauncherError::new(ErrorCode::GameSpawnFailed, "Java could not be started.")
+                    .with_detail("ioKind", format!("{:?}", error.kind()))
+            })
         })?;
         // Lets a restarted launcher recognize this game if the supervisor dies.
         super::orphan::record(root, run_id, instance_id, supervised.pid(), java);
@@ -901,6 +970,33 @@ impl LaunchService {
         self.host.run_started(run_id);
         Ok(())
     }
+}
+
+/// Why the run ended, from its output and the files it left (D-059).
+#[allow(clippy::too_many_arguments)]
+fn explain(
+    state: &crate::state::AppState,
+    instance_id: InstanceId,
+    (exit, console_question): (super::crash::ExitInfo, bool),
+    output: &[String],
+    game_dir: &std::path::Path,
+    spawned_at: std::time::SystemTime,
+    redactor: &Redactor,
+) -> Option<super::crash::CrashDiagnosis> {
+    use super::crash::{self, CrashInput, RunFile};
+    let files = crash::files::collect(game_dir, spawned_at, output, redactor);
+    fn as_file(file: &Option<(String, String)>) -> Option<RunFile<'_>> {
+        file.as_ref().map(|(name, text)| RunFile { name, text })
+    }
+    crash::diagnose(&CrashInput {
+        exit,
+        output,
+        crash_report: as_file(&files.crash_report),
+        jvm_error: as_file(&files.jvm_error),
+        max_heap_mib: state.instance(instance_id).map_or(0, |i| i.max_heap_mib),
+        recommended_heap_mib: state.recommend_memory_for(instance_id).ok().map(|r| r.mib),
+        console_question,
+    })
 }
 
 #[cfg(test)]

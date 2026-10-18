@@ -9,6 +9,7 @@ use std::time::Duration;
 
 use super::*;
 use crate::install::service::tests::Fixture;
+use crate::launch::crash::{CrashAction, CrashKind};
 use crate::secrets::SecretString;
 use crate::state::AppState;
 
@@ -502,6 +503,61 @@ async fn a_nonzero_exit_is_reported_as_failure() {
 }
 
 #[tokio::test(flavor = "multi_thread")]
+async fn a_crash_is_explained() {
+    let s = Setup::new().await;
+    let service = s.service(auth("Crashing"));
+    let run = service
+        .launch_as(&Uuid::new_v4().to_string(), s.instance, account())
+        .await
+        .unwrap();
+    let done = s.finished(&run.run_id).await;
+    assert_eq!(done.state, RunState::Failed);
+    let diagnosis = done.diagnosis.expect("diagnosis");
+    assert_eq!(diagnosis.kind, CrashKind::OutOfMemory);
+    assert_eq!(diagnosis.actions, vec![CrashAction::MemorySettings]);
+    assert_eq!(done.signal, None);
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn a_question_repeated_on_the_console_ends_the_game() {
+    // NeoForge's and tinyfd's console questions repeat forever on empty input.
+    let s = Setup::new().await;
+    let service = s.service(auth("Asking"));
+    let run = service
+        .launch_as(&Uuid::new_v4().to_string(), s.instance, account())
+        .await
+        .unwrap();
+    let done = s.finished(&run.run_id).await;
+    assert_eq!(done.state, RunState::Failed);
+    let diagnosis = done.diagnosis.expect("diagnosis");
+    assert_eq!(diagnosis.kind, CrashKind::CorruptModFile);
+    assert_eq!(diagnosis.notes[0].kind, CrashKind::ConsoleQuestion);
+    let asked = done
+        .output_tail
+        .iter()
+        .filter(|l| l.contains("y/n:"))
+        .count();
+    assert_eq!(asked, crate::launch::crash::CONSOLE_QUESTION_LIMIT as usize);
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn a_mod_error_screen_closed_normally_is_still_a_failure() {
+    let s = Setup::new().await;
+    let service = s.service(auth("ModError"));
+    let run = service
+        .launch_as(&Uuid::new_v4().to_string(), s.instance, account())
+        .await
+        .unwrap();
+    let done = s.finished(&run.run_id).await;
+    assert_eq!((done.state, done.exit_code), (RunState::Failed, Some(0)));
+    let diagnosis = done.diagnosis.expect("diagnosis");
+    assert_eq!(diagnosis.kind, CrashKind::MissingDependency);
+    assert_eq!(diagnosis.report.as_deref(), Some("crash-fml.txt"));
+    let last = s.f.state.instance(s.instance).unwrap().last_result.unwrap();
+    assert_eq!(last.outcome, Outcome::Failed);
+}
+
+#[tokio::test(flavor = "multi_thread")]
 async fn cancel_before_spawn_prevents_the_process() {
     let s = Setup::new().await;
     let service = Arc::new(s.service(TestAuth {
@@ -623,4 +679,78 @@ async fn the_installation_profile_decides_who_plays() {
         "{tail}"
     );
     assert!(!alex.id.is_empty());
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn a_java_the_system_will_not_start_is_explained_and_frees_the_launcher() {
+    // Antivirus software or a security policy refusing Java looks like this to
+    // the launcher: the Java file may not be executed.
+    use std::os::unix::fs::PermissionsExt;
+    let s = Setup::new().await;
+    let custom = s.f._dir.path().join("blocked-jdk").join("java");
+    std::fs::create_dir_all(custom.parent().unwrap()).unwrap();
+    std::fs::write(
+        &custom,
+        "#!/bin/sh\ncat >&2 <<'X'\n    java.specification.version = 21\n    java.version = 21.0.1\n    os.arch = amd64\nX\n",
+    )
+    .unwrap();
+    std::fs::set_permissions(&custom, std::fs::Permissions::from_mode(0o755)).unwrap();
+    set_java(
+        &s,
+        crate::state::dto::JavaChoice::Custom {
+            path: custom.clone(),
+        },
+        "",
+        true,
+    )
+    .unwrap();
+    std::fs::set_permissions(&custom, std::fs::Permissions::from_mode(0o644)).unwrap();
+
+    let error = s
+        .service(auth("Player"))
+        .launch_as(&Uuid::new_v4().to_string(), s.instance, account())
+        .await
+        .unwrap_err();
+    assert_eq!(error.code, ErrorCode::PermissionDenied, "{error:?}");
+    assert!(error.message.contains("Java was not allowed to start"));
+    // Nothing stays busy, and the installation is not marked for repair.
+    assert!(s.f.state.activity().current().is_none());
+    assert!(s.f.state.current_run().is_none());
+    assert_eq!(
+        s.f.state.instance(s.instance).unwrap().health,
+        InstallationHealth::Ready
+    );
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn files_gone_right_after_a_repair_point_at_antivirus_software() {
+    let s = Setup::new().await;
+    // Removed once: an ordinary repair request.
+    std::fs::remove_file(s.f.library_path()).unwrap();
+    let service = s.service(auth("Player"));
+    let first = service
+        .launch_as(&Uuid::new_v4().to_string(), s.instance, account())
+        .await
+        .unwrap_err();
+    assert!(!first.message.contains("again"), "{}", first.message);
+    // Repaired, then removed again at once, as antivirus software would.
+    assert_eq!(
+        s.f.run(OperationKind::Repair, s.instance).await.outcome,
+        Outcome::Succeeded
+    );
+    std::fs::remove_file(s.f.library_path()).unwrap();
+    let again = service
+        .launch_as(&Uuid::new_v4().to_string(), s.instance, account())
+        .await
+        .unwrap_err();
+    assert_eq!(again.code, ErrorCode::RepairRequired);
+    assert!(
+        again.message.contains("Antivirus software"),
+        "{}",
+        again.message
+    );
+    assert_eq!(
+        s.f.state.instance(s.instance).unwrap().health,
+        InstallationHealth::RepairRequired
+    );
 }

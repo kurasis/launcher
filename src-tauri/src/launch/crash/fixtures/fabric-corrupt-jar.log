@@ -1,0 +1,43 @@
+  </log4j:Event>
+  <log4j:Event logger="FabricLoader" timestamp="1792325564439" level="ERROR" thread="main">
+    <log4j:Message><![CDATA[Incompatible mods found!]]></log4j:Message>
+    <log4j:Throwable><![CDATA[net.fabricmc.loader.impl.FormattedException: net.fabricmc.loader.impl.discovery.ModResolutionException: Mod discovery failed!
+	at net.fabricmc.loader.impl.FormattedException.ofLocalized(FormattedException.java:63)
+	at net.fabricmc.loader.impl.FabricLoaderImpl.load(FabricLoaderImpl.java:204)
+	at net.fabricmc.loader.impl.launch.knot.Knot.init(Knot.java:142)
+	at net.fabricmc.loader.impl.launch.knot.Knot.launch(Knot.java:66)
+	at net.fabricmc.loader.impl.launch.knot.KnotClient.main(KnotClient.java:23)
+Caused by: net.fabricmc.loader.impl.discovery.ModResolutionException: Mod discovery failed!
+	at net.fabricmc.loader.impl.discovery.ModDiscoverer.lambda$discoverMods$1(ModDiscoverer.java:155)
+	at net.fabricmc.loader.impl.util.ExceptionUtil.gatherExceptions(ExceptionUtil.java:33)
+	at net.fabricmc.loader.impl.discovery.ModDiscoverer.discoverMods(ModDiscoverer.java:155)
+	at net.fabricmc.loader.impl.FabricLoaderImpl.setup(FabricLoaderImpl.java:222)
+	at net.fabricmc.loader.impl.FabricLoaderImpl.load(FabricLoaderImpl.java:199)
+	... 3 more
+Caused by: java.lang.RuntimeException: java.lang.RuntimeException: Error analyzing [/home/player/.local/share/app.launcher/instances/2e050fee-8d22-407e-aa8d-7abffd2a9b1b/game/mods/geckolib-fabric-1.20.1-4.8.4.jar]: java.util.zip.ZipException: zip END header not found
+	at java.base/jdk.internal.reflect.NativeConstructorAccessorImpl.newInstance0(Native Method)
+	at java.base/jdk.internal.reflect.NativeConstructorAccessorImpl.newInstance(NativeConstructorAccessorImpl.java:77)
+	at java.base/jdk.internal.reflect.DelegatingConstructorAccessorImpl.newInstance(DelegatingConstructorAccessorImpl.java:45)
+	at java.base/java.lang.reflect.Constructor.newInstanceWithCaller(Constructor.java:500)
+	at java.base/java.lang.reflect.Constructor.newInstance(Constructor.java:481)
+	at java.base/java.util.concurrent.ForkJoinTask.getThrowableException(ForkJoinTask.java:562)
+	at java.base/java.util.concurrent.ForkJoinTask.reportExecutionException(ForkJoinTask.java:604)
+	at java.base/java.util.concurrent.ForkJoinTask.get(ForkJoinTask.java:981)
+	at net.fabricmc.loader.impl.discovery.ModDiscoverer.discoverMods(ModDiscoverer.java:152)
+	... 5 more
+Caused by: java.lang.RuntimeException: Error analyzing [/home/player/.local/share/app.launcher/instances/2e050fee-8d22-407e-aa8d-7abffd2a9b1b/game/mods/geckolib-fabric-1.20.1-4.8.4.jar]: java.util.zip.ZipException: zip END header not found
+	at net.fabricmc.loader.impl.discovery.ModDiscoverer$ModScanTask.compute(ModDiscoverer.java:300)
+	at net.fabricmc.loader.impl.discovery.ModDiscoverer$ModScanTask.compute(ModDiscoverer.java:249)
+	at java.base/java.util.concurrent.RecursiveTask.exec(RecursiveTask.java:100)
+	at java.base/java.util.concurrent.ForkJoinTask.doExec(ForkJoinTask.java:373)
+	at java.base/java.util.concurrent.ForkJoinPool$WorkQueue.topLevelExec(ForkJoinPool.java:1182)
+	at java.base/java.util.concurrent.ForkJoinPool.scan(ForkJoinPool.java:1655)
+	at java.base/java.util.concurrent.ForkJoinPool.runWorker(ForkJoinPool.java:1622)
+	at java.base/java.util.concurrent.ForkJoinWorkerThread.run(ForkJoinWorkerThread.java:165)
+Caused by: java.util.zip.ZipException: zip END header not found
+	at java.base/java.util.zip.ZipFile$Source.findEND(ZipFile.java:1637)
+	at java.base/java.util.zip.ZipFile$Source.initCEN(ZipFile.java:1645)
+	at java.base/java.util.zip.ZipFile$Source.<init>(ZipFile.java:1483)
+	at java.base/java.util.zip.ZipFile$Source.get(ZipFile.java:1445)
+	at java.base/java.util.zip.ZipFile$CleanableResource.<init>(ZipFile.java:717)
+	at java.base/java.util.zip.ZipFile.<init>(ZipFile.java:251)

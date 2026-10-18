@@ -427,6 +427,12 @@ pub struct RunSummary {
     /// permissions); output was still drained and kept in memory.
     #[serde(default)]
     pub logging_degraded: bool,
+    /// The Unix signal that ended the game, if any.
+    #[serde(default)]
+    pub signal: Option<i32>,
+    /// Why the game stopped, when it crashed (D-059).
+    #[serde(default)]
+    pub diagnosis: Option<crate::launch::crash::CrashDiagnosis>,
 }
 
 /// The complete state a freshly created webview needs (doc 06 "Bootstrap").

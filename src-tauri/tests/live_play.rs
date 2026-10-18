@@ -247,3 +247,76 @@ async fn the_game_starts_without_a_token_and_stops_cleanly() {
         std::fs::metadata(&log).map(|m| m.len()).unwrap_or(0)
     );
 }
+
+/// Starts an installation set up to fail (a missing or wrong mod, a damaged file)
+/// and prints the explanation the launcher records when the game ends by itself
+/// (D-059). Error windows are closed from outside, as a player would.
+/// `LAUNCHER_LIVE_WAIT_SECS` bounds the wait (default 600).
+#[tokio::test(flavor = "multi_thread")]
+#[ignore = "starts the real game; needs a display and a prepared installation"]
+async fn a_crashed_game_is_explained() {
+    let root = DataRoot::new(PathBuf::from(
+        std::env::var("LAUNCHER_LIVE_ROOT").expect("set LAUNCHER_LIVE_ROOT"),
+    ))
+    .unwrap();
+    let version = std::env::var("LAUNCHER_LIVE_VERSION").expect("set LAUNCHER_LIVE_VERSION");
+    let loader = std::env::var("LAUNCHER_LIVE_LOADER").ok();
+    // Two installations of one version and loader: `LAUNCHER_LIVE_INSTANCE=<id>`.
+    let wanted = std::env::var("LAUNCHER_LIVE_INSTANCE").ok();
+    let wait = std::env::var("LAUNCHER_LIVE_WAIT_SECS")
+        .ok()
+        .and_then(|s| s.parse().ok())
+        .unwrap_or(600u64);
+    let host = Arc::new(Host {
+        state: AppState::initialize(
+            Ok(root.clone()),
+            VERSION,
+            MemoryPolicy::detect(),
+            Box::new(NoopSink),
+        ),
+        handles: Mutex::default(),
+        finished: Mutex::default(),
+    });
+    let instance = host
+        .state
+        .snapshot()
+        .instances
+        .into_iter()
+        .find(|i| {
+            i.version_id == version
+                && i.loader.as_ref().map(|l| l.kind.as_str()) == loader.as_deref()
+                && wanted.as_ref().is_none_or(|id| i.id.to_string() == *id)
+        })
+        .expect("an installation of the version");
+    let metadata = Arc::new(MetadataService::new(
+        PublicClient::new(SourcePolicy::MojangMetadata, VERSION).unwrap(),
+        root.clone(),
+    ));
+    let source: Arc<dyn PlanSource> = Arc::new(LiveSource::new(metadata, VERSION).unwrap());
+    let service = LaunchService::new(
+        Arc::clone(&host) as Arc<dyn LaunchHost>,
+        source,
+        Arc::new(FullGameHarness),
+        VERSION,
+    );
+    let mode = LaunchMode::Account("full-game-harness".into());
+    let run = service
+        .launch_as(&uuid::Uuid::new_v4().to_string(), instance.id, mode)
+        .await
+        .expect("preflight passes and the game starts");
+    println!("{version}: game process started; waiting for it to end");
+    let deadline = Instant::now() + Duration::from_secs(wait);
+    while !host.finished.lock().unwrap().contains(&run.run_id) {
+        assert!(Instant::now() < deadline, "the game did not end");
+        tokio::time::sleep(Duration::from_millis(500)).await;
+    }
+    let last = host.state.snapshot().last_run.expect("a recorded run");
+    println!(
+        "{version}: ended; state {:?}, exit code {:?}, signal {:?}, run {}",
+        last.state, last.exit_code, last.signal, last.run_id
+    );
+    println!(
+        "DIAGNOSIS {}",
+        serde_json::to_string_pretty(&last.diagnosis).unwrap()
+    );
+}

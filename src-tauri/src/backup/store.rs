@@ -246,7 +246,8 @@ impl Store {
             }
             fs::create_dir_all(target.parent().unwrap_or(&self.root))
                 .map_err(|e| io(&e, "Writing the backup"))?;
-            fs::rename(&temp, &target).map_err(|e| io(&e, "Writing the backup"))?;
+            crate::storage::atomic::rename(&temp, &target)
+                .map_err(|e| io(&e, "Writing the backup"))?;
             Ok((sha256, true))
         })();
         let _ = fs::remove_file(&temp);
@@ -422,14 +423,14 @@ impl Store {
         self.restore_into(snapshot, &staged)?;
         let old = target.with_file_name(format!("{name}.replaced-{tag}"));
         if target.exists()
-            && let Err(e) = fs::rename(target, &old)
+            && let Err(e) = crate::storage::atomic::rename(target, &old)
         {
             let _ = fs::remove_dir_all(&staged);
             return Err(io(&e, "Restoring the backup"));
         }
-        if let Err(e) = fs::rename(&staged, target) {
+        if let Err(e) = crate::storage::atomic::rename(&staged, target) {
             // Put the current folder back.
-            let _ = fs::rename(&old, target);
+            let _ = crate::storage::atomic::rename(&old, target);
             let _ = fs::remove_dir_all(&staged);
             return Err(io(&e, "Restoring the backup"));
         }

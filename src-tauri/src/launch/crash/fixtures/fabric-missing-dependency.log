@@ -1,0 +1,29 @@
+  <log4j:Event logger="FabricLoader/GameProvider" timestamp="1792328411782" level="INFO" thread="main">
+    <log4j:Message><![CDATA[Loading Minecraft 1.21.1 with Fabric Loader 0.18.2]]></log4j:Message>
+  </log4j:Event>
+  <log4j:Event logger="FabricLoader/Resolution" timestamp="1792328411956" level="WARN" thread="main">
+    <log4j:Message><![CDATA[Mod resolution failed]]></log4j:Message>
+  </log4j:Event>
+  <log4j:Event logger="FabricLoader/Resolution" timestamp="1792328411956" level="INFO" thread="main">
+    <log4j:Message><![CDATA[Immediate reason: [HARD_DEP_NO_CANDIDATE geckolib 4.8.4 {depends fabric-api @ [>=0.92.0+1.20.1]}, ROOT_FORCELOAD_SINGLE geckolib 4.8.4]]]></log4j:Message>
+  </log4j:Event>
+  <log4j:Event logger="FabricLoader/Resolution" timestamp="1792328411956" level="INFO" thread="main">
+    <log4j:Message><![CDATA[Reason: [HARD_DEP geckolib 4.8.4 {depends fabric-api @ [>=0.92.0+1.20.1]}]]]></log4j:Message>
+  </log4j:Event>
+  <log4j:Event logger="FabricLoader/Resolution" timestamp="1792328411957" level="INFO" thread="main">
+    <log4j:Message><![CDATA[Fix: add [add:fabric-api 0.92.0+1.20.1 ([[0.92.0+1.20.1,∞)])], remove [], replace []]]></log4j:Message>
+  </log4j:Event>
+  <log4j:Event logger="FabricLoader" timestamp="1792328411971" level="ERROR" thread="main">
+    <log4j:Message><![CDATA[Incompatible mods found!]]></log4j:Message>
+    <log4j:Throwable><![CDATA[net.fabricmc.loader.impl.FormattedException: Some of your mods are incompatible with the game or each other!
+A potential solution has been determined, this may resolve your problem:
+	 - Install fabric-api, version 0.92.0+1.20.1 or later.
+More details:
+	 - Mod 'GeckoLib 4' (geckolib) 4.8.4 requires version 0.92.0+1.20.1 or later of fabric-api, which is missing!
+	at net.fabricmc.loader.impl.FormattedException.ofLocalized(FormattedException.java:51)
+	at net.fabricmc.loader.impl.FabricLoaderImpl.load(FabricLoaderImpl.java:202)
+	at net.fabricmc.loader.impl.launch.knot.Knot.init(Knot.java:142)
+	at net.fabricmc.loader.impl.launch.knot.Knot.launch(Knot.java:66)
+	at net.fabricmc.loader.impl.launch.knot.KnotClient.main(KnotClient.java:23)
+]]></log4j:Throwable>
+  </log4j:Event>

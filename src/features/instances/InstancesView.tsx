@@ -5,6 +5,7 @@ import type { AppSnapshot } from '../../lib/contracts';
 import { ipc } from '../../lib/ipc';
 import { strings } from '../../lib/strings';
 import { useCommand } from '../../lib/useCommand';
+import { CrashHelp } from './CrashHelp';
 import { CreateInstanceForm } from './CreateInstanceForm';
 import { InstallPanel } from './InstallPanel';
 import { InstanceDetails } from './InstanceDetails';
@@ -15,11 +16,16 @@ interface InstancesViewProps {
   snapshot: AppSnapshot;
   /** Opens the settings of an installation on the Settings screen. */
   onEditSettings: (instanceId: string) => void;
+  onOpenBackups?: () => void;
 }
 
 const t = strings.instances;
 
-export function InstancesView({ snapshot, onEditSettings }: InstancesViewProps) {
+export function InstancesView({
+  snapshot,
+  onEditSettings,
+  onOpenBackups = () => undefined,
+}: InstancesViewProps) {
   const [creating, setCreating] = useState(false);
   const [deleted, setDeleted] = useState<string | null>(null);
   const select = useCommand((requestId: string, id: string) =>
@@ -27,6 +33,16 @@ export function InstancesView({ snapshot, onEditSettings }: InstancesViewProps) 
   );
   const selectedId = snapshot.settings.selectedInstanceId;
   const selected = snapshot.instances.find((i) => i.id === selectedId) ?? null;
+  // The explanation stays until the installation's game starts again.
+  const lastRun = snapshot.lastRun;
+  const crashed =
+    selected !== null &&
+    snapshot.currentRun === null &&
+    lastRun !== null &&
+    lastRun.instanceId === selected.id &&
+    lastRun.diagnosis !== null
+      ? { ...lastRun, diagnosis: lastRun.diagnosis }
+      : null;
 
   return (
     <div className={styles.layout}>
@@ -78,6 +94,18 @@ export function InstancesView({ snapshot, onEditSettings }: InstancesViewProps) 
               queue={snapshot.queue}
               network={snapshot.network}
             />
+            {crashed !== null && (
+              <CrashHelp
+                key={`crash-${crashed.runId}`}
+                instance={selected}
+                run={crashed}
+                onEditSettings={() => {
+                  onEditSettings(selected.id);
+                }}
+                onOpenBackups={onOpenBackups}
+                busy={snapshot.activeOperation !== null}
+              />
+            )}
             <InstanceDetails
               key={selected.id}
               instance={selected}

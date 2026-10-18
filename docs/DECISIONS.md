@@ -1334,3 +1334,124 @@ message` plus a stack trace), with the event's level.
   default and goes back to it. The new-installation form says the memory it gets.
 - **Settings → Installations** shows the recommendation counting the `.jar` files in
   the installation's `mods` folder, with **Use recommended** to take it.
+
+## D-059 — Explaining why the game stopped
+
+- **Status:** accepted (owner request, 2026-10-18) · **Affects:** the end of every
+  game run, `RunSummary.diagnosis` and `signal`, the home screen, `open_instance_folder`
+- **Sources.** Mojang's help on exit codes (0, 1, −1, −805306369 out of memory,
+  −1073741819 access violation, −1073740791 native crash, −1073740777 D3DGear,
+  −1073741515 missing DLL, 134, 139, 255); the crash rules of an open launcher and a
+  log service (HMCL's crash analyser, Aternos' mclo.gs Codex); the
+  loaders' own message files, read from their jars (Fabric Loader 0.19.5
+  `Messages.properties`, Quilt Loader 0.30.1 `quilt_loader.properties`, the
+  `lang/en_us.json` of Forge 47 and 52, NeoForge 21.1 and 26.3 and FancyModLoader 4
+  and 12), so every version phrase, plural and variant is covered; the
+  "Mod loading error" crash reports and Mixin; the
+  Sodium wiki on graphics drivers and overlays; HotSpot's fatal-error file format.
+  Twenty crashes were reproduced with this launcher on every loader and kept,
+  without tokens and with neutral paths, as test fixtures in
+  `src-tauri/src/launch/crash/fixtures`: wrong JVM option, Java 8 for 1.20.1; on
+  Fabric a missing and a too-old dependency and a damaged jar; on Quilt a missing
+  dependency (also with its error window failing), a duplicate and a damaged jar;
+  on Forge 47 out of memory, a missing dependency and a damaged config; on Forge 52
+  two missing dependencies; on Forge for 1.12.2 a missing dependency and a
+  duplicate; on NeoForge 21.1 a missing dependency, a damaged jar and a Fabric mod;
+  a modpack's memory check; a native crash with its `hs_err` file. Three normal
+  games closed by the player are kept too, to show they stay unexplained.
+- **When.** After a game process ends, unless the player pressed Stop. A clean exit
+  (code 0) counts when the run wrote a crash report or JVM error file, or when its
+  output holds a loader's dependency or duplicate message: Forge and NeoForge show
+  their mod error screen and exit with 0 when it is closed (Forge for 1.12.2
+  writes no report for it), so such a run is recorded as failed.
+- **Questions on the console.** When a loader or modpack cannot show a dialog
+  (NeoForge's loading window failing, tinyfd without zenity or kdialog), it asks
+  on the console (`y/n:`, `[O]kay/[C]ancel:`, `[Y]es/[N]o:`). The game's input is
+  empty, so the question repeated without end, the game never went on and its log
+  grew by megabytes a second. After the third such question the launcher ends the
+  game, keeps the repeats out of the log, and explains it from the lines above the
+  question; when they name a cause (a damaged jar, a modpack's memory minimum),
+  that is the cause and the question is a note.
+- **What is read.** The game's last 2000 output lines (already redacted, log4j XML
+  unwrapped); the crash report the game names in its output, else the newest
+  `crash-reports/*.txt` written since the start; the newest `hs_err_pid*.log` in the
+  game folder written since the start. Only the file name from the output is used,
+  joined to the installation's own `crash-reports` folder; at most 2 MiB of each
+  file. The JVM error file repeats the command line with the access token, so it is
+  redacted on disk at once, and only its header and native frames are read.
+- **Rules, first match wins:** JVM setup (unknown option, heap too large, missing
+  main class) → Java version (class file version) → loader dependencies (missing,
+  wrong version, Minecraft, Java or loader version, incompatible, duplicate,
+  language provider), in each loader's words: Fabric's "Mod 'X' (x) 1.0 requires
+  <any version phrase> of …", Quilt's "X [transitively] requires … of …, which is
+  missing!" and "breaks with", "Duplicate mandatory mod ids", Forge's and
+  NeoForge's "Mod ID: … Expected range" table and their screen texts ("Mod x
+  requires y 1.0 or above / only supports / is incompatible with", then
+  "Currently, y is …"), "is present in multiple files", and Forge for 1.12.2's
+  `MissingModsException` and "Found a duplicate mod" → damaged files (zip errors,
+  also Quilt's "as a zip file" and NeoForge's loading-window failure, with the
+  jar's folder deciding between "replace the mod" and Repair) → damaged config
+  (night-config, JSON) → memory (a modpack's own minimum; heap; native or
+  system) → graphics (GLFW/OpenGL, RivaTuner, missing LWJGL
+  natives) → native crash (overlay modules, then the graphics driver by module name
+  for AMD, Intel, NVIDIA and Mesa, else the module and signal) → mods at run time
+  (OptiFine, Mixin with the mod from its mixin config, entrypoints, mod
+  construction) → disk full, locked files → crash report category (F3 + C, watchdog,
+  ticking entity or block entity with type and position, world loading, any other
+  description) → the exit code or signal alone (SIGKILL and 137 "killed", usually
+  the out-of-memory killer; SIGTERM; SIGSEGV/SIGABRT and Windows status codes).
+  Suspected mods come from the crash report ("Suspected Mods", `TRANSFORMER/<mod>@`).
+  A mod skipped by the loader as made for another one (Fabric or Quilt on Forge
+  or NeoForge, Forge on NeoForge, Forge or NeoForge on Quilt) is added as a note.
+- **What the player sees.** The result carries the kind, the values for its text
+  (mod names, versions, files, memory, module), up to five evidence lines, suspects,
+  the report's file name and actions. The installation shows **Why the game
+  stopped**: the cause, what to do, the suspects and notes, the exit code or signal,
+  the evidence under a disclosure, and buttons that open the mods, config or crash
+  reports folder (`open_instance_folder` takes only these names), its settings
+  (memory, Java, loader version), Repair or Backups. Out of memory suggests the
+  installation's recommended memory (D-058), or 2 GiB more. The last run on the home
+  screen names the cause. Texts exist for all 37 kinds in English, Russian and
+  Arabic; values a text needs but a crash lacks read as a shorter sentence.
+- **Not done.** Uploading logs to a paste service; reading the full run log beyond
+  the in-memory tail; guessing which mod caused a crash without a report naming it;
+  naming the damaged jar when NeoForge's loading window does not; answering a
+  console question for the player. NeoForge 26.3 was not run live (its
+  installation needed a long repair); its messages are the same templates as
+  NeoForge 21.1's.
+
+## D-060 — Antivirus software and hangs
+
+- **Status:** accepted (owner question, 2026-10-18) · **Affects:** IPC commands, the
+  launch service, the mod loader installer, file replacement, error texts
+- **Checked.** Every place the launcher starts a program or waits for one (the game,
+  the Java check, the loader installer tools), its file replacement, its locks after
+  being killed, and which work runs on the window's main thread.
+- **The window never waits for the disk.** A plain `#[tauri::command]` runs on the
+  main thread, which draws the window; file writes happen under the shared state
+  lock, so a file held by antivirus software froze the whole window. The 22
+  commands that touch files, the state or start programs are now
+  `#[tauri::command(async)]` and run on a worker thread; only window commands stay
+  on the main thread.
+- **Nothing waits without end.** The Java check stops after 30 s (15 s for a chosen
+  Java); the loader installer, which had no limit, now ends a step that prints
+  nothing for 10 minutes (the tools print a line per file) and says that antivirus
+  software may hold Java; a game asking on the console is ended (D-059); network
+  requests time out after 15 s to connect and 60 s without data; Stop ends a game
+  frozen by the system at once.
+- **Files held for a moment.** On Windows, antivirus software opens a file it has
+  just seen written, so renaming it fails with "access denied" or a sharing
+  violation. Renames of new files (atomic writes, downloads, Java runtimes,
+  backups, the trash) now try again for up to 3 s with growing pauses; other
+  systems and other errors fail at once.
+- **Named causes.** Windows' `ERROR_VIRUS_INFECTED` and `ERROR_VIRUS_DELETED` read as
+  "antivirus software blocked the file"; Java that may not be executed (antivirus,
+  AppLocker, a folder without execute permission) reads as "Java was not allowed to
+  start" for the game, the Java check, a chosen Java and the installer, and does not
+  ask for a repair; files missing again within 30 minutes of a successful repair
+  point at antivirus software instead of asking for the same repair again.
+- **Killed launcher.** The data folder lock is an OS lock released at exit; an
+  interrupted install or repair is recorded as interrupted and continues from the
+  files already checked; a game left running is recognized at the next start.
+- **Not done.** A process the system cannot end (Windows protecting it, or stuck in
+  the kernel) keeps its run open; the launcher cannot do more than ask the system.

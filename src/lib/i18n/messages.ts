@@ -294,6 +294,237 @@ export type Messages = {
       readonly modded: (values: { mods: number }) => string;
     };
   };
+  readonly crash: {
+    readonly title: string;
+    readonly summary: (values: { title: string | number }) => string;
+    readonly cause: string;
+    readonly fix: string;
+    readonly evidence: string;
+    readonly suspects: (values: { mods: string | number }) => string;
+    readonly report: (values: { file: string | number }) => string;
+    readonly exitCode: (values: { code: string | number }) => string;
+    readonly signal: (values: { signal: string | number }) => string;
+    readonly notes: string;
+    readonly repairStarted: string;
+    readonly actions: {
+      readonly open_mods: string;
+      readonly open_config: string;
+      readonly open_crash_reports: string;
+      readonly open_game_folder: string;
+      readonly memory_settings: string;
+      readonly java_settings: string;
+      readonly loader_settings: string;
+      readonly repair: string;
+      readonly backups: string;
+    };
+    readonly kinds: {
+      readonly jvm_option: {
+        readonly title: string;
+        readonly cause: (values: { option: string | number }) => string;
+        readonly fix: string;
+      };
+      readonly heap_unavailable: {
+        readonly title: string;
+        readonly cause: (values: { memory: number }) => string;
+        readonly fix: string;
+      };
+      readonly java_too_old: {
+        readonly title: string;
+        readonly cause: (values: { required: string; found: string }) => string;
+        readonly fix: string;
+      };
+      readonly java_too_new: {
+        readonly title: string;
+        readonly cause: (values: { found: string }) => string;
+        readonly fix: string;
+      };
+      readonly missing_dependency: {
+        readonly title: string;
+        readonly cause: (values: {
+          mod: string | number;
+          dependency: string | number;
+          required: string;
+          count: number;
+        }) => string;
+        readonly fix: (values: { dependency: string | number; mod: string | number }) => string;
+      };
+      readonly wrong_dependency_version: {
+        readonly title: string;
+        readonly cause: (values: {
+          mod: string | number;
+          dependency: string | number;
+          required: string;
+          found: string;
+          count: number;
+        }) => string;
+        readonly fix: (values: { dependency: string | number; mod: string | number }) => string;
+      };
+      readonly wrong_minecraft_version: {
+        readonly title: string;
+        readonly cause: (values: {
+          mod: string | number;
+          required: string | number;
+          found: string;
+        }) => string;
+        readonly fix: (values: { mod: string | number }) => string;
+      };
+      readonly loader_too_old: {
+        readonly title: string;
+        readonly cause: (values: {
+          mod: string;
+          dependency: string;
+          required: string;
+          found: string;
+        }) => string;
+        readonly fix: string;
+      };
+      readonly incompatible_mods: {
+        readonly title: string;
+        readonly cause: (values: { mod: string | number; dependency: string | number }) => string;
+        readonly fix: string;
+      };
+      readonly duplicate_mods: {
+        readonly title: string;
+        readonly cause: (values: { modId: string; files: string }) => string;
+        readonly fix: string;
+      };
+      readonly mod_for_other_loader: {
+        readonly title: string;
+        readonly cause: (values: { file: string; loader: string }) => string;
+        readonly fix: string;
+      };
+      readonly corrupt_mod_file: {
+        readonly title: string;
+        readonly cause: (values: { file: string }) => string;
+        readonly fix: (values: { place: string }) => string;
+      };
+      readonly corrupt_config: {
+        readonly title: string;
+        readonly cause: (values: { file: string }) => string;
+        readonly fix: string;
+      };
+      readonly mixin_failed: {
+        readonly title: string;
+        readonly cause: (values: { modId: string }) => string;
+        readonly fix: string;
+      };
+      readonly mod_failed_to_load: {
+        readonly title: string;
+        readonly cause: (values: { modId: string }) => string;
+        readonly fix: string;
+      };
+      readonly optifine_conflict: {
+        readonly title: string;
+        readonly cause: string;
+        readonly fix: string;
+      };
+      readonly out_of_memory: {
+        readonly title: string;
+        readonly cause: (values: { memory: number }) => string;
+        readonly fix: (values: { suggested: number }) => string;
+      };
+      readonly pack_needs_memory: {
+        readonly title: string;
+        readonly cause: (values: { required: string; memory: string | number }) => string;
+        readonly fix: (values: { required: string }) => string;
+      };
+      readonly system_memory: {
+        readonly title: string;
+        readonly cause: (values: { memory: number }) => string;
+        readonly fix: string;
+      };
+      readonly killed: {
+        readonly title: string;
+        readonly cause: string;
+        readonly fix: string;
+      };
+      readonly opengl_unsupported: {
+        readonly title: string;
+        readonly cause: (values: { error: string }) => string;
+        readonly fix: string;
+      };
+      readonly graphics_driver: {
+        readonly title: string;
+        readonly cause: (values: { vendor: string; module: string | number }) => string;
+        readonly fix: string;
+      };
+      readonly overlay: {
+        readonly title: string;
+        readonly cause: (values: { program: string }) => string;
+        readonly fix: string;
+      };
+      readonly native_crash: {
+        readonly title: string;
+        readonly cause: (values: { module: string; signal: string }) => string;
+        readonly fix: string;
+      };
+      readonly missing_native_library: {
+        readonly title: string;
+        readonly cause: (values: { library: string }) => string;
+        readonly fix: string;
+      };
+      readonly broken_installation: {
+        readonly title: string;
+        readonly cause: string;
+        readonly fix: string;
+      };
+      readonly disk_full: {
+        readonly title: string;
+        readonly cause: string;
+        readonly fix: string;
+      };
+      readonly file_access: {
+        readonly title: string;
+        readonly cause: (values: { file: string }) => string;
+        readonly fix: string;
+      };
+      readonly world_load_failed: {
+        readonly title: string;
+        readonly cause: (values: { description: string | number }) => string;
+        readonly fix: string;
+      };
+      readonly ticking_entity: {
+        readonly title: string;
+        readonly cause: (values: { entity: string; position: string }) => string;
+        readonly fix: string;
+      };
+      readonly ticking_block_entity: {
+        readonly title: string;
+        readonly cause: (values: { block: string; position: string }) => string;
+        readonly fix: string;
+      };
+      readonly server_hang: {
+        readonly title: string;
+        readonly cause: (values: { seconds: string }) => string;
+        readonly fix: string;
+      };
+      readonly debug_crash: {
+        readonly title: string;
+        readonly cause: string;
+        readonly fix: string;
+      };
+      readonly game_crash: {
+        readonly title: string;
+        readonly cause: (values: { description: string | number; exception: string }) => string;
+        readonly fix: string;
+      };
+      readonly terminated: {
+        readonly title: string;
+        readonly cause: string;
+        readonly fix: string;
+      };
+      readonly console_question: {
+        readonly title: string;
+        readonly cause: string;
+        readonly fix: string;
+      };
+      readonly unknown: {
+        readonly title: string;
+        readonly cause: (values: { exitCode: string }) => string;
+        readonly fix: string;
+      };
+    };
+  };
   readonly deleteInstance: {
     readonly delete: string;
     readonly confirm: (values: { name: string | number }) => string;

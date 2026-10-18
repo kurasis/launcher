@@ -4,6 +4,7 @@
 pub mod argfile;
 pub mod arguments;
 pub mod compile;
+pub mod crash;
 pub mod encoding;
 pub mod legacy;
 pub mod logs;

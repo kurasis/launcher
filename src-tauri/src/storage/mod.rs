@@ -359,7 +359,7 @@ impl Store {
             .root
             .instances_dir()
             .join(format!("{DELETED_PREFIX}{id}-{}", uuid::Uuid::new_v4()));
-        match fs::rename(&folder, &trash) {
+        match atomic::rename(&folder, &trash) {
             Ok(()) => {}
             Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(()),
             Err(e) => return Err(LauncherError::from_io(&e, "Deleting the installation")),

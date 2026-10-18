@@ -215,11 +215,11 @@ fn promote(staged: &Path, dir: &Path) -> LauncherResult<()> {
     let old = parent.join(format!(".old-{name}-{}", Uuid::new_v4().simple()));
     let had_old = fs::symlink_metadata(dir).is_ok();
     if had_old {
-        fs::rename(dir, &old).map_err(|e| io_error(&e))?;
+        crate::storage::atomic::rename(dir, &old).map_err(|e| io_error(&e))?;
     }
-    if let Err(error) = fs::rename(staged, dir) {
+    if let Err(error) = crate::storage::atomic::rename(staged, dir) {
         if had_old {
-            let _ = fs::rename(&old, dir);
+            let _ = crate::storage::atomic::rename(&old, dir);
         }
         return Err(io_error(&error));
     }
@@ -275,7 +275,7 @@ pub fn reconcile_runtimes(root: &DataRoot) -> LauncherResult<()> {
             if fs::symlink_metadata(&target).is_ok() {
                 fs::remove_dir_all(entry.path()).map_err(|e| io_error(&e))?;
             } else {
-                fs::rename(entry.path(), &target).map_err(|e| io_error(&e))?;
+                crate::storage::atomic::rename(&entry.path(), &target).map_err(|e| io_error(&e))?;
             }
         }
     }

@@ -145,6 +145,8 @@ pub fn start<R: Runtime>(app: &AppHandle<R>, scenario: Scenario) -> LauncherResu
         output_lines_dropped: 0,
         error: None,
         logging_degraded: false,
+        signal: None,
+        diagnosis: None,
     };
     state.begin_run(run);
 

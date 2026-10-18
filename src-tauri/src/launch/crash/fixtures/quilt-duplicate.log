@@ -1,0 +1,52 @@
+  <log4j:Event logger="Quilt Loader/GameProvider" timestamp="1792332105680" level="INFO" thread="main">
+    <log4j:Message><![CDATA[Loading Minecraft 1.21.1 with Quilt Loader 0.30.1]]></log4j:Message>
+  </log4j:Event>
+  <log4j:Event logger="Quilt Loader/Mappings" timestamp="1792332105683" level="INFO" thread="main">
+    <log4j:Message><![CDATA[Loading mappings: jar:file:/home/player/.local/share/app.launcher/shared/maven/org/quiltmc/hashed/1.21.1/hashed-1.21.1.jar!/mappings/mappings.tiny]]></log4j:Message>
+  </log4j:Event>
+  <log4j:Event logger="Quilt Loader/Mappings" timestamp="1792332105684" level="INFO" thread="main">
+    <log4j:Message><![CDATA[Skipping mappings: Missing namespace 'intermediary']]></log4j:Message>
+  </log4j:Event>
+  <log4j:Event logger="Quilt Loader/Mappings" timestamp="1792332105684" level="INFO" thread="main">
+    <log4j:Message><![CDATA[Loading mappings: jar:file:/home/player/.local/share/app.launcher/shared/maven/net/fabricmc/intermediary/1.21.1/intermediary-1.21.1.jar!/mappings/mappings.tiny]]></log4j:Message>
+  </log4j:Event>
+  <log4j:Event logger="Quilt Loader/Mappings" timestamp="1792332105684" level="INFO" thread="main">
+    <log4j:Message><![CDATA[Loaded mapping namespaces: [official, intermediary]]]></log4j:Message>
+  </log4j:Event>
+  <log4j:Event logger="Quilt Loader/Mappings" timestamp="1792332105684" level="INFO" thread="main">
+    <log4j:Message><![CDATA[Target namespace: intermediary]]></log4j:Message>
+  </log4j:Event>
+  <log4j:Event logger="Quilt Loader" timestamp="1792332106410" level="ERROR" thread="main">
+    <log4j:Message><![CDATA[Crashed! The full crash report has been saved to /home/player/.local/share/app.launcher/instances/7c924004-baf9-40ed-98a6-09df827b3b82/game/crash-reports/crash-2026-10-18_14.01.46.3991-quilt_loader.txt]]></log4j:Message>
+  </log4j:Event>
+  <log4j:Event logger="Quilt Loader" timestamp="1792332106414" level="ERROR" thread="main">
+    <log4j:Message><![CDATA[Partial Report:
+---- Quilt Loader: Failed to load ----
+Date/Time: 2026/10/18 14:01:46.4146 [+0000]
+Quilt Loader Version: 0.30.1
+
+-- Error 1 --
+
+Duplicate mandatory mod ids [sodium, indium]
+- <mods>/sodium-fabric-0.8.13+mc1.21.1.jar
+- <mods>/sodium-copy.jar
+
+
+-- Plugin State --
+
+Cycle number = 1
+Cycle Step = SOLVE
+
+Loaded Plugins (2):
+ - 'quilt_loader' (Builtin)
+ - 'quilted_fabric_loader' (Builtin)
+
+
+
+
+---- end of report ----]]></log4j:Message>
+  </log4j:Event>
+  <log4j:Event logger="Quilt Loader" timestamp="1792332106415" level="ERROR" thread="main">
+    <log4j:Message><![CDATA[For more details see the full crash report file: /home/player/.local/share/app.launcher/instances/7c924004-baf9-40ed-98a6-09df827b3b82/game/crash-reports/crash-2026-10-18_14.01.46.3991-quilt_loader.txt]]></log4j:Message>
+  </log4j:Event>
+Port = 35953

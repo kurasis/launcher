@@ -77,6 +77,10 @@ pub fn validate_path(path: &Path) -> LauncherResult<()> {
 pub fn check(path: &Path, required_major: u16, arch: TargetArch) -> LauncherResult<JavaCheck> {
     validate_path(path)?;
     let probe = probe::run(path, CHECK_TIMEOUT).map_err(|e| {
+        // Blocked by antivirus software or the system says more than "not Java".
+        if e.code == ErrorCode::PermissionDenied {
+            return e;
+        }
         let mut error = LauncherError::new(
             ErrorCode::RuntimeUnavailable,
             "This program could not be started as Java.",

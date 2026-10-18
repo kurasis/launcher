@@ -1117,6 +1117,7 @@ impl Operation {
                 work_dir,
                 cancel: &cancel,
                 log: &log,
+                quiet_limit: processors::QUIET_LIMIT,
             })
         })
         .await

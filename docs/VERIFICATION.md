@@ -1646,3 +1646,87 @@ proxy that was stopped and started to cut and restore the connection.
   fixed default winning and 0 going back to the recommendation, mods counted from
   `.jar` files; the forms showing and applying the recommendation and choosing the
   default.
+
+## Explaining why the game stopped (D-059)
+
+- **Reproduced crashes** (release and debug builds on Linux, Xvfb, the test data copy
+  outside the repository; outputs kept as fixtures with neutral paths and no tokens):
+  an unknown JVM option; Java 8 for Minecraft 1.20.1; Fabric API 0.83 under 22 mods
+  that need a newer one; a truncated GeckoLib jar; Forge 1.20.1 with `-Xmx160M` as a
+  JVM option (out of memory while loading, crash report "Rendering overlay"); Just
+  Enough Resources
+  without JEI on Forge (mod error screen, `crash-…-fml.txt`); an emptied
+  `forge-client.toml`; a Fabric mod in a NeoForge installation; a game killed with
+  SIGSEGV (`hs_err_pid….log`, whose command line holds the access token: read only
+  through its header and frames, and redacted on disk). Each fixture has a test with
+  the expected cause and details.
+- **Live, release build, GUI:** GeckoLib for 1.20.1 put into the Fabric 1.21.1
+  installation without Fabric API. Fabric showed its "Incompatible mods found!"
+  window; after **Exit** (code 1) the installation showed **Why the game stopped** —
+  "A mod needs another mod: GeckoLib 4 needs fabric-api (0.92.0+1.20.1 or later),
+  which is not installed", what to do, exit code 1, **Open the mods folder** and the
+  evidence line (`docs/verification/crash-fabric-dependency.png`; Russian:
+  `docs/verification/crash-fabric-dependency-ru.png`). This run found a Fabric format
+  the rules missed (a missing mod named only by its ID); the rule was fixed and the
+  run's output became a fixture, and the second run above is with the fix. Version
+  ranges such as "or later" are the loader's own words and stay untranslated.
+- **Live, killed from outside:** Prominence II with 1024 MiB stopped at the pack's own
+  memory check, which waits for an answer on standard input and printed it 68,000
+  times; ending Java with SIGTERM showed "Another program ended the game", exit code
+  143 (`docs/verification/crash-terminated.png`). The player's own Stop shows no
+  explanation (service test).
+- **Tests:** 43 analyser tests (every fixture, Fabric, Quilt, Forge and NeoForge
+  dependency and duplicate formats, Mixin, entrypoints, OptiFine, GLFW 65542, AMD,
+  Intel, NVIDIA and Mesa driver frames, overlays, Windows exit codes, Unix signals,
+  crash report categories, suspects, clean exits, evidence length, no command line
+  from the JVM error file); finding and redacting the run's files; the launch
+  service recording an out-of-memory diagnosis and a Forge-style exit 0 with a crash
+  report as failed; the panel's texts, actions and folder request; every cause's
+  text in English, Russian and Arabic with and without its details.
+- **Every loader, live (owner question, 2026-10-18).** A new ignored test,
+  `live_play::a_crashed_game_is_explained`, starts a prepared installation through
+  the launch service, closes error windows as a player would and prints the
+  explanation. Mods came from Modrinth with their SHA-512 checked. The loaders'
+  message files were read from their jars to cover every template.
+
+  | Loader                 | Case                              | Before           | After                                 |
+  | ---------------------- | --------------------------------- | ---------------- | ------------------------------------- |
+  | Quilt 0.30.1           | Sodium Extra without Sodium       | unknown          | a mod needs another mod               |
+  | Quilt 0.30.1           | same, error window failed         | unknown          | same, from Quilt's first crash report |
+  | Quilt 0.30.1           | Sodium twice                      | unknown          | installed twice, both files named     |
+  | Quilt 0.30.1           | truncated Sodium jar              | unknown          | damaged file, in the mods folder      |
+  | NeoForge 21.1.262      | Supplementaries without Moonlight | explained        | explained                             |
+  | NeoForge 21.1.262      | truncated jar                     | hung, 40 MB log  | ended at once, damaged file + note    |
+  | NeoForge 21.1.262      | equal jar twice; a Forge mod      | game ran         | game ran (nothing to explain)         |
+  | Forge 52.0.57 / 52.1   | Biomes O' Plenty, Controlling     | —                | a mod needs another mod               |
+  | Forge 14.23.5.2859     | Tinkers' Construct without Mantle | nothing (exit 0) | a mod needs another mod               |
+  | Forge 14.23.5.2859     | JEI twice                         | nothing (exit 0) | installed twice, both files named     |
+  | Fabric (Prominence II) | 1024 MiB                          | hung, 40 MB log  | ended, the pack wants 4096 MiB + note |
+
+  Each "Before" was a real gap: Quilt's own wording and its report names without a
+  colon, NeoForge's bare "zip END header not found", Forge 1.12.2 writing no crash
+  report, and console questions repeating on the game's empty input. The run
+  outputs are fixtures with tests; the service test
+  `a_question_repeated_on_the_console_ends_the_game` checks that only three
+  questions reach the log. In the release build the NeoForge case ended two
+  seconds after **Play** and showed "Файл повреждён" with the console question as a
+  note (`docs/verification/crash-console-question-ru.png`).
+
+## Antivirus software and hangs (D-060)
+
+- **Live, release build, Linux, Xvfb:**
+  - `kill -9` of the launcher while a NeoForge 26.3 repair waited for download
+    permission, and again at 87 % of its download: each restart said "the launcher
+    stopped before finishing; files already checked are kept", the next repair
+    downloaded only the remaining 39 MiB and finished.
+  - A running NeoForge 26.3 game frozen with `SIGSTOP` (as a scan can hold it): the
+    window stayed responsive and Stop ended the game 0.12 s after the confirmation.
+  - Java without execute permission: the start-up check reported the runtime as
+    changed and asked for a repair, which restores it.
+- **Tests:** a silent installer step ended after its limit with its output kept; an
+  installer Java that may not run named as blocked; a game and a chosen Java that
+  may not run explained without a repair request and with nothing left busy; files
+  gone again right after a repair naming antivirus software; renames not waiting
+  for a missing file; on Windows (CI), a rename waiting while another handle holds
+  the file without sharing; the console question test made safe against the game
+  asking before its handle is stored.

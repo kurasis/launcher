@@ -10,6 +10,7 @@
 use std::fs::{self, OpenOptions};
 use std::io::{self, Write};
 use std::path::{Path, PathBuf};
+use std::time::{Duration, Instant};
 
 use uuid::Uuid;
 
@@ -25,7 +26,7 @@ pub struct PreparedWrite {
 impl PreparedWrite {
     /// Atomically replaces the destination with the prepared content.
     pub fn commit(self) -> io::Result<()> {
-        if let Err(error) = fs::rename(&self.temp, &self.destination) {
+        if let Err(error) = rename(&self.temp, &self.destination) {
             let _ = fs::remove_file(&self.temp);
             return Err(error);
         }
@@ -35,6 +36,42 @@ impl PreparedWrite {
     /// Path of the temporary file (tests use it to simulate a crash before commit).
     pub fn temp_path(&self) -> &Path {
         &self.temp
+    }
+}
+
+/// How long a rename waits for another program to let go of a file.
+const BUSY_WAIT: Duration = Duration::from_secs(3);
+
+/// A file another program has open without sharing it: on Windows,
+/// antivirus software scanning a file just written, a backup or sync program,
+/// or Explorer's preview (`ERROR_ACCESS_DENIED`, `ERROR_SHARING_VIOLATION`,
+/// `ERROR_LOCK_VIOLATION`). Other systems let a rename go through.
+pub fn is_busy(error: &io::Error) -> bool {
+    cfg!(windows) && matches!(error.raw_os_error(), Some(5 | 32 | 33))
+}
+
+/// The next pause before trying again, or `None` once [`BUSY_WAIT`] is spent.
+pub fn busy_pause(error: &io::Error, started: Instant, tries: u32) -> Option<Duration> {
+    (is_busy(error) && started.elapsed() < BUSY_WAIT)
+        .then(|| Duration::from_millis(25 << tries.min(4)))
+}
+
+/// `fs::rename` that waits a moment, a few seconds at most, while another
+/// program holds the file or folder open (see [`is_busy`]).
+pub fn rename(from: &Path, to: &Path) -> io::Result<()> {
+    let started = Instant::now();
+    let mut tries = 0;
+    loop {
+        match fs::rename(from, to) {
+            Err(error) => match busy_pause(&error, started, tries) {
+                Some(pause) => {
+                    std::thread::sleep(pause);
+                    tries += 1;
+                }
+                None => return Err(error),
+            },
+            Ok(()) => return Ok(()),
+        }
     }
 }
 
@@ -148,6 +185,37 @@ mod tests {
         assert_eq!(remove_stale_temps(dir.path()).unwrap(), 0);
         assert_eq!(fs::read_dir(dir.path()).unwrap().count(), 3);
         assert_eq!(remove_stale_temps(&dir.path().join("missing")).unwrap(), 0);
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn rename_waits_while_another_program_holds_the_file() {
+        use std::os::windows::fs::OpenOptionsExt;
+        let dir = tempfile::tempdir().unwrap();
+        let from = dir.path().join("new.jar");
+        let to = dir.path().join("final.jar");
+        fs::write(&from, b"content").unwrap();
+        // Opened without sharing, as antivirus software scanning it would.
+        let held = OpenOptions::new()
+            .read(true)
+            .share_mode(0)
+            .open(&from)
+            .unwrap();
+        let release = std::thread::spawn(move || {
+            std::thread::sleep(Duration::from_millis(300));
+            drop(held);
+        });
+        rename(&from, &to).unwrap();
+        release.join().unwrap();
+        assert_eq!(fs::read(&to).unwrap(), b"content");
+    }
+
+    #[test]
+    fn rename_does_not_wait_for_a_missing_file() {
+        let dir = tempfile::tempdir().unwrap();
+        let started = Instant::now();
+        assert!(rename(&dir.path().join("none"), &dir.path().join("x")).is_err());
+        assert!(started.elapsed() < Duration::from_millis(500));
     }
 
     #[test]

@@ -424,7 +424,85 @@ export interface RunSummary {
   error: LauncherError | null;
   /** The run's output log could not be written; output was kept in memory. */
   loggingDegraded: boolean;
+  /** The Unix signal that ended the game, if any. */
+  signal: number | null;
+  /** Why the game stopped, when it crashed (D-059). */
+  diagnosis: CrashDiagnosis | null;
 }
+
+/** Known causes of a crash, most specific first (D-059). */
+export type CrashKind =
+  | 'jvm_option'
+  | 'heap_unavailable'
+  | 'java_too_old'
+  | 'java_too_new'
+  | 'missing_dependency'
+  | 'wrong_dependency_version'
+  | 'wrong_minecraft_version'
+  | 'loader_too_old'
+  | 'incompatible_mods'
+  | 'duplicate_mods'
+  | 'mod_for_other_loader'
+  | 'corrupt_mod_file'
+  | 'corrupt_config'
+  | 'mixin_failed'
+  | 'mod_failed_to_load'
+  | 'optifine_conflict'
+  | 'out_of_memory'
+  | 'pack_needs_memory'
+  | 'system_memory'
+  | 'killed'
+  | 'opengl_unsupported'
+  | 'graphics_driver'
+  | 'overlay'
+  | 'native_crash'
+  | 'missing_native_library'
+  | 'broken_installation'
+  | 'disk_full'
+  | 'file_access'
+  | 'world_load_failed'
+  | 'ticking_entity'
+  | 'ticking_block_entity'
+  | 'server_hang'
+  | 'debug_crash'
+  | 'game_crash'
+  | 'terminated'
+  | 'console_question'
+  | 'unknown';
+
+/** What the player can do about a crash from the launcher. */
+export type CrashAction =
+  | 'open_mods'
+  | 'open_config'
+  | 'open_crash_reports'
+  | 'open_game_folder'
+  | 'memory_settings'
+  | 'java_settings'
+  | 'loader_settings'
+  | 'repair'
+  | 'backups';
+
+export interface CrashNote {
+  kind: CrashKind;
+  details: Record<string, string>;
+}
+
+export interface CrashDiagnosis {
+  kind: CrashKind;
+  /** Values for the explanation: mods, versions, files, Java versions. */
+  details: Record<string, string>;
+  /** The lines that show the cause, as the game printed them. */
+  evidence: string[];
+  /** Mods the crash report or stack trace points at. */
+  suspects: string[];
+  /** The crash report or JVM error file of this run, by file name. */
+  report: string | null;
+  actions: CrashAction[];
+  notes: CrashNote[];
+}
+
+/** A folder inside an installation's game folder that the launcher opens. */
+export type GameFolder = 'mods' | 'config' | 'crash-reports' | 'logs';
 
 export type LifecycleScenario =
   'immediate_exit' | 'short' | 'long' | 'crash' | 'inherited_pipe' | 'noisy';

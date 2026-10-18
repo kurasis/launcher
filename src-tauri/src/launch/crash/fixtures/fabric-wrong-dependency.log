@@ -1,0 +1,93 @@
+    <log4j:Message><![CDATA[Fix: add [], remove [], replace [[enchanted 3.1.14] -> add:enchanted 1 ([(-∞,∞)]), [lambdynlights 4.4.0+1.20.1] -> add:lambdynlights 1 ([(-∞,∞)]), [jamlib 1.3.6+1.20.1-patch.1] -> add:jamlib 1 ([(-∞,∞)]), [yet_another_config_lib_v3 3.6.6+1.20.1-fabric, yet_another_config_lib_v3 3.6.6+1.20.1-fabric] -> add:yet_another_config_lib_v3 1 ([(-∞,∞)]), [adventurez 1.4.20] -> add:adventurez 1 ([(-∞,∞)]), [fragmentum 5.2.0] -> add:fragmentum 5.0.0 ([[5.0.0,∞)]), [mutantmonsters 8.0.8] -> add:mutantmonsters 8.0.8 ([[8.0.8,∞)]), [reborncore 5.8.14, reborncore 5.8.14] -> add:reborncore 5.8.14 ([(-∞,∞)]), [createaddition 1.3.4] -> add:createaddition 1 ([(-∞,∞)]), [geckolib 4.8.4] -> add:geckolib 4.8.0 ([[4.8.0,∞)]), [presencefootsteps 1.10.1+1.20.1] -> add:presencefootsteps 1 ([(-∞,∞)]), [fakerlib 0.1.5] -> add:fakerlib 0.1.5 ([[0.1.5,∞)]), [fabric-api 0.83.0+1.20.1] -> add:fabric 0.92.3+1.20.1 ([[0.92.2+1.20.1,∞)]), [libz 1.0.3, libz 1.0.2] -> add:libz 1 ([(-∞,∞)]), [thermoo 2.3.3] -> add:thermoo 1 ([(-∞,∞)]), [create 6.0.8.1+build.1744-mc1.20.1] -> add:create 6.0.8 ([[6.0.8,∞)]), [railways 1.7.3+fabric-mc1.20.1] -> add:railways 1 ([(-∞,∞)]), [botania 1.20.1-456-FABRIC] -> add:botania 1 ([(-∞,∞)]), [soulsweapons 1.3.1-1.20.1-fabric] -> add:soulsweapons 1 ([(-∞,∞)]), [techreborn 5.8.14] -> add:techreborn 1 ([(-∞,∞)]), [tiered 1.2.0] -> add:tiered 1 ([(-∞,∞)]), [fabric-renderer-api-v1 3.0.1+b3afc78b82] -> add:fabric-renderer-api-v1 3.2.0 ([[3.2.0,∞)]), [testosterone 2.0.4] -> add:testosterone 1 ([(-∞,∞)]), [bettertrims 2.3.2] -> add:bettertrims 1 ([(-∞,∞)]), [puzzleslib 8.1.33] -> add:puzzleslib 8.1.5 ([[8.0.0,∞)]), [promenade 4.1.1] -> add:promenade 1 ([(-∞,∞)])]]]></log4j:Message>
+  </log4j:Event>
+  <log4j:Event logger="FabricLoader" timestamp="1792325282500" level="ERROR" thread="main">
+    <log4j:Message><![CDATA[Incompatible mods found!]]></log4j:Message>
+    <log4j:Throwable><![CDATA[net.fabricmc.loader.impl.FormattedException: Some of your mods are incompatible with the game or each other!
+A potential solution has been determined, this may resolve your problem:
+	 - Replace mod 'Enchanted' (enchanted) 3.1.14 with any version that is compatible with:
+		 - fabric-api 0.83.0+1.20.1
+		 - fabric, version 0.92.2+1.20.1 or later
+		 - geckolib, version 4.8.0 or later
+	 - Replace mod 'LambDynamicLights' (lambdynlights) 4.4.0+1.20.1 with any version that is compatible with:
+		 - fabric-lifecycle-events-v1 2.2.20+b3afc78b77
+		 - fabric-resource-conditions-api-v1 2.3.4+b3afc78b82
+	 - Replace mod 'JamLib' (jamlib) 1.3.6+1.20.1-patch.1 with any version that is compatible with:
+		 - fabric-api 0.83.0+1.20.1
+	 - Replace mod 'YetAnotherConfigLib' (yet_another_config_lib_v3) 3.6.6+1.20.1-fabric and mod 'YetAnotherConfigLib' (yet_another_config_lib_v3) 3.6.6+1.20.1-fabric with mod 'YetAnotherConfigLib' (yet_another_config_lib_v3), any version.
+	 - Replace mod 'AdventureZ' (adventurez) 1.4.20 with any version that is compatible with:
+		 - fabric-api 0.83.0+1.20.1
+	 - Replace mod 'Fragmentum' (fragmentum) 5.2.0 with version 5.0.0 or later that is compatible with:
+		 - fabric-api 0.83.0+1.20.1
+	 - Replace mod 'Mutant Monsters' (mutantmonsters) 8.0.8 with version 8.0.8 or later that is compatible with:
+		 - fabric-api 0.83.0+1.20.1
+		 - puzzleslib, version 8.0.0 or later
+	 - Replace mod 'Reborn Core' (reborncore) 5.8.14 and mod 'Reborn Core' (reborncore) 5.8.14 with mod 'Reborn Core' (reborncore), any version.
+	 - Replace mod 'Create Crafts & Additions' (createaddition) 1.3.4 with any version that is compatible with:
+		 - fabric, version 0.92.2+1.20.1 or later
+		 - create, version 6.0.8 or later
+	 - Replace mod 'GeckoLib 4' (geckolib) 4.8.4 with version 4.8.0 or later that is compatible with:
+		 - fabric-api 0.83.0+1.20.1
+	 - Replace mod 'Presence Footsteps' (presencefootsteps) 1.10.1+1.20.1 with any version that is compatible with:
+		 - fabric-api 0.83.0+1.20.1
+	 - Replace mod 'fakerlib' (fakerlib) 0.1.5 with version 0.1.5 or later that is compatible with:
+		 - fabric-api 0.83.0+1.20.1
+	 - Replace mod 'Fabric API' (fabric-api) 0.83.0+1.20.1 with mod 'Fabric API' (fabric-api), version 0.92.2+1.20.1 or later.
+	 - Replace mod 'LibZ' (libz) 1.0.2 and mod 'LibZ' (libz) 1.0.3 with mod 'LibZ' (libz), any version.
+	 - Replace mod 'Thermoo' (thermoo) 2.3.3 with any version that is compatible with:
+		 - fabric-api 0.83.0+1.20.1
+	 - Replace mod 'Create' (create) 6.0.8.1+build.1744-mc1.20.1 with version 6.0.8 or later that is compatible with:
+		 - fabric-api 0.83.0+1.20.1
+		 - porting_lib_accessors 2.3.4+1.20.1
+		 - porting_lib_base 2.3.4+1.20.1
+		 - porting_lib_entity 2.3.4+1.20.1
+		 - porting_lib_extensions 2.3.4+1.20.1
+		 - porting_lib_transfer 2.3.4+1.20.1
+		 - porting_lib_models 2.3.4+1.20.1
+		 - railways, any version
+	 - Replace mod 'Create: Steam 'n' Rails' (railways) 1.7.3+fabric-mc1.20.1 with any version that is compatible with:
+		 - fabric-api 0.83.0+1.20.1
+		 - create, version 6.0.8 or later
+	 - Replace mod 'Botania' (botania) 1.20.1-456-FABRIC with any version that is compatible with:
+		 - fabric-api 0.83.0+1.20.1
+	 - Replace mod 'Marium's Soulslike Weaponry' (soulsweapons) 1.3.1-1.20.1-fabric with any version that is compatible with:
+		 - fabric, version 0.92.2+1.20.1 or later
+		 - fabric-api 0.83.0+1.20.1
+		 - geckolib, version 4.8.0 or later
+	 - Replace mod 'Tech Reborn' (techreborn) 5.8.14 with any version that is compatible with:
+		 - fabric-api 0.83.0+1.20.1
+		 - reborncore, any version
+	 - Replace mod 'Tierify' (tiered) 1.2.0 with any version that is compatible with:
+		 - fabric-api 0.83.0+1.20.1
+	 - Replace mod 'Fabric Renderer API (v1)' (fabric-renderer-api-v1) 3.0.1+b3afc78b82 with version 3.2.0 or later.
+	 - Replace mod 'Create: Testosterone' (testosterone) 2.0.4 with any version that is compatible with:
+		 - fabric-api 0.83.0+1.20.1
+		 - create, version 6.0.8 or later
+	 - Replace mod 'BetterTrims' (bettertrims) 2.3.2 with any version that is compatible with:
+		 - fabric-api 0.83.0+1.20.1
+	 - Replace mod 'Puzzles Lib' (puzzleslib) 8.1.33 with version 8.0.0 or later that is compatible with:
+		 - fabric-api 0.83.0+1.20.1
+	 - Replace mod 'Promenade' (promenade) 4.1.1 with any version that is compatible with:
+		 - fabric-api 0.83.0+1.20.1
+More details:
+	 - Mod 'Accessories' (accessories) 1.0.0-beta.48+1.20.1 requires version 0.92.0 or later of mod 'Fabric API' (fabric-api), but only the wrong version is present: 0.83.0+1.20.1!
+	 - Mod 'AdventureZ' (adventurez) 1.4.20 requires version 0.86.0+1.20.1 or later of mod 'Fabric API' (fabric-api), but only the wrong version is present: 0.83.0+1.20.1!
+	 - Mod 'Applied Energistics 2' (ae2) 15.4.11 requires version 0.88.1 or later of mod 'Fabric API' (fabric-api), but only the wrong version is present: 0.83.0+1.20.1!
+	 - Mod 'AlmostUnified' (almostunified) 1.20.1-0.11.0 requires version 0.83.1 or later of mod 'Fabric API' (fabric-api), but only the wrong version is present: 0.83.0+1.20.1!
+	 - Mod 'Moonlight' (moonlight) 1.20-2.16.36 requires version 0.86.0 or later of mod 'Fabric API' (fabric-api), but only the wrong version is present: 0.83.0+1.20.1!
+	 - Mod 'Botania' (botania) 1.20.1-456-FABRIC requires version 0.92 or later of mod 'Fabric API' (fabric-api), but only the wrong version is present: 0.83.0+1.20.1!
+	 - Mod 'Fragmentum' (fragmentum) 5.2.0 requires version 0.92.1+1.20.1 or later of mod 'Fabric API' (fabric-api), but only the wrong version is present: 0.83.0+1.20.1!
+	 - Mod 'GeckoLib 4' (geckolib) 4.8.4 requires version 0.92.0+1.20.1 or later of mod 'Fabric API' (fabric-api), but only the wrong version is present: 0.83.0+1.20.1!
+	 - Mod 'Spell Engine' (spell_engine) 0.15.12+1.20.1 requires version 0.92.2+1.20.1 or later of mod 'Fabric API' (fabric-api), but only the wrong version is present: 0.83.0+1.20.1!
+	 - Mod 'Puzzles Lib' (puzzleslib) 8.1.33 requires version 0.92.0 or later of mod 'Fabric API' (fabric-api), but only the wrong version is present: 0.83.0+1.20.1!
+	 - Mod 'BetterTrims' (bettertrims) 2.3.2 requires version 0.91.0 or later of mod 'Fabric API' (fabric-api), but only the wrong version is present: 0.83.0+1.20.1!
+	 - Mod 'Patchouli' (patchouli) 1.20.1-85-FABRIC requires version 0.87.0 or later of mod 'Fabric API' (fabric-api), but only the wrong version is present: 0.83.0+1.20.1!
+	 - Mod 'Create' (create) 6.0.8.1+build.1744-mc1.20.1 requires version 0.92.6+1.20.1 or later of mod 'Fabric API' (fabric-api), but only the wrong version is present: 0.83.0+1.20.1!
+	 - Mod 'Flywheel' (flywheel) 1.0.5+1.20.1.build.264 requires version 0.86.0 or later of mod 'Fabric API' (fabric-api), but only the wrong version is present: 0.83.0+1.20.1!
+	 - Mod 'Ponder' (ponder) 1.0.91 requires version 0.92.3+1.20.1 or later of mod 'Fabric API' (fabric-api), but only the wrong version is present: 0.83.0+1.20.1!
+	 - Mod 'Porting Lib Accessors' (porting_lib_accessors) 2.3.13+1.20.1 requires version 0.91.0+1.20.1 or later of mod 'Fabric API' (fabric-api), but only the wrong version is present: 0.83.0+1.20.1!
+	 - Mod 'Porting Lib Base' (porting_lib_base) 2.3.13+1.20.1 requires version 0.91.0+1.20.1 or later of mod 'Fabric API' (fabric-api), but only the wrong version is present: 0.83.0+1.20.1!
+	 - Mod 'Porting Lib Entity' (porting_lib_entity) 2.3.13+1.20.1 requires version 0.91.0+1.20.1 or later of mod 'Fabric API' (fabric-api), but only the wrong version is present: 0.83.0+1.20.1!
+	 - Mod 'Porting Lib Extensions' (porting_lib_extensions) 2.3.13+1.20.1 requires version 0.91.0+1.20.1 or later of mod 'Fabric API' (fabric-api), but only the wrong version is present: 0.83.0+1.20.1!
+	 - Mod 'Porting Lib Networking' (porting_lib_networking) 2.3.13+1.20.1 requires version 0.91.0+1.20.1 or later of mod 'Fabric API' (fabric-api), but only the wrong version is present: 0.83.0+1.20.1!
+	 - Mod 'Porting Lib Obj Loader' (porting_lib_obj_loader) 2.3.13+1.20.1 requires version 0.91.0+1.20.1 or later of mod 'Fabric API' (fabric-api), but only the wrong version is present: 0.83.0+1.20.1!
+	 - Mod 'Porting Lib Tags' (porting_lib_tags) 3.0 requires version 0.91.0+1.20.1 or later of mod 'Fabric API' (fabric-api), but only the wrong version is present: 0.83.0+1.20.1!

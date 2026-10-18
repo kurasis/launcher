@@ -282,6 +282,217 @@
         "modded": "مُحمِّل تعديلات مع {mods, plural, =0 {لا تعديلات بعد} one {تعديل واحد} two {تعديلين} few {# تعديلات} many {# تعديلًا} other {# تعديل}}"
       }
     },
+    "crash": {
+      "title": "لماذا توقفت اللعبة",
+      "summary": "توقفت اللعبة: {title}. السبب وما يجب فعله معروضان مع التثبيت.",
+      "cause": "السبب",
+      "fix": "ما يجب فعله",
+      "evidence": "الأسطر التي تُظهر ذلك",
+      "suspects": "التعديلات التي يشير إليها تقرير الانهيار: {mods}",
+      "report": "تقرير الانهيار: {file}",
+      "exitCode": "رمز الخروج {code}",
+      "signal": "الإشارة {signal}",
+      "notes": "وُجد أيضًا",
+      "repairStarted": "بدأ الإصلاح.",
+      "actions": {
+        "open_mods": "فتح مجلد التعديلات",
+        "open_config": "فتح مجلد الإعدادات",
+        "open_crash_reports": "فتح تقارير الانهيار",
+        "open_game_folder": "فتح مجلد اللعبة",
+        "memory_settings": "تغيير الذاكرة",
+        "java_settings": "تغيير Java",
+        "loader_settings": "تغيير إصدار المُحمِّل",
+        "repair": "إصلاح",
+        "backups": "فتح النسخ الاحتياطية"
+      },
+      "kinds": {
+        "jvm_option": {
+          "title": "لم تقبل Java أحد خيارات JVM",
+          "cause": "لا تفهم Java هذه خيار JVM ‏{option}، لذلك لم تبدأ اللعبة.",
+          "fix": "احذفه أو صحّحه في خيارات JVM للتثبيت، أو اختر Java تعرفه."
+        },
+        "heap_unavailable": {
+          "title": "تعذّر على Java حجز الذاكرة",
+          "cause": "تعذّر على Java تخصيص {memory, number, ::group-off} MiB للعبة. الذاكرة الحرة في الحاسوب أقل من ذلك، أو أن Java بنظام 32 بت.",
+          "fix": "قلّل ذاكرة التثبيت أو أغلق البرامج الأخرى. Java الخاصة بالمشغّل بنظام 64 بت."
+        },
+        "java_too_old": {
+          "title": "تحتاج اللعبة إلى Java أحدث",
+          "cause": "{required, select, none {تحتاج اللعبة أو أحد تعديلاتها إلى Java أحدث} other {تحتاج اللعبة أو أحد تعديلاتها إلى Java ‏{required}}}{found, select, none {.} other {، لكن Java ‏{found} هي التي شغّلتها.}}",
+          "fix": "اختر Java الخاصة بالمشغّل لهذا التثبيت؛ فهي تختار الإصدار الذي تحتاجه اللعبة. وإن اخترت Java خاصة بك، فاختر إصدارًا أحدث."
+        },
+        "java_too_new": {
+          "title": "تحتاج اللعبة إلى Java أقدم",
+          "cause": "صُنع إصدار Minecraft أو مُحمِّل التعديلات هذا لـ Java أقدم{found, select, none {} other { ولا يعمل على Java ‏{found}}}. يحتاج Minecraft 1.16 وما قبله مع مُحمِّلات التعديلات عادةً إلى Java 8.",
+          "fix": "اختر Java الخاصة بالمشغّل لهذا التثبيت، أو Java 8 خاصة بك."
+        },
+        "missing_dependency": {
+          "title": "يحتاج تعديل إلى تعديل آخر",
+          "cause": "يحتاج {mod} إلى {dependency}{required, select, none {} other { ({required})}}، وهو غير مثبّت.{count, plural, =1 {} other { عدد المتطلبات الناقصة إجمالًا: #.}}",
+          "fix": "أضف {dependency} المناسب لإصدار Minecraft ومُحمِّل التعديلات هذين إلى مجلد التعديلات، أو احذف {mod}."
+        },
+        "wrong_dependency_version": {
+          "title": "يحتاج تعديل إلى إصدار آخر من تعديل",
+          "cause": "يحتاج {mod} إلى {dependency}{required, select, none {} other { ‏{required}}}{found, select, none {} other {، لكن المثبّت هو {found}}}.{count, plural, =1 {} other { عدد المتطلبات غير المستوفاة إجمالًا: #.}}",
+          "fix": "حدّث {dependency} في مجلد التعديلات إلى الإصدار الذي يطلبه {mod}، أو استخدم إصدارًا أقدم من {mod}."
+        },
+        "wrong_minecraft_version": {
+          "title": "صُنع تعديل لإصدار آخر من Minecraft",
+          "cause": "يحتاج {mod} إلى Minecraft ‏{required}{found, select, none {} other {، لكن هذا التثبيت هو {found}}}.",
+          "fix": "نزّل ملف {mod} المصنوع لإصدار Minecraft هذا، أو احذفه."
+        },
+        "loader_too_old": {
+          "title": "يحتاج تعديل إلى مُحمِّل أحدث",
+          "cause": "{mod, select, none {يحتاج تعديل} other {يحتاج {mod}}} إلى إصدار أحدث من {dependency, select, none {مُحمِّل التعديلات} other {{dependency}}}{required, select, none {} other { ({required})}}{found, select, none {} other {؛ وفي هذا التثبيت {found}}}.",
+          "fix": "اختر إصدارًا أحدث من المُحمِّل في إعدادات التثبيت، أو استخدم إصدارًا أقدم من التعديل."
+        },
+        "incompatible_mods": {
+          "title": "تعديلان لا يعملان معًا",
+          "cause": "لا يعمل {mod} مع {dependency}.",
+          "fix": "احذف أحدهما من مجلد التعديلات."
+        },
+        "duplicate_mods": {
+          "title": "تعديل مثبّت مرتين",
+          "cause": "{modId, select, none {التعديل نفسه مثبّت أكثر من مرة.} other {التعديل {modId} مثبّت أكثر من مرة{files, select, none {.} other {: {files}.}}}}",
+          "fix": "أبقِ ملفًا واحدًا منه فقط، الأحدث، في مجلد التعديلات."
+        },
+        "mod_for_other_loader": {
+          "title": "صُنع تعديل لمُحمِّل آخر",
+          "cause": "{file, select, none {بعض الملفات في مجلد التعديلات {loader, select, none {مصنوعة لمُحمِّل آخر} other {تعديلات لـ {loader}}}، لذلك يتخطاها مُحمِّل هذا التثبيت.} other {{file} {loader, select, none {مصنوع لمُحمِّل آخر} other {تعديل لـ {loader}}}، لذلك يتخطاه مُحمِّل هذا التثبيت.}}",
+          "fix": "احذفه، أو نزّل الإصدار المصنوع لمُحمِّل هذا التثبيت."
+        },
+        "corrupt_mod_file": {
+          "title": "ملف تالف",
+          "cause": "{file, select, none {أحد ملفات اللعبة أو التعديلات} other {الملف {file}}} تالف أو غير مكتمل، غالبًا بعد تنزيل متقطع.",
+          "fix": "{place, select, mods {احذفه من مجلد التعديلات ونزّله من جديد.} other {أصلح التثبيت لتنزيله من جديد.}}"
+        },
+        "corrupt_config": {
+          "title": "ملف إعدادات تالف",
+          "cause": "{file, select, none {تعذّرت قراءة ملف إعدادات} other {تعذّرت قراءة ملف الإعدادات {file}}}: إنه تالف أو فارغ، غالبًا بعد إيقاف الحاسوب أثناء تشغيل اللعبة.",
+          "fix": "احذفه من مجلد الإعدادات (config)؛ وستنشئه اللعبة من جديد بالإعدادات الافتراضية."
+        },
+        "mixin_failed": {
+          "title": "تعذّر على تعديل تغيير شيفرة اللعبة",
+          "cause": "{modId, select, none {فشل تعديل} other {فشل التعديل {modId}}} في تطبيق تغييراته على اللعبة (Mixin). عادةً يكون مصنوعًا لإصدار آخر من Minecraft أو من تعديل آخر، أو يتعارض مع تعديل آخر.",
+          "fix": "حدّث هذا التعديل أو احذفه؛ تذكر صفحته الإصدار المناسب لـ Minecraft والمُحمِّل هذين."
+        },
+        "mod_failed_to_load": {
+          "title": "فشل تعديل في البدء",
+          "cause": "{modId, select, none {واجه تعديل} other {واجه التعديل {modId}}} خطأً عندما شغّله المُحمِّل.",
+          "fix": "حدّثه أو احذفه. وإن كان الانهيار جديدًا، فاحذف آخر التعديلات التي أضفتها."
+        },
+        "optifine_conflict": {
+          "title": "لا يعمل OptiFine هنا",
+          "cause": "لا يعمل OptiFine مع إصدار المُحمِّل هذا أو مع تعديلات أخرى، مثل Sodium أو Embeddium أو Rubidium.",
+          "fix": "احذف OptiFine، أو استخدم إصدار OptiFine المصنوع لإصدار Forge هذا بالضبط. ومع Fabric استخدم Sodium وIris بدلًا منه."
+        },
+        "out_of_memory": {
+          "title": "نفدت ذاكرة اللعبة",
+          "cause": "استهلكت اللعبة كل الـ {memory, number, ::group-off} MiB المخصصة لها.",
+          "fix": "خصّص للتثبيت ذاكرة أكبر: {suggested, number, ::group-off} MiB بداية جيدة. تحتاج التعديلات الكثيرة أو الظلال (shaders) أو مسافة العرض الطويلة إلى المزيد."
+        },
+        "pack_needs_memory": {
+          "title": "تطلب حزمة التعديلات ذاكرة أكبر",
+          "cause": "{required, select, none {تحتاج حزمة التعديلات إلى ذاكرة أكبر مما يعطيه هذا التثبيت للعبة.} other {تحتاج حزمة التعديلات إلى {required} MiB على الأقل، لكن هذا التثبيت يعطي اللعبة {memory} MiB.}}",
+          "fix": "{required, select, none {خصّص للتثبيت ذاكرة أكبر في إعداداته، ثم ابدأ من جديد.} other {خصّص للتثبيت {required} MiB على الأقل في إعداداته، ثم ابدأ من جديد.}}"
+        },
+        "system_memory": {
+          "title": "نفدت ذاكرة الحاسوب",
+          "cause": "تعذّر على Java الحصول على ذاكرة من النظام. البرامج الأخرى تستخدم الباقي، أو أن الـ {memory, number, ::group-off} MiB المخصصة للعبة لا تترك ما يكفي لكل شيء آخر.",
+          "fix": "أغلق البرامج الأخرى أو قلّل ذاكرة التثبيت. وفي Windows يساعد أيضًا تكبير ملف ترحيل الصفحات."
+        },
+        "killed": {
+          "title": "أُنهيت اللعبة قسرًا",
+          "cause": "أنهى النظام أو برنامج آخر اللعبة فورًا. في Linux يكون هذا عادةً مُنهي نفاد الذاكرة (OOM killer) عندما تنفد ذاكرة الحاسوب.",
+          "fix": "أغلق البرامج الأخرى أو قلّل ذاكرة التثبيت، ثم ابدأ من جديد."
+        },
+        "opengl_unsupported": {
+          "title": "لا يوفّر برنامج تشغيل الرسوميات OpenGL مناسبًا",
+          "cause": "تعذّر على اللعبة فتح نافذتها لأن برنامج تشغيل الرسوميات لا يوفّر إصدار OpenGL الذي يحتاجه Minecraft{error, select, none {} other { (خطأ GLFW ‏{error})}}.",
+          "fix": "ثبّت أحدث برنامج تشغيل من الشركة المصنّعة لبطاقة الرسوميات (AMD أو Intel أو NVIDIA)، لا الذي اختاره Windows. وعلى الحاسوب المحمول شغّل Java على بطاقة الرسوميات المنفصلة."
+        },
+        "graphics_driver": {
+          "title": "انهار برنامج تشغيل الرسوميات",
+          "cause": "انهارت اللعبة داخل برنامج تشغيل الرسوميات{vendor, select, amd { من AMD} intel { من Intel} nvidia { من NVIDIA} mesa { Mesa} other {}} ({module}).",
+          "fix": "حدّث برنامج تشغيل الرسوميات أو أعد تثبيته من موقع الشركة المصنّعة. قد تتسبب فيه الظلال والتراكبات أيضًا: جرّب بدونها."
+        },
+        "overlay": {
+          "title": "تسبب تراكب في انهيار اللعبة",
+          "cause": "{program, select, none {تسبب برنامج يرسم فوق الألعاب} other {تسبب {program}، وهو برنامج يرسم فوق الألعاب،}} في انهيار اللعبة.",
+          "fix": "أوقف التراكبات وبرامج التسجيل (RivaTuner أو MSI Afterburner، وتراكب Discord، والتقاط الألعاب في OBS، وD3DGear، وتراكب NVIDIA) ثم ابدأ من جديد."
+        },
+        "native_crash": {
+          "title": "انهارت اللعبة خارج Java",
+          "cause": "انهارت اللعبة في شيفرة أصلية{module, select, none {} other { ({module})}}{signal, select, none {} other {، {signal}}}. الأسباب المعتادة هي برامج تشغيل الرسوميات أو التراكبات أو برامج مكافحة الفيروسات أو Java تالفة.",
+          "fix": "حدّث برنامج تشغيل الرسوميات، وأوقف التراكبات، وأصلح التثبيت. التفاصيل في ملف خطأ JVM ‏(hs_err) في مجلد اللعبة."
+        },
+        "missing_native_library": {
+          "title": "مكتبة من مكتبات اللعبة مفقودة",
+          "cause": "تعذّر على اللعبة تحميل مكتبتها الأصلية{library, select, none {} other { {library}}}.",
+          "fix": "أصلح التثبيت لتنزيلها من جديد. تحذف برامج مكافحة الفيروسات هذه الملفات أحيانًا."
+        },
+        "broken_installation": {
+          "title": "ملفات اللعبة غير مكتملة",
+          "cause": "ملفات تحتاجها اللعبة أو Java مفقودة أو تالفة.",
+          "fix": "أصلح التثبيت."
+        },
+        "disk_full": {
+          "title": "القرص ممتلئ",
+          "cause": "تعذّر على اللعبة كتابة ملف لأنه لا توجد مساحة حرة على القرص.",
+          "fix": "حرّر مساحة على القرص الذي يحمل بيانات المشغّل، ثم ابدأ من جديد."
+        },
+        "file_access": {
+          "title": "تعذّر استخدام ملف",
+          "cause": "{file, select, none {ملف} other {الملف {file}}} مقفل من برنامج آخر أو غير مسموح بقراءته أو كتابته.",
+          "fix": "أغلق البرامج التي قد تستخدمه (نسخة أخرى من اللعبة، أو برنامج نسخ احتياطي أو مزامنة، أو برنامج مكافحة فيروسات) ثم ابدأ من جديد."
+        },
+        "world_load_failed": {
+          "title": "تعذّر تحميل العالم",
+          "cause": "فشلت اللعبة أثناء قراءة عالم ({description}).",
+          "fix": "استعد العالم من نسخة احتياطية. وإن حُذف تعديل أو حُدّث، فأعد الإصدار الذي صُنع به العالم."
+        },
+        "ticking_entity": {
+          "title": "كيان يُفسد العالم",
+          "cause": "{entity, select, none {كيان} other {الكيان {entity}}}{position, select, none {} other { في {position}}} يتسبب في انهيار اللعبة كلما تحدّث.",
+          "fix": "استعد العالم من نسخة احتياطية، أو حدّث التعديل الذي يضيف هذا الكيان أو احذفه."
+        },
+        "ticking_block_entity": {
+          "title": "كتلة تُفسد العالم",
+          "cause": "{block, select, none {كتلة} other {الكتلة {block}}}{position, select, none {} other { في {position}}} تتسبب في انهيار اللعبة كلما تحدّثت.",
+          "fix": "استعد العالم من نسخة احتياطية، أو حدّث التعديل الذي يضيف هذه الكتلة أو احذفه."
+        },
+        "server_hang": {
+          "title": "تجمّدت اللعبة",
+          "cause": "توقفت اللعبة عن الاستجابة{seconds, select, none {} other { لمدة {seconds} ثانية}} فأنهاها مراقبها. السبب المباني الكبيرة أو كثرة التعديلات أو قلة الذاكرة.",
+          "fix": "خصّص للعبة ذاكرة أكبر وحدّث التعديلات المذكورة في تقرير الانهيار أو احذفها. وإن كان السبب عالمًا واحدًا، فاستعده من نسخة احتياطية."
+        },
+        "debug_crash": {
+          "title": "انهيار بالضغط على F3 + C",
+          "cause": "بدأ الانهيار عمدًا بالضغط المطوّل على F3 + C.",
+          "fix": "لا شيء معطّل. الضغط على F3 + C عشر ثوانٍ يُنهي اللعبة لاختبار الانهيار."
+        },
+        "game_crash": {
+          "title": "انهارت اللعبة",
+          "cause": "كتبت اللعبة تقرير انهيار: «{description}»{exception, select, none {.} other {: {exception}}}",
+          "fix": "افتح تقرير الانهيار لمعرفة التفاصيل. وإن ذُكرت تعديلات هنا، فحدّثها أو احذفها أولًا."
+        },
+        "terminated": {
+          "title": "أنهى برنامج آخر اللعبة",
+          "cause": "طلب برنامج آخر من اللعبة التوقف؛ ولم يكن ذلك زر الإيقاف في المشغّل.",
+          "fix": "إن لم تكن أنت، فابحث عن برنامج يُنهي البرامج الأخرى، ثم ابدأ من جديد."
+        },
+        "console_question": {
+          "title": "انتظرت اللعبة إجابة لم تستطع الحصول عليها",
+          "cause": "طرحت اللعبة سؤالًا في نافذة طرفية لا يستطيع المشغّل عرضها، وظلت تكرره. فأنهاها المشغّل.",
+          "fix": "اقرأ الأسطر أدناه: فهي تذكر المشكلة عادةً، مثل ملف تالف أو ذاكرة غير كافية. أصلحها ثم ابدأ من جديد."
+        },
+        "unknown": {
+          "title": "خرجت اللعبة بخطأ",
+          "cause": "{exitCode, select, none {توقفت اللعبة} other {خرجت اللعبة بالرمز {exitCode}}} ولم تطبع سببًا يعرفه المشغّل.",
+          "fix": "انظر إلى المخرجات أدناه وتقارير الانهيار. وإن بدأ ذلك بعد تغيير، فتراجع عنه: احذف آخر التعديلات أو الخيارات التي أضفتها."
+        }
+      }
+    },
     "deleteInstance": {
       "delete": "حذف التثبيت",
       "confirm": "حذف «{name}»؟",
@@ -1063,6 +1274,10 @@
     "The launcher sets {option} itself; window size and fullscreen are separate settings.": "يحدد المشغّل {option} بنفسه؛ حجم النافذة وملء الشاشة إعدادان منفصلان.",
     "The settings were written by a newer launcher and stay unchanged.": "كُتبت الإعدادات بإصدار أحدث من المشغّل وتبقى دون تغيير.",
     "Removing launcher files": "حذف ملفات المشغّل",
-    "Resetting the traffic statistics": "إعادة ضبط إحصاءات حركة البيانات"
+    "Resetting the traffic statistics": "إعادة ضبط إحصاءات حركة البيانات",
+    "Java was not allowed to start. Antivirus software or the system's security settings may block it: allow the launcher's Java, then try again.": "لم يُسمح لـ Java بالبدء. قد يحظرها برنامج مكافحة الفيروسات أو إعدادات أمان النظام: اسمح بـ Java الخاصة بالمشغّل، ثم حاول مجددًا.",
+    "The {loader} installer stopped responding and was ended. Antivirus software may hold Java: allow the launcher's data folder in it, then try again.": "توقف مُثبّت {loader} عن الاستجابة فأُنهي. قد يكون برنامج مكافحة الفيروسات يحتجز Java: اسمح بمجلد بيانات المشغّل فيه، ثم حاول مجددًا.",
+    "{context}: antivirus software blocked the file. Allow the launcher's data folder in it, then try again.": "{context}: حظر برنامج مكافحة الفيروسات الملف. اسمح بمجلد بيانات المشغّل فيه، ثم حاول مجددًا.",
+    "Files the last repair restored are missing or damaged again. Antivirus software may be removing them: allow the launcher's data folder in it, then repair the installation.": "الملفات التي استعادها آخر إصلاح مفقودة أو تالفة مجددًا. قد يكون برنامج مكافحة الفيروسات يحذفها: اسمح بمجلد بيانات المشغّل فيه، ثم أصلح التثبيت."
   }
 }

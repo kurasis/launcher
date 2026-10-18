@@ -1,0 +1,6 @@
+    <log4j:Message><![CDATA[Found mod file "neoforge-21.1.262-universal.jar" [locator: PathBasedLocator[name=neoforge, paths=[/home/player/.local/share/app.launcher/shared/maven/net/neoforged/neoforge/21.1.262/neoforge-21.1.262-universal.jar]], reader: mod manifest]]]></log4j:Message>
+  </log4j:Event>
+  <log4j:Event logger="net.neoforged.fml.loading.moddiscovery.ModDiscoverer" timestamp="1792326190156" level="WARN" thread="main">
+    <log4j:Message><![CDATA[Skipping jar. File mods/sodium-fabric-0.5.13+mc1.20.1.jar is a Fabric mod and cannot be loaded]]></log4j:Message>
+  </log4j:Event>
+  <log4j:Event logger="net.neoforged.fml.loading.moddiscovery.locators.JarInJarDependencyLocator" timestamp="1792326190266" level="INFO" thread="main">
