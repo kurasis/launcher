@@ -85,6 +85,26 @@ function setup(view: CatalogView) {
 }
 
 describe('CreateInstanceForm', () => {
+  it('fetches the version list again when the connection returns', async () => {
+    const calls: { cmd: string; args: unknown }[] = [];
+    mockIPC((cmd, args) => {
+      calls.push({ cmd, args });
+      if (cmd === 'list_supported_versions') return catalog('available');
+      return [];
+    });
+    const { rerender } = render(<CreateInstanceForm network="offline" onDone={() => undefined} />);
+    const lists = () => calls.filter((c) => c.cmd === 'list_supported_versions');
+    await waitFor(() => {
+      expect(lists()).toHaveLength(1);
+    });
+    expect(lists()[0]?.args).toMatchObject({ refresh: false });
+    rerender(<CreateInstanceForm network="online" onDone={() => undefined} />);
+    await waitFor(() => {
+      expect(lists()).toHaveLength(2);
+    });
+    expect(lists()[1]?.args).toMatchObject({ refresh: true });
+  });
+
   it('shows availability and a metadata-only download estimate', async () => {
     const calls = setup(catalog('available'));
     expect(await screen.findByText('Available from Mojang')).toBeVisible();

@@ -56,6 +56,7 @@ export function InstancesView({ snapshot, onEditSettings }: InstancesViewProps) 
       <div className={styles.column}>
         {creating && (
           <CreateInstanceForm
+            network={snapshot.network}
             onDone={() => {
               setCreating(false);
             }}
@@ -71,6 +72,7 @@ export function InstancesView({ snapshot, onEditSettings }: InstancesViewProps) 
               progress={snapshot.operationProgress}
               recentOperations={snapshot.recentOperations}
               queue={snapshot.queue}
+              network={snapshot.network}
             />
             <InstanceDetails
               key={selected.id}

@@ -165,6 +165,7 @@ export type Messages = {
       readonly interrupted: string;
     };
     readonly gameRunning: string;
+    readonly offline: string;
   };
   readonly createForm: {
     readonly title: string;
@@ -696,6 +697,11 @@ export type Messages = {
     readonly allow: string;
     readonly decline: string;
   };
+  readonly network: {
+    readonly offline: string;
+    readonly offlineHint: string;
+    readonly check: string;
+  };
   readonly downloads: {
     readonly title: string;
     readonly open: string;
@@ -713,5 +719,6 @@ export type Messages = {
     readonly recent: string;
     readonly queued: string;
     readonly addToQueue: string;
+    readonly waitingForNetwork: string;
   };
 };

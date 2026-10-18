@@ -684,6 +684,12 @@ pub fn answer_download(
         .answer_download(&request.payload.operation_id, request.payload.allow)
 }
 
+/// Checks the internet connection now instead of at the next interval (D-052).
+#[tauri::command]
+pub fn check_network(monitor: State<'_, Arc<crate::connectivity::Monitor>>) {
+    monitor.check_soon();
+}
+
 fn traffic_root(state: &AppState) -> LauncherResult<crate::storage::paths::DataRoot> {
     state.data_root().ok_or_else(|| {
         crate::error::LauncherError::new(

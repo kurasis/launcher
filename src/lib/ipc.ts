@@ -145,6 +145,7 @@ export const ipc = {
     invoke('answer_download', { request: mutation({ operationId, allow }, requestId) }).then(
       () => true as const,
     ),
+  checkNetwork: (): Promise<void> => invoke('check_network'),
   getTraffic: (): Promise<TrafficSummary> => invoke<TrafficSummary>('get_traffic'),
   resetTraffic: (requestId?: string): Promise<TrafficSummary> =>
     invoke<TrafficSummary>('reset_traffic', { request: mutation({}, requestId) }),

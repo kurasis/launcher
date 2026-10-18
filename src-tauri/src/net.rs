@@ -284,6 +284,14 @@ impl PublicClient {
         Ok(self.client.get(url.clone()))
     }
 
+    /// Starts a HEAD request (headers only) after checking the URL against the policy.
+    pub fn head(&self, url: &Url) -> LauncherResult<reqwest::RequestBuilder> {
+        if !self.policy.allows(url) {
+            return Err(untrusted_url());
+        }
+        Ok(self.client.head(url.clone()))
+    }
+
     /// Fetches a small document fully into memory with a hard size limit.
     pub async fn get_bounded(
         &self,

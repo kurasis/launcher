@@ -174,6 +174,7 @@ fn main_window_capability_grants_only_app_commands() {
             "allow-repair-instance",
             "allow-cancel-operation",
             "allow-answer-download",
+            "allow-check-network",
             "allow-get-traffic",
             "allow-reset-traffic",
             "allow-launch-game",

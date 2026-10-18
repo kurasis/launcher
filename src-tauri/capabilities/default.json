@@ -45,6 +45,7 @@
     "allow-repair-instance",
     "allow-cancel-operation",
     "allow-answer-download",
+    "allow-check-network",
     "allow-get-traffic",
     "allow-reset-traffic",
     "allow-launch-game",

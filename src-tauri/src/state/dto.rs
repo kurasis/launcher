@@ -415,6 +415,8 @@ pub struct AppSnapshot {
     pub active_operation: Option<ActiveActivity>,
     /// Installs and repairs waiting their turn, first first.
     pub queue: Vec<QueuedOperation>,
+    /// Whether the internet can be reached (D-052).
+    pub network: NetworkStatus,
     pub current_run: Option<RunSummary>,
     pub last_run: Option<RunSummary>,
     /// True in debug builds, which include the lifecycle test harness.
@@ -534,6 +536,18 @@ pub struct GameStateChanged {
     pub last_run: Option<RunSummary>,
     pub active_operation: Option<ActiveActivity>,
     pub queue: Vec<QueuedOperation>,
+    pub network: NetworkStatus,
+}
+
+/// Whether the launcher can reach the internet (D-052).
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum NetworkStatus {
+    /// Not checked yet.
+    #[default]
+    Unknown,
+    Online,
+    Offline,
 }
 
 /// An install or repair waiting for the running operation to end (D-049).

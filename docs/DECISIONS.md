@@ -1158,3 +1158,31 @@ message` plus a stack trace), with the event's level.
   not counted.
 - **Monthly limit:** 0 (the default) is no limit. The limit never blocks a download
   silently; passing it always needs the user's answer.
+
+## D-052 — Offline: the launcher and installed games work without internet; it checks again when the connection returns
+
+- **Status:** accepted (owner request, 2026-10-17) · **Affects:** a header status, the
+  installation panel, the download queue, account checks before a launch, the
+  version list
+- **What works offline:** the launcher starts and shows everything it has; installed
+  versions start, as a launch reads the version, libraries, assets and Java from the
+  install record and the shared store and downloads nothing; no-token profiles play as
+  always. The version list comes from its cached copy.
+- **Microsoft accounts offline:** when the sign-in or Minecraft services cannot be
+  reached at all (a network error, not an answer), a saved account starts without the
+  online check. It was checked for a Minecraft licence when it was signed in, as the
+  official launcher allows offline play after a sign-in. The game gets the last
+  Minecraft token of this run (it may have expired) or the placeholder `0`;
+  single-player works, multiplayer and Realms need the connection. An answer from the
+  services (no licence, a revoked sign-in, an outage reported as 5xx) is never
+  overridden. Accounts that were never signed in cannot play offline.
+- **Knowing it is offline:** a probe asks a Mojang metadata host for headers only,
+  through the usual allowlisted client: at start, every 30 seconds while offline,
+  every 5 minutes while online, after each install or repair ends, and when the user
+  presses **Check again** next to the **Offline** status in the header.
+- **Downloads offline:** installs and repairs asked for while offline wait in the
+  queue ("Waiting for the internet connection") and start by themselves when the
+  connection returns; the installation panel explains what works offline.
+- **When the connection returns:** saved accounts are refreshed and checked again,
+  queued downloads start, and an open new-installation form fetches the version list
+  again.

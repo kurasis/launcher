@@ -32,6 +32,8 @@ pub struct LaunchIdentity {
     /// Minecraft's demo mode (`--demo`). Only the debug-build test profile sets it;
     /// a signed-in account never does.
     pub notoken: bool,
+    /// An account started without the online check (D-052).
+    pub offline: bool,
 }
 
 pub struct LaunchInputs<'a> {

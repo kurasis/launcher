@@ -173,6 +173,7 @@ fn real_jvm_arguments_are_accepted_by_the_managed_java() {
         xuid: None,
         client_id: "unused".into(),
         notoken: false,
+        offline: false,
     };
     let compiled = compile::compile(&LaunchInputs {
         plan: &plan,

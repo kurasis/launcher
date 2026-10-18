@@ -435,6 +435,8 @@ export interface AppSnapshot {
   activeOperation: ActiveActivity | null;
   /** Installs and repairs waiting their turn, first first. */
   queue: QueuedOperation[];
+  /** Whether the internet can be reached (D-052). */
+  network: NetworkStatus;
   currentRun: RunSummary | null;
   lastRun: RunSummary | null;
   lifecycleHarnessAvailable: boolean;
@@ -577,7 +579,11 @@ export interface GameStateChangedEvent extends EventEnvelope {
   lastRun: RunSummary | null;
   activeOperation: ActiveActivity | null;
   queue: QueuedOperation[];
+  network: NetworkStatus;
 }
+
+/** Whether the launcher can reach the internet; `unknown` until the first check. */
+export type NetworkStatus = 'unknown' | 'online' | 'offline';
 
 export interface AccountStateChangedEvent extends EventEnvelope {
   account: AccountSummary;

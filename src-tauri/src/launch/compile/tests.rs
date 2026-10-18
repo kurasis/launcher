@@ -32,6 +32,7 @@ fn identity() -> LaunchIdentity {
         xuid: Some("2535400000000000".into()),
         client_id: "00000000-0000-0000-0000-000000000000".into(),
         notoken: false,
+        offline: false,
     }
 }
 
@@ -131,6 +132,7 @@ fn notoken_mode_adds_exactly_one_demo_argument() {
             &p,
             &LaunchIdentity {
                 notoken: true,
+                offline: false,
                 ..identity()
             },
         );

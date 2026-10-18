@@ -218,6 +218,44 @@ describe('InstallPanel', () => {
     });
   });
 
+  it('offline, plays installed versions and queues downloads for the connection', () => {
+    backend();
+    const { rerender } = render(
+      <InstallPanel
+        account={accountFixture()}
+        instance={instanceFixture({ health: 'ready' })}
+        activeOperation={null}
+        progress={null}
+        recentOperations={[]}
+        network="offline"
+      />,
+    );
+    expect(
+      screen.getByText(/No internet connection\. Installed versions still start/),
+    ).toBeVisible();
+    expect(screen.getByRole('button', { name: 'Play' })).toBeEnabled();
+    rerender(
+      <InstallPanel
+        account={accountFixture()}
+        instance={instanceFixture()}
+        activeOperation={null}
+        progress={null}
+        recentOperations={[]}
+        network="offline"
+        queue={[
+          {
+            queueId: 'q-1',
+            instanceId: instanceFixture().id,
+            kind: 'install',
+            queuedAt: '2026-10-17T00:00:00Z',
+          },
+        ]}
+      />,
+    );
+    expect(screen.getByText('Waiting for the internet connection')).toBeVisible();
+    expect(screen.getByRole('button', { name: 'Add to queue' })).toBeDisabled();
+  });
+
   it('plays as the default player or the chosen one, always labelled Play', async () => {
     const calls = backend();
     const instance = instanceFixture({ health: 'ready' });

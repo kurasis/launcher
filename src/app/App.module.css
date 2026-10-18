@@ -127,6 +127,16 @@
   gap: var(--space-3);
 }
 
+.textButton {
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--color-accent);
+  font: inherit;
+  text-decoration: underline;
+  cursor: pointer;
+}
+
 .activity {
   display: inline-flex;
   align-items: center;

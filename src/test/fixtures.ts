@@ -77,6 +77,7 @@ export function snapshotFixture(overrides: Partial<AppSnapshot> = {}): AppSnapsh
     instances: [],
     activeOperation: null,
     queue: [],
+    network: 'online',
     currentRun: null,
     lastRun: null,
     lifecycleHarnessAvailable: true,
