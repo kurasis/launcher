@@ -1864,3 +1864,43 @@ proxy that was stopped and started to cut and restore the connection.
 - **Not tested here:** installing for real on Windows and macOS (needs
   a signed release from the Package workflow and two versions); this is the
   first check to make after the key is configured.
+
+## Launcher account (D-064, stage 1)
+
+- **lapi-oauth tests (19):** registration through `/authorize` with PKCE and
+  the code exchange; the access token verifies with the published JWK for
+  `friends`; registration keeps address and country; Argon2id hashes; a code
+  needs its verifier and works once; another client is refused; refresh tokens
+  rotate and a reused one ends the session; sign-out; a wrong nick and a wrong
+  password read the same; the captcha after 3 failures from an address or 5
+  against an account, never a lockout; forms without their cookie, with
+  another cookie or an unknown request do nothing; registration without the
+  captcha does nothing; HTML, SQL, NUL bytes, Cyrillic look-alikes and mail
+  header injection in every field are refused or shown escaped; oversized and
+  broken bodies end in 4xx; `/authorize` refuses foreign redirect addresses,
+  clients, `plain` PKCE, bad challenges and states without redirecting or
+  setting a cookie; foreign-key, unsigned and junk tokens are refused; nick
+  changes (taken, invalid, case of one's own), password changes ending the
+  other sessions; confirmation and reset links work once, and a reset answers
+  the same for unknown addresses; the register limit and switched-off
+  accounts. Plus unit tests of the rules, tokens and pages.
+- **Behind the real nginx files (local, release binary):** CSP, HSTS,
+  `X-Frame-Options`, `no-store`, the `__Host-flow` cookie; without Turnstile
+  keys registration says to confirm the captcha and nothing is created; JWKS
+  served; unknown paths 404; a 50 KB body 413.
+- **In the launcher, live (2026-10-18, Linux, Xvfb, a release launcher built
+  with `LAUNCHER_ACCOUNT_URL` pointing at a local lapi-oauth):** Accounts →
+  Launcher account → Sign in opened "Launcher account: sign in" with the
+  server's page and no address bar; a wrong password was refused on the page;
+  the right one closed the window by itself and showed the account (nick,
+  "email not confirmed"); `accounts.json` held only the ID and nick (the
+  container has no credential vault, so the refresh token stayed in memory,
+  with a warning in the log). Change nick worked; `Admin` was refused as
+  reserved; Use by default made the top bar say "Plays as: … (launcher
+  account)"; Send the letter again queued a letter; Sign out ended the session
+  on the server (`revoked`) and cleared the account and the default. The
+  server's events: signed-in, nick-changed, verification-sent, signed-out,
+  with the session named "Linux (x86_64)".
+- **Not tested here:** Turnstile itself (needs the real keys and
+  oauth.lapi.sh), letters (no SMTP yet), the OS credential vaults on Windows
+  and macOS.

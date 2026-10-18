@@ -50,6 +50,7 @@ pub enum AccountProblem {
     /// The sign-in ended or was refused: sign in again.
     SignInAgain,
     NickTaken,
+    NickReserved,
     NickInvalid,
     TooMany,
     /// The system credential store did not keep the sign-in.
@@ -153,6 +154,7 @@ impl Answer {
         match (self.status, self.error()) {
             (400 | 401, _) => AccountProblem::SignInAgain,
             (409, _) => AccountProblem::NickTaken,
+            (422, "nick_reserved") => AccountProblem::NickReserved,
             (422, e) if e.starts_with("nick_") => AccountProblem::NickInvalid,
             (429, _) => AccountProblem::TooMany,
             _ => AccountProblem::Server,
@@ -640,6 +642,10 @@ mod tests {
         assert_eq!(
             answer(422, "nick_length").problem(),
             AccountProblem::NickInvalid
+        );
+        assert_eq!(
+            answer(422, "nick_reserved").problem(),
+            AccountProblem::NickReserved
         );
         assert_eq!(answer(429, "too_many").problem(), AccountProblem::TooMany);
         assert_eq!(answer(500, "").problem(), AccountProblem::Server);

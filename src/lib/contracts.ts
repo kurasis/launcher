@@ -307,7 +307,14 @@ export type ProfileRef =
 
 /** What went wrong with the launcher account. */
 export type LauncherAccountProblem =
-  'network' | 'sign_in_again' | 'nick_taken' | 'nick_invalid' | 'too_many' | 'vault' | 'server';
+  | 'network'
+  | 'sign_in_again'
+  | 'nick_taken'
+  | 'nick_reserved'
+  | 'nick_invalid'
+  | 'too_many'
+  | 'vault'
+  | 'server';
 
 /** The launcher account at oauth.lapi.sh (D-064). Never contains tokens. */
 export interface LauncherAccountView {

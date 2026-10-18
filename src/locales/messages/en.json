@@ -129,6 +129,7 @@
         "network": "oauth.lapi.sh cannot be reached. Check the connection and try again.",
         "sign_in_again": "The sign-in has ended. Sign in again.",
         "nick_taken": "This nick is taken.",
+        "nick_reserved": "This nick is reserved. Choose another.",
         "nick_invalid": "A nick has 3 to 16 letters A–Z, digits or _.",
         "too_many": "Too many attempts. Wait a little and try again.",
         "vault": "The system credential store did not keep the sign-in; it lasts until the launcher closes.",

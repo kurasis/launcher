@@ -128,6 +128,7 @@ export type Messages = {
       readonly network: string;
       readonly sign_in_again: string;
       readonly nick_taken: string;
+      readonly nick_reserved: string;
       readonly nick_invalid: string;
       readonly too_many: string;
       readonly vault: string;
