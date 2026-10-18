@@ -12,6 +12,7 @@ import { InstanceJavaForm } from './InstanceJavaForm';
 import { InstanceLoaderForm } from './InstanceLoaderForm';
 import { DataFolderSettings } from './DataFolderSettings';
 import { JavaSettings } from './JavaSettings';
+import { PrivacySettings } from './PrivacySettings';
 import { NetworkSettings } from '../network/NetworkSettings';
 import { ResetSettings } from './ResetSettings';
 import styles from './SettingsView.module.css';
@@ -32,6 +33,7 @@ const sections: SettingsSection[] = [
   'defaults',
   'network',
   'installations',
+  'privacy',
   'reset',
 ];
 const themes: Theme[] = ['system', 'light', 'dark'];
@@ -72,6 +74,7 @@ export function SettingsView({ snapshot, section, onSection, instanceId }: Setti
           )}
           {section === 'defaults' && <DefaultsForm settings={settings} memory={snapshot.memory} />}
           {section === 'network' && <NetworkSettings snapshot={snapshot} />}
+          {section === 'privacy' && <PrivacySettings settings={settings} />}
           {section === 'reset' && <ResetSettings busy={snapshot.activeOperation !== null} />}
           {section === 'installations' && (
             <InstallationsSettings

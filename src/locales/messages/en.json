@@ -492,6 +492,37 @@
         }
       }
     },
+    "reports": {
+      "offer": "Send a report to the developers",
+      "title": "Report to the developers",
+      "intro": "The report helps fix crashes and explain them better. You see everything below before anything is sent.",
+      "privacy": "Chat, player names, IP and server addresses, world names, IDs and your home folder are removed. Mod names and versions stay.",
+      "loading": "Preparing the report…",
+      "removed": "Removed: {chatLines, number} chat lines, {names, number} names, {addresses, number} addresses, {worlds, number} world names, {ids, number} IDs.",
+      "files": "Files to send",
+      "show": "Show what will be sent",
+      "note": "What were you doing? (optional)",
+      "noteHint": "For example: the game crashed when I opened a world after adding mods.",
+      "send": "Send",
+      "sending": "Sending…",
+      "cancel": "Cancel",
+      "close": "Close",
+      "sent": "Thank you! The report was sent.",
+      "queued": "The service cannot be reached now. The report is kept and sent by itself later.",
+      "helped": "Did this explanation help?",
+      "yes": "Yes",
+      "no": "No",
+      "thanks": "Thank you for the answer.",
+      "failureTitle": "The launcher had a problem",
+      "failureKinds": {
+        "panic": "An internal error stopped part of the launcher.",
+        "frontend": "An error happened in the launcher window.",
+        "unclean_exit": "The launcher did not close properly last time."
+      },
+      "failureBody": "You can send a report so the developers can fix it. You will see everything before it is sent.",
+      "review": "Review and send",
+      "dismiss": "Don't send"
+    },
     "deleteInstance": {
       "delete": "Delete installation",
       "confirm": "Delete \"{name}\"?",
@@ -521,6 +552,7 @@
         "defaults": "New installations",
         "network": "Network",
         "installations": "Installations",
+        "privacy": "Privacy",
         "reset": "Reset"
       },
       "sectionHints": {
@@ -529,6 +561,7 @@
         "defaults": "Memory, window size and fullscreen given to each new installation.",
         "network": "Metered connections and the traffic the launcher downloads.",
         "installations": "Memory, window, fullscreen, Minecraft arguments, mod loader version and Java of an existing installation.",
+        "privacy": "What the launcher sends to its developers, and only with your consent.",
         "reset": "Put chosen parts of the launcher back to how they were at first start."
       },
       "javaProvider": "Java runtime source",
@@ -655,6 +688,15 @@
         "busy": "Reset waits until the running operation or game ends.",
         "done": "Reset done: {installations, plural, one {# installation} other {# installations}} deleted ({backedUp} backed up first), {backups, plural, one {# backup} other {# backups}} deleted, {accounts, plural, one {# account} other {# accounts}} signed out; {size} freed."
       }
+    },
+    "privacy": {
+      "shareStats": "Share anonymous crash statistics",
+      "shareStatsHint": "After a crash, its kind, the launcher, game and loader versions and the system are counted. No logs, names or install ID are sent.",
+      "reports": "Crash reports are sent only when you press Send after reading them. They carry a random install ID so reports from one computer can be read together.",
+      "installId": "Install ID",
+      "installIdNone": "Not created yet: it appears with your first report.",
+      "newInstallId": "Make a new ID",
+      "newInstallIdHint": "With a new ID, later reports are not linked to earlier ones."
     },
     "storage": {
       "issuesTitle": "Storage notices"
@@ -1089,6 +1131,7 @@
     "Preparing the game files": "Preparing the game files",
     "Preparing the launch": "Preparing the launch",
     "Preparing the mod loader": "Preparing the mod loader",
+    "Preparing the report stopped unexpectedly.": "Preparing the report stopped unexpectedly.",
     "Preparing the sign-in callback": "Preparing the sign-in callback",
     "Reading a screenshot": "Reading a screenshot",
     "Reading accounts": "Reading accounts",
@@ -1110,9 +1153,11 @@
     "Saving settings": "Saving settings",
     "Saving the data folder choice": "Saving the data folder choice",
     "Saving the diagnostic export": "Saving the diagnostic export",
+    "Saving the failure record": "Saving the failure record",
     "Saving the installation": "Saving the installation",
     "Saving the installation record": "Saving the installation record",
     "Saving the job record failed": "Saving the job record failed",
+    "Saving the report": "Saving the report",
     "Serializing a cache document failed.": "Serializing a cache document failed.",
     "Serializing a result failed.": "Serializing a result failed.",
     "Settings are read-only because they were written by a newer launcher version or could not be read.": "Settings are read-only because they were written by a newer launcher version or could not be read.",
@@ -1150,6 +1195,7 @@
     "The file manager could not be opened.": "The file manager could not be opened.",
     "The folder dialog failed.": "The folder dialog failed.",
     "The game exited with an error. The output below may explain why.": "The game exited with an error. The output below may explain why.",
+    "The install ID could not be saved.": "The install ID could not be saved.",
     "The installation identifier is invalid.": "The installation identifier is invalid.",
     "The installation name cannot contain control characters.": "The installation name cannot contain control characters.",
     "The installation name must be 1–{max} characters.": "The installation name must be 1–{max} characters.",
@@ -1175,6 +1221,7 @@
     "The new folder cannot be inside the current data folder, or contain it.": "The new folder cannot be inside the current data folder, or contain it.",
     "The operating system did not provide a per-user application data directory.": "The operating system did not provide a per-user application data directory.",
     "The operation was cancelled.": "The operation was cancelled.",
+    "The output of this game run is no longer kept.": "The output of this game run is no longer kept.",
     "The rebuilt Java runtime differs from the recorded one.": "The rebuilt Java runtime differs from the recorded one.",
     "The rebuilt mod loader files differ from the recorded ones. Create a new installation for this loader version.": "The rebuilt mod loader files differ from the recorded ones. Create a new installation for this loader version.",
     "The request identifier is missing or malformed.": "The request identifier is missing or malformed.",
@@ -1217,6 +1264,7 @@
     "This account has not accepted the Xbox terms. Sign in at xbox.com to accept them.": "This account has not accepted the Xbox terms. Sign in at xbox.com to accept them.",
     "This account needs adult verification or has reached a time limit set for it.": "This account needs adult verification or has reached a time limit set for it.",
     "This account or profile no longer exists.": "This account or profile no longer exists.",
+    "This answer is not valid.": "This answer is not valid.",
     "This backup is damaged and cannot be restored.": "This backup is damaged and cannot be restored.",
     "This backup no longer exists.": "This backup no longer exists.",
     "This child account must be added to a Microsoft family, or a parent must allow online play.": "This child account must be added to a Microsoft family, or a parent must allow online play.",
@@ -1239,6 +1287,9 @@
     "This operation is not running.": "This operation is not running.",
     "This processor architecture is not supported on this operating system.": "This processor architecture is not supported on this operating system.",
     "This program could not be started as Java.": "This program could not be started as Java.",
+    "This report does not exist.": "This report does not exist.",
+    "This report is too large. Leave out the largest file and send it again.": "This report is too large. Leave out the largest file and send it again.",
+    "This report preview has expired. Open it again.": "This report preview has expired. Open it again.",
     "This request ID was already used for another request.": "This request ID was already used for another request.",
     "This request identifier was already used for a different request.": "This request identifier was already used for a different request.",
     "This screenshot is not a PNG image the launcher can read.": "This screenshot is not a PNG image the launcher can read.",

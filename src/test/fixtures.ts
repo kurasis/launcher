@@ -72,6 +72,8 @@ export function snapshotFixture(overrides: Partial<AppSnapshot> = {}): AppSnapsh
       metered: false,
       meteredWarnMib: 100,
       monthlyLimitMib: 0,
+      shareStats: false,
+      installId: null,
       language: 'en',
       writable: true,
     },

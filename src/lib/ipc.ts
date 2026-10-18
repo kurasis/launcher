@@ -14,6 +14,10 @@ import {
   type CatalogView,
   type ConsolePage,
   type CreateInstancePayload,
+  type Delivery,
+  type FailureSummary,
+  type ReportPreview,
+  type ReportSubject,
   type DataLocation,
   type ExportResult,
   type ExternalLink,
@@ -215,6 +219,16 @@ export const ipc = {
     invoke<LoaderVersion[]>('list_loader_versions', { kind, gameVersion }),
   requestQuit: (action: QuitAction, requestId?: string): Promise<QuitResult> =>
     invoke<QuitResult>('request_quit', { request: mutation({ action }, requestId) }),
+  listLauncherFailures: (): Promise<FailureSummary[]> =>
+    invoke<FailureSummary[]>('list_launcher_failures'),
+  dismissLauncherFailure: (id: string): Promise<void> => invoke('dismiss_launcher_failure', { id }),
+  /** What a report would send, scrubbed; nothing leaves the computer yet. */
+  previewCrashReport: (subject: ReportSubject): Promise<ReportPreview> =>
+    invoke<ReportPreview>('preview_crash_report', { subject }),
+  sendCrashReport: (previewId: string, files: string[], note: string): Promise<Delivery> =>
+    invoke<Delivery>('send_crash_report', { previewId, files, note }),
+  sendExplanationFeedback: (kind: string, signature: string, helpful: boolean): Promise<void> =>
+    invoke('send_explanation_feedback', { kind, signature, helpful }),
   /** Debug builds only; release builds have no handler for this command. */
   startLifecycleTest: (scenario: LifecycleScenario, requestId?: string): Promise<RunSummary> =>
     invoke<RunSummary>('start_lifecycle_test', { request: mutation(scenario, requestId) }),

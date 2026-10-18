@@ -1507,10 +1507,10 @@ message` plus a stack trace), with the event's level.
   versions, Minecraft version, OS, exit code, analyser version and signature, counted
   per day on the server, no install ID, no files.
 - **"Did this help?"** under an explanation sends yes or no with its cause and
-  signature (with the statistics setting, or with a report).
-- **Rules as data.** The analyser's patterns move into a signed rule bundle the
-  launcher downloads from the service, so a new mod message is explained without a
-  launcher release; the built-in rules stay the fallback.
+  signature, only when the player presses one of them; no install ID, no files.
+- **Rules as data** (not built yet, the next step). The analyser's patterns move into
+  a signed rule bundle the launcher downloads from the service, so a new mod message
+  is explained without a launcher release; the built-in rules stay the fallback.
 - **The loop.** Unexplained groups and "did not help" answers are reviewed; a
   scrubbed log becomes a fixture in `crash/fixtures`, a rule and a test.
 
@@ -1527,3 +1527,10 @@ message` plus a stack trace), with the event's level.
   user only restart the service, test and reload nginx and run the service's command
   line. After that, the "Crash service" workflow tests, builds on Debian 13 and
   deploys over SSH on every change to `main`.
+
+### Built
+
+- Stages 1 and 2, the statistics and "Did this help?" of stage 3, the service and
+  its deployment. A launcher failure is offered on the Home screen for 14 days, until
+  it is sent or declined ("Don't send"). The rule bundle of stage 3 is left for later:
+  first the reports show which rules are missing.

@@ -493,6 +493,37 @@
         }
       }
     },
+    "reports": {
+      "offer": "إرسال تقرير إلى المطوّرين",
+      "title": "تقرير إلى المطوّرين",
+      "intro": "يساعد التقرير في إصلاح الانهيارات وشرحها بشكل أفضل. ترى كل شيء أدناه قبل إرسال أي شيء.",
+      "privacy": "تُزال الدردشة وأسماء اللاعبين وعناوين IP والخوادم وأسماء العوالم والمعرّفات ومجلد المنزل. تبقى أسماء التعديلات وإصداراتها.",
+      "loading": "جارٍ تحضير التقرير…",
+      "removed": "أُزيل: أسطر دردشة {chatLines, number}، أسماء {names, number}، عناوين {addresses, number}، أسماء عوالم {worlds, number}، معرّفات {ids, number}.",
+      "files": "الملفات المرسلة",
+      "show": "عرض ما سيُرسل",
+      "note": "ماذا كنت تفعل؟ (اختياري)",
+      "noteHint": "مثلًا: انهارت اللعبة عندما فتحت عالمًا بعد إضافة تعديلات.",
+      "send": "إرسال",
+      "sending": "جارٍ الإرسال…",
+      "cancel": "إلغاء",
+      "close": "إغلاق",
+      "sent": "شكرًا! أُرسل التقرير.",
+      "queued": "لا يمكن الوصول إلى الخدمة الآن. حُفظ التقرير وسيُرسل لاحقًا تلقائيًا.",
+      "helped": "هل ساعد هذا الشرح؟",
+      "yes": "نعم",
+      "no": "لا",
+      "thanks": "شكرًا على إجابتك.",
+      "failureTitle": "واجه المشغّل مشكلة",
+      "failureKinds": {
+        "panic": "أوقف خطأ داخلي جزءًا من المشغّل.",
+        "frontend": "حدث خطأ في نافذة المشغّل.",
+        "unclean_exit": "لم يُغلق المشغّل بشكل صحيح في المرة السابقة."
+      },
+      "failureBody": "يمكنك إرسال تقرير ليصلحه المطوّرون. سترى كل شيء قبل إرساله.",
+      "review": "مراجعة وإرسال",
+      "dismiss": "عدم الإرسال"
+    },
     "deleteInstance": {
       "delete": "حذف التثبيت",
       "confirm": "حذف «{name}»؟",
@@ -522,6 +553,7 @@
         "defaults": "التثبيتات الجديدة",
         "network": "الشبكة",
         "installations": "التثبيتات",
+        "privacy": "الخصوصية",
         "reset": "إعادة الضبط"
       },
       "sectionHints": {
@@ -530,6 +562,7 @@
         "defaults": "الذاكرة وحجم النافذة وملء الشاشة لكل تثبيت جديد.",
         "network": "الاتصالات محدودة البيانات وحركة البيانات التي ينزّلها المشغّل.",
         "installations": "الذاكرة والنافذة وملء الشاشة ووسائط Minecraft وإصدار مُحمِّل التعديلات وJava لتثبيت موجود.",
+        "privacy": "ما يرسله المشغّل إلى مطوّريه، وبموافقتك فقط.",
         "reset": "أعد الأجزاء المختارة من المشغّل إلى حالتها عند التشغيل الأول."
       },
       "javaProvider": "مصدر Java",
@@ -656,6 +689,15 @@
         "busy": "تنتظر إعادة الضبط انتهاء العملية الجارية أو اللعبة.",
         "done": "تمت إعادة الضبط: حُذفت التثبيتات ({installations}، منها {backedUp} بنسخة احتياطية) والنسخ ({backups})، وسُجّل الخروج من الحسابات ({accounts})؛ تم تحرير {size}."
       }
+    },
+    "privacy": {
+      "shareStats": "مشاركة إحصاءات الانهيار المجهولة",
+      "shareStatsHint": "بعد الانهيار يُحسب نوعه وإصدارات المشغّل واللعبة والمحمّل والنظام. لا تُرسل السجلات ولا الأسماء ولا معرّف التثبيت.",
+      "reports": "لا تُرسل تقارير الانهيار إلا عند ضغطك «إرسال» بعد قراءتها. تحمل معرّف تثبيت عشوائيًا لقراءة تقارير الحاسوب نفسه معًا.",
+      "installId": "معرّف التثبيت",
+      "installIdNone": "لم يُنشأ بعد: يظهر مع أول تقرير.",
+      "newInstallId": "إنشاء معرّف جديد",
+      "newInstallIdHint": "مع معرّف جديد لا ترتبط التقارير اللاحقة بالسابقة."
     },
     "storage": {
       "issuesTitle": "ملاحظات التخزين"
@@ -1278,6 +1320,15 @@
     "Java was not allowed to start. Antivirus software or the system's security settings may block it: allow the launcher's Java, then try again.": "لم يُسمح لـ Java بالبدء. قد يحظرها برنامج مكافحة الفيروسات أو إعدادات أمان النظام: اسمح بـ Java الخاصة بالمشغّل، ثم حاول مجددًا.",
     "The {loader} installer stopped responding and was ended. Antivirus software may hold Java: allow the launcher's data folder in it, then try again.": "توقف مُثبّت {loader} عن الاستجابة فأُنهي. قد يكون برنامج مكافحة الفيروسات يحتجز Java: اسمح بمجلد بيانات المشغّل فيه، ثم حاول مجددًا.",
     "{context}: antivirus software blocked the file. Allow the launcher's data folder in it, then try again.": "{context}: حظر برنامج مكافحة الفيروسات الملف. اسمح بمجلد بيانات المشغّل فيه، ثم حاول مجددًا.",
-    "Files the last repair restored are missing or damaged again. Antivirus software may be removing them: allow the launcher's data folder in it, then repair the installation.": "الملفات التي استعادها آخر إصلاح مفقودة أو تالفة مجددًا. قد يكون برنامج مكافحة الفيروسات يحذفها: اسمح بمجلد بيانات المشغّل فيه، ثم أصلح التثبيت."
+    "Files the last repair restored are missing or damaged again. Antivirus software may be removing them: allow the launcher's data folder in it, then repair the installation.": "الملفات التي استعادها آخر إصلاح مفقودة أو تالفة مجددًا. قد يكون برنامج مكافحة الفيروسات يحذفها: اسمح بمجلد بيانات المشغّل فيه، ثم أصلح التثبيت.",
+    "Preparing the report stopped unexpectedly.": "توقف تحضير التقرير على نحو غير متوقع.",
+    "Saving the failure record": "حفظ سجل الخطأ",
+    "Saving the report": "حفظ التقرير",
+    "The install ID could not be saved.": "تعذّر حفظ معرّف التثبيت.",
+    "The output of this game run is no longer kept.": "لم يعد مخرج تشغيل اللعبة هذا محفوظًا.",
+    "This answer is not valid.": "هذه الإجابة غير صالحة.",
+    "This report does not exist.": "هذا التقرير غير موجود.",
+    "This report is too large. Leave out the largest file and send it again.": "التقرير كبير جدًا. استبعد أكبر ملف وأرسله مجددًا.",
+    "This report preview has expired. Open it again.": "انتهت صلاحية معاينة التقرير. افتحها مجددًا."
   }
 }

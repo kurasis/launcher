@@ -525,6 +525,43 @@ export type Messages = {
       };
     };
   };
+  readonly reports: {
+    readonly offer: string;
+    readonly title: string;
+    readonly intro: string;
+    readonly privacy: string;
+    readonly loading: string;
+    readonly removed: (values: {
+      chatLines: number;
+      names: number;
+      addresses: number;
+      worlds: number;
+      ids: number;
+    }) => string;
+    readonly files: string;
+    readonly show: string;
+    readonly note: string;
+    readonly noteHint: string;
+    readonly send: string;
+    readonly sending: string;
+    readonly cancel: string;
+    readonly close: string;
+    readonly sent: string;
+    readonly queued: string;
+    readonly helped: string;
+    readonly yes: string;
+    readonly no: string;
+    readonly thanks: string;
+    readonly failureTitle: string;
+    readonly failureKinds: {
+      readonly panic: string;
+      readonly frontend: string;
+      readonly unclean_exit: string;
+    };
+    readonly failureBody: string;
+    readonly review: string;
+    readonly dismiss: string;
+  };
   readonly deleteInstance: {
     readonly delete: string;
     readonly confirm: (values: { name: string | number }) => string;
@@ -554,6 +591,7 @@ export type Messages = {
       readonly defaults: string;
       readonly network: string;
       readonly installations: string;
+      readonly privacy: string;
       readonly reset: string;
     };
     readonly sectionHints: {
@@ -562,6 +600,7 @@ export type Messages = {
       readonly defaults: string;
       readonly network: string;
       readonly installations: string;
+      readonly privacy: string;
       readonly reset: string;
     };
     readonly javaProvider: string;
@@ -707,6 +746,15 @@ export type Messages = {
         size: string | number;
       }) => string;
     };
+  };
+  readonly privacy: {
+    readonly shareStats: string;
+    readonly shareStatsHint: string;
+    readonly reports: string;
+    readonly installId: string;
+    readonly installIdNone: string;
+    readonly newInstallId: string;
+    readonly newInstallIdHint: string;
   };
   readonly storage: {
     readonly issuesTitle: string;
