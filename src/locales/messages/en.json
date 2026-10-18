@@ -295,14 +295,16 @@
         "java": "Java",
         "defaults": "New installations",
         "network": "Network",
-        "installations": "Installations"
+        "installations": "Installations",
+        "reset": "Reset"
       },
       "sectionHints": {
         "general": "Language, appearance, the launcher window while you play, and where data is kept.",
         "java": "Which Java runtimes the launcher downloads for new installations.",
         "defaults": "Memory, window size and fullscreen given to each new installation.",
         "network": "Metered connections and the traffic the launcher downloads.",
-        "installations": "Memory, window, fullscreen, Minecraft arguments, mod loader version and Java of an existing installation."
+        "installations": "Memory, window, fullscreen, Minecraft arguments, mod loader version and Java of an existing installation.",
+        "reset": "Put chosen parts of the launcher back to how they were at first start."
       },
       "javaProvider": "Java runtime source",
       "javaProviders": {
@@ -395,6 +397,38 @@
         "busy": "Wait until the running operation or game ends to move the data.",
         "portableHint": "Portable mode keeps the data in a launcher-data folder next to the launcher; delete the portable.txt file there to stop. Sign-ins stay with this computer's credential store.",
         "pendingReused": "The launcher will use the data already in that folder. Quit and start the launcher again to use"
+      },
+      "reset": {
+        "choose": "What to reset",
+        "parts": {
+          "installations": "Installations",
+          "gameFiles": "Downloaded game files",
+          "backups": "Backups",
+          "accounts": "Accounts and profiles",
+          "settings": "Launcher settings",
+          "traffic": "Traffic statistics",
+          "temporary": "Temporary files"
+        },
+        "hints": {
+          "installations": "Deletes {count, plural, one {the # installation} other {all # installations}} with their game folders: worlds, mods, settings and screenshots.",
+          "gameFiles": "{size}: libraries, assets, Java and version files shared by installations. Installed versions download them again at their next repair.",
+          "backups": "Deletes {count, plural, one {# backup} other {# backups}} ({size}).",
+          "accounts": "Signs out {microsoft, plural, one {# Microsoft account} other {# Microsoft accounts}} and removes {profiles, plural, one {# profile} other {# profiles}} without an account.",
+          "settings": "Theme, defaults for new installations, Java source, metered connection and automatic backups. The language and the data folder stay.",
+          "traffic": "Forgets the traffic counted this month and before.",
+          "temporary": "{size}: unfinished downloads, thumbnails and game logs."
+        },
+        "userData": "These installations hold what you made or added:",
+        "backUpFirst": "Back them up before deleting (each as a whole installation; Backups can bring it back)",
+        "backupsKept": "Existing backups are deleted first; the new ones are kept.",
+        "start": "Reset…",
+        "confirm": "Reset these parts?",
+        "final": "This cannot be undone.",
+        "reset": "Reset",
+        "cancel": "Cancel",
+        "working": "Resetting…",
+        "busy": "Reset waits until the running operation or game ends.",
+        "done": "Reset done: {installations, plural, one {# installation} other {# installations}} deleted ({backedUp} backed up first), {backups, plural, one {# backup} other {# backups}} deleted, {accounts, plural, one {# account} other {# accounts}} signed out; {size} freed."
       }
     },
     "storage": {
@@ -839,7 +873,9 @@
     "Reading the job record failed": "Reading the job record failed",
     "Reading the new data folder": "Reading the new data folder",
     "Removing incomplete downloads failed": "Removing incomplete downloads failed",
+    "Removing launcher files": "Removing launcher files",
     "Resetting the traffic count": "Resetting the traffic count",
+    "Resetting the traffic statistics": "Resetting the traffic statistics",
     "Saved sign-in credentials could not be removed from the system credential store. Try signing out again.": "Saved sign-in credentials could not be removed from the system credential store. Try signing out again.",
     "Saving Minecraft metadata": "Saving Minecraft metadata",
     "Saving account metadata": "Saving account metadata",
@@ -923,6 +959,7 @@
     "The saved account record could not be read.": "The saved account record could not be read.",
     "The saved account record was damaged and was set aside. Sign in again.": "The saved account record was damaged and was set aside. Sign in again.",
     "The screenshot could not be opened.": "The screenshot could not be opened.",
+    "The settings were written by a newer launcher and stay unchanged.": "The settings were written by a newer launcher and stay unchanged.",
     "The sign-in service answered with an unexpected redirect.": "The sign-in service answered with an unexpected redirect.",
     "The sign-in service could not be reached. Check the internet connection and try again.": "The sign-in service could not be reached. Check the internet connection and try again.",
     "The sign-in service is rate limiting requests. Wait a moment and try again.": "The sign-in service is rate limiting requests. Wait a moment and try again.",

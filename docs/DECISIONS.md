@@ -1271,3 +1271,30 @@ message` plus a stack trace), with the event's level.
   second copy would either make the game's option parser fail or let a typed value
   replace the signed-in player.
 - The core checks the arguments when they are saved and again at launch.
+
+## D-057 — Settings → Reset
+
+- **Status:** accepted (owner request, 2026-10-18) · **Affects:** Settings,
+  `reset_preview`, `reset_launcher`
+- A **Reset** section in Settings lists the parts that can be put back to their
+  first-start state, each with what it holds now: **Installations** (count),
+  **Downloaded game files** (libraries, assets, Java runtimes and version metadata,
+  with their size), **Backups** (count and size), **Accounts and profiles** (Microsoft
+  accounts and profiles without an account), **Launcher settings**, **Traffic
+  statistics** and **Temporary files** (unfinished downloads, thumbnails, game logs,
+  with their size). Nothing is chosen at first.
+- When installations are chosen, the ones holding worlds, mods, packs or screenshots
+  are listed with what they hold, and **Back them up before deleting** is on by
+  default: each is backed up as a whole installation and can be brought back from
+  Backups (D-055).
+- **Reset…** shows the chosen parts and "This cannot be undone." before **Reset**.
+- The core refuses while anything runs, then works in a fixed order: existing backups
+  are deleted first (so the new backups of installations are kept even when
+  **Backups** is chosen), then installations (backup, then delete), downloaded game
+  files (installed versions are marked as needing a repair, which downloads them
+  again), temporary files (the launcher's own log stays), traffic statistics,
+  profiles without an account, settings; Microsoft accounts are signed out last
+  through the auth service, as with **Sign out**.
+- Launcher settings return to their defaults except the language and the selected
+  installation; the data folder location (portable or not) is a separate setting and
+  stays.

@@ -29,6 +29,8 @@ fn main() {
         "delete_backup",
         "inspect_instance",
         "delete_instance",
+        "reset_preview",
+        "reset_launcher",
         "list_screenshots",
         "delete_screenshot",
         "open_screenshot",

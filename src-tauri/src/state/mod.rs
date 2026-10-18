@@ -1006,6 +1006,70 @@ impl AppState {
         })
     }
 
+    /// After the shared game files were deleted (D-057): installed versions
+    /// must be repaired before they start again.
+    pub fn game_files_removed(&self) {
+        let _ = self.change(|data, store, changes| {
+            for instance in data.instances.values_mut() {
+                if matches!(
+                    instance.health,
+                    InstallationHealth::Ready | InstallationHealth::NeedsVerification
+                ) {
+                    let mut updated = instance.clone();
+                    updated.health = InstallationHealth::RepairRequired;
+                    if store.save_instance(&updated).is_ok() {
+                        *instance = updated;
+                        changes.push(Change::Instance(instance.id));
+                    }
+                }
+            }
+            Ok(())
+        });
+    }
+
+    /// Sets an installation's health directly, as an install or repair would.
+    #[cfg(test)]
+    pub(crate) fn update_instance_health_for_test(
+        &self,
+        id: InstanceId,
+        health: InstallationHealth,
+    ) -> LauncherResult<()> {
+        self.change(|data, store, changes| {
+            let mut updated = data
+                .instances
+                .get(&id)
+                .ok_or_else(instance_not_found)?
+                .clone();
+            updated.health = health;
+            store.save_instance(&updated)?;
+            data.instances.insert(id, updated);
+            changes.push(Change::Instance(id));
+            Ok(())
+        })
+    }
+
+    /// Puts the launcher settings back to their defaults (D-057). The language
+    /// and the selected installation stay.
+    pub fn reset_settings(&self) -> LauncherResult<()> {
+        self.change(|data, store, changes| {
+            if !data.settings_writable {
+                return Err(LauncherError::new(
+                    ErrorCode::UnsupportedSchema,
+                    "The settings were written by a newer launcher and stay unchanged.",
+                ));
+            }
+            let settings = Settings {
+                language: data.settings.language.clone(),
+                selected_instance_id: data.settings.selected_instance_id,
+                ..Settings::default()
+            };
+            store.save_settings(&settings)?;
+            data.settings = settings;
+            changes.push(Change::Settings);
+            Ok(())
+        })
+    }
+
     pub fn update_instance_settings(
         &self,
         request: MutationRequest<UpdateInstanceSettingsPayload>,

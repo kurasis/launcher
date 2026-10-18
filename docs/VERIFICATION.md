@@ -1591,3 +1591,31 @@ proxy that was stopped and started to cut and restore the connection.
   the typed arguments come last and are not substituted; saving, keeping omitted
   fields, refusing reserved options, and new installations taking the default; the
   forms send the fields.
+
+## Settings → Reset (D-057)
+
+- Release build on Linux (Xvfb), on a hard-linked copy of the live test data (10
+  installations, 2.4 GiB of game files, 12 backups, 2 profiles without an account),
+  so the original stayed untouched. The theme was set to Dark first.
+- **Reset** listed every part with what it holds; with **Installations** chosen it
+  named the three installations holding player data (Forge 1.20.1 with Demo_World and
+  2 screenshots, Quilt 1.21.1 with Demo_World and 2 screenshots, Fabric 1.21.1 with
+  Demo_World; the others had no world) with **Back them up before deleting** on, and
+  noted that existing backups go first (`docs/verification/reset-choose.png`).
+- With every part chosen, **Reset…** listed them and "This cannot be undone."
+  (`docs/verification/reset-confirm.png`). **Reset** reported "10 installations
+  deleted (3 backed up first), 12 backups deleted, 0 accounts signed out; 2.7 GiB
+  freed" (`docs/verification/reset-done.png`). Afterwards the data folder held no
+  `shared`, `metadata`, `runtimes`, `cache` or `traffic.json`; `settings.json` was back
+  to its defaults with the language kept; the theme was light again and the header
+  read "Plays as: Player" (the profiles without an account were removed).
+- Backups listed the three new "Before deleting" backups under **Deleted
+  installations**, each with **Bring back** (`docs/verification/reset-backups.png`).
+- Not verified live: signing out a real Microsoft account (this build has no client
+  ID); it uses the same sign-out as the Accounts screen.
+- **Tests:** the preview's counts and sizes and which installations hold player data;
+  a reset refused while a game runs, old backups deleted before new ones are made,
+  only installations with player data backed up, game files kept unless chosen,
+  temporary files removed, settings reset with the language kept, profiles removed;
+  removing game files asks installed versions for a repair and keeps worlds; the
+  section lists the data, offers the backup, confirms and sends the choice.

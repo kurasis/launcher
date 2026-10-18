@@ -17,7 +17,8 @@ import type { Messages } from './i18n/messages';
 export type { Messages };
 
 /** Sections of the Settings screen. */
-export type SettingsSection = 'general' | 'java' | 'defaults' | 'network' | 'installations';
+export type SettingsSection =
+  'general' | 'java' | 'defaults' | 'network' | 'installations' | 'reset';
 
 type Tree = { readonly [key: string]: string | Tree };
 

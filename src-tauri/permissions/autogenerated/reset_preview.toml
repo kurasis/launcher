@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-reset-preview"
+description = "Enables the reset_preview command without any pre-configured scope."
+commands.allow = ["reset_preview"]
+
+[[permission]]
+identifier = "deny-reset-preview"
+description = "Denies the reset_preview command without any pre-configured scope."
+commands.deny = ["reset_preview"]

@@ -22,6 +22,7 @@ pub mod lifecycle;
 pub mod loader;
 pub mod location;
 pub mod net;
+pub mod reset;
 pub mod runtime;
 pub mod secrets;
 pub mod state;
@@ -501,6 +502,8 @@ fn handlers<R: tauri::Runtime>() -> impl Fn(tauri::ipc::Invoke<R>) -> bool + Sen
         commands::delete_backup,
         commands::inspect_instance,
         commands::delete_instance,
+        commands::reset_preview,
+        commands::reset_launcher,
         commands::list_screenshots,
         commands::delete_screenshot,
         commands::open_screenshot,
@@ -560,6 +563,8 @@ fn handlers<R: tauri::Runtime>() -> impl Fn(tauri::ipc::Invoke<R>) -> bool + Sen
         commands::delete_backup,
         commands::inspect_instance,
         commands::delete_instance,
+        commands::reset_preview,
+        commands::reset_launcher,
         commands::list_screenshots,
         commands::delete_screenshot,
         commands::open_screenshot,

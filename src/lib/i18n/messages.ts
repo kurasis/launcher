@@ -309,6 +309,7 @@ export type Messages = {
       readonly defaults: string;
       readonly network: string;
       readonly installations: string;
+      readonly reset: string;
     };
     readonly sectionHints: {
       readonly general: string;
@@ -316,6 +317,7 @@ export type Messages = {
       readonly defaults: string;
       readonly network: string;
       readonly installations: string;
+      readonly reset: string;
     };
     readonly javaProvider: string;
     readonly javaProviders: {
@@ -421,6 +423,44 @@ export type Messages = {
       readonly busy: string;
       readonly portableHint: string;
       readonly pendingReused: string;
+    };
+    readonly reset: {
+      readonly choose: string;
+      readonly parts: {
+        readonly installations: string;
+        readonly gameFiles: string;
+        readonly backups: string;
+        readonly accounts: string;
+        readonly settings: string;
+        readonly traffic: string;
+        readonly temporary: string;
+      };
+      readonly hints: {
+        readonly installations: (values: { count: number }) => string;
+        readonly gameFiles: (values: { size: string | number }) => string;
+        readonly backups: (values: { count: number; size: string | number }) => string;
+        readonly accounts: (values: { microsoft: number; profiles: number }) => string;
+        readonly settings: string;
+        readonly traffic: string;
+        readonly temporary: (values: { size: string | number }) => string;
+      };
+      readonly userData: string;
+      readonly backUpFirst: string;
+      readonly backupsKept: string;
+      readonly start: string;
+      readonly confirm: string;
+      readonly final: string;
+      readonly reset: string;
+      readonly cancel: string;
+      readonly working: string;
+      readonly busy: string;
+      readonly done: (values: {
+        installations: number;
+        backedUp: string | number;
+        backups: number;
+        accounts: number;
+        size: string | number;
+      }) => string;
     };
   };
   readonly storage: {
