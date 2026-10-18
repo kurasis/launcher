@@ -300,9 +300,9 @@
       "sectionHints": {
         "general": "Language, appearance, the launcher window while you play, and where data is kept.",
         "java": "Which Java runtimes the launcher downloads for new installations.",
-        "defaults": "Memory and window size given to each new installation.",
+        "defaults": "Memory, window size and fullscreen given to each new installation.",
         "network": "Metered connections and the traffic the launcher downloads.",
-        "installations": "Memory, window size, mod loader version and Java of an existing installation."
+        "installations": "Memory, window, fullscreen, Minecraft arguments, mod loader version and Java of an existing installation."
       },
       "javaProvider": "Java runtime source",
       "javaProviders": {
