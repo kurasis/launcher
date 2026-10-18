@@ -9,6 +9,7 @@ use std::time::Duration;
 
 use super::*;
 use crate::install::service::tests::Fixture;
+use crate::launch::crash::{CrashAction, CrashKind};
 use crate::secrets::SecretString;
 use crate::state::AppState;
 
@@ -499,6 +500,39 @@ async fn a_nonzero_exit_is_reported_as_failure() {
     assert_eq!(done.error.unwrap().code, ErrorCode::GameExitedWithError);
     let last = s.f.state.instance(s.instance).unwrap().last_result.unwrap();
     assert_eq!((last.outcome, last.exit_code), (Outcome::Failed, Some(3)));
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn a_crash_is_explained() {
+    let s = Setup::new().await;
+    let service = s.service(auth("Crashing"));
+    let run = service
+        .launch_as(&Uuid::new_v4().to_string(), s.instance, account())
+        .await
+        .unwrap();
+    let done = s.finished(&run.run_id).await;
+    assert_eq!(done.state, RunState::Failed);
+    let diagnosis = done.diagnosis.expect("diagnosis");
+    assert_eq!(diagnosis.kind, CrashKind::OutOfMemory);
+    assert_eq!(diagnosis.actions, vec![CrashAction::MemorySettings]);
+    assert_eq!(done.signal, None);
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn a_mod_error_screen_closed_normally_is_still_a_failure() {
+    let s = Setup::new().await;
+    let service = s.service(auth("ModError"));
+    let run = service
+        .launch_as(&Uuid::new_v4().to_string(), s.instance, account())
+        .await
+        .unwrap();
+    let done = s.finished(&run.run_id).await;
+    assert_eq!((done.state, done.exit_code), (RunState::Failed, Some(0)));
+    let diagnosis = done.diagnosis.expect("diagnosis");
+    assert_eq!(diagnosis.kind, CrashKind::MissingDependency);
+    assert_eq!(diagnosis.report.as_deref(), Some("crash-fml.txt"));
+    let last = s.f.state.instance(s.instance).unwrap().last_result.unwrap();
+    assert_eq!(last.outcome, Outcome::Failed);
 }
 
 #[tokio::test(flavor = "multi_thread")]

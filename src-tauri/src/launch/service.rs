@@ -262,6 +262,8 @@ impl LaunchService {
             output_lines_dropped: 0,
             error: Some(super::orphan::interrupted_error()),
             logging_degraded: false,
+            signal: None,
+            diagnosis: None,
         });
         let host = Arc::clone(&self.host);
         let run_id = record.run_id.clone();
@@ -378,6 +380,8 @@ impl LaunchService {
             output_lines_dropped: 0,
             error: None,
             logging_degraded: false,
+            signal: None,
+            diagnosis: None,
         });
         state.console().info(match &mode {
             LaunchMode::NoToken(profile) => format!(
@@ -815,6 +819,9 @@ impl LaunchService {
         let finish_id = run_id.to_owned();
         let finish_root = root.clone();
         let stop_requested = Arc::clone(&self.stop_requested);
+        let crash_redactor = Redactor::new(secrets);
+        let game_dir = root.game_dir(instance_id);
+        let spawned_at = std::time::SystemTime::now();
         let spawned = child::spawn(
             command,
             sink,
@@ -826,9 +833,25 @@ impl LaunchService {
                 let start = lines.len().saturating_sub(SUMMARY_TAIL_LINES);
                 let degraded = lock_or(&log).degraded();
                 let stopped = lock_or(&stop_requested).remove(&finish_id);
+                let exit = outcome.status.as_ref().ok().map(super::crash::ExitInfo::of);
+                // The player's own Stop needs no explanation.
+                let diagnosis = exit.filter(|_| !stopped).and_then(|exit| {
+                    explain(
+                        state,
+                        instance_id,
+                        exit,
+                        &lines,
+                        &game_dir,
+                        spawned_at,
+                        &crash_redactor,
+                    )
+                });
                 let (run_state, exit_code, error) = match &outcome.status {
                     Ok(status) if stopped => (RunState::Stopped, status.code(), None),
-                    Ok(status) if status.success() => (RunState::Exited, status.code(), None),
+                    // A clean exit after a crash report: Forge's mod error screen.
+                    Ok(status) if status.success() && diagnosis.is_none() => {
+                        (RunState::Exited, status.code(), None)
+                    }
                     Ok(status) => (
                         RunState::Failed,
                         status.code(),
@@ -872,6 +895,8 @@ impl LaunchService {
                     run.state = run_state;
                     run.ended_at = Some(finished_at);
                     run.exit_code = exit_code;
+                    run.signal = exit.and_then(|e| e.signal);
+                    run.diagnosis = diagnosis;
                     run.duration_ms = u64::try_from(outcome.duration.as_millis()).ok();
                     run.drain_timed_out = outcome.drain_timed_out;
                     run.output_tail = lines[start..].to_vec();
@@ -901,6 +926,32 @@ impl LaunchService {
         self.host.run_started(run_id);
         Ok(())
     }
+}
+
+/// Why the run ended, from its output and the files it left (D-059).
+#[allow(clippy::too_many_arguments)]
+fn explain(
+    state: &crate::state::AppState,
+    instance_id: InstanceId,
+    exit: super::crash::ExitInfo,
+    output: &[String],
+    game_dir: &std::path::Path,
+    spawned_at: std::time::SystemTime,
+    redactor: &Redactor,
+) -> Option<super::crash::CrashDiagnosis> {
+    use super::crash::{self, CrashInput, RunFile};
+    let files = crash::files::collect(game_dir, spawned_at, output, redactor);
+    fn as_file(file: &Option<(String, String)>) -> Option<RunFile<'_>> {
+        file.as_ref().map(|(name, text)| RunFile { name, text })
+    }
+    crash::diagnose(&CrashInput {
+        exit,
+        output,
+        crash_report: as_file(&files.crash_report),
+        jvm_error: as_file(&files.jvm_error),
+        max_heap_mib: state.instance(instance_id).map_or(0, |i| i.max_heap_mib),
+        recommended_heap_mib: state.recommend_memory_for(instance_id).ok().map(|r| r.mib),
+    })
 }
 
 #[cfg(test)]

@@ -133,7 +133,7 @@ fn artifact(
 
 fn java_package(server: &Server, marker: &Path) -> RuntimePackage {
     let script = format!(
-        "#!/bin/sh\ntouch '{}'\ncat >&2 <<'X'\n    java.specification.version = 21\n    java.version = 21.0.1\n    os.arch = amd64\nX\nfor a in \"$@\"; do echo \"ARG:$a\"; done\ncase \"$*\" in *Sleeper*) exec sleep 30;; *Failing*) exit 3;; esac\n",
+        "#!/bin/sh\ntouch '{}'\ncat >&2 <<'X'\n    java.specification.version = 21\n    java.version = 21.0.1\n    os.arch = amd64\nX\nfor a in \"$@\"; do echo \"ARG:$a\"; done\ncase \"$*\" in *Sleeper*) exec sleep 30;; *Failing*) exit 3;; *Crashing*) echo 'Exception in thread \"main\" java.lang.OutOfMemoryError: Java heap space'; exit 1;; *ModError*) mkdir -p crash-reports; printf 'Description: Mod loading error has occurred\\n\\nMod jeresources requires jei 15.2.0 or above\\n' > crash-reports/crash-fml.txt; exit 0;; esac\n",
         marker.display()
     );
     let bytes = tar_gz(&[

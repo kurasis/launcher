@@ -17,6 +17,7 @@ import {
   type DataLocation,
   type ExportResult,
   type ExternalLink,
+  type GameFolder,
   type InstanceSummary,
   type LauncherError,
   type LifecycleScenario,
@@ -190,8 +191,13 @@ export const ipc = {
     requestId?: string,
   ): Promise<void> =>
     invoke('open_screenshot', { request: mutation({ instanceId, file, reveal }, requestId) }),
-  openInstanceFolder: (instanceId: string, requestId?: string): Promise<void> =>
-    invoke('open_instance_folder', { request: mutation({ instanceId }, requestId) }),
+  /** The game folder, or one of its known folders. */
+  openInstanceFolder: (
+    instanceId: string,
+    requestId?: string,
+    folder: GameFolder | null = null,
+  ): Promise<void> =>
+    invoke('open_instance_folder', { request: mutation({ instanceId, folder }, requestId) }),
   exportDiagnostics: (runId: string | null, requestId?: string): Promise<ExportResult> =>
     invoke<ExportResult>('export_diagnostics', { request: mutation({ runId }, requestId) }),
   /** Plays as the installation's profile: a Microsoft account, or the demo (D-045). */

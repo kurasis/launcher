@@ -528,6 +528,9 @@ fn windows_exit_codes() {
     ] {
         let d = run(code, "");
         assert_eq!(d.kind, kind, "{code}");
+        if kind == CrashKind::OutOfMemory {
+            assert_eq!(detail(&d, "suggested"), "6144");
+        }
         assert_eq!(detail(&d, "exitCode"), code.to_string());
     }
 }

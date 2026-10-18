@@ -905,13 +905,44 @@ pub fn stop_game(
     Ok(launcher.get()?.stop(&request.payload.run_id))
 }
 
-/// Opens an installation's game folder in the system file manager. The path is
-/// resolved in Rust from the instance ID; the webview never supplies a path.
+/// A folder inside an installation's game folder that the launcher opens.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "kebab-case")]
+pub enum GameFolder {
+    Mods,
+    Config,
+    CrashReports,
+    Logs,
+}
+
+impl GameFolder {
+    fn name(self) -> &'static str {
+        match self {
+            Self::Mods => "mods",
+            Self::Config => "config",
+            Self::CrashReports => "crash-reports",
+            Self::Logs => "logs",
+        }
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct FolderPayload {
+    pub instance_id: crate::storage::paths::InstanceId,
+    /// A known folder inside the game folder; the game folder itself if absent.
+    #[serde(default)]
+    pub folder: Option<GameFolder>,
+}
+
+/// Opens an installation's game folder, or one of its known folders, in the
+/// system file manager. The path is resolved in Rust from the instance ID;
+/// the webview never supplies a path.
 #[tauri::command]
 pub fn open_instance_folder<R: Runtime>(
     app: AppHandle<R>,
     state: State<'_, AppState>,
-    request: MutationRequest<InstancePayload>,
+    request: MutationRequest<FolderPayload>,
 ) -> LauncherResult<()> {
     use tauri_plugin_opener::OpenerExt;
     crate::state::ledger::validate_request_id(&request.request_id)?;
@@ -928,7 +959,10 @@ pub fn open_instance_folder<R: Runtime>(
             "Launcher data is unavailable.",
         )
     })?;
-    let dir = root.game_dir(id);
+    let mut dir = root.game_dir(id);
+    if let Some(folder) = request.payload.folder {
+        dir.push(folder.name());
+    }
     std::fs::create_dir_all(&dir)
         .map_err(|e| crate::error::LauncherError::from_io(&e, "Opening the game folder"))?;
     app.opener()

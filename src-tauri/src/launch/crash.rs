@@ -18,6 +18,8 @@ use std::sync::LazyLock;
 use regex::Regex;
 use serde::{Deserialize, Serialize};
 
+pub mod files;
+
 /// Known causes, most specific first in [`diagnose`].
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
@@ -702,6 +704,13 @@ fn mods_at_runtime(cx: &Context) -> Option<CrashDiagnosis> {
     None
 }
 
+/// The installation's recommendation when it is more, else 2 GiB more.
+fn suggested_heap(cx: &Context) -> u32 {
+    cx.recommended_heap_mib
+        .filter(|r| *r > cx.max_heap_mib)
+        .unwrap_or(cx.max_heap_mib + 2048)
+}
+
 fn memory(cx: &Context) -> Option<CrashDiagnosis> {
     static HEAP: LazyLock<Regex> = LazyLock::new(|| {
         re(
@@ -714,10 +723,7 @@ fn memory(cx: &Context) -> Option<CrashDiagnosis> {
         )
     });
     if let Some((line, c)) = cx.find(&HEAP) {
-        let suggested = cx
-            .recommended_heap_mib
-            .filter(|r| *r > cx.max_heap_mib)
-            .unwrap_or(cx.max_heap_mib + 2048);
+        let suggested = suggested_heap(cx);
         let mut d = diagnosis(
             CrashKind::OutOfMemory,
             &[
@@ -1038,6 +1044,8 @@ fn exit_status(cx: &Context) -> CrashDiagnosis {
         CrashKind::OutOfMemory => {
             d.details
                 .insert("memory".to_owned(), cx.max_heap_mib.to_string());
+            d.details
+                .insert("suggested".to_owned(), suggested_heap(cx).to_string());
             d.actions = vec![CrashAction::MemorySettings];
         }
         CrashKind::Killed => d.actions = vec![CrashAction::MemorySettings],
@@ -1143,6 +1151,20 @@ pub fn diagnose(input: &CrashInput<'_>) -> Option<CrashDiagnosis> {
         d.notes.push(note);
     }
     Some(d)
+}
+
+impl ExitInfo {
+    /// The exit code and, on Unix, the signal of a finished process.
+    pub fn of(status: &std::process::ExitStatus) -> Self {
+        #[cfg(unix)]
+        let signal = std::os::unix::process::ExitStatusExt::signal(status);
+        #[cfg(not(unix))]
+        let signal = None;
+        Self {
+            code: status.code(),
+            signal,
+        }
+    }
 }
 
 #[cfg(test)]
