@@ -309,6 +309,10 @@
   background: var(--color-neutral-bg);
 }
 
+.members > .link {
+  justify-self: start;
+}
+
 .messages {
   display: grid;
   align-content: start;
