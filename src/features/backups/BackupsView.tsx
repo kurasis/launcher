@@ -140,7 +140,7 @@ export function BackupsView({ snapshot }: { snapshot: AppSnapshot }) {
     <DeletedInstallations
       backups={orphaned}
       busy={snapshot.activeOperation !== null}
-      after={reload}
+      after={after}
     />
   );
 
@@ -149,6 +149,7 @@ export function BackupsView({ snapshot }: { snapshot: AppSnapshot }) {
       <>
         <Panel title={t.title}>
           <p>{strings.settings.noInstallations}</p>
+          {message !== null && <Notice tone="info">{message}</Notice>}
         </Panel>
         {deletedPanel}
       </>
@@ -356,10 +357,10 @@ function DeletedInstallations({
 }: {
   backups: BackupInfo[];
   busy: boolean;
-  after: () => void;
+  /** Reports what was done and reloads the backups. */
+  after: (message: string) => void;
 }) {
   const [confirming, setConfirming] = useState<string | null>(null);
-  const [message, setMessage] = useState<string | null>(null);
   const restore = useCommand((requestId: string, id: string) =>
     ipc.restoreBackup(id, false, requestId),
   );
@@ -371,7 +372,6 @@ function DeletedInstallations({
     <Panel title={t.deletedTitle}>
       <p className={styles.hint}>{t.deletedHint}</p>
       {working && <p role="status">{t.working}</p>}
-      {message !== null && !working && <Notice tone="info">{message}</Notice>}
       {error !== null && <Notice tone="danger">{error}</Notice>}
       <ul className={styles.list}>
         {backups.map((backup) => {
@@ -402,8 +402,7 @@ function DeletedInstallations({
                           setConfirming(null);
                           void remove.run(backup.id).then((freed) => {
                             if (freed === undefined) return;
-                            setMessage(t.deleted({ size: formatBytes(freed) }));
-                            after();
+                            after(t.deleted({ size: formatBytes(freed) }));
                           });
                         }}
                       >
@@ -428,8 +427,7 @@ function DeletedInstallations({
                     onClick={() => {
                       void restore.run(backup.id).then((done) => {
                         if (done === undefined) return;
-                        setMessage(t.broughtBack({ name: backup.instanceName }));
-                        after();
+                        after(t.broughtBack({ name: backup.instanceName }));
                       });
                     }}
                   >

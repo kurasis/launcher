@@ -106,7 +106,7 @@ export function DeleteInstance({
         <p>{t.nothing}</p>
       )}
       <p className={styles.muted}>{t.shared}</p>
-      {busy && <p>{t.busy}</p>}
+      {busy && !remove.pending && <p>{t.busy}</p>}
       {remove.error !== null && <p role="alert">{remove.error}</p>}
       <div className={forms.actions}>
         {found && (

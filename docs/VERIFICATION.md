@@ -1545,3 +1545,28 @@ proxy that was stopped and started to cut and restore the connection.
   the form lists the installed version even when the project no longer offers it,
   warns before the change, saves then installs, and leaves an install already in the
   queue to pick the new version up.
+
+## Deleting installations (D-055)
+
+- Release build on Linux (Xvfb), installation "Live 1.21.1" (Minecraft 1.21.1, Quilt
+  0.30.1). **Delete installation** listed what its game folder holds: 63.9 MiB with
+  1 world (Demo_World) and 2 screenshots, and offered **Back up and delete**,
+  **Delete without a backup** and **Cancel** (`docs/verification/delete-confirm.png`).
+- **Back up and delete** made a whole-installation backup (38 files, 63.9 MiB,
+  reason "Before deleting"), removed the installation's folder (no `.deleted-*`
+  folder left) and selected the oldest remaining installation; the panel reported
+  that it was backed up and deleted (`docs/verification/delete-done.png`).
+- Backups listed it under **Deleted installations** with **Bring back** on the
+  whole-installation backup only; its two older world backups offered only
+  **Delete** (`docs/verification/delete-backups.png`).
+- **Bring back** recreated the installation with the same id, name, Minecraft 1.21.1
+  and Quilt 0.30.1, not installed, with Demo_World and both screenshots restored.
+  **Install** then finished with "Downloaded 0 files (0 bytes); reused 3,958 verified
+  files": the shared game files had stayed (`docs/verification/delete-brought-back.png`).
+- **Tests:** what a game folder holds (hidden files and settings alone do not count),
+  deleting refused while the game runs, the backup's version and loader, the
+  selection moving on, no backup when declined, a world backup unable to bring an
+  installation back, the whole backup bringing it back with its world, an
+  interrupted delete finished at the next start; the interface lists the contents,
+  backs up or not, cancels, waits while something runs, drops the installation on
+  the `instance_removed` event and brings it back from Backups.
