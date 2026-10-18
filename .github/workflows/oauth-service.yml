@@ -7,7 +7,7 @@ name: Account service
 #
 # Secrets: TURNSTILE_SECRET_KEY, SMTP_URL (smtps://user:password@host:465) and
 # MAIL_FROM go to the server through standard input, never a command line;
-# TURNSTILE_SITE_KEY is a repository variable. Without the Turnstile keys
+# TURNSTILE_SITE_KEY is a repository variable (or secret). Without the Turnstile keys
 # nobody can register; without SMTP the letters wait.
 #
 # This repository is public, and so are its workflow logs: nothing about an
@@ -130,7 +130,8 @@ jobs:
       - name: Deploy
         env:
           TARGET: ${{ secrets.SSH_USER }}@${{ secrets.SSH_HOST }}
-          TURNSTILE_SITE_KEY: ${{ vars.TURNSTILE_SITE_KEY }}
+          # Public, so a repository variable; a secret of that name works too.
+          TURNSTILE_SITE_KEY: ${{ vars.TURNSTILE_SITE_KEY || secrets.TURNSTILE_SITE_KEY }}
           TURNSTILE_SECRET_KEY: ${{ secrets.TURNSTILE_SECRET_KEY }}
           SMTP_URL: ${{ secrets.SMTP_URL }}
           MAIL_FROM: ${{ secrets.MAIL_FROM }}
