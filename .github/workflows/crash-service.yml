@@ -1,0 +1,56 @@
+name: Crash service
+
+on:
+  push:
+    branches: [main, claude/crash-reports]
+    paths:
+      - services/crash/**
+      - deploy/crash/**
+      - .github/workflows/crash-service.yml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: crash-service-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  inspect:
+    name: Inspect the server (read-only)
+    runs-on: ubuntu-24.04
+    steps:
+      - name: SSH setup
+        env:
+          SSH_KEY: ${{ secrets.SSH_KEY }}
+          SSH_KNOWN_HOSTS: ${{ secrets.SSH_KNOWN_HOSTS }}
+        run: |
+          install -d -m 700 ~/.ssh
+          printf '%s\n' "$SSH_KEY" > ~/.ssh/id_deploy
+          chmod 600 ~/.ssh/id_deploy
+          printf '%s\n' "$SSH_KNOWN_HOSTS" > ~/.ssh/known_hosts
+      - name: Describe the server
+        env:
+          SSH_HOST: ${{ secrets.SSH_HOST }}
+          SSH_USER: ${{ secrets.SSH_USER }}
+        run: |
+          ssh -i ~/.ssh/id_deploy -o BatchMode=yes "$SSH_USER@$SSH_HOST" 'bash -s' <<'REMOTE'
+          set -u
+          echo "== whoami: $(whoami) groups: $(id -Gn)"
+          echo "== sudo without password: $(sudo -n true 2>/dev/null && echo yes || echo no)"
+          echo "== os"; grep -E '^(PRETTY_NAME|VERSION_ID)=' /etc/os-release
+          echo "== kernel/arch: $(uname -r) $(uname -m)"
+          echo "== glibc: $(ldd --version | head -1)"
+          echo "== cpu/mem/disk"; nproc; free -m | head -2; df -h / /home 2>/dev/null
+          echo "== nginx: $(nginx -v 2>&1)"; systemctl is-active nginx
+          ls -la /etc/nginx/sites-enabled /etc/nginx/conf.d 2>&1
+          echo "== certbot: $(command -v certbot || echo none)"
+          ls /etc/letsencrypt/live 2>&1 | head
+          echo "== listening ports"; ss -ltnp 2>/dev/null | awk 'NR>1{print $4}' | sort -u
+          echo "== /home/www"; ls -la /home/www 2>&1; ls -la /home/www/lapi 2>&1
+          echo "== ufw: $(command -v ufw >/dev/null && sudo -n ufw status 2>/dev/null | head -5 || echo n/a)"
+          echo "== systemd units like lapi"; systemctl list-units --all 'lapi*' --no-legend 2>/dev/null
+          echo "== dns crash.lapi.sh: $(getent hosts crash.lapi.sh)"
+          echo "== public ip: $(curl -s -4 --max-time 5 https://api.ipify.org || echo unknown)"
+          REMOTE
