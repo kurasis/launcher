@@ -297,7 +297,16 @@ impl LauncherAccount {
                     });
                     return false;
                 }
-                allowed(url)
+                let ok = allowed(url);
+                if !ok {
+                    // Scheme and host only: an address may carry a code.
+                    eprintln!(
+                        "launcher account window: refused {}://{}",
+                        url.scheme(),
+                        url.host_str().unwrap_or_default()
+                    );
+                }
+                ok
             })
             // Links that would open another window open nothing.
             .on_new_window(|_, _| tauri::webview::NewWindowResponse::Deny)
@@ -560,7 +569,8 @@ fn allowed(url: &url::Url) -> bool {
         && url.host_str() == ours.host_str()
         && url.port_or_known_default() == ours.port_or_known_default();
     let turnstile = url.scheme() == "https" && url.host_str() == Some("challenges.cloudflare.com");
-    same_server || turnstile || url.as_str() == "about:blank"
+    // `about:blank` and `about:srcdoc`: frames Turnstile makes, nothing loaded.
+    same_server || turnstile || url.scheme() == "about"
 }
 
 /// What the sessions list on the server calls this computer.
@@ -608,6 +618,7 @@ mod tests {
             "https://oauth.lapi.sh/reset",
             "https://challenges.cloudflare.com/cdn-cgi/challenge-platform/x",
             "about:blank",
+            "about:srcdoc",
         ] {
             assert!(allowed(&url(ok)), "{ok}");
         }
