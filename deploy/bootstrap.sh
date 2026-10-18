@@ -1,6 +1,6 @@
 #!/bin/bash
 # Root setup of our services on the Debian 13 server: crash.lapi.sh (D-061),
-# mirror.lapi.sh (D-062) and upd.lapi.sh (D-063).
+# mirror.lapi.sh (D-062), upd.lapi.sh (D-063) and oauth.lapi.sh (D-064).
 #
 #   sudo bash ~/lapi-bootstrap/bootstrap.sh <deploy-user>
 #
@@ -10,7 +10,7 @@
 # there: nginx config is root's alone, since whoever writes it can make nginx
 # (root) write any file. Safe to run again: every step checks what is there.
 #
-# For each service folder here (crash/, mirror/, upd/):
+# For each service folder here (crash/, mirror/, upd/, oauth/):
 #  1. a system user lapi-<service> that runs it;
 #  2. /home/www/lapi/<service>/{releases,data}: the deploy user writes
 #     releases, the service user alone writes its data; /home/www and
@@ -37,7 +37,7 @@ id "$DEPLOY_USER" >/dev/null || { echo "no user $DEPLOY_USER"; exit 1; }
 step() { printf '\n== %s\n' "$*"; }
 
 SERVICES=()
-for service in crash mirror upd; do
+for service in crash mirror upd oauth; do
     [ -d "$HERE/$service/nginx" ] && SERVICES+=("$service")
 done
 # A service with a systemd unit runs as a process.
@@ -45,14 +45,16 @@ daemon() { [ -f "$HERE/$1/lapi-$1.service" ]; }
 [ "${#SERVICES[@]}" -gt 0 ] || { echo "no service folders in $HERE"; exit 1; }
 echo "services: ${SERVICES[*]}"
 
-# Settings per service: folder modes (nginx reads the mirror's kept files) and
-# the first environment file.
-app_mode() { [ "$1" = crash ] && echo 2750 || echo 2755; }
-data_mode() { [ "$1" = crash ] && echo 0750 || echo 0755; }
+# Settings per service: folder modes (nginx reads the mirror's kept files;
+# crash reports and accounts are private) and the first environment file.
+private() { [ "$1" = crash ] || [ "$1" = oauth ]; }
+app_mode() { private "$1" && echo 2750 || echo 2755; }
+data_mode() { private "$1" && echo 0750 || echo 0755; }
 first_env() {
     case "$1" in
         crash) printf 'LAPI_CRASH_ADDR=127.0.0.1:8781\nLAPI_CRASH_DATA=%s/crash/data\nLAPI_CRASH_KEEP_DAYS=90\nLAPI_CRASH_KEEP_STATS_DAYS=400\nLAPI_CRASH_MAX_STORED_MB=5120\n' "$ROOT" ;;
         mirror) printf 'LAPI_MIRROR_ADDR=127.0.0.1:8782\nLAPI_MIRROR_DATA=%s/mirror/data\nLAPI_MIRROR_SETTINGS=%s/mirror/settings.json\n' "$ROOT" "$ROOT" ;;
+        oauth) printf 'LAPI_OAUTH_ADDR=127.0.0.1:8783\nLAPI_OAUTH_DATA=%s/oauth/data\nLAPI_OAUTH_URL=https://oauth.lapi.sh\n' "$ROOT" ;;
     esac
 }
 
@@ -187,7 +189,7 @@ systemctl reload nginx
 step "sudo rights of $DEPLOY_USER"
 sudoers=/etc/sudoers.d/lapi-deploy
 {
-    echo "# Deploys of $ROOT services by GitHub Actions (D-061, D-062). Nothing else."
+    echo "# Deploys of $ROOT services by GitHub Actions (D-061 to D-064). Nothing else."
     for service in "${SERVICES[@]}"; do
         if daemon "$service"; then
             echo "$DEPLOY_USER ALL=(root) NOPASSWD: /usr/bin/systemctl restart lapi-$service, /usr/bin/systemctl is-active lapi-$service"

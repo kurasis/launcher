@@ -3,6 +3,7 @@
 # service's workflow (D-061, D-062).
 #
 #   bash deploy.sh <service> <release-id> <archive> [mirror-quota-gb | upd-public-key]
+#   … | bash deploy.sh oauth <release-id> <archive> --secrets
 #
 # Unpacks the archive into /home/www/lapi/<service>/releases/<release-id>,
 # points `current` at it, restarts the service and checks /v1/health; a failed
@@ -10,7 +11,9 @@
 # nginx files are root's (bootstrap.sh installs them); this only says when
 # they differ. For the mirror, the quota goes to settings.json, which the
 # service reads every minute. upd is a command, not a process: its release is
-# installed with the update public key and nothing is restarted.
+# installed with the update public key and nothing is restarted. oauth reads
+# its secrets (Turnstile, SMTP) from standard input with --secrets, as
+# KEY=value lines, into secrets.env; they never appear in a command line or a log.
 set -euo pipefail
 
 SERVICE="${1:?service}"
@@ -22,6 +25,7 @@ case "$SERVICE" in
     crash) PORT=8781 ;;
     mirror) PORT=8782; QUOTA_GB="$EXTRA" ;;
     upd) PORT="" ;;
+    oauth) PORT=8783 ;;
     *) echo "unknown service $SERVICE"; exit 1 ;;
 esac
 APP=/home/www/lapi/$SERVICE
@@ -45,6 +49,27 @@ if [ "$SERVICE" = mirror ] && [ -n "$QUOTA_GB" ]; then
     chmod 0644 "$APP/settings.json.new"
     mv "$APP/settings.json.new" "$APP/settings.json"
     echo "== quota: $QUOTA_GB GB"
+fi
+
+if [ "$SERVICE" = oauth ] && [ "$EXTRA" = --secrets ]; then
+    # Only the known keys, one line each, nothing that could end a line.
+    allowed='^LAPI_OAUTH_(TURNSTILE_SITE_KEY|TURNSTILE_SECRET|SMTP_URL|MAIL_FROM)=[^[:cntrl:]]{0,500}$'
+    umask 027
+    : > "$APP/secrets.env.new"
+    while IFS= read -r line || [ -n "$line" ]; do
+        [ -z "$line" ] && continue
+        if [[ "$line" =~ $allowed ]]; then
+            value=${line#*=}
+            [ -n "$value" ] && printf '%s\n' "$line" >> "$APP/secrets.env.new"
+        else
+            echo "a secrets line was refused (unknown key or bad characters)"
+            rm -f "$APP/secrets.env.new"
+            exit 1
+        fi
+    done
+    chmod 0640 "$APP/secrets.env.new"
+    mv "$APP/secrets.env.new" "$APP/secrets.env"
+    echo "== secrets: $(cut -d= -f1 "$APP/secrets.env" | tr '\n' ' ')"
 fi
 
 health() {
