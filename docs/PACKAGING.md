@@ -5,12 +5,13 @@ installation notes are in [INSTALL.md](INSTALL.md).
 
 ## Targets
 
-| Target      | Package                   | Built on              | Notes                                                     |
-| ----------- | ------------------------- | --------------------- | --------------------------------------------------------- |
-| windows-x64 | NSIS `*_x64-setup.exe`    | `windows-2025`        | Per-user install; WebView2 download bootstrapper (silent) |
-| macos-arm64 | `.app` in `*_aarch64.dmg` | `macos-15`            | Native build; minimum macOS 11.0                          |
-| macos-x64   | `.app` in `*_x64.dmg`     | `macos-15-intel`      | Native build; minimum macOS 11.0                          |
-| linux-x64   | `.deb`, `.AppImage`       | `debian:12` container | glibc 2.36 baseline; runtime dependencies generated       |
+| Target        | Package                   | Built on              | Notes                                                      |
+| ------------- | ------------------------- | --------------------- | ---------------------------------------------------------- |
+| windows-x64   | NSIS `*_x64-setup.exe`    | `windows-2025`        | Per-user install; WebView2 download bootstrapper (silent)  |
+| windows-arm64 | NSIS `*_arm64-setup.exe`  | `windows-11-arm`      | Native arm64 build; the Windows 11 interface check (D-048) |
+| macos-arm64   | `.app` in `*_aarch64.dmg` | `macos-15`            | Native build; minimum macOS 11.0                           |
+| macos-x64     | `.app` in `*_x64.dmg`     | `macos-15-intel`      | Native build; minimum macOS 11.0                           |
+| linux-x64     | `.deb`, `.AppImage`       | `debian:12` container | glibc 2.36 baseline; runtime dependencies generated        |
 
 MSI and RPM are not produced (D-008). The bundle identifier `app.launcher`
 names DATA_ROOT, the credential-store service and the single-instance namespace; changing
