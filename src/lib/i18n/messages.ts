@@ -347,6 +347,18 @@ export type Messages = {
       readonly repairNow: string;
       readonly customValue: (values: { version: string | number }) => string;
     };
+    readonly instanceLoader: {
+      readonly title: string;
+      readonly now: (values: { loader: string | number; version: string | number }) => string;
+      readonly hint: string;
+      readonly warning: (values: {
+        loader: string | number;
+        from: string | number;
+        to: string | number;
+      }) => string;
+      readonly apply: string;
+      readonly applied: (values: { loader: string | number; version: string | number }) => string;
+    };
     readonly noInstallations: string;
     readonly installation: string;
     readonly language: string;

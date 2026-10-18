@@ -40,6 +40,7 @@ import {
   type NoTokenProfile,
   type ProfileRef,
   type SetInstanceJavaPayload,
+  type SetInstanceLoaderPayload,
   type SetInstanceNotesPayload,
   type SettingsView,
   type UpdateInstanceSettingsPayload,
@@ -89,6 +90,11 @@ export const ipc = {
     requestId?: string,
   ): Promise<InstanceSummary> =>
     invoke<InstanceSummary>('set_instance_java', { request: mutation(payload, requestId) }),
+  setInstanceLoader: (
+    payload: SetInstanceLoaderPayload,
+    requestId?: string,
+  ): Promise<InstanceSummary> =>
+    invoke<InstanceSummary>('set_instance_loader', { request: mutation(payload, requestId) }),
   setInstanceNotes: (
     payload: SetInstanceNotesPayload,
     requestId?: string,

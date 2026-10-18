@@ -1522,3 +1522,26 @@ proxy that was stopped and started to cut and restore the connection.
 - The component test checks that _Play as_ lists the default once
   ("Default: Steve_Test (Microsoft)", then "Alex") and that a profile is labelled by
   its name alone.
+
+## Changing the mod loader version (D-054)
+
+- Release build on Linux (Xvfb), installation "Live 1.21.1" (Minecraft 1.21.1, Fabric
+  0.19.5, ready). Settings → Installations shows **Mod loader version** with "Now:
+  Fabric 0.19.5" and Fabric's versions for 1.21.1. Picking 0.18.2 shows the warning
+  about mods made for 0.19.5 (`docs/verification/loader-version-pick.png`).
+- **Change and install** saved Fabric 0.18.2 and started the install at once. It
+  finished with "Downloaded 7 files (27.4 MiB); reused 3,948 verified files": the
+  game files were reused and only the new loader's files were fetched. The
+  installation record and the install lock both name Fabric 0.18.2
+  (`docs/verification/loader-version-installed.png`,
+  `docs/verification/loader-version-reinstalled.png`).
+- **Play** started the game; its log reads "Loading Minecraft 1.21.1 with Fabric
+  Loader 0.18.2" and the title screen shows "Minecraft 1.21.1 Demo (Modded)"
+  (`docs/verification/loader-version-game.png`; a profile without an account, so demo
+  mode).
+- **Tests:** the core keeps the loader kind, validates the version, refuses while the
+  installation is busy, ignores the same version, refuses an installation without a
+  loader, marks the installation not installed and keeps the change after a restart;
+  the form lists the installed version even when the project no longer offers it,
+  warns before the change, saves then installs, and leaves an install already in the
+  queue to pick the new version up.

@@ -230,7 +230,7 @@
       "recommended": "{label} (рекомендуемая)",
       "unstable": "{label} (бета)",
       "noVersions": "У {loader} нет версии для Minecraft {version}.",
-      "modsHint": "Моды кладите в папку mods внутри папки игры этой установки. Версию загрузчика потом изменить нельзя.",
+      "modsHint": "Моды кладите в папку mods внутри папки игры этой установки. Версию загрузчика можно изменить позже в Настройки → Установки.",
       "game": "Minecraft {version}",
       "gameWithLoader": "{game} · {loader} {version}",
       "sources": "Файлы {loader} загружаются с серверов самого проекта и проверяются так же."
@@ -278,7 +278,7 @@
         "java": "Откуда лаунчер загружает Java для новых установок.",
         "defaults": "Память и размер окна для каждой новой установки.",
         "network": "Лимитное подключение и трафик, который скачивает лаунчер.",
-        "installations": "Память, размер окна и Java существующей установки."
+        "installations": "Память, размер окна, версия загрузчика модов и Java существующей установки."
       },
       "javaProvider": "Источник Java",
       "javaProviders": {
@@ -324,6 +324,14 @@
         "pendingSwitch": "Java от {provider} будет скачана при следующем восстановлении.",
         "repairNow": "Восстановить сейчас",
         "customValue": "Своя Java {version}"
+      },
+      "instanceLoader": {
+        "title": "Версия загрузчика модов",
+        "now": "Сейчас: {loader} {version}",
+        "hint": "Сначала новые. Установка другой версии сохраняет файлы игры, моды и миры.",
+        "warning": "Моды для {loader} {from} могут не работать с {to}. Если миры важны, сначала сделайте резервную копию. Новый загрузчик устанавливается сразу.",
+        "apply": "Изменить и установить",
+        "applied": "Выбран {loader} {version}; идёт установка."
       },
       "noInstallations": "Установок пока нет.",
       "installation": "Установка",
@@ -965,6 +973,7 @@
     "Ask before downloads of at most {max} MiB.": "Порог предупреждения — не больше {max} МиБ.",
     "No download is waiting for an answer.": "Нет загрузки, ожидающей ответа.",
     "Resetting the traffic count": "Сброс счётчика трафика",
-    "The monthly limit can be at most {max} MiB.": "Месячный лимит — не больше {max} МиБ."
+    "The monthly limit can be at most {max} MiB.": "Месячный лимит — не больше {max} МиБ.",
+    "This installation has no mod loader.": "У этой установки нет загрузчика модов."
   }
 }

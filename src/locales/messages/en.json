@@ -230,7 +230,7 @@
       "recommended": "{label} (recommended)",
       "unstable": "{label} (beta)",
       "noVersions": "{loader} has no version for Minecraft {version}.",
-      "modsHint": "Put mods into the mods folder inside the installation's game folder. The loader version cannot be changed later.",
+      "modsHint": "Put mods into the mods folder inside the installation's game folder. You can change the loader version later in Settings → Installations.",
       "game": "Minecraft {version}",
       "gameWithLoader": "{game} · {loader} {version}",
       "sources": "The {loader} files come from its project's own servers and are checked the same way."
@@ -278,7 +278,7 @@
         "java": "Which Java runtimes the launcher downloads for new installations.",
         "defaults": "Memory and window size given to each new installation.",
         "network": "Metered connections and the traffic the launcher downloads.",
-        "installations": "Memory, window size and Java of an existing installation."
+        "installations": "Memory, window size, mod loader version and Java of an existing installation."
       },
       "javaProvider": "Java runtime source",
       "javaProviders": {
@@ -324,6 +324,14 @@
         "pendingSwitch": "Java from {provider} is downloaded at the next repair.",
         "repairNow": "Repair now",
         "customValue": "Your own Java {version}"
+      },
+      "instanceLoader": {
+        "title": "Mod loader version",
+        "now": "Now: {loader} {version}",
+        "hint": "Newest first. Installing the other version keeps the game files, mods and worlds.",
+        "warning": "Mods made for {loader} {from} may not work with {to}. Back up your worlds first if they matter. The new loader is installed right away.",
+        "apply": "Change and install",
+        "applied": "Switched to {loader} {version}; installing."
       },
       "noInstallations": "No installations yet.",
       "installation": "Installation",
@@ -914,6 +922,7 @@
     "This child account must be added to a Microsoft family, or a parent must allow online play.": "This child account must be added to a Microsoft family, or a parent must allow online play.",
     "This computer reports {physicalMib} MiB of memory, which leaves less than {minHeapMib} MiB for the game after the operating system reserve.": "This computer reports {physicalMib} MiB of memory, which leaves less than {minHeapMib} MiB for the game after the operating system reserve.",
     "This file was written by a newer launcher version (schema {schema}). It is kept unchanged and is read-only here; update the launcher to use it.": "This file was written by a newer launcher version (schema {schema}). It is kept unchanged and is read-only here; update the launcher to use it.",
+    "This installation has no mod loader.": "This installation has no mod loader.",
     "This installation is already being installed or waiting in the queue.": "This installation is already being installed or waiting in the queue.",
     "This installation is busy. Wait for the current operation to finish.": "This installation is busy. Wait for the current operation to finish.",
     "This installation is not installed yet. Install it, then play.": "This installation is not installed yet. Install it, then play.",

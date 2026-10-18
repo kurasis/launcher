@@ -207,6 +207,12 @@ export interface SetInstanceJavaPayload {
   acceptIssues: boolean;
 }
 
+/** Another version of the installation's mod loader (D-054). */
+export interface SetInstanceLoaderPayload {
+  instanceId: string;
+  version: string;
+}
+
 /** Mod loaders the launcher installs (D-039). */
 export type LoaderKind = 'fabric' | 'quilt' | 'forge' | 'neoforge';
 

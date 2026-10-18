@@ -1011,6 +1011,57 @@ impl AppState {
         }
     }
 
+    /// Switches an installation to another version of its mod loader (D-054).
+    /// The installation then needs an install, which resolves the new loader;
+    /// game files, mods and worlds stay.
+    pub fn set_instance_loader(
+        &self,
+        request: MutationRequest<SetInstanceLoaderPayload>,
+    ) -> LauncherResult<InstanceSummary> {
+        let activity = self.activity.clone();
+        let mut previous = None;
+        let result = self.mutate(
+            "set_instance_loader",
+            request,
+            |data, store, payload, changes| {
+                let id = payload.instance_id;
+                let current = data.instances.get(&id).ok_or_else(instance_not_found)?;
+                let Some(loader) = &current.loader else {
+                    return Err(LauncherError::invalid_input(
+                        "This installation has no mod loader.",
+                    ));
+                };
+                let choice = crate::loader::LoaderChoice {
+                    kind: loader.kind,
+                    version: payload.version.clone(),
+                };
+                choice.validate()?;
+                if choice != *loader {
+                    activity.ensure_instance_idle(id)?;
+                    previous = Some(loader.version.clone());
+                    let mut updated = current.clone();
+                    updated.loader = Some(choice);
+                    updated.health = InstallationHealth::NotInstalled;
+                    store.save_instance(&updated)?;
+                    data.instances.insert(id, updated);
+                    changes.push(Change::Instance(id));
+                }
+                Ok(InstanceSummary::new(&data.instances[&id], false))
+            },
+        );
+        if let (Ok(i), Some(previous)) = (&result, previous)
+            && let Some(loader) = &i.loader
+        {
+            self.console.info(format!(
+                "Mod loader of \"{}\": {} {previous} -> {}; install to apply",
+                i.display_name,
+                loader.kind.name(),
+                loader.version
+            ));
+        }
+        result
+    }
+
     /// Saves which Java an installation runs and its extra JVM options (D-044).
     /// `check` is the probe of a custom Java, made by the caller outside the lock.
     pub fn set_instance_java(

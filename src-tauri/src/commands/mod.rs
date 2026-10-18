@@ -17,8 +17,9 @@ use crate::state::AppState;
 use crate::state::dto::{
     AddNoTokenProfilePayload, AppSnapshot, CheckJavaPayload, CreateInstancePayload,
     InstanceSummary, JavaChoice, MutationRequest, NoTokenProfileView, ProfileIdPayload,
-    SetDefaultProfilePayload, SetInstanceJavaPayload, SetInstanceNotesPayload,
-    SetInstanceProfilePayload, SettingsPatch, SettingsView, UpdateInstanceSettingsPayload,
+    SetDefaultProfilePayload, SetInstanceJavaPayload, SetInstanceLoaderPayload,
+    SetInstanceNotesPayload, SetInstanceProfilePayload, SettingsPatch, SettingsView,
+    UpdateInstanceSettingsPayload,
 };
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
@@ -151,6 +152,15 @@ pub async fn set_instance_java(
         JavaChoice::Managed { .. } => None,
     };
     state.set_instance_java(request, check)
+}
+
+/// Switches an installation to another version of its mod loader (D-054).
+#[tauri::command]
+pub fn set_instance_loader(
+    state: State<'_, AppState>,
+    request: MutationRequest<SetInstanceLoaderPayload>,
+) -> LauncherResult<InstanceSummary> {
+    state.set_instance_loader(request)
 }
 
 /// Every backup, every installation's worlds and the space used (D-047).

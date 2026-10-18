@@ -148,6 +148,7 @@ fn main_window_capability_grants_only_app_commands() {
             "allow-pick-data-folder",
             "allow-check-java",
             "allow-set-instance-java",
+            "allow-set-instance-loader",
             "allow-pick-java-file",
             "allow-list-backups",
             "allow-create-backup",

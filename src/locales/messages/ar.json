@@ -231,7 +231,7 @@
       "recommended": "{label} (موصى به)",
       "unstable": "{label} (تجريبي)",
       "noVersions": "لا يوجد إصدار من {loader} لـ Minecraft {version}.",
-      "modsHint": "ضع التعديلات في مجلد mods داخل مجلد اللعبة لهذا التثبيت. لا يمكن تغيير إصدار المُحمِّل لاحقًا.",
+      "modsHint": "ضع التعديلات في مجلد mods داخل مجلد اللعبة لهذا التثبيت. يمكنك تغيير إصدار المُحمِّل لاحقًا من الإعدادات ← التثبيتات.",
       "game": "Minecraft ⁨{version}⁩",
       "gameWithLoader": "{game} · {loader} ⁨{version}⁩",
       "sources": "تأتي ملفات {loader} من خوادم مشروعه نفسه ويُتحقق منها بالطريقة نفسها."
@@ -279,7 +279,7 @@
         "java": "من أين ينزّل المشغّل بيئة Java للتثبيتات الجديدة.",
         "defaults": "الذاكرة وحجم النافذة لكل تثبيت جديد.",
         "network": "الاتصالات محدودة البيانات وحركة البيانات التي ينزّلها المشغّل.",
-        "installations": "الذاكرة وحجم النافذة وJava لتثبيت موجود."
+        "installations": "الذاكرة وحجم النافذة وإصدار مُحمِّل التعديلات وJava لتثبيت موجود."
       },
       "javaProvider": "مصدر Java",
       "javaProviders": {
@@ -325,6 +325,14 @@
         "pendingSwitch": "تُنزَّل Java من {provider} عند الإصلاح التالي.",
         "repairNow": "أصلح الآن",
         "customValue": "Java الخاصة بك {version}"
+      },
+      "instanceLoader": {
+        "title": "إصدار مُحمِّل التعديلات",
+        "now": "الآن: {loader} {version}",
+        "hint": "الأحدث أولًا. تثبيت إصدار آخر يحتفظ بملفات اللعبة والتعديلات والعوالم.",
+        "warning": "قد لا تعمل التعديلات المصممة لـ {loader} {from} مع {to}. انسخ عوالمك احتياطيًا أولًا إن كانت مهمة. يُثبَّت المُحمِّل الجديد فورًا.",
+        "apply": "تغيير وتثبيت",
+        "applied": "تم التبديل إلى {loader} {version}؛ جارٍ التثبيت."
       },
       "noInstallations": "لا توجد تثبيتات بعد.",
       "installation": "التثبيت",
@@ -966,6 +974,7 @@
     "Ask before downloads of at most {max} MiB.": "لا يمكن أن يتجاوز حد التنبيه {max} MiB.",
     "No download is waiting for an answer.": "لا يوجد تنزيل بانتظار إجابة.",
     "Resetting the traffic count": "تصفير عداد حركة البيانات",
-    "The monthly limit can be at most {max} MiB.": "لا يمكن أن يتجاوز الحد الشهري {max} MiB."
+    "The monthly limit can be at most {max} MiB.": "لا يمكن أن يتجاوز الحد الشهري {max} MiB.",
+    "This installation has no mod loader.": "لا يحتوي هذا التثبيت على مُحمِّل تعديلات."
   }
 }

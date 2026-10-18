@@ -9,6 +9,7 @@ import { useCommand } from '../../lib/useCommand';
 import { DefaultsForm } from './DefaultsForm';
 import { InstallationForm } from './InstallationForm';
 import { InstanceJavaForm } from './InstanceJavaForm';
+import { InstanceLoaderForm } from './InstanceLoaderForm';
 import { DataFolderSettings } from './DataFolderSettings';
 import { JavaSettings } from './JavaSettings';
 import { NetworkSettings } from '../network/NetworkSettings';
@@ -182,6 +183,14 @@ function InstallationsSettings({
         </select>
       </div>
       <InstallationForm key={instance.id} instance={instance} memory={snapshot.memory} />
+      {instance.loader !== null && (
+        <InstanceLoaderForm
+          key={`loader-${instance.id}`}
+          instance={instance}
+          loader={instance.loader}
+          queued={snapshot.queue.some((q) => q.instanceId === instance.id)}
+        />
+      )}
       <InstanceJavaForm key={`java-${instance.id}`} instance={instance} />
     </div>
   );

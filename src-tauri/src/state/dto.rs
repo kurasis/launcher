@@ -69,6 +69,14 @@ pub struct SetInstanceJavaPayload {
     pub accept_issues: bool,
 }
 
+/// A new version of the installation's mod loader; the loader itself stays.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct SetInstanceLoaderPayload {
+    pub instance_id: InstanceId,
+    pub version: String,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct CheckJavaPayload {
