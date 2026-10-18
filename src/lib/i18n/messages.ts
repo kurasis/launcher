@@ -275,6 +275,10 @@ export type Messages = {
     readonly notes: string;
     readonly notesHint: string;
     readonly notesSave: string;
+    readonly fullscreen: string;
+    readonly fullscreenShort: string;
+    readonly gameArguments: string;
+    readonly gameArgumentsHint: string;
   };
   readonly deleteInstance: {
     readonly delete: string;

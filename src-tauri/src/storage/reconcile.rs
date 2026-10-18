@@ -118,6 +118,8 @@ mod tests {
             custom_java: None,
             jvm_arguments: String::new(),
             profile: None,
+            game_arguments: String::new(),
+            fullscreen: false,
         }
     }
 

@@ -132,6 +132,9 @@ pub struct Settings {
     /// Monthly traffic limit in MiB on a metered connection; 0 is no limit.
     #[serde(default)]
     pub monthly_limit_mib: u32,
+    /// New installations start the game in fullscreen (D-056).
+    #[serde(default)]
+    pub default_fullscreen: bool,
 }
 
 fn default_metered_warn_mib() -> u32 {
@@ -158,6 +161,7 @@ impl Default for Settings {
             metered: false,
             metered_warn_mib: default_metered_warn_mib(),
             monthly_limit_mib: 0,
+            default_fullscreen: false,
         }
     }
 }
@@ -366,6 +370,12 @@ pub struct InstanceFile {
     /// Who plays this installation; `None` uses the default profile (D-045).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub profile: Option<ProfileRef>,
+    /// Extra Minecraft (game) arguments as the user typed them (D-056).
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub game_arguments: String,
+    /// Start the game in fullscreen (D-056).
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub fullscreen: bool,
 }
 
 impl InstanceFile {
@@ -624,6 +634,8 @@ mod tests {
             custom_java: None,
             jvm_arguments: String::new(),
             profile: None,
+            game_arguments: String::new(),
+            fullscreen: false,
         };
         let json = serde_json::to_value(&instance).unwrap();
         assert!(json["manifestSha1"].is_null());

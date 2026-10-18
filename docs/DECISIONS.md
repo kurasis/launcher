@@ -1249,3 +1249,25 @@ message` plus a stack trace), with the event's level.
   deleted installation (and whole-installation backups made before this change) can
   only be deleted.
 - A new `instance_removed` event tells the interface to drop the installation.
+
+## D-056 — Minecraft arguments per installation and fullscreen
+
+- **Status:** accepted (owner request, 2026-10-18) · **Affects:** Settings →
+  Installations, Settings → New installations, launch arguments
+- Settings → Installations has **Start the game in fullscreen** and **Minecraft
+  arguments**, saved with memory and window size. Settings → New installations has
+  the same fullscreen box; new installations take it.
+- Fullscreen passes `--fullscreen` to the game; the window size still applies when
+  the player leaves fullscreen (F11).
+- Minecraft arguments are typed as one line and split like JVM options (quotes keep
+  spaces inside one value, at most 64 arguments and 4000 characters, no control
+  characters). They come after the version's own arguments and are passed as typed,
+  without `${...}` substitution. Options the launcher sets itself are refused with a
+  message naming them: the player's identity and token (`--username`, `--uuid`,
+  `--accessToken`, `--clientId`, `--xuid`, `--userType`, `--userProperties`,
+  `--profileProperties`, `--session`), `--version`, `--versionType`, the folders
+  (`--gameDir`, `--assetsDir`, `--assetIndex`), `--demo`, the window (`--width`,
+  `--height`, `--fullscreen`) and the loaders' own (`--launchTarget`, `--fml.*`). A
+  second copy would either make the game's option parser fail or let a typed value
+  replace the signed-in player.
+- The core checks the arguments when they are saved and again at launch.

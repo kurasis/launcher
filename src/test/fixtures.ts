@@ -32,6 +32,8 @@ export function instanceFixture(overrides: Partial<InstanceSummary> = {}): Insta
     customJava: null,
     jvmArguments: '',
     profile: null,
+    gameArguments: '',
+    fullscreen: false,
     ...overrides,
   };
 }
@@ -63,6 +65,7 @@ export function snapshotFixture(overrides: Partial<AppSnapshot> = {}): AppSnapsh
       selectedInstanceId: null,
       defaultMaxHeapMib: null,
       defaultResolution: { width: 1280, height: 720 },
+      defaultFullscreen: false,
       javaProvider: 'mojang',
       backupAfterPlay: false,
       backupKeep: 10,

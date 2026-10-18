@@ -16,11 +16,16 @@ describe('DefaultsForm', () => {
     const snapshot = snapshotFixture();
     render(<DefaultsForm settings={snapshot.settings} memory={snapshot.memory} />);
     fireEvent.change(screen.getByLabelText('Maximum memory (MiB)'), { target: { value: '6144' } });
+    fireEvent.click(screen.getByRole('checkbox', { name: 'Start the game in fullscreen' }));
     fireEvent.click(screen.getByRole('button', { name: 'Save defaults' }));
     await waitFor(() => {
       expect(calls.find((c) => c.cmd === 'set_app_settings')?.args).toMatchObject({
         request: {
-          payload: { defaultMaxHeapMib: 6144, defaultResolution: { width: 1280, height: 720 } },
+          payload: {
+            defaultMaxHeapMib: 6144,
+            defaultResolution: { width: 1280, height: 720 },
+            defaultFullscreen: true,
+          },
         },
       });
     });

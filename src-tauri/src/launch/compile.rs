@@ -49,6 +49,9 @@ pub struct LaunchInputs<'a> {
     pub launcher_version: &'a str,
     /// The user's JVM options (D-044); later options win in the JVM.
     pub extra_jvm_args: &'a [String],
+    /// The user's Minecraft arguments, after the version's own (D-056).
+    pub extra_game_args: &'a [String],
+    pub fullscreen: bool,
 }
 
 /// A fully resolved launch, ready to spawn.
@@ -241,6 +244,10 @@ pub fn compile(inputs: &LaunchInputs<'_>) -> LauncherResult<CompiledLaunch> {
     if identity.notoken {
         game_args.push("--demo".to_owned());
     }
+    if inputs.fullscreen {
+        game_args.push("--fullscreen".to_owned());
+    }
+    game_args.extend(inputs.extra_game_args.iter().cloned());
     Ok(CompiledLaunch {
         working_dir: inputs.game_dir.to_path_buf(),
         jvm_args,

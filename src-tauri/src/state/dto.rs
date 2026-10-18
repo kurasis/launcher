@@ -98,6 +98,12 @@ pub struct UpdateInstanceSettingsPayload {
     pub instance_id: InstanceId,
     pub max_heap_mib: u32,
     pub resolution: Resolution,
+    /// Left unchanged when omitted (D-056).
+    #[serde(default)]
+    pub fullscreen: Option<bool>,
+    /// Extra Minecraft arguments; left unchanged when omitted (D-056).
+    #[serde(default)]
+    pub game_arguments: Option<String>,
 }
 
 /// Fields omitted from the patch are left unchanged.
@@ -114,6 +120,8 @@ pub struct SettingsPatch {
     pub default_max_heap_mib: Option<u32>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub default_resolution: Option<Resolution>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub default_fullscreen: Option<bool>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub java_provider: Option<JavaProvider>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -139,6 +147,7 @@ pub struct SettingsView {
     pub selected_instance_id: Option<InstanceId>,
     pub default_max_heap_mib: Option<u32>,
     pub default_resolution: Resolution,
+    pub default_fullscreen: bool,
     pub java_provider: JavaProvider,
     pub language: Language,
     pub backup_after_play: bool,
@@ -158,6 +167,7 @@ impl SettingsView {
             selected_instance_id: settings.selected_instance_id,
             default_max_heap_mib: settings.default_max_heap_mib,
             default_resolution: settings.default_resolution,
+            default_fullscreen: settings.default_fullscreen,
             java_provider: settings.java_provider,
             language: settings.language.clone(),
             backup_after_play: settings.backup_after_play,
@@ -194,6 +204,8 @@ pub struct InstanceSummary {
     pub jvm_arguments: String,
     /// Who plays this installation; `None` is the default profile (D-045).
     pub profile: Option<ProfileRef>,
+    pub game_arguments: String,
+    pub fullscreen: bool,
 }
 
 impl InstanceSummary {
@@ -217,6 +229,8 @@ impl InstanceSummary {
             custom_java: instance.custom_java.clone(),
             jvm_arguments: instance.jvm_arguments.clone(),
             profile: instance.profile.clone(),
+            game_arguments: instance.game_arguments.clone(),
+            fullscreen: instance.fullscreen,
         }
     }
 }

@@ -15,7 +15,7 @@ function toInt(text: string): number {
   return /^\d+$/.test(text.trim()) ? Number(text.trim()) : Number.NaN;
 }
 
-/** Memory and window size used for new installations. Rust validates the values. */
+/** Memory, window size and fullscreen used for new installations. Rust validates the values. */
 export function DefaultsForm({
   settings,
   memory,
@@ -30,10 +30,15 @@ export function DefaultsForm({
   );
   const [width, setWidth] = useState(String(settings.defaultResolution.width));
   const [height, setHeight] = useState(String(settings.defaultResolution.height));
+  const [fullscreen, setFullscreen] = useState(settings.defaultFullscreen);
   const [saved, setSaved] = useState(false);
   const save = useCommand((requestId: string, mib: number, w: number, h: number) =>
     ipc.setAppSettings(
-      { defaultMaxHeapMib: mib, defaultResolution: { width: w, height: h } },
+      {
+        defaultMaxHeapMib: mib,
+        defaultResolution: { width: w, height: h },
+        defaultFullscreen: fullscreen,
+      },
       requestId,
     ),
   );
@@ -119,6 +124,18 @@ export function DefaultsForm({
           )}
         </Field>
       </div>
+      <label className={forms.choice}>
+        <input
+          type="checkbox"
+          checked={fullscreen}
+          disabled={disabled}
+          onChange={(event) => {
+            setFullscreen(event.target.checked);
+            setSaved(false);
+          }}
+        />
+        {d.fullscreen}
+      </label>
       {save.error !== null && <Notice tone="danger">{save.error}</Notice>}
       <div className={forms.actions}>
         <Button type="submit" disabled={disabled}>

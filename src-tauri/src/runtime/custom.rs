@@ -95,22 +95,9 @@ pub fn check(path: &Path, required_major: u16, arch: TargetArch) -> LauncherResu
     })
 }
 
-/// Splits JVM options typed as one line. Quotes ("..." or '...') keep spaces
-/// inside one option. Every option must start with `-`: a bare word would be
-/// taken for the main class, so an option's value goes after `=` or `:`.
-pub fn parse_jvm_arguments(text: &str) -> LauncherResult<Vec<String>> {
-    if text.chars().count() > MAX_JVM_ARGUMENTS_CHARS {
-        return Err(LauncherError::templated(
-            ErrorCode::InvalidInput,
-            "JVM options can be at most {max} characters long.",
-            crate::error::params([("max", (MAX_JVM_ARGUMENTS_CHARS as u64).into())]),
-        ));
-    }
-    if text.chars().any(|c| c.is_control() && c != '\t') {
-        return Err(LauncherError::invalid_input(
-            "JVM options must be on one line, without control characters.",
-        ));
-    }
+/// Splits a line at whitespace; quotes ("..." or '...') keep spaces inside one
+/// argument. `None` when a quote is not closed.
+pub fn split_quoted(text: &str) -> Option<Vec<String>> {
     let mut args = Vec::new();
     let mut current: Option<String> = None;
     let mut quote: Option<char> = None;
@@ -131,11 +118,33 @@ pub fn parse_jvm_arguments(text: &str) -> LauncherResult<Vec<String>> {
         }
     }
     if quote.is_some() {
+        return None;
+    }
+    args.extend(current);
+    Some(args)
+}
+
+/// Splits JVM options typed as one line. Quotes ("..." or '...') keep spaces
+/// inside one option. Every option must start with `-`: a bare word would be
+/// taken for the main class, so an option's value goes after `=` or `:`.
+pub fn parse_jvm_arguments(text: &str) -> LauncherResult<Vec<String>> {
+    if text.chars().count() > MAX_JVM_ARGUMENTS_CHARS {
+        return Err(LauncherError::templated(
+            ErrorCode::InvalidInput,
+            "JVM options can be at most {max} characters long.",
+            crate::error::params([("max", (MAX_JVM_ARGUMENTS_CHARS as u64).into())]),
+        ));
+    }
+    if text.chars().any(|c| c.is_control() && c != '\t') {
+        return Err(LauncherError::invalid_input(
+            "JVM options must be on one line, without control characters.",
+        ));
+    }
+    let Some(args) = split_quoted(text) else {
         return Err(LauncherError::invalid_input(
             "A quote in the JVM options is not closed.",
         ));
-    }
-    args.extend(current);
+    };
     if args.len() > MAX_JVM_ARGUMENTS {
         return Err(LauncherError::templated(
             ErrorCode::InvalidInput,
