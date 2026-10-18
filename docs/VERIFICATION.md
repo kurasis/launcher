@@ -1711,3 +1711,22 @@ proxy that was stopped and started to cut and restore the connection.
   questions reach the log. In the release build the NeoForge case ended two
   seconds after **Play** and showed "Файл повреждён" with the console question as a
   note (`docs/verification/crash-console-question-ru.png`).
+
+## Antivirus software and hangs (D-060)
+
+- **Live, release build, Linux, Xvfb:**
+  - `kill -9` of the launcher while a NeoForge 26.3 repair waited for download
+    permission, and again at 87 % of its download: each restart said "the launcher
+    stopped before finishing; files already checked are kept", the next repair
+    downloaded only the remaining 39 MiB and finished.
+  - A running NeoForge 26.3 game frozen with `SIGSTOP` (as a scan can hold it): the
+    window stayed responsive and Stop ended the game 0.12 s after the confirmation.
+  - Java without execute permission: the start-up check reported the runtime as
+    changed and asked for a repair, which restores it.
+- **Tests:** a silent installer step ended after its limit with its output kept; an
+  installer Java that may not run named as blocked; a game and a chosen Java that
+  may not run explained without a repair request and with nothing left busy; files
+  gone again right after a repair naming antivirus software; renames not waiting
+  for a missing file; on Windows (CI), a rename waiting while another handle holds
+  the file without sharing; the console question test made safe against the game
+  asking before its handle is stored.

@@ -49,10 +49,16 @@ pub struct Inputs<'a> {
     pub cancel: &'a CancelToken,
     /// Receives progress and tool output for the console.
     pub log: &'a (dyn Fn(String) + Sync),
+    /// How long a step may print nothing ([`QUIET_LIMIT`]).
+    pub quiet_limit: Duration,
 }
 
 /// Lines of a tool's output kept for the console when it fails.
 const OUTPUT_TAIL: usize = 200;
+/// A step that prints nothing for this long is taken as hung (antivirus
+/// software holding Java, a stalled download) and ended. The tools print a
+/// line per file, so a working step is never this quiet.
+pub const QUIET_LIMIT: Duration = Duration::from_secs(10 * 60);
 
 fn storage_error(error: &std::io::Error) -> LauncherError {
     LauncherError::from_io(error, "Preparing the mod loader")
@@ -65,11 +71,11 @@ fn cancelled() -> LauncherError {
     )
 }
 
-fn failed(manifest: &LoaderManifest) -> LauncherError {
+fn failed(loader: &str) -> LauncherError {
     LauncherError::templated(
         ErrorCode::LoaderInstallFailed,
         "The {loader} installer step failed. The console window shows its output.",
-        crate::error::params([("loader", manifest.kind.name().to_owned().into())]),
+        crate::error::params([("loader", loader.to_owned().into())]),
     )
 }
 
@@ -295,7 +301,14 @@ fn run_processors(
                 processor.jar
             ));
             run_tool(
-                inputs,
+                &Tool {
+                    java: inputs.java,
+                    work_dir: &inputs.work_dir,
+                    cancel: inputs.cancel,
+                    log: inputs.log,
+                    quiet_limit: inputs.quiet_limit,
+                    loader: inputs.manifest.kind.name(),
+                },
                 &classpath.join(&crate::storage::paths::CLASSPATH_SEPARATOR.to_string()),
                 &main,
                 &args,
@@ -308,7 +321,7 @@ fn run_processors(
                     "{} installer step {step}/{total}: an output did not match its checksum",
                     inputs.manifest.kind.name()
                 ));
-                return Err(failed(inputs.manifest));
+                return Err(failed(inputs.manifest.kind.name()));
             }
         }
     }
@@ -356,13 +369,19 @@ fn copy_mappings(inputs: &Inputs<'_>, args: &[String]) -> LauncherResult<bool> {
     Ok(true)
 }
 
+/// What running one installer tool needs.
+struct Tool<'a> {
+    java: &'a Path,
+    work_dir: &'a Path,
+    cancel: &'a CancelToken,
+    log: &'a (dyn Fn(String) + Sync),
+    quiet_limit: Duration,
+    /// The loader's name, for messages.
+    loader: &'static str,
+}
+
 /// Runs one tool with the private Java and streams its output to the log.
-fn run_tool(
-    inputs: &Inputs<'_>,
-    classpath: &str,
-    main: &str,
-    args: &[String],
-) -> LauncherResult<()> {
+fn run_tool(inputs: &Tool<'_>, classpath: &str, main: &str, args: &[String]) -> LauncherResult<()> {
     let mut command = Command::new(inputs.java);
     command
         // The one tool that downloads (sanitized mappings) uses the system proxy.
@@ -371,7 +390,7 @@ fn run_tool(
         .arg(classpath)
         .arg(main)
         .args(args)
-        .current_dir(&inputs.work_dir)
+        .current_dir(inputs.work_dir)
         .stdin(Stdio::null())
         .stdout(Stdio::piped())
         .stderr(Stdio::piped());
@@ -382,12 +401,15 @@ fn run_tool(
         command.creation_flags(CREATE_NO_WINDOW);
     }
     let mut child = command.spawn().map_err(|e| {
-        LauncherError::from_io(&e, "Starting the mod loader installer")
+        crate::error::java_blocked(&e)
+            .unwrap_or_else(|| LauncherError::from_io(&e, "Starting the mod loader installer"))
             .with_detail("step", main.to_owned())
     })?;
     // The tools print a line per file; only the tail is kept, and shown when
     // the step fails.
     let tail = std::sync::Mutex::new((std::collections::VecDeque::new(), 0usize));
+    let last_line = std::sync::Mutex::new(std::time::Instant::now());
+    let mut stalled = false;
     let status = std::thread::scope(|scope| {
         let readers: Vec<_> = [
             child
@@ -402,9 +424,13 @@ fn run_tool(
         .into_iter()
         .flatten()
         .map(|stream| {
-            let tail = &tail;
+            let (tail, last_line) = (&tail, &last_line);
             scope.spawn(move || {
                 for line in BufReader::new(stream).lines().map_while(Result::ok) {
+                    *last_line
+                        .lock()
+                        .unwrap_or_else(std::sync::PoisonError::into_inner) =
+                        std::time::Instant::now();
                     let mut tail = tail
                         .lock()
                         .unwrap_or_else(std::sync::PoisonError::into_inner);
@@ -423,8 +449,18 @@ fn run_tool(
                 let _ = child.wait();
                 break None;
             }
+            let quiet = last_line
+                .lock()
+                .unwrap_or_else(std::sync::PoisonError::into_inner)
+                .elapsed();
             match child.try_wait() {
                 Ok(Some(status)) => break Some(status),
+                Ok(None) if quiet > inputs.quiet_limit => {
+                    stalled = true;
+                    let _ = child.kill();
+                    let _ = child.wait();
+                    break None;
+                }
                 Ok(None) => std::thread::sleep(Duration::from_millis(100)),
                 Err(_) => {
                     let _ = child.kill();
@@ -440,7 +476,7 @@ fn run_tool(
     let (lines, count) = tail
         .into_inner()
         .unwrap_or_else(std::sync::PoisonError::into_inner);
-    if status.as_ref().is_some_and(|s| !s.success()) {
+    if stalled || status.as_ref().is_some_and(|s| !s.success()) {
         if count > lines.len() {
             (inputs.log)(format!("  … {} earlier lines", count - lines.len()));
         }
@@ -451,14 +487,26 @@ fn run_tool(
         (inputs.log)(format!("  {count} lines of output"));
     }
     match status {
+        None if stalled => {
+            (inputs.log)(format!(
+                "{} installer step printed nothing for {} minutes and was ended",
+                inputs.loader,
+                inputs.quiet_limit.as_secs() / 60
+            ));
+            Err(LauncherError::templated(
+                ErrorCode::LoaderInstallFailed,
+                "The {loader} installer stopped responding and was ended. Antivirus software may hold Java: allow the launcher's data folder in it, then try again.",
+                crate::error::params([("loader", inputs.loader.to_owned().into())]),
+            ))
+        }
         None => Err(cancelled()),
         Some(status) if status.success() => Ok(()),
         Some(status) => {
             (inputs.log)(format!(
                 "{} installer step exited with {status}",
-                inputs.manifest.kind.name()
+                inputs.loader
             ));
-            Err(failed(inputs.manifest))
+            Err(failed(inputs.loader))
         }
     }
 }
@@ -502,7 +550,7 @@ fn generated(inputs: &Inputs<'_>, installer: &Installer) -> LauncherResult<Vec<L
                 "{} installer did not produce {path}",
                 inputs.manifest.kind.name()
             ));
-            return Err(failed(inputs.manifest));
+            return Err(failed(inputs.manifest.kind.name()));
         };
         if let Some(expected) = provided
             .iter()
@@ -514,7 +562,7 @@ fn generated(inputs: &Inputs<'_>, installer: &Installer) -> LauncherResult<Vec<L
                 "{} installer produced {path} with an unexpected checksum",
                 inputs.manifest.kind.name()
             ));
-            return Err(failed(inputs.manifest));
+            return Err(failed(inputs.manifest.kind.name()));
         }
         out.push(LockedArtifact {
             role: ArtifactRole::Library,
@@ -573,5 +621,68 @@ mod tests {
         );
         assert!(fill(&root, "{MISSING}", &values).is_err());
         assert!(fill(&root, "[../x:y:z]", &values).is_err());
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn a_silent_installer_step_is_ended() {
+        use std::os::unix::fs::PermissionsExt;
+        // A "Java" that prints one line and then hangs, as when antivirus
+        // software holds it.
+        let dir = tempfile::tempdir().unwrap();
+        let java = dir.path().join("java");
+        std::fs::write(&java, "#!/bin/sh\necho started\nexec sleep 60\n").unwrap();
+        std::fs::set_permissions(&java, std::fs::Permissions::from_mode(0o755)).unwrap();
+        let lines = std::sync::Mutex::new(Vec::new());
+        let log = |line: String| lines.lock().unwrap().push(line);
+        let cancel = CancelToken::new();
+        let started = std::time::Instant::now();
+        let error = run_tool(
+            &Tool {
+                java: &java,
+                work_dir: dir.path(),
+                cancel: &cancel,
+                log: &log,
+                quiet_limit: Duration::from_secs(1),
+                loader: "NeoForge",
+            },
+            "x.jar",
+            "Main",
+            &[],
+        )
+        .unwrap_err();
+        assert!(started.elapsed() < Duration::from_secs(10));
+        assert_eq!(error.code, ErrorCode::LoaderInstallFailed);
+        assert!(
+            error.message.contains("stopped responding"),
+            "{}",
+            error.message
+        );
+        assert!(lines.lock().unwrap().iter().any(|l| l.contains("started")));
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn a_java_without_permission_to_run_is_named_as_blocked() {
+        let dir = tempfile::tempdir().unwrap();
+        let java = dir.path().join("java");
+        std::fs::write(&java, "#!/bin/sh\n").unwrap();
+        let cancel = CancelToken::new();
+        let error = run_tool(
+            &Tool {
+                java: &java,
+                work_dir: dir.path(),
+                cancel: &cancel,
+                log: &|_| {},
+                quiet_limit: QUIET_LIMIT,
+                loader: "Forge",
+            },
+            "x.jar",
+            "Main",
+            &[],
+        )
+        .unwrap_err();
+        assert_eq!(error.code, ErrorCode::PermissionDenied);
+        assert!(error.message.contains("Java was not allowed to start"));
     }
 }

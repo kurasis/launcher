@@ -1274,6 +1274,10 @@
     "The launcher sets {option} itself; window size and fullscreen are separate settings.": "يحدد المشغّل {option} بنفسه؛ حجم النافذة وملء الشاشة إعدادان منفصلان.",
     "The settings were written by a newer launcher and stay unchanged.": "كُتبت الإعدادات بإصدار أحدث من المشغّل وتبقى دون تغيير.",
     "Removing launcher files": "حذف ملفات المشغّل",
-    "Resetting the traffic statistics": "إعادة ضبط إحصاءات حركة البيانات"
+    "Resetting the traffic statistics": "إعادة ضبط إحصاءات حركة البيانات",
+    "Java was not allowed to start. Antivirus software or the system's security settings may block it: allow the launcher's Java, then try again.": "لم يُسمح لـ Java بالبدء. قد يحظرها برنامج مكافحة الفيروسات أو إعدادات أمان النظام: اسمح بـ Java الخاصة بالمشغّل، ثم حاول مجددًا.",
+    "The {loader} installer stopped responding and was ended. Antivirus software may hold Java: allow the launcher's data folder in it, then try again.": "توقف مُثبّت {loader} عن الاستجابة فأُنهي. قد يكون برنامج مكافحة الفيروسات يحتجز Java: اسمح بمجلد بيانات المشغّل فيه، ثم حاول مجددًا.",
+    "{context}: antivirus software blocked the file. Allow the launcher's data folder in it, then try again.": "{context}: حظر برنامج مكافحة الفيروسات الملف. اسمح بمجلد بيانات المشغّل فيه، ثم حاول مجددًا.",
+    "Files the last repair restored are missing or damaged again. Antivirus software may be removing them: allow the launcher's data folder in it, then repair the installation.": "الملفات التي استعادها آخر إصلاح مفقودة أو تالفة مجددًا. قد يكون برنامج مكافحة الفيروسات يحذفها: اسمح بمجلد بيانات المشغّل فيه، ثم أصلح التثبيت."
   }
 }

@@ -1273,6 +1273,10 @@
     "The launcher sets {option} itself; window size and fullscreen are separate settings.": "{option} задаёт сам лаунчер; размер окна и полноэкранный режим — отдельные настройки.",
     "The settings were written by a newer launcher and stay unchanged.": "Настройки записаны более новой версией лаунчера и остаются без изменений.",
     "Removing launcher files": "Удаление файлов лаунчера",
-    "Resetting the traffic statistics": "Сброс статистики трафика"
+    "Resetting the traffic statistics": "Сброс статистики трафика",
+    "Java was not allowed to start. Antivirus software or the system's security settings may block it: allow the launcher's Java, then try again.": "Java не разрешили запуститься. Её может блокировать антивирус или настройки безопасности системы: разрешите Java лаунчера и повторите попытку.",
+    "The {loader} installer stopped responding and was ended. Antivirus software may hold Java: allow the launcher's data folder in it, then try again.": "Установщик {loader} перестал отвечать и был остановлен. Возможно, Java удерживает антивирус: добавьте папку данных лаунчера в его исключения и повторите попытку.",
+    "{context}: antivirus software blocked the file. Allow the launcher's data folder in it, then try again.": "{context}: файл заблокировала антивирусная программа. Добавьте папку данных лаунчера в её исключения и повторите попытку.",
+    "Files the last repair restored are missing or damaged again. Antivirus software may be removing them: allow the launcher's data folder in it, then repair the installation.": "Файлы, которые восстановило последнее восстановление, снова отсутствуют или повреждены. Возможно, их удаляет антивирус: добавьте папку данных лаунчера в его исключения, затем восстановите установку."
   }
 }

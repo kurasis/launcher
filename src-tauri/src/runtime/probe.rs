@@ -146,7 +146,7 @@ pub fn settings_output(
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())
         .spawn()
-        .map_err(|_| probe_failed("spawn"))?;
+        .map_err(|e| crate::error::java_blocked(&e).unwrap_or_else(|| probe_failed("spawn")))?;
     let stdout = capture(child.stdout.take().ok_or_else(|| probe_failed("pipe"))?);
     let stderr = capture(child.stderr.take().ok_or_else(|| probe_failed("pipe"))?);
     let started = Instant::now();

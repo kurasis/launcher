@@ -1,5 +1,10 @@
 //! IPC command handlers. Handlers validate input and delegate; they hold no business
 //! logic. Every command must also be listed in build.rs and granted in capabilities/.
+//!
+//! A plain `#[tauri::command]` runs on the main thread, which also draws the
+//! window. Commands that read or write files, wait for the shared state or start
+//! programs are `#[tauri::command(async)]` and run on a worker thread instead, so
+//! a file held by antivirus software or a slow disk never freezes the window.
 
 use serde::{Deserialize, Serialize};
 use tauri::{AppHandle, Manager, Runtime, State};
@@ -85,12 +90,12 @@ pub fn get_app_info<R: tauri::Runtime>(app: tauri::AppHandle<R>) -> AppInfo {
     AppInfo::collect(app.package_info())
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 pub fn get_app_snapshot(state: State<'_, AppState>) -> AppSnapshot {
     state.snapshot()
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 pub fn create_instance(
     state: State<'_, AppState>,
     request: MutationRequest<CreateInstancePayload>,
@@ -98,7 +103,7 @@ pub fn create_instance(
     state.create_instance(request)
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 pub fn update_instance_settings(
     state: State<'_, AppState>,
     request: MutationRequest<UpdateInstanceSettingsPayload>,
@@ -107,7 +112,7 @@ pub fn update_instance_settings(
 }
 
 /// Saves an installation's notes.
-#[tauri::command]
+#[tauri::command(async)]
 pub fn set_instance_notes(
     state: State<'_, AppState>,
     request: MutationRequest<SetInstanceNotesPayload>,
@@ -155,7 +160,7 @@ pub async fn set_instance_java(
 }
 
 /// Switches an installation to another version of its mod loader (D-054).
-#[tauri::command]
+#[tauri::command(async)]
 pub fn set_instance_loader(
     state: State<'_, AppState>,
     request: MutationRequest<SetInstanceLoaderPayload>,
@@ -349,7 +354,7 @@ pub async fn delete_screenshot<R: Runtime>(
 
 /// Opens a screenshot in the system image viewer, or (with `reveal`) shows it
 /// in the file manager. The path is resolved and checked in Rust.
-#[tauri::command]
+#[tauri::command(async)]
 pub fn open_screenshot<R: Runtime>(
     app: AppHandle<R>,
     state: State<'_, AppState>,
@@ -406,7 +411,7 @@ pub async fn pick_java_file<R: Runtime>(app: AppHandle<R>) -> LauncherResult<Opt
         .and_then(|p| p.to_str().map(str::to_owned)))
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 pub fn set_app_settings(
     state: State<'_, AppState>,
     request: MutationRequest<SettingsPatch>,
@@ -421,7 +426,7 @@ pub fn open_console<R: Runtime>(app: AppHandle<R>) {
 }
 
 /// Console journal entries after `after`; the console window polls this.
-#[tauri::command]
+#[tauri::command(async)]
 pub fn read_console(state: State<'_, AppState>, after: u64) -> crate::console::Page {
     state.console().read(after)
 }
@@ -558,7 +563,7 @@ pub async fn begin_login(
     Ok(OperationStarted { operation_id })
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 pub fn cancel_login(
     auth: State<'_, Arc<AuthService>>,
     request: MutationRequest<OperationPayload>,
@@ -592,7 +597,7 @@ pub async fn verify_account(
 }
 
 /// Adds a named no-token profile for the demo (D-045).
-#[tauri::command]
+#[tauri::command(async)]
 pub fn add_notoken_profile(
     state: State<'_, AppState>,
     request: MutationRequest<AddNoTokenProfilePayload>,
@@ -600,7 +605,7 @@ pub fn add_notoken_profile(
     state.add_notoken_profile(request)
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 pub fn remove_notoken_profile(
     state: State<'_, AppState>,
     request: MutationRequest<ProfileIdPayload>,
@@ -609,7 +614,7 @@ pub fn remove_notoken_profile(
 }
 
 /// Chooses the profile installations play as unless they name another one.
-#[tauri::command]
+#[tauri::command(async)]
 pub fn set_default_profile(
     state: State<'_, AppState>,
     request: MutationRequest<SetDefaultProfilePayload>,
@@ -618,7 +623,7 @@ pub fn set_default_profile(
 }
 
 /// Chooses who plays one installation.
-#[tauri::command]
+#[tauri::command(async)]
 pub fn set_instance_profile(
     state: State<'_, AppState>,
     request: MutationRequest<SetInstanceProfilePayload>,
@@ -627,7 +632,7 @@ pub fn set_instance_profile(
 }
 
 /// Opens one of the fixed official destinations in the system browser.
-#[tauri::command]
+#[tauri::command(async)]
 pub fn open_external<R: Runtime>(app: AppHandle<R>, link: ExternalLink) -> LauncherResult<()> {
     use tauri_plugin_opener::OpenerExt;
     let url = external::check_allowed(link.url())?;
@@ -764,7 +769,7 @@ pub struct AnswerDownloadPayload {
 }
 
 /// Allows or declines a download that waits on a metered connection (D-051).
-#[tauri::command]
+#[tauri::command(async)]
 pub fn answer_download(
     installer: State<'_, Installer>,
     request: MutationRequest<AnswerDownloadPayload>,
@@ -776,7 +781,7 @@ pub fn answer_download(
 }
 
 /// Checks the internet connection now instead of at the next interval (D-052).
-#[tauri::command]
+#[tauri::command(async)]
 pub fn check_network(monitor: State<'_, Arc<crate::connectivity::Monitor>>) {
     monitor.check_soon();
 }
@@ -791,13 +796,13 @@ fn traffic_root(state: &AppState) -> LauncherResult<crate::storage::paths::DataR
 }
 
 /// Traffic the launcher downloaded this month and earlier (D-051).
-#[tauri::command]
+#[tauri::command(async)]
 pub fn get_traffic(state: State<'_, AppState>) -> LauncherResult<crate::traffic::TrafficSummary> {
     Ok(crate::traffic::summary(&traffic_root(&state)?))
 }
 
 /// Starts counting traffic from zero.
-#[tauri::command]
+#[tauri::command(async)]
 pub fn reset_traffic(
     state: State<'_, AppState>,
     request: MutationRequest<EmptyPayload>,
@@ -812,7 +817,7 @@ pub fn reset_traffic(
 
 /// Requests cancellation of an install, a repair or a launch that has not
 /// started Java yet. A running game is not stopped here; use `stop_game`.
-#[tauri::command]
+#[tauri::command(async)]
 pub fn cancel_operation(
     installer: State<'_, Installer>,
     launcher: State<'_, Launcher>,
@@ -896,7 +901,7 @@ pub async fn launch_game(
 }
 
 /// Terminates the owned game process of `runId` after the user confirmed it.
-#[tauri::command]
+#[tauri::command(async)]
 pub fn stop_game(
     launcher: State<'_, Launcher>,
     request: MutationRequest<RunPayload>,
@@ -938,7 +943,7 @@ pub struct FolderPayload {
 /// Opens an installation's game folder, or one of its known folders, in the
 /// system file manager. The path is resolved in Rust from the instance ID;
 /// the webview never supplies a path.
-#[tauri::command]
+#[tauri::command(async)]
 pub fn open_instance_folder<R: Runtime>(
     app: AppHandle<R>,
     state: State<'_, AppState>,
@@ -1067,7 +1072,7 @@ impl Location {
 }
 
 /// Where the launcher keeps its data and how it was chosen.
-#[tauri::command]
+#[tauri::command(async)]
 pub fn get_data_location(
     location: State<'_, Location>,
 ) -> LauncherResult<crate::location::DataLocation> {

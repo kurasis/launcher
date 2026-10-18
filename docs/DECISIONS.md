@@ -1419,3 +1419,39 @@ message` plus a stack trace), with the event's level.
   console question for the player. NeoForge 26.3 was not run live (its
   installation needed a long repair); its messages are the same templates as
   NeoForge 21.1's.
+
+## D-060 — Antivirus software and hangs
+
+- **Status:** accepted (owner question, 2026-10-18) · **Affects:** IPC commands, the
+  launch service, the mod loader installer, file replacement, error texts
+- **Checked.** Every place the launcher starts a program or waits for one (the game,
+  the Java check, the loader installer tools), its file replacement, its locks after
+  being killed, and which work runs on the window's main thread.
+- **The window never waits for the disk.** A plain `#[tauri::command]` runs on the
+  main thread, which draws the window; file writes happen under the shared state
+  lock, so a file held by antivirus software froze the whole window. The 22
+  commands that touch files, the state or start programs are now
+  `#[tauri::command(async)]` and run on a worker thread; only window commands stay
+  on the main thread.
+- **Nothing waits without end.** The Java check stops after 30 s (15 s for a chosen
+  Java); the loader installer, which had no limit, now ends a step that prints
+  nothing for 10 minutes (the tools print a line per file) and says that antivirus
+  software may hold Java; a game asking on the console is ended (D-059); network
+  requests time out after 15 s to connect and 60 s without data; Stop ends a game
+  frozen by the system at once.
+- **Files held for a moment.** On Windows, antivirus software opens a file it has
+  just seen written, so renaming it fails with "access denied" or a sharing
+  violation. Renames of new files (atomic writes, downloads, Java runtimes,
+  backups, the trash) now try again for up to 3 s with growing pauses; other
+  systems and other errors fail at once.
+- **Named causes.** Windows' `ERROR_VIRUS_INFECTED` and `ERROR_VIRUS_DELETED` read as
+  "antivirus software blocked the file"; Java that may not be executed (antivirus,
+  AppLocker, a folder without execute permission) reads as "Java was not allowed to
+  start" for the game, the Java check, a chosen Java and the installer, and does not
+  ask for a repair; files missing again within 30 minutes of a successful repair
+  point at antivirus software instead of asking for the same repair again.
+- **Killed launcher.** The data folder lock is an OS lock released at exit; an
+  interrupted install or repair is recorded as interrupted and continues from the
+  files already checked; a game left running is recognized at the next start.
+- **Not done.** A process the system cannot end (Windows protecting it, or stuck in
+  the kernel) keeps its run open; the launcher cannot do more than ask the system.

@@ -680,3 +680,77 @@ async fn the_installation_profile_decides_who_plays() {
     );
     assert!(!alex.id.is_empty());
 }
+
+#[tokio::test(flavor = "multi_thread")]
+async fn a_java_the_system_will_not_start_is_explained_and_frees_the_launcher() {
+    // Antivirus software or a security policy refusing Java looks like this to
+    // the launcher: the Java file may not be executed.
+    use std::os::unix::fs::PermissionsExt;
+    let s = Setup::new().await;
+    let custom = s.f._dir.path().join("blocked-jdk").join("java");
+    std::fs::create_dir_all(custom.parent().unwrap()).unwrap();
+    std::fs::write(
+        &custom,
+        "#!/bin/sh\ncat >&2 <<'X'\n    java.specification.version = 21\n    java.version = 21.0.1\n    os.arch = amd64\nX\n",
+    )
+    .unwrap();
+    std::fs::set_permissions(&custom, std::fs::Permissions::from_mode(0o755)).unwrap();
+    set_java(
+        &s,
+        crate::state::dto::JavaChoice::Custom {
+            path: custom.clone(),
+        },
+        "",
+        true,
+    )
+    .unwrap();
+    std::fs::set_permissions(&custom, std::fs::Permissions::from_mode(0o644)).unwrap();
+
+    let error = s
+        .service(auth("Player"))
+        .launch_as(&Uuid::new_v4().to_string(), s.instance, account())
+        .await
+        .unwrap_err();
+    assert_eq!(error.code, ErrorCode::PermissionDenied, "{error:?}");
+    assert!(error.message.contains("Java was not allowed to start"));
+    // Nothing stays busy, and the installation is not marked for repair.
+    assert!(s.f.state.activity().current().is_none());
+    assert!(s.f.state.current_run().is_none());
+    assert_eq!(
+        s.f.state.instance(s.instance).unwrap().health,
+        InstallationHealth::Ready
+    );
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn files_gone_right_after_a_repair_point_at_antivirus_software() {
+    let s = Setup::new().await;
+    // Removed once: an ordinary repair request.
+    std::fs::remove_file(s.f.library_path()).unwrap();
+    let service = s.service(auth("Player"));
+    let first = service
+        .launch_as(&Uuid::new_v4().to_string(), s.instance, account())
+        .await
+        .unwrap_err();
+    assert!(!first.message.contains("again"), "{}", first.message);
+    // Repaired, then removed again at once, as antivirus software would.
+    assert_eq!(
+        s.f.run(OperationKind::Repair, s.instance).await.outcome,
+        Outcome::Succeeded
+    );
+    std::fs::remove_file(s.f.library_path()).unwrap();
+    let again = service
+        .launch_as(&Uuid::new_v4().to_string(), s.instance, account())
+        .await
+        .unwrap_err();
+    assert_eq!(again.code, ErrorCode::RepairRequired);
+    assert!(
+        again.message.contains("Antivirus software"),
+        "{}",
+        again.message
+    );
+    assert_eq!(
+        s.f.state.instance(s.instance).unwrap().health,
+        InstallationHealth::RepairRequired
+    );
+}

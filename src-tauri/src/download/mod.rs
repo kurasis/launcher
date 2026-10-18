@@ -801,9 +801,18 @@ impl Worker {
         if let Some(parent) = destination.parent() {
             tokio::fs::create_dir_all(parent).await.map_err(storage)?;
         }
-        tokio::fs::rename(&part, destination)
-            .await
-            .map_err(storage)?;
+        // Antivirus software often opens a file it has just seen written.
+        let started = std::time::Instant::now();
+        let mut tries = 0;
+        while let Err(error) = tokio::fs::rename(&part, destination).await {
+            match crate::storage::atomic::busy_pause(&error, started, tries) {
+                Some(pause) => {
+                    tokio::time::sleep(pause).await;
+                    tries += 1;
+                }
+                None => return Err(storage(error)),
+            }
+        }
         let mut guard = guard;
         guard.0 = None;
         Ok(())

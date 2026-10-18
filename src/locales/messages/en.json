@@ -1045,6 +1045,7 @@
     "Each JVM option must start with \"-\"; put a value after \"=\": {option}": "Each JVM option must start with \"-\"; put a value after \"=\": {option}",
     "Enter the full path to the Java program.": "Enter the full path to the Java program.",
     "Extracting the Java runtime failed": "Extracting the Java runtime failed",
+    "Files the last repair restored are missing or damaged again. Antivirus software may be removing them: allow the launcher's data folder in it, then repair the installation.": "Files the last repair restored are missing or damaged again. Antivirus software may be removing them: allow the launcher's data folder in it, then repair the installation.",
     "Install this version first, then choose your own Java.": "Install this version first, then choose your own Java.",
     "Invalid authorization endpoint.": "Invalid authorization endpoint.",
     "Invalid runtime index.": "Invalid runtime index.",
@@ -1053,6 +1054,7 @@
     "JVM options can be at most {max} characters long.": "JVM options can be at most {max} characters long.",
     "JVM options must be on one line, without control characters.": "JVM options must be on one line, without control characters.",
     "Java could not be started.": "Java could not be started.",
+    "Java was not allowed to start. Antivirus software or the system's security settings may block it: allow the launcher's Java, then try again.": "Java was not allowed to start. Antivirus software or the system's security settings may block it: allow the launcher's Java, then try again.",
     "Keep between 1 and {max} automatic backups.": "Keep between 1 and {max} automatic backups.",
     "Launcher data is unavailable.": "Launcher data is unavailable.",
     "Locating the launcher": "Locating the launcher",
@@ -1201,6 +1203,7 @@
     "The version metadata lists the same file with two different sizes.": "The version metadata lists the same file with two different sizes.",
     "The version metadata uses a launch setting this launcher does not support.": "The version metadata uses a launch setting this launcher does not support.",
     "The {loader} installer step failed. The console window shows its output.": "The {loader} installer step failed. The console window shows its output.",
+    "The {loader} installer stopped responding and was ended. Antivirus software may hold Java: allow the launcher's data folder in it, then try again.": "The {loader} installer stopped responding and was ended. Antivirus software may hold Java: allow the launcher's data folder in it, then try again.",
     "The {loader} version list could not be read. Try again later.": "The {loader} version list could not be read. Try again later.",
     "There is no sign-in with that identifier.": "There is no sign-in with that identifier.",
     "There is nothing to back up yet.": "There is nothing to back up yet.",
@@ -1272,6 +1275,7 @@
     "the Java runtime catalog": "the Java runtime catalog",
     "version metadata": "version metadata",
     "{context}: a file operation failed.": "{context}: a file operation failed.",
+    "{context}: antivirus software blocked the file. Allow the launcher's data folder in it, then try again.": "{context}: antivirus software blocked the file. Allow the launcher's data folder in it, then try again.",
     "{context}: permission denied by the operating system.": "{context}: permission denied by the operating system.",
     "{context}: the disk is full. Free some space and try again.": "{context}: the disk is full. Free some space and try again."
   }

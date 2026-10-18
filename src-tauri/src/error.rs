@@ -252,6 +252,10 @@ impl LauncherError {
         use std::io::ErrorKind;
         // `context` is itself a translatable text (a template without values).
         let (code, template) = match error.kind() {
+            _ if blocked_by_antivirus(error) => (
+                ErrorCode::PermissionDenied,
+                "{context}: antivirus software blocked the file. Allow the launcher's data folder in it, then try again.",
+            ),
             ErrorKind::StorageFull | ErrorKind::QuotaExceeded => (
                 ErrorCode::DiskFull,
                 "{context}: the disk is full. Free some space and try again.",
@@ -268,6 +272,26 @@ impl LauncherError {
         Self::templated(code, template, params([("context", context.into())]))
             .with_detail("ioKind", format!("{:?}", error.kind()))
     }
+}
+
+/// Windows refused a file because antivirus software found or removed
+/// something in it (`ERROR_VIRUS_INFECTED`, `ERROR_VIRUS_DELETED`).
+pub fn blocked_by_antivirus(error: &std::io::Error) -> bool {
+    cfg!(windows) && matches!(error.raw_os_error(), Some(225 | 226))
+}
+
+/// Java was not allowed to start: antivirus software, or the system's
+/// security settings (a folder without execute permission, AppLocker).
+pub fn java_blocked(error: &std::io::Error) -> Option<LauncherError> {
+    let antivirus = blocked_by_antivirus(error);
+    (antivirus || error.kind() == std::io::ErrorKind::PermissionDenied).then(|| {
+        LauncherError::new(
+            ErrorCode::PermissionDenied,
+            "Java was not allowed to start. Antivirus software or the system's security settings may block it: allow the launcher's Java, then try again.",
+        )
+        .with_detail("ioKind", format!("{:?}", error.kind()))
+        .with_detail("antivirus", if antivirus { "yes" } else { "unknown" })
+    })
 }
 
 pub type LauncherResult<T> = Result<T, LauncherError>;
