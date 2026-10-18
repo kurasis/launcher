@@ -15,6 +15,7 @@ export type Messages = {
     readonly home: string;
     readonly account: string;
     readonly backups: string;
+    readonly screenshots: string;
     readonly settings: string;
     readonly diagnostics: string;
     readonly about: string;
@@ -633,6 +634,31 @@ export type Messages = {
     readonly restoredCopy: (values: { name: string | number }) => string;
     readonly deleted: (values: { size: string | number }) => string;
     readonly busy: string;
+  };
+  readonly gallery: {
+    readonly title: string;
+    readonly hint: string;
+    readonly summary: (values: { count: number; size: string | number }) => string;
+    readonly filter: string;
+    readonly all: string;
+    readonly none: string;
+    readonly noneHere: string;
+    readonly count: (values: { count: number }) => string;
+    readonly refresh: string;
+    readonly open: (values: { date: string | number }) => string;
+    readonly viewer: string;
+    readonly details: (values: { date: string | number; size: string | number }) => string;
+    readonly dimensions: (values: { width: string | number; height: string | number }) => string;
+    readonly position: (values: { index: number; count: number }) => string;
+    readonly previous: string;
+    readonly next: string;
+    readonly close: string;
+    readonly openFile: string;
+    readonly reveal: string;
+    readonly delete: string;
+    readonly confirmDelete: string;
+    readonly deleted: string;
+    readonly cancel: string;
   };
   readonly downloads: {
     readonly title: string;

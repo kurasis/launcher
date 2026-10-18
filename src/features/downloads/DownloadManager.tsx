@@ -103,7 +103,12 @@ export function DownloadManager({ snapshot }: { snapshot: AppSnapshot }) {
   const working = active !== null;
 
   return (
-    <div className={styles.corner}>
+    <div
+      className={styles.corner}
+      onKeyDown={(event) => {
+        if (event.key === 'Escape') setOpen(false);
+      }}
+    >
       {open && (
         <section className={styles.panel} aria-label={t.title}>
           <h2 className={styles.title}>{t.title}</h2>

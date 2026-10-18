@@ -352,6 +352,22 @@ pub struct InstanceFile {
     pub profile: Option<ProfileRef>,
 }
 
+impl InstanceFile {
+    /// "Minecraft 1.21.1", or "Minecraft 1.21.1 · Fabric 0.16.14" with a loader;
+    /// for logs and records, not translated.
+    pub fn version_label(&self) -> String {
+        match &self.loader {
+            Some(loader) => format!(
+                "Minecraft {} · {} {}",
+                self.version_id,
+                loader.kind.name(),
+                loader.version
+            ),
+            None => format!("Minecraft {}", self.version_id),
+        }
+    }
+}
+
 /// A Java installation the user chose for an installation (D-044).
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]

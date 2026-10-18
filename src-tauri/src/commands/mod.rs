@@ -227,6 +227,65 @@ pub async fn delete_backup<R: Runtime>(
     blocking(app, move |state| crate::backup::delete(state, &id)).await
 }
 
+/// Every installation's screenshots (D-050).
+#[tauri::command]
+pub async fn list_screenshots<R: Runtime>(
+    app: AppHandle<R>,
+) -> LauncherResult<crate::gallery::Gallery> {
+    blocking(app, crate::gallery::list).await
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct ScreenshotPayload {
+    pub instance_id: crate::storage::paths::InstanceId,
+    pub file: String,
+}
+
+/// Deletes a screenshot after the user confirmed it.
+#[tauri::command]
+pub async fn delete_screenshot<R: Runtime>(
+    app: AppHandle<R>,
+    request: MutationRequest<ScreenshotPayload>,
+) -> LauncherResult<()> {
+    crate::state::ledger::validate_request_id(&request.request_id)?;
+    let payload = request.payload;
+    blocking(app, move |state| {
+        crate::gallery::delete(state, payload.instance_id, &payload.file)
+    })
+    .await
+}
+
+/// Opens a screenshot in the system image viewer, or (with `reveal`) shows it
+/// in the file manager. The path is resolved and checked in Rust.
+#[tauri::command]
+pub fn open_screenshot<R: Runtime>(
+    app: AppHandle<R>,
+    state: State<'_, AppState>,
+    request: MutationRequest<OpenScreenshotPayload>,
+) -> LauncherResult<()> {
+    use tauri_plugin_opener::OpenerExt;
+    crate::state::ledger::validate_request_id(&request.request_id)?;
+    let payload = request.payload;
+    let path = crate::gallery::path(&state, payload.instance_id, &payload.file)?;
+    let result = if payload.reveal {
+        app.opener().reveal_item_in_dir(&path)
+    } else {
+        app.opener().open_path(path.to_string_lossy(), None::<&str>)
+    };
+    result.map_err(|_| crate::error::LauncherError::internal("The screenshot could not be opened."))
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct OpenScreenshotPayload {
+    pub instance_id: crate::storage::paths::InstanceId,
+    pub file: String,
+    /// Show it in the file manager instead of opening it.
+    #[serde(default)]
+    pub reveal: bool,
+}
+
 /// Runs file work for a command off the async runtime.
 async fn blocking<R: Runtime, T: Send + 'static>(
     app: AppHandle<R>,

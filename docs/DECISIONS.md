@@ -1096,3 +1096,35 @@ message` plus a stack trace), with the event's level.
   Java files show their own name. The panel shows one name at a time and moves to the
   next every 1.2 s, so a name stays readable however often progress arrives. Names are
   display only and never paths.
+
+## D-050 — Screenshot gallery across installations
+
+- **Status:** accepted (owner request, 2026-10-17) · **Affects:** a new **Screenshots**
+  screen, the `gallery:` protocol, the content security policy (`img-src`),
+  `DATA_ROOT/cache/thumbnails`
+- **What it shows:** the PNG files Minecraft saves in `screenshots/` of each
+  installation's game folder. They are grouped by installation, each group headed by
+  the installation's name, its game and loader version ("Minecraft 1.20.1 · Forge
+  47.4.10") and the count, so screenshots of installations with the same name stay
+  apart. The installation with the newest screenshot comes first, and each group is
+  newest first. A filter shows one installation.
+- **Viewer:** a screenshot opens at full size with its installation, version, file
+  name, date, size and pixel size. Previous and next (buttons or arrow keys) move
+  through all shown screenshots across groups; Escape closes. From the viewer a
+  screenshot can be opened in the system image viewer, shown in the file manager, or
+  deleted after confirmation.
+- **How images reach the page:** the webview never gets file paths or a general
+  file permission. Rust registers a `gallery:` protocol
+  (`gallery://localhost/…`, `http://gallery.localhost/…` on Windows) that answers
+  only `full/<installation ID>/<file>` and `thumb/<installation ID>/<file>` for a
+  known installation, a plain `.png` name in its `screenshots/` folder and a regular
+  file (not a link). The policy's `img-src` allows this protocol and nothing else
+  new.
+- **Thumbnails:** made in Rust on first view (decoded with a 256 MiB limit, averaged
+  down to 480 pixels wide, never scaled up) and kept in
+  `DATA_ROOT/cache/thumbnails`, named by the screenshot and its size and time so a
+  changed file gets a new one. Listing the gallery deletes thumbnails of screenshots
+  that are gone; the cache can be deleted at any time.
+- **Commands:** `list_screenshots`, `delete_screenshot`, and `open_screenshot`
+  (opens it or, with `reveal`, shows it in the file manager), each taking an
+  installation ID and a file name that Rust checks.

@@ -52,6 +52,11 @@ fn production_csp_allows_only_packaged_assets_and_ipc() {
     assert_eq!(source_list(&csp, "script-src"), ["'self'"]);
     assert_eq!(source_list(&csp, "object-src"), ["'none'"]);
     assert_eq!(source_list(&csp, "base-uri"), ["'none'"]);
+    // Screenshots come only from the gallery protocol that Rust serves (D-050).
+    assert_eq!(
+        source_list(&csp, "img-src"),
+        ["'self'", "data:", "gallery:", "http://gallery.localhost"]
+    );
 
     for (name, sources) in &csp {
         for source in sources {
@@ -63,9 +68,11 @@ fn production_csp_allows_only_packaged_assets_and_ipc() {
                 "{name} must not allow {source}"
             );
             if source.starts_with("http://") || source.starts_with("https://") {
-                // Windows serves Tauri IPC from this origin; nothing remote is allowed.
-                assert_eq!(
-                    source, "http://ipc.localhost",
+                // Windows serves Tauri IPC and the app's own protocols from these
+                // origins; nothing remote is allowed.
+                assert!(
+                    source == "http://ipc.localhost"
+                        || (name == "img-src" && source == "http://gallery.localhost"),
                     "{name} allows remote {source}"
                 );
             }
@@ -85,7 +92,9 @@ fn development_csp_is_separate_and_local_only() {
             assert_ne!(source, "'unsafe-eval'", "{name}");
             if source.contains("://") {
                 assert!(
-                    source == "http://ipc.localhost" || source == "ws://localhost:1420",
+                    source == "http://ipc.localhost"
+                        || source == "ws://localhost:1420"
+                        || source == "http://gallery.localhost",
                     "{name} allows non-local {source}"
                 );
             }
@@ -144,6 +153,9 @@ fn main_window_capability_grants_only_app_commands() {
             "allow-create-backup",
             "allow-restore-backup",
             "allow-delete-backup",
+            "allow-list-screenshots",
+            "allow-delete-screenshot",
+            "allow-open-screenshot",
             "allow-request-quit",
             "allow-begin-login",
             "allow-cancel-login",

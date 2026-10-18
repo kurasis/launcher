@@ -219,6 +219,11 @@ impl DataRoot {
             .join(format!("{algorithm}-{digest}.part"))
     }
 
+    /// Small copies of screenshots for the gallery; can be deleted at any time.
+    pub fn thumbnails_dir(&self) -> PathBuf {
+        self.root.join("cache").join("thumbnails")
+    }
+
     pub fn launcher_logs(&self) -> PathBuf {
         self.root.join("logs").join("launcher")
     }

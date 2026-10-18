@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-open-screenshot"
+description = "Enables the open_screenshot command without any pre-configured scope."
+commands.allow = ["open_screenshot"]
+
+[[permission]]
+identifier = "deny-open-screenshot"
+description = "Denies the open_screenshot command without any pre-configured scope."
+commands.deny = ["open_screenshot"]

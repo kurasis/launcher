@@ -626,3 +626,18 @@ export interface BackupOverview {
   worlds: { instanceId: string; worlds: string[] }[];
   storeBytes: number;
 }
+
+/** One screenshot file of an installation (D-050). */
+export interface Screenshot {
+  file: string;
+  takenAt: string;
+  bytes: number;
+  width: number | null;
+  height: number | null;
+}
+
+export interface Gallery {
+  /** Installations with screenshots, the one with the newest first; each newest first. */
+  installations: { instanceId: string; screenshots: Screenshot[] }[];
+  totalBytes: number;
+}
