@@ -21,6 +21,7 @@ const t = strings.instances;
 
 export function InstancesView({ snapshot, onEditSettings }: InstancesViewProps) {
   const [creating, setCreating] = useState(false);
+  const [deleted, setDeleted] = useState<string | null>(null);
   const select = useCommand((requestId: string, id: string) =>
     ipc.setAppSettings({ selectedInstanceId: id }, requestId),
   );
@@ -36,6 +37,7 @@ export function InstancesView({ snapshot, onEditSettings }: InstancesViewProps) 
           selectedId={selectedId}
           disabled={select.pending || !snapshot.settings.writable}
           onSelect={(id) => {
+            setDeleted(null);
             void select.run(id);
           }}
         />
@@ -54,6 +56,7 @@ export function InstancesView({ snapshot, onEditSettings }: InstancesViewProps) 
         )}
       </section>
       <div className={styles.column}>
+        {deleted !== null && <Notice tone="info">{deleted}</Notice>}
         {creating && (
           <CreateInstanceForm
             network={snapshot.network}
@@ -80,6 +83,8 @@ export function InstancesView({ snapshot, onEditSettings }: InstancesViewProps) 
               onEditSettings={() => {
                 onEditSettings(selected.id);
               }}
+              busy={snapshot.activeOperation !== null}
+              onDeleted={setDeleted}
             />
           </>
         )}

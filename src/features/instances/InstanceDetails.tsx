@@ -9,6 +9,7 @@ import type { InstanceSummary } from '../../lib/contracts';
 import { ipc } from '../../lib/ipc';
 import { numberLocale, strings } from '../../lib/strings';
 import { useCommand } from '../../lib/useCommand';
+import { DeleteInstance } from './DeleteInstance';
 import { healthTone } from './healthTone';
 import styles from './Instances.module.css';
 import { gameLabel } from './loaderLabel';
@@ -17,12 +18,20 @@ import { javaLabel } from '../settings/javaLabel';
 interface InstanceDetailsProps {
   instance: InstanceSummary;
   onEditSettings: () => void;
+  /** Something runs, so the installation cannot be deleted now. */
+  busy?: boolean;
+  onDeleted?: (message: string) => void;
 }
 
 const t = strings.details;
 
 /** Facts about one installation; its settings are edited on the Settings screen. */
-export function InstanceDetails({ instance, onEditSettings }: InstanceDetailsProps) {
+export function InstanceDetails({
+  instance,
+  onEditSettings,
+  busy = false,
+  onDeleted = () => undefined,
+}: InstanceDetailsProps) {
   const openFolder = useCommand((requestId: string, id: string) =>
     ipc.openInstanceFolder(id, requestId),
   );
@@ -77,6 +86,7 @@ export function InstanceDetails({ instance, onEditSettings }: InstanceDetailsPro
       <p className={styles.muted}>{t.openFolderHint}</p>
       {openFolder.error !== null && <Notice tone="danger">{openFolder.error}</Notice>}
       <NotesEditor key={instance.id} instance={instance} />
+      <DeleteInstance instance={instance} busy={busy} onDeleted={onDeleted} />
     </Panel>
   );
 }

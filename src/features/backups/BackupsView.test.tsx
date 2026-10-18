@@ -108,4 +108,36 @@ describe('BackupsView', () => {
       });
     });
   });
+
+  it('brings back a deleted installation from its backup', async () => {
+    const calls = setup({
+      backups: [
+        backup({
+          id: 'whole',
+          instanceId: 'gone',
+          instanceName: 'Old modpack',
+          versionLabel: 'Minecraft 1.20.1 · Forge 47.4.10',
+          versionId: '1.20.1',
+          loader: { kind: 'forge', version: '1.20.1-47.4.10' },
+          scope: { kind: 'installation' },
+          reason: 'before_delete',
+        }),
+        backup({ id: 'world', instanceId: 'gone', instanceName: 'Old modpack' }),
+      ],
+      worlds: [],
+      storeBytes: 0,
+    });
+    expect(await screen.findByRole('heading', { name: 'Deleted installations' })).toBeVisible();
+    expect(screen.getByText('Before deleting')).toBeVisible();
+    // Only the whole-installation backup can bring it back.
+    const bringBack = screen.getAllByRole('button', { name: 'Bring back' });
+    expect(bringBack).toHaveLength(1);
+    fireEvent.click(bringBack[0] as HTMLElement);
+    await waitFor(() => {
+      expect(named('restore_backup', calls)[0]?.args).toMatchObject({
+        request: { payload: { backupId: 'whole', asCopy: false } },
+      });
+    });
+    expect(await screen.findByText('"Old modpack" is back. Install it to play.')).toBeVisible();
+  });
 });

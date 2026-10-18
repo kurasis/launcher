@@ -69,6 +69,14 @@ pub struct SetInstanceJavaPayload {
     pub accept_issues: bool,
 }
 
+/// Deletes an installation, after a backup of its game folder if asked (D-055).
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct DeleteInstancePayload {
+    pub instance_id: InstanceId,
+    pub backup: bool,
+}
+
 /// A new version of the installation's mod loader; the loader itself stays.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
@@ -527,6 +535,12 @@ pub struct InstanceChanged {
 
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
+pub struct InstanceRemoved {
+    pub instance_id: InstanceId,
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
 pub struct SettingsChanged {
     pub settings: SettingsView,
 }
@@ -579,6 +593,7 @@ pub struct OperationFinished {
 #[derive(Debug, Clone)]
 pub enum BackendEvent {
     InstanceChanged(Box<EventEnvelope<InstanceChanged>>),
+    InstanceRemoved(Box<EventEnvelope<InstanceRemoved>>),
     SettingsChanged(EventEnvelope<SettingsChanged>),
     GameStateChanged(Box<EventEnvelope<GameStateChanged>>),
     AccountStateChanged(Box<EventEnvelope<AccountStateChanged>>),
@@ -591,6 +606,7 @@ impl BackendEvent {
     pub fn name(&self) -> &'static str {
         match self {
             Self::InstanceChanged(_) => "instance_changed",
+            Self::InstanceRemoved(_) => "instance_removed",
             Self::SettingsChanged(_) => "settings_changed",
             Self::GameStateChanged(_) => "game_state_changed",
             Self::AccountStateChanged(_) => "account_state_changed",
@@ -602,6 +618,7 @@ impl BackendEvent {
     pub fn revision(&self) -> u64 {
         match self {
             Self::InstanceChanged(e) => e.revision,
+            Self::InstanceRemoved(e) => e.revision,
             Self::SettingsChanged(e) => e.revision,
             Self::GameStateChanged(e) => e.revision,
             Self::AccountStateChanged(e) => e.revision,
@@ -613,6 +630,7 @@ impl BackendEvent {
     pub fn payload(&self) -> serde_json::Value {
         match self {
             Self::InstanceChanged(e) => serde_json::to_value(e),
+            Self::InstanceRemoved(e) => serde_json::to_value(e),
             Self::SettingsChanged(e) => serde_json::to_value(e),
             Self::GameStateChanged(e) => serde_json::to_value(e),
             Self::AccountStateChanged(e) => serde_json::to_value(e),

@@ -37,6 +37,20 @@ describe('reconcile', () => {
     ]);
   });
 
+  it('drops a deleted installation', () => {
+    const withInstance = snapshotFixture({ revision: 4, instances: [instanceFixture()] });
+    const result = reconcile(withInstance, {
+      name: 'instance_removed',
+      payload: {
+        sessionEpoch: 'epoch-1',
+        revision: 5,
+        timestamp: '2026-10-18T12:00:00Z',
+        instanceId: instanceFixture().id,
+      },
+    });
+    expect(result.kind === 'apply' && result.snapshot.instances).toEqual([]);
+  });
+
   it('ignores revisions already represented', () => {
     expect(reconcile(base, instanceEvent(4)).kind).toBe('ignore');
     expect(reconcile(base, instanceEvent(1)).kind).toBe('ignore');

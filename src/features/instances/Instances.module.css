@@ -219,3 +219,13 @@
   max-width: 26rem;
   font-size: var(--font-size-sm);
 }
+
+.strong {
+  font-weight: 600;
+}
+
+/* What a game folder holds, before deleting it (D-055). */
+.contents {
+  margin: 0;
+  padding-inline-start: 1.25rem;
+}

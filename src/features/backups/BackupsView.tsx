@@ -132,11 +132,27 @@ export function BackupsView({ snapshot }: { snapshot: AppSnapshot }) {
     reload();
   };
 
+  // Backups of deleted installations (D-055).
+  const orphaned = (overview?.backups ?? []).filter(
+    (b) => !instances.some((i) => i.id === b.instanceId),
+  );
+  const deletedPanel = orphaned.length > 0 && (
+    <DeletedInstallations
+      backups={orphaned}
+      busy={snapshot.activeOperation !== null}
+      after={after}
+    />
+  );
+
   if (instance === undefined) {
     return (
-      <Panel title={t.title}>
-        <p>{strings.settings.noInstallations}</p>
-      </Panel>
+      <>
+        <Panel title={t.title}>
+          <p>{strings.settings.noInstallations}</p>
+          {message !== null && <Notice tone="info">{message}</Notice>}
+        </Panel>
+        {deletedPanel}
+      </>
     );
   }
   const worlds = overview?.worlds.find((w) => w.instanceId === instance.id)?.worlds ?? [];
@@ -324,6 +340,113 @@ export function BackupsView({ snapshot }: { snapshot: AppSnapshot }) {
           </ul>
         )}
       </Panel>
+      {deletedPanel}
     </>
+  );
+}
+
+/**
+ * Backups whose installation was deleted (D-055): a backup of the whole
+ * installation brings it back (not installed yet, with its game folder);
+ * world backups can only be deleted.
+ */
+function DeletedInstallations({
+  backups,
+  busy,
+  after,
+}: {
+  backups: BackupInfo[];
+  busy: boolean;
+  /** Reports what was done and reloads the backups. */
+  after: (message: string) => void;
+}) {
+  const [confirming, setConfirming] = useState<string | null>(null);
+  const restore = useCommand((requestId: string, id: string) =>
+    ipc.restoreBackup(id, false, requestId),
+  );
+  const remove = useCommand((requestId: string, id: string) => ipc.deleteBackup(id, requestId));
+  const working = restore.pending || remove.pending;
+  const error = restore.error ?? remove.error;
+
+  return (
+    <Panel title={t.deletedTitle}>
+      <p className={styles.hint}>{t.deletedHint}</p>
+      {working && <p role="status">{t.working}</p>}
+      {error !== null && <Notice tone="danger">{error}</Notice>}
+      <ul className={styles.list}>
+        {backups.map((backup) => {
+          const canReturn = backup.scope.kind === 'installation' && backup.versionId !== undefined;
+          return (
+            <li key={backup.id} className={styles.row}>
+              <div>
+                <strong>{backup.instanceName}</strong>
+                <span className={styles.tag}>{t.reason[backup.reason]}</span>
+                <span className={styles.hint}>
+                  {scopeLabel(backup.scope)} · {when(backup.createdAt)} · {backup.versionLabel}
+                </span>
+                <span className={styles.hint}>
+                  {t.size({
+                    files: backup.fileCount,
+                    total: formatBytes(backup.totalBytes),
+                    added: formatBytes(backup.newBytes),
+                  })}
+                </span>
+                {confirming === backup.id && (
+                  <Notice tone="warning">
+                    <p>{t.confirmDelete({ date: when(backup.createdAt) })}</p>
+                    <div className={forms.actions}>
+                      <Button
+                        variant="primary"
+                        disabled={busy || working}
+                        onClick={() => {
+                          setConfirming(null);
+                          void remove.run(backup.id).then((freed) => {
+                            if (freed === undefined) return;
+                            after(t.deleted({ size: formatBytes(freed) }));
+                          });
+                        }}
+                      >
+                        {t.delete}
+                      </Button>
+                      <Button
+                        onClick={() => {
+                          setConfirming(null);
+                        }}
+                      >
+                        {strings.createForm.cancel}
+                      </Button>
+                    </div>
+                  </Notice>
+                )}
+              </div>
+              <div className={styles.actions}>
+                {canReturn && (
+                  <Button
+                    variant="primary"
+                    disabled={busy || working}
+                    onClick={() => {
+                      void restore.run(backup.id).then((done) => {
+                        if (done === undefined) return;
+                        after(t.broughtBack({ name: backup.instanceName }));
+                      });
+                    }}
+                  >
+                    {t.bringBack}
+                  </Button>
+                )}
+                <Button
+                  disabled={busy || working}
+                  onClick={() => {
+                    setConfirming(backup.id);
+                  }}
+                >
+                  {t.delete}
+                </Button>
+              </div>
+            </li>
+          );
+        })}
+      </ul>
+    </Panel>
   );
 }

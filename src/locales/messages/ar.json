@@ -264,6 +264,26 @@
       "notesHint": "لك وحدك: الغرض من هذا التثبيت وتعديلاته وخوادمه وأي شيء تريد تذكّره.",
       "notesSave": "حفظ الملاحظات"
     },
+    "deleteInstance": {
+      "delete": "حذف التثبيت",
+      "confirm": "حذف «{name}»؟",
+      "holds": "يحتوي مجلد اللعبة على {size}، بما في ذلك ما أنشأته أو أضفته:",
+      "worlds": "{count, plural, zero {لا عوالم} one {عالم واحد} two {عالمان} few {# عوالم} many {# عالمًا} other {# عالم}} ({names})",
+      "mods": "{count, plural, zero {لا تعديلات} one {تعديل واحد} two {تعديلان} few {# تعديلات} many {# تعديلًا} other {# تعديل}}",
+      "resourcePacks": "{count, plural, zero {لا حزم موارد} one {حزمة موارد واحدة} two {حزمتا موارد} few {# حزم موارد} many {# حزمة موارد} other {# حزمة موارد}}",
+      "shaderPacks": "{count, plural, zero {لا حزم تظليل} one {حزمة تظليل واحدة} two {حزمتا تظليل} few {# حزم تظليل} many {# حزمة تظليل} other {# حزمة تظليل}}",
+      "screenshots": "{count, plural, zero {لا لقطات شاشة} one {لقطة شاشة واحدة} two {لقطتا شاشة} few {# لقطات شاشة} many {# لقطة شاشة} other {# لقطة شاشة}}",
+      "offerBackup": "هل تريد نسخه احتياطيًا أولًا؟ يمكن لنسخة التثبيت الكامل استعادته لاحقًا من النسخ الاحتياطية.",
+      "nothing": "لا يحتوي على عوالم أو تعديلات أو حزم أو لقطات شاشة.",
+      "shared": "تبقى ملفات اللعبة المشتركة مع التثبيتات الأخرى (المكتبات والموارد وJava).",
+      "busy": "انتظر حتى تنتهي العملية الجارية أو اللعبة.",
+      "backupAndDelete": "نسخ احتياطي ثم حذف",
+      "deleteWithoutBackup": "حذف دون نسخة احتياطية",
+      "cancel": "إلغاء",
+      "working": "جارٍ الحذف…",
+      "deleted": "تم حذف «{name}».",
+      "deletedWithBackup": "تم نسخ «{name}» احتياطيًا وحذفه. يمكن استعادته من النسخ الاحتياطية."
+    },
     "settings": {
       "title": "الإعدادات",
       "sectionsLabel": "أقسام الإعدادات",
@@ -607,7 +627,8 @@
       "reason": {
         "manual": "صنعتها أنت",
         "after_play": "بعد اللعب",
-        "before_restore": "قبل الاستعادة"
+        "before_restore": "قبل الاستعادة",
+        "before_delete": "قبل الحذف"
       },
       "size": "{files, number} ملف · {total} · {added} جديد",
       "restore": "استعادة",
@@ -620,7 +641,11 @@
       "restored": "تمت الاستعادة.",
       "restoredCopy": "تمت الاستعادة كالعالم «{name}».",
       "deleted": "تم الحذف؛ تحرّر {size}.",
-      "busy": "تنتظر النسخ والاستعادة انتهاء العملية الجارية أو اللعبة."
+      "busy": "تنتظر النسخ والاستعادة انتهاء العملية الجارية أو اللعبة.",
+      "deletedTitle": "التثبيتات المحذوفة",
+      "deletedHint": "نسخ احتياطية لتثبيتات محذوفة. تعيد نسخة التثبيت الكامل التثبيت مع عوالمه وتعديلاته وإعداداته؛ ثم ثبّته لتلعب.",
+      "bringBack": "استعادة",
+      "broughtBack": "عاد «{name}». ثبّته لتلعب."
     },
     "gallery": {
       "title": "لقطات الشاشة",
@@ -975,6 +1000,9 @@
     "No download is waiting for an answer.": "لا يوجد تنزيل بانتظار إجابة.",
     "Resetting the traffic count": "تصفير عداد حركة البيانات",
     "The monthly limit can be at most {max} MiB.": "لا يمكن أن يتجاوز الحد الشهري {max} MiB.",
-    "This installation has no mod loader.": "لا يحتوي هذا التثبيت على مُحمِّل تعديلات."
+    "This installation has no mod loader.": "لا يحتوي هذا التثبيت على مُحمِّل تعديلات.",
+    "This installation already exists.": "هذا التثبيت موجود بالفعل.",
+    "The installation of this backup was deleted. Only a backup of a whole installation can bring it back.": "حُذف تثبيت هذه النسخة الاحتياطية. لا يمكن استعادته إلا من نسخة احتياطية للتثبيت الكامل.",
+    "Deleting the installation": "حذف التثبيت"
   }
 }

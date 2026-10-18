@@ -276,6 +276,26 @@ export type Messages = {
     readonly notesHint: string;
     readonly notesSave: string;
   };
+  readonly deleteInstance: {
+    readonly delete: string;
+    readonly confirm: (values: { name: string | number }) => string;
+    readonly holds: (values: { size: string | number }) => string;
+    readonly worlds: (values: { count: number; names: string | number }) => string;
+    readonly mods: (values: { count: number }) => string;
+    readonly resourcePacks: (values: { count: number }) => string;
+    readonly shaderPacks: (values: { count: number }) => string;
+    readonly screenshots: (values: { count: number }) => string;
+    readonly offerBackup: string;
+    readonly nothing: string;
+    readonly shared: string;
+    readonly busy: string;
+    readonly backupAndDelete: string;
+    readonly deleteWithoutBackup: string;
+    readonly cancel: string;
+    readonly working: string;
+    readonly deleted: (values: { name: string | number }) => string;
+    readonly deletedWithBackup: (values: { name: string | number }) => string;
+  };
   readonly settings: {
     readonly title: string;
     readonly sectionsLabel: string;
@@ -633,6 +653,7 @@ export type Messages = {
       readonly manual: string;
       readonly after_play: string;
       readonly before_restore: string;
+      readonly before_delete: string;
     };
     readonly size: (values: {
       files: number;
@@ -650,6 +671,10 @@ export type Messages = {
     readonly restoredCopy: (values: { name: string | number }) => string;
     readonly deleted: (values: { size: string | number }) => string;
     readonly busy: string;
+    readonly deletedTitle: string;
+    readonly deletedHint: string;
+    readonly bringBack: string;
+    readonly broughtBack: (values: { name: string | number }) => string;
   };
   readonly gallery: {
     readonly title: string;

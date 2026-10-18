@@ -27,6 +27,8 @@ fn main() {
         "create_backup",
         "restore_backup",
         "delete_backup",
+        "inspect_instance",
+        "delete_instance",
         "list_screenshots",
         "delete_screenshot",
         "open_screenshot",

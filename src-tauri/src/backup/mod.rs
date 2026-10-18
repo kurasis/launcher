@@ -61,6 +61,97 @@ pub struct RestoreResult {
     pub world: Option<String>,
 }
 
+/// What the user made or added in an installation's game folder (D-055): the
+/// files a delete would lose. Game files the launcher downloads are elsewhere.
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct UserData {
+    pub worlds: Vec<String>,
+    pub mods: u64,
+    pub resource_packs: u64,
+    pub shader_packs: u64,
+    pub screenshots: u64,
+    /// Every file of the game folder, settings and logs included.
+    pub bytes: u64,
+}
+
+impl UserData {
+    /// Worlds, mods, packs or screenshots: worth a backup before deleting.
+    pub fn any(&self) -> bool {
+        !self.worlds.is_empty()
+            || self.mods + self.resource_packs + self.shader_packs + self.screenshots > 0
+    }
+}
+
+/// Entries directly inside `dir` (files or folders; packs can be either).
+fn entries(dir: &Path) -> u64 {
+    std::fs::read_dir(dir).map_or(0, |e| {
+        e.filter_map(Result::ok)
+            .filter(|e| !e.file_name().to_string_lossy().starts_with('.'))
+            .count() as u64
+    })
+}
+
+/// Bytes of every regular file under `dir`; symbolic links are not followed.
+fn size(dir: &Path) -> u64 {
+    let Ok(entries) = std::fs::read_dir(dir) else {
+        return 0;
+    };
+    entries
+        .filter_map(Result::ok)
+        .map(|e| match e.file_type() {
+            Ok(t) if t.is_dir() => size(&e.path()),
+            Ok(t) if t.is_file() => e.metadata().map_or(0, |m| m.len()),
+            _ => 0,
+        })
+        .sum()
+}
+
+pub fn user_data(game_dir: &Path) -> UserData {
+    UserData {
+        worlds: worlds(game_dir),
+        mods: entries(&game_dir.join("mods")),
+        resource_packs: entries(&game_dir.join("resourcepacks")),
+        shader_packs: entries(&game_dir.join("shaderpacks")),
+        screenshots: entries(&game_dir.join("screenshots")),
+        bytes: size(game_dir),
+    }
+}
+
+/// What deleting an installation would lose.
+pub fn inspect(state: &AppState, instance_id: InstanceId) -> LauncherResult<UserData> {
+    let root = data_root(state)?;
+    instance(state, instance_id)?;
+    Ok(user_data(&root.game_dir(instance_id)))
+}
+
+/// Deletes an installation, after a backup of its whole game folder when
+/// asked (D-055). Refused while anything runs; files shared with other
+/// installations (libraries, assets, Java) stay.
+pub fn delete_instance(
+    state: &AppState,
+    instance_id: InstanceId,
+    backup: bool,
+) -> LauncherResult<Option<SnapshotInfo>> {
+    let root = data_root(state)?;
+    let instance = instance(state, instance_id)?;
+    with_permit(state, OperationKind::Backup, Some(instance_id), || {
+        let saved = if backup && root.game_dir(instance_id).is_dir() {
+            Some(create_locked(
+                state,
+                &root,
+                &instance,
+                Scope::Installation,
+                Reason::BeforeDelete,
+            )?)
+        } else {
+            None
+        };
+        state.remove_instance(instance_id)?;
+        Ok(saved)
+    })
+}
+
 /// World folders (with a `level.dat`) of a game folder, by name.
 pub fn worlds(game_dir: &Path) -> Vec<String> {
     let Ok(entries) = std::fs::read_dir(game_dir.join("saves")) else {
@@ -155,6 +246,8 @@ fn create_locked(
             instance_id: instance.id,
             instance_name: instance.display_name.clone(),
             version_label: instance.version_label(),
+            version_id: instance.version_id.clone(),
+            loader: instance.loader.clone(),
             scope,
             reason,
         },
@@ -228,7 +321,36 @@ pub fn restore(state: &AppState, backup_id: &str, as_copy: bool) -> LauncherResu
     let root = data_root(state)?;
     let store = Store::new(root.path());
     let snapshot = store.load(backup_id)?;
-    let instance = instance(state, snapshot.info.instance_id)?;
+    let info = &snapshot.info;
+    let instance = match (
+        state.instance(info.instance_id),
+        &info.scope,
+        &info.version_id,
+    ) {
+        (Some(found), _, _) => found,
+        // The installation was deleted: a backup of all of it brings it back.
+        (None, Scope::Installation, Some(version)) => {
+            let recreated = state.recreate_instance(
+                info.instance_id,
+                &info.instance_name,
+                version,
+                info.loader.clone(),
+            )?;
+            state.console().info(format!(
+                "Brought back the deleted installation \"{}\" ({})",
+                recreated.display_name,
+                recreated.version_label()
+            ));
+            recreated
+        }
+        _ => {
+            return Err(LauncherError::new(
+                ErrorCode::InstanceNotFound,
+                "The installation of this backup was deleted. Only a backup of a whole \
+                 installation can bring it back.",
+            ));
+        }
+    };
     with_permit(state, OperationKind::Restore, Some(instance.id), || {
         let console = state.console();
         let scope = snapshot.info.scope.clone();
