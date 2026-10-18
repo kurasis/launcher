@@ -111,10 +111,17 @@ jobs:
           release=$(git rev-parse --short=12 HEAD)
           echo "RELEASE=$release" >> "$GITHUB_ENV"
           scp -i ~/.ssh/id_deploy -o BatchMode=yes lapi-mirror.tar.gz "$TARGET:/tmp/lapi-mirror-$release.tar.gz"
-          # The setup files stay in the deploy user's home for the root step:
-          # sudo bash ~/lapi-bootstrap/bootstrap.sh <user>
-          tar -cz deploy | ssh -i ~/.ssh/id_deploy -o BatchMode=yes "$TARGET" \
-            'rm -rf ~/lapi-bootstrap && mkdir -p ~/lapi-bootstrap && tar -xz -C ~/lapi-bootstrap --strip-components=1'
+          # deploy/ goes to a folder of its own per run (two workflows may
+          # deploy at once); ~/lapi-bootstrap points at the newest, for the
+          # root step: sudo bash ~/lapi-bootstrap/bootstrap.sh <user>
+          setup="$GITHUB_RUN_ID-$GITHUB_JOB-mirror"
+          echo "SETUP=$setup" >> "$GITHUB_ENV"
+          tar -cz deploy | ssh -i ~/.ssh/id_deploy -o BatchMode=yes "$TARGET" "set -e
+            d=\$HOME/.lapi-bootstrap/$setup
+            rm -rf \"\$d\" && mkdir -p \"\$d\" && tar -xz -C \"\$d\" --strip-components=1
+            if [ -d ~/lapi-bootstrap ] && [ ! -L ~/lapi-bootstrap ]; then rm -rf ~/lapi-bootstrap; fi
+            ln -sfn \"\$d\" ~/lapi-bootstrap.$setup && mv -T ~/lapi-bootstrap.$setup ~/lapi-bootstrap
+            ls -1dt ~/.lapi-bootstrap/* | tail -n +11 | xargs -r rm -rf"
       - name: Deploy
         env:
           TARGET: ${{ secrets.SSH_USER }}@${{ secrets.SSH_HOST }}
@@ -122,7 +129,7 @@ jobs:
         run: |
           set +e
           ssh -i ~/.ssh/id_deploy -o BatchMode=yes "$TARGET" \
-            "bash ~/lapi-bootstrap/deploy.sh mirror $RELEASE /tmp/lapi-mirror-$RELEASE.tar.gz $QUOTA_GB" 2>&1 | tee deploy.log
+            "bash ~/.lapi-bootstrap/$SETUP/deploy.sh mirror $RELEASE /tmp/lapi-mirror-$RELEASE.tar.gz $QUOTA_GB" 2>&1 | tee deploy.log
           status=${PIPESTATUS[0]}
           if grep -q NOT_BOOTSTRAPPED deploy.log; then
             echo "::warning::The server is not set up yet: run 'sudo bash ~/lapi-bootstrap/bootstrap.sh <deploy-user>' on it once, then re-run this workflow."
