@@ -31,10 +31,21 @@ pub fn collect(
 ) -> RunFiles {
     let since = since.checked_sub(CLOCK_SLACK).unwrap_or(since);
     let reports = game_dir.join("crash-reports");
+    // Quilt names its first report again when its error window fails; that
+    // report has the cause, the later one only the window's failure.
     let named = output
         .iter()
-        .rev()
-        .find_map(|line| named_report(line, &reports));
+        .find_map(|line| {
+            line.contains("original crash report")
+                .then(|| named_report(line, &reports))
+                .flatten()
+        })
+        .or_else(|| {
+            output
+                .iter()
+                .rev()
+                .find_map(|line| named_report(line, &reports))
+        });
     let crash_report = named
         .or_else(|| newest(&reports, since, |name| name.ends_with(".txt")))
         .and_then(|path| read(&path, redactor));
@@ -51,16 +62,28 @@ pub fn collect(
     }
 }
 
-/// `#@!@# Game crashed! Crash report saved to: #@!@# <path>` (and the older
-/// `This crash report has been saved to: <path>`), when the path is inside
-/// the installation's `crash-reports` folder.
+/// A line naming a crash report: `#@!@# Game crashed! Crash report saved to:
+/// #@!@# <path>`, `This crash report has been saved to: <path>`, Quilt's
+/// `The full crash report has been saved to <path>` and `please see the
+/// original crash report <path>`. Only the file name is used, and only when
+/// that file is in the installation's `crash-reports` folder.
 fn named_report(line: &str, reports: &Path) -> Option<PathBuf> {
-    let (_, rest) = line
-        .split_once("Crash report saved to:")
-        .or_else(|| line.split_once("crash report has been saved to:"))?;
-    let path = rest.trim().trim_start_matches("#@!@#").trim();
+    if !line.to_lowercase().contains("crash report") {
+        return None;
+    }
+    let path = line
+        .split_whitespace()
+        .rev()
+        .map(|word| {
+            word.trim_matches(|c: char| {
+                matches!(
+                    c,
+                    '"' | '\'' | '[' | ']' | '(' | ')' | '<' | '>' | '#' | '!' | '@'
+                )
+            })
+        })
+        .find(|word| word.ends_with(".txt"))?;
     let name = Path::new(path).file_name()?;
-    // Only the file name is trusted; the folder is the installation's own.
     let candidate = reports.join(name);
     candidate.is_file().then_some(candidate)
 }
@@ -145,6 +168,35 @@ mod tests {
         let on_disk = fs::read_to_string(game.join("hs_err_pid42.log")).expect("read");
         assert!(!on_disk.contains("SECRET-TOKEN"), "{on_disk}");
         assert!(on_disk.ends_with('\n'));
+    }
+
+    #[test]
+    fn quilt_names_its_reports_without_a_colon() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let game = dir.path();
+        fs::create_dir_all(game.join("crash-reports")).expect("dir");
+        for name in ["crash-1-quilt_loader.txt", "crash-2-quilt_loader.txt"] {
+            fs::write(game.join("crash-reports").join(name), name).expect("report");
+        }
+        let saved = vec![
+            "Crashed! The full crash report has been saved to /x/crash-reports/crash-2-quilt_loader.txt"
+                .to_owned(),
+        ];
+        let files = collect(game, SystemTime::now(), &saved, &redactor());
+        assert_eq!(
+            files.crash_report.map(|(n, _)| n).as_deref(),
+            Some("crash-2-quilt_loader.txt")
+        );
+        // The error window failed: the first report has the cause.
+        let failed = vec![
+            "java.lang.Error: Failed to open the error gui - please see the original crash report /x/crash-reports/crash-1-quilt_loader.txt".to_owned(),
+            "Crashed! The full crash report has been saved to /x/crash-reports/crash-2-quilt_loader.txt".to_owned(),
+        ];
+        let files = collect(game, SystemTime::now(), &failed, &redactor());
+        assert_eq!(
+            files.crash_report.map(|(n, _)| n).as_deref(),
+            Some("crash-1-quilt_loader.txt")
+        );
     }
 
     #[test]

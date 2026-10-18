@@ -1,0 +1,82 @@
+  <log4j:Event logger="Quilt Loader/GameProvider" timestamp="1792332168379" level="INFO" thread="main">
+    <log4j:Message><![CDATA[Loading Minecraft 1.21.1 with Quilt Loader 0.30.1]]></log4j:Message>
+  </log4j:Event>
+  <log4j:Event logger="Quilt Loader/Mappings" timestamp="1792332168383" level="INFO" thread="main">
+    <log4j:Message><![CDATA[Loading mappings: jar:file:/home/player/.local/share/app.launcher/shared/maven/org/quiltmc/hashed/1.21.1/hashed-1.21.1.jar!/mappings/mappings.tiny]]></log4j:Message>
+  </log4j:Event>
+  <log4j:Event logger="Quilt Loader/Mappings" timestamp="1792332168383" level="INFO" thread="main">
+    <log4j:Message><![CDATA[Skipping mappings: Missing namespace 'intermediary']]></log4j:Message>
+  </log4j:Event>
+  <log4j:Event logger="Quilt Loader/Mappings" timestamp="1792332168383" level="INFO" thread="main">
+    <log4j:Message><![CDATA[Loading mappings: jar:file:/home/player/.local/share/app.launcher/shared/maven/net/fabricmc/intermediary/1.21.1/intermediary-1.21.1.jar!/mappings/mappings.tiny]]></log4j:Message>
+  </log4j:Event>
+  <log4j:Event logger="Quilt Loader/Mappings" timestamp="1792332168383" level="INFO" thread="main">
+    <log4j:Message><![CDATA[Loaded mapping namespaces: [official, intermediary]]]></log4j:Message>
+  </log4j:Event>
+  <log4j:Event logger="Quilt Loader/Mappings" timestamp="1792332168384" level="INFO" thread="main">
+    <log4j:Message><![CDATA[Target namespace: intermediary]]></log4j:Message>
+  </log4j:Event>
+  <log4j:Event logger="Quilt Loader" timestamp="1792332168816" level="ERROR" thread="main">
+    <log4j:Message><![CDATA[Crashed! The full crash report has been saved to /home/player/.local/share/app.launcher/instances/7c924004-baf9-40ed-98a6-09df827b3b82/game/crash-reports/crash-2026-10-18_14.02.48.8059-quilt_loader.txt]]></log4j:Message>
+  </log4j:Event>
+  <log4j:Event logger="Quilt Loader" timestamp="1792332168816" level="ERROR" thread="main">
+    <log4j:Message><![CDATA[Partial Report:
+---- Quilt Loader: Failed to load ----
+Date/Time: 2026/10/18 14:02:48.8165 [+0000]
+Quilt Loader Version: 0.30.1
+
+-- Error 1 --
+
+Failed to read <mods>/sodium-fabric-0.8.13+mc1.21.1.jar!
+
+java.io.IOException: Failed to read /home/player/.local/share/app.launcher/instances/7c924004-baf9-40ed-98a6-09df827b3b82/game/mods/sodium-fabric-0.8.13+mc1.21.1.jar as a zip file: Unexpected end of ZLIB input stream
+	at org.quiltmc.loader.impl.plugin.QuiltPluginManagerImpl.loadZipLikeNow(QuiltPluginManagerImpl.java:276)
+	at org.quiltmc.loader.impl.plugin.QuiltPluginManagerImpl.loadZipNow(QuiltPluginManagerImpl.java:249)
+	at org.quiltmc.loader.impl.plugin.QuiltPluginManagerImpl.loadZip0(QuiltPluginManagerImpl.java:244)
+	at org.quiltmc.loader.impl.plugin.QuiltPluginManagerImpl.scanModFile0(QuiltPluginManagerImpl.java:2113)
+	at org.quiltmc.loader.impl.plugin.QuiltPluginManagerImpl.scanModFile(QuiltPluginManagerImpl.java:2068)
+	at org.quiltmc.loader.impl.plugin.QuiltPluginManagerImpl$1.visitFile(QuiltPluginManagerImpl.java:1979)
+	at org.quiltmc.loader.impl.plugin.QuiltPluginManagerImpl$1.visitFile(QuiltPluginManagerImpl.java:1857)
+	at java.base/java.nio.file.Files.walkFileTree(Files.java:2799)
+	at org.quiltmc.loader.impl.plugin.QuiltPluginManagerImpl.scanModFolder0(QuiltPluginManagerImpl.java:1857)
+	at org.quiltmc.loader.impl.plugin.QuiltPluginManagerImpl.scanModFolder(QuiltPluginManagerImpl.java:1838)
+	at org.quiltmc.loader.impl.plugin.QuiltPluginManagerImpl.addModFolder(QuiltPluginManagerImpl.java:1822)
+	at org.quiltmc.loader.impl.plugin.BasePluginContext.addFolderToScan(BasePluginContext.java:84)
+	at org.quiltmc.loader.impl.plugin.QuiltPluginManagerImpl.runInternal(QuiltPluginManagerImpl.java:1269)
+	at org.quiltmc.loader.impl.plugin.QuiltPluginManagerImpl.run(QuiltPluginManagerImpl.java:776)
+	at org.quiltmc.loader.impl.QuiltLoaderImpl.runPlugins(QuiltLoaderImpl.java:601)
+	at org.quiltmc.loader.impl.QuiltLoaderImpl.setup(QuiltLoaderImpl.java:314)
+	at org.quiltmc.loader.impl.QuiltLoaderImpl.load(QuiltLoaderImpl.java:306)
+	at org.quiltmc.loader.impl.launch.knot.Knot.init(Knot.java:150)
+	at org.quiltmc.loader.impl.launch.knot.Knot.launch(Knot.java:79)
+	at org.quiltmc.loader.impl.launch.knot.KnotClient.main(KnotClient.java:28)
+Caused by: java.io.EOFException: Unexpected end of ZLIB input stream
+	at java.base/java.util.zip.InflaterInputStream.fill(InflaterInputStream.java:266)
+	at java.base/java.util.zip.InflaterInputStream.read(InflaterInputStream.java:175)
+	at java.base/java.util.zip.ZipInputStream.read(ZipInputStream.java:412)
+	at java.base/java.util.zip.ZipInputStream.skip(ZipInputStream.java:468)
+	at org.quiltmc.loader.impl.filesystem.QuiltZipFileSystem$QuiltZipFile.<init>(QuiltZipFileSystem.java:795)
+	at org.quiltmc.loader.impl.filesystem.QuiltZipFileSystem.initializeFromZip(QuiltZipFileSystem.java:244)
+	at org.quiltmc.loader.impl.filesystem.QuiltZipFileSystem.<init>(QuiltZipFileSystem.java:134)
+	at org.quiltmc.loader.impl.plugin.QuiltPluginManagerImpl.loadZipLikeNow(QuiltPluginManagerImpl.java:260)
+	... 19 more
+
+
+-- Plugin State --
+
+Cycle number = 1
+Cycle Step = START
+
+Loaded Plugins (2):
+ - 'quilt_loader' (Builtin)
+ - 'quilted_fabric_loader' (Builtin)
+
+
+
+
+---- end of report ----]]></log4j:Message>
+  </log4j:Event>
+  <log4j:Event logger="Quilt Loader" timestamp="1792332168817" level="ERROR" thread="main">
+    <log4j:Message><![CDATA[For more details see the full crash report file: /home/player/.local/share/app.launcher/instances/7c924004-baf9-40ed-98a6-09df827b3b82/game/crash-reports/crash-2026-10-18_14.02.48.8059-quilt_loader.txt]]></log4j:Message>
+  </log4j:Event>
+Port = 41787

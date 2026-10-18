@@ -1,0 +1,397 @@
+  <log4j:Event logger="cpw.mods.modlauncher.Launcher" timestamp="1792332039185" level="INFO" thread="main">
+    <log4j:Message><![CDATA[ModLauncher running: args [--username, TestPlayer, --version, 1.21.1-forge-52.0.57, --gameDir, /home/player/.local/share/app.launcher/instances/259346f5-99ac-4f13-bb0c-3a721b5c5b52/game, --assetsDir, /home/player/.local/share/app.launcher/shared/assets, --assetIndex, 17, --uuid, 63508fdc1cc35e429002c04e5e68da29, --accessToken, **********, --clientId, , --xuid, , --userType, msa, --versionType, release, --width, 1280, --height, 720, --launchTarget, forge_client]]]></log4j:Message>
+  </log4j:Event>
+  <log4j:Event logger="cpw.mods.modlauncher.Launcher" timestamp="1792332039187" level="INFO" thread="main">
+    <log4j:Message><![CDATA[JVM identified as Microsoft OpenJDK 64-Bit Server VM 21.0.7+6-LTS]]></log4j:Message>
+  </log4j:Event>
+  <log4j:Event logger="cpw.mods.modlauncher.Launcher" timestamp="1792332039188" level="INFO" thread="main">
+    <log4j:Message><![CDATA[ModLauncher 10.2.4 starting: java version 21.0.7 by Microsoft; OS Linux arch amd64 version 6.18.44-fc-v139]]></log4j:Message>
+  </log4j:Event>
+  <log4j:Event logger="net.minecraftforge.fml.loading.ImmediateWindowHandler" timestamp="1792332039327" level="INFO" thread="main">
+    <log4j:Message><![CDATA[Loading ImmediateWindowProvider fmlearlywindow]]></log4j:Message>
+  </log4j:Event>
+  <log4j:Event logger="EARLYDISPLAY" timestamp="1792332039987" level="INFO" thread="main">
+    <log4j:Message><![CDATA[Trying GL version 4.6]]></log4j:Message>
+  </log4j:Event>
+  <log4j:Event logger="EARLYDISPLAY" timestamp="1792332040019" level="INFO" thread="main">
+    <log4j:Message><![CDATA[Trying GL version 4.5]]></log4j:Message>
+  </log4j:Event>
+  <log4j:Event logger="EARLYDISPLAY" timestamp="1792332040040" level="INFO" thread="main">
+    <log4j:Message><![CDATA[Requested GL version 4.5 got version 4.5]]></log4j:Message>
+  </log4j:Event>
+  <log4j:Event logger="mixin" timestamp="1792332040147" level="INFO" thread="main">
+    <log4j:Message><![CDATA[SpongePowered MIXIN Subsystem Version=0.8.7 Source=jar:file:///home/player/.local/share/app.launcher/shared/maven/org/spongepowered/mixin/0.8.7/mixin-0.8.7.jar!/ Service=ModLauncher Env=CLIENT]]></log4j:Message>
+  </log4j:Event>
+  <log4j:Event logger="EARLYDISPLAY" timestamp="1792332040213" level="INFO" thread="EarlyDisplay">
+    <log4j:Message><![CDATA[GL info: llvmpipe (LLVM 20.1.2, 256 bits) GL version 4.5 (Core Profile) Mesa 25.2.8-0ubuntu0.24.04.4, Mesa]]></log4j:Message>
+  </log4j:Event>
+  <log4j:Event logger="net.minecraftforge.fml.loading.moddiscovery.ModDiscoverer" timestamp="1792332040247" level="INFO" thread="main">
+    <log4j:Message><![CDATA[Found mod file jei-1.21.1-forge-19.64.0.455.jar of type MOD with provider {mods folder locator at /home/player/.local/share/app.launcher/instances/259346f5-99ac-4f13-bb0c-3a721b5c5b52/game/mods}]]></log4j:Message>
+  </log4j:Event>
+  <log4j:Event logger="net.minecraftforge.fml.loading.moddiscovery.ModDiscoverer" timestamp="1792332040300" level="INFO" thread="main">
+    <log4j:Message><![CDATA[Found mod file forge-1.21.1-52.0.57-client.jar of type MOD with provider net.minecraftforge.fml.loading.moddiscovery.MinecraftLocator@25d3cfc8]]></log4j:Message>
+  </log4j:Event>
+  <log4j:Event logger="net.minecraftforge.fml.loading.moddiscovery.ModDiscoverer" timestamp="1792332040506" level="INFO" thread="main">
+    <log4j:Message><![CDATA[Found mod file javafmllanguage-1.21.1-52.0.57.jar of type LANGPROVIDER with provider net.minecraftforge.fml.loading.moddiscovery.ClasspathLocator@24e08d59]]></log4j:Message>
+  </log4j:Event>
+  <log4j:Event logger="net.minecraftforge.fml.loading.moddiscovery.ModDiscoverer" timestamp="1792332040507" level="INFO" thread="main">
+    <log4j:Message><![CDATA[Found mod file mclanguage-1.21.1-52.0.57.jar of type LANGPROVIDER with provider net.minecraftforge.fml.loading.moddiscovery.ClasspathLocator@24e08d59]]></log4j:Message>
+  </log4j:Event>
+  <log4j:Event logger="net.minecraftforge.fml.loading.moddiscovery.ModDiscoverer" timestamp="1792332040507" level="INFO" thread="main">
+    <log4j:Message><![CDATA[Found mod file fmlcore-1.21.1-52.0.57.jar of type LIBRARY with provider net.minecraftforge.fml.loading.moddiscovery.ClasspathLocator@24e08d59]]></log4j:Message>
+  </log4j:Event>
+  <log4j:Event logger="net.minecraftforge.fml.loading.moddiscovery.ModDiscoverer" timestamp="1792332040507" level="INFO" thread="main">
+    <log4j:Message><![CDATA[Found mod file forge-1.21.1-52.0.57-universal.jar of type MOD with provider net.minecraftforge.fml.loading.moddiscovery.ClasspathLocator@24e08d59]]></log4j:Message>
+  </log4j:Event>
+  <log4j:Event logger="net.minecraftforge.fml.loading.moddiscovery.ModDiscoverer" timestamp="1792332040507" level="INFO" thread="main">
+    <log4j:Message><![CDATA[Found mod file lowcodelanguage-1.21.1-52.0.57.jar of type LANGPROVIDER with provider net.minecraftforge.fml.loading.moddiscovery.ClasspathLocator@24e08d59]]></log4j:Message>
+  </log4j:Event>
+  <log4j:Event logger="net.minecraftforge.fml.loading.moddiscovery.JarInJarDependencyLocator" timestamp="1792332040634" level="INFO" thread="main">
+    <log4j:Message><![CDATA[Found 1 dependencies adding them to mods collection]]></log4j:Message>
+  </log4j:Event>
+  <log4j:Event logger="net.minecraftforge.fml.loading.moddiscovery.ModDiscoverer" timestamp="1792332040635" level="INFO" thread="main">
+    <log4j:Message><![CDATA[Found mod file mezz_config-1.21.1-forge-0.6.6.jar of type MOD with provider net.minecraftforge.fml.loading.moddiscovery.JarInJarDependencyLocator@99407c2]]></log4j:Message>
+  </log4j:Event>
+  <log4j:Event logger="cpw.mods.modlauncher.LaunchServiceHandler" timestamp="1792332043247" level="INFO" thread="main">
+    <log4j:Message><![CDATA[Launching target 'forge_client' with arguments [--version, 1.21.1-forge-52.0.57, --gameDir, /home/player/.local/share/app.launcher/instances/259346f5-99ac-4f13-bb0c-3a721b5c5b52/game, --assetsDir, /home/player/.local/share/app.launcher/shared/assets, --uuid, 63508fdc1cc35e429002c04e5e68da29, --username, TestPlayer, --assetIndex, 17, --accessToken, **********, --clientId, , --xuid, , --userType, msa, --versionType, release, --width, 1280, --height, 720]]]></log4j:Message>
+  </log4j:Event>
+  <log4j:Event logger="oshi.util.FileUtil" timestamp="1792332045136" level="WARN" thread="main">
+    <log4j:Message><![CDATA[Configuration conflict: there is more than one oshi.properties file on the classpath: [jar:file:///home/player/.local/share/app.launcher/shared/maven/com/github/oshi/oshi-core/6.4.10/oshi-core-6.4.10.jar!/oshi.properties, jar:file:/home/player/.local/share/app.launcher/shared/maven/com/github/oshi/oshi-core/6.4.10/oshi-core-6.4.10.jar!/oshi.properties, jar:file:///home/player/.local/share/app.launcher/shared/maven/com/github/oshi/oshi-core/6.4.10/oshi-core-6.4.10.jar!/oshi.properties, jar:file:/home/player/.local/share/app.launcher/shared/maven/com/github/oshi/oshi-core/6.4.10/oshi-core-6.4.10.jar!/oshi.properties]]]></log4j:Message>
+  </log4j:Event>
+  <log4j:Event logger="oshi.util.FileUtil" timestamp="1792332045285" level="WARN" thread="main">
+    <log4j:Message><![CDATA[Configuration conflict: there is more than one oshi.architecture.properties file on the classpath: [jar:file:///home/player/.local/share/app.launcher/shared/maven/com/github/oshi/oshi-core/6.4.10/oshi-core-6.4.10.jar!/oshi.architecture.properties, jar:file:/home/player/.local/share/app.launcher/shared/maven/com/github/oshi/oshi-core/6.4.10/oshi-core-6.4.10.jar!/oshi.architecture.properties, jar:file:///home/player/.local/share/app.launcher/shared/maven/com/github/oshi/oshi-core/6.4.10/oshi-core-6.4.10.jar!/oshi.architecture.properties, jar:file:/home/player/.local/share/app.launcher/shared/maven/com/github/oshi/oshi-core/6.4.10/oshi-core-6.4.10.jar!/oshi.architecture.properties]]]></log4j:Message>
+  </log4j:Event>
+  <log4j:Event logger="com.mojang.datafixers.DataFixerBuilder" timestamp="1792332045492" level="INFO" thread="Datafixer Bootstrap">
+    <log4j:Message><![CDATA[226 Datafixer optimizations took 405 milliseconds]]></log4j:Message>
+  </log4j:Event>
+  <log4j:Event logger="com.mojang.authlib.yggdrasil.YggdrasilAuthenticationService" timestamp="1792332049725" level="INFO" thread="Render thread">
+    <log4j:Message><![CDATA[Environment: Environment[sessionHost=https://sessionserver.mojang.com, servicesHost=https://api.minecraftservices.com, name=PROD]]]></log4j:Message>
+  </log4j:Event>
+  <log4j:Event logger="net.minecraft.client.Minecraft" timestamp="1792332049738" level="INFO" thread="Render thread">
+    <log4j:Message><![CDATA[Setting user: TestPlayer]]></log4j:Message>
+  </log4j:Event>
+  <log4j:Event logger="net.minecraft.client.Minecraft" timestamp="1792332049888" level="INFO" thread="Render thread">
+    <log4j:Message><![CDATA[Backend library: LWJGL version 3.3.3+5]]></log4j:Message>
+  </log4j:Event>
+  <log4j:Event logger="com.mojang.authlib.yggdrasil.YggdrasilMinecraftSessionService" timestamp="1792332050196" level="WARN" thread="Download-1">
+    <log4j:Message><![CDATA[Couldn't look up profile properties for 63508fdc-1cc3-5e42-9002-c04e5e68da29]]></log4j:Message>
+    <log4j:Throwable><![CDATA[com.mojang.authlib.exceptions.MinecraftClientException: Failed to read from https://sessionserver.mojang.com/session/minecraft/profile/63508fdc1cc35e429002c04e5e68da29?unsigned=false due to PKIX path building failed: sun.security.provider.certpath.SunCertPathBuilderException: unable to find valid certification path to requested target
+	at SECURE-BOOTSTRAP/authlib@6.0.54/com.mojang.authlib.minecraft.client.MinecraftClient.readInputStream(MinecraftClient.java:108)
+	at SECURE-BOOTSTRAP/authlib@6.0.54/com.mojang.authlib.minecraft.client.MinecraftClient.get(MinecraftClient.java:57)
+	at SECURE-BOOTSTRAP/authlib@6.0.54/com.mojang.authlib.yggdrasil.YggdrasilMinecraftSessionService.fetchProfileUncached(YggdrasilMinecraftSessionService.java:201)
+	at SECURE-BOOTSTRAP/authlib@6.0.54/com.mojang.authlib.yggdrasil.YggdrasilMinecraftSessionService.fetchProfile(YggdrasilMinecraftSessionService.java:171)
+	at TRANSFORMER/minecraft@1.21.1/net.minecraft.client.Minecraft.lambda$new$1(Minecraft.java:423)
+	at java.base/java.util.concurrent.CompletableFuture$AsyncSupply.run(CompletableFuture.java:1768)
+	at java.base/java.util.concurrent.ThreadPoolExecutor.runWorker(ThreadPoolExecutor.java:1144)
+	at java.base/java.util.concurrent.ThreadPoolExecutor$Worker.run(ThreadPoolExecutor.java:642)
+	at java.base/java.lang.Thread.run(Thread.java:1583)
+Caused by: javax.net.ssl.SSLHandshakeException: PKIX path building failed: sun.security.provider.certpath.SunCertPathBuilderException: unable to find valid certification path to requested target
+	at java.base/sun.security.ssl.Alert.createSSLException(Alert.java:130)
+	at java.base/sun.security.ssl.TransportContext.fatal(TransportContext.java:383)
+	at java.base/sun.security.ssl.TransportContext.fatal(TransportContext.java:326)
+	at java.base/sun.security.ssl.TransportContext.fatal(TransportContext.java:321)
+	at java.base/sun.security.ssl.CertificateMessage$T13CertificateConsumer.checkServerCerts(CertificateMessage.java:1318)
+	at java.base/sun.security.ssl.CertificateMessage$T13CertificateConsumer.onConsumeCertificate(CertificateMessage.java:1195)
+	at java.base/sun.security.ssl.CertificateMessage$T13CertificateConsumer.consume(CertificateMessage.java:1138)
+	at java.base/sun.security.ssl.SSLHandshake.consume(SSLHandshake.java:393)
+	at java.base/sun.security.ssl.HandshakeContext.dispatch(HandshakeContext.java:476)
+	at java.base/sun.security.ssl.HandshakeContext.dispatch(HandshakeContext.java:447)
+	at java.base/sun.security.ssl.TransportContext.dispatch(TransportContext.java:206)
+	at java.base/sun.security.ssl.SSLTransport.decode(SSLTransport.java:172)
+	at java.base/sun.security.ssl.SSLSocketImpl.decode(SSLSocketImpl.java:1506)
+	at java.base/sun.security.ssl.SSLSocketImpl.readHandshakeRecord(SSLSocketImpl.java:1421)
+	at java.base/sun.security.ssl.SSLSocketImpl.startHandshake(SSLSocketImpl.java:455)
+	at java.base/sun.security.ssl.SSLSocketImpl.startHandshake(SSLSocketImpl.java:426)
+	at java.base/sun.net.www.protocol.https.HttpsClient.afterConnect(HttpsClient.java:586)
+	at java.base/sun.net.www.protocol.https.AbstractDelegateHttpsURLConnection.connect(AbstractDelegateHttpsURLConnection.java:187)
+	at java.base/sun.net.www.protocol.http.HttpURLConnection.getInputStream0(HttpURLConnection.java:1690)
+	at java.base/sun.net.www.protocol.http.HttpURLConnection.getInputStream(HttpURLConnection.java:1614)
+	at java.base/java.net.HttpURLConnection.getResponseCode(HttpURLConnection.java:531)
+	at java.base/sun.net.www.protocol.https.HttpsURLConnectionImpl.getResponseCode(HttpsURLConnectionImpl.java:307)
+	at SECURE-BOOTSTRAP/authlib@6.0.54/com.mojang.authlib.minecraft.client.MinecraftClient.readInputStream(MinecraftClient.java:84)
+	... 8 more
+Caused by: sun.security.validator.ValidatorException: PKIX path building failed: sun.security.provider.certpath.SunCertPathBuilderException: unable to find valid certification path to requested target
+	at java.base/sun.security.validator.PKIXValidator.doBuild(PKIXValidator.java:388)
+	at java.base/sun.security.validator.PKIXValidator.engineValidate(PKIXValidator.java:271)
+	at java.base/sun.security.validator.Validator.validate(Validator.java:256)
+	at java.base/sun.security.ssl.X509TrustManagerImpl.checkTrusted(X509TrustManagerImpl.java:230)
+	at java.base/sun.security.ssl.X509TrustManagerImpl.checkServerTrusted(X509TrustManagerImpl.java:132)
+	at java.base/sun.security.ssl.CertificateMessage$T13CertificateConsumer.checkServerCerts(CertificateMessage.java:1302)
+	... 26 more
+Caused by: sun.security.provider.certpath.SunCertPathBuilderException: unable to find valid certification path to requested target
+	at java.base/sun.security.provider.certpath.SunCertPathBuilder.build(SunCertPathBuilder.java:148)
+	at java.base/sun.security.provider.certpath.SunCertPathBuilder.engineBuild(SunCertPathBuilder.java:129)
+	at java.base/java.security.cert.CertPathBuilder.build(CertPathBuilder.java:297)
+	at java.base/sun.security.validator.PKIXValidator.doBuild(PKIXValidator.java:383)
+	... 31 more
+]]></log4j:Throwable>
+  </log4j:Event>
+  <log4j:Event logger="com.mojang.authlib.yggdrasil.YggdrasilServicesKeyInfo" timestamp="1792332050198" level="ERROR" thread="Yggdrasil Key Fetcher">
+    <log4j:Message><![CDATA[Failed to request yggdrasil public key]]></log4j:Message>
+    <log4j:Throwable><![CDATA[com.mojang.authlib.exceptions.MinecraftClientException: Failed to read from https://api.minecraftservices.com/publickeys due to PKIX path building failed: sun.security.provider.certpath.SunCertPathBuilderException: unable to find valid certification path to requested target
+	at SECURE-BOOTSTRAP/authlib@6.0.54/com.mojang.authlib.minecraft.client.MinecraftClient.readInputStream(MinecraftClient.java:108)
+	at SECURE-BOOTSTRAP/authlib@6.0.54/com.mojang.authlib.minecraft.client.MinecraftClient.get(MinecraftClient.java:57)
+	at SECURE-BOOTSTRAP/authlib@6.0.54/com.mojang.authlib.yggdrasil.YggdrasilServicesKeyInfo.fetch(YggdrasilServicesKeyInfo.java:114)
+	at SECURE-BOOTSTRAP/authlib@6.0.54/com.mojang.authlib.yggdrasil.YggdrasilServicesKeyInfo$1.run(YggdrasilServicesKeyInfo.java:89)
+	at java.base/java.util.concurrent.Executors$RunnableAdapter.call(Executors.java:572)
+	at java.base/java.util.concurrent.FutureTask.run(FutureTask.java:317)
+	at java.base/java.util.concurrent.ScheduledThreadPoolExecutor$ScheduledFutureTask.run(ScheduledThreadPoolExecutor.java:304)
+	at java.base/java.util.concurrent.ThreadPoolExecutor.runWorker(ThreadPoolExecutor.java:1144)
+	at java.base/java.util.concurrent.ThreadPoolExecutor$Worker.run(ThreadPoolExecutor.java:642)
+	at java.base/java.lang.Thread.run(Thread.java:1583)
+Caused by: javax.net.ssl.SSLHandshakeException: PKIX path building failed: sun.security.provider.certpath.SunCertPathBuilderException: unable to find valid certification path to requested target
+	at java.base/sun.security.ssl.Alert.createSSLException(Alert.java:130)
+	at java.base/sun.security.ssl.TransportContext.fatal(TransportContext.java:383)
+	at java.base/sun.security.ssl.TransportContext.fatal(TransportContext.java:326)
+	at java.base/sun.security.ssl.TransportContext.fatal(TransportContext.java:321)
+	at java.base/sun.security.ssl.CertificateMessage$T13CertificateConsumer.checkServerCerts(CertificateMessage.java:1318)
+	at java.base/sun.security.ssl.CertificateMessage$T13CertificateConsumer.onConsumeCertificate(CertificateMessage.java:1195)
+	at java.base/sun.security.ssl.CertificateMessage$T13CertificateConsumer.consume(CertificateMessage.java:1138)
+	at java.base/sun.security.ssl.SSLHandshake.consume(SSLHandshake.java:393)
+	at java.base/sun.security.ssl.HandshakeContext.dispatch(HandshakeContext.java:476)
+	at java.base/sun.security.ssl.HandshakeContext.dispatch(HandshakeContext.java:447)
+	at java.base/sun.security.ssl.TransportContext.dispatch(TransportContext.java:206)
+	at java.base/sun.security.ssl.SSLTransport.decode(SSLTransport.java:172)
+	at java.base/sun.security.ssl.SSLSocketImpl.decode(SSLSocketImpl.java:1506)
+	at java.base/sun.security.ssl.SSLSocketImpl.readHandshakeRecord(SSLSocketImpl.java:1421)
+	at java.base/sun.security.ssl.SSLSocketImpl.startHandshake(SSLSocketImpl.java:455)
+	at java.base/sun.security.ssl.SSLSocketImpl.startHandshake(SSLSocketImpl.java:426)
+	at java.base/sun.net.www.protocol.https.HttpsClient.afterConnect(HttpsClient.java:586)
+	at java.base/sun.net.www.protocol.https.AbstractDelegateHttpsURLConnection.connect(AbstractDelegateHttpsURLConnection.java:187)
+	at java.base/sun.net.www.protocol.http.HttpURLConnection.getInputStream0(HttpURLConnection.java:1690)
+	at java.base/sun.net.www.protocol.http.HttpURLConnection.getInputStream(HttpURLConnection.java:1614)
+	at java.base/java.net.HttpURLConnection.getResponseCode(HttpURLConnection.java:531)
+	at java.base/sun.net.www.protocol.https.HttpsURLConnectionImpl.getResponseCode(HttpsURLConnectionImpl.java:307)
+	at SECURE-BOOTSTRAP/authlib@6.0.54/com.mojang.authlib.minecraft.client.MinecraftClient.readInputStream(MinecraftClient.java:84)
+	... 9 more
+Caused by: sun.security.validator.ValidatorException: PKIX path building failed: sun.security.provider.certpath.SunCertPathBuilderException: unable to find valid certification path to requested target
+	at java.base/sun.security.validator.PKIXValidator.doBuild(PKIXValidator.java:388)
+	at java.base/sun.security.validator.PKIXValidator.engineValidate(PKIXValidator.java:271)
+	at java.base/sun.security.validator.Validator.validate(Validator.java:256)
+	at java.base/sun.security.ssl.X509TrustManagerImpl.checkTrusted(X509TrustManagerImpl.java:230)
+	at java.base/sun.security.ssl.X509TrustManagerImpl.checkServerTrusted(X509TrustManagerImpl.java:132)
+	at java.base/sun.security.ssl.CertificateMessage$T13CertificateConsumer.checkServerCerts(CertificateMessage.java:1302)
+	... 27 more
+Caused by: sun.security.provider.certpath.SunCertPathBuilderException: unable to find valid certification path to requested target
+	at java.base/sun.security.provider.certpath.SunCertPathBuilder.build(SunCertPathBuilder.java:148)
+	at java.base/sun.security.provider.certpath.SunCertPathBuilder.engineBuild(SunCertPathBuilder.java:129)
+	at java.base/java.security.cert.CertPathBuilder.build(CertPathBuilder.java:297)
+	at java.base/sun.security.validator.PKIXValidator.doBuild(PKIXValidator.java:383)
+	... 32 more
+]]></log4j:Throwable>
+  </log4j:Event>
+  <log4j:Event logger="net.minecraft.client.Minecraft" timestamp="1792332050198" level="ERROR" thread="Download-2">
+    <log4j:Message><![CDATA[Failed to fetch user properties]]></log4j:Message>
+    <log4j:Throwable><![CDATA[com.mojang.authlib.exceptions.AuthenticationUnavailableException
+	at SECURE-BOOTSTRAP/authlib@6.0.54/com.mojang.authlib.exceptions.MinecraftClientException.toAuthenticationException(MinecraftClientException.java:29)
+	at SECURE-BOOTSTRAP/authlib@6.0.54/com.mojang.authlib.yggdrasil.YggdrasilUserApiService.fetchProperties(YggdrasilUserApiService.java:154)
+	at TRANSFORMER/minecraft@1.21.1/net.minecraft.client.Minecraft.lambda$new$2(Minecraft.java:427)
+	at java.base/java.util.concurrent.CompletableFuture$AsyncSupply.run(CompletableFuture.java:1768)
+	at java.base/java.util.concurrent.ThreadPoolExecutor.runWorker(ThreadPoolExecutor.java:1144)
+	at java.base/java.util.concurrent.ThreadPoolExecutor$Worker.run(ThreadPoolExecutor.java:642)
+	at java.base/java.lang.Thread.run(Thread.java:1583)
+]]></log4j:Throwable>
+  </log4j:Event>
+  <log4j:Event logger="net.minecraftforge.common.ForgeMod" timestamp="1792332050263" level="INFO" thread="modloading-worker-0">
+    <log4j:Message><![CDATA[Forge mod loading, version 52.0.57, for MC 1.21.1 with MCP 20240808.132146]]></log4j:Message>
+  </log4j:Event>
+  <log4j:Event logger="net.minecraftforge.common.MinecraftForge" timestamp="1792332050263" level="INFO" thread="modloading-worker-0">
+    <log4j:Message><![CDATA[MinecraftForge v52.0.57 Initialized]]></log4j:Message>
+  </log4j:Event>
+  <log4j:Event logger="net.minecraftforge.common.ForgeMod" timestamp="1792332050324" level="INFO" thread="modloading-worker-0">
+    <log4j:Message><![CDATA[Opening jdk.naming.dns/com.sun.jndi.dns to java.naming]]></log4j:Message>
+  </log4j:Event>
+  <log4j:Event logger="mezz.jei.library.load.PluginCaller" timestamp="1792332050723" level="INFO" thread="modloading-worker-0">
+    <log4j:Message><![CDATA[Sending ConfigManager...]]></log4j:Message>
+  </log4j:Event>
+  <log4j:Event logger="mezz.jei.library.load.PluginCaller" timestamp="1792332050727" level="INFO" thread="modloading-worker-0">
+    <log4j:Message><![CDATA[Sending ConfigManager took 2.015 milliseconds]]></log4j:Message>
+  </log4j:Event>
+[W][01618.644596] pw.conf      | [          conf.c: 1031 try_load_conf()] can't load config client-rt.conf: No such file or directory
+[E][01618.644616] pw.conf      | [          conf.c: 1060 pw_conf_load_conf_for_context()] can't load config client-rt.conf: No such file or directory
+[ALSOFT] (EE) Failed to create PipeWire event context (errno: 2)
+  <log4j:Event logger="net.minecraft.server.packs.resources.ReloadableResourceManager" timestamp="1792332051442" level="INFO" thread="Render thread">
+    <log4j:Message><![CDATA[Reloading ResourceManager: vanilla, mod_resources]]></log4j:Message>
+  </log4j:Event>
+  <log4j:Event logger="net.minecraft.client.gui.font.providers.UnihexProvider" timestamp="1792332051704" level="INFO" thread="Worker-Main-1">
+    <log4j:Message><![CDATA[Found unifont_all_no_pua-15.1.05.hex, loading]]></log4j:Message>
+  </log4j:Event>
+  <log4j:Event logger="net.minecraft.client.gui.font.providers.UnihexProvider" timestamp="1792332052240" level="INFO" thread="Worker-Main-1">
+    <log4j:Message><![CDATA[Found unifont_jp_patch-15.1.05.hex, loading]]></log4j:Message>
+  </log4j:Event>
+  <log4j:Event logger="net.minecraftforge.fml.VersionChecker" timestamp="1792332052633" level="INFO" thread="Forge Version Check">
+    <log4j:Message><![CDATA[[forge] Starting version check at https://files.minecraftforge.net/net/minecraftforge/forge/promotions_slim.json]]></log4j:Message>
+  </log4j:Event>
+  <log4j:Event logger="net.minecraftforge.fml.VersionChecker" timestamp="1792332052784" level="WARN" thread="Forge Version Check">
+    <log4j:Message><![CDATA[Failed to process update information]]></log4j:Message>
+    <log4j:Throwable><![CDATA[javax.net.ssl.SSLHandshakeException: PKIX path building failed: sun.security.provider.certpath.SunCertPathBuilderException: unable to find valid certification path to requested target
+	at java.net.http/jdk.internal.net.http.HttpClientImpl.send(HttpClientImpl.java:957)
+	at java.net.http/jdk.internal.net.http.HttpClientFacade.send(HttpClientFacade.java:133)
+	at LAYER PLUGIN/net.minecraftforge.fmlcore@1.21.1-52.0.57/net.minecraftforge.fml.VersionChecker$1.openUrlString(VersionChecker.java:123)
+	at LAYER PLUGIN/net.minecraftforge.fmlcore@1.21.1-52.0.57/net.minecraftforge.fml.VersionChecker$1.process(VersionChecker.java:156)
+	at java.base/java.lang.Iterable.forEach(Iterable.java:75)
+	at LAYER PLUGIN/net.minecraftforge.fmlcore@1.21.1-52.0.57/net.minecraftforge.fml.VersionChecker$1.run(VersionChecker.java:104)
+Caused by: javax.net.ssl.SSLHandshakeException: PKIX path building failed: sun.security.provider.certpath.SunCertPathBuilderException: unable to find valid certification path to requested target
+	at java.base/sun.security.ssl.Alert.createSSLException(Alert.java:130)
+	at java.base/sun.security.ssl.TransportContext.fatal(TransportContext.java:383)
+	at java.base/sun.security.ssl.TransportContext.fatal(TransportContext.java:326)
+	at java.base/sun.security.ssl.TransportContext.fatal(TransportContext.java:321)
+	at java.base/sun.security.ssl.CertificateMessage$T13CertificateConsumer.checkServerCerts(CertificateMessage.java:1318)
+	at java.base/sun.security.ssl.CertificateMessage$T13CertificateConsumer.onConsumeCertificate(CertificateMessage.java:1195)
+	at java.base/sun.security.ssl.CertificateMessage$T13CertificateConsumer.consume(CertificateMessage.java:1138)
+	at java.base/sun.security.ssl.SSLHandshake.consume(SSLHandshake.java:393)
+	at java.base/sun.security.ssl.HandshakeContext.dispatch(HandshakeContext.java:476)
+	at java.base/sun.security.ssl.SSLEngineImpl$DelegatedTask$DelegatedAction.run(SSLEngineImpl.java:1273)
+	at java.base/sun.security.ssl.SSLEngineImpl$DelegatedTask$DelegatedAction.run(SSLEngineImpl.java:1260)
+	at java.base/java.security.AccessController.doPrivileged(AccessController.java:714)
+	at java.base/sun.security.ssl.SSLEngineImpl$DelegatedTask.run(SSLEngineImpl.java:1205)
+	at java.base/java.util.ArrayList.forEach(ArrayList.java:1596)
+	at java.net.http/jdk.internal.net.http.common.SSLFlowDelegate.lambda$executeTasks$3(SSLFlowDelegate.java:1148)
+	at java.net.http/jdk.internal.net.http.HttpClientImpl$DelegatingExecutor.execute(HttpClientImpl.java:177)
+	at java.net.http/jdk.internal.net.http.common.SSLFlowDelegate.executeTasks(SSLFlowDelegate.java:1143)
+	at java.net.http/jdk.internal.net.http.common.SSLFlowDelegate.doHandshake(SSLFlowDelegate.java:1109)
+	at java.net.http/jdk.internal.net.http.common.SSLFlowDelegate$Reader.processData(SSLFlowDelegate.java:508)
+	at java.net.http/jdk.internal.net.http.common.SSLFlowDelegate$Reader$ReaderDownstreamPusher.run(SSLFlowDelegate.java:283)
+	at java.net.http/jdk.internal.net.http.common.SequentialScheduler$LockingRestartableTask.run(SequentialScheduler.java:182)
+	at java.net.http/jdk.internal.net.http.common.SequentialScheduler$CompleteRestartableTask.run(SequentialScheduler.java:149)
+	at java.net.http/jdk.internal.net.http.common.SequentialScheduler$TryEndDeferredCompleter.complete(SequentialScheduler.java:324)
+	at java.net.http/jdk.internal.net.http.common.SequentialScheduler$CompleteRestartableTask.run(SequentialScheduler.java:151)
+	at java.net.http/jdk.internal.net.http.common.SequentialScheduler$SchedulableTask.run(SequentialScheduler.java:207)
+	at java.base/java.util.concurrent.ThreadPoolExecutor.runWorker(ThreadPoolExecutor.java:1144)
+	at java.base/java.util.concurrent.ThreadPoolExecutor$Worker.run(ThreadPoolExecutor.java:642)
+	at java.base/java.lang.Thread.run(Thread.java:1583)
+Caused by: sun.security.validator.ValidatorException: PKIX path building failed: sun.security.provider.certpath.SunCertPathBuilderException: unable to find valid certification path to requested target
+	at java.base/sun.security.validator.PKIXValidator.doBuild(PKIXValidator.java:388)
+	at java.base/sun.security.validator.PKIXValidator.engineValidate(PKIXValidator.java:271)
+	at java.base/sun.security.validator.Validator.validate(Validator.java:256)
+	at java.base/sun.security.ssl.X509TrustManagerImpl.checkTrusted(X509TrustManagerImpl.java:284)
+	at java.base/sun.security.ssl.X509TrustManagerImpl.checkServerTrusted(X509TrustManagerImpl.java:144)
+	at java.base/sun.security.ssl.CertificateMessage$T13CertificateConsumer.checkServerCerts(CertificateMessage.java:1296)
+	... 23 more
+Caused by: sun.security.provider.certpath.SunCertPathBuilderException: unable to find valid certification path to requested target
+	at java.base/sun.security.provider.certpath.SunCertPathBuilder.build(SunCertPathBuilder.java:148)
+	at java.base/sun.security.provider.certpath.SunCertPathBuilder.engineBuild(SunCertPathBuilder.java:129)
+	at java.base/java.security.cert.CertPathBuilder.build(CertPathBuilder.java:297)
+	at java.base/sun.security.validator.PKIXValidator.doBuild(PKIXValidator.java:383)
+	... 28 more
+]]></log4j:Throwable>
+  </log4j:Event>
+  <log4j:Event logger="net.minecraft.client.sounds.SoundEngine" timestamp="1792332054835" level="WARN" thread="Render thread">
+    <log4j:Message><![CDATA[Missing sound for event: minecraft:item.goat_horn.play]]></log4j:Message>
+  </log4j:Event>
+  <log4j:Event logger="net.minecraft.client.sounds.SoundEngine" timestamp="1792332054836" level="WARN" thread="Render thread">
+    <log4j:Message><![CDATA[Missing sound for event: minecraft:entity.goat.screaming.horn_break]]></log4j:Message>
+  </log4j:Event>
+  <log4j:Event logger="net.minecraft.client.sounds.SoundEngine" timestamp="1792332054838" level="ERROR" thread="Render thread">
+    <log4j:Message><![CDATA[Error starting SoundSystem. Turning off sounds & music]]></log4j:Message>
+    <log4j:Throwable><![CDATA[java.lang.IllegalStateException: Failed to open OpenAL device
+	at TRANSFORMER/minecraft@1.21.1/com.mojang.blaze3d.audio.Library.openDeviceOrFallback(Library.java:302)
+	at TRANSFORMER/minecraft@1.21.1/com.mojang.blaze3d.audio.Library.init(Library.java:154)
+	at TRANSFORMER/minecraft@1.21.1/net.minecraft.client.sounds.SoundEngine.loadLibrary(SoundEngine.java:107)
+	at TRANSFORMER/minecraft@1.21.1/net.minecraft.client.sounds.SoundEngine.reload(SoundEngine.java:99)
+	at TRANSFORMER/minecraft@1.21.1/net.minecraft.client.sounds.SoundManager.apply(SoundManager.java:128)
+	at TRANSFORMER/minecraft@1.21.1/net.minecraft.client.sounds.SoundManager.apply(SoundManager.java:42)
+	at TRANSFORMER/minecraft@1.21.1/net.minecraft.server.packs.resources.SimplePreparableReloadListener.lambda$reload$1(SimplePreparableReloadListener.java:13)
+	at java.base/java.util.concurrent.CompletableFuture$UniAccept.tryFire(CompletableFuture.java:718)
+	at java.base/java.util.concurrent.CompletableFuture$Completion.run(CompletableFuture.java:482)
+	at TRANSFORMER/minecraft@1.21.1/net.minecraft.server.packs.resources.SimpleReloadInstance.lambda$new$3(SimpleReloadInstance.java:69)
+	at TRANSFORMER/minecraft@1.21.1/net.minecraft.util.thread.BlockableEventLoop.doRunTask(BlockableEventLoop.java:162)
+	at TRANSFORMER/minecraft@1.21.1/net.minecraft.util.thread.ReentrantBlockableEventLoop.doRunTask(ReentrantBlockableEventLoop.java:23)
+	at TRANSFORMER/minecraft@1.21.1/net.minecraft.util.thread.BlockableEventLoop.pollTask(BlockableEventLoop.java:136)
+	at TRANSFORMER/minecraft@1.21.1/net.minecraft.util.thread.BlockableEventLoop.runAllTasks(BlockableEventLoop.java:121)
+	at TRANSFORMER/minecraft@1.21.1/net.minecraft.client.Minecraft.runTick(Minecraft.java:1141)
+	at TRANSFORMER/minecraft@1.21.1/net.minecraft.client.Minecraft.run(Minecraft.java:795)
+	at TRANSFORMER/minecraft@1.21.1/net.minecraft.client.main.Main.main(Main.java:228)
+	at java.base/jdk.internal.reflect.DirectMethodHandleAccessor.invoke(DirectMethodHandleAccessor.java:103)
+	at java.base/java.lang.reflect.Method.invoke(Method.java:580)
+	at SECURE-BOOTSTRAP/net.minecraftforge.fmlloader@1.21.1-52.0.57/net.minecraftforge.fml.loading.targets.CommonLaunchHandler.runTarget(CommonLaunchHandler.java:85)
+	at SECURE-BOOTSTRAP/net.minecraftforge.fmlloader@1.21.1-52.0.57/net.minecraftforge.fml.loading.targets.CommonLaunchHandler.lambda$makeService$0(CommonLaunchHandler.java:69)
+	at SECURE-BOOTSTRAP/cpw.mods.modlauncher@10.2.4/cpw.mods.modlauncher.LaunchServiceHandler.launch(LaunchServiceHandler.java:77)
+	at SECURE-BOOTSTRAP/cpw.mods.modlauncher@10.2.4/cpw.mods.modlauncher.LaunchServiceHandler.launch(LaunchServiceHandler.java:97)
+	at SECURE-BOOTSTRAP/cpw.mods.modlauncher@10.2.4/cpw.mods.modlauncher.Launcher.run(Launcher.java:116)
+	at SECURE-BOOTSTRAP/cpw.mods.modlauncher@10.2.4/cpw.mods.modlauncher.Launcher.main(Launcher.java:75)
+	at SECURE-BOOTSTRAP/cpw.mods.modlauncher@10.2.4/cpw.mods.modlauncher.BootstrapEntry.main(BootstrapEntry.java:17)
+	at net.minecraftforge.bootstrap@2.1.7/net.minecraftforge.bootstrap.Bootstrap.moduleMain(Bootstrap.java:188)
+	at java.base/jdk.internal.reflect.DirectMethodHandleAccessor.invoke(DirectMethodHandleAccessor.java:103)
+	at java.base/java.lang.reflect.Method.invoke(Method.java:580)
+	at net.minecraftforge.bootstrap.Bootstrap.bootstrapMain(Bootstrap.java:133)
+	at net.minecraftforge.bootstrap.Bootstrap.start(Bootstrap.java:53)
+	at net.minecraftforge.bootstrap.ForgeBootstrap.main(ForgeBootstrap.java:19)
+]]></log4j:Throwable>
+  </log4j:Event>
+ALSA lib confmisc.c:855:(parse_card) cannot find card '0'
+ALSA lib conf.c:5208:(_snd_config_evaluate) function snd_func_card_inum returned error: No such file or directory
+ALSA lib confmisc.c:422:(snd_func_concat) error evaluating strings
+ALSA lib conf.c:5208:(_snd_config_evaluate) function snd_func_concat returned error: No such file or directory
+ALSA lib confmisc.c:1342:(snd_func_refer) error evaluating name
+ALSA lib conf.c:5208:(_snd_config_evaluate) function snd_func_refer returned error: No such file or directory
+ALSA lib conf.c:5731:(snd_config_expand) Evaluate error: No such file or directory
+ALSA lib pcm.c:2721:(snd_pcm_open_noupdate) Unknown PCM default
+ALSA lib confmisc.c:855:(parse_card) cannot find card '0'
+ALSA lib conf.c:5208:(_snd_config_evaluate) function snd_func_card_inum returned error: No such file or directory
+ALSA lib confmisc.c:422:(snd_func_concat) error evaluating strings
+ALSA lib conf.c:5208:(_snd_config_evaluate) function snd_func_concat returned error: No such file or directory
+ALSA lib confmisc.c:1342:(snd_func_refer) error evaluating name
+ALSA lib conf.c:5208:(_snd_config_evaluate) function snd_func_refer returned error: No such file or directory
+ALSA lib conf.c:5731:(snd_config_expand) Evaluate error: No such file or directory
+ALSA lib pcm.c:2721:(snd_pcm_open_noupdate) Unknown PCM default
+  <log4j:Event logger="net.minecraft.client.renderer.texture.TextureAtlas" timestamp="1792332054955" level="INFO" thread="Render thread">
+    <log4j:Message><![CDATA[Created: 1024x512x4 minecraft:textures/atlas/blocks.png-atlas]]></log4j:Message>
+  </log4j:Event>
+  <log4j:Event logger="net.minecraft.client.renderer.texture.TextureAtlas" timestamp="1792332054969" level="INFO" thread="Render thread">
+    <log4j:Message><![CDATA[Created: 256x256x4 minecraft:textures/atlas/signs.png-atlas]]></log4j:Message>
+  </log4j:Event>
+  <log4j:Event logger="net.minecraft.client.renderer.texture.TextureAtlas" timestamp="1792332054970" level="INFO" thread="Render thread">
+    <log4j:Message><![CDATA[Created: 512x512x4 minecraft:textures/atlas/shield_patterns.png-atlas]]></log4j:Message>
+  </log4j:Event>
+  <log4j:Event logger="net.minecraft.client.renderer.texture.TextureAtlas" timestamp="1792332054971" level="INFO" thread="Render thread">
+    <log4j:Message><![CDATA[Created: 512x512x4 minecraft:textures/atlas/banner_patterns.png-atlas]]></log4j:Message>
+  </log4j:Event>
+  <log4j:Event logger="net.minecraft.client.renderer.texture.TextureAtlas" timestamp="1792332054973" level="INFO" thread="Render thread">
+    <log4j:Message><![CDATA[Created: 1024x1024x4 minecraft:textures/atlas/armor_trims.png-atlas]]></log4j:Message>
+  </log4j:Event>
+  <log4j:Event logger="net.minecraft.client.renderer.texture.TextureAtlas" timestamp="1792332054980" level="INFO" thread="Render thread">
+    <log4j:Message><![CDATA[Created: 128x64x4 minecraft:textures/atlas/decorated_pot.png-atlas]]></log4j:Message>
+  </log4j:Event>
+  <log4j:Event logger="net.minecraft.client.renderer.texture.TextureAtlas" timestamp="1792332054980" level="INFO" thread="Render thread">
+    <log4j:Message><![CDATA[Created: 256x256x4 minecraft:textures/atlas/chest.png-atlas]]></log4j:Message>
+  </log4j:Event>
+  <log4j:Event logger="net.minecraft.client.renderer.texture.TextureAtlas" timestamp="1792332054981" level="INFO" thread="Render thread">
+    <log4j:Message><![CDATA[Created: 512x256x4 minecraft:textures/atlas/beds.png-atlas]]></log4j:Message>
+  </log4j:Event>
+  <log4j:Event logger="net.minecraft.client.renderer.texture.TextureAtlas" timestamp="1792332054981" level="INFO" thread="Render thread">
+    <log4j:Message><![CDATA[Created: 512x256x4 minecraft:textures/atlas/shulker_boxes.png-atlas]]></log4j:Message>
+  </log4j:Event>
+  <log4j:Event logger="net.minecraft.client.renderer.texture.TextureAtlas" timestamp="1792332055153" level="INFO" thread="Render thread">
+    <log4j:Message><![CDATA[Created: 512x256x0 minecraft:textures/atlas/particles.png-atlas]]></log4j:Message>
+  </log4j:Event>
+  <log4j:Event logger="net.minecraft.client.renderer.texture.TextureAtlas" timestamp="1792332055155" level="INFO" thread="Render thread">
+    <log4j:Message><![CDATA[Created: 512x256x0 minecraft:textures/atlas/paintings.png-atlas]]></log4j:Message>
+  </log4j:Event>
+  <log4j:Event logger="net.minecraft.client.renderer.texture.TextureAtlas" timestamp="1792332055156" level="INFO" thread="Render thread">
+    <log4j:Message><![CDATA[Created: 256x128x0 minecraft:textures/atlas/mob_effects.png-atlas]]></log4j:Message>
+  </log4j:Event>
+  <log4j:Event logger="net.minecraft.client.renderer.texture.TextureAtlas" timestamp="1792332055156" level="INFO" thread="Render thread">
+    <log4j:Message><![CDATA[Created: 64x64x0 minecraft:textures/atlas/map_decorations.png-atlas]]></log4j:Message>
+  </log4j:Event>
+  <log4j:Event logger="net.minecraft.client.renderer.texture.TextureAtlas" timestamp="1792332055157" level="INFO" thread="Render thread">
+    <log4j:Message><![CDATA[Created: 1024x512x0 minecraft:textures/atlas/gui.png-atlas]]></log4j:Message>
+  </log4j:Event>
+  <log4j:Event logger="net.minecraft.client.renderer.ShaderInstance" timestamp="1792332055191" level="WARN" thread="Render thread">
+    <log4j:Message><![CDATA[Shader rendertype_entity_translucent_emissive could not find sampler named Sampler2 in the specified shader program.]]></log4j:Message>
+  </log4j:Event>
+  <log4j:Event logger="com.mojang.realmsclient.RealmsAvailability" timestamp="1792332055376" level="ERROR" thread="IO-Worker-1">
+    <log4j:Message><![CDATA[Couldn't connect to realms]]></log4j:Message>
+    <log4j:Throwable><![CDATA[com.mojang.realmsclient.exception.RealmsServiceException: Realms service error (500) with message 'Could not connect to Realms: PKIX path building failed: sun.security.provider.certpath.SunCertPathBuilderException: unable to find valid certification path to requested target'
+	at TRANSFORMER/minecraft@1.21.1/com.mojang.realmsclient.client.RealmsClient.execute(RealmsClient.java:456)
+	at TRANSFORMER/minecraft@1.21.1/com.mojang.realmsclient.client.RealmsClient.clientCompatible(RealmsClient.java:232)
+	at TRANSFORMER/minecraft@1.21.1/com.mojang.realmsclient.RealmsAvailability.lambda$check$0(RealmsAvailability.java:51)
+	at java.base/java.util.concurrent.CompletableFuture$AsyncSupply.run(CompletableFuture.java:1768)
+	at java.base/java.util.concurrent.ThreadPoolExecutor.runWorker(ThreadPoolExecutor.java:1144)
+	at java.base/java.util.concurrent.ThreadPoolExecutor$Worker.run(ThreadPoolExecutor.java:642)
+	at java.base/java.lang.Thread.run(Thread.java:1583)
+]]></log4j:Throwable>
+  </log4j:Event>
+  <log4j:Event logger="net.minecraft.client.Minecraft" timestamp="1792332098846" level="INFO" thread="Render thread">
+    <log4j:Message><![CDATA[Stopping!]]></log4j:Message>
+  </log4j:Event>

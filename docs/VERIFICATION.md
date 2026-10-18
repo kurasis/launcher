@@ -1683,3 +1683,29 @@ proxy that was stopped and started to cut and restore the connection.
   service recording an out-of-memory diagnosis and a Forge-style exit 0 with a crash
   report as failed; the panel's texts, actions and folder request; every cause's
   text in English, Russian and Arabic with and without its details.
+- **Every loader, live (owner question, 2026-10-18).** A new ignored test,
+  `live_play::a_crashed_game_is_explained`, starts a prepared installation through
+  the launch service, closes error windows as a player would and prints the
+  explanation. Mods came from Modrinth with their SHA-512 checked. The loaders'
+  message files were read from their jars to cover every template.
+
+  | Loader                 | Case                              | Before           | After                                 |
+  | ---------------------- | --------------------------------- | ---------------- | ------------------------------------- |
+  | Quilt 0.30.1           | Sodium Extra without Sodium       | unknown          | a mod needs another mod               |
+  | Quilt 0.30.1           | same, error window failed         | unknown          | same, from Quilt's first crash report |
+  | Quilt 0.30.1           | Sodium twice                      | unknown          | installed twice, both files named     |
+  | Quilt 0.30.1           | truncated Sodium jar              | unknown          | damaged file, in the mods folder      |
+  | NeoForge 21.1.262      | Supplementaries without Moonlight | explained        | explained                             |
+  | NeoForge 21.1.262      | truncated jar                     | hung, 40 MB log  | ended at once, damaged file + note    |
+  | NeoForge 21.1.262      | equal jar twice; a Forge mod      | game ran         | game ran (nothing to explain)         |
+  | Forge 52.0.57 / 52.1   | Biomes O' Plenty, Controlling     | —                | a mod needs another mod               |
+  | Forge 14.23.5.2859     | Tinkers' Construct without Mantle | nothing (exit 0) | a mod needs another mod               |
+  | Forge 14.23.5.2859     | JEI twice                         | nothing (exit 0) | installed twice, both files named     |
+  | Fabric (Prominence II) | 1024 MiB                          | hung, 40 MB log  | ended, the pack wants 4096 MiB + note |
+
+  Each "Before" was a real gap: Quilt's own wording and its report names without a
+  colon, NeoForge's bare "zip END header not found", Forge 1.12.2 writing no crash
+  report, and console questions repeating on the game's empty input. The run
+  outputs are fixtures with tests; the service test
+  `a_question_repeated_on_the_console_ends_the_game` checks that only three
+  questions reach the log.

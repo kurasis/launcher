@@ -1,0 +1,347 @@
+  <log4j:Event logger="Quilt Loader/GameProvider" timestamp="1792330781183" level="INFO" thread="main">
+    <log4j:Message><![CDATA[Loading Minecraft 1.21.1 with Quilt Loader 0.30.1]]></log4j:Message>
+  </log4j:Event>
+  <log4j:Event logger="Quilt Loader/Mappings" timestamp="1792330781189" level="INFO" thread="main">
+    <log4j:Message><![CDATA[Loading mappings: jar:file:/home/player/.local/share/app.launcher/shared/maven/org/quiltmc/hashed/1.21.1/hashed-1.21.1.jar!/mappings/mappings.tiny]]></log4j:Message>
+  </log4j:Event>
+  <log4j:Event logger="Quilt Loader/Mappings" timestamp="1792330781189" level="INFO" thread="main">
+    <log4j:Message><![CDATA[Skipping mappings: Missing namespace 'intermediary']]></log4j:Message>
+  </log4j:Event>
+  <log4j:Event logger="Quilt Loader/Mappings" timestamp="1792330781189" level="INFO" thread="main">
+    <log4j:Message><![CDATA[Loading mappings: jar:file:/home/player/.local/share/app.launcher/shared/maven/net/fabricmc/intermediary/1.21.1/intermediary-1.21.1.jar!/mappings/mappings.tiny]]></log4j:Message>
+  </log4j:Event>
+  <log4j:Event logger="Quilt Loader/Mappings" timestamp="1792330781189" level="INFO" thread="main">
+    <log4j:Message><![CDATA[Loaded mapping namespaces: [official, intermediary]]]></log4j:Message>
+  </log4j:Event>
+  <log4j:Event logger="Quilt Loader/Mappings" timestamp="1792330781190" level="INFO" thread="main">
+    <log4j:Message><![CDATA[Target namespace: intermediary]]></log4j:Message>
+  </log4j:Event>
+  <log4j:Event logger="Quilt Loader" timestamp="1792330783731" level="ERROR" thread="main">
+    <log4j:Message><![CDATA[Crashed! The full crash report has been saved to /home/player/.local/share/app.launcher/instances/7c924004-baf9-40ed-98a6-09df827b3b82/game/crash-reports/crash-2026-10-18_13.39.43.7208-quilt_loader.txt]]></log4j:Message>
+  </log4j:Event>
+  <log4j:Event logger="Quilt Loader" timestamp="1792330783732" level="ERROR" thread="main">
+    <log4j:Message><![CDATA[Partial Report:
+---- Quilt Loader: Failed to load ----
+Date/Time: 2026/10/18 13:39:43.7327 [+0000]
+Quilt Loader Version: 0.30.1
+
+-- Error 1 --
+
+Sodium Extra requires version [0.8.13+mc1.21.1, ∞) of sodium, which is missing!
+
+Sodium Extra is loaded from <mods>/sodium-extra-fabric-0.9.4+mc1.21.1.jar
+
+
+-- Plugin State --
+
+Cycle number = 1
+Cycle Step = SOLVE
+
+Loaded Plugins (2):
+ - 'quilt_loader' (Builtin)
+ - 'quilted_fabric_loader' (Builtin)
+
+
+
+
+---- end of report ----]]></log4j:Message>
+  </log4j:Event>
+  <log4j:Event logger="Quilt Loader" timestamp="1792330783733" level="ERROR" thread="main">
+    <log4j:Message><![CDATA[For more details see the full crash report file: /home/player/.local/share/app.launcher/instances/7c924004-baf9-40ed-98a6-09df827b3b82/game/crash-reports/crash-2026-10-18_13.39.43.7208-quilt_loader.txt]]></log4j:Message>
+  </log4j:Event>
+Port = 43365
+Exception in thread "Quilt IPC Handler 1" java.awt.AWTError: Can't connect to X11 window server using ':99' as the value of the DISPLAY variable.
+	at java.desktop/sun.awt.X11GraphicsEnvironment.initDisplay(Native Method)
+	at java.desktop/sun.awt.X11GraphicsEnvironment$1.run(X11GraphicsEnvironment.java:105)
+	at java.base/java.security.AccessController.doPrivileged(AccessController.java:319)
+	at java.desktop/sun.awt.X11GraphicsEnvironment.initStatic(X11GraphicsEnvironment.java:64)
+	at java.desktop/sun.awt.X11GraphicsEnvironment.<clinit>(X11GraphicsEnvironment.java:59)
+	at java.desktop/sun.awt.PlatformGraphicsInfo.createGE(PlatformGraphicsInfo.java:37)
+	at java.desktop/java.awt.GraphicsEnvironment$LocalGE.createGE(GraphicsEnvironment.java:91)
+	at java.desktop/java.awt.GraphicsEnvironment$LocalGE.<clinit>(GraphicsEnvironment.java:82)
+	at java.desktop/java.awt.GraphicsEnvironment.getLocalGraphicsEnvironment(GraphicsEnvironment.java:104)
+	at java.desktop/sun.awt.X11.XToolkit.<clinit>(XToolkit.java:225)
+	at java.desktop/sun.awt.PlatformGraphicsInfo.createToolkit(PlatformGraphicsInfo.java:41)
+	at java.desktop/java.awt.Toolkit.getDefaultToolkit(Toolkit.java:595)
+	at java.desktop/javax.swing.UIManager.getSystemLookAndFeelClassName(UIManager.java:665)
+	at org.quiltmc.loader.impl.gui.QuiltUI.init(QuiltUI.java:40)
+	at org.quiltmc.loader.impl.gui.BasicWindowUI.open(BasicWindowUI.java:96)
+	at org.quiltmc.loader.impl.gui.BasicWindow.openOnServer(BasicWindow.java:87)
+	at org.quiltmc.loader.impl.gui.AbstractWindow.handleUpdate(AbstractWindow.java:165)
+	at org.quiltmc.loader.impl.gui.BasicWindow.handleUpdate(BasicWindow.java:200)
+	at org.quiltmc.loader.impl.gui.QuiltGuiSyncBase.updateObject(QuiltGuiSyncBase.java:151)
+	at org.quiltmc.loader.impl.gui.QuiltForkServerMain.handleMessage0(QuiltForkServerMain.java:191)
+	at org.quiltmc.loader.impl.gui.QuiltForkServerMain.handleMessage(QuiltForkServerMain.java:153)
+	at org.quiltmc.loader.impl.gui.QuiltForkComms$ReadySender.readMessage(QuiltForkComms.java:396)
+	at org.quiltmc.loader.impl.gui.QuiltForkComms$ReadySender.lambda$runReader$0(QuiltForkComms.java:374)
+	at java.base/java.util.concurrent.ThreadPoolExecutor.runWorker(ThreadPoolExecutor.java:1144)
+	at java.base/java.util.concurrent.ThreadPoolExecutor$Worker.run(ThreadPoolExecutor.java:642)
+	at java.base/java.lang.Thread.run(Thread.java:1583)
+  <log4j:Event logger="Quilt Loader/Comms" timestamp="1792330784143" level="ERROR" thread="Quilt IPC Handler 1">
+    <log4j:Message><![CDATA[The gui-server encountered an error:
+java.awt.AWTError: Can't connect to X11 window server using ':99' as the value of the DISPLAY variable.
+	at java.desktop/sun.awt.X11GraphicsEnvironment.initDisplay(Native Method)
+	at java.desktop/sun.awt.X11GraphicsEnvironment$1.run(X11GraphicsEnvironment.java:105)
+	at java.base/java.security.AccessController.doPrivileged(AccessController.java:319)
+	at java.desktop/sun.awt.X11GraphicsEnvironment.initStatic(X11GraphicsEnvironment.java:64)
+	at java.desktop/sun.awt.X11GraphicsEnvironment.<clinit>(X11GraphicsEnvironment.java:59)
+	at java.desktop/sun.awt.PlatformGraphicsInfo.createGE(PlatformGraphicsInfo.java:37)
+	at java.desktop/java.awt.GraphicsEnvironment$LocalGE.createGE(GraphicsEnvironment.java:91)
+	at java.desktop/java.awt.GraphicsEnvironment$LocalGE.<clinit>(GraphicsEnvironment.java:82)
+	at java.desktop/java.awt.GraphicsEnvironment.getLocalGraphicsEnvironment(GraphicsEnvironment.java:104)
+	at java.desktop/sun.awt.X11.XToolkit.<clinit>(XToolkit.java:225)
+	at java.desktop/sun.awt.PlatformGraphicsInfo.createToolkit(PlatformGraphicsInfo.java:41)
+	at java.desktop/java.awt.Toolkit.getDefaultToolkit(Toolkit.java:595)
+	at java.desktop/javax.swing.UIManager.getSystemLookAndFeelClassName(UIManager.java:665)
+	at org.quiltmc.loader.impl.gui.QuiltUI.init(QuiltUI.java:40)
+	at org.quiltmc.loader.impl.gui.BasicWindowUI.open(BasicWindowUI.java:96)
+	at org.quiltmc.loader.impl.gui.BasicWindow.openOnServer(BasicWindow.java:87)
+	at org.quiltmc.loader.impl.gui.AbstractWindow.handleUpdate(AbstractWindow.java:165)
+	at org.quiltmc.loader.impl.gui.BasicWindow.handleUpdate(BasicWindow.java:200)
+	at org.quiltmc.loader.impl.gui.QuiltGuiSyncBase.updateObject(QuiltGuiSyncBase.java:151)
+	at org.quiltmc.loader.impl.gui.QuiltForkServerMain.handleMessage0(QuiltForkServerMain.java:191)
+	at org.quiltmc.loader.impl.gui.QuiltForkServerMain.handleMessage(QuiltForkServerMain.java:153)
+	at org.quiltmc.loader.impl.gui.QuiltForkComms$ReadySender.readMessage(QuiltForkComms.java:396)
+	at org.quiltmc.loader.impl.gui.QuiltForkComms$ReadySender.lambda$runReader$0(QuiltForkComms.java:374)
+	at java.base/java.util.concurrent.ThreadPoolExecutor.runWorker(ThreadPoolExecutor.java:1144)
+	at java.base/java.util.concurrent.ThreadPoolExecutor$Worker.run(ThreadPoolExecutor.java:642)
+	at java.base/java.lang.Thread.run(Thread.java:1583)]]></log4j:Message>
+  </log4j:Event>
+  <log4j:Event logger="Quilt Loader" timestamp="1792330784759" level="ERROR" thread="main">
+    <log4j:Message><![CDATA[Uncaught exception in thread "main"]]></log4j:Message>
+    <log4j:Throwable><![CDATA[java.lang.Error: Failed to open the error gui - please see the original crash report /home/player/.local/share/app.launcher/instances/7c924004-baf9-40ed-98a6-09df827b3b82/game/crash-reports/crash-2026-10-18_13.39.43.7208-quilt_loader.txt
+	at org.quiltmc.loader.impl.QuiltLoaderImpl.runPlugins(QuiltLoaderImpl.java:744)
+	at org.quiltmc.loader.impl.QuiltLoaderImpl.setup(QuiltLoaderImpl.java:314)
+	at org.quiltmc.loader.impl.QuiltLoaderImpl.load(QuiltLoaderImpl.java:306)
+	at org.quiltmc.loader.impl.launch.knot.Knot.init(Knot.java:150)
+	at org.quiltmc.loader.impl.launch.knot.Knot.launch(Knot.java:79)
+	at org.quiltmc.loader.impl.launch.knot.KnotClient.main(KnotClient.java:28)
+Caused by: org.quiltmc.loader.api.gui.LoaderGuiException: Forked communication failure!
+	at org.quiltmc.loader.impl.gui.AbstractWindow.waitUntilClosed(AbstractWindow.java:142)
+	at org.quiltmc.loader.impl.gui.QuiltFork.open(QuiltFork.java:157)
+	at org.quiltmc.loader.impl.gui.QuiltFork.open(QuiltFork.java:132)
+	at org.quiltmc.loader.api.gui.QuiltLoaderGui.open(QuiltLoaderGui.java:95)
+	at org.quiltmc.loader.impl.QuiltLoaderImpl.runPlugins(QuiltLoaderImpl.java:734)
+	... 5 more
+	Suppressed: java.util.concurrent.TimeoutException
+		at java.base/java.util.concurrent.CompletableFuture.timedGet(CompletableFuture.java:1960)
+		at java.base/java.util.concurrent.CompletableFuture.get(CompletableFuture.java:2095)
+		at org.quiltmc.loader.impl.gui.AbstractWindow.waitUntilClosed(AbstractWindow.java:134)
+		... 9 more
+Caused by: java.lang.Error: Previous error stacktrace:
+java.awt.AWTError: Can't connect to X11 window server using ':99' as the value of the DISPLAY variable.
+	at java.desktop/sun.awt.X11GraphicsEnvironment.initDisplay(Native Method)
+	at java.desktop/sun.awt.X11GraphicsEnvironment$1.run(X11GraphicsEnvironment.java:105)
+	at java.base/java.security.AccessController.doPrivileged(AccessController.java:319)
+	at java.desktop/sun.awt.X11GraphicsEnvironment.initStatic(X11GraphicsEnvironment.java:64)
+	at java.desktop/sun.awt.X11GraphicsEnvironment.<clinit>(X11GraphicsEnvironment.java:59)
+	at java.desktop/sun.awt.PlatformGraphicsInfo.createGE(PlatformGraphicsInfo.java:37)
+	at java.desktop/java.awt.GraphicsEnvironment$LocalGE.createGE(GraphicsEnvironment.java:91)
+	at java.desktop/java.awt.GraphicsEnvironment$LocalGE.<clinit>(GraphicsEnvironment.java:82)
+	at java.desktop/java.awt.GraphicsEnvironment.getLocalGraphicsEnvironment(GraphicsEnvironment.java:104)
+	at java.desktop/sun.awt.X11.XToolkit.<clinit>(XToolkit.java:225)
+	at java.desktop/sun.awt.PlatformGraphicsInfo.createToolkit(PlatformGraphicsInfo.java:41)
+	at java.desktop/java.awt.Toolkit.getDefaultToolkit(Toolkit.java:595)
+	at java.desktop/javax.swing.UIManager.getSystemLookAndFeelClassName(UIManager.java:665)
+	at org.quiltmc.loader.impl.gui.QuiltUI.init(QuiltUI.java:40)
+	at org.quiltmc.loader.impl.gui.BasicWindowUI.open(BasicWindowUI.java:96)
+	at org.quiltmc.loader.impl.gui.BasicWindow.openOnServer(BasicWindow.java:87)
+	at org.quiltmc.loader.impl.gui.AbstractWindow.handleUpdate(AbstractWindow.java:165)
+	at org.quiltmc.loader.impl.gui.BasicWindow.handleUpdate(BasicWindow.java:200)
+	at org.quiltmc.loader.impl.gui.QuiltGuiSyncBase.updateObject(QuiltGuiSyncBase.java:151)
+	at org.quiltmc.loader.impl.gui.QuiltForkServerMain.handleMessage0(QuiltForkServerMain.java:191)
+	at org.quiltmc.loader.impl.gui.QuiltForkServerMain.handleMessage(QuiltForkServerMain.java:153)
+	at org.quiltmc.loader.impl.gui.QuiltForkComms$ReadySender.readMessage(QuiltForkComms.java:396)
+	at org.quiltmc.loader.impl.gui.QuiltForkComms$ReadySender.lambda$runReader$0(QuiltForkComms.java:374)
+	at java.base/java.util.concurrent.ThreadPoolExecutor.runWorker(ThreadPoolExecutor.java:1144)
+	at java.base/java.util.concurrent.ThreadPoolExecutor$Worker.run(ThreadPoolExecutor.java:642)
+	at java.base/java.lang.Thread.run(Thread.java:1583)
+
+	at org.quiltmc.loader.impl.gui.QuiltFork.handleMessageFromServer0(QuiltFork.java:214)
+	at org.quiltmc.loader.impl.gui.QuiltFork.handleMessageFromServer(QuiltFork.java:185)
+	at org.quiltmc.loader.impl.gui.QuiltForkComms$ReadySender.readMessage(QuiltForkComms.java:396)
+	at org.quiltmc.loader.impl.gui.QuiltForkComms$ReadySender.lambda$runReader$0(QuiltForkComms.java:374)
+	at java.base/java.util.concurrent.ThreadPoolExecutor.runWorker(ThreadPoolExecutor.java:1144)
+	at java.base/java.util.concurrent.ThreadPoolExecutor$Worker.run(ThreadPoolExecutor.java:642)
+	at java.base/java.lang.Thread.run(Thread.java:1583)
+]]></log4j:Throwable>
+  </log4j:Event>
+  <log4j:Event logger="Quilt Loader" timestamp="1792330784776" level="ERROR" thread="main">
+    <log4j:Message><![CDATA[Crashed! The full crash report has been saved to /home/player/.local/share/app.launcher/instances/7c924004-baf9-40ed-98a6-09df827b3b82/game/crash-reports/crash-2026-10-18_13.39.44.7754-quilt_loader.txt]]></log4j:Message>
+  </log4j:Event>
+  <log4j:Event logger="Quilt Loader" timestamp="1792330784776" level="ERROR" thread="main">
+    <log4j:Message><![CDATA[Partial Report:
+---- Crashed! ----
+Date/Time: 2026/10/18 13:39:44.7764 [+0000]
+Quilt Loader Version: 0.30.1
+
+-- Crash --
+
+java.lang.Error: Failed to open the error gui - please see the original crash report /home/player/.local/share/app.launcher/instances/7c924004-baf9-40ed-98a6-09df827b3b82/game/crash-reports/crash-2026-10-18_13.39.43.7208-quilt_loader.txt
+	at org.quiltmc.loader.impl.QuiltLoaderImpl.runPlugins(QuiltLoaderImpl.java:744)
+	at org.quiltmc.loader.impl.QuiltLoaderImpl.setup(QuiltLoaderImpl.java:314)
+	at org.quiltmc.loader.impl.QuiltLoaderImpl.load(QuiltLoaderImpl.java:306)
+	at org.quiltmc.loader.impl.launch.knot.Knot.init(Knot.java:150)
+	at org.quiltmc.loader.impl.launch.knot.Knot.launch(Knot.java:79)
+	at org.quiltmc.loader.impl.launch.knot.KnotClient.main(KnotClient.java:28)
+Caused by: org.quiltmc.loader.api.gui.LoaderGuiException: Forked communication failure!
+	at org.quiltmc.loader.impl.gui.AbstractWindow.waitUntilClosed(AbstractWindow.java:142)
+	at org.quiltmc.loader.impl.gui.QuiltFork.open(QuiltFork.java:157)
+	at org.quiltmc.loader.impl.gui.QuiltFork.open(QuiltFork.java:132)
+	at org.quiltmc.loader.api.gui.QuiltLoaderGui.open(QuiltLoaderGui.java:95)
+	at org.quiltmc.loader.impl.QuiltLoaderImpl.runPlugins(QuiltLoaderImpl.java:734)
+	... 5 more
+	Suppressed: java.util.concurrent.TimeoutException
+		at java.base/java.util.concurrent.CompletableFuture.timedGet(CompletableFuture.java:1960)
+		at java.base/java.util.concurrent.CompletableFuture.get(CompletableFuture.java:2095)
+		at org.quiltmc.loader.impl.gui.AbstractWindow.waitUntilClosed(AbstractWindow.java:134)
+		... 9 more
+Caused by: java.lang.Error: Previous error stacktrace:
+java.awt.AWTError: Can't connect to X11 window server using ':99' as the value of the DISPLAY variable.
+	at java.desktop/sun.awt.X11GraphicsEnvironment.initDisplay(Native Method)
+	at java.desktop/sun.awt.X11GraphicsEnvironment$1.run(X11GraphicsEnvironment.java:105)
+	at java.base/java.security.AccessController.doPrivileged(AccessController.java:319)
+	at java.desktop/sun.awt.X11GraphicsEnvironment.initStatic(X11GraphicsEnvironment.java:64)
+	at java.desktop/sun.awt.X11GraphicsEnvironment.<clinit>(X11GraphicsEnvironment.java:59)
+	at java.desktop/sun.awt.PlatformGraphicsInfo.createGE(PlatformGraphicsInfo.java:37)
+	at java.desktop/java.awt.GraphicsEnvironment$LocalGE.createGE(GraphicsEnvironment.java:91)
+	at java.desktop/java.awt.GraphicsEnvironment$LocalGE.<clinit>(GraphicsEnvironment.java:82)
+	at java.desktop/java.awt.GraphicsEnvironment.getLocalGraphicsEnvironment(GraphicsEnvironment.java:104)
+	at java.desktop/sun.awt.X11.XToolkit.<clinit>(XToolkit.java:225)
+	at java.desktop/sun.awt.PlatformGraphicsInfo.createToolkit(PlatformGraphicsInfo.java:41)
+	at java.desktop/java.awt.Toolkit.getDefaultToolkit(Toolkit.java:595)
+	at java.desktop/javax.swing.UIManager.getSystemLookAndFeelClassName(UIManager.java:665)
+	at org.quiltmc.loader.impl.gui.QuiltUI.init(QuiltUI.java:40)
+	at org.quiltmc.loader.impl.gui.BasicWindowUI.open(BasicWindowUI.java:96)
+	at org.quiltmc.loader.impl.gui.BasicWindow.openOnServer(BasicWindow.java:87)
+	at org.quiltmc.loader.impl.gui.AbstractWindow.handleUpdate(AbstractWindow.java:165)
+	at org.quiltmc.loader.impl.gui.BasicWindow.handleUpdate(BasicWindow.java:200)
+	at org.quiltmc.loader.impl.gui.QuiltGuiSyncBase.updateObject(QuiltGuiSyncBase.java:151)
+	at org.quiltmc.loader.impl.gui.QuiltForkServerMain.handleMessage0(QuiltForkServerMain.java:191)
+	at org.quiltmc.loader.impl.gui.QuiltForkServerMain.handleMessage(QuiltForkServerMain.java:153)
+	at org.quiltmc.loader.impl.gui.QuiltForkComms$ReadySender.readMessage(QuiltForkComms.java:396)
+	at org.quiltmc.loader.impl.gui.QuiltForkComms$ReadySender.lambda$runReader$0(QuiltForkComms.java:374)
+	at java.base/java.util.concurrent.ThreadPoolExecutor.runWorker(ThreadPoolExecutor.java:1144)
+	at java.base/java.util.concurrent.ThreadPoolExecutor$Worker.run(ThreadPoolExecutor.java:642)
+	at java.base/java.lang.Thread.run(Thread.java:1583)
+
+	at org.quiltmc.loader.impl.gui.QuiltFork.handleMessageFromServer0(QuiltFork.java:214)
+	at org.quiltmc.loader.impl.gui.QuiltFork.handleMessageFromServer(QuiltFork.java:185)
+	at org.quiltmc.loader.impl.gui.QuiltForkComms$ReadySender.readMessage(QuiltForkComms.java:396)
+	at org.quiltmc.loader.impl.gui.QuiltForkComms$ReadySender.lambda$runReader$0(QuiltForkComms.java:374)
+	at java.base/java.util.concurrent.ThreadPoolExecutor.runWorker(ThreadPoolExecutor.java:1144)
+	at java.base/java.util.concurrent.ThreadPoolExecutor$Worker.run(ThreadPoolExecutor.java:642)
+	at java.base/java.lang.Thread.run(Thread.java:1583)
+
+
+-- Mods --
+
+| Index | Mod          | ID           | Version | Type      | File Hash (SHA-1) | File(s) |
+|------:|--------------|--------------|---------|-----------|-------------------|---------|
+|       | Quilt Loader | quilt_loader | 0.30.1  | !missing! |                   |         |
+|------:|--------------|--------------|---------|-----------|-------------------|---------|
+Mod Table Version: 2
+Plugin Types: {}
+
+
+---- end of report ----]]></log4j:Message>
+  </log4j:Event>
+  <log4j:Event logger="Quilt Loader" timestamp="1792330784777" level="ERROR" thread="main">
+    <log4j:Message><![CDATA[For more details see the full crash report file: /home/player/.local/share/app.launcher/instances/7c924004-baf9-40ed-98a6-09df827b3b82/game/crash-reports/crash-2026-10-18_13.39.44.7754-quilt_loader.txt]]></log4j:Message>
+  </log4j:Event>
+java.lang.Error: Failed to open the error gui - please see the original crash report /home/player/.local/share/app.launcher/instances/7c924004-baf9-40ed-98a6-09df827b3b82/game/crash-reports/crash-2026-10-18_13.39.43.7208-quilt_loader.txt
+	at org.quiltmc.loader.impl.QuiltLoaderImpl.runPlugins(QuiltLoaderImpl.java:744)
+	at org.quiltmc.loader.impl.QuiltLoaderImpl.setup(QuiltLoaderImpl.java:314)
+	at org.quiltmc.loader.impl.QuiltLoaderImpl.load(QuiltLoaderImpl.java:306)
+	at org.quiltmc.loader.impl.launch.knot.Knot.init(Knot.java:150)
+	at org.quiltmc.loader.impl.launch.knot.Knot.launch(Knot.java:79)
+	at org.quiltmc.loader.impl.launch.knot.KnotClient.main(KnotClient.java:28)
+	Suppressed: java.lang.RuntimeException: Failed to open the error gui!
+		at org.quiltmc.loader.impl.gui.QuiltGuiEntry.displayError(QuiltGuiEntry.java:120)
+		at org.quiltmc.loader.impl.launch.common.QuiltLauncherBase.lambda$setupUncaughtExceptionHandler$0(QuiltLauncherBase.java:105)
+		at java.base/java.lang.ThreadGroup.uncaughtException(ThreadGroup.java:695)
+		at java.base/java.lang.ThreadGroup.uncaughtException(ThreadGroup.java:690)
+		at java.base/java.lang.Thread.dispatchUncaughtException(Thread.java:2902)
+	Caused by: org.quiltmc.loader.api.gui.LoaderGuiException: The gui server encountered an error!
+		at org.quiltmc.loader.impl.gui.QuiltFork.open(QuiltFork.java:148)
+		at org.quiltmc.loader.impl.gui.QuiltFork.open(QuiltFork.java:132)
+		at org.quiltmc.loader.api.gui.QuiltLoaderGui.open(QuiltLoaderGui.java:95)
+		at org.quiltmc.loader.impl.gui.QuiltGuiEntry.displayError(QuiltGuiEntry.java:115)
+		... 4 more
+	Caused by: java.lang.Error: Previous error stacktrace:
+java.awt.AWTError: Can't connect to X11 window server using ':99' as the value of the DISPLAY variable.
+	at java.desktop/sun.awt.X11GraphicsEnvironment.initDisplay(Native Method)
+	at java.desktop/sun.awt.X11GraphicsEnvironment$1.run(X11GraphicsEnvironment.java:105)
+	at java.base/java.security.AccessController.doPrivileged(AccessController.java:319)
+	at java.desktop/sun.awt.X11GraphicsEnvironment.initStatic(X11GraphicsEnvironment.java:64)
+	at java.desktop/sun.awt.X11GraphicsEnvironment.<clinit>(X11GraphicsEnvironment.java:59)
+	at java.desktop/sun.awt.PlatformGraphicsInfo.createGE(PlatformGraphicsInfo.java:37)
+	at java.desktop/java.awt.GraphicsEnvironment$LocalGE.createGE(GraphicsEnvironment.java:91)
+	at java.desktop/java.awt.GraphicsEnvironment$LocalGE.<clinit>(GraphicsEnvironment.java:82)
+	at java.desktop/java.awt.GraphicsEnvironment.getLocalGraphicsEnvironment(GraphicsEnvironment.java:104)
+	at java.desktop/sun.awt.X11.XToolkit.<clinit>(XToolkit.java:225)
+	at java.desktop/sun.awt.PlatformGraphicsInfo.createToolkit(PlatformGraphicsInfo.java:41)
+	at java.desktop/java.awt.Toolkit.getDefaultToolkit(Toolkit.java:595)
+	at java.desktop/javax.swing.UIManager.getSystemLookAndFeelClassName(UIManager.java:665)
+	at org.quiltmc.loader.impl.gui.QuiltUI.init(QuiltUI.java:40)
+	at org.quiltmc.loader.impl.gui.BasicWindowUI.open(BasicWindowUI.java:96)
+	at org.quiltmc.loader.impl.gui.BasicWindow.openOnServer(BasicWindow.java:87)
+	at org.quiltmc.loader.impl.gui.AbstractWindow.handleUpdate(AbstractWindow.java:165)
+	at org.quiltmc.loader.impl.gui.BasicWindow.handleUpdate(BasicWindow.java:200)
+	at org.quiltmc.loader.impl.gui.QuiltGuiSyncBase.updateObject(QuiltGuiSyncBase.java:151)
+	at org.quiltmc.loader.impl.gui.QuiltForkServerMain.handleMessage0(QuiltForkServerMain.java:191)
+	at org.quiltmc.loader.impl.gui.QuiltForkServerMain.handleMessage(QuiltForkServerMain.java:153)
+	at org.quiltmc.loader.impl.gui.QuiltForkComms$ReadySender.readMessage(QuiltForkComms.java:396)
+	at org.quiltmc.loader.impl.gui.QuiltForkComms$ReadySender.lambda$runReader$0(QuiltForkComms.java:374)
+	at java.base/java.util.concurrent.ThreadPoolExecutor.runWorker(ThreadPoolExecutor.java:1144)
+	at java.base/java.util.concurrent.ThreadPoolExecutor$Worker.run(ThreadPoolExecutor.java:642)
+	at java.base/java.lang.Thread.run(Thread.java:1583)
+
+		at org.quiltmc.loader.impl.gui.QuiltFork.handleMessageFromServer0(QuiltFork.java:214)
+		at org.quiltmc.loader.impl.gui.QuiltFork.handleMessageFromServer(QuiltFork.java:185)
+		at org.quiltmc.loader.impl.gui.QuiltForkComms$ReadySender.readMessage(QuiltForkComms.java:396)
+		at org.quiltmc.loader.impl.gui.QuiltForkComms$ReadySender.lambda$runReader$0(QuiltForkComms.java:374)
+		at java.base/java.util.concurrent.ThreadPoolExecutor.runWorker(ThreadPoolExecutor.java:1144)
+		at java.base/java.util.concurrent.ThreadPoolExecutor$Worker.run(ThreadPoolExecutor.java:642)
+		at java.base/java.lang.Thread.run(Thread.java:1583)
+Caused by: org.quiltmc.loader.api.gui.LoaderGuiException: Forked communication failure!
+	at org.quiltmc.loader.impl.gui.AbstractWindow.waitUntilClosed(AbstractWindow.java:142)
+	at org.quiltmc.loader.impl.gui.QuiltFork.open(QuiltFork.java:157)
+	at org.quiltmc.loader.impl.gui.QuiltFork.open(QuiltFork.java:132)
+	at org.quiltmc.loader.api.gui.QuiltLoaderGui.open(QuiltLoaderGui.java:95)
+	at org.quiltmc.loader.impl.QuiltLoaderImpl.runPlugins(QuiltLoaderImpl.java:734)
+	... 5 more
+	Suppressed: java.util.concurrent.TimeoutException
+		at java.base/java.util.concurrent.CompletableFuture.timedGet(CompletableFuture.java:1960)
+		at java.base/java.util.concurrent.CompletableFuture.get(CompletableFuture.java:2095)
+		at org.quiltmc.loader.impl.gui.AbstractWindow.waitUntilClosed(AbstractWindow.java:134)
+		... 9 more
+Caused by: [CIRCULAR REFERENCE: java.lang.Error: Previous error stacktrace:
+java.awt.AWTError: Can't connect to X11 window server using ':99' as the value of the DISPLAY variable.
+	at java.desktop/sun.awt.X11GraphicsEnvironment.initDisplay(Native Method)
+	at java.desktop/sun.awt.X11GraphicsEnvironment$1.run(X11GraphicsEnvironment.java:105)
+	at java.base/java.security.AccessController.doPrivileged(AccessController.java:319)
+	at java.desktop/sun.awt.X11GraphicsEnvironment.initStatic(X11GraphicsEnvironment.java:64)
+	at java.desktop/sun.awt.X11GraphicsEnvironment.<clinit>(X11GraphicsEnvironment.java:59)
+	at java.desktop/sun.awt.PlatformGraphicsInfo.createGE(PlatformGraphicsInfo.java:37)
+	at java.desktop/java.awt.GraphicsEnvironment$LocalGE.createGE(GraphicsEnvironment.java:91)
+	at java.desktop/java.awt.GraphicsEnvironment$LocalGE.<clinit>(GraphicsEnvironment.java:82)
+	at java.desktop/java.awt.GraphicsEnvironment.getLocalGraphicsEnvironment(GraphicsEnvironment.java:104)
+	at java.desktop/sun.awt.X11.XToolkit.<clinit>(XToolkit.java:225)
+	at java.desktop/sun.awt.PlatformGraphicsInfo.createToolkit(PlatformGraphicsInfo.java:41)
+	at java.desktop/java.awt.Toolkit.getDefaultToolkit(Toolkit.java:595)
+	at java.desktop/javax.swing.UIManager.getSystemLookAndFeelClassName(UIManager.java:665)
+	at org.quiltmc.loader.impl.gui.QuiltUI.init(QuiltUI.java:40)
+	at org.quiltmc.loader.impl.gui.BasicWindowUI.open(BasicWindowUI.java:96)
+	at org.quiltmc.loader.impl.gui.BasicWindow.openOnServer(BasicWindow.java:87)
+	at org.quiltmc.loader.impl.gui.AbstractWindow.handleUpdate(AbstractWindow.java:165)
+	at org.quiltmc.loader.impl.gui.BasicWindow.handleUpdate(BasicWindow.java:200)
+	at org.quiltmc.loader.impl.gui.QuiltGuiSyncBase.updateObject(QuiltGuiSyncBase.java:151)
+	at org.quiltmc.loader.impl.gui.QuiltForkServerMain.handleMessage0(QuiltForkServerMain.java:191)
+	at org.quiltmc.loader.impl.gui.QuiltForkServerMain.handleMessage(QuiltForkServerMain.java:153)
+	at org.quiltmc.loader.impl.gui.QuiltForkComms$ReadySender.readMessage(QuiltForkComms.java:396)
+	at org.quiltmc.loader.impl.gui.QuiltForkComms$ReadySender.lambda$runReader$0(QuiltForkComms.java:374)
+	at java.base/java.util.concurrent.ThreadPoolExecutor.runWorker(ThreadPoolExecutor.java:1144)
+	at java.base/java.util.concurrent.ThreadPoolExecutor$Worker.run(ThreadPoolExecutor.java:642)
+	at java.base/java.lang.Thread.run(Thread.java:1583)
+]

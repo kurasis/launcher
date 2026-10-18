@@ -1,0 +1,375 @@
+  <log4j:Event logger="LaunchWrapper" timestamp="1792333277657" level="INFO" thread="main">
+    <log4j:Message><![CDATA[Loading tweak class name net.minecraftforge.fml.common.launcher.FMLTweaker]]></log4j:Message>
+  </log4j:Event>
+  <log4j:Event logger="LaunchWrapper" timestamp="1792333277718" level="INFO" thread="main">
+    <log4j:Message><![CDATA[Using primary tweak class name net.minecraftforge.fml.common.launcher.FMLTweaker]]></log4j:Message>
+  </log4j:Event>
+  <log4j:Event logger="LaunchWrapper" timestamp="1792333277719" level="INFO" thread="main">
+    <log4j:Message><![CDATA[Calling tweak class net.minecraftforge.fml.common.launcher.FMLTweaker]]></log4j:Message>
+  </log4j:Event>
+  <log4j:Event logger="FML" timestamp="1792333277734" level="INFO" thread="main">
+    <log4j:Message><![CDATA[Forge Mod Loader version 14.23.5.2859 for Minecraft 1.12.2 loading]]></log4j:Message>
+  </log4j:Event>
+  <log4j:Event logger="FML" timestamp="1792333277734" level="INFO" thread="main">
+    <log4j:Message><![CDATA[Java is Java HotSpot(TM) 64-Bit Server VM, version 1.8.0_202, running on Linux:amd64:6.18.44-fc-v139, installed at /home/player/.local/share/app.launcher/runtimes/mojang/linux-x64/8/jre/904c26a872cc0b8934554af348548943a0735251322eb74faf3d77cf8d7bcec6]]></log4j:Message>
+  </log4j:Event>
+  <log4j:Event logger="FML" timestamp="1792333277774" level="INFO" thread="main">
+    <log4j:Message><![CDATA[Searching /home/player/.local/share/app.launcher/instances/a7dab25b-07f9-407b-a434-e307860ed560/game/mods for mods]]></log4j:Message>
+  </log4j:Event>
+  <log4j:Event logger="LaunchWrapper" timestamp="1792333277783" level="INFO" thread="main">
+    <log4j:Message><![CDATA[Loading tweak class name net.minecraftforge.fml.common.launcher.FMLInjectionAndSortingTweaker]]></log4j:Message>
+  </log4j:Event>
+  <log4j:Event logger="LaunchWrapper" timestamp="1792333277784" level="INFO" thread="main">
+    <log4j:Message><![CDATA[Loading tweak class name net.minecraftforge.fml.common.launcher.FMLDeobfTweaker]]></log4j:Message>
+  </log4j:Event>
+  <log4j:Event logger="LaunchWrapper" timestamp="1792333277787" level="INFO" thread="main">
+    <log4j:Message><![CDATA[Calling tweak class net.minecraftforge.fml.common.launcher.FMLInjectionAndSortingTweaker]]></log4j:Message>
+  </log4j:Event>
+  <log4j:Event logger="LaunchWrapper" timestamp="1792333277789" level="INFO" thread="main">
+    <log4j:Message><![CDATA[Calling tweak class net.minecraftforge.fml.common.launcher.FMLInjectionAndSortingTweaker]]></log4j:Message>
+  </log4j:Event>
+  <log4j:Event logger="LaunchWrapper" timestamp="1792333277789" level="INFO" thread="main">
+    <log4j:Message><![CDATA[Calling tweak class net.minecraftforge.fml.relauncher.CoreModManager$FMLPluginWrapper]]></log4j:Message>
+  </log4j:Event>
+  <log4j:Event logger="FML" timestamp="1792333279135" level="INFO" thread="main">
+    <log4j:Message><![CDATA[Found valid fingerprint for Minecraft Forge. Certificate fingerprint e3c3d50c7c986df74c645c0ac54639741c90a557]]></log4j:Message>
+  </log4j:Event>
+  <log4j:Event logger="FML" timestamp="1792333279177" level="INFO" thread="main">
+    <log4j:Message><![CDATA[Found valid fingerprint for Minecraft. Certificate fingerprint cd99959656f753dc28d863b46769f7f8fbaefcfc]]></log4j:Message>
+  </log4j:Event>
+  <log4j:Event logger="LaunchWrapper" timestamp="1792333279178" level="INFO" thread="main">
+    <log4j:Message><![CDATA[Calling tweak class net.minecraftforge.fml.relauncher.CoreModManager$FMLPluginWrapper]]></log4j:Message>
+  </log4j:Event>
+  <log4j:Event logger="LaunchWrapper" timestamp="1792333279178" level="INFO" thread="main">
+    <log4j:Message><![CDATA[Calling tweak class net.minecraftforge.fml.common.launcher.FMLDeobfTweaker]]></log4j:Message>
+  </log4j:Event>
+  <log4j:Event logger="LaunchWrapper" timestamp="1792333279380" level="INFO" thread="main">
+    <log4j:Message><![CDATA[Loading tweak class name net.minecraftforge.fml.common.launcher.TerminalTweaker]]></log4j:Message>
+  </log4j:Event>
+  <log4j:Event logger="LaunchWrapper" timestamp="1792333279380" level="INFO" thread="main">
+    <log4j:Message><![CDATA[Calling tweak class net.minecraftforge.fml.common.launcher.TerminalTweaker]]></log4j:Message>
+  </log4j:Event>
+  <log4j:Event logger="LaunchWrapper" timestamp="1792333279393" level="INFO" thread="main">
+    <log4j:Message><![CDATA[Launching wrapped minecraft {net.minecraft.client.main.Main}]]></log4j:Message>
+  </log4j:Event>
+  <log4j:Event logger="net.minecraft.client.Minecraft" timestamp="1792333280152" level="INFO" thread="Client thread">
+    <log4j:Message><![CDATA[Setting user: TestPlayer]]></log4j:Message>
+  </log4j:Event>
+  <log4j:Event logger="net.minecraft.client.Minecraft" timestamp="1792333282326" level="INFO" thread="Client thread">
+    <log4j:Message><![CDATA[LWJGL Version: 2.9.4]]></log4j:Message>
+  </log4j:Event>
+  <log4j:Event logger="FML" timestamp="1792333282889" level="INFO" thread="Client thread">
+    <log4j:Message><![CDATA[-- System Details --
+Details:
+	Minecraft Version: 1.12.2
+	Operating System: Linux (amd64) version 6.18.44-fc-v139
+	Java Version: 1.8.0_202, Oracle Corporation
+	Java VM Version: Java HotSpot(TM) 64-Bit Server VM (mixed mode), Oracle Corporation
+	Memory: 903288904 bytes (861 MB) / 1049100288 bytes (1000 MB) up to 3817865216 bytes (3641 MB)
+	JVM Flags: 1 total; -Xmx4096M
+	IntCache: cache: 0, tcache: 0, allocated: 0, tallocated: 0
+	FML: 
+	Loaded coremods (and transformers): 
+	GL info: ' Vendor: 'Mesa' Version: '4.5 (Compatibility Profile) Mesa 25.2.8-0ubuntu0.24.04.4' Renderer: 'llvmpipe (LLVM 20.1.2, 256 bits)']]></log4j:Message>
+  </log4j:Event>
+  <log4j:Event logger="FML" timestamp="1792333282912" level="INFO" thread="Client thread">
+    <log4j:Message><![CDATA[MinecraftForge v14.23.5.2859 Initialized]]></log4j:Message>
+  </log4j:Event>
+  <log4j:Event logger="FML" timestamp="1792333282924" level="INFO" thread="Client thread">
+    <log4j:Message><![CDATA[Starts to replace vanilla recipe ingredients with ore ingredients.]]></log4j:Message>
+  </log4j:Event>
+  <log4j:Event logger="FML" timestamp="1792333282979" level="INFO" thread="Client thread">
+    <log4j:Message><![CDATA[Invalid recipe found with multiple oredict ingredients in the same ingredient...]]></log4j:Message>
+  </log4j:Event>
+  <log4j:Event logger="FML" timestamp="1792333283063" level="INFO" thread="Client thread">
+    <log4j:Message><![CDATA[Replaced 1227 ore ingredients]]></log4j:Message>
+  </log4j:Event>
+  <log4j:Event logger="FML" timestamp="1792333283221" level="INFO" thread="Client thread">
+    <log4j:Message><![CDATA[Searching /home/player/.local/share/app.launcher/instances/a7dab25b-07f9-407b-a434-e307860ed560/game/mods for mods]]></log4j:Message>
+  </log4j:Event>
+  <log4j:Event logger="FML" timestamp="1792333283850" level="ERROR" thread="Client thread">
+    <log4j:Message><![CDATA[Unable to read a class file correctly]]></log4j:Message>
+    <log4j:Throwable><![CDATA[java.lang.IllegalArgumentException
+	at org.objectweb.asm.ClassReader.<init>(ClassReader.java:185)
+	at org.objectweb.asm.ClassReader.<init>(ClassReader.java:168)
+	at org.objectweb.asm.ClassReader.<init>(ClassReader.java:439)
+	at net.minecraftforge.fml.common.discovery.asm.ASMModParser.<init>(ASMModParser.java:57)
+	at net.minecraftforge.fml.common.discovery.JarDiscoverer.findClassesASM(JarDiscoverer.java:102)
+	at net.minecraftforge.fml.common.discovery.JarDiscoverer.discover(JarDiscoverer.java:77)
+	at net.minecraftforge.fml.common.discovery.ContainerType.findMods(ContainerType.java:47)
+	at net.minecraftforge.fml.common.discovery.ModCandidate.explore(ModCandidate.java:74)
+	at net.minecraftforge.fml.common.discovery.ModDiscoverer.identifyMods(ModDiscoverer.java:93)
+	at net.minecraftforge.fml.common.Loader.identifyMods(Loader.java:427)
+	at net.minecraftforge.fml.common.Loader.loadMods(Loader.java:568)
+	at net.minecraftforge.fml.client.FMLClientHandler.beginMinecraftLoading(FMLClientHandler.java:232)
+	at net.minecraft.client.Minecraft.func_71384_a(Minecraft.java:467)
+	at net.minecraft.client.Minecraft.func_99999_d(Minecraft.java:378)
+	at net.minecraft.client.main.Main.main(SourceFile:123)
+	at sun.reflect.NativeMethodAccessorImpl.invoke0(Native Method)
+	at sun.reflect.NativeMethodAccessorImpl.invoke(NativeMethodAccessorImpl.java:62)
+	at sun.reflect.DelegatingMethodAccessorImpl.invoke(DelegatingMethodAccessorImpl.java:43)
+	at java.lang.reflect.Method.invoke(Method.java:498)
+	at net.minecraft.launchwrapper.Launch.launch(Launch.java:135)
+	at net.minecraft.launchwrapper.Launch.main(Launch.java:28)
+]]></log4j:Throwable>
+  </log4j:Event>
+  <log4j:Event logger="FML" timestamp="1792333283861" level="ERROR" thread="Client thread">
+    <log4j:Message><![CDATA[There was a problem reading the entry java/mezz/jei/config/Tags.class in the jar /home/player/.local/share/app.launcher/instances/a7dab25b-07f9-407b-a434-e307860ed560/game/mods/jei-1.12.2-copy.jar - probably a corrupt zip]]></log4j:Message>
+    <log4j:Throwable><![CDATA[net.minecraftforge.fml.common.LoaderException: java.lang.IllegalArgumentException
+	at net.minecraftforge.fml.common.discovery.asm.ASMModParser.<init>(ASMModParser.java:63)
+	at net.minecraftforge.fml.common.discovery.JarDiscoverer.findClassesASM(JarDiscoverer.java:102)
+	at net.minecraftforge.fml.common.discovery.JarDiscoverer.discover(JarDiscoverer.java:77)
+	at net.minecraftforge.fml.common.discovery.ContainerType.findMods(ContainerType.java:47)
+	at net.minecraftforge.fml.common.discovery.ModCandidate.explore(ModCandidate.java:74)
+	at net.minecraftforge.fml.common.discovery.ModDiscoverer.identifyMods(ModDiscoverer.java:93)
+	at net.minecraftforge.fml.common.Loader.identifyMods(Loader.java:427)
+	at net.minecraftforge.fml.common.Loader.loadMods(Loader.java:568)
+	at net.minecraftforge.fml.client.FMLClientHandler.beginMinecraftLoading(FMLClientHandler.java:232)
+	at net.minecraft.client.Minecraft.func_71384_a(Minecraft.java:467)
+	at net.minecraft.client.Minecraft.func_99999_d(Minecraft.java:378)
+	at net.minecraft.client.main.Main.main(SourceFile:123)
+	at sun.reflect.NativeMethodAccessorImpl.invoke0(Native Method)
+	at sun.reflect.NativeMethodAccessorImpl.invoke(NativeMethodAccessorImpl.java:62)
+	at sun.reflect.DelegatingMethodAccessorImpl.invoke(DelegatingMethodAccessorImpl.java:43)
+	at java.lang.reflect.Method.invoke(Method.java:498)
+	at net.minecraft.launchwrapper.Launch.launch(Launch.java:135)
+	at net.minecraft.launchwrapper.Launch.main(Launch.java:28)
+Caused by: java.lang.IllegalArgumentException
+	at org.objectweb.asm.ClassReader.<init>(ClassReader.java:185)
+	at org.objectweb.asm.ClassReader.<init>(ClassReader.java:168)
+	at org.objectweb.asm.ClassReader.<init>(ClassReader.java:439)
+	at net.minecraftforge.fml.common.discovery.asm.ASMModParser.<init>(ASMModParser.java:57)
+	... 17 more
+]]></log4j:Throwable>
+  </log4j:Event>
+  <log4j:Event logger="FML" timestamp="1792333283863" level="WARN" thread="Client thread">
+    <log4j:Message><![CDATA[Zip file jei-1.12.2-copy.jar failed to read properly, it will be ignored]]></log4j:Message>
+    <log4j:Throwable><![CDATA[net.minecraftforge.fml.common.LoaderException: java.lang.IllegalArgumentException
+	at net.minecraftforge.fml.common.discovery.asm.ASMModParser.<init>(ASMModParser.java:63)
+	at net.minecraftforge.fml.common.discovery.JarDiscoverer.findClassesASM(JarDiscoverer.java:102)
+	at net.minecraftforge.fml.common.discovery.JarDiscoverer.discover(JarDiscoverer.java:77)
+	at net.minecraftforge.fml.common.discovery.ContainerType.findMods(ContainerType.java:47)
+	at net.minecraftforge.fml.common.discovery.ModCandidate.explore(ModCandidate.java:74)
+	at net.minecraftforge.fml.common.discovery.ModDiscoverer.identifyMods(ModDiscoverer.java:93)
+	at net.minecraftforge.fml.common.Loader.identifyMods(Loader.java:427)
+	at net.minecraftforge.fml.common.Loader.loadMods(Loader.java:568)
+	at net.minecraftforge.fml.client.FMLClientHandler.beginMinecraftLoading(FMLClientHandler.java:232)
+	at net.minecraft.client.Minecraft.func_71384_a(Minecraft.java:467)
+	at net.minecraft.client.Minecraft.func_99999_d(Minecraft.java:378)
+	at net.minecraft.client.main.Main.main(SourceFile:123)
+	at sun.reflect.NativeMethodAccessorImpl.invoke0(Native Method)
+	at sun.reflect.NativeMethodAccessorImpl.invoke(NativeMethodAccessorImpl.java:62)
+	at sun.reflect.DelegatingMethodAccessorImpl.invoke(DelegatingMethodAccessorImpl.java:43)
+	at java.lang.reflect.Method.invoke(Method.java:498)
+	at net.minecraft.launchwrapper.Launch.launch(Launch.java:135)
+	at net.minecraft.launchwrapper.Launch.main(Launch.java:28)
+Caused by: java.lang.IllegalArgumentException
+	at org.objectweb.asm.ClassReader.<init>(ClassReader.java:185)
+	at org.objectweb.asm.ClassReader.<init>(ClassReader.java:168)
+	at org.objectweb.asm.ClassReader.<init>(ClassReader.java:439)
+	at net.minecraftforge.fml.common.discovery.asm.ASMModParser.<init>(ASMModParser.java:57)
+	... 17 more
+]]></log4j:Throwable>
+  </log4j:Event>
+  <log4j:Event logger="FML" timestamp="1792333283888" level="ERROR" thread="Client thread">
+    <log4j:Message><![CDATA[Unable to read a class file correctly]]></log4j:Message>
+    <log4j:Throwable><![CDATA[java.lang.IllegalArgumentException
+	at org.objectweb.asm.ClassReader.<init>(ClassReader.java:185)
+	at org.objectweb.asm.ClassReader.<init>(ClassReader.java:168)
+	at org.objectweb.asm.ClassReader.<init>(ClassReader.java:439)
+	at net.minecraftforge.fml.common.discovery.asm.ASMModParser.<init>(ASMModParser.java:57)
+	at net.minecraftforge.fml.common.discovery.JarDiscoverer.findClassesASM(JarDiscoverer.java:102)
+	at net.minecraftforge.fml.common.discovery.JarDiscoverer.discover(JarDiscoverer.java:77)
+	at net.minecraftforge.fml.common.discovery.ContainerType.findMods(ContainerType.java:47)
+	at net.minecraftforge.fml.common.discovery.ModCandidate.explore(ModCandidate.java:74)
+	at net.minecraftforge.fml.common.discovery.ModDiscoverer.identifyMods(ModDiscoverer.java:93)
+	at net.minecraftforge.fml.common.Loader.identifyMods(Loader.java:427)
+	at net.minecraftforge.fml.common.Loader.loadMods(Loader.java:568)
+	at net.minecraftforge.fml.client.FMLClientHandler.beginMinecraftLoading(FMLClientHandler.java:232)
+	at net.minecraft.client.Minecraft.func_71384_a(Minecraft.java:467)
+	at net.minecraft.client.Minecraft.func_99999_d(Minecraft.java:378)
+	at net.minecraft.client.main.Main.main(SourceFile:123)
+	at sun.reflect.NativeMethodAccessorImpl.invoke0(Native Method)
+	at sun.reflect.NativeMethodAccessorImpl.invoke(NativeMethodAccessorImpl.java:62)
+	at sun.reflect.DelegatingMethodAccessorImpl.invoke(DelegatingMethodAccessorImpl.java:43)
+	at java.lang.reflect.Method.invoke(Method.java:498)
+	at net.minecraft.launchwrapper.Launch.launch(Launch.java:135)
+	at net.minecraft.launchwrapper.Launch.main(Launch.java:28)
+]]></log4j:Throwable>
+  </log4j:Event>
+  <log4j:Event logger="FML" timestamp="1792333283889" level="ERROR" thread="Client thread">
+    <log4j:Message><![CDATA[There was a problem reading the entry java/mezz/jei/config/Tags.class in the jar /home/player/.local/share/app.launcher/instances/a7dab25b-07f9-407b-a434-e307860ed560/game/mods/jei_1.12.2-4.22.0.1036.jar - probably a corrupt zip]]></log4j:Message>
+    <log4j:Throwable><![CDATA[net.minecraftforge.fml.common.LoaderException: java.lang.IllegalArgumentException
+	at net.minecraftforge.fml.common.discovery.asm.ASMModParser.<init>(ASMModParser.java:63)
+	at net.minecraftforge.fml.common.discovery.JarDiscoverer.findClassesASM(JarDiscoverer.java:102)
+	at net.minecraftforge.fml.common.discovery.JarDiscoverer.discover(JarDiscoverer.java:77)
+	at net.minecraftforge.fml.common.discovery.ContainerType.findMods(ContainerType.java:47)
+	at net.minecraftforge.fml.common.discovery.ModCandidate.explore(ModCandidate.java:74)
+	at net.minecraftforge.fml.common.discovery.ModDiscoverer.identifyMods(ModDiscoverer.java:93)
+	at net.minecraftforge.fml.common.Loader.identifyMods(Loader.java:427)
+	at net.minecraftforge.fml.common.Loader.loadMods(Loader.java:568)
+	at net.minecraftforge.fml.client.FMLClientHandler.beginMinecraftLoading(FMLClientHandler.java:232)
+	at net.minecraft.client.Minecraft.func_71384_a(Minecraft.java:467)
+	at net.minecraft.client.Minecraft.func_99999_d(Minecraft.java:378)
+	at net.minecraft.client.main.Main.main(SourceFile:123)
+	at sun.reflect.NativeMethodAccessorImpl.invoke0(Native Method)
+	at sun.reflect.NativeMethodAccessorImpl.invoke(NativeMethodAccessorImpl.java:62)
+	at sun.reflect.DelegatingMethodAccessorImpl.invoke(DelegatingMethodAccessorImpl.java:43)
+	at java.lang.reflect.Method.invoke(Method.java:498)
+	at net.minecraft.launchwrapper.Launch.launch(Launch.java:135)
+	at net.minecraft.launchwrapper.Launch.main(Launch.java:28)
+Caused by: java.lang.IllegalArgumentException
+	at org.objectweb.asm.ClassReader.<init>(ClassReader.java:185)
+	at org.objectweb.asm.ClassReader.<init>(ClassReader.java:168)
+	at org.objectweb.asm.ClassReader.<init>(ClassReader.java:439)
+	at net.minecraftforge.fml.common.discovery.asm.ASMModParser.<init>(ASMModParser.java:57)
+	... 17 more
+]]></log4j:Throwable>
+  </log4j:Event>
+  <log4j:Event logger="FML" timestamp="1792333283890" level="WARN" thread="Client thread">
+    <log4j:Message><![CDATA[Zip file jei_1.12.2-4.22.0.1036.jar failed to read properly, it will be ignored]]></log4j:Message>
+    <log4j:Throwable><![CDATA[net.minecraftforge.fml.common.LoaderException: java.lang.IllegalArgumentException
+	at net.minecraftforge.fml.common.discovery.asm.ASMModParser.<init>(ASMModParser.java:63)
+	at net.minecraftforge.fml.common.discovery.JarDiscoverer.findClassesASM(JarDiscoverer.java:102)
+	at net.minecraftforge.fml.common.discovery.JarDiscoverer.discover(JarDiscoverer.java:77)
+	at net.minecraftforge.fml.common.discovery.ContainerType.findMods(ContainerType.java:47)
+	at net.minecraftforge.fml.common.discovery.ModCandidate.explore(ModCandidate.java:74)
+	at net.minecraftforge.fml.common.discovery.ModDiscoverer.identifyMods(ModDiscoverer.java:93)
+	at net.minecraftforge.fml.common.Loader.identifyMods(Loader.java:427)
+	at net.minecraftforge.fml.common.Loader.loadMods(Loader.java:568)
+	at net.minecraftforge.fml.client.FMLClientHandler.beginMinecraftLoading(FMLClientHandler.java:232)
+	at net.minecraft.client.Minecraft.func_71384_a(Minecraft.java:467)
+	at net.minecraft.client.Minecraft.func_99999_d(Minecraft.java:378)
+	at net.minecraft.client.main.Main.main(SourceFile:123)
+	at sun.reflect.NativeMethodAccessorImpl.invoke0(Native Method)
+	at sun.reflect.NativeMethodAccessorImpl.invoke(NativeMethodAccessorImpl.java:62)
+	at sun.reflect.DelegatingMethodAccessorImpl.invoke(DelegatingMethodAccessorImpl.java:43)
+	at java.lang.reflect.Method.invoke(Method.java:498)
+	at net.minecraft.launchwrapper.Launch.launch(Launch.java:135)
+	at net.minecraft.launchwrapper.Launch.main(Launch.java:28)
+Caused by: java.lang.IllegalArgumentException
+	at org.objectweb.asm.ClassReader.<init>(ClassReader.java:185)
+	at org.objectweb.asm.ClassReader.<init>(ClassReader.java:168)
+	at org.objectweb.asm.ClassReader.<init>(ClassReader.java:439)
+	at net.minecraftforge.fml.common.discovery.asm.ASMModParser.<init>(ASMModParser.java:57)
+	... 17 more
+]]></log4j:Throwable>
+  </log4j:Event>
+  <log4j:Event logger="FML" timestamp="1792333283904" level="FATAL" thread="Client thread">
+    <log4j:Message><![CDATA[Found a duplicate mod jei at [/home/player/.local/share/app.launcher/instances/a7dab25b-07f9-407b-a434-e307860ed560/game/mods/jei_1.12.2-4.22.0.1036.jar, /home/player/.local/share/app.launcher/instances/a7dab25b-07f9-407b-a434-e307860ed560/game/mods/jei-1.12.2-copy.jar]]]></log4j:Message>
+  </log4j:Event>
+  <log4j:Event logger="FML" timestamp="1792333283909" level="ERROR" thread="Client thread">
+    <log4j:Message><![CDATA[An exception was thrown, the game will display an error screen and halt.]]></log4j:Message>
+    <log4j:Throwable><![CDATA[Duplicate Mods:
+	jei : /home/player/.local/share/app.launcher/instances/a7dab25b-07f9-407b-a434-e307860ed560/game/mods/jei_1.12.2-4.22.0.1036.jar
+	jei : /home/player/.local/share/app.launcher/instances/a7dab25b-07f9-407b-a434-e307860ed560/game/mods/jei-1.12.2-copy.jar
+
+net.minecraftforge.fml.common.DuplicateModsFoundException
+	at net.minecraftforge.fml.common.Loader.identifyDuplicates(Loader.java:466)
+	at net.minecraftforge.fml.common.Loader.identifyMods(Loader.java:428)
+	at net.minecraftforge.fml.common.Loader.loadMods(Loader.java:568)
+	at net.minecraftforge.fml.client.FMLClientHandler.beginMinecraftLoading(FMLClientHandler.java:232)
+	at net.minecraft.client.Minecraft.func_71384_a(Minecraft.java:467)
+	at net.minecraft.client.Minecraft.func_99999_d(Minecraft.java:378)
+	at net.minecraft.client.main.Main.main(SourceFile:123)
+	at sun.reflect.NativeMethodAccessorImpl.invoke0(Native Method)
+	at sun.reflect.NativeMethodAccessorImpl.invoke(NativeMethodAccessorImpl.java:62)
+	at sun.reflect.DelegatingMethodAccessorImpl.invoke(DelegatingMethodAccessorImpl.java:43)
+	at java.lang.reflect.Method.invoke(Method.java:498)
+	at net.minecraft.launchwrapper.Launch.launch(Launch.java:135)
+	at net.minecraft.launchwrapper.Launch.main(Launch.java:28)
+]]></log4j:Throwable>
+  </log4j:Event>
+  <log4j:Event logger="FML" timestamp="1792333283911" level="WARN" thread="Client thread">
+    <log4j:Message><![CDATA[EventBus 0 shutting down - future events will not be posted.]]></log4j:Message>
+  </log4j:Event>
+  <log4j:Event logger="net.minecraft.client.resources.SimpleReloadableResourceManager" timestamp="1792333283913" level="INFO" thread="Client thread">
+    <log4j:Message><![CDATA[Reloading ResourceManager: Default]]></log4j:Message>
+  </log4j:Event>
+  <log4j:Event logger="FML" timestamp="1792333283993" level="WARN" thread="Client thread">
+    <log4j:Message><![CDATA[There were errors previously. Not beginning mod initialization phase]]></log4j:Message>
+  </log4j:Event>
+  <log4j:Event logger="net.minecraft.client.audio.SoundManager" timestamp="1792333284182" level="INFO" thread="Sound Library Loader">
+    <log4j:Message><![CDATA[Starting up SoundSystem...]]></log4j:Message>
+  </log4j:Event>
+  <log4j:Event logger="net.minecraft.client.audio.SoundManager" timestamp="1792333284419" level="INFO" thread="Thread-4">
+    <log4j:Message><![CDATA[Initializing LWJGL OpenAL]]></log4j:Message>
+  </log4j:Event>
+  <log4j:Event logger="net.minecraft.client.audio.SoundManager" timestamp="1792333284419" level="INFO" thread="Thread-4">
+    <log4j:Message><![CDATA[(The LWJGL binding of OpenAL.  For more information, see http://www.lwjgl.org)]]></log4j:Message>
+  </log4j:Event>
+ALSA lib confmisc.c:855:(parse_card) cannot find card '0'
+ALSA lib conf.c:5208:(_snd_config_evaluate) function snd_func_card_inum returned error: No such file or directory
+ALSA lib confmisc.c:422:(snd_func_concat) error evaluating strings
+ALSA lib conf.c:5208:(_snd_config_evaluate) function snd_func_concat returned error: No such file or directory
+ALSA lib confmisc.c:1342:(snd_func_refer) error evaluating name
+ALSA lib conf.c:5208:(_snd_config_evaluate) function snd_func_refer returned error: No such file or directory
+ALSA lib conf.c:5731:(snd_config_expand) Evaluate error: No such file or directory
+ALSA lib pcm.c:2721:(snd_pcm_open_noupdate) Unknown PCM default
+AL lib: (EE) alsa_open_playback: Could not open playback device 'default': No such file or directory
+  <log4j:Event logger="net.minecraft.client.audio.SoundManager" timestamp="1792333284451" level="ERROR" thread="Thread-4">
+    <log4j:Message><![CDATA[Error in class 'LibraryLWJGLOpenAL']]></log4j:Message>
+  </log4j:Event>
+  <log4j:Event logger="net.minecraft.client.audio.SoundManager" timestamp="1792333284454" level="ERROR" thread="Thread-4">
+    <log4j:Message><![CDATA[Unable to initialize OpenAL.  Probable cause: OpenAL not supported.]]></log4j:Message>
+  </log4j:Event>
+  <log4j:Event logger="net.minecraft.client.audio.SoundManager" timestamp="1792333284454" level="WARN" thread="Thread-4">
+    <log4j:Message><![CDATA[ERROR MESSAGE:]]></log4j:Message>
+  </log4j:Event>
+  <log4j:Event logger="net.minecraft.client.audio.SoundManager" timestamp="1792333284454" level="INFO" thread="Thread-4">
+    <log4j:Message><![CDATA[Could not locate OpenAL library.]]></log4j:Message>
+  </log4j:Event>
+  <log4j:Event logger="net.minecraft.client.audio.SoundManager" timestamp="1792333284454" level="WARN" thread="Thread-4">
+    <log4j:Message><![CDATA[STACK TRACE:]]></log4j:Message>
+  </log4j:Event>
+  <log4j:Event logger="net.minecraft.client.audio.SoundManager" timestamp="1792333284455" level="INFO" thread="Thread-4">
+    <log4j:Message><![CDATA[org.lwjgl.openal.AL.create(AL.java:156)]]></log4j:Message>
+  </log4j:Event>
+  <log4j:Event logger="net.minecraft.client.audio.SoundManager" timestamp="1792333284455" level="INFO" thread="Thread-4">
+    <log4j:Message><![CDATA[org.lwjgl.openal.AL.create(AL.java:102)]]></log4j:Message>
+  </log4j:Event>
+  <log4j:Event logger="net.minecraft.client.audio.SoundManager" timestamp="1792333284455" level="INFO" thread="Thread-4">
+    <log4j:Message><![CDATA[org.lwjgl.openal.AL.create(AL.java:206)]]></log4j:Message>
+  </log4j:Event>
+  <log4j:Event logger="net.minecraft.client.audio.SoundManager" timestamp="1792333284455" level="INFO" thread="Thread-4">
+    <log4j:Message><![CDATA[paulscode.sound.libraries.LibraryLWJGLOpenAL.init(LibraryLWJGLOpenAL.java:164)]]></log4j:Message>
+  </log4j:Event>
+  <log4j:Event logger="net.minecraft.client.audio.SoundManager" timestamp="1792333284455" level="INFO" thread="Thread-4">
+    <log4j:Message><![CDATA[paulscode.sound.SoundSystem.CommandNewLibrary(SoundSystem.java:1576)]]></log4j:Message>
+  </log4j:Event>
+  <log4j:Event logger="net.minecraft.client.audio.SoundManager" timestamp="1792333284455" level="INFO" thread="Thread-4">
+    <log4j:Message><![CDATA[paulscode.sound.SoundSystem.CommandQueue(SoundSystem.java:2572)]]></log4j:Message>
+  </log4j:Event>
+  <log4j:Event logger="net.minecraft.client.audio.SoundManager" timestamp="1792333284455" level="INFO" thread="Thread-4">
+    <log4j:Message><![CDATA[paulscode.sound.CommandThread.run(CommandThread.java:121)]]></log4j:Message>
+  </log4j:Event>
+  <log4j:Event logger="net.minecraft.client.audio.SoundManager" timestamp="1792333284792" level="WARN" thread="Sound Library Loader">
+    <log4j:Message><![CDATA[ERROR MESSAGE:]]></log4j:Message>
+  </log4j:Event>
+  <log4j:Event logger="net.minecraft.client.audio.SoundManager" timestamp="1792333284792" level="INFO" thread="Sound Library Loader">
+    <log4j:Message><![CDATA[Could not locate OpenAL library.]]></log4j:Message>
+  </log4j:Event>
+  <log4j:Event logger="net.minecraft.client.audio.SoundManager" timestamp="1792333284792" level="INFO" thread="Sound Library Loader">
+    <log4j:Message><![CDATA[Starting up SoundSystem...]]></log4j:Message>
+  </log4j:Event>
+  <log4j:Event logger="net.minecraft.client.audio.SoundManager" timestamp="1792333285164" level="INFO" thread="Thread-6">
+    <log4j:Message><![CDATA[Switching to No Sound]]></log4j:Message>
+  </log4j:Event>
+  <log4j:Event logger="net.minecraft.client.audio.SoundManager" timestamp="1792333285165" level="INFO" thread="Thread-6">
+    <log4j:Message><![CDATA[(Silent Mode)]]></log4j:Message>
+  </log4j:Event>
+  <log4j:Event logger="com.mojang.text2speech.NarratorLinux" timestamp="1792333285208" level="INFO" thread="Client thread">
+    <log4j:Message><![CDATA[Narrator library successfully loaded]]></log4j:Message>
+  </log4j:Event>
+  <log4j:Event logger="net.minecraft.client.audio.SoundManager" timestamp="1792333285400" level="INFO" thread="Sound Library Loader">
+    <log4j:Message><![CDATA[Sound engine started]]></log4j:Message>
+  </log4j:Event>
+  <log4j:Event logger="net.minecraft.client.Minecraft" timestamp="1792333332198" level="INFO" thread="Client thread">
+    <log4j:Message><![CDATA[Stopping!]]></log4j:Message>
+  </log4j:Event>
+  <log4j:Event logger="net.minecraft.client.audio.SoundManager" timestamp="1792333332202" level="INFO" thread="Client thread">
+    <log4j:Message><![CDATA[SoundSystem shutting down...]]></log4j:Message>
+  </log4j:Event>
+  <log4j:Event logger="net.minecraft.client.audio.SoundManager" timestamp="1792333332403" level="WARN" thread="Client thread">
+    <log4j:Message><![CDATA[Author: Paul Lamb, www.paulscode.com]]></log4j:Message>
+  </log4j:Event>

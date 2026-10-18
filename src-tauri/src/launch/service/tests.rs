@@ -519,6 +519,28 @@ async fn a_crash_is_explained() {
 }
 
 #[tokio::test(flavor = "multi_thread")]
+async fn a_question_repeated_on_the_console_ends_the_game() {
+    // NeoForge's and tinyfd's console questions repeat forever on empty input.
+    let s = Setup::new().await;
+    let service = s.service(auth("Asking"));
+    let run = service
+        .launch_as(&Uuid::new_v4().to_string(), s.instance, account())
+        .await
+        .unwrap();
+    let done = s.finished(&run.run_id).await;
+    assert_eq!(done.state, RunState::Failed);
+    let diagnosis = done.diagnosis.expect("diagnosis");
+    assert_eq!(diagnosis.kind, CrashKind::CorruptModFile);
+    assert_eq!(diagnosis.notes[0].kind, CrashKind::ConsoleQuestion);
+    let asked = done
+        .output_tail
+        .iter()
+        .filter(|l| l.contains("y/n:"))
+        .count();
+    assert_eq!(asked, crate::launch::crash::CONSOLE_QUESTION_LIMIT as usize);
+}
+
+#[tokio::test(flavor = "multi_thread")]
 async fn a_mod_error_screen_closed_normally_is_still_a_failure() {
     let s = Setup::new().await;
     let service = s.service(auth("ModError"));

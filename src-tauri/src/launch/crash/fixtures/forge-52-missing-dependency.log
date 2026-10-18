@@ -1,0 +1,742 @@
+  <log4j:Event logger="cpw.mods.modlauncher.Launcher" timestamp="1792333066769" level="INFO" thread="main">
+    <log4j:Message><![CDATA[ModLauncher running: args [--username, TestPlayer, --version, 1.21.1-forge-52.0.57, --gameDir, /home/player/.local/share/app.launcher/instances/259346f5-99ac-4f13-bb0c-3a721b5c5b52/game, --assetsDir, /home/player/.local/share/app.launcher/shared/assets, --assetIndex, 17, --uuid, 63508fdc1cc35e429002c04e5e68da29, --accessToken, **********, --clientId, , --xuid, , --userType, msa, --versionType, release, --width, 1280, --height, 720, --launchTarget, forge_client]]]></log4j:Message>
+  </log4j:Event>
+  <log4j:Event logger="cpw.mods.modlauncher.Launcher" timestamp="1792333066772" level="INFO" thread="main">
+    <log4j:Message><![CDATA[JVM identified as Microsoft OpenJDK 64-Bit Server VM 21.0.7+6-LTS]]></log4j:Message>
+  </log4j:Event>
+  <log4j:Event logger="cpw.mods.modlauncher.Launcher" timestamp="1792333066772" level="INFO" thread="main">
+    <log4j:Message><![CDATA[ModLauncher 10.2.4 starting: java version 21.0.7 by Microsoft; OS Linux arch amd64 version 6.18.44-fc-v139]]></log4j:Message>
+  </log4j:Event>
+  <log4j:Event logger="net.minecraftforge.fml.loading.ImmediateWindowHandler" timestamp="1792333067356" level="INFO" thread="main">
+    <log4j:Message><![CDATA[Loading ImmediateWindowProvider fmlearlywindow]]></log4j:Message>
+  </log4j:Event>
+  <log4j:Event logger="EARLYDISPLAY" timestamp="1792333067526" level="INFO" thread="main">
+    <log4j:Message><![CDATA[Trying GL version 4.6]]></log4j:Message>
+  </log4j:Event>
+  <log4j:Event logger="EARLYDISPLAY" timestamp="1792333067570" level="INFO" thread="main">
+    <log4j:Message><![CDATA[Trying GL version 4.5]]></log4j:Message>
+  </log4j:Event>
+  <log4j:Event logger="EARLYDISPLAY" timestamp="1792333067592" level="INFO" thread="main">
+    <log4j:Message><![CDATA[Requested GL version 4.5 got version 4.5]]></log4j:Message>
+  </log4j:Event>
+  <log4j:Event logger="mixin" timestamp="1792333067760" level="INFO" thread="main">
+    <log4j:Message><![CDATA[SpongePowered MIXIN Subsystem Version=0.8.7 Source=jar:file:///home/player/.local/share/app.launcher/shared/maven/org/spongepowered/mixin/0.8.7/mixin-0.8.7.jar!/ Service=ModLauncher Env=CLIENT]]></log4j:Message>
+  </log4j:Event>
+  <log4j:Event logger="net.minecraftforge.fml.loading.moddiscovery.ModDiscoverer" timestamp="1792333067835" level="INFO" thread="main">
+    <log4j:Message><![CDATA[Found mod file BiomesOPlenty-forge-1.21.1-21.1.0.14.jar of type MOD with provider {mods folder locator at /home/player/.local/share/app.launcher/instances/259346f5-99ac-4f13-bb0c-3a721b5c5b52/game/mods}]]></log4j:Message>
+  </log4j:Event>
+  <log4j:Event logger="net.minecraftforge.fml.loading.moddiscovery.ModDiscoverer" timestamp="1792333067883" level="INFO" thread="main">
+    <log4j:Message><![CDATA[Found mod file forge-1.21.1-52.0.57-client.jar of type MOD with provider net.minecraftforge.fml.loading.moddiscovery.MinecraftLocator@3a91d146]]></log4j:Message>
+  </log4j:Event>
+  <log4j:Event logger="EARLYDISPLAY" timestamp="1792333067936" level="INFO" thread="EarlyDisplay">
+    <log4j:Message><![CDATA[GL info: llvmpipe (LLVM 20.1.2, 256 bits) GL version 4.5 (Core Profile) Mesa 25.2.8-0ubuntu0.24.04.4, Mesa]]></log4j:Message>
+  </log4j:Event>
+  <log4j:Event logger="net.minecraftforge.fml.loading.moddiscovery.ModDiscoverer" timestamp="1792333068078" level="INFO" thread="main">
+    <log4j:Message><![CDATA[Found mod file javafmllanguage-1.21.1-52.0.57.jar of type LANGPROVIDER with provider net.minecraftforge.fml.loading.moddiscovery.ClasspathLocator@4e92466a]]></log4j:Message>
+  </log4j:Event>
+  <log4j:Event logger="net.minecraftforge.fml.loading.moddiscovery.ModDiscoverer" timestamp="1792333068079" level="INFO" thread="main">
+    <log4j:Message><![CDATA[Found mod file mclanguage-1.21.1-52.0.57.jar of type LANGPROVIDER with provider net.minecraftforge.fml.loading.moddiscovery.ClasspathLocator@4e92466a]]></log4j:Message>
+  </log4j:Event>
+  <log4j:Event logger="net.minecraftforge.fml.loading.moddiscovery.ModDiscoverer" timestamp="1792333068079" level="INFO" thread="main">
+    <log4j:Message><![CDATA[Found mod file fmlcore-1.21.1-52.0.57.jar of type LIBRARY with provider net.minecraftforge.fml.loading.moddiscovery.ClasspathLocator@4e92466a]]></log4j:Message>
+  </log4j:Event>
+  <log4j:Event logger="net.minecraftforge.fml.loading.moddiscovery.ModDiscoverer" timestamp="1792333068079" level="INFO" thread="main">
+    <log4j:Message><![CDATA[Found mod file forge-1.21.1-52.0.57-universal.jar of type MOD with provider net.minecraftforge.fml.loading.moddiscovery.ClasspathLocator@4e92466a]]></log4j:Message>
+  </log4j:Event>
+  <log4j:Event logger="net.minecraftforge.fml.loading.moddiscovery.ModDiscoverer" timestamp="1792333068079" level="INFO" thread="main">
+    <log4j:Message><![CDATA[Found mod file lowcodelanguage-1.21.1-52.0.57.jar of type LANGPROVIDER with provider net.minecraftforge.fml.loading.moddiscovery.ClasspathLocator@4e92466a]]></log4j:Message>
+  </log4j:Event>
+  <log4j:Event logger="net.minecraftforge.fml.loading.moddiscovery.JarInJarDependencyLocator" timestamp="1792333068390" level="INFO" thread="main">
+    <log4j:Message><![CDATA[No dependencies to load found. Skipping!]]></log4j:Message>
+  </log4j:Event>
+  <log4j:Event logger="net.minecraftforge.fml.loading.ModSorter" timestamp="1792333068999" level="ERROR" thread="main">
+    <log4j:Message><![CDATA[Missing or unsupported mandatory dependencies:
+	Mod ID: 'glitchcore', Requested by: 'biomesoplenty', Expected range: '[2.1.0.0,)', Actual version: '[MISSING]'
+	Mod ID: 'terrablender', Requested by: 'biomesoplenty', Expected range: '[4.1.0.0,)', Actual version: '[MISSING]']]></log4j:Message>
+  </log4j:Event>
+  <log4j:Event logger="cpw.mods.modlauncher.LaunchServiceHandler" timestamp="1792333072468" level="INFO" thread="main">
+    <log4j:Message><![CDATA[Launching target 'forge_client' with arguments [--version, 1.21.1-forge-52.0.57, --gameDir, /home/player/.local/share/app.launcher/instances/259346f5-99ac-4f13-bb0c-3a721b5c5b52/game, --assetsDir, /home/player/.local/share/app.launcher/shared/assets, --uuid, 63508fdc1cc35e429002c04e5e68da29, --username, TestPlayer, --assetIndex, 17, --accessToken, **********, --clientId, , --xuid, , --userType, msa, --versionType, release, --width, 1280, --height, 720]]]></log4j:Message>
+  </log4j:Event>
+  <log4j:Event logger="oshi.util.FileUtil" timestamp="1792333076840" level="WARN" thread="main">
+    <log4j:Message><![CDATA[Configuration conflict: there is more than one oshi.properties file on the classpath: [jar:file:///home/player/.local/share/app.launcher/shared/maven/com/github/oshi/oshi-core/6.4.10/oshi-core-6.4.10.jar!/oshi.properties, jar:file:/home/player/.local/share/app.launcher/shared/maven/com/github/oshi/oshi-core/6.4.10/oshi-core-6.4.10.jar!/oshi.properties, jar:file:///home/player/.local/share/app.launcher/shared/maven/com/github/oshi/oshi-core/6.4.10/oshi-core-6.4.10.jar!/oshi.properties, jar:file:/home/player/.local/share/app.launcher/shared/maven/com/github/oshi/oshi-core/6.4.10/oshi-core-6.4.10.jar!/oshi.properties]]]></log4j:Message>
+  </log4j:Event>
+  <log4j:Event logger="com.mojang.datafixers.DataFixerBuilder" timestamp="1792333077079" level="INFO" thread="Datafixer Bootstrap">
+    <log4j:Message><![CDATA[226 Datafixer optimizations took 676 milliseconds]]></log4j:Message>
+  </log4j:Event>
+  <log4j:Event logger="oshi.util.FileUtil" timestamp="1792333077129" level="WARN" thread="main">
+    <log4j:Message><![CDATA[Configuration conflict: there is more than one oshi.architecture.properties file on the classpath: [jar:file:///home/player/.local/share/app.launcher/shared/maven/com/github/oshi/oshi-core/6.4.10/oshi-core-6.4.10.jar!/oshi.architecture.properties, jar:file:/home/player/.local/share/app.launcher/shared/maven/com/github/oshi/oshi-core/6.4.10/oshi-core-6.4.10.jar!/oshi.architecture.properties, jar:file:///home/player/.local/share/app.launcher/shared/maven/com/github/oshi/oshi-core/6.4.10/oshi-core-6.4.10.jar!/oshi.architecture.properties, jar:file:/home/player/.local/share/app.launcher/shared/maven/com/github/oshi/oshi-core/6.4.10/oshi-core-6.4.10.jar!/oshi.architecture.properties]]]></log4j:Message>
+  </log4j:Event>
+  <log4j:Event logger="com.mojang.authlib.yggdrasil.YggdrasilAuthenticationService" timestamp="1792333084881" level="INFO" thread="Render thread">
+    <log4j:Message><![CDATA[Environment: Environment[sessionHost=https://sessionserver.mojang.com, servicesHost=https://api.minecraftservices.com, name=PROD]]]></log4j:Message>
+  </log4j:Event>
+  <log4j:Event logger="net.minecraft.client.Minecraft" timestamp="1792333085087" level="INFO" thread="Render thread">
+    <log4j:Message><![CDATA[Setting user: TestPlayer]]></log4j:Message>
+  </log4j:Event>
+  <log4j:Event logger="net.minecraft.client.Minecraft" timestamp="1792333085487" level="INFO" thread="Render thread">
+    <log4j:Message><![CDATA[Backend library: LWJGL version 3.3.3+5]]></log4j:Message>
+  </log4j:Event>
+  <log4j:Event logger="com.mojang.authlib.yggdrasil.YggdrasilServicesKeyInfo" timestamp="1792333085746" level="ERROR" thread="Yggdrasil Key Fetcher">
+    <log4j:Message><![CDATA[Failed to request yggdrasil public key]]></log4j:Message>
+    <log4j:Throwable><![CDATA[com.mojang.authlib.exceptions.MinecraftClientException: Failed to read from https://api.minecraftservices.com/publickeys due to PKIX path building failed: sun.security.provider.certpath.SunCertPathBuilderException: unable to find valid certification path to requested target
+	at SECURE-BOOTSTRAP/authlib@6.0.54/com.mojang.authlib.minecraft.client.MinecraftClient.readInputStream(MinecraftClient.java:108)
+	at SECURE-BOOTSTRAP/authlib@6.0.54/com.mojang.authlib.minecraft.client.MinecraftClient.get(MinecraftClient.java:57)
+	at SECURE-BOOTSTRAP/authlib@6.0.54/com.mojang.authlib.yggdrasil.YggdrasilServicesKeyInfo.fetch(YggdrasilServicesKeyInfo.java:114)
+	at SECURE-BOOTSTRAP/authlib@6.0.54/com.mojang.authlib.yggdrasil.YggdrasilServicesKeyInfo$1.run(YggdrasilServicesKeyInfo.java:89)
+	at java.base/java.util.concurrent.Executors$RunnableAdapter.call(Executors.java:572)
+	at java.base/java.util.concurrent.FutureTask.run(FutureTask.java:317)
+	at java.base/java.util.concurrent.ScheduledThreadPoolExecutor$ScheduledFutureTask.run(ScheduledThreadPoolExecutor.java:304)
+	at java.base/java.util.concurrent.ThreadPoolExecutor.runWorker(ThreadPoolExecutor.java:1144)
+	at java.base/java.util.concurrent.ThreadPoolExecutor$Worker.run(ThreadPoolExecutor.java:642)
+	at java.base/java.lang.Thread.run(Thread.java:1583)
+Caused by: javax.net.ssl.SSLHandshakeException: PKIX path building failed: sun.security.provider.certpath.SunCertPathBuilderException: unable to find valid certification path to requested target
+	at java.base/sun.security.ssl.Alert.createSSLException(Alert.java:130)
+	at java.base/sun.security.ssl.TransportContext.fatal(TransportContext.java:383)
+	at java.base/sun.security.ssl.TransportContext.fatal(TransportContext.java:326)
+	at java.base/sun.security.ssl.TransportContext.fatal(TransportContext.java:321)
+	at java.base/sun.security.ssl.CertificateMessage$T13CertificateConsumer.checkServerCerts(CertificateMessage.java:1318)
+	at java.base/sun.security.ssl.CertificateMessage$T13CertificateConsumer.onConsumeCertificate(CertificateMessage.java:1195)
+	at java.base/sun.security.ssl.CertificateMessage$T13CertificateConsumer.consume(CertificateMessage.java:1138)
+	at java.base/sun.security.ssl.SSLHandshake.consume(SSLHandshake.java:393)
+	at java.base/sun.security.ssl.HandshakeContext.dispatch(HandshakeContext.java:476)
+	at java.base/sun.security.ssl.HandshakeContext.dispatch(HandshakeContext.java:447)
+	at java.base/sun.security.ssl.TransportContext.dispatch(TransportContext.java:206)
+	at java.base/sun.security.ssl.SSLTransport.decode(SSLTransport.java:172)
+	at java.base/sun.security.ssl.SSLSocketImpl.decode(SSLSocketImpl.java:1506)
+	at java.base/sun.security.ssl.SSLSocketImpl.readHandshakeRecord(SSLSocketImpl.java:1421)
+	at java.base/sun.security.ssl.SSLSocketImpl.startHandshake(SSLSocketImpl.java:455)
+	at java.base/sun.security.ssl.SSLSocketImpl.startHandshake(SSLSocketImpl.java:426)
+	at java.base/sun.net.www.protocol.https.HttpsClient.afterConnect(HttpsClient.java:586)
+	at java.base/sun.net.www.protocol.https.AbstractDelegateHttpsURLConnection.connect(AbstractDelegateHttpsURLConnection.java:187)
+	at java.base/sun.net.www.protocol.http.HttpURLConnection.getInputStream0(HttpURLConnection.java:1690)
+	at java.base/sun.net.www.protocol.http.HttpURLConnection.getInputStream(HttpURLConnection.java:1614)
+	at java.base/java.net.HttpURLConnection.getResponseCode(HttpURLConnection.java:531)
+	at java.base/sun.net.www.protocol.https.HttpsURLConnectionImpl.getResponseCode(HttpsURLConnectionImpl.java:307)
+	at SECURE-BOOTSTRAP/authlib@6.0.54/com.mojang.authlib.minecraft.client.MinecraftClient.readInputStream(MinecraftClient.java:84)
+	... 9 more
+Caused by: sun.security.validator.ValidatorException: PKIX path building failed: sun.security.provider.certpath.SunCertPathBuilderException: unable to find valid certification path to requested target
+	at java.base/sun.security.validator.PKIXValidator.doBuild(PKIXValidator.java:388)
+	at java.base/sun.security.validator.PKIXValidator.engineValidate(PKIXValidator.java:271)
+	at java.base/sun.security.validator.Validator.validate(Validator.java:256)
+	at java.base/sun.security.ssl.X509TrustManagerImpl.checkTrusted(X509TrustManagerImpl.java:230)
+	at java.base/sun.security.ssl.X509TrustManagerImpl.checkServerTrusted(X509TrustManagerImpl.java:132)
+	at java.base/sun.security.ssl.CertificateMessage$T13CertificateConsumer.checkServerCerts(CertificateMessage.java:1302)
+	... 27 more
+Caused by: sun.security.provider.certpath.SunCertPathBuilderException: unable to find valid certification path to requested target
+	at java.base/sun.security.provider.certpath.SunCertPathBuilder.build(SunCertPathBuilder.java:148)
+	at java.base/sun.security.provider.certpath.SunCertPathBuilder.engineBuild(SunCertPathBuilder.java:129)
+	at java.base/java.security.cert.CertPathBuilder.build(CertPathBuilder.java:297)
+	at java.base/sun.security.validator.PKIXValidator.doBuild(PKIXValidator.java:383)
+	... 32 more
+]]></log4j:Throwable>
+  </log4j:Event>
+  <log4j:Event logger="net.minecraft.client.Minecraft" timestamp="1792333085746" level="ERROR" thread="Download-2">
+    <log4j:Message><![CDATA[Failed to fetch user properties]]></log4j:Message>
+    <log4j:Throwable><![CDATA[com.mojang.authlib.exceptions.AuthenticationUnavailableException
+	at SECURE-BOOTSTRAP/authlib@6.0.54/com.mojang.authlib.exceptions.MinecraftClientException.toAuthenticationException(MinecraftClientException.java:29)
+	at SECURE-BOOTSTRAP/authlib@6.0.54/com.mojang.authlib.yggdrasil.YggdrasilUserApiService.fetchProperties(YggdrasilUserApiService.java:154)
+	at TRANSFORMER/minecraft@1.21.1/net.minecraft.client.Minecraft.lambda$new$2(Minecraft.java:427)
+	at java.base/java.util.concurrent.CompletableFuture$AsyncSupply.run(CompletableFuture.java:1768)
+	at java.base/java.util.concurrent.ThreadPoolExecutor.runWorker(ThreadPoolExecutor.java:1144)
+	at java.base/java.util.concurrent.ThreadPoolExecutor$Worker.run(ThreadPoolExecutor.java:642)
+	at java.base/java.lang.Thread.run(Thread.java:1583)
+]]></log4j:Throwable>
+  </log4j:Event>
+  <log4j:Event logger="com.mojang.authlib.yggdrasil.YggdrasilMinecraftSessionService" timestamp="1792333085747" level="WARN" thread="Download-1">
+    <log4j:Message><![CDATA[Couldn't look up profile properties for 63508fdc-1cc3-5e42-9002-c04e5e68da29]]></log4j:Message>
+    <log4j:Throwable><![CDATA[com.mojang.authlib.exceptions.MinecraftClientException: Failed to read from https://sessionserver.mojang.com/session/minecraft/profile/63508fdc1cc35e429002c04e5e68da29?unsigned=false due to PKIX path building failed: sun.security.provider.certpath.SunCertPathBuilderException: unable to find valid certification path to requested target
+	at SECURE-BOOTSTRAP/authlib@6.0.54/com.mojang.authlib.minecraft.client.MinecraftClient.readInputStream(MinecraftClient.java:108)
+	at SECURE-BOOTSTRAP/authlib@6.0.54/com.mojang.authlib.minecraft.client.MinecraftClient.get(MinecraftClient.java:57)
+	at SECURE-BOOTSTRAP/authlib@6.0.54/com.mojang.authlib.yggdrasil.YggdrasilMinecraftSessionService.fetchProfileUncached(YggdrasilMinecraftSessionService.java:201)
+	at SECURE-BOOTSTRAP/authlib@6.0.54/com.mojang.authlib.yggdrasil.YggdrasilMinecraftSessionService.fetchProfile(YggdrasilMinecraftSessionService.java:171)
+	at TRANSFORMER/minecraft@1.21.1/net.minecraft.client.Minecraft.lambda$new$1(Minecraft.java:423)
+	at java.base/java.util.concurrent.CompletableFuture$AsyncSupply.run(CompletableFuture.java:1768)
+	at java.base/java.util.concurrent.ThreadPoolExecutor.runWorker(ThreadPoolExecutor.java:1144)
+	at java.base/java.util.concurrent.ThreadPoolExecutor$Worker.run(ThreadPoolExecutor.java:642)
+	at java.base/java.lang.Thread.run(Thread.java:1583)
+Caused by: javax.net.ssl.SSLHandshakeException: PKIX path building failed: sun.security.provider.certpath.SunCertPathBuilderException: unable to find valid certification path to requested target
+	at java.base/sun.security.ssl.Alert.createSSLException(Alert.java:130)
+	at java.base/sun.security.ssl.TransportContext.fatal(TransportContext.java:383)
+	at java.base/sun.security.ssl.TransportContext.fatal(TransportContext.java:326)
+	at java.base/sun.security.ssl.TransportContext.fatal(TransportContext.java:321)
+	at java.base/sun.security.ssl.CertificateMessage$T13CertificateConsumer.checkServerCerts(CertificateMessage.java:1318)
+	at java.base/sun.security.ssl.CertificateMessage$T13CertificateConsumer.onConsumeCertificate(CertificateMessage.java:1195)
+	at java.base/sun.security.ssl.CertificateMessage$T13CertificateConsumer.consume(CertificateMessage.java:1138)
+	at java.base/sun.security.ssl.SSLHandshake.consume(SSLHandshake.java:393)
+	at java.base/sun.security.ssl.HandshakeContext.dispatch(HandshakeContext.java:476)
+	at java.base/sun.security.ssl.HandshakeContext.dispatch(HandshakeContext.java:447)
+	at java.base/sun.security.ssl.TransportContext.dispatch(TransportContext.java:206)
+	at java.base/sun.security.ssl.SSLTransport.decode(SSLTransport.java:172)
+	at java.base/sun.security.ssl.SSLSocketImpl.decode(SSLSocketImpl.java:1506)
+	at java.base/sun.security.ssl.SSLSocketImpl.readHandshakeRecord(SSLSocketImpl.java:1421)
+	at java.base/sun.security.ssl.SSLSocketImpl.startHandshake(SSLSocketImpl.java:455)
+	at java.base/sun.security.ssl.SSLSocketImpl.startHandshake(SSLSocketImpl.java:426)
+	at java.base/sun.net.www.protocol.https.HttpsClient.afterConnect(HttpsClient.java:586)
+	at java.base/sun.net.www.protocol.https.AbstractDelegateHttpsURLConnection.connect(AbstractDelegateHttpsURLConnection.java:187)
+	at java.base/sun.net.www.protocol.http.HttpURLConnection.getInputStream0(HttpURLConnection.java:1690)
+	at java.base/sun.net.www.protocol.http.HttpURLConnection.getInputStream(HttpURLConnection.java:1614)
+	at java.base/java.net.HttpURLConnection.getResponseCode(HttpURLConnection.java:531)
+	at java.base/sun.net.www.protocol.https.HttpsURLConnectionImpl.getResponseCode(HttpsURLConnectionImpl.java:307)
+	at SECURE-BOOTSTRAP/authlib@6.0.54/com.mojang.authlib.minecraft.client.MinecraftClient.readInputStream(MinecraftClient.java:84)
+	... 8 more
+Caused by: sun.security.validator.ValidatorException: PKIX path building failed: sun.security.provider.certpath.SunCertPathBuilderException: unable to find valid certification path to requested target
+	at java.base/sun.security.validator.PKIXValidator.doBuild(PKIXValidator.java:388)
+	at java.base/sun.security.validator.PKIXValidator.engineValidate(PKIXValidator.java:271)
+	at java.base/sun.security.validator.Validator.validate(Validator.java:256)
+	at java.base/sun.security.ssl.X509TrustManagerImpl.checkTrusted(X509TrustManagerImpl.java:230)
+	at java.base/sun.security.ssl.X509TrustManagerImpl.checkServerTrusted(X509TrustManagerImpl.java:132)
+	at java.base/sun.security.ssl.CertificateMessage$T13CertificateConsumer.checkServerCerts(CertificateMessage.java:1302)
+	... 26 more
+Caused by: sun.security.provider.certpath.SunCertPathBuilderException: unable to find valid certification path to requested target
+	at java.base/sun.security.provider.certpath.SunCertPathBuilder.build(SunCertPathBuilder.java:148)
+	at java.base/sun.security.provider.certpath.SunCertPathBuilder.engineBuild(SunCertPathBuilder.java:129)
+	at java.base/java.security.cert.CertPathBuilder.build(CertPathBuilder.java:297)
+	at java.base/sun.security.validator.PKIXValidator.doBuild(PKIXValidator.java:383)
+	... 31 more
+]]></log4j:Throwable>
+  </log4j:Event>
+  <log4j:Event logger="net.minecraftforge.fml.ModLoader" timestamp="1792333086404" level="FATAL" thread="Render thread">
+    <log4j:Message><![CDATA[Error during pre-loading phase]]></log4j:Message>
+    <log4j:Throwable><![CDATA[net.minecraftforge.fml.ModLoadingException: Mod §ebiomesoplenty§r requires §6glitchcore§r §o2.1.0.0 or above§r
+§7Currently, §6glitchcore§r§7 is §o§nnot installed
+	at LAYER PLUGIN/net.minecraftforge.fmlcore@1.21.1-52.0.57/net.minecraftforge.fml.ModLoadingException.lambda$fromEarlyException$0(ModLoadingException.java:50)
+	at java.base/java.util.stream.ReferencePipeline$3$1.accept(ReferencePipeline.java:197)
+	at java.base/java.util.AbstractList$RandomAccessSpliterator.forEachRemaining(AbstractList.java:722)
+	at java.base/java.util.stream.AbstractPipeline.copyInto(AbstractPipeline.java:509)
+	at java.base/java.util.stream.AbstractPipeline.wrapAndCopyInto(AbstractPipeline.java:499)
+	at java.base/java.util.stream.ForEachOps$ForEachOp.evaluateSequential(ForEachOps.java:151)
+	at java.base/java.util.stream.ForEachOps$ForEachOp$OfRef.evaluateSequential(ForEachOps.java:174)
+	at java.base/java.util.stream.AbstractPipeline.evaluate(AbstractPipeline.java:234)
+	at java.base/java.util.stream.ReferencePipeline.forEach(ReferencePipeline.java:596)
+	at java.base/java.util.stream.ReferencePipeline$7$1.accept(ReferencePipeline.java:276)
+	at java.base/java.util.ArrayList$ArrayListSpliterator.forEachRemaining(ArrayList.java:1708)
+	at java.base/java.util.stream.AbstractPipeline.copyInto(AbstractPipeline.java:509)
+	at java.base/java.util.stream.AbstractPipeline.wrapAndCopyInto(AbstractPipeline.java:499)
+	at java.base/java.util.stream.ReduceOps$ReduceOp.evaluateSequential(ReduceOps.java:921)
+	at java.base/java.util.stream.AbstractPipeline.evaluate(AbstractPipeline.java:234)
+	at java.base/java.util.stream.ReferencePipeline.collect(ReferencePipeline.java:682)
+	at LAYER PLUGIN/net.minecraftforge.fmlcore@1.21.1-52.0.57/net.minecraftforge.fml.ModLoader.<init>(ModLoader.java:97)
+	at LAYER PLUGIN/net.minecraftforge.fmlcore@1.21.1-52.0.57/net.minecraftforge.fml.ModLoader$LazyInit.<clinit>(ModLoader.java:140)
+	at LAYER PLUGIN/net.minecraftforge.fmlcore@1.21.1-52.0.57/net.minecraftforge.fml.ModLoader.get(ModLoader.java:136)
+	at TRANSFORMER/net.minecraftforge.forge@52.0.57/net.minecraftforge.event.ForgeEventFactory.<clinit>(ForgeEventFactory.java:220)
+	at TRANSFORMER/net.minecraftforge.forge@52.0.57/net.minecraftforge.common.ForgeHooks.gatherItemComponents(ForgeHooks.java:1279)
+	at TRANSFORMER/minecraft@1.21.1/net.minecraft.world.item.Item.components(Item.java:114)
+	at TRANSFORMER/minecraft@1.21.1/net.minecraft.world.item.ItemStack.<init>(ItemStack.java:250)
+	at TRANSFORMER/minecraft@1.21.1/net.minecraft.world.item.ItemStack.<init>(ItemStack.java:234)
+	at TRANSFORMER/minecraft@1.21.1/net.minecraft.world.food.FoodProperties$Builder.usingConvertsTo(FoodProperties.java:103)
+	at TRANSFORMER/minecraft@1.21.1/net.minecraft.world.food.Foods.stew(Foods.java:73)
+	at TRANSFORMER/minecraft@1.21.1/net.minecraft.world.food.Foods.<clinit>(Foods.java:14)
+	at TRANSFORMER/minecraft@1.21.1/net.minecraft.world.item.Items.<clinit>(Items.java:883)
+	at TRANSFORMER/minecraft@1.21.1/net.minecraft.world.level.block.ComposterBlock.bootStrap(ComposterBlock.java:69)
+	at TRANSFORMER/minecraft@1.21.1/net.minecraft.server.Bootstrap.bootStrap(Bootstrap.java:46)
+	at java.base/java.util.concurrent.Executors$RunnableAdapter.call(Executors.java:572)
+	at java.base/java.util.concurrent.FutureTask.run(FutureTask.java:317)
+	at java.base/java.util.concurrent.ThreadPoolExecutor.runWorker(ThreadPoolExecutor.java:1144)
+	at java.base/java.util.concurrent.ThreadPoolExecutor$Worker.run(ThreadPoolExecutor.java:642)
+	at java.base/java.lang.Thread.run(Thread.java:1583)
+]]></log4j:Throwable>
+  </log4j:Event>
+[W][02654.716012] pw.conf      | [          conf.c: 1031 try_load_conf()] can't load config client-rt.conf: No such file or directory
+[E][02654.716032] pw.conf      | [          conf.c: 1060 pw_conf_load_conf_for_context()] can't load config client-rt.conf: No such file or directory
+[ALSOFT] (EE) Failed to create PipeWire event context (errno: 2)
+  <log4j:Event logger="net.minecraftforge.fml.ModLoader" timestamp="1792333088166" level="ERROR" thread="Render thread">
+    <log4j:Message><![CDATA[Cowardly refusing to send event net.minecraftforge.client.event.sound.SoundEngineLoadEvent to a broken mod state]]></log4j:Message>
+  </log4j:Event>
+  <log4j:Event logger="net.minecraftforge.fml.ModLoader" timestamp="1792333088744" level="ERROR" thread="Render thread">
+    <log4j:Message><![CDATA[Cowardly refusing to send event net.minecraftforge.client.event.RegisterColorHandlersEvent$Block to a broken mod state]]></log4j:Message>
+  </log4j:Event>
+  <log4j:Event logger="net.minecraftforge.fml.ModLoader" timestamp="1792333088747" level="ERROR" thread="Render thread">
+    <log4j:Message><![CDATA[Cowardly refusing to send event net.minecraftforge.client.event.RegisterColorHandlersEvent$Item to a broken mod state]]></log4j:Message>
+  </log4j:Event>
+  <log4j:Event logger="net.minecraftforge.fml.ModLoader" timestamp="1792333089237" level="ERROR" thread="Render thread">
+    <log4j:Message><![CDATA[Cowardly refusing to send event net.minecraftforge.client.event.RegisterParticleProvidersEvent to a broken mod state]]></log4j:Message>
+  </log4j:Event>
+  <log4j:Event logger="net.minecraftforge.fml.ModLoader" timestamp="1792333089396" level="ERROR" thread="Render thread">
+    <log4j:Message><![CDATA[Cowardly refusing to send event net.minecraftforge.client.event.RenderLevelStageEvent$RegisterStageEvent to a broken mod state]]></log4j:Message>
+  </log4j:Event>
+  <log4j:Event logger="net.minecraftforge.fml.ModLoader" timestamp="1792333089451" level="ERROR" thread="Render thread">
+    <log4j:Message><![CDATA[Cowardly refusing to send event net.minecraftforge.client.event.RegisterClientReloadListenersEvent to a broken mod state]]></log4j:Message>
+  </log4j:Event>
+  <log4j:Event logger="net.minecraftforge.fml.ModLoader" timestamp="1792333089452" level="ERROR" thread="Render thread">
+    <log4j:Message><![CDATA[Cowardly refusing to send event net.minecraftforge.client.event.EntityRenderersEvent$RegisterLayerDefinitions to a broken mod state]]></log4j:Message>
+  </log4j:Event>
+  <log4j:Event logger="net.minecraftforge.fml.ModLoader" timestamp="1792333089452" level="ERROR" thread="Render thread">
+    <log4j:Message><![CDATA[Cowardly refusing to send event net.minecraftforge.client.event.EntityRenderersEvent$RegisterRenderers to a broken mod state]]></log4j:Message>
+  </log4j:Event>
+  <log4j:Event logger="net.minecraftforge.fml.ModLoader" timestamp="1792333089453" level="ERROR" thread="Render thread">
+    <log4j:Message><![CDATA[Cowardly refusing to send event net.minecraftforge.client.event.RegisterTextureAtlasSpriteLoadersEvent to a broken mod state]]></log4j:Message>
+  </log4j:Event>
+  <log4j:Event logger="net.minecraftforge.fml.ModLoader" timestamp="1792333089454" level="ERROR" thread="Render thread">
+    <log4j:Message><![CDATA[Cowardly refusing to send event net.minecraftforge.client.event.RegisterClientTooltipComponentFactoriesEvent to a broken mod state]]></log4j:Message>
+  </log4j:Event>
+  <log4j:Event logger="net.minecraftforge.fml.ModLoader" timestamp="1792333089455" level="ERROR" thread="Render thread">
+    <log4j:Message><![CDATA[Cowardly refusing to send event net.minecraftforge.client.event.RegisterEntitySpectatorShadersEvent to a broken mod state]]></log4j:Message>
+  </log4j:Event>
+  <log4j:Event logger="net.minecraftforge.fml.ModLoader" timestamp="1792333089455" level="ERROR" thread="Render thread">
+    <log4j:Message><![CDATA[Cowardly refusing to send event net.minecraftforge.client.event.RegisterKeyMappingsEvent to a broken mod state]]></log4j:Message>
+  </log4j:Event>
+  <log4j:Event logger="net.minecraftforge.fml.ModLoader" timestamp="1792333089457" level="ERROR" thread="Render thread">
+    <log4j:Message><![CDATA[Cowardly refusing to send event net.minecraftforge.client.event.RegisterRecipeBookCategoriesEvent to a broken mod state]]></log4j:Message>
+  </log4j:Event>
+  <log4j:Event logger="net.minecraftforge.fml.ModLoader" timestamp="1792333089460" level="ERROR" thread="Render thread">
+    <log4j:Message><![CDATA[Cowardly refusing to send event net.minecraftforge.client.event.RegisterDimensionSpecialEffectsEvent to a broken mod state]]></log4j:Message>
+  </log4j:Event>
+  <log4j:Event logger="net.minecraftforge.fml.ModLoader" timestamp="1792333089461" level="ERROR" thread="Render thread">
+    <log4j:Message><![CDATA[Cowardly refusing to send event net.minecraftforge.client.event.RegisterNamedRenderTypesEvent to a broken mod state]]></log4j:Message>
+  </log4j:Event>
+  <log4j:Event logger="net.minecraftforge.fml.ModLoader" timestamp="1792333089462" level="ERROR" thread="Render thread">
+    <log4j:Message><![CDATA[Cowardly refusing to send event net.minecraftforge.client.event.RegisterColorHandlersEvent$ColorResolvers to a broken mod state]]></log4j:Message>
+  </log4j:Event>
+  <log4j:Event logger="net.minecraftforge.fml.ModLoader" timestamp="1792333089463" level="ERROR" thread="Render thread">
+    <log4j:Message><![CDATA[Cowardly refusing to send event net.minecraftforge.client.event.RegisterItemDecorationsEvent to a broken mod state]]></log4j:Message>
+  </log4j:Event>
+  <log4j:Event logger="net.minecraftforge.fml.ModLoader" timestamp="1792333089469" level="ERROR" thread="Render thread">
+    <log4j:Message><![CDATA[Cowardly refusing to send event net.minecraftforge.client.event.RegisterPresetEditorsEvent to a broken mod state]]></log4j:Message>
+  </log4j:Event>
+  <log4j:Event logger="net.minecraft.server.packs.resources.ReloadableResourceManager" timestamp="1792333089921" level="INFO" thread="Render thread">
+    <log4j:Message><![CDATA[Reloading ResourceManager: vanilla]]></log4j:Message>
+  </log4j:Event>
+  <log4j:Event logger="net.minecraftforge.fml.ModLoader" timestamp="1792333089950" level="ERROR" thread="Render thread">
+    <log4j:Message><![CDATA[Cowardly refusing to send event net.minecraftforge.client.event.ModelEvent$RegisterGeometryLoaders to a broken mod state]]></log4j:Message>
+  </log4j:Event>
+  <log4j:Event logger="net.minecraft.client.gui.font.providers.UnihexProvider" timestamp="1792333091366" level="INFO" thread="Worker-Main-3">
+    <log4j:Message><![CDATA[Found unifont_all_no_pua-15.1.05.hex, loading]]></log4j:Message>
+  </log4j:Event>
+  <log4j:Event logger="net.minecraft.client.gui.font.providers.UnihexProvider" timestamp="1792333092724" level="INFO" thread="Worker-Main-3">
+    <log4j:Message><![CDATA[Found unifont_jp_patch-15.1.05.hex, loading]]></log4j:Message>
+  </log4j:Event>
+  <log4j:Event logger="net.minecraftforge.fml.ModLoader" timestamp="1792333093372" level="ERROR" thread="Worker-Main-2">
+    <log4j:Message><![CDATA[Cowardly refusing to send event net.minecraftforge.client.event.ModelEvent$RegisterAdditional to a broken mod state]]></log4j:Message>
+  </log4j:Event>
+  <log4j:Event logger="net.minecraftforge.fml.ModLoader" timestamp="1792333094411" level="ERROR" thread="Worker-Main-2">
+    <log4j:Message><![CDATA[Cowardly refusing to send event net.minecraftforge.client.event.ModelEvent$ModifyBakingResult to a broken mod state]]></log4j:Message>
+  </log4j:Event>
+  <log4j:Event logger="net.minecraft.client.sounds.SoundEngine" timestamp="1792333094682" level="WARN" thread="Render thread">
+    <log4j:Message><![CDATA[Missing sound for event: minecraft:item.goat_horn.play]]></log4j:Message>
+  </log4j:Event>
+  <log4j:Event logger="net.minecraft.client.sounds.SoundEngine" timestamp="1792333094686" level="WARN" thread="Render thread">
+    <log4j:Message><![CDATA[Missing sound for event: minecraft:entity.goat.screaming.horn_break]]></log4j:Message>
+  </log4j:Event>
+  <log4j:Event logger="net.minecraft.client.sounds.SoundEngine" timestamp="1792333094836" level="ERROR" thread="Render thread">
+    <log4j:Message><![CDATA[Error starting SoundSystem. Turning off sounds & music]]></log4j:Message>
+    <log4j:Throwable><![CDATA[java.lang.IllegalStateException: Failed to open OpenAL device
+	at TRANSFORMER/minecraft@1.21.1/com.mojang.blaze3d.audio.Library.openDeviceOrFallback(Library.java:302)
+	at TRANSFORMER/minecraft@1.21.1/com.mojang.blaze3d.audio.Library.init(Library.java:154)
+	at TRANSFORMER/minecraft@1.21.1/net.minecraft.client.sounds.SoundEngine.loadLibrary(SoundEngine.java:107)
+	at TRANSFORMER/minecraft@1.21.1/net.minecraft.client.sounds.SoundEngine.reload(SoundEngine.java:99)
+	at TRANSFORMER/minecraft@1.21.1/net.minecraft.client.sounds.SoundManager.apply(SoundManager.java:128)
+	at TRANSFORMER/minecraft@1.21.1/net.minecraft.client.sounds.SoundManager.apply(SoundManager.java:42)
+	at TRANSFORMER/minecraft@1.21.1/net.minecraft.server.packs.resources.SimplePreparableReloadListener.lambda$reload$1(SimplePreparableReloadListener.java:13)
+	at java.base/java.util.concurrent.CompletableFuture$UniAccept.tryFire(CompletableFuture.java:718)
+	at java.base/java.util.concurrent.CompletableFuture$Completion.run(CompletableFuture.java:482)
+	at TRANSFORMER/minecraft@1.21.1/net.minecraft.server.packs.resources.SimpleReloadInstance.lambda$new$3(SimpleReloadInstance.java:69)
+	at TRANSFORMER/minecraft@1.21.1/net.minecraft.util.thread.BlockableEventLoop.doRunTask(BlockableEventLoop.java:162)
+	at TRANSFORMER/minecraft@1.21.1/net.minecraft.util.thread.ReentrantBlockableEventLoop.doRunTask(ReentrantBlockableEventLoop.java:23)
+	at TRANSFORMER/minecraft@1.21.1/net.minecraft.util.thread.BlockableEventLoop.pollTask(BlockableEventLoop.java:136)
+	at TRANSFORMER/minecraft@1.21.1/net.minecraft.util.thread.BlockableEventLoop.runAllTasks(BlockableEventLoop.java:121)
+	at TRANSFORMER/minecraft@1.21.1/net.minecraft.client.Minecraft.runTick(Minecraft.java:1141)
+	at TRANSFORMER/minecraft@1.21.1/net.minecraft.client.Minecraft.run(Minecraft.java:795)
+	at TRANSFORMER/minecraft@1.21.1/net.minecraft.client.main.Main.main(Main.java:228)
+	at java.base/jdk.internal.reflect.DirectMethodHandleAccessor.invoke(DirectMethodHandleAccessor.java:103)
+	at java.base/java.lang.reflect.Method.invoke(Method.java:580)
+	at SECURE-BOOTSTRAP/net.minecraftforge.fmlloader@1.21.1-52.0.57/net.minecraftforge.fml.loading.targets.CommonLaunchHandler.runTarget(CommonLaunchHandler.java:85)
+	at SECURE-BOOTSTRAP/net.minecraftforge.fmlloader@1.21.1-52.0.57/net.minecraftforge.fml.loading.targets.CommonLaunchHandler.lambda$makeService$0(CommonLaunchHandler.java:69)
+	at SECURE-BOOTSTRAP/cpw.mods.modlauncher@10.2.4/cpw.mods.modlauncher.LaunchServiceHandler.launch(LaunchServiceHandler.java:77)
+	at SECURE-BOOTSTRAP/cpw.mods.modlauncher@10.2.4/cpw.mods.modlauncher.LaunchServiceHandler.launch(LaunchServiceHandler.java:97)
+	at SECURE-BOOTSTRAP/cpw.mods.modlauncher@10.2.4/cpw.mods.modlauncher.Launcher.run(Launcher.java:116)
+	at SECURE-BOOTSTRAP/cpw.mods.modlauncher@10.2.4/cpw.mods.modlauncher.Launcher.main(Launcher.java:75)
+	at SECURE-BOOTSTRAP/cpw.mods.modlauncher@10.2.4/cpw.mods.modlauncher.BootstrapEntry.main(BootstrapEntry.java:17)
+	at net.minecraftforge.bootstrap@2.1.7/net.minecraftforge.bootstrap.Bootstrap.moduleMain(Bootstrap.java:188)
+	at java.base/jdk.internal.reflect.DirectMethodHandleAccessor.invoke(DirectMethodHandleAccessor.java:103)
+	at java.base/java.lang.reflect.Method.invoke(Method.java:580)
+	at net.minecraftforge.bootstrap.Bootstrap.bootstrapMain(Bootstrap.java:133)
+	at net.minecraftforge.bootstrap.Bootstrap.start(Bootstrap.java:53)
+	at net.minecraftforge.bootstrap.ForgeBootstrap.main(ForgeBootstrap.java:19)
+]]></log4j:Throwable>
+  </log4j:Event>
+ALSA lib confmisc.c:855:(parse_card) cannot find card '0'
+ALSA lib conf.c:5208:(_snd_config_evaluate) function snd_func_card_inum returned error: No such file or directory
+ALSA lib confmisc.c:422:(snd_func_concat) error evaluating strings
+ALSA lib conf.c:5208:(_snd_config_evaluate) function snd_func_concat returned error: No such file or directory
+ALSA lib confmisc.c:1342:(snd_func_refer) error evaluating name
+ALSA lib conf.c:5208:(_snd_config_evaluate) function snd_func_refer returned error: No such file or directory
+ALSA lib conf.c:5731:(snd_config_expand) Evaluate error: No such file or directory
+ALSA lib pcm.c:2721:(snd_pcm_open_noupdate) Unknown PCM default
+ALSA lib confmisc.c:855:(parse_card) cannot find card '0'
+ALSA lib conf.c:5208:(_snd_config_evaluate) function snd_func_card_inum returned error: No such file or directory
+ALSA lib confmisc.c:422:(snd_func_concat) error evaluating strings
+ALSA lib conf.c:5208:(_snd_config_evaluate) function snd_func_concat returned error: No such file or directory
+ALSA lib confmisc.c:1342:(snd_func_refer) error evaluating name
+ALSA lib conf.c:5208:(_snd_config_evaluate) function snd_func_refer returned error: No such file or directory
+ALSA lib conf.c:5731:(snd_config_expand) Evaluate error: No such file or directory
+ALSA lib pcm.c:2721:(snd_pcm_open_noupdate) Unknown PCM default
+  <log4j:Event logger="net.minecraftforge.fml.ModLoader" timestamp="1792333094851" level="ERROR" thread="Render thread">
+    <log4j:Message><![CDATA[Cowardly refusing to send event net.minecraftforge.client.event.sound.SoundEngineLoadEvent to a broken mod state]]></log4j:Message>
+  </log4j:Event>
+  <log4j:Event logger="net.minecraft.client.renderer.texture.TextureAtlas" timestamp="1792333095013" level="INFO" thread="Render thread">
+    <log4j:Message><![CDATA[Created: 1024x512x4 minecraft:textures/atlas/blocks.png-atlas]]></log4j:Message>
+  </log4j:Event>
+  <log4j:Event logger="net.minecraftforge.fml.ModLoader" timestamp="1792333095028" level="ERROR" thread="Render thread">
+    <log4j:Message><![CDATA[Cowardly refusing to send event net.minecraftforge.client.event.TextureStitchEvent$Post to a broken mod state]]></log4j:Message>
+  </log4j:Event>
+  <log4j:Event logger="net.minecraft.client.renderer.texture.TextureAtlas" timestamp="1792333095029" level="INFO" thread="Render thread">
+    <log4j:Message><![CDATA[Created: 256x256x4 minecraft:textures/atlas/signs.png-atlas]]></log4j:Message>
+  </log4j:Event>
+  <log4j:Event logger="net.minecraftforge.fml.ModLoader" timestamp="1792333095029" level="ERROR" thread="Render thread">
+    <log4j:Message><![CDATA[Cowardly refusing to send event net.minecraftforge.client.event.TextureStitchEvent$Post to a broken mod state]]></log4j:Message>
+  </log4j:Event>
+  <log4j:Event logger="net.minecraft.client.renderer.texture.TextureAtlas" timestamp="1792333095029" level="INFO" thread="Render thread">
+    <log4j:Message><![CDATA[Created: 512x512x4 minecraft:textures/atlas/banner_patterns.png-atlas]]></log4j:Message>
+  </log4j:Event>
+  <log4j:Event logger="net.minecraftforge.fml.ModLoader" timestamp="1792333095031" level="ERROR" thread="Render thread">
+    <log4j:Message><![CDATA[Cowardly refusing to send event net.minecraftforge.client.event.TextureStitchEvent$Post to a broken mod state]]></log4j:Message>
+  </log4j:Event>
+  <log4j:Event logger="net.minecraft.client.renderer.texture.TextureAtlas" timestamp="1792333095031" level="INFO" thread="Render thread">
+    <log4j:Message><![CDATA[Created: 512x512x4 minecraft:textures/atlas/shield_patterns.png-atlas]]></log4j:Message>
+  </log4j:Event>
+  <log4j:Event logger="net.minecraftforge.fml.ModLoader" timestamp="1792333095033" level="ERROR" thread="Render thread">
+    <log4j:Message><![CDATA[Cowardly refusing to send event net.minecraftforge.client.event.TextureStitchEvent$Post to a broken mod state]]></log4j:Message>
+  </log4j:Event>
+  <log4j:Event logger="net.minecraft.client.renderer.texture.TextureAtlas" timestamp="1792333095033" level="INFO" thread="Render thread">
+    <log4j:Message><![CDATA[Created: 1024x1024x4 minecraft:textures/atlas/armor_trims.png-atlas]]></log4j:Message>
+  </log4j:Event>
+  <log4j:Event logger="net.minecraftforge.fml.ModLoader" timestamp="1792333095041" level="ERROR" thread="Render thread">
+    <log4j:Message><![CDATA[Cowardly refusing to send event net.minecraftforge.client.event.TextureStitchEvent$Post to a broken mod state]]></log4j:Message>
+  </log4j:Event>
+  <log4j:Event logger="net.minecraft.client.renderer.texture.TextureAtlas" timestamp="1792333095042" level="INFO" thread="Render thread">
+    <log4j:Message><![CDATA[Created: 256x256x4 minecraft:textures/atlas/chest.png-atlas]]></log4j:Message>
+  </log4j:Event>
+  <log4j:Event logger="net.minecraftforge.fml.ModLoader" timestamp="1792333095043" level="ERROR" thread="Render thread">
+    <log4j:Message><![CDATA[Cowardly refusing to send event net.minecraftforge.client.event.TextureStitchEvent$Post to a broken mod state]]></log4j:Message>
+  </log4j:Event>
+  <log4j:Event logger="net.minecraft.client.renderer.texture.TextureAtlas" timestamp="1792333095043" level="INFO" thread="Render thread">
+    <log4j:Message><![CDATA[Created: 128x64x4 minecraft:textures/atlas/decorated_pot.png-atlas]]></log4j:Message>
+  </log4j:Event>
+  <log4j:Event logger="net.minecraftforge.fml.ModLoader" timestamp="1792333095044" level="ERROR" thread="Render thread">
+    <log4j:Message><![CDATA[Cowardly refusing to send event net.minecraftforge.client.event.TextureStitchEvent$Post to a broken mod state]]></log4j:Message>
+  </log4j:Event>
+  <log4j:Event logger="net.minecraft.client.renderer.texture.TextureAtlas" timestamp="1792333095044" level="INFO" thread="Render thread">
+    <log4j:Message><![CDATA[Created: 512x256x4 minecraft:textures/atlas/beds.png-atlas]]></log4j:Message>
+  </log4j:Event>
+  <log4j:Event logger="net.minecraftforge.fml.ModLoader" timestamp="1792333095045" level="ERROR" thread="Render thread">
+    <log4j:Message><![CDATA[Cowardly refusing to send event net.minecraftforge.client.event.TextureStitchEvent$Post to a broken mod state]]></log4j:Message>
+  </log4j:Event>
+  <log4j:Event logger="net.minecraft.client.renderer.texture.TextureAtlas" timestamp="1792333095045" level="INFO" thread="Render thread">
+    <log4j:Message><![CDATA[Created: 512x256x4 minecraft:textures/atlas/shulker_boxes.png-atlas]]></log4j:Message>
+  </log4j:Event>
+  <log4j:Event logger="net.minecraftforge.fml.ModLoader" timestamp="1792333095046" level="ERROR" thread="Render thread">
+    <log4j:Message><![CDATA[Cowardly refusing to send event net.minecraftforge.client.event.TextureStitchEvent$Post to a broken mod state]]></log4j:Message>
+  </log4j:Event>
+  <log4j:Event logger="net.minecraftforge.fml.ModLoader" timestamp="1792333095047" level="ERROR" thread="Render thread">
+    <log4j:Message><![CDATA[Cowardly refusing to send event net.minecraftforge.client.event.ModelEvent$BakingCompleted to a broken mod state]]></log4j:Message>
+  </log4j:Event>
+  <log4j:Event logger="net.minecraftforge.fml.ModLoader" timestamp="1792333095131" level="ERROR" thread="Render thread">
+    <log4j:Message><![CDATA[Cowardly refusing to send event net.minecraftforge.client.event.EntityRenderersEvent$CreateSkullModels to a broken mod state]]></log4j:Message>
+  </log4j:Event>
+  <log4j:Event logger="net.minecraftforge.fml.ModLoader" timestamp="1792333095134" level="ERROR" thread="Render thread">
+    <log4j:Message><![CDATA[Cowardly refusing to send event net.minecraftforge.client.event.EntityRenderersEvent$CreateSkullModels to a broken mod state]]></log4j:Message>
+  </log4j:Event>
+  <log4j:Event logger="net.minecraftforge.fml.ModLoader" timestamp="1792333095229" level="ERROR" thread="Render thread">
+    <log4j:Message><![CDATA[Cowardly refusing to send event net.minecraftforge.client.event.EntityRenderersEvent$CreateSkullModels to a broken mod state]]></log4j:Message>
+  </log4j:Event>
+  <log4j:Event logger="net.minecraftforge.fml.ModLoader" timestamp="1792333095234" level="ERROR" thread="Render thread">
+    <log4j:Message><![CDATA[Cowardly refusing to send event net.minecraftforge.client.event.EntityRenderersEvent$CreateSkullModels to a broken mod state]]></log4j:Message>
+  </log4j:Event>
+  <log4j:Event logger="net.minecraftforge.fml.ModLoader" timestamp="1792333095236" level="ERROR" thread="Render thread">
+    <log4j:Message><![CDATA[Cowardly refusing to send event net.minecraftforge.client.event.EntityRenderersEvent$CreateSkullModels to a broken mod state]]></log4j:Message>
+  </log4j:Event>
+  <log4j:Event logger="net.minecraftforge.fml.ModLoader" timestamp="1792333095241" level="ERROR" thread="Render thread">
+    <log4j:Message><![CDATA[Cowardly refusing to send event net.minecraftforge.client.event.EntityRenderersEvent$CreateSkullModels to a broken mod state]]></log4j:Message>
+  </log4j:Event>
+  <log4j:Event logger="net.minecraftforge.fml.ModLoader" timestamp="1792333095242" level="ERROR" thread="Render thread">
+    <log4j:Message><![CDATA[Cowardly refusing to send event net.minecraftforge.client.event.EntityRenderersEvent$CreateSkullModels to a broken mod state]]></log4j:Message>
+  </log4j:Event>
+  <log4j:Event logger="net.minecraftforge.fml.ModLoader" timestamp="1792333095242" level="ERROR" thread="Render thread">
+    <log4j:Message><![CDATA[Cowardly refusing to send event net.minecraftforge.client.event.EntityRenderersEvent$CreateSkullModels to a broken mod state]]></log4j:Message>
+  </log4j:Event>
+  <log4j:Event logger="net.minecraftforge.fml.ModLoader" timestamp="1792333095243" level="ERROR" thread="Render thread">
+    <log4j:Message><![CDATA[Cowardly refusing to send event net.minecraftforge.client.event.EntityRenderersEvent$CreateSkullModels to a broken mod state]]></log4j:Message>
+  </log4j:Event>
+  <log4j:Event logger="net.minecraftforge.fml.ModLoader" timestamp="1792333095244" level="ERROR" thread="Render thread">
+    <log4j:Message><![CDATA[Cowardly refusing to send event net.minecraftforge.client.event.EntityRenderersEvent$CreateSkullModels to a broken mod state]]></log4j:Message>
+  </log4j:Event>
+  <log4j:Event logger="net.minecraftforge.fml.ModLoader" timestamp="1792333095247" level="ERROR" thread="Render thread">
+    <log4j:Message><![CDATA[Cowardly refusing to send event net.minecraftforge.client.event.EntityRenderersEvent$CreateSkullModels to a broken mod state]]></log4j:Message>
+  </log4j:Event>
+  <log4j:Event logger="net.minecraftforge.fml.ModLoader" timestamp="1792333095254" level="ERROR" thread="Render thread">
+    <log4j:Message><![CDATA[Cowardly refusing to send event net.minecraftforge.client.event.EntityRenderersEvent$CreateSkullModels to a broken mod state]]></log4j:Message>
+  </log4j:Event>
+  <log4j:Event logger="net.minecraftforge.fml.ModLoader" timestamp="1792333095256" level="ERROR" thread="Render thread">
+    <log4j:Message><![CDATA[Cowardly refusing to send event net.minecraftforge.client.event.EntityRenderersEvent$CreateSkullModels to a broken mod state]]></log4j:Message>
+  </log4j:Event>
+  <log4j:Event logger="net.minecraftforge.fml.ModLoader" timestamp="1792333095258" level="ERROR" thread="Render thread">
+    <log4j:Message><![CDATA[Cowardly refusing to send event net.minecraftforge.client.event.EntityRenderersEvent$CreateSkullModels to a broken mod state]]></log4j:Message>
+  </log4j:Event>
+  <log4j:Event logger="net.minecraftforge.fml.ModLoader" timestamp="1792333095259" level="ERROR" thread="Render thread">
+    <log4j:Message><![CDATA[Cowardly refusing to send event net.minecraftforge.client.event.EntityRenderersEvent$CreateSkullModels to a broken mod state]]></log4j:Message>
+  </log4j:Event>
+  <log4j:Event logger="net.minecraftforge.fml.ModLoader" timestamp="1792333095261" level="ERROR" thread="Render thread">
+    <log4j:Message><![CDATA[Cowardly refusing to send event net.minecraftforge.client.event.EntityRenderersEvent$CreateSkullModels to a broken mod state]]></log4j:Message>
+  </log4j:Event>
+  <log4j:Event logger="net.minecraftforge.fml.ModLoader" timestamp="1792333095266" level="ERROR" thread="Render thread">
+    <log4j:Message><![CDATA[Cowardly refusing to send event net.minecraftforge.client.event.EntityRenderersEvent$CreateSkullModels to a broken mod state]]></log4j:Message>
+  </log4j:Event>
+  <log4j:Event logger="net.minecraftforge.fml.ModLoader" timestamp="1792333095266" level="ERROR" thread="Render thread">
+    <log4j:Message><![CDATA[Cowardly refusing to send event net.minecraftforge.client.event.EntityRenderersEvent$CreateSkullModels to a broken mod state]]></log4j:Message>
+  </log4j:Event>
+  <log4j:Event logger="net.minecraftforge.fml.ModLoader" timestamp="1792333095267" level="ERROR" thread="Render thread">
+    <log4j:Message><![CDATA[Cowardly refusing to send event net.minecraftforge.client.event.EntityRenderersEvent$CreateSkullModels to a broken mod state]]></log4j:Message>
+  </log4j:Event>
+  <log4j:Event logger="net.minecraftforge.fml.ModLoader" timestamp="1792333095268" level="ERROR" thread="Render thread">
+    <log4j:Message><![CDATA[Cowardly refusing to send event net.minecraftforge.client.event.EntityRenderersEvent$CreateSkullModels to a broken mod state]]></log4j:Message>
+  </log4j:Event>
+  <log4j:Event logger="net.minecraftforge.fml.ModLoader" timestamp="1792333095274" level="ERROR" thread="Render thread">
+    <log4j:Message><![CDATA[Cowardly refusing to send event net.minecraftforge.client.event.EntityRenderersEvent$CreateSkullModels to a broken mod state]]></log4j:Message>
+  </log4j:Event>
+  <log4j:Event logger="net.minecraftforge.fml.ModLoader" timestamp="1792333095274" level="ERROR" thread="Render thread">
+    <log4j:Message><![CDATA[Cowardly refusing to send event net.minecraftforge.client.event.EntityRenderersEvent$CreateSkullModels to a broken mod state]]></log4j:Message>
+  </log4j:Event>
+  <log4j:Event logger="net.minecraftforge.fml.ModLoader" timestamp="1792333095275" level="ERROR" thread="Render thread">
+    <log4j:Message><![CDATA[Cowardly refusing to send event net.minecraftforge.client.event.EntityRenderersEvent$AddLayers to a broken mod state]]></log4j:Message>
+  </log4j:Event>
+  <log4j:Event logger="net.minecraft.client.renderer.texture.TextureAtlas" timestamp="1792333095275" level="INFO" thread="Render thread">
+    <log4j:Message><![CDATA[Created: 512x256x0 minecraft:textures/atlas/particles.png-atlas]]></log4j:Message>
+  </log4j:Event>
+  <log4j:Event logger="net.minecraftforge.fml.ModLoader" timestamp="1792333095277" level="ERROR" thread="Render thread">
+    <log4j:Message><![CDATA[Cowardly refusing to send event net.minecraftforge.client.event.TextureStitchEvent$Post to a broken mod state]]></log4j:Message>
+  </log4j:Event>
+  <log4j:Event logger="net.minecraft.client.renderer.texture.TextureAtlas" timestamp="1792333095278" level="INFO" thread="Render thread">
+    <log4j:Message><![CDATA[Created: 512x256x0 minecraft:textures/atlas/paintings.png-atlas]]></log4j:Message>
+  </log4j:Event>
+  <log4j:Event logger="net.minecraftforge.fml.ModLoader" timestamp="1792333095279" level="ERROR" thread="Render thread">
+    <log4j:Message><![CDATA[Cowardly refusing to send event net.minecraftforge.client.event.TextureStitchEvent$Post to a broken mod state]]></log4j:Message>
+  </log4j:Event>
+  <log4j:Event logger="net.minecraft.client.renderer.texture.TextureAtlas" timestamp="1792333095280" level="INFO" thread="Render thread">
+    <log4j:Message><![CDATA[Created: 256x128x0 minecraft:textures/atlas/mob_effects.png-atlas]]></log4j:Message>
+  </log4j:Event>
+  <log4j:Event logger="net.minecraftforge.fml.ModLoader" timestamp="1792333095280" level="ERROR" thread="Render thread">
+    <log4j:Message><![CDATA[Cowardly refusing to send event net.minecraftforge.client.event.TextureStitchEvent$Post to a broken mod state]]></log4j:Message>
+  </log4j:Event>
+  <log4j:Event logger="net.minecraft.client.renderer.texture.TextureAtlas" timestamp="1792333095280" level="INFO" thread="Render thread">
+    <log4j:Message><![CDATA[Created: 64x64x0 minecraft:textures/atlas/map_decorations.png-atlas]]></log4j:Message>
+  </log4j:Event>
+  <log4j:Event logger="net.minecraftforge.fml.ModLoader" timestamp="1792333095280" level="ERROR" thread="Render thread">
+    <log4j:Message><![CDATA[Cowardly refusing to send event net.minecraftforge.client.event.TextureStitchEvent$Post to a broken mod state]]></log4j:Message>
+  </log4j:Event>
+  <log4j:Event logger="net.minecraft.client.renderer.texture.TextureAtlas" timestamp="1792333095280" level="INFO" thread="Render thread">
+    <log4j:Message><![CDATA[Created: 1024x512x0 minecraft:textures/atlas/gui.png-atlas]]></log4j:Message>
+  </log4j:Event>
+  <log4j:Event logger="net.minecraftforge.fml.ModLoader" timestamp="1792333095284" level="ERROR" thread="Render thread">
+    <log4j:Message><![CDATA[Cowardly refusing to send event net.minecraftforge.client.event.TextureStitchEvent$Post to a broken mod state]]></log4j:Message>
+  </log4j:Event>
+  <log4j:Event logger="net.minecraft.client.renderer.ShaderInstance" timestamp="1792333096286" level="WARN" thread="Render thread">
+    <log4j:Message><![CDATA[Shader rendertype_entity_translucent_emissive could not find sampler named Sampler2 in the specified shader program.]]></log4j:Message>
+  </log4j:Event>
+  <log4j:Event logger="net.minecraftforge.fml.ModLoader" timestamp="1792333096703" level="ERROR" thread="Render thread">
+    <log4j:Message><![CDATA[Cowardly refusing to send event net.minecraftforge.client.event.RegisterShadersEvent to a broken mod state]]></log4j:Message>
+  </log4j:Event>
+  <log4j:Event logger="oshi.util.FileUtil" timestamp="1792333097002" level="WARN" thread="Render thread">
+    <log4j:Message><![CDATA[Configuration conflict: there is more than one oshi.architecture.properties file on the classpath: [jar:file:///home/player/.local/share/app.launcher/shared/maven/com/github/oshi/oshi-core/6.4.10/oshi-core-6.4.10.jar!/oshi.architecture.properties, jar:file:/home/player/.local/share/app.launcher/shared/maven/com/github/oshi/oshi-core/6.4.10/oshi-core-6.4.10.jar!/oshi.architecture.properties, jar:file:///home/player/.local/share/app.launcher/shared/maven/com/github/oshi/oshi-core/6.4.10/oshi-core-6.4.10.jar!/oshi.architecture.properties, jar:file:/home/player/.local/share/app.launcher/shared/maven/com/github/oshi/oshi-core/6.4.10/oshi-core-6.4.10.jar!/oshi.architecture.properties]]]></log4j:Message>
+  </log4j:Event>
+  <log4j:Event logger="net.minecraft.CrashReport" timestamp="1792333097014" level="ERROR" thread="Render thread">
+    <log4j:Message><![CDATA[Negative index in crash report handler (25/27)]]></log4j:Message>
+  </log4j:Event>
+  <log4j:Event logger="net.minecraftforge.client.loading.ClientModLoader" timestamp="1792333097114" level="FATAL" thread="Render thread">
+    <log4j:Message><![CDATA[Crash report saved to /home/player/.local/share/app.launcher/instances/259346f5-99ac-4f13-bb0c-3a721b5c5b52/game/crash-reports/crash-2026-10-18_14.18.17-fml.txt]]></log4j:Message>
+  </log4j:Event>
+---- Minecraft Crash Report ----
+// I bet Cylons wouldn't have this problem.
+
+Time: 2026-10-18 14:18:17
+Description: Mod loading error has occurred
+
+java.lang.Exception: Mod Loading has failed
+	at TRANSFORMER/net.minecraftforge.forge@52.0.57/net.minecraftforge.logging.CrashReportExtender.dumpModLoadingCrashReport(CrashReportExtender.java:49) ~[forge-1.21.1-52.0.57-universal.jar:?]
+	at TRANSFORMER/net.minecraftforge.forge@52.0.57/net.minecraftforge.client.loading.ClientModLoader.completeModLoading(ClientModLoader.java:116) ~[forge-1.21.1-52.0.57-universal.jar:?]
+	at TRANSFORMER/minecraft@1.21.1/net.minecraft.client.Minecraft.lambda$new$7(Minecraft.java:616) ~[forge-1.21.1-52.0.57-client.jar:?]
+	at TRANSFORMER/minecraft@1.21.1/net.minecraft.Util.ifElse(Util.java:513) ~[forge-1.21.1-52.0.57-client.jar:?]
+	at TRANSFORMER/minecraft@1.21.1/net.minecraft.client.Minecraft.lambda$new$8(Minecraft.java:609) ~[forge-1.21.1-52.0.57-client.jar:?]
+	at TRANSFORMER/net.minecraftforge.forge@52.0.57/net.minecraftforge.client.loading.ForgeLoadingOverlay.render(ForgeLoadingOverlay.java:146) ~[forge-1.21.1-52.0.57-universal.jar:?]
+	at TRANSFORMER/minecraft@1.21.1/net.minecraft.client.renderer.GameRenderer.render(GameRenderer.java:882) ~[forge-1.21.1-52.0.57-client.jar:?]
+	at TRANSFORMER/minecraft@1.21.1/net.minecraft.client.Minecraft.runTick(Minecraft.java:1181) ~[forge-1.21.1-52.0.57-client.jar:?]
+	at TRANSFORMER/minecraft@1.21.1/net.minecraft.client.Minecraft.run(Minecraft.java:795) ~[forge-1.21.1-52.0.57-client.jar:?]
+	at TRANSFORMER/minecraft@1.21.1/net.minecraft.client.main.Main.main(Main.java:228) ~[forge-1.21.1-52.0.57-client.jar:?]
+	at java.base/jdk.internal.reflect.DirectMethodHandleAccessor.invoke(DirectMethodHandleAccessor.java:103) ~[?:?]
+	at java.base/java.lang.reflect.Method.invoke(Method.java:580) ~[?:?]
+	at SECURE-BOOTSTRAP/net.minecraftforge.fmlloader@1.21.1-52.0.57/net.minecraftforge.fml.loading.targets.CommonLaunchHandler.runTarget(CommonLaunchHandler.java:85) ~[fmlloader-1.21.1-52.0.57.jar!/:?]
+	at SECURE-BOOTSTRAP/net.minecraftforge.fmlloader@1.21.1-52.0.57/net.minecraftforge.fml.loading.targets.CommonLaunchHandler.lambda$makeService$0(CommonLaunchHandler.java:69) ~[fmlloader-1.21.1-52.0.57.jar!/:?]
+	at SECURE-BOOTSTRAP/cpw.mods.modlauncher@10.2.4/cpw.mods.modlauncher.LaunchServiceHandler.launch(LaunchServiceHandler.java:77) [modlauncher-10.2.4.jar!/:?]
+	at SECURE-BOOTSTRAP/cpw.mods.modlauncher@10.2.4/cpw.mods.modlauncher.LaunchServiceHandler.launch(LaunchServiceHandler.java:97) [modlauncher-10.2.4.jar!/:?]
+	at SECURE-BOOTSTRAP/cpw.mods.modlauncher@10.2.4/cpw.mods.modlauncher.Launcher.run(Launcher.java:116) [modlauncher-10.2.4.jar!/:?]
+	at SECURE-BOOTSTRAP/cpw.mods.modlauncher@10.2.4/cpw.mods.modlauncher.Launcher.main(Launcher.java:75) [modlauncher-10.2.4.jar!/:?]
+	at SECURE-BOOTSTRAP/cpw.mods.modlauncher@10.2.4/cpw.mods.modlauncher.BootstrapEntry.main(BootstrapEntry.java:17) [modlauncher-10.2.4.jar!/:?]
+	at net.minecraftforge.bootstrap@2.1.7/net.minecraftforge.bootstrap.Bootstrap.moduleMain(Bootstrap.java:188) [bootstrap-2.1.8.jar!/:?]
+	at java.base/jdk.internal.reflect.DirectMethodHandleAccessor.invoke(DirectMethodHandleAccessor.java:103) ~[?:?]
+	at java.base/java.lang.reflect.Method.invoke(Method.java:580) ~[?:?]
+	at net.minecraftforge.bootstrap.Bootstrap.bootstrapMain(Bootstrap.java:133) [bootstrap-2.1.8.jar:2.1.8]
+	at net.minecraftforge.bootstrap.Bootstrap.start(Bootstrap.java:53) [bootstrap-2.1.8.jar:2.1.8]
+	at net.minecraftforge.bootstrap.ForgeBootstrap.main(ForgeBootstrap.java:19) [bootstrap-2.1.8.jar:2.1.8]
+Transformer Audit:
+  net.minecraft.Util
+    REASON: classloading
+  net.minecraft.client.Minecraft
+    REASON: classloading
+    PLUGIN: accesstransformer:BEFORE
+    PLUGIN: runtimedistcleaner:AFTER
+  net.minecraft.client.main.Main
+    REASON: classloading
+  net.minecraft.client.renderer.GameRenderer
+    REASON: classloading
+    PLUGIN: accesstransformer:BEFORE
+    PLUGIN: runtimedistcleaner:AFTER
+  net.minecraftforge.client.loading.ClientModLoader
+    REASON: classloading
+  net.minecraftforge.client.loading.ForgeLoadingOverlay
+    REASON: classloading
+  net.minecraftforge.logging.CrashReportExtender
+    REASON: classloading
+
+
+A detailed walkthrough of the error, its code path and all known details is as follows:
+---------------------------------------------------------------------------------------
+
+-- Head --
+Thread: Render thread
+Suspected Mods: NONE
+Stacktrace:
+	at TRANSFORMER/net.minecraftforge.forge@52.0.57/net.minecraftforge.logging.CrashReportExtender.lambda$dumpModLoadingCrashReport$7(CrashReportExtender.java:52) ~[forge-1.21.1-52.0.57-universal.jar!/:?]
+Transformer Audit:
+  net.minecraftforge.logging.CrashReportExtender
+    REASON: classloading
+-- MOD biomesoplenty --
+Details:
+	Mod File: /home/player/.local/share/app.launcher/instances/259346f5-99ac-4f13-bb0c-3a721b5c5b52/game/mods/BiomesOPlenty-forge-1.21.1-21.1.0.14.jar
+	Failure message: Mod biomesoplenty requires glitchcore 2.1.0.0 or above
+		Currently, glitchcore is not installed
+	Mod Version: 21.1.0.14
+	Mod Issue URL: https://github.com/Glitchfiend/BiomesOPlenty/issues
+	Exception message: MISSING EXCEPTION MESSAGE
+Stacktrace:
+	at TRANSFORMER/net.minecraftforge.forge@52.0.57/net.minecraftforge.logging.CrashReportExtender.lambda$dumpModLoadingCrashReport$7(CrashReportExtender.java:52) ~[forge-1.21.1-52.0.57-universal.jar:?]
+	at java.base/java.util.ArrayList.forEach(ArrayList.java:1596) ~[?:?]
+	at TRANSFORMER/net.minecraftforge.forge@52.0.57/net.minecraftforge.logging.CrashReportExtender.dumpModLoadingCrashReport(CrashReportExtender.java:50) ~[forge-1.21.1-52.0.57-universal.jar:?]
+	at TRANSFORMER/net.minecraftforge.forge@52.0.57/net.minecraftforge.client.loading.ClientModLoader.completeModLoading(ClientModLoader.java:116) ~[forge-1.21.1-52.0.57-universal.jar:?]
+	at TRANSFORMER/minecraft@1.21.1/net.minecraft.client.Minecraft.lambda$new$7(Minecraft.java:616) ~[forge-1.21.1-52.0.57-client.jar:?]
+	at TRANSFORMER/minecraft@1.21.1/net.minecraft.Util.ifElse(Util.java:513) ~[forge-1.21.1-52.0.57-client.jar:?]
+	at TRANSFORMER/minecraft@1.21.1/net.minecraft.client.Minecraft.lambda$new$8(Minecraft.java:609) ~[forge-1.21.1-52.0.57-client.jar:?]
+	at TRANSFORMER/net.minecraftforge.forge@52.0.57/net.minecraftforge.client.loading.ForgeLoadingOverlay.render(ForgeLoadingOverlay.java:146) ~[forge-1.21.1-52.0.57-universal.jar:?]
+	at TRANSFORMER/minecraft@1.21.1/net.minecraft.client.renderer.GameRenderer.render(GameRenderer.java:882) ~[forge-1.21.1-52.0.57-client.jar:?]
+	at TRANSFORMER/minecraft@1.21.1/net.minecraft.client.Minecraft.runTick(Minecraft.java:1181) ~[forge-1.21.1-52.0.57-client.jar:?]
+	at TRANSFORMER/minecraft@1.21.1/net.minecraft.client.Minecraft.run(Minecraft.java:795) ~[forge-1.21.1-52.0.57-client.jar:?]
+	at TRANSFORMER/minecraft@1.21.1/net.minecraft.client.main.Main.main(Main.java:228) ~[forge-1.21.1-52.0.57-client.jar:?]
+	at java.base/jdk.internal.reflect.DirectMethodHandleAccessor.invoke(DirectMethodHandleAccessor.java:103) ~[?:?]
+	at java.base/java.lang.reflect.Method.invoke(Method.java:580) ~[?:?]
+	at SECURE-BOOTSTRAP/net.minecraftforge.fmlloader@1.21.1-52.0.57/net.minecraftforge.fml.loading.targets.CommonLaunchHandler.runTarget(CommonLaunchHandler.java:85) ~[fmlloader-1.21.1-52.0.57.jar!/:?]
+	at SECURE-BOOTSTRAP/net.minecraftforge.fmlloader@1.21.1-52.0.57/net.minecraftforge.fml.loading.targets.CommonLaunchHandler.lambda$makeService$0(CommonLaunchHandler.java:69) ~[fmlloader-1.21.1-52.0.57.jar!/:?]
+	at SECURE-BOOTSTRAP/cpw.mods.modlauncher@10.2.4/cpw.mods.modlauncher.LaunchServiceHandler.launch(LaunchServiceHandler.java:77) [modlauncher-10.2.4.jar!/:?]
+	at SECURE-BOOTSTRAP/cpw.mods.modlauncher@10.2.4/cpw.mods.modlauncher.LaunchServiceHandler.launch(LaunchServiceHandler.java:97) [modlauncher-10.2.4.jar!/:?]
+	at SECURE-BOOTSTRAP/cpw.mods.modlauncher@10.2.4/cpw.mods.modlauncher.Launcher.run(Launcher.java:116) [modlauncher-10.2.4.jar!/:?]
+	at SECURE-BOOTSTRAP/cpw.mods.modlauncher@10.2.4/cpw.mods.modlauncher.Launcher.main(Launcher.java:75) [modlauncher-10.2.4.jar!/:?]
+	at SECURE-BOOTSTRAP/cpw.mods.modlauncher@10.2.4/cpw.mods.modlauncher.BootstrapEntry.main(BootstrapEntry.java:17) [modlauncher-10.2.4.jar!/:?]
+	at net.minecraftforge.bootstrap@2.1.7/net.minecraftforge.bootstrap.Bootstrap.moduleMain(Bootstrap.java:188) [bootstrap-2.1.8.jar!/:?]
+	at java.base/jdk.internal.reflect.DirectMethodHandleAccessor.invoke(DirectMethodHandleAccessor.java:103) ~[?:?]
+	at java.base/java.lang.reflect.Method.invoke(Method.java:580) ~[?:?]
+	at net.minecraftforge.bootstrap.Bootstrap.bootstrapMain(Bootstrap.java:133) [bootstrap-2.1.8.jar:2.1.8]
+	at net.minecraftforge.bootstrap.Bootstrap.start(Bootstrap.java:53) [bootstrap-2.1.8.jar:2.1.8]
+	at net.minecraftforge.bootstrap.ForgeBootstrap.main(ForgeBootstrap.java:19) [bootstrap-2.1.8.jar:2.1.8]
+Transformer Audit:
+  net.minecraft.Util
+    REASON: classloading
+  net.minecraft.client.Minecraft
+    REASON: classloading
+    PLUGIN: accesstransformer:BEFORE
+    PLUGIN: runtimedistcleaner:AFTER
+  net.minecraft.client.main.Main
+    REASON: classloading
+  net.minecraft.client.renderer.GameRenderer
+    REASON: classloading
+    PLUGIN: accesstransformer:BEFORE
+    PLUGIN: runtimedistcleaner:AFTER
+  net.minecraftforge.client.loading.ClientModLoader
+    REASON: classloading
+  net.minecraftforge.client.loading.ForgeLoadingOverlay
+    REASON: classloading
+  net.minecraftforge.logging.CrashReportExtender
+    REASON: classloading
+
+
+-- MOD biomesoplenty --
+Details:
+	Mod File: /home/player/.local/share/app.launcher/instances/259346f5-99ac-4f13-bb0c-3a721b5c5b52/game/mods/BiomesOPlenty-forge-1.21.1-21.1.0.14.jar
+	Failure message: Mod biomesoplenty requires terrablender 4.1.0.0 or above
+		Currently, terrablender is not installed
+	Mod Version: 21.1.0.14
+	Mod Issue URL: https://github.com/Glitchfiend/BiomesOPlenty/issues
+	Exception message: MISSING EXCEPTION MESSAGE
+
+-- System Details --
+Details:
+	Minecraft Version: 1.21.1
+	Minecraft Version ID: 1.21.1
+	Operating System: Linux (amd64) version 6.18.44-fc-v139
+	Java Version: 21.0.7, Microsoft
+	Java VM Version: OpenJDK 64-Bit Server VM (mixed mode), Microsoft
+	Memory: 73070256 bytes (69 MiB) / 708837376 bytes (676 MiB) up to 4294967296 bytes (4096 MiB)
+	CPUs: 4
+	Processor Vendor: GenuineIntel
+	Processor Name: Intel(R) Xeon(R) Processor @ 2.10GHz
+	Identifier: Intel64 Family 6 Model 207 Stepping 2
+	Microarchitecture: unknown
+	Frequency (GHz): 2.10
+	Number of physical packages: 1
+	Number of physical CPUs: 4
+	Number of logical CPUs: 4
+	Graphics card #0 name: unknown
+	Graphics card #0 vendor: unknown
+	Graphics card #0 VRAM (MiB): 0.00
+	Graphics card #0 deviceId: unknown
+	Graphics card #0 versionInfo: unknown
+	Virtual memory max (MiB): 8046.59
+	Virtual memory used (MiB): 2065.98
+	Swap memory total (MiB): 0.00
+	Swap memory used (MiB): 0.00
+	Space in storage for jna.tmpdir (MiB): available: 6835.54, total: 258019.61
+	Space in storage for org.lwjgl.system.SharedLibraryExtractPath (MiB): available: 6835.54, total: 258019.61
+	Space in storage for io.netty.native.workdir (MiB): available: 6835.54, total: 258019.61
+	Space in storage for java.io.tmpdir (MiB): available: 6835.54, total: 258019.61
+	Space in storage for workdir (MiB): available: 6835.54, total: 258019.61
+	JVM Flags: 1 total; -Xmx4096M
+	ModLauncher: 10.2.4
+	ModLauncher launch target: forge_client
+	ModLauncher naming: mcp
+	ModLauncher services: 
+		/ slf4jfixer PLUGINSERVICE 
+		/ runtimedistcleaner PLUGINSERVICE 
+		/ runtime_enum_extender PLUGINSERVICE 
+		/ object_holder_definalize PLUGINSERVICE 
+		/ capability_token_subclass PLUGINSERVICE 
+		/ accesstransformer PLUGINSERVICE 
+		/ eventbus PLUGINSERVICE 
+		/ mixin PLUGINSERVICE 
+		/ fml TRANSFORMATIONSERVICE 
+		/ mixin TRANSFORMATIONSERVICE 
+	FML Language Providers: 
+		lowcodefml@52
+		minecraft@1.0
+		javafml@52.0.57
+	Mod List: 
+		forge-1.21.1-52.0.57-client.jar                   |Minecraft                     |minecraft                     |1.21.1              |NONE      |Manifest: NOSIGNATURE
+		forge-1.21.1-52.0.57-universal.jar                |Forge                         |forge                         |52.0.57             |NONE      |Manifest: NOSIGNATURE  <log4j:Event logger="com.mojang.realmsclient.RealmsAvailability" timestamp="1792333097154" level="ERROR" thread="IO-Worker-1">
+    <log4j:Message><![CDATA[Couldn't connect to realms]]></log4j:Message>
+    <log4j:Throwable><![CDATA[com.mojang.realmsclient.exception.RealmsServiceException: Realms service error (500) with message 'Could not connect to Realms: PKIX path building failed: sun.security.provider.certpath.SunCertPathBuilderException: unable to find valid certification path to requested target'
+	at TRANSFORMER/minecraft@1.21.1/com.mojang.realmsclient.client.RealmsClient.execute(RealmsClient.java:456)
+	at TRANSFORMER/minecraft@1.21.1/com.mojang.realmsclient.client.RealmsClient.clientCompatible(RealmsClient.java:232)
+	at TRANSFORMER/minecraft@1.21.1/com.mojang.realmsclient.RealmsAvailability.lambda$check$0(RealmsAvailability.java:51)
+	at java.base/java.util.concurrent.CompletableFuture$AsyncSupply.run(CompletableFuture.java:1768)
+	at java.base/java.util.concurrent.ThreadPoolExecutor.runWorker(ThreadPoolExecutor.java:1144)
+	at java.base/java.util.concurrent.ThreadPoolExecutor$Worker.run(ThreadPoolExecutor.java:642)
+	at java.base/java.lang.Thread.run(Thread.java:1583)
+]]></log4j:Throwable>
+  </log4j:Event>
+  <log4j:Event logger="net.minecraft.client.Minecraft" timestamp="1792333138304" level="INFO" thread="Render thread">
+    <log4j:Message><![CDATA[Stopping!]]></log4j:Message>
+  </log4j:Event>

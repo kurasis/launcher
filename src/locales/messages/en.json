@@ -357,7 +357,7 @@
         },
         "mod_for_other_loader": {
           "title": "A mod is made for another loader",
-          "cause": "{file} is {loader, select, none {made for another loader} other {a {loader} mod}}, so this installation's loader skips it.",
+          "cause": "{file, select, none {Some files in the mods folder are {loader, select, none {made for another loader} other {{loader} mods}}, so this installation's loader skips them.} other {{file} is {loader, select, none {made for another loader} other {a {loader} mod}}, so this installation's loader skips it.}}",
           "fix": "Remove it, or download the version made for this installation's loader."
         },
         "corrupt_mod_file": {
@@ -389,6 +389,11 @@
           "title": "The game ran out of memory",
           "cause": "The game used all {memory, number, ::group-off} MiB it was given.",
           "fix": "Give the installation more memory: {suggested, number, ::group-off} MiB is a good start. Many mods, shaders or a long render distance need more."
+        },
+        "pack_needs_memory": {
+          "title": "The modpack asks for more memory",
+          "cause": "{required, select, none {The modpack needs more memory than this installation gives the game.} other {The modpack needs at least {required} MiB, but this installation gives the game {memory} MiB.}}",
+          "fix": "{required, select, none {Give the installation more memory in its settings, then start again.} other {Give the installation at least {required} MiB in its settings, then start again.}}"
         },
         "system_memory": {
           "title": "The computer ran out of memory",
@@ -474,6 +479,11 @@
           "title": "Another program ended the game",
           "cause": "Another program asked the game to stop; it was not the launcher's Stop button.",
           "fix": "If it was not you, look for a program that ends other programs, then start again."
+        },
+        "console_question": {
+          "title": "The game waited for an answer it could not get",
+          "cause": "The game asked a question in a console window, which the launcher cannot show, and kept asking. The launcher ended it.",
+          "fix": "Read the lines below: they usually name the problem, such as a damaged file or too little memory. Fix it and start again."
         },
         "unknown": {
           "title": "The game exited with an error",

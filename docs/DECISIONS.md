@@ -1343,18 +1343,35 @@ message` plus a stack trace), with the event's level.
   −1073741819 access violation, −1073740791 native crash, −1073740777 D3DGear,
   −1073741515 missing DLL, 134, 139, 255); the crash rules of an open launcher and a
   log service (HMCL's crash analyser, Aternos' mclo.gs Codex); the
-  loaders' own messages (Fabric and Quilt dependency resolution, Forge and NeoForge
-  `ModLoadingException` and their "Mod loading error" crash reports, Mixin); the
+  loaders' own message files, read from their jars (Fabric Loader 0.19.5
+  `Messages.properties`, Quilt Loader 0.30.1 `quilt_loader.properties`, the
+  `lang/en_us.json` of Forge 47 and 52, NeoForge 21.1 and 26.3 and FancyModLoader 4
+  and 12), so every version phrase, plural and variant is covered; the
+  "Mod loading error" crash reports and Mixin; the
   Sodium wiki on graphics drivers and overlays; HotSpot's fatal-error file format.
-  Ten crashes were reproduced with this launcher and kept, without tokens and with
-  neutral paths, as test fixtures in `src-tauri/src/launch/crash/fixtures` (wrong
-  JVM option, Java 8 for 1.20.1, Fabric API too old for 22 mods, a damaged mod jar,
-  Forge out of memory, Forge missing dependency, a damaged Forge config, a Fabric
-  mod on NeoForge, a native crash with its `hs_err` file).
+  Twenty crashes were reproduced with this launcher on every loader and kept,
+  without tokens and with neutral paths, as test fixtures in
+  `src-tauri/src/launch/crash/fixtures`: wrong JVM option, Java 8 for 1.20.1; on
+  Fabric a missing and a too-old dependency and a damaged jar; on Quilt a missing
+  dependency (also with its error window failing), a duplicate and a damaged jar;
+  on Forge 47 out of memory, a missing dependency and a damaged config; on Forge 52
+  two missing dependencies; on Forge for 1.12.2 a missing dependency and a
+  duplicate; on NeoForge 21.1 a missing dependency, a damaged jar and a Fabric mod;
+  a modpack's memory check; a native crash with its `hs_err` file. Three normal
+  games closed by the player are kept too, to show they stay unexplained.
 - **When.** After a game process ends, unless the player pressed Stop. A clean exit
-  (code 0) counts only when the run wrote a crash report or JVM error file: Forge
-  and NeoForge show their mod error screen and exit with 0 when it is closed, so
-  such a run is recorded as failed.
+  (code 0) counts when the run wrote a crash report or JVM error file, or when its
+  output holds a loader's dependency or duplicate message: Forge and NeoForge show
+  their mod error screen and exit with 0 when it is closed (Forge for 1.12.2
+  writes no report for it), so such a run is recorded as failed.
+- **Questions on the console.** When a loader or modpack cannot show a dialog
+  (NeoForge's loading window failing, tinyfd without zenity or kdialog), it asks
+  on the console (`y/n:`, `[O]kay/[C]ancel:`, `[Y]es/[N]o:`). The game's input is
+  empty, so the question repeated without end, the game never went on and its log
+  grew by megabytes a second. After the third such question the launcher ends the
+  game, keeps the repeats out of the log, and explains it from the lines above the
+  question; when they name a cause (a damaged jar, a modpack's memory minimum),
+  that is the cause and the question is a note.
 - **What is read.** The game's last 2000 output lines (already redacted, log4j XML
   unwrapped); the crash report the game names in its output, else the newest
   `crash-reports/*.txt` written since the start; the newest `hs_err_pid*.log` in the
@@ -1365,9 +1382,17 @@ message` plus a stack trace), with the event's level.
 - **Rules, first match wins:** JVM setup (unknown option, heap too large, missing
   main class) → Java version (class file version) → loader dependencies (missing,
   wrong version, Minecraft, Java or loader version, incompatible, duplicate,
-  language provider) → damaged files (zip errors, with the jar's folder deciding
-  between "replace the mod" and Repair) → damaged config (night-config, JSON) →
-  memory (heap; native or system) → graphics (GLFW/OpenGL, RivaTuner, missing LWJGL
+  language provider), in each loader's words: Fabric's "Mod 'X' (x) 1.0 requires
+  <any version phrase> of …", Quilt's "X [transitively] requires … of …, which is
+  missing!" and "breaks with", "Duplicate mandatory mod ids", Forge's and
+  NeoForge's "Mod ID: … Expected range" table and their screen texts ("Mod x
+  requires y 1.0 or above / only supports / is incompatible with", then
+  "Currently, y is …"), "is present in multiple files", and Forge for 1.12.2's
+  `MissingModsException` and "Found a duplicate mod" → damaged files (zip errors,
+  also Quilt's "as a zip file" and NeoForge's loading-window failure, with the
+  jar's folder deciding between "replace the mod" and Repair) → damaged config
+  (night-config, JSON) → memory (a modpack's own minimum; heap; native or
+  system) → graphics (GLFW/OpenGL, RivaTuner, missing LWJGL
   natives) → native crash (overlay modules, then the graphics driver by module name
   for AMD, Intel, NVIDIA and Mesa, else the module and signal) → mods at run time
   (OptiFine, Mixin with the mod from its mixin config, entrypoints, mod
@@ -1376,7 +1401,8 @@ message` plus a stack trace), with the event's level.
   description) → the exit code or signal alone (SIGKILL and 137 "killed", usually
   the out-of-memory killer; SIGTERM; SIGSEGV/SIGABRT and Windows status codes).
   Suspected mods come from the crash report ("Suspected Mods", `TRANSFORMER/<mod>@`).
-  A Fabric mod skipped by Forge or NeoForge is added as a note.
+  A mod skipped by the loader as made for another one (Fabric or Quilt on Forge
+  or NeoForge, Forge on NeoForge, Forge or NeoForge on Quilt) is added as a note.
 - **What the player sees.** The result carries the kind, the values for its text
   (mod names, versions, files, memory, module), up to five evidence lines, suspects,
   the report's file name and actions. The installation shows **Why the game
@@ -1385,7 +1411,11 @@ message` plus a stack trace), with the event's level.
   reports folder (`open_instance_folder` takes only these names), its settings
   (memory, Java, loader version), Repair or Backups. Out of memory suggests the
   installation's recommended memory (D-058), or 2 GiB more. The last run on the home
-  screen names the cause. Texts exist for all 35 kinds in English, Russian and
+  screen names the cause. Texts exist for all 37 kinds in English, Russian and
   Arabic; values a text needs but a crash lacks read as a shorter sentence.
 - **Not done.** Uploading logs to a paste service; reading the full run log beyond
-  the in-memory tail; guessing which mod caused a crash without a report naming it.
+  the in-memory tail; guessing which mod caused a crash without a report naming it;
+  naming the damaged jar when NeoForge's loading window does not; answering a
+  console question for the player. NeoForge 26.3 was not run live (its
+  installation needed a long repair); its messages are the same templates as
+  NeoForge 21.1's.

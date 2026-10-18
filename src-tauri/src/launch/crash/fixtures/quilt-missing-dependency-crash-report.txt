@@ -1,0 +1,100 @@
+---- Quilt Loader: Failed to load ----
+Date/Time: 2026/10/18 13:39:43.7299 [+0000]
+Quilt Loader Version: 0.30.1
+
+-- Error 1 --
+
+Sodium Extra requires version [0.8.13+mc1.21.1, ∞) of sodium, which is missing!
+
+Sodium Extra is loaded from <mods>/sodium-extra-fabric-0.9.4+mc1.21.1.jar
+
+
+-- Plugin State --
+
+Cycle number = 1
+Cycle Step = SOLVE
+
+Loaded Plugins (2):
+ - 'quilt_loader' (Builtin)
+ - 'quilted_fabric_loader' (Builtin)
+
+
+
+
+-- Mod Table --
+
+| Mod                      | ID           | Version        | Plugin                | Flags | File Hash (SHA-1)                        | File(s)                                                                                                                                                                                      | Sub-File                                    |
+|--------------------------|--------------|----------------|-----------------------|-------|------------------------------------------|----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|---------------------------------------------|
+| Minecraft                | minecraft    | 1.21.1         | quilt_loader          | ..    | 0efcd6813056c244dd50da0d8a0354cc948833f9 | <game>/.cache/quilt_loader/remappedJars/minecraft-1.21.1-0.30.1/client-intermediary.jar                                                                                                      |                                             |
+| MixinExtras              | mixinextras  | 0.5.4          | quilted_fabric_loader | ..    | 2fa21d6438f63c8dd4f2e81290b0a09de1442b3  | /home/player/.local/share/app.launcher/shared/maven/org/quiltmc/quilt-loader/0.30.1/quilt-loader-0.30.1.jar                              | /META-INF/jars/mixinextras-fabric-0.5.4.jar |
+| MixinExtras              | mixinextras  | 0.5.4          | quilted_fabric_loader | ..    | 2fa21d6438f63c8dd4f2e81290b0a09de1442b3  | /home/player/.local/share/app.launcher/shared/maven/org/quiltmc/quilt-loader/0.30.1/quilt-loader-0.30.1.jar                              | /META-INF/jars/mixinextras-fabric-0.5.4.jar |
+| OpenJDK 64-Bit Server VM | java         | 21             | quilt_loader          | ..    |                                          | /home/player/.local/share/app.launcher/runtimes/mojang/linux-x64/21/jre/ae31d7572974ab73297c5f43abce9b60b8794ead7530953688174edf494142a0 |                                             |
+| Quilt Loader             | quilt_loader | 0.30.1         | quilt_loader          | ..    | 2fa21d6438f63c8dd4f2e81290b0a09de1442b3  | /home/player/.local/share/app.launcher/shared/maven/org/quiltmc/quilt-loader/0.30.1/quilt-loader-0.30.1.jar                              |                                             |
+| Quilt Loader             | quilt_loader | 0.30.1         | quilt_loader          | ..    | 2fa21d6438f63c8dd4f2e81290b0a09de1442b3  | /home/player/.local/share/app.launcher/shared/maven/org/quiltmc/quilt-loader/0.30.1/quilt-loader-0.30.1.jar                              |                                             |
+| Sodium Extra             | sodium-extra | 0.9.4+mc1.21.1 | quilted_fabric_loader | ..    | 628487b330c9589d26cada5c4a51ac457af80a1f | <mods>/sodium-extra-fabric-0.9.4+mc1.21.1.jar                                                                                                                                                |                                             |
+|--------------------------|--------------|----------------|-----------------------|-------|------------------------------------------|----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|---------------------------------------------|
+
+
+-- Mod Details --
+
+<game>/.cache/quilt_loader/remappedJars/minecraft-1.21.1-0.30.1/client-intermediary.jar:
+###############################
+#  Loaded by  'quilt_loader'  #
+#  Name     = 'Minecraft'     #
+#  ID       = 'minecraft'     #
+#  Version  = '1.21.1'        #
+#  LoadType = IF_REQUIRED     #
+#  Depends on 'java' [21, ∞)  #
+###############################
+
+<mods>/sodium-extra-fabric-0.9.4+mc1.21.1.jar:
+####################################################
+#  Loaded by  'quilted_fabric_loader'              #
+#  Name     = 'Sodium Extra'                       #
+#  ID       = 'sodium-extra'                       #
+#  Version  = '0.9.4+mc1.21.1'                     #
+#  LoadType = IF_POSSIBLE                          #
+#  Depends on 'fabricloader' [0.18, ∞)             #
+#  Depends on 'sodium' [0.8.13+mc1.21.1, ∞)        #
+#  Depends on 'minecraft' [1.21.1, 1.21.1]         #
+#  Breaks  on 'iris' (-∞, 1.7.0)                   #
+#  Breaks  on 'reeses-sodium-options' (-∞, 1.8.4)  #
+####################################################
+
+/home/player/.local/share/app.launcher/runtimes/mojang/linux-x64/21/jre/ae31d7572974ab73297c5f43abce9b60b8794ead7530953688174edf494142a0:
+###########################################
+#  Loaded by  'quilt_loader'              #
+#  Name     = 'OpenJDK 64-Bit Server VM'  #
+#  ID       = 'java'                      #
+#  Version  = '21'                        #
+#  LoadType = IF_REQUIRED                 #
+###########################################
+
+/home/player/.local/share/app.launcher/shared/maven/org/quiltmc/quilt-loader/0.30.1/quilt-loader-0.30.1.jar:
+###############################################################
+#  Loaded by  'quilt_loader'                                  #
+#  Name     = 'Quilt Loader'                                  #
+#  ID       = 'quilt_loader'                                  #
+#  Version  = '0.30.1'                                        #
+#  LoadType = IF_REQUIRED                                     #
+#  Provides   'fabricloader' 0.19.3                           #
+#  Depends on 'mixinextras' (-∞, ∞)                           #
+#                                                             #
+#  Contained Jars (1):                                        #
+#                                                             #
+#  /META-INF/jars/mixinextras-fabric-0.5.4.jar:               #
+#  +-------------------------------------------------------+  #
+#  |  Loaded by  'quilted_fabric_loader'                   |  #
+#  |  Name     = 'MixinExtras'                             |  #
+#  |  ID       = 'mixinextras'                             |  #
+#  |  Version  = '0.5.4'                                   |  #
+#  |  LoadType = IF_POSSIBLE                               |  #
+#  |  Provides   'com_github_llamalad7_mixinextras' 0.5.4  |  #
+#  |  Depends on 'fabricloader' [0.14.25, ∞)               |  #
+#  +-------------------------------------------------------+  #
+#                                                             #
+###############################################################
+
+
+
+---- end of report ----

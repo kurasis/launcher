@@ -58,6 +58,8 @@ pub enum CrashKind {
     OptifineConflict,
     /// The game's memory (heap) ran out.
     OutOfMemory,
+    /// A modpack's own check wants more memory than the installation gives.
+    PackNeedsMemory,
     /// The computer itself ran out of memory.
     SystemMemory,
     /// Killed by the system or another program (often for lack of memory).
@@ -92,6 +94,9 @@ pub enum CrashKind {
     GameCrash,
     /// Stopped by another program (not by the launcher's Stop).
     Terminated,
+    /// The game asked a question in a console nobody can answer; the launcher
+    /// ended it.
+    ConsoleQuestion,
     /// Only the exit code is known.
     Unknown,
 }
@@ -167,6 +172,20 @@ pub struct CrashInput<'a> {
     pub max_heap_mib: u32,
     /// What the installation should get, to suggest after running out.
     pub recommended_heap_mib: Option<u32>,
+    /// The launcher ended the game because it kept asking on the console.
+    pub console_question: bool,
+}
+
+/// After this many unanswered console questions the launcher ends the game.
+pub const CONSOLE_QUESTION_LIMIT: u32 = 3;
+
+/// A question asked on the console when no dialog can be shown: NeoForge's
+/// `y/n:` and tinyfd's `[O]kay/[C]ancel:` or `[Y]es/[N]o:`. The game's input
+/// is empty, so the question repeats without end and the game never goes on.
+pub fn is_console_question(line: &str) -> bool {
+    static QUESTION: LazyLock<Regex> =
+        LazyLock::new(|| re(r"(?i)(?:^|\s)(?:y/n|\[o\]kay/\[c\]ancel|\[y\]es/\[n\]o)\s*[:?]?\s*$"));
+    QUESTION.is_match(line)
 }
 
 const MAX_EVIDENCE: usize = 5;
@@ -376,7 +395,7 @@ fn java_version(cx: &Context) -> Option<CrashDiagnosis> {
 fn corrupt_files(cx: &Context) -> Option<CrashDiagnosis> {
     static ZIP: LazyLock<Regex> = LazyLock::new(|| {
         re(
-            r"ZipException: (zip END header not found|invalid LOC header|invalid CEN header|zip file is empty|invalid END header|invalid stored block lengths|invalid code lengths set|unexpected end of ZLIB input stream)|SHA1 digest error for (\S+)|Invalid signature file digest|Error reading mod|error in opening zip file",
+            r"(?:ZipException: |^\s*)(zip END header not found|invalid LOC header|invalid CEN header|zip file is empty|invalid END header|invalid stored block lengths|invalid code lengths set|unexpected end of ZLIB input stream)|SHA1 digest error for (\S+)|Invalid signature file digest|Error reading mod|error in opening zip file|Broken zip file: |Failed to read as a zip: |Failed to read \S+ as a zip file|Found a zero byte file|File \S+ is not a jar file|(?i:unexpected end of ZLIB input stream)",
         )
     });
     static JAR: LazyLock<Regex> = LazyLock::new(|| re(r"([^\s\[\]'\x22]+\.jar)"));
@@ -384,11 +403,19 @@ fn corrupt_files(cx: &Context) -> Option<CrashDiagnosis> {
     let path = cx
         .lines
         .iter()
-        .filter(|l| ZIP.is_match(l) || l.contains("Error analyzing"))
+        .filter(|l| ZIP.is_match(l) || l.contains("Error analyzing") || l.contains("zero byte"))
         .find_map(|l| JAR.captures(l).map(|c| c[1].to_owned()));
-    let in_mods = path
-        .as_deref()
-        .is_some_and(|p| p.contains("/mods/") || p.contains("\\mods\\") || p.starts_with("mods"));
+    // NeoForge names no file when a jar breaks its scan of the mods folder.
+    let in_mods = path.as_deref().is_some_and(|p| {
+        p.contains("/mods/")
+            || p.contains("\\mods\\")
+            || p.starts_with("mods")
+            || p.starts_with("<mods>")
+    }) || (path.is_none()
+        && cx
+            .lines
+            .iter()
+            .any(|l| l.contains("error occurred trying to setup the game directory")));
     let mut d = diagnosis(
         CrashKind::CorruptModFile,
         &[
@@ -406,15 +433,31 @@ fn corrupt_files(cx: &Context) -> Option<CrashDiagnosis> {
 }
 
 /// A dependency that is a mod loader, Minecraft or Java gets its own kind.
-fn dependency_kind(dependency_id: &str, missing: bool) -> CrashKind {
-    match dependency_id {
+/// Quilt names them ("Minecraft", "Quilt Loader"), the others use IDs.
+fn dependency_kind(dependency: &str, missing: bool) -> CrashKind {
+    let dependency = dependency.to_lowercase();
+    match dependency.as_str() {
         "minecraft" => CrashKind::WrongMinecraftVersion,
         "java" => CrashKind::JavaTooOld,
-        "fabricloader" | "fabric-loader" | "quilt_loader" | "forge" | "neoforge" | "fml"
-        | "javafml" => CrashKind::LoaderTooOld,
+        _ if dependency.starts_with("openjdk") || dependency.starts_with("java hotspot") => {
+            CrashKind::JavaTooOld
+        }
+        "fabricloader" | "fabric-loader" | "fabric loader" | "quilt_loader" | "quilt loader"
+        | "forge" | "minecraft forge" | "neoforge" | "fml" | "javafml" | "lowcodefml" => {
+            CrashKind::LoaderTooOld
+        }
         _ if missing => CrashKind::MissingDependency,
         _ => CrashKind::WrongDependencyVersion,
     }
+}
+
+/// "version 1.2 or later" → "1.2 or later"; "any version" says nothing.
+fn version_phrase(phrase: &str) -> String {
+    let phrase = phrase.trim();
+    if phrase == "any version" {
+        return String::new();
+    }
+    phrase.strip_prefix("version ").unwrap_or(phrase).to_owned()
 }
 
 /// The other mod of a Fabric requirement: its name and ID.
@@ -425,16 +468,30 @@ fn fabric_dependency(c: &regex::Captures<'_>) -> (String, String) {
 }
 
 fn loader_dependencies(cx: &Context) -> Option<CrashDiagnosis> {
-    // The other mod is "'Fabric API' (fabric-api)" when some version of it is
-    // present, and only its ID ("fabric-api") when it is missing.
+    // Fabric's `resolution.depends.*` messages. The other mod is "'Fabric API'
+    // (fabric-api)" when some version of it is present, and only its ID
+    // ("fabric-api") when it is missing; the version is a phrase such as
+    // "version 1.2 or later", "any version before 2" or "any 1.x version".
     static FABRIC: LazyLock<Regex> = LazyLock::new(|| {
         re(
-            r"Mod '([^']+)' \(([^)]+)\) (\S+) requires (?:version (.+?)|any version) of (?:(?:mod )?'([^']+)' \(([^)]+)\)|([^\s,']+)), (?:which is missing|but only the wrong version is present: (.+?))!",
+            r"Mod '([^']+)' \(([^)]+)\) (\S+) requires (.+?) of (?:(?:mod )?'([^']+)' \(([^)]+)\)|([^\s,']+)), (?:which is missing|but only the wrong versions? (?:is|are) present: (.+?)|(which is disabled for this environment|which can't be loaded due to other constraints)[^!]*)!",
         )
     });
     static FABRIC_BREAKS: LazyLock<Regex> = LazyLock::new(|| {
         re(
-            r"Mod '([^']+)' \(([^)]+)\) (\S+) is incompatible with (?:version (.+?)|any version) of (?:(?:mod )?'([^']+)' \(([^)]+)\)|([^\s,']+))",
+            r"Mod '([^']+)' \(([^)]+)\) (\S+) is incompatible with (.+?) of (?:(?:mod )?'([^']+)' \(([^)]+)\)|([^\s,']+))",
+        )
+    });
+    // Quilt's `error.dep.*` and `error.break.*` titles: "<mod> requires
+    // <version phrase> of <mod>, which is missing!" without IDs.
+    static QUILT: LazyLock<Regex> = LazyLock::new(|| {
+        re(
+            r"^\s*(?:- )?(.+?) (?:transitively )?requires (.+?) of (.+?), (?:which is missing!|but only (?:a )?different versions? (?:is|are) present(?:: (.+))?)",
+        )
+    });
+    static QUILT_BREAKS: LazyLock<Regex> = LazyLock::new(|| {
+        re(
+            r"^\s*(?:- )?(.+?) breaks(?: with)? (?:.+?) of (.+?), but (?:an incompatible version is|only incompatible versions are) present",
         )
     });
     static FORGE: LazyLock<Regex> = LazyLock::new(|| {
@@ -442,14 +499,31 @@ fn loader_dependencies(cx: &Context) -> Option<CrashDiagnosis> {
             r"Mod ID: '([^']+)', Requested by: '([^']+)', Expected range: '([^']*)', Actual version: '([^']*)'",
         )
     });
-    static FORGE_MESSAGE: LazyLock<Regex> =
-        LazyLock::new(|| re(r"Mod (\S+) requires (\S+) (\S+) or above"));
+    // Forge's and NeoForge's screen texts (`missingdependency`,
+    // `missingdependency.optional`, `incompatiblemod`) as logged, colour codes
+    // removed; the next line says "Currently, <mod> is <version or not
+    // installed>".
+    static FORGE_MESSAGE: LazyLock<Regex> = LazyLock::new(|| {
+        re(r"\bMod (\S+) (requires|only supports|is incompatible with) (\S+)(?: (.+?))?\s*$")
+    });
+    static CURRENTLY: LazyLock<Regex> = LazyLock::new(|| re(r"Currently, (\S+) is (.+?)\s*$"));
+    // Forge for 1.12.2 and older: "MissingModsException: Mod tconstruct
+    // (Tinkers' Construct) requires [mantle@[1.12-1.3.3.49,)]", then
+    // "unknown : need [1.12-1.3.3.49,): have missing" (or the version found).
+    static LEGACY: LazyLock<Regex> = LazyLock::new(|| {
+        re(
+            r"MissingModsException: Mod (\S+) \(([^)]+)\) requires \[([^@,\]\s]+)(?:@([\[(][^\])]*[\])]))?",
+        )
+    });
+    static LEGACY_HAVE: LazyLock<Regex> = LazyLock::new(|| re(r": need \S+: have (.+?)\s*$"));
+    static LEGACY_DUPLICATE: LazyLock<Regex> =
+        LazyLock::new(|| re(r"Found a duplicate mod (\S+) at \[(.+?)\]?\s*$"));
     static LANGUAGE: LazyLock<Regex> = LazyLock::new(|| {
         re(r"(?:Mod file (\S+) )?needs language provider (\w+):(\S+) or above to load")
     });
     static DUPLICATE: LazyLock<Regex> = LazyLock::new(|| {
         re(
-            r"Mod ID: '([^']+)' from mod files: (.+)|(?i)(?:found|detected) duplicate mods?|duplicate mods? (?:found|detected)|is duplicated",
+            r"Mod ID: '([^']+)' from mod files: (.+)|Mod (\S+) is present in multiple files: (.+)|Duplicate mod: (\S+)|Duplicate mandatory mod ids \[([^,\]]+)|(?i)(?:found|detected) duplicate mods?|duplicate mods? (?:found|detected)|is duplicated",
         )
     });
 
@@ -457,7 +531,7 @@ fn loader_dependencies(cx: &Context) -> Option<CrashDiagnosis> {
     let fabric: Vec<_> = cx.all(&FABRIC).collect();
     if let Some((_, c)) = fabric.first() {
         let (name, did) = fabric_dependency(c);
-        let missing = c.get(8).is_none();
+        let missing = c.get(8).is_none() && c.get(9).is_none();
         let mut d = diagnosis(
             dependency_kind(&did, missing),
             &[
@@ -465,10 +539,7 @@ fn loader_dependencies(cx: &Context) -> Option<CrashDiagnosis> {
                 ("modId", c[2].to_owned()),
                 ("dependency", name),
                 ("dependencyId", did),
-                (
-                    "required",
-                    c.get(4).map_or_else(String::new, |m| m.as_str().to_owned()),
-                ),
+                ("required", version_phrase(&c[4])),
                 (
                     "found",
                     c.get(8).map_or_else(String::new, |m| m.as_str().to_owned()),
@@ -496,6 +567,43 @@ fn loader_dependencies(cx: &Context) -> Option<CrashDiagnosis> {
                 ("dependency", name),
                 ("dependencyId", did),
             ],
+            vec![line],
+        );
+        d.actions = vec![CrashAction::OpenMods];
+        return Some(d);
+    }
+    let quilt: Vec<_> = cx.all(&QUILT).collect();
+    if let Some((_, c)) = quilt.first() {
+        let dependency = c[3].to_owned();
+        let missing = c[0].contains("which is missing");
+        let mut d = diagnosis(
+            dependency_kind(&dependency, missing),
+            &[
+                ("mod", c[1].to_owned()),
+                ("dependency", dependency.clone()),
+                ("dependencyId", dependency),
+                ("required", version_phrase(&c[2])),
+                (
+                    "found",
+                    c.get(4).map_or_else(String::new, |m| m.as_str().to_owned()),
+                ),
+                ("count", quilt.len().to_string()),
+            ],
+            quilt.iter().map(|(l, _)| (*l).to_owned()).collect(),
+        );
+        d.actions = vec![CrashAction::OpenMods];
+        if d.kind == CrashKind::LoaderTooOld {
+            d.actions.push(CrashAction::LoaderSettings);
+        }
+        if d.kind == CrashKind::JavaTooOld {
+            d.actions = vec![CrashAction::JavaSettings];
+        }
+        return Some(d);
+    }
+    if let Some((line, c)) = cx.find(&QUILT_BREAKS) {
+        let mut d = diagnosis(
+            CrashKind::IncompatibleMods,
+            &[("mod", c[1].to_owned()), ("dependency", c[2].to_owned())],
             vec![line],
         );
         d.actions = vec![CrashAction::OpenMods];
@@ -532,16 +640,78 @@ fn loader_dependencies(cx: &Context) -> Option<CrashDiagnosis> {
         return Some(d);
     }
     if let Some((line, c)) = cx.find(&FORGE_MESSAGE) {
-        let did = c[2].to_owned();
+        let did = c[3].to_owned();
+        let found = cx
+            .all(&CURRENTLY)
+            .find(|(_, f)| f[1] == did)
+            .map(|(_, f)| f[2].trim().to_owned())
+            .filter(|v| !matches!(v.as_str(), "not installed" | "none"));
+        let kind = if &c[2] == "is incompatible with" {
+            CrashKind::IncompatibleMods
+        } else {
+            dependency_kind(&did, found.is_none() && &c[2] == "requires")
+        };
         let mut d = diagnosis(
-            dependency_kind(&did, true),
+            kind,
             &[
                 ("mod", c[1].to_owned()),
                 ("modId", c[1].to_owned()),
                 ("dependency", did.clone()),
                 ("dependencyId", did),
-                ("required", c[3].to_owned()),
+                (
+                    "required",
+                    c.get(4)
+                        .map(|m| m.as_str())
+                        .filter(|r| *r != "any")
+                        .unwrap_or_default()
+                        .to_owned(),
+                ),
+                ("found", found.unwrap_or_default()),
             ],
+            vec![line],
+        );
+        d.actions = vec![CrashAction::OpenMods];
+        if d.kind == CrashKind::LoaderTooOld {
+            d.actions.push(CrashAction::LoaderSettings);
+        }
+        return Some(d);
+    }
+    if let Some((line, c)) = cx.find(&LEGACY) {
+        let did = c[3].to_owned();
+        let found = cx
+            .find(&LEGACY_HAVE)
+            .map(|(_, h)| h[1].to_owned())
+            .filter(|h| h != "missing");
+        let mut d = diagnosis(
+            dependency_kind(&did, found.is_none()),
+            &[
+                ("mod", c[2].to_owned()),
+                ("modId", c[1].to_owned()),
+                ("dependency", did.clone()),
+                ("dependencyId", did),
+                (
+                    "required",
+                    c.get(4).map_or_else(String::new, |m| m.as_str().to_owned()),
+                ),
+                ("found", found.unwrap_or_default()),
+            ],
+            vec![line],
+        );
+        d.actions = vec![CrashAction::OpenMods];
+        if d.kind == CrashKind::LoaderTooOld {
+            d.actions.push(CrashAction::LoaderSettings);
+        }
+        return Some(d);
+    }
+    if let Some((line, c)) = cx.find(&LEGACY_DUPLICATE) {
+        let files = c[2]
+            .split(", ")
+            .map(file_name)
+            .collect::<Vec<_>>()
+            .join(", ");
+        let mut d = diagnosis(
+            CrashKind::DuplicateMods,
+            &[("modId", c[1].to_owned()), ("files", files)],
             vec![line],
         );
         d.actions = vec![CrashAction::OpenMods];
@@ -564,7 +734,7 @@ fn loader_dependencies(cx: &Context) -> Option<CrashDiagnosis> {
     }
     let duplicate = cx
         .all(&DUPLICATE)
-        .find(|(_, c)| c.get(1).is_some())
+        .find(|(_, c)| c.get(1).or(c.get(3)).or(c.get(5)).or(c.get(6)).is_some())
         .or_else(|| cx.all(&DUPLICATE).next())
         .map(|(l, c)| (l.to_owned(), c));
     if let Some((line, c)) = duplicate {
@@ -573,11 +743,18 @@ fn loader_dependencies(cx: &Context) -> Option<CrashDiagnosis> {
             &[
                 (
                     "modId",
-                    c.get(1).map_or_else(String::new, |m| m.as_str().to_owned()),
+                    c.get(1)
+                        .or(c.get(3))
+                        .or(c.get(5))
+                        .or(c.get(6))
+                        .map_or_else(String::new, |m| m.as_str().to_owned()),
                 ),
                 (
                     "files",
-                    c.get(2).map_or_else(String::new, |m| m.as_str().to_owned()),
+                    c.get(2)
+                        .or(c.get(4))
+                        .map(|m| m.as_str().to_owned())
+                        .unwrap_or_else(|| listed_files(cx, &line)),
                 ),
             ],
             vec![line],
@@ -588,21 +765,53 @@ fn loader_dependencies(cx: &Context) -> Option<CrashDiagnosis> {
     None
 }
 
+/// Quilt lists the files below its line, as "- <mods>/a.jar".
+fn listed_files(cx: &Context, after: &str) -> String {
+    let Some(start) = cx.lines.iter().position(|l| l == after) else {
+        return String::new();
+    };
+    cx.lines[start + 1..]
+        .iter()
+        .map(|l| l.trim())
+        .take_while(|l| l.starts_with("- ") && l.ends_with(".jar"))
+        .map(file_name)
+        .collect::<Vec<_>>()
+        .join(", ")
+}
+
 fn other_loader(cx: &Context) -> Option<CrashNote> {
     static FABRIC_ON_FORGE: LazyLock<Regex> = LazyLock::new(|| {
-        re(r"File (\S+) is a (Fabric|Quilt|Forge|NeoForge) mod and cannot be loaded")
+        re(
+            r"File (\S+) is (?:a|an) (Fabric|Quilt|Forge|NeoForge|LiteLoader) mod and cannot be loaded|File (\S+) is for (?:Minecraft Forge or an older version of NeoForge|an old(?:er)? version of (?:Minecraft )?Forge)",
+        )
     });
+    // Quilt: "Found 2 Forge mods." and "Found 1 Neoforge mods."
+    static QUILT_SKIPPED: LazyLock<Regex> =
+        LazyLock::new(|| re(r"Found \d+ (Forge|Neoforge) mods\."));
     static NO_TOML: LazyLock<Regex> = LazyLock::new(|| {
         re(r"Mod file (\S*[/\\]mods[/\\]\S+) is missing (?:neoforge\.)?mods\.toml file")
     });
     if let Some((_, c)) = cx.find(&FABRIC_ON_FORGE) {
+        let file = c.get(1).or(c.get(3)).map_or("", |m| m.as_str());
+        let loader = c.get(2).map_or("Forge", |m| m.as_str());
         return Some(CrashNote {
             kind: CrashKind::ModForOtherLoader,
             details: [
-                ("file".to_owned(), file_name(&c[1])),
-                ("loader".to_owned(), c[2].to_owned()),
+                ("file".to_owned(), file_name(file)),
+                ("loader".to_owned(), loader.to_owned()),
             ]
             .into(),
+        });
+    }
+    if let Some((_, c)) = cx.find(&QUILT_SKIPPED) {
+        let loader = if &c[1] == "Forge" {
+            "Forge"
+        } else {
+            "NeoForge"
+        };
+        return Some(CrashNote {
+            kind: CrashKind::ModForOtherLoader,
+            details: [("loader".to_owned(), loader.to_owned())].into(),
         });
     }
     cx.find(&NO_TOML).map(|(_, c)| CrashNote {
@@ -722,6 +931,13 @@ fn suggested_heap(cx: &Context) -> u32 {
 }
 
 fn memory(cx: &Context) -> Option<CrashDiagnosis> {
+    // A modpack's memory check (Prominence II): "You have allocated less
+    // memory( 1024 MB) than the recommended minimum for this pack: 4096 MB."
+    static PACK: LazyLock<Regex> = LazyLock::new(|| {
+        re(
+            r"(?i)allocated (?:less|not enough) memory\s*\(\s*(\d+)\s*MB\s*\)\s*than the (?:recommended )?minimum[^:]*:\s*(\d+)\s*MB",
+        )
+    });
     static HEAP: LazyLock<Regex> = LazyLock::new(|| {
         re(
             r"OutOfMemoryError: (Java heap space|GC overhead limit exceeded|Metaspace|Compressed class space|Requested array size exceeds VM limit)",
@@ -732,6 +948,15 @@ fn memory(cx: &Context) -> Option<CrashDiagnosis> {
             r"OutOfMemoryError: (?:unable to create (?:new )?native thread|Direct buffer memory|Cannot reserve \d+ bytes of direct buffer memory)|There is insufficient memory for the Java Runtime Environment to continue|Native memory allocation \((?:mmap|malloc)\) failed|Out of system resources|The paging file is too small",
         )
     });
+    if let Some((line, c)) = cx.find(&PACK) {
+        let mut d = diagnosis(
+            CrashKind::PackNeedsMemory,
+            &[("memory", c[1].to_owned()), ("required", c[2].to_owned())],
+            vec![line],
+        );
+        d.actions = vec![CrashAction::MemorySettings];
+        return Some(d);
+    }
     if let Some((line, c)) = cx.find(&HEAP) {
         let suggested = suggested_heap(cx);
         let mut d = diagnosis(
@@ -1023,6 +1248,22 @@ fn crash_report(cx: &Context) -> Option<CrashDiagnosis> {
 }
 
 /// What the exit code or signal alone says.
+/// The message above the first unanswered console question.
+fn console_question(cx: &Context) -> CrashDiagnosis {
+    let first = cx
+        .lines
+        .iter()
+        .position(|l| is_console_question(l))
+        .unwrap_or(cx.lines.len());
+    let start = first.saturating_sub(MAX_EVIDENCE);
+    let lines = cx.lines[start..first]
+        .iter()
+        .filter(|l| !l.trim().is_empty())
+        .cloned()
+        .collect();
+    diagnosis(CrashKind::ConsoleQuestion, &[], lines)
+}
+
 fn exit_status(cx: &Context) -> CrashDiagnosis {
     let code = cx.exit.code;
     let signal = cx.exit.signal;
@@ -1102,9 +1343,7 @@ pub fn diagnose(input: &CrashInput<'_>) -> Option<CrashDiagnosis> {
         .as_ref()
         .map(|r| r.text.lines().map(str::to_owned).collect())
         .unwrap_or_default();
-    if input.exit.clean() && report.is_empty() && input.jvm_error.is_none() {
-        return None;
-    }
+    let clean = input.exit.clean() && report.is_empty() && input.jvm_error.is_none();
     let mut lines = plain(input.output);
     lines.extend(report.iter().cloned());
     if let Some(jvm) = &input.jvm_error {
@@ -1133,10 +1372,29 @@ pub fn diagnose(input: &CrashInput<'_>) -> Option<CrashDiagnosis> {
         system,
         crash_report,
     ];
-    let mut d = rules
-        .iter()
-        .find_map(|rule| rule(&cx))
-        .unwrap_or_else(|| exit_status(&cx));
+    // A clean exit without a report still failed when the loader's error
+    // screen was closed: Forge for 1.12.2 writes no report for it. Only the
+    // loaders' own dependency messages count then.
+    let found = if clean {
+        loader_dependencies(&cx)
+            .filter(|d| d.kind != CrashKind::DuplicateMods || d.details.contains_key("modId"))?
+            .into()
+    } else {
+        rules.iter().find_map(|rule| rule(&cx))
+    };
+    let question = input.console_question.then(|| console_question(&cx));
+    let mut d = match (found, question) {
+        (Some(mut d), Some(question)) => {
+            d.notes.push(CrashNote {
+                kind: question.kind,
+                details: BTreeMap::new(),
+            });
+            d
+        }
+        (Some(d), None) => d,
+        (None, Some(question)) => question,
+        (None, None) => exit_status(&cx),
+    };
     if input.exit.clean() && d.kind == CrashKind::Unknown {
         return None;
     }

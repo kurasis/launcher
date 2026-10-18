@@ -799,7 +799,22 @@ impl LaunchService {
         let (sink_log, sink_tail) = (Arc::clone(&log), Arc::clone(&tail));
         let console_host = Arc::clone(&self.host);
         let mut events = crate::console::GameLines::default();
+        // A question on the console repeats forever on the game's empty input;
+        // after a few the launcher ends the game and explains it (D-059).
+        let asked = Arc::new(std::sync::atomic::AtomicBool::new(false));
+        let (sink_asked, question_id) = (Arc::clone(&asked), run_id.to_owned());
+        let mut questions = 0u32;
         let sink = Box::new(move |line: OutputLine| {
+            if super::crash::is_console_question(&line.text) {
+                questions += 1;
+                if questions == super::crash::CONSOLE_QUESTION_LIMIT {
+                    sink_asked.store(true, std::sync::atomic::Ordering::SeqCst);
+                    console_host.kill(&question_id);
+                }
+                if questions > super::crash::CONSOLE_QUESTION_LIMIT {
+                    return;
+                }
+            }
             let text = redactor.redact(&line.text);
             let console = console_host.app_state().console();
             if line.stream == Stream::Stderr {
@@ -835,11 +850,12 @@ impl LaunchService {
                 let stopped = lock_or(&stop_requested).remove(&finish_id);
                 let exit = outcome.status.as_ref().ok().map(super::crash::ExitInfo::of);
                 // The player's own Stop needs no explanation.
+                let asked = asked.load(std::sync::atomic::Ordering::SeqCst);
                 let diagnosis = exit.filter(|_| !stopped).and_then(|exit| {
                     explain(
                         state,
                         instance_id,
-                        exit,
+                        (exit, asked),
                         &lines,
                         &game_dir,
                         spawned_at,
@@ -933,7 +949,7 @@ impl LaunchService {
 fn explain(
     state: &crate::state::AppState,
     instance_id: InstanceId,
-    exit: super::crash::ExitInfo,
+    (exit, console_question): (super::crash::ExitInfo, bool),
     output: &[String],
     game_dir: &std::path::Path,
     spawned_at: std::time::SystemTime,
@@ -951,6 +967,7 @@ fn explain(
         jvm_error: as_file(&files.jvm_error),
         max_heap_mib: state.instance(instance_id).map_or(0, |i| i.max_heap_mib),
         recommended_heap_mib: state.recommend_memory_for(instance_id).ok().map(|r| r.mib),
+        console_question,
     })
 }
 

@@ -20,6 +20,7 @@ fn input<'a>(exit: ExitInfo, lines: &'a [String]) -> CrashInput<'a> {
         jvm_error: None,
         max_heap_mib: 4096,
         recommended_heap_mib: None,
+        console_question: false,
     }
 }
 
@@ -79,6 +80,35 @@ fn fabric_missing_dependency_named_by_id() {
 }
 
 #[test]
+fn quilt_missing_dependency() {
+    // Reproduced: Sodium Extra without Sodium on Quilt 0.30.1.
+    let d = run(1, include_str!("fixtures/quilt-missing-dependency.log"));
+    assert_eq!(d.kind, CrashKind::MissingDependency);
+    assert_eq!(detail(&d, "mod"), "Sodium Extra");
+    assert_eq!(detail(&d, "dependency"), "sodium");
+    assert_eq!(detail(&d, "required"), "[0.8.13+mc1.21.1, ∞)");
+    assert_eq!(d.actions, vec![CrashAction::OpenMods]);
+}
+
+#[test]
+fn quilt_cause_from_its_report_when_its_window_failed() {
+    // Reproduced: Quilt could not open its error window; the output names only
+    // the report, which holds the cause.
+    let lines = output(include_str!("fixtures/quilt-error-window-failed.log"));
+    let d = diagnose(&CrashInput {
+        crash_report: Some(RunFile {
+            name: "crash-2026-10-18_13.39.43.7208-quilt_loader.txt",
+            text: include_str!("fixtures/quilt-missing-dependency-crash-report.txt"),
+        }),
+        ..input(failed(1), &lines)
+    })
+    .expect("diagnosis");
+    assert_eq!(d.kind, CrashKind::MissingDependency);
+    assert_eq!(detail(&d, "mod"), "Sodium Extra");
+    assert_eq!(detail(&d, "dependency"), "sodium");
+}
+
+#[test]
 fn fabric_corrupt_mod_jar() {
     let d = run(1, include_str!("fixtures/fabric-corrupt-jar.log"));
     assert_eq!(d.kind, CrashKind::CorruptModFile);
@@ -98,6 +128,7 @@ fn forge_out_of_memory_suggests_recommendation() {
         }),
         max_heap_mib: 512,
         recommended_heap_mib: Some(4096),
+        console_question: false,
         ..input(failed(-1), &lines)
     })
     .expect("diagnosis");
@@ -607,4 +638,334 @@ fn serialized_names() {
     assert_eq!(json["kind"], "out_of_memory");
     assert_eq!(json["actions"][0], "memory_settings");
     assert!(json.get("evidence").is_some());
+}
+
+// ------------------------------------- loader message templates (D-059) ----
+// From the loaders' own message files: Fabric's Messages.properties, Quilt's
+// quilt_loader.properties, Forge's and NeoForge's lang/en_us.json.
+
+fn asked(text: &str) -> CrashDiagnosis {
+    let lines = output(text);
+    let exit = ExitInfo {
+        code: None,
+        signal: Some(9),
+    };
+    diagnose(&CrashInput {
+        console_question: true,
+        ..input(exit, &lines)
+    })
+    .expect("diagnosis")
+}
+
+#[test]
+fn quilt_duplicate_lists_the_files() {
+    // Reproduced: Sodium twice under two file names on Quilt.
+    let d = run(1, include_str!("fixtures/quilt-duplicate.log"));
+    assert_eq!(d.kind, CrashKind::DuplicateMods);
+    assert_eq!(detail(&d, "modId"), "sodium");
+    assert_eq!(
+        detail(&d, "files"),
+        "sodium-fabric-0.8.13+mc1.21.1.jar, sodium-copy.jar"
+    );
+}
+
+#[test]
+fn neoforge_missing_dependency() {
+    // Reproduced: Supplementaries without Moonlight Lib on NeoForge 21.1 (the
+    // error screen's clean exit counts with its crash report; see above).
+    let d = run(1, include_str!("fixtures/neoforge-missing-dependency.log"));
+    assert_eq!(d.kind, CrashKind::MissingDependency);
+    assert_eq!(detail(&d, "mod"), "supplementaries");
+    assert_eq!(detail(&d, "dependency"), "moonlight");
+}
+
+#[test]
+fn forge_52_missing_dependency() {
+    // Reproduced: Biomes O' Plenty without GlitchCore and TerraBlender on Forge
+    // 52.0.57; the first unmet requirement stands for both.
+    let d = run(1, include_str!("fixtures/forge-52-missing-dependency.log"));
+    assert_eq!(d.kind, CrashKind::MissingDependency);
+    assert_eq!(detail(&d, "mod"), "biomesoplenty");
+    assert_eq!(detail(&d, "dependency"), "glitchcore");
+    assert_eq!(detail(&d, "count"), "2");
+}
+
+#[test]
+fn neoforge_screen_texts_without_the_mod_id_table() {
+    let d = run(
+        1,
+        "Error during pre-loading phase: Mod supplementaries requires moonlight 1.21.1-3.6.4 or above\nCurrently, moonlight is not installed",
+    );
+    assert_eq!(d.kind, CrashKind::MissingDependency);
+    assert_eq!(detail(&d, "required"), "1.21.1-3.6.4 or above");
+    assert!(!d.details.contains_key("found"));
+
+    let d = run(
+        1,
+        "Mod create only supports flywheel between 1.0 and 2.0 (exclusive)\nCurrently, flywheel is 0.6.9",
+    );
+    assert_eq!(d.kind, CrashKind::WrongDependencyVersion);
+    assert_eq!(detail(&d, "found"), "0.6.9");
+
+    let d = run(
+        1,
+        "Mod jei requires minecraft 1.21.1\nCurrently, minecraft is 26.3",
+    );
+    assert_eq!(d.kind, CrashKind::WrongMinecraftVersion);
+    assert_eq!(detail(&d, "required"), "1.21.1");
+    assert_eq!(detail(&d, "found"), "26.3");
+
+    let d = run(
+        1,
+        "Mod embeddium is incompatible with sodium any\nCurrently, sodium is 0.6.0",
+    );
+    assert_eq!(d.kind, CrashKind::IncompatibleMods);
+    assert_eq!(detail(&d, "dependency"), "sodium");
+
+    let d = run(
+        1,
+        "Mod geckolib requires neoforge 21.1.200 or above\nCurrently, neoforge is 21.1.77",
+    );
+    assert_eq!(d.kind, CrashKind::LoaderTooOld);
+    assert!(d.actions.contains(&CrashAction::LoaderSettings));
+
+    let d = run(
+        1,
+        "Mod jei is present in multiple files: jei-a.jar, jei-b.jar",
+    );
+    assert_eq!(d.kind, CrashKind::DuplicateMods);
+    assert_eq!(detail(&d, "modId"), "jei");
+    assert_eq!(detail(&d, "files"), "jei-a.jar, jei-b.jar");
+}
+
+#[test]
+fn fabric_version_phrases() {
+    let d = run(
+        1,
+        "\t - Mod 'Create' (create) 6.0.8 requires any version after 1.0 of mod 'Flywheel' (flywheel), but only the wrong versions are present: 0.6.9, 0.6.10!",
+    );
+    assert_eq!(d.kind, CrashKind::WrongDependencyVersion);
+    assert_eq!(detail(&d, "required"), "any version after 1.0");
+    assert_eq!(detail(&d, "found"), "0.6.9, 0.6.10");
+
+    let d = run(
+        1,
+        "\t - Mod 'Iris' (iris) 1.8.0 requires any 0.6.x version of sodium, which is missing!",
+    );
+    assert_eq!(d.kind, CrashKind::MissingDependency);
+    assert_eq!(detail(&d, "required"), "any 0.6.x version");
+
+    let d = run(
+        1,
+        "\t - Mod 'Mod Menu' (modmenu) 11.0.0 requires any version of fabric-api, which is missing!",
+    );
+    assert_eq!(d.kind, CrashKind::MissingDependency);
+    assert!(!d.details.contains_key("required"));
+
+    let d = run(
+        1,
+        "\t - Mod 'Some Mod' (somemod) 1.0 requires version 1.0 or later of mod 'Server Lib' (serverlib), which is disabled for this environment (client/server only)!",
+    );
+    assert_eq!(d.kind, CrashKind::WrongDependencyVersion);
+    assert_eq!(detail(&d, "dependency"), "Server Lib");
+
+    let d = run(
+        1,
+        "\t - Mod 'Iris' (iris) 1.8.0 is incompatible with any version before 0.6 of mod 'Sodium' (sodium), yet a conflicting version is present: 0.5.11!",
+    );
+    assert_eq!(d.kind, CrashKind::IncompatibleMods);
+    assert_eq!(detail(&d, "dependency"), "Sodium");
+}
+
+#[test]
+fn quilt_titles() {
+    let d = run(
+        1,
+        "GeckoLib 4 requires version 1.20.1 of Minecraft, but only a different version is present: 1.21.1",
+    );
+    assert_eq!(d.kind, CrashKind::WrongMinecraftVersion);
+    assert_eq!(detail(&d, "required"), "1.20.1");
+    assert_eq!(detail(&d, "found"), "1.21.1");
+
+    let d = run(
+        1,
+        "Create transitively requires at least version 1.0 or any newer version of flywheel, which is missing!",
+    );
+    assert_eq!(d.kind, CrashKind::MissingDependency);
+    assert_eq!(detail(&d, "mod"), "Create");
+    assert_eq!(
+        detail(&d, "required"),
+        "at least version 1.0 or any newer version"
+    );
+
+    let d = run(
+        1,
+        "Sodium Extra requires any version of Quilt Loader, but only different versions are present!",
+    );
+    assert_eq!(d.kind, CrashKind::LoaderTooOld);
+
+    let d = run(
+        1,
+        "Iris breaks with all versions below 0.6 of Sodium, but an incompatible version is present: 0.5.11",
+    );
+    assert_eq!(d.kind, CrashKind::IncompatibleMods);
+    assert_eq!(detail(&d, "mod"), "Iris");
+    assert_eq!(detail(&d, "dependency"), "Sodium");
+
+    let d = run(1, "Duplicate mod: sodium");
+    assert_eq!(d.kind, CrashKind::DuplicateMods);
+    assert_eq!(detail(&d, "modId"), "sodium");
+
+    let d = run(
+        1,
+        "Broken zip file: sodium-fabric.jar\nFailed to read as a zip: <mods>/sodium-fabric.jar",
+    );
+    assert_eq!(d.kind, CrashKind::CorruptModFile);
+}
+
+#[test]
+fn mods_for_other_loaders_are_noted() {
+    let d = run(
+        1,
+        "Skipping jar. File mods/JustEnoughResources-Forge-1.21.1-1.6.0.17.jar is for Minecraft Forge or an older version of NeoForge, and cannot be loaded\njava.lang.OutOfMemoryError: Java heap space",
+    );
+    assert_eq!(d.kind, CrashKind::OutOfMemory);
+    assert_eq!(d.notes[0].kind, CrashKind::ModForOtherLoader);
+    assert_eq!(
+        d.notes[0].details.get("file").map(String::as_str),
+        Some("JustEnoughResources-Forge-1.21.1-1.6.0.17.jar")
+    );
+    assert_eq!(
+        d.notes[0].details.get("loader").map(String::as_str),
+        Some("Forge")
+    );
+
+    let d = run(
+        1,
+        "Found 2 Forge mods.\njava.lang.OutOfMemoryError: Java heap space",
+    );
+    assert_eq!(d.notes[0].kind, CrashKind::ModForOtherLoader);
+    assert!(!d.notes[0].details.contains_key("file"));
+}
+
+// --------------------------------------------- unanswered console questions ----
+
+#[test]
+fn console_questions_are_recognized() {
+    for line in [
+        "y/n: ",
+        "[O]kay/[C]ancel: ",
+        "[Y]es/[N]o: ",
+        "Continue? y/n",
+    ] {
+        assert!(is_console_question(line), "{line}");
+    }
+    for line in [
+        "Loading 3 mods: y/n compat",
+        "[Render thread/INFO]: Ready",
+        "",
+    ] {
+        assert!(!is_console_question(line), "{line}");
+    }
+}
+
+#[test]
+fn neoforge_broken_jar_behind_a_console_question() {
+    // Reproduced: a truncated mod jar on NeoForge 21.1; its loading window
+    // failed and asked "y/n:" on the console without end.
+    let d = asked(include_str!("fixtures/neoforge-corrupt-jar-question.log"));
+    assert_eq!(d.kind, CrashKind::CorruptModFile);
+    assert_eq!(detail(&d, "place"), "mods");
+    assert_eq!(d.actions, vec![CrashAction::OpenMods]);
+    assert_eq!(d.notes[0].kind, CrashKind::ConsoleQuestion);
+}
+
+#[test]
+fn modpack_memory_check_behind_a_console_question() {
+    // Reproduced: Prominence II with 1024 MiB asks "[O]kay/[C]ancel:".
+    let d = asked(include_str!("fixtures/pack-memory-question.log"));
+    assert_eq!(d.kind, CrashKind::PackNeedsMemory);
+    assert_eq!(detail(&d, "memory"), "1024");
+    assert_eq!(detail(&d, "required"), "4096");
+    assert_eq!(d.actions, vec![CrashAction::MemorySettings]);
+    assert_eq!(d.notes[0].kind, CrashKind::ConsoleQuestion);
+}
+
+#[test]
+fn unknown_console_question_shows_the_message_above_it() {
+    let d = asked(
+        "[main/INFO]: Starting\nSomething needs your attention.\nOpen the help page?\n[Y]es/[N]o: \n[Y]es/[N]o: ",
+    );
+    assert_eq!(d.kind, CrashKind::ConsoleQuestion);
+    assert_eq!(
+        d.evidence,
+        vec![
+            "[main/INFO]: Starting",
+            "Something needs your attention.",
+            "Open the help page?"
+        ]
+    );
+}
+
+#[test]
+fn quilt_broken_jar() {
+    // Reproduced: a truncated Sodium jar on Quilt.
+    let d = run(1, include_str!("fixtures/quilt-corrupt-jar.log"));
+    assert_eq!(d.kind, CrashKind::CorruptModFile);
+    assert_eq!(detail(&d, "file"), "sodium-fabric-0.8.13+mc1.21.1.jar");
+    assert_eq!(detail(&d, "place"), "mods");
+}
+
+// ------------------------------------------------- Forge for 1.12.2 ----
+
+#[test]
+fn legacy_forge_missing_dependency_after_its_error_screen() {
+    // Reproduced: Tinkers' Construct without Mantle on Forge 14.23.5.2859. The
+    // error screen writes no crash report; closing the game exits with 0.
+    let d = run(
+        0,
+        include_str!("fixtures/forge-1.12.2-missing-dependency.log"),
+    );
+    assert_eq!(d.kind, CrashKind::MissingDependency);
+    assert_eq!(detail(&d, "mod"), "Tinkers' Construct");
+    assert_eq!(detail(&d, "dependency"), "mantle");
+    assert_eq!(detail(&d, "required"), "[1.12-1.3.3.49,)");
+    assert!(!d.details.contains_key("found"));
+}
+
+#[test]
+fn legacy_forge_duplicate_after_its_error_screen() {
+    // Reproduced: JEI twice under two file names on Forge 14.23.5.2859.
+    let d = run(0, include_str!("fixtures/forge-1.12.2-duplicate.log"));
+    assert_eq!(d.kind, CrashKind::DuplicateMods);
+    assert_eq!(detail(&d, "modId"), "jei");
+    assert_eq!(
+        detail(&d, "files"),
+        "jei_1.12.2-4.22.0.1036.jar, jei-1.12.2-copy.jar"
+    );
+}
+
+#[test]
+fn legacy_forge_wrong_dependency_version() {
+    let d = run(
+        0,
+        "net.minecraftforge.fml.common.MissingModsException: Mod jeresources (Just Enough Resources) requires [jei@[4.15.0,)]\n\tunknown : need [4.15.0,): have 4.8.5",
+    );
+    assert_eq!(d.kind, CrashKind::WrongDependencyVersion);
+    assert_eq!(detail(&d, "found"), "4.8.5");
+}
+
+#[test]
+fn clean_exits_of_normal_games_stay_unexplained() {
+    // Reproduced: games that loaded and were closed by the player: NeoForge
+    // keeping one of two equal jars, NeoForge warning about a Forge mod (the
+    // player went on), Forge 52 with JEI.
+    for text in [
+        include_str!("fixtures/clean-neoforge-same-mod-twice.log"),
+        include_str!("fixtures/clean-neoforge-forge-mod-warning.log"),
+        include_str!("fixtures/clean-forge-normal-game.log"),
+    ] {
+        let lines = output(text);
+        assert_eq!(diagnose(&input(failed(0), &lines)), None);
+    }
 }

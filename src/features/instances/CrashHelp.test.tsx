@@ -58,6 +58,7 @@ const kinds: CrashKind[] = [
   'mod_failed_to_load',
   'optifine_conflict',
   'out_of_memory',
+  'pack_needs_memory',
   'system_memory',
   'killed',
   'opengl_unsupported',
@@ -75,6 +76,7 @@ const kinds: CrashKind[] = [
   'debug_crash',
   'game_crash',
   'terminated',
+  'console_question',
   'unknown',
 ];
 

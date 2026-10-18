@@ -449,6 +449,7 @@ export type CrashKind =
   | 'mod_failed_to_load'
   | 'optifine_conflict'
   | 'out_of_memory'
+  | 'pack_needs_memory'
   | 'system_memory'
   | 'killed'
   | 'opengl_unsupported'
@@ -466,6 +467,7 @@ export type CrashKind =
   | 'debug_crash'
   | 'game_crash'
   | 'terminated'
+  | 'console_question'
   | 'unknown';
 
 /** What the player can do about a crash from the launcher. */

@@ -390,7 +390,7 @@ export type Messages = {
       };
       readonly mod_for_other_loader: {
         readonly title: string;
-        readonly cause: (values: { file: string | number; loader: string }) => string;
+        readonly cause: (values: { file: string; loader: string }) => string;
         readonly fix: string;
       };
       readonly corrupt_mod_file: {
@@ -422,6 +422,11 @@ export type Messages = {
         readonly title: string;
         readonly cause: (values: { memory: number }) => string;
         readonly fix: (values: { suggested: number }) => string;
+      };
+      readonly pack_needs_memory: {
+        readonly title: string;
+        readonly cause: (values: { required: string; memory: string | number }) => string;
+        readonly fix: (values: { required: string }) => string;
       };
       readonly system_memory: {
         readonly title: string;
@@ -504,6 +509,11 @@ export type Messages = {
         readonly fix: string;
       };
       readonly terminated: {
+        readonly title: string;
+        readonly cause: string;
+        readonly fix: string;
+      };
+      readonly console_question: {
         readonly title: string;
         readonly cause: string;
         readonly fix: string;
