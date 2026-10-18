@@ -7,6 +7,8 @@ fn main() {
     // The update public key (D-063); without it the launcher does not look for updates.
     println!("cargo:rerun-if-env-changed=LAUNCHER_UPDATE_PUBKEY");
     println!("cargo:rerun-if-env-changed=LAUNCHER_UPDATE_URL");
+    println!("cargo:rerun-if-env-changed=LAUNCHER_ACCOUNT_URL");
+    println!("cargo:rerun-if-env-changed=LAUNCHER_FRIENDS_URL");
 
     // Declaring the app's commands makes Tauri generate one permission per command,
     // so each window must be granted every command explicitly in capabilities/.
@@ -81,6 +83,16 @@ fn main() {
         "launcher_account_sign_out",
         "launcher_account_set_nick",
         "launcher_account_resend_confirmation",
+        "friends_state",
+        "friends_request",
+        "friends_act",
+        "friends_open_direct",
+        "friends_create_group",
+        "friends_change_room",
+        "friends_messages",
+        "friends_send",
+        "friends_read",
+        "friends_report",
         // Registered only in debug builds; release builds have no handler for them.
         "start_lifecycle_test",
         "stop_lifecycle_test",

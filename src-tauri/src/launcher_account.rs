@@ -356,7 +356,13 @@ impl LauncherAccount {
             .await;
         match answer {
             Ok(answer) if answer.status == 200 => match serde_json::from_value(answer.body) {
-                Ok(tokens) => self.signed_in(&state, tokens).await,
+                Ok(tokens) => {
+                    self.signed_in(&state, tokens).await;
+                    // Friends connect at once.
+                    if let Some(friends) = app.try_state::<Arc<crate::friends::Friends>>() {
+                        friends.wake();
+                    }
+                }
                 Err(_) => {
                     state.set_launcher_account_status(|s| s.problem = Some(AccountProblem::Server))
                 }

@@ -329,6 +329,87 @@ export interface LauncherAccountView {
   problem: LauncherAccountProblem | null;
 }
 
+/** Why a friends action failed (D-064). */
+export type FriendsProblem =
+  | 'signed_out'
+  | 'network'
+  | 'no_such_nick'
+  | 'yourself'
+  | 'you_blocked'
+  | 'limit'
+  | 'too_many'
+  | 'not_friends'
+  | 'not_owner'
+  | 'invalid'
+  | 'server';
+
+export const FRIENDS_PROBLEMS: readonly FriendsProblem[] = [
+  'signed_out',
+  'network',
+  'no_such_nick',
+  'yourself',
+  'you_blocked',
+  'limit',
+  'too_many',
+  'not_friends',
+  'not_owner',
+  'invalid',
+  'server',
+];
+
+/** Someone in a friends list; `at` is when (Unix seconds) they became one. */
+export interface FriendPerson {
+  id: string;
+  nick: string;
+  at: number;
+}
+
+export interface RoomMember {
+  id: string;
+  nick: string;
+}
+
+/** A chat message as the friends server stored it; `body` is plain text. */
+export interface ChatMessage {
+  id: number;
+  room: string;
+  sender: string;
+  body: string;
+  /** Unix seconds. */
+  created: number;
+}
+
+export interface ChatRoom {
+  id: string;
+  /** Two friends, or a group of three or more. */
+  kind: 'direct' | 'group';
+  name: string;
+  owner: string;
+  members: RoomMember[];
+  last: ChatMessage | null;
+  unread: number;
+}
+
+/** Friends and chats of the launcher account (friends.lapi.sh, D-064). */
+export interface FriendsView {
+  signedIn: boolean;
+  /** The live connection is open. */
+  connected: boolean;
+  me: RoomMember | null;
+  friends: FriendPerson[];
+  incoming: FriendPerson[];
+  outgoing: FriendPerson[];
+  blocked: FriendPerson[];
+  rooms: ChatRoom[];
+  unread: number;
+  problem: FriendsProblem | null;
+}
+
+export type FriendAction = 'accept' | 'decline' | 'cancel' | 'remove' | 'block' | 'unblock';
+
+/** A request was sent, or it met theirs and you are friends now. */
+export type FriendRequestResult = 'sent' | 'friends';
+
 /** One Microsoft account. Never contains tokens. */
 export interface MicrosoftAccount {
   profileId: string;

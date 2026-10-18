@@ -24,6 +24,7 @@ import { FailureOffer } from '../features/reports/FailureOffer';
 import { UpdateBadge } from '../features/updates/UpdateBadge';
 import { WhatsNew } from '../features/updates/WhatsNew';
 import { DownloadManager } from '../features/downloads/DownloadManager';
+import { FriendsCorner } from '../features/friends/FriendsCorner';
 import { useTheme } from './useTheme';
 import { useAppInfo } from './useAppInfo';
 import { localizeError } from '../lib/strings';
@@ -215,6 +216,13 @@ export function App() {
       </main>
 
       {snapshot !== null && <DownloadManager snapshot={snapshot} />}
+      {snapshot !== null && (
+        <FriendsCorner
+          onOpenAccounts={() => {
+            setView('account');
+          }}
+        />
+      )}
       <footer className={styles.footer}>
         <p>{strings.independentNotice}</p>
       </footer>

@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-friends-open-direct"
+description = "Enables the friends_open_direct command without any pre-configured scope."
+commands.allow = ["friends_open_direct"]
+
+[[permission]]
+identifier = "deny-friends-open-direct"
+description = "Denies the friends_open_direct command without any pre-configured scope."
+commands.deny = ["friends_open_direct"]

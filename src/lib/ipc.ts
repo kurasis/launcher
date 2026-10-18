@@ -42,6 +42,12 @@ import {
   type TrafficSummary,
   type UpdateView,
   type LauncherAccountProblem,
+  FRIENDS_PROBLEMS,
+  type ChatMessage,
+  type FriendAction,
+  type FriendRequestResult,
+  type FriendsProblem,
+  type FriendsView,
   type BackupScope,
   type JavaCheck,
   type NoTokenProfile,
@@ -246,6 +252,32 @@ export const ipc = {
     invoke<LauncherAccountProblem | null>('launcher_account_set_nick', { nick }),
   launcherAccountResendConfirmation: (): Promise<LauncherAccountProblem | null> =>
     invoke<LauncherAccountProblem | null>('launcher_account_resend_confirmation'),
+  // Friends and chats (D-064). These reject with a FriendsProblem string;
+  // `friendsProblem` reads it.
+  friendsState: (): Promise<FriendsView> => invoke<FriendsView>('friends_state'),
+  friendsRequest: (nick: string): Promise<FriendRequestResult> =>
+    invoke<FriendRequestResult>('friends_request', { nick }),
+  friendsAct: (action: FriendAction, id: string): Promise<void> =>
+    invoke('friends_act', { action, id }),
+  /** The direct chat with a friend (made when there is none); its room id. */
+  friendsOpenDirect: (id: string): Promise<string> => invoke<string>('friends_open_direct', { id }),
+  friendsCreateGroup: (name: string, members: string[]): Promise<string> =>
+    invoke<string>('friends_create_group', { name, members }),
+  /** Owner: add, remove or rename (`name`); anyone: remove themselves (leave). */
+  friendsChangeRoom: (
+    room: string,
+    action: 'add' | 'remove' | 'name',
+    value: string,
+  ): Promise<void> => invoke('friends_change_room', { room, action, value }),
+  /** Up to 50 messages before `before`, oldest first. */
+  friendsMessages: (room: string, before: number | null): Promise<ChatMessage[]> =>
+    invoke<ChatMessage[]>('friends_messages', { room, before }),
+  friendsSend: (room: string, body: string): Promise<ChatMessage> =>
+    invoke<ChatMessage>('friends_send', { room, body }),
+  friendsRead: (room: string, upto: number): Promise<void> =>
+    invoke('friends_read', { room, upto }),
+  friendsReport: (message: number, reason: string): Promise<void> =>
+    invoke('friends_report', { message, reason }),
   /** The interface has shown: a new version's start can count as good. */
   interfaceReady: (): Promise<void> => invoke('interface_ready'),
   /** Debug builds only; release builds have no handler for this command. */
@@ -364,6 +396,33 @@ export function subscribeBackendEvents(handler: EventHandler): {
 export function onQuitRequested(handler: () => void): () => void {
   const pending = listen('quit_requested', () => {
     handler();
+  });
+  return () => {
+    void pending.then((unlisten) => Promise.resolve().then(unlisten)).catch(() => undefined);
+  };
+}
+
+/** The FriendsProblem a friends command rejected with (anything else: `server`). */
+export function friendsProblem(error: unknown): FriendsProblem {
+  return typeof error === 'string' && (FRIENDS_PROBLEMS as readonly string[]).includes(error)
+    ? (error as FriendsProblem)
+    : 'server';
+}
+
+/** Friends and chats changed (lists, rooms, unread counts, connection). */
+export function onFriendsState(handler: (view: FriendsView) => void): () => void {
+  const pending = listen<FriendsView>('friends://state', (event) => {
+    handler(event.payload);
+  });
+  return () => {
+    void pending.then((unlisten) => Promise.resolve().then(unlisten)).catch(() => undefined);
+  };
+}
+
+/** A new message in one of the account's rooms (its own included). */
+export function onFriendsMessage(handler: (message: ChatMessage) => void): () => void {
+  const pending = listen<ChatMessage>('friends://message', (event) => {
+    handler(event.payload);
   });
   return () => {
     void pending.then((unlisten) => Promise.resolve().then(unlisten)).catch(() => undefined);

@@ -15,6 +15,7 @@ pub mod diagnostics;
 pub mod download;
 pub mod error;
 pub mod external;
+pub mod friends;
 pub mod gallery;
 pub mod install;
 pub mod journal;
@@ -458,6 +459,16 @@ fn setup(app: &mut tauri::App) -> Result<(), Box<dyn std::error::Error>> {
             launcher_account.check(&handle.state::<AppState>()).await;
         });
     }
+    // Friends and chats of the launcher account (D-064): one live connection.
+    {
+        let friends = Arc::new(friends::Friends::new(&version)?);
+        app.manage(Arc::clone(&friends));
+        let handle = app.handle().clone();
+        tauri::async_runtime::spawn(async move {
+            tokio::time::sleep(std::time::Duration::from_secs(6)).await;
+            friends.run(handle).await;
+        });
+    }
     let auth = Arc::new(create_auth_service(app.handle())?);
     app.manage(Arc::clone(&auth));
     let launcher = source.map(|source| {
@@ -687,6 +698,16 @@ fn handlers<R: tauri::Runtime>() -> impl Fn(tauri::ipc::Invoke<R>) -> bool + Sen
         commands::launcher_account_sign_out,
         commands::launcher_account_set_nick,
         commands::launcher_account_resend_confirmation,
+        commands::friends_state,
+        commands::friends_request,
+        commands::friends_act,
+        commands::friends_open_direct,
+        commands::friends_create_group,
+        commands::friends_change_room,
+        commands::friends_messages,
+        commands::friends_send,
+        commands::friends_read,
+        commands::friends_report,
         commands::start_lifecycle_test,
         commands::stop_lifecycle_test,
     ]
@@ -766,5 +787,15 @@ fn handlers<R: tauri::Runtime>() -> impl Fn(tauri::ipc::Invoke<R>) -> bool + Sen
         commands::launcher_account_sign_out,
         commands::launcher_account_set_nick,
         commands::launcher_account_resend_confirmation,
+        commands::friends_state,
+        commands::friends_request,
+        commands::friends_act,
+        commands::friends_open_direct,
+        commands::friends_create_group,
+        commands::friends_change_room,
+        commands::friends_messages,
+        commands::friends_send,
+        commands::friends_read,
+        commands::friends_report,
     ]
 }
