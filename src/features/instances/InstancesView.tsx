@@ -60,6 +60,7 @@ export function InstancesView({ snapshot, onEditSettings }: InstancesViewProps) 
         {creating && (
           <CreateInstanceForm
             network={snapshot.network}
+            fixedHeapMib={snapshot.settings.defaultMaxHeapMib}
             onDone={() => {
               setCreating(false);
             }}

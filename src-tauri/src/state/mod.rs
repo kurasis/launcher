@@ -1048,6 +1048,34 @@ impl AppState {
         })
     }
 
+    /// The memory recommended for an installation, counting the mods in its
+    /// game folder (D-058).
+    pub fn recommend_memory_for(
+        &self,
+        id: InstanceId,
+    ) -> LauncherResult<validation::MemoryRecommendation> {
+        let memory = self.memory.clone()?;
+        let instance = self.instance(id).ok_or_else(instance_not_found)?;
+        let mods = self
+            .data_root()
+            .map_or(0, |root| mod_count(&root.game_dir(id).join("mods")));
+        Ok(memory.recommend(validation::Workload::of(
+            &instance.version_id,
+            instance.loader.is_some(),
+            mods,
+        )))
+    }
+
+    /// The memory recommended for a new installation of `version_id`.
+    pub fn recommend_memory(
+        &self,
+        version_id: &str,
+        modded: bool,
+    ) -> LauncherResult<validation::MemoryRecommendation> {
+        let memory = self.memory.clone()?;
+        Ok(memory.recommend(validation::Workload::of(version_id, modded, 0)))
+    }
+
     /// Puts the launcher settings back to their defaults (D-057). The language
     /// and the selected installation stay.
     pub fn reset_settings(&self) -> LauncherResult<()> {
@@ -1531,8 +1559,11 @@ impl AppState {
                     }
                     settings.selected_instance_id = Some(id);
                 }
-                if let Some(mib) = patch.default_max_heap_mib {
-                    settings.default_max_heap_mib = Some(memory?.validate_heap(mib)?);
+                // 0 goes back to the recommendation for each installation (D-058).
+                match patch.default_max_heap_mib {
+                    Some(0) => settings.default_max_heap_mib = None,
+                    Some(mib) => settings.default_max_heap_mib = Some(memory?.validate_heap(mib)?),
+                    None => {}
                 }
                 if let Some(resolution) = patch.default_resolution {
                     settings.default_resolution = validation::validate_resolution(resolution)?;
@@ -1723,6 +1754,20 @@ fn account_summary(data: &Data) -> AccountSummary {
     }
 }
 
+/// Mod files in a `mods` folder: `.jar` files, enabled or not.
+fn mod_count(dir: &std::path::Path) -> u32 {
+    std::fs::read_dir(dir).map_or(0, |entries| {
+        let count = entries
+            .filter_map(Result::ok)
+            .filter(|e| {
+                let name = e.file_name().to_string_lossy().to_lowercase();
+                name.ends_with(".jar") || name.ends_with(".jar.disabled")
+            })
+            .count();
+        u32::try_from(count).unwrap_or(u32::MAX)
+    })
+}
+
 /// A new installation record with the current defaults, not installed yet.
 fn new_instance(
     data: &Data,
@@ -1732,10 +1777,12 @@ fn new_instance(
     version_id: String,
     loader: Option<crate::loader::LoaderChoice>,
 ) -> InstanceFile {
+    // A fixed default wins; otherwise what this kind of installation needs (D-058).
+    let workload = validation::Workload::of(&version_id, loader.is_some(), 0);
     let max_heap_mib = data
         .settings
         .default_max_heap_mib
-        .map_or(memory.recommended_heap_mib, |mib| {
+        .map_or(memory.recommend(workload).mib, |mib| {
             mib.clamp(memory.min_heap_mib, memory.max_heap_mib)
         });
     InstanceFile {

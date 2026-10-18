@@ -7,6 +7,7 @@ import type { MemoryLimits, SettingsView } from '../../lib/contracts';
 import { ipc } from '../../lib/ipc';
 import { strings } from '../../lib/strings';
 import { useCommand } from '../../lib/useCommand';
+import styles from './SettingsView.module.css';
 
 const t = strings.settings;
 const d = strings.details;
@@ -31,11 +32,13 @@ export function DefaultsForm({
   const [width, setWidth] = useState(String(settings.defaultResolution.width));
   const [height, setHeight] = useState(String(settings.defaultResolution.height));
   const [fullscreen, setFullscreen] = useState(settings.defaultFullscreen);
+  // Recommended per kind of installation (D-058), or one fixed amount.
+  const [fixed, setFixed] = useState(settings.defaultMaxHeapMib !== null);
   const [saved, setSaved] = useState(false);
   const save = useCommand((requestId: string, mib: number, w: number, h: number) =>
     ipc.setAppSettings(
       {
-        defaultMaxHeapMib: mib,
+        defaultMaxHeapMib: fixed ? mib : 0,
         defaultResolution: { width: w, height: h },
         defaultFullscreen: fullscreen,
       },
@@ -56,36 +59,68 @@ export function DefaultsForm({
         });
       }}
     >
-      <Field
-        label={d.memory}
-        hint={
-          policy
-            ? d.memoryHint({
-                min: policy.minHeapMib,
-                max: policy.maxHeapMib,
-                recommended: policy.recommendedHeapMib,
-              })
-            : undefined
-        }
-      >
-        {(props) => (
+      <fieldset className={forms.choices} disabled={disabled}>
+        <legend>{d.memory}</legend>
+        <label className={forms.choice}>
           <input
-            {...props}
-            className={forms.input}
-            type="number"
-            inputMode="numeric"
-            min={policy?.minHeapMib}
-            max={policy?.maxHeapMib}
-            step={256}
-            value={heap}
-            disabled={disabled}
-            onChange={(event) => {
-              setHeap(event.target.value);
+            type="radio"
+            name="default-memory"
+            checked={!fixed}
+            onChange={() => {
+              setFixed(false);
               setSaved(false);
             }}
           />
-        )}
-      </Field>
+          {strings.memory.perKind}
+        </label>
+        <label className={forms.choice}>
+          <input
+            type="radio"
+            name="default-memory"
+            checked={fixed}
+            onChange={() => {
+              setFixed(true);
+              setSaved(false);
+            }}
+          />
+          {strings.memory.fixed}
+        </label>
+      </fieldset>
+      {!fixed && <p className={styles.hint}>{strings.memory.perKindHint}</p>}
+      {fixed && (
+        <>
+          <Field
+            label={d.memory}
+            hint={
+              policy
+                ? d.memoryHint({
+                    min: policy.minHeapMib,
+                    max: policy.maxHeapMib,
+                    recommended: policy.recommendedHeapMib,
+                  })
+                : undefined
+            }
+          >
+            {(props) => (
+              <input
+                {...props}
+                className={forms.input}
+                type="number"
+                inputMode="numeric"
+                min={policy?.minHeapMib}
+                max={policy?.maxHeapMib}
+                step={256}
+                value={heap}
+                disabled={disabled}
+                onChange={(event) => {
+                  setHeap(event.target.value);
+                  setSaved(false);
+                }}
+              />
+            )}
+          </Field>
+        </>
+      )}
       <div className={forms.row}>
         <Field label={d.width}>
           {(props) => (

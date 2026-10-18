@@ -268,6 +268,20 @@
       "gameArguments": "وسائط Minecraft",
       "gameArgumentsHint": "تُضاف بعد وسائط اللعبة نفسها، مثل ‎--quickPlaySingleplayer \"عالمي\"‎ لفتح عالم عند البدء. تحافظ علامات الاقتباس على المسافات داخل قيمة واحدة. يحدد المشغّل اللاعب والمجلدات وحجم النافذة وملء الشاشة."
     },
+    "memory": {
+      "recommended": "المُوصى به: {mib, number, ::group-off} MiB لـ {reason}.",
+      "limited": "المُوصى به: {mib, number, ::group-off} MiB لـ {reason}؛ يحتاج إلى نحو {wanted, number, ::group-off} MiB، لكن هذا الحاسوب لا يتسع لذلك.",
+      "use": "استخدام المُوصى به",
+      "perKind": "المُوصى به لكل نوع من التثبيتات",
+      "perKindHint": "Minecraft 1.12.2 وما قبله: 2048 MiB؛ الإصدارات الأحدث: 3072 MiB؛ مع مُحمِّل تعديلات: 4096 MiB وأكثر عند كثرة التعديلات. لا يتجاوز أبدًا نصف ذاكرة الحاسوب.",
+      "fixed": "القيمة نفسها لكل تثبيت جديد",
+      "fixedLine": "الذاكرة: {mib, number, ::group-off} MiB (إعدادك للتثبيتات الجديدة).",
+      "workload": {
+        "legacy": "Minecraft 1.12.2 وما قبله",
+        "vanilla": "Minecraft دون تعديلات",
+        "modded": "مُحمِّل تعديلات مع {mods, plural, =0 {لا تعديلات بعد} one {تعديل واحد} two {تعديلين} few {# تعديلات} many {# تعديلًا} other {# تعديل}}"
+      }
+    },
     "deleteInstance": {
       "delete": "حذف التثبيت",
       "confirm": "حذف «{name}»؟",

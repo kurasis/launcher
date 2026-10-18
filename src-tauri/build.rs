@@ -31,6 +31,7 @@ fn main() {
         "delete_instance",
         "reset_preview",
         "reset_launcher",
+        "recommend_memory",
         "list_screenshots",
         "delete_screenshot",
         "open_screenshot",

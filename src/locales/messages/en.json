@@ -267,6 +267,20 @@
       "gameArguments": "Minecraft arguments",
       "gameArgumentsHint": "Added after the game's own arguments, for example --quickPlaySingleplayer \"My World\" to open a world at start. Quotes keep spaces inside one value. The player, folders, window size and fullscreen are set by the launcher."
     },
+    "memory": {
+      "recommended": "Recommended: {mib, number, ::group-off} MiB for {reason}.",
+      "limited": "Recommended: {mib, number, ::group-off} MiB for {reason}; it would use about {wanted, number, ::group-off} MiB, but this computer has room for less.",
+      "use": "Use recommended",
+      "perKind": "Recommended for each kind of installation",
+      "perKindHint": "Minecraft 1.12.2 and older: 2048 MiB; newer Minecraft: 3072 MiB; with a mod loader: 4096 MiB, more once it holds many mods. Never more than half of this computer's memory.",
+      "fixed": "The same for every new installation",
+      "fixedLine": "Memory: {mib, number, ::group-off} MiB (your setting for new installations).",
+      "workload": {
+        "legacy": "Minecraft 1.12.2 and older",
+        "vanilla": "Minecraft without mods",
+        "modded": "a mod loader with {mods, plural, =0 {no mods yet} one {# mod} other {# mods}}"
+      }
+    },
     "deleteInstance": {
       "delete": "Delete installation",
       "confirm": "Delete \"{name}\"?",

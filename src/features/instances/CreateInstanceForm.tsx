@@ -21,11 +21,14 @@ import { useCommand } from '../../lib/useCommand';
 import styles from './Instances.module.css';
 import { VersionPicker } from './VersionPicker';
 import { LOADER_KINDS } from './loaderLabel';
+import { recommendationText, useRecommendation } from '../settings/memoryLabel';
 
 interface CreateInstanceFormProps {
   onDone: () => void;
   /** When the connection returns, the version list is fetched again (D-052). */
   network?: NetworkStatus;
+  /** The fixed memory for new installations; null uses the recommendation (D-058). */
+  fixedHeapMib?: number | null;
 }
 
 const t = strings.createForm;
@@ -42,7 +45,11 @@ const availabilityTone: Record<VersionAvailability, StatusTone> = {
   catalog_unavailable: 'warning',
 };
 
-export function CreateInstanceForm({ onDone, network = 'online' }: CreateInstanceFormProps) {
+export function CreateInstanceForm({
+  onDone,
+  network = 'online',
+  fixedHeapMib = null,
+}: CreateInstanceFormProps) {
   // The name follows the chosen version and loader until the user types one.
   const [typedName, setTypedName] = useState<string | null>(null);
   const [versionId, setVersionId] = useState('');
@@ -342,6 +349,13 @@ export function CreateInstanceForm({ onDone, network = 'online' }: CreateInstanc
         {catalog?.stale === true && <Notice tone="warning">{t.stale}</Notice>}
         {planError !== null && <Notice tone="danger">{planError}</Notice>}
         {plan !== null && <PlanFacts plan={plan} />}
+        {versionId !== '' && (
+          <MemoryLine
+            versionId={versionId}
+            modded={loaderKind !== 'none'}
+            fixedHeapMib={fixedHeapMib}
+          />
+        )}
         {create.error !== null && <Notice tone="danger">{create.error}</Notice>}
         <div className={forms.actions}>
           <Button
@@ -356,6 +370,26 @@ export function CreateInstanceForm({ onDone, network = 'online' }: CreateInstanc
       </form>
     </Panel>
   );
+}
+
+/** The memory the new installation gets: the fixed default or the recommendation. */
+function MemoryLine({
+  versionId,
+  modded,
+  fixedHeapMib,
+}: {
+  versionId: string;
+  modded: boolean;
+  fixedHeapMib: number | null;
+}) {
+  const recommendation = useRecommendation(fixedHeapMib === null ? { versionId, modded } : null);
+  const text =
+    fixedHeapMib !== null
+      ? strings.memory.fixedLine({ mib: fixedHeapMib })
+      : recommendation === null
+        ? null
+        : recommendationText(recommendation);
+  return text === null ? null : <p className={styles.muted}>{text}</p>;
 }
 
 function PlanFacts({ plan }: { plan: PlanSummary }) {

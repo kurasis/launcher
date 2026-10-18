@@ -328,6 +328,16 @@ export interface MemoryPolicy {
   lowMemory: boolean;
 }
 
+/** What an installation runs, for its recommended memory (D-058). */
+export type Workload = { kind: 'legacy' } | { kind: 'vanilla' } | { kind: 'modded'; mods: number };
+
+export interface MemoryRecommendation {
+  mib: number;
+  workload: Workload;
+  /** What the workload asks for, when this computer cannot give that much. */
+  wantedMib: number | null;
+}
+
 export interface ResolutionBounds {
   minWidth: number;
   maxWidth: number;

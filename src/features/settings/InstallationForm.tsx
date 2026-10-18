@@ -9,6 +9,7 @@ import { strings } from '../../lib/strings';
 import { useCommand } from '../../lib/useCommand';
 import styles from './SettingsView.module.css';
 import { localizeError } from '../../lib/strings';
+import { recommendationText, useRecommendation } from './memoryLabel';
 
 interface InstallationFormProps {
   instance: InstanceSummary;
@@ -46,6 +47,7 @@ export function InstallationForm({ instance, memory }: InstallationFormProps) {
   );
   const bounds = memory.resolution;
   const policy = memory.policy;
+  const recommendation = useRecommendation({ instanceId: instance.id });
 
   const submit = async () => {
     setSaved(false);
@@ -95,6 +97,22 @@ export function InstallationForm({ instance, memory }: InstallationFormProps) {
           />
         )}
       </Field>
+      {recommendation !== null && (
+        <div className={forms.actions}>
+          <span className={styles.hint}>{recommendationText(recommendation)}</span>
+          {String(recommendation.mib) !== heap && (
+            <Button
+              disabled={instance.busy}
+              onClick={() => {
+                setHeap(String(recommendation.mib));
+                setSaved(false);
+              }}
+            >
+              {strings.memory.use}
+            </Button>
+          )}
+        </div>
+      )}
       <div className={forms.row}>
         <Field label={t.width}>
           {(props) => (

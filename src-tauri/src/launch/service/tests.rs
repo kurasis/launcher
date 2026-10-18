@@ -157,7 +157,10 @@ async fn a_launch_is_supervised_redacted_and_recorded() {
     assert!(tail.contains("ARG:--accessToken"));
     assert!(tail.contains("ARG:<redacted>"));
     assert!(!tail.contains(TOKEN));
-    assert!(tail.contains("ARG:-Xmx4096M"));
+    assert!(
+        tail.contains("ARG:-Xmx3072M"),
+        "vanilla 1.21.1 gets 3072 MiB (D-058)"
+    );
     assert!(tail.contains("ARG:Player"));
     let log = std::fs::read_to_string(
         s.f.root

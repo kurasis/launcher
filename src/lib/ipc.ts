@@ -41,6 +41,7 @@ import {
   type ProfileRef,
   type SetInstanceJavaPayload,
   type SetInstanceLoaderPayload,
+  type MemoryRecommendation,
   type ResetChoice,
   type ResetPreview,
   type ResetReport,
@@ -86,6 +87,10 @@ export const ipc = {
     }),
   deleteBackup: (backupId: string, requestId?: string): Promise<number> =>
     invoke<number>('delete_backup', { request: mutation({ backupId }, requestId) }),
+  /** For an installation (counting its mods) or a new one of a version (D-058). */
+  recommendMemory: (
+    target: { instanceId: string } | { versionId: string; modded: boolean },
+  ): Promise<MemoryRecommendation> => invoke<MemoryRecommendation>('recommend_memory', target),
   resetPreview: (): Promise<ResetPreview> => invoke<ResetPreview>('reset_preview'),
   resetLauncher: (choice: ResetChoice, requestId?: string): Promise<ResetReport> =>
     invoke<ResetReport>('reset_launcher', { request: mutation(choice, requestId) }),
