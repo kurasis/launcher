@@ -3,6 +3,10 @@ use std::path::Path;
 
 use super::*;
 
+/// An entry not filled in from a release: [`find`] never returns it.
+const PLACEHOLDER_SHA256: &str = "PLACEHOLDER-fill-from-SHA256SUMS";
+const PLACEHOLDER_SIZE: u64 = 0;
+
 const H: &str = "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef";
 
 const fn pinned(game: &'static str, target: Target, file: &'static str) -> Jar {
@@ -94,14 +98,8 @@ fn the_table_names_every_release_jar_once() {
             )
         );
         assert!(SourcePolicy::SkinsMod.check(&url).is_ok(), "{url}");
-        // Either still a placeholder or fully filled in: never half.
-        let placeholder = jar.sha256 == PLACEHOLDER_SHA256 && jar.size == PLACEHOLDER_SIZE;
-        assert!(
-            placeholder || jar.pinned(),
-            "{} is half filled in",
-            jar.file
-        );
-        // A placeholder is never handed out.
+        // Every released jar is filled in from the release's SHA256SUMS.
+        assert!(jar.pinned(), "{} is not filled in", jar.file);
         let loader = match jar.target {
             Target::Fabric => Some(LoaderKind::Fabric),
             Target::NeoForge => Some(LoaderKind::NeoForge),

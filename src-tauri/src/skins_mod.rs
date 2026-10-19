@@ -43,10 +43,6 @@ pub const MAX_JAR_BYTES: u64 = 16 * 1024 * 1024;
 /// The longest a launch waits for a missing jar before it starts without it.
 const DOWNLOAD_TIMEOUT: Duration = Duration::from_secs(45);
 
-/// An entry not yet filled from the release. [`find`] never returns it.
-const PLACEHOLDER_SHA256: &str = "PLACEHOLDER-fill-from-SHA256SUMS";
-const PLACEHOLDER_SIZE: u64 = 0;
-
 /// What a jar plugs into.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Target {
@@ -123,72 +119,72 @@ impl Jar {
 /// jars for eleven combinations (the Fabric jar also serves Quilt). Game
 /// versions match exactly; other versions get nothing.
 ///
-/// `sha256` (lowercase hex) and `size` (bytes) of each entry are filled from
-/// the release's SHA256SUMS and the jars' sizes. Until then an entry
-/// holds the placeholders and is never used.
+/// `sha256` (lowercase hex) and `size` (bytes) come from the release
+/// skins-mod-v0.1.0: its SHA256SUMS and the jars' sizes. A new mod version
+/// is a new release and a new table; an entry that is not filled in is never used.
 pub const JARS: &[Jar] = &[
     Jar {
         game: "26.3",
         target: Target::Fabric,
         file: "launcherskins-fabric-26.3-0.1.0.jar",
-        sha256: PLACEHOLDER_SHA256, // filled from the release's SHA256SUMS
-        size: PLACEHOLDER_SIZE,     // its size in bytes in the release
+        sha256: "42d12dfb0b6f3eefb6d641753949ee83fcd01280954dd0fa71182c8e32889c84",
+        size: 31598,
     },
     Jar {
         game: "26.3",
         target: Target::NeoForge,
         file: "launcherskins-neoforge-26.3-0.1.0.jar",
-        sha256: PLACEHOLDER_SHA256, // filled from the release's SHA256SUMS
-        size: PLACEHOLDER_SIZE,     // its size in bytes in the release
+        sha256: "ea41edf69b2157b12fb86ddd7a1988d71e6905de62fb8d59f8ee400203964aaa",
+        size: 30706,
     },
     Jar {
         game: "26.3",
         target: Target::Forge,
         file: "launcherskins-forge-26.3-0.1.0.jar",
-        sha256: PLACEHOLDER_SHA256, // filled from the release's SHA256SUMS
-        size: PLACEHOLDER_SIZE,     // its size in bytes in the release
+        sha256: "47d6625882ef3fa41f1809a7dcc627d4b4f7d2ebf2a7a22273ed64d60087922d",
+        size: 30882,
     },
     Jar {
         game: "26.3",
         target: Target::Agent,
         file: "launcherskins-agent-26.3-0.1.0.jar",
-        sha256: PLACEHOLDER_SHA256, // filled from the release's SHA256SUMS
-        size: PLACEHOLDER_SIZE,     // its size in bytes in the release
+        sha256: "d7b94b788c3e6413bc7a84ba645cab4d78bc017d37a2f71f2a20a2fd0eed1d5f",
+        size: 32868,
     },
     Jar {
         game: "1.21.1",
         target: Target::Fabric,
         file: "launcherskins-fabric-1.21.1-0.1.0.jar",
-        sha256: PLACEHOLDER_SHA256, // filled from the release's SHA256SUMS
-        size: PLACEHOLDER_SIZE,     // its size in bytes in the release
+        sha256: "7c397dc7467e69c607dbd581587f29b39856b9f4517acc15d12ee597f014595b",
+        size: 31976,
     },
     Jar {
         game: "1.21.1",
         target: Target::NeoForge,
         file: "launcherskins-neoforge-1.21.1-0.1.0.jar",
-        sha256: PLACEHOLDER_SHA256, // filled from the release's SHA256SUMS
-        size: PLACEHOLDER_SIZE,     // its size in bytes in the release
+        sha256: "3f503c52a3968618519eba88cdd43fe8e21104f0609c014f8d5690fed5f7f19b",
+        size: 30652,
     },
     Jar {
         game: "1.21.1",
         target: Target::Forge,
         file: "launcherskins-forge-1.21.1-0.1.0.jar",
-        sha256: PLACEHOLDER_SHA256, // filled from the release's SHA256SUMS
-        size: PLACEHOLDER_SIZE,     // its size in bytes in the release
+        sha256: "8c93cb6862d60b9ea5fbd18b8075157d107a266dfd2e1f85657e4dd5be4f19ae",
+        size: 30996,
     },
     Jar {
         game: "1.21.1",
         target: Target::Agent,
         file: "launcherskins-agent-1.21.1-0.1.0.jar",
-        sha256: PLACEHOLDER_SHA256, // filled from the release's SHA256SUMS
-        size: PLACEHOLDER_SIZE,     // its size in bytes in the release
+        sha256: "6ebf988139d8627c36ac387fe5fd747fc53efce432d7204e1a7d12640d74730c",
+        size: 219430,
     },
     Jar {
         game: "1.12.2",
         target: Target::Forge,
         file: "launcherskins-forge-1.12.2-0.1.0.jar",
-        sha256: PLACEHOLDER_SHA256, // filled from the release's SHA256SUMS
-        size: PLACEHOLDER_SIZE,     // its size in bytes in the release
+        sha256: "f67a27cbc4d076b3aa233533114bf93ec45984b7da46760a93773fdfffaf4b83",
+        size: 32646,
     },
 ];
 
