@@ -190,12 +190,14 @@ jobs:
     name: Build and smoke ${{ matrix.name }}
     strategy:
       fail-fast: false
+      # Intel Macs are few on GitHub (a long wait) and slow (twice the build
+      # time), so pull requests build arm64 only; main, manual runs and the
+      # release archive build both. CI checks the Rust core on both always.
       matrix:
-        include:
-          - name: macos-arm64
-            os: macos-15
-          - name: macos-x64
-            os: macos-15-intel
+        include: >-
+          ${{ fromJSON(github.event_name == 'pull_request'
+          && '[{"name": "macos-arm64", "os": "macos-15"}]'
+          || '[{"name": "macos-arm64", "os": "macos-15"}, {"name": "macos-x64", "os": "macos-15-intel"}]') }}
     runs-on: ${{ matrix.os }}
     defaults:
       run:

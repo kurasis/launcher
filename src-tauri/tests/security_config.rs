@@ -279,3 +279,59 @@ fn harness_commands_are_registered_only_in_debug_builds() {
     let main = include_str!("../src/main.rs");
     assert!(main.contains("#[cfg(debug_assertions)]"));
 }
+
+/// Every window is made through `lifecycle::queue_on_main_thread` (CLAUDE.md,
+/// "Windows"). A synchronous command, a window event or a plugin callback runs
+/// on the main thread, where `run_on_main_thread` runs the task inline; a window
+/// made there waits on WebView2 inside its own callback, stays empty and hangs
+/// on Windows (Linux and macOS do not show it).
+#[test]
+fn windows_are_made_through_the_queue() {
+    fn sources(dir: &std::path::Path, out: &mut Vec<(String, String)>) {
+        for entry in std::fs::read_dir(dir).expect("src") {
+            let path = entry.expect("entry").path();
+            if path.is_dir() {
+                sources(&path, out);
+            } else if path.extension().is_some_and(|e| e == "rs") {
+                let text = std::fs::read_to_string(&path).expect("source");
+                out.push((path.display().to_string(), text));
+            }
+        }
+    }
+    let mut all = Vec::new();
+    sources(
+        std::path::Path::new(concat!(env!("CARGO_MANIFEST_DIR"), "/src")),
+        &mut all,
+    );
+    let queue = std::path::Path::new("src").join("lifecycle").join("mod.rs");
+    for (name, text) in &all {
+        // The queue itself, and destroying windows there, may call it.
+        if !name.ends_with(&queue.display().to_string()) {
+            assert!(
+                !text.contains("run_on_main_thread("),
+                "{name} calls run_on_main_thread; use lifecycle::queue_on_main_thread"
+            );
+        }
+        // Who builds a window: the console (lifecycle) and the account window,
+        // which only launcher_account_open asks for, through the queue.
+        if text.contains("WebviewWindowBuilder::new(") {
+            assert!(
+                name.ends_with(&queue.display().to_string())
+                    || name.ends_with("launcher_account.rs"),
+                "{name} builds a window: make it through lifecycle::queue_on_main_thread \
+                 and add it to this test"
+            );
+        }
+    }
+    let lifecycle = include_str!("../src/lifecycle/mod.rs");
+    let console = &lifecycle[lifecycle.find("fn show_console_window").expect("console")..];
+    assert!(console[..console.find("\n    }").expect("end")].contains("queue_on_main_thread("));
+    let commands = include_str!("../src/commands/mod.rs");
+    let open = &commands[commands.find("fn launcher_account_open").expect("command")..];
+    assert!(open[..open.find("\n}").expect("end")].contains("queue_on_main_thread("));
+    assert_eq!(
+        commands.matches(".open(&handle").count(),
+        1,
+        "the account window opens from launcher_account_open alone"
+    );
+}

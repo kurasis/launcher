@@ -33,7 +33,10 @@ pub const MAIN_WINDOW: &str = "main";
 /// and the new window stays empty on Windows (Tauri's known issue for window
 /// creation in synchronous commands and event handlers). Handing the task over
 /// from another thread always queues it.
-fn queue_on_main_thread<R: Runtime>(app: &AppHandle<R>, task: impl FnOnce() + Send + 'static) {
+pub(crate) fn queue_on_main_thread<R: Runtime>(
+    app: &AppHandle<R>,
+    task: impl FnOnce() + Send + 'static,
+) {
     let handle = app.clone();
     let _ = std::thread::Builder::new()
         .name("window-request".into())
