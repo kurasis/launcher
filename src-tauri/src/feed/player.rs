@@ -125,12 +125,11 @@ pub fn show_player_window<R: Runtime>(app: &AppHandle<R>, url: Url, title: Strin
             return;
         }
         let opener = handle.clone();
-        let built = WebviewWindowBuilder::new(&handle, WINDOW, WebviewUrl::External(url))
+        let builder = WebviewWindowBuilder::new(&handle, WINDOW, WebviewUrl::External(url))
             .title(&title)
             .inner_size(960.0, 600.0)
-            .min_inner_size(480.0, 300.0)
-            // Nothing of the window's pages stays on the computer.
-            .incognito(true)
+            .min_inner_size(480.0, 300.0);
+        let built = private_profile(&handle, builder)
             .disable_drag_drop_handler()
             .on_navigation(navigation_allowed)
             // "Open in browser" and the players' own links: the browser, when
@@ -151,4 +150,22 @@ pub fn show_player_window<R: Runtime>(app: &AppHandle<R>, url: Url, title: Strin
             }
         }
     });
+}
+
+/// Keeps the players' cookies and storage away from the launcher's own pages.
+///
+/// On Windows an InPrivate window left the embedded players black (YouTube
+/// and Twitch alike), so there the window gets a WebView2 profile of its own
+/// instead, apart from the launcher's. Elsewhere nothing of its pages stays
+/// on the computer.
+fn private_profile<'a, R: Runtime, M: Manager<R>>(
+    app: &AppHandle<R>,
+    builder: WebviewWindowBuilder<'a, R, M>,
+) -> WebviewWindowBuilder<'a, R, M> {
+    if cfg!(windows)
+        && let Ok(dir) = app.path().app_local_data_dir()
+    {
+        return builder.data_directory(dir.join("player-webview"));
+    }
+    builder.incognito(true)
 }
