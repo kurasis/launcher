@@ -1953,12 +1953,13 @@ archive from the Package workflow, upload it to
   | Version | Loaders                                          | Without a loader                        |
   | ------- | ------------------------------------------------ | --------------------------------------- |
   | 26.x    | Fabric (also runs on Quilt), NeoForge, Forge     | Java agent: skins, capes, HD, animation |
-  | 1.21.x  | Fabric (also runs on Quilt), NeoForge, Forge     | Java agent: skins and capes             |
-  | 1.12.2  | Forge (a coremod; official Fabric has no 1.12.2) | Java agent: skins and capes             |
+  | 1.21.x  | Fabric (also runs on Quilt), NeoForge, Forge     | Java agent: skins, capes, HD, animation |
+  | 1.12.2  | Forge (a coremod; official Fabric has no 1.12.2) | later                                   |
 
-  Without a loader, HD and animation need names inside the game, which Mojang stopped
-  obfuscating with 26.1; on older versions plain Minecraft shows standard-size skins and
-  the launcher suggests Fabric for more.
+  Without a loader the agent rewrites the same game method the mods hook. From 26.1 the
+  game's names are not obfuscated; the 1.21.1 agent is built in Mojang names and remapped
+  to the released game's names, and finds its target from its own remapped descriptor.
+  1.12.2 players run Forge; an agent for plain 1.12.2 waits until someone asks.
 
 - **Textures:** PNG only. A skin frame is 64×64 × k (k = 1, 2, 4, 8, so up to 512×512;
   64×32 only as one frame), a cape frame 64×32 × k. Animation is a vertical strip of
@@ -1982,9 +1983,9 @@ archive from the Package workflow, upload it to
 - **Mod (`mod/`):** one Gradle build. `core` (plain Java 8: the API client, a disk cache
   by hash, PNG checks, frame timing, the whose-skin rule), per game version a `common`
   layer (Mixin hooks in Mojang names, the same source for every loader), thin entry
-  points per loader, a Forge 1.12.2 coremod, and `agent` (a `premain` that patches authlib,
-  whose class names are not obfuscated, and from 26.1 the game itself). One jar per
-  loader and version; the launcher picks the right one.
+  points per loader, a Forge 1.12.2 coremod, and per version an `agent` (a `premain` that
+  rewrites `PlayerInfo.getSkin()` and reuses the same game layer). One jar per loader and
+  version; the launcher picks the right one.
 - **In the launcher (later stage):** Accounts → Launcher account: upload a skin (model
   default or slim, frame duration) and a cape, preview, remove. Installations get the
   matching jar in `mods/` (Fabric, Quilt, NeoForge, Forge) or `-javaagent` (no loader),

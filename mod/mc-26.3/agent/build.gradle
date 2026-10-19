@@ -1,0 +1,54 @@
+plugins {
+    id 'net.fabricmc.fabric-loom' version '1.19.1'
+}
+
+// The Java agent for Minecraft 26.3 with no mod loader: `-javaagent:` on the game's
+// command line. Loom only supplies the game's classes to compile against; the jar holds
+// the core, the game layer shared with the loaders (without its Mixin) and the agent,
+// which rewrites PlayerInfo.getSkin() with the JDK's class-file API.
+base {
+    archivesName = "launcherskins-agent-${minecraft_version}"
+}
+
+java {
+    toolchain { languageVersion = JavaLanguageVersion.of(25) }
+}
+
+sourceSets.main {
+    java.srcDir "${rootDir}/core/src/main/java"
+    java.srcDir "${projectDir}/../common/src/main/java"
+    java.exclude 'app/launcher/skins/mixin/**'
+}
+
+dependencies {
+    minecraft "com.mojang:minecraft:${minecraft_version}"
+}
+
+tasks.withType(JavaCompile).configureEach {
+    options.release = 25
+    options.encoding = 'UTF-8'
+}
+
+jar {
+    manifest {
+        attributes(
+            'Premain-Class': 'app.launcher.skins.agent.Agent',
+            'Implementation-Title': 'Launcher Skins',
+            'Implementation-Version': project.version
+        )
+    }
+}
+
+repositories {
+    mavenCentral()
+}
+
+dependencies {
+    testImplementation platform('org.junit:junit-bom:5.13.4')
+    testImplementation 'org.junit.jupiter:junit-jupiter'
+    testRuntimeOnly 'org.junit.platform:junit-platform-launcher'
+}
+
+test {
+    useJUnitPlatform()
+}

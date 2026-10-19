@@ -50,4 +50,5 @@ jobs:
             mod/*/*/build/libs/launcherskins-*.jar
             !mod/*/*/build/libs/*-sources.jar
             !mod/*/*/build/libs/*-dev.jar
+            !mod/*/*/build/libs/*-named.jar
           retention-days: 14
