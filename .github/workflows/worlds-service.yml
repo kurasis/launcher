@@ -1,0 +1,169 @@
+name: Worlds service
+
+# Rooms, invitations, host leases and join tickets for worlds with friends at
+# worlds.lapi.sh (docs/DECISIONS.md D-068, docs/worlds-with-friends): tests, a
+# release build, and a deploy over SSH to /home/www/lapi/worlds. The server
+# needs deploy/bootstrap.sh run as root once, and again when the nginx files
+# change (the deploy warns). It checks tokens with the account service's key,
+# on the server itself.
+#
+# This repository is public, and so are its workflow logs: nothing anyone
+# wrote and nothing about the server is printed here. "Run workflow" with
+# task=counts shows numbers only.
+#
+# Secret: RELAY_TOKEN (32-128 letters, digits, - or _), the bearer token the
+# relay (relay-service.yml) asks /v1/relay/allow with; the same value goes to
+# both. Without it the relay carries nothing.
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - services/worlds/**
+      - deploy/worlds/**
+      - deploy/*.sh
+      - deploy/nginx/**
+      - .github/workflows/worlds-service.yml
+      - .github/actions/**
+  pull_request:
+    paths:
+      - services/worlds/**
+      - deploy/worlds/**
+      - deploy/*.sh
+      - deploy/nginx/**
+      - .github/workflows/worlds-service.yml
+      - .github/actions/**
+  workflow_dispatch:
+    inputs:
+      task:
+        description: deploy, or counts of rooms
+        type: choice
+        options: [deploy, counts]
+        default: deploy
+
+permissions:
+  contents: read
+
+concurrency:
+  group: worlds-service-${{ github.ref }}
+  cancel-in-progress: false
+
+env:
+  CARGO_TERM_COLOR: always
+  CARGO_INCREMENTAL: 0
+
+jobs:
+  test:
+    name: Test and build
+    if: github.event_name != 'workflow_dispatch' || inputs.task == 'deploy'
+    runs-on: ubuntu-24.04
+    defaults:
+      run:
+        working-directory: services/worlds
+    steps:
+      - uses: actions/checkout@v7
+      - run: rustup show active-toolchain
+      - uses: actions/cache@v6
+        with:
+          path: |
+            ~/.cargo/registry
+            services/worlds/target
+          key: worlds-${{ hashFiles('services/worlds/Cargo.lock', 'rust-toolchain.toml') }}
+      - run: cargo fmt --check
+      - run: cargo clippy --locked --all-targets -- -D warnings
+      - run: cargo test --locked
+      # Ubuntu 24.04's glibc (2.39) is older than Debian 13's (2.41), so the
+      # binary runs there.
+      - run: cargo build --locked --release
+      - name: Check the nginx files
+        working-directory: ${{ github.workspace }}
+        run: bash deploy/check-nginx.sh
+      - name: Package the release
+        run: |
+          mkdir -p ../../dist-worlds/nginx
+          cp target/release/lapi-worlds ../../dist-worlds/
+          cp ../../deploy/nginx/* ../../deploy/worlds/nginx/* ../../dist-worlds/nginx/
+          tar -czf ../../lapi-worlds.tar.gz -C ../../dist-worlds .
+      - uses: actions/upload-artifact@v7
+        with:
+          name: lapi-worlds
+          path: lapi-worlds.tar.gz
+          retention-days: 14
+
+  deploy:
+    # One deploy of this service at a time, from any branch or run.
+    concurrency:
+      group: worlds-deploy
+      cancel-in-progress: false
+    name: Deploy to worlds.lapi.sh
+    # Deploys use the production environment: Settings → Environments →
+    # production → Required reviewers makes each one wait for an approval.
+    environment: production
+    needs: test
+    # Only main reaches production, also when run by hand.
+    if: >-
+      github.ref == 'refs/heads/main'
+      && (github.event_name == 'push'
+          || (github.event_name == 'workflow_dispatch' && inputs.task == 'deploy'))
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/download-artifact@v8
+        with:
+          name: lapi-worlds
+      - uses: ./.github/actions/lapi-ssh
+        with:
+          ssh-key: ${{ secrets.SSH_KEY }}
+          known-hosts: ${{ secrets.SSH_KNOWN_HOSTS }}
+      - uses: ./.github/actions/lapi-upload
+        with:
+          service: worlds
+          target: ${{ secrets.SSH_USER }}@${{ secrets.SSH_HOST }}
+      - name: Deploy
+        env:
+          TARGET: ${{ secrets.SSH_USER }}@${{ secrets.SSH_HOST }}
+          RELAY_TOKEN: ${{ secrets.RELAY_TOKEN }}
+        run: |
+          set +e
+          # The secret travels on standard input; deploy.sh keeps it in
+          # secrets.env (0640) and prints only its name.
+          printf 'LAPI_WORLDS_RELAY_TOKEN=%s\n' "$RELAY_TOKEN" |
+            ssh "$TARGET" \
+              "bash ~/.lapi-bootstrap/$SETUP/deploy.sh worlds $RELEASE $ARCHIVE --secrets" 2>&1 | tee deploy.log
+          status=${PIPESTATUS[1]}
+          if grep -q NOT_BOOTSTRAPPED deploy.log; then
+            echo "::warning::The server is not set up yet: run 'sudo bash ~/lapi-bootstrap/bootstrap.sh <deploy-user>' on it once, then re-run this workflow."
+            exit 0
+          fi
+          if grep -qE 'NGINX_(PENDING|CHANGED)' deploy.log; then
+            echo "::warning::The nginx files on the server are not these: run 'sudo bash ~/lapi-bootstrap/bootstrap.sh <deploy-user>' on it to apply them."
+          fi
+          exit "$status"
+      - uses: ./.github/actions/lapi-check
+        with:
+          service: worlds
+          ssh-host: ${{ secrets.SSH_HOST }}
+
+  counts:
+    name: Worlds counts
+    if: github.event_name == 'workflow_dispatch' && inputs.task == 'counts'
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v7
+      - uses: ./.github/actions/lapi-ssh
+        with:
+          ssh-key: ${{ secrets.SSH_KEY }}
+          known-hosts: ${{ secrets.SSH_KNOWN_HOSTS }}
+      # `counts` prints numbers only: the logs of this public repository must
+      # not hold a nick, a room name or anything else anyone wrote.
+      - name: Counts
+        env:
+          TARGET: ${{ secrets.SSH_USER }}@${{ secrets.SSH_HOST }}
+        run: |
+          {
+            echo '### Worlds with friends'
+            echo '```json'
+            ssh "$TARGET" \
+              'sudo -n -u lapi-worlds /home/www/lapi/worlds/current/lapi-worlds counts'
+            echo '```'
+          } | tee -a "$GITHUB_STEP_SUMMARY"

@@ -93,7 +93,7 @@ fn start_ticks(stat: &str) -> Option<u64> {
 }
 
 /// The current Linux boot ID; `None` elsewhere.
-fn boot_id() -> Option<String> {
+pub(crate) fn boot_id() -> Option<String> {
     if cfg!(target_os = "linux") {
         std::fs::read_to_string("/proc/sys/kernel/random/boot_id")
             .ok()
@@ -146,12 +146,28 @@ pub fn read(root: &DataRoot) -> Option<ActiveRunRecord> {
 
 /// True while the recorded process is still the same process.
 pub fn is_alive(record: &ActiveRunRecord) -> bool {
-    if record.boot_id.is_some() && record.boot_id != boot_id() {
+    is_same_process(
+        record.pid,
+        record.process_start,
+        record.boot_id.as_deref(),
+        &record.executable,
+    )
+}
+
+/// True while `pid` is still the process recorded with this start time, boot
+/// and executable; shared with world server receipts.
+pub(crate) fn is_same_process(
+    pid: u32,
+    process_start: u64,
+    recorded_boot: Option<&str>,
+    executable: &Path,
+) -> bool {
+    if recorded_boot.is_some() && recorded_boot != boot_id().as_deref() {
         return false;
     }
-    process_identity(record.pid).is_some_and(|(start, exe)| {
-        start.abs_diff(record.process_start) <= START_TOLERANCE_SECS
-            && exe.is_none_or(|exe| same_executable(&exe, &record.executable))
+    process_identity(pid).is_some_and(|(start, exe)| {
+        start.abs_diff(process_start) <= START_TOLERANCE_SECS
+            && exe.is_none_or(|exe| same_executable(&exe, executable))
     })
 }
 

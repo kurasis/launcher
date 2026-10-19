@@ -37,8 +37,10 @@ pub mod state;
 pub mod storage;
 pub mod sync;
 pub mod traffic;
+pub mod tunnel;
 pub mod update;
 pub mod validation;
+pub mod worlds;
 
 use std::path::PathBuf;
 use std::sync::Arc;
@@ -527,6 +529,10 @@ fn setup(app: &mut tauri::App) -> Result<(), Box<dyn std::error::Error>> {
     if let Some(launcher) = &launcher {
         launcher.watch_survivor();
     }
+    // So does a world server, until it exits (D-068).
+    if let Some(root) = app.state::<AppState>().data_root() {
+        worlds::host::watch_survivor(&root, app.state::<AppState>().activity());
+    }
     app.manage(commands::Launcher(launcher));
     // Finish a pending sign-out or refresh the saved account in the background.
     let reconnect_auth = Arc::clone(&auth);
@@ -673,7 +679,7 @@ pub fn run() {
                 && matches!(event, tauri::WindowEvent::CloseRequested { .. })
             {
                 let app = window.app_handle();
-                let supervising = app.state::<AppState>().activity().current().is_some();
+                let supervising = app.state::<AppState>().activity().is_busy();
                 app.state::<LifecycleController>()
                     .main_window_closed(app, supervising);
             }
@@ -685,7 +691,7 @@ pub fn run() {
     app.run(|handle, event| match event {
         RunEvent::ExitRequested { api, .. } => {
             let controller = handle.state::<LifecycleController>();
-            let supervising = handle.state::<AppState>().activity().current().is_some();
+            let supervising = handle.state::<AppState>().activity().is_busy();
             if lifecycle::exit_decision(controller.quit_intended(), supervising)
                 == ExitDecision::Prevent
             {

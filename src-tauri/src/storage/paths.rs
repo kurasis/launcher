@@ -249,9 +249,42 @@ impl DataRoot {
         self.runs_dir().join(run.to_string())
     }
 
+    /// Worlds hosted by this launcher (D-068). Not game files: a reset of game
+    /// files keeps them.
+    pub fn worlds_dir(&self) -> PathBuf {
+        self.root.join("worlds")
+    }
+
+    pub fn world_dir(&self, id: WorldId) -> PathBuf {
+        self.worlds_dir().join(id.to_string())
+    }
+
+    pub fn world_file(&self, id: WorldId) -> PathBuf {
+        self.world_dir(id).join("world.json")
+    }
+
+    /// The server's working directory: `server.properties`, `whitelist.json`,
+    /// `eula.txt` and the save in `world/`.
+    pub fn world_server_dir(&self, id: WorldId) -> PathBuf {
+        self.world_dir(id).join("server")
+    }
+
+    /// A Mojang server JAR, shared by every world of its version.
+    pub fn server_jar(&self, sha1: &Sha1) -> PathBuf {
+        self.shared()
+            .join("servers")
+            .join(sha1.as_str())
+            .join("server.jar")
+    }
+
     fn shared(&self) -> PathBuf {
         self.root.join("shared")
     }
+}
+
+/// [`DataRoot::server_jar`] relative to DATA_ROOT, for a download request.
+pub fn server_jar_relative(sha1: &Sha1) -> String {
+    format!("shared/servers/{sha1}/server.jar")
 }
 
 /// Generated instance identifier. Only canonical lowercase hyphenated UUIDs parse,
@@ -294,6 +327,56 @@ impl Serialize for InstanceId {
 }
 
 impl<'de> Deserialize<'de> for InstanceId {
+    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        let text = String::deserialize(deserializer)?;
+        text.parse()
+            .map_err(|e: LauncherError| serde::de::Error::custom(e.message))
+    }
+}
+
+/// Generated world identifier, canonical like [`InstanceId`] (D-068).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord)]
+pub struct WorldId(Uuid);
+
+impl WorldId {
+    pub fn generate() -> Self {
+        Self(Uuid::new_v4())
+    }
+
+    pub fn uuid(self) -> Uuid {
+        self.0
+    }
+}
+
+impl fmt::Display for WorldId {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        self.0.hyphenated().fmt(f)
+    }
+}
+
+impl FromStr for WorldId {
+    type Err = LauncherError;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        let invalid = || LauncherError::invalid_input("The world identifier is invalid.");
+        if s.len() != 36 {
+            return Err(invalid());
+        }
+        let uuid = Uuid::parse_str(s).map_err(|_| invalid())?;
+        if uuid.hyphenated().to_string() != s {
+            return Err(invalid());
+        }
+        Ok(Self(uuid))
+    }
+}
+
+impl Serialize for WorldId {
+    fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        serializer.collect_str(self)
+    }
+}
+
+impl<'de> Deserialize<'de> for WorldId {
     fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
         let text = String::deserialize(deserializer)?;
         text.parse()

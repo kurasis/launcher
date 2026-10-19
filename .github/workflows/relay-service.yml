@@ -1,0 +1,178 @@
+name: Relay service
+
+# The relay of worlds with friends at relay.lapi.sh, on a server of its own
+# (docs/DECISIONS.md D-068, plan W6): tests, a static release build, and a
+# deploy over SSH to /home/www/lapi/relay there. That server needs
+# deploy/relay/bootstrap.sh run as root once.
+#
+# Secrets: RELAY_SSH_HOST, RELAY_SSH_KEY, RELAY_SSH_KNOWN_HOSTS and
+# RELAY_SSH_USER reach the relay's server (never the main one's); RELAY_TOKEN
+# is the bearer token for worlds.lapi.sh's allow list, the same value the
+# Worlds service workflow sends.
+#
+# This repository is public, and so are its workflow logs: nothing about the
+# server is printed here. "Run workflow" with task=counts shows numbers only.
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - services/relay/**
+      - deploy/relay/**
+      - .github/workflows/relay-service.yml
+      - .github/actions/**
+  pull_request:
+    paths:
+      - services/relay/**
+      - deploy/relay/**
+      - .github/workflows/relay-service.yml
+      - .github/actions/**
+  workflow_dispatch:
+    inputs:
+      task:
+        description: deploy, or counts of connections
+        type: choice
+        options: [deploy, counts]
+        default: deploy
+
+permissions:
+  contents: read
+
+concurrency:
+  group: relay-service-${{ github.ref }}
+  cancel-in-progress: false
+
+env:
+  CARGO_TERM_COLOR: always
+  CARGO_INCREMENTAL: 0
+
+jobs:
+  test:
+    name: Test and build
+    if: github.event_name != 'workflow_dispatch' || inputs.task == 'deploy'
+    runs-on: ubuntu-24.04
+    defaults:
+      run:
+        working-directory: services/relay
+    steps:
+      - uses: actions/checkout@v7
+      - run: rustup show active-toolchain
+      - run: rustup target add x86_64-unknown-linux-musl
+      - run: sudo apt-get install -y --no-install-recommends musl-tools
+      - uses: actions/cache@v6
+        with:
+          path: |
+            ~/.cargo/registry
+            services/relay/target
+          key: relay-${{ hashFiles('services/relay/Cargo.lock', 'rust-toolchain.toml') }}
+      - run: cargo fmt --check
+      - run: cargo clippy --locked --all-targets -- -D warnings
+      - run: cargo test --locked
+      # Static, so it runs on whatever Linux the relay's server has.
+      - run: cargo build --locked --release --target x86_64-unknown-linux-musl
+      - name: Check the scripts
+        working-directory: ${{ github.workspace }}
+        run: bash -n deploy/relay/bootstrap.sh && bash -n deploy/relay/deploy.sh
+      - name: Package the release
+        run: |
+          mkdir -p ../../dist-relay
+          cp target/x86_64-unknown-linux-musl/release/lapi-relay ../../dist-relay/
+          tar -czf ../../lapi-relay.tar.gz -C ../../dist-relay .
+      - uses: actions/upload-artifact@v7
+        with:
+          name: lapi-relay
+          path: lapi-relay.tar.gz
+          retention-days: 14
+
+  deploy:
+    concurrency:
+      group: relay-deploy
+      cancel-in-progress: false
+    name: Deploy to relay.lapi.sh
+    environment: production
+    needs: test
+    if: >-
+      github.ref == 'refs/heads/main'
+      && (github.event_name == 'push'
+          || (github.event_name == 'workflow_dispatch' && inputs.task == 'deploy'))
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v7
+      - name: Is the relay's server set?
+        id: ready
+        env:
+          HOST: ${{ secrets.RELAY_SSH_HOST }}
+        run: |
+          if [ -z "$HOST" ]; then
+            echo "::warning::The relay's server is not set yet: add the RELAY_SSH_* secrets, run deploy/relay/bootstrap.sh there, then re-run this workflow."
+            echo "set=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "set=true" >> "$GITHUB_OUTPUT"
+          fi
+      - if: steps.ready.outputs.set == 'true'
+        uses: actions/download-artifact@v8
+        with:
+          name: lapi-relay
+      - if: steps.ready.outputs.set == 'true'
+        uses: ./.github/actions/lapi-ssh
+        with:
+          ssh-key: ${{ secrets.RELAY_SSH_KEY }}
+          known-hosts: ${{ secrets.RELAY_SSH_KNOWN_HOSTS }}
+      - if: steps.ready.outputs.set == 'true'
+        uses: ./.github/actions/lapi-upload
+        with:
+          service: relay
+          target: ${{ secrets.RELAY_SSH_USER }}@${{ secrets.RELAY_SSH_HOST }}
+      - name: Deploy
+        if: steps.ready.outputs.set == 'true'
+        env:
+          TARGET: ${{ secrets.RELAY_SSH_USER }}@${{ secrets.RELAY_SSH_HOST }}
+          RELAY_TOKEN: ${{ secrets.RELAY_TOKEN }}
+        run: |
+          set +e
+          # The token travels on standard input; deploy.sh keeps it in
+          # secrets.env (0640).
+          printf 'RELAY_TOKEN=%s\n' "$RELAY_TOKEN" |
+            ssh "$TARGET" "bash ~/.lapi-bootstrap/$SETUP/relay/deploy.sh $RELEASE $ARCHIVE" 2>&1 | tee deploy.log
+          status=${PIPESTATUS[1]}
+          if grep -q NOT_BOOTSTRAPPED deploy.log; then
+            echo "::warning::The relay's server is not set up yet: run 'sudo bash ~/lapi-bootstrap/relay/bootstrap.sh <deploy-user>' on it once, then re-run this workflow."
+            exit 0
+          fi
+          if grep -q NO_TOKEN deploy.log; then
+            echo "::warning::Add the RELAY_TOKEN secret (32-128 letters, digits, - or _), the same for this workflow and the Worlds service one."
+            exit 0
+          fi
+          exit "$status"
+      - name: Check from outside
+        if: steps.ready.outputs.set == 'true'
+        run: |
+          for i in 1 2 3 4 5 6; do
+            code=$(curl -s -o /dev/null -w '%{http_code}' --max-time 10 https://relay.lapi.sh/generate_204 || true)
+            if [ "$code" = 204 ]; then echo "https://relay.lapi.sh answers"; exit 0; fi
+            sleep 10
+          done
+          echo "::warning::https://relay.lapi.sh does not answer yet (DNS record, ports 443/tcp and 7842/udp, or the certificate)"
+
+  counts:
+    name: Relay counts
+    if: github.event_name == 'workflow_dispatch' && inputs.task == 'counts'
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v7
+      - uses: ./.github/actions/lapi-ssh
+        with:
+          ssh-key: ${{ secrets.RELAY_SSH_KEY }}
+          known-hosts: ${{ secrets.RELAY_SSH_KNOWN_HOSTS }}
+      # Metric names and numbers only, from the relay's own counters.
+      - name: Counts
+        env:
+          TARGET: ${{ secrets.RELAY_SSH_USER }}@${{ secrets.RELAY_SSH_HOST }}
+        run: |
+          {
+            echo '### Relay'
+            echo '```text'
+            ssh "$TARGET" 'curl -fsS --max-time 5 http://127.0.0.1:9090/metrics' |
+              grep -E '^relayserver_[a-z_]+(_total)? [0-9.e+]+$' || echo 'no counters yet'
+            echo '```'
+          } | tee -a "$GITHUB_STEP_SUMMARY"

@@ -9,7 +9,7 @@
 
 use std::collections::VecDeque;
 use std::io::{BufRead, BufReader, Read};
-use std::process::{Child, ChildStderr, ChildStdout, Command, ExitStatus, Stdio};
+use std::process::{Child, ChildStderr, ChildStdin, ChildStdout, Command, ExitStatus, Stdio};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::mpsc;
 use std::sync::{Arc, Mutex, PoisonError};
@@ -157,6 +157,11 @@ impl Supervised {
         self.started
     }
 
+    /// True once the process has exited (its output may still be draining).
+    pub fn has_exited(&self) -> bool {
+        self.exited.load(Ordering::SeqCst)
+    }
+
     /// Requests termination of this exact owned child. Never targets other
     /// processes. Returns false once the child has exited.
     pub fn kill(&self) -> bool {
@@ -169,18 +174,46 @@ impl Supervised {
 /// drain; `on_exit` runs exactly once afterwards with the final outcome. Both run
 /// on the supervisor thread.
 pub fn spawn(
-    mut command: Command,
+    command: Command,
     sink: LineSink,
     on_process_exit: impl FnOnce() + Send + 'static,
     on_exit: impl FnOnce(ChildOutcome) + Send + 'static,
 ) -> std::io::Result<Supervised> {
+    spawn_inner(command, false, sink, on_process_exit, on_exit).map(|(supervised, _)| supervised)
+}
+
+/// [`spawn`] with a piped stdin, for a child that takes console commands (a
+/// world server). The caller owns the returned writer; dropping it closes stdin.
+pub fn spawn_with_stdin(
+    command: Command,
+    sink: LineSink,
+    on_process_exit: impl FnOnce() + Send + 'static,
+    on_exit: impl FnOnce(ChildOutcome) + Send + 'static,
+) -> std::io::Result<(Supervised, ChildStdin)> {
+    let (supervised, stdin) = spawn_inner(command, true, sink, on_process_exit, on_exit)?;
+    let stdin = stdin.ok_or_else(|| std::io::Error::other("stdin was not piped"))?;
+    Ok((supervised, stdin))
+}
+
+fn spawn_inner(
+    mut command: Command,
+    piped_stdin: bool,
+    sink: LineSink,
+    on_process_exit: impl FnOnce() + Send + 'static,
+    on_exit: impl FnOnce(ChildOutcome) + Send + 'static,
+) -> std::io::Result<(Supervised, Option<ChildStdin>)> {
     command
-        .stdin(Stdio::null())
+        .stdin(if piped_stdin {
+            Stdio::piped()
+        } else {
+            Stdio::null()
+        })
         .stdout(Stdio::piped())
         .stderr(Stdio::piped());
     let started = Instant::now();
     let mut child = command.spawn()?;
     let pid = child.id();
+    let stdin = child.stdin.take();
     let stdout = child.stdout.take();
     let stderr = child.stderr.take();
     let (kill_tx, kill_rx) = mpsc::channel::<()>();
@@ -219,12 +252,15 @@ pub fn spawn(
             });
         })?;
 
-    Ok(Supervised {
-        pid,
-        started,
-        kill_tx,
-        exited,
-    })
+    Ok((
+        Supervised {
+            pid,
+            started,
+            kill_tx,
+            exited,
+        },
+        stdin,
+    ))
 }
 
 fn start_readers(

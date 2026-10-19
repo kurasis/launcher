@@ -1,0 +1,12 @@
+# Installed by deploy/bootstrap.sh: a copy of the worlds with friends database every
+# day; a day missed while the server was off is made up at boot.
+[Unit]
+Description=Back up the worlds with friends database daily
+
+[Timer]
+OnCalendar=daily
+RandomizedDelaySec=30min
+Persistent=true
+
+[Install]
+WantedBy=timers.target

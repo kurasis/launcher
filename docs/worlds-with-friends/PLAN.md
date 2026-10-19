@@ -13,7 +13,7 @@ in the window and absent from release builds.
 | Phase                               | Depends on | Outcome                                                                               |
 | ----------------------------------- | ---------- | ------------------------------------------------------------------------------------- |
 | W1 Foundation (P01)                 | —          | Specification, adaptation, integration map, plan and decision D-068 in the repository |
-| W2 Game and server together (P03)   | W1         | Scoped reservations instead of the global activity permit                             |
+| W2 Game and server together (P03)   | W1         | A hosting permit for one world server beside the main activity permit                 |
 | W3 Server on the own computer (P06) | W2         | A real 1.21.1 server installed, started and stopped cleanly                           |
 | W4 Tunnel (P04)                     | W1         | iroh between two launchers, admission frame, bounded TCP bridge, Login Start check    |
 | W5 worlds.lapi.sh (P02, P07)        | W1         | Rooms, roles, invites, devices, host leases, tickets, events                          |
@@ -37,29 +37,40 @@ single-player world from the game (P18).
 
 ## W2 — Game and server together
 
-- Replace `state/activity.rs`'s single permit with reservations taken in a fixed order: memory
-  budget, sorted instance locks, sorted world locks, artifact publication locks. One game and one
-  room server at a time; installs of other instances may run, but never replace a file pinned
-  by a live process.
-- Memory budget shown before start: game heap, server heap, launcher and OS headroom.
-- Surviving processes from `locks/active-run.json` keep their reservations after a restart.
-- Exit: tests for every pair of activities (game + server, install + server, two writers to one
-  world refused, crash leaves reservations held); existing activity tests still pass.
+- `state/activity.rs` keeps its main permit and gains a hosting permit for one world server. A
+  server runs beside a game and beside a backup or restore of an installation; install, repair,
+  data relocation and whole-data work (reset) are refused while it runs, and a server cannot
+  start while they run, because they may replace shared artifacts the server's Java reads.
+- The core counts as supervising while a server runs: closing the window keeps it, and an
+  application Quit asks first.
+- Installs of other instances beside a running server (with pins on live files) are a later
+  refinement, not part of core.
+- Exit: tests for every pair of activities and for racing a server against an install; existing
+  activity tests still pass.
 
 ## W3 — Server on the own computer
 
-- Parse `downloads.server` in descriptors; plan, download and verify the server JAR; install into
-  `worlds/servers/<id>/generations/<generation>/` with `install.lock.json`.
-- World directories `worlds/<worldId>/` with `world.json` (schema version, active generation,
-  last mutation) and typed `server.properties` (name, seed, preset, difficulty, game rules,
-  player limit; `online-mode=false`, `white-list=true`, `enforce-whitelist=true`, loopback bind,
-  random port, RCON with a per-run password). `eula.txt` only after the player accepts the EULA.
-- Supervision through `lifecycle/child.rs`: spawn intent and run receipt before spawn, readiness
-  from the `Done (` line plus a successful local status ping, `stop` through stdin with 60 s
-  grace, explicit force stop marked unclean, output drained and filtered.
-- Debug builds get a local "host only" mode for testing without a room.
-- Exit: CI on Linux installs and runs the real 1.21.1 server (A15, A17, A19, A20); interrupted
-  download and occupied port tests.
+- Parse `downloads.server` in descriptors; plan, download and verify the server JAR through the
+  download executor into `shared/servers/<sha1>/server.jar`, shared by every world of the
+  version; the world pins it by SHA-1, SHA-256 and size (`worlds/install.rs`).
+- World directories `worlds/<worldId>/` with `world.json` (schema version, version, settings,
+  server pin, EULA acceptance, the operation changing the world, how the last run ended) and a
+  `server/` working directory. Typed `server.properties` written before every start (seed,
+  preset, difficulty, game mode, hardcore, PvP, player limit; `online-mode=false`,
+  `white-list=true`, `enforce-whitelist=true`, loopback bind, random ports, RCON with a per-run
+  password); `whitelist.json` with offline UUIDs; `eula.txt` only after the player accepts the
+  EULA. Game rules are set through console commands in W7.
+- Memory budget before start: game heap, server heap and the reserve the game's heap check
+  uses; an impossible budget is refused.
+- Server run receipt `locks/world-server.json`: a server that survives a core restart keeps the
+  hosting permit until it exits and is stopped through RCON, never by PID.
+- Supervision through `lifecycle/child.rs` with a piped stdin: readiness from the `Done (` line
+  plus a local status ping, `stop` through stdin with 60 s grace, explicit force stop recorded as
+  unclean, output classified and dropped (no server log kept).
+- Testing without a room: `src-tauri/tests/live_server.rs`; commands for the interface arrive with
+  W8.
+- Exit: CI on Linux installs and runs the real 1.21.1 server (A15, A17, A19, A20); occupied port
+  and junk input tests.
 
 ## W4 — Tunnel
 
@@ -86,8 +97,9 @@ single-player world from the game (P18).
 
 ## W6 — Relay
 
-- `deploy/relay/`: pinned iroh-relay build, TLS, UDP, systemd; access policy fed by worlds.lapi.sh
-  (30 s allow records renewed every 10 s); per-account connection and byte limits; counters.
+- `services/relay` (iroh-relay pinned as a library) and `deploy/relay/`: TLS, UDP, systemd; access
+  policy fed by worlds.lapi.sh (30 s allow records read every 10 s, guests enroll their key);
+  per-account connection and byte limits; counters.
 - Workflow with `RELAY_SSH_*` secrets; the main server's address never appears there.
 - Exit: unregistered endpoint refused, revoked busy endpoint closed, renewal stopped closes the
   connection (A12, A58). Owner provides the VPS and DNS.

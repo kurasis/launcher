@@ -10,6 +10,7 @@ service runs:
 | friends  | `/home/www/lapi/friends/data/backups/friends-*.db` | `lapi-friends-backup.timer` |
 | skins    | `/home/www/lapi/skins/data/backups/skins-*.db`     | `lapi-skins-backup.timer`   |
 | mods     | `/home/www/lapi/mods/data/backups/catalog-*.db`    | `lapi-mods-backup.timer`    |
+| worlds   | `/home/www/lapi/worlds/data/backups/worlds-*.db`   | `lapi-worlds-backup.timer`  |
 
 The newest 14 copies stay. Each copy can be read only by its service's user. The
 timers are installed by `deploy/bootstrap.sh`. A copy can also be made at any time:
@@ -62,3 +63,19 @@ sudo systemctl start lapi-oauth lapi-friends
 ```
 
 Restore both from the same day when you can: friends refers to accounts by ID.
+
+Worlds with friends (worlds.lapi.sh) keeps host leases in its database. After restoring
+`worlds.db`, put a new random value in `LAPI_WORLDS_AUTHORITY_EPOCH` in
+`/home/www/lapi/worlds/worlds.env` before starting it, so no restored lease or ticket counts
+again (hosts start a new session by themselves):
+
+```sh
+sudo systemctl stop lapi-worlds
+sudo install -o lapi-worlds -g lapi-worlds -m 0600 worlds-<time>.db /home/www/lapi/worlds/data/worlds.db
+sudo rm -f /home/www/lapi/worlds/data/worlds.db-wal /home/www/lapi/worlds/data/worlds.db-shm
+sudo sed -i "s/^LAPI_WORLDS_AUTHORITY_EPOCH=.*/LAPI_WORLDS_AUTHORITY_EPOCH=$(head -c 16 /dev/urandom | od -An -tx1 | tr -d ' \n')/" /home/www/lapi/worlds/worlds.env
+sudo systemctl start lapi-worlds
+```
+
+Its ticket signing key (`data/ticket-key`) is not in the copy; without it the service makes a
+new one, and tickets live only a minute anyway.

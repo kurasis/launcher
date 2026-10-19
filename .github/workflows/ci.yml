@@ -104,3 +104,33 @@ jobs:
 
       - name: Release build of the desktop shell (no installer)
         run: npx tauri build --ci --no-bundle -- --locked
+
+  world-server:
+    # Worlds with Friends W3: Mojang's 1.21.1 server, installed through the
+    # launcher's verified downloads and run in offline mode on loopback. The
+    # test prints fixed words and numbers only.
+    name: World server (linux-x64)
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Install Linux system dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            libwebkit2gtk-4.1-dev libxdo-dev libssl-dev libdbus-1-dev \
+            libayatana-appindicator3-dev librsvg2-dev
+
+      - name: Install pinned Rust toolchain
+        run: |
+          rustup show active-toolchain || rustup toolchain install
+          rustc --version
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: src-tauri
+
+      - name: Install and run a 1.21.1 world server
+        run: >-
+          cargo test --manifest-path src-tauri/Cargo.toml --locked --test live_server
+          -- --ignored --nocapture --test-threads=1

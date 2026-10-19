@@ -1,18 +1,24 @@
-//! The global activity permit (docs/spec/02 "Concurrency and recovery").
+//! The activity permits (docs/spec/02 "Concurrency and recovery", D-068).
 //!
-//! One permit covers installation/repair OR launch preflight/running game/cleanup
+//! The main permit covers installation/repair OR launch preflight/running game/cleanup
 //! across all instances. Install/repair work and the game never overlap, so shared
 //! artifacts and runtimes are never mutated while Java may read them.
+//!
+//! Beside it, one hosting permit covers a world server (Worlds with Friends). A server
+//! runs next to a game, a backup or a restore of an installation, but never next to work
+//! that may replace shared artifacts or whole-data operations: install, repair, data
+//! relocation, and backup or restore work that belongs to no installation (reset).
 
 use std::sync::{Arc, Mutex, PoisonError};
 
 use serde::Serialize;
+use uuid::Uuid;
 
 use crate::error::{ErrorCode, LauncherError, LauncherResult};
 use crate::storage::models::OperationKind;
 use crate::storage::paths::InstanceId;
 
-/// The activity currently holding the permit.
+/// The activity currently holding the main permit.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ActiveActivity {
@@ -22,15 +28,29 @@ pub struct ActiveActivity {
     pub operation_id: String,
 }
 
-#[derive(Debug, Default, Clone)]
-pub struct ActivityRegistry {
-    current: Arc<Mutex<Option<ActiveActivity>>>,
+/// The world server currently holding the hosting permit.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct HostingActivity {
+    pub world_id: Uuid,
+    pub operation_id: String,
 }
 
-/// Releases the permit when dropped.
+#[derive(Debug, Default)]
+struct Slots {
+    current: Option<ActiveActivity>,
+    hosting: Option<HostingActivity>,
+}
+
+#[derive(Debug, Default, Clone)]
+pub struct ActivityRegistry {
+    slots: Arc<Mutex<Slots>>,
+}
+
+/// Releases the main permit when dropped.
 #[derive(Debug)]
 pub struct ActivityPermit {
-    current: Arc<Mutex<Option<ActiveActivity>>>,
+    slots: Arc<Mutex<Slots>>,
     activity: ActiveActivity,
 }
 
@@ -42,10 +62,41 @@ impl ActivityPermit {
 
 impl Drop for ActivityPermit {
     fn drop(&mut self) {
-        let mut current = self.current.lock().unwrap_or_else(PoisonError::into_inner);
-        if current.as_ref() == Some(&self.activity) {
-            *current = None;
+        let mut slots = self.slots.lock().unwrap_or_else(PoisonError::into_inner);
+        if slots.current.as_ref() == Some(&self.activity) {
+            slots.current = None;
         }
+    }
+}
+
+/// Releases the hosting permit when dropped.
+#[derive(Debug)]
+pub struct HostingPermit {
+    slots: Arc<Mutex<Slots>>,
+    activity: HostingActivity,
+}
+
+impl HostingPermit {
+    pub fn activity(&self) -> &HostingActivity {
+        &self.activity
+    }
+}
+
+impl Drop for HostingPermit {
+    fn drop(&mut self) {
+        let mut slots = self.slots.lock().unwrap_or_else(PoisonError::into_inner);
+        if slots.hosting.as_ref() == Some(&self.activity) {
+            slots.hosting = None;
+        }
+    }
+}
+
+/// Whether main-permit work may run while a world server runs.
+fn compatible_with_hosting(kind: OperationKind, instance_id: Option<InstanceId>) -> bool {
+    match kind {
+        OperationKind::Launch => true,
+        OperationKind::Backup | OperationKind::Restore => instance_id.is_some(),
+        OperationKind::Install | OperationKind::Repair | OperationKind::Relocate => false,
     }
 }
 
@@ -54,34 +105,78 @@ impl ActivityRegistry {
         Self::default()
     }
 
-    /// Takes the permit or explains which activity holds it.
+    fn slots(&self) -> std::sync::MutexGuard<'_, Slots> {
+        self.slots.lock().unwrap_or_else(PoisonError::into_inner)
+    }
+
+    /// Takes the main permit or explains which activity holds it.
     pub fn try_acquire(
         &self,
         kind: OperationKind,
         instance_id: Option<InstanceId>,
         operation_id: impl Into<String>,
     ) -> LauncherResult<ActivityPermit> {
-        let mut current = self.current.lock().unwrap_or_else(PoisonError::into_inner);
-        if let Some(active) = current.as_ref() {
+        let mut slots = self.slots();
+        if let Some(active) = slots.current.as_ref() {
             return Err(busy_error(active, kind));
+        }
+        if let Some(hosting) = slots.hosting.as_ref()
+            && !compatible_with_hosting(kind, instance_id)
+        {
+            return Err(hosting_busy_error(hosting));
         }
         let activity = ActiveActivity {
             kind,
             instance_id,
             operation_id: operation_id.into(),
         };
-        *current = Some(activity.clone());
+        slots.current = Some(activity.clone());
         Ok(ActivityPermit {
-            current: Arc::clone(&self.current),
+            slots: Arc::clone(&self.slots),
             activity,
         })
     }
 
+    /// Takes the hosting permit for a world server or explains what prevents it.
+    pub fn try_acquire_hosting(
+        &self,
+        world_id: Uuid,
+        operation_id: impl Into<String>,
+    ) -> LauncherResult<HostingPermit> {
+        let mut slots = self.slots();
+        if let Some(hosting) = slots.hosting.as_ref() {
+            return Err(hosting_busy_error(hosting));
+        }
+        if let Some(active) = slots.current.as_ref()
+            && !compatible_with_hosting(active.kind, active.instance_id)
+        {
+            return Err(busy_error(active, active.kind));
+        }
+        let activity = HostingActivity {
+            world_id,
+            operation_id: operation_id.into(),
+        };
+        slots.hosting = Some(activity.clone());
+        Ok(HostingPermit {
+            slots: Arc::clone(&self.slots),
+            activity,
+        })
+    }
+
+    /// The activity holding the main permit.
     pub fn current(&self) -> Option<ActiveActivity> {
-        self.current
-            .lock()
-            .unwrap_or_else(PoisonError::into_inner)
-            .clone()
+        self.slots().current.clone()
+    }
+
+    /// The world server holding the hosting permit.
+    pub fn hosting(&self) -> Option<HostingActivity> {
+        self.slots().hosting.clone()
+    }
+
+    /// Whether the core supervises anything: work under the main permit or a world server.
+    pub fn is_busy(&self) -> bool {
+        let slots = self.slots();
+        slots.current.is_some() || slots.hosting.is_some()
     }
 
     /// Fails with `INSTANCE_BUSY` when the given instance owns the permit.
@@ -126,9 +221,19 @@ fn busy_error(active: &ActiveActivity, requested: OperationKind) -> LauncherErro
     }
 }
 
+fn hosting_busy_error(hosting: &HostingActivity) -> LauncherError {
+    LauncherError::new(
+        ErrorCode::AppBusy,
+        "Another operation is in progress. Wait for it to finish, or cancel it.",
+    )
+    .with_operation(hosting.operation_id.clone())
+    .with_detail("activeKind", "host")
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::error::SafeValue;
 
     #[test]
     fn permit_is_exclusive_across_instances() {
@@ -208,5 +313,133 @@ mod tests {
             .filter_map(|h| h.join().unwrap())
             .collect();
         assert_eq!(permits.len(), 1);
+    }
+
+    #[test]
+    fn server_runs_beside_a_game_and_instance_backups() {
+        let registry = ActivityRegistry::new();
+        let instance = InstanceId::generate();
+        let host = registry
+            .try_acquire_hosting(Uuid::new_v4(), "host-1")
+            .unwrap();
+        let game = registry
+            .try_acquire(OperationKind::Launch, Some(instance), "run-1")
+            .unwrap();
+        assert!(registry.is_busy());
+        drop(game);
+        for kind in [OperationKind::Backup, OperationKind::Restore] {
+            let permit = registry.try_acquire(kind, Some(instance), "op").unwrap();
+            drop(permit);
+        }
+        assert_eq!(host.activity().operation_id, "host-1");
+        assert!(registry.current().is_none());
+    }
+
+    #[test]
+    fn game_first_then_server() {
+        let registry = ActivityRegistry::new();
+        let _game = registry
+            .try_acquire(OperationKind::Launch, Some(InstanceId::generate()), "run-1")
+            .unwrap();
+        assert!(
+            registry
+                .try_acquire_hosting(Uuid::new_v4(), "host-1")
+                .is_ok()
+        );
+    }
+
+    #[test]
+    fn server_excludes_work_that_replaces_shared_files() {
+        let registry = ActivityRegistry::new();
+        let _host = registry
+            .try_acquire_hosting(Uuid::new_v4(), "host-1")
+            .unwrap();
+        let instance = Some(InstanceId::generate());
+        for (kind, instance_id) in [
+            (OperationKind::Install, instance),
+            (OperationKind::Repair, instance),
+            (OperationKind::Relocate, None),
+            (OperationKind::Backup, None),
+            (OperationKind::Restore, None),
+        ] {
+            let error = registry.try_acquire(kind, instance_id, "op").unwrap_err();
+            assert_eq!(error.code, ErrorCode::AppBusy, "{kind:?}");
+            assert_eq!(error.operation_id.as_deref(), Some("host-1"));
+            let details = error.safe_details.as_ref().unwrap();
+            assert_eq!(
+                details.get("activeKind"),
+                Some(&SafeValue::Text("host".to_owned()))
+            );
+        }
+        assert!(registry.current().is_none(), "refusals leave no permit");
+    }
+
+    #[test]
+    fn install_or_reset_blocks_a_server() {
+        let registry = ActivityRegistry::new();
+        for (kind, instance_id) in [
+            (OperationKind::Install, Some(InstanceId::generate())),
+            (OperationKind::Repair, Some(InstanceId::generate())),
+            (OperationKind::Relocate, None),
+            (OperationKind::Backup, None),
+        ] {
+            let permit = registry.try_acquire(kind, instance_id, "op-1").unwrap();
+            let error = registry
+                .try_acquire_hosting(Uuid::new_v4(), "host-1")
+                .unwrap_err();
+            assert_eq!(error.code, ErrorCode::AppBusy, "{kind:?}");
+            assert_eq!(error.operation_id.as_deref(), Some("op-1"));
+            drop(permit);
+        }
+        assert!(registry.hosting().is_none());
+    }
+
+    #[test]
+    fn one_server_at_a_time_and_released_on_drop() {
+        let registry = ActivityRegistry::new();
+        let host = registry
+            .try_acquire_hosting(Uuid::new_v4(), "host-1")
+            .unwrap();
+        let error = registry
+            .try_acquire_hosting(Uuid::new_v4(), "host-2")
+            .unwrap_err();
+        assert_eq!(error.code, ErrorCode::AppBusy);
+        assert_eq!(error.operation_id.as_deref(), Some("host-1"));
+        drop(host);
+        assert!(!registry.is_busy());
+        assert!(
+            registry
+                .try_acquire(OperationKind::Install, Some(InstanceId::generate()), "op")
+                .is_ok()
+        );
+    }
+
+    #[test]
+    fn concurrent_server_and_install_never_overlap() {
+        for _ in 0..200 {
+            let registry = ActivityRegistry::new();
+            let barrier = Arc::new(std::sync::Barrier::new(2));
+            let install = {
+                let registry = registry.clone();
+                let barrier = Arc::clone(&barrier);
+                std::thread::spawn(move || {
+                    barrier.wait();
+                    registry
+                        .try_acquire(OperationKind::Install, Some(InstanceId::generate()), "op")
+                        .ok()
+                })
+            };
+            let host = {
+                let registry = registry.clone();
+                let barrier = Arc::clone(&barrier);
+                std::thread::spawn(move || {
+                    barrier.wait();
+                    registry.try_acquire_hosting(Uuid::new_v4(), "host").ok()
+                })
+            };
+            let install = install.join().unwrap();
+            let host = host.join().unwrap();
+            assert!(install.is_some() != host.is_some());
+        }
     }
 }

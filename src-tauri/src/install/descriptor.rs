@@ -95,6 +95,9 @@ pub struct Descriptor {
     /// Mojang runtime component (`javaVersion.component`), e.g. `java-runtime-delta`.
     pub java_component: Option<String>,
     pub client: Download,
+    /// The dedicated server JAR (`downloads.server`), absent for versions Mojang
+    /// published without one; only world hosting uses it (D-068).
+    pub server: Option<Download>,
     /// Mojang's client mappings (1.14.4 and later); Forge's installer needs them.
     pub client_mappings: Option<Download>,
     pub asset_index: AssetIndexRef,
@@ -225,6 +228,10 @@ pub fn parse(bytes: &[u8], expected_id: &str) -> LauncherResult<Descriptor> {
             .ok_or_else(|| unsupported("downloads.client"))?,
         "downloads.client",
     )?;
+    let server = match downloads.get("server") {
+        None => None,
+        Some(server) => Some(download(server, "downloads.server")?),
+    };
     let client_mappings = match downloads.get("client_mappings") {
         None => None,
         Some(mappings) => Some(download(mappings, "downloads.client_mappings")?),
@@ -324,6 +331,7 @@ pub fn parse(bytes: &[u8], expected_id: &str) -> LauncherResult<Descriptor> {
         java_major,
         java_component,
         client,
+        server,
         client_mappings,
         asset_index,
         logging,

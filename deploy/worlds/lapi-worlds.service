@@ -1,0 +1,51 @@
+# Installed by deploy/bootstrap.sh as /etc/systemd/system/lapi-worlds.service.
+[Unit]
+Description=Sferum launcher worlds with friends (worlds.lapi.sh, D-068)
+After=network.target lapi-oauth.service
+
+[Service]
+User=lapi-worlds
+Group=lapi-worlds
+EnvironmentFile=/home/www/lapi/worlds/worlds.env
+EnvironmentFile=-/home/www/lapi/worlds/secrets.env
+ExecStart=/home/www/lapi/worlds/current/lapi-worlds serve
+Restart=on-failure
+RestartSec=3
+UMask=0027
+NoNewPrivileges=yes
+ProtectSystem=strict
+# /home holds nothing else for it: only its own folder is there, its data writable.
+ProtectHome=tmpfs
+BindReadOnlyPaths=/home/www/lapi/worlds
+BindPaths=/home/www/lapi/worlds/data
+ReadWritePaths=/home/www/lapi/worlds/data
+PrivateTmp=yes
+PrivateDevices=yes
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectControlGroups=yes
+ProtectClock=yes
+ProtectHostname=yes
+# Out: the account service on this server only.
+RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX
+IPAddressDeny=any
+IPAddressAllow=localhost
+RestrictNamespaces=yes
+RestrictRealtime=yes
+LockPersonality=yes
+MemoryDenyWriteExecute=yes
+SystemCallArchitectures=native
+# What a network service needs; anything else fails with EPERM.
+SystemCallFilter=@system-service
+SystemCallErrorNumber=EPERM
+ProtectKernelLogs=yes
+ProtectProc=invisible
+ProcSubset=pid
+RestrictSUIDSGID=yes
+RemoveIPC=yes
+CapabilityBoundingSet=
+MemoryMax=512M
+TasksMax=256
+
+[Install]
+WantedBy=multi-user.target

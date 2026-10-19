@@ -1,0 +1,52 @@
+# Installed by deploy/relay/bootstrap.sh as /etc/systemd/system/lapi-relay.service
+# on the relay's own server (D-068, plan W6).
+[Unit]
+Description=Sferum launcher relay for worlds with friends (relay.lapi.sh, D-068)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+User=lapi-relay
+Group=lapi-relay
+EnvironmentFile=/home/www/lapi/relay/relay.env
+EnvironmentFile=-/home/www/lapi/relay/secrets.env
+ExecStart=/home/www/lapi/relay/current/lapi-relay serve
+Restart=on-failure
+RestartSec=3
+UMask=0077
+# Ports 80 and 443 without root.
+AmbientCapabilities=CAP_NET_BIND_SERVICE
+CapabilityBoundingSet=CAP_NET_BIND_SERVICE
+NoNewPrivileges=yes
+ProtectSystem=strict
+ProtectHome=tmpfs
+BindReadOnlyPaths=/home/www/lapi/relay
+BindPaths=/home/www/lapi/relay/data
+ReadWritePaths=/home/www/lapi/relay/data
+PrivateTmp=yes
+PrivateDevices=yes
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectControlGroups=yes
+ProtectClock=yes
+ProtectHostname=yes
+# Out: worlds.lapi.sh (the allow list) and Let's Encrypt; in: the launchers.
+RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX
+RestrictNamespaces=yes
+RestrictRealtime=yes
+LockPersonality=yes
+MemoryDenyWriteExecute=yes
+SystemCallArchitectures=native
+SystemCallFilter=@system-service
+SystemCallErrorNumber=EPERM
+ProtectKernelLogs=yes
+ProtectProc=invisible
+ProcSubset=pid
+RestrictSUIDSGID=yes
+RemoveIPC=yes
+MemoryMax=1G
+TasksMax=512
+LimitNOFILE=65536
+
+[Install]
+WantedBy=multi-user.target
