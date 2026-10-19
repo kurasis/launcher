@@ -2129,6 +2129,22 @@ archive from the Package workflow, upload it to
   Graph tags, and search (after its redirect) the App Router's data, with no Cloudflare
   check for the server's own address: the card and search can come from the pages
   without residential proxies for now.
+- **Import (the adapter, `services/mods/src/curseforge.rs`).** A player gives a page
+  address (`curseforge.com/minecraft/<class>/<slug>`, or `…/files/<id>` for one file);
+  classes are mc-mods, modpacks, texture-packs, shaders, data-packs and worlds. A link
+  straight to forgecdn fails with `curseforge_file_link`, since it names no project.
+  The project's card (ID, name, summary, description, logo, authors, screenshots,
+  categories, downloads, dates) comes from its page: the project object in the App
+  Router stream, with JSON-LD and Open Graph for what it lacks. Its files come from the
+  site's list, every page up to 20 pages of 50; CurseForge's files are our versions.
+  As with Modrinth, the newest release of each game version and loader is fetched at
+  once, with its dependencies and changelog; other files are listed and fetched when
+  asked. The site gives no hashes, so a file is kept only when its size is the one the
+  site lists, and its SHA-1 and SHA-512 are made here (the launcher's lookup finds it).
+  Required dependencies are queued by their ID, class and slug, so one whose page fails
+  still comes in, named by its slug until its page answers. Files marked early access
+  or not released are left out. `lapi-mods probe` reads the JEI page with the same
+  parser and prints which fields it found.
 
 ## D-067 — Start page feed at feed.lapi.sh
 

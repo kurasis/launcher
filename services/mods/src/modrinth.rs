@@ -297,6 +297,7 @@ pub fn version(value: &Value) -> Option<SourceVersion> {
         loaders: words("loaders"),
         files,
         dependencies,
+        details: true,
     })
 }
 

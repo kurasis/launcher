@@ -573,6 +573,23 @@ impl Client {
         self.exits.get(exit).is_some_and(|e| e.proxy.is_some())
     }
 
+    /// A page's text (at most `max` bytes, invalid UTF-8 replaced); `None`
+    /// when the source has no such page.
+    pub async fn page(&self, url: &str, max: u64) -> Result<Option<String>, FetchError> {
+        let part = self.tmp.join(format!("{}.html", uuid::Uuid::new_v4()));
+        let result = self.get(url, &part, max, false).await;
+        let body = match std::fs::metadata(&part) {
+            Ok(m) if m.len() > max => Err(FetchError::TooBig),
+            _ => std::fs::read(&part).map_err(|_| FetchError::Network(-1)),
+        };
+        let _ = std::fs::remove_file(&part);
+        match result {
+            Ok(_) => Ok(Some(String::from_utf8_lossy(&body?).into_owned())),
+            Err(FetchError::NotFound) => Ok(None),
+            Err(e) => Err(e),
+        }
+    }
+
     /// A JSON answer (at most 16 MB); `None` when the source has no such thing.
     pub async fn json(&self, url: &str) -> Result<Option<serde_json::Value>, FetchError> {
         let part = self.tmp.join(format!("{}.json", uuid::Uuid::new_v4()));

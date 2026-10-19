@@ -1,7 +1,7 @@
 # Catalog of mods (mods.lapi.sh)
 
 The `lapi-mods` service (D-066) keeps the catalog of mods, modpacks, resource packs,
-shaders and worlds that players add from Modrinth (CurseForge later), with every page,
+shaders and worlds that players add from Modrinth and CurseForge, with every page,
 picture and file, for good. Its API is `https://mods.lapi.sh`; nginx serves the kept
 files at `https://files-mods.lapi.sh` straight from disk. The workflow
 `.github/workflows/mods-service.yml` tests, builds and deploys it from `main`.

@@ -117,7 +117,7 @@ fn problem_of(status: u16, body: &Value) -> LauncherError {
             "Too many requests to the catalog in a short time. Try again later.",
         ),
         (400, "bad_input") => LauncherError::invalid_input(
-            "Paste the address of a project on Modrinth, or type its name.",
+            "Paste the address of a project on Modrinth or CurseForge, or type its name.",
         ),
         (400, "not_offered") | (409, "not_choosing") => {
             LauncherError::invalid_input("This request no longer waits for a choice.")
@@ -711,7 +711,7 @@ pub fn import_input(text: &str) -> LauncherResult<String> {
     let text = text.trim();
     if text.is_empty() || text.chars().count() > 512 || text.chars().any(char::is_control) {
         return Err(LauncherError::invalid_input(
-            "Paste the address of a project on Modrinth, or type its name.",
+            "Paste the address of a project on Modrinth or CurseForge, or type its name.",
         ));
     }
     Ok(text.to_owned())

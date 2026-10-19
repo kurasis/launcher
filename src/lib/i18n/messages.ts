@@ -1387,7 +1387,7 @@ export type Messages = {
       };
       readonly failures: {
         readonly bad_input: string;
-        readonly curseforge_later: string;
+        readonly curseforge_file_link: string;
         readonly nothing_found: string;
         readonly not_found: string;
         readonly timeout: string;

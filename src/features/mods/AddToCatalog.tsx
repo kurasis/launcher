@@ -141,7 +141,7 @@ export function RequestProgress({
 }
 
 /**
- * "Add to the catalog": a link to a project on Modrinth or its name (D-066).
+ * "Add to the catalog": a link to a project on Modrinth or CurseForge, or a name (D-066).
  * The dialog can be closed; the request stays in "My requests".
  */
 export function AddToCatalog({

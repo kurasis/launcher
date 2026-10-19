@@ -22,7 +22,7 @@ use tower::ServiceExt;
 use crate::fetch::{self, Client, Curl, FetchError, Reply, Transport};
 use crate::import::{self, now};
 use crate::input::{self, Input};
-use crate::{App, Urls, model, modrinth};
+use crate::{App, Urls, curseforge, model, modrinth};
 
 const ISSUER: &str = "https://oauth.example";
 const FILES: &str = "https://files.example";
@@ -629,7 +629,7 @@ async fn requests_that_cannot_be_had_fail_with_a_reason() {
             1,
             "POST",
             "/v1/imports",
-            json!({ "input": "https://www.curseforge.com/minecraft/mc-mods/jei" }),
+            json!({ "input": "https://edge.forgecdn.net/files/9255/357/jei.jar" }),
         )
         .await;
     t.sites.json(
@@ -647,7 +647,7 @@ async fn requests_that_cannot_be_had_fail_with_a_reason() {
     t.drain().await;
     for (request, error) in [
         (missing, "not_found"),
-        (curse, "curseforge_later"),
+        (curse, "curseforge_file_link"),
         (plugin, "unsupported_kind"),
     ] {
         let (_, request) = t
@@ -798,8 +798,34 @@ fn input_reads_addresses_and_names() {
     );
     assert_eq!(
         input::parse("https://www.curseforge.com/minecraft/mc-mods/jei"),
-        Some(Input::CurseForge)
+        Some(Input::CurseForge {
+            class: "mc-mods".into(),
+            slug: "jei".into(),
+            file: None
+        })
     );
+    assert_eq!(
+        input::parse("curseforge.com/minecraft/Texture-Packs/Faithful-32x/files/4567890"),
+        Some(Input::CurseForge {
+            class: "texture-packs".into(),
+            slug: "faithful-32x".into(),
+            file: Some(4_567_890)
+        })
+    );
+    assert_eq!(
+        input::parse("https://edge.forgecdn.net/files/9255/357/jei.jar"),
+        Some(Input::CurseForgeFile)
+    );
+    for bad in [
+        "https://www.curseforge.com/minecraft/bukkit-plugins/worldedit",
+        "https://www.curseforge.com/minecraft/mc-mods/jei/files/0",
+        "https://www.curseforge.com/minecraft/mc-mods/jei/files/12345678901",
+        "https://www.curseforge.com/minecraft/mc-mods/j%22ei",
+        "https://www.curseforge.com/wow/addons/details",
+        "https://www.curseforge.com/minecraft/mc-mods",
+    ] {
+        assert_eq!(input::parse(bad), None, "{bad}");
+    }
     assert_eq!(
         input::parse("  Just Enough Items "),
         Some(Input::Name("Just Enough Items".into()))
@@ -861,6 +887,7 @@ fn the_newest_release_is_chosen_for_each_pair() {
             loaders: loaders.iter().map(|s| s.to_string()).collect(),
             files: Vec::new(),
             dependencies: Vec::new(),
+            details: true,
         }
     };
     let versions = [
@@ -1207,4 +1234,418 @@ async fn the_probe_asks_every_exit_and_prints_no_answer_text() {
         sites.asked("https://edge.forgecdn.net/files/4000/123/jei.jar"),
         0
     );
+}
+
+const JEI: u64 = 238_222;
+const ARCHITECTURY: u64 = 419_699;
+
+fn cf_file(project: u64, id: u64, name: &str, size: usize, release: u64, date: &str) -> Value {
+    json!({
+        "id": id, "projectId": project, "displayName": name, "fileName": name,
+        "fileLength": size, "status": 4, "releaseType": release, "dateCreated": date,
+        "gameVersions": ["Forge", "1.20.1", "Client", "Server"], "totalDownloads": 10,
+        "isEarlyAccessContent": false,
+    })
+}
+
+/// A file's download link: the site's redirect to forgecdn, and the file.
+fn cf_download(sites: &Sites, project: u64, id: u64, name: &str, bytes: &[u8]) {
+    let cdn = format!(
+        "https://edge.forgecdn.net/files/{}/{}/{name}",
+        id / 1000,
+        id % 1000
+    );
+    sites.put(
+        &curseforge::download_url(project, id),
+        Page {
+            status: 307,
+            location: Some(cdn.clone()),
+            ..Page::default()
+        },
+    );
+    sites.put(&cdn, ok(bytes.to_vec()));
+}
+
+/// The page of a project as the site sends it: the App Router stream in two
+/// pushes, with an object of the same slug before the project.
+fn cf_page(project: &Value) -> String {
+    let rsc = format!(
+        "1:{}\n",
+        json!(["$", "div", null, { "breadcrumb": { "slug": "jei", "name": "Decoy" }, "project": project }])
+    );
+    let (a, b) = rsc.split_at(rsc.len() / 2);
+    format!(
+        "<html><head><meta property=\"og:title\" content=\"JEI &amp; more\"></head><body>\
+         <script>self.__next_f.push({})</script><script>self.__next_f.push({})</script>\
+         </body></html>",
+        json!([1, a]),
+        json!([1, b])
+    )
+}
+
+/// JEI with three files for one game version and loader, one early-access
+/// and one not released; the newest release needs Architectury, whose page
+/// is missing.
+fn curseforge_site(sites: &Sites) -> HashMap<u64, Vec<u8>> {
+    let mut jars = HashMap::new();
+    let files = [
+        (5002, "jei-15.3-beta.jar", 2, "2024-03-01T00:00:00Z"),
+        (5001, "jei-15.2.jar", 1, "2024-02-01T00:00:00Z"),
+        (5000, "jei-15.1.jar", 1, "2024-01-01T00:00:00Z"),
+    ];
+    let mut list = Vec::new();
+    for (id, name, release, date) in files {
+        let bytes = format!("jar of {name}").into_bytes();
+        cf_download(sites, JEI, id, name, &bytes);
+        let file = cf_file(JEI, id, name, bytes.len(), release, date);
+        sites.json(&curseforge::file_url(JEI, id), json!({ "data": file }));
+        list.push(file);
+        jars.insert(id, bytes);
+    }
+    let mut early = cf_file(JEI, 5003, "jei-16.jar", 5, 1, "2024-04-01T00:00:00Z");
+    early["isEarlyAccessContent"] = true.into();
+    let mut held = cf_file(JEI, 5004, "jei-17.jar", 5, 1, "2024-05-01T00:00:00Z");
+    held["status"] = 1.into();
+    list.insert(0, early);
+    list.insert(0, held);
+    sites.json(
+        &curseforge::files_url(JEI, 0),
+        json!({ "data": list, "pagination": { "index": 0, "pageSize": 50, "totalCount": 5 } }),
+    );
+    sites.json(
+        &curseforge::dependencies_url(JEI, 5001),
+        json!({ "data": [
+            { "id": ARCHITECTURY, "slug": "architectury-api", "type": "RequiredDependency",
+              "categoryClass": { "slug": "mc-mods" } },
+            { "id": 77, "slug": "some-addon", "type": "OptionalDependency",
+              "categoryClass": { "slug": "mc-mods" } },
+            { "id": 78, "slug": "a-tool", "type": "Tool", "categoryClass": { "slug": "mc-mods" } },
+        ]}),
+    );
+    sites.json(
+        &curseforge::changelog_url(JEI, 5001),
+        json!({ "changelogBody": "<p>Fixed\u{202E} recipes</p>" }),
+    );
+    let project = json!({
+        "id": JEI, "slug": "jei", "gameId": 432, "classId": 6,
+        "name": "Just Enough Items", "summary": "View items and recipes",
+        "logo": { "url": "https://media.forgecdn.net/avatars/1/1/jei.png" },
+        "authors": [{ "name": "mezz" }],
+        "screenshots": [{ "url": "https://media.forgecdn.net/attachments/1/2/shot.png", "title": "Shot" },
+                        { "url": "https://evil.example/x.png" }],
+        "categories": [{ "slug": "api" }, { "slug": "BAD CATEGORY!" }],
+        "downloadCount": 5000,
+        "dateCreated": "2015-11-21T00:00:00Z", "dateModified": "2024-03-01T00:00:00Z",
+    });
+    sites.put(
+        &curseforge::page_url("mc-mods", "jei"),
+        ok(cf_page(&project)),
+    );
+    sites.put(
+        "https://media.forgecdn.net/avatars/1/1/jei.png",
+        ok(png(200, 200)),
+    );
+    sites.put(
+        "https://media.forgecdn.net/attachments/1/2/shot.png",
+        ok(png(800, 400)),
+    );
+    // Architectury: one file, its page missing.
+    let bytes = b"jar of architectury".to_vec();
+    cf_download(sites, ARCHITECTURY, 6000, "architectury.jar", &bytes);
+    sites.json(
+        &curseforge::files_url(ARCHITECTURY, 0),
+        json!({
+            "data": [cf_file(ARCHITECTURY, 6000, "architectury.jar", bytes.len(), 1, "2024-01-01T00:00:00Z")],
+            "pagination": { "index": 0, "pageSize": 50, "totalCount": 1 },
+        }),
+    );
+    jars.insert(6000, bytes);
+    jars
+}
+
+#[tokio::test]
+async fn a_curseforge_address_brings_the_project_its_newest_files_and_dependencies() {
+    let t = setup();
+    let jars = curseforge_site(&t.sites);
+    let (status, request) = t
+        .player(
+            1,
+            "POST",
+            "/v1/imports",
+            json!({ "input": "https://www.curseforge.com/minecraft/mc-mods/jei" }),
+        )
+        .await;
+    assert_eq!(status, StatusCode::ACCEPTED, "{request}");
+    t.drain().await;
+    let id = request["id"].as_str().unwrap();
+    let (_, request) = t
+        .player(1, "GET", &format!("/v1/imports/{id}"), Value::Null)
+        .await;
+    assert_eq!(request["state"], "ready", "{request}");
+
+    let (status, project) = t.get("/v1/projects/jei").await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(project["id"], request["projectId"]);
+    assert_eq!(project["title"], "Just Enough Items");
+    assert_eq!(project["summary"], "View items and recipes");
+    assert_eq!(project["authors"][0]["name"], "mezz");
+    assert_eq!(project["categories"], json!(["api"]));
+    assert!(
+        project["icon"]
+            .as_str()
+            .unwrap()
+            .starts_with("https://files.example/i/")
+    );
+    // Pictures from sites we do not fetch are left out.
+    assert_eq!(project["gallery"].as_array().unwrap().len(), 1);
+
+    let (_, versions) = t
+        .get("/v1/projects/jei/versions?game=1.20.1&loader=forge")
+        .await;
+    let versions = versions["versions"].as_array().unwrap().clone();
+    let saved: Vec<(&str, &str)> = versions
+        .iter()
+        .map(|v| (v["number"].as_str().unwrap(), v["saved"].as_str().unwrap()))
+        .collect();
+    assert_eq!(
+        saved,
+        [
+            ("jei-15.3-beta.jar", "none"),
+            ("jei-15.2.jar", "all"),
+            ("jei-15.1.jar", "none")
+        ]
+    );
+    assert_eq!(versions[0]["channel"], "beta");
+    assert_eq!(versions[1]["changelog"], "<p>Fixed recipes</p>");
+    let (sha1, _, sha256) = hashes(&jars[&5001]);
+    assert_eq!(versions[1]["files"][0]["sha256"], sha256.as_str());
+    assert_eq!(
+        std::fs::read(t.app.blobs.path(&sha256)).unwrap(),
+        jars[&5001]
+    );
+    // Required dependencies came along without their page; optional ones
+    // and tools did not.
+    let dependencies = versions[1]["dependencies"].as_array().unwrap();
+    assert_eq!(dependencies.len(), 2);
+    let required = dependencies
+        .iter()
+        .find(|d| d["kind"] == "required")
+        .unwrap();
+    let (_, architectury) = t
+        .get(&format!(
+            "/v1/projects/{}",
+            required["projectId"].as_str().unwrap()
+        ))
+        .await;
+    assert_eq!(architectury["title"], "architectury-api");
+    let (_, api_versions) = t
+        .get(&format!(
+            "/v1/projects/{}/versions",
+            required["projectId"].as_str().unwrap()
+        ))
+        .await;
+    assert_eq!(api_versions["versions"][0]["saved"], "all");
+    assert_eq!(t.sites.asked(&curseforge::files_url(77, 0)), 0);
+
+    // The launcher finds a kept file by its SHA-1, made here.
+    let (_, found) = t
+        .call(None, "POST", "/v1/lookup", json!({ "hashes": [sha1] }))
+        .await;
+    assert_eq!(found["found"].as_array().unwrap().len(), 1, "{found}");
+
+    // Read again: the kept file stays kept and is not downloaded again.
+    import::queue_project(&t.app, curseforge::SOURCE, "mc-mods/jei", 0, None, 0).unwrap();
+    t.drain().await;
+    assert_eq!(t.sites.asked(&curseforge::files_url(JEI, 0)), 2);
+    let (_, again) = t
+        .get("/v1/projects/jei/versions?game=1.20.1&loader=forge")
+        .await;
+    assert_eq!(again["versions"][1]["saved"], "all");
+    assert_eq!(again["versions"][1]["files"][0]["sha256"], sha256.as_str());
+    assert_eq!(again["versions"][1]["changelog"], "<p>Fixed recipes</p>");
+    assert_eq!(t.sites.asked(&curseforge::download_url(JEI, 5001)), 1);
+
+    // A file's address brings that file.
+    let (_, older) = t
+        .player(
+            2,
+            "POST",
+            "/v1/imports",
+            json!({ "input": "https://www.curseforge.com/minecraft/mc-mods/jei/files/5000" }),
+        )
+        .await;
+    t.drain().await;
+    let (_, older) = t
+        .player(
+            2,
+            "GET",
+            &format!("/v1/imports/{}", older["id"].as_str().unwrap()),
+            Value::Null,
+        )
+        .await;
+    assert_eq!(older["state"], "ready", "{older}");
+    let (_, versions) = t
+        .get("/v1/projects/jei/versions?game=1.20.1&loader=forge")
+        .await;
+    assert_eq!(versions["versions"][2]["saved"], "all");
+}
+
+#[tokio::test]
+async fn a_curseforge_file_of_another_size_is_not_kept() {
+    let t = setup();
+    curseforge_site(&t.sites);
+    let wrong = cf_file(JEI, 5001, "jei-15.2.jar", 3, 1, "2024-02-01T00:00:00Z");
+    t.sites.json(
+        &curseforge::files_url(JEI, 0),
+        json!({ "data": [wrong], "pagination": { "totalCount": 1 } }),
+    );
+    t.player(
+        1,
+        "POST",
+        "/v1/imports",
+        json!({ "input": "https://www.curseforge.com/minecraft/mc-mods/jei" }),
+    )
+    .await;
+    t.drain().await;
+    let (_, versions) = t.get("/v1/projects/jei/versions").await;
+    assert_ne!(versions["versions"][0]["saved"], "all", "{versions}");
+}
+
+#[test]
+fn curseforge_answers_are_checked() {
+    let good = json!({
+        "id": 9, "projectId": 1, "displayName": "My Mod 1.0\u{0}", "fileName": "my-mod.jar",
+        "fileLength": 100, "status": 10, "releaseType": 2, "dateCreated": "2024-01-01T00:00:00Z",
+        "gameVersions": ["NeoForge", "Fabric", "1.21.1", "24w14a", "Client", "Java 21", "1.21; rm -rf"],
+    });
+    let file = curseforge::file(1, &good).unwrap();
+    assert_eq!(file.source_id, "9");
+    assert_eq!(file.number, "My Mod 1.0");
+    assert_eq!(file.games, ["1.21.1", "24w14a"]);
+    assert_eq!(file.loaders, ["fabric", "neoforge"]);
+    assert_eq!(file.channel, "beta");
+    assert_eq!(file.files[0].url, curseforge::download_url(1, 9));
+    assert_eq!(file.files[0].size, 100);
+    assert!(file.files[0].sha1.is_none());
+    assert!(!file.details);
+    for (key, value) in [
+        ("projectId", json!(2)),
+        ("status", json!(1)),
+        ("isEarlyAccessContent", json!(true)),
+        ("fileName", json!("../../a.jar")),
+        ("fileName", json!(".hidden")),
+        ("id", json!(-1)),
+    ] {
+        let mut bad = good.clone();
+        bad[key] = value;
+        assert!(curseforge::file(1, &bad).is_none(), "{key}");
+    }
+    let (list, entries, total) = curseforge::files(
+        1,
+        &json!({ "data": [good, { "id": "x" }], "pagination": { "totalCount": 1_000_000_000_000u64 } }),
+    );
+    assert_eq!((list.len(), entries, total), (1, 2, 100_000));
+    assert_eq!(curseforge::files(1, &json!("junk")).1, 0);
+
+    let needed = curseforge::dependencies(&json!({ "data": [
+        { "id": 5, "slug": "lib", "type": "RequiredDependency", "categoryClass": { "slug": "mc-mods" } },
+        { "id": 6, "slug": "pack", "type": "Incompatible", "categoryClass": { "slug": "texture-packs" } },
+        { "id": 7, "slug": "../x", "type": "RequiredDependency", "categoryClass": { "slug": "mc-mods" } },
+        { "id": 8, "slug": "plugin", "type": "RequiredDependency", "categoryClass": { "slug": "bukkit-plugins" } },
+        { "id": 0, "slug": "zero", "type": "RequiredDependency", "categoryClass": { "slug": "mc-mods" } },
+        { "id": 9, "slug": "tool", "type": "Tool", "categoryClass": { "slug": "mc-mods" } },
+    ]}));
+    let got: Vec<(&str, &str, &str, &str)> = needed
+        .iter()
+        .map(|n| {
+            (
+                n.dependency.kind.as_str(),
+                n.dependency.project.as_deref().unwrap(),
+                n.class,
+                n.slug.as_str(),
+            )
+        })
+        .collect();
+    assert_eq!(
+        got,
+        [
+            ("required", "5", "mc-mods", "lib"),
+            ("incompatible", "6", "texture-packs", "pack")
+        ]
+    );
+    assert_eq!(
+        curseforge::changelog(&json!({ "changelogBody": "a\u{7}b\nc" })),
+        "ab\nc"
+    );
+
+    let r = curseforge::Ref::parse("238222/mc-mods/jei").unwrap();
+    assert_eq!(
+        (r.id, r.class.as_str(), r.slug.as_str()),
+        (Some(238_222), "mc-mods", "jei")
+    );
+    assert_eq!(r.text(), "238222/mc-mods/jei");
+    assert_eq!(
+        curseforge::Ref::parse("modpacks/all-the-mods").unwrap().id,
+        None
+    );
+    for bad in [
+        "0/mc-mods/jei",
+        "12345678901/mc-mods/jei",
+        "bukkit-plugins/x",
+        "mc-mods/JEI",
+        "mc-mods/",
+        "1/2/mc-mods/jei",
+        "",
+    ] {
+        assert!(curseforge::Ref::parse(bad).is_none(), "{bad}");
+    }
+}
+
+#[test]
+fn curseforge_pages_are_read_with_care() {
+    let project = json!({
+        "id": JEI, "slug": "jei", "gameId": 432, "name": "Just Enough Items",
+        "description": "<p>About</p>",
+    });
+    let card = curseforge::page(&cf_page(&project), "jei");
+    assert_eq!(card.id, Some(JEI));
+    assert_eq!(card.title, "Just Enough Items");
+    assert_eq!(card.body, "<p>About</p>");
+    // Another slug's page has no ID; the tags still give a title.
+    let other = curseforge::page(&cf_page(&project), "jeii");
+    assert_eq!(other.id, None);
+    assert_eq!(other.title, "JEI & more");
+
+    // JSON-LD and Open Graph when there is no stream.
+    let html = r#"<script type="application/ld+json">{"@context":"https://schema.org","name":"Faithful","description":"32x","image":{"url":"https://media.forgecdn.net/a.png"},"author":[{"name":"xMrVizzy"}],"dateModified":"2024-01-01T00:00:00Z"}</script>
+        <meta property="og:description" content="ignored">"#;
+    let card = curseforge::page(html, "faithful-32x");
+    assert_eq!(card.id, None);
+    assert_eq!(card.title, "Faithful");
+    assert_eq!(card.summary, "32x");
+    assert_eq!(
+        card.icon.as_deref(),
+        Some("https://media.forgecdn.net/a.png")
+    );
+    assert_eq!(card.authors, ["xMrVizzy"]);
+    assert_eq!(card.updated, 1_704_067_200);
+    let html = r#"<meta content="x" property="og:image"><meta property="og:image" content="javascript:alert(1)">"#;
+    assert_eq!(curseforge::page(html, "x").icon, None);
+
+    // Junk ends quickly and gives nothing.
+    let started = std::time::Instant::now();
+    let mut junk = String::new();
+    for _ in 0..20_000 {
+        junk.push_str(
+            "self.__next_f.push([1,\"{\\\"slug\\\":\\\"jei\\\",{\"]) {\"slug\":\"jei\" \u{e9}",
+        );
+    }
+    junk.push_str(&"{".repeat(100_000));
+    junk.push_str("<script type=\"application/ld+json\">");
+    junk.push_str("<meta property=\"og:title\"");
+    let card = curseforge::page(&junk, "jei");
+    assert_eq!(card.id, None);
+    assert_eq!(card.title, "");
+    assert!(started.elapsed() < Duration::from_secs(10));
+    assert_eq!(curseforge::page("", "jei"), curseforge::Card::default());
 }

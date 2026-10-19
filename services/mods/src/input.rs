@@ -1,7 +1,7 @@
 //! What a player typed into "Add to the catalog": a page of Modrinth or
 //! CurseForge, a file's address there, or a name to search for.
 
-use crate::modrinth;
+use crate::{curseforge, modrinth};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Input {
@@ -12,8 +12,15 @@ pub enum Input {
     },
     /// A file on Modrinth's CDN: its project and version IDs.
     ModrinthFile { project: String, version: String },
-    /// A CurseForge page or file (stage 4 of the plan).
-    CurseForge,
+    /// A project's page on CurseForge (`/minecraft/<class>/<slug>`), maybe
+    /// at one of its files.
+    CurseForge {
+        class: String,
+        slug: String,
+        file: Option<u64>,
+    },
+    /// A file's address on forgecdn: it does not name its project.
+    CurseForgeFile,
     /// Words to search for.
     Name(String),
 }
@@ -78,10 +85,23 @@ pub fn parse(text: &str) -> Option<Input> {
             }
             _ => None,
         },
-        "curseforge.com"
-        | "www.curseforge.com"
-        | "edge.forgecdn.net"
-        | "mediafilez.forgecdn.net" => Some(Input::CurseForge),
+        "curseforge.com" | "www.curseforge.com" => {
+            // /minecraft/<class>/<slug>[/files/<id> | /download/<id>]
+            let ["minecraft", class, slug, rest @ ..] = parts.as_slice() else {
+                return None;
+            };
+            let class = class.to_ascii_lowercase();
+            let slug = slug.to_ascii_lowercase();
+            if curseforge::kind_of_class(&class).is_none() || !curseforge::is_slug(&slug) {
+                return None;
+            }
+            let file = match rest {
+                ["files" | "download", id, ..] => Some(curseforge::id(id)?),
+                _ => None,
+            };
+            Some(Input::CurseForge { class, slug, file })
+        }
+        "edge.forgecdn.net" | "mediafilez.forgecdn.net" => Some(Input::CurseForgeFile),
         _ => None,
     }
 }
