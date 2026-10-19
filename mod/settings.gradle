@@ -1,0 +1,19 @@
+pluginManagement {
+    repositories {
+        maven { url = 'https://maven.fabricmc.net/' }
+        maven { url = 'https://maven.neoforged.net/releases/' }
+        maven { url = 'https://maven.minecraftforge.net/' }
+        gradlePluginPortal()
+    }
+}
+
+plugins {
+    // Java toolchains the build asks for (ForgeGradle's launcher wants Java 8) are downloaded.
+    id 'org.gradle.toolchains.foojay-resolver-convention' version '1.0.0'
+}
+
+rootProject.name = 'launcher-skins'
+
+include 'core'
+include 'mc-1.21.1:fabric', 'mc-1.21.1:neoforge', 'mc-1.21.1:forge'
+include 'mc-26.3:fabric', 'mc-26.3:neoforge', 'mc-26.3:forge'

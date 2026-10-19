@@ -24,3 +24,6 @@ dist/
 
 # Local development data directory
 .dev-data/
+
+# The Gradle wrapper of the skins mod (mod/)
+!mod/gradle/wrapper/gradle-wrapper.jar
