@@ -1294,7 +1294,7 @@ pub fn list_launcher_failures(state: State<'_, AppState>) -> Vec<FailureSummary>
     let Some(root) = state.data_root() else {
         return Vec::new();
     };
-    crate::journal::failures(&root.path().join("logs"))
+    crate::journal::failures(&root.logs_dir())
         .into_iter()
         .map(|f| FailureSummary {
             message: f
@@ -1323,7 +1323,7 @@ pub fn dismiss_launcher_failure(state: State<'_, AppState>, id: String) -> Launc
             "Launcher data is unavailable.",
         )
     })?;
-    crate::journal::mark_reported(&root.path().join("logs"), &id)
+    crate::journal::mark_reported(&root.logs_dir(), &id)
         .map_err(|e| crate::error::LauncherError::from_io(&e, "Saving the failure record"))
 }
 

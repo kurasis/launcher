@@ -20,6 +20,7 @@ use crate::auth::vault::SecretStore;
 use crate::secrets::SecretString;
 use crate::state::AppState;
 use crate::storage::models::{LauncherAccountRecord, ProfileRef};
+use crate::sync::lock;
 
 const BASE: &str = "https://oauth.lapi.sh";
 /// The window's label; it gets no capability, so its pages cannot call the
@@ -32,6 +33,10 @@ const MAX_RESPONSE_BYTES: usize = 64 * 1024;
 /// oauth.lapi.sh, or the server a test build was made for
 /// (`LAUNCHER_ACCOUNT_URL` at build time; release builds never set it).
 pub fn base() -> &'static str {
+    #[cfg(test)]
+    if let Some(local) = tests::LOCAL_SERVER.with(std::cell::Cell::get) {
+        return local;
+    }
     option_env!("LAUNCHER_ACCOUNT_URL")
         .filter(|u| !u.trim().is_empty())
         .unwrap_or(BASE)
@@ -132,10 +137,6 @@ pub struct LauncherAccount {
     access: tokio::sync::Mutex<Option<Access>>,
 }
 
-fn lock<T>(m: &Mutex<T>) -> std::sync::MutexGuard<'_, T> {
-    m.lock().unwrap_or_else(std::sync::PoisonError::into_inner)
-}
-
 /// An answer: its status and JSON body (bounded).
 struct Answer {
     status: u16,
@@ -162,17 +163,50 @@ impl Answer {
     }
 }
 
+/// The client for our account and friends servers: no redirects (a token is
+/// never forwarded to another host), HTTPS unless the server is a local one.
+pub(crate) fn our_client(app_version: &str, server: &str) -> Result<reqwest::Client, String> {
+    reqwest::Client::builder()
+        .redirect(reqwest::redirect::Policy::none())
+        .https_only(server.starts_with("https://"))
+        .connect_timeout(Duration::from_secs(15))
+        .timeout(Duration::from_secs(30))
+        .user_agent(format!("Launcher/{app_version}"))
+        .build()
+        .map_err(|_| "The HTTPS client could not be created.".to_owned())
+}
+
+/// Why an answer's body was not read.
+pub(crate) enum BodyError {
+    Network,
+    /// More than the caller takes: it stops reading there.
+    TooLarge,
+}
+
+/// An answer's body, read a piece at a time and given up past `max` bytes.
+pub(crate) async fn body_within(
+    mut response: reqwest::Response,
+    max: usize,
+) -> Result<Vec<u8>, BodyError> {
+    if response
+        .content_length()
+        .is_some_and(|length| length > max as u64)
+    {
+        return Err(BodyError::TooLarge);
+    }
+    let mut body = Vec::new();
+    while let Some(chunk) = response.chunk().await.map_err(|_| BodyError::Network)? {
+        if body.len() + chunk.len() > max {
+            return Err(BodyError::TooLarge);
+        }
+        body.extend_from_slice(&chunk);
+    }
+    Ok(body)
+}
+
 impl LauncherAccount {
     pub fn new(app_version: &str, vault: Arc<dyn SecretStore>) -> Result<Self, String> {
-        let http = reqwest::Client::builder()
-            // A token is never forwarded to another host.
-            .redirect(reqwest::redirect::Policy::none())
-            .https_only(base().starts_with("https://"))
-            .connect_timeout(Duration::from_secs(15))
-            .timeout(Duration::from_secs(30))
-            .user_agent(format!("Launcher/{app_version}"))
-            .build()
-            .map_err(|_| "The HTTPS client could not be created.".to_owned())?;
+        let http = our_client(app_version, base())?;
         Ok(Self {
             http,
             vault,
@@ -189,13 +223,12 @@ impl LauncherAccount {
             .await
             .map_err(|_| AccountProblem::Network)?;
         let status = response.status().as_u16();
-        let bytes = response
-            .bytes()
+        let bytes = body_within(response, MAX_RESPONSE_BYTES)
             .await
-            .map_err(|_| AccountProblem::Network)?;
-        if bytes.len() > MAX_RESPONSE_BYTES {
-            return Err(AccountProblem::Server);
-        }
+            .map_err(|e| match e {
+                BodyError::Network => AccountProblem::Network,
+                BodyError::TooLarge => AccountProblem::Server,
+            })?;
         Ok(Answer {
             status,
             body: serde_json::from_slice(&bytes).unwrap_or(serde_json::Value::Null),
@@ -600,6 +633,57 @@ fn device() -> String {
 mod tests {
     use super::*;
 
+    thread_local! {
+        /// A local account server for one test thread (others keep the real
+        /// address).
+        pub static LOCAL_SERVER: std::cell::Cell<Option<&'static str>> =
+            const { std::cell::Cell::new(None) };
+    }
+
+    /// Answers every request with `{}` and keeps the request bodies.
+    async fn local_server() -> (String, Arc<Mutex<Vec<String>>>) {
+        use tokio::io::{AsyncReadExt, AsyncWriteExt};
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let address = format!("http://{}", listener.local_addr().unwrap());
+        let bodies = Arc::new(Mutex::new(Vec::new()));
+        let kept = Arc::clone(&bodies);
+        tokio::spawn(async move {
+            while let Ok((mut socket, _)) = listener.accept().await {
+                let kept = Arc::clone(&kept);
+                tokio::spawn(async move {
+                    let mut request = Vec::new();
+                    let mut buffer = [0u8; 4096];
+                    loop {
+                        let n = socket.read(&mut buffer).await.unwrap_or(0);
+                        if n == 0 {
+                            return;
+                        }
+                        request.extend_from_slice(&buffer[..n]);
+                        let text = String::from_utf8_lossy(&request).into_owned();
+                        if let Some((head, body)) = text.split_once("\r\n\r\n") {
+                            let length = head
+                                .lines()
+                                .find_map(|l| {
+                                    l.to_ascii_lowercase()
+                                        .strip_prefix("content-length:")
+                                        .map(|v| v.trim().parse::<usize>().unwrap_or(0))
+                                })
+                                .unwrap_or(0);
+                            if body.len() >= length {
+                                lock(&kept).push(body.to_owned());
+                                break;
+                            }
+                        }
+                    }
+                    let _ = socket
+                        .write_all(b"HTTP/1.1 200 OK\r\ncontent-type: application/json\r\ncontent-length: 2\r\nconnection: close\r\n\r\n{}")
+                        .await;
+                });
+            }
+        });
+        (address, bodies)
+    }
+
     fn url(text: &str) -> url::Url {
         url::Url::parse(text).unwrap()
     }
@@ -680,6 +764,40 @@ mod tests {
             },
         );
         assert!(!view.needs_sign_in, "nothing to sign in again to");
+    }
+
+    /// A refresh in flight when the player signs out keeps a new token; the
+    /// sign-out waits for it and revokes and forgets that one.
+    #[tokio::test]
+    async fn a_refresh_during_sign_out_leaves_nothing_behind() {
+        let (address, bodies) = local_server().await;
+        LOCAL_SERVER.with(|s| s.set(Some(Box::leak(address.into_boxed_str()))));
+        let dir = tempfile::tempdir().unwrap();
+        let state = AppState::initialize(
+            crate::storage::paths::DataRoot::new(dir.path().to_path_buf()),
+            "test",
+            crate::validation::MemoryPolicy::from_physical_bytes(16 << 30),
+            Box::new(crate::state::NoopSink),
+        );
+        let vault = Arc::new(crate::auth::vault::MemoryStore::default());
+        let account = LauncherAccount::new("test", vault.clone()).unwrap();
+        account.keep_refresh_token(&state, "old-refresh-token");
+        let refresh = async {
+            let held = account.access.lock().await;
+            tokio::time::sleep(Duration::from_millis(100)).await;
+            account.keep_refresh_token(&state, "new-refresh-token");
+            drop(held);
+        };
+        let sign_out = async {
+            tokio::time::sleep(Duration::from_millis(20)).await;
+            account.sign_out(&state).await;
+        };
+        tokio::join!(refresh, sign_out);
+        LOCAL_SERVER.with(|s| s.set(None));
+        assert!(account.refresh_token().is_none(), "nothing kept");
+        assert!(vault.get(VAULT_KEY).unwrap().is_none());
+        let revoked = lock(&bodies).join(" ");
+        assert!(revoked.contains("new-refresh-token"), "{revoked}");
     }
 
     /// A sign-in kept only in memory is gone after a restart: the account

@@ -799,7 +799,7 @@ impl LaunchService {
         let state = self.host.app_state();
         let logs_dir = root.run_logs(Uuid::parse_str(run_id).unwrap_or_default());
         logs::prune(
-            &root.path().join("logs").join("runs"),
+            &root.runs_dir(),
             Some(run_id),
             logs::MAX_RUNS,
             logs::MAX_TOTAL_BYTES,

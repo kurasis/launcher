@@ -42,17 +42,37 @@ records, worlds, screenshots, options or any other file from game folders.\n\
 Home and launcher data paths are shortened; token-like values are replaced by\n\
 <redacted>. Review the files before sharing them.\n";
 
-static TOKEN_PATTERNS: LazyLock<Vec<Regex>> = LazyLock::new(|| {
-    [
+/// Credentials that can show up in logs, each with what replaces it. Not a
+/// bare `code=` or `state=`: those are too often ordinary text (exit codes).
+static TOKEN_PATTERNS: LazyLock<Vec<(Regex, &'static str)>> =
+    LazyLock::new(|| {
+        [
         // JWT-shaped values (Minecraft and Xbox tokens).
-        r"eyJ[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}(\.[A-Za-z0-9_-]*)?",
+        (
+            r"eyJ[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}(\.[A-Za-z0-9_-]*)?",
+            "<redacted>",
+        ),
         // A value following a token-bearing argument or key.
-        r"(?i)(--accessToken|access_token|refresh_token|authorization:\s*bearer)([\s=:]+)\S+",
+        (
+            r"(?i)(--accessToken|access_token|refresh_token|authorization:\s*bearer)([\s=:]+)\S+",
+            "$1$2<redacted>",
+        ),
+        // A bearer token anywhere.
+        (r"(?i)\b(bearer)\s+[A-Za-z0-9._~+/=-]{8,}", "$1 <redacted>"),
+        // Xbox identity: XBL3.0 x=<user hash>;<token>
+        (r"(?i)XBL3\.0\s+x=[^\s;]+;[^\s\x22']+", "XBL3.0 x=<redacted>"),
+        // Microsoft compact tickets (d=<token>, t=<token>).
+        (r"\b([dt])=EwA[A-Za-z0-9!*%._~+/=-]+", "$1=<redacted>"),
+        // Token fields in JSON.
+        (
+            r#"(?i)("(?:accessToken|refreshToken|xtoken|RpsTicket|id_token)"\s*:\s*")[^"]*"#,
+            "${1}<redacted>",
+        ),
     ]
-    .iter()
-    .filter_map(|p| Regex::new(p).ok())
+    .into_iter()
+    .filter_map(|(p, r)| Regex::new(p).ok().map(|re| (re, r)))
     .collect()
-});
+    });
 
 /// Sanitizes free text for export.
 pub fn sanitize(text: &str, home: Option<&Path>, data_root: &Path) -> String {
@@ -63,12 +83,8 @@ pub fn sanitize(text: &str, home: Option<&Path>, data_root: &Path) -> String {
     if let Some(home) = home.and_then(Path::to_str).filter(|h| h.len() > 1) {
         out = out.replace(home, "~");
     }
-    for (index, pattern) in TOKEN_PATTERNS.iter().enumerate() {
-        out = if index == 0 {
-            pattern.replace_all(&out, "<redacted>").into_owned()
-        } else {
-            pattern.replace_all(&out, "$1$2<redacted>").into_owned()
-        };
+    for (pattern, replacement) in TOKEN_PATTERNS.iter() {
+        out = pattern.replace_all(&out, *replacement).into_owned();
     }
     out
 }
@@ -160,7 +176,7 @@ fn jobs(root: &DataRoot) -> Value {
 
 /// Run log directories, newest first; `selected` first if given.
 fn run_dirs(root: &DataRoot, selected: Option<&str>) -> Vec<std::path::PathBuf> {
-    let runs = root.path().join("logs").join("runs");
+    let runs = root.runs_dir();
     let mut dirs: Vec<(std::time::SystemTime, std::path::PathBuf)> = std::fs::read_dir(&runs)
         .map(|entries| {
             entries
@@ -297,6 +313,23 @@ mod tests {
     }
 
     #[test]
+    fn xbox_microsoft_and_json_tokens_are_removed_ordinary_codes_kept() {
+        let text = r#"XBL3.0 x=123456;opaque-token-value Bearer opaque.token.value-1 t=EwAAbcdef1234 {"accessToken": "secret-a", "refreshToken":"secret-b"} exit code=1 state=ready"#;
+        let out = sanitize(text, None, Path::new("/nowhere"));
+        for leaked in [
+            "opaque-token-value",
+            "opaque.token.value-1",
+            "EwAAbcdef",
+            "secret-a",
+            "secret-b",
+        ] {
+            assert!(!out.contains(leaked), "{leaked} in {out}");
+        }
+        assert!(out.contains("exit code=1"), "{out}");
+        assert!(out.contains("state=ready"), "{out}");
+    }
+
+    #[test]
     fn the_archive_contains_only_the_listed_files() {
         let dir = tempfile::tempdir().unwrap();
         let root = DataRoot::new(dir.path().join("data")).unwrap();
@@ -319,7 +352,7 @@ mod tests {
         std::fs::write(logs.join("jvm.args"), b"--secret").unwrap();
         std::fs::write(logs.join("diagnosis.json"), b"{\"kind\":\"out_of_memory\"}").unwrap();
         // The launcher's own log and a failure record (D-061).
-        let launcher_logs = root.path().join("logs");
+        let launcher_logs = root.logs_dir();
         std::fs::write(
             launcher_logs.join("launcher.log"),
             b"INFO --accessToken eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiIxMjM0In0.sig\n",

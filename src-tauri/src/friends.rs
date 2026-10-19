@@ -17,6 +17,7 @@ use tauri::{AppHandle, Emitter, Manager, Runtime};
 
 use crate::launcher_account::{AccountProblem, LauncherAccount};
 use crate::state::AppState;
+use crate::sync::lock;
 
 const BASE: &str = "https://friends.lapi.sh";
 pub const STATE_EVENT: &str = "friends://state";
@@ -136,10 +137,6 @@ struct StateAnswer {
     blocked: Vec<Person>,
 }
 
-fn lock<T>(m: &Mutex<T>) -> std::sync::MutexGuard<'_, T> {
-    m.lock().unwrap_or_else(std::sync::PoisonError::into_inner)
-}
-
 fn problem_of(status: u16, body: &Value) -> FriendsProblem {
     match (status, body["error"].as_str().unwrap_or_default()) {
         (401, _) => FriendsProblem::SignedOut,
@@ -164,14 +161,7 @@ pub struct Friends {
 
 impl Friends {
     pub fn new(app_version: &str) -> Result<Self, String> {
-        let http = reqwest::Client::builder()
-            .redirect(reqwest::redirect::Policy::none())
-            .https_only(base().starts_with("https://"))
-            .connect_timeout(Duration::from_secs(15))
-            .timeout(Duration::from_secs(30))
-            .user_agent(format!("Launcher/{app_version}"))
-            .build()
-            .map_err(|_| "The HTTPS client could not be created.".to_owned())?;
+        let http = crate::launcher_account::our_client(app_version, base())?;
         Ok(Self {
             http,
             view: Mutex::new(FriendsView::default()),
@@ -231,13 +221,12 @@ impl Friends {
         }
         let response = request.send().await.map_err(|_| FriendsProblem::Network)?;
         let status = response.status().as_u16();
-        let bytes = response
-            .bytes()
+        let bytes = crate::launcher_account::body_within(response, MAX_RESPONSE_BYTES)
             .await
-            .map_err(|_| FriendsProblem::Network)?;
-        if bytes.len() > MAX_RESPONSE_BYTES {
-            return Err(FriendsProblem::Server);
-        }
+            .map_err(|e| match e {
+                crate::launcher_account::BodyError::Network => FriendsProblem::Network,
+                crate::launcher_account::BodyError::TooLarge => FriendsProblem::Server,
+            })?;
         let value: Value = serde_json::from_slice(&bytes).unwrap_or(Value::Null);
         if (200..300).contains(&status) {
             Ok(value)

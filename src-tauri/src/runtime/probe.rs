@@ -3,7 +3,7 @@
 //! from docs/spec/05 and bounded output capture.
 
 use std::io::Read;
-use std::path::{Path, PathBuf};
+use std::path::Path;
 use std::process::{Command, Stdio};
 use std::time::{Duration, Instant};
 
@@ -31,7 +31,8 @@ pub fn java_relative_path(os: TargetOs) -> &'static str {
     }
 }
 
-pub fn java_path(runtime_root: &Path, os: TargetOs) -> PathBuf {
+#[cfg(test)]
+pub fn java_path(runtime_root: &Path, os: TargetOs) -> std::path::PathBuf {
     let mut path = runtime_root.to_path_buf();
     path.extend(java_relative_path(os).split('/'));
     path

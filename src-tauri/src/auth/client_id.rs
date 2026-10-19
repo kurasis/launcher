@@ -7,9 +7,6 @@
 
 use serde::Serialize;
 
-/// Environment variable read at compile time.
-pub const CLIENT_ID_ENV: &str = "LAUNCHER_MSA_CLIENT_ID";
-
 const BUILD_TIME_VALUE: Option<&str> = option_env!("LAUNCHER_MSA_CLIENT_ID");
 
 /// A syntactically valid Microsoft application (client) ID, normalized to lowercase.
