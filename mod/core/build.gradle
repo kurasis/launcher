@@ -1,0 +1,31 @@
+plugins {
+    id 'java-library'
+}
+
+java {
+    toolchain { languageVersion = JavaLanguageVersion.of(21) }
+}
+
+// Java 8 bytecode: the same core runs in 1.12.2 (Java 8) and in 26.x (Java 25).
+tasks.withType(JavaCompile).configureEach {
+    options.release = 8
+    options.encoding = 'UTF-8'
+    options.compilerArgs += ['-Xlint:all,-options', '-Werror']
+}
+
+repositories {
+    mavenCentral()
+}
+
+dependencies {
+    // Every game version ships Gson (1.12.2 has 2.8.0): used, never bundled.
+    compileOnly 'com.google.code.gson:gson:2.8.0'
+    testImplementation 'com.google.code.gson:gson:2.8.0'
+    testImplementation platform('org.junit:junit-bom:5.13.4')
+    testImplementation 'org.junit.jupiter:junit-jupiter'
+    testRuntimeOnly 'org.junit.platform:junit-platform-launcher'
+}
+
+test {
+    useJUnitPlatform()
+}
