@@ -198,6 +198,54 @@ export type Messages = {
       readonly not_saved: string;
       readonly server: string;
     };
+    readonly skins: {
+      readonly title: string;
+      readonly hint: string;
+      readonly skin: string;
+      readonly cape: string;
+      readonly noSkin: string;
+      readonly noCape: string;
+      readonly loading: string;
+      readonly uploadSkin: string;
+      readonly uploadCape: string;
+      readonly removeSkin: string;
+      readonly removeCape: string;
+      readonly picked: (values: {
+        name: string | number;
+        width: string | number;
+        height: string | number;
+        frames: number;
+      }) => string;
+      readonly model: string;
+      readonly classic: string;
+      readonly slim: string;
+      readonly frameMs: string;
+      readonly frameMsHint: string;
+      readonly send: string;
+      readonly cancel: string;
+      readonly skinUploaded: string;
+      readonly capeUploaded: string;
+      readonly skinRemoved: string;
+      readonly capeRemoved: string;
+      readonly previewSkin: string;
+      readonly previewCape: string;
+      readonly previewPicked: string;
+      readonly limit: string;
+      readonly problems: {
+        readonly signed_out: string;
+        readonly network: string;
+        readonly unreadable: string;
+        readonly bad_png: string;
+        readonly bad_size: string;
+        readonly bad_frames: string;
+        readonly bad_frame_ms: string;
+        readonly bad_model: string;
+        readonly too_large: string;
+        readonly rate_limited: string;
+        readonly invalid: string;
+        readonly server: string;
+      };
+    };
   };
   readonly instances: {
     readonly title: string;
@@ -1404,6 +1452,8 @@ export type Messages = {
     readonly accountRegister: string;
     readonly accountDelete: string;
     readonly saveAccountData: string;
+    readonly pickSkin: string;
+    readonly pickCape: string;
     readonly player: string;
   };
 };

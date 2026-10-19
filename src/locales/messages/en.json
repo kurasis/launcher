@@ -194,6 +194,49 @@
         "vault": "The system credential store did not keep the sign-in; it lasts until the launcher closes.",
         "not_saved": "The file could not be saved there. Choose another place.",
         "server": "Something went wrong on the account server. Try again later."
+      },
+      "skins": {
+        "title": "Skin and cape",
+        "hint": "Players of this launcher see them in the game. A PNG: a skin 64×64 or 64×32, a cape 64×32, or HD up to 8 times larger; an animation is a vertical strip of up to 32 frames.",
+        "skin": "Skin",
+        "cape": "Cape",
+        "noSkin": "No skin yet: the game's own is shown.",
+        "noCape": "No cape.",
+        "loading": "Loading…",
+        "uploadSkin": "Upload skin…",
+        "uploadCape": "Upload cape…",
+        "removeSkin": "Remove skin",
+        "removeCape": "Remove cape",
+        "picked": "{name}: {width}×{height}, {frames, plural, one {# frame} other {# frames}}",
+        "model": "Arms",
+        "classic": "Classic, 4 pixels wide",
+        "slim": "Slim, 3 pixels wide",
+        "frameMs": "Frame duration, ms",
+        "frameMsHint": "From 50 to 10000 milliseconds for each frame.",
+        "send": "Upload",
+        "cancel": "Cancel",
+        "skinUploaded": "The skin is uploaded.",
+        "capeUploaded": "The cape is uploaded.",
+        "skinRemoved": "The skin is removed.",
+        "capeRemoved": "The cape is removed.",
+        "previewSkin": "Skin preview",
+        "previewCape": "Cape preview",
+        "previewPicked": "Preview of the picked file",
+        "limit": "Up to 10 uploads an hour.",
+        "problems": {
+          "signed_out": "The sign-in has ended. Sign in again.",
+          "network": "skins.lapi.sh cannot be reached. Check the connection and try again.",
+          "unreadable": "The file could not be read.",
+          "bad_png": "This is not a PNG image, or the file is damaged.",
+          "bad_size": "This size is not taken. A skin frame is 64×64 (or 64×32), 128×128, 256×256 or 512×512; a cape frame is 64×32, 128×64, 256×128 or 512×256.",
+          "bad_frames": "An animation has 1 to 32 frames, stacked top to bottom.",
+          "bad_frame_ms": "A frame lasts 50 to 10000 milliseconds.",
+          "bad_model": "Choose classic or slim arms.",
+          "too_large": "The file is too large: a skin up to 2 MB, a cape up to 1 MB.",
+          "rate_limited": "Too many uploads: up to 10 an hour. Try again later.",
+          "invalid": "Pick the file again.",
+          "server": "Something went wrong on the skins server. Try again later."
+        }
       }
     },
     "instances": {
@@ -1334,6 +1377,8 @@
       "accountRegister": "Launcher account: create",
       "accountDelete": "Launcher account: delete",
       "saveAccountData": "Save my launcher account data",
+      "pickSkin": "Choose a skin (PNG)",
+      "pickCape": "Choose a cape (PNG)",
       "player": "Video"
     }
   },

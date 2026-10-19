@@ -23,6 +23,6 @@ plugins {
 rootProject.name = 'launcher-skins'
 
 include 'core'
-include 'mc-1.21.1:fabric', 'mc-1.21.1:neoforge', 'mc-1.21.1:forge'
-include 'mc-26.3:fabric', 'mc-26.3:neoforge', 'mc-26.3:forge'
+include 'mc-1.21.1:fabric', 'mc-1.21.1:neoforge', 'mc-1.21.1:forge', 'mc-1.21.1:agent'
+include 'mc-26.3:fabric', 'mc-26.3:neoforge', 'mc-26.3:forge', 'mc-26.3:agent'
 include 'mc-1.12.2:forge'
