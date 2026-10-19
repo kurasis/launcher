@@ -14,7 +14,8 @@ name: Mods service
 #
 # This repository is public, and so are its workflow logs: nothing anyone
 # wrote and nothing about the server is printed here. "Run workflow" with
-# task=counts shows numbers only.
+# task=counts shows numbers only; task=probe shows how CurseForge answers the
+# server directly and through each proxy (numbered), in our words and numbers.
 
 on:
   push:
@@ -37,9 +38,9 @@ on:
   workflow_dispatch:
     inputs:
       task:
-        description: deploy, or counts of the catalog
+        description: deploy, counts of the catalog, or a probe of CurseForge
         type: choice
-        options: [deploy, counts]
+        options: [deploy, counts, probe]
         default: deploy
 
 permissions:
@@ -218,5 +219,28 @@ jobs:
             echo '```json'
             ssh "$TARGET" \
               'sudo -n -u lapi-mods /home/www/lapi/mods/current/lapi-mods counts'
+            echo '```'
+          } | tee -a "$GITHUB_STEP_SUMMARY"
+
+  probe:
+    name: CurseForge from the server
+    if: github.event_name == 'workflow_dispatch' && inputs.task == 'probe'
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v5
+      - uses: ./.github/actions/lapi-ssh
+        with:
+          ssh-key: ${{ secrets.SSH_KEY }}
+          known-hosts: ${{ secrets.SSH_KNOWN_HOSTS }}
+      # `probe` prints our words and numbers only; proxies are numbered.
+      - name: Probe
+        env:
+          TARGET: ${{ secrets.SSH_USER }}@${{ secrets.SSH_HOST }}
+        run: |
+          {
+            echo '### CurseForge from the server'
+            echo '```text'
+            ssh "$TARGET" \
+              'sudo -n -u lapi-mods /home/www/lapi/mods/current/lapi-mods probe'
             echo '```'
           } | tee -a "$GITHUB_STEP_SUMMARY"

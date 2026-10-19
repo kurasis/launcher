@@ -11,6 +11,8 @@
 //! lapi-mods counts                numbers only (fit for a public log)
 //! lapi-mods backup                a copy of the database in data/backups
 //!                                 (daily, by lapi-mods-backup.timer)
+//! lapi-mods probe                 how CurseForge answers each exit (our
+//!                                 words and numbers only, for a public log)
 //! lapi-mods thumb <in> <out> <size> <webp|jpeg>
 //!                                 a small picture; the service runs it as a
 //!                                 process of its own for each picture
@@ -36,6 +38,7 @@ mod import;
 mod input;
 mod model;
 mod modrinth;
+mod probe;
 mod store;
 mod thumb;
 
@@ -116,6 +119,7 @@ fn main() -> std::process::ExitCode {
             println!("{}", path.display());
             Ok(())
         }),
+        Some("probe") => probe(),
         Some("thumb") => match &args[1..] {
             [input, output, size, format] => size
                 .parse::<u32>()
@@ -129,7 +133,7 @@ fn main() -> std::process::ExitCode {
             println!("lapi-mods {}", env!("CARGO_PKG_VERSION"));
             Ok(())
         }
-        _ => Err("usage: lapi-mods serve|counts|backup|thumb".to_owned()),
+        _ => Err("usage: lapi-mods serve|counts|backup|probe|thumb".to_owned()),
     };
     match result {
         Ok(()) => std::process::ExitCode::SUCCESS,
@@ -138,6 +142,60 @@ fn main() -> std::process::ExitCode {
             std::process::ExitCode::FAILURE
         }
     }
+}
+
+fn curl() -> fetch::Curl {
+    fetch::Curl {
+        program: PathBuf::from(env(
+            "LAPI_MODS_CURL",
+            "/home/www/lapi/mods/current/curl/curl_chrome150",
+        )),
+        leading: env("LAPI_MODS_CURL_ARGS", "")
+            .split_whitespace()
+            .map(str::to_owned)
+            .collect(),
+    }
+}
+
+/// Run by hand (through sudo, without the service's environment), so the
+/// proxies come from the deploy's secrets file when the environment has none.
+fn probe() -> Result<(), String> {
+    let mut text = std::env::var("LAPI_MODS_PROXIES").unwrap_or_default();
+    if text.trim().is_empty() {
+        let secrets = env("LAPI_MODS_SECRETS", "/home/www/lapi/mods/secrets.env");
+        text = std::fs::read_to_string(secrets)
+            .ok()
+            .and_then(|file| env_file_value(&file, "LAPI_MODS_PROXIES"))
+            .unwrap_or_default();
+    }
+    let tmp = std::env::temp_dir().join(format!("lapi-mods-probe-{}", uuid::Uuid::new_v4()));
+    std::fs::create_dir(&tmp).map_err(|e| e.to_string())?;
+    let client = fetch::Client::new(Box::new(curl()), fetch::parse_proxies(&text), true, &tmp);
+    let runtime = tokio::runtime::Runtime::new().map_err(|e| e.to_string())?;
+    let lines = runtime.block_on(probe::run(&client, &tmp));
+    let _ = std::fs::remove_dir_all(&tmp);
+    for line in lines {
+        println!("{line}");
+    }
+    Ok(())
+}
+
+/// A `KEY="value"` line as deploy.sh writes it for systemd, unescaped.
+fn env_file_value(file: &str, key: &str) -> Option<String> {
+    let line = file
+        .lines()
+        .find_map(|l| l.strip_prefix(key)?.strip_prefix('='))?;
+    let quoted = line.strip_prefix('"')?.strip_suffix('"')?;
+    let mut value = String::with_capacity(quoted.len());
+    let mut chars = quoted.chars();
+    while let Some(c) = chars.next() {
+        if c == '\\' {
+            value.push(chars.next()?);
+        } else {
+            value.push(c);
+        }
+    }
+    Some(value)
 }
 
 fn serve() -> Result<(), String> {
@@ -149,18 +207,8 @@ fn serve() -> Result<(), String> {
     blobs.clear_parts();
     store.requeue_running()?;
     let proxies = fetch::parse_proxies(&std::env::var("LAPI_MODS_PROXIES").unwrap_or_default());
-    let curl = fetch::Curl {
-        program: PathBuf::from(env(
-            "LAPI_MODS_CURL",
-            "/home/www/lapi/mods/current/curl/curl_chrome150",
-        )),
-        leading: env("LAPI_MODS_CURL_ARGS", "")
-            .split_whitespace()
-            .map(str::to_owned)
-            .collect(),
-    };
     let direct = env("LAPI_MODS_DIRECT", "1") == "1";
-    let client = fetch::Client::new(Box::new(curl), proxies, direct, blobs.tmp());
+    let client = fetch::Client::new(Box::new(curl()), proxies, direct, blobs.tmp());
     let workers: usize = env("LAPI_MODS_WORKERS", "4")
         .parse()
         .unwrap_or(4)
