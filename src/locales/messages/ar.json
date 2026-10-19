@@ -26,6 +26,79 @@
       "more": "المزيد",
       "moreCurrent": "المزيد: {view}"
     },
+    "feed": {
+      "title": "الموجز",
+      "loading": "جارٍ تحميل الموجز…",
+      "refresh": "تحديث",
+      "refreshing": "جارٍ التحديث…",
+      "problems": {
+        "disabled": "الموجز متوقف في الإعدادات.",
+        "offline": "تعذّر الوصول إلى الموجز. تحقّق من الاتصال بالإنترنت.",
+        "server": "لم يُجب الموجز كما هو متوقع. حاول لاحقًا.",
+        "not_found": "لم يعد هذا موجودًا في الموجز.",
+        "bad_input": "هذا ليس رابط قناة يوتيوب ولا ‎@اسمًا ولا معرّف قناة.",
+        "too_many": "عمليات بحث كثيرة عن القنوات الآن. حاول بعد دقيقة.",
+        "full": "يمكنك إضافة 30 قناة على الأكثر. أزل واحدة أولًا.",
+        "unavailable": "مجلد بيانات المشغّل غير متاح."
+      },
+      "stale": "تعذّر الوصول إلى الموجز الآن: هذه النسخة من {date}.",
+      "noteStale": "تعذّر الوصول إلى الموجز الآن: هذه نسخة محفوظة سابقًا.",
+      "continueTitle": "متابعة اللعب",
+      "lastPlayed": "آخر لعب {when}",
+      "play": "العب",
+      "starting": "جارٍ التشغيل…",
+      "gameRunning": "اللعبة قيد التشغيل.",
+      "openInstallations": "التثبيتات",
+      "newVersion": "إصدار جديد",
+      "versionTitle": "Minecraft {version}",
+      "readNote": "اقرأ ملاحظات التحديث",
+      "install": "ثبّت {version}",
+      "filters": "ما يُعرض في الموجز",
+      "filter": {
+        "all": "الكل",
+        "versions": "الإصدارات",
+        "news": "الأخبار",
+        "videos": "الفيديوهات",
+        "streams": "البث المباشر"
+      },
+      "articles": "ملاحظات التحديث والأخبار",
+      "videos": "الفيديوهات",
+      "ownVideos": "قنواتك",
+      "streams": "مباشر على Twitch",
+      "noArticles": "لا توجد ملاحظات تحديث أو أخبار هنا بعد.",
+      "noVideos": "لا توجد فيديوهات بعد.",
+      "noStreams": "لا أحد يبث Minecraft الآن.",
+      "kinds": {
+        "release": "إصدار",
+        "snapshot": "لقطة",
+        "pre": "إصدار تمهيدي",
+        "rc": "مرشّح للإصدار",
+        "news": "خبر"
+      },
+      "short": "Shorts",
+      "live": "مباشر",
+      "viewers": "{count, plural, zero {لا مشاهدين} one {مشاهد واحد} two {مشاهدان} few {# مشاهدين} many {# مشاهدًا} other {# مشاهد}}",
+      "watchVideo": "شاهد «{title}» من {channel}",
+      "watchStream": "شاهد بث {name} المباشر: {title} ({viewers})",
+      "machineTranslated": "ترجمة آلية",
+      "original": "الأصل",
+      "close": "إغلاق",
+      "readOnSite": "افتح على minecraft.net",
+      "noteLoading": "جارٍ التحميل…",
+      "sideLabel": "التحديثات والفعاليات والنصائح",
+      "cycleTitle": "دورة التحديث",
+      "cycleTarget": "التالي: {version}",
+      "cycleReleased": "صدر {version}",
+      "cycleSnapshots": "{count, plural, zero {لا لقطات} one {لقطة واحدة} two {لقطتان} few {# لقطات} many {# لقطة} other {# لقطة}}",
+      "cyclePre": "{count, plural, zero {لا إصدارات تمهيدية} one {إصدار تمهيدي واحد} two {إصداران تمهيديان} few {# إصدارات تمهيدية} many {# إصدارًا تمهيديًا} other {# إصدار تمهيدي}}",
+      "cycleRc": "{count, plural, zero {لا مرشّحين للإصدار} one {مرشّح واحد للإصدار} two {مرشّحان للإصدار} few {# مرشّحين للإصدار} many {# مرشّحًا للإصدار} other {# مرشّح للإصدار}}",
+      "cycleLatest": "الأحدث: {version}، {when}",
+      "eventsTitle": "الفعاليات",
+      "eventWhen": "{starts} – {ends}",
+      "announcementsTitle": "الإعلانات",
+      "tipTitle": "نصيحة اليوم",
+      "openLink": "افتح"
+    },
     "bootstrap": {
       "loading": "جارٍ تحميل حالة المشغّل…",
       "errorTitle": "تعذّر الاتصال بنواة المشغّل",
@@ -575,6 +648,7 @@
       "sectionsLabel": "أقسام الإعدادات",
       "sections": {
         "general": "عام",
+        "feed": "الموجز",
         "java": "Java",
         "defaults": "التثبيتات الجديدة",
         "network": "الشبكة",
@@ -584,6 +658,7 @@
       },
       "sectionHints": {
         "general": "اللغة والمظهر ونافذة المشغّل أثناء اللعب ومكان حفظ البيانات.",
+        "feed": "ما يعرضه موجز صفحة البداية وبأي لغات وأين تُشغَّل الفيديوهات.",
         "java": "من أين ينزّل المشغّل بيئة Java للتثبيتات الجديدة.",
         "defaults": "الذاكرة وحجم النافذة وملء الشاشة لكل تثبيت جديد.",
         "network": "الاتصالات المحدودة، وحركة البيانات التي ينزّلها المشغّل، ومن أين تأتي التنزيلات.",
@@ -725,6 +800,43 @@
         "busy": "تنتظر إعادة الضبط انتهاء العملية الجارية أو اللعبة.",
         "done": "تمت إعادة الضبط: حُذفت التثبيتات ({installations}، منها {backedUp} بنسخة احتياطية) والنسخ ({backups})، وسُجّل الخروج من الحسابات ({accounts})؛ تم تحرير {size}."
       }
+    },
+    "feedSettings": {
+      "showTitle": "ما يعرضه الموجز",
+      "enabled": "اعرض الموجز",
+      "enabledHint": "عند الإيقاف: يُخفى تبويب الموجز ولا يطلب المشغّل أي شيء من الموجز.",
+      "snapshots": "اللقطات والإصدارات التمهيدية والمرشّحة للإصدار",
+      "shorts": "YouTube Shorts",
+      "machineTranslation": "ترجمة آلية لملاحظات التحديث والأخبار",
+      "machineTranslationHint": "عند الإيقاف: تُعرض بالإنجليزية.",
+      "hidden": "أخفِ في الموجز",
+      "blocks": {
+        "versions": "ملاحظات التحديث",
+        "news": "الأخبار",
+        "videos": "الفيديوهات",
+        "streams": "البث المباشر"
+      },
+      "videoLanguage": "لغة الفيديوهات والبث",
+      "videoLanguages": {
+        "ui": "لغة الواجهة",
+        "en": "الإنجليزية",
+        "ru": "الروسية",
+        "ar": "العربية"
+      },
+      "player": "تشغيل الفيديوهات والبث",
+      "players": {
+        "window": "في نافذة المشغّل",
+        "browser": "في المتصفح"
+      },
+      "channels": "قنواتك على يوتيوب",
+      "channelsHint": "تظهر أحدث فيديوهاتها في الموجز. تبقى القائمة على هذا الحاسوب فقط؛ تُرسل معرّفات القنوات وحدها إلى الموجز لطلب الفيديوهات.",
+      "channelInput": "رابط القناة أو ‎@الاسم أو معرّف القناة",
+      "add": "أضف",
+      "adding": "جارٍ الإضافة…",
+      "remove": "أزل",
+      "removeChannel": "أزل {title}",
+      "noChannels": "لم تُضف أي قنوات بعد.",
+      "channelCount": "{count, number} من {max, number}"
     },
     "privacy": {
       "shareStats": "مشاركة إحصاءات الانهيار المجهولة",
@@ -1222,7 +1334,8 @@
       "accountLogin": "حساب المشغّل: تسجيل الدخول",
       "accountRegister": "حساب المشغّل: إنشاء حساب",
       "accountDelete": "حساب المشغّل: الحذف",
-      "saveAccountData": "حفظ بيانات حساب المشغّل"
+      "saveAccountData": "حفظ بيانات حساب المشغّل",
+      "player": "فيديو"
     }
   },
   "errors": {
@@ -1530,6 +1643,7 @@
     "The update could not be installed. Download it from the link instead.": "تعذّر تثبيت التحديث. نزّله من الرابط بدلًا من ذلك.",
     "There is no update page to open.": "لا توجد صفحة تحديث لفتحها.",
     "This is not a screen the launcher can open at start.": "لا يمكن فتح هذه الشاشة عند البدء.",
-    "This screen cannot be remembered as the last one opened.": "لا يمكن تذكّر هذه الشاشة على أنها آخر شاشة مفتوحة."
+    "This screen cannot be remembered as the last one opened.": "لا يمكن تذكّر هذه الشاشة على أنها آخر شاشة مفتوحة.",
+    "Each part of the feed can be hidden once.": "يمكن إخفاء كل جزء من الموجز مرة واحدة فقط."
   }
 }

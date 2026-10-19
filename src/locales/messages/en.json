@@ -25,6 +25,79 @@
       "more": "More",
       "moreCurrent": "More: {view}"
     },
+    "feed": {
+      "title": "Feed",
+      "loading": "Loading the feed…",
+      "refresh": "Refresh",
+      "refreshing": "Refreshing…",
+      "problems": {
+        "disabled": "The feed is switched off in Settings.",
+        "offline": "The feed cannot be reached. Check the internet connection.",
+        "server": "The feed did not answer as expected. Try again later.",
+        "not_found": "This is no longer in the feed.",
+        "bad_input": "This is not a YouTube channel link, @handle or channel ID.",
+        "too_many": "Too many channel lookups for now. Try again in a minute.",
+        "full": "You can add up to 30 channels. Remove one first.",
+        "unavailable": "The launcher data folder is unavailable."
+      },
+      "stale": "The feed cannot be reached right now: this is the copy from {date}.",
+      "noteStale": "The feed cannot be reached right now: this is the copy saved earlier.",
+      "continueTitle": "Continue playing",
+      "lastPlayed": "Last played {when}",
+      "play": "Play",
+      "starting": "Starting…",
+      "gameRunning": "The game is running.",
+      "openInstallations": "Installations",
+      "newVersion": "New version",
+      "versionTitle": "Minecraft {version}",
+      "readNote": "Read the patch notes",
+      "install": "Install {version}",
+      "filters": "Show in the feed",
+      "filter": {
+        "all": "All",
+        "versions": "Versions",
+        "news": "News",
+        "videos": "Videos",
+        "streams": "Streams"
+      },
+      "articles": "Patch notes and news",
+      "videos": "Videos",
+      "ownVideos": "Your channels",
+      "streams": "Live on Twitch",
+      "noArticles": "No patch notes or news here yet.",
+      "noVideos": "No videos yet.",
+      "noStreams": "No one is streaming Minecraft right now.",
+      "kinds": {
+        "release": "Release",
+        "snapshot": "Snapshot",
+        "pre": "Pre-release",
+        "rc": "Release candidate",
+        "news": "News"
+      },
+      "short": "Shorts",
+      "live": "Live",
+      "viewers": "{count, plural, one {# viewer} other {# viewers}}",
+      "watchVideo": "Watch “{title}” by {channel}",
+      "watchStream": "Watch {name} live: {title} ({viewers})",
+      "machineTranslated": "Machine-translated",
+      "original": "Original",
+      "close": "Close",
+      "readOnSite": "Open on minecraft.net",
+      "noteLoading": "Loading…",
+      "sideLabel": "Updates, events and tips",
+      "cycleTitle": "Update cycle",
+      "cycleTarget": "Next: {version}",
+      "cycleReleased": "{version} is out",
+      "cycleSnapshots": "{count, plural, one {# snapshot} other {# snapshots}}",
+      "cyclePre": "{count, plural, one {# pre-release} other {# pre-releases}}",
+      "cycleRc": "{count, plural, one {# release candidate} other {# release candidates}}",
+      "cycleLatest": "Latest: {version}, {when}",
+      "eventsTitle": "Events",
+      "eventWhen": "{starts} – {ends}",
+      "announcementsTitle": "Announcements",
+      "tipTitle": "Tip of the day",
+      "openLink": "Open"
+    },
     "bootstrap": {
       "loading": "Loading launcher state…",
       "errorTitle": "The launcher core could not be reached",
@@ -574,6 +647,7 @@
       "sectionsLabel": "Settings sections",
       "sections": {
         "general": "General",
+        "feed": "Feed",
         "java": "Java",
         "defaults": "New installations",
         "network": "Network",
@@ -583,6 +657,7 @@
       },
       "sectionHints": {
         "general": "Language, appearance, the launcher window while you play, and where data is kept.",
+        "feed": "What the start page feed shows, in which languages, and where videos play.",
         "java": "Which Java runtimes the launcher downloads for new installations.",
         "defaults": "Memory, window size and fullscreen given to each new installation.",
         "network": "Metered connections, the traffic the launcher downloads, and where downloads come from.",
@@ -724,6 +799,43 @@
         "busy": "Reset waits until the running operation or game ends.",
         "done": "Reset done: {installations, plural, one {# installation} other {# installations}} deleted ({backedUp} backed up first), {backups, plural, one {# backup} other {# backups}} deleted, {accounts, plural, one {# account} other {# accounts}} signed out; {size} freed."
       }
+    },
+    "feedSettings": {
+      "showTitle": "What the feed shows",
+      "enabled": "Show the feed",
+      "enabledHint": "Off: the Feed tab is hidden and the launcher asks the feed for nothing.",
+      "snapshots": "Snapshots, pre-releases and release candidates",
+      "shorts": "YouTube Shorts",
+      "machineTranslation": "Machine-translated patch notes and news",
+      "machineTranslationHint": "Off: they show in English.",
+      "hidden": "Hide in the feed",
+      "blocks": {
+        "versions": "Patch notes",
+        "news": "News",
+        "videos": "Videos",
+        "streams": "Streams"
+      },
+      "videoLanguage": "Language of videos and streams",
+      "videoLanguages": {
+        "ui": "The interface language",
+        "en": "English",
+        "ru": "Russian",
+        "ar": "Arabic"
+      },
+      "player": "Play videos and streams",
+      "players": {
+        "window": "In a launcher window",
+        "browser": "In the browser"
+      },
+      "channels": "Your YouTube channels",
+      "channelsHint": "Their newest videos show in the feed. The list stays on this computer; only the channel IDs are sent to the feed to ask for the videos.",
+      "channelInput": "Channel link, @handle or channel ID",
+      "add": "Add",
+      "adding": "Adding…",
+      "remove": "Remove",
+      "removeChannel": "Remove {title}",
+      "noChannels": "No channels added yet.",
+      "channelCount": "{count, number} of {max, number}"
     },
     "privacy": {
       "shareStats": "Share anonymous crash statistics",
@@ -1221,7 +1333,8 @@
       "accountLogin": "Launcher account: sign in",
       "accountRegister": "Launcher account: create",
       "accountDelete": "Launcher account: delete",
-      "saveAccountData": "Save my launcher account data"
+      "saveAccountData": "Save my launcher account data",
+      "player": "Video"
     }
   },
   "errors": {
@@ -1280,6 +1393,7 @@
     "Downloaded {what} did not match its expected checksum.": "Downloaded {what} did not match its expected checksum.",
     "Downloading {what} failed (HTTP {status}).": "Downloading {what} failed (HTTP {status}).",
     "Each JVM option must start with \"-\"; put a value after \"=\": {option}": "Each JVM option must start with \"-\"; put a value after \"=\": {option}",
+    "Each part of the feed can be hidden once.": "Each part of the feed can be hidden once.",
     "Enter the full path to the Java program.": "Enter the full path to the Java program.",
     "Extracting the Java runtime failed": "Extracting the Java runtime failed",
     "Files the last repair restored are missing or damaged again. Antivirus software may be removing them: allow the launcher's data folder in it, then repair the installation.": "Files the last repair restored are missing or damaged again. Antivirus software may be removing them: allow the launcher's data folder in it, then repair the installation.",

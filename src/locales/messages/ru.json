@@ -25,6 +25,79 @@
       "more": "Ещё",
       "moreCurrent": "Ещё: {view}"
     },
+    "feed": {
+      "title": "Лента",
+      "loading": "Загружаем ленту…",
+      "refresh": "Обновить",
+      "refreshing": "Обновляем…",
+      "problems": {
+        "disabled": "Лента выключена в настройках.",
+        "offline": "Лента недоступна. Проверьте подключение к интернету.",
+        "server": "Лента ответила не так, как ожидалось. Попробуйте позже.",
+        "not_found": "Этого больше нет в ленте.",
+        "bad_input": "Это не ссылка на канал YouTube, не @имя и не ID канала.",
+        "too_many": "Слишком много поисков каналов. Попробуйте через минуту.",
+        "full": "Можно добавить не больше 30 каналов. Сначала уберите какой-нибудь.",
+        "unavailable": "Папка данных лаунчера недоступна."
+      },
+      "stale": "Лента сейчас недоступна: показана копия от {date}.",
+      "noteStale": "Лента сейчас недоступна: показана сохранённая ранее копия.",
+      "continueTitle": "Продолжить игру",
+      "lastPlayed": "Последняя игра {when}",
+      "play": "Играть",
+      "starting": "Запуск…",
+      "gameRunning": "Игра запущена.",
+      "openInstallations": "Установки",
+      "newVersion": "Новая версия",
+      "versionTitle": "Minecraft {version}",
+      "readNote": "Читать список изменений",
+      "install": "Установить {version}",
+      "filters": "Что показать в ленте",
+      "filter": {
+        "all": "Всё",
+        "versions": "Версии",
+        "news": "Новости",
+        "videos": "Видео",
+        "streams": "Стримы"
+      },
+      "articles": "Списки изменений и новости",
+      "videos": "Видео",
+      "ownVideos": "Ваши каналы",
+      "streams": "В эфире на Twitch",
+      "noArticles": "Здесь пока нет списков изменений и новостей.",
+      "noVideos": "Пока нет видео.",
+      "noStreams": "Сейчас никто не стримит Minecraft.",
+      "kinds": {
+        "release": "Релиз",
+        "snapshot": "Снапшот",
+        "pre": "Пре-релиз",
+        "rc": "Кандидат в релиз",
+        "news": "Новость"
+      },
+      "short": "Shorts",
+      "live": "В эфире",
+      "viewers": "{count, plural, one {# зритель} few {# зрителя} many {# зрителей} other {# зрителя}}",
+      "watchVideo": "Смотреть «{title}» от {channel}",
+      "watchStream": "Смотреть эфир {name}: {title} ({viewers})",
+      "machineTranslated": "Переведено машинно",
+      "original": "Оригинал",
+      "close": "Закрыть",
+      "readOnSite": "Открыть на minecraft.net",
+      "noteLoading": "Загрузка…",
+      "sideLabel": "Обновления, события и советы",
+      "cycleTitle": "Цикл обновления",
+      "cycleTarget": "Следующая: {version}",
+      "cycleReleased": "{version} вышла",
+      "cycleSnapshots": "{count, plural, one {# снапшот} few {# снапшота} many {# снапшотов} other {# снапшота}}",
+      "cyclePre": "{count, plural, one {# пре-релиз} few {# пре-релиза} many {# пре-релизов} other {# пре-релиза}}",
+      "cycleRc": "{count, plural, one {# кандидат в релиз} few {# кандидата в релиз} many {# кандидатов в релиз} other {# кандидата в релиз}}",
+      "cycleLatest": "Последняя: {version}, {when}",
+      "eventsTitle": "События",
+      "eventWhen": "{starts} – {ends}",
+      "announcementsTitle": "Объявления",
+      "tipTitle": "Совет дня",
+      "openLink": "Открыть"
+    },
     "bootstrap": {
       "loading": "Загрузка состояния лаунчера…",
       "errorTitle": "Не удалось связаться с ядром лаунчера",
@@ -574,6 +647,7 @@
       "sectionsLabel": "Разделы настроек",
       "sections": {
         "general": "Общие",
+        "feed": "Лента",
         "java": "Java",
         "defaults": "Новые установки",
         "network": "Сеть",
@@ -583,6 +657,7 @@
       },
       "sectionHints": {
         "general": "Язык, оформление, окно лаунчера во время игры и место хранения данных.",
+        "feed": "Что показывает лента на стартовой странице, на каких языках и где воспроизводятся видео.",
         "java": "Откуда лаунчер загружает Java для новых установок.",
         "defaults": "Память, размер окна и полноэкранный режим для каждой новой установки.",
         "network": "Лимитные подключения, трафик лаунчера и откуда идут загрузки.",
@@ -724,6 +799,43 @@
         "busy": "Сброс подождёт окончания текущей операции или игры.",
         "done": "Сброс выполнен: удалено установок — {installations} (с копией — {backedUp}), копий — {backups}, выполнен выход из аккаунтов — {accounts}; освобождено {size}."
       }
+    },
+    "feedSettings": {
+      "showTitle": "Что показывает лента",
+      "enabled": "Показывать ленту",
+      "enabledHint": "Выключено: вкладка «Лента» скрыта, и лаунчер ничего не запрашивает у ленты.",
+      "snapshots": "Снапшоты, пре-релизы и кандидаты в релиз",
+      "shorts": "YouTube Shorts",
+      "machineTranslation": "Машинный перевод списков изменений и новостей",
+      "machineTranslationHint": "Выключено: они показываются на английском.",
+      "hidden": "Скрыть в ленте",
+      "blocks": {
+        "versions": "Списки изменений",
+        "news": "Новости",
+        "videos": "Видео",
+        "streams": "Стримы"
+      },
+      "videoLanguage": "Язык видео и стримов",
+      "videoLanguages": {
+        "ui": "Язык интерфейса",
+        "en": "Английский",
+        "ru": "Русский",
+        "ar": "Арабский"
+      },
+      "player": "Где смотреть видео и стримы",
+      "players": {
+        "window": "В окне лаунчера",
+        "browser": "В браузере"
+      },
+      "channels": "Ваши каналы YouTube",
+      "channelsHint": "Их новые видео появляются в ленте. Список хранится только на этом компьютере; ленте отправляются лишь ID каналов, чтобы получить видео.",
+      "channelInput": "Ссылка на канал, @имя или ID канала",
+      "add": "Добавить",
+      "adding": "Добавляем…",
+      "remove": "Убрать",
+      "removeChannel": "Убрать {title}",
+      "noChannels": "Каналы пока не добавлены.",
+      "channelCount": "{count, number} из {max, number}"
     },
     "privacy": {
       "shareStats": "Отправлять анонимную статистику вылетов",
@@ -1221,7 +1333,8 @@
       "accountLogin": "Аккаунт лаунчера: вход",
       "accountRegister": "Аккаунт лаунчера: регистрация",
       "accountDelete": "Аккаунт лаунчера: удаление",
-      "saveAccountData": "Сохранить данные аккаунта лаунчера"
+      "saveAccountData": "Сохранить данные аккаунта лаунчера",
+      "player": "Видео"
     }
   },
   "errors": {
@@ -1529,6 +1642,7 @@
     "The update could not be installed. Download it from the link instead.": "Не удалось установить обновление. Загрузите его по ссылке.",
     "There is no update page to open.": "Нет страницы обновления.",
     "This is not a screen the launcher can open at start.": "Этот раздел нельзя открывать при запуске.",
-    "This screen cannot be remembered as the last one opened.": "Этот раздел нельзя запомнить как последний открытый."
+    "This screen cannot be remembered as the last one opened.": "Этот раздел нельзя запомнить как последний открытый.",
+    "Each part of the feed can be hidden once.": "Каждую часть ленты можно скрыть только один раз."
   }
 }

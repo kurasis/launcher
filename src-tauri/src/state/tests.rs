@@ -284,6 +284,77 @@ fn start_view_is_validated_and_persists() {
 }
 
 #[test]
+fn feed_settings_are_validated_and_persist() {
+    use crate::storage::models::{FeedBlock, PlayerMode, VideoLanguage};
+    let dir = tempfile::tempdir().unwrap();
+    let state = state_at(dir.path(), RecordingSink::default());
+    assert!(state.snapshot().settings.feed.enabled);
+    let view = state
+        .set_app_settings(request(SettingsPatch {
+            feed: Some(FeedSettingsPatch {
+                snapshots: Some(false),
+                video_language: Some(VideoLanguage::Ru),
+                shorts: Some(true),
+                player: Some(PlayerMode::Browser),
+                hidden: Some(vec![FeedBlock::Streams, FeedBlock::News]),
+                ..FeedSettingsPatch::default()
+            }),
+            ..SettingsPatch::default()
+        }))
+        .unwrap();
+    assert!(!view.feed.snapshots && view.feed.shorts && view.feed.machine_translation);
+    assert_eq!(view.feed.video_language, VideoLanguage::Ru);
+    assert_eq!(view.feed.player, PlayerMode::Browser);
+    assert_eq!(view.feed.hidden, [FeedBlock::News, FeedBlock::Streams]);
+    // A block twice, or more than there are, is refused and changes nothing.
+    for hidden in [
+        vec![FeedBlock::News, FeedBlock::News],
+        vec![FeedBlock::Videos; 50],
+    ] {
+        let error = state
+            .set_app_settings(request(SettingsPatch {
+                feed: Some(FeedSettingsPatch {
+                    enabled: Some(false),
+                    hidden: Some(hidden),
+                    ..FeedSettingsPatch::default()
+                }),
+                ..SettingsPatch::default()
+            }))
+            .unwrap_err();
+        assert_eq!(error.code, ErrorCode::InvalidInput);
+    }
+    assert!(state.snapshot().settings.feed.enabled);
+    // Unknown fields and values are refused when the patch is read.
+    for junk in [
+        r#"{"feed":{"enabled":true,"evil":1}}"#,
+        r#"{"feed":{"player":"popup"}}"#,
+        r#"{"feed":{"hidden":["videos","<img>"]}}"#,
+        r#"{"feed":{"videoLanguage":"de"}}"#,
+    ] {
+        assert!(
+            serde_json::from_str::<SettingsPatch>(junk).is_err(),
+            "{junk}"
+        );
+    }
+    state
+        .set_app_settings(request(SettingsPatch {
+            feed: Some(FeedSettingsPatch {
+                enabled: Some(false),
+                hidden: Some(Vec::new()),
+                ..FeedSettingsPatch::default()
+            }),
+            ..SettingsPatch::default()
+        }))
+        .unwrap();
+    drop(state);
+    let state = state_at(dir.path(), RecordingSink::default());
+    let feed = state.snapshot().settings.feed;
+    assert!(!feed.enabled && !feed.snapshots && feed.shorts);
+    assert!(feed.hidden.is_empty());
+    assert_eq!(feed.video_language, VideoLanguage::Ru);
+}
+
+#[test]
 fn unsupported_settings_schema_blocks_mutation_without_data_loss() {
     let dir = tempfile::tempdir().unwrap();
     std::fs::write(dir.path().join("settings.json"), br#"{"schemaVersion":9}"#).unwrap();

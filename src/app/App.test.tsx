@@ -353,7 +353,7 @@ describe('App', () => {
     const tabs = within(nav)
       .getAllByRole('button')
       .map((button) => button.textContent);
-    expect(tabs).toEqual(['Installations', 'Accounts', 'Settings', 'More▾', 'Quit']);
+    expect(tabs).toEqual(['Feed', 'Installations', 'Accounts', 'Settings', 'More▾', 'Quit']);
     const more = moreButton();
     expect(more).toHaveAttribute('aria-haspopup', 'menu');
     expect(more).toHaveAttribute('aria-expanded', 'false');
@@ -554,9 +554,88 @@ describe('App', () => {
     expect(calls.some((c) => c.cmd === 'set_app_settings')).toBe(false);
   });
 
+  it('opens the feed at start, and hides it while it is switched off', async () => {
+    const calls = fakeBackend(snapshotFixture({ settings: settingsWith({ startView: 'feed' }) }));
+    const { unmount } = render(<App />);
+    await waitFor(() => {
+      expect(screen.getByRole('button', { name: 'Feed' })).toHaveAttribute('aria-current', 'page');
+    });
+    await waitFor(() => {
+      expect(calls.some((c) => c.cmd === 'feed_get')).toBe(true);
+    });
+    unmount();
+
+    const off = settingsWith({
+      startView: 'feed',
+      feed: { ...snapshotFixture().settings.feed, enabled: false },
+    });
+    const quiet = fakeBackend(snapshotFixture({ settings: off }));
+    render(<App />);
+    expect(await screen.findByText(/No installations yet/)).toBeVisible();
+    const nav = screen.getByRole('navigation', { name: 'Main' });
+    expect(within(nav).queryByRole('button', { name: 'Feed' })).toBeNull();
+    expect(screen.getByRole('button', { name: 'Installations' })).toHaveAttribute(
+      'aria-current',
+      'page',
+    );
+    // Off means the launcher asks the feed for nothing.
+    expect(quiet.some((c) => c.cmd.startsWith('feed_'))).toBe(false);
+  });
+
+  it("installs the feed's newest version through the new-installation form", async () => {
+    const feed = {
+      format: 1,
+      generated: '2026-10-19T12:00:00Z',
+      lang: 'en',
+      versions: [
+        {
+          id: 'j-1-21-1',
+          title: 'Minecraft 1.21.1',
+          date: '2026-10-14T15:00:00Z',
+          summary: '',
+          translated: false,
+          version: '1.21.1',
+          kind: 'release',
+          image: null,
+          url: null,
+        },
+      ],
+      news: [],
+      videos: [],
+      streams: [],
+      cycle: null,
+      latest: { release: null, snapshot: null },
+      events: [],
+      announcements: [],
+      tip: null,
+      fetched: {},
+    };
+    fakeBackend(
+      snapshotFixture({ settings: settingsWith({ startView: 'feed' }) }),
+      appInfoFixture,
+      {
+        feed_get: () => ({ feed, stale: false, problem: null }),
+        feed_own_videos: () => [],
+      },
+    );
+    render(<App />);
+    fireEvent.click(await screen.findByRole('button', { name: 'Install 1.21.1' }));
+    expect(screen.getByRole('button', { name: 'Installations' })).toHaveAttribute(
+      'aria-current',
+      'page',
+    );
+    // The latest release would be 26.3; the feed's version is chosen instead.
+    await waitFor(() => {
+      expect(screen.getByLabelText('Name')).toHaveValue('1.21.1');
+    });
+    // Settings has the feed's own section.
+    fireEvent.click(screen.getByRole('button', { name: 'Settings' }));
+    fireEvent.click(screen.getByRole('tab', { name: 'Feed' }));
+    expect(screen.getByRole('checkbox', { name: /Show the feed/ })).toBeChecked();
+  });
+
   it('opens Installations for screens not built yet', async () => {
     for (const settings of [
-      settingsWith({ startView: 'feed' }),
       settingsWith({ startView: 'skins' }),
       settingsWith({ startView: 'last', lastView: 'mods' }),
     ]) {
@@ -593,7 +672,7 @@ describe('App', () => {
     render(<App />);
     fireEvent.click(await screen.findByRole('button', { name: 'Settings' }));
     const picker = screen.getByRole('combobox', { name: 'Open at start' });
-    expect(picker).toHaveValue('feed');
+    expect(picker).toHaveValue('home');
     expect(
       within(picker)
         .getAllByRole('option')

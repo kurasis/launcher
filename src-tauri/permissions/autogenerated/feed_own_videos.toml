@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-feed-own-videos"
+description = "Enables the feed_own_videos command without any pre-configured scope."
+commands.allow = ["feed_own_videos"]
+
+[[permission]]
+identifier = "deny-feed-own-videos"
+description = "Denies the feed_own_videos command without any pre-configured scope."
+commands.deny = ["feed_own_videos"]

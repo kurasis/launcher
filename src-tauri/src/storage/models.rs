@@ -139,6 +139,127 @@ fn remembered_view<'de, D: serde::Deserializer<'de>>(
         .unwrap_or_default())
 }
 
+/// The language of the feed's videos and streams (D-067): the interface's, or
+/// one of the feed's own languages.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
+#[serde(rename_all = "snake_case")]
+pub enum VideoLanguage {
+    #[default]
+    Ui,
+    En,
+    Ru,
+    Ar,
+}
+
+/// Where a video or stream plays: the launcher's player window or the
+/// system browser.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
+#[serde(rename_all = "snake_case")]
+pub enum PlayerMode {
+    #[default]
+    Window,
+    Browser,
+}
+
+/// A part of the feed the player can hide.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum FeedBlock {
+    Versions,
+    News,
+    Videos,
+    Streams,
+}
+
+impl FeedBlock {
+    pub const ALL: [Self; 4] = [Self::Versions, Self::News, Self::Videos, Self::Streams];
+}
+
+/// The feed's settings (Settings → Feed, D-067). A damaged stored value
+/// reads as its default, never as unreadable settings.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct FeedSettings {
+    /// False hides the Feed tab, and the launcher asks the feed for nothing.
+    pub enabled: bool,
+    /// Snapshots, pre-releases and release candidates in the feed.
+    pub snapshots: bool,
+    pub video_language: VideoLanguage,
+    /// YouTube Shorts among the videos.
+    pub shorts: bool,
+    /// Patch notes and news machine-translated into the interface language.
+    pub machine_translation: bool,
+    pub player: PlayerMode,
+    /// Parts of the feed not shown; sorted, each once.
+    pub hidden: Vec<FeedBlock>,
+}
+
+impl Default for FeedSettings {
+    fn default() -> Self {
+        Self {
+            enabled: true,
+            snapshots: true,
+            video_language: VideoLanguage::Ui,
+            shorts: false,
+            machine_translation: true,
+            player: PlayerMode::Window,
+            hidden: Vec::new(),
+        }
+    }
+}
+
+impl FeedSettings {
+    /// Each block once, in a fixed order.
+    pub fn hidden_set(blocks: impl IntoIterator<Item = FeedBlock>) -> Vec<FeedBlock> {
+        let mut hidden: Vec<FeedBlock> = blocks.into_iter().collect();
+        hidden.sort();
+        hidden.dedup();
+        hidden
+    }
+}
+
+impl<'de> Deserialize<'de> for FeedSettings {
+    fn deserialize<D: serde::Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        let value = serde_json::Value::deserialize(deserializer)?;
+        let default = Self::default();
+        let Some(fields) = value.as_object() else {
+            return Ok(default);
+        };
+        let flag = |name: &str, default: bool| {
+            fields
+                .get(name)
+                .and_then(serde_json::Value::as_bool)
+                .unwrap_or(default)
+        };
+        fn named<T: serde::de::DeserializeOwned>(value: Option<&serde_json::Value>) -> Option<T> {
+            value
+                .filter(|v| v.is_string())
+                .and_then(|v| T::deserialize(v).ok())
+        }
+        let hidden = fields
+            .get("hidden")
+            .and_then(serde_json::Value::as_array)
+            .map(|items| {
+                Self::hidden_set(
+                    items
+                        .iter()
+                        .take(FeedBlock::ALL.len() * 4)
+                        .filter_map(|item| named::<FeedBlock>(Some(item))),
+                )
+            })
+            .unwrap_or_default();
+        Ok(Self {
+            enabled: flag("enabled", default.enabled),
+            snapshots: flag("snapshots", default.snapshots),
+            video_language: named(fields.get("videoLanguage")).unwrap_or(default.video_language),
+            shorts: flag("shorts", default.shorts),
+            machine_translation: flag("machineTranslation", default.machine_translation),
+            player: named(fields.get("player")).unwrap_or(default.player),
+            hidden,
+        })
+    }
+}
+
 /// What happens to the launcher window while a game runs.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
 #[serde(rename_all = "snake_case")]
@@ -242,6 +363,9 @@ pub struct Settings {
     /// Never `Last` itself.
     #[serde(default, deserialize_with = "remembered_view")]
     pub last_view: StartView,
+    /// The start page feed (D-067).
+    #[serde(default)]
+    pub feed: FeedSettings,
 }
 
 fn default_metered_warn_mib() -> u32 {
@@ -279,6 +403,7 @@ impl Default for Settings {
             skipped_version: None,
             start_view: StartView::Feed,
             last_view: StartView::Feed,
+            feed: FeedSettings::default(),
         }
     }
 }
@@ -758,6 +883,56 @@ mod tests {
                 .unwrap();
         assert_eq!(last.start_view, StartView::Last);
         assert_eq!(last.last_view, StartView::Feed);
+    }
+
+    #[test]
+    fn feed_settings_default_and_junk_reads_as_default() {
+        let default: Settings = serde_json::from_str(r#"{"schemaVersion":1}"#).unwrap();
+        assert_eq!(default.feed, FeedSettings::default());
+        assert!(default.feed.enabled && default.feed.snapshots);
+        assert!(default.feed.machine_translation && !default.feed.shorts);
+        assert_eq!(default.feed.player, PlayerMode::Window);
+        assert_eq!(default.feed.video_language, VideoLanguage::Ui);
+        assert!(default.feed.hidden.is_empty());
+        for junk in [
+            "null",
+            "7",
+            r#""feed""#,
+            "[]",
+            r#"{"enabled":"no","snapshots":1,"shorts":null,"player":"popup","videoLanguage":"de","hidden":"videos","machineTranslation":[]}"#,
+            r#"{"player":{"x":1},"videoLanguage":["ru"],"hidden":[1,null,{"a":1},"<script>"]}"#,
+        ] {
+            let json = format!(r#"{{"schemaVersion":1,"theme":"dark","feed":{junk}}}"#);
+            let read: Settings = serde_json::from_str(&json).unwrap();
+            assert_eq!(read.feed, FeedSettings::default(), "{junk}");
+            assert_eq!(read.theme, Theme::Dark, "{junk}");
+        }
+        let read: Settings = serde_json::from_str(
+            r#"{"schemaVersion":1,"feed":{"enabled":false,"snapshots":false,"videoLanguage":"ar",
+            "shorts":true,"machineTranslation":false,"player":"browser",
+            "hidden":["videos","news","videos","bogus","streams"],"future":1}}"#,
+        )
+        .unwrap();
+        assert_eq!(
+            read.feed,
+            FeedSettings {
+                enabled: false,
+                snapshots: false,
+                video_language: VideoLanguage::Ar,
+                shorts: true,
+                machine_translation: false,
+                player: PlayerMode::Browser,
+                hidden: vec![FeedBlock::News, FeedBlock::Videos, FeedBlock::Streams],
+            }
+        );
+        let json = serde_json::to_value(&read).unwrap();
+        assert_eq!(json["feed"]["videoLanguage"], "ar");
+        assert_eq!(
+            json["feed"]["hidden"],
+            serde_json::json!(["news", "videos", "streams"])
+        );
+        let back: Settings = serde_json::from_value(json).unwrap();
+        assert_eq!(back.feed, read.feed);
     }
 
     #[test]

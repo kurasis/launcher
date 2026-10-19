@@ -1,16 +1,21 @@
 // The screens of the main window and where each one is reached from.
 //
-// A new top-level screen is a new `View`, a place in `rowViews` (the feed goes
-// first) or in `menuEntries`, and a text in `strings.nav`. A start view the
-// interface does not have yet opens Installations.
-import type { AppSnapshot, RememberedView } from '../lib/contracts';
+// A new top-level screen is a new `View`, a place in `rowViews` or in
+// `menuEntries`, and a text in `strings.nav`. A start view the interface does
+// not have yet opens Installations.
+import type { AppSnapshot, RememberedView, SettingsView } from '../lib/contracts';
 
 /** Screens of the main window. */
 export type View =
-  'home' | 'account' | 'settings' | 'backups' | 'screenshots' | 'diagnostics' | 'about';
+  'feed' | 'home' | 'account' | 'settings' | 'backups' | 'screenshots' | 'diagnostics' | 'about';
 
-/** Tabs in the row, in order. */
-export const rowViews: readonly View[] = ['home', 'account', 'settings'];
+/** Tabs in the row, in order: the feed (D-067) first. */
+export const rowViews: readonly View[] = ['feed', 'home', 'account', 'settings'];
+
+/** Whether a screen can be opened with these settings: the feed only while it is on. */
+export function viewShown(view: View, settings: SettingsView | undefined): boolean {
+  return view !== 'feed' || settings?.feed.enabled !== false;
+}
 
 /** An entry of the More menu: a screen, a separator, or the console window. */
 export type MenuEntry = View | 'separator' | 'console';
@@ -45,13 +50,15 @@ export function rememberedView(view: View): RememberedView | null {
 /**
  * The screen opened at start: Installations while a game or an install runs,
  * otherwise the chosen start screen (or the last one opened). A screen this
- * version does not have yet, or a value the core did not send, opens
- * Installations.
+ * version does not have yet, the feed while it is off, or a value the core did
+ * not send, opens Installations.
  */
 export function startViewOf(snapshot: AppSnapshot): View {
   if (snapshot.activeOperation !== null || snapshot.currentRun !== null) return 'home';
   const { startView, lastView } = snapshot.settings;
   const wanted: string | undefined = startView === 'last' ? lastView : startView;
   const view = views.find((item) => item === wanted);
-  return view !== undefined && rememberedView(view) !== null ? view : 'home';
+  return view !== undefined && rememberedView(view) !== null && viewShown(view, snapshot.settings)
+    ? view
+    : 'home';
 }

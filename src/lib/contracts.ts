@@ -273,6 +273,8 @@ export interface SettingsView {
   startView: StartView;
   /** The last start screen opened, for `startView: 'last'`. */
   lastView: RememberedView;
+  /** The start page feed (D-067). */
+  feed: FeedSettings;
   writable: boolean;
 }
 
@@ -864,6 +866,8 @@ export interface SettingsPatch {
   updateChannel?: UpdateChannel;
   startView?: StartView;
   lastView?: RememberedView;
+  /** Fields omitted stay as they are. */
+  feed?: Partial<FeedSettings>;
 }
 
 interface EventEnvelope {
@@ -1109,4 +1113,175 @@ export interface FailureSummary {
   version: string;
   message: string;
   reported: boolean;
+}
+
+// ---- The start page feed (D-067) ----------------------------------------------
+
+/** The language of the feed's videos and streams: the interface's, or one of these. */
+export type VideoLanguage = 'ui' | 'en' | 'ru' | 'ar';
+/** Where a video or stream plays. */
+export type PlayerMode = 'window' | 'browser';
+/** A part of the feed the player can hide. */
+export type FeedBlock = 'versions' | 'news' | 'videos' | 'streams';
+
+export interface FeedSettings {
+  /** False hides the Feed tab; the launcher then asks the feed for nothing. */
+  enabled: boolean;
+  /** Snapshots, pre-releases and release candidates. */
+  snapshots: boolean;
+  videoLanguage: VideoLanguage;
+  /** YouTube Shorts among the videos. */
+  shorts: boolean;
+  /** Patch notes and news machine-translated into the interface language. */
+  machineTranslation: boolean;
+  player: PlayerMode;
+  hidden: FeedBlock[];
+}
+
+/** The feed's languages. */
+export type FeedLang = 'en' | 'ru' | 'ar';
+export type VersionKind = 'release' | 'snapshot' | 'pre' | 'rc';
+
+/** A patch note (`j-…`) or a news article (`n-…`), as a card. */
+export interface NoteCard {
+  id: string;
+  title: string;
+  date: string;
+  summary: string;
+  /** Machine-translated from English. */
+  translated: boolean;
+  version: string | null;
+  kind: VersionKind | null;
+  /** `img/<sha>.jpg` on the `feed:` protocol. */
+  image: string | null;
+  /** The article on www.minecraft.net (news). */
+  url: string | null;
+}
+
+export interface FeedVideo {
+  id: string;
+  channelId: string;
+  channel: string;
+  title: string;
+  date: string;
+  short: boolean;
+  image: string | null;
+}
+
+export interface FeedStream {
+  login: string;
+  name: string;
+  title: string;
+  viewers: number;
+  started: string;
+  image: string | null;
+}
+
+export interface FeedCycle {
+  target: string;
+  snapshots: number;
+  pre: number;
+  rc: number;
+  released: boolean;
+  stage: VersionKind;
+  latest: string;
+  date: string;
+}
+
+export interface LatestVersion {
+  id: string;
+  kind: VersionKind;
+  date: string;
+}
+
+export interface FeedEvent {
+  id: string;
+  title: string;
+  starts: string;
+  ends: string;
+  url: string | null;
+}
+
+export interface FeedAnnouncement {
+  id: string;
+  title: string;
+  text: string;
+  url: string | null;
+}
+
+export interface Feed {
+  format: number;
+  generated: string;
+  lang: FeedLang;
+  versions: NoteCard[];
+  news: NoteCard[];
+  videos: FeedVideo[];
+  streams: FeedStream[];
+  cycle: FeedCycle | null;
+  latest: { release: LatestVersion | null; snapshot: LatestVersion | null };
+  events: FeedEvent[];
+  announcements: FeedAnnouncement[];
+  tip: string | null;
+  fetched: Record<string, string>;
+}
+
+/** What went wrong with the feed; the interface says it in words. */
+export type FeedProblem =
+  | 'disabled'
+  | 'offline'
+  | 'server'
+  | 'not_found'
+  | 'bad_input'
+  | 'too_many'
+  | 'full'
+  | 'unavailable';
+
+export const FEED_PROBLEMS: readonly FeedProblem[] = [
+  'disabled',
+  'offline',
+  'server',
+  'not_found',
+  'bad_input',
+  'too_many',
+  'full',
+  'unavailable',
+];
+
+export interface FeedView {
+  feed: Feed;
+  /** A copy kept on disk is shown: the service did not answer. */
+  stale: boolean;
+  problem: FeedProblem | null;
+}
+
+/** A run of text in a note: bold, italic, code, or a link the launcher may open. */
+export interface NoteRun {
+  text: string;
+  b?: boolean;
+  i?: boolean;
+  code?: boolean;
+  href?: string;
+}
+
+export type NoteBlock =
+  | { t: 'h'; level: number; c: NoteRun[] }
+  | { t: 'p'; c: NoteRun[] }
+  | { t: 'ul'; items: NoteBlock[][] }
+  | { t: 'ol'; items: NoteBlock[][] }
+  | { t: 'img'; src: string; alt: string };
+
+export interface Note extends NoteCard {
+  lang: FeedLang;
+  blocks: NoteBlock[];
+}
+
+export interface NoteView {
+  note: Note;
+  stale: boolean;
+}
+
+/** A YouTube channel the player added to the feed. */
+export interface OwnChannel {
+  channelId: string;
+  title: string;
 }

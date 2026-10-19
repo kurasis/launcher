@@ -1741,6 +1741,9 @@ impl AppState {
                         )
                     })?;
                 }
+                if let Some(feed) = patch.feed {
+                    apply_feed_patch(&mut settings.feed, feed)?;
+                }
                 if let Some(tag) = patch.language {
                     settings.language =
                         crate::storage::models::Language::parse(&tag).ok_or_else(|| {
@@ -1756,6 +1759,44 @@ impl AppState {
             },
         )
     }
+}
+
+/// Applies a change of the feed's settings (D-067), checked first.
+fn apply_feed_patch(
+    feed: &mut crate::storage::models::FeedSettings,
+    patch: dto::FeedSettingsPatch,
+) -> LauncherResult<()> {
+    use crate::storage::models::{FeedBlock, FeedSettings};
+    if let Some(hidden) = &patch.hidden {
+        let set = FeedSettings::hidden_set(hidden.iter().copied());
+        if hidden.len() > FeedBlock::ALL.len() || set.len() != hidden.len() {
+            return Err(LauncherError::invalid_input(
+                "Each part of the feed can be hidden once.",
+            ));
+        }
+    }
+    if let Some(on) = patch.enabled {
+        feed.enabled = on;
+    }
+    if let Some(on) = patch.snapshots {
+        feed.snapshots = on;
+    }
+    if let Some(language) = patch.video_language {
+        feed.video_language = language;
+    }
+    if let Some(on) = patch.shorts {
+        feed.shorts = on;
+    }
+    if let Some(on) = patch.machine_translation {
+        feed.machine_translation = on;
+    }
+    if let Some(player) = patch.player {
+        feed.player = player;
+    }
+    if let Some(hidden) = patch.hidden {
+        feed.hidden = FeedSettings::hidden_set(hidden);
+    }
+    Ok(())
 }
 
 enum Change {

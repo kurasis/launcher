@@ -23,6 +23,7 @@ import { UpdateSettings } from '../updates/UpdateSettings';
 import { DownloadSourceSettings } from '../network/DownloadSourceSettings';
 import { NetworkSettings } from '../network/NetworkSettings';
 import { ResetSettings } from './ResetSettings';
+import { FeedSettings } from '../feed/FeedSettings';
 import styles from './SettingsView.module.css';
 import { gameLabel } from '../instances/loaderLabel';
 
@@ -37,6 +38,7 @@ interface SettingsViewProps {
 const t = strings.settings;
 const sections: SettingsSection[] = [
   'general',
+  'feed',
   'java',
   'defaults',
   'network',
@@ -79,6 +81,7 @@ export function SettingsView({ snapshot, section, onSection, instanceId }: Setti
           <p className={styles.hint}>{t.sectionHints[section]}</p>
           {!settings.writable && <Notice tone="warning">{t.readOnly}</Notice>}
           {section === 'general' && <GeneralSettings snapshot={snapshot} />}
+          {section === 'feed' && <FeedSettings settings={settings} />}
           {section === 'java' && (
             <JavaSettings settings={settings} instances={snapshot.instances} />
           )}

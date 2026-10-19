@@ -27,6 +27,7 @@ import { UpdateBadge } from '../features/updates/UpdateBadge';
 import { WhatsNew } from '../features/updates/WhatsNew';
 import { DownloadManager } from '../features/downloads/DownloadManager';
 import { FriendsCorner } from '../features/friends/FriendsCorner';
+import { FeedView } from '../features/feed/FeedView';
 import { useTheme } from './useTheme';
 import { useAppInfo } from './useAppInfo';
 import { MoreMenu, type MenuItem } from './MoreMenu';
@@ -37,6 +38,7 @@ import {
   rememberedView,
   rowViews,
   startViewOf,
+  viewShown,
 } from './navigation';
 import { localizeError } from '../lib/strings';
 
@@ -91,14 +93,19 @@ export function App() {
   const { clear: clearConsoleError, catcher: consoleFailed } = consoleOpening;
   const [settingsSection, setSettingsSection] = useState<SettingsSection>('general');
   const [settingsInstance, setSettingsInstance] = useState<string | null>(null);
+  // A version the feed asked to install: Installations opens its form with it.
+  const [installVersion, setInstallVersion] = useState<string | null>(null);
   const snapshot = state.status === 'ready' ? state.snapshot : null;
   // The start screen is picked once, from the first state the core sends.
   if (chosenView === null && snapshot !== null) setView(startViewOf(snapshot));
-  const view = chosenView ?? 'home';
   const settings = snapshot?.settings;
+  // The feed switched off while open gives way to Installations.
+  const view = chosenView !== null && viewShown(chosenView, settings) ? chosenView : 'home';
+  const tabs = rowViews.filter((item) => viewShown(item, settings));
   /** Opens a screen; with "Last opened" the core remembers it for the next start. */
   const navigate = (next: View) => {
     setView(next);
+    setInstallVersion(null);
     const remembered = rememberedView(next);
     if (
       settings?.startView === 'last' &&
@@ -184,7 +191,7 @@ export function App() {
         {snapshot !== null && <UpdateBadge update={snapshot.update} />}
         {snapshot !== null && <AccountChip account={snapshot.account} />}
         <nav aria-label={strings.nav.label} className={styles.nav}>
-          {rowViews.map((item) => (
+          {tabs.map((item) => (
             <button
               key={item}
               type="button"
@@ -231,6 +238,26 @@ export function App() {
         ) : (
           <>
             <StorageIssues issues={state.snapshot.storageIssues} />
+            {view === 'feed' && (
+              <FeedView
+                snapshot={state.snapshot}
+                onOpenInstallations={(instanceId) => {
+                  navigate('home');
+                  if (
+                    instanceId !== null &&
+                    instanceId !== state.snapshot.settings.selectedInstanceId
+                  ) {
+                    void ipc
+                      .setAppSettings({ selectedInstanceId: instanceId })
+                      .catch(() => undefined);
+                  }
+                }}
+                onInstallVersion={(versionId) => {
+                  navigate('home');
+                  setInstallVersion(versionId);
+                }}
+              />
+            )}
             {view === 'home' && <WhatsNew update={state.snapshot.update} />}
             {view === 'home' && <FailureOffer />}
             {view === 'home' && (
@@ -245,7 +272,9 @@ export function App() {
                 />
                 {stopping.error !== null && <Notice tone="danger">{stopping.error}</Notice>}
                 <InstancesView
+                  key={installVersion ?? ''}
                   snapshot={state.snapshot}
+                  createVersion={installVersion}
                   onEditSettings={(instanceId) => {
                     setSettingsInstance(instanceId);
                     setSettingsSection('installations');

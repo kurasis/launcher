@@ -161,6 +161,30 @@ pub struct SettingsPatch {
     /// The screen just opened, remembered for `StartView::Last`; never `last`.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub last_view: Option<String>,
+    /// The feed's settings (D-067); fields omitted are left unchanged.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub feed: Option<FeedSettingsPatch>,
+}
+
+/// Changes to [`crate::storage::models::FeedSettings`]; omitted fields stay.
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct FeedSettingsPatch {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub enabled: Option<bool>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub snapshots: Option<bool>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub video_language: Option<crate::storage::models::VideoLanguage>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub shorts: Option<bool>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub machine_translation: Option<bool>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub player: Option<crate::storage::models::PlayerMode>,
+    /// The whole list of hidden blocks; at most one of each.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub hidden: Option<Vec<crate::storage::models::FeedBlock>>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -187,6 +211,7 @@ pub struct SettingsView {
     pub install_id: Option<String>,
     pub start_view: StartView,
     pub last_view: StartView,
+    pub feed: crate::storage::models::FeedSettings,
     /// False when settings were written by a newer launcher or could not be read.
     pub writable: bool,
 }
@@ -214,6 +239,7 @@ impl SettingsView {
             install_id: settings.install_id.clone(),
             start_view: settings.start_view,
             last_view: settings.last_view,
+            feed: settings.feed.clone(),
             writable,
         }
     }
