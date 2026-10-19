@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-worlds-accept-eula"
+description = "Enables the worlds_accept_eula command without any pre-configured scope."
+commands.allow = ["worlds_accept_eula"]
+
+[[permission]]
+identifier = "deny-worlds-accept-eula"
+description = "Denies the worlds_accept_eula command without any pre-configured scope."
+commands.deny = ["worlds_accept_eula"]

@@ -15,6 +15,7 @@ export type Messages = {
     readonly feed: string;
     readonly home: string;
     readonly mods: string;
+    readonly worlds: string;
     readonly account: string;
     readonly backups: string;
     readonly screenshots: string;
@@ -1436,6 +1437,175 @@ export type Messages = {
       readonly remove: string;
       readonly confirmRemove: string;
       readonly cancel: string;
+    };
+  };
+  readonly worlds: {
+    readonly title: string;
+    readonly signIn: string;
+    readonly openAccount: string;
+    readonly rooms: string;
+    readonly noRooms: string;
+    readonly create: string;
+    readonly joinByCode: string;
+    readonly refresh: string;
+    readonly loading: string;
+    readonly roomMeta: (values: {
+      owner: string | number;
+      version: string | number;
+      members: number;
+    }) => string;
+    readonly openNow: (values: { online: string | number; max: string | number }) => string;
+    readonly closedNow: string;
+    readonly yours: string;
+    readonly keptHere: string;
+    readonly keptElsewhere: string;
+    readonly open: string;
+    readonly back: string;
+    readonly host: string;
+    readonly stopHosting: string;
+    readonly join: string;
+    readonly play: string;
+    readonly disconnect: string;
+    readonly cancel: string;
+    readonly close: string;
+    readonly stages: {
+      readonly server: string;
+      readonly starting: string;
+      readonly opening: string;
+      readonly joining: string;
+    };
+    readonly progress: (values: { done: string | number; total: string | number }) => string;
+    readonly hosting: {
+      readonly title: (values: { room: string | number }) => string;
+      readonly players: (values: { count: number; names: string | number }) => string;
+      readonly phases: {
+        readonly starting: string;
+        readonly ready: string;
+        readonly stopping: string;
+        readonly exited: string;
+      };
+      readonly ended: {
+        readonly stopped: string;
+        readonly server_exited: string;
+        readonly session_lost: string;
+        readonly room_gone: string;
+      };
+      readonly unclean: string;
+      readonly hostPlays: string;
+    };
+    readonly guest: {
+      readonly title: (values: { room: string | number }) => string;
+      readonly connected: string;
+      readonly lost: string;
+    };
+    readonly refusals: {
+      readonly BAD_FRAME: string;
+      readonly TICKET_INVALID: string;
+      readonly NOT_MEMBER: string;
+      readonly ALREADY_CONNECTED: string;
+      readonly CONNECTION_CLOSING: string;
+      readonly WRONG_SESSION: string;
+      readonly ROOM_FULL: string;
+      readonly HOST_BUSY: string;
+      readonly UNAVAILABLE: string;
+    };
+    readonly installing: string;
+    readonly eulaNeeded: string;
+    readonly acceptEula: string;
+    readonly readEula: string;
+    readonly members: string;
+    readonly roles: {
+      readonly owner: string;
+      readonly manager: string;
+      readonly member: string;
+    };
+    readonly remove: string;
+    readonly ban: string;
+    readonly removeConfirm: (values: { nick: string | number }) => string;
+    readonly banConfirm: (values: { nick: string | number }) => string;
+    readonly leave: string;
+    readonly leaveConfirm: (values: { room: string | number }) => string;
+    readonly invite: {
+      readonly title: string;
+      readonly hours: string;
+      readonly hourOptions: (values: { count: number }) => string;
+      readonly dayOptions: (values: { count: number }) => string;
+      readonly uses: string;
+      readonly make: string;
+      readonly code: string;
+      readonly copy: string;
+      readonly copied: string;
+      readonly hint: (values: { uses: number; date: string | number }) => string;
+    };
+    readonly form: {
+      readonly name: string;
+      readonly description: string;
+      readonly version: string;
+      readonly gameMode: string;
+      readonly modes: {
+        readonly survival: string;
+        readonly creative: string;
+        readonly adventure: string;
+      };
+      readonly difficulty: string;
+      readonly difficulties: {
+        readonly peaceful: string;
+        readonly easy: string;
+        readonly normal: string;
+        readonly hard: string;
+      };
+      readonly preset: string;
+      readonly presets: {
+        readonly normal: string;
+        readonly flat: string;
+        readonly large_biomes: string;
+        readonly amplified: string;
+      };
+      readonly seed: string;
+      readonly seedHint: string;
+      readonly hardcore: string;
+      readonly pvp: string;
+      readonly maxPlayers: string;
+      readonly eula: string;
+      readonly submit: string;
+      readonly creating: string;
+      readonly keptHint: string;
+    };
+    readonly code: {
+      readonly label: string;
+      readonly look: string;
+      readonly preview: (values: {
+        name: string | number;
+        owner: string | number;
+        version: string | number;
+        members: number;
+      }) => string;
+      readonly accept: string;
+    };
+    readonly problems: {
+      readonly signed_out: string;
+      readonly network: string;
+      readonly server: string;
+      readonly too_many: string;
+      readonly invalid: string;
+      readonly not_found: string;
+      readonly forbidden: string;
+      readonly banned: string;
+      readonly nick_unfit: string;
+      readonly invite_invalid: string;
+      readonly not_member: string;
+      readonly limit: string;
+      readonly world_taken: string;
+      readonly revision_conflict: string;
+      readonly owner_cannot_leave: string;
+      readonly not_hosting: string;
+      readonly session_ended: string;
+      readonly ticket_invalid: string;
+      readonly wrong_session: string;
+      readonly room_full: string;
+      readonly already_connected: string;
+      readonly device: string;
+      readonly refused: string;
     };
   };
   readonly metered: {

@@ -2321,6 +2321,263 @@ pub async fn feed_own_videos<R: Runtime>(app: AppHandle<R>) -> FeedResult<Vec<Vi
     feed_service(&app).own_videos(&root).await
 }
 
+// ----- worlds with friends (D-068) -----
+
+fn worlds<R: Runtime>(app: &AppHandle<R>) -> Arc<crate::worlds::app::Worlds> {
+    Arc::clone(&app.state::<Arc<crate::worlds::app::Worlds>>())
+}
+
+/// A room's page: the room and its members.
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct WorldsRoomPage {
+    pub room: crate::worlds::service::Room,
+    pub members: Vec<crate::worlds::service::Member>,
+}
+
+/// The installation a room plays and whether it is installed.
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct WorldsInstance {
+    pub instance_id: crate::storage::paths::InstanceId,
+    pub ready: bool,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct WorldsCreatePayload {
+    pub name: String,
+    #[serde(default)]
+    pub description: String,
+    pub minecraft: String,
+    #[serde(default)]
+    pub settings: crate::worlds::properties::WorldSettings,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct WorldsRoomPayload {
+    pub room: String,
+}
+
+/// What this computer does for a room now.
+#[tauri::command]
+pub fn worlds_state<R: Runtime>(app: AppHandle<R>) -> crate::worlds::app::WorldsView {
+    worlds(&app).view()
+}
+
+/// The Minecraft versions a world can be made for, newest first.
+#[tauri::command]
+pub fn worlds_versions() -> Vec<&'static str> {
+    crate::worlds::tuple::TUPLES
+        .iter()
+        .map(|t| t.minecraft)
+        .collect()
+}
+
+/// The worlds kept on this computer.
+#[tauri::command]
+pub async fn worlds_local<R: Runtime>(
+    app: AppHandle<R>,
+) -> LauncherResult<Vec<crate::worlds::app::LocalWorld>> {
+    let worlds = worlds(&app);
+    tauri::async_runtime::spawn_blocking(move || worlds.local())
+        .await
+        .map_err(|_| crate::error::LauncherError::internal("Reading the worlds stopped."))?
+}
+
+/// The rooms the launcher account is in.
+#[tauri::command]
+pub async fn worlds_rooms<R: Runtime>(
+    app: AppHandle<R>,
+) -> LauncherResult<Vec<crate::worlds::service::Room>> {
+    Ok(worlds(&app).client.rooms().await?)
+}
+
+#[tauri::command]
+pub async fn worlds_room<R: Runtime>(
+    app: AppHandle<R>,
+    room: String,
+) -> LauncherResult<WorldsRoomPage> {
+    let worlds = worlds(&app);
+    let (found, members) = tokio::join!(worlds.client.room(&room), worlds.client.members(&room));
+    Ok(WorldsRoomPage {
+        room: found?,
+        members: members?,
+    })
+}
+
+/// A new world on this computer and its room.
+#[tauri::command]
+pub async fn worlds_create<R: Runtime>(
+    app: AppHandle<R>,
+    payload: WorldsCreatePayload,
+) -> LauncherResult<crate::worlds::service::Room> {
+    worlds(&app)
+        .create(
+            &payload.name,
+            &payload.description,
+            &payload.minecraft,
+            payload.settings,
+        )
+        .await
+}
+
+/// The player accepted the Minecraft EULA for a world.
+#[tauri::command]
+pub fn worlds_accept_eula<R: Runtime>(
+    app: AppHandle<R>,
+    world: crate::storage::paths::WorldId,
+) -> LauncherResult<crate::worlds::app::LocalWorld> {
+    worlds(&app).accept_eula(world)
+}
+
+/// Removes, bans or unbans a member.
+#[tauri::command]
+pub async fn worlds_moderate<R: Runtime>(
+    app: AppHandle<R>,
+    room: String,
+    account: String,
+    action: String,
+) -> LauncherResult<()> {
+    Ok(worlds(&app)
+        .client
+        .moderate(&room, &account, &action)
+        .await?)
+}
+
+/// Leaves a room the account is a member of.
+#[tauri::command]
+pub async fn worlds_leave_room<R: Runtime>(app: AppHandle<R>, room: String) -> LauncherResult<()> {
+    Ok(worlds(&app).client.leave(&room).await?)
+}
+
+/// A new invite code: valid for `hours` (1–168) and `uses` (1–10).
+#[tauri::command]
+pub async fn worlds_invite<R: Runtime>(
+    app: AppHandle<R>,
+    room: String,
+    hours: u32,
+    uses: u32,
+) -> LauncherResult<crate::worlds::service::NewInvite> {
+    if !(1..=168).contains(&hours) || !(1..=10).contains(&uses) {
+        return Err(crate::worlds::service::Problem::Invalid.into());
+    }
+    Ok(worlds(&app)
+        .client
+        .create_invite(&room, hours, uses)
+        .await?)
+}
+
+/// What an invite code leads to, before joining.
+#[tauri::command]
+pub async fn worlds_preview<R: Runtime>(
+    app: AppHandle<R>,
+    code: String,
+) -> LauncherResult<crate::worlds::service::Preview> {
+    if code.len() > 512 {
+        return Err(crate::worlds::service::Problem::InviteInvalid.into());
+    }
+    Ok(worlds(&app).client.preview(&code).await?)
+}
+
+/// Becomes a member of the room an invite code leads to.
+#[tauri::command]
+pub async fn worlds_redeem<R: Runtime>(
+    app: AppHandle<R>,
+    code: String,
+) -> LauncherResult<crate::worlds::service::Room> {
+    if code.len() > 512 {
+        return Err(crate::worlds::service::Problem::InviteInvalid.into());
+    }
+    Ok(worlds(&app).client.redeem(&code).await?)
+}
+
+/// Hosts a room from its world on this computer; returns once friends can
+/// join. Stages and download progress come in `worlds://state`.
+#[tauri::command]
+pub async fn worlds_host<R: Runtime>(app: AppHandle<R>, room: String) -> LauncherResult<()> {
+    worlds(&app).host(&app.state::<AppState>(), &room).await
+}
+
+/// Stops hosting; the world is saved.
+#[tauri::command]
+pub async fn worlds_stop_hosting<R: Runtime>(app: AppHandle<R>) {
+    worlds(&app).stop_hosting().await;
+}
+
+/// Joins a hosted room as a guest.
+#[tauri::command]
+pub async fn worlds_join<R: Runtime>(app: AppHandle<R>, room: String) -> LauncherResult<()> {
+    worlds(&app).join(&app.state::<AppState>(), &room).await
+}
+
+/// Leaves the room this computer is a guest in.
+#[tauri::command]
+pub async fn worlds_disconnect<R: Runtime>(app: AppHandle<R>) {
+    worlds(&app).disconnect().await;
+}
+
+/// Stops getting a room ready.
+#[tauri::command]
+pub fn worlds_cancel<R: Runtime>(app: AppHandle<R>) {
+    worlds(&app).cancel();
+}
+
+/// The installation a room plays, made on first use.
+#[tauri::command]
+pub async fn worlds_instance<R: Runtime>(
+    app: AppHandle<R>,
+    room: String,
+) -> LauncherResult<WorldsInstance> {
+    let found = worlds(&app).client.room(&room).await?;
+    let instance =
+        app.state::<AppState>()
+            .room_instance(&found.id, &found.name, &found.minecraft)?;
+    Ok(WorldsInstance {
+        instance_id: instance.id,
+        ready: instance.health == crate::storage::models::InstallationHealth::Ready,
+    })
+}
+
+/// Starts the game into the room this computer hosts or is a guest in,
+/// playing the launcher account's nick.
+#[tauri::command]
+pub async fn worlds_play<R: Runtime>(
+    app: AppHandle<R>,
+    launcher: State<'_, Launcher>,
+    mods: State<'_, Arc<crate::mods::Mods>>,
+    request: MutationRequest<WorldsRoomPayload>,
+) -> LauncherResult<crate::state::dto::RunSummary> {
+    let launcher = launcher.get()?;
+    let state = app.state::<AppState>();
+    let room = request.payload.room;
+    let port = worlds(&app).play_port(&room).ok_or_else(|| {
+        crate::error::LauncherError::new(
+            crate::error::ErrorCode::InvalidInput,
+            "This computer is not in that room now.",
+        )
+    })?;
+    let nick = crate::worlds::app::nick_of(&state)?;
+    let instance = state
+        .instance_ids()
+        .into_iter()
+        .filter_map(|id| state.instance(id))
+        .find(|i| i.world_room.as_deref() == Some(room.as_str()))
+        .ok_or_else(|| {
+            crate::error::LauncherError::new(
+                crate::error::ErrorCode::InstanceNotFound,
+                "The room's installation no longer exists.",
+            )
+        })?;
+    mods.content.ensure_idle(instance.id)?;
+    let mode =
+        crate::launch::service::LaunchMode::World(crate::launch::service::WorldPlay { nick, port });
+    launcher
+        .launch_joining(&request.request_id, instance.id, mode, None)
+        .await
+}
+
 #[cfg(test)]
 mod tests {
     use super::window_title;

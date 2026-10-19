@@ -6,15 +6,22 @@
 //! [`tuple::TUPLES`], run in offline mode on 127.0.0.1; who may enter is decided
 //! by the tunnel, not by the server (ADAPTATION A2, A3).
 
+pub mod app;
+#[cfg(test)]
+pub(crate) mod fake_service;
 pub mod host;
+pub mod hosting;
 pub mod identity;
 pub mod install;
+pub mod joining;
 pub mod memory;
 pub mod output;
 pub mod ping;
+pub mod players;
 pub mod properties;
 pub mod protocol;
 pub mod rcon;
 pub mod receipt;
+pub mod service;
 pub mod tuple;
 pub mod world;

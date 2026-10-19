@@ -28,6 +28,7 @@ import { WhatsNew } from '../features/updates/WhatsNew';
 import { DownloadManager } from '../features/downloads/DownloadManager';
 import { FriendsCorner } from '../features/friends/FriendsCorner';
 import { ModsView, type ModsSection } from '../features/mods/ModsView';
+import { WorldsView } from '../features/worlds/WorldsView';
 import { FeedView } from '../features/feed/FeedView';
 import { useTheme } from './useTheme';
 import { useAppInfo } from './useAppInfo';
@@ -301,6 +302,14 @@ export function App() {
                 section={modsSection}
                 onSection={setModsSection}
                 onInstance={setModsInstance}
+              />
+            )}
+            {view === 'worlds' && (
+              <WorldsView
+                snapshot={state.snapshot}
+                onOpenAccounts={() => {
+                  navigate('account');
+                }}
               />
             )}
             {view === 'account' && <AccountView snapshot={state.snapshot} />}

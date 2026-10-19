@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-worlds-create"
+description = "Enables the worlds_create command without any pre-configured scope."
+commands.allow = ["worlds_create"]
+
+[[permission]]
+identifier = "deny-worlds-create"
+description = "Denies the worlds_create command without any pre-configured scope."
+commands.deny = ["worlds_create"]

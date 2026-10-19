@@ -370,7 +370,7 @@ fn setup(app: &mut tauri::App) -> Result<(), Box<dyn std::error::Error>> {
         ))),
         None => None,
     };
-    app.manage(commands::Metadata(metadata));
+    app.manage(commands::Metadata(metadata.clone()));
     app.manage(commands::Sources(source.clone()));
     // Queued installs and repairs start as soon as nothing else runs (D-049).
     if let Some(queue) = installer.clone() {
@@ -507,6 +507,21 @@ fn setup(app: &mut tauri::App) -> Result<(), Box<dyn std::error::Error>> {
     }
     // The launcher account's skin and cape (D-065).
     app.manage(Arc::new(skins::Skins::new(&version)?));
+    // Worlds with friends (D-068): hosting a room or being a guest in one.
+    {
+        let handle = app.handle().clone();
+        let emit = Box::new(move |view: &worlds::app::WorldsView| {
+            let _ = handle.emit(worlds::app::STATE_EVENT, view);
+        });
+        app.manage(Arc::new(worlds::app::Worlds::new(
+            &version,
+            app.state::<AppState>().data_root(),
+            metadata.clone(),
+            source.clone(),
+            Arc::new(worlds::app::AccountToken(app.handle().clone())),
+            emit,
+        )?));
+    }
     let auth = Arc::new(create_auth_service(app.handle())?);
     app.manage(Arc::clone(&auth));
     // Launcher Skins' jars come from GitHub, never through the mirror (D-065).
@@ -732,6 +747,9 @@ pub fn run() {
         }
         // Write the last counted traffic before the process ends (D-051).
         RunEvent::Exit => {
+            // A hosted world saves and its room's session ends (D-068).
+            let worlds = Arc::clone(&handle.state::<Arc<worlds::app::Worlds>>());
+            tauri::async_runtime::block_on(worlds.shutdown());
             if let Some(root) = handle.state::<AppState>().data_root() {
                 traffic::flush(&root);
                 handle.state::<AppState>().console().info("Launcher closed");
@@ -866,6 +884,25 @@ fn handlers<R: tauri::Runtime>() -> impl Fn(tauri::ipc::Invoke<R>) -> bool + Sen
         commands::feed_add_channel,
         commands::feed_remove_channel,
         commands::feed_own_videos,
+        commands::worlds_state,
+        commands::worlds_versions,
+        commands::worlds_local,
+        commands::worlds_rooms,
+        commands::worlds_room,
+        commands::worlds_create,
+        commands::worlds_accept_eula,
+        commands::worlds_moderate,
+        commands::worlds_leave_room,
+        commands::worlds_invite,
+        commands::worlds_preview,
+        commands::worlds_redeem,
+        commands::worlds_host,
+        commands::worlds_stop_hosting,
+        commands::worlds_join,
+        commands::worlds_disconnect,
+        commands::worlds_cancel,
+        commands::worlds_instance,
+        commands::worlds_play,
         #[cfg(debug_assertions)]
         commands::start_lifecycle_test,
         #[cfg(debug_assertions)]

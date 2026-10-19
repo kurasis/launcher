@@ -1063,6 +1063,57 @@ impl AppState {
         result.map(|_| ())
     }
 
+    /// The room instance of a world with friends (D-068): the one made for
+    /// `room` before, or a new vanilla installation of `version` (not
+    /// installed yet). Joining twice reuses it; other installations are never
+    /// used for a room.
+    pub fn room_instance(
+        &self,
+        room: &str,
+        name: &str,
+        version: &str,
+    ) -> LauncherResult<InstanceFile> {
+        let room_id = uuid::Uuid::parse_str(room)
+            .ok()
+            .filter(|u| u.hyphenated().to_string() == room)
+            .ok_or_else(|| LauncherError::invalid_input("This is not a room."))?;
+        let room = room_id.hyphenated().to_string();
+        let memory = self.memory.clone();
+        self.change(|data, store, changes| {
+            if let Some(found) = data
+                .instances
+                .values()
+                .find(|i| i.world_room.as_deref() == Some(room.as_str()))
+            {
+                if found.version_id != version {
+                    return Err(LauncherError::invalid_input(
+                        "The room plays another Minecraft version than its installation.",
+                    ));
+                }
+                return Ok(found.clone());
+            }
+            let display_name = validation::validate_display_name(name)
+                .or_else(|_| validation::validate_display_name("World with friends"))?;
+            let version = crate::storage::paths::SafeName::parse(version).map_err(|_| {
+                LauncherError::invalid_input("This is not a valid Minecraft version.")
+            })?;
+            let id = InstanceId::generate();
+            let mut instance = new_instance(
+                data,
+                &memory?,
+                id,
+                display_name,
+                version.as_str().to_owned(),
+                None,
+            );
+            instance.world_room = Some(room.clone());
+            store.create_instance(&instance)?;
+            data.instances.insert(id, instance.clone());
+            changes.push(Change::Instance(id));
+            Ok(instance)
+        })
+    }
+
     /// Brings back a deleted installation from a backup of it (D-055): the
     /// same id, name, game version and loader, with default settings. Its game
     /// folder is then restored from the backup and the game files installed.
@@ -2045,6 +2096,7 @@ fn new_instance(
         game_arguments: String::new(),
         fullscreen: data.settings.default_fullscreen,
         launcher_skins: true,
+        world_room: None,
     }
 }
 

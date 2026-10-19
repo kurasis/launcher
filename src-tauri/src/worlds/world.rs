@@ -234,6 +234,26 @@ struct WhitelistEntry<'a> {
     name: &'a str,
 }
 
+/// Writes `whitelist.json` with the members' offline UUIDs. A running server
+/// reads it again on `whitelist reload`.
+pub fn write_whitelist(root: &DataRoot, id: WorldId, members: &[Nick]) -> LauncherResult<()> {
+    let mut nicks: Vec<&Nick> = members.iter().collect();
+    nicks.sort();
+    nicks.dedup();
+    let whitelist: Vec<WhitelistEntry<'_>> = nicks
+        .into_iter()
+        .map(|nick| WhitelistEntry {
+            uuid: nick.offline_uuid().hyphenated().to_string(),
+            name: nick.as_str(),
+        })
+        .collect();
+    let mut json = serde_json::to_vec_pretty(&whitelist).map_err(|_| {
+        LauncherError::new(ErrorCode::Internal, "The whitelist could not be written.")
+    })?;
+    json.push(b'\n');
+    atomic::write(&root.world_server_dir(id).join("whitelist.json"), &json).map_err(|e| io(&e))
+}
+
 /// Writes the files the server reads at start: `server.properties`,
 /// `whitelist.json` with the members' offline UUIDs, and `eula.txt`. Refuses
 /// before the player accepted the EULA.
@@ -257,21 +277,7 @@ pub fn prepare_run(
         properties::render(&world.settings, binding).as_bytes(),
     )
     .map_err(|e| io(&e))?;
-    let mut nicks: Vec<&Nick> = members.iter().collect();
-    nicks.sort();
-    nicks.dedup();
-    let whitelist: Vec<WhitelistEntry<'_>> = nicks
-        .into_iter()
-        .map(|nick| WhitelistEntry {
-            uuid: nick.offline_uuid().hyphenated().to_string(),
-            name: nick.as_str(),
-        })
-        .collect();
-    let mut json = serde_json::to_vec_pretty(&whitelist).map_err(|_| {
-        LauncherError::new(ErrorCode::Internal, "The whitelist could not be written.")
-    })?;
-    json.push(b'\n');
-    atomic::write(&dir.join("whitelist.json"), &json).map_err(|e| io(&e))?;
+    write_whitelist(root, world.id, members)?;
     atomic::write(&dir.join(LOG_CONFIG), SERVER_LOG_CONFIG.as_bytes()).map_err(|e| io(&e))?;
     atomic::write(
         &dir.join("eula.txt"),

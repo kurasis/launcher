@@ -1602,3 +1602,192 @@ export interface OwnChannel {
   channelId: string;
   title: string;
 }
+
+// ----- Worlds with friends (D-068) -----
+
+/** Why a call to worlds.lapi.sh or a step of a room failed. */
+export type WorldsProblem =
+  | 'signed_out'
+  | 'network'
+  | 'server'
+  | 'too_many'
+  | 'invalid'
+  | 'not_found'
+  | 'forbidden'
+  | 'banned'
+  | 'nick_unfit'
+  | 'invite_invalid'
+  | 'not_member'
+  | 'limit'
+  | 'world_taken'
+  | 'revision_conflict'
+  | 'owner_cannot_leave'
+  | 'not_hosting'
+  | 'session_ended'
+  | 'ticket_invalid'
+  | 'wrong_session'
+  | 'room_full'
+  | 'already_connected'
+  | 'device'
+  | 'refused';
+
+export const WORLDS_PROBLEMS: readonly WorldsProblem[] = [
+  'signed_out',
+  'network',
+  'server',
+  'too_many',
+  'invalid',
+  'not_found',
+  'forbidden',
+  'banned',
+  'nick_unfit',
+  'invite_invalid',
+  'not_member',
+  'limit',
+  'world_taken',
+  'revision_conflict',
+  'owner_cannot_leave',
+  'not_hosting',
+  'session_ended',
+  'ticket_invalid',
+  'wrong_session',
+  'room_full',
+  'already_connected',
+  'device',
+  'refused',
+];
+
+export type WorldsRole = 'owner' | 'manager' | 'member';
+
+/** A room of worlds with friends, as the launcher account sees it. */
+export interface WorldsRoom {
+  id: string;
+  name: string;
+  description: string;
+  minecraft: string;
+  revision: number;
+  owner: string;
+  ownerNick: string;
+  role: WorldsRole;
+  /** The world's ID on the owner's computer. */
+  world: string | null;
+  members: number;
+  hosting: boolean;
+  online: number;
+  maxPlayers: number;
+  created: number;
+  updated: number;
+}
+
+export interface WorldsMember {
+  account: string;
+  nick: string;
+  role: WorldsRole;
+  state: string;
+  joined: number;
+}
+
+export interface WorldsRoomPage {
+  room: WorldsRoom;
+  members: WorldsMember[];
+}
+
+export interface WorldsInvite {
+  id: string;
+  created: number;
+  expires: number;
+  maxUses: number;
+  uses: number;
+}
+
+export interface WorldsNewInvite {
+  invite: WorldsInvite;
+  /** Shown once: the service keeps only its digest. */
+  code: string;
+}
+
+export interface WorldsPreview {
+  room: string;
+  name: string;
+  ownerNick: string;
+  members: number;
+  minecraft: string;
+}
+
+export type WorldsDifficulty = 'peaceful' | 'easy' | 'normal' | 'hard';
+export type WorldsGameMode = 'survival' | 'creative' | 'adventure';
+export type WorldsPreset = 'normal' | 'flat' | 'large_biomes' | 'amplified';
+
+export interface WorldsSettings {
+  /** Empty for a random seed. */
+  seed: string;
+  preset: WorldsPreset;
+  difficulty: WorldsDifficulty;
+  gameMode: WorldsGameMode;
+  hardcore: boolean;
+  pvp: boolean;
+  maxPlayers: number;
+}
+
+export interface LocalWorld {
+  id: string;
+  name: string;
+  minecraft: string;
+  eulaAccepted: boolean;
+  serverInstalled: boolean;
+  settings: WorldsSettings;
+  createdAt: string;
+  lastRun: { endedAt: string; clean: boolean } | null;
+}
+
+export interface WorldsCreatePayload {
+  name: string;
+  description: string;
+  minecraft: string;
+  settings: WorldsSettings;
+}
+
+export type WorldsStage = 'server' | 'starting' | 'opening' | 'joining';
+
+export type WorldsEnding = 'stopped' | 'server_exited' | 'session_lost' | 'room_gone';
+
+export type WorldsRefusal =
+  | 'BAD_FRAME'
+  | 'TICKET_INVALID'
+  | 'NOT_MEMBER'
+  | 'ALREADY_CONNECTED'
+  | 'CONNECTION_CLOSING'
+  | 'WRONG_SESSION'
+  | 'ROOM_FULL'
+  | 'HOST_BUSY'
+  | 'UNAVAILABLE';
+
+/** What this computer does for a room (`worlds://state`). */
+export interface WorldsState {
+  preparing: {
+    room: string;
+    stage: WorldsStage;
+    downloadedBytes: number;
+    totalBytes: number;
+  } | null;
+  hosting: {
+    room: string;
+    world: string;
+    phase: 'starting' | 'ready' | 'stopping' | 'exited';
+    players: string[];
+    ended: WorldsEnding | null;
+    clean: boolean | null;
+  } | null;
+  guest: {
+    room: string;
+    connected: boolean;
+    refused: WorldsRefusal | null;
+  } | null;
+  /** Why the last start or join failed: a problem name or an error code. */
+  failed: string | null;
+}
+
+export interface WorldsInstance {
+  instanceId: string;
+  ready: boolean;
+}

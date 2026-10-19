@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-worlds-invite"
+description = "Enables the worlds_invite command without any pre-configured scope."
+commands.allow = ["worlds_invite"]
+
+[[permission]]
+identifier = "deny-worlds-invite"
+description = "Denies the worlds_invite command without any pre-configured scope."
+commands.deny = ["worlds_invite"]

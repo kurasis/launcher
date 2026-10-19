@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-worlds-cancel"
+description = "Enables the worlds_cancel command without any pre-configured scope."
+commands.allow = ["worlds_cancel"]
+
+[[permission]]
+identifier = "deny-worlds-cancel"
+description = "Denies the worlds_cancel command without any pre-configured scope."
+commands.deny = ["worlds_cancel"]

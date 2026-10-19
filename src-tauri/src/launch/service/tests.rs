@@ -857,3 +857,51 @@ async fn files_gone_right_after_a_repair_point_at_antivirus_software() {
         InstallationHealth::RepairRequired
     );
 }
+
+#[tokio::test(flavor = "multi_thread")]
+async fn a_world_launch_needs_a_licence_and_plays_the_nick_without_demo() {
+    let s = Setup::new().await;
+    let service = s.service(auth("Player"));
+    // Typed arguments never reach a world launch.
+    s.f.state
+        .update_instance(s.instance, |i| {
+            i.game_arguments = "--server example.org".into()
+        })
+        .unwrap();
+    let mode = LaunchMode::World(crate::launch::service::WorldPlay {
+        nick: crate::worlds::identity::Nick::parse("Notch").unwrap(),
+        port: 41234,
+    });
+    if crate::state::OFFLINE_NEEDS_OWNER {
+        let refused = service
+            .launch_as(&Uuid::new_v4().to_string(), s.instance, mode.clone())
+            .await
+            .unwrap_err();
+        assert_eq!(refused.code, ErrorCode::NoGameAccess);
+        assert!(s.f.state.activity().current().is_none());
+    }
+    s.f.state
+        .update_accounts_file(Box::new(|accounts| {
+            accounts
+                .accounts
+                .push(crate::storage::models::AccountRecord {
+                    profile_id: "0123456789abcdef0123456789abcdef".into(),
+                    profile_name: "Owner".into(),
+                    vault_key: "msa-refresh:0123456789abcdef0123456789abcdef".into(),
+                });
+        }))
+        .unwrap();
+    let run = service
+        .launch_as(&Uuid::new_v4().to_string(), s.instance, mode)
+        .await
+        .unwrap();
+    let done = s.finished(&run.run_id).await;
+    let tail = done.output_tail.join("\n");
+    assert!(tail.contains("ARG:Notch"), "{tail}");
+    assert!(
+        tail.contains("ARG:--quickPlayMultiplayer") && tail.contains("ARG:127.0.0.1:41234"),
+        "{tail}"
+    );
+    assert!(!tail.contains("ARG:--demo"), "{tail}");
+    assert!(!tail.contains("example.org"), "{tail}");
+}

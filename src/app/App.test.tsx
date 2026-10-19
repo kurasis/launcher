@@ -357,6 +357,7 @@ describe('App', () => {
       'Feed',
       'Installations',
       'Mods',
+      'Worlds',
       'Accounts',
       'Settings',
       'More▾',

@@ -110,17 +110,23 @@ single-player world from the game (P18).
   accounting, revocation, migrate player files after a nick change.
 - Guest: room instance, verified license, launch under the launcher nick without `--demo`,
   ticket at connection time, direct or relayed tunnel.
-- Exit: two launchers on two machines play in one world in test mode; wrong nick, removed
-  member, replayed ticket and second login refused (A10 as adapted, A21, A22, A54, A55, A80).
-  The same with real licensed accounts once Minecraft service access is approved.
+- Exit: host and guest play through the real tunnel in tests; wrong nick, removed member,
+  replayed ticket and second login refused (A10 as adapted, A21, A22, A54, A55, A80). The
+  run on two machines needs the commands and moves to W8; the same with real licensed
+  accounts once Minecraft service access is approved.
 
 ## W8 — Worlds tab
 
+- Commands for worlds, server install, rooms, invites, hosting and joining (the W7 core).
 - Worlds list with host states and last observation time, create world, room page with members,
   roles and invites, invite card in the friends chat, presence, join preparation with each stage,
   hosting panel (players, health, route, save and stop), quit dialog, device list.
-- Exit: keyboard and screen-reader runs in en, ru and ar; reopening the window reattaches to a
-  running server (A18, A29, A36, A42); Windows package check for any new window.
+- Delivered first: the commands, the tab with rooms, creating, joining by code, the room page
+  with members and invites, and the status panel. Then: the invite card in chats, presence,
+  the device list and the quit choice while hosting.
+- Exit: two launchers on two machines play in one world in test mode; keyboard and
+  screen-reader runs in en, ru and ar; reopening the window reattaches to a running server
+  (A18, A29, A36, A42); Windows package check for any new window.
 
 ## W9 — World safety
 
