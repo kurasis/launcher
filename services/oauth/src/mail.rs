@@ -248,6 +248,35 @@ impl Smtp {
         Ok(Self { transport, from })
     }
 
+    /// Connects, starts TLS and signs in, sending nothing.
+    pub async fn sign_in(&self) -> Result<(), String> {
+        match self.transport.test_connection().await {
+            Ok(true) => Ok(()),
+            Ok(false) => Err("the server closed the connection".to_owned()),
+            Err(e) => Err(failure(&e)),
+        }
+    }
+
+    /// A short test letter to `to`, or to the sender's own address.
+    pub async fn send_test(&self, to: Option<&str>) -> Result<(), String> {
+        let to = match to {
+            Some(to) => to.parse().map_err(|_| "not an address".to_owned())?,
+            None => self.from.clone(),
+        };
+        let message = Message::builder()
+            .from(self.from.clone())
+            .to(to)
+            .subject("Test letter")
+            .header(ContentType::TEXT_PLAIN)
+            .body("The account service can send letters.\n".to_owned())
+            .map_err(|_| "the letter could not be made".to_owned())?;
+        self.transport
+            .send(message)
+            .await
+            .map(drop)
+            .map_err(|e| failure(&e))
+    }
+
     async fn send(&self, mail: &crate::store::Mail) -> Result<(), String> {
         let message = Message::builder()
             .from(self.from.clone())
@@ -262,6 +291,45 @@ impl Smtp {
             .map(drop)
             .map_err(|e| e.to_string())
     }
+}
+
+/// An SMTP failure in words fit for a public log: what failed and the
+/// server's reply code, never its text, which may name an address or a host.
+fn failure(e: &lettre::transport::smtp::Error) -> String {
+    let code = e.status().map(|c| format!(" ({c})")).unwrap_or_default();
+    if e.is_timeout() {
+        "no answer in time".to_owned()
+    } else if e.is_tls() {
+        "TLS failed".to_owned()
+    } else if e.is_permanent() {
+        format!("refused{code}")
+    } else if e.is_transient() {
+        format!("refused for now{code}")
+    } else if e.is_client() || e.is_response() {
+        "the conversation with the server failed".to_owned()
+    } else {
+        "no connection to the server".to_owned()
+    }
+}
+
+/// A value from a systemd environment file (`KEY="value"` with `\"`, `\\`,
+/// `\``, `\$` escaped, as deploy.sh writes it, or `KEY=value`).
+pub fn env_file_value(text: &str, key: &str) -> Option<String> {
+    let line = text
+        .lines()
+        .find_map(|l| l.strip_prefix(key)?.strip_prefix('='))?;
+    let Some(quoted) = line.strip_prefix('"').and_then(|l| l.strip_suffix('"')) else {
+        return Some(line.trim().to_owned()).filter(|v| !v.is_empty());
+    };
+    let mut value = String::new();
+    let mut chars = quoted.chars();
+    while let Some(c) = chars.next() {
+        match c {
+            '\\' => value.extend(chars.next()),
+            c => value.push(c),
+        }
+    }
+    Some(value).filter(|v| !v.is_empty())
 }
 
 /// Sends what waits in the outbox every 20 seconds.
@@ -284,5 +352,40 @@ pub async fn worker(app: Arc<App>, smtp: Smtp) {
             }
         }
         tokio::time::sleep(Duration::from_secs(20)).await;
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn environment_file_values_are_read_as_systemd_reads_them() {
+        let text = "LAPI_OAUTH_SMTP_URL=\"smtps://u:p%40\\\"\\\\\\$x@host:465\"\n\
+                    LAPI_OAUTH_MAIL_FROM=Launcher <no-reply@example.com>\n\
+                    LAPI_OAUTH_SMTP=\"\"\n";
+        assert_eq!(
+            env_file_value(text, "LAPI_OAUTH_SMTP_URL").as_deref(),
+            Some("smtps://u:p%40\"\\$x@host:465")
+        );
+        assert_eq!(
+            env_file_value(text, "LAPI_OAUTH_MAIL_FROM").as_deref(),
+            Some("Launcher <no-reply@example.com>")
+        );
+        assert_eq!(env_file_value(text, "LAPI_OAUTH_SMTP"), None);
+        assert_eq!(env_file_value(text, "LAPI_OAUTH_TURNSTILE_SECRET"), None);
+    }
+
+    #[test]
+    fn a_test_letter_needs_a_valid_sender() {
+        assert!(
+            Smtp::new(
+                "smtps://u:p@localhost:465",
+                "Launcher <no-reply@example.com>"
+            )
+            .is_ok()
+        );
+        assert!(Smtp::new("smtps://u:p@localhost:465", "not an address").is_err());
+        assert!(Smtp::new("ftp://localhost", "no-reply@example.com").is_err());
     }
 }

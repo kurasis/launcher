@@ -13,7 +13,9 @@ name: Account service
 # This repository is public, and so are its workflow logs: nothing about an
 # account and nothing about the server is printed here. "Run workflow" with
 # task=counts shows numbers only; accounts are looked up on the server
-# (lapi-oauth find).
+# (lapi-oauth find). task=mail-check signs in to the SMTP server from the
+# server, sends a test letter to the sender's own address and shows the
+# outbox in numbers: fixed words and SMTP reply codes, no address.
 
 on:
   push:
@@ -36,9 +38,9 @@ on:
   workflow_dispatch:
     inputs:
       task:
-        description: deploy, or counts of accounts
+        description: deploy, counts of accounts, or a check of the letters
         type: choice
-        options: [deploy, counts]
+        options: [deploy, counts, mail-check]
         default: deploy
 
 permissions:
@@ -172,3 +174,30 @@ jobs:
               'sudo -n -u lapi-oauth /home/www/lapi/oauth/current/lapi-oauth counts'
             echo '```'
           } | tee -a "$GITHUB_STEP_SUMMARY"
+
+  mail-check:
+    name: Mail check
+    if: github.event_name == 'workflow_dispatch' && inputs.task == 'mail-check'
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v5
+      - uses: ./.github/actions/lapi-ssh
+        with:
+          ssh-key: ${{ secrets.SSH_KEY }}
+          known-hosts: ${{ secrets.SSH_KNOWN_HOSTS }}
+      # `mail-check` prints fixed words, SMTP reply codes and numbers only.
+      - name: Mail check
+        env:
+          TARGET: ${{ secrets.SSH_USER }}@${{ secrets.SSH_HOST }}
+        run: |
+          set +e
+          out=$(ssh "$TARGET" \
+            'sudo -n -u lapi-oauth /home/www/lapi/oauth/current/lapi-oauth mail-check' 2>&1)
+          status=$?
+          {
+            echo '### Letters'
+            echo '```'
+            printf '%s\n' "$out"
+            echo '```'
+          } | tee -a "$GITHUB_STEP_SUMMARY"
+          exit "$status"

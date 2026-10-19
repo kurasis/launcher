@@ -978,6 +978,22 @@ impl Store {
             .map_err(|e| e.to_string())
     }
 
+    /// The outbox in numbers, for `lapi-oauth mail-check`.
+    pub fn mail_counts(&self, now: i64) -> Result<serde_json::Value, String> {
+        let db = self.db();
+        let one = |sql: &str| -> Result<Option<i64>, String> {
+            db.query_row(sql, [now], |r| r.get(0))
+                .map_err(|e| e.to_string())
+        };
+        Ok(serde_json::json!({
+            "waiting": one("SELECT COUNT(*) FROM outbox WHERE sent IS NULL AND body != '' AND created > ?1 - 3 * 86400")?,
+            "waitingAfterAFailure": one("SELECT COUNT(*) FROM outbox WHERE sent IS NULL AND body != '' AND attempts > 0 AND created > ?1 - 3 * 86400")?,
+            "sentLastDay": one("SELECT COUNT(*) FROM outbox WHERE sent > ?1 - 86400")?,
+            "givenUpLastWeek": one("SELECT COUNT(*) FROM outbox WHERE sent IS NULL AND (body = '' OR created <= ?1 - 3 * 86400) AND created > ?1 - 7 * 86400")?,
+            "minutesSinceLastSent": one("SELECT (?1 - MAX(sent)) / 60 FROM outbox")?,
+        }))
+    }
+
     /// Drops what has ended: sign-ins in progress, codes, links, old tokens
     /// and sessions, sent letters after 30 days, events after a year.
     pub fn prune(&self, now: i64) -> Result<(), String> {
