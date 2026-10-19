@@ -81,6 +81,8 @@ export function snapshotFixture(overrides: Partial<AppSnapshot> = {}): AppSnapsh
       meteredWarnMib: 100,
       monthlyLimitMib: 0,
       shareStats: false,
+      chatSound: true,
+      chatNotifications: true,
       installId: null,
       downloadSource: 'automatic',
       updateMode: 'auto',

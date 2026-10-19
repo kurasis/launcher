@@ -261,6 +261,10 @@ export interface SettingsView {
   monthlyLimitMib: number;
   /** Anonymous crash statistics go to the developers; off by default (D-061). */
   shareStats: boolean;
+  /** A short sound for a new chat message or friend request (D-064). */
+  chatSound: boolean;
+  /** A system notification for one while the launcher is not in front. */
+  chatNotifications: boolean;
   /** Random ID sent with crash reports only; null until the first report. */
   installId: string | null;
   /** Where downloads come from (D-062). */
@@ -319,6 +323,18 @@ export type LauncherAccountProblem =
   | 'vault'
   | 'not_saved'
   | 'server';
+
+export const LAUNCHER_ACCOUNT_PROBLEMS: readonly LauncherAccountProblem[] = [
+  'network',
+  'sign_in_again',
+  'nick_taken',
+  'nick_reserved',
+  'nick_invalid',
+  'too_many',
+  'vault',
+  'not_saved',
+  'server',
+];
 
 /** The launcher account at oauth.lapi.sh (D-064). Never contains tokens. */
 export interface LauncherAccountView {
@@ -847,6 +863,8 @@ export interface SettingsPatch {
   meteredWarnMib?: number;
   monthlyLimitMib?: number;
   shareStats?: boolean;
+  chatSound?: boolean;
+  chatNotifications?: boolean;
   /** Replace the install ID with a new random one. */
   newInstallId?: boolean;
   downloadSource?: DownloadSource;

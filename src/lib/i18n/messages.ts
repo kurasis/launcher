@@ -117,6 +117,10 @@ export type Messages = {
       readonly not_saved: string;
       readonly server: string;
     };
+    readonly launcherCheck: string;
+    readonly launcherChecking: string;
+    readonly launcherNowConfirmed: string;
+    readonly launcherStillNotConfirmed: string;
   };
   readonly instances: {
     readonly title: string;
@@ -1265,6 +1269,16 @@ export type Messages = {
     readonly bannedForGood: string;
     readonly spam: string;
     readonly declineAll: string;
+    readonly emailNeeded: string;
+    readonly emailResent: string;
+    readonly checking: string;
+    readonly loadingMessages: string;
+    readonly connecting: string;
+    readonly newMessages: string;
+    readonly unreadSection: string;
+    readonly readSection: string;
+    readonly chatSound: string;
+    readonly chatNotifications: string;
   };
   readonly windowTitles: {
     readonly pickJava: string;

@@ -3,6 +3,7 @@ import { emit } from '@tauri-apps/api/event';
 import { mockIPC } from '@tauri-apps/api/mocks';
 import { describe, expect, it, vi } from 'vitest';
 import type { ChatMessage, ChatRoom, FriendsView } from '../../lib/contracts';
+import { snapshotFixture } from '../../test/fixtures';
 import { FriendsCorner } from './FriendsCorner';
 
 const ME = { id: '00000000-0000-4000-8000-000000000001', nick: 'Steve_2' };
@@ -81,7 +82,7 @@ function setup(view: FriendsView, answers: Record<string, (args: unknown) => unk
     { shouldMockEvents: true },
   );
   const onOpenAccounts = vi.fn();
-  render(<FriendsCorner onOpenAccounts={onOpenAccounts} />);
+  render(<FriendsCorner settings={snapshotFixture().settings} onOpenAccounts={onOpenAccounts} />);
   return { calls, onOpenAccounts };
 }
 
@@ -365,5 +366,88 @@ describe('friends corner', () => {
     });
     expect(within(panel).getByText('Not connected. Trying again…')).toBeVisible();
     expect(within(panel).getByRole('tab', { name: /Chats/ })).toBeVisible();
+  });
+
+  it('says to confirm the email, not to sign in, and checks again', async () => {
+    const { calls } = setup(
+      { ...signedOut, signedIn: true, problem: 'email_not_confirmed' },
+      { launcher_account_recheck: () => false },
+    );
+    const panel = await openPanel();
+    expect(within(panel).getByText(/once your email is confirmed/)).toBeVisible();
+    expect(within(panel).queryByText(/need a launcher account/)).toBeNull();
+    fireEvent.click(within(panel).getByRole('button', { name: 'Check again' }));
+    expect(await within(panel).findByText(/Not confirmed yet/)).toBeVisible();
+    fireEvent.click(within(panel).getByRole('button', { name: 'Send the letter again' }));
+    expect(await within(panel).findByText(/The letter is on its way/)).toBeVisible();
+    expect(calls.map((c) => c.cmd)).toEqual(
+      expect.arrayContaining(['launcher_account_recheck', 'launcher_account_resend_confirmation']),
+    );
+  });
+
+  it('lets a report be closed without sending it', async () => {
+    const { calls } = setup(signedIn());
+    const panel = await openPanel();
+    fireEvent.click(within(panel).getByRole('button', { name: /Alex/ }));
+    fireEvent.click(await within(panel).findByRole('button', { name: 'Report' }));
+    fireEvent.click(within(panel).getByRole('button', { name: 'Cancel' }));
+    expect(within(panel).queryByRole('textbox', { name: 'What is wrong with it?' })).toBeNull();
+    // Escape closes the report, and only the report.
+    fireEvent.click(within(panel).getByRole('button', { name: 'Report' }));
+    fireEvent.keyDown(within(panel).getByRole('textbox', { name: 'What is wrong with it?' }), {
+      key: 'Escape',
+    });
+    expect(within(panel).queryByRole('textbox', { name: 'What is wrong with it?' })).toBeNull();
+    expect(screen.getByRole('region', { name: 'Friends' })).toBeVisible();
+    expect(calls.some((c) => c.cmd === 'friends_report')).toBe(false);
+  });
+
+  it('keeps unread chats apart and marks where new messages begin', async () => {
+    const OTHER = '10000000-0000-4000-8000-000000000002';
+    setup(
+      signedIn({
+        rooms: [
+          direct(),
+          direct({
+            id: OTHER,
+            members: [ME, NOTCH],
+            last: { ...message(1, NOTCH.id, 'old'), room: OTHER },
+            unread: 0,
+          }),
+        ],
+      }),
+    );
+    const panel = await openPanel();
+    const unread = within(panel).getByRole('heading', { name: 'Unread' });
+    const read = within(panel).getByRole('heading', { name: 'Read' });
+    expect(unread.compareDocumentPosition(read) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    fireEvent.click(within(panel).getByRole('button', { name: /Alex/ }));
+    const divider = await within(panel).findByRole('separator');
+    expect(divider).toHaveTextContent('New messages');
+    // Before Alex's message, after mine.
+    expect(divider.nextElementSibling).toHaveTextContent('Alex');
+    expect(divider.previousElementSibling).toHaveTextContent('hi');
+  });
+
+  it('shows that messages are loading', async () => {
+    setup(signedIn(), { friends_messages: () => new Promise(() => undefined) });
+    const panel = await openPanel();
+    fireEvent.click(within(panel).getByRole('button', { name: /Alex/ }));
+    expect(await within(panel).findByText('Loading messages…')).toBeVisible();
+  });
+
+  it('turns the sound and system notifications off', async () => {
+    const { calls } = setup(signedIn());
+    const panel = await openPanel();
+    fireEvent.click(within(panel).getByRole('tab', { name: /Friends/ }));
+    fireEvent.click(within(panel).getByRole('checkbox', { name: /Sound for new messages/ }));
+    fireEvent.click(within(panel).getByRole('checkbox', { name: /System notifications/ }));
+    await waitFor(() => {
+      expect(
+        calls
+          .filter((c) => c.cmd === 'set_app_settings')
+          .map((c) => (c.args as { request: { payload: unknown } }).request.payload),
+      ).toEqual([{ chatSound: false }, { chatNotifications: false }]);
+    });
   });
 });

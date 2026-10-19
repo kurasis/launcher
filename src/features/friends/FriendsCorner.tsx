@@ -1,12 +1,19 @@
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { Button } from '../../components/Button';
 import { Field } from '../../components/Field';
 import forms from '../../components/forms.module.css';
-import type { FriendAction, FriendPerson, FriendsView } from '../../lib/contracts';
-import { friendsProblem, ipc } from '../../lib/ipc';
+import type {
+  ChatRoom,
+  FriendAction,
+  FriendPerson,
+  FriendsView,
+  SettingsView,
+} from '../../lib/contracts';
+import { accountProblem, friendsProblem, ipc, onFriendsMessage } from '../../lib/ipc';
 import { strings } from '../../lib/strings';
 import { ChatView } from './ChatView';
 import styles from './Friends.module.css';
+import { playChime, unlockSoundOnFirstInput } from './sound';
 import { problemText, roomTitle, sanctionText, useFriends } from './useFriends';
 
 const t = strings.friends;
@@ -19,9 +26,17 @@ const GROUP_MAX = 20;
  * the corner, next to the downloads, with the whole friends system in its
  * panel.
  */
-export function FriendsCorner({ onOpenAccounts }: { onOpenAccounts: () => void }) {
+export function FriendsCorner({
+  settings,
+  onOpenAccounts,
+}: {
+  settings: SettingsView;
+  onOpenAccounts: () => void;
+}) {
   const view = useFriends();
   const [open, setOpen] = useState(false);
+  const [roomId, setRoomId] = useState<string | null>(null);
+  useChime(view, settings, open ? roomId : null);
   if (view === null) return null;
   const waiting = view.unread + view.incoming.length;
   return (
@@ -34,6 +49,9 @@ export function FriendsCorner({ onOpenAccounts }: { onOpenAccounts: () => void }
       {open && (
         <FriendsPanel
           view={view}
+          settings={settings}
+          roomId={roomId}
+          onRoom={setRoomId}
           onOpenAccounts={() => {
             setOpen(false);
             onOpenAccounts();
@@ -62,14 +80,135 @@ export function FriendsCorner({ onOpenAccounts }: { onOpenAccounts: () => void }
   );
 }
 
-function FriendsPanel({ view, onOpenAccounts }: { view: FriendsView; onOpenAccounts: () => void }) {
+/**
+ * The chime for a message from someone else or a new friend request. While the
+ * launcher is not in front, the system notification (made by the core) speaks
+ * instead, unless the player turned those off. A chat open on screen makes no
+ * sound for its own messages.
+ */
+function useChime(view: FriendsView | null, settings: SettingsView, openRoom: string | null) {
+  const me = view?.me?.id ?? null;
+  const latest = useRef({ me, settings, openRoom });
+  useEffect(() => {
+    latest.current = { me, settings, openRoom };
+  }, [me, settings, openRoom]);
+  const requests = useRef<Set<string> | null>(null);
+
+  useEffect(() => unlockSoundOnFirstInput(), []);
+
+  const wanted = () => {
+    const { settings } = latest.current;
+    return settings.chatSound && (document.hasFocus() || !settings.chatNotifications);
+  };
+
+  useEffect(
+    () =>
+      onFriendsMessage((message) => {
+        const { me, openRoom } = latest.current;
+        if (message.sender === me) return;
+        if (message.room === openRoom && document.hasFocus()) return;
+        if (wanted()) playChime();
+      }),
+    [],
+  );
+
+  // A request that was not there before: the first state only remembers.
+  const incoming = view?.incoming;
+  useEffect(() => {
+    if (incoming === undefined) return;
+    const ids = new Set(incoming.map((p) => p.id));
+    const before = requests.current;
+    requests.current = ids;
+    if (before !== null && [...ids].some((id) => !before.has(id)) && wanted()) playChime();
+  }, [incoming]);
+}
+
+function Spinner({ label }: { label: string }) {
+  return (
+    <p className={styles.loading} role="status">
+      <span className={styles.spinner} aria-hidden="true" />
+      {label}
+    </p>
+  );
+}
+
+/** The account has no confirmed email yet: what to do, right here. */
+function ConfirmEmail({ onOpenAccounts }: { onOpenAccounts: () => void }) {
+  const a = strings.accounts;
+  const [checking, setChecking] = useState(false);
+  const [note, setNote] = useState<string | null>(null);
+  const check = async () => {
+    setChecking(true);
+    setNote(null);
+    try {
+      // Confirmed: friends tries again by itself and this panel goes.
+      const confirmed = await ipc.launcherAccountRecheck();
+      if (!confirmed) setNote(a.launcherStillNotConfirmed);
+    } catch (e) {
+      setNote(a.launcherProblems[accountProblem(e)]);
+    } finally {
+      setChecking(false);
+    }
+  };
+  return (
+    <div className={styles.stack}>
+      <p>{t.emailNeeded}</p>
+      <div className={styles.inline}>
+        <Button variant="primary" disabled={checking} onClick={() => void check()}>
+          {checking ? a.launcherChecking : a.launcherCheck}
+        </Button>
+        <Button
+          onClick={() => {
+            setNote(null);
+            void ipc
+              .launcherAccountResendConfirmation()
+              .then((problem) => {
+                setNote(problem === null ? t.emailResent : a.launcherProblems[problem]);
+              })
+              .catch(() => {
+                setNote(a.launcherProblems.server);
+              });
+          }}
+        >
+          {a.launcherResend}
+        </Button>
+      </div>
+      {checking && <Spinner label={t.checking} />}
+      {note !== null && (
+        <p className={styles.muted} role="status">
+          {note}
+        </p>
+      )}
+      <button type="button" className={styles.link} onClick={onOpenAccounts}>
+        {t.goToAccounts}
+      </button>
+    </div>
+  );
+}
+
+function FriendsPanel({
+  view,
+  settings,
+  roomId,
+  onRoom,
+  onOpenAccounts,
+}: {
+  view: FriendsView;
+  settings: SettingsView;
+  roomId: string | null;
+  onRoom: (room: string | null) => void;
+  onOpenAccounts: () => void;
+}) {
   const [tab, setTab] = useState<Tab>('chats');
-  const [roomId, setRoomId] = useState<string | null>(null);
   const [grouping, setGrouping] = useState(false);
   const room = roomId === null ? undefined : view.rooms.find((r) => r.id === roomId);
+  const setRoomId = onRoom;
+  const unconfirmed = view.problem === 'email_not_confirmed';
 
   let body;
-  if (!view.signedIn) {
+  if (unconfirmed) {
+    body = <ConfirmEmail onOpenAccounts={onOpenAccounts} />;
+  } else if (!view.signedIn) {
     body = (
       <div className={styles.stack}>
         <p>{t.signedOut}</p>
@@ -135,7 +274,7 @@ function FriendsPanel({ view, onOpenAccounts }: { view: FriendsView; onOpenAccou
               }}
             />
           )}
-          {tab === 'friends' && <Friends view={view} onOpen={setRoomId} />}
+          {tab === 'friends' && <Friends view={view} settings={settings} onOpen={setRoomId} />}
           {tab === 'requests' && <Requests view={view} />}
         </div>
       </>
@@ -155,9 +294,13 @@ function FriendsPanel({ view, onOpenAccounts }: { view: FriendsView; onOpenAccou
         </p>
       )}
       {view.signedIn && view.problem !== null ? (
-        <p className={styles.muted} role="status">
-          {problemText(view.problem)}
-        </p>
+        !unconfirmed && (
+          <p className={styles.muted} role="status">
+            {problemText(view.problem)}
+          </p>
+        )
+      ) : view.signedIn && view.me === null ? (
+        <Spinner label={t.connecting} />
       ) : (
         view.signedIn &&
         !view.connected && (
@@ -211,37 +354,76 @@ function Chats({
       {view.rooms.length === 0 ? (
         <p className={styles.muted}>{t.noChats}</p>
       ) : (
-        <ul className={styles.list}>
-          {view.rooms.map((room) => (
-            <li key={room.id}>
-              <button
-                type="button"
-                className={styles.roomButton}
-                onClick={() => {
-                  onOpen(room.id);
-                }}
-              >
-                <span className={styles.roomName}>{roomTitle(room, view.me)}</span>
-                {room.unread > 0 && (
-                  <span className={styles.count} aria-label={t.unread({ count: room.unread })}>
-                    {room.unread}
-                  </span>
-                )}
-                {room.last !== null && (
-                  <span className={styles.preview} dir="auto">
-                    {nick(room.last.sender)}: {room.last.body}
-                  </span>
-                )}
-              </button>
-            </li>
-          ))}
-        </ul>
+        <RoomSections view={view} nick={nick} onOpen={onOpen} />
       )}
     </div>
   );
 }
 
-function Friends({ view, onOpen }: { view: FriendsView; onOpen: (room: string) => void }) {
+/** Rooms with unread messages first, apart from the rest. */
+function RoomSections({
+  view,
+  nick,
+  onOpen,
+}: {
+  view: FriendsView;
+  nick: (id: string) => string;
+  onOpen: (room: string) => void;
+}) {
+  const unread = view.rooms.filter((r) => r.unread > 0);
+  const read = view.rooms.filter((r) => r.unread === 0);
+  const list = (rooms: ChatRoom[]) => (
+    <ul className={styles.list}>
+      {rooms.map((room) => (
+        <li key={room.id}>
+          <button
+            type="button"
+            className={styles.roomButton}
+            data-unread={room.unread > 0 ? 'true' : undefined}
+            onClick={() => {
+              onOpen(room.id);
+            }}
+          >
+            <span className={styles.roomName}>{roomTitle(room, view.me)}</span>
+            {room.unread > 0 && (
+              <span className={styles.count} aria-label={t.unread({ count: room.unread })}>
+                {room.unread}
+              </span>
+            )}
+            {room.last !== null && (
+              <span className={styles.preview} dir="auto">
+                {nick(room.last.sender)}: {room.last.body}
+              </span>
+            )}
+          </button>
+        </li>
+      ))}
+    </ul>
+  );
+  if (unread.length === 0) return list(read);
+  return (
+    <>
+      <h3 className={styles.subtitle}>{t.unreadSection}</h3>
+      {list(unread)}
+      {read.length > 0 && (
+        <>
+          <h3 className={styles.subtitle}>{t.readSection}</h3>
+          {list(read)}
+        </>
+      )}
+    </>
+  );
+}
+
+function Friends({
+  view,
+  settings,
+  onOpen,
+}: {
+  view: FriendsView;
+  settings: SettingsView;
+  onOpen: (room: string) => void;
+}) {
   const [nick, setNick] = useState('');
   const [notice, setNotice] = useState<string | null>(null);
   const [confirming, setConfirming] = useState<{
@@ -344,6 +526,30 @@ function Friends({ view, onOpen }: { view: FriendsView; onOpen: (room: string) =
           }}
         />
         {t.showOnline}
+      </label>
+      <label className={forms.choice}>
+        <input
+          type="checkbox"
+          checked={settings.chatSound}
+          disabled={action.pending || !settings.writable}
+          onChange={(event) => {
+            const on = event.target.checked;
+            void action.run(() => ipc.setAppSettings({ chatSound: on }));
+          }}
+        />
+        {t.chatSound}
+      </label>
+      <label className={forms.choice}>
+        <input
+          type="checkbox"
+          checked={settings.chatNotifications}
+          disabled={action.pending || !settings.writable}
+          onChange={(event) => {
+            const on = event.target.checked;
+            void action.run(() => ipc.setAppSettings({ chatNotifications: on }));
+          }}
+        />
+        {t.chatNotifications}
       </label>
       {view.friends.length === 0 ? (
         <p className={styles.muted}>{t.noFriends}</p>

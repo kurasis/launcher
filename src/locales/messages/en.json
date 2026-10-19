@@ -117,7 +117,11 @@
         "vault": "The system credential store did not keep the sign-in; it lasts until the launcher closes.",
         "not_saved": "The file could not be saved there. Choose another place.",
         "server": "Something went wrong on the account server. Try again later."
-      }
+      },
+      "launcherCheck": "Check again",
+      "launcherChecking": "Checking…",
+      "launcherNowConfirmed": "Email confirmed: friends and chats are open.",
+      "launcherStillNotConfirmed": "Not confirmed yet. Open the link in the letter, then check again."
     },
     "instances": {
       "title": "Installations",
@@ -1198,7 +1202,17 @@
       "banned": "A moderator closed friends and chats for you until {until}.",
       "bannedForGood": "A moderator closed friends and chats for you.",
       "spam": "Spam",
-      "declineAll": "Decline all"
+      "declineAll": "Decline all",
+      "emailNeeded": "Friends and chats open once your email is confirmed. Open the link in the letter we sent you, then check again.",
+      "emailResent": "The letter is on its way. Look in spam too.",
+      "checking": "Checking…",
+      "loadingMessages": "Loading messages…",
+      "connecting": "Connecting…",
+      "newMessages": "New messages",
+      "unreadSection": "Unread",
+      "readSection": "Read",
+      "chatSound": "Sound for new messages and requests",
+      "chatNotifications": "System notifications while the launcher is in the background"
     },
     "windowTitles": {
       "pickJava": "Choose the Java program (java or javaw.exe)",

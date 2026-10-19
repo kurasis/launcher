@@ -43,6 +43,7 @@ import {
   type UpdateView,
   type LauncherAccountProblem,
   FRIENDS_PROBLEMS,
+  LAUNCHER_ACCOUNT_PROBLEMS,
   type ChatMessage,
   type FriendAction,
   type FriendRequestResult,
@@ -263,6 +264,9 @@ export const ipc = {
     invoke<LauncherAccountProblem | null>('launcher_account_set_nick', { nick }),
   launcherAccountResendConfirmation: (): Promise<LauncherAccountProblem | null> =>
     invoke<LauncherAccountProblem | null>('launcher_account_resend_confirmation'),
+  /** Asks the server again; whether the email is confirmed now. Rejects with a
+   * LauncherAccountProblem string. */
+  launcherAccountRecheck: (): Promise<boolean> => invoke<boolean>('launcher_account_recheck'),
   // Friends and chats (D-064). These reject with a FriendsProblem string;
   // `friendsProblem` reads it.
   friendsState: (): Promise<FriendsView> => invoke<FriendsView>('friends_state'),
@@ -437,6 +441,14 @@ export function onQuitRequested(handler: () => void): () => void {
 }
 
 /** The FriendsProblem a friends command rejected with (anything else: `server`). */
+/** What a launcher account command rejected with; `server` for anything else. */
+export function accountProblem(error: unknown): LauncherAccountProblem {
+  return typeof error === 'string' &&
+    (LAUNCHER_ACCOUNT_PROBLEMS as readonly string[]).includes(error)
+    ? (error as LauncherAccountProblem)
+    : 'server';
+}
+
 export function friendsProblem(error: unknown): FriendsProblem {
   return typeof error === 'string' && (FRIENDS_PROBLEMS as readonly string[]).includes(error)
     ? (error as FriendsProblem)

@@ -1499,15 +1499,16 @@ pub async fn launcher_account_set_nick<R: Runtime>(
 }
 
 /// Reads the account from the server again (after the player confirmed the
-/// email in a browser); friends tries again with the fresh token.
+/// email in a browser); friends tries again with the fresh token. Whether the
+/// email is confirmed now, or what went wrong.
 #[tauri::command]
 pub async fn launcher_account_recheck<R: Runtime>(
     app: AppHandle<R>,
-) -> Option<crate::launcher_account::AccountProblem> {
+) -> Result<bool, crate::launcher_account::AccountProblem> {
     let account = Arc::clone(&app.state::<Arc<crate::launcher_account::LauncherAccount>>());
     let result = account.recheck(&app.state::<AppState>()).await;
     friends(&app).wake();
-    result.err()
+    result
 }
 
 #[tauri::command]

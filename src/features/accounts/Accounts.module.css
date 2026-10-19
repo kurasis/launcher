@@ -35,3 +35,48 @@
   color: var(--color-text-muted);
   font-size: var(--font-size-sm);
 }
+
+/* Check again whether the email is confirmed: a small round arrow by the badge. */
+.refresh {
+  display: inline-grid;
+  place-items: center;
+  width: 1.9rem;
+  height: 1.9rem;
+  padding: 0;
+  border: 1px solid var(--color-border);
+  border-radius: 50%;
+  background: var(--color-surface);
+  color: var(--color-text-muted);
+  cursor: pointer;
+}
+
+.refresh:hover:not(:disabled) {
+  color: var(--color-text);
+  background: var(--color-neutral-bg);
+}
+
+.refresh svg {
+  width: 1rem;
+  height: 1rem;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 2.2;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.refresh[data-busy] svg {
+  animation: turn 0.8s linear infinite;
+}
+
+@keyframes turn {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .refresh[data-busy] svg {
+    animation-duration: 2.4s;
+  }
+}

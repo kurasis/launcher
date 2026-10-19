@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { Button } from '../../components/Button';
 import { Field } from '../../components/Field';
 import { Notice } from '../../components/Notice';
@@ -6,7 +6,7 @@ import { Panel } from '../../components/Panel';
 import { StatusBadge } from '../../components/StatusBadge';
 import forms from '../../components/forms.module.css';
 import type { LauncherAccountProblem, LauncherAccountView } from '../../lib/contracts';
-import { ipc } from '../../lib/ipc';
+import { accountProblem, ipc } from '../../lib/ipc';
 import { strings } from '../../lib/strings';
 import { useCommand } from '../../lib/useCommand';
 import styles from './Accounts.module.css';
@@ -44,6 +44,46 @@ export function LauncherAccountPanel({ view, isDefault, busy, onDefault }: Props
   const [done, setDone] = useState<string | null>(null);
   const shown = problem ?? view.problem;
   const signedIn = view.id !== null && view.nick !== null;
+  const [checking, setChecking] = useState(false);
+  const lastCheck = useRef(0);
+
+  /** Asks the server whether the email is confirmed now. Quiet: only the
+   * badge changes (the automatic check when the launcher comes back). */
+  const recheck = async (quiet: boolean) => {
+    lastCheck.current = Date.now();
+    if (!quiet) {
+      setChecking(true);
+      setDone(null);
+      setProblem(null);
+    }
+    try {
+      const confirmed = await ipc.launcherAccountRecheck();
+      if (!quiet) setDone(confirmed ? a.launcherNowConfirmed : a.launcherStillNotConfirmed);
+      else if (confirmed) setDone(a.launcherNowConfirmed);
+    } catch (e) {
+      if (!quiet) setProblem(accountProblem(e));
+    } finally {
+      if (!quiet) setChecking(false);
+    }
+  };
+
+  // Confirming happens in the browser: back in the launcher, look again (at
+  // most every 15 seconds).
+  const waiting = signedIn && !view.emailVerified && !view.needsSignIn;
+  const recheckRef = useRef(recheck);
+  useEffect(() => {
+    recheckRef.current = recheck;
+  });
+  useEffect(() => {
+    if (!waiting) return;
+    const onFocus = () => {
+      if (Date.now() - lastCheck.current > 15_000) void recheckRef.current(true);
+    };
+    window.addEventListener('focus', onFocus);
+    return () => {
+      window.removeEventListener('focus', onFocus);
+    };
+  }, [waiting]);
 
   /** Saves the account's data where the player chooses. */
   const exportData = async () => {
@@ -91,6 +131,22 @@ export function LauncherAccountPanel({ view, isDefault, busy, onDefault }: Props
               tone={view.emailVerified ? 'success' : 'warning'}
               label={view.emailVerified ? a.launcherEmailConfirmed : a.launcherEmailNotConfirmed}
             />
+            {waiting && (
+              <button
+                type="button"
+                className={styles.refresh}
+                aria-label={checking ? a.launcherChecking : a.launcherCheck}
+                title={a.launcherCheck}
+                disabled={checking}
+                data-busy={checking ? 'true' : undefined}
+                onClick={() => void recheck(false)}
+              >
+                <svg viewBox="0 0 24 24" aria-hidden="true">
+                  <path d="M20 12a8 8 0 1 1-2.34-5.66" />
+                  <path d="M20 4v5h-5" />
+                </svg>
+              </button>
+            )}
           </div>
           {editing ? (
             <form
