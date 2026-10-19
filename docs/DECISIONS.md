@@ -2112,6 +2112,14 @@ archive from the Package workflow, upload it to
   their Next.js data). It prints our words and numbers only, proxies numbered; Actions
   → Mods service → `task=probe` runs it. Its answer decides whether project pages need
   residential or mobile proxies.
+- **First probe (2026-10-19), direct from the server:** the site's file list, one file,
+  its changelog, dependencies and the download link (307 to forgecdn) all answer; the
+  project and search in the site's API are 403; the project page is 200 with no
+  Cloudflare check, and search answers with a redirect. Every proxy failed at the
+  proxy handshake (curl's code 97). The probe now names which kinds of page data it
+  finds (the Pages Router's `__NEXT_DATA__`, the App Router's `self.__next_f`, JSON-LD,
+  Open Graph), follows one redirect within the site, and asks a refused proxy again as
+  `http://` and `socks5h://` to tell a wrong scheme from a dead proxy.
 
 ## D-067 — Start page feed at feed.lapi.sh
 
