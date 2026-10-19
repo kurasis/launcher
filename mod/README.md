@@ -15,11 +15,17 @@ none for them: a profile without textures whose UUID is not a Mojang one (versio
 - `mc-<version>/{fabric,neoforge,forge}/`: thin entry points. Each loader build takes
   `core` and `common` as its own sources, so every jar stands alone. The Fabric jar
   also runs on Quilt.
+- `mc-1.12.2/forge/`: Forge 1.12.2 has no Mixin, so the hook is a coremod: an ASM
+  transformer that passes `NetworkPlayerInfo`'s skin, cape, elytra and model through
+  `LauncherSkins` (methods matched by MCP name in development, SRG name in a released
+  game). Built with RetroFuturaGradle; the jar to ship is the reobfuscated one, not
+  `-dev`.
 
 ## Build
 
-Gradle runs on Java 25 (Fabric Loom needs it); jars for 1.21.x are built with a Java 21
-toolchain and for 26.x with Java 25. Missing toolchains are downloaded.
+Gradle runs on Java 25 (Fabric Loom and RetroFuturaGradle need it); the jar for 1.12.2
+is built with a Java 8 toolchain, those for 1.21.x with Java 21 and for 26.x with
+Java 25. Missing toolchains are downloaded.
 
 ```
 ./gradlew build
@@ -35,8 +41,9 @@ Each loader project has a `runClient` task. These properties are optional:
   `launcherskins.api`); plain `http` only for a loopback address.
 - `-PdevNick=Tester`: the player's nick.
 - `-PdevServer=127.0.0.1:25565`: join this server at once (an offline-mode server
-  gives the player a non-Mojang UUID, so the mod applies).
-- `-PdevWorld=<save>` (Forge): open this singleplayer world at once.
+  gives the player a non-Mojang UUID, so the mod applies). On 1.12.2 it becomes
+  `--server` and `--port`.
+- `-PdevWorld=<save>` (Forge 1.21.1 and 26.3): open this singleplayer world at once.
 
 From 26.x the game opens its window through SDL. On a virtual display (Xvfb) set
 `SDL_VIDEO_FORCE_EGL=1`: Xvfb's GLX has no sRGB visuals, which the game asks for.
