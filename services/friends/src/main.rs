@@ -112,6 +112,7 @@ fn serve() -> Result<(), String> {
             http: http.clone(),
         })),
         hub: hub::Hub::default(),
+        sessions: auth::Sessions::default(),
         limiter: api::Limiter::default(),
         require_email: env("LAPI_FRIENDS_REQUIRE_EMAIL", "0") == "1",
     });
@@ -130,6 +131,14 @@ fn serve() -> Result<(), String> {
                 }
                 let wait = if keys.tokens.has_keys() { 600 } else { 10 };
                 tokio::time::sleep(Duration::from_secs(wait)).await;
+            }
+        });
+        // Sign-outs and switched-off accounts reach friends within seconds.
+        let checking = Arc::clone(&app);
+        tokio::spawn(async move {
+            loop {
+                tokio::time::sleep(Duration::from_secs(15)).await;
+                api::check_sessions(&checking).await;
             }
         });
         let listener = tokio::net::TcpListener::bind(&address)

@@ -377,6 +377,28 @@ impl Store {
         Ok(Ok(()))
     }
 
+    /// Of these sessions, those that no longer work: ended, run out, unknown,
+    /// or of an account that is switched off.
+    pub fn ended_sessions(&self, ids: &[String], now: i64) -> Result<Vec<String>, String> {
+        let db = self.db();
+        let mut statement = db
+            .prepare(
+                "SELECT 1 FROM sessions s JOIN accounts a ON a.id = s.account_id
+                 WHERE s.id = ?1 AND s.revoked = 0 AND s.expires > ?2 AND a.disabled = 0",
+            )
+            .map_err(|e| e.to_string())?;
+        let mut ended = Vec::new();
+        for id in ids {
+            if !statement
+                .exists(params![id, now])
+                .map_err(|e| e.to_string())?
+            {
+                ended.push(id.clone());
+            }
+        }
+        Ok(ended)
+    }
+
     pub fn set_disabled(&self, id: &str, disabled: bool) -> Result<bool, String> {
         self.db()
             .execute(

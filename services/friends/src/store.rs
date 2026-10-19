@@ -525,8 +525,8 @@ impl Store {
         })
     }
 
-    /// Messages before `before` (newest first), leaving out senders `reader`
-    /// blocked.
+    /// Messages before `before` (newest first) since `reader` joined the
+    /// room, leaving out senders `reader` blocked.
     pub fn messages(
         &self,
         room: &str,
@@ -539,6 +539,7 @@ impl Store {
             .prepare(
                 "SELECT id, room_id, sender, body, created FROM messages
                  WHERE room_id = ?1 AND id < ?2
+                   AND created >= (SELECT joined FROM members WHERE room_id = ?1 AND account_id = ?3)
                    AND sender NOT IN (SELECT blocked FROM blocks WHERE blocker = ?3)
                  ORDER BY id DESC LIMIT ?4",
             )
@@ -560,6 +561,18 @@ impl Store {
             .map_err(err)
     }
 
+    /// Moves a room's messages and members back in time (tests of join times).
+    #[cfg(test)]
+    pub fn age_room(&self, room: &str, seconds: i64) {
+        let db = self.db();
+        for sql in [
+            "UPDATE messages SET created = created - ?2 WHERE room_id = ?1",
+            "UPDATE members SET joined = joined - ?2 WHERE room_id = ?1",
+        ] {
+            db.execute(sql, params![room, seconds]).unwrap();
+        }
+    }
+
     pub fn mark_read(&self, room: &str, me: &str, upto: i64) -> Result<()> {
         self.db()
             .execute(
@@ -574,7 +587,7 @@ impl Store {
         self.db()
             .query_row(
                 "SELECT COUNT(*) FROM messages m JOIN members s ON s.room_id = m.room_id AND s.account_id = ?2
-                 WHERE m.room_id = ?1 AND m.id > s.read_upto AND m.sender != ?2
+                 WHERE m.room_id = ?1 AND m.id > s.read_upto AND m.created >= s.joined AND m.sender != ?2
                    AND m.sender NOT IN (SELECT blocked FROM blocks WHERE blocker = ?2)",
                 params![room, me],
                 |r| r.get(0),

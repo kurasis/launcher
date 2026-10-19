@@ -4,7 +4,7 @@
 use std::collections::BTreeMap;
 use std::future::Future;
 use std::pin::Pin;
-use std::sync::Arc;
+use std::sync::{Arc, Mutex};
 
 use axum::Router;
 use axum::body::Body;
@@ -24,7 +24,7 @@ use crate::store::Store;
 
 const ISSUER: &str = "https://oauth.example";
 
-struct People(BTreeMap<String, String>);
+struct People(BTreeMap<String, String>, Arc<Mutex<Vec<String>>>);
 
 type Boxed<'a, T> = Pin<Box<dyn Future<Output = Result<T, String>> + Send + 'a>>;
 
@@ -47,6 +47,17 @@ impl Accounts for People {
                 .collect())
         })
     }
+
+    fn ended<'a>(&'a self, sessions: &'a [String]) -> Boxed<'a, Vec<String>> {
+        Box::pin(async move {
+            let ended = self.1.lock().unwrap();
+            Ok(sessions
+                .iter()
+                .filter(|s| ended.contains(s))
+                .cloned()
+                .collect())
+        })
+    }
 }
 
 fn id(n: u8) -> String {
@@ -55,6 +66,8 @@ fn id(n: u8) -> String {
 
 struct T {
     _dir: tempfile::TempDir,
+    /// Sessions the fake account service says ended.
+    ended: Arc<Mutex<Vec<String>>>,
     app: Arc<App>,
     router: Router,
     key: SigningKey,
@@ -68,6 +81,7 @@ fn setup() -> T {
         "kty": "OKP", "crv": "Ed25519", "kid": "k1",
         "x": B64.encode(key.verifying_key().as_bytes()),
     }]}));
+    let ended = Arc::new(Mutex::new(Vec::new()));
     let people = People(
         [
             (id(1), "Alice".to_owned()),
@@ -77,17 +91,20 @@ fn setup() -> T {
             (id(5), "Mallory".to_owned()),
         ]
         .into(),
+        Arc::clone(&ended),
     );
     let app = Arc::new(App {
         store: Store::open(dir.path()).unwrap(),
         tokens,
         directory: Directory::new(Box::new(people)),
         hub: Hub::default(),
+        sessions: crate::auth::Sessions::default(),
         limiter: Limiter::default(),
         require_email: false,
     });
     T {
         _dir: dir,
+        ended,
         router: crate::api::router(Arc::clone(&app)),
         app,
         key,
@@ -111,7 +128,7 @@ impl T {
         self.token_with(
             json!({
                 "iss": ISSUER, "sub": id(who), "aud": ["account", "friends"],
-                "iat": now(), "exp": now() + 600, "sid": "s", "nick": nick, "ev": false,
+                "iat": now(), "exp": now() + 600, "sid": format!("s{who}"), "nick": nick, "ev": false,
             }),
             "k1",
         )
@@ -587,8 +604,8 @@ async fn bad_tokens_and_hostile_input() {
 async fn live_events_reach_the_right_people() {
     let t = setup();
     t.befriend(1, 2).await;
-    let (_, mut bob) = t.app.hub.join(&id(2)).unwrap();
-    let (_, mut carol) = t.app.hub.join(&id(3)).unwrap();
+    let (_, mut bob) = t.app.hub.join(&id(2), "s2").unwrap();
+    let (_, mut carol) = t.app.hub.join(&id(3), "s3").unwrap();
     let (_, opened) = t
         .call(1, "POST", "/v1/rooms/direct", json!({ "id": id(2) }))
         .await;
@@ -610,8 +627,10 @@ async fn live_events_reach_the_right_people() {
         .await;
     assert_eq!(carol.try_recv().unwrap(), crate::hub::Event::Friends);
     // Five connections per account at most.
-    let held: Vec<_> = (0..4).map(|_| t.app.hub.join(&id(3)).unwrap()).collect();
-    assert!(t.app.hub.join(&id(3)).is_none());
+    let held: Vec<_> = (0..4)
+        .map(|_| t.app.hub.join(&id(3), "s3").unwrap())
+        .collect();
+    assert!(t.app.hub.join(&id(3), "s3").is_none());
     drop(held);
 }
 
@@ -665,4 +684,88 @@ async fn the_live_socket_needs_a_token_and_carries_messages() {
     assert_eq!(event["type"], "message");
     assert_eq!(event["message"]["body"], "over the wire");
     assert_eq!(event["message"]["sender"], id(1));
+}
+
+#[tokio::test]
+async fn someone_added_to_a_group_sees_only_what_came_after() {
+    let t = setup();
+    for friend in [2, 3, 4] {
+        t.befriend(1, friend).await;
+    }
+    let (_, made) = t
+        .call(
+            1,
+            "POST",
+            "/v1/rooms/group",
+            json!({ "name": "Plans", "members": [id(2), id(3)] }),
+        )
+        .await;
+    let group = made["room"].as_str().unwrap().to_owned();
+    let say = format!("/v1/rooms/{group}/messages");
+    t.call(2, "POST", &say, json!({ "body": "before Dave" }))
+        .await;
+    t.app.store.age_room(&group, 60);
+    assert_eq!(
+        t.call(
+            1,
+            "POST",
+            &format!("/v1/rooms/{group}/add"),
+            json!({ "id": id(4) })
+        )
+        .await
+        .0,
+        StatusCode::NO_CONTENT
+    );
+    t.call(3, "POST", &say, json!({ "body": "after Dave" }))
+        .await;
+    let (_, seen) = t.call(4, "GET", &say, Value::Null).await;
+    let bodies: Vec<&str> = seen["messages"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|m| m["body"].as_str().unwrap())
+        .collect();
+    assert_eq!(bodies, ["after Dave"]);
+    let (_, rooms) = t.call(4, "GET", "/v1/rooms", Value::Null).await;
+    let listed = rooms["rooms"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|r| r["id"] == group.as_str())
+        .unwrap()
+        .clone();
+    assert_eq!(listed["unread"], 1);
+    // Those who were there still see everything.
+    let (_, all) = t.call(2, "GET", &say, Value::Null).await;
+    assert_eq!(all["messages"].as_array().unwrap().len(), 2);
+}
+
+#[tokio::test]
+async fn a_sign_out_or_switched_off_account_is_shut_out_within_seconds() {
+    let t = setup();
+    t.befriend(1, 2).await;
+    let (_, mut live) = t.app.hub.join(&id(2), "s2").unwrap();
+    assert_eq!(
+        t.call(2, "GET", "/v1/state", Value::Null).await.0,
+        StatusCode::OK
+    );
+    // The account service is unreachable or says nothing ended: no change.
+    crate::api::check_sessions(&t.app).await;
+    assert_eq!(
+        t.call(2, "GET", "/v1/state", Value::Null).await.0,
+        StatusCode::OK
+    );
+    // Bob signs out everywhere: his still-signed token stops working, and
+    // his live connection closes.
+    t.ended.lock().unwrap().push("s2".to_owned());
+    crate::api::check_sessions(&t.app).await;
+    assert_eq!(
+        t.call(2, "GET", "/v1/state", Value::Null).await.0,
+        StatusCode::UNAUTHORIZED
+    );
+    assert!(live.recv().await.is_none(), "the socket ends");
+    assert_eq!(
+        t.call(1, "GET", "/v1/state", Value::Null).await.0,
+        StatusCode::OK
+    );
 }

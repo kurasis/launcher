@@ -1,5 +1,6 @@
-//! The internal API for friends.lapi.sh (D-064): who has a nick, and the
-//! nicks of account IDs. It listens on its own local address
+//! The internal API for friends.lapi.sh (D-064): who has a nick, the nicks
+//! of account IDs, and which sessions ended (so a sign-out or a switched-off
+//! account reaches friends within seconds, not when the token runs out). It listens on its own local address
 //! (`LAPI_OAUTH_INTERNAL_ADDR`, default `127.0.0.1:8793`), which nginx does not
 //! serve, so nothing outside the server reaches it. It tells only what anyone
 //! can see in the launcher: a nick and the account it names.
@@ -68,10 +69,27 @@ async fn nicks(State(app): State<Arc<App>>, Json(body): Json<NicksBody>) -> Resp
     Json(json!({ "nicks": found })).into_response()
 }
 
+#[derive(Deserialize)]
+struct SessionsBody {
+    sessions: Vec<String>,
+}
+
+/// Of the sessions asked about, those that no longer work.
+async fn ended(State(app): State<Arc<App>>, Json(body): Json<SessionsBody>) -> Response {
+    if body.sessions.len() > MAX_IDS {
+        return StatusCode::PAYLOAD_TOO_LARGE.into_response();
+    }
+    match app.store.ended_sessions(&body.sessions, crate::app::now()) {
+        Ok(ended) => Json(json!({ "ended": ended })).into_response(),
+        Err(_) => StatusCode::INTERNAL_SERVER_ERROR.into_response(),
+    }
+}
+
 pub fn router(app: Arc<App>) -> Router {
     Router::new()
         .route("/internal/v1/find", get(find))
         .route("/internal/v1/nicks", post(nicks))
+        .route("/internal/v1/ended", post(ended))
         .layer(axum::extract::DefaultBodyLimit::max(64 * 1024))
         .with_state(app)
 }

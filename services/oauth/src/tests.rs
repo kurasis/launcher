@@ -983,13 +983,42 @@ async fn the_internal_api_tells_only_nicks_and_ids() {
         .send(t.get("/internal/v1/find?nick=Findable", "1.2.3.4"))
         .await;
     assert_eq!(public.status, StatusCode::NOT_FOUND);
-    // A switched-off account is not found.
+    // Which sessions ended: only the unknown one, until the account is
+    // switched off.
+    let sid = verify(
+        &t.app.keys.public(),
+        tokens["access_token"].as_str().unwrap(),
+        BASE,
+        "friends",
+        crate::app::now(),
+    )
+    .unwrap()
+    .sid;
+    let ended = |sessions: serde_json::Value| {
+        Request::post("/internal/v1/ended")
+            .header(header::CONTENT_TYPE, "application/json")
+            .body(Body::from(
+                serde_json::json!({ "sessions": sessions }).to_string(),
+            ))
+            .unwrap()
+    };
+    let (status, answer) = ask(ended(serde_json::json!([sid, "unknown' OR 1=1--"]))).await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(
+        answer,
+        serde_json::json!({ "ended": ["unknown' OR 1=1--"] })
+    );
+    // A switched-off account is not found, and its sessions have ended.
     t.app.store.set_disabled(&id, true).unwrap();
     let (status, _) = ask(Request::get("/internal/v1/find?nick=findable")
         .body(Body::empty())
         .unwrap())
     .await;
     assert_eq!(status, StatusCode::NOT_FOUND);
+    let (_, answer) = ask(ended(serde_json::json!([sid]))).await;
+    assert_eq!(answer, serde_json::json!({ "ended": [sid] }));
+    let (status, _) = ask(ended(serde_json::json!(vec!["x"; 501]))).await;
+    assert_eq!(status, StatusCode::PAYLOAD_TOO_LARGE);
 }
 
 /// Sets a new password with a reset link's token; the answer of the form.

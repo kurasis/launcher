@@ -62,6 +62,7 @@ pub struct App {
     pub tokens: Tokens,
     pub directory: Directory,
     pub hub: Hub,
+    pub sessions: crate::auth::Sessions,
     pub limiter: Limiter,
     /// Only accounts with a confirmed email may use friends.
     pub require_email: bool,
@@ -92,6 +93,11 @@ fn who(app: &App, headers: &HeaderMap) -> Result<Claims, Box<Response>> {
         .tokens
         .verify(token.trim(), now())
         .ok_or_else(unauthorized)?;
+    // Signed out, or the account was switched off.
+    if app.sessions.ended(&claims.sid) {
+        return Err(unauthorized());
+    }
+    app.sessions.seen(&claims.sid);
     if app.require_email && !claims.ev {
         return Err(Box::new(refuse(
             StatusCode::FORBIDDEN,
@@ -655,15 +661,38 @@ async fn report(
     }
 }
 
-/// Live events. The connection lasts as long as its token: the launcher
-/// comes back with a fresh one.
+/// Asks the account service which recently seen sessions ended, refuses
+/// their tokens from now on and closes their live connections. When it
+/// cannot be asked, tokens hold until they run out, as before.
+pub async fn check_sessions(app: &App) {
+    let mut sessions = app.sessions.recent();
+    sessions.extend(app.hub.sessions());
+    sessions.sort();
+    sessions.dedup();
+    for chunk in sessions.chunks(500) {
+        match app.directory.ended(chunk).await {
+            Ok(ended) if !ended.is_empty() => {
+                app.sessions.end(&ended);
+                app.hub.end(&ended);
+            }
+            Ok(_) => {}
+            Err(e) => {
+                eprintln!("asking which sessions ended failed: {e}");
+                return;
+            }
+        }
+    }
+}
+
+/// Live events. The connection lasts as long as its token (the launcher
+/// comes back with a fresh one), or until its session ends.
 async fn live(
     State(app): State<Arc<App>>,
     headers: HeaderMap,
     upgrade: WebSocketUpgrade,
 ) -> Response {
     let me = me!(app, headers);
-    let Some((id, events)) = app.hub.join(&me.sub) else {
+    let Some((id, events)) = app.hub.join(&me.sub, &me.sid) else {
         return refuse(StatusCode::TOO_MANY_REQUESTS, "too_many_connections");
     };
     let lasts = Duration::from_secs(u64::try_from((me.exp - now()).max(1)).unwrap_or(1));

@@ -23,8 +23,8 @@ pub enum Event {
     },
 }
 
-/// Each account's open connections, by number.
-type Connections = HashMap<String, Vec<(u64, mpsc::Sender<Event>)>>;
+/// Each account's open connections: number, session, events.
+type Connections = HashMap<String, Vec<(u64, String, mpsc::Sender<Event>)>>;
 
 #[derive(Default)]
 pub struct Hub {
@@ -33,14 +33,15 @@ pub struct Hub {
 }
 
 impl Hub {
-    /// A new connection of `account`; none when it has too many.
-    pub fn join(&self, account: &str) -> Option<(u64, mpsc::Receiver<Event>)> {
+    /// A new connection of `account` in session `sid`; none when it has too
+    /// many.
+    pub fn join(&self, account: &str, sid: &str) -> Option<(u64, mpsc::Receiver<Event>)> {
         let mut connections = self
             .connections
             .lock()
             .unwrap_or_else(std::sync::PoisonError::into_inner);
         let list = connections.entry(account.to_owned()).or_default();
-        list.retain(|(_, sender)| !sender.is_closed());
+        list.retain(|(_, _, sender)| !sender.is_closed());
         if list.len() >= PER_ACCOUNT {
             return None;
         }
@@ -50,7 +51,7 @@ impl Hub {
             .unwrap_or_else(std::sync::PoisonError::into_inner);
         *next += 1;
         let (sender, receiver) = mpsc::channel(64);
-        list.push((*next, sender));
+        list.push((*next, sid.to_owned(), sender));
         Some((*next, receiver))
     }
 
@@ -60,7 +61,7 @@ impl Hub {
             .lock()
             .unwrap_or_else(std::sync::PoisonError::into_inner);
         if let Some(list) = connections.get_mut(account) {
-            list.retain(|(i, _)| *i != id);
+            list.retain(|(i, _, _)| *i != id);
             if list.is_empty() {
                 connections.remove(account);
             }
@@ -74,8 +75,32 @@ impl Hub {
             .connections
             .lock()
             .unwrap_or_else(std::sync::PoisonError::into_inner);
-        for (_, sender) in connections.get(account).into_iter().flatten() {
+        for (_, _, sender) in connections.get(account).into_iter().flatten() {
             let _ = sender.try_send(event.clone());
         }
+    }
+
+    /// Sessions open in live connections.
+    pub fn sessions(&self) -> Vec<String> {
+        self.connections
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .values()
+            .flatten()
+            .map(|(_, sid, _)| sid.clone())
+            .collect()
+    }
+
+    /// Closes the connections of ended sessions: dropping their senders ends
+    /// the socket.
+    pub fn end(&self, sids: &[String]) {
+        let mut connections = self
+            .connections
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        for list in connections.values_mut() {
+            list.retain(|(_, sid, _)| !sids.contains(sid));
+        }
+        connections.retain(|_, list| !list.is_empty());
     }
 }
