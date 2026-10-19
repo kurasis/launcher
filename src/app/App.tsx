@@ -323,6 +323,7 @@ export function App() {
       {snapshot !== null && <DownloadManager snapshot={snapshot} />}
       {snapshot !== null && (
         <FriendsCorner
+          snapshot={snapshot}
           onOpenAccounts={() => {
             navigate('account');
           }}

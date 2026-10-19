@@ -36,3 +36,7 @@ window (D-037) and to the launcher account window (D-064).
 - Crash reports are sent only when the player presses send; stats are opt-in, off by
   default.
 - After editing the UI language catalogs, run `npm run i18n`.
+- `OFFLINE_NEEDS_OWNER` (`src-tauri/src/state/mod.rs`) is off only while Microsoft has
+  not approved the launcher's sign-in and builds are not published. Before any public
+  release it goes back to `true`: offline in the full game (no `--demo`) only with a
+  Microsoft account that owns Minecraft signed in.

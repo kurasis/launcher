@@ -50,6 +50,7 @@ futures-util = { version = "0.3", default-features = false, features = ["sink", 
 rustls = { version = "0.23", default-features = false, features = ["aws_lc_rs", "std"] }
 rustls-platform-verifier = "0.7"
 pulldown-cmark = { version = "0.13.4", default-features = false }
+tauri-plugin-notification = "2.7.0"
 
 [target.'cfg(unix)'.dependencies]
 # statvfs for free-space checks on the data directory's own filesystem; the clock

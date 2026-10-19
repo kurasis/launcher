@@ -22,7 +22,9 @@ version built with it has to be installed by hand.
 ## Every version
 
 1. Raise `version` in `src-tauri/Cargo.toml` and `package.json`; add
-   `release-notes/<version>.json`; merge to `main`.
+   `release-notes/<version>.json`; merge to `main`. Before the first public release:
+   `OFFLINE_NEEDS_OWNER` in `src-tauri/src/state/mod.rs` must be `true` (offline in
+   the full game only with a Microsoft account that owns Minecraft signed in).
 2. The "Package" workflow builds every platform and, with the key configured,
    the artifact `launcher-<version>-release` (a `.tar.gz`). Download it.
 3. Upload and publish:

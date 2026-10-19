@@ -197,6 +197,16 @@
         "not_saved": "تعذّر حفظ الملف هناك. اختر مكانًا آخر.",
         "server": "حدث خطأ في خادم الحسابات. حاول لاحقًا."
       },
+      "launcherCheck": "تحقق مرة أخرى",
+      "launcherChecking": "جارٍ التحقق…",
+      "launcherNowConfirmed": "تم تأكيد البريد: الأصدقاء والمحادثات متاحة.",
+      "launcherStillNotConfirmed": "لم يُؤكَّد بعد. افتح الرابط في الرسالة ثم تحقق مرة أخرى.",
+      "playMode": "وضع التشغيل",
+      "modeDemo": "تجريبي",
+      "modeOffline": "دون اتصال",
+      "offlineNeedsOwner": "يتطلب الوضع دون اتصال حساب Microsoft يملك Minecraft ومسجَّلًا في هذا المشغّل (أدناه).",
+      "offlineHint": "اللعبة الكاملة دون التحقق من الحساب: اللعب الفردي والخوادم التي تسمح باللاعبين دون اتصال.",
+      "demoHint": "النسخة التجريبية من Minecraft: خمسة أيام داخل اللعبة، دون لعب جماعي.",
       "skins": {
         "title": "المظهر والعباءة",
         "hint": "يراهما في اللعبة لاعبو هذا المشغّل. ملف PNG: مظهر 64×64 أو 64×32، وعباءة 64×32، أو بدقة عالية حتى 8 أضعاف؛ والرسوم المتحركة شريط عمودي حتى 32 إطارًا.",
@@ -1557,7 +1567,27 @@
       "banned": "أغلق مشرف الأصدقاء والمحادثات أمامك حتى {until}.",
       "bannedForGood": "أغلق مشرف الأصدقاء والمحادثات أمامك.",
       "spam": "مزعج",
-      "declineAll": "رفض الكل"
+      "declineAll": "رفض الكل",
+      "emailNeeded": "تصبح الأصدقاء والمحادثات متاحة بعد تأكيد بريدك الإلكتروني. افتح الرابط في الرسالة التي أرسلناها ثم اضغط «تحقق مرة أخرى».",
+      "emailResent": "الرسالة في الطريق. تحقق من مجلد الرسائل غير المرغوب فيها أيضًا.",
+      "checking": "جارٍ التحقق…",
+      "loadingMessages": "جارٍ تحميل الرسائل…",
+      "connecting": "جارٍ الاتصال…",
+      "newMessages": "رسائل جديدة",
+      "unreadSection": "غير مقروءة",
+      "readSection": "مقروءة",
+      "chatSound": "صوت للرسائل والطلبات الجديدة",
+      "chatNotifications": "إشعارات النظام عندما يعمل المشغّل في الخلفية",
+      "inviteToServer": "ادعُ إلى {server}",
+      "invitedTo": "{nick} يدعوك إلى خادم",
+      "youInvited": "دعوتَ إلى خادم",
+      "join": "انضم",
+      "joinWith": "التثبيت",
+      "noInstallation": "ليس لديك تثبيت لـ {game}. أنشئ واحدًا في «التثبيتات» ثم انضم.",
+      "gameRunning": "اللعبة تعمل بالفعل.",
+      "inviteFriend": "ادعُ",
+      "inviteSent": "أُرسلت الدعوة إلى {nick}.",
+      "joining": "جارٍ تشغيل اللعبة…"
     },
     "windowTitles": {
       "pickJava": "اختر برنامج Java (java أو javaw.exe)",
@@ -1909,6 +1939,7 @@
     "This version of the mod is not made for this installation's mod loader.": "هذا الإصدار من التعديل غير مصنوع لمحمّل تعديلات هذا التثبيت.",
     "This world is not in the installation.": "هذا العالم ليس في التثبيت.",
     "Too many requests to the catalog in a short time. Try again later.": "طلبات كثيرة جدًا إلى الفهرس في وقت قصير. حاول لاحقًا.",
-    "Your account brought a lot of files into the catalog today. Try again tomorrow.": "أضاف حسابك اليوم ملفات كثيرة إلى الفهرس. حاول غدًا."
+    "Your account brought a lot of files into the catalog today. Try again tomorrow.": "أضاف حسابك اليوم ملفات كثيرة إلى الفهرس. حاول غدًا.",
+    "That is not a server address.": "هذا ليس عنوان خادم."
   }
 }

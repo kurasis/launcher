@@ -138,7 +138,7 @@ describe('skin and cape', () => {
     });
     fireEvent.click(await screen.findByRole('button', { name: 'Upload cape…' }));
     expect(await screen.findByText('cape.png: 64×32, 1 frame')).toBeVisible();
-    expect(screen.queryByRole('radio')).not.toBeInTheDocument();
+    expect(screen.queryByRole('radio', { name: /pixels wide/ })).not.toBeInTheDocument();
     expect(screen.queryByRole('spinbutton')).not.toBeInTheDocument();
     fireEvent.click(screen.getByRole('button', { name: 'Upload' }));
     expect(await screen.findByText('The cape is uploaded.')).toBeVisible();

@@ -199,6 +199,16 @@ export type Messages = {
       readonly not_saved: string;
       readonly server: string;
     };
+    readonly launcherCheck: string;
+    readonly launcherChecking: string;
+    readonly launcherNowConfirmed: string;
+    readonly launcherStillNotConfirmed: string;
+    readonly playMode: string;
+    readonly modeDemo: string;
+    readonly modeOffline: string;
+    readonly offlineNeedsOwner: string;
+    readonly offlineHint: string;
+    readonly demoHint: string;
     readonly skins: {
       readonly title: string;
       readonly hint: string;
@@ -1632,6 +1642,26 @@ export type Messages = {
     readonly bannedForGood: string;
     readonly spam: string;
     readonly declineAll: string;
+    readonly emailNeeded: string;
+    readonly emailResent: string;
+    readonly checking: string;
+    readonly loadingMessages: string;
+    readonly connecting: string;
+    readonly newMessages: string;
+    readonly unreadSection: string;
+    readonly readSection: string;
+    readonly chatSound: string;
+    readonly chatNotifications: string;
+    readonly inviteToServer: (values: { server: string | number }) => string;
+    readonly invitedTo: (values: { nick: string | number }) => string;
+    readonly youInvited: string;
+    readonly join: string;
+    readonly joinWith: string;
+    readonly noInstallation: (values: { game: string | number }) => string;
+    readonly gameRunning: string;
+    readonly inviteFriend: string;
+    readonly inviteSent: (values: { nick: string | number }) => string;
+    readonly joining: string;
   };
   readonly windowTitles: {
     readonly pickJava: string;

@@ -221,6 +221,7 @@ fn main_window_capability_grants_only_app_commands() {
             "allow-launcher-account-sign-out",
             "allow-launcher-account-set-nick",
             "allow-launcher-account-resend-confirmation",
+            "allow-launcher-account-recheck",
             "allow-friends-state",
             "allow-friends-request",
             "allow-friends-act",

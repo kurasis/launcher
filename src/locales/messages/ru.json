@@ -196,6 +196,16 @@
         "not_saved": "Не удалось сохранить файл туда. Выберите другое место.",
         "server": "На сервере аккаунтов что-то пошло не так. Попробуйте позже."
       },
+      "launcherCheck": "Проверить снова",
+      "launcherChecking": "Проверяю…",
+      "launcherNowConfirmed": "Email подтверждён: друзья и чаты открыты.",
+      "launcherStillNotConfirmed": "Пока не подтверждён. Откройте ссылку из письма и проверьте снова.",
+      "playMode": "Режим запуска",
+      "modeDemo": "Демо",
+      "modeOffline": "Оффлайн",
+      "offlineNeedsOwner": "Оффлайн доступен, когда в лаунчере выполнен вход в аккаунт Microsoft с купленной Minecraft (ниже).",
+      "offlineHint": "Полная игра без проверки аккаунта: одиночная игра и серверы, которые пускают офлайн-игроков.",
+      "demoHint": "Демо-версия Minecraft: пять игровых дней, без сетевой игры.",
       "skins": {
         "title": "Скин и плащ",
         "hint": "Их видят в игре игроки этого лаунчера. Файл PNG: скин 64×64 или 64×32, плащ 64×32 или HD до 8 раз больше; анимация — вертикальная полоса до 32 кадров.",
@@ -1556,7 +1566,27 @@
       "banned": "Модератор закрыл вам друзей и чаты до {until}.",
       "bannedForGood": "Модератор закрыл вам друзей и чаты.",
       "spam": "Спам",
-      "declineAll": "Отклонить все"
+      "declineAll": "Отклонить все",
+      "emailNeeded": "Друзья и чаты откроются, когда вы подтвердите email. Откройте ссылку из письма, которое мы прислали, и нажмите «Проверить снова».",
+      "emailResent": "Письмо отправлено. Загляните и в спам.",
+      "checking": "Проверяю…",
+      "loadingMessages": "Загружаю сообщения…",
+      "connecting": "Подключаюсь…",
+      "newMessages": "Новые сообщения",
+      "unreadSection": "Непрочитанные",
+      "readSection": "Прочитанные",
+      "chatSound": "Звук новых сообщений и заявок",
+      "chatNotifications": "Системные уведомления, когда лаунчер в фоне",
+      "inviteToServer": "Пригласить на {server}",
+      "invitedTo": "{nick} зовёт вас на сервер",
+      "youInvited": "Вы пригласили на сервер",
+      "join": "Зайти",
+      "joinWith": "Установка",
+      "noInstallation": "У вас нет установки {game}. Создайте её в «Установках» и зайдите.",
+      "gameRunning": "Игра уже запущена.",
+      "inviteFriend": "Пригласить",
+      "inviteSent": "Приглашение отправлено: {nick}.",
+      "joining": "Запускаю игру…"
     },
     "windowTitles": {
       "pickJava": "Выберите программу Java (java или javaw.exe)",
@@ -1908,6 +1938,7 @@
     "This version of the mod is not made for this installation's mod loader.": "Эта версия мода сделана не для загрузчика модов этой установки.",
     "This world is not in the installation.": "Этого мира нет в установке.",
     "Too many requests to the catalog in a short time. Try again later.": "Слишком много запросов к каталогу за короткое время. Попробуйте позже.",
-    "Your account brought a lot of files into the catalog today. Try again tomorrow.": "Ваш аккаунт сегодня уже добавил в каталог много файлов. Попробуйте завтра."
+    "Your account brought a lot of files into the catalog today. Try again tomorrow.": "Ваш аккаунт сегодня уже добавил в каталог много файлов. Попробуйте завтра.",
+    "That is not a server address.": "Это не адрес сервера."
   }
 }

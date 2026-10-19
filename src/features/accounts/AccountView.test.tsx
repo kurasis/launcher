@@ -181,4 +181,26 @@ describe('AccountView', () => {
       });
     });
   });
+
+  it('keeps profiles in the demo until someone who owns Minecraft signs in', () => {
+    setup({ fullGameAllowed: false });
+    const modes = screen.getAllByRole('radiogroup', { name: 'Launch mode' });
+    const offline = within(modes[0] as HTMLElement).getByRole('radio', { name: 'Offline' });
+    expect(offline).toBeDisabled();
+    expect(within(modes[0] as HTMLElement).getByRole('radio', { name: 'Demo' })).toBeChecked();
+    expect(screen.getByText(/Offline needs a Microsoft account that owns Minecraft/)).toBeVisible();
+  });
+
+  it('switches profiles without an account to offline', async () => {
+    const calls = setup({ fullGameAllowed: true, accounts: [microsoft()] });
+    const modes = screen.getAllByRole('radiogroup', { name: 'Launch mode' });
+    fireEvent.click(within(modes[0] as HTMLElement).getByRole('radio', { name: 'Offline' }));
+    await waitFor(() => {
+      expect(
+        named('set_app_settings', calls).map(
+          (c) => (c.args as { request: { payload: unknown } }).request.payload,
+        ),
+      ).toEqual([{ notokenOffline: true }]);
+    });
+  });
 });
