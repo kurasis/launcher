@@ -941,9 +941,14 @@ fn only_listed_hosts_over_https() {
     assert!(fetch::is_public("93.184.216.34".parse().unwrap()));
     assert_eq!(
         fetch::parse_proxies(
-            "socks5h://u:p@a.example:1080, http://b.example:8080\nftp://c.example junk"
+            "socks5h://u:p@a.example:1080, http://b.example:8080\nftp://c.example junk \
+             socks5://u:p@203.0.113.7:8000"
         ),
-        ["socks5h://u:p@a.example:1080", "http://b.example:8080"]
+        [
+            "socks5h://u:p@a.example:1080",
+            "http://b.example:8080",
+            "socks5h://u:p@203.0.113.7:8000"
+        ]
     );
 }
 
