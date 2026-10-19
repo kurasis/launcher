@@ -37,6 +37,7 @@ pub mod sync;
 pub mod traffic;
 pub mod update;
 pub mod validation;
+pub mod worlds;
 
 use std::path::PathBuf;
 use std::sync::Arc;
