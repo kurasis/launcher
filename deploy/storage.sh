@@ -153,7 +153,7 @@ if ! mountpoint -q "$ROOT" || [ ! -f "$ROOT/$MARK" ]; then back "$ROOT is not th
 
 step "start the services"
 start_again
-port_of() { case "$1" in lapi-crash.service) echo 8781 ;; lapi-mirror.service) echo 8782 ;; lapi-oauth.service) echo 8783 ;; lapi-friends.service) echo 8784 ;; lapi-mods.service) echo 8785 ;; esac; }
+port_of() { case "$1" in lapi-crash.service) echo 8781 ;; lapi-mirror.service) echo 8782 ;; lapi-oauth.service) echo 8783 ;; lapi-friends.service) echo 8784 ;; lapi-skins.service) echo 8785 ;; lapi-mods.service) echo 8786 ;; esac; }
 answers() {
     for _ in $(seq 1 30); do
         curl -fsS --max-time 2 "http://127.0.0.1:$1/v1/health" >/dev/null 2>&1 && return 0

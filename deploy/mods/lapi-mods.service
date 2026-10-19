@@ -1,6 +1,6 @@
 # Installed by deploy/bootstrap.sh as /etc/systemd/system/lapi-mods.service.
 [Unit]
-Description=Sferum launcher catalog of mods (mods.lapi.sh, D-065)
+Description=Sferum launcher catalog of mods (mods.lapi.sh, D-066)
 After=network-online.target
 Wants=network-online.target
 

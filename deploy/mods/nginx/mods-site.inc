@@ -1,5 +1,5 @@
 # The body of both mods.lapi.sh servers (mods.conf): the API of lapi-mods on
-# 127.0.0.1:8785.
+# 127.0.0.1:8786.
 include /etc/nginx/lapi/cloudflare-real-ip.inc;
 server_tokens off;
 access_log /var/log/nginx/mods.lapi.sh.access.log lapi_anon;
@@ -21,7 +21,7 @@ location /v1/ {
     limit_conn_status 429;
     client_max_body_size 32k;
     client_body_timeout 15s;
-    proxy_pass http://127.0.0.1:8785;
+    proxy_pass http://127.0.0.1:8786;
     proxy_http_version 1.1;
     proxy_set_header Host $host;
     proxy_set_header X-Real-IP $remote_addr;

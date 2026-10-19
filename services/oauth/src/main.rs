@@ -23,7 +23,7 @@
 //! `LAPI_OAUTH_URL` (`https://oauth.lapi.sh`), `LAPI_OAUTH_TURNSTILE_SITE_KEY`
 //! and `LAPI_OAUTH_TURNSTILE_SECRET` (without the secret nobody can register),
 //! `LAPI_OAUTH_SMTP_URL` and `LAPI_OAUTH_MAIL_FROM` (without them letters wait),
-//! `LAPI_OAUTH_INTERNAL_ADDR` (`127.0.0.1:8793`, for friends.lapi.sh only).
+//! `LAPI_OAUTH_INTERNAL_ADDR` (`127.0.0.1:8793`, for friends.lapi.sh and skins.lapi.sh only).
 
 mod api;
 mod app;

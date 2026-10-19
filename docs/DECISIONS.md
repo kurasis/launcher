@@ -1822,7 +1822,7 @@ archive from the Package workflow, upload it to
   country (`CF-IPCountry`), its language, and a year of events (sign-ins,
   password and nick changes) with country only.
 - **Tokens:** access tokens are JWT signed with Ed25519, 10 minutes, audience
-  `account`, `friends` and `mods` (D-065), carrying the account ID, session, nick and whether
+  `account`, `friends`, `skins` (D-065) and `mods` (D-066), carrying the account ID, session, nick and whether
   the email is confirmed; the key is made on the server at the first start and
   never leaves it (`/.well-known/jwks.json` publishes the public half). Refresh
   tokens are random, live 60 days from their last use and rotate on every use;
@@ -1936,7 +1936,74 @@ archive from the Package workflow, upload it to
   account hides it (Friends tab → _Show friends that I am online_). Nothing of it is
   stored: it lives with the live connections.
 
-## D-065 — Catalog of mods at mods.lapi.sh
+## D-065 — Our own skins: skins.lapi.sh and a mod for every loader
+
+- **Status:** accepted (owner request, 2026-10-19) · **Affects:** the Accounts tab
+  (launcher account), installation launch (a mod or a Java agent added to the game),
+  the new service `services/skins` (`https://skins.lapi.sh`, `/home/www/lapi/skins`),
+  the new `mod/` build, docs/spec/01 (skin editing stays out of scope: players upload a
+  finished PNG).
+- **Goal.** Players of launcher accounts (D-064) wear their own skin and cape, HD and
+  animated, and see each other's, looked up by nick, in every way the launcher runs the
+  game: Fabric, Quilt, NeoForge, Forge and plain Minecraft without a loader. The code is
+  ours: CustomSkinLoader (GPL-3.0) and authlib-injector (AGPL-3.0) were read for
+  behaviour only, as Prism was for sign-in; nothing is copied.
+- **Game versions (owner's choice):** 26.x, 1.21.x and 1.12.2 first.
+
+  | Version | Loaders                                          | Without a loader                        |
+  | ------- | ------------------------------------------------ | --------------------------------------- |
+  | 26.x    | Fabric (also runs on Quilt), NeoForge, Forge     | Java agent: skins, capes, HD, animation |
+  | 1.21.x  | Fabric (also runs on Quilt), NeoForge, Forge     | Java agent: skins and capes             |
+  | 1.12.2  | Forge (a coremod; official Fabric has no 1.12.2) | Java agent: skins and capes             |
+
+  Without a loader, HD and animation need names inside the game, which Mojang stopped
+  obfuscating with 26.1; on older versions plain Minecraft shows standard-size skins and
+  the launcher suggests Fabric for more.
+
+- **Textures:** PNG only. A skin frame is 64×64 × k (k = 1, 2, 4, 8, so up to 512×512;
+  64×32 only as one frame), a cape frame 64×32 × k. Animation is a vertical strip of
+  1–32 frames with one duration or one per frame (50–10 000 ms). Skins up to 2 MiB, capes
+  up to 1 MiB. The service decodes with its limits set before decoding, re-encodes and
+  stores only its own file, named by its SHA-256; the mod checks size and hash again.
+- **Whose skin is shown:** a player whose profile already carries textures (a Microsoft
+  account on an online server) keeps them. Ours is used only when the profile has none
+  and its UUID is not a Microsoft one (version 4, random): offline players (version 3)
+  and the launcher's own players (version 5) get ours, so a launcher account named like
+  a Microsoft player never replaces that player's skin.
+- **Service (`lapi-skins`):** `GET /v1/profile/{nick}` and `POST /v1/profiles` (up to
+  50 nicks) are public; `GET /v1/textures/{sha256}` serves the PNG, cached for good;
+  `GET /v1/me`, `PUT`/`DELETE /v1/me/skin` and `/v1/me/cape` and `GET /v1/export` take
+  the launcher account's access token (audience `skins`, added to the account
+  service's tokens). Nicks are resolved through the account service's internal API, so
+  a nick change moves the skin at once; deleted accounts are cleaned out within 15
+  seconds. Uploads: 10 an hour per account. Nothing about players goes into logs;
+  `counts` prints numbers only; `remove <account> [skin|cape]` is the owner's
+  moderation command.
+- **Mod (`mod/`):** one Gradle build. `core` (plain Java 8: the API client, a disk cache
+  by hash, PNG checks, frame timing, the whose-skin rule), per game version a `common`
+  layer (Mixin hooks in Mojang names, the same source for every loader), thin entry
+  points per loader, a Forge 1.12.2 coremod, and `agent` (a `premain` that patches authlib,
+  whose class names are not obfuscated, and from 26.1 the game itself). One jar per
+  loader and version; the launcher picks the right one.
+- **In the launcher (later stage):** Accounts → Launcher account: upload a skin (model
+  default or slim, frame duration) and a cape, preview, remove. Installations get the
+  matching jar in `mods/` (Fabric, Quilt, NeoForge, Forge) or `-javaagent` (no loader),
+  checked by SHA-256 like other downloads, with a switch per installation. The mod reads
+  the API address from a system property and falls back to `https://skins.lapi.sh`; the
+  game never gets a token.
+- **Stages:**
+  1. the service;
+  2. upload in the launcher;
+  3. core + Fabric 1.21.x with plain skins;
+  4. HD;
+  5. animation;
+  6. NeoForge, Forge, 26.x and 1.12.2;
+  7. the agent;
+  8. automatic install by the launcher, tested on a Windows package.
+- **Server setup (owner):** a DNS record and certificate for skins.lapi.sh, then
+  `deploy/bootstrap.sh` once, as for the other services.
+
+## D-066 — Catalog of mods at mods.lapi.sh
 
 - **Status:** accepted (owner request, 2026-10-19), stage 1 of 6 · **Affects:** the new
   service `services/mods` (`https://mods.lapi.sh`, files at

@@ -39,3 +39,14 @@ Friends also holds spam back by itself: an account sends at most 20 requests an 
 50 a day (5 in its first day of friends), and someone with 30 requests waiting gets no
 more until they answer some, without the sender knowing. Once letters go out
 ([MAIL.md](MAIL.md)), only confirmed addresses use friends.
+
+## Skins
+
+A skin or cape that should not be shown is taken off on the server (D-065); the player can
+upload another one:
+
+```sh
+sudo -u lapi-skins /home/www/lapi/skins/current/lapi-skins remove <account> [skin|cape]
+```
+
+`lapi-oauth find <nick>` shows the account ID. Without `skin` or `cape`, both go.

@@ -33,8 +33,9 @@ case "$SERVICE" in
         [ "$EXTRA" = --secrets ] && SECRETS='^LAPI_OAUTH_(TURNSTILE_SITE_KEY|TURNSTILE_SECRET|SMTP_URL|MAIL_FROM)=[^[:cntrl:]]{0,500}$'
         ;;
     friends) PORT=8784 ;;
+    skins) PORT=8785 ;;
     mods)
-        PORT=8785
+        PORT=8786
         QUOTA_GB="$EXTRA"
         [ "${5:-}" = --secrets ] && SECRETS='^LAPI_MODS_PROXIES=[^[:cntrl:]]{0,20000}$'
         ;;

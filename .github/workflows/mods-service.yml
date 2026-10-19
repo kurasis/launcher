@@ -2,7 +2,7 @@ name: Mods service
 
 # The catalog of mods, modpacks, resource packs, shaders and worlds at
 # mods.lapi.sh, its kept files at files-mods.lapi.sh (docs/DECISIONS.md
-# D-065): tests, a release build with curl-impersonate (Chrome's
+# D-066): tests, a release build with curl-impersonate (Chrome's
 # fingerprint, for the sources), and a deploy over SSH to
 # /home/www/lapi/mods. The server needs deploy/bootstrap.sh run as root once,
 # and again when the nginx files change (the deploy warns).

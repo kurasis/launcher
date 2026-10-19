@@ -1,16 +1,17 @@
 # Server backups
 
-The account service (oauth.lapi.sh) and friends (friends.lapi.sh) keep everything in one
-SQLite database each. Once a day a timer makes a consistent copy of each, while the
+The account service (oauth.lapi.sh), friends (friends.lapi.sh) and skins (skins.lapi.sh)
+keep everything in one SQLite database each. Once a day a timer makes a consistent copy of each, while the
 service runs:
 
 | Service  | Copies                                             | Timer                       |
 | -------- | -------------------------------------------------- | --------------------------- |
 | accounts | `/home/www/lapi/oauth/data/backups/accounts-*.db`  | `lapi-oauth-backup.timer`   |
 | friends  | `/home/www/lapi/friends/data/backups/friends-*.db` | `lapi-friends-backup.timer` |
+| skins    | `/home/www/lapi/skins/data/backups/skins-*.db`     | `lapi-skins-backup.timer`   |
 | mods     | `/home/www/lapi/mods/data/backups/catalog-*.db`    | `lapi-mods-backup.timer`    |
 
-The newest 14 copies stay. Each copy can be read only by its service's user. Both
+The newest 14 copies stay. Each copy can be read only by its service's user. The
 timers are installed by `deploy/bootstrap.sh`. A copy can also be made at any time:
 
 ```sh

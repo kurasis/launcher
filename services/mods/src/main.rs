@@ -1,5 +1,5 @@
 //! `lapi-mods`: the catalog of mods, modpacks, resource packs, shaders and
-//! worlds at mods.lapi.sh, its files at files-mods.lapi.sh (D-065).
+//! worlds at mods.lapi.sh, its files at files-mods.lapi.sh (D-066).
 //!
 //! Players add projects of Modrinth (CurseForge comes next) by an address or
 //! a name; the service fetches their pages, pictures and files through
@@ -17,7 +17,7 @@
 //! ```
 //!
 //! Settings come from the environment: `LAPI_MODS_DATA` (default
-//! `/home/www/lapi/mods/data`), `LAPI_MODS_ADDR` (`127.0.0.1:8785`),
+//! `/home/www/lapi/mods/data`), `LAPI_MODS_ADDR` (`127.0.0.1:8786`),
 //! `LAPI_MODS_SETTINGS` (the deploy's settings file with the quota,
 //! `/home/www/lapi/mods/settings.json`), `LAPI_MODS_FILES_URL`
 //! (`https://files-mods.lapi.sh`), `LAPI_MODS_CURL` (curl-impersonate,
@@ -165,7 +165,7 @@ fn serve() -> Result<(), String> {
         .parse()
         .unwrap_or(4)
         .clamp(1, 32);
-    let address = env("LAPI_MODS_ADDR", "127.0.0.1:8785");
+    let address = env("LAPI_MODS_ADDR", "127.0.0.1:8786");
     let jwks_url = env(
         "LAPI_MODS_JWKS",
         "http://127.0.0.1:8783/.well-known/jwks.json",
