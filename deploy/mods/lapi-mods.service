@@ -1,0 +1,54 @@
+# Installed by deploy/bootstrap.sh as /etc/systemd/system/lapi-mods.service.
+[Unit]
+Description=Sferum launcher catalog of mods (mods.lapi.sh, D-065)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+User=lapi-mods
+Group=lapi-mods
+EnvironmentFile=/home/www/lapi/mods/mods.env
+# The proxies to the sources (secret LAPI_MODS_PROXIES), written by deploys.
+EnvironmentFile=-/home/www/lapi/mods/secrets.env
+ExecStart=/home/www/lapi/mods/current/lapi-mods serve
+Restart=on-failure
+RestartSec=3
+# Kept files are public: nginx reads them. The database's folder is 0700.
+UMask=0022
+NoNewPrivileges=yes
+ProtectSystem=strict
+# /home holds nothing else for it: only its own folder is there, its data writable.
+ProtectHome=tmpfs
+BindReadOnlyPaths=/home/www/lapi/mods
+BindPaths=/home/www/lapi/mods/data
+ReadWritePaths=/home/www/lapi/mods/data
+PrivateTmp=yes
+PrivateDevices=yes
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectControlGroups=yes
+ProtectClock=yes
+ProtectHostname=yes
+# curl-impersonate (a child process) resolves the proxies' names.
+RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX AF_NETLINK
+RestrictNamespaces=yes
+RestrictRealtime=yes
+LockPersonality=yes
+MemoryDenyWriteExecute=yes
+SystemCallArchitectures=native
+# What a network service needs; anything else fails with EPERM.
+SystemCallFilter=@system-service
+SystemCallErrorNumber=EPERM
+ProtectKernelLogs=yes
+ProtectProc=invisible
+ProcSubset=pid
+RestrictSUIDSGID=yes
+RemoveIPC=yes
+CapabilityBoundingSet=
+# The service, its downloads (curl) and picture decoders (lapi-mods thumb).
+MemoryMax=2G
+TasksMax=512
+LimitNOFILE=65536
+
+[Install]
+WantedBy=multi-user.target

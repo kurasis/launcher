@@ -90,6 +90,7 @@ npm run tauri build    # release build and installers for the current OS
 | [docs/CRASH-REPORTS.md](docs/CRASH-REPORTS.md)     | Crash reports: what is sent, and reading them on the server           |
 | [docs/SERVER-BACKUPS.md](docs/SERVER-BACKUPS.md)   | Daily copies of the account and friends databases, and restoring them |
 | [docs/SERVER-STORAGE.md](docs/SERVER-STORAGE.md)   | Moving the services' files to a larger disk (bind mount)              |
+| [docs/MODS-CATALOG.md](docs/MODS-CATALOG.md)       | The mods catalog service: setup, proxies, quota (owner actions)       |
 | [docs/MODERATION.md](docs/MODERATION.md)           | Acting on reports in chats: remove, mute, ban (on the server)         |
 | [docs/MAIL.md](docs/MAIL.md)                       | Setting up letters (SMTP secrets, DNS) for the account service        |
 | [docs/TRANSLATING.md](docs/TRANSLATING.md)         | Adding or changing interface languages                                |

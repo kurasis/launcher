@@ -1822,7 +1822,7 @@ archive from the Package workflow, upload it to
   country (`CF-IPCountry`), its language, and a year of events (sign-ins,
   password and nick changes) with country only.
 - **Tokens:** access tokens are JWT signed with Ed25519, 10 minutes, audience
-  `account` and `friends`, carrying the account ID, session, nick and whether
+  `account`, `friends` and `mods` (D-065), carrying the account ID, session, nick and whether
   the email is confirmed; the key is made on the server at the first start and
   never leaves it (`/.well-known/jwks.json` publishes the public half). Refresh
   tokens are random, live 60 days from their last use and rotate on every use;
@@ -1935,3 +1935,55 @@ archive from the Package workflow, upload it to
   ("Minecraft 1.21.1 · Fabric", sent by the launcher while the game runs), unless the
   account hides it (Friends tab → _Show friends that I am online_). Nothing of it is
   stored: it lives with the live connections.
+
+## D-065 — Catalog of mods at mods.lapi.sh
+
+- **Status:** accepted (owner request, 2026-10-19), stage 1 of 6 · **Affects:** the new
+  service `services/mods` (`https://mods.lapi.sh`, files at
+  `https://files-mods.lapi.sh`, `/home/www/lapi/mods`), the account service's token
+  audience. The full design: the project's design document "Вкладка Моды и каталог".
+- **Goal.** A Mods tab with modpacks, mods, resource packs, shaders and worlds that does
+  not depend on Modrinth's and CurseForge's servers being up: what players add to our
+  catalog is kept here for good (pages, pictures, files), with permission from both.
+- **Owner's choices:** the API at mods.lapi.sh, files at files-mods.lapi.sh behind
+  Cloudflare's ordinary cache, no proxies toward players; a pool of proxies toward the
+  sources; no CurseForge API key, so its site's own addresses; our own server; every
+  file kept; any signed-in player may add; at once the newest version for each game
+  version and loader, any other version on its first request and then for good, the
+  catalog saying which versions are kept.
+- **Adding:** a player gives an address (Modrinth project, version or file; CurseForge
+  comes in stage 4) or a name; a name offers up to five projects to pick from. The
+  service fetches the project, its members and all its versions' metadata, then the
+  files of the newest release per game version and loader, required dependencies (16
+  deep, 50 per project), the icon, the gallery and the pictures in the description,
+  which then point at our copies. Work runs from a queue in the database (retries with
+  back-off, survives restarts). Limits: 20 requests an hour and 100 a day per account,
+  5 GB a day of files brought per account, 60 an hour per address; an older version's
+  files 30 an hour per address.
+- **Sources:** everything is fetched with curl-impersonate (lexiforest, Chrome 150's
+  fingerprint), as a process with its arguments one by one and no shell, only HTTPS to
+  listed hosts, redirects followed by us one hop at a time and checked again, names
+  resolved to public addresses only, sizes bounded. Exits are the proxies of the secret
+  `LAPI_MODS_PROXIES` plus the direct connection, each paced per site (Modrinth 200 a
+  minute, CurseForge 60, picture hosts 120) and rested for an hour after a refusal or a
+  Cloudflare challenge. A proxy's address never appears on a command line or in a log.
+- **Storage:** files by SHA-256 under `data/blobs/ab/cd/<sha256>`, written to a part,
+  hashed, checked against the source's SHA-1 and SHA-512 and size, synced and renamed;
+  a file that does not match is not kept. SQLite (`data/db`, 0700) holds projects,
+  versions, files, dependencies, pictures, requests and the queue, with FTS5 search.
+  Quota: the repository variable `MODS_MAX_GB` (default 500), and 5 GB always left free.
+- **Serving:** nginx serves `/f/<sha256>/<name>` (always a download) and
+  `/i/<sha256>.<png|jpg|gif|webp>` straight from disk, immutable, `nosniff`, CSP
+  `sandbox`. The type of a picture is taken from its bytes, never from the source.
+  Small copies (icons 256 px lossless WebP, gallery 512 px JPEG) are made by
+  `lapi-mods thumb` in a process of its own with bounded size and memory. The launcher
+  shows no picture from another site, so players' addresses go only to us.
+- **API:** `GET /v1/search`, `/v1/projects/{id|slug}`, `/v1/projects/{id}/versions`,
+  `/v1/versions/{id}` (each version says `saved`: `all` kept, else fetched on request),
+  `POST /v1/versions/{id}/fetch`, `POST /v1/lookup` (by SHA-1 or SHA-256); with the
+  launcher account's token (audience `mods`): `POST /v1/imports`, `GET /v1/imports`,
+  `GET /v1/imports/{id}`, `POST /v1/imports/{id}/choose`.
+- **Plan:** 1 this service and its deploy; 2 the launcher's tab; 3 modpacks (installing
+  `.mrpack` and CurseForge packs, other launchers' manifests); 4 CurseForge through its
+  site; 5 more formats; 6 upkeep (refreshing, reports, removal on request).
+- **Owner actions:** docs/MODS-CATALOG.md.

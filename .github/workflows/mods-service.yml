@@ -1,0 +1,222 @@
+name: Mods service
+
+# The catalog of mods, modpacks, resource packs, shaders and worlds at
+# mods.lapi.sh, its kept files at files-mods.lapi.sh (docs/DECISIONS.md
+# D-065): tests, a release build with curl-impersonate (Chrome's
+# fingerprint, for the sources), and a deploy over SSH to
+# /home/www/lapi/mods. The server needs deploy/bootstrap.sh run as root once,
+# and again when the nginx files change (the deploy warns).
+#
+# Settings: the repository variable MODS_MAX_GB (disk quota, default 500) and
+# the secret LAPI_MODS_PROXIES (proxies to Modrinth and CurseForge, http://,
+# https://, socks5:// or socks5h:// URLs separated by spaces, commas or
+# lines; without it the server connects directly).
+#
+# This repository is public, and so are its workflow logs: nothing anyone
+# wrote and nothing about the server is printed here. "Run workflow" with
+# task=counts shows numbers only.
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - services/mods/**
+      - deploy/mods/**
+      - deploy/*.sh
+      - deploy/nginx/**
+      - .github/workflows/mods-service.yml
+      - .github/actions/**
+  pull_request:
+    paths:
+      - services/mods/**
+      - deploy/mods/**
+      - deploy/*.sh
+      - deploy/nginx/**
+      - .github/workflows/mods-service.yml
+      - .github/actions/**
+  workflow_dispatch:
+    inputs:
+      task:
+        description: deploy, or counts of the catalog
+        type: choice
+        options: [deploy, counts]
+        default: deploy
+
+permissions:
+  contents: read
+
+concurrency:
+  group: mods-service-${{ github.ref }}
+  cancel-in-progress: false
+
+env:
+  CARGO_TERM_COLOR: always
+  CARGO_INCREMENTAL: 0
+  # curl-impersonate by lexiforest: the release and its archive's SHA-256,
+  # checked before anything in it runs. A new one is pinned by hand.
+  CURL_IMPERSONATE_TAG: ''
+  CURL_IMPERSONATE_SHA256: ''
+  CURL_TARGET: chrome150
+
+jobs:
+  test:
+    name: Test and build
+    if: github.event_name != 'workflow_dispatch' || inputs.task == 'deploy'
+    runs-on: ubuntu-24.04
+    defaults:
+      run:
+        working-directory: services/mods
+    steps:
+      - uses: actions/checkout@v5
+      - run: rustup show active-toolchain
+      - uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            services/mods/target
+          key: mods-${{ hashFiles('services/mods/Cargo.lock', 'rust-toolchain.toml') }}
+      - run: cargo fmt --check
+      - run: cargo clippy --locked --all-targets -- -D warnings
+      - run: cargo test --locked
+      # Ubuntu 24.04's glibc (2.39) is older than Debian 13's (2.41), so the
+      # binary runs there.
+      - run: cargo build --locked --release
+      - name: Check the nginx files
+        working-directory: ${{ github.workspace }}
+        run: bash deploy/check-nginx.sh
+      - name: Fetch curl-impersonate
+        working-directory: ${{ github.workspace }}
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          mkdir -p curl-download
+          tag=$CURL_IMPERSONATE_TAG
+          if [ -z "$tag" ]; then
+            tag=$(gh api repos/lexiforest/curl-impersonate/releases/latest --jq .tag_name)
+          fi
+          echo "release: $tag"
+          gh api "repos/lexiforest/curl-impersonate/releases/tags/$tag" --jq '.assets[].name' | tee curl-download/assets.txt
+          asset=$(grep -E '^curl-impersonate-.*x86_64-linux-gnu\.tar\.gz$' curl-download/assets.txt | head -n 1)
+          [ -n "$asset" ] || { echo "::error::no x86_64-linux-gnu archive in $tag"; exit 1; }
+          gh release download "$tag" --repo lexiforest/curl-impersonate --pattern "$asset" --dir curl-download
+          sum=$(sha256sum "curl-download/$asset" | cut -d' ' -f1)
+          echo "archive: $asset"
+          echo "sha256: $sum"
+          {
+            echo "### curl-impersonate"
+            echo "release \`$tag\`, \`$asset\`, sha256 \`$sum\`"
+          } >> "$GITHUB_STEP_SUMMARY"
+          if [ -z "$CURL_IMPERSONATE_TAG" ] || [ -z "$CURL_IMPERSONATE_SHA256" ]; then
+            echo "::error::Pin CURL_IMPERSONATE_TAG=$tag and CURL_IMPERSONATE_SHA256=$sum in this workflow"
+            exit 1
+          fi
+          [ "$sum" = "$CURL_IMPERSONATE_SHA256" ] || { echo "::error::the archive's SHA-256 is not the pinned one"; exit 1; }
+          mkdir -p curl
+          tar -xzf "curl-download/$asset" -C curl
+          ls -1 curl
+          [ -x "curl/curl_$CURL_TARGET" ] || { echo "::error::no curl_$CURL_TARGET in $tag"; exit 1; }
+          curl/curl_$CURL_TARGET --version | head -n 1
+      # Status codes only: whether the sources answer a runner's address.
+      - name: Try the sources
+        working-directory: ${{ github.workspace }}
+        continue-on-error: true
+        run: |
+          for url in \
+            https://api.modrinth.com/v2/project/sodium \
+            https://www.curseforge.com/api/v1/mods/238222/files \
+            https://www.curseforge.com/minecraft/mc-mods/jei; do
+            code=$(curl/curl_$CURL_TARGET -sS -o /dev/null -w '%{http_code}' --max-time 20 "$url" || true)
+            echo "$code  $url"
+          done
+      - name: Package the release
+        run: |
+          mkdir -p ../../dist-mods/nginx ../../dist-mods/curl
+          cp target/release/lapi-mods ../../dist-mods/
+          cp ../../curl/curl-impersonate "../../curl/curl_$CURL_TARGET" ../../dist-mods/curl/
+          cp ../../deploy/nginx/* ../../deploy/mods/nginx/* ../../dist-mods/nginx/
+          tar -czf ../../lapi-mods.tar.gz -C ../../dist-mods .
+      - uses: actions/upload-artifact@v4
+        with:
+          name: lapi-mods
+          path: lapi-mods.tar.gz
+          retention-days: 14
+
+  deploy:
+    # One deploy of this service at a time, from any branch or run.
+    concurrency:
+      group: mods-deploy
+      cancel-in-progress: false
+    name: Deploy to mods.lapi.sh
+    # Deploys use the production environment: Settings → Environments →
+    # production → Required reviewers makes each one wait for an approval.
+    environment: production
+    needs: test
+    # Only main reaches production, also when run by hand.
+    if: >-
+      github.ref == 'refs/heads/main'
+      && (github.event_name == 'push'
+          || (github.event_name == 'workflow_dispatch' && inputs.task == 'deploy'))
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/download-artifact@v4
+        with:
+          name: lapi-mods
+      - uses: ./.github/actions/lapi-ssh
+        with:
+          ssh-key: ${{ secrets.SSH_KEY }}
+          known-hosts: ${{ secrets.SSH_KNOWN_HOSTS }}
+      - uses: ./.github/actions/lapi-upload
+        with:
+          service: mods
+          target: ${{ secrets.SSH_USER }}@${{ secrets.SSH_HOST }}
+      - name: Deploy
+        env:
+          TARGET: ${{ secrets.SSH_USER }}@${{ secrets.SSH_HOST }}
+          QUOTA_GB: ${{ vars.MODS_MAX_GB || '500' }}
+          PROXIES: ${{ secrets.LAPI_MODS_PROXIES }}
+        run: |
+          [[ "$QUOTA_GB" =~ ^[0-9]{1,6}$ ]] || { echo "::error::MODS_MAX_GB must be a number of GB"; exit 1; }
+          set +e
+          # The proxies travel on standard input, on one line; deploy.sh keeps
+          # them in secrets.env (0640) and prints only the key's name.
+          printf 'LAPI_MODS_PROXIES=%s\n' "$(printf '%s' "$PROXIES" | tr '\r\n' '  ')" |
+            ssh "$TARGET" \
+              "bash ~/.lapi-bootstrap/$SETUP/deploy.sh mods $RELEASE $ARCHIVE $QUOTA_GB --secrets" 2>&1 | tee deploy.log
+          status=${PIPESTATUS[1]}
+          if grep -q NOT_BOOTSTRAPPED deploy.log; then
+            echo "::warning::The server is not set up yet: run 'sudo bash ~/lapi-bootstrap/bootstrap.sh <deploy-user>' on it once, then re-run this workflow."
+            exit 0
+          fi
+          if grep -qE 'NGINX_(PENDING|CHANGED)' deploy.log; then
+            echo "::warning::The nginx files on the server are not these: run 'sudo bash ~/lapi-bootstrap/bootstrap.sh <deploy-user>' on it to apply them."
+          fi
+          exit "$status"
+      - uses: ./.github/actions/lapi-check
+        with:
+          service: mods
+          ssh-host: ${{ secrets.SSH_HOST }}
+
+  counts:
+    name: Catalog counts
+    if: github.event_name == 'workflow_dispatch' && inputs.task == 'counts'
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v5
+      - uses: ./.github/actions/lapi-ssh
+        with:
+          ssh-key: ${{ secrets.SSH_KEY }}
+          known-hosts: ${{ secrets.SSH_KNOWN_HOSTS }}
+      # `counts` prints numbers only.
+      - name: Counts
+        env:
+          TARGET: ${{ secrets.SSH_USER }}@${{ secrets.SSH_HOST }}
+        run: |
+          {
+            echo '### Catalog of mods'
+            echo '```json'
+            ssh "$TARGET" \
+              'sudo -n -u lapi-mods /home/www/lapi/mods/current/lapi-mods counts'
+            echo '```'
+          } | tee -a "$GITHUB_STEP_SUMMARY"

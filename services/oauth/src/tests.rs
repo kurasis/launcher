@@ -324,6 +324,17 @@ async fn register_then_sign_in_with_pkce_and_use_the_tokens() {
     )
     .unwrap();
     assert_eq!(claims.nick, "Steve_2");
+    // The mods catalog takes the same token.
+    assert!(
+        verify(
+            &key,
+            tokens["access_token"].as_str().unwrap(),
+            BASE,
+            "mods",
+            crate::app::now(),
+        )
+        .is_some()
+    );
     // Registration kept the address and country for recovery by hand.
     let account = t.app.store.find_login("steve_2").unwrap().unwrap();
     assert_eq!(
