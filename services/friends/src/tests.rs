@@ -24,7 +24,12 @@ use crate::store::Store;
 
 const ISSUER: &str = "https://oauth.example";
 
-struct People(BTreeMap<String, String>, Arc<Mutex<Vec<String>>>);
+/// Nicks, sessions that ended, accounts deleted (with when).
+struct People(
+    BTreeMap<String, String>,
+    Arc<Mutex<Vec<String>>>,
+    Arc<Mutex<Vec<(String, i64)>>>,
+);
 
 type Boxed<'a, T> = Pin<Box<dyn Future<Output = Result<T, String>> + Send + 'a>>;
 
@@ -44,6 +49,19 @@ impl Accounts for People {
             Ok(ids
                 .iter()
                 .filter_map(|id| Some((id.clone(), self.0.get(id)?.clone())))
+                .collect())
+        })
+    }
+
+    fn deleted(&self, since: i64) -> Boxed<'_, Vec<(String, i64)>> {
+        Box::pin(async move {
+            Ok(self
+                .2
+                .lock()
+                .unwrap()
+                .iter()
+                .filter(|(_, at)| *at > since)
+                .cloned()
                 .collect())
         })
     }
@@ -68,6 +86,8 @@ struct T {
     _dir: tempfile::TempDir,
     /// Sessions the fake account service says ended.
     ended: Arc<Mutex<Vec<String>>>,
+    /// Accounts it says were deleted.
+    deleted: Arc<Mutex<Vec<(String, i64)>>>,
     app: Arc<App>,
     router: Router,
     key: SigningKey,
@@ -82,6 +102,7 @@ fn setup() -> T {
         "x": B64.encode(key.verifying_key().as_bytes()),
     }]}));
     let ended = Arc::new(Mutex::new(Vec::new()));
+    let deleted = Arc::new(Mutex::new(Vec::new()));
     let people = People(
         [
             (id(1), "Alice".to_owned()),
@@ -92,6 +113,7 @@ fn setup() -> T {
         ]
         .into(),
         Arc::clone(&ended),
+        Arc::clone(&deleted),
     );
     let app = Arc::new(App {
         store: Store::open(dir.path()).unwrap(),
@@ -99,12 +121,14 @@ fn setup() -> T {
         directory: Directory::new(Box::new(people)),
         hub: Hub::default(),
         sessions: crate::auth::Sessions::default(),
+        deleted_since: Mutex::new(0),
         limiter: Limiter::default(),
         require_email: false,
     });
     T {
         _dir: dir,
         ended,
+        deleted,
         router: crate::api::router(Arc::clone(&app)),
         app,
         key,
@@ -596,7 +620,7 @@ async fn bad_tokens_and_hostile_input() {
         .0,
         StatusCode::NO_CONTENT
     );
-    let reports = t.app.store.reports(10).unwrap();
+    let reports = t.app.store.reports(false, 10).unwrap();
     assert_eq!(reports[0]["reason"], "spam[2J");
 }
 
@@ -790,4 +814,277 @@ async fn backups_are_whole_private_and_only_the_newest_stay() {
     }
     let second = t.app.store.backup(&dir, 1).unwrap();
     assert!(!first.exists() && second.exists(), "only the newest stays");
+}
+
+/// A room of two friends and its message path.
+async fn chat(t: &T, a: u8, b: u8) -> (String, String) {
+    t.befriend(a, b).await;
+    let (_, opened) = t
+        .call(a, "POST", "/v1/rooms/direct", json!({ "id": id(b) }))
+        .await;
+    let room = opened["room"].as_str().unwrap().to_owned();
+    let path = format!("/v1/rooms/{room}/messages");
+    (room, path)
+}
+
+#[tokio::test]
+async fn the_owner_resolves_reports_removes_messages_and_mutes_or_bans() {
+    let t = setup();
+    let (room, say) = chat(&t, 1, 2).await;
+    let (_, sent) = t.call(5, "POST", &say, json!({ "body": "x" })).await;
+    assert_eq!(sent["error"], "not_found", "Mallory is not in the room");
+    let (_, sent) = t
+        .call(2, "POST", &say, json!({ "body": "rude words" }))
+        .await;
+    let message = sent["message"]["id"].as_i64().unwrap();
+    let report = format!("/v1/messages/{message}/report");
+    assert_eq!(
+        t.call(1, "POST", &report, json!({ "reason": "rude" }))
+            .await
+            .0,
+        StatusCode::NO_CONTENT
+    );
+    // The owner removes the message: the room hears it, the report keeps a copy.
+    let (_, mut alice) = t.app.hub.join(&id(1), "s1").unwrap();
+    assert!(t.app.store.remove_message(message).unwrap());
+    crate::api::tell_moderation(&t.app);
+    assert_eq!(
+        alice.try_recv().unwrap(),
+        crate::hub::Event::Removed {
+            room: room.clone(),
+            message
+        }
+    );
+    crate::api::tell_moderation(&t.app);
+    let (_, history) = t.call(1, "GET", &say, Value::Null).await;
+    assert!(history["messages"].as_array().unwrap().is_empty());
+    let open = t.app.store.reports(false, 10).unwrap();
+    assert_eq!(open[0]["body"], "rude words");
+    assert_eq!(open[0]["sender"], id(2));
+    assert_eq!(open[0]["messageStillThere"], false);
+    let number = open[0]["report"].as_i64().unwrap();
+    assert!(
+        t.app
+            .store
+            .resolve(number, "removed, Bob muted", now())
+            .unwrap()
+    );
+    assert!(t.app.store.reports(false, 10).unwrap().is_empty());
+    assert_eq!(
+        t.app.store.reports(true, 10).unwrap()[0]["status"],
+        "resolved"
+    );
+    // Muted: Bob reads but writes nothing, and sees until when.
+    t.app
+        .store
+        .sanction(&id(2), "mute", now() + 3600, "rude", now())
+        .unwrap();
+    let (status, answer) = t.call(2, "POST", &say, json!({ "body": "again" })).await;
+    assert_eq!(
+        (status, answer["error"].as_str()),
+        (StatusCode::FORBIDDEN, Some("mute"))
+    );
+    assert_eq!(
+        t.call(2, "POST", "/v1/requests", json!({ "nick": "Carol" }))
+            .await
+            .1["error"],
+        "mute"
+    );
+    let (status, state) = t.call(2, "GET", "/v1/state", Value::Null).await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(state["me"]["sanction"]["kind"], "mute");
+    // Banned: nothing at all, and the live connection closes.
+    let (_, mut bob) = t.app.hub.join(&id(2), "s2").unwrap();
+    t.app.store.sanction(&id(2), "ban", 0, "", now()).unwrap();
+    crate::api::tell_moderation(&t.app);
+    assert!(bob.recv().await.is_none(), "the socket ends");
+    let (status, answer) = t.call(2, "GET", "/v1/state", Value::Null).await;
+    assert_eq!(
+        (status, answer["error"].as_str()),
+        (StatusCode::FORBIDDEN, Some("ban"))
+    );
+    assert!(t.app.store.lift(&id(2)).unwrap());
+    assert_eq!(
+        t.call(2, "GET", "/v1/state", Value::Null).await.0,
+        StatusCode::OK
+    );
+    // A mute that ran out holds no more.
+    t.app
+        .store
+        .sanction(&id(2), "mute", now() - 1, "", now())
+        .unwrap();
+    assert_eq!(
+        t.call(2, "POST", &say, json!({ "body": "back" })).await.0,
+        StatusCode::OK
+    );
+}
+
+#[tokio::test]
+async fn friends_see_who_is_online_and_playing_unless_hidden() {
+    let t = setup();
+    t.befriend(1, 2).await;
+    let online = |state: &Value| {
+        state["friends"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|f| f["id"] == id(2))
+            .map(|f| (f["online"].clone(), f["playing"].clone()))
+            .unwrap()
+    };
+    let (_, state) = t.call(1, "GET", "/v1/state", Value::Null).await;
+    assert_eq!(online(&state), (json!(false), Value::Null));
+    let (_, mut alice) = t.app.hub.join(&id(1), "s1").unwrap();
+    let held = t.app.hub.join(&id(2), "s2").unwrap();
+    let (_, state) = t.call(1, "GET", "/v1/state", Value::Null).await;
+    assert_eq!(online(&state), (json!(true), Value::Null));
+    // Playing reaches friends at once; the text is checked.
+    assert_eq!(
+        t.call(
+            2,
+            "POST",
+            "/v1/presence/playing",
+            json!({ "playing": "Minecraft 1.21.1 · Fabric" })
+        )
+        .await
+        .0,
+        StatusCode::NO_CONTENT
+    );
+    assert_eq!(
+        alice.try_recv().unwrap(),
+        crate::hub::Event::Presence {
+            id: id(2),
+            online: true,
+            playing: Some("Minecraft 1.21.1 · Fabric".into())
+        }
+    );
+    for bad in [
+        json!({ "playing": "x".repeat(61) }),
+        json!({ "playing": "a\u{202e}\n" }),
+    ] {
+        let (status, _) = t.call(2, "POST", "/v1/presence/playing", bad).await;
+        assert!(status.is_client_error() || status == StatusCode::NO_CONTENT);
+    }
+    // Hidden: friends see nothing, and are told so.
+    assert_eq!(
+        t.call(
+            2,
+            "POST",
+            "/v1/presence/visible",
+            json!({ "visible": false })
+        )
+        .await
+        .0,
+        StatusCode::NO_CONTENT
+    );
+    let mut last = None;
+    while let Ok(event) = alice.try_recv() {
+        last = Some(event);
+    }
+    assert_eq!(
+        last,
+        Some(crate::hub::Event::Presence {
+            id: id(2),
+            online: false,
+            playing: None
+        })
+    );
+    let (_, state) = t.call(1, "GET", "/v1/state", Value::Null).await;
+    assert_eq!(online(&state), (json!(false), Value::Null));
+    let (_, mine) = t.call(2, "GET", "/v1/state", Value::Null).await;
+    assert_eq!(mine["me"]["visible"], false);
+    // Not a friend: Carol is never told.
+    let (_, mut carol) = t.app.hub.join(&id(3), "s3").unwrap();
+    t.call(
+        2,
+        "POST",
+        "/v1/presence/visible",
+        json!({ "visible": true }),
+    )
+    .await;
+    assert!(carol.try_recv().is_err());
+    drop(held);
+}
+
+#[tokio::test]
+async fn a_deleted_account_leaves_nothing_behind() {
+    let t = setup();
+    let (_, say) = chat(&t, 1, 2).await;
+    t.befriend(2, 3).await;
+    t.befriend(2, 4).await;
+    t.call(2, "POST", &say, json!({ "body": "from Bob" })).await;
+    t.call(1, "POST", &say, json!({ "body": "from Alice" }))
+        .await;
+    let (_, made) = t
+        .call(
+            2,
+            "POST",
+            "/v1/rooms/group",
+            json!({ "name": "Bob's", "members": [id(3), id(4)] }),
+        )
+        .await;
+    let group = made["room"].as_str().unwrap().to_owned();
+    let group_say = format!("/v1/rooms/{group}/messages");
+    t.call(2, "POST", &group_say, json!({ "body": "hi all" }))
+        .await;
+    t.call(3, "POST", &group_say, json!({ "body": "hi Bob" }))
+        .await;
+    t.call(5, "POST", "/v1/requests", json!({ "nick": "Bob" }))
+        .await;
+    let (_, mut alice) = t.app.hub.join(&id(1), "s1").unwrap();
+    // The account service says Bob deleted his account.
+    t.deleted.lock().unwrap().push((id(2), now()));
+    crate::api::purge_deleted(&t.app).await;
+    assert_eq!(alice.try_recv().unwrap(), crate::hub::Event::Friends);
+    let (_, state) = t.call(1, "GET", "/v1/state", Value::Null).await;
+    assert!(state["friends"].as_array().unwrap().is_empty());
+    let (_, mallory) = t.call(5, "GET", "/v1/state", Value::Null).await;
+    assert!(mallory["outgoing"].as_array().unwrap().is_empty());
+    // Their room of two is gone; the group passes on without his messages.
+    let (_, rooms) = t.call(1, "GET", "/v1/rooms", Value::Null).await;
+    assert!(rooms["rooms"].as_array().unwrap().is_empty());
+    let (_, rooms) = t.call(3, "GET", "/v1/rooms", Value::Null).await;
+    let left = &rooms["rooms"][0];
+    assert_eq!(left["owner"], id(3));
+    assert_eq!(left["members"].as_array().unwrap().len(), 2);
+    let (_, history) = t.call(3, "GET", &group_say, Value::Null).await;
+    let bodies: Vec<&str> = history["messages"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|m| m["body"].as_str().unwrap())
+        .collect();
+    assert_eq!(bodies, ["hi Bob"]);
+    // Asking again changes nothing.
+    crate::api::purge_deleted(&t.app).await;
+    assert_eq!(t.app.store.counts().unwrap()["friendships"], 0);
+}
+
+#[test]
+fn reports_from_before_moderation_keep_a_copy_of_their_message() {
+    let dir = tempfile::tempdir().unwrap();
+    {
+        let db = rusqlite::Connection::open(dir.path().join("friends.db")).unwrap();
+        db.execute_batch(
+            "CREATE TABLE rooms (id TEXT PRIMARY KEY, kind TEXT NOT NULL, pair TEXT UNIQUE,
+               name TEXT NOT NULL DEFAULT '', owner TEXT NOT NULL, created INTEGER NOT NULL);
+             CREATE TABLE messages (id INTEGER PRIMARY KEY AUTOINCREMENT, room_id TEXT NOT NULL,
+               sender TEXT NOT NULL, body TEXT NOT NULL, created INTEGER NOT NULL);
+             CREATE TABLE reports (id INTEGER PRIMARY KEY, message_id INTEGER NOT NULL,
+               reporter TEXT NOT NULL, reason TEXT NOT NULL, created INTEGER NOT NULL,
+               UNIQUE (message_id, reporter));
+             INSERT INTO rooms VALUES ('r', 'direct', 'a|b', '', 'a', 1);
+             INSERT INTO messages VALUES (7, 'r', 'b', 'old words', 2);
+             INSERT INTO reports VALUES (1, 7, 'a', 'spam', 3);",
+        )
+        .unwrap();
+    }
+    let store = Store::open(dir.path()).unwrap();
+    let reports = store.reports(false, 10).unwrap();
+    assert_eq!(reports[0]["body"], "old words");
+    assert_eq!(reports[0]["status"], "open");
+    assert!(store.remove_message(7).unwrap());
+    assert_eq!(store.reports(false, 10).unwrap()[0]["body"], "old words");
+    drop(store);
+    Store::open(dir.path()).unwrap();
 }

@@ -21,6 +21,8 @@ pub trait Accounts: Send + Sync {
     /// Of these sessions, those that ended (signed out, or the account is
     /// switched off).
     fn ended<'a>(&'a self, sessions: &'a [String]) -> Boxed<'a, Vec<String>>;
+    /// Accounts deleted since `since` (Unix time): ID and when.
+    fn deleted(&self, since: i64) -> Boxed<'_, Vec<(String, i64)>>;
 }
 
 pub struct Internal {
@@ -85,9 +87,34 @@ impl Accounts for Internal {
                 .collect())
         })
     }
+
+    fn deleted(&self, since: i64) -> Boxed<'_, Vec<(String, i64)>> {
+        Box::pin(async move {
+            let body = self.get("/internal/v1/deleted", since).await?;
+            Ok(body["deleted"]
+                .as_array()
+                .into_iter()
+                .flatten()
+                .filter_map(|d| Some((d["id"].as_str()?.to_owned(), d["at"].as_i64()?)))
+                .collect())
+        })
+    }
 }
 
 impl Internal {
+    async fn get(&self, path: &str, since: i64) -> Result<serde_json::Value, String> {
+        self.http
+            .get(format!("{}{path}", self.base))
+            .query(&[("since", since)])
+            .send()
+            .await
+            .and_then(reqwest::Response::error_for_status)
+            .map_err(|e| e.to_string())?
+            .json()
+            .await
+            .map_err(|e| e.to_string())
+    }
+
     async fn post(&self, path: &str, body: serde_json::Value) -> Result<serde_json::Value, String> {
         self.http
             .post(format!("{}{path}", self.base))
@@ -167,6 +194,10 @@ impl Directory {
 
     pub async fn ended(&self, sessions: &[String]) -> Result<Vec<String>, String> {
         self.source.ended(sessions).await
+    }
+
+    pub async fn deleted(&self, since: i64) -> Result<Vec<(String, i64)>, String> {
+        self.source.deleted(since).await
     }
 
     /// A nick that just changed (seen in the owner's own token).

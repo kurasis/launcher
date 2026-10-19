@@ -64,7 +64,84 @@ CREATE TABLE IF NOT EXISTS reports (
     created INTEGER NOT NULL,
     UNIQUE (message_id, reporter)
 );
+-- What the owner did about an account: no writing until a time (mute), or
+-- no friends at all (ban); `until` 0 is for good.
+CREATE TABLE IF NOT EXISTS sanctions (
+    account_id TEXT PRIMARY KEY,
+    kind TEXT NOT NULL,
+    until INTEGER NOT NULL,
+    reason TEXT NOT NULL,
+    created INTEGER NOT NULL
+);
+-- Changes made from the command line for the running service to tell:
+-- a removed message, a sanction.
+CREATE TABLE IF NOT EXISTS moderation (
+    id INTEGER PRIMARY KEY,
+    kind TEXT NOT NULL,
+    room_id TEXT NOT NULL DEFAULT '',
+    message_id INTEGER NOT NULL DEFAULT 0,
+    account_id TEXT NOT NULL DEFAULT '',
+    told INTEGER NOT NULL DEFAULT 0
+);
+-- Who does not show as online to friends.
+CREATE TABLE IF NOT EXISTS hidden (
+    account_id TEXT PRIMARY KEY
+);
 "#;
+
+/// Columns added to `reports` after it was first made: a copy of the
+/// message (so the evidence stays when the message goes) and what the owner
+/// decided.
+const REPORT_COLUMNS: [(&str, &str); 6] = [
+    ("room_id", "TEXT NOT NULL DEFAULT ''"),
+    ("sender", "TEXT NOT NULL DEFAULT ''"),
+    ("body", "TEXT NOT NULL DEFAULT ''"),
+    ("status", "TEXT NOT NULL DEFAULT 'open'"),
+    ("note", "TEXT NOT NULL DEFAULT ''"),
+    ("resolved", "INTEGER NOT NULL DEFAULT 0"),
+];
+
+/// Brings a database made by an older version up to the schema.
+fn migrate(db: &Connection) -> Result<()> {
+    for (column, definition) in REPORT_COLUMNS {
+        let exists = db
+            .prepare("SELECT 1 FROM pragma_table_info('reports') WHERE name = ?1")
+            .and_then(|mut s| s.exists([column]))
+            .map_err(err)?;
+        if !exists {
+            db.execute_batch(&format!(
+                "ALTER TABLE reports ADD COLUMN {column} {definition};"
+            ))
+            .map_err(err)?;
+        }
+    }
+    // Reports from before: copy what is still there.
+    db.execute_batch(
+        "UPDATE reports SET room_id = m.room_id, sender = m.sender, body = m.body
+         FROM messages m WHERE m.id = reports.message_id AND reports.sender = '';",
+    )
+    .map_err(err)
+}
+
+/// A change made from the command line, for the running service to tell.
+pub struct Untold {
+    pub id: i64,
+    /// `message` (removed) or `sanction`.
+    pub kind: String,
+    pub room: String,
+    pub message: i64,
+    pub account: String,
+}
+
+/// A sanction on an account.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct Sanction {
+    pub kind: String,
+    /// Unix time it ends; 0 for good.
+    pub until: i64,
+    pub reason: String,
+}
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Requested {
@@ -121,6 +198,7 @@ impl Store {
         db.busy_timeout(std::time::Duration::from_secs(5))
             .map_err(err)?;
         db.execute_batch(SCHEMA).map_err(err)?;
+        migrate(&db)?;
         Ok(Self { db: Mutex::new(db) })
     }
 
@@ -650,41 +728,281 @@ impl Store {
             .map_err(err)
     }
 
+    /// Files a report with a copy of the message, so the evidence stays
+    /// when the message goes.
     pub fn report(&self, message: i64, reporter: &str, reason: &str, now: i64) -> Result<()> {
         self.db()
             .execute(
-                "INSERT OR IGNORE INTO reports (message_id, reporter, reason, created) VALUES (?1, ?2, ?3, ?4)",
+                "INSERT OR IGNORE INTO reports (message_id, reporter, reason, created, room_id, sender, body)
+                 SELECT ?1, ?2, ?3, ?4, room_id, sender, body FROM messages WHERE id = ?1",
                 params![message, reporter, reason, now],
             )
             .map(drop)
             .map_err(err)
     }
 
-    /// Reports for the owner: report, message, room, sender, reporter.
-    pub fn reports(&self, limit: i64) -> Result<Vec<serde_json::Value>> {
+    /// Reports for the owner, newest first; only open ones unless `all`.
+    pub fn reports(&self, all: bool, limit: i64) -> Result<Vec<serde_json::Value>> {
         let db = self.db();
         let mut statement = db
             .prepare(
-                "SELECT r.id, r.created, r.reason, r.reporter, m.id, m.room_id, m.sender, m.body, m.created
-                 FROM reports r LEFT JOIN messages m ON m.id = r.message_id ORDER BY r.id DESC LIMIT ?1",
+                "SELECT r.id, r.created, r.reason, r.reporter, r.message_id, r.room_id, r.sender, r.body,
+                        r.status, r.note, (SELECT COUNT(*) FROM messages m WHERE m.id = r.message_id)
+                 FROM reports r WHERE ?1 OR r.status = 'open' ORDER BY r.id DESC LIMIT ?2",
             )
             .map_err(err)?;
         statement
-            .query_map([limit], |r| {
+            .query_map(params![all, limit], |r| {
                 Ok(serde_json::json!({
                     "report": r.get::<_, i64>(0)?,
                     "at": r.get::<_, i64>(1)?,
                     "reason": r.get::<_, String>(2)?,
                     "reporter": r.get::<_, String>(3)?,
-                    "message": r.get::<_, Option<i64>>(4)?,
-                    "room": r.get::<_, Option<String>>(5)?,
-                    "sender": r.get::<_, Option<String>>(6)?,
-                    "body": r.get::<_, Option<String>>(7)?,
-                    "sent": r.get::<_, Option<i64>>(8)?,
+                    "message": r.get::<_, i64>(4)?,
+                    "room": r.get::<_, String>(5)?,
+                    "sender": r.get::<_, String>(6)?,
+                    "body": r.get::<_, String>(7)?,
+                    "status": r.get::<_, String>(8)?,
+                    "note": r.get::<_, String>(9)?,
+                    "messageStillThere": r.get::<_, i64>(10)? > 0,
                 }))
             })
             .and_then(Iterator::collect)
             .map_err(err)
+    }
+
+    /// Marks a report handled, with a note; false when there is none.
+    pub fn resolve(&self, report: i64, note: &str, now: i64) -> Result<bool> {
+        self.db()
+            .execute(
+                "UPDATE reports SET status = 'resolved', note = ?2, resolved = ?3 WHERE id = ?1",
+                params![report, note, now],
+            )
+            .map(|n| n > 0)
+            .map_err(err)
+    }
+
+    /// Removes a message for everyone; its reports keep their copy. The
+    /// running service tells the room.
+    pub fn remove_message(&self, id: i64) -> Result<bool> {
+        let mut db = self.db();
+        let tx = db.transaction().map_err(err)?;
+        let room: Option<String> = tx
+            .query_row("SELECT room_id FROM messages WHERE id = ?1", [id], |r| {
+                r.get(0)
+            })
+            .optional()
+            .map_err(err)?;
+        let Some(room) = room else {
+            return Ok(false);
+        };
+        tx.execute("DELETE FROM messages WHERE id = ?1", [id])
+            .map_err(err)?;
+        tx.execute(
+            "INSERT INTO moderation (kind, room_id, message_id) VALUES ('message', ?1, ?2)",
+            params![room, id],
+        )
+        .map_err(err)?;
+        tx.commit().map_err(err)?;
+        Ok(true)
+    }
+
+    /// Mutes or bans an account until `until` (0: for good).
+    pub fn sanction(
+        &self,
+        account: &str,
+        kind: &str,
+        until: i64,
+        reason: &str,
+        now: i64,
+    ) -> Result<()> {
+        let mut db = self.db();
+        let tx = db.transaction().map_err(err)?;
+        tx.execute(
+            "INSERT INTO sanctions (account_id, kind, until, reason, created) VALUES (?1, ?2, ?3, ?4, ?5)
+             ON CONFLICT (account_id) DO UPDATE SET kind = ?2, until = ?3, reason = ?4, created = ?5",
+            params![account, kind, until, reason, now],
+        )
+        .map_err(err)?;
+        tx.execute(
+            "INSERT INTO moderation (kind, account_id) VALUES ('sanction', ?1)",
+            [account],
+        )
+        .map_err(err)?;
+        tx.commit().map_err(err)
+    }
+
+    pub fn lift(&self, account: &str) -> Result<bool> {
+        self.db()
+            .execute("DELETE FROM sanctions WHERE account_id = ?1", [account])
+            .map(|n| n > 0)
+            .map_err(err)
+    }
+
+    /// The account's sanction now in force, if any.
+    pub fn sanction_of(&self, account: &str, now: i64) -> Result<Option<Sanction>> {
+        self.db()
+            .query_row(
+                "SELECT kind, until, reason FROM sanctions WHERE account_id = ?1 AND (until = 0 OR until > ?2)",
+                params![account, now],
+                |r| {
+                    Ok(Sanction {
+                        kind: r.get(0)?,
+                        until: r.get(1)?,
+                        reason: r.get(2)?,
+                    })
+                },
+            )
+            .optional()
+            .map_err(err)
+    }
+
+    /// Sanctions in force: account, sanction.
+    pub fn sanctions(&self, now: i64) -> Result<Vec<(String, Sanction)>> {
+        let db = self.db();
+        let mut statement = db
+            .prepare(
+                "SELECT account_id, kind, until, reason FROM sanctions
+                 WHERE until = 0 OR until > ?1 ORDER BY created DESC",
+            )
+            .map_err(err)?;
+        statement
+            .query_map([now], |r| {
+                Ok((
+                    r.get(0)?,
+                    Sanction {
+                        kind: r.get(1)?,
+                        until: r.get(2)?,
+                        reason: r.get(3)?,
+                    },
+                ))
+            })
+            .and_then(Iterator::collect)
+            .map_err(err)
+    }
+
+    /// Changes from the command line not yet told.
+    pub fn untold(&self) -> Result<Vec<Untold>> {
+        let db = self.db();
+        let mut statement = db
+            .prepare("SELECT id, kind, room_id, message_id, account_id FROM moderation WHERE told = 0 ORDER BY id")
+            .map_err(err)?;
+        statement
+            .query_map([], |r| {
+                Ok(Untold {
+                    id: r.get(0)?,
+                    kind: r.get(1)?,
+                    room: r.get(2)?,
+                    message: r.get(3)?,
+                    account: r.get(4)?,
+                })
+            })
+            .and_then(Iterator::collect)
+            .map_err(err)
+    }
+
+    pub fn told(&self, id: i64) -> Result<()> {
+        self.db()
+            .execute("DELETE FROM moderation WHERE id = ?1", [id])
+            .map(drop)
+            .map_err(err)
+    }
+
+    // Presence.
+
+    pub fn hidden(&self, account: &str) -> Result<bool> {
+        self.exists(
+            "SELECT 1 FROM hidden WHERE account_id = ?1 AND ?2 = ?2",
+            account,
+            "",
+        )
+    }
+
+    pub fn set_hidden(&self, account: &str, hidden: bool) -> Result<()> {
+        let sql = if hidden {
+            "INSERT OR IGNORE INTO hidden (account_id) VALUES (?1)"
+        } else {
+            "DELETE FROM hidden WHERE account_id = ?1"
+        };
+        self.db().execute(sql, [account]).map(drop).map_err(err)
+    }
+
+    // A deleted account.
+
+    /// Removes everything of an account that was deleted: requests, friends,
+    /// blocks, its messages, its place in rooms (a group passes to who joined
+    /// first; a room of two goes) and the reports it filed. Reports about its
+    /// messages keep their copy. Returns who should reload: id, what changed.
+    pub fn purge(&self, account: &str) -> Result<Vec<String>> {
+        let mut db = self.db();
+        let tx = db.transaction().map_err(err)?;
+        let mut touched: Vec<String> = {
+            let mut people = tx
+                .prepare(
+                    "SELECT b FROM friends WHERE a = ?1
+                     UNION SELECT to_id FROM requests WHERE from_id = ?1
+                     UNION SELECT from_id FROM requests WHERE to_id = ?1
+                     UNION SELECT m2.account_id FROM members m1 JOIN members m2 ON m2.room_id = m1.room_id
+                           WHERE m1.account_id = ?1 AND m2.account_id != ?1",
+                )
+                .map_err(err)?;
+            people
+                .query_map([account], |r| r.get(0))
+                .and_then(Iterator::collect)
+                .map_err(err)?
+        };
+        let rooms: Vec<(String, String, String)> = {
+            let mut statement = tx
+                .prepare(
+                    "SELECT r.id, r.kind, r.owner FROM rooms r JOIN members m ON m.room_id = r.id
+                     WHERE m.account_id = ?1",
+                )
+                .map_err(err)?;
+            statement
+                .query_map([account], |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?)))
+                .and_then(Iterator::collect)
+                .map_err(err)?
+        };
+        for (room, kind, owner) in rooms {
+            if kind == "direct" {
+                tx.execute("DELETE FROM rooms WHERE id = ?1", [&room])
+                    .map_err(err)?;
+                continue;
+            }
+            tx.execute(
+                "DELETE FROM members WHERE room_id = ?1 AND account_id = ?2",
+                params![room, account],
+            )
+            .map_err(err)?;
+            if owner == account {
+                tx.execute(
+                    "UPDATE rooms SET owner = (SELECT account_id FROM members WHERE room_id = ?1
+                     ORDER BY joined, account_id LIMIT 1) WHERE id = ?1",
+                    [&room],
+                )
+                .map_err(err)?;
+            }
+            tx.execute(
+                "DELETE FROM rooms WHERE id = ?1 AND NOT EXISTS (SELECT 1 FROM members WHERE room_id = ?1)",
+                [&room],
+            )
+            .map_err(err)?;
+        }
+        for sql in [
+            "DELETE FROM messages WHERE sender = ?1",
+            "DELETE FROM friends WHERE a = ?1 OR b = ?1",
+            "DELETE FROM requests WHERE from_id = ?1 OR to_id = ?1",
+            "DELETE FROM blocks WHERE blocker = ?1 OR blocked = ?1",
+            "DELETE FROM reports WHERE reporter = ?1",
+            "DELETE FROM sanctions WHERE account_id = ?1",
+            "DELETE FROM hidden WHERE account_id = ?1",
+        ] {
+            tx.execute(sql, [account]).map_err(err)?;
+        }
+        tx.commit().map_err(err)?;
+        touched.sort();
+        touched.dedup();
+        Ok(touched)
     }
 
     /// Numbers only: fit for a public log.
