@@ -166,16 +166,18 @@ jobs:
             --signing "unsigned (no code-signing certificate configured)" \
             src-tauri/target/release/bundle/nsis/*-setup.exe
 
-      - name: Smoke test (install, start, console window, uninstall)
+      - name: Smoke test (install, start, console and player windows, uninstall)
         shell: pwsh
         run: scripts/smoke/windows.ps1 -Installer (Get-Item dist-packages/*-setup.exe).FullName
 
-      - name: Console window screenshot
+      - name: Console and player window screenshots
         if: always()
         uses: actions/upload-artifact@v5
         with:
           name: console-window-${{ matrix.name }}
-          path: ${{ runner.temp }}/console-window.png
+          path: |
+            ${{ runner.temp }}/console-window.png
+            ${{ runner.temp }}/player-window.png
           retention-days: ${{ env.RETENTION_DAYS }}
           if-no-files-found: ignore
 
