@@ -24,11 +24,13 @@ use super::compile::{self, LaunchIdentity, LaunchInputs};
 use super::logs::{self, RunLog};
 use super::redact::Redactor;
 use crate::download::CancelToken;
+use crate::download::transport::HttpTransport;
 use crate::error::{ErrorCode, LauncherError, LauncherResult};
 use crate::install::lock;
 use crate::install::service::{BoxFuture, PlanSource, StateAccess};
 use crate::lifecycle::child::{self, OutputLine, OutputTail, Stream, Supervised};
 use crate::runtime::{self, Verification};
+use crate::skins_mod;
 use crate::state::dto::{RunKind, RunState, RunSummary};
 use crate::storage::models::{
     InstallLock, InstallationHealth, LastResult, OperationKind, Outcome, ProfileRef,
@@ -74,6 +76,8 @@ struct RunSettings {
     /// The user's Minecraft arguments and fullscreen choice (D-056).
     game_arguments: Vec<String>,
     fullscreen: bool,
+    /// Add Launcher Skins where a jar exists for the game (D-065).
+    launcher_skins: bool,
 }
 
 /// Fresh account verification for a launch.
@@ -128,6 +132,9 @@ pub struct LaunchService {
     /// Runs the user asked to stop; their end is "stopped", not a game error.
     stop_requested: Arc<Mutex<HashSet<String>>>,
     force_argfile: bool,
+    /// Downloads the skins mod's jars (D-065); without it only jars already
+    /// in the managed folder are used.
+    skins_mod: Option<HttpTransport>,
 }
 
 /// Accepted request IDs (oldest first) and the instance and run they started.
@@ -181,7 +188,14 @@ impl LaunchService {
             requests: Mutex::default(),
             stop_requested: Arc::default(),
             force_argfile: false,
+            skins_mod: None,
         }
+    }
+
+    /// Downloads missing Launcher Skins jars through `transport` (D-065).
+    pub fn with_skins_mod(mut self, transport: HttpTransport) -> Self {
+        self.skins_mod = Some(transport);
+        self
     }
 
     /// Always pass JVM arguments through an argfile (tests and diagnostics).
@@ -471,6 +485,7 @@ impl LaunchService {
                     jvm_arguments,
                     game_arguments,
                     fullscreen: instance.fullscreen,
+                    launcher_skins: instance.launcher_skins,
                 },
                 &cancel,
             )
@@ -607,6 +622,7 @@ impl LaunchService {
             jvm_arguments,
             game_arguments,
             fullscreen,
+            launcher_skins,
         } = settings;
         let java = match custom_java {
             Some(path) => self.custom_java(path, &lock).await?,
@@ -674,6 +690,26 @@ impl LaunchService {
         .await
         .map_err(|_| LauncherError::internal("Preparing assets stopped unexpectedly."))??;
         check_cancel()?;
+        // Launcher Skins (D-065): never stops the launch.
+        let skins = skins_mod::prepare(
+            root,
+            self.skins_mod.as_ref(),
+            &skins_mod::Setup {
+                game_version: &lock.version_id,
+                loader: lock.loader.as_ref().map(|l| l.kind),
+                enabled: launcher_skins,
+                game_dir: &game_dir,
+            },
+            cancel,
+        )
+        .await;
+        check_cancel()?;
+        let console = self.host.app_state().console();
+        if let Some(problem) = skins.problem {
+            console.warn(problem);
+        } else if skins.active {
+            console.info("Launcher Skins added to the game");
+        }
         let compiled = compile::compile(&LaunchInputs {
             plan: &plan,
             root,
@@ -687,6 +723,8 @@ impl LaunchService {
             extra_jvm_args: &jvm_arguments,
             extra_game_args: &game_arguments,
             fullscreen,
+            skins_agent: skins.agent.as_deref(),
+            skins_api: skins.active.then(skins_mod::mod_api).flatten(),
         })?;
         let storage = |e: std::io::Error| LauncherError::from_io(&e, "Preparing the launch");
         std::fs::create_dir_all(&game_dir).map_err(storage)?;

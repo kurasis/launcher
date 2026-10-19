@@ -432,6 +432,7 @@ mod tests {
             profile: None,
             game_arguments: String::new(),
             fullscreen: false,
+            launcher_skins: true,
         }
     }
 

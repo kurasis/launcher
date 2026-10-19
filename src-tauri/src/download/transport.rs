@@ -79,6 +79,17 @@ impl HttpTransport {
         })
     }
 
+    /// One source category, from its origin only: never the mirror, and
+    /// apart from the launcher's shared routing (the skins mod, D-065).
+    pub fn origin_only(source: SourcePolicy, app_version: &str) -> LauncherResult<Self> {
+        let routing = crate::mirror::origin_only();
+        let client = PublicClient::with_routing(source, app_version, Arc::clone(&routing))?;
+        Ok(Self {
+            routes: Arc::new(Routes::Public(HashMap::from([(source, client)]))),
+            routing,
+        })
+    }
+
     /// Where downloads go first and how failures move them (D-062).
     pub fn routing(&self) -> &Arc<Routing> {
         &self.routing
@@ -223,6 +234,25 @@ mod tests {
                 "http://libraries.minecraft.net/x.jar",
             ),
             (SourcePolicy::MojangArtifacts, "https://127.0.0.1/x"),
+        ] {
+            let result = transport
+                .open(source, &Url::parse(url).unwrap(), Route::Origin)
+                .await;
+            assert!(matches!(result, Err(Failure::Fatal(_))), "{url}");
+        }
+    }
+
+    #[tokio::test]
+    async fn an_origin_only_transport_has_one_source_and_no_mirror() {
+        let transport = HttpTransport::origin_only(SourcePolicy::SkinsMod, "test").unwrap();
+        assert!(!transport.routing().mirror_allowed());
+        assert_eq!(transport.routing().first("github.com"), Route::Origin);
+        for (source, url) in [
+            (
+                SourcePolicy::SkinsMod,
+                "https://piston-data.mojang.com/x.jar",
+            ),
+            (SourcePolicy::Adoptium, "https://github.com/x/y.jar"),
         ] {
             let result = transport
                 .open(source, &Url::parse(url).unwrap(), Route::Origin)
