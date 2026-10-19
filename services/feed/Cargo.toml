@@ -3,7 +3,7 @@ name = "lapi-feed"
 version = "0.1.0"
 edition = "2024"
 rust-version = "1.97"
-description = "The launcher's start page feed at feed.lapi.sh (D-066)"
+description = "The launcher's start page feed at feed.lapi.sh (D-067)"
 publish = false
 
 [dependencies]

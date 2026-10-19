@@ -1,4 +1,4 @@
-//! `lapi-feed`: the launcher's start page feed at feed.lapi.sh (D-066).
+//! `lapi-feed`: the launcher's start page feed at feed.lapi.sh (D-067).
 //! It gathers Minecraft news from Mojang (patch notes, news, versions),
 //! YouTube channels, Twitch streams and our own `editorial.toml`, cleans it
 //! and serves it as one JSON, with its pictures, so the launcher asks no one
@@ -8,7 +8,7 @@
 //! a public log).
 //!
 //! Settings come from the environment: `LAPI_FEED_DATA` (default
-//! `/home/www/lapi/feed/data`), `LAPI_FEED_ADDR` (`127.0.0.1:8786`), and the
+//! `/home/www/lapi/feed/data`), `LAPI_FEED_ADDR` (`127.0.0.1:8787`), and the
 //! secrets `LAPI_FEED_DEEPL_KEY` (translations), `LAPI_FEED_TWITCH_CLIENT_ID`
 //! and `LAPI_FEED_TWITCH_SECRET` (streams). Without a secret its part is
 //! simply left out.
@@ -102,7 +102,7 @@ where
 fn serve() -> Result<(), String> {
     let http = net::client()?;
     let feed = open(http)?;
-    let address = env("LAPI_FEED_ADDR", "127.0.0.1:8786");
+    let address = env("LAPI_FEED_ADDR", "127.0.0.1:8787");
     let app = Arc::new(api::App {
         feed,
         limiter: api::Limiter::default(),

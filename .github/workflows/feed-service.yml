@@ -1,6 +1,6 @@
 name: Feed service
 
-# The launcher's start page feed at feed.lapi.sh (docs/DECISIONS.md D-066):
+# The launcher's start page feed at feed.lapi.sh (docs/DECISIONS.md D-067):
 # tests, a release build, and a deploy over SSH to /home/www/lapi/feed. The
 # server needs deploy/bootstrap.sh run as root once, and again when the nginx
 # files change (the deploy warns).

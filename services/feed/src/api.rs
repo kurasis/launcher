@@ -1,4 +1,4 @@
-//! The feed API (D-066). Everything is public and read-only, with no
+//! The feed API (D-067). Everything is public and read-only, with no
 //! account; nothing about a player (an address, their channels) is written
 //! to the log.
 

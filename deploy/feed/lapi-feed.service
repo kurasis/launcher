@@ -1,6 +1,6 @@
 # Installed by deploy/bootstrap.sh as /etc/systemd/system/lapi-feed.service.
 [Unit]
-Description=Sferum launcher start page feed (feed.lapi.sh, D-066)
+Description=Sferum launcher start page feed (feed.lapi.sh, D-067)
 After=network-online.target
 Wants=network-online.target
 

@@ -4,7 +4,7 @@ description: >-
   when asked directly. Prints no address of the server.
 inputs:
   service:
-    description: crash, mirror, upd, oauth, friends, skins or feed.
+    description: crash, mirror, upd, oauth, friends, skins, mods or feed.
     required: true
   ssh-host:
     description: The server's name or address (secret SSH_HOST).

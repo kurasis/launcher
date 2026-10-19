@@ -1,0 +1,489 @@
+//! The catalog's API at mods.lapi.sh. Reading is open to anyone; adding to
+//! the catalog takes an account's access token (aud `mods`). Every value from
+//! a query or a body is checked before it reaches the database.
+
+use std::collections::HashMap;
+use std::net::IpAddr;
+use std::sync::{Arc, Mutex};
+use std::time::{Duration, Instant};
+
+use axum::extract::{DefaultBodyLimit, Path, Query, State};
+use axum::http::{HeaderMap, HeaderValue, StatusCode, header};
+use axum::response::{IntoResponse, Response};
+use axum::routing::{get, post};
+use axum::{Json, Router};
+use serde::Deserialize;
+use serde_json::{Value, json};
+
+use crate::App;
+use crate::auth::Claims;
+use crate::import::{self, now};
+use crate::model::{KINDS, word};
+use crate::store::Search;
+
+/// Requests an account sends to the catalog: an hour, a day, and the bytes
+/// they may bring in a day.
+pub const IMPORTS_PER_HOUR: u32 = 20;
+pub const IMPORTS_PER_DAY: i64 = 100;
+pub const IMPORT_BYTES_PER_DAY: i64 = 5 * 1024 * 1024 * 1024;
+/// From one address, whatever the account.
+pub const IMPORTS_PER_HOUR_PER_ADDRESS: u32 = 60;
+/// Old versions' files asked for, per address an hour.
+pub const FETCHES_PER_HOUR: u32 = 30;
+const MAX_LOOKUP: usize = 200;
+const MAX_OFFSET: i64 = 10_000;
+
+/// Actions counted per key (an account or an address) in a window. Kept in
+/// memory only.
+#[derive(Default)]
+pub struct Limiter {
+    windows: Mutex<Windows>,
+}
+
+/// When each window started and what it counted, per key and kind.
+type Windows = HashMap<(String, &'static str), (Instant, u32)>;
+
+impl Limiter {
+    pub fn allow(&self, key: &str, bucket: &'static str, limit: u32, window: Duration) -> bool {
+        let mut windows = self
+            .windows
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        let now = Instant::now();
+        if windows.len() > 200_000 {
+            windows.retain(|_, (start, _)| now.duration_since(*start) < Duration::from_secs(3600));
+        }
+        let entry = windows.entry((key.to_owned(), bucket)).or_insert((now, 0));
+        if now.duration_since(entry.0) >= window {
+            *entry = (now, 0);
+        }
+        entry.1 = entry.1.saturating_add(1);
+        entry.1 <= limit
+    }
+}
+
+fn refuse(status: StatusCode, code: &str) -> Response {
+    (status, Json(json!({ "error": code }))).into_response()
+}
+
+fn failed(e: &str) -> Response {
+    eprintln!("lapi-mods: {e}");
+    refuse(StatusCode::INTERNAL_SERVER_ERROR, "server_error")
+}
+
+/// An answer anyone may cache for a while (Cloudflare and the launcher).
+fn cached(value: Value, seconds: u32) -> Response {
+    let mut response = Json(value).into_response();
+    if let Ok(v) = HeaderValue::from_str(&format!("public, max-age={seconds}")) {
+        response.headers_mut().insert(header::CACHE_CONTROL, v);
+    }
+    response
+}
+
+fn private(value: Value, status: StatusCode) -> Response {
+    let mut response = (status, Json(value)).into_response();
+    response
+        .headers_mut()
+        .insert(header::CACHE_CONTROL, HeaderValue::from_static("no-store"));
+    response
+}
+
+/// The client's address as nginx passes it, for the limits only.
+fn client(headers: &HeaderMap) -> String {
+    headers
+        .get("x-real-ip")
+        .and_then(|v| v.to_str().ok())
+        .and_then(|v| v.trim().parse::<IpAddr>().ok())
+        .unwrap_or(IpAddr::from([0, 0, 0, 0]))
+        .to_string()
+}
+
+/// The account behind a request's bearer token.
+fn who(app: &App, headers: &HeaderMap) -> Result<Claims, Box<Response>> {
+    let unauthorized = || Box::new(refuse(StatusCode::UNAUTHORIZED, "unauthorized"));
+    let token = headers
+        .get(header::AUTHORIZATION)
+        .and_then(|v| v.to_str().ok())
+        .and_then(|v| v.strip_prefix("Bearer "))
+        .ok_or_else(unauthorized)?;
+    app.tokens
+        .verify(token.trim(), now())
+        .ok_or_else(unauthorized)
+}
+
+/// Our IDs are UUIDs; slugs are short, plain ASCII.
+fn reference(text: &str) -> Option<&str> {
+    (!text.is_empty()
+        && text.len() <= 100
+        && text
+            .bytes()
+            .all(|b| b.is_ascii_alphanumeric() || matches!(b, b'-' | b'_' | b'.' | b'!')))
+    .then_some(text)
+}
+
+fn our_id(text: &str) -> Option<&str> {
+    uuid::Uuid::parse_str(text).ok().map(|_| text)
+}
+
+async fn health(State(app): State<Arc<App>>) -> Response {
+    private(
+        json!({
+            "ok": true,
+            "service": "lapi-mods",
+            "version": env!("CARGO_PKG_VERSION"),
+            "keys": app.tokens.has_keys(),
+        }),
+        StatusCode::OK,
+    )
+}
+
+#[derive(Deserialize, Default)]
+pub struct SearchQuery {
+    q: Option<String>,
+    kind: Option<String>,
+    game: Option<String>,
+    loader: Option<String>,
+    category: Option<String>,
+    sort: Option<String>,
+    offset: Option<i64>,
+    limit: Option<i64>,
+}
+
+/// The words of a search: letters and digits, at most 8 of 32 characters.
+pub fn words(q: &str) -> Vec<String> {
+    q.chars()
+        .take(200)
+        .collect::<String>()
+        .split(|c: char| !c.is_alphanumeric())
+        .filter(|w| !w.is_empty())
+        .map(|w| w.chars().take(32).collect::<String>().to_lowercase())
+        .take(8)
+        .collect()
+}
+
+/// A filter of a closed vocabulary; an empty one is no filter, a bad one an
+/// error.
+fn filter(value: &Option<String>) -> Result<Option<String>, ()> {
+    match value.as_deref().map(str::trim) {
+        None | Some("") => Ok(None),
+        Some(v) => word(v).map(Some).ok_or(()),
+    }
+}
+
+async fn search(State(app): State<Arc<App>>, Query(q): Query<SearchQuery>) -> Response {
+    let bad = || refuse(StatusCode::BAD_REQUEST, "bad_query");
+    let (Ok(kind), Ok(game), Ok(loader), Ok(category)) = (
+        filter(&q.kind),
+        filter(&q.game),
+        filter(&q.loader),
+        filter(&q.category),
+    ) else {
+        return bad();
+    };
+    if kind.as_deref().is_some_and(|k| !KINDS.contains(&k)) {
+        return bad();
+    }
+    let sort = match q.sort.as_deref() {
+        // Relevance with words, the most downloaded without.
+        None | Some("" | "relevance") => "relevance",
+        Some("downloads") => "downloads",
+        Some("updated") => "updated",
+        Some("new") => "new",
+        Some("title") => "title",
+        Some(_) => return bad(),
+    };
+    let search = Search {
+        words: words(q.q.as_deref().unwrap_or_default()),
+        kind,
+        game,
+        loader,
+        category,
+        sort,
+        offset: q.offset.unwrap_or(0).clamp(0, MAX_OFFSET),
+        limit: q.limit.unwrap_or(20).clamp(1, 50),
+    };
+    match app.store.search(&search, &app.urls) {
+        Ok((total, hits)) => cached(json!({ "total": total, "hits": hits }), 60),
+        Err(e) => failed(&e),
+    }
+}
+
+async fn project(State(app): State<Arc<App>>, Path(r): Path<String>) -> Response {
+    let Some(r) = reference(&r) else {
+        return refuse(StatusCode::NOT_FOUND, "not_found");
+    };
+    let id = match app.store.project_id(r) {
+        Ok(Some(id)) => id,
+        Ok(None) => return refuse(StatusCode::NOT_FOUND, "not_found"),
+        Err(e) => return failed(&e),
+    };
+    match app.store.project_json(&id, &app.urls) {
+        Ok(Some(p)) => cached(p, 60),
+        Ok(None) => refuse(StatusCode::NOT_FOUND, "not_found"),
+        Err(e) => failed(&e),
+    }
+}
+
+#[derive(Deserialize, Default)]
+pub struct VersionsQuery {
+    game: Option<String>,
+    loader: Option<String>,
+}
+
+async fn versions(
+    State(app): State<Arc<App>>,
+    Path(r): Path<String>,
+    Query(q): Query<VersionsQuery>,
+) -> Response {
+    let (Ok(game), Ok(loader)) = (filter(&q.game), filter(&q.loader)) else {
+        return refuse(StatusCode::BAD_REQUEST, "bad_query");
+    };
+    let Some(r) = reference(&r) else {
+        return refuse(StatusCode::NOT_FOUND, "not_found");
+    };
+    let id = match app.store.project_id(r) {
+        Ok(Some(id)) => id,
+        Ok(None) => return refuse(StatusCode::NOT_FOUND, "not_found"),
+        Err(e) => return failed(&e),
+    };
+    match app
+        .store
+        .versions(&id, game.as_deref(), loader.as_deref(), &app.urls)
+    {
+        // "saved": "all" is kept here; anything else is fetched when asked.
+        Ok(list) => cached(json!({ "versions": list }), 60),
+        Err(e) => failed(&e),
+    }
+}
+
+async fn version(State(app): State<Arc<App>>, Path(id): Path<String>) -> Response {
+    let Some(id) = our_id(&id) else {
+        return refuse(StatusCode::NOT_FOUND, "not_found");
+    };
+    match app.store.version(id, &app.urls) {
+        Ok(Some(v)) => cached(v, 30),
+        Ok(None) => refuse(StatusCode::NOT_FOUND, "not_found"),
+        Err(e) => failed(&e),
+    }
+}
+
+/// Asks for an older version's files to be kept; open to anyone, counted per
+/// address.
+async fn fetch_version(
+    State(app): State<Arc<App>>,
+    headers: HeaderMap,
+    Path(id): Path<String>,
+) -> Response {
+    let Some(id) = our_id(&id) else {
+        return refuse(StatusCode::NOT_FOUND, "not_found");
+    };
+    let state = match app.store.version_state(id) {
+        Ok(Some((_, state))) => state,
+        Ok(None) => return refuse(StatusCode::NOT_FOUND, "not_found"),
+        Err(e) => return failed(&e),
+    };
+    if state == "all" {
+        return private(json!({ "saved": "all", "queued": false }), StatusCode::OK);
+    }
+    if !app.limiter.allow(
+        &client(&headers),
+        "fetch",
+        FETCHES_PER_HOUR,
+        Duration::from_secs(3600),
+    ) {
+        return refuse(StatusCode::TOO_MANY_REQUESTS, "too_many");
+    }
+    match import::queue_files(&app, id, None) {
+        Ok(queued) => private(
+            json!({ "saved": state, "queued": queued }),
+            StatusCode::ACCEPTED,
+        ),
+        Err(e) => failed(&e),
+    }
+}
+
+#[derive(Deserialize)]
+pub struct LookupBody {
+    hashes: Vec<String>,
+}
+
+/// Which of these files (by SHA-1 or SHA-256) the catalog knows.
+async fn lookup(State(app): State<Arc<App>>, Json(body): Json<LookupBody>) -> Response {
+    if body.hashes.len() > MAX_LOOKUP
+        || !body.hashes.iter().all(|h| {
+            (h.len() == 40 || h.len() == 64)
+                && h.bytes()
+                    .all(|b| b.is_ascii_digit() || (b'a'..=b'f').contains(&b))
+        })
+    {
+        return refuse(StatusCode::BAD_REQUEST, "bad_hashes");
+    }
+    match app.store.lookup(&body.hashes) {
+        Ok(found) => private(json!({ "found": found }), StatusCode::OK),
+        Err(e) => failed(&e),
+    }
+}
+
+#[derive(Deserialize)]
+pub struct ImportBody {
+    input: String,
+}
+
+/// "Add to the catalog": an address of Modrinth or CurseForge, or a name.
+async fn create_import(
+    State(app): State<Arc<App>>,
+    headers: HeaderMap,
+    Json(body): Json<ImportBody>,
+) -> Response {
+    let me = match who(&app, &headers) {
+        Ok(me) => me,
+        Err(response) => return *response,
+    };
+    let text = body.input.trim();
+    if crate::input::parse(text).is_none() {
+        return refuse(StatusCode::BAD_REQUEST, "bad_input");
+    }
+    if !app.limiter.allow(
+        &client(&headers),
+        "import-address",
+        IMPORTS_PER_HOUR_PER_ADDRESS,
+        Duration::from_secs(3600),
+    ) || !app.limiter.allow(
+        &me.sub,
+        "import",
+        IMPORTS_PER_HOUR,
+        Duration::from_secs(3600),
+    ) {
+        return refuse(StatusCode::TOO_MANY_REQUESTS, "too_many");
+    }
+    match app.store.account_usage(&me.sub, now() - 86_400) {
+        Ok((count, _)) if count >= IMPORTS_PER_DAY => {
+            return refuse(StatusCode::TOO_MANY_REQUESTS, "too_many");
+        }
+        Ok((_, bytes)) if bytes >= IMPORT_BYTES_PER_DAY => {
+            return refuse(StatusCode::TOO_MANY_REQUESTS, "too_much_today");
+        }
+        Ok(_) => {}
+        Err(e) => return failed(&e),
+    }
+    let id = uuid::Uuid::now_v7().to_string();
+    let created = app
+        .store
+        .create_request(&id, &me.sub, text, now())
+        .and_then(|()| {
+            app.store.enqueue(
+                &format!("resolve:{id}"),
+                "resolve",
+                &json!({ "request": id }),
+                Some(&id),
+                None,
+                now(),
+                None,
+            )
+        })
+        .and_then(|_| app.store.request(&id));
+    match created {
+        Ok(Some((_, request))) => private(json!(request), StatusCode::ACCEPTED),
+        Ok(None) => failed("a request just made is not there"),
+        Err(e) => failed(&e),
+    }
+}
+
+/// A request of the asking account; another's is not found.
+fn own_request(app: &App, me: &Claims, id: &str) -> Result<crate::store::Request, Box<Response>> {
+    let not_found = || Box::new(refuse(StatusCode::NOT_FOUND, "not_found"));
+    let id = our_id(id).ok_or_else(not_found)?;
+    match app.store.request(id) {
+        Ok(Some((account, request))) if account == me.sub => Ok(request),
+        Ok(_) => Err(not_found()),
+        Err(e) => Err(Box::new(failed(&e))),
+    }
+}
+
+async fn get_import(
+    State(app): State<Arc<App>>,
+    headers: HeaderMap,
+    Path(id): Path<String>,
+) -> Response {
+    let me = match who(&app, &headers) {
+        Ok(me) => me,
+        Err(response) => return *response,
+    };
+    match own_request(&app, &me, &id) {
+        Ok(request) => private(json!(request), StatusCode::OK),
+        Err(response) => *response,
+    }
+}
+
+async fn my_imports(State(app): State<Arc<App>>, headers: HeaderMap) -> Response {
+    let me = match who(&app, &headers) {
+        Ok(me) => me,
+        Err(response) => return *response,
+    };
+    match app.store.requests_of(&me.sub, 50) {
+        Ok(list) => private(json!({ "requests": list }), StatusCode::OK),
+        Err(e) => failed(&e),
+    }
+}
+
+#[derive(Deserialize)]
+pub struct ChooseBody {
+    source: String,
+    id: String,
+}
+
+/// The player picks one of the projects a name found.
+async fn choose(
+    State(app): State<Arc<App>>,
+    headers: HeaderMap,
+    Path(id): Path<String>,
+    Json(body): Json<ChooseBody>,
+) -> Response {
+    let me = match who(&app, &headers) {
+        Ok(me) => me,
+        Err(response) => return *response,
+    };
+    let request = match own_request(&app, &me, &id) {
+        Ok(request) => request,
+        Err(response) => return *response,
+    };
+    if request.state != "choosing" {
+        return refuse(StatusCode::CONFLICT, "not_choosing");
+    }
+    // Only one of those offered.
+    let offered = request
+        .candidates
+        .as_ref()
+        .and_then(Value::as_array)
+        .is_some_and(|list| {
+            list.iter()
+                .any(|c| c["source"] == body.source && c["id"] == body.id)
+        });
+    if !offered {
+        return refuse(StatusCode::BAD_REQUEST, "not_offered");
+    }
+    if let Err(e) = import::start(&app, &request.id, &body.source, &body.id, None) {
+        return failed(&e.code);
+    }
+    match app.store.request(&request.id) {
+        Ok(Some((_, request))) => private(json!(request), StatusCode::ACCEPTED),
+        Ok(None) => refuse(StatusCode::NOT_FOUND, "not_found"),
+        Err(e) => failed(&e),
+    }
+}
+
+pub fn router(app: Arc<App>) -> Router {
+    Router::new()
+        .route("/v1/health", get(health))
+        .route("/v1/search", get(search))
+        .route("/v1/projects/{project}", get(project))
+        .route("/v1/projects/{project}/versions", get(versions))
+        .route("/v1/versions/{version}", get(version))
+        .route("/v1/versions/{version}/fetch", post(fetch_version))
+        .route("/v1/lookup", post(lookup))
+        .route("/v1/imports", get(my_imports).post(create_import))
+        .route("/v1/imports/{request}", get(get_import))
+        .route("/v1/imports/{request}/choose", post(choose))
+        .layer(DefaultBodyLimit::max(32 * 1024))
+        .with_state(app)
+}

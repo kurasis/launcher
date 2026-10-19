@@ -9,6 +9,7 @@ service runs:
 | accounts | `/home/www/lapi/oauth/data/backups/accounts-*.db`  | `lapi-oauth-backup.timer`   |
 | friends  | `/home/www/lapi/friends/data/backups/friends-*.db` | `lapi-friends-backup.timer` |
 | skins    | `/home/www/lapi/skins/data/backups/skins-*.db`     | `lapi-skins-backup.timer`   |
+| mods     | `/home/www/lapi/mods/data/backups/catalog-*.db`    | `lapi-mods-backup.timer`    |
 
 The newest 14 copies stay. Each copy can be read only by its service's user. The
 timers are installed by `deploy/bootstrap.sh`. A copy can also be made at any time:
@@ -16,7 +17,11 @@ timers are installed by `deploy/bootstrap.sh`. A copy can also be made at any ti
 ```sh
 sudo -u lapi-oauth /home/www/lapi/oauth/current/lapi-oauth backup
 sudo -u lapi-friends /home/www/lapi/friends/current/lapi-friends backup
+sudo -u lapi-mods /home/www/lapi/mods/current/lapi-mods backup
 ```
+
+The catalog of mods (mods.lapi.sh) copies only its database: the kept files under
+`data/blobs` are named by their SHA-256 and can be fetched again from the sources.
 
 What a copy holds, and what it does not:
 

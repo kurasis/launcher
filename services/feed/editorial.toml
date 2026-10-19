@@ -1,4 +1,4 @@
-# What the feed shows besides its sources (D-066): YouTube channels by
+# What the feed shows besides its sources (D-067): YouTube channels by
 # language, events with a countdown, our announcements, tips of the day and
 # Twitch channels never shown. It is built into the service: a change here is
 # a pull request and goes out with the next deploy.
