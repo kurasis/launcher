@@ -157,10 +157,7 @@ pub async fn authorize(
     {
         return expired(lang);
     }
-    if !app
-        .limiter
-        .allow(client_ip(&headers), "authorize", 120, 20_000)
-    {
+    if !app.limiter.allow(client_ip(&headers), "authorize", 120) {
         return too_many(lang);
     }
     let rid = token();
@@ -403,9 +400,11 @@ pub async fn login(
         return expired(lang);
     }
     let ip = client_ip(&headers);
-    if !app.limiter.allow(ip, "login", 30, 5_000) {
+    if !app.limiter.allow(ip, "login", 30) {
         return too_many(lang);
     }
+    // Many sign-ins from everywhere at once: everyone gets the captcha.
+    let crowded = app.limiter.busy("login", 5_000);
     let login = form.login.trim();
     let shown = if login.len() <= rules::EMAIL_MAX {
         login
@@ -430,7 +429,8 @@ pub async fn login(
     // Without captcha keys a captcha cannot be passed: asking for one would
     // lock the account; the rate limits still hold.
     let captcha = app.captcha.configured()
-        && (app.limiter.count(ip, "login-failed", FAILURE_WINDOW) >= IP_FAILURES_FOR_CAPTCHA
+        && (crowded
+            || app.limiter.count(ip, "login-failed", FAILURE_WINDOW) >= IP_FAILURES_FOR_CAPTCHA
             || account_failures >= ACCOUNT_FAILURES_FOR_CAPTCHA);
     let page = |errors: &[&str], captcha: bool| {
         with_cookie(
@@ -490,7 +490,7 @@ pub async fn register(
         return expired(lang);
     }
     let ip = client_ip(&headers);
-    if !app.limiter.allow(ip, "register", 5, 500) {
+    if !app.limiter.allow(ip, "register", 5) {
         return too_many(lang);
     }
     // What was typed comes back into the form, cut to what the fields hold.
@@ -507,6 +507,10 @@ pub async fn register(
     };
     if !app.captcha.verify(&form.turnstile, ip, "register").await {
         return page(&[t.captcha]);
+    }
+    // Only solved captchas count toward everyone's allowance.
+    if app.limiter.busy("register", 500) {
+        return too_many(lang);
     }
     let nick = rules::nick(&form.nick);
     let email = rules::email(&form.email);
@@ -605,7 +609,7 @@ pub async fn verify(
 ) -> Response {
     let lang = Lang::parse(&q.lang);
     let t = texts(lang);
-    if !app.limiter.allow(client_ip(&headers), "links", 30, 10_000) {
+    if !app.limiter.allow(client_ip(&headers), "links", 30) {
         return too_many(lang);
     }
     let hash = digest(&q.token);
@@ -691,12 +695,15 @@ pub async fn reset(
         return expired(lang);
     };
     let ip = client_ip(&headers);
-    if !app.limiter.allow(ip, "reset", 5, 1_000) {
+    if !app.limiter.allow(ip, "reset", 5) {
         return too_many(lang);
     }
     let shown: String = form.email.chars().take(rules::EMAIL_MAX).collect();
     if !app.captcha.verify(&form.turnstile, ip, "reset").await {
         return reset_page(&app, lang, &csrf, &shown, &[t.captcha]);
+    }
+    if app.limiter.busy("reset", 1_000) {
+        return too_many(lang);
     }
     let Ok(email) = rules::email(&form.email) else {
         return reset_page(&app, lang, &csrf, &shown, &[(t.problem)(Problem::Email)]);
@@ -787,7 +794,7 @@ pub async fn reset_confirm_form(
 ) -> Response {
     let lang = Lang::parse(&q.lang);
     let t = texts(lang);
-    if !app.limiter.allow(client_ip(&headers), "links", 30, 10_000) {
+    if !app.limiter.allow(client_ip(&headers), "links", 30) {
         return too_many(lang);
     }
     let valid = q.token.len() == 43
@@ -825,7 +832,7 @@ pub async fn reset_confirm(
         return expired(lang);
     };
     let ip: IpAddr = client_ip(&headers);
-    if !app.limiter.allow(ip, "links", 30, 10_000) {
+    if !app.limiter.allow(ip, "links", 30) {
         return too_many(lang);
     }
     let hash = digest(&form.token);
@@ -834,7 +841,7 @@ pub async fn reset_confirm(
     } else {
         None
     };
-    let Some((account_id, _)) = found else {
+    let Some((account_id, sent_to)) = found else {
         return status(
             StatusCode::BAD_REQUEST,
             pages::message(lang, t.reset_title, t.link_bad),
@@ -843,6 +850,13 @@ pub async fn reset_confirm(
     let Ok(Some(account)) = app.store.account(&account_id) else {
         return failed(lang);
     };
+    // A link sent to an address the account no longer has does nothing.
+    if rules::email_key(&sent_to) != rules::email_key(&account.email) {
+        return status(
+            StatusCode::BAD_REQUEST,
+            pages::message(lang, t.reset_title, t.link_bad),
+        );
+    }
     let mut problems = Vec::new();
     if let Err(p) = rules::password(&form.password, &account.nick, &account.email) {
         problems.push((t.problem)(p));

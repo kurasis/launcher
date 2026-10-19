@@ -265,7 +265,10 @@ fn serve() -> Result<(), String> {
     let address = env("LAPI_OAUTH_ADDR", "127.0.0.1:8783");
     let runtime = tokio::runtime::Runtime::new().map_err(|e| e.to_string())?;
     runtime.block_on(async move {
-        let app = Arc::new(app::App::new(config, store, keys, Box::new(captcha)));
+        let mut app = app::App::new(config, store, keys, Box::new(captcha));
+        app.sealer = mail::Sealer::new(crypto::secret_file(&data.join("mail.key"))?);
+        mail::seal_waiting(&app)?;
+        let app = Arc::new(app);
         if let Some(smtp) = smtp {
             tokio::spawn(mail::worker(Arc::clone(&app), smtp));
         }
