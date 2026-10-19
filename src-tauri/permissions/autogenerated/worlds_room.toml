@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-worlds-room"
+description = "Enables the worlds_room command without any pre-configured scope."
+commands.allow = ["worlds_room"]
+
+[[permission]]
+identifier = "deny-worlds-room"
+description = "Denies the worlds_room command without any pre-configured scope."
+commands.deny = ["worlds_room"]

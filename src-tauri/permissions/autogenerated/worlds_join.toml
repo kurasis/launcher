@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-worlds-join"
+description = "Enables the worlds_join command without any pre-configured scope."
+commands.allow = ["worlds_join"]
+
+[[permission]]
+identifier = "deny-worlds-join"
+description = "Denies the worlds_join command without any pre-configured scope."
+commands.deny = ["worlds_join"]

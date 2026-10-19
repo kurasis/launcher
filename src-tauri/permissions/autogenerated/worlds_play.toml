@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-worlds-play"
+description = "Enables the worlds_play command without any pre-configured scope."
+commands.allow = ["worlds_play"]
+
+[[permission]]
+identifier = "deny-worlds-play"
+description = "Denies the worlds_play command without any pre-configured scope."
+commands.deny = ["worlds_play"]

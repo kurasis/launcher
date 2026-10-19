@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-worlds-instance"
+description = "Enables the worlds_instance command without any pre-configured scope."
+commands.allow = ["worlds_instance"]
+
+[[permission]]
+identifier = "deny-worlds-instance"
+description = "Denies the worlds_instance command without any pre-configured scope."
+commands.deny = ["worlds_instance"]

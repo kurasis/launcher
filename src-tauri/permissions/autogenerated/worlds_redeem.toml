@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-worlds-redeem"
+description = "Enables the worlds_redeem command without any pre-configured scope."
+commands.allow = ["worlds_redeem"]
+
+[[permission]]
+identifier = "deny-worlds-redeem"
+description = "Denies the worlds_redeem command without any pre-configured scope."
+commands.deny = ["worlds_redeem"]

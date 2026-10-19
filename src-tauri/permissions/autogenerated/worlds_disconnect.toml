@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-worlds-disconnect"
+description = "Enables the worlds_disconnect command without any pre-configured scope."
+commands.allow = ["worlds_disconnect"]
+
+[[permission]]
+identifier = "deny-worlds-disconnect"
+description = "Denies the worlds_disconnect command without any pre-configured scope."
+commands.deny = ["worlds_disconnect"]

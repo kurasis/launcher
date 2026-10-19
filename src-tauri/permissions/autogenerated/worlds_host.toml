@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-worlds-host"
+description = "Enables the worlds_host command without any pre-configured scope."
+commands.allow = ["worlds_host"]
+
+[[permission]]
+identifier = "deny-worlds-host"
+description = "Denies the worlds_host command without any pre-configured scope."
+commands.deny = ["worlds_host"]

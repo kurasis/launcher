@@ -6,6 +6,7 @@
 //! [`tuple::TUPLES`], run in offline mode on 127.0.0.1; who may enter is decided
 //! by the tunnel, not by the server (ADAPTATION A2, A3).
 
+pub mod app;
 #[cfg(test)]
 pub(crate) mod fake_service;
 pub mod host;
