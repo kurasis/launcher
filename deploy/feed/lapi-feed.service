@@ -1,0 +1,52 @@
+# Installed by deploy/bootstrap.sh as /etc/systemd/system/lapi-feed.service.
+[Unit]
+Description=Sferum launcher start page feed (feed.lapi.sh, D-067)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+User=lapi-feed
+Group=lapi-feed
+EnvironmentFile=/home/www/lapi/feed/feed.env
+# DeepL and Twitch keys, written by each deploy from the repository's
+# secrets; without them translations and streams are left out.
+EnvironmentFile=-/home/www/lapi/feed/secrets.env
+ExecStart=/home/www/lapi/feed/current/lapi-feed serve
+Restart=on-failure
+RestartSec=3
+UMask=0027
+NoNewPrivileges=yes
+ProtectSystem=strict
+# /home holds nothing else for it: only its own folder is there, its data writable.
+ProtectHome=tmpfs
+BindReadOnlyPaths=/home/www/lapi/feed
+BindPaths=/home/www/lapi/feed/data
+ReadWritePaths=/home/www/lapi/feed/data
+PrivateTmp=yes
+PrivateDevices=yes
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectControlGroups=yes
+ProtectClock=yes
+ProtectHostname=yes
+# Out: Mojang, YouTube, Twitch and DeepL.
+RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX
+RestrictNamespaces=yes
+RestrictRealtime=yes
+LockPersonality=yes
+MemoryDenyWriteExecute=yes
+SystemCallArchitectures=native
+# What a network service needs; anything else fails with EPERM.
+SystemCallFilter=@system-service
+SystemCallErrorNumber=EPERM
+ProtectKernelLogs=yes
+ProtectProc=invisible
+ProcSubset=pid
+RestrictSUIDSGID=yes
+RemoveIPC=yes
+CapabilityBoundingSet=
+MemoryMax=768M
+TasksMax=256
+
+[Install]
+WantedBy=multi-user.target

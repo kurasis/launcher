@@ -3,7 +3,7 @@
 # service's workflow (D-061, D-062).
 #
 #   bash deploy.sh <service> <release-id> <archive> [mirror-quota-gb | upd-public-key]
-#   … | bash deploy.sh oauth <release-id> <archive> --secrets
+#   … | bash deploy.sh oauth|feed <release-id> <archive> --secrets
 #   … | bash deploy.sh mods <release-id> <archive> <quota-gb> --secrets
 #
 # Unpacks the archive into /home/www/lapi/<service>/releases/<release-id>,
@@ -13,9 +13,9 @@
 # they differ. For the mirror and mods, the quota goes to settings.json, which
 # the service reads every minute. upd is a command, not a process: its release is
 # installed with the update public key and nothing is restarted. oauth (Turnstile,
-# SMTP) and mods (proxies to the sources) read their secrets from standard
-# input with --secrets, as KEY=value lines, into secrets.env; they never
-# appear in a command line or a log.
+# SMTP), mods (proxies to the sources) and feed (DeepL, Twitch) read their
+# secrets from standard input with --secrets, as KEY=value lines, into
+# secrets.env; they never appear in a command line or a log.
 set -euo pipefail
 
 SERVICE="${1:?service}"
@@ -38,6 +38,10 @@ case "$SERVICE" in
         PORT=8786
         QUOTA_GB="$EXTRA"
         [ "${5:-}" = --secrets ] && SECRETS='^LAPI_MODS_PROXIES=[^[:cntrl:]]{0,20000}$'
+        ;;
+    feed)
+        PORT=8787
+        [ "$EXTRA" = --secrets ] && SECRETS='^LAPI_FEED_(DEEPL_KEY|TWITCH_CLIENT_ID|TWITCH_SECRET)=[^[:cntrl:]]{0,500}$'
         ;;
     *) echo "unknown service $SERVICE"; exit 1 ;;
 esac
