@@ -1,0 +1,479 @@
+/* The start page feed (D-067). Only logical properties (inline/block), so the
+   page mirrors for right-to-left languages by itself. */
+
+.screen {
+  display: grid;
+  gap: var(--space-4);
+}
+
+.toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+}
+
+.screenTitle {
+  font-size: var(--font-size-xl);
+  font-weight: 800;
+  letter-spacing: -0.02em;
+}
+
+.layout {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(15rem, 20rem);
+  gap: var(--space-6);
+  align-items: start;
+}
+
+@media (max-width: 960px) {
+  .layout {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+.main,
+.side {
+  display: grid;
+  gap: var(--space-4);
+  min-inline-size: 0;
+}
+
+.muted {
+  color: var(--color-text-muted);
+  font-size: var(--font-size-sm);
+}
+
+.eyebrow {
+  font-size: var(--font-size-xs);
+  font-weight: 700;
+  letter-spacing: var(--letter-spacing-caps);
+  text-transform: uppercase;
+  color: var(--color-accent);
+}
+
+.actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+  align-items: center;
+}
+
+.badges {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.panelLike {
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-panel);
+  backdrop-filter: blur(var(--blur));
+}
+
+/* Continue playing. */
+.continue {
+  composes: panelLike;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3) var(--space-6);
+  padding: var(--space-4) var(--space-6);
+}
+
+.continueName {
+  font-size: var(--font-size-lg);
+  font-weight: 700;
+  overflow-wrap: anywhere;
+}
+
+/* The newest version. */
+.hero {
+  composes: panelLike;
+  display: grid;
+  grid-template-columns: minmax(0, 2fr) minmax(0, 3fr);
+  overflow: hidden;
+}
+
+.heroPicture {
+  inline-size: 100%;
+  block-size: 100%;
+  min-block-size: 12rem;
+  object-fit: cover;
+  background: var(--color-neutral-bg);
+}
+
+.heroText {
+  display: grid;
+  align-content: start;
+  gap: var(--space-3);
+  padding: var(--space-6);
+  grid-column: 2;
+}
+
+.hero > .heroText:only-child {
+  grid-column: 1 / -1;
+}
+
+.heroTitle {
+  font-size: var(--font-size-xl);
+  font-weight: 800;
+  letter-spacing: -0.02em;
+  overflow-wrap: anywhere;
+}
+
+@media (max-width: 640px) {
+  .hero {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .heroText {
+    grid-column: 1;
+  }
+}
+
+/* Filter chips. */
+.chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+}
+
+.chip {
+  font: inherit;
+  font-size: var(--font-size-sm);
+  font-weight: 600;
+  color: var(--color-text);
+  background: var(--color-neutral-bg);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-pill);
+  padding: var(--space-1) var(--space-4);
+  cursor: pointer;
+}
+
+.chip:hover {
+  border-color: var(--color-border-strong);
+}
+
+.chip[aria-pressed='true'] {
+  color: var(--color-accent-contrast);
+  background: var(--color-accent);
+  border-color: var(--color-accent);
+}
+
+.visuallyHidden {
+  position: absolute;
+  inline-size: 1px;
+  block-size: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+
+/* Parts. */
+.part {
+  display: grid;
+  gap: var(--space-3);
+  min-inline-size: 0;
+}
+
+.partTitle {
+  font-size: var(--font-size-lg);
+  font-weight: 700;
+}
+
+.side .part {
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-panel);
+  backdrop-filter: blur(var(--blur));
+  padding: var(--space-4);
+}
+
+/* Patch notes and news. */
+.cards {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: var(--space-3);
+}
+
+.card {
+  composes: panelLike;
+  position: relative;
+  display: flex;
+  gap: var(--space-4);
+  padding: var(--space-3);
+}
+
+.card:hover {
+  border-color: var(--color-border-strong);
+}
+
+.card:focus-within {
+  outline: 2px solid var(--color-focus);
+  outline-offset: 2px;
+}
+
+.cardPicture {
+  flex: 0 0 auto;
+  inline-size: 9rem;
+  aspect-ratio: 16 / 9;
+  object-fit: cover;
+  border-radius: var(--radius-sm);
+  background: var(--color-neutral-bg);
+}
+
+.cardText {
+  display: grid;
+  gap: var(--space-1);
+  min-inline-size: 0;
+}
+
+.cardTitle {
+  font-size: var(--font-size-md);
+  font-weight: 700;
+}
+
+/* The title's button covers the whole card. */
+.cardButton {
+  font: inherit;
+  color: inherit;
+  text-align: start;
+  background: none;
+  border: none;
+  padding: 0;
+  cursor: pointer;
+}
+
+.cardButton:focus-visible {
+  outline: none;
+}
+
+.cardButton::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+}
+
+.summary {
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 3;
+  overflow: hidden;
+  color: var(--color-text-muted);
+}
+
+@media (max-width: 640px) {
+  .cardPicture {
+    display: none;
+  }
+}
+
+/* Videos and streams. */
+.row {
+  list-style: none;
+  margin: 0;
+  padding: 0 0 var(--space-2);
+  display: flex;
+  gap: var(--space-3);
+  overflow-x: auto;
+  scroll-snap-type: inline mandatory;
+}
+
+.tile {
+  flex: 0 0 15rem;
+  scroll-snap-align: start;
+}
+
+.tileButton {
+  font: inherit;
+  color: inherit;
+  text-align: start;
+  display: grid;
+  gap: var(--space-1);
+  inline-size: 100%;
+  padding: 0;
+  background: none;
+  border: none;
+  cursor: pointer;
+}
+
+.tileButton:focus-visible {
+  outline: 2px solid var(--color-focus);
+  outline-offset: 2px;
+  border-radius: var(--radius-sm);
+}
+
+.preview {
+  position: relative;
+  display: block;
+  aspect-ratio: 16 / 9;
+  overflow: hidden;
+  border-radius: var(--radius-md);
+  background: var(--color-neutral-bg);
+  border: 1px solid var(--color-border);
+}
+
+.preview img {
+  inline-size: 100%;
+  block-size: 100%;
+  object-fit: cover;
+  display: block;
+}
+
+.overlayBadge {
+  position: absolute;
+  inset-block-start: var(--space-2);
+  inset-inline-start: var(--space-2);
+}
+
+.tileTitle {
+  font-weight: 600;
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  overflow: hidden;
+  overflow-wrap: anywhere;
+}
+
+/* The side column. */
+.sideList {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: var(--space-3);
+}
+
+.sideItemTitle {
+  font-weight: 600;
+}
+
+.cycleTarget {
+  font-size: var(--font-size-lg);
+  font-weight: 700;
+}
+
+.counts {
+  margin: 0;
+  padding-inline-start: var(--space-4);
+}
+
+/* A link that is a button: the core opens it in the browser. */
+.link {
+  font: inherit;
+  color: var(--color-accent-2);
+  background: none;
+  border: none;
+  padding: 0;
+  text-align: start;
+  text-decoration: underline;
+  cursor: pointer;
+}
+
+.link:hover {
+  text-decoration-thickness: 2px;
+}
+
+/* The note dialog: a drawer on the inline-end side. */
+.backdrop {
+  position: fixed;
+  inset: 0;
+  display: flex;
+  justify-content: flex-end;
+  background: rgb(0 0 0 / 55%);
+  backdrop-filter: blur(3px);
+  /* Above the download button in the corner. */
+  z-index: 50;
+}
+
+.drawer {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  inline-size: min(100%, 46rem);
+  block-size: 100%;
+  overflow: auto;
+  padding: var(--space-6);
+  background: var(--color-surface-raised);
+  color: var(--color-text);
+  border-inline-start: 1px solid var(--color-border-strong);
+  box-shadow: var(--shadow-raised);
+}
+
+.drawerHead {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: var(--space-3);
+}
+
+.drawerTitle {
+  display: grid;
+  gap: var(--space-2);
+  min-inline-size: 0;
+}
+
+.drawerTitle h2 {
+  font-size: var(--font-size-xl);
+  overflow-wrap: anywhere;
+}
+
+.translation {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.noteBody {
+  display: grid;
+  gap: var(--space-3);
+  line-height: var(--line-height);
+  overflow-wrap: anywhere;
+}
+
+.noteHeading {
+  margin-block-start: var(--space-3);
+  font-weight: 700;
+}
+
+.noteList {
+  margin: 0;
+  padding-inline-start: var(--space-6);
+  display: grid;
+  gap: var(--space-1);
+}
+
+.noteList > li > * + * {
+  margin-block-start: var(--space-1);
+}
+
+.notePicture {
+  max-inline-size: 100%;
+  block-size: auto;
+  border-radius: var(--radius-md);
+}
+
+.noteBody code {
+  font-family: var(--font-mono);
+  font-size: 0.92em;
+  background: var(--color-neutral-bg);
+  border-radius: 4px;
+  padding: 0 0.25em;
+}
+
+.drawerActions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+  margin-block-start: auto;
+}

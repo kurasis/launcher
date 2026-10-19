@@ -6,6 +6,7 @@ use serde_json::Value;
 const TAURI_CONF: &str = include_str!("../tauri.conf.json");
 const DEFAULT_CAPABILITY: &str = include_str!("../capabilities/default.json");
 const CONSOLE_CAPABILITY: &str = include_str!("../capabilities/console.json");
+const PLAYER_CAPABILITY: &str = include_str!("../capabilities/player.json");
 const PACKAGE_JSON: &str = include_str!("../../package.json");
 
 fn json(source: &str) -> Value {
@@ -52,8 +53,9 @@ fn production_csp_allows_only_packaged_assets_and_ipc() {
     assert_eq!(source_list(&csp, "script-src"), ["'self'"]);
     assert_eq!(source_list(&csp, "object-src"), ["'none'"]);
     assert_eq!(source_list(&csp, "base-uri"), ["'none'"]);
-    // Screenshots come only from the gallery protocol that Rust serves (D-050);
-    // pictures of the mods catalog only from its file host (D-066).
+    // Screenshots and the feed's pictures come only from the protocols that
+    // Rust serves (D-050, D-067); pictures of the mods catalog only from its
+    // file host (D-066).
     assert_eq!(
         source_list(&csp, "img-src"),
         [
@@ -61,6 +63,8 @@ fn production_csp_allows_only_packaged_assets_and_ipc() {
             "data:",
             "gallery:",
             "http://gallery.localhost",
+            "feed:",
+            "http://feed.localhost",
             "https://files-mods.lapi.sh"
         ]
     );
@@ -81,6 +85,7 @@ fn production_csp_allows_only_packaged_assets_and_ipc() {
                     source == "http://ipc.localhost"
                         || (name == "img-src"
                             && (source == "http://gallery.localhost"
+                                || source == "http://feed.localhost"
                                 || source == "https://files-mods.lapi.sh")),
                     "{name} allows remote {source}"
                 );
@@ -104,6 +109,7 @@ fn development_csp_is_separate_and_local_only() {
                     source == "http://ipc.localhost"
                         || source == "ws://localhost:1420"
                         || source == "http://gallery.localhost"
+                        || source == "http://feed.localhost"
                         || (name == "img-src" && source == "https://files-mods.lapi.sh"),
                     "{name} allows non-local {source}"
                 );
@@ -247,6 +253,14 @@ fn main_window_capability_grants_only_app_commands() {
             "allow-mods-set-enabled",
             "allow-mods-remove",
             "allow-mods-open-link",
+            "allow-feed-get",
+            "allow-feed-note",
+            "allow-feed-play",
+            "allow-feed-open-link",
+            "allow-feed-channels",
+            "allow-feed-add-channel",
+            "allow-feed-remove-channel",
+            "allow-feed-own-videos",
             "allow-start-lifecycle-test",
             "allow-stop-lifecycle-test",
         ]
@@ -271,7 +285,29 @@ fn console_window_capability_only_reads_the_journal() {
             .collect();
     let mut sorted = capabilities.clone();
     sorted.sort();
-    assert_eq!(sorted, ["console.json", "default.json"]);
+    assert_eq!(sorted, ["console.json", "default.json", "player.json"]);
+}
+
+/// The feed's player window (D-067) shows a remote page: it gets no
+/// permission at all, and no remote origin is named anywhere.
+#[test]
+fn player_window_capability_grants_nothing() {
+    let capability = json(PLAYER_CAPABILITY);
+    assert_eq!(capability["windows"], serde_json::json!(["player"]));
+    assert!(capability.get("remote").is_none());
+    assert_eq!(capability["permissions"], serde_json::json!([]));
+    for other in [DEFAULT_CAPABILITY, CONSOLE_CAPABILITY] {
+        let other = json(other);
+        assert!(other.get("remote").is_none());
+        assert!(
+            !other["windows"]
+                .as_array()
+                .expect("windows")
+                .contains(&serde_json::json!("player"))
+        );
+    }
+    let player = include_str!("../src/feed/player.rs");
+    assert!(player.contains("pub const WINDOW: &str = \"player\";"));
 }
 
 #[test]
@@ -340,17 +376,35 @@ fn windows_are_made_through_the_queue() {
                 "{name} calls run_on_main_thread; use lifecycle::queue_on_main_thread"
             );
         }
-        // Who builds a window: the console (lifecycle) and the account window,
-        // which only launcher_account_open asks for, through the queue.
+        // Who builds a window: the console (lifecycle), the account window,
+        // which only launcher_account_open asks for, through the queue, and
+        // the feed's player window, which queues itself.
+        let player = std::path::Path::new("feed").join("player.rs");
         if text.contains("WebviewWindowBuilder::new(") {
             assert!(
                 name.ends_with(&queue.display().to_string())
-                    || name.ends_with("launcher_account.rs"),
+                    || name.ends_with("launcher_account.rs")
+                    || name.ends_with(&player.display().to_string()),
                 "{name} builds a window: make it through lifecycle::queue_on_main_thread \
                  and add it to this test"
             );
         }
     }
+    let player = include_str!("../src/feed/player.rs");
+    let show = &player[player
+        .find("pub fn show_player_window")
+        .expect("player window")..];
+    let show = &show[..show.find("\n}").expect("end")];
+    let queued = show.find("queue_on_main_thread(").expect("queued");
+    assert!(
+        queued < show.find("WebviewWindowBuilder::new(").expect("builder"),
+        "the player window is built inside the queued task"
+    );
+    assert_eq!(
+        player.matches("WebviewWindowBuilder::new(").count(),
+        1,
+        "the player window is built in show_player_window alone"
+    );
     let lifecycle = include_str!("../src/lifecycle/mod.rs");
     let console = &lifecycle[lifecycle.find("fn show_console_window").expect("console")..];
     assert!(console[..console.find("\n    }").expect("end")].contains("queue_on_main_thread("));

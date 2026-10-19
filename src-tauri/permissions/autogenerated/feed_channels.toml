@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-feed-channels"
+description = "Enables the feed_channels command without any pre-configured scope."
+commands.allow = ["feed_channels"]
+
+[[permission]]
+identifier = "deny-feed-channels"
+description = "Denies the feed_channels command without any pre-configured scope."
+commands.deny = ["feed_channels"]

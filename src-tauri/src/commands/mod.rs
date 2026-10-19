@@ -2059,6 +2059,152 @@ pub fn mods_open_link<R: Runtime>(app: AppHandle<R>, url: String) -> LauncherRes
         })
 }
 
+// ---- The start page feed (D-067) ----------------------------------------------
+
+use crate::feed::model::{OwnChannel, Video};
+use crate::feed::{FeedProblem, FeedResult, FeedService, FeedView, Languages, NoteView};
+
+fn feed_service<R: Runtime>(app: &AppHandle<R>) -> Arc<FeedService> {
+    Arc::clone(&app.state::<Arc<FeedService>>())
+}
+
+/// The languages of the feed's parts, or `Disabled` when the feed is off.
+fn feed_languages<R: Runtime>(
+    app: &AppHandle<R>,
+) -> FeedResult<(Languages, crate::storage::models::FeedSettings)> {
+    let settings = app.state::<AppState>().settings();
+    if !settings.feed.enabled {
+        return Err(FeedProblem::Disabled);
+    }
+    Ok((
+        Languages::of(settings.language.as_str(), &settings.feed),
+        settings.feed,
+    ))
+}
+
+fn feed_root<R: Runtime>(app: &AppHandle<R>) -> FeedResult<crate::storage::paths::DataRoot> {
+    app.state::<AppState>()
+        .data_root()
+        .ok_or(FeedProblem::Unavailable)
+}
+
+/// The feed in the languages the settings ask for; `refresh` asks the
+/// service again even when it answered a moment ago.
+#[tauri::command]
+pub async fn feed_get<R: Runtime>(app: AppHandle<R>, refresh: bool) -> FeedResult<FeedView> {
+    let (languages, _) = feed_languages(&app)?;
+    let root = app.state::<AppState>().data_root();
+    feed_service(&app)
+        .view(root.as_ref(), languages, refresh)
+        .await
+}
+
+/// A whole patch note or news article; `original` asks for the English text
+/// instead of the translation.
+#[tauri::command]
+pub async fn feed_note<R: Runtime>(
+    app: AppHandle<R>,
+    id: String,
+    original: bool,
+) -> FeedResult<NoteView> {
+    let (languages, _) = feed_languages(&app)?;
+    if !crate::feed::model::note_id(&id) {
+        return Err(FeedProblem::NotFound);
+    }
+    let lang = if original {
+        crate::feed::model::Lang::En
+    } else {
+        languages.notes
+    };
+    let root = app.state::<AppState>().data_root();
+    feed_service(&app).note(root.as_ref(), &id, lang).await
+}
+
+/// Plays a video (`yt`) or stream (`twitch`) where the settings say: the
+/// player window (made through the queue, never inline) or the browser.
+#[tauri::command(async)]
+pub fn feed_play<R: Runtime>(
+    app: AppHandle<R>,
+    kind: String,
+    id: String,
+    title: Option<String>,
+) -> FeedResult<()> {
+    let (languages, settings) = feed_languages(&app)?;
+    let target = crate::feed::player::Target::parse(&kind, &id).ok_or(FeedProblem::BadInput)?;
+    match settings.player {
+        crate::storage::models::PlayerMode::Browser => {
+            if crate::feed::player::open_in_browser(&app, target.browser_url().as_str()) {
+                Ok(())
+            } else {
+                Err(FeedProblem::Server)
+            }
+        }
+        crate::storage::models::PlayerMode::Window => {
+            crate::feed::player::show_player_window(
+                &app,
+                target.player_url(languages.interface),
+                window_title(title, "Player"),
+            );
+            Ok(())
+        }
+    }
+}
+
+/// Opens a link of the feed in the browser: only addresses the launcher may
+/// open (external::check_allowed).
+#[tauri::command(async)]
+pub fn feed_open_link<R: Runtime>(app: AppHandle<R>, url: String) -> FeedResult<()> {
+    if !crate::feed::model::link(&url) {
+        return Err(FeedProblem::BadInput);
+    }
+    if crate::feed::player::open_in_browser(&app, &url) {
+        Ok(())
+    } else {
+        Err(FeedProblem::Server)
+    }
+}
+
+/// The YouTube channels the player added to the feed.
+#[tauri::command(async)]
+pub fn feed_channels<R: Runtime>(app: AppHandle<R>) -> Vec<OwnChannel> {
+    feed_root(&app)
+        .map(|root| crate::feed::own_channels(&root))
+        .unwrap_or_default()
+}
+
+/// Looks a channel up by its link, @handle or id and adds it; the list after.
+#[tauri::command]
+pub async fn feed_add_channel<R: Runtime>(
+    app: AppHandle<R>,
+    input: String,
+) -> FeedResult<Vec<OwnChannel>> {
+    if input.len() > crate::feed::MAX_CHANNEL_INPUT * 4 {
+        return Err(FeedProblem::BadInput);
+    }
+    let root = feed_root(&app)?;
+    feed_service(&app).add_channel(&root, &input).await
+}
+
+/// Removes one of the player's channels; the list after.
+#[tauri::command(async)]
+pub fn feed_remove_channel<R: Runtime>(
+    app: AppHandle<R>,
+    channel_id: String,
+) -> FeedResult<Vec<OwnChannel>> {
+    if !crate::feed::model::channel_id(&channel_id) {
+        return Err(FeedProblem::BadInput);
+    }
+    crate::feed::remove_own_channel(&feed_root(&app)?, &channel_id)
+}
+
+/// The newest videos of the player's own channels.
+#[tauri::command]
+pub async fn feed_own_videos<R: Runtime>(app: AppHandle<R>) -> FeedResult<Vec<Video>> {
+    feed_languages(&app)?;
+    let root = feed_root(&app)?;
+    feed_service(&app).own_videos(&root).await
+}
+
 #[cfg(test)]
 mod tests {
     use super::window_title;

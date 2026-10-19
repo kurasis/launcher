@@ -108,6 +108,14 @@
     "allow-mods-set-enabled",
     "allow-mods-remove",
     "allow-mods-open-link",
+    "allow-feed-get",
+    "allow-feed-note",
+    "allow-feed-play",
+    "allow-feed-open-link",
+    "allow-feed-channels",
+    "allow-feed-add-channel",
+    "allow-feed-remove-channel",
+    "allow-feed-own-videos",
     "allow-start-lifecycle-test",
     "allow-stop-lifecycle-test"
   ]

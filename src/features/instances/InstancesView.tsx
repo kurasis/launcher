@@ -19,6 +19,8 @@ interface InstancesViewProps {
   onOpenBackups?: () => void;
   /** What an installation holds, in the Mods tab (D-066). */
   onOpenContent?: (instanceId: string) => void;
+  /** Opens the new-installation form with this game version chosen (from the feed). */
+  createVersion?: string | null;
 }
 
 const t = strings.instances;
@@ -28,8 +30,9 @@ export function InstancesView({
   onEditSettings,
   onOpenBackups = () => undefined,
   onOpenContent,
+  createVersion = null,
 }: InstancesViewProps) {
-  const [creating, setCreating] = useState(false);
+  const [creating, setCreating] = useState(createVersion !== null);
   const [deleted, setDeleted] = useState<string | null>(null);
   const select = useCommand((requestId: string, id: string) =>
     ipc.setAppSettings({ selectedInstanceId: id }, requestId),
@@ -80,6 +83,7 @@ export function InstancesView({
           <CreateInstanceForm
             network={snapshot.network}
             fixedHeapMib={snapshot.settings.defaultMaxHeapMib}
+            initialVersion={createVersion}
             onDone={(createdId) => {
               setCreating(false);
               // The new installation is the one to install and play next.

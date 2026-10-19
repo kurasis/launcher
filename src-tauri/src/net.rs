@@ -37,6 +37,9 @@ pub enum SourcePolicy {
     /// Files of the catalog of mods (D-066), checked against the SHA-256 the
     /// catalog gives. Not on the download mirror.
     ModsCatalog,
+    /// The start page feed (D-067): our service only, nothing of Mojang,
+    /// YouTube or Twitch.
+    Feed,
 }
 
 // `launchermeta` is Mojang's previous metadata host; older descriptors still
@@ -89,10 +92,12 @@ const ALL_SOURCE_HOSTS: &[&str] = &[
     crate::mirror::MIRROR_HOST,
     "crash.lapi.sh",
     crate::mods::FILES_HOST,
+    "feed.lapi.sh",
 ];
 
 const CRASH_REPORT_HOSTS: &[&str] = &["crash.lapi.sh"];
 const MODS_CATALOG_HOSTS: &[&str] = &[crate::mods::FILES_HOST];
+const FEED_HOSTS: &[&str] = &["feed.lapi.sh"];
 
 pub const MAX_REDIRECTS: usize = 5;
 
@@ -105,12 +110,13 @@ impl SourcePolicy {
             Self::ModLoaders => MOD_LOADER_HOSTS,
             Self::CrashReports => CRASH_REPORT_HOSTS,
             Self::ModsCatalog => MODS_CATALOG_HOSTS,
+            Self::Feed => FEED_HOSTS,
         }
     }
 
     /// Whether the download mirror (D-062) copies this source's files.
     pub fn mirrored(self) -> bool {
-        !matches!(self, Self::CrashReports | Self::ModsCatalog)
+        !matches!(self, Self::CrashReports | Self::ModsCatalog | Self::Feed)
     }
 
     /// The artifact source whose allowlist names this URL's host: Mojang's
@@ -597,6 +603,7 @@ mod tests {
             SourcePolicy::ModLoaders,
             SourcePolicy::CrashReports,
             SourcePolicy::ModsCatalog,
+            SourcePolicy::Feed,
         ] {
             for host in policy.hosts() {
                 assert!(ALL_SOURCE_HOSTS.contains(host), "{host}");

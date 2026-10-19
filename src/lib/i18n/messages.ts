@@ -12,6 +12,7 @@ export type Messages = {
   readonly independentNotice: string;
   readonly nav: {
     readonly label: string;
+    readonly feed: string;
     readonly home: string;
     readonly mods: string;
     readonly account: string;
@@ -20,6 +21,86 @@ export type Messages = {
     readonly settings: string;
     readonly diagnostics: string;
     readonly about: string;
+    readonly console: string;
+    readonly more: string;
+    readonly moreCurrent: (values: { view: string | number }) => string;
+  };
+  readonly feed: {
+    readonly title: string;
+    readonly loading: string;
+    readonly refresh: string;
+    readonly refreshing: string;
+    readonly problems: {
+      readonly disabled: string;
+      readonly offline: string;
+      readonly server: string;
+      readonly not_found: string;
+      readonly bad_input: string;
+      readonly too_many: string;
+      readonly full: string;
+      readonly unavailable: string;
+    };
+    readonly stale: (values: { date: string | number }) => string;
+    readonly noteStale: string;
+    readonly continueTitle: string;
+    readonly lastPlayed: (values: { when: string | number }) => string;
+    readonly play: string;
+    readonly starting: string;
+    readonly gameRunning: string;
+    readonly openInstallations: string;
+    readonly newVersion: string;
+    readonly versionTitle: (values: { version: string | number }) => string;
+    readonly readNote: string;
+    readonly install: (values: { version: string | number }) => string;
+    readonly filters: string;
+    readonly filter: {
+      readonly all: string;
+      readonly versions: string;
+      readonly news: string;
+      readonly videos: string;
+      readonly streams: string;
+    };
+    readonly articles: string;
+    readonly videos: string;
+    readonly ownVideos: string;
+    readonly streams: string;
+    readonly noArticles: string;
+    readonly noVideos: string;
+    readonly noStreams: string;
+    readonly kinds: {
+      readonly release: string;
+      readonly snapshot: string;
+      readonly pre: string;
+      readonly rc: string;
+      readonly news: string;
+    };
+    readonly short: string;
+    readonly live: string;
+    readonly viewers: (values: { count: number }) => string;
+    readonly watchVideo: (values: { title: string | number; channel: string | number }) => string;
+    readonly watchStream: (values: {
+      name: string | number;
+      title: string | number;
+      viewers: string | number;
+    }) => string;
+    readonly machineTranslated: string;
+    readonly original: string;
+    readonly close: string;
+    readonly readOnSite: string;
+    readonly noteLoading: string;
+    readonly sideLabel: string;
+    readonly cycleTitle: string;
+    readonly cycleTarget: (values: { version: string | number }) => string;
+    readonly cycleReleased: (values: { version: string | number }) => string;
+    readonly cycleSnapshots: (values: { count: number }) => string;
+    readonly cyclePre: (values: { count: number }) => string;
+    readonly cycleRc: (values: { count: number }) => string;
+    readonly cycleLatest: (values: { version: string | number; when: string | number }) => string;
+    readonly eventsTitle: string;
+    readonly eventWhen: (values: { starts: string | number; ends: string | number }) => string;
+    readonly announcementsTitle: string;
+    readonly tipTitle: string;
+    readonly openLink: string;
   };
   readonly bootstrap: {
     readonly loading: string;
@@ -611,6 +692,7 @@ export type Messages = {
     readonly sectionsLabel: string;
     readonly sections: {
       readonly general: string;
+      readonly feed: string;
       readonly java: string;
       readonly defaults: string;
       readonly network: string;
@@ -620,6 +702,7 @@ export type Messages = {
     };
     readonly sectionHints: {
       readonly general: string;
+      readonly feed: string;
       readonly java: string;
       readonly defaults: string;
       readonly network: string;
@@ -708,6 +791,16 @@ export type Messages = {
       readonly keep_open: string;
       readonly close_launcher: string;
     };
+    readonly startView: string;
+    readonly startViewHint: string;
+    readonly startViews: {
+      readonly feed: string;
+      readonly home: string;
+      readonly mods: string;
+      readonly skins: string;
+      readonly account: string;
+      readonly last: string;
+    };
     readonly dataLocation: string;
     readonly defaultsTitle: string;
     readonly defaultsSave: string;
@@ -770,6 +863,43 @@ export type Messages = {
         size: string | number;
       }) => string;
     };
+  };
+  readonly feedSettings: {
+    readonly showTitle: string;
+    readonly enabled: string;
+    readonly enabledHint: string;
+    readonly snapshots: string;
+    readonly shorts: string;
+    readonly machineTranslation: string;
+    readonly machineTranslationHint: string;
+    readonly hidden: string;
+    readonly blocks: {
+      readonly versions: string;
+      readonly news: string;
+      readonly videos: string;
+      readonly streams: string;
+    };
+    readonly videoLanguage: string;
+    readonly videoLanguages: {
+      readonly ui: string;
+      readonly en: string;
+      readonly ru: string;
+      readonly ar: string;
+    };
+    readonly player: string;
+    readonly players: {
+      readonly window: string;
+      readonly browser: string;
+    };
+    readonly channels: string;
+    readonly channelsHint: string;
+    readonly channelInput: string;
+    readonly add: string;
+    readonly adding: string;
+    readonly remove: string;
+    readonly removeChannel: (values: { title: string | number }) => string;
+    readonly noChannels: string;
+    readonly channelCount: (values: { count: number; max: number }) => string;
   };
   readonly privacy: {
     readonly shareStats: string;
@@ -1463,5 +1593,6 @@ export type Messages = {
     readonly accountRegister: string;
     readonly accountDelete: string;
     readonly saveAccountData: string;
+    readonly player: string;
   };
 };

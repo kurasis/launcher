@@ -2090,3 +2090,43 @@ archive from the Package workflow, upload it to
   never a link.
 - **Add to the catalog** and **My requests** use the launcher account's token; signed
   out, the launcher offers to sign in. A request in progress is asked about every 3 s.
+
+## D-067 — Start page feed at feed.lapi.sh
+
+- **Status:** accepted (owner request, 2026-10-19; design approved in the project) ·
+  **Affects:** the launcher's tabs (a new Feed tab, the "More" menu, the tab opened at
+  launch), the new service `services/feed` (`https://feed.lapi.sh`,
+  `/home/www/lapi/feed`), a player window for videos and streams.
+- **Goal.** The launcher opens on a Minecraft feed: patch notes of new versions, Mojang's
+  Java news, YouTube videos about Minecraft, live Twitch streams and our own events and
+  tips. The launcher asks no one but our server for it: no minecraft.net, YouTube or
+  Twitch request from a player's computer until they choose to watch.
+- **Sources (the service only):** Mojang's launcher content (`launchercontent.mojang.com`
+  v2: Java patch notes, news) and the version manifest; YouTube channel RSS feeds (no API
+  key), a channel found by its link, @handle or a video (oEmbed); Twitch Helix with an
+  app token (`TWITCH_CLIENT_ID`, `TWITCH_CLIENT_SECRET`), game Minecraft, mature streams
+  left out; DeepL (`DEEPL_API_KEY`) translates patch notes and news into Russian and
+  Arabic, stopping at 90 % of the month's characters.
+- **No HTML reaches the launcher.** Articles are cleaned into our own blocks (headings,
+  paragraphs, lists, pictures; runs of bold, italic, code and https links); scripts,
+  frames, forms, attributes and every other address are dropped, nesting and size are
+  bounded. Translations go out as that HTML and come back through the same cleaning.
+- **Pictures** are fetched by the service, decoded with limits and re-encoded as JPEG:
+  article pictures by their SHA-256, video previews only of videos of channels the
+  service knows, stream previews only of streams in the feed, so no one makes it fetch
+  arbitrary addresses.
+- **Editorial** (`services/feed/editorial.toml`, built in): the channels per language
+  (approved list), blocked Twitch logins, events, announcements and daily tips in en, ru
+  and ar; links only to YouTube, Twitch, minecraft.net and our domain.
+- **API:** `GET /v1/feed?lang=` (a minute), `GET /v1/notes/{id}?lang=`, pictures
+  `/v1/img|yt|tw/…`, `POST /v1/channels/resolve` (a player's own channel; 10 a minute per
+  address), `GET /v1/videos?channels=` (up to 30 of a player's channels, kept on the
+  player's computer only), `/play/yt/{id}` and `/play/twitch/{login}`: a page with the
+  provider's embedded player under a CSP with no script of ours. Nothing about a player
+  is logged; nginx logs paths without query strings.
+- **In the launcher:** the Feed tab; the tab opened at launch is a setting (feed by
+  default; home when a game runs); Backups, Screenshots, Diagnostics, Console and About
+  move into "More". Videos and streams play in a player window (default) or the
+  browser, as the player chooses.
+- **Server setup (owner):** a DNS record for feed.lapi.sh behind Cloudflare, then
+  `deploy/bootstrap.sh` once, as for the other services.
