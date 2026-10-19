@@ -51,9 +51,11 @@ Local equivalent for one target: `npx tauri build --bundles deb,appimage` (Linux
 
 ## Build configuration
 
-| Variable                 | Kind                         | Effect                                                       |
-| ------------------------ | ---------------------------- | ------------------------------------------------------------ |
-| `LAUNCHER_MSA_CLIENT_ID` | Repository variable (public) | Microsoft client ID compiled in; blank = sign-in unavailable |
+| Variable                                                              | Kind                                  | Effect                                                                   |
+| --------------------------------------------------------------------- | ------------------------------------- | ------------------------------------------------------------------------ |
+| `LAUNCHER_MSA_CLIENT_ID`                                              | Repository variable (public)          | Microsoft client ID compiled in; blank = sign-in unavailable             |
+| `LAUNCHER_UPDATE_PUBKEY`                                              | From the `UPDATE_PUBLIC_KEY` variable | The update signing key compiled in; blank = no update checks (D-063)     |
+| `LAUNCHER_UPDATE_URL`, `LAUNCHER_ACCOUNT_URL`, `LAUNCHER_FRIENDS_URL` | Local test builds only                | Another update, account or friends server; release builds never set them |
 
 ## Signing (owner actions)
 

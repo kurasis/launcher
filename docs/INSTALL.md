@@ -64,6 +64,10 @@ The launcher keeps its data, including game installations, worlds and settings, 
 | macOS   | `~/Library/Application Support/app.launcher` |
 | Linux   | `~/.local/share/app.launcher`                |
 
+Settings → General → _Launcher data location_ moves it to another folder. A
+`portable.txt` file next to the launcher keeps the data next to the launcher instead,
+so the whole folder can move to another computer (D-043).
+
 ## Updating
 
 A launcher built with the update public key checks for new versions, downloads them and

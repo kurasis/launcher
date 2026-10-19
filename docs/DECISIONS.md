@@ -735,8 +735,8 @@ message` plus a stack trace), with the event's level.
   `read_console`; the main window gains only `open_console`. The window polls
   `read_console(after)` every 300 ms. It stays open while the main window is unloaded
   for a game; closing the main window without a running game closes it too.
-- **Not included:** the journal is not written to disk and not part of the
-  diagnostics export (the run logs already are).
+- **Not included (then):** the journal was not written to disk nor exported. Since
+  D-061 it is also kept as `logs/launcher.log` and is part of the diagnostics export.
 
 ## D-038 — Interface languages: built for many, English, Russian and Arabic today
 
@@ -1908,5 +1908,6 @@ archive from the Package workflow, upload it to
 2. Friends: requests, accept, decline, block, the list; the chat icon.
 3. Chat with a friend: WebSocket, history, unread.
 4. Rooms of 2+ friends.
-5. Later: two-factor codes, mails about new sign-ins, reports of messages,
-   account deletion and export, backups.
+5. Later: two-factor codes, mails about new sign-ins, account deletion and export.
+   (Reports of messages came with stage 4; daily database copies with the October 2026
+   fixes, docs/SERVER-BACKUPS.md.)
