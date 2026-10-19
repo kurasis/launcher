@@ -229,7 +229,7 @@ export function App() {
       {snapshot !== null && <DownloadManager snapshot={snapshot} />}
       {snapshot !== null && (
         <FriendsCorner
-          settings={snapshot.settings}
+          snapshot={snapshot}
           onOpenAccounts={() => {
             setView('account');
           }}

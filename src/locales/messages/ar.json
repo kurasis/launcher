@@ -1219,7 +1219,17 @@
       "unreadSection": "غير مقروءة",
       "readSection": "مقروءة",
       "chatSound": "صوت للرسائل والطلبات الجديدة",
-      "chatNotifications": "إشعارات النظام عندما يعمل المشغّل في الخلفية"
+      "chatNotifications": "إشعارات النظام عندما يعمل المشغّل في الخلفية",
+      "inviteToServer": "ادعُ إلى {server}",
+      "invitedTo": "{nick} يدعوك إلى خادم",
+      "youInvited": "دعوتَ إلى خادم",
+      "join": "انضم",
+      "joinWith": "التثبيت",
+      "noInstallation": "ليس لديك تثبيت لـ {game}. أنشئ واحدًا في «التثبيتات» ثم انضم.",
+      "gameRunning": "اللعبة تعمل بالفعل.",
+      "inviteFriend": "ادعُ",
+      "inviteSent": "أُرسلت الدعوة إلى {nick}.",
+      "joining": "جارٍ تشغيل اللعبة…"
     },
     "windowTitles": {
       "pickJava": "اختر برنامج Java (java أو javaw.exe)",
@@ -1534,6 +1544,7 @@
     "No downloaded update is waiting.": "لا يوجد تحديث منزَّل بانتظار التثبيت.",
     "Close the game and wait for installs to finish, then restart to update.": "أغلق اللعبة وانتظر انتهاء التثبيتات، ثم أعد التشغيل للتحديث.",
     "The update could not be installed. Download it from the link instead.": "تعذّر تثبيت التحديث. نزّله من الرابط بدلًا من ذلك.",
-    "There is no update page to open.": "لا توجد صفحة تحديث لفتحها."
+    "There is no update page to open.": "لا توجد صفحة تحديث لفتحها.",
+    "That is not a server address.": "هذا ليس عنوان خادم."
   }
 }

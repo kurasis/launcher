@@ -743,6 +743,46 @@ async fn offline_in_the_full_game_only_with_an_owner_signed_in() {
 }
 
 #[tokio::test(flavor = "multi_thread")]
+async fn a_friends_invite_starts_the_game_on_its_server_and_the_server_is_noticed() {
+    let s = Setup::new().await;
+    let service = s.service(auth("Player"));
+    let bad = service
+        .launch_joining(
+            &Uuid::new_v4().to_string(),
+            s.instance,
+            service.mode_for(s.instance),
+            Some("evil host; --demo"),
+        )
+        .await
+        .unwrap_err();
+    assert_eq!(bad.code, ErrorCode::InvalidInput);
+    // The fake game prints its arguments: one of them reads like the game's
+    // own line when it joins a server.
+    s.f.state
+        .update_instance(s.instance, |i| {
+            i.game_arguments = "\"Connecting to Play.Example.com, 25570\"".into();
+        })
+        .unwrap();
+    let run = service
+        .launch_joining(
+            &Uuid::new_v4().to_string(),
+            s.instance,
+            service.mode_for(s.instance),
+            Some("play.example.com:25570"),
+        )
+        .await
+        .unwrap();
+    let done = s.finished(&run.run_id).await;
+    let tail = done.output_tail.join("\n");
+    assert!(
+        tail.contains("ARG:--quickPlayMultiplayer\nARG:play.example.com:25570")
+            || tail.contains("ARG:--server\nARG:play.example.com\nARG:--port\nARG:25570"),
+        "{tail}"
+    );
+    assert_eq!(done.server.as_deref(), Some("play.example.com:25570"));
+}
+
+#[tokio::test(flavor = "multi_thread")]
 async fn a_java_the_system_will_not_start_is_explained_and_frees_the_launcher() {
     // Antivirus software or a security policy refusing Java looks like this to
     // the launcher: the Java file may not be executed.

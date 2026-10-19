@@ -2,8 +2,8 @@ import { act, fireEvent, render, screen, waitFor, within } from '@testing-librar
 import { emit } from '@tauri-apps/api/event';
 import { mockIPC } from '@tauri-apps/api/mocks';
 import { describe, expect, it, vi } from 'vitest';
-import type { ChatMessage, ChatRoom, FriendsView } from '../../lib/contracts';
-import { snapshotFixture } from '../../test/fixtures';
+import type { AppSnapshot, ChatMessage, ChatRoom, FriendsView } from '../../lib/contracts';
+import { instanceFixture, snapshotFixture } from '../../test/fixtures';
 import { FriendsCorner } from './FriendsCorner';
 
 const ME = { id: '00000000-0000-4000-8000-000000000001', nick: 'Steve_2' };
@@ -67,7 +67,11 @@ const signedOut: FriendsView = {
 };
 
 /** Answers friends commands; a function answer may throw a problem string. */
-function setup(view: FriendsView, answers: Record<string, (args: unknown) => unknown> = {}) {
+function setup(
+  view: FriendsView,
+  answers: Record<string, (args: unknown) => unknown> = {},
+  snapshot: AppSnapshot = snapshotFixture(),
+) {
   const calls: { cmd: string; args: unknown }[] = [];
   mockIPC(
     (cmd, args) => {
@@ -82,7 +86,7 @@ function setup(view: FriendsView, answers: Record<string, (args: unknown) => unk
     { shouldMockEvents: true },
   );
   const onOpenAccounts = vi.fn();
-  render(<FriendsCorner settings={snapshotFixture().settings} onOpenAccounts={onOpenAccounts} />);
+  render(<FriendsCorner snapshot={snapshot} onOpenAccounts={onOpenAccounts} />);
   return { calls, onOpenAccounts };
 }
 
@@ -449,5 +453,103 @@ describe('friends corner', () => {
           .map((c) => (c.args as { request: { payload: unknown } }).request.payload),
       ).toEqual([{ chatSound: false }, { chatNotifications: false }]);
     });
+  });
+
+  it('invites a friend to the server the game is on', async () => {
+    const instance = instanceFixture({ versionId: '1.21.1' });
+    const playing = snapshotFixture({
+      instances: [instance],
+      currentRun: {
+        runId: 'r1',
+        kind: 'game',
+        instanceId: instance.id,
+        state: 'running',
+        startedAt: '2026-10-19T12:00:00Z',
+        endedAt: null,
+        exitCode: null,
+        durationMs: null,
+        drainTimedOut: false,
+        outputTail: [],
+        outputLinesDropped: 0,
+        error: null,
+        loggingDegraded: false,
+        signal: null,
+        diagnosis: null,
+        server: 'play.example.com:25565',
+      },
+    });
+    const { calls } = setup(
+      signedIn(),
+      {
+        friends_send: (args) => ({
+          ...message(9, ME.id, (args as { body: string }).body),
+        }),
+        friends_open_direct: () => ROOM,
+      },
+      playing,
+    );
+    const panel = await openPanel();
+    fireEvent.click(within(panel).getByRole('tab', { name: /Friends/ }));
+    fireEvent.click(within(panel).getAllByRole('button', { name: 'Invite' })[0] as HTMLElement);
+    expect(await within(panel).findByText('Invite sent to Alex.')).toBeVisible();
+    expect(calls.find((c) => c.cmd === 'friends_send')?.args).toEqual({
+      room: ROOM,
+      body: '🎮 invite play.example.com:25565 1.21.1',
+    });
+  });
+
+  it('shows an invite as a card and joins with an installation of that version', async () => {
+    const old = instanceFixture({
+      id: 'old',
+      versionId: '1.20.4',
+      displayName: 'Old',
+      health: 'ready',
+    });
+    const match = instanceFixture({
+      id: 'match',
+      versionId: '1.21.1',
+      displayName: 'Survival',
+      health: 'ready',
+    });
+    const { calls } = setup(
+      signedIn(),
+      {
+        friends_messages: () => [
+          message(1, ALEX.id, '🎮 invite play.example.com:25565 1.21.1'),
+          message(2, ALEX.id, '🎮 invite evil host; --demo 1.21.1'),
+        ],
+      },
+      snapshotFixture({ instances: [old, match] }),
+    );
+    const panel = await openPanel();
+    fireEvent.click(within(panel).getByRole('button', { name: /Alex/ }));
+    expect(await within(panel).findByText('Alex invites you to a server')).toBeVisible();
+    expect(within(panel).getByText('play.example.com:25565')).toBeVisible();
+    // Not a valid invite: plain text, no button.
+    expect(within(panel).getByText('🎮 invite evil host; --demo 1.21.1')).toBeVisible();
+    fireEvent.click(within(panel).getByRole('button', { name: 'Join' }));
+    await waitFor(() => {
+      const launch = calls.find((c) => c.cmd === 'launch_game')?.args as {
+        request: { payload: unknown };
+      };
+      expect(launch.request.payload).toEqual({
+        instanceId: 'match',
+        server: 'play.example.com:25565',
+      });
+    });
+  });
+
+  it('says what is missing to join', async () => {
+    setup(
+      signedIn(),
+      { friends_messages: () => [message(1, ALEX.id, '🎮 invite play.example.com:25565 1.7.10')] },
+      snapshotFixture({ instances: [instanceFixture({ versionId: '1.21.1', health: 'ready' })] }),
+    );
+    const panel = await openPanel();
+    fireEvent.click(within(panel).getByRole('button', { name: /Alex/ }));
+    expect(
+      await within(panel).findByText(/You have no installation of Minecraft 1.7.10/),
+    ).toBeVisible();
+    expect(within(panel).queryByRole('button', { name: 'Join' })).toBeNull();
   });
 });

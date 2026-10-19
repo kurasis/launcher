@@ -1285,6 +1285,16 @@ export type Messages = {
     readonly readSection: string;
     readonly chatSound: string;
     readonly chatNotifications: string;
+    readonly inviteToServer: (values: { server: string | number }) => string;
+    readonly invitedTo: (values: { nick: string | number }) => string;
+    readonly youInvited: string;
+    readonly join: string;
+    readonly joinWith: string;
+    readonly noInstallation: (values: { game: string | number }) => string;
+    readonly gameRunning: string;
+    readonly inviteFriend: string;
+    readonly inviteSent: (values: { nick: string | number }) => string;
+    readonly joining: string;
   };
   readonly windowTitles: {
     readonly pickJava: string;

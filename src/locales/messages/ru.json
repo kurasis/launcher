@@ -1218,7 +1218,17 @@
       "unreadSection": "Непрочитанные",
       "readSection": "Прочитанные",
       "chatSound": "Звук новых сообщений и заявок",
-      "chatNotifications": "Системные уведомления, когда лаунчер в фоне"
+      "chatNotifications": "Системные уведомления, когда лаунчер в фоне",
+      "inviteToServer": "Пригласить на {server}",
+      "invitedTo": "{nick} зовёт вас на сервер",
+      "youInvited": "Вы пригласили на сервер",
+      "join": "Зайти",
+      "joinWith": "Установка",
+      "noInstallation": "У вас нет установки {game}. Создайте её в «Установках» и зайдите.",
+      "gameRunning": "Игра уже запущена.",
+      "inviteFriend": "Пригласить",
+      "inviteSent": "Приглашение отправлено: {nick}.",
+      "joining": "Запускаю игру…"
     },
     "windowTitles": {
       "pickJava": "Выберите программу Java (java или javaw.exe)",
@@ -1533,6 +1543,7 @@
     "No downloaded update is waiting.": "Нет загруженного обновления.",
     "Close the game and wait for installs to finish, then restart to update.": "Закройте игру и дождитесь окончания установок, затем перезапустите для обновления.",
     "The update could not be installed. Download it from the link instead.": "Не удалось установить обновление. Загрузите его по ссылке.",
-    "There is no update page to open.": "Нет страницы обновления."
+    "There is no update page to open.": "Нет страницы обновления.",
+    "That is not a server address.": "Это не адрес сервера."
   }
 }

@@ -906,6 +906,9 @@ pub struct RunPayload {
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct LaunchPayload {
     pub instance_id: crate::storage::paths::InstanceId,
+    /// A server to start the game straight into (a friend's invite).
+    #[serde(default)]
+    pub server: Option<String>,
 }
 
 /// Checks the installation and the account of the installation's profile (or
@@ -925,7 +928,14 @@ pub async fn launch_game(
         .unwrap_or_else(|| launcher.mode_for(id));
     #[cfg(not(debug_assertions))]
     let mode = launcher.mode_for(id);
-    launcher.launch_as(&request.request_id, id, mode).await
+    launcher
+        .launch_joining(
+            &request.request_id,
+            id,
+            mode,
+            request.payload.server.as_deref(),
+        )
+        .await
 }
 
 /// Terminates the owned game process of `runId` after the user confirmed it.

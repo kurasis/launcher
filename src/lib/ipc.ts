@@ -225,8 +225,11 @@ export const ipc = {
       request: mutation({ runId, title }, requestId),
     }),
   /** Plays as the installation's profile: a Microsoft account, or the demo (D-045). */
-  launchGame: (instanceId: string, requestId?: string): Promise<RunSummary> =>
-    invoke<RunSummary>('launch_game', { request: mutation({ instanceId }, requestId) }),
+  /** Starts the game; with `server` (a friend's invite) straight into that server. */
+  launchGame: (instanceId: string, requestId?: string, server?: string): Promise<RunSummary> =>
+    invoke<RunSummary>('launch_game', {
+      request: mutation(server === undefined ? { instanceId } : { instanceId, server }, requestId),
+    }),
   stopGame: (runId: string, requestId?: string): Promise<boolean> =>
     invoke<boolean>('stop_game', { request: mutation({ runId }, requestId) }),
   listSupportedVersions: (refresh: boolean): Promise<CatalogView> =>

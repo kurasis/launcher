@@ -3,6 +3,7 @@ import { Button } from '../../components/Button';
 import { Field } from '../../components/Field';
 import forms from '../../components/forms.module.css';
 import type {
+  AppSnapshot,
   ChatRoom,
   FriendAction,
   FriendPerson,
@@ -12,6 +13,8 @@ import type {
 import { accountProblem, friendsProblem, ipc, onFriendsMessage } from '../../lib/ipc';
 import { strings } from '../../lib/strings';
 import { ChatView } from './ChatView';
+import type { GameForInvites } from './InviteCard';
+import { inviteBody } from './invite';
 import styles from './Friends.module.css';
 import { playChime, unlockSoundOnFirstInput } from './sound';
 import { problemText, roomTitle, sanctionText, useFriends } from './useFriends';
@@ -26,13 +29,34 @@ const GROUP_MAX = 20;
  * the corner, next to the downloads, with the whole friends system in its
  * panel.
  */
+/** The running game's server as an invite, and the installations to join with. */
+function gameForInvites(snapshot: AppSnapshot): GameForInvites {
+  const run = snapshot.currentRun;
+  const running =
+    run !== null &&
+    run.kind === 'game' &&
+    !['exited', 'failed', 'cancelled', 'stopped'].includes(run.state);
+  const instance =
+    run?.instanceId == null ? undefined : snapshot.instances.find((i) => i.id === run.instanceId);
+  return {
+    invite:
+      running && run.server !== null && instance !== undefined
+        ? { server: run.server, version: instance.versionId, loader: instance.loader?.kind ?? null }
+        : null,
+    instances: snapshot.instances,
+    running,
+  };
+}
+
 export function FriendsCorner({
-  settings,
+  snapshot,
   onOpenAccounts,
 }: {
-  settings: SettingsView;
+  snapshot: AppSnapshot;
   onOpenAccounts: () => void;
 }) {
+  const settings = snapshot.settings;
+  const game = gameForInvites(snapshot);
   const view = useFriends();
   const [open, setOpen] = useState(false);
   const [roomId, setRoomId] = useState<string | null>(null);
@@ -50,6 +74,7 @@ export function FriendsCorner({
         <FriendsPanel
           view={view}
           settings={settings}
+          game={game}
           roomId={roomId}
           onRoom={setRoomId}
           onOpenAccounts={() => {
@@ -189,12 +214,14 @@ function ConfirmEmail({ onOpenAccounts }: { onOpenAccounts: () => void }) {
 function FriendsPanel({
   view,
   settings,
+  game,
   roomId,
   onRoom,
   onOpenAccounts,
 }: {
   view: FriendsView;
   settings: SettingsView;
+  game: GameForInvites;
   roomId: string | null;
   onRoom: (room: string | null) => void;
   onOpenAccounts: () => void;
@@ -223,6 +250,7 @@ function FriendsPanel({
         key={room.id}
         room={room}
         view={view}
+        game={game}
         onBack={() => {
           setRoomId(null);
         }}
@@ -274,7 +302,9 @@ function FriendsPanel({
               }}
             />
           )}
-          {tab === 'friends' && <Friends view={view} settings={settings} onOpen={setRoomId} />}
+          {tab === 'friends' && (
+            <Friends view={view} settings={settings} game={game} onOpen={setRoomId} />
+          )}
           {tab === 'requests' && <Requests view={view} />}
         </div>
       </>
@@ -418,10 +448,12 @@ function RoomSections({
 function Friends({
   view,
   settings,
+  game,
   onOpen,
 }: {
   view: FriendsView;
   settings: SettingsView;
+  game: GameForInvites;
   onOpen: (room: string) => void;
 }) {
   const [nick, setNick] = useState('');
@@ -586,6 +618,28 @@ function Friends({
                 >
                   {t.message}
                 </button>
+                {game.invite !== null && (
+                  <button
+                    type="button"
+                    className={styles.link}
+                    disabled={action.pending}
+                    onClick={() => {
+                      const invite = game.invite;
+                      if (invite === null) return;
+                      setNotice(null);
+                      void action
+                        .run(async () => {
+                          const room = await ipc.friendsOpenDirect(person.id);
+                          await ipc.friendsSend(room, inviteBody(invite));
+                        })
+                        .then((sent) => {
+                          if (sent !== null) setNotice(t.inviteSent({ nick: person.nick }));
+                        });
+                    }}
+                  >
+                    {t.inviteFriend}
+                  </button>
+                )}
                 <button
                   type="button"
                   className={styles.quiet}

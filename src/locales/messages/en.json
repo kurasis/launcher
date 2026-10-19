@@ -1218,7 +1218,17 @@
       "unreadSection": "Unread",
       "readSection": "Read",
       "chatSound": "Sound for new messages and requests",
-      "chatNotifications": "System notifications while the launcher is in the background"
+      "chatNotifications": "System notifications while the launcher is in the background",
+      "inviteToServer": "Invite to {server}",
+      "invitedTo": "{nick} invites you to a server",
+      "youInvited": "You invited to a server",
+      "join": "Join",
+      "joinWith": "Installation",
+      "noInstallation": "You have no installation of {game}. Create one in Installations, then join.",
+      "gameRunning": "The game is already running.",
+      "inviteFriend": "Invite",
+      "inviteSent": "Invite sent to {nick}.",
+      "joining": "Starting the game…"
     },
     "windowTitles": {
       "pickJava": "Choose the Java program (java or javaw.exe)",
@@ -1376,6 +1386,7 @@
     "Some game files are missing or damaged. Repair the installation, then play.": "Some game files are missing or damaged. Repair the installation, then play.",
     "Starting the mod loader installer": "Starting the mod loader installer",
     "Storage is not initialized.": "Storage is not initialized.",
+    "That is not a server address.": "That is not a server address.",
     "The HTTPS client could not be created. Check that the system CA certificates are installed.": "The HTTPS client could not be created. Check that the system CA certificates are installed.",
     "The Java check is missing.": "The Java check is missing.",
     "The Java chosen for this installation could not be started. Choose another one in the installation settings.": "The Java chosen for this installation could not be started. Choose another one in the installation settings.",

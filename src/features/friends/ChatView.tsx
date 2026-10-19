@@ -5,6 +5,8 @@ import type { ChatMessage, ChatRoom, FriendsView } from '../../lib/contracts';
 import { friendsProblem, ipc, onFriendsMessage, onFriendsRemoved } from '../../lib/ipc';
 import { numberLocale, strings } from '../../lib/strings';
 import styles from './Friends.module.css';
+import { type GameForInvites, InviteCard } from './InviteCard';
+import { inviteBody, parseInvite } from './invite';
 import { problemText, roomTitle, sanctionText } from './useFriends';
 
 const t = strings.friends;
@@ -40,10 +42,12 @@ function time(seconds: number): string {
 export function ChatView({
   room,
   view,
+  game,
   onBack,
 }: {
   room: ChatRoom;
   view: FriendsView;
+  game: GameForInvites;
   onBack: () => void;
 }) {
   const me = view.me;
@@ -169,6 +173,26 @@ export function ChatView({
       }
     }
   }
+
+  // Messages that are invites to a server, shown as cards.
+  const invites = new Map(
+    messages.flatMap((m) => {
+      const invite = parseInvite(m.body);
+      return invite === null ? [] : [[m.id, invite] as const];
+    }),
+  );
+
+  const sendInvite = async () => {
+    if (game.invite === null || sending) return;
+    setSending(true);
+    stick.current = true;
+    const body = inviteBody(game.invite);
+    await run(async () => {
+      const message = await ipc.friendsSend(room.id, body);
+      setMessages((current) => merge(current, [message]));
+    });
+    setSending(false);
+  };
 
   const stopReporting = () => {
     setReporting(null);
@@ -371,6 +395,7 @@ export function ChatView({
         )}
         {messages.map((message) => {
           const mine = message.sender === me?.id;
+          const invite = invites.get(message.id);
           return (
             <Fragment key={message.id}>
               {message.id === firstUnread && (
@@ -385,9 +410,13 @@ export function ChatView({
                     {time(message.created)}
                   </time>
                 </p>
-                <p className={styles.body} dir="auto">
-                  {message.body}
-                </p>
+                {invite === undefined ? (
+                  <p className={styles.body} dir="auto">
+                    {message.body}
+                  </p>
+                ) : (
+                  <InviteCard invite={invite} from={nick(message.sender)} mine={mine} game={game} />
+                )}
                 {!mine &&
                   (reported.has(message.id) ? (
                     <p className={styles.muted}>{t.reported}</p>
@@ -456,36 +485,43 @@ export function ChatView({
       ) : readOnly ? (
         <p className={styles.muted}>{t.readOnly}</p>
       ) : (
-        <form
-          className={styles.composer}
-          onSubmit={(event) => {
-            event.preventDefault();
-            void send();
-          }}
-        >
-          <textarea
-            className={[forms.input, styles.draft].join(' ')}
-            aria-label={t.write}
-            placeholder={t.write}
-            title={t.sendHint}
-            rows={2}
-            dir="auto"
-            maxLength={MESSAGE_MAX}
-            value={draft}
-            onChange={(event) => {
-              setDraft(event.target.value);
+        <>
+          {game.invite !== null && (
+            <Button disabled={sending} onClick={() => void sendInvite()}>
+              {t.inviteToServer({ server: game.invite.server })}
+            </Button>
+          )}
+          <form
+            className={styles.composer}
+            onSubmit={(event) => {
+              event.preventDefault();
+              void send();
             }}
-            onKeyDown={(event) => {
-              if (event.key === 'Enter' && !event.shiftKey && !event.nativeEvent.isComposing) {
-                event.preventDefault();
-                void send();
-              }
-            }}
-          />
-          <Button type="submit" variant="primary" disabled={sending || draft.trim().length === 0}>
-            {t.send}
-          </Button>
-        </form>
+          >
+            <textarea
+              className={[forms.input, styles.draft].join(' ')}
+              aria-label={t.write}
+              placeholder={t.write}
+              title={t.sendHint}
+              rows={2}
+              dir="auto"
+              maxLength={MESSAGE_MAX}
+              value={draft}
+              onChange={(event) => {
+                setDraft(event.target.value);
+              }}
+              onKeyDown={(event) => {
+                if (event.key === 'Enter' && !event.shiftKey && !event.nativeEvent.isComposing) {
+                  event.preventDefault();
+                  void send();
+                }
+              }}
+            />
+            <Button type="submit" variant="primary" disabled={sending || draft.trim().length === 0}>
+              {t.send}
+            </Button>
+          </form>
+        </>
       )}
     </div>
   );

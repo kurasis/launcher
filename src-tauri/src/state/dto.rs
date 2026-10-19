@@ -483,6 +483,10 @@ pub struct RunSummary {
     /// Why the game stopped, when it crashed (D-059).
     #[serde(default)]
     pub diagnosis: Option<crate::launch::crash::CrashDiagnosis>,
+    /// The server the game last joined (`host:port`), from its own log: what
+    /// the player may invite friends to.
+    #[serde(default)]
+    pub server: Option<String>,
 }
 
 /// The complete state a freshly created webview needs (doc 06 "Bootstrap").

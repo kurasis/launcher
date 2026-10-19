@@ -624,6 +624,8 @@ export interface RunSummary {
   signal: number | null;
   /** Why the game stopped, when it crashed (D-059). */
   diagnosis: CrashDiagnosis | null;
+  /** The server the game last joined (`host:port`): friends can be invited to it. */
+  server: string | null;
 }
 
 /** Known causes of a crash, most specific first (D-059). */
