@@ -95,6 +95,9 @@ pub struct App {
     /// `https://worlds.lapi.sh`: the tickets' issuer and the origin DPoP
     /// proofs name.
     pub base: String,
+    /// The relay's bearer token for the allow list; without one the list is
+    /// not served.
+    pub relay_token: Option<String>,
 }
 
 fn status_of(code: &str) -> StatusCode {
@@ -834,6 +837,78 @@ async fn release(
     }
 }
 
+// The relay (relay.lapi.sh, its own server).
+
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct Enrollment {
+    endpoint: String,
+}
+
+/// A guest asks the relay to carry its tunnel key; it repeats this every 10
+/// seconds while it plays.
+async fn enroll(
+    State(app): State<Arc<App>>,
+    headers: HeaderMap,
+    method: Method,
+    uri: Uri,
+    Path(room): Path<String>,
+    bytes: Bytes,
+) -> Response {
+    let me = me!(app, headers);
+    ids!(room);
+    let device = device!(app, headers, me, method, uri);
+    let request: Enrollment = body!(bytes);
+    if !text::endpoint(&request.endpoint) {
+        return refuse("bad_request");
+    }
+    limit!(app, me, "relay", 30, 60);
+    let now = app.clock.now();
+    answer(
+        app.store
+            .enroll(&me.claims.sub, &device, &room, &request.endpoint, now)
+            .map(|until| json!({ "ttl": until - now })),
+    )
+}
+
+/// The relay's group for an account: enough to count connections per
+/// account, without telling the relay who it is.
+fn relay_group(account: &str) -> String {
+    tickets::hex(&Sha256::digest(format!("relay-group:{account}").as_bytes())[..12])
+}
+
+/// Every tunnel key the relay may carry, with seconds left. Asked by the
+/// relay every 10 seconds.
+async fn relay_allow(State(app): State<Arc<App>>, headers: HeaderMap) -> Response {
+    let Some(expected) = app.relay_token.as_deref() else {
+        return refuse("not_found");
+    };
+    let given = headers
+        .get(header::AUTHORIZATION)
+        .and_then(|v| v.to_str().ok())
+        .and_then(|v| v.strip_prefix("Bearer "))
+        .unwrap_or_default();
+    // Compared as digests, so the time taken tells nothing about the token.
+    if Sha256::digest(given.as_bytes()) != Sha256::digest(expected.as_bytes()) {
+        return refuse("unauthorized");
+    }
+    let now = app.clock.now();
+    match app.store.relay_allow(now) {
+        Ok(grants) => Json(json!({
+            "allow": grants
+                .iter()
+                .map(|g| json!({
+                    "endpoint": g.endpoint,
+                    "group": relay_group(&g.account),
+                    "ttl": g.until - now,
+                }))
+                .collect::<Vec<_>>(),
+        }))
+        .into_response(),
+        Err(e) => answer::<()>(Err(e)),
+    }
+}
+
 // Live hints.
 
 async fn live(
@@ -914,6 +989,8 @@ pub fn router(app: Arc<App>) -> Router {
         .route("/v1/invites/redeem", post(redeem_invite))
         .route("/v1/rooms/{room}/sessions", post(start_session))
         .route("/v1/rooms/{room}/tickets", post(ticket))
+        .route("/v1/rooms/{room}/relay", post(enroll))
+        .route("/v1/relay/allow", get(relay_allow))
         .route("/v1/sessions/{session}/renew", post(renew))
         .route("/v1/sessions/{session}/stop", post(stop_session))
         .route("/v1/sessions/{session}/admissions", post(admit))

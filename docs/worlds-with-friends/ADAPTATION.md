@@ -182,3 +182,9 @@ tuple; Fabric and other loaders arrive in W12.
   recovers at once. A ticket is used up even when its admission is then refused. The
   maintenance lease moves to W9 with backups, and start and stop are single calls instead of
   operations with cancellation.
+- 2026-10-19 — W6: the relay is iroh-relay 1.3.0 built into our own binary, not the stock
+  server: the stock one checks a key only when it connects. The relay pulls the allow list from
+  worlds.lapi.sh every 10 s (worlds.lapi.sh does not reach the relay's server); guests enroll
+  their per-session key for a room, and hosts are allowed while their lease holds. The relay
+  sees a hashed group per account, never the account. Its certificate comes from Let's Encrypt
+  through the relay itself, so the VPS needs no nginx or certbot.

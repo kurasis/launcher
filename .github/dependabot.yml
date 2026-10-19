@@ -22,6 +22,7 @@ updates:
       - /services/crash
       - /services/friends
       - /services/worlds
+      - /services/relay
       - /services/skins
       - /services/mirror
       - /services/oauth

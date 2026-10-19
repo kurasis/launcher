@@ -119,6 +119,16 @@ CREATE TABLE IF NOT EXISTS admissions (
 -- One slot per account per room until the host releases it.
 CREATE UNIQUE INDEX IF NOT EXISTS admissions_slot ON admissions(room, account) WHERE released IS NULL;
 CREATE INDEX IF NOT EXISTS admissions_session ON admissions(session);
+-- Guests' tunnel keys the relay may carry, one per member and session,
+-- renewed by the guest every 10 seconds.
+CREATE TABLE IF NOT EXISTS relay_grants (
+    account TEXT NOT NULL,
+    session TEXT NOT NULL,
+    device TEXT NOT NULL,
+    endpoint TEXT NOT NULL,
+    until INTEGER NOT NULL,
+    PRIMARY KEY (account, session)
+);
 "#;
 
 /// A refusal with its error code, or a database failure.
@@ -248,6 +258,14 @@ pub struct Renewal {
     pub members: Vec<String>,
     /// Admissions to close now: their member left or was removed.
     pub revoked: Vec<String>,
+}
+
+/// A tunnel key the relay may carry until `until`, and whose it is.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct RelayGrant {
+    pub endpoint: String,
+    pub account: String,
+    pub until: i64,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
@@ -1282,11 +1300,75 @@ impl Store {
         Ok(found.room)
     }
 
+    /// Lets the relay carry a member's tunnel key for the room's live
+    /// session; a new key replaces the member's old one. Returns how long it
+    /// holds.
+    pub fn enroll(
+        &self,
+        account: &str,
+        device: &str,
+        room: &str,
+        endpoint: &str,
+        now: i64,
+    ) -> Result<i64> {
+        let db = self.db();
+        expire(&db, &self.authority, now)?;
+        role_of(&db, account, room)?;
+        let session: Option<String> = db
+            .query_row(
+                "SELECT id FROM sessions WHERE room = ?1 AND ended IS NULL",
+                [room],
+                |r| r.get(0),
+            )
+            .optional()?;
+        let Some(session) = session else {
+            return no("not_hosting");
+        };
+        let until = now + LEASE;
+        db.execute(
+            "INSERT INTO relay_grants (account, session, device, endpoint, until)
+             VALUES (?1, ?2, ?3, ?4, ?5)
+             ON CONFLICT (account, session) DO UPDATE SET
+             device = excluded.device, endpoint = excluded.endpoint, until = excluded.until",
+            params![account, session, device, endpoint, until],
+        )?;
+        Ok(until)
+    }
+
+    /// What the relay may carry now: the hosts of live sessions while their
+    /// lease holds, and the enrolled keys of their active members.
+    pub fn relay_allow(&self, now: i64) -> Result<Vec<RelayGrant>> {
+        let db = self.db();
+        expire(&db, &self.authority, now)?;
+        let mut statement = db.prepare(
+            "SELECT s.endpoint, r.owner, s.lease_until FROM sessions s
+             JOIN rooms r ON r.id = s.room
+             WHERE s.ended IS NULL AND s.lease_until >= ?1
+             UNION ALL
+             SELECT g.endpoint, g.account, MIN(g.until, s.lease_until) FROM relay_grants g
+             JOIN sessions s ON s.id = g.session AND s.ended IS NULL
+             JOIN members m ON m.room = s.room AND m.account = g.account AND m.state = 'active'
+             JOIN devices d ON d.id = g.device AND d.revoked IS NULL
+             WHERE g.until >= ?1 AND s.lease_until >= ?1",
+        )?;
+        let grants = statement
+            .query_map([now], |r| {
+                Ok(RelayGrant {
+                    endpoint: r.get(0)?,
+                    account: r.get(1)?,
+                    until: r.get(2)?,
+                })
+            })?
+            .collect::<rusqlite::Result<_>>()?;
+        Ok(grants)
+    }
+
     /// Ends what ran out and forgets what is old.
     pub fn sweep(&self, now: i64) -> Result<()> {
         let db = self.db();
         expire(&db, &self.authority, now)?;
         db.execute("DELETE FROM tickets WHERE expires < ?1", [now - 3600])?;
+        db.execute("DELETE FROM relay_grants WHERE until < ?1", [now - 3600])?;
         db.execute(
             "DELETE FROM invites WHERE expires < ?1 OR revoked < ?1",
             [now - KEEP],

@@ -97,8 +97,9 @@ single-player world from the game (P18).
 
 ## W6 — Relay
 
-- `deploy/relay/`: pinned iroh-relay build, TLS, UDP, systemd; access policy fed by worlds.lapi.sh
-  (30 s allow records renewed every 10 s); per-account connection and byte limits; counters.
+- `services/relay` (iroh-relay pinned as a library) and `deploy/relay/`: TLS, UDP, systemd; access
+  policy fed by worlds.lapi.sh (30 s allow records read every 10 s, guests enroll their key);
+  per-account connection and byte limits; counters.
 - Workflow with `RELAY_SSH_*` secrets; the main server's address never appears there.
 - Exit: unregistered endpoint refused, revoked busy endpoint closed, renewal stopped closes the
   connection (A12, A58). Owner provides the VPS and DNS.

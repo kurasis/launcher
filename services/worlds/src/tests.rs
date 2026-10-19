@@ -21,6 +21,7 @@ use crate::tickets::TicketKey;
 const ISSUER: &str = "https://oauth.example";
 const BASE: &str = "https://worlds.example";
 const AUTHORITY: &str = "authority-epoch-one";
+const RELAY_TOKEN: &str = "relay-token-0123456789abcdef0123456789";
 
 const NICKS: [&str; 7] = ["", "Alice", "Bob", "Carol", "Dave", "Erin", "Mallory"];
 
@@ -59,6 +60,7 @@ fn app_in(dir: &std::path::Path, authority: &str, issuer: &SigningKey) -> Arc<Ap
         limiter: Limiter::default(),
         clock: Clock::default(),
         base: BASE.to_owned(),
+        relay_token: Some(RELAY_TOKEN.to_owned()),
     })
 }
 
@@ -1122,4 +1124,102 @@ async fn health_and_ticket_keys_are_public() {
     assert!(keys["keys"][0].get("d").is_none(), "no private part");
     let counts = t.app.store.counts(t.app.clock.now()).unwrap();
     assert!(counts.as_object().unwrap().values().all(Value::is_number));
+}
+
+#[tokio::test]
+async fn the_relay_carries_hosts_and_enrolled_members_only() {
+    let t = setup();
+    let room = t.room_with(&[2, 3]).await;
+    for n in 1..=5 {
+        t.register(n).await;
+    }
+    let allow = || async {
+        let request = Request::get("/v1/relay/allow")
+            .header(header::AUTHORIZATION, format!("Bearer {RELAY_TOKEN}"))
+            .body(Body::empty())
+            .unwrap();
+        let (status, body) = t.send(request).await;
+        assert_eq!(status, StatusCode::OK);
+        let mut keys: Vec<String> = body["allow"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|g| g["endpoint"].as_str().unwrap().to_owned())
+            .collect();
+        keys.sort();
+        (keys, body)
+    };
+    let enroll = |n: u8, key: String| {
+        let room = room.clone();
+        let t = &t;
+        async move {
+            t.on_device(
+                "POST",
+                &format!("/v1/rooms/{room}/relay"),
+                n,
+                Some(json!({"endpoint": key})),
+            )
+            .await
+        }
+    };
+    // Nothing before hosting.
+    let (status, body) = enroll(2, endpoint(2)).await;
+    assert_eq!(
+        (status, error(&body)),
+        (StatusCode::CONFLICT, "not_hosting")
+    );
+    assert!(allow().await.0.is_empty());
+
+    let session = t.host(&room, 8).await;
+    assert_eq!(allow().await.0, [endpoint(1)]);
+    let (status, body) = enroll(2, endpoint(2)).await;
+    assert_eq!((status, body["ttl"].as_i64()), (StatusCode::OK, Some(30)));
+    assert_eq!(enroll(3, endpoint(3)).await.0, StatusCode::OK);
+    // Outsiders and junk are refused.
+    assert_eq!(enroll(5, endpoint(5)).await.0, StatusCode::NOT_FOUND);
+    assert_eq!(enroll(3, "zz".repeat(32)).await.0, StatusCode::BAD_REQUEST);
+    let (keys, body) = allow().await;
+    assert_eq!(keys, [endpoint(1), endpoint(2), endpoint(3)]);
+    let groups: Vec<&str> = body["allow"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|g| g["group"].as_str().unwrap())
+        .collect();
+    assert!(
+        groups.iter().all(|g| g.len() == 24 && !g.contains('-')),
+        "no account IDs"
+    );
+    assert!(!body.to_string().contains(&account(2)));
+
+    // A new key replaces the member's old one.
+    assert_eq!(enroll(3, endpoint(6)).await.0, StatusCode::OK);
+    assert_eq!(allow().await.0, [endpoint(1), endpoint(2), endpoint(6)]);
+    // A removed member is dropped at once.
+    let remove = format!("/v1/rooms/{room}/members/{}/remove", account(2));
+    assert_eq!(t.call("POST", &remove, 1, None).await.0, StatusCode::OK);
+    assert_eq!(allow().await.0, [endpoint(1), endpoint(6)]);
+    // A guest that stops renewing drops out after 30 seconds; the host stays
+    // while it renews.
+    t.app.clock.advance(20);
+    assert_eq!(
+        t.renew(session["id"].as_str().unwrap()).await.0,
+        StatusCode::OK
+    );
+    t.app.clock.advance(11);
+    assert_eq!(allow().await.0, [endpoint(1)]);
+    // A host that stops renewing drops out with everyone.
+    assert_eq!(enroll(3, endpoint(3)).await.0, StatusCode::OK);
+    t.app.clock.advance(31);
+    assert!(allow().await.0.is_empty());
+
+    // The list needs the relay's token.
+    for given in ["", "Bearer wrong", "relay-token-0123456789abcdef0123456789"] {
+        let mut request = Request::get("/v1/relay/allow");
+        if !given.is_empty() {
+            request = request.header(header::AUTHORIZATION, given);
+        }
+        let (status, _) = t.send(request.body(Body::empty()).unwrap()).await;
+        assert_eq!(status, StatusCode::UNAUTHORIZED, "{given}");
+    }
 }

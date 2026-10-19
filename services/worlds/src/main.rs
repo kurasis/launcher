@@ -15,7 +15,9 @@
 //! (`https://oauth.lapi.sh`), `LAPI_WORLDS_JWKS` (the account service's keys,
 //! `http://127.0.0.1:8783/.well-known/jwks.json`) and
 //! `LAPI_WORLDS_AUTHORITY_EPOCH` (required: a random value kept outside the
-//! database and changed after a restore, so restored leases never come back).
+//! database and changed after a restore, so restored leases never come back)
+//! and `LAPI_WORLDS_RELAY_TOKEN` (32–128 letters, digits, `-` or `_`: the
+//! relay's bearer token for `/v1/relay/allow`, which is off without it).
 //! The ticket signing key is made on first start in `data/ticket-key`.
 
 mod api;
@@ -52,6 +54,20 @@ fn authority() -> Result<String, String> {
     fits.then_some(value).ok_or_else(|| {
         "LAPI_WORLDS_AUTHORITY_EPOCH must be 16-128 letters, digits, - or _".to_owned()
     })
+}
+
+fn relay_token() -> Option<String> {
+    let value = env("LAPI_WORLDS_RELAY_TOKEN", "");
+    let fits = (32..=128).contains(&value.len())
+        && value
+            .bytes()
+            .all(|b| b.is_ascii_alphanumeric() || b == b'-' || b == b'_');
+    if !fits && !value.is_empty() {
+        eprintln!(
+            "LAPI_WORLDS_RELAY_TOKEN must be 32-128 letters, digits, - or _; the relay list is off"
+        );
+    }
+    fits.then_some(value)
 }
 
 fn main() -> std::process::ExitCode {
@@ -115,6 +131,7 @@ fn serve() -> Result<(), String> {
         base: env("LAPI_WORLDS_BASE", "https://worlds.lapi.sh")
             .trim_end_matches('/')
             .to_owned(),
+        relay_token: relay_token(),
     });
     let runtime = tokio::runtime::Runtime::new().map_err(|e| e.to_string())?;
     runtime.block_on(async move {

@@ -10,6 +10,10 @@ name: Worlds service
 # This repository is public, and so are its workflow logs: nothing anyone
 # wrote and nothing about the server is printed here. "Run workflow" with
 # task=counts shows numbers only.
+#
+# Secret: RELAY_TOKEN (32-128 letters, digits, - or _), the bearer token the
+# relay (relay-service.yml) asks /v1/relay/allow with; the same value goes to
+# both. Without it the relay carries nothing.
 
 on:
   push:
@@ -118,11 +122,15 @@ jobs:
       - name: Deploy
         env:
           TARGET: ${{ secrets.SSH_USER }}@${{ secrets.SSH_HOST }}
+          RELAY_TOKEN: ${{ secrets.RELAY_TOKEN }}
         run: |
           set +e
-          ssh "$TARGET" \
-            "bash ~/.lapi-bootstrap/$SETUP/deploy.sh worlds $RELEASE $ARCHIVE" 2>&1 | tee deploy.log
-          status=${PIPESTATUS[0]}
+          # The secret travels on standard input; deploy.sh keeps it in
+          # secrets.env (0640) and prints only its name.
+          printf 'LAPI_WORLDS_RELAY_TOKEN=%s\n' "$RELAY_TOKEN" |
+            ssh "$TARGET" \
+              "bash ~/.lapi-bootstrap/$SETUP/deploy.sh worlds $RELEASE $ARCHIVE --secrets" 2>&1 | tee deploy.log
+          status=${PIPESTATUS[1]}
           if grep -q NOT_BOOTSTRAPPED deploy.log; then
             echo "::warning::The server is not set up yet: run 'sudo bash ~/lapi-bootstrap/bootstrap.sh <deploy-user>' on it once, then re-run this workflow."
             exit 0
