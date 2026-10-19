@@ -12,7 +12,6 @@ $ErrorActionPreference = 'Stop'
 Add-Type -AssemblyName UIAutomationClient
 Add-Type -AssemblyName UIAutomationTypes
 Add-Type -AssemblyName System.Drawing
-Add-Type -AssemblyName System.Windows.Forms
 
 $AE = [System.Windows.Automation.AutomationElement]
 $Scope = [System.Windows.Automation.TreeScope]
@@ -60,17 +59,33 @@ function Get-Texts($Within) {
   return @($all | ForEach-Object { $_.Current.Name } | Where-Object { $_ })
 }
 
-# A button that opens a menu (aria-haspopup) offers no Invoke in WebView2: it
-# is pressed from the keyboard, as a user may, after taking the focus.
+Add-Type -Namespace Smoke -Name Mouse -MemberDefinition @'
+[DllImport("user32.dll")] public static extern bool SetCursorPos(int x, int y);
+[DllImport("user32.dll")] public static extern void mouse_event(uint flags, uint dx, uint dy, uint data, System.IntPtr extra);
+'@
+
+# A button that opens a menu (aria-haspopup) offers no Invoke in WebView2: it is
+# expanded through ExpandCollapse when offered, else clicked with the mouse at
+# its centre, as a user does.
 function Click($Element) {
   $pattern = $null
   if ($Element.TryGetCurrentPattern([System.Windows.Automation.InvokePattern]::Pattern, [ref]$pattern)) {
     $pattern.Invoke()
-  } else {
-    $Element.SetFocus()
-    Start-Sleep -Milliseconds 200
-    [System.Windows.Forms.SendKeys]::SendWait('{ENTER}')
+    return
   }
+  if ($Element.TryGetCurrentPattern([System.Windows.Automation.ExpandCollapsePattern]::Pattern, [ref]$pattern)) {
+    try { $pattern.Expand(); return } catch { Write-Host "Expand failed: $($_.Exception.Message)" }
+  }
+  Click-Mouse $Element
+}
+
+function Click-Mouse($Element) {
+  try { $main.SetFocus() } catch { }
+  $r = $Element.Current.BoundingRectangle
+  [Smoke.Mouse]::SetCursorPos([int]($r.X + $r.Width / 2), [int]($r.Y + $r.Height / 2)) | Out-Null
+  Start-Sleep -Milliseconds 100
+  [Smoke.Mouse]::mouse_event(0x0002, 0, 0, 0, [System.IntPtr]::Zero)  # left down
+  [Smoke.Mouse]::mouse_event(0x0004, 0, 0, 0, [System.IntPtr]::Zero)  # left up
 }
 
 function Save-Screenshot($Window) {
@@ -92,12 +107,18 @@ if (-not $more) {
   Write-Host 'Main window shows:'; Get-Texts $main | Select-Object -First 40 | Write-Host
   throw 'More menu not found in the main window'
 }
-Click $more
-$tab = Wait-For {
+$findDiagnostics = {
   $item = Find-Control $main $MenuItem 'Diagnostics'
   if (-not $item) { $item = Find-Pressable $main 'Diagnostics' }
   $item
-} 30
+}
+Click $more
+$tab = Wait-For $findDiagnostics 10
+if (-not $tab) {
+  Write-Host 'The More menu did not open; clicking it with the mouse'
+  Click-Mouse $more
+  $tab = Wait-For $findDiagnostics 20
+}
 if (-not $tab) {
   Write-Host 'Main window shows:'; Get-Texts $main | Select-Object -First 60 | Write-Host
   throw 'Diagnostics not found in the More menu'
