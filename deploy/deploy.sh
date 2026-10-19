@@ -4,16 +4,18 @@
 #
 #   bash deploy.sh <service> <release-id> <archive> [mirror-quota-gb | upd-public-key]
 #   … | bash deploy.sh oauth <release-id> <archive> --secrets
+#   … | bash deploy.sh mods <release-id> <archive> <quota-gb> --secrets
 #
 # Unpacks the archive into /home/www/lapi/<service>/releases/<release-id>,
 # points `current` at it, restarts the service and checks /v1/health; a failed
 # check puts the previous release back. The five newest releases are kept.
 # nginx files are root's (bootstrap.sh installs them); this only says when
-# they differ. For the mirror, the quota goes to settings.json, which the
-# service reads every minute. upd is a command, not a process: its release is
-# installed with the update public key and nothing is restarted. oauth reads
-# its secrets (Turnstile, SMTP) from standard input with --secrets, as
-# KEY=value lines, into secrets.env; they never appear in a command line or a log.
+# they differ. For the mirror and mods, the quota goes to settings.json, which
+# the service reads every minute. upd is a command, not a process: its release is
+# installed with the update public key and nothing is restarted. oauth (Turnstile,
+# SMTP) and mods (proxies to the sources) read their secrets from standard
+# input with --secrets, as KEY=value lines, into secrets.env; they never
+# appear in a command line or a log.
 set -euo pipefail
 
 SERVICE="${1:?service}"
@@ -21,13 +23,22 @@ RELEASE="${2:?release id}"
 ARCHIVE="${3:?archive path}"
 EXTRA="${4:-}"
 QUOTA_GB=""
+SECRETS=""
 case "$SERVICE" in
     crash) PORT=8781 ;;
     mirror) PORT=8782; QUOTA_GB="$EXTRA" ;;
     upd) PORT="" ;;
-    oauth) PORT=8783 ;;
+    oauth)
+        PORT=8783
+        [ "$EXTRA" = --secrets ] && SECRETS='^LAPI_OAUTH_(TURNSTILE_SITE_KEY|TURNSTILE_SECRET|SMTP_URL|MAIL_FROM)=[^[:cntrl:]]{0,500}$'
+        ;;
     friends) PORT=8784 ;;
     skins) PORT=8785 ;;
+    mods)
+        PORT=8786
+        QUOTA_GB="$EXTRA"
+        [ "${5:-}" = --secrets ] && SECRETS='^LAPI_MODS_PROXIES=[^[:cntrl:]]{0,20000}$'
+        ;;
     *) echo "unknown service $SERVICE"; exit 1 ;;
 esac
 APP=/home/www/lapi/$SERVICE
@@ -51,7 +62,7 @@ else
 fi
 "$dir/lapi-$SERVICE" --version
 
-if [ "$SERVICE" = mirror ] && [ -n "$QUOTA_GB" ]; then
+if [ -n "$QUOTA_GB" ]; then
     [[ "$QUOTA_GB" =~ ^[0-9]{1,6}$ ]] || { echo "bad quota $QUOTA_GB"; exit 1; }
     printf '{"maxGb": %s}\n' "$QUOTA_GB" > "$APP/settings.json.new"
     chmod 0644 "$APP/settings.json.new"
@@ -59,9 +70,9 @@ if [ "$SERVICE" = mirror ] && [ -n "$QUOTA_GB" ]; then
     echo "== quota: $QUOTA_GB GB"
 fi
 
-if [ "$SERVICE" = oauth ] && [ "$EXTRA" = --secrets ]; then
+if [ -n "$SECRETS" ]; then
     # Only the known keys, one line each, nothing that could end a line.
-    allowed='^LAPI_OAUTH_(TURNSTILE_SITE_KEY|TURNSTILE_SECRET|SMTP_URL|MAIL_FROM)=[^[:cntrl:]]{0,500}$'
+    allowed=$SECRETS
     umask 027
     : > "$APP/secrets.env.new"
     while IFS= read -r line || [ -n "$line" ]; do

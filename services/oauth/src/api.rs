@@ -61,7 +61,12 @@ fn access_token(app: &App, account: &Account, session: &str) -> String {
     app.keys.sign(&Claims {
         iss: app.config.base.clone(),
         sub: account.id.clone(),
-        aud: vec!["account".into(), "friends".into(), "skins".into()],
+        aud: vec![
+            "account".into(),
+            "friends".into(),
+            "skins".into(),
+            "mods".into(),
+        ],
         iat: now,
         exp: now + ACCESS_SECONDS,
         sid: session.to_owned(),

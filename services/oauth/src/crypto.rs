@@ -209,7 +209,12 @@ mod tests {
         Claims {
             iss: "https://oauth.example".into(),
             sub: "id".into(),
-            aud: vec!["account".into(), "friends".into(), "skins".into()],
+            aud: vec![
+                "account".into(),
+                "friends".into(),
+                "skins".into(),
+                "mods".into(),
+            ],
             iat: now,
             exp: now + 600,
             sid: "s".into(),
