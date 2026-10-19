@@ -54,8 +54,8 @@ env:
   CARGO_INCREMENTAL: 0
   # curl-impersonate by lexiforest: the release and its archive's SHA-256,
   # checked before anything in it runs. A new one is pinned by hand.
-  CURL_IMPERSONATE_TAG: ''
-  CURL_IMPERSONATE_SHA256: ''
+  CURL_IMPERSONATE_TAG: v2.2.3
+  CURL_IMPERSONATE_SHA256: ca7c8aae49e33260d3a2400db16c7737aaf04692d606a843502056b42990f989
   CURL_TARGET: chrome150
 
 jobs:
