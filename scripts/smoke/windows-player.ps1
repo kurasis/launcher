@@ -144,9 +144,10 @@ Press $video
 $player = Wait-For { Find-Window 'Video' } 30
 if (-not $player) { throw 'player window "Video" did not open' }
 Write-Host "Player window: $($player.Current.BoundingRectangle)"
-# The play page names only the window, its frame ("YouTube" or "Twitch") and
-# its link; anything else comes from the embedded player.
-$own = @('Video', 'YouTube', 'Twitch', 'Open in browser')
+# The play page names only the window, its frame ("YouTube" or "Twitch", with
+# WebView2's suffixes such as "- Web content (InPrivate)") and its link;
+# anything else comes from the embedded player.
+$own = '^(Video|YouTube|Twitch|Open in browser)( |$)'
 $page = Wait-For { (Get-Texts $player) -contains 'Open in browser' } 30
 if (-not $page) {
   Write-Host 'Player window tree:'
@@ -155,14 +156,14 @@ if (-not $page) {
   throw 'the play page did not load in the player window'
 }
 $texts = Wait-For {
-  $theirs = @(Get-Texts $player | Where-Object { $own -notcontains $_ -and $_ -notlike '* - Web content' })
+  $theirs = @(Get-Texts $player | Where-Object { $_ -notmatch $own })
   if ($theirs.Count -gt 0) { return , $theirs }
 } 45
 Save-Screenshot $player
+Show-Webviews
 if (-not $texts) {
   Write-Host 'Player window tree:'
   Get-Tree $player | Select-Object -First 60 | Write-Host
-  Show-Webviews
   throw 'the player window shows nothing of the embedded player'
 }
 Write-Host "The embedded player shows $($texts.Count) texts, including:"
