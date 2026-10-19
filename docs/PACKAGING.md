@@ -13,8 +13,8 @@ installation notes are in [INSTALL.md](INSTALL.md).
 | macos-x64     | `.app` in `*_x64.dmg`     | `macos-15-intel`      | Native build; minimum macOS 11.0                           |
 | linux-x64     | `.deb`, `.AppImage`       | `debian:12` container | glibc 2.36 baseline; runtime dependencies generated        |
 
-Pull requests do not build the macos-x64 package (CI still checks the Rust core there):
-Intel Macs on GitHub are few and slow. `main`, manual runs and the release archive build it.
+Pull requests neither build the macos-x64 package nor check its Rust core: Intel Macs on
+GitHub are few and slow. `main`, manual runs and the release archive do both.
 
 MSI and RPM are not produced (D-008). The bundle identifier `app.launcher`
 names DATA_ROOT, the credential-store service and the single-instance namespace; changing
