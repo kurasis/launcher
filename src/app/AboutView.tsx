@@ -1,23 +1,30 @@
 import { Button } from '../components/Button';
+import { Notice } from '../components/Notice';
 import { Panel } from '../components/Panel';
 import { SystemInfoPanel } from '../features/diagnostics/SystemInfoPanel';
 import type { ExternalLink } from '../lib/contracts';
 import { ipc } from '../lib/ipc';
 import { strings } from '../lib/strings';
+import { useShownError } from '../lib/useShownError';
 import styles from './App.module.css';
 import { useAppInfo } from './useAppInfo';
 
 const t = strings.about;
 
 function LinkButton({ link, label }: { link: ExternalLink; label: string }) {
+  const opening = useShownError();
   return (
-    <Button
-      onClick={() => {
-        void ipc.openExternal(link).catch(() => undefined);
-      }}
-    >
-      {label}
-    </Button>
+    <>
+      <Button
+        onClick={() => {
+          opening.clear();
+          void ipc.openExternal(link).catch(opening.catcher);
+        }}
+      >
+        {label}
+      </Button>
+      {opening.error !== null && <Notice tone="danger">{opening.error}</Notice>}
+    </>
   );
 }
 

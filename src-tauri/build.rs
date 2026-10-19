@@ -18,6 +18,7 @@ fn main() {
         "create_instance",
         "update_instance_settings",
         "set_instance_notes",
+        "rename_instance",
         "set_app_settings",
         "show_main_window",
         "open_console",

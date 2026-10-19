@@ -58,15 +58,21 @@ function ActivityIndicator({ snapshot }: { snapshot: AppSnapshot }) {
 
 /** Shown while the internet cannot be reached (D-052), with a way to check again. */
 function NetworkIndicator({ network }: { network: NetworkStatus }) {
+  const checking = useShownError();
   if (network !== 'offline') return null;
   return (
-    <p className={styles.activity} role="status" title={strings.network.offlineHint}>
+    <p
+      className={styles.activity}
+      role="status"
+      title={checking.error ?? strings.network.offlineHint}
+    >
       <StatusBadge tone="warning" label={strings.network.offline} />
       <button
         type="button"
         className={styles.textButton}
         onClick={() => {
-          void ipc.checkNetwork().catch(() => undefined);
+          checking.clear();
+          void ipc.checkNetwork().catch(checking.catcher);
         }}
       >
         {strings.network.check}
@@ -82,6 +88,8 @@ export function App() {
   const { state: appInfo } = useAppInfo();
   const [view, setView] = useState<View>('home');
   const stopping = useShownError();
+  const consoleOpening = useShownError();
+  const { clear: clearConsoleError, catcher: consoleFailed } = consoleOpening;
   const [settingsSection, setSettingsSection] = useState<SettingsSection>('general');
   const [settingsInstance, setSettingsInstance] = useState<string | null>(null);
   const snapshot = state.status === 'ready' ? state.snapshot : null;
@@ -99,14 +107,15 @@ export function App() {
     const onKey = (event: KeyboardEvent) => {
       if ((event.ctrlKey || event.metaKey) && event.shiftKey && event.code === 'KeyL') {
         event.preventDefault();
-        void ipc.openConsole().catch(() => undefined);
+        clearConsoleError();
+        void ipc.openConsole().catch(consoleFailed);
       }
     };
     window.addEventListener('keydown', onKey);
     return () => {
       window.removeEventListener('keydown', onKey);
     };
-  }, []);
+  }, [clearConsoleError, consoleFailed]);
 
   return (
     <div className={styles.shell} key={lang}>
@@ -150,6 +159,7 @@ export function App() {
       </header>
 
       <main className={styles.content}>
+        {consoleOpening.error !== null && <Notice tone="danger">{consoleOpening.error}</Notice>}
         {view === 'about' ? (
           <AboutView />
         ) : state.status === 'loading' ? (

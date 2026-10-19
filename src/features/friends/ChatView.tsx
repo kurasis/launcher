@@ -51,6 +51,7 @@ export function ChatView({
   const [more, setMore] = useState(false);
   const [loading, setLoading] = useState(true);
   const [draft, setDraft] = useState('');
+  const [leaving, setLeaving] = useState(false);
   const [sending, setSending] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [reporting, setReporting] = useState<number | null>(null);
@@ -256,18 +257,41 @@ export function ChatView({
                 </Button>
               </form>
             ))}
-          {me !== null && (
+          {me !== null && !leaving && (
             <button
               type="button"
               className={styles.danger}
-              onClick={() =>
-                void run(() => ipc.friendsChangeRoom(room.id, 'remove', me.id)).then((ok) => {
-                  if (ok) onBack();
-                })
-              }
+              onClick={() => {
+                setLeaving(true);
+              }}
             >
               {t.leave}
             </button>
+          )}
+          {me !== null && leaving && (
+            <div className={styles.confirm} role="alertdialog" aria-label={t.leave}>
+              <p>{t.confirmLeave}</p>
+              <div className={styles.inline}>
+                <Button
+                  variant="primary"
+                  onClick={() =>
+                    void run(() => ipc.friendsChangeRoom(room.id, 'remove', me.id)).then((ok) => {
+                      setLeaving(false);
+                      if (ok) onBack();
+                    })
+                  }
+                >
+                  {t.leave}
+                </Button>
+                <Button
+                  onClick={() => {
+                    setLeaving(false);
+                  }}
+                >
+                  {t.cancel}
+                </Button>
+              </div>
+            </div>
           )}
         </div>
       )}

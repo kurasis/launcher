@@ -36,7 +36,7 @@ export function ConsoleApp() {
   const [level, setLevel] = useState<LevelFilter>('all');
   const [query, setQuery] = useState('');
   const [follow, setFollow] = useState(true);
-  const [copied, setCopied] = useState(false);
+  const [copied, setCopied] = useState<'no' | 'yes' | 'failed'>('no');
   const list = useRef<HTMLDivElement>(null);
   // The console has no access to settings; it follows the language the main
   // window mirrors into local storage (D-038).
@@ -112,13 +112,19 @@ export function ConsoleApp() {
   const copy = () => {
     void navigator.clipboard
       .writeText(shown.map(line).join('\n'))
-      .then(() => {
-        setCopied(true);
+      .then(
+        () => {
+          setCopied('yes');
+        },
+        () => {
+          setCopied('failed');
+        },
+      )
+      .finally(() => {
         setTimeout(() => {
-          setCopied(false);
+          setCopied('no');
         }, 1500);
-      })
-      .catch(() => undefined);
+      });
   };
 
   return (
@@ -175,7 +181,7 @@ export function ConsoleApp() {
           {t.follow}
         </label>
         <button type="button" className={styles.control} onClick={copy}>
-          {copied ? t.copied : t.copy}
+          {copied === 'yes' ? t.copied : copied === 'failed' ? t.copyFailed : t.copy}
         </button>
         <button
           type="button"

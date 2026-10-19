@@ -291,7 +291,7 @@ impl LauncherAccount {
 
     /// Opens (or brings forward) the sign-in window on `screen`
     /// (`login` or `register`).
-    pub fn open<R: Runtime>(self: &Arc<Self>, app: &AppHandle<R>, screen: &str) {
+    pub fn open<R: Runtime>(self: &Arc<Self>, app: &AppHandle<R>, screen: &str, title: &str) {
         let state = app.state::<AppState>();
         if let Some(window) = app.get_webview_window(WINDOW) {
             let _ = window.set_focus();
@@ -308,11 +308,7 @@ impl LauncherAccount {
         let account = Arc::clone(self);
         let handle = app.clone();
         let built = WebviewWindowBuilder::new(app, WINDOW, WebviewUrl::External(url))
-            .title(if screen == "register" {
-                "Launcher account: create"
-            } else {
-                "Launcher account: sign in"
-            })
+            .title(title)
             .inner_size(460.0, 720.0)
             .min_inner_size(360.0, 520.0)
             // Nothing of this window stays on the computer after it closes.

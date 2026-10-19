@@ -258,6 +258,36 @@ describe('friends corner', () => {
     });
   });
 
+  it('leaves a group only after confirming', async () => {
+    const group = direct({
+      kind: 'group',
+      name: 'Builders',
+      owner: ALEX.id,
+      members: [ME, ALEX, NOTCH],
+    });
+    const { calls } = setup(signedIn({ rooms: [group] }));
+    const panel = await openPanel();
+    fireEvent.click(within(panel).getByRole('button', { name: /Builders/ }));
+    fireEvent.click(await within(panel).findByRole('button', { name: /3 people/ }));
+    fireEvent.click(within(panel).getByRole('button', { name: 'Leave the group' }));
+    const asked = within(panel).getByRole('alertdialog');
+    fireEvent.click(within(asked).getByRole('button', { name: 'Cancel' }));
+    expect(calls.some((c) => c.cmd === 'friends_change_room')).toBe(false);
+    fireEvent.click(within(panel).getByRole('button', { name: 'Leave the group' }));
+    fireEvent.click(
+      within(within(panel).getByRole('alertdialog')).getByRole('button', {
+        name: 'Leave the group',
+      }),
+    );
+    await waitFor(() => {
+      expect(calls.find((c) => c.cmd === 'friends_change_room')?.args).toEqual({
+        room: ROOM,
+        action: 'remove',
+        value: ME.id,
+      });
+    });
+  });
+
   it('follows state the core sends', async () => {
     setup(signedOut);
     const panel = await openPanel();

@@ -5,7 +5,7 @@ import { Notice } from '../../components/Notice';
 import { Panel } from '../../components/Panel';
 import { StatusBadge } from '../../components/StatusBadge';
 import forms from '../../components/forms.module.css';
-import type { InstanceSummary } from '../../lib/contracts';
+import type { GameFolder, InstanceSummary } from '../../lib/contracts';
 import { ipc } from '../../lib/ipc';
 import { numberLocale, strings } from '../../lib/strings';
 import { useCommand } from '../../lib/useCommand';
@@ -25,6 +25,9 @@ interface InstanceDetailsProps {
 
 const t = strings.details;
 
+/** The folders offered as buttons, besides the game folder itself. */
+type ShownFolder = Extract<GameFolder, 'mods' | 'saves' | 'resourcepacks' | 'shaderpacks' | 'logs'>;
+
 /** Facts about one installation; its settings are edited on the Settings screen. */
 export function InstanceDetails({
   instance,
@@ -32,10 +35,15 @@ export function InstanceDetails({
   busy = false,
   onDeleted = () => undefined,
 }: InstanceDetailsProps) {
-  const openFolder = useCommand((requestId: string, id: string) =>
-    ipc.openInstanceFolder(id, requestId),
+  const openFolder = useCommand((requestId: string, id: string, folder: GameFolder | null) =>
+    ipc.openInstanceFolder(id, requestId, folder),
   );
   const last = instance.lastResult;
+  // Mods and shader packs only matter with a mod loader.
+  const folders: ShownFolder[] =
+    instance.loader === null
+      ? ['saves', 'resourcepacks', 'logs']
+      : ['mods', 'saves', 'resourcepacks', 'shaderpacks', 'logs'];
 
   return (
     <Panel
@@ -73,6 +81,12 @@ export function InstanceDetails({
             <dd dir="ltr">{instance.gameArguments}</dd>
           </>
         )}
+        <dt>{t.lastPlayed}</dt>
+        <dd>
+          {instance.lastPlayedAt === null
+            ? t.neverPlayed
+            : new Date(instance.lastPlayedAt).toLocaleString(numberLocale())}
+        </dd>
         <dt>{t.lastResult}</dt>
         <dd>
           {last === null
@@ -86,15 +100,73 @@ export function InstanceDetails({
       </dl>
       <div className={forms.actions}>
         <Button onClick={onEditSettings}>{t.edit}</Button>
-        <Button onClick={() => void openFolder.run(instance.id)} disabled={openFolder.pending}>
+        <Button
+          onClick={() => void openFolder.run(instance.id, null)}
+          disabled={openFolder.pending}
+        >
           {t.openFolder}
         </Button>
       </div>
       <p className={styles.muted}>{t.openFolderHint}</p>
+      <div className={forms.actions} role="group" aria-label={t.folders}>
+        {folders.map((folder) => (
+          <Button
+            key={folder}
+            onClick={() => void openFolder.run(instance.id, folder)}
+            disabled={openFolder.pending}
+          >
+            {t.folder[folder]}
+          </Button>
+        ))}
+      </div>
       {openFolder.error !== null && <Notice tone="danger">{openFolder.error}</Notice>}
+      <RenameForm key={`name-${instance.id}`} instance={instance} />
       <NotesEditor key={instance.id} instance={instance} />
       <DeleteInstance instance={instance} busy={busy} onDeleted={onDeleted} />
     </Panel>
+  );
+}
+
+/** The installation's name; saved on request, also while it is busy. */
+function RenameForm({ instance }: { instance: InstanceSummary }) {
+  const [draft, setDraft] = useState(instance.displayName);
+  const [saved, setSaved] = useState(false);
+  const rename = useCommand((requestId: string, displayName: string) =>
+    ipc.renameInstance({ instanceId: instance.id, displayName }, requestId),
+  );
+  const changed = draft.trim() !== instance.displayName;
+  return (
+    <form
+      className={forms.form}
+      onSubmit={(event) => {
+        event.preventDefault();
+        void rename.run(draft).then((result) => {
+          if (result) setSaved(true);
+        });
+      }}
+    >
+      <Field label={t.name}>
+        {(props) => (
+          <input
+            {...props}
+            className={forms.input}
+            value={draft}
+            maxLength={64}
+            onChange={(event) => {
+              setDraft(event.target.value);
+              setSaved(false);
+            }}
+          />
+        )}
+      </Field>
+      <div className={forms.actions}>
+        <Button type="submit" disabled={rename.pending || !changed || draft.trim() === ''}>
+          {t.rename}
+        </Button>
+        {saved && !changed && <span role="status">{t.saved}</span>}
+      </div>
+      {rename.error !== null && <Notice tone="danger">{rename.error}</Notice>}
+    </form>
   );
 }
 

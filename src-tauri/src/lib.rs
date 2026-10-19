@@ -636,6 +636,7 @@ fn handlers<R: tauri::Runtime>() -> impl Fn(tauri::ipc::Invoke<R>) -> bool + Sen
         commands::create_instance,
         commands::update_instance_settings,
         commands::set_instance_notes,
+        commands::rename_instance,
         commands::set_app_settings,
         commands::show_main_window,
         commands::open_console,

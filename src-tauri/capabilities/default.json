@@ -11,6 +11,7 @@
     "allow-create-instance",
     "allow-update-instance-settings",
     "allow-set-instance-notes",
+    "allow-rename-instance",
     "allow-set-app-settings",
     "allow-show-main-window",
     "allow-open-console",

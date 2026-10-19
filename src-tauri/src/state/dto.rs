@@ -47,6 +47,13 @@ pub struct SetInstanceNotesPayload {
     pub notes: String,
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct RenameInstancePayload {
+    pub instance_id: InstanceId,
+    pub display_name: String,
+}
+
 /// Which Java an installation runs (D-044).
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(tag = "kind", rename_all = "snake_case")]

@@ -656,7 +656,8 @@ export interface CrashDiagnosis {
 }
 
 /** A folder inside an installation's game folder that the launcher opens. */
-export type GameFolder = 'mods' | 'config' | 'crash-reports' | 'logs';
+export type GameFolder =
+  'mods' | 'config' | 'crash-reports' | 'logs' | 'saves' | 'resourcepacks' | 'shaderpacks';
 
 export type LifecycleScenario =
   'immediate_exit' | 'short' | 'long' | 'crash' | 'inherited_pipe' | 'noisy';
@@ -795,6 +796,11 @@ export interface CreateInstancePayload {
 export interface SetInstanceNotesPayload {
   instanceId: string;
   notes: string;
+}
+
+export interface RenameInstancePayload {
+  instanceId: string;
+  displayName: string;
 }
 
 export interface UpdateInstanceSettingsPayload {

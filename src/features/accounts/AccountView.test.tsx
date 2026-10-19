@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { mockIPC } from '@tauri-apps/api/mocks';
 import { describe, expect, it } from 'vitest';
 import type { AccountSummary, AppSnapshot, MicrosoftAccount } from '../../lib/contracts';
@@ -75,7 +75,19 @@ describe('AccountView', () => {
         request: { payload: { profile: { kind: 'microsoft', id: 'alex' } } },
       });
     });
+    // Removing asks first; Cancel removes nothing.
     fireEvent.click(screen.getAllByRole('button', { name: 'Remove' })[0] as HTMLElement);
+    expect(screen.getByRole('alertdialog')).toHaveTextContent(
+      'Remove Steve_Test from the launcher?',
+    );
+    fireEvent.click(
+      within(screen.getByRole('alertdialog')).getByRole('button', { name: 'Cancel' }),
+    );
+    expect(named('sign_out', calls)).toHaveLength(0);
+    fireEvent.click(screen.getAllByRole('button', { name: 'Remove' })[0] as HTMLElement);
+    fireEvent.click(
+      within(screen.getByRole('alertdialog')).getByRole('button', { name: 'Remove' }),
+    );
     await waitFor(() => {
       expect(named('sign_out', calls)[0]?.args).toMatchObject({
         request: { payload: { profileId: 'steve' } },
@@ -159,6 +171,10 @@ describe('AccountView', () => {
       expect(screen.getByLabelText('Player name')).toHaveValue('');
     });
     fireEvent.click(screen.getByRole('button', { name: 'Remove' }));
+    expect(named('remove_notoken_profile', calls)).toHaveLength(0);
+    fireEvent.click(
+      within(screen.getByRole('alertdialog')).getByRole('button', { name: 'Remove' }),
+    );
     await waitFor(() => {
       expect(named('remove_notoken_profile', calls)[0]?.args).toMatchObject({
         request: { payload: { profileId: 'p-0' } },

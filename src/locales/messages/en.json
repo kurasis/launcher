@@ -75,6 +75,8 @@
       "nameHint": "3 to 16 letters, digits or underscores.",
       "addProfile": "Add profile",
       "remove": "Remove",
+      "confirmRemove": "Remove {name} from the launcher? Its saved sign-in on this computer is deleted too.",
+      "confirmRemoveProfile": "Remove the profile {name}?",
       "makeDefault": "Use by default",
       "isDefault": "Default",
       "defaultNone": "No default is chosen: installations play the demo as Player.",
@@ -243,6 +245,19 @@
       "version": "Version",
       "openFolder": "Open game folder",
       "openFolderHint": "Worlds, screenshots and options of this installation are stored there.",
+      "name": "Name",
+      "rename": "Rename",
+      "folders": "Open a folder",
+      "folder": {
+        "game": "Game folder",
+        "mods": "Mods",
+        "logs": "Logs",
+        "saves": "Worlds",
+        "resourcepacks": "Resource packs",
+        "shaderpacks": "Shader packs"
+      },
+      "lastPlayed": "Last played",
+      "neverPlayed": "Not yet",
       "lastResult": "Last result",
       "exitCode": "exit code {code}",
       "noResult": "None yet",
@@ -787,6 +802,7 @@
       "clear": "Clear",
       "copy": "Copy",
       "copied": "Copied",
+      "copyFailed": "Not copied",
       "empty": "Nothing yet. Install or start a game to see its output here.",
       "noMatch": "No line matches the filters.",
       "count": "{shown, number} of {total, plural, one {# line} other {# lines}}",
@@ -1140,6 +1156,7 @@
       "rename": "Rename",
       "addMember": "Add a friend",
       "leave": "Leave the group",
+      "confirmLeave": "Leave this group? You will not see its messages any more.",
       "removeMember": "Remove from the group",
       "earlier": "Earlier messages",
       "noMessages": "No messages yet. Say hi.",
@@ -1164,6 +1181,13 @@
         "invalid": "This is not valid.",
         "server": "Something went wrong on the friends server. Try again later."
       }
+    },
+    "windowTitles": {
+      "pickJava": "Choose the Java program (java or javaw.exe)",
+      "pickDataFolder": "Choose a folder for the launcher data",
+      "saveDiagnostics": "Save diagnostic export",
+      "accountLogin": "Launcher account: sign in",
+      "accountRegister": "Launcher account: create"
     }
   },
   "errors": {

@@ -41,12 +41,14 @@ describe('launcher account', () => {
     await waitFor(() => {
       expect(calls.find((c) => c.cmd === 'launcher_account_open')?.args).toEqual({
         screen: 'register',
+        title: 'Launcher account: create',
       });
     });
     fireEvent.click(screen.getByRole('button', { name: 'Sign in' }));
     await waitFor(() => {
       expect(calls.filter((c) => c.cmd === 'launcher_account_open')[1]?.args).toEqual({
         screen: 'login',
+        title: 'Launcher account: sign in',
       });
     });
   });

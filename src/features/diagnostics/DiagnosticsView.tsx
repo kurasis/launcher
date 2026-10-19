@@ -28,7 +28,7 @@ export function DiagnosticsView({ snapshot }: { snapshot: AppSnapshot }) {
   const [message, setMessage] = useState<string | null>(null);
   const opening = useShownError();
   const exporter = useCommand((requestId: string, runId: string | null) =>
-    ipc.exportDiagnostics(runId, requestId),
+    ipc.exportDiagnostics(runId, requestId, strings.windowTitles.saveDiagnostics),
   );
   const names = new Map(snapshot.instances.map((i) => [i.id, i.displayName]));
 

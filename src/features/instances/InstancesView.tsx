@@ -77,8 +77,12 @@ export function InstancesView({
           <CreateInstanceForm
             network={snapshot.network}
             fixedHeapMib={snapshot.settings.defaultMaxHeapMib}
-            onDone={() => {
+            onDone={(createdId) => {
               setCreating(false);
+              // The new installation is the one to install and play next.
+              if (createdId !== undefined && createdId !== selectedId) {
+                void select.run(createdId);
+              }
             }}
           />
         )}

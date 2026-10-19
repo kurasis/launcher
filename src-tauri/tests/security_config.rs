@@ -140,6 +140,7 @@ fn main_window_capability_grants_only_app_commands() {
             "allow-create-instance",
             "allow-update-instance-settings",
             "allow-set-instance-notes",
+            "allow-rename-instance",
             "allow-set-app-settings",
             "allow-show-main-window",
             "allow-open-console",

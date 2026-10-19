@@ -25,7 +25,12 @@ interface Props {
  * pages, never here. */
 export function LauncherAccountPanel({ view, isDefault, busy, onDefault }: Props) {
   const open = useCommand((_: string, screen: 'login' | 'register') =>
-    ipc.launcherAccountOpen(screen),
+    ipc.launcherAccountOpen(
+      screen,
+      screen === 'register'
+        ? strings.windowTitles.accountRegister
+        : strings.windowTitles.accountLogin,
+    ),
   );
   const signOut = useCommand(() => ipc.launcherAccountSignOut());
   const setNick = useCommand((_: string, nick: string) => ipc.launcherAccountSetNick(nick));

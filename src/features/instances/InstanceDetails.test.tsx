@@ -43,4 +43,48 @@ describe('InstanceDetails', () => {
     expect(await screen.findByText('Saved.')).toBeVisible();
     expect(save).toBeDisabled();
   });
+
+  it('renames the installation and opens its folders', async () => {
+    const calls: { cmd: string; args: unknown }[] = [];
+    mockIPC((cmd, args) => {
+      calls.push({ cmd, args });
+      if (cmd === 'rename_instance') {
+        return instanceFixture({ displayName: 'With friends' });
+      }
+      return null;
+    });
+    const { rerender } = render(
+      <InstanceDetails instance={instanceFixture()} onEditSettings={() => undefined} />,
+    );
+    // A vanilla installation has no mods folder to offer.
+    expect(screen.queryByRole('button', { name: 'Mods' })).toBeNull();
+    fireEvent.click(screen.getByRole('button', { name: 'Worlds' }));
+    await waitFor(() => {
+      expect(calls.find((c) => c.cmd === 'open_instance_folder')?.args).toMatchObject({
+        request: { payload: { instanceId: instanceFixture().id, folder: 'saves' } },
+      });
+    });
+    const rename = screen.getByRole('button', { name: 'Rename' });
+    expect(rename).toBeDisabled();
+    fireEvent.change(screen.getByLabelText('Name'), { target: { value: '   ' } });
+    expect(rename).toBeDisabled();
+    fireEvent.change(screen.getByLabelText('Name'), { target: { value: ' With friends ' } });
+    fireEvent.click(rename);
+    await waitFor(() => {
+      expect(calls.find((c) => c.cmd === 'rename_instance')?.args).toMatchObject({
+        request: { payload: { instanceId: instanceFixture().id, displayName: ' With friends ' } },
+      });
+    });
+    rerender(
+      <InstanceDetails
+        instance={instanceFixture({
+          displayName: 'With friends',
+          loader: { kind: 'fabric', version: '0.16.0' },
+        })}
+        onEditSettings={() => undefined}
+      />,
+    );
+    expect(await screen.findByRole('button', { name: 'Mods' })).toBeVisible();
+    expect(screen.getByRole('button', { name: 'Shader packs' })).toBeVisible();
+  });
 });

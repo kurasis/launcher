@@ -74,6 +74,8 @@ export type Messages = {
     readonly nameHint: string;
     readonly addProfile: string;
     readonly remove: string;
+    readonly confirmRemove: (values: { name: string | number }) => string;
+    readonly confirmRemoveProfile: (values: { name: string | number }) => string;
     readonly makeDefault: string;
     readonly isDefault: string;
     readonly defaultNone: string;
@@ -251,6 +253,19 @@ export type Messages = {
     readonly version: string;
     readonly openFolder: string;
     readonly openFolderHint: string;
+    readonly name: string;
+    readonly rename: string;
+    readonly folders: string;
+    readonly folder: {
+      readonly game: string;
+      readonly mods: string;
+      readonly logs: string;
+      readonly saves: string;
+      readonly resourcepacks: string;
+      readonly shaderpacks: string;
+    };
+    readonly lastPlayed: string;
+    readonly neverPlayed: string;
     readonly lastResult: string;
     readonly exitCode: (values: { code: string | number }) => string;
     readonly noResult: string;
@@ -845,6 +860,7 @@ export type Messages = {
     readonly clear: string;
     readonly copy: string;
     readonly copied: string;
+    readonly copyFailed: string;
     readonly empty: string;
     readonly noMatch: string;
     readonly count: (values: { shown: number; total: number }) => string;
@@ -1206,6 +1222,7 @@ export type Messages = {
     readonly rename: string;
     readonly addMember: string;
     readonly leave: string;
+    readonly confirmLeave: string;
     readonly removeMember: string;
     readonly earlier: string;
     readonly noMessages: string;
@@ -1230,5 +1247,12 @@ export type Messages = {
       readonly invalid: string;
       readonly server: string;
     };
+  };
+  readonly windowTitles: {
+    readonly pickJava: string;
+    readonly pickDataFolder: string;
+    readonly saveDiagnostics: string;
+    readonly accountLogin: string;
+    readonly accountRegister: string;
   };
 };

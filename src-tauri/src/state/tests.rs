@@ -296,6 +296,42 @@ fn notes_are_saved_while_busy_and_survive_restart() {
 }
 
 #[test]
+fn installations_are_renamed_also_while_busy() {
+    let dir = tempfile::tempdir().unwrap();
+    let id = {
+        let state = state_at(dir.path(), RecordingSink::default());
+        let created = create(&state, "Old name", "1.21.1").unwrap();
+        let _permit = state
+            .activity()
+            .try_acquire(OperationKind::Launch, Some(created.id), "run-1")
+            .unwrap();
+        let renamed = state
+            .rename_instance(request(RenameInstancePayload {
+                instance_id: created.id,
+                display_name: "  Survival with friends ".into(),
+            }))
+            .unwrap();
+        assert_eq!(renamed.display_name, "Survival with friends");
+        assert!(renamed.busy);
+        for bad in ["   ", "a\u{0007}b", &"x".repeat(200)] {
+            let error = state
+                .rename_instance(request(RenameInstancePayload {
+                    instance_id: created.id,
+                    display_name: bad.into(),
+                }))
+                .unwrap_err();
+            assert_eq!(error.code, ErrorCode::InvalidInput, "{bad:?}");
+        }
+        created.id
+    };
+    let state = state_at(dir.path(), RecordingSink::default());
+    assert_eq!(
+        state.instance(id).unwrap().display_name,
+        "Survival with friends"
+    );
+}
+
+#[test]
 fn busy_instance_cannot_be_reconfigured() {
     let dir = tempfile::tempdir().unwrap();
     let state = state_at(dir.path(), RecordingSink::default());

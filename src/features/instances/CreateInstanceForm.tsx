@@ -24,7 +24,8 @@ import { LOADER_KINDS } from './loaderLabel';
 import { recommendationText, useRecommendation } from '../settings/memoryLabel';
 
 interface CreateInstanceFormProps {
-  onDone: () => void;
+  /** Closes the form; with the new installation's ID after creating one. */
+  onDone: (createdId?: string) => void;
   /** When the connection returns, the version list is fetched again (D-052). */
   network?: NetworkStatus;
   /** The fixed memory for new installations; null uses the recommendation (D-058). */
@@ -218,7 +219,7 @@ export function CreateInstanceForm({
 
   const submit = async () => {
     const created = await create.run(name, versionId, loader);
-    if (created) onDone();
+    if (created) onDone(created.id);
   };
 
   return (
@@ -376,7 +377,13 @@ export function CreateInstanceForm({
           >
             {t.submit}
           </Button>
-          <Button onClick={onDone}>{t.cancel}</Button>
+          <Button
+            onClick={() => {
+              onDone();
+            }}
+          >
+            {t.cancel}
+          </Button>
         </div>
       </form>
     </Panel>
