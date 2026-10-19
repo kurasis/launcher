@@ -11,7 +11,9 @@
 //!   account) to "offline", the full game without `--demo` and without a token,
 //!   but only while a Microsoft account with play access is signed in on this
 //!   launcher (whoever owns the game may play it offline, as other launchers
-//!   allow). Without one, every no-token launch is the demo.
+//!   allow). Without one, every no-token launch is the demo. That check is
+//!   `state::OFFLINE_NEEDS_OWNER`, off until Microsoft approves the launcher's
+//!   sign-in (test builds only, not published).
 //!
 //! Debug builds started with `LAUNCHER_NOTOKEN_PROFILE=<name>` use the same profile
 //! for every launch, so automated download and launch tests need no account (D-030).

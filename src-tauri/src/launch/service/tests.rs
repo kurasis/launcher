@@ -691,7 +691,7 @@ async fn the_installation_profile_decides_who_plays() {
 }
 
 #[tokio::test(flavor = "multi_thread")]
-async fn offline_in_the_full_game_only_with_an_owner_signed_in() {
+async fn offline_in_the_full_game_when_switched_and_allowed() {
     let s = Setup::new().await;
     let service = s.service(auth("Player"));
     s.f.state
@@ -712,11 +712,13 @@ async fn offline_in_the_full_game_only_with_an_owner_signed_in() {
         })
         .unwrap();
     let alex = crate::launch::notoken::NoTokenProfile::new("Alex_Demo").unwrap();
-    // Switched to offline, but nobody who owns the game is signed in: the demo.
-    assert!(!s.f.state.full_game_allowed());
+    // Switched to offline, but nobody who owns the game is signed in: the demo,
+    // while the owner check is on (it is off until Microsoft approves sign-in).
+    let needs_owner = crate::state::OFFLINE_NEEDS_OWNER;
+    assert_eq!(s.f.state.full_game_allowed(), !needs_owner);
     assert_eq!(
         service.mode_for(s.instance),
-        LaunchMode::NoToken(alex.clone())
+        LaunchMode::NoToken(alex.clone().full_game(!needs_owner))
     );
     s.f.state
         .update_accounts_file(Box::new(|file| {

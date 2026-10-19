@@ -661,3 +661,10 @@ fn new_installations_get_the_memory_their_kind_needs_unless_a_default_is_fixed()
     assert_eq!(state.settings().default_max_heap_mib, None);
     assert_eq!(fabric("Again").max_heap_mib, 4096);
 }
+
+#[test]
+fn offline_in_the_full_game_needs_an_owner_while_the_check_is_on() {
+    assert!(!super::offline_allowed(true, false));
+    assert!(super::offline_allowed(true, true));
+    assert!(super::offline_allowed(false, false));
+}

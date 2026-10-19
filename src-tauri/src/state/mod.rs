@@ -706,12 +706,12 @@ impl AppState {
         );
     }
 
-    /// The nick of the launcher account if `id` is the one signed in.
     /// Whether no-token launches may play offline in the full game now.
     pub fn full_game_allowed(&self) -> bool {
         full_game_allowed(&self.lock().data)
     }
 
+    /// The nick of the launcher account if `id` is the one signed in.
     pub fn launcher_account_nick(&self, id: &str) -> Option<String> {
         self.lock()
             .data
@@ -1888,11 +1888,23 @@ fn pending_view(accounts: &AccountsFile) -> Vec<PendingSignOut> {
         .collect()
 }
 
-/// Whoever owns the game may play it offline: a Microsoft account with play
-/// access is signed in here (an account is kept only after its access check
-/// passed).
+/// Offline in the full game needs a Microsoft account with play access signed
+/// in here: whoever owns the game may play it offline.
+///
+/// Off for now, by the owner's decision: Microsoft has not approved the
+/// launcher's application yet, so nobody can sign in, and test builds must
+/// still reach the full game. These builds are not published. Turn it back on
+/// before any public release (CLAUDE.md, docs/RELEASING.md).
+pub const OFFLINE_NEEDS_OWNER: bool = false;
+
+/// Whoever owns the game may play it offline (an account is kept only after
+/// its access check passed); without the check, anyone may.
 fn full_game_allowed(data: &Data) -> bool {
-    !data.accounts.accounts.is_empty()
+    offline_allowed(OFFLINE_NEEDS_OWNER, !data.accounts.accounts.is_empty())
+}
+
+fn offline_allowed(needs_owner: bool, owner_signed_in: bool) -> bool {
+    !needs_owner || owner_signed_in
 }
 
 fn account_summary(data: &Data) -> AccountSummary {
