@@ -94,6 +94,8 @@ fn main() {
         "friends_send",
         "friends_read",
         "friends_report",
+        "friends_set_visible",
+        "launcher_account_export",
         // Registered only in debug builds; release builds have no handler for them.
         "start_lifecycle_test",
         "stop_lifecycle_test",

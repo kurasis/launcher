@@ -7,7 +7,7 @@ import { friendsProblem, ipc } from '../../lib/ipc';
 import { strings } from '../../lib/strings';
 import { ChatView } from './ChatView';
 import styles from './Friends.module.css';
-import { problemText, roomTitle, useFriends } from './useFriends';
+import { problemText, roomTitle, sanctionText, useFriends } from './useFriends';
 
 const t = strings.friends;
 type Tab = 'chats' | 'friends' | 'requests';
@@ -149,6 +149,11 @@ function FriendsPanel({ view, onOpenAccounts }: { view: FriendsView; onOpenAccou
       data-signed-in={view.signedIn ? 'true' : undefined}
     >
       <h2 className={styles.title}>{t.title}</h2>
+      {view.sanction !== null && (
+        <p className={styles.error} role="status">
+          {sanctionText(view.sanction)}
+        </p>
+      )}
       {view.signedIn && view.problem !== null ? (
         <p className={styles.muted} role="status">
           {problemText(view.problem)}
@@ -328,13 +333,38 @@ function Friends({ view, onOpen }: { view: FriendsView; onOpen: (room: string) =
           </div>
         </div>
       )}
+      <label className={forms.choice}>
+        <input
+          type="checkbox"
+          checked={view.visible}
+          disabled={action.pending}
+          onChange={(event) => {
+            const visible = event.target.checked;
+            void action.run(() => ipc.friendsSetVisible(visible));
+          }}
+        />
+        {t.showOnline}
+      </label>
       {view.friends.length === 0 ? (
         <p className={styles.muted}>{t.noFriends}</p>
       ) : (
         <ul className={styles.list}>
           {view.friends.map((person) => (
             <li key={person.id} className={styles.row}>
-              <span className={styles.nick}>{person.nick}</span>
+              <span className={styles.who}>
+                <span className={styles.nick}>
+                  <span
+                    className={person.online ? styles.online : styles.away}
+                    aria-hidden="true"
+                  />
+                  {person.nick}
+                </span>
+                {person.online && (
+                  <span className={styles.status} dir="auto">
+                    {person.playing !== null ? t.playing({ game: person.playing }) : t.online}
+                  </span>
+                )}
+              </span>
               <span className={styles.actions}>
                 <button
                   type="button"

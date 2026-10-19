@@ -381,3 +381,34 @@
     animation: none;
   }
 }
+
+.who {
+  display: grid;
+  min-width: 0;
+}
+
+.status {
+  overflow: hidden;
+  color: var(--color-success-text);
+  font-size: var(--font-size-sm);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.online,
+.away {
+  display: inline-block;
+  width: 0.5rem;
+  height: 0.5rem;
+  margin-inline-end: var(--space-2);
+  border-radius: 50%;
+  vertical-align: middle;
+}
+
+.online {
+  background: var(--color-success-text);
+}
+
+.away {
+  border: 1px solid var(--color-text-muted);
+}

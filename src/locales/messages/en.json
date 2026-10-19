@@ -102,6 +102,10 @@
       "launcherCancel": "Cancel",
       "launcherNickChanged": "The nick is changed.",
       "launcherSignOut": "Sign out",
+      "launcherExport": "Download my data",
+      "launcherExported": "Saved as {name}.",
+      "launcherDelete": "Delete account…",
+      "launcherDeleteHint": "Your data can be downloaded first. Deleting happens on the account server's page, where you type your password.",
       "launcherLabel": "{name} (launcher account)",
       "launcherProblems": {
         "network": "oauth.lapi.sh cannot be reached. Check the connection and try again.",
@@ -111,6 +115,7 @@
         "nick_invalid": "A nick has 3 to 16 letters A–Z, digits or _.",
         "too_many": "Too many attempts. Wait a little and try again.",
         "vault": "The system credential store did not keep the sign-in; it lasts until the launcher closes.",
+        "not_saved": "The file could not be saved there. Choose another place.",
         "server": "Something went wrong on the account server. Try again later."
       }
     },
@@ -1179,15 +1184,27 @@
         "not_friends": "Only friends can do this.",
         "not_owner": "Only the group's owner can do this.",
         "invalid": "This is not valid.",
-        "server": "Something went wrong on the friends server. Try again later."
-      }
+        "server": "Something went wrong on the friends server. Try again later.",
+        "muted": "A moderator muted you: you cannot write for now.",
+        "banned": "A moderator closed friends and chats for you."
+      },
+      "online": "Online",
+      "playing": "Playing {game}",
+      "showOnline": "Show friends that I am online",
+      "removedMessage": "Removed by a moderator.",
+      "muted": "You cannot write until {until}: a moderator muted you.",
+      "mutedForGood": "You cannot write: a moderator muted you.",
+      "banned": "A moderator closed friends and chats for you until {until}.",
+      "bannedForGood": "A moderator closed friends and chats for you."
     },
     "windowTitles": {
       "pickJava": "Choose the Java program (java or javaw.exe)",
       "pickDataFolder": "Choose a folder for the launcher data",
       "saveDiagnostics": "Save diagnostic export",
       "accountLogin": "Launcher account: sign in",
-      "accountRegister": "Launcher account: create"
+      "accountRegister": "Launcher account: create",
+      "accountDelete": "Launcher account: delete",
+      "saveAccountData": "Save my launcher account data"
     }
   },
   "errors": {

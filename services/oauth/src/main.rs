@@ -1,6 +1,7 @@
 //! `lapi-oauth`: launcher accounts at oauth.lapi.sh (D-064).
 //!
-//! `lapi-oauth serve` runs the pages and the API. The other commands are for
+//! `lapi-oauth serve` runs the pages and the API (including `/delete`, where
+//! a player deletes the account). The other commands are for
 //! the owner on the server, to help a player by hand:
 //!
 //! ```text

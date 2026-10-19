@@ -109,6 +109,25 @@ impl launch::service::LaunchHost for TauriLaunchHost {
     }
     fn run_started(&self, run_id: &str) {
         let state = self.0.state::<AppState>();
+        // Friends see what the player plays while the game runs.
+        let playing = state
+            .current_run()
+            .filter(|r| r.run_id == run_id)
+            .and_then(|r| r.instance_id)
+            .and_then(|id| state.instance(id))
+            .map(|instance| match &instance.loader {
+                Some(loader) => {
+                    format!("Minecraft {} · {}", instance.version_id, loader.kind.name())
+                }
+                None => format!("Minecraft {}", instance.version_id),
+            });
+        if let Some(playing) = playing {
+            let handle = self.0.clone();
+            tauri::async_runtime::spawn(async move {
+                let friends = Arc::clone(&handle.state::<Arc<friends::Friends>>());
+                friends.set_playing(&handle, Some(playing)).await;
+            });
+        }
         match state.during_game_mode() {
             storage::models::DuringGameMode::UnloadAndReturn => {}
             storage::models::DuringGameMode::KeepOpen => return,
@@ -140,6 +159,11 @@ impl launch::service::LaunchHost for TauriLaunchHost {
         self.0
             .state::<LifecycleController>()
             .restore_after_run(&self.0, run_id);
+        let handle = self.0.clone();
+        tauri::async_runtime::spawn(async move {
+            let friends = Arc::clone(&handle.state::<Arc<friends::Friends>>());
+            friends.set_playing(&handle, None).await;
+        });
         // Back up the worlds the session changed, if switched on (D-047).
         let instance = self
             .0
@@ -712,6 +736,8 @@ fn handlers<R: tauri::Runtime>() -> impl Fn(tauri::ipc::Invoke<R>) -> bool + Sen
         commands::friends_send,
         commands::friends_read,
         commands::friends_report,
+        commands::friends_set_visible,
+        commands::launcher_account_export,
         #[cfg(debug_assertions)]
         commands::start_lifecycle_test,
         #[cfg(debug_assertions)]

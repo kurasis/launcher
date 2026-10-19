@@ -255,7 +255,7 @@ export const ipc = {
   dismissWhatsNew: (): Promise<void> => invoke('dismiss_whats_new'),
   openUpdatePage: (): Promise<void> => invoke('open_update_page'),
   /** Opens the launcher account's window on its sign-in or registration page. */
-  launcherAccountOpen: (screen: 'login' | 'register', title?: string): Promise<void> =>
+  launcherAccountOpen: (screen: 'login' | 'register' | 'delete', title?: string): Promise<void> =>
     invoke('launcher_account_open', { screen, title }),
   launcherAccountSignOut: (): Promise<void> => invoke('launcher_account_sign_out'),
   /** Null when the nick changed, else what went wrong. */
@@ -289,6 +289,11 @@ export const ipc = {
     invoke('friends_read', { room, upto }),
   friendsReport: (message: number, reason: string): Promise<void> =>
     invoke('friends_report', { message, reason }),
+  friendsSetVisible: (visible: boolean): Promise<void> =>
+    invoke('friends_set_visible', { visible }),
+  /** Saves the account's data as a file; its name, or null if the dialog was closed. */
+  launcherAccountExport: (title?: string): Promise<string | null> =>
+    invoke<string | null>('launcher_account_export', { title }),
   /** The interface has shown: a new version's start can count as good. */
   interfaceReady: (): Promise<void> => invoke('interface_ready'),
   /** Debug builds only; release builds have no handler for this command. */
@@ -443,4 +448,11 @@ export function onFriendsState(handler: (view: FriendsView) => void): () => void
 /** A new message in one of the account's rooms (its own included). */
 export function onFriendsMessage(handler: (message: ChatMessage) => void): () => void {
   return listenTo('friends://message', handler);
+}
+
+/** A moderator removed a message. */
+export function onFriendsRemoved(
+  handler: (removed: { room: string; message: number }) => void,
+): () => void {
+  return listenTo('friends://removed', handler);
 }

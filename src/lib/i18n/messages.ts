@@ -101,6 +101,10 @@ export type Messages = {
     readonly launcherCancel: string;
     readonly launcherNickChanged: string;
     readonly launcherSignOut: string;
+    readonly launcherExport: string;
+    readonly launcherExported: (values: { name: string | number }) => string;
+    readonly launcherDelete: string;
+    readonly launcherDeleteHint: string;
     readonly launcherLabel: (values: { name: string | number }) => string;
     readonly launcherProblems: {
       readonly network: string;
@@ -110,6 +114,7 @@ export type Messages = {
       readonly nick_invalid: string;
       readonly too_many: string;
       readonly vault: string;
+      readonly not_saved: string;
       readonly server: string;
     };
   };
@@ -1246,7 +1251,17 @@ export type Messages = {
       readonly not_owner: string;
       readonly invalid: string;
       readonly server: string;
+      readonly muted: string;
+      readonly banned: string;
     };
+    readonly online: string;
+    readonly playing: (values: { game: string | number }) => string;
+    readonly showOnline: string;
+    readonly removedMessage: string;
+    readonly muted: (values: { until: string | number }) => string;
+    readonly mutedForGood: string;
+    readonly banned: (values: { until: string | number }) => string;
+    readonly bannedForGood: string;
   };
   readonly windowTitles: {
     readonly pickJava: string;
@@ -1254,5 +1269,7 @@ export type Messages = {
     readonly saveDiagnostics: string;
     readonly accountLogin: string;
     readonly accountRegister: string;
+    readonly accountDelete: string;
+    readonly saveAccountData: string;
   };
 };

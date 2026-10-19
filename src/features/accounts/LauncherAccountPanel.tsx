@@ -24,14 +24,17 @@ interface Props {
  * nick, email confirmation, sign out. Passwords are only typed on oauth.lapi.sh's
  * pages, never here. */
 export function LauncherAccountPanel({ view, isDefault, busy, onDefault }: Props) {
-  const open = useCommand((_: string, screen: 'login' | 'register') =>
+  const open = useCommand((_: string, screen: 'login' | 'register' | 'delete') =>
     ipc.launcherAccountOpen(
       screen,
       screen === 'register'
         ? strings.windowTitles.accountRegister
-        : strings.windowTitles.accountLogin,
+        : screen === 'delete'
+          ? strings.windowTitles.accountDelete
+          : strings.windowTitles.accountLogin,
     ),
   );
+  const [exporting, setExporting] = useState(false);
   const signOut = useCommand(() => ipc.launcherAccountSignOut());
   const setNick = useCommand((_: string, nick: string) => ipc.launcherAccountSetNick(nick));
   const resend = useCommand(() => ipc.launcherAccountResendConfirmation());
@@ -41,6 +44,23 @@ export function LauncherAccountPanel({ view, isDefault, busy, onDefault }: Props
   const [done, setDone] = useState<string | null>(null);
   const shown = problem ?? view.problem;
   const signedIn = view.id !== null && view.nick !== null;
+
+  /** Saves the account's data where the player chooses. */
+  const exportData = async () => {
+    setExporting(true);
+    setDone(null);
+    setProblem(null);
+    try {
+      const name = await ipc.launcherAccountExport(strings.windowTitles.saveAccountData);
+      if (name !== null) setDone(a.launcherExported({ name }));
+    } catch (e) {
+      setProblem(
+        typeof e === 'string' && e in a.launcherProblems ? (e as LauncherAccountProblem) : 'server',
+      );
+    } finally {
+      setExporting(false);
+    }
+  };
 
   const signInButtons = (
     <div className={forms.actions}>
@@ -159,6 +179,22 @@ export function LauncherAccountPanel({ view, isDefault, busy, onDefault }: Props
                 {a.launcherSignOut}
               </Button>
             </div>
+          )}
+          {!view.needsSignIn && (
+            <>
+              <div className={forms.actions}>
+                <Button disabled={exporting} onClick={() => void exportData()}>
+                  {a.launcherExport}
+                </Button>
+                <Button
+                  disabled={view.signingIn || open.pending}
+                  onClick={() => void open.run('delete')}
+                >
+                  {a.launcherDelete}
+                </Button>
+              </div>
+              <p className={styles.hint}>{a.launcherDeleteHint}</p>
+            </>
           )}
         </div>
       )}

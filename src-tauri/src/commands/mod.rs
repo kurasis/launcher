@@ -1508,6 +1508,60 @@ pub async fn launcher_account_resend_confirmation<R: Runtime>(
         .err()
 }
 
+/// Saves what the account service and friends keep about the launcher
+/// account as one JSON file where the player chooses. `Ok(None)` when the
+/// save dialog was closed; else the file's name.
+#[tauri::command]
+pub async fn launcher_account_export<R: Runtime>(
+    app: AppHandle<R>,
+    title: Option<String>,
+) -> Result<Option<String>, crate::launcher_account::AccountProblem> {
+    use crate::launcher_account::AccountProblem;
+    use tauri_plugin_dialog::DialogExt;
+    let account = Arc::clone(&app.state::<Arc<crate::launcher_account::LauncherAccount>>());
+    let state = app.state::<AppState>();
+    let nick = state
+        .accounts_file()
+        .launcher_account
+        .map(|a| a.nick)
+        .unwrap_or_default();
+    let mut data = serde_json::json!({
+        "exported": chrono::Utc::now().to_rfc3339(),
+        "account": account.export(&state).await?,
+    });
+    // Friends may be down; the account's own data still comes.
+    data["friends"] = friends(&app)
+        .export(&app)
+        .await
+        .unwrap_or(serde_json::Value::Null);
+    let title = window_title(title, "Save my launcher account data");
+    let handle = app.clone();
+    let name = format!(
+        "launcher-account-{nick}-{}.json",
+        chrono::Utc::now().format("%Y%m%d")
+    );
+    let target = tauri::async_runtime::spawn_blocking(move || {
+        handle
+            .dialog()
+            .file()
+            .set_title(title)
+            .set_file_name(name)
+            .add_filter("JSON", &["json"])
+            .blocking_save_file()
+    })
+    .await
+    .map_err(|_| AccountProblem::NotSaved)?;
+    let Some(path) = target.and_then(|p| p.into_path().ok()) else {
+        return Ok(None);
+    };
+    let text = serde_json::to_vec_pretty(&data).map_err(|_| AccountProblem::NotSaved)?;
+    std::fs::write(&path, text).map_err(|_| AccountProblem::NotSaved)?;
+    state
+        .console()
+        .info("Launcher account: the data export was saved");
+    Ok(path.file_name().and_then(|n| n.to_str()).map(str::to_owned))
+}
+
 // Friends and chats (D-064). What went wrong comes back as a problem code.
 
 fn friends<R: Runtime>(app: &AppHandle<R>) -> Arc<crate::friends::Friends> {
@@ -1601,6 +1655,15 @@ pub async fn friends_read<R: Runtime>(
     upto: i64,
 ) -> FriendsResult<()> {
     friends(&app).read(&app, &room, upto).await
+}
+
+/// Shows or hides the account's online status from its friends.
+#[tauri::command]
+pub async fn friends_set_visible<R: Runtime>(
+    app: AppHandle<R>,
+    visible: bool,
+) -> FriendsResult<()> {
+    friends(&app).set_visible(&app, visible).await
 }
 
 #[tauri::command]

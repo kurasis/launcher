@@ -1,7 +1,13 @@
 import { useEffect, useState } from 'react';
-import type { ChatRoom, FriendsProblem, FriendsView, RoomMember } from '../../lib/contracts';
+import type {
+  ChatRoom,
+  FriendsProblem,
+  FriendsSanction,
+  FriendsView,
+  RoomMember,
+} from '../../lib/contracts';
 import { ipc, onFriendsState } from '../../lib/ipc';
-import { strings } from '../../lib/strings';
+import { numberLocale, strings } from '../../lib/strings';
 
 /** Friends and chats as the launcher's core keeps them; null until read. */
 export function useFriends(): FriendsView | null {
@@ -36,4 +42,14 @@ export function roomTitle(room: ChatRoom, me: RoomMember | null): string {
 
 export function problemText(problem: FriendsProblem): string {
   return strings.friends.problems[problem];
+}
+
+/** What a mute or ban means for the player, with when it ends. */
+export function sanctionText(sanction: FriendsSanction): string {
+  const t = strings.friends;
+  if (sanction.until === 0) {
+    return sanction.kind === 'mute' ? t.mutedForGood : t.bannedForGood;
+  }
+  const until = new Date(sanction.until * 1000).toLocaleString(numberLocale());
+  return sanction.kind === 'mute' ? t.muted({ until }) : t.banned({ until });
 }
