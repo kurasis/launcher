@@ -95,6 +95,8 @@ fn main() {
         "friends_read",
         "friends_report",
         "friends_set_visible",
+        "friends_decline_all",
+        "friends_report_request",
         "launcher_account_export",
         // Registered only in debug builds; release builds have no handler for them.
         "start_lifecycle_test",

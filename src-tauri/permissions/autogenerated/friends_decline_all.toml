@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-friends-decline-all"
+description = "Enables the friends_decline_all command without any pre-configured scope."
+commands.allow = ["friends_decline_all"]
+
+[[permission]]
+identifier = "deny-friends-decline-all"
+description = "Denies the friends_decline_all command without any pre-configured scope."
+commands.deny = ["friends_decline_all"]

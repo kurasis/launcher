@@ -24,11 +24,13 @@ use crate::store::Store;
 
 const ISSUER: &str = "https://oauth.example";
 
-/// Nicks, sessions that ended, accounts deleted (with when).
+/// Nicks, sessions that ended, accounts deleted (with when), whether
+/// letters are sent.
 struct People(
     BTreeMap<String, String>,
     Arc<Mutex<Vec<String>>>,
     Arc<Mutex<Vec<(String, i64)>>>,
+    Arc<Mutex<bool>>,
 );
 
 type Boxed<'a, T> = Pin<Box<dyn Future<Output = Result<T, String>> + Send + 'a>>;
@@ -66,6 +68,10 @@ impl Accounts for People {
         })
     }
 
+    fn mail_sent(&self) -> Boxed<'_, bool> {
+        Box::pin(async move { Ok(*self.3.lock().unwrap()) })
+    }
+
     fn ended<'a>(&'a self, sessions: &'a [String]) -> Boxed<'a, Vec<String>> {
         Box::pin(async move {
             let ended = self.1.lock().unwrap();
@@ -88,6 +94,8 @@ struct T {
     ended: Arc<Mutex<Vec<String>>>,
     /// Accounts it says were deleted.
     deleted: Arc<Mutex<Vec<(String, i64)>>>,
+    /// Whether it says letters are sent.
+    mail: Arc<Mutex<bool>>,
     app: Arc<App>,
     router: Router,
     key: SigningKey,
@@ -103,6 +111,7 @@ fn setup() -> T {
     }]}));
     let ended = Arc::new(Mutex::new(Vec::new()));
     let deleted = Arc::new(Mutex::new(Vec::new()));
+    let mail = Arc::new(Mutex::new(false));
     let people = People(
         [
             (id(1), "Alice".to_owned()),
@@ -114,6 +123,7 @@ fn setup() -> T {
         .into(),
         Arc::clone(&ended),
         Arc::clone(&deleted),
+        Arc::clone(&mail),
     );
     let app = Arc::new(App {
         store: Store::open(dir.path()).unwrap(),
@@ -123,12 +133,13 @@ fn setup() -> T {
         sessions: crate::auth::Sessions::default(),
         deleted_since: Mutex::new(0),
         limiter: Limiter::default(),
-        require_email: false,
+        email: crate::api::EmailRule::new(crate::api::EmailMode::Auto),
     });
     T {
         _dir: dir,
         ended,
         deleted,
+        mail,
         router: crate::api::router(Arc::clone(&app)),
         app,
         key,
@@ -1106,4 +1117,125 @@ async fn an_account_exports_only_its_own_lists_and_messages() {
         .collect();
     assert_eq!(written, ["mine"]);
     assert_eq!(data["rooms"].as_array().unwrap().len(), 1);
+}
+
+#[tokio::test]
+async fn new_accounts_send_few_requests_and_no_one_is_buried_in_them() {
+    let t = setup();
+    let ask = |who: u8, nick: &'static str| {
+        let t = &t;
+        async move {
+            t.call(who, "POST", "/v1/requests", json!({ "nick": nick }))
+                .await
+        }
+    };
+    // A new account: five a day, unknown nicks included.
+    for nick in ["Alice", "Bob", "Carol", "Dave", "Nobody_1"] {
+        assert_ne!(
+            ask(5, nick).await.0,
+            StatusCode::TOO_MANY_REQUESTS,
+            "{nick}"
+        );
+    }
+    let (status, answer) = ask(5, "Nobody_2").await;
+    assert_eq!(
+        (status, answer["error"].as_str()),
+        (StatusCode::TOO_MANY_REQUESTS, Some("too_many"))
+    );
+    // A day later, an older account: the usual allowance again.
+    t.app.store.age_account(&id(5), 2 * 86_400);
+    assert_ne!(ask(5, "Nobody_3").await.0, StatusCode::TOO_MANY_REQUESTS);
+    // Someone with 30 requests waiting gets no more, and is not told.
+    t.app.store.fill_requests_to(&id(2), 30, now());
+    let (status, answer) = ask(1, "Bob").await;
+    assert_eq!(
+        (status, answer["result"].as_str()),
+        (StatusCode::OK, Some("sent"))
+    );
+    let waiting = t.app.store.incoming(&id(2)).unwrap();
+    assert_eq!(waiting.len(), 31, "Mallory's came before the 30");
+    assert!(
+        !waiting.iter().any(|(who, _)| *who == id(1)),
+        "Alice's was dropped"
+    );
+    // ... unless it answers theirs: that makes friends.
+    ask(3, "Dave").await;
+    t.app.store.fill_requests_to(&id(3), 30, now());
+    let (_, answer) = ask(4, "Carol").await;
+    assert_eq!(answer["result"], "friends");
+    assert!(t.app.store.are_friends(&id(3), &id(4)).unwrap());
+}
+
+#[tokio::test]
+async fn requests_are_reported_as_spam_or_declined_all_at_once() {
+    let t = setup();
+    for who in [1, 3, 4] {
+        t.call(who, "POST", "/v1/requests", json!({ "nick": "Bob" }))
+            .await;
+    }
+    assert_eq!(
+        t.call(2, "POST", "/v1/requests/report", json!({ "id": id(1) }))
+            .await
+            .0,
+        StatusCode::NO_CONTENT
+    );
+    let reported = t.app.store.request_reports(false, 10).unwrap();
+    assert_eq!(reported[0]["sender"], id(1));
+    assert_eq!(reported[0]["nick"], "Alice");
+    assert_eq!(
+        t.call(2, "POST", "/v1/requests/report", json!({ "id": id(1) }))
+            .await
+            .0,
+        StatusCode::NOT_FOUND,
+        "only a request that waits"
+    );
+    let (_, bob) = t.call(2, "GET", "/v1/state", Value::Null).await;
+    assert_eq!(bob["incoming"].as_array().unwrap().len(), 2);
+    assert_eq!(
+        t.call(2, "POST", "/v1/requests/decline-all", Value::Null)
+            .await
+            .0,
+        StatusCode::NO_CONTENT
+    );
+    let (_, bob) = t.call(2, "GET", "/v1/state", Value::Null).await;
+    assert!(bob["incoming"].as_array().unwrap().is_empty());
+    assert!(
+        t.app
+            .store
+            .resolve_request_report(reported[0]["requestReport"].as_i64().unwrap(), "warned")
+            .unwrap()
+    );
+    assert!(t.app.store.request_reports(false, 10).unwrap().is_empty());
+}
+
+#[tokio::test]
+async fn a_confirmed_email_is_asked_for_once_letters_are_sent() {
+    let t = setup();
+    let confirmed = t.token_with(
+        json!({
+            "iss": ISSUER, "sub": id(1), "aud": ["friends"], "iat": now(),
+            "exp": now() + 600, "sid": "s1", "nick": "Alice", "ev": true,
+        }),
+        "k1",
+    );
+    let state = |token: String| {
+        Request::get("/v1/state")
+            .header(header::AUTHORIZATION, format!("Bearer {token}"))
+            .body(Body::empty())
+            .unwrap()
+    };
+    // No letters yet: an unconfirmed address is enough.
+    crate::api::check_mail(&t.app).await;
+    assert_eq!(
+        t.call(2, "GET", "/v1/state", Value::Null).await.0,
+        StatusCode::OK
+    );
+    *t.mail.lock().unwrap() = true;
+    crate::api::check_mail(&t.app).await;
+    let (status, answer) = t.call(2, "GET", "/v1/state", Value::Null).await;
+    assert_eq!(
+        (status, answer["error"].as_str()),
+        (StatusCode::FORBIDDEN, Some("email_not_confirmed"))
+    );
+    assert_eq!(t.raw(state(confirmed)).await.0, StatusCode::OK);
 }

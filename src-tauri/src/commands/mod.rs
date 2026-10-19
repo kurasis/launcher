@@ -1657,6 +1657,21 @@ pub async fn friends_read<R: Runtime>(
     friends(&app).read(&app, &room, upto).await
 }
 
+/// Declines every friend request waiting for the account.
+#[tauri::command]
+pub async fn friends_decline_all<R: Runtime>(app: AppHandle<R>) -> FriendsResult<()> {
+    friends(&app).decline_all(&app).await
+}
+
+/// Reports a waiting friend request as spam.
+#[tauri::command]
+pub async fn friends_report_request<R: Runtime>(
+    app: AppHandle<R>,
+    id: String,
+) -> FriendsResult<()> {
+    friends(&app).report_request(&app, &id).await
+}
+
 /// Shows or hides the account's online status from its friends.
 #[tauri::command]
 pub async fn friends_set_visible<R: Runtime>(

@@ -23,6 +23,45 @@ use crate::text;
 
 pub const MAX_FRIENDS: usize = 300;
 pub const MAX_OUTGOING: usize = 100;
+/// Requests waiting for one person: more are dropped unseen, so many
+/// accounts cannot bury someone in requests.
+pub const MAX_INCOMING: usize = 30;
+/// Requests an account sends a day, and in its first day of friends.
+pub const REQUESTS_PER_DAY: i64 = 50;
+pub const NEW_REQUESTS_PER_DAY: i64 = 5;
+const NEW_ACCOUNT_SECONDS: i64 = 86_400;
+
+/// When friends asks for a confirmed email: never, always, or once the
+/// account service sends letters (`auto`, the default).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum EmailMode {
+    Off,
+    On,
+    Auto,
+}
+
+pub struct EmailRule {
+    pub mode: EmailMode,
+    /// The account service sends letters (asked every 15 seconds).
+    pub mail_sent: std::sync::atomic::AtomicBool,
+}
+
+impl EmailRule {
+    pub fn new(mode: EmailMode) -> Self {
+        Self {
+            mode,
+            mail_sent: std::sync::atomic::AtomicBool::new(false),
+        }
+    }
+
+    pub fn required(&self) -> bool {
+        match self.mode {
+            EmailMode::Off => false,
+            EmailMode::On => true,
+            EmailMode::Auto => self.mail_sent.load(std::sync::atomic::Ordering::Relaxed),
+        }
+    }
+}
 pub const MAX_GROUPS: i64 = 50;
 /// People in a group, its owner included.
 pub const MAX_MEMBERS: usize = 20;
@@ -66,8 +105,8 @@ pub struct App {
     /// Accounts deleted up to this time were cleaned out already.
     pub deleted_since: Mutex<i64>,
     pub limiter: Limiter,
-    /// Only accounts with a confirmed email may use friends.
-    pub require_email: bool,
+    /// Whether only accounts with a confirmed email may use friends.
+    pub email: EmailRule,
 }
 
 pub fn now() -> i64 {
@@ -108,7 +147,7 @@ fn who(app: &App, headers: &HeaderMap) -> Result<Claims, Box<Response>> {
         Ok(_) => {}
         Err(e) => return Err(Box::new(failed(&e))),
     }
-    if app.require_email && !claims.ev {
+    if app.email.required() && !claims.ev {
         return Err(Box::new(refuse(
             StatusCode::FORBIDDEN,
             "email_not_confirmed",
@@ -247,6 +286,19 @@ async fn request(
     {
         return refuse(StatusCode::TOO_MANY_REQUESTS, "too_many");
     }
+    // A day's allowance, smaller in the account's first day of friends:
+    // throwaway accounts cannot send much.
+    let now = now();
+    let daily = match app.store.first_seen(&me.sub, now) {
+        Ok(first) if now - first < NEW_ACCOUNT_SECONDS => NEW_REQUESTS_PER_DAY,
+        Ok(_) => REQUESTS_PER_DAY,
+        Err(e) => return failed(&e),
+    };
+    match app.store.count_request(&me.sub, daily, now) {
+        Ok(true) => {}
+        Ok(false) => return refuse(StatusCode::TOO_MANY_REQUESTS, "too_many"),
+        Err(e) => return failed(&e),
+    }
     let target = match app.directory.find(nick).await {
         Ok(Some((id, _))) => id,
         Ok(None) => return refuse(StatusCode::NOT_FOUND, "no_such_nick"),
@@ -277,7 +329,18 @@ async fn request(
         }
         _ => return failed("counting friends"),
     }
-    match app.store.request(&me.sub, &target, now()) {
+    // Someone with many requests waiting gets no more, unseen (unless they
+    // asked us: then this makes friends).
+    let asked_us = app
+        .store
+        .incoming(&me.sub)
+        .map(|list| list.iter().any(|(id, _)| *id == target))
+        .unwrap_or(false);
+    let waiting = app.store.incoming(&target).map(|l| l.len()).unwrap_or(0);
+    if !asked_us && waiting >= MAX_INCOMING {
+        return Json(json!({ "result": "sent" })).into_response();
+    }
+    match app.store.request(&me.sub, &target, now) {
         Ok(result) => {
             if matches!(result, Requested::Sent | Requested::Friends) {
                 app.hub.tell(&target, &Event::Friends);
@@ -340,6 +403,52 @@ async fn act(
             if tell_other {
                 app.hub.tell(other, &Event::Friends);
             }
+            StatusCode::NO_CONTENT.into_response()
+        }
+        Ok(false) => refuse(StatusCode::NOT_FOUND, "not_found"),
+        Err(e) => failed(&e),
+    }
+}
+
+/// Declines every request waiting for the account.
+async fn decline_all(State(app): State<Arc<App>>, headers: HeaderMap) -> Response {
+    let me = me!(app, headers);
+    match app.store.decline_all(&me.sub) {
+        Ok(_) => {
+            app.hub.tell(&me.sub, &Event::Friends);
+            StatusCode::NO_CONTENT.into_response()
+        }
+        Err(e) => failed(&e),
+    }
+}
+
+/// Reports a waiting request as spam: it goes, and the owner sees who sent
+/// it (docs/MODERATION.md).
+async fn report_request(
+    State(app): State<Arc<App>>,
+    headers: HeaderMap,
+    Json(body): Json<IdBody>,
+) -> Response {
+    let me = me!(app, headers);
+    let Some(sender) = valid_id(&body) else {
+        return refuse(StatusCode::UNPROCESSABLE_ENTITY, "id");
+    };
+    if !app
+        .limiter
+        .allow(&me.sub, "report", 20, Duration::from_secs(3600))
+    {
+        return refuse(StatusCode::TOO_MANY_REQUESTS, "too_many");
+    }
+    let nick = app
+        .directory
+        .nicks(&[sender.to_owned()])
+        .await
+        .ok()
+        .and_then(|mut nicks| nicks.remove(sender))
+        .unwrap_or_default();
+    match app.store.report_request(&me.sub, sender, &nick, now()) {
+        Ok(true) => {
+            app.hub.tell(&me.sub, &Event::Friends);
             StatusCode::NO_CONTENT.into_response()
         }
         Ok(false) => refuse(StatusCode::NOT_FOUND, "not_found"),
@@ -864,6 +973,21 @@ pub fn tell_moderation(app: &App) {
     }
 }
 
+/// In `auto` mode, asks the account service whether it sends letters: once
+/// it does, friends asks for a confirmed email.
+pub async fn check_mail(app: &App) {
+    if app.email.mode != EmailMode::Auto {
+        return;
+    }
+    match app.directory.mail_sent().await {
+        Ok(sent) => app
+            .email
+            .mail_sent
+            .store(sent, std::sync::atomic::Ordering::Relaxed),
+        Err(e) => eprintln!("asking whether letters are sent failed: {e}"),
+    }
+}
+
 /// Cleans out accounts the account service deleted, and tells who knew
 /// them.
 pub async fn purge_deleted(app: &App) {
@@ -1002,6 +1126,8 @@ pub fn router(app: Arc<App>) -> Router {
         .route("/v1/health", get(health))
         .route("/v1/state", get(state))
         .route("/v1/requests", post(request))
+        .route("/v1/requests/decline-all", post(decline_all))
+        .route("/v1/requests/report", post(report_request))
         .route("/v1/people/{action}", post(act))
         .route("/v1/rooms", get(rooms))
         .route("/v1/rooms/direct", post(direct))

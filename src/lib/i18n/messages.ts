@@ -1253,6 +1253,7 @@ export type Messages = {
       readonly server: string;
       readonly muted: string;
       readonly banned: string;
+      readonly email_not_confirmed: string;
     };
     readonly online: string;
     readonly playing: (values: { game: string | number }) => string;
@@ -1262,6 +1263,8 @@ export type Messages = {
     readonly mutedForGood: string;
     readonly banned: (values: { until: string | number }) => string;
     readonly bannedForGood: string;
+    readonly spam: string;
+    readonly declineAll: string;
   };
   readonly windowTitles: {
     readonly pickJava: string;

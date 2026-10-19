@@ -87,6 +87,29 @@ CREATE TABLE IF NOT EXISTS moderation (
 CREATE TABLE IF NOT EXISTS hidden (
     account_id TEXT PRIMARY KEY
 );
+-- When an account first used friends: new accounts send fewer requests.
+CREATE TABLE IF NOT EXISTS seen (
+    account_id TEXT PRIMARY KEY,
+    first INTEGER NOT NULL
+);
+-- Requests an account sent in the last day, for the daily limit (kept over
+-- restarts, unlike the hourly one).
+CREATE TABLE IF NOT EXISTS request_log (
+    account_id TEXT NOT NULL,
+    at INTEGER NOT NULL
+);
+CREATE INDEX IF NOT EXISTS request_log_account ON request_log(account_id, at);
+-- Friend requests reported as spam (the request itself is dropped).
+CREATE TABLE IF NOT EXISTS request_reports (
+    id INTEGER PRIMARY KEY,
+    reporter TEXT NOT NULL,
+    sender TEXT NOT NULL,
+    nick TEXT NOT NULL,
+    created INTEGER NOT NULL,
+    status TEXT NOT NULL DEFAULT 'open',
+    note TEXT NOT NULL DEFAULT '',
+    UNIQUE (reporter, sender)
+);
 "#;
 
 /// Columns added to `reports` after it was first made: a copy of the
@@ -380,6 +403,122 @@ impl Store {
     }
 
     /// Removes a request between the two, either way; false if there was none.
+    /// Declines every request waiting for `me`; how many.
+    pub fn decline_all(&self, me: &str) -> Result<usize> {
+        self.db()
+            .execute("DELETE FROM requests WHERE to_id = ?1", [me])
+            .map_err(err)
+    }
+
+    /// When the account first used friends (now, the first time).
+    pub fn first_seen(&self, account: &str, now: i64) -> Result<i64> {
+        let db = self.db();
+        db.execute(
+            "INSERT OR IGNORE INTO seen (account_id, first) VALUES (?1, ?2)",
+            params![account, now],
+        )
+        .map_err(err)?;
+        db.query_row(
+            "SELECT first FROM seen WHERE account_id = ?1",
+            [account],
+            |r| r.get(0),
+        )
+        .map_err(err)
+    }
+
+    /// Counts a request toward the daily limit; false (and not counted)
+    /// once `limit` were sent in the last day.
+    pub fn count_request(&self, account: &str, limit: i64, now: i64) -> Result<bool> {
+        let mut db = self.db();
+        let tx = db.transaction().map_err(err)?;
+        tx.execute(
+            "DELETE FROM request_log WHERE account_id = ?1 AND at <= ?2",
+            params![account, now - 86_400],
+        )
+        .map_err(err)?;
+        let sent: i64 = tx
+            .query_row(
+                "SELECT COUNT(*) FROM request_log WHERE account_id = ?1",
+                [account],
+                |r| r.get(0),
+            )
+            .map_err(err)?;
+        if sent >= limit {
+            return Ok(false);
+        }
+        tx.execute(
+            "INSERT INTO request_log (account_id, at) VALUES (?1, ?2)",
+            params![account, now],
+        )
+        .map_err(err)?;
+        tx.commit().map_err(err)?;
+        Ok(true)
+    }
+
+    /// Reports a waiting request as spam and drops it; false when there is
+    /// no such request.
+    pub fn report_request(
+        &self,
+        reporter: &str,
+        sender: &str,
+        nick: &str,
+        now: i64,
+    ) -> Result<bool> {
+        let mut db = self.db();
+        let tx = db.transaction().map_err(err)?;
+        let dropped = tx
+            .execute(
+                "DELETE FROM requests WHERE from_id = ?1 AND to_id = ?2",
+                params![sender, reporter],
+            )
+            .map_err(err)?;
+        if dropped == 0 {
+            return Ok(false);
+        }
+        tx.execute(
+            "INSERT OR IGNORE INTO request_reports (reporter, sender, nick, created) VALUES (?1, ?2, ?3, ?4)",
+            params![reporter, sender, nick, now],
+        )
+        .map_err(err)?;
+        tx.commit().map_err(err)?;
+        Ok(true)
+    }
+
+    /// Requests reported as spam, newest first; only open ones unless `all`.
+    pub fn request_reports(&self, all: bool, limit: i64) -> Result<Vec<serde_json::Value>> {
+        let db = self.db();
+        let mut statement = db
+            .prepare(
+                "SELECT id, created, reporter, sender, nick, status, note FROM request_reports
+                 WHERE ?1 OR status = 'open' ORDER BY id DESC LIMIT ?2",
+            )
+            .map_err(err)?;
+        statement
+            .query_map(params![all, limit], |r| {
+                Ok(serde_json::json!({
+                    "requestReport": r.get::<_, i64>(0)?,
+                    "at": r.get::<_, i64>(1)?,
+                    "reporter": r.get::<_, String>(2)?,
+                    "sender": r.get::<_, String>(3)?,
+                    "nick": r.get::<_, String>(4)?,
+                    "status": r.get::<_, String>(5)?,
+                    "note": r.get::<_, String>(6)?,
+                }))
+            })
+            .and_then(Iterator::collect)
+            .map_err(err)
+    }
+
+    pub fn resolve_request_report(&self, id: i64, note: &str) -> Result<bool> {
+        self.db()
+            .execute(
+                "UPDATE request_reports SET status = 'resolved', note = ?2 WHERE id = ?1",
+                params![id, note],
+            )
+            .map(|n| n > 0)
+            .map_err(err)
+    }
+
     pub fn drop_request(&self, from: &str, to: &str) -> Result<bool> {
         self.db()
             .execute(
@@ -680,6 +819,36 @@ impl Store {
             )
             .and_then(Iterator::collect)
             .map_err(err)
+    }
+
+    /// Makes the account an old user of friends (tests of the new-account
+    /// limit).
+    #[cfg(test)]
+    pub fn age_account(&self, account: &str, seconds: i64) {
+        let db = self.db();
+        db.execute(
+            "UPDATE seen SET first = first - ?2 WHERE account_id = ?1",
+            params![account, seconds],
+        )
+        .unwrap();
+        db.execute(
+            "UPDATE request_log SET at = at - ?2 WHERE account_id = ?1",
+            params![account, seconds],
+        )
+        .unwrap();
+    }
+
+    /// `count` requests from made-up accounts waiting for `to` (tests).
+    #[cfg(test)]
+    pub fn fill_requests_to(&self, to: &str, count: usize, now: i64) {
+        let db = self.db();
+        for i in 0..count {
+            db.execute(
+                "INSERT INTO requests (from_id, to_id, created) VALUES (?1, ?2, ?3)",
+                params![format!("00000000-0000-4000-9000-{i:012}"), to, now],
+            )
+            .unwrap();
+        }
     }
 
     /// Moves a room's messages and members back in time (tests of join times).
@@ -1019,6 +1188,9 @@ impl Store {
             "DELETE FROM reports WHERE reporter = ?1",
             "DELETE FROM sanctions WHERE account_id = ?1",
             "DELETE FROM hidden WHERE account_id = ?1",
+            "DELETE FROM seen WHERE account_id = ?1",
+            "DELETE FROM request_log WHERE account_id = ?1",
+            "DELETE FROM request_reports WHERE reporter = ?1",
         ] {
             tx.execute(sql, [account]).map_err(err)?;
         }

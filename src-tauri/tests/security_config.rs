@@ -216,6 +216,8 @@ fn main_window_capability_grants_only_app_commands() {
             "allow-friends-read",
             "allow-friends-report",
             "allow-friends-set-visible",
+            "allow-friends-decline-all",
+            "allow-friends-report-request",
             "allow-launcher-account-export",
             "allow-start-lifecycle-test",
             "allow-stop-lifecycle-test",

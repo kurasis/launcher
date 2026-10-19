@@ -289,6 +289,9 @@ export const ipc = {
     invoke('friends_read', { room, upto }),
   friendsReport: (message: number, reason: string): Promise<void> =>
     invoke('friends_report', { message, reason }),
+  friendsDeclineAll: (): Promise<void> => invoke('friends_decline_all'),
+  /** Reports a waiting request as spam; it goes. */
+  friendsReportRequest: (id: string): Promise<void> => invoke('friends_report_request', { id }),
   friendsSetVisible: (visible: boolean): Promise<void> =>
     invoke('friends_set_visible', { visible }),
   /** Saves the account's data as a file; its name, or null if the dialog was closed. */

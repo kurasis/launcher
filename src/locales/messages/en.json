@@ -1186,7 +1186,8 @@
         "invalid": "This is not valid.",
         "server": "Something went wrong on the friends server. Try again later.",
         "muted": "A moderator muted you: you cannot write for now.",
-        "banned": "A moderator closed friends and chats for you."
+        "banned": "A moderator closed friends and chats for you.",
+        "email_not_confirmed": "Friends and chats need a confirmed email. Open the letter we sent, or send it again in Accounts."
       },
       "online": "Online",
       "playing": "Playing {game}",
@@ -1195,7 +1196,9 @@
       "muted": "You cannot write until {until}: a moderator muted you.",
       "mutedForGood": "You cannot write: a moderator muted you.",
       "banned": "A moderator closed friends and chats for you until {until}.",
-      "bannedForGood": "A moderator closed friends and chats for you."
+      "bannedForGood": "A moderator closed friends and chats for you.",
+      "spam": "Spam",
+      "declineAll": "Decline all"
     },
     "windowTitles": {
       "pickJava": "Choose the Java program (java or javaw.exe)",

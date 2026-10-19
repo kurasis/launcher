@@ -346,6 +346,7 @@ export type FriendsProblem =
   | 'not_owner'
   | 'muted'
   | 'banned'
+  | 'email_not_confirmed'
   | 'invalid'
   | 'server';
 
@@ -361,6 +362,7 @@ export const FRIENDS_PROBLEMS: readonly FriendsProblem[] = [
   'not_owner',
   'muted',
   'banned',
+  'email_not_confirmed',
   'invalid',
   'server',
 ];

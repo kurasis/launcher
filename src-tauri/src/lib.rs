@@ -737,6 +737,8 @@ fn handlers<R: tauri::Runtime>() -> impl Fn(tauri::ipc::Invoke<R>) -> bool + Sen
         commands::friends_read,
         commands::friends_report,
         commands::friends_set_visible,
+        commands::friends_decline_all,
+        commands::friends_report_request,
         commands::launcher_account_export,
         #[cfg(debug_assertions)]
         commands::start_lifecycle_test,

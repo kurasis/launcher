@@ -74,6 +74,8 @@ pub enum FriendsProblem {
     Muted,
     /// The owner banned the account from friends.
     Banned,
+    /// Friends asks for a confirmed email first.
+    EmailNotConfirmed,
     Invalid,
     Server,
 }
@@ -190,6 +192,7 @@ fn problem_of(status: u16, body: &Value) -> FriendsProblem {
         (403, "not_owner") => FriendsProblem::NotOwner,
         (403, "mute") => FriendsProblem::Muted,
         (403, "ban") => FriendsProblem::Banned,
+        (403, "email_not_confirmed") => FriendsProblem::EmailNotConfirmed,
         (422 | 404, _) => FriendsProblem::Invalid,
         _ => FriendsProblem::Server,
     }
@@ -367,7 +370,11 @@ impl Friends {
             self.set(&app, |view| view.connected = false);
             failures = match outcome {
                 Ok(()) => 0,
-                Err(FriendsProblem::SignedOut | FriendsProblem::Banned) => {
+                Err(
+                    FriendsProblem::SignedOut
+                    | FriendsProblem::Banned
+                    | FriendsProblem::EmailNotConfirmed,
+                ) => {
                     self.set(&app, |view| view.problem = Some(FriendsProblem::SignedOut));
                     // Until the account signs in again; a refusal the friends
                     // server had no reason for (its keys not read yet after a
@@ -534,6 +541,34 @@ impl Friends {
         if lock(&self.view).connected {
             let _ = self.tell_playing(app, playing).await;
         }
+    }
+
+    /// Declines every request waiting for the account.
+    pub async fn decline_all<R: Runtime>(&self, app: &AppHandle<R>) -> Result<(), FriendsProblem> {
+        self.call(app, reqwest::Method::POST, "/v1/requests/decline-all", None)
+            .await?;
+        let _ = self.refresh(app).await;
+        Ok(())
+    }
+
+    /// Reports a waiting request as spam; it goes.
+    pub async fn report_request<R: Runtime>(
+        &self,
+        app: &AppHandle<R>,
+        id: &str,
+    ) -> Result<(), FriendsProblem> {
+        if uuid::Uuid::parse_str(id).is_err() {
+            return Err(FriendsProblem::Invalid);
+        }
+        self.call(
+            app,
+            reqwest::Method::POST,
+            "/v1/requests/report",
+            Some(json!({ "id": id })),
+        )
+        .await?;
+        let _ = self.refresh(app).await;
+        Ok(())
     }
 
     /// Shows or hides the account's online status from its friends.
@@ -794,6 +829,10 @@ mod tests {
         );
         assert_eq!(problem_of(403, &body("mute")), FriendsProblem::Muted);
         assert_eq!(problem_of(403, &body("ban")), FriendsProblem::Banned);
+        assert_eq!(
+            problem_of(403, &body("email_not_confirmed")),
+            FriendsProblem::EmailNotConfirmed
+        );
         assert_eq!(problem_of(500, &Value::Null), FriendsProblem::Server);
     }
 

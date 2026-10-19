@@ -1019,6 +1019,15 @@ async fn the_internal_api_tells_only_nicks_and_ids() {
     assert_eq!(answer, serde_json::json!({ "ended": [sid] }));
     let (status, _) = ask(ended(serde_json::json!(vec!["x"; 501]))).await;
     assert_eq!(status, StatusCode::PAYLOAD_TOO_LARGE);
+    // No SMTP server in the tests: letters do not go out.
+    let (status, mail) = ask(Request::get("/internal/v1/mail")
+        .body(Body::empty())
+        .unwrap())
+    .await;
+    assert_eq!(
+        (status, mail),
+        (StatusCode::OK, serde_json::json!({ "sending": false }))
+    );
 }
 
 /// Sets a new password with a reset link's token; the answer of the form.

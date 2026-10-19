@@ -334,6 +334,28 @@ describe('friends corner', () => {
     expect(within(history).getByText('hi')).toBeVisible();
   });
 
+  it('reports a request as spam or declines them all', async () => {
+    const { calls } = setup(
+      signedIn({
+        incoming: [
+          { ...NOTCH, at: 3, online: false, playing: null },
+          { id: 'y', nick: 'buy_gold_cheap', at: 4, online: false, playing: null },
+        ],
+      }),
+    );
+    const panel = await openPanel();
+    fireEvent.click(within(panel).getByRole('tab', { name: /Requests/ }));
+    const spam = within(panel).getAllByRole('button', { name: 'Spam' });
+    fireEvent.click(spam[1] as HTMLElement);
+    await waitFor(() => {
+      expect(calls.find((c) => c.cmd === 'friends_report_request')?.args).toEqual({ id: 'y' });
+    });
+    fireEvent.click(within(panel).getByRole('button', { name: 'Decline all' }));
+    await waitFor(() => {
+      expect(calls.some((c) => c.cmd === 'friends_decline_all')).toBe(true);
+    });
+  });
+
   it('follows state the core sends', async () => {
     setup(signedOut);
     const panel = await openPanel();

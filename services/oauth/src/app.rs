@@ -186,6 +186,9 @@ pub struct App {
     pub hashing: Semaphore,
     /// Seals letters waiting in the outbox (`mail.key`).
     pub sealer: crate::mail::Sealer,
+    /// An SMTP server is set, so letters go out (friends then asks for a
+    /// confirmed address).
+    pub mailing: bool,
 }
 
 impl App {
@@ -198,6 +201,7 @@ impl App {
             limiter: Limiter::default(),
             captcha,
             sealer: crate::mail::Sealer::random(),
+            mailing: false,
             hashing: Semaphore::new(HASHING_AT_ONCE),
         }
     }

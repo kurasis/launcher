@@ -23,6 +23,9 @@ pub trait Accounts: Send + Sync {
     fn ended<'a>(&'a self, sessions: &'a [String]) -> Boxed<'a, Vec<String>>;
     /// Accounts deleted since `since` (Unix time): ID and when.
     fn deleted(&self, since: i64) -> Boxed<'_, Vec<(String, i64)>>;
+    /// Whether the account service sends letters (so addresses can be
+    /// confirmed).
+    fn mail_sent(&self) -> Boxed<'_, bool>;
 }
 
 pub struct Internal {
@@ -97,6 +100,13 @@ impl Accounts for Internal {
                 .flatten()
                 .filter_map(|d| Some((d["id"].as_str()?.to_owned(), d["at"].as_i64()?)))
                 .collect())
+        })
+    }
+
+    fn mail_sent(&self) -> Boxed<'_, bool> {
+        Box::pin(async move {
+            let body = self.get("/internal/v1/mail", 0).await?;
+            Ok(body["sending"].as_bool().unwrap_or(false))
         })
     }
 }
@@ -198,6 +208,10 @@ impl Directory {
 
     pub async fn deleted(&self, since: i64) -> Result<Vec<(String, i64)>, String> {
         self.source.deleted(since).await
+    }
+
+    pub async fn mail_sent(&self) -> Result<bool, String> {
+        self.source.mail_sent().await
     }
 
     /// A nick that just changed (seen in the owner's own token).

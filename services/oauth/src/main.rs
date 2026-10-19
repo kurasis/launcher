@@ -276,6 +276,7 @@ fn serve() -> Result<(), String> {
         let mut app = app::App::new(config, store, keys, Box::new(captcha));
         app.sealer = mail::Sealer::new(crypto::secret_file(&data.join("mail.key"))?);
         mail::seal_waiting(&app)?;
+        app.mailing = smtp.is_some();
         let app = Arc::new(app);
         if let Some(smtp) = smtp {
             tokio::spawn(mail::worker(Arc::clone(&app), smtp));

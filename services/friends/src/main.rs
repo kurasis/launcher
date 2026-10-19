@@ -9,6 +9,7 @@
 //!                                     open (or all) reports, newest first,
 //!                                     each with a copy of the message
 //! lapi-friends resolve <report> [note]  marks a report handled
+//! lapi-friends resolve-request <id> [note]  the same for a reported request
 //! lapi-friends remove-message <id>    removes a message for everyone
 //! lapi-friends mute <account> <hours> [reason]
 //!                                     no messages, requests or groups
@@ -25,8 +26,8 @@
 //! `LAPI_FRIENDS_ISSUER` (`https://oauth.lapi.sh`), `LAPI_FRIENDS_JWKS` (the
 //! account service's keys, `http://127.0.0.1:8783/.well-known/jwks.json`),
 //! `LAPI_FRIENDS_ACCOUNTS` (its internal API, `http://127.0.0.1:8793`) and
-//! `LAPI_FRIENDS_REQUIRE_EMAIL` (`1`: only confirmed addresses; off until
-//! letters are sent).
+//! `LAPI_FRIENDS_REQUIRE_EMAIL` (`auto`, the default: only confirmed
+//! addresses once the account service sends letters; `1` always; `0` never).
 
 mod api;
 mod auth;
@@ -93,6 +94,13 @@ fn moderate(store: &store::Store, command: &str, args: &[String]) -> Result<(), 
                 return Err("no such report".to_owned());
             }
             println!("report {report} resolved");
+        }
+        "resolve-request" => {
+            let report = number(0, "the reported request")?;
+            if !store.resolve_request_report(report, &words(1))? {
+                return Err("no such reported request".to_owned());
+            }
+            println!("reported request {report} resolved");
         }
         "remove-message" => {
             let message = number(0, "the message")?;
@@ -174,9 +182,15 @@ fn main() -> std::process::ExitCode {
             for report in store.reports(all, limit)? {
                 println!("{}", plain(&report.to_string()));
             }
+            for report in store.request_reports(all, limit)? {
+                println!("{}", plain(&report.to_string()));
+            }
             Ok(())
         }),
-        Some(command @ ("resolve" | "remove-message" | "mute" | "ban" | "lift" | "sanctions")) => {
+        Some(
+            command @ ("resolve" | "resolve-request" | "remove-message" | "mute" | "ban" | "lift"
+            | "sanctions"),
+        ) => {
             open().and_then(|store| moderate(&store, command, &args[1..]))
         }
         Some("--version") => {
@@ -184,7 +198,7 @@ fn main() -> std::process::ExitCode {
             Ok(())
         }
         _ => Err(
-            "usage: lapi-friends serve|counts|reports|resolve|remove-message|mute|ban|lift|sanctions|backup"
+            "usage: lapi-friends serve|counts|reports|resolve|resolve-request|remove-message|mute|ban|lift|sanctions|backup"
                 .to_owned(),
         ),
     };
@@ -219,7 +233,11 @@ fn serve() -> Result<(), String> {
         sessions: auth::Sessions::default(),
         deleted_since: std::sync::Mutex::new(0),
         limiter: api::Limiter::default(),
-        require_email: env("LAPI_FRIENDS_REQUIRE_EMAIL", "0") == "1",
+        email: api::EmailRule::new(match env("LAPI_FRIENDS_REQUIRE_EMAIL", "auto").as_str() {
+            "0" => api::EmailMode::Off,
+            "1" => api::EmailMode::On,
+            _ => api::EmailMode::Auto,
+        }),
     });
     let runtime = tokio::runtime::Runtime::new().map_err(|e| e.to_string())?;
     runtime.block_on(async move {
@@ -244,6 +262,7 @@ fn serve() -> Result<(), String> {
         tokio::spawn(async move {
             loop {
                 tokio::time::sleep(Duration::from_secs(15)).await;
+                api::check_mail(&checking).await;
                 api::check_sessions(&checking).await;
                 api::tell_moderation(&checking);
                 api::purge_deleted(&checking).await;

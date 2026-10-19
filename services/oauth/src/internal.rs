@@ -1,5 +1,6 @@
 //! The internal API for friends.lapi.sh (D-064): who has a nick, the nicks
-//! of account IDs, which accounts were deleted, and which sessions ended (so a sign-out or a switched-off
+//! of account IDs, which accounts were deleted, whether letters go out, and
+//! which sessions ended (so a sign-out or a switched-off
 //! account reaches friends within seconds, not when the token runs out). It listens on its own local address
 //! (`LAPI_OAUTH_INTERNAL_ADDR`, default `127.0.0.1:8793`), which nginx does not
 //! serve, so nothing outside the server reaches it. It tells only what anyone
@@ -105,12 +106,19 @@ async fn deleted(State(app): State<Arc<App>>, Query(q): Query<SinceQuery>) -> Re
     }
 }
 
+/// Whether letters go out (an SMTP server is set): friends asks for a
+/// confirmed address only then.
+async fn mail(State(app): State<Arc<App>>) -> Response {
+    Json(json!({ "sending": app.mailing })).into_response()
+}
+
 pub fn router(app: Arc<App>) -> Router {
     Router::new()
         .route("/internal/v1/find", get(find))
         .route("/internal/v1/nicks", post(nicks))
         .route("/internal/v1/ended", post(ended))
         .route("/internal/v1/deleted", get(deleted))
+        .route("/internal/v1/mail", get(mail))
         .layer(axum::extract::DefaultBodyLimit::max(64 * 1024))
         .with_state(app)
 }

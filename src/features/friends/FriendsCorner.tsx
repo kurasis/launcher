@@ -446,6 +446,14 @@ function Requests({ view }: { view: FriendsView }) {
       {view.incoming.length > 0 && (
         <>
           <h3 className={styles.subtitle}>{t.incoming}</h3>
+          {view.incoming.length > 1 && (
+            <Button
+              disabled={action.pending}
+              onClick={() => void action.run(() => ipc.friendsDeclineAll())}
+            >
+              {t.declineAll}
+            </Button>
+          )}
           <ul className={styles.list}>
             {view.incoming.map((person) => (
               <li key={person.id} className={styles.row}>
@@ -480,6 +488,14 @@ function Requests({ view }: { view: FriendsView }) {
                     }}
                   >
                     {t.block}
+                  </button>
+                  <button
+                    type="button"
+                    className={styles.quiet}
+                    disabled={action.pending}
+                    onClick={() => void action.run(() => ipc.friendsReportRequest(person.id))}
+                  >
+                    {t.spam}
                   </button>
                 </span>
               </li>
