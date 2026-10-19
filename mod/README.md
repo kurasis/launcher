@@ -20,6 +20,12 @@ none for them: a profile without textures whose UUID is not a Mojang one (versio
   `LauncherSkins` (methods matched by MCP name in development, SRG name in a released
   game). Built with RetroFuturaGradle; the jar to ship is the reobfuscated one, not
   `-dev`.
+- `mc-<version>/agent/`: a Java agent for the game with no mod loader
+  (`-javaagent:launcherskins-agent-<version>.jar`). It rewrites `PlayerInfo.getSkin()`
+  the way the Mixin does and uses the same game layer, so HD and animation work too.
+  26.x names are not obfuscated and the JDK's class-file API rewrites the class; the
+  1.21.1 jar is remapped to the released game's names and carries its own ASM
+  (relocated), and finds its target from the remapped descriptor of its hook.
 
 ## Build
 

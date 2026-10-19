@@ -10,6 +10,7 @@ fn main() {
     println!("cargo:rerun-if-env-changed=LAUNCHER_ACCOUNT_URL");
     println!("cargo:rerun-if-env-changed=LAUNCHER_FRIENDS_URL");
     println!("cargo:rerun-if-env-changed=LAUNCHER_MODS_URL");
+    println!("cargo:rerun-if-env-changed=LAUNCHER_SKINS_URL");
 
     // Declaring the app's commands makes Tauri generate one permission per command,
     // so each window must be granted every command explicitly in capabilities/.
@@ -117,6 +118,11 @@ fn main() {
         "mods_set_enabled",
         "mods_remove",
         "mods_open_link",
+        "skins_mine",
+        "skins_texture",
+        "skins_pick",
+        "skins_upload",
+        "skins_remove",
         "feed_get",
         "feed_note",
         "feed_play",

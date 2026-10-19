@@ -48,6 +48,11 @@ import {
   type FriendRequestResult,
   type FriendsProblem,
   type FriendsView,
+  SKINS_PROBLEMS,
+  type PickedTexture,
+  type SkinKind,
+  type SkinsProblem,
+  type Wardrobe,
   FEED_PROBLEMS,
   type FeedProblem,
   type FeedVideo,
@@ -312,6 +317,18 @@ export const ipc = {
   friendsReportRequest: (id: string): Promise<void> => invoke('friends_report_request', { id }),
   friendsSetVisible: (visible: boolean): Promise<void> =>
     invoke('friends_set_visible', { visible }),
+  // The launcher account's skin and cape (D-065). These reject with a
+  // SkinsProblem string; `skinsProblem` reads it.
+  skinsMine: (): Promise<Wardrobe> => invoke<Wardrobe>('skins_mine'),
+  /** A worn texture by its hash, as a `data:` URL. */
+  skinsTexture: (hash: string): Promise<string> => invoke<string>('skins_texture', { hash }),
+  /** Picks a PNG in the native dialog; null if it was closed. */
+  skinsPick: (kind: SkinKind, title?: string): Promise<PickedTexture | null> =>
+    invoke<PickedTexture | null>('skins_pick', { kind, title }),
+  /** Uploads what was picked for `kind`. */
+  skinsUpload: (kind: SkinKind, slim: boolean, frameMs: number[] | null): Promise<Wardrobe> =>
+    invoke<Wardrobe>('skins_upload', { kind, slim, frameMs }),
+  skinsRemove: (kind: SkinKind): Promise<Wardrobe> => invoke<Wardrobe>('skins_remove', { kind }),
   /** Saves the account's data as a file; its name, or null if the dialog was closed. */
   launcherAccountExport: (title?: string): Promise<string | null> =>
     invoke<string | null>('launcher_account_export', { title }),
@@ -524,6 +541,12 @@ export function onQuitRequested(handler: () => void): () => void {
 export function friendsProblem(error: unknown): FriendsProblem {
   return typeof error === 'string' && (FRIENDS_PROBLEMS as readonly string[]).includes(error)
     ? (error as FriendsProblem)
+    : 'server';
+}
+
+export function skinsProblem(error: unknown): SkinsProblem {
+  return typeof error === 'string' && (SKINS_PROBLEMS as readonly string[]).includes(error)
+    ? (error as SkinsProblem)
     : 'server';
 }
 

@@ -1953,12 +1953,13 @@ archive from the Package workflow, upload it to
   | Version | Loaders                                          | Without a loader                        |
   | ------- | ------------------------------------------------ | --------------------------------------- |
   | 26.x    | Fabric (also runs on Quilt), NeoForge, Forge     | Java agent: skins, capes, HD, animation |
-  | 1.21.x  | Fabric (also runs on Quilt), NeoForge, Forge     | Java agent: skins and capes             |
-  | 1.12.2  | Forge (a coremod; official Fabric has no 1.12.2) | Java agent: skins and capes             |
+  | 1.21.x  | Fabric (also runs on Quilt), NeoForge, Forge     | Java agent: skins, capes, HD, animation |
+  | 1.12.2  | Forge (a coremod; official Fabric has no 1.12.2) | later                                   |
 
-  Without a loader, HD and animation need names inside the game, which Mojang stopped
-  obfuscating with 26.1; on older versions plain Minecraft shows standard-size skins and
-  the launcher suggests Fabric for more.
+  Without a loader the agent rewrites the same game method the mods hook. From 26.1 the
+  game's names are not obfuscated; the 1.21.1 agent is built in Mojang names and remapped
+  to the released game's names, and finds its target from its own remapped descriptor.
+  1.12.2 players run Forge; an agent for plain 1.12.2 waits until someone asks.
 
 - **Textures:** PNG only. A skin frame is 64×64 × k (k = 1, 2, 4, 8, so up to 512×512;
   64×32 only as one frame), a cape frame 64×32 × k. Animation is a vertical strip of
@@ -1982,9 +1983,9 @@ archive from the Package workflow, upload it to
 - **Mod (`mod/`):** one Gradle build. `core` (plain Java 8: the API client, a disk cache
   by hash, PNG checks, frame timing, the whose-skin rule), per game version a `common`
   layer (Mixin hooks in Mojang names, the same source for every loader), thin entry
-  points per loader, a Forge 1.12.2 coremod, and `agent` (a `premain` that patches authlib,
-  whose class names are not obfuscated, and from 26.1 the game itself). One jar per
-  loader and version; the launcher picks the right one.
+  points per loader, a Forge 1.12.2 coremod, and per version an `agent` (a `premain` that
+  rewrites `PlayerInfo.getSkin()` and reuses the same game layer). One jar per loader and
+  version; the launcher picks the right one.
 - **In the launcher (later stage):** Accounts → Launcher account: upload a skin (model
   default or slim, frame duration) and a cape, preview, remove. Installations get the
   matching jar in `mods/` (Fabric, Quilt, NeoForge, Forge) or `-javaagent` (no loader),
@@ -2130,3 +2131,40 @@ archive from the Package workflow, upload it to
   browser, as the player chooses.
 - **Server setup (owner):** a DNS record for feed.lapi.sh behind Cloudflare, then
   `deploy/bootstrap.sh` once, as for the other services.
+
+## D-068 — Worlds with Friends
+
+- **Status:** accepted (owner request and design approval, 2026-10-19) · **Affects:** the
+  launcher's core (a Minecraft server beside one game, a tunnel), the activity permit
+  (`state/activity.rs`), world launches without `--demo` for verified owners, docs/spec/01
+  (server hosting and one game beside one server are added for worlds), the new services
+  `services/worlds` (`https://worlds.lapi.sh`, `/home/www/lapi/worlds`) and a relay at
+  `relay.lapi.sh` on a separate VPS.
+- **Goal.** Create a private world, invite friends and play together from different
+  networks without router setup: the launcher runs the world's server on the host's
+  computer, and friends connect through an encrypted tunnel, directly or through our relay.
+- **Specification.** The owner's Worlds with Friends specification 1.0.2 is kept unchanged in
+  `docs/worlds-with-friends/spec/`; how this launcher implements it is in
+  `docs/worlds-with-friends/ADAPTATION.md`, which wins where they differ and is updated as
+  work goes on. Phases are W1–W12 (`PLAN.md`), state in `PROGRESS.md`.
+- **Owner's choices:**
+  - The license is checked once in the launcher, as today: a Microsoft account with a
+    Minecraft entitlement signed in on this computer. In a world the game runs under the
+    launcher account's nick without `--demo` only then; players without a license keep the
+    demo and cannot open worlds. Outside worlds D-033, D-045 and D-064 are unchanged.
+  - Room servers run `online-mode=false`, so play does not depend on reaching Mojang. Rooms
+    are isolated by the tunnel: the server listens on 127.0.0.1 only, a single-use 60-second
+    ticket per member, room, session and device, the host checks the nick in the login packet
+    against the ticket before the server sees a byte, and a whitelist of the members' offline
+    UUIDs is the second layer. A changed nick moves the player's saved files to the new UUID.
+  - The relay runs on its own VPS so the main server's address stays behind Cloudflare.
+- **Other defaults:** the host lives in the launcher's core (no separate agent until a home
+  host without the launcher); worlds.lapi.sh on axum and SQLite like the other services, port
+  8788, oauth audience `worlds`, DPoP with an Ed25519 device key; iroh for the tunnel, pinned
+  after a spike; first world version 1.21.1 without a loader on Java 21; up to 8 players; one
+  room server and one game per computer; invitations by a card in the friends chat or a code
+  (24 h, one use by default, 7 days at most).
+- **Known limit:** the license check runs in the launcher, so a modified build could skip it;
+  the owner accepted this.
+- **Server setup (owner):** DNS and certificate for worlds.lapi.sh and `deploy/bootstrap.sh`
+  once (W5); a VPS, an unproxied DNS record for relay.lapi.sh and `RELAY_SSH_*` secrets (W6).
