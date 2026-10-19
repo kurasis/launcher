@@ -50,22 +50,27 @@ single-player world from the game (P18).
 
 ## W3 — Server on the own computer
 
-- Parse `downloads.server` in descriptors; plan, download and verify the server JAR; install into
-  `worlds/servers/<id>/generations/<generation>/` with `install.lock.json`.
-- World directories `worlds/<worldId>/` with `world.json` (schema version, active generation,
-  last mutation) and typed `server.properties` (name, seed, preset, difficulty, game rules,
-  player limit; `online-mode=false`, `white-list=true`, `enforce-whitelist=true`, loopback bind,
-  random port, RCON with a per-run password). `eula.txt` only after the player accepts the EULA.
-- Memory budget shown before start: game heap, server heap, launcher and OS headroom; a
-  clearly impossible budget is refused.
-- Server run receipts like `locks/active-run.json`: a server that survives a core restart keeps
-  the hosting permit until it exits or is stopped through RCON.
-- Supervision through `lifecycle/child.rs`: spawn intent and run receipt before spawn, readiness
-  from the `Done (` line plus a successful local status ping, `stop` through stdin with 60 s
-  grace, explicit force stop marked unclean, output drained and filtered.
-- Debug builds get a local "host only" mode for testing without a room.
-- Exit: CI on Linux installs and runs the real 1.21.1 server (A15, A17, A19, A20); interrupted
-  download and occupied port tests.
+- Parse `downloads.server` in descriptors; plan, download and verify the server JAR through the
+  download executor into `shared/servers/<sha1>/server.jar`, shared by every world of the
+  version; the world pins it by SHA-1, SHA-256 and size (`worlds/install.rs`).
+- World directories `worlds/<worldId>/` with `world.json` (schema version, version, settings,
+  server pin, EULA acceptance, the operation changing the world, how the last run ended) and a
+  `server/` working directory. Typed `server.properties` written before every start (seed,
+  preset, difficulty, game mode, hardcore, PvP, player limit; `online-mode=false`,
+  `white-list=true`, `enforce-whitelist=true`, loopback bind, random ports, RCON with a per-run
+  password); `whitelist.json` with offline UUIDs; `eula.txt` only after the player accepts the
+  EULA. Game rules are set through console commands in W7.
+- Memory budget before start: game heap, server heap and the reserve the game's heap check
+  uses; an impossible budget is refused.
+- Server run receipt `locks/world-server.json`: a server that survives a core restart keeps the
+  hosting permit until it exits and is stopped through RCON, never by PID.
+- Supervision through `lifecycle/child.rs` with a piped stdin: readiness from the `Done (` line
+  plus a local status ping, `stop` through stdin with 60 s grace, explicit force stop recorded as
+  unclean, output classified and dropped (no server log kept).
+- Testing without a room: `src-tauri/tests/live_server.rs`; commands for the interface arrive with
+  W8.
+- Exit: CI on Linux installs and runs the real 1.21.1 server (A15, A17, A19, A20); occupied port
+  and junk input tests.
 
 ## W4 — Tunnel
 

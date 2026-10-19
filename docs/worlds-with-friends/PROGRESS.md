@@ -4,20 +4,20 @@ States: `not_started`, `in_progress`, `blocked`, `done`. A phase whose code is f
 whose live check waits for an outside input is `blocked`, with the input named. Evidence says
 whether it is a unit test, a local run, CI or a live run with real accounts and networks.
 
-| Phase                         | Status      | Evidence                                                                                                                         | Blocker / notes                                                                  |
-| ----------------------------- | ----------- | -------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------- |
-| W1 Foundation                 | done        | This directory and [D-068](../DECISIONS.md#d-068--worlds-with-friends); documents only, no code                                  | —                                                                                |
-| W2 Game and server together   | done        | Unit tests in `src-tauri/src/state/activity.rs` for every pair of activities and a 200-round race of a server against an install | The permit has no caller until W3 starts a server                                |
-| W3 Server on the own computer | not_started |                                                                                                                                  |                                                                                  |
-| W4 Tunnel                     | not_started |                                                                                                                                  | iroh version chosen by the spike                                                 |
-| W5 worlds.lapi.sh             | not_started |                                                                                                                                  | Owner: DNS record and certificate for worlds.lapi.sh, `deploy/bootstrap.sh` once |
-| W6 Relay                      | not_started |                                                                                                                                  | Owner: a VPS, DNS record relay.lapi.sh (not proxied), `RELAY_SSH_*` secrets      |
-| W7 Play by invitation         | not_started |                                                                                                                                  | Live check with licensed accounts needs Minecraft service approval               |
-| W8 Worlds tab                 | not_started |                                                                                                                                  |                                                                                  |
-| W9 World safety               | not_started |                                                                                                                                  |                                                                                  |
-| W10 Failures and networks     | not_started |                                                                                                                                  | Two test players on different home networks, CGNAT access                        |
-| W11 Release                   | not_started |                                                                                                                                  | Windows and macOS machines; signing as for the launcher                          |
-| W12 Worlds with mods          | not_started |                                                                                                                                  |                                                                                  |
+| Phase                         | Status      | Evidence                                                                                                                                                                                                                             | Blocker / notes                                                                  |
+| ----------------------------- | ----------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | -------------------------------------------------------------------------------- |
+| W1 Foundation                 | done        | This directory and [D-068](../DECISIONS.md#d-068--worlds-with-friends); documents only, no code                                                                                                                                      | —                                                                                |
+| W2 Game and server together   | done        | Unit tests in `src-tauri/src/state/activity.rs` for every pair of activities and a 200-round race of a server against an install                                                                                                     | The permit has no caller until W3 starts a server                                |
+| W3 Server on the own computer | done        | Unit tests in `src-tauri/src/worlds/`; `tests/live_server.rs` run locally and in the CI job `World server (linux-x64)`: the real 1.21.1 server prepared, ready, RCON checked, stopped clean, then force stopped and recorded unclean | Windows and macOS runs of the server come with W10 and W11                       |
+| W4 Tunnel                     | not_started |                                                                                                                                                                                                                                      | iroh version chosen by the spike                                                 |
+| W5 worlds.lapi.sh             | not_started |                                                                                                                                                                                                                                      | Owner: DNS record and certificate for worlds.lapi.sh, `deploy/bootstrap.sh` once |
+| W6 Relay                      | not_started |                                                                                                                                                                                                                                      | Owner: a VPS, DNS record relay.lapi.sh (not proxied), `RELAY_SSH_*` secrets      |
+| W7 Play by invitation         | not_started |                                                                                                                                                                                                                                      | Live check with licensed accounts needs Minecraft service approval               |
+| W8 Worlds tab                 | not_started |                                                                                                                                                                                                                                      |                                                                                  |
+| W9 World safety               | not_started |                                                                                                                                                                                                                                      |                                                                                  |
+| W10 Failures and networks     | not_started |                                                                                                                                                                                                                                      | Two test players on different home networks, CGNAT access                        |
+| W11 Release                   | not_started |                                                                                                                                                                                                                                      | Windows and macOS machines; signing as for the launcher                          |
+| W12 Worlds with mods          | not_started |                                                                                                                                                                                                                                      |                                                                                  |
 
 ## Outside inputs
 
@@ -55,4 +55,22 @@ Checks: unit tests (every pair, release on drop, one server at a time, 200-round
   an install), the existing activity tests, cargo fmt, clippy -D warnings, the whole test suite.
 Not claimed: a real server process (W3), installs of other instances beside a server.
 Next: W3.
+```
+
+## W3 report
+
+```text
+Phase: W3 — Server on the own computer
+Status: done
+Delivered: downloads.server in descriptors; world tuples (1.21.1); world directories and
+  world.json with a backup; typed, escaped server.properties; whitelist.json with offline UUIDs;
+  the EULA gate; the server JAR through the verified executor, pinned by SHA-1 and SHA-256; the
+  memory budget; a supervised server with readiness, stop, force stop and a run receipt; a
+  surviving server holds the hosting permit after a core restart; a status ping and an RCON
+  client.
+Checks: unit tests (properties injection, nick and UUID, world records, protocol bounds, status
+  and RCON against fake servers, output classification that players cannot forge, ports);
+  live run of the real server locally (ready in about 20 s, clean stop in about 2 s) and in CI.
+Not claimed: Windows and macOS runs of the server; the interface (W8); game rules (W7).
+Next: W4 and W5.
 ```

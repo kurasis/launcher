@@ -1,0 +1,557 @@
+//! Running one world server (PLAN W3, ADAPTATION A1, A3).
+//!
+//! The server is Mojang's JAR on the pinned Java, with the world's server
+//! directory as working directory, `server.properties` rewritten before every
+//! start, loopback ports chosen at start and a fresh RCON password. It is
+//! supervised like a game (`lifecycle::child`): output is classified and then
+//! dropped, readiness is the `Done (` line followed by a successful local
+//! status ping, `stop` goes through stdin with a grace period, and only an
+//! explicit force stop kills it, which marks the run unclean. The hosting
+//! permit is held until the process has exited.
+
+use std::collections::BTreeMap;
+use std::io::Write;
+use std::net::{Ipv4Addr, TcpListener};
+use std::path::Path;
+use std::process::ChildStdin;
+use std::sync::{Arc, Condvar, Mutex, MutexGuard, PoisonError};
+use std::time::{Duration, Instant};
+
+use chrono::Utc;
+use serde::Serialize;
+
+use super::identity::Nick;
+use super::install;
+use super::memory::{self, Budget};
+use super::output::{self, Event};
+use super::properties::RunBinding;
+use super::rcon;
+use super::receipt;
+use super::tuple;
+use super::world::{self, LastRun, Mutation, MutationKind, WorldFile};
+use crate::error::{ErrorCode, LauncherError, LauncherResult};
+use crate::lifecycle::child::{self, ChildOutcome, OutputLine, Supervised};
+use crate::runtime::probe;
+use crate::secrets::SecretString;
+use crate::state::activity::HostingPermit;
+use crate::storage::paths::{DataRoot, WorldId};
+
+/// Spec 06: a server that is not ready in this time is stopped.
+pub const STARTUP_DEADLINE: Duration = Duration::from_secs(180);
+/// Spec 06: time a server gets to save and exit after `stop`.
+pub const STOP_GRACE: Duration = Duration::from_secs(60);
+/// Time for the status ping to succeed after the `Done (` line.
+const PING_WINDOW: Duration = Duration::from_secs(15);
+const PING_TIMEOUT: Duration = Duration::from_secs(3);
+
+/// Everything one start needs.
+pub struct Launch<'a> {
+    pub root: &'a DataRoot,
+    pub world_id: WorldId,
+    pub java: &'a Path,
+    pub server_heap_mib: u32,
+    /// The host's own game heap when they play on this computer, else zero.
+    pub game_heap_mib: u32,
+    pub physical_memory_bytes: u64,
+    pub members: &'a [Nick],
+    pub operation_id: String,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum Phase {
+    Starting,
+    Ready,
+    Stopping,
+    Exited,
+}
+
+/// What the hosting panel and tests see. Player names stay in memory.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct HostStatus {
+    pub world_id: WorldId,
+    pub operation_id: String,
+    pub phase: Phase,
+    pub players: Vec<String>,
+    /// Set once exited: whether the server saved and stopped on request.
+    pub clean: Option<bool>,
+    pub error: Option<ErrorCode>,
+}
+
+#[derive(Default)]
+struct Shared {
+    phase: Option<Phase>,
+    done_line: bool,
+    bind_failed: bool,
+    eula_required: bool,
+    stop_requested: bool,
+    killed: bool,
+    exited: Option<bool>,
+    error: Option<ErrorCode>,
+    /// Bridge-side local port to the player who logged in through it.
+    players: BTreeMap<u16, Nick>,
+}
+
+type Signal = Arc<(Mutex<Shared>, Condvar)>;
+
+fn lock(signal: &Signal) -> MutexGuard<'_, Shared> {
+    signal.0.lock().unwrap_or_else(PoisonError::into_inner)
+}
+
+/// A running (or just exited) world server.
+pub struct HostedServer {
+    world_id: WorldId,
+    operation_id: String,
+    port: u16,
+    protocol: i32,
+    supervised: Supervised,
+    stdin: Mutex<Option<ChildStdin>>,
+    signal: Signal,
+}
+
+/// Two distinct free loopback ports. Each is bound and released, so it was free
+/// a moment ago; a race lost to another program shows up as a bind failure.
+pub fn pick_ports() -> LauncherResult<(u16, u16)> {
+    let error = |e: &std::io::Error| LauncherError::from_io(e, "Choosing a port for the world");
+    let first = TcpListener::bind((Ipv4Addr::LOCALHOST, 0)).map_err(|e| error(&e))?;
+    let second = TcpListener::bind((Ipv4Addr::LOCALHOST, 0)).map_err(|e| error(&e))?;
+    let ports = (
+        first.local_addr().map_err(|e| error(&e))?.port(),
+        second.local_addr().map_err(|e| error(&e))?.port(),
+    );
+    Ok(ports)
+}
+
+/// The JVM and server arguments, in order.
+pub fn arguments(jar: &Path, heap_mib: u32) -> Vec<String> {
+    vec![
+        format!("-Xms{}M", heap_mib.min(1024)),
+        format!("-Xmx{heap_mib}M"),
+        "-Dfile.encoding=UTF-8".to_owned(),
+        // Relative to the server directory, where prepare_run writes it.
+        format!("-Dlog4j2.configurationFile={}", world::LOG_CONFIG),
+        "-jar".to_owned(),
+        jar.to_string_lossy().into_owned(),
+        "--nogui".to_owned(),
+    ]
+}
+
+fn set_mutation(root: &DataRoot, world_id: WorldId, mutation: Option<Mutation>) {
+    if let Ok(mut world) = world::load(root, world_id) {
+        world.mutation = mutation;
+        let _ = world::save(root, &world);
+    }
+}
+
+fn finish_world(root: &DataRoot, world_id: WorldId, clean: bool) {
+    if let Ok(mut world) = world::load(root, world_id) {
+        world.mutation = None;
+        world.last_run = Some(LastRun {
+            ended_at: Utc::now(),
+            clean,
+        });
+        let _ = world::save(root, &world);
+    }
+}
+
+fn server_error(code: ErrorCode, message: &str) -> LauncherError {
+    LauncherError::new(code, message)
+}
+
+/// Starts the server of a world whose JAR is pinned and present. Returns once
+/// the process runs; [`HostedServer::wait_ready`] waits for it to accept
+/// players. The permit is released when the process exits.
+pub fn start(
+    launch: &Launch<'_>,
+    permit: HostingPermit,
+    on_change: Arc<dyn Fn() + Send + Sync>,
+) -> LauncherResult<HostedServer> {
+    let root = launch.root;
+    let world: WorldFile = world::load(root, launch.world_id)?;
+    let tuple = tuple::find(&world.minecraft).ok_or_else(|| {
+        LauncherError::invalid_input("Worlds are not available for this Minecraft version yet.")
+    })?;
+    let pin = world.server.clone().ok_or_else(|| {
+        server_error(
+            ErrorCode::RepairRequired,
+            "The world's server is not installed yet.",
+        )
+    })?;
+    if !install::verify(root, &pin) {
+        return Err(server_error(
+            ErrorCode::RepairRequired,
+            "The world's server file is missing or changed. Install it again.",
+        ));
+    }
+    memory::validate_server_heap(launch.server_heap_mib)?;
+    let budget: Budget = memory::budget(
+        launch.physical_memory_bytes,
+        launch.game_heap_mib,
+        launch.server_heap_mib,
+    );
+    memory::check(&budget)?;
+
+    let (port, rcon_port) = pick_ports()?;
+    let rcon_password = rcon::generate_password().ok_or_else(|| {
+        LauncherError::internal("The operating system did not provide random bytes.")
+    })?;
+    let binding = RunBinding {
+        port,
+        rcon_port,
+        rcon_password,
+    };
+    world::prepare_run(root, &world, &binding, launch.members)?;
+    set_mutation(
+        root,
+        world.id,
+        Some(Mutation {
+            kind: MutationKind::Host,
+            operation_id: launch.operation_id.clone(),
+            started_at: Utc::now(),
+        }),
+    );
+
+    let jar = root.server_jar(&pin.jar_sha1);
+    let mut command = probe::sanitized_command(launch.java);
+    command
+        .args(arguments(&jar, launch.server_heap_mib))
+        .current_dir(root.world_server_dir(world.id));
+
+    let signal: Signal = Arc::new((Mutex::new(Shared::default()), Condvar::new()));
+    lock(&signal).phase = Some(Phase::Starting);
+    let sink_signal = Arc::clone(&signal);
+    let sink_change = Arc::clone(&on_change);
+    let sink: child::LineSink = Box::new(move |line: OutputLine| {
+        let Some(event) = output::classify(&line.text) else {
+            return;
+        };
+        {
+            let mut shared = lock(&sink_signal);
+            match event {
+                Event::Ready => shared.done_line = true,
+                Event::BindFailed => shared.bind_failed = true,
+                Event::EulaRequired => shared.eula_required = true,
+                Event::Joined { nick, local_port } => {
+                    shared.players.insert(local_port, nick);
+                }
+                Event::Left { nick } => shared.players.retain(|_, n| *n != nick),
+            }
+        }
+        sink_signal.1.notify_all();
+        sink_change();
+    });
+
+    let exit_signal = Arc::clone(&signal);
+    let exit_root = root.clone();
+    let (world_id, operation_id) = (world.id, launch.operation_id.clone());
+    let exit_operation = operation_id.clone();
+    let on_exit = move |outcome: ChildOutcome| {
+        let clean = {
+            let mut shared = lock(&exit_signal);
+            let clean = shared.stop_requested
+                && !shared.killed
+                && outcome.status.as_ref().is_ok_and(|s| s.success());
+            if !clean && shared.error.is_none() && !shared.stop_requested {
+                shared.error = Some(ErrorCode::GameExitedWithError);
+            }
+            shared.exited = Some(clean);
+            shared.phase = Some(Phase::Exited);
+            shared.players.clear();
+            clean
+        };
+        receipt::clear(&exit_root, &exit_operation);
+        finish_world(&exit_root, world_id, clean);
+        drop(permit);
+        exit_signal.1.notify_all();
+        on_change();
+    };
+
+    let (supervised, stdin) =
+        child::spawn_with_stdin(command, sink, || {}, on_exit).map_err(|e| {
+            set_mutation(root, world.id, None);
+            LauncherError::from_io(&e, "Starting the world server")
+        })?;
+    receipt::record(
+        root,
+        &receipt::Spawned {
+            world_id: world.id,
+            operation_id: &operation_id,
+            pid: supervised.pid(),
+            executable: launch.java,
+            port,
+            rcon_port,
+            rcon_password: &binding.rcon_password,
+        },
+    );
+    Ok(HostedServer {
+        world_id,
+        operation_id,
+        port,
+        protocol: tuple.protocol,
+        supervised,
+        stdin: Mutex::new(Some(stdin)),
+        signal,
+    })
+}
+
+impl HostedServer {
+    pub fn port(&self) -> u16 {
+        self.port
+    }
+
+    pub fn status(&self) -> HostStatus {
+        let shared = lock(&self.signal);
+        HostStatus {
+            world_id: self.world_id,
+            operation_id: self.operation_id.clone(),
+            phase: shared.phase.unwrap_or(Phase::Starting),
+            players: shared
+                .players
+                .values()
+                .map(|n| n.as_str().to_owned())
+                .collect(),
+            clean: shared.exited,
+            error: shared.error,
+        }
+    }
+
+    /// The player who logged in through a bridge connection from `local_port`.
+    pub fn player_on(&self, local_port: u16) -> Option<Nick> {
+        lock(&self.signal).players.get(&local_port).cloned()
+    }
+
+    /// Waits until the server accepts players, or fails. A server that is not
+    /// ready by `deadline` is stopped.
+    pub fn wait_ready(&self, deadline: Duration) -> LauncherResult<()> {
+        let until = Instant::now() + deadline;
+        {
+            let mut shared = lock(&self.signal);
+            loop {
+                if shared.bind_failed {
+                    drop(shared);
+                    self.force_stop();
+                    return Err(server_error(
+                        ErrorCode::AppBusy,
+                        "Another program took the world's port. Start the world again.",
+                    ));
+                }
+                if shared.eula_required {
+                    return Err(server_error(
+                        ErrorCode::InvalidInput,
+                        "Accept the Minecraft EULA to host this world.",
+                    ));
+                }
+                if shared.exited.is_some() {
+                    return Err(server_error(
+                        ErrorCode::GameExitedWithError,
+                        "The world server stopped while starting.",
+                    ));
+                }
+                if shared.done_line {
+                    break;
+                }
+                let left = until.saturating_duration_since(Instant::now());
+                if left.is_zero() {
+                    drop(shared);
+                    self.stop(STOP_GRACE);
+                    return Err(server_error(
+                        ErrorCode::OperationInterrupted,
+                        "The world server did not start in time.",
+                    ));
+                }
+                shared = self
+                    .signal
+                    .1
+                    .wait_timeout(shared, left)
+                    .unwrap_or_else(PoisonError::into_inner)
+                    .0;
+            }
+        }
+        let ping_until = Instant::now() + PING_WINDOW;
+        while Instant::now() < ping_until && !self.supervised.has_exited() {
+            if super::ping::status(self.port, self.protocol, PING_TIMEOUT)
+                .is_some_and(|s| i64::from(self.protocol) == s.protocol)
+            {
+                let mut shared = lock(&self.signal);
+                if shared.phase == Some(Phase::Starting) {
+                    shared.phase = Some(Phase::Ready);
+                }
+                return Ok(());
+            }
+            std::thread::sleep(Duration::from_millis(250));
+        }
+        self.stop(STOP_GRACE);
+        Err(server_error(
+            ErrorCode::GameExitedWithError,
+            "The world server started but does not answer.",
+        ))
+    }
+
+    /// Sends one console command through stdin.
+    pub fn command(&self, command: &str) -> LauncherResult<()> {
+        if !rcon::valid_command(command) {
+            return Err(LauncherError::invalid_input("Invalid server command."));
+        }
+        let mut stdin = self.stdin.lock().unwrap_or_else(PoisonError::into_inner);
+        let writer = stdin.as_mut().ok_or_else(|| {
+            server_error(
+                ErrorCode::GameExitedWithError,
+                "The world server is stopping.",
+            )
+        })?;
+        writer
+            .write_all(format!("{command}\n").as_bytes())
+            .and_then(|()| writer.flush())
+            .map_err(|_| {
+                server_error(
+                    ErrorCode::GameExitedWithError,
+                    "The world server is not running.",
+                )
+            })
+    }
+
+    /// Asks the server to save and stop, waits up to `grace`, then force stops.
+    /// Returns whether it stopped cleanly.
+    pub fn stop(&self, grace: Duration) -> bool {
+        {
+            let mut shared = lock(&self.signal);
+            if shared.exited.is_none() {
+                shared.stop_requested = true;
+                shared.phase = Some(Phase::Stopping);
+            }
+        }
+        let _ = self.command("stop");
+        // Closing stdin is also a stop request for the server's console reader.
+        self.stdin
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner)
+            .take();
+        if let Some(clean) = self.wait_exit(grace) {
+            return clean;
+        }
+        self.force_stop();
+        self.wait_exit(Duration::from_secs(10)).unwrap_or(false)
+    }
+
+    /// Kills the process; the run is recorded as unclean.
+    pub fn force_stop(&self) {
+        {
+            let mut shared = lock(&self.signal);
+            if shared.exited.is_some() {
+                return;
+            }
+            shared.killed = true;
+            shared.phase = Some(Phase::Stopping);
+        }
+        self.supervised.kill();
+    }
+
+    /// Waits for the process to exit and its exit to be recorded.
+    pub fn wait_exit(&self, timeout: Duration) -> Option<bool> {
+        let until = Instant::now() + timeout;
+        let mut shared = lock(&self.signal);
+        loop {
+            if let Some(clean) = shared.exited {
+                return Some(clean);
+            }
+            let left = until.saturating_duration_since(Instant::now());
+            if left.is_zero() {
+                return None;
+            }
+            shared = self
+                .signal
+                .1
+                .wait_timeout(shared, left)
+                .unwrap_or_else(PoisonError::into_inner)
+                .0;
+        }
+    }
+}
+
+/// Stops a server that outlived a core restart through its recorded RCON
+/// port and password, after re-checking the process identity. Never kills.
+pub fn stop_survivor(survivor: &receipt::ServerReceipt) -> bool {
+    if !survivor.is_alive() {
+        return false;
+    }
+    let password: SecretString = survivor.rcon_password();
+    rcon::Rcon::connect(survivor.rcon_port, &password, PING_TIMEOUT)
+        .and_then(|mut r| r.command("stop"))
+        .is_ok()
+}
+
+/// Poll interval while waiting for a surviving server to exit.
+pub const SURVIVOR_POLL: Duration = Duration::from_secs(2);
+
+/// At startup: a server that outlived the previous core keeps the hosting
+/// permit until it exits, so nothing replaces files its Java reads. Returns its
+/// receipt, for a later stop through [`stop_survivor`].
+pub fn watch_survivor(
+    root: &DataRoot,
+    activity: &crate::state::activity::ActivityRegistry,
+) -> Option<receipt::ServerReceipt> {
+    let survivor = receipt::survivor(root)?;
+    let permit = activity
+        .try_acquire_hosting(survivor.world_id.uuid(), survivor.operation_id.clone())
+        .ok()?;
+    let (root, watched) = (root.clone(), survivor.clone());
+    std::thread::Builder::new()
+        .name("world-survivor".into())
+        .spawn(move || {
+            while watched.is_alive() {
+                std::thread::sleep(SURVIVOR_POLL);
+            }
+            receipt::clear(&root, &watched.operation_id);
+            // Its exit code is not known; the save is checked as after a crash.
+            finish_world(&root, watched.world_id, false);
+            drop(permit);
+        })
+        .ok()?;
+    Some(survivor)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn ports_are_free_and_distinct() {
+        let (a, b) = pick_ports().unwrap();
+        assert_ne!(a, b);
+        TcpListener::bind((Ipv4Addr::LOCALHOST, a)).unwrap();
+        TcpListener::bind((Ipv4Addr::LOCALHOST, b)).unwrap();
+    }
+
+    #[test]
+    fn an_occupied_port_is_never_chosen() {
+        let held: Vec<TcpListener> = (0..32)
+            .map(|_| TcpListener::bind((Ipv4Addr::LOCALHOST, 0)).unwrap())
+            .collect();
+        let taken: Vec<u16> = held
+            .iter()
+            .map(|l| l.local_addr().unwrap().port())
+            .collect();
+        for _ in 0..32 {
+            let (a, b) = pick_ports().unwrap();
+            assert!(!taken.contains(&a) && !taken.contains(&b));
+        }
+    }
+
+    #[test]
+    fn arguments_bound_the_heap_and_take_no_input_from_the_world() {
+        let args = arguments(Path::new("/data/shared/servers/x/server.jar"), 2048);
+        assert_eq!(
+            args,
+            [
+                "-Xms1024M",
+                "-Xmx2048M",
+                "-Dfile.encoding=UTF-8",
+                "-Dlog4j2.configurationFile=launcher-log4j2.xml",
+                "-jar",
+                "/data/shared/servers/x/server.jar",
+                "--nogui"
+            ]
+        );
+    }
+}

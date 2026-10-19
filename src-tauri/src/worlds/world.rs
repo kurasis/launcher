@@ -58,6 +58,15 @@ pub struct Mutation {
     pub started_at: DateTime<Utc>,
 }
 
+/// How the last hosting session ended.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct LastRun {
+    pub ended_at: DateTime<Utc>,
+    /// False when the server was killed or crashed: the save may be incomplete.
+    pub clean: bool,
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct WorldFile {
@@ -73,6 +82,8 @@ pub struct WorldFile {
     pub eula_accepted_at: Option<DateTime<Utc>>,
     #[serde(default)]
     pub mutation: Option<Mutation>,
+    #[serde(default)]
+    pub last_run: Option<LastRun>,
 }
 
 /// A world name: 1–64 characters after trimming, no control characters.
@@ -126,6 +137,7 @@ pub fn create(
         server: None,
         eula_accepted_at: None,
         mutation: None,
+        last_run: None,
     };
     std::fs::create_dir_all(root.world_server_dir(world.id)).map_err(|e| io(&e))?;
     save(root, &world)?;
@@ -195,6 +207,26 @@ pub fn accept_eula(root: &DataRoot, id: WorldId) -> LauncherResult<WorldFile> {
     Ok(world)
 }
 
+/// Logging configuration the server is started with, in its directory.
+pub const LOG_CONFIG: &str = "launcher-log4j2.xml";
+
+/// Console only: the server writes no `logs/` files, so chat and player names
+/// are not stored (ADAPTATION A7). The pattern is the one the launcher reads.
+const SERVER_LOG_CONFIG: &str = r#"<?xml version="1.0" encoding="UTF-8"?>
+<Configuration status="WARN" packages="">
+  <Appenders>
+    <Console name="Console" target="SYSTEM_OUT">
+      <PatternLayout pattern="[%d{HH:mm:ss}] [%t/%level]: %msg{nolookups}%n"/>
+    </Console>
+  </Appenders>
+  <Loggers>
+    <Root level="info">
+      <AppenderRef ref="Console"/>
+    </Root>
+  </Loggers>
+</Configuration>
+"#;
+
 /// Whitelist entry as the server stores it.
 #[derive(Serialize)]
 struct WhitelistEntry<'a> {
@@ -240,6 +272,7 @@ pub fn prepare_run(
     })?;
     json.push(b'\n');
     atomic::write(&dir.join("whitelist.json"), &json).map_err(|e| io(&e))?;
+    atomic::write(&dir.join(LOG_CONFIG), SERVER_LOG_CONFIG.as_bytes()).map_err(|e| io(&e))?;
     atomic::write(
         &dir.join("eula.txt"),
         b"# Accepted by the player in the launcher.\neula=true\n",
@@ -337,6 +370,7 @@ mod tests {
             whitelist,
             serde_json::json!([{"uuid": "b50ad385-829d-3141-a216-7e7d7539ba7f", "name": "Notch"}])
         );
+        assert!(dir.join(LOG_CONFIG).is_file());
         let props = std::fs::read_to_string(dir.join("server.properties")).unwrap();
         assert!(props.lines().any(|l| l == "server-port=41000"));
     }

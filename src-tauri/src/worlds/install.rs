@@ -6,19 +6,23 @@
 //! and the world pins it by SHA-1, SHA-256 and size.
 
 use std::io::Read;
+use std::path::PathBuf;
 
 use sha1::Digest as _;
 use uuid::Uuid;
 
 use super::tuple::{self, WorldTuple};
-use super::world::ServerPin;
+use super::world::{self, Mutation, MutationKind, ServerPin, WorldFile};
+use crate::catalog::source::{Fetch, MetadataService};
 use crate::download::{CancelToken, Digest, DownloadRequest, Executor, ProgressSink};
 use crate::error::{ErrorCode, LauncherError, LauncherResult};
 use crate::install::descriptor::{self, Download};
 use crate::install::plan::{RuntimeRequirement, runtime_major, runtime_target};
 use crate::install::rules::RuleContext;
+use crate::install::service::PlanSource;
 use crate::net::SourcePolicy;
-use crate::storage::paths::{DataRoot, Sha256, server_jar_relative};
+use crate::runtime::RuntimeInstaller;
+use crate::storage::paths::{DataRoot, JavaProvider, Sha256, WorldId, server_jar_relative};
 
 /// What hosting a tuple needs to download.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -81,6 +85,60 @@ pub async fn ensure(
     tokio::task::spawn_blocking(move || pin(&root, &plan))
         .await
         .map_err(|_| LauncherError::new(ErrorCode::Internal, "The server check stopped."))?
+}
+
+/// Everything a world needs before its server can start: the server JAR,
+/// pinned in `world.json`, and the tuple's Java runtime. Returns the world and
+/// the runtime's Java executable.
+#[allow(clippy::too_many_arguments)]
+pub async fn prepare<F: Fetch>(
+    root: &DataRoot,
+    metadata: &MetadataService<F>,
+    source: &dyn PlanSource,
+    runtimes: &RuntimeInstaller,
+    executor: &Executor,
+    world_id: WorldId,
+    java: JavaProvider,
+    cancel: &CancelToken,
+    sink: &dyn ProgressSink,
+) -> LauncherResult<(WorldFile, PathBuf)> {
+    let mut world = world::load(root, world_id)?;
+    let (catalog, _, _, error) = metadata.catalog(false).await;
+    let catalog = catalog.ok_or_else(|| {
+        error.unwrap_or_else(|| {
+            LauncherError::new(
+                ErrorCode::NetworkError,
+                "The version catalog is unavailable.",
+            )
+        })
+    })?;
+    let entry = catalog
+        .find(&world.minecraft)
+        .ok_or_else(|| descriptor::unsupported("version not listed"))?;
+    let bytes = metadata.descriptor(entry).await?;
+    let plan = plan(&bytes, &world.minecraft, &RuleContext::current()?)?;
+
+    let pinned = world
+        .server
+        .as_ref()
+        .is_some_and(|p| p.jar_sha1 == plan.jar.sha1 && verify(root, p));
+    if !pinned {
+        world.mutation = Some(Mutation {
+            kind: MutationKind::InstallServer,
+            operation_id: Uuid::new_v4().to_string(),
+            started_at: chrono::Utc::now(),
+        });
+        world::save(root, &world)?;
+        let pin = ensure(root, executor, &plan, cancel, sink).await?;
+        world.server = Some(pin);
+        world.mutation = None;
+        world::save(root, &world)?;
+    }
+    let package = source.runtime(&plan.runtime, java).await?;
+    let runtime = runtimes
+        .ensure(&package, Uuid::new_v4(), cancel, sink)
+        .await?;
+    Ok((world, runtime.java))
 }
 
 /// Size, SHA-1 and SHA-256 of a file, read in bounded chunks.

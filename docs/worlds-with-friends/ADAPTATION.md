@@ -168,3 +168,6 @@ tuple; Fabric and other loaders arrive in W12.
 - 2026-10-19 — First adaptation (D-068): host in the core, license once in the launcher and
   offline-mode servers, tunnel admission with a Login Start check, services/worlds on SQLite,
   DPoP device keys, relay on a separate VPS, deferred maintenance protocol, 1.21.1 first.
+- 2026-10-19 — W3: the server JAR is stored once per version in `shared/servers/<sha1>/` and
+  pinned by each world, instead of per-world server generations, until room packs need them
+  (W12). The server's console output is classified and dropped; no server log is kept.

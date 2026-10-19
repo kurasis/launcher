@@ -517,6 +517,10 @@ fn setup(app: &mut tauri::App) -> Result<(), Box<dyn std::error::Error>> {
     if let Some(launcher) = &launcher {
         launcher.watch_survivor();
     }
+    // So does a world server, until it exits (D-068).
+    if let Some(root) = app.state::<AppState>().data_root() {
+        worlds::host::watch_survivor(&root, app.state::<AppState>().activity());
+    }
     app.manage(commands::Launcher(launcher));
     // Finish a pending sign-out or refresh the saved account in the background.
     let reconnect_auth = Arc::clone(&auth);
