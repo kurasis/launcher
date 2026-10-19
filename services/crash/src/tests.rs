@@ -302,15 +302,28 @@ fn many_addresses_together_meet_the_overall_limit() {
 }
 
 #[tokio::test]
-async fn reports_stop_at_the_storage_limit() {
+async fn at_the_storage_limit_the_oldest_reports_make_room() {
     let (_dir, app) = app_with(1);
+    let (status, first) = send(&app, "/v1/reports", report(), false).await;
+    assert_eq!(status, StatusCode::CREATED);
+    let (status, second) = send(&app, "/v1/reports", report(), false).await;
     assert_eq!(
-        send(&app, "/v1/reports", report(), false).await.0,
-        StatusCode::CREATED
+        status,
+        StatusCode::CREATED,
+        "a flood cannot stop new reports"
     );
-    assert_eq!(
-        send(&app, "/v1/reports", report(), false).await.0,
-        StatusCode::INSUFFICIENT_STORAGE
+    assert_ne!(first["id"], second["id"]);
+    assert!(
+        app.store
+            .get(first["id"].as_str().unwrap())
+            .unwrap()
+            .is_none()
+    );
+    assert!(
+        app.store
+            .get(second["id"].as_str().unwrap())
+            .unwrap()
+            .is_some()
     );
 }
 

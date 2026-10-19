@@ -70,7 +70,7 @@ pub enum Added {
     Stored(String),
     /// The install sent its daily allowance.
     Limited,
-    /// The stored reports reached their size limit.
+    /// The stored reports reached their size limit and none could be removed.
     Full,
 }
 
@@ -195,8 +195,9 @@ impl Store {
             .unwrap_or(i64::MAX)
     }
 
-    /// Writes the report's file, then its row, unless the stored reports
-    /// already take `max_bytes`.
+    /// Writes the report's file, then its row. When the stored reports take
+    /// `max_bytes`, the oldest go first until a tenth is free: a flood of
+    /// reports pushes out old ones instead of stopping new ones.
     pub fn add(
         &self,
         report: &Report,
@@ -204,7 +205,10 @@ impl Store {
         max_bytes: i64,
     ) -> Result<Added, String> {
         if self.stored_bytes() >= max_bytes {
-            return Ok(Added::Full);
+            self.make_room(max_bytes - max_bytes / 10)?;
+            if self.stored_bytes() >= max_bytes {
+                return Ok(Added::Full);
+            }
         }
         let id = uuid::Uuid::new_v4().to_string();
         let relative = format!("{}/{id}.json.gz", now.format("%Y/%m"));
@@ -566,6 +570,37 @@ impl Store {
                 .map_err(|e| e.to_string())?;
         }
         Ok(found.len())
+    }
+
+    /// Removes the oldest reports until the rest take at most `target` bytes.
+    fn make_room(&self, target: i64) -> Result<(), String> {
+        let mut stored = self.stored_bytes();
+        while stored > target {
+            let oldest: Vec<(String, String, i64)> = {
+                let db = self.db();
+                let mut q = db
+                    .prepare("SELECT id, path, bytes FROM reports ORDER BY received, id LIMIT 100")
+                    .map_err(|e| e.to_string())?;
+                q.query_map([], |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?)))
+                    .map_err(|e| e.to_string())?
+                    .flatten()
+                    .collect()
+            };
+            if oldest.is_empty() {
+                break;
+            }
+            for (id, path, bytes) in oldest {
+                let _ = fs::remove_file(self.reports.join(path));
+                self.db()
+                    .execute("DELETE FROM reports WHERE id = ?1", [&id])
+                    .map_err(|e| e.to_string())?;
+                stored -= bytes;
+                if stored <= target {
+                    break;
+                }
+            }
+        }
+        Ok(())
     }
 
     /// Removes reports older than `report_days` and counts older than `stat_days`.

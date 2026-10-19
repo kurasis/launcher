@@ -333,6 +333,17 @@ fn versions_only_go_forward_and_revoking_goes_back() {
             .unwrap_err()
             .contains("no earlier")
     );
+    // The revoked version cannot come back, though it is newer than 0.2.0.
+    assert!(
+        s.server
+            .publish("0.3.0", &options(100))
+            .unwrap_err()
+            .contains("revoked")
+    );
+    assert_eq!(
+        s.manifest("stable", "darwin-aarch64-app.json")["version"],
+        "0.2.0"
+    );
     assert!(
         s.server
             .publish(
