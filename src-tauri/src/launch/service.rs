@@ -284,6 +284,7 @@ impl LaunchService {
             logging_degraded: false,
             signal: None,
             diagnosis: None,
+            server: None,
         });
         let host = Arc::clone(&self.host);
         let run_id = record.run_id.clone();
@@ -312,19 +313,25 @@ impl LaunchService {
     /// built-in demo player (D-045).
     pub fn mode_for(&self, instance_id: InstanceId) -> LaunchMode {
         let state = self.host.app_state();
+        // Offline in the full game only while a Microsoft account with play
+        // access is signed in here; otherwise the demo.
+        let allowed = state.full_game_allowed();
+        let settings = state.settings();
         match state.profile_for(instance_id) {
             Some(ProfileRef::Microsoft { id }) => LaunchMode::Account(id),
             Some(ProfileRef::NoToken { id }) => state
                 .notoken_name(&id)
                 .and_then(|name| super::notoken::NoTokenProfile::new(&name).ok())
-                .map(LaunchMode::NoToken)
+                .map(|p| LaunchMode::NoToken(p.full_game(allowed && settings.notoken_offline)))
                 .unwrap_or_else(|| LaunchMode::NoToken(Default::default())),
             // The launcher account plays under its nick, without a Minecraft
             // token (D-064).
             Some(ProfileRef::Launcher { id }) => state
                 .launcher_account_nick(&id)
                 .and_then(|nick| super::notoken::NoTokenProfile::new(&nick).ok())
-                .map(LaunchMode::NoToken)
+                .map(|p| {
+                    LaunchMode::NoToken(p.full_game(allowed && settings.launcher_account_offline))
+                })
                 .unwrap_or_else(|| LaunchMode::NoToken(Default::default())),
             None => LaunchMode::NoToken(Default::default()),
         }
@@ -346,6 +353,25 @@ impl LaunchService {
         instance_id: InstanceId,
         mode: LaunchMode,
     ) -> LauncherResult<RunSummary> {
+        self.launch_joining(request_id, instance_id, mode, None)
+            .await
+    }
+
+    /// Launches, starting the game straight into `server` (`host:port`, from
+    /// a friend's invite) when given.
+    pub async fn launch_joining(
+        &self,
+        request_id: &str,
+        instance_id: InstanceId,
+        mode: LaunchMode,
+        server: Option<&str>,
+    ) -> LauncherResult<RunSummary> {
+        let join = server
+            .map(|text| {
+                super::server::parse_address(text)
+                    .ok_or_else(|| LauncherError::invalid_input("That is not a server address."))
+            })
+            .transpose()?;
         crate::state::ledger::validate_request_id(request_id)?;
         if let Some(run) = self.known_run(request_id, instance_id)? {
             return Ok(run);
@@ -376,7 +402,14 @@ impl LaunchService {
             }
         }
         let jvm_arguments = runtime::custom::parse_jvm_arguments(&instance.jvm_arguments)?;
-        let game_arguments = super::arguments::parse_game_arguments(&instance.game_arguments)?;
+        let mut game_arguments = super::arguments::parse_game_arguments(&instance.game_arguments)?;
+        if let Some((host, port)) = &join {
+            game_arguments.extend(super::server::join_arguments(
+                &instance.version_id,
+                host,
+                *port,
+            ));
+        }
         let root = state.data_root().ok_or_else(|| {
             LauncherError::new(
                 ErrorCode::StorageUnavailable,
@@ -409,8 +442,13 @@ impl LaunchService {
             logging_degraded: false,
             signal: None,
             diagnosis: None,
+            server: None,
         });
         state.console().info(match &mode {
+            LaunchMode::NoToken(profile) if profile.is_full_game() => format!(
+                "Launch offline (the full game, no account check) as {}: checking the installation",
+                profile.name()
+            ),
             LaunchMode::NoToken(profile) => format!(
                 "Launch without a token (Minecraft demo) as {}: checking the installation",
                 profile.name()
@@ -835,7 +873,16 @@ impl LaunchService {
         let asked = Arc::new(std::sync::atomic::AtomicBool::new(false));
         let (sink_asked, question_id) = (Arc::clone(&asked), run_id.to_owned());
         let (mut questions, mut ended) = (0u32, false);
+        let server_run = run_id.to_owned();
         let sink = Box::new(move |line: OutputLine| {
+            // The server the game joins, for inviting friends (D-064).
+            if line.stream == Stream::Stdout
+                && let Some(server) = super::server::connecting_to(&line.text)
+            {
+                console_host.app_state().update_run(&server_run, |run| {
+                    run.server = Some(server);
+                });
+            }
             if super::crash::is_console_question(&line.text) {
                 questions += 1;
                 if questions >= super::crash::CONSOLE_QUESTION_LIMIT && !ended {

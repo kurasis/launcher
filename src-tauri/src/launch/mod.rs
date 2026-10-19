@@ -11,4 +11,5 @@ pub mod logs;
 pub mod notoken;
 pub mod orphan;
 pub mod redact;
+pub mod server;
 pub mod service;

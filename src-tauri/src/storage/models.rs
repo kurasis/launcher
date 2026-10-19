@@ -356,6 +356,21 @@ pub struct Settings {
     /// A version that did not start here; it is not offered again.
     #[serde(default)]
     pub skipped_version: Option<String>,
+    /// A short sound when a chat message or friend request comes while the
+    /// launcher is in front.
+    #[serde(default = "on")]
+    pub chat_sound: bool,
+    /// A system notification for one while the launcher is not in front.
+    #[serde(default = "on")]
+    pub chat_notifications: bool,
+    /// The launcher account plays offline in the full game instead of the
+    /// demo; only honoured while a Microsoft account with play access is
+    /// signed in here.
+    #[serde(default)]
+    pub launcher_account_offline: bool,
+    /// The same for the profiles without an account.
+    #[serde(default)]
+    pub notoken_offline: bool,
     /// The screen opened at start.
     #[serde(default)]
     pub start_view: StartView,
@@ -366,6 +381,10 @@ pub struct Settings {
     /// The start page feed (D-067).
     #[serde(default)]
     pub feed: FeedSettings,
+}
+
+fn on() -> bool {
+    true
 }
 
 fn default_metered_warn_mib() -> u32 {
@@ -401,6 +420,10 @@ impl Default for Settings {
             last_version: None,
             update_channel: crate::update::UpdateChannel::Stable,
             skipped_version: None,
+            chat_sound: true,
+            chat_notifications: true,
+            launcher_account_offline: false,
+            notoken_offline: false,
             start_view: StartView::Feed,
             last_view: StartView::Feed,
             feed: FeedSettings::default(),

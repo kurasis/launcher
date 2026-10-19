@@ -2,7 +2,8 @@ import { act, fireEvent, render, screen, waitFor, within } from '@testing-librar
 import { emit } from '@tauri-apps/api/event';
 import { mockIPC } from '@tauri-apps/api/mocks';
 import { describe, expect, it, vi } from 'vitest';
-import type { ChatMessage, ChatRoom, FriendsView } from '../../lib/contracts';
+import type { AppSnapshot, ChatMessage, ChatRoom, FriendsView } from '../../lib/contracts';
+import { instanceFixture, snapshotFixture } from '../../test/fixtures';
 import { FriendsCorner } from './FriendsCorner';
 
 const ME = { id: '00000000-0000-4000-8000-000000000001', nick: 'Steve_2' };
@@ -66,7 +67,11 @@ const signedOut: FriendsView = {
 };
 
 /** Answers friends commands; a function answer may throw a problem string. */
-function setup(view: FriendsView, answers: Record<string, (args: unknown) => unknown> = {}) {
+function setup(
+  view: FriendsView,
+  answers: Record<string, (args: unknown) => unknown> = {},
+  snapshot: AppSnapshot = snapshotFixture(),
+) {
   const calls: { cmd: string; args: unknown }[] = [];
   mockIPC(
     (cmd, args) => {
@@ -81,7 +86,7 @@ function setup(view: FriendsView, answers: Record<string, (args: unknown) => unk
     { shouldMockEvents: true },
   );
   const onOpenAccounts = vi.fn();
-  render(<FriendsCorner onOpenAccounts={onOpenAccounts} />);
+  render(<FriendsCorner snapshot={snapshot} onOpenAccounts={onOpenAccounts} />);
   return { calls, onOpenAccounts };
 }
 
@@ -365,5 +370,186 @@ describe('friends corner', () => {
     });
     expect(within(panel).getByText('Not connected. Trying again…')).toBeVisible();
     expect(within(panel).getByRole('tab', { name: /Chats/ })).toBeVisible();
+  });
+
+  it('says to confirm the email, not to sign in, and checks again', async () => {
+    const { calls } = setup(
+      { ...signedOut, signedIn: true, problem: 'email_not_confirmed' },
+      { launcher_account_recheck: () => false },
+    );
+    const panel = await openPanel();
+    expect(within(panel).getByText(/once your email is confirmed/)).toBeVisible();
+    expect(within(panel).queryByText(/need a launcher account/)).toBeNull();
+    fireEvent.click(within(panel).getByRole('button', { name: 'Check again' }));
+    expect(await within(panel).findByText(/Not confirmed yet/)).toBeVisible();
+    fireEvent.click(within(panel).getByRole('button', { name: 'Send the letter again' }));
+    expect(await within(panel).findByText(/The letter is on its way/)).toBeVisible();
+    expect(calls.map((c) => c.cmd)).toEqual(
+      expect.arrayContaining(['launcher_account_recheck', 'launcher_account_resend_confirmation']),
+    );
+  });
+
+  it('lets a report be closed without sending it', async () => {
+    const { calls } = setup(signedIn());
+    const panel = await openPanel();
+    fireEvent.click(within(panel).getByRole('button', { name: /Alex/ }));
+    fireEvent.click(await within(panel).findByRole('button', { name: 'Report' }));
+    fireEvent.click(within(panel).getByRole('button', { name: 'Cancel' }));
+    expect(within(panel).queryByRole('textbox', { name: 'What is wrong with it?' })).toBeNull();
+    // Escape closes the report, and only the report.
+    fireEvent.click(within(panel).getByRole('button', { name: 'Report' }));
+    fireEvent.keyDown(within(panel).getByRole('textbox', { name: 'What is wrong with it?' }), {
+      key: 'Escape',
+    });
+    expect(within(panel).queryByRole('textbox', { name: 'What is wrong with it?' })).toBeNull();
+    expect(screen.getByRole('region', { name: 'Friends' })).toBeVisible();
+    expect(calls.some((c) => c.cmd === 'friends_report')).toBe(false);
+  });
+
+  it('keeps unread chats apart and marks where new messages begin', async () => {
+    const OTHER = '10000000-0000-4000-8000-000000000002';
+    setup(
+      signedIn({
+        rooms: [
+          direct(),
+          direct({
+            id: OTHER,
+            members: [ME, NOTCH],
+            last: { ...message(1, NOTCH.id, 'old'), room: OTHER },
+            unread: 0,
+          }),
+        ],
+      }),
+    );
+    const panel = await openPanel();
+    const unread = within(panel).getByRole('heading', { name: 'Unread' });
+    const read = within(panel).getByRole('heading', { name: 'Read' });
+    expect(unread.compareDocumentPosition(read) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    fireEvent.click(within(panel).getByRole('button', { name: /Alex/ }));
+    const divider = await within(panel).findByRole('separator');
+    expect(divider).toHaveTextContent('New messages');
+    // Before Alex's message, after mine.
+    expect(divider.nextElementSibling).toHaveTextContent('Alex');
+    expect(divider.previousElementSibling).toHaveTextContent('hi');
+  });
+
+  it('shows that messages are loading', async () => {
+    setup(signedIn(), { friends_messages: () => new Promise(() => undefined) });
+    const panel = await openPanel();
+    fireEvent.click(within(panel).getByRole('button', { name: /Alex/ }));
+    expect(await within(panel).findByText('Loading messages…')).toBeVisible();
+  });
+
+  it('turns the sound and system notifications off', async () => {
+    const { calls } = setup(signedIn());
+    const panel = await openPanel();
+    fireEvent.click(within(panel).getByRole('tab', { name: /Friends/ }));
+    fireEvent.click(within(panel).getByRole('checkbox', { name: /Sound for new messages/ }));
+    fireEvent.click(within(panel).getByRole('checkbox', { name: /System notifications/ }));
+    await waitFor(() => {
+      expect(
+        calls
+          .filter((c) => c.cmd === 'set_app_settings')
+          .map((c) => (c.args as { request: { payload: unknown } }).request.payload),
+      ).toEqual([{ chatSound: false }, { chatNotifications: false }]);
+    });
+  });
+
+  it('invites a friend to the server the game is on', async () => {
+    const instance = instanceFixture({ versionId: '1.21.1' });
+    const playing = snapshotFixture({
+      instances: [instance],
+      currentRun: {
+        runId: 'r1',
+        kind: 'game',
+        instanceId: instance.id,
+        state: 'running',
+        startedAt: '2026-10-19T12:00:00Z',
+        endedAt: null,
+        exitCode: null,
+        durationMs: null,
+        drainTimedOut: false,
+        outputTail: [],
+        outputLinesDropped: 0,
+        error: null,
+        loggingDegraded: false,
+        signal: null,
+        diagnosis: null,
+        server: 'play.example.com:25565',
+      },
+    });
+    const { calls } = setup(
+      signedIn(),
+      {
+        friends_send: (args) => ({
+          ...message(9, ME.id, (args as { body: string }).body),
+        }),
+        friends_open_direct: () => ROOM,
+      },
+      playing,
+    );
+    const panel = await openPanel();
+    fireEvent.click(within(panel).getByRole('tab', { name: /Friends/ }));
+    fireEvent.click(within(panel).getAllByRole('button', { name: 'Invite' })[0] as HTMLElement);
+    expect(await within(panel).findByText('Invite sent to Alex.')).toBeVisible();
+    expect(calls.find((c) => c.cmd === 'friends_send')?.args).toEqual({
+      room: ROOM,
+      body: '🎮 invite play.example.com:25565 1.21.1',
+    });
+  });
+
+  it('shows an invite as a card and joins with an installation of that version', async () => {
+    const old = instanceFixture({
+      id: 'old',
+      versionId: '1.20.4',
+      displayName: 'Old',
+      health: 'ready',
+    });
+    const match = instanceFixture({
+      id: 'match',
+      versionId: '1.21.1',
+      displayName: 'Survival',
+      health: 'ready',
+    });
+    const { calls } = setup(
+      signedIn(),
+      {
+        friends_messages: () => [
+          message(1, ALEX.id, '🎮 invite play.example.com:25565 1.21.1'),
+          message(2, ALEX.id, '🎮 invite evil host; --demo 1.21.1'),
+        ],
+      },
+      snapshotFixture({ instances: [old, match] }),
+    );
+    const panel = await openPanel();
+    fireEvent.click(within(panel).getByRole('button', { name: /Alex/ }));
+    expect(await within(panel).findByText('Alex invites you to a server')).toBeVisible();
+    expect(within(panel).getByText('play.example.com:25565')).toBeVisible();
+    // Not a valid invite: plain text, no button.
+    expect(within(panel).getByText('🎮 invite evil host; --demo 1.21.1')).toBeVisible();
+    fireEvent.click(within(panel).getByRole('button', { name: 'Join' }));
+    await waitFor(() => {
+      const launch = calls.find((c) => c.cmd === 'launch_game')?.args as {
+        request: { payload: unknown };
+      };
+      expect(launch.request.payload).toEqual({
+        instanceId: 'match',
+        server: 'play.example.com:25565',
+      });
+    });
+  });
+
+  it('says what is missing to join', async () => {
+    setup(
+      signedIn(),
+      { friends_messages: () => [message(1, ALEX.id, '🎮 invite play.example.com:25565 1.7.10')] },
+      snapshotFixture({ instances: [instanceFixture({ versionId: '1.21.1', health: 'ready' })] }),
+    );
+    const panel = await openPanel();
+    fireEvent.click(within(panel).getByRole('button', { name: /Alex/ }));
+    expect(
+      await within(panel).findByText(/You have no installation of Minecraft 1.7.10/),
+    ).toBeVisible();
+    expect(within(panel).queryByRole('button', { name: 'Join' })).toBeNull();
   });
 });

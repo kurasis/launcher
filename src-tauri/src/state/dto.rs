@@ -147,6 +147,14 @@ pub struct SettingsPatch {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub share_stats: Option<bool>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub chat_sound: Option<bool>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub chat_notifications: Option<bool>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub launcher_account_offline: Option<bool>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub notoken_offline: Option<bool>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub download_source: Option<crate::mirror::DownloadSource>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub update_mode: Option<crate::update::UpdateMode>,
@@ -204,6 +212,10 @@ pub struct SettingsView {
     pub metered_warn_mib: u32,
     pub monthly_limit_mib: u32,
     pub share_stats: bool,
+    pub chat_sound: bool,
+    pub chat_notifications: bool,
+    pub launcher_account_offline: bool,
+    pub notoken_offline: bool,
     pub download_source: crate::mirror::DownloadSource,
     pub update_mode: crate::update::UpdateMode,
     pub update_channel: crate::update::UpdateChannel,
@@ -233,6 +245,10 @@ impl SettingsView {
             metered_warn_mib: settings.metered_warn_mib,
             monthly_limit_mib: settings.monthly_limit_mib,
             share_stats: settings.share_stats,
+            chat_sound: settings.chat_sound,
+            chat_notifications: settings.chat_notifications,
+            launcher_account_offline: settings.launcher_account_offline,
+            notoken_offline: settings.notoken_offline,
             download_source: settings.download_source,
             update_mode: settings.update_mode,
             update_channel: settings.update_channel,
@@ -398,6 +414,9 @@ pub struct AccountSummary {
     pub default_profile: Option<ProfileRef>,
     /// The launcher account (D-064).
     pub launcher_account: crate::launcher_account::LauncherAccountView,
+    /// A Microsoft account with play access is signed in here: profiles without
+    /// an account may then play offline in the full game.
+    pub full_game_allowed: bool,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -500,6 +519,10 @@ pub struct RunSummary {
     /// Why the game stopped, when it crashed (D-059).
     #[serde(default)]
     pub diagnosis: Option<crate::launch::crash::CrashDiagnosis>,
+    /// The server the game last joined (`host:port`), from its own log: what
+    /// the player may invite friends to.
+    #[serde(default)]
+    pub server: Option<String>,
 }
 
 /// The complete state a freshly created webview needs (doc 06 "Bootstrap").
