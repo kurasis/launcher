@@ -7,7 +7,7 @@ description: >-
   Sets RELEASE, SETUP and ARCHIVE (a path on the server) for later steps.
 inputs:
   service:
-    description: crash, mirror, upd, oauth, friends or skins.
+    description: crash, mirror, upd, oauth, friends, skins or feed.
     required: true
   target:
     description: user@host of the server (from secrets).

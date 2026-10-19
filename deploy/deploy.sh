@@ -3,7 +3,7 @@
 # service's workflow (D-061, D-062).
 #
 #   bash deploy.sh <service> <release-id> <archive> [mirror-quota-gb | upd-public-key]
-#   … | bash deploy.sh oauth <release-id> <archive> --secrets
+#   … | bash deploy.sh oauth|feed <release-id> <archive> --secrets
 #
 # Unpacks the archive into /home/www/lapi/<service>/releases/<release-id>,
 # points `current` at it, restarts the service and checks /v1/health; a failed
@@ -11,9 +11,10 @@
 # nginx files are root's (bootstrap.sh installs them); this only says when
 # they differ. For the mirror, the quota goes to settings.json, which the
 # service reads every minute. upd is a command, not a process: its release is
-# installed with the update public key and nothing is restarted. oauth reads
-# its secrets (Turnstile, SMTP) from standard input with --secrets, as
-# KEY=value lines, into secrets.env; they never appear in a command line or a log.
+# installed with the update public key and nothing is restarted. oauth and
+# feed read their secrets (Turnstile, SMTP; DeepL, Twitch) from standard input
+# with --secrets, as KEY=value lines, into secrets.env; they never appear in a
+# command line or a log.
 set -euo pipefail
 
 SERVICE="${1:?service}"
@@ -28,6 +29,7 @@ case "$SERVICE" in
     oauth) PORT=8783 ;;
     friends) PORT=8784 ;;
     skins) PORT=8785 ;;
+    feed) PORT=8786 ;;
     *) echo "unknown service $SERVICE"; exit 1 ;;
 esac
 APP=/home/www/lapi/$SERVICE
@@ -59,9 +61,13 @@ if [ "$SERVICE" = mirror ] && [ -n "$QUOTA_GB" ]; then
     echo "== quota: $QUOTA_GB GB"
 fi
 
-if [ "$SERVICE" = oauth ] && [ "$EXTRA" = --secrets ]; then
+if { [ "$SERVICE" = oauth ] || [ "$SERVICE" = feed ]; } && [ "$EXTRA" = --secrets ]; then
     # Only the known keys, one line each, nothing that could end a line.
-    allowed='^LAPI_OAUTH_(TURNSTILE_SITE_KEY|TURNSTILE_SECRET|SMTP_URL|MAIL_FROM)=[^[:cntrl:]]{0,500}$'
+    if [ "$SERVICE" = oauth ]; then
+        allowed='^LAPI_OAUTH_(TURNSTILE_SITE_KEY|TURNSTILE_SECRET|SMTP_URL|MAIL_FROM)=[^[:cntrl:]]{0,500}$'
+    else
+        allowed='^LAPI_FEED_(DEEPL_KEY|TWITCH_CLIENT_ID|TWITCH_SECRET)=[^[:cntrl:]]{0,500}$'
+    fi
     umask 027
     : > "$APP/secrets.env.new"
     while IFS= read -r line || [ -n "$line" ]; do
