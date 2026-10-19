@@ -38,12 +38,17 @@ impl ExternalLink {
 }
 
 /// Hosts the launcher may open. The sign-in host is allowed only for the
-/// authorization endpoint path.
+/// authorization endpoint path. The feed (D-067) links to Minecraft's
+/// articles, to YouTube and Twitch, and to its own pages.
 const ALLOWED_HOSTS: &[&str] = &[
     "www.minecraft.net",
     "help.minecraft.net",
     "www.xbox.com",
     "account.microsoft.com",
+    "feed.lapi.sh",
+    "www.youtube.com",
+    "youtu.be",
+    "www.twitch.tv",
 ];
 const SIGN_IN_HOST: &str = "login.microsoftonline.com";
 const SIGN_IN_PATH: &str = "/consumers/oauth2/v2.0/authorize";
@@ -101,6 +106,33 @@ mod tests {
             )
             .is_ok()
         );
+    }
+
+    #[test]
+    fn feed_destinations_are_allowed() {
+        for good in [
+            "https://www.youtube.com/watch?v=dQw4w9WgXcQ",
+            "https://youtu.be/dQw4w9WgXcQ",
+            "https://www.twitch.tv/some_streamer",
+            "https://feed.lapi.sh/play/yt/dQw4w9WgXcQ?lang=ru",
+            "https://www.minecraft.net/en-us/article/minecraft-java-edition-1-21",
+        ] {
+            assert!(check_allowed(good).is_ok(), "{good}");
+        }
+        for bad in [
+            "http://www.youtube.com/watch?v=x",
+            "https://youtube.com.evil.example/",
+            "https://m.youtube.com/watch?v=x",
+            "https://twitch.tv.evil.example/",
+            "https://www.twitch.tv:444/x",
+            "https://user@www.twitch.tv/x",
+            "https://evil.lapi.sh/",
+            "https://feed.lapi.sh.evil.example/",
+            "javascript://www.youtube.com/%0aalert(1)",
+            "data:text/html,<script>alert(1)</script>",
+        ] {
+            assert!(check_allowed(bad).is_err(), "{bad}");
+        }
     }
 
     #[test]

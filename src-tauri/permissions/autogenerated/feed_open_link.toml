@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-feed-open-link"
+description = "Enables the feed_open_link command without any pre-configured scope."
+commands.allow = ["feed_open_link"]
+
+[[permission]]
+identifier = "deny-feed-open-link"
+description = "Denies the feed_open_link command without any pre-configured scope."
+commands.deny = ["feed_open_link"]

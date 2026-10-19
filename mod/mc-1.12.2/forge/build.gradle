@@ -1,0 +1,57 @@
+plugins {
+    id 'java'
+    id 'com.gtnewhorizons.retrofuturagradle' version '2.0.6'
+}
+
+// Forge 1.12.2 has no Mixin of its own, so the hook is a coremod: an ASM transformer that
+// FML loads from the jar manifest. RetroFuturaGradle compiles against Forge 14.23.5.2847;
+// the SRG names it maps to are the same in 2860, the last 1.12.2 Forge.
+base {
+    archivesName = "launcherskins-forge-${minecraft_version}"
+}
+
+java {
+    toolchain { languageVersion = JavaLanguageVersion.of(8) }
+}
+
+sourceSets.main {
+    java.srcDir "${rootDir}/core/src/main/java"
+}
+
+minecraft {
+    mcVersion = minecraft_version
+    mcpMappingChannel = 'stable'
+    mcpMappingVersion = '39'
+    username = project.findProperty('devNick')?.toString() ?: 'Developer'
+    if (project.hasProperty('skinsApi')) {
+        extraRunJvmArguments.add("-Dlauncherskins.api=${project.property('skinsApi')}".toString())
+    }
+}
+
+tasks.named('runClient') {
+    // 1.12.2 has no quick play: --server and --port join a server at start.
+    if (project.hasProperty('devServer')) {
+        def (host, port) = project.property('devServer').toString().tokenize(':')
+        args '--server', host, '--port', port ?: '25565'
+    }
+}
+
+tasks.withType(JavaCompile).configureEach {
+    options.encoding = 'UTF-8'
+}
+
+jar {
+    manifest {
+        attributes(
+            'FMLCorePlugin': 'app.launcher.skins.coremod.LoadingPlugin',
+            'FMLCorePluginContainsFMLMod': 'true'
+        )
+    }
+}
+
+processResources {
+    inputs.property 'version', project.version
+    filesMatching('mcmod.info') {
+        expand version: project.version
+    }
+}

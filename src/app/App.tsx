@@ -27,20 +27,20 @@ import { UpdateBadge } from '../features/updates/UpdateBadge';
 import { WhatsNew } from '../features/updates/WhatsNew';
 import { DownloadManager } from '../features/downloads/DownloadManager';
 import { FriendsCorner } from '../features/friends/FriendsCorner';
+import { FeedView } from '../features/feed/FeedView';
 import { useTheme } from './useTheme';
 import { useAppInfo } from './useAppInfo';
+import { MoreMenu, type MenuItem } from './MoreMenu';
+import {
+  type View,
+  menuEntries,
+  menuViews,
+  rememberedView,
+  rowViews,
+  startViewOf,
+  viewShown,
+} from './navigation';
 import { localizeError } from '../lib/strings';
-
-type View = 'home' | 'account' | 'backups' | 'screenshots' | 'settings' | 'diagnostics' | 'about';
-const views: View[] = [
-  'home',
-  'account',
-  'backups',
-  'screenshots',
-  'settings',
-  'diagnostics',
-  'about',
-];
 
 /** Compact header status of the running operation, visible on every screen. */
 function ActivityIndicator({ snapshot }: { snapshot: AppSnapshot }) {
@@ -86,13 +86,63 @@ export function App() {
   // The Rust core's build profile: a debug core is a development build even
   // when its frontend was bundled.
   const { state: appInfo } = useAppInfo();
-  const [view, setView] = useState<View>('home');
+  // The screen the player chose; null until the start screen is known.
+  const [chosenView, setView] = useState<View | null>(null);
   const stopping = useShownError();
   const consoleOpening = useShownError();
   const { clear: clearConsoleError, catcher: consoleFailed } = consoleOpening;
   const [settingsSection, setSettingsSection] = useState<SettingsSection>('general');
   const [settingsInstance, setSettingsInstance] = useState<string | null>(null);
+  // A version the feed asked to install: Installations opens its form with it.
+  const [installVersion, setInstallVersion] = useState<string | null>(null);
   const snapshot = state.status === 'ready' ? state.snapshot : null;
+  // The start screen is picked once, from the first state the core sends.
+  if (chosenView === null && snapshot !== null) setView(startViewOf(snapshot));
+  const settings = snapshot?.settings;
+  // The feed switched off while open gives way to Installations.
+  const view = chosenView !== null && viewShown(chosenView, settings) ? chosenView : 'home';
+  const tabs = rowViews.filter((item) => viewShown(item, settings));
+  /** Opens a screen; with "Last opened" the core remembers it for the next start. */
+  const navigate = (next: View) => {
+    setView(next);
+    setInstallVersion(null);
+    const remembered = rememberedView(next);
+    if (
+      settings?.startView === 'last' &&
+      settings.writable &&
+      remembered !== null &&
+      remembered !== settings.lastView
+    ) {
+      // Only a convenience: a failure leaves the previous screen remembered.
+      void ipc.setAppSettings({ lastView: remembered }).catch(() => undefined);
+    }
+  };
+  const openConsole = () => {
+    clearConsoleError();
+    void ipc.openConsole().catch(consoleFailed);
+  };
+  const menuItems: MenuItem[] = menuEntries.map((entry, index) =>
+    entry === 'separator'
+      ? { kind: 'separator', key: `separator-${String(index)}` }
+      : entry === 'console'
+        ? {
+            kind: 'item',
+            key: entry,
+            label: strings.nav.console,
+            current: false,
+            onSelect: openConsole,
+          }
+        : {
+            kind: 'item',
+            key: entry,
+            label: strings.nav[entry],
+            current: view === entry,
+            onSelect: () => {
+              navigate(entry);
+            },
+          },
+  );
+  const inMenu = menuViews.includes(view);
   useTheme(snapshot?.settings.theme);
   // A language change (D-038) remounts the screens so every text is read again.
   const lang = useLanguage(snapshot?.settings.language);
@@ -141,19 +191,24 @@ export function App() {
         {snapshot !== null && <UpdateBadge update={snapshot.update} />}
         {snapshot !== null && <AccountChip account={snapshot.account} />}
         <nav aria-label={strings.nav.label} className={styles.nav}>
-          {views.map((item) => (
+          {tabs.map((item) => (
             <button
               key={item}
               type="button"
               className={styles.navItem}
               aria-current={view === item ? 'page' : undefined}
               onClick={() => {
-                setView(item);
+                navigate(item);
               }}
             >
               {strings.nav[item]}
             </button>
           ))}
+          <MoreMenu
+            label={inMenu ? strings.nav.moreCurrent({ view: strings.nav[view] }) : strings.nav.more}
+            current={inMenu}
+            entries={menuItems}
+          />
           <QuitControl activeKind={snapshot?.activeOperation?.kind ?? null} />
         </nav>
       </header>
@@ -183,6 +238,26 @@ export function App() {
         ) : (
           <>
             <StorageIssues issues={state.snapshot.storageIssues} />
+            {view === 'feed' && (
+              <FeedView
+                snapshot={state.snapshot}
+                onOpenInstallations={(instanceId) => {
+                  navigate('home');
+                  if (
+                    instanceId !== null &&
+                    instanceId !== state.snapshot.settings.selectedInstanceId
+                  ) {
+                    void ipc
+                      .setAppSettings({ selectedInstanceId: instanceId })
+                      .catch(() => undefined);
+                  }
+                }}
+                onInstallVersion={(versionId) => {
+                  navigate('home');
+                  setInstallVersion(versionId);
+                }}
+              />
+            )}
             {view === 'home' && <WhatsNew update={state.snapshot.update} />}
             {view === 'home' && <FailureOffer />}
             {view === 'home' && (
@@ -197,14 +272,16 @@ export function App() {
                 />
                 {stopping.error !== null && <Notice tone="danger">{stopping.error}</Notice>}
                 <InstancesView
+                  key={installVersion ?? ''}
                   snapshot={state.snapshot}
+                  createVersion={installVersion}
                   onEditSettings={(instanceId) => {
                     setSettingsInstance(instanceId);
                     setSettingsSection('installations');
-                    setView('settings');
+                    navigate('settings');
                   }}
                   onOpenBackups={() => {
-                    setView('backups');
+                    navigate('backups');
                   }}
                 />
               </>
@@ -230,7 +307,7 @@ export function App() {
       {snapshot !== null && (
         <FriendsCorner
           onOpenAccounts={() => {
-            setView('account');
+            navigate('account');
           }}
         />
       )}

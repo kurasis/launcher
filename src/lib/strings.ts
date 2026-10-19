@@ -18,7 +18,7 @@ export type { Messages };
 
 /** Sections of the Settings screen. */
 export type SettingsSection =
-  'general' | 'java' | 'defaults' | 'network' | 'installations' | 'privacy' | 'reset';
+  'general' | 'feed' | 'java' | 'defaults' | 'network' | 'installations' | 'privacy' | 'reset';
 
 type Tree = { readonly [key: string]: string | Tree };
 
