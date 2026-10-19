@@ -50,6 +50,11 @@ impl Config {
 
 /// Checks a Turnstile answer.
 pub trait Captcha: Send + Sync {
+    /// Whether a captcha can be solved at all (keys are set).
+    fn configured(&self) -> bool {
+        true
+    }
+
     fn verify<'a>(
         &'a self,
         response: &'a str,
@@ -67,6 +72,10 @@ pub struct Turnstile {
 }
 
 impl Captcha for Turnstile {
+    fn configured(&self) -> bool {
+        !self.secret.is_empty()
+    }
+
     fn verify<'a>(
         &'a self,
         response: &'a str,

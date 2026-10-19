@@ -16,7 +16,10 @@ RestartSec=3
 UMask=0027
 NoNewPrivileges=yes
 ProtectSystem=strict
-ProtectHome=read-only
+# /home holds nothing else for it: only its own folder is there, its data writable.
+ProtectHome=tmpfs
+BindReadOnlyPaths=/home/www/lapi/oauth
+BindPaths=/home/www/lapi/oauth/data
 ReadWritePaths=/home/www/lapi/oauth/data
 PrivateTmp=yes
 PrivateDevices=yes
@@ -32,6 +35,14 @@ RestrictRealtime=yes
 LockPersonality=yes
 MemoryDenyWriteExecute=yes
 SystemCallArchitectures=native
+# What a network service needs; anything else fails with EPERM.
+SystemCallFilter=@system-service
+SystemCallErrorNumber=EPERM
+ProtectKernelLogs=yes
+ProtectProc=invisible
+ProcSubset=pid
+RestrictSUIDSGID=yes
+RemoveIPC=yes
 CapabilityBoundingSet=
 MemoryMax=512M
 TasksMax=256

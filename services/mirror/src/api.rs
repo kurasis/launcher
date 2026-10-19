@@ -135,7 +135,9 @@ async fn mirror(State(app): State<Arc<App>>, request: Request) -> Response {
     let Some(_slot) = slot(&app, client(request.headers())) else {
         return refuse(StatusCode::TOO_MANY_REQUESTS, "too many requests at once");
     };
+    let head = request.method() == Method::HEAD;
     match origin.class.clone() {
+        Class::File(relative) if head => head_of_file(&app, &origin, &relative).await,
         Class::File(relative) => file(&app, origin, relative).await,
         Class::Meta => meta(&app, &origin).await,
     }
@@ -186,6 +188,36 @@ async fn from_disk(path: &std::path::Path, how: &'static str) -> Option<Response
         .header("x-mirror-cache", how)
         .body(Body::from_stream(tokio_util::io::ReaderStream::new(file)))
         .ok()
+}
+
+/// A `HEAD` request: the kept file's headers, or the origin's. It fetches
+/// nothing to keep (a full fetch for headers alone would cost the whole file).
+async fn head_of_file(app: &Arc<App>, origin: &Origin, relative: &std::path::Path) -> Response {
+    if let Some(response) = from_disk(&app.store.file(relative), "kept").await {
+        return response;
+    }
+    let Ok(answer) = app.client.head((app.upstream)(origin)).send().await else {
+        return refuse(StatusCode::BAD_GATEWAY, "origin unreachable");
+    };
+    let status = answer.status();
+    if status == reqwest::StatusCode::NOT_FOUND || status == reqwest::StatusCode::GONE {
+        return refuse(StatusCode::NOT_FOUND, "not at the origin");
+    }
+    if !status.is_success() {
+        return refuse(StatusCode::BAD_GATEWAY, "origin failed");
+    }
+    let mut builder = Response::builder()
+        .header(
+            header::CONTENT_TYPE,
+            content_type(std::path::Path::new(&origin.url)),
+        )
+        .header("x-mirror-cache", "origin");
+    if let Some(length) = answer.content_length() {
+        builder = builder.header(header::CONTENT_LENGTH, length);
+    }
+    builder
+        .body(Body::empty())
+        .unwrap_or_else(|_| refuse(StatusCode::INTERNAL_SERVER_ERROR, "response"))
 }
 
 /// The request that fetches and keeps a file. However it ends (done, failed,

@@ -24,10 +24,17 @@ const VERIFIER: &str = "dBjftJeZ4CVP-mB92K27uhbUJU1p1r_wW1gFWFOEjXk";
 const CHALLENGE: &str = "E9Melhoa2OwvFrEMTJguCHaoeK1t8URWbuGJSstw-cM";
 const PASSWORD: &str = "correct horse battery";
 
-/// Turnstile in tests: "ok" passes for any action, "ok:<action>" for that one.
-struct FakeCaptcha;
+/// Turnstile in tests: "ok" passes for any action, "ok:<action>" for that one;
+/// `keys: false` is a server without captcha keys.
+struct FakeCaptcha {
+    keys: bool,
+}
 
 impl Captcha for FakeCaptcha {
+    fn configured(&self) -> bool {
+        self.keys
+    }
+
     fn verify<'a>(
         &'a self,
         response: &'a str,
@@ -45,6 +52,10 @@ struct T {
 }
 
 fn setup() -> T {
+    setup_with(true)
+}
+
+fn setup_with(keys: bool) -> T {
     let dir = tempfile::tempdir().unwrap();
     let store = Store::open(dir.path()).unwrap();
     let app = Arc::new(App::new(
@@ -54,7 +65,7 @@ fn setup() -> T {
         },
         store,
         Keys::from_seed([3; 32]),
-        Box::new(FakeCaptcha),
+        Box::new(FakeCaptcha { keys }),
     ));
     T {
         _dir: dir,
@@ -469,6 +480,25 @@ async fn wrong_passwords_say_nothing_about_the_account_and_bring_the_captcha() {
         t.login("Victim", PASSWORD, "ok", "192.0.2.200")
             .await
             .status,
+        StatusCode::SEE_OTHER
+    );
+}
+
+#[tokio::test]
+async fn without_captcha_keys_failures_never_lock_the_owner_out() {
+    let t = setup_with(false);
+    t.account("Victim", "198.51.100.5").await;
+    for i in 0..6 {
+        t.login(
+            "Victim",
+            "wrong password!!",
+            "",
+            &format!("192.0.2.{}", 100 + i),
+        )
+        .await;
+    }
+    assert_eq!(
+        t.login("Victim", PASSWORD, "", "192.0.2.200").await.status,
         StatusCode::SEE_OTHER
     );
 }

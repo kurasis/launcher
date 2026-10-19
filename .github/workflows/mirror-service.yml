@@ -19,6 +19,7 @@ on:
       - deploy/*.sh
       - deploy/nginx/**
       - .github/workflows/mirror-service.yml
+      - .github/actions/**
   pull_request:
     paths:
       - services/mirror/**
@@ -26,6 +27,7 @@ on:
       - deploy/*.sh
       - deploy/nginx/**
       - .github/workflows/mirror-service.yml
+      - .github/actions/**
   workflow_dispatch:
     inputs:
       task:
@@ -89,6 +91,9 @@ jobs:
       group: mirror-deploy
       cancel-in-progress: false
     name: Deploy to mirror.lapi.sh
+    # Deploys use the production environment: Settings → Environments →
+    # production → Required reviewers makes each one wait for an approval.
+    environment: production
     needs: test
     if: >-
       (github.event_name == 'push' && github.ref == 'refs/heads/main')
@@ -99,33 +104,14 @@ jobs:
       - uses: actions/download-artifact@v4
         with:
           name: lapi-mirror
-      - name: SSH setup
-        env:
-          SSH_KEY: ${{ secrets.SSH_KEY }}
-          SSH_KNOWN_HOSTS: ${{ secrets.SSH_KNOWN_HOSTS }}
-        run: |
-          install -d -m 700 ~/.ssh
-          printf '%s\n' "$SSH_KEY" > ~/.ssh/id_deploy
-          chmod 600 ~/.ssh/id_deploy
-          printf '%s\n' "$SSH_KNOWN_HOSTS" > ~/.ssh/known_hosts
-      - name: Upload
-        env:
-          TARGET: ${{ secrets.SSH_USER }}@${{ secrets.SSH_HOST }}
-        run: |
-          release=$(git rev-parse --short=12 HEAD)
-          echo "RELEASE=$release" >> "$GITHUB_ENV"
-          scp -i ~/.ssh/id_deploy -o BatchMode=yes lapi-mirror.tar.gz "$TARGET:/tmp/lapi-mirror-$release.tar.gz"
-          # deploy/ goes to a folder of its own per run (two workflows may
-          # deploy at once); ~/lapi-bootstrap points at the newest, for the
-          # root step: sudo bash ~/lapi-bootstrap/bootstrap.sh <user>
-          setup="$GITHUB_RUN_ID-$GITHUB_JOB-mirror"
-          echo "SETUP=$setup" >> "$GITHUB_ENV"
-          tar -cz deploy | ssh -i ~/.ssh/id_deploy -o BatchMode=yes "$TARGET" "set -e
-            d=\$HOME/.lapi-bootstrap/$setup
-            rm -rf \"\$d\" && mkdir -p \"\$d\" && tar -xz -C \"\$d\" --strip-components=1
-            if [ -d ~/lapi-bootstrap ] && [ ! -L ~/lapi-bootstrap ]; then rm -rf ~/lapi-bootstrap; fi
-            ln -sfn \"\$d\" ~/lapi-bootstrap.$setup && mv -T ~/lapi-bootstrap.$setup ~/lapi-bootstrap
-            ls -1dt ~/.lapi-bootstrap/* | tail -n +11 | xargs -r rm -rf"
+      - uses: ./.github/actions/lapi-ssh
+        with:
+          ssh-key: ${{ secrets.SSH_KEY }}
+          known-hosts: ${{ secrets.SSH_KNOWN_HOSTS }}
+      - uses: ./.github/actions/lapi-upload
+        with:
+          service: mirror
+          target: ${{ secrets.SSH_USER }}@${{ secrets.SSH_HOST }}
       - name: Deploy
         env:
           TARGET: ${{ secrets.SSH_USER }}@${{ secrets.SSH_HOST }}
@@ -134,8 +120,8 @@ jobs:
           # Checked here too: it becomes part of a command the server's shell reads.
           [[ "$QUOTA_GB" =~ ^[0-9]{1,6}$ ]] || { echo "::error::MIRROR_MAX_GB must be a number of GB"; exit 1; }
           set +e
-          ssh -i ~/.ssh/id_deploy -o BatchMode=yes "$TARGET" \
-            "bash ~/.lapi-bootstrap/$SETUP/deploy.sh mirror $RELEASE /tmp/lapi-mirror-$RELEASE.tar.gz $QUOTA_GB" 2>&1 | tee deploy.log
+          ssh "$TARGET" \
+            "bash ~/.lapi-bootstrap/$SETUP/deploy.sh mirror $RELEASE $ARCHIVE $QUOTA_GB" 2>&1 | tee deploy.log
           status=${PIPESTATUS[0]}
           if grep -q NOT_BOOTSTRAPPED deploy.log; then
             echo "::warning::The server is not set up yet: run 'sudo bash ~/lapi-bootstrap/bootstrap.sh <deploy-user>' on it once, then re-run this workflow."
@@ -148,39 +134,21 @@ jobs:
             echo "::warning::The warming timer did not start: run 'sudo bash ~/lapi-bootstrap/bootstrap.sh <deploy-user>' on the server."
           fi
           exit "$status"
-      - name: Check from outside
-        run: |
-          for i in 1 2 3 4 5 6; do
-            # Another site's answer (nginx's default before bootstrap) is not this.
-            if curl -fsS --max-time 10 https://mirror.lapi.sh/v1/health | grep -q '"service":"lapi-mirror"'; then echo; exit 0; fi
-            sleep 5
-          done
-          echo "::warning::https://mirror.lapi.sh/v1/health does not answer through Cloudflare yet"
-      - name: The origin answers only through Cloudflare
-        env:
-          SSH_HOST: ${{ secrets.SSH_HOST }}
-        run: |
-          ip=$(getent ahostsv4 "$SSH_HOST" | awk 'NR==1 {print $1}')
-          if curl -sk --max-time 10 -o /dev/null --resolve "mirror.lapi.sh:443:$ip" https://mirror.lapi.sh/v1/health; then
-            echo "::warning::The server answers mirror.lapi.sh directly, around Cloudflare: apply the nginx files with bootstrap.sh."
-          else
-            echo "Direct requests to the server are refused."
-          fi
+      - uses: ./.github/actions/lapi-check
+        with:
+          service: mirror
+          ssh-host: ${{ secrets.SSH_HOST }}
 
   reports:
     name: Kept files and disk
     if: github.event_name == 'workflow_dispatch' && inputs.task == 'reports'
     runs-on: ubuntu-24.04
     steps:
-      - name: SSH setup
-        env:
-          SSH_KEY: ${{ secrets.SSH_KEY }}
-          SSH_KNOWN_HOSTS: ${{ secrets.SSH_KNOWN_HOSTS }}
-        run: |
-          install -d -m 700 ~/.ssh
-          printf '%s\n' "$SSH_KEY" > ~/.ssh/id_deploy
-          chmod 600 ~/.ssh/id_deploy
-          printf '%s\n' "$SSH_KNOWN_HOSTS" > ~/.ssh/known_hosts
+      - uses: actions/checkout@v5
+      - uses: ./.github/actions/lapi-ssh
+        with:
+          ssh-key: ${{ secrets.SSH_KEY }}
+          known-hosts: ${{ secrets.SSH_KNOWN_HOSTS }}
       # Counts and sizes per mirrored host only: nothing about players.
       - name: Overview
         env:
@@ -189,7 +157,7 @@ jobs:
           {
             echo '### Mirror: kept files per host, quota and free disk'
             echo '```json'
-            ssh -i ~/.ssh/id_deploy -o BatchMode=yes "$TARGET" \
+            ssh "$TARGET" \
               'sudo -n -u lapi-mirror /home/www/lapi/mirror/current/lapi-mirror overview'
             echo '```'
           } | tee -a "$GITHUB_STEP_SUMMARY"

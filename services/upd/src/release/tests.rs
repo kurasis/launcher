@@ -229,6 +229,16 @@ fn broken_or_foreign_releases_are_refused_and_nothing_changes() {
             .contains("missing linux-x86_64/appimage")
     );
 
+    s.archive("0.2.5", REQUIRED, |release, _| {
+        release.platforms[0].bundle = "<script>x</script>".into();
+    });
+    assert!(
+        s.server
+            .publish("0.2.5", &options(100))
+            .unwrap_err()
+            .contains("bad target or bundle")
+    );
+
     s.archive("0.2.4", REQUIRED, |_, files| {
         files.push(("../escape".into(), b"x".to_vec()));
     });

@@ -13,7 +13,10 @@ RestartSec=3
 UMask=0027
 NoNewPrivileges=yes
 ProtectSystem=strict
-ProtectHome=read-only
+# /home holds nothing else for it: only its own folder is there, its data writable.
+ProtectHome=tmpfs
+BindReadOnlyPaths=/home/www/lapi/friends
+BindPaths=/home/www/lapi/friends/data
 ReadWritePaths=/home/www/lapi/friends/data
 PrivateTmp=yes
 PrivateDevices=yes
@@ -24,11 +27,21 @@ ProtectClock=yes
 ProtectHostname=yes
 # Out: the account service on this server only.
 RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX
+IPAddressDeny=any
+IPAddressAllow=localhost
 RestrictNamespaces=yes
 RestrictRealtime=yes
 LockPersonality=yes
 MemoryDenyWriteExecute=yes
 SystemCallArchitectures=native
+# What a network service needs; anything else fails with EPERM.
+SystemCallFilter=@system-service
+SystemCallErrorNumber=EPERM
+ProtectKernelLogs=yes
+ProtectProc=invisible
+ProcSubset=pid
+RestrictSUIDSGID=yes
+RemoveIPC=yes
 CapabilityBoundingSet=
 MemoryMax=512M
 TasksMax=256

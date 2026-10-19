@@ -85,7 +85,7 @@ pub fn parse(path: &str, query: Option<&str>) -> Option<Origin> {
     let host = *HOSTS.iter().find(|h| **h == host)?;
     let tail = format!("/{tail}");
     // GitHub hosts anyone's files: only Adoptium's Java releases are ours.
-    if host == "github.com" && (query.is_some_and(|q| !q.is_empty()) || !adoptium_release(&tail)) {
+    if host == "github.com" && !adoptium_release(&tail) {
         return None;
     }
     let lower = tail.to_ascii_lowercase();
@@ -100,7 +100,11 @@ pub fn parse(path: &str, query: Option<&str>) -> Option<Origin> {
         return None;
     }
     let query = query.filter(|q| !q.is_empty());
-    if query.is_some_and(|q| q.len() > MAX_QUERY || !plain(q) || q.contains('#')) {
+    // Only the Adoptium API takes a query from the launcher; elsewhere one
+    // would only make another copy of the same content.
+    if query.is_some_and(|q| {
+        host != "api.adoptium.net" || q.len() > MAX_QUERY || !plain(q) || q.contains('#')
+    }) {
         return None;
     }
     let url = match query {
@@ -202,8 +206,15 @@ mod tests {
         }
         assert_eq!(
             class("/libraries.minecraft.net/a/b.jar", Some("x=1")),
-            Some(Class::Meta),
-            "a query is never a file"
+            None,
+            "a query only for the Adoptium API"
+        );
+        assert_eq!(
+            class(
+                "/api.adoptium.net/v3/assets/latest/21/hotspot",
+                Some("os=linux")
+            ),
+            Some(Class::Meta)
         );
         // A tag with an encoded `+` keeps the plain name on disk.
         assert_eq!(
@@ -249,7 +260,7 @@ mod tests {
         ] {
             assert!(parse(path, None).is_none(), "{path}");
         }
-        assert!(parse("/libraries.minecraft.net/a", Some("x=<script>")).is_none());
+        assert!(parse("/api.adoptium.net/v3/a", Some("x=<script>")).is_none());
         assert!(
             parse(
                 &format!("/libraries.minecraft.net/{}", "a".repeat(2000)),

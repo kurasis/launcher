@@ -328,3 +328,25 @@ async fn metadata_never_goes_out_as_a_page_and_is_kept_only_with_room() {
         .count();
     assert_eq!(kept, 0);
 }
+
+#[tokio::test]
+async fn head_of_a_file_not_kept_fetches_nothing_to_keep() {
+    let s = setup(1000, Duration::from_secs(600)).await;
+    let response = router(Arc::clone(&s.app))
+        .oneshot(
+            Request::head(LIB)
+                .header("x-real-ip", "203.0.113.5")
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(response.status(), StatusCode::OK);
+    tokio::time::sleep(Duration::from_millis(200)).await;
+    assert!(
+        !s.data
+            .join("files/libraries.minecraft.net/org/lib/1.0/lib-1.0.jar")
+            .exists(),
+        "nothing kept for a HEAD"
+    );
+}

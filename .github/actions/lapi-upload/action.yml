@@ -1,0 +1,36 @@
+name: Upload a lapi service release
+description: >-
+  Puts deploy/ and the service's archive into a folder of their own for this
+  run on the server (two workflows may deploy at once) and points
+  ~/lapi-bootstrap at the newest deploy/, for the root step:
+  sudo bash ~/lapi-bootstrap/bootstrap.sh <deploy-user>.
+  Sets RELEASE, SETUP and ARCHIVE (a path on the server) for later steps.
+inputs:
+  service:
+    description: crash, mirror, upd, oauth or friends.
+    required: true
+  target:
+    description: user@host of the server (from secrets).
+    required: true
+runs:
+  using: composite
+  steps:
+    - shell: bash
+      env:
+        SERVICE: ${{ inputs.service }}
+        TARGET: ${{ inputs.target }}
+      run: |
+        release=$(git rev-parse --short=12 HEAD)
+        setup="$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT-$SERVICE"
+        {
+          echo "RELEASE=$release"
+          echo "SETUP=$setup"
+          echo "ARCHIVE=.lapi-bootstrap/$setup/lapi-$SERVICE.tar.gz"
+        } >> "$GITHUB_ENV"
+        tar -cz deploy | ssh "$TARGET" "set -e
+          d=\$HOME/.lapi-bootstrap/$setup
+          rm -rf \"\$d\" && mkdir -p \"\$d\" && tar -xz -C \"\$d\" --strip-components=1
+          if [ -d ~/lapi-bootstrap ] && [ ! -L ~/lapi-bootstrap ]; then rm -rf ~/lapi-bootstrap; fi
+          ln -sfn \"\$d\" ~/lapi-bootstrap.$setup && mv -T ~/lapi-bootstrap.$setup ~/lapi-bootstrap
+          ls -1dt ~/.lapi-bootstrap/* | tail -n +11 | xargs -r rm -rf"
+        scp "lapi-$SERVICE.tar.gz" "$TARGET:.lapi-bootstrap/$setup/lapi-$SERVICE.tar.gz"

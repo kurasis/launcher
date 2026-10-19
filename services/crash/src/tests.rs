@@ -486,3 +486,14 @@ async fn stats_and_feedback_take_small_bodies_only() {
         assert_eq!(status, StatusCode::PAYLOAD_TOO_LARGE, "{path}");
     }
 }
+
+#[test]
+fn every_cause_the_launcher_names_is_known_to_the_summary() {
+    let catalog: Value =
+        serde_json::from_str(include_str!("../../../src/locales/messages/en.json")).unwrap();
+    let kinds = catalog["ui"]["crash"]["kinds"].as_object().unwrap();
+    assert!(kinds.len() > 30);
+    for kind in kinds.keys() {
+        assert!(crate::store::KINDS.contains(&kind.as_str()), "{kind}");
+    }
+}

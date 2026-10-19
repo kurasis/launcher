@@ -427,8 +427,11 @@ pub async fn login(
         .as_ref()
         .and_then(|a| app.store.failures(&a.id, now()).ok())
         .unwrap_or(0);
-    let captcha = app.limiter.count(ip, "login-failed", FAILURE_WINDOW) >= IP_FAILURES_FOR_CAPTCHA
-        || account_failures >= ACCOUNT_FAILURES_FOR_CAPTCHA;
+    // Without captcha keys a captcha cannot be passed: asking for one would
+    // lock the account; the rate limits still hold.
+    let captcha = app.captcha.configured()
+        && (app.limiter.count(ip, "login-failed", FAILURE_WINDOW) >= IP_FAILURES_FOR_CAPTCHA
+            || account_failures >= ACCOUNT_FAILURES_FOR_CAPTCHA);
     let page = |errors: &[&str], captcha: bool| {
         with_cookie(
             login_page(&app, &form.rid, &request, shown, errors, captcha),
