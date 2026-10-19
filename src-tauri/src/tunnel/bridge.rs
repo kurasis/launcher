@@ -20,6 +20,10 @@ use tokio::sync::{OwnedSemaphorePermit, Semaphore};
 pub const CHUNK: usize = 64 * 1024;
 /// The launcher-wide forwarding budget.
 pub const TOTAL_BYTES: usize = 64 * 1024 * 1024;
+/// The kernel's own buffers for a bridged TCP socket, each way. Left to the
+/// system, Windows grows loopback buffers to many megabytes, which a stalled
+/// server would fill before backpressure reaches the game.
+pub const SOCKET_BUFFER: usize = 256 * 1024;
 /// Stream reset code for a closed local socket.
 pub const RESET_LOCAL: u32 = 1;
 
@@ -106,6 +110,9 @@ pub async fn run(
     permits: (OwnedSemaphorePermit, OwnedSemaphorePermit),
 ) -> (End, End) {
     let _ = tcp.set_nodelay(true);
+    let socket = socket2::SockRef::from(&tcp);
+    let _ = socket.set_send_buffer_size(SOCKET_BUFFER);
+    let _ = socket.set_recv_buffer_size(SOCKET_BUFFER);
     let (tcp_read, mut tcp_write) = tcp.into_split();
     let mut send = send;
     if !prefix.is_empty() {

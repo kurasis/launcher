@@ -454,9 +454,23 @@ async fn a_stalled_server_stops_the_game_instead_of_queueing() {
         before - 4,
         "two streams' buffers"
     );
-    let flood = vec![0u8; 64 * 1024 * 1024];
-    let stalled = timeout(Duration::from_secs(3), game.write_all(&flood)).await;
-    assert!(stalled.is_err(), "the writer is held back");
+    // Small buffers on the test's own sockets, so what is accepted is what
+    // the tunnel holds.
+    let _ = socket2::SockRef::from(&game).set_send_buffer_size(64 * 1024);
+    let _ = socket2::SockRef::from(&server).set_recv_buffer_size(64 * 1024);
+    let chunk = vec![0u8; 1024 * 1024];
+    let mut accepted = 0usize;
+    let until = tokio::time::Instant::now() + Duration::from_secs(3);
+    while tokio::time::Instant::now() < until && accepted < 64 * 1024 * 1024 {
+        match timeout(Duration::from_millis(500), game.write(&chunk)).await {
+            Ok(Ok(written)) => accepted += written,
+            _ => break,
+        }
+    }
+    assert!(
+        accepted < 16 * 1024 * 1024,
+        "the writer is held back: {accepted} bytes accepted"
+    );
     drop(game);
     drop(server);
     tokio::time::sleep(Duration::from_millis(500)).await;
