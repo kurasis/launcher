@@ -730,6 +730,50 @@ async fn report(
     }
 }
 
+/// What friends keeps about the account, for the account itself: its
+/// lists, rooms and the messages it wrote.
+async fn export(State(app): State<Arc<App>>, headers: HeaderMap) -> Response {
+    let me = me!(app, headers);
+    if !app
+        .limiter
+        .allow(&me.sub, "export", 10, Duration::from_secs(3600))
+    {
+        return refuse(StatusCode::TOO_MANY_REQUESTS, "too_many");
+    }
+    let data = (|| -> Result<Value, String> {
+        let list = |items: Vec<(String, i64)>| -> Vec<Value> {
+            items
+                .into_iter()
+                .map(|(id, at)| json!({ "id": id, "at": at }))
+                .collect()
+        };
+        let rooms: Vec<Value> = app
+            .store
+            .rooms_of(&me.sub)?
+            .into_iter()
+            .map(|(room, ..)| {
+                json!({
+                    "id": room.id, "kind": room.kind, "name": room.name,
+                    "owner": room.owner, "created": room.created,
+                })
+            })
+            .collect();
+        Ok(json!({
+            "friends": list(app.store.friends(&me.sub)?),
+            "requestsSent": list(app.store.outgoing(&me.sub)?),
+            "requestsReceived": list(app.store.incoming(&me.sub)?),
+            "blocked": list(app.store.blocked(&me.sub)?),
+            "rooms": rooms,
+            "messagesWritten": app.store.written_by(&me.sub, 1_000_000)?,
+            "hidden": app.store.hidden(&me.sub)?,
+        }))
+    })();
+    match data {
+        Ok(data) => Json(data).into_response(),
+        Err(e) => failed(&e),
+    }
+}
+
 #[derive(Deserialize)]
 struct VisibleBody {
     visible: bool,
@@ -969,6 +1013,7 @@ pub fn router(app: Arc<App>) -> Router {
         .route("/v1/rooms/{room}/read", post(read))
         .route("/v1/messages/{message}/report", post(report))
         .route("/v1/presence/visible", post(set_visible))
+        .route("/v1/export", get(export))
         .route("/v1/presence/playing", post(set_playing))
         .route("/v1/live", get(live))
         .layer(DefaultBodyLimit::max(16 * 1024))

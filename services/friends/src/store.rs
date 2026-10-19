@@ -927,6 +927,29 @@ impl Store {
         self.db().execute(sql, [account]).map(drop).map_err(err)
     }
 
+    /// Messages an account wrote, oldest first, for its export.
+    pub fn written_by(&self, sender: &str, limit: i64) -> Result<Vec<Message>> {
+        let db = self.db();
+        let mut statement = db
+            .prepare(
+                "SELECT id, room_id, sender, body, created FROM messages WHERE sender = ?1
+                 ORDER BY id LIMIT ?2",
+            )
+            .map_err(err)?;
+        statement
+            .query_map(params![sender, limit], |r| {
+                Ok(Message {
+                    id: r.get(0)?,
+                    room: r.get(1)?,
+                    sender: r.get(2)?,
+                    body: r.get(3)?,
+                    created: r.get(4)?,
+                })
+            })
+            .and_then(Iterator::collect)
+            .map_err(err)
+    }
+
     // A deleted account.
 
     /// Removes everything of an account that was deleted: requests, friends,

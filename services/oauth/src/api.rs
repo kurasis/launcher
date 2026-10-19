@@ -412,6 +412,22 @@ async fn set_email(
     }
 }
 
+/// Everything kept about the account, for the account itself (its own
+/// session asks; the launcher saves it as a file).
+async fn export(State(app): State<Arc<App>>, headers: HeaderMap) -> Response {
+    let me = match me(&app, &headers) {
+        Ok(me) => me,
+        Err(response) => return *response,
+    };
+    if !app.limiter.allow(client_ip(&headers), "export", 10) {
+        return refuse(StatusCode::TOO_MANY_REQUESTS, "too_many");
+    }
+    match app.store.export(&me.account.id, now()) {
+        Ok(data) => Json(data).into_response(),
+        Err(_) => refuse(StatusCode::INTERNAL_SERVER_ERROR, "server_error"),
+    }
+}
+
 /// Sends the confirmation letter again, at most three times an hour.
 async fn resend_verification(State(app): State<Arc<App>>, headers: HeaderMap) -> Response {
     let me = match me(&app, &headers) {
@@ -542,12 +558,16 @@ pub fn router(app: Arc<App>) -> Router {
         .route("/v1/me/email", post(set_email))
         .route("/v1/me/verify-email", post(resend_verification))
         .route("/v1/me/sessions", get(sessions))
+        .route("/v1/me/export", get(export))
         .route("/v1/me/sessions/end", post(end_session))
         .route("/v1/me/sessions/end-others", post(end_other_sessions))
         .route("/authorize", get(web::authorize))
         .route("/login", get(web::login_screen).post(web::login))
         .route("/register", get(web::register_screen).post(web::register))
         .route("/app/done", get(web::done))
+        .route("/delete", get(web::delete_form).post(web::delete))
+        .route("/delete/confirm", post(web::delete_confirm))
+        .route("/app/deleted", get(web::deleted))
         .route("/verify", get(web::verify))
         .route("/reset", get(web::reset_form).post(web::reset))
         .route(

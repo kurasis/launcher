@@ -26,6 +26,8 @@ pub enum Letter<'a> {
     PasswordChanged { nick: &'a str },
     /// To the old address: the account's email is now `new` (masked).
     EmailChanged { nick: &'a str, new: &'a str },
+    /// The account was deleted.
+    Deleted { nick: &'a str },
 }
 
 /// `steve@example.com` as `s***@example.com`.
@@ -103,6 +105,24 @@ impl Letter<'_> {
                 "The email of your launcher account was changed".into(),
                 format!(
                     "Hi {nick}!\n\nThe email of your account was just changed to {new}. Letters now go there.\nIf this was not you, change the password at once and write to support.\n"
+                ),
+            ),
+            (Self::Deleted { nick }, Lang::Ru) => (
+                "Аккаунт лаунчера удалён".into(),
+                format!(
+                    "Привет, {nick}!\n\nВаш аккаунт лаунчера, его друзья и чаты удалены. Это письмо последнее.\nЕсли вы его не удаляли, напишите в поддержку сразу: кто-то знал ваш пароль.\n"
+                ),
+            ),
+            (Self::Deleted { nick }, Lang::Ar) => (
+                "تم حذف حساب المشغّل".into(),
+                format!(
+                    "مرحبًا {nick}!\n\nتم حذف حساب المشغّل الخاص بك مع الأصدقاء والمحادثات. هذه آخر رسالة.\nإذا لم تحذفه بنفسك فراسل الدعم فورًا: شخص ما كان يعرف كلمة مرورك.\n"
+                ),
+            ),
+            (Self::Deleted { nick }, Lang::En) => (
+                "Your launcher account was deleted".into(),
+                format!(
+                    "Hi {nick}!\n\nYour launcher account, its friends and chats were deleted. This is the last letter.\nIf you did not delete it, write to support at once: someone knew your password.\n"
                 ),
             ),
             (Self::PasswordChanged { nick }, Lang::En) => (

@@ -1088,3 +1088,22 @@ fn reports_from_before_moderation_keep_a_copy_of_their_message() {
     drop(store);
     Store::open(dir.path()).unwrap();
 }
+
+#[tokio::test]
+async fn an_account_exports_only_its_own_lists_and_messages() {
+    let t = setup();
+    let (_, say) = chat(&t, 1, 2).await;
+    t.call(1, "POST", &say, json!({ "body": "mine" })).await;
+    t.call(2, "POST", &say, json!({ "body": "theirs" })).await;
+    let (status, data) = t.call(1, "GET", "/v1/export", Value::Null).await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(data["friends"][0]["id"], id(2));
+    let written: Vec<&str> = data["messagesWritten"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|m| m["body"].as_str().unwrap())
+        .collect();
+    assert_eq!(written, ["mine"]);
+    assert_eq!(data["rooms"].as_array().unwrap().len(), 1);
+}

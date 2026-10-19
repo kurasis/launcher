@@ -1,5 +1,5 @@
-//! The pages of oauth.lapi.sh: sign-in, registration, password reset and
-//! email confirmation, in English, Russian and Arabic.
+//! The pages of oauth.lapi.sh: sign-in, registration, password reset, email
+//! confirmation and deleting the account, in English, Russian and Arabic.
 //!
 //! Everything put into a page goes through [`esc`]. Pages carry no script of
 //! their own; the only one is Cloudflare Turnstile's, which the headers in
@@ -108,6 +108,12 @@ pub struct T {
     pub reset_done: &'static str,
     pub link_bad: &'static str,
     pub verified: &'static str,
+    pub delete_title: &'static str,
+    pub delete_text: &'static str,
+    pub delete_next: &'static str,
+    pub delete_confirm: &'static str,
+    pub delete_submit: &'static str,
+    pub deleted: &'static str,
     pub problem: fn(Problem) -> &'static str,
 }
 
@@ -141,6 +147,12 @@ const EN: T = T {
     reset_done: "The password is changed and every device is signed out. Sign in again in the launcher.",
     link_bad: "This link has expired or was used already.",
     verified: "Your email is confirmed. You can close this page.",
+    delete_title: "Delete account",
+    delete_text: "Deleting removes the account, its nick, friends, chats and the messages you wrote, for good. It cannot be undone.",
+    delete_next: "Continue",
+    delete_confirm: "This deletes the account for good, with its friends and chats. Delete it?",
+    delete_submit: "Delete for good",
+    deleted: "The account is deleted. You can close this window.",
     problem: |p| match p {
         Problem::NickLength => "The nick must be 3 to 16 characters.",
         Problem::NickCharacters => "The nick may only have letters A–Z, digits and _.",
@@ -186,6 +198,12 @@ const RU: T = T {
     reset_done: "Пароль изменён, все устройства вышли из аккаунта. Войдите снова в лаунчере.",
     link_bad: "Ссылка устарела или уже использована.",
     verified: "Email подтверждён. Страницу можно закрыть.",
+    delete_title: "Удаление аккаунта",
+    delete_text: "Удаление навсегда убирает аккаунт, ник, друзей, чаты и написанные вами сообщения. Отменить его нельзя.",
+    delete_next: "Продолжить",
+    delete_confirm: "Аккаунт будет удалён навсегда вместе с друзьями и чатами. Удалить?",
+    delete_submit: "Удалить навсегда",
+    deleted: "Аккаунт удалён. Это окно можно закрыть.",
     problem: |p| match p {
         Problem::NickLength => "Ник должен быть от 3 до 16 символов.",
         Problem::NickCharacters => "В нике можно только латинские буквы, цифры и _.",
@@ -231,6 +249,12 @@ const AR: T = T {
     reset_done: "تم تغيير كلمة المرور وتسجيل الخروج من كل الأجهزة. سجّل الدخول من جديد في المشغّل.",
     link_bad: "انتهت صلاحية هذا الرابط أو استُخدم من قبل.",
     verified: "تم تأكيد بريدك الإلكتروني. يمكنك إغلاق هذه الصفحة.",
+    delete_title: "حذف الحساب",
+    delete_text: "يحذف ذلك الحساب واسمه والأصدقاء والمحادثات والرسائل التي كتبتها نهائيًا، ولا يمكن التراجع عنه.",
+    delete_next: "متابعة",
+    delete_confirm: "سيُحذف الحساب نهائيًا مع الأصدقاء والمحادثات. هل تريد حذفه؟",
+    delete_submit: "حذف نهائي",
+    deleted: "تم حذف الحساب. يمكنك إغلاق هذه النافذة.",
     problem: |p| match p {
         Problem::NickLength => "يجب أن يكون الاسم المستعار من 3 إلى 16 حرفًا.",
         Problem::NickCharacters => "الاسم المستعار يقبل الحروف اللاتينية والأرقام و _ فقط.",

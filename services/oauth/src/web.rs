@@ -909,3 +909,214 @@ pub async fn style() -> Response {
     )
         .into_response()
 }
+
+// Deleting the account (D-064 stage 5). The password is typed here, on our
+// page, never in the launcher; a second, one-time step confirms.
+
+fn delete_page(app: &App, lang: Lang, csrf: &str, login: &str, errors: &[&str]) -> Response {
+    let t = texts(lang);
+    // A rare step that proves a password: always behind the captcha when it
+    // can be solved.
+    let turnstile = app
+        .captcha
+        .configured()
+        .then_some((app.config.turnstile_site_key.as_str(), "delete"));
+    with_cookie(
+        pages::form(&Page {
+            lang,
+            heading: t.delete_title,
+            action: "/delete",
+            hidden: &[("csrf", csrf), ("lang", lang.tag())],
+            errors,
+            fields: &[
+                Field {
+                    name: "login",
+                    label: t.login,
+                    kind: "text",
+                    value: login,
+                    hint: Some(t.delete_text),
+                    autocomplete: "username",
+                    max: rules::EMAIL_MAX,
+                },
+                Field {
+                    name: "password",
+                    label: t.password,
+                    kind: "password",
+                    value: "",
+                    hint: None,
+                    autocomplete: "current-password",
+                    max: rules::PASSWORD_MAX,
+                },
+            ],
+            submit: t.delete_next,
+            turnstile,
+            links: &[],
+        }),
+        csrf,
+    )
+}
+
+pub async fn delete_form(State(app): State<Arc<App>>, Query(q): Query<LangQuery>) -> Response {
+    delete_page(&app, Lang::parse(&q.lang), &token(), "", &[])
+}
+
+#[derive(Deserialize, Default)]
+#[serde(default)]
+pub struct DeleteForm {
+    csrf: String,
+    lang: String,
+    login: String,
+    password: String,
+    #[serde(rename = "cf-turnstile-response")]
+    turnstile: String,
+}
+
+/// Checks the password like a sign-in, then asks once more.
+pub async fn delete(
+    State(app): State<Arc<App>>,
+    headers: HeaderMap,
+    Form(form): Form<DeleteForm>,
+) -> Response {
+    let lang = Lang::parse(&form.lang);
+    let t = texts(lang);
+    let Some(csrf) = cookie(&headers).filter(|c| c.len() == 43 && same(c, &form.csrf)) else {
+        return expired(lang);
+    };
+    let ip = client_ip(&headers);
+    if !app.limiter.allow(ip, "delete", 10) {
+        return too_many(lang);
+    }
+    let login = form.login.trim();
+    let shown = if login.len() <= rules::EMAIL_MAX {
+        login
+    } else {
+        ""
+    };
+    if app.captcha.configured() && !app.captcha.verify(&form.turnstile, ip, "delete").await {
+        return delete_page(&app, lang, &csrf, shown, &[t.captcha]);
+    }
+    let account = if login.is_empty() || login.len() > rules::EMAIL_MAX {
+        None
+    } else {
+        app.store.find_login(login).ok().flatten()
+    };
+    let password_fits = form.password.chars().count() <= rules::PASSWORD_MAX;
+    let matches = app
+        .check(
+            if password_fits {
+                form.password.clone()
+            } else {
+                String::new()
+            },
+            account.as_ref().map(|a| a.password.clone()),
+        )
+        .await
+        && password_fits;
+    let Some(account) = account.filter(|_| matches) else {
+        app.limiter.note(ip, "login-failed", FAILURE_WINDOW);
+        if let Ok(Some(found)) = app.store.find_login(login) {
+            let _ = app.store.fail(&found.id, now());
+        }
+        return delete_page(&app, lang, &csrf, shown, &[t.wrong]);
+    };
+    let confirm = token();
+    if app
+        .store
+        .put_email_token(
+            &digest(&confirm),
+            &account.id,
+            "delete",
+            &account.email,
+            now() + 10 * 60,
+        )
+        .is_err()
+    {
+        return failed(lang);
+    }
+    let heading = format!("{} {}", t.delete_title, account.nick);
+    with_cookie(
+        pages::form(&Page {
+            lang,
+            heading: &heading,
+            action: "/delete/confirm",
+            hidden: &[("csrf", &csrf), ("lang", lang.tag()), ("token", &confirm)],
+            errors: &[t.delete_confirm],
+            fields: &[],
+            submit: t.delete_submit,
+            turnstile: None,
+            links: &[],
+        }),
+        &csrf,
+    )
+}
+
+#[derive(Deserialize, Default)]
+#[serde(default)]
+pub struct DeleteConfirmForm {
+    csrf: String,
+    lang: String,
+    token: String,
+}
+
+/// Deletes the account, tells its address, and goes to `/app/deleted`, where
+/// the launcher's window learns of it and forgets the account.
+pub async fn delete_confirm(
+    State(app): State<Arc<App>>,
+    headers: HeaderMap,
+    Form(form): Form<DeleteConfirmForm>,
+) -> Response {
+    let lang = Lang::parse(&form.lang);
+    let t = texts(lang);
+    if cookie(&headers)
+        .filter(|c| c.len() == 43 && same(c, &form.csrf))
+        .is_none()
+    {
+        return expired(lang);
+    }
+    if !app.limiter.allow(client_ip(&headers), "links", 30) {
+        return too_many(lang);
+    }
+    let hash = digest(&form.token);
+    let found = if form.token.len() == 43 {
+        app.store.email_token(&hash, "delete", now()).ok().flatten()
+    } else {
+        None
+    };
+    let bad = || {
+        status(
+            StatusCode::BAD_REQUEST,
+            pages::message(lang, t.delete_title, t.link_bad),
+        )
+    };
+    let Some((account_id, _)) = found else {
+        return bad();
+    };
+    if !app.store.use_email_token(&hash).unwrap_or(false) {
+        return bad();
+    }
+    let Ok(Some(account)) = app.store.account(&account_id) else {
+        return failed(lang);
+    };
+    if !app
+        .store
+        .delete_account(&account.id, now())
+        .unwrap_or(false)
+    {
+        return failed(lang);
+    }
+    queue(
+        &app,
+        &account.email,
+        &account.lang,
+        &Letter::Deleted {
+            nick: &account.nick,
+        },
+    );
+    Redirect::to(&format!("/app/deleted?lang={}", lang.tag())).into_response()
+}
+
+pub async fn deleted(Query(q): Query<LangQuery>) -> Response {
+    let lang = Lang::parse(&q.lang);
+    let t = texts(lang);
+    pages::message(lang, t.delete_title, t.deleted)
+}

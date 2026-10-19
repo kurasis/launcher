@@ -1294,3 +1294,128 @@ async fn backups_are_whole_private_and_only_the_newest_stay() {
     assert!(!left.iter().any(|n| n.starts_with("accounts-2000")));
     assert!(left.contains(&"notes.txt".to_owned()));
 }
+
+#[tokio::test]
+async fn the_owner_exports_their_data_and_deletes_the_account_for_good() {
+    let t = setup();
+    let tokens = t.account("Leaving", "198.51.100.70").await;
+    let access = tokens["access_token"].as_str().unwrap();
+    let id = tokens["account"]["id"].as_str().unwrap().to_owned();
+    // Export: what is kept, for the account's own session only.
+    let export = t
+        .send(t.api("GET", "/v1/me/export", access, serde_json::Value::Null))
+        .await;
+    assert_eq!(export.status, StatusCode::OK);
+    let data = export.json();
+    assert_eq!(data["nick"], "Leaving");
+    assert_eq!(data["email"], "leaving@example.com");
+    assert_eq!(data["registeredFrom"]["address"], "198.51.100.70");
+    assert!(!data["sessions"].as_array().unwrap().is_empty());
+    assert!(!export.body.contains("$argon2"), "no password hash");
+    assert_eq!(
+        t.send(t.api("GET", "/v1/me/export", "forged", serde_json::Value::Null))
+            .await
+            .status,
+        StatusCode::UNAUTHORIZED
+    );
+    // Deleting: our page, the password, then a second step.
+    let page = t.send(t.get("/delete?lang=ru", "198.51.100.71")).await;
+    assert!(page.body.contains("Удаление аккаунта"));
+    let (csrf, cookie) = (page.field("csrf"), page.cookie().unwrap());
+    let step = |password: &'static str, captcha: &'static str| {
+        t.post_form(
+            "/delete",
+            "198.51.100.71",
+            Some(&cookie),
+            &[
+                ("csrf", &csrf),
+                ("lang", "en"),
+                ("login", "LEAVING"),
+                ("password", password),
+                ("cf-turnstile-response", captcha),
+            ],
+        )
+    };
+    assert!(
+        t.send(step(PASSWORD, ""))
+            .await
+            .body
+            .contains("not a robot")
+    );
+    assert!(
+        t.send(step("not the password", "ok:delete"))
+            .await
+            .body
+            .contains("is not right")
+    );
+    let asked = t.send(step(PASSWORD, "ok:delete")).await;
+    assert!(asked.body.contains("Delete account Leaving"));
+    assert!(
+        t.app.store.find_login("leaving").unwrap().is_some(),
+        "not yet"
+    );
+    let confirm = asked.field("token");
+    let finish = |csrf: &str, token: &str| {
+        t.post_form(
+            "/delete/confirm",
+            "198.51.100.71",
+            Some(&cookie),
+            &[("csrf", csrf), ("lang", "en"), ("token", token)],
+        )
+    };
+    // Without the page's own cookie value, nothing happens.
+    assert_ne!(
+        t.send(finish(
+            "wrong-csrf-wrong-csrf-wrong-csrf-wrong-csr",
+            &confirm
+        ))
+        .await
+        .status,
+        StatusCode::SEE_OTHER
+    );
+    let done = t.send(finish(&csrf, &confirm)).await;
+    assert_eq!(done.status, StatusCode::SEE_OTHER);
+    assert_eq!(done.location(), "/app/deleted?lang=en");
+    assert!(t.app.store.find_login("leaving").unwrap().is_none());
+    assert_eq!(
+        t.refresh(tokens["refresh_token"].as_str().unwrap())
+            .await
+            .status,
+        StatusCode::BAD_REQUEST
+    );
+    let listed = t.app.store.deleted_since(0).unwrap();
+    assert_eq!(listed.len(), 1);
+    assert_eq!(listed[0].0, id);
+    assert!(t.app.store.deleted_since(listed[0].1).unwrap().is_empty());
+    // The address hears of it, once; the link works once.
+    let letters = crate::mail::due(&t.app, crate::app::now(), 50).unwrap();
+    let to_it: Vec<_> = letters
+        .iter()
+        .filter(|m| m.to == "leaving@example.com")
+        .collect();
+    assert_eq!(to_it.len(), 1, "letters waiting for it went with it");
+    assert!(to_it[0].body.contains("Leaving") && to_it[0].subject.contains("удалён"));
+    assert_eq!(
+        t.send(finish(&csrf, &confirm)).await.status,
+        StatusCode::BAD_REQUEST
+    );
+    // The nick and address are free again.
+    assert_eq!(
+        t.register("Leaving", "leaving@example.com", "198.51.100.72")
+            .await
+            .status,
+        StatusCode::SEE_OTHER
+    );
+    let internal = crate::internal::router(Arc::clone(&t.app));
+    let response = internal
+        .oneshot(
+            Request::get("/internal/v1/deleted?since=0")
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    let bytes = response.into_body().collect().await.unwrap().to_bytes();
+    let listed: serde_json::Value = serde_json::from_slice(&bytes).unwrap();
+    assert_eq!(listed["deleted"][0]["id"], id);
+}

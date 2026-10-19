@@ -93,6 +93,11 @@ CREATE TABLE IF NOT EXISTS outbox (
     last_error TEXT,
     next_try INTEGER NOT NULL DEFAULT 0
 );
+-- Accounts deleted, for friends.lapi.sh to clean out; kept 90 days.
+CREATE TABLE IF NOT EXISTS deleted (
+    id TEXT PRIMARY KEY,
+    at INTEGER NOT NULL
+);
 "#;
 
 /// Failed sign-ins counted per account in this window.
@@ -440,6 +445,81 @@ impl Store {
             }
         }
         Ok(ended)
+    }
+
+    /// Deletes an account and everything kept about it (sessions, tokens,
+    /// links, events, letters waiting for it); friends.lapi.sh learns of it
+    /// from the `deleted` list.
+    pub fn delete_account(&self, id: &str, now: i64) -> Result<bool, String> {
+        let mut db = self.db();
+        let tx = db.transaction().map_err(|e| e.to_string())?;
+        let email: Option<String> = tx
+            .query_row("SELECT email FROM accounts WHERE id = ?1", [id], |r| {
+                r.get(0)
+            })
+            .optional()
+            .map_err(|e| e.to_string())?;
+        let Some(email) = email else {
+            return Ok(false);
+        };
+        tx.execute(
+            "DELETE FROM outbox WHERE to_addr = ?1 COLLATE NOCASE",
+            [&email],
+        )
+        .map_err(|e| e.to_string())?;
+        tx.execute("DELETE FROM accounts WHERE id = ?1", [id])
+            .map_err(|e| e.to_string())?;
+        tx.execute(
+            "INSERT OR REPLACE INTO deleted (id, at) VALUES (?1, ?2)",
+            params![id, now],
+        )
+        .map_err(|e| e.to_string())?;
+        tx.commit().map_err(|e| e.to_string())?;
+        Ok(true)
+    }
+
+    /// Accounts deleted after `since`: ID and when, oldest first.
+    pub fn deleted_since(&self, since: i64) -> Result<Vec<(String, i64)>, String> {
+        let db = self.db();
+        let mut statement = db
+            .prepare("SELECT id, at FROM deleted WHERE at > ?1 ORDER BY at LIMIT 1000")
+            .map_err(|e| e.to_string())?;
+        statement
+            .query_map([since], |r| Ok((r.get(0)?, r.get(1)?)))
+            .and_then(Iterator::collect)
+            .map_err(|e| e.to_string())
+    }
+
+    /// Everything kept about an account, for the account itself.
+    pub fn export(&self, id: &str, now: i64) -> Result<serde_json::Value, String> {
+        let account = self.account(id)?.ok_or("no such account")?;
+        let sessions: Vec<serde_json::Value> = self
+            .sessions(id, now)?
+            .into_iter()
+            .map(|s| {
+                serde_json::json!({
+                    "device": s.device, "country": s.country,
+                    "created": s.created, "lastUsed": s.last_used,
+                })
+            })
+            .collect();
+        let events: Vec<serde_json::Value> = self
+            .events(id, 10_000)?
+            .into_iter()
+            .map(|(at, kind, country)| serde_json::json!({ "at": at, "kind": kind, "country": country }))
+            .collect();
+        Ok(serde_json::json!({
+            "id": account.id,
+            "nick": account.nick,
+            "email": account.email,
+            "emailConfirmed": account.email_verified,
+            "language": account.lang,
+            "created": account.created,
+            "registeredFrom": { "address": account.reg_ip, "country": account.reg_country },
+            "switchedOff": account.disabled,
+            "sessions": sessions,
+            "events": events,
+        }))
     }
 
     pub fn set_disabled(&self, id: &str, disabled: bool) -> Result<bool, String> {
@@ -912,6 +992,7 @@ impl Store {
              DELETE FROM sessions WHERE expires < {now} OR (revoked = 1 AND last_used < {now} - 30 * 86400);
              DELETE FROM outbox WHERE (sent IS NOT NULL AND sent < {now} - 30 * 86400) OR created < {now} - 30 * 86400;
              DELETE FROM events WHERE at < {now} - 365 * 86400;
+             DELETE FROM deleted WHERE at < {now} - 90 * 86400;
              DELETE FROM failures WHERE since < {now} - 86400;
              DELETE FROM refresh_tokens WHERE used = 1 AND created < {now} - {keep_used};"
         ))
