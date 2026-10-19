@@ -21,6 +21,7 @@ updates:
       - /src-tauri
       - /services/crash
       - /services/friends
+      - /services/worlds
       - /services/skins
       - /services/mirror
       - /services/oauth

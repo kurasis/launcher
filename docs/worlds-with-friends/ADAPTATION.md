@@ -100,7 +100,7 @@ pattern of friends, skins, mods and feed:
   generation, no outbox: request and response types are shared Rust structs checked by tests
   on both sides, and events go over one WebSocket like friends `/v1/live`.
 - Access tokens are oauth.lapi.sh JWTs checked locally against its JWKS; the account service
-  adds the audience `worlds`. Nicks are resolved through the account service's internal API.
+  adds the audience `worlds`. Nicks come from the tokens (change log, W5).
 - Device-scoped calls (host lease renewal, ticket consumption, relay enrollment) carry DPoP
   proofs (RFC 9449) made with the device's Ed25519 key, which lives in the OS credential vault
   like the refresh token. mTLS is not used: it does not pass Cloudflare.
@@ -175,3 +175,10 @@ tuple; Fabric and other loaders arrive in W12.
   service (endpoint addresses come from the worlds API) and a fresh key per room session. The
   bridge uses 64 KiB per direction, within the 256 KiB cap. The guest also checks the login name
   before asking for a ticket, so a wrong name never spends one.
+- 2026-10-19 — W5: a member's nick is the one their latest access token carries (the account
+  service puts it in every token), instead of a call to its internal API; access tokens live 10
+  minutes. A room is bound to the owner's world ID, not to a device: the owner hosts from any
+  of their registered devices, and a new start supersedes the live session, so a crashed host
+  recovers at once. A ticket is used up even when its admission is then refused. The
+  maintenance lease moves to W9 with backups, and start and stop are single calls instead of
+  operations with cancellation.

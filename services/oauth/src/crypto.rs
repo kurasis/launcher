@@ -214,6 +214,7 @@ mod tests {
                 "friends".into(),
                 "skins".into(),
                 "mods".into(),
+                "worlds".into(),
             ],
             iat: now,
             exp: now + 600,

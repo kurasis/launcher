@@ -39,6 +39,7 @@ case "$SERVICE" in
         QUOTA_GB="$EXTRA"
         [ "${5:-}" = --secrets ] && SECRETS='^LAPI_MODS_PROXIES=[^[:cntrl:]]{0,20000}$'
         ;;
+    worlds) PORT=8788 ;;
     feed)
         PORT=8787
         [ "$EXTRA" = --secrets ] && SECRETS='^LAPI_FEED_(DEEPL_KEY|TWITCH_CLIENT_ID|TWITCH_SECRET)=[^[:cntrl:]]{0,500}$'

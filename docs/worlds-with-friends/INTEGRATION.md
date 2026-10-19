@@ -30,13 +30,13 @@ decisions behind the "Change" column.
 
 ## Server side
 
-| Piece         | What exists                                                                                 | Change                                                              | Phase  |
-| ------------- | ------------------------------------------------------------------------------------------- | ------------------------------------------------------------------- | ------ |
-| Accounts      | `services/oauth` (oauth.lapi.sh, port 8783, internal 8793)                                  | Audience `worlds`; nick lookups for worlds through the internal API | W5     |
-| Rooms backend | None (friends "rooms" are chats)                                                            | `services/worlds`, worlds.lapi.sh, port 8788, SQLite                | W5     |
-| Friends       | `services/friends` (port 8784)                                                              | Invite message kind                                                 | W8     |
-| Relay         | None                                                                                        | iroh-relay on a separate VPS, relay.lapi.sh, `RELAY_SSH_*` secrets  | W6     |
-| Deployment    | `deploy/bootstrap.sh` (ports 8781–8787, 8793), per-service workflows, Cloudflare-only nginx | `worlds` added to bootstrap and nginx; `deploy/relay/` for the VPS  | W5, W6 |
+| Piece         | What exists                                                                                 | Change                                                             | Phase  |
+| ------------- | ------------------------------------------------------------------------------------------- | ------------------------------------------------------------------ | ------ |
+| Accounts      | `services/oauth` (oauth.lapi.sh, port 8783, internal 8793)                                  | Audience `worlds`; nicks taken from the tokens                     | W5     |
+| Rooms backend | None (friends "rooms" are chats)                                                            | `services/worlds`, worlds.lapi.sh, port 8788, SQLite               | W5     |
+| Friends       | `services/friends` (port 8784)                                                              | Invite message kind                                                | W8     |
+| Relay         | None                                                                                        | iroh-relay on a separate VPS, relay.lapi.sh, `RELAY_SSH_*` secrets | W6     |
+| Deployment    | `deploy/bootstrap.sh` (ports 8781–8787, 8793), per-service workflows, Cloudflare-only nginx | `worlds` added to bootstrap and nginx; `deploy/relay/` for the VPS | W5, W6 |
 
 ## Base launcher changes this feature needs
 
