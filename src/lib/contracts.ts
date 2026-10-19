@@ -269,8 +269,18 @@ export interface SettingsView {
   updateMode: UpdateMode;
   /** Stable versions, or beta ones first (D-063). */
   updateChannel: UpdateChannel;
+  /** The screen opened at start. */
+  startView: StartView;
+  /** The last start screen opened, for `startView: 'last'`. */
+  lastView: RememberedView;
   writable: boolean;
 }
+
+/** Screens the launcher can open at start; `last` is the one open last time.
+ * The core checks the value against this closed set. */
+export type StartView = 'feed' | 'home' | 'mods' | 'skins' | 'account' | 'last';
+/** A start screen that can be remembered as the last one opened. */
+export type RememberedView = Exclude<StartView, 'last'>;
 
 export type UpdateMode = 'auto' | 'notify' | 'off';
 export type UpdateChannel = 'stable' | 'beta';
@@ -852,6 +862,8 @@ export interface SettingsPatch {
   downloadSource?: DownloadSource;
   updateMode?: UpdateMode;
   updateChannel?: UpdateChannel;
+  startView?: StartView;
+  lastView?: RememberedView;
 }
 
 interface EventEnvelope {

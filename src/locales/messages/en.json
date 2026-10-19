@@ -13,13 +13,17 @@
     "independentNotice": "This launcher is an independent project. It is not affiliated with or endorsed by Mojang Studios or Microsoft.",
     "nav": {
       "label": "Main",
+      "feed": "Feed",
       "home": "Installations",
       "account": "Accounts",
       "backups": "Backups",
       "screenshots": "Screenshots",
       "settings": "Settings",
       "diagnostics": "Diagnostics",
-      "about": "About"
+      "about": "About",
+      "console": "Console",
+      "more": "More",
+      "moreCurrent": "More: {view}"
     },
     "bootstrap": {
       "loading": "Loading launcher state…",
@@ -653,6 +657,16 @@
         "unload_and_return": "Close the launcher window and reopen it when the game exits",
         "keep_open": "Keep the launcher window open",
         "close_launcher": "Close the launcher once the game window opens; the game keeps running"
+      },
+      "startView": "Open at start",
+      "startViewHint": "Installations opens instead while a game or a download is running.",
+      "startViews": {
+        "feed": "Feed",
+        "home": "Installations",
+        "mods": "Mods",
+        "skins": "Skins",
+        "account": "Accounts",
+        "last": "Last opened"
       },
       "dataLocation": "Launcher data location",
       "defaultsTitle": "Defaults for new installations",
@@ -1463,6 +1477,7 @@
     "This installation record was written by a newer launcher.": "This installation record was written by a newer launcher.",
     "This installation was created by a newer launcher and is read-only here.": "This installation was created by a newer launcher and is read-only here.",
     "This installation was created by a newer launcher.": "This installation was created by a newer launcher.",
+    "This is not a screen the launcher can open at start.": "This is not a screen the launcher can open at start.",
     "This is not a valid Minecraft version.": "This is not a valid Minecraft version.",
     "This is not a valid language code.": "This is not a valid language code.",
     "This link is not on the launcher's list of allowed destinations.": "This link is not on the launcher's list of allowed destinations.",
@@ -1477,6 +1492,7 @@
     "This report preview has expired. Open it again.": "This report preview has expired. Open it again.",
     "This request ID was already used for another request.": "This request ID was already used for another request.",
     "This request identifier was already used for a different request.": "This request identifier was already used for a different request.",
+    "This screen cannot be remembered as the last one opened.": "This screen cannot be remembered as the last one opened.",
     "This screenshot is not a PNG image the launcher can read.": "This screenshot is not a PNG image the launcher can read.",
     "This screenshot name is invalid.": "This screenshot name is invalid.",
     "This screenshot no longer exists.": "This screenshot no longer exists.",

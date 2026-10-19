@@ -12,6 +12,7 @@ export type Messages = {
   readonly independentNotice: string;
   readonly nav: {
     readonly label: string;
+    readonly feed: string;
     readonly home: string;
     readonly account: string;
     readonly backups: string;
@@ -19,6 +20,9 @@ export type Messages = {
     readonly settings: string;
     readonly diagnostics: string;
     readonly about: string;
+    readonly console: string;
+    readonly more: string;
+    readonly moreCurrent: (values: { view: string | number }) => string;
   };
   readonly bootstrap: {
     readonly loading: string;
@@ -705,6 +709,16 @@ export type Messages = {
       readonly unload_and_return: string;
       readonly keep_open: string;
       readonly close_launcher: string;
+    };
+    readonly startView: string;
+    readonly startViewHint: string;
+    readonly startViews: {
+      readonly feed: string;
+      readonly home: string;
+      readonly mods: string;
+      readonly skins: string;
+      readonly account: string;
+      readonly last: string;
     };
     readonly dataLocation: string;
     readonly defaultsTitle: string;

@@ -13,13 +13,17 @@
     "independentNotice": "Этот лаунчер — независимый проект. Он не связан с Mojang Studios или Microsoft и не одобрен ими.",
     "nav": {
       "label": "Главное меню",
+      "feed": "Лента",
       "home": "Установки",
       "account": "Аккаунты",
       "backups": "Копии",
       "screenshots": "Скриншоты",
       "settings": "Настройки",
       "diagnostics": "Диагностика",
-      "about": "О программе"
+      "about": "О программе",
+      "console": "Консоль",
+      "more": "Ещё",
+      "moreCurrent": "Ещё: {view}"
     },
     "bootstrap": {
       "loading": "Загрузка состояния лаунчера…",
@@ -653,6 +657,16 @@
         "unload_and_return": "Закрывать окно лаунчера и открывать снова после выхода из игры",
         "keep_open": "Оставлять окно лаунчера открытым",
         "close_launcher": "Закрыть лаунчер, когда откроется окно игры; игра продолжит работать"
+      },
+      "startView": "Открывать при запуске",
+      "startViewHint": "Если идёт игра или загрузка, откроются Установки.",
+      "startViews": {
+        "feed": "Лента",
+        "home": "Установки",
+        "mods": "Моды",
+        "skins": "Скины",
+        "account": "Аккаунты",
+        "last": "Последняя открытая"
       },
       "dataLocation": "Где хранятся данные лаунчера",
       "defaultsTitle": "Значения для новых установок",
@@ -1513,6 +1527,8 @@
     "No downloaded update is waiting.": "Нет загруженного обновления.",
     "Close the game and wait for installs to finish, then restart to update.": "Закройте игру и дождитесь окончания установок, затем перезапустите для обновления.",
     "The update could not be installed. Download it from the link instead.": "Не удалось установить обновление. Загрузите его по ссылке.",
-    "There is no update page to open.": "Нет страницы обновления."
+    "There is no update page to open.": "Нет страницы обновления.",
+    "This is not a screen the launcher can open at start.": "Этот раздел нельзя открывать при запуске.",
+    "This screen cannot be remembered as the last one opened.": "Этот раздел нельзя запомнить как последний открытый."
   }
 }

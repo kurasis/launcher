@@ -85,6 +85,8 @@ export function snapshotFixture(overrides: Partial<AppSnapshot> = {}): AppSnapsh
       downloadSource: 'automatic',
       updateMode: 'auto',
       updateChannel: 'stable',
+      startView: 'feed',
+      lastView: 'feed',
       language: 'en',
       writable: true,
     },

@@ -1,7 +1,7 @@
 use std::sync::{Arc, Mutex};
 
 use super::*;
-use crate::storage::models::{DuringGameMode, OperationKind, Resolution, Theme};
+use crate::storage::models::{DuringGameMode, OperationKind, Resolution, StartView, Theme};
 
 const GIB: u64 = 1024 * 1024 * 1024;
 
@@ -218,6 +218,69 @@ fn settings_patch_validates_and_persists() {
             .max_heap_mib,
         3072
     );
+}
+
+#[test]
+fn start_view_is_validated_and_persists() {
+    let dir = tempfile::tempdir().unwrap();
+    let state = state_at(dir.path(), RecordingSink::default());
+    assert_eq!(state.snapshot().settings.start_view, StartView::Feed);
+    let view = state
+        .set_app_settings(request(SettingsPatch {
+            start_view: Some("last".into()),
+            last_view: Some("account".into()),
+            ..SettingsPatch::default()
+        }))
+        .unwrap();
+    assert_eq!(view.start_view, StartView::Last);
+    assert_eq!(view.last_view, StartView::Account);
+    for junk in [
+        "",
+        "Home",
+        "settings",
+        "about",
+        "feed\u{0}",
+        "../home",
+        "x".repeat(10_000).as_str(),
+    ] {
+        let error = state
+            .set_app_settings(request(SettingsPatch {
+                start_view: Some(junk.into()),
+                ..SettingsPatch::default()
+            }))
+            .unwrap_err();
+        assert_eq!(error.code, ErrorCode::InvalidInput, "{junk}");
+    }
+    for junk in ["last", "diagnostics", "backups", ""] {
+        let error = state
+            .set_app_settings(request(SettingsPatch {
+                last_view: Some(junk.into()),
+                ..SettingsPatch::default()
+            }))
+            .unwrap_err();
+        assert_eq!(error.code, ErrorCode::InvalidInput, "{junk}");
+    }
+    drop(state);
+
+    let state = state_at(dir.path(), RecordingSink::default());
+    let settings = state.snapshot().settings;
+    assert_eq!(settings.start_view, StartView::Last);
+    assert_eq!(settings.last_view, StartView::Account);
+    drop(state);
+
+    // A damaged value on disk reads as the feed; the other settings stay.
+    let path = dir.path().join("settings.json");
+    let mut stored: serde_json::Value =
+        serde_json::from_slice(&std::fs::read(&path).unwrap()).unwrap();
+    stored["startView"] = serde_json::json!("<script>");
+    stored["lastView"] = serde_json::json!(7);
+    std::fs::write(&path, serde_json::to_vec(&stored).unwrap()).unwrap();
+    let state = state_at(dir.path(), RecordingSink::default());
+    let snapshot = state.snapshot();
+    assert_eq!(snapshot.settings.start_view, StartView::Feed);
+    assert_eq!(snapshot.settings.last_view, StartView::Feed);
+    assert!(snapshot.settings.writable);
+    assert!(snapshot.storage_issues.is_empty());
 }
 
 #[test]

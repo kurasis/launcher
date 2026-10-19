@@ -24,7 +24,7 @@ use crate::error::{ErrorCode, LauncherError, LauncherResult};
 use crate::storage::document::SCHEMA_VERSION;
 use crate::storage::models::{
     AccountsFile, InstallationHealth, InstanceFile, LastResult, NoTokenRecord, OperationKind,
-    Outcome, ProfileRef, Settings,
+    Outcome, ProfileRef, Settings, StartView,
 };
 use crate::storage::paths::{DataRoot, InstanceId};
 use crate::storage::{StorageIssue, Store};
@@ -1631,10 +1631,11 @@ impl AppState {
         &self,
         request: MutationRequest<SettingsPatch>,
     ) -> LauncherResult<SettingsView> {
-        // Selecting an installation is not worth a journal line.
+        // Selecting an installation or opening a screen is not worth a journal line.
         let mut patch = serde_json::to_value(&request.payload).unwrap_or_default();
         if let Some(fields) = patch.as_object_mut() {
             fields.remove("selectedInstanceId");
+            fields.remove("lastView");
         }
         let result = self.set_app_settings_inner(request);
         // Outside the state lock: a mode change announces the run state.
@@ -1725,6 +1726,20 @@ impl AppState {
                 }
                 if let Some(provider) = patch.java_provider {
                     settings.java_provider = provider;
+                }
+                if let Some(view) = patch.start_view {
+                    settings.start_view = StartView::parse(&view).ok_or_else(|| {
+                        LauncherError::invalid_input(
+                            "This is not a screen the launcher can open at start.",
+                        )
+                    })?;
+                }
+                if let Some(view) = patch.last_view {
+                    settings.last_view = StartView::parse_remembered(&view).ok_or_else(|| {
+                        LauncherError::invalid_input(
+                            "This screen cannot be remembered as the last one opened.",
+                        )
+                    })?;
                 }
                 if let Some(tag) = patch.language {
                     settings.language =

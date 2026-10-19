@@ -68,6 +68,77 @@ impl<'de> Deserialize<'de> for Language {
     }
 }
 
+/// The screen the launcher opens at start (Settings → General). `Last` reopens
+/// the screen remembered in [`Settings::last_view`]. Screens the interface does
+/// not have yet open Installations.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Default)]
+#[serde(rename_all = "snake_case")]
+pub enum StartView {
+    /// The news feed.
+    #[default]
+    Feed,
+    /// Installations.
+    Home,
+    Mods,
+    Skins,
+    Account,
+    /// The screen open when the launcher was last used.
+    Last,
+}
+
+impl StartView {
+    pub const ALL: [Self; 6] = [
+        Self::Feed,
+        Self::Home,
+        Self::Mods,
+        Self::Skins,
+        Self::Account,
+        Self::Last,
+    ];
+
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::Feed => "feed",
+            Self::Home => "home",
+            Self::Mods => "mods",
+            Self::Skins => "skins",
+            Self::Account => "account",
+            Self::Last => "last",
+        }
+    }
+
+    /// One of the closed set of names; anything else is `None`.
+    pub fn parse(value: &str) -> Option<Self> {
+        Self::ALL.into_iter().find(|view| view.as_str() == value)
+    }
+
+    /// A screen that can be remembered as the last one opened: every start
+    /// view but `Last` itself.
+    pub fn parse_remembered(value: &str) -> Option<Self> {
+        Self::parse(value).filter(|view| *view != Self::Last)
+    }
+}
+
+/// An unknown or damaged value in `settings.json` means the feed, not
+/// unreadable settings.
+impl<'de> Deserialize<'de> for StartView {
+    fn deserialize<D: serde::Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        let value = serde_json::Value::deserialize(deserializer)?;
+        Ok(value.as_str().and_then(Self::parse).unwrap_or_default())
+    }
+}
+
+/// `Settings::last_view`: as [`StartView`], but `last` is not a screen.
+fn remembered_view<'de, D: serde::Deserializer<'de>>(
+    deserializer: D,
+) -> Result<StartView, D::Error> {
+    let value = serde_json::Value::deserialize(deserializer)?;
+    Ok(value
+        .as_str()
+        .and_then(StartView::parse_remembered)
+        .unwrap_or_default())
+}
+
 /// What happens to the launcher window while a game runs.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
 #[serde(rename_all = "snake_case")]
@@ -164,6 +235,13 @@ pub struct Settings {
     /// A version that did not start here; it is not offered again.
     #[serde(default)]
     pub skipped_version: Option<String>,
+    /// The screen opened at start.
+    #[serde(default)]
+    pub start_view: StartView,
+    /// The last screen opened among the start views, for `StartView::Last`.
+    /// Never `Last` itself.
+    #[serde(default, deserialize_with = "remembered_view")]
+    pub last_view: StartView,
 }
 
 fn default_metered_warn_mib() -> u32 {
@@ -199,6 +277,8 @@ impl Default for Settings {
             last_version: None,
             update_channel: crate::update::UpdateChannel::Stable,
             skipped_version: None,
+            start_view: StartView::Feed,
+            last_view: StartView::Feed,
         }
     }
 }
@@ -642,6 +722,62 @@ mod tests {
         let broken: Settings =
             serde_json::from_str(r#"{"schemaVersion":1,"language":"../x"}"#).unwrap();
         assert_eq!(broken.language.as_str(), "en", "a bad tag means English");
+    }
+
+    #[test]
+    fn start_view_is_a_closed_set_and_junk_reads_as_feed() {
+        let default: Settings = serde_json::from_str(r#"{"schemaVersion":1}"#).unwrap();
+        assert_eq!(default.start_view, StartView::Feed);
+        assert_eq!(default.last_view, StartView::Feed);
+        for view in StartView::ALL {
+            let json = format!(r#"{{"schemaVersion":1,"startView":"{}"}}"#, view.as_str());
+            let read: Settings = serde_json::from_str(&json).unwrap();
+            assert_eq!(read.start_view, view);
+        }
+        for junk in [
+            r#""Home""#,
+            "\"\"",
+            r#""../feed""#,
+            r#""feed ""#,
+            r#""settings""#,
+            r#""about""#,
+            "42",
+            "null",
+            "true",
+            r#"["home"]"#,
+            r#"{"view":"home"}"#,
+        ] {
+            let json = format!(r#"{{"schemaVersion":1,"startView":{junk},"lastView":{junk}}}"#);
+            let read: Settings = serde_json::from_str(&json).unwrap();
+            assert_eq!(read.start_view, StartView::Feed, "{junk}");
+            assert_eq!(read.last_view, StartView::Feed, "{junk}");
+        }
+        // `last` is a start view, not a remembered screen.
+        let last: Settings =
+            serde_json::from_str(r#"{"schemaVersion":1,"startView":"last","lastView":"last"}"#)
+                .unwrap();
+        assert_eq!(last.start_view, StartView::Last);
+        assert_eq!(last.last_view, StartView::Feed);
+    }
+
+    #[test]
+    fn start_view_round_trips() {
+        let settings = Settings {
+            start_view: StartView::Last,
+            last_view: StartView::Account,
+            ..Settings::default()
+        };
+        let json = serde_json::to_value(&settings).unwrap();
+        assert_eq!(json["startView"], "last");
+        assert_eq!(json["lastView"], "account");
+        let back: Settings = serde_json::from_value(json).unwrap();
+        assert_eq!(back, settings);
+        for view in StartView::ALL {
+            assert_eq!(StartView::parse(view.as_str()), Some(view));
+            assert_eq!(serde_json::to_value(view).unwrap(), view.as_str());
+        }
+        assert_eq!(StartView::parse_remembered("last"), None);
+        assert_eq!(StartView::parse_remembered("skins"), Some(StartView::Skins));
     }
 
     #[test]

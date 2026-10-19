@@ -74,6 +74,7 @@
   display: block;
   color: var(--color-text-muted);
   font-size: var(--font-size-sm);
+  font-weight: 400;
 }
 
 .path {

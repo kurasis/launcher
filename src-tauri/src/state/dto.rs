@@ -14,7 +14,7 @@ use crate::error::LauncherError;
 use crate::storage::StorageIssue;
 use crate::storage::models::{
     DuringGameMode, InstallationHealth, InstalledJava, InstanceFile, Language, LastResult,
-    OperationKind, Outcome, ProfileRef, Resolution, Settings, Theme,
+    OperationKind, Outcome, ProfileRef, Resolution, Settings, StartView, Theme,
 };
 use crate::storage::paths::{InstanceId, JavaProvider, Sha1};
 use crate::validation::{MemoryPolicy, ResolutionBounds};
@@ -155,6 +155,12 @@ pub struct SettingsPatch {
     /// True replaces the crash report install ID with a new one (D-061).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub new_install_id: Option<bool>,
+    /// One of `StartView`'s names; the core checks it.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub start_view: Option<String>,
+    /// The screen just opened, remembered for `StartView::Last`; never `last`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub last_view: Option<String>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -179,6 +185,8 @@ pub struct SettingsView {
     pub update_channel: crate::update::UpdateChannel,
     /// The crash report install ID, once a report made one (D-061).
     pub install_id: Option<String>,
+    pub start_view: StartView,
+    pub last_view: StartView,
     /// False when settings were written by a newer launcher or could not be read.
     pub writable: bool,
 }
@@ -204,6 +212,8 @@ impl SettingsView {
             update_mode: settings.update_mode,
             update_channel: settings.update_channel,
             install_id: settings.install_id.clone(),
+            start_view: settings.start_view,
+            last_view: settings.last_view,
             writable,
         }
     }

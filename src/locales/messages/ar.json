@@ -14,13 +14,17 @@
     "independentNotice": "هذا المشغّل مشروع مستقل، وليس تابعًا لشركة Mojang Studios أو Microsoft ولا معتمدًا منهما.",
     "nav": {
       "label": "القائمة الرئيسية",
+      "feed": "الموجز",
       "home": "التثبيتات",
       "account": "الحسابات",
       "backups": "النسخ",
       "screenshots": "لقطات الشاشة",
       "settings": "الإعدادات",
       "diagnostics": "التشخيص",
-      "about": "حول"
+      "about": "حول",
+      "console": "وحدة التحكم",
+      "more": "المزيد",
+      "moreCurrent": "المزيد: {view}"
     },
     "bootstrap": {
       "loading": "جارٍ تحميل حالة المشغّل…",
@@ -654,6 +658,16 @@
         "unload_and_return": "إغلاق نافذة المشغّل وإعادة فتحها عند الخروج من اللعبة",
         "keep_open": "إبقاء نافذة المشغّل مفتوحة",
         "close_launcher": "أغلق المشغّل عند فتح نافذة اللعبة؛ تستمر اللعبة في العمل"
+      },
+      "startView": "الفتح عند البدء",
+      "startViewHint": "تُفتح التثبيتات بدلًا منها أثناء تشغيل لعبة أو تنزيل.",
+      "startViews": {
+        "feed": "الموجز",
+        "home": "التثبيتات",
+        "mods": "التعديلات",
+        "skins": "المظاهر",
+        "account": "الحسابات",
+        "last": "آخر شاشة مفتوحة"
       },
       "dataLocation": "مكان بيانات المشغّل",
       "defaultsTitle": "القيم الافتراضية للتثبيتات الجديدة",
@@ -1514,6 +1528,8 @@
     "No downloaded update is waiting.": "لا يوجد تحديث منزَّل بانتظار التثبيت.",
     "Close the game and wait for installs to finish, then restart to update.": "أغلق اللعبة وانتظر انتهاء التثبيتات، ثم أعد التشغيل للتحديث.",
     "The update could not be installed. Download it from the link instead.": "تعذّر تثبيت التحديث. نزّله من الرابط بدلًا من ذلك.",
-    "There is no update page to open.": "لا توجد صفحة تحديث لفتحها."
+    "There is no update page to open.": "لا توجد صفحة تحديث لفتحها.",
+    "This is not a screen the launcher can open at start.": "لا يمكن فتح هذه الشاشة عند البدء.",
+    "This screen cannot be remembered as the last one opened.": "لا يمكن تذكّر هذه الشاشة على أنها آخر شاشة مفتوحة."
   }
 }
