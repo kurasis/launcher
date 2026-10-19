@@ -8,13 +8,10 @@ import { ipc } from '../../lib/ipc';
 import { strings } from '../../lib/strings';
 import { useCommand } from '../../lib/useCommand';
 import styles from './SettingsView.module.css';
+import { toInt } from '../../lib/format';
 
 const t = strings.settings;
 const d = strings.details;
-
-function toInt(text: string): number {
-  return /^\d+$/.test(text.trim()) ? Number(text.trim()) : Number.NaN;
-}
 
 /** Memory, window size and fullscreen used for new installations. Rust validates the values. */
 export function DefaultsForm({
@@ -35,12 +32,14 @@ export function DefaultsForm({
   // Recommended per kind of installation (D-058), or one fixed amount.
   const [fixed, setFixed] = useState(settings.defaultMaxHeapMib !== null);
   const [saved, setSaved] = useState(false);
-  const save = useCommand((requestId: string, mib: number, w: number, h: number) =>
+  // Every value sent is an argument: useCommand keeps a request ID only for
+  // a retry with the same ones.
+  const save = useCommand((requestId: string, mib: number, w: number, h: number, full: boolean) =>
     ipc.setAppSettings(
       {
-        defaultMaxHeapMib: fixed ? mib : 0,
+        defaultMaxHeapMib: mib,
         defaultResolution: { width: w, height: h },
-        defaultFullscreen: fullscreen,
+        defaultFullscreen: full,
       },
       requestId,
     ),
@@ -54,9 +53,11 @@ export function DefaultsForm({
       onSubmit={(event) => {
         event.preventDefault();
         setSaved(false);
-        void save.run(toInt(heap), toInt(width), toInt(height)).then((r) => {
-          if (r) setSaved(true);
-        });
+        void save
+          .run(fixed ? toInt(heap) : 0, toInt(width), toInt(height), fullscreen)
+          .then((r) => {
+            if (r) setSaved(true);
+          });
       }}
     >
       <fieldset className={forms.choices} disabled={disabled}>

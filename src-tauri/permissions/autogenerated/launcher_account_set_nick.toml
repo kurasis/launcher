@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-launcher-account-set-nick"
+description = "Enables the launcher_account_set_nick command without any pre-configured scope."
+commands.allow = ["launcher_account_set_nick"]
+
+[[permission]]
+identifier = "deny-launcher-account-set-nick"
+description = "Denies the launcher_account_set_nick command without any pre-configured scope."
+commands.deny = ["launcher_account_set_nick"]

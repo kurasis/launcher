@@ -92,7 +92,7 @@ fn all_placeholders_resolve_and_order_is_kept() {
             let c = compile_for(&p);
             let all: Vec<&String> = c.jvm_args.iter().chain(c.game_args.iter()).collect();
             assert!(all.iter().all(|a| !a.contains("${")), "{version} {os:?}");
-            assert_eq!(c.jvm_args[0], "-Xmx4096M");
+            assert_eq!(c.jvm_args[..2], ["-Xmx4096M", "-Xms512M"]);
             assert_eq!(c.main_class, "net.minecraft.client.main.Main");
             let cp = c.jvm_args.iter().position(|a| a == "-cp").unwrap();
             let entries: Vec<&str> = c.jvm_args[cp + 1].split(CLASSPATH_SEPARATOR).collect();
@@ -164,7 +164,7 @@ fn the_token_never_reaches_jvm_arguments_or_previews() {
 #[test]
 fn platform_flags_and_native_directories() {
     let mac = compile_for(&plan(V1_21_1, "1.21.1", MetaOs::Osx, "arm64"));
-    assert_eq!(mac.jvm_args[1], "-XstartOnFirstThread");
+    assert_eq!(mac.jvm_args[2], "-XstartOnFirstThread");
     let linux = compile_for(&plan(V26_3, "26.3", MetaOs::Linux, "x86_64"));
     let names: Vec<String> = linux
         .native_dirs
@@ -236,7 +236,7 @@ fn user_jvm_options_come_last_and_are_not_substituted() {
         fullscreen: false,
     })
     .unwrap();
-    assert_eq!(c.jvm_args[0], "-Xmx2048M");
+    assert_eq!(c.jvm_args[..2], ["-Xmx2048M", "-Xms512M"]);
     assert_eq!(c.jvm_args[c.jvm_args.len() - 2..], extra);
     assert_eq!(c.main_class, "net.minecraft.client.main.Main");
 }

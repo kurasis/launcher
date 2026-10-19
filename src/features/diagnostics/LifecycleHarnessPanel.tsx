@@ -47,7 +47,7 @@ export function LifecycleHarnessPanel({ snapshot }: { snapshot: AppSnapshot }) {
         current={snapshot.currentRun}
         last={snapshot.lastRun}
         onStop={(runId) => {
-          void ipc.stopLifecycleTest(runId);
+          void ipc.stopLifecycleTest(runId).catch(() => undefined);
         }}
       />
     </>

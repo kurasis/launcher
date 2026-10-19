@@ -87,15 +87,6 @@ impl RunHandles {
         }
     }
 
-    /// Requests termination of the active run, if any. Returns its identifier.
-    pub fn kill_active(&self) -> Option<String> {
-        let active = self.active.lock().unwrap_or_else(PoisonError::into_inner);
-        active.as_ref().map(|(id, supervised)| {
-            supervised.kill();
-            id.clone()
-        })
-    }
-
     /// Requests termination of `run_id` only.
     pub fn kill(&self, run_id: &str) -> bool {
         let active = self.active.lock().unwrap_or_else(PoisonError::into_inner);
@@ -229,6 +220,10 @@ impl LifecycleController {
         }
         if let Some(console) = app.get_webview_window(CONSOLE_WINDOW) {
             let _ = console.destroy();
+        }
+        // A sign-in window left open would keep the launcher running.
+        if let Some(account) = app.get_webview_window(crate::launcher_account::WINDOW) {
+            let _ = account.destroy();
         }
     }
 

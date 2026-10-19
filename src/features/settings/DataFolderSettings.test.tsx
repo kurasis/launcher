@@ -39,6 +39,21 @@ describe('DataFolderSettings', () => {
     expect(screen.queryByRole('button', { name: 'Make portable' })).toBeNull();
   });
 
+  it('says why the folder picker failed', async () => {
+    mockIPC((cmd) => {
+      if (cmd === 'get_data_location') return location;
+      if (cmd === 'pick_data_folder') {
+        // The Rust core rejects with a plain error envelope, not an Error instance.
+        // eslint-disable-next-line @typescript-eslint/only-throw-error
+        throw { code: 'INTERNAL', message: 'The folder dialog could not open.', diagnosticId: 'd' };
+      }
+      return null;
+    });
+    render(<DataFolderSettings busy={false} />);
+    fireEvent.click(await screen.findByRole('button', { name: 'Move to another folder…' }));
+    expect(await screen.findByText('The folder dialog could not open.')).toBeVisible();
+  });
+
   it('cannot move while something runs', async () => {
     mockIPC((cmd) => (cmd === 'get_data_location' ? location : null));
     render(<DataFolderSettings busy />);

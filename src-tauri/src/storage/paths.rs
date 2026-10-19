@@ -137,6 +137,7 @@ impl DataRoot {
             .join(format!("{sha1}.json"))
     }
 
+    #[cfg(test)]
     pub fn client_jar(&self, sha1: &Sha1) -> PathBuf {
         self.shared()
             .join("clients")
@@ -182,13 +183,6 @@ impl DataRoot {
             .join(format!("{}.json", index_id.as_str()))
     }
 
-    pub fn log_config(&self, sha1: &Sha1, id: &SafeName) -> PathBuf {
-        self.shared()
-            .join("log-configs")
-            .join(sha1.as_str())
-            .join(id.as_str())
-    }
-
     pub fn runtimes_dir(&self) -> PathBuf {
         self.root.join("runtimes")
     }
@@ -229,12 +223,18 @@ impl DataRoot {
         self.root.join("cache").join("thumbnails")
     }
 
-    pub fn launcher_logs(&self) -> PathBuf {
-        self.root.join("logs").join("launcher")
+    /// The launcher's log and its failure records.
+    pub fn logs_dir(&self) -> PathBuf {
+        self.root.join("logs")
+    }
+
+    /// One folder per game run.
+    pub fn runs_dir(&self) -> PathBuf {
+        self.logs_dir().join("runs")
     }
 
     pub fn run_logs(&self, run: Uuid) -> PathBuf {
-        self.root.join("logs").join("runs").join(run.to_string())
+        self.runs_dir().join(run.to_string())
     }
 
     fn shared(&self) -> PathBuf {
@@ -250,10 +250,6 @@ pub struct InstanceId(Uuid);
 impl InstanceId {
     pub fn generate() -> Self {
         Self(Uuid::new_v4())
-    }
-
-    pub fn as_uuid(&self) -> Uuid {
-        self.0
     }
 }
 

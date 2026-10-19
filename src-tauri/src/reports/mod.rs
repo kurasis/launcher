@@ -360,7 +360,7 @@ impl Reports {
                 }
             }
             Subject::Launcher { failure_id } => {
-                let logs = root.path().join("logs");
+                let logs = root.logs_dir();
                 let failure = crate::journal::failures(&logs)
                     .into_iter()
                     .find(|f| f.id == *failure_id)
@@ -509,7 +509,7 @@ impl Reports {
             Ok(201) => {
                 console.info("Crash report sent to the developers");
                 if let Some(failure) = &meta.failure_id {
-                    let _ = crate::journal::mark_reported(&root.path().join("logs"), failure);
+                    let _ = crate::journal::mark_reported(&root.logs_dir(), failure);
                 }
                 true
             }

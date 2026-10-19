@@ -18,7 +18,8 @@ function decode(value: string): ProfileRef | null {
   if (value === '') return null;
   const [kind, ...rest] = value.split(':');
   const id = rest.join(':');
-  return kind === 'microsoft' ? { kind: 'microsoft', id } : { kind: 'notoken', id };
+  if (kind === 'microsoft' || kind === 'launcher') return { kind, id };
+  return { kind: 'notoken', id };
 }
 
 /** Chooses who plays one installation: the default, an account or a demo profile (D-045). */
@@ -52,6 +53,13 @@ export function PlayAs({
         onChange={(event) => void choose.run(decode(event.target.value))}
       >
         <option value="">{a.playAsDefault({ name: playerLabel(defaultPlayer(account)) })}</option>
+        {account.launcherAccount.id !== null &&
+          account.launcherAccount.nick !== null &&
+          !isDefault({ kind: 'launcher', id: account.launcherAccount.id }) && (
+            <option value={`launcher:${account.launcherAccount.id}`}>
+              {a.launcherLabel({ name: account.launcherAccount.nick })}
+            </option>
+          )}
         {account.accounts
           .filter((item) => !isDefault({ kind: 'microsoft', id: item.profileId }))
           .map((item) => (

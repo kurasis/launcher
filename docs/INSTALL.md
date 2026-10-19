@@ -1,14 +1,15 @@
 # Installing the launcher
 
-Launcher is an independent desktop launcher for Minecraft: Java Edition. You do not need
+Sferum Launcher (its packages and folders are named `Launcher`) is an independent desktop launcher for Minecraft: Java Edition. You do not need
 Rust, Node.js or Java: the launcher downloads a private Java runtime for each game version
 when you install that version. You need a Microsoft account that owns Minecraft: Java
 Edition to play.
 
 > **Current status.** Packages are private qualification builds. They are not signed, so
-> Windows and macOS warn before opening them. Signing in is not possible yet because the
-> project's Microsoft application is not registered (see
-> [AUTH-SETUP.md](AUTH-SETUP.md)); you can create and install game versions, but not play.
+> Windows and macOS warn before opening them. The project's Microsoft application is
+> registered, but Minecraft services have not approved it yet, so signing in to play the
+> full game is expected to fail until then (see [AUTH-SETUP.md](AUTH-SETUP.md)). Without
+> an account the game starts as Minecraft's free demo.
 
 Packages are produced by the `Package` workflow and kept as workflow artifacts. Each set
 contains `SHA256SUMS` and `build-info.json` (version, commit, toolchain, signing status).
@@ -20,10 +21,11 @@ shasum -a 256 -c SHA256SUMS      # macOS
 Get-FileHash .\Launcher*.exe      # Windows PowerShell; compare with SHA256SUMS
 ```
 
-## Windows 10 and 11 (x64)
+## Windows 10 and 11 (x64 or ARM)
 
-1. Run `Launcher_<version>_x64-setup.exe`. It installs for the current user only
-   (`%LOCALAPPDATA%\Launcher`) and needs no administrator rights.
+1. Run `Launcher_<version>_x64-setup.exe` (on Windows on ARM, the `arm64` one). It
+   installs for the current user only (`%LOCALAPPDATA%\Launcher`) and needs no
+   administrator rights.
 2. The launcher uses Microsoft Edge WebView2. It is part of Windows 11 and current
    Windows 10. If it is missing, the installer downloads Microsoft's WebView2
    bootstrapper, which needs an internet connection.
@@ -64,9 +66,10 @@ The launcher keeps its data, including game installations, worlds and settings, 
 
 ## Updating
 
-Install the newer package over the old one (run the new installer, `apt install` the new
-.deb, replace the app or AppImage). Your data stays where it is. The launcher has no
-automatic updater.
+A launcher built with the update public key checks for new versions, downloads them and
+installs them when it closes (D-063, [RELEASING.md](RELEASING.md)). Otherwise install
+the newer package over the old one (run the new installer, `apt install` the new .deb,
+replace the app or AppImage). Your data stays where it is either way.
 
 ## Uninstalling
 

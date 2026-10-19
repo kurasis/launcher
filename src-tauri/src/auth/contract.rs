@@ -6,7 +6,7 @@
 //! confirm them. Changing any value is a contract change that needs a decision
 //! record and positive/negative account tests. There is no fallback chain.
 
-/// Identifier of this contract revision, recorded with account diagnostics.
+/// This contract revision, as docs/AUTH-CONTRACT.md names it.
 pub const CONTRACT_VERSION: &str = "2026-10-candidate-1";
 
 pub const AUTHORIZE_URL: &str = "https://login.microsoftonline.com/consumers/oauth2/v2.0/authorize";

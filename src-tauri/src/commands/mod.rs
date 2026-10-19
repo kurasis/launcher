@@ -1294,7 +1294,7 @@ pub fn list_launcher_failures(state: State<'_, AppState>) -> Vec<FailureSummary>
     let Some(root) = state.data_root() else {
         return Vec::new();
     };
-    crate::journal::failures(&root.path().join("logs"))
+    crate::journal::failures(&root.logs_dir())
         .into_iter()
         .map(|f| FailureSummary {
             message: f
@@ -1323,7 +1323,7 @@ pub fn dismiss_launcher_failure(state: State<'_, AppState>, id: String) -> Launc
             "Launcher data is unavailable.",
         )
     })?;
-    crate::journal::mark_reported(&root.path().join("logs"), &id)
+    crate::journal::mark_reported(&root.logs_dir(), &id)
         .map_err(|e| crate::error::LauncherError::from_io(&e, "Saving the failure record"))
 }
 
@@ -1417,6 +1417,154 @@ pub fn dismiss_whats_new(state: State<'_, AppState>) {
 pub fn interface_ready<R: Runtime>(app: AppHandle<R>) {
     app.state::<Arc<crate::update::Updates>>()
         .interface_shown(&app);
+}
+
+/// Opens the launcher account's sign-in window on `screen`: `login` or
+/// `register` (D-064).
+#[tauri::command]
+pub fn launcher_account_open<R: Runtime>(app: AppHandle<R>, screen: String) {
+    let account = Arc::clone(&app.state::<Arc<crate::launcher_account::LauncherAccount>>());
+    let handle = app.clone();
+    // Windows are made on the main thread.
+    let _ = app.run_on_main_thread(move || account.open(&handle, &screen));
+}
+
+#[tauri::command]
+pub async fn launcher_account_sign_out<R: Runtime>(app: AppHandle<R>) {
+    let account = Arc::clone(&app.state::<Arc<crate::launcher_account::LauncherAccount>>());
+    account.sign_out(&app.state::<AppState>()).await;
+    friends(&app).wake();
+}
+
+/// Changes the nick; what went wrong comes back as a problem code.
+#[tauri::command]
+pub async fn launcher_account_set_nick<R: Runtime>(
+    app: AppHandle<R>,
+    nick: String,
+) -> Option<crate::launcher_account::AccountProblem> {
+    if nick.len() > 64 {
+        return Some(crate::launcher_account::AccountProblem::NickInvalid);
+    }
+    let account = Arc::clone(&app.state::<Arc<crate::launcher_account::LauncherAccount>>());
+    account
+        .set_nick(&app.state::<AppState>(), nick.trim())
+        .await
+        .err()
+}
+
+#[tauri::command]
+pub async fn launcher_account_resend_confirmation<R: Runtime>(
+    app: AppHandle<R>,
+) -> Option<crate::launcher_account::AccountProblem> {
+    let account = Arc::clone(&app.state::<Arc<crate::launcher_account::LauncherAccount>>());
+    account
+        .resend_confirmation(&app.state::<AppState>())
+        .await
+        .err()
+}
+
+// Friends and chats (D-064). What went wrong comes back as a problem code.
+
+fn friends<R: Runtime>(app: &AppHandle<R>) -> Arc<crate::friends::Friends> {
+    Arc::clone(&app.state::<Arc<crate::friends::Friends>>())
+}
+
+type FriendsResult<T> = Result<T, crate::friends::FriendsProblem>;
+
+#[tauri::command]
+pub fn friends_state<R: Runtime>(app: AppHandle<R>) -> crate::friends::FriendsView {
+    friends(&app).view()
+}
+
+#[tauri::command]
+pub async fn friends_request<R: Runtime>(app: AppHandle<R>, nick: String) -> FriendsResult<String> {
+    if nick.len() > 64 {
+        return Err(crate::friends::FriendsProblem::Invalid);
+    }
+    friends(&app).request(&app, nick.trim()).await
+}
+
+#[tauri::command]
+pub async fn friends_act<R: Runtime>(
+    app: AppHandle<R>,
+    action: String,
+    id: String,
+) -> FriendsResult<()> {
+    friends(&app).act(&app, &action, &id).await
+}
+
+#[tauri::command]
+pub async fn friends_open_direct<R: Runtime>(
+    app: AppHandle<R>,
+    id: String,
+) -> FriendsResult<String> {
+    if uuid::Uuid::parse_str(&id).is_err() {
+        return Err(crate::friends::FriendsProblem::Invalid);
+    }
+    friends(&app).open_direct(&app, &id).await
+}
+
+#[tauri::command]
+pub async fn friends_create_group<R: Runtime>(
+    app: AppHandle<R>,
+    name: String,
+    members: Vec<String>,
+) -> FriendsResult<String> {
+    if name.len() > 200 || members.len() > 20 {
+        return Err(crate::friends::FriendsProblem::Invalid);
+    }
+    friends(&app).create_group(&app, &name, &members).await
+}
+
+#[tauri::command]
+pub async fn friends_change_room<R: Runtime>(
+    app: AppHandle<R>,
+    room: String,
+    action: String,
+    value: String,
+) -> FriendsResult<()> {
+    if value.len() > 200 {
+        return Err(crate::friends::FriendsProblem::Invalid);
+    }
+    friends(&app)
+        .change_room(&app, &room, &action, &value)
+        .await
+}
+
+#[tauri::command]
+pub async fn friends_messages<R: Runtime>(
+    app: AppHandle<R>,
+    room: String,
+    before: Option<i64>,
+) -> FriendsResult<Vec<crate::friends::ChatMessage>> {
+    friends(&app).messages(&app, &room, before).await
+}
+
+#[tauri::command]
+pub async fn friends_send<R: Runtime>(
+    app: AppHandle<R>,
+    room: String,
+    body: String,
+) -> FriendsResult<crate::friends::ChatMessage> {
+    friends(&app).send(&app, &room, &body).await
+}
+
+#[tauri::command]
+pub async fn friends_read<R: Runtime>(
+    app: AppHandle<R>,
+    room: String,
+    upto: i64,
+) -> FriendsResult<()> {
+    friends(&app).read(&app, &room, upto).await
+}
+
+#[tauri::command]
+pub async fn friends_report<R: Runtime>(
+    app: AppHandle<R>,
+    message: i64,
+    reason: String,
+) -> FriendsResult<()> {
+    friends(&app).report(&app, message, &reason).await
 }
 
 /// Opens where to get the update by hand (a `.deb`, or after installing

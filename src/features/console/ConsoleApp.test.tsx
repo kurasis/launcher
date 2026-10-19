@@ -45,14 +45,14 @@ describe('ConsoleApp', () => {
     expect(screen.queryByText('Launcher 0.1.0 started')).not.toBeInTheDocument();
     expect(screen.getByText('2 of 3 lines')).toBeVisible();
 
-    fireEvent.change(screen.getByRole('combobox', { name: 'All levels' }), {
+    fireEvent.change(screen.getByRole('combobox', { name: 'Show levels' }), {
       target: { value: 'error' },
     });
     expect(screen.queryByText('[main/WARN]: Low memory')).not.toBeInTheDocument();
     expect(screen.getByText('[Render thread/ERROR]: crash')).toBeVisible();
 
     fireEvent.click(screen.getByRole('button', { name: 'All' }));
-    fireEvent.change(screen.getByRole('combobox', { name: 'All levels' }), {
+    fireEvent.change(screen.getByRole('combobox', { name: 'Show levels' }), {
       target: { value: 'all' },
     });
     fireEvent.change(screen.getByRole('searchbox', { name: 'Filter lines' }), {

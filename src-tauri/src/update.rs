@@ -26,6 +26,7 @@ use tauri_plugin_updater::{Update, UpdaterExt};
 
 use crate::error::{ErrorCode, LauncherError, LauncherResult};
 use crate::state::AppState;
+use crate::sync::lock;
 
 const BASE: &str = "https://upd.lapi.sh";
 
@@ -393,10 +394,6 @@ impl Updates {
     }
 }
 
-fn lock<T>(m: &Mutex<T>) -> std::sync::MutexGuard<'_, T> {
-    m.lock().unwrap_or_else(std::sync::PoisonError::into_inner)
-}
-
 /// What the player is told about an updater error; the details go to the log.
 fn failure(state: &AppState, what: &str, error: &tauri_plugin_updater::Error) -> UpdateError {
     state
@@ -611,7 +608,7 @@ impl Updates {
         };
         if Self::busy_now(state) {
             state.console().info(
-                "Update: a game or an install is running; the update waits for the next close",
+                "Update: a game or an install is running; the update is fetched again and installed at a later close",
             );
             return;
         }

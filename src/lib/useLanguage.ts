@@ -10,11 +10,14 @@ export function useLanguage(wanted: string | undefined): string {
   useEffect(() => {
     if (wanted === undefined) return;
     let active = true;
-    void loadLanguage(wanted).then((tag) => {
-      if (!active) return;
-      setLanguage(tag);
-      setShown(tag);
-    });
+    void loadLanguage(wanted)
+      .then((tag) => {
+        if (!active) return;
+        setLanguage(tag);
+        setShown(tag);
+      })
+      // A catalog that fails to load leaves the current language in place.
+      .catch(() => undefined);
     return () => {
       active = false;
     };

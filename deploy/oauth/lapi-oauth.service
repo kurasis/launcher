@@ -1,0 +1,51 @@
+# Installed by deploy/bootstrap.sh as /etc/systemd/system/lapi-oauth.service.
+[Unit]
+Description=Sferum launcher accounts (oauth.lapi.sh, D-064)
+After=network.target
+
+[Service]
+User=lapi-oauth
+Group=lapi-oauth
+EnvironmentFile=/home/www/lapi/oauth/oauth.env
+# Turnstile and SMTP secrets, written by each deploy from the repository's
+# secrets; optional until they are set.
+EnvironmentFile=-/home/www/lapi/oauth/secrets.env
+ExecStart=/home/www/lapi/oauth/current/lapi-oauth serve
+Restart=on-failure
+RestartSec=3
+UMask=0027
+NoNewPrivileges=yes
+ProtectSystem=strict
+# /home holds nothing else for it: only its own folder is there, its data writable.
+ProtectHome=tmpfs
+BindReadOnlyPaths=/home/www/lapi/oauth
+BindPaths=/home/www/lapi/oauth/data
+ReadWritePaths=/home/www/lapi/oauth/data
+PrivateTmp=yes
+PrivateDevices=yes
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectControlGroups=yes
+ProtectClock=yes
+ProtectHostname=yes
+# Out: Cloudflare's siteverify and the SMTP server.
+RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX
+RestrictNamespaces=yes
+RestrictRealtime=yes
+LockPersonality=yes
+MemoryDenyWriteExecute=yes
+SystemCallArchitectures=native
+# What a network service needs; anything else fails with EPERM.
+SystemCallFilter=@system-service
+SystemCallErrorNumber=EPERM
+ProtectKernelLogs=yes
+ProtectProc=invisible
+ProcSubset=pid
+RestrictSUIDSGID=yes
+RemoveIPC=yes
+CapabilityBoundingSet=
+MemoryMax=512M
+TasksMax=256
+
+[Install]
+WantedBy=multi-user.target

@@ -13,7 +13,7 @@
 
 use std::collections::HashMap;
 use std::sync::atomic::{AtomicU64, Ordering};
-use std::sync::{Arc, Mutex, PoisonError};
+use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
 use chrono::{DateTime, Utc};
@@ -33,6 +33,7 @@ use crate::error::{ErrorCode, LauncherError, LauncherResult};
 use crate::secrets::SecretString;
 use crate::state::dto::{AccountState, AuthStatus, MicrosoftAccount, PendingSignOut};
 use crate::storage::models::{AccountRecord, AccountsFile, ProfileRef};
+use crate::sync::lock;
 
 /// What the auth service needs from application state. Implemented for `AppState`.
 pub trait AccountHost: Send + Sync {
@@ -97,10 +98,6 @@ pub struct AuthService {
     attempt: Mutex<Option<Attempt>>,
     status: Mutex<AuthStatus>,
     login_timeout: Duration,
-}
-
-fn lock<T>(mutex: &Mutex<T>) -> std::sync::MutexGuard<'_, T> {
-    mutex.lock().unwrap_or_else(PoisonError::into_inner)
 }
 
 fn vault_key(profile_id: &str) -> String {

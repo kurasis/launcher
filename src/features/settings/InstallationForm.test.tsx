@@ -37,6 +37,35 @@ describe('InstallationForm', () => {
     });
   });
 
+  it('sends a changed fullscreen with a new request ID after a lost answer', async () => {
+    const saves: { requestId: string; fullscreen: boolean }[] = [];
+    mockIPC((cmd, args) => {
+      if (cmd === 'update_instance_settings') {
+        const { request } = args as {
+          request: { requestId: string; payload: { fullscreen: boolean } };
+        };
+        saves.push({ requestId: request.requestId, fullscreen: request.payload.fullscreen });
+        // The first answer is lost on the way (not a typed error).
+        if (saves.length === 1) throw new Error('connection lost');
+        return instanceFixture();
+      }
+      if (cmd === 'get_app_snapshot') return snapshotFixture();
+      return null;
+    });
+    render(<InstallationForm instance={instanceFixture()} memory={snapshotFixture().memory} />);
+    fireEvent.click(screen.getByRole('button', { name: 'Save changes' }));
+    await waitFor(() => {
+      expect(saves).toHaveLength(1);
+    });
+    fireEvent.click(screen.getByRole('checkbox', { name: 'Start the game in fullscreen' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Save changes' }));
+    await waitFor(() => {
+      expect(saves).toHaveLength(2);
+    });
+    expect(saves[1]?.fullscreen).toBe(true);
+    expect(saves[1]?.requestId).not.toBe(saves[0]?.requestId);
+  });
+
   it('shows the recommendation for its mods and applies it on request', async () => {
     const calls: { cmd: string; args: unknown }[] = [];
     mockIPC((cmd, args) => {

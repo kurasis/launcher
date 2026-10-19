@@ -192,6 +192,30 @@ describe('SnapshotStore', () => {
     stop();
   });
 
+  it('subscribes again on retry when listening failed at start', async () => {
+    let listens = 0;
+    let failListening = true;
+    mockIPC((cmd) => {
+      if (cmd === 'plugin:event|listen') {
+        listens += 1;
+        if (failListening) throw new Error('listen failed');
+        return listens;
+      }
+      if (cmd === 'get_app_snapshot') return snapshotFixture({ revision: 0 });
+      return null;
+    });
+    const store = new SnapshotStore();
+    const stop = store.subscribe(() => undefined);
+    await waitFor(store, (s) => s.status === 'error');
+    const failed = listens;
+    expect(failed).toBeGreaterThan(0);
+    failListening = false;
+    store.refresh();
+    await waitFor(store, (s) => s.status === 'ready');
+    expect(listens).toBeGreaterThan(failed);
+    stop();
+  });
+
   it('reports an unreachable core', async () => {
     mockIPC(
       (cmd) => {

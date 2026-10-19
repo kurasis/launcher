@@ -4,7 +4,7 @@ import { Field } from '../../components/Field';
 import { Notice } from '../../components/Notice';
 import forms from '../../components/forms.module.css';
 import type { AppSnapshot, TrafficSummary, TrafficUsage } from '../../lib/contracts';
-import { formatBytes } from '../../lib/format';
+import { formatBytes, toInt } from '../../lib/format';
 import { describeIpcError, ipc } from '../../lib/ipc';
 import { numberLocale, strings } from '../../lib/strings';
 import { useCommand } from '../../lib/useCommand';
@@ -28,10 +28,6 @@ function monthName(month: string): string {
     year: 'numeric',
     month: 'long',
   });
-}
-
-function toInt(text: string): number {
-  return /^\d+$/.test(text.trim()) ? Number(text.trim()) : Number.NaN;
 }
 
 /**

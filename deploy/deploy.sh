@@ -3,6 +3,7 @@
 # service's workflow (D-061, D-062).
 #
 #   bash deploy.sh <service> <release-id> <archive> [mirror-quota-gb | upd-public-key]
+#   … | bash deploy.sh oauth <release-id> <archive> --secrets
 #
 # Unpacks the archive into /home/www/lapi/<service>/releases/<release-id>,
 # points `current` at it, restarts the service and checks /v1/health; a failed
@@ -10,7 +11,9 @@
 # nginx files are root's (bootstrap.sh installs them); this only says when
 # they differ. For the mirror, the quota goes to settings.json, which the
 # service reads every minute. upd is a command, not a process: its release is
-# installed with the update public key and nothing is restarted.
+# installed with the update public key and nothing is restarted. oauth reads
+# its secrets (Turnstile, SMTP) from standard input with --secrets, as
+# KEY=value lines, into secrets.env; they never appear in a command line or a log.
 set -euo pipefail
 
 SERVICE="${1:?service}"
@@ -22,6 +25,8 @@ case "$SERVICE" in
     crash) PORT=8781 ;;
     mirror) PORT=8782; QUOTA_GB="$EXTRA" ;;
     upd) PORT="" ;;
+    oauth) PORT=8783 ;;
+    friends) PORT=8784 ;;
     *) echo "unknown service $SERVICE"; exit 1 ;;
 esac
 APP=/home/www/lapi/$SERVICE
@@ -33,10 +38,16 @@ fi
 [[ "$RELEASE" =~ ^[0-9a-f]{7,40}$ ]] || { echo "bad release id"; exit 1; }
 
 dir=$APP/releases/$RELEASE
-rm -rf "$dir"
-mkdir -p "$dir"
-tar -xzf "$ARCHIVE" -C "$dir"
-chmod 0750 "$dir" "$dir/lapi-$SERVICE"
+if [ "$(readlink "$APP/current" 2>/dev/null || true)" = "releases/$RELEASE" ]; then
+    # A re-run of the same commit (for secrets, a quota): the running release
+    # stays as it is, so there is still something to go back to.
+    echo "== $RELEASE is installed already"
+else
+    rm -rf "$dir"
+    mkdir -p "$dir"
+    tar -xzf "$ARCHIVE" -C "$dir"
+    chmod 0750 "$dir" "$dir/lapi-$SERVICE"
+fi
 "$dir/lapi-$SERVICE" --version
 
 if [ "$SERVICE" = mirror ] && [ -n "$QUOTA_GB" ]; then
@@ -45,6 +56,27 @@ if [ "$SERVICE" = mirror ] && [ -n "$QUOTA_GB" ]; then
     chmod 0644 "$APP/settings.json.new"
     mv "$APP/settings.json.new" "$APP/settings.json"
     echo "== quota: $QUOTA_GB GB"
+fi
+
+if [ "$SERVICE" = oauth ] && [ "$EXTRA" = --secrets ]; then
+    # Only the known keys, one line each, nothing that could end a line.
+    allowed='^LAPI_OAUTH_(TURNSTILE_SITE_KEY|TURNSTILE_SECRET|SMTP_URL|MAIL_FROM)=[^[:cntrl:]]{0,500}$'
+    umask 027
+    : > "$APP/secrets.env.new"
+    while IFS= read -r line || [ -n "$line" ]; do
+        [ -z "$line" ] && continue
+        if [[ "$line" =~ $allowed ]]; then
+            value=${line#*=}
+            [ -n "$value" ] && printf '%s\n' "$line" >> "$APP/secrets.env.new"
+        else
+            echo "a secrets line was refused (unknown key or bad characters)"
+            rm -f "$APP/secrets.env.new"
+            exit 1
+        fi
+    done
+    chmod 0640 "$APP/secrets.env.new"
+    mv "$APP/secrets.env.new" "$APP/secrets.env"
+    echo "== secrets: $(cut -d= -f1 "$APP/secrets.env" | tr '\n' ' ')"
 fi
 
 health() {
@@ -105,10 +137,10 @@ if ! health "http://127.0.0.1:$PORT/v1/health"; then
     fi
     exit 1
 fi
-if grep -q "listen 443" "/etc/nginx/lapi/$SERVICE.conf" 2>/dev/null || [ "$SERVICE" = crash ]; then
+if grep -q "listen 443" "/etc/nginx/lapi/$SERVICE.conf" 2>/dev/null; then
     health http://127.0.0.1/v1/health || { echo "nginx does not reach the service"; exit 1; }
 fi
-echo "== healthy: $(curl -fsS "http://127.0.0.1:$PORT/v1/health")"
+echo "== healthy"
 if [ "$SERVICE" = mirror ]; then
     # The warming timer runs once there is a release; starting it again is harmless.
     sudo -n /usr/bin/systemctl start lapi-mirror-warm.timer || echo "WARM_TIMER: not started (run bootstrap.sh)"

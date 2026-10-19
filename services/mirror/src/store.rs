@@ -54,13 +54,18 @@ impl Store {
         for dir in [&store.files, &store.meta, &store.tmp] {
             std::fs::create_dir_all(dir).map_err(|e| format!("creating {}: {e}", dir.display()))?;
         }
-        // Parts of fetches a stop cut short.
-        if let Ok(entries) = std::fs::read_dir(&store.tmp) {
+        Ok(store)
+    }
+
+    /// Removes parts of fetches a stop cut short. Only the service may: the
+    /// other commands (`warm`, `overview`) run beside it and would cut its
+    /// fetches short.
+    pub fn clear_parts(&self) {
+        if let Ok(entries) = std::fs::read_dir(&self.tmp) {
             for entry in entries.flatten() {
                 let _ = std::fs::remove_file(entry.path());
             }
         }
-        Ok(store)
     }
 
     /// Free space to keep instead of [`MIN_FREE_BYTES`].

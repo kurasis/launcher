@@ -205,12 +205,22 @@ async fn feedback(State(app): State<Arc<App>>, Json(feedback): Json<Feedback>) -
     }
 }
 
+/// Biggest decompressed body of a stats or feedback request.
+const SMALL_BODY: usize = 64 * 1024;
+
 pub fn router(app: Arc<App>) -> Router {
     Router::new()
         .route("/v1/health", get(health))
         .route("/v1/reports", post(reports))
-        .route("/v1/stats", post(stats))
-        .route("/v1/feedback", post(feedback))
+        // Counts and a yes/no: a few kilobytes (50 short events at most).
+        .route(
+            "/v1/stats",
+            post(stats).layer(DefaultBodyLimit::max(SMALL_BODY)),
+        )
+        .route(
+            "/v1/feedback",
+            post(feedback).layer(DefaultBodyLimit::max(SMALL_BODY)),
+        )
         // The decompressed body: the files plus the JSON around them.
         .layer(DefaultBodyLimit::max(MAX_TEXT_BYTES + 256 * 1024))
         .layer(RequestDecompressionLayer::new())

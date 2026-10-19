@@ -1,0 +1,53 @@
+name: Check a lapi service from outside
+description: >-
+  The service answers through Cloudflare as itself, and the server refuses it
+  when asked directly. Prints no address of the server.
+inputs:
+  service:
+    description: crash, mirror, upd, oauth or friends.
+    required: true
+  ssh-host:
+    description: The server's name or address (secret SSH_HOST).
+    required: true
+  health:
+    description: Path to ask.
+    required: false
+    default: /v1/health
+  status-only:
+    description: 'true: a 200 or 204 answer is enough (upd serves files, not a health answer).'
+    required: false
+    default: 'false'
+runs:
+  using: composite
+  steps:
+    - shell: bash
+      env:
+        SERVICE: ${{ inputs.service }}
+        HEALTH: ${{ inputs.health }}
+        STATUS_ONLY: ${{ inputs.status-only }}
+      run: |
+        url="https://$SERVICE.lapi.sh$HEALTH"
+        for i in 1 2 3 4 5 6; do
+          if [ "$STATUS_ONLY" = true ]; then
+            code=$(curl -sS -o /dev/null -w '%{http_code}' --max-time 10 "$url" || true)
+            if [ "$code" = 200 ] || [ "$code" = 204 ]; then echo "$url answers $code"; exit 0; fi
+          # Another site's answer (nginx's default before bootstrap) is not this.
+          elif curl -fsS --max-time 10 "$url" | grep -qF "\"service\":\"lapi-$SERVICE\""; then
+            echo "$url answers"; exit 0
+          fi
+          sleep 5
+        done
+        echo "::warning::https://$SERVICE.lapi.sh$HEALTH does not answer through Cloudflare yet"
+    - shell: bash
+      env:
+        SERVICE: ${{ inputs.service }}
+        SSH_HOST: ${{ inputs.ssh-host }}
+        HEALTH: ${{ inputs.health }}
+      run: |
+        ip=$(getent ahostsv4 "$SSH_HOST" | awk 'NR==1 {print $1}')
+        [ -n "$ip" ] && echo "::add-mask::$ip"
+        if curl -sk --max-time 10 -o /dev/null --resolve "$SERVICE.lapi.sh:443:$ip" "https://$SERVICE.lapi.sh$HEALTH"; then
+          echo "::warning::The server answers $SERVICE.lapi.sh directly, around Cloudflare: apply the nginx files with bootstrap.sh."
+        else
+          echo "Direct requests to the server are refused."
+        fi

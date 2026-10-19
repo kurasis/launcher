@@ -217,6 +217,7 @@ pub fn parse_manifest(bytes: &[u8], limits: Limits) -> LauncherResult<Vec<Manife
 }
 
 /// Bytes of every file a manifest lists.
+#[cfg(test)]
 pub fn manifest_bytes(entries: &[ManifestEntry]) -> u64 {
     entries
         .iter()

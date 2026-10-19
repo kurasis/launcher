@@ -3,8 +3,6 @@ import { createRoot } from 'react-dom/client';
 import { getCurrentWebviewWindow } from '@tauri-apps/api/webviewWindow';
 import './styles/tokens.css';
 import './styles/global.css';
-import { App } from './app/App';
-import { ConsoleApp } from './features/console/ConsoleApp';
 import { loadLanguage, setLanguage, storedLanguage } from './lib/strings';
 import { reportFrontendError } from './lib/ipc';
 
@@ -38,13 +36,23 @@ function windowLabel(): string {
   }
 }
 
+// Each window loads only its own code: the main window never needs the
+// console's, the console window never the rest of the launcher's.
+async function windowContent() {
+  if (windowLabel() === 'console') {
+    const { ConsoleApp } = await import('./features/console/ConsoleApp');
+    return <ConsoleApp />;
+  }
+  const { App } = await import('./app/App');
+  return <App />;
+}
+
 // The last chosen language until the core's settings arrive (D-038).
 void loadLanguage(storedLanguage())
   .then(setLanguage, () => {
     setLanguage('en');
   })
-  .finally(() => {
-    createRoot(container).render(
-      <StrictMode>{windowLabel() === 'console' ? <ConsoleApp /> : <App />}</StrictMode>,
-    );
+  .then(windowContent)
+  .then((content) => {
+    createRoot(container).render(<StrictMode>{content}</StrictMode>);
   });

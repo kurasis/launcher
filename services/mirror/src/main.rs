@@ -175,6 +175,7 @@ fn origin_client() -> Result<reqwest::Client, String> {
 
 fn serve() -> Result<(), String> {
     let store = open()?;
+    store.clear_parts();
     let address = env("LAPI_MIRROR_ADDR", "127.0.0.1:8782");
     let runtime = tokio::runtime::Runtime::new().map_err(|e| e.to_string())?;
     runtime.block_on(async move {

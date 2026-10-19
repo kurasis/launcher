@@ -43,7 +43,7 @@
     ],
     "homepage": "https://github.com/kurasis/launcher",
     "copyright": "Copyright 2026 Launcher contributors",
-    "longDescription": "An independent launcher for Minecraft: Java Edition. It signs in with a Microsoft account, installs vanilla releases and a private Java runtime, and starts the game. Not an official Minecraft product; not approved by or associated with Mojang or Microsoft.",
+    "longDescription": "An independent launcher for Minecraft: Java Edition. It installs releases with or without Forge, NeoForge, Fabric or Quilt and the Java each needs, signs in with a Microsoft account or starts the demo, and keeps backups of worlds. Not an official Minecraft product; not approved by or associated with Mojang or Microsoft.",
     "windows": {
       "webviewInstallMode": {
         "type": "downloadBootstrapper",

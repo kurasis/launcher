@@ -9,13 +9,14 @@ name: Update service
 
 on:
   push:
-    branches: [main, claude/launcher-updates]
+    branches: [main]
     paths:
       - services/upd/**
       - deploy/upd/**
       - deploy/*.sh
       - deploy/nginx/**
       - .github/workflows/upd-service.yml
+      - .github/actions/**
   pull_request:
     paths:
       - services/upd/**
@@ -23,6 +24,7 @@ on:
       - deploy/*.sh
       - deploy/nginx/**
       - .github/workflows/upd-service.yml
+      - .github/actions/**
   workflow_dispatch:
     inputs:
       task:
@@ -81,10 +83,17 @@ jobs:
           retention-days: 14
 
   deploy:
+    # One deploy of this service at a time, from any branch or run.
+    concurrency:
+      group: upd-deploy
+      cancel-in-progress: false
     name: Deploy to upd.lapi.sh
+    # Deploys use the production environment: Settings → Environments →
+    # production → Required reviewers makes each one wait for an approval.
+    environment: production
     needs: test
     if: >-
-      (github.event_name == 'push' && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/claude/launcher-updates'))
+      (github.event_name == 'push' && github.ref == 'refs/heads/main')
       || (github.event_name == 'workflow_dispatch' && inputs.task == 'deploy')
     runs-on: ubuntu-24.04
     steps:
@@ -92,41 +101,26 @@ jobs:
       - uses: actions/download-artifact@v4
         with:
           name: lapi-upd
-      - name: SSH setup
-        env:
-          SSH_KEY: ${{ secrets.SSH_KEY }}
-          SSH_KNOWN_HOSTS: ${{ secrets.SSH_KNOWN_HOSTS }}
-        run: |
-          install -d -m 700 ~/.ssh
-          printf '%s\n' "$SSH_KEY" > ~/.ssh/id_deploy
-          chmod 600 ~/.ssh/id_deploy
-          printf '%s\n' "$SSH_KNOWN_HOSTS" > ~/.ssh/known_hosts
-      - name: Upload
-        env:
-          TARGET: ${{ secrets.SSH_USER }}@${{ secrets.SSH_HOST }}
-        run: |
-          release=$(git rev-parse --short=12 HEAD)
-          echo "RELEASE=$release" >> "$GITHUB_ENV"
-          scp -i ~/.ssh/id_deploy -o BatchMode=yes lapi-upd.tar.gz "$TARGET:/tmp/lapi-upd-$release.tar.gz"
-          # deploy/ goes to a folder of its own per run (two workflows may
-          # deploy at once); ~/lapi-bootstrap points at the newest, for the
-          # root step: sudo bash ~/lapi-bootstrap/bootstrap.sh <user>
-          setup="$GITHUB_RUN_ID-$GITHUB_JOB-upd"
-          echo "SETUP=$setup" >> "$GITHUB_ENV"
-          tar -cz deploy | ssh -i ~/.ssh/id_deploy -o BatchMode=yes "$TARGET" "set -e
-            d=\$HOME/.lapi-bootstrap/$setup
-            rm -rf \"\$d\" && mkdir -p \"\$d\" && tar -xz -C \"\$d\" --strip-components=1
-            if [ -d ~/lapi-bootstrap ] && [ ! -L ~/lapi-bootstrap ]; then rm -rf ~/lapi-bootstrap; fi
-            ln -sfn \"\$d\" ~/lapi-bootstrap.$setup && mv -T ~/lapi-bootstrap.$setup ~/lapi-bootstrap
-            ls -1dt ~/.lapi-bootstrap/* | tail -n +11 | xargs -r rm -rf"
+      - uses: ./.github/actions/lapi-ssh
+        with:
+          ssh-key: ${{ secrets.SSH_KEY }}
+          known-hosts: ${{ secrets.SSH_KNOWN_HOSTS }}
+      - uses: ./.github/actions/lapi-upload
+        with:
+          service: upd
+          target: ${{ secrets.SSH_USER }}@${{ secrets.SSH_HOST }}
       - name: Deploy
         env:
           TARGET: ${{ secrets.SSH_USER }}@${{ secrets.SSH_HOST }}
           UPDATE_PUBLIC_KEY: ${{ vars.UPDATE_PUBLIC_KEY }}
         run: |
+          # Checked here too: it becomes part of a command the server's shell reads.
+          if [ -n "$UPDATE_PUBLIC_KEY" ] && ! [[ "$UPDATE_PUBLIC_KEY" =~ ^[A-Za-z0-9+/=]{40,400}$ ]]; then
+            echo "::error::UPDATE_PUBLIC_KEY is not a base64 key"; exit 1
+          fi
           set +e
-          ssh -i ~/.ssh/id_deploy -o BatchMode=yes "$TARGET" \
-            "bash ~/.lapi-bootstrap/$SETUP/deploy.sh upd $RELEASE /tmp/lapi-upd-$RELEASE.tar.gz $UPDATE_PUBLIC_KEY" 2>&1 | tee deploy.log
+          ssh "$TARGET" \
+            "bash ~/.lapi-bootstrap/$SETUP/deploy.sh upd $RELEASE $ARCHIVE $UPDATE_PUBLIC_KEY" 2>&1 | tee deploy.log
           status=${PIPESTATUS[0]}
           if grep -q NOT_BOOTSTRAPPED deploy.log; then
             echo "::warning::The server is not set up yet: run 'sudo bash ~/lapi-bootstrap/bootstrap.sh <deploy-user>' on it once, then re-run this workflow."
@@ -139,39 +133,23 @@ jobs:
             echo "::warning::The nginx files on the server are not these: run 'sudo bash ~/lapi-bootstrap/bootstrap.sh <deploy-user>' on it to apply them."
           fi
           exit "$status"
-      - name: Check from outside
-        run: |
-          for i in 1 2 3 4 5 6; do
-            code=$(curl -sS -o /dev/null -w '%{http_code}' --max-time 10 https://upd.lapi.sh/v1/stable/windows-x86_64-nsis.json || true)
-            if [ "$code" = 200 ] || [ "$code" = 204 ]; then echo "manifest answers $code"; exit 0; fi
-            sleep 5
-          done
-          echo "::warning::https://upd.lapi.sh does not answer through Cloudflare yet"
-      - name: The origin answers only through Cloudflare
-        env:
-          SSH_HOST: ${{ secrets.SSH_HOST }}
-        run: |
-          ip=$(getent ahostsv4 "$SSH_HOST" | awk 'NR==1 {print $1}')
-          if curl -sk --max-time 10 -o /dev/null --resolve "upd.lapi.sh:443:$ip" https://upd.lapi.sh/download/; then
-            echo "::warning::The server answers upd.lapi.sh directly, around Cloudflare: apply the nginx files with bootstrap.sh."
-          else
-            echo "Direct requests to the server are refused."
-          fi
+      - uses: ./.github/actions/lapi-check
+        with:
+          service: upd
+          ssh-host: ${{ secrets.SSH_HOST }}
+          health: /v1/stable/windows-x86_64-nsis.json
+          status-only: 'true'
 
   reports:
     name: Channels
     if: github.event_name == 'workflow_dispatch' && inputs.task == 'reports'
     runs-on: ubuntu-24.04
     steps:
-      - name: SSH setup
-        env:
-          SSH_KEY: ${{ secrets.SSH_KEY }}
-          SSH_KNOWN_HOSTS: ${{ secrets.SSH_KNOWN_HOSTS }}
-        run: |
-          install -d -m 700 ~/.ssh
-          printf '%s\n' "$SSH_KEY" > ~/.ssh/id_deploy
-          chmod 600 ~/.ssh/id_deploy
-          printf '%s\n' "$SSH_KNOWN_HOSTS" > ~/.ssh/known_hosts
+      - uses: actions/checkout@v5
+      - uses: ./.github/actions/lapi-ssh
+        with:
+          ssh-key: ${{ secrets.SSH_KEY }}
+          known-hosts: ${{ secrets.SSH_KNOWN_HOSTS }}
       - name: Status
         env:
           TARGET: ${{ secrets.SSH_USER }}@${{ secrets.SSH_HOST }}
@@ -179,7 +157,7 @@ jobs:
           {
             echo '### Update channels'
             echo '```'
-            ssh -i ~/.ssh/id_deploy -o BatchMode=yes "$TARGET" \
+            ssh "$TARGET" \
               'sudo -n -u lapi-upd /home/www/lapi/upd/current/lapi-upd status'
             echo '```'
           } | tee -a "$GITHUB_STEP_SUMMARY"

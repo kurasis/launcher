@@ -1,12 +1,9 @@
 # Dependencies and build output
 node_modules/
 dist/
-coverage/
 *.tsbuildinfo
 
-# Rust / Tauri
-src-tauri/target/
-src-tauri/gen/schemas/
+# Rust / Tauri: src-tauri/.gitignore
 
 # Local environment and editor files
 .env
@@ -16,6 +13,7 @@ src-tauri/gen/schemas/
 .idea/
 .vscode/*
 !.vscode/extensions.json
+.claude/settings.local.json
 *.log
 # Game output kept as crash analyser test fixtures (no tokens, neutral paths)
 !src-tauri/src/launch/crash/fixtures/*.log

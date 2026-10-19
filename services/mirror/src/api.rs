@@ -28,12 +28,16 @@ use crate::store::{MetaInfo, Store};
 
 /// Fetches from origins at once, over all clients.
 const FETCHES_AT_ONCE: usize = 64;
+/// Of those, metadata fetches (each held in memory, up to [`MAX_META`]).
+const META_AT_ONCE: usize = 16;
 /// Requests the service handles at once per client address (kept files never
 /// reach it: nginx serves them).
 const PER_CLIENT_AT_ONCE: u32 = 16;
 /// Biggest file and metadata response the mirror passes on.
 const MAX_FILE: u64 = 4 * 1024 * 1024 * 1024;
-const MAX_META: usize = 64 * 1024 * 1024;
+/// Real metadata is well under 1 MiB (Mojang's version list, about 280 KB, is
+/// the largest).
+const MAX_META: usize = 8 * 1024 * 1024;
 /// How long a request waits for another request's fetch of the same file
 /// before it fetches without keeping.
 const FOLLOW_WAIT: Duration = Duration::from_secs(120);
@@ -49,6 +53,7 @@ pub struct App {
     pub upstream: Upstream,
     pub meta_ttl: Duration,
     fetches: Arc<Semaphore>,
+    meta_fetches: Semaphore,
     /// Files being fetched, by origin URL: later requests wait for that fetch.
     inflight: Mutex<HashMap<String, watch::Receiver<()>>>,
     meta_locks: Mutex<HashMap<String, Arc<tokio::sync::Mutex<()>>>>,
@@ -63,6 +68,7 @@ impl App {
             upstream,
             meta_ttl: Duration::from_secs(600),
             fetches: Arc::new(Semaphore::new(FETCHES_AT_ONCE)),
+            meta_fetches: Semaphore::new(META_AT_ONCE),
             inflight: Mutex::new(HashMap::new()),
             meta_locks: Mutex::new(HashMap::new()),
             clients: Mutex::new(HashMap::new()),
@@ -129,7 +135,9 @@ async fn mirror(State(app): State<Arc<App>>, request: Request) -> Response {
     let Some(_slot) = slot(&app, client(request.headers())) else {
         return refuse(StatusCode::TOO_MANY_REQUESTS, "too many requests at once");
     };
+    let head = request.method() == Method::HEAD;
     match origin.class.clone() {
+        Class::File(relative) if head => head_of_file(&app, &origin, &relative).await,
         Class::File(relative) => file(&app, origin, relative).await,
         Class::Meta => meta(&app, &origin).await,
     }
@@ -147,6 +155,27 @@ fn content_type(path: &std::path::Path) -> &'static str {
     }
 }
 
+/// An origin's content type as the mirror passes it on: data types as they
+/// are, anything a browser would run or render (an HTML page, an image) as
+/// plain bytes, so nothing the mirror relays acts as a page of its own.
+fn safe_type(origin_type: &str) -> String {
+    let essence = origin_type
+        .split(';')
+        .next()
+        .unwrap_or_default()
+        .trim()
+        .to_ascii_lowercase();
+    let data = matches!(
+        essence.as_str(),
+        "application/json" | "application/xml" | "text/xml" | "text/plain"
+    );
+    if data {
+        origin_type.to_owned()
+    } else {
+        "application/octet-stream".to_owned()
+    }
+}
+
 const IMMUTABLE: &str = "public, max-age=31536000, immutable";
 
 async fn from_disk(path: &std::path::Path, how: &'static str) -> Option<Response> {
@@ -161,8 +190,53 @@ async fn from_disk(path: &std::path::Path, how: &'static str) -> Option<Response
         .ok()
 }
 
+/// A `HEAD` request: the kept file's headers, or the origin's. It fetches
+/// nothing to keep (a full fetch for headers alone would cost the whole file).
+async fn head_of_file(app: &Arc<App>, origin: &Origin, relative: &std::path::Path) -> Response {
+    if let Some(response) = from_disk(&app.store.file(relative), "kept").await {
+        return response;
+    }
+    let Ok(answer) = app.client.head((app.upstream)(origin)).send().await else {
+        return refuse(StatusCode::BAD_GATEWAY, "origin unreachable");
+    };
+    let status = answer.status();
+    if status == reqwest::StatusCode::NOT_FOUND || status == reqwest::StatusCode::GONE {
+        return refuse(StatusCode::NOT_FOUND, "not at the origin");
+    }
+    if !status.is_success() {
+        return refuse(StatusCode::BAD_GATEWAY, "origin failed");
+    }
+    let mut builder = Response::builder()
+        .header(
+            header::CONTENT_TYPE,
+            content_type(std::path::Path::new(&origin.url)),
+        )
+        .header("x-mirror-cache", "origin");
+    if let Some(length) = answer.content_length() {
+        builder = builder.header(header::CONTENT_LENGTH, length);
+    }
+    builder
+        .body(Body::empty())
+        .unwrap_or_else(|_| refuse(StatusCode::INTERNAL_SERVER_ERROR, "response"))
+}
+
+/// The request that fetches and keeps a file. However it ends (done, failed,
+/// or its client left before the fetch began), dropping this takes the file
+/// off the in-flight list and then lets the waiting requests go.
+struct Leading {
+    app: Arc<App>,
+    url: String,
+    _done: watch::Sender<()>,
+}
+
+impl Drop for Leading {
+    fn drop(&mut self) {
+        lock(&self.app.inflight).remove(&self.url);
+    }
+}
+
 enum Role {
-    Leader(watch::Sender<()>),
+    Leader(Leading),
     Follower(watch::Receiver<()>),
 }
 
@@ -178,12 +252,16 @@ async fn file(app: &Arc<App>, origin: Origin, relative: PathBuf) -> Response {
             None => {
                 let (tx, rx) = watch::channel(());
                 inflight.insert(origin.url.clone(), rx);
-                Role::Leader(tx)
+                Role::Leader(Leading {
+                    app: Arc::clone(app),
+                    url: origin.url.clone(),
+                    _done: tx,
+                })
             }
         }
     };
     match role {
-        Role::Leader(done) => stream(app, &origin, Some((path, done))).await,
+        Role::Leader(leading) => stream(app, &origin, Some((path, leading))).await,
         Role::Follower(mut rx) => {
             // `changed` ends when the leader drops its sender.
             let _ = tokio::time::timeout(FOLLOW_WAIT, rx.changed()).await;
@@ -198,50 +276,30 @@ async fn file(app: &Arc<App>, origin: Origin, relative: PathBuf) -> Response {
 /// Fetches a file from its origin and streams it to the client; with `keep`,
 /// also writes it and puts it in place once complete (the client leaving does
 /// not stop that), then lets waiting requests go.
-async fn stream(
-    app: &Arc<App>,
-    origin: &Origin,
-    keep: Option<(PathBuf, watch::Sender<()>)>,
-) -> Response {
-    let release = |keep: Option<(PathBuf, watch::Sender<()>)>| {
-        if keep.is_some() {
-            lock(&app.inflight).remove(&origin.url);
-        }
-    };
+async fn stream(app: &Arc<App>, origin: &Origin, keep: Option<(PathBuf, Leading)>) -> Response {
     let Ok(permit) = Arc::clone(&app.fetches).acquire_owned().await else {
-        release(keep);
         return refuse(StatusCode::SERVICE_UNAVAILABLE, "closing");
     };
     let response = match app.client.get((app.upstream)(origin)).send().await {
         Ok(r) => r,
         Err(e) => {
             eprintln!("fetching {} failed: {e}", origin.url);
-            release(keep);
             return refuse(StatusCode::BAD_GATEWAY, "origin unreachable");
         }
     };
     let status = response.status();
     if status == reqwest::StatusCode::NOT_FOUND || status == reqwest::StatusCode::GONE {
-        release(keep);
         return refuse(StatusCode::NOT_FOUND, "not at the origin");
     }
     if !status.is_success() {
         eprintln!("fetching {} answered {status}", origin.url);
-        release(keep);
         return refuse(StatusCode::BAD_GATEWAY, "origin failed");
     }
     let length = response.content_length();
     if length.is_some_and(|l| l > MAX_FILE) {
-        release(keep);
         return refuse(StatusCode::BAD_GATEWAY, "too large");
     }
-    let keep = match keep {
-        Some(k) if app.store.may_keep(length) => Some(k),
-        other => {
-            release(other);
-            None
-        }
-    };
+    let keep = keep.filter(|_| app.store.may_keep(length));
     let (tx, rx) = mpsc::channel::<Result<Bytes, std::io::Error>>(16);
     let task_app = Arc::clone(app);
     let url = origin.url.clone();
@@ -286,7 +344,7 @@ async fn stream(
             }
         }
         drop(tx);
-        if let Some((destination, done)) = keep {
+        if let Some((destination, leading)) = keep {
             let complete = !failed && length.is_none_or(|l| l == written);
             let placed = match file {
                 Some(f) if complete && f.sync_all().await.is_ok() => {
@@ -304,8 +362,7 @@ async fn stream(
             } else {
                 let _ = tokio::fs::remove_file(&part).await;
             }
-            lock(&task_app.inflight).remove(&url);
-            drop(done);
+            drop(leading);
         }
     });
     let mut builder = Response::builder()
@@ -393,6 +450,10 @@ async fn meta(app: &Arc<App>, origin: &Origin) -> Response {
             let store_app = Arc::clone(app);
             let (host, kept_info, kept_body) = (origin.host, info.clone(), body.clone());
             let _ = tokio::task::spawn_blocking(move || {
+                // Like files: kept only within the quota and the free space.
+                if !store_app.store.may_keep(Some(kept_body.len() as u64)) {
+                    return;
+                }
                 if let Err(e) = store_app.store.write_meta(host, &kept_info, &kept_body) {
                     eprintln!("keeping {} failed: {e}", kept_info.url);
                 }
@@ -407,6 +468,11 @@ async fn meta(app: &Arc<App>, origin: &Origin) -> Response {
 }
 
 async fn fetch_meta(app: &App, origin: &Origin) -> Result<(Option<String>, Vec<u8>), MetaFailure> {
+    let _meta_permit = app
+        .meta_fetches
+        .acquire()
+        .await
+        .map_err(|_| MetaFailure::Failed)?;
     let _permit = app
         .fetches
         .acquire()
@@ -433,7 +499,7 @@ async fn fetch_meta(app: &App, origin: &Origin) -> Result<(Option<String>, Vec<u
         .headers()
         .get(reqwest::header::CONTENT_TYPE)
         .and_then(|v| v.to_str().ok())
-        .map(str::to_owned);
+        .map(safe_type);
     let mut body = Vec::new();
     while let Some(chunk) = response.chunk().await.map_err(|_| MetaFailure::Failed)? {
         body.extend_from_slice(&chunk);

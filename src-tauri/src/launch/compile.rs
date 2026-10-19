@@ -208,7 +208,15 @@ pub fn compile(inputs: &LaunchInputs<'_>) -> LauncherResult<CompiledLaunch> {
     let session = format!("token:{token}:{}", identity.uuid);
     values.insert("auth_session", session.clone());
 
-    let mut jvm_args = vec![format!("-Xmx{}M", inputs.max_heap_mib)];
+    // The initial heap is min(512 MiB, maximum) (spec 01/06); options the
+    // player added come later and win.
+    let mut jvm_args = vec![
+        format!("-Xmx{}M", inputs.max_heap_mib),
+        format!(
+            "-Xms{}M",
+            crate::validation::MemoryPolicy::initial_heap_mib(inputs.max_heap_mib)
+        ),
+    ];
     let mut native_dirs = Vec::new();
     for template in &plan.jvm_arguments {
         if template.contains("${auth_access_token}") || template.contains("${auth_session}") {

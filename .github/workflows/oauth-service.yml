@@ -1,0 +1,172 @@
+name: Account service
+
+# Launcher accounts at oauth.lapi.sh (docs/DECISIONS.md D-064): tests, a
+# release build, and a deploy over SSH to /home/www/lapi/oauth. The server
+# needs deploy/bootstrap.sh run as root once, and again when the nginx files
+# change (the deploy warns); the deploy uploads deploy/ to ~/lapi-bootstrap.
+#
+# Secrets: TURNSTILE_SECRET_KEY, SMTP_URL (smtps://user:password@host:465) and
+# MAIL_FROM go to the server through standard input, never a command line;
+# TURNSTILE_SITE_KEY is a repository variable (or secret). Without the Turnstile keys
+# nobody can register; without SMTP the letters wait.
+#
+# This repository is public, and so are its workflow logs: nothing about an
+# account and nothing about the server is printed here. "Run workflow" with
+# task=counts shows numbers only; accounts are looked up on the server
+# (lapi-oauth find).
+
+on:
+  push:
+    branches: [main, claude/launcher-account]
+    paths:
+      - services/oauth/**
+      - deploy/oauth/**
+      - deploy/*.sh
+      - deploy/nginx/**
+      - .github/workflows/oauth-service.yml
+      - .github/actions/**
+  pull_request:
+    paths:
+      - services/oauth/**
+      - deploy/oauth/**
+      - deploy/*.sh
+      - deploy/nginx/**
+      - .github/workflows/oauth-service.yml
+      - .github/actions/**
+  workflow_dispatch:
+    inputs:
+      task:
+        description: deploy, or counts of accounts
+        type: choice
+        options: [deploy, counts]
+        default: deploy
+
+permissions:
+  contents: read
+
+concurrency:
+  group: oauth-service-${{ github.ref }}
+  cancel-in-progress: false
+
+env:
+  CARGO_TERM_COLOR: always
+  CARGO_INCREMENTAL: 0
+
+jobs:
+  test:
+    name: Test and build
+    if: github.event_name != 'workflow_dispatch' || inputs.task == 'deploy'
+    runs-on: ubuntu-24.04
+    defaults:
+      run:
+        working-directory: services/oauth
+    steps:
+      - uses: actions/checkout@v5
+      - run: rustup show active-toolchain
+      - uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            services/oauth/target
+          key: oauth-${{ hashFiles('services/oauth/Cargo.lock', 'rust-toolchain.toml') }}
+      - run: cargo fmt --check
+      - run: cargo clippy --locked --all-targets -- -D warnings
+      - run: cargo test --locked
+      # Ubuntu 24.04's glibc (2.39) is older than Debian 13's (2.41), so the
+      # binary runs there.
+      - run: cargo build --locked --release
+      - name: Check the nginx files
+        working-directory: ${{ github.workspace }}
+        run: bash deploy/check-nginx.sh
+      - name: Package the release
+        run: |
+          mkdir -p ../../dist-oauth/nginx
+          cp target/release/lapi-oauth ../../dist-oauth/
+          cp ../../deploy/nginx/* ../../deploy/oauth/nginx/* ../../dist-oauth/nginx/
+          tar -czf ../../lapi-oauth.tar.gz -C ../../dist-oauth .
+      - uses: actions/upload-artifact@v4
+        with:
+          name: lapi-oauth
+          path: lapi-oauth.tar.gz
+          retention-days: 14
+
+  deploy:
+    # One deploy of this service at a time, from any branch or run.
+    concurrency:
+      group: oauth-deploy
+      cancel-in-progress: false
+    name: Deploy to oauth.lapi.sh
+    # Deploys use the production environment: Settings → Environments →
+    # production → Required reviewers makes each one wait for an approval.
+    environment: production
+    needs: test
+    if: >-
+      (github.event_name == 'push' && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/claude/launcher-account'))
+      || (github.event_name == 'workflow_dispatch' && inputs.task == 'deploy')
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/download-artifact@v4
+        with:
+          name: lapi-oauth
+      - uses: ./.github/actions/lapi-ssh
+        with:
+          ssh-key: ${{ secrets.SSH_KEY }}
+          known-hosts: ${{ secrets.SSH_KNOWN_HOSTS }}
+      - uses: ./.github/actions/lapi-upload
+        with:
+          service: oauth
+          target: ${{ secrets.SSH_USER }}@${{ secrets.SSH_HOST }}
+      - name: Deploy
+        env:
+          TARGET: ${{ secrets.SSH_USER }}@${{ secrets.SSH_HOST }}
+          # Public, so a repository variable; a secret of that name works too.
+          TURNSTILE_SITE_KEY: ${{ vars.TURNSTILE_SITE_KEY || secrets.TURNSTILE_SITE_KEY }}
+          TURNSTILE_SECRET_KEY: ${{ secrets.TURNSTILE_SECRET_KEY }}
+          SMTP_URL: ${{ secrets.SMTP_URL }}
+          MAIL_FROM: ${{ secrets.MAIL_FROM }}
+        run: |
+          set +e
+          # The secrets travel on standard input; deploy.sh keeps them in
+          # secrets.env (0640) and prints only their names.
+          printf 'LAPI_OAUTH_TURNSTILE_SITE_KEY=%s\nLAPI_OAUTH_TURNSTILE_SECRET=%s\nLAPI_OAUTH_SMTP_URL=%s\nLAPI_OAUTH_MAIL_FROM=%s\n' \
+            "$TURNSTILE_SITE_KEY" "$TURNSTILE_SECRET_KEY" "$SMTP_URL" "$MAIL_FROM" |
+            ssh "$TARGET" \
+              "bash ~/.lapi-bootstrap/$SETUP/deploy.sh oauth $RELEASE $ARCHIVE --secrets" 2>&1 | tee deploy.log
+          status=${PIPESTATUS[1]}
+          if grep -q NOT_BOOTSTRAPPED deploy.log; then
+            echo "::warning::The server is not set up yet: run 'sudo bash ~/lapi-bootstrap/bootstrap.sh <deploy-user>' on it once, then re-run this workflow."
+            exit 0
+          fi
+          if grep -qE 'NGINX_(PENDING|CHANGED)' deploy.log; then
+            echo "::warning::The nginx files on the server are not these: run 'sudo bash ~/lapi-bootstrap/bootstrap.sh <deploy-user>' on it to apply them."
+          fi
+          exit "$status"
+      - uses: ./.github/actions/lapi-check
+        with:
+          service: oauth
+          ssh-host: ${{ secrets.SSH_HOST }}
+
+  counts:
+    name: Account counts
+    if: github.event_name == 'workflow_dispatch' && inputs.task == 'counts'
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v5
+      - uses: ./.github/actions/lapi-ssh
+        with:
+          ssh-key: ${{ secrets.SSH_KEY }}
+          known-hosts: ${{ secrets.SSH_KNOWN_HOSTS }}
+      # `counts` prints numbers only: the logs of this public repository must
+      # not hold a nick, an address or anything else about an account.
+      - name: Counts
+        env:
+          TARGET: ${{ secrets.SSH_USER }}@${{ secrets.SSH_HOST }}
+        run: |
+          {
+            echo '### Launcher accounts'
+            echo '```json'
+            ssh "$TARGET" \
+              'sudo -n -u lapi-oauth /home/www/lapi/oauth/current/lapi-oauth counts'
+            echo '```'
+          } | tee -a "$GITHUB_STEP_SUMMARY"

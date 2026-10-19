@@ -1527,6 +1527,13 @@ message` plus a stack trace), with the event's level.
   user only restart the service, test and reload nginx and run the service's command
   line. After that, the "Crash service" workflow tests, builds on Debian 13 and
   deploys over SSH on every change to `main`.
+- **Since then** (D-062 to D-064 and the October 2026 audit): nginx files are root's,
+  in `/etc/nginx/lapi`, installed by `bootstrap.sh` only; the deploy user may only
+  restart each service and run its command line; the workflows build on Ubuntu 24.04
+  and deploy from `main` (and from a feature branch while it is being built), one
+  deploy per service at a time, through the `production` environment. The units are
+  hardened (system-call filter, `/home` hidden but the service's own folder), and
+  `bootstrap.sh` puts a unit back if its service does not answer with the new one.
 
 ### Security
 
@@ -1770,3 +1777,136 @@ archive from the Package workflow, upload it to
    install on close, the interface, `.deb` notice, backup before a new version.
 2. Automatic rollback after start failures; the beta channel in Settings (done).
 3. APT repository; code signing.
+
+## D-064 — Launcher account at oauth.lapi.sh, friends at friends.lapi.sh
+
+- **Status:** accepted (owner request, 2026-10-18) · **Affects:** the Accounts
+  tab, Play as, a chat icon in the corner, the new services `services/oauth`
+  (`https://oauth.lapi.sh`, `/home/www/lapi/oauth`) and, from stage 2,
+  `services/friends` (`https://friends.lapi.sh`, `/home/www/lapi/friends`).
+- **Goal.** Our own account, the **launcher account**, made and used inside the
+  launcher, for friends and chats and also as a player to choose in Play as.
+  The domain names the service; the code and the interface say "launcher
+  account".
+- **Owner's choices:** nick, email and password with Cloudflare Turnstile; the
+  sign-in pages are oauth.lapi.sh's own, in a window of the launcher with no
+  address bar; the registration address and country are kept for recovery by
+  hand; an external SMTP server comes later; nicks can change at any time;
+  chat history is kept without end and without end-to-end encryption; backups
+  later.
+
+### Account service (`lapi-oauth`, stage 1)
+
+- **Sign-in:** OAuth 2.1 authorization code with PKCE (S256) for the one client
+  `launcher`. The launcher opens `/authorize` in its own window; the pages are
+  served by oauth.lapi.sh, so the password never passes through the launcher's
+  interface and Turnstile runs on its own domain. A finished sign-in goes to
+  `https://oauth.lapi.sh/app/done?code=…&state=…`, which the window catches and
+  never shows; the code works once, for a minute, with the matching verifier.
+  `/authorize` refuses any other client, address, method or malformed
+  challenge or state without redirecting anywhere.
+- **Pages:** sign-in (nick or email), registration, password reset, email
+  confirmation; English, Russian and Arabic (the launcher passes its language).
+  Every value shown is HTML-escaped; no script of ours, only Turnstile's, under
+  a strict CSP (`frame-ancestors 'none'`, `form-action 'self'`); no caching, no
+  referrer. Forms carry a request ID and a CSRF token that must match the
+  `__Host-flow` cookie (`Secure; HttpOnly; SameSite=Strict`).
+- **Rules:** nick 3–16 of `A–Z a–z 0–9 _` (ASCII only, so no look-alike
+  letters), unique without regard to case, a few reserved; email a plain
+  address (no quotes, spaces or line breaks, so it cannot inject mail
+  headers); password 10–128 characters, not among the 20 000 most used of that
+  length, not containing the nick or the email's name.
+- **Storage:** SQLite; passwords as Argon2id (19 MiB, 2 passes), at most 8
+  hashed at once; codes, refresh tokens and email links as SHA-256 only; every
+  query with bound parameters. Each account keeps its registration address and
+  country (`CF-IPCountry`), its language, and a year of events (sign-ins,
+  password and nick changes) with country only.
+- **Tokens:** access tokens are JWT signed with Ed25519, 10 minutes, audience
+  `account` and `friends`, carrying the account ID, session, nick and whether
+  the email is confirmed; the key is made on the server at the first start and
+  never leaves it (`/.well-known/jwks.json` publishes the public half). Refresh
+  tokens are random, live 60 days from their last use and rotate on every use;
+  a used one presented again ends its session (a copy was stolen).
+- **Abuse:** per-address limits (an IPv6 /64 counts as one) and overall ones:
+  registration 5 an hour per address, sign-in 30. Turnstile always on
+  registration and reset, and on sign-in after 3 failures from an address or 5
+  against an account. No account is ever locked: its owner passes with the
+  captcha. A wrong nick and a wrong password read the same and take the same
+  time; "switched off" is said only to whoever knows the password. A reset
+  request answers the same whether or not the address has an account.
+  Registering an address that has an account says so (Turnstile and the limit
+  keep that from being a lookup service).
+- **Account API** (bearer access token, its session must be live): the
+  account, nick change (any time; only 30 a day against scripts), password
+  change (needs the current one, ends the other sessions, mails a notice),
+  email change (needs the password, to be confirmed), confirmation letter
+  again, sessions and ending them.
+- **Mail:** letters wait in an outbox; a worker sends them through the SMTP
+  server in `SMTP_URL` once it is set. Until then nothing is confirmed by mail.
+- **Owner's commands on the server:** `lapi-oauth find <nick|email|id>`
+  (account, registration address and country, sessions, events), `disable`,
+  `enable`, `sign-out`, `set-email`, `confirm-email`, `counts`. The workflow's
+  `counts` task prints numbers only.
+- **Deployment** as for the other services: Cloudflare-only nginx, root-owned
+  nginx files, a hardened systemd unit, no addresses in the access log. The
+  Turnstile secret and the SMTP settings travel from GitHub secrets on standard
+  input into `secrets.env` (0640), never on a command line or in a log.
+
+### In the launcher (stage 1)
+
+- Accounts tab, section **Launcher account**: "Sign in" and "Create account"
+  open the oauth.lapi.sh window (no IPC, navigation only to oauth.lapi.sh and
+  Turnstile); signed in: the nick, whether the email is confirmed, change nick,
+  sign out. The refresh token is in the OS credential vault; the access token
+  only in memory.
+- **Play as:** the launcher account is one more player to choose; it plays
+  under its nick without a Minecraft token (Minecraft's demo, as no-token
+  profiles do, D-045).
+
+### Friends (stages 2–4, friends.lapi.sh)
+
+- A small chat icon in the corner opens everything: friends, requests in and
+  out, add by exact nick, accept, decline, block (the blocked side is not
+  told), chats with a friend and rooms of 2+ friends. Messages are text up to
+  2000 characters, shown as plain text, stored without end, delivered over a
+  WebSocket held by the launcher's core.
+- friends.lapi.sh checks access tokens with the published key and knows only
+  account IDs and nicks; it asks the account service for nicks over an
+  internal API on 127.0.0.1:8793 that nginx never serves.
+- **Requests:** by exact nick (case-insensitive). A request that meets the
+  other side's is a friendship at once. Decline and cancel are not told.
+  Block removes the friendship and requests; whoever is blocked is not told:
+  their requests read as sent and reach nobody, and their messages in shared
+  groups are hidden from who blocked them.
+- **Rooms:** one per pair of friends, made when one of them first opens it;
+  groups of an owner and 2–19 friends, at most 50 groups per owner. The owner
+  adds friends, removes members and renames; anyone leaves; an owner who
+  leaves passes the group to who joined first. Two people who are no longer
+  friends keep their chat to read, and write no more.
+- **Messages:** 1–2000 characters, control and direction characters taken
+  out, at most 2 empty lines in a row; kept without end, no end-to-end
+  encryption. Unread counts per room; a report of a message goes to the owner
+  (`lapi-friends reports`).
+- **Limits per account:** 20 requests an hour, 120 other actions an hour,
+  messages 5 in 10 s and 600 an hour, 5 live connections.
+- **In the launcher:** the core holds the WebSocket (`/v1/live`, Bearer token
+  in the header, reconnects with a fresh token and backoff, ends when the
+  account signs out), refreshes the lists on each event and sends the
+  interface `friends://state` and `friends://message`. The chat icon sits
+  left of the downloads, with a badge of unread messages plus requests. Its
+  panel: Chats, Friends (add by nick, message, remove and block after a
+  confirmation, the blocked list), Requests (accept, decline, block,
+  cancel), a new group, and a chat with its history a page of 50 at a time,
+  Enter to send and Shift+Enter for a new line, reports, and the owner's
+  member list. Message text is rendered as text only (no markup, no links),
+  each message with its own direction.
+
+### Stages
+
+1. Account service and the launcher account (sign-in, registration, nick,
+   Play as).
+2. Friends: requests, accept, decline, block, the list; the chat icon.
+3. Chat with a friend: WebSocket, history, unread.
+4. Rooms of 2+ friends.
+5. Later: two-factor codes, mails about new sign-ins, reports of messages,
+   account deletion and export, backups.

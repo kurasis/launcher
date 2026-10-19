@@ -1,7 +1,10 @@
-// Frontend mirror of the Rust DTOs in src-tauri/src/state/dto.rs, src-tauri/src/error.rs
-// and src-tauri/src/commands/. Field names use camelCase because the Rust structs are
-// serialized with `rename_all = "camelCase"`. Keep both sides in sync and bump
-// API_SCHEMA_VERSION on incompatible changes.
+// Frontend mirror of the Rust types the core sends: most live in
+// src-tauri/src/state/dto.rs and error.rs, the rest beside their feature (update.rs,
+// friends.rs, traffic.rs, gallery/, launch/crash.rs, storage/models.rs, ...). Field
+// names use camelCase because the Rust structs are serialized with
+// `rename_all = "camelCase"`. Keep both sides in sync and bump API_SCHEMA_VERSION here
+// and in dto.rs on incompatible changes; the two ship in one binary, so it records
+// the version rather than being checked at run time.
 
 export const API_SCHEMA_VERSION = 1;
 
@@ -298,8 +301,117 @@ export interface UpdateView {
 /** Origins with the mirror as fallback, the mirror first, or never the mirror (D-062). */
 export type DownloadSource = 'automatic' | 'mirror_first' | 'origin_only';
 
-/** Who plays: a Microsoft account (Minecraft profile ID) or a no-token profile (D-045). */
-export type ProfileRef = { kind: 'microsoft'; id: string } | { kind: 'notoken'; id: string };
+/** Who plays: a Microsoft account (Minecraft profile ID), a no-token profile (D-045)
+ * or the launcher account (D-064). */
+export type ProfileRef =
+  | { kind: 'microsoft'; id: string }
+  | { kind: 'notoken'; id: string }
+  | { kind: 'launcher'; id: string };
+
+/** What went wrong with the launcher account. */
+export type LauncherAccountProblem =
+  | 'network'
+  | 'sign_in_again'
+  | 'nick_taken'
+  | 'nick_reserved'
+  | 'nick_invalid'
+  | 'too_many'
+  | 'vault'
+  | 'server';
+
+/** The launcher account at oauth.lapi.sh (D-064). Never contains tokens. */
+export interface LauncherAccountView {
+  /** Signed in on this computer. */
+  id: string | null;
+  nick: string | null;
+  emailVerified: boolean;
+  /** The sign-in window is open. */
+  signingIn: boolean;
+  /** The saved sign-in no longer works. */
+  needsSignIn: boolean;
+  problem: LauncherAccountProblem | null;
+}
+
+/** Why a friends action failed (D-064). */
+export type FriendsProblem =
+  | 'signed_out'
+  | 'network'
+  | 'no_such_nick'
+  | 'yourself'
+  | 'you_blocked'
+  | 'limit'
+  | 'too_many'
+  | 'not_friends'
+  | 'not_owner'
+  | 'invalid'
+  | 'server';
+
+export const FRIENDS_PROBLEMS: readonly FriendsProblem[] = [
+  'signed_out',
+  'network',
+  'no_such_nick',
+  'yourself',
+  'you_blocked',
+  'limit',
+  'too_many',
+  'not_friends',
+  'not_owner',
+  'invalid',
+  'server',
+];
+
+/** Someone in a friends list; `at` is when (Unix seconds) they became one. */
+export interface FriendPerson {
+  id: string;
+  nick: string;
+  at: number;
+}
+
+export interface RoomMember {
+  id: string;
+  nick: string;
+}
+
+/** A chat message as the friends server stored it; `body` is plain text. */
+export interface ChatMessage {
+  id: number;
+  room: string;
+  sender: string;
+  body: string;
+  /** Unix seconds. */
+  created: number;
+}
+
+export interface ChatRoom {
+  id: string;
+  /** Two friends, or a group of three or more. */
+  kind: 'direct' | 'group';
+  name: string;
+  owner: string;
+  members: RoomMember[];
+  last: ChatMessage | null;
+  unread: number;
+}
+
+/** Friends and chats of the launcher account (friends.lapi.sh, D-064). */
+export interface FriendsView {
+  signedIn: boolean;
+  /** The live connection is open. */
+  connected: boolean;
+  me: RoomMember | null;
+  friends: FriendPerson[];
+  incoming: FriendPerson[];
+  outgoing: FriendPerson[];
+  blocked: FriendPerson[];
+  rooms: ChatRoom[];
+  unread: number;
+  problem: FriendsProblem | null;
+}
+
+export type FriendAction = 'accept' | 'decline' | 'cancel' | 'remove' | 'block' | 'unblock';
+
+/** A request was sent, or it met theirs and you are friends now. */
+export type FriendRequestResult = 'sent' | 'friends';
 
 /** One Microsoft account. Never contains tokens. */
 export interface MicrosoftAccount {
@@ -335,6 +447,7 @@ export interface AccountSummary {
   notokenProfiles: NoTokenProfile[];
   /** Who installations play as unless they name another profile. */
   defaultProfile: ProfileRef | null;
+  launcherAccount: LauncherAccountView;
 }
 
 export type ExternalLink =

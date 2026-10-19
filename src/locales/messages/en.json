@@ -29,19 +29,14 @@
       "noResponse": "The launcher core did not respond."
     },
     "accountView": {
-      "title": "Microsoft account",
-      "signIn": "Sign in with Microsoft",
       "signInAgain": "Sign in again",
       "signInHint": "Sign-in opens your web browser. The launcher never sees your password; it only receives a sign-in code from Microsoft.",
       "notConfigured": "Sign-in is unavailable in this build because no project-owned Microsoft application ID is configured (see docs/AUTH-SETUP.md).",
       "waiting": "Finish signing in with your web browser. This window updates automatically.",
       "cancel": "Cancel sign-in",
       "checking": "Checking your account…",
-      "verified": "Minecraft: Java Edition access verified for this session.",
       "verifiedNote": "Access is checked again every time you start the game.",
-      "signOut": "Sign out",
       "signOutHint": "Signing out removes the saved sign-in from this computer. It does not sign you out of Microsoft in your browser.",
-      "retrySignOut": "Try signing out again",
       "checkAgain": "Check again",
       "sessionOnly": "The system credential store is unavailable, so you will need to sign in again after the launcher restarts.",
       "links": {
@@ -68,25 +63,7 @@
         "sign_out_pending": "Sign-out incomplete"
       }
     },
-    "account": {
-      "label": "Account",
-      "state": {
-        "signed_out": "Not signed in",
-        "signing_in": "Signing in…",
-        "refreshing": "Checking account…",
-        "verified_access": "Signed in",
-        "no_access": "No Java Edition access",
-        "profile_setup_required": "Profile setup required",
-        "reauth_required": "Sign-in required",
-        "service_unavailable": "Account service unavailable",
-        "app_not_approved": "Launcher not approved",
-        "restricted": "Account restricted",
-        "protocol_error": "Account check failed",
-        "sign_out_pending": "Sign-out incomplete"
-      }
-    },
     "accounts": {
-      "title": "Accounts",
       "microsoftTitle": "Microsoft accounts",
       "microsoftHint": "An account that has Minecraft: Java Edition plays the full game. You can add several and choose which one each installation uses.",
       "none": "No Microsoft account added yet.",
@@ -107,12 +84,37 @@
       "notokenLabel": "{name}",
       "playAs": "Play as",
       "playAsDefault": "Default: {name}",
-      "chipLabel": "Plays as"
+      "chipLabel": "Plays as",
+      "launcherTitle": "Launcher account",
+      "launcherHint": "Your own account for friends and chats. You can also play as it: the game starts under its nick, as Minecraft's demo.",
+      "launcherSignIn": "Sign in",
+      "launcherRegister": "Create account",
+      "launcherWaiting": "Finish in the window that opened.",
+      "launcherNick": "Nick",
+      "launcherEmailConfirmed": "Email confirmed",
+      "launcherEmailNotConfirmed": "Email not confirmed yet",
+      "launcherResend": "Send the letter again",
+      "launcherResent": "A new letter is on its way.",
+      "launcherChangeNick": "Change nick",
+      "launcherSaveNick": "Save",
+      "launcherCancel": "Cancel",
+      "launcherNickChanged": "The nick is changed.",
+      "launcherSignOut": "Sign out",
+      "launcherLabel": "{name} (launcher account)",
+      "launcherProblems": {
+        "network": "oauth.lapi.sh cannot be reached. Check the connection and try again.",
+        "sign_in_again": "The sign-in has ended. Sign in again.",
+        "nick_taken": "This nick is taken.",
+        "nick_reserved": "This nick is reserved. Choose another.",
+        "nick_invalid": "A nick has 3 to 16 letters A–Z, digits or _.",
+        "too_many": "Too many attempts. Wait a little and try again.",
+        "vault": "The system credential store did not keep the sign-in; it lasts until the launcher closes.",
+        "server": "Something went wrong on the account server. Try again later."
+      }
     },
     "instances": {
       "title": "Installations",
       "empty": "No installations yet. Create one to choose a Minecraft version.",
-      "selected": "Selected",
       "create": "New installation",
       "health": {
         "not_installed": "Not installed",
@@ -239,10 +241,10 @@
       "title": "Installation settings",
       "summaryTitle": "Details",
       "version": "Version",
-      "status": "Status",
       "openFolder": "Open game folder",
       "openFolderHint": "Worlds, screenshots and options of this installation are stored there.",
       "lastResult": "Last result",
+      "exitCode": "exit code {code}",
       "noResult": "None yet",
       "memory": "Maximum memory (MiB)",
       "memoryHint": "Between {min, number, ::group-off} and {max, number, ::group-off} MiB on this computer.",
@@ -766,6 +768,8 @@
     },
     "console": {
       "title": "Console",
+      "sourceLabel": "Show lines from",
+      "levelLabel": "Show levels",
       "open": "Open console",
       "openHint": "Everything the launcher does and everything the game prints, live, in a separate window (Ctrl+Shift+L).",
       "sources": {
@@ -795,7 +799,6 @@
       "windowTitle": "Launcher console"
     },
     "diagnostics": {
-      "title": "Diagnostics",
       "recentTitle": "Recent operations",
       "columns": {
         "operation": "Operation",
@@ -834,8 +837,7 @@
       "help": "Minecraft Help"
     },
     "foundation": {
-      "title": "Project status",
-      "body": "Installing, repairing and launching are implemented. Starting the game needs Microsoft sign-in, which this build cannot offer until the project supplies its own Microsoft application ID."
+      "body": "Installing, repairing and launching are implemented. Without a Microsoft account the game starts as Minecraft's demo, under a profile without an account or the launcher account."
     },
     "units": {
       "bytes": "{count, plural, one {# byte} other {# bytes}}",
@@ -962,7 +964,6 @@
       "count": "{count, plural, one {# screenshot} other {# screenshots}}",
       "refresh": "Refresh",
       "open": "Open the screenshot of {date}",
-      "viewer": "Screenshot",
       "details": "{date} · {size}",
       "dimensions": "{width} × {height}",
       "position": "{index, number} of {count, number}",
@@ -1096,6 +1097,73 @@
       "queued": "Queued: starts when the current operation ends.",
       "addToQueue": "Add to queue",
       "waitingForNetwork": "Waiting for the internet connection"
+    },
+    "friends": {
+      "open": "Friends and chats",
+      "unread": "{count, plural, one {# unread message} other {# unread messages}}",
+      "title": "Friends",
+      "tabs": {
+        "chats": "Chats",
+        "friends": "Friends",
+        "requests": "Requests"
+      },
+      "signedOut": "Friends and chats need a launcher account. Sign in or create one in Accounts.",
+      "goToAccounts": "Open Accounts",
+      "offline": "Not connected. Trying again…",
+      "noChats": "No chats yet. Start one from the Friends tab.",
+      "noFriends": "No friends yet. Add someone by their nick.",
+      "noRequests": "No requests.",
+      "incoming": "Asking you",
+      "outgoing": "You asked",
+      "addLabel": "Add a friend by nick",
+      "addHint": "The exact nick, as they see it in the launcher.",
+      "add": "Send request",
+      "sent": "Request sent to {nick}.",
+      "nowFriends": "You and {nick} are friends now.",
+      "message": "Message",
+      "remove": "Remove",
+      "block": "Block",
+      "unblock": "Unblock",
+      "accept": "Accept",
+      "decline": "Decline",
+      "cancel": "Cancel",
+      "blocked": "Blocked",
+      "blockedHint": "They do not know. They cannot ask you or write to you.",
+      "confirmBlock": "Block {nick}? They will not be told.",
+      "confirmRemove": "Remove {nick} from your friends?",
+      "newGroup": "New group",
+      "groupName": "Group name",
+      "groupMembers": "Friends in it (at least 2)",
+      "createGroup": "Create",
+      "back": "Back",
+      "members": "{count, plural, one {# person} other {# people}}",
+      "rename": "Rename",
+      "addMember": "Add a friend",
+      "leave": "Leave the group",
+      "removeMember": "Remove from the group",
+      "earlier": "Earlier messages",
+      "noMessages": "No messages yet. Say hi.",
+      "write": "Write a message",
+      "send": "Send",
+      "sendHint": "Enter sends, Shift+Enter starts a new line.",
+      "report": "Report",
+      "reported": "Reported. Thank you.",
+      "reportReason": "What is wrong with it?",
+      "you": "You",
+      "readOnly": "You are no longer friends: you can read this chat but not write in it.",
+      "problems": {
+        "signed_out": "Sign in to your launcher account again.",
+        "network": "friends.lapi.sh cannot be reached. Try again later.",
+        "no_such_nick": "There is no one with this nick.",
+        "yourself": "That is you.",
+        "you_blocked": "You blocked this person. Unblock them first.",
+        "limit": "You have reached the limit of friends, requests or groups.",
+        "too_many": "Too fast. Wait a moment and try again.",
+        "not_friends": "Only friends can do this.",
+        "not_owner": "Only the group's owner can do this.",
+        "invalid": "This is not valid.",
+        "server": "Something went wrong on the friends server. Try again later."
+      }
     }
   },
   "errors": {

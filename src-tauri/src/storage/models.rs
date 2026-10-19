@@ -221,7 +221,19 @@ pub struct NoTokenRecord {
     pub name: String,
 }
 
-/// Who plays: a Microsoft account (by Minecraft profile ID) or a no-token profile.
+/// The launcher account signed in on this computer (D-064): who it is, never
+/// a token (the refresh token is in the OS credential vault).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct LauncherAccountRecord {
+    pub id: String,
+    pub nick: String,
+    #[serde(default)]
+    pub email_verified: bool,
+}
+
+/// Who plays: a Microsoft account (by Minecraft profile ID), a no-token
+/// profile, or the launcher account (D-064).
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
 #[serde(tag = "kind", rename_all = "snake_case")]
 pub enum ProfileRef {
@@ -230,6 +242,9 @@ pub enum ProfileRef {
     },
     #[serde(rename = "notoken")]
     NoToken {
+        id: String,
+    },
+    Launcher {
         id: String,
     },
 }
@@ -250,6 +265,8 @@ pub struct AccountsFile {
     pub accounts: Vec<AccountRecord>,
     #[serde(default)]
     pub notoken_profiles: Vec<NoTokenRecord>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub launcher_account: Option<LauncherAccountRecord>,
     /// The profile installations play as unless they name another one.
     #[serde(default)]
     pub default_profile: Option<ProfileRef>,
@@ -267,6 +284,7 @@ impl Default for AccountsFile {
             sign_out_pending: false,
             accounts: Vec::new(),
             notoken_profiles: Vec::new(),
+            launcher_account: None,
             default_profile: None,
             pending_sign_outs: Vec::new(),
         }
@@ -299,6 +317,9 @@ impl AccountsFile {
         match profile {
             ProfileRef::Microsoft { id } => self.accounts.iter().any(|a| a.profile_id == *id),
             ProfileRef::NoToken { id } => self.notoken_profiles.iter().any(|p| p.id == *id),
+            ProfileRef::Launcher { id } => {
+                self.launcher_account.as_ref().is_some_and(|a| a.id == *id)
+            }
         }
     }
 
@@ -307,6 +328,11 @@ impl AccountsFile {
         match profile {
             ProfileRef::Microsoft { id } => self.accounts.retain(|a| a.profile_id != *id),
             ProfileRef::NoToken { id } => self.notoken_profiles.retain(|p| p.id != *id),
+            ProfileRef::Launcher { id } => {
+                if self.launcher_account.as_ref().is_some_and(|a| a.id == *id) {
+                    self.launcher_account = None;
+                }
+            }
         }
         if self.default_profile.as_ref() == Some(profile) {
             self.default_profile = None;

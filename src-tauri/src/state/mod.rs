@@ -71,6 +71,7 @@ struct Data {
     queue: Vec<QueuedOperation>,
     network: dto::NetworkStatus,
     update: crate::update::UpdateView,
+    launcher_account: crate::launcher_account::Status,
     operation_progress: Option<OperationProgress>,
     recent_operations: VecDeque<OperationResult>,
 }
@@ -121,6 +122,7 @@ impl AppState {
                 queue: Vec::new(),
                 network: dto::NetworkStatus::Unknown,
                 update: crate::update::UpdateView::default(),
+                launcher_account: crate::launcher_account::Status::default(),
                 operation_progress: None,
                 recent_operations: VecDeque::new(),
             },
@@ -687,6 +689,32 @@ impl AppState {
             },
             Change::Account,
         );
+    }
+
+    /// Changes what the launcher account shows (D-064) and announces it.
+    pub fn set_launcher_account_status(
+        &self,
+        edit: impl FnOnce(&mut crate::launcher_account::Status),
+    ) {
+        self.publish(
+            |data| {
+                let before = data.launcher_account.clone();
+                edit(&mut data.launcher_account);
+                data.launcher_account != before
+            },
+            Change::Account,
+        );
+    }
+
+    /// The nick of the launcher account if `id` is the one signed in.
+    pub fn launcher_account_nick(&self, id: &str) -> Option<String> {
+        self.lock()
+            .data
+            .accounts
+            .launcher_account
+            .as_ref()
+            .filter(|a| a.id == id)
+            .map(|a| a.nick.clone())
     }
 
     /// The persisted account metadata (`accounts.json`).
@@ -1801,7 +1829,7 @@ fn profile_not_found() -> LauncherError {
 fn known_profile(data: &Data, profile: &ProfileRef) -> bool {
     match profile {
         ProfileRef::Microsoft { id } => data.auth.accounts.iter().any(|a| a.profile_id == *id),
-        ProfileRef::NoToken { .. } => data.accounts.contains(profile),
+        ProfileRef::NoToken { .. } | ProfileRef::Launcher { .. } => data.accounts.contains(profile),
     }
 }
 
@@ -1833,6 +1861,10 @@ fn account_summary(data: &Data) -> AccountSummary {
             .default_profile
             .clone()
             .filter(|p| known_profile(data, p)),
+        launcher_account: crate::launcher_account::LauncherAccountView::new(
+            data.accounts.launcher_account.as_ref(),
+            &data.launcher_account,
+        ),
     }
 }
 

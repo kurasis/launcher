@@ -256,6 +256,10 @@ impl Server {
             if !plain_name(&platform.file) {
                 return Err(format!("bad file name {:?}", platform.file));
             }
+            // Both name manifest files and appear on the download page.
+            if !plain_name(&platform.target) || !plain_name(&platform.bundle) {
+                return Err(format!("bad target or bundle for {:?}", platform.file));
+            }
             let bytes = fs::read(dir.join(&platform.file))
                 .map_err(|_| format!("{} is listed but not in the archive", platform.file))?;
             if hex::encode(sha2::Sha256::digest(&bytes)) != platform.sha256.to_ascii_lowercase() {

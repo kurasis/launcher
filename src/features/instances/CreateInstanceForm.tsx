@@ -192,14 +192,25 @@ export function CreateInstanceForm({
   const availability = selected?.availability ?? 'catalog_unavailable';
   const loaderReady = loaderKind === 'none' || loader !== null;
 
+  // An estimate answers for the version and loader it was asked for: one that
+  // arrives after either changed is dropped.
+  const planAsked = useRef(0);
+  useEffect(() => {
+    planAsked.current += 1;
+  }, [versionId, loaderKind, loaderVersion]);
+
   const estimate = async () => {
+    const asked = ++planAsked.current;
     setEstimating(true);
     setPlanError(null);
     try {
-      setPlan(await ipc.previewInstallPlan(versionId, loader));
+      const answer = await ipc.previewInstallPlan(versionId, loader);
+      if (asked === planAsked.current) setPlan(answer);
     } catch (error) {
-      setPlan(null);
-      setPlanError(describeIpcError(error));
+      if (asked === planAsked.current) {
+        setPlan(null);
+        setPlanError(describeIpcError(error));
+      }
     } finally {
       setEstimating(false);
     }

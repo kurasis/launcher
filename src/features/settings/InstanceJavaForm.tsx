@@ -11,6 +11,7 @@ import type {
   JavaProvider,
 } from '../../lib/contracts';
 import { ipc } from '../../lib/ipc';
+import { useShownError } from '../../lib/useShownError';
 import { strings } from '../../lib/strings';
 import { useCommand } from '../../lib/useCommand';
 import { javaLabel } from './javaLabel';
@@ -45,14 +46,18 @@ export function InstanceJavaForm({ instance }: { instance: InstanceSummary }) {
   const [pendingCheck, setPendingCheck] = useState<JavaCheck | null>(null);
   const [lastCheck, setLastCheck] = useState<JavaCheck | null>(null);
   const [saved, setSaved] = useState(false);
+  const picking = useShownError();
   const check = useCommand((_requestId: string, javaPath: string) =>
     ipc.checkJava(instance.id, javaPath),
   );
-  const save = useCommand((requestId: string, java: JavaChoice, accept: boolean) =>
-    ipc.setInstanceJava(
-      { instanceId: instance.id, java, jvmArguments: args, acceptIssues: accept },
-      requestId,
-    ),
+  // Every value sent is an argument: useCommand keeps a request ID only for
+  // a retry with the same ones.
+  const save = useCommand(
+    (requestId: string, java: JavaChoice, jvmArguments: string, accept: boolean) =>
+      ipc.setInstanceJava(
+        { instanceId: instance.id, java, jvmArguments, acceptIssues: accept },
+        requestId,
+      ),
   );
   const repair = useCommand((requestId: string) => ipc.repairInstance(instance.id, requestId));
   const installed = instance.java !== null;
@@ -65,7 +70,7 @@ export function InstanceJavaForm({ instance }: { instance: InstanceSummary }) {
 
   const store = async (java: JavaChoice, accept: boolean) => {
     setPendingCheck(null);
-    const result = await save.run(java, accept);
+    const result = await save.run(java, args, accept);
     if (result) setSaved(true);
   };
 
@@ -165,12 +170,16 @@ export function InstanceJavaForm({ instance }: { instance: InstanceSummary }) {
             <Button
               disabled={busy}
               onClick={() => {
-                void ipc.pickJavaFile().then((picked) => {
-                  if (picked !== null) {
-                    setPath(picked);
-                    edited();
-                  }
-                });
+                picking.clear();
+                void ipc
+                  .pickJavaFile()
+                  .then((picked) => {
+                    if (picked !== null) {
+                      setPath(picked);
+                      edited();
+                    }
+                  })
+                  .catch(picking.catcher);
               }}
             >
               {t.browse}
@@ -190,6 +199,7 @@ export function InstanceJavaForm({ instance }: { instance: InstanceSummary }) {
       )}
       {check.pending && <p role="status">{t.checking}</p>}
       {check.error !== null && <Notice tone="danger">{check.error}</Notice>}
+      {picking.error !== null && <Notice tone="danger">{picking.error}</Notice>}
       {pendingCheck !== null && (
         <Notice tone="warning">
           {pendingCheck.issues.map((issue) => (

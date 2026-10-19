@@ -1864,3 +1864,81 @@ proxy that was stopped and started to cut and restore the connection.
 - **Not tested here:** installing for real on Windows and macOS (needs
   a signed release from the Package workflow and two versions); this is the
   first check to make after the key is configured.
+
+## Launcher account (D-064, stage 1)
+
+- **lapi-oauth tests (19):** registration through `/authorize` with PKCE and
+  the code exchange; the access token verifies with the published JWK for
+  `friends`; registration keeps address and country; Argon2id hashes; a code
+  needs its verifier and works once; another client is refused; refresh tokens
+  rotate and a reused one ends the session; sign-out; a wrong nick and a wrong
+  password read the same; the captcha after 3 failures from an address or 5
+  against an account, never a lockout; forms without their cookie, with
+  another cookie or an unknown request do nothing; registration without the
+  captcha does nothing; HTML, SQL, NUL bytes, Cyrillic look-alikes and mail
+  header injection in every field are refused or shown escaped; oversized and
+  broken bodies end in 4xx; `/authorize` refuses foreign redirect addresses,
+  clients, `plain` PKCE, bad challenges and states without redirecting or
+  setting a cookie; foreign-key, unsigned and junk tokens are refused; nick
+  changes (taken, invalid, case of one's own), password changes ending the
+  other sessions; confirmation and reset links work once, and a reset answers
+  the same for unknown addresses; the register limit and switched-off
+  accounts. Plus unit tests of the rules, tokens and pages.
+- **Behind the real nginx files (local, release binary):** CSP, HSTS,
+  `X-Frame-Options`, `no-store`, the `__Host-flow` cookie; without Turnstile
+  keys registration says to confirm the captcha and nothing is created; JWKS
+  served; unknown paths 404; a 50 KB body 413.
+- **In the launcher, live (2026-10-18, Linux, Xvfb, a release launcher built
+  with `LAUNCHER_ACCOUNT_URL` pointing at a local lapi-oauth):** Accounts →
+  Launcher account → Sign in opened "Launcher account: sign in" with the
+  server's page and no address bar; a wrong password was refused on the page;
+  the right one closed the window by itself and showed the account (nick,
+  "email not confirmed"); `accounts.json` held only the ID and nick (the
+  container has no credential vault, so the refresh token stayed in memory,
+  with a warning in the log). Change nick worked; `Admin` was refused as
+  reserved; Use by default made the top bar say "Plays as: … (launcher
+  account)"; Send the letter again queued a letter; Sign out ended the session
+  on the server (`revoked`) and cleared the account and the default. The
+  server's events: signed-in, nick-changed, verification-sent, signed-out,
+  with the session named "Linux (x86_64)".
+- **Not tested here:** Turnstile itself (needs the real keys and
+  oauth.lapi.sh), letters (no SMTP yet), the OS credential vaults on Windows
+  and macOS.
+
+## Friends and chats (D-064, stages 2–4)
+
+- **lapi-friends tests (8):** requests, accept, decline, cancel, remove,
+  block and unblock end to end; rooms and groups with owner rules; messages,
+  history pages and unread counts; forged, expired, wrong-audience and junk
+  tokens; SQL-like nicks and IDs, path tricks, oversized and broken bodies;
+  bursts hitting the limits; reports; live events reaching only the right
+  people; a real WebSocket refusing connections without a token. Plus unit
+  tests of the text rules (control and direction characters out, lengths).
+- **Launcher:** Rust tests of the friends client (problems from statuses,
+  events), and 11 interface tests: signed out, badge, hostile HTML and
+  direction characters shown as text with no element made, Enter and
+  Shift+Enter, live messages only into their room, read-only chat with a
+  former friend, requests by nick with a refused SQL-like nick, block only
+  after confirming, accept/decline/cancel, groups of 2+ with a name, state
+  pushed by the core.
+- **Live, end to end (2026-10-18, Linux, Xvfb):** a release launcher built
+  with `LAUNCHER_ACCOUNT_URL` and `LAUNCHER_FRIENDS_URL` pointing at a local
+  lapi-oauth and lapi-friends; Alice signed in through the account window,
+  Bob and Carol used the API with their own tokens. Signed out, the chat icon
+  said to sign in and Open Accounts went there. Bob's request showed at once
+  as a badge; Accept made them friends on both sides. Alice asked
+  `carol_e2e` (other case); Carol accepted and Alice's list changed without a
+  reload. Bob's `<img onerror>`/`<script>` message, a right-to-left override
+  and five blank lines arrived live: the server had taken out the override
+  and kept two blank lines, the launcher showed the markup as text, a very
+  long word wrapped. Opening the chat marked it read. Alice's reply with
+  Shift+Enter and `${7*7} {{7*7}}` reached Bob verbatim; Bob's answer
+  appeared live. A report reached `lapi-friends reports` with its reason as
+  text. A group "Builders <3" with Bob and Carol was made from the panel and
+  Carol's message arrived live. Blocking Bob (after the confirmation) moved
+  him to Blocked; Bob could no longer write in the direct chat (403), his new
+  request answered "sent" and reached no one, and his group message reached
+  Carol but not Alice (no badge). Bob's access token expiring after 10
+  minutes ended his API calls until he signed in again.
+- **Not tested here:** friends.lapi.sh itself (needs the bootstrap run for
+  the new service), Windows and macOS.

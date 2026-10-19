@@ -125,7 +125,7 @@ export function ConsoleApp() {
     <div className={styles.shell}>
       <header className={styles.toolbar}>
         <h1 className={styles.title}>{t.title}</h1>
-        <div role="group" aria-label={t.sources.all} className={styles.segments}>
+        <div role="group" aria-label={t.sourceLabel} className={styles.segments}>
           {(['all', 'launcher', 'game'] as const).map((item) => (
             <button
               key={item}
@@ -141,7 +141,7 @@ export function ConsoleApp() {
           ))}
         </div>
         <select
-          aria-label={t.levels.all}
+          aria-label={t.levelLabel}
           className={styles.control}
           value={level}
           onChange={(event) => {

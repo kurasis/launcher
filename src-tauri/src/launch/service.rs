@@ -319,6 +319,13 @@ impl LaunchService {
                 .and_then(|name| super::notoken::NoTokenProfile::new(&name).ok())
                 .map(LaunchMode::NoToken)
                 .unwrap_or_else(|| LaunchMode::NoToken(Default::default())),
+            // The launcher account plays under its nick, without a Minecraft
+            // token (D-064).
+            Some(ProfileRef::Launcher { id }) => state
+                .launcher_account_nick(&id)
+                .and_then(|nick| super::notoken::NoTokenProfile::new(&nick).ok())
+                .map(LaunchMode::NoToken)
+                .unwrap_or_else(|| LaunchMode::NoToken(Default::default())),
             None => LaunchMode::NoToken(Default::default()),
         }
     }
@@ -792,7 +799,7 @@ impl LaunchService {
         let state = self.host.app_state();
         let logs_dir = root.run_logs(Uuid::parse_str(run_id).unwrap_or_default());
         logs::prune(
-            &root.path().join("logs").join("runs"),
+            &root.runs_dir(),
             Some(run_id),
             logs::MAX_RUNS,
             logs::MAX_TOTAL_BYTES,

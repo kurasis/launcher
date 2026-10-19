@@ -13,7 +13,10 @@ RestartSec=3
 UMask=0027
 NoNewPrivileges=yes
 ProtectSystem=strict
-ProtectHome=read-only
+# /home holds nothing else for it: only its own folder is there, its data writable.
+ProtectHome=tmpfs
+BindReadOnlyPaths=/home/www/lapi/crash
+BindPaths=/home/www/lapi/crash/data
 ReadWritePaths=/home/www/lapi/crash/data
 PrivateTmp=yes
 PrivateDevices=yes
@@ -23,11 +26,22 @@ ProtectControlGroups=yes
 ProtectClock=yes
 ProtectHostname=yes
 RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX
+# It only answers nginx on this server and calls nothing.
+IPAddressDeny=any
+IPAddressAllow=localhost
 RestrictNamespaces=yes
 RestrictRealtime=yes
 LockPersonality=yes
 MemoryDenyWriteExecute=yes
 SystemCallArchitectures=native
+# What a network service needs; anything else fails with EPERM.
+SystemCallFilter=@system-service
+SystemCallErrorNumber=EPERM
+ProtectKernelLogs=yes
+ProtectProc=invisible
+ProcSubset=pid
+RestrictSUIDSGID=yes
+RemoveIPC=yes
 CapabilityBoundingSet=
 MemoryMax=512M
 TasksMax=256

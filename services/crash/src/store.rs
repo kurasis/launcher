@@ -5,6 +5,52 @@ use std::io::{Read, Write};
 use std::path::{Path, PathBuf};
 use std::sync::Mutex;
 
+/// Causes the launcher names: its crash analysis (`launch/crash.rs`,
+/// `CrashKind`) and its own failures (`journal.rs`, `FailureKind`). Add a
+/// new one here too, or the public summary shows it as "other".
+pub const KINDS: &[&str] = &[
+    "jvm_option",
+    "heap_unavailable",
+    "java_too_old",
+    "java_too_new",
+    "missing_dependency",
+    "wrong_dependency_version",
+    "wrong_minecraft_version",
+    "loader_too_old",
+    "incompatible_mods",
+    "duplicate_mods",
+    "mod_for_other_loader",
+    "corrupt_mod_file",
+    "corrupt_config",
+    "mixin_failed",
+    "mod_failed_to_load",
+    "optifine_conflict",
+    "out_of_memory",
+    "pack_needs_memory",
+    "system_memory",
+    "killed",
+    "opengl_unsupported",
+    "graphics_driver",
+    "overlay",
+    "native_crash",
+    "missing_native_library",
+    "broken_installation",
+    "disk_full",
+    "file_access",
+    "world_load_failed",
+    "ticking_entity",
+    "ticking_block_entity",
+    "server_hang",
+    "debug_crash",
+    "game_crash",
+    "terminated",
+    "console_question",
+    "unknown",
+    "panic",
+    "frontend",
+    "unclean_exit",
+];
+
 use chrono::{DateTime, Utc};
 use flate2::Compression;
 use flate2::read::GzDecoder;
@@ -402,6 +448,32 @@ impl Store {
     /// Counts per cause for a public summary: only fixed words (source,
     /// cause, launcher version), never signatures, notes or files.
     pub fn overview(&self, days: i64) -> serde_json::Value {
+        // The summary is public: a cause the launcher does not name, or a
+        // version that is not one, is whatever a sender wrote, so it shows as
+        // "other".
+        let kind = |s: String| {
+            if KINDS.contains(&s.as_str()) {
+                s
+            } else {
+                "other".to_owned()
+            }
+        };
+        let version = |s: String| {
+            let (core, pre) = s.split_once('-').unwrap_or((&s, ""));
+            let numbers = core.split('.').count() == 3
+                && core.split('.').all(|p| {
+                    !p.is_empty() && p.len() <= 5 && p.bytes().all(|b| b.is_ascii_digit())
+                });
+            let label = pre.len() <= 16
+                && pre
+                    .bytes()
+                    .all(|b| b.is_ascii_lowercase() || b.is_ascii_digit() || b == b'.');
+            if numbers && label {
+                s
+            } else {
+                "other".to_owned()
+            }
+        };
         let since = Utc::now().timestamp() - days * 86_400;
         let since_day = day(Utc::now() - chrono::Duration::days(days));
         let word = |s: String| {
@@ -425,10 +497,10 @@ impl Store {
                 q.query_map([since], |r| {
                     Ok(serde_json::json!({
                         "source": word(r.get(0)?),
-                        "kind": word(r.get(1)?),
+                        "kind": kind(r.get(1)?),
                         "reports": r.get::<_, i64>(2)?,
                         "installs": r.get::<_, i64>(3)?,
-                        "newestLauncher": word(r.get(4)?),
+                        "newestLauncher": version(r.get(4)?),
                     }))
                 })
                 .map(|rows| rows.flatten().collect())
@@ -443,7 +515,7 @@ impl Store {
                 q.query_map([&since_day], |r| {
                     Ok(serde_json::json!({
                         "source": word(r.get(0)?),
-                        "kind": word(r.get(1)?),
+                        "kind": kind(r.get(1)?),
                         "count": r.get::<_, i64>(2)?,
                     }))
                 })
@@ -459,7 +531,7 @@ impl Store {
             .and_then(|mut q| {
                 q.query_map([&since_day], |r| {
                     Ok(serde_json::json!({
-                        "kind": word(r.get(0)?),
+                        "kind": kind(r.get(0)?),
                         "helped": r.get::<_, i64>(1)?,
                         "notHelped": r.get::<_, i64>(2)?,
                     }))

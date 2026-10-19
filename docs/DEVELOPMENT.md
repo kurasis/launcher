@@ -52,7 +52,7 @@ All commands run from the repository root.
 | `npx tauri build --no-bundle`     | Release binary only, at `src-tauri/target/release/launcher`            |
 
 CI (`.github/workflows/ci.yml`) runs the frontend checks once and the Rust checks plus a
-release shell build on Linux x64, Windows x64, macOS arm64 and macOS x64. The `Package`
+release shell build on Linux x64, Windows x64, Windows arm64, macOS arm64 and macOS x64. The `Package`
 workflow (`.github/workflows/package.yml`) builds and smoke-tests the installers; see
 [PACKAGING.md](PACKAGING.md).
 
@@ -113,6 +113,10 @@ evidence, never account evidence.
 | ------------------------ | -------------------------------- | ------------------------------------------------------------------------------------------ |
 | `LAUNCHER_MSA_CLIENT_ID` | Rust compile time                | Project-owned Microsoft public-client ID (non-secret). See [AUTH-SETUP.md](AUTH-SETUP.md). |
 | `LAUNCHER_DATA_ROOT`     | App start, **debug builds only** | Uses another data directory, for tests and demonstrations. Release builds ignore it.       |
+| `LAUNCHER_UPDATE_PUBKEY` | Rust compile time                | Public key of in-app updates; without it the build does not look for updates (D-063).      |
+| `LAUNCHER_UPDATE_URL`    | Rust compile time                | Another update server, for tests only.                                                     |
+| `LAUNCHER_ACCOUNT_URL`   | Rust compile time                | Another account server instead of `https://oauth.lapi.sh`, for tests only (D-064).         |
+| `LAUNCHER_FRIENDS_URL`   | Rust compile time                | Another friends server instead of `https://friends.lapi.sh`, for tests only (D-064).       |
 
 Example: `LAUNCHER_MSA_CLIENT_ID=<your-guid> npm run tauri dev`. Never put secrets, tokens or
 passwords into environment files that are committed; `.env*` files are git-ignored.
@@ -129,7 +133,7 @@ The layout follows [docs/spec/02-ARCHITECTURE-AND-STORAGE.md](spec/02-ARCHITECTU
 | `src/styles/`                                                            | Design tokens (`tokens.css`) and global styles                              |
 | `src/lib/ipc.ts`                                                         | The only place that calls Tauri `invoke`                                    |
 | `src/lib/contracts.ts`                                                   | TypeScript mirror of the Rust DTOs                                          |
-| `src/lib/strings.ts`                                                     | User-facing English strings                                                 |
+| `src/lib/strings.ts`                                                     | Interface texts: loads the language catalogs in `src/locales/messages/`     |
 | `src-tauri/src/commands/`                                                | IPC handlers (validation and delegation only)                               |
 | `src-tauri/src/{auth,catalog,install,runtime,launch,storage,lifecycle}/` | Core modules; each module doc comment names the phase that implements it    |
 | `src-tauri/capabilities/`                                                | Window permissions; each command is granted explicitly                      |

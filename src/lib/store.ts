@@ -116,8 +116,13 @@ export class SnapshotStore {
     };
   };
 
-  /** Fetches a fresh snapshot, for example after a failed command. */
+  /** Fetches a fresh snapshot, for example after a failed command. After a
+   * failed start it subscribes to the events again first. */
   refresh = (): void => {
+    if (this.unsubscribeEvents === null && this.listeners.size > 0) {
+      this.start();
+      return;
+    }
     void this.fetchSnapshot();
   };
 
@@ -134,6 +139,9 @@ export class SnapshotStore {
     void subscription.ready.then(
       () => this.fetchSnapshot(),
       (error: unknown) => {
+        // Without events the store would go stale: Retry starts over.
+        subscription.unsubscribe();
+        if (this.unsubscribeEvents === subscription.unsubscribe) this.unsubscribeEvents = null;
         this.setState({ status: 'error', message: describeIpcError(error) });
       },
     );

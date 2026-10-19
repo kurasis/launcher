@@ -1,5 +1,5 @@
 import { useCallback, useRef, useState } from 'react';
-import { describeIpcError } from './ipc';
+import { describeIpcError, isLauncherError } from './ipc';
 import { appStore } from './store';
 
 export interface CommandState {
@@ -37,7 +37,7 @@ export function useCommand<A extends unknown[], R>(
       } catch (error) {
         // A typed rejection is final for this request ID; only transport failures
         // keep the ID so a retry is recognized by the backend.
-        if (typeof error === 'object' && error !== null && 'code' in error) {
+        if (isLauncherError(error)) {
           requestId.current = null;
         }
         setState({ pending: false, error: describeIpcError(error) });

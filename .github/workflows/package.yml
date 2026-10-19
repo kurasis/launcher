@@ -2,8 +2,9 @@ name: Package
 
 # Builds private qualification packages for every claimed target, smoke-tests
 # them, and records checksums and build metadata (docs/spec/07, phase P12).
-# Nothing here creates a GitHub release or deploys anything: packages are kept
-# as workflow artifacts only. Signing credentials are read only on trusted
+# Packages are kept as workflow artifacts; with the update key, the release job
+# adds the signed update archive (docs/RELEASING.md). Nothing here creates a
+# GitHub release or deploys anything. Signing credentials are read only on trusted
 # events (push to main, manual dispatch) and only when the owner configured them.
 
 on:

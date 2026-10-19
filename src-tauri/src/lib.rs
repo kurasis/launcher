@@ -2,8 +2,7 @@
 //! disk access and child processes. The webview only renders state and sends typed
 //! requests through `commands`.
 //!
-//! Module layout follows docs/spec/02-ARCHITECTURE-AND-STORAGE.md. Modules that are
-//! still empty are filled by the phase named in their documentation.
+//! Module layout follows docs/spec/02-ARCHITECTURE-AND-STORAGE.md.
 
 pub mod auth;
 pub mod backup;
@@ -15,10 +14,12 @@ pub mod diagnostics;
 pub mod download;
 pub mod error;
 pub mod external;
+pub mod friends;
 pub mod gallery;
 pub mod install;
 pub mod journal;
 pub mod launch;
+pub mod launcher_account;
 pub mod lifecycle;
 pub mod loader;
 pub mod location;
@@ -30,6 +31,7 @@ pub mod runtime;
 pub mod secrets;
 pub mod state;
 pub mod storage;
+pub mod sync;
 pub mod traffic;
 pub mod update;
 pub mod validation;
@@ -62,7 +64,7 @@ impl EventSink for TauriSink {
     }
 }
 
-/// Gives the auth service access to the managed application state.
+/// Gives the install service access to the managed application state.
 struct TauriStateAccess(tauri::AppHandle);
 
 impl install::service::StateAccess for TauriStateAccess {
@@ -295,7 +297,7 @@ fn setup(app: &mut tauri::App) -> Result<(), Box<dyn std::error::Error>> {
     let version = app.package_info().version.to_string();
     // The launcher's own log and failure records (D-061).
     if let Some(root) = state.data_root() {
-        let logs = root.path().join("logs");
+        let logs = root.logs_dir();
         if journal::begin(&logs, &version).is_some() {
             state
                 .console()
@@ -414,7 +416,7 @@ fn setup(app: &mut tauri::App) -> Result<(), Box<dyn std::error::Error>> {
             // Failures of earlier sessions count once in the statistics.
             if let Some(root) = handle.state::<AppState>().data_root() {
                 let state = handle.state::<AppState>();
-                let logs = root.path().join("logs");
+                let logs = root.logs_dir();
                 for failure in journal::failures(&logs).into_iter().filter(|f| !f.counted) {
                     reports::count(
                         &state,
@@ -442,6 +444,29 @@ fn setup(app: &mut tauri::App) -> Result<(), Box<dyn std::error::Error>> {
                 reports.flush(&handle.state::<AppState>()).await;
                 reports.wait(std::time::Duration::from_secs(600)).await;
             }
+        });
+    }
+    // The launcher account (D-064): check the saved sign-in once the start settles.
+    let launcher_account = Arc::new(launcher_account::LauncherAccount::new(
+        &version,
+        Arc::new(auth::vault::KeyringStore),
+    )?);
+    app.manage(Arc::clone(&launcher_account));
+    {
+        let handle = app.handle().clone();
+        tauri::async_runtime::spawn(async move {
+            tokio::time::sleep(std::time::Duration::from_secs(5)).await;
+            launcher_account.check(&handle.state::<AppState>()).await;
+        });
+    }
+    // Friends and chats of the launcher account (D-064): one live connection.
+    {
+        let friends = Arc::new(friends::Friends::new(&version)?);
+        app.manage(Arc::clone(&friends));
+        let handle = app.handle().clone();
+        tauri::async_runtime::spawn(async move {
+            tokio::time::sleep(std::time::Duration::from_secs(6)).await;
+            friends.run(handle).await;
         });
     }
     let auth = Arc::new(create_auth_service(app.handle())?);
@@ -477,6 +502,9 @@ fn setup(app: &mut tauri::App) -> Result<(), Box<dyn std::error::Error>> {
             if monitor.check(&state).await {
                 let auth = Arc::clone(&reconnect_auth);
                 tauri::async_runtime::spawn(async move { auth.restore().await });
+                if let Some(friends) = handle.try_state::<Arc<friends::Friends>>() {
+                    friends.wake();
+                }
             }
             monitor.next(state.network()).await;
         }
@@ -589,7 +617,7 @@ pub fn run() {
             if let Some(root) = handle.state::<AppState>().data_root() {
                 traffic::flush(&root);
                 handle.state::<AppState>().console().info("Launcher closed");
-                journal::end(&root.path().join("logs"));
+                journal::end(&root.logs_dir());
             }
             // Last: on Windows the update's installer takes over from here (D-063).
             let updates = handle.state::<Arc<update::Updates>>();
@@ -600,7 +628,7 @@ pub fn run() {
     });
 }
 
-#[cfg(debug_assertions)]
+/// Every command; the lifecycle test ones only in debug builds.
 fn handlers<R: tauri::Runtime>() -> impl Fn(tauri::ipc::Invoke<R>) -> bool + Send + Sync + 'static {
     tauri::generate_handler![
         commands::get_app_info,
@@ -669,80 +697,23 @@ fn handlers<R: tauri::Runtime>() -> impl Fn(tauri::ipc::Invoke<R>) -> bool + Sen
         commands::dismiss_whats_new,
         commands::open_update_page,
         commands::interface_ready,
+        commands::launcher_account_open,
+        commands::launcher_account_sign_out,
+        commands::launcher_account_set_nick,
+        commands::launcher_account_resend_confirmation,
+        commands::friends_state,
+        commands::friends_request,
+        commands::friends_act,
+        commands::friends_open_direct,
+        commands::friends_create_group,
+        commands::friends_change_room,
+        commands::friends_messages,
+        commands::friends_send,
+        commands::friends_read,
+        commands::friends_report,
+        #[cfg(debug_assertions)]
         commands::start_lifecycle_test,
+        #[cfg(debug_assertions)]
         commands::stop_lifecycle_test,
-    ]
-}
-
-/// Release builds register no lifecycle test commands.
-#[cfg(not(debug_assertions))]
-fn handlers<R: tauri::Runtime>() -> impl Fn(tauri::ipc::Invoke<R>) -> bool + Send + Sync + 'static {
-    tauri::generate_handler![
-        commands::get_app_info,
-        commands::get_app_snapshot,
-        commands::create_instance,
-        commands::update_instance_settings,
-        commands::set_instance_notes,
-        commands::set_app_settings,
-        commands::show_main_window,
-        commands::open_console,
-        commands::get_data_location,
-        commands::move_data_location,
-        commands::pick_data_folder,
-        commands::check_java,
-        commands::set_instance_java,
-        commands::set_instance_loader,
-        commands::pick_java_file,
-        commands::list_backups,
-        commands::create_backup,
-        commands::restore_backup,
-        commands::delete_backup,
-        commands::inspect_instance,
-        commands::delete_instance,
-        commands::reset_preview,
-        commands::reset_launcher,
-        commands::recommend_memory,
-        commands::list_screenshots,
-        commands::delete_screenshot,
-        commands::open_screenshot,
-        commands::read_console,
-        commands::request_quit,
-        commands::begin_login,
-        commands::cancel_login,
-        commands::sign_out,
-        commands::verify_account,
-        commands::add_notoken_profile,
-        commands::remove_notoken_profile,
-        commands::set_default_profile,
-        commands::set_instance_profile,
-        commands::open_external,
-        commands::list_supported_versions,
-        commands::preview_install_plan,
-        commands::list_loader_game_versions,
-        commands::list_loader_versions,
-        commands::install_instance,
-        commands::repair_instance,
-        commands::cancel_operation,
-        commands::answer_download,
-        commands::check_network,
-        commands::get_traffic,
-        commands::reset_traffic,
-        commands::launch_game,
-        commands::stop_game,
-        commands::open_instance_folder,
-        commands::export_diagnostics,
-        commands::report_frontend_error,
-        commands::note_shown_error,
-        commands::list_launcher_failures,
-        commands::dismiss_launcher_failure,
-        commands::preview_crash_report,
-        commands::send_crash_report,
-        commands::send_explanation_feedback,
-        commands::check_for_update,
-        commands::download_update,
-        commands::restart_to_update,
-        commands::dismiss_whats_new,
-        commands::open_update_page,
-        commands::interface_ready,
     ]
 }
