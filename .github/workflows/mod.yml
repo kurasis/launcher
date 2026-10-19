@@ -2,6 +2,10 @@ name: Skins mod
 
 # Launcher Skins (docs/DECISIONS.md D-065): the core's tests and a jar for every
 # loader and game version, kept as artifacts. Nothing here talks to the server.
+# "Run workflow" with publish on makes the GitHub release skins-mod-v<mod/VERSION>
+# with the jars and their SHA-256 sums; the launcher downloads them from there,
+# pinned by those sums. A version is published once: a second run of the same
+# version fails instead of replacing files players already have.
 
 on:
   push:
@@ -14,6 +18,11 @@ on:
       - mod/**
       - .github/workflows/mod.yml
   workflow_dispatch:
+    inputs:
+      publish:
+        description: Publish the jars as release skins-mod-v<mod/VERSION>
+        type: boolean
+        default: false
 
 permissions:
   contents: read
@@ -52,3 +61,32 @@ jobs:
             !mod/*/*/build/libs/*-dev.jar
             !mod/*/*/build/libs/*-named.jar
           retention-days: 14
+
+  release:
+    name: Publish the jars
+    if: github.event_name == 'workflow_dispatch' && inputs.publish && github.ref == 'refs/heads/main'
+    needs: build
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/download-artifact@v4
+        with:
+          name: launcher-skins
+          path: artifact
+      - name: Make the release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          version=$(tr -d '[:space:]' < mod/VERSION)
+          [[ "$version" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]] || { echo "bad version"; exit 1; }
+          mkdir dist
+          find artifact -name 'launcherskins-*.jar' -exec cp {} dist/ \;
+          (cd dist && sha256sum launcherskins-*.jar > SHA256SUMS)
+          echo "jars: $(ls dist/*.jar | wc -l)"
+          gh release create "skins-mod-v$version" dist/* \
+            --target "$GITHUB_SHA" \
+            --title "Launcher Skins $version" \
+            --notes "The launcher's skins mod and Java agent (docs/DECISIONS.md D-065). SHA256SUMS lists every jar's sum."
