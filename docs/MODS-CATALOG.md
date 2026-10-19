@@ -45,8 +45,13 @@ and its summary names the newest release and its SHA-256 to pin.
 Actions → Mods service → Run workflow with `task=counts` shows numbers only (projects,
 versions, kept files and GB, requests, jobs waiting and failed). On the server:
 
+`task=probe` shows how CurseForge answers the server, directly and through each proxy
+(numbered, never named): a status, `challenge` when Cloudflare asked for a browser check,
+the size, and for pages whether they carry their data. On the server:
+
 ```sh
 sudo -u lapi-mods /home/www/lapi/mods/current/lapi-mods counts
+sudo -u lapi-mods /home/www/lapi/mods/current/lapi-mods probe
 journalctl -u lapi-mods
 ```
 

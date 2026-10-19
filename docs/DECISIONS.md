@@ -2092,6 +2092,18 @@ archive from the Package workflow, upload it to
 - **Add to the catalog** and **My requests** use the launcher account's token; signed
   out, the launcher offers to sign in. A request in progress is asked about every 3 s.
 
+### CurseForge (stage 4)
+
+- **First, how the site answers the server.** CurseForge has no key here, so the catalog
+  uses the site's own API and forgecdn; its project pages and search sit behind a
+  Cloudflare check that may refuse data-centre addresses. `lapi-mods probe` asks one
+  public project (JEI) through every exit, direct and each proxy, once per check: the
+  site's file list, one file, its changelog, its download link, dependencies, the
+  project and search in the API, and the project and search pages (whether they carry
+  their Next.js data). It prints our words and numbers only, proxies numbered; Actions
+  → Mods service → `task=probe` runs it. Its answer decides whether project pages need
+  residential or mobile proxies.
+
 ## D-067 — Start page feed at feed.lapi.sh
 
 - **Status:** accepted (owner request, 2026-10-19; design approved in the project) ·
