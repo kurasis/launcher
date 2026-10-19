@@ -81,7 +81,10 @@ replaces it), `superseded`.
   `base-uri 'none'`, `form-action 'none'`, `frame-ancestors 'none'`; Tauri adds hashes for
   its own injected scripts. A separate `devCsp` additionally allows inline scripts/styles
   and `ws://localhost:1420`, which Vite's React refresh and HMR require in development only.
-  `freezePrototype` is enabled.
+  `Object.prototype` is frozen in the launcher's own pages by `FREEZE_PROTOTYPE_SCRIPT`
+  (`src-tauri/src/lib.rs`). Tauri's `freezePrototype` is off: WebView2 ran it in every
+  frame, cross-origin ones included, and the player window's YouTube and Twitch players
+  stayed black (D-067).
 - **Verification:** `security_config.rs` rejects remote sources, `unsafe-eval` and
   wildcards; release build renders correctly under the production CSP.
 
