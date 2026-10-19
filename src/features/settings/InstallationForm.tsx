@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useId, useState } from 'react';
 import { Button } from '../../components/Button';
 import { Field } from '../../components/Field';
 import { Notice } from '../../components/Notice';
@@ -20,7 +20,8 @@ interface InstallationFormProps {
 const t = strings.details;
 
 /**
- * Memory, window size, fullscreen and Minecraft arguments of one installation.
+ * Memory, window size, fullscreen, Minecraft arguments and Launcher skins of
+ * one installation.
  * Keyed by instance id by the parent.
  */
 export function InstallationForm({ instance, memory }: InstallationFormProps) {
@@ -28,6 +29,8 @@ export function InstallationForm({ instance, memory }: InstallationFormProps) {
   const [width, setWidth] = useState(String(instance.resolution.width));
   const [height, setHeight] = useState(String(instance.resolution.height));
   const [fullscreen, setFullscreen] = useState(instance.fullscreen);
+  const [launcherSkins, setLauncherSkins] = useState(instance.launcherSkins);
+  const skinsHintId = useId();
   const [gameArguments, setGameArguments] = useState(instance.gameArguments);
   const [saved, setSaved] = useState(false);
   // Every value sent is an argument: useCommand keeps a request ID only for
@@ -40,6 +43,7 @@ export function InstallationForm({ instance, memory }: InstallationFormProps) {
       h: number,
       full: boolean,
       gameArgs: string,
+      skins: boolean,
     ) =>
       ipc.updateInstanceSettings(
         {
@@ -48,6 +52,7 @@ export function InstallationForm({ instance, memory }: InstallationFormProps) {
           resolution: { width: w, height: h },
           fullscreen: full,
           gameArguments: gameArgs,
+          launcherSkins: skins,
         },
         requestId,
       ),
@@ -64,6 +69,7 @@ export function InstallationForm({ instance, memory }: InstallationFormProps) {
       toInt(height),
       fullscreen,
       gameArguments,
+      launcherSkins,
     );
     if (result) setSaved(true);
   };
@@ -183,6 +189,22 @@ export function InstallationForm({ instance, memory }: InstallationFormProps) {
         />
         {t.fullscreen}
       </label>
+      <label className={forms.choice}>
+        <input
+          type="checkbox"
+          checked={launcherSkins}
+          disabled={instance.busy}
+          aria-describedby={skinsHintId}
+          onChange={(event) => {
+            setLauncherSkins(event.target.checked);
+            setSaved(false);
+          }}
+        />
+        {t.launcherSkins}
+      </label>
+      <p className={styles.hint} id={skinsHintId}>
+        {t.launcherSkinsHint}
+      </p>
       <Field label={t.gameArguments} hint={t.gameArgumentsHint}>
         {(props) => (
           <input

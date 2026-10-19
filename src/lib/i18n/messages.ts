@@ -439,6 +439,8 @@ export type Messages = {
     readonly notesSave: string;
     readonly fullscreen: string;
     readonly fullscreenShort: string;
+    readonly launcherSkins: string;
+    readonly launcherSkinsHint: string;
     readonly gameArguments: string;
     readonly gameArgumentsHint: string;
     readonly content: string;

@@ -130,6 +130,26 @@ mod tests {
     }
 
     #[test]
+    fn an_agent_path_with_spaces_stays_one_argument() {
+        // Launcher Skins' agent (D-065) in a Windows profile folder with a space.
+        let agent = r"-javaagent:C:\Users\A B\AppData\Roaming\launcher\shared\launcherskins\launcherskins-agent-26.3-0.1.0.jar";
+        let bytes = encode(&[agent.to_owned(), "-Xmx2G".to_owned()], true).unwrap();
+        assert_eq!(
+            String::from_utf8(bytes).unwrap(),
+            concat!(
+                r#""-javaagent:C:\\Users\\A B\\AppData\\Roaming\\launcher\\shared\\launcherskins\\launcherskins-agent-26.3-0.1.0.jar""#,
+                "\n",
+                r#""-Xmx2G""#,
+                "\n"
+            )
+        );
+        assert_eq!(
+            quote("-javaagent:/home/A B/.local/share/launcher/x.jar"),
+            r#""-javaagent:/home/A B/.local/share/launcher/x.jar""#
+        );
+    }
+
+    #[test]
     fn non_ascii_is_refused_only_where_required() {
         let args = vec!["-Dp=/home/Jürgen/игры".to_owned()];
         assert_eq!(

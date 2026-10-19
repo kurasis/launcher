@@ -68,6 +68,7 @@ fn created_instance_and_selection_survive_restart() {
                 },
                 fullscreen: None,
                 game_arguments: None,
+                launcher_skins: None,
             }))
             .unwrap();
         created.id
@@ -167,6 +168,7 @@ fn invalid_inputs_are_rejected_without_changes() {
                 resolution: Resolution { width, height },
                 fullscreen: None,
                 game_arguments: None,
+                launcher_skins: None,
             }))
             .unwrap_err();
         assert_eq!(error.code, ErrorCode::InvalidInput);
@@ -178,6 +180,7 @@ fn invalid_inputs_are_rejected_without_changes() {
             resolution: Resolution::default(),
             fullscreen: None,
             game_arguments: None,
+            launcher_skins: None,
         }))
         .unwrap_err();
     assert_eq!(missing.code, ErrorCode::InstanceNotFound);
@@ -482,6 +485,7 @@ fn busy_instance_cannot_be_reconfigured() {
             resolution: Resolution::default(),
             fullscreen: None,
             game_arguments: None,
+            launcher_skins: None,
         }))
         .unwrap_err();
     assert_eq!(error.code, ErrorCode::InstanceBusy);
@@ -720,6 +724,7 @@ fn fullscreen_and_game_arguments_are_saved_and_new_installations_take_the_defaul
             resolution: Resolution::default(),
             fullscreen,
             game_arguments: arguments.map(str::to_owned),
+            launcher_skins: None,
         }))
     };
     let saved = update(Some(true), Some("  --quickPlaySingleplayer \"My World\" ")).unwrap();
@@ -742,6 +747,31 @@ fn fullscreen_and_game_arguments_are_saved_and_new_installations_take_the_defaul
         .unwrap();
     assert!(state.settings().default_fullscreen);
     assert!(create(&state, "Fullscreen", "1.21.1").unwrap().fullscreen);
+}
+
+#[test]
+fn launcher_skins_is_on_for_new_installations_and_saved_when_changed() {
+    let dir = tempfile::tempdir().unwrap();
+    let state = state_at(dir.path(), RecordingSink::default());
+    let created = create(&state, "Skins", "1.21.1").unwrap();
+    assert!(created.launcher_skins);
+    let update = |skins| {
+        state.update_instance_settings(request(UpdateInstanceSettingsPayload {
+            instance_id: created.id,
+            max_heap_mib: 4096,
+            resolution: Resolution::default(),
+            fullscreen: None,
+            game_arguments: None,
+            launcher_skins: skins,
+        }))
+    };
+    assert!(!update(Some(false)).unwrap().launcher_skins);
+    // Omitted, it stays as it was.
+    assert!(!update(None).unwrap().launcher_skins);
+    let stored =
+        std::fs::read_to_string(state.data_root().unwrap().instance_file(created.id)).unwrap();
+    assert!(stored.contains("\"launcherSkins\": false"), "{stored}");
+    assert!(update(Some(true)).unwrap().launcher_skins);
 }
 
 #[test]

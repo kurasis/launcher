@@ -34,6 +34,7 @@ export function instanceFixture(overrides: Partial<InstanceSummary> = {}): Insta
     profile: null,
     gameArguments: '',
     fullscreen: false,
+    launcherSkins: true,
     ...overrides,
   };
 }

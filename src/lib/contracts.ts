@@ -179,6 +179,8 @@ export interface InstanceSummary {
   gameArguments: string;
   /** Starts the game in fullscreen (D-056). */
   fullscreen: boolean;
+  /** Launcher Skins is added to the game where a jar exists for it (D-065). */
+  launcherSkins: boolean;
 }
 
 /** Why a Java may not suit a game version (D-044). */
@@ -931,6 +933,8 @@ export interface UpdateInstanceSettingsPayload {
   /** Left unchanged when omitted. */
   fullscreen?: boolean;
   gameArguments?: string;
+  /** Launcher Skins in the game (D-065); left unchanged when omitted. */
+  launcherSkins?: boolean;
 }
 
 export interface SettingsPatch {

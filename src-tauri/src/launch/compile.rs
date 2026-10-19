@@ -52,6 +52,12 @@ pub struct LaunchInputs<'a> {
     /// The user's Minecraft arguments, after the version's own (D-056).
     pub extra_game_args: &'a [String],
     pub fullscreen: bool,
+    /// Launcher Skins (D-065): the verified Java agent for a game without a
+    /// loader, passed as `-javaagent` before the user's options.
+    pub skins_agent: Option<&'a Path>,
+    /// The skins API address of a test build (`-Dlauncherskins.api`); `None`
+    /// leaves the mod's own default.
+    pub skins_api: Option<&'a str>,
 }
 
 /// A fully resolved launch, ready to spawn.
@@ -239,6 +245,13 @@ pub fn compile(inputs: &LaunchInputs<'_>) -> LauncherResult<CompiledLaunch> {
         let mut logging_values = HashMap::new();
         logging_values.insert("path", path_text(&path)?);
         jvm_args.push(substitute(&logging.argument, &logging_values)?);
+    }
+    // Launcher Skins (D-065), before the user's options.
+    if let Some(api) = inputs.skins_api {
+        jvm_args.push(format!("-Dlauncherskins.api={api}"));
+    }
+    if let Some(agent) = inputs.skins_agent {
+        jvm_args.push(format!("-javaagent:{}", path_text(agent)?));
     }
     jvm_args.extend(inputs.extra_jvm_args.iter().cloned());
     let mut game_args = plan

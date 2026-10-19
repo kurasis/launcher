@@ -1100,3 +1100,95 @@ fn description_pictures_are_found() {
         ]
     );
 }
+
+#[test]
+fn the_probe_reads_the_proxies_as_deploy_wrote_them() {
+    let file = "LAPI_MODS_PROXIES=\"socks5://a:b\\\"c@1.2.3.4:8000 http://x\\\\y@5.6.7.8:80\"\n";
+    assert_eq!(
+        crate::env_file_value(file, "LAPI_MODS_PROXIES").as_deref(),
+        Some("socks5://a:b\"c@1.2.3.4:8000 http://x\\y@5.6.7.8:80")
+    );
+    assert_eq!(crate::env_file_value(file, "LAPI_MODS"), None);
+    assert_eq!(
+        crate::env_file_value("LAPI_MODS_PROXIES=bare\n", "LAPI_MODS_PROXIES"),
+        None
+    );
+    assert_eq!(crate::env_file_value("", "LAPI_MODS_PROXIES"), None);
+}
+
+#[tokio::test]
+async fn the_probe_asks_every_exit_and_prints_no_answer_text() {
+    let sites = Arc::new(Sites::default());
+    let api = "https://www.curseforge.com/api/v1/mods/238222";
+    sites.json(
+        &format!("{api}/files?pageIndex=0&pageSize=1"),
+        json!({ "data": [{ "id": 4_000_123, "displayName": "secret name" }] }),
+    );
+    sites.put(
+        &format!("{api}/files/4000123/download"),
+        Page {
+            status: 307,
+            location: Some("https://edge.forgecdn.net/files/4000/123/jei.jar".into()),
+            ..Page::default()
+        },
+    );
+    sites.put(
+        "https://www.curseforge.com/minecraft/mc-mods/jei",
+        Page {
+            status: 403,
+            body: b"<title>Just a moment...</title> secret".to_vec(),
+            challenge: true,
+            ..Page::default()
+        },
+    );
+    sites.put(
+        "https://www.curseforge.com/minecraft/search?search=jei",
+        ok("<script id=\"__NEXT_DATA__\">{\"secret\":1}</script>"),
+    );
+    let dir = tempfile::tempdir().unwrap();
+    let client = Client::new(
+        Box::new(Shared(Arc::clone(&sites))),
+        vec!["socks5://secret-user:secret@203.0.113.9:1080".into()],
+        true,
+        dir.path(),
+    )
+    .with_resolver(resolver([1, 1, 1, 1]));
+    let lines = crate::probe::run(&client, dir.path()).await;
+    assert_eq!(lines[0], "exits 2");
+    for exit in ["proxy1", "direct"] {
+        let of = |check: &str| {
+            lines
+                .iter()
+                .find(|l| l.starts_with(&format!("{exit:<8} {check:<16} ")))
+                .cloned()
+                .unwrap_or_default()
+        };
+        assert!(of("cf_files").ends_with("file_found"), "{lines:?}");
+        assert!(
+            of("cf_download").ends_with("307 0B to_forgecdn"),
+            "{lines:?}"
+        );
+        assert!(of("cf_project_page").contains("403 challenge"), "{lines:?}");
+        assert!(of("cf_search_page").ends_with(" page_data"), "{lines:?}");
+        assert!(
+            of("cf_project_api").ends_with("not_found") || of("cf_project_api").contains(" 404 "),
+            "{lines:?}"
+        );
+    }
+    for line in &lines {
+        assert!(
+            !line.contains("secret") && !line.contains("203.0.113"),
+            "{line}"
+        );
+        assert!(!line.contains("forgecdn.net"), "{line}");
+    }
+    // One request per check and exit: no retries, no redirects followed.
+    assert_eq!(
+        sites.asked("https://www.curseforge.com/minecraft/mc-mods/jei"),
+        2
+    );
+    assert_eq!(
+        sites.asked("https://edge.forgecdn.net/files/4000/123/jei.jar"),
+        0
+    );
+}

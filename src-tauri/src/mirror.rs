@@ -91,6 +91,15 @@ pub fn shared() -> Arc<Routing> {
     Arc::clone(&SHARED)
 }
 
+/// Routing that never uses the mirror, for files the mirror does not carry
+/// (the skins mod's GitHub release, D-065). Its failures never send another
+/// download of the same host to the mirror.
+pub fn origin_only() -> Arc<Routing> {
+    let routing = Routing::new(MIRROR_BASE);
+    routing.set_mode(DownloadSource::OriginOnly);
+    Arc::new(routing)
+}
+
 impl Routing {
     /// `base` is the mirror's root: `https://mirror.lapi.sh/` (a local server
     /// in tests).

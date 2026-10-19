@@ -521,6 +521,45 @@ impl Client {
         Err(FetchError::Status(310))
     }
 
+    /// One request through one exit, with no pace, rest, retry or redirect:
+    /// what `lapi-mods probe` asks to see how each exit fares.
+    pub async fn once(
+        &self,
+        exit: usize,
+        url: &str,
+        to: &Path,
+        max_bytes: u64,
+    ) -> Result<Reply, FetchError> {
+        site(url).ok_or(FetchError::NotAllowed)?;
+        let proxy = self
+            .exits
+            .get(exit)
+            .ok_or(FetchError::NoExit)?
+            .proxy
+            .clone();
+        let resolve = if proxy.is_none() {
+            Some(self.public_address(url).await?)
+        } else {
+            None
+        };
+        self.transport
+            .run(Request {
+                url: url.to_owned(),
+                to: to.to_owned(),
+                max_bytes,
+                json: false,
+                proxy,
+                resolve,
+                timeout: Duration::from_secs(60),
+            })
+            .await
+    }
+
+    /// Whether the exit is a proxy (they are numbered, never named).
+    pub fn is_proxy(&self, exit: usize) -> bool {
+        self.exits.get(exit).is_some_and(|e| e.proxy.is_some())
+    }
+
     /// A JSON answer (at most 16 MB); `None` when the source has no such thing.
     pub async fn json(&self, url: &str) -> Result<Option<serde_json::Value>, FetchError> {
         let part = self.tmp.join(format!("{}.json", uuid::Uuid::new_v4()));

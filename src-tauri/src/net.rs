@@ -40,6 +40,9 @@ pub enum SourcePolicy {
     /// The start page feed (D-067): our service only, nothing of Mojang,
     /// YouTube or Twitch.
     Feed,
+    /// The Launcher Skins jars on this repository's GitHub releases (D-065),
+    /// with the hosts GitHub redirects release downloads to.
+    SkinsMod,
 }
 
 // `launchermeta` is Mojang's previous metadata host; older descriptors still
@@ -98,6 +101,11 @@ const ALL_SOURCE_HOSTS: &[&str] = &[
 const CRASH_REPORT_HOSTS: &[&str] = &["crash.lapi.sh"];
 const MODS_CATALOG_HOSTS: &[&str] = &[crate::mods::FILES_HOST];
 const FEED_HOSTS: &[&str] = &["feed.lapi.sh"];
+const SKINS_MOD_HOSTS: &[&str] = &[
+    "github.com",
+    "objects.githubusercontent.com",
+    "release-assets.githubusercontent.com",
+];
 
 pub const MAX_REDIRECTS: usize = 5;
 
@@ -111,6 +119,7 @@ impl SourcePolicy {
             Self::CrashReports => CRASH_REPORT_HOSTS,
             Self::ModsCatalog => MODS_CATALOG_HOSTS,
             Self::Feed => FEED_HOSTS,
+            Self::SkinsMod => SKINS_MOD_HOSTS,
         }
     }
 
@@ -553,6 +562,12 @@ mod tests {
         let (policy, _) = SourcePolicy::for_artifact("https://maven.fabricmc.net/a/b.jar").unwrap();
         assert_eq!(policy, SourcePolicy::ModLoaders);
         assert!(SourcePolicy::for_artifact("https://api.adoptium.net/x").is_err());
+        assert!(ok(
+            SourcePolicy::SkinsMod,
+            "https://github.com/kurasis/launcher/releases/download/skins-mod-v0.1.0/a.jar"
+        ));
+        assert!(!ok(SourcePolicy::SkinsMod, "https://skins.lapi.sh/x.jar"));
+        assert!(SourcePolicy::for_artifact("https://github.com/x/y.jar").is_err());
         assert!(SourcePolicy::MojangArtifacts.check("not a url").is_err());
     }
 
@@ -604,6 +619,7 @@ mod tests {
             SourcePolicy::CrashReports,
             SourcePolicy::ModsCatalog,
             SourcePolicy::Feed,
+            SourcePolicy::SkinsMod,
         ] {
             for host in policy.hosts() {
                 assert!(ALL_SOURCE_HOSTS.contains(host), "{host}");

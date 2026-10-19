@@ -37,6 +37,45 @@ describe('InstallationForm', () => {
     });
   });
 
+  it('shows Launcher skins on by default and saves it switched off', async () => {
+    const calls: { cmd: string; args: unknown }[] = [];
+    mockIPC((cmd, args) => {
+      calls.push({ cmd, args });
+      if (cmd === 'update_instance_settings') return instanceFixture({ launcherSkins: false });
+      if (cmd === 'get_app_snapshot') return snapshotFixture();
+      return null;
+    });
+    const instance = instanceFixture();
+    render(<InstallationForm instance={instance} memory={snapshotFixture().memory} />);
+    const skins = screen.getByRole('checkbox', { name: 'Launcher skins' });
+    expect(skins).toBeChecked();
+    expect(skins).toHaveAccessibleDescription(
+      'Shows the skins and capes of launcher accounts, HD and animated, in this game. Only in supported game versions.',
+    );
+    fireEvent.click(skins);
+    expect(skins).not.toBeChecked();
+    fireEvent.click(screen.getByRole('button', { name: 'Save changes' }));
+    await waitFor(() => {
+      expect(calls.find((c) => c.cmd === 'update_instance_settings')?.args).toMatchObject({
+        request: { payload: { instanceId: instance.id, launcherSkins: false } },
+      });
+    });
+    expect(await screen.findByRole('status')).toHaveTextContent('Saved');
+  });
+
+  it('shows Launcher skins off for an installation that has it off', () => {
+    mockIPC(() => null);
+    render(
+      <InstallationForm
+        instance={instanceFixture({ launcherSkins: false, busy: true })}
+        memory={snapshotFixture().memory}
+      />,
+    );
+    const skins = screen.getByRole('checkbox', { name: 'Launcher skins' });
+    expect(skins).not.toBeChecked();
+    expect(skins).toBeDisabled();
+  });
+
   it('sends a changed fullscreen with a new request ID after a lost answer', async () => {
     const saves: { requestId: string; fullscreen: boolean }[] = [];
     mockIPC((cmd, args) => {

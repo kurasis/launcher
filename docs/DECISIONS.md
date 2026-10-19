@@ -2001,6 +2001,15 @@ archive from the Package workflow, upload it to
   6. NeoForge, Forge, 26.x and 1.12.2;
   7. the agent;
   8. automatic install by the launcher, tested on a Windows package.
+- **Automatic install (stage 8):** the jars come from the GitHub release
+  `skins-mod-v<version>`, pinned by SHA-256 and size in the launcher
+  (`src-tauri/src/skins_mod.rs`), downloaded once (not through the mirror) into
+  `shared/launcherskins` and checked again at every launch; with a loader the jar is
+  copied into `mods/` (other `launcherskins-*.jar` there are removed), without one it is
+  added with `-javaagent`.
+  The switch "Launcher skins" per installation is on by default; off removes our jars
+  from `mods/`. Exact game versions only (26.3, 1.21.1, Forge 1.12.2); a jar that cannot
+  be had never stops the game, it starts without it.
 - **Server setup (owner):** a DNS record and certificate for skins.lapi.sh, then
   `deploy/bootstrap.sh` once, as for the other services.
 
@@ -2091,6 +2100,18 @@ archive from the Package workflow, upload it to
   never a link.
 - **Add to the catalog** and **My requests** use the launcher account's token; signed
   out, the launcher offers to sign in. A request in progress is asked about every 3 s.
+
+### CurseForge (stage 4)
+
+- **First, how the site answers the server.** CurseForge has no key here, so the catalog
+  uses the site's own API and forgecdn; its project pages and search sit behind a
+  Cloudflare check that may refuse data-centre addresses. `lapi-mods probe` asks one
+  public project (JEI) through every exit, direct and each proxy, once per check: the
+  site's file list, one file, its changelog, its download link, dependencies, the
+  project and search in the API, and the project and search pages (whether they carry
+  their Next.js data). It prints our words and numbers only, proxies numbered; Actions
+  → Mods service → `task=probe` runs it. Its answer decides whether project pages need
+  residential or mobile proxies.
 
 ## D-067 — Start page feed at feed.lapi.sh
 

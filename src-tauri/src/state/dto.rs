@@ -111,6 +111,9 @@ pub struct UpdateInstanceSettingsPayload {
     /// Extra Minecraft arguments; left unchanged when omitted (D-056).
     #[serde(default)]
     pub game_arguments: Option<String>,
+    /// Launcher Skins in the game (D-065); left unchanged when omitted.
+    #[serde(default)]
+    pub launcher_skins: Option<bool>,
 }
 
 /// Fields omitted from the patch are left unchanged.
@@ -287,6 +290,8 @@ pub struct InstanceSummary {
     pub profile: Option<ProfileRef>,
     pub game_arguments: String,
     pub fullscreen: bool,
+    /// Launcher Skins is added to the game where a jar exists for it (D-065).
+    pub launcher_skins: bool,
 }
 
 impl InstanceSummary {
@@ -312,6 +317,7 @@ impl InstanceSummary {
             profile: instance.profile.clone(),
             game_arguments: instance.game_arguments.clone(),
             fullscreen: instance.fullscreen,
+            launcher_skins: instance.launcher_skins,
         }
     }
 }
