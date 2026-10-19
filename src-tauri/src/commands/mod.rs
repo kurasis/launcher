@@ -906,6 +906,9 @@ pub struct RunPayload {
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct LaunchPayload {
     pub instance_id: crate::storage::paths::InstanceId,
+    /// A server to start the game straight into (a friend's invite).
+    #[serde(default)]
+    pub server: Option<String>,
 }
 
 /// Checks the installation and the account of the installation's profile (or
@@ -925,7 +928,14 @@ pub async fn launch_game(
         .unwrap_or_else(|| launcher.mode_for(id));
     #[cfg(not(debug_assertions))]
     let mode = launcher.mode_for(id);
-    launcher.launch_as(&request.request_id, id, mode).await
+    launcher
+        .launch_joining(
+            &request.request_id,
+            id,
+            mode,
+            request.payload.server.as_deref(),
+        )
+        .await
 }
 
 /// Terminates the owned game process of `runId` after the user confirmed it.
@@ -1480,6 +1490,7 @@ pub async fn launcher_account_sign_out<R: Runtime>(app: AppHandle<R>) {
     let account = Arc::clone(&app.state::<Arc<crate::launcher_account::LauncherAccount>>());
     account.sign_out(&app.state::<AppState>()).await;
     friends(&app).wake();
+    skins(&app).forget();
 }
 
 /// Changes the nick; what went wrong comes back as a problem code.
@@ -1496,6 +1507,19 @@ pub async fn launcher_account_set_nick<R: Runtime>(
         .set_nick(&app.state::<AppState>(), nick.trim())
         .await
         .err()
+}
+
+/// Reads the account from the server again (after the player confirmed the
+/// email in a browser); friends tries again with the fresh token. Whether the
+/// email is confirmed now, or what went wrong.
+#[tauri::command]
+pub async fn launcher_account_recheck<R: Runtime>(
+    app: AppHandle<R>,
+) -> Result<bool, crate::launcher_account::AccountProblem> {
+    let account = Arc::clone(&app.state::<Arc<crate::launcher_account::LauncherAccount>>());
+    let result = account.recheck(&app.state::<AppState>()).await;
+    friends(&app).wake();
+    result
 }
 
 #[tauri::command]
@@ -1689,6 +1713,98 @@ pub async fn friends_report<R: Runtime>(
     reason: String,
 ) -> FriendsResult<()> {
     friends(&app).report(&app, message, &reason).await
+}
+
+// The launcher account's skin and cape (D-065). What went wrong comes back as
+// a problem code. The interface never names a file: it picks one in the
+// dialog, and uploads what was picked for a kind.
+
+fn skins<R: Runtime>(app: &AppHandle<R>) -> Arc<crate::skins::Skins> {
+    Arc::clone(&app.state::<Arc<crate::skins::Skins>>())
+}
+
+type SkinsResult<T> = Result<T, crate::skins::SkinsProblem>;
+
+/// What the account wears.
+#[tauri::command]
+pub async fn skins_mine<R: Runtime>(app: AppHandle<R>) -> SkinsResult<crate::skins::Wardrobe> {
+    skins(&app).mine(&app).await
+}
+
+/// A worn texture by its hash, as a `data:` URL for the preview.
+#[tauri::command]
+pub async fn skins_texture<R: Runtime>(app: AppHandle<R>, hash: String) -> SkinsResult<String> {
+    skins(&app).texture(&hash).await
+}
+
+/// Picks a PNG for the skin or cape in the native dialog and checks it.
+/// `Ok(None)` when the dialog was closed.
+#[tauri::command]
+pub async fn skins_pick<R: Runtime>(
+    app: AppHandle<R>,
+    kind: crate::skins::Kind,
+    title: Option<String>,
+) -> SkinsResult<Option<crate::skins::PickedView>> {
+    use tauri_plugin_dialog::DialogExt;
+    let fallback = match kind {
+        crate::skins::Kind::Skin => "Choose a skin (PNG)",
+        crate::skins::Kind::Cape => "Choose a cape (PNG)",
+    };
+    let title = window_title(title, fallback);
+    let handle = app.clone();
+    let picked = tauri::async_runtime::spawn_blocking(move || {
+        handle
+            .dialog()
+            .file()
+            .set_title(title)
+            .add_filter("PNG", &["png"])
+            .blocking_pick_file()
+    })
+    .await
+    .map_err(|_| crate::skins::SkinsProblem::Unreadable)?;
+    let Some(path) = picked.and_then(|p| p.into_path().ok()) else {
+        return Ok(None);
+    };
+    skins(&app).pick(kind, path).await.map(Some)
+}
+
+/// Uploads the PNG picked for `kind`: a skin with its model, an animation
+/// with one frame duration or one per frame.
+#[tauri::command]
+pub async fn skins_upload<R: Runtime>(
+    app: AppHandle<R>,
+    kind: crate::skins::Kind,
+    slim: bool,
+    frame_ms: Option<Vec<u32>>,
+) -> SkinsResult<crate::skins::Wardrobe> {
+    if frame_ms
+        .as_ref()
+        .is_some_and(|list| list.len() > crate::skins::MAX_FRAMES as usize)
+    {
+        return Err(crate::skins::SkinsProblem::BadFrameMs);
+    }
+    let wardrobe = skins(&app)
+        .upload(&app, kind, slim, frame_ms.as_deref())
+        .await?;
+    app.state::<AppState>().console().info(format!(
+        "Launcher account: the {} was uploaded",
+        kind.as_str()
+    ));
+    Ok(wardrobe)
+}
+
+/// Takes the skin or cape off.
+#[tauri::command]
+pub async fn skins_remove<R: Runtime>(
+    app: AppHandle<R>,
+    kind: crate::skins::Kind,
+) -> SkinsResult<crate::skins::Wardrobe> {
+    let wardrobe = skins(&app).remove(&app, kind).await?;
+    app.state::<AppState>().console().info(format!(
+        "Launcher account: the {} was removed",
+        kind.as_str()
+    ));
+    Ok(wardrobe)
 }
 
 /// Opens where to get the update by hand (a `.deb`, or after installing

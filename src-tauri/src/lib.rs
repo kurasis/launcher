@@ -30,6 +30,7 @@ pub mod reports;
 pub mod reset;
 pub mod runtime;
 pub mod secrets;
+pub mod skins;
 pub mod state;
 pub mod storage;
 pub mod sync;
@@ -498,6 +499,8 @@ fn setup(app: &mut tauri::App) -> Result<(), Box<dyn std::error::Error>> {
             friends.run(handle).await;
         });
     }
+    // The launcher account's skin and cape (D-065).
+    app.manage(Arc::new(skins::Skins::new(&version)?));
     let auth = Arc::new(create_auth_service(app.handle())?);
     app.manage(Arc::clone(&auth));
     let launcher = source.map(|source| {
@@ -624,6 +627,7 @@ pub fn run() {
         }))
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_dialog::init())
+        .plugin(tauri_plugin_notification::init())
         // Updates (D-063); the key is given per check, so a build without it
         // never looks.
         .plugin(tauri_plugin_updater::Builder::new().build())
@@ -781,6 +785,7 @@ fn handlers<R: tauri::Runtime>() -> impl Fn(tauri::ipc::Invoke<R>) -> bool + Sen
         commands::launcher_account_sign_out,
         commands::launcher_account_set_nick,
         commands::launcher_account_resend_confirmation,
+        commands::launcher_account_recheck,
         commands::friends_state,
         commands::friends_request,
         commands::friends_act,
@@ -795,6 +800,11 @@ fn handlers<R: tauri::Runtime>() -> impl Fn(tauri::ipc::Invoke<R>) -> bool + Sen
         commands::friends_decline_all,
         commands::friends_report_request,
         commands::launcher_account_export,
+        commands::skins_mine,
+        commands::skins_texture,
+        commands::skins_pick,
+        commands::skins_upload,
+        commands::skins_remove,
         commands::feed_get,
         commands::feed_note,
         commands::feed_play,

@@ -35,3 +35,128 @@
   color: var(--color-text-muted);
   font-size: var(--font-size-sm);
 }
+
+/* Check again whether the email is confirmed: a small round arrow by the badge. */
+.refresh {
+  display: inline-grid;
+  place-items: center;
+  width: 1.9rem;
+  height: 1.9rem;
+  padding: 0;
+  border: 1px solid var(--color-border);
+  border-radius: 50%;
+  background: var(--color-surface);
+  color: var(--color-text-muted);
+  cursor: pointer;
+}
+
+.refresh:hover:not(:disabled) {
+  color: var(--color-text);
+  background: var(--color-neutral-bg);
+}
+
+.refresh svg {
+  width: 1rem;
+  height: 1rem;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 2.2;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.refresh[data-busy] svg {
+  animation: turn 0.8s linear infinite;
+}
+
+@keyframes turn {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .refresh[data-busy] svg {
+    animation-duration: 2.4s;
+  }
+}
+
+/* Demo or offline: two halves of one control. */
+.mode {
+  display: grid;
+  gap: var(--space-1);
+  justify-items: start;
+}
+
+.segmented {
+  display: inline-flex;
+  padding: 3px;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-pill);
+  background: var(--color-neutral-bg);
+}
+
+.segmented button {
+  min-width: 6.5rem;
+  padding: 0.35rem 0.9rem;
+  border: none;
+  border-radius: var(--radius-pill);
+  background: none;
+  color: var(--color-text-muted);
+  font: inherit;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.segmented button[aria-checked='true'] {
+  background: var(--color-surface);
+  color: var(--color-text);
+  box-shadow: 0 1px 3px rgb(0 0 0 / 0.15);
+}
+
+.segmented button:disabled {
+  cursor: not-allowed;
+  opacity: 0.55;
+}
+
+.subtitle {
+  margin: 0;
+  font-size: var(--font-size-sm);
+  font-weight: 700;
+}
+
+/* The launcher account's skin and cape (D-065). */
+.skins {
+  display: grid;
+  gap: var(--space-3);
+  margin-top: var(--space-3);
+}
+
+.pieces {
+  display: grid;
+  gap: var(--space-3);
+  grid-template-columns: repeat(auto-fit, minmax(16rem, 1fr));
+}
+
+.previews {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: var(--space-3);
+  min-height: 4rem;
+}
+
+.skinPreview,
+.capePreview {
+  height: 8rem;
+  width: auto;
+  padding: var(--space-2);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+  background: var(--color-neutral-bg);
+  image-rendering: pixelated;
+}
+
+.capePreview {
+  height: 5rem;
+}

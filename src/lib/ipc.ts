@@ -43,11 +43,17 @@ import {
   type UpdateView,
   type LauncherAccountProblem,
   FRIENDS_PROBLEMS,
+  LAUNCHER_ACCOUNT_PROBLEMS,
   type ChatMessage,
   type FriendAction,
   type FriendRequestResult,
   type FriendsProblem,
   type FriendsView,
+  SKINS_PROBLEMS,
+  type PickedTexture,
+  type SkinKind,
+  type SkinsProblem,
+  type Wardrobe,
   FEED_PROBLEMS,
   type FeedProblem,
   type FeedVideo,
@@ -230,8 +236,11 @@ export const ipc = {
       request: mutation({ runId, title }, requestId),
     }),
   /** Plays as the installation's profile: a Microsoft account, or the demo (D-045). */
-  launchGame: (instanceId: string, requestId?: string): Promise<RunSummary> =>
-    invoke<RunSummary>('launch_game', { request: mutation({ instanceId }, requestId) }),
+  /** Starts the game; with `server` (a friend's invite) straight into that server. */
+  launchGame: (instanceId: string, requestId?: string, server?: string): Promise<RunSummary> =>
+    invoke<RunSummary>('launch_game', {
+      request: mutation(server === undefined ? { instanceId } : { instanceId, server }, requestId),
+    }),
   stopGame: (runId: string, requestId?: string): Promise<boolean> =>
     invoke<boolean>('stop_game', { request: mutation({ runId }, requestId) }),
   listSupportedVersions: (refresh: boolean): Promise<CatalogView> =>
@@ -269,6 +278,9 @@ export const ipc = {
     invoke<LauncherAccountProblem | null>('launcher_account_set_nick', { nick }),
   launcherAccountResendConfirmation: (): Promise<LauncherAccountProblem | null> =>
     invoke<LauncherAccountProblem | null>('launcher_account_resend_confirmation'),
+  /** Asks the server again; whether the email is confirmed now. Rejects with a
+   * LauncherAccountProblem string. */
+  launcherAccountRecheck: (): Promise<boolean> => invoke<boolean>('launcher_account_recheck'),
   // Friends and chats (D-064). These reject with a FriendsProblem string;
   // `friendsProblem` reads it.
   friendsState: (): Promise<FriendsView> => invoke<FriendsView>('friends_state'),
@@ -300,6 +312,18 @@ export const ipc = {
   friendsReportRequest: (id: string): Promise<void> => invoke('friends_report_request', { id }),
   friendsSetVisible: (visible: boolean): Promise<void> =>
     invoke('friends_set_visible', { visible }),
+  // The launcher account's skin and cape (D-065). These reject with a
+  // SkinsProblem string; `skinsProblem` reads it.
+  skinsMine: (): Promise<Wardrobe> => invoke<Wardrobe>('skins_mine'),
+  /** A worn texture by its hash, as a `data:` URL. */
+  skinsTexture: (hash: string): Promise<string> => invoke<string>('skins_texture', { hash }),
+  /** Picks a PNG in the native dialog; null if it was closed. */
+  skinsPick: (kind: SkinKind, title?: string): Promise<PickedTexture | null> =>
+    invoke<PickedTexture | null>('skins_pick', { kind, title }),
+  /** Uploads what was picked for `kind`. */
+  skinsUpload: (kind: SkinKind, slim: boolean, frameMs: number[] | null): Promise<Wardrobe> =>
+    invoke<Wardrobe>('skins_upload', { kind, slim, frameMs }),
+  skinsRemove: (kind: SkinKind): Promise<Wardrobe> => invoke<Wardrobe>('skins_remove', { kind }),
   /** Saves the account's data as a file; its name, or null if the dialog was closed. */
   launcherAccountExport: (title?: string): Promise<string | null> =>
     invoke<string | null>('launcher_account_export', { title }),
@@ -462,9 +486,23 @@ export function onQuitRequested(handler: () => void): () => void {
 }
 
 /** The FriendsProblem a friends command rejected with (anything else: `server`). */
+/** What a launcher account command rejected with; `server` for anything else. */
+export function accountProblem(error: unknown): LauncherAccountProblem {
+  return typeof error === 'string' &&
+    (LAUNCHER_ACCOUNT_PROBLEMS as readonly string[]).includes(error)
+    ? (error as LauncherAccountProblem)
+    : 'server';
+}
+
 export function friendsProblem(error: unknown): FriendsProblem {
   return typeof error === 'string' && (FRIENDS_PROBLEMS as readonly string[]).includes(error)
     ? (error as FriendsProblem)
+    : 'server';
+}
+
+export function skinsProblem(error: unknown): SkinsProblem {
+  return typeof error === 'string' && (SKINS_PROBLEMS as readonly string[]).includes(error)
+    ? (error as SkinsProblem)
     : 'server';
 }
 

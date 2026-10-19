@@ -583,7 +583,12 @@ pub fn send_verification(app: &App, account: &str, nick: &str, email: &str, lang
         )
         .is_ok()
     {
-        let link = format!("{}/verify?token={link_token}", app.config.base);
+        // The page the link opens speaks the account's language.
+        let link = format!(
+            "{}/verify?token={link_token}&lang={}",
+            app.config.base,
+            Lang::parse(lang).tag()
+        );
         queue(app, email, lang, &Letter::Verify { nick, link: &link });
     }
 }

@@ -261,6 +261,15 @@ export interface SettingsView {
   monthlyLimitMib: number;
   /** Anonymous crash statistics go to the developers; off by default (D-061). */
   shareStats: boolean;
+  /** A short sound for a new chat message or friend request (D-064). */
+  chatSound: boolean;
+  /** A system notification for one while the launcher is not in front. */
+  chatNotifications: boolean;
+  /** The launcher account plays offline in the full game instead of the demo
+   * (only while a Microsoft account that owns Minecraft is signed in). */
+  launcherAccountOffline: boolean;
+  /** The same for the profiles without an account. */
+  notokenOffline: boolean;
   /** Random ID sent with crash reports only; null until the first report. */
   installId: string | null;
   /** Where downloads come from (D-062). */
@@ -331,6 +340,18 @@ export type LauncherAccountProblem =
   | 'vault'
   | 'not_saved'
   | 'server';
+
+export const LAUNCHER_ACCOUNT_PROBLEMS: readonly LauncherAccountProblem[] = [
+  'network',
+  'sign_in_again',
+  'nick_taken',
+  'nick_reserved',
+  'nick_invalid',
+  'too_many',
+  'vault',
+  'not_saved',
+  'server',
+];
 
 /** The launcher account at oauth.lapi.sh (D-064). Never contains tokens. */
 export interface LauncherAccountView {
@@ -442,6 +463,69 @@ export interface FriendsView {
 
 export type FriendAction = 'accept' | 'decline' | 'cancel' | 'remove' | 'block' | 'unblock';
 
+/** The launcher account's skin or cape (skins.lapi.sh, D-065). */
+export type SkinKind = 'skin' | 'cape';
+
+/** Why a skins action failed; the service's refusals keep its codes. */
+export type SkinsProblem =
+  | 'signed_out'
+  | 'network'
+  | 'unreadable'
+  | 'bad_png'
+  | 'bad_size'
+  | 'bad_frames'
+  | 'bad_frame_ms'
+  | 'bad_model'
+  | 'too_large'
+  | 'rate_limited'
+  | 'invalid'
+  | 'server';
+
+export const SKINS_PROBLEMS: readonly SkinsProblem[] = [
+  'signed_out',
+  'network',
+  'unreadable',
+  'bad_png',
+  'bad_size',
+  'bad_frames',
+  'bad_frame_ms',
+  'bad_model',
+  'too_large',
+  'rate_limited',
+  'invalid',
+  'server',
+];
+
+/** A worn texture: a vertical strip of `frames` frames. */
+export interface WornTexture {
+  /** SHA-256 of the PNG; `skinsTexture` fetches it. */
+  hash: string;
+  /** Skins only: the slim (3-pixel) arms. */
+  slim: boolean;
+  width: number;
+  height: number;
+  frames: number;
+  /** One per frame; empty for a single frame. */
+  frameMs: number[];
+}
+
+export interface Wardrobe {
+  skin: WornTexture | null;
+  cape: WornTexture | null;
+}
+
+/** A PNG the player picked and has not uploaded yet, checked by the core. */
+export interface PickedTexture {
+  kind: SkinKind;
+  /** The file's name, plain text. */
+  name: string;
+  width: number;
+  height: number;
+  frames: number;
+  /** The file as a `data:` URL. */
+  preview: string;
+}
+
 /** A request was sent, or it met theirs and you are friends now. */
 export type FriendRequestResult = 'sent' | 'friends';
 
@@ -480,6 +564,9 @@ export interface AccountSummary {
   /** Who installations play as unless they name another profile. */
   defaultProfile: ProfileRef | null;
   launcherAccount: LauncherAccountView;
+  /** A Microsoft account that owns Minecraft is signed in: players without a
+   * token may play offline in the full game. */
+  fullGameAllowed: boolean;
 }
 
 export type ExternalLink =
@@ -612,6 +699,8 @@ export interface RunSummary {
   signal: number | null;
   /** Why the game stopped, when it crashed (D-059). */
   diagnosis: CrashDiagnosis | null;
+  /** The server the game last joined (`host:port`): friends can be invited to it. */
+  server: string | null;
 }
 
 /** Known causes of a crash, most specific first (D-059). */
@@ -859,6 +948,10 @@ export interface SettingsPatch {
   meteredWarnMib?: number;
   monthlyLimitMib?: number;
   shareStats?: boolean;
+  chatSound?: boolean;
+  chatNotifications?: boolean;
+  launcherAccountOffline?: boolean;
+  notokenOffline?: boolean;
   /** Replace the install ID with a new random one. */
   newInstallId?: boolean;
   downloadSource?: DownloadSource;

@@ -91,7 +91,8 @@ CREATE TABLE IF NOT EXISTS outbox (
     sent INTEGER,
     attempts INTEGER NOT NULL DEFAULT 0,
     last_error TEXT,
-    next_try INTEGER NOT NULL DEFAULT 0
+    next_try INTEGER NOT NULL DEFAULT 0,
+    html TEXT NOT NULL DEFAULT ''
 );
 -- Accounts deleted, for friends.lapi.sh to clean out; kept 90 days.
 CREATE TABLE IF NOT EXISTS deleted (
@@ -169,6 +170,8 @@ pub struct Mail {
     pub to: String,
     pub subject: String,
     pub body: String,
+    /// The HTML part, sealed like the body; empty for letters from before.
+    pub html: String,
 }
 
 pub struct Store {
@@ -202,6 +205,14 @@ fn migrate(db: &Connection) -> Result<(), String> {
              UPDATE outbox SET body = '' WHERE sent IS NOT NULL;",
         )
         .map_err(|e| e.to_string())?;
+    }
+    let has_html = db
+        .prepare("SELECT 1 FROM pragma_table_info('outbox') WHERE name = 'html'")
+        .and_then(|mut s| s.exists([]))
+        .map_err(|e| e.to_string())?;
+    if !has_html {
+        db.execute_batch("ALTER TABLE outbox ADD COLUMN html TEXT NOT NULL DEFAULT '';")
+            .map_err(|e| e.to_string())?;
     }
     Ok(())
 }
@@ -893,11 +904,18 @@ impl Store {
             .map_err(|e| e.to_string())
     }
 
-    pub fn queue_mail(&self, to: &str, subject: &str, body: &str, now: i64) -> Result<(), String> {
+    pub fn queue_mail(
+        &self,
+        to: &str,
+        subject: &str,
+        body: &str,
+        html: &str,
+        now: i64,
+    ) -> Result<(), String> {
         self.db()
             .execute(
-                "INSERT INTO outbox (to_addr, subject, body, created) VALUES (?1, ?2, ?3, ?4)",
-                params![to, subject, body, now],
+                "INSERT INTO outbox (to_addr, subject, body, html, created) VALUES (?1, ?2, ?3, ?4, ?5)",
+                params![to, subject, body, html, now],
             )
             .map(drop)
             .map_err(|e| e.to_string())
@@ -908,7 +926,7 @@ impl Store {
         let db = self.db();
         let mut statement = db
             .prepare(
-                "SELECT id, to_addr, subject, body FROM outbox
+                "SELECT id, to_addr, subject, body, html FROM outbox
                  WHERE sent IS NULL AND body != '' AND next_try <= ?1 AND created > ?2
                  ORDER BY id LIMIT ?3",
             )
@@ -920,6 +938,7 @@ impl Store {
                     to: r.get(1)?,
                     subject: r.get(2)?,
                     body: r.get(3)?,
+                    html: r.get(4)?,
                 })
             })
             .and_then(Iterator::collect)
@@ -932,7 +951,7 @@ impl Store {
         let db = self.db();
         match error {
             None => db.execute(
-                "UPDATE outbox SET sent = ?2, body = '', attempts = attempts + 1, last_error = NULL WHERE id = ?1",
+                "UPDATE outbox SET sent = ?2, body = '', html = '', attempts = attempts + 1, last_error = NULL WHERE id = ?1",
                 params![id, now],
             ),
             Some(error) => db.execute(
@@ -971,7 +990,7 @@ impl Store {
     pub fn mail_dropped(&self, id: i64) -> Result<(), String> {
         self.db()
             .execute(
-                "UPDATE outbox SET body = '', last_error = 'cannot be opened' WHERE id = ?1",
+                "UPDATE outbox SET body = '', html = '', last_error = 'cannot be opened' WHERE id = ?1",
                 [id],
             )
             .map(drop)

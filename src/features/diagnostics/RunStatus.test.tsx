@@ -19,6 +19,7 @@ const base: RunSummary = {
   error: null,
   signal: null,
   diagnosis: null,
+  server: null,
 };
 
 describe('RunStatus', () => {

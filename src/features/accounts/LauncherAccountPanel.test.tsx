@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { mockIPC } from '@tauri-apps/api/mocks';
 import { describe, expect, it } from 'vitest';
 import type { AccountSummary, LauncherAccountView } from '../../lib/contracts';
@@ -24,6 +24,7 @@ function setup(launcherAccount: LauncherAccountView, answer: unknown = null) {
     calls.push({ cmd, args });
     if (cmd === 'get_app_snapshot') return snapshotFixture();
     if (cmd === 'launcher_account_set_nick') return answer;
+    if (cmd === 'launcher_account_recheck') return answer;
     if (cmd === 'launcher_account_export') {
       // The core rejects with the problem's name, a plain string.
       // eslint-disable-next-line @typescript-eslint/only-throw-error
@@ -141,6 +142,52 @@ describe('launcher account', () => {
       expect(calls.find((c) => c.cmd === 'set_instance_profile')?.args).toMatchObject({
         request: { payload: { profile: { kind: 'launcher', id: 'acc-1' } } },
       });
+    });
+  });
+
+  it('checks again whether the email is confirmed, with its own button', async () => {
+    const { calls } = setup(view(), true);
+    fireEvent.click(screen.getByRole('button', { name: 'Check again' }));
+    expect(await screen.findByText(/Email confirmed: friends and chats are open/)).toBeVisible();
+    expect(calls.filter((c) => c.cmd === 'launcher_account_recheck')).toHaveLength(1);
+  });
+
+  it('says when the email is still not confirmed', async () => {
+    setup(view(), false);
+    fireEvent.click(screen.getByRole('button', { name: 'Check again' }));
+    expect(await screen.findByText(/Not confirmed yet/)).toBeVisible();
+  });
+
+  it('has no check button once the email is confirmed', () => {
+    setup(view({ emailVerified: true }));
+    expect(screen.queryByRole('button', { name: 'Check again' })).toBeNull();
+  });
+
+  it('switches the launcher account between the demo and offline', async () => {
+    const calls: { cmd: string; args: unknown }[] = [];
+    mockIPC((cmd, args) => {
+      calls.push({ cmd, args });
+      if (cmd === 'get_app_snapshot') return snapshotFixture();
+      return null;
+    });
+    const base = snapshotFixture();
+    render(
+      <AccountView
+        snapshot={{
+          ...base,
+          account: { ...base.account, launcherAccount: view(), fullGameAllowed: true },
+        }}
+      />,
+    );
+    const panel = screen.getByRole('heading', { name: 'Launcher account' }).closest('section');
+    const mode = within(panel as HTMLElement).getByRole('radiogroup', { name: 'Launch mode' });
+    fireEvent.click(within(mode).getByRole('radio', { name: 'Offline' }));
+    await waitFor(() => {
+      expect(
+        calls
+          .filter((c) => c.cmd === 'set_app_settings')
+          .map((c) => (c.args as { request: { payload: unknown } }).request.payload),
+      ).toEqual([{ launcherAccountOffline: true }]);
     });
   });
 });
