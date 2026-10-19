@@ -1,5 +1,11 @@
 # Release notes
 
+> **A snapshot.** This page describes the 0.1.0 qualification build as it was then and
+> is not updated: much has changed since (Java on the computer may be used, D-044;
+> in-app updates, D-063; the launcher account, D-064). What changed and why is in
+> [DECISIONS.md](DECISIONS.md); each released version's notes for players are in
+> [`release-notes/<version>.json`](../release-notes/README.md).
+
 Publishing a release is a separate decision by the project owner. Nothing here has been
 published; packages exist only as CI workflow artifacts.
 

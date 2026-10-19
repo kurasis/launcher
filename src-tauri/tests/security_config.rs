@@ -256,12 +256,21 @@ fn versions_are_consistent() {
 #[test]
 fn harness_commands_are_registered_only_in_debug_builds() {
     let lib = include_str!("../src/lib.rs");
-    let release = lib
-        .split("#[cfg(not(debug_assertions))]")
-        .nth(1)
-        .expect("release handler list");
-    let release_handlers = &release[..release.find("}\n}").unwrap_or(release.len())];
-    assert!(!release_handlers.contains("lifecycle_test"));
+    let start = lib.find("tauri::generate_handler![").expect("handler list");
+    let list = &lib[start..start + lib[start..].find("\n    ]").expect("end of handler list")];
+    let lines: Vec<&str> = list.lines().map(str::trim).collect();
+    let harness: Vec<usize> = (0..lines.len())
+        .filter(|&i| lines[i].contains("lifecycle_test"))
+        .collect();
+    assert_eq!(harness.len(), 2, "both harness commands are listed");
+    for i in harness {
+        assert_eq!(
+            lines[i - 1],
+            "#[cfg(debug_assertions)]",
+            "{} is registered in release builds",
+            lines[i]
+        );
+    }
     let main = include_str!("../src/main.rs");
     assert!(main.contains("#[cfg(debug_assertions)]"));
 }

@@ -1,6 +1,6 @@
 # Installing the launcher
 
-Launcher is an independent desktop launcher for Minecraft: Java Edition. You do not need
+Sferum Launcher (its packages and folders are named `Launcher`) is an independent desktop launcher for Minecraft: Java Edition. You do not need
 Rust, Node.js or Java: the launcher downloads a private Java runtime for each game version
 when you install that version. You need a Microsoft account that owns Minecraft: Java
 Edition to play.
@@ -21,10 +21,11 @@ shasum -a 256 -c SHA256SUMS      # macOS
 Get-FileHash .\Launcher*.exe      # Windows PowerShell; compare with SHA256SUMS
 ```
 
-## Windows 10 and 11 (x64)
+## Windows 10 and 11 (x64 or ARM)
 
-1. Run `Launcher_<version>_x64-setup.exe`. It installs for the current user only
-   (`%LOCALAPPDATA%\Launcher`) and needs no administrator rights.
+1. Run `Launcher_<version>_x64-setup.exe` (on Windows on ARM, the `arm64` one). It
+   installs for the current user only (`%LOCALAPPDATA%\Launcher`) and needs no
+   administrator rights.
 2. The launcher uses Microsoft Edge WebView2. It is part of Windows 11 and current
    Windows 10. If it is missing, the installer downloads Microsoft's WebView2
    bootstrapper, which needs an internet connection.

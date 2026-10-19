@@ -84,7 +84,11 @@ npm run tauri build    # release build and installers for the current OS
 | [docs/AUTH-SETUP.md](docs/AUTH-SETUP.md)           | Microsoft application registration and service access (owner actions) |
 | [docs/INSTALL.md](docs/INSTALL.md)                 | Installing, updating and uninstalling the packages                    |
 | [docs/PACKAGING.md](docs/PACKAGING.md)             | Package builds, checksums, smoke tests and signing (owner actions)    |
-| [docs/RELEASE-NOTES.md](docs/RELEASE-NOTES.md)     | Changes, compatibility and package references per version             |
+| [docs/RELEASING.md](docs/RELEASING.md)             | Publishing a version as an in-app update (owner actions)              |
+| [docs/RELEASE-NOTES.md](docs/RELEASE-NOTES.md)     | The 0.1.0 qualification build (a snapshot)                            |
+| [docs/CRASH-REPORTS.md](docs/CRASH-REPORTS.md)     | Crash reports: what is sent, and reading them on the server           |
+| [docs/TRANSLATING.md](docs/TRANSLATING.md)         | Adding or changing interface languages                                |
+| [docs/AUTH-CONTRACT.md](docs/AUTH-CONTRACT.md)     | The implemented Microsoft sign-in contract                            |
 | [docs/TROUBLESHOOTING.md](docs/TROUBLESHOOTING.md) | Common problems and what to do                                        |
 | [docs/DECISIONS.md](docs/DECISIONS.md)             | Decision records and deviations                                       |
 | [docs/VERIFICATION.md](docs/VERIFICATION.md)       | Actual check results per phase, host and commit                       |
