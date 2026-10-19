@@ -35,6 +35,7 @@ pub mod state;
 pub mod storage;
 pub mod sync;
 pub mod traffic;
+pub mod tunnel;
 pub mod update;
 pub mod validation;
 pub mod worlds;

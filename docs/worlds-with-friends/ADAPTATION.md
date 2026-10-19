@@ -171,3 +171,7 @@ tuple; Fabric and other loaders arrive in W12.
 - 2026-10-19 — W3: the server JAR is stored once per version in `shared/servers/<sha1>/` and
   pinned by each world, instead of per-world server generations, until room packs need them
   (W12). The server's console output is classified and dropped; no server log is kept.
+- 2026-10-19 — W4: iroh pinned at 1.3.0 with aws-lc-rs and the port mapper, no address lookup
+  service (endpoint addresses come from the worlds API) and a fresh key per room session. The
+  bridge uses 64 KiB per direction, within the 256 KiB cap. The guest also checks the login name
+  before asking for a ticket, so a wrong name never spends one.
