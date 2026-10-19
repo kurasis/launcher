@@ -34,6 +34,9 @@ pub enum SourcePolicy {
     /// Our crash report service; reports leave only when the player sends them
     /// (D-061).
     CrashReports,
+    /// The start page feed (D-067): our service only, nothing of Mojang,
+    /// YouTube or Twitch.
+    Feed,
 }
 
 // `launchermeta` is Mojang's previous metadata host; older descriptors still
@@ -85,9 +88,11 @@ const ALL_SOURCE_HOSTS: &[&str] = &[
     "maven.neoforged.net",
     crate::mirror::MIRROR_HOST,
     "crash.lapi.sh",
+    "feed.lapi.sh",
 ];
 
 const CRASH_REPORT_HOSTS: &[&str] = &["crash.lapi.sh"];
+const FEED_HOSTS: &[&str] = &["feed.lapi.sh"];
 
 pub const MAX_REDIRECTS: usize = 5;
 
@@ -99,6 +104,7 @@ impl SourcePolicy {
             Self::Adoptium => ADOPTIUM_HOSTS,
             Self::ModLoaders => MOD_LOADER_HOSTS,
             Self::CrashReports => CRASH_REPORT_HOSTS,
+            Self::Feed => FEED_HOSTS,
         }
     }
 
@@ -585,6 +591,7 @@ mod tests {
             SourcePolicy::Adoptium,
             SourcePolicy::ModLoaders,
             SourcePolicy::CrashReports,
+            SourcePolicy::Feed,
         ] {
             for host in policy.hosts() {
                 assert!(ALL_SOURCE_HOSTS.contains(host), "{host}");

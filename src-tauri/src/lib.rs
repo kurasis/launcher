@@ -14,6 +14,7 @@ pub mod diagnostics;
 pub mod download;
 pub mod error;
 pub mod external;
+pub mod feed;
 pub mod friends;
 pub mod gallery;
 pub mod install;
@@ -471,6 +472,10 @@ fn setup(app: &mut tauri::App) -> Result<(), Box<dyn std::error::Error>> {
             }
         });
     }
+    // The start page feed (D-067): asked only when the interface shows it.
+    app.manage(Arc::new(
+        feed::FeedService::new(&version).map_err(|e| e.message)?,
+    ));
     // The launcher account (D-064): check the saved sign-in once the start settles.
     let launcher_account = Arc::new(launcher_account::LauncherAccount::new(
         &version,
@@ -568,6 +573,48 @@ fn gallery_response<R: tauri::Runtime>(
     }
 }
 
+/// Answers a `feed:` request with one of the feed's pictures (D-067): only
+/// names the feed uses, fetched from feed.lapi.sh and kept on disk.
+async fn feed_response<R: tauri::Runtime>(
+    app: &tauri::AppHandle<R>,
+    method: &tauri::http::Method,
+    path: &str,
+) -> tauri::http::Response<Vec<u8>> {
+    use tauri::http::{Method, Response, StatusCode, header};
+    let status = |code: StatusCode| {
+        let mut response = Response::new(Vec::new());
+        *response.status_mut() = code;
+        response
+    };
+    if method != Method::GET {
+        return status(StatusCode::METHOD_NOT_ALLOWED);
+    }
+    let Some((kind, name)) = feed::parse_picture_request(path) else {
+        return status(StatusCode::BAD_REQUEST);
+    };
+    let (Some(state), Some(service)) = (
+        app.try_state::<AppState>(),
+        app.try_state::<Arc<feed::FeedService>>(),
+    ) else {
+        return status(StatusCode::SERVICE_UNAVAILABLE);
+    };
+    let service = Arc::clone(&service);
+    let root = state.data_root();
+    let enabled = state.settings().feed.enabled;
+    let Some(root) = root.filter(|_| enabled) else {
+        return status(StatusCode::NOT_FOUND);
+    };
+    match service.picture(&root, kind, &name).await {
+        Some(bytes) => Response::builder()
+            .header(header::CONTENT_TYPE, "image/jpeg")
+            .header(header::X_CONTENT_TYPE_OPTIONS, "nosniff")
+            .header(header::CACHE_CONTROL, "private, max-age=3600")
+            .body(bytes)
+            .unwrap_or_else(|_| status(StatusCode::INTERNAL_SERVER_ERROR)),
+        None => status(StatusCode::NOT_FOUND),
+    }
+}
+
 /// Builds and runs the Tauri application.
 pub fn run() {
     journal::install_panic_hook();
@@ -588,6 +635,14 @@ pub fn run() {
             let path = request.uri().path().to_owned();
             tauri::async_runtime::spawn_blocking(move || {
                 responder.respond(gallery_response(&app, &path));
+            });
+        })
+        .register_asynchronous_uri_scheme_protocol(feed::PROTOCOL, |ctx, request, responder| {
+            let app = ctx.app_handle().clone();
+            let method = request.method().clone();
+            let path = request.uri().path().to_owned();
+            tauri::async_runtime::spawn(async move {
+                responder.respond(feed_response(&app, &method, &path).await);
             });
         })
         .manage(LifecycleController::new())
@@ -748,6 +803,14 @@ fn handlers<R: tauri::Runtime>() -> impl Fn(tauri::ipc::Invoke<R>) -> bool + Sen
         commands::skins_pick,
         commands::skins_upload,
         commands::skins_remove,
+        commands::feed_get,
+        commands::feed_note,
+        commands::feed_play,
+        commands::feed_open_link,
+        commands::feed_channels,
+        commands::feed_add_channel,
+        commands::feed_remove_channel,
+        commands::feed_own_videos,
         #[cfg(debug_assertions)]
         commands::start_lifecycle_test,
         #[cfg(debug_assertions)]

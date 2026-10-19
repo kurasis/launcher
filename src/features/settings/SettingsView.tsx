@@ -2,7 +2,13 @@ import { useId, useState } from 'react';
 import { Notice } from '../../components/Notice';
 import { Panel } from '../../components/Panel';
 import forms from '../../components/forms.module.css';
-import type { AppSnapshot, DuringGameMode, SettingsPatch, Theme } from '../../lib/contracts';
+import type {
+  AppSnapshot,
+  DuringGameMode,
+  SettingsPatch,
+  StartView,
+  Theme,
+} from '../../lib/contracts';
 import { ipc } from '../../lib/ipc';
 import { LANGUAGES, type SettingsSection, strings } from '../../lib/strings';
 import { useCommand } from '../../lib/useCommand';
@@ -17,6 +23,7 @@ import { UpdateSettings } from '../updates/UpdateSettings';
 import { DownloadSourceSettings } from '../network/DownloadSourceSettings';
 import { NetworkSettings } from '../network/NetworkSettings';
 import { ResetSettings } from './ResetSettings';
+import { FeedSettings } from '../feed/FeedSettings';
 import styles from './SettingsView.module.css';
 import { gameLabel } from '../instances/loaderLabel';
 
@@ -31,6 +38,7 @@ interface SettingsViewProps {
 const t = strings.settings;
 const sections: SettingsSection[] = [
   'general',
+  'feed',
   'java',
   'defaults',
   'network',
@@ -40,6 +48,8 @@ const sections: SettingsSection[] = [
 ];
 const themes: Theme[] = ['system', 'light', 'dark'];
 const modes: DuringGameMode[] = ['unload_and_return', 'close_launcher', 'keep_open'];
+/** Every start screen, also those the interface does not have yet (they open Installations). */
+const startViews: readonly StartView[] = ['feed', 'home', 'mods', 'skins', 'account', 'last'];
 
 /** Every launcher and installation setting, one section at a time. */
 export function SettingsView({ snapshot, section, onSection, instanceId }: SettingsViewProps) {
@@ -71,6 +81,7 @@ export function SettingsView({ snapshot, section, onSection, instanceId }: Setti
           <p className={styles.hint}>{t.sectionHints[section]}</p>
           {!settings.writable && <Notice tone="warning">{t.readOnly}</Notice>}
           {section === 'general' && <GeneralSettings snapshot={snapshot} />}
+          {section === 'feed' && <FeedSettings settings={settings} />}
           {section === 'java' && (
             <JavaSettings settings={settings} instances={snapshot.instances} />
           )}
@@ -102,6 +113,7 @@ function GeneralSettings({ snapshot }: { snapshot: AppSnapshot }) {
   );
   const disabled = update.pending || !settings.writable;
   const languageId = useId();
+  const startViewId = useId();
 
   return (
     <div className={styles.section}>
@@ -128,6 +140,29 @@ function GeneralSettings({ snapshot }: { snapshot: AppSnapshot }) {
             </option>
           ))}
         </select>
+      </div>
+      <div className={styles.field}>
+        <label htmlFor={startViewId}>{t.startView}</label>
+        <select
+          id={startViewId}
+          className={forms.select}
+          value={settings.startView}
+          disabled={disabled}
+          aria-describedby={`${startViewId}-hint`}
+          onChange={(event) => {
+            const startView = startViews.find((item) => item === event.target.value);
+            if (startView !== undefined) void update.run({ startView });
+          }}
+        >
+          {startViews.map((item) => (
+            <option key={item} value={item}>
+              {t.startViews[item]}
+            </option>
+          ))}
+        </select>
+        <p id={`${startViewId}-hint`} className={styles.hint}>
+          {t.startViewHint}
+        </p>
       </div>
       <fieldset className={forms.choices} disabled={disabled}>
         <legend>{t.theme}</legend>

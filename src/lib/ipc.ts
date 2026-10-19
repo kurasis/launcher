@@ -53,6 +53,12 @@ import {
   type SkinKind,
   type SkinsProblem,
   type Wardrobe,
+  FEED_PROBLEMS,
+  type FeedProblem,
+  type FeedVideo,
+  type FeedView,
+  type NoteView,
+  type OwnChannel,
   type BackupScope,
   type JavaCheck,
   type NoTokenProfile,
@@ -314,6 +320,25 @@ export const ipc = {
   /** Saves the account's data as a file; its name, or null if the dialog was closed. */
   launcherAccountExport: (title?: string): Promise<string | null> =>
     invoke<string | null>('launcher_account_export', { title }),
+  // The start page feed (D-067). These reject with a FeedProblem string;
+  // `feedProblem` reads it.
+  /** `refresh` asks the service again even when it answered a moment ago. */
+  feedGet: (refresh = false): Promise<FeedView> => invoke<FeedView>('feed_get', { refresh }),
+  /** A whole note; `original` asks for the English text instead of a translation. */
+  feedNote: (id: string, original = false): Promise<NoteView> =>
+    invoke<NoteView>('feed_note', { id, original }),
+  /** Plays a video (`yt`) or stream (`twitch`) where the settings say. */
+  feedPlay: (kind: 'yt' | 'twitch', id: string, title?: string): Promise<void> =>
+    invoke('feed_play', { kind, id, title }),
+  /** Opens a link of the feed in the browser (only addresses the core allows). */
+  feedOpenLink: (url: string): Promise<void> => invoke('feed_open_link', { url }),
+  feedChannels: (): Promise<OwnChannel[]> => invoke<OwnChannel[]>('feed_channels'),
+  /** Looks a channel up by its link, @handle or id and adds it; the list after. */
+  feedAddChannel: (input: string): Promise<OwnChannel[]> =>
+    invoke<OwnChannel[]>('feed_add_channel', { input }),
+  feedRemoveChannel: (channelId: string): Promise<OwnChannel[]> =>
+    invoke<OwnChannel[]>('feed_remove_channel', { channelId }),
+  feedOwnVideos: (): Promise<FeedVideo[]> => invoke<FeedVideo[]>('feed_own_videos'),
   /** The interface has shown: a new version's start can count as good. */
   interfaceReady: (): Promise<void> => invoke('interface_ready'),
   /** Debug builds only; release builds have no handler for this command. */
@@ -463,6 +488,13 @@ export function friendsProblem(error: unknown): FriendsProblem {
 export function skinsProblem(error: unknown): SkinsProblem {
   return typeof error === 'string' && (SKINS_PROBLEMS as readonly string[]).includes(error)
     ? (error as SkinsProblem)
+    : 'server';
+}
+
+/** The FeedProblem a feed command rejected with (anything else: `server`). */
+export function feedProblem(error: unknown): FeedProblem {
+  return typeof error === 'string' && (FEED_PROBLEMS as readonly string[]).includes(error)
+    ? (error as FeedProblem)
     : 'server';
 }
 

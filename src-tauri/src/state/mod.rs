@@ -24,7 +24,7 @@ use crate::error::{ErrorCode, LauncherError, LauncherResult};
 use crate::storage::document::SCHEMA_VERSION;
 use crate::storage::models::{
     AccountsFile, InstallationHealth, InstanceFile, LastResult, NoTokenRecord, OperationKind,
-    Outcome, ProfileRef, Settings,
+    Outcome, ProfileRef, Settings, StartView,
 };
 use crate::storage::paths::{DataRoot, InstanceId};
 use crate::storage::{StorageIssue, Store};
@@ -1631,10 +1631,11 @@ impl AppState {
         &self,
         request: MutationRequest<SettingsPatch>,
     ) -> LauncherResult<SettingsView> {
-        // Selecting an installation is not worth a journal line.
+        // Selecting an installation or opening a screen is not worth a journal line.
         let mut patch = serde_json::to_value(&request.payload).unwrap_or_default();
         if let Some(fields) = patch.as_object_mut() {
             fields.remove("selectedInstanceId");
+            fields.remove("lastView");
         }
         let result = self.set_app_settings_inner(request);
         // Outside the state lock: a mode change announces the run state.
@@ -1726,6 +1727,23 @@ impl AppState {
                 if let Some(provider) = patch.java_provider {
                     settings.java_provider = provider;
                 }
+                if let Some(view) = patch.start_view {
+                    settings.start_view = StartView::parse(&view).ok_or_else(|| {
+                        LauncherError::invalid_input(
+                            "This is not a screen the launcher can open at start.",
+                        )
+                    })?;
+                }
+                if let Some(view) = patch.last_view {
+                    settings.last_view = StartView::parse_remembered(&view).ok_or_else(|| {
+                        LauncherError::invalid_input(
+                            "This screen cannot be remembered as the last one opened.",
+                        )
+                    })?;
+                }
+                if let Some(feed) = patch.feed {
+                    apply_feed_patch(&mut settings.feed, feed)?;
+                }
                 if let Some(tag) = patch.language {
                     settings.language =
                         crate::storage::models::Language::parse(&tag).ok_or_else(|| {
@@ -1741,6 +1759,44 @@ impl AppState {
             },
         )
     }
+}
+
+/// Applies a change of the feed's settings (D-067), checked first.
+fn apply_feed_patch(
+    feed: &mut crate::storage::models::FeedSettings,
+    patch: dto::FeedSettingsPatch,
+) -> LauncherResult<()> {
+    use crate::storage::models::{FeedBlock, FeedSettings};
+    if let Some(hidden) = &patch.hidden {
+        let set = FeedSettings::hidden_set(hidden.iter().copied());
+        if hidden.len() > FeedBlock::ALL.len() || set.len() != hidden.len() {
+            return Err(LauncherError::invalid_input(
+                "Each part of the feed can be hidden once.",
+            ));
+        }
+    }
+    if let Some(on) = patch.enabled {
+        feed.enabled = on;
+    }
+    if let Some(on) = patch.snapshots {
+        feed.snapshots = on;
+    }
+    if let Some(language) = patch.video_language {
+        feed.video_language = language;
+    }
+    if let Some(on) = patch.shorts {
+        feed.shorts = on;
+    }
+    if let Some(on) = patch.machine_translation {
+        feed.machine_translation = on;
+    }
+    if let Some(player) = patch.player {
+        feed.player = player;
+    }
+    if let Some(hidden) = patch.hidden {
+        feed.hidden = FeedSettings::hidden_set(hidden);
+    }
+    Ok(())
 }
 
 enum Change {

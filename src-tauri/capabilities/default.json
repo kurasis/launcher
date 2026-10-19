@@ -95,6 +95,14 @@
     "allow-skins-pick",
     "allow-skins-upload",
     "allow-skins-remove",
+    "allow-feed-get",
+    "allow-feed-note",
+    "allow-feed-play",
+    "allow-feed-open-link",
+    "allow-feed-channels",
+    "allow-feed-add-channel",
+    "allow-feed-remove-channel",
+    "allow-feed-own-videos",
     "allow-start-lifecycle-test",
     "allow-stop-lifecycle-test"
   ]

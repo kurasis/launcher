@@ -85,6 +85,18 @@ export function snapshotFixture(overrides: Partial<AppSnapshot> = {}): AppSnapsh
       downloadSource: 'automatic',
       updateMode: 'auto',
       updateChannel: 'stable',
+      // Most screens' tests start on Installations; the feed's own tests pick it.
+      startView: 'home',
+      lastView: 'feed',
+      feed: {
+        enabled: true,
+        snapshots: true,
+        videoLanguage: 'ui',
+        shorts: false,
+        machineTranslation: true,
+        player: 'window',
+        hidden: [],
+      },
       language: 'en',
       writable: true,
     },

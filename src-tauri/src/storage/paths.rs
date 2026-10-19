@@ -223,6 +223,18 @@ impl DataRoot {
         self.root.join("cache").join("thumbnails")
     }
 
+    /// Copies of the start page feed, its notes and pictures (D-067); can be
+    /// deleted at any time.
+    pub fn feed_cache_dir(&self) -> PathBuf {
+        self.root.join("cache").join("feed")
+    }
+
+    /// The YouTube channels a player added to the feed (D-067). Kept on this
+    /// computer only.
+    pub fn feed_channels(&self) -> PathBuf {
+        self.root.join("feed-channels.json")
+    }
+
     /// The launcher's log and its failure records.
     pub fn logs_dir(&self) -> PathBuf {
         self.root.join("logs")
