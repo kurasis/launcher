@@ -16,6 +16,7 @@
       "feed": "Лента",
       "home": "Установки",
       "mods": "Моды",
+      "worlds": "Миры",
       "account": "Аккаунты",
       "backups": "Копии",
       "screenshots": "Скриншоты",
@@ -1367,6 +1368,166 @@
         "cancel": "Отмена"
       }
     },
+    "worlds": {
+      "title": "Миры с друзьями",
+      "signIn": "Войдите в аккаунт лаунчера, чтобы играть в мирах с друзьями.",
+      "openAccount": "Открыть аккаунты",
+      "rooms": "Комнаты",
+      "noRooms": "Вы пока не состоите ни в одной комнате. Создайте мир или войдите в мир друга по коду приглашения.",
+      "create": "Создать мир",
+      "joinByCode": "Войти по коду",
+      "refresh": "Обновить",
+      "loading": "Загрузка…",
+      "roomMeta": "{owner} · Minecraft {version} · {members, plural, one {# участник} few {# участника} many {# участников} other {# участника}}",
+      "openNow": "Открыт: играют {online} из {max}",
+      "closedNow": "Закрыт",
+      "yours": "Ваш мир",
+      "keptHere": "Хранится на этом компьютере",
+      "keptElsewhere": "Хранится на другом компьютере",
+      "open": "Открыть",
+      "back": "К комнатам",
+      "host": "Открыть для друзей",
+      "stopHosting": "Закрыть мир",
+      "join": "Войти",
+      "play": "Играть",
+      "disconnect": "Выйти из мира",
+      "cancel": "Отмена",
+      "close": "Закрыть",
+      "stages": {
+        "server": "Готовим сервер мира и Java",
+        "starting": "Запускаем мир",
+        "opening": "Открываем комнату для друзей",
+        "joining": "Подключаемся к хосту"
+      },
+      "progress": "{done} из {total}",
+      "hosting": {
+        "title": "Мир «{room}» открыт",
+        "players": "{count, plural, =0 {Пока никто не играет} one {# игрок: {names}} few {# игрока: {names}} many {# игроков: {names}} other {# игрока: {names}}}",
+        "phases": {
+          "starting": "Запускается",
+          "ready": "Открыт",
+          "stopping": "Сохраняется и закрывается",
+          "exited": "Закрыт"
+        },
+        "ended": {
+          "stopped": "Мир закрыт и сохранён.",
+          "server_exited": "Сервер мира остановился.",
+          "session_lost": "Комнату открыли на другом компьютере, или пропала связь с сервисом.",
+          "room_gone": "Комнаты больше нет, или она больше не ваша."
+        },
+        "unclean": "Сервер мира остановился некорректно: последние минуты могли не сохраниться.",
+        "hostPlays": "Нажмите «Играть», чтобы зайти в свой мир. Друзья могут входить, пока он открыт."
+      },
+      "guest": {
+        "title": "В комнате «{room}»",
+        "connected": "Связь с хостом есть. Нажмите «Играть», чтобы запустить игру.",
+        "lost": "Связь с хостом пропала."
+      },
+      "refusals": {
+        "BAD_FRAME": "Лаунчер хоста не понял этот лаунчер. Обновите оба.",
+        "TICKET_INVALID": "Пропуск истёк. Нажмите «Играть» ещё раз.",
+        "NOT_MEMBER": "Вы больше не участник этой комнаты.",
+        "ALREADY_CONNECTED": "Ваш аккаунт уже играет в этой комнате.",
+        "CONNECTION_CLOSING": "Хост закрывает мир.",
+        "WRONG_SESSION": "Хост открыл мир заново. Выйдите и войдите ещё раз.",
+        "ROOM_FULL": "В мире нет мест.",
+        "HOST_BUSY": "Компьютер хоста занят. Попробуйте чуть позже.",
+        "UNAVAILABLE": "worlds.lapi.sh не ответил хосту. Попробуйте чуть позже."
+      },
+      "installing": "Игра для этой комнаты устанавливается. Нажмите «Играть», когда установка закончится.",
+      "eulaNeeded": "Примите EULA Minecraft, чтобы открыть этот мир на этом компьютере.",
+      "acceptEula": "Принять EULA",
+      "readEula": "Прочитать EULA Minecraft",
+      "members": "Участники",
+      "roles": {
+        "owner": "Владелец",
+        "manager": "Управляющий",
+        "member": "Участник"
+      },
+      "remove": "Удалить",
+      "ban": "Заблокировать",
+      "removeConfirm": "Удалить {nick} из комнаты? Вернуться можно будет только по новому приглашению.",
+      "banConfirm": "Заблокировать {nick}? Вернуться не получится даже по приглашению.",
+      "leave": "Покинуть комнату",
+      "leaveConfirm": "Покинуть «{room}»? Вернуться можно будет только по новому приглашению.",
+      "invite": {
+        "title": "Пригласить друга",
+        "hours": "Действует",
+        "hourOptions": "{count, plural, one {# час} few {# часа} many {# часов} other {# часа}}",
+        "dayOptions": "{count, plural, one {# день} few {# дня} many {# дней} other {# дня}}",
+        "uses": "Входов",
+        "make": "Создать код",
+        "code": "Код приглашения",
+        "copy": "Копировать",
+        "copied": "Скопировано",
+        "hint": "Отправьте этот код другу. Он показывается только сейчас; по нему можно войти {uses, plural, one {# раз} few {# раза} many {# раз} other {# раза}} до {date}."
+      },
+      "form": {
+        "name": "Название мира",
+        "description": "Описание",
+        "version": "Версия Minecraft",
+        "gameMode": "Режим игры",
+        "modes": {
+          "survival": "Выживание",
+          "creative": "Творчество",
+          "adventure": "Приключение"
+        },
+        "difficulty": "Сложность",
+        "difficulties": {
+          "peaceful": "Мирная",
+          "easy": "Лёгкая",
+          "normal": "Нормальная",
+          "hard": "Сложная"
+        },
+        "preset": "Тип мира",
+        "presets": {
+          "normal": "Обычный",
+          "flat": "Плоский",
+          "large_biomes": "Большие биомы",
+          "amplified": "Расширенный"
+        },
+        "seed": "Сид",
+        "seedHint": "Оставьте пустым для случайного мира.",
+        "hardcore": "Хардкор",
+        "pvp": "Игроки могут наносить урон друг другу",
+        "maxPlayers": "Игроков одновременно, не больше",
+        "eula": "Я принимаю EULA Minecraft",
+        "submit": "Создать",
+        "creating": "Создаём…",
+        "keptHint": "Мир хранится на этом компьютере. Друзья могут в него войти, пока этот лаунчер его открывает."
+      },
+      "code": {
+        "label": "Код или ссылка приглашения",
+        "look": "Посмотреть",
+        "preview": "{name}, владелец {owner} · Minecraft {version} · {members, plural, one {# участник} few {# участника} many {# участников} other {# участника}}",
+        "accept": "Войти в комнату"
+      },
+      "problems": {
+        "signed_out": "Войдите в аккаунт лаунчера ещё раз.",
+        "network": "worlds.lapi.sh недоступен. Проверьте подключение.",
+        "server": "worlds.lapi.sh сейчас не работает. Попробуйте позже.",
+        "too_many": "Слишком много попыток. Подождите минуту.",
+        "invalid": "worlds.lapi.sh не принял этот запрос.",
+        "not_found": "Этой комнаты больше нет.",
+        "forbidden": "Это может только владелец комнаты или управляющий.",
+        "banned": "Вы заблокированы в этой комнате.",
+        "nick_unfit": "Ник лаунчера не подходит как имя в Minecraft. Смените его в «Аккаунтах» на 3–16 латинских букв, цифр или подчёркиваний.",
+        "invite_invalid": "Код приглашения неверный, уже использован или истёк.",
+        "not_member": "Вы не участник этой комнаты.",
+        "limit": "Достигнут предел: не больше десяти комнат, устройств или открытых приглашений.",
+        "world_taken": "У этого мира уже есть комната.",
+        "revision_conflict": "Комната успела измениться. Откройте её заново.",
+        "owner_cannot_leave": "Владелец не может покинуть свою комнату.",
+        "not_hosting": "Мир сейчас закрыт. Попросите владельца открыть его.",
+        "session_ended": "Хост закрыл мир или открыл его заново в другом месте.",
+        "ticket_invalid": "Пропуск истёк. Попробуйте ещё раз.",
+        "wrong_session": "Хост открыл мир заново. Войдите ещё раз.",
+        "room_full": "В мире нет мест.",
+        "already_connected": "Ваш аккаунт уже играет в этой комнате.",
+        "device": "worlds.lapi.sh не принял этот компьютер. Попробуйте ещё раз.",
+        "refused": "worlds.lapi.sh отказал."
+      }
+    },
     "metered": {
       "toggle": "Лимитное подключение",
       "toggleHint": "Спрашивать перед большими загрузками и следить за трафиком. Включите для мобильного интернета или тарифа с ограничением трафика.",
@@ -1974,6 +2135,27 @@
     "This version of the mod is not made for this installation's mod loader.": "Эта версия мода сделана не для загрузчика модов этой установки.",
     "This world is not in the installation.": "Этого мира нет в установке.",
     "Too many requests to the catalog in a short time. Try again later.": "Слишком много запросов к каталогу за короткое время. Попробуйте позже.",
-    "Your account brought a lot of files into the catalog today. Try again tomorrow.": "Ваш аккаунт сегодня уже добавил в каталог много файлов. Попробуйте завтра."
+    "Your account brought a lot of files into the catalog today. Try again tomorrow.": "Ваш аккаунт сегодня уже добавил в каталог много файлов. Попробуйте завтра.",
+    "A room description has at most 500 characters.": "Описание комнаты — не больше 500 символов.",
+    "Creating the world stopped.": "Создание мира прервалось.",
+    "Keeping the world's players": "Сохранение игроков мира",
+    "Opening the world for the game": "Открытие мира для игры",
+    "Reading the worlds stopped.": "Чтение миров прервалось.",
+    "Sign in to the launcher account again.": "Войдите в аккаунт лаунчера ещё раз.",
+    "The host's address does not match.": "Адрес хоста не совпадает.",
+    "The host's computer cannot be reached.": "Компьютер хоста недоступен.",
+    "The relay address is not valid.": "Адрес ретранслятора неверный.",
+    "The room plays another Minecraft version than its installation.": "Комната играет на другой версии Minecraft, чем её установка.",
+    "The world's players could not be written.": "Не удалось записать игроков мира.",
+    "This computer is already in a room. Leave it first.": "Этот компьютер уже в комнате. Сначала выйдите из неё.",
+    "This is not a room.": "Это не комната.",
+    "This is not an account.": "Это не аккаунт.",
+    "This room's world is kept on another computer.": "Мир этой комнаты хранится на другом компьютере.",
+    "Too many tries. Wait a minute.": "Слишком много попыток. Подождите минуту.",
+    "Waiting for the world stopped.": "Ожидание мира прервалось.",
+    "Worlds with friends need a Microsoft account that owns Minecraft. Sign in with it in the launcher once.": "Для миров с друзьями нужен аккаунт Microsoft с купленным Minecraft. Один раз войдите с ним в лаунчере.",
+    "worlds.lapi.sh cannot be reached.": "worlds.lapi.sh недоступен.",
+    "worlds.lapi.sh is not working right now.": "worlds.lapi.sh сейчас не работает.",
+    "worlds.lapi.sh refused this.": "worlds.lapi.sh отказал."
   }
 }

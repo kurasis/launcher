@@ -197,3 +197,8 @@ tuple; Fabric and other loaders arrive in W12.
   each member account's last nick per world and moves player files to the new offline UUID
   before a renamed member logs in. The commands and the two-machine run move to W8, with the
   interface that uses them.
+- 2026-10-19 — W8: one computer is in one room at a time, hosting or as a guest, as one hosting
+  permit allows one server. The host's own game connects to its world server on loopback, not
+  through the tunnel. An invite is a code shown once, pasted or sent in a chat; there is no
+  invite web page. The device list names a computer by its system and architecture, never its
+  host name. Worlds is not offered as a start screen: rooms need the service.

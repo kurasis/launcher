@@ -1,0 +1,197 @@
+import { useCallback, useEffect, useState } from 'react';
+import { Button } from '../../components/Button';
+import { Notice } from '../../components/Notice';
+import { Panel } from '../../components/Panel';
+import { StatusBadge } from '../../components/StatusBadge';
+import type { AppSnapshot, LocalWorld, WorldsRoom } from '../../lib/contracts';
+import { ipc } from '../../lib/ipc';
+import { strings } from '../../lib/strings';
+import { CreateWorld } from './CreateWorld';
+import { JoinByCode } from './JoinByCode';
+import { RoomActions } from './RoomActions';
+import { RoomPage } from './RoomPage';
+import { WorldsStatus } from './WorldsStatus';
+import { useWorldsState, worldsErrorText } from './useWorlds';
+import styles from './Worlds.module.css';
+
+interface Props {
+  snapshot: AppSnapshot;
+  onOpenAccounts: () => void;
+}
+
+/**
+ * Worlds with friends (D-068): the account's rooms, creating a world, joining
+ * with an invite code, a room's page, and what this computer hosts or joins.
+ */
+export function WorldsView({ snapshot, onOpenAccounts }: Props) {
+  const t = strings.worlds;
+  const signedIn = snapshot.account.launcherAccount.id !== null;
+  const state = useWorldsState();
+  const [rooms, setRooms] = useState<WorldsRoom[] | null>(null);
+  const [local, setLocal] = useState<LocalWorld[]>([]);
+  const [error, setError] = useState<string | null>(null);
+  const [room, setRoom] = useState<string | null>(null);
+  const [dialog, setDialog] = useState<'create' | 'code' | null>(null);
+
+  const load = useCallback(() => {
+    void ipc
+      .worldsLocal()
+      .then(setLocal)
+      .catch(() => undefined);
+    ipc
+      .worldsRooms()
+      .then((next) => {
+        setRooms(next);
+        setError(null);
+      })
+      .catch((e: unknown) => {
+        setError(worldsErrorText(e));
+        setRooms((current) => current ?? []);
+      });
+  }, []);
+
+  useEffect(() => {
+    if (signedIn) load();
+  }, [signedIn, load]);
+
+  // A room opened or closed here shows in the list at once.
+  const hostingRoom = state.hosting?.ended === null ? state.hosting.room : null;
+  useEffect(() => {
+    if (signedIn && hostingRoom !== null) load();
+  }, [signedIn, hostingRoom, load]);
+
+  const onLocal = (world: LocalWorld) => {
+    setLocal((current) => current.map((w) => (w.id === world.id ? world : w)));
+  };
+
+  if (!signedIn) {
+    return (
+      <Panel title={t.title}>
+        <Notice tone="info">{t.signIn}</Notice>
+        <div className={styles.toolbar}>
+          <Button variant="primary" onClick={onOpenAccounts}>
+            {t.openAccount}
+          </Button>
+        </div>
+      </Panel>
+    );
+  }
+
+  return (
+    <Panel title={t.title}>
+      <WorldsStatus state={state} rooms={rooms ?? []} />
+      {room !== null ? (
+        <RoomPage
+          key={room}
+          room={room}
+          local={local}
+          state={state}
+          onLocal={onLocal}
+          onBack={() => {
+            setRoom(null);
+            load();
+          }}
+          onLeft={() => {
+            setRoom(null);
+            load();
+          }}
+        />
+      ) : (
+        <>
+          <div className={styles.toolbar}>
+            <Button
+              variant="primary"
+              onClick={() => {
+                setDialog('create');
+              }}
+            >
+              {t.create}
+            </Button>
+            <Button
+              onClick={() => {
+                setDialog('code');
+              }}
+            >
+              {t.joinByCode}
+            </Button>
+            <Button onClick={load}>{t.refresh}</Button>
+          </div>
+          {error !== null && <Notice tone="danger">{error}</Notice>}
+          <h3 className={styles.sectionTitle}>{t.rooms}</h3>
+          {rooms === null ? (
+            <p className={styles.muted}>{t.loading}</p>
+          ) : rooms.length === 0 ? (
+            error === null && <p className={styles.muted}>{t.noRooms}</p>
+          ) : (
+            <ul className={styles.rooms}>
+              {rooms.map((item) => {
+                const world = local.find((w) => w.id === item.world) ?? null;
+                return (
+                  <li key={item.id} className={styles.room}>
+                    <span className={styles.roomName}>{item.name}</span>
+                    <span className={styles.muted}>
+                      {t.roomMeta({
+                        owner: item.ownerNick,
+                        version: item.minecraft,
+                        members: item.members,
+                      })}
+                    </span>
+                    <span className={styles.badges}>
+                      <StatusBadge
+                        tone={item.hosting ? 'success' : 'neutral'}
+                        label={
+                          item.hosting
+                            ? t.openNow({ online: item.online, max: item.maxPlayers })
+                            : t.closedNow
+                        }
+                      />
+                      {item.role === 'owner' && (
+                        <StatusBadge
+                          tone="neutral"
+                          label={world === null ? t.keptElsewhere : t.keptHere}
+                        />
+                      )}
+                    </span>
+                    <RoomActions room={item} local={world} state={state} onLocal={onLocal} />
+                    <div className={styles.actions}>
+                      <Button
+                        onClick={() => {
+                          setRoom(item.id);
+                        }}
+                      >
+                        {t.open}
+                      </Button>
+                    </div>
+                  </li>
+                );
+              })}
+            </ul>
+          )}
+        </>
+      )}
+      {dialog === 'create' && (
+        <CreateWorld
+          onClose={() => {
+            setDialog(null);
+          }}
+          onCreated={() => {
+            setDialog(null);
+            load();
+          }}
+        />
+      )}
+      {dialog === 'code' && (
+        <JoinByCode
+          onClose={() => {
+            setDialog(null);
+          }}
+          onJoined={(joined) => {
+            setDialog(null);
+            load();
+            setRoom(joined.id);
+          }}
+        />
+      )}
+    </Panel>
+  );
+}

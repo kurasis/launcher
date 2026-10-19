@@ -17,6 +17,7 @@
       "feed": "الموجز",
       "home": "التثبيتات",
       "mods": "التعديلات",
+      "worlds": "العوالم",
       "account": "الحسابات",
       "backups": "النسخ",
       "screenshots": "لقطات الشاشة",
@@ -1368,6 +1369,166 @@
         "cancel": "إلغاء"
       }
     },
+    "worlds": {
+      "title": "عوالم مع الأصدقاء",
+      "signIn": "سجّل الدخول إلى حساب المشغّل لتلعب في عوالم مع الأصدقاء.",
+      "openAccount": "فتح الحسابات",
+      "rooms": "الغرف",
+      "noRooms": "لست في أي غرفة بعد. أنشئ عالمًا، أو ادخل عالم صديق برمز دعوة.",
+      "create": "إنشاء عالم",
+      "joinByCode": "الدخول برمز",
+      "refresh": "تحديث",
+      "loading": "جارٍ التحميل…",
+      "roomMeta": "{owner} · Minecraft {version} · {members, plural, zero {لا أعضاء} one {عضو واحد} two {عضوان} few {# أعضاء} many {# عضوًا} other {# عضو}}",
+      "openNow": "مفتوح: يلعب {online} من {max}",
+      "closedNow": "مغلق",
+      "yours": "عالمك",
+      "keptHere": "محفوظ على هذا الحاسوب",
+      "keptElsewhere": "محفوظ على حاسوب آخر",
+      "open": "فتح",
+      "back": "العودة إلى الغرف",
+      "host": "فتحه للأصدقاء",
+      "stopHosting": "إغلاق العالم",
+      "join": "دخول",
+      "play": "العب",
+      "disconnect": "مغادرة العالم",
+      "cancel": "إلغاء",
+      "close": "إغلاق",
+      "stages": {
+        "server": "تجهيز خادم العالم وJava",
+        "starting": "تشغيل العالم",
+        "opening": "فتح الغرفة للأصدقاء",
+        "joining": "الاتصال بالمضيف"
+      },
+      "progress": "{done} من {total}",
+      "hosting": {
+        "title": "العالم «{room}» مفتوح",
+        "players": "{count, plural, zero {لا أحد يلعب بعد} one {لاعب واحد: {names}} two {لاعبان: {names}} few {# لاعبين: {names}} many {# لاعبًا: {names}} other {# لاعب: {names}}}",
+        "phases": {
+          "starting": "قيد التشغيل",
+          "ready": "مفتوح",
+          "stopping": "يُحفظ ويُغلق",
+          "exited": "مغلق"
+        },
+        "ended": {
+          "stopped": "أُغلق العالم وحُفظ.",
+          "server_exited": "توقّف خادم العالم.",
+          "session_lost": "فُتحت الغرفة على حاسوب آخر، أو انقطع الاتصال بالخدمة.",
+          "room_gone": "لم تعد الغرفة موجودة، أو لم تعد لك."
+        },
+        "unclean": "لم يتوقف خادم العالم بشكل سليم؛ قد لا تكون الدقائق الأخيرة محفوظة.",
+        "hostPlays": "اضغط «العب» لتدخل عالمك. يستطيع الأصدقاء الدخول ما دام مفتوحًا."
+      },
+      "guest": {
+        "title": "في «{room}»",
+        "connected": "متصل بالمضيف. اضغط «العب» لتشغيل اللعبة.",
+        "lost": "انقطع الاتصال بالمضيف."
+      },
+      "refusals": {
+        "BAD_FRAME": "لم يفهم مشغّل المضيف هذا المشغّل. حدّث كليهما.",
+        "TICKET_INVALID": "انتهت صلاحية الدخول. اضغط «العب» مرة أخرى.",
+        "NOT_MEMBER": "لم تعد عضوًا في هذه الغرفة.",
+        "ALREADY_CONNECTED": "حسابك يلعب في هذه الغرفة بالفعل.",
+        "CONNECTION_CLOSING": "المضيف يغلق العالم.",
+        "WRONG_SESSION": "فتح المضيف العالم من جديد. غادر وادخل مرة أخرى.",
+        "ROOM_FULL": "العالم ممتلئ.",
+        "HOST_BUSY": "حاسوب المضيف مشغول. حاول بعد قليل.",
+        "UNAVAILABLE": "لم يُجب worlds.lapi.sh المضيف. حاول بعد قليل."
+      },
+      "installing": "يجري تثبيت اللعبة لهذه الغرفة. اضغط «العب» عندما يكتمل.",
+      "eulaNeeded": "اقبل اتفاقية ترخيص Minecraft لتفتح هذا العالم على هذا الحاسوب.",
+      "acceptEula": "قبول الاتفاقية",
+      "readEula": "قراءة اتفاقية ترخيص Minecraft",
+      "members": "الأعضاء",
+      "roles": {
+        "owner": "المالك",
+        "manager": "مدير",
+        "member": "عضو"
+      },
+      "remove": "إزالة",
+      "ban": "حظر",
+      "removeConfirm": "إزالة {nick} من الغرفة؟ لن يعود إلا بدعوة جديدة.",
+      "banConfirm": "حظر {nick}؟ لن يستطيع العودة ولو بدعوة.",
+      "leave": "مغادرة الغرفة",
+      "leaveConfirm": "مغادرة «{room}»؟ لن تعود إلا بدعوة جديدة.",
+      "invite": {
+        "title": "دعوة صديق",
+        "hours": "صالح لمدة",
+        "hourOptions": "{count, plural, zero {لا ساعات} one {ساعة واحدة} two {ساعتان} few {# ساعات} many {# ساعة} other {# ساعة}}",
+        "dayOptions": "{count, plural, zero {لا أيام} one {يوم واحد} two {يومان} few {# أيام} many {# يومًا} other {# يوم}}",
+        "uses": "مرات الاستخدام",
+        "make": "إنشاء رمز",
+        "code": "رمز الدعوة",
+        "copy": "نسخ",
+        "copied": "نُسخ",
+        "hint": "أرسل هذا الرمز إلى صديق. يُعرض الآن فقط؛ يمكن استخدامه {uses, plural, zero {مرة} one {مرة واحدة} two {مرتين} few {# مرات} many {# مرة} other {# مرة}} حتى {date}."
+      },
+      "form": {
+        "name": "اسم العالم",
+        "description": "الوصف",
+        "version": "إصدار Minecraft",
+        "gameMode": "نمط اللعب",
+        "modes": {
+          "survival": "البقاء",
+          "creative": "الإبداع",
+          "adventure": "المغامرة"
+        },
+        "difficulty": "الصعوبة",
+        "difficulties": {
+          "peaceful": "سلمية",
+          "easy": "سهلة",
+          "normal": "عادية",
+          "hard": "صعبة"
+        },
+        "preset": "نوع العالم",
+        "presets": {
+          "normal": "افتراضي",
+          "flat": "مسطّح",
+          "large_biomes": "مناطق حيوية كبيرة",
+          "amplified": "مضخّم"
+        },
+        "seed": "البذرة",
+        "seedHint": "اتركها فارغة لعالم عشوائي.",
+        "hardcore": "المتشدد",
+        "pvp": "يستطيع اللاعبون إيذاء بعضهم",
+        "maxPlayers": "أقصى عدد من اللاعبين معًا",
+        "eula": "أقبل اتفاقية ترخيص Minecraft",
+        "submit": "إنشاء",
+        "creating": "جارٍ الإنشاء…",
+        "keptHint": "يُحفظ العالم على هذا الحاسوب. يستطيع الأصدقاء دخوله ما دام هذا المشغّل يستضيفه."
+      },
+      "code": {
+        "label": "رمز الدعوة أو رابطها",
+        "look": "عرض",
+        "preview": "{name}، المالك {owner} · Minecraft {version} · {members, plural, zero {لا أعضاء} one {عضو واحد} two {عضوان} few {# أعضاء} many {# عضوًا} other {# عضو}}",
+        "accept": "الدخول إلى الغرفة"
+      },
+      "problems": {
+        "signed_out": "سجّل الدخول إلى حساب المشغّل مرة أخرى.",
+        "network": "تعذّر الوصول إلى worlds.lapi.sh. تحقق من الاتصال.",
+        "server": "لا يعمل worlds.lapi.sh الآن. حاول لاحقًا.",
+        "too_many": "محاولات كثيرة جدًا. انتظر دقيقة.",
+        "invalid": "لم يقبل worlds.lapi.sh هذا الطلب.",
+        "not_found": "لم تعد هذه الغرفة موجودة.",
+        "forbidden": "لا يستطيع ذلك إلا مالك الغرفة أو مديرها.",
+        "banned": "أنت محظور في هذه الغرفة.",
+        "nick_unfit": "لا يصلح اسم المشغّل اسمًا في Minecraft. غيّره في «الحسابات» إلى 3–16 حرفًا لاتينيًا أو رقمًا أو شرطة سفلية.",
+        "invite_invalid": "رمز الدعوة خاطئ أو مستخدَم أو منتهي الصلاحية.",
+        "not_member": "لست عضوًا في هذه الغرفة.",
+        "limit": "بلغت الحد: عشر غرف أو أجهزة أو دعوات مفتوحة على الأكثر.",
+        "world_taken": "لهذا العالم غرفة بالفعل.",
+        "revision_conflict": "تغيّرت الغرفة في هذه الأثناء. افتحها من جديد.",
+        "owner_cannot_leave": "لا يستطيع المالك مغادرة غرفته.",
+        "not_hosting": "العالم مغلق الآن. اطلب من مالكه أن يفتحه.",
+        "session_ended": "أغلق المضيف العالم أو فتحه من جديد في مكان آخر.",
+        "ticket_invalid": "انتهت صلاحية الدخول. حاول مرة أخرى.",
+        "wrong_session": "فتح المضيف العالم من جديد. ادخل مرة أخرى.",
+        "room_full": "العالم ممتلئ.",
+        "already_connected": "حسابك يلعب في هذه الغرفة بالفعل.",
+        "device": "رفض worlds.lapi.sh هذا الحاسوب. حاول مرة أخرى.",
+        "refused": "رفض worlds.lapi.sh هذا."
+      }
+    },
     "metered": {
       "toggle": "اتصال محدود البيانات",
       "toggleHint": "اسأل قبل التنزيلات الكبيرة وتابع حركة البيانات. فعّله لبيانات الجوال أو لباقة ذات حد للبيانات.",
@@ -1975,6 +2136,27 @@
     "This version of the mod is not made for this installation's mod loader.": "هذا الإصدار من التعديل غير مصنوع لمحمّل تعديلات هذا التثبيت.",
     "This world is not in the installation.": "هذا العالم ليس في التثبيت.",
     "Too many requests to the catalog in a short time. Try again later.": "طلبات كثيرة جدًا إلى الفهرس في وقت قصير. حاول لاحقًا.",
-    "Your account brought a lot of files into the catalog today. Try again tomorrow.": "أضاف حسابك اليوم ملفات كثيرة إلى الفهرس. حاول غدًا."
+    "Your account brought a lot of files into the catalog today. Try again tomorrow.": "أضاف حسابك اليوم ملفات كثيرة إلى الفهرس. حاول غدًا.",
+    "A room description has at most 500 characters.": "وصف الغرفة 500 حرف على الأكثر.",
+    "Creating the world stopped.": "توقّف إنشاء العالم.",
+    "Keeping the world's players": "حفظ لاعبي العالم",
+    "Opening the world for the game": "فتح العالم للعبة",
+    "Reading the worlds stopped.": "توقّفت قراءة العوالم.",
+    "Sign in to the launcher account again.": "سجّل الدخول إلى حساب المشغّل مرة أخرى.",
+    "The host's address does not match.": "عنوان المضيف غير مطابق.",
+    "The host's computer cannot be reached.": "تعذّر الوصول إلى حاسوب المضيف.",
+    "The relay address is not valid.": "عنوان المُرحِّل غير صالح.",
+    "The room plays another Minecraft version than its installation.": "تلعب الغرفة إصدارًا من Minecraft غير إصدار تثبيتها.",
+    "The world's players could not be written.": "تعذّرت كتابة لاعبي العالم.",
+    "This computer is already in a room. Leave it first.": "هذا الحاسوب في غرفة بالفعل. غادرها أولًا.",
+    "This is not a room.": "هذه ليست غرفة.",
+    "This is not an account.": "هذا ليس حسابًا.",
+    "This room's world is kept on another computer.": "عالم هذه الغرفة محفوظ على حاسوب آخر.",
+    "Too many tries. Wait a minute.": "محاولات كثيرة جدًا. انتظر دقيقة.",
+    "Waiting for the world stopped.": "توقّف انتظار العالم.",
+    "Worlds with friends need a Microsoft account that owns Minecraft. Sign in with it in the launcher once.": "تحتاج العوالم مع الأصدقاء إلى حساب Microsoft يملك Minecraft. سجّل الدخول به في المشغّل مرة واحدة.",
+    "worlds.lapi.sh cannot be reached.": "تعذّر الوصول إلى worlds.lapi.sh.",
+    "worlds.lapi.sh is not working right now.": "لا يعمل worlds.lapi.sh الآن.",
+    "worlds.lapi.sh refused this.": "رفض worlds.lapi.sh هذا."
   }
 }

@@ -60,6 +60,16 @@ import {
   type FeedView,
   type NoteView,
   type OwnChannel,
+  type LocalWorld,
+  type WorldsCreatePayload,
+  type WorldsInstance,
+  type WorldsNewInvite,
+  type WorldsPreview,
+  type WorldsProblem,
+  type WorldsRoom,
+  type WorldsRoomPage,
+  type WorldsState,
+  WORLDS_PROBLEMS,
   type BackupScope,
   type JavaCheck,
   type NoTokenProfile,
@@ -405,6 +415,43 @@ export const ipc = {
   feedRemoveChannel: (channelId: string): Promise<OwnChannel[]> =>
     invoke<OwnChannel[]>('feed_remove_channel', { channelId }),
   feedOwnVideos: (): Promise<FeedVideo[]> => invoke<FeedVideo[]>('feed_own_videos'),
+  // Worlds with friends (D-068). Failures are LauncherErrors; `worldsProblemOf`
+  // reads the service's problem from one.
+  worldsState: (): Promise<WorldsState> => invoke<WorldsState>('worlds_state'),
+  worldsVersions: (): Promise<string[]> => invoke<string[]>('worlds_versions'),
+  worldsLocal: (): Promise<LocalWorld[]> => invoke<LocalWorld[]>('worlds_local'),
+  worldsRooms: (): Promise<WorldsRoom[]> => invoke<WorldsRoom[]>('worlds_rooms'),
+  worldsRoom: (room: string): Promise<WorldsRoomPage> =>
+    invoke<WorldsRoomPage>('worlds_room', { room }),
+  /** A world on this computer and its room. */
+  worldsCreate: (payload: WorldsCreatePayload): Promise<WorldsRoom> =>
+    invoke<WorldsRoom>('worlds_create', { payload }),
+  worldsAcceptEula: (world: string): Promise<LocalWorld> =>
+    invoke<LocalWorld>('worlds_accept_eula', { world }),
+  worldsModerate: (
+    room: string,
+    account: string,
+    action: 'remove' | 'ban' | 'unban',
+  ): Promise<void> => invoke('worlds_moderate', { room, account, action }),
+  worldsLeaveRoom: (room: string): Promise<void> => invoke('worlds_leave_room', { room }),
+  worldsInvite: (room: string, hours: number, uses: number): Promise<WorldsNewInvite> =>
+    invoke<WorldsNewInvite>('worlds_invite', { room, hours, uses }),
+  worldsPreview: (code: string): Promise<WorldsPreview> =>
+    invoke<WorldsPreview>('worlds_preview', { code }),
+  worldsRedeem: (code: string): Promise<WorldsRoom> =>
+    invoke<WorldsRoom>('worlds_redeem', { code }),
+  /** Resolves once friends can join; stages come in `onWorldsState`. */
+  worldsHost: (room: string): Promise<void> => invoke('worlds_host', { room }),
+  worldsStopHosting: (): Promise<void> => invoke('worlds_stop_hosting'),
+  worldsJoin: (room: string): Promise<void> => invoke('worlds_join', { room }),
+  worldsDisconnect: (): Promise<void> => invoke('worlds_disconnect'),
+  worldsCancel: (): Promise<void> => invoke('worlds_cancel'),
+  /** The installation the room plays, made on first use. */
+  worldsInstance: (room: string): Promise<WorldsInstance> =>
+    invoke<WorldsInstance>('worlds_instance', { room }),
+  /** Starts the game into the room as the launcher account's nick. */
+  worldsPlay: (room: string, requestId?: string): Promise<RunSummary> =>
+    invoke<RunSummary>('worlds_play', { request: mutation({ room }, requestId) }),
   /** The interface has shown: a new version's start can count as good. */
   interfaceReady: (): Promise<void> => invoke('interface_ready'),
   /** Debug builds only; release builds have no handler for this command. */
@@ -587,6 +634,20 @@ export function onFriendsRemoved(
   handler: (removed: { room: string; message: number }) => void,
 ): () => void {
   return listenTo('friends://removed', handler);
+}
+
+/** What this computer does for a room of worlds with friends changed. */
+export function onWorldsState(handler: (state: WorldsState) => void): () => void {
+  return listenTo('worlds://state', handler);
+}
+
+/** The worlds.lapi.sh problem a worlds command failed with, if it was one. */
+export function worldsProblemOf(error: unknown): WorldsProblem | null {
+  if (!isLauncherError(error)) return null;
+  const name = error.safeDetails?.worldsProblem;
+  return typeof name === 'string' && (WORLDS_PROBLEMS as readonly string[]).includes(name)
+    ? (name as WorldsProblem)
+    : null;
 }
 
 /** Progress of an install from the catalog of mods (D-066). */

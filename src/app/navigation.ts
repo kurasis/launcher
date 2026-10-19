@@ -10,6 +10,7 @@ export type View =
   | 'feed'
   | 'home'
   | 'mods'
+  | 'worlds'
   | 'account'
   | 'settings'
   | 'backups'
@@ -17,8 +18,11 @@ export type View =
   | 'diagnostics'
   | 'about';
 
-/** Tabs in the row, in order: the feed (D-067) first, the mods catalog (D-066) after Installations. */
-export const rowViews: readonly View[] = ['feed', 'home', 'mods', 'account', 'settings'];
+/**
+ * Tabs in the row, in order: the feed (D-067) first, the mods catalog (D-066)
+ * after Installations, then worlds with friends (D-068).
+ */
+export const rowViews: readonly View[] = ['feed', 'home', 'mods', 'worlds', 'account', 'settings'];
 
 /** Whether a screen can be opened with these settings: the feed only while it is on. */
 export function viewShown(view: View, settings: SettingsView | undefined): boolean {

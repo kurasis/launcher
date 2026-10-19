@@ -9,7 +9,7 @@ function withSettings(settings: Partial<AppSnapshot['settings']>, more: Partial<
 
 describe('navigation', () => {
   it('keeps every screen in one place', () => {
-    expect(rowViews).toEqual(['feed', 'home', 'mods', 'account', 'settings']);
+    expect(rowViews).toEqual(['feed', 'home', 'mods', 'worlds', 'account', 'settings']);
     expect(menuViews).toEqual(['backups', 'screenshots', 'diagnostics', 'about']);
   });
 
@@ -17,6 +17,8 @@ describe('navigation', () => {
     expect(rememberedView('feed')).toBe('feed');
     expect(rememberedView('home')).toBe('home');
     expect(rememberedView('mods')).toBe('mods');
+    // Rooms need the service: never a start screen.
+    expect(rememberedView('worlds')).toBeNull();
     expect(rememberedView('account')).toBe('account');
     for (const view of ['settings', ...menuViews] as const) {
       expect(rememberedView(view)).toBeNull();
