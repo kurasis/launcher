@@ -1,5 +1,7 @@
-//! The internal API for friends.lapi.sh (D-064): who has a nick, and the
-//! nicks of account IDs. It listens on its own local address
+//! The internal API for friends.lapi.sh (D-064): who has a nick, the nicks
+//! of account IDs, which accounts were deleted, whether letters go out, and
+//! which sessions ended (so a sign-out or a switched-off
+//! account reaches friends within seconds, not when the token runs out). It listens on its own local address
 //! (`LAPI_OAUTH_INTERNAL_ADDR`, default `127.0.0.1:8793`), which nginx does not
 //! serve, so nothing outside the server reaches it. It tells only what anyone
 //! can see in the launcher: a nick and the account it names.
@@ -68,10 +70,55 @@ async fn nicks(State(app): State<Arc<App>>, Json(body): Json<NicksBody>) -> Resp
     Json(json!({ "nicks": found })).into_response()
 }
 
+#[derive(Deserialize)]
+struct SessionsBody {
+    sessions: Vec<String>,
+}
+
+/// Of the sessions asked about, those that no longer work.
+async fn ended(State(app): State<Arc<App>>, Json(body): Json<SessionsBody>) -> Response {
+    if body.sessions.len() > MAX_IDS {
+        return StatusCode::PAYLOAD_TOO_LARGE.into_response();
+    }
+    match app.store.ended_sessions(&body.sessions, crate::app::now()) {
+        Ok(ended) => Json(json!({ "ended": ended })).into_response(),
+        Err(_) => StatusCode::INTERNAL_SERVER_ERROR.into_response(),
+    }
+}
+
+#[derive(Deserialize, Default)]
+#[serde(default)]
+struct SinceQuery {
+    since: i64,
+}
+
+/// Accounts deleted after `since`, for friends.lapi.sh to clean out.
+async fn deleted(State(app): State<Arc<App>>, Query(q): Query<SinceQuery>) -> Response {
+    match app.store.deleted_since(q.since) {
+        Ok(list) => {
+            let deleted: Vec<_> = list
+                .into_iter()
+                .map(|(id, at)| json!({ "id": id, "at": at }))
+                .collect();
+            Json(json!({ "deleted": deleted })).into_response()
+        }
+        Err(_) => StatusCode::INTERNAL_SERVER_ERROR.into_response(),
+    }
+}
+
+/// Whether letters go out (an SMTP server is set): friends asks for a
+/// confirmed address only then.
+async fn mail(State(app): State<Arc<App>>) -> Response {
+    Json(json!({ "sending": app.mailing })).into_response()
+}
+
 pub fn router(app: Arc<App>) -> Router {
     Router::new()
         .route("/internal/v1/find", get(find))
         .route("/internal/v1/nicks", post(nicks))
+        .route("/internal/v1/ended", post(ended))
+        .route("/internal/v1/deleted", get(deleted))
+        .route("/internal/v1/mail", get(mail))
         .layer(axum::extract::DefaultBodyLimit::max(64 * 1024))
         .with_state(app)
 }

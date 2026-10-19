@@ -1274,6 +1274,33 @@ impl AppState {
         result
     }
 
+    /// Renames an installation. Allowed while it is busy: the name does not
+    /// affect installing or playing.
+    pub fn rename_instance(
+        &self,
+        request: MutationRequest<RenameInstancePayload>,
+    ) -> LauncherResult<InstanceSummary> {
+        let busy = self.activity.clone();
+        self.mutate(
+            "rename_instance",
+            request,
+            |data, store, payload, changes| {
+                let id = payload.instance_id;
+                let current = data.instances.get(&id).ok_or_else(instance_not_found)?;
+                let name = validation::validate_display_name(&payload.display_name)?;
+                if name != current.display_name {
+                    let mut updated = current.clone();
+                    updated.display_name = name;
+                    store.save_instance(&updated)?;
+                    data.instances.insert(id, updated);
+                    changes.push(Change::Instance(id));
+                }
+                let busy = busy.current().is_some_and(|a| a.instance_id == Some(id));
+                Ok(InstanceSummary::new(&data.instances[&id], busy))
+            },
+        )
+    }
+
     /// The Java version an installed version was built for and the computer's
     /// architecture, from its install lock (D-044).
     pub fn required_java(

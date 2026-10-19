@@ -157,10 +157,7 @@ pub async fn authorize(
     {
         return expired(lang);
     }
-    if !app
-        .limiter
-        .allow(client_ip(&headers), "authorize", 120, 20_000)
-    {
+    if !app.limiter.allow(client_ip(&headers), "authorize", 120) {
         return too_many(lang);
     }
     let rid = token();
@@ -403,9 +400,11 @@ pub async fn login(
         return expired(lang);
     }
     let ip = client_ip(&headers);
-    if !app.limiter.allow(ip, "login", 30, 5_000) {
+    if !app.limiter.allow(ip, "login", 30) {
         return too_many(lang);
     }
+    // Many sign-ins from everywhere at once: everyone gets the captcha.
+    let crowded = app.limiter.busy("login", 5_000);
     let login = form.login.trim();
     let shown = if login.len() <= rules::EMAIL_MAX {
         login
@@ -430,7 +429,8 @@ pub async fn login(
     // Without captcha keys a captcha cannot be passed: asking for one would
     // lock the account; the rate limits still hold.
     let captcha = app.captcha.configured()
-        && (app.limiter.count(ip, "login-failed", FAILURE_WINDOW) >= IP_FAILURES_FOR_CAPTCHA
+        && (crowded
+            || app.limiter.count(ip, "login-failed", FAILURE_WINDOW) >= IP_FAILURES_FOR_CAPTCHA
             || account_failures >= ACCOUNT_FAILURES_FOR_CAPTCHA);
     let page = |errors: &[&str], captcha: bool| {
         with_cookie(
@@ -490,7 +490,7 @@ pub async fn register(
         return expired(lang);
     }
     let ip = client_ip(&headers);
-    if !app.limiter.allow(ip, "register", 5, 500) {
+    if !app.limiter.allow(ip, "register", 5) {
         return too_many(lang);
     }
     // What was typed comes back into the form, cut to what the fields hold.
@@ -507,6 +507,10 @@ pub async fn register(
     };
     if !app.captcha.verify(&form.turnstile, ip, "register").await {
         return page(&[t.captcha]);
+    }
+    // Only solved captchas count toward everyone's allowance.
+    if app.limiter.busy("register", 500) {
+        return too_many(lang);
     }
     let nick = rules::nick(&form.nick);
     let email = rules::email(&form.email);
@@ -605,7 +609,7 @@ pub async fn verify(
 ) -> Response {
     let lang = Lang::parse(&q.lang);
     let t = texts(lang);
-    if !app.limiter.allow(client_ip(&headers), "links", 30, 10_000) {
+    if !app.limiter.allow(client_ip(&headers), "links", 30) {
         return too_many(lang);
     }
     let hash = digest(&q.token);
@@ -691,12 +695,15 @@ pub async fn reset(
         return expired(lang);
     };
     let ip = client_ip(&headers);
-    if !app.limiter.allow(ip, "reset", 5, 1_000) {
+    if !app.limiter.allow(ip, "reset", 5) {
         return too_many(lang);
     }
     let shown: String = form.email.chars().take(rules::EMAIL_MAX).collect();
     if !app.captcha.verify(&form.turnstile, ip, "reset").await {
         return reset_page(&app, lang, &csrf, &shown, &[t.captcha]);
+    }
+    if app.limiter.busy("reset", 1_000) {
+        return too_many(lang);
     }
     let Ok(email) = rules::email(&form.email) else {
         return reset_page(&app, lang, &csrf, &shown, &[(t.problem)(Problem::Email)]);
@@ -787,7 +794,7 @@ pub async fn reset_confirm_form(
 ) -> Response {
     let lang = Lang::parse(&q.lang);
     let t = texts(lang);
-    if !app.limiter.allow(client_ip(&headers), "links", 30, 10_000) {
+    if !app.limiter.allow(client_ip(&headers), "links", 30) {
         return too_many(lang);
     }
     let valid = q.token.len() == 43
@@ -825,7 +832,7 @@ pub async fn reset_confirm(
         return expired(lang);
     };
     let ip: IpAddr = client_ip(&headers);
-    if !app.limiter.allow(ip, "links", 30, 10_000) {
+    if !app.limiter.allow(ip, "links", 30) {
         return too_many(lang);
     }
     let hash = digest(&form.token);
@@ -834,7 +841,7 @@ pub async fn reset_confirm(
     } else {
         None
     };
-    let Some((account_id, _)) = found else {
+    let Some((account_id, sent_to)) = found else {
         return status(
             StatusCode::BAD_REQUEST,
             pages::message(lang, t.reset_title, t.link_bad),
@@ -843,6 +850,13 @@ pub async fn reset_confirm(
     let Ok(Some(account)) = app.store.account(&account_id) else {
         return failed(lang);
     };
+    // A link sent to an address the account no longer has does nothing.
+    if rules::email_key(&sent_to) != rules::email_key(&account.email) {
+        return status(
+            StatusCode::BAD_REQUEST,
+            pages::message(lang, t.reset_title, t.link_bad),
+        );
+    }
     let mut problems = Vec::new();
     if let Err(p) = rules::password(&form.password, &account.nick, &account.email) {
         problems.push((t.problem)(p));
@@ -894,4 +908,215 @@ pub async fn style() -> Response {
         pages::STYLE,
     )
         .into_response()
+}
+
+// Deleting the account (D-064 stage 5). The password is typed here, on our
+// page, never in the launcher; a second, one-time step confirms.
+
+fn delete_page(app: &App, lang: Lang, csrf: &str, login: &str, errors: &[&str]) -> Response {
+    let t = texts(lang);
+    // A rare step that proves a password: always behind the captcha when it
+    // can be solved.
+    let turnstile = app
+        .captcha
+        .configured()
+        .then_some((app.config.turnstile_site_key.as_str(), "delete"));
+    with_cookie(
+        pages::form(&Page {
+            lang,
+            heading: t.delete_title,
+            action: "/delete",
+            hidden: &[("csrf", csrf), ("lang", lang.tag())],
+            errors,
+            fields: &[
+                Field {
+                    name: "login",
+                    label: t.login,
+                    kind: "text",
+                    value: login,
+                    hint: Some(t.delete_text),
+                    autocomplete: "username",
+                    max: rules::EMAIL_MAX,
+                },
+                Field {
+                    name: "password",
+                    label: t.password,
+                    kind: "password",
+                    value: "",
+                    hint: None,
+                    autocomplete: "current-password",
+                    max: rules::PASSWORD_MAX,
+                },
+            ],
+            submit: t.delete_next,
+            turnstile,
+            links: &[],
+        }),
+        csrf,
+    )
+}
+
+pub async fn delete_form(State(app): State<Arc<App>>, Query(q): Query<LangQuery>) -> Response {
+    delete_page(&app, Lang::parse(&q.lang), &token(), "", &[])
+}
+
+#[derive(Deserialize, Default)]
+#[serde(default)]
+pub struct DeleteForm {
+    csrf: String,
+    lang: String,
+    login: String,
+    password: String,
+    #[serde(rename = "cf-turnstile-response")]
+    turnstile: String,
+}
+
+/// Checks the password like a sign-in, then asks once more.
+pub async fn delete(
+    State(app): State<Arc<App>>,
+    headers: HeaderMap,
+    Form(form): Form<DeleteForm>,
+) -> Response {
+    let lang = Lang::parse(&form.lang);
+    let t = texts(lang);
+    let Some(csrf) = cookie(&headers).filter(|c| c.len() == 43 && same(c, &form.csrf)) else {
+        return expired(lang);
+    };
+    let ip = client_ip(&headers);
+    if !app.limiter.allow(ip, "delete", 10) {
+        return too_many(lang);
+    }
+    let login = form.login.trim();
+    let shown = if login.len() <= rules::EMAIL_MAX {
+        login
+    } else {
+        ""
+    };
+    if app.captcha.configured() && !app.captcha.verify(&form.turnstile, ip, "delete").await {
+        return delete_page(&app, lang, &csrf, shown, &[t.captcha]);
+    }
+    let account = if login.is_empty() || login.len() > rules::EMAIL_MAX {
+        None
+    } else {
+        app.store.find_login(login).ok().flatten()
+    };
+    let password_fits = form.password.chars().count() <= rules::PASSWORD_MAX;
+    let matches = app
+        .check(
+            if password_fits {
+                form.password.clone()
+            } else {
+                String::new()
+            },
+            account.as_ref().map(|a| a.password.clone()),
+        )
+        .await
+        && password_fits;
+    let Some(account) = account.filter(|_| matches) else {
+        app.limiter.note(ip, "login-failed", FAILURE_WINDOW);
+        if let Ok(Some(found)) = app.store.find_login(login) {
+            let _ = app.store.fail(&found.id, now());
+        }
+        return delete_page(&app, lang, &csrf, shown, &[t.wrong]);
+    };
+    let confirm = token();
+    if app
+        .store
+        .put_email_token(
+            &digest(&confirm),
+            &account.id,
+            "delete",
+            &account.email,
+            now() + 10 * 60,
+        )
+        .is_err()
+    {
+        return failed(lang);
+    }
+    let heading = format!("{} {}", t.delete_title, account.nick);
+    with_cookie(
+        pages::form(&Page {
+            lang,
+            heading: &heading,
+            action: "/delete/confirm",
+            hidden: &[("csrf", &csrf), ("lang", lang.tag()), ("token", &confirm)],
+            errors: &[t.delete_confirm],
+            fields: &[],
+            submit: t.delete_submit,
+            turnstile: None,
+            links: &[],
+        }),
+        &csrf,
+    )
+}
+
+#[derive(Deserialize, Default)]
+#[serde(default)]
+pub struct DeleteConfirmForm {
+    csrf: String,
+    lang: String,
+    token: String,
+}
+
+/// Deletes the account, tells its address, and goes to `/app/deleted`, where
+/// the launcher's window learns of it and forgets the account.
+pub async fn delete_confirm(
+    State(app): State<Arc<App>>,
+    headers: HeaderMap,
+    Form(form): Form<DeleteConfirmForm>,
+) -> Response {
+    let lang = Lang::parse(&form.lang);
+    let t = texts(lang);
+    if cookie(&headers)
+        .filter(|c| c.len() == 43 && same(c, &form.csrf))
+        .is_none()
+    {
+        return expired(lang);
+    }
+    if !app.limiter.allow(client_ip(&headers), "links", 30) {
+        return too_many(lang);
+    }
+    let hash = digest(&form.token);
+    let found = if form.token.len() == 43 {
+        app.store.email_token(&hash, "delete", now()).ok().flatten()
+    } else {
+        None
+    };
+    let bad = || {
+        status(
+            StatusCode::BAD_REQUEST,
+            pages::message(lang, t.delete_title, t.link_bad),
+        )
+    };
+    let Some((account_id, _)) = found else {
+        return bad();
+    };
+    if !app.store.use_email_token(&hash).unwrap_or(false) {
+        return bad();
+    }
+    let Ok(Some(account)) = app.store.account(&account_id) else {
+        return failed(lang);
+    };
+    if !app
+        .store
+        .delete_account(&account.id, now())
+        .unwrap_or(false)
+    {
+        return failed(lang);
+    }
+    queue(
+        &app,
+        &account.email,
+        &account.lang,
+        &Letter::Deleted {
+            nick: &account.nick,
+        },
+    );
+    Redirect::to(&format!("/app/deleted?lang={}", lang.tag())).into_response()
+}
+
+pub async fn deleted(Query(q): Query<LangQuery>) -> Response {
+    let lang = Lang::parse(&q.lang);
+    let t = texts(lang);
+    pages::message(lang, t.delete_title, t.deleted)
 }

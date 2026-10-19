@@ -1,6 +1,7 @@
 //! `lapi-oauth`: launcher accounts at oauth.lapi.sh (D-064).
 //!
-//! `lapi-oauth serve` runs the pages and the API. The other commands are for
+//! `lapi-oauth serve` runs the pages and the API (including `/delete`, where
+//! a player deletes the account). The other commands are for
 //! the owner on the server, to help a player by hand:
 //!
 //! ```text
@@ -10,6 +11,8 @@
 //! lapi-oauth set-email <id> <email>   a new address, to be confirmed
 //! lapi-oauth confirm-email <id>       marks the address confirmed
 //! lapi-oauth counts                   numbers only (fit for a public log)
+//! lapi-oauth backup                   a copy of the database in data/backups
+//!                                     (daily, by lapi-oauth-backup.timer)
 //! ```
 //!
 //! Settings come from the environment: `LAPI_OAUTH_DATA` (default
@@ -94,6 +97,11 @@ fn main() -> std::process::ExitCode {
     let now = app::now();
     let result: Result<(), String> = match arg(0) {
         Some("serve") => serve(),
+        Some("backup") => open().and_then(|store| {
+            let path = store.backup(&data_dir().join("backups"), 14)?;
+            out!("{}", path.display());
+            Ok(())
+        }),
         Some("find") => match arg(1) {
             Some(term) => open().and_then(|store| {
                 let a = find(&store, term)?;
@@ -213,7 +221,7 @@ fn main() -> std::process::ExitCode {
             Ok(())
         }
         _ => Err(
-            "usage: lapi-oauth serve|find <who>|disable <who>|enable <who>|sign-out <who>|set-email <who> <email>|confirm-email <who>|counts"
+            "usage: lapi-oauth serve|find <who>|disable <who>|enable <who>|sign-out <who>|set-email <who> <email>|confirm-email <who>|counts|backup"
                 .to_owned(),
         ),
     };
@@ -265,7 +273,11 @@ fn serve() -> Result<(), String> {
     let address = env("LAPI_OAUTH_ADDR", "127.0.0.1:8783");
     let runtime = tokio::runtime::Runtime::new().map_err(|e| e.to_string())?;
     runtime.block_on(async move {
-        let app = Arc::new(app::App::new(config, store, keys, Box::new(captcha)));
+        let mut app = app::App::new(config, store, keys, Box::new(captcha));
+        app.sealer = mail::Sealer::new(crypto::secret_file(&data.join("mail.key"))?);
+        mail::seal_waiting(&app)?;
+        app.mailing = smtp.is_some();
+        let app = Arc::new(app);
         if let Some(smtp) = smtp {
             tokio::spawn(mail::worker(Arc::clone(&app), smtp));
         }

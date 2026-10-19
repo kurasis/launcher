@@ -3,6 +3,8 @@
 //! - Passwords: Argon2id (19 MiB, 2 passes, OWASP's minimum), PHC strings.
 //! - Codes, refresh tokens, email links: 32 random bytes, base64url; only
 //!   their SHA-256 is stored, so a copy of the database gives no working token.
+//!   Letters waiting to be sent hold their link sealed with `mail.key`, which
+//!   is not in the database, and sent letters keep no body.
 //! - Access tokens: JWT signed with Ed25519 (`EdDSA`). The key is made on the
 //!   server at the first start and never leaves it; other services check
 //!   tokens with the public key from `/.well-known/jwks.json`.
@@ -89,6 +91,32 @@ pub struct Claims {
     pub ev: bool,
 }
 
+/// 32 secret bytes from `path`, or new ones written there (readable by the
+/// service alone) on the first start.
+pub fn secret_file(path: &Path) -> Result<[u8; 32], String> {
+    match std::fs::read(path) {
+        Ok(bytes) => bytes
+            .try_into()
+            .map_err(|_| format!("{} is not a key", path.display())),
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
+            let mut seed = [0u8; 32];
+            rand::rngs::OsRng.fill_bytes(&mut seed);
+            let mut options = std::fs::OpenOptions::new();
+            options.write(true).create_new(true);
+            #[cfg(unix)]
+            std::os::unix::fs::OpenOptionsExt::mode(&mut options, 0o600);
+            let mut file = options
+                .open(path)
+                .map_err(|e| format!("creating {}: {e}", path.display()))?;
+            file.write_all(&seed)
+                .and_then(|()| file.sync_all())
+                .map_err(|e| format!("writing {}: {e}", path.display()))?;
+            Ok(seed)
+        }
+        Err(e) => Err(format!("reading {}: {e}", path.display())),
+    }
+}
+
 pub struct Keys {
     signing: SigningKey,
     pub kid: String,
@@ -98,28 +126,7 @@ impl Keys {
     /// Reads the key from `path`, or makes one there (readable by the service
     /// alone) on the first start.
     pub fn load_or_create(path: &Path) -> Result<Self, String> {
-        let seed: [u8; 32] = match std::fs::read(path) {
-            Ok(bytes) => bytes
-                .try_into()
-                .map_err(|_| format!("{} is not a key", path.display()))?,
-            Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
-                let mut seed = [0u8; 32];
-                rand::rngs::OsRng.fill_bytes(&mut seed);
-                let mut options = std::fs::OpenOptions::new();
-                options.write(true).create_new(true);
-                #[cfg(unix)]
-                std::os::unix::fs::OpenOptionsExt::mode(&mut options, 0o600);
-                let mut file = options
-                    .open(path)
-                    .map_err(|e| format!("creating {}: {e}", path.display()))?;
-                file.write_all(&seed)
-                    .and_then(|()| file.sync_all())
-                    .map_err(|e| format!("writing {}: {e}", path.display()))?;
-                seed
-            }
-            Err(e) => return Err(format!("reading {}: {e}", path.display())),
-        };
-        Ok(Self::from_seed(seed))
+        Ok(Self::from_seed(secret_file(path)?))
     }
 
     pub fn from_seed(seed: [u8; 32]) -> Self {

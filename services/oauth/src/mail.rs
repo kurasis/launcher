@@ -1,12 +1,18 @@
 //! Letters: written to the outbox in the store, sent by a worker through the
 //! SMTP server in `LAPI_OAUTH_SMTP_URL` once it is set. Until then they wait
-//! (three days at most).
+//! (three days at most). A waiting letter's body is sealed with `mail.key`
+//! (not in the database), so a copy of the database opens no link; a sent
+//! letter keeps no body. A failed letter is tried again after a growing wait.
 
 use std::sync::Arc;
 use std::time::Duration;
 
+use base64::Engine as _;
+use base64::engine::general_purpose::STANDARD_NO_PAD as B64;
 use lettre::message::{Mailbox, header::ContentType};
 use lettre::{AsyncSmtpTransport, AsyncTransport, Message, Tokio1Executor};
+use rand::RngCore;
+use ring::aead::{Aad, CHACHA20_POLY1305, LessSafeKey, NONCE_LEN, Nonce, UnboundKey};
 
 use crate::app::{App, now};
 use crate::pages::Lang;
@@ -18,6 +24,17 @@ pub enum Letter<'a> {
     Reset { nick: &'a str, link: &'a str },
     /// The password was changed; every other device was signed out.
     PasswordChanged { nick: &'a str },
+    /// To the old address: the account's email is now `new` (masked).
+    EmailChanged { nick: &'a str, new: &'a str },
+    /// The account was deleted.
+    Deleted { nick: &'a str },
+}
+
+/// `steve@example.com` as `s***@example.com`.
+pub fn masked(email: &str) -> String {
+    let (name, domain) = email.split_once('@').unwrap_or((email, ""));
+    let first: String = name.chars().take(1).collect();
+    format!("{first}***@{domain}")
 }
 
 impl Letter<'_> {
@@ -72,6 +89,42 @@ impl Letter<'_> {
                     "مرحبًا {nick}!\n\nتم للتو تغيير كلمة مرور حسابك وتسجيل الخروج من الأجهزة الأخرى.\nإذا لم تكن أنت، فأعد تعيين كلمة المرور فورًا وراسل الدعم.\n"
                 ),
             ),
+            (Self::EmailChanged { nick, new }, Lang::Ru) => (
+                "Email аккаунта лаунчера изменён".into(),
+                format!(
+                    "Привет, {nick}!\n\nEmail вашего аккаунта только что изменён на {new}. Письма теперь приходят туда.\nЕсли это были не вы, сразу смените пароль в лаунчере и напишите в поддержку.\n"
+                ),
+            ),
+            (Self::EmailChanged { nick, new }, Lang::Ar) => (
+                "تم تغيير البريد الإلكتروني لحساب المشغّل".into(),
+                format!(
+                    "مرحبًا {nick}!\n\nتم للتو تغيير البريد الإلكتروني لحسابك إلى {new}، وستصل الرسائل إليه من الآن.\nإذا لم تكن أنت، فغيّر كلمة المرور فورًا وراسل الدعم.\n"
+                ),
+            ),
+            (Self::EmailChanged { nick, new }, Lang::En) => (
+                "The email of your launcher account was changed".into(),
+                format!(
+                    "Hi {nick}!\n\nThe email of your account was just changed to {new}. Letters now go there.\nIf this was not you, change the password at once and write to support.\n"
+                ),
+            ),
+            (Self::Deleted { nick }, Lang::Ru) => (
+                "Аккаунт лаунчера удалён".into(),
+                format!(
+                    "Привет, {nick}!\n\nВаш аккаунт лаунчера, его друзья и чаты удалены. Это письмо последнее.\nЕсли вы его не удаляли, напишите в поддержку сразу: кто-то знал ваш пароль.\n"
+                ),
+            ),
+            (Self::Deleted { nick }, Lang::Ar) => (
+                "تم حذف حساب المشغّل".into(),
+                format!(
+                    "مرحبًا {nick}!\n\nتم حذف حساب المشغّل الخاص بك مع الأصدقاء والمحادثات. هذه آخر رسالة.\nإذا لم تحذفه بنفسك فراسل الدعم فورًا: شخص ما كان يعرف كلمة مرورك.\n"
+                ),
+            ),
+            (Self::Deleted { nick }, Lang::En) => (
+                "Your launcher account was deleted".into(),
+                format!(
+                    "Hi {nick}!\n\nYour launcher account, its friends and chats were deleted. This is the last letter.\nIf you did not delete it, write to support at once: someone knew your password.\n"
+                ),
+            ),
             (Self::PasswordChanged { nick }, Lang::En) => (
                 "The password of your launcher account was changed".into(),
                 format!(
@@ -82,12 +135,98 @@ impl Letter<'_> {
     }
 }
 
+/// Seals the bodies of waiting letters (ChaCha20-Poly1305, bound to the
+/// recipient).
+pub struct Sealer(LessSafeKey);
+
+/// Marks a sealed body; a body without it is from before sealing.
+const SEALED: &str = "sealed:1:";
+
+impl Sealer {
+    pub fn new(key: [u8; 32]) -> Self {
+        Self(LessSafeKey::new(
+            UnboundKey::new(&CHACHA20_POLY1305, &key).expect("a 32-byte key"),
+        ))
+    }
+
+    /// A key for this run only (tests).
+    pub fn random() -> Self {
+        let mut key = [0u8; 32];
+        rand::rngs::OsRng.fill_bytes(&mut key);
+        Self::new(key)
+    }
+
+    pub fn seal(&self, to: &str, body: &str) -> String {
+        let mut nonce = [0u8; NONCE_LEN];
+        rand::rngs::OsRng.fill_bytes(&mut nonce);
+        let mut sealed = body.as_bytes().to_vec();
+        self.0
+            .seal_in_place_append_tag(
+                Nonce::assume_unique_for_key(nonce),
+                Aad::from(to.as_bytes()),
+                &mut sealed,
+            )
+            .expect("sealing fits in memory");
+        let mut out = nonce.to_vec();
+        out.extend_from_slice(&sealed);
+        format!("{SEALED}{}", B64.encode(out))
+    }
+
+    /// The body as written; None when it was sealed with another key or for
+    /// another recipient.
+    pub fn open(&self, to: &str, stored: &str) -> Option<String> {
+        let Some(sealed) = stored.strip_prefix(SEALED) else {
+            return Some(stored.to_owned());
+        };
+        let mut bytes = B64.decode(sealed).ok()?;
+        if bytes.len() < NONCE_LEN {
+            return None;
+        }
+        let mut data = bytes.split_off(NONCE_LEN);
+        let nonce = Nonce::try_assume_unique_for_key(&bytes).ok()?;
+        let plain = self
+            .0
+            .open_in_place(nonce, Aad::from(to.as_bytes()), &mut data)
+            .ok()?;
+        String::from_utf8(plain.to_vec()).ok()
+    }
+}
+
 /// Puts a letter in the outbox.
 pub fn queue(app: &App, to: &str, lang: &str, letter: &Letter<'_>) {
     let (subject, body) = letter.render(Lang::parse(lang));
+    let body = app.sealer.seal(to, &body);
     if let Err(e) = app.store.queue_mail(to, &subject, &body, now()) {
         eprintln!("queueing a letter failed: {e}");
     }
+}
+
+/// Seals letters queued before bodies were sealed.
+pub fn seal_waiting(app: &App) -> Result<(), String> {
+    for (id, to, body) in app.store.unsealed_mail()? {
+        if !body.starts_with(SEALED) {
+            app.store.set_mail_body(id, &app.sealer.seal(&to, &body))?;
+        }
+    }
+    Ok(())
+}
+
+/// Letters due now, opened; one that cannot be opened is dropped.
+pub fn due(app: &App, now: i64, limit: i64) -> Result<Vec<crate::store::Mail>, String> {
+    let mut due = Vec::new();
+    for mut mail in app.store.pending_mail(now, limit)? {
+        match app.sealer.open(&mail.to, &mail.body) {
+            Some(body) => {
+                mail.body = body;
+                due.push(mail);
+            }
+            None => {
+                eprintln!("letter {} cannot be opened with mail.key; dropped", mail.id);
+                app.store.mail_dropped(mail.id)?;
+            }
+        }
+    }
+    Ok(due)
 }
 
 pub struct Smtp {
@@ -130,7 +269,7 @@ pub async fn worker(app: Arc<App>, smtp: Smtp) {
     loop {
         let pending = {
             let app = Arc::clone(&app);
-            tokio::task::spawn_blocking(move || app.store.pending_mail(now(), 20)).await
+            tokio::task::spawn_blocking(move || due(&app, now(), 20)).await
         };
         if let Ok(Ok(pending)) = pending {
             for mail in pending {

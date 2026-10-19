@@ -153,12 +153,18 @@ impl Limiter {
         entry.1
     }
 
-    /// Counts one request; false once the address's or everyone's allowance
-    /// for the hour is used.
-    pub fn allow(&self, ip: IpAddr, bucket: &'static str, per_hour: u32, overall: u32) -> bool {
-        let hour = Duration::from_secs(3600);
-        self.bump(subject(ip), bucket, hour, true) <= per_hour
-            && self.bump(ALL, bucket, hour, true) <= overall
+    /// Counts one request; false once the address's allowance for the hour is
+    /// used.
+    pub fn allow(&self, ip: IpAddr, bucket: &'static str, per_hour: u32) -> bool {
+        self.bump(subject(ip), bucket, Duration::from_secs(3600), true) <= per_hour
+    }
+
+    /// Counts one request over all addresses; true once more than `per_hour`
+    /// came this hour. It never refuses anyone by itself: callers count only
+    /// requests that passed a captcha, or ask for a captcha when it is true,
+    /// so many addresses cannot lock everyone out.
+    pub fn busy(&self, bucket: &'static str, per_hour: u32) -> bool {
+        self.bump(ALL, bucket, Duration::from_secs(3600), true) > per_hour
     }
 
     /// Counts an event for the address (failed sign-ins) in a window.
@@ -178,6 +184,11 @@ pub struct App {
     pub limiter: Limiter,
     pub captcha: Box<dyn Captcha>,
     pub hashing: Semaphore,
+    /// Seals letters waiting in the outbox (`mail.key`).
+    pub sealer: crate::mail::Sealer,
+    /// An SMTP server is set, so letters go out (friends then asks for a
+    /// confirmed address).
+    pub mailing: bool,
 }
 
 impl App {
@@ -189,6 +200,8 @@ impl App {
             keys,
             limiter: Limiter::default(),
             captcha,
+            sealer: crate::mail::Sealer::random(),
+            mailing: false,
             hashing: Semaphore::new(HASHING_AT_ONCE),
         }
     }

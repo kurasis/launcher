@@ -1,0 +1,45 @@
+# Installed by deploy/bootstrap.sh; started daily by lapi-friends-backup.timer.
+# A copy of the database in /home/www/lapi/friends/data/backups (the newest 14
+# stay). Keys are not in it. Copy the folder off the server to survive a lost
+# disk (docs/SERVER-BACKUPS.md).
+[Unit]
+Description=Back up the friends and chats database
+
+[Service]
+Type=oneshot
+User=lapi-friends
+Group=lapi-friends
+EnvironmentFile=/home/www/lapi/friends/friends.env
+ExecStart=/home/www/lapi/friends/current/lapi-friends backup
+Nice=10
+IOSchedulingClass=idle
+UMask=0077
+NoNewPrivileges=yes
+ProtectSystem=strict
+ProtectHome=tmpfs
+BindReadOnlyPaths=/home/www/lapi/friends
+BindPaths=/home/www/lapi/friends/data
+ReadWritePaths=/home/www/lapi/friends/data
+PrivateTmp=yes
+PrivateDevices=yes
+PrivateNetwork=yes
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectControlGroups=yes
+ProtectClock=yes
+ProtectHostname=yes
+RestrictAddressFamilies=AF_UNIX
+RestrictNamespaces=yes
+RestrictRealtime=yes
+LockPersonality=yes
+MemoryDenyWriteExecute=yes
+SystemCallArchitectures=native
+SystemCallFilter=@system-service
+SystemCallErrorNumber=EPERM
+ProtectKernelLogs=yes
+ProtectProc=invisible
+ProcSubset=pid
+RestrictSUIDSGID=yes
+CapabilityBoundingSet=
+MemoryMax=512M
+TasksMax=16

@@ -75,6 +75,8 @@
       "nameHint": "3 to 16 letters, digits or underscores.",
       "addProfile": "Add profile",
       "remove": "Remove",
+      "confirmRemove": "Remove {name} from the launcher? Its saved sign-in on this computer is deleted too.",
+      "confirmRemoveProfile": "Remove the profile {name}?",
       "makeDefault": "Use by default",
       "isDefault": "Default",
       "defaultNone": "No default is chosen: installations play the demo as Player.",
@@ -100,6 +102,10 @@
       "launcherCancel": "Cancel",
       "launcherNickChanged": "The nick is changed.",
       "launcherSignOut": "Sign out",
+      "launcherExport": "Download my data",
+      "launcherExported": "Saved as {name}.",
+      "launcherDelete": "Delete account…",
+      "launcherDeleteHint": "Your data can be downloaded first. Deleting happens on the account server's page, where you type your password.",
       "launcherLabel": "{name} (launcher account)",
       "launcherProblems": {
         "network": "oauth.lapi.sh cannot be reached. Check the connection and try again.",
@@ -109,6 +115,7 @@
         "nick_invalid": "A nick has 3 to 16 letters A–Z, digits or _.",
         "too_many": "Too many attempts. Wait a little and try again.",
         "vault": "The system credential store did not keep the sign-in; it lasts until the launcher closes.",
+        "not_saved": "The file could not be saved there. Choose another place.",
         "server": "Something went wrong on the account server. Try again later."
       }
     },
@@ -243,6 +250,19 @@
       "version": "Version",
       "openFolder": "Open game folder",
       "openFolderHint": "Worlds, screenshots and options of this installation are stored there.",
+      "name": "Name",
+      "rename": "Rename",
+      "folders": "Open a folder",
+      "folder": {
+        "game": "Game folder",
+        "mods": "Mods",
+        "logs": "Logs",
+        "saves": "Worlds",
+        "resourcepacks": "Resource packs",
+        "shaderpacks": "Shader packs"
+      },
+      "lastPlayed": "Last played",
+      "neverPlayed": "Not yet",
       "lastResult": "Last result",
       "exitCode": "exit code {code}",
       "noResult": "None yet",
@@ -787,6 +807,7 @@
       "clear": "Clear",
       "copy": "Copy",
       "copied": "Copied",
+      "copyFailed": "Not copied",
       "empty": "Nothing yet. Install or start a game to see its output here.",
       "noMatch": "No line matches the filters.",
       "count": "{shown, number} of {total, plural, one {# line} other {# lines}}",
@@ -1140,6 +1161,7 @@
       "rename": "Rename",
       "addMember": "Add a friend",
       "leave": "Leave the group",
+      "confirmLeave": "Leave this group? You will not see its messages any more.",
       "removeMember": "Remove from the group",
       "earlier": "Earlier messages",
       "noMessages": "No messages yet. Say hi.",
@@ -1162,8 +1184,30 @@
         "not_friends": "Only friends can do this.",
         "not_owner": "Only the group's owner can do this.",
         "invalid": "This is not valid.",
-        "server": "Something went wrong on the friends server. Try again later."
-      }
+        "server": "Something went wrong on the friends server. Try again later.",
+        "muted": "A moderator muted you: you cannot write for now.",
+        "banned": "A moderator closed friends and chats for you.",
+        "email_not_confirmed": "Friends and chats need a confirmed email. Open the letter we sent, or send it again in Accounts."
+      },
+      "online": "Online",
+      "playing": "Playing {game}",
+      "showOnline": "Show friends that I am online",
+      "removedMessage": "Removed by a moderator.",
+      "muted": "You cannot write until {until}: a moderator muted you.",
+      "mutedForGood": "You cannot write: a moderator muted you.",
+      "banned": "A moderator closed friends and chats for you until {until}.",
+      "bannedForGood": "A moderator closed friends and chats for you.",
+      "spam": "Spam",
+      "declineAll": "Decline all"
+    },
+    "windowTitles": {
+      "pickJava": "Choose the Java program (java or javaw.exe)",
+      "pickDataFolder": "Choose a folder for the launcher data",
+      "saveDiagnostics": "Save diagnostic export",
+      "accountLogin": "Launcher account: sign in",
+      "accountRegister": "Launcher account: create",
+      "accountDelete": "Launcher account: delete",
+      "saveAccountData": "Save my launcher account data"
     }
   },
   "errors": {

@@ -140,6 +140,7 @@ fn main_window_capability_grants_only_app_commands() {
             "allow-create-instance",
             "allow-update-instance-settings",
             "allow-set-instance-notes",
+            "allow-rename-instance",
             "allow-set-app-settings",
             "allow-show-main-window",
             "allow-open-console",
@@ -214,6 +215,10 @@ fn main_window_capability_grants_only_app_commands() {
             "allow-friends-send",
             "allow-friends-read",
             "allow-friends-report",
+            "allow-friends-set-visible",
+            "allow-friends-decline-all",
+            "allow-friends-report-request",
+            "allow-launcher-account-export",
             "allow-start-lifecycle-test",
             "allow-stop-lifecycle-test",
         ]

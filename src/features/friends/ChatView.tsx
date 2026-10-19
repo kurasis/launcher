@@ -2,10 +2,10 @@ import { useEffect, useRef, useState } from 'react';
 import { Button } from '../../components/Button';
 import forms from '../../components/forms.module.css';
 import type { ChatMessage, ChatRoom, FriendsView } from '../../lib/contracts';
-import { friendsProblem, ipc, onFriendsMessage } from '../../lib/ipc';
+import { friendsProblem, ipc, onFriendsMessage, onFriendsRemoved } from '../../lib/ipc';
 import { numberLocale, strings } from '../../lib/strings';
 import styles from './Friends.module.css';
-import { problemText, roomTitle } from './useFriends';
+import { problemText, roomTitle, sanctionText } from './useFriends';
 
 const t = strings.friends;
 /** The friends server's page of history. */
@@ -51,6 +51,7 @@ export function ChatView({
   const [more, setMore] = useState(false);
   const [loading, setLoading] = useState(true);
   const [draft, setDraft] = useState('');
+  const [leaving, setLeaving] = useState(false);
   const [sending, setSending] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [reporting, setReporting] = useState<number | null>(null);
@@ -68,6 +69,12 @@ export function ChatView({
     const stop = onFriendsMessage((message) => {
       if (live && message.room === room.id) setMessages((current) => merge(current, [message]));
     });
+    // A moderator removed a message: it leaves the chat at once.
+    const stopRemoved = onFriendsRemoved((removed) => {
+      if (live && removed.room === room.id) {
+        setMessages((current) => current.filter((m) => m.id !== removed.message));
+      }
+    });
     ipc
       .friendsMessages(room.id, null)
       .then((page) => {
@@ -84,6 +91,7 @@ export function ChatView({
     return () => {
       live = false;
       stop();
+      stopRemoved();
     };
   }, [room.id]);
 
@@ -256,18 +264,41 @@ export function ChatView({
                 </Button>
               </form>
             ))}
-          {me !== null && (
+          {me !== null && !leaving && (
             <button
               type="button"
               className={styles.danger}
-              onClick={() =>
-                void run(() => ipc.friendsChangeRoom(room.id, 'remove', me.id)).then((ok) => {
-                  if (ok) onBack();
-                })
-              }
+              onClick={() => {
+                setLeaving(true);
+              }}
             >
               {t.leave}
             </button>
+          )}
+          {me !== null && leaving && (
+            <div className={styles.confirm} role="alertdialog" aria-label={t.leave}>
+              <p>{t.confirmLeave}</p>
+              <div className={styles.inline}>
+                <Button
+                  variant="primary"
+                  onClick={() =>
+                    void run(() => ipc.friendsChangeRoom(room.id, 'remove', me.id)).then((ok) => {
+                      setLeaving(false);
+                      if (ok) onBack();
+                    })
+                  }
+                >
+                  {t.leave}
+                </Button>
+                <Button
+                  onClick={() => {
+                    setLeaving(false);
+                  }}
+                >
+                  {t.cancel}
+                </Button>
+              </div>
+            </div>
           )}
         </div>
       )}
@@ -357,7 +388,11 @@ export function ChatView({
         </p>
       )}
 
-      {readOnly ? (
+      {view.sanction !== null ? (
+        <p className={styles.muted} role="status">
+          {sanctionText(view.sanction)}
+        </p>
+      ) : readOnly ? (
         <p className={styles.muted}>{t.readOnly}</p>
       ) : (
         <form

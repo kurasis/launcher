@@ -18,6 +18,7 @@ fn main() {
         "create_instance",
         "update_instance_settings",
         "set_instance_notes",
+        "rename_instance",
         "set_app_settings",
         "show_main_window",
         "open_console",
@@ -93,6 +94,10 @@ fn main() {
         "friends_send",
         "friends_read",
         "friends_report",
+        "friends_set_visible",
+        "friends_decline_all",
+        "friends_report_request",
+        "launcher_account_export",
         // Registered only in debug builds; release builds have no handler for them.
         "start_lifecycle_test",
         "stop_lifecycle_test",

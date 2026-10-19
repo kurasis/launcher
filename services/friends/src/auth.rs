@@ -118,3 +118,59 @@ pub async fn fetch_jwks(http: &reqwest::Client, url: &str) -> Result<serde_json:
     }
     response.json().await.map_err(|e| e.to_string())
 }
+
+/// Sessions seen in tokens, and those the account service says ended. A
+/// token is refused once its session ended, though its signature still holds
+/// until it runs out.
+#[derive(Default)]
+pub struct Sessions {
+    seen: std::sync::Mutex<std::collections::HashMap<String, std::time::Instant>>,
+    ended: std::sync::Mutex<std::collections::HashMap<String, std::time::Instant>>,
+}
+
+/// Longer than any token lives (10 minutes).
+const REMEMBER: std::time::Duration = std::time::Duration::from_secs(15 * 60);
+
+impl Sessions {
+    pub fn ended(&self, sid: &str) -> bool {
+        self.ended
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .contains_key(sid)
+    }
+
+    pub fn seen(&self, sid: &str) {
+        let mut seen = self
+            .seen
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        if seen.len() > 200_000 {
+            let now = std::time::Instant::now();
+            seen.retain(|_, at| now.duration_since(*at) < REMEMBER);
+        }
+        seen.insert(sid.to_owned(), std::time::Instant::now());
+    }
+
+    /// Sessions seen in a token that may still be valid.
+    pub fn recent(&self) -> Vec<String> {
+        let now = std::time::Instant::now();
+        let mut seen = self
+            .seen
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        seen.retain(|_, at| now.duration_since(*at) < REMEMBER);
+        seen.keys().cloned().collect()
+    }
+
+    pub fn end(&self, sids: &[String]) {
+        let now = std::time::Instant::now();
+        let mut ended = self
+            .ended
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        ended.retain(|_, at| now.duration_since(*at) < REMEMBER);
+        for sid in sids {
+            ended.insert(sid.clone(), now);
+        }
+    }
+}

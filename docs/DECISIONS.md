@@ -735,8 +735,8 @@ message` plus a stack trace), with the event's level.
   `read_console`; the main window gains only `open_console`. The window polls
   `read_console(after)` every 300 ms. It stays open while the main window is unloaded
   for a game; closing the main window without a running game closes it too.
-- **Not included:** the journal is not written to disk and not part of the
-  diagnostics export (the run logs already are).
+- **Not included (then):** the journal was not written to disk nor exported. Since
+  D-061 it is also kept as `logs/launcher.log` and is part of the diagnostics export.
 
 ## D-038 — Interface languages: built for many, English, Russian and Arabic today
 
@@ -1530,8 +1530,8 @@ message` plus a stack trace), with the event's level.
 - **Since then** (D-062 to D-064 and the October 2026 audit): nginx files are root's,
   in `/etc/nginx/lapi`, installed by `bootstrap.sh` only; the deploy user may only
   restart each service and run its command line; the workflows build on Ubuntu 24.04
-  and deploy from `main` (and from a feature branch while it is being built), one
-  deploy per service at a time, through the `production` environment. The units are
+  and deploy from `main` only (also when run by hand), one deploy per service at a
+  time, through the `production` environment. The units are
   hardened (system-call filter, `/home` hidden but the service's own folder), and
   `bootstrap.sh` puts a unit back if its service does not answer with the new one.
 
@@ -1908,5 +1908,30 @@ archive from the Package workflow, upload it to
 2. Friends: requests, accept, decline, block, the list; the chat icon.
 3. Chat with a friend: WebSocket, history, unread.
 4. Rooms of 2+ friends.
-5. Later: two-factor codes, mails about new sign-ins, reports of messages,
-   account deletion and export, backups.
+5. Later: two-factor codes, mails about new sign-ins. (Reports of messages came with
+   stage 4; daily database copies, account deletion and export, moderation and online
+   status with the October 2026 work below.)
+
+### Deletion, export, moderation and online status (October 2026)
+
+- **Deleting the account** happens on the account service's own page (`/delete`,
+  opened in the account window from Accounts → _Delete account…_): nick or email and
+  the password, behind the captcha when it can be solved, then a one-time confirmation.
+  Everything kept about the account goes; its address gets a last letter; the nick and
+  address are free again. The page ends on `/app/deleted`, which the window watches to
+  forget the account here. The account service lists deleted accounts on its internal
+  port for 90 days; friends cleans them out within 15 seconds (their friends, requests,
+  blocks, messages, rooms of two, place in groups, reports they filed). Reports about
+  their messages keep their copy as evidence.
+- **Export:** Accounts → _Download my data_ saves one JSON file with what the account
+  service (`GET /v1/me/export`) and friends (`GET /v1/export`) keep about the account,
+  asked by its own session.
+- **Moderation** is the owner's, on the server only (docs/MODERATION.md): reports keep
+  a copy of their message; `resolve`, `remove-message`, `mute <hours>`, `ban [days]`,
+  `lift`. A removed message leaves every member's chat; a muted account reads but
+  writes nothing; a banned one gets nothing and its live connections close. The running
+  service tells within 15 seconds.
+- **Online status:** friends see who has the launcher open and what they play
+  ("Minecraft 1.21.1 · Fabric", sent by the launcher while the game runs), unless the
+  account hides it (Friends tab → _Show friends that I am online_). Nothing of it is
+  stored: it lives with the live connections.

@@ -24,6 +24,12 @@ function setup(launcherAccount: LauncherAccountView, answer: unknown = null) {
     calls.push({ cmd, args });
     if (cmd === 'get_app_snapshot') return snapshotFixture();
     if (cmd === 'launcher_account_set_nick') return answer;
+    if (cmd === 'launcher_account_export') {
+      // The core rejects with the problem's name, a plain string.
+      // eslint-disable-next-line @typescript-eslint/only-throw-error
+      if (answer === 'not_saved') throw 'not_saved';
+      return 'launcher-account-Steve_2.json';
+    }
     return null;
   });
   const base = snapshotFixture();
@@ -41,12 +47,14 @@ describe('launcher account', () => {
     await waitFor(() => {
       expect(calls.find((c) => c.cmd === 'launcher_account_open')?.args).toEqual({
         screen: 'register',
+        title: 'Launcher account: create',
       });
     });
     fireEvent.click(screen.getByRole('button', { name: 'Sign in' }));
     await waitFor(() => {
       expect(calls.filter((c) => c.cmd === 'launcher_account_open')[1]?.args).toEqual({
         screen: 'login',
+        title: 'Launcher account: sign in',
       });
     });
   });
@@ -73,6 +81,31 @@ describe('launcher account', () => {
     await waitFor(() => {
       expect(calls.some((c) => c.cmd === 'launcher_account_sign_out')).toBe(true);
     });
+  });
+
+  it('saves my data and deletes the account only on its own page', async () => {
+    const { calls } = setup(view());
+    fireEvent.click(screen.getByRole('button', { name: 'Download my data' }));
+    expect(await screen.findByText('Saved as launcher-account-Steve_2.json.')).toBeVisible();
+    expect(calls.find((c) => c.cmd === 'launcher_account_export')?.args).toEqual({
+      title: 'Save my launcher account data',
+    });
+    fireEvent.click(screen.getByRole('button', { name: 'Delete account…' }));
+    await waitFor(() => {
+      expect(calls.find((c) => c.cmd === 'launcher_account_open')?.args).toEqual({
+        screen: 'delete',
+        title: 'Launcher account: delete',
+      });
+    });
+    expect(screen.queryByLabelText(/password/i)).not.toBeInTheDocument();
+  });
+
+  it('says when the export could not be saved', async () => {
+    setup(view(), 'not_saved');
+    fireEvent.click(screen.getByRole('button', { name: 'Download my data' }));
+    expect(
+      await screen.findByText('The file could not be saved there. Choose another place.'),
+    ).toBeVisible();
   });
 
   it('asks to sign in again when the saved sign-in ended', () => {

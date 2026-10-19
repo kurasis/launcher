@@ -21,17 +21,18 @@ background for the common ones. When asking for help, attach a diagnostic export
 | Symptom                                                                                                      | Cause and fix                                                                                                                                           |
 | ------------------------------------------------------------------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | Account page says sign-in is not available                                                                   | This build has no Microsoft application ID. Only the project owner can register one ([AUTH-SETUP.md](AUTH-SETUP.md)); it is not a local problem.        |
+| `AUTH_APP_NOT_APPROVED`: Minecraft refused the sign-in                                                       | Minecraft services have not approved the launcher's Microsoft application yet. Nothing to fix locally; the demo and the launcher account still play.    |
 | "The system credential store is unavailable, so you will need to sign in again after the launcher restarts." | No system credential store (Secret Service, Keychain, Credential Manager) was usable. Install or unlock one (GNOME Keyring, KWallet) and sign in again. |
 
 ## Installing and repairing
 
-| Symptom / error code                                                | Cause and fix                                                                                                                                                      |
-| ------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| `NETWORK_ERROR` "A download source could not be reached"            | No connection to Mojang or Adoptium. Check the connection, proxy or firewall, then **Retry**; verified files are kept and not downloaded again.                    |
-| `DISK_FULL` "There is not enough free disk space"                   | A first installation needs about 1.2 GB per version (less when versions share files). Free space on the drive that holds the launcher data folder, then **Retry**. |
-| `PERMISSION_DENIED`                                                 | The launcher data folder is not writable (for example read-only media or changed permissions). Restore write access to the folder listed in **Settings**.          |
-| Installation shows "Needs verification" after a crash or power loss | The launcher was stopped during a change. Choose **Repair**: it checks every file, downloads only damaged or missing ones and never touches worlds or options.     |
-| A game file or Java was damaged                                     | **Repair** detects it by checksum and replaces exactly those files.                                                                                                |
+| Symptom / error code                                                | Cause and fix                                                                                                                                                                  |
+| ------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `NETWORK_ERROR` "A download source could not be reached"            | Neither the original source (Mojang, Adoptium, the loader's server) nor the mirror answered. Check the connection, proxy or firewall, then **Retry**; verified files are kept. |
+| `DISK_FULL` "There is not enough free disk space"                   | A first installation needs about 1.2 GB per version (less when versions share files). Free space on the drive that holds the launcher data folder, then **Retry**.             |
+| `PERMISSION_DENIED`                                                 | The launcher data folder is not writable (for example read-only media or changed permissions). Restore write access to the folder listed in **Settings**.                      |
+| Installation shows "Needs verification" after a crash or power loss | The launcher was stopped during a change. Choose **Repair**: it checks every file, downloads only damaged or missing ones and never touches worlds or options.                 |
+| A game file or Java was damaged                                     | **Repair** detects it by checksum and replaces exactly those files.                                                                                                            |
 
 ## Playing
 

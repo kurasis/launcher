@@ -172,7 +172,7 @@ export function InstanceJavaForm({ instance }: { instance: InstanceSummary }) {
               onClick={() => {
                 picking.clear();
                 void ipc
-                  .pickJavaFile()
+                  .pickJavaFile(strings.windowTitles.pickJava)
                   .then((picked) => {
                     if (picked !== null) {
                       setPath(picked);

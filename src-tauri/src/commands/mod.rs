@@ -22,9 +22,9 @@ use crate::state::AppState;
 use crate::state::dto::{
     AddNoTokenProfilePayload, AppSnapshot, CheckJavaPayload, CreateInstancePayload,
     DeleteInstancePayload, InstanceSummary, JavaChoice, MutationRequest, NoTokenProfileView,
-    ProfileIdPayload, SetDefaultProfilePayload, SetInstanceJavaPayload, SetInstanceLoaderPayload,
-    SetInstanceNotesPayload, SetInstanceProfilePayload, SettingsPatch, SettingsView,
-    UpdateInstanceSettingsPayload,
+    ProfileIdPayload, RenameInstancePayload, SetDefaultProfilePayload, SetInstanceJavaPayload,
+    SetInstanceLoaderPayload, SetInstanceNotesPayload, SetInstanceProfilePayload, SettingsPatch,
+    SettingsView, UpdateInstanceSettingsPayload,
 };
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
@@ -118,6 +118,15 @@ pub fn set_instance_notes(
     request: MutationRequest<SetInstanceNotesPayload>,
 ) -> LauncherResult<InstanceSummary> {
     state.set_instance_notes(request)
+}
+
+/// Renames an installation.
+#[tauri::command(async)]
+pub fn rename_instance(
+    state: State<'_, AppState>,
+    request: MutationRequest<RenameInstancePayload>,
+) -> LauncherResult<InstanceSummary> {
+    state.rename_instance(request)
 }
 
 /// Starts a Java program and tells how it suits an installed version (D-044).
@@ -394,15 +403,34 @@ async fn blocking<R: Runtime, T: Send + 'static>(
         })?
 }
 
+/// The title of a native dialog or window, in the interface's language: what
+/// the interface sent, as plain text of at most 120 characters, else
+/// `fallback`.
+pub(crate) fn window_title(title: Option<String>, fallback: &str) -> String {
+    let title: String = title
+        .unwrap_or_default()
+        .chars()
+        .filter(|c| !c.is_control())
+        .take(120)
+        .collect();
+    let title = title.trim();
+    if title.is_empty() {
+        fallback.to_owned()
+    } else {
+        title.to_owned()
+    }
+}
+
 /// Native file dialog for choosing a Java program.
 #[tauri::command]
-pub async fn pick_java_file<R: Runtime>(app: AppHandle<R>) -> LauncherResult<Option<String>> {
+pub async fn pick_java_file<R: Runtime>(
+    app: AppHandle<R>,
+    title: Option<String>,
+) -> LauncherResult<Option<String>> {
     use tauri_plugin_dialog::DialogExt;
+    let title = window_title(title, "Choose the Java program (java or javaw.exe)");
     let picked = tauri::async_runtime::spawn_blocking(move || {
-        app.dialog()
-            .file()
-            .set_title("Choose the Java program (java or javaw.exe)")
-            .blocking_pick_file()
+        app.dialog().file().set_title(title).blocking_pick_file()
     })
     .await
     .map_err(|_| crate::error::LauncherError::internal("The file dialog failed."))?;
@@ -918,6 +946,9 @@ pub enum GameFolder {
     Config,
     CrashReports,
     Logs,
+    Saves,
+    Resourcepacks,
+    Shaderpacks,
 }
 
 impl GameFolder {
@@ -927,6 +958,9 @@ impl GameFolder {
             Self::Config => "config",
             Self::CrashReports => "crash-reports",
             Self::Logs => "logs",
+            Self::Saves => "saves",
+            Self::Resourcepacks => "resourcepacks",
+            Self::Shaderpacks => "shaderpacks",
         }
     }
 }
@@ -980,6 +1014,9 @@ pub fn open_instance_folder<R: Runtime>(
 pub struct ExportPayload {
     #[serde(default)]
     pub run_id: Option<String>,
+    /// The save dialog's title in the interface's language.
+    #[serde(default)]
+    pub title: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -1001,11 +1038,12 @@ pub async fn export_diagnostics<R: Runtime>(
     crate::state::ledger::validate_request_id(&request.request_id)?;
     let handle = app.clone();
     let run = request.payload.run_id;
+    let title = window_title(request.payload.title, "Save diagnostic export");
     let target = tauri::async_runtime::spawn_blocking(move || {
         handle
             .dialog()
             .file()
-            .set_title("Save diagnostic export")
+            .set_title(title)
             .set_file_name(format!(
                 "launcher-diagnostics-{}.zip",
                 chrono::Utc::now().format("%Y%m%d-%H%M%S")
@@ -1223,13 +1261,14 @@ pub async fn move_data_location<R: Runtime>(
 
 /// Lets the user pick a folder for the launcher data; `None` when cancelled.
 #[tauri::command]
-pub async fn pick_data_folder<R: Runtime>(app: AppHandle<R>) -> LauncherResult<Option<String>> {
+pub async fn pick_data_folder<R: Runtime>(
+    app: AppHandle<R>,
+    title: Option<String>,
+) -> LauncherResult<Option<String>> {
     use tauri_plugin_dialog::DialogExt;
+    let title = window_title(title, "Choose a folder for the launcher data");
     let picked = tauri::async_runtime::spawn_blocking(move || {
-        app.dialog()
-            .file()
-            .set_title("Choose a folder for the launcher data")
-            .blocking_pick_folder()
+        app.dialog().file().set_title(title).blocking_pick_folder()
     })
     .await
     .map_err(|_| crate::error::LauncherError::internal("The folder dialog failed."))?;
@@ -1422,11 +1461,17 @@ pub fn interface_ready<R: Runtime>(app: AppHandle<R>) {
 /// Opens the launcher account's sign-in window on `screen`: `login` or
 /// `register` (D-064).
 #[tauri::command]
-pub fn launcher_account_open<R: Runtime>(app: AppHandle<R>, screen: String) {
+pub fn launcher_account_open<R: Runtime>(app: AppHandle<R>, screen: String, title: Option<String>) {
     let account = Arc::clone(&app.state::<Arc<crate::launcher_account::LauncherAccount>>());
     let handle = app.clone();
+    let fallback = if screen == "register" {
+        "Launcher account: create"
+    } else {
+        "Launcher account: sign in"
+    };
+    let title = window_title(title, fallback);
     // Windows are made on the main thread.
-    let _ = app.run_on_main_thread(move || account.open(&handle, &screen));
+    let _ = app.run_on_main_thread(move || account.open(&handle, &screen, &title));
 }
 
 #[tauri::command]
@@ -1461,6 +1506,60 @@ pub async fn launcher_account_resend_confirmation<R: Runtime>(
         .resend_confirmation(&app.state::<AppState>())
         .await
         .err()
+}
+
+/// Saves what the account service and friends keep about the launcher
+/// account as one JSON file where the player chooses. `Ok(None)` when the
+/// save dialog was closed; else the file's name.
+#[tauri::command]
+pub async fn launcher_account_export<R: Runtime>(
+    app: AppHandle<R>,
+    title: Option<String>,
+) -> Result<Option<String>, crate::launcher_account::AccountProblem> {
+    use crate::launcher_account::AccountProblem;
+    use tauri_plugin_dialog::DialogExt;
+    let account = Arc::clone(&app.state::<Arc<crate::launcher_account::LauncherAccount>>());
+    let state = app.state::<AppState>();
+    let nick = state
+        .accounts_file()
+        .launcher_account
+        .map(|a| a.nick)
+        .unwrap_or_default();
+    let mut data = serde_json::json!({
+        "exported": chrono::Utc::now().to_rfc3339(),
+        "account": account.export(&state).await?,
+    });
+    // Friends may be down; the account's own data still comes.
+    data["friends"] = friends(&app)
+        .export(&app)
+        .await
+        .unwrap_or(serde_json::Value::Null);
+    let title = window_title(title, "Save my launcher account data");
+    let handle = app.clone();
+    let name = format!(
+        "launcher-account-{nick}-{}.json",
+        chrono::Utc::now().format("%Y%m%d")
+    );
+    let target = tauri::async_runtime::spawn_blocking(move || {
+        handle
+            .dialog()
+            .file()
+            .set_title(title)
+            .set_file_name(name)
+            .add_filter("JSON", &["json"])
+            .blocking_save_file()
+    })
+    .await
+    .map_err(|_| AccountProblem::NotSaved)?;
+    let Some(path) = target.and_then(|p| p.into_path().ok()) else {
+        return Ok(None);
+    };
+    let text = serde_json::to_vec_pretty(&data).map_err(|_| AccountProblem::NotSaved)?;
+    std::fs::write(&path, text).map_err(|_| AccountProblem::NotSaved)?;
+    state
+        .console()
+        .info("Launcher account: the data export was saved");
+    Ok(path.file_name().and_then(|n| n.to_str()).map(str::to_owned))
 }
 
 // Friends and chats (D-064). What went wrong comes back as a problem code.
@@ -1558,6 +1657,30 @@ pub async fn friends_read<R: Runtime>(
     friends(&app).read(&app, &room, upto).await
 }
 
+/// Declines every friend request waiting for the account.
+#[tauri::command]
+pub async fn friends_decline_all<R: Runtime>(app: AppHandle<R>) -> FriendsResult<()> {
+    friends(&app).decline_all(&app).await
+}
+
+/// Reports a waiting friend request as spam.
+#[tauri::command]
+pub async fn friends_report_request<R: Runtime>(
+    app: AppHandle<R>,
+    id: String,
+) -> FriendsResult<()> {
+    friends(&app).report_request(&app, &id).await
+}
+
+/// Shows or hides the account's online status from its friends.
+#[tauri::command]
+pub async fn friends_set_visible<R: Runtime>(
+    app: AppHandle<R>,
+    visible: bool,
+) -> FriendsResult<()> {
+    friends(&app).set_visible(&app, visible).await
+}
+
 #[tauri::command]
 pub async fn friends_report<R: Runtime>(
     app: AppHandle<R>,
@@ -1586,4 +1709,27 @@ pub fn open_update_page<R: Runtime>(app: AppHandle<R>) -> LauncherResult<()> {
         .map_err(|_| {
             crate::error::LauncherError::internal("The system browser could not be opened.")
         })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::window_title;
+
+    #[test]
+    fn titles_from_the_interface_are_plain_and_short() {
+        assert_eq!(
+            window_title(Some(" Выберите папку ".into()), "Choose"),
+            "Выберите папку"
+        );
+        assert_eq!(
+            window_title(Some("a\u{0}b\nc\u{1b}[2J".into()), "x"),
+            "abc[2J"
+        );
+        assert_eq!(
+            window_title(Some("x".repeat(500)), "f").chars().count(),
+            120
+        );
+        assert_eq!(window_title(Some("  \n ".into()), "Choose"), "Choose");
+        assert_eq!(window_title(None, "Choose"), "Choose");
+    }
 }

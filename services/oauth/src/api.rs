@@ -14,7 +14,7 @@ use serde_json::json;
 
 use crate::app::{ACCESS_SECONDS, App, CLIENT_ID, SESSION_SECONDS, client_country, client_ip, now};
 use crate::crypto::{Claims, digest, pkce_matches, token, verify};
-use crate::mail::{Letter, queue};
+use crate::mail::{self, Letter, queue};
 use crate::rules::{self, Problem};
 use crate::store::{Account, Refresh, Taken};
 use crate::web;
@@ -101,7 +101,7 @@ async fn token_endpoint(
     headers: HeaderMap,
     Form(form): Form<TokenForm>,
 ) -> Response {
-    if !app.limiter.allow(client_ip(&headers), "token", 240, 50_000) {
+    if !app.limiter.allow(client_ip(&headers), "token", 240) {
         return oauth_error(StatusCode::TOO_MANY_REQUESTS, "slow_down");
     }
     if form.client_id != CLIENT_ID {
@@ -184,7 +184,7 @@ async fn revoke(
     headers: HeaderMap,
     Form(form): Form<RevokeForm>,
 ) -> Response {
-    if !app.limiter.allow(client_ip(&headers), "token", 240, 50_000) {
+    if !app.limiter.allow(client_ip(&headers), "token", 240) {
         return oauth_error(StatusCode::TOO_MANY_REQUESTS, "slow_down");
     }
     if form.token.len() == 43
@@ -310,10 +310,7 @@ async fn set_password(
         Ok(me) => me,
         Err(response) => return *response,
     };
-    if !app
-        .limiter
-        .allow(client_ip(&headers), "password", 10, 2_000)
-    {
+    if !app.limiter.allow(client_ip(&headers), "password", 10) {
         return refuse(StatusCode::TOO_MANY_REQUESTS, "too_many");
     }
     if body.current.chars().count() > rules::PASSWORD_MAX
@@ -366,10 +363,7 @@ async fn set_email(
         Ok(me) => me,
         Err(response) => return *response,
     };
-    if !app
-        .limiter
-        .allow(client_ip(&headers), "password", 10, 2_000)
-    {
+    if !app.limiter.allow(client_ip(&headers), "password", 10) {
         return refuse(StatusCode::TOO_MANY_REQUESTS, "too_many");
     }
     let email = match rules::email(&body.email) {
@@ -385,6 +379,19 @@ async fn set_email(
     }
     match app.store.set_email(&me.account.id, &email) {
         Ok(Ok(())) => {
+            // The old address learns of the change, so a stolen password
+            // cannot take the account's recovery quietly.
+            if rules::email_key(&me.account.email) != rules::email_key(&email) {
+                mail::queue(
+                    &app,
+                    &me.account.email,
+                    &me.account.lang,
+                    &Letter::EmailChanged {
+                        nick: &me.account.nick,
+                        new: &mail::masked(&email),
+                    },
+                );
+            }
             let _ = app.store.event(
                 &me.account.id,
                 "email-changed",
@@ -402,6 +409,22 @@ async fn set_email(
         }
         Ok(Err(Taken::Email)) => refuse(StatusCode::CONFLICT, problem_code(Problem::EmailTaken)),
         Ok(Err(Taken::Nick)) | Err(_) => refuse(StatusCode::INTERNAL_SERVER_ERROR, "server_error"),
+    }
+}
+
+/// Everything kept about the account, for the account itself (its own
+/// session asks; the launcher saves it as a file).
+async fn export(State(app): State<Arc<App>>, headers: HeaderMap) -> Response {
+    let me = match me(&app, &headers) {
+        Ok(me) => me,
+        Err(response) => return *response,
+    };
+    if !app.limiter.allow(client_ip(&headers), "export", 10) {
+        return refuse(StatusCode::TOO_MANY_REQUESTS, "too_many");
+    }
+    match app.store.export(&me.account.id, now()) {
+        Ok(data) => Json(data).into_response(),
+        Err(_) => refuse(StatusCode::INTERNAL_SERVER_ERROR, "server_error"),
     }
 }
 
@@ -515,9 +538,7 @@ async fn health() -> Json<serde_json::Value> {
 /// read.
 async fn admit(State(app): State<Arc<App>>, request: Request, next: Next) -> Response {
     if request.uri().path().starts_with("/v1/me")
-        && !app
-            .limiter
-            .allow(client_ip(request.headers()), "me", 600, 100_000)
+        && !app.limiter.allow(client_ip(request.headers()), "me", 600)
     {
         return refuse(StatusCode::TOO_MANY_REQUESTS, "too_many");
     }
@@ -537,12 +558,16 @@ pub fn router(app: Arc<App>) -> Router {
         .route("/v1/me/email", post(set_email))
         .route("/v1/me/verify-email", post(resend_verification))
         .route("/v1/me/sessions", get(sessions))
+        .route("/v1/me/export", get(export))
         .route("/v1/me/sessions/end", post(end_session))
         .route("/v1/me/sessions/end-others", post(end_other_sessions))
         .route("/authorize", get(web::authorize))
         .route("/login", get(web::login_screen).post(web::login))
         .route("/register", get(web::register_screen).post(web::register))
         .route("/app/done", get(web::done))
+        .route("/delete", get(web::delete_form).post(web::delete))
+        .route("/delete/confirm", post(web::delete_confirm))
+        .route("/app/deleted", get(web::deleted))
         .route("/verify", get(web::verify))
         .route("/reset", get(web::reset_form).post(web::reset))
         .route(

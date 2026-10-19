@@ -17,7 +17,8 @@
 #     releases, the service user alone writes its data; /home/www and
 #     /home/www/lapi become root's;
 #  3. its systemd units, if it runs as one (upd is static files and a
-#     command; the mirror also has a warming timer);
+#     command; the mirror also has a warming timer, accounts and friends a
+#     daily backup timer, docs/SERVER-BACKUPS.md);
 #  4. a Let's Encrypt certificate for <service>.lapi.sh (webroot), with a
 #     self-signed one as the fallback, and nginx reloads on renewal;
 #  5. its nginx files, with the shared ones from ./nginx, in /etc/nginx/lapi;
@@ -58,7 +59,7 @@ first_env() {
         crash) printf 'LAPI_CRASH_ADDR=127.0.0.1:8781\nLAPI_CRASH_DATA=%s/crash/data\nLAPI_CRASH_KEEP_DAYS=90\nLAPI_CRASH_KEEP_STATS_DAYS=400\nLAPI_CRASH_MAX_STORED_MB=5120\n' "$ROOT" ;;
         mirror) printf 'LAPI_MIRROR_ADDR=127.0.0.1:8782\nLAPI_MIRROR_DATA=%s/mirror/data\nLAPI_MIRROR_SETTINGS=%s/mirror/settings.json\n' "$ROOT" "$ROOT" ;;
         oauth) printf 'LAPI_OAUTH_ADDR=127.0.0.1:8783\nLAPI_OAUTH_DATA=%s/oauth/data\nLAPI_OAUTH_URL=https://oauth.lapi.sh\n' "$ROOT" ;;
-        friends) printf 'LAPI_FRIENDS_ADDR=127.0.0.1:8784\nLAPI_FRIENDS_DATA=%s/friends/data\nLAPI_FRIENDS_REQUIRE_EMAIL=0\n' "$ROOT" ;;
+        friends) printf 'LAPI_FRIENDS_ADDR=127.0.0.1:8784\nLAPI_FRIENDS_DATA=%s/friends/data\nLAPI_FRIENDS_REQUIRE_EMAIL=auto\n' "$ROOT" ;;
     esac
 }
 
@@ -96,6 +97,15 @@ for service in "${SERVICES[@]}"; do
     daemon "$service" || continue
     if [ ! -f "$app/$service.env" ]; then
         first_env "$service" > "$app/$service.env"
+    fi
+    # Friends asks for a confirmed email once letters go out ("auto"); the
+    # "0" an earlier bootstrap wrote meant only "not yet".
+    if [ "$service" = friends ] && grep -qx 'LAPI_FRIENDS_REQUIRE_EMAIL=0' "$app/$service.env"; then
+        sed -i 's/^LAPI_FRIENDS_REQUIRE_EMAIL=0$/LAPI_FRIENDS_REQUIRE_EMAIL=auto/' "$app/$service.env"
+        # Read at start: a running service takes it on restart.
+        if systemctl is-active --quiet lapi-friends; then
+            systemctl restart lapi-friends || true
+        fi
     fi
     chown "root:$user" "$app/$service.env"
     chmod 0640 "$app/$service.env"

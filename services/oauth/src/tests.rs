@@ -333,7 +333,7 @@ async fn register_then_sign_in_with_pkce_and_use_the_tokens() {
     assert!(account.password.starts_with("$argon2id$"));
     assert!(!account.password.contains(PASSWORD));
     // A confirmation letter waits in the outbox.
-    let letters = t.app.store.pending_mail(crate::app::now(), 10).unwrap();
+    let letters = crate::mail::due(&t.app, crate::app::now(), 10).unwrap();
     assert_eq!(letters.len(), 1);
     assert_eq!(letters[0].to, "steve_2@example.com");
     assert!(letters[0].body.contains(&format!("{BASE}/verify?token=")));
@@ -792,10 +792,7 @@ async fn reset_and_confirmation_links() {
     let t = setup();
     let tokens = t.account("Forgetful", "198.51.100.16").await;
     // Confirm the address with the link from the letter.
-    let letter = t
-        .app
-        .store
-        .pending_mail(crate::app::now(), 10)
+    let letter = crate::mail::due(&t.app, crate::app::now(), 10)
         .unwrap()
         .remove(0);
     let link = letter
@@ -841,10 +838,7 @@ async fn reset_and_confirmation_links() {
     let unknown = ask("nobody@example.com").await;
     let known = ask("FORGETFUL@example.com").await;
     assert_eq!(unknown.body, known.body);
-    let letter = t
-        .app
-        .store
-        .pending_mail(crate::app::now(), 10)
+    let letter = crate::mail::due(&t.app, crate::app::now(), 10)
         .unwrap()
         .into_iter()
         .find(|m| m.body.contains("/reset/confirm?token="))
@@ -989,11 +983,448 @@ async fn the_internal_api_tells_only_nicks_and_ids() {
         .send(t.get("/internal/v1/find?nick=Findable", "1.2.3.4"))
         .await;
     assert_eq!(public.status, StatusCode::NOT_FOUND);
-    // A switched-off account is not found.
+    // Which sessions ended: only the unknown one, until the account is
+    // switched off.
+    let sid = verify(
+        &t.app.keys.public(),
+        tokens["access_token"].as_str().unwrap(),
+        BASE,
+        "friends",
+        crate::app::now(),
+    )
+    .unwrap()
+    .sid;
+    let ended = |sessions: serde_json::Value| {
+        Request::post("/internal/v1/ended")
+            .header(header::CONTENT_TYPE, "application/json")
+            .body(Body::from(
+                serde_json::json!({ "sessions": sessions }).to_string(),
+            ))
+            .unwrap()
+    };
+    let (status, answer) = ask(ended(serde_json::json!([sid, "unknown' OR 1=1--"]))).await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(
+        answer,
+        serde_json::json!({ "ended": ["unknown' OR 1=1--"] })
+    );
+    // A switched-off account is not found, and its sessions have ended.
     t.app.store.set_disabled(&id, true).unwrap();
     let (status, _) = ask(Request::get("/internal/v1/find?nick=findable")
         .body(Body::empty())
         .unwrap())
     .await;
     assert_eq!(status, StatusCode::NOT_FOUND);
+    let (_, answer) = ask(ended(serde_json::json!([sid]))).await;
+    assert_eq!(answer, serde_json::json!({ "ended": [sid] }));
+    let (status, _) = ask(ended(serde_json::json!(vec!["x"; 501]))).await;
+    assert_eq!(status, StatusCode::PAYLOAD_TOO_LARGE);
+    // No SMTP server in the tests: letters do not go out.
+    let (status, mail) = ask(Request::get("/internal/v1/mail")
+        .body(Body::empty())
+        .unwrap())
+    .await;
+    assert_eq!(
+        (status, mail),
+        (StatusCode::OK, serde_json::json!({ "sending": false }))
+    );
+}
+
+/// Sets a new password with a reset link's token; the answer of the form.
+async fn reset_with(t: &T, token: &str, password: &str) -> Answer {
+    let page = t
+        .send(t.get(
+            &format!("/reset/confirm?token={token}&lang=en"),
+            "198.51.100.40",
+        ))
+        .await;
+    // An ended link shows no form at all.
+    if page.status != StatusCode::OK {
+        return page;
+    }
+    let (csrf, cookie) = (page.field("csrf"), page.cookie().unwrap());
+    t.send(t.post_form(
+        "/reset/confirm",
+        "198.51.100.40",
+        Some(&cookie),
+        &[
+            ("csrf", &csrf),
+            ("token", token),
+            ("lang", "en"),
+            ("password", password),
+            ("password2", password),
+        ],
+    ))
+    .await
+}
+
+/// A reset link made directly in the store, as `/reset` makes it.
+fn reset_link(t: &T, account: &str, email: &str) -> String {
+    let token = crate::crypto::token();
+    t.app
+        .store
+        .put_email_token(
+            &crate::crypto::digest(&token),
+            account,
+            "reset",
+            email,
+            crate::app::now() + 1800,
+        )
+        .unwrap();
+    token
+}
+
+#[tokio::test]
+async fn letters_waiting_hold_no_working_link_and_sent_ones_keep_nothing() {
+    let t = setup();
+    t.account("Sealed", "198.51.100.41").await;
+    let now = crate::app::now();
+    // In the database the letter is sealed: no link to copy.
+    let raw = t.app.store.pending_mail(now, 10).unwrap();
+    assert_eq!(raw.len(), 1);
+    assert!(raw[0].body.starts_with("sealed:1:"));
+    assert!(!raw[0].body.contains("token="));
+    // Only this key, and only for this recipient, opens it.
+    let opened = crate::mail::due(&t.app, now, 10).unwrap();
+    assert!(opened[0].body.contains("/verify?token="));
+    assert!(
+        crate::mail::Sealer::random()
+            .open(&raw[0].to, &raw[0].body)
+            .is_none()
+    );
+    assert!(
+        t.app
+            .sealer
+            .open("other@example.com", &raw[0].body)
+            .is_none()
+    );
+    // A failed letter waits before its next try; a sent one keeps no body.
+    t.app
+        .store
+        .mail_done(raw[0].id, Some("421 busy"), now)
+        .unwrap();
+    assert!(t.app.store.pending_mail(now, 10).unwrap().is_empty());
+    assert_eq!(t.app.store.pending_mail(now + 20, 10).unwrap().len(), 1);
+    t.app
+        .store
+        .mail_done(raw[0].id, Some("421 busy"), now)
+        .unwrap();
+    assert!(
+        t.app.store.pending_mail(now + 20, 10).unwrap().is_empty(),
+        "the wait grows"
+    );
+    t.app.store.mail_done(raw[0].id, None, now).unwrap();
+    assert!(t.app.store.pending_mail(now + 7200, 10).unwrap().is_empty());
+    // A letter queued before sealing is sealed at start.
+    t.app
+        .store
+        .queue_mail("old@example.com", "Old", "link: token=abc", now)
+        .unwrap();
+    crate::mail::seal_waiting(&t.app).unwrap();
+    let waiting = t.app.store.pending_mail(now, 10).unwrap();
+    assert!(waiting[0].body.starts_with("sealed:1:"));
+    assert_eq!(
+        crate::mail::due(&t.app, now, 10).unwrap()[0].body,
+        "link: token=abc"
+    );
+}
+
+#[tokio::test]
+async fn a_new_password_or_address_ends_the_links_still_out() {
+    let t = setup();
+    let tokens = t.account("Mover", "198.51.100.42").await;
+    let access = tokens["access_token"].as_str().unwrap();
+    let account = t.app.store.find_login("mover").unwrap().unwrap();
+    // Two reset links are out; using one ends the other.
+    let first = reset_link(&t, &account.id, &account.email);
+    let second = reset_link(&t, &account.id, &account.email);
+    assert!(
+        reset_with(&t, &first, "the first new password")
+            .await
+            .body
+            .contains("every device is signed out")
+    );
+    assert_eq!(
+        reset_with(&t, &second, "the second new password")
+            .await
+            .status,
+        StatusCode::BAD_REQUEST
+    );
+    // A new address: the old one is told, and its links end.
+    let old_link = reset_link(&t, &account.id, &account.email);
+    for mail in crate::mail::due(&t.app, crate::app::now(), 50).unwrap() {
+        t.app
+            .store
+            .mail_done(mail.id, None, crate::app::now())
+            .unwrap();
+    }
+    let changed = t
+        .send(t.api(
+            "POST",
+            "/v1/me/email",
+            access,
+            serde_json::json!({ "email": "thief@example.net", "password": "the first new password" }),
+        ))
+        .await;
+    assert_eq!(
+        changed.status,
+        StatusCode::UNAUTHORIZED,
+        "signed out by the reset"
+    );
+    let signed_in = t
+        .login("mover", "the first new password", "", "198.51.100.43")
+        .await;
+    let tokens = t.exchange(&signed_in, VERIFIER).await.json();
+    let access = tokens["access_token"].as_str().unwrap();
+    let changed = t
+        .send(t.api(
+            "POST",
+            "/v1/me/email",
+            access,
+            serde_json::json!({ "email": "thief@example.net", "password": "the first new password" }),
+        ))
+        .await;
+    assert_eq!(changed.status, StatusCode::NO_CONTENT, "{}", changed.body);
+    let letters = crate::mail::due(&t.app, crate::app::now(), 50).unwrap();
+    let notice = letters
+        .iter()
+        .find(|m| m.to == account.email)
+        .expect("a letter to the old address");
+    assert!(notice.body.contains("t***@example.net"));
+    assert!(!notice.body.contains("thief@"));
+    assert!(letters.iter().any(|m| m.to == "thief@example.net"));
+    assert_eq!(
+        reset_with(&t, &old_link, "a password from the old link")
+            .await
+            .status,
+        StatusCode::BAD_REQUEST
+    );
+    // Even a link made for the old address after the change does nothing.
+    let stale = reset_link(&t, &account.id, &account.email);
+    assert_eq!(
+        reset_with(&t, &stale, "a password from a stale link")
+            .await
+            .status,
+        StatusCode::BAD_REQUEST
+    );
+}
+
+#[test]
+fn a_database_from_before_sealing_is_brought_up_to_date() {
+    let dir = tempfile::tempdir().unwrap();
+    {
+        let db = rusqlite::Connection::open(dir.path().join("accounts.db")).unwrap();
+        db.execute_batch(
+            "CREATE TABLE outbox (id INTEGER PRIMARY KEY, to_addr TEXT NOT NULL,
+               subject TEXT NOT NULL, body TEXT NOT NULL, created INTEGER NOT NULL,
+               sent INTEGER, attempts INTEGER NOT NULL DEFAULT 0, last_error TEXT);
+             INSERT INTO outbox (to_addr, subject, body, created, sent)
+               VALUES ('a@example.com', 'Sent', 'token=old', 1, 2);",
+        )
+        .unwrap();
+    }
+    crate::store::Store::open(dir.path()).unwrap();
+    let db = rusqlite::Connection::open(dir.path().join("accounts.db")).unwrap();
+    let body: String = db
+        .query_row("SELECT body FROM outbox", [], |r| r.get(0))
+        .unwrap();
+    assert_eq!(body, "", "a sent letter keeps no link");
+    // Opening again changes nothing.
+    crate::store::Store::open(dir.path()).unwrap();
+}
+
+#[tokio::test]
+async fn a_flood_from_many_addresses_brings_the_captcha_not_a_lockout() {
+    let t = setup();
+    t.account("Crowd", "198.51.100.50").await;
+    // Everyone's allowance for the hour is used up.
+    for _ in 0..5_001 {
+        t.app.limiter.busy("login", u32::MAX);
+    }
+    let asked = t.login("Crowd", PASSWORD, "", "203.0.113.9").await;
+    assert_eq!(asked.status, StatusCode::OK);
+    assert!(asked.body.contains("cf-turnstile"));
+    assert_eq!(
+        t.login("Crowd", PASSWORD, "ok:login", "203.0.113.9")
+            .await
+            .status,
+        StatusCode::SEE_OTHER,
+        "the owner still gets in"
+    );
+    // Without captcha keys nobody is asked, and nobody is refused.
+    let t = setup_with(false);
+    t.account("Crowd", "198.51.100.50").await;
+    for _ in 0..5_001 {
+        t.app.limiter.busy("login", u32::MAX);
+    }
+    assert_eq!(
+        t.login("Crowd", PASSWORD, "", "203.0.113.9").await.status,
+        StatusCode::SEE_OTHER
+    );
+}
+
+#[tokio::test]
+async fn backups_are_whole_private_and_only_the_newest_stay() {
+    let t = setup();
+    t.account("Kept", "198.51.100.60").await;
+    let dir = t._dir.path().join("backups");
+    let first = t.app.store.backup(&dir, 2).unwrap();
+    let restored = tempfile::tempdir().unwrap();
+    std::fs::copy(&first, restored.path().join("accounts.db")).unwrap();
+    let copy = crate::store::Store::open(restored.path()).unwrap();
+    assert!(copy.find_login("kept").unwrap().is_some());
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        assert_eq!(
+            std::fs::metadata(&first).unwrap().permissions().mode() & 0o777,
+            0o600
+        );
+        assert_eq!(
+            std::fs::metadata(&dir).unwrap().permissions().mode() & 0o777,
+            0o700
+        );
+    }
+    for name in [
+        "accounts-20000101-000000.db",
+        "accounts-20000102-000000.db",
+        "notes.txt",
+    ] {
+        std::fs::write(dir.join(name), b"x").unwrap();
+    }
+    t.app.store.backup(&dir, 2).unwrap();
+    let mut left: Vec<String> = std::fs::read_dir(&dir)
+        .unwrap()
+        .flatten()
+        .map(|e| e.file_name().to_string_lossy().into_owned())
+        .collect();
+    left.sort();
+    assert_eq!(left.len(), 3, "{left:?}");
+    assert!(!left.iter().any(|n| n.starts_with("accounts-2000")));
+    assert!(left.contains(&"notes.txt".to_owned()));
+}
+
+#[tokio::test]
+async fn the_owner_exports_their_data_and_deletes_the_account_for_good() {
+    let t = setup();
+    let tokens = t.account("Leaving", "198.51.100.70").await;
+    let access = tokens["access_token"].as_str().unwrap();
+    let id = tokens["account"]["id"].as_str().unwrap().to_owned();
+    // Export: what is kept, for the account's own session only.
+    let export = t
+        .send(t.api("GET", "/v1/me/export", access, serde_json::Value::Null))
+        .await;
+    assert_eq!(export.status, StatusCode::OK);
+    let data = export.json();
+    assert_eq!(data["nick"], "Leaving");
+    assert_eq!(data["email"], "leaving@example.com");
+    assert_eq!(data["registeredFrom"]["address"], "198.51.100.70");
+    assert!(!data["sessions"].as_array().unwrap().is_empty());
+    assert!(!export.body.contains("$argon2"), "no password hash");
+    assert_eq!(
+        t.send(t.api("GET", "/v1/me/export", "forged", serde_json::Value::Null))
+            .await
+            .status,
+        StatusCode::UNAUTHORIZED
+    );
+    // Deleting: our page, the password, then a second step.
+    let page = t.send(t.get("/delete?lang=ru", "198.51.100.71")).await;
+    assert!(page.body.contains("Удаление аккаунта"));
+    let (csrf, cookie) = (page.field("csrf"), page.cookie().unwrap());
+    let step = |password: &'static str, captcha: &'static str| {
+        t.post_form(
+            "/delete",
+            "198.51.100.71",
+            Some(&cookie),
+            &[
+                ("csrf", &csrf),
+                ("lang", "en"),
+                ("login", "LEAVING"),
+                ("password", password),
+                ("cf-turnstile-response", captcha),
+            ],
+        )
+    };
+    assert!(
+        t.send(step(PASSWORD, ""))
+            .await
+            .body
+            .contains("not a robot")
+    );
+    assert!(
+        t.send(step("not the password", "ok:delete"))
+            .await
+            .body
+            .contains("is not right")
+    );
+    let asked = t.send(step(PASSWORD, "ok:delete")).await;
+    assert!(asked.body.contains("Delete account Leaving"));
+    assert!(
+        t.app.store.find_login("leaving").unwrap().is_some(),
+        "not yet"
+    );
+    let confirm = asked.field("token");
+    let finish = |csrf: &str, token: &str| {
+        t.post_form(
+            "/delete/confirm",
+            "198.51.100.71",
+            Some(&cookie),
+            &[("csrf", csrf), ("lang", "en"), ("token", token)],
+        )
+    };
+    // Without the page's own cookie value, nothing happens.
+    assert_ne!(
+        t.send(finish(
+            "wrong-csrf-wrong-csrf-wrong-csrf-wrong-csr",
+            &confirm
+        ))
+        .await
+        .status,
+        StatusCode::SEE_OTHER
+    );
+    let done = t.send(finish(&csrf, &confirm)).await;
+    assert_eq!(done.status, StatusCode::SEE_OTHER);
+    assert_eq!(done.location(), "/app/deleted?lang=en");
+    assert!(t.app.store.find_login("leaving").unwrap().is_none());
+    assert_eq!(
+        t.refresh(tokens["refresh_token"].as_str().unwrap())
+            .await
+            .status,
+        StatusCode::BAD_REQUEST
+    );
+    let listed = t.app.store.deleted_since(0).unwrap();
+    assert_eq!(listed.len(), 1);
+    assert_eq!(listed[0].0, id);
+    assert!(t.app.store.deleted_since(listed[0].1).unwrap().is_empty());
+    // The address hears of it, once; the link works once.
+    let letters = crate::mail::due(&t.app, crate::app::now(), 50).unwrap();
+    let to_it: Vec<_> = letters
+        .iter()
+        .filter(|m| m.to == "leaving@example.com")
+        .collect();
+    assert_eq!(to_it.len(), 1, "letters waiting for it went with it");
+    assert!(to_it[0].body.contains("Leaving") && to_it[0].subject.contains("удалён"));
+    assert_eq!(
+        t.send(finish(&csrf, &confirm)).await.status,
+        StatusCode::BAD_REQUEST
+    );
+    // The nick and address are free again.
+    assert_eq!(
+        t.register("Leaving", "leaving@example.com", "198.51.100.72")
+            .await
+            .status,
+        StatusCode::SEE_OTHER
+    );
+    let internal = crate::internal::router(Arc::clone(&t.app));
+    let response = internal
+        .oneshot(
+            Request::get("/internal/v1/deleted?since=0")
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    let bytes = response.into_body().collect().await.unwrap().to_bytes();
+    let listed: serde_json::Value = serde_json::from_slice(&bytes).unwrap();
+    assert_eq!(listed["deleted"][0]["id"], id);
 }

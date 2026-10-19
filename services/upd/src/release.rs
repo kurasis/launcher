@@ -395,6 +395,14 @@ impl Server {
             ));
         }
         let mut state = self.load(&options.channel)?;
+        // A revoked version stays revoked: after going back, the channel's
+        // current version is older, so only this check stops it coming back.
+        if state.revoked.iter().any(|v| v == wanted) {
+            return Err(format!(
+                "{wanted} was revoked on {}; publish a newer version",
+                options.channel
+            ));
+        }
         if let Some(current) = &state.current
             && version(current)? >= new
         {

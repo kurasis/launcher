@@ -3,7 +3,7 @@
 //! Every query takes its values as parameters, never as text in the SQL.
 //! Times are Unix seconds. Tokens are stored as their SHA-256 only.
 
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::sync::Mutex;
 
 use rusqlite::{Connection, OptionalExtension, params};
@@ -90,7 +90,13 @@ CREATE TABLE IF NOT EXISTS outbox (
     created INTEGER NOT NULL,
     sent INTEGER,
     attempts INTEGER NOT NULL DEFAULT 0,
-    last_error TEXT
+    last_error TEXT,
+    next_try INTEGER NOT NULL DEFAULT 0
+);
+-- Accounts deleted, for friends.lapi.sh to clean out; kept 90 days.
+CREATE TABLE IF NOT EXISTS deleted (
+    id TEXT PRIMARY KEY,
+    at INTEGER NOT NULL
 );
 "#;
 
@@ -184,6 +190,22 @@ fn account_row(row: &rusqlite::Row<'_>) -> rusqlite::Result<Account> {
     })
 }
 
+/// Brings a database made by an older version up to the schema.
+fn migrate(db: &Connection) -> Result<(), String> {
+    let has_next_try = db
+        .prepare("SELECT 1 FROM pragma_table_info('outbox') WHERE name = 'next_try'")
+        .and_then(|mut s| s.exists([]))
+        .map_err(|e| e.to_string())?;
+    if !has_next_try {
+        db.execute_batch(
+            "ALTER TABLE outbox ADD COLUMN next_try INTEGER NOT NULL DEFAULT 0;
+             UPDATE outbox SET body = '' WHERE sent IS NOT NULL;",
+        )
+        .map_err(|e| e.to_string())?;
+    }
+    Ok(())
+}
+
 const ACCOUNT_COLUMNS: &str =
     "id, nick, email, email_verified, password, lang, created, reg_ip, reg_country, disabled";
 
@@ -195,7 +217,51 @@ impl Store {
         db.busy_timeout(std::time::Duration::from_secs(5))
             .map_err(|e| e.to_string())?;
         db.execute_batch(SCHEMA).map_err(|e| e.to_string())?;
+        migrate(&db)?;
         Ok(Self { db: Mutex::new(db) })
+    }
+
+    /// A consistent copy of the database (`VACUUM INTO`, safe while the
+    /// service runs) as `accounts-<time>.db` in `dir`, readable by this user
+    /// alone; only the newest `keep` copies stay.
+    pub fn backup(&self, dir: &Path, keep: usize) -> Result<PathBuf, String> {
+        std::fs::create_dir_all(dir).map_err(|e| format!("creating {}: {e}", dir.display()))?;
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            std::fs::set_permissions(dir, std::fs::Permissions::from_mode(0o700))
+                .map_err(|e| e.to_string())?;
+        }
+        let name = format!(
+            "accounts-{}.db",
+            chrono::Utc::now().format("%Y%m%d-%H%M%S-%3f")
+        );
+        let path = dir.join(name);
+        self.db()
+            .execute("VACUUM INTO ?1", [path.to_string_lossy()])
+            .map_err(|e| format!("copying the database: {e}"))?;
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o600))
+                .map_err(|e| e.to_string())?;
+        }
+        let mut copies: Vec<PathBuf> = std::fs::read_dir(dir)
+            .map_err(|e| e.to_string())?
+            .flatten()
+            .map(|entry| entry.path())
+            .filter(|p| {
+                p.file_name()
+                    .and_then(|n| n.to_str())
+                    .is_some_and(|n| n.starts_with("accounts-") && n.ends_with(".db"))
+            })
+            .collect();
+        copies.sort();
+        let extra = copies.len().saturating_sub(keep);
+        for old in &copies[..extra] {
+            std::fs::remove_file(old).map_err(|e| e.to_string())?;
+        }
+        Ok(path)
     }
 
     fn db(&self) -> std::sync::MutexGuard<'_, Connection> {
@@ -303,14 +369,21 @@ impl Store {
         Ok(Ok(()))
     }
 
+    /// A new password also ends every reset link still out.
     pub fn set_password(&self, id: &str, hash: &str) -> Result<(), String> {
-        self.db()
-            .execute(
-                "UPDATE accounts SET password = ?2 WHERE id = ?1",
-                params![id, hash],
-            )
-            .map(drop)
-            .map_err(|e| e.to_string())
+        let mut db = self.db();
+        let tx = db.transaction().map_err(|e| e.to_string())?;
+        tx.execute(
+            "UPDATE accounts SET password = ?2 WHERE id = ?1",
+            params![id, hash],
+        )
+        .map_err(|e| e.to_string())?;
+        tx.execute(
+            "UPDATE email_tokens SET used = 1 WHERE account_id = ?1 AND kind = 'reset'",
+            [id],
+        )
+        .map_err(|e| e.to_string())?;
+        tx.commit().map_err(|e| e.to_string())
     }
 
     /// Confirms `email` for the account if it is still its address.
@@ -343,7 +416,110 @@ impl Store {
             params![id, email, key],
         )
         .map_err(|e| e.to_string())?;
+        // Links sent to the old address end with it.
+        db.execute(
+            "UPDATE email_tokens SET used = 1 WHERE account_id = ?1",
+            [id],
+        )
+        .map_err(|e| e.to_string())?;
         Ok(Ok(()))
+    }
+
+    /// Of these sessions, those that no longer work: ended, run out, unknown,
+    /// or of an account that is switched off.
+    pub fn ended_sessions(&self, ids: &[String], now: i64) -> Result<Vec<String>, String> {
+        let db = self.db();
+        let mut statement = db
+            .prepare(
+                "SELECT 1 FROM sessions s JOIN accounts a ON a.id = s.account_id
+                 WHERE s.id = ?1 AND s.revoked = 0 AND s.expires > ?2 AND a.disabled = 0",
+            )
+            .map_err(|e| e.to_string())?;
+        let mut ended = Vec::new();
+        for id in ids {
+            if !statement
+                .exists(params![id, now])
+                .map_err(|e| e.to_string())?
+            {
+                ended.push(id.clone());
+            }
+        }
+        Ok(ended)
+    }
+
+    /// Deletes an account and everything kept about it (sessions, tokens,
+    /// links, events, letters waiting for it); friends.lapi.sh learns of it
+    /// from the `deleted` list.
+    pub fn delete_account(&self, id: &str, now: i64) -> Result<bool, String> {
+        let mut db = self.db();
+        let tx = db.transaction().map_err(|e| e.to_string())?;
+        let email: Option<String> = tx
+            .query_row("SELECT email FROM accounts WHERE id = ?1", [id], |r| {
+                r.get(0)
+            })
+            .optional()
+            .map_err(|e| e.to_string())?;
+        let Some(email) = email else {
+            return Ok(false);
+        };
+        tx.execute(
+            "DELETE FROM outbox WHERE to_addr = ?1 COLLATE NOCASE",
+            [&email],
+        )
+        .map_err(|e| e.to_string())?;
+        tx.execute("DELETE FROM accounts WHERE id = ?1", [id])
+            .map_err(|e| e.to_string())?;
+        tx.execute(
+            "INSERT OR REPLACE INTO deleted (id, at) VALUES (?1, ?2)",
+            params![id, now],
+        )
+        .map_err(|e| e.to_string())?;
+        tx.commit().map_err(|e| e.to_string())?;
+        Ok(true)
+    }
+
+    /// Accounts deleted after `since`: ID and when, oldest first.
+    pub fn deleted_since(&self, since: i64) -> Result<Vec<(String, i64)>, String> {
+        let db = self.db();
+        let mut statement = db
+            .prepare("SELECT id, at FROM deleted WHERE at > ?1 ORDER BY at LIMIT 1000")
+            .map_err(|e| e.to_string())?;
+        statement
+            .query_map([since], |r| Ok((r.get(0)?, r.get(1)?)))
+            .and_then(Iterator::collect)
+            .map_err(|e| e.to_string())
+    }
+
+    /// Everything kept about an account, for the account itself.
+    pub fn export(&self, id: &str, now: i64) -> Result<serde_json::Value, String> {
+        let account = self.account(id)?.ok_or("no such account")?;
+        let sessions: Vec<serde_json::Value> = self
+            .sessions(id, now)?
+            .into_iter()
+            .map(|s| {
+                serde_json::json!({
+                    "device": s.device, "country": s.country,
+                    "created": s.created, "lastUsed": s.last_used,
+                })
+            })
+            .collect();
+        let events: Vec<serde_json::Value> = self
+            .events(id, 10_000)?
+            .into_iter()
+            .map(|(at, kind, country)| serde_json::json!({ "at": at, "kind": kind, "country": country }))
+            .collect();
+        Ok(serde_json::json!({
+            "id": account.id,
+            "nick": account.nick,
+            "email": account.email,
+            "emailConfirmed": account.email_verified,
+            "language": account.lang,
+            "created": account.created,
+            "registeredFrom": { "address": account.reg_ip, "country": account.reg_country },
+            "switchedOff": account.disabled,
+            "sessions": sessions,
+            "events": events,
+        }))
     }
 
     pub fn set_disabled(&self, id: &str, disabled: bool) -> Result<bool, String> {
@@ -727,17 +903,18 @@ impl Store {
             .map_err(|e| e.to_string())
     }
 
-    /// Letters to send: not sent, tried fewer than 10 times, newer than 3 days.
+    /// Letters to send: not sent, due, newer than 3 days.
     pub fn pending_mail(&self, now: i64, limit: i64) -> Result<Vec<Mail>, String> {
         let db = self.db();
         let mut statement = db
             .prepare(
                 "SELECT id, to_addr, subject, body FROM outbox
-                 WHERE sent IS NULL AND attempts < 10 AND created > ?1 ORDER BY id LIMIT ?2",
+                 WHERE sent IS NULL AND body != '' AND next_try <= ?1 AND created > ?2
+                 ORDER BY id LIMIT ?3",
             )
             .map_err(|e| e.to_string())?;
         statement
-            .query_map(params![now - 3 * 86_400, limit], |r| {
+            .query_map(params![now, now - 3 * 86_400, limit], |r| {
                 Ok(Mail {
                     id: r.get(0)?,
                     to: r.get(1)?,
@@ -749,20 +926,56 @@ impl Store {
             .map_err(|e| e.to_string())
     }
 
+    /// A sent letter keeps no body; a failed one waits 20 s, 40 s, 80 s and so
+    /// on, an hour at most, until it is 3 days old.
     pub fn mail_done(&self, id: i64, error: Option<&str>, now: i64) -> Result<(), String> {
         let db = self.db();
         match error {
             None => db.execute(
-                "UPDATE outbox SET sent = ?2, attempts = attempts + 1, last_error = NULL WHERE id = ?1",
+                "UPDATE outbox SET sent = ?2, body = '', attempts = attempts + 1, last_error = NULL WHERE id = ?1",
                 params![id, now],
             ),
             Some(error) => db.execute(
-                "UPDATE outbox SET attempts = attempts + 1, last_error = ?2 WHERE id = ?1",
-                params![id, error],
+                "UPDATE outbox SET attempts = attempts + 1, last_error = ?2,
+                 next_try = ?3 + MIN(3600, 20 << MIN(attempts, 8)) WHERE id = ?1",
+                params![id, error, now],
             ),
         }
         .map(drop)
         .map_err(|e| e.to_string())
+    }
+
+    /// Waiting letters whose body may be unsealed: id, recipient, body.
+    pub fn unsealed_mail(&self) -> Result<Vec<(i64, String, String)>, String> {
+        let db = self.db();
+        let mut statement = db
+            .prepare("SELECT id, to_addr, body FROM outbox WHERE sent IS NULL AND body != '' AND body NOT LIKE 'sealed:%'")
+            .map_err(|e| e.to_string())?;
+        statement
+            .query_map([], |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?)))
+            .and_then(Iterator::collect)
+            .map_err(|e| e.to_string())
+    }
+
+    pub fn set_mail_body(&self, id: i64, body: &str) -> Result<(), String> {
+        self.db()
+            .execute(
+                "UPDATE outbox SET body = ?2 WHERE id = ?1",
+                params![id, body],
+            )
+            .map(drop)
+            .map_err(|e| e.to_string())
+    }
+
+    /// A letter that can no longer be opened (its key is gone).
+    pub fn mail_dropped(&self, id: i64) -> Result<(), String> {
+        self.db()
+            .execute(
+                "UPDATE outbox SET body = '', last_error = 'cannot be opened' WHERE id = ?1",
+                [id],
+            )
+            .map(drop)
+            .map_err(|e| e.to_string())
     }
 
     /// Drops what has ended: sign-ins in progress, codes, links, old tokens
@@ -779,6 +992,7 @@ impl Store {
              DELETE FROM sessions WHERE expires < {now} OR (revoked = 1 AND last_used < {now} - 30 * 86400);
              DELETE FROM outbox WHERE (sent IS NOT NULL AND sent < {now} - 30 * 86400) OR created < {now} - 30 * 86400;
              DELETE FROM events WHERE at < {now} - 365 * 86400;
+             DELETE FROM deleted WHERE at < {now} - 90 * 86400;
              DELETE FROM failures WHERE since < {now} - 86400;
              DELETE FROM refresh_tokens WHERE used = 1 AND created < {now} - {keep_used};"
         ))
@@ -797,7 +1011,7 @@ impl Store {
             "verified": one("SELECT COUNT(*) FROM accounts WHERE email_verified = 1 AND ?1 = ?1")?,
             "registeredLastDay": one("SELECT COUNT(*) FROM accounts WHERE created > ?1 - 86400")?,
             "activeSessions": one("SELECT COUNT(*) FROM sessions WHERE revoked = 0 AND expires > ?1")?,
-            "lettersWaiting": one("SELECT COUNT(*) FROM outbox WHERE sent IS NULL AND attempts < 10 AND ?1 = ?1")?,
+            "lettersWaiting": one("SELECT COUNT(*) FROM outbox WHERE sent IS NULL AND body != '' AND created > ?1 - 3 * 86400")?,
         }))
     }
 }

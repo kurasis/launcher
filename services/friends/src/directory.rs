@@ -18,6 +18,14 @@ pub trait Accounts: Send + Sync {
     fn find<'a>(&'a self, nick: &'a str) -> Boxed<'a, Option<(String, String)>>;
     /// The current nicks of these accounts; missing ones are gone or switched off.
     fn nicks<'a>(&'a self, ids: &'a [String]) -> Boxed<'a, BTreeMap<String, String>>;
+    /// Of these sessions, those that ended (signed out, or the account is
+    /// switched off).
+    fn ended<'a>(&'a self, sessions: &'a [String]) -> Boxed<'a, Vec<String>>;
+    /// Accounts deleted since `since` (Unix time): ID and when.
+    fn deleted(&self, since: i64) -> Boxed<'_, Vec<(String, i64)>>;
+    /// Whether the account service sends letters (so addresses can be
+    /// confirmed).
+    fn mail_sent(&self) -> Boxed<'_, bool>;
 }
 
 pub struct Internal {
@@ -54,17 +62,9 @@ impl Accounts for Internal {
 
     fn nicks<'a>(&'a self, ids: &'a [String]) -> Boxed<'a, BTreeMap<String, String>> {
         Box::pin(async move {
-            let body: serde_json::Value = self
-                .http
-                .post(format!("{}/internal/v1/nicks", self.base))
-                .json(&serde_json::json!({ "ids": ids }))
-                .send()
-                .await
-                .and_then(reqwest::Response::error_for_status)
-                .map_err(|e| e.to_string())?
-                .json()
-                .await
-                .map_err(|e| e.to_string())?;
+            let body = self
+                .post("/internal/v1/nicks", serde_json::json!({ "ids": ids }))
+                .await?;
             Ok(body["nicks"]
                 .as_object()
                 .into_iter()
@@ -72,6 +72,70 @@ impl Accounts for Internal {
                 .filter_map(|(id, nick)| Some((id.clone(), nick.as_str()?.to_owned())))
                 .collect())
         })
+    }
+
+    fn ended<'a>(&'a self, sessions: &'a [String]) -> Boxed<'a, Vec<String>> {
+        Box::pin(async move {
+            let body = self
+                .post(
+                    "/internal/v1/ended",
+                    serde_json::json!({ "sessions": sessions }),
+                )
+                .await?;
+            Ok(body["ended"]
+                .as_array()
+                .into_iter()
+                .flatten()
+                .filter_map(|s| Some(s.as_str()?.to_owned()))
+                .collect())
+        })
+    }
+
+    fn deleted(&self, since: i64) -> Boxed<'_, Vec<(String, i64)>> {
+        Box::pin(async move {
+            let body = self.get("/internal/v1/deleted", since).await?;
+            Ok(body["deleted"]
+                .as_array()
+                .into_iter()
+                .flatten()
+                .filter_map(|d| Some((d["id"].as_str()?.to_owned(), d["at"].as_i64()?)))
+                .collect())
+        })
+    }
+
+    fn mail_sent(&self) -> Boxed<'_, bool> {
+        Box::pin(async move {
+            let body = self.get("/internal/v1/mail", 0).await?;
+            Ok(body["sending"].as_bool().unwrap_or(false))
+        })
+    }
+}
+
+impl Internal {
+    async fn get(&self, path: &str, since: i64) -> Result<serde_json::Value, String> {
+        self.http
+            .get(format!("{}{path}", self.base))
+            .query(&[("since", since)])
+            .send()
+            .await
+            .and_then(reqwest::Response::error_for_status)
+            .map_err(|e| e.to_string())?
+            .json()
+            .await
+            .map_err(|e| e.to_string())
+    }
+
+    async fn post(&self, path: &str, body: serde_json::Value) -> Result<serde_json::Value, String> {
+        self.http
+            .post(format!("{}{path}", self.base))
+            .json(&body)
+            .send()
+            .await
+            .and_then(reqwest::Response::error_for_status)
+            .map_err(|e| e.to_string())?
+            .json()
+            .await
+            .map_err(|e| e.to_string())
     }
 }
 
@@ -136,6 +200,18 @@ impl Directory {
             }
         }
         Ok(known)
+    }
+
+    pub async fn ended(&self, sessions: &[String]) -> Result<Vec<String>, String> {
+        self.source.ended(sessions).await
+    }
+
+    pub async fn deleted(&self, since: i64) -> Result<Vec<(String, i64)>, String> {
+        self.source.deleted(since).await
+    }
+
+    pub async fn mail_sent(&self) -> Result<bool, String> {
+        self.source.mail_sent().await
     }
 
     /// A nick that just changed (seen in the owner's own token).

@@ -22,7 +22,11 @@ use crate::sync::lock;
 const BASE: &str = "https://friends.lapi.sh";
 pub const STATE_EVENT: &str = "friends://state";
 pub const MESSAGE_EVENT: &str = "friends://message";
+/// The owner removed a message: `{ room, message }`.
+pub const REMOVED_EVENT: &str = "friends://removed";
 const MAX_RESPONSE_BYTES: usize = 2 * 1024 * 1024;
+/// An account's export: every message it wrote.
+const MAX_EXPORT_BYTES: usize = 64 * 1024 * 1024;
 
 /// friends.lapi.sh, or the server a test build was made for
 /// (`LAUNCHER_FRIENDS_URL` at build time; release builds never set it).
@@ -66,6 +70,12 @@ pub enum FriendsProblem {
     TooMany,
     NotFriends,
     NotOwner,
+    /// The owner muted the account for a while: it reads but writes nothing.
+    Muted,
+    /// The owner banned the account from friends.
+    Banned,
+    /// Friends asks for a confirmed email first.
+    EmailNotConfirmed,
     Invalid,
     Server,
 }
@@ -78,6 +88,22 @@ pub struct Person {
     /// Friends since, or when the request or block was made.
     #[serde(alias = "since", default)]
     pub at: i64,
+    /// A friend with the launcher open (unless they hide it).
+    #[serde(default)]
+    pub online: bool,
+    /// What the friend plays now, as their launcher names it.
+    #[serde(default)]
+    pub playing: Option<String>,
+}
+
+/// A mute or ban the owner put on the account.
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct Sanction {
+    /// `mute` or `ban`.
+    pub kind: String,
+    /// Unix time it ends; 0 for good.
+    pub until: i64,
 }
 
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
@@ -125,12 +151,29 @@ pub struct FriendsView {
     pub rooms: Vec<Room>,
     /// Unread messages in all rooms.
     pub unread: i64,
+    /// Friends see that this account is online.
+    pub visible: bool,
+    pub sanction: Option<Sanction>,
     pub problem: Option<FriendsProblem>,
+}
+
+fn shown() -> bool {
+    true
+}
+
+#[derive(Deserialize)]
+struct MeAnswer {
+    id: String,
+    nick: String,
+    #[serde(default = "shown")]
+    visible: bool,
+    #[serde(default)]
+    sanction: Option<Sanction>,
 }
 
 #[derive(Deserialize)]
 struct StateAnswer {
-    me: Member,
+    me: MeAnswer,
     friends: Vec<Person>,
     incoming: Vec<Person>,
     outgoing: Vec<Person>,
@@ -147,6 +190,9 @@ fn problem_of(status: u16, body: &Value) -> FriendsProblem {
         (429, _) => FriendsProblem::TooMany,
         (403, "not_friends") => FriendsProblem::NotFriends,
         (403, "not_owner") => FriendsProblem::NotOwner,
+        (403, "mute") => FriendsProblem::Muted,
+        (403, "ban") => FriendsProblem::Banned,
+        (403, "email_not_confirmed") => FriendsProblem::EmailNotConfirmed,
         (422 | 404, _) => FriendsProblem::Invalid,
         _ => FriendsProblem::Server,
     }
@@ -155,6 +201,8 @@ fn problem_of(status: u16, body: &Value) -> FriendsProblem {
 pub struct Friends {
     http: reqwest::Client,
     view: Mutex<FriendsView>,
+    /// What the player plays now; told again after each reconnect.
+    playing: Mutex<Option<String>>,
     /// Wakes the live loop at once (sign-in, sign-out, back online).
     wake: tokio::sync::Notify,
 }
@@ -165,6 +213,7 @@ impl Friends {
         Ok(Self {
             http,
             view: Mutex::new(FriendsView::default()),
+            playing: Mutex::new(None),
             wake: tokio::sync::Notify::new(),
         })
     }
@@ -210,6 +259,18 @@ impl Friends {
         path: &str,
         body: Option<Value>,
     ) -> Result<Value, FriendsProblem> {
+        self.call_within(app, method, path, body, MAX_RESPONSE_BYTES)
+            .await
+    }
+
+    async fn call_within<R: Runtime>(
+        &self,
+        app: &AppHandle<R>,
+        method: reqwest::Method,
+        path: &str,
+        body: Option<Value>,
+        max: usize,
+    ) -> Result<Value, FriendsProblem> {
         let token = self.token(app).await?;
         let mut request = self
             .http
@@ -221,7 +282,7 @@ impl Friends {
         }
         let response = request.send().await.map_err(|_| FriendsProblem::Network)?;
         let status = response.status().as_u16();
-        let bytes = crate::launcher_account::body_within(response, MAX_RESPONSE_BYTES)
+        let bytes = crate::launcher_account::body_within(response, max)
             .await
             .map_err(|e| match e {
                 crate::launcher_account::BodyError::Network => FriendsProblem::Network,
@@ -251,7 +312,12 @@ impl Friends {
                     .map_err(|_| FriendsProblem::Server)?;
                 self.set(app, |view| {
                     view.signed_in = true;
-                    view.me = Some(state.me);
+                    view.visible = state.me.visible;
+                    view.sanction = state.me.sanction;
+                    view.me = Some(Member {
+                        id: state.me.id,
+                        nick: state.me.nick,
+                    });
                     view.friends = state.friends;
                     view.incoming = state.incoming;
                     view.outgoing = state.outgoing;
@@ -262,7 +328,17 @@ impl Friends {
                 Ok(())
             }
             (Err(problem), _) | (_, Err(problem)) => {
-                self.set(app, |view| view.problem = Some(problem));
+                self.set(app, |view| {
+                    view.problem = Some(problem);
+                    // Banned: nothing to show until it ends.
+                    if problem == FriendsProblem::Banned {
+                        *view = FriendsView {
+                            signed_in: true,
+                            problem: Some(problem),
+                            ..FriendsView::default()
+                        };
+                    }
+                });
                 Err(problem)
             }
         }
@@ -294,7 +370,11 @@ impl Friends {
             self.set(&app, |view| view.connected = false);
             failures = match outcome {
                 Ok(()) => 0,
-                Err(FriendsProblem::SignedOut) => {
+                Err(
+                    FriendsProblem::SignedOut
+                    | FriendsProblem::Banned
+                    | FriendsProblem::EmailNotConfirmed,
+                ) => {
                     self.set(&app, |view| view.problem = Some(FriendsProblem::SignedOut));
                     // Until the account signs in again; a refusal the friends
                     // server had no reason for (its keys not read yet after a
@@ -345,6 +425,11 @@ impl Friends {
         .await
         .map_err(|_| FriendsProblem::Network)?;
         self.set(app, |view| view.connected = true);
+        // The server forgets what we play when the connection drops.
+        let playing = lock(&self.playing).clone();
+        if playing.is_some() {
+            let _ = self.tell_playing(app, playing).await;
+        }
         let (mut out, mut incoming) = socket.split();
         loop {
             tokio::select! {
@@ -407,8 +492,112 @@ impl Friends {
                 }
                 let _ = app.emit(MESSAGE_EVENT, message);
             }
+            Some("removed") => {
+                let (Some(room), Some(message)) =
+                    (event["room"].as_str(), event["message"].as_i64())
+                else {
+                    return;
+                };
+                let _ = app.emit(REMOVED_EVENT, json!({ "room": room, "message": message }));
+            }
+            Some("presence") => {
+                let Some(id) = event["id"].as_str() else {
+                    return;
+                };
+                let online = event["online"].as_bool().unwrap_or(false);
+                let playing = event["playing"]
+                    .as_str()
+                    .map(|p| p.chars().take(60).collect::<String>());
+                self.set(app, |view| {
+                    if let Some(friend) = view.friends.iter_mut().find(|f| f.id == id) {
+                        friend.online = online;
+                        friend.playing = playing.filter(|_| online);
+                    }
+                });
+            }
             _ => {}
         }
+    }
+
+    async fn tell_playing<R: Runtime>(
+        &self,
+        app: &AppHandle<R>,
+        playing: Option<String>,
+    ) -> Result<(), FriendsProblem> {
+        self.call(
+            app,
+            reqwest::Method::POST,
+            "/v1/presence/playing",
+            Some(json!({ "playing": playing })),
+        )
+        .await
+        .map(drop)
+    }
+
+    /// The game started (`Some`, "Minecraft 1.21.1 · Fabric") or ended
+    /// (`None`): friends see it while the live connection is open.
+    pub async fn set_playing<R: Runtime>(&self, app: &AppHandle<R>, playing: Option<String>) {
+        *lock(&self.playing) = playing.clone();
+        if lock(&self.view).connected {
+            let _ = self.tell_playing(app, playing).await;
+        }
+    }
+
+    /// Declines every request waiting for the account.
+    pub async fn decline_all<R: Runtime>(&self, app: &AppHandle<R>) -> Result<(), FriendsProblem> {
+        self.call(app, reqwest::Method::POST, "/v1/requests/decline-all", None)
+            .await?;
+        let _ = self.refresh(app).await;
+        Ok(())
+    }
+
+    /// Reports a waiting request as spam; it goes.
+    pub async fn report_request<R: Runtime>(
+        &self,
+        app: &AppHandle<R>,
+        id: &str,
+    ) -> Result<(), FriendsProblem> {
+        if uuid::Uuid::parse_str(id).is_err() {
+            return Err(FriendsProblem::Invalid);
+        }
+        self.call(
+            app,
+            reqwest::Method::POST,
+            "/v1/requests/report",
+            Some(json!({ "id": id })),
+        )
+        .await?;
+        let _ = self.refresh(app).await;
+        Ok(())
+    }
+
+    /// Shows or hides the account's online status from its friends.
+    pub async fn set_visible<R: Runtime>(
+        &self,
+        app: &AppHandle<R>,
+        visible: bool,
+    ) -> Result<(), FriendsProblem> {
+        self.call(
+            app,
+            reqwest::Method::POST,
+            "/v1/presence/visible",
+            Some(json!({ "visible": visible })),
+        )
+        .await?;
+        self.set(app, |view| view.visible = visible);
+        Ok(())
+    }
+
+    /// What friends keeps about the account (for its data export).
+    pub async fn export<R: Runtime>(&self, app: &AppHandle<R>) -> Result<Value, FriendsProblem> {
+        self.call_within(
+            app,
+            reqwest::Method::GET,
+            "/v1/export",
+            None,
+            MAX_EXPORT_BYTES,
+        )
+        .await
     }
 
     // What the interface asks for.
@@ -638,7 +827,48 @@ mod tests {
             problem_of(403, &body("not_owner")),
             FriendsProblem::NotOwner
         );
+        assert_eq!(problem_of(403, &body("mute")), FriendsProblem::Muted);
+        assert_eq!(problem_of(403, &body("ban")), FriendsProblem::Banned);
+        assert_eq!(
+            problem_of(403, &body("email_not_confirmed")),
+            FriendsProblem::EmailNotConfirmed
+        );
         assert_eq!(problem_of(500, &Value::Null), FriendsProblem::Server);
+    }
+
+    #[test]
+    fn presence_and_sanctions_read_into_the_view() {
+        let state: StateAnswer = serde_json::from_value(json!({
+            "me": { "id": "a", "nick": "Alice", "visible": false,
+                    "sanction": { "kind": "mute", "until": 99, "reason": "x" } },
+            "friends": [
+                { "id": "b", "nick": "Bob", "since": 5, "online": true, "playing": "Minecraft 1.21.1" },
+                { "id": "c", "nick": "Carol", "since": 6 }
+            ],
+            "incoming": [], "outgoing": [], "blocked": [],
+        }))
+        .unwrap();
+        assert!(!state.me.visible);
+        assert_eq!(
+            state.me.sanction,
+            Some(Sanction {
+                kind: "mute".into(),
+                until: 99
+            })
+        );
+        assert!(state.friends[0].online);
+        assert_eq!(
+            state.friends[0].playing.as_deref(),
+            Some("Minecraft 1.21.1")
+        );
+        assert!(!state.friends[1].online && state.friends[1].playing.is_none());
+        // An older server says nothing of it: shown, no sanction.
+        let old: StateAnswer = serde_json::from_value(json!({
+            "me": { "id": "a", "nick": "Alice" },
+            "friends": [], "incoming": [], "outgoing": [], "blocked": [],
+        }))
+        .unwrap();
+        assert!(old.me.visible && old.me.sanction.is_none());
     }
 
     #[test]

@@ -504,19 +504,36 @@ fn identical_digest_is_reused_and_conflicting_size_is_rejected() {
 
 #[test]
 fn unsupported_targets_are_explicit() {
-    let windows_arm = RuleContext::with_default_features(MetaOs::Windows, "arm64", None);
+    let linux_arm = RuleContext::with_default_features(MetaOs::Linux, "arm64", None);
     assert_eq!(
         plan_game(
             V1_21_1,
             "u",
             &Sha1::parse(SHA_1_21_1).unwrap(),
             "1.21.1",
-            &windows_arm
+            &linux_arm
         )
         .unwrap_err()
         .code,
         ErrorCode::UnsupportedPlatform
     );
+}
+
+#[test]
+fn windows_on_arm_runs_new_versions_natively_and_old_ones_with_x64_java() {
+    let p = plan(V1_21_1, "1.21.1", SHA_1_21_1, MetaOs::Windows, "arm64");
+    assert_eq!(p.runtime.os, TargetOs::Windows);
+    assert_eq!(p.runtime.arch, TargetArch::Aarch64);
+    assert!(
+        p.libraries
+            .iter()
+            .any(|l| l.provenance.as_deref() == Some("org.lwjgl:lwjgl:3.3.3:natives-windows-arm64")),
+        "LWJGL picks its ARM natives from the classpath"
+    );
+
+    let legacy = plan_legacy(MetaOs::Windows, "arm64").unwrap();
+    assert_eq!(legacy.runtime.arch, TargetArch::X64);
+    assert!(legacy.natives[0].path.contains("6666"), "the x64 natives");
 }
 
 /// A pre-1.13 descriptor in the legacy shape: `minecraftArguments`, native

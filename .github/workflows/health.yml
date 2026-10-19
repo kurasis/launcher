@@ -1,0 +1,48 @@
+name: Services health
+
+# Every hour, each service's public health answer, from outside, the way the
+# launcher reaches it. A failed run is the owner's alarm: GitHub mails it to
+# whoever last changed this schedule. Only public addresses and status codes
+# appear in the log; no secrets are used.
+#
+# GitHub stops scheduled workflows in a public repository after 60 days
+# without activity; "Run workflow" (or any push) starts them again.
+
+on:
+  schedule:
+    - cron: '17 * * * *'
+  workflow_dispatch:
+
+permissions: {}
+
+jobs:
+  health:
+    name: Health of the services
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - name: Ask each service
+        run: |
+          failed=0
+          check() {
+            local url=$1 want=$2 code=000
+            # Three tries a minute apart: one lost request is not an outage.
+            for _ in 1 2 3; do
+              code=$(curl -sS -o /dev/null -w '%{http_code}' --max-time 20 "$url" || true)
+              [[ " $want " == *" $code "* ]] && break
+              sleep 60
+            done
+            if [[ " $want " == *" $code "* ]]; then
+              echo "ok      $code  $url"
+            else
+              echo "::error::$url answered $code, wanted $want"
+              failed=1
+            fi
+          }
+          check https://crash.lapi.sh/v1/health 200
+          check https://mirror.lapi.sh/v1/health 200
+          check https://oauth.lapi.sh/v1/health 200
+          check https://friends.lapi.sh/v1/health 200
+          # No stable release yet answers 204; both mean the service is up.
+          check https://upd.lapi.sh/v1/stable/windows-x86_64-nsis.json '200 204'
+          exit "$failed"

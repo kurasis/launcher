@@ -19,6 +19,7 @@ import { useCommand } from '../../lib/useCommand';
 import styles from './Accounts.module.css';
 import { LauncherAccountPanel } from './LauncherAccountPanel';
 import { sameProfile } from './players';
+import { ConfirmRemove } from './ConfirmRemove';
 
 const t = strings.accountView;
 const a = strings.accounts;
@@ -111,9 +112,11 @@ function AccountRow({ account, isDefault, busy, canSignIn, onSignIn, onDefault }
             {t.checkAgain}
           </Button>
         )}
-        <Button disabled={disabled} onClick={() => void signOut.run(account.profileId)}>
-          {a.remove}
-        </Button>
+        <ConfirmRemove
+          question={a.confirmRemove({ name: account.profileName })}
+          disabled={disabled}
+          onRemove={() => void signOut.run(account.profileId)}
+        />
         <HelpLinks state={state} />
       </div>
     </li>
@@ -178,12 +181,11 @@ export function AccountView({ snapshot }: { snapshot: AppSnapshot }) {
                         {a.makeDefault}
                       </Button>
                     )}
-                    <Button
+                    <ConfirmRemove
+                      question={a.confirmRemoveProfile({ name: profile.name })}
                       disabled={removeProfile.pending}
-                      onClick={() => void removeProfile.run(profile.id)}
-                    >
-                      {a.remove}
-                    </Button>
+                      onRemove={() => void removeProfile.run(profile.id)}
+                    />
                   </div>
                 </li>
               );

@@ -29,6 +29,8 @@ pub const WINDOW: &str = "launcher-account";
 const VAULT_KEY: &str = "launcher-account-refresh";
 const CLIENT_ID: &str = "launcher";
 const MAX_RESPONSE_BYTES: usize = 64 * 1024;
+/// The account's export: its sessions and a year of events.
+const MAX_EXPORT_BYTES: usize = 4 * 1024 * 1024;
 
 /// oauth.lapi.sh, or the server a test build was made for
 /// (`LAUNCHER_ACCOUNT_URL` at build time; release builds never set it).
@@ -60,6 +62,8 @@ pub enum AccountProblem {
     TooMany,
     /// The system credential store did not keep the sign-in.
     Vault,
+    /// The export could not be written where it was asked to be saved.
+    NotSaved,
     Server,
 }
 
@@ -289,16 +293,27 @@ impl LauncherAccount {
         Ok(url)
     }
 
-    /// Opens (or brings forward) the sign-in window on `screen`
-    /// (`login` or `register`).
-    pub fn open<R: Runtime>(self: &Arc<Self>, app: &AppHandle<R>, screen: &str) {
+    /// Opens (or brings forward) the account window on `screen`: `login`,
+    /// `register`, or `delete` (the server's own page for deleting the
+    /// account, where the password is typed).
+    pub fn open<R: Runtime>(self: &Arc<Self>, app: &AppHandle<R>, screen: &str, title: &str) {
         let state = app.state::<AppState>();
         if let Some(window) = app.get_webview_window(WINDOW) {
             let _ = window.set_focus();
             return;
         }
         let lang = state.settings().language.as_str().to_owned();
-        let url = match self.authorize_url(screen, &lang) {
+        let url = if screen == "delete" {
+            url::Url::parse(&format!("{}/delete", base()))
+                .map(|mut url| {
+                    url.query_pairs_mut().append_pair("lang", &lang);
+                    url
+                })
+                .map_err(|_| AccountProblem::Server)
+        } else {
+            self.authorize_url(screen, &lang)
+        };
+        let url = match url {
             Ok(url) => url,
             Err(problem) => {
                 state.set_launcher_account_status(|s| s.problem = Some(problem));
@@ -308,11 +323,7 @@ impl LauncherAccount {
         let account = Arc::clone(self);
         let handle = app.clone();
         let built = WebviewWindowBuilder::new(app, WINDOW, WebviewUrl::External(url))
-            .title(if screen == "register" {
-                "Launcher account: create"
-            } else {
-                "Launcher account: sign in"
-            })
+            .title(title)
             .inner_size(460.0, 720.0)
             .min_inner_size(360.0, 520.0)
             // Nothing of this window stays on the computer after it closes.
@@ -329,6 +340,19 @@ impl LauncherAccount {
                         account.finish(&handle, &code, &returned_state).await;
                     });
                     return false;
+                }
+                // The account was deleted on the server's page: forget it
+                // here and let the page say so.
+                if deleted_page(url) {
+                    let account = Arc::clone(&account);
+                    let handle = handle.clone();
+                    tauri::async_runtime::spawn(async move {
+                        account.forget(&handle.state::<AppState>()).await;
+                        if let Some(friends) = handle.try_state::<Arc<crate::friends::Friends>>() {
+                            friends.wake();
+                        }
+                    });
+                    return true;
                 }
                 let ok = allowed(url);
                 if !ok {
@@ -556,6 +580,50 @@ impl LauncherAccount {
         }
     }
 
+    /// The account is gone on the server (deleted): forgets its tokens and
+    /// record here, without asking the server.
+    pub async fn forget(&self, state: &AppState) {
+        let mut access = self.access.lock().await;
+        self.forget_tokens();
+        *access = None;
+        let _ = state.update_accounts_file(Box::new(|file| {
+            if let Some(old) = file.launcher_account.clone() {
+                file.remove(&ProfileRef::Launcher { id: old.id });
+            }
+        }));
+        state.set_launcher_account_status(|s| *s = Status::default());
+        state
+            .console()
+            .info("Launcher account: deleted on the server; forgotten here");
+    }
+
+    /// What the account service keeps about the account (for its export).
+    pub async fn export(&self, state: &AppState) -> Result<serde_json::Value, AccountProblem> {
+        let token = self.access_token(state).await?;
+        let response = self
+            .http
+            .get(format!("{}/v1/me/export", base()))
+            .bearer_auth(token.expose())
+            .header(reqwest::header::ACCEPT, "application/json")
+            .send()
+            .await
+            .map_err(|_| AccountProblem::Network)?;
+        let status = response.status().as_u16();
+        let bytes = body_within(response, MAX_EXPORT_BYTES)
+            .await
+            .map_err(|e| match e {
+                BodyError::Network => AccountProblem::Network,
+                BodyError::TooLarge => AccountProblem::Server,
+            })?;
+        let body: serde_json::Value =
+            serde_json::from_slice(&bytes).unwrap_or(serde_json::Value::Null);
+        if status == 200 && body.is_object() {
+            Ok(body)
+        } else {
+            Err(Answer { status, body }.problem())
+        }
+    }
+
     /// Signs out here: ends the session on the server (when it answers) and
     /// forgets the tokens and the account.
     pub async fn sign_out(&self, state: &AppState) {
@@ -603,6 +671,17 @@ fn finished(url: &url::Url) -> Option<(String, String)> {
         }
     }
     Some((code?, state?))
+}
+
+/// `/app/deleted` on our server: the account was deleted there.
+fn deleted_page(url: &url::Url) -> bool {
+    let Ok(ours) = url::Url::parse(base()) else {
+        return false;
+    };
+    url.scheme() == ours.scheme()
+        && url.host_str() == ours.host_str()
+        && url.port_or_known_default() == ours.port_or_known_default()
+        && url.path() == "/app/deleted"
 }
 
 /// Where the window may go: our server's pages and Cloudflare Turnstile.
@@ -704,6 +783,22 @@ mod tests {
             "https://oauth.lapi.sh/login?code=a&state=b",
         ] {
             assert_eq!(finished(&url(other)), None, "{other}");
+        }
+    }
+
+    #[test]
+    fn only_our_deleted_page_forgets_the_account() {
+        assert!(deleted_page(&url(
+            "https://oauth.lapi.sh/app/deleted?lang=ru"
+        )));
+        for bad in [
+            "https://evil.example/app/deleted",
+            "https://oauth.lapi.sh.evil.example/app/deleted",
+            "http://oauth.lapi.sh/app/deleted",
+            "https://oauth.lapi.sh/app/deleted/x",
+            "https://oauth.lapi.sh/delete",
+        ] {
+            assert!(!deleted_page(&url(bad)), "{bad}");
         }
     }
 

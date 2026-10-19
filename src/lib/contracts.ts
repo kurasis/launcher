@@ -317,6 +317,7 @@ export type LauncherAccountProblem =
   | 'nick_invalid'
   | 'too_many'
   | 'vault'
+  | 'not_saved'
   | 'server';
 
 /** The launcher account at oauth.lapi.sh (D-064). Never contains tokens. */
@@ -343,6 +344,9 @@ export type FriendsProblem =
   | 'too_many'
   | 'not_friends'
   | 'not_owner'
+  | 'muted'
+  | 'banned'
+  | 'email_not_confirmed'
   | 'invalid'
   | 'server';
 
@@ -356,6 +360,9 @@ export const FRIENDS_PROBLEMS: readonly FriendsProblem[] = [
   'too_many',
   'not_friends',
   'not_owner',
+  'muted',
+  'banned',
+  'email_not_confirmed',
   'invalid',
   'server',
 ];
@@ -365,6 +372,16 @@ export interface FriendPerson {
   id: string;
   nick: string;
   at: number;
+  /** A friend with the launcher open (unless they hide it). */
+  online: boolean;
+  /** What a friend plays now, as their launcher names it. */
+  playing: string | null;
+}
+
+/** A mute or ban a moderator put on the account; `until` 0 is for good. */
+export interface FriendsSanction {
+  kind: 'mute' | 'ban';
+  until: number;
 }
 
 export interface RoomMember {
@@ -405,6 +422,9 @@ export interface FriendsView {
   blocked: FriendPerson[];
   rooms: ChatRoom[];
   unread: number;
+  /** Friends see that this account is online. */
+  visible: boolean;
+  sanction: FriendsSanction | null;
   problem: FriendsProblem | null;
 }
 
@@ -656,7 +676,8 @@ export interface CrashDiagnosis {
 }
 
 /** A folder inside an installation's game folder that the launcher opens. */
-export type GameFolder = 'mods' | 'config' | 'crash-reports' | 'logs';
+export type GameFolder =
+  'mods' | 'config' | 'crash-reports' | 'logs' | 'saves' | 'resourcepacks' | 'shaderpacks';
 
 export type LifecycleScenario =
   'immediate_exit' | 'short' | 'long' | 'crash' | 'inherited_pipe' | 'noisy';
@@ -795,6 +816,11 @@ export interface CreateInstancePayload {
 export interface SetInstanceNotesPayload {
   instanceId: string;
   notes: string;
+}
+
+export interface RenameInstancePayload {
+  instanceId: string;
+  displayName: string;
 }
 
 export interface UpdateInstanceSettingsPayload {

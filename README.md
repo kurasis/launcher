@@ -25,7 +25,8 @@ return, a live console window with the launcher's journal and the game's output
 and packages for Windows, macOS and Linux built and
 smoke-tested in CI. Every vanilla version Mojang lists can be installed: releases,
 snapshots, beta, alpha and Classic, each type on its own tab (D-035). Versions before 1.19
-need an Intel Mac or Windows/Linux; Apple silicon runs 1.19 and later.
+need an Intel Mac or Windows/Linux; Apple silicon runs 1.19 and later. On Windows on ARM,
+1.19 and later run natively and older versions with x64 Java under Windows 11's emulation.
 Installations can run a mod loader — Forge, NeoForge, Fabric or Quilt — with a chosen
 loader version; Forge and NeoForge installers run with the installation's private Java
 (D-039). Each installation can switch its private Java between Mojang and Temurin, or run
@@ -87,6 +88,9 @@ npm run tauri build    # release build and installers for the current OS
 | [docs/RELEASING.md](docs/RELEASING.md)             | Publishing a version as an in-app update (owner actions)              |
 | [docs/RELEASE-NOTES.md](docs/RELEASE-NOTES.md)     | The 0.1.0 qualification build (a snapshot)                            |
 | [docs/CRASH-REPORTS.md](docs/CRASH-REPORTS.md)     | Crash reports: what is sent, and reading them on the server           |
+| [docs/SERVER-BACKUPS.md](docs/SERVER-BACKUPS.md)   | Daily copies of the account and friends databases, and restoring them |
+| [docs/MODERATION.md](docs/MODERATION.md)           | Acting on reports in chats: remove, mute, ban (on the server)         |
+| [docs/MAIL.md](docs/MAIL.md)                       | Setting up letters (SMTP secrets, DNS) for the account service        |
 | [docs/TRANSLATING.md](docs/TRANSLATING.md)         | Adding or changing interface languages                                |
 | [docs/AUTH-CONTRACT.md](docs/AUTH-CONTRACT.md)     | The implemented Microsoft sign-in contract                            |
 | [docs/TROUBLESHOOTING.md](docs/TROUBLESHOOTING.md) | Common problems and what to do                                        |

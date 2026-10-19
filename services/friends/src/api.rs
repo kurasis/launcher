@@ -23,6 +23,45 @@ use crate::text;
 
 pub const MAX_FRIENDS: usize = 300;
 pub const MAX_OUTGOING: usize = 100;
+/// Requests waiting for one person: more are dropped unseen, so many
+/// accounts cannot bury someone in requests.
+pub const MAX_INCOMING: usize = 30;
+/// Requests an account sends a day, and in its first day of friends.
+pub const REQUESTS_PER_DAY: i64 = 50;
+pub const NEW_REQUESTS_PER_DAY: i64 = 5;
+const NEW_ACCOUNT_SECONDS: i64 = 86_400;
+
+/// When friends asks for a confirmed email: never, always, or once the
+/// account service sends letters (`auto`, the default).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum EmailMode {
+    Off,
+    On,
+    Auto,
+}
+
+pub struct EmailRule {
+    pub mode: EmailMode,
+    /// The account service sends letters (asked every 15 seconds).
+    pub mail_sent: std::sync::atomic::AtomicBool,
+}
+
+impl EmailRule {
+    pub fn new(mode: EmailMode) -> Self {
+        Self {
+            mode,
+            mail_sent: std::sync::atomic::AtomicBool::new(false),
+        }
+    }
+
+    pub fn required(&self) -> bool {
+        match self.mode {
+            EmailMode::Off => false,
+            EmailMode::On => true,
+            EmailMode::Auto => self.mail_sent.load(std::sync::atomic::Ordering::Relaxed),
+        }
+    }
+}
 pub const MAX_GROUPS: i64 = 50;
 /// People in a group, its owner included.
 pub const MAX_MEMBERS: usize = 20;
@@ -62,9 +101,12 @@ pub struct App {
     pub tokens: Tokens,
     pub directory: Directory,
     pub hub: Hub,
+    pub sessions: crate::auth::Sessions,
+    /// Accounts deleted up to this time were cleaned out already.
+    pub deleted_since: Mutex<i64>,
     pub limiter: Limiter,
-    /// Only accounts with a confirmed email may use friends.
-    pub require_email: bool,
+    /// Whether only accounts with a confirmed email may use friends.
+    pub email: EmailRule,
 }
 
 pub fn now() -> i64 {
@@ -92,7 +134,20 @@ fn who(app: &App, headers: &HeaderMap) -> Result<Claims, Box<Response>> {
         .tokens
         .verify(token.trim(), now())
         .ok_or_else(unauthorized)?;
-    if app.require_email && !claims.ev {
+    // Signed out, or the account was switched off.
+    if app.sessions.ended(&claims.sid) {
+        return Err(unauthorized());
+    }
+    app.sessions.seen(&claims.sid);
+    // Banned from friends by the owner: nothing here, until it ends.
+    match app.store.sanction_of(&claims.sub, now()) {
+        Ok(Some(sanction)) if sanction.kind == "ban" => {
+            return Err(Box::new(sanctioned(&sanction)));
+        }
+        Ok(_) => {}
+        Err(e) => return Err(Box::new(failed(&e))),
+    }
+    if app.email.required() && !claims.ev {
         return Err(Box::new(refuse(
             StatusCode::FORBIDDEN,
             "email_not_confirmed",
@@ -100,6 +155,53 @@ fn who(app: &App, headers: &HeaderMap) -> Result<Claims, Box<Response>> {
     }
     app.directory.note(&claims.sub, &claims.nick);
     Ok(claims)
+}
+
+fn sanctioned(sanction: &crate::store::Sanction) -> Response {
+    (
+        StatusCode::FORBIDDEN,
+        Json(json!({ "error": sanction.kind, "until": sanction.until })),
+    )
+        .into_response()
+}
+
+/// A muted account writes nothing: no messages, requests or groups.
+fn muted(app: &App, account: &str) -> Option<Response> {
+    match app.store.sanction_of(account, now()) {
+        Ok(Some(sanction)) if sanction.kind == "mute" => Some(sanctioned(&sanction)),
+        Ok(_) => None,
+        Err(e) => Some(failed(&e)),
+    }
+}
+
+macro_rules! unless_muted {
+    ($app:expr, $me:expr) => {
+        if let Some(response) = muted(&$app, &$me.sub) {
+            return response;
+        }
+    };
+}
+
+/// What friends see of an account: online and what it plays, unless it
+/// hides.
+fn presence(app: &App, account: &str) -> (bool, Option<String>) {
+    if app.store.hidden(account).unwrap_or(true) {
+        return (false, None);
+    }
+    (app.hub.online(account), app.hub.playing(account))
+}
+
+/// Tells an account's friends how it shows now.
+fn tell_presence(app: &App, account: &str) {
+    let (online, playing) = presence(app, account);
+    let event = Event::Presence {
+        id: account.to_owned(),
+        online,
+        playing,
+    };
+    for (friend, _) in app.store.friends(account).unwrap_or_default() {
+        app.hub.tell(&friend, &event);
+    }
 }
 
 macro_rules! me {
@@ -137,10 +239,19 @@ async fn state(State(app): State<Arc<App>>, headers: HeaderMap) -> Response {
     let Ok((friends, incoming, outgoing, blocked)) = lists else {
         return failed("reading the lists");
     };
+    let visible = !app.store.hidden(&me.sub).unwrap_or(false);
     let built = async {
+        let mut friends = people(&app, friends, "since").await?;
+        for friend in &mut friends {
+            let id = friend["id"].as_str().unwrap_or_default().to_owned();
+            let (online, playing) = presence(&app, &id);
+            friend["online"] = json!(online);
+            friend["playing"] = json!(playing);
+        }
+        let sanction = app.store.sanction_of(&me.sub, now())?;
         Ok::<_, String>(json!({
-            "me": { "id": me.sub, "nick": me.nick },
-            "friends": people(&app, friends, "since").await?,
+            "me": { "id": me.sub, "nick": me.nick, "visible": visible, "sanction": sanction },
+            "friends": friends,
             "incoming": people(&app, incoming, "at").await?,
             "outgoing": people(&app, outgoing, "at").await?,
             "blocked": people(&app, blocked, "at").await?,
@@ -165,6 +276,7 @@ async fn request(
     Json(body): Json<NickBody>,
 ) -> Response {
     let me = me!(app, headers);
+    unless_muted!(app, me);
     let Some(nick) = text::nick(&body.nick) else {
         return refuse(StatusCode::UNPROCESSABLE_ENTITY, "nick_invalid");
     };
@@ -173,6 +285,19 @@ async fn request(
         .allow(&me.sub, "request", 20, Duration::from_secs(3600))
     {
         return refuse(StatusCode::TOO_MANY_REQUESTS, "too_many");
+    }
+    // A day's allowance, smaller in the account's first day of friends:
+    // throwaway accounts cannot send much.
+    let now = now();
+    let daily = match app.store.first_seen(&me.sub, now) {
+        Ok(first) if now - first < NEW_ACCOUNT_SECONDS => NEW_REQUESTS_PER_DAY,
+        Ok(_) => REQUESTS_PER_DAY,
+        Err(e) => return failed(&e),
+    };
+    match app.store.count_request(&me.sub, daily, now) {
+        Ok(true) => {}
+        Ok(false) => return refuse(StatusCode::TOO_MANY_REQUESTS, "too_many"),
+        Err(e) => return failed(&e),
     }
     let target = match app.directory.find(nick).await {
         Ok(Some((id, _))) => id,
@@ -204,7 +329,18 @@ async fn request(
         }
         _ => return failed("counting friends"),
     }
-    match app.store.request(&me.sub, &target, now()) {
+    // Someone with many requests waiting gets no more, unseen (unless they
+    // asked us: then this makes friends).
+    let asked_us = app
+        .store
+        .incoming(&me.sub)
+        .map(|list| list.iter().any(|(id, _)| *id == target))
+        .unwrap_or(false);
+    let waiting = app.store.incoming(&target).map(|l| l.len()).unwrap_or(0);
+    if !asked_us && waiting >= MAX_INCOMING {
+        return Json(json!({ "result": "sent" })).into_response();
+    }
+    match app.store.request(&me.sub, &target, now) {
         Ok(result) => {
             if matches!(result, Requested::Sent | Requested::Friends) {
                 app.hub.tell(&target, &Event::Friends);
@@ -267,6 +403,52 @@ async fn act(
             if tell_other {
                 app.hub.tell(other, &Event::Friends);
             }
+            StatusCode::NO_CONTENT.into_response()
+        }
+        Ok(false) => refuse(StatusCode::NOT_FOUND, "not_found"),
+        Err(e) => failed(&e),
+    }
+}
+
+/// Declines every request waiting for the account.
+async fn decline_all(State(app): State<Arc<App>>, headers: HeaderMap) -> Response {
+    let me = me!(app, headers);
+    match app.store.decline_all(&me.sub) {
+        Ok(_) => {
+            app.hub.tell(&me.sub, &Event::Friends);
+            StatusCode::NO_CONTENT.into_response()
+        }
+        Err(e) => failed(&e),
+    }
+}
+
+/// Reports a waiting request as spam: it goes, and the owner sees who sent
+/// it (docs/MODERATION.md).
+async fn report_request(
+    State(app): State<Arc<App>>,
+    headers: HeaderMap,
+    Json(body): Json<IdBody>,
+) -> Response {
+    let me = me!(app, headers);
+    let Some(sender) = valid_id(&body) else {
+        return refuse(StatusCode::UNPROCESSABLE_ENTITY, "id");
+    };
+    if !app
+        .limiter
+        .allow(&me.sub, "report", 20, Duration::from_secs(3600))
+    {
+        return refuse(StatusCode::TOO_MANY_REQUESTS, "too_many");
+    }
+    let nick = app
+        .directory
+        .nicks(&[sender.to_owned()])
+        .await
+        .ok()
+        .and_then(|mut nicks| nicks.remove(sender))
+        .unwrap_or_default();
+    match app.store.report_request(&me.sub, sender, &nick, now()) {
+        Ok(true) => {
+            app.hub.tell(&me.sub, &Event::Friends);
             StatusCode::NO_CONTENT.into_response()
         }
         Ok(false) => refuse(StatusCode::NOT_FOUND, "not_found"),
@@ -358,6 +540,7 @@ async fn group(
     Json(body): Json<GroupBody>,
 ) -> Response {
     let me = me!(app, headers);
+    unless_muted!(app, me);
     let Some(name) = text::line(&body.name, text::NAME_MAX) else {
         return refuse(StatusCode::UNPROCESSABLE_ENTITY, "name");
     };
@@ -560,6 +743,7 @@ async fn send(
     Json(body): Json<BodyText>,
 ) -> Response {
     let me = me!(app, headers);
+    unless_muted!(app, me);
     let found = match room_of(&app, &room, &me.sub) {
         Ok(found) => found,
         Err(response) => return *response,
@@ -655,23 +839,240 @@ async fn report(
     }
 }
 
-/// Live events. The connection lasts as long as its token: the launcher
-/// comes back with a fresh one.
+/// What friends keeps about the account, for the account itself: its
+/// lists, rooms and the messages it wrote.
+async fn export(State(app): State<Arc<App>>, headers: HeaderMap) -> Response {
+    let me = me!(app, headers);
+    if !app
+        .limiter
+        .allow(&me.sub, "export", 10, Duration::from_secs(3600))
+    {
+        return refuse(StatusCode::TOO_MANY_REQUESTS, "too_many");
+    }
+    let data = (|| -> Result<Value, String> {
+        let list = |items: Vec<(String, i64)>| -> Vec<Value> {
+            items
+                .into_iter()
+                .map(|(id, at)| json!({ "id": id, "at": at }))
+                .collect()
+        };
+        let rooms: Vec<Value> = app
+            .store
+            .rooms_of(&me.sub)?
+            .into_iter()
+            .map(|(room, ..)| {
+                json!({
+                    "id": room.id, "kind": room.kind, "name": room.name,
+                    "owner": room.owner, "created": room.created,
+                })
+            })
+            .collect();
+        Ok(json!({
+            "friends": list(app.store.friends(&me.sub)?),
+            "requestsSent": list(app.store.outgoing(&me.sub)?),
+            "requestsReceived": list(app.store.incoming(&me.sub)?),
+            "blocked": list(app.store.blocked(&me.sub)?),
+            "rooms": rooms,
+            "messagesWritten": app.store.written_by(&me.sub, 1_000_000)?,
+            "hidden": app.store.hidden(&me.sub)?,
+        }))
+    })();
+    match data {
+        Ok(data) => Json(data).into_response(),
+        Err(e) => failed(&e),
+    }
+}
+
+#[derive(Deserialize)]
+struct VisibleBody {
+    visible: bool,
+}
+
+/// Shows or hides the account's online status from its friends.
+async fn set_visible(
+    State(app): State<Arc<App>>,
+    headers: HeaderMap,
+    Json(body): Json<VisibleBody>,
+) -> Response {
+    let me = me!(app, headers);
+    if !app
+        .limiter
+        .allow(&me.sub, "presence", 120, Duration::from_secs(3600))
+    {
+        return refuse(StatusCode::TOO_MANY_REQUESTS, "too_many");
+    }
+    match app.store.set_hidden(&me.sub, !body.visible) {
+        Ok(()) => {
+            tell_presence(&app, &me.sub);
+            StatusCode::NO_CONTENT.into_response()
+        }
+        Err(e) => failed(&e),
+    }
+}
+
+#[derive(Deserialize)]
+struct PlayingBody {
+    playing: Option<String>,
+}
+
+/// What the account plays now (the launcher says so), or nothing.
+async fn set_playing(
+    State(app): State<Arc<App>>,
+    headers: HeaderMap,
+    Json(body): Json<PlayingBody>,
+) -> Response {
+    let me = me!(app, headers);
+    let game = match body.playing.as_deref() {
+        None => None,
+        Some(raw) => match text::line(raw, text::GAME_MAX) {
+            Some(game) => Some(game),
+            None => return refuse(StatusCode::UNPROCESSABLE_ENTITY, "playing"),
+        },
+    };
+    if !app
+        .limiter
+        .allow(&me.sub, "presence", 120, Duration::from_secs(3600))
+    {
+        return refuse(StatusCode::TOO_MANY_REQUESTS, "too_many");
+    }
+    if app.hub.set_playing(&me.sub, game) {
+        tell_presence(&app, &me.sub);
+    }
+    StatusCode::NO_CONTENT.into_response()
+}
+
+/// Tells what the owner changed from the command line: a removed message
+/// reaches its room, a ban closes the account's connections.
+pub fn tell_moderation(app: &App) {
+    let Ok(untold) = app.store.untold() else {
+        return;
+    };
+    for change in untold {
+        match change.kind.as_str() {
+            "message" => {
+                let event = Event::Removed {
+                    room: change.room.clone(),
+                    message: change.message,
+                };
+                tell_members(app, &change.room, &event);
+                tell_members(app, &change.room, &Event::Rooms);
+            }
+            "sanction" => {
+                let banned = matches!(
+                    app.store.sanction_of(&change.account, now()),
+                    Ok(Some(s)) if s.kind == "ban"
+                );
+                if banned {
+                    app.hub.end_account(&change.account);
+                    tell_presence(app, &change.account);
+                }
+            }
+            _ => {}
+        }
+        let _ = app.store.told(change.id);
+    }
+}
+
+/// In `auto` mode, asks the account service whether it sends letters: once
+/// it does, friends asks for a confirmed email.
+pub async fn check_mail(app: &App) {
+    if app.email.mode != EmailMode::Auto {
+        return;
+    }
+    match app.directory.mail_sent().await {
+        Ok(sent) => app
+            .email
+            .mail_sent
+            .store(sent, std::sync::atomic::Ordering::Relaxed),
+        Err(e) => eprintln!("asking whether letters are sent failed: {e}"),
+    }
+}
+
+/// Cleans out accounts the account service deleted, and tells who knew
+/// them.
+pub async fn purge_deleted(app: &App) {
+    let since = *app
+        .deleted_since
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner);
+    let deleted = match app.directory.deleted(since).await {
+        Ok(deleted) => deleted,
+        Err(e) => {
+            eprintln!("asking which accounts were deleted failed: {e}");
+            return;
+        }
+    };
+    let mut newest = since;
+    for (account, at) in deleted {
+        if !text::account_id(&account) {
+            continue;
+        }
+        app.hub.end_account(&account);
+        match app.store.purge(&account) {
+            Ok(touched) => {
+                for other in touched {
+                    app.hub.tell(&other, &Event::Friends);
+                    app.hub.tell(&other, &Event::Rooms);
+                }
+            }
+            Err(e) => {
+                eprintln!("cleaning out a deleted account failed: {e}");
+                return;
+            }
+        }
+        newest = newest.max(at);
+    }
+    *app.deleted_since
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner) = newest;
+}
+
+/// Asks the account service which recently seen sessions ended, refuses
+/// their tokens from now on and closes their live connections. When it
+/// cannot be asked, tokens hold until they run out, as before.
+pub async fn check_sessions(app: &App) {
+    let mut sessions = app.sessions.recent();
+    sessions.extend(app.hub.sessions());
+    sessions.sort();
+    sessions.dedup();
+    for chunk in sessions.chunks(500) {
+        match app.directory.ended(chunk).await {
+            Ok(ended) if !ended.is_empty() => {
+                app.sessions.end(&ended);
+                app.hub.end(&ended);
+            }
+            Ok(_) => {}
+            Err(e) => {
+                eprintln!("asking which sessions ended failed: {e}");
+                return;
+            }
+        }
+    }
+}
+
+/// Live events. The connection lasts as long as its token (the launcher
+/// comes back with a fresh one), or until its session ends.
 async fn live(
     State(app): State<Arc<App>>,
     headers: HeaderMap,
     upgrade: WebSocketUpgrade,
 ) -> Response {
     let me = me!(app, headers);
-    let Some((id, events)) = app.hub.join(&me.sub) else {
+    let was_online = app.hub.online(&me.sub);
+    let Some((id, events)) = app.hub.join(&me.sub, &me.sid) else {
         return refuse(StatusCode::TOO_MANY_REQUESTS, "too_many_connections");
     };
+    if !was_online {
+        tell_presence(&app, &me.sub);
+    }
     let lasts = Duration::from_secs(u64::try_from((me.exp - now()).max(1)).unwrap_or(1));
     upgrade
         .max_message_size(4 * 1024)
         .on_upgrade(move |socket| async move {
             serve_socket(socket, events, lasts).await;
-            app.hub.leave(&me.sub, id);
+            if app.hub.leave(&me.sub, id) {
+                tell_presence(&app, &me.sub);
+            }
         })
 }
 
@@ -725,6 +1126,8 @@ pub fn router(app: Arc<App>) -> Router {
         .route("/v1/health", get(health))
         .route("/v1/state", get(state))
         .route("/v1/requests", post(request))
+        .route("/v1/requests/decline-all", post(decline_all))
+        .route("/v1/requests/report", post(report_request))
         .route("/v1/people/{action}", post(act))
         .route("/v1/rooms", get(rooms))
         .route("/v1/rooms/direct", post(direct))
@@ -735,6 +1138,9 @@ pub fn router(app: Arc<App>) -> Router {
         .route("/v1/rooms/{room}/messages", get(history).post(send))
         .route("/v1/rooms/{room}/read", post(read))
         .route("/v1/messages/{message}/report", post(report))
+        .route("/v1/presence/visible", post(set_visible))
+        .route("/v1/export", get(export))
+        .route("/v1/presence/playing", post(set_playing))
         .route("/v1/live", get(live))
         .layer(DefaultBodyLimit::max(16 * 1024))
         .with_state(app)

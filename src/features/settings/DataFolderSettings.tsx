@@ -88,7 +88,7 @@ export function DataFolderSettings({ busy }: { busy: boolean }) {
             onClick={() => {
               picking.clear();
               void ipc
-                .pickDataFolder()
+                .pickDataFolder(strings.windowTitles.pickDataFolder)
                 .then((path) => {
                   if (path !== null) setConfirm({ target: 'custom', path });
                 })

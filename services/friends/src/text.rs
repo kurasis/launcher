@@ -4,6 +4,8 @@
 
 pub const MESSAGE_MAX: usize = 2000;
 pub const NAME_MAX: usize = 40;
+/// What a friend plays, as the launcher names it ("Minecraft 1.21.1 · Fabric").
+pub const GAME_MAX: usize = 60;
 pub const REASON_MAX: usize = 500;
 
 fn reorders(c: char) -> bool {

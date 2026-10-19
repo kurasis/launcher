@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-friends-report-request"
+description = "Enables the friends_report_request command without any pre-configured scope."
+commands.allow = ["friends_report_request"]
+
+[[permission]]
+identifier = "deny-friends-report-request"
+description = "Denies the friends_report_request command without any pre-configured scope."
+commands.deny = ["friends_report_request"]

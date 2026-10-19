@@ -753,6 +753,7 @@ dependencies = [
  "lettre",
  "rand 0.8.8",
  "reqwest",
+ "ring",
  "rusqlite",
  "serde",
  "serde_json",

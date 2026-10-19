@@ -59,6 +59,7 @@ import {
   type ResetPreview,
   type ResetReport,
   type UserData,
+  type RenameInstancePayload,
   type SetInstanceNotesPayload,
   type SettingsView,
   type UpdateInstanceSettingsPayload,
@@ -78,7 +79,8 @@ export const ipc = {
   createInstance: (payload: CreateInstancePayload, requestId?: string): Promise<InstanceSummary> =>
     invoke<InstanceSummary>('create_instance', { request: mutation(payload, requestId) }),
   getDataLocation: (): Promise<DataLocation> => invoke<DataLocation>('get_data_location'),
-  pickDataFolder: (): Promise<string | null> => invoke<string | null>('pick_data_folder'),
+  pickDataFolder: (title?: string): Promise<string | null> =>
+    invoke<string | null>('pick_data_folder', { title }),
   moveDataLocation: (
     target: LocationTarget,
     path: string | null,
@@ -120,7 +122,8 @@ export const ipc = {
     }),
   checkJava: (instanceId: string, path: string): Promise<JavaCheck> =>
     invoke<JavaCheck>('check_java', { payload: { instanceId, path } }),
-  pickJavaFile: (): Promise<string | null> => invoke<string | null>('pick_java_file'),
+  pickJavaFile: (title?: string): Promise<string | null> =>
+    invoke<string | null>('pick_java_file', { title }),
   setInstanceJava: (
     payload: SetInstanceJavaPayload,
     requestId?: string,
@@ -136,6 +139,8 @@ export const ipc = {
     requestId?: string,
   ): Promise<InstanceSummary> =>
     invoke<InstanceSummary>('set_instance_notes', { request: mutation(payload, requestId) }),
+  renameInstance: (payload: RenameInstancePayload, requestId?: string): Promise<InstanceSummary> =>
+    invoke<InstanceSummary>('rename_instance', { request: mutation(payload, requestId) }),
   updateInstanceSettings: (
     payload: UpdateInstanceSettingsPayload,
     requestId?: string,
@@ -210,8 +215,14 @@ export const ipc = {
     folder: GameFolder | null = null,
   ): Promise<void> =>
     invoke('open_instance_folder', { request: mutation({ instanceId, folder }, requestId) }),
-  exportDiagnostics: (runId: string | null, requestId?: string): Promise<ExportResult> =>
-    invoke<ExportResult>('export_diagnostics', { request: mutation({ runId }, requestId) }),
+  exportDiagnostics: (
+    runId: string | null,
+    requestId?: string,
+    title?: string,
+  ): Promise<ExportResult> =>
+    invoke<ExportResult>('export_diagnostics', {
+      request: mutation({ runId, title }, requestId),
+    }),
   /** Plays as the installation's profile: a Microsoft account, or the demo (D-045). */
   launchGame: (instanceId: string, requestId?: string): Promise<RunSummary> =>
     invoke<RunSummary>('launch_game', { request: mutation({ instanceId }, requestId) }),
@@ -244,8 +255,8 @@ export const ipc = {
   dismissWhatsNew: (): Promise<void> => invoke('dismiss_whats_new'),
   openUpdatePage: (): Promise<void> => invoke('open_update_page'),
   /** Opens the launcher account's window on its sign-in or registration page. */
-  launcherAccountOpen: (screen: 'login' | 'register'): Promise<void> =>
-    invoke('launcher_account_open', { screen }),
+  launcherAccountOpen: (screen: 'login' | 'register' | 'delete', title?: string): Promise<void> =>
+    invoke('launcher_account_open', { screen, title }),
   launcherAccountSignOut: (): Promise<void> => invoke('launcher_account_sign_out'),
   /** Null when the nick changed, else what went wrong. */
   launcherAccountSetNick: (nick: string): Promise<LauncherAccountProblem | null> =>
@@ -278,6 +289,14 @@ export const ipc = {
     invoke('friends_read', { room, upto }),
   friendsReport: (message: number, reason: string): Promise<void> =>
     invoke('friends_report', { message, reason }),
+  friendsDeclineAll: (): Promise<void> => invoke('friends_decline_all'),
+  /** Reports a waiting request as spam; it goes. */
+  friendsReportRequest: (id: string): Promise<void> => invoke('friends_report_request', { id }),
+  friendsSetVisible: (visible: boolean): Promise<void> =>
+    invoke('friends_set_visible', { visible }),
+  /** Saves the account's data as a file; its name, or null if the dialog was closed. */
+  launcherAccountExport: (title?: string): Promise<string | null> =>
+    invoke<string | null>('launcher_account_export', { title }),
   /** The interface has shown: a new version's start can count as good. */
   interfaceReady: (): Promise<void> => invoke('interface_ready'),
   /** Debug builds only; release builds have no handler for this command. */
@@ -432,4 +451,11 @@ export function onFriendsState(handler: (view: FriendsView) => void): () => void
 /** A new message in one of the account's rooms (its own included). */
 export function onFriendsMessage(handler: (message: ChatMessage) => void): () => void {
   return listenTo('friends://message', handler);
+}
+
+/** A moderator removed a message. */
+export function onFriendsRemoved(
+  handler: (removed: { room: string; message: number }) => void,
+): () => void {
+  return listenTo('friends://removed', handler);
 }

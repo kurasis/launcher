@@ -35,14 +35,16 @@ function signedIn(overrides: Partial<FriendsView> = {}): FriendsView {
     connected: true,
     me: ME,
     friends: [
-      { ...ALEX, at: 1 },
-      { ...NOTCH, at: 2 },
+      { ...ALEX, at: 1, online: true, playing: 'Minecraft 1.21.1 · Fabric' },
+      { ...NOTCH, at: 2, online: false, playing: null },
     ],
     incoming: [],
     outgoing: [],
     blocked: [],
     rooms: [direct()],
     unread: 1,
+    visible: true,
+    sanction: null,
     problem: null,
     ...overrides,
   };
@@ -58,6 +60,8 @@ const signedOut: FriendsView = {
   blocked: [],
   rooms: [],
   unread: 0,
+  visible: true,
+  sanction: null,
   problem: null,
 };
 
@@ -96,7 +100,7 @@ describe('friends corner', () => {
   });
 
   it('shows unread messages and requests on the button', async () => {
-    setup(signedIn({ incoming: [{ ...NOTCH, at: 3 }] }));
+    setup(signedIn({ incoming: [{ ...NOTCH, at: 3, online: false, playing: null }] }));
     const button = await screen.findByRole('button', { name: /1 unread message/ });
     expect(within(button).getByText('2')).toBeVisible();
   });
@@ -161,7 +165,7 @@ describe('friends corner', () => {
   });
 
   it('cannot write to someone who is no longer a friend', async () => {
-    setup(signedIn({ friends: [{ ...NOTCH, at: 2 }] }));
+    setup(signedIn({ friends: [{ ...NOTCH, at: 2, online: false, playing: null }] }));
     const panel = await openPanel();
     fireEvent.click(within(panel).getByRole('button', { name: /Alex/ }));
     expect(await screen.findByText(/no longer friends/)).toBeVisible();
@@ -213,8 +217,8 @@ describe('friends corner', () => {
   it('accepts, declines and cancels requests', async () => {
     const { calls } = setup(
       signedIn({
-        incoming: [{ ...NOTCH, at: 3 }],
-        outgoing: [{ id: 'x', nick: 'Herobrine', at: 4 }],
+        incoming: [{ ...NOTCH, at: 3, online: false, playing: null }],
+        outgoing: [{ id: 'x', nick: 'Herobrine', at: 4, online: false, playing: null }],
       }),
     );
     const panel = await openPanel();
@@ -255,6 +259,100 @@ describe('friends corner', () => {
         name: 'Builders',
         members: [ALEX.id, NOTCH.id],
       });
+    });
+  });
+
+  it('leaves a group only after confirming', async () => {
+    const group = direct({
+      kind: 'group',
+      name: 'Builders',
+      owner: ALEX.id,
+      members: [ME, ALEX, NOTCH],
+    });
+    const { calls } = setup(signedIn({ rooms: [group] }));
+    const panel = await openPanel();
+    fireEvent.click(within(panel).getByRole('button', { name: /Builders/ }));
+    fireEvent.click(await within(panel).findByRole('button', { name: /3 people/ }));
+    fireEvent.click(within(panel).getByRole('button', { name: 'Leave the group' }));
+    const asked = within(panel).getByRole('alertdialog');
+    fireEvent.click(within(asked).getByRole('button', { name: 'Cancel' }));
+    expect(calls.some((c) => c.cmd === 'friends_change_room')).toBe(false);
+    fireEvent.click(within(panel).getByRole('button', { name: 'Leave the group' }));
+    fireEvent.click(
+      within(within(panel).getByRole('alertdialog')).getByRole('button', {
+        name: 'Leave the group',
+      }),
+    );
+    await waitFor(() => {
+      expect(calls.find((c) => c.cmd === 'friends_change_room')?.args).toEqual({
+        room: ROOM,
+        action: 'remove',
+        value: ME.id,
+      });
+    });
+  });
+
+  it('shows who is online and what they play, and hides me when asked', async () => {
+    const { calls } = setup(signedIn());
+    const panel = await openPanel();
+    fireEvent.click(within(panel).getByRole('tab', { name: 'Friends' }));
+    expect(within(panel).getByText('Playing Minecraft 1.21.1 · Fabric')).toBeVisible();
+    expect(within(panel).queryAllByText('Online')).toHaveLength(0);
+    const show = within(panel).getByRole('checkbox', { name: 'Show friends that I am online' });
+    expect(show).toBeChecked();
+    fireEvent.click(show);
+    await waitFor(() => {
+      expect(calls.find((c) => c.cmd === 'friends_set_visible')?.args).toEqual({
+        visible: false,
+      });
+    });
+  });
+
+  it('says when a moderator muted me and offers no box to write in', async () => {
+    setup(signedIn({ sanction: { kind: 'mute', until: 0 } }));
+    const panel = await openPanel();
+    expect(within(panel).getByText('You cannot write: a moderator muted you.')).toBeVisible();
+    fireEvent.click(within(panel).getByRole('button', { name: /Alex/ }));
+    await screen.findByRole('list', { name: 'Alex' });
+    expect(within(panel).queryByRole('textbox', { name: 'Write a message' })).toBeNull();
+  });
+
+  it('takes a message a moderator removed out of the open chat', async () => {
+    setup(signedIn());
+    const panel = await openPanel();
+    fireEvent.click(within(panel).getByRole('button', { name: /Alex/ }));
+    const history = await screen.findByRole('list', { name: 'Alex' });
+    await waitFor(() => {
+      expect(within(history).getByText(HOSTILE)).toBeVisible();
+    });
+    await act(async () => {
+      await emit('friends://removed', { room: ROOM, message: 2 });
+    });
+    await waitFor(() => {
+      expect(within(history).queryByText(HOSTILE)).toBeNull();
+    });
+    expect(within(history).getByText('hi')).toBeVisible();
+  });
+
+  it('reports a request as spam or declines them all', async () => {
+    const { calls } = setup(
+      signedIn({
+        incoming: [
+          { ...NOTCH, at: 3, online: false, playing: null },
+          { id: 'y', nick: 'buy_gold_cheap', at: 4, online: false, playing: null },
+        ],
+      }),
+    );
+    const panel = await openPanel();
+    fireEvent.click(within(panel).getByRole('tab', { name: /Requests/ }));
+    const spam = within(panel).getAllByRole('button', { name: 'Spam' });
+    fireEvent.click(spam[1] as HTMLElement);
+    await waitFor(() => {
+      expect(calls.find((c) => c.cmd === 'friends_report_request')?.args).toEqual({ id: 'y' });
+    });
+    fireEvent.click(within(panel).getByRole('button', { name: 'Decline all' }));
+    await waitFor(() => {
+      expect(calls.some((c) => c.cmd === 'friends_decline_all')).toBe(true);
     });
   });
 

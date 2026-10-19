@@ -4,11 +4,11 @@ Non-secret description of the authentication contract implemented in
 `src-tauri/src/auth/` (contract revision `2026-10-candidate-1`, see
 `src-tauri/src/auth/contract.rs`). Normative requirements: [spec/03](spec/03-AUTHENTICATION.md).
 
-**Status: candidate, not yet accepted by the services.** No project-owned Microsoft client
-ID exists yet, so no request in this contract has been sent to Microsoft, Xbox or Minecraft
-services by this launcher. Everything below is verified only against deterministic local
-fixtures. Gate G0 and phase P04's live check require the owner's client ID
-([AUTH-SETUP.md](AUTH-SETUP.md)).
+**Status: candidate, not yet accepted by the services.** The project's Microsoft client ID
+exists (the `LAUNCHER_MSA_CLIENT_ID` repository variable, D-034), but Minecraft services
+have not approved it yet, so no sign-in has gone through the whole chain. Everything
+below is verified only against deterministic local fixtures. Gate G0 and phase P04's live
+check wait for that approval ([AUTH-SETUP.md](AUTH-SETUP.md)).
 
 ## Sources
 
@@ -100,5 +100,6 @@ P09/P13 (doc 05). Nothing synthesizes an XUID.
 
 ## Owner-supplied values still missing
 
-Client ID, confirmed redirect form, accepted scope spelling, Minecraft API approval, and
-the first live positive sign-in (A03). Accounts for no-access and Game Pass tests (A04–A06).
+Minecraft API approval of the client ID, then the confirmed redirect form, accepted scope
+spelling and the first live positive sign-in (A03). Accounts for no-access and Game Pass
+tests (A04–A06).
