@@ -228,6 +228,10 @@ impl LifecycleController {
         if let Some(account) = app.get_webview_window(crate::launcher_account::WINDOW) {
             let _ = account.destroy();
         }
+        // So would the feed's player window (D-067).
+        if let Some(player) = app.get_webview_window(crate::feed::player::WINDOW) {
+            let _ = player.destroy();
+        }
     }
 
     /// Destroys the main window if `run_id` still owns the unload. Runs on the main

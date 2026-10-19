@@ -1,0 +1,748 @@
+//! The work behind "Add to the catalog", done by a few workers from the queue
+//! in the database, so it survives a restart:
+//!
+//! - `resolve` reads what the player typed: an address queues the project
+//!   (and the version it names); a name is searched for, and the player picks;
+//! - `project` fetches a project's page, members and all its versions'
+//!   metadata, then queues the files of the newest version for each pair of
+//!   game version and loader, its pictures, and its required dependencies;
+//! - `version` fetches one version (a dependency, or the one an address
+//!   names) and queues its files;
+//! - `files` downloads a version's files, checks them against the source's
+//!   hashes and keeps them;
+//! - `image` keeps an icon or a gallery picture with a small copy, `body`
+//!   the pictures in a project's description, pointing it at our copies.
+//!
+//! Older versions keep their metadata only, until someone asks for their
+//! files (`POST /v1/versions/{id}/fetch`); then they are kept for good too.
+
+use std::path::{Path, PathBuf};
+use std::sync::Arc;
+use std::time::Duration;
+
+use serde_json::{Value, json};
+
+use crate::App;
+use crate::blobs::{Hashed, hash_file};
+use crate::fetch::FetchError;
+use crate::input::{self, Input};
+use crate::model::newest_per_pair;
+use crate::modrinth;
+
+pub fn now() -> i64 {
+    chrono::Utc::now().timestamp()
+}
+
+/// Dependencies are followed this deep, at most this many from a project.
+pub const MAX_DEPTH: i64 = 16;
+const MAX_DEPENDENCIES: usize = 50;
+/// The largest file kept (a modpack's server files can be big).
+pub const MAX_FILE: u64 = 2 * 1024 * 1024 * 1024;
+const MAX_IMAGE: u64 = 20 * 1024 * 1024;
+const MAX_BODY_IMAGES: usize = 30;
+const MAX_ATTEMPTS: i64 = 12;
+/// A project asked for again is fetched anew after this long.
+const PROJECT_FRESH: i64 = 6 * 3600;
+const DEPENDENCY_FRESH: i64 = 24 * 3600;
+/// A request that has not finished in a day has failed.
+const REQUEST_DAY: i64 = 86_400;
+
+/// Why a job failed: a short code (for a public log and the player) and
+/// whether to try again later.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct JobError {
+    pub code: String,
+    pub retry: bool,
+}
+
+impl JobError {
+    fn new(code: &str, retry: bool) -> Self {
+        Self {
+            code: code.to_owned(),
+            retry,
+        }
+    }
+}
+
+impl From<FetchError> for JobError {
+    fn from(e: FetchError) -> Self {
+        Self {
+            code: e.code(),
+            retry: e.retryable(),
+        }
+    }
+}
+
+impl From<String> for JobError {
+    fn from(e: String) -> Self {
+        eprintln!("lapi-mods: {e}");
+        Self::new("server_error", true)
+    }
+}
+
+/// How small copies of pictures are made: by a process of our own on the
+/// server, in this process in tests.
+pub enum Thumbs {
+    Process(PathBuf),
+    Inline,
+}
+
+/// Seconds to wait before the next attempt.
+pub fn backoff(attempts: i64) -> i64 {
+    (30i64 << attempts.clamp(0, 10)).min(6 * 3600)
+}
+
+pub async fn work(app: Arc<App>, mut stop: tokio::sync::watch::Receiver<bool>) {
+    loop {
+        if *stop.borrow() {
+            return;
+        }
+        let job = match app.store.claim(now()) {
+            Ok(Some(job)) => job,
+            Ok(None) => {
+                tokio::select! {
+                    _ = tokio::time::sleep(Duration::from_secs(2)) => {}
+                    _ = stop.changed() => return,
+                }
+                continue;
+            }
+            Err(e) => {
+                eprintln!("lapi-mods: {e}");
+                tokio::time::sleep(Duration::from_secs(10)).await;
+                continue;
+            }
+        };
+        let result = tokio::select! {
+            result = run(&app, &job) => result,
+            // The job stays running; the next start queues it again.
+            _ = stop.changed() => return,
+        };
+        let done = match result {
+            Ok(()) => app.store.job_done(job.id, now()),
+            Err(e) => {
+                let again =
+                    (e.retry && job.attempts < MAX_ATTEMPTS).then(|| now() + backoff(job.attempts));
+                app.store.job_failed(job.id, &e.code, again, now())
+            }
+        };
+        if let Err(e) = done {
+            eprintln!("lapi-mods: {e}");
+        }
+    }
+}
+
+/// Runs one job.
+pub async fn run(app: &App, job: &crate::store::Job) -> Result<(), JobError> {
+    let p = &job.payload;
+    let text = |key: &str| {
+        p.get(key)
+            .and_then(Value::as_str)
+            .unwrap_or_default()
+            .to_owned()
+    };
+    let depth = p.get("depth").and_then(Value::as_i64).unwrap_or(0);
+    let request = job.request_id.as_deref();
+    match job.kind.as_str() {
+        "resolve" => resolve(app, &text("request")).await,
+        "project" => project(app, &text("source"), &text("ref"), depth, request).await,
+        "version" => version(app, &text("source"), &text("id"), depth, request).await,
+        "files" => files(app, &text("version"), request).await,
+        "image" => image(app, &text("project"), &text("kind"), &text("url")).await,
+        "body" => body(app, &text("project")).await,
+        _ => Err(JobError::new("unknown_job", false)),
+    }
+}
+
+// ----- queueing -----
+
+fn project_key(source: &str, reference: &str) -> String {
+    format!("project:{source}:{}", reference.to_ascii_lowercase())
+}
+
+/// Queues a project of a source.
+pub fn queue_project(
+    app: &App,
+    source: &str,
+    reference: &str,
+    depth: i64,
+    request: Option<&str>,
+    fresh: i64,
+) -> Result<bool, String> {
+    app.store.enqueue(
+        &project_key(source, reference),
+        "project",
+        &json!({ "source": source, "ref": reference, "depth": depth }),
+        request,
+        None,
+        now(),
+        Some(fresh),
+    )
+}
+
+pub fn queue_version(
+    app: &App,
+    source: &str,
+    id: &str,
+    depth: i64,
+    request: Option<&str>,
+) -> Result<bool, String> {
+    app.store.enqueue(
+        &format!("version:{source}:{id}"),
+        "version",
+        &json!({ "source": source, "id": id, "depth": depth }),
+        request,
+        None,
+        now(),
+        Some(DEPENDENCY_FRESH),
+    )
+}
+
+/// Queues the download of a version's files, unless all are kept. A failed
+/// download is tried again when asked an hour later.
+pub fn queue_files(app: &App, version: &str, request: Option<&str>) -> Result<bool, String> {
+    match app.store.version_state(version)? {
+        Some((_, state)) if state == "all" => Ok(false),
+        Some((project, _)) => app.store.enqueue(
+            &format!("files:{version}"),
+            "files",
+            &json!({ "version": version }),
+            request,
+            Some(&project),
+            now(),
+            Some(3600),
+        ),
+        None => Ok(false),
+    }
+}
+
+/// A request is ready once its project is in and nothing of it waits;
+/// failed when its project could not be had, or after a day.
+pub fn check_requests(app: &App) {
+    let result = (|| -> Result<(), String> {
+        for id in app.store.open_requests()? {
+            let Some((_, request)) = app.store.request(&id)? else {
+                continue;
+            };
+            let (pending, failed) = app.store.request_jobs(&id)?;
+            if pending > 0 {
+                continue;
+            }
+            if let Some(project) = &request.project_id {
+                // Its project came through (some files or dependencies may
+                // not have; the catalog shows which).
+                if app.store.project_status(project)?.as_deref() == Some("ready") {
+                    app.store
+                        .set_request(&id, "ready", None, None, None, now())?;
+                    continue;
+                }
+            }
+            if let Some(error) = failed {
+                app.store
+                    .set_request(&id, "failed", Some(&error), None, None, now())?;
+            } else if now() - request.created > REQUEST_DAY {
+                app.store
+                    .set_request(&id, "failed", Some("timeout"), None, None, now())?;
+            } else {
+                // Its project is being fetched for someone else: look again.
+                app.store.enqueue(
+                    &format!("resolve:{id}"),
+                    "resolve",
+                    &json!({ "request": id }),
+                    Some(&id),
+                    None,
+                    now() + 5,
+                    Some(0),
+                )?;
+            }
+        }
+        Ok(())
+    })();
+    if let Err(e) = result {
+        eprintln!("lapi-mods: {e}");
+    }
+}
+
+// ----- jobs -----
+
+async fn resolve(app: &App, id: &str) -> Result<(), JobError> {
+    let Some((_, request)) = app.store.request(id)? else {
+        return Ok(());
+    };
+    if !matches!(request.state.as_str(), "queued" | "importing") {
+        return Ok(());
+    }
+    let fail = |code: &str| -> Result<(), JobError> {
+        app.store
+            .set_request(id, "failed", Some(code), None, None, now())?;
+        Ok(())
+    };
+    match input::parse(&request.input) {
+        None => fail("bad_input"),
+        Some(Input::CurseForge) => fail("curseforge_later"),
+        Some(Input::Name(words)) => {
+            let found = app
+                .client
+                .json(&modrinth::search_url(&words))
+                .await?
+                .map(|v| modrinth::candidates(&v))
+                .unwrap_or_default();
+            if found.is_empty() {
+                return fail("nothing_found");
+            }
+            let mut list = serde_json::to_value(&found).unwrap_or_default();
+            // Those in the catalog already say so.
+            if let Some(items) = list.as_array_mut() {
+                for item in items {
+                    let source_id = item["id"].as_str().unwrap_or_default().to_owned();
+                    if let Some(project) =
+                        app.store.project_by_source(modrinth::SOURCE, &source_id)?
+                    {
+                        item["projectId"] = project.into();
+                    }
+                }
+            }
+            app.store
+                .set_request(id, "choosing", None, None, Some(&list), now())?;
+            Ok(())
+        }
+        Some(Input::Modrinth { project, version }) => {
+            start(app, id, modrinth::SOURCE, &project, version.as_deref())
+        }
+        Some(Input::ModrinthFile { project, version }) => {
+            start(app, id, modrinth::SOURCE, &project, Some(&version))
+        }
+    }
+}
+
+/// Queues a request's project (and the version it names).
+pub fn start(
+    app: &App,
+    request: &str,
+    source: &str,
+    project: &str,
+    version: Option<&str>,
+) -> Result<(), JobError> {
+    let known = app.store.project_by_source_ref(source, project)?;
+    app.store
+        .set_request(request, "importing", None, known.as_deref(), None, now())?;
+    if !queue_project(app, source, project, 0, Some(request), PROJECT_FRESH)?
+        && known.is_none()
+        && let Some((state, error)) = app.store.job_state(&project_key(source, project))?
+        && state == "failed"
+    {
+        // Tried lately for someone else, and it could not be had.
+        app.store.set_request(
+            request,
+            "failed",
+            Some(error.as_deref().unwrap_or("not_found")),
+            None,
+            None,
+            now(),
+        )?;
+        return Ok(());
+    }
+    if let Some(version) = version {
+        match app.store.version_by_source(source, version)? {
+            Some(ours) => {
+                queue_files(app, &ours, Some(request))?;
+            }
+            None => {
+                queue_version(app, source, version, 0, Some(request))?;
+            }
+        }
+    }
+    Ok(())
+}
+
+async fn project(
+    app: &App,
+    source: &str,
+    reference: &str,
+    depth: i64,
+    request: Option<&str>,
+) -> Result<(), JobError> {
+    if source != modrinth::SOURCE || !modrinth::is_ref(reference) {
+        return Err(JobError::new("unsupported_source", false));
+    }
+    let Some(page) = app.client.json(&modrinth::project_url(reference)).await? else {
+        return Err(JobError::new("not_found", false));
+    };
+    let source_id = page
+        .get("id")
+        .and_then(Value::as_str)
+        .unwrap_or_default()
+        .to_owned();
+    if !modrinth::is_ref(&source_id) {
+        return Err(JobError::new("bad_answer", true));
+    }
+    // Members are good to have, not needed.
+    let members = app
+        .client
+        .json(&modrinth::members_url(&source_id))
+        .await
+        .ok()
+        .flatten();
+    let Some(found) = modrinth::project(&page, members.as_ref()) else {
+        return Err(JobError::new("unsupported_kind", false));
+    };
+    let id = app.store.upsert_project(&found, now())?;
+    if let Some(request) = request
+        && depth == 0
+    {
+        app.store
+            .set_request(request, "importing", None, Some(&id), None, now())?;
+    }
+    let list = app
+        .client
+        .json(&modrinth::versions_url(&source_id))
+        .await?
+        .ok_or_else(|| JobError::new("not_found", false))?;
+    let versions: Vec<_> = list
+        .as_array()
+        .into_iter()
+        .flatten()
+        .filter_map(modrinth::version)
+        .take(5000)
+        .collect();
+    let ids = app.store.upsert_versions(&id, source, &versions)?;
+    // Versions the source no longer lists stay here, marked.
+    for (ours, theirs) in app.store.version_sources(&id, source)? {
+        if !versions.iter().any(|v| v.source_id == theirs) {
+            app.store.mark_version_gone(&ours, now())?;
+        }
+    }
+    let chosen = newest_per_pair(&versions);
+    for &i in &chosen {
+        queue_files(app, &ids[i], request)?;
+    }
+    if depth < MAX_DEPTH {
+        let mut queued = 0;
+        for &i in &chosen {
+            for dependency in &versions[i].dependencies {
+                if dependency.kind != "required" || queued >= MAX_DEPENDENCIES {
+                    continue;
+                }
+                let added = match (&dependency.version, &dependency.project) {
+                    (Some(v), _) => queue_version(app, source, v, depth + 1, request)?,
+                    (None, Some(p)) => {
+                        queue_project(app, source, p, depth + 1, request, DEPENDENCY_FRESH)?
+                    }
+                    (None, None) => false,
+                };
+                if added {
+                    queued += 1;
+                }
+            }
+        }
+    }
+    let picture = |kind: &str, url: &str| -> Result<bool, String> {
+        app.store.enqueue(
+            &format!("image:{id}:{kind}:{url}"),
+            "image",
+            &json!({ "project": id, "kind": kind, "url": url }),
+            None,
+            Some(&id),
+            now(),
+            None,
+        )
+    };
+    if let Some(url) = &found.icon_url {
+        picture("icon", url)?;
+    }
+    for image in &found.gallery {
+        picture("gallery", &image.url)?;
+    }
+    app.store.enqueue(
+        &format!("body:{id}"),
+        "body",
+        &json!({ "project": id }),
+        None,
+        Some(&id),
+        now(),
+        Some(0),
+    )?;
+    app.store.set_project_status(&id, "ready")?;
+    Ok(())
+}
+
+async fn version(
+    app: &App,
+    source: &str,
+    id: &str,
+    depth: i64,
+    request: Option<&str>,
+) -> Result<(), JobError> {
+    if source != modrinth::SOURCE || !modrinth::is_ref(id) {
+        return Err(JobError::new("unsupported_source", false));
+    }
+    let Some(answer) = app.client.json(&modrinth::version_url(id)).await? else {
+        return Err(JobError::new("not_found", false));
+    };
+    let Some(found) = modrinth::version(&answer) else {
+        return Err(JobError::new("bad_answer", false));
+    };
+    let project_ref = answer
+        .get("project_id")
+        .and_then(Value::as_str)
+        .filter(|p| modrinth::is_ref(p))
+        .ok_or_else(|| JobError::new("bad_answer", false))?;
+    let Some(project) = app.store.project_by_source(source, project_ref)? else {
+        // Its project first; this job waits for it.
+        queue_project(app, source, project_ref, depth, request, DEPENDENCY_FRESH)?;
+        return Err(JobError::new("waiting_for_project", true));
+    };
+    let ids = app
+        .store
+        .upsert_versions(&project, source, std::slice::from_ref(&found))?;
+    queue_files(app, &ids[0], request)?;
+    if depth < MAX_DEPTH {
+        for dependency in found
+            .dependencies
+            .iter()
+            .filter(|d| d.kind == "required")
+            .take(MAX_DEPENDENCIES)
+        {
+            match (&dependency.version, &dependency.project) {
+                (Some(v), _) => queue_version(app, source, v, depth + 1, request)?,
+                (None, Some(p)) => {
+                    queue_project(app, source, p, depth + 1, request, DEPENDENCY_FRESH)?
+                }
+                (None, None) => false,
+            };
+        }
+    }
+    Ok(())
+}
+
+/// Downloads `url` into a new part file and hashes it.
+async fn download(app: &App, url: &str, max: u64) -> Result<(PathBuf, Hashed), JobError> {
+    let part = app.blobs.part();
+    let result = app.client.get(url, &part, max, false).await;
+    if let Err(e) = result {
+        let _ = std::fs::remove_file(&part);
+        return Err(e.into());
+    }
+    let hashing = part.clone();
+    match tokio::task::spawn_blocking(move || hash_file(&hashing)).await {
+        Ok(Ok(hashed)) if hashed.size <= max => Ok((part, hashed)),
+        Ok(Ok(_)) => {
+            let _ = std::fs::remove_file(&part);
+            Err(JobError::new("too_big", false))
+        }
+        _ => {
+            let _ = std::fs::remove_file(&part);
+            Err(JobError::new("disk_error", true))
+        }
+    }
+}
+
+/// Moves a hashed part into the kept files and records it.
+fn keep(app: &App, part: &Path, hashed: &Hashed, media_type: &str) -> Result<(), JobError> {
+    if !app.blobs.has(&hashed.sha256) && !app.blobs.may_keep(hashed.size) {
+        let _ = std::fs::remove_file(part);
+        return Err(JobError::new("no_space", true));
+    }
+    if let Err(e) = app.blobs.keep(part, hashed) {
+        let _ = std::fs::remove_file(part);
+        eprintln!("lapi-mods: keeping a file: {e}");
+        return Err(JobError::new("disk_error", true));
+    }
+    app.store.add_blob(hashed, media_type, now())?;
+    Ok(())
+}
+
+fn file_type(name: &str) -> &'static str {
+    let lower = name.to_ascii_lowercase();
+    if lower.ends_with(".jar") {
+        "application/java-archive"
+    } else if lower.ends_with(".zip") || lower.ends_with(".mrpack") {
+        "application/zip"
+    } else {
+        "application/octet-stream"
+    }
+}
+
+async fn files(app: &App, version: &str, request: Option<&str>) -> Result<(), JobError> {
+    let mut rows = app.store.files(version)?;
+    // The main file first.
+    rows.sort_by_key(|f| (!f.primary, f.ord));
+    let mut failed: Option<JobError> = None;
+    for file in rows.into_iter().filter(|f| f.sha256.is_none()) {
+        if let Some(kept) = app
+            .store
+            .blob_by_hashes(file.sha1.as_deref(), file.sha512.as_deref())?
+            && app.blobs.has(&kept)
+        {
+            app.store.file_kept(version, file.ord, &kept)?;
+            continue;
+        }
+        let declared = u64::try_from(file.size).unwrap_or(0);
+        if declared > MAX_FILE {
+            failed = Some(JobError::new("too_big", false));
+            continue;
+        }
+        if declared > 0 && !app.blobs.may_keep(declared) {
+            return Err(JobError::new("no_space", true));
+        }
+        let max = if declared > 0 { declared } else { MAX_FILE };
+        let (part, hashed) = match download(app, &file.origin_url, max).await {
+            Ok(got) => got,
+            Err(e) => {
+                failed = Some(e);
+                continue;
+            }
+        };
+        let matches = file.sha512.as_ref().is_none_or(|h| *h == hashed.sha512)
+            && file.sha1.as_ref().is_none_or(|h| *h == hashed.sha1)
+            && (declared == 0 || declared == hashed.size);
+        if !matches {
+            let _ = std::fs::remove_file(&part);
+            failed = Some(JobError::new("hash_mismatch", true));
+            continue;
+        }
+        keep(app, &part, &hashed, file_type(&file.name))?;
+        app.store.file_kept(version, file.ord, &hashed.sha256)?;
+        if let Some(request) = request {
+            app.store.add_request_bytes(request, hashed.size)?;
+        }
+    }
+    failed.map_or(Ok(()), Err)
+}
+
+/// Keeps a picture from `url` (once per address); its SHA-256 and type.
+async fn keep_image(app: &App, url: &str) -> Result<(String, String), JobError> {
+    if let Some((sha256, media_type)) = app.store.image_by_origin(url)?
+        && app.blobs.has(&sha256)
+    {
+        return Ok((sha256, media_type));
+    }
+    let (part, hashed) = download(app, url, MAX_IMAGE).await?;
+    let mut head = [0u8; 16];
+    let read = {
+        use std::io::Read as _;
+        std::fs::File::open(&part).and_then(|mut f| f.read(&mut head))
+    };
+    let Some(media_type) = read.ok().and_then(|n| crate::thumb::sniff(&head[..n])) else {
+        let _ = std::fs::remove_file(&part);
+        return Err(JobError::new("not_a_picture", false));
+    };
+    keep(app, &part, &hashed, media_type)?;
+    app.store
+        .set_image_origin(url, &hashed.sha256, media_type)?;
+    Ok((hashed.sha256, media_type.to_owned()))
+}
+
+/// A small copy of a kept picture, kept too; `None` when it cannot be made.
+async fn small_copy(app: &App, sha256: &str, size: u32, format: &str) -> Option<String> {
+    let input = app.blobs.path(sha256);
+    let output = app.blobs.part();
+    let made = match &app.thumbs {
+        Thumbs::Process(program) => {
+            let run = tokio::process::Command::new(program)
+                .arg("thumb")
+                .arg(&input)
+                .arg(&output)
+                .arg(size.to_string())
+                .arg(format)
+                .env_clear()
+                .stdin(std::process::Stdio::null())
+                .stdout(std::process::Stdio::null())
+                .stderr(std::process::Stdio::null())
+                .kill_on_drop(true)
+                .status();
+            matches!(tokio::time::timeout(Duration::from_secs(60), run).await, Ok(Ok(s)) if s.success())
+        }
+        Thumbs::Inline => {
+            let (input, output, format) = (input.clone(), output.clone(), format.to_owned());
+            tokio::task::spawn_blocking(move || {
+                crate::thumb::make(&input, &output, size, &format).is_ok()
+            })
+            .await
+            .unwrap_or(false)
+        }
+    };
+    if !made {
+        let _ = std::fs::remove_file(&output);
+        return None;
+    }
+    let hashing = output.clone();
+    let hashed = tokio::task::spawn_blocking(move || hash_file(&hashing))
+        .await
+        .ok()?
+        .ok()?;
+    let media_type = if format == "webp" {
+        "image/webp"
+    } else {
+        "image/jpeg"
+    };
+    keep(app, &output, &hashed, media_type).ok()?;
+    Some(hashed.sha256)
+}
+
+async fn image(app: &App, project: &str, kind: &str, url: &str) -> Result<(), JobError> {
+    let (sha256, media_type) = keep_image(app, url).await?;
+    match kind {
+        "icon" => {
+            let thumb = small_copy(app, &sha256, 256, "webp").await;
+            app.store
+                .set_icon(project, &sha256, &media_type, thumb.as_deref())?;
+        }
+        "gallery" => {
+            let thumb = small_copy(app, &sha256, 512, "jpeg").await;
+            app.store
+                .set_gallery_image(project, url, &sha256, &media_type, thumb.as_deref())?;
+        }
+        _ => return Err(JobError::new("unknown_job", false)),
+    }
+    Ok(())
+}
+
+/// The addresses of pictures a description shows that we may fetch.
+pub fn body_images(body: &str) -> Vec<String> {
+    let mut found: Vec<String> = Vec::new();
+    let mut rest = body;
+    while let Some(at) = rest.find("https://") {
+        let tail = &rest[at..];
+        let end = tail
+            .find(|c: char| {
+                c.is_whitespace() || matches!(c, ')' | '"' | '\'' | '<' | '>' | ']' | '`')
+            })
+            .unwrap_or(tail.len());
+        let url = &tail[..end];
+        let lower = url.to_ascii_lowercase();
+        let path = lower.split(['?', '#']).next().unwrap_or_default();
+        let picture = [".png", ".jpg", ".jpeg", ".gif", ".webp"]
+            .iter()
+            .any(|e| path.ends_with(e));
+        if picture && crate::fetch::site(url).is_some() && !found.iter().any(|f| f == url) {
+            found.push(url.to_owned());
+            if found.len() >= MAX_BODY_IMAGES {
+                break;
+            }
+        }
+        rest = &tail[end.max(1)..];
+    }
+    found
+}
+
+async fn body(app: &App, project: &str) -> Result<(), JobError> {
+    let text = app.store.body(project)?;
+    let mut ours = Vec::new();
+    for url in body_images(&text) {
+        // A picture that cannot be had stays as it was; the launcher does not
+        // load pictures from other sites.
+        if let Ok((sha256, media_type)) = keep_image(app, &url).await {
+            ours.push((url, app.urls.image(&sha256, &media_type)));
+        }
+    }
+    if ours.is_empty() {
+        return Ok(());
+    }
+    // Read again: the project may have been fetched anew meanwhile.
+    let mut text = app.store.body(project)?;
+    for (theirs, kept) in &ours {
+        text = text.replace(theirs.as_str(), kept);
+    }
+    app.store.set_body(project, &text)?;
+    Ok(())
+}

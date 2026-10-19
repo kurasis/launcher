@@ -209,7 +209,12 @@ mod tests {
         Claims {
             iss: "https://oauth.example".into(),
             sub: "id".into(),
-            aud: vec!["account".into(), "friends".into()],
+            aud: vec![
+                "account".into(),
+                "friends".into(),
+                "skins".into(),
+                "mods".into(),
+            ],
             iat: now,
             exp: now + 600,
             sid: "s".into(),
@@ -226,6 +231,7 @@ mod tests {
         let key = keys.public();
         let iss = "https://oauth.example";
         assert_eq!(verify(&key, &token, iss, "friends", now), Some(claims(now)));
+        assert_eq!(verify(&key, &token, iss, "skins", now), Some(claims(now)));
         assert!(
             verify(&key, &token, iss, "other", now).is_none(),
             "audience"

@@ -1,0 +1,45 @@
+# Installed by deploy/bootstrap.sh; started daily by lapi-skins-backup.timer.
+# A copy of the database in /home/www/lapi/skins/data/backups (the newest 14
+# stay), the textures with it. Copy the folder off the server to survive a lost
+# disk (docs/SERVER-BACKUPS.md).
+[Unit]
+Description=Back up the skins database
+
+[Service]
+Type=oneshot
+User=lapi-skins
+Group=lapi-skins
+EnvironmentFile=/home/www/lapi/skins/skins.env
+ExecStart=/home/www/lapi/skins/current/lapi-skins backup
+Nice=10
+IOSchedulingClass=idle
+UMask=0077
+NoNewPrivileges=yes
+ProtectSystem=strict
+ProtectHome=tmpfs
+BindReadOnlyPaths=/home/www/lapi/skins
+BindPaths=/home/www/lapi/skins/data
+ReadWritePaths=/home/www/lapi/skins/data
+PrivateTmp=yes
+PrivateDevices=yes
+PrivateNetwork=yes
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectControlGroups=yes
+ProtectClock=yes
+ProtectHostname=yes
+RestrictAddressFamilies=AF_UNIX
+RestrictNamespaces=yes
+RestrictRealtime=yes
+LockPersonality=yes
+MemoryDenyWriteExecute=yes
+SystemCallArchitectures=native
+SystemCallFilter=@system-service
+SystemCallErrorNumber=EPERM
+ProtectKernelLogs=yes
+ProtectProc=invisible
+ProcSubset=pid
+RestrictSUIDSGID=yes
+CapabilityBoundingSet=
+MemoryMax=512M
+TasksMax=16

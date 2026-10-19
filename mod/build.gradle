@@ -1,0 +1,7 @@
+// Launcher Skins (docs/DECISIONS.md D-065): skins and capes of launcher accounts,
+// looked up by nick at skins.lapi.sh. `core` is plain Java 8 with no game code; each
+// game target adds a thin layer for its loader and version.
+subprojects {
+    group = 'app.launcher.skins'
+    version = rootProject.file('VERSION').text.trim()
+}

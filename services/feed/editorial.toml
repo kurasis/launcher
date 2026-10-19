@@ -1,0 +1,204 @@
+# What the feed shows besides its sources (D-067): YouTube channels by
+# language, events with a countdown, our announcements, tips of the day and
+# Twitch channels never shown. It is built into the service: a change here is
+# a pull request and goes out with the next deploy.
+#
+# Texts are in English (en, needed) and Russian and Arabic (ru, ar; English
+# is shown where one is missing). Dates are UTC, as 2026-11-01T17:00:00Z.
+# Nothing about players goes here, and this repository is public.
+
+# Twitch logins whose streams the feed never lists.
+twitch_blocked = []
+
+# YouTube channels: `lang` is the interface language they are shown for
+# (en, ru, ar), or "all". Every channel was checked on 2026-10-19: its RSS
+# answers and most of its videos are about Minecraft.
+
+[[channel]]
+id = "UC1sELGmy5jp5fQUugmuYlXQ"
+name = "Minecraft"
+lang = "all"
+
+[[channel]]
+id = "UCXoqL7S2DjbrJe5ewfmlDvw"
+name = "slicedlime"
+lang = "en"
+
+[[channel]]
+id = "UCsuKgiVb2KJ2sZdrrwoAqsA"
+name = "wattles"
+lang = "en"
+
+[[channel]]
+id = "UCU9pX8hKcrx06XfOB-VQLdw"
+name = "xisumavoid"
+lang = "en"
+
+[[channel]]
+id = "UCj4zC1Hfj-uc90FUXzRamNw"
+name = "Phoenix SC"
+lang = "en"
+
+[[channel]]
+id = "UC3xZYc4SZUGfRERIvDRGqDQ"
+name = "Skip the Tutorial"
+lang = "en"
+
+[[channel]]
+id = "UCiSVf-UpLC9rRjAT1qRTW0g"
+name = "Forge Labs"
+lang = "en"
+
+[[channel]]
+id = "UCgGjBqZZtAjxfpGSba7d6ww"
+name = "Pixlriffs"
+lang = "en"
+
+[[channel]]
+id = "UCR9Gcq0CMm6YgTzsDxAxjOQ"
+name = "Grian"
+lang = "en"
+
+[[channel]]
+id = "UChFur_NwVSbUozOcF_F2kMg"
+name = "Mumbo Jumbo"
+lang = "en"
+
+[[channel]]
+id = "UCFKDEp9si4RmHFWJW1vYsMA"
+name = "EthosLab"
+lang = "en"
+
+[[channel]]
+id = "UCuMJPFqazQI4SofSFEd-5zA"
+name = "impulseSV"
+lang = "en"
+
+[[channel]]
+id = "UCnuYU4uBan4V5dQ7Pg7NeaQ"
+name = "Greensurs"
+lang = "ru"
+
+[[channel]]
+id = "UCP_oaaQqr3r0jlxeHh_vE9A"
+name = "Nerkin"
+lang = "ru"
+
+[[channel]]
+id = "UCKKJkZbeGc5J5LsCw4VwgTw"
+name = "Лойд – Новости Майнкрафта"
+lang = "ru"
+
+[[channel]]
+id = "UCIBriTmBV1VTF6vOSNTIdaw"
+name = "ISOKOLOVSKI"
+lang = "ru"
+
+[[channel]]
+id = "UCrHZc3lOnr6DRfQBMQw3FSg"
+name = "Дифирон"
+lang = "ru"
+
+[[channel]]
+id = "UCvymd3TkaMrmP65DMmmPRbQ"
+name = "МЫКОЛА"
+lang = "ru"
+
+[[channel]]
+id = "UCAvrIl6ltV8MdJo3mV4Nl4Q"
+name = "MrLololoshka"
+lang = "ru"
+
+[[channel]]
+id = "UCYhXOzYd6-Vf4Uq-avzxh6g"
+name = "ТУМКА"
+lang = "ru"
+
+[[channel]]
+id = "UCYXvAOKehklq8lXX9oJhsEg"
+name = "MrUnfiny"
+lang = "ru"
+
+[[channel]]
+id = "UCcmwWUKo-_fPaJpHB7OF2KA"
+name = "Типичный Стив"
+lang = "ru"
+
+[[channel]]
+id = "UCNAzwz__m3ki78cd0JSjzSg"
+name = "CRAFT - كرافت"
+lang = "ar"
+
+[[channel]]
+id = "UCE7NjlLAFn7G-YTbWrj9P5Q"
+name = "Minecraft بالعربي"
+lang = "ar"
+
+[[channel]]
+id = "UCOYBtBZtz0xVraIhB_rhEnw"
+name = "Mkamel"
+lang = "ar"
+
+[[channel]]
+id = "UCk9IHytTrGwrgx4bGH25oeQ"
+name = "ذياب Theyab"
+lang = "ar"
+
+[[channel]]
+id = "UC0lRs6wIw5vp6dqxOHiCZyA"
+name = "سبيد - SPEED"
+lang = "ar"
+
+[[channel]]
+id = "UC3VFTohiQ3mOG1IUTN6UNTw"
+name = "3BaaDi - عبادي"
+lang = "ar"
+
+[[channel]]
+id = "UCMoqSEntsv2fZuY8cjZmPpw"
+name = "DDN"
+lang = "ar"
+
+# Events with a countdown on the start page, shown from 14 days before they
+# start until they end. Example:
+#
+# [[event]]
+# id = "minecraft-live-2027"
+# starts = "2027-03-20T17:00:00Z"
+# ends = "2027-03-20T18:00:00Z"
+# url = "https://www.youtube.com/@minecraft"
+# title = { en = "Minecraft Live", ru = "Minecraft Live", ar = "Minecraft Live" }
+
+# Our announcements, pinned at the top until `until`. Example:
+#
+# [[announcement]]
+# id = "welcome"
+# until = "2026-12-01T00:00:00Z"
+# title = { en = "…", ru = "…", ar = "…" }
+# text = { en = "…", ru = "…", ar = "…" }
+
+# Tips of the day, one a day in turn.
+
+[[tip]]
+text = { en = "Ctrl+Shift+L opens the launcher's console with the game's log.", ru = "Ctrl+Shift+L открывает консоль лаунчера с журналом игры.", ar = "يفتح Ctrl+Shift+L وحدة تحكم المشغّل مع سجل اللعبة." }
+
+[[tip]]
+text = { en = "Snapshots can damage worlds: play them in an installation of their own.", ru = "Снапшоты могут повредить мир: играйте в них в отдельной установке.", ar = "قد تُتلف اللقطات التجريبية العوالم: العبها في تثبيت خاص بها." }
+
+[[tip]]
+text = { en = "A backup before a big update keeps your world safe. Backups are under More.", ru = "Копия перед большим обновлением сбережёт мир. Копии — в меню «Ещё».", ar = "نسخة احتياطية قبل تحديث كبير تحمي عالمك. النسخ الاحتياطية في قائمة «المزيد»." }
+
+[[tip]]
+text = { en = "In game, F3+H shows item IDs and durability in tooltips.", ru = "В игре F3+H показывает ID предметов и прочность в подсказках.", ar = "في اللعبة، يعرض F3+H معرّفات العناصر ومتانتها في التلميحات." }
+
+[[tip]]
+text = { en = "F3+B shows the hitboxes of mobs and items.", ru = "F3+B показывает хитбоксы мобов и предметов.", ar = "يعرض F3+B صناديق التصادم للكائنات والعناصر." }
+
+[[tip]]
+text = { en = "F3+Q lists every debug key combination.", ru = "F3+Q показывает все сочетания клавиш отладки.", ar = "يعرض F3+Q كل اختصارات مفاتيح التصحيح." }
+
+[[tip]]
+text = { en = "Screenshots taken with F2 appear in the launcher under More → Screenshots.", ru = "Скриншоты по F2 появляются в лаунчере: «Ещё» → «Скриншоты».", ar = "تظهر لقطات الشاشة الملتقطة بـ F2 في المشغّل: «المزيد» ← «لقطات الشاشة»." }
+
+[[tip]]
+text = { en = "Shift-click on a crafting result crafts as many as your items allow.", ru = "Shift+клик по результату крафта создаёт столько, сколько хватит ресурсов.", ar = "النقر مع Shift على نتيجة الصناعة يصنع أكبر عدد تسمح به موادك." }

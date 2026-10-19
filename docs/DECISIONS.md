@@ -1822,7 +1822,7 @@ archive from the Package workflow, upload it to
   country (`CF-IPCountry`), its language, and a year of events (sign-ins,
   password and nick changes) with country only.
 - **Tokens:** access tokens are JWT signed with Ed25519, 10 minutes, audience
-  `account` and `friends`, carrying the account ID, session, nick and whether
+  `account`, `friends`, `skins` (D-065) and `mods` (D-066), carrying the account ID, session, nick and whether
   the email is confirmed; the key is made on the server at the first start and
   never leaves it (`/.well-known/jwks.json` publishes the public half). Refresh
   tokens are random, live 60 days from their last use and rotate on every use;
@@ -1935,3 +1935,162 @@ archive from the Package workflow, upload it to
   ("Minecraft 1.21.1 · Fabric", sent by the launcher while the game runs), unless the
   account hides it (Friends tab → _Show friends that I am online_). Nothing of it is
   stored: it lives with the live connections.
+
+## D-065 — Our own skins: skins.lapi.sh and a mod for every loader
+
+- **Status:** accepted (owner request, 2026-10-19) · **Affects:** the Accounts tab
+  (launcher account), installation launch (a mod or a Java agent added to the game),
+  the new service `services/skins` (`https://skins.lapi.sh`, `/home/www/lapi/skins`),
+  the new `mod/` build, docs/spec/01 (skin editing stays out of scope: players upload a
+  finished PNG).
+- **Goal.** Players of launcher accounts (D-064) wear their own skin and cape, HD and
+  animated, and see each other's, looked up by nick, in every way the launcher runs the
+  game: Fabric, Quilt, NeoForge, Forge and plain Minecraft without a loader. The code is
+  ours: CustomSkinLoader (GPL-3.0) and authlib-injector (AGPL-3.0) were read for
+  behaviour only, as Prism was for sign-in; nothing is copied.
+- **Game versions (owner's choice):** 26.x, 1.21.x and 1.12.2 first.
+
+  | Version | Loaders                                          | Without a loader                        |
+  | ------- | ------------------------------------------------ | --------------------------------------- |
+  | 26.x    | Fabric (also runs on Quilt), NeoForge, Forge     | Java agent: skins, capes, HD, animation |
+  | 1.21.x  | Fabric (also runs on Quilt), NeoForge, Forge     | Java agent: skins and capes             |
+  | 1.12.2  | Forge (a coremod; official Fabric has no 1.12.2) | Java agent: skins and capes             |
+
+  Without a loader, HD and animation need names inside the game, which Mojang stopped
+  obfuscating with 26.1; on older versions plain Minecraft shows standard-size skins and
+  the launcher suggests Fabric for more.
+
+- **Textures:** PNG only. A skin frame is 64×64 × k (k = 1, 2, 4, 8, so up to 512×512;
+  64×32 only as one frame), a cape frame 64×32 × k. Animation is a vertical strip of
+  1–32 frames with one duration or one per frame (50–10 000 ms). Skins up to 2 MiB, capes
+  up to 1 MiB. The service decodes with its limits set before decoding, re-encodes and
+  stores only its own file, named by its SHA-256; the mod checks size and hash again.
+- **Whose skin is shown:** a player whose profile already carries textures (a Microsoft
+  account on an online server) keeps them. Ours is used only when the profile has none
+  and its UUID is not a Microsoft one (version 4, random): offline players (version 3)
+  and the launcher's own players (version 5) get ours, so a launcher account named like
+  a Microsoft player never replaces that player's skin.
+- **Service (`lapi-skins`):** `GET /v1/profile/{nick}` and `POST /v1/profiles` (up to
+  50 nicks) are public; `GET /v1/textures/{sha256}` serves the PNG, cached for good;
+  `GET /v1/me`, `PUT`/`DELETE /v1/me/skin` and `/v1/me/cape` and `GET /v1/export` take
+  the launcher account's access token (audience `skins`, added to the account
+  service's tokens). Nicks are resolved through the account service's internal API, so
+  a nick change moves the skin at once; deleted accounts are cleaned out within 15
+  seconds. Uploads: 10 an hour per account. Nothing about players goes into logs;
+  `counts` prints numbers only; `remove <account> [skin|cape]` is the owner's
+  moderation command.
+- **Mod (`mod/`):** one Gradle build. `core` (plain Java 8: the API client, a disk cache
+  by hash, PNG checks, frame timing, the whose-skin rule), per game version a `common`
+  layer (Mixin hooks in Mojang names, the same source for every loader), thin entry
+  points per loader, a Forge 1.12.2 coremod, and `agent` (a `premain` that patches authlib,
+  whose class names are not obfuscated, and from 26.1 the game itself). One jar per
+  loader and version; the launcher picks the right one.
+- **In the launcher (later stage):** Accounts → Launcher account: upload a skin (model
+  default or slim, frame duration) and a cape, preview, remove. Installations get the
+  matching jar in `mods/` (Fabric, Quilt, NeoForge, Forge) or `-javaagent` (no loader),
+  checked by SHA-256 like other downloads, with a switch per installation. The mod reads
+  the API address from a system property and falls back to `https://skins.lapi.sh`; the
+  game never gets a token.
+- **Stages:**
+  1. the service;
+  2. upload in the launcher;
+  3. core + Fabric 1.21.x with plain skins;
+  4. HD;
+  5. animation;
+  6. NeoForge, Forge, 26.x and 1.12.2;
+  7. the agent;
+  8. automatic install by the launcher, tested on a Windows package.
+- **Server setup (owner):** a DNS record and certificate for skins.lapi.sh, then
+  `deploy/bootstrap.sh` once, as for the other services.
+
+## D-066 — Catalog of mods at mods.lapi.sh
+
+- **Status:** accepted (owner request, 2026-10-19), stage 1 of 6 · **Affects:** the new
+  service `services/mods` (`https://mods.lapi.sh`, files at
+  `https://files-mods.lapi.sh`, `/home/www/lapi/mods`), the account service's token
+  audience. The full design: the project's design document "Вкладка Моды и каталог".
+- **Goal.** A Mods tab with modpacks, mods, resource packs, shaders and worlds that does
+  not depend on Modrinth's and CurseForge's servers being up: what players add to our
+  catalog is kept here for good (pages, pictures, files), with permission from both.
+- **Owner's choices:** the API at mods.lapi.sh, files at files-mods.lapi.sh behind
+  Cloudflare's ordinary cache, no proxies toward players; a pool of proxies toward the
+  sources; no CurseForge API key, so its site's own addresses; our own server; every
+  file kept; any signed-in player may add; at once the newest version for each game
+  version and loader, any other version on its first request and then for good, the
+  catalog saying which versions are kept.
+- **Adding:** a player gives an address (Modrinth project, version or file; CurseForge
+  comes in stage 4) or a name; a name offers up to five projects to pick from. The
+  service fetches the project, its members and all its versions' metadata, then the
+  files of the newest release per game version and loader, required dependencies (16
+  deep, 50 per project), the icon, the gallery and the pictures in the description,
+  which then point at our copies. Work runs from a queue in the database (retries with
+  back-off, survives restarts). Limits: 20 requests an hour and 100 a day per account,
+  5 GB a day of files brought per account, 60 an hour per address; an older version's
+  files 30 an hour per address.
+- **Sources:** everything is fetched with curl-impersonate (lexiforest, Chrome 150's
+  fingerprint), as a process with its arguments one by one and no shell, only HTTPS to
+  listed hosts, redirects followed by us one hop at a time and checked again, names
+  resolved to public addresses only, sizes bounded. Exits are the proxies of the secret
+  `LAPI_MODS_PROXIES` plus the direct connection, each paced per site (Modrinth 200 a
+  minute, CurseForge 60, picture hosts 120) and rested for an hour after a refusal or a
+  Cloudflare challenge. A proxy's address never appears on a command line or in a log.
+- **Storage:** files by SHA-256 under `data/blobs/ab/cd/<sha256>`, written to a part,
+  hashed, checked against the source's SHA-1 and SHA-512 and size, synced and renamed;
+  a file that does not match is not kept. SQLite (`data/db`, 0700) holds projects,
+  versions, files, dependencies, pictures, requests and the queue, with FTS5 search.
+  Quota: the repository variable `MODS_MAX_GB` (default 500), and 5 GB always left free.
+- **Serving:** nginx serves `/f/<sha256>/<name>` (always a download) and
+  `/i/<sha256>.<png|jpg|gif|webp>` straight from disk, immutable, `nosniff`, CSP
+  `sandbox`. The type of a picture is taken from its bytes, never from the source.
+  Small copies (icons 256 px lossless WebP, gallery 512 px JPEG) are made by
+  `lapi-mods thumb` in a process of its own with bounded size and memory. The launcher
+  shows no picture from another site, so players' addresses go only to us.
+- **API:** `GET /v1/search`, `/v1/projects/{id|slug}`, `/v1/projects/{id}/versions`,
+  `/v1/versions/{id}` (each version says `saved`: `all` kept, else fetched on request),
+  `POST /v1/versions/{id}/fetch`, `POST /v1/lookup` (by SHA-1 or SHA-256); with the
+  launcher account's token (audience `mods`): `POST /v1/imports`, `GET /v1/imports`,
+  `GET /v1/imports/{id}`, `POST /v1/imports/{id}/choose`.
+- **Plan:** 1 this service and its deploy; 2 the launcher's tab; 3 modpacks (installing
+  `.mrpack` and CurseForge packs, other launchers' manifests); 4 CurseForge through its
+  site; 5 more formats; 6 upkeep (refreshing, reports, removal on request).
+- **Owner actions:** docs/MODS-CATALOG.md.
+
+## D-067 — Start page feed at feed.lapi.sh
+
+- **Status:** accepted (owner request, 2026-10-19; design approved in the project) ·
+  **Affects:** the launcher's tabs (a new Feed tab, the "More" menu, the tab opened at
+  launch), the new service `services/feed` (`https://feed.lapi.sh`,
+  `/home/www/lapi/feed`), a player window for videos and streams.
+- **Goal.** The launcher opens on a Minecraft feed: patch notes of new versions, Mojang's
+  Java news, YouTube videos about Minecraft, live Twitch streams and our own events and
+  tips. The launcher asks no one but our server for it: no minecraft.net, YouTube or
+  Twitch request from a player's computer until they choose to watch.
+- **Sources (the service only):** Mojang's launcher content (`launchercontent.mojang.com`
+  v2: Java patch notes, news) and the version manifest; YouTube channel RSS feeds (no API
+  key), a channel found by its link, @handle or a video (oEmbed); Twitch Helix with an
+  app token (`TWITCH_CLIENT_ID`, `TWITCH_CLIENT_SECRET`), game Minecraft, mature streams
+  left out; DeepL (`DEEPL_API_KEY`) translates patch notes and news into Russian and
+  Arabic, stopping at 90 % of the month's characters.
+- **No HTML reaches the launcher.** Articles are cleaned into our own blocks (headings,
+  paragraphs, lists, pictures; runs of bold, italic, code and https links); scripts,
+  frames, forms, attributes and every other address are dropped, nesting and size are
+  bounded. Translations go out as that HTML and come back through the same cleaning.
+- **Pictures** are fetched by the service, decoded with limits and re-encoded as JPEG:
+  article pictures by their SHA-256, video previews only of videos of channels the
+  service knows, stream previews only of streams in the feed, so no one makes it fetch
+  arbitrary addresses.
+- **Editorial** (`services/feed/editorial.toml`, built in): the channels per language
+  (approved list), blocked Twitch logins, events, announcements and daily tips in en, ru
+  and ar; links only to YouTube, Twitch, minecraft.net and our domain.
+- **API:** `GET /v1/feed?lang=` (a minute), `GET /v1/notes/{id}?lang=`, pictures
+  `/v1/img|yt|tw/…`, `POST /v1/channels/resolve` (a player's own channel; 10 a minute per
+  address), `GET /v1/videos?channels=` (up to 30 of a player's channels, kept on the
+  player's computer only), `/play/yt/{id}` and `/play/twitch/{login}`: a page with the
+  provider's embedded player under a CSP with no script of ours. Nothing about a player
+  is logged; nginx logs paths without query strings.
+- **In the launcher:** the Feed tab; the tab opened at launch is a setting (feed by
+  default; home when a game runs); Backups, Screenshots, Diagnostics, Console and About
+  move into "More". Videos and streams play in a player window (default) or the
+  browser, as the player chooses.
+- **Server setup (owner):** a DNS record for feed.lapi.sh behind Cloudflare, then
+  `deploy/bootstrap.sh` once, as for the other services.
