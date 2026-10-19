@@ -54,8 +54,28 @@ function Save-Screenshot($Window) {
   Write-Host "Screenshot: $Screenshot"
 }
 
+# The tabs are buttons or tabs; whichever pattern the element offers presses it.
+function Press($Element) {
+  $pattern = $null
+  if ($Element.TryGetCurrentPattern([System.Windows.Automation.InvokePattern]::Pattern, [ref]$pattern)) {
+    $pattern.Invoke()
+  } elseif ($Element.TryGetCurrentPattern([System.Windows.Automation.SelectionItemPattern]::Pattern, [ref]$pattern)) {
+    $pattern.Select()
+  } else {
+    throw "'$($Element.Current.Name)' cannot be pressed"
+  }
+}
+
 $main = Wait-For { Find-Window 'Launcher' } 30
 if (-not $main) { throw 'main window "Launcher" not found' }
+# The console check left the main window on Diagnostics: back to the feed.
+$feed = Wait-For {
+  foreach ($candidate in $main.FindAll($Scope::Descendants, [System.Windows.Automation.Condition]::TrueCondition)) {
+    if ($candidate.Current.Name -ieq 'Feed' -and $candidate.Current.IsKeyboardFocusable) { return $candidate }
+  }
+} 30
+if (-not $feed) { throw 'Feed tab not found' }
+Press $feed
 # The feed's video cards are named "Watch “<title>” by <channel>".
 $video = Wait-For {
   $byType = New-Object System.Windows.Automation.PropertyCondition($AE::ControlTypeProperty, $Button)
@@ -63,12 +83,11 @@ $video = Wait-For {
     if ($candidate.Current.Name -like 'Watch *') { return $candidate }
   }
 } 60
-if (-not $video) { throw 'no video in the feed' }
-$pattern = $null
-if (-not $video.TryGetCurrentPattern([System.Windows.Automation.InvokePattern]::Pattern, [ref]$pattern)) {
-  throw 'the video card cannot be pressed'
+if (-not $video) {
+  Write-Host 'Main window shows:'; Get-Texts $main | Select-Object -First 60 | Write-Host
+  throw 'no video in the feed'
 }
-$pattern.Invoke()
+Press $video
 
 $player = Wait-For { Find-Window 'Video' } 30
 if (-not $player) { throw 'player window "Video" did not open' }
