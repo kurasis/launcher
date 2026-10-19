@@ -174,7 +174,7 @@ describe('WorldsView', () => {
     });
     expect(await screen.findByText('Our base is open · Open')).toBeInTheDocument();
     expect(screen.getByText('1 player: Guest_One')).toBeInTheDocument();
-    const card = within((await screen.findAllByText('Our base'))[0].closest('li') as HTMLElement);
+    const card = within((await screen.findByText('Our base')).closest('li') as HTMLElement);
     fireEvent.click(card.getByRole('button', { name: 'Play' }));
     expect(await card.findByText(/being installed/)).toBeInTheDocument();
     expect(called(calls, 'install_instance')).toHaveLength(1);
