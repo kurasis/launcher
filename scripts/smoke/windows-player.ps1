@@ -43,6 +43,58 @@ function Get-Tree($Within) {
   return @($all | ForEach-Object { "$($_.Current.ControlType.ProgrammaticName) '$($_.Current.Name)'" })
 }
 
+# Through the DevTools endpoint windows.ps1 opens: every page and frame the
+# webviews hold, and for the play page and the players its frames, what they
+# show and what they logged.
+function Invoke-Cdp([string]$Url, [string[]]$Commands, [int]$ListenMs = 2000) {
+  $socket = New-Object System.Net.WebSockets.ClientWebSocket
+  $none = [System.Threading.CancellationToken]::None
+  if (-not $socket.ConnectAsync([Uri]$Url, $none).Wait(5000)) { return @() }
+  $id = 0
+  foreach ($command in $Commands) {
+    $id++
+    $bytes = [System.Text.Encoding]::UTF8.GetBytes(('{"id":' + $id + ',' + $command.Substring(1)))
+    $socket.SendAsync((New-Object System.ArraySegment[byte] (, $bytes)), 'Text', $true, $none).Wait(5000) | Out-Null
+  }
+  $messages = @()
+  $buffer = New-Object byte[] 262144
+  $text = New-Object System.Text.StringBuilder
+  $deadline = (Get-Date).AddMilliseconds($ListenMs)
+  while ($socket.State -eq 'Open') {
+    $left = [int]($deadline - (Get-Date)).TotalMilliseconds
+    if ($left -le 0) { break }
+    $receive = $socket.ReceiveAsync((New-Object System.ArraySegment[byte] (, $buffer)), $none)
+    if (-not $receive.Wait($left)) { break }
+    [void]$text.Append([System.Text.Encoding]::UTF8.GetString($buffer, 0, $receive.Result.Count))
+    if ($receive.Result.EndOfMessage) { $messages += $text.ToString(); [void]$text.Clear() }
+  }
+  try { $socket.Abort() } catch { }
+  return $messages
+}
+
+function Show-Webviews {
+  try {
+    $targets = Invoke-RestMethod -Uri 'http://127.0.0.1:9222/json/list' -TimeoutSec 10
+  } catch {
+    Write-Host "DevTools endpoint: $($_.Exception.Message)"
+    return
+  }
+  foreach ($target in $targets) {
+    Write-Host "-- $($target.type): $($target.url)"
+    if ($target.url -notmatch '^https://(feed\.lapi\.sh/play/|www\.youtube-nocookie\.com/|player\.twitch\.tv/)') { continue }
+    $answers = Invoke-Cdp $target.webSocketDebuggerUrl @(
+      '{"method":"Log.enable"}',
+      '{"method":"Runtime.enable"}',
+      '{"method":"Page.getFrameTree"}',
+      '{"method":"Runtime.evaluate","params":{"expression":"document.readyState + \" | \" + document.title + \" | \" + (document.body ? document.body.innerText.slice(0, 300) : \"\")"}}'
+    )
+    foreach ($answer in $answers) {
+      if ($answer -match 'executionContext') { continue }
+      Write-Host ($answer.Substring(0, [Math]::Min(600, $answer.Length)))
+    }
+  }
+}
+
 function Save-Screenshot($Window) {
   if (-not $Screenshot -or -not $Window) { return }
   $r = $Window.Current.BoundingRectangle
@@ -94,21 +146,23 @@ if (-not $player) { throw 'player window "Video" did not open' }
 Write-Host "Player window: $($player.Current.BoundingRectangle)"
 # The play page names only the window, its frame ("YouTube" or "Twitch") and
 # its link; anything else comes from the embedded player.
-$own = @('Video', 'Video - Web content', 'YouTube', 'Twitch', 'Open in browser')
+$own = @('Video', 'YouTube', 'Twitch', 'Open in browser')
 $page = Wait-For { (Get-Texts $player) -contains 'Open in browser' } 30
 if (-not $page) {
   Write-Host 'Player window tree:'
   Get-Tree $player | Select-Object -First 60 | Write-Host
+  Show-Webviews
   throw 'the play page did not load in the player window'
 }
 $texts = Wait-For {
-  $theirs = @(Get-Texts $player | Where-Object { $own -notcontains $_ })
+  $theirs = @(Get-Texts $player | Where-Object { $own -notcontains $_ -and $_ -notlike '* - Web content' })
   if ($theirs.Count -gt 0) { return , $theirs }
 } 45
 Save-Screenshot $player
 if (-not $texts) {
   Write-Host 'Player window tree:'
   Get-Tree $player | Select-Object -First 60 | Write-Host
+  Show-Webviews
   throw 'the player window shows nothing of the embedded player'
 }
 Write-Host "The embedded player shows $($texts.Count) texts, including:"

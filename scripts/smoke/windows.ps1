@@ -35,6 +35,9 @@ Step 'Start the installed launcher'
 Remove-Item -Recurse -Force -ErrorAction SilentlyContinue $dataRoot
 $stdout = Join-Path $env:RUNNER_TEMP 'launcher-stdout.log'
 $stderr = Join-Path $env:RUNNER_TEMP 'launcher-stderr.log'
+# The DevTools endpoint lets windows-player.ps1 say what the player window
+# loaded when it fails; it is opened only here, on the runner.
+$env:WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS = '--remote-debugging-port=9222'
 $process = Start-Process -FilePath $exe -PassThru -RedirectStandardOutput $stdout -RedirectStandardError $stderr
 Start-Sleep -Seconds $waitSeconds
 # A cold runner occasionally needs longer for the first start; allow up to 60 s.
