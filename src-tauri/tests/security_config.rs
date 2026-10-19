@@ -219,6 +219,11 @@ fn main_window_capability_grants_only_app_commands() {
             "allow-friends-decline-all",
             "allow-friends-report-request",
             "allow-launcher-account-export",
+            "allow-skins-mine",
+            "allow-skins-texture",
+            "allow-skins-pick",
+            "allow-skins-upload",
+            "allow-skins-remove",
             "allow-start-lifecycle-test",
             "allow-stop-lifecycle-test",
         ]

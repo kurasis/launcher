@@ -430,6 +430,69 @@ export interface FriendsView {
 
 export type FriendAction = 'accept' | 'decline' | 'cancel' | 'remove' | 'block' | 'unblock';
 
+/** The launcher account's skin or cape (skins.lapi.sh, D-065). */
+export type SkinKind = 'skin' | 'cape';
+
+/** Why a skins action failed; the service's refusals keep its codes. */
+export type SkinsProblem =
+  | 'signed_out'
+  | 'network'
+  | 'unreadable'
+  | 'bad_png'
+  | 'bad_size'
+  | 'bad_frames'
+  | 'bad_frame_ms'
+  | 'bad_model'
+  | 'too_large'
+  | 'rate_limited'
+  | 'invalid'
+  | 'server';
+
+export const SKINS_PROBLEMS: readonly SkinsProblem[] = [
+  'signed_out',
+  'network',
+  'unreadable',
+  'bad_png',
+  'bad_size',
+  'bad_frames',
+  'bad_frame_ms',
+  'bad_model',
+  'too_large',
+  'rate_limited',
+  'invalid',
+  'server',
+];
+
+/** A worn texture: a vertical strip of `frames` frames. */
+export interface WornTexture {
+  /** SHA-256 of the PNG; `skinsTexture` fetches it. */
+  hash: string;
+  /** Skins only: the slim (3-pixel) arms. */
+  slim: boolean;
+  width: number;
+  height: number;
+  frames: number;
+  /** One per frame; empty for a single frame. */
+  frameMs: number[];
+}
+
+export interface Wardrobe {
+  skin: WornTexture | null;
+  cape: WornTexture | null;
+}
+
+/** A PNG the player picked and has not uploaded yet, checked by the core. */
+export interface PickedTexture {
+  kind: SkinKind;
+  /** The file's name, plain text. */
+  name: string;
+  width: number;
+  height: number;
+  frames: number;
+  /** The file as a `data:` URL. */
+  preview: string;
+}
+
 /** A request was sent, or it met theirs and you are friends now. */
 export type FriendRequestResult = 'sent' | 'friends';
 
