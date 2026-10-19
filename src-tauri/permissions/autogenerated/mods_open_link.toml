@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-mods-open-link"
+description = "Enables the mods_open_link command without any pre-configured scope."
+commands.allow = ["mods_open_link"]
+
+[[permission]]
+identifier = "deny-mods-open-link"
+description = "Denies the mods_open_link command without any pre-configured scope."
+commands.deny = ["mods_open_link"]

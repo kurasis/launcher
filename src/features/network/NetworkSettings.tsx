@@ -14,10 +14,10 @@ const t = strings.metered;
 const MIB = 1024 * 1024;
 /** How often the count refreshes while the section is open. */
 const REFRESH_MS = 5000;
-const SOURCES: (keyof TrafficUsage)[] = ['game', 'java', 'loaders', 'metadata'];
+const SOURCES: (keyof TrafficUsage)[] = ['game', 'java', 'loaders', 'mods', 'metadata'];
 
 function total(usage: TrafficUsage): number {
-  return usage.game + usage.java + usage.loaders + usage.metadata;
+  return usage.game + usage.java + usage.loaders + usage.mods + usage.metadata;
 }
 
 /** "October 2026" for `2026-10`. */

@@ -668,7 +668,13 @@ impl Worker {
         // whether each was tried, so a failing one hands over to the other once.
         let routing = Arc::clone(self.transport.routing());
         let host = request.url.host_str().unwrap_or_default().to_owned();
-        let mut route = routing.first(&host);
+        // Sources the mirror does not copy go to their origin only.
+        let mirror = routing.mirror_allowed() && request.source.mirrored();
+        let mut route = if mirror {
+            routing.first(&host)
+        } else {
+            Route::Origin
+        };
         let (mut origin_tried, mut mirror_tried) = (false, false);
         let mut origin_unanswered = 0u32;
         loop {
@@ -701,7 +707,7 @@ impl Worker {
             };
             // The other source, if it is allowed and was not tried yet.
             let other = match route {
-                Route::Origin if routing.mirror_allowed() && !mirror_tried => Some(Route::Mirror),
+                Route::Origin if mirror && !mirror_tried => Some(Route::Mirror),
                 Route::Mirror if !origin_tried => Some(Route::Origin),
                 _ => None,
             };
@@ -728,7 +734,7 @@ impl Worker {
                         origin_unanswered += 1;
                     }
                     let origin_done = route == Route::Origin
-                        && routing.mirror_allowed()
+                        && mirror
                         && origin_unanswered >= crate::mirror::ORIGIN_ATTEMPTS;
                     if let Some(to) =
                         other.filter(|_| origin_done || transient >= self.config.max_retries)
@@ -798,7 +804,9 @@ impl Worker {
         let mut hasher = Hasher::new(&request.digest);
         let mut received = 0u64;
         // A very slow origin hands the file to the mirror (D-062).
-        let watch_slow = route == Route::Origin && self.transport.routing().mirror_allowed();
+        let watch_slow = route == Route::Origin
+            && self.transport.routing().mirror_allowed()
+            && request.source.mirrored();
         let started = std::time::Instant::now();
         let wait = if watch_slow {
             self.config.stall_timeout.min(crate::mirror::SLOW_AFTER)

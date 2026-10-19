@@ -17,6 +17,8 @@ interface InstancesViewProps {
   /** Opens the settings of an installation on the Settings screen. */
   onEditSettings: (instanceId: string) => void;
   onOpenBackups?: () => void;
+  /** What an installation holds, in the Mods tab (D-066). */
+  onOpenContent?: (instanceId: string) => void;
 }
 
 const t = strings.instances;
@@ -25,6 +27,7 @@ export function InstancesView({
   snapshot,
   onEditSettings,
   onOpenBackups = () => undefined,
+  onOpenContent,
 }: InstancesViewProps) {
   const [creating, setCreating] = useState(false);
   const [deleted, setDeleted] = useState<string | null>(null);
@@ -116,6 +119,13 @@ export function InstancesView({
               onEditSettings={() => {
                 onEditSettings(selected.id);
               }}
+              onOpenContent={
+                onOpenContent === undefined
+                  ? undefined
+                  : () => {
+                      onOpenContent(selected.id);
+                    }
+              }
               busy={snapshot.activeOperation !== null}
               onDeleted={setDeleted}
             />

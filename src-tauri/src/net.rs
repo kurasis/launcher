@@ -34,6 +34,9 @@ pub enum SourcePolicy {
     /// Our crash report service; reports leave only when the player sends them
     /// (D-061).
     CrashReports,
+    /// Files of the catalog of mods (D-066), checked against the SHA-256 the
+    /// catalog gives. Not on the download mirror.
+    ModsCatalog,
 }
 
 // `launchermeta` is Mojang's previous metadata host; older descriptors still
@@ -85,9 +88,11 @@ const ALL_SOURCE_HOSTS: &[&str] = &[
     "maven.neoforged.net",
     crate::mirror::MIRROR_HOST,
     "crash.lapi.sh",
+    crate::mods::FILES_HOST,
 ];
 
 const CRASH_REPORT_HOSTS: &[&str] = &["crash.lapi.sh"];
+const MODS_CATALOG_HOSTS: &[&str] = &[crate::mods::FILES_HOST];
 
 pub const MAX_REDIRECTS: usize = 5;
 
@@ -99,7 +104,13 @@ impl SourcePolicy {
             Self::Adoptium => ADOPTIUM_HOSTS,
             Self::ModLoaders => MOD_LOADER_HOSTS,
             Self::CrashReports => CRASH_REPORT_HOSTS,
+            Self::ModsCatalog => MODS_CATALOG_HOSTS,
         }
+    }
+
+    /// Whether the download mirror (D-062) copies this source's files.
+    pub fn mirrored(self) -> bool {
+        !matches!(self, Self::CrashReports | Self::ModsCatalog)
     }
 
     /// The artifact source whose allowlist names this URL's host: Mojang's
@@ -585,6 +596,7 @@ mod tests {
             SourcePolicy::Adoptium,
             SourcePolicy::ModLoaders,
             SourcePolicy::CrashReports,
+            SourcePolicy::ModsCatalog,
         ] {
             for host in policy.hosts() {
                 assert!(ALL_SOURCE_HOSTS.contains(host), "{host}");

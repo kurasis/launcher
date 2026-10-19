@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-mods-project"
+description = "Enables the mods_project command without any pre-configured scope."
+commands.allow = ["mods_project"]
+
+[[permission]]
+identifier = "deny-mods-project"
+description = "Denies the mods_project command without any pre-configured scope."
+commands.deny = ["mods_project"]

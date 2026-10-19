@@ -63,6 +63,18 @@ import {
   type SetInstanceNotesPayload,
   type SettingsView,
   type UpdateInstanceSettingsPayload,
+  type ContentIdentified,
+  type ContentUpdate,
+  type ContentView,
+  type ModsImportRequest,
+  type ModsInstallPayload,
+  type ModsPlan,
+  type ModsProgress,
+  type ModsProject,
+  type ModsSearchPage,
+  type ModsSearchQuery,
+  type ModsSource,
+  type ModsVersion,
 } from './contracts';
 
 function newRequestId(): string {
@@ -297,6 +309,53 @@ export const ipc = {
   /** Saves the account's data as a file; its name, or null if the dialog was closed. */
   launcherAccountExport: (title?: string): Promise<string | null> =>
     invoke<string | null>('launcher_account_export', { title }),
+  // The catalog of mods (D-066).
+  modsSearch: (query: ModsSearchQuery): Promise<ModsSearchPage> =>
+    invoke<ModsSearchPage>('mods_search', { query }),
+  /** By our ID or the slug. */
+  modsProject: (project: string): Promise<ModsProject> =>
+    invoke<ModsProject>('mods_project', { project }),
+  /** Newest first, without changelogs. */
+  modsVersions: (
+    project: string,
+    game: string | null,
+    loader: string | null,
+  ): Promise<ModsVersion[]> => invoke<ModsVersion[]>('mods_versions', { project, game, loader }),
+  modsVersion: (version: string): Promise<ModsVersion> =>
+    invoke<ModsVersion>('mods_version', { version }),
+  /** Asks the catalog to keep a version's files. */
+  modsFetchVersion: (version: string): Promise<void> => invoke('mods_fetch_version', { version }),
+  modsImports: (): Promise<ModsImportRequest[]> => invoke<ModsImportRequest[]>('mods_imports'),
+  modsImport: (input: string): Promise<ModsImportRequest> =>
+    invoke<ModsImportRequest>('mods_import', { input }),
+  modsImportState: (request: string): Promise<ModsImportRequest> =>
+    invoke<ModsImportRequest>('mods_import_state', { request }),
+  modsChoose: (request: string, source: ModsSource, id: string): Promise<ModsImportRequest> =>
+    invoke<ModsImportRequest>('mods_choose', { request, source, id }),
+  modsPlan: (payload: ModsInstallPayload): Promise<ModsPlan> =>
+    invoke<ModsPlan>('mods_plan', { payload }),
+  /** How many files are in place; progress comes as `onModsProgress`. */
+  modsInstall: (payload: ModsInstallPayload, requestId?: string): Promise<number> =>
+    invoke<number>('mods_install', { request: mutation(payload, requestId) }),
+  modsCancel: (instanceId: string): Promise<boolean> =>
+    invoke<boolean>('mods_cancel', { instanceId }),
+  modsContent: (instanceId: string): Promise<ContentView> =>
+    invoke<ContentView>('mods_content', { instanceId }),
+  modsIdentify: (instanceId: string): Promise<ContentIdentified[]> =>
+    invoke<ContentIdentified[]>('mods_identify', { instanceId }),
+  modsUpdates: (instanceId: string): Promise<ContentUpdate[]> =>
+    invoke<ContentUpdate[]>('mods_updates', { instanceId }),
+  modsSetEnabled: (
+    instanceId: string,
+    path: string,
+    enabled: boolean,
+    requestId?: string,
+  ): Promise<void> =>
+    invoke('mods_set_enabled', { request: mutation({ instanceId, path, enabled }, requestId) }),
+  modsRemove: (instanceId: string, path: string, requestId?: string): Promise<void> =>
+    invoke('mods_remove', { request: mutation({ instanceId, path }, requestId) }),
+  /** Opens an https link in the system browser; ask the player first. */
+  modsOpenLink: (url: string): Promise<void> => invoke('mods_open_link', { url }),
   /** The interface has shown: a new version's start can count as good. */
   interfaceReady: (): Promise<void> => invoke('interface_ready'),
   /** Debug builds only; release builds have no handler for this command. */
@@ -458,4 +517,9 @@ export function onFriendsRemoved(
   handler: (removed: { room: string; message: number }) => void,
 ): () => void {
   return listenTo('friends://removed', handler);
+}
+
+/** Progress of an install from the catalog of mods (D-066). */
+export function onModsProgress(handler: (progress: ModsProgress) => void): () => void {
+  return listenTo('mods://progress', handler);
 }

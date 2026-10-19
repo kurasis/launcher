@@ -52,10 +52,17 @@ fn production_csp_allows_only_packaged_assets_and_ipc() {
     assert_eq!(source_list(&csp, "script-src"), ["'self'"]);
     assert_eq!(source_list(&csp, "object-src"), ["'none'"]);
     assert_eq!(source_list(&csp, "base-uri"), ["'none'"]);
-    // Screenshots come only from the gallery protocol that Rust serves (D-050).
+    // Screenshots come only from the gallery protocol that Rust serves (D-050);
+    // pictures of the mods catalog only from its file host (D-066).
     assert_eq!(
         source_list(&csp, "img-src"),
-        ["'self'", "data:", "gallery:", "http://gallery.localhost"]
+        [
+            "'self'",
+            "data:",
+            "gallery:",
+            "http://gallery.localhost",
+            "https://files-mods.lapi.sh"
+        ]
     );
 
     for (name, sources) in &csp {
@@ -72,7 +79,9 @@ fn production_csp_allows_only_packaged_assets_and_ipc() {
                 // origins; nothing remote is allowed.
                 assert!(
                     source == "http://ipc.localhost"
-                        || (name == "img-src" && source == "http://gallery.localhost"),
+                        || (name == "img-src"
+                            && (source == "http://gallery.localhost"
+                                || source == "https://files-mods.lapi.sh")),
                     "{name} allows remote {source}"
                 );
             }
@@ -94,7 +103,8 @@ fn development_csp_is_separate_and_local_only() {
                 assert!(
                     source == "http://ipc.localhost"
                         || source == "ws://localhost:1420"
-                        || source == "http://gallery.localhost",
+                        || source == "http://gallery.localhost"
+                        || (name == "img-src" && source == "https://files-mods.lapi.sh"),
                     "{name} allows non-local {source}"
                 );
             }
@@ -219,6 +229,24 @@ fn main_window_capability_grants_only_app_commands() {
             "allow-friends-decline-all",
             "allow-friends-report-request",
             "allow-launcher-account-export",
+            "allow-mods-search",
+            "allow-mods-project",
+            "allow-mods-versions",
+            "allow-mods-version",
+            "allow-mods-fetch-version",
+            "allow-mods-imports",
+            "allow-mods-import",
+            "allow-mods-import-state",
+            "allow-mods-choose",
+            "allow-mods-plan",
+            "allow-mods-install",
+            "allow-mods-cancel",
+            "allow-mods-content",
+            "allow-mods-identify",
+            "allow-mods-updates",
+            "allow-mods-set-enabled",
+            "allow-mods-remove",
+            "allow-mods-open-link",
             "allow-start-lifecycle-test",
             "allow-stop-lifecycle-test",
         ]

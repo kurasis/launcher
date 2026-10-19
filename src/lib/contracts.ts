@@ -1037,6 +1037,8 @@ export interface TrafficUsage {
   loaders: number;
   /** Version lists and other metadata. */
   metadata: number;
+  /** Files from the catalog of mods (D-066). */
+  mods: number;
 }
 
 export interface TrafficSummary {
@@ -1097,4 +1099,222 @@ export interface FailureSummary {
   version: string;
   message: string;
   reported: boolean;
+}
+
+// ----- the catalog of mods (D-066) -----
+
+/** What the catalog holds. */
+export type ModsKind = 'mod' | 'modpack' | 'resourcepack' | 'shader' | 'datapack' | 'world';
+export type ModsSource = 'modrinth' | 'curseforge';
+export type ModsSort = 'relevance' | 'downloads' | 'updated' | 'new' | 'title';
+
+export interface ModsSearchQuery {
+  text: string;
+  kind: ModsKind | null;
+  game: string | null;
+  loader: string | null;
+  category: string | null;
+  sort: ModsSort | null;
+  offset: number;
+  limit: number | null;
+}
+
+/** A project in a list. */
+export interface ModsHit {
+  id: string;
+  kind: ModsKind;
+  slug: string;
+  title: string;
+  summary: string;
+  /** Only from files-mods.lapi.sh. */
+  icon: string | null;
+  downloads: number;
+  /** `importing`: still being brought in. */
+  status: 'importing' | 'ready';
+  /** Unix seconds. */
+  updated: number;
+  author: string | null;
+  sources: ModsSource[];
+}
+
+export interface ModsSearchPage {
+  total: number;
+  hits: ModsHit[];
+}
+
+/**
+ * A description as safe nodes (never HTML): `k` is the element; `a` has `href`
+ * (https only), `img` has `href` (files-mods.lapi.sh only) and `text` (its
+ * description).
+ */
+export interface DocNode {
+  k: string;
+  text?: string;
+  href?: string;
+  c?: DocNode[];
+}
+
+export interface ModsProject {
+  id: string;
+  kind: ModsKind;
+  slug: string;
+  title: string;
+  summary: string;
+  body: DocNode[];
+  license: string;
+  icon: string | null;
+  clientSide: 'required' | 'optional' | 'unsupported' | 'unknown';
+  serverSide: 'required' | 'optional' | 'unsupported' | 'unknown';
+  status: 'importing' | 'ready';
+  downloads: number;
+  followers: number;
+  published: number;
+  updated: number;
+  /** When the source stopped having it; the catalog keeps it. */
+  goneAt: number | null;
+  authors: { name: string; role: string }[];
+  categories: string[];
+  sources: { source: ModsSource; url: string | null }[];
+  gallery: { url: string; thumb: string | null; title: string; description: string }[];
+}
+
+export interface ModsVersionFile {
+  name: string;
+  size: number;
+  sha256: string | null;
+  primary: boolean;
+  url: string | null;
+}
+
+export interface ModsVersion {
+  id: string;
+  projectId: string;
+  number: string;
+  name: string;
+  /** Empty in lists. */
+  changelog: DocNode[];
+  channel: 'release' | 'beta' | 'alpha';
+  published: number;
+  downloads: number;
+  /** `all`: kept; otherwise the catalog fetches the files on first install. */
+  saved: 'all' | 'partial' | 'none';
+  games: string[];
+  loaders: string[];
+  files: ModsVersionFile[];
+  dependencies: {
+    kind: 'required' | 'optional' | 'incompatible' | 'embedded';
+    projectId: string | null;
+    versionId: string | null;
+  }[];
+  goneAt: number | null;
+}
+
+export interface ModsCandidate {
+  source: ModsSource;
+  id: string;
+  kind: ModsKind | null;
+  title: string;
+  summary: string;
+  author: string;
+  downloads: number;
+  /** Already in the catalog. */
+  projectId: string | null;
+}
+
+/** A request to add to the catalog. */
+export interface ModsImportRequest {
+  id: string;
+  input: string;
+  state: 'queued' | 'choosing' | 'importing' | 'ready' | 'failed';
+  error: string | null;
+  projectId: string | null;
+  candidates: ModsCandidate[];
+  created: number;
+  finished: number | null;
+}
+
+export type ModsMisfit = 'no_loader' | 'wrong_loader' | 'wrong_game';
+
+export interface ModsPlanItem {
+  projectId: string;
+  title: string;
+  kind: ModsKind;
+  icon: string | null;
+  versionId: string;
+  number: string;
+  published: number;
+  fileName: string;
+  size: number;
+  /** The catalog keeps the file already; otherwise it fetches it first. */
+  kept: boolean;
+  dependency: boolean;
+  path: string;
+  replaces: string | null;
+  /** The same file is there already. */
+  present: boolean;
+}
+
+export interface ModsPlan {
+  items: ModsPlanItem[];
+  missing: { projectId: string | null; title: string | null }[];
+  conflicts: { path: string; reason: 'incompatible' | 'name_taken'; title: string | null }[];
+  misfit: ModsMisfit | null;
+  totalBytes: number;
+  /** On a metered connection, why this download asks first (D-051). */
+  approval: ApprovalRequest | null;
+}
+
+export interface ModsInstallPayload {
+  instanceId: string;
+  version: string;
+  world: string | null;
+  replaces: string | null;
+}
+
+/** `mods://progress` while an install runs. */
+export interface ModsProgress {
+  instanceId: string;
+  phase: 'fetching' | 'downloading' | 'done' | 'failed' | 'cancelled';
+  files: number;
+  totalFiles: number;
+  bytes: number;
+  totalBytes: number;
+}
+
+export interface ContentItem {
+  /** As on disk now, relative to the game folder. */
+  path: string;
+  folder: 'mods' | 'resourcepacks' | 'shaderpacks' | 'datapacks';
+  /** Its name when on. */
+  name: string;
+  world: string | null;
+  enabled: boolean;
+  size: number;
+  directory: boolean;
+  projectId: string | null;
+  versionId: string | null;
+  title: string | null;
+  versionNumber: string | null;
+  icon: string | null;
+  dependency: boolean;
+}
+
+export interface ContentView {
+  items: ContentItem[];
+  worlds: string[];
+}
+
+/** A file of the player's that the catalog recognized. */
+export interface ContentIdentified {
+  path: string;
+  projectId: string;
+  versionId: string;
+}
+
+export interface ContentUpdate {
+  path: string;
+  projectId: string;
+  fromVersionId: string;
+  toVersionId: string;
+  toNumber: string;
 }

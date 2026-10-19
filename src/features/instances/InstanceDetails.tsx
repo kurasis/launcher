@@ -18,6 +18,8 @@ import { javaLabel } from '../settings/javaLabel';
 interface InstanceDetailsProps {
   instance: InstanceSummary;
   onEditSettings: () => void;
+  /** Opens what the installation holds in the Mods tab (D-066). */
+  onOpenContent?: (() => void) | undefined;
   /** Something runs, so the installation cannot be deleted now. */
   busy?: boolean;
   onDeleted?: (message: string) => void;
@@ -32,6 +34,7 @@ type ShownFolder = Extract<GameFolder, 'mods' | 'saves' | 'resourcepacks' | 'sha
 export function InstanceDetails({
   instance,
   onEditSettings,
+  onOpenContent,
   busy = false,
   onDeleted = () => undefined,
 }: InstanceDetailsProps) {
@@ -100,6 +103,7 @@ export function InstanceDetails({
       </dl>
       <div className={forms.actions}>
         <Button onClick={onEditSettings}>{t.edit}</Button>
+        {onOpenContent !== undefined && <Button onClick={onOpenContent}>{t.content}</Button>}
         <Button
           onClick={() => void openFolder.run(instance.id, null)}
           disabled={openFolder.pending}
