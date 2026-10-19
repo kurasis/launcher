@@ -25,7 +25,8 @@ return, a live console window with the launcher's journal and the game's output
 and packages for Windows, macOS and Linux built and
 smoke-tested in CI. Every vanilla version Mojang lists can be installed: releases,
 snapshots, beta, alpha and Classic, each type on its own tab (D-035). Versions before 1.19
-need an Intel Mac or Windows/Linux; Apple silicon runs 1.19 and later.
+need an Intel Mac or Windows/Linux; Apple silicon runs 1.19 and later. On Windows on ARM,
+1.19 and later run natively and older versions with x64 Java under Windows 11's emulation.
 Installations can run a mod loader — Forge, NeoForge, Fabric or Quilt — with a chosen
 loader version; Forge and NeoForge installers run with the installation's private Java
 (D-039). Each installation can switch its private Java between Mojang and Temurin, or run

@@ -271,8 +271,8 @@ pub fn runtime_target(ctx: &RuleContext) -> LauncherResult<(TargetOs, TargetArch
     };
     let arch = match (ctx.os, ctx.arch) {
         (_, "x86_64") => TargetArch::X64,
-        // MVP targets: Apple Silicon only; Windows/Linux ARM are out of scope.
-        (MetaOs::Osx, "arm64") => TargetArch::Aarch64,
+        // Apple silicon and Windows on ARM; Mojang has no Java for Linux on ARM.
+        (MetaOs::Osx | MetaOs::Windows, "arm64") => TargetArch::Aarch64,
         _ => {
             return Err(LauncherError::new(
                 ErrorCode::UnsupportedPlatform,
@@ -281,6 +281,22 @@ pub fn runtime_target(ctx: &RuleContext) -> LauncherResult<(TargetOs, TargetArch
         }
     };
     Ok((os, arch))
+}
+
+/// Whether a library this machine uses declares natives for its OS (the
+/// layout before 1.19, with no ARM natives on Windows or macOS).
+fn has_os_natives(descriptor: &Descriptor, ctx: &RuleContext) -> LauncherResult<bool> {
+    for library in &descriptor.libraries {
+        let Some(declared) = &library.natives else {
+            continue;
+        };
+        if declared.classifiers.contains_key(ctx.os.as_str())
+            && rules::evaluate(library.rules.as_ref(), ctx)?
+        {
+            return Ok(true);
+        }
+    }
+    Ok(false)
 }
 
 fn artifact(
@@ -397,7 +413,12 @@ pub fn plan_game_in(
     layout: LibraryLayout,
 ) -> LauncherResult<GamePlan> {
     let descriptor: Descriptor = descriptor::parse(descriptor_bytes, version_id)?;
-    let (os, arch) = runtime_target(ctx)?;
+    let (os, mut arch) = runtime_target(ctx)?;
+    // Before 1.19 the native libraries exist only for x64. Windows on ARM
+    // runs those versions with x64 Java, which Windows 11 emulates.
+    if os == TargetOs::Windows && arch == TargetArch::Aarch64 && has_os_natives(&descriptor, ctx)? {
+        arch = TargetArch::X64;
+    }
     let (jvm_arguments, game_arguments) = match &descriptor.arguments {
         Arguments::Modern { jvm, game } => (
             evaluate_arguments(jvm, ctx)?,
