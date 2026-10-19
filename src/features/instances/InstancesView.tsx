@@ -17,6 +17,8 @@ interface InstancesViewProps {
   /** Opens the settings of an installation on the Settings screen. */
   onEditSettings: (instanceId: string) => void;
   onOpenBackups?: () => void;
+  /** Opens the new-installation form with this game version chosen (from the feed). */
+  createVersion?: string | null;
 }
 
 const t = strings.instances;
@@ -25,8 +27,9 @@ export function InstancesView({
   snapshot,
   onEditSettings,
   onOpenBackups = () => undefined,
+  createVersion = null,
 }: InstancesViewProps) {
-  const [creating, setCreating] = useState(false);
+  const [creating, setCreating] = useState(createVersion !== null);
   const [deleted, setDeleted] = useState<string | null>(null);
   const select = useCommand((requestId: string, id: string) =>
     ipc.setAppSettings({ selectedInstanceId: id }, requestId),
@@ -77,6 +80,7 @@ export function InstancesView({
           <CreateInstanceForm
             network={snapshot.network}
             fixedHeapMib={snapshot.settings.defaultMaxHeapMib}
+            initialVersion={createVersion}
             onDone={(createdId) => {
               setCreating(false);
               // The new installation is the one to install and play next.

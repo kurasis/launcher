@@ -30,6 +30,8 @@ interface CreateInstanceFormProps {
   network?: NetworkStatus;
   /** The fixed memory for new installations; null uses the recommendation (D-058). */
   fixedHeapMib?: number | null;
+  /** The version chosen first, when the catalog has it (the feed's Install). */
+  initialVersion?: string | null;
 }
 
 const t = strings.createForm;
@@ -50,6 +52,7 @@ export function CreateInstanceForm({
   onDone,
   network = 'online',
   fixedHeapMib = null,
+  initialVersion = null,
 }: CreateInstanceFormProps) {
   // The name follows the chosen version and loader until the user types one.
   const [typedName, setTypedName] = useState<string | null>(null);
@@ -99,9 +102,11 @@ export function CreateInstanceForm({
         .listSupportedVersions(refresh)
         .then((view) => {
           setCatalog(view);
-          // Preselect the latest release.
+          // Preselect the version asked for, else the latest release.
           const initial =
-            view.versions.find((v) => v.id === view.latestRelease) ?? view.versions[0];
+            view.versions.find((v) => initialVersion !== null && v.id === initialVersion) ??
+            view.versions.find((v) => v.id === view.latestRelease) ??
+            view.versions[0];
           if (initial !== undefined) {
             setVersionId((current) => (current === '' ? initial.id : current));
           }
@@ -112,7 +117,7 @@ export function CreateInstanceForm({
         .finally(() => {
           setChecking(false);
         }),
-    [],
+    [initialVersion],
   );
 
   useEffect(() => {

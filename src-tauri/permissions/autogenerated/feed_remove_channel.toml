@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-feed-remove-channel"
+description = "Enables the feed_remove_channel command without any pre-configured scope."
+commands.allow = ["feed_remove_channel"]
+
+[[permission]]
+identifier = "deny-feed-remove-channel"
+description = "Denies the feed_remove_channel command without any pre-configured scope."
+commands.deny = ["feed_remove_channel"]
