@@ -48,6 +48,12 @@ At the DNS of `lapi.sh` (Cloudflare → DNS), add what the provider gives:
 3. Check:
    - the deploy step lists `LAPI_OAUTH_SMTP_URL LAPI_OAUTH_MAIL_FROM` among the
      secrets;
+   - **Actions → Account service → Run workflow** with task `mail-check`: from the
+     server it signs in to the SMTP server, sends a test letter to the `MAIL_FROM`
+     address and shows the outbox in numbers. It prints only fixed words and the SMTP
+     reply code (`535` a wrong user or password, `550`/`553` a sender or recipient
+     the provider refuses), never an address. On the server the same is
+     `sudo -u lapi-oauth /home/www/lapi/oauth/current/lapi-oauth mail-check [address]`;
    - on the server, `journalctl -u lapi-oauth` no longer says "no SMTP server";
    - a test registration gets its confirmation letter (look in spam too).
 

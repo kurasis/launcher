@@ -11,6 +11,9 @@
 //! lapi-oauth set-email <id> <email>   a new address, to be confirmed
 //! lapi-oauth confirm-email <id>       marks the address confirmed
 //! lapi-oauth counts                   numbers only (fit for a public log)
+//! lapi-oauth mail-check [address]     signs in to the SMTP server and sends a
+//!                                     test letter (to the sender by default);
+//!                                     prints no address (fit for a public log)
 //! lapi-oauth backup                   a copy of the database in data/backups
 //!                                     (daily, by lapi-oauth-backup.timer)
 //! ```
@@ -190,6 +193,7 @@ fn main() -> std::process::ExitCode {
             );
             Ok(())
         }),
+        Some("mail-check") => mail_check(arg(1), now),
         // Debug builds only, for trying the launcher against a local server
         // (Turnstile cannot run there); release builds have no such command.
         #[cfg(debug_assertions)]
@@ -221,7 +225,7 @@ fn main() -> std::process::ExitCode {
             Ok(())
         }
         _ => Err(
-            "usage: lapi-oauth serve|find <who>|disable <who>|enable <who>|sign-out <who>|set-email <who> <email>|confirm-email <who>|counts|backup"
+            "usage: lapi-oauth serve|find <who>|disable <who>|enable <who>|sign-out <who>|set-email <who> <email>|confirm-email <who>|counts|mail-check [address]|backup"
                 .to_owned(),
         ),
     };
@@ -310,6 +314,71 @@ fn serve() -> Result<(), String> {
             .await
             .map_err(|e| e.to_string())
     })
+}
+
+/// `LAPI_OAUTH_SMTP_URL` and `LAPI_OAUTH_MAIL_FROM` from the environment or,
+/// as `sudo` clears it, from the secrets file the deploy writes next to the
+/// data folder.
+fn mail_settings() -> (Option<String>, Option<String>) {
+    let file = data_dir()
+        .parent()
+        .map(|app| app.join("secrets.env"))
+        .and_then(|path| std::fs::read_to_string(path).ok())
+        .unwrap_or_default();
+    let read = |key: &str| {
+        std::env::var(key)
+            .ok()
+            .filter(|v| !v.is_empty())
+            .or_else(|| mail::env_file_value(&file, key))
+    };
+    (read("LAPI_OAUTH_SMTP_URL"), read("LAPI_OAUTH_MAIL_FROM"))
+}
+
+/// Each step on its own line, in fixed words: the workflow prints this in a
+/// public log, so no address, host or server text appears.
+fn mail_check(to: Option<&str>, now: i64) -> Result<(), String> {
+    let smtp = match mail_settings() {
+        (Some(url), Some(from)) => mail::Smtp::new(&url, &from)?,
+        (url, from) => {
+            out!(
+                "settings: missing {}",
+                [("LAPI_OAUTH_SMTP_URL", url), ("LAPI_OAUTH_MAIL_FROM", from)]
+                    .into_iter()
+                    .filter(|(_, v)| v.is_none())
+                    .map(|(k, _)| k)
+                    .collect::<Vec<_>>()
+                    .join(" ")
+            );
+            return Err("no SMTP settings".to_owned());
+        }
+    };
+    out!("settings: found");
+    let runtime = tokio::runtime::Runtime::new().map_err(|e| e.to_string())?;
+    let result = runtime.block_on(async {
+        smtp.sign_in()
+            .await
+            .map_err(|e| format!("connection and sign-in: {e}"))?;
+        out!("connection and sign-in: ok");
+        smtp.send_test(to)
+            .await
+            .map_err(|e| format!("test letter: {e}"))?;
+        out!(
+            "test letter: accepted by the SMTP server (to {})",
+            if to.is_some() {
+                "the given address"
+            } else {
+                "the sender's own address"
+            }
+        );
+        Ok::<(), String>(())
+    });
+    if let Ok(store) = open() {
+        out!(
+            "outbox: {}",
+            serde_json::to_string(&store.mail_counts(now)?).unwrap_or_default()
+        );
+    }
+    result
 }
 
 /// systemd stops the service with SIGTERM; a terminal with Ctrl+C.

@@ -3,9 +3,11 @@
 # mirror.lapi.sh (D-062), upd.lapi.sh (D-063), oauth.lapi.sh and
 # friends.lapi.sh (D-064).
 #
-#   sudo bash ~/lapi-bootstrap/bootstrap.sh <deploy-user>
+#   sudo bash ~/lapi-bootstrap/bootstrap.sh <deploy-user> [--storage /data]
 #
-# <deploy-user> is the account in the SSH_USER secret. The workflows upload
+# <deploy-user> is the account in the SSH_USER secret. --storage moves the
+# services' files to a larger disk and mounts them back in place (storage.sh);
+# once moved, they stay there without it. The workflows upload
 # this folder; after this script, they deploy the services without root. Run
 # it again when a workflow says the nginx files changed or a new service is
 # there: nginx config is root's alone, since whoever writes it can make nginx
@@ -28,7 +30,14 @@
 # answer gets its unit before back.
 set -euo pipefail
 
-DEPLOY_USER="${1:?usage: sudo bash bootstrap.sh <deploy-user>}"
+USAGE="usage: sudo bash bootstrap.sh <deploy-user> [--storage <folder on a larger disk>]"
+DEPLOY_USER="${1:?$USAGE}"
+STORAGE=
+case "${2:-}" in
+    "") ;;
+    --storage) STORAGE="${3:?$USAGE}" ;;
+    *) echo "$USAGE"; exit 1 ;;
+esac
 WWW=/home/www
 ROOT=$WWW/lapi
 NGINX=/etc/nginx/lapi
@@ -253,5 +262,10 @@ mv "$sudoers.tmp" "$sudoers"
 for service in "${SERVICES[@]}"; do
     touch "$ROOT/$service/.bootstrapped"
 done
+
+if [ -n "$STORAGE" ]; then
+    step "files to $STORAGE"
+    bash "$HERE/storage.sh" "$STORAGE"
+fi
 step "done"
 echo "The workflows deploy the services by themselves from now on."
