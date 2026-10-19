@@ -1470,8 +1470,9 @@ pub fn launcher_account_open<R: Runtime>(app: AppHandle<R>, screen: String, titl
         "Launcher account: sign in"
     };
     let title = window_title(title, fallback);
-    // Windows are made on the main thread.
-    let _ = app.run_on_main_thread(move || account.open(&handle, &screen, &title));
+    // Queued, never inline: this command runs on the main thread, where a new
+    // window would stay empty and hang on Windows.
+    crate::lifecycle::queue_on_main_thread(&app, move || account.open(&handle, &screen, &title));
 }
 
 #[tauri::command]
