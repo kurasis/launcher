@@ -1253,3 +1253,44 @@ async fn a_flood_from_many_addresses_brings_the_captcha_not_a_lockout() {
         StatusCode::SEE_OTHER
     );
 }
+
+#[tokio::test]
+async fn backups_are_whole_private_and_only_the_newest_stay() {
+    let t = setup();
+    t.account("Kept", "198.51.100.60").await;
+    let dir = t._dir.path().join("backups");
+    let first = t.app.store.backup(&dir, 2).unwrap();
+    let restored = tempfile::tempdir().unwrap();
+    std::fs::copy(&first, restored.path().join("accounts.db")).unwrap();
+    let copy = crate::store::Store::open(restored.path()).unwrap();
+    assert!(copy.find_login("kept").unwrap().is_some());
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        assert_eq!(
+            std::fs::metadata(&first).unwrap().permissions().mode() & 0o777,
+            0o600
+        );
+        assert_eq!(
+            std::fs::metadata(&dir).unwrap().permissions().mode() & 0o777,
+            0o700
+        );
+    }
+    for name in [
+        "accounts-20000101-000000.db",
+        "accounts-20000102-000000.db",
+        "notes.txt",
+    ] {
+        std::fs::write(dir.join(name), b"x").unwrap();
+    }
+    t.app.store.backup(&dir, 2).unwrap();
+    let mut left: Vec<String> = std::fs::read_dir(&dir)
+        .unwrap()
+        .flatten()
+        .map(|e| e.file_name().to_string_lossy().into_owned())
+        .collect();
+    left.sort();
+    assert_eq!(left.len(), 3, "{left:?}");
+    assert!(!left.iter().any(|n| n.starts_with("accounts-2000")));
+    assert!(left.contains(&"notes.txt".to_owned()));
+}

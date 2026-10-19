@@ -1530,8 +1530,8 @@ message` plus a stack trace), with the event's level.
 - **Since then** (D-062 to D-064 and the October 2026 audit): nginx files are root's,
   in `/etc/nginx/lapi`, installed by `bootstrap.sh` only; the deploy user may only
   restart each service and run its command line; the workflows build on Ubuntu 24.04
-  and deploy from `main` (and from a feature branch while it is being built), one
-  deploy per service at a time, through the `production` environment. The units are
+  and deploy from `main` only (also when run by hand), one deploy per service at a
+  time, through the `production` environment. The units are
   hardened (system-call filter, `/home` hidden but the service's own folder), and
   `bootstrap.sh` puts a unit back if its service does not answer with the new one.
 

@@ -66,8 +66,15 @@ if [ "$SERVICE" = oauth ] && [ "$EXTRA" = --secrets ]; then
     while IFS= read -r line || [ -n "$line" ]; do
         [ -z "$line" ] && continue
         if [[ "$line" =~ $allowed ]]; then
+            key=${line%%=*}
             value=${line#*=}
-            [ -n "$value" ] && printf '%s\n' "$line" >> "$APP/secrets.env.new"
+            # systemd reads a double-quoted value with \" \\ \` and \$ as
+            # those characters; anything else is taken as it is.
+            value=${value//\\/\\\\}
+            value=${value//\"/\\\"}
+            value=${value//\`/\\\`}
+            value=${value//\$/\\\$}
+            [ -n "$value" ] && printf '%s="%s"\n' "$key" "$value" >> "$APP/secrets.env.new"
         else
             echo "a secrets line was refused (unknown key or bad characters)"
             rm -f "$APP/secrets.env.new"

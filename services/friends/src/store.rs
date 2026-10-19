@@ -2,7 +2,7 @@
 //! (`data/friends.db`). Accounts are only IDs here; nicks come from the
 //! account service. Every query takes its values as parameters.
 
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::sync::Mutex;
 
 use rusqlite::{Connection, OptionalExtension, params};
@@ -122,6 +122,49 @@ impl Store {
             .map_err(err)?;
         db.execute_batch(SCHEMA).map_err(err)?;
         Ok(Self { db: Mutex::new(db) })
+    }
+
+    /// A consistent copy of the database (`VACUUM INTO`, safe while the
+    /// service runs) as `friends-<time>.db` in `dir`, readable by this user
+    /// alone; only the newest `keep` copies stay.
+    pub fn backup(&self, dir: &Path, keep: usize) -> std::result::Result<PathBuf, String> {
+        std::fs::create_dir_all(dir).map_err(|e| format!("creating {}: {e}", dir.display()))?;
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            std::fs::set_permissions(dir, std::fs::Permissions::from_mode(0o700))
+                .map_err(|e| e.to_string())?;
+        }
+        let name = format!(
+            "friends-{}.db",
+            chrono::Utc::now().format("%Y%m%d-%H%M%S-%3f")
+        );
+        let path = dir.join(name);
+        self.db()
+            .execute("VACUUM INTO ?1", [path.to_string_lossy()])
+            .map_err(|e| format!("copying the database: {e}"))?;
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o600))
+                .map_err(|e| e.to_string())?;
+        }
+        let mut copies: Vec<PathBuf> = std::fs::read_dir(dir)
+            .map_err(|e| e.to_string())?
+            .flatten()
+            .map(|entry| entry.path())
+            .filter(|p| {
+                p.file_name()
+                    .and_then(|n| n.to_str())
+                    .is_some_and(|n| n.starts_with("friends-") && n.ends_with(".db"))
+            })
+            .collect();
+        copies.sort();
+        let extra = copies.len().saturating_sub(keep);
+        for old in &copies[..extra] {
+            std::fs::remove_file(old).map_err(|e| e.to_string())?;
+        }
+        Ok(path)
     }
 
     fn db(&self) -> std::sync::MutexGuard<'_, Connection> {

@@ -99,9 +99,11 @@ jobs:
     # production → Required reviewers makes each one wait for an approval.
     environment: production
     needs: test
+    # Only main reaches production, also when run by hand.
     if: >-
-      (github.event_name == 'push' && github.ref == 'refs/heads/main')
-      || (github.event_name == 'workflow_dispatch' && inputs.task == 'deploy')
+      github.ref == 'refs/heads/main'
+      && (github.event_name == 'push'
+          || (github.event_name == 'workflow_dispatch' && inputs.task == 'deploy'))
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v5

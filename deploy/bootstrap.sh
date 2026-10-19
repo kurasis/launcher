@@ -17,7 +17,8 @@
 #     releases, the service user alone writes its data; /home/www and
 #     /home/www/lapi become root's;
 #  3. its systemd units, if it runs as one (upd is static files and a
-#     command; the mirror also has a warming timer);
+#     command; the mirror also has a warming timer, accounts and friends a
+#     daily backup timer, docs/SERVER-BACKUPS.md);
 #  4. a Let's Encrypt certificate for <service>.lapi.sh (webroot), with a
 #     self-signed one as the fallback, and nginx reloads on renewal;
 #  5. its nginx files, with the shared ones from ./nginx, in /etc/nginx/lapi;

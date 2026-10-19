@@ -6,6 +6,8 @@
 //! ```text
 //! lapi-friends counts                 numbers only (fit for a public log)
 //! lapi-friends reports [--limit N]    reported messages, newest first
+//! lapi-friends backup                 a copy of the database in data/backups
+//!                                     (daily, by lapi-friends-backup.timer)
 //! ```
 //!
 //! Settings come from the environment: `LAPI_FRIENDS_DATA` (default
@@ -59,6 +61,12 @@ fn main() -> std::process::ExitCode {
     let args: Vec<String> = std::env::args().skip(1).collect();
     let result = match args.first().map(String::as_str) {
         Some("serve") => serve(),
+        Some("backup") => open().and_then(|store| {
+            let data = PathBuf::from(env("LAPI_FRIENDS_DATA", DATA));
+            let path = store.backup(&data.join("backups"), 14)?;
+            println!("{}", path.display());
+            Ok(())
+        }),
         Some("counts") => open().and_then(|store| {
             println!(
                 "{}",
@@ -82,7 +90,7 @@ fn main() -> std::process::ExitCode {
             println!("lapi-friends {}", env!("CARGO_PKG_VERSION"));
             Ok(())
         }
-        _ => Err("usage: lapi-friends serve|counts|reports [--limit N]".to_owned()),
+        _ => Err("usage: lapi-friends serve|counts|reports [--limit N]|backup".to_owned()),
     };
     match result {
         Ok(()) => std::process::ExitCode::SUCCESS,

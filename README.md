@@ -88,6 +88,7 @@ npm run tauri build    # release build and installers for the current OS
 | [docs/RELEASING.md](docs/RELEASING.md)             | Publishing a version as an in-app update (owner actions)              |
 | [docs/RELEASE-NOTES.md](docs/RELEASE-NOTES.md)     | The 0.1.0 qualification build (a snapshot)                            |
 | [docs/CRASH-REPORTS.md](docs/CRASH-REPORTS.md)     | Crash reports: what is sent, and reading them on the server           |
+| [docs/SERVER-BACKUPS.md](docs/SERVER-BACKUPS.md)   | Daily copies of the account and friends databases, and restoring them |
 | [docs/TRANSLATING.md](docs/TRANSLATING.md)         | Adding or changing interface languages                                |
 | [docs/AUTH-CONTRACT.md](docs/AUTH-CONTRACT.md)     | The implemented Microsoft sign-in contract                            |
 | [docs/TROUBLESHOOTING.md](docs/TROUBLESHOOTING.md) | Common problems and what to do                                        |

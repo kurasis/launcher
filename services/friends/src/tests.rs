@@ -769,3 +769,25 @@ async fn a_sign_out_or_switched_off_account_is_shut_out_within_seconds() {
         StatusCode::OK
     );
 }
+
+#[tokio::test]
+async fn backups_are_whole_private_and_only_the_newest_stay() {
+    let t = setup();
+    t.befriend(1, 2).await;
+    let dir = t._dir.path().join("backups");
+    let first = t.app.store.backup(&dir, 1).unwrap();
+    let restored = tempfile::tempdir().unwrap();
+    std::fs::copy(&first, restored.path().join("friends.db")).unwrap();
+    let copy = Store::open(restored.path()).unwrap();
+    assert_eq!(copy.counts().unwrap(), t.app.store.counts().unwrap());
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        assert_eq!(
+            std::fs::metadata(&first).unwrap().permissions().mode() & 0o777,
+            0o600
+        );
+    }
+    let second = t.app.store.backup(&dir, 1).unwrap();
+    assert!(!first.exists() && second.exists(), "only the newest stays");
+}

@@ -10,6 +10,8 @@
 //! lapi-oauth set-email <id> <email>   a new address, to be confirmed
 //! lapi-oauth confirm-email <id>       marks the address confirmed
 //! lapi-oauth counts                   numbers only (fit for a public log)
+//! lapi-oauth backup                   a copy of the database in data/backups
+//!                                     (daily, by lapi-oauth-backup.timer)
 //! ```
 //!
 //! Settings come from the environment: `LAPI_OAUTH_DATA` (default
@@ -94,6 +96,11 @@ fn main() -> std::process::ExitCode {
     let now = app::now();
     let result: Result<(), String> = match arg(0) {
         Some("serve") => serve(),
+        Some("backup") => open().and_then(|store| {
+            let path = store.backup(&data_dir().join("backups"), 14)?;
+            out!("{}", path.display());
+            Ok(())
+        }),
         Some("find") => match arg(1) {
             Some(term) => open().and_then(|store| {
                 let a = find(&store, term)?;
@@ -213,7 +220,7 @@ fn main() -> std::process::ExitCode {
             Ok(())
         }
         _ => Err(
-            "usage: lapi-oauth serve|find <who>|disable <who>|enable <who>|sign-out <who>|set-email <who> <email>|confirm-email <who>|counts"
+            "usage: lapi-oauth serve|find <who>|disable <who>|enable <who>|sign-out <who>|set-email <who> <email>|confirm-email <who>|counts|backup"
                 .to_owned(),
         ),
     };
