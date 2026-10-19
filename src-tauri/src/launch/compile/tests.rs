@@ -76,6 +76,8 @@ fn compile_as(plan: &GamePlan, identity: &LaunchIdentity) -> CompiledLaunch {
         extra_jvm_args: &[],
         extra_game_args: &[],
         fullscreen: false,
+        skins_agent: None,
+        skins_api: None,
     })
     .unwrap()
 }
@@ -197,6 +199,8 @@ fn unknown_or_misplaced_placeholders_are_errors() {
         extra_jvm_args: &[],
         extra_game_args: &[],
         fullscreen: false,
+        skins_agent: None,
+        skins_api: None,
     };
     let error = compile(&inputs(&p)).err().unwrap();
     assert_eq!(error.code, ErrorCode::UnsupportedVersionMetadata);
@@ -234,11 +238,82 @@ fn user_jvm_options_come_last_and_are_not_substituted() {
         extra_jvm_args: &extra,
         extra_game_args: &[],
         fullscreen: false,
+        skins_agent: None,
+        skins_api: None,
     })
     .unwrap();
     assert_eq!(c.jvm_args[..2], ["-Xmx2048M", "-Xms512M"]);
     assert_eq!(c.jvm_args[c.jvm_args.len() - 2..], extra);
     assert_eq!(c.main_class, "net.minecraft.client.main.Main");
+}
+
+#[test]
+fn the_skins_agent_comes_before_the_user_jvm_options() {
+    let root = root();
+    let dir = PathBuf::from("/tmp/g");
+    let id = identity();
+    let agent = root
+        .path()
+        .join("shared")
+        .join("launcherskins")
+        .join("launcherskins-agent-26.3-0.1.0.jar");
+    let extra = ["-Xmx6G".to_owned()];
+    for (bytes, version) in [(V1_21_1, "1.21.1"), (V26_3, "26.3")] {
+        let p = plan(bytes, version, MetaOs::Linux, "x86_64");
+        let inputs = |agent, api| LaunchInputs {
+            plan: &p,
+            root: &root,
+            game_dir: &dir,
+            game_assets: &dir,
+            natives_dir: &dir,
+            max_heap_mib: 2048,
+            resolution: Resolution::default(),
+            identity: &id,
+            launcher_version: "0.1.0",
+            extra_jvm_args: &extra,
+            extra_game_args: &[],
+            fullscreen: false,
+            skins_agent: agent,
+            skins_api: api,
+        };
+        let without = compile(&inputs(None, None)).unwrap();
+        assert!(
+            !without
+                .jvm_args
+                .iter()
+                .any(|a| a.starts_with("-javaagent") || a.starts_with("-Dlauncherskins")),
+            "{version}"
+        );
+        let with = compile(&inputs(Some(agent.as_path()), None)).unwrap();
+        let expected = format!("-javaagent:{}", agent.to_str().unwrap());
+        let n = with.jvm_args.len();
+        // Right before the user's options, after the version's own and the logging one.
+        assert_eq!(with.jvm_args[n - 2..], [expected.clone(), extra[0].clone()]);
+        assert_eq!(with.jvm_args[..n - 2], without.jvm_args[..n - 2]);
+        assert_eq!(with.main_class, without.main_class);
+        assert_eq!(with.game_args, without.game_args);
+        assert!(
+            with.jvm_args
+                .iter()
+                .filter(|a| a.starts_with("-javaagent"))
+                .count()
+                == 1
+        );
+
+        let api = compile(&inputs(
+            Some(agent.as_path()),
+            Some("http://127.0.0.1:8899"),
+        ))
+        .unwrap();
+        assert_eq!(
+            api.jvm_args[n - 2..],
+            [
+                "-Dlauncherskins.api=http://127.0.0.1:8899".to_owned(),
+                expected,
+                extra[0].clone()
+            ]
+        );
+    }
 }
 
 #[test]
@@ -264,6 +339,8 @@ fn fullscreen_and_user_game_arguments_come_last_and_are_not_substituted() {
         extra_jvm_args: &[],
         extra_game_args: &extra,
         fullscreen: true,
+        skins_agent: None,
+        skins_api: None,
     })
     .unwrap();
     let n = c.game_args.len();

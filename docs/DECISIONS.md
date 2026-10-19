@@ -2001,6 +2001,15 @@ archive from the Package workflow, upload it to
   6. NeoForge, Forge, 26.x and 1.12.2;
   7. the agent;
   8. automatic install by the launcher, tested on a Windows package.
+- **Automatic install (stage 8):** the jars come from the GitHub release
+  `skins-mod-v<version>`, pinned by SHA-256 and size in the launcher
+  (`src-tauri/src/skins_mod.rs`), downloaded once (not through the mirror) into
+  `shared/launcherskins` and checked again at every launch; with a loader the jar is
+  copied into `mods/` (other `launcherskins-*.jar` there are removed), without one it is
+  added with `-javaagent`.
+  The switch "Launcher skins" per installation is on by default; off removes our jars
+  from `mods/`. Exact game versions only (26.3, 1.21.1, Forge 1.12.2); a jar that cannot
+  be had never stops the game, it starts without it.
 - **Server setup (owner):** a DNS record and certificate for skins.lapi.sh, then
   `deploy/bootstrap.sh` once, as for the other services.
 

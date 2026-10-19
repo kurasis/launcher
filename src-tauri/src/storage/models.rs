@@ -667,6 +667,19 @@ pub struct InstanceFile {
     /// Start the game in fullscreen (D-056).
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub fullscreen: bool,
+    /// Add Launcher Skins to the game where a jar exists for it (D-065). On
+    /// by default: a file without the field, from before it, reads as on, and
+    /// only "off" is written.
+    #[serde(default = "launcher_skins_default", skip_serializing_if = "is_on")]
+    pub launcher_skins: bool,
+}
+
+fn launcher_skins_default() -> bool {
+    true
+}
+
+fn is_on(value: &bool) -> bool {
+    *value
 }
 
 impl InstanceFile {
@@ -1033,12 +1046,24 @@ mod tests {
             profile: None,
             game_arguments: String::new(),
             fullscreen: false,
+            launcher_skins: true,
         };
         let json = serde_json::to_value(&instance).unwrap();
         assert!(json["manifestSha1"].is_null());
         assert_eq!(json["health"], "not_installed");
-        let back: InstanceFile = serde_json::from_value(json).unwrap();
+        // On is the default and is not written; a file from before the
+        // switch existed reads as on.
+        assert!(json.get("launcherSkins").is_none());
+        let back: InstanceFile = serde_json::from_value(json.clone()).unwrap();
         assert_eq!(back, instance);
+        let off = InstanceFile {
+            launcher_skins: false,
+            ..instance
+        };
+        let json = serde_json::to_value(&off).unwrap();
+        assert_eq!(json["launcherSkins"], false);
+        let back: InstanceFile = serde_json::from_value(json).unwrap();
+        assert!(!back.launcher_skins);
     }
 
     #[test]

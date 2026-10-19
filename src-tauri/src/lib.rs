@@ -31,6 +31,7 @@ pub mod reset;
 pub mod runtime;
 pub mod secrets;
 pub mod skins;
+pub mod skins_mod;
 pub mod state;
 pub mod storage;
 pub mod sync;
@@ -503,13 +504,20 @@ fn setup(app: &mut tauri::App) -> Result<(), Box<dyn std::error::Error>> {
     app.manage(Arc::new(skins::Skins::new(&version)?));
     let auth = Arc::new(create_auth_service(app.handle())?);
     app.manage(Arc::clone(&auth));
+    // Launcher Skins' jars come from GitHub, never through the mirror (D-065).
+    let skins_mod =
+        download::transport::HttpTransport::origin_only(net::SourcePolicy::SkinsMod, &version)
+            .map_err(|e| e.message)?;
     let launcher = source.map(|source| {
-        Arc::new(launch::service::LaunchService::new(
-            Arc::new(TauriLaunchHost(app.handle().clone())),
-            source as Arc<dyn install::service::PlanSource>,
-            Arc::new(Arc::clone(&auth)),
-            &version,
-        ))
+        Arc::new(
+            launch::service::LaunchService::new(
+                Arc::new(TauriLaunchHost(app.handle().clone())),
+                source as Arc<dyn install::service::PlanSource>,
+                Arc::new(Arc::clone(&auth)),
+                &version,
+            )
+            .with_skins_mod(skins_mod),
+        )
     });
     // A game that outlived a previous launcher keeps everything blocked
     // until it exits.

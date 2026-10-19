@@ -191,6 +191,8 @@ fn real_jvm_arguments_are_accepted_by_the_managed_java() {
         extra_jvm_args: &[],
         extra_game_args: &[],
         fullscreen: false,
+        skins_agent: None,
+        skins_api: None,
     })
     .unwrap();
     assert!(

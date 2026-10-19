@@ -1233,6 +1233,9 @@ impl AppState {
                 if let Some(fullscreen) = payload.fullscreen {
                     updated.fullscreen = fullscreen;
                 }
+                if let Some(skins) = payload.launcher_skins {
+                    updated.launcher_skins = skins;
+                }
                 if let Some(arguments) = &payload.game_arguments {
                     crate::launch::arguments::parse_game_arguments(arguments)?;
                     updated.game_arguments = arguments.trim().to_owned();
@@ -2041,6 +2044,7 @@ fn new_instance(
         profile: None,
         game_arguments: String::new(),
         fullscreen: data.settings.default_fullscreen,
+        launcher_skins: true,
     }
 }
 

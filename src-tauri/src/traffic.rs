@@ -97,7 +97,8 @@ fn slot(source: SourcePolicy) -> usize {
     match source {
         SourcePolicy::MojangArtifacts => 0,
         SourcePolicy::Adoptium => 1,
-        SourcePolicy::ModLoaders => 2,
+        // The skins mod counts with the loaders' files (D-065).
+        SourcePolicy::ModLoaders | SourcePolicy::SkinsMod => 2,
         // Crash reports (D-061) and the feed (D-067) count with the metadata.
         SourcePolicy::MojangMetadata | SourcePolicy::CrashReports | SourcePolicy::Feed => 3,
     }
