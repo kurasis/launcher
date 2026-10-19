@@ -1,0 +1,161 @@
+name: Skins service
+
+# Skins and capes of launcher accounts at skins.lapi.sh (docs/DECISIONS.md
+# D-065): tests, a release build, and a deploy over SSH to
+# /home/www/lapi/skins. The server needs deploy/bootstrap.sh run as root
+# once, and again when the nginx files change (the deploy warns). It checks
+# tokens with the account service's key and asks it which account a nick
+# names, both on the server itself.
+#
+# This repository is public, and so are its workflow logs: nothing about a
+# player and nothing about the server is printed here. "Run workflow" with
+# task=counts shows numbers only.
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - services/skins/**
+      - deploy/skins/**
+      - deploy/*.sh
+      - deploy/nginx/**
+      - .github/workflows/skins-service.yml
+      - .github/actions/**
+  pull_request:
+    paths:
+      - services/skins/**
+      - deploy/skins/**
+      - deploy/*.sh
+      - deploy/nginx/**
+      - .github/workflows/skins-service.yml
+      - .github/actions/**
+  workflow_dispatch:
+    inputs:
+      task:
+        description: deploy, or counts of skins and capes
+        type: choice
+        options: [deploy, counts]
+        default: deploy
+
+permissions:
+  contents: read
+
+concurrency:
+  group: skins-service-${{ github.ref }}
+  cancel-in-progress: false
+
+env:
+  CARGO_TERM_COLOR: always
+  CARGO_INCREMENTAL: 0
+
+jobs:
+  test:
+    name: Test and build
+    if: github.event_name != 'workflow_dispatch' || inputs.task == 'deploy'
+    runs-on: ubuntu-24.04
+    defaults:
+      run:
+        working-directory: services/skins
+    steps:
+      - uses: actions/checkout@v5
+      - run: rustup show active-toolchain
+      - uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            services/skins/target
+          key: skins-${{ hashFiles('services/skins/Cargo.lock', 'rust-toolchain.toml') }}
+      - run: cargo fmt --check
+      - run: cargo clippy --locked --all-targets -- -D warnings
+      - run: cargo test --locked
+      # Ubuntu 24.04's glibc (2.39) is older than Debian 13's (2.41), so the
+      # binary runs there.
+      - run: cargo build --locked --release
+      - name: Check the nginx files
+        working-directory: ${{ github.workspace }}
+        run: bash deploy/check-nginx.sh
+      - name: Package the release
+        run: |
+          mkdir -p ../../dist-skins/nginx
+          cp target/release/lapi-skins ../../dist-skins/
+          cp ../../deploy/nginx/* ../../deploy/skins/nginx/* ../../dist-skins/nginx/
+          tar -czf ../../lapi-skins.tar.gz -C ../../dist-skins .
+      - uses: actions/upload-artifact@v4
+        with:
+          name: lapi-skins
+          path: lapi-skins.tar.gz
+          retention-days: 14
+
+  deploy:
+    # One deploy of this service at a time, from any branch or run.
+    concurrency:
+      group: skins-deploy
+      cancel-in-progress: false
+    name: Deploy to skins.lapi.sh
+    # Deploys use the production environment: Settings → Environments →
+    # production → Required reviewers makes each one wait for an approval.
+    environment: production
+    needs: test
+    # Only main reaches production, also when run by hand.
+    if: >-
+      github.ref == 'refs/heads/main'
+      && (github.event_name == 'push'
+          || (github.event_name == 'workflow_dispatch' && inputs.task == 'deploy'))
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/download-artifact@v4
+        with:
+          name: lapi-skins
+      - uses: ./.github/actions/lapi-ssh
+        with:
+          ssh-key: ${{ secrets.SSH_KEY }}
+          known-hosts: ${{ secrets.SSH_KNOWN_HOSTS }}
+      - uses: ./.github/actions/lapi-upload
+        with:
+          service: skins
+          target: ${{ secrets.SSH_USER }}@${{ secrets.SSH_HOST }}
+      - name: Deploy
+        env:
+          TARGET: ${{ secrets.SSH_USER }}@${{ secrets.SSH_HOST }}
+        run: |
+          set +e
+          ssh "$TARGET" \
+            "bash ~/.lapi-bootstrap/$SETUP/deploy.sh skins $RELEASE $ARCHIVE" 2>&1 | tee deploy.log
+          status=${PIPESTATUS[0]}
+          if grep -q NOT_BOOTSTRAPPED deploy.log; then
+            echo "::warning::The server is not set up yet: run 'sudo bash ~/lapi-bootstrap/bootstrap.sh <deploy-user>' on it once, then re-run this workflow."
+            exit 0
+          fi
+          if grep -qE 'NGINX_(PENDING|CHANGED)' deploy.log; then
+            echo "::warning::The nginx files on the server are not these: run 'sudo bash ~/lapi-bootstrap/bootstrap.sh <deploy-user>' on it to apply them."
+          fi
+          exit "$status"
+      - uses: ./.github/actions/lapi-check
+        with:
+          service: skins
+          ssh-host: ${{ secrets.SSH_HOST }}
+
+  counts:
+    name: Skins counts
+    if: github.event_name == 'workflow_dispatch' && inputs.task == 'counts'
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v5
+      - uses: ./.github/actions/lapi-ssh
+        with:
+          ssh-key: ${{ secrets.SSH_KEY }}
+          known-hosts: ${{ secrets.SSH_KNOWN_HOSTS }}
+      # `counts` prints numbers only: the logs of this public repository must
+      # not hold a nick or anything else about a player.
+      - name: Counts
+        env:
+          TARGET: ${{ secrets.SSH_USER }}@${{ secrets.SSH_HOST }}
+        run: |
+          {
+            echo '### Skins and capes'
+            echo '```json'
+            ssh "$TARGET" \
+              'sudo -n -u lapi-skins /home/www/lapi/skins/current/lapi-skins counts'
+            echo '```'
+          } | tee -a "$GITHUB_STEP_SUMMARY"

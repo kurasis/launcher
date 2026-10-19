@@ -27,6 +27,7 @@ case "$SERVICE" in
     upd) PORT="" ;;
     oauth) PORT=8783 ;;
     friends) PORT=8784 ;;
+    skins) PORT=8785 ;;
     *) echo "unknown service $SERVICE"; exit 1 ;;
 esac
 APP=/home/www/lapi/$SERVICE
