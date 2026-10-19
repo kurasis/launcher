@@ -164,6 +164,17 @@ pub struct Settings {
     /// A version that did not start here; it is not offered again.
     #[serde(default)]
     pub skipped_version: Option<String>,
+    /// A short sound when a chat message or friend request comes while the
+    /// launcher is in front.
+    #[serde(default = "on")]
+    pub chat_sound: bool,
+    /// A system notification for one while the launcher is not in front.
+    #[serde(default = "on")]
+    pub chat_notifications: bool,
+}
+
+fn on() -> bool {
+    true
 }
 
 fn default_metered_warn_mib() -> u32 {
@@ -199,6 +210,8 @@ impl Default for Settings {
             last_version: None,
             update_channel: crate::update::UpdateChannel::Stable,
             skipped_version: None,
+            chat_sound: true,
+            chat_notifications: true,
         }
     }
 }

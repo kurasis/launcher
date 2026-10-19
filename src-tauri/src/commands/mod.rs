@@ -1498,6 +1498,18 @@ pub async fn launcher_account_set_nick<R: Runtime>(
         .err()
 }
 
+/// Reads the account from the server again (after the player confirmed the
+/// email in a browser); friends tries again with the fresh token.
+#[tauri::command]
+pub async fn launcher_account_recheck<R: Runtime>(
+    app: AppHandle<R>,
+) -> Option<crate::launcher_account::AccountProblem> {
+    let account = Arc::clone(&app.state::<Arc<crate::launcher_account::LauncherAccount>>());
+    let result = account.recheck(&app.state::<AppState>()).await;
+    friends(&app).wake();
+    result.err()
+}
+
 #[tauri::command]
 pub async fn launcher_account_resend_confirmation<R: Runtime>(
     app: AppHandle<R>,

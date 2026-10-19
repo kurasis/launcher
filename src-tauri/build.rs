@@ -84,6 +84,7 @@ fn main() {
         "launcher_account_sign_out",
         "launcher_account_set_nick",
         "launcher_account_resend_confirmation",
+        "launcher_account_recheck",
         "friends_state",
         "friends_request",
         "friends_act",

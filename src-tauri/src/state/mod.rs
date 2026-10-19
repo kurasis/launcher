@@ -1711,6 +1711,12 @@ impl AppState {
                 if let Some(on) = patch.share_stats {
                     settings.share_stats = on;
                 }
+                if let Some(on) = patch.chat_sound {
+                    settings.chat_sound = on;
+                }
+                if let Some(on) = patch.chat_notifications {
+                    settings.chat_notifications = on;
+                }
                 if let Some(source) = patch.download_source {
                     settings.download_source = source;
                 }
