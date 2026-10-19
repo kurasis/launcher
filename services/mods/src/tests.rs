@@ -1143,6 +1143,14 @@ async fn the_probe_asks_every_exit_and_prints_no_answer_text() {
     );
     sites.put(
         "https://www.curseforge.com/minecraft/search?search=jei",
+        Page {
+            status: 308,
+            location: Some("https://www.curseforge.com/minecraft/search?page=1&search=jei".into()),
+            ..Page::default()
+        },
+    );
+    sites.put(
+        "https://www.curseforge.com/minecraft/search?page=1&search=jei",
         ok("<script id=\"__NEXT_DATA__\">{\"secret\":1}</script>"),
     );
     let dir = tempfile::tempdir().unwrap();
@@ -1169,7 +1177,10 @@ async fn the_probe_asks_every_exit_and_prints_no_answer_text() {
             "{lines:?}"
         );
         assert!(of("cf_project_page").contains("403 challenge"), "{lines:?}");
-        assert!(of("cf_search_page").ends_with(" page_data"), "{lines:?}");
+        assert!(
+            of("cf_search_page").ends_with(" 308 0B then 200 48B next_data"),
+            "{lines:?}"
+        );
         assert!(
             of("cf_project_api").ends_with("not_found") || of("cf_project_api").contains(" 404 "),
             "{lines:?}"

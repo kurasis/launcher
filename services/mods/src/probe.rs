@@ -21,7 +21,8 @@ enum Look {
     Nothing,
     /// The first file's id in a list of files (for the checks after it).
     FirstFile,
-    /// A Next.js page: whether it carries its data (`__NEXT_DATA__`).
+    /// A page: which kinds of readable data it carries (a redirect within
+    /// the site is followed once).
     PageData,
     /// A redirect: whether it goes to forgecdn.
     ToCdn,
@@ -128,6 +129,35 @@ fn line(exit: &str, check: &str, result: &Result<Reply, FetchError>, seen: Optio
     out
 }
 
+/// The kinds of data a page carries that a worker could read: the Pages
+/// Router's `__NEXT_DATA__`, the App Router's `self.__next_f` stream,
+/// JSON-LD and Open Graph tags. Our words only.
+fn page_data(page: &[u8]) -> String {
+    let has = |needle: &[u8]| page.windows(needle.len()).any(|w| w == needle);
+    let kinds: Vec<&str> = [
+        (&b"__NEXT_DATA__"[..], "next_data"),
+        (b"self.__next_f", "next_flight"),
+        (b"application/ld+json", "ld_json"),
+        (b"og:description", "og_tags"),
+    ]
+    .into_iter()
+    .filter(|(needle, _)| has(needle))
+    .map(|(_, name)| name)
+    .collect();
+    if kinds.is_empty() {
+        "no_page_data".to_owned()
+    } else {
+        kinds.join(",")
+    }
+}
+
+/// A proxy's address with another scheme (`http`, `socks5h`), to see
+/// whether the proxy speaks another protocol than its address says.
+pub fn with_scheme(proxy: &str, scheme: &str) -> Option<String> {
+    let (_, rest) = proxy.split_once("://")?;
+    Some(format!("{scheme}://{rest}"))
+}
+
 /// Asks every check through every exit; returns the lines to print.
 pub async fn run(client: &Client, tmp: &Path) -> Vec<String> {
     let mut lines = vec![format!("exits {}", client.exits())];
@@ -142,12 +172,16 @@ pub async fn run(client: &Client, tmp: &Path) -> Vec<String> {
         };
         let mut file = None;
         let mut index = 0;
+        let mut refused = false;
         loop {
             let list = checks(file);
             let Some(check) = list.get(index) else { break };
             index += 1;
             let _ = std::fs::remove_file(&body);
-            let result = client.once(exit, &check.url, &body, MAX_BYTES).await;
+            let result = client.once(exit, None, &check.url, &body, MAX_BYTES).await;
+            if index == 1 && matches!(result, Err(FetchError::Network(_))) {
+                refused = true;
+            }
             let read = || std::fs::read(&body).unwrap_or_default();
             let ok = matches!(&result, Ok(r) if r.status == 200);
             let seen = match check.look {
@@ -155,35 +189,72 @@ pub async fn run(client: &Client, tmp: &Path) -> Vec<String> {
                 Look::FirstFile => {
                     file = if ok { first_file(&read()) } else { None };
                     Some(if file.is_some() {
-                        "file_found"
+                        "file_found".to_owned()
                     } else {
-                        "no_file"
+                        "no_file".to_owned()
                     })
                 }
-                Look::PageData => ok.then(|| {
-                    let page = read();
-                    if page.windows(13).any(|w| w == b"__NEXT_DATA__") {
-                        "page_data"
-                    } else {
-                        "no_page_data"
-                    }
-                }),
-                Look::ToCdn => match &result {
+                Look::PageData => match &result {
+                    Ok(r) if r.status == 200 => Some(page_data(&read())),
+                    // One hop within the site, as a browser would.
                     Ok(r) if (300..400).contains(&r.status) => {
-                        Some(if r.location.as_deref().is_some_and(to_cdn) {
-                            "to_forgecdn"
-                        } else {
-                            "elsewhere"
-                        })
+                        match r.location.as_deref().filter(|l| same_site(l)) {
+                            Some(next) => {
+                                let next = next.to_owned();
+                                let _ = std::fs::remove_file(&body);
+                                Some(
+                                    match client.once(exit, None, &next, &body, MAX_BYTES).await {
+                                        Ok(r) if r.status == 200 => {
+                                            format!("then 200 {}B {}", r.size, page_data(&read()))
+                                        }
+                                        Ok(r) => format!(
+                                            "then {}{}",
+                                            r.status,
+                                            if r.challenge { " challenge" } else { "" }
+                                        ),
+                                        Err(e) => format!("then {}", e.code()),
+                                    },
+                                )
+                            }
+                            None => Some("elsewhere".to_owned()),
+                        }
                     }
                     _ => None,
                 },
+                Look::ToCdn => match &result {
+                    Ok(r) if (300..400).contains(&r.status) => Some(
+                        if r.location.as_deref().is_some_and(to_cdn) {
+                            "to_forgecdn"
+                        } else {
+                            "elsewhere"
+                        }
+                        .to_owned(),
+                    ),
+                    _ => None,
+                },
             };
-            lines.push(line(&name, check.name, &result, seen));
+            lines.push(line(&name, check.name, &result, seen.as_deref()));
+        }
+        // A proxy that refused the first request: does it speak another
+        // protocol than its address says?
+        if refused && client.is_proxy(exit) {
+            for scheme in ["http", "socks5h"] {
+                let _ = std::fs::remove_file(&body);
+                let result = client
+                    .once(exit, Some(scheme), &checks(None)[1].url, &body, MAX_BYTES)
+                    .await;
+                lines.push(line(&format!("{name}/{scheme}"), "cf_files", &result, None));
+            }
         }
     }
     let _ = std::fs::remove_file(&body);
     lines
+}
+
+/// An address on www.curseforge.com.
+fn same_site(url: &str) -> bool {
+    crate::fetch::site(url).is_some()
+        && reqwest::Url::parse(url).is_ok_and(|u| u.host_str() == Some("www.curseforge.com"))
 }
 
 /// A redirect to one of forgecdn's file hosts.
@@ -222,6 +293,27 @@ mod tests {
         assert_eq!(text, "proxy2   cf_project_page  403 challenge 512B");
         let text = line("direct", "cf_files", &Err(FetchError::Network(28)), None);
         assert_eq!(text, "direct   cf_files         network_28");
+    }
+
+    #[test]
+    fn page_data_names_only_what_it_found() {
+        assert_eq!(page_data(b"<html>nothing</html>"), "no_page_data");
+        assert_eq!(
+            page_data(
+                b"<script>self.__next_f.push([1,\"x\"])</script><meta property=\"og:description\">"
+            ),
+            "next_flight,og_tags"
+        );
+        assert_eq!(page_data(b"<script id=\"__NEXT_DATA__\">"), "next_data");
+    }
+
+    #[test]
+    fn a_scheme_is_swapped_and_nothing_else() {
+        assert_eq!(
+            with_scheme("socks5://u:p@203.0.113.1:8000", "http").as_deref(),
+            Some("http://u:p@203.0.113.1:8000")
+        );
+        assert_eq!(with_scheme("no scheme", "http"), None);
     }
 
     #[test]
