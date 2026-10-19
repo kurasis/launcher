@@ -369,6 +369,20 @@ fn harness_commands_are_registered_only_in_debug_builds() {
     assert!(main.contains("#[cfg(debug_assertions)]"));
 }
 
+/// `Object.prototype` is frozen in the launcher's own pages only (D-006): Tauri's
+/// `freezePrototype` froze it in the player window's embedded players too, and
+/// on Windows they stayed black (D-067).
+#[test]
+fn prototype_is_frozen_in_own_pages_only() {
+    let conf = json(TAURI_CONF);
+    assert_eq!(conf["app"]["security"]["freezePrototype"], false);
+    let lib = include_str!("../src/lib.rs");
+    assert!(lib.contains(".js_init_script_on_all_frames(FREEZE_PROTOTYPE_SCRIPT)"));
+    let script = launcher_lib::FREEZE_PROTOTYPE_SCRIPT;
+    assert!(script.contains("Object.freeze(Object.prototype)"));
+    assert!(script.contains("l.protocol === 'tauri:' || l.hostname === 'tauri.localhost'"));
+}
+
 /// Every window is made through `lifecycle::queue_on_main_thread` (CLAUDE.md,
 /// "Windows"). A synchronous command, a window event or a plugin callback runs
 /// on the main thread, where `run_on_main_thread` runs the task inline; a window

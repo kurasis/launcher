@@ -3,7 +3,8 @@
 #
 # Installs silently for the current user, checks the per-user location and the
 # uninstall entry, starts the launcher and waits until it holds the supervisor lock,
-# opens the console window and checks what it shows (windows-console.ps1), then
+# opens the console window and checks what it shows (windows-console.ps1), plays
+# the feed's first video in the player window (windows-player.ps1), then
 # uninstalls silently and checks that DATA_ROOT is left in place.
 param([Parameter(Mandatory = $true)][string]$Installer)
 
@@ -67,6 +68,16 @@ if ($consoleExit -ne 0) {
   Write-Host '-- stderr'; Get-Content -ErrorAction SilentlyContinue $stderr | Select-Object -Last 40 | Write-Host
   Stop-Process -Id $process.Id -Force
   throw "console window check failed ($consoleExit)"
+}
+
+Step 'Player window shows the embedded player'
+$shot = Join-Path $env:RUNNER_TEMP 'player-window.png'
+& powershell.exe -NoProfile -ExecutionPolicy Bypass -File (Join-Path $PSScriptRoot 'windows-player.ps1') -Screenshot $shot
+$playerExit = $LASTEXITCODE
+if ($playerExit -ne 0) {
+  Write-Host '-- stderr'; Get-Content -ErrorAction SilentlyContinue $stderr | Select-Object -Last 40 | Write-Host
+  Stop-Process -Id $process.Id -Force
+  throw "player window check failed ($playerExit)"
 }
 Stop-Process -Id $process.Id -Force
 $process.WaitForExit()

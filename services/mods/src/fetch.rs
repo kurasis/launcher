@@ -523,20 +523,25 @@ impl Client {
 
     /// One request through one exit, with no pace, rest, retry or redirect:
     /// what `lapi-mods probe` asks to see how each exit fares.
+    /// With `scheme`, a proxy is asked as if its address had that scheme.
     pub async fn once(
         &self,
         exit: usize,
+        scheme: Option<&str>,
         url: &str,
         to: &Path,
         max_bytes: u64,
     ) -> Result<Reply, FetchError> {
         site(url).ok_or(FetchError::NotAllowed)?;
-        let proxy = self
+        let mut proxy = self
             .exits
             .get(exit)
             .ok_or(FetchError::NoExit)?
             .proxy
             .clone();
+        if let (Some(scheme), Some(address)) = (scheme, &proxy) {
+            proxy = Some(crate::probe::with_scheme(address, scheme).ok_or(FetchError::NotAllowed)?);
+        }
         let resolve = if proxy.is_none() {
             Some(self.public_address(url).await?)
         } else {

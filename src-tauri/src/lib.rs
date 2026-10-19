@@ -647,6 +647,19 @@ async fn feed_response<R: tauri::Runtime>(
     }
 }
 
+/// Freezes `Object.prototype` in the launcher's own pages (D-006), before any of
+/// their scripts run. Tauri's `freezePrototype` setting is off instead: it froze
+/// the prototype in every frame of every window, and WebView2 runs it in
+/// cross-origin frames too, so the player window's embedded YouTube and Twitch
+/// players broke and stayed black (D-067).
+pub const FREEZE_PROTOTYPE_SCRIPT: &str = "(function () {
+  var l = window.location;
+  if (l.protocol === 'tauri:' || l.hostname === 'tauri.localhost'
+      || (l.protocol === 'http:' && l.hostname === 'localhost')) {
+    Object.freeze(Object.prototype);
+  }
+})();";
+
 /// Builds and runs the Tauri application.
 pub fn run() {
     journal::install_panic_hook();
@@ -657,6 +670,11 @@ pub fn run() {
         .plugin(tauri_plugin_single_instance::init(|app, _args, _cwd| {
             app.state::<LifecycleController>().show_main_window(app);
         }))
+        .plugin(
+            tauri::plugin::Builder::<tauri::Wry>::new("own-pages")
+                .js_init_script_on_all_frames(FREEZE_PROTOTYPE_SCRIPT)
+                .build(),
+        )
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_notification::init())
