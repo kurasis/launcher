@@ -56,6 +56,7 @@ export function accountFixture(overrides: Partial<AccountSummary> = {}): Account
       needsSignIn: false,
       problem: null,
     },
+    fullGameAllowed: false,
     ...overrides,
   };
 }
@@ -83,6 +84,8 @@ export function snapshotFixture(overrides: Partial<AppSnapshot> = {}): AppSnapsh
       shareStats: false,
       chatSound: true,
       chatNotifications: true,
+      launcherAccountOffline: false,
+      notokenOffline: false,
       installId: null,
       downloadSource: 'automatic',
       updateMode: 'auto',

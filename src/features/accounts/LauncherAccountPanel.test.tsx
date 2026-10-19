@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { mockIPC } from '@tauri-apps/api/mocks';
 import { describe, expect, it } from 'vitest';
 import type { AccountSummary, LauncherAccountView } from '../../lib/contracts';
@@ -161,5 +161,33 @@ describe('launcher account', () => {
   it('has no check button once the email is confirmed', () => {
     setup(view({ emailVerified: true }));
     expect(screen.queryByRole('button', { name: 'Check again' })).toBeNull();
+  });
+
+  it('switches the launcher account between the demo and offline', async () => {
+    const calls: { cmd: string; args: unknown }[] = [];
+    mockIPC((cmd, args) => {
+      calls.push({ cmd, args });
+      if (cmd === 'get_app_snapshot') return snapshotFixture();
+      return null;
+    });
+    const base = snapshotFixture();
+    render(
+      <AccountView
+        snapshot={{
+          ...base,
+          account: { ...base.account, launcherAccount: view(), fullGameAllowed: true },
+        }}
+      />,
+    );
+    const panel = screen.getByRole('heading', { name: 'Launcher account' }).closest('section');
+    const mode = within(panel as HTMLElement).getByRole('radiogroup', { name: 'Launch mode' });
+    fireEvent.click(within(mode).getByRole('radio', { name: 'Offline' }));
+    await waitFor(() => {
+      expect(
+        calls
+          .filter((c) => c.cmd === 'set_app_settings')
+          .map((c) => (c.args as { request: { payload: unknown } }).request.payload),
+      ).toEqual([{ launcherAccountOffline: true }]);
+    });
   });
 });

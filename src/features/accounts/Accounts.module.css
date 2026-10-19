@@ -80,3 +80,41 @@
     animation-duration: 2.4s;
   }
 }
+
+/* Demo or offline: two halves of one control. */
+.mode {
+  display: grid;
+  gap: var(--space-1);
+  justify-items: start;
+}
+
+.segmented {
+  display: inline-flex;
+  padding: 3px;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-pill);
+  background: var(--color-neutral-bg);
+}
+
+.segmented button {
+  min-width: 6.5rem;
+  padding: 0.35rem 0.9rem;
+  border: none;
+  border-radius: var(--radius-pill);
+  background: none;
+  color: var(--color-text-muted);
+  font: inherit;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.segmented button[aria-checked='true'] {
+  background: var(--color-surface);
+  color: var(--color-text);
+  box-shadow: 0 1px 3px rgb(0 0 0 / 0.15);
+}
+
+.segmented button:disabled {
+  cursor: not-allowed;
+  opacity: 0.55;
+}

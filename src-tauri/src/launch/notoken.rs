@@ -7,7 +7,11 @@
 //! - the game always runs with `--demo`; the profile has no token the Minecraft
 //!   services would accept, so online play and server joins fail as they should;
 //! - full play still goes only through the signed-in account and its fresh access
-//!   check; nothing here unlocks it.
+//!   check, with one exception: the player may switch a profile (or the launcher
+//!   account) to "offline", the full game without `--demo` and without a token,
+//!   but only while a Microsoft account with play access is signed in on this
+//!   launcher (whoever owns the game may play it offline, as other launchers
+//!   allow). Without one, every no-token launch is the demo.
 //!
 //! Debug builds started with `LAUNCHER_NOTOKEN_PROFILE=<name>` use the same profile
 //! for every launch, so automated download and launch tests need no account (D-030).
@@ -30,12 +34,15 @@ pub const DEFAULT_NAME: &str = "Player";
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct NoTokenProfile {
     name: String,
+    /// The full game offline (no `--demo`); see the module notes for when.
+    full_game: bool,
 }
 
 impl Default for NoTokenProfile {
     fn default() -> Self {
         Self {
             name: DEFAULT_NAME.to_owned(),
+            full_game: false,
         }
     }
 }
@@ -52,7 +59,19 @@ impl NoTokenProfile {
         }
         Ok(Self {
             name: name.to_owned(),
+            full_game: false,
         })
+    }
+
+    /// The same player, offline in the full game instead of the demo. The
+    /// caller checks that a Microsoft account with play access is signed in.
+    pub fn full_game(mut self, full: bool) -> Self {
+        self.full_game = full;
+        self
+    }
+
+    pub fn is_full_game(&self) -> bool {
+        self.full_game
     }
 
     /// The debug-build test profile named by `LAUNCHER_NOTOKEN_PROFILE`, if set and valid.
@@ -79,7 +98,8 @@ impl NoTokenProfile {
 }
 
 impl NoTokenProfile {
-    /// The identity a demo launch plays as.
+    /// The identity a no-token launch plays as: the demo, or offline in the
+    /// full game.
     pub fn identity(&self) -> LaunchIdentity {
         LaunchIdentity {
             player_name: self.name.clone(),
@@ -88,7 +108,7 @@ impl NoTokenProfile {
             access_token: SecretString::new("notoken-profile"),
             xuid: None,
             client_id: String::new(),
-            notoken: true,
+            notoken: !self.full_game,
             offline: false,
         }
     }
@@ -97,6 +117,15 @@ impl NoTokenProfile {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn the_demo_unless_switched_to_the_full_game() {
+        let demo = NoTokenProfile::new("Steve").unwrap();
+        assert!(demo.identity().notoken);
+        let full = demo.clone().full_game(true);
+        assert!(!full.identity().notoken);
+        assert_eq!(full.identity().uuid, demo.identity().uuid);
+    }
 
     #[test]
     fn names_follow_minecraft_rules() {

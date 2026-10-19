@@ -312,19 +312,25 @@ impl LaunchService {
     /// built-in demo player (D-045).
     pub fn mode_for(&self, instance_id: InstanceId) -> LaunchMode {
         let state = self.host.app_state();
+        // Offline in the full game only while a Microsoft account with play
+        // access is signed in here; otherwise the demo.
+        let allowed = state.full_game_allowed();
+        let settings = state.settings();
         match state.profile_for(instance_id) {
             Some(ProfileRef::Microsoft { id }) => LaunchMode::Account(id),
             Some(ProfileRef::NoToken { id }) => state
                 .notoken_name(&id)
                 .and_then(|name| super::notoken::NoTokenProfile::new(&name).ok())
-                .map(LaunchMode::NoToken)
+                .map(|p| LaunchMode::NoToken(p.full_game(allowed && settings.notoken_offline)))
                 .unwrap_or_else(|| LaunchMode::NoToken(Default::default())),
             // The launcher account plays under its nick, without a Minecraft
             // token (D-064).
             Some(ProfileRef::Launcher { id }) => state
                 .launcher_account_nick(&id)
                 .and_then(|nick| super::notoken::NoTokenProfile::new(&nick).ok())
-                .map(LaunchMode::NoToken)
+                .map(|p| {
+                    LaunchMode::NoToken(p.full_game(allowed && settings.launcher_account_offline))
+                })
                 .unwrap_or_else(|| LaunchMode::NoToken(Default::default())),
             None => LaunchMode::NoToken(Default::default()),
         }
@@ -411,6 +417,10 @@ impl LaunchService {
             diagnosis: None,
         });
         state.console().info(match &mode {
+            LaunchMode::NoToken(profile) if profile.is_full_game() => format!(
+                "Launch offline (the full game, no account check) as {}: checking the installation",
+                profile.name()
+            ),
             LaunchMode::NoToken(profile) => format!(
                 "Launch without a token (Minecraft demo) as {}: checking the installation",
                 profile.name()

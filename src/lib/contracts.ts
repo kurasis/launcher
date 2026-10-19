@@ -265,6 +265,11 @@ export interface SettingsView {
   chatSound: boolean;
   /** A system notification for one while the launcher is not in front. */
   chatNotifications: boolean;
+  /** The launcher account plays offline in the full game instead of the demo
+   * (only while a Microsoft account that owns Minecraft is signed in). */
+  launcherAccountOffline: boolean;
+  /** The same for the profiles without an account. */
+  notokenOffline: boolean;
   /** Random ID sent with crash reports only; null until the first report. */
   installId: string | null;
   /** Where downloads come from (D-062). */
@@ -484,6 +489,9 @@ export interface AccountSummary {
   /** Who installations play as unless they name another profile. */
   defaultProfile: ProfileRef | null;
   launcherAccount: LauncherAccountView;
+  /** A Microsoft account that owns Minecraft is signed in: players without a
+   * token may play offline in the full game. */
+  fullGameAllowed: boolean;
 }
 
 export type ExternalLink =
@@ -865,6 +873,8 @@ export interface SettingsPatch {
   shareStats?: boolean;
   chatSound?: boolean;
   chatNotifications?: boolean;
+  launcherAccountOffline?: boolean;
+  notokenOffline?: boolean;
   /** Replace the install ID with a new random one. */
   newInstallId?: boolean;
   downloadSource?: DownloadSource;

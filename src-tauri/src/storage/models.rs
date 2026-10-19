@@ -171,6 +171,14 @@ pub struct Settings {
     /// A system notification for one while the launcher is not in front.
     #[serde(default = "on")]
     pub chat_notifications: bool,
+    /// The launcher account plays offline in the full game instead of the
+    /// demo; only honoured while a Microsoft account with play access is
+    /// signed in here.
+    #[serde(default)]
+    pub launcher_account_offline: bool,
+    /// The same for the profiles without an account.
+    #[serde(default)]
+    pub notoken_offline: bool,
 }
 
 fn on() -> bool {
@@ -212,6 +220,8 @@ impl Default for Settings {
             skipped_version: None,
             chat_sound: true,
             chat_notifications: true,
+            launcher_account_offline: false,
+            notoken_offline: false,
         }
     }
 }

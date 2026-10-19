@@ -121,7 +121,13 @@
       "launcherCheck": "Check again",
       "launcherChecking": "Checking…",
       "launcherNowConfirmed": "Email confirmed: friends and chats are open.",
-      "launcherStillNotConfirmed": "Not confirmed yet. Open the link in the letter, then check again."
+      "launcherStillNotConfirmed": "Not confirmed yet. Open the link in the letter, then check again.",
+      "playMode": "Launch mode",
+      "modeDemo": "Demo",
+      "modeOffline": "Offline",
+      "offlineNeedsOwner": "Offline needs a Microsoft account that owns Minecraft, signed in on this launcher (below).",
+      "offlineHint": "The full game without the account check: singleplayer, and servers that let offline players in.",
+      "demoHint": "Minecraft's demo: five in-game days, no multiplayer."
     },
     "instances": {
       "title": "Installations",

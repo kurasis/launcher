@@ -151,6 +151,10 @@ pub struct SettingsPatch {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub chat_notifications: Option<bool>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub launcher_account_offline: Option<bool>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub notoken_offline: Option<bool>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub download_source: Option<crate::mirror::DownloadSource>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub update_mode: Option<crate::update::UpdateMode>,
@@ -180,6 +184,8 @@ pub struct SettingsView {
     pub share_stats: bool,
     pub chat_sound: bool,
     pub chat_notifications: bool,
+    pub launcher_account_offline: bool,
+    pub notoken_offline: bool,
     pub download_source: crate::mirror::DownloadSource,
     pub update_mode: crate::update::UpdateMode,
     pub update_channel: crate::update::UpdateChannel,
@@ -208,6 +214,8 @@ impl SettingsView {
             share_stats: settings.share_stats,
             chat_sound: settings.chat_sound,
             chat_notifications: settings.chat_notifications,
+            launcher_account_offline: settings.launcher_account_offline,
+            notoken_offline: settings.notoken_offline,
             download_source: settings.download_source,
             update_mode: settings.update_mode,
             update_channel: settings.update_channel,
@@ -370,6 +378,9 @@ pub struct AccountSummary {
     pub default_profile: Option<ProfileRef>,
     /// The launcher account (D-064).
     pub launcher_account: crate::launcher_account::LauncherAccountView,
+    /// A Microsoft account with play access is signed in here: profiles without
+    /// an account may then play offline in the full game.
+    pub full_game_allowed: bool,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

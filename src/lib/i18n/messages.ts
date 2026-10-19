@@ -121,6 +121,12 @@ export type Messages = {
     readonly launcherChecking: string;
     readonly launcherNowConfirmed: string;
     readonly launcherStillNotConfirmed: string;
+    readonly playMode: string;
+    readonly modeDemo: string;
+    readonly modeOffline: string;
+    readonly offlineNeedsOwner: string;
+    readonly offlineHint: string;
+    readonly demoHint: string;
   };
   readonly instances: {
     readonly title: string;

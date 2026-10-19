@@ -691,6 +691,58 @@ async fn the_installation_profile_decides_who_plays() {
 }
 
 #[tokio::test(flavor = "multi_thread")]
+async fn offline_in_the_full_game_only_with_an_owner_signed_in() {
+    let s = Setup::new().await;
+    let service = s.service(auth("Player"));
+    s.f.state
+        .add_notoken_profile(crate::state::dto::MutationRequest {
+            request_id: Uuid::new_v4().to_string(),
+            payload: crate::state::dto::AddNoTokenProfilePayload {
+                name: "Alex_Demo".into(),
+            },
+        })
+        .unwrap();
+    s.f.state
+        .set_app_settings(crate::state::dto::MutationRequest {
+            request_id: Uuid::new_v4().to_string(),
+            payload: crate::state::dto::SettingsPatch {
+                notoken_offline: Some(true),
+                ..Default::default()
+            },
+        })
+        .unwrap();
+    let alex = crate::launch::notoken::NoTokenProfile::new("Alex_Demo").unwrap();
+    // Switched to offline, but nobody who owns the game is signed in: the demo.
+    assert!(!s.f.state.full_game_allowed());
+    assert_eq!(
+        service.mode_for(s.instance),
+        LaunchMode::NoToken(alex.clone())
+    );
+    s.f.state
+        .update_accounts_file(Box::new(|file| {
+            file.accounts.push(crate::storage::models::AccountRecord {
+                profile_id: "0123456789abcdef0123456789abcdef".into(),
+                profile_name: "Owner".into(),
+                vault_key: "owner".into(),
+            });
+        }))
+        .unwrap();
+    assert!(s.f.state.full_game_allowed());
+    assert_eq!(
+        service.mode_for(s.instance),
+        LaunchMode::NoToken(alex.clone().full_game(true))
+    );
+    let run = service
+        .launch(&Uuid::new_v4().to_string(), s.instance)
+        .await
+        .unwrap();
+    let done = s.finished(&run.run_id).await;
+    let tail = done.output_tail.join("\n");
+    assert!(tail.contains("ARG:Alex_Demo"), "{tail}");
+    assert!(!tail.contains("ARG:--demo"), "{tail}");
+}
+
+#[tokio::test(flavor = "multi_thread")]
 async fn a_java_the_system_will_not_start_is_explained_and_frees_the_launcher() {
     // Antivirus software or a security policy refusing Java looks like this to
     // the launcher: the Java file may not be executed.

@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { type ReactNode, useEffect, useRef, useState } from 'react';
 import { Button } from '../../components/Button';
 import { Field } from '../../components/Field';
 import { Notice } from '../../components/Notice';
@@ -18,12 +18,14 @@ interface Props {
   isDefault: boolean;
   busy: boolean;
   onDefault: () => void;
+  /** How the account plays: the demo or offline (shown while signed in). */
+  mode?: ReactNode;
 }
 
 /** The launcher account (D-064): sign in or create one in its own window, the
  * nick, email confirmation, sign out. Passwords are only typed on oauth.lapi.sh's
  * pages, never here. */
-export function LauncherAccountPanel({ view, isDefault, busy, onDefault }: Props) {
+export function LauncherAccountPanel({ view, isDefault, busy, onDefault, mode }: Props) {
   const open = useCommand((_: string, screen: 'login' | 'register' | 'delete') =>
     ipc.launcherAccountOpen(
       screen,
@@ -148,6 +150,7 @@ export function LauncherAccountPanel({ view, isDefault, busy, onDefault }: Props
               </button>
             )}
           </div>
+          {mode}
           {editing ? (
             <form
               className={forms.form}

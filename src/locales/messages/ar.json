@@ -122,7 +122,13 @@
       "launcherCheck": "تحقق مرة أخرى",
       "launcherChecking": "جارٍ التحقق…",
       "launcherNowConfirmed": "تم تأكيد البريد: الأصدقاء والمحادثات متاحة.",
-      "launcherStillNotConfirmed": "لم يُؤكَّد بعد. افتح الرابط في الرسالة ثم تحقق مرة أخرى."
+      "launcherStillNotConfirmed": "لم يُؤكَّد بعد. افتح الرابط في الرسالة ثم تحقق مرة أخرى.",
+      "playMode": "وضع التشغيل",
+      "modeDemo": "تجريبي",
+      "modeOffline": "دون اتصال",
+      "offlineNeedsOwner": "يتطلب الوضع دون اتصال حساب Microsoft يملك Minecraft ومسجَّلًا في هذا المشغّل (أدناه).",
+      "offlineHint": "اللعبة الكاملة دون التحقق من الحساب: اللعب الفردي والخوادم التي تسمح باللاعبين دون اتصال.",
+      "demoHint": "النسخة التجريبية من Minecraft: خمسة أيام داخل اللعبة، دون لعب جماعي."
     },
     "instances": {
       "title": "التثبيتات",

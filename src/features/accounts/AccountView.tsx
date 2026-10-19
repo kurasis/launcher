@@ -11,6 +11,7 @@ import type {
   ExternalLink,
   MicrosoftAccount,
   ProfileRef,
+  SettingsPatch,
 } from '../../lib/contracts';
 import { ipc } from '../../lib/ipc';
 import { useShownError } from '../../lib/useShownError';
@@ -18,6 +19,7 @@ import { localizeError, strings } from '../../lib/strings';
 import { useCommand } from '../../lib/useCommand';
 import styles from './Accounts.module.css';
 import { LauncherAccountPanel } from './LauncherAccountPanel';
+import { PlayModeSwitch } from './PlayModeSwitch';
 import { sameProfile } from './players';
 import { ConfirmRemove } from './ConfirmRemove';
 
@@ -145,6 +147,9 @@ export function AccountView({ snapshot }: { snapshot: AppSnapshot }) {
   const removeProfile = useCommand((requestId: string, id: string) =>
     ipc.removeNoTokenProfile(id, requestId),
   );
+  const setMode = useCommand((requestId: string, patch: SettingsPatch) =>
+    ipc.setAppSettings(patch, requestId),
+  );
   const signingIn = account.loginOperationId !== null;
   const busy = signIn.pending || cancel.pending || setDefault.pending;
   const loginState = account.loginState;
@@ -160,9 +165,23 @@ export function AccountView({ snapshot }: { snapshot: AppSnapshot }) {
         onDefault={() => {
           if (own.id !== null) void setDefault.run({ kind: 'launcher', id: own.id });
         }}
+        mode={
+          <PlayModeSwitch
+            offline={snapshot.settings.launcherAccountOffline}
+            allowed={account.fullGameAllowed}
+            disabled={setMode.pending || !snapshot.settings.writable}
+            onChange={(offline) => void setMode.run({ launcherAccountOffline: offline })}
+          />
+        }
       />
       <Panel title={a.notokenTitle}>
         <p className={styles.hint}>{a.notokenHint}</p>
+        <PlayModeSwitch
+          offline={snapshot.settings.notokenOffline}
+          allowed={account.fullGameAllowed}
+          disabled={setMode.pending || !snapshot.settings.writable}
+          onChange={(offline) => void setMode.run({ notokenOffline: offline })}
+        />
         {account.notokenProfiles.length === 0 ? (
           <p>{a.notokenNone}</p>
         ) : (

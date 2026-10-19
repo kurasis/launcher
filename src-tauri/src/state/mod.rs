@@ -707,6 +707,11 @@ impl AppState {
     }
 
     /// The nick of the launcher account if `id` is the one signed in.
+    /// Whether no-token launches may play offline in the full game now.
+    pub fn full_game_allowed(&self) -> bool {
+        full_game_allowed(&self.lock().data)
+    }
+
     pub fn launcher_account_nick(&self, id: &str) -> Option<String> {
         self.lock()
             .data
@@ -1717,6 +1722,12 @@ impl AppState {
                 if let Some(on) = patch.chat_notifications {
                     settings.chat_notifications = on;
                 }
+                if let Some(on) = patch.launcher_account_offline {
+                    settings.launcher_account_offline = on;
+                }
+                if let Some(on) = patch.notoken_offline {
+                    settings.notoken_offline = on;
+                }
                 if let Some(source) = patch.download_source {
                     settings.download_source = source;
                 }
@@ -1877,6 +1888,13 @@ fn pending_view(accounts: &AccountsFile) -> Vec<PendingSignOut> {
         .collect()
 }
 
+/// Whoever owns the game may play it offline: a Microsoft account with play
+/// access is signed in here (an account is kept only after its access check
+/// passed).
+fn full_game_allowed(data: &Data) -> bool {
+    !data.accounts.accounts.is_empty()
+}
+
 fn account_summary(data: &Data) -> AccountSummary {
     AccountSummary {
         auth: data.auth.clone(),
@@ -1898,6 +1916,7 @@ fn account_summary(data: &Data) -> AccountSummary {
             data.accounts.launcher_account.as_ref(),
             &data.launcher_account,
         ),
+        full_game_allowed: full_game_allowed(data),
     }
 }
 
