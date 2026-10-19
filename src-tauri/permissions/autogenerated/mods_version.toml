@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-mods-version"
+description = "Enables the mods_version command without any pre-configured scope."
+commands.allow = ["mods_version"]
+
+[[permission]]
+identifier = "deny-mods-version"
+description = "Denies the mods_version command without any pre-configured scope."
+commands.deny = ["mods_version"]

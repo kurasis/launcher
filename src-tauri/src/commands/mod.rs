@@ -270,6 +270,7 @@ pub async fn delete_instance<R: Runtime>(
 ) -> LauncherResult<Option<crate::backup::SnapshotInfo>> {
     crate::state::ledger::validate_request_id(&request.request_id)?;
     let payload = request.payload;
+    mods(&app).content.ensure_idle(payload.instance_id)?;
     blocking(app, move |state| {
         crate::backup::delete_instance(state, payload.instance_id, payload.backup)
     })
@@ -906,6 +907,9 @@ pub struct RunPayload {
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct LaunchPayload {
     pub instance_id: crate::storage::paths::InstanceId,
+    /// A server to start the game straight into (a friend's invite).
+    #[serde(default)]
+    pub server: Option<String>,
 }
 
 /// Checks the installation and the account of the installation's profile (or
@@ -915,17 +919,27 @@ pub struct LaunchPayload {
 #[tauri::command]
 pub async fn launch_game(
     launcher: State<'_, Launcher>,
+    mods: State<'_, Arc<crate::mods::Mods>>,
     request: MutationRequest<LaunchPayload>,
 ) -> LauncherResult<crate::state::dto::RunSummary> {
     let launcher = launcher.get()?;
     let id = request.payload.instance_id;
+    // Not while mods are being put into its game folder (D-066).
+    mods.content.ensure_idle(id)?;
     #[cfg(debug_assertions)]
     let mode = crate::launch::notoken::NoTokenProfile::from_env()
         .map(crate::launch::service::LaunchMode::NoToken)
         .unwrap_or_else(|| launcher.mode_for(id));
     #[cfg(not(debug_assertions))]
     let mode = launcher.mode_for(id);
-    launcher.launch_as(&request.request_id, id, mode).await
+    launcher
+        .launch_joining(
+            &request.request_id,
+            id,
+            mode,
+            request.payload.server.as_deref(),
+        )
+        .await
 }
 
 /// Terminates the owned game process of `runId` after the user confirmed it.
@@ -1480,6 +1494,7 @@ pub async fn launcher_account_sign_out<R: Runtime>(app: AppHandle<R>) {
     let account = Arc::clone(&app.state::<Arc<crate::launcher_account::LauncherAccount>>());
     account.sign_out(&app.state::<AppState>()).await;
     friends(&app).wake();
+    skins(&app).forget();
 }
 
 /// Changes the nick; what went wrong comes back as a problem code.
@@ -1496,6 +1511,19 @@ pub async fn launcher_account_set_nick<R: Runtime>(
         .set_nick(&app.state::<AppState>(), nick.trim())
         .await
         .err()
+}
+
+/// Reads the account from the server again (after the player confirmed the
+/// email in a browser); friends tries again with the fresh token. Whether the
+/// email is confirmed now, or what went wrong.
+#[tauri::command]
+pub async fn launcher_account_recheck<R: Runtime>(
+    app: AppHandle<R>,
+) -> Result<bool, crate::launcher_account::AccountProblem> {
+    let account = Arc::clone(&app.state::<Arc<crate::launcher_account::LauncherAccount>>());
+    let result = account.recheck(&app.state::<AppState>()).await;
+    friends(&app).wake();
+    result
 }
 
 #[tauri::command]
@@ -1691,6 +1719,98 @@ pub async fn friends_report<R: Runtime>(
     friends(&app).report(&app, message, &reason).await
 }
 
+// The launcher account's skin and cape (D-065). What went wrong comes back as
+// a problem code. The interface never names a file: it picks one in the
+// dialog, and uploads what was picked for a kind.
+
+fn skins<R: Runtime>(app: &AppHandle<R>) -> Arc<crate::skins::Skins> {
+    Arc::clone(&app.state::<Arc<crate::skins::Skins>>())
+}
+
+type SkinsResult<T> = Result<T, crate::skins::SkinsProblem>;
+
+/// What the account wears.
+#[tauri::command]
+pub async fn skins_mine<R: Runtime>(app: AppHandle<R>) -> SkinsResult<crate::skins::Wardrobe> {
+    skins(&app).mine(&app).await
+}
+
+/// A worn texture by its hash, as a `data:` URL for the preview.
+#[tauri::command]
+pub async fn skins_texture<R: Runtime>(app: AppHandle<R>, hash: String) -> SkinsResult<String> {
+    skins(&app).texture(&hash).await
+}
+
+/// Picks a PNG for the skin or cape in the native dialog and checks it.
+/// `Ok(None)` when the dialog was closed.
+#[tauri::command]
+pub async fn skins_pick<R: Runtime>(
+    app: AppHandle<R>,
+    kind: crate::skins::Kind,
+    title: Option<String>,
+) -> SkinsResult<Option<crate::skins::PickedView>> {
+    use tauri_plugin_dialog::DialogExt;
+    let fallback = match kind {
+        crate::skins::Kind::Skin => "Choose a skin (PNG)",
+        crate::skins::Kind::Cape => "Choose a cape (PNG)",
+    };
+    let title = window_title(title, fallback);
+    let handle = app.clone();
+    let picked = tauri::async_runtime::spawn_blocking(move || {
+        handle
+            .dialog()
+            .file()
+            .set_title(title)
+            .add_filter("PNG", &["png"])
+            .blocking_pick_file()
+    })
+    .await
+    .map_err(|_| crate::skins::SkinsProblem::Unreadable)?;
+    let Some(path) = picked.and_then(|p| p.into_path().ok()) else {
+        return Ok(None);
+    };
+    skins(&app).pick(kind, path).await.map(Some)
+}
+
+/// Uploads the PNG picked for `kind`: a skin with its model, an animation
+/// with one frame duration or one per frame.
+#[tauri::command]
+pub async fn skins_upload<R: Runtime>(
+    app: AppHandle<R>,
+    kind: crate::skins::Kind,
+    slim: bool,
+    frame_ms: Option<Vec<u32>>,
+) -> SkinsResult<crate::skins::Wardrobe> {
+    if frame_ms
+        .as_ref()
+        .is_some_and(|list| list.len() > crate::skins::MAX_FRAMES as usize)
+    {
+        return Err(crate::skins::SkinsProblem::BadFrameMs);
+    }
+    let wardrobe = skins(&app)
+        .upload(&app, kind, slim, frame_ms.as_deref())
+        .await?;
+    app.state::<AppState>().console().info(format!(
+        "Launcher account: the {} was uploaded",
+        kind.as_str()
+    ));
+    Ok(wardrobe)
+}
+
+/// Takes the skin or cape off.
+#[tauri::command]
+pub async fn skins_remove<R: Runtime>(
+    app: AppHandle<R>,
+    kind: crate::skins::Kind,
+) -> SkinsResult<crate::skins::Wardrobe> {
+    let wardrobe = skins(&app).remove(&app, kind).await?;
+    app.state::<AppState>().console().info(format!(
+        "Launcher account: the {} was removed",
+        kind.as_str()
+    ));
+    Ok(wardrobe)
+}
+
 /// Opens where to get the update by hand (a `.deb`, or after installing
 /// failed); only addresses on upd.lapi.sh.
 #[tauri::command(async)]
@@ -1705,6 +1825,349 @@ pub fn open_update_page<R: Runtime>(app: AppHandle<R>) -> LauncherResult<()> {
         .ok_or_else(|| {
             crate::error::LauncherError::invalid_input("There is no update page to open.")
         })?;
+    app.opener()
+        .open_url(url.as_str(), None::<&str>)
+        .map_err(|_| {
+            crate::error::LauncherError::internal("The system browser could not be opened.")
+        })
+}
+
+// ----- the catalog of mods (D-066) -----
+
+fn mods<R: Runtime>(app: &AppHandle<R>) -> Arc<crate::mods::Mods> {
+    Arc::clone(&app.state::<Arc<crate::mods::Mods>>())
+}
+
+/// Projects of the catalog.
+#[tauri::command]
+pub async fn mods_search<R: Runtime>(
+    app: AppHandle<R>,
+    query: crate::mods::SearchQuery,
+) -> LauncherResult<crate::mods::SearchPage> {
+    crate::mods::online(&app.state::<AppState>())?;
+    mods(&app).client.search(&query).await
+}
+
+/// A project's page, by our ID or its slug.
+#[tauri::command]
+pub async fn mods_project<R: Runtime>(
+    app: AppHandle<R>,
+    project: String,
+) -> LauncherResult<crate::mods::Project> {
+    use crate::mods::Catalog;
+    crate::mods::online(&app.state::<AppState>())?;
+    mods(&app).client.project(&project).await
+}
+
+/// A project's versions for a game version and loader, newest first.
+#[tauri::command]
+pub async fn mods_versions<R: Runtime>(
+    app: AppHandle<R>,
+    project: String,
+    game: Option<String>,
+    loader: Option<String>,
+) -> LauncherResult<Vec<crate::mods::Version>> {
+    use crate::mods::Catalog;
+    crate::mods::online(&app.state::<AppState>())?;
+    mods(&app)
+        .client
+        .versions(&project, game.as_deref(), loader.as_deref())
+        .await
+}
+
+/// One version with its changelog.
+#[tauri::command]
+pub async fn mods_version<R: Runtime>(
+    app: AppHandle<R>,
+    version: String,
+) -> LauncherResult<crate::mods::Version> {
+    use crate::mods::Catalog;
+    crate::mods::online(&app.state::<AppState>())?;
+    mods(&app).client.version(&version).await
+}
+
+/// Asks the catalog to keep an older version's files.
+#[tauri::command]
+pub async fn mods_fetch_version<R: Runtime>(
+    app: AppHandle<R>,
+    version: String,
+) -> LauncherResult<()> {
+    use crate::mods::Catalog;
+    crate::mods::online(&app.state::<AppState>())?;
+    mods(&app).client.fetch(&version).await
+}
+
+/// The launcher account's requests to add to the catalog.
+#[tauri::command]
+pub async fn mods_imports<R: Runtime>(
+    app: AppHandle<R>,
+) -> LauncherResult<Vec<crate::mods::ImportRequest>> {
+    crate::mods::online(&app.state::<AppState>())?;
+    mods(&app).client.imports(&app).await
+}
+
+/// "Add to the catalog": an address or a name.
+#[tauri::command]
+pub async fn mods_import<R: Runtime>(
+    app: AppHandle<R>,
+    input: String,
+) -> LauncherResult<crate::mods::ImportRequest> {
+    crate::mods::online(&app.state::<AppState>())?;
+    mods(&app).client.import(&app, &input).await
+}
+
+#[tauri::command]
+pub async fn mods_import_state<R: Runtime>(
+    app: AppHandle<R>,
+    request: String,
+) -> LauncherResult<crate::mods::ImportRequest> {
+    crate::mods::online(&app.state::<AppState>())?;
+    mods(&app).client.import_state(&app, &request).await
+}
+
+/// The project a name found that the player picked.
+#[tauri::command]
+pub async fn mods_choose<R: Runtime>(
+    app: AppHandle<R>,
+    request: String,
+    source: String,
+    id: String,
+) -> LauncherResult<crate::mods::ImportRequest> {
+    crate::mods::online(&app.state::<AppState>())?;
+    mods(&app).client.choose(&app, &request, &source, &id).await
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct ModsInstallPayload {
+    pub instance_id: crate::storage::paths::InstanceId,
+    pub version: String,
+    /// The world a data pack goes into.
+    pub world: Option<String>,
+    /// A file of the player's that this replaces (an update).
+    pub replaces: Option<String>,
+}
+
+async fn mods_plan_for<R: Runtime>(
+    app: &AppHandle<R>,
+    payload: &ModsInstallPayload,
+) -> LauncherResult<(crate::storage::paths::DataRoot, crate::mods::content::Plan)> {
+    use crate::mods::content;
+    let state = app.state::<AppState>();
+    crate::mods::online(&state)?;
+    let (root, instance) = content::instance_of(&state, payload.instance_id)?;
+    let target = content::Target::of(&instance);
+    let lock = content::load_lock(&root, payload.instance_id);
+    let game = root.game_dir(payload.instance_id);
+    let wanted = content::Wanted {
+        version: &payload.version,
+        world: payload.world.as_deref(),
+        replaces: payload.replaces.as_deref(),
+    };
+    let mut plan = content::plan(&mods(app).client, &game, &target, &lock, &wanted).await?;
+    // A metered connection (D-051): the plan says why it asks first.
+    let settings = state.settings();
+    let month_bytes = crate::traffic::month_total(&root);
+    plan.approval = crate::traffic::caution(
+        settings.metered,
+        settings.metered_warn_mib,
+        settings.monthly_limit_mib,
+        month_bytes,
+        plan.total_bytes,
+    )
+    .map(|reason| crate::state::dto::ApprovalRequest {
+        bytes: plan.total_bytes,
+        files: plan.items.iter().filter(|i| !i.present).count() as u64,
+        reason,
+        month_bytes,
+        monthly_limit_mib: settings.monthly_limit_mib,
+    });
+    Ok((root, plan))
+}
+
+/// What installing a version into an installation would add.
+#[tauri::command]
+pub async fn mods_plan<R: Runtime>(
+    app: AppHandle<R>,
+    payload: ModsInstallPayload,
+) -> LauncherResult<crate::mods::content::Plan> {
+    mods_plan_for(&app, &payload).await.map(|(_, plan)| plan)
+}
+
+/// Installs a version (and the mods it needs) into an installation; progress
+/// comes as `mods://progress`. Returns how many files are in place.
+#[tauri::command]
+pub async fn mods_install<R: Runtime>(
+    app: AppHandle<R>,
+    request: MutationRequest<ModsInstallPayload>,
+) -> LauncherResult<usize> {
+    use tauri::Emitter;
+    crate::state::ledger::validate_request_id(&request.request_id)?;
+    let payload = request.payload;
+    let id = payload.instance_id;
+    let mods = mods(&app);
+    let claim = mods.content.claim(id)?;
+    app.state::<AppState>()
+        .activity()
+        .ensure_instance_idle(id)?;
+    let (root, plan) = mods_plan_for(&app, &payload).await?;
+    let emitter = app.clone();
+    let emit = move |progress: crate::mods::content::Progress| {
+        let _ = emitter.emit(crate::mods::PROGRESS_EVENT, progress);
+    };
+    let result = mods
+        .content
+        .install(&mods.client, &root, id, plan, &claim.cancel, &emit)
+        .await;
+    if let Err(error) = &result {
+        let phase = if error.code == crate::error::ErrorCode::OperationCancelled {
+            "cancelled"
+        } else {
+            "failed"
+        };
+        emit(crate::mods::content::Progress {
+            instance_id: id.to_string(),
+            phase,
+            files: 0,
+            total_files: 0,
+            bytes: 0,
+            total_bytes: 0,
+        });
+    }
+    drop(claim);
+    result
+}
+
+/// Stops an install into an installation.
+#[tauri::command]
+pub fn mods_cancel<R: Runtime>(
+    app: AppHandle<R>,
+    instance_id: crate::storage::paths::InstanceId,
+) -> bool {
+    mods(&app).content.cancel(instance_id)
+}
+
+/// The mods, resource packs, shaders and data packs of an installation.
+#[tauri::command]
+pub async fn mods_content<R: Runtime>(
+    app: AppHandle<R>,
+    instance_id: crate::storage::paths::InstanceId,
+) -> LauncherResult<crate::mods::content::ContentView> {
+    blocking(app, move |state| {
+        let (root, _) = crate::mods::content::instance_of(state, instance_id)?;
+        Ok(crate::mods::content::list(&root, instance_id))
+    })
+    .await
+}
+
+/// The player's own files the catalog recognizes by their hash.
+#[tauri::command]
+pub async fn mods_identify<R: Runtime>(
+    app: AppHandle<R>,
+    instance_id: crate::storage::paths::InstanceId,
+) -> LauncherResult<Vec<crate::mods::content::Identified>> {
+    crate::mods::online(&app.state::<AppState>())?;
+    let mods = mods(&app);
+    let files = {
+        let mods = Arc::clone(&mods);
+        blocking(app, move |state| {
+            let (root, _) = crate::mods::content::instance_of(state, instance_id)?;
+            Ok(mods.content.unknown_files(&root, instance_id))
+        })
+        .await?
+    };
+    crate::mods::content::identify(&mods.client, &files).await
+}
+
+/// Newer versions of what is in an installation.
+#[tauri::command]
+pub async fn mods_updates<R: Runtime>(
+    app: AppHandle<R>,
+    instance_id: crate::storage::paths::InstanceId,
+) -> LauncherResult<Vec<crate::mods::content::UpdateOffer>> {
+    use crate::mods::content;
+    let state = app.state::<AppState>();
+    crate::mods::online(&state)?;
+    let (root, instance) = content::instance_of(&state, instance_id)?;
+    let mods = mods(&app);
+    let files = {
+        let (mods, root) = (Arc::clone(&mods), root.clone());
+        tauri::async_runtime::spawn_blocking(move || mods.content.unknown_files(&root, instance_id))
+            .await
+            .map_err(|_| {
+                crate::error::LauncherError::internal("A file operation stopped unexpectedly.")
+            })?
+    };
+    let identified = content::identify(&mods.client, &files).await?;
+    let lock = content::load_lock(&root, instance_id);
+    content::updates(
+        &mods.client,
+        &content::Target::of(&instance),
+        &lock,
+        &identified,
+        &root.game_dir(instance_id),
+    )
+    .await
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct ModsFilePayload {
+    pub instance_id: crate::storage::paths::InstanceId,
+    /// Relative to the game folder.
+    pub path: String,
+    #[serde(default)]
+    pub enabled: bool,
+}
+
+/// Turns a file of an installation on or off.
+#[tauri::command]
+pub async fn mods_set_enabled<R: Runtime>(
+    app: AppHandle<R>,
+    request: MutationRequest<ModsFilePayload>,
+) -> LauncherResult<()> {
+    crate::state::ledger::validate_request_id(&request.request_id)?;
+    let payload = request.payload;
+    let mods = mods(&app);
+    let _claim = mods.content.claim(payload.instance_id)?;
+    blocking(app, move |state| {
+        state.activity().ensure_instance_idle(payload.instance_id)?;
+        let (root, _) = crate::mods::content::instance_of(state, payload.instance_id)?;
+        crate::mods::content::set_enabled(
+            &root,
+            payload.instance_id,
+            &payload.path,
+            payload.enabled,
+        )
+    })
+    .await
+}
+
+/// Deletes a file from an installation's content folders.
+#[tauri::command]
+pub async fn mods_remove<R: Runtime>(
+    app: AppHandle<R>,
+    request: MutationRequest<ModsFilePayload>,
+) -> LauncherResult<()> {
+    crate::state::ledger::validate_request_id(&request.request_id)?;
+    let payload = request.payload;
+    let mods = mods(&app);
+    let _claim = mods.content.claim(payload.instance_id)?;
+    blocking(app, move |state| {
+        state.activity().ensure_instance_idle(payload.instance_id)?;
+        let (root, _) = crate::mods::content::instance_of(state, payload.instance_id)?;
+        crate::mods::content::remove(&root, payload.instance_id, &payload.path)
+    })
+    .await
+}
+
+/// Opens a link from a project's page in the system browser: `https:` only;
+/// the interface asks the player first.
+#[tauri::command(async)]
+pub fn mods_open_link<R: Runtime>(app: AppHandle<R>, url: String) -> LauncherResult<()> {
+    use tauri_plugin_opener::OpenerExt;
+    let url = crate::mods::markdown::link(&url)
+        .ok_or_else(|| crate::error::LauncherError::invalid_input("This link cannot be opened."))?;
     app.opener()
         .open_url(url.as_str(), None::<&str>)
         .map_err(|_| {

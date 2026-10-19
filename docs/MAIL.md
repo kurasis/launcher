@@ -6,6 +6,11 @@ account was deleted". Until an SMTP server is set, letters wait in its outbox (s
 three days at most), nobody can confirm an address or reset a password by mail, and
 friends does not ask for a confirmed address.
 
+Each letter goes as HTML (the launcher's look, a button, right to left for Arabic) with a
+plain text part for clients that show only text; both say the same and are written in the
+account's language (`services/oauth/src/letters.rs`). The confirmation link opens its page
+in that language too.
+
 ## What to set
 
 In the repository on GitHub: **Settings → Secrets and variables → Actions → New

@@ -322,8 +322,20 @@ impl LauncherAccount {
         };
         let account = Arc::clone(self);
         let handle = app.clone();
-        let built = WebviewWindowBuilder::new(app, WINDOW, WebviewUrl::External(url))
+        // A packaged loading page shows at once; when it is up, the server's
+        // page loads behind it and replaces it (a fresh WebView2 is otherwise
+        // white until the page answers).
+        let opened = std::sync::atomic::AtomicBool::new(false);
+        let built = WebviewWindowBuilder::new(app, WINDOW, WebviewUrl::App(LOADING_PAGE.into()))
             .title(title)
+            .on_page_load(move |window, payload| {
+                if payload.event() == tauri::webview::PageLoadEvent::Finished
+                    && loading_page(payload.url())
+                    && !opened.swap(true, std::sync::atomic::Ordering::SeqCst)
+                {
+                    let _ = window.navigate(url.clone());
+                }
+            })
             .inner_size(460.0, 720.0)
             .min_inner_size(360.0, 520.0)
             // Nothing of this window stays on the computer after it closes.
@@ -564,6 +576,19 @@ impl LauncherAccount {
         Ok(())
     }
 
+    /// Asks the server again what it knows about the account (a confirmed
+    /// email, a new nick): the access token kept here was made before, and the
+    /// friends server reads the confirmation from it. `Ok(true)` when the email
+    /// is confirmed.
+    pub async fn recheck(&self, state: &AppState) -> Result<bool, AccountProblem> {
+        *self.access.lock().await = None;
+        self.access_token(state).await?;
+        Ok(state
+            .accounts_file()
+            .launcher_account
+            .is_some_and(|record| record.email_verified))
+    }
+
     pub async fn resend_confirmation(&self, state: &AppState) -> Result<(), AccountProblem> {
         let token = self.access_token(state).await?;
         let answer = self
@@ -685,7 +710,27 @@ fn deleted_page(url: &url::Url) -> bool {
 }
 
 /// Where the window may go: our server's pages and Cloudflare Turnstile.
+/// The loading page in the packaged interface (`public/`).
+const LOADING_PAGE: &str = "account-loading.html";
+
+/// The packaged loading page, as each system serves the interface: `tauri://localhost`
+/// (macOS, Linux), `http://tauri.localhost` (Windows), the dev server in debug builds.
+fn loading_page(url: &url::Url) -> bool {
+    let packaged = matches!(
+        (url.scheme(), url.host_str()),
+        ("tauri", Some("localhost")) | ("http" | "https", Some("tauri.localhost"))
+    );
+    let dev = cfg!(debug_assertions)
+        && url.scheme() == "http"
+        && url.host_str() == Some("localhost")
+        && url.port() == Some(1420);
+    (packaged || dev) && url.path() == format!("/{LOADING_PAGE}") && url.query().is_none()
+}
+
 fn allowed(url: &url::Url) -> bool {
+    if loading_page(url) {
+        return true;
+    }
     let Ok(ours) = url::Url::parse(base()) else {
         return false;
     };
@@ -810,6 +855,9 @@ mod tests {
             "https://challenges.cloudflare.com/cdn-cgi/challenge-platform/x",
             "about:blank",
             "about:srcdoc",
+            // The packaged loading page, as each system serves it.
+            "tauri://localhost/account-loading.html",
+            "http://tauri.localhost/account-loading.html",
         ] {
             assert!(allowed(&url(ok)), "{ok}");
         }
@@ -822,6 +870,10 @@ mod tests {
             "javascript:alert(1)",
             "data:text/html,<script>alert(1)</script>",
             "tauri://localhost/index.html",
+            "http://tauri.localhost/index.html",
+            "tauri://localhost/account-loading.html?next=https://evil.example/",
+            "https://evil.example/account-loading.html",
+            "http://tauri.localhost.evil.example/account-loading.html",
         ] {
             assert!(!allowed(&url(bad)), "{bad}");
         }

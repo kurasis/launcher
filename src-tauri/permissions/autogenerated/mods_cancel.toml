@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-mods-cancel"
+description = "Enables the mods_cancel command without any pre-configured scope."
+commands.allow = ["mods_cancel"]
+
+[[permission]]
+identifier = "deny-mods-cancel"
+description = "Denies the mods_cancel command without any pre-configured scope."
+commands.deny = ["mods_cancel"]

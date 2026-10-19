@@ -7,10 +7,18 @@ import type { AppSnapshot, RememberedView, SettingsView } from '../lib/contracts
 
 /** Screens of the main window. */
 export type View =
-  'feed' | 'home' | 'account' | 'settings' | 'backups' | 'screenshots' | 'diagnostics' | 'about';
+  | 'feed'
+  | 'home'
+  | 'mods'
+  | 'account'
+  | 'settings'
+  | 'backups'
+  | 'screenshots'
+  | 'diagnostics'
+  | 'about';
 
-/** Tabs in the row, in order: the feed (D-067) first. */
-export const rowViews: readonly View[] = ['feed', 'home', 'account', 'settings'];
+/** Tabs in the row, in order: the feed (D-067) first, the mods catalog (D-066) after Installations. */
+export const rowViews: readonly View[] = ['feed', 'home', 'mods', 'account', 'settings'];
 
 /** Whether a screen can be opened with these settings: the feed only while it is on. */
 export function viewShown(view: View, settings: SettingsView | undefined): boolean {

@@ -54,7 +54,8 @@ fn production_csp_allows_only_packaged_assets_and_ipc() {
     assert_eq!(source_list(&csp, "object-src"), ["'none'"]);
     assert_eq!(source_list(&csp, "base-uri"), ["'none'"]);
     // Screenshots and the feed's pictures come only from the protocols that
-    // Rust serves (D-050, D-067).
+    // Rust serves (D-050, D-067); pictures of the mods catalog only from its
+    // file host (D-066).
     assert_eq!(
         source_list(&csp, "img-src"),
         [
@@ -63,7 +64,8 @@ fn production_csp_allows_only_packaged_assets_and_ipc() {
             "gallery:",
             "http://gallery.localhost",
             "feed:",
-            "http://feed.localhost"
+            "http://feed.localhost",
+            "https://files-mods.lapi.sh"
         ]
     );
 
@@ -83,7 +85,8 @@ fn production_csp_allows_only_packaged_assets_and_ipc() {
                     source == "http://ipc.localhost"
                         || (name == "img-src"
                             && (source == "http://gallery.localhost"
-                                || source == "http://feed.localhost")),
+                                || source == "http://feed.localhost"
+                                || source == "https://files-mods.lapi.sh")),
                     "{name} allows remote {source}"
                 );
             }
@@ -106,7 +109,8 @@ fn development_csp_is_separate_and_local_only() {
                     source == "http://ipc.localhost"
                         || source == "ws://localhost:1420"
                         || source == "http://gallery.localhost"
-                        || source == "http://feed.localhost",
+                        || source == "http://feed.localhost"
+                        || (name == "img-src" && source == "https://files-mods.lapi.sh"),
                     "{name} allows non-local {source}"
                 );
             }
@@ -217,6 +221,7 @@ fn main_window_capability_grants_only_app_commands() {
             "allow-launcher-account-sign-out",
             "allow-launcher-account-set-nick",
             "allow-launcher-account-resend-confirmation",
+            "allow-launcher-account-recheck",
             "allow-friends-state",
             "allow-friends-request",
             "allow-friends-act",
@@ -231,6 +236,29 @@ fn main_window_capability_grants_only_app_commands() {
             "allow-friends-decline-all",
             "allow-friends-report-request",
             "allow-launcher-account-export",
+            "allow-mods-search",
+            "allow-mods-project",
+            "allow-mods-versions",
+            "allow-mods-version",
+            "allow-mods-fetch-version",
+            "allow-mods-imports",
+            "allow-mods-import",
+            "allow-mods-import-state",
+            "allow-mods-choose",
+            "allow-mods-plan",
+            "allow-mods-install",
+            "allow-mods-cancel",
+            "allow-mods-content",
+            "allow-mods-identify",
+            "allow-mods-updates",
+            "allow-mods-set-enabled",
+            "allow-mods-remove",
+            "allow-mods-open-link",
+            "allow-skins-mine",
+            "allow-skins-texture",
+            "allow-skins-pick",
+            "allow-skins-upload",
+            "allow-skins-remove",
             "allow-feed-get",
             "allow-feed-note",
             "allow-feed-play",

@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-mods-imports"
+description = "Enables the mods_imports command without any pre-configured scope."
+commands.allow = ["mods_imports"]
+
+[[permission]]
+identifier = "deny-mods-imports"
+description = "Denies the mods_imports command without any pre-configured scope."
+commands.deny = ["mods_imports"]

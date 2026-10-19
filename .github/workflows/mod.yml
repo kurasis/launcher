@@ -2,6 +2,10 @@ name: Skins mod
 
 # Launcher Skins (docs/DECISIONS.md D-065): the core's tests and a jar for every
 # loader and game version, kept as artifacts. Nothing here talks to the server.
+# "Run workflow" with publish on makes the GitHub release skins-mod-v<mod/VERSION>
+# with the jars and their SHA-256 sums; the launcher downloads them from there,
+# pinned by those sums. A version is published once: a second run of the same
+# version fails instead of replacing files players already have.
 
 on:
   push:
@@ -14,6 +18,11 @@ on:
       - mod/**
       - .github/workflows/mod.yml
   workflow_dispatch:
+    inputs:
+      publish:
+        description: Publish the jars as release skins-mod-v<mod/VERSION>
+        type: boolean
+        default: false
 
 permissions:
   contents: read
@@ -30,24 +39,75 @@ jobs:
       run:
         working-directory: mod
     steps:
-      - uses: actions/checkout@v5
-      - uses: gradle/actions/wrapper-validation@v4
+      - uses: actions/checkout@v7
+      - uses: gradle/actions/wrapper-validation@v6
       # Java 8 builds the jar for 1.12.2 and 21 those for 1.21.x; Gradle, Fabric Loom
       # and RetroFuturaGradle run on 25.
-      - uses: actions/setup-java@v5
+      - uses: actions/setup-java@v6
         with:
           distribution: temurin
           java-version: |
             8
             21
             25
-      - uses: gradle/actions/setup-gradle@v4
+      - uses: gradle/actions/setup-gradle@v6
+      # ForgeGradle keeps the jars it downloads and never checks them again, and the
+      # Gradle cache is saved even when a build fails: a jar cut off in transfer
+      # would break every later build. Drop unreadable jars before the build, and
+      # after a failed one so the saved cache is clean.
+      - name: Drop damaged jars from the Forge cache
+        run: &drop-damaged-jars |
+          python3 - <<'EOF'
+          import pathlib, zipfile
+          root = pathlib.Path.home() / ".gradle/caches/minecraftforge"
+          removed = 0
+          for jar in root.rglob("*.jar") if root.is_dir() else []:
+              try:
+                  zipfile.ZipFile(jar).close()
+              except (OSError, zipfile.BadZipFile):
+                  jar.unlink()
+                  removed += 1
+          print(f"Damaged jars removed: {removed}")
+          EOF
       - run: ./gradlew --no-daemon build
-      - uses: actions/upload-artifact@v4
+      - name: Drop damaged jars after a failed build
+        if: failure()
+        run: *drop-damaged-jars
+      - uses: actions/upload-artifact@v7
         with:
           name: launcher-skins
           path: |
             mod/*/*/build/libs/launcherskins-*.jar
             !mod/*/*/build/libs/*-sources.jar
             !mod/*/*/build/libs/*-dev.jar
+            !mod/*/*/build/libs/*-named.jar
           retention-days: 14
+
+  release:
+    name: Publish the jars
+    if: github.event_name == 'workflow_dispatch' && inputs.publish && github.ref == 'refs/heads/main'
+    needs: build
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/download-artifact@v8
+        with:
+          name: launcher-skins
+          path: artifact
+      - name: Make the release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          version=$(tr -d '[:space:]' < mod/VERSION)
+          [[ "$version" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]] || { echo "bad version"; exit 1; }
+          mkdir dist
+          find artifact -name 'launcherskins-*.jar' -exec cp {} dist/ \;
+          (cd dist && sha256sum launcherskins-*.jar > SHA256SUMS)
+          echo "jars: $(ls dist/*.jar | wc -l)"
+          gh release create "skins-mod-v$version" dist/* \
+            --target "$GITHUB_SHA" \
+            --title "Launcher Skins $version" \
+            --notes "The launcher's skins mod and Java agent (docs/DECISIONS.md D-065). SHA256SUMS lists every jar's sum."

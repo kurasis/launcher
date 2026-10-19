@@ -9,6 +9,8 @@ fn main() {
     println!("cargo:rerun-if-env-changed=LAUNCHER_UPDATE_URL");
     println!("cargo:rerun-if-env-changed=LAUNCHER_ACCOUNT_URL");
     println!("cargo:rerun-if-env-changed=LAUNCHER_FRIENDS_URL");
+    println!("cargo:rerun-if-env-changed=LAUNCHER_MODS_URL");
+    println!("cargo:rerun-if-env-changed=LAUNCHER_SKINS_URL");
 
     // Declaring the app's commands makes Tauri generate one permission per command,
     // so each window must be granted every command explicitly in capabilities/.
@@ -84,6 +86,7 @@ fn main() {
         "launcher_account_sign_out",
         "launcher_account_set_nick",
         "launcher_account_resend_confirmation",
+        "launcher_account_recheck",
         "friends_state",
         "friends_request",
         "friends_act",
@@ -98,6 +101,29 @@ fn main() {
         "friends_decline_all",
         "friends_report_request",
         "launcher_account_export",
+        "mods_search",
+        "mods_project",
+        "mods_versions",
+        "mods_version",
+        "mods_fetch_version",
+        "mods_imports",
+        "mods_import",
+        "mods_import_state",
+        "mods_choose",
+        "mods_plan",
+        "mods_install",
+        "mods_cancel",
+        "mods_content",
+        "mods_identify",
+        "mods_updates",
+        "mods_set_enabled",
+        "mods_remove",
+        "mods_open_link",
+        "skins_mine",
+        "skins_texture",
+        "skins_pick",
+        "skins_upload",
+        "skins_remove",
         "feed_get",
         "feed_note",
         "feed_play",

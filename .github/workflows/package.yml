@@ -48,9 +48,9 @@ jobs:
             libwebkit2gtk-4.1-dev libxdo-dev libssl-dev libdbus-1-dev \
             libayatana-appindicator3-dev librsvg2-dev
 
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v7
 
-      - uses: actions/setup-node@v5
+      - uses: actions/setup-node@v7
         with:
           node-version-file: .nvmrc
           cache: npm
@@ -83,7 +83,7 @@ jobs:
             src-tauri/target/release/bundle/deb/*.deb \
             src-tauri/target/release/bundle/appimage/*.AppImage
 
-      - uses: actions/upload-artifact@v5
+      - uses: actions/upload-artifact@v7
         with:
           name: launcher-linux-x64
           path: dist-packages
@@ -104,10 +104,10 @@ jobs:
       run:
         shell: bash
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v7
         with:
           sparse-checkout: scripts/smoke
-      - uses: actions/download-artifact@v5
+      - uses: actions/download-artifact@v8
         with:
           name: launcher-linux-x64
           path: packages
@@ -130,9 +130,9 @@ jobs:
       run:
         shell: bash
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v7
 
-      - uses: actions/setup-node@v5
+      - uses: actions/setup-node@v7
         with:
           node-version-file: .nvmrc
           cache: npm
@@ -172,7 +172,7 @@ jobs:
 
       - name: Console and player window screenshots
         if: always()
-        uses: actions/upload-artifact@v5
+        uses: actions/upload-artifact@v7
         with:
           name: console-window-${{ matrix.name }}
           path: |
@@ -181,7 +181,7 @@ jobs:
           retention-days: ${{ env.RETENTION_DAYS }}
           if-no-files-found: ignore
 
-      - uses: actions/upload-artifact@v5
+      - uses: actions/upload-artifact@v7
         with:
           name: launcher-${{ matrix.name }}
           path: dist-packages
@@ -205,9 +205,9 @@ jobs:
       run:
         shell: bash
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v7
 
-      - uses: actions/setup-node@v5
+      - uses: actions/setup-node@v7
         with:
           node-version-file: .nvmrc
           cache: npm
@@ -264,7 +264,7 @@ jobs:
       - name: Smoke test (mount, start, remove)
         run: scripts/smoke/macos.sh dist-packages/*.dmg
 
-      - uses: actions/upload-artifact@v5
+      - uses: actions/upload-artifact@v7
         with:
           name: launcher-${{ matrix.name }}
           path: dist-packages
@@ -292,9 +292,9 @@ jobs:
           else
             echo "present=true" >> "$GITHUB_OUTPUT"
           fi
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v7
         if: steps.key.outputs.present == 'true'
-      - uses: actions/download-artifact@v5
+      - uses: actions/download-artifact@v8
         if: steps.key.outputs.present == 'true'
         with:
           pattern: launcher-*
@@ -326,7 +326,7 @@ jobs:
             "darwin-x86_64:app:$(one 'artifacts/launcher-macos-x64/*.app.tar.gz')" \
             "linux-x86_64:appimage:$(one 'artifacts/launcher-linux-x64/*.AppImage')" \
             "linux-x86_64:deb:$(one 'artifacts/launcher-linux-x64/*.deb')"
-      - uses: actions/upload-artifact@v5
+      - uses: actions/upload-artifact@v7
         if: steps.key.outputs.present == 'true'
         with:
           name: launcher-${{ env.VERSION }}-release

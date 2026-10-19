@@ -38,6 +38,7 @@ const run: RunSummary & { diagnosis: CrashDiagnosis } = {
   error: null,
   signal: null,
   diagnosis,
+  server: null,
 };
 
 const kinds: CrashKind[] = [

@@ -1,10 +1,12 @@
-import { useEffect, useRef, useState } from 'react';
+import { Fragment, useEffect, useRef, useState } from 'react';
 import { Button } from '../../components/Button';
 import forms from '../../components/forms.module.css';
 import type { ChatMessage, ChatRoom, FriendsView } from '../../lib/contracts';
 import { friendsProblem, ipc, onFriendsMessage, onFriendsRemoved } from '../../lib/ipc';
 import { numberLocale, strings } from '../../lib/strings';
 import styles from './Friends.module.css';
+import { type GameForInvites, InviteCard } from './InviteCard';
+import { inviteBody, parseInvite } from './invite';
 import { problemText, roomTitle, sanctionText } from './useFriends';
 
 const t = strings.friends;
@@ -40,10 +42,12 @@ function time(seconds: number): string {
 export function ChatView({
   room,
   view,
+  game,
   onBack,
 }: {
   room: ChatRoom;
   view: FriendsView;
+  game: GameForInvites;
   onBack: () => void;
 }) {
   const me = view.me;
@@ -58,6 +62,10 @@ export function ChatView({
   const [reason, setReason] = useState('');
   const [reported, setReported] = useState<Set<number>>(new Set());
   const [showMembers, setShowMembers] = useState(false);
+  const [loadingEarlier, setLoadingEarlier] = useState(false);
+  // What was unread when the chat opened stays marked while it is open.
+  const [unreadAtOpen] = useState(room.unread);
+  const divider = useRef<HTMLLIElement>(null);
   const [newName, setNewName] = useState<string | null>(null);
   const [adding, setAdding] = useState('');
   const list = useRef<HTMLOListElement>(null);
@@ -95,11 +103,20 @@ export function ChatView({
     };
   }, [room.id]);
 
-  // Keep the newest message in sight unless the player scrolled up to read.
+  // Keep the newest message in sight unless the player scrolled up to read;
+  // on opening, the first unread message comes into sight instead.
   const last = messages.at(-1)?.id ?? 0;
+  const shownFirstUnread = useRef(false);
   useEffect(() => {
     const element = list.current;
-    if (element !== null && stick.current) element.scrollTop = element.scrollHeight;
+    if (element === null) return;
+    if (!shownFirstUnread.current && divider.current !== null) {
+      shownFirstUnread.current = true;
+      element.scrollTop = Math.max(0, divider.current.offsetTop - element.offsetTop - 8);
+      stick.current = element.scrollHeight - element.scrollTop - element.clientHeight < 40;
+      return;
+    }
+    if (stick.current) element.scrollTop = element.scrollHeight;
   }, [last]);
 
   // What is on screen counts as read.
@@ -134,11 +151,52 @@ export function ChatView({
   const earlier = async () => {
     const oldest = messages[0]?.id ?? null;
     stick.current = false;
+    setLoadingEarlier(true);
     await run(async () => {
       const page = await ipc.friendsMessages(room.id, oldest);
       setMessages((current) => merge(current, page));
       setMore(page.length >= PAGE);
     });
+    setLoadingEarlier(false);
+  };
+
+  // The first message that was unread when the chat opened: the last
+  // `unreadAtOpen` messages from others.
+  let firstUnread: number | null = null;
+  if (unreadAtOpen > 0) {
+    let count = 0;
+    for (const message of [...messages].reverse()) {
+      if (message.sender !== me?.id) count++;
+      if (count === unreadAtOpen) {
+        firstUnread = message.id;
+        break;
+      }
+    }
+  }
+
+  // Messages that are invites to a server, shown as cards.
+  const invites = new Map(
+    messages.flatMap((m) => {
+      const invite = parseInvite(m.body);
+      return invite === null ? [] : [[m.id, invite] as const];
+    }),
+  );
+
+  const sendInvite = async () => {
+    if (game.invite === null || sending) return;
+    setSending(true);
+    stick.current = true;
+    const body = inviteBody(game.invite);
+    await run(async () => {
+      const message = await ipc.friendsSend(room.id, body);
+      setMessages((current) => merge(current, [message]));
+    });
+    setSending(false);
+  };
+
+  const stopReporting = () => {
+    setReporting(null);
+    setReason('');
   };
 
   const send = async () => {
@@ -314,9 +372,22 @@ export function ChatView({
       >
         {more && (
           <li className={styles.earlier}>
-            <button type="button" className={styles.link} onClick={() => void earlier()}>
-              {t.earlier}
-            </button>
+            {loadingEarlier ? (
+              <span className={styles.loading} role="status">
+                <span className={styles.spinner} aria-hidden="true" />
+                {t.loadingMessages}
+              </span>
+            ) : (
+              <button type="button" className={styles.link} onClick={() => void earlier()}>
+                {t.earlier}
+              </button>
+            )}
+          </li>
+        )}
+        {loading && messages.length === 0 && (
+          <li className={styles.loading} role="status">
+            <span className={styles.spinner} aria-hidden="true" />
+            {t.loadingMessages}
           </li>
         )}
         {!loading && messages.length === 0 && error === null && (
@@ -324,60 +395,79 @@ export function ChatView({
         )}
         {messages.map((message) => {
           const mine = message.sender === me?.id;
+          const invite = invites.get(message.id);
           return (
-            <li key={message.id} className={styles.message} data-mine={mine ? 'true' : undefined}>
-              <p className={styles.meta}>
-                <strong>{nick(message.sender)}</strong>{' '}
-                <time dateTime={new Date(message.created * 1000).toISOString()}>
-                  {time(message.created)}
-                </time>
-              </p>
-              <p className={styles.body} dir="auto">
-                {message.body}
-              </p>
-              {!mine &&
-                (reported.has(message.id) ? (
-                  <p className={styles.muted}>{t.reported}</p>
-                ) : reporting === message.id ? (
-                  <form
-                    className={styles.inline}
-                    onSubmit={(event) => {
-                      event.preventDefault();
-                      void run(() => ipc.friendsReport(message.id, reason.trim())).then((ok) => {
-                        if (!ok) return;
-                        setReported((current) => new Set(current).add(message.id));
-                        setReporting(null);
-                        setReason('');
-                      });
-                    }}
-                  >
-                    <input
-                      className={forms.input}
-                      aria-label={t.reportReason}
-                      placeholder={t.reportReason}
-                      // Opening the form brings it into view and ready to type.
-                      autoFocus
-                      value={reason}
-                      maxLength={500}
-                      onChange={(event) => {
-                        setReason(event.target.value);
-                      }}
-                    />
-                    <Button type="submit">{t.report}</Button>
-                  </form>
+            <Fragment key={message.id}>
+              {message.id === firstUnread && (
+                <li className={styles.newDivider} ref={divider} role="separator">
+                  <span>{t.newMessages}</span>
+                </li>
+              )}
+              <li className={styles.message} data-mine={mine ? 'true' : undefined}>
+                <p className={styles.meta}>
+                  <strong>{nick(message.sender)}</strong>{' '}
+                  <time dateTime={new Date(message.created * 1000).toISOString()}>
+                    {time(message.created)}
+                  </time>
+                </p>
+                {invite === undefined ? (
+                  <p className={styles.body} dir="auto">
+                    {message.body}
+                  </p>
                 ) : (
-                  <button
-                    type="button"
-                    className={styles.quiet}
-                    onClick={() => {
-                      setReporting(message.id);
-                      setReason('');
-                    }}
-                  >
-                    {t.report}
-                  </button>
-                ))}
-            </li>
+                  <InviteCard invite={invite} from={nick(message.sender)} mine={mine} game={game} />
+                )}
+                {!mine &&
+                  (reported.has(message.id) ? (
+                    <p className={styles.muted}>{t.reported}</p>
+                  ) : reporting === message.id ? (
+                    <form
+                      className={styles.inline}
+                      onSubmit={(event) => {
+                        event.preventDefault();
+                        void run(() => ipc.friendsReport(message.id, reason.trim())).then((ok) => {
+                          if (!ok) return;
+                          setReported((current) => new Set(current).add(message.id));
+                          stopReporting();
+                        });
+                      }}
+                      onKeyDown={(event) => {
+                        // Escape closes the report, not the whole panel.
+                        if (event.key === 'Escape') {
+                          event.stopPropagation();
+                          stopReporting();
+                        }
+                      }}
+                    >
+                      <input
+                        className={forms.input}
+                        aria-label={t.reportReason}
+                        placeholder={t.reportReason}
+                        // Opening the form brings it into view and ready to type.
+                        autoFocus
+                        value={reason}
+                        maxLength={500}
+                        onChange={(event) => {
+                          setReason(event.target.value);
+                        }}
+                      />
+                      <Button type="submit">{t.report}</Button>
+                      <Button onClick={stopReporting}>{t.cancel}</Button>
+                    </form>
+                  ) : (
+                    <button
+                      type="button"
+                      className={styles.quiet}
+                      onClick={() => {
+                        setReporting(message.id);
+                        setReason('');
+                      }}
+                    >
+                      {t.report}
+                    </button>
+                  ))}
+              </li>
+            </Fragment>
           );
         })}
       </ol>
@@ -395,36 +485,43 @@ export function ChatView({
       ) : readOnly ? (
         <p className={styles.muted}>{t.readOnly}</p>
       ) : (
-        <form
-          className={styles.composer}
-          onSubmit={(event) => {
-            event.preventDefault();
-            void send();
-          }}
-        >
-          <textarea
-            className={[forms.input, styles.draft].join(' ')}
-            aria-label={t.write}
-            placeholder={t.write}
-            title={t.sendHint}
-            rows={2}
-            dir="auto"
-            maxLength={MESSAGE_MAX}
-            value={draft}
-            onChange={(event) => {
-              setDraft(event.target.value);
+        <>
+          {game.invite !== null && (
+            <Button disabled={sending} onClick={() => void sendInvite()}>
+              {t.inviteToServer({ server: game.invite.server })}
+            </Button>
+          )}
+          <form
+            className={styles.composer}
+            onSubmit={(event) => {
+              event.preventDefault();
+              void send();
             }}
-            onKeyDown={(event) => {
-              if (event.key === 'Enter' && !event.shiftKey && !event.nativeEvent.isComposing) {
-                event.preventDefault();
-                void send();
-              }
-            }}
-          />
-          <Button type="submit" variant="primary" disabled={sending || draft.trim().length === 0}>
-            {t.send}
-          </Button>
-        </form>
+          >
+            <textarea
+              className={[forms.input, styles.draft].join(' ')}
+              aria-label={t.write}
+              placeholder={t.write}
+              title={t.sendHint}
+              rows={2}
+              dir="auto"
+              maxLength={MESSAGE_MAX}
+              value={draft}
+              onChange={(event) => {
+                setDraft(event.target.value);
+              }}
+              onKeyDown={(event) => {
+                if (event.key === 'Enter' && !event.shiftKey && !event.nativeEvent.isComposing) {
+                  event.preventDefault();
+                  void send();
+                }
+              }}
+            />
+            <Button type="submit" variant="primary" disabled={sending || draft.trim().length === 0}>
+              {t.send}
+            </Button>
+          </form>
+        </>
       )}
     </div>
   );

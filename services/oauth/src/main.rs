@@ -29,6 +29,7 @@ mod api;
 mod app;
 mod crypto;
 mod internal;
+mod letters;
 mod mail;
 mod pages;
 mod rules;

@@ -43,11 +43,17 @@ import {
   type UpdateView,
   type LauncherAccountProblem,
   FRIENDS_PROBLEMS,
+  LAUNCHER_ACCOUNT_PROBLEMS,
   type ChatMessage,
   type FriendAction,
   type FriendRequestResult,
   type FriendsProblem,
   type FriendsView,
+  SKINS_PROBLEMS,
+  type PickedTexture,
+  type SkinKind,
+  type SkinsProblem,
+  type Wardrobe,
   FEED_PROBLEMS,
   type FeedProblem,
   type FeedVideo,
@@ -69,6 +75,18 @@ import {
   type SetInstanceNotesPayload,
   type SettingsView,
   type UpdateInstanceSettingsPayload,
+  type ContentIdentified,
+  type ContentUpdate,
+  type ContentView,
+  type ModsImportRequest,
+  type ModsInstallPayload,
+  type ModsPlan,
+  type ModsProgress,
+  type ModsProject,
+  type ModsSearchPage,
+  type ModsSearchQuery,
+  type ModsSource,
+  type ModsVersion,
 } from './contracts';
 
 function newRequestId(): string {
@@ -230,8 +248,11 @@ export const ipc = {
       request: mutation({ runId, title }, requestId),
     }),
   /** Plays as the installation's profile: a Microsoft account, or the demo (D-045). */
-  launchGame: (instanceId: string, requestId?: string): Promise<RunSummary> =>
-    invoke<RunSummary>('launch_game', { request: mutation({ instanceId }, requestId) }),
+  /** Starts the game; with `server` (a friend's invite) straight into that server. */
+  launchGame: (instanceId: string, requestId?: string, server?: string): Promise<RunSummary> =>
+    invoke<RunSummary>('launch_game', {
+      request: mutation(server === undefined ? { instanceId } : { instanceId, server }, requestId),
+    }),
   stopGame: (runId: string, requestId?: string): Promise<boolean> =>
     invoke<boolean>('stop_game', { request: mutation({ runId }, requestId) }),
   listSupportedVersions: (refresh: boolean): Promise<CatalogView> =>
@@ -269,6 +290,9 @@ export const ipc = {
     invoke<LauncherAccountProblem | null>('launcher_account_set_nick', { nick }),
   launcherAccountResendConfirmation: (): Promise<LauncherAccountProblem | null> =>
     invoke<LauncherAccountProblem | null>('launcher_account_resend_confirmation'),
+  /** Asks the server again; whether the email is confirmed now. Rejects with a
+   * LauncherAccountProblem string. */
+  launcherAccountRecheck: (): Promise<boolean> => invoke<boolean>('launcher_account_recheck'),
   // Friends and chats (D-064). These reject with a FriendsProblem string;
   // `friendsProblem` reads it.
   friendsState: (): Promise<FriendsView> => invoke<FriendsView>('friends_state'),
@@ -300,9 +324,68 @@ export const ipc = {
   friendsReportRequest: (id: string): Promise<void> => invoke('friends_report_request', { id }),
   friendsSetVisible: (visible: boolean): Promise<void> =>
     invoke('friends_set_visible', { visible }),
+  // The launcher account's skin and cape (D-065). These reject with a
+  // SkinsProblem string; `skinsProblem` reads it.
+  skinsMine: (): Promise<Wardrobe> => invoke<Wardrobe>('skins_mine'),
+  /** A worn texture by its hash, as a `data:` URL. */
+  skinsTexture: (hash: string): Promise<string> => invoke<string>('skins_texture', { hash }),
+  /** Picks a PNG in the native dialog; null if it was closed. */
+  skinsPick: (kind: SkinKind, title?: string): Promise<PickedTexture | null> =>
+    invoke<PickedTexture | null>('skins_pick', { kind, title }),
+  /** Uploads what was picked for `kind`. */
+  skinsUpload: (kind: SkinKind, slim: boolean, frameMs: number[] | null): Promise<Wardrobe> =>
+    invoke<Wardrobe>('skins_upload', { kind, slim, frameMs }),
+  skinsRemove: (kind: SkinKind): Promise<Wardrobe> => invoke<Wardrobe>('skins_remove', { kind }),
   /** Saves the account's data as a file; its name, or null if the dialog was closed. */
   launcherAccountExport: (title?: string): Promise<string | null> =>
     invoke<string | null>('launcher_account_export', { title }),
+  // The catalog of mods (D-066).
+  modsSearch: (query: ModsSearchQuery): Promise<ModsSearchPage> =>
+    invoke<ModsSearchPage>('mods_search', { query }),
+  /** By our ID or the slug. */
+  modsProject: (project: string): Promise<ModsProject> =>
+    invoke<ModsProject>('mods_project', { project }),
+  /** Newest first, without changelogs. */
+  modsVersions: (
+    project: string,
+    game: string | null,
+    loader: string | null,
+  ): Promise<ModsVersion[]> => invoke<ModsVersion[]>('mods_versions', { project, game, loader }),
+  modsVersion: (version: string): Promise<ModsVersion> =>
+    invoke<ModsVersion>('mods_version', { version }),
+  /** Asks the catalog to keep a version's files. */
+  modsFetchVersion: (version: string): Promise<void> => invoke('mods_fetch_version', { version }),
+  modsImports: (): Promise<ModsImportRequest[]> => invoke<ModsImportRequest[]>('mods_imports'),
+  modsImport: (input: string): Promise<ModsImportRequest> =>
+    invoke<ModsImportRequest>('mods_import', { input }),
+  modsImportState: (request: string): Promise<ModsImportRequest> =>
+    invoke<ModsImportRequest>('mods_import_state', { request }),
+  modsChoose: (request: string, source: ModsSource, id: string): Promise<ModsImportRequest> =>
+    invoke<ModsImportRequest>('mods_choose', { request, source, id }),
+  modsPlan: (payload: ModsInstallPayload): Promise<ModsPlan> =>
+    invoke<ModsPlan>('mods_plan', { payload }),
+  /** How many files are in place; progress comes as `onModsProgress`. */
+  modsInstall: (payload: ModsInstallPayload, requestId?: string): Promise<number> =>
+    invoke<number>('mods_install', { request: mutation(payload, requestId) }),
+  modsCancel: (instanceId: string): Promise<boolean> =>
+    invoke<boolean>('mods_cancel', { instanceId }),
+  modsContent: (instanceId: string): Promise<ContentView> =>
+    invoke<ContentView>('mods_content', { instanceId }),
+  modsIdentify: (instanceId: string): Promise<ContentIdentified[]> =>
+    invoke<ContentIdentified[]>('mods_identify', { instanceId }),
+  modsUpdates: (instanceId: string): Promise<ContentUpdate[]> =>
+    invoke<ContentUpdate[]>('mods_updates', { instanceId }),
+  modsSetEnabled: (
+    instanceId: string,
+    path: string,
+    enabled: boolean,
+    requestId?: string,
+  ): Promise<void> =>
+    invoke('mods_set_enabled', { request: mutation({ instanceId, path, enabled }, requestId) }),
+  modsRemove: (instanceId: string, path: string, requestId?: string): Promise<void> =>
+    invoke('mods_remove', { request: mutation({ instanceId, path }, requestId) }),
+  /** Opens an https link in the system browser; ask the player first. */
+  modsOpenLink: (url: string): Promise<void> => invoke('mods_open_link', { url }),
   // The start page feed (D-067). These reject with a FeedProblem string;
   // `feedProblem` reads it.
   /** `refresh` asks the service again even when it answered a moment ago. */
@@ -462,9 +545,23 @@ export function onQuitRequested(handler: () => void): () => void {
 }
 
 /** The FriendsProblem a friends command rejected with (anything else: `server`). */
+/** What a launcher account command rejected with; `server` for anything else. */
+export function accountProblem(error: unknown): LauncherAccountProblem {
+  return typeof error === 'string' &&
+    (LAUNCHER_ACCOUNT_PROBLEMS as readonly string[]).includes(error)
+    ? (error as LauncherAccountProblem)
+    : 'server';
+}
+
 export function friendsProblem(error: unknown): FriendsProblem {
   return typeof error === 'string' && (FRIENDS_PROBLEMS as readonly string[]).includes(error)
     ? (error as FriendsProblem)
+    : 'server';
+}
+
+export function skinsProblem(error: unknown): SkinsProblem {
+  return typeof error === 'string' && (SKINS_PROBLEMS as readonly string[]).includes(error)
+    ? (error as SkinsProblem)
     : 'server';
 }
 
@@ -490,4 +587,9 @@ export function onFriendsRemoved(
   handler: (removed: { room: string; message: number }) => void,
 ): () => void {
   return listenTo('friends://removed', handler);
+}
+
+/** Progress of an install from the catalog of mods (D-066). */
+export function onModsProgress(handler: (progress: ModsProgress) => void): () => void {
+  return listenTo('mods://progress', handler);
 }

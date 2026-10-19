@@ -69,6 +69,7 @@ impl HttpTransport {
             SourcePolicy::MojangArtifacts,
             SourcePolicy::Adoptium,
             SourcePolicy::ModLoaders,
+            SourcePolicy::ModsCatalog,
         ] {
             clients.insert(policy, PublicClient::new(policy, app_version)?);
         }

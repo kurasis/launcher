@@ -205,6 +205,9 @@ pub struct Friends {
     playing: Mutex<Option<String>>,
     /// Wakes the live loop at once (sign-in, sign-out, back online).
     wake: tokio::sync::Notify,
+    /// When each room (or request) last made a system notification: one per
+    /// few seconds, however fast messages come.
+    notified: Mutex<std::collections::HashMap<String, std::time::Instant>>,
 }
 
 impl Friends {
@@ -215,6 +218,7 @@ impl Friends {
             view: Mutex::new(FriendsView::default()),
             playing: Mutex::new(None),
             wake: tokio::sync::Notify::new(),
+            notified: Mutex::new(std::collections::HashMap::new()),
         })
     }
 
@@ -330,8 +334,12 @@ impl Friends {
             (Err(problem), _) | (_, Err(problem)) => {
                 self.set(app, |view| {
                     view.problem = Some(problem);
-                    // Banned: nothing to show until it ends.
-                    if problem == FriendsProblem::Banned {
+                    // Banned, or the email not confirmed yet: the account is
+                    // signed in, with nothing to show until that changes.
+                    if matches!(
+                        problem,
+                        FriendsProblem::Banned | FriendsProblem::EmailNotConfirmed
+                    ) {
                         *view = FriendsView {
                             signed_in: true,
                             problem: Some(problem),
@@ -371,11 +379,12 @@ impl Friends {
             failures = match outcome {
                 Ok(()) => 0,
                 Err(
-                    FriendsProblem::SignedOut
+                    problem @ (FriendsProblem::SignedOut
                     | FriendsProblem::Banned
-                    | FriendsProblem::EmailNotConfirmed,
+                    | FriendsProblem::EmailNotConfirmed),
                 ) => {
-                    self.set(&app, |view| view.problem = Some(FriendsProblem::SignedOut));
+                    // The problem stays as it is: the panel says what to do.
+                    self.set(&app, |view| view.problem = Some(problem));
                     // Until the account signs in again; a refusal the friends
                     // server had no reason for (its keys not read yet after a
                     // restart) passes, so try again now and then too.
@@ -462,7 +471,22 @@ impl Friends {
         };
         match event["type"].as_str() {
             Some("friends" | "rooms") => {
+                let before: Vec<String> = lock(&self.view)
+                    .incoming
+                    .iter()
+                    .map(|p| p.id.clone())
+                    .collect();
                 let _ = self.refresh(app).await;
+                let new: Vec<String> = lock(&self.view)
+                    .incoming
+                    .iter()
+                    .filter(|p| !before.contains(&p.id))
+                    .map(|p| p.nick.clone())
+                    .collect();
+                for nick in new {
+                    let words = request_words(app.state::<AppState>().settings().language.as_str());
+                    self.notify(app, &format!("request:{nick}"), &nick, words);
+                }
             }
             Some("message") => {
                 let Ok(message) = serde_json::from_value::<ChatMessage>(event["message"].clone())
@@ -489,6 +513,29 @@ impl Friends {
                             std::cmp::Reverse(r.last.as_ref().map_or(0, |m| m.created))
                         });
                     });
+                }
+                if !mine {
+                    let title = {
+                        let view = lock(&self.view);
+                        view.rooms
+                            .iter()
+                            .find(|r| r.id == message.room)
+                            .map(|room| {
+                                let sender = room
+                                    .members
+                                    .iter()
+                                    .find(|m| m.id == message.sender)
+                                    .map_or("—", |m| m.nick.as_str());
+                                if room.kind == "group" && !room.name.is_empty() {
+                                    format!("{sender} · {}", room.name)
+                                } else {
+                                    sender.to_owned()
+                                }
+                            })
+                    };
+                    if let Some(title) = title {
+                        self.notify(app, &message.room, &title, &message.body);
+                    }
                 }
                 let _ = app.emit(MESSAGE_EVENT, message);
             }
@@ -517,6 +564,40 @@ impl Friends {
             }
             _ => {}
         }
+    }
+
+    /// A system notification for a message or request, when the player wants
+    /// them and the launcher is not in front (in front, the interface plays
+    /// its sound instead).
+    fn notify<R: Runtime>(&self, app: &AppHandle<R>, key: &str, title: &str, body: &str) {
+        use tauri_plugin_notification::NotificationExt as _;
+        if !app.state::<AppState>().settings().chat_notifications {
+            return;
+        }
+        let in_front = app
+            .get_webview_window(crate::lifecycle::MAIN_WINDOW)
+            .is_some_and(|w| w.is_focused().unwrap_or(false) && !w.is_minimized().unwrap_or(true));
+        if in_front {
+            return;
+        }
+        {
+            let now = std::time::Instant::now();
+            let mut notified = lock(&self.notified);
+            notified.retain(|_, at| now.duration_since(*at) < Duration::from_secs(60));
+            if notified
+                .get(key)
+                .is_some_and(|at| now.duration_since(*at) < Duration::from_secs(5))
+            {
+                return;
+            }
+            notified.insert(key.to_owned(), now);
+        }
+        let _ = app
+            .notification()
+            .builder()
+            .title(notification_text(title, 64))
+            .body(notification_text(body, 160))
+            .show();
     }
 
     async fn tell_playing<R: Runtime>(
@@ -802,9 +883,65 @@ impl Friends {
     }
 }
 
+/// Text from another player made fit for a system notification: one line of
+/// at most `max` characters, no control or direction characters, and on Linux
+/// no markup (its notification servers read a little HTML in the body).
+fn notification_text(text: &str, max: usize) -> String {
+    let clean: String = text
+        .chars()
+        .map(|c| if c == '\n' || c == '\t' { ' ' } else { c })
+        .filter(|c| {
+            !c.is_control()
+                && !matches!(c, '\u{200E}' | '\u{200F}' | '\u{202A}'..='\u{202E}' | '\u{2066}'..='\u{2069}')
+        })
+        .collect();
+    let clean = clean.trim();
+    let mut short: String = clean.chars().take(max).collect();
+    if clean.chars().count() > max {
+        short.push('…');
+    }
+    if cfg!(target_os = "linux") {
+        short = short
+            .replace('&', "&amp;")
+            .replace('<', "&lt;")
+            .replace('>', "&gt;");
+    }
+    short
+}
+
+/// "wants to be your friend" in the launcher's language (the notification is
+/// made here, without the interface).
+fn request_words(language: &str) -> &'static str {
+    match language.get(..2).unwrap_or_default() {
+        "ru" => "хочет добавить вас в друзья",
+        "ar" => "يريد إضافتك صديقًا",
+        _ => "wants to be your friend",
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn notification_text_is_one_short_clean_line() {
+        assert_eq!(
+            notification_text("hi\nthere\u{202E}!\u{7}", 40),
+            "hi there!"
+        );
+        let long = "a".repeat(200);
+        let short = notification_text(&long, 160);
+        assert_eq!(short.chars().count(), 161);
+        assert!(short.ends_with('…'));
+        let markup = notification_text("<a href=\"x\">&</a>", 40);
+        if cfg!(target_os = "linux") {
+            assert_eq!(markup, "&lt;a href=\"x\"&gt;&amp;&lt;/a&gt;");
+        } else {
+            assert_eq!(markup, "<a href=\"x\">&</a>");
+        }
+        assert_eq!(request_words("ru-RU"), "хочет добавить вас в друзья");
+        assert_eq!(request_words("pt-BR"), "wants to be your friend");
+    }
 
     #[test]
     fn answers_become_problems() {

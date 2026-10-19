@@ -261,6 +261,15 @@ export interface SettingsView {
   monthlyLimitMib: number;
   /** Anonymous crash statistics go to the developers; off by default (D-061). */
   shareStats: boolean;
+  /** A short sound for a new chat message or friend request (D-064). */
+  chatSound: boolean;
+  /** A system notification for one while the launcher is not in front. */
+  chatNotifications: boolean;
+  /** The launcher account plays offline in the full game instead of the demo
+   * (only while a Microsoft account that owns Minecraft is signed in). */
+  launcherAccountOffline: boolean;
+  /** The same for the profiles without an account. */
+  notokenOffline: boolean;
   /** Random ID sent with crash reports only; null until the first report. */
   installId: string | null;
   /** Where downloads come from (D-062). */
@@ -331,6 +340,18 @@ export type LauncherAccountProblem =
   | 'vault'
   | 'not_saved'
   | 'server';
+
+export const LAUNCHER_ACCOUNT_PROBLEMS: readonly LauncherAccountProblem[] = [
+  'network',
+  'sign_in_again',
+  'nick_taken',
+  'nick_reserved',
+  'nick_invalid',
+  'too_many',
+  'vault',
+  'not_saved',
+  'server',
+];
 
 /** The launcher account at oauth.lapi.sh (D-064). Never contains tokens. */
 export interface LauncherAccountView {
@@ -442,6 +463,69 @@ export interface FriendsView {
 
 export type FriendAction = 'accept' | 'decline' | 'cancel' | 'remove' | 'block' | 'unblock';
 
+/** The launcher account's skin or cape (skins.lapi.sh, D-065). */
+export type SkinKind = 'skin' | 'cape';
+
+/** Why a skins action failed; the service's refusals keep its codes. */
+export type SkinsProblem =
+  | 'signed_out'
+  | 'network'
+  | 'unreadable'
+  | 'bad_png'
+  | 'bad_size'
+  | 'bad_frames'
+  | 'bad_frame_ms'
+  | 'bad_model'
+  | 'too_large'
+  | 'rate_limited'
+  | 'invalid'
+  | 'server';
+
+export const SKINS_PROBLEMS: readonly SkinsProblem[] = [
+  'signed_out',
+  'network',
+  'unreadable',
+  'bad_png',
+  'bad_size',
+  'bad_frames',
+  'bad_frame_ms',
+  'bad_model',
+  'too_large',
+  'rate_limited',
+  'invalid',
+  'server',
+];
+
+/** A worn texture: a vertical strip of `frames` frames. */
+export interface WornTexture {
+  /** SHA-256 of the PNG; `skinsTexture` fetches it. */
+  hash: string;
+  /** Skins only: the slim (3-pixel) arms. */
+  slim: boolean;
+  width: number;
+  height: number;
+  frames: number;
+  /** One per frame; empty for a single frame. */
+  frameMs: number[];
+}
+
+export interface Wardrobe {
+  skin: WornTexture | null;
+  cape: WornTexture | null;
+}
+
+/** A PNG the player picked and has not uploaded yet, checked by the core. */
+export interface PickedTexture {
+  kind: SkinKind;
+  /** The file's name, plain text. */
+  name: string;
+  width: number;
+  height: number;
+  frames: number;
+  /** The file as a `data:` URL. */
+  preview: string;
+}
+
 /** A request was sent, or it met theirs and you are friends now. */
 export type FriendRequestResult = 'sent' | 'friends';
 
@@ -480,6 +564,9 @@ export interface AccountSummary {
   /** Who installations play as unless they name another profile. */
   defaultProfile: ProfileRef | null;
   launcherAccount: LauncherAccountView;
+  /** A Microsoft account that owns Minecraft is signed in: players without a
+   * token may play offline in the full game. */
+  fullGameAllowed: boolean;
 }
 
 export type ExternalLink =
@@ -612,6 +699,8 @@ export interface RunSummary {
   signal: number | null;
   /** Why the game stopped, when it crashed (D-059). */
   diagnosis: CrashDiagnosis | null;
+  /** The server the game last joined (`host:port`): friends can be invited to it. */
+  server: string | null;
 }
 
 /** Known causes of a crash, most specific first (D-059). */
@@ -859,6 +948,10 @@ export interface SettingsPatch {
   meteredWarnMib?: number;
   monthlyLimitMib?: number;
   shareStats?: boolean;
+  chatSound?: boolean;
+  chatNotifications?: boolean;
+  launcherAccountOffline?: boolean;
+  notokenOffline?: boolean;
   /** Replace the install ID with a new random one. */
   newInstallId?: boolean;
   downloadSource?: DownloadSource;
@@ -1053,6 +1146,8 @@ export interface TrafficUsage {
   loaders: number;
   /** Version lists and other metadata. */
   metadata: number;
+  /** Files from the catalog of mods (D-066). */
+  mods: number;
 }
 
 export interface TrafficSummary {
@@ -1113,6 +1208,224 @@ export interface FailureSummary {
   version: string;
   message: string;
   reported: boolean;
+}
+
+// ----- the catalog of mods (D-066) -----
+
+/** What the catalog holds. */
+export type ModsKind = 'mod' | 'modpack' | 'resourcepack' | 'shader' | 'datapack' | 'world';
+export type ModsSource = 'modrinth' | 'curseforge';
+export type ModsSort = 'relevance' | 'downloads' | 'updated' | 'new' | 'title';
+
+export interface ModsSearchQuery {
+  text: string;
+  kind: ModsKind | null;
+  game: string | null;
+  loader: string | null;
+  category: string | null;
+  sort: ModsSort | null;
+  offset: number;
+  limit: number | null;
+}
+
+/** A project in a list. */
+export interface ModsHit {
+  id: string;
+  kind: ModsKind;
+  slug: string;
+  title: string;
+  summary: string;
+  /** Only from files-mods.lapi.sh. */
+  icon: string | null;
+  downloads: number;
+  /** `importing`: still being brought in. */
+  status: 'importing' | 'ready';
+  /** Unix seconds. */
+  updated: number;
+  author: string | null;
+  sources: ModsSource[];
+}
+
+export interface ModsSearchPage {
+  total: number;
+  hits: ModsHit[];
+}
+
+/**
+ * A description as safe nodes (never HTML): `k` is the element; `a` has `href`
+ * (https only), `img` has `href` (files-mods.lapi.sh only) and `text` (its
+ * description).
+ */
+export interface DocNode {
+  k: string;
+  text?: string;
+  href?: string;
+  c?: DocNode[];
+}
+
+export interface ModsProject {
+  id: string;
+  kind: ModsKind;
+  slug: string;
+  title: string;
+  summary: string;
+  body: DocNode[];
+  license: string;
+  icon: string | null;
+  clientSide: 'required' | 'optional' | 'unsupported' | 'unknown';
+  serverSide: 'required' | 'optional' | 'unsupported' | 'unknown';
+  status: 'importing' | 'ready';
+  downloads: number;
+  followers: number;
+  published: number;
+  updated: number;
+  /** When the source stopped having it; the catalog keeps it. */
+  goneAt: number | null;
+  authors: { name: string; role: string }[];
+  categories: string[];
+  sources: { source: ModsSource; url: string | null }[];
+  gallery: { url: string; thumb: string | null; title: string; description: string }[];
+}
+
+export interface ModsVersionFile {
+  name: string;
+  size: number;
+  sha256: string | null;
+  primary: boolean;
+  url: string | null;
+}
+
+export interface ModsVersion {
+  id: string;
+  projectId: string;
+  number: string;
+  name: string;
+  /** Empty in lists. */
+  changelog: DocNode[];
+  channel: 'release' | 'beta' | 'alpha';
+  published: number;
+  downloads: number;
+  /** `all`: kept; otherwise the catalog fetches the files on first install. */
+  saved: 'all' | 'partial' | 'none';
+  games: string[];
+  loaders: string[];
+  files: ModsVersionFile[];
+  dependencies: {
+    kind: 'required' | 'optional' | 'incompatible' | 'embedded';
+    projectId: string | null;
+    versionId: string | null;
+  }[];
+  goneAt: number | null;
+}
+
+export interface ModsCandidate {
+  source: ModsSource;
+  id: string;
+  kind: ModsKind | null;
+  title: string;
+  summary: string;
+  author: string;
+  downloads: number;
+  /** Already in the catalog. */
+  projectId: string | null;
+}
+
+/** A request to add to the catalog. */
+export interface ModsImportRequest {
+  id: string;
+  input: string;
+  state: 'queued' | 'choosing' | 'importing' | 'ready' | 'failed';
+  error: string | null;
+  projectId: string | null;
+  candidates: ModsCandidate[];
+  created: number;
+  finished: number | null;
+}
+
+export type ModsMisfit = 'no_loader' | 'wrong_loader' | 'wrong_game';
+
+export interface ModsPlanItem {
+  projectId: string;
+  title: string;
+  kind: ModsKind;
+  icon: string | null;
+  versionId: string;
+  number: string;
+  published: number;
+  fileName: string;
+  size: number;
+  /** The catalog keeps the file already; otherwise it fetches it first. */
+  kept: boolean;
+  dependency: boolean;
+  path: string;
+  replaces: string | null;
+  /** The same file is there already. */
+  present: boolean;
+}
+
+export interface ModsPlan {
+  items: ModsPlanItem[];
+  missing: { projectId: string | null; title: string | null }[];
+  conflicts: { path: string; reason: 'incompatible' | 'name_taken'; title: string | null }[];
+  misfit: ModsMisfit | null;
+  totalBytes: number;
+  /** On a metered connection, why this download asks first (D-051). */
+  approval: ApprovalRequest | null;
+}
+
+export interface ModsInstallPayload {
+  instanceId: string;
+  version: string;
+  world: string | null;
+  replaces: string | null;
+}
+
+/** `mods://progress` while an install runs. */
+export interface ModsProgress {
+  instanceId: string;
+  phase: 'fetching' | 'downloading' | 'done' | 'failed' | 'cancelled';
+  files: number;
+  totalFiles: number;
+  bytes: number;
+  totalBytes: number;
+}
+
+export interface ContentItem {
+  /** As on disk now, relative to the game folder. */
+  path: string;
+  folder: 'mods' | 'resourcepacks' | 'shaderpacks' | 'datapacks';
+  /** Its name when on. */
+  name: string;
+  world: string | null;
+  enabled: boolean;
+  size: number;
+  directory: boolean;
+  projectId: string | null;
+  versionId: string | null;
+  title: string | null;
+  versionNumber: string | null;
+  icon: string | null;
+  dependency: boolean;
+}
+
+export interface ContentView {
+  items: ContentItem[];
+  worlds: string[];
+}
+
+/** A file of the player's that the catalog recognized. */
+export interface ContentIdentified {
+  path: string;
+  projectId: string;
+  versionId: string;
+}
+
+export interface ContentUpdate {
+  path: string;
+  projectId: string;
+  fromVersionId: string;
+  toVersionId: string;
+  toNumber: string;
 }
 
 // ---- The start page feed (D-067) ----------------------------------------------
