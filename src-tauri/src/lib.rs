@@ -661,7 +661,7 @@ pub fn run() {
                 && matches!(event, tauri::WindowEvent::CloseRequested { .. })
             {
                 let app = window.app_handle();
-                let supervising = app.state::<AppState>().activity().current().is_some();
+                let supervising = app.state::<AppState>().activity().is_busy();
                 app.state::<LifecycleController>()
                     .main_window_closed(app, supervising);
             }
@@ -673,7 +673,7 @@ pub fn run() {
     app.run(|handle, event| match event {
         RunEvent::ExitRequested { api, .. } => {
             let controller = handle.state::<LifecycleController>();
-            let supervising = handle.state::<AppState>().activity().current().is_some();
+            let supervising = handle.state::<AppState>().activity().is_busy();
             if lifecycle::exit_decision(controller.quit_intended(), supervising)
                 == ExitDecision::Prevent
             {
