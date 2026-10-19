@@ -2006,7 +2006,7 @@ archive from the Package workflow, upload it to
 
 ## D-066 — Catalog of mods at mods.lapi.sh
 
-- **Status:** accepted (owner request, 2026-10-19), stage 1 of 6 · **Affects:** the new
+- **Status:** accepted (owner request, 2026-10-19), stages 1–2 of 6 · **Affects:** the new
   service `services/mods` (`https://mods.lapi.sh`, files at
   `https://files-mods.lapi.sh`, `/home/www/lapi/mods`), the account service's token
   audience. The full design: the project's design document "Вкладка Моды и каталог".
@@ -2055,6 +2055,42 @@ archive from the Package workflow, upload it to
   `.mrpack` and CurseForge packs, other launchers' manifests); 4 CurseForge through its
   site; 5 more formats; 6 upkeep (refreshing, reports, removal on request).
 - **Owner actions:** docs/MODS-CATALOG.md.
+
+### In the launcher (stage 2)
+
+- **Mods tab** next to Installations: Mods, Resource packs, Shaders, Data packs, Modpacks
+  (to look at; installing one as a new installation is stage 3), Installed and My
+  requests. With an installation chosen, the search starts at its game version and, for
+  mods, its loader; a project's versions can be limited to those that fit it.
+- **Only through the core.** Every call goes through Rust commands (`mods_*`); answers are
+  bounded in size and checked (our IDs, closed lists of kinds, loaders and sources,
+  lengths). Descriptions and changelogs come as a tree of safe nodes made from the
+  Markdown in the core (pulldown-cmark): HTML is never drawn, only its pictures, line
+  breaks and text; a link is kept only when it is `https:` and opens in the browser
+  after the player confirms; a picture only when files-mods.lapi.sh serves it. The CSP's
+  `img-src` allows exactly that host.
+- **Adding to an installation:** a plan made in the core from the catalog's answers. A
+  mod must list the installation's game version and loader (Quilt also takes Fabric's);
+  a resource pack, shader or data pack that does not only gets a warning. Required
+  dependencies are added (the version the dependency names, else the newest release
+  that fits; 8 deep, 50 files); one with no fitting version, an incompatible project
+  already there, or a file of the player's at the same name stops the plan. Files the
+  catalog does not keep yet are asked for and waited on (20 minutes at most). Every file
+  comes from files-mods.lapi.sh through the download executor, checked against its
+  SHA-256 before it is put in place; the traffic counts as "Catalog of mods" and the
+  launcher's mirror is not used for it. One change at a time per installation; not
+  while the game runs, and the game does not start while one runs.
+- **`content.lock.json`** next to the installation records what the launcher put there
+  (path, SHA-256, project, version). An update replaces only its own file, or the
+  player's file they chose to update; a turned-off file stays off.
+- **Installed:** mods, resource packs, shaders and the data packs the launcher added;
+  on and off by the `.disabled` suffix, removal after a confirmation, updates of what the
+  launcher put there and of the player's own files the catalog recognizes by SHA-1
+  (`POST /v1/lookup`), one at a time or all. Paths from the interface must be in
+  `mods/`, `resourcepacks/`, `shaderpacks/` or `saves/<world>/datapacks/`, one name deep,
+  never a link.
+- **Add to the catalog** and **My requests** use the launcher account's token; signed
+  out, the launcher offers to sign in. A request in progress is asked about every 3 s.
 
 ## D-067 — Start page feed at feed.lapi.sh
 

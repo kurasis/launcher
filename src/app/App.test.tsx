@@ -353,7 +353,15 @@ describe('App', () => {
     const tabs = within(nav)
       .getAllByRole('button')
       .map((button) => button.textContent);
-    expect(tabs).toEqual(['Feed', 'Installations', 'Accounts', 'Settings', 'More▾', 'Quit']);
+    expect(tabs).toEqual([
+      'Feed',
+      'Installations',
+      'Mods',
+      'Accounts',
+      'Settings',
+      'More▾',
+      'Quit',
+    ]);
     const more = moreButton();
     expect(more).toHaveAttribute('aria-haspopup', 'menu');
     expect(more).toHaveAttribute('aria-expanded', 'false');
@@ -637,7 +645,7 @@ describe('App', () => {
   it('opens Installations for screens not built yet', async () => {
     for (const settings of [
       settingsWith({ startView: 'skins' }),
-      settingsWith({ startView: 'last', lastView: 'mods' }),
+      settingsWith({ startView: 'last', lastView: 'skins' }),
     ]) {
       fakeBackend(snapshotFixture({ settings }));
       const { unmount } = render(<App />);

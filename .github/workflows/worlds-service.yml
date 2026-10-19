@@ -61,9 +61,9 @@ jobs:
       run:
         working-directory: services/worlds
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v7
       - run: rustup show active-toolchain
-      - uses: actions/cache@v4
+      - uses: actions/cache@v6
         with:
           path: |
             ~/.cargo/registry
@@ -84,7 +84,7 @@ jobs:
           cp target/release/lapi-worlds ../../dist-worlds/
           cp ../../deploy/nginx/* ../../deploy/worlds/nginx/* ../../dist-worlds/nginx/
           tar -czf ../../lapi-worlds.tar.gz -C ../../dist-worlds .
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: lapi-worlds
           path: lapi-worlds.tar.gz
@@ -107,8 +107,8 @@ jobs:
           || (github.event_name == 'workflow_dispatch' && inputs.task == 'deploy'))
     runs-on: ubuntu-24.04
     steps:
-      - uses: actions/checkout@v5
-      - uses: actions/download-artifact@v4
+      - uses: actions/checkout@v7
+      - uses: actions/download-artifact@v8
         with:
           name: lapi-worlds
       - uses: ./.github/actions/lapi-ssh
@@ -149,7 +149,7 @@ jobs:
     if: github.event_name == 'workflow_dispatch' && inputs.task == 'counts'
     runs-on: ubuntu-24.04
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v7
       - uses: ./.github/actions/lapi-ssh
         with:
           ssh-key: ${{ secrets.SSH_KEY }}
