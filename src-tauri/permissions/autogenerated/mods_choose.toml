@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-mods-choose"
+description = "Enables the mods_choose command without any pre-configured scope."
+commands.allow = ["mods_choose"]
+
+[[permission]]
+identifier = "deny-mods-choose"
+description = "Denies the mods_choose command without any pre-configured scope."
+commands.deny = ["mods_choose"]

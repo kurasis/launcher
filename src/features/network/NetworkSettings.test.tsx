@@ -8,7 +8,7 @@ import { NetworkSettings } from './NetworkSettings';
 const MIB = 1024 * 1024;
 const traffic: TrafficSummary = {
   month: '2026-10',
-  thisMonth: { game: 600 * MIB, java: 50 * MIB, loaders: 10 * MIB, metadata: 2 * MIB },
+  thisMonth: { game: 600 * MIB, java: 50 * MIB, loaders: 10 * MIB, metadata: 2 * MIB, mods: 0 },
   earlier: [{ month: '2026-09', bytes: 2048 * MIB }],
 };
 
@@ -18,7 +18,11 @@ function setup(settings: Partial<SettingsView> = {}) {
     calls.push({ cmd, args });
     if (cmd === 'get_traffic') return traffic;
     if (cmd === 'reset_traffic')
-      return { ...traffic, thisMonth: { game: 0, java: 0, loaders: 0, metadata: 0 }, earlier: [] };
+      return {
+        ...traffic,
+        thisMonth: { game: 0, java: 0, loaders: 0, metadata: 0, mods: 0 },
+        earlier: [],
+      };
     if (cmd === 'get_app_snapshot') return snapshotFixture();
     return null;
   });

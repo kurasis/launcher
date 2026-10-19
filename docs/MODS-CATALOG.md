@@ -6,6 +6,10 @@ picture and file, for good. Its API is `https://mods.lapi.sh`; nginx serves the 
 files at `https://files-mods.lapi.sh` straight from disk. The workflow
 `.github/workflows/mods-service.yml` tests, builds and deploys it from `main`.
 
+The launcher's Mods tab reads it through the core's `mods_*` commands; a test build can
+point at another server with `LAUNCHER_MODS_URL` at build time (release builds never set
+it). What the launcher puts into an installation is listed in its `content.lock.json`.
+
 ## Owner actions
 
 1. **Cloudflare DNS:** proxied (orange cloud) records `mods` and `files-mods` pointing at

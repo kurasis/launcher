@@ -25,6 +25,7 @@ pub mod lifecycle;
 pub mod loader;
 pub mod location;
 pub mod mirror;
+pub mod mods;
 pub mod net;
 pub mod reports;
 pub mod reset;
@@ -489,6 +490,8 @@ fn setup(app: &mut tauri::App) -> Result<(), Box<dyn std::error::Error>> {
             launcher_account.check(&handle.state::<AppState>()).await;
         });
     }
+    // The mods catalog (D-066): search, projects and installing content.
+    app.manage(Arc::new(mods::Mods::new(&version)?));
     // Friends and chats of the launcher account (D-064): one live connection.
     {
         let friends = Arc::new(friends::Friends::new(&version)?);
@@ -800,6 +803,24 @@ fn handlers<R: tauri::Runtime>() -> impl Fn(tauri::ipc::Invoke<R>) -> bool + Sen
         commands::friends_decline_all,
         commands::friends_report_request,
         commands::launcher_account_export,
+        commands::mods_search,
+        commands::mods_project,
+        commands::mods_versions,
+        commands::mods_version,
+        commands::mods_fetch_version,
+        commands::mods_imports,
+        commands::mods_import,
+        commands::mods_import_state,
+        commands::mods_choose,
+        commands::mods_plan,
+        commands::mods_install,
+        commands::mods_cancel,
+        commands::mods_content,
+        commands::mods_identify,
+        commands::mods_updates,
+        commands::mods_set_enabled,
+        commands::mods_remove,
+        commands::mods_open_link,
         commands::skins_mine,
         commands::skins_texture,
         commands::skins_pick,

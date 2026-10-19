@@ -69,11 +69,14 @@ pub struct Usage {
     /// Version lists and other Mojang metadata.
     #[serde(default)]
     pub metadata: u64,
+    /// Files from the catalog of mods (D-066).
+    #[serde(default)]
+    pub mods: u64,
 }
 
 impl Usage {
     pub fn total(&self) -> u64 {
-        self.game + self.java + self.loaders + self.metadata
+        self.game + self.java + self.loaders + self.metadata + self.mods
     }
 
     fn add(&mut self, other: Self) {
@@ -81,11 +84,12 @@ impl Usage {
         self.java += other.java;
         self.loaders += other.loaders;
         self.metadata += other.metadata;
+        self.mods += other.mods;
     }
 }
 
 /// Bytes counted but not yet written, by source.
-pub struct Meter([AtomicU64; 4]);
+pub struct Meter([AtomicU64; 5]);
 
 /// The application's meter. Unit tests never count into it, so tests that
 /// download in parallel cannot disturb each other's numbers.
@@ -100,21 +104,23 @@ fn slot(source: SourcePolicy) -> usize {
         SourcePolicy::ModLoaders => 2,
         // Crash reports (D-061) and the feed (D-067) count with the metadata.
         SourcePolicy::MojangMetadata | SourcePolicy::CrashReports | SourcePolicy::Feed => 3,
+        SourcePolicy::ModsCatalog => 4,
     }
 }
 
-fn usage_of(values: [u64; 4]) -> Usage {
+fn usage_of(values: [u64; 5]) -> Usage {
     Usage {
         game: values[0],
         java: values[1],
         loaders: values[2],
         metadata: values[3],
+        mods: values[4],
     }
 }
 
 impl Meter {
     pub const fn new() -> Self {
-        Self([const { AtomicU64::new(0) }; 4])
+        Self([const { AtomicU64::new(0) }; 5])
     }
 
     pub fn record(&self, source: SourcePolicy, bytes: u64) {
@@ -130,11 +136,13 @@ impl Meter {
     }
 
     fn put_back(&self, usage: Usage) {
-        for (counter, value) in
-            self.0
-                .iter()
-                .zip([usage.game, usage.java, usage.loaders, usage.metadata])
-        {
+        for (counter, value) in self.0.iter().zip([
+            usage.game,
+            usage.java,
+            usage.loaders,
+            usage.metadata,
+            usage.mods,
+        ]) {
             counter.fetch_add(value, Ordering::Relaxed);
         }
     }
@@ -331,6 +339,7 @@ mod tests {
                 java: 2 * MIB,
                 loaders: 1000,
                 metadata: 10,
+                mods: 0,
             }
         );
         meter.record(SourcePolicy::MojangArtifacts, 5);

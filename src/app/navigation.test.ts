@@ -9,13 +9,14 @@ function withSettings(settings: Partial<AppSnapshot['settings']>, more: Partial<
 
 describe('navigation', () => {
   it('keeps every screen in one place', () => {
-    expect(rowViews).toEqual(['feed', 'home', 'account', 'settings']);
+    expect(rowViews).toEqual(['feed', 'home', 'mods', 'account', 'settings']);
     expect(menuViews).toEqual(['backups', 'screenshots', 'diagnostics', 'about']);
   });
 
   it('remembers only start screens', () => {
     expect(rememberedView('feed')).toBe('feed');
     expect(rememberedView('home')).toBe('home');
+    expect(rememberedView('mods')).toBe('mods');
     expect(rememberedView('account')).toBe('account');
     for (const view of ['settings', ...menuViews] as const) {
       expect(rememberedView(view)).toBeNull();
@@ -34,8 +35,10 @@ describe('navigation', () => {
     expect(startViewOf(withSettings({ startView: 'last', lastView: 'feed', feed: off }))).toBe(
       'home',
     );
-    // Screens this version does not have yet.
-    expect(startViewOf(withSettings({ startView: 'mods' }))).toBe('home');
+    expect(startViewOf(withSettings({ startView: 'mods' }))).toBe('mods');
+    expect(startViewOf(withSettings({ startView: 'last', lastView: 'mods' }))).toBe('mods');
+    // A screen this version does not have yet.
+    expect(startViewOf(withSettings({ startView: 'skins' }))).toBe('home');
     expect(startViewOf(withSettings({ startView: 'last', lastView: 'skins' }))).toBe('home');
     // Values an older or damaged core could send.
     for (const junk of ['settings', 'about', '', 'ACCOUNT', undefined, null, 7]) {

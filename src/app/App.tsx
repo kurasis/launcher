@@ -27,6 +27,7 @@ import { UpdateBadge } from '../features/updates/UpdateBadge';
 import { WhatsNew } from '../features/updates/WhatsNew';
 import { DownloadManager } from '../features/downloads/DownloadManager';
 import { FriendsCorner } from '../features/friends/FriendsCorner';
+import { ModsView, type ModsSection } from '../features/mods/ModsView';
 import { FeedView } from '../features/feed/FeedView';
 import { useTheme } from './useTheme';
 import { useAppInfo } from './useAppInfo';
@@ -93,6 +94,8 @@ export function App() {
   const { clear: clearConsoleError, catcher: consoleFailed } = consoleOpening;
   const [settingsSection, setSettingsSection] = useState<SettingsSection>('general');
   const [settingsInstance, setSettingsInstance] = useState<string | null>(null);
+  const [modsSection, setModsSection] = useState<ModsSection>('mod');
+  const [modsInstance, setModsInstance] = useState<string | null>(null);
   // A version the feed asked to install: Installations opens its form with it.
   const [installVersion, setInstallVersion] = useState<string | null>(null);
   const snapshot = state.status === 'ready' ? state.snapshot : null;
@@ -283,8 +286,22 @@ export function App() {
                   onOpenBackups={() => {
                     navigate('backups');
                   }}
+                  onOpenContent={(instanceId) => {
+                    setModsInstance(instanceId);
+                    setModsSection('installed');
+                    navigate('mods');
+                  }}
                 />
               </>
+            )}
+            {view === 'mods' && (
+              <ModsView
+                snapshot={state.snapshot}
+                instanceId={modsInstance}
+                section={modsSection}
+                onSection={setModsSection}
+                onInstance={setModsInstance}
+              />
             )}
             {view === 'account' && <AccountView snapshot={state.snapshot} />}
             {view === 'backups' && <BackupsView snapshot={state.snapshot} />}
