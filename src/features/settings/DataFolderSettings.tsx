@@ -4,6 +4,7 @@ import { Notice } from '../../components/Notice';
 import forms from '../../components/forms.module.css';
 import type { DataLocation, LocationTarget } from '../../lib/contracts';
 import { describeIpcError, ipc } from '../../lib/ipc';
+import { useShownError } from '../../lib/useShownError';
 import { strings } from '../../lib/strings';
 import { useCommand } from '../../lib/useCommand';
 import styles from './SettingsView.module.css';
@@ -18,6 +19,7 @@ export function DataFolderSettings({ busy }: { busy: boolean }) {
   const [location, setLocation] = useState<DataLocation | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [confirm, setConfirm] = useState<{ target: LocationTarget; path: string } | null>(null);
+  const picking = useShownError();
   const move = useCommand((requestId: string, target: LocationTarget, path: string | null) =>
     ipc.moveDataLocation(target, path, requestId),
   );
@@ -84,12 +86,13 @@ export function DataFolderSettings({ busy }: { busy: boolean }) {
           <Button
             disabled={disabled || location.mode === 'portable'}
             onClick={() => {
+              picking.clear();
               void ipc
                 .pickDataFolder()
                 .then((path) => {
                   if (path !== null) setConfirm({ target: 'custom', path });
                 })
-                .catch(() => undefined);
+                .catch(picking.catcher);
             }}
           >
             {t.choose}
@@ -121,6 +124,7 @@ export function DataFolderSettings({ busy }: { busy: boolean }) {
       {move.pending && <p role="status">{t.copying}</p>}
       {busy && !pending && <p className={styles.hint}>{t.busy}</p>}
       {move.error !== null && <Notice tone="danger">{move.error}</Notice>}
+      {picking.error !== null && <Notice tone="danger">{picking.error}</Notice>}
       <p className={styles.hint}>{t.portableHint}</p>
     </div>
   );

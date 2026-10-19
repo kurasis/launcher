@@ -244,6 +244,7 @@
       "openFolder": "Open game folder",
       "openFolderHint": "Worlds, screenshots and options of this installation are stored there.",
       "lastResult": "Last result",
+      "exitCode": "exit code {code}",
       "noResult": "None yet",
       "memory": "Maximum memory (MiB)",
       "memoryHint": "Between {min, number, ::group-off} and {max, number, ::group-off} MiB on this computer.",
@@ -767,6 +768,8 @@
     },
     "console": {
       "title": "Console",
+      "sourceLabel": "Show lines from",
+      "levelLabel": "Show levels",
       "open": "Open console",
       "openHint": "Everything the launcher does and everything the game prints, live, in a separate window (Ctrl+Shift+L).",
       "sources": {

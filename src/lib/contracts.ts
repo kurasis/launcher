@@ -1,7 +1,10 @@
-// Frontend mirror of the Rust DTOs in src-tauri/src/state/dto.rs, src-tauri/src/error.rs
-// and src-tauri/src/commands/. Field names use camelCase because the Rust structs are
-// serialized with `rename_all = "camelCase"`. Keep both sides in sync and bump
-// API_SCHEMA_VERSION on incompatible changes.
+// Frontend mirror of the Rust types the core sends: most live in
+// src-tauri/src/state/dto.rs and error.rs, the rest beside their feature (update.rs,
+// friends.rs, traffic.rs, gallery/, launch/crash.rs, storage/models.rs, ...). Field
+// names use camelCase because the Rust structs are serialized with
+// `rename_all = "camelCase"`. Keep both sides in sync and bump API_SCHEMA_VERSION here
+// and in dto.rs on incompatible changes; the two ship in one binary, so it records
+// the version rather than being checked at run time.
 
 export const API_SCHEMA_VERSION = 1;
 

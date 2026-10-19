@@ -30,17 +30,27 @@ export function InstallationForm({ instance, memory }: InstallationFormProps) {
   const [fullscreen, setFullscreen] = useState(instance.fullscreen);
   const [gameArguments, setGameArguments] = useState(instance.gameArguments);
   const [saved, setSaved] = useState(false);
-  const save = useCommand((requestId: string, maxHeapMib: number, w: number, h: number) =>
-    ipc.updateInstanceSettings(
-      {
-        instanceId: instance.id,
-        maxHeapMib,
-        resolution: { width: w, height: h },
-        fullscreen,
-        gameArguments,
-      },
-      requestId,
-    ),
+  // Every value sent is an argument: useCommand keeps a request ID only for
+  // a retry with the same ones.
+  const save = useCommand(
+    (
+      requestId: string,
+      maxHeapMib: number,
+      w: number,
+      h: number,
+      full: boolean,
+      gameArgs: string,
+    ) =>
+      ipc.updateInstanceSettings(
+        {
+          instanceId: instance.id,
+          maxHeapMib,
+          resolution: { width: w, height: h },
+          fullscreen: full,
+          gameArguments: gameArgs,
+        },
+        requestId,
+      ),
   );
   const bounds = memory.resolution;
   const policy = memory.policy;
@@ -48,7 +58,13 @@ export function InstallationForm({ instance, memory }: InstallationFormProps) {
 
   const submit = async () => {
     setSaved(false);
-    const result = await save.run(toInt(heap), toInt(width), toInt(height));
+    const result = await save.run(
+      toInt(heap),
+      toInt(width),
+      toInt(height),
+      fullscreen,
+      gameArguments,
+    );
     if (result) setSaved(true);
   };
 

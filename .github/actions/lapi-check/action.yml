@@ -14,7 +14,7 @@ inputs:
     required: false
     default: /v1/health
   status-only:
-    description: "true: a 200 or 204 answer is enough (upd serves files, not a health answer)."
+    description: 'true: a 200 or 204 answer is enough (upd serves files, not a health answer).'
     required: false
     default: 'false'
 runs:

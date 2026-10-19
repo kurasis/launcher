@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import type { AppSnapshot, OperationKind } from '../../lib/contracts';
-import { formatBytes } from '../../lib/format';
+import { formatBytes, progressPercent } from '../../lib/format';
 import { ipc } from '../../lib/ipc';
 import { strings } from '../../lib/strings';
 import { useCommand } from '../../lib/useCommand';
@@ -65,15 +65,7 @@ export function DownloadManager({ snapshot }: { snapshot: AppSnapshot }) {
       ? snapshot.operationProgress
       : null;
   const total = progress?.totalDownloadBytes ?? null;
-  const ratio = (done: number, all: number | null) =>
-    all !== null && all > 0 ? Math.min(100, Math.floor((done / all) * 100)) : null;
-  // Bytes while downloading; checked files while checking what is present.
-  const percent =
-    progress === null
-      ? null
-      : progress.phase === 'checking_files'
-        ? ratio(progress.verifiedFiles, progress.totalFiles)
-        : ratio(progress.downloadedBytes, total);
+  const percent = progressPercent(progress);
   const details =
     progress === null
       ? []

@@ -252,6 +252,7 @@ export type Messages = {
     readonly openFolder: string;
     readonly openFolderHint: string;
     readonly lastResult: string;
+    readonly exitCode: (values: { code: string | number }) => string;
     readonly noResult: string;
     readonly memory: string;
     readonly memoryHint: (values: { min: number; max: number }) => string;
@@ -825,6 +826,8 @@ export type Messages = {
   };
   readonly console: {
     readonly title: string;
+    readonly sourceLabel: string;
+    readonly levelLabel: string;
     readonly open: string;
     readonly openHint: string;
     readonly sources: {

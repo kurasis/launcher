@@ -6,6 +6,7 @@ import { StatusBadge, type StatusTone } from '../../components/StatusBadge';
 import type { AppSnapshot, Outcome } from '../../lib/contracts';
 import { formatBytes } from '../../lib/format';
 import { ipc } from '../../lib/ipc';
+import { useShownError } from '../../lib/useShownError';
 import { strings } from '../../lib/strings';
 import { useCommand } from '../../lib/useCommand';
 import { LifecycleHarnessPanel } from './LifecycleHarnessPanel';
@@ -25,6 +26,7 @@ const outcomeTone: Record<Outcome, StatusTone> = {
 /** Recent results, the last run's output and a user-requested redacted export. */
 export function DiagnosticsView({ snapshot }: { snapshot: AppSnapshot }) {
   const [message, setMessage] = useState<string | null>(null);
+  const opening = useShownError();
   const exporter = useCommand((requestId: string, runId: string | null) =>
     ipc.exportDiagnostics(runId, requestId),
   );
@@ -46,14 +48,23 @@ export function DiagnosticsView({ snapshot }: { snapshot: AppSnapshot }) {
       <Panel
         title={strings.console.title}
         aside={
-          <Button onClick={() => void ipc.openConsole().catch(() => undefined)}>
+          <Button
+            onClick={() => {
+              opening.clear();
+              void ipc.openConsole().catch(opening.catcher);
+            }}
+          >
             {strings.console.open}
           </Button>
         }
       >
         <p className={styles.muted}>{strings.console.openHint}</p>
+        {opening.error !== null && <Notice tone="danger">{opening.error}</Notice>}
       </Panel>
-      <RunStatus current={snapshot.currentRun} last={snapshot.lastRun} />
+      {/* The lifecycle test panel shows the runs itself, with a Stop button. */}
+      {!snapshot.lifecycleHarnessAvailable && (
+        <RunStatus current={snapshot.currentRun} last={snapshot.lastRun} />
+      )}
       <Panel title={t.recentTitle}>
         {snapshot.recentOperations.length === 0 ? (
           <p className={styles.muted}>{t.none}</p>

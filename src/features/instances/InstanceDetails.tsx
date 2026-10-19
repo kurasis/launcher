@@ -79,7 +79,7 @@ export function InstanceDetails({
             ? t.noResult
             : `${strings.diagnostics.kind[last.kind]}: ${strings.diagnostics.outcome[last.outcome]}${
                 last.exitCode !== undefined
-                  ? ` (${strings.runs.exitCode.toLowerCase()} ${String(last.exitCode)})`
+                  ? ` (${t.exitCode({ code: String(last.exitCode) })})`
                   : ''
               } · ${new Date(last.finishedAt).toLocaleString(numberLocale())}`}
         </dd>

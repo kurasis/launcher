@@ -1,3 +1,4 @@
+import type { OperationProgress } from './contracts';
 import { numberLocale, strings } from './strings';
 
 const UNITS = ['KiB', 'MiB', 'GiB', 'TiB'] as const;
@@ -23,4 +24,17 @@ export function formatBytes(bytes: number): string {
 /** A whole number typed in a form, or `NaN` for anything else. */
 export function toInt(text: string): number {
   return /^\d+$/.test(text.trim()) ? Number(text.trim()) : Number.NaN;
+}
+
+/**
+ * How far an install or repair is, 0–100, or null when unknown: files checked
+ * while checking what is present, bytes while downloading.
+ */
+export function progressPercent(progress: OperationProgress | null): number | null {
+  if (progress === null) return null;
+  const [done, all] =
+    progress.phase === 'checking_files'
+      ? [progress.verifiedFiles, progress.totalFiles]
+      : [progress.downloadedBytes, progress.totalDownloadBytes];
+  return all !== null && all > 0 ? Math.min(100, Math.floor((done / all) * 100)) : null;
 }

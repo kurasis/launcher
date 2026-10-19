@@ -245,6 +245,7 @@
       "openFolder": "فتح مجلد اللعبة",
       "openFolderHint": "تُخزَّن هناك عوالم هذا التثبيت ولقطات الشاشة والإعدادات.",
       "lastResult": "النتيجة الأخيرة",
+      "exitCode": "رمز الخروج {code}",
       "noResult": "لا شيء بعد",
       "memory": "الحد الأقصى للذاكرة (MiB)",
       "memoryHint": "بين {min, number, ::group-off} و{max, number, ::group-off} MiB على هذا الحاسوب.",
@@ -768,6 +769,8 @@
     },
     "console": {
       "title": "وحدة التحكم",
+      "sourceLabel": "عرض أسطر من",
+      "levelLabel": "عرض المستويات",
       "open": "فتح وحدة التحكم",
       "openHint": "كل ما يفعله المشغّل وكل ما تطبعه اللعبة، مباشرةً، في نافذة منفصلة (Ctrl+Shift+L).",
       "sources": {

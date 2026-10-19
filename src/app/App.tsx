@@ -6,6 +6,8 @@ import { StatusBadge } from '../components/StatusBadge';
 import { AccountChip } from '../features/accounts/AccountChip';
 import { AccountView } from '../features/accounts/AccountView';
 import { RunStatus } from '../features/diagnostics/RunStatus';
+import { progressPercent } from '../lib/format';
+import { useShownError } from '../lib/useShownError';
 import { ipc } from '../lib/ipc';
 import { StorageIssues } from '../features/diagnostics/StorageIssues';
 import { InstancesView } from '../features/instances/InstancesView';
@@ -45,11 +47,7 @@ function ActivityIndicator({ snapshot }: { snapshot: AppSnapshot }) {
   const active = snapshot.activeOperation;
   if (active === null) return null;
   const progress = snapshot.operationProgress;
-  const total = progress?.operationId === active.operationId ? progress.totalDownloadBytes : null;
-  const percent =
-    total !== null && total > 0 && progress !== null
-      ? Math.min(100, Math.floor((progress.downloadedBytes / total) * 100))
-      : null;
+  const percent = progressPercent(progress?.operationId === active.operationId ? progress : null);
   return (
     <p className={styles.activity} role="status">
       <StatusBadge tone="neutral" label={strings.activity[active.kind]} />
@@ -83,6 +81,7 @@ export function App() {
   // when its frontend was bundled.
   const { state: appInfo } = useAppInfo();
   const [view, setView] = useState<View>('home');
+  const stopping = useShownError();
   const [settingsSection, setSettingsSection] = useState<SettingsSection>('general');
   const [settingsInstance, setSettingsInstance] = useState<string | null>(null);
   const snapshot = state.status === 'ready' ? state.snapshot : null;
@@ -182,9 +181,11 @@ export function App() {
                   current={state.snapshot.currentRun}
                   last={state.snapshot.lastRun}
                   onStop={(runId) => {
-                    void ipc.stopGame(runId).catch(() => undefined);
+                    stopping.clear();
+                    void ipc.stopGame(runId).catch(stopping.catcher);
                   }}
                 />
+                {stopping.error !== null && <Notice tone="danger">{stopping.error}</Notice>}
                 <InstancesView
                   snapshot={state.snapshot}
                   onEditSettings={(instanceId) => {

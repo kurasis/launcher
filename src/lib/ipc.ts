@@ -369,6 +369,10 @@ export function subscribeBackendEvents(handler: EventHandler): {
     ),
   );
   const current = registration;
+  // A registration that failed is not kept: the next subscriber tries again.
+  current.catch(() => {
+    if (registration === current) registration = null;
+  });
   let active = true;
   return {
     ready: current.then(() => undefined),
@@ -378,15 +382,17 @@ export function subscribeBackendEvents(handler: EventHandler): {
       handlers.delete(handler);
       if (handlers.size === 0 && registration === current) {
         registration = null;
-        void current.then((unlisteners) => {
-          for (const unlisten of unlisteners) {
-            // UnlistenFn returns a promise in Tauri 2. It rejects when the webview
-            // is being torn down, in which case its listeners are gone already.
-            void Promise.resolve()
-              .then(unlisten)
-              .catch(() => undefined);
-          }
-        });
+        void current
+          .then((unlisteners) => {
+            for (const unlisten of unlisteners) {
+              // UnlistenFn returns a promise in Tauri 2. It rejects when the webview
+              // is being torn down, in which case its listeners are gone already.
+              void Promise.resolve()
+                .then(unlisten)
+                .catch(() => undefined);
+            }
+          })
+          .catch(() => undefined);
       }
     },
   };

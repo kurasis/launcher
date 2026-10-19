@@ -32,12 +32,14 @@ export function DefaultsForm({
   // Recommended per kind of installation (D-058), or one fixed amount.
   const [fixed, setFixed] = useState(settings.defaultMaxHeapMib !== null);
   const [saved, setSaved] = useState(false);
-  const save = useCommand((requestId: string, mib: number, w: number, h: number) =>
+  // Every value sent is an argument: useCommand keeps a request ID only for
+  // a retry with the same ones.
+  const save = useCommand((requestId: string, mib: number, w: number, h: number, full: boolean) =>
     ipc.setAppSettings(
       {
-        defaultMaxHeapMib: fixed ? mib : 0,
+        defaultMaxHeapMib: mib,
         defaultResolution: { width: w, height: h },
-        defaultFullscreen: fullscreen,
+        defaultFullscreen: full,
       },
       requestId,
     ),
@@ -51,9 +53,11 @@ export function DefaultsForm({
       onSubmit={(event) => {
         event.preventDefault();
         setSaved(false);
-        void save.run(toInt(heap), toInt(width), toInt(height)).then((r) => {
-          if (r) setSaved(true);
-        });
+        void save
+          .run(fixed ? toInt(heap) : 0, toInt(width), toInt(height), fullscreen)
+          .then((r) => {
+            if (r) setSaved(true);
+          });
       }}
     >
       <fieldset className={forms.choices} disabled={disabled}>

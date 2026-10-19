@@ -13,6 +13,7 @@ import type {
   ProfileRef,
 } from '../../lib/contracts';
 import { ipc } from '../../lib/ipc';
+import { useShownError } from '../../lib/useShownError';
 import { localizeError, strings } from '../../lib/strings';
 import { useCommand } from '../../lib/useCommand';
 import styles from './Accounts.module.css';
@@ -46,18 +47,21 @@ const helpLinks: Partial<Record<AccountState, ExternalLink[]>> = {
 };
 
 function HelpLinks({ state }: { state: AccountState }) {
+  const opening = useShownError();
   return (
     <>
       {(helpLinks[state] ?? []).map((link) => (
         <Button
           key={link}
           onClick={() => {
-            void ipc.openExternal(link).catch(() => undefined);
+            opening.clear();
+            void ipc.openExternal(link).catch(opening.catcher);
           }}
         >
           {t.links[link]}
         </Button>
       ))}
+      {opening.error !== null && <Notice tone="danger">{opening.error}</Notice>}
     </>
   );
 }
