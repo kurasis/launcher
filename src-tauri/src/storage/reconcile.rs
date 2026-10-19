@@ -121,6 +121,7 @@ mod tests {
             game_arguments: String::new(),
             fullscreen: false,
             launcher_skins: true,
+            world_room: None,
         }
     }
 

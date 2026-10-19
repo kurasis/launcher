@@ -672,6 +672,11 @@ pub struct InstanceFile {
     /// only "off" is written.
     #[serde(default = "launcher_skins_default", skip_serializing_if = "is_on")]
     pub launcher_skins: bool,
+    /// A room instance: made by the world flow for one room of worlds with
+    /// friends (D-068), launched only into that room, never with the
+    /// player's typed arguments.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub world_room: Option<String>,
 }
 
 fn launcher_skins_default() -> bool {
@@ -1047,6 +1052,7 @@ mod tests {
             game_arguments: String::new(),
             fullscreen: false,
             launcher_skins: true,
+            world_room: None,
         };
         let json = serde_json::to_value(&instance).unwrap();
         assert!(json["manifestSha1"].is_null());

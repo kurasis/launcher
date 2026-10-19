@@ -30,6 +30,7 @@ use crate::install::lock;
 use crate::install::service::{BoxFuture, PlanSource, StateAccess};
 use crate::lifecycle::child::{self, OutputLine, OutputTail, Stream, Supervised};
 use crate::runtime::{self, Verification};
+use crate::secrets::SecretString;
 use crate::skins_mod;
 use crate::state::dto::{RunKind, RunState, RunSummary};
 use crate::storage::models::{
@@ -62,6 +63,50 @@ pub enum LaunchMode {
     Account(String),
     /// A no-token profile: Minecraft's demo without an account (D-033, D-045).
     NoToken(super::notoken::NoTokenProfile),
+    /// A guest (or the host) of a world with friends (D-068, ADAPTATION A2):
+    /// the launcher account's nick and its offline UUID, the full game without
+    /// `--demo`, straight into the world. Only the world flow makes it, and
+    /// only for a computer with a Microsoft account that owns Minecraft.
+    World(WorldPlay),
+}
+
+/// Where a world launch goes and as whom.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct WorldPlay {
+    pub nick: crate::worlds::identity::Nick,
+    /// The local port the game connects to.
+    pub port: u16,
+}
+
+impl WorldPlay {
+    pub fn identity(&self) -> LaunchIdentity {
+        LaunchIdentity {
+            player_name: self.nick.as_str().to_owned(),
+            uuid: self.nick.offline_uuid().simple().to_string(),
+            // The world's server runs in offline mode and never sees it; the
+            // game only needs a value.
+            access_token: SecretString::new("world-with-friends"),
+            xuid: None,
+            client_id: String::new(),
+            notoken: false,
+            offline: false,
+        }
+    }
+}
+
+/// Whether this computer may play worlds with friends: as for the full game
+/// offline, a Microsoft account that owns Minecraft signed in here (its
+/// licence was checked at sign-in; ADAPTATION A2), while that check is on
+/// (`state::OFFLINE_NEEDS_OWNER`).
+pub fn world_play_allowed(state: &crate::state::AppState) -> LauncherResult<()> {
+    if state.full_game_allowed() {
+        return Ok(());
+    }
+    Err(LauncherError::new(
+        ErrorCode::NoGameAccess,
+        "Worlds with friends need a Microsoft account that owns Minecraft. Sign in with it \
+         in the launcher once.",
+    ))
 }
 
 /// Per-run inputs taken from the installation and the request.
@@ -415,15 +460,26 @@ impl LaunchService {
                 return Err(repair_needed("health"));
             }
         }
-        let jvm_arguments = runtime::custom::parse_jvm_arguments(&instance.jvm_arguments)?;
-        let mut game_arguments = super::arguments::parse_game_arguments(&instance.game_arguments)?;
-        if let Some((host, port)) = &join {
-            game_arguments.extend(super::server::join_arguments(
-                &instance.version_id,
-                host,
-                *port,
-            ));
+        if matches!(mode, LaunchMode::World(_)) {
+            world_play_allowed(state)?;
         }
+        let jvm_arguments = runtime::custom::parse_jvm_arguments(&instance.jvm_arguments)?;
+        // A world launch goes straight into its local listener and never
+        // takes typed game arguments.
+        let game_arguments = if let LaunchMode::World(play) = &mode {
+            super::server::join_arguments(&instance.version_id, "127.0.0.1", play.port)
+        } else {
+            let mut game_arguments =
+                super::arguments::parse_game_arguments(&instance.game_arguments)?;
+            if let Some((host, port)) = &join {
+                game_arguments.extend(super::server::join_arguments(
+                    &instance.version_id,
+                    host,
+                    *port,
+                ));
+            }
+            game_arguments
+        };
         let root = state.data_root().ok_or_else(|| {
             LauncherError::new(
                 ErrorCode::StorageUnavailable,
@@ -470,6 +526,7 @@ impl LaunchService {
             LaunchMode::Account(_) => {
                 "Launch with a Microsoft account: checking the installation and access".to_owned()
             }
+            LaunchMode::World(_) => "Launch into a world with friends".to_owned(),
         });
 
         let prepared = self
@@ -642,6 +699,10 @@ impl LaunchService {
             LaunchMode::Account(profile_id) => self.auth.authorize(profile_id),
             LaunchMode::NoToken(profile) => {
                 let identity = profile.identity();
+                Box::pin(async move { Ok(identity) })
+            }
+            LaunchMode::World(play) => {
+                let identity = play.identity();
                 Box::pin(async move { Ok(identity) })
             }
         };

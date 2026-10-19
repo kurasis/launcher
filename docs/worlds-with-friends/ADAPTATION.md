@@ -188,3 +188,12 @@ tuple; Fabric and other loaders arrive in W12.
   their per-session key for a room, and hosts are allowed while their lease holds. The relay
   sees a hashed group per account, never the account. Its certificate comes from Let's Encrypt
   through the relay itself, so the VPS needs no nginx or certbot.
+- 2026-10-19 — W7: the guest's licence is the one the launcher already checked: a Microsoft
+  account signed in on this computer (its entitlement was checked at sign-in), with no check
+  per launch: the same rule as the full game offline, which the owner has turned off until
+  Microsoft approves the launcher. A world launch adds `--quickPlayMultiplayer` itself, as
+  friends' server invites do, instead of turning on the descriptor's quick-play feature,
+  whose placeholders the plans do not know. The host keeps
+  each member account's last nick per world and moves player files to the new offline UUID
+  before a renamed member logs in. The commands and the two-machine run move to W8, with the
+  interface that uses them.

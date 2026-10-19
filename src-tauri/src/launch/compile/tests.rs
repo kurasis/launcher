@@ -413,3 +413,40 @@ fn launch_wrapper_versions_take_positional_name_and_session() {
         "the by-name assets directory"
     );
 }
+
+#[test]
+fn a_world_launch_plays_the_nick_with_its_offline_uuid_and_without_demo() {
+    let p = plan(V1_21_1, "1.21.1", MetaOs::Linux, "x86_64");
+    let root = root();
+    let dir = PathBuf::from("/tmp/g");
+    let play = crate::launch::service::WorldPlay {
+        nick: crate::worlds::identity::Nick::parse("Notch").unwrap(),
+        port: 41234,
+    };
+    let id = play.identity();
+    let c = compile(&LaunchInputs {
+        plan: &p,
+        root: &root,
+        game_dir: &dir,
+        game_assets: &dir,
+        natives_dir: &dir,
+        max_heap_mib: 2048,
+        resolution: Resolution::default(),
+        identity: &id,
+        launcher_version: "0.1.0",
+        extra_jvm_args: &[],
+        extra_game_args: &[],
+        fullscreen: false,
+        skins_agent: None,
+        skins_api: None,
+    })
+    .unwrap();
+    assert!(!c.game_args.contains(&"--demo".to_owned()), "no demo");
+    let at = |flag: &str| {
+        let i = c.game_args.iter().position(|a| a == flag).unwrap();
+        c.game_args[i + 1].clone()
+    };
+    assert_eq!(at("--username"), "Notch");
+    // The UUID the world's offline-mode server gives this nick.
+    assert_eq!(at("--uuid"), "b50ad385829d3141a2167e7d7539ba7f");
+}

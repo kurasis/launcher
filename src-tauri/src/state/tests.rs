@@ -832,3 +832,33 @@ fn offline_in_the_full_game_needs_an_owner_while_the_check_is_on() {
     assert!(super::offline_allowed(true, true));
     assert!(super::offline_allowed(false, false));
 }
+
+#[test]
+fn a_room_gets_one_installation_of_its_own() {
+    let dir = tempfile::tempdir().unwrap();
+    let state = state_at(dir.path(), RecordingSink::default());
+    let mine = create(&state, "Mine", "1.21.1").unwrap();
+    let room = "6f1d3b8e-2c4a-4f7e-9b1a-0c2d3e4f5a6b";
+    let first = state.room_instance(room, "Our world", "1.21.1").unwrap();
+    assert_ne!(first.id, mine.id, "the player's own is not used");
+    assert_eq!(first.world_room.as_deref(), Some(room));
+    assert_eq!(first.display_name, "Our world");
+    let again = state.room_instance(room, "Renamed", "1.21.1").unwrap();
+    assert_eq!(again.id, first.id, "joining twice reuses it");
+    assert!(state.room_instance(room, "x", "1.20.4").is_err());
+    let other = state
+        .room_instance("7f1d3b8e-2c4a-4f7e-9b1a-0c2d3e4f5a6b", "\n", "1.21.1")
+        .unwrap();
+    assert_ne!(other.id, first.id);
+    assert_eq!(other.display_name, "World with friends");
+    for junk in ["", "../x", "6F1D3B8E-2C4A-4F7E-9B1A-0C2D3E4F5A6B"] {
+        assert!(state.room_instance(junk, "x", "1.21.1").is_err());
+    }
+    // It survives a restart as a room installation.
+    drop(state);
+    let state = state_at(dir.path(), RecordingSink::default());
+    assert_eq!(
+        state.instance(first.id).unwrap().world_room.as_deref(),
+        Some(room)
+    );
+}

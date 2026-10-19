@@ -300,6 +300,15 @@ impl HostedServer {
         self.port
     }
 
+    /// The game protocol of the server's version.
+    pub fn protocol(&self) -> i32 {
+        self.protocol
+    }
+
+    pub fn world_id(&self) -> WorldId {
+        self.world_id
+    }
+
     pub fn status(&self) -> HostStatus {
         let shared = lock(&self.signal);
         HostStatus {
