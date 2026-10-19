@@ -261,6 +261,15 @@ export interface SettingsView {
   monthlyLimitMib: number;
   /** Anonymous crash statistics go to the developers; off by default (D-061). */
   shareStats: boolean;
+  /** A short sound for a new chat message or friend request (D-064). */
+  chatSound: boolean;
+  /** A system notification for one while the launcher is not in front. */
+  chatNotifications: boolean;
+  /** The launcher account plays offline in the full game instead of the demo
+   * (only while a Microsoft account that owns Minecraft is signed in). */
+  launcherAccountOffline: boolean;
+  /** The same for the profiles without an account. */
+  notokenOffline: boolean;
   /** Random ID sent with crash reports only; null until the first report. */
   installId: string | null;
   /** Where downloads come from (D-062). */
@@ -331,6 +340,18 @@ export type LauncherAccountProblem =
   | 'vault'
   | 'not_saved'
   | 'server';
+
+export const LAUNCHER_ACCOUNT_PROBLEMS: readonly LauncherAccountProblem[] = [
+  'network',
+  'sign_in_again',
+  'nick_taken',
+  'nick_reserved',
+  'nick_invalid',
+  'too_many',
+  'vault',
+  'not_saved',
+  'server',
+];
 
 /** The launcher account at oauth.lapi.sh (D-064). Never contains tokens. */
 export interface LauncherAccountView {
@@ -543,6 +564,9 @@ export interface AccountSummary {
   /** Who installations play as unless they name another profile. */
   defaultProfile: ProfileRef | null;
   launcherAccount: LauncherAccountView;
+  /** A Microsoft account that owns Minecraft is signed in: players without a
+   * token may play offline in the full game. */
+  fullGameAllowed: boolean;
 }
 
 export type ExternalLink =
@@ -675,6 +699,8 @@ export interface RunSummary {
   signal: number | null;
   /** Why the game stopped, when it crashed (D-059). */
   diagnosis: CrashDiagnosis | null;
+  /** The server the game last joined (`host:port`): friends can be invited to it. */
+  server: string | null;
 }
 
 /** Known causes of a crash, most specific first (D-059). */
@@ -922,6 +948,10 @@ export interface SettingsPatch {
   meteredWarnMib?: number;
   monthlyLimitMib?: number;
   shareStats?: boolean;
+  chatSound?: boolean;
+  chatNotifications?: boolean;
+  launcherAccountOffline?: boolean;
+  notokenOffline?: boolean;
   /** Replace the install ID with a new random one. */
   newInstallId?: boolean;
   downloadSource?: DownloadSource;

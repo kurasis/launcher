@@ -9,12 +9,13 @@ use std::time::Duration;
 
 use base64::Engine as _;
 use base64::engine::general_purpose::STANDARD_NO_PAD as B64;
-use lettre::message::{Mailbox, header::ContentType};
+use lettre::message::{Mailbox, MultiPart, header::ContentType};
 use lettre::{AsyncSmtpTransport, AsyncTransport, Message, Tokio1Executor};
 use rand::RngCore;
 use ring::aead::{Aad, CHACHA20_POLY1305, LessSafeKey, NONCE_LEN, Nonce, UnboundKey};
 
 use crate::app::{App, now};
+use crate::letters::{Content, Rendered};
 use crate::pages::Lang;
 
 pub enum Letter<'a> {
@@ -38,99 +39,188 @@ pub fn masked(email: &str) -> String {
 }
 
 impl Letter<'_> {
-    /// Subject and plain-text body in the account's language.
-    pub fn render(&self, lang: Lang) -> (String, String) {
-        match (self, lang) {
-            (Self::Verify { nick, link }, Lang::Ru) => (
-                "Подтвердите email аккаунта лаунчера".into(),
-                format!(
-                    "Привет, {nick}!\n\nПодтвердите адрес, открыв ссылку (действует 24 часа):\n{link}\n\nЕсли вы не создавали аккаунт, просто удалите это письмо.\n"
+    /// Subject, plain text and HTML in the account's language.
+    pub fn render(&self, lang: Lang) -> Rendered {
+        self.content(lang).render(lang)
+    }
+
+    fn content(&self, lang: Lang) -> Content {
+        let hi = |nick: &str| match lang {
+            Lang::Ru => format!("Привет, {nick}!"),
+            Lang::Ar => format!("مرحبًا {nick}!"),
+            Lang::En => format!("Hi {nick},"),
+        };
+        let s = |en: &str, ru: &str, ar: &str| {
+            match lang {
+                Lang::Ru => ru,
+                Lang::Ar => ar,
+                Lang::En => en,
+            }
+            .to_owned()
+        };
+        match self {
+            Self::Verify { nick, link } => Content {
+                subject: s(
+                    "Confirm your email for Sferum Launcher",
+                    "Подтвердите email для Sferum Launcher",
+                    "أكّد بريدك الإلكتروني في Sferum Launcher",
                 ),
-            ),
-            (Self::Verify { nick, link }, Lang::Ar) => (
-                "أكّد البريد الإلكتروني لحساب المشغّل".into(),
-                format!(
-                    "مرحبًا {nick}!\n\nأكّد عنوانك بفتح هذا الرابط (صالح 24 ساعة):\n{link}\n\nإذا لم تنشئ حسابًا، احذف هذه الرسالة.\n"
+                preheader: s(
+                    "One click, and friends and chats are open to you.",
+                    "Один клик — и друзья и чаты открыты.",
+                    "نقرة واحدة وتصبح الأصدقاء والمحادثات متاحة لك.",
                 ),
-            ),
-            (Self::Verify { nick, link }, Lang::En) => (
-                "Confirm the email of your launcher account".into(),
-                format!(
-                    "Hi {nick}!\n\nConfirm your address by opening this link (it works for 24 hours):\n{link}\n\nIf you did not make an account, delete this letter.\n"
+                heading: s(
+                    "Confirm your email",
+                    "Подтвердите email",
+                    "أكّد بريدك الإلكتروني",
                 ),
-            ),
-            (Self::Reset { nick, link }, Lang::Ru) => (
-                "Сброс пароля аккаунта лаунчера".into(),
-                format!(
-                    "Привет, {nick}!\n\nЧтобы задать новый пароль, откройте ссылку (действует 30 минут):\n{link}\n\nЕсли вы не просили сброс, ничего не делайте: пароль останется прежним.\n"
+                greeting: hi(nick),
+                paragraphs: vec![s(
+                    "Thanks for making a launcher account. Confirm this address, and friends and chats in the launcher are open to you. We also use it to help you back into the account if you forget the password.",
+                    "Спасибо, что создали аккаунт лаунчера. Подтвердите этот адрес — и в лаунчере откроются друзья и чаты. Ещё он поможет вернуть доступ, если вы забудете пароль.",
+                    "شكرًا لإنشاء حساب في المشغّل. أكّد هذا العنوان لتصبح الأصدقاء والمحادثات متاحة لك في المشغّل. وسيساعدك أيضًا على استعادة حسابك إذا نسيت كلمة المرور.",
+                )],
+                button: Some((
+                    s("Confirm email", "Подтвердить email", "تأكيد البريد"),
+                    (*link).to_owned(),
+                )),
+                after_button: Some(s(
+                    "The link works for 24 hours. Then press \"Check again\" in the launcher.",
+                    "Ссылка действует 24 часа. После подтверждения нажмите в лаунчере «Проверить снова».",
+                    "يعمل الرابط لمدة 24 ساعة. بعد التأكيد اضغط «تحقق مرة أخرى» في المشغّل.",
+                )),
+                warning: Some(s(
+                    "If you did not make an account, ignore this letter: without the confirmation nothing happens.",
+                    "Если вы не создавали аккаунт, просто проигнорируйте письмо: без подтверждения ничего не произойдёт.",
+                    "إذا لم تنشئ حسابًا، فتجاهل هذه الرسالة: لن يحدث شيء دون التأكيد.",
+                )),
+            },
+            Self::Reset { nick, link } => Content {
+                subject: s(
+                    "Reset your Sferum Launcher password",
+                    "Сброс пароля Sferum Launcher",
+                    "إعادة تعيين كلمة مرور Sferum Launcher",
                 ),
-            ),
-            (Self::Reset { nick, link }, Lang::Ar) => (
-                "إعادة تعيين كلمة مرور حساب المشغّل".into(),
-                format!(
-                    "مرحبًا {nick}!\n\nلتعيين كلمة مرور جديدة افتح هذا الرابط (صالح 30 دقيقة):\n{link}\n\nإذا لم تطلب ذلك، فلا تفعل شيئًا وستبقى كلمة المرور كما هي.\n"
+                preheader: s(
+                    "A link to set a new password, valid for 30 minutes.",
+                    "Ссылка, чтобы задать новый пароль. Действует 30 минут.",
+                    "رابط لتعيين كلمة مرور جديدة، صالح لمدة 30 دقيقة.",
                 ),
-            ),
-            (Self::Reset { nick, link }, Lang::En) => (
-                "Reset the password of your launcher account".into(),
-                format!(
-                    "Hi {nick}!\n\nTo set a new password, open this link (it works for 30 minutes):\n{link}\n\nIf you did not ask for this, do nothing: the password stays as it is.\n"
+                heading: s(
+                    "Set a new password",
+                    "Новый пароль",
+                    "تعيين كلمة مرور جديدة",
                 ),
-            ),
-            (Self::PasswordChanged { nick }, Lang::Ru) => (
-                "Пароль аккаунта лаунчера изменён".into(),
-                format!(
-                    "Привет, {nick}!\n\nПароль вашего аккаунта только что изменён, остальные устройства вышли из него.\nЕсли это были не вы, сразу сбросьте пароль в лаунчере («Забыли пароль?») и напишите в поддержку.\n"
+                greeting: hi(nick),
+                paragraphs: vec![s(
+                    "Someone (we hope you) asked to reset the password of your launcher account. Press the button and choose a new one.",
+                    "Кто-то (надеемся, вы) попросил сбросить пароль аккаунта лаунчера. Нажмите кнопку и придумайте новый.",
+                    "طلب أحدهم (نأمل أن تكون أنت) إعادة تعيين كلمة مرور حساب المشغّل. اضغط الزر واختر كلمة مرور جديدة.",
+                )],
+                button: Some((
+                    s(
+                        "Set a new password",
+                        "Задать новый пароль",
+                        "تعيين كلمة مرور جديدة",
+                    ),
+                    (*link).to_owned(),
+                )),
+                after_button: Some(s(
+                    "The link works for 30 minutes and only once.",
+                    "Ссылка действует 30 минут и только один раз.",
+                    "يعمل الرابط لمدة 30 دقيقة ولمرة واحدة فقط.",
+                )),
+                warning: Some(s(
+                    "If you did not ask for this, do nothing: your password stays as it is.",
+                    "Если вы не просили сброс, ничего не делайте: пароль останется прежним.",
+                    "إذا لم تطلب ذلك، فلا تفعل شيئًا: ستبقى كلمة المرور كما هي.",
+                )),
+            },
+            Self::PasswordChanged { nick } => Content {
+                subject: s(
+                    "Your Sferum Launcher password was changed",
+                    "Пароль Sferum Launcher изменён",
+                    "تم تغيير كلمة مرور Sferum Launcher",
                 ),
-            ),
-            (Self::PasswordChanged { nick }, Lang::Ar) => (
-                "تم تغيير كلمة مرور حساب المشغّل".into(),
-                format!(
-                    "مرحبًا {nick}!\n\nتم للتو تغيير كلمة مرور حسابك وتسجيل الخروج من الأجهزة الأخرى.\nإذا لم تكن أنت، فأعد تعيين كلمة المرور فورًا وراسل الدعم.\n"
+                preheader: s(
+                    "Other devices were signed out.",
+                    "Остальные устройства вышли из аккаунта.",
+                    "تم تسجيل الخروج من الأجهزة الأخرى.",
                 ),
-            ),
-            (Self::EmailChanged { nick, new }, Lang::Ru) => (
-                "Email аккаунта лаунчера изменён".into(),
-                format!(
-                    "Привет, {nick}!\n\nEmail вашего аккаунта только что изменён на {new}. Письма теперь приходят туда.\nЕсли это были не вы, сразу смените пароль в лаунчере и напишите в поддержку.\n"
+                heading: s("Password changed", "Пароль изменён", "تم تغيير كلمة المرور"),
+                greeting: hi(nick),
+                paragraphs: vec![s(
+                    "The password of your launcher account was just changed. Every other device was signed out of the account.",
+                    "Пароль вашего аккаунта лаунчера только что изменён. Все остальные устройства вышли из аккаунта.",
+                    "تم للتو تغيير كلمة مرور حساب المشغّل الخاص بك، وتم تسجيل الخروج من جميع الأجهزة الأخرى.",
+                )],
+                button: None,
+                after_button: None,
+                warning: Some(s(
+                    "If this was not you, reset the password at once in the launcher (\"Forgot your password?\") and write to support.",
+                    "Если это были не вы, сразу сбросьте пароль в лаунчере («Забыли пароль?») и напишите в поддержку.",
+                    "إذا لم تكن أنت، فأعد تعيين كلمة المرور فورًا في المشغّل («نسيت كلمة المرور؟») وراسل الدعم.",
+                )),
+            },
+            Self::EmailChanged { nick, new } => Content {
+                subject: s(
+                    "The email of your Sferum Launcher account was changed",
+                    "Email аккаунта Sferum Launcher изменён",
+                    "تم تغيير البريد الإلكتروني لحساب Sferum Launcher",
                 ),
-            ),
-            (Self::EmailChanged { nick, new }, Lang::Ar) => (
-                "تم تغيير البريد الإلكتروني لحساب المشغّل".into(),
-                format!(
-                    "مرحبًا {nick}!\n\nتم للتو تغيير البريد الإلكتروني لحسابك إلى {new}، وستصل الرسائل إليه من الآن.\nإذا لم تكن أنت، فغيّر كلمة المرور فورًا وراسل الدعم.\n"
+                preheader: s(
+                    "Letters now go to the new address.",
+                    "Письма теперь приходят на новый адрес.",
+                    "ستصل الرسائل الآن إلى العنوان الجديد.",
                 ),
-            ),
-            (Self::EmailChanged { nick, new }, Lang::En) => (
-                "The email of your launcher account was changed".into(),
-                format!(
-                    "Hi {nick}!\n\nThe email of your account was just changed to {new}. Letters now go there.\nIf this was not you, change the password at once and write to support.\n"
+                heading: s("Email changed", "Email изменён", "تم تغيير البريد"),
+                greeting: hi(nick),
+                paragraphs: vec![match lang {
+                    Lang::Ru => format!(
+                        "Email вашего аккаунта лаунчера только что изменён на {new}. Письма теперь приходят туда, а это письмо — последнее на этот адрес."
+                    ),
+                    Lang::Ar => format!(
+                        "تم للتو تغيير البريد الإلكتروني لحسابك إلى {new}. ستصل الرسائل إليه من الآن، وهذه آخر رسالة إلى هذا العنوان."
+                    ),
+                    Lang::En => format!(
+                        "The email of your launcher account was just changed to {new}. Letters now go there; this is the last one to this address."
+                    ),
+                }],
+                button: None,
+                after_button: None,
+                warning: Some(s(
+                    "If this was not you, change the password in the launcher at once and write to support.",
+                    "Если это были не вы, сразу смените пароль в лаунчере и напишите в поддержку.",
+                    "إذا لم تكن أنت، فغيّر كلمة المرور في المشغّل فورًا وراسل الدعم.",
+                )),
+            },
+            Self::Deleted { nick } => Content {
+                subject: s(
+                    "Your Sferum Launcher account was deleted",
+                    "Аккаунт Sferum Launcher удалён",
+                    "تم حذف حساب Sferum Launcher",
                 ),
-            ),
-            (Self::Deleted { nick }, Lang::Ru) => (
-                "Аккаунт лаунчера удалён".into(),
-                format!(
-                    "Привет, {nick}!\n\nВаш аккаунт лаунчера, его друзья и чаты удалены. Это письмо последнее.\nЕсли вы его не удаляли, напишите в поддержку сразу: кто-то знал ваш пароль.\n"
+                preheader: s(
+                    "The account, its friends and chats are gone.",
+                    "Аккаунт, его друзья и чаты удалены.",
+                    "تم حذف الحساب وأصدقائه ومحادثاته.",
                 ),
-            ),
-            (Self::Deleted { nick }, Lang::Ar) => (
-                "تم حذف حساب المشغّل".into(),
-                format!(
-                    "مرحبًا {nick}!\n\nتم حذف حساب المشغّل الخاص بك مع الأصدقاء والمحادثات. هذه آخر رسالة.\nإذا لم تحذفه بنفسك فراسل الدعم فورًا: شخص ما كان يعرف كلمة مرورك.\n"
-                ),
-            ),
-            (Self::Deleted { nick }, Lang::En) => (
-                "Your launcher account was deleted".into(),
-                format!(
-                    "Hi {nick}!\n\nYour launcher account, its friends and chats were deleted. This is the last letter.\nIf you did not delete it, write to support at once: someone knew your password.\n"
-                ),
-            ),
-            (Self::PasswordChanged { nick }, Lang::En) => (
-                "The password of your launcher account was changed".into(),
-                format!(
-                    "Hi {nick}!\n\nThe password of your account was just changed and other devices were signed out.\nIf this was not you, reset the password at once (\"Forgot your password?\") and write to support.\n"
-                ),
-            ),
+                heading: s("Account deleted", "Аккаунт удалён", "تم حذف الحساب"),
+                greeting: hi(nick),
+                paragraphs: vec![s(
+                    "Your launcher account, its friends and chats were deleted, as asked. This is the last letter we send you. Thank you for playing with us.",
+                    "Ваш аккаунт лаунчера, его друзья и чаты удалены, как вы и просили. Это последнее письмо от нас. Спасибо, что играли с нами.",
+                    "تم حذف حساب المشغّل الخاص بك مع أصدقائه ومحادثاته كما طلبت. هذه آخر رسالة نرسلها إليك. شكرًا لأنك لعبت معنا.",
+                )],
+                button: None,
+                after_button: None,
+                warning: Some(s(
+                    "If you did not delete it, write to support at once: someone knew your password.",
+                    "Если вы его не удаляли, сразу напишите в поддержку: кто-то знал ваш пароль.",
+                    "إذا لم تحذفه بنفسك، فراسل الدعم فورًا: شخص ما كان يعرف كلمة مرورك.",
+                )),
+            },
         }
     }
 }
@@ -194,9 +284,13 @@ impl Sealer {
 
 /// Puts a letter in the outbox.
 pub fn queue(app: &App, to: &str, lang: &str, letter: &Letter<'_>) {
-    let (subject, body) = letter.render(Lang::parse(lang));
-    let body = app.sealer.seal(to, &body);
-    if let Err(e) = app.store.queue_mail(to, &subject, &body, now()) {
+    let letter = letter.render(Lang::parse(lang));
+    let body = app.sealer.seal(to, &letter.text);
+    let html = app.sealer.seal(to, &letter.html);
+    if let Err(e) = app
+        .store
+        .queue_mail(to, &letter.subject, &body, &html, now())
+    {
         eprintln!("queueing a letter failed: {e}");
     }
 }
@@ -215,12 +309,19 @@ pub fn seal_waiting(app: &App) -> Result<(), String> {
 pub fn due(app: &App, now: i64, limit: i64) -> Result<Vec<crate::store::Mail>, String> {
     let mut due = Vec::new();
     for mut mail in app.store.pending_mail(now, limit)? {
-        match app.sealer.open(&mail.to, &mail.body) {
-            Some(body) => {
+        // A letter from before HTML parts has none; it goes as text.
+        let html = if mail.html.is_empty() {
+            Some(String::new())
+        } else {
+            app.sealer.open(&mail.to, &mail.html)
+        };
+        match (app.sealer.open(&mail.to, &mail.body), html) {
+            (Some(body), Some(html)) => {
                 mail.body = body;
+                mail.html = html;
                 due.push(mail);
             }
-            None => {
+            _ => {
                 eprintln!("letter {} cannot be opened with mail.key; dropped", mail.id);
                 app.store.mail_dropped(mail.id)?;
             }
@@ -263,12 +364,25 @@ impl Smtp {
             Some(to) => to.parse().map_err(|_| "not an address".to_owned())?,
             None => self.from.clone(),
         };
+        // The same look as the real letters, so the check shows it too.
+        let letter = Content {
+            subject: "Test letter from the account service".into(),
+            preheader: "Letters go out.".into(),
+            heading: "Letters go out".into(),
+            greeting: "Hello,".into(),
+            paragraphs: vec![
+                "This is a test letter from the mail check: the account service can send letters through its SMTP server.".into(),
+            ],
+            button: None,
+            after_button: None,
+            warning: None,
+        }
+        .render(Lang::En);
         let message = Message::builder()
             .from(self.from.clone())
             .to(to)
-            .subject("Test letter")
-            .header(ContentType::TEXT_PLAIN)
-            .body("The account service can send letters.\n".to_owned())
+            .subject(letter.subject)
+            .multipart(MultiPart::alternative_plain_html(letter.text, letter.html))
             .map_err(|_| "the letter could not be made".to_owned())?;
         self.transport
             .send(message)
@@ -281,10 +395,18 @@ impl Smtp {
         let message = Message::builder()
             .from(self.from.clone())
             .to(mail.to.parse().map_err(|_| "bad recipient".to_owned())?)
-            .subject(mail.subject.clone())
-            .header(ContentType::TEXT_PLAIN)
-            .body(mail.body.clone())
-            .map_err(|e| e.to_string())?;
+            .subject(mail.subject.clone());
+        let message = if mail.html.is_empty() {
+            message
+                .header(ContentType::TEXT_PLAIN)
+                .body(mail.body.clone())
+        } else {
+            message.multipart(MultiPart::alternative_plain_html(
+                mail.body.clone(),
+                mail.html.clone(),
+            ))
+        }
+        .map_err(|e| e.to_string())?;
         self.transport
             .send(message)
             .await
@@ -374,6 +496,57 @@ mod tests {
         );
         assert_eq!(env_file_value(text, "LAPI_OAUTH_SMTP"), None);
         assert_eq!(env_file_value(text, "LAPI_OAUTH_TURNSTILE_SECRET"), None);
+    }
+
+    #[test]
+    fn letters_escape_what_comes_from_accounts() {
+        let nick = "<b>Steve</b>&\"'";
+        let link = "https://oauth.example/verify?token=a\"><script>&lang=ru";
+        let letters = [
+            Letter::Verify { nick, link },
+            Letter::Reset { nick, link },
+            Letter::PasswordChanged { nick },
+            Letter::EmailChanged {
+                nick,
+                new: "<i>s***@example.com</i>",
+            },
+            Letter::Deleted { nick },
+        ];
+        for letter in &letters {
+            for lang in [Lang::En, Lang::Ru, Lang::Ar] {
+                let rendered = letter.render(lang);
+                assert!(!rendered.html.contains("<b>"), "{}", rendered.subject);
+                assert!(!rendered.html.contains("<script>"));
+                assert!(!rendered.html.contains("<i>"));
+                assert!(
+                    rendered
+                        .html
+                        .contains("&lt;b&gt;Steve&lt;/b&gt;&amp;&quot;&#39;")
+                );
+                // The plain part keeps the words as they are.
+                assert!(rendered.text.contains(nick));
+                assert!(rendered.html.contains(&format!("lang=\"{}\"", lang.tag())));
+                assert_eq!(rendered.html.contains("dir=\"rtl\""), lang == Lang::Ar);
+                assert!(!rendered.subject.is_empty());
+            }
+        }
+        let verify = Letter::Verify {
+            nick: "Steve",
+            link: "https://oauth.example/verify?token=t&lang=ru",
+        }
+        .render(Lang::Ru);
+        assert_eq!(verify.subject, "Подтвердите email для Sferum Launcher");
+        assert!(
+            verify
+                .text
+                .contains("https://oauth.example/verify?token=t&lang=ru")
+        );
+        assert!(
+            verify
+                .html
+                .contains("href=\"https://oauth.example/verify?token=t&amp;lang=ru\"")
+        );
+        assert!(verify.html.contains("Подтвердить email"));
     }
 
     #[test]

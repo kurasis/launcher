@@ -691,6 +691,100 @@ async fn the_installation_profile_decides_who_plays() {
 }
 
 #[tokio::test(flavor = "multi_thread")]
+async fn offline_in_the_full_game_when_switched_and_allowed() {
+    let s = Setup::new().await;
+    let service = s.service(auth("Player"));
+    s.f.state
+        .add_notoken_profile(crate::state::dto::MutationRequest {
+            request_id: Uuid::new_v4().to_string(),
+            payload: crate::state::dto::AddNoTokenProfilePayload {
+                name: "Alex_Demo".into(),
+            },
+        })
+        .unwrap();
+    s.f.state
+        .set_app_settings(crate::state::dto::MutationRequest {
+            request_id: Uuid::new_v4().to_string(),
+            payload: crate::state::dto::SettingsPatch {
+                notoken_offline: Some(true),
+                ..Default::default()
+            },
+        })
+        .unwrap();
+    let alex = crate::launch::notoken::NoTokenProfile::new("Alex_Demo").unwrap();
+    // Switched to offline, but nobody who owns the game is signed in: the demo,
+    // while the owner check is on (it is off until Microsoft approves sign-in).
+    let needs_owner = crate::state::OFFLINE_NEEDS_OWNER;
+    assert_eq!(s.f.state.full_game_allowed(), !needs_owner);
+    assert_eq!(
+        service.mode_for(s.instance),
+        LaunchMode::NoToken(alex.clone().full_game(!needs_owner))
+    );
+    s.f.state
+        .update_accounts_file(Box::new(|file| {
+            file.accounts.push(crate::storage::models::AccountRecord {
+                profile_id: "0123456789abcdef0123456789abcdef".into(),
+                profile_name: "Owner".into(),
+                vault_key: "owner".into(),
+            });
+        }))
+        .unwrap();
+    assert!(s.f.state.full_game_allowed());
+    assert_eq!(
+        service.mode_for(s.instance),
+        LaunchMode::NoToken(alex.clone().full_game(true))
+    );
+    let run = service
+        .launch(&Uuid::new_v4().to_string(), s.instance)
+        .await
+        .unwrap();
+    let done = s.finished(&run.run_id).await;
+    let tail = done.output_tail.join("\n");
+    assert!(tail.contains("ARG:Alex_Demo"), "{tail}");
+    assert!(!tail.contains("ARG:--demo"), "{tail}");
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn a_friends_invite_starts_the_game_on_its_server_and_the_server_is_noticed() {
+    let s = Setup::new().await;
+    let service = s.service(auth("Player"));
+    let bad = service
+        .launch_joining(
+            &Uuid::new_v4().to_string(),
+            s.instance,
+            service.mode_for(s.instance),
+            Some("evil host; --demo"),
+        )
+        .await
+        .unwrap_err();
+    assert_eq!(bad.code, ErrorCode::InvalidInput);
+    // The fake game prints its arguments: one of them reads like the game's
+    // own line when it joins a server.
+    s.f.state
+        .update_instance(s.instance, |i| {
+            i.game_arguments = "\"Connecting to Play.Example.com, 25570\"".into();
+        })
+        .unwrap();
+    let run = service
+        .launch_joining(
+            &Uuid::new_v4().to_string(),
+            s.instance,
+            service.mode_for(s.instance),
+            Some("play.example.com:25570"),
+        )
+        .await
+        .unwrap();
+    let done = s.finished(&run.run_id).await;
+    let tail = done.output_tail.join("\n");
+    assert!(
+        tail.contains("ARG:--quickPlayMultiplayer\nARG:play.example.com:25570")
+            || tail.contains("ARG:--server\nARG:play.example.com\nARG:--port\nARG:25570"),
+        "{tail}"
+    );
+    assert_eq!(done.server.as_deref(), Some("play.example.com:25570"));
+}
+
+#[tokio::test(flavor = "multi_thread")]
 async fn a_java_the_system_will_not_start_is_explained_and_frees_the_launcher() {
     // Antivirus software or a security policy refusing Java looks like this to
     // the launcher: the Java file may not be executed.

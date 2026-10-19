@@ -342,6 +342,17 @@ async fn register_then_sign_in_with_pkce_and_use_the_tokens() {
     assert_eq!(letters.len(), 1);
     assert_eq!(letters[0].to, "steve_2@example.com");
     assert!(letters[0].body.contains(&format!("{BASE}/verify?token=")));
+    // The link opens the page in the account's language; the HTML part has it
+    // too: the button, and the link to copy (its address and its text).
+    assert!(letters[0].body.contains(&format!("&lang={}", account.lang)));
+    assert!(letters[0].html.starts_with("<!doctype html>"));
+    assert_eq!(
+        letters[0]
+            .html
+            .matches(&format!("{BASE}/verify?token="))
+            .count(),
+        3
+    );
     // The account API.
     let access = tokens["access_token"].as_str().unwrap();
     let me = t
@@ -1123,7 +1134,7 @@ async fn letters_waiting_hold_no_working_link_and_sent_ones_keep_nothing() {
     // A letter queued before sealing is sealed at start.
     t.app
         .store
-        .queue_mail("old@example.com", "Old", "link: token=abc", now)
+        .queue_mail("old@example.com", "Old", "link: token=abc", "", now)
         .unwrap();
     crate::mail::seal_waiting(&t.app).unwrap();
     let waiting = t.app.store.pending_mail(now, 10).unwrap();
