@@ -1,7 +1,7 @@
 #!/bin/bash
 # Root setup of our services on the Debian 13 server: crash.lapi.sh (D-061),
 # mirror.lapi.sh (D-062), upd.lapi.sh (D-063), oauth.lapi.sh and
-# friends.lapi.sh (D-064).
+# friends.lapi.sh (D-064), skins.lapi.sh (D-065).
 #
 #   sudo bash ~/lapi-bootstrap/bootstrap.sh <deploy-user> [--storage /data]
 #
@@ -13,14 +13,15 @@
 # there: nginx config is root's alone, since whoever writes it can make nginx
 # (root) write any file. Safe to run again: every step checks what is there.
 #
-# For each service folder here (crash/, mirror/, upd/, oauth/, friends/):
+# For each service folder here (crash/, mirror/, upd/, oauth/, friends/,
+# skins/):
 #  1. a system user lapi-<service> that runs it;
 #  2. /home/www/lapi/<service>/{releases,data}: the deploy user writes
 #     releases, the service user alone writes its data; /home/www and
 #     /home/www/lapi become root's;
 #  3. its systemd units, if it runs as one (upd is static files and a
-#     command; the mirror also has a warming timer, accounts and friends a
-#     daily backup timer, docs/SERVER-BACKUPS.md);
+#     command; the mirror also has a warming timer, accounts, friends and
+#     skins a daily backup timer, docs/SERVER-BACKUPS.md);
 #  4. a Let's Encrypt certificate for <service>.lapi.sh (webroot), with a
 #     self-signed one as the fallback, and nginx reloads on renewal;
 #  5. its nginx files, with the shared ones from ./nginx, in /etc/nginx/lapi;
@@ -50,7 +51,7 @@ id "$DEPLOY_USER" >/dev/null || { echo "no user $DEPLOY_USER"; exit 1; }
 step() { printf '\n== %s\n' "$*"; }
 
 SERVICES=()
-for service in crash mirror upd oauth friends; do
+for service in crash mirror upd oauth friends skins; do
     [ -d "$HERE/$service/nginx" ] && SERVICES+=("$service")
 done
 # A service with a systemd unit runs as a process.
@@ -59,8 +60,9 @@ daemon() { [ -f "$HERE/$1/lapi-$1.service" ]; }
 echo "services: ${SERVICES[*]}"
 
 # Settings per service: folder modes (nginx reads the mirror's kept files;
-# crash reports and accounts are private) and the first environment file.
-private() { [ "$1" = crash ] || [ "$1" = oauth ] || [ "$1" = friends ]; }
+# crash reports, accounts, friends and skins are private: textures are served
+# by the service only) and the first environment file.
+private() { [ "$1" = crash ] || [ "$1" = oauth ] || [ "$1" = friends ] || [ "$1" = skins ]; }
 app_mode() { private "$1" && echo 2750 || echo 2755; }
 data_mode() { private "$1" && echo 0750 || echo 0755; }
 first_env() {
@@ -69,6 +71,7 @@ first_env() {
         mirror) printf 'LAPI_MIRROR_ADDR=127.0.0.1:8782\nLAPI_MIRROR_DATA=%s/mirror/data\nLAPI_MIRROR_SETTINGS=%s/mirror/settings.json\n' "$ROOT" "$ROOT" ;;
         oauth) printf 'LAPI_OAUTH_ADDR=127.0.0.1:8783\nLAPI_OAUTH_DATA=%s/oauth/data\nLAPI_OAUTH_URL=https://oauth.lapi.sh\n' "$ROOT" ;;
         friends) printf 'LAPI_FRIENDS_ADDR=127.0.0.1:8784\nLAPI_FRIENDS_DATA=%s/friends/data\nLAPI_FRIENDS_REQUIRE_EMAIL=auto\n' "$ROOT" ;;
+        skins) printf 'LAPI_SKINS_ADDR=127.0.0.1:8785\nLAPI_SKINS_DATA=%s/skins/data\n' "$ROOT" ;;
     esac
 }
 
@@ -133,7 +136,7 @@ done
 systemctl daemon-reload
 # A running service whose unit changed restarts with it now; if it does not
 # answer, the unit before comes back, so a stricter unit never leaves it down.
-port_of() { case "$1" in crash) echo 8781 ;; mirror) echo 8782 ;; oauth) echo 8783 ;; friends) echo 8784 ;; esac; }
+port_of() { case "$1" in crash) echo 8781 ;; mirror) echo 8782 ;; oauth) echo 8783 ;; friends) echo 8784 ;; skins) echo 8785 ;; esac; }
 answers() {
     for _ in $(seq 1 20); do
         curl -fsS --max-time 2 "http://127.0.0.1:$(port_of "$1")/v1/health" >/dev/null 2>&1 && return 0
@@ -244,7 +247,7 @@ systemctl reload nginx
 step "sudo rights of $DEPLOY_USER"
 sudoers=/etc/sudoers.d/lapi-deploy
 {
-    echo "# Deploys of $ROOT services by GitHub Actions (D-061 to D-064). Nothing else."
+    echo "# Deploys of $ROOT services by GitHub Actions (D-061 to D-065). Nothing else."
     for service in "${SERVICES[@]}"; do
         if daemon "$service"; then
             echo "$DEPLOY_USER ALL=(root) NOPASSWD: /usr/bin/systemctl restart lapi-$service"

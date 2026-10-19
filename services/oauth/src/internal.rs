@@ -1,10 +1,11 @@
-//! The internal API for friends.lapi.sh (D-064): who has a nick, the nicks
-//! of account IDs, which accounts were deleted, whether letters go out, and
-//! which sessions ended (so a sign-out or a switched-off
-//! account reaches friends within seconds, not when the token runs out). It listens on its own local address
-//! (`LAPI_OAUTH_INTERNAL_ADDR`, default `127.0.0.1:8793`), which nginx does not
-//! serve, so nothing outside the server reaches it. It tells only what anyone
-//! can see in the launcher: a nick and the account it names.
+//! The internal API for friends.lapi.sh (D-064) and skins.lapi.sh (D-065):
+//! who has a nick, the nicks of account IDs, which accounts were deleted,
+//! whether letters go out, and which sessions ended (so a sign-out or a
+//! switched-off account reaches them within seconds, not when the token runs
+//! out). It listens on its own local address (`LAPI_OAUTH_INTERNAL_ADDR`,
+//! default `127.0.0.1:8793`), which nginx does not serve, so nothing outside
+//! the server reaches it. It tells only what anyone can see in the launcher: a
+//! nick and the account it names.
 
 use std::collections::BTreeMap;
 use std::sync::Arc;
