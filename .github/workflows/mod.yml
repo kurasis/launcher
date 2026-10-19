@@ -51,7 +51,28 @@ jobs:
             21
             25
       - uses: gradle/actions/setup-gradle@v4
+      # ForgeGradle keeps the jars it downloads and never checks them again, and the
+      # Gradle cache is saved even when a build fails: a jar cut off in transfer
+      # would break every later build. Drop unreadable jars before the build, and
+      # after a failed one so the saved cache is clean.
+      - name: Drop damaged jars from the Forge cache
+        run: &drop-damaged-jars |
+          python3 - <<'EOF'
+          import pathlib, zipfile
+          root = pathlib.Path.home() / ".gradle/caches/minecraftforge"
+          removed = 0
+          for jar in root.rglob("*.jar") if root.is_dir() else []:
+              try:
+                  zipfile.ZipFile(jar).close()
+              except (OSError, zipfile.BadZipFile):
+                  jar.unlink()
+                  removed += 1
+          print(f"Damaged jars removed: {removed}")
+          EOF
       - run: ./gradlew --no-daemon build
+      - name: Drop damaged jars after a failed build
+        if: failure()
+        run: *drop-damaged-jars
       - uses: actions/upload-artifact@v4
         with:
           name: launcher-skins
