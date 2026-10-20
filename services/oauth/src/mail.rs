@@ -406,13 +406,59 @@ impl Smtp {
                 mail.html.clone(),
             ))
         }
-        .map_err(|e| e.to_string())?;
+        .map_err(|_| "the letter could not be made".to_owned())?;
+        // Stored with the letter and shown by `mail-check`, so in the same
+        // public words as there.
         self.transport
             .send(message)
             .await
             .map(drop)
-            .map_err(|e| e.to_string())
+            .map_err(|e| failure(&e))
     }
+}
+
+/// A stored failure as `mail-check` may print it: the fixed words this
+/// service writes as they are; anything else (written before, holding the
+/// server's text) only as its SMTP reply code.
+pub fn public_failure(stored: &str) -> String {
+    const FIXED: [&str; 9] = [
+        "bad recipient",
+        "refused",
+        "refused for now",
+        "the letter could not be made",
+        "no answer in time",
+        "TLS failed",
+        "the conversation with the server failed",
+        "no connection to the server",
+        "cannot be opened",
+    ];
+    if FIXED.contains(&stored) {
+        return stored.to_owned();
+    }
+    let coded = |prefix: &str| {
+        let code = stored
+            .strip_prefix(prefix)?
+            .strip_prefix(" (")?
+            .strip_suffix(')')?;
+        smtp_code(code).then(|| stored.to_owned())
+    };
+    if let Some(words) = coded("refused for now").or_else(|| coded("refused")) {
+        return words;
+    }
+    // lettre writes a reply as `permanent error (550): …`.
+    ["permanent error (", "transient error ("]
+        .iter()
+        .find_map(|p| stored.split_once(p)?.1.get(..4))
+        .and_then(|c| c.strip_suffix(')').filter(|c| smtp_code(c)))
+        .map_or_else(
+            || "unknown".to_owned(),
+            |code| format!("the server answered {code}"),
+        )
+}
+
+/// A reply code that refuses: 4xx or 5xx.
+fn smtp_code(word: &str) -> bool {
+    word.len() == 3 && word.starts_with(['4', '5']) && word.bytes().all(|b| b.is_ascii_digit())
 }
 
 /// An SMTP failure in words fit for a public log: what failed and the
@@ -496,6 +542,25 @@ mod tests {
         );
         assert_eq!(env_file_value(text, "LAPI_OAUTH_SMTP"), None);
         assert_eq!(env_file_value(text, "LAPI_OAUTH_TURNSTILE_SECRET"), None);
+    }
+
+    #[test]
+    fn failures_are_shown_without_the_servers_text() {
+        assert_eq!(public_failure("bad recipient"), "bad recipient");
+        assert_eq!(public_failure("refused (550)"), "refused (550)");
+        assert_eq!(
+            public_failure("refused for now (451)"),
+            "refused for now (451)"
+        );
+        assert_eq!(
+            public_failure("permanent error (550): 5.1.1 <steve@example.com>: user unknown"),
+            "the server answered 550"
+        );
+        assert_eq!(public_failure("refused (steve@example.com)"), "unknown");
+        assert_eq!(
+            public_failure("host mail.example.com:465 refused"),
+            "unknown"
+        );
     }
 
     #[test]
