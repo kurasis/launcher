@@ -595,9 +595,10 @@ impl Updates {
         }
     }
 
-    /// Something runs that an install must not interrupt.
+    /// Something runs that an install must not interrupt: a game, an install,
+    /// or a world server, whose files must not change under it (W11).
     fn busy_now(state: &AppState) -> bool {
-        state.current_run().is_some() || state.activity().current().is_some()
+        state.current_run().is_some() || state.activity().is_busy()
     }
 
     /// When the launcher closes: installs a ready update unless a game or an
@@ -608,7 +609,7 @@ impl Updates {
         };
         if Self::busy_now(state) {
             state.console().info(
-                "Update: a game or an install is running; the update is fetched again and installed at a later close",
+                "Update: a game, an install or a world is running; the update is fetched again and installed at a later close",
             );
             return;
         }
@@ -629,7 +630,7 @@ impl Updates {
         if Self::busy_now(&state) {
             return Err(LauncherError::new(
                 ErrorCode::AppBusy,
-                "Close the game and wait for installs to finish, then restart to update.",
+                "Close the game and the world you host, and wait for installs to finish, then restart to update.",
             ));
         }
         let Some((update, bytes)) = lock(&self.ready).take() else {
@@ -773,6 +774,24 @@ fn rand_seed() -> u32 {
 mod tests {
     use super::*;
     use serde_json::json;
+
+    #[test]
+    fn a_hosted_world_postpones_the_install() {
+        let dir = tempfile::tempdir().unwrap();
+        let root = crate::storage::paths::DataRoot::new(dir.path().to_path_buf()).unwrap();
+        let state = crate::install::service::tests::state_at(
+            &root,
+            crate::install::service::tests::Events::default(),
+        );
+        assert!(!Updates::busy_now(&state));
+        let permit = state
+            .activity()
+            .try_acquire_hosting(uuid::Uuid::new_v4(), "op")
+            .unwrap();
+        assert!(Updates::busy_now(&state), "a world server runs");
+        drop(permit);
+        assert!(!Updates::busy_now(&state));
+    }
 
     fn manifest(version: &str, rollout: u64, revoked: &[&str]) -> Value {
         json!({

@@ -1275,3 +1275,73 @@ fn an_older_database_gains_the_player_count() {
     // A second start finds the column there.
     crate::store::Store::open(dir.path(), "test").unwrap();
 }
+
+#[tokio::test]
+async fn deleting_revoking_and_removing_each_keep_to_their_scope() {
+    let t = setup();
+    let room = t.room_with(&[2, 3]).await;
+    for n in 1..=4 {
+        t.register(n).await;
+    }
+    let path = format!("/v1/rooms/{room}");
+    let session = t.host(&room, 8).await;
+    let session_id = session["id"].as_str().unwrap().to_owned();
+    let redeem = |n: u8, code: String| {
+        let t = &t;
+        async move {
+            t.call("POST", "/v1/invites/redeem", n, Some(json!({"code": code})))
+                .await
+        }
+    };
+
+    // A revoked invite stops; the room, its members and its host go on.
+    let (_, made) = t
+        .call("POST", &format!("{path}/invites"), 1, Some(json!({})))
+        .await;
+    let invite = made["invite"]["id"].as_str().unwrap();
+    let code = made["code"].as_str().unwrap().to_owned();
+    assert_eq!(
+        t.call("DELETE", &format!("{path}/invites/{invite}"), 1, None)
+            .await
+            .0,
+        StatusCode::OK
+    );
+    assert_eq!(redeem(4, code).await.0, StatusCode::NOT_FOUND);
+    assert_eq!(t.renew(&session_id).await.0, StatusCode::OK);
+    assert_eq!(t.ticket(&room, 2).await.0, StatusCode::OK);
+
+    // A removed member is out; the others and the session stay.
+    let remove = format!("{path}/members/{}/remove", account(3));
+    assert_eq!(t.call("POST", &remove, 1, None).await.0, StatusCode::OK);
+    assert_eq!(t.ticket(&room, 3).await.0, StatusCode::NOT_FOUND);
+    assert_eq!(t.ticket(&room, 2).await.0, StatusCode::OK);
+    let (_, renewal) = t.renew(&session_id).await;
+    assert_eq!(renewal["members"], json!(["Alice", "Bob"]));
+
+    // A deleted room ends its session and invites, and nothing late revives it.
+    let spare = t.invite(&room, 1, json!({})).await;
+    assert_eq!(t.call("DELETE", &path, 1, None).await.0, StatusCode::OK);
+    assert_ne!(t.renew(&session_id).await.0, StatusCode::OK);
+    assert_ne!(t.ticket(&room, 2).await.0, StatusCode::OK);
+    assert_ne!(redeem(4, spare).await.0, StatusCode::OK);
+    let (status, _) = t
+        .on_device(
+            "POST",
+            &format!("{path}/sessions"),
+            1,
+            Some(json!({"endpoint": endpoint(1), "maxPlayers": 8})),
+        )
+        .await;
+    assert_ne!(status, StatusCode::OK, "a late start");
+    let (status, _) = t
+        .call(
+            "PATCH",
+            &path,
+            1,
+            Some(json!({"name": "Back", "revision": 1})),
+        )
+        .await;
+    assert_ne!(status, StatusCode::OK, "a late change");
+    assert_ne!(t.call("DELETE", &path, 1, None).await.0, StatusCode::OK);
+    assert_eq!(t.call("GET", &path, 2, None).await.0, StatusCode::NOT_FOUND);
+}

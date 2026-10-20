@@ -44,9 +44,8 @@ Home and launcher data paths are shortened; token-like values are replaced by\n\
 
 /// Credentials that can show up in logs, each with what replaces it. Not a
 /// bare `code=` or `state=`: those are too often ordinary text (exit codes).
-static TOKEN_PATTERNS: LazyLock<Vec<(Regex, &'static str)>> =
-    LazyLock::new(|| {
-        [
+static TOKEN_PATTERNS: LazyLock<Vec<(Regex, &'static str)>> = LazyLock::new(|| {
+    [
         // JWT-shaped values (Minecraft and Xbox tokens).
         (
             r"eyJ[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}(\.[A-Za-z0-9_-]*)?",
@@ -63,16 +62,21 @@ static TOKEN_PATTERNS: LazyLock<Vec<(Regex, &'static str)>> =
         (r"(?i)XBL3\.0\s+x=[^\s;]+;[^\s\x22']+", "XBL3.0 x=<redacted>"),
         // Microsoft compact tickets (d=<token>, t=<token>).
         (r"\b([dt])=EwA[A-Za-z0-9!*%._~+/=-]+", "$1=<redacted>"),
-        // Token fields in JSON.
+        // Token fields in JSON, with the worlds' tickets, invite codes, RCON
+        // passwords and keys (W11).
         (
-            r#"(?i)("(?:accessToken|refreshToken|xtoken|RpsTicket|id_token)"\s*:\s*")[^"]*"#,
+            r#"(?i)("(?:accessToken|refreshToken|xtoken|RpsTicket|id_token|ticket|inviteCode|rconPassword|secretKey|endpointKey)"\s*:\s*")[^"]*"#,
             "${1}<redacted>",
         ),
+        // A world invite as a chat message carries it (`🌍 world <code>`).
+        (r"(🌍 world )[A-Za-z0-9_-]{22}\b", "${1}<redacted>"),
+        // The server's RCON password as server.properties writes it.
+        (r"(?i)(rcon\.password=)\S+", "${1}<redacted>"),
     ]
     .into_iter()
     .filter_map(|(p, r)| Regex::new(p).ok().map(|re| (re, r)))
     .collect()
-    });
+});
 
 /// Sanitizes free text for export.
 pub fn sanitize(text: &str, home: Option<&Path>, data_root: &Path) -> String {
@@ -327,6 +331,24 @@ mod tests {
         }
         assert!(out.contains("exit code=1"), "{out}");
         assert!(out.contains("state=ready"), "{out}");
+    }
+
+    #[test]
+    fn world_tickets_invites_and_rcon_passwords_are_removed() {
+        let text = r#"{"ticket":"tk-secret-1","inviteCode":"AbCdEfGhIjKlMnOpQrStUv","rconPassword":"pw-secret-2"} 🌍 world ZyXwVuTsRqPoNmLkJiHgFe rcon.password=pw-secret-3 rcon.port=25575 {"secretKey": "key-secret-4"}"#;
+        let out = sanitize(text, None, Path::new("/nowhere"));
+        for leaked in [
+            "tk-secret-1",
+            "AbCdEfGhIjKlMnOpQrStUv",
+            "pw-secret-2",
+            "ZyXwVuTsRqPoNmLkJiHgFe",
+            "pw-secret-3",
+            "key-secret-4",
+        ] {
+            assert!(!out.contains(leaked), "{leaked} in {out}");
+        }
+        assert!(out.contains("🌍 world <redacted>"), "{out}");
+        assert!(out.contains("rcon.port=25575"), "{out}");
     }
 
     #[test]
