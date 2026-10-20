@@ -4,6 +4,10 @@ import app.launcher.gametest.core.Game;
 import net.minecraft.client.CameraType;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.Screenshot;
+import net.minecraft.client.gui.screens.ChatScreen;
+import net.minecraft.client.gui.screens.LevelLoadingScreen;
+import net.minecraft.client.gui.screens.ProgressScreen;
+import net.minecraft.client.gui.screens.ReceivingLevelScreen;
 import net.minecraft.client.gui.screens.Screen;
 import net.minecraft.client.gui.screens.TitleScreen;
 import net.minecraft.client.gui.screens.inventory.InventoryScreen;
@@ -31,7 +35,27 @@ public final class GameLayer implements Game {
     @Override
     public String screen() {
         Screen screen = mc.screen;
-        return screen == null ? null : screen.getClass().getName();
+        if (screen == null) {
+            return null;
+        }
+        // Fabric runs 1.21.1 with intermediary class names (class_442); the bot and the
+        // report go by Mojang's names, so the screens it looks for are named here.
+        if (screen instanceof TitleScreen) {
+            return "TitleScreen";
+        }
+        if (screen instanceof ChatScreen) {
+            return "ChatScreen";
+        }
+        if (screen instanceof LevelLoadingScreen) {
+            return "LevelLoadingScreen";
+        }
+        if (screen instanceof ReceivingLevelScreen) {
+            return "ReceivingLevelScreen";
+        }
+        if (screen instanceof ProgressScreen) {
+            return "ProgressScreen";
+        }
+        return screen.getClass().getName() + " \"" + screen.getTitle().getString() + "\"";
     }
 
     @Override
