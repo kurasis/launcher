@@ -2,13 +2,14 @@ import { useId, useState } from 'react';
 import { Notice } from '../../components/Notice';
 import { Panel } from '../../components/Panel';
 import forms from '../../components/forms.module.css';
-import type { AppSnapshot, ModsKind } from '../../lib/contracts';
+import type { AppSnapshot, ModsKind, ModsProject, ModsVersion } from '../../lib/contracts';
 import { strings } from '../../lib/strings';
 import { gameLabel } from '../instances/loaderLabel';
 import { AddDialog, type AddTarget } from './AddDialog';
 import { AddToCatalog, RequestsSection } from './AddToCatalog';
 import { ContentSection } from './ContentSection';
 import { LinkConfirm } from './LinkConfirm';
+import { PackDialog } from './PackDialog';
 import { ProjectPage } from './ProjectPage';
 import { SearchSection } from './SearchSection';
 import styles from './Mods.module.css';
@@ -45,6 +46,9 @@ export function ModsView({ snapshot, instanceId, section, onSection, onInstance 
   const instance = snapshot.instances.find((i) => i.id === instanceId) ?? null;
   const [project, setProject] = useState<string | null>(null);
   const [adding, setAdding] = useState<AddTarget | null>(null);
+  const [packing, setPacking] = useState<{ project: ModsProject; version: ModsVersion } | null>(
+    null,
+  );
   const [catalogText, setCatalogText] = useState<string | null>(null);
   const [link, setLink] = useState<string | null>(null);
   // Read the folder again after an install.
@@ -118,6 +122,9 @@ export function ModsView({ snapshot, instanceId, section, onSection, onInstance 
                 world: null,
               });
             }}
+            onInstallPack={(found, version) => {
+              setPacking({ project: found, version });
+            }}
           />
         ) : section === 'installed' ? (
           instance === null ? (
@@ -145,7 +152,7 @@ export function ModsView({ snapshot, instanceId, section, onSection, onInstance 
           <RequestsSection onOpen={open} />
         ) : (
           <>
-            {section === 'modpack' && <Notice tone="info">{t.modpacksLater}</Notice>}
+            {section === 'modpack' && <Notice tone="info">{t.modpacksHint}</Notice>}
             <SearchSection
               key={`${section}:${instance?.id ?? ''}`}
               kind={section}
@@ -165,6 +172,18 @@ export function ModsView({ snapshot, instanceId, section, onSection, onInstance 
           }}
           onDone={() => {
             setRevision((r) => r + 1);
+          }}
+        />
+      )}
+      {packing !== null && (
+        <PackDialog
+          project={packing.project}
+          version={packing.version}
+          onClose={() => {
+            setPacking(null);
+          }}
+          onDone={(id) => {
+            onInstance(id);
           }}
         />
       )}

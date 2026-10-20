@@ -1228,7 +1228,7 @@
       "more": "عرض المزيد",
       "notInCatalog": "ليس في الفهرس؟ الصق رابطه على Modrinth أو CurseForge وسيضيفه الفهرس.",
       "addToCatalog": "أضف إلى الفهرس",
-      "modpacksLater": "تثبيت حزمة مجمّعة كتثبيت جديد يأتي في إصدار لاحق من المشغّل. يمكنك تصفّح الحزم الآن.",
+      "modpacksHint": "تُثبَّت الحزمة المجمّعة كتثبيت جديد بإصدار Minecraft ومحمّل التعديلات والتعديلات الخاصة بها.",
       "importing": "قيد الإضافة",
       "by": "بواسطة {author}",
       "downloads": "التنزيلات: {count}",
@@ -1312,6 +1312,33 @@
         "progress": "تقدّم التنزيل",
         "stop": "إيقاف",
         "install": "ثبّت"
+      },
+      "pack": {
+        "install": "تثبيت",
+        "title": "تثبيت {title}",
+        "preparing": "يقرأ الفهرس الحزمة المجمّعة…",
+        "fetching": "يجلب الفهرس ملفات الحزمة: {kept} من {total}. تستغرق الحزمة الكبيرة وقتًا في المرة الأولى.",
+        "noLoader": "بلا محمّل تعديلات",
+        "mods": "{count, plural, zero {لا تعديلات} one {تعديل واحد} two {تعديلان} few {# تعديلات} many {# تعديلًا} other {# تعديل}}",
+        "size": "للتنزيل: {size}.",
+        "skipped": "{count, plural, one {ملف واحد مستبعد} two {ملفان مستبعدان} few {# ملفات مستبعدة} many {# ملفًا مستبعدًا} other {# ملف مستبعد}}: ليست للعبة أو في مكان لا يحق للحزمة الكتابة فيه.",
+        "name": "اسم التثبيت",
+        "start": "تثبيت",
+        "creating": "جارٍ إنشاء التثبيت…",
+        "unpacking": "جارٍ فك إعدادات الحزمة: {files} من {total}",
+        "stopped": "أُنشئ التثبيت لكن الحزمة لم تكتمل فيه بعد. أعد المحاولة لإكمالها.",
+        "done": "ثُبّتت الحزمة باسم «{name}». اضغط «العب»: تُنزَّل اللعبة ومحمّل التعديلات أولًا.",
+        "leftOut": "{count, plural, one {استُبعد ملف واحد} two {استُبعد ملفان} few {استُبعدت # ملفات} many {استُبعد # ملفًا} other {استُبعد # ملف}}: ليست للعبة أو في مكان لا يحق للحزمة الكتابة فيه.",
+        "retry": "أعد المحاولة",
+        "close": "إغلاق",
+        "failures": {
+          "bad_pack": "ملفات هذه الحزمة تالفة أو لا يقبلها المشغّل.",
+          "unsupported_pack": "تحتاج هذه الحزمة ما لا يثبّته المشغّل (لعبة أو محمّل تعديلات آخر).",
+          "unsupported_host": "تنزّل هذه الحزمة ملفات من موقع لا يجلب منه الفهرس.",
+          "too_big": "هذه الحزمة أكبر من أن يحفظها الفهرس.",
+          "hash_mismatch": "ملف من هذه الحزمة لا يطابق ما تذكره. حاول لاحقًا.",
+          "other": "تعذّر على الفهرس تجهيز هذه الحزمة. حاول لاحقًا."
+        }
       },
       "requests": {
         "hint": "ما طلبت إضافته إلى الفهرس وإلى أين وصل.",
@@ -2226,6 +2253,11 @@
     "This world has not been played yet: there is nothing to export.": "لم يُلعب في هذا العالم بعد: لا شيء لتصديره.",
     "This world is being hosted. Stop hosting it first.": "هذا العالم مفتوح الآن. أغلقه أولًا.",
     "This world is larger than a world can be.": "هذا العالم أكبر من الحجم المسموح.",
-    "Worlds with mods come later: import a world of an installation without mods.": "العوالم ذات التعديلات تأتي لاحقًا: استورد عالمًا من تثبيت بلا تعديلات."
+    "Worlds with mods come later: import a world of an installation without mods.": "العوالم ذات التعديلات تأتي لاحقًا: استورد عالمًا من تثبيت بلا تعديلات.",
+    "Putting the modpack's files in place": "وضع ملفات الحزمة في مكانها",
+    "The catalog is still preparing this modpack. Try again soon.": "لا يزال الفهرس يجهّز هذه الحزمة. حاول بعد قليل.",
+    "This modpack cannot be installed: its files are not what the launcher accepts.": "لا يمكن تثبيت هذه الحزمة: ملفاتها ليست مما يقبله المشغّل.",
+    "This modpack needs another Minecraft version or mod loader than this installation.": "تحتاج هذه الحزمة إصدار Minecraft أو محمّل تعديلات غير الذي في هذا التثبيت.",
+    "Unpacking stopped unexpectedly.": "توقف فك الحزمة على نحو غير متوقع."
   }
 }

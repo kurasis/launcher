@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-mods-create-pack-instance"
+description = "Enables the mods_create_pack_instance command without any pre-configured scope."
+commands.allow = ["mods_create_pack_instance"]
+
+[[permission]]
+identifier = "deny-mods-create-pack-instance"
+description = "Denies the mods_create_pack_instance command without any pre-configured scope."
+commands.deny = ["mods_create_pack_instance"]

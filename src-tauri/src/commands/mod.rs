@@ -2054,6 +2054,153 @@ pub async fn mods_install<R: Runtime>(
     result
 }
 
+/// A modpack version as the catalog has it (stage 3). `prepare` asks the
+/// catalog to keep its files; the interface does that once, then looks
+/// without it every few seconds until the pack is ready.
+#[tauri::command]
+pub async fn mods_pack<R: Runtime>(
+    app: AppHandle<R>,
+    version: String,
+    prepare: bool,
+) -> LauncherResult<crate::mods::pack::PackInfo> {
+    let state = app.state::<AppState>();
+    crate::mods::online(&state)?;
+    let mut info = mods(&app).client.pack(&version, prepare).await?;
+    // A metered connection (D-051): the pack says why it asks first.
+    if info.ready()
+        && let Some(root) = state.data_root()
+    {
+        let settings = state.settings();
+        let month_bytes = crate::traffic::month_total(&root);
+        info.approval = crate::traffic::caution(
+            settings.metered,
+            settings.metered_warn_mib,
+            settings.monthly_limit_mib,
+            month_bytes,
+            info.total_bytes,
+        )
+        .map(|reason| crate::state::dto::ApprovalRequest {
+            bytes: info.total_bytes,
+            files: info.total + 1,
+            reason,
+            month_bytes,
+            monthly_limit_mib: settings.monthly_limit_mib,
+        });
+    }
+    Ok(info)
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct ModsPackInstancePayload {
+    pub version: String,
+    pub display_name: String,
+}
+
+/// A new installation for a ready modpack: its game version, its loader, and
+/// memory for its mods (D-058). Its files come with `mods_apply_pack`.
+#[tauri::command]
+pub async fn mods_create_pack_instance<R: Runtime>(
+    app: AppHandle<R>,
+    request: MutationRequest<ModsPackInstancePayload>,
+) -> LauncherResult<InstanceSummary> {
+    crate::state::ledger::validate_request_id(&request.request_id)?;
+    crate::mods::online(&app.state::<AppState>())?;
+    let info = mods(&app)
+        .client
+        .pack(&request.payload.version, false)
+        .await?;
+    if !info.ready() {
+        return Err(crate::error::LauncherError::invalid_input(
+            "The catalog is still preparing this modpack. Try again soon.",
+        ));
+    }
+    let loader = info.loader_choice()?;
+    let game = info.game.clone().unwrap_or_default();
+    let create = MutationRequest {
+        request_id: request.request_id,
+        payload: CreateInstancePayload {
+            display_name: request.payload.display_name,
+            version_id: game,
+            loader,
+        },
+    };
+    blocking(app, move |state| {
+        state.create_instance_with(create, info.mods)
+    })
+    .await
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct ModsApplyPackPayload {
+    pub instance_id: crate::storage::paths::InstanceId,
+    pub version: String,
+}
+
+/// Puts a ready modpack's files and overrides into an installation made for
+/// it; progress comes as `mods://progress`. Again on the same installation it
+/// finishes what stopped, changing only what is still as the pack left it.
+#[tauri::command]
+pub async fn mods_apply_pack<R: Runtime>(
+    app: AppHandle<R>,
+    request: MutationRequest<ModsApplyPackPayload>,
+) -> LauncherResult<crate::mods::pack::PackReport> {
+    use crate::mods::Catalog;
+    use tauri::Emitter;
+    crate::state::ledger::validate_request_id(&request.request_id)?;
+    let payload = request.payload;
+    let id = payload.instance_id;
+    let mods = mods(&app);
+    let claim = mods.content.claim(id)?;
+    let state = app.state::<AppState>();
+    state.activity().ensure_instance_idle(id)?;
+    crate::mods::online(&state)?;
+    let (root, instance) = crate::mods::content::instance_of(&state, id)?;
+    let info = mods.client.pack(&payload.version, false).await?;
+    if !info.ready() {
+        return Err(crate::error::LauncherError::invalid_input(
+            "The catalog is still preparing this modpack. Try again soon.",
+        ));
+    }
+    let loader = info.loader_choice()?;
+    if info.game.as_deref() != Some(instance.version_id.as_str())
+        || loader.as_ref().map(|l| l.kind) != instance.loader.as_ref().map(|l| l.kind)
+    {
+        return Err(crate::error::LauncherError::invalid_input(
+            "This modpack needs another Minecraft version or mod loader than this installation.",
+        ));
+    }
+    let version = mods.client.version(&payload.version).await?;
+    let project = mods.client.project(&version.project_id).await?;
+    let meta = crate::mods::pack::PackMeta::new(&project, &version)?;
+    let emitter = app.clone();
+    let emit = move |progress: crate::mods::content::Progress| {
+        let _ = emitter.emit(crate::mods::PROGRESS_EVENT, progress);
+    };
+    let result = mods
+        .content
+        .apply_pack(&root, id, &info, meta, &claim.cancel, &emit)
+        .await;
+    if let Err(error) = &result {
+        let phase = if error.code == crate::error::ErrorCode::OperationCancelled {
+            "cancelled"
+        } else {
+            "failed"
+        };
+        emit(crate::mods::content::Progress {
+            instance_id: id.to_string(),
+            phase,
+            files: 0,
+            total_files: 0,
+            bytes: 0,
+            total_bytes: 0,
+        });
+    }
+    drop(claim);
+    result
+}
+
 /// Stops an install into an installation.
 #[tauri::command]
 pub fn mods_cancel<R: Runtime>(

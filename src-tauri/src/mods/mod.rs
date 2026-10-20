@@ -11,6 +11,7 @@
 
 pub mod content;
 pub mod markdown;
+pub mod pack;
 
 use std::sync::Arc;
 
@@ -882,6 +883,24 @@ impl Client {
             )
             .await?;
         ImportRequest::from(&value).ok_or_else(server)
+    }
+}
+
+impl Client {
+    /// A modpack version as the catalog has it; `prepare` asks the catalog to
+    /// keep its files (once: it is counted, so looking again goes without).
+    pub async fn pack(&self, id: &str, prepare: bool) -> LauncherResult<pack::PackInfo> {
+        if !our_id(id) {
+            return Err(not_found());
+        }
+        let url = Self::url(&format!("/v1/versions/{id}/pack"));
+        let request = if prepare {
+            self.http.post(url)
+        } else {
+            self.http.get(url)
+        };
+        let value = self.send(request, MAX_VERSIONS_BYTES).await?;
+        Ok(pack::PackInfo::from(&value))
     }
 }
 

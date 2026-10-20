@@ -19,6 +19,7 @@ interface Props {
   onBack: () => void;
   onLink: (url: string) => void;
   onAdd: (project: ModsProject, version: ModsVersion) => void;
+  onInstallPack: (project: ModsProject, version: ModsVersion) => void;
 }
 
 /** One version: what it runs on, whether the catalog keeps it, and actions. */
@@ -27,12 +28,14 @@ function VersionRow({
   project,
   instance,
   onAdd,
+  onInstallPack,
   onLink,
 }: {
   version: ModsVersion;
   project: ModsProject;
   instance: InstanceSummary | null;
   onAdd: () => void;
+  onInstallPack: () => void;
   onLink: (url: string) => void;
 }) {
   const t = strings.mods.project;
@@ -41,6 +44,8 @@ function VersionRow({
   const [changelog, setChangelog] = useState<DocNode[] | null>(null);
   const [open, setOpen] = useState(false);
   const file = version.files.find((f) => f.primary) ?? version.files[0];
+  // A Modrinth pack; other packs come later.
+  const pack = project.kind === 'modpack' && version.files.some((f) => f.name.endsWith('.mrpack'));
   return (
     <li className={styles.version}>
       <div className={styles.versionHead}>
@@ -65,6 +70,11 @@ function VersionRow({
         {installable(project.kind) && (
           <Button variant="primary" disabled={instance === null} onClick={onAdd}>
             {t.add}
+          </Button>
+        )}
+        {pack && (
+          <Button variant="primary" onClick={onInstallPack}>
+            {strings.mods.pack.install}
           </Button>
         )}
         {!asked && (
@@ -116,7 +126,7 @@ function VersionRow({
 }
 
 /** A project's page: description, gallery and versions (D-066). */
-export function ProjectPage({ projectRef, instance, onBack, onLink, onAdd }: Props) {
+export function ProjectPage({ projectRef, instance, onBack, onLink, onAdd, onInstallPack }: Props) {
   const t = strings.mods.project;
   const [project, setProject] = useState<ModsProject | null>(null);
   // Versions with the query they answer; another query shows none yet.
@@ -143,8 +153,10 @@ export function ProjectPage({ projectRef, instance, onBack, onLink, onAdd }: Pro
 
   const projectId = project?.id ?? null;
   const kind = project?.kind ?? null;
-  // A new snapshot is a new object; only these matter here.
-  const game = fitting ? (instance?.versionId ?? null) : null;
+  // A new snapshot is a new object; only these matter here. A modpack makes
+  // an installation of its own, so nothing is filtered for one.
+  const filtered = fitting && kind !== 'modpack';
+  const game = filtered ? (instance?.versionId ?? null) : null;
   const loader = fitting && kind !== null ? loaderOf(kind, instance) : '';
   const query = `${projectId ?? ''}|${game ?? ''}|${loader}`;
   const versions = answer?.query === query ? answer.list : null;
@@ -239,7 +251,7 @@ export function ProjectPage({ projectRef, instance, onBack, onLink, onAdd }: Pro
 
       {project.status === 'importing' && <Notice tone="info">{t.importingHint}</Notice>}
       {project.goneAt !== null && <Notice tone="info">{t.gone}</Notice>}
-      {project.kind === 'modpack' && <Notice tone="info">{strings.mods.modpacksLater}</Notice>}
+      {project.kind === 'modpack' && <Notice tone="info">{strings.mods.modpacksHint}</Notice>}
       {project.kind === 'world' && <Notice tone="info">{t.worldsLater}</Notice>}
       {error !== null && <Notice tone="danger">{error}</Notice>}
 
@@ -273,7 +285,7 @@ export function ProjectPage({ projectRef, instance, onBack, onLink, onAdd }: Pro
 
       <section aria-label={t.versions}>
         <h3 className={styles.subTitle}>{t.versions}</h3>
-        {instance !== null && (
+        {instance !== null && project.kind !== 'modpack' && (
           <label className={styles.check}>
             <input
               type="checkbox"
@@ -292,7 +304,7 @@ export function ProjectPage({ projectRef, instance, onBack, onLink, onAdd }: Pro
         {versions === null ? (
           <p role="status">{strings.mods.loading}</p>
         ) : versions.length === 0 ? (
-          <p className={styles.muted}>{fitting ? t.noneFits : t.noVersions}</p>
+          <p className={styles.muted}>{filtered ? t.noneFits : t.noVersions}</p>
         ) : (
           <ul className={styles.versions}>
             {versions.slice(0, shown).map((version) => (
@@ -304,6 +316,9 @@ export function ProjectPage({ projectRef, instance, onBack, onLink, onAdd }: Pro
                 onLink={onLink}
                 onAdd={() => {
                   onAdd(project, version);
+                }}
+                onInstallPack={() => {
+                  onInstallPack(project, version);
                 }}
               />
             ))}

@@ -953,7 +953,17 @@ impl AppState {
         &self,
         request: MutationRequest<CreateInstancePayload>,
     ) -> LauncherResult<InstanceSummary> {
-        let result = self.create_instance_inner(request);
+        self.create_instance_with(request, 0)
+    }
+
+    /// Creates an installation that will hold `mods` mods (a modpack's), so
+    /// its memory is recommended for them (D-058).
+    pub fn create_instance_with(
+        &self,
+        request: MutationRequest<CreateInstancePayload>,
+        mods: u32,
+    ) -> LauncherResult<InstanceSummary> {
+        let result = self.create_instance_inner(request, mods);
         match &result {
             Ok(i) => self.console.info(format!(
                 "Created installation \"{}\" (Minecraft {}{})",
@@ -974,6 +984,7 @@ impl AppState {
     fn create_instance_inner(
         &self,
         request: MutationRequest<CreateInstancePayload>,
+        mods: u32,
     ) -> LauncherResult<InstanceSummary> {
         let memory = self.memory.clone();
         self.mutate(
@@ -998,6 +1009,7 @@ impl AppState {
                     display_name,
                     version.as_str().to_owned(),
                     payload.loader.clone(),
+                    mods,
                 );
                 store.create_instance(&instance)?;
                 let id = instance.id;
@@ -1105,6 +1117,7 @@ impl AppState {
                 display_name,
                 version.as_str().to_owned(),
                 None,
+                0,
             );
             instance.world_room = Some(room.clone());
             store.create_instance(&instance)?;
@@ -1145,6 +1158,7 @@ impl AppState {
                 display_name,
                 version.as_str().to_owned(),
                 loader,
+                0,
             );
             store.create_instance(&instance)?;
             data.instances.insert(id, instance.clone());
@@ -2064,9 +2078,10 @@ fn new_instance(
     display_name: String,
     version_id: String,
     loader: Option<crate::loader::LoaderChoice>,
+    mods: u32,
 ) -> InstanceFile {
     // A fixed default wins; otherwise what this kind of installation needs (D-058).
-    let workload = validation::Workload::of(&version_id, loader.is_some(), 0);
+    let workload = validation::Workload::of(&version_id, loader.is_some(), mods);
     let max_heap_mib = data
         .settings
         .default_max_heap_mib
