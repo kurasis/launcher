@@ -959,7 +959,10 @@
       "cancel": "Cancel",
       "jobTitle": "Game files are still being prepared",
       "jobBody": "Quitting now cancels the installation or repair; files verified so far are kept for next time. Keep it running in the background and the launcher window returns when it finishes.",
-      "jobStop": "Cancel and quit"
+      "jobStop": "Cancel and quit",
+      "hostingTitle": "Your world is open to friends",
+      "hostingBody": "Quitting saves the world and closes it for everyone playing in it. Keep the launcher running in the background to leave it open.",
+      "hostingStop": "Close the world and quit"
     },
     "activity": {
       "install": "Installing",
@@ -1460,7 +1463,10 @@
         "code": "Invite code",
         "copy": "Copy",
         "copied": "Copied",
-        "hint": "Send this code to a friend. It is shown only now; it can be used {uses, plural, one {once} other {# times}} until {date}."
+        "hint": "Send this code to a friend. It is shown only now; it can be used {uses, plural, one {once} other {# times}} until {date}.",
+        "sendTo": "Friend to send the code to",
+        "send": "Send in a chat",
+        "sent": "Code sent to {nick}."
       },
       "form": {
         "name": "World name",
@@ -1526,6 +1532,15 @@
         "already_connected": "Your account is already playing in this room.",
         "device": "This computer was refused by worlds.lapi.sh. Try again.",
         "refused": "worlds.lapi.sh refused this."
+      },
+      "devices": {
+        "open": "Computers",
+        "title": "Computers with worlds",
+        "hint": "Computers where your launcher account opened or joined worlds. Signing one out closes the worlds it hosts; it can sign in again.",
+        "current": "This computer",
+        "added": "Added {date}",
+        "revoke": "Sign out",
+        "confirm": "Sign out {name}?"
       }
     },
     "metered": {
@@ -1749,7 +1764,10 @@
       "gameRunning": "The game is already running.",
       "inviteFriend": "Invite",
       "inviteSent": "Invite sent to {nick}.",
-      "joining": "Starting the game…"
+      "joining": "Starting the game…",
+      "youInvitedWorld": "You invited to a world",
+      "invitedToWorld": "{nick} invites you to a world",
+      "inWorld": "In the world {name}"
     },
     "windowTitles": {
       "pickJava": "Choose the Java program (java or javaw.exe)",

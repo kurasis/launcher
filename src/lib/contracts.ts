@@ -790,7 +790,7 @@ export type QuitAction = 'quit' | 'keep_in_background' | 'stop_and_quit';
 export type QuitResult =
   | { status: 'quitting' }
   | { status: 'in_background' }
-  | { status: 'choice_required'; operationId: string };
+  | { status: 'choice_required'; operationId: string; hosting: boolean };
 
 export interface StorageIssue {
   code: ErrorCode;
@@ -1790,4 +1790,14 @@ export interface WorldsState {
 export interface WorldsInstance {
   instanceId: string;
   ready: boolean;
+}
+
+/** A computer of the launcher account for worlds. */
+export interface WorldsDevice {
+  id: string;
+  name: string;
+  /** Unix seconds. */
+  created: number;
+  /** This computer. */
+  current: boolean;
 }

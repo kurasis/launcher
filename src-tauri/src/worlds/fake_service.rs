@@ -40,6 +40,8 @@ pub struct World {
     pub accounts: HashMap<String, Account>,
     /// Device key (base64url) to account.
     pub devices: HashMap<String, String>,
+    /// Registered devices: id, account, name.
+    pub device_list: Vec<(String, String, String)>,
     pub session: Option<(String, i64, String, bool)>,
     /// Ticket to (account, guest endpoint, used).
     pub tickets: HashMap<String, (String, String, bool)>,
@@ -227,10 +229,33 @@ fn handle(world: &Mutex<World>, base: &str, head: &str, body: &str) -> (u16, Str
             }
             world.devices.insert(key, me.id.clone());
             let id = world.id();
+            let name = body["name"].as_str().unwrap_or_default().to_owned();
+            world
+                .device_list
+                .push((id.clone(), me.id.clone(), name.clone()));
             (
                 200,
-                json!({ "id": id, "name": body["name"], "created": 1 }).to_string(),
+                json!({ "id": id, "name": name, "created": 1 }).to_string(),
             )
+        }
+        ("GET", ["v1", "devices"]) => {
+            let mine: Vec<Value> = world
+                .device_list
+                .iter()
+                .filter(|(_, account, _)| *account == me.id)
+                .map(|(id, _, name)| json!({ "id": id, "name": name, "created": 1 }))
+                .collect();
+            (200, Value::from(mine).to_string())
+        }
+        ("DELETE", ["v1", "devices", device]) => {
+            let before = world.device_list.len();
+            world
+                .device_list
+                .retain(|(id, account, _)| !(id == device && *account == me.id));
+            if world.device_list.len() == before {
+                return refuse("not_found");
+            }
+            (200, json!({ "ok": true }).to_string())
         }
         ("GET", ["v1", "rooms", room]) if *room == ROOM => {
             if !me.active {

@@ -15,6 +15,7 @@ import { strings } from '../../lib/strings';
 import { ChatView } from './ChatView';
 import type { GameForInvites } from './InviteCard';
 import { inviteBody } from './invite';
+import { worldOfPresence } from './worldInvite';
 import styles from './Friends.module.css';
 import { playChime, unlockSoundOnFirstInput } from './sound';
 import { problemText, roomTitle, sanctionText, useFriends } from './useFriends';
@@ -29,8 +30,15 @@ const GROUP_MAX = 20;
  * the corner, next to the downloads, with the whole friends system in its
  * panel.
  */
+/** "Online", "Playing Minecraft 1.21.1" or "In the world Our base". */
+function presenceText(playing: string | null): string {
+  if (playing === null) return t.online;
+  const world = worldOfPresence(playing);
+  return world === null ? t.playing({ game: playing }) : t.inWorld({ name: world });
+}
+
 /** The running game's server as an invite, and the installations to join with. */
-function gameForInvites(snapshot: AppSnapshot): GameForInvites {
+function gameForInvites(snapshot: AppSnapshot, openWorld: (room: string) => void): GameForInvites {
   const run = snapshot.currentRun;
   const running =
     run !== null &&
@@ -45,20 +53,27 @@ function gameForInvites(snapshot: AppSnapshot): GameForInvites {
         : null,
     instances: snapshot.instances,
     running,
+    openWorld,
   };
 }
 
 export function FriendsCorner({
   snapshot,
   onOpenAccounts,
+  onOpenWorld,
 }: {
   snapshot: AppSnapshot;
   onOpenAccounts: () => void;
+  /** Shows a room in Worlds, such as one joined from a chat invite. */
+  onOpenWorld: (room: string) => void;
 }) {
   const settings = snapshot.settings;
-  const game = gameForInvites(snapshot);
-  const view = useFriends();
   const [open, setOpen] = useState(false);
+  const game = gameForInvites(snapshot, (room) => {
+    setOpen(false);
+    onOpenWorld(room);
+  });
+  const view = useFriends();
   const [roomId, setRoomId] = useState<string | null>(null);
   useChime(view, settings, open ? roomId : null);
   if (view === null) return null;
@@ -599,7 +614,7 @@ function Friends({
                 </span>
                 {person.online && (
                   <span className={styles.status} dir="auto">
-                    {person.playing !== null ? t.playing({ game: person.playing }) : t.online}
+                    {presenceText(person.playing)}
                   </span>
                 )}
               </span>

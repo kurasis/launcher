@@ -919,9 +919,64 @@ fn request_words(language: &str) -> &'static str {
     }
 }
 
+/// Marks the presence of a game in a room's world (D-068); the interface
+/// shows it as "in the world <name>".
+pub const WORLD_PRESENCE: &str = "🌍 ";
+
+/// What friends see while the game runs: the game, or the world of the room
+/// it plays in. At most 60 characters, as the friends service takes.
+pub fn playing_text(instance: &crate::storage::models::InstanceFile) -> String {
+    if instance.world_room.is_some() {
+        let name: String = instance.display_name.chars().take(56).collect();
+        return format!("{WORLD_PRESENCE}{}", name.trim());
+    }
+    match &instance.loader {
+        Some(loader) => format!("Minecraft {} · {}", instance.version_id, loader.kind.name()),
+        None => format!("Minecraft {}", instance.version_id),
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn presence_names_the_game_or_the_room_world() {
+        use crate::storage::document::SCHEMA_VERSION;
+        use crate::storage::models::{InstallationHealth, InstanceFile, Resolution};
+        use crate::storage::paths::InstanceId;
+        let mut instance = InstanceFile {
+            schema_version: SCHEMA_VERSION,
+            id: InstanceId::generate(),
+            display_name: "Our base".into(),
+            version_id: "1.21.1".into(),
+            manifest_sha1: None,
+            created_at: chrono::Utc::now(),
+            last_played_at: None,
+            max_heap_mib: 4096,
+            resolution: Resolution::default(),
+            health: InstallationHealth::Ready,
+            last_result: None,
+            java: None,
+            loader: None,
+            notes: String::new(),
+            java_provider: None,
+            custom_java: None,
+            jvm_arguments: String::new(),
+            profile: None,
+            game_arguments: String::new(),
+            fullscreen: false,
+            launcher_skins: true,
+            world_room: None,
+        };
+        assert_eq!(playing_text(&instance), "Minecraft 1.21.1");
+        instance.world_room = Some("7f1d3b8e-2c4a-4f7e-9b1a-0c2d3e4f5a6b".into());
+        assert_eq!(playing_text(&instance), "🌍 Our base");
+        instance.display_name = "Ж".repeat(64);
+        let long = playing_text(&instance);
+        assert!(long.starts_with(WORLD_PRESENCE));
+        assert!(long.chars().count() <= 60);
+    }
 
     #[test]
     fn notification_text_is_one_short_clean_line() {

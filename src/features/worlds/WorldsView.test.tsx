@@ -294,4 +294,65 @@ describe('WorldsView', () => {
     expect(screen.getAllByRole('button', { name: 'Remove' })).toHaveLength(1);
     expect(screen.queryByRole('button', { name: 'Leave the room' })).toBeNull();
   });
+
+  it('sends a fresh invite code to a friend in a direct chat', async () => {
+    const { calls } = setup({
+      worlds_invite: () => ({
+        invite: { id: 'i', created: 1, expires: 1_760_086_400, maxUses: 1, uses: 0 },
+        code: 'abcdefghijklmnopqrstuv',
+      }),
+      friends_state: () => ({
+        signedIn: true,
+        connected: true,
+        me: { id: ME, nick: 'Host_Player' },
+        friends: [{ id: FRIEND, nick: 'Guest_One', at: 1, online: true, playing: null }],
+        incoming: [],
+        outgoing: [],
+        blocked: [],
+        rooms: [],
+        unread: 0,
+        visible: true,
+        sanction: null,
+        problem: null,
+      }),
+      friends_open_direct: () => 'chat-1',
+      friends_send: () => ({ id: 1, room: 'chat-1', sender: ME, body: '', created: 1 }),
+    });
+    const card = within((await screen.findByText('Our base')).closest('li') as HTMLElement);
+    fireEvent.click(card.getByRole('button', { name: 'Open' }));
+    fireEvent.click(await screen.findByRole('button', { name: 'Make a code' }));
+    fireEvent.click(await screen.findByRole('button', { name: 'Send in a chat' }));
+    expect(await screen.findByText('Code sent to Guest_One.')).toBeInTheDocument();
+    expect(called(calls, 'friends_open_direct')[0]?.args).toEqual({ id: FRIEND });
+    expect(called(calls, 'friends_send')[0]?.args).toEqual({
+      room: 'chat-1',
+      body: '🌍 world abcdefghijklmnopqrstuv',
+    });
+  });
+
+  it('lists the computers and signs another one out after asking', async () => {
+    let devices = [
+      { id: 'd-1', name: 'Windows x86_64', created: 1_760_000_000, current: true },
+      { id: 'd-2', name: 'Linux aarch64', created: 1_760_000_000, current: false },
+    ];
+    const { calls } = setup({
+      worlds_devices: () => devices,
+      worlds_revoke_device: () => {
+        devices = devices.filter((d) => d.id !== 'd-2');
+        return null;
+      },
+    });
+    fireEvent.click(await screen.findByRole('button', { name: 'Computers' }));
+    const dialog = within(await screen.findByRole('dialog', { name: 'Computers with worlds' }));
+    expect(await dialog.findByText('This computer')).toBeInTheDocument();
+    // This computer cannot be signed out from here; another one can.
+    expect(dialog.getAllByRole('button', { name: 'Sign out' })).toHaveLength(1);
+    fireEvent.click(dialog.getByRole('button', { name: 'Sign out' }));
+    expect(dialog.getByText('Sign out Linux aarch64?')).toBeInTheDocument();
+    fireEvent.click(dialog.getByRole('button', { name: 'Sign out' }));
+    await waitFor(() => {
+      expect(dialog.queryByText('Linux aarch64')).toBeNull();
+    });
+    expect(called(calls, 'worlds_revoke_device')[0]?.args).toEqual({ device: 'd-2' });
+  });
 });

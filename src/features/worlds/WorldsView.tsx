@@ -7,6 +7,7 @@ import type { AppSnapshot, LocalWorld, WorldsRoom } from '../../lib/contracts';
 import { ipc } from '../../lib/ipc';
 import { strings } from '../../lib/strings';
 import { CreateWorld } from './CreateWorld';
+import { Devices } from './Devices';
 import { JoinByCode } from './JoinByCode';
 import { RoomActions } from './RoomActions';
 import { RoomPage } from './RoomPage';
@@ -17,21 +18,23 @@ import styles from './Worlds.module.css';
 interface Props {
   snapshot: AppSnapshot;
   onOpenAccounts: () => void;
+  /** A room to show first, such as one joined from an invite in a chat. */
+  initialRoom?: string | null;
 }
 
 /**
  * Worlds with friends (D-068): the account's rooms, creating a world, joining
  * with an invite code, a room's page, and what this computer hosts or joins.
  */
-export function WorldsView({ snapshot, onOpenAccounts }: Props) {
+export function WorldsView({ snapshot, onOpenAccounts, initialRoom = null }: Props) {
   const t = strings.worlds;
   const signedIn = snapshot.account.launcherAccount.id !== null;
   const state = useWorldsState();
   const [rooms, setRooms] = useState<WorldsRoom[] | null>(null);
   const [local, setLocal] = useState<LocalWorld[]>([]);
   const [error, setError] = useState<string | null>(null);
-  const [room, setRoom] = useState<string | null>(null);
-  const [dialog, setDialog] = useState<'create' | 'code' | null>(null);
+  const [room, setRoom] = useState<string | null>(initialRoom);
+  const [dialog, setDialog] = useState<'create' | 'code' | 'devices' | null>(null);
 
   const load = useCallback(() => {
     void ipc
@@ -115,6 +118,13 @@ export function WorldsView({ snapshot, onOpenAccounts }: Props) {
               {t.joinByCode}
             </Button>
             <Button onClick={load}>{t.refresh}</Button>
+            <Button
+              onClick={() => {
+                setDialog('devices');
+              }}
+            >
+              {t.devices.open}
+            </Button>
           </div>
           {error !== null && <Notice tone="danger">{error}</Notice>}
           <h3 className={styles.sectionTitle}>{t.rooms}</h3>
@@ -177,6 +187,13 @@ export function WorldsView({ snapshot, onOpenAccounts }: Props) {
           onCreated={() => {
             setDialog(null);
             load();
+          }}
+        />
+      )}
+      {dialog === 'devices' && (
+        <Devices
+          onClose={() => {
+            setDialog(null);
           }}
         />
       )}

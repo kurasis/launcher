@@ -16,6 +16,7 @@ interface QuitControlProps {
 
 export function QuitControl({ activeKind = null }: QuitControlProps) {
   const [choosing, setChoosing] = useState(false);
+  const [hosting, setHosting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const keepRef = useRef<HTMLButtonElement>(null);
   const job = activeKind === 'install' || activeKind === 'repair';
@@ -26,17 +27,27 @@ export function QuitControl({ activeKind = null }: QuitControlProps) {
 
   useEffect(
     () =>
-      onQuitRequested(() => {
+      onQuitRequested((worldOpen) => {
         setChoosing(true);
+        setHosting(worldOpen);
       }),
     [],
   );
+
+  // Only a world open to friends, or a world beside a run or a job.
+  const onlyHosting = hosting && activeKind === null;
+  const title = onlyHosting ? t.hostingTitle : job ? t.jobTitle : t.dialogTitle;
+  const body = onlyHosting
+    ? t.hostingBody
+    : `${job ? t.jobBody : t.dialogBody}${hosting ? ` ${t.hostingBody}` : ''}`;
+  const stop = onlyHosting ? t.hostingStop : job ? t.jobStop : t.stop;
 
   const send = async (action: QuitAction) => {
     setError(null);
     try {
       const result = await ipc.requestQuit(action);
       setChoosing(result.status === 'choice_required');
+      setHosting(result.status === 'choice_required' && result.hosting);
     } catch (e) {
       setError(describeIpcError(e));
     }
@@ -68,8 +79,8 @@ export function QuitControl({ activeKind = null }: QuitControlProps) {
               if (event.key === 'Escape') setChoosing(false);
             }}
           >
-            <h2 id="quit-title">{job ? t.jobTitle : t.dialogTitle}</h2>
-            <p id="quit-body">{job ? t.jobBody : t.dialogBody}</p>
+            <h2 id="quit-title">{title}</h2>
+            <p id="quit-body">{body}</p>
             {error !== null && <Notice tone="danger">{error}</Notice>}
             <div className={styles.actions}>
               <Button
@@ -86,7 +97,7 @@ export function QuitControl({ activeKind = null }: QuitControlProps) {
                   void send('stop_and_quit');
                 }}
               >
-                {job ? t.jobStop : t.stop}
+                {stop}
               </Button>
               <Button
                 onClick={() => {

@@ -197,6 +197,15 @@ pub struct Preview {
     pub minecraft: String,
 }
 
+/// A computer registered with the account.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct Device {
+    pub id: String,
+    pub name: String,
+    pub created: i64,
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct Session {
@@ -257,8 +266,9 @@ pub struct WorldsClient {
     token: Arc<dyn Token>,
     device_name: String,
     key: Mutex<Option<SecretKey>>,
-    /// The access token's account was registered with this key in this run.
-    registered: Mutex<Option<String>>,
+    /// The access token's account was registered with this key in this run,
+    /// and the device id the service gave it.
+    registered: Mutex<Option<(String, String)>>,
 }
 
 fn proof_hash(token: &str) -> String {
@@ -400,7 +410,10 @@ impl WorldsClient {
     /// account (a new sign-in may be another account).
     async fn register(&self, token: &SecretString) -> Result<(), Problem> {
         let marker = account_of(token.expose()).ok_or(Problem::SignedOut)?;
-        if lock(&self.registered).as_deref() == Some(marker.as_str()) {
+        if lock(&self.registered)
+            .as_ref()
+            .is_some_and(|(account, _)| *account == marker)
+        {
             return Ok(());
         }
         let body = json!({ "name": self.device_name });
@@ -426,8 +439,8 @@ impl WorldsClient {
                 )
                 .await;
         }
-        answer?;
-        *lock(&self.registered) = Some(marker);
+        let device: Device = serde_json::from_value(answer?).map_err(|_| Problem::Server)?;
+        *lock(&self.registered) = Some((marker, device.id));
         Ok(())
     }
 
@@ -451,6 +464,30 @@ impl WorldsClient {
             answer = self.send(method, path, body.as_ref(), proof, &token).await;
         }
         serde_json::from_value(answer?).map_err(|_| Problem::Server)
+    }
+
+    /// The account's computers, and which one is this.
+    pub async fn devices(&self) -> Result<(Vec<Device>, Option<String>), Problem> {
+        let token = self.token.token().await?;
+        self.register(&token).await?;
+        let current = lock(&self.registered).as_ref().map(|(_, id)| id.clone());
+        let devices = self
+            .call(reqwest::Method::GET, "/v1/devices", None, Proof::No)
+            .await?;
+        Ok((devices, current))
+    }
+
+    /// Signs another computer out of worlds: the worlds it hosts close.
+    pub async fn revoke_device(&self, device: &str) -> Result<(), Problem> {
+        let _: Value = self
+            .call(
+                reqwest::Method::DELETE,
+                &format!("/v1/devices/{}", id(device)?),
+                None,
+                Proof::No,
+            )
+            .await?;
+        Ok(())
     }
 
     pub async fn rooms(&self) -> Result<Vec<Room>, Problem> {
@@ -809,5 +846,36 @@ mod tests {
             Problem::NotFound
         );
         assert_eq!(other.room("../relay").await.unwrap_err(), Problem::Invalid);
+    }
+
+    #[tokio::test]
+    async fn the_device_list_marks_this_computer_and_revokes_others() {
+        let fake = fake_service::start(&[(OWNER, "Owner", true)]).await;
+        let laptop = client(&fake.base, Arc::new(MemoryStore::default()), OWNER);
+        let desktop = client(&fake.base, Arc::new(MemoryStore::default()), OWNER);
+        let (_, laptop_id) = laptop.devices().await.unwrap();
+        let (devices, current) = desktop.devices().await.unwrap();
+        assert_eq!(devices.len(), 2);
+        let current = current.unwrap();
+        assert_ne!(Some(&current), laptop_id.as_ref());
+        assert!(devices.iter().any(|d| d.id == current));
+
+        desktop
+            .revoke_device(laptop_id.as_deref().unwrap())
+            .await
+            .unwrap();
+        let (devices, _) = desktop.devices().await.unwrap();
+        assert_eq!(devices.len(), 1);
+        assert_eq!(
+            desktop.revoke_device("../rooms").await.unwrap_err(),
+            Problem::Invalid
+        );
+        assert_eq!(
+            desktop
+                .revoke_device("7f1d3b8e-2c4a-4f7e-9b1a-0c2d3e4f5a6b")
+                .await
+                .unwrap_err(),
+            Problem::NotFound
+        );
     }
 }

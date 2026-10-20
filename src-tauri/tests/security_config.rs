@@ -286,6 +286,8 @@ fn main_window_capability_grants_only_app_commands() {
             "allow-worlds-cancel",
             "allow-worlds-instance",
             "allow-worlds-play",
+            "allow-worlds-devices",
+            "allow-worlds-revoke-device",
             "allow-start-lifecycle-test",
             "allow-stop-lifecycle-test",
         ]

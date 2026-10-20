@@ -121,12 +121,7 @@ impl launch::service::LaunchHost for TauriLaunchHost {
             .filter(|r| r.run_id == run_id)
             .and_then(|r| r.instance_id)
             .and_then(|id| state.instance(id))
-            .map(|instance| match &instance.loader {
-                Some(loader) => {
-                    format!("Minecraft {} · {}", instance.version_id, loader.kind.name())
-                }
-                None => format!("Minecraft {}", instance.version_id),
-            });
+            .map(|instance| friends::playing_text(&instance));
         if let Some(playing) = playing {
             let handle = self.0.clone();
             tauri::async_runtime::spawn(async move {
@@ -735,7 +730,11 @@ pub fn run() {
                 // reopening the app restores the UI.
                 if handle.get_webview_window(lifecycle::MAIN_WINDOW).is_some() {
                     controller.show_main_window(handle);
-                    let _ = handle.emit(lifecycle::QUIT_REQUESTED_EVENT, ());
+                    let hosting = handle.state::<AppState>().activity().hosting().is_some();
+                    let _ = handle.emit(
+                        lifecycle::QUIT_REQUESTED_EVENT,
+                        serde_json::json!({ "hosting": hosting }),
+                    );
                 }
             }
         }
@@ -903,6 +902,8 @@ fn handlers<R: tauri::Runtime>() -> impl Fn(tauri::ipc::Invoke<R>) -> bool + Sen
         commands::worlds_cancel,
         commands::worlds_instance,
         commands::worlds_play,
+        commands::worlds_devices,
+        commands::worlds_revoke_device,
         #[cfg(debug_assertions)]
         commands::start_lifecycle_test,
         #[cfg(debug_assertions)]

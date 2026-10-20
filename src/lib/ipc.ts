@@ -62,6 +62,7 @@ import {
   type OwnChannel,
   type LocalWorld,
   type WorldsCreatePayload,
+  type WorldsDevice,
   type WorldsInstance,
   type WorldsNewInvite,
   type WorldsPreview,
@@ -452,6 +453,10 @@ export const ipc = {
   /** Starts the game into the room as the launcher account's nick. */
   worldsPlay: (room: string, requestId?: string): Promise<RunSummary> =>
     invoke<RunSummary>('worlds_play', { request: mutation({ room }, requestId) }),
+  /** The account's computers for worlds, this one first. */
+  worldsDevices: (): Promise<WorldsDevice[]> => invoke<WorldsDevice[]>('worlds_devices'),
+  /** Signs another computer out of worlds; the worlds it hosts close. */
+  worldsRevokeDevice: (device: string): Promise<void> => invoke('worlds_revoke_device', { device }),
   /** The interface has shown: a new version's start can count as good. */
   interfaceReady: (): Promise<void> => invoke('interface_ready'),
   /** Debug builds only; release builds have no handler for this command. */
@@ -584,10 +589,10 @@ function listenTo<T>(name: string, handler: (payload: T) => void): () => void {
   };
 }
 
-/** Fires when the operating system or app menu asked to quit during a run. */
-export function onQuitRequested(handler: () => void): () => void {
-  return listenTo('quit_requested', () => {
-    handler();
+/** The OS or the app menu asked to quit while the core supervises something. */
+export function onQuitRequested(handler: (hosting: boolean) => void): () => void {
+  return listenTo<{ hosting?: boolean } | null>('quit_requested', (payload) => {
+    handler(payload?.hosting === true);
   });
 }
 

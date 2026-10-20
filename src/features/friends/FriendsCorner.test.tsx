@@ -86,8 +86,11 @@ function setup(
     { shouldMockEvents: true },
   );
   const onOpenAccounts = vi.fn();
-  render(<FriendsCorner snapshot={snapshot} onOpenAccounts={onOpenAccounts} />);
-  return { calls, onOpenAccounts };
+  const onOpenWorld = vi.fn();
+  render(
+    <FriendsCorner snapshot={snapshot} onOpenAccounts={onOpenAccounts} onOpenWorld={onOpenWorld} />,
+  );
+  return { calls, onOpenAccounts, onOpenWorld };
 }
 
 async function openPanel() {
@@ -551,5 +554,47 @@ describe('friends corner', () => {
       await within(panel).findByText(/You have no installation of Minecraft 1.7.10/),
     ).toBeVisible();
     expect(within(panel).queryByRole('button', { name: 'Join' })).toBeNull();
+  });
+
+  it('looks at a world invite first, then joins the room and opens it', async () => {
+    const code = 'AbCdEfGhIjKlMnOpQrStUv';
+    const { calls, onOpenWorld } = setup(signedIn(), {
+      friends_messages: () => [
+        message(1, ALEX.id, `🌍 world ${code}`),
+        message(2, ALEX.id, '🌍 world ../../v1/rooms'),
+      ],
+      worlds_preview: () => ({
+        room: ROOM,
+        name: 'Our base',
+        ownerNick: 'Alex',
+        members: 2,
+        minecraft: '1.21.1',
+      }),
+      worlds_redeem: () => ({ id: ROOM, name: 'Our base' }),
+    });
+    const panel = await openPanel();
+    fireEvent.click(within(panel).getByRole('button', { name: /Alex/ }));
+    expect(await within(panel).findByText('Alex invites you to a world')).toBeVisible();
+    // Not a code: plain text, no card.
+    expect(within(panel).getByText('🌍 world ../../v1/rooms')).toBeVisible();
+    expect(calls.some((c) => c.cmd === 'worlds_redeem')).toBe(false);
+    fireEvent.click(within(panel).getByRole('button', { name: 'Look' }));
+    expect(await within(panel).findByText(/Our base, by Alex/)).toBeVisible();
+    fireEvent.click(within(panel).getByRole('button', { name: 'Join the room' }));
+    await waitFor(() => {
+      expect(onOpenWorld).toHaveBeenCalledWith(ROOM);
+    });
+    expect(calls.find((c) => c.cmd === 'worlds_redeem')?.args).toEqual({ code });
+  });
+
+  it('says which world a friend plays in', async () => {
+    setup(
+      signedIn({
+        friends: [{ ...ALEX, at: 1, online: true, playing: '🌍 Our base' }],
+      }),
+    );
+    const panel = await openPanel();
+    fireEvent.click(within(panel).getByRole('tab', { name: /Friends/ }));
+    expect(await within(panel).findByText('In the world Our base')).toBeVisible();
   });
 });
