@@ -993,7 +993,11 @@ async fn the_endless_list_pages_through_everything() {
     assert_eq!(videos["items"].as_array().unwrap().len(), 1);
     assert_eq!(videos["items"][0]["video"]["id"], "abcdefghijk");
     // Shorts only: that video is not one.
-    let shorts = json_of(&get(&app, "/v1/page?videos=ru&kinds=videos&shorts=only").await.2);
+    let shorts = json_of(
+        &get(&app, "/v1/page?videos=ru&kinds=videos&shorts=only")
+            .await
+            .2,
+    );
     assert!(shorts["items"].as_array().unwrap().is_empty());
     let releases = json_of(&get(&app, "/v1/page?kinds=versions&snapshots=0").await.2);
     assert!(releases["items"].as_array().unwrap().is_empty());
