@@ -247,6 +247,8 @@ export function ContentSection({ instance, onOpen, onUpdate, revision }: Props) 
   const [batch, setBatch] = useState<Batch | null>(null);
   const [updatingPack, setUpdatingPack] = useState<ModsVersion | null>(null);
   const [exporting, setExporting] = useState(false);
+  // Files the catalog has since marked as malware (D-066, stage 6).
+  const [harmful, setHarmful] = useState<string[]>([]);
   const pack = view?.pack ?? null;
 
   const load = useCallback(() => {
@@ -256,6 +258,11 @@ export function ContentSection({ instance, onOpen, onUpdate, revision }: Props) 
       .catch((e: unknown) => {
         setError(describeIpcError(e));
       });
+    // Offline or unanswered: nothing to warn about yet.
+    void ipc
+      .modsHarmful(id)
+      .then(setHarmful)
+      .catch(() => undefined);
   }, [id]);
 
   useEffect(load, [load, revision]);
@@ -350,6 +357,31 @@ export function ContentSection({ instance, onOpen, onUpdate, revision }: Props) 
     <div className={styles.section}>
       {instance.busy && <Notice tone="info">{t.busy}</Notice>}
       {error !== null && <Notice tone="danger">{error}</Notice>}
+      {harmful.length > 0 && (
+        <Notice tone="danger">
+          <p>
+            <strong>{t.harmfulTitle}</strong>
+          </p>
+          <p>{t.harmfulText}</p>
+          <ul className={styles.contentList}>
+            {harmful.map((path) => (
+              <li key={path} className={styles.contentRow}>
+                <span className={styles.cardBody}>
+                  <bdi dir="ltr">{path}</bdi>
+                </span>
+                <Button
+                  disabled={busy}
+                  onClick={() => {
+                    change(ipc.modsRemove(id, path));
+                  }}
+                >
+                  {t.remove}
+                </Button>
+              </li>
+            ))}
+          </ul>
+        </Notice>
+      )}
       {pack !== null && (
         <div className={styles.contentRow}>
           {packIcon !== null ? (

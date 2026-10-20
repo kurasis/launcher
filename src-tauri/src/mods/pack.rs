@@ -271,6 +271,8 @@ impl PackInfo {
             let url = match (&sha256, f["url"].as_str()) {
                 (Some(sha), Some(url)) => Some(our_file(url, sha)?),
                 (None, _) => None,
+                // Held back by the catalog's malware check: the pack fails.
+                (Some(_), None) if f["held"] == true => None,
                 (Some(_), None) => return None,
             };
             files.push(PackFile {

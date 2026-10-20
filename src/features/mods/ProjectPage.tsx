@@ -65,6 +65,8 @@ function VersionRow({
   const [changelog, setChangelog] = useState<DocNode[] | null>(null);
   const [open, setOpen] = useState(false);
   const file = version.files.find((f) => f.primary) ?? version.files[0];
+  // The catalog's malware check holds a file back until the owner decides.
+  const held = version.files.some((f) => f.held);
   // A Modrinth or CurseForge pack.
   const pack = project.kind === 'modpack' && version.files.some((f) => packArchive(f.name));
   return (
@@ -75,7 +77,7 @@ function VersionRow({
           {version.channel !== 'release' && (
             <StatusBadge tone="warning" label={t.channels[version.channel]} />
           )}
-          {version.saved === 'all' && <StatusBadge tone="success" label={t.kept} />}
+          {version.saved === 'all' && !held && <StatusBadge tone="success" label={t.kept} />}
         </span>
         <span className={styles.muted}>
           <bdi dir="ltr">{version.games.slice(0, 6).join(', ')}</bdi>
@@ -85,17 +87,21 @@ function VersionRow({
           {file !== undefined && ` · ${file.name}`}
         </span>
       </div>
-      {version.saved !== 'all' && <p className={styles.note}>{asked ? t.fetchAsked : t.notKept}</p>}
+      {held ? (
+        <Notice tone="danger">{t.held}</Notice>
+      ) : (
+        version.saved !== 'all' && <p className={styles.note}>{asked ? t.fetchAsked : t.notKept}</p>
+      )}
       {version.goneAt !== null && <p className={styles.note}>{t.versionGone}</p>}
       {error !== null && <Notice tone="danger">{error}</Notice>}
       <div className={forms.actions}>
         {installable(project.kind) && (
-          <Button variant="primary" disabled={instance === null} onClick={onAdd}>
+          <Button variant="primary" disabled={instance === null || held} onClick={onAdd}>
             {t.add}
           </Button>
         )}
         {pack && (
-          <Button variant="primary" onClick={onInstallPack}>
+          <Button variant="primary" disabled={held} onClick={onInstallPack}>
             {strings.mods.pack.install}
           </Button>
         )}

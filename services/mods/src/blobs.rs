@@ -3,6 +3,9 @@
 //! files-mods.lapi.sh. A file is written to `tmp/`, hashed, checked against
 //! the source's hashes, synced and renamed into place: a blob that exists is
 //! always whole.
+//!
+//! A file the scanner holds back, or the owner blocks, lives under
+//! `quarantine/ab/cd/<sha256>` instead, where nginx does not look.
 
 use std::io::Read as _;
 use std::path::{Path, PathBuf};
@@ -14,6 +17,7 @@ pub const GB: u64 = 1024 * 1024 * 1024;
 
 pub struct Blobs {
     blobs: PathBuf,
+    quarantine: PathBuf,
     tmp: PathBuf,
     usage: AtomicU64,
     counted: AtomicBool,
@@ -48,21 +52,22 @@ impl Blobs {
     pub fn open(data: &Path, quota_bytes: u64, min_free: u64) -> Result<Self, String> {
         let blobs = Self {
             blobs: data.join("blobs"),
+            quarantine: data.join("quarantine"),
             tmp: data.join("tmp"),
             usage: AtomicU64::new(0),
             counted: AtomicBool::new(false),
             quota: AtomicU64::new(quota_bytes),
             min_free,
         };
-        for dir in [&blobs.blobs, &blobs.tmp] {
+        for dir in [&blobs.blobs, &blobs.quarantine, &blobs.tmp] {
             std::fs::create_dir_all(dir).map_err(|e| format!("creating {}: {e}", dir.display()))?;
         }
-        // Parts are not served until whole.
+        // Parts are not served until whole, held files never.
         #[cfg(unix)]
-        {
+        for dir in [&blobs.tmp, &blobs.quarantine] {
             use std::os::unix::fs::PermissionsExt;
-            std::fs::set_permissions(&blobs.tmp, std::fs::Permissions::from_mode(0o700))
-                .map_err(|e| format!("{}: {e}", blobs.tmp.display()))?;
+            std::fs::set_permissions(dir, std::fs::Permissions::from_mode(0o700))
+                .map_err(|e| format!("{}: {e}", dir.display()))?;
         }
         Ok(blobs)
     }
@@ -92,8 +97,32 @@ impl Blobs {
             .join(sha256)
     }
 
+    /// Where a held file lies.
+    pub fn held_path(&self, sha256: &str) -> PathBuf {
+        self.quarantine
+            .join(&sha256[0..2])
+            .join(&sha256[2..4])
+            .join(sha256)
+    }
+
+    /// Whether a file is kept and served.
     pub fn has(&self, sha256: &str) -> bool {
         is_sha256(sha256) && self.path(sha256).is_file()
+    }
+
+    /// Whether a file is here at all, served or held: no need to fetch it.
+    pub fn holds(&self, sha256: &str) -> bool {
+        self.has(sha256) || (is_sha256(sha256) && self.held_path(sha256).is_file())
+    }
+
+    /// The file to read, served or held.
+    pub fn find(&self, sha256: &str) -> Option<PathBuf> {
+        if !is_sha256(sha256) {
+            return None;
+        }
+        [self.path(sha256), self.held_path(sha256)]
+            .into_iter()
+            .find(|p| p.is_file())
     }
 
     pub fn quota(&self) -> u64 {
@@ -128,10 +157,10 @@ impl Blobs {
             && self.free() >= self.min_free.saturating_add(size)
     }
 
-    /// Counts the kept bytes and files (at start).
+    /// Counts the kept bytes and files, held ones too (at start).
     pub fn count(&self) -> (u64, u64) {
         let (mut bytes, mut files) = (0u64, 0u64);
-        let mut stack = vec![self.blobs.clone()];
+        let mut stack = vec![self.blobs.clone(), self.quarantine.clone()];
         while let Some(dir) = stack.pop() {
             let Ok(entries) = std::fs::read_dir(&dir) else {
                 continue;
@@ -155,7 +184,39 @@ impl Blobs {
     /// Moves a hashed part into place under its SHA-256. A blob that is
     /// there already stays; the part goes. Returns whether it was new.
     pub fn keep(&self, part: &Path, hashed: &Hashed) -> std::io::Result<bool> {
-        let target = self.path(&hashed.sha256);
+        self.place(part, hashed, self.path(&hashed.sha256), 0o644)
+    }
+
+    /// Moves a hashed part into quarantine; nobody downloads it from there.
+    pub fn hold(&self, part: &Path, hashed: &Hashed) -> std::io::Result<bool> {
+        self.place(part, hashed, self.held_path(&hashed.sha256), 0o600)
+    }
+
+    /// Takes a served file out of service (a later scan or the owner).
+    pub fn withdraw(&self, sha256: &str) -> std::io::Result<()> {
+        let from = self.path(sha256);
+        let to = self.held_path(sha256);
+        if let Some(dir) = to.parent() {
+            std::fs::create_dir_all(dir)?;
+        }
+        if to.is_file() {
+            return std::fs::remove_file(&from);
+        }
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            std::fs::set_permissions(&from, std::fs::Permissions::from_mode(0o600))?;
+        }
+        std::fs::rename(&from, &to)
+    }
+
+    fn place(
+        &self,
+        part: &Path,
+        hashed: &Hashed,
+        target: PathBuf,
+        mode: u32,
+    ) -> std::io::Result<bool> {
         if target.is_file() {
             let _ = std::fs::remove_file(part);
             return Ok(false);
@@ -167,7 +228,7 @@ impl Blobs {
         #[cfg(unix)]
         {
             use std::os::unix::fs::PermissionsExt;
-            std::fs::set_permissions(part, std::fs::Permissions::from_mode(0o644))?;
+            std::fs::set_permissions(part, std::fs::Permissions::from_mode(mode))?;
         }
         std::fs::rename(part, &target)?;
         if let Some(dir) = target.parent()

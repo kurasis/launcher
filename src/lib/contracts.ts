@@ -1301,6 +1301,8 @@ export interface ModsVersionFile {
   sha256: string | null;
   primary: boolean;
   url: string | null;
+  /** Held back by the catalog's malware check: not installed. */
+  held: boolean;
 }
 
 export interface ModsVersion {
@@ -1377,7 +1379,11 @@ export interface ModsPlanItem {
 export interface ModsPlan {
   items: ModsPlanItem[];
   missing: { projectId: string | null; title: string | null }[];
-  conflicts: { path: string; reason: 'incompatible' | 'name_taken'; title: string | null }[];
+  conflicts: {
+    path: string;
+    reason: 'incompatible' | 'name_taken' | 'held';
+    title: string | null;
+  }[];
   misfit: ModsMisfit | null;
   totalBytes: number;
   /** On a metered connection, why this download asks first (D-051). */

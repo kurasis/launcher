@@ -450,6 +450,9 @@ export const ipc = {
     invoke<boolean>('mods_cancel', { instanceId }),
   modsContent: (instanceId: string): Promise<ContentView> =>
     invoke<ContentView>('mods_content', { instanceId }),
+  /** Files of the installation the catalog holds back as harmful. */
+  modsHarmful: (instanceId: string): Promise<string[]> =>
+    invoke<string[]>('mods_harmful', { instanceId }),
   modsIdentify: (instanceId: string): Promise<ContentIdentified[]> =>
     invoke<ContentIdentified[]>('mods_identify', { instanceId }),
   modsUpdates: (instanceId: string): Promise<ContentUpdate[]> =>

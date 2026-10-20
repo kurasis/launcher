@@ -138,6 +138,41 @@ async fn health(State(app): State<Arc<App>>) -> Response {
 }
 
 #[derive(Deserialize, Default)]
+pub struct HarmfulQuery {
+    since: Option<i64>,
+    /// With `since`, the last SHA-256 of the page before.
+    after: Option<String>,
+}
+
+/// At most this many harmful files a page.
+const HARMFUL_PAGE: i64 = 500;
+
+/// Files held back as harmful since a time (D-066, stage 6), so a launcher
+/// can warn about one installed before it was held. `next` holds the
+/// `since` and `after` of the next page while one is due.
+async fn harmful(State(app): State<Arc<App>>, Query(q): Query<HarmfulQuery>) -> Response {
+    let since = q.since.unwrap_or(0).clamp(0, i64::MAX / 2);
+    let after = q
+        .after
+        .filter(|a| crate::blobs::is_sha256(a))
+        .unwrap_or_default();
+    match app.store.harmful_since(since, &after, HARMFUL_PAGE + 1) {
+        Ok(mut files) => {
+            let next = if files.len() as i64 > HARMFUL_PAGE {
+                files.truncate(HARMFUL_PAGE as usize);
+                files
+                    .last()
+                    .map(|f| json!({ "since": f["since"], "after": f["sha256"] }))
+            } else {
+                None
+            };
+            cached(json!({ "files": files, "next": next }), 300)
+        }
+        Err(e) => failed(&e),
+    }
+}
+
+#[derive(Deserialize, Default)]
 pub struct SearchQuery {
     q: Option<String>,
     kind: Option<String>,
@@ -315,8 +350,19 @@ fn pack_answer(app: &App, id: &str) -> Result<Option<(Value, bool)>, String> {
     let ready = read
         .as_ref()
         .is_some_and(|p| p["kept"] == p["total"] && archive.sha256.is_some());
+    // A pack with a file held back is not installed (D-066, stage 6).
+    let held = read.as_ref().is_some_and(|p| {
+        p["files"]
+            .as_array()
+            .is_some_and(|files| files.iter().any(|f| f["held"] == true))
+    }) || match &archive.sha256 {
+        Some(sha256) => app.store.blob_state(sha256)?.as_deref() == Some("quarantined"),
+        None => false,
+    };
+    let ready = ready && !held;
     let mut answer = read.unwrap_or_else(|| json!({ "files": [] }));
     let (state, error) = match app.store.job_state(&import::pack_key(id))? {
+        _ if held => ("failed", Some("held".to_owned())),
         _ if ready => ("ready", None),
         None => ("none", None),
         Some((state, error)) if state == "failed" => ("failed", error),
@@ -329,7 +375,7 @@ fn pack_answer(app: &App, id: &str) -> Result<Option<(Value, bool)>, String> {
         "name": archive.name,
         "size": archive.size,
         "sha256": archive.sha256,
-        "url": archive.sha256.as_deref().map(|s| app.urls.file(s, &archive.name)),
+        "url": archive.sha256.as_deref().filter(|_| !held).map(|s| app.urls.file(s, &archive.name)),
     });
     Ok(Some((answer, ready)))
 }
@@ -573,6 +619,7 @@ pub fn router(app: Arc<App>) -> Router {
             get(get_pack).post(fetch_pack),
         )
         .route("/v1/lookup", post(lookup))
+        .route("/v1/harmful", get(harmful))
         .route("/v1/imports", get(my_imports).post(create_import))
         .route("/v1/imports/{request}", get(get_import))
         .route("/v1/imports/{request}/choose", post(choose))

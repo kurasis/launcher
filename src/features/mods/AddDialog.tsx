@@ -296,7 +296,9 @@ function PlanView({
               <li key={c.path}>
                 {c.reason === 'incompatible'
                   ? t.incompatible({ title: c.title ?? c.path })
-                  : t.nameTaken({ file: c.path })}
+                  : c.reason === 'held'
+                    ? t.held({ title: c.title ?? c.path })
+                    : t.nameTaken({ file: c.path })}
               </li>
             ))}
           </ul>

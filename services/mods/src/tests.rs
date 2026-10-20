@@ -3028,3 +3028,371 @@ async fn a_packwiz_file_that_is_not_what_its_index_says_fails_the_pack() {
     let (status, _) = t.get("/v1/projects/bad").await;
     assert_eq!(status, StatusCode::NOT_FOUND);
 }
+
+// ----- the scanner (D-066, stage 6) -----
+
+/// A class file with the given method references and strings, and one
+/// method whose code is `code`.
+fn class_file(calls: &[(&str, &str)], strings: &[&str], code: &[u8]) -> Vec<u8> {
+    let mut pool: Vec<Vec<u8>> = Vec::new();
+    let mut utf8 = |pool: &mut Vec<Vec<u8>>, text: &str| -> u16 {
+        let mut entry = vec![1];
+        entry.extend((text.len() as u16).to_be_bytes());
+        entry.extend(text.as_bytes());
+        pool.push(entry);
+        pool.len() as u16
+    };
+    let class = |pool: &mut Vec<Vec<u8>>,
+                 utf8: &mut dyn FnMut(&mut Vec<Vec<u8>>, &str) -> u16,
+                 name: &str|
+     -> u16 {
+        let at = utf8(pool, name);
+        let mut entry = vec![7];
+        entry.extend(at.to_be_bytes());
+        pool.push(entry);
+        pool.len() as u16
+    };
+    let this = class(&mut pool, &mut utf8, "a/Sample");
+    let object = class(&mut pool, &mut utf8, "java/lang/Object");
+    for (owner, name) in calls {
+        let owner = class(&mut pool, &mut utf8, owner);
+        let name = utf8(&mut pool, name);
+        let descriptor = utf8(&mut pool, "()V");
+        let mut nat = vec![12];
+        nat.extend(name.to_be_bytes());
+        nat.extend(descriptor.to_be_bytes());
+        pool.push(nat);
+        let nat = pool.len() as u16;
+        let mut method = vec![10];
+        method.extend(owner.to_be_bytes());
+        method.extend(nat.to_be_bytes());
+        pool.push(method);
+    }
+    for text in strings {
+        let at = utf8(&mut pool, text);
+        let mut entry = vec![8];
+        entry.extend(at.to_be_bytes());
+        pool.push(entry);
+    }
+    // A long constant takes two slots.
+    pool.push(vec![5, 0, 0, 0, 0, 0, 0, 0, 1]);
+    pool.push(Vec::new());
+    let code_name = utf8(&mut pool, "Code");
+    let method_name = utf8(&mut pool, "run");
+    let descriptor = utf8(&mut pool, "()V");
+
+    let mut out = vec![0xCA, 0xFE, 0xBA, 0xBE, 0, 0, 0, 52];
+    out.extend(((pool.len() + 1) as u16).to_be_bytes());
+    for entry in &pool {
+        out.extend(entry);
+    }
+    out.extend([0, 0x21]);
+    out.extend(this.to_be_bytes());
+    out.extend(object.to_be_bytes());
+    out.extend([0, 0, 0, 0, 0, 1, 0, 9]);
+    out.extend(method_name.to_be_bytes());
+    out.extend(descriptor.to_be_bytes());
+    out.extend([0, 1]);
+    out.extend(code_name.to_be_bytes());
+    out.extend(((12 + code.len()) as u32).to_be_bytes());
+    out.extend([0, 4, 0, 1]);
+    out.extend((code.len() as u32).to_be_bytes());
+    out.extend(code);
+    out.extend([0, 0, 0, 0, 0, 0]);
+    out
+}
+
+/// Code that builds `text` byte by byte, the way fractureiser hid its address.
+fn built(text: &str) -> Vec<u8> {
+    let mut code = vec![0x11];
+    code.extend((text.len() as u16).to_be_bytes());
+    code.extend([0xbc, 8]);
+    for (i, b) in text.bytes().enumerate() {
+        code.push(0x59);
+        if i <= 5 {
+            code.push(0x03 + i as u8);
+        } else {
+            code.extend([0x11]);
+            code.extend((i as u16).to_be_bytes());
+        }
+        code.extend([0x10, b]);
+        code.push(0x54);
+    }
+    code.push(0x57);
+    code
+}
+
+fn jar(classes: &[(&str, Vec<u8>)]) -> Vec<u8> {
+    let entries: Vec<(&str, &[u8])> = classes.iter().map(|(n, b)| (*n, b.as_slice())).collect();
+    mrpack(&entries)
+}
+
+#[test]
+fn honest_code_is_clean_and_weak_signs_are_only_noted() {
+    use crate::scan::{Level, scan_bytes, sign};
+    let honest = class_file(
+        &[("java/lang/String", "valueOf")],
+        &["https://modrinth.com/mod/sodium", "Loading config"],
+        &[0xb1],
+    );
+    let verdict = scan_bytes(&jar(&[
+        ("a/Sample.class", honest),
+        ("fabric.mod.json", b"{}".to_vec()),
+    ]));
+    assert_eq!(verdict.level, Level::Clean, "{verdict:?}");
+
+    // Starting a program, a connection to check for updates and a native
+    // library are each common in honest mods.
+    let runs = class_file(&[("java/lang/ProcessBuilder", "<init>")], &[], &[0xb1]);
+    let updates = class_file(&[("java/net/URL", "openStream")], &[], &[0xb1]);
+    let verdict = scan_bytes(&jar(&[
+        ("a/Runs.class", runs),
+        ("a/Updates.class", updates),
+        ("natives/helper.exe", b"MZ".to_vec()),
+    ]));
+    assert_eq!(verdict.level, Level::Note, "{verdict:?}");
+    assert_eq!(
+        verdict.signs,
+        vec![sign::NETWORK, sign::PROGRAMS_INSIDE, sign::RUNS_PROGRAMS]
+    );
+}
+
+#[test]
+fn loading_code_from_the_network_or_a_hidden_address_is_held() {
+    use crate::scan::{Level, scan_bytes, sign};
+    let dropper = class_file(
+        &[
+            ("java/net/URLClassLoader", "<init>"),
+            ("java/net/URL", "openConnection"),
+        ],
+        &[],
+        &[0xb1],
+    );
+    let verdict = scan_bytes(&jar(&[("a/Loader.class", dropper)]));
+    assert_eq!(verdict.level, Level::Suspicious, "{verdict:?}");
+
+    // The address is built from bytes, then a program is started.
+    let mut code = built("https://downloads.example/stage1.jar");
+    code.push(0xb1);
+    let hidden = class_file(&[("java/lang/Runtime", "exec")], &[], &code);
+    let verdict = scan_bytes(&jar(&[("a/Hidden.class", hidden)]));
+    assert_eq!(verdict.level, Level::Suspicious, "{verdict:?}");
+    assert!(verdict.signs.contains(&sign::HIDDEN_ADDRESS));
+
+    // Apart, in two classes, the same calls are only noted.
+    let loads = class_file(&[("java/net/URLClassLoader", "<init>")], &[], &[0xb1]);
+    let net = class_file(&[("java/net/URL", "openConnection")], &[], &[0xb1]);
+    let verdict = scan_bytes(&jar(&[("a/A.class", loads), ("a/B.class", net)]));
+    assert_eq!(verdict.level, Level::Note, "{verdict:?}");
+
+    // Sign-in files and the network anywhere in one jar: a stealer.
+    let reads = class_file(
+        &[],
+        &["%APPDATA%/.minecraft/launcher_accounts.json"],
+        &[0xb1],
+    );
+    let sends = class_file(&[("java/net/http/HttpClient", "send")], &[], &[0xb1]);
+    let verdict = scan_bytes(&jar(&[("a/A.class", reads), ("a/B.class", sends)]));
+    assert_eq!(verdict.level, Level::Suspicious, "{verdict:?}");
+    assert!(verdict.signs.contains(&sign::SIGN_IN_FILES));
+}
+
+#[test]
+fn a_known_marker_is_malware_even_hidden_or_nested() {
+    use crate::scan::{Level, scan_bytes, sign};
+    let mut code = built("http://85.217.144.130:8080/dl");
+    code.push(0xb1);
+    let stage0 = class_file(&[], &[], &code);
+    let inner = jar(&[("dev/Utility.class", stage0)]);
+    let outer = jar(&[
+        ("META-INF/jars/inner.jar", inner),
+        ("a/Plain.class", class_file(&[], &[], &[0xb1])),
+    ]);
+    let verdict = scan_bytes(&outer);
+    assert_eq!(verdict.level, Level::Malicious, "{verdict:?}");
+    assert!(verdict.signs.contains(&sign::KNOWN_MALWARE));
+}
+
+#[test]
+fn junk_and_oversized_archives_do_not_trip_the_scanner() {
+    use crate::scan::{Class, Level, scan_bytes, sign};
+    assert_eq!(scan_bytes(b"not a zip").level, Level::Clean);
+    assert!(Class::parse(b"").is_none());
+    assert!(Class::parse(&[0xCA, 0xFE, 0xBA, 0xBE, 0, 0]).is_none());
+    // Every cut of a real class file, and a pool count past the end.
+    let real = class_file(
+        &[("java/net/URL", "openStream")],
+        &["text"],
+        &built("abcdefgh"),
+    );
+    for cut in 0..real.len() {
+        let _ = Class::parse(&real[..cut]);
+    }
+    let mut lying = real.clone();
+    lying[8] = 0xff;
+    lying[9] = 0xff;
+    assert!(Class::parse(&lying).is_none());
+    // Code with a switch whose bounds point far past the end.
+    let mut code = vec![0x00, 0xaa, 0, 0];
+    code.extend([0, 0, 0, 0, 0x80, 0, 0, 0, 0x7f, 0xff, 0xff, 0xff]);
+    assert!(Class::parse(&class_file(&[], &[], &code)).is_some());
+    // A class too big to read is noted as unread, not opened.
+    let huge = vec![0u8; 9 * 1024 * 1024];
+    let verdict = scan_bytes(&jar(&[
+        ("a/Huge.class", huge),
+        ("a/Junk.class", vec![7; 100]),
+    ]));
+    assert_eq!(verdict.signs, vec![sign::UNREAD], "{verdict:?}");
+    // Jars nested deeper than the limit are not opened.
+    let mut nested = jar(&[(
+        "a/Loader.class",
+        class_file(
+            &[
+                ("java/net/URLClassLoader", "<init>"),
+                ("java/net/URL", "openStream"),
+            ],
+            &[],
+            &[0xb1],
+        ),
+    )]);
+    for _ in 0..4 {
+        nested = jar(&[("inner.jar", nested)]);
+    }
+    assert_eq!(scan_bytes(&nested).level, Level::Clean);
+}
+
+fn dropper_jar() -> Vec<u8> {
+    jar(&[(
+        "a/Loader.class",
+        class_file(
+            &[
+                ("java/net/URLClassLoader", "<init>"),
+                ("java/net/URL", "openConnection"),
+            ],
+            &[],
+            &[0xb1],
+        ),
+    )])
+}
+
+/// Puts `bytes` where the newest Sodium release downloads from.
+fn sodium_release_is(t: &T, bytes: &[u8]) {
+    let (sha1, sha512, _) = hashes(bytes);
+    let url = format!("https://cdn.modrinth.com/data/{SODIUM}/versions/v2bbbbbb/sodium-0.6.jar");
+    t.sites.put(&url, ok(bytes.to_vec()));
+    let file = json!({
+        "filename": "sodium-0.6.jar", "size": bytes.len(), "primary": true,
+        "hashes": { "sha1": sha1, "sha512": sha512 }, "url": url,
+    });
+    let mut versions: Value = serde_json::from_slice(
+        &t.sites.pages.lock().unwrap()[&modrinth::versions_url(SODIUM)].body,
+    )
+    .unwrap();
+    versions[1]["files"] = json!([file]);
+    t.sites.json(&modrinth::versions_url(SODIUM), versions);
+}
+
+#[tokio::test]
+async fn a_suspicious_file_is_held_back_and_put_before_the_owner() {
+    let t = setup();
+    modrinth_site(&t.sites);
+    let dropper = dropper_jar();
+    sodium_release_is(&t, &dropper);
+    t.player(
+        1,
+        "POST",
+        "/v1/imports",
+        json!({ "input": "https://modrinth.com/mod/sodium" }),
+    )
+    .await;
+    t.drain().await;
+
+    let (_, versions) = t.get("/v1/projects/sodium/versions").await;
+    let file = &versions["versions"][1]["files"][0];
+    assert_eq!(file["held"], true, "{file}");
+    assert!(file["url"].is_null(), "{file}");
+    let sha256 = file["sha256"].as_str().unwrap();
+    assert!(!t.app.blobs.has(sha256));
+    assert!(t.app.blobs.holds(sha256));
+    assert_eq!(
+        t.app.store.reviews(),
+        vec![("scan".to_owned(), sha256.to_owned())]
+    );
+    let counts = t.app.store.counts().unwrap();
+    assert_eq!(counts["blobsHeld"], 1);
+    assert_eq!(counts["reviewOpen"], 1);
+    // Fabric API is served as before.
+    let (_, api) = t.get("/v1/projects/fabric-api/versions").await;
+    assert_eq!(api["versions"][0]["files"][0]["held"], false);
+    assert!(api["versions"][0]["files"][0]["url"].is_string());
+    // Suspected is not known harmful: launchers are not told to warn yet.
+    let (status, harmful) = t.get("/v1/harmful").await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(harmful["files"], json!([]));
+
+    // Asked again, the held file is not fetched again.
+    let before = t.sites.asked(&format!(
+        "https://cdn.modrinth.com/data/{SODIUM}/versions/v2bbbbbb/sodium-0.6.jar"
+    ));
+    let id = versions["versions"][1]["id"].as_str().unwrap();
+    t.player(1, "POST", &format!("/v1/versions/{id}/fetch"), Value::Null)
+        .await;
+    t.drain().await;
+    assert_eq!(
+        t.sites.asked(&format!(
+            "https://cdn.modrinth.com/data/{SODIUM}/versions/v2bbbbbb/sodium-0.6.jar"
+        )),
+        before
+    );
+}
+
+#[tokio::test]
+async fn kept_files_are_scanned_again_under_new_rules() {
+    let t = setup();
+    modrinth_site(&t.sites);
+    t.player(
+        1,
+        "POST",
+        "/v1/imports",
+        json!({ "input": "https://modrinth.com/mod/sodium" }),
+    )
+    .await;
+    t.drain().await;
+    let (_, versions) = t.get("/v1/projects/sodium/versions").await;
+    let sha256 = versions["versions"][1]["files"][0]["sha256"]
+        .as_str()
+        .unwrap()
+        .to_owned();
+    assert!(t.app.blobs.has(&sha256));
+    // Nothing is due under the rules it was scanned with.
+    assert_eq!(import::rescan(&t.app, 50).await.unwrap(), 0);
+
+    // The kept bytes turn out to be malware once the rules know it.
+    let mut code = built("https://files-8ie.pages.dev/dl");
+    code.push(0xb1);
+    std::fs::write(
+        t.app.blobs.path(&sha256),
+        jar(&[("a/Stage.class", class_file(&[], &[], &code))]),
+    )
+    .unwrap();
+    t.app.store.forget_scans();
+    // Only archives are scanned: the two jars, not the pictures.
+    assert_eq!(import::rescan(&t.app, 50).await.unwrap(), 2);
+    assert!(!t.app.blobs.has(&sha256));
+    assert!(t.app.blobs.holds(&sha256));
+    let (_, versions) = t.get("/v1/projects/sodium/versions").await;
+    assert_eq!(versions["versions"][1]["files"][0]["held"], true);
+    assert!(versions["versions"][1]["files"][0]["url"].is_null());
+    // Known malware goes straight to launchers' warning list, not to review.
+    assert!(t.app.store.reviews().is_empty());
+    let (_, harmful) = t.get("/v1/harmful").await;
+    assert_eq!(harmful["files"][0]["sha256"], sha256);
+    assert!(harmful["next"].is_null());
+    let since = harmful["files"][0]["since"].as_i64().unwrap();
+    let (_, later) = t
+        .get(&format!("/v1/harmful?since={since}&after={sha256}"))
+        .await;
+    assert_eq!(later["files"], json!([]));
+    let (status, _) = t.get("/v1/harmful?since=-5&after=../x").await;
+    assert_eq!(status, StatusCode::OK);
+}

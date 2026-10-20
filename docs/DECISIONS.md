@@ -2029,7 +2029,7 @@ archive from the Package workflow, upload it to
 
 ## D-066 — Catalog of mods at mods.lapi.sh
 
-- **Status:** accepted (owner request, 2026-10-19), stages 1–5 of 6 · **Affects:** the new service `services/mods` (`https://mods.lapi.sh`, files at
+- **Status:** accepted (owner request, 2026-10-19), stages 1–5 of 6 and the scanner of stage 6 · **Affects:** the new service `services/mods` (`https://mods.lapi.sh`, files at
   `https://files-mods.lapi.sh`, `/home/www/lapi/mods`), the account service's token
   audience. The full design: the project's design document "Вкладка Моды и каталог".
 - **Goal.** A Mods tab with modpacks, mods, resource packs, shaders and worlds that does
@@ -2327,6 +2327,37 @@ archive from the Package workflow, upload it to
   modpack project of source `packwiz` (the pack read again unchanged is the same
   version; a changed pack is a new one), so the launcher installs and updates it as any
   modpack. The weekly re-check reads the pack again.
+
+### Upkeep (stage 6)
+
+- **Owner's choices (2026-10-20):** quarantine only for a combination of strong signs or
+  a known marker; files served from Cloudflare R2 with our server as the reserve; a
+  Cloudflare token for purging the cache; players' own packs published at once; the
+  owner's commands over SSH and as workflow tasks that print numbers and hashes only.
+- **The scanner (`services/mods/src/scan.rs`).** Every jar or zip the catalog keeps is
+  read before it is served: each class file for the methods it calls, the strings of
+  its constant pool and the strings its code builds byte by byte (how fractureiser hid
+  its address), and nested jars three levels deep (at most 100 000 entries, 8 MiB a
+  class, 64 MiB a nested jar, 1 GiB read in all). Weak signs (the network, starting
+  programs, loading code, programs inside, files where sign-ins live, autostart places)
+  are only recorded. A file is held back for strong signs together: loading code with
+  the network or a hidden address in one class, a hidden address with starting a
+  program, sign-in files with the network, autostart with programs or the network; or
+  for a marker of a known family (fractureiser's addresses), which makes it malware.
+  Checked on the 61 most downloaded mods on Modrinth (2026-10-20): 30 clean, 30 noted,
+  one held (Essential: its own account files and downloaded code), for the owner to keep.
+- **Held files** move to `data/quarantine/` (0600, nginx does not look there). The API
+  gives their versions' and packs' files no address and `held: true`; a pack with one
+  fails with `held`. Suspected files go before the owner (`review`, kind `scan`); a
+  version its source takes down goes there too (kind `gone`) and stays offered. Files
+  kept before the scanner, and all of them whenever its rules change (`scan::RULES`), are
+  scanned again in the background, 20 every 30 seconds.
+- **Warning players.** `GET /v1/harmful?since=&after=` lists, page by page, the files
+  held back as malware (not those only suspected). The launcher reads it at most once an
+  hour and the Installed tab warns about such a file in an installation, by SHA-1, with
+  Remove. A held file is not installed: the plan names it, a pack with one fails.
+- `lapi-mods scan <file>` prints the verdict and signs of a file; `counts` adds held,
+  noted, waiting for a scan and open reviews.
 
 ## D-067 — Start page feed at feed.lapi.sh
 

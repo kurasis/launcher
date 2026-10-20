@@ -124,6 +124,7 @@ fn main() {
         "mods_export_pack",
         "mods_cancel",
         "mods_content",
+        "mods_harmful",
         "mods_identify",
         "mods_updates",
         "mods_set_enabled",

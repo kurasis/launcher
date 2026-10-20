@@ -2690,6 +2690,23 @@ pub async fn mods_content<R: Runtime>(
     .await
 }
 
+/// Files of an installation the catalog holds back as harmful (D-066,
+/// stage 6): their paths, to warn and offer to turn them off.
+#[tauri::command]
+pub async fn mods_harmful<R: Runtime>(
+    app: AppHandle<R>,
+    instance_id: crate::storage::paths::InstanceId,
+) -> LauncherResult<Vec<String>> {
+    crate::mods::online(&app.state::<AppState>())?;
+    let mods = mods(&app);
+    let harmful = mods.harmful().await?;
+    blocking(app, move |state| {
+        let (root, _) = crate::mods::content::instance_of(state, instance_id)?;
+        Ok(mods.content.harmful_files(&root, instance_id, &harmful))
+    })
+    .await
+}
+
 /// The player's own files the catalog recognizes by their hash.
 #[tauri::command]
 pub async fn mods_identify<R: Runtime>(
