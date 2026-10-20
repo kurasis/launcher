@@ -10,6 +10,8 @@ use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
 use iroh::endpoint::Connection;
+#[cfg(test)]
+use iroh::endpoint::VarInt;
 use iroh::{Endpoint, EndpointAddr, EndpointId, RelayUrl};
 use tokio::task::JoinHandle;
 
@@ -20,7 +22,7 @@ use crate::install::service::BoxFuture;
 use crate::sync::lock;
 use crate::tunnel::frame::{ALPN, Refusal};
 use crate::tunnel::guest::{
-    self, Grant, GuestListener, RoomStatus, StatusSnapshot, Target, Tickets,
+    self, Grant, GuestListener, RoomStatus, SharedConnection, StatusSnapshot, Target, Tickets,
 };
 
 /// Relay enrollment and the room's status are renewed this often.
@@ -75,8 +77,15 @@ pub fn path_of(connection: &Connection) -> Option<PathKind> {
         })
 }
 
-/// How often the chosen path is looked at.
+/// How often the chosen path and the connection are looked at.
 const PATH_EVERY: Duration = Duration::from_secs(2);
+/// A lost connection is tried again after this, doubling up to the most.
+const RECONNECT_FIRST: Duration = Duration::from_secs(2);
+const RECONNECT_MOST: Duration = Duration::from_secs(30);
+/// A host whose lease lapsed (it slept, or lost the service for a moment)
+/// opens a new session within this; until then a room that is not hosted is
+/// tried again.
+const HOST_GRACE: Duration = Duration::from_secs(if cfg!(test) { 1 } else { 120 });
 
 struct Shared {
     client: Arc<WorldsClient>,
@@ -86,6 +95,10 @@ struct Shared {
     status: Mutex<Option<StatusSnapshot>>,
     refused: Mutex<Option<Option<Refusal>>>,
     path: Mutex<Option<PathKind>>,
+    /// The tunnel was lost and is being opened again.
+    reconnecting: Mutex<bool>,
+    /// The room no longer lets this computer in: it stopped trying.
+    gave_up: Mutex<bool>,
     on_change: Arc<dyn Fn() + Send + Sync>,
 }
 
@@ -144,7 +157,7 @@ fn snapshot(room: &Room) -> StatusSnapshot {
 pub struct RoomGuest {
     shared: Arc<Shared>,
     listener: GuestListener,
-    connection: Connection,
+    connection: SharedConnection,
     endpoint: Endpoint,
     keeper: JoinHandle<()>,
     watcher: JoinHandle<()>,
@@ -230,10 +243,13 @@ pub async fn join(
         status: Mutex::new(Some(snapshot(room))),
         refused: Mutex::new(None),
         path: Mutex::new(path_of(&connection)),
+        reconnecting: Mutex::new(false),
+        gave_up: Mutex::new(false),
         on_change,
     });
+    let connection: SharedConnection = Arc::new(Mutex::new(connection));
     let listener = guest::listen(Target {
-        connection: connection.clone(),
+        connection: Arc::clone(&connection),
         nick,
         protocol,
         version_name,
@@ -244,7 +260,12 @@ pub async fn join(
     .map_err(|e| LauncherError::from_io(&e, "Opening the world for the game"))?;
     let relayed = matches!(route, Route::Relay(_));
     let keeper = tokio::spawn(keep(Arc::clone(&shared), relayed));
-    let watcher = tokio::spawn(watch_path(Arc::clone(&shared), connection.clone()));
+    let watcher = tokio::spawn(watch(
+        Arc::clone(&shared),
+        Arc::clone(&connection),
+        endpoint.clone(),
+        route,
+    ));
     Ok(RoomGuest {
         shared,
         listener,
@@ -255,18 +276,105 @@ pub async fn join(
     })
 }
 
-/// Tells when the connection moves between the relay and a direct path.
-async fn watch_path(shared: Arc<Shared>, connection: Connection) {
-    while connection.close_reason().is_none() {
+/// Tells when the connection moves between the relay and a direct path,
+/// and opens a lost connection again while the room still lets this
+/// computer in (the host's network dropped, the relay restarted).
+async fn watch(
+    shared: Arc<Shared>,
+    connection: SharedConnection,
+    endpoint: Endpoint,
+    route: Route,
+) {
+    let mut wait = RECONNECT_FIRST;
+    let mut lost: Option<Instant> = None;
+    loop {
         tokio::time::sleep(PATH_EVERY).await;
-        let now = path_of(&connection);
-        let changed = {
-            let mut path = lock(&shared.path);
-            std::mem::replace(&mut *path, now) != now
-        };
-        if changed {
+        let current = lock(&connection).clone();
+        if current.close_reason().is_none() {
+            wait = RECONNECT_FIRST;
+            lost = None;
+            let now = path_of(&current);
+            let changed = std::mem::replace(&mut *lock(&shared.path), now) != now;
+            if changed {
+                (shared.on_change)();
+            }
+            continue;
+        }
+        if !std::mem::replace(&mut *lock(&shared.reconnecting), true) {
+            *lock(&shared.path) = None;
             (shared.on_change)();
         }
+        let since = *lost.get_or_insert_with(Instant::now);
+        match reconnect(&shared, &endpoint, &route).await {
+            Ok(fresh) => {
+                *lock(&shared.path) = path_of(&fresh);
+                *lock(&connection) = fresh;
+                *lock(&shared.reconnecting) = false;
+                (shared.on_change)();
+            }
+            Err(Some(Problem::NotHosting)) if since.elapsed() < HOST_GRACE => {
+                tokio::time::sleep(wait).await;
+                wait = (wait * 2).min(RECONNECT_MOST);
+            }
+            Err(Some(_)) => {
+                *lock(&shared.reconnecting) = false;
+                *lock(&shared.gave_up) = true;
+                (shared.on_change)();
+                return;
+            }
+            Err(None) => {
+                tokio::time::sleep(wait).await;
+                wait = (wait * 2).min(RECONNECT_MOST);
+            }
+        }
+    }
+}
+
+/// A new connection to the room's current host. `Err(Some)` when the room
+/// refuses this computer (closed, not a member): trying again will not help.
+async fn reconnect(
+    shared: &Shared,
+    endpoint: &Endpoint,
+    route: &Route,
+) -> Result<Connection, Option<Problem>> {
+    if matches!(route, Route::Relay(_)) {
+        enroll_or_stop(shared).await?;
+    }
+    let ticket = match shared
+        .client
+        .ticket(&shared.room, &shared.endpoint_key)
+        .await
+    {
+        Ok(ticket) => ticket,
+        Err(problem) => return Err(final_problem(problem)),
+    };
+    let host: EndpointId = ticket.host_endpoint.parse().map_err(|_| None)?;
+    // Known addresses (tests) name the host they were made for.
+    let route = match route {
+        Route::Known(address) if address.id != host => return Err(None),
+        other => other,
+    };
+    let fresh = connect(endpoint, host, route).await.map_err(|_| None)?;
+    *lock(&shared.first) = Some((ticket, Instant::now()));
+    Ok(fresh)
+}
+
+async fn enroll_or_stop(shared: &Shared) -> Result<(), Option<Problem>> {
+    match shared
+        .client
+        .enroll(&shared.room, &shared.endpoint_key)
+        .await
+    {
+        Ok(_) => Ok(()),
+        Err(problem) => Err(final_problem(problem)),
+    }
+}
+
+/// Problems that end the trying; network trouble and busy servers do not.
+fn final_problem(problem: Problem) -> Option<Problem> {
+    match problem {
+        Problem::Network | Problem::Server | Problem::TooMany => None,
+        other => Some(other),
     }
 }
 
@@ -307,7 +415,23 @@ impl RoomGuest {
 
     /// Whether the tunnel to the host still stands.
     pub fn connected(&self) -> bool {
-        self.connection.close_reason().is_none()
+        lock(&self.connection).close_reason().is_none()
+    }
+
+    /// Closes the tunnel as a lost network would.
+    #[cfg(test)]
+    pub fn cut(&self) {
+        lock(&self.connection).close(VarInt::from_u32(9), b"cut");
+    }
+
+    /// The tunnel was lost and is being opened again.
+    pub fn reconnecting(&self) -> bool {
+        *lock(&self.shared.reconnecting)
+    }
+
+    /// The room no longer lets this computer in; leave and join again.
+    pub fn gave_up(&self) -> bool {
+        *lock(&self.shared.gave_up)
     }
 
     pub async fn leave(self) {

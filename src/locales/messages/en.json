@@ -1425,7 +1425,8 @@
           "room_gone": "The room no longer exists, or it is no longer yours."
         },
         "unclean": "The world server did not stop cleanly; the last minutes may not be saved.",
-        "hostPlays": "Press Play to join your own world. Friends can join while it is open."
+        "hostPlays": "Press Play to join your own world. Friends can join while it is open.",
+        "reopening": "The connection to worlds.lapi.sh was lost for 30 seconds (the computer slept, or the service did not answer), so friends were disconnected. The room is being opened again; they reconnect by themselves."
       },
       "guest": {
         "title": "In {room}",
@@ -1434,7 +1435,9 @@
         "path": {
           "direct": "Connection: directly to the host's computer.",
           "relay": "Connection: through relay.lapi.sh, as no direct path between the computers was found."
-        }
+        },
+        "reconnecting": "The connection to the host was lost. Connecting again…",
+        "again": "Join again"
       },
       "refusals": {
         "BAD_FRAME": "The host's launcher did not understand this launcher. Update both.",
@@ -1576,6 +1579,11 @@
         "added": "Added {date}",
         "revoke": "Sign out",
         "confirm": "Sign out {name}?"
+      },
+      "privacy": {
+        "title": "Privacy",
+        "relayOnly": "Connect through the relay only",
+        "relayOnlyHint": "Other players never learn your computer's address. The relay (relay.lapi.sh, run by this launcher) sees the addresses of both computers and how much data passes, but not the game itself, which is encrypted. The game may lag more. Applies the next time you open or join a world."
       }
     },
     "metered": {

@@ -286,6 +286,8 @@ export interface SettingsView {
   lastView: RememberedView;
   /** The start page feed (D-067). */
   feed: FeedSettings;
+  /** Worlds connect through the relay only, never directly (W10). */
+  worldsRelayOnly: boolean;
   writable: boolean;
 }
 
@@ -965,6 +967,7 @@ export interface SettingsPatch {
   lastView?: RememberedView;
   /** Fields omitted stay as they are. */
   feed?: Partial<FeedSettings>;
+  worldsRelayOnly?: boolean;
 }
 
 interface EventEnvelope {
@@ -1805,6 +1808,8 @@ export interface WorldsState {
     phase: 'starting' | 'ready' | 'stopping' | 'exited';
     players: string[];
     ended: WorldsEnding | null;
+    /** The lease lapsed (sleep, the service out of reach); a new session is being opened. */
+    reopening: boolean;
     clean: boolean | null;
   } | null;
   guest: {
@@ -1813,6 +1818,10 @@ export interface WorldsState {
     refused: WorldsRefusal | null;
     /** Straight to the host or through relay.lapi.sh, once chosen. */
     path: 'direct' | 'relay' | null;
+    /** The tunnel was lost and is being opened again. */
+    reconnecting: boolean;
+    /** The room no longer lets this computer in: leave or join again. */
+    gaveUp: boolean;
   } | null;
   /** Why the last start or join failed: a problem name or an error code. */
   failed: string | null;

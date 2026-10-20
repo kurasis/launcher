@@ -287,6 +287,27 @@ fn start_view_is_validated_and_persists() {
 }
 
 #[test]
+fn the_relay_only_mode_is_off_until_turned_on_and_persists() {
+    let dir = tempfile::tempdir().unwrap();
+    let state = state_at(dir.path(), RecordingSink::default());
+    assert!(!state.snapshot().settings.worlds_relay_only);
+    let view = state
+        .set_app_settings(request(SettingsPatch {
+            worlds_relay_only: Some(true),
+            ..SettingsPatch::default()
+        }))
+        .unwrap();
+    assert!(view.worlds_relay_only);
+    drop(state);
+    let state = state_at(dir.path(), RecordingSink::default());
+    assert!(state.settings().worlds_relay_only);
+    // Junk is refused whole.
+    let junk: Result<SettingsPatch, _> =
+        serde_json::from_value(serde_json::json!({ "worldsRelayOnly": "yes" }));
+    assert!(junk.is_err());
+}
+
+#[test]
 fn feed_settings_are_validated_and_persist() {
     use crate::storage::models::{FeedBlock, PlayerMode, VideoLanguage};
     let dir = tempfile::tempdir().unwrap();

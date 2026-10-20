@@ -381,6 +381,10 @@ pub struct Settings {
     /// The start page feed (D-067).
     #[serde(default)]
     pub feed: FeedSettings,
+    /// Worlds with friends connect through the relay only, never directly,
+    /// so other players do not learn this computer's address.
+    #[serde(default)]
+    pub worlds_relay_only: bool,
 }
 
 fn on() -> bool {
@@ -427,6 +431,7 @@ impl Default for Settings {
             start_view: StartView::Feed,
             last_view: StartView::Feed,
             feed: FeedSettings::default(),
+            worlds_relay_only: false,
         }
     }
 }

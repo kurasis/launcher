@@ -361,7 +361,8 @@ SELECT r.id, r.name, r.description, r.minecraft, r.revision, r.owner, o.nick, m.
        r.created, r.updated,
        (SELECT COUNT(*) FROM members WHERE room = r.id AND state = 'active'),
        s.id, s.max_players,
-       (SELECT COUNT(*) FROM admissions a WHERE a.session = s.id AND a.released IS NULL)
+       MAX((SELECT COUNT(*) FROM admissions a WHERE a.session = s.id AND a.released IS NULL),
+           COALESCE(s.players, 0))
 FROM rooms r
 JOIN members m ON m.room = r.id AND m.account = ?1 AND m.state = 'active'
 JOIN members o ON o.room = r.id AND o.account = r.owner
@@ -402,6 +403,19 @@ fn session_from(r: &rusqlite::Row<'_>) -> rusqlite::Result<Session> {
     })
 }
 
+/// Columns added after the first release; SQLite adds them in place.
+fn migrate(db: &Connection) -> rusqlite::Result<()> {
+    let has_players: bool = db.query_row(
+        "SELECT EXISTS (SELECT 1 FROM pragma_table_info('sessions') WHERE name = 'players')",
+        [],
+        |r| r.get(0),
+    )?;
+    if !has_players {
+        db.execute_batch("ALTER TABLE sessions ADD COLUMN players INTEGER")?;
+    }
+    Ok(())
+}
+
 const SESSION_SELECT: &str =
     "SELECT id, room, epoch, endpoint, max_players, lease_until, host_device FROM sessions";
 
@@ -413,6 +427,7 @@ impl Store {
         db.busy_timeout(std::time::Duration::from_secs(5))
             .map_err(|e| e.to_string())?;
         db.execute_batch(SCHEMA).map_err(|e| e.to_string())?;
+        migrate(&db).map_err(|e| e.to_string())?;
         Ok(Self {
             db: Mutex::new(db),
             authority: authority.to_owned(),
@@ -1111,14 +1126,22 @@ impl Store {
 
     /// Extends the host's lease. A renewal after the lease ran out finds the
     /// session ended.
-    pub fn renew(&self, device: &str, session: &str, now: i64) -> Result<Renewal> {
+    /// Keeps the lease; `players` is the host's count of players on the
+    /// server (its own game included), shown as the room's online count.
+    pub fn renew(
+        &self,
+        device: &str,
+        session: &str,
+        players: Option<u32>,
+        now: i64,
+    ) -> Result<Renewal> {
         let db = self.db();
         expire(&db, &self.authority, now)?;
         let found = Self::hosted(&db, device, session)?;
         let lease_until = now + LEASE;
         db.execute(
-            "UPDATE sessions SET lease_until = ?2 WHERE id = ?1",
-            params![session, lease_until],
+            "UPDATE sessions SET lease_until = ?2, players = COALESCE(?3, players) WHERE id = ?1",
+            params![session, lease_until, players],
         )?;
         let members = {
             let mut statement = db.prepare(

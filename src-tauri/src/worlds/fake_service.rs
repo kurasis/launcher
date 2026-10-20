@@ -7,6 +7,7 @@
 
 use std::collections::{HashMap, HashSet};
 use std::sync::{Arc, Mutex};
+use std::time::Duration;
 
 use base64::Engine;
 use base64::engine::general_purpose::URL_SAFE_NO_PAD as B64;
@@ -47,6 +48,10 @@ pub struct World {
     pub tickets: HashMap<String, (String, String, bool)>,
     pub admissions: Vec<Admission>,
     pub enrolled: Vec<String>,
+    /// The player count the last renewal told.
+    pub reported_players: Option<u64>,
+    /// The service is out of reach: renewals get no answer, other calls fail.
+    pub stalled: bool,
     pub calls: Vec<String>,
     jtis: HashSet<String>,
     next: u64,
@@ -133,6 +138,12 @@ pub async fn start(accounts: &[(&str, &str, bool)]) -> Fake {
                         }
                     }
                 };
+                if lock(&world).stalled {
+                    if head.contains("/renew ") {
+                        tokio::time::sleep(Duration::from_secs(5)).await;
+                    }
+                    return;
+                }
                 let (status, answer) = handle(&world, &base, &head, &body);
                 let reply = format!(
                     "HTTP/1.1 {status} X\r\ncontent-type: application/json\r\ncontent-length: {}\r\nconnection: close\r\n\r\n{answer}",
@@ -309,6 +320,7 @@ fn handle(world: &Mutex<World>, base: &str, head: &str, body: &str) -> (u16, Str
             }
             match *action {
                 "renew" => {
+                    world.reported_players = body["players"].as_u64();
                     let mut members: Vec<String> = world
                         .accounts
                         .values()

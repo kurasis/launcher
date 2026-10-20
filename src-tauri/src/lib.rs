@@ -539,9 +539,16 @@ fn setup(app: &mut tauri::App) -> Result<(), Box<dyn std::error::Error>> {
     if let Some(launcher) = &launcher {
         launcher.watch_survivor();
     }
-    // So does a world server, until it exits (D-068).
-    if let Some(root) = app.state::<AppState>().data_root() {
-        worlds::host::watch_survivor(&root, app.state::<AppState>().activity());
+    // So does a world server, until it exits (D-068). Its tunnel ended with
+    // the previous core, so no guest can reach it: it is asked to save and
+    // stop through its RCON, never killed.
+    if let Some(root) = app.state::<AppState>().data_root()
+        && let Some(survivor) =
+            worlds::host::watch_survivor(&root, app.state::<AppState>().activity())
+    {
+        let _ = std::thread::Builder::new()
+            .name("world-survivor-stop".into())
+            .spawn(move || worlds::host::stop_survivor(&survivor));
     }
     app.manage(commands::Launcher(launcher));
     // Finish a pending sign-out or refresh the saved account in the background.

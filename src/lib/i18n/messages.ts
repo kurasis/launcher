@@ -1501,6 +1501,7 @@ export type Messages = {
       };
       readonly unclean: string;
       readonly hostPlays: string;
+      readonly reopening: string;
     };
     readonly guest: {
       readonly title: (values: { room: string | number }) => string;
@@ -1510,6 +1511,8 @@ export type Messages = {
         readonly direct: string;
         readonly relay: string;
       };
+      readonly reconnecting: string;
+      readonly again: string;
     };
     readonly refusals: {
       readonly BAD_FRAME: string;
@@ -1659,6 +1662,11 @@ export type Messages = {
       readonly added: (values: { date: string | number }) => string;
       readonly revoke: string;
       readonly confirm: (values: { name: string | number }) => string;
+    };
+    readonly privacy: {
+      readonly title: string;
+      readonly relayOnly: string;
+      readonly relayOnlyHint: string;
     };
   };
   readonly metered: {
