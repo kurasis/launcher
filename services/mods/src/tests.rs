@@ -22,7 +22,7 @@ use tower::ServiceExt;
 use crate::fetch::{self, Client, Curl, FetchError, Reply, Transport};
 use crate::import::{self, now};
 use crate::input::{self, Input};
-use crate::{App, Urls, curseforge, model, modrinth, pack};
+use crate::{App, Urls, curseforge, model, modrinth, pack, packwiz};
 
 const ISSUER: &str = "https://oauth.example";
 const FILES: &str = "https://files.example";
@@ -2738,4 +2738,293 @@ async fn the_same_project_on_both_sources_becomes_one() {
         .query_row("SELECT count(*) FROM project_joined", [], |r| r.get(0))
         .unwrap();
     assert_eq!(joined, 1);
+}
+
+// ----- packwiz packs (stage 5) -----
+
+const PW: &str = "https://raw.githubusercontent.com/me/pack/main";
+
+fn sha256_hex(bytes: &[u8]) -> String {
+    hex::encode(sha2::Sha256::digest(bytes))
+}
+
+#[test]
+fn packwiz_addresses_and_files_are_read_with_care() {
+    let url = |t: &str| reqwest::Url::parse(t).unwrap();
+    assert_eq!(
+        packwiz::pack_url(&url("https://github.com/me/pack/blob/main/pack.toml")).as_deref(),
+        Some("https://raw.githubusercontent.com/me/pack/main/pack.toml")
+    );
+    assert_eq!(
+        packwiz::pack_url(&url("https://gitlab.com/me/pack/-/blob/main/x/pack.toml")).as_deref(),
+        Some("https://gitlab.com/me/pack/-/raw/main/x/pack.toml")
+    );
+    for bad in [
+        "https://evil.example/pack.toml",
+        "https://github.com/me/pack/blob/main/other.toml",
+        "https://raw.githubusercontent.com/me/pack/main/pack.toml?x=1",
+        "https://github.com/me/pack.toml",
+        "http://user@raw.githubusercontent.com/me/pack/main/pack.toml",
+    ] {
+        assert_eq!(packwiz::pack_url(&url(bad)), None, "{bad}");
+    }
+    assert_eq!(
+        input::parse("github.com/me/pack/blob/main/pack.toml"),
+        Some(Input::Packwiz(
+            "https://raw.githubusercontent.com/me/pack/main/pack.toml".to_owned()
+        ))
+    );
+    let base = format!("{PW}/index.toml");
+    assert_eq!(
+        packwiz::relative(&base, "mods/a.pw.toml").as_deref(),
+        Some(format!("{PW}/mods/a.pw.toml").as_str())
+    );
+    for bad in [
+        "../x",
+        "/etc/passwd",
+        "a//b",
+        "https://evil.example/x",
+        "a\\b",
+        "./a",
+    ] {
+        assert_eq!(packwiz::relative(&base, bad), None, "{bad}");
+    }
+
+    let good = format!(
+        "name = \"My Pack\"\nversion = \"1.2\"\n[index]\nfile = \"index.toml\"\nhash-format = \"sha256\"\nhash = \"{}\"\n[versions]\nminecraft = \"1.20.1\"\nforge = \"47.2.0\"\n",
+        "a".repeat(64)
+    );
+    let found = packwiz::pack(&good).unwrap();
+    assert_eq!(found.game, "1.20.1");
+    assert_eq!(
+        found.loader,
+        Some(("forge".to_owned(), "47.2.0".to_owned()))
+    );
+    assert_eq!(packwiz::slug(&found.name), "my-pack");
+    for (bad, code) in [
+        (good.replace("forge", "liteloader"), "unsupported_pack"),
+        (
+            good.replace("[versions]\nminecraft = \"1.20.1\"\n", "[versions]\n"),
+            "bad_pack",
+        ),
+        (good.replace("sha256", "murmur2"), "bad_pack"),
+        (good.replace("47.2.0", "47 2"), "bad_pack"),
+        ("not toml [".to_owned(), "bad_pack"),
+    ] {
+        assert_eq!(packwiz::pack(&bad), Err(code));
+    }
+
+    let index = format!(
+        "hash-format = \"sha256\"\n[[files]]\nfile = \"mods/a.pw.toml\"\nhash = \"{h}\"\nmetafile = true\n[[files]]\nfile = \"config/a.toml\"\nhash = \"{h}\"\n[[files]]\nfile = \"../escape.txt\"\nhash = \"{h}\"\n[[files]]\nfile = \"config/run.exe\"\nhash = \"{h}\"\n[[files]]\nfile = \"a.pw.toml\"\nhash = \"{h}\"\nmetafile = true\n",
+        h = "b".repeat(64)
+    );
+    let (files, skipped) = packwiz::index(&index).unwrap();
+    assert_eq!(files.len(), 2);
+    assert_eq!(skipped, 3);
+
+    let meta = |text: &str| packwiz::meta(text, "mods/a.pw.toml");
+    let sha512 = "c".repeat(128);
+    let modrinth = format!(
+        "filename = \"a.jar\"\nside = \"both\"\n[download]\nurl = \"https://cdn.modrinth.com/data/x/versions/y/a.jar\"\nhash-format = \"sha512\"\nhash = \"{sha512}\"\n"
+    );
+    let found = meta(&modrinth).unwrap().unwrap();
+    assert_eq!(found.path, "mods/a.jar");
+    assert!(!found.optional);
+    assert_eq!(meta(&modrinth.replace("both", "server")), Ok(None));
+    assert_eq!(
+        meta(&modrinth.replace("a.jar\"\nside", "a.exe\"\nside")),
+        Ok(None)
+    );
+    assert_eq!(
+        meta(&modrinth.replace("\"a.jar\"\nside", "\"../a.jar\"\nside")),
+        Err("bad_pack")
+    );
+    assert_eq!(
+        meta(&modrinth.replace("https://cdn.modrinth.com", "https://evil.example")),
+        Err("unsupported_host")
+    );
+    let cf = "filename = \"jei.jar\"\n[download]\nhash-format = \"murmur2\"\nhash = \"123\"\nmode = \"metadata:curseforge\"\n[update.curseforge]\nfile-id = 5\nproject-id = 7\n[option]\noptional = true\n";
+    let found = meta(cf).unwrap().unwrap();
+    assert_eq!(found.url, curseforge::download_url(7, 5));
+    assert!(found.optional);
+    // A hash that cannot be checked only from CurseForge.
+    let unchecked = modrinth
+        .replace("sha512", "md5")
+        .replace(&sha512, "d41d8cd98f00b204e9800998ecf8427e");
+    assert_eq!(meta(&unchecked), Err("bad_pack"));
+}
+
+#[tokio::test]
+async fn a_packwiz_pack_becomes_a_modpack_with_every_file_kept() {
+    let t = setup();
+    let sodium = b"sodium jar for packwiz".to_vec();
+    let jei = b"jei jar from curseforge".to_vec();
+    let config = b"a = 1".to_vec();
+    let sodium_url = format!("https://cdn.modrinth.com/data/{SODIUM}/versions/v1/sodium.jar");
+    t.sites.put(&sodium_url, ok(sodium.clone()));
+    cf_download(&t.sites, JEI, 4242, "jei.jar", &jei);
+    let (_, sodium_512, _) = hashes(&sodium);
+    let (jei_1, _, _) = hashes(&jei);
+    let sodium_meta = format!(
+        "name = \"Sodium\"\nfilename = \"sodium.jar\"\nside = \"client\"\n[download]\nurl = \"{sodium_url}\"\nhash-format = \"sha512\"\nhash = \"{sodium_512}\"\n"
+    );
+    let jei_meta = format!(
+        "filename = \"jei.jar\"\n[download]\nhash-format = \"sha1\"\nhash = \"{jei_1}\"\nmode = \"metadata:curseforge\"\n[update.curseforge]\nfile-id = 4242\nproject-id = {JEI}\n"
+    );
+    let server_meta = format!(
+        "filename = \"server.jar\"\nside = \"server\"\n[download]\nurl = \"{sodium_url}\"\nhash-format = \"sha512\"\nhash = \"{sodium_512}\"\n"
+    );
+    for (path, text) in [
+        ("mods/sodium.pw.toml", &sodium_meta),
+        ("mods/jei.pw.toml", &jei_meta),
+        ("mods/server.pw.toml", &server_meta),
+    ] {
+        t.sites
+            .put(&format!("{PW}/{path}"), ok(text.as_bytes().to_vec()));
+    }
+    t.sites
+        .put(&format!("{PW}/config/a.toml"), ok(config.clone()));
+    let index = format!(
+        "hash-format = \"sha256\"\n\
+         [[files]]\nfile = \"mods/sodium.pw.toml\"\nhash = \"{}\"\nmetafile = true\n\
+         [[files]]\nfile = \"mods/jei.pw.toml\"\nhash = \"{}\"\nmetafile = true\n\
+         [[files]]\nfile = \"mods/server.pw.toml\"\nhash = \"{}\"\nmetafile = true\n\
+         [[files]]\nfile = \"config/a.toml\"\nhash = \"{}\"\n\
+         [[files]]\nfile = \"run.sh\"\nhash = \"{}\"\n",
+        sha256_hex(sodium_meta.as_bytes()),
+        sha256_hex(jei_meta.as_bytes()),
+        sha256_hex(server_meta.as_bytes()),
+        sha256_hex(&config),
+        sha256_hex(b"x"),
+    );
+    t.sites
+        .put(&format!("{PW}/index.toml"), ok(index.as_bytes().to_vec()));
+    let pack_toml = format!(
+        "name = \"My Pack\"\nauthor = \"me\"\nversion = \"1.0\"\npack-format = \"packwiz:1.1.0\"\n[index]\nfile = \"index.toml\"\nhash-format = \"sha256\"\nhash = \"{}\"\n[versions]\nminecraft = \"1.20.1\"\nforge = \"47.2.0\"\n",
+        sha256_hex(index.as_bytes())
+    );
+    t.sites.put(
+        &format!("{PW}/pack.toml"),
+        ok(pack_toml.as_bytes().to_vec()),
+    );
+
+    let (status, request) = t
+        .player(
+            1,
+            "POST",
+            "/v1/imports",
+            json!({ "input": "https://github.com/me/pack/blob/main/pack.toml" }),
+        )
+        .await;
+    assert_eq!(status, StatusCode::ACCEPTED, "{request}");
+    t.drain().await;
+    let id = request["id"].as_str().unwrap();
+    let (_, request) = t
+        .player(1, "GET", &format!("/v1/imports/{id}"), Value::Null)
+        .await;
+    assert_eq!(request["state"], "ready", "{request}");
+
+    let (status, project) = t.get("/v1/projects/my-pack").await;
+    assert_eq!(status, StatusCode::OK, "{project}");
+    assert_eq!(project["kind"], "modpack");
+    assert_eq!(project["title"], "My Pack");
+    assert_eq!(project["authors"][0]["name"], "me");
+    let (_, versions) = t.get("/v1/projects/my-pack/versions").await;
+    let version = &versions["versions"][0];
+    assert_eq!(version["number"], "1.0");
+    assert_eq!(version["games"], json!(["1.20.1"]));
+    assert_eq!(version["loaders"], json!(["forge"]));
+    assert_eq!(version["saved"], "all", "{version}");
+    let version = version["id"].as_str().unwrap().to_owned();
+
+    // The launcher installs it like any modpack; nothing is fetched again.
+    let (status, _) = t
+        .call(
+            None,
+            "POST",
+            &format!("/v1/versions/{version}/pack"),
+            Value::Null,
+        )
+        .await;
+    assert!(status.is_success());
+    t.drain().await;
+    let (_, pack) = t.get(&format!("/v1/versions/{version}/pack")).await;
+    assert_eq!(pack["state"], "ready", "{pack}");
+    assert_eq!(pack["game"], "1.20.1");
+    assert_eq!(
+        pack["loader"],
+        json!({ "kind": "forge", "version": "47.2.0" })
+    );
+    let paths: Vec<&str> = pack["files"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|f| f["path"].as_str().unwrap())
+        .collect();
+    assert_eq!(paths, ["mods/sodium.jar", "mods/jei.jar"]);
+    assert_eq!(t.sites.asked(&sodium_url), 1);
+    let archive = t
+        .app
+        .blobs
+        .path(pack["archive"]["sha256"].as_str().unwrap());
+    let mut zip = zip::ZipArchive::new(std::fs::File::open(archive).unwrap()).unwrap();
+    let mut text = String::new();
+    std::io::Read::read_to_string(
+        &mut zip.by_name("overrides/config/a.toml").unwrap(),
+        &mut text,
+    )
+    .unwrap();
+    assert_eq!(text, "a = 1");
+    assert!(zip.by_name("overrides/run.sh").is_err());
+
+    // Read again unchanged: the same version.
+    import::queue_project(
+        &t.app,
+        packwiz::SOURCE,
+        &format!("{PW}/pack.toml"),
+        0,
+        None,
+        0,
+    )
+    .unwrap();
+    t.drain().await;
+    let (_, versions) = t.get("/v1/projects/my-pack/versions").await;
+    assert_eq!(versions["versions"].as_array().unwrap().len(), 1);
+}
+
+#[tokio::test]
+async fn a_packwiz_file_that_is_not_what_its_index_says_fails_the_pack() {
+    let t = setup();
+    let index = "hash-format = \"sha256\"\n[[files]]\nfile = \"config/a.toml\"\nhash = \""
+        .to_owned()
+        + &sha256_hex(b"a = 1")
+        + "\"\n";
+    t.sites
+        .put(&format!("{PW}/config/a.toml"), ok(b"a = 2".to_vec()));
+    t.sites
+        .put(&format!("{PW}/index.toml"), ok(index.as_bytes().to_vec()));
+    let pack_toml = format!(
+        "name = \"Bad\"\n[index]\nfile = \"index.toml\"\nhash-format = \"sha256\"\nhash = \"{}\"\n[versions]\nminecraft = \"1.20.1\"\n",
+        sha256_hex(index.as_bytes())
+    );
+    t.sites.put(
+        &format!("{PW}/pack.toml"),
+        ok(pack_toml.as_bytes().to_vec()),
+    );
+    let (_, request) = t
+        .player(
+            1,
+            "POST",
+            "/v1/imports",
+            json!({ "input": format!("{PW}/pack.toml") }),
+        )
+        .await;
+    t.drain().await;
+    let id = request["id"].as_str().unwrap();
+    let (_, request) = t
+        .player(1, "GET", &format!("/v1/imports/{id}"), Value::Null)
+        .await;
+    assert_eq!(request["state"], "failed", "{request}");
+    let (status, _) = t.get("/v1/projects/bad").await;
+    assert_eq!(status, StatusCode::NOT_FOUND);
 }

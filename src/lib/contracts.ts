@@ -1222,7 +1222,7 @@ export interface FailureSummary {
 
 /** What the catalog holds. */
 export type ModsKind = 'mod' | 'modpack' | 'resourcepack' | 'shader' | 'datapack' | 'world';
-export type ModsSource = 'modrinth' | 'curseforge';
+export type ModsSource = 'modrinth' | 'curseforge' | 'packwiz';
 export type ModsSort = 'relevance' | 'downloads' | 'updated' | 'new' | 'title';
 
 export interface ModsSearchQuery {

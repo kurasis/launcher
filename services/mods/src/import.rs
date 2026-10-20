@@ -36,8 +36,8 @@ use crate::App;
 use crate::blobs::{Hashed, hash_file};
 use crate::fetch::FetchError;
 use crate::input::{self, Input};
-use crate::model::{SourceProject, newest_per_pair};
-use crate::{curseforge, modrinth, pack};
+use crate::model::{SourceProject, SourceVersion, newest_per_pair};
+use crate::{curseforge, modrinth, pack, packwiz};
 
 pub fn now() -> i64 {
     chrono::Utc::now().timestamp()
@@ -186,6 +186,10 @@ fn due_reference(due: &crate::store::Due) -> Option<String> {
     match due.source.as_str() {
         s if s == modrinth::SOURCE => {
             modrinth::is_ref(&due.source_id).then(|| due.source_id.clone())
+        }
+        s if s == packwiz::SOURCE => {
+            let url = reqwest::Url::parse(&due.source_id).ok()?;
+            packwiz::pack_url(&url)
         }
         s if s == curseforge::SOURCE => {
             let class = curseforge::CLASSES
@@ -450,6 +454,7 @@ async fn resolve(app: &App, id: &str) -> Result<(), JobError> {
         Some(Input::ModrinthFile { project, version }) => {
             start(app, id, modrinth::SOURCE, &project, Some(&version))
         }
+        Some(Input::Packwiz(url)) => start(app, id, packwiz::SOURCE, &url, None),
     }
 }
 
@@ -527,6 +532,9 @@ async fn project(
     if source == curseforge::SOURCE {
         return project_curseforge(app, reference, depth, request).await;
     }
+    if source == packwiz::SOURCE {
+        return project_packwiz(app, reference, request).await;
+    }
     if source != modrinth::SOURCE || !modrinth::is_ref(reference) {
         return Err(JobError::new("unsupported_source", false));
     }
@@ -601,6 +609,226 @@ async fn project(
     }
     if card {
         pictures(app, &id, &found)?;
+    }
+    app.store.set_project_status(&id, "ready")?;
+    Ok(())
+}
+
+/// A file of a pack fetched whole into memory (a toml); `None` when the
+/// address has none.
+async fn fetch_small(app: &App, url: &str, max: u64) -> Result<Option<Vec<u8>>, JobError> {
+    let part = app.blobs.part();
+    let result = app.client.get(url, &part, max, false).await;
+    let bytes = std::fs::read(&part);
+    let _ = std::fs::remove_file(&part);
+    match result {
+        Ok(_) => {
+            let bytes = bytes.map_err(|_| JobError::new("disk_error", true))?;
+            if bytes.len() as u64 > max {
+                return Err(JobError::new("too_big", false));
+            }
+            Ok(Some(bytes))
+        }
+        Err(FetchError::NotFound) => Ok(None),
+        Err(e) => Err(e.into()),
+    }
+}
+
+/// A packwiz pack (stage 5): its `pack.toml`, index and every file, kept
+/// here and written out as a `.mrpack` version of a modpack project. A pack
+/// read again with another index is a new version; the old ones stay.
+async fn project_packwiz(app: &App, url: &str, request: Option<&str>) -> Result<(), JobError> {
+    let source_id = reqwest::Url::parse(url)
+        .ok()
+        .and_then(|u| packwiz::pack_url(&u))
+        .filter(|u| u == url)
+        .ok_or_else(|| JobError::new("bad_input", false))?;
+    let text = fetch_small(app, url, packwiz::MAX_TOML)
+        .await?
+        .ok_or_else(|| JobError::new("not_found", false))?;
+    let found =
+        packwiz::pack(&String::from_utf8_lossy(&text)).map_err(|c| JobError::new(c, false))?;
+    let index_url =
+        packwiz::relative(url, &found.index).ok_or_else(|| JobError::new("bad_pack", false))?;
+    let index_text = fetch_small(app, &index_url, packwiz::MAX_TOML)
+        .await?
+        .ok_or_else(|| JobError::new("not_found", false))?;
+    if found.index_hash.matches_bytes(&index_text) != Some(true) {
+        return Err(JobError::new("hash_mismatch", true));
+    }
+    let (listed, _skipped) = packwiz::index(&String::from_utf8_lossy(&index_text))
+        .map_err(|c| JobError::new(c, false))?;
+
+    // The mods kept here, and the other files fetched for the archive.
+    let mut mods: Vec<(String, Hashed, String, bool)> = Vec::new();
+    let mut overrides: Vec<(String, PathBuf)> = Vec::new();
+    let mut override_bytes = 0u64;
+    let mut paths = std::collections::HashSet::new();
+    let result: Result<(), JobError> = async {
+        for file in &listed {
+            let at = packwiz::relative(&index_url, &file.file)
+                .ok_or_else(|| JobError::new("bad_pack", false))?;
+            if !file.metafile {
+                if !paths.insert(file.path.to_ascii_lowercase()) {
+                    continue;
+                }
+                let (part, hashed) = download(app, &at, packwiz::MAX_OVERRIDE, &[]).await?;
+                overrides.push((file.path.clone(), part));
+                override_bytes += hashed.size;
+                if override_bytes > packwiz::MAX_OVERRIDES {
+                    return Err(JobError::new("too_big", false));
+                }
+                if file.hash.matches(&hashed) != Some(true) {
+                    return Err(JobError::new("hash_mismatch", true));
+                }
+                continue;
+            }
+            let meta_text = fetch_small(app, &at, packwiz::MAX_META)
+                .await?
+                .ok_or_else(|| JobError::new("not_found", false))?;
+            if file.hash.matches_bytes(&meta_text) != Some(true) {
+                return Err(JobError::new("hash_mismatch", true));
+            }
+            let Some(meta) = packwiz::meta(&String::from_utf8_lossy(&meta_text), &file.path)
+                .map_err(|c| JobError::new(c, false))?
+            else {
+                continue;
+            };
+            if !paths.insert(meta.path.to_ascii_lowercase()) {
+                continue;
+            }
+            let hashed = match app.store.kept_by_origin(&meta.url)? {
+                Some(kept) if app.blobs.has(&kept.sha256) => kept,
+                _ => {
+                    if !app.blobs.may_keep(0) {
+                        return Err(JobError::new("no_space", true));
+                    }
+                    let (part, hashed) = download(app, &meta.url, MAX_FILE, &[]).await?;
+                    if meta.hash.matches(&hashed) == Some(false) {
+                        let _ = std::fs::remove_file(&part);
+                        return Err(JobError::new("hash_mismatch", true));
+                    }
+                    keep(app, &part, &hashed, file_type(&meta.path))?;
+                    hashed
+                }
+            };
+            if meta.hash.matches(&hashed) == Some(false) {
+                return Err(JobError::new("hash_mismatch", true));
+            }
+            mods.push((meta.path, hashed, meta.url, meta.optional));
+        }
+        Ok(())
+    }
+    .await;
+    let written = match result {
+        Ok(()) => {
+            let part = app.blobs.part();
+            let to = part.clone();
+            let pack = found.clone();
+            let list: Vec<(String, Hashed, String, bool)> = mods.clone();
+            let files = overrides.clone();
+            let wrote = tokio::task::spawn_blocking(move || {
+                let written: Vec<packwiz::Written<'_>> = list
+                    .iter()
+                    .map(|(path, hashed, url, optional)| packwiz::Written {
+                        path,
+                        hashed,
+                        url,
+                        optional: *optional,
+                    })
+                    .collect();
+                packwiz::write_mrpack(&to, &pack, &written, &files).and_then(|()| hash_file(&to))
+            })
+            .await;
+            match wrote {
+                Ok(Ok(hashed)) => Ok((part, hashed)),
+                _ => {
+                    let _ = std::fs::remove_file(&part);
+                    Err(JobError::new("disk_error", true))
+                }
+            }
+        }
+        Err(e) => Err(e),
+    };
+    for (_, part) in &overrides {
+        let _ = std::fs::remove_file(part);
+    }
+    let (part, archive) = written?;
+    keep(app, &part, &archive, "application/zip")?;
+
+    let slug = packwiz::slug(&found.name);
+    let title = if found.name.is_empty() {
+        slug.clone()
+    } else {
+        found.name.clone()
+    };
+    let project_found = SourceProject {
+        source: packwiz::SOURCE,
+        source_id: source_id.clone(),
+        slug: slug.clone(),
+        kind: "modpack",
+        title: title.clone(),
+        summary: String::new(),
+        body: String::new(),
+        license: String::new(),
+        icon_url: None,
+        client_side: "required".to_owned(),
+        server_side: "unknown".to_owned(),
+        downloads: 0,
+        followers: 0,
+        categories: Vec::new(),
+        authors: if found.author.is_empty() {
+            Vec::new()
+        } else {
+            vec![(found.author.clone(), "author".to_owned())]
+        },
+        gallery: Vec::new(),
+        url: source_id.clone(),
+        published: now(),
+        updated: now(),
+    };
+    let (id, _) = app.store.upsert_project(&project_found, now())?;
+    if let Some(request) = request {
+        app.store
+            .set_request(request, "importing", None, Some(&id), None, now())?;
+    }
+    let number = if found.version.is_empty() {
+        archive.sha256[..8].to_owned()
+    } else {
+        found.version.clone()
+    };
+    let version = SourceVersion {
+        // The same pack read again is the same version.
+        source_id: archive.sha256.clone(),
+        number: number.clone(),
+        name: format!("{title} {number}"),
+        changelog: String::new(),
+        channel: "release".to_owned(),
+        published: now(),
+        downloads: 0,
+        games: vec![found.game.clone()],
+        loaders: found.loader.iter().map(|(k, _)| k.clone()).collect(),
+        files: vec![crate::model::SourceFile {
+            name: format!("{slug}-{number}.mrpack")
+                .chars()
+                .filter(|c| c.is_ascii_alphanumeric() || matches!(c, '.' | '-' | '_'))
+                .collect(),
+            size: i64::try_from(archive.size).unwrap_or(i64::MAX),
+            sha1: Some(archive.sha1.clone()),
+            sha512: Some(archive.sha512.clone()),
+            url: source_id.clone(),
+            primary: true,
+            role: "file".to_owned(),
+        }],
+        dependencies: Vec::new(),
+        details: true,
+    };
+    let ids = app
+        .store
+        .upsert_versions(&id, packwiz::SOURCE, &[version])?;
+    // The archive is kept already: this only links it.
+    for ours in &ids {
+        files(app, ours, request).await?;
     }
     app.store.set_project_status(&id, "ready")?;
     Ok(())

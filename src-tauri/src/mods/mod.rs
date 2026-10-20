@@ -68,7 +68,9 @@ const LOADERS: &[&str] = &[
     "waterfall",
     "modloader",
 ];
-const SOURCES: &[&str] = &["modrinth", "curseforge"];
+/// Where the catalog's projects come from; `packwiz` is a pack read from
+/// its `pack.toml` (stage 5).
+const SOURCES: &[&str] = &["modrinth", "curseforge", "packwiz"];
 
 /// mods.lapi.sh, or the server a test build was made for
 /// (`LAUNCHER_MODS_URL` at build time; release builds never set it).

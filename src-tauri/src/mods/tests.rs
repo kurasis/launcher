@@ -2324,3 +2324,18 @@ mod imports {
         assert_eq!(listing(&target), ["mods/a.jar"]);
     }
 }
+
+#[test]
+fn a_packwiz_pack_keeps_its_source_without_a_page_to_open() {
+    let project = Project::from(&json!({
+        "id": id(1), "kind": "modpack", "title": "My Pack",
+        "sources": [
+            { "source": "packwiz", "url": "https://raw.githubusercontent.com/me/pack/main/pack.toml" },
+            { "source": "elsewhere", "url": "https://example.com" },
+        ],
+    }))
+    .unwrap();
+    assert_eq!(project.sources.len(), 1);
+    assert_eq!(project.sources[0].source, "packwiz");
+    assert_eq!(project.sources[0].url, None);
+}

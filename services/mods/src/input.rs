@@ -1,7 +1,8 @@
 //! What a player typed into "Add to the catalog": a page of Modrinth or
-//! CurseForge, a file's address there, or a name to search for.
+//! CurseForge, a file's address there, a packwiz pack's `pack.toml`, or a
+//! name to search for.
 
-use crate::{curseforge, modrinth};
+use crate::{curseforge, modrinth, packwiz};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Input {
@@ -21,6 +22,8 @@ pub enum Input {
     },
     /// A file's address on forgecdn: it does not name its project.
     CurseForgeFile,
+    /// A packwiz pack: the address its `pack.toml` is fetched from.
+    Packwiz(String),
     /// Words to search for.
     Name(String),
 }
@@ -49,6 +52,11 @@ pub fn parse(text: &str) -> Option<Input> {
         || !url.username().is_empty()
     {
         return None;
+    }
+    if url.path().ends_with("/pack.toml") {
+        let mut secure = url.clone();
+        secure.set_scheme("https").ok()?;
+        return packwiz::pack_url(&secure).map(Input::Packwiz);
     }
     let host = url.host_str()?.to_ascii_lowercase();
     let parts: Vec<&str> = url.path_segments()?.filter(|s| !s.is_empty()).collect();

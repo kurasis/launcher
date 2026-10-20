@@ -1235,7 +1235,7 @@
       "more": "Show more",
       "notInCatalog": "Not in the catalog? Paste a link to it on Modrinth or CurseForge and the catalog brings it in.",
       "addToCatalog": "Add to the catalog",
-      "modpacksHint": "A modpack installs as a new installation with its own Minecraft version, mod loader and mods.",
+      "modpacksHint": "A modpack installs as a new installation with its own Minecraft version, mod loader and mods. A packwiz pack comes in by the link to its pack.toml in “Add to the catalog”.",
       "importing": "Being added",
       "by": "by {author}",
       "downloads": "{count} downloads",
@@ -1251,7 +1251,8 @@
       },
       "sources": {
         "modrinth": "Modrinth",
-        "curseforge": "CurseForge"
+        "curseforge": "CurseForge",
+        "packwiz": "packwiz"
       },
       "link": {
         "title": "Open this link?",
@@ -1340,7 +1341,7 @@
       "bringIn": {
         "button": "Bring in from another launcher",
         "title": "Bring in an installation",
-        "intro": "Bring in an instance of Prism Launcher or MultiMC (its folder or the zip it exports), a game folder with mods, or a folder of mods. Its mods, settings, resource packs and worlds are copied into a new installation; nothing of the original changes.",
+        "intro": "Bring in an instance of Prism Launcher or MultiMC (its folder or the zip it exports), a game folder with mods, or a folder of mods. Its mods, settings, resource packs and worlds are copied into a new installation; nothing of the original changes. A packwiz pack comes in by the link to its pack.toml: Mods, Modpacks, “Add to the catalog”.",
         "pickZip": "Choose a zip…",
         "pickFolder": "Choose a folder…",
         "pickZipTitle": "Choose the exported instance (zip)",
