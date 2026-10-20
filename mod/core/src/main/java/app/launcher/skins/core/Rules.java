@@ -41,13 +41,14 @@ public final class Rules {
 
     /**
      * How many frames an image of this size holds (a vertical strip), or -1 if the size is
-     * not allowed. A 64×32 skin (the format before 1.8) is allowed as one frame only.
+     * not allowed. A skin half as high as it is wide (the format before 1.8: 64×32, or HD up
+     * to 512×256) is allowed as one frame only.
      */
     public static int frames(Kind kind, int width, int height) {
         if (width <= 0 || height <= 0 || (long) width * height > MAX_PIXELS) {
             return -1;
         }
-        if (kind == Kind.SKIN && width == 64 && height == 32) {
+        if (legacy(kind, width, height)) {
             return 1;
         }
         int frame = frameHeight(kind, width);
@@ -56,6 +57,11 @@ public final class Rules {
         }
         int frames = height / frame;
         return frames >= 1 && frames <= MAX_FRAMES ? frames : -1;
+    }
+
+    /** Whether this is a skin in the format before 1.8, at any allowed width. */
+    public static boolean legacy(Kind kind, int width, int height) {
+        return kind == Kind.SKIN && width(width) && (long) height * 2 == width;
     }
 
     /** Whether frame durations fit a texture of this many frames: one for all, or one each. */

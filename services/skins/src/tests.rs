@@ -284,7 +284,13 @@ fn chunks(png: &[u8]) -> Vec<String> {
 #[tokio::test]
 async fn skins_standard_old_hd_and_animated() {
     let t = setup();
-    for (width, height, frames) in [(64, 64, 1), (64, 32, 1), (128, 128, 1), (256, 256, 1)] {
+    for (width, height, frames) in [
+        (64, 64, 1),
+        (64, 32, 1),
+        (128, 128, 1),
+        (256, 256, 1),
+        (512, 256, 1),
+    ] {
         let answer = t
             .upload(1, "skin", "model=slim", image(width, height, 1))
             .await;
@@ -400,7 +406,14 @@ async fn broken_hostile_and_wrong_files_are_refused() {
     };
     assert!(bomb.len() < 64 * 1024);
     t.refused("skin", "", bomb, "bad_size").await;
-    for (width, height) in [(65, 65), (64, 48), (1024, 1024), (64, 100), (128, 64)] {
+    for (width, height) in [
+        (65, 65),
+        (64, 48),
+        (1024, 1024),
+        (64, 100),
+        (128, 32),
+        (512, 768),
+    ] {
         t.refused("skin", "", image(width, height, 1), "bad_size")
             .await;
     }

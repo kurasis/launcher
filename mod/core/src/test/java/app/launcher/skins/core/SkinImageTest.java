@@ -12,7 +12,7 @@ class SkinImageTest {
         for (int i = 0; i < legacy.length; i++) {
             legacy[i] = 0xFF000000 | i;
         }
-        int[] skin = SkinImage.upgradeLegacy(legacy);
+        int[] skin = SkinImage.upgradeLegacy(legacy, 64);
         assertEquals(64 * 64, skin.length);
         // Right leg front (4..8, 20) → left leg front (20..24, 52), flipped.
         assertEquals(legacy[20 * 64 + 7], skin[52 * 64 + 20]);
@@ -23,7 +23,28 @@ class SkinImageTest {
         assertEquals(legacy[16 * 64 + 47], skin[48 * 64 + 36]);
         // The second layer of the legs stays empty.
         assertEquals(0, skin[52 * 64 + 4]);
-        assertThrows(IllegalArgumentException.class, () -> SkinImage.upgradeLegacy(new int[64 * 64]));
+        assertThrows(IllegalArgumentException.class, () -> SkinImage.upgradeLegacy(new int[64 * 64], 64));
+    }
+
+    @Test
+    void hdLegacySkinsScaleEveryLimb() {
+        int width = 512;
+        int k = width / 64;
+        int[] legacy = new int[width * width / 2];
+        for (int i = 0; i < legacy.length; i++) {
+            legacy[i] = 0xFF000000 | i;
+        }
+        int[] skin = SkinImage.upgradeLegacy(legacy, width);
+        assertEquals(width * width, skin.length);
+        // Right leg front, its rightmost pixel row 20 → the left leg front's leftmost.
+        assertEquals(legacy[20 * k * width + 8 * k - 1], skin[52 * k * width + 20 * k]);
+        assertEquals(legacy[20 * k * width + 4 * k], skin[52 * k * width + 24 * k - 1]);
+        // The last pixel row of the right arm's back → the left arm's back, flipped.
+        int y = 32 * k - 1;
+        assertEquals(legacy[y * width + 52 * k], skin[(48 + 16) * k * width - width + 48 * k - 1]);
+        // The head is where it was.
+        assertEquals(legacy[10 * k * width + 10 * k], skin[10 * k * width + 10 * k]);
+        assertThrows(IllegalArgumentException.class, () -> SkinImage.upgradeLegacy(new int[width * width / 2], 500));
     }
 
     @Test
