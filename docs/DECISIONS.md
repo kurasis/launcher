@@ -99,6 +99,8 @@ replaces it), `superseded`.
 - **Amended 2026-10-20:** the release build without installers (`tauri build --no-bundle`)
   left CI. The Package workflow builds the same release on every target and smoke-tests it,
   so the CI copy only doubled the slowest step (15–19 min on Windows) and held runners.
+  macOS (CI and Package) runs only on a manual run with the `macos` input, until the owner
+  turns it back on; the release archive needs it, so it is built from such a run.
 
 ## D-008 — Declared bundle targets
 

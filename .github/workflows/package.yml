@@ -12,6 +12,13 @@ on:
     branches: [main]
   pull_request:
   workflow_dispatch:
+    inputs:
+      macos:
+        # macOS is off until the owner turns it back on (2026-10-20): Mac
+        # runners are slow and scarce. A manual run can still ask for it.
+        description: Also build and check macOS
+        type: boolean
+        default: false
 
 permissions:
   contents: read
@@ -190,16 +197,15 @@ jobs:
 
   macos:
     name: Build and smoke ${{ matrix.name }}
+    # Only on a manual run that asks for it (the macos input). Without it the
+    # release archive, which needs every target, is skipped too.
+    if: inputs.macos
     strategy:
       fail-fast: false
-      # Intel Macs are few on GitHub (a long wait) and slow (twice the build
-      # time), so pull requests build arm64 only; main, manual runs and the
-      # release archive build both. CI checks the Rust core on both always.
       matrix:
-        include: >-
-          ${{ fromJSON(github.event_name == 'pull_request'
-          && '[{"name": "macos-arm64", "os": "macos-15"}]'
-          || '[{"name": "macos-arm64", "os": "macos-15"}, {"name": "macos-x64", "os": "macos-15-intel"}]') }}
+        include:
+          - { name: macos-arm64, os: macos-15 }
+          - { name: macos-x64, os: macos-15-intel }
     runs-on: ${{ matrix.os }}
     defaults:
       run:
