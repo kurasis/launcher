@@ -20,6 +20,8 @@ const PLAY_HOST: &str = "feed.lapi.sh";
 /// through the play page's title (Ai asked for the player's details in the
 /// console, D-067).
 const DEBUG_SCRIPT: &str = include_str!("player_debug.js");
+/// A spinner over the play page until the player's frame has loaded.
+const LOADING_SCRIPT: &str = include_str!("player_loading.js");
 /// Titles that carry a debug line start with this; `DEBUG_SCRIPT` sets it.
 const DEBUG_MARK: &str = "\u{2063}player\u{2063}";
 /// Longest line the console takes from the player window.
@@ -172,6 +174,9 @@ pub fn show_player_window<R: Runtime>(app: &AppHandle<R>, url: Url, title: Strin
                 allowed
             })
             .initialization_script_for_all_frames(DEBUG_SCRIPT)
+            .initialization_script(LOADING_SCRIPT)
+            // Black like the play page from the first frame, not white.
+            .background_color(tauri::window::Color(0, 0, 0, 255))
             .on_page_load(move |_, payload| {
                 let event = match payload.event() {
                     tauri::webview::PageLoadEvent::Started => "loading",
