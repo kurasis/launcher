@@ -1814,9 +1814,12 @@ archive from the Package workflow, upload it to
   challenge or state without redirecting anywhere.
 - **Pages:** sign-in (nick or email), registration, password reset, email
   confirmation; English, Russian and Arabic (the launcher passes its language).
-  Every value shown is HTML-escaped; no script of ours, only Turnstile's, under
-  a strict CSP (`frame-ancestors 'none'`, `form-action 'self'`); no caching, no
-  referrer. Forms carry a request ID and a CSRF token that must match the
+  Every value shown is HTML-escaped; no inline script, only Turnstile's and, on
+  registration, our own `/static/register.js`, under a strict CSP
+  (`frame-ancestors 'none'`, `form-action 'self'`); no caching, no referrer.
+  Registration checks the nick (free, taken, not allowed) and the password while
+  they are typed, through `POST /register/check`: only with an open sign-in and
+  its cookie, 600 an hour per address, no email lookup, nothing kept. Forms carry a request ID and a CSRF token that must match the
   `__Host-flow` cookie (`Secure; HttpOnly; SameSite=Strict`).
 - **Rules:** nick 3–16 of `A–Z a–z 0–9 _` (ASCII only, so no look-alike
   letters), unique without regard to case, a few reserved; email a plain

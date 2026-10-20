@@ -360,6 +360,19 @@ impl Store {
             .map_err(|e| e.to_string())
     }
 
+    /// Whether an account has this nick, in any case.
+    pub fn nick_taken(&self, nick: &str) -> Result<bool, String> {
+        self.db()
+            .query_row(
+                "SELECT 1 FROM accounts WHERE nick_key = ?1",
+                [crate::rules::nick_key(nick)],
+                |_| Ok(()),
+            )
+            .optional()
+            .map(|r| r.is_some())
+            .map_err(|e| e.to_string())
+    }
+
     pub fn set_nick(&self, id: &str, nick: &str) -> Result<Result<(), Taken>, String> {
         let key = crate::rules::nick_key(nick);
         let db = self.db();

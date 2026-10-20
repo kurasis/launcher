@@ -1,9 +1,9 @@
 //! The pages of oauth.lapi.sh: sign-in, registration, password reset, email
 //! confirmation and deleting the account, in English, Russian and Arabic.
 //!
-//! Everything put into a page goes through [`esc`]. Pages carry no script of
-//! their own; the only one is Cloudflare Turnstile's, which the headers in
-//! [`headers`] allow and nothing else.
+//! Everything put into a page goes through [`esc`]. The only scripts are
+//! Cloudflare Turnstile's and, on the registration page, [`REGISTER_SCRIPT`]
+//! from this service; the headers in [`headers`] allow those and nothing else.
 
 use axum::http::{HeaderValue, header};
 use axum::response::{Html, IntoResponse, Response};
@@ -28,12 +28,36 @@ pub fn esc(text: &str) -> String {
 
 pub const TURNSTILE_SCRIPT: &str = "https://challenges.cloudflare.com/turnstile/v0/api.js";
 
+/// Checks the nick and password on the registration page while they are
+/// typed, through `POST /register/check`. Messages come from the service in
+/// the page's language and go in as text, never as HTML.
+pub const REGISTER_SCRIPT: &str = r#"(()=>{
+const f=document.querySelector('form[action="/register"]');if(!f)return;
+const names=['nick','password','password2'];const out={};
+for(const n of names){const i=f.elements[n];if(!i)return;const p=document.createElement('p');
+p.className='check';p.setAttribute('aria-live','polite');p.hidden=true;
+const h=i.nextElementSibling;(h&&h.classList.contains('hint')?h:i).after(p);out[n]=p;}
+const touched=new Set();let timer=0,seq=0;
+async function check(){const n=++seq;const b=new URLSearchParams();
+for(const k of['rid','csrf','nick','email','password','password2'])b.set(k,(f.elements[k]||{}).value||'');
+let r;try{const res=await fetch('/register/check',{method:'POST',body:b,credentials:'same-origin'});
+if(!res.ok)return;r=await res.json();}catch(e){return;}
+if(n!==seq)return;
+for(const k of names){const p=out[k],v=r[k];
+if(!touched.has(k)||!v||!f.elements[k].value){p.hidden=true;continue;}
+p.textContent=v.text;p.className='check '+(v.ok?'ok':'bad');p.hidden=false;}}
+function later(){clearTimeout(timer);timer=setTimeout(check,400);}
+for(const k of['nick','email','password','password2']){const i=f.elements[k];if(!i)continue;
+i.addEventListener('input',()=>{if(k!=='email')touched.add(k);later();});}
+})();
+"#;
+
 /// Headers of every page: no framing, no other origin's scripts, styles or
 /// forms, no referrer, nothing cached.
 pub fn headers(mut response: Response) -> Response {
     let h = response.headers_mut();
-    let csp = "default-src 'none'; script-src https://challenges.cloudflare.com; \
-               frame-src https://challenges.cloudflare.com; connect-src https://challenges.cloudflare.com; \
+    let csp = "default-src 'none'; script-src 'self' https://challenges.cloudflare.com; \
+               frame-src https://challenges.cloudflare.com; connect-src 'self' https://challenges.cloudflare.com; \
                style-src 'self'; img-src 'self' data:; form-action 'self'; base-uri 'none'; \
                frame-ancestors 'none'";
     for (name, value) in [
@@ -114,6 +138,9 @@ pub struct T {
     pub delete_confirm: &'static str,
     pub delete_submit: &'static str,
     pub deleted: &'static str,
+    pub nick_free: &'static str,
+    pub password_ok: &'static str,
+    pub passwords_same: &'static str,
     pub problem: fn(Problem) -> &'static str,
 }
 
@@ -153,6 +180,9 @@ const EN: T = T {
     delete_confirm: "This deletes the account for good, with its friends and chats. Delete it?",
     delete_submit: "Delete for good",
     deleted: "The account is deleted. You can close this window.",
+    nick_free: "This nick is free.",
+    password_ok: "The password fits.",
+    passwords_same: "The passwords match.",
     problem: |p| match p {
         Problem::NickLength => "The nick must be 3 to 16 characters.",
         Problem::NickCharacters => "The nick may only have letters A–Z, digits and _.",
@@ -204,6 +234,9 @@ const RU: T = T {
     delete_confirm: "Аккаунт будет удалён навсегда вместе с друзьями и чатами. Удалить?",
     delete_submit: "Удалить навсегда",
     deleted: "Аккаунт удалён. Это окно можно закрыть.",
+    nick_free: "Ник свободен.",
+    password_ok: "Пароль подходит.",
+    passwords_same: "Пароли совпадают.",
     problem: |p| match p {
         Problem::NickLength => "Ник должен быть от 3 до 16 символов.",
         Problem::NickCharacters => "В нике можно только латинские буквы, цифры и _.",
@@ -255,6 +288,9 @@ const AR: T = T {
     delete_confirm: "سيُحذف الحساب نهائيًا مع الأصدقاء والمحادثات. هل تريد حذفه؟",
     delete_submit: "حذف نهائي",
     deleted: "تم حذف الحساب. يمكنك إغلاق هذه النافذة.",
+    nick_free: "هذا الاسم المستعار متاح.",
+    password_ok: "كلمة المرور مناسبة.",
+    passwords_same: "كلمتا المرور متطابقتان.",
     problem: |p| match p {
         Problem::NickLength => "يجب أن يكون الاسم المستعار من 3 إلى 16 حرفًا.",
         Problem::NickCharacters => "الاسم المستعار يقبل الحروف اللاتينية والأرقام و _ فقط.",
@@ -291,7 +327,8 @@ input:focus{outline:2px solid var(--accent2);outline-offset:1px}
 button{margin-top:20px;width:100%;padding:11px;border:0;border-radius:8px;background:linear-gradient(90deg,var(--accent),var(--accent2));color:#fff;font:inherit;font-weight:700;cursor:pointer}
 .error{background:var(--danger-bg);color:var(--danger);border-radius:8px;padding:10px 12px;margin:0 0 12px}
 .error p{margin:0}.links{margin-top:18px;font-size:14px;color:var(--muted)}.links a{color:var(--accent2)}
-.cf-turnstile{margin-top:16px;min-height:65px}"#;
+.cf-turnstile{margin-top:16px;min-height:65px}
+.check{font-size:13px;margin:4px 0 0}.check.ok{color:var(--accent)}.check.bad{color:var(--danger)}"#;
 
 /// What a form page shows.
 pub struct Form<'a> {
@@ -306,6 +343,8 @@ pub struct Form<'a> {
     pub turnstile: Option<(&'a str, &'a str)>,
     /// Links below the form: (text before, link text, address).
     pub links: &'a [(&'a str, &'a str, &'a str)],
+    /// Checks the fields while they are typed ([`REGISTER_SCRIPT`]).
+    pub live_checks: bool,
 }
 
 pub struct Field<'a> {
@@ -400,6 +439,9 @@ pub fn form(form: &Form<'_>) -> Response {
             "<script src=\"{TURNSTILE_SCRIPT}\" async defer></script>"
         ));
     }
+    if form.live_checks {
+        body.push_str("<script src=\"/static/register.js\" defer></script>");
+    }
     headers(Html(shell(form.lang, &body)).into_response())
 }
 
@@ -442,6 +484,7 @@ mod tests {
             submit: "s",
             turnstile: Some(("key\"x", "login")),
             links: &[],
+            live_checks: false,
         });
         let csp = page.headers()[header::CONTENT_SECURITY_POLICY]
             .to_str()
