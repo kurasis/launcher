@@ -9,6 +9,8 @@ version × loader × mod set, played by a test bot for a set number of minutes.
 1. The harness (`src-tauri/tests/live_gametest.rs`, built on a GitHub runner) installs the
    game version with its loader through the launcher's own install service, into a data
    folder kept between runs (`%LOCALAPPDATA%\launcher-gametest`, or `GAMETEST_ROOT`).
+   The loader is its newest stable build, not Forge's "recommended" one, since mods
+   follow the newest builds; a kept installation moves to it at the next run.
 2. It puts into `mods/`:
    - the test bot (`mod/gametest/`, jar `launchergametest-<loader>-<version>.jar`);
    - this commit's build of Launcher Skins (renamed `gametest-launcherskins-…` so the
