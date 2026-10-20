@@ -180,6 +180,12 @@ CREATE TABLE IF NOT EXISTS image_origin (
     sha256 TEXT NOT NULL,
     media_type TEXT NOT NULL
 );
+-- Projects joined into another: the same project on two sources, known by a
+-- file they share. Their IDs and slugs lead to the one they joined.
+CREATE TABLE IF NOT EXISTS project_joined (
+    project_id TEXT PRIMARY KEY,
+    into_id TEXT NOT NULL
+);
 -- A modpack version's index, read from its kept archive (stage 3).
 CREATE TABLE IF NOT EXISTS pack (
     version_id TEXT PRIMARY KEY REFERENCES version(id),
@@ -215,6 +221,21 @@ pub struct Store {
 }
 
 pub type Result<T> = std::result::Result<T, String>;
+
+/// Whether `source` owns a project's card: Modrinth's when the project has
+/// it, else the source that brought the project first.
+fn card_owner(tx: &rusqlite::Transaction<'_>, project: &str, source: &str) -> Result<bool> {
+    let owner: Option<String> = tx
+        .query_row(
+            "SELECT source FROM project_source WHERE project_id = ?1
+             ORDER BY source = 'modrinth' DESC, rowid LIMIT 1",
+            [project],
+            |r| r.get(0),
+        )
+        .optional()
+        .map_err(sql)?;
+    Ok(owner.is_none_or(|o| o == source))
+}
 
 fn sql(e: rusqlite::Error) -> String {
     format!("database: {e}")
@@ -260,6 +281,8 @@ pub struct FileRow {
 #[derive(Debug, Clone)]
 pub struct PackFileRow {
     pub ord: i64,
+    /// Empty for a CurseForge pack's file not found yet.
+    pub path: String,
     pub size: i64,
     pub sha1: String,
     pub sha512: String,
@@ -493,7 +516,10 @@ impl Store {
     }
 
     /// Stores a project as its source describes it; returns our ID.
-    pub fn upsert_project(&self, p: &SourceProject, now: i64) -> Result<String> {
+    /// Records a source's project; its ID, and whether this source owns the
+    /// card (title, description, pictures). A project on two sources shows
+    /// Modrinth's card; the other source only adds its versions.
+    pub fn upsert_project(&self, p: &SourceProject, now: i64) -> Result<(String, bool)> {
         let mut db = self.db();
         let tx = db.transaction().map_err(sql)?;
         let existing: Option<String> = tx
@@ -505,6 +531,16 @@ impl Store {
             .optional()
             .map_err(sql)?;
         let id = match existing {
+            Some(id) if !card_owner(&tx, &id, p.source)? => {
+                tx.execute(
+                    "UPDATE project_source SET source_slug = ?3, url = ?4, fetched = ?5
+                     WHERE source = ?1 AND source_id = ?2",
+                    params![p.source, p.source_id, p.slug, p.url, now],
+                )
+                .map_err(sql)?;
+                tx.commit().map_err(sql)?;
+                return Ok((id, false));
+            }
             Some(id) => {
                 tx.execute(
                     "UPDATE project SET kind = ?2, title = ?3, summary = ?4, body = ?5, license = ?6,
@@ -655,7 +691,127 @@ impl Store {
         )
         .map_err(sql)?;
         tx.commit().map_err(sql)?;
-        Ok(id)
+        Ok((id, true))
+    }
+
+    /// Joins the project of a version with another project of the same kind
+    /// that has a file with these hashes, when the two come from different
+    /// sources: the same project on Modrinth and CurseForge. The one on
+    /// Modrinth (else the older) stays; the other's sources and versions move
+    /// to it, and its ID and slug lead to it. Returns (stays, joined).
+    pub fn join_twins(
+        &self,
+        version: &str,
+        sha256: &str,
+        sha1: &str,
+        now: i64,
+    ) -> Result<Option<(String, String)>> {
+        let mut db = self.db();
+        let tx = db.transaction().map_err(sql)?;
+        let Some((me, kind)): Option<(String, String)> = tx
+            .query_row(
+                "SELECT p.id, p.kind FROM version v JOIN project p ON p.id = v.project_id
+                 WHERE v.id = ?1 AND p.status IN ('importing', 'ready')",
+                [version],
+                |r| Ok((r.get(0)?, r.get(1)?)),
+            )
+            .optional()
+            .map_err(sql)?
+        else {
+            return Ok(None);
+        };
+        let others: Vec<String> = {
+            let mut q = tx
+                .prepare(
+                    "SELECT DISTINCT v.project_id FROM version_file g
+                     JOIN version v ON v.id = g.version_id
+                     JOIN project p ON p.id = v.project_id
+                     WHERE (g.sha256 = ?1 OR g.sha1 = ?2) AND v.project_id != ?3 AND p.kind = ?4
+                       AND p.status IN ('importing', 'ready')
+                     LIMIT 4",
+                )
+                .map_err(sql)?;
+            q.query_map(params![sha256, sha1, me, kind], |r| r.get(0))
+                .map_err(sql)?
+                .collect::<std::result::Result<_, _>>()
+                .map_err(sql)?
+        };
+        let sources = |id: &str| -> Result<Vec<String>> {
+            let mut q = tx
+                .prepare("SELECT source FROM project_source WHERE project_id = ?1")
+                .map_err(sql)?;
+            q.query_map([id], |r| r.get(0))
+                .map_err(sql)?
+                .collect::<std::result::Result<_, _>>()
+                .map_err(sql)
+        };
+        let mine = sources(&me)?;
+        let mut pair = None;
+        for other in others {
+            let theirs = sources(&other)?;
+            // Two projects of one source are two projects.
+            if theirs.iter().any(|s| mine.contains(s)) {
+                continue;
+            }
+            let older = |id: &str| -> Result<i64> {
+                tx.query_row("SELECT imported FROM project WHERE id = ?1", [id], |r| {
+                    r.get(0)
+                })
+                .map_err(sql)
+            };
+            let me_stays = if mine.iter().any(|s| s == "modrinth") {
+                true
+            } else if theirs.iter().any(|s| s == "modrinth") {
+                false
+            } else {
+                older(&me)? <= older(&other)?
+            };
+            pair = Some(if me_stays {
+                (me.clone(), other)
+            } else {
+                (other, me.clone())
+            });
+            break;
+        }
+        let Some((stays, gone)) = pair else {
+            return Ok(None);
+        };
+        for statement in [
+            "UPDATE project_source SET project_id = ?1 WHERE project_id = ?2",
+            "UPDATE version SET project_id = ?1 WHERE project_id = ?2",
+            "INSERT OR IGNORE INTO project_category (project_id, category)
+               SELECT ?1, category FROM project_category WHERE project_id = ?2",
+            "INSERT INTO project_wanted (project_id, at) SELECT ?1, at FROM project_wanted WHERE project_id = ?2
+               ON CONFLICT (project_id) DO UPDATE SET at = max(at, excluded.at)",
+            "UPDATE import_request SET project_id = ?1 WHERE project_id = ?2",
+            "UPDATE job SET project_id = ?1 WHERE project_id = ?2",
+            "UPDATE project SET downloads_ours = downloads_ours
+               + (SELECT downloads_ours FROM project WHERE id = ?2) WHERE id = ?1",
+            "UPDATE project_joined SET into_id = ?1 WHERE into_id = ?2",
+            "INSERT OR REPLACE INTO project_joined (project_id, into_id) VALUES (?2, ?1)",
+        ] {
+            tx.execute(statement, params![stays, gone]).map_err(sql)?;
+        }
+        for table in [
+            "project_category",
+            "project_wanted",
+            "project_author",
+            "gallery",
+            "project_fts",
+        ] {
+            tx.execute(
+                &format!("DELETE FROM {table} WHERE project_id = ?1"),
+                [&gone],
+            )
+            .map_err(sql)?;
+        }
+        tx.execute(
+            "UPDATE project SET status = 'joined', gone_at = coalesce(gone_at, ?2) WHERE id = ?1",
+            params![gone, now],
+        )
+        .map_err(sql)?;
+        tx.commit().map_err(sql)?;
+        Ok(Some((stays, gone)))
     }
 
     pub fn set_project_status(&self, id: &str, status: &str) -> Result<()> {
@@ -1059,25 +1215,119 @@ impl Store {
             )
             .map_err(sql)?;
         }
+        // A CurseForge pack's files: no path, size or hashes until found.
+        for (n, file) in index.curseforge.iter().enumerate() {
+            tx.execute(
+                "INSERT INTO pack_file (version_id, ord, path, size, sha1, sha512, optional, origin_url)
+                 VALUES (?1, ?2, '', 0, '', '', ?3, ?4)",
+                params![
+                    version,
+                    (index.files.len() + n) as i64,
+                    file.optional,
+                    crate::curseforge::download_url(file.project, file.file)
+                ],
+            )
+            .map_err(sql)?;
+        }
         tx.commit().map_err(sql)
+    }
+
+    /// A CurseForge pack's file, found and kept.
+    pub fn pack_file_found(
+        &self,
+        version: &str,
+        ord: i64,
+        path: &str,
+        hashed: &crate::blobs::Hashed,
+    ) -> Result<()> {
+        self.db()
+            .execute(
+                "UPDATE pack_file SET path = ?3, size = ?4, sha1 = ?5, sha512 = ?6, sha256 = ?7
+                 WHERE version_id = ?1 AND ord = ?2",
+                params![
+                    version,
+                    ord,
+                    path,
+                    hashed.size as i64,
+                    hashed.sha1,
+                    hashed.sha512,
+                    hashed.sha256
+                ],
+            )
+            .map(|_| ())
+            .map_err(sql)
+    }
+
+    /// A pack's file left out after all (not something a pack may bring).
+    pub fn pack_file_left_out(&self, version: &str, ord: i64) -> Result<()> {
+        let mut db = self.db();
+        let tx = db.transaction().map_err(sql)?;
+        let gone = tx
+            .execute(
+                "DELETE FROM pack_file WHERE version_id = ?1 AND ord = ?2",
+                params![version, ord],
+            )
+            .map_err(sql)?;
+        tx.execute(
+            "UPDATE pack SET skipped = skipped + ?2 WHERE version_id = ?1",
+            params![version, gone as i64],
+        )
+        .map_err(sql)?;
+        tx.commit().map_err(sql)
+    }
+
+    /// A kept file fetched from this address before, by any version or pack.
+    pub fn kept_by_origin(&self, url: &str) -> Result<Option<crate::blobs::Hashed>> {
+        self.db()
+            .query_row(
+                "SELECT b.sha256, b.size, b.sha1, b.sha512 FROM blob b
+                 WHERE b.state = 'stored' AND b.sha256 IN (
+                     SELECT sha256 FROM version_file WHERE origin_url = ?1 AND sha256 IS NOT NULL
+                     UNION SELECT sha256 FROM pack_file WHERE origin_url = ?1 AND sha256 IS NOT NULL)
+                 LIMIT 1",
+                [url],
+                |r| {
+                    Ok(crate::blobs::Hashed {
+                        sha256: r.get(0)?,
+                        size: u64::try_from(r.get::<_, i64>(1)?).unwrap_or(0),
+                        sha1: r.get(2)?,
+                        sha512: r.get(3)?,
+                    })
+                },
+            )
+            .optional()
+            .map_err(sql)
+    }
+
+    /// The kind of a version's project (`mod`, `modpack`, …).
+    pub fn version_kind(&self, version: &str) -> Result<Option<String>> {
+        self.db()
+            .query_row(
+                "SELECT p.kind FROM version v JOIN project p ON p.id = v.project_id WHERE v.id = ?1",
+                [version],
+                |r| r.get(0),
+            )
+            .optional()
+            .map_err(sql)
     }
 
     pub fn pack_files(&self, version: &str) -> Result<Vec<PackFileRow>> {
         let db = self.db();
         let mut q = db
             .prepare(
-                "SELECT ord, size, sha1, sha512, sha256, origin_url
+                "SELECT ord, path, size, sha1, sha512, sha256, origin_url
                  FROM pack_file WHERE version_id = ?1 ORDER BY ord",
             )
             .map_err(sql)?;
         q.query_map([version], |r| {
             Ok(PackFileRow {
                 ord: r.get(0)?,
-                size: r.get(1)?,
-                sha1: r.get(2)?,
-                sha512: r.get(3)?,
-                sha256: r.get(4)?,
-                origin_url: r.get(5)?,
+                path: r.get(1)?,
+                size: r.get(2)?,
+                sha1: r.get(3)?,
+                sha512: r.get(4)?,
+                sha256: r.get(5)?,
+                origin_url: r.get(6)?,
             })
         })
         .map_err(sql)?
@@ -1145,8 +1395,11 @@ impl Store {
             .map_err(sql)?
             .collect::<std::result::Result<_, _>>()
             .map_err(sql)?;
+        let total = list.len();
+        // A CurseForge pack's files not found yet are counted, not listed.
+        let list: Vec<serde_json::Value> = list.into_iter().filter(|f| f["path"] != "").collect();
         let kept = list.iter().filter(|f| !f["sha256"].is_null()).count();
-        pack["total"] = list.len().into();
+        pack["total"] = total.into();
         pack["kept"] = kept.into();
         pack["files"] = list.into();
         Ok(Some(pack))
@@ -1413,7 +1666,11 @@ impl Store {
     pub fn project_id(&self, reference: &str) -> Result<Option<String>> {
         self.db()
             .query_row(
-                "SELECT id FROM project WHERE (id = ?1 OR slug = ?1) AND status IN ('importing', 'ready')",
+                "SELECT id FROM project WHERE (id = ?1 OR slug = ?1) AND status IN ('importing', 'ready')
+                 UNION ALL
+                 SELECT j.into_id FROM project_joined j JOIN project p ON p.id = j.project_id
+                 WHERE p.id = ?1 OR p.slug = ?1
+                 LIMIT 1",
                 [reference],
                 |r| r.get(0),
             )
@@ -1647,6 +1904,13 @@ impl Store {
                     "SELECT v.id FROM version v WHERE v.project_id = ?1
                        AND (?2 IS NULL OR EXISTS (SELECT 1 FROM version_game g WHERE g.version_id = v.id AND g.game = ?2))
                        AND (?3 IS NULL OR EXISTS (SELECT 1 FROM version_loader l WHERE l.version_id = v.id AND l.loader = ?3))
+                       -- A joined project's file on both sources is shown once, as Modrinth's.
+                       AND NOT (v.source != 'modrinth' AND EXISTS (
+                         SELECT 1 FROM version_file f
+                         LEFT JOIN blob b ON b.sha256 = f.sha256
+                         JOIN version_file g ON g.sha256 = f.sha256 OR g.sha1 = b.sha1
+                         JOIN version w ON w.id = g.version_id
+                         WHERE f.version_id = v.id AND w.project_id = v.project_id AND w.source = 'modrinth'))
                      ORDER BY v.published DESC LIMIT 2000",
                 )
                 .map_err(sql)?;

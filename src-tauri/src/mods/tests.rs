@@ -1428,6 +1428,16 @@ mod packs {
         }));
         assert_eq!(working.state, "working");
         assert_eq!((working.kept, working.total), (0, 1));
+        // A CurseForge pack whose files are still being found: counted, not
+        // listed yet; a count past the limit is not believed.
+        let finding = PackInfo::from(&json!({
+            "state": "working", "total": 40, "files": [], "archive": {},
+        }));
+        assert_eq!((finding.kept, finding.total), (0, 40));
+        let huge = PackInfo::from(&json!({
+            "state": "working", "total": u64::MAX, "files": [], "archive": {},
+        }));
+        assert_eq!(huge.total, 5000);
 
         let mut bad_path = file_json("mods/a.jar", jar);
         bad_path["path"] = json!("../../evil.jar");
@@ -1773,4 +1783,40 @@ mod packs {
         assert!(content::load_lock(&root, id).pack.is_none());
         assert!(!root.instance_dir(id).join("pack").exists());
     }
+}
+
+#[tokio::test]
+async fn projects_the_catalog_joined_are_followed_in_the_lock() {
+    let mut fake = Fake::default();
+    fake.add_project(1, "mod", "Sodium Extra");
+    fake.add_project(2, "mod", "Sodium");
+    let chosen = fake.add_version(
+        10,
+        1,
+        "extra.jar",
+        json!({"dependencies": [{"kind": "required", "projectId": id(2)}]}),
+    );
+    // Installed when its project was another one (9), joined into 2 since.
+    fake.add_version(21, 2, "sodium.jar", json!({}));
+    let dir = tempfile::tempdir().unwrap();
+    touch(dir.path(), "mods/sodium.jar");
+    touch(dir.path(), "mods/other.jar");
+    let mut other = locked("mods/other.jar", 5, 50);
+    other.requires = Some(vec![id(9), id(7)]);
+    let mut lock = ContentLock {
+        items: vec![locked("mods/sodium.jar", 9, 21), other],
+        ..ContentLock::default()
+    };
+    content::follow_joins(&fake, &mut lock).await;
+    assert_eq!(lock.items[0].project_id, id(2));
+    // Not in the catalog: as it was.
+    assert_eq!(lock.items[1].project_id, id(5));
+    assert_eq!(lock.items[1].requires, Some(vec![id(2), id(7)]));
+
+    // So Sodium is there already, not brought again.
+    let plan = content::plan(&fake, dir.path(), &fabric(), &lock, &wanted(&chosen), &[])
+        .await
+        .unwrap();
+    let names: Vec<&str> = plan.items.iter().map(|i| i.file_name.as_str()).collect();
+    assert_eq!(names, ["extra.jar"]);
 }

@@ -1973,7 +1973,7 @@ async fn mods_plan_for<R: Runtime>(
     crate::mods::online(&state)?;
     let (root, instance) = content::instance_of(&state, payload.instance_id)?;
     let target = content::Target::of(&instance);
-    let lock = content::load_lock(&root, payload.instance_id);
+    let mut lock = content::load_lock(&root, payload.instance_id);
     let game = root.game_dir(payload.instance_id);
     let wanted = content::Wanted {
         version: &payload.version,
@@ -1993,6 +1993,7 @@ async fn mods_plan_for<R: Runtime>(
             })?
     };
     let identified = content::identify(&mods.client, &files).await?;
+    content::follow_joins(&mods.client, &mut lock).await;
     let mut plan = content::plan(&mods.client, &game, &target, &lock, &wanted, &identified).await?;
     // A metered connection (D-051): the plan says why it asks first.
     let settings = state.settings();
@@ -2458,7 +2459,8 @@ pub async fn mods_updates<R: Runtime>(
             })?
     };
     let identified = content::identify(&mods.client, &files).await?;
-    let lock = content::load_lock(&root, instance_id);
+    let mut lock = content::load_lock(&root, instance_id);
+    content::follow_joins(&mods.client, &mut lock).await;
     content::updates(
         &mods.client,
         &content::Target::of(&instance),

@@ -47,6 +47,12 @@ export function installable(kind: ModsKind): boolean {
   return kind === 'mod' || kind === 'resourcepack' || kind === 'shader' || kind === 'datapack';
 }
 
+/** A modpack's archive: Modrinth's `.mrpack` or CurseForge's `.zip`. */
+export function packArchive(name: string): boolean {
+  const lower = name.toLowerCase();
+  return lower.endsWith('.mrpack') || lower.endsWith('.zip');
+}
+
 const FAILURES = [
   'bad_input',
   'curseforge_file_link',

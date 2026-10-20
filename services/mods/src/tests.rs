@@ -22,7 +22,7 @@ use tower::ServiceExt;
 use crate::fetch::{self, Client, Curl, FetchError, Reply, Transport};
 use crate::import::{self, now};
 use crate::input::{self, Input};
-use crate::{App, Urls, curseforge, model, modrinth};
+use crate::{App, Urls, curseforge, model, modrinth, pack};
 
 const ISSUER: &str = "https://oauth.example";
 const FILES: &str = "https://files.example";
@@ -2394,4 +2394,348 @@ fn pack_indexes_are_read_with_care() {
         })
         .collect();
     assert_eq!(read(good(json!(many), fabric)), Err("too_big"));
+}
+
+#[tokio::test]
+async fn a_curseforge_modpack_has_its_files_found_kept_and_placed() {
+    const ATM: u64 = 715_572;
+    let t = setup();
+    let jars = curseforge_site(&t.sites);
+    // JEI is in the catalog already: its file is not fetched twice.
+    t.player(
+        1,
+        "POST",
+        "/v1/imports",
+        json!({ "input": "https://www.curseforge.com/minecraft/mc-mods/jei" }),
+    )
+    .await;
+    t.drain().await;
+    let jei_download = curseforge::download_url(JEI, 5001);
+    assert_eq!(t.sites.asked(&jei_download), 1);
+
+    // A shader, a resource pack, a data pack and a jar packed in a folder.
+    let shader = mrpack(&[("shaders/final.fsh", b"void main() {}")]);
+    let resources = mrpack(&[
+        ("Faithful/pack.mcmeta", b"{}"),
+        ("Faithful/assets/minecraft/x.png", b"png"),
+    ]);
+    let data = mrpack(&[("pack.mcmeta", b"{}"), ("data/x/recipes/a.json", b"{}")]);
+    for (project, id, name, bytes) in [
+        (900, 9000, "shader.zip", &shader),
+        (901, 9001, "faithful.zip", &resources),
+        (902, 9002, "recipes.zip", &data),
+    ] {
+        cf_download(&t.sites, project, id, name, bytes);
+        let mut file = cf_file(project, id, name, bytes.len(), 1, "2024-01-01T00:00:00Z");
+        // A pack may choose a file the site no longer offers.
+        file["status"] = 5.into();
+        t.sites
+            .json(&curseforge::file_url(project, id), json!({ "data": file }));
+    }
+    // A file whose name is not one to write.
+    t.sites.json(
+        &curseforge::file_url(903, 9003),
+        json!({ "data": cf_file(903, 9003, "../escape.jar", 5, 1, "2024-01-01T00:00:00Z") }),
+    );
+    let manifest = json!({
+        "minecraft": { "version": "1.20.1",
+                       "modLoaders": [{ "id": "forge-47.2.0", "primary": true }] },
+        "manifestType": "minecraftModpack", "manifestVersion": 1,
+        "name": "All the Mods", "version": "1.0", "author": "someone",
+        "files": [
+            { "projectID": JEI, "fileID": 5001, "required": true },
+            { "projectID": 900, "fileID": 9000, "required": false },
+            { "projectID": 901, "fileID": 9001, "required": true },
+            { "projectID": 902, "fileID": 9002, "required": true },
+            { "projectID": 903, "fileID": 9003, "required": true },
+            // Gone from the site.
+            { "projectID": 904, "fileID": 9004, "required": true },
+            { "projectID": JEI, "fileID": 5001, "required": true },
+        ],
+        "overrides": "overrides",
+    });
+    let archive = mrpack(&[
+        ("manifest.json", manifest.to_string().as_bytes()),
+        ("overrides/config/a.toml", b"a = 1"),
+    ]);
+    cf_download(&t.sites, ATM, 7000, "ATM-1.0.zip", &archive);
+    let mut file = cf_file(
+        ATM,
+        7000,
+        "ATM-1.0.zip",
+        archive.len(),
+        1,
+        "2024-01-01T00:00:00Z",
+    );
+    file["gameVersions"] = json!(["Forge", "1.20.1"]);
+    t.sites.json(
+        &curseforge::files_url(ATM, 0),
+        json!({ "data": [file], "pagination": { "index": 0, "pageSize": 50, "totalCount": 1 } }),
+    );
+    let project = json!({
+        "id": ATM, "slug": "all-the-mods", "gameId": 432, "classId": 4471,
+        "name": "All the Mods", "summary": "A pack",
+    });
+    t.sites.put(
+        &curseforge::page_url("modpacks", "all-the-mods"),
+        ok(cf_page(&project).replace("\"jei\"", "\"all-the-mods\"")),
+    );
+    let (status, request) = t
+        .player(
+            1,
+            "POST",
+            "/v1/imports",
+            json!({ "input": "https://www.curseforge.com/minecraft/modpacks/all-the-mods" }),
+        )
+        .await;
+    assert_eq!(status, StatusCode::ACCEPTED, "{request}");
+    t.drain().await;
+    let (_, versions) = t.get("/v1/projects/all-the-mods/versions").await;
+    let version = versions["versions"][0]["id"]
+        .as_str()
+        .unwrap_or_else(|| panic!("{versions}"))
+        .to_owned();
+
+    t.call(
+        None,
+        "POST",
+        &format!("/v1/versions/{version}/pack"),
+        Value::Null,
+    )
+    .await;
+    t.drain().await;
+    let (status, pack) = t.get(&format!("/v1/versions/{version}/pack")).await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(pack["state"], "ready", "{pack}");
+    assert_eq!(pack["game"], "1.20.1");
+    assert_eq!(
+        pack["loader"],
+        json!({ "kind": "forge", "version": "47.2.0" })
+    );
+    let paths: Vec<(&str, bool)> = pack["files"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|f| {
+            (
+                f["path"].as_str().unwrap(),
+                f["optional"].as_bool().unwrap(),
+            )
+        })
+        .collect();
+    assert_eq!(
+        paths,
+        [
+            ("mods/jei-15.2.jar", false),
+            ("shaderpacks/shader.zip", true),
+            ("resourcepacks/faithful.zip", false),
+        ]
+    );
+    // The data pack, the bad name and the gone file are left out.
+    assert_eq!(pack["skipped"], 3);
+    assert_eq!(pack["total"], 3);
+    let (_, _, jei_sha) = hashes(&jars[&5001]);
+    assert_eq!(pack["files"][0]["sha256"], jei_sha.as_str());
+    assert_eq!(t.sites.asked(&jei_download), 1);
+    let (_, _, shader_sha) = hashes(&shader);
+    assert_eq!(
+        std::fs::read(t.app.blobs.path(&shader_sha)).unwrap(),
+        shader
+    );
+    assert!(pack["archive"]["url"].as_str().is_some());
+}
+
+#[test]
+fn curseforge_manifests_are_read_with_care() {
+    let base = json!({
+        "minecraft": { "version": "1.21.1",
+                       "modLoaders": [{ "id": "fabric-0.16.5", "primary": false },
+                                      { "id": "neoforge-21.1.77", "primary": true }] },
+        "manifestType": "minecraftModpack", "manifestVersion": 1,
+        "files": [{ "projectID": 1, "fileID": 2 }],
+    });
+    let index = pack::manifest(base.to_string().as_bytes()).unwrap();
+    assert_eq!(index.game, "1.21.1");
+    assert_eq!(
+        index.loader,
+        Some(("neoforge".to_owned(), "21.1.77".to_owned()))
+    );
+    assert_eq!(
+        index.curseforge,
+        [pack::CurseForgeFile {
+            project: 1,
+            file: 2,
+            optional: false
+        }]
+    );
+    let with = |pointer: &str, value: Value| {
+        let mut m = base.clone();
+        *m.pointer_mut(pointer).unwrap() = value;
+        pack::manifest(m.to_string().as_bytes())
+    };
+    assert_eq!(
+        with("/manifestType", json!("other")),
+        Err("unsupported_pack")
+    );
+    assert_eq!(with("/manifestVersion", json!(2)), Err("unsupported_pack"));
+    assert_eq!(
+        with("/minecraft/version", json!("1.21; rm -rf /")),
+        Err("bad_pack")
+    );
+    assert_eq!(
+        with("/minecraft/modLoaders", json!([{ "id": "liteloader-1" }])),
+        Err("unsupported_pack")
+    );
+    assert_eq!(
+        with("/minecraft/modLoaders", json!([{ "id": "forge-47/../x" }])),
+        Err("unsupported_pack")
+    );
+    assert_eq!(
+        with("/files", json!([{ "projectID": 0, "fileID": 2 }])),
+        Err("bad_pack")
+    );
+    assert_eq!(
+        with("/files", json!([{ "projectID": -1, "fileID": 2 }])),
+        Err("bad_pack")
+    );
+    let mut m = base.clone();
+    m["overrides"] = json!("../elsewhere");
+    assert_eq!(
+        pack::manifest(m.to_string().as_bytes()),
+        Err("unsupported_pack")
+    );
+    let many: Vec<Value> = (1..=pack::MAX_FILES as u64 + 1)
+        .map(|n| json!({ "projectID": n, "fileID": n }))
+        .collect();
+    assert_eq!(with("/files", json!(many)), Err("too_big"));
+    assert_eq!(pack::manifest(b"\xff junk"), Err("bad_pack"));
+    // No loader: a plain game.
+    let none = with("/minecraft/modLoaders", json!([])).unwrap();
+    assert_eq!(none.loader, None);
+
+    assert_eq!(
+        curseforge::download_ids(&curseforge::download_url(238_222, 5001)),
+        Some((238_222, 5001))
+    );
+    for bad in [
+        "https://www.curseforge.com/api/v1/mods/1/files/x/download",
+        "https://www.curseforge.com/api/v1/mods/0/files/1/download",
+        "https://evil.example/api/v1/mods/1/files/2/download",
+        "https://www.curseforge.com/api/v1/mods/1/files/2",
+    ] {
+        assert_eq!(curseforge::download_ids(bad), None, "{bad}");
+    }
+}
+
+#[tokio::test]
+async fn the_same_project_on_both_sources_becomes_one() {
+    const JEI_MODRINTH: &str = "JeIjEiJe";
+    let t = setup();
+    let jars = curseforge_site(&t.sites);
+    t.player(
+        1,
+        "POST",
+        "/v1/imports",
+        json!({ "input": "https://www.curseforge.com/minecraft/mc-mods/jei" }),
+    )
+    .await;
+    t.drain().await;
+    let (_, cf) = t.get("/v1/projects/jei").await;
+    let cf_id = cf["id"].as_str().unwrap().to_owned();
+
+    // On Modrinth, with the same file as CurseForge's 15.2, and one more.
+    let same = &jars[&5001];
+    let newer = b"jar of jei 15.4".to_vec();
+    for (version, name, bytes) in [
+        ("mjv1aaaa", "jei-15.2.jar", same.clone()),
+        ("mjv2bbbb", "jei-15.4.jar", newer.clone()),
+    ] {
+        t.sites.put(
+            &format!("https://cdn.modrinth.com/data/{JEI_MODRINTH}/versions/{version}/{name}"),
+            ok(bytes),
+        );
+    }
+    t.sites.json(
+        &modrinth::project_url("jei"),
+        json!({ "id": JEI_MODRINTH, "slug": "jei", "project_type": "mod",
+                "title": "JEI on Modrinth", "description": "Items" }),
+    );
+    t.sites
+        .json(&modrinth::members_url(JEI_MODRINTH), json!([]));
+    t.sites.json(
+        &modrinth::versions_url(JEI_MODRINTH),
+        json!([
+            { "id": "mjv2bbbb", "version_number": "15.4", "version_type": "release",
+              "date_published": "2024-06-01T00:00:00Z", "game_versions": ["1.21.1"], "loaders": ["neoforge"],
+              "files": [file_json(JEI_MODRINTH, "mjv2bbbb", "jei-15.4.jar", &newer)] },
+            { "id": "mjv1aaaa", "version_number": "15.2", "version_type": "release",
+              "date_published": "2024-02-01T00:00:00Z", "game_versions": ["1.20.1"], "loaders": ["forge"],
+              "files": [file_json(JEI_MODRINTH, "mjv1aaaa", "jei-15.2.jar", same)] },
+        ]),
+    );
+    t.player(
+        1,
+        "POST",
+        "/v1/imports",
+        json!({ "input": "https://modrinth.com/mod/jei" }),
+    )
+    .await;
+    t.drain().await;
+
+    // One project with Modrinth's card and both sources; CurseForge's ID and
+    // slug lead to it.
+    let (status, project) = t.get(&format!("/v1/projects/{cf_id}")).await;
+    assert_eq!(status, StatusCode::OK, "{project}");
+    let id = project["id"].as_str().unwrap().to_owned();
+    assert_ne!(id, cf_id);
+    assert_eq!(project["title"], "JEI on Modrinth");
+    let mut sources: Vec<&str> = project["sources"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|s| s["source"].as_str().unwrap())
+        .collect();
+    sources.sort_unstable();
+    assert_eq!(sources, ["curseforge", "modrinth"]);
+    let (_, by_slug) = t.get("/v1/projects/jei").await;
+    assert_eq!(by_slug["id"], id.as_str());
+
+    // The shared file shows once, as Modrinth's; the others from both.
+    let (_, versions) = t.get(&format!("/v1/projects/{id}/versions")).await;
+    let numbers: Vec<&str> = versions["versions"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|v| v["number"].as_str().unwrap())
+        .collect();
+    assert!(
+        numbers.contains(&"15.2") && numbers.contains(&"15.4"),
+        "{numbers:?}"
+    );
+    assert!(!numbers.contains(&"jei-15.2.jar"), "{numbers:?}");
+    assert!(numbers.contains(&"jei-15.1.jar"), "{numbers:?}");
+
+    // Searching finds it once.
+    let (_, found) = t.get("/v1/search?q=jei").await;
+    assert_eq!(found["total"], 1, "{found}");
+
+    // CurseForge read again: the card stays Modrinth's.
+    age(&t, 30 * 24 * 3600);
+    t.player(
+        2,
+        "POST",
+        "/v1/imports",
+        json!({ "input": "https://www.curseforge.com/minecraft/mc-mods/jei" }),
+    )
+    .await;
+    t.drain().await;
+    let (_, project) = t.get(&format!("/v1/projects/{id}")).await;
+    assert_eq!(project["title"], "JEI on Modrinth");
+
+    // A project of one source is never joined with another of the same.
+    let db = rusqlite::Connection::open(t.app.store.path()).unwrap();
+    let joined: i64 = db
+        .query_row("SELECT count(*) FROM project_joined", [], |r| r.get(0))
+        .unwrap();
+    assert_eq!(joined, 1);
 }

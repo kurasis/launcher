@@ -566,6 +566,25 @@ describe('ModsView', () => {
       mods_apply_pack: () => ({ files: 5, keptYours: 0, leftOut: 2, removed: 0 }),
     });
 
+    it('offers a CurseForge modpack (a zip) for install too', async () => {
+      setup(
+        {
+          ...answers(() => ready),
+          mods_versions: () => [
+            {
+              ...packVersion,
+              files: [{ name: 'ATM-1.0.zip', size: 2048, sha256: null, primary: true, url: null }],
+            },
+          ],
+        },
+        'modpack',
+      );
+      fireEvent.click(await screen.findByRole('button', { name: /Sodium/ }));
+      const article = await screen.findByRole('article', { name: 'Pack' });
+      fireEvent.click(await within(article).findByRole('button', { name: 'Install' }));
+      expect(await screen.findByRole('dialog', { name: 'Install Pack' })).toBeVisible();
+    });
+
     it('installs a modpack as a new installation', async () => {
       const calls = setup(
         answers(() => ready),

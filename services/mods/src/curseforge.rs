@@ -107,6 +107,39 @@ pub fn download_url(project: u64, file: u64) -> String {
     format!("{API}/{project}/files/{file}/download")
 }
 
+/// The project and file numbers of a [`download_url`].
+pub fn download_ids(url: &str) -> Option<(u64, u64)> {
+    let rest = url.strip_prefix(API)?.strip_prefix('/')?;
+    let (project, rest) = rest.split_once("/files/")?;
+    let file = rest.strip_suffix("/download")?;
+    let number = |t: &str| {
+        (!t.is_empty() && t.len() <= 15 && t.bytes().all(|b| b.is_ascii_digit()))
+            .then(|| t.parse::<u64>().ok())
+            .flatten()
+            .filter(|n| *n > 0)
+    };
+    Some((number(project)?, number(file)?))
+}
+
+/// A modpack's file from the site's API: its name (`None` when it is not one
+/// we may write) and size. Any file of the project counts, released or not,
+/// as the pack chose it.
+pub fn pack_file(project: u64, file: u64, value: &Value) -> Option<(Option<String>, u64)> {
+    if value.get("id").and_then(Value::as_u64) != Some(file)
+        || value.get("projectId").and_then(Value::as_u64) != Some(project)
+    {
+        return None;
+    }
+    let name = value
+        .get("fileName")
+        .and_then(Value::as_str)
+        .and_then(file_name);
+    Some((
+        name,
+        u64::try_from(number(value, "fileLength")).unwrap_or(0),
+    ))
+}
+
 fn text(value: &Value, key: &str, max: usize) -> String {
     clean(
         value.get(key).and_then(Value::as_str).unwrap_or_default(),
