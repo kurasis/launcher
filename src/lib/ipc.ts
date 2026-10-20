@@ -97,6 +97,7 @@ import {
   type ContentView,
   type ModsImportRequest,
   type ModsInstallPayload,
+  type ModsNeededBy,
   type ModsPack,
   type ModsPackReport,
   type ModsExportChoice,
@@ -435,6 +436,8 @@ export const ipc = {
     requestId?: string,
   ): Promise<void> =>
     invoke('mods_set_enabled', { request: mutation({ instanceId, path, enabled }, requestId) }),
+  modsNeededBy: (instanceId: string, path: string): Promise<ModsNeededBy> =>
+    invoke<ModsNeededBy>('mods_needed_by', { instanceId, path }),
   modsRemove: (instanceId: string, path: string, requestId?: string): Promise<void> =>
     invoke('mods_remove', { request: mutation({ instanceId, path }, requestId) }),
   /** Opens an https link in the system browser; ask the player first. */

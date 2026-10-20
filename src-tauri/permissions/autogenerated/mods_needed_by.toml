@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-mods-needed-by"
+description = "Enables the mods_needed_by command without any pre-configured scope."
+commands.allow = ["mods_needed_by"]
+
+[[permission]]
+identifier = "deny-mods-needed-by"
+description = "Denies the mods_needed_by command without any pre-configured scope."
+commands.deny = ["mods_needed_by"]

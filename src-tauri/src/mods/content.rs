@@ -196,6 +196,9 @@ pub struct LockedItem {
     /// Added because another file needs it.
     #[serde(default)]
     pub dependency: bool,
+    /// The projects its version requires (unknown in older locks).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub requires: Option<Vec<String>>,
     pub installed_at: i64,
 }
 
@@ -352,6 +355,9 @@ pub struct PlanItem {
     pub replaces: Option<String>,
     /// The same file is there already.
     pub present: bool,
+    /// The projects this version requires (kept in the lock).
+    #[serde(skip)]
+    pub requires: Vec<String>,
 }
 
 /// A required project the catalog has no fitting version of.
@@ -388,6 +394,18 @@ pub struct Plan {
     /// On a metered connection, why this download is confirmed first (D-051);
     /// pressing Install with it shown is the confirmation.
     pub approval: Option<crate::state::dto::ApprovalRequest>,
+    /// Files there already but turned off that this needs: turned on with
+    /// the install.
+    pub turn_on: Vec<TurnOn>,
+}
+
+/// A file turned off that an install turns on.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct TurnOn {
+    /// As on disk now (ending in `.disabled`), relative to the game folder.
+    pub path: String,
+    pub title: String,
 }
 
 impl Plan {
@@ -425,6 +443,7 @@ pub async fn plan<C: Catalog>(
     target: &Target,
     lock: &ContentLock,
     wanted: &Wanted<'_>,
+    identified: &[Identified],
 ) -> LauncherResult<Plan> {
     let version = catalog.version(wanted.version).await?;
     let project = catalog.project(&version.project_id).await?;
@@ -463,6 +482,23 @@ pub async fn plan<C: Catalog>(
         misfit: found,
         total_bytes: 0,
         approval: None,
+        turn_on: Vec::new(),
+    };
+    // A project's file in the folder: the launcher's, else one of the
+    // player's the catalog recognized; as on disk now.
+    let there = |project: &str| -> Option<(String, String)> {
+        if let Some(ours) = lock.of_project(project)
+            && let Some(path) = present(game, &ours.path)
+        {
+            return Some((path, ours.title.clone()));
+        }
+        identified
+            .iter()
+            .find(|i| i.project_id == project && game.join(&i.path).is_file())
+            .map(|i| {
+                let name = i.path.rsplit('/').next().unwrap_or_default();
+                (i.path.clone(), enabled_form(name).to_owned())
+            })
     };
     let mut seen: HashSet<String> = HashSet::new();
     // (version, project title and icon, dependency)
@@ -488,10 +524,16 @@ pub async fn plan<C: Catalog>(
                 )
             })?;
         let path = format!("{folder}/{}", file.name);
+        // An older file of the same project goes, the player's own too: two
+        // copies of a mod stop the game.
         let replaces = match lock.of_project(&version.project_id) {
             Some(old) => Some(old.path.clone()),
-            None if !dependency => wanted.replaces.map(|r| enabled_form(r).to_owned()),
-            None => None,
+            None => wanted
+                .replaces
+                .filter(|_| !dependency)
+                .map(str::to_owned)
+                .or_else(|| there(&version.project_id).map(|(p, _)| p))
+                .map(|r| enabled_form(&r).to_owned()),
         }
         .filter(|p| present(game, p).is_some());
         let mut same = false;
@@ -527,6 +569,12 @@ pub async fn plan<C: Catalog>(
             path,
             replaces,
             present: same,
+            requires: version
+                .dependencies
+                .iter()
+                .filter(|d| d.kind == "required")
+                .filter_map(|d| d.project_id.clone())
+                .collect(),
         });
         if !same {
             plan.total_bytes += file.size;
@@ -537,16 +585,11 @@ pub async fn plan<C: Catalog>(
         for needed in &version.dependencies {
             match needed.kind.as_str() {
                 "incompatible" => {
-                    if let Some(other) = needed
-                        .project_id
-                        .as_deref()
-                        .and_then(|p| lock.of_project(p))
-                        && present(game, &other.path).is_some()
-                    {
+                    if let Some((path, title)) = needed.project_id.as_deref().and_then(there) {
                         plan.conflicts.push(Conflict {
-                            path: other.path.clone(),
+                            path: enabled_form(&path).to_owned(),
                             reason: "incompatible".to_owned(),
-                            title: Some(other.title.clone()),
+                            title: Some(title),
                         });
                     }
                 }
@@ -561,11 +604,12 @@ pub async fn plan<C: Catalog>(
                     if !seen.insert(project_id.clone()) {
                         continue;
                     }
-                    // Installed and there: nothing to add.
-                    if lock
-                        .of_project(&project_id)
-                        .is_some_and(|o| present(game, &o.path).is_some())
-                    {
+                    // There already: nothing to add; turned off, it is turned on.
+                    if let Some((path, title)) = there(&project_id) {
+                        if path.ends_with(DISABLED) && !plan.turn_on.iter().any(|t| t.path == path)
+                        {
+                            plan.turn_on.push(TurnOn { path, title });
+                        }
                         continue;
                     }
                     let other = catalog.project(&project_id).await.ok();
@@ -643,6 +687,8 @@ pub struct Installer {
     running: Mutex<HashMap<InstanceId, CancelToken>>,
     /// SHA-1 of files the player put there, by path.
     hashes: Mutex<HashMap<PathBuf, Hashed>>,
+    /// The projects a catalog version requires, as the catalog said.
+    requires: Mutex<HashMap<String, Vec<String>>>,
 }
 
 /// A file's size, time and SHA-1 when it was last read.
@@ -667,6 +713,7 @@ impl Installer {
             transport: crate::download::transport::HttpTransport::public(app_version)?,
             running: Mutex::new(HashMap::new()),
             hashes: Mutex::new(HashMap::new()),
+            requires: Mutex::new(HashMap::new()),
         })
     }
 
@@ -862,8 +909,19 @@ impl Installer {
                 published: item.published,
                 icon: item.icon.clone(),
                 dependency: item.dependency,
+                requires: Some(item.requires.clone()),
                 installed_at: now(),
             });
+        }
+        // What it needs that was turned off.
+        for off in &plan.turn_on {
+            let on = enabled_form(&off.path);
+            if let (Ok(from), Ok(to)) = (content_path(&game, &off.path), content_path(&game, on))
+                && off.path.ends_with(DISABLED)
+                && fs::symlink_metadata(&to).is_err()
+            {
+                let _ = fs::rename(from, to);
+            }
         }
         lock_file.schema_version = crate::storage::document::SCHEMA_VERSION;
         save_lock(root, id, &lock_file)?;
@@ -936,6 +994,157 @@ pub async fn identify<C: Catalog>(
         }
     }
     Ok(out)
+}
+
+/// What turning a mod off or removing it leaves without something it needs.
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct NeededBy {
+    /// The mods turned on that require it (their names).
+    pub needed_by: Vec<String>,
+    /// What the launcher added for it that nothing else needs: removed with
+    /// it when the player agrees.
+    pub unused: Vec<Unused>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct Unused {
+    /// As on disk now, relative to the game folder.
+    pub path: String,
+    pub title: String,
+}
+
+/// A mod in the folder the catalog knows.
+struct KnownMod {
+    path: String,
+    title: String,
+    project: String,
+    on: bool,
+    dependency: bool,
+    requires: Vec<String>,
+}
+
+/// Versions asked about at once.
+const ASK_AT_ONCE: usize = 16;
+
+impl Installer {
+    /// Which mods need the one at `path` (as on disk), and what only it
+    /// needed. Without the catalog, what the launcher noted when it
+    /// installed them.
+    pub async fn needed_by<C: Catalog>(
+        &self,
+        catalog: Option<&C>,
+        root: &DataRoot,
+        id: InstanceId,
+        identified: &[Identified],
+        path: &str,
+    ) -> NeededBy {
+        let view = list(root, id);
+        let content_lock = load_lock(root, id);
+        let mut known: Vec<(KnownMod, Option<String>)> = Vec::new();
+        for item in view
+            .items
+            .iter()
+            .filter(|i| i.folder == "mods" && !i.directory)
+        {
+            let title = item.title.clone().unwrap_or_else(|| item.name.clone());
+            let (project, version, ours) = match content_lock.at(enabled_form(&item.path)) {
+                Some(o) => (o.project_id.clone(), o.version_id.clone(), Some(o)),
+                None => match identified.iter().find(|i| i.path == item.path) {
+                    Some(i) => (i.project_id.clone(), i.version_id.clone(), None),
+                    None => continue,
+                },
+            };
+            let noted = ours.and_then(|o| o.requires.clone());
+            let cached = lock(&self.requires).get(&version).cloned();
+            known.push((
+                KnownMod {
+                    path: item.path.clone(),
+                    title,
+                    project,
+                    on: item.enabled,
+                    dependency: ours.is_some_and(|o| o.dependency),
+                    requires: noted.clone().or(cached.clone()).unwrap_or_default(),
+                },
+                (noted.is_none() && cached.is_none()).then_some(version),
+            ));
+        }
+        let Some(target) = known.iter().position(|(k, _)| k.path == path) else {
+            return NeededBy::default();
+        };
+        // What the lock does not say, the catalog does.
+        let asks: Vec<(usize, String)> = known
+            .iter()
+            .enumerate()
+            .filter_map(|(i, (_, v))| v.clone().map(|v| (i, v)))
+            .collect();
+        let chunks = if catalog.is_some() {
+            asks.chunks(ASK_AT_ONCE)
+        } else {
+            [].chunks(ASK_AT_ONCE)
+        };
+        for chunk in chunks {
+            let Some(catalog) = catalog else { break };
+            let answers =
+                futures_util::future::join_all(chunk.iter().map(|(_, v)| catalog.version(v))).await;
+            for ((i, v), answer) in chunk.iter().zip(answers) {
+                let Ok(version) = answer else { continue };
+                let requires: Vec<String> = version
+                    .dependencies
+                    .iter()
+                    .filter(|d| d.kind == "required")
+                    .filter_map(|d| d.project_id.clone())
+                    .collect();
+                lock(&self.requires).insert(v.clone(), requires.clone());
+                known[*i].0.requires = requires;
+            }
+        }
+        let known: Vec<KnownMod> = known.into_iter().map(|(k, _)| k).collect();
+        needs(&known, target)
+    }
+}
+
+/// Who needs `known[target]`, and what goes unused without it.
+fn needs(known: &[KnownMod], target: usize) -> NeededBy {
+    let gone_project = &known[target].project;
+    let mut needed_by: Vec<String> = known
+        .iter()
+        .enumerate()
+        .filter(|(i, k)| *i != target && k.on && k.project != *gone_project)
+        .filter(|(_, k)| k.requires.contains(gone_project))
+        .map(|(_, k)| k.title.clone())
+        .collect();
+    needed_by.sort();
+    needed_by.dedup();
+    // Going with it: the launcher's dependencies only it (or what goes with
+    // it) needs; one a mod turned off needs stays for when it is on again.
+    let mut going: HashSet<&str> = HashSet::from([gone_project.as_str()]);
+    let mut unused = Vec::new();
+    loop {
+        let mut more = false;
+        for k in known {
+            if !k.dependency || going.contains(k.project.as_str()) {
+                continue;
+            }
+            let mut users = known
+                .iter()
+                .filter(|u| u.project != k.project && u.requires.contains(&k.project))
+                .peekable();
+            if users.peek().is_some() && users.all(|u| going.contains(u.project.as_str())) {
+                going.insert(&k.project);
+                unused.push(Unused {
+                    path: k.path.clone(),
+                    title: k.title.clone(),
+                });
+                more = true;
+            }
+        }
+        if !more {
+            break;
+        }
+    }
+    NeededBy { needed_by, unused }
 }
 
 /// A file the player put there that the catalog knows.

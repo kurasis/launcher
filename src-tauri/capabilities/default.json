@@ -110,6 +110,7 @@
     "allow-mods-cancel",
     "allow-mods-content",
     "allow-mods-identify",
+    "allow-mods-needed-by",
     "allow-mods-updates",
     "allow-mods-set-enabled",
     "allow-mods-remove",

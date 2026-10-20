@@ -635,6 +635,7 @@ fn locked(path: &str, project: u8, version: u8) -> LockedItem {
         published: i64::from(version),
         icon: None,
         dependency: false,
+        requires: None,
         installed_at: 0,
     }
 }
@@ -671,6 +672,7 @@ async fn a_mod_brings_what_it_requires() {
         &fabric(),
         &ContentLock::default(),
         &wanted(&chosen),
+        &[],
     )
     .await
     .unwrap();
@@ -703,6 +705,7 @@ async fn every_dependency_down_a_long_chain_comes_and_a_loop_ends() {
         &fabric(),
         &ContentLock::default(),
         &wanted(&id(101)),
+        &[],
     )
     .await
     .unwrap();
@@ -736,7 +739,7 @@ async fn missing_and_incompatible_projects_stop_a_plan() {
         items: vec![locked("mods/enemy.jar", 3, 30)],
         pack: None,
     };
-    let plan = content::plan(&fake, dir.path(), &fabric(), &lock, &wanted(&chosen))
+    let plan = content::plan(&fake, dir.path(), &fabric(), &lock, &wanted(&chosen), &[])
         .await
         .unwrap();
     assert!(!plan.ready());
@@ -755,12 +758,12 @@ async fn mods_must_fit_the_installation() {
     let dir = tempfile::tempdir().unwrap();
     let lock = ContentLock::default();
     assert!(
-        content::plan(&fake, dir.path(), &fabric(), &lock, &wanted(&forge))
+        content::plan(&fake, dir.path(), &fabric(), &lock, &wanted(&forge), &[])
             .await
             .is_err()
     );
     assert!(
-        content::plan(&fake, dir.path(), &fabric(), &lock, &wanted(&old))
+        content::plan(&fake, dir.path(), &fabric(), &lock, &wanted(&old), &[])
             .await
             .is_err()
     );
@@ -770,7 +773,7 @@ async fn mods_must_fit_the_installation() {
     };
     let fits = fake.add_version(12, 1, "c.jar", json!({}));
     assert!(
-        content::plan(&fake, dir.path(), &vanilla, &lock, &wanted(&fits))
+        content::plan(&fake, dir.path(), &vanilla, &lock, &wanted(&fits), &[])
             .await
             .is_err()
     );
@@ -780,7 +783,7 @@ async fn mods_must_fit_the_installation() {
         loader: Some(LoaderKind::Quilt),
     };
     assert!(
-        content::plan(&fake, dir.path(), &quilt, &lock, &wanted(&fits))
+        content::plan(&fake, dir.path(), &quilt, &lock, &wanted(&fits), &[])
             .await
             .is_ok()
     );
@@ -807,6 +810,7 @@ async fn packs_may_not_fit_with_a_warning() {
         &vanilla,
         &ContentLock::default(),
         &wanted(&v),
+        &[],
     )
     .await
     .unwrap();
@@ -827,13 +831,13 @@ async fn kinds_without_a_place_are_refused() {
     let lock = ContentLock::default();
     let target = fabric();
     assert!(
-        content::plan(&fake, dir.path(), &target, &lock, &wanted(&pack))
+        content::plan(&fake, dir.path(), &target, &lock, &wanted(&pack), &[])
             .await
             .is_err()
     );
     // A data pack needs an existing world with a plain name.
     assert!(
-        content::plan(&fake, dir.path(), &target, &lock, &wanted(&data))
+        content::plan(&fake, dir.path(), &target, &lock, &wanted(&data), &[])
             .await
             .is_err()
     );
@@ -844,7 +848,7 @@ async fn kinds_without_a_place_are_refused() {
             replaces: None,
         };
         assert!(
-            content::plan(&fake, dir.path(), &target, &lock, &w)
+            content::plan(&fake, dir.path(), &target, &lock, &w, &[])
                 .await
                 .is_err(),
             "{world}"
@@ -856,12 +860,12 @@ async fn kinds_without_a_place_are_refused() {
         world: Some("World"),
         replaces: None,
     };
-    let plan = content::plan(&fake, dir.path(), &target, &lock, &w)
+    let plan = content::plan(&fake, dir.path(), &target, &lock, &w, &[])
         .await
         .unwrap();
     assert_eq!(plan.items[0].path, "saves/World/datapacks/data.zip");
     assert!(
-        content::plan(&fake, dir.path(), &target, &lock, &wanted(&bad))
+        content::plan(&fake, dir.path(), &target, &lock, &wanted(&bad), &[])
             .await
             .is_err()
     );
@@ -875,7 +879,7 @@ async fn files_of_the_player_are_never_overwritten() {
     let dir = tempfile::tempdir().unwrap();
     touch(dir.path(), "mods/a.jar");
     let lock = ContentLock::default();
-    let plan = content::plan(&fake, dir.path(), &fabric(), &lock, &wanted(&v))
+    let plan = content::plan(&fake, dir.path(), &fabric(), &lock, &wanted(&v), &[])
         .await
         .unwrap();
     assert_eq!(plan.conflicts.len(), 1);
@@ -886,7 +890,7 @@ async fn files_of_the_player_are_never_overwritten() {
         world: None,
         replaces: Some("mods/a.jar"),
     };
-    let plan = content::plan(&fake, dir.path(), &fabric(), &lock, &w)
+    let plan = content::plan(&fake, dir.path(), &fabric(), &lock, &w, &[])
         .await
         .unwrap();
     assert!(plan.ready());
@@ -898,7 +902,7 @@ async fn files_of_the_player_are_never_overwritten() {
         replaces: Some("../options.txt"),
     };
     assert!(
-        content::plan(&fake, dir.path(), &fabric(), &lock, &w)
+        content::plan(&fake, dir.path(), &fabric(), &lock, &w, &[])
             .await
             .is_err()
     );
@@ -917,7 +921,7 @@ async fn an_update_replaces_the_launchers_own_file() {
         items: vec![locked("mods/a-1.jar", 1, 10)],
         pack: None,
     };
-    let plan = content::plan(&fake, dir.path(), &fabric(), &lock, &wanted(&new))
+    let plan = content::plan(&fake, dir.path(), &fabric(), &lock, &wanted(&new), &[])
         .await
         .unwrap();
     assert!(plan.ready());
@@ -1049,6 +1053,236 @@ fn links_are_not_followed() {
     assert!(content::remove(&root, id, "mods/link.jar").is_err());
     assert!(content::set_enabled(&root, id, "mods/link.jar", false).is_err());
     assert!(outside.is_file());
+}
+
+fn known(path: &str, project: u8, version: u8) -> content::Identified {
+    content::Identified {
+        path: path.to_owned(),
+        project_id: id(project),
+        version_id: id(version),
+    }
+}
+
+#[tokio::test]
+async fn what_is_there_already_is_used_and_turned_on_when_off() {
+    let mut fake = Fake::default();
+    for (n, title) in [
+        (1, "A"),
+        (2, "Library"),
+        (3, "Off library"),
+        (4, "Ours off"),
+        (5, "Enemy"),
+    ] {
+        fake.add_project(n, "mod", title);
+    }
+    let chosen = fake.add_version(
+        10,
+        1,
+        "a.jar",
+        json!({"dependencies": [
+            {"kind": "required", "projectId": id(2)},
+            {"kind": "required", "projectId": id(3)},
+            {"kind": "required", "projectId": id(4)},
+        ]}),
+    );
+    for (v, p) in [(20, 2), (30, 3), (40, 4)] {
+        fake.add_version(v, p, &format!("lib-{p}.jar"), json!({}));
+    }
+    let dir = tempfile::tempdir().unwrap();
+    let game = dir.path();
+    // The player's own copies, one turned off; one the launcher put there,
+    // turned off; and the player's older copy of the chosen mod.
+    touch(game, "mods/my-library.jar");
+    touch(game, "mods/my-off-library.jar.disabled");
+    touch(game, "mods/lib-4.jar.disabled");
+    touch(game, "mods/a-old.jar");
+    let lock = ContentLock {
+        schema_version: 1,
+        items: vec![locked("mods/lib-4.jar", 4, 40)],
+        pack: None,
+    };
+    let identified = [
+        known("mods/my-library.jar", 2, 21),
+        known("mods/my-off-library.jar.disabled", 3, 31),
+        known("mods/a-old.jar", 1, 11),
+    ];
+    let plan = content::plan(&fake, game, &fabric(), &lock, &wanted(&chosen), &identified)
+        .await
+        .unwrap();
+    assert!(plan.ready(), "{plan:?}");
+    // Nothing brought twice; the old copy of the chosen mod goes.
+    let names: Vec<&str> = plan.items.iter().map(|i| i.file_name.as_str()).collect();
+    assert_eq!(names, ["a.jar"]);
+    assert_eq!(plan.items[0].replaces.as_deref(), Some("mods/a-old.jar"));
+    let on: Vec<&str> = plan.turn_on.iter().map(|t| t.path.as_str()).collect();
+    assert_eq!(
+        on,
+        [
+            "mods/my-off-library.jar.disabled",
+            "mods/lib-4.jar.disabled"
+        ]
+    );
+
+    // A project that does not work with the chosen one is seen in the
+    // player's files too.
+    let enemy = fake.add_version(
+        12,
+        1,
+        "a2.jar",
+        json!({"dependencies": [{"kind": "incompatible", "projectId": id(5)}]}),
+    );
+    touch(game, "mods/enemy.jar");
+    let plan = content::plan(
+        &fake,
+        game,
+        &fabric(),
+        &ContentLock::default(),
+        &wanted(&enemy),
+        &[known("mods/enemy.jar", 5, 50)],
+    )
+    .await
+    .unwrap();
+    assert_eq!(plan.conflicts.len(), 1, "{plan:?}");
+    assert_eq!(plan.conflicts[0].reason, "incompatible");
+    assert_eq!(plan.conflicts[0].path, "mods/enemy.jar");
+}
+
+#[tokio::test]
+async fn an_install_turns_on_what_it_needs() {
+    let mut fake = Fake::default();
+    fake.add_project(1, "mod", "A");
+    fake.add_project(2, "mod", "Library");
+    let chosen = fake.add_version(
+        10,
+        1,
+        "a.jar",
+        json!({"dependencies": [{"kind": "required", "projectId": id(2)}]}),
+    );
+    fake.add_version(20, 2, "lib.jar", json!({}));
+    let (_dir, root, instance_id) = instance();
+    let game = root.game_dir(instance_id);
+    // The chosen file is there already, so nothing is downloaded.
+    touch(&game, "mods/a.jar");
+    touch(&game, "mods/lib.jar.disabled");
+    let mut lock = ContentLock {
+        schema_version: 1,
+        items: vec![locked("mods/a.jar", 1, 10), locked("mods/lib.jar", 2, 20)],
+        pack: None,
+    };
+    lock.items[1].dependency = true;
+    content::save_lock(&root, instance_id, &lock).unwrap();
+    let plan = content::plan(&fake, &game, &fabric(), &lock, &wanted(&chosen), &[])
+        .await
+        .unwrap();
+    assert!(plan.items[0].present && plan.total_bytes == 0, "{plan:?}");
+    let installer = content::Installer::new("0.0.0-test").unwrap();
+    installer
+        .install(
+            &fake,
+            &root,
+            instance_id,
+            plan,
+            &crate::download::CancelToken::new(),
+            &|_| {},
+        )
+        .await
+        .unwrap();
+    assert!(game.join("mods/lib.jar").is_file());
+    assert!(!game.join("mods/lib.jar.disabled").exists());
+    // The lock now says what the chosen mod requires.
+    let lock = content::load_lock(&root, instance_id);
+    let a = lock.items.iter().find(|i| i.path == "mods/a.jar").unwrap();
+    assert_eq!(a.requires.as_deref(), Some(&[id(2)][..]));
+}
+
+#[tokio::test]
+async fn turning_off_or_removing_a_mod_says_who_needs_it_and_what_goes_unused() {
+    let (_dir, root, instance_id) = instance();
+    let game = root.game_dir(instance_id);
+    let mut items = Vec::new();
+    // (path, project, requires, dependency, on)
+    for (path, n, requires, dependency, on) in [
+        ("mods/a.jar", 1, vec![2, 5], false, true),
+        ("mods/c.jar", 3, vec![2], false, true),
+        ("mods/b.jar", 2, vec![], true, true),
+        ("mods/e.jar", 5, vec![6], true, true),
+        ("mods/f.jar", 6, vec![], true, true),
+        ("mods/g.jar", 7, vec![8], false, false),
+        ("mods/h.jar", 8, vec![], true, true),
+    ] {
+        touch(
+            &game,
+            &if on {
+                path.to_owned()
+            } else {
+                format!("{path}.disabled")
+            },
+        );
+        let mut item = locked(path, n, 100 + n);
+        item.requires = Some(requires.into_iter().map(id).collect());
+        item.dependency = dependency;
+        items.push(item);
+    }
+    content::save_lock(
+        &root,
+        instance_id,
+        &ContentLock {
+            schema_version: 1,
+            items,
+            pack: None,
+        },
+    )
+    .unwrap();
+    // The player's own mod, which the catalog knows requires B.
+    touch(&game, "mods/mine.jar");
+    let mut fake = Fake::default();
+    fake.add_version(
+        90,
+        9,
+        "mine.jar",
+        json!({"dependencies": [{"kind": "required", "projectId": id(2)}]}),
+    );
+    let mine = [known("mods/mine.jar", 9, 90)];
+    let installer = content::Installer::new("0.0.0-test").unwrap();
+    let ask = |path: &'static str, online: bool| {
+        let (installer, root, fake, mine) = (&installer, &root, &fake, &mine);
+        async move {
+            installer
+                .needed_by(
+                    online.then_some(fake),
+                    root,
+                    instance_id,
+                    if online { mine } else { &[] },
+                    path,
+                )
+                .await
+        }
+    };
+
+    let b = ask("mods/b.jar", true).await;
+    assert_eq!(b.needed_by, ["Project 1", "Project 3", "mine.jar"]);
+    // Without the catalog, what the launcher noted.
+    assert_eq!(
+        ask("mods/b.jar", false).await.needed_by,
+        ["Project 1", "Project 3"]
+    );
+    // Removing A leaves E and F unused; B is still needed by C.
+    let a = ask("mods/a.jar", true).await;
+    assert!(a.needed_by.is_empty());
+    let unused: Vec<&str> = a.unused.iter().map(|u| u.path.as_str()).collect();
+    assert_eq!(unused, ["mods/e.jar", "mods/f.jar"]);
+    assert_eq!(ask("mods/f.jar", true).await.needed_by, ["Project 5"]);
+    // A mod turned off needs nothing now, but what it needs stays for it.
+    assert!(ask("mods/h.jar", true).await.needed_by.is_empty());
+    let g = ask("mods/g.jar.disabled", true).await;
+    assert_eq!(g.unused.len(), 1);
+    assert_eq!(g.unused[0].path, "mods/h.jar");
+    // Something the catalog does not know.
+    touch(&game, "mods/unknown.jar");
+    assert_eq!(
+        ask("mods/unknown.jar", true).await,
+        content::NeededBy::default()
+    );
 }
 
 #[test]
