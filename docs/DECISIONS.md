@@ -2145,6 +2145,13 @@ archive from the Package workflow, upload it to
   still comes in, named by its slug until its page answers. Files marked early access
   or not released are left out. `lapi-mods probe` reads the JEI page with the same
   parser and prints which fields it found.
+- **Third probe (2026-10-20, after the import went live):** every proxy answers now. The
+  JEI page gives the project's ID, name, summary, logo, downloads, authors and
+  categories, but not its description, screenshots or dates by the names first tried.
+  The App Router stream gives large values by reference (`"$1f"`, a chunk elsewhere in
+  the stream, text chunks as `1f:T<length>,…`) and dates as `"$D…"`; the reader now
+  follows references, takes more names for dates and pictures, and the probe prints the
+  shape of each such field (`fields[…]`, our words and lengths only).
 
 ## D-067 — Start page feed at feed.lapi.sh
 

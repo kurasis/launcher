@@ -1616,6 +1616,44 @@ fn curseforge_pages_are_read_with_care() {
     assert_eq!(other.id, None);
     assert_eq!(other.title, "JEI & more");
 
+    // Values the stream gives by reference: a text chunk, a JSON chunk,
+    // dates as the stream writes them and as milliseconds.
+    let html_body = "<p>About\n<b>JEI</b> é</p>";
+    let project = json!({
+        "id": JEI, "slug": "jei", "gameId": 432, "name": "Just Enough Items",
+        "description": "$1f", "screenshots": "$2a",
+        "creationDate": "$D2015-11-21T00:00:00.000Z", "lastUpdated": 1_709_251_200_000u64,
+    });
+    let rsc = format!(
+        "1:{}\n2a:{}\n1f:T{:x},{html_body}3:[]\n",
+        json!(["$", "div", null, { "project": project }]),
+        json!([{ "url": "https://media.forgecdn.net/attachments/1/2/shot.png", "title": "Shot" }]),
+        html_body.len()
+    );
+    let html = format!("<script>self.__next_f.push({})</script>", json!([1, rsc]));
+    let card = curseforge::page(&html, "jei");
+    assert_eq!(card.body, html_body);
+    assert_eq!(card.gallery.len(), 1);
+    assert_eq!(card.gallery[0].title, "Shot");
+    assert_eq!(card.published, 1_448_064_000);
+    assert_eq!(card.updated, 1_709_251_200);
+    assert_eq!(
+        curseforge::shapes(&html, "jei"),
+        [
+            format!("description:ref_str{}", html_body.len()),
+            "screenshots:ref_list1".to_owned(),
+            "creationDate:str26".to_owned(),
+            "lastUpdated:num".to_owned()
+        ]
+    );
+    // A reference to nothing, or a length past the end, gives nothing.
+    let broken = json!({ "id": JEI, "slug": "jei", "gameId": 432, "description": "$99", "screenshots": "$1f" });
+    let rsc = format!("1:{}\n1f:Tffffff,<p>x", json!({ "project": broken }));
+    let html = format!("<script>self.__next_f.push({})</script>", json!([1, rsc]));
+    let card = curseforge::page(&html, "jei");
+    assert_eq!(card.body, "");
+    assert!(card.gallery.is_empty());
+
     // JSON-LD and Open Graph when there is no stream.
     let html = r#"<script type="application/ld+json">{"@context":"https://schema.org","name":"Faithful","description":"32x","image":{"url":"https://media.forgecdn.net/a.png"},"author":[{"name":"xMrVizzy"}],"dateModified":"2024-01-01T00:00:00Z"}</script>
         <meta property="og:description" content="ignored">"#;
