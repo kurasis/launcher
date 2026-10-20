@@ -1820,3 +1820,195 @@ async fn projects_the_catalog_joined_are_followed_in_the_lock() {
     let names: Vec<&str> = plan.items.iter().map(|i| i.file_name.as_str()).collect();
     assert_eq!(names, ["extra.jar"]);
 }
+
+// ----- maps -----
+
+mod maps {
+    use std::io::Write as _;
+
+    use super::*;
+    use crate::download::CancelToken;
+    use crate::mods::world;
+
+    fn sha(bytes: &[u8]) -> String {
+        use sha2::Digest as _;
+        hex::encode(sha2::Sha256::digest(bytes))
+    }
+
+    fn map_zip(entries: &[(&str, &[u8])], link: Option<&str>) -> Vec<u8> {
+        let mut zip = zip::ZipWriter::new(std::io::Cursor::new(Vec::new()));
+        let options = zip::write::SimpleFileOptions::default()
+            .compression_method(zip::CompressionMethod::Deflated);
+        for (name, bytes) in entries {
+            if name.ends_with('/') {
+                zip.add_directory(*name, options).unwrap();
+            } else {
+                zip.start_file(*name, options).unwrap();
+                zip.write_all(bytes).unwrap();
+            }
+        }
+        if let Some(link) = link {
+            zip.add_symlink(link, "/etc/passwd", options).unwrap();
+        }
+        zip.finish().unwrap().into_inner()
+    }
+
+    fn unpack(bytes: &[u8], saves: &Path, name: &str) -> LauncherResult<String> {
+        let dir = tempfile::tempdir().unwrap();
+        let archive = dir.path().join("map.zip");
+        fs::write(&archive, bytes).unwrap();
+        world::unpack(&archive, saves, name, &CancelToken::new())
+    }
+
+    #[test]
+    fn world_names_are_safe_and_never_taken() {
+        assert_eq!(
+            world::world_name("Sky Island: Remastered"),
+            "Sky Island Remastered"
+        );
+        assert_eq!(world::world_name("../../etc"), "etc");
+        assert_eq!(world::world_name("a\u{0}b\\c/d"), "a b c d");
+        assert_eq!(world::world_name("CON"), "Map");
+        assert_eq!(world::world_name("..."), "Map");
+        assert_eq!(world::world_name(""), "Map");
+        assert_eq!(world::world_name(&"x".repeat(300)).len(), 64);
+
+        let dir = tempfile::tempdir().unwrap();
+        assert_eq!(world::free_name(dir.path(), "Map"), "Map");
+        fs::create_dir(dir.path().join("Map")).unwrap();
+        fs::create_dir(dir.path().join(".Map (2).part")).unwrap();
+        assert_eq!(world::free_name(dir.path(), "Map"), "Map (3)");
+    }
+
+    #[test]
+    fn a_map_becomes_a_new_world_beside_the_players() {
+        let dir = tempfile::tempdir().unwrap();
+        let saves = dir.path().join("saves");
+        // The world one folder down, with the junk zips carry.
+        let bytes = map_zip(
+            &[
+                ("__MACOSX/Sky/level.dat", b"no"),
+                ("Sky/", b""),
+                ("Sky/level.dat", b"LEVEL"),
+                ("Sky/region/r.0.0.mca", b"REGION"),
+                ("Sky/../escape.txt", b"no"),
+                ("Sky/CON/x", b"no"),
+                ("Sky/a<b", b"no"),
+                ("readme.txt", b"outside the world"),
+            ],
+            Some("Sky/link"),
+        );
+        fs::create_dir_all(saves.join("Sky")).unwrap();
+        fs::write(saves.join("Sky/level.dat"), b"THE PLAYER'S").unwrap();
+        let name = unpack(&bytes, &saves, "Sky").unwrap();
+        assert_eq!(name, "Sky (2)");
+        assert_eq!(
+            fs::read(saves.join("Sky/level.dat")).unwrap(),
+            b"THE PLAYER'S"
+        );
+        let world = saves.join("Sky (2)");
+        assert_eq!(fs::read(world.join("level.dat")).unwrap(), b"LEVEL");
+        assert_eq!(fs::read(world.join("region/r.0.0.mca")).unwrap(), b"REGION");
+        assert!(!world.join("readme.txt").exists());
+        assert!(!world.join("link").exists());
+        assert!(!world.join("CON").exists());
+        assert!(!saves.join("escape.txt").exists() && !dir.path().join("escape.txt").exists());
+        // Nothing half-made is left beside it.
+        let names: Vec<_> = fs::read_dir(&saves)
+            .unwrap()
+            .map(|e| e.unwrap().file_name().into_string().unwrap())
+            .collect();
+        assert_eq!(names.len(), 2, "{names:?}");
+
+        // A world at the top of the zip.
+        let top = map_zip(
+            &[
+                ("level.dat", b"TOP"),
+                ("data/x.dat", b"X"),
+                ("__MACOSX/._level.dat", b"junk"),
+            ],
+            None,
+        );
+        let name = unpack(&top, &saves, "Top").unwrap();
+        assert_eq!(
+            fs::read(saves.join(&name).join("data/x.dat")).unwrap(),
+            b"X"
+        );
+        assert!(!saves.join(&name).join("__MACOSX").exists());
+    }
+
+    #[test]
+    fn archives_without_a_world_are_refused_and_leave_nothing() {
+        let dir = tempfile::tempdir().unwrap();
+        let saves = dir.path().join("saves");
+        for bytes in [
+            map_zip(&[("readme.txt", b"no world")], None),
+            map_zip(&[("a/b/level.dat", b"too deep")], None),
+            map_zip(&[("../level.dat", b"outside")], None),
+            map_zip(&[("__MACOSX/level.dat", b"junk")], None),
+            b"not a zip at all".to_vec(),
+        ] {
+            assert!(unpack(&bytes, &saves, "Map").is_err());
+        }
+        let left = fs::read_dir(&saves).map(|d| d.count()).unwrap_or(0);
+        assert_eq!(left, 0);
+    }
+
+    fn catalog_with_map(archive: &[u8], name: &str, kind: &str) -> (Fake, String) {
+        let mut fake = Fake::default();
+        fake.add_project(1, kind, "Sky Island");
+        let sha = sha(archive);
+        let value = json!({
+            "id": id(2), "projectId": id(1), "number": "1.0", "published": 1,
+            "games": ["1.21.1"], "loaders": [],
+            "files": [{"name": name, "size": archive.len(), "sha256": sha, "primary": true,
+                       "url": format!("https://files-mods.lapi.sh/f/{sha}/{name}")}],
+        });
+        let version = Version::from(&value, true).unwrap();
+        fake.versions.insert(version.id.clone(), version);
+        (fake, id(2))
+    }
+
+    #[tokio::test]
+    async fn only_a_maps_zip_is_planned() {
+        let dir = tempfile::tempdir().unwrap();
+        let archive = map_zip(&[("level.dat", b"L")], None);
+        let (fake, version) = catalog_with_map(&archive, "sky.zip", "world");
+        let plan = world::plan(&fake, dir.path(), &version).await.unwrap();
+        assert_eq!(plan.name, "Sky Island");
+        assert_eq!(plan.size, archive.len() as u64);
+        assert!(plan.kept);
+
+        let (fake, version) = catalog_with_map(&archive, "sky.zip", "mod");
+        assert!(world::plan(&fake, dir.path(), &version).await.is_err());
+        let (fake, version) = catalog_with_map(&archive, "sky.jar", "world");
+        assert!(world::plan(&fake, dir.path(), &version).await.is_err());
+    }
+
+    #[tokio::test]
+    async fn a_map_is_installed_and_its_zip_removed() {
+        let dir = tempfile::tempdir().unwrap();
+        let root = DataRoot::new(dir.path().to_path_buf()).unwrap();
+        let id = InstanceId::generate();
+        let installer = content::Installer::new("0.0.0-test").unwrap();
+        let archive = map_zip(&[("Sky/level.dat", b"L"), ("Sky/icon.png", b"P")], None);
+        let (fake, version) = catalog_with_map(&archive, "sky.zip", "world");
+        // The executor finds it in place (nothing is downloaded in a test).
+        let zip = root.instance_dir(id).join("pack/map.zip");
+        fs::create_dir_all(zip.parent().unwrap()).unwrap();
+        fs::write(&zip, &archive).unwrap();
+        let seen = std::sync::Mutex::new(Vec::new());
+        let emit = |p: content::Progress| seen.lock().unwrap().push(p.phase);
+        let name = installer
+            .install_world(&fake, &root, id, &version, &CancelToken::new(), &emit)
+            .await
+            .unwrap();
+        assert_eq!(name, "Sky Island");
+        let world = root.game_dir(id).join("saves/Sky Island");
+        assert_eq!(fs::read(world.join("icon.png")).unwrap(), b"P");
+        assert!(!zip.exists());
+        let seen = seen.lock().unwrap();
+        assert!(seen.contains(&"unpacking"), "{seen:?}");
+        assert_eq!(seen.last(), Some(&"done"));
+    }
+}

@@ -12,9 +12,10 @@ import { LinkConfirm } from './LinkConfirm';
 import { PackDialog } from './PackDialog';
 import { ProjectPage } from './ProjectPage';
 import { SearchSection } from './SearchSection';
+import { WorldDialog } from './WorldDialog';
 import styles from './Mods.module.css';
 
-export type ModsSection = Exclude<ModsKind, 'world'> | 'installed' | 'requests';
+export type ModsSection = ModsKind | 'installed' | 'requests';
 
 const SECTIONS: ModsSection[] = [
   'mod',
@@ -22,6 +23,7 @@ const SECTIONS: ModsSection[] = [
   'shader',
   'datapack',
   'modpack',
+  'world',
   'installed',
   'requests',
 ];
@@ -164,7 +166,18 @@ export function ModsView({ snapshot, instanceId, section, onSection, onInstance 
         )}
       </div>
 
-      {adding !== null && (
+      {adding?.kind === 'world' && (
+        <WorldDialog
+          target={adding}
+          onClose={() => {
+            setAdding(null);
+          }}
+          onDone={() => {
+            setRevision((r) => r + 1);
+          }}
+        />
+      )}
+      {adding !== null && adding.kind !== 'world' && (
         <AddDialog
           target={adding}
           onClose={() => {

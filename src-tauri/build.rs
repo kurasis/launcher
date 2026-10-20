@@ -112,6 +112,8 @@ fn main() {
         "mods_choose",
         "mods_plan",
         "mods_install",
+        "mods_world_plan",
+        "mods_install_world",
         "mods_pack",
         "mods_create_pack_instance",
         "mods_apply_pack",

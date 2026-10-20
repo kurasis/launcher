@@ -282,6 +282,37 @@ describe('ModsView', () => {
     });
   });
 
+  it('adds a map as a new world', async () => {
+    const calls = setup({
+      mods_project: () => ({ ...project, kind: 'world', title: 'Sky' }),
+      mods_versions: () => [
+        {
+          ...version,
+          loaders: [],
+          files: [{ name: 'sky.zip', size: 2048, sha256: null, primary: true, url: null }],
+        },
+      ],
+      mods_world_plan: () => ({ name: 'Sky (2)', size: 2048, kept: false, approval: null }),
+      mods_install_world: () => 'Sky (2)',
+    });
+    fireEvent.click(await screen.findByRole('button', { name: /Sodium/ }));
+    const article = await screen.findByRole('article', { name: 'Sky' });
+    fireEvent.click(await within(article).findByRole('button', { name: 'Add to installation' }));
+    const dialog = await screen.findByRole('dialog', { name: 'Add the map Sky to Modded' });
+    expect(await within(dialog).findByText(/new world, “Sky \(2\)” \(2.0 KiB\)/)).toBeVisible();
+    expect(within(dialog).getByText(/fetches the map from its source/)).toBeVisible();
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Add the map' }));
+    expect(await within(dialog).findByText(/The map is now the world “Sky \(2\)”/)).toBeVisible();
+    expect(named('mods_world_plan', calls)[0]?.args).toEqual({
+      payload: { instanceId: fabric.id, version: VERSION },
+    });
+    const install = named('mods_install_world', calls)[0]?.args.request as {
+      payload: Record<string, unknown>;
+    };
+    expect(install.payload).toEqual({ instanceId: fabric.id, version: VERSION });
+    expect(named('mods_install', calls)).toHaveLength(0);
+  });
+
   it('filters and orders versions, starting with what fits the installation', async () => {
     const v = (n: number, games: string[], loaders: string[], extra: Partial<ModsVersion>) => ({
       ...version,

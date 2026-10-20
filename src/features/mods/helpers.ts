@@ -44,7 +44,13 @@ export function loaderOf(kind: ModsKind, instance: InstanceSummary | null): stri
 
 /** Kinds the launcher can put into an installation now. */
 export function installable(kind: ModsKind): boolean {
-  return kind === 'mod' || kind === 'resourcepack' || kind === 'shader' || kind === 'datapack';
+  return (
+    kind === 'mod' ||
+    kind === 'resourcepack' ||
+    kind === 'shader' ||
+    kind === 'datapack' ||
+    kind === 'world'
+  );
 }
 
 /** A modpack's archive: Modrinth's `.mrpack` or CurseForge's `.zip`. */

@@ -1211,6 +1211,7 @@
         "shader": "المظللات",
         "datapack": "حزم البيانات",
         "modpack": "الحزم المجمّعة",
+        "world": "الخرائط",
         "installed": "المثبّت",
         "requests": "طلباتي"
       },
@@ -1278,7 +1279,6 @@
         "openOn": "افتح على {site}",
         "importingHint": "ما زال الفهرس يضيف هذا المشروع. تظهر الإصدارات والصور عند وصولها.",
         "gone": "لم يعد هذا المشروع لدى المصدر؛ الفهرس يحتفظ به.",
-        "worldsLater": "إضافة العوالم تأتي في إصدار لاحق من المشغّل.",
         "description": "الوصف",
         "gallery": "الصور",
         "versions": "الإصدارات",
@@ -1327,6 +1327,16 @@
         "stop": "إيقاف",
         "install": "ثبّت",
         "turnOn": "سيُشغَّل معه: {names}"
+      },
+      "world": {
+        "title": "أضف الخريطة {title} إلى {name}",
+        "becomes": "ستصبح عالمًا جديدًا باسم «{world}» ‏({size}). تبقى عوالمك كما هي.",
+        "fetchingHint": "يجلب الفهرس الخريطة من مصدرها أولًا؛ قد يستغرق ذلك بضع دقائق.",
+        "fetching": "يجلب الفهرس الخريطة من مصدرها…",
+        "downloading": "تنزيل الخريطة…",
+        "unpacking": "إضافة العالم…",
+        "done": "أصبحت الخريطة العالم «{world}». ستجده في «اللعب الفردي».",
+        "install": "أضف الخريطة"
       },
       "pack": {
         "install": "تثبيت",
@@ -2312,6 +2322,10 @@
     "This installation is too large to export as a modpack.": "هذا التثبيت أكبر من أن يُحفظ كحزمة.",
     "This installation was not made from a modpack.": "لم يُصنع هذا التثبيت من حزمة.",
     "This is another modpack than the one the installation was made from.": "هذه حزمة أخرى غير التي صُنع منها التثبيت.",
-    "Writing the modpack": "كتابة الحزمة"
+    "Writing the modpack": "كتابة الحزمة",
+    "Adding the map": "إضافة الخريطة",
+    "This is not a map.": "هذه ليست خريطة.",
+    "This map's archive has no world the launcher can add.": "لا يحتوي أرشيف هذه الخريطة على عالم يمكن للمشغّل إضافته.",
+    "This version has no map the launcher can add.": "لا يحتوي هذا الإصدار على خريطة يمكن للمشغّل إضافتها."
   }
 }

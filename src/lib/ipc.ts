@@ -103,6 +103,8 @@ import {
   type ModsExportChoice,
   type ModsExportResult,
   type ModsPlan,
+  type ModsWorldPayload,
+  type ModsWorldPlan,
   type ModsProgress,
   type ModsProject,
   type ModsSearchPage,
@@ -389,6 +391,12 @@ export const ipc = {
   /** How many files are in place; progress comes as `onModsProgress`. */
   modsInstall: (payload: ModsInstallPayload, requestId?: string): Promise<number> =>
     invoke<number>('mods_install', { request: mutation(payload, requestId) }),
+  /** What adding a map as a new world will do. */
+  modsWorldPlan: (payload: ModsWorldPayload): Promise<ModsWorldPlan> =>
+    invoke<ModsWorldPlan>('mods_world_plan', { payload }),
+  /** Adds a map as a new world; its folder name. */
+  modsInstallWorld: (payload: ModsWorldPayload, requestId?: string): Promise<string> =>
+    invoke<string>('mods_install_world', { request: mutation(payload, requestId) }),
   /** A modpack version; `prepare` asks the catalog to keep its files (once). */
   modsPack: (version: string, prepare: boolean): Promise<ModsPack> =>
     invoke<ModsPack>('mods_pack', { version, prepare }),

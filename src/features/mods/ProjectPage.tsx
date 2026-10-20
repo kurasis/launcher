@@ -302,7 +302,6 @@ export function ProjectPage({ projectRef, instance, onBack, onLink, onAdd, onIns
       {project.status === 'importing' && <Notice tone="info">{t.importingHint}</Notice>}
       {project.goneAt !== null && <Notice tone="info">{t.gone}</Notice>}
       {project.kind === 'modpack' && <Notice tone="info">{strings.mods.modpacksHint}</Notice>}
-      {project.kind === 'world' && <Notice tone="info">{t.worldsLater}</Notice>}
       {error !== null && <Notice tone="danger">{error}</Notice>}
 
       {project.body.length > 0 && (

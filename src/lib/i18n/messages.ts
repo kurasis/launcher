@@ -1281,6 +1281,7 @@ export type Messages = {
       readonly shader: string;
       readonly datapack: string;
       readonly modpack: string;
+      readonly world: string;
       readonly installed: string;
       readonly requests: string;
     };
@@ -1348,7 +1349,6 @@ export type Messages = {
       readonly openOn: (values: { site: string | number }) => string;
       readonly importingHint: string;
       readonly gone: string;
-      readonly worldsLater: string;
       readonly description: string;
       readonly gallery: string;
       readonly versions: string;
@@ -1397,6 +1397,16 @@ export type Messages = {
       readonly stop: string;
       readonly install: string;
       readonly turnOn: (values: { names: string | number }) => string;
+    };
+    readonly world: {
+      readonly title: (values: { title: string | number; name: string | number }) => string;
+      readonly becomes: (values: { world: string | number; size: string | number }) => string;
+      readonly fetchingHint: string;
+      readonly fetching: string;
+      readonly downloading: string;
+      readonly unpacking: string;
+      readonly done: (values: { world: string | number }) => string;
+      readonly install: string;
     };
     readonly pack: {
       readonly install: string;
