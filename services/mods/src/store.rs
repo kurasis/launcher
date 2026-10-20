@@ -204,6 +204,15 @@ pub struct Job {
     pub attempts: i64,
 }
 
+/// A file of a version that is kept here, as `upsert_versions` finds it.
+struct KeptFile {
+    sha1: Option<String>,
+    sha512: Option<String>,
+    sha256: String,
+    name: String,
+    size: i64,
+}
+
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct FileRow {
@@ -287,6 +296,18 @@ impl Store {
             .query_row(
                 "SELECT project_id FROM project_source WHERE source = ?1 AND source_id = ?2",
                 params![source, source_id],
+                |r| r.get(0),
+            )
+            .optional()
+            .map_err(sql)
+    }
+
+    /// A project's ID at a source.
+    pub fn source_id(&self, project: &str, source: &str) -> Result<Option<String>> {
+        self.db()
+            .query_row(
+                "SELECT source_id FROM project_source WHERE project_id = ?1 AND source = ?2",
+                params![project, source],
                 |r| r.get(0),
             )
             .optional()
@@ -610,7 +631,8 @@ impl Store {
             let id = match existing {
                 Some(id) => {
                     tx.execute(
-                        "UPDATE version SET number = ?2, name = ?3, changelog = ?4, channel = ?5,
+                        "UPDATE version SET number = ?2, name = ?3,
+                           changelog = CASE WHEN ?8 THEN ?4 ELSE changelog END, channel = ?5,
                            published = ?6, downloads = ?7, gone_at = NULL WHERE id = ?1",
                         params![
                             id,
@@ -619,7 +641,8 @@ impl Store {
                             v.changelog,
                             v.channel,
                             v.published,
-                            v.downloads
+                            v.downloads,
+                            v.details
                         ],
                     )
                     .map_err(sql)?;
@@ -666,29 +689,53 @@ impl Store {
                 )
                 .map_err(sql)?;
             }
-            let kept: Vec<(Option<String>, Option<String>)> = {
+            let kept: Vec<KeptFile> = {
                 let mut q = tx
-                    .prepare("SELECT sha1, sha256 FROM version_file WHERE version_id = ?1 AND sha256 IS NOT NULL")
+                    .prepare(
+                        "SELECT sha1, sha512, sha256, file_name, size FROM version_file
+                         WHERE version_id = ?1 AND sha256 IS NOT NULL",
+                    )
                     .map_err(sql)?;
-                q.query_map([&id], |r| Ok((r.get(0)?, r.get(1)?)))
-                    .map_err(sql)?
-                    .collect::<std::result::Result<_, _>>()
-                    .map_err(sql)?
+                q.query_map([&id], |r| {
+                    Ok(KeptFile {
+                        sha1: r.get(0)?,
+                        sha512: r.get(1)?,
+                        sha256: r.get(2)?,
+                        name: r.get(3)?,
+                        size: r.get(4)?,
+                    })
+                })
+                .map_err(sql)?
+                .collect::<std::result::Result<_, _>>()
+                .map_err(sql)?
             };
             tx.execute("DELETE FROM version_file WHERE version_id = ?1", [&id])
                 .map_err(sql)?;
             for (ord, f) in v.files.iter().enumerate() {
-                let sha256 = kept
-                    .iter()
-                    .find(|(sha1, _)| sha1.is_some() && *sha1 == f.sha1)
-                    .and_then(|(_, s)| s.clone());
+                // The same file: by its SHA-1, or (a source with no hashes) by
+                // its name and size.
+                let same = kept.iter().find(|k| match &f.sha1 {
+                    Some(sha1) => k.sha1.as_ref() == Some(sha1),
+                    None => k.name == f.name && k.size == f.size,
+                });
+                let sha1 = f.sha1.clone().or_else(|| same.and_then(|k| k.sha1.clone()));
+                let sha512 = f
+                    .sha512
+                    .clone()
+                    .or_else(|| same.and_then(|k| k.sha512.clone()));
+                let sha256 = same.map(|k| k.sha256.clone());
                 tx.execute(
                     "INSERT INTO version_file (version_id, ord, file_name, size, sha1, sha512, sha256,
                        is_primary, role, origin_url)
                      VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10)",
-                    params![id, ord as i64, f.name, f.size, f.sha1, f.sha512, sha256, f.primary, f.role, f.url],
+                    params![id, ord as i64, f.name, f.size, sha1, sha512, sha256, f.primary, f.role, f.url],
                 )
                 .map_err(sql)?;
+            }
+            if !v.details {
+                Self::refresh_files_state(&tx, &id)?;
+                ids.push(id);
+                continue;
             }
             tx.execute("DELETE FROM dependency WHERE version_id = ?1", [&id])
                 .map_err(sql)?;
@@ -830,10 +877,14 @@ impl Store {
     }
 
     /// Links a kept file to its place in a version.
+    /// A file is kept; a source that gave no hashes gets ours.
     pub fn file_kept(&self, version: &str, ord: i64, sha256: &str) -> Result<()> {
         let db = self.db();
         db.execute(
-            "UPDATE version_file SET sha256 = ?3 WHERE version_id = ?1 AND ord = ?2",
+            "UPDATE version_file SET sha256 = ?3,
+               sha1 = coalesce(sha1, (SELECT sha1 FROM blob WHERE sha256 = ?3)),
+               sha512 = coalesce(sha512, (SELECT sha512 FROM blob WHERE sha256 = ?3))
+             WHERE version_id = ?1 AND ord = ?2",
             params![version, ord, sha256],
         )
         .map_err(sql)?;

@@ -151,6 +151,34 @@ fn page_data(page: &[u8]) -> String {
     }
 }
 
+/// What the CurseForge adapter reads from the project's page: our words and
+/// numbers (whether the ID is the project's, which fields came, how many).
+fn card_report(page: &[u8]) -> String {
+    let card = crate::curseforge::page(&String::from_utf8_lossy(page), SLUG);
+    let mut words = vec![match card.id {
+        Some(PROJECT) => "id_ok".to_owned(),
+        Some(_) => "id_other".to_owned(),
+        None => "no_id".to_owned(),
+    }];
+    for (name, there) in [
+        ("title", !card.title.is_empty()),
+        ("summary", !card.summary.is_empty()),
+        ("icon", card.icon.is_some()),
+        ("downloads", card.downloads > 0),
+        ("published", card.published > 0),
+        ("updated", card.updated > 0),
+    ] {
+        if there {
+            words.push(name.to_owned());
+        }
+    }
+    words.push(format!("body:{}", card.body.len()));
+    words.push(format!("authors:{}", card.authors.len()));
+    words.push(format!("gallery:{}", card.gallery.len()));
+    words.push(format!("categories:{}", card.categories.len()));
+    words.join(",")
+}
+
 /// A proxy's address with another scheme (`http`, `socks5h`), to see
 /// whether the proxy speaks another protocol than its address says.
 pub fn with_scheme(proxy: &str, scheme: &str) -> Option<String> {
@@ -195,7 +223,14 @@ pub async fn run(client: &Client, tmp: &Path) -> Vec<String> {
                     })
                 }
                 Look::PageData => match &result {
-                    Ok(r) if r.status == 200 => Some(page_data(&read())),
+                    Ok(r) if r.status == 200 => {
+                        let page = read();
+                        Some(if check.name == "cf_project_page" {
+                            format!("{} {}", page_data(&page), card_report(&page))
+                        } else {
+                            page_data(&page)
+                        })
+                    }
                     // One hop within the site, as a browser would.
                     Ok(r) if (300..400).contains(&r.status) => {
                         match r.location.as_deref().filter(|l| same_site(l)) {

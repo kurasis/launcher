@@ -49,7 +49,7 @@ export function installable(kind: ModsKind): boolean {
 
 const FAILURES = [
   'bad_input',
-  'curseforge_later',
+  'curseforge_file_link',
   'nothing_found',
   'not_found',
   'timeout',

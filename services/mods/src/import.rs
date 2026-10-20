@@ -15,6 +15,13 @@
 //!
 //! Older versions keep their metadata only, until someone asks for their
 //! files (`POST /v1/versions/{id}/fetch`); then they are kept for good too.
+//!
+//! CurseForge (stage 4) has no key here: a project's card comes from its
+//! page, its files (CurseForge's versions) a page at a time from the site's
+//! API, newest first, and the dependencies of the files fetched at once one
+//! by one. The site gives no hashes, so a file must have the size the site
+//! names; it comes over TLS from forgecdn, and our hashes are made when it is
+//! kept.
 
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
@@ -26,8 +33,8 @@ use crate::App;
 use crate::blobs::{Hashed, hash_file};
 use crate::fetch::FetchError;
 use crate::input::{self, Input};
-use crate::model::newest_per_pair;
-use crate::modrinth;
+use crate::model::{SourceProject, newest_per_pair};
+use crate::{curseforge, modrinth};
 
 pub fn now() -> i64 {
     chrono::Utc::now().timestamp()
@@ -36,6 +43,9 @@ pub fn now() -> i64 {
 /// Dependencies are followed this deep, at most this many from a project.
 pub const MAX_DEPTH: i64 = 16;
 const MAX_DEPENDENCIES: usize = 50;
+/// Pages of a CurseForge project's files read at once (newest first, 50 a
+/// page); older files are not listed until the project has fewer.
+const MAX_CURSEFORGE_PAGES: usize = 20;
 /// The largest file kept (a modpack's server files can be big).
 pub const MAX_FILE: u64 = 2 * 1024 * 1024 * 1024;
 const MAX_IMAGE: u64 = 20 * 1024 * 1024;
@@ -278,7 +288,17 @@ async fn resolve(app: &App, id: &str) -> Result<(), JobError> {
     };
     match input::parse(&request.input) {
         None => fail("bad_input"),
-        Some(Input::CurseForge) => fail("curseforge_later"),
+        Some(Input::CurseForgeFile) => fail("curseforge_file_link"),
+        Some(Input::CurseForge { class, slug, file }) => {
+            let reference = curseforge::Ref {
+                id: None,
+                class,
+                slug,
+            }
+            .text();
+            let version = file.map(|f| format!("{f}@{reference}"));
+            start(app, id, curseforge::SOURCE, &reference, version.as_deref())
+        }
         Some(Input::Name(words)) => {
             let found = app
                 .client
@@ -322,7 +342,13 @@ pub fn start(
     project: &str,
     version: Option<&str>,
 ) -> Result<(), JobError> {
-    let known = app.store.project_by_source_ref(source, project)?;
+    // CurseForge's projects are known here by their slug.
+    let lookup = if source == curseforge::SOURCE {
+        curseforge::Ref::parse(project).map_or_else(|| project.to_owned(), |r| r.slug)
+    } else {
+        project.to_owned()
+    };
+    let known = app.store.project_by_source_ref(source, &lookup)?;
     app.store
         .set_request(request, "importing", None, known.as_deref(), None, now())?;
     if !queue_project(app, source, project, 0, Some(request), PROJECT_FRESH)?
@@ -342,7 +368,9 @@ pub fn start(
         return Ok(());
     }
     if let Some(version) = version {
-        match app.store.version_by_source(source, version)? {
+        // A CurseForge file is queued as `<file>@<project>`.
+        let theirs = version.split_once('@').map_or(version, |(v, _)| v);
+        match app.store.version_by_source(source, theirs)? {
             Some(ours) => {
                 queue_files(app, &ours, Some(request))?;
             }
@@ -361,6 +389,9 @@ async fn project(
     depth: i64,
     request: Option<&str>,
 ) -> Result<(), JobError> {
+    if source == curseforge::SOURCE {
+        return project_curseforge(app, reference, depth, request).await;
+    }
     if source != modrinth::SOURCE || !modrinth::is_ref(reference) {
         return Err(JobError::new("unsupported_source", false));
     }
@@ -435,13 +466,20 @@ async fn project(
             }
         }
     }
+    pictures(app, &id, &found)?;
+    app.store.set_project_status(&id, "ready")?;
+    Ok(())
+}
+
+/// Queues a project's icon, gallery and the pictures in its description.
+fn pictures(app: &App, id: &str, found: &SourceProject) -> Result<(), JobError> {
     let picture = |kind: &str, url: &str| -> Result<bool, String> {
         app.store.enqueue(
             &format!("image:{id}:{kind}:{url}"),
             "image",
             &json!({ "project": id, "kind": kind, "url": url }),
             None,
-            Some(&id),
+            Some(id),
             now(),
             None,
         )
@@ -457,12 +495,260 @@ async fn project(
         "body",
         &json!({ "project": id }),
         None,
-        Some(&id),
+        Some(id),
         now(),
         Some(0),
     )?;
+    Ok(())
+}
+
+/// A CurseForge project: its card from its page, its files from the site's
+/// API, the dependencies of those fetched at once.
+async fn project_curseforge(
+    app: &App,
+    reference: &str,
+    depth: i64,
+    request: Option<&str>,
+) -> Result<(), JobError> {
+    let Some(r) = curseforge::Ref::parse(reference) else {
+        return Err(JobError::new("unsupported_source", false));
+    };
+    let kind = curseforge::kind_of_class(&r.class)
+        .ok_or_else(|| JobError::new("unsupported_kind", false))?;
+    let page_url = curseforge::page_url(&r.class, &r.slug);
+    // The page gives the card, and the ID when the reference has none; a
+    // dependency (which has its ID) goes on without it.
+    let card = match app
+        .client
+        .page(&page_url, curseforge::MAX_PAGE as u64)
+        .await
+    {
+        Ok(Some(html)) => Some(curseforge::page(&html, &r.slug)),
+        Ok(None) if r.id.is_none() => return Err(JobError::new("not_found", false)),
+        Err(e) if r.id.is_none() => return Err(e.into()),
+        _ => None,
+    };
+    let source_id =
+        r.id.or_else(|| card.as_ref().and_then(|c| c.id))
+            .ok_or_else(|| JobError::new("bad_answer", true))?;
+    let known = app
+        .store
+        .project_by_source(curseforge::SOURCE, &source_id.to_string())?;
+    let (id, found) = match (card, known) {
+        // Without its page, a project already here keeps its card.
+        (None, Some(known)) => (known, None),
+        (card, _) => {
+            let card = card.unwrap_or_default();
+            let allowed = |url: &String| crate::fetch::site(url).is_some();
+            let found = SourceProject {
+                source: curseforge::SOURCE,
+                source_id: source_id.to_string(),
+                slug: r.slug.clone(),
+                kind,
+                title: if card.title.is_empty() {
+                    r.slug.clone()
+                } else {
+                    card.title
+                },
+                summary: card.summary,
+                body: card.body,
+                license: String::new(),
+                icon_url: card.icon.filter(allowed),
+                client_side: "unknown".to_owned(),
+                server_side: "unknown".to_owned(),
+                downloads: card.downloads,
+                followers: 0,
+                categories: card.categories,
+                authors: card
+                    .authors
+                    .into_iter()
+                    .map(|name| (name, String::new()))
+                    .collect(),
+                gallery: card
+                    .gallery
+                    .into_iter()
+                    .filter(|g| allowed(&g.url))
+                    .collect(),
+                url: page_url.clone(),
+                published: card.published,
+                updated: card.updated,
+            };
+            (app.store.upsert_project(&found, now())?, Some(found))
+        }
+    };
+    if let Some(request) = request
+        && depth == 0
+    {
+        app.store
+            .set_request(request, "importing", None, Some(&id), None, now())?;
+    }
+    let mut versions = Vec::new();
+    let mut complete = false;
+    for index in 0..MAX_CURSEFORGE_PAGES {
+        let Some(answer) = app
+            .client
+            .json(&curseforge::files_url(source_id, index))
+            .await?
+        else {
+            return Err(JobError::new("not_found", false));
+        };
+        let (mut list, entries, total) = curseforge::files(source_id, &answer);
+        versions.append(&mut list);
+        if entries < curseforge::PAGE_SIZE || (index + 1) * curseforge::PAGE_SIZE >= total {
+            complete = true;
+            break;
+        }
+    }
+    let chosen = newest_per_pair(&versions);
+    let mut needed = Vec::new();
+    for &i in chosen.iter().take(200) {
+        let Ok(file) = versions[i].source_id.parse::<u64>() else {
+            continue;
+        };
+        // A file's dependencies are good to have; without them it still installs.
+        if let Ok(Some(answer)) = app
+            .client
+            .json(&curseforge::dependencies_url(source_id, file))
+            .await
+        {
+            let found = curseforge::dependencies(&answer);
+            versions[i].dependencies = found.iter().map(|n| n.dependency.clone()).collect();
+            needed.extend(found);
+        }
+        if let Ok(Some(answer)) = app
+            .client
+            .json(&curseforge::changelog_url(source_id, file))
+            .await
+        {
+            versions[i].changelog = curseforge::changelog(&answer);
+        }
+        versions[i].details = true;
+    }
+    let ids = app
+        .store
+        .upsert_versions(&id, curseforge::SOURCE, &versions)?;
+    if complete {
+        for (ours, theirs) in app.store.version_sources(&id, curseforge::SOURCE)? {
+            if !versions.iter().any(|v| v.source_id == theirs) {
+                app.store.mark_version_gone(&ours, now())?;
+            }
+        }
+    }
+    for &i in &chosen {
+        queue_files(app, &ids[i], request)?;
+    }
+    queue_curseforge_dependencies(app, &needed, depth, request)?;
+    if let Some(found) = &found {
+        pictures(app, &id, found)?;
+    }
     app.store.set_project_status(&id, "ready")?;
     Ok(())
+}
+
+/// Queues the projects a CurseForge file requires (each once).
+fn queue_curseforge_dependencies(
+    app: &App,
+    needed: &[curseforge::Needed],
+    depth: i64,
+    request: Option<&str>,
+) -> Result<(), JobError> {
+    if depth >= MAX_DEPTH {
+        return Ok(());
+    }
+    let mut queued: Vec<&str> = Vec::new();
+    for need in needed {
+        if need.dependency.kind != "required" || queued.len() >= MAX_DEPENDENCIES {
+            continue;
+        }
+        let Some(project) = need.dependency.project.as_deref() else {
+            continue;
+        };
+        if queued.contains(&project) {
+            continue;
+        }
+        queued.push(project);
+        let reference = curseforge::Ref {
+            id: curseforge::id(project),
+            class: need.class.to_owned(),
+            slug: need.slug.clone(),
+        };
+        queue_project(
+            app,
+            curseforge::SOURCE,
+            &reference.text(),
+            depth + 1,
+            request,
+            DEPENDENCY_FRESH,
+        )?;
+    }
+    Ok(())
+}
+
+/// One CurseForge file a page's address names (`<file>@<project>`).
+async fn version_curseforge(
+    app: &App,
+    text: &str,
+    depth: i64,
+    request: Option<&str>,
+) -> Result<(), JobError> {
+    let bad = || JobError::new("unsupported_source", false);
+    let (file, reference) = text.split_once('@').ok_or_else(bad)?;
+    let file = curseforge::id(file).ok_or_else(bad)?;
+    let r = curseforge::Ref::parse(reference).ok_or_else(bad)?;
+    let Some(project) = app
+        .store
+        .project_by_source_ref(curseforge::SOURCE, &r.slug)?
+    else {
+        // Its project first; this job waits for it.
+        queue_project(
+            app,
+            curseforge::SOURCE,
+            reference,
+            depth,
+            request,
+            DEPENDENCY_FRESH,
+        )?;
+        return Err(JobError::new("waiting_for_project", true));
+    };
+    let source_id = app
+        .store
+        .source_id(&project, curseforge::SOURCE)?
+        .as_deref()
+        .and_then(curseforge::id)
+        .ok_or_else(|| JobError::new("bad_answer", false))?;
+    let Some(answer) = app
+        .client
+        .json(&curseforge::file_url(source_id, file))
+        .await?
+    else {
+        return Err(JobError::new("not_found", false));
+    };
+    let mut found = answer
+        .get("data")
+        .and_then(|data| curseforge::file(source_id, data))
+        .ok_or_else(|| JobError::new("not_found", false))?;
+    let mut needed = Vec::new();
+    if let Ok(Some(answer)) = app
+        .client
+        .json(&curseforge::dependencies_url(source_id, file))
+        .await
+    {
+        needed = curseforge::dependencies(&answer);
+        found.dependencies = needed.iter().map(|n| n.dependency.clone()).collect();
+    }
+    if let Ok(Some(answer)) = app
+        .client
+        .json(&curseforge::changelog_url(source_id, file))
+        .await
+    {
+        found.changelog = curseforge::changelog(&answer);
+    }
+    found.details = true;
+    let ids =
+        app.store
+            .upsert_versions(&project, curseforge::SOURCE, std::slice::from_ref(&found))?;
+    queue_files(app, &ids[0], request)?;
+    queue_curseforge_dependencies(app, &needed, depth, request)
 }
 
 async fn version(
@@ -472,6 +758,9 @@ async fn version(
     depth: i64,
     request: Option<&str>,
 ) -> Result<(), JobError> {
+    if source == curseforge::SOURCE {
+        return version_curseforge(app, id, depth, request).await;
+    }
     if source != modrinth::SOURCE || !modrinth::is_ref(id) {
         return Err(JobError::new("unsupported_source", false));
     }

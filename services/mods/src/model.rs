@@ -75,6 +75,9 @@ pub struct SourceVersion {
     pub loaders: Vec<String>,
     pub files: Vec<SourceFile>,
     pub dependencies: Vec<SourceDependency>,
+    /// Whether the changelog and dependencies were fetched; when not (older
+    /// CurseForge files, asked for a page at a time), those already here stay.
+    pub details: bool,
 }
 
 /// A text from a source, bounded: control characters out (newlines and tabs
