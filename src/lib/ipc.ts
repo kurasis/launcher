@@ -103,6 +103,9 @@ import {
   type ModsExportChoice,
   type ModsExportResult,
   type ModsPlan,
+  type ModsImportCreatePayload,
+  type ModsImportFound,
+  type ModsImportReport,
   type ModsWorldPayload,
   type ModsWorldPlan,
   type ModsProgress,
@@ -397,6 +400,20 @@ export const ipc = {
   /** Adds a map as a new world; its folder name. */
   modsInstallWorld: (payload: ModsWorldPayload, requestId?: string): Promise<string> =>
     invoke<string>('mods_install_world', { request: mutation(payload, requestId) }),
+  /** Picks an instance, game folder or mods folder (or a zip of one); null when closed. */
+  modsImportPick: (folder: boolean, title: string): Promise<ModsImportFound | null> =>
+    invoke<ModsImportFound | null>('mods_import_pick', { folder, title }),
+  /** Makes the installation for what was picked. */
+  modsImportCreate: (
+    payload: ModsImportCreatePayload,
+    requestId?: string,
+  ): Promise<InstanceSummary> =>
+    invoke<InstanceSummary>('mods_import_create', { request: mutation(payload, requestId) }),
+  /** Copies what was picked into the installation made for it. */
+  modsImportApply: (instanceId: string, requestId?: string): Promise<ModsImportReport> =>
+    invoke<ModsImportReport>('mods_import_apply', {
+      request: mutation({ instanceId }, requestId),
+    }),
   /** A modpack version; `prepare` asks the catalog to keep its files (once). */
   modsPack: (version: string, prepare: boolean): Promise<ModsPack> =>
     invoke<ModsPack>('mods_pack', { version, prepare }),

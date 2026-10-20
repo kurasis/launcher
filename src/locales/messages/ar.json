@@ -1338,6 +1338,38 @@
         "done": "أصبحت الخريطة العالم «{world}». ستجده في «اللعب الفردي».",
         "install": "أضف الخريطة"
       },
+      "bringIn": {
+        "button": "انقل من مشغّل آخر",
+        "title": "نقل تثبيت",
+        "intro": "انقل نسخة من Prism Launcher أو MultiMC (مجلدها أو ملف zip الذي تصدّره)، أو مجلد لعبة فيه تعديلات، أو مجلد تعديلات. تُنسخ التعديلات والإعدادات وحزم الموارد والعوالم إلى تثبيت جديد؛ ولا يتغيّر شيء في الأصل.",
+        "pickZip": "اختر ملف zip…",
+        "pickFolder": "اختر مجلدًا…",
+        "pickZipTitle": "اختر النسخة المصدَّرة (zip)",
+        "pickFolderTitle": "اختر مجلد النسخة أو مجلد التعديلات",
+        "reading": "أقرأ محتواه…",
+        "formats": {
+          "prism": "نسخة Prism Launcher أو MultiMC",
+          "folder": "مجلد تعديلات"
+        },
+        "summary": "{files, plural, zero {لا ملفات} one {ملف واحد} two {ملفان} few {# ملفات} many {# ملفًا} other {# ملف}}، {size} · {mods, plural, zero {لا تعديلات} one {تعديل واحد} two {تعديلان} few {# تعديلات} many {# تعديلًا} other {# تعديل}}",
+        "guessed": "حُدّد إصدار Minecraft ومحمّل التعديلات من التعديلات نفسها. تحقّق منهما قبل المتابعة.",
+        "noGame": "تعذّر معرفة إصدار Minecraft. اختره.",
+        "leftOut": "{count, plural, zero {لا ملفات مستبعدة} one {ملف واحد مستبعد} two {ملفان مستبعدان} few {# ملفات مستبعدة} many {# ملفًا مستبعدًا} other {# ملف مستبعد}}: سجلات وبرامج وملفات أخرى ليست من محتوى اللعبة.",
+        "name": "اسم التثبيت",
+        "game": "إصدار Minecraft",
+        "loader": "محمّل التعديلات",
+        "noLoader": "بلا محمّل تعديلات",
+        "create": "أنشئ التثبيت",
+        "creating": "أنشئ التثبيت…",
+        "copying": "نسخ الملفات: {files} من {total}",
+        "stop": "إيقاف",
+        "stopped": "أُنشئ التثبيت لكن لم تُنسخ كل الملفات بعد. حاول مجددًا لإكمال النقل.",
+        "retry": "حاول مجددًا",
+        "done": "«{name}» جاهز: {count, plural, zero {لا ملفات} one {ملف واحد} two {ملفان} few {# ملفات} many {# ملفًا} other {# ملف}}. اضغط «العب»: تُنزَّل اللعبة ومحمّل التعديلات أولًا.",
+        "another": "اختر شيئًا آخر",
+        "cancel": "إلغاء",
+        "close": "إغلاق"
+      },
       "pack": {
         "install": "تثبيت",
         "title": "تثبيت {title}",
@@ -2326,6 +2358,12 @@
     "Adding the map": "إضافة الخريطة",
     "This is not a map.": "هذه ليست خريطة.",
     "This map's archive has no world the launcher can add.": "لا يحتوي أرشيف هذه الخريطة على عالم يمكن للمشغّل إضافته.",
-    "This version has no map the launcher can add.": "لا يحتوي هذا الإصدار على خريطة يمكن للمشغّل إضافتها."
+    "This version has no map the launcher can add.": "لا يحتوي هذا الإصدار على خريطة يمكن للمشغّل إضافتها.",
+    "The launcher found no installation it can bring in here: no Prism Launcher or MultiMC instance, mods folder or game folder.": "لم يجد المشغّل هنا تثبيتًا يمكنه نقله: لا نسخة Prism Launcher أو MultiMC، ولا مجلد تعديلات أو مجلد لعبة.",
+    "This has too many files to bring in. Choose the instance or its mods folder.": "فيه ملفات أكثر من أن تُنقل. اختر النسخة نفسها أو مجلد تعديلاتها.",
+    "Bringing in the installation": "نقل التثبيت",
+    "Choose what to bring in first.": "اختر أولًا ما تريد نقله.",
+    "An installation was made for this already.": "أُنشئ تثبيت لهذا من قبل.",
+    "This mod loader has no version for this Minecraft version.": "لا يوجد لمحمّل التعديلات هذا إصدار لهذا الإصدار من Minecraft."
   }
 }

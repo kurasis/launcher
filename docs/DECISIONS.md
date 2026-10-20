@@ -2029,7 +2029,7 @@ archive from the Package workflow, upload it to
 
 ## D-066 — Catalog of mods at mods.lapi.sh
 
-- **Status:** accepted (owner request, 2026-10-19), stages 1–4 of 6 · **Affects:** the new service `services/mods` (`https://mods.lapi.sh`, files at
+- **Status:** accepted (owner request, 2026-10-19), stages 1–4 of 6 and stage 5 but for packwiz · **Affects:** the new service `services/mods` (`https://mods.lapi.sh`, files at
   `https://files-mods.lapi.sh`, `/home/www/lapi/mods`), the account service's token
   audience. The full design: the project's design document "Вкладка Моды и каталог".
 - **Goal.** A Mods tab with modpacks, mods, resource packs, shaders and worlds that does
@@ -2299,6 +2299,22 @@ archive from the Package workflow, upload it to
   title, or `title (2)`, `(3)`… when a world has that name, so no world of the player's
   is ever overwritten. The zip is removed after. A map is not recorded in the content
   lock: once played, it is the player's world.
+- **From other launchers and folders (stage 5, 2026-10-20).** "Bring in from another
+  launcher" on the Installations screen makes a new installation from a Prism Launcher or
+  MultiMC instance (its folder, or the zip it exports), a game folder with `mods/` (at the
+  top, in `.minecraft/` or `minecraft/`, or one folder down), or a folder of `.jar` files
+  (they go into `mods/`). The player picks it in the native dialog; the core keeps the
+  pick (`mods/import.rs`, `mods_import_pick`), so the window never names a path, and
+  copies only into the installation made for it (`mods_import_create`,
+  `mods_import_apply`). Only what a pack may write is copied (`pack_path`), links are not
+  followed, at most 200 000 entries, 50 000 files and 32 GiB. The game version and loader
+  come from `mmc-pack.json` (Forge's `47.2.0` is matched to `1.20.1-47.2.0` in the loader's
+  list); for a folder they are guessed from most mods' `fabric.mod.json`,
+  `quilt.mod.json` (one Quilt mod makes it Quilt), `META-INF/mods.toml`,
+  `META-INF/neoforge.mods.toml` or `mcmod.info`, and the player can change both. The
+  loader's version is the one the source names, else the recommended, else the newest
+  stable. A copy that stopped finishes on a retry, keeping files already in place. The
+  catalog knows the copied mods by hash as it does any file of the player's.
 
 ## D-067 — Start page feed at feed.lapi.sh
 

@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-mods-import-pick"
+description = "Enables the mods_import_pick command without any pre-configured scope."
+commands.allow = ["mods_import_pick"]
+
+[[permission]]
+identifier = "deny-mods-import-pick"
+description = "Denies the mods_import_pick command without any pre-configured scope."
+commands.deny = ["mods_import_pick"]

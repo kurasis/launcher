@@ -1,10 +1,12 @@
 import { useState } from 'react';
 import { Button } from '../../components/Button';
 import { Notice } from '../../components/Notice';
+import forms from '../../components/forms.module.css';
 import type { AppSnapshot } from '../../lib/contracts';
 import { ipc } from '../../lib/ipc';
 import { strings } from '../../lib/strings';
 import { useCommand } from '../../lib/useCommand';
+import { ImportDialog } from '../mods/ImportDialog';
 import { CrashHelp } from './CrashHelp';
 import { CreateInstanceForm } from './CreateInstanceForm';
 import { InstallPanel } from './InstallPanel';
@@ -34,6 +36,7 @@ export function InstancesView({
 }: InstancesViewProps) {
   const [creating, setCreating] = useState(createVersion !== null);
   const [deleted, setDeleted] = useState<string | null>(null);
+  const [bringing, setBringing] = useState(false);
   const select = useCommand((requestId: string, id: string) =>
     ipc.setAppSettings({ selectedInstanceId: id }, requestId),
   );
@@ -65,7 +68,7 @@ export function InstancesView({
         />
         {select.error !== null && <Notice tone="danger">{select.error}</Notice>}
         {!creating && (
-          <div>
+          <div className={forms.actions}>
             <Button
               variant="primary"
               onClick={() => {
@@ -74,7 +77,26 @@ export function InstancesView({
             >
               {t.create}
             </Button>
+            <Button
+              disabled={!snapshot.settings.writable}
+              onClick={() => {
+                setBringing(true);
+              }}
+            >
+              {strings.mods.bringIn.button}
+            </Button>
           </div>
+        )}
+        {bringing && (
+          <ImportDialog
+            onClose={() => {
+              setBringing(false);
+            }}
+            onDone={(id) => {
+              // The new installation is the one to play next.
+              if (id !== selectedId) void select.run(id);
+            }}
+          />
         )}
       </section>
       <div className={styles.column}>

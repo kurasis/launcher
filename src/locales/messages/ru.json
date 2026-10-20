@@ -1337,6 +1337,38 @@
         "done": "Карта теперь мир «{world}». Он в «Одиночной игре».",
         "install": "Добавить карту"
       },
+      "bringIn": {
+        "button": "Перенести из другого лаунчера",
+        "title": "Перенос установки",
+        "intro": "Перенесите экземпляр Prism Launcher или MultiMC (его папку или zip, который он экспортирует), папку игры с модами или просто папку с модами. Моды, настройки, пакеты ресурсов и миры скопируются в новую установку; исходные файлы не меняются.",
+        "pickZip": "Выбрать zip…",
+        "pickFolder": "Выбрать папку…",
+        "pickZipTitle": "Выберите экспортированный экземпляр (zip)",
+        "pickFolderTitle": "Выберите папку экземпляра или модов",
+        "reading": "Смотрю, что внутри…",
+        "formats": {
+          "prism": "Экземпляр Prism Launcher или MultiMC",
+          "folder": "Папка с модами"
+        },
+        "summary": "{files, plural, one {# файл} few {# файла} many {# файлов} other {# файла}}, {size} · {mods, plural, one {# мод} few {# мода} many {# модов} other {# мода}}",
+        "guessed": "Версия Minecraft и загрузчик модов определены по самим модам. Проверьте их, прежде чем продолжить.",
+        "noGame": "Не удалось определить версию Minecraft. Выберите её.",
+        "leftOut": "{count, plural, one {# файл не переносится} few {# файла не переносятся} many {# файлов не переносятся} other {# файла не переносятся}}: логи, программы и другие файлы, которые не относятся к игре.",
+        "name": "Название установки",
+        "game": "Версия Minecraft",
+        "loader": "Загрузчик модов",
+        "noLoader": "Без загрузчика",
+        "create": "Создать установку",
+        "creating": "Создаю установку…",
+        "copying": "Копирую файлы: {files} из {total}",
+        "stop": "Остановить",
+        "stopped": "Установка создана, но перенесены ещё не все файлы. Попробуйте снова, чтобы закончить.",
+        "retry": "Попробовать снова",
+        "done": "«{name}» готова: {count, plural, one {# файл} few {# файла} many {# файлов} other {# файла}}. Нажмите «Играть»: сначала скачаются игра и загрузчик модов.",
+        "another": "Выбрать другое",
+        "cancel": "Отмена",
+        "close": "Закрыть"
+      },
       "pack": {
         "install": "Установить",
         "title": "Установка «{title}»",
@@ -2325,6 +2357,12 @@
     "Adding the map": "Добавление карты",
     "This is not a map.": "Это не карта.",
     "This map's archive has no world the launcher can add.": "В архиве этой карты нет мира, который лаунчер может добавить.",
-    "This version has no map the launcher can add.": "В этой версии нет карты, которую лаунчер может добавить."
+    "This version has no map the launcher can add.": "В этой версии нет карты, которую лаунчер может добавить.",
+    "The launcher found no installation it can bring in here: no Prism Launcher or MultiMC instance, mods folder or game folder.": "Здесь нет установки, которую лаунчер может перенести: ни экземпляра Prism Launcher или MultiMC, ни папки с модами, ни папки игры.",
+    "This has too many files to bring in. Choose the instance or its mods folder.": "Здесь слишком много файлов для переноса. Выберите сам экземпляр или его папку с модами.",
+    "Bringing in the installation": "Перенос установки",
+    "Choose what to bring in first.": "Сначала выберите, что перенести.",
+    "An installation was made for this already.": "Для этого уже создана установка.",
+    "This mod loader has no version for this Minecraft version.": "У этого загрузчика модов нет версии для этой версии Minecraft."
   }
 }

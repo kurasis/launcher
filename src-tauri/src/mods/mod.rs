@@ -10,6 +10,7 @@
 //! ([`content`]).
 
 pub mod content;
+pub mod import;
 pub mod markdown;
 pub mod pack;
 pub mod world;
@@ -1037,6 +1038,8 @@ impl Catalog for Client {
 pub struct Mods {
     pub client: Client,
     pub content: content::Installer,
+    /// What the player picked to bring in (stage 5), until it is in.
+    pub import: std::sync::Mutex<Option<import::Picked>>,
 }
 
 impl Mods {
@@ -1044,6 +1047,7 @@ impl Mods {
         Ok(Self {
             client: Client::new(app_version)?,
             content: content::Installer::new(app_version).map_err(|e| e.message)?,
+            import: std::sync::Mutex::new(None),
         })
     }
 }

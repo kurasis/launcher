@@ -2012,3 +2012,315 @@ mod maps {
         assert_eq!(seen.last(), Some(&"done"));
     }
 }
+
+// ----- installations from other launchers and folders -----
+
+mod imports {
+    use std::io::Write as _;
+
+    use super::*;
+    use crate::download::CancelToken;
+    use crate::loader::meta::LoaderVersion;
+    use crate::mods::import;
+
+    fn zip_of(entries: &[(&str, &[u8])], link: Option<&str>) -> Vec<u8> {
+        let mut zip = zip::ZipWriter::new(std::io::Cursor::new(Vec::new()));
+        let options = zip::write::SimpleFileOptions::default()
+            .compression_method(zip::CompressionMethod::Deflated);
+        for (name, bytes) in entries {
+            zip.start_file(*name, options).unwrap();
+            zip.write_all(bytes).unwrap();
+        }
+        if let Some(link) = link {
+            zip.add_symlink(link, "/etc/passwd", options).unwrap();
+        }
+        zip.finish().unwrap().into_inner()
+    }
+
+    fn fabric_jar(minecraft: &str) -> Vec<u8> {
+        let meta = json!({"schemaVersion": 1, "id": "x", "depends": {"minecraft": minecraft}});
+        zip_of(&[("fabric.mod.json", meta.to_string().as_bytes())], None)
+    }
+
+    fn forge_jar(toml: &str) -> Vec<u8> {
+        zip_of(&[("META-INF/mods.toml", toml.as_bytes())], None)
+    }
+
+    fn no_events(_: content::Progress) {}
+
+    fn listing(dir: &Path) -> Vec<String> {
+        let mut out = Vec::new();
+        let mut stack = vec![dir.to_path_buf()];
+        while let Some(d) = stack.pop() {
+            for e in fs::read_dir(&d).unwrap() {
+                let p = e.unwrap().path();
+                if p.is_dir() {
+                    stack.push(p);
+                } else {
+                    let rel = p
+                        .strip_prefix(dir)
+                        .unwrap()
+                        .to_string_lossy()
+                        .replace('\\', "/");
+                    out.push(rel);
+                }
+            }
+        }
+        out.sort();
+        out
+    }
+
+    #[test]
+    fn versions_are_read_from_dependency_ranges() {
+        for (range, want) in [
+            ("~1.20.1", Some("1.20.1")),
+            (">=1.20.1", Some("1.20.1")),
+            ("[1.20.1,1.21)", Some("1.20.1")),
+            ("1.20.x", Some("1.20")),
+            ("[\"1.19.4\", \"1.20\"]", Some("1.19.4")),
+            ("26.1.x", Some("26.1")),
+            ("*", None),
+            ("0.14.0", None),
+            ("abc1.20", None),
+        ] {
+            assert_eq!(import::first_version(range).as_deref(), want, "{range}");
+        }
+        let toml = "modLoader=\"javafml\"\n[[dependencies.x]]\n modId=\"forge\"\n versionRange=\"[47,)\"\n[[dependencies.x]]\n modId = \"minecraft\"\n versionRange = \"[1.20.1,1.21)\"\n";
+        assert_eq!(import::toml_game(toml).as_deref(), Some("1.20.1"));
+        let (game, loader, hint) = import::prism_components(
+            r#"{"components":[{"uid":"net.minecraft","version":"1.20.1"},{"uid":"net.minecraftforge","version":"47.2.0"},{"uid":"x","version":"../../x"}]}"#,
+        );
+        assert_eq!(game.as_deref(), Some("1.20.1"));
+        assert_eq!(loader, Some(LoaderKind::Forge));
+        assert_eq!(hint.as_deref(), Some("47.2.0"));
+        let (game, loader, hint) = import::prism_components("not json");
+        assert_eq!((game, loader, hint), (None, None, None));
+    }
+
+    #[test]
+    fn loader_versions_follow_the_source_then_the_recommendation() {
+        let v = |id: &str, label: &str, stable, recommended| LoaderVersion {
+            id: id.to_owned(),
+            label: label.to_owned(),
+            stable,
+            recommended,
+        };
+        let forge = [
+            v("1.20.1-47.3.0", "47.3.0", true, true),
+            v("1.20.1-47.2.0", "47.2.0", true, false),
+        ];
+        assert_eq!(
+            import::pick_loader_version(&forge, Some("47.2.0")).as_deref(),
+            Some("1.20.1-47.2.0")
+        );
+        assert_eq!(
+            import::pick_loader_version(&forge, Some("1.0")).as_deref(),
+            Some("1.20.1-47.3.0")
+        );
+        let fabric = [
+            v("0.17.0-beta", "0.17.0-beta", false, false),
+            v("0.16.5", "0.16.5", true, false),
+        ];
+        assert_eq!(
+            import::pick_loader_version(&fabric, None).as_deref(),
+            Some("0.16.5")
+        );
+        assert_eq!(import::pick_loader_version(&[], None), None);
+    }
+
+    #[test]
+    fn a_prism_instance_comes_with_its_version_and_only_its_game_content() {
+        let dir = tempfile::tempdir().unwrap();
+        let jar = forge_jar("[[dependencies.x]]\nmodId=\"minecraft\"\nversionRange=\"[1.19.2,)\"");
+        let bytes = zip_of(
+            &[
+                ("Cool/instance.cfg", b"InstanceType=OneSix\nname=Cool \x07Pack\n"),
+                (
+                    "Cool/mmc-pack.json",
+                    br#"{"components":[{"uid":"net.minecraft","version":"1.20.1"},{"uid":"net.minecraftforge","version":"47.2.0"}]}"#,
+                ),
+                ("Cool/.minecraft/mods/a.jar", &jar),
+                ("Cool/.minecraft/config/x.toml", b"x = 1"),
+                ("Cool/.minecraft/options.txt", b"fov:70"),
+                ("Cool/.minecraft/saves/W/level.dat", b"L"),
+                ("Cool/.minecraft/logs/latest.log", b"log"),
+                ("Cool/.minecraft/mods/run.exe", b"MZ"),
+                ("Cool/.minecraft/config/../../escape.txt", b"no"),
+                ("Cool/.minecraft/run.sh", b"#!"),
+                ("Cool/libraries/x.jar", b"lib"),
+                ("Cool/icon.png", b"P"),
+            ],
+            Some("Cool/.minecraft/config/link"),
+        );
+        let path = dir.path().join("export.zip");
+        fs::write(&path, &bytes).unwrap();
+        let picked = import::read(&path).unwrap();
+        let found = &picked.found;
+        assert_eq!(found.format, "prism");
+        assert_eq!(found.name, "Cool Pack");
+        assert_eq!(found.game.as_deref(), Some("1.20.1"));
+        assert_eq!(found.loader, Some(LoaderKind::Forge));
+        assert!(!found.guessed);
+        assert_eq!(picked.loader_hint.as_deref(), Some("47.2.0"));
+        assert_eq!((found.files, found.mods, found.left_out), (4, 1, 4));
+
+        let game = dir.path().join("game");
+        let id = InstanceId::generate();
+        let report = import::copy(&picked, &game, id, &CancelToken::new(), &no_events).unwrap();
+        assert_eq!((report.files, report.kept, report.left_out), (4, 0, 4));
+        assert_eq!(
+            listing(&game),
+            [
+                "config/x.toml",
+                "mods/a.jar",
+                "options.txt",
+                "saves/W/level.dat"
+            ]
+        );
+        assert_eq!(fs::read(game.join("mods/a.jar")).unwrap(), jar);
+        assert!(!dir.path().join("escape.txt").exists());
+
+        // Again (after a stop): what is there is kept.
+        let report = import::copy(&picked, &game, id, &CancelToken::new(), &no_events).unwrap();
+        assert_eq!((report.files, report.kept), (0, 4));
+    }
+
+    #[test]
+    fn a_folder_of_mods_has_its_version_and_loader_guessed() {
+        let dir = tempfile::tempdir().unwrap();
+        let mods = dir.path().join("My mods");
+        fs::create_dir(&mods).unwrap();
+        fs::write(mods.join("a.jar"), fabric_jar("~1.20.1")).unwrap();
+        fs::write(mods.join("b.jar"), fabric_jar(">=1.20.1")).unwrap();
+        fs::write(mods.join("c.jar.disabled"), fabric_jar("1.19.2")).unwrap();
+        fs::write(
+            mods.join("d.jar"),
+            forge_jar("[[dependencies.d]]\nmodId=\"minecraft\"\nversionRange=\"[1.19.2,1.20)\""),
+        )
+        .unwrap();
+        fs::write(mods.join("notes.txt"), b"hi").unwrap();
+        fs::write(mods.join("broken.jar"), b"not a zip").unwrap();
+        let picked = import::read(&mods).unwrap();
+        let found = &picked.found;
+        assert_eq!(found.format, "folder");
+        assert_eq!(found.name, "My mods");
+        assert_eq!(found.game.as_deref(), Some("1.20.1"));
+        assert_eq!(found.loader, Some(LoaderKind::Fabric));
+        assert!(found.guessed);
+        assert_eq!((found.files, found.mods, found.left_out), (5, 4, 1));
+        let game = dir.path().join("game");
+        import::copy(
+            &picked,
+            &game,
+            InstanceId::generate(),
+            &CancelToken::new(),
+            &no_events,
+        )
+        .unwrap();
+        assert_eq!(
+            listing(&game),
+            [
+                "mods/a.jar",
+                "mods/b.jar",
+                "mods/broken.jar",
+                "mods/c.jar.disabled",
+                "mods/d.jar"
+            ]
+        );
+    }
+
+    #[test]
+    fn a_zipped_game_folder_is_found_one_folder_down() {
+        let dir = tempfile::tempdir().unwrap();
+        let neo = zip_of(
+            &[(
+                "META-INF/neoforge.mods.toml",
+                b"[[dependencies.x]]\nmodId=\"minecraft\"\nversionRange=\"[1.21.1,)\"" as &[u8],
+            )],
+            None,
+        );
+        let quilt = zip_of(
+            &[(
+                "quilt.mod.json",
+                br#"{"quilt_loader":{"depends":[{"id":"minecraft","versions":">=1.21.1"}]}}"#
+                    as &[u8],
+            )],
+            None,
+        );
+        let bytes = zip_of(
+            &[
+                ("versions/1.21.1/1.21.1.jar", b"game"),
+                ("pack/.minecraft/mods/n.jar", &neo),
+                ("pack/.minecraft/resourcepacks/r.zip", b"R"),
+            ],
+            None,
+        );
+        let path = dir.path().join("Pack.zip");
+        fs::write(&path, &bytes).unwrap();
+        let found = import::read(&path).unwrap().found;
+        assert_eq!(found.name, "pack");
+        assert_eq!(found.loader, Some(LoaderKind::NeoForge));
+        assert_eq!(found.game.as_deref(), Some("1.21.1"));
+        assert_eq!((found.files, found.left_out), (2, 0));
+
+        // One Quilt mod makes it Quilt (it runs Fabric's mods too).
+        let bytes = zip_of(
+            &[
+                ("mods/a.jar", &fabric_jar("1.21.1")),
+                ("mods/b.jar", &fabric_jar("1.21.1")),
+                ("mods/q.jar", &quilt),
+            ],
+            None,
+        );
+        let path = dir.path().join("Quilt.zip");
+        fs::write(&path, &bytes).unwrap();
+        let found = import::read(&path).unwrap().found;
+        assert_eq!(found.name, "Quilt");
+        assert_eq!(found.loader, Some(LoaderKind::Quilt));
+    }
+
+    #[test]
+    fn nothing_to_bring_in_is_refused() {
+        let dir = tempfile::tempdir().unwrap();
+        for (name, bytes) in [
+            ("a.zip", zip_of(&[("readme.txt", b"hi")], None)),
+            ("b.zip", zip_of(&[("x/y/z/mods/a.jar", b"too deep")], None)),
+            ("c.zip", zip_of(&[("mods/run.exe", b"MZ")], None)),
+            ("d.zip", b"not a zip".to_vec()),
+        ] {
+            let path = dir.path().join(name);
+            fs::write(&path, bytes).unwrap();
+            assert!(import::read(&path).is_err(), "{name}");
+        }
+        let empty = dir.path().join("empty");
+        fs::create_dir(&empty).unwrap();
+        assert!(import::read(&empty).is_err());
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn links_in_a_folder_are_not_followed() {
+        let dir = tempfile::tempdir().unwrap();
+        let outside = dir.path().join("outside");
+        fs::create_dir(&outside).unwrap();
+        fs::write(outside.join("secret.jar"), b"S").unwrap();
+        let game = dir.path().join("src");
+        fs::create_dir_all(game.join("mods")).unwrap();
+        fs::write(game.join("mods/a.jar"), fabric_jar("1.20.1")).unwrap();
+        std::os::unix::fs::symlink(&outside, game.join("mods/linked")).unwrap();
+        std::os::unix::fs::symlink(outside.join("secret.jar"), game.join("mods/s.jar")).unwrap();
+        std::os::unix::fs::symlink(&outside, game.join("config")).unwrap();
+        let picked = import::read(&game).unwrap();
+        assert_eq!(picked.found.files, 1);
+        let target = dir.path().join("game");
+        import::copy(
+            &picked,
+            &target,
+            InstanceId::generate(),
+            &CancelToken::new(),
+            &no_events,
+        )
+        .unwrap();
+        assert_eq!(listing(&target), ["mods/a.jar"]);
+    }
+}
