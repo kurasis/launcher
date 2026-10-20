@@ -302,6 +302,11 @@ struct Pace {
 /// The proxies from `LAPI_MODS_PROXIES` (whitespace- or comma-separated
 /// `http`, `https`, `socks5` or `socks5h` URLs); entries that are not are
 /// left out. Their count is all a log may say about them.
+///
+/// `socks5://` is taken as `socks5h://`: the proxy resolves the name. The
+/// owner's proxies refuse a connection to an address curl resolved itself
+/// (code 97, found by `lapi-mods probe`), and every host we ask is a listed
+/// name, so nothing is lost by letting the proxy look it up.
 pub fn parse_proxies(text: &str) -> Vec<String> {
     text.split(|c: char| c == ',' || c.is_whitespace())
         .filter(|p| !p.is_empty() && p.len() <= 500 && !p.chars().any(char::is_control))
@@ -311,7 +316,10 @@ pub fn parse_proxies(text: &str) -> Vec<String> {
                     && u.host_str().is_some()
             })
         })
-        .map(str::to_owned)
+        .map(|p| match p.strip_prefix("socks5://") {
+            Some(rest) => format!("socks5h://{rest}"),
+            None => p.to_owned(),
+        })
         .collect()
 }
 

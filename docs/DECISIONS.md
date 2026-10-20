@@ -2123,6 +2123,12 @@ archive from the Package workflow, upload it to
   finds (the Pages Router's `__NEXT_DATA__`, the App Router's `self.__next_f`, JSON-LD,
   Open Graph), follows one redirect within the site, and asks a refused proxy again as
   `http://` and `socks5h://` to tell a wrong scheme from a dead proxy.
+- **Second probe:** every proxy answers as `http://` and as `socks5h://` but refuses
+  `socks5://`, where curl resolves the name itself; so the service now takes `socks5://`
+  as `socks5h://`. The project page carries the App Router's data, JSON-LD and Open
+  Graph tags, and search (after its redirect) the App Router's data, with no Cloudflare
+  check for the server's own address: the card and search can come from the pages
+  without residential proxies for now.
 
 ## D-067 — Start page feed at feed.lapi.sh
 
