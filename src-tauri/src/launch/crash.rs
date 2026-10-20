@@ -926,11 +926,13 @@ fn mods_at_runtime(cx: &Context) -> Option<CrashDiagnosis> {
             r"Mixin apply (?:for mod (\S+) )?failed|MixinApplyError|MixinTransformerError|InvalidInjectionException|InvalidMixinException|MixinPrepareError|Critical injection failure",
         )
     });
-    static MIXIN_SOURCE: LazyLock<Regex> = LazyLock::new(|| {
-        re(
-            r"Mixin apply for mod (\S+) failed|from mod (\S+?)\]|([A-Za-z0-9_-]+)\.mixins?\.json|mixins\.([A-Za-z0-9_-]+)\.json",
-        )
-    });
+    // A line that names the mod outright.
+    static MIXIN_MOD: LazyLock<Regex> =
+        LazyLock::new(|| re(r"Mixin apply for mod (\S+) failed|from mod (\S+?)\]"));
+    // Else the mixin config's name, but only on a line of the failure: the log
+    // lists every mod's config at startup ("Mixin config x.mixins.json from jar").
+    static MIXIN_CONFIG: LazyLock<Regex> =
+        LazyLock::new(|| re(r"([A-Za-z0-9_-]+)\.mixins?\.json|mixins\.([A-Za-z0-9_-]+)\.json"));
     static ENTRYPOINT: LazyLock<Regex> = LazyLock::new(|| {
         re(
             r"Could not execute entrypoint stage '(\w+)' due to errors, provided by '([^']+)'|Failed to create mod instance\. ModID: ([^\s,]+)|(?:^|\s)(\S+) \((\S+)\) has failed to load correctly|Mod (\S+) has failed to load correctly|Caught exception from (.+?) \((\S+)\)",
@@ -947,12 +949,20 @@ fn mods_at_runtime(cx: &Context) -> Option<CrashDiagnosis> {
         return Some(d);
     }
     if let Some((line, _)) = cx.find(&MIXIN) {
-        let source = cx.all(&MIXIN_SOURCE).find_map(|(_, c)| {
-            [1, 2, 3, 4]
+        let first = |c: regex::Captures<'_>| {
+            [1, 2]
                 .iter()
                 .find_map(|i| c.get(*i))
                 .map(|m| m.as_str().to_owned())
-        });
+        };
+        let source = MIXIN_MOD
+            .captures(&line)
+            .and_then(first)
+            .or_else(|| cx.all(&MIXIN_MOD).find_map(|(_, c)| first(c)))
+            .or_else(|| {
+                cx.all(&MIXIN)
+                    .find_map(|(failure, _)| MIXIN_CONFIG.captures(failure).and_then(first))
+            });
         let mut d = diagnosis(
             CrashKind::MixinFailed,
             &[("modId", source.unwrap_or_default())],
@@ -1382,7 +1392,11 @@ fn suspects(cx: &Context) -> Vec<String> {
                 .map(|c| (c[1].to_owned(), c[1].to_owned()))
         };
         if let Some((id, shown)) = entry {
-            let loader = matches!(id.as_str(), "minecraft" | "forge" | "neoforge" | "fml");
+            // Forge 1.21 names its own module net.minecraftforge.forge.
+            let loader = matches!(
+                id.as_str(),
+                "minecraft" | "forge" | "neoforge" | "fml" | "net.minecraftforge.forge"
+            );
             if !loader && !found.iter().any(|(known, _)| *known == id) {
                 found.push((id, shown));
             }
