@@ -30,6 +30,8 @@ enum Look {
     ToCdn,
     /// A search answer of the API: how many hits, and whether JEI is one.
     Hits,
+    /// A page's description and pictures: where they sit and how many.
+    Media,
 }
 
 struct Check {
@@ -121,6 +123,24 @@ fn checks(file: Option<u64>) -> Vec<Check> {
             headers: &[],
         },
         Check {
+            name: "cf_gallery_page",
+            url: format!("https://www.curseforge.com/minecraft/mc-mods/{SLUG}/gallery"),
+            look: Look::Media,
+            headers: &[],
+        },
+        Check {
+            name: "cf_images_api",
+            url: format!("{api}/images"),
+            look: Look::Media,
+            headers: &[],
+        },
+        Check {
+            name: "cf_description_api",
+            url: format!("{api}/description"),
+            look: Look::Media,
+            headers: &[],
+        },
+        Check {
             name: "cf_search_page",
             url: crate::curseforge::search_url(SLUG),
             look: Look::PageData,
@@ -207,6 +227,40 @@ fn page_data(page: &[u8]) -> String {
     } else {
         kinds.join(",")
     }
+}
+
+/// Where a page's description and pictures sit: in the HTML itself or in
+/// its scripts (the App Router's stream). Counts of picture addresses on
+/// forgecdn, paragraphs, and the word "recipe" (JEI's description is about
+/// recipes). Our words and numbers.
+fn media_report(page: &[u8]) -> String {
+    let page = String::from_utf8_lossy(page);
+    let mut html = String::new();
+    let mut scripts = String::new();
+    let mut rest = page.as_ref();
+    while let Some(start) = rest.find("<script") {
+        html.push_str(&rest[..start]);
+        let tail = &rest[start..];
+        let end = tail
+            .find("</script>")
+            .map_or(tail.len(), |e| e + "</script>".len());
+        scripts.push_str(&tail[..end]);
+        rest = &tail[end..];
+    }
+    html.push_str(rest);
+    let count = |text: &str| {
+        let lower = text.to_ascii_lowercase();
+        format!(
+            "pictures:{},paragraphs:{},recipe:{}",
+            lower.matches("media.forgecdn.net/attachments").count(),
+            ["<p>", "<p ", "\\u003cp\\u003e", "\\u003cp "]
+                .iter()
+                .map(|p| lower.matches(p).count())
+                .sum::<usize>(),
+            lower.matches("recipe").count(),
+        )
+    };
+    format!("html[{}] scripts[{}]", count(&html), count(&scripts))
 }
 
 /// What the CurseForge adapter reads from the project's page: our words and
@@ -310,9 +364,12 @@ pub async fn run(client: &Client, tmp: &Path) -> Vec<String> {
                     Ok(r) if r.status == 200 => {
                         let page = read();
                         Some(match check.name {
-                            "cf_project_page" => {
-                                format!("{} {}", page_data(&page), card_report(&page))
-                            }
+                            "cf_project_page" => format!(
+                                "{} {} {}",
+                                page_data(&page),
+                                card_report(&page),
+                                media_report(&page)
+                            ),
                             "cf_search_page" => {
                                 format!("{} {}", page_data(&page), search_report(&page))
                             }
@@ -358,6 +415,7 @@ pub async fn run(client: &Client, tmp: &Path) -> Vec<String> {
                     _ => None,
                 },
                 Look::Hits => ok.then(|| hits(&read())),
+                Look::Media => ok.then(|| media_report(&read())),
                 Look::ToCdn => match &result {
                     Ok(r) if (300..400).contains(&r.status) => Some(
                         if r.location.as_deref().is_some_and(to_cdn) {
@@ -449,6 +507,20 @@ mod tests {
             "next_flight,og_tags"
         );
         assert_eq!(page_data(b"<script id=\"__NEXT_DATA__\">"), "next_data");
+    }
+
+    #[test]
+    fn media_is_counted_apart_in_html_and_scripts() {
+        let page = br#"<div><p>Shows a recipe</p><img src="https://media.forgecdn.net/attachments/1/2/a.png"><path d=""/></div><script>self.__next_f.push([1,"\u003cp\u003eRecipe and recipe\u003c/p\u003e"])</script><p class="x">end"#;
+        assert_eq!(
+            media_report(page),
+            "html[pictures:1,paragraphs:2,recipe:1] scripts[pictures:0,paragraphs:1,recipe:2]"
+        );
+        // An unclosed script ends the page.
+        assert_eq!(
+            media_report(b"<p>a<script>recipe"),
+            "html[pictures:0,paragraphs:1,recipe:0] scripts[pictures:0,paragraphs:0,recipe:1]"
+        );
     }
 
     #[test]
