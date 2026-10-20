@@ -37,6 +37,9 @@ pub enum Reach {
     Loopback,
     /// Direct paths plus the given relays.
     Network(RelayMode),
+    /// The given relays only: no IP transport is bound, so no direct
+    /// candidate is ever offered or probed and peers see only the relay.
+    RelayOnly(RelayMode),
 }
 
 /// Binds an endpoint with a fresh key. `accept` is true on the host, which
@@ -54,6 +57,7 @@ pub async fn bind(reach: Reach, accept: bool) -> LauncherResult<Endpoint> {
             .bind_addr("127.0.0.1:0")
             .map_err(|_| internal())?,
         Reach::Network(relays) => builder.relay_mode(relays),
+        Reach::RelayOnly(relays) => builder.relay_mode(relays).clear_ip_transports(),
     };
     builder.bind().await.map_err(|_| {
         LauncherError::new(

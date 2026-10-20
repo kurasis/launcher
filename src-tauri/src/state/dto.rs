@@ -175,6 +175,8 @@ pub struct SettingsPatch {
     /// The feed's settings (D-067); fields omitted are left unchanged.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub feed: Option<FeedSettingsPatch>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub worlds_relay_only: Option<bool>,
 }
 
 /// Changes to [`crate::storage::models::FeedSettings`]; omitted fields stay.
@@ -227,6 +229,7 @@ pub struct SettingsView {
     pub start_view: StartView,
     pub last_view: StartView,
     pub feed: crate::storage::models::FeedSettings,
+    pub worlds_relay_only: bool,
     /// False when settings were written by a newer launcher or could not be read.
     pub writable: bool,
 }
@@ -259,6 +262,7 @@ impl SettingsView {
             start_view: settings.start_view,
             last_view: settings.last_view,
             feed: settings.feed.clone(),
+            worlds_relay_only: settings.worlds_relay_only,
             writable,
         }
     }

@@ -843,6 +843,39 @@ async fn tickets_admit_one_member_once() {
         (shown["online"].as_i64(), shown["maxPlayers"].as_i64()),
         (Some(2), Some(2))
     );
+    // The host counts players on its server, its own game included; the
+    // room shows the larger of that and the open admissions.
+    let renew = format!("/v1/sessions/{session_id}/renew");
+    assert_eq!(
+        t.on_device("POST", &renew, 1, Some(json!({"players": 3})))
+            .await
+            .0,
+        StatusCode::OK
+    );
+    let (_, shown) = t.call("GET", &format!("/v1/rooms/{room}"), 3, None).await;
+    assert_eq!(shown["online"].as_i64(), Some(3));
+    // A renewal without a count keeps the last one.
+    assert_eq!(t.renew(session_id).await.0, StatusCode::OK);
+    let (_, shown) = t.call("GET", &format!("/v1/rooms/{room}"), 3, None).await;
+    assert_eq!(shown["online"].as_i64(), Some(3));
+    for junk in [
+        json!({"players": 1001}),
+        json!({"players": -1}),
+        json!({"players": "3"}),
+        json!({"players": 1, "extra": true}),
+    ] {
+        let (status, body) = t.on_device("POST", &renew, 1, Some(junk)).await;
+        assert_eq!(
+            (status, error(&body)),
+            (StatusCode::BAD_REQUEST, "bad_request")
+        );
+    }
+    assert_eq!(
+        t.on_device("POST", &renew, 1, Some(json!({"players": 0})))
+            .await
+            .0,
+        StatusCode::OK
+    );
 
     let release = format!(
         "/v1/sessions/{session_id}/admissions/{}/release",
@@ -1222,4 +1255,23 @@ async fn the_relay_carries_hosts_and_enrolled_members_only() {
         let (status, _) = t.send(request.body(Body::empty()).unwrap()).await;
         assert_eq!(status, StatusCode::UNAUTHORIZED, "{given}");
     }
+}
+
+#[test]
+fn an_older_database_gains_the_player_count() {
+    let dir = tempfile::tempdir().unwrap();
+    {
+        let db = rusqlite::Connection::open(dir.path().join("worlds.db")).unwrap();
+        db.execute_batch(
+            "CREATE TABLE sessions (
+                id TEXT PRIMARY KEY, room TEXT NOT NULL, host_device TEXT NOT NULL,
+                epoch INTEGER NOT NULL, authority TEXT NOT NULL, endpoint TEXT NOT NULL,
+                max_players INTEGER NOT NULL, state TEXT NOT NULL, lease_until INTEGER NOT NULL,
+                started INTEGER NOT NULL, ended INTEGER, UNIQUE (room, epoch));",
+        )
+        .unwrap();
+    }
+    crate::store::Store::open(dir.path(), "test").unwrap();
+    // A second start finds the column there.
+    crate::store::Store::open(dir.path(), "test").unwrap();
 }

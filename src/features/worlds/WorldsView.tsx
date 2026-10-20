@@ -10,10 +10,11 @@ import { CreateWorld } from './CreateWorld';
 import { Devices } from './Devices';
 import { ImportWorld } from './ImportWorld';
 import { JoinByCode } from './JoinByCode';
+import { RelayOnly } from './RelayOnly';
 import { RoomActions } from './RoomActions';
 import { RoomPage } from './RoomPage';
 import { WorldsStatus } from './WorldsStatus';
-import { useWorldsState, worldsErrorText } from './useWorlds';
+import { ROOMS_EVERY_MS, roomOpen, useWorldsState, worldsErrorText } from './useWorlds';
 import styles from './Worlds.module.css';
 
 interface Props {
@@ -57,6 +58,20 @@ export function WorldsView({ snapshot, onOpenAccounts, initialRoom = null }: Pro
   useEffect(() => {
     if (signedIn) load();
   }, [signedIn, load]);
+
+  // Friends' rooms open, close and fill meanwhile.
+  useEffect(() => {
+    if (!signedIn || room !== null) return undefined;
+    const timer = window.setInterval(() => {
+      void ipc
+        .worldsRooms()
+        .then(setRooms)
+        .catch(() => undefined);
+    }, ROOMS_EVERY_MS);
+    return () => {
+      window.clearInterval(timer);
+    };
+  }, [signedIn, room]);
 
   // A room opened or closed here shows in the list at once.
   const hostingRoom = state.hosting?.ended === null ? state.hosting.room : null;
@@ -156,6 +171,7 @@ export function WorldsView({ snapshot, onOpenAccounts, initialRoom = null }: Pro
             <ul className={styles.rooms}>
               {rooms.map((item) => {
                 const world = local.find((w) => w.id === item.world) ?? null;
+                const now = roomOpen(item, state);
                 return (
                   <li key={item.id} className={styles.room}>
                     <span className={styles.roomName}>{item.name}</span>
@@ -168,10 +184,10 @@ export function WorldsView({ snapshot, onOpenAccounts, initialRoom = null }: Pro
                     </span>
                     <span className={styles.badges}>
                       <StatusBadge
-                        tone={item.hosting ? 'success' : 'neutral'}
+                        tone={now.open ? 'success' : 'neutral'}
                         label={
-                          item.hosting
-                            ? t.openNow({ online: item.online, max: item.maxPlayers })
+                          now.open
+                            ? t.openNow({ online: now.online, max: item.maxPlayers })
                             : t.closedNow
                         }
                       />
@@ -197,6 +213,7 @@ export function WorldsView({ snapshot, onOpenAccounts, initialRoom = null }: Pro
               })}
             </ul>
           )}
+          <RelayOnly settings={snapshot.settings} />
         </>
       )}
       {dialog === 'create' && (

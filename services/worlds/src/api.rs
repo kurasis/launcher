@@ -692,17 +692,40 @@ async fn start_session(
     answer(started)
 }
 
+/// What the host tells with a renewal. Older launchers send no body.
+#[derive(Deserialize, Default)]
+#[serde(deny_unknown_fields)]
+struct RenewBody {
+    /// Players on the world server now, the host's own game included.
+    players: Option<u32>,
+}
+
+/// More than any world server holds; a larger count is refused.
+const MOST_PLAYERS: u32 = 1000;
+
 async fn renew(
     State(app): State<Arc<App>>,
     headers: HeaderMap,
     method: Method,
     uri: Uri,
     Path(session): Path<String>,
+    bytes: Bytes,
 ) -> Response {
     let me = me!(app, headers);
     ids!(session);
     let device = device!(app, headers, me, method, uri);
-    answer(app.store.renew(&device, &session, app.clock.now()))
+    let told: RenewBody = if bytes.is_empty() {
+        RenewBody::default()
+    } else {
+        body!(bytes)
+    };
+    if told.players.is_some_and(|n| n > MOST_PLAYERS) {
+        return refuse("bad_request");
+    }
+    answer(
+        app.store
+            .renew(&device, &session, told.players, app.clock.now()),
+    )
 }
 
 async fn stop_session(

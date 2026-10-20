@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import type { WorldsState } from '../../lib/contracts';
+import type { WorldsRoom, WorldsState } from '../../lib/contracts';
 import { describeIpcError, ipc, onWorldsState, worldsProblemOf } from '../../lib/ipc';
 import { strings } from '../../lib/strings';
 
@@ -32,6 +32,22 @@ export function useWorldsState(): WorldsState {
     };
   }, []);
   return state;
+}
+
+/** How often rooms are asked again, for their open state and players. */
+export const ROOMS_EVERY_MS = 15_000;
+
+/**
+ * Whether a room is open and how many play. While this computer hosts it,
+ * its own server's count, which is live and includes the host's game; else
+ * what worlds.lapi.sh last said.
+ */
+export function roomOpen(room: WorldsRoom, state: WorldsState): { open: boolean; online: number } {
+  const hosting = state.hosting;
+  if (hosting?.room === room.id && hosting.ended === null && hosting.phase !== 'exited') {
+    return { open: true, online: hosting.players.length };
+  }
+  return { open: room.hosting, online: room.online };
 }
 
 /** A failure of a worlds command, said in the player's language. */

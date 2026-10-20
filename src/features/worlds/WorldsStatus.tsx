@@ -52,7 +52,9 @@ export function WorldsStatus({ state, rooms }: Props) {
           <p className={styles.statusTitle}>
             {t.hosting.title({ room: nameOf(hosting.room) })} · {t.hosting.phases[hosting.phase]}
           </p>
-          {hosting.ended === null ? (
+          {hosting.reopening ? (
+            <Notice tone="warning">{t.hosting.reopening}</Notice>
+          ) : hosting.ended === null ? (
             <>
               <p>
                 {t.hosting.players({
@@ -84,9 +86,38 @@ export function WorldsStatus({ state, rooms }: Props) {
       {guest !== null && (
         <div className={styles.status}>
           <p className={styles.statusTitle}>{t.guest.title({ room: nameOf(guest.room) })}</p>
-          <p>{guest.connected ? t.guest.connected : t.guest.lost}</p>
+          <p role="status">
+            {guest.connected
+              ? t.guest.connected
+              : guest.reconnecting
+                ? t.guest.reconnecting
+                : t.guest.lost}
+          </p>
           {guest.connected && guest.path !== null && (
             <p className={styles.muted}>{t.guest.path[guest.path]}</p>
+          )}
+          {!guest.connected && !guest.reconnecting && (
+            <div className={styles.actions}>
+              <Button
+                variant="primary"
+                onClick={() => {
+                  const room = guest.room;
+                  void ipc
+                    .worldsDisconnect()
+                    .then(() => ipc.worldsJoin(room))
+                    .catch(() => undefined);
+                }}
+              >
+                {t.guest.again}
+              </Button>
+              <Button
+                onClick={() => {
+                  void ipc.worldsDisconnect().catch(() => undefined);
+                }}
+              >
+                {t.disconnect}
+              </Button>
+            </div>
           )}
           {guest.refused !== null && <Notice tone="warning">{t.refusals[guest.refused]}</Notice>}
         </div>

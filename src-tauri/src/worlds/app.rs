@@ -72,6 +72,9 @@ pub struct HostingView {
     /// Players on the server now, the host included.
     pub players: Vec<String>,
     pub ended: Option<Ending>,
+    /// The lease lapsed (sleep, the service out of reach) while the server
+    /// runs; a new session is being opened and guests will reconnect.
+    pub reopening: bool,
     /// Whether the last stop saved the world cleanly, once the server exited.
     pub clean: Option<bool>,
 }
@@ -85,6 +88,10 @@ pub struct GuestView {
     pub refused: Option<Refusal>,
     /// Straight to the host or through the relay, once chosen.
     pub path: Option<joining::PathKind>,
+    /// The tunnel was lost and is being opened again.
+    pub reconnecting: bool,
+    /// The room no longer lets this computer in (closed, not a member).
+    pub gave_up: bool,
 }
 
 /// What the interface shows about this computer's room.
@@ -239,8 +246,15 @@ fn failure_name(error: &LauncherError) -> String {
 }
 
 /// The relay both sides use when no direct path is found.
-fn relay_reach() -> LauncherResult<Reach> {
-    Ok(Reach::Network(RelayMode::custom([joining::relay_url()?])))
+/// Our relay; `relay_only` keeps every path on it, so the other side never
+/// learns this computer's addresses (A13).
+fn relay_reach(relay_only: bool) -> LauncherResult<Reach> {
+    let relays = RelayMode::custom([joining::relay_url()?]);
+    Ok(if relay_only {
+        Reach::RelayOnly(relays)
+    } else {
+        Reach::Network(relays)
+    })
 }
 
 /// The game name of the signed-in launcher account.
@@ -643,16 +657,21 @@ impl Worlds {
         }
 
         self.set_stage(&room.id, Stage::Opening);
+        let relay_only = state.settings().worlds_relay_only;
         let opened = async {
-            let endpoint = bind(relay_reach()?, true).await?;
+            let endpoint = bind(relay_reach(relay_only)?, true).await?;
             let served = Arc::new(Served {
                 server: Arc::clone(&server),
                 root: root.clone(),
             }) as Arc<dyn WorldServer>;
+            let rebind: hosting::Rebind = Arc::new(move || {
+                Box::pin(async move { bind(relay_reach(relay_only)?, true).await })
+            });
             hosting::start(
                 Arc::clone(&self.client),
                 served,
                 endpoint,
+                rebind,
                 &room.id,
                 u32::from(prepared.settings.max_players),
                 self.on_change(),
@@ -734,7 +753,7 @@ impl Worlds {
         if !room.hosting {
             return Err(Problem::NotHosting.into());
         }
-        let endpoint = bind(relay_reach()?, false).await?;
+        let endpoint = bind(relay_reach(state.settings().worlds_relay_only)?, false).await?;
         let guest = joining::join(
             Arc::clone(&self.client),
             endpoint,
@@ -851,6 +870,7 @@ fn view_of(inner: &Inner) -> WorldsView {
                 phase: server.phase,
                 players: server.players,
                 ended: status.ended,
+                reopening: status.reopening,
                 clean: server.clean,
             }
         }),
@@ -859,6 +879,8 @@ fn view_of(inner: &Inner) -> WorldsView {
             connected: g.connected(),
             refused: g.refused().flatten(),
             path: g.path(),
+            reconnecting: g.reconnecting(),
+            gave_up: g.gave_up(),
         }),
         failed: inner.failed.clone(),
         maintenance: inner.maintenance,

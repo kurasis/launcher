@@ -17,7 +17,7 @@ import { worldInviteBody } from '../friends/worldInvite';
 import { Dialog } from '../mods/Dialog';
 import { RoomActions } from './RoomActions';
 import { WorldBackups } from './WorldBackups';
-import { worldsErrorText } from './useWorlds';
+import { ROOMS_EVERY_MS, roomOpen, worldsErrorText } from './useWorlds';
 import styles from './Worlds.module.css';
 
 /** How long an invite is valid, in hours: an hour, a day, a week. */
@@ -68,7 +68,17 @@ export function RoomPage({ room, local, state, onBack, onLocal, onLeft }: Props)
 
   useEffect(() => {
     load();
+    const timer = window.setInterval(load, ROOMS_EVERY_MS);
+    return () => {
+      window.clearInterval(timer);
+    };
   }, [load]);
+
+  // Opening or closing the world here shows at once.
+  const hostingHere = state.hosting?.room === room ? state.hosting.phase : null;
+  useEffect(() => {
+    if (hostingHere !== null) load();
+  }, [hostingHere, load]);
 
   const act = (action: () => Promise<unknown>, after: () => void = load) => {
     setError(null);
@@ -96,6 +106,7 @@ export function RoomPage({ room, local, state, onBack, onLocal, onLeft }: Props)
   const people = friends?.signedIn === true ? friends.friends : [];
   const chosen = people.some((p) => p.id === friend) ? friend : (people[0]?.id ?? '');
   const world = found === null ? null : (local.find((w) => w.id === found.world) ?? null);
+  const now = found === null ? null : roomOpen(found, state);
 
   return (
     <div>
@@ -118,10 +129,10 @@ export function RoomPage({ room, local, state, onBack, onLocal, onLeft }: Props)
           </p>
           <div className={styles.badges}>
             <StatusBadge
-              tone={found.hosting ? 'success' : 'neutral'}
+              tone={now?.open === true ? 'success' : 'neutral'}
               label={
-                found.hosting
-                  ? t.openNow({ online: found.online, max: found.maxPlayers })
+                now?.open === true
+                  ? t.openNow({ online: now.online, max: found.maxPlayers })
                   : t.closedNow
               }
             />

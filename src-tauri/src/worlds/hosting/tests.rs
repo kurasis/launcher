@@ -49,6 +49,7 @@ struct TestServer {
     port: u16,
     told: Mutex<Vec<String>>,
     running: Mutex<bool>,
+    players: Mutex<u32>,
 }
 
 impl WorldServer for TestServer {
@@ -60,6 +61,9 @@ impl WorldServer for TestServer {
     }
     fn running(&self) -> bool {
         *lock(&self.running)
+    }
+    fn players(&self) -> u32 {
+        *lock(&self.players)
     }
     fn set_members(&self, members: &[Nick]) -> LauncherResult<()> {
         let names: Vec<&str> = members.iter().map(Nick::as_str).collect();
@@ -97,8 +101,13 @@ async fn test_server() -> (Arc<TestServer>, mpsc::Receiver<TcpStream>) {
         port,
         told: Mutex::new(Vec::new()),
         running: Mutex::new(true),
+        players: Mutex::new(0),
     });
     (server, connections)
+}
+
+fn loopback() -> Rebind {
+    Arc::new(|| Box::pin(async { bind(Reach::Loopback, true).await }))
 }
 
 fn login(name: &str) -> Vec<u8> {
@@ -128,6 +137,7 @@ async fn a_member_plays_in_the_hosts_world_until_removed() {
         client(&fake, HOST),
         Arc::clone(&server) as Arc<dyn WorldServer>,
         host_endpoint,
+        loopback(),
         ROOM,
         8,
         Arc::new(|| {}),
@@ -176,6 +186,9 @@ async fn a_member_plays_in_the_hosts_world_until_removed() {
     );
     assert_eq!(host.status().players, ["Guest_One"]);
     assert_eq!(lock(&fake.world).open_admissions(), 1);
+    // The renewals tell the service how many play, the host's game included.
+    *lock(&server.players) = 2;
+    assert!(eventually(|| lock(&fake.world).reported_players == Some(2)).await);
     // On loopback there is no relay: the game data goes directly.
     assert_eq!(guest.path(), Some(joining::PathKind::Direct));
 
@@ -222,6 +235,7 @@ async fn strangers_get_no_ticket_and_lost_sessions_end_hosting() {
         client(&fake, HOST),
         Arc::clone(&server) as Arc<dyn WorldServer>,
         host_endpoint,
+        loopback(),
         ROOM,
         8,
         Arc::new(|| {}),
@@ -247,6 +261,7 @@ async fn strangers_get_no_ticket_and_lost_sessions_end_hosting() {
         client(&fake, HOST),
         Arc::clone(&server) as Arc<dyn WorldServer>,
         bind(Reach::Loopback, true).await.unwrap(),
+        loopback(),
         ROOM,
         8,
         Arc::new(|| {}),
@@ -272,4 +287,217 @@ fn refusals_follow_the_service() {
     assert_eq!(refusal_of(Problem::RoomFull), Refusal::RoomFull);
     assert_eq!(refusal_of(Problem::SessionEnded), Refusal::WrongSession);
     assert_eq!(refusal_of(Problem::Network), Refusal::Unavailable);
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn a_guest_plays_again_after_quitting_the_game() {
+    let fake =
+        fake_service::start(&[(HOST, "Host_Player", true), (GUEST, "Guest_One", false)]).await;
+    let (server, mut connections) = test_server().await;
+    let host_endpoint = bind(Reach::Loopback, true).await.unwrap();
+    let host_address = host_endpoint.addr();
+    let host = start(
+        client(&fake, HOST),
+        Arc::clone(&server) as Arc<dyn WorldServer>,
+        host_endpoint,
+        loopback(),
+        ROOM,
+        8,
+        Arc::new(|| {}),
+    )
+    .await
+    .expect("hosting starts");
+    let guest_client = client(&fake, GUEST);
+    let room = guest_client.room(ROOM).await.unwrap();
+    let guest = joining::join(
+        Arc::clone(&guest_client),
+        bind(Reach::Loopback, false).await.unwrap(),
+        Visit {
+            room: &room,
+            nick: Nick::parse("Guest_One").unwrap(),
+            route: Route::Known(host_address.clone()),
+            protocol: 767,
+            version_name: "1.21.1",
+        },
+        Arc::new(|| {}),
+    )
+    .await
+    .expect("the guest joins");
+
+    for round in 0..3 {
+        let mut game = TcpStream::connect(("127.0.0.1", guest.port()))
+            .await
+            .unwrap();
+        let sent = login("Guest_One");
+        game.write_all(&sent).await.unwrap();
+        let mut at_server = timeout(Duration::from_secs(10), connections.recv())
+            .await
+            .unwrap_or_else(|_| panic!("login {round} reaches the server"))
+            .unwrap();
+        let mut seen = vec![0u8; sent.len()];
+        at_server.read_exact(&mut seen).await.unwrap();
+        assert_eq!(seen, sent);
+        // The player quits: the game closes its socket, then the server.
+        drop(game);
+        drop(at_server);
+        assert!(eventually(|| lock(&fake.world).open_admissions() == 0).await);
+        assert!(guest.connected(), "round {round}: the tunnel stays");
+        // Longer than the tunnel's idle timeout would allow without keep-alive.
+        tokio::time::sleep(Duration::from_secs(2)).await;
+        assert!(guest.connected(), "round {round}: still there");
+        if round == 1 {
+            // The network drops: the tunnel comes back by itself.
+            guest.cut();
+            assert!(eventually(|| !guest.connected()).await);
+            assert!(eventually(|| guest.connected() && !guest.reconnecting()).await);
+        }
+    }
+    // The host closes the world: the guest stops trying.
+    host.stop().await;
+    assert!(eventually(|| guest.gave_up()).await);
+    assert!(!guest.connected());
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn a_lapsed_lease_cuts_guests_off_and_opens_a_new_session() {
+    let fake =
+        fake_service::start(&[(HOST, "Host_Player", true), (GUEST, "Guest_One", false)]).await;
+    let (server, _connections) = test_server().await;
+    let host_endpoint = bind(Reach::Loopback, true).await.unwrap();
+    let host_address = host_endpoint.addr();
+    let host = start(
+        client(&fake, HOST),
+        Arc::clone(&server) as Arc<dyn WorldServer>,
+        host_endpoint,
+        loopback(),
+        ROOM,
+        8,
+        Arc::new(|| {}),
+    )
+    .await
+    .unwrap();
+    let first = host.status().session;
+    let guest_client = client(&fake, GUEST);
+    let room = guest_client.room(ROOM).await.unwrap();
+    let guest = joining::join(
+        Arc::clone(&guest_client),
+        bind(Reach::Loopback, false).await.unwrap(),
+        Visit {
+            room: &room,
+            nick: Nick::parse("Guest_One").unwrap(),
+            route: Route::Known(host_address.clone()),
+            protocol: 767,
+            version_name: "1.21.1",
+        },
+        Arc::new(|| {}),
+    )
+    .await
+    .unwrap();
+    assert!(guest.connected());
+
+    // The service stops answering: the lease runs out on this computer's
+    // clocks, not on a late answer, and the guest is cut off.
+    lock(&fake.world).stalled = true;
+    assert!(eventually(|| host.status().reopening).await);
+    assert_eq!(host.ended(), None, "the world keeps running");
+    assert!(eventually(|| !guest.connected()).await);
+
+    // Back again: a new session on a fresh endpoint, never the lapsed one.
+    lock(&fake.world).stalled = false;
+    assert!(eventually(|| !host.status().reopening).await);
+    assert_eq!(host.ended(), None);
+    assert_ne!(host.status().session, first);
+    assert_ne!(host.endpoint().id(), host_address.id);
+    let live = lock(&fake.world).session.clone().unwrap();
+    assert_eq!(live.0, host.status().session);
+    assert_eq!(live.2, host.endpoint().id().to_string());
+
+    // A new guest reaches the new endpoint.
+    let again = joining::join(
+        Arc::clone(&guest_client),
+        bind(Reach::Loopback, false).await.unwrap(),
+        Visit {
+            room: &guest_client.room(ROOM).await.unwrap(),
+            nick: Nick::parse("Guest_One").unwrap(),
+            route: Route::Known(host.endpoint().addr()),
+            protocol: 767,
+            version_name: "1.21.1",
+        },
+        Arc::new(|| {}),
+    )
+    .await
+    .expect("the guest joins the new session");
+    assert!(again.connected());
+    host.stop().await;
+    assert_eq!(host.ended(), Some(Ending::Stopped));
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn hosting_stopped_while_reopening_stays_stopped() {
+    let fake = fake_service::start(&[(HOST, "Host_Player", true)]).await;
+    let (server, _connections) = test_server().await;
+    let host = start(
+        client(&fake, HOST),
+        Arc::clone(&server) as Arc<dyn WorldServer>,
+        bind(Reach::Loopback, true).await.unwrap(),
+        loopback(),
+        ROOM,
+        8,
+        Arc::new(|| {}),
+    )
+    .await
+    .unwrap();
+    lock(&fake.world).stalled = true;
+    assert!(eventually(|| host.status().reopening).await);
+    host.stop().await;
+    assert_eq!(host.ended(), Some(Ending::Stopped));
+    lock(&fake.world).stalled = false;
+    tokio::time::sleep(Duration::from_secs(2)).await;
+    assert_eq!(
+        host.ended(),
+        Some(Ending::Stopped),
+        "no session after a stop"
+    );
+    assert!(!host.status().reopening);
+
+    // A server that exits while the service is away ends hosting too.
+    let fake = fake_service::start(&[(HOST, "Host_Player", true)]).await;
+    let host = start(
+        client(&fake, HOST),
+        Arc::clone(&server) as Arc<dyn WorldServer>,
+        bind(Reach::Loopback, true).await.unwrap(),
+        loopback(),
+        ROOM,
+        8,
+        Arc::new(|| {}),
+    )
+    .await
+    .unwrap();
+    lock(&fake.world).stalled = true;
+    assert!(eventually(|| host.status().reopening).await);
+    *lock(&server.running) = false;
+    assert!(eventually(|| host.ended() == Some(Ending::ServerExited)).await);
+}
+
+#[test]
+fn a_lease_counts_on_both_clocks_and_fails_closed() {
+    assert!(Granted::now().left() > LEASE / 2);
+    // The computer slept: the wall clock moved on, the monotonic one did not.
+    let slept = Granted {
+        at: Instant::now(),
+        wall: SystemTime::now() - Duration::from_secs(3600),
+    };
+    assert_eq!(slept.left(), Duration::ZERO);
+    // The clock was turned back.
+    let turned = Granted {
+        at: Instant::now(),
+        wall: SystemTime::now() + Duration::from_secs(60),
+    };
+    assert_eq!(turned.left(), Duration::ZERO);
+    // A small correction is not a lapse.
+    let corrected = Granted {
+        at: Instant::now(),
+        wall: SystemTime::now() + Duration::from_millis(500),
+    };
+    assert!(corrected.left() > Duration::ZERO);
 }

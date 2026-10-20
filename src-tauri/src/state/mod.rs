@@ -1797,6 +1797,9 @@ impl AppState {
                 if let Some(on) = patch.notoken_offline {
                     settings.notoken_offline = on;
                 }
+                if let Some(on) = patch.worlds_relay_only {
+                    settings.worlds_relay_only = on;
+                }
                 if let Some(source) = patch.download_source {
                     settings.download_source = source;
                 }

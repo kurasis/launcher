@@ -610,11 +610,12 @@ impl WorldsClient {
         .await
     }
 
-    pub async fn renew(&self, session: &str) -> Result<Renewal, Problem> {
+    /// Keeps the lease; `players` is everyone on the world server now.
+    pub async fn renew(&self, session: &str, players: u32) -> Result<Renewal, Problem> {
         self.call(
             reqwest::Method::POST,
             &format!("/v1/sessions/{}/renew", id(session)?),
-            None,
+            Some(json!({ "players": players })),
             Proof::Device,
         )
         .await

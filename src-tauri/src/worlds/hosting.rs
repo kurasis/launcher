@@ -14,12 +14,15 @@
 //!   to the new nick before it logs in ([`super::players`]).
 //!
 //! The session ends when the player stops hosting, the server exits, or the
-//! service says the session is over (another start of the room, a lapsed
-//! lease, a restored database). Then the tunnel stops accepting at once.
+//! service says the session is over (another start of the room, a restored
+//! database). Then the tunnel stops accepting at once. A lease that lapsed
+//! (the computer slept, the service could not be reached for 30 seconds)
+//! cuts the guests off too, and while the server runs a new session is
+//! opened on a fresh endpoint ([`Room`]).
 
 use std::collections::{BTreeSet, HashMap};
 use std::sync::{Arc, Mutex};
-use std::time::Duration;
+use std::time::{Duration, Instant, SystemTime};
 
 use iroh::{Endpoint, EndpointId};
 use serde::Serialize;
@@ -37,14 +40,26 @@ use crate::sync::lock;
 use crate::tunnel::frame::{AdmissionRequest, Refusal};
 use crate::tunnel::host::{Admit, Admitted, TunnelHost};
 
-/// How often the lease is renewed; it lasts 30 seconds.
+/// How often the lease is renewed.
 pub const RENEW_EVERY: Duration = Duration::from_millis(if cfg!(test) { 300 } else { 10_000 });
+
+/// How long a lease lasts at the service.
+const LEASE: Duration = Duration::from_millis(if cfg!(test) { 900 } else { 30_000 });
+
+/// A wall clock turned back by more than this ends the lease.
+const CLOCK_SLACK: Duration = Duration::from_secs(2);
+
+/// Waits between tries to open a new session after a lapsed lease.
+const REOPEN_FIRST: Duration = Duration::from_millis(if cfg!(test) { 200 } else { 2_000 });
+const REOPEN_MOST: Duration = Duration::from_millis(if cfg!(test) { 1_000 } else { 30_000 });
 
 /// What the room needs from the running world server.
 pub trait WorldServer: Send + Sync + 'static {
     fn port(&self) -> u16;
     fn protocol(&self) -> i32;
     fn running(&self) -> bool;
+    /// Players on the server now, the host's own game included.
+    fn players(&self) -> u32;
     /// Writes the whitelist and has the server read it again.
     fn set_members(&self, members: &[Nick]) -> LauncherResult<()>;
     fn kick(&self, nick: &Nick) -> LauncherResult<()>;
@@ -69,6 +84,10 @@ impl WorldServer for Served {
 
     fn running(&self) -> bool {
         self.server.status().phase != super::host::Phase::Exited
+    }
+
+    fn players(&self) -> u32 {
+        u32::try_from(self.server.status().players.len()).unwrap_or(u32::MAX)
     }
 
     fn set_members(&self, members: &[Nick]) -> LauncherResult<()> {
@@ -110,6 +129,8 @@ pub struct HostingStatus {
     pub session: String,
     pub players: Vec<String>,
     pub ended: Option<Ending>,
+    /// The lease lapsed while the server runs; a new session is being opened.
+    pub reopening: bool,
 }
 
 struct Shared {
@@ -277,26 +298,95 @@ impl Admit for RoomAdmit {
     }
 }
 
+/// Binds a fresh endpoint for a new session of the room.
+pub type Rebind = Arc<dyn Fn() -> BoxFuture<'static, LauncherResult<Endpoint>> + Send + Sync>;
+
+/// What every session of the room is opened with.
+struct Opening {
+    client: Arc<WorldsClient>,
+    server: Arc<dyn WorldServer>,
+    room: String,
+    max_players: u32,
+    on_change: Arc<dyn Fn() + Send + Sync>,
+    rebind: Rebind,
+}
+
+/// When a lease was asked for: it lasts [`LEASE`] from the start of the
+/// request that got it, so a late answer never adds time. Both clocks count:
+/// the monotonic one may stand still while the computer sleeps, and a wall
+/// clock turned back fails closed.
+#[derive(Debug, Clone, Copy)]
+struct Granted {
+    at: Instant,
+    wall: SystemTime,
+}
+
+impl Granted {
+    fn now() -> Self {
+        Self {
+            at: Instant::now(),
+            wall: SystemTime::now(),
+        }
+    }
+
+    /// Time the lease has left; zero once it lapsed.
+    fn left(&self) -> Duration {
+        let wall = match self.wall.elapsed() {
+            Ok(passed) => passed,
+            Err(back) if back.duration() <= CLOCK_SLACK => Duration::ZERO,
+            Err(_) => return Duration::ZERO,
+        };
+        LEASE.saturating_sub(self.at.elapsed().max(wall))
+    }
+}
+
+/// The room across its sessions. A lease that lapsed while the server kept
+/// running (the computer slept, the service could not be reached in time) is
+/// never renewed: guests are cut off at once and a new session is opened on
+/// a fresh endpoint, which the guests reconnect to.
+struct Room {
+    current: Mutex<Arc<Shared>>,
+    reopening: Mutex<bool>,
+    stopped: Mutex<bool>,
+    /// Set when hosting ended between sessions.
+    ended: Mutex<Option<Ending>>,
+    stop: Notify,
+}
+
+impl Room {
+    fn current(&self) -> Arc<Shared> {
+        Arc::clone(&lock(&self.current))
+    }
+
+    fn finish(&self, ending: Ending, on_change: &(dyn Fn() + Send + Sync)) {
+        lock(&self.ended).get_or_insert(ending);
+        *lock(&self.reopening) = false;
+        on_change();
+    }
+}
+
 /// A hosted room; dropping it stops accepting guests (call [`RoomHost::stop`]
 /// to end the session at the service too).
 pub struct RoomHost {
-    shared: Arc<Shared>,
+    room: Arc<Room>,
     keeper: JoinHandle<()>,
 }
 
 impl Drop for RoomHost {
     fn drop(&mut self) {
         self.keeper.abort();
-        lock(&self.shared.tunnel).take();
+        lock(&self.room.current().tunnel).take();
     }
 }
 
 /// Starts hosting `room` on `endpoint` (bound with `accept`) in front of
-/// `server`, which must be ready. `members` are the room's members now.
+/// `server`, which must be ready; `rebind` binds the endpoint of a later
+/// session after a lapsed lease.
 pub async fn start(
     client: Arc<WorldsClient>,
     server: Arc<dyn WorldServer>,
     endpoint: Endpoint,
+    rebind: Rebind,
     room: &str,
     max_players: u32,
     on_change: Arc<dyn Fn() + Send + Sync>,
@@ -307,104 +397,235 @@ pub async fn start(
             "The world server is not running.",
         ));
     }
-    let session = client
-        .start_session(room, &endpoint.id().to_string(), max_players.clamp(1, 20))
-        .await?;
-    let shared = Arc::new(Shared {
+    let opening = Opening {
         client,
-        server: Arc::clone(&server),
+        server,
         room: room.to_owned(),
+        max_players: max_players.clamp(1, 20),
+        on_change,
+        rebind,
+    };
+    let (shared, granted) = open(&opening, endpoint).await?;
+    let room = Arc::new(Room {
+        current: Mutex::new(shared),
+        reopening: Mutex::new(false),
+        stopped: Mutex::new(false),
+        ended: Mutex::new(None),
+        stop: Notify::new(),
+    });
+    let keeper = tokio::spawn(run(Arc::clone(&room), opening, granted));
+    Ok(RoomHost { room, keeper })
+}
+
+/// Opens a session on `endpoint`: the whitelist before the first guest (the
+/// first renewal names the members), then the tunnel.
+async fn open(opening: &Opening, endpoint: Endpoint) -> Result<(Arc<Shared>, Granted), Problem> {
+    let session = match opening
+        .client
+        .start_session(
+            &opening.room,
+            &endpoint.id().to_string(),
+            opening.max_players,
+        )
+        .await
+    {
+        Ok(session) => session,
+        Err(problem) => {
+            endpoint.close().await;
+            return Err(problem);
+        }
+    };
+    let shared = Arc::new(Shared {
+        client: Arc::clone(&opening.client),
+        server: Arc::clone(&opening.server),
+        room: opening.room.clone(),
         session,
         admissions: Mutex::new(HashMap::new()),
         members: Mutex::new(BTreeSet::new()),
         ended: Mutex::new(None),
         stop: Notify::new(),
-        on_change,
+        on_change: Arc::clone(&opening.on_change),
         endpoint: endpoint.clone(),
         tunnel: Mutex::new(None),
     });
-    // The whitelist before the first guest: the first renewal names the
-    // members.
-    match shared.client.renew(&shared.session.id).await {
-        Ok(renewal) => shared.apply(&renewal),
-        Err(problem) => {
+    let granted = Granted::now();
+    match shared
+        .client
+        .renew(&shared.session.id, shared.server.players())
+        .await
+    {
+        Ok(renewal) if granted.left() > Duration::ZERO => shared.apply(&renewal),
+        failed => {
             let _ = shared.client.stop_session(&shared.session.id).await;
-            return Err(problem.into());
+            endpoint.close().await;
+            return Err(failed.err().unwrap_or(Problem::Network));
         }
     }
     let tunnel = crate::tunnel::host::serve(
         endpoint,
         Arc::new(RoomAdmit(Arc::clone(&shared))),
-        server.port(),
-        server.protocol(),
+        opening.server.port(),
+        opening.server.protocol(),
     );
     *lock(&shared.tunnel) = Some(tunnel);
-    let keeper = tokio::spawn(keep(Arc::clone(&shared)));
-    Ok(RoomHost { shared, keeper })
+    Ok((shared, granted))
 }
 
-/// Renews the lease until the session ends.
-async fn keep(shared: Arc<Shared>) {
+/// Keeps the room's sessions: renews each lease, and opens a new session
+/// after a lapsed one while the server runs.
+async fn run(room: Arc<Room>, opening: Opening, mut granted: Granted) {
+    loop {
+        if !keep(&room, room.current(), granted).await {
+            return;
+        }
+        let mut wait = REOPEN_FIRST;
+        loop {
+            if *lock(&room.stopped) {
+                return room.finish(Ending::Stopped, opening.on_change.as_ref());
+            }
+            if !opening.server.running() {
+                return room.finish(Ending::ServerExited, opening.on_change.as_ref());
+            }
+            let opened = match (opening.rebind)().await {
+                Ok(endpoint) => open(&opening, endpoint).await,
+                Err(_) => Err(Problem::Network),
+            };
+            match opened {
+                Ok((fresh, at)) => {
+                    *lock(&room.current) = Arc::clone(&fresh);
+                    if *lock(&room.stopped) && fresh.end(Ending::Stopped) {
+                        let _ = fresh.client.stop_session(&fresh.session.id).await;
+                    }
+                    *lock(&room.reopening) = false;
+                    (opening.on_change)();
+                    granted = at;
+                    break;
+                }
+                Err(Problem::Network | Problem::Server | Problem::TooMany) => {
+                    tokio::select! {
+                        () = tokio::time::sleep(wait) => {}
+                        () = room.stop.notified() => {}
+                    }
+                    wait = (wait * 2).min(REOPEN_MOST);
+                }
+                Err(Problem::NotFound | Problem::Forbidden) => {
+                    return room.finish(Ending::RoomGone, opening.on_change.as_ref());
+                }
+                Err(_) => return room.finish(Ending::SessionLost, opening.on_change.as_ref()),
+            }
+        }
+    }
+}
+
+/// Renews the session's lease until the session ends. True when it ended
+/// because the lease lapsed while the server still runs; the room is then
+/// marked reopening before guests are cut off.
+async fn keep(room: &Room, shared: Arc<Shared>, mut granted: Granted) -> bool {
+    let lapsed = |shared: &Shared| {
+        if !shared.server.running() {
+            shared.end(Ending::ServerExited);
+            return false;
+        }
+        *lock(&room.reopening) = true;
+        if !shared.end(Ending::SessionLost) {
+            *lock(&room.reopening) = false;
+            return false;
+        }
+        // The service ends it by itself; telling it frees the room sooner.
+        let (client, session) = (Arc::clone(&shared.client), shared.session.id.clone());
+        tokio::spawn(async move { client.stop_session(&session).await });
+        true
+    };
     loop {
         tokio::select! {
-            () = tokio::time::sleep(RENEW_EVERY) => {}
-            () = shared.stop.notified() => return,
+            () = tokio::time::sleep(RENEW_EVERY.min(granted.left())) => {}
+            () = shared.stop.notified() => return false,
         }
         if shared.ended().is_some() {
-            return;
+            return false;
         }
         if !shared.server.running() {
             shared.end(Ending::ServerExited);
             let _ = shared.client.stop_session(&shared.session.id).await;
-            return;
+            return false;
         }
-        match shared.client.renew(&shared.session.id).await {
-            Ok(renewal) => shared.apply(&renewal),
-            Err(Problem::SessionEnded | Problem::WrongSession | Problem::Device) => {
+        if granted.left().is_zero() {
+            return lapsed(&shared);
+        }
+        let asked = Granted::now();
+        let renewed = tokio::time::timeout(
+            granted.left(),
+            shared
+                .client
+                .renew(&shared.session.id, shared.server.players()),
+        )
+        .await;
+        match renewed {
+            Ok(Ok(renewal)) => {
+                granted = asked;
+                shared.apply(&renewal);
+            }
+            Ok(Err(Problem::SessionEnded | Problem::WrongSession | Problem::Device)) => {
+                // Ended at the service while this lease still ran: another
+                // start of the room, or a restored database.
                 shared.end(Ending::SessionLost);
-                return;
+                return false;
             }
-            Err(Problem::NotFound | Problem::Forbidden | Problem::NotHosting) => {
+            Ok(Err(Problem::NotFound | Problem::Forbidden | Problem::NotHosting)) => {
                 shared.end(Ending::RoomGone);
-                return;
+                return false;
             }
-            // Network trouble: the next renewal may still be in time; if not,
-            // the service ends the session and says so then.
-            Err(_) => {}
+            // Network trouble: the next renewal may still be in time.
+            Ok(Err(_)) => {}
+            // No answer before the lease ran out.
+            Err(_) => return lapsed(&shared),
         }
     }
 }
 
 impl RoomHost {
     pub fn status(&self) -> HostingStatus {
+        let shared = self.room.current();
         HostingStatus {
-            room: self.shared.room.clone(),
-            session: self.shared.session.id.clone(),
-            players: lock(&self.shared.admissions)
+            room: shared.room.clone(),
+            session: shared.session.id.clone(),
+            players: lock(&shared.admissions)
                 .values()
                 .map(|n| n.as_str().to_owned())
                 .collect(),
-            ended: self.shared.ended(),
+            ended: self.ended(),
+            reopening: *lock(&self.room.reopening),
         }
     }
 
+    /// Why hosting ended; none while a new session is being opened.
     pub fn ended(&self) -> Option<Ending> {
-        self.shared.ended()
+        if let Some(ending) = *lock(&self.room.ended) {
+            return Some(ending);
+        }
+        if *lock(&self.room.reopening) {
+            return None;
+        }
+        self.room.current().ended()
     }
 
-    pub fn endpoint(&self) -> &Endpoint {
-        &self.shared.endpoint
+    /// The current session's endpoint.
+    pub fn endpoint(&self) -> Endpoint {
+        self.room.current().endpoint.clone()
     }
 
     /// Ends the session: no new guests, everyone in the tunnel is cut off and
     /// the service is told. The world server is the caller's to stop.
     pub async fn stop(&self) {
-        if self.shared.end(Ending::Stopped) {
-            let _ = self
-                .shared
-                .client
-                .stop_session(&self.shared.session.id)
-                .await;
+        *lock(&self.room.stopped) = true;
+        self.room.stop.notify_waiters();
+        let shared = self.room.current();
+        if shared.end(Ending::Stopped) {
+            let _ = shared.client.stop_session(&shared.session.id).await;
+        }
+        if *lock(&self.room.reopening) {
+            lock(&self.room.ended).get_or_insert(Ending::Stopped);
+            *lock(&self.room.reopening) = false;
         }
     }
 }

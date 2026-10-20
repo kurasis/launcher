@@ -124,7 +124,9 @@ pattern of friends, skins, mods and feed:
   Cloudflare. The relay admits only endpoints that worlds.lapi.sh authorized (30 s allow
   records renewed every 10 s), with per-account quotas and counters.
 - The public n0 relays may be used only by tests, never by a build players get.
-- The relay-only privacy mode moves to W10; core starts with the automatic route.
+- The relay-only privacy mode (W10) is one setting of the player, for hosting and joining alike,
+  instead of a choice per room: every session already has a fresh key, so the two modes never
+  share an endpoint.
 
 ## A6. World custody without the full maintenance protocol
 
@@ -214,3 +216,9 @@ tuple; Fabric and other loaders arrive in W12.
   refused it). An install adds missing files and a runtime goes into its own
   content-addressed folder, so the server's Java is not replaced. Repair, relocation and
   reset still wait for the server.
+- 2026-10-20 — W10: the host tells the service how many players its server has in every
+  renewal, and a room's online count is the larger of that and its open admissions, so the
+  host's own game (on loopback, never admitted) is counted. A lapsed lease is never renewed: the
+  host opens a new session on a fresh endpoint while its server runs, and guests reconnect to it
+  by themselves. A world server that outlived its launcher is stopped through RCON at the next
+  start instead of being adopted.

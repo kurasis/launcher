@@ -173,6 +173,7 @@ describe('WorldsView', () => {
           phase: 'ready',
           players: ['Guest_One'],
           ended: null,
+          reopening: false,
           clean: null,
         },
       }),
@@ -205,7 +206,14 @@ describe('WorldsView', () => {
       worlds_state: () => ({
         ...idle,
         failed: 'nick_unfit',
-        guest: { room: OTHER, connected: false, refused: 'ROOM_FULL', path: 'relay' },
+        guest: {
+          room: OTHER,
+          connected: false,
+          refused: 'ROOM_FULL',
+          path: 'relay',
+          reconnecting: false,
+          gaveUp: true,
+        },
       }),
     });
     expect(await screen.findByText(/cannot be a Minecraft name/)).toBeInTheDocument();
@@ -215,14 +223,114 @@ describe('WorldsView', () => {
     expect(screen.queryByText(/relay\.lapi\.sh, as no direct path/)).toBeNull();
   });
 
+  it('shows the own open world with its live player count, the host included', async () => {
+    setup({
+      // The service has not seen the session yet.
+      worlds_rooms: () => [mine],
+      worlds_state: () => ({
+        ...idle,
+        hosting: {
+          room: ROOM,
+          world: WORLD,
+          phase: 'ready',
+          players: ['Host_Player', 'Guest_One'],
+          ended: null,
+          reopening: false,
+          clean: null,
+        },
+      }),
+    });
+    expect(await screen.findByText('Open: 2 of 8 playing')).toBeInTheDocument();
+    expect(screen.queryByText('Closed')).toBeNull();
+  });
+
+  it('joins again after the connection to the host was lost', async () => {
+    const { calls } = setup({
+      worlds_state: () => ({
+        ...idle,
+        guest: {
+          room: OTHER,
+          connected: false,
+          refused: null,
+          path: null,
+          reconnecting: false,
+          gaveUp: false,
+        },
+      }),
+    });
+    fireEvent.click(await screen.findByRole('button', { name: 'Join again' }));
+    await waitFor(() => {
+      expect(called(calls, 'worlds_join')[0]?.args).toEqual({ room: OTHER });
+    });
+    expect(called(calls, 'worlds_disconnect')).toHaveLength(1);
+  });
+
+  it('says it connects again while the tunnel comes back', async () => {
+    setup({
+      worlds_state: () => ({
+        ...idle,
+        guest: {
+          room: OTHER,
+          connected: false,
+          refused: null,
+          path: null,
+          reconnecting: true,
+          gaveUp: false,
+        },
+      }),
+    });
+    expect(await screen.findByText(/Connecting again/)).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Join again' })).toBeNull();
+  });
+
   it('says whether the guest plays directly or through the relay', async () => {
     setup({
       worlds_state: () => ({
         ...idle,
-        guest: { room: OTHER, connected: true, refused: null, path: 'relay' },
+        guest: {
+          room: OTHER,
+          connected: true,
+          refused: null,
+          path: 'relay',
+          reconnecting: false,
+          gaveUp: false,
+        },
       }),
     });
     expect(await screen.findByText(/through relay\.lapi\.sh/)).toBeInTheDocument();
+  });
+
+  it('says the room is opened again after a lapsed lease, with the world still running', async () => {
+    setup({
+      worlds_state: () => ({
+        ...idle,
+        hosting: {
+          room: ROOM,
+          world: WORLD,
+          phase: 'ready',
+          players: ['Host_Player'],
+          ended: 'session_lost',
+          reopening: true,
+          clean: null,
+        },
+      }),
+    });
+    expect(await screen.findByText(/The room is being opened again/)).toBeInTheDocument();
+    expect(screen.queryByText(/opened on another computer/)).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Close' })).toBeNull();
+  });
+
+  it('turns the relay-only mode on and says what the relay sees', async () => {
+    const { calls } = setup();
+    const box = await screen.findByRole('checkbox', { name: 'Connect through the relay only' });
+    expect(box).not.toBeChecked();
+    expect(screen.getByText(/sees the addresses of both computers/)).toBeInTheDocument();
+    fireEvent.click(box);
+    await waitFor(() => {
+      expect(called(calls, 'set_app_settings')[0]?.args).toMatchObject({
+        request: { payload: { worldsRelayOnly: true } },
+      });
+    });
   });
 
   it('joins a room with an invite code after a look', async () => {
@@ -467,6 +575,7 @@ describe('WorldsView', () => {
           phase: 'ready',
           players: [],
           ended: null,
+          reopening: false,
           clean: null,
         },
       }),

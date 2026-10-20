@@ -103,6 +103,7 @@ export function snapshotFixture(overrides: Partial<AppSnapshot> = {}): AppSnapsh
         player: 'window',
         hidden: [],
       },
+      worldsRelayOnly: false,
       language: 'en',
       writable: true,
     },

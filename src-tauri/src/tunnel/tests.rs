@@ -130,7 +130,7 @@ async fn setup(ticket: &'static str) -> Setup {
     let connection = guest_endpoint.connect(address, ALPN).await.unwrap();
     let status = Arc::new(TestStatus::default());
     let listener = guest::listen(Target {
-        connection: connection.clone(),
+        connection: Arc::new(std::sync::Mutex::new(connection.clone())),
         nick: Nick::parse("Notch").unwrap(),
         protocol: 767,
         version_name: "1.21.1",
@@ -494,4 +494,30 @@ async fn local_pending_connections_are_bounded() {
     // The others are closed by the classification deadline.
     let read = timeout(Duration::from_secs(8), silent[0].read(&mut buffer)).await;
     assert!(matches!(read, Ok(Ok(0)) | Ok(Err(_))));
+}
+
+#[tokio::test]
+async fn relay_only_binds_no_ip_socket_and_offers_no_direct_address() {
+    let relay: iroh::RelayUrl = "http://127.0.0.1:9".parse().unwrap();
+    let open = bind(
+        Reach::Network(iroh::RelayMode::custom([relay.clone()])),
+        true,
+    )
+    .await
+    .unwrap();
+    let only = bind(Reach::RelayOnly(iroh::RelayMode::custom([relay])), true)
+        .await
+        .unwrap();
+    assert!(
+        !open.bound_sockets().is_empty(),
+        "the automatic route binds UDP"
+    );
+    tokio::time::sleep(Duration::from_millis(500)).await;
+    assert!(
+        only.bound_sockets().is_empty(),
+        "nothing a peer could probe"
+    );
+    assert_eq!(only.addr().ip_addrs().count(), 0, "no direct candidate");
+    open.close().await;
+    only.close().await;
 }

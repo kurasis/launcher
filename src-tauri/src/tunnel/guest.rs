@@ -69,9 +69,13 @@ pub trait RoomStatus: Send + Sync + 'static {
     fn refused(&self, _refusal: Option<Refusal>) {}
 }
 
+/// The tunnel connection a listener opens streams on; the room puts a new
+/// one in after a lost connection comes back.
+pub type SharedConnection = Arc<std::sync::Mutex<Connection>>;
+
 /// What one listener serves.
 pub struct Target {
-    pub connection: Connection,
+    pub connection: SharedConnection,
     pub nick: Nick,
     pub protocol: i32,
     pub version_name: &'static str,
@@ -243,7 +247,8 @@ async fn join(socket: TcpStream, prefix: Vec<u8>, target: &Target) {
         target.status.refused(Some(Refusal::Unavailable));
         return;
     };
-    let Ok((mut send, mut recv)) = target.connection.open_bi().await else {
+    let connection = crate::sync::lock(&target.connection).clone();
+    let Ok((mut send, mut recv)) = connection.open_bi().await else {
         target.status.refused(None);
         return;
     };
