@@ -1,0 +1,39 @@
+plugins {
+    id 'java'
+    id 'net.neoforged.moddev' version '2.0.148'
+}
+
+base {
+    archivesName = "launchergametest-neoforge-${minecraft_version}"
+}
+
+java {
+    toolchain { languageVersion = JavaLanguageVersion.of(21) }
+}
+
+sourceSets.main {
+    java.srcDir "${rootDir}/gametest/core/src/main/java"
+    java.srcDir "${projectDir}/../common/src/main/java"
+    resources.srcDir "${projectDir}/../common/src/main/resources"
+}
+
+neoForge {
+    version = neoforge_version
+    mods {
+        launchergametest {
+            sourceSet sourceSets.main
+        }
+    }
+}
+
+tasks.withType(JavaCompile).configureEach {
+    options.release = 21
+    options.encoding = 'UTF-8'
+}
+
+processResources {
+    inputs.property 'version', project.version
+    filesMatching('META-INF/neoforge.mods.toml') {
+        expand version: project.version
+    }
+}

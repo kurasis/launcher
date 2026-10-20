@@ -27,6 +27,12 @@ none for them: a profile without textures whose UUID is not a Mojang one (versio
   1.21.1 jar is remapped to the released game's names and carries its own ASM
   (relocated), and finds its target from the remapped descriptor of its hook.
 
+- `gametest/`: the test bot for the Game test workflow (docs/GAMETEST.md), never shipped
+  to players: a plain Java core (`gametest/core`, the scenario and its checks) and a thin
+  game layer per version with a Mixin into `Minecraft.tick()`, built for each loader as
+  `launchergametest-<loader>-<game version>.jar`. It does nothing unless the game is
+  started with `-Dlaunchergametest.out=<folder>`.
+
 ## Build
 
 Gradle runs on Java 25 (Fabric Loom and RetroFuturaGradle need it); the jar for 1.12.2

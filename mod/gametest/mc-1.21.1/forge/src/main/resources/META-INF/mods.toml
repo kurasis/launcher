@@ -1,0 +1,17 @@
+modLoader = "javafml"
+loaderVersion = "[52,)"
+license = "All-Rights-Reserved"
+
+[[mods]]
+modId = "launchergametest"
+version = "${version}"
+displayName = "Launcher Game Test"
+description = "The launcher's test bot: plays the game on the test machine and writes a report. Not for players."
+displayTest = "IGNORE_ALL_VERSION"
+
+[[dependencies.launchergametest]]
+modId = "minecraft"
+mandatory = true
+versionRange = "[1.21.1]"
+ordering = "NONE"
+side = "CLIENT"

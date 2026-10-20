@@ -1,0 +1,220 @@
+name: Game test
+
+# The game played by the test bot on the owner's Windows test machine
+# (docs/GAMETEST.md): a self-hosted runner labelled `gametest` installs each
+# scenario through the launcher, adds the bot, this commit's skins mod and
+# optionally a medium set of popular mods, serves test skins (HD, slim,
+# animated, capes) and lets the bot play for the given minutes.
+#
+# The runner is a real computer, so this workflow runs only from main: by hand
+# ("Run workflow") or on the nightly schedule, never for a pull request. Inputs
+# reach scripts only through env and are checked against fixed lists.
+
+on:
+  workflow_dispatch:
+    inputs:
+      versions:
+        description: Game versions (comma-separated; 26.3, 1.21.1)
+        default: 26.3,1.21.1
+      loaders:
+        description: Loaders (comma-separated; fabric, neoforge, forge)
+        default: fabric,neoforge,forge
+      mods:
+        description: Mod sets (comma-separated; none, medium)
+        default: none,medium
+      minutes:
+        description: Minutes of play per scenario (0.5 to 60)
+        default: '5'
+      skin:
+        description: Skin variant for every scenario, or rotate (classic, slim128, hd256, hd512, anim64, anim256, cape, none)
+        default: rotate
+  schedule:
+    # 03:00 Moscow time.
+    - cron: '0 0 * * *'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: gametest
+  cancel-in-progress: false
+
+jobs:
+  plan:
+    name: Plan the scenarios
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-24.04
+    outputs:
+      scenarios: ${{ steps.plan.outputs.scenarios }}
+      minutes: ${{ steps.plan.outputs.minutes }}
+    steps:
+      - id: plan
+        env:
+          VERSIONS: ${{ inputs.versions || '26.3,1.21.1' }}
+          LOADERS: ${{ inputs.loaders || 'fabric,neoforge,forge' }}
+          MODS: ${{ inputs.mods || 'none,medium' }}
+          MINUTES: ${{ inputs.minutes || '5' }}
+          SKIN: ${{ inputs.skin || 'rotate' }}
+        run: |
+          python3 - <<'EOF'
+          import json, os, sys
+          allowed = {
+              "VERSIONS": ["26.3", "1.21.1"],
+              "LOADERS": ["fabric", "neoforge", "forge"],
+              "MODS": ["none", "medium"],
+          }
+          skins = ["hd256", "anim64", "slim128", "hd512", "anim256", "classic", "cape", "none"]
+          picked = {}
+          for key, options in allowed.items():
+              items = [s.strip() for s in os.environ[key].split(",") if s.strip()]
+              bad = [s for s in items if s not in options]
+              if bad or not items:
+                  sys.exit(f"{key}: use some of {', '.join(options)}")
+              picked[key] = list(dict.fromkeys(items))
+          skin = os.environ["SKIN"].strip()
+          if skin != "rotate" and skin not in skins:
+              sys.exit(f"skin: rotate or one of {', '.join(skins)}")
+          try:
+              minutes = float(os.environ["MINUTES"])
+          except ValueError:
+              sys.exit("minutes: a number")
+          if not 0.5 <= minutes <= 60:
+              sys.exit("minutes: 0.5 to 60")
+          scenarios = []
+          for version in picked["VERSIONS"]:
+              for loader in picked["LOADERS"]:
+                  for mods in picked["MODS"]:
+                      s = skins[len(scenarios) % len(skins)] if skin == "rotate" else skin
+                      scenarios.append({"version": version, "loader": loader, "mods": mods, "skin": s,
+                                        "name": f"{version} {loader} {mods} {s}"})
+          with open(os.environ["GITHUB_OUTPUT"], "a") as out:
+              out.write(f"scenarios={json.dumps(scenarios)}\n")
+              out.write(f"minutes={minutes:g}\n")
+          print(f"{len(scenarios)} scenarios, {minutes:g} minutes each")
+          EOF
+
+  jars:
+    name: Build the bot and the skins mod
+    needs: plan
+    runs-on: ubuntu-24.04
+    defaults:
+      run:
+        working-directory: mod
+    steps:
+      - uses: actions/checkout@v7
+      - uses: gradle/actions/wrapper-validation@v6
+      - uses: actions/setup-java@v6
+        with:
+          distribution: temurin
+          java-version: |
+            21
+            25
+      - uses: gradle/actions/setup-gradle@v6
+      - name: Build
+        run: |
+          tasks=":gametest:core:test"
+          for v in 26.3 1.21.1; do
+            for l in fabric neoforge forge; do
+              tasks="$tasks :mc-$v:$l:build :gametest:mc-$v:$l:build"
+            done
+          done
+          ./gradlew --no-daemon $tasks
+      - uses: actions/upload-artifact@v7
+        with:
+          name: gametest-jars
+          path: |
+            mod/mc-*/*/build/libs/launcherskins-*.jar
+            mod/gametest/mc-*/*/build/libs/launchergametest-*.jar
+            !mod/**/*-sources.jar
+            !mod/**/*-dev.jar
+            !mod/**/*-named.jar
+          retention-days: 3
+
+  harness:
+    name: Build the test harness
+    needs: plan
+    runs-on: windows-2025
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@v7
+      - name: Install pinned Rust toolchain
+        run: rustup show active-toolchain || rustup toolchain install
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: src-tauri
+      - name: Build
+        working-directory: src-tauri
+        run: |
+          exe=$(cargo test --locked --test live_gametest --no-run --message-format=json \
+            | python -c "import json,sys; print([m['executable'] for m in map(json.loads, sys.stdin) if m.get('reason') == 'compiler-artifact' and m.get('executable')][-1])")
+          mkdir -p ../harness
+          cp "$exe" ../harness/live_gametest.exe
+      - uses: actions/upload-artifact@v7
+        with:
+          name: gametest-harness
+          path: harness/live_gametest.exe
+          retention-days: 3
+
+  play:
+    name: Play ${{ matrix.scenario.name }}
+    needs: [plan, jars, harness]
+    runs-on: [self-hosted, windows, x64, gametest]
+    timeout-minutes: 120
+    strategy:
+      fail-fast: false
+      max-parallel: 1
+      matrix:
+        scenario: ${{ fromJSON(needs.plan.outputs.scenarios) }}
+    defaults:
+      run:
+        # Windows PowerShell as the runner's user runs no script files by
+        # default (execution policy Restricted); the policy is lifted for these
+        # steps only, the machine's setting stays as it is.
+        shell: powershell -NoProfile -ExecutionPolicy Bypass -Command ". '{0}'"
+    env:
+      GAMETEST_VERSION: ${{ matrix.scenario.version }}
+      GAMETEST_LOADER: ${{ matrix.scenario.loader }}
+      GAMETEST_MODS: ${{ matrix.scenario.mods }}
+      GAMETEST_SKIN: ${{ matrix.scenario.skin }}
+      GAMETEST_MINUTES: ${{ needs.plan.outputs.minutes }}
+    steps:
+      - uses: actions/download-artifact@v8
+        with:
+          name: gametest-jars
+          path: gt/jars-tree
+      - uses: actions/download-artifact@v8
+        with:
+          name: gametest-harness
+          path: gt/bin
+      - name: Play
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $jars = New-Item -ItemType Directory -Force gt/jars
+          Get-ChildItem gt/jars-tree -Recurse -Filter *.jar | Copy-Item -Destination $jars
+          # Kept between runs: games, Java and mods are downloaded once.
+          if (-not $env:GAMETEST_ROOT) { $env:GAMETEST_ROOT = Join-Path $env:LOCALAPPDATA 'launcher-gametest' }
+          $env:LAUNCHER_LIVE_ROOT = $env:GAMETEST_ROOT
+          $env:GAMETEST_JARS = $jars.FullName
+          $env:GAMETEST_OUT = (New-Item -ItemType Directory -Force gt/out).FullName
+          & gt/bin/live_gametest.exe --ignored --nocapture --test-threads=1
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      - name: Summary
+        if: always()
+        run: |
+          Get-ChildItem gt/out -Recurse -Filter summary.md -ErrorAction SilentlyContinue |
+            ForEach-Object {
+              # Windows PowerShell's utf8 adds a byte-order mark; the summary takes plain UTF-8.
+              [IO.File]::AppendAllText($env:GITHUB_STEP_SUMMARY, [IO.File]::ReadAllText($_.FullName), (New-Object Text.UTF8Encoding $false))
+            }
+      - uses: actions/upload-artifact@v7
+        if: always()
+        with:
+          name: gametest-${{ matrix.scenario.version }}-${{ matrix.scenario.loader }}-${{ matrix.scenario.mods }}
+          path: gt/out
+          retention-days: 7
+          if-no-files-found: ignore
+      - name: Clean the workspace
+        if: always()
+        run: Remove-Item -Recurse -Force gt -ErrorAction SilentlyContinue

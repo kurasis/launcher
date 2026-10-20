@@ -1661,6 +1661,46 @@ fn curseforge_pages_are_read_with_care() {
     assert_eq!(card.body, "");
     assert!(card.gallery.is_empty());
 
+    // The description the page renders apart from the project: raw HTML
+    // (by reference to a text chunk) wins over other text chunks, a script
+    // is not a description, and a text chunk with paragraphs is the last
+    // resort.
+    let bare = json!({ "id": JEI, "slug": "jei", "gameId": 432, "name": "Just Enough Items" });
+    let about = "<p>JEI shows <b>recipes</b></p><p><img src=\"https://media.forgecdn.net/attachments/1/2/a.png\"></p>";
+    let other = "<p>Short</p>";
+    let rsc = format!(
+        "1:{}\n2:{}\n3:{}\n4:T{:x},{about}5:T{:x},{other}6:[]\n",
+        json!(["$", "div", null, { "project": bare }]),
+        json!(["$", "div", null, { "dangerouslySetInnerHTML": { "__html": "$4" } }]),
+        json!(["$", "script", null, { "dangerouslySetInnerHTML": { "__html": "<script>window.x=1<2</script>".repeat(40) } }]),
+        about.len(),
+        other.len()
+    );
+    let html = format!("<script>self.__next_f.push({})</script>", json!([1, rsc]));
+    assert_eq!(curseforge::page(&html, "jei").body, about);
+    assert!(
+        curseforge::media(&html)
+            .starts_with(&format!("desc:{},raw_html:2,text_chunks_p:2,", about.len()))
+    );
+    assert!(curseforge::media(&html).ends_with("holders[]"));
+    let rsc = format!(
+        "1:{}\n5:T{:x},{other}6:[]\n",
+        json!(["$", "div", null, { "project": bare }]),
+        other.len()
+    );
+    let html = format!("<script>self.__next_f.push({})</script>", json!([1, rsc]));
+    assert_eq!(curseforge::page(&html, "jei").body, other);
+    // Objects holding a picture are named by their keys.
+    let rsc = format!(
+        "1:{}\n",
+        json!([{ "imageUrl": "https://media.forgecdn.net/attachments/1/2/s.png", "title": "S", "bad key": 1 }])
+    );
+    let html = format!("<script>self.__next_f.push({})</script>", json!([1, rsc]));
+    assert_eq!(
+        curseforge::media(&html),
+        "desc:0,raw_html:0,text_chunks_p:0,holders[imageUrl+title]"
+    );
+
     // JSON-LD and Open Graph when there is no stream.
     let html = r#"<script type="application/ld+json">{"@context":"https://schema.org","name":"Faithful","description":"32x","image":{"url":"https://media.forgecdn.net/a.png"},"author":[{"name":"xMrVizzy"}],"dateModified":"2024-01-01T00:00:00Z"}</script>
         <meta property="og:description" content="ignored">"#;

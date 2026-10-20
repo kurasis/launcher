@@ -1,0 +1,28 @@
+plugins {
+    id 'java-library'
+}
+
+java {
+    toolchain { languageVersion = JavaLanguageVersion.of(21) }
+}
+
+// Java 8 bytecode, like the skins core: the same bot runs in every game version.
+tasks.withType(JavaCompile).configureEach {
+    options.release = 8
+    options.encoding = 'UTF-8'
+    options.compilerArgs += ['-Xlint:all,-options', '-Werror']
+}
+
+repositories {
+    mavenCentral()
+}
+
+dependencies {
+    testImplementation platform('org.junit:junit-bom:5.13.4')
+    testImplementation 'org.junit.jupiter:junit-jupiter'
+    testRuntimeOnly 'org.junit.platform:junit-platform-launcher'
+}
+
+test {
+    useJUnitPlatform()
+}

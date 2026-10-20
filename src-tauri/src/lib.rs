@@ -670,7 +670,14 @@ pub fn run() {
                 .js_init_script_on_all_frames(FREEZE_PROTOTYPE_SCRIPT)
                 .build(),
         )
-        .plugin(tauri_plugin_opener::init())
+        // Links open through each window's own handlers (the player window's
+        // on_new_window, the commands). The plugin's click script would call
+        // IPC that the player window may not use, so its links did nothing.
+        .plugin(
+            tauri_plugin_opener::Builder::new()
+                .open_js_links_on_click(false)
+                .build(),
+        )
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_notification::init())
         // Updates (D-063); the key is given per check, so a build without it

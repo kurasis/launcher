@@ -378,6 +378,12 @@ fn mail_check(to: Option<&str>, now: i64) -> Result<(), String> {
             "outbox: {}",
             serde_json::to_string(&store.mail_counts(now)?).unwrap_or_default()
         );
+        for (minutes, attempts, error) in store.mail_failures(now)? {
+            out!(
+                "waiting: queued {minutes} min ago, {attempts} tries, last: {}",
+                mail::public_failure(&error)
+            );
+        }
     }
     result
 }
