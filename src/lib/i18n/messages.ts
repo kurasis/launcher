@@ -1346,10 +1346,17 @@ export type Messages = {
       readonly description: string;
       readonly gallery: string;
       readonly versions: string;
-      readonly fitsOnly: (values: { name: string | number }) => string;
       readonly chooseInstallation: string;
-      readonly noneFits: string;
       readonly noVersions: string;
+      readonly kept: string;
+      readonly channel: string;
+      readonly anyChannel: string;
+      readonly order: string;
+      readonly newest: string;
+      readonly oldest: string;
+      readonly noneMatch: string;
+      readonly showAll: string;
+      readonly matching: (values: { count: number; total: string | number }) => string;
     };
     readonly add: {
       readonly title: (values: { title: string | number; name: string | number }) => string;

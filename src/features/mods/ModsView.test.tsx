@@ -254,10 +254,11 @@ describe('ModsView', () => {
     fireEvent.click(await screen.findByRole('button', { name: /Sodium/ }));
     const article = await screen.findByRole('article', { name: 'Sodium' });
     expect(await within(article).findByText(/Not saved in the catalog yet/)).toBeVisible();
+    // Every version comes; the page filters them.
     expect(named('mods_versions', calls)[0]?.args).toMatchObject({
       project: PROJECT,
-      game: '1.21.1',
-      loader: 'fabric',
+      game: null,
+      loader: null,
     });
 
     fireEvent.click(await within(article).findByRole('button', { name: 'Add to installation' }));
@@ -276,6 +277,52 @@ describe('ModsView', () => {
       world: null,
       replaces: null,
     });
+  });
+
+  it('filters and orders versions, starting with what fits the installation', async () => {
+    const v = (n: number, games: string[], loaders: string[], extra: Partial<ModsVersion>) => ({
+      ...version,
+      id: `00000000-0000-4000-8000-0000000000${String(20 + n)}`,
+      number: `0.${String(n)}`,
+      name: `Sodium 0.${String(n)}`,
+      published: 1_760_000_000 - n,
+      games,
+      loaders,
+      ...extra,
+    });
+    setup({
+      mods_versions: () => [
+        v(1, ['1.21.1'], ['fabric'], { saved: 'all' }),
+        v(2, ['1.20.1'], ['forge'], { channel: 'beta' }),
+        v(3, ['1.20.1', '1.20'], ['fabric', 'quilt'], {}),
+      ],
+    });
+    fireEvent.click(await screen.findByRole('button', { name: /Sodium/ }));
+    const article = await screen.findByRole('article', { name: 'Sodium' });
+    const names = () =>
+      within(article)
+        .queryAllByText(/^Sodium 0\.\d$/)
+        .map((e) => e.textContent);
+    await waitFor(() => {
+      expect(names()).toEqual(['Sodium 0.1']);
+    });
+    expect(within(article).getByText('In the catalog')).toBeVisible();
+    expect(within(article).getByText('1 version of 3')).toBeVisible();
+    const game = within(article).getByLabelText('Game version');
+    expect(
+      within(game)
+        .getAllByRole('option')
+        .map((o) => o.textContent),
+    ).toEqual(['Any', '1.21.1', '1.20.1', '1.20']);
+    fireEvent.change(game, { target: { value: '' } });
+    expect(names()).toEqual(['Sodium 0.1', 'Sodium 0.3']);
+    fireEvent.change(within(article).getByLabelText('Loader'), { target: { value: '' } });
+    fireEvent.change(within(article).getByLabelText('Order'), { target: { value: 'oldest' } });
+    expect(names()).toEqual(['Sodium 0.3', 'Sodium 0.2', 'Sodium 0.1']);
+    fireEvent.change(within(article).getByLabelText('Type'), { target: { value: 'alpha' } });
+    expect(within(article).getByText('No version matches the filters.')).toBeVisible();
+    fireEvent.click(within(article).getByRole('button', { name: 'Show all' }));
+    expect(names()).toHaveLength(3);
   });
 
   it('does not install while something is missing or in the way', async () => {
@@ -401,6 +448,8 @@ describe('ModsView', () => {
           author: 'jellysquid',
           downloads: 10,
           projectId: null,
+          icon: PICTURE,
+          banner: PICTURE,
         },
       ],
       created: 1,
@@ -416,6 +465,8 @@ describe('ModsView', () => {
     expect(within(dialog).getByLabelText('Link or name')).toHaveValue('sodium');
     fireEvent.click(within(dialog).getByRole('button', { name: 'Add' }));
     expect(await within(dialog).findByText('Choose a project')).toBeVisible();
+    // The catalog's copies of its icon and poster.
+    expect(dialog.querySelectorAll(`img[src="${PICTURE}"]`)).toHaveLength(2);
     fireEvent.click(within(dialog).getByRole('button', { name: 'This one' }));
     expect(await within(dialog).findByText('Being added')).toBeVisible();
     expect(named('mods_choose', calls)[0]?.args).toEqual({

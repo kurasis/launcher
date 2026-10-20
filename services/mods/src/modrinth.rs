@@ -301,9 +301,10 @@ pub fn version(value: &Value) -> Option<SourceVersion> {
     })
 }
 
-/// A search hit, offered to the player who typed a name. No picture: the
-/// launcher shows nothing from another site, so players' addresses stay here.
-#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize)]
+/// A search hit, offered to the player who typed a name. Its pictures are
+/// kept here first: the launcher shows nothing from another site, so players'
+/// addresses stay here.
+#[derive(Debug, Clone, Default, PartialEq, Eq, serde::Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct Candidate {
     pub source: &'static str,
@@ -319,6 +320,25 @@ pub struct Candidate {
     /// player.
     #[serde(rename = "ref", skip_serializing_if = "Option::is_none")]
     pub reference: Option<String>,
+    /// Its icon and its poster (the picture its source shows on a card), at
+    /// our address once kept.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub icon: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub banner: Option<String>,
+    /// Where they are at the source; never sent on.
+    #[serde(skip)]
+    pub icon_url: Option<String>,
+    #[serde(skip)]
+    pub banner_url: Option<String>,
+}
+
+/// A picture address of a hit we may fetch.
+fn picture_url(value: Option<&Value>) -> Option<String> {
+    value
+        .and_then(Value::as_str)
+        .filter(|u| crate::fetch::site(u).is_some())
+        .map(str::to_owned)
 }
 
 pub fn candidates(value: &Value) -> Vec<Candidate> {
@@ -345,7 +365,10 @@ pub fn candidates(value: &Value) -> Vec<Candidate> {
                     .and_then(Value::as_i64)
                     .unwrap_or(0)
                     .max(0),
-                reference: None,
+                icon_url: picture_url(hit.get("icon_url")),
+                banner_url: picture_url(hit.get("featured_gallery"))
+                    .or_else(|| picture_url(hit.get("gallery").and_then(|g| g.get(0)))),
+                ..Candidate::default()
             })
         })
         .take(5)

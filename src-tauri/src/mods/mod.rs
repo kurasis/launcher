@@ -569,6 +569,9 @@ pub struct Candidate {
     pub downloads: i64,
     /// Already in the catalog.
     pub project_id: Option<String>,
+    /// Its icon and poster as the catalog keeps them.
+    pub icon: Option<String>,
+    pub banner: Option<String>,
 }
 
 /// A request to add to the catalog.
@@ -627,6 +630,8 @@ impl ImportRequest {
                             .as_str()
                             .filter(|i| our_id(i))
                             .map(str::to_owned),
+                        icon: c["icon"].as_str().and_then(our_picture),
+                        banner: c["banner"].as_str().and_then(our_picture),
                     })
                 })
                 .collect(),

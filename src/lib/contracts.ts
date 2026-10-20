@@ -1333,6 +1333,9 @@ export interface ModsCandidate {
   downloads: number;
   /** Already in the catalog. */
   projectId: string | null;
+  /** Its icon and poster, kept by the catalog. */
+  icon: string | null;
+  banner: string | null;
 }
 
 /** A request to add to the catalog. */

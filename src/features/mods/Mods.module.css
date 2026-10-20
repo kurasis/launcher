@@ -317,6 +317,17 @@
   gap: var(--space-3);
 }
 
+/* A project's poster, across the top of its card. */
+.banner {
+  flex: 1 0 100%;
+  width: 100%;
+  aspect-ratio: 16 / 9;
+  max-height: 10rem;
+  border-radius: var(--radius-sm);
+  background: var(--color-neutral-bg);
+  object-fit: cover;
+}
+
 .versionHead {
   display: grid;
   gap: var(--space-1);

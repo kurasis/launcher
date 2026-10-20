@@ -1276,10 +1276,17 @@
         "description": "الوصف",
         "gallery": "الصور",
         "versions": "الإصدارات",
-        "fitsOnly": "إصدارات {name} فقط",
         "chooseInstallation": "اختر تثبيتًا في الأعلى لتضيف إليه إصدارًا.",
-        "noneFits": "لا إصدار يناسب هذا التثبيت.",
-        "noVersions": "لا إصدارات بعد."
+        "noVersions": "لا إصدارات بعد.",
+        "kept": "في الفهرس",
+        "channel": "النوع",
+        "anyChannel": "أي نوع",
+        "order": "الترتيب",
+        "newest": "الأحدث أولاً",
+        "oldest": "الأقدم أولاً",
+        "noneMatch": "لا يوجد إصدار يطابق عوامل التصفية.",
+        "showAll": "عرض الكل",
+        "matching": "{count, plural, zero {لا إصدارات} one {إصدار واحد} two {إصداران} few {# إصدارات} many {# إصدارًا} other {# إصدار}} من {total}"
       },
       "add": {
         "title": "أضف {title} إلى {name}",

@@ -338,7 +338,7 @@ async fn resolve(app: &App, id: &str) -> Result<(), JobError> {
             // Only Modrinth: CurseForge's search answers the server with 403
             // whatever is asked, and its search page carries no results, so
             // CurseForge projects come by their page address (D-066).
-            let found = app
+            let mut found = app
                 .client
                 .json(&modrinth::search_url(&words))
                 .await?
@@ -346,6 +346,13 @@ async fn resolve(app: &App, id: &str) -> Result<(), JobError> {
                 .unwrap_or_default();
             if found.is_empty() {
                 return fail("nothing_found");
+            }
+            // Their pictures, kept here; one that cannot be had is left out.
+            for candidate in &mut found {
+                candidate.icon =
+                    candidate_picture(app, candidate.icon_url.as_deref(), 256, "webp").await;
+                candidate.banner =
+                    candidate_picture(app, candidate.banner_url.as_deref(), 512, "jpeg").await;
             }
             let mut list = serde_json::to_value(&found).unwrap_or_default();
             // Those in the catalog already say so.
@@ -369,6 +376,22 @@ async fn resolve(app: &App, id: &str) -> Result<(), JobError> {
             start(app, id, modrinth::SOURCE, &project, Some(&version))
         }
     }
+}
+
+/// A picture of a search hit at our address: its small copy, or itself when
+/// none can be made.
+async fn candidate_picture(
+    app: &App,
+    url: Option<&str>,
+    size: u32,
+    format: &str,
+) -> Option<String> {
+    let (sha256, media_type) = keep_image(app, url?).await.ok()?;
+    Some(match small_copy(app, &sha256, size, format).await {
+        Some(small) if format == "webp" => app.urls.image(&small, "image/webp"),
+        Some(small) => app.urls.image(&small, "image/jpeg"),
+        None => app.urls.image(&sha256, &media_type),
+    })
 }
 
 /// Queues a request's project (and the version it names).

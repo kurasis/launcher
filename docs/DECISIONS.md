@@ -2064,7 +2064,13 @@ archive from the Package workflow, upload it to
   `sandbox`. The type of a picture is taken from its bytes, never from the source.
   Small copies (icons 256 px lossless WebP, gallery 512 px JPEG) are made by
   `lapi-mods thumb` in a process of its own with bounded size and memory. The launcher
-  shows no picture from another site, so players' addresses go only to us.
+  shows no picture from another site, so players' addresses go only to us. The projects
+  a name finds come with their icon and poster (Modrinth's featured gallery picture),
+  kept here first like any picture.
+- **A project's versions** come whole (up to 2000) and the page filters them by game
+  version, loader and type and orders them newest or oldest first; it starts with the
+  chosen installation's game version and loader. A version the catalog keeps says
+  **In the catalog**; one it does not has **Save to the catalog**.
 - **API:** `GET /v1/search`, `/v1/projects/{id|slug}`, `/v1/projects/{id}/versions`,
   `/v1/versions/{id}` (each version says `saved`: `all` kept, else fetched on request),
   `POST /v1/versions/{id}/fetch`, `GET`/`POST /v1/versions/{id}/pack` (stage 3),

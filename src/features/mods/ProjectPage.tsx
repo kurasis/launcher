@@ -1,5 +1,6 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { Button } from '../../components/Button';
+import { Field } from '../../components/Field';
 import { Notice } from '../../components/Notice';
 import { StatusBadge } from '../../components/StatusBadge';
 import forms from '../../components/forms.module.css';
@@ -11,6 +12,26 @@ import { RichText } from './RichText';
 import styles from './Mods.module.css';
 
 const SHOWN = 30;
+const CHANNELS = ['release', 'beta', 'alpha'] as const;
+
+/** Game versions newest first, releases before snapshots. */
+function byGame(a: string, b: string): number {
+  const release = /^\d+(\.\d+)+$/;
+  const ar = release.test(a);
+  if (ar !== release.test(b)) return ar ? -1 : 1;
+  return b.localeCompare(a, 'en', { numeric: true });
+}
+
+/** What the versions run on, to filter by. */
+function choices(versions: ModsVersion[]): { games: string[]; loaders: string[] } {
+  const games = new Set<string>();
+  const loaders = new Set<string>();
+  for (const v of versions) {
+    for (const g of v.games) games.add(g);
+    for (const l of v.loaders) loaders.add(l);
+  }
+  return { games: [...games].sort(byGame), loaders: [...loaders].sort() };
+}
 
 interface Props {
   /** Our ID or the slug. */
@@ -54,6 +75,7 @@ function VersionRow({
           {version.channel !== 'release' && (
             <StatusBadge tone="warning" label={t.channels[version.channel]} />
           )}
+          {version.saved === 'all' && <StatusBadge tone="success" label={t.kept} />}
         </span>
         <span className={styles.muted}>
           <bdi dir="ltr">{version.games.slice(0, 6).join(', ')}</bdi>
@@ -129,10 +151,17 @@ function VersionRow({
 export function ProjectPage({ projectRef, instance, onBack, onLink, onAdd, onInstallPack }: Props) {
   const t = strings.mods.project;
   const [project, setProject] = useState<ModsProject | null>(null);
-  // Versions with the query they answer; another query shows none yet.
-  const [answer, setAnswer] = useState<{ query: string; list: ModsVersion[] } | null>(null);
+  // Every version of the project, newest first.
+  const [versions, setVersions] = useState<ModsVersion[] | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const [fitting, setFitting] = useState(instance !== null);
+  // Filters; empty means any. The chosen installation's game and loader at
+  // first, once the versions show which there are.
+  const [filters, setFilters] = useState<{
+    game: string;
+    loader: string;
+    channel: '' | (typeof CHANNELS)[number];
+    oldest: boolean;
+  } | null>(null);
   const [shown, setShown] = useState(SHOWN);
 
   // The parent keys this page by project, so it starts empty.
@@ -152,21 +181,13 @@ export function ProjectPage({ projectRef, instance, onBack, onLink, onAdd, onIns
   }, [projectRef]);
 
   const projectId = project?.id ?? null;
-  const kind = project?.kind ?? null;
-  // A new snapshot is a new object; only these matter here. A modpack makes
-  // an installation of its own, so nothing is filtered for one.
-  const filtered = fitting && kind !== 'modpack';
-  const game = filtered ? (instance?.versionId ?? null) : null;
-  const loader = fitting && kind !== null ? loaderOf(kind, instance) : '';
-  const query = `${projectId ?? ''}|${game ?? ''}|${loader}`;
-  const versions = answer?.query === query ? answer.list : null;
   useEffect(() => {
     if (projectId === null) return;
     let live = true;
     void ipc
-      .modsVersions(projectId, game, loader === '' ? null : loader)
+      .modsVersions(projectId, null, null)
       .then((found) => {
-        if (live) setAnswer({ query: `${projectId}|${game ?? ''}|${loader}`, list: found });
+        if (live) setVersions(found);
       })
       .catch((e: unknown) => {
         if (live) setError(describeIpcError(e));
@@ -174,7 +195,36 @@ export function ProjectPage({ projectRef, instance, onBack, onLink, onAdd, onIns
     return () => {
       live = false;
     };
-  }, [projectId, game, loader]);
+  }, [projectId]);
+
+  const options = useMemo(() => choices(versions ?? []), [versions]);
+  // A modpack makes an installation of its own, so nothing is chosen for one.
+  const fitting = instance !== null && project !== null && project.kind !== 'modpack';
+  const initial = {
+    game: fitting && options.games.includes(instance.versionId) ? instance.versionId : '',
+    loader: (() => {
+      const loader = fitting ? loaderOf(project.kind, instance) : '';
+      return options.loaders.includes(loader) ? loader : '';
+    })(),
+    channel: '' as const,
+    oldest: false,
+  };
+  const chosen = filters ?? initial;
+  const change = (next: Partial<typeof chosen>) => {
+    setFilters({ ...chosen, ...next });
+    setShown(SHOWN);
+  };
+  const matching = useMemo(() => {
+    const list = (versions ?? []).filter(
+      (v) =>
+        (chosen.game === '' || v.games.includes(chosen.game)) &&
+        (chosen.loader === '' || v.loaders.includes(chosen.loader)) &&
+        (chosen.channel === '' || v.channel === chosen.channel),
+    );
+    return chosen.oldest ? list.reverse() : list;
+  }, [versions, chosen.game, chosen.loader, chosen.channel, chosen.oldest]);
+  const filtered = chosen.game !== '' || chosen.loader !== '' || chosen.channel !== '';
+  const loaderNames = strings.mods.loaderNames as Record<string, string | undefined>;
 
   const back = (
     <Button onClick={onBack} className={styles.back}>
@@ -285,46 +335,131 @@ export function ProjectPage({ projectRef, instance, onBack, onLink, onAdd, onIns
 
       <section aria-label={t.versions}>
         <h3 className={styles.subTitle}>{t.versions}</h3>
-        {instance !== null && project.kind !== 'modpack' && (
-          <label className={styles.check}>
-            <input
-              type="checkbox"
-              checked={fitting}
-              onChange={(event) => {
-                setFitting(event.target.checked);
-                setShown(SHOWN);
-              }}
-            />
-            {t.fitsOnly({ name: instance.displayName })}
-          </label>
-        )}
         {instance === null && installable(project.kind) && (
           <p className={styles.muted}>{t.chooseInstallation}</p>
+        )}
+        {versions !== null && versions.length > 1 && (
+          <div className={styles.controls}>
+            {options.games.length > 1 && (
+              <Field label={strings.mods.gameVersion}>
+                {(props) => (
+                  <select
+                    {...props}
+                    className={forms.select}
+                    value={chosen.game}
+                    onChange={(event) => {
+                      change({ game: event.target.value });
+                    }}
+                  >
+                    <option value="">{strings.mods.anyVersion}</option>
+                    {options.games.map((game) => (
+                      <option key={game} value={game}>
+                        {game}
+                      </option>
+                    ))}
+                  </select>
+                )}
+              </Field>
+            )}
+            {options.loaders.length > 1 && (
+              <Field label={strings.mods.loader}>
+                {(props) => (
+                  <select
+                    {...props}
+                    className={forms.select}
+                    value={chosen.loader}
+                    onChange={(event) => {
+                      change({ loader: event.target.value });
+                    }}
+                  >
+                    <option value="">{strings.mods.anyLoader}</option>
+                    {options.loaders.map((loader) => (
+                      <option key={loader} value={loader}>
+                        {loaderNames[loader] ?? loader}
+                      </option>
+                    ))}
+                  </select>
+                )}
+              </Field>
+            )}
+            <Field label={t.channel}>
+              {(props) => (
+                <select
+                  {...props}
+                  className={forms.select}
+                  value={chosen.channel}
+                  onChange={(event) => {
+                    change({ channel: event.target.value as typeof chosen.channel });
+                  }}
+                >
+                  <option value="">{t.anyChannel}</option>
+                  {CHANNELS.map((channel) => (
+                    <option key={channel} value={channel}>
+                      {t.channels[channel]}
+                    </option>
+                  ))}
+                </select>
+              )}
+            </Field>
+            <Field label={t.order}>
+              {(props) => (
+                <select
+                  {...props}
+                  className={forms.select}
+                  value={chosen.oldest ? 'oldest' : 'newest'}
+                  onChange={(event) => {
+                    change({ oldest: event.target.value === 'oldest' });
+                  }}
+                >
+                  <option value="newest">{t.newest}</option>
+                  <option value="oldest">{t.oldest}</option>
+                </select>
+              )}
+            </Field>
+          </div>
         )}
         {versions === null ? (
           <p role="status">{strings.mods.loading}</p>
         ) : versions.length === 0 ? (
-          <p className={styles.muted}>{filtered ? t.noneFits : t.noVersions}</p>
+          <p className={styles.muted}>{t.noVersions}</p>
+        ) : matching.length === 0 ? (
+          <p className={styles.muted}>
+            {t.noneMatch}{' '}
+            <Button
+              onClick={() => {
+                change({ game: '', loader: '', channel: '' });
+              }}
+            >
+              {t.showAll}
+            </Button>
+          </p>
         ) : (
-          <ul className={styles.versions}>
-            {versions.slice(0, shown).map((version) => (
-              <VersionRow
-                key={version.id}
-                version={version}
-                project={project}
-                instance={instance}
-                onLink={onLink}
-                onAdd={() => {
-                  onAdd(project, version);
-                }}
-                onInstallPack={() => {
-                  onInstallPack(project, version);
-                }}
-              />
-            ))}
-          </ul>
+          <>
+            {filtered && (
+              <p className={styles.muted} role="status">
+                {t.matching({ count: matching.length, total: versions.length })}
+              </p>
+            )}
+            <ul className={styles.versions}>
+              {matching.slice(0, shown).map((version) => (
+                <VersionRow
+                  key={version.id}
+                  version={version}
+                  project={project}
+                  instance={instance}
+                  onLink={onLink}
+                  onAdd={() => {
+                    onAdd(project, version);
+                  }}
+                  onInstallPack={() => {
+                    onInstallPack(project, version);
+                  }}
+                />
+              ))}
+            </ul>
+          </>
         )}
-        {versions !== null && versions.length > shown && (
+        {matching.length > shown && (
           <Button
             onClick={() => {
               setShown(shown + SHOWN);
