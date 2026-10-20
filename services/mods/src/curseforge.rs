@@ -64,6 +64,16 @@ const CLASS_IDS: &[(u64, &str)] = &[
     (17, "worlds"),
 ];
 
+/// The headers the site's own scripts send to its API, for the probe's
+/// search checks.
+pub const SITE_FETCH: &[&str] = &[
+    "Accept: application/json, text/plain, */*",
+    "Referer: https://www.curseforge.com/minecraft/search",
+    "Sec-Fetch-Site: same-origin",
+    "Sec-Fetch-Mode: cors",
+    "Sec-Fetch-Dest: empty",
+];
+
 /// The site's search page for a name (Minecraft only).
 pub fn search_url(words: &str) -> String {
     format!(
@@ -719,13 +729,19 @@ fn candidate_of(project: &Value) -> Option<crate::modrinth::Candidate> {
         .map(names)
         .and_then(|n| n.into_iter().next())
         .unwrap_or_else(|| text(project, "authorName", 64));
+    // The page also lists the site's categories (an ID, slug, name and
+    // class too); a project has a summary and an author.
+    let summary = text(project, "summary", 500);
+    if summary.is_empty() || author.is_empty() {
+        return None;
+    }
     Some(crate::modrinth::Candidate {
         source: SOURCE,
         id: id.to_string(),
         slug: slug.to_owned(),
         kind: kind_of_class(class)?,
         title,
-        summary: text(project, "summary", 500),
+        summary,
         author,
         downloads: ["downloads", "downloadCount", "totalDownloads"]
             .iter()

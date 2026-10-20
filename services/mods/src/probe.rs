@@ -14,6 +14,8 @@ use crate::fetch::{Client, FetchError, Reply};
 const PROJECT: u64 = 238_222;
 const SLUG: &str = "jei";
 const MAX_BYTES: u64 = 4 * 1024 * 1024;
+/// The search as the site's own page asks it.
+const SEARCH_FULL: &str = "https://www.curseforge.com/api/v1/mods/search?gameId=432&index=0&classId=6&filterText=jei&pageSize=20&sortField=1";
 
 /// What one check sees in the answer besides its status.
 #[derive(Clone, Copy, PartialEq, Eq)]
@@ -26,12 +28,15 @@ enum Look {
     PageData,
     /// A redirect: whether it goes to forgecdn.
     ToCdn,
+    /// A search answer of the API: how many hits, and whether JEI is one.
+    Hits,
 }
 
 struct Check {
     name: &'static str,
     url: String,
     look: Look,
+    headers: &'static [&'static str],
 }
 
 fn checks(file: Option<u64>) -> Vec<Check> {
@@ -41,11 +46,13 @@ fn checks(file: Option<u64>) -> Vec<Check> {
             name: "modrinth_api",
             url: "https://api.modrinth.com/v2/project/sodium".into(),
             look: Look::Nothing,
+            headers: &[],
         },
         Check {
             name: "cf_files",
             url: format!("{api}/files?pageIndex=0&pageSize=1"),
             look: Look::FirstFile,
+            headers: &[],
         },
     ];
     if let Some(file) = file {
@@ -54,16 +61,19 @@ fn checks(file: Option<u64>) -> Vec<Check> {
                 name: "cf_file",
                 url: format!("{api}/files/{file}"),
                 look: Look::Nothing,
+                headers: &[],
             },
             Check {
                 name: "cf_changelog",
                 url: format!("{api}/files/{file}/change-log"),
                 look: Look::Nothing,
+                headers: &[],
             },
             Check {
                 name: "cf_download",
                 url: format!("{api}/files/{file}/download"),
                 look: Look::ToCdn,
+                headers: &[],
             },
         ]);
     }
@@ -72,29 +82,77 @@ fn checks(file: Option<u64>) -> Vec<Check> {
             name: "cf_dependencies",
             url: format!("{api}/dependencies"),
             look: Look::Nothing,
+            headers: &[],
         },
         Check {
             name: "cf_project_api",
             url: api.clone(),
             look: Look::Nothing,
+            headers: &[],
         },
         Check {
             name: "cf_search_api",
             url: "https://www.curseforge.com/api/v1/mods/search?gameId=432&index=0&pageSize=1&filterText=jei".into(),
             look: Look::Nothing,
+            headers: &[],
+        },
+        Check {
+            name: "cf_search_api_site",
+            url: "https://www.curseforge.com/api/v1/mods/search?gameId=432&index=0&pageSize=1&filterText=jei".into(),
+            look: Look::Hits,
+            headers: crate::curseforge::SITE_FETCH,
+        },
+        Check {
+            name: "cf_search_api_full",
+            url: SEARCH_FULL.into(),
+            look: Look::Hits,
+            headers: &[],
+        },
+        Check {
+            name: "cf_search_api_both",
+            url: SEARCH_FULL.into(),
+            look: Look::Hits,
+            headers: crate::curseforge::SITE_FETCH,
         },
         Check {
             name: "cf_project_page",
             url: format!("https://www.curseforge.com/minecraft/mc-mods/{SLUG}"),
             look: Look::PageData,
+            headers: &[],
         },
         Check {
             name: "cf_search_page",
             url: crate::curseforge::search_url(SLUG),
             look: Look::PageData,
+            headers: &[],
         },
     ]);
     list
+}
+
+/// A search answer `{"data":[{"id":…}]}`: how many hits, and whether JEI
+/// is one. Our words and numbers.
+fn hits(body: &[u8]) -> String {
+    let Ok(value) = serde_json::from_slice::<serde_json::Value>(body) else {
+        return "not_json".to_owned();
+    };
+    let list = value
+        .get("data")
+        .and_then(serde_json::Value::as_array)
+        .map(Vec::as_slice)
+        .unwrap_or_default();
+    format!(
+        "hits:{},{}",
+        list.len(),
+        if list
+            .iter()
+            .any(|h| h.get("id").and_then(serde_json::Value::as_u64) == Some(PROJECT))
+        {
+            "jei_found"
+        } else {
+            "no_jei"
+        }
+    )
 }
 
 /// The id of the first file in `{"data":[{"id":…}]}`.
@@ -230,7 +288,9 @@ pub async fn run(client: &Client, tmp: &Path) -> Vec<String> {
             let Some(check) = list.get(index) else { break };
             index += 1;
             let _ = std::fs::remove_file(&body);
-            let result = client.once(exit, None, &check.url, &body, MAX_BYTES).await;
+            let result = client
+                .once(exit, None, &check.url, check.headers, &body, MAX_BYTES)
+                .await;
             if index == 1 && matches!(result, Err(FetchError::Network(_))) {
                 refused = true;
             }
@@ -266,7 +326,10 @@ pub async fn run(client: &Client, tmp: &Path) -> Vec<String> {
                                 let next = next.to_owned();
                                 let _ = std::fs::remove_file(&body);
                                 Some(
-                                    match client.once(exit, None, &next, &body, MAX_BYTES).await {
+                                    match client
+                                        .once(exit, None, &next, &[], &body, MAX_BYTES)
+                                        .await
+                                    {
                                         Ok(r) if r.status == 200 => {
                                             let page = read();
                                             let mut seen = format!(
@@ -294,6 +357,7 @@ pub async fn run(client: &Client, tmp: &Path) -> Vec<String> {
                     }
                     _ => None,
                 },
+                Look::Hits => ok.then(|| hits(&read())),
                 Look::ToCdn => match &result {
                     Ok(r) if (300..400).contains(&r.status) => Some(
                         if r.location.as_deref().is_some_and(to_cdn) {
@@ -314,7 +378,14 @@ pub async fn run(client: &Client, tmp: &Path) -> Vec<String> {
             for scheme in ["http", "socks5h"] {
                 let _ = std::fs::remove_file(&body);
                 let result = client
-                    .once(exit, Some(scheme), &checks(None)[1].url, &body, MAX_BYTES)
+                    .once(
+                        exit,
+                        Some(scheme),
+                        &checks(None)[1].url,
+                        &[],
+                        &body,
+                        MAX_BYTES,
+                    )
                     .await;
                 lines.push(line(&format!("{name}/{scheme}"), "cf_files", &result, None));
             }
