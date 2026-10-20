@@ -247,6 +247,8 @@ fn main_window_capability_grants_only_app_commands() {
             "allow-mods-choose",
             "allow-mods-plan",
             "allow-mods-install",
+            "allow-mods-world-plan",
+            "allow-mods-install-world",
             "allow-mods-pack",
             "allow-mods-create-pack-instance",
             "allow-mods-apply-pack",

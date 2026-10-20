@@ -877,6 +877,8 @@ fn handlers<R: tauri::Runtime>() -> impl Fn(tauri::ipc::Invoke<R>) -> bool + Sen
         commands::mods_choose,
         commands::mods_plan,
         commands::mods_install,
+        commands::mods_world_plan,
+        commands::mods_install_world,
         commands::mods_pack,
         commands::mods_create_pack_instance,
         commands::mods_apply_pack,

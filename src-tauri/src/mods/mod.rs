@@ -12,6 +12,7 @@
 pub mod content;
 pub mod markdown;
 pub mod pack;
+pub mod world;
 
 use std::sync::Arc;
 

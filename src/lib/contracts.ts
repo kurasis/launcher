@@ -1400,6 +1400,22 @@ export interface ModsInstallPayload {
   replaces: string | null;
 }
 
+/** Adding a map from the catalog as a new world. */
+export interface ModsWorldPayload {
+  instanceId: string;
+  version: string;
+}
+
+/** What adding a map will do. */
+export interface ModsWorldPlan {
+  /** The world's folder name, one no world has yet. */
+  name: string;
+  size: number;
+  /** The catalog keeps the file already. */
+  kept: boolean;
+  approval: ApprovalRequest | null;
+}
+
 /** `mods://progress` while an install runs. */
 export interface ModsProgress {
   instanceId: string;

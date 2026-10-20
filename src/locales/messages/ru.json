@@ -1210,6 +1210,7 @@
         "shader": "Шейдеры",
         "datapack": "Датапаки",
         "modpack": "Сборки",
+        "world": "Карты",
         "installed": "Установлено",
         "requests": "Мои запросы"
       },
@@ -1277,7 +1278,6 @@
         "openOn": "Открыть на {site}",
         "importingHint": "Каталог ещё добавляет этот проект. Версии и картинки появятся по мере загрузки.",
         "gone": "У источника этого проекта больше нет; в каталоге он остался.",
-        "worldsLater": "Добавление миров появится в следующей версии лаунчера.",
         "description": "Описание",
         "gallery": "Картинки",
         "versions": "Версии",
@@ -1326,6 +1326,16 @@
         "stop": "Остановить",
         "install": "Установить",
         "turnOn": "Вместе с ним включатся: {names}"
+      },
+      "world": {
+        "title": "Добавить карту {title} в «{name}»",
+        "becomes": "Она станет новым миром «{world}» ({size}). Ваши миры останутся как есть.",
+        "fetchingHint": "Сначала каталог загрузит карту из источника; это может занять несколько минут.",
+        "fetching": "Каталог загружает карту из источника…",
+        "downloading": "Скачиваю карту…",
+        "unpacking": "Добавляю мир…",
+        "done": "Карта теперь мир «{world}». Он в «Одиночной игре».",
+        "install": "Добавить карту"
       },
       "pack": {
         "install": "Установить",
@@ -2311,6 +2321,10 @@
     "This installation is too large to export as a modpack.": "Эта установка слишком большая, чтобы сохранить её как сборку.",
     "This installation was not made from a modpack.": "Эта установка сделана не из сборки.",
     "This is another modpack than the one the installation was made from.": "Это другая сборка, не та, из которой сделана установка.",
-    "Writing the modpack": "Запись сборки"
+    "Writing the modpack": "Запись сборки",
+    "Adding the map": "Добавление карты",
+    "This is not a map.": "Это не карта.",
+    "This map's archive has no world the launcher can add.": "В архиве этой карты нет мира, который лаунчер может добавить.",
+    "This version has no map the launcher can add.": "В этой версии нет карты, которую лаунчер может добавить."
   }
 }

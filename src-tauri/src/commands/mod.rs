@@ -2068,6 +2068,95 @@ pub async fn mods_install<R: Runtime>(
     result
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct ModsWorldPayload {
+    pub instance_id: crate::storage::paths::InstanceId,
+    pub version: String,
+}
+
+/// What adding a map from the catalog to an installation would do.
+#[tauri::command]
+pub async fn mods_world_plan<R: Runtime>(
+    app: AppHandle<R>,
+    payload: ModsWorldPayload,
+) -> LauncherResult<crate::mods::world::WorldPlan> {
+    let state = app.state::<AppState>();
+    crate::mods::online(&state)?;
+    let (root, _) = crate::mods::content::instance_of(&state, payload.instance_id)?;
+    let game = root.game_dir(payload.instance_id);
+    let mut plan = crate::mods::world::plan(&mods(&app).client, &game, &payload.version).await?;
+    // A metered connection (D-051): the plan says why it asks first.
+    let settings = state.settings();
+    let month_bytes = crate::traffic::month_total(&root);
+    plan.approval = crate::traffic::caution(
+        settings.metered,
+        settings.metered_warn_mib,
+        settings.monthly_limit_mib,
+        month_bytes,
+        plan.size,
+    )
+    .map(|reason| crate::state::dto::ApprovalRequest {
+        bytes: plan.size,
+        files: 1,
+        reason,
+        month_bytes,
+        monthly_limit_mib: settings.monthly_limit_mib,
+    });
+    Ok(plan)
+}
+
+/// Adds a map from the catalog to an installation as a new world; progress
+/// comes as `mods://progress`. Returns the world's folder name.
+#[tauri::command]
+pub async fn mods_install_world<R: Runtime>(
+    app: AppHandle<R>,
+    request: MutationRequest<ModsWorldPayload>,
+) -> LauncherResult<String> {
+    use tauri::Emitter;
+    crate::state::ledger::validate_request_id(&request.request_id)?;
+    let payload = request.payload;
+    let id = payload.instance_id;
+    let mods = mods(&app);
+    let claim = mods.content.claim(id)?;
+    let state = app.state::<AppState>();
+    state.activity().ensure_instance_idle(id)?;
+    crate::mods::online(&state)?;
+    let (root, _) = crate::mods::content::instance_of(&state, id)?;
+    let emitter = app.clone();
+    let emit = move |progress: crate::mods::content::Progress| {
+        let _ = emitter.emit(crate::mods::PROGRESS_EVENT, progress);
+    };
+    let result = mods
+        .content
+        .install_world(
+            &mods.client,
+            &root,
+            id,
+            &payload.version,
+            &claim.cancel,
+            &emit,
+        )
+        .await;
+    if let Err(error) = &result {
+        let phase = if error.code == crate::error::ErrorCode::OperationCancelled {
+            "cancelled"
+        } else {
+            "failed"
+        };
+        emit(crate::mods::content::Progress {
+            instance_id: id.to_string(),
+            phase,
+            files: 0,
+            total_files: 0,
+            bytes: 0,
+            total_bytes: 0,
+        });
+    }
+    drop(claim);
+    result
+}
+
 /// A modpack version as the catalog has it (stage 3). `prepare` asks the
 /// catalog to keep its files; the interface does that once, then looks
 /// without it every few seconds until the pack is ready.

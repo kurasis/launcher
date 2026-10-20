@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-mods-world-plan"
+description = "Enables the mods_world_plan command without any pre-configured scope."
+commands.allow = ["mods_world_plan"]
+
+[[permission]]
+identifier = "deny-mods-world-plan"
+description = "Denies the mods_world_plan command without any pre-configured scope."
+commands.deny = ["mods_world_plan"]

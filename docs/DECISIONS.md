@@ -2029,7 +2029,7 @@ archive from the Package workflow, upload it to
 
 ## D-066 — Catalog of mods at mods.lapi.sh
 
-- **Status:** accepted (owner request, 2026-10-19), stages 1–3 of 6 and stage 4 but for worlds · **Affects:** the new service `services/mods` (`https://mods.lapi.sh`, files at
+- **Status:** accepted (owner request, 2026-10-19), stages 1–4 of 6 · **Affects:** the new service `services/mods` (`https://mods.lapi.sh`, files at
   `https://files-mods.lapi.sh`, `/home/www/lapi/mods`), the account service's token
   audience. The full design: the project's design document "Вкладка Моды и каталог".
 - **Goal.** A Mods tab with modpacks, mods, resource packs, shaders and worlds that does
@@ -2289,6 +2289,16 @@ archive from the Package workflow, upload it to
   SHA-256 before a plan, an update check or a removal warning, and a file whose version
   now belongs to another project takes that project's ID, so a mod installed from
   CurseForge is still known as there.
+- **Maps (stage 4, 2026-10-20).** A map (a project of kind `world`, CurseForge's worlds)
+  is added to an installation as a new world (`mods_world_plan`, `mods_install_world`,
+  `mods/world.rs`). Its version's file must be a `.zip` of at most 8 GiB; the world is the
+  folder with `level.dat` at the top of the zip or one folder down (the shallowest;
+  `__MACOSX` is skipped). Each entry is checked like a pack's overrides: names safe on
+  every system, no links, at most 32 folders deep, 200 000 entries and 16 GiB unpacked.
+  It is unpacked into a hidden folder in `saves/` and renamed into place under the map's
+  title, or `title (2)`, `(3)`… when a world has that name, so no world of the player's
+  is ever overwritten. The zip is removed after. A map is not recorded in the content
+  lock: once played, it is the player's world.
 
 ## D-067 — Start page feed at feed.lapi.sh
 
