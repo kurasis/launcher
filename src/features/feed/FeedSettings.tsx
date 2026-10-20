@@ -7,6 +7,7 @@ import type {
   FeedProblem,
   FeedSettings as Settings,
   OwnChannel,
+  OwnStreamer,
   PlayerMode,
   SettingsView,
   VideoLanguage,
@@ -23,30 +24,54 @@ const BLOCKS: readonly FeedBlock[] = ['versions', 'news', 'videos', 'streams'];
 /** The service's limit on a player's own channels. */
 export const MAX_OWN_CHANNELS = 30;
 
-/** The YouTube channels the player added: a field to add one, and the list. */
-function OwnChannels({ disabled }: { disabled: boolean }) {
+interface OwnListProps<T> {
+  disabled: boolean;
+  legend: string;
+  hint: string;
+  inputLabel: string;
+  load: () => Promise<T[]>;
+  add: (input: string) => Promise<T[]>;
+  remove: (item: T) => Promise<T[]>;
+  keyOf: (item: T) => string;
+  nameOf: (item: T) => string;
+  /** What a problem says, where this list needs its own words. */
+  problemText: (problem: FeedProblem) => string;
+}
+
+/** Channels the player added: a field to add one, and the list. */
+function OwnList<T>({
+  disabled,
+  legend,
+  hint,
+  inputLabel,
+  load,
+  add,
+  remove,
+  keyOf,
+  nameOf,
+  problemText,
+}: OwnListProps<T>) {
   const inputId = useId();
-  const [channels, setChannels] = useState<OwnChannel[]>([]);
+  const [items, setItems] = useState<T[]>([]);
   const [input, setInput] = useState('');
   const [busy, setBusy] = useState(false);
   const [problem, setProblem] = useState<FeedProblem | null>(null);
 
   useEffect(() => {
-    ipc
-      .feedChannels()
-      .then(setChannels)
+    load()
+      .then(setItems)
       .catch(() => {
-        setChannels([]);
+        setItems([]);
       });
-  }, []);
+  }, [load]);
 
-  const full = channels.length >= MAX_OWN_CHANNELS;
-  const change = (request: Promise<OwnChannel[]>, clear: boolean) => {
+  const full = items.length >= MAX_OWN_CHANNELS;
+  const change = (request: Promise<T[]>, clear: boolean) => {
     setBusy(true);
     setProblem(null);
     request
       .then((list) => {
-        setChannels(list);
+        setItems(list);
         if (clear) setInput('');
       })
       .catch((error: unknown) => {
@@ -59,8 +84,8 @@ function OwnChannels({ disabled }: { disabled: boolean }) {
 
   return (
     <fieldset className={forms.choices} disabled={disabled}>
-      <legend>{t.channels}</legend>
-      <p className={styles.hint}>{t.channelsHint}</p>
+      <legend>{legend}</legend>
+      <p className={styles.hint}>{hint}</p>
       <form
         className={forms.actions}
         onSubmit={(event) => {
@@ -70,11 +95,11 @@ function OwnChannels({ disabled }: { disabled: boolean }) {
             setProblem('bad_input');
             return;
           }
-          change(ipc.feedAddChannel(value), true);
+          change(add(value), true);
         }}
       >
         <label htmlFor={inputId} className={styles.field}>
-          {t.channelInput}
+          {inputLabel}
           <input
             id={inputId}
             className={forms.input}
@@ -94,23 +119,23 @@ function OwnChannels({ disabled }: { disabled: boolean }) {
         </Button>
       </form>
       {full && <p className={styles.hint}>{strings.feed.problems.full}</p>}
-      {problem !== null && <Notice tone="danger">{strings.feed.problems[problem]}</Notice>}
-      {channels.length === 0 ? (
+      {problem !== null && <Notice tone="danger">{problemText(problem)}</Notice>}
+      {items.length === 0 ? (
         <p className={styles.hint}>{t.noChannels}</p>
       ) : (
         <>
           <p className={styles.hint}>
-            {t.channelCount({ count: channels.length, max: MAX_OWN_CHANNELS })}
+            {t.channelCount({ count: items.length, max: MAX_OWN_CHANNELS })}
           </p>
           <ul className={forms.choices}>
-            {channels.map((channel) => (
-              <li key={channel.channelId} className={forms.actions}>
-                <span dir="auto">{channel.title}</span>
+            {items.map((item) => (
+              <li key={keyOf(item)} className={forms.actions}>
+                <span dir="auto">{nameOf(item)}</span>
                 <Button
                   disabled={busy}
-                  aria-label={t.removeChannel({ title: channel.title })}
+                  aria-label={t.removeChannel({ title: nameOf(item) })}
                   onClick={() => {
-                    change(ipc.feedRemoveChannel(channel.channelId), false);
+                    change(remove(item), false);
                   }}
                 >
                   {t.remove}
@@ -121,6 +146,48 @@ function OwnChannels({ disabled }: { disabled: boolean }) {
         </>
       )}
     </fieldset>
+  );
+}
+
+/** The YouTube channels the player added. */
+function OwnChannels({ disabled }: { disabled: boolean }) {
+  return (
+    <OwnList<OwnChannel>
+      disabled={disabled}
+      legend={t.channels}
+      hint={t.channelsHint}
+      inputLabel={t.channelInput}
+      load={ipc.feedChannels}
+      add={ipc.feedAddChannel}
+      remove={(channel) => ipc.feedRemoveChannel(channel.channelId)}
+      keyOf={(channel) => channel.channelId}
+      nameOf={(channel) => channel.title}
+      problemText={(problem) => strings.feed.problems[problem]}
+    />
+  );
+}
+
+/** The Twitch channels the player added. */
+function OwnStreamers({ disabled }: { disabled: boolean }) {
+  return (
+    <OwnList<OwnStreamer>
+      disabled={disabled}
+      legend={t.streamers}
+      hint={t.streamersHint}
+      inputLabel={t.streamerInput}
+      load={ipc.feedStreamers}
+      add={ipc.feedAddStreamer}
+      remove={(streamer) => ipc.feedRemoveStreamer(streamer.login)}
+      keyOf={(streamer) => streamer.login}
+      nameOf={(streamer) => streamer.name}
+      problemText={(problem) =>
+        problem === 'bad_input'
+          ? t.streamerBadInput
+          : problem === 'not_found'
+            ? t.streamerNotFound
+            : strings.feed.problems[problem]
+      }
+    />
   );
 }
 
@@ -217,6 +284,7 @@ export function FeedSettings({ settings }: { settings: SettingsView }) {
       </fieldset>
       {update.error !== null && <Notice tone="danger">{update.error}</Notice>}
       <OwnChannels disabled={!settings.writable} />
+      <OwnStreamers disabled={!settings.writable} />
     </div>
   );
 }

@@ -626,6 +626,64 @@ fn own_channel_list_is_bounded_and_checked_on_disk() {
 }
 
 #[test]
+fn own_twitch_channels_are_read_strictly_and_kept_beside_youtube() {
+    assert_eq!(
+        own_streamer(&json!({"login": "ph1lza", "name": " Ph1LzA "})),
+        Some(OwnStreamer {
+            login: "ph1lza".into(),
+            name: "Ph1LzA".into()
+        })
+    );
+    for junk in [
+        json!({"login": "Ph1LzA", "name": "x"}),
+        json!({"login": "../x", "name": "x"}),
+        json!({"login": "ab", "name": "x"}),
+        json!({"login": "ph1lza"}),
+        json!({"error": "not_found"}),
+    ] {
+        assert_eq!(own_streamer(&junk), None, "{junk}");
+    }
+    let live = json!({"streams": [
+        {"login": "ph1lza", "name": "Ph1LzA", "title": "Hardcore", "viewers": 10,
+         "started": "2026-10-20T10:00:00Z", "image": "tw/ph1lza.jpg"},
+        {"login": "bad login", "name": "x", "viewers": 1, "started": "2026-10-20T10:00:00Z"},
+        {"login": "docm77", "name": "docm77", "viewers": 5,
+         "started": "2026-10-20T10:00:00Z", "image": "tw/someone.jpg"},
+    ]});
+    let read = streams(&live).unwrap();
+    assert_eq!(read.len(), 2);
+    assert_eq!(read[0].image.as_deref(), Some("tw/ph1lza.jpg"));
+    // A picture of another channel is not taken.
+    assert_eq!(read[1].image, None);
+    assert_eq!(streams(&json!({"error": "too_many"})), None);
+
+    let (_dir, root) = root();
+    std::fs::write(
+        root.feed_channels(),
+        serde_json::to_vec(&json!({
+            "channels": [{"channelId": "UCabcdefghijklmnopqrstuv", "title": "Mine"}],
+            "twitch": [
+                {"login": "ph1lza", "name": "Ph1LzA"},
+                {"login": "ph1lza", "name": "again"},
+                {"login": "<script>", "name": "x"},
+                {"login": "docm77", "name": "docm77"},
+            ],
+        }))
+        .unwrap(),
+    )
+    .unwrap();
+    let kept: Vec<String> = own_streamers(&root).into_iter().map(|s| s.login).collect();
+    assert_eq!(kept, ["ph1lza", "docm77"]);
+    // Removing a Twitch channel keeps the YouTube ones, and the other way.
+    let after = remove_own_streamer(&root, "ph1lza").unwrap();
+    assert_eq!(after.len(), 1);
+    assert_eq!(own_channels(&root).len(), 1);
+    remove_own_channel(&root, "UCabcdefghijklmnopqrstuv").unwrap();
+    assert_eq!(own_streamers(&root), after);
+    assert!(own_channels(&root).is_empty());
+}
+
+#[test]
 fn kept_copies_are_read_through_the_same_rules() {
     let (_dir, root) = root();
     let read = feed(&sample("en"), Lang::En).unwrap();

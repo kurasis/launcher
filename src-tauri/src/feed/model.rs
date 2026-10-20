@@ -289,6 +289,14 @@ pub struct OwnChannel {
     pub title: String,
 }
 
+/// A Twitch channel a player follows in the feed.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct OwnStreamer {
+    pub login: String,
+    pub name: String,
+}
+
 // ---- Ids, names and links --------------------------------------------------
 
 /// A note id: `j-` (patch note) or `n-` (news) and lower case letters, digits
@@ -720,6 +728,22 @@ pub fn videos(value: &Value) -> Option<Vec<Video>> {
     let fields = value.as_object()?;
     fields.get("videos")?.as_array()?;
     Some(list(fields.get("videos"), MAX_VIDEOS, video))
+}
+
+/// Reads the live streams of a player's channels (`{streams: [...]}`).
+pub fn streams(value: &Value) -> Option<Vec<Stream>> {
+    let fields = value.as_object()?;
+    fields.get("streams")?.as_array()?;
+    Some(list(fields.get("streams"), MAX_STREAMS, stream))
+}
+
+/// Reads a found Twitch channel (`{login, name}`).
+pub fn own_streamer(value: &Value) -> Option<OwnStreamer> {
+    let fields = value.as_object()?;
+    Some(OwnStreamer {
+        login: id_with(fields.get("login"), twitch_login)?,
+        name: text(fields.get("name"), MAX_NAME)?,
+    })
 }
 
 /// Reads a found channel (`{channelId, title}`).

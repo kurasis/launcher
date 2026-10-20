@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-feed-streamers"
+description = "Enables the feed_streamers command without any pre-configured scope."
+commands.allow = ["feed_streamers"]
+
+[[permission]]
+identifier = "deny-feed-streamers"
+description = "Denies the feed_streamers command without any pre-configured scope."
+commands.deny = ["feed_streamers"]

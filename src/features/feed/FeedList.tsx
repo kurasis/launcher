@@ -88,7 +88,6 @@ function NoteItem({ card, onOpen }: { card: NoteCard; onOpen: (card: NoteCard) =
         <>
           <StatusBadge tone={card.kind === null ? 'neutral' : 'success'} label={kindLabel(card)} />
           <span className={styles.muted}>{shortDate(card.date)}</span>
-          {card.translated && <StatusBadge tone="warning" label={t.machineTranslated} />}
         </>
       }
       title={card.title}
@@ -146,6 +145,8 @@ interface FeedListProps {
   feed: Feed;
   settings: FeedSettings;
   own: FeedVideo[];
+  /** The live streams of the player's own Twitch channels. */
+  ownStreams: FeedStream[];
   filter: FeedFilter;
   /** A note shown above the list already. */
   skip: string | null;
@@ -166,6 +167,7 @@ export function FeedList({
   feed,
   settings,
   own,
+  ownStreams,
   filter,
   skip,
   onOpen,
@@ -250,7 +252,9 @@ export function FeedList({
     wants(filter, 'videos') && !settings.hidden.includes('videos')
       ? own.filter((video) => settings.shorts || !video.short)
       : [];
-  const items = shownItems(pages, ownShown, next !== null && !kept, skip);
+  const streamsShown =
+    wants(filter, 'streams') && !settings.hidden.includes('streams') ? ownStreams : [];
+  const items = shownItems(pages, ownShown, streamsShown, next !== null && !kept, skip);
   const empty =
     filter === 'videos'
       ? t.noVideos

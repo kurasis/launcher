@@ -1615,6 +1615,12 @@ export interface OwnChannel {
   title: string;
 }
 
+/** A Twitch channel the player added to the feed. */
+export interface OwnStreamer {
+  login: string;
+  name: string;
+}
+
 // ----- Worlds with friends (D-068) -----
 
 /** Why a call to worlds.lapi.sh or a step of a room failed. */

@@ -13,7 +13,7 @@ use crate::editorial::{Editorial, link};
 use crate::html::{self, Block, Run};
 use crate::images::{self, reencode, sha_name, twitch_login, video_id};
 use crate::mojang::{self, Version, cycle, note_id, version_kind};
-use crate::twitch::{RawStream, pick};
+use crate::twitch::{self, RawStream, pick};
 use crate::youtube::{self, Wanted, channel_id, id_in_page, parse_rss, wanted};
 use crate::{api, deepl, feed};
 
@@ -385,6 +385,7 @@ fn raw(login: &str, viewers: u64, mature: bool, thumb: &str) -> RawStream {
     RawStream {
         user_login: login.into(),
         user_name: format!("{login}\u{202E} name"),
+        game_id: twitch::MINECRAFT.into(),
         title: "  Playing   <b>Minecraft</b>  ".into(),
         viewer_count: viewers,
         started_at: "2026-10-19T10:00:00Z".into(),
@@ -418,6 +419,7 @@ fn streams_are_picked() {
             ),
         ],
         &["blocked".to_owned()],
+        None,
     );
     let logins: Vec<&str> = streams.iter().map(|s| s.login.as_str()).collect();
     assert_eq!(logins, vec!["big", "small"]);
@@ -430,10 +432,129 @@ fn streams_are_picked() {
             .unwrap()
             .contains("jtvnw")
     );
+    // A login Helix gave twice is listed once.
+    let twice = pick(
+        vec![raw("same", 1, false, THUMB), raw("same", 2, false, THUMB)],
+        &[],
+        None,
+    );
+    assert_eq!(twice.len(), 1);
+    assert_eq!(twice[0].viewers, 2);
+}
+
+#[test]
+fn the_feed_lists_the_most_watched_minecraft_streams() {
+    let mut other_game = raw("builder", 9000, false, THUMB);
+    other_game.game_id = "509658".into();
+    let streams = twitch::top(vec![other_game, raw("small", 10, false, THUMB)], &[]);
+    let logins: Vec<&str> = streams.iter().map(|s| s.login.as_str()).collect();
+    assert_eq!(logins, ["small"]);
     let many: Vec<RawStream> = (0..20)
         .map(|i| raw(&format!("user{i}"), i, false, THUMB))
         .collect();
-    assert_eq!(pick(many, &[]).len(), crate::twitch::STREAMS);
+    let top = twitch::top(many, &[]);
+    assert_eq!(top.len(), twitch::STREAMS);
+    assert_eq!(top[0].login, "user19");
+}
+
+#[test]
+fn our_editorial_blocks_streamers() {
+    let editorial = Editorial::load(crate::EDITORIAL).unwrap();
+    let streams = twitch::top(
+        vec![
+            raw("zubareff", 50_000, false, THUMB),
+            raw("ZubarEFFF", 40_000, false, THUMB),
+            raw("small", 10, false, THUMB),
+        ],
+        &editorial.twitch_blocked,
+    );
+    let logins: Vec<&str> = streams.iter().map(|s| s.login.as_str()).collect();
+    assert_eq!(logins, ["small"]);
+}
+
+#[test]
+fn own_streams_are_picked() {
+    let mut other_game = raw("builder", 300, false, THUMB);
+    other_game.game_id = "509658".into();
+    let logins = vec!["builder".to_owned(), "small".to_owned(), "adult".to_owned()];
+    let streams = twitch::own(
+        vec![
+            raw("small", 10, false, THUMB),
+            other_game,
+            raw("adult", 999, true, THUMB),
+            raw("notasked", 5000, false, THUMB),
+        ],
+        &logins,
+    );
+    // Any game, not for adults, only those asked, the most watched first.
+    let found: Vec<&str> = streams.iter().map(|s| s.login.as_str()).collect();
+    assert_eq!(found, ["builder", "small"]);
+    let many: Vec<RawStream> = (0..20)
+        .map(|i| raw(&format!("user{i}"), i, false, THUMB))
+        .collect();
+    let asked: Vec<String> = (0..20).map(|i| format!("user{i}")).collect();
+    assert_eq!(twitch::own(many, &asked).len(), 20);
+}
+
+#[test]
+fn twitch_channels_named_by_players() {
+    for input in [
+        "ph1lza",
+        "Ph1LzA",
+        "  ph1lza  ",
+        "twitch.tv/ph1lza",
+        "twitch.tv/ph1lza/",
+        "www.twitch.tv/Ph1lza",
+        "https://www.twitch.tv/ph1lza",
+        "https://www.twitch.tv/ph1lza/",
+        "http://twitch.tv/ph1lza",
+        "https://twitch.tv/ph1lza?sr=a",
+        "https://www.twitch.tv/ph1lza/?referrer=raid",
+        "https://m.twitch.tv/ph1lza",
+        "HTTPS://WWW.TWITCH.TV/PH1LZA",
+    ] {
+        assert_eq!(
+            twitch::wanted(input).as_deref(),
+            Some("ph1lza"),
+            "{input:?}"
+        );
+    }
+    for junk in [
+        "",
+        "   ",
+        "ab",
+        "a b",
+        "<script>",
+        "<script>alert(1)</script>",
+        "twitch.tv",
+        "twitch.tv/",
+        "twitch.tv/a/b",
+        "twitch.tv/ph1lza/videos",
+        "twitch.tv//ph1lza",
+        "https://evil.com/x",
+        "https://evil.com/ph1lza",
+        "https://www.twitch.tv.evil.example/ph1lza",
+        "https://www.twitch.tv@evil.example/ph1lza",
+        "https://user@www.twitch.tv/ph1lza",
+        "https://www.twitch.tv:8080/ph1lza",
+        "ftp://www.twitch.tv/ph1lza",
+        "javascript:alert(1)",
+        "file:///etc/passwd",
+        "https://www.twitch.tv/..%2Fetc",
+        "https://www.twitch.tv/ph%31lza",
+        "https://www.twitch.tv/<script>",
+        "ph1\nlza",
+        "ph1\u{0000}lza",
+        "ph1l\u{202E}za",
+        "phіlza",
+    ] {
+        assert_eq!(twitch::wanted(junk), None, "{junk:?}");
+    }
+    assert_eq!(twitch::wanted(&"a".repeat(26)), None);
+    assert_eq!(
+        twitch::wanted(&format!("https://www.twitch.tv/ph1lza?{}", "a".repeat(200))),
+        None
+    );
 }
 
 #[test]
@@ -1055,6 +1176,138 @@ async fn own_videos_refuse_junk() {
     ] {
         assert_eq!(get(&app, &bad).await.0, StatusCode::BAD_REQUEST, "{bad}");
     }
+}
+
+fn twitch_resolve_request(body: &str, ip: &str) -> Request<Body> {
+    Request::post("/v1/twitch/resolve")
+        .header("content-type", "application/json")
+        .header("x-real-ip", ip)
+        .body(Body::from(body.to_owned()))
+        .unwrap()
+}
+
+#[tokio::test]
+async fn twitch_lookups_refuse_junk() {
+    let dir = tempfile::tempdir().unwrap();
+    let app = app(dir.path());
+    for (body, code) in [
+        ("{\"input\":\"https://evil.com/x\"}", "bad_input"),
+        ("{\"input\":\"twitch.tv/a/b\"}", "bad_input"),
+        ("{\"input\":\"<script>\"}", "bad_input"),
+        ("{\"input\":\"\"}", "bad_input"),
+        ("{\"input\":5}", "bad_request"),
+        ("not json", "bad_request"),
+        ("{}", "bad_request"),
+    ] {
+        let (status, _, answer) = call(&app, twitch_resolve_request(body, "203.0.113.2")).await;
+        assert_eq!(status, StatusCode::BAD_REQUEST, "{body}");
+        assert_eq!(json_of(&answer)["error"], code, "{body}");
+    }
+    // Without Twitch's secrets: unavailable, and lookups are counted apart
+    // from YouTube's.
+    for _ in 0..api::RESOLVES_PER_MINUTE {
+        let (status, _, answer) = call(
+            &app,
+            twitch_resolve_request("{\"input\":\"twitch.tv/ph1lza\"}", "203.0.113.3"),
+        )
+        .await;
+        assert_eq!(status, StatusCode::SERVICE_UNAVAILABLE);
+        assert_eq!(json_of(&answer)["error"], "unavailable");
+    }
+    let (status, _, answer) = call(
+        &app,
+        twitch_resolve_request("{\"input\":\"ph1lza\"}", "203.0.113.3"),
+    )
+    .await;
+    assert_eq!(status, StatusCode::TOO_MANY_REQUESTS);
+    assert_eq!(json_of(&answer)["error"], "too_many");
+    let youtube = call(
+        &app,
+        resolve_request("{\"input\":\"https://evil.example/@x\"}", "203.0.113.3"),
+    )
+    .await;
+    assert_eq!(youtube.0, StatusCode::BAD_REQUEST);
+}
+
+#[test]
+fn stream_logins_are_checked() {
+    assert_eq!(api::stream_logins(""), Some(Vec::new()));
+    assert_eq!(api::stream_logins(",,"), Some(Vec::new()));
+    assert_eq!(
+        api::stream_logins("Ph1lza,docm77,ph1lza,PH1LZA,"),
+        Some(vec!["ph1lza".to_owned(), "docm77".to_owned()])
+    );
+    let thirty: Vec<String> = (0..30).map(|i| format!("user{i}")).collect();
+    assert_eq!(
+        api::stream_logins(&thirty.join(",")).map(|l| l.len()),
+        Some(30)
+    );
+    // Duplicates do not count towards the limit.
+    assert!(api::stream_logins(&format!("{},user0", thirty.join(","))).is_some());
+    let thirty_one: Vec<String> = (0..31).map(|i| format!("user{i}")).collect();
+    for bad in [
+        thirty_one.join(","),
+        "ph1lza,ab".to_owned(),
+        "ph1lza,../etc".to_owned(),
+        "ph1lza;docm77".to_owned(),
+        "ph1lza, docm77".to_owned(),
+        "<script>".to_owned(),
+        "twitch.tv/ph1lza".to_owned(),
+        "a".repeat(26),
+        "ph1lza,".repeat(200),
+    ] {
+        assert_eq!(api::stream_logins(&bad), None, "{bad}");
+    }
+}
+
+#[tokio::test]
+async fn own_streams_refuse_junk() {
+    let dir = tempfile::tempdir().unwrap();
+    let app = app(dir.path());
+    for empty in ["/v1/streams", "/v1/streams?logins=", "/v1/streams?logins=,"] {
+        let (status, headers, body) = get(&app, empty).await;
+        assert_eq!(status, StatusCode::OK, "{empty}");
+        assert_eq!(headers["cache-control"], "public, max-age=60");
+        assert_eq!(json_of(&body), json!({ "streams": [] }));
+    }
+    for bad in [
+        "/v1/streams?logins=ab".to_owned(),
+        "/v1/streams?logins=ph1lza,..%2F".to_owned(),
+        "/v1/streams?logins=%3Cscript%3E".to_owned(),
+        format!(
+            "/v1/streams?logins={}",
+            (0..31)
+                .map(|i| format!("user{i}"))
+                .collect::<Vec<_>>()
+                .join(",")
+        ),
+    ] {
+        let (status, _, body) = get(&app, &bad).await;
+        assert_eq!(status, StatusCode::BAD_REQUEST, "{bad}");
+        assert_eq!(json_of(&body)["error"], "bad_logins", "{bad}");
+    }
+    // Without Twitch's secrets.
+    let (status, _, body) = get(&app, "/v1/streams?logins=ph1lza,Ph1lza").await;
+    assert_eq!(status, StatusCode::SERVICE_UNAVAILABLE);
+    assert_eq!(json_of(&body)["error"], "unavailable");
+}
+
+#[test]
+fn own_stream_previews_are_known() {
+    let dir = tempfile::tempdir().unwrap();
+    let app = app(dir.path());
+    assert_eq!(app.feed.stream_preview("builder"), None);
+    let streams = twitch::own(
+        vec![raw("builder", 3, false, THUMB)],
+        &["builder".to_owned()],
+    );
+    app.feed.remember_previews(&streams);
+    assert!(
+        app.feed
+            .stream_preview("builder")
+            .is_some_and(|p| p.starts_with("https://static-cdn.jtvnw.net/"))
+    );
+    assert_eq!(app.feed.stream_preview("someone_else"), None);
 }
 
 #[test]
