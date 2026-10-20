@@ -99,6 +99,11 @@ pub const VARIANTS: &[Variant] = &[
         cape: Some((128, 8)),
     },
     Variant {
+        name: "animcape",
+        skin: Some((64, 1, false)),
+        cape: Some((256, 9)),
+    },
+    Variant {
         name: "legacy256",
         skin: Some((256, 0, false)),
         cape: Some((64, 1)),
@@ -161,19 +166,144 @@ fn draw(width: u32, frame_height: u32, frames: u32, seed: u32) -> Vec<u8> {
             rgba.extend_from_slice(&[r, g, b, 255]);
         }
     }
+    encode(width, height, &rgba)
+}
+
+/// Digits 0 to 9 in 3×5 pixels, top row first; bit 2 is the left column.
+const DIGITS: [[u8; 5]; 10] = [
+    [7, 5, 5, 5, 7],
+    [2, 6, 2, 2, 7],
+    [7, 1, 7, 4, 7],
+    [7, 1, 7, 1, 7],
+    [5, 5, 7, 1, 1],
+    [7, 4, 7, 1, 7],
+    [7, 4, 7, 5, 7],
+    [7, 1, 1, 1, 1],
+    [7, 5, 7, 5, 7],
+    [7, 5, 7, 1, 7],
+];
+
+/// One colour of the rainbow per frame, the first red.
+fn rainbow(frame: u32, frames: u32) -> [u8; 3] {
+    let h = frame as f32 / frames.max(1) as f32 * 6.0;
+    let x = 1.0 - (h % 2.0 - 1.0).abs();
+    let (r, g, b) = match h as u32 {
+        0 => (1.0, x, 0.0),
+        1 => (x, 1.0, 0.0),
+        2 => (0.0, 1.0, x),
+        3 => (0.0, x, 1.0),
+        4 => (x, 0.0, 1.0),
+        _ => (1.0, 0.0, x),
+    };
+    let level = |c: f32| (40.0 + c * 190.0) as u8;
+    [level(r), level(g), level(b)]
+}
+
+/// An animated cape a person can follow: each frame shows its own number (1 to 9), big
+/// and white on a rainbow colour of its own, over a bar that grows frame by frame. Drawn on the
+/// 64×32 layout (the cape's back at 1,1 to 11,17, its inside at 12,1 to 22,17, the
+/// elytra from 22,0) and scaled up for HD.
+fn draw_counter_cape(width: u32, frames: u32) -> Vec<u8> {
+    let scale = (width / 64).max(1);
+    let (base_w, base_h) = (64, 32);
+    let mut base = vec![[0u8; 3]; (base_w * base_h * frames) as usize];
+    for frame in 0..frames {
+        let colour = rainbow(frame, frames);
+        let dark = colour.map(|c| c / 3);
+        let mut put = |x: u32, y: u32, c: [u8; 3]| {
+            base[((frame * base_h + y) * base_w + x) as usize] = c;
+        };
+        for y in 0..base_h {
+            for x in 0..base_w {
+                let elytra = (22..46).contains(&x) && y < 22;
+                put(x, y, if elytra { colour } else { dark });
+            }
+        }
+        for face in [1, 12] {
+            for y in 1..17 {
+                for x in face..face + 10 {
+                    let border = y == 1 || y == 16 || x == face || x == face + 9;
+                    put(x, y, if border { [255, 255, 255] } else { colour });
+                }
+            }
+            // The number, one digit 6×10.
+            let digit = DIGITS[(frame + 1) as usize % 10];
+            for (row, bits) in digit.iter().enumerate() {
+                for col in 0..3u32 {
+                    if bits >> (2 - col) & 1 == 1 {
+                        for dy in 0..2 {
+                            for dx in 0..2 {
+                                put(face + 2 + col * 2 + dx, 3 + row as u32 * 2 + dy, [255; 3]);
+                            }
+                        }
+                    }
+                }
+            }
+            // The bar: how far into the animation this frame is.
+            let filled = (frame + 1) * 8 / frames;
+            for x in 0..8 {
+                put(face + 1 + x, 14, if x < filled { [255; 3] } else { dark });
+            }
+        }
+    }
+    let (w, h) = (base_w * scale, base_h * scale * frames);
+    let mut rgba = Vec::with_capacity((w * h * 4) as usize);
+    for y in 0..h {
+        for x in 0..w {
+            let [r, g, b] = base[((y / scale) * base_w + x / scale) as usize];
+            rgba.extend_from_slice(&[r, g, b, 255]);
+        }
+    }
+    encode(w, h, &rgba)
+}
+
+fn encode(width: u32, height: u32, rgba: &[u8]) -> Vec<u8> {
     let mut png = Vec::new();
     {
         let mut encoder = png::Encoder::new(&mut png, width, height);
         encoder.set_color(png::ColorType::Rgba);
         encoder.set_depth(png::BitDepth::Eight);
         let mut writer = encoder.write_header().expect("PNG header");
-        writer.write_image_data(&rgba).expect("PNG data");
+        writer.write_image_data(rgba).expect("PNG data");
     }
     png
 }
 
 fn texture(width: u32, frame_height: u32, frames: u32, seed: u32, slim: Option<bool>) -> Texture {
-    let png = draw(width, frame_height, frames, seed);
+    texture_of(
+        draw(width, frame_height, frames, seed),
+        width,
+        frame_height,
+        frames,
+        150,
+        slim,
+    )
+}
+
+/// A cape: the counting cape when animated, slow enough to read each number.
+fn cape_texture(width: u32, frames: u32, seed: u32) -> Texture {
+    if (2..=9).contains(&frames) {
+        texture_of(
+            draw_counter_cape(width, frames),
+            width,
+            width / 2,
+            frames,
+            500,
+            None,
+        )
+    } else {
+        texture(width, width / 2, frames, seed, None)
+    }
+}
+
+fn texture_of(
+    png: Vec<u8>,
+    width: u32,
+    frame_height: u32,
+    frames: u32,
+    frame_ms: u32,
+    slim: Option<bool>,
+) -> Texture {
     let hash = hex::encode(Sha256::digest(&png));
     let mut json = json!({
         "hash": hash,
@@ -182,7 +312,7 @@ fn texture(width: u32, frame_height: u32, frames: u32, seed: u32, slim: Option<b
         "frames": frames,
     });
     if frames > 1 {
-        json["frame_ms"] = json!([150]);
+        json["frame_ms"] = json!([frame_ms]);
     }
     if let Some(slim) = slim {
         json["model"] = json!(if slim { "slim" } else { "default" });
@@ -222,7 +352,7 @@ pub async fn start() -> Server {
             );
         }
         if let Some((w, frames)) = v.cape {
-            let t = texture(w, w / 2, frames, seed + 100, None);
+            let t = cape_texture(w, frames, seed + 100);
             profile["cape"] = t.json.clone();
             textures.insert(
                 t.json["hash"].as_str().unwrap_or_default().to_owned(),
@@ -375,8 +505,9 @@ fn every_variant_fits_the_mods_rules() {
                 "{}",
                 v.name
             );
-            let t = texture(w, w / 2, frames, i as u32, None);
+            let t = cape_texture(w, frames, i as u32);
             assert!(t.png.len() <= 1024 * 1024, "{}", v.name);
+            assert_eq!(t.json["height"], w / 2 * frames);
         }
         assert!(v.nick().len() <= 16, "{}", v.name);
     }

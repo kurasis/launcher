@@ -4,7 +4,7 @@ plugins {
 }
 
 base {
-    archivesName = "launcherskins-forge-${minecraft_version}"
+    archivesName = "launcherskins-forge-26.1-26.3"
 }
 
 java {

@@ -1,0 +1,10 @@
+{
+  "required": true,
+  "minVersion": "0.8",
+  "package": "app.launcher.skins.mixin",
+  "compatibilityLevel": "JAVA_8",
+  "client": ["PlayerInfoMixin"],
+  "injectors": {
+    "defaultRequire": 1
+  }
+}

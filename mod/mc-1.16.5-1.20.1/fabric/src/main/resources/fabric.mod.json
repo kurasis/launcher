@@ -1,0 +1,18 @@
+{
+  "schemaVersion": 1,
+  "id": "launcherskins",
+  "version": "${version}",
+  "name": "Launcher Skins",
+  "description": "Skins and capes of launcher accounts, HD and animated, looked up by nick.",
+  "license": "All-Rights-Reserved",
+  "environment": "client",
+  "entrypoints": {
+    "client": ["app.launcher.skins.fabric.FabricEntry"]
+  },
+  "mixins": ["launcherskins.mixins.json"],
+  "depends": {
+    "fabricloader": ">=0.14.0",
+    "minecraft": "${minecraft}",
+    "java": ">=8"
+  }
+}

@@ -22,7 +22,9 @@ version × loader × mod set, played by a test bot for a set number of minutes.
    the bot (`launchergametest-agent-<version>.jar`, `mod/gametest/agent/`) rewrites
    `Minecraft.tick()` to call it first, as the loaders' Mixin does, and the skins mod is
    its own agent. Forge 1.12.2 has its own bot (`mod/gametest/mc-1.12.2/forge/`), driven
-   by Forge's client tick event, which turns the bot's commands into 1.12.2 syntax.
+   by Forge's client tick event, which turns the bot's commands into 1.12.2 syntax. The
+   bots for 1.16.5, 1.18.2 and 1.20.1 live in `mod/gametest/mc-1.16.5-1.20.1/` (one
+   game layer per release under `game/`), those for 1.21.x in `mod/gametest/mc-<version>/`.
 
 3. It serves test skins from the machine itself (`tests/gametest/skins.rs`), the way
    skins.lapi.sh answers: HD skins 64 to 512, slim and wide, animated strips, static and
@@ -60,10 +62,14 @@ public.
 ## Running it
 
 "Run workflow" on the Game test workflow, on `main`. Inputs pick the versions (26.3,
-1.21.1, 1.12.2), loaders (vanilla, fabric, neoforge, forge), mod sets (none, medium),
-minutes per scenario and the skin variant (`rotate` gives each scenario the next one).
-1.12.2 is played with Forge only, and the game with no loader without mods. It also runs
-every night at 03:00 Moscow time with the defaults: 16 scenarios of 5 minutes.
+1.21.11, 1.21.10, 1.21.8, 1.21.4, 1.21.1, 1.20.1, 1.18.2, 1.16.5, 1.12.2: one release
+of each group the mod builds a jar for), loaders (vanilla, fabric, neoforge, forge), mod
+sets (none, medium), minutes per scenario and the skin variant (`rotate` gives each
+scenario the next one; `animcape` wears a cape that counts 1 to 9 in rainbow colours, so
+its animation shows in a screenshot). 1.12.2 is played with Forge only, 1.16.5 to 1.20.1
+without NeoForge, and the game with no loader without mods. It also runs every night at
+03:00 Moscow time with the defaults (26.3, 1.21.11, 1.21.1, 1.20.1, 1.12.2): 28 scenarios
+of 5 minutes.
 
 The workflow never runs for pull requests or from other branches.
 
@@ -90,7 +96,7 @@ folder elsewhere.
 ## Running a scenario locally
 
 ```
-cd mod && ./gradlew :gametest:mc-26.3:fabric:build :mc-26.3:fabric:build
+cd mod && ./gradlew -Ponly=mc-26.3,gametest:mc-26.3 build
 cd ../src-tauri
 LAUNCHER_LIVE_ROOT=<data dir> GAMETEST_VERSION=26.3 GAMETEST_LOADER=fabric \
 GAMETEST_JARS=<folder with the two jars> GAMETEST_OUT=<results> GAMETEST_MINUTES=2 \

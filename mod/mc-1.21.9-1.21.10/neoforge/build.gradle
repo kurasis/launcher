@@ -1,0 +1,53 @@
+plugins {
+    id 'java'
+    id 'net.neoforged.moddev' version '2.0.148'
+}
+
+base {
+    archivesName = "launcherskins-neoforge-1.21.9-1.21.10"
+}
+
+java {
+    toolchain { languageVersion = JavaLanguageVersion.of(21) }
+}
+
+sourceSets.main {
+    java.srcDir "${rootDir}/core/src/main/java"
+    java.srcDir "${projectDir}/../common/src/main/java"
+    resources.srcDir "${projectDir}/../common/src/main/resources"
+}
+
+neoForge {
+    version = neoforge_version
+    mods {
+        launcherskins {
+            sourceSet sourceSets.main
+        }
+    }
+    runs {
+        client {
+            client()
+            if (project.hasProperty('skinsApi')) {
+                systemProperty 'launcherskins.api', project.property('skinsApi').toString()
+            }
+            if (project.hasProperty('devNick')) {
+                programArguments.addAll '--username', project.property('devNick').toString()
+            }
+            if (project.hasProperty('devServer')) {
+                programArguments.addAll '--quickPlayMultiplayer', project.property('devServer').toString()
+            }
+        }
+    }
+}
+
+tasks.withType(JavaCompile).configureEach {
+    options.release = 21
+    options.encoding = 'UTF-8'
+}
+
+processResources {
+    inputs.property 'version', project.version
+    filesMatching('META-INF/neoforge.mods.toml') {
+        expand version: project.version
+    }
+}

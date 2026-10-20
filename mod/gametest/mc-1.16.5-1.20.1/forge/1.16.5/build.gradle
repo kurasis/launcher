@@ -1,0 +1,52 @@
+plugins {
+    id 'dev.architectury.loom' version '1.17.493'
+}
+
+// The bot for Forge 1.16.5, built with Architectury Loom like the skins mod's jar for it
+// (mod/mc-1.16.5-1.20.1/forge/1.16.5): remapped to SRG names, the Mixin target included.
+base {
+    archivesName = "launchergametest-forge-${minecraft_version}"
+}
+
+java {
+    toolchain { languageVersion = JavaLanguageVersion.of(17) }
+}
+
+sourceSets.main {
+    java.srcDir "${rootDir}/gametest/core/src/main/java"
+    java.srcDir "${projectDir}/../../common/src/main/java"
+    java.srcDir "${projectDir}/../../game/${minecraft_version}"
+    java.srcDir "${projectDir}/../src/main/java"
+    resources.srcDir "${projectDir}/../../common/src/main/resources"
+    resources.srcDir "${projectDir}/../src/main/resources"
+}
+
+loom {
+    forge {
+        mixinConfig 'launchergametest.mixins.json'
+    }
+}
+
+repositories {
+    maven { url = 'https://maven.minecraftforge.net/' }
+}
+
+dependencies {
+    minecraft "com.mojang:minecraft:${minecraft_version}"
+    mappings loom.officialMojangMappings()
+    forge "net.minecraftforge:forge:${minecraft_version}-${forge_version}"
+}
+
+tasks.withType(JavaCompile).configureEach {
+    options.release = 8
+    options.encoding = 'UTF-8'
+}
+
+processResources {
+    def props = [version: project.version, minecraft: minecraft_version,
+                 forge_major: forge_version.tokenize('.')[0], pack_format: pack_format]
+    inputs.properties props
+    filesMatching(['META-INF/mods.toml', 'pack.mcmeta']) {
+        expand props
+    }
+}

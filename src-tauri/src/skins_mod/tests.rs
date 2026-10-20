@@ -633,3 +633,79 @@ async fn the_real_table_never_hands_out_a_placeholder() {
         assert_eq!(prepared, Prepared::default(), "{}", jar.file);
     }
 }
+
+#[test]
+fn every_game_version_and_target_has_at_most_one_build() {
+    let mut seen = HashSet::new();
+    for b in BUILDS {
+        assert!(!b.games.is_empty(), "{}", b.label);
+        // A build is named after its one version, or its first and last.
+        let label = match b.games {
+            [one] => (*one).to_owned(),
+            [first, .., last] => format!("{first}-{last}"),
+            [] => unreachable!(),
+        };
+        assert_eq!(b.label, label);
+        for game in b.games {
+            assert!(
+                seen.insert((*game, b.target.as_str())),
+                "{game} {:?}",
+                b.target
+            );
+        }
+        assert!(is_ours(&b.file(MOD_VERSION)));
+    }
+}
+
+#[test]
+fn builds_are_found_by_version_and_loader() {
+    use LoaderKind::{Fabric, Forge, NeoForge, Quilt};
+    let label = |game: &str, loader: Option<LoaderKind>| {
+        Build::find(game, loader).map(|b| format!("{}-{}", b.target.as_str(), b.label))
+    };
+    assert_eq!(
+        label("26.1.2", Some(Quilt)).as_deref(),
+        Some("fabric-26.1-26.3")
+    );
+    assert_eq!(label("26.2", None).as_deref(), Some("agent-26.1-26.3"));
+    assert_eq!(
+        label("1.21.11", Some(Forge)).as_deref(),
+        Some("forge-1.21.11")
+    );
+    assert_eq!(
+        label("1.21.3", Some(NeoForge)).as_deref(),
+        Some("neoforge-1.21.2-1.21.4")
+    );
+    assert_eq!(label("1.21.3", None).as_deref(), Some("agent-1.21.3"));
+    assert_eq!(
+        label("1.21.7", Some(Fabric)).as_deref(),
+        Some("fabric-1.21.5-1.21.8")
+    );
+    assert_eq!(
+        label("1.21", Some(Fabric)).as_deref(),
+        Some("fabric-1.21-1.21.1")
+    );
+    // Forge's jar for 1.21.1 is built for 1.21.1 alone.
+    assert_eq!(label("1.21", Some(Forge)), None);
+    // NeoForge for 1.20.1 runs Forge's jar.
+    assert_eq!(
+        label("1.20.1", Some(NeoForge)).as_deref(),
+        Some("forge-1.20.1")
+    );
+    assert_eq!(label("1.18.2", None).as_deref(), Some("agent-1.18.2"));
+    assert_eq!(
+        label("1.12.2", Some(Forge)).as_deref(),
+        Some("forge-1.12.2")
+    );
+    for (game, loader) in [
+        ("1.12.2", Some(Fabric)),
+        ("1.12.2", None),
+        ("1.18.2", Some(NeoForge)),
+        ("1.19.2", Some(Forge)),
+        ("26.4", Some(Fabric)),
+        ("1.21.1-pre1", None),
+        ("", None),
+    ] {
+        assert_eq!(label(game, loader), None, "{game} {loader:?}");
+    }
+}

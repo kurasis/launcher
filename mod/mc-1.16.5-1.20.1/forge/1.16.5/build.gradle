@@ -1,0 +1,52 @@
+plugins {
+    id 'dev.architectury.loom' version '1.17.493'
+}
+
+// The Forge jar for 1.16.5. ModDevGradle's legacy plugin starts at 1.17, so this one is
+// built with Architectury Loom from the same sources as ../forge.gradle. Loom remaps the
+// jar to SRG names, the Mixin targets included, so the jar needs no refmap.
+base {
+    archivesName = "launcherskins-forge-${minecraft_version}"
+}
+
+java {
+    toolchain { languageVersion = JavaLanguageVersion.of(17) }
+}
+
+sourceSets.main {
+    java.srcDir "${rootDir}/core/src/main/java"
+    java.srcDir "${projectDir}/../../common/src/main/java"
+    java.srcDir "${projectDir}/../src/main/java"
+    resources.srcDir "${projectDir}/../../common/src/main/resources"
+    resources.srcDir "${projectDir}/../src/main/resources"
+}
+
+loom {
+    forge {
+        mixinConfig 'launcherskins.mixins.json'
+    }
+}
+
+repositories {
+    maven { url = 'https://maven.minecraftforge.net/' }
+}
+
+dependencies {
+    minecraft "com.mojang:minecraft:${minecraft_version}"
+    mappings loom.officialMojangMappings()
+    forge "net.minecraftforge:forge:${minecraft_version}-${forge_version}"
+}
+
+tasks.withType(JavaCompile).configureEach {
+    options.release = 8
+    options.encoding = 'UTF-8'
+}
+
+processResources {
+    def props = [version: project.version, minecraft: minecraft_version,
+                 forge_major: forge_version.tokenize('.')[0], pack_format: pack_format]
+    inputs.properties props
+    filesMatching(['META-INF/mods.toml', 'pack.mcmeta']) {
+        expand props
+    }
+}
