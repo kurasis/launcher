@@ -214,10 +214,13 @@ async fn the_game_is_played_with_mods_and_skins() {
     let skins_jar = built_jar(&jars, "launcherskins-", &loader_name, &version);
 
     // The installation: one per version, loader and mod set, kept between runs.
+    let memory = MemoryPolicy::detect();
+    // The most this computer allows: an 8 GiB machine gives the game about 5.6 GiB.
+    let max_heap = memory.as_ref().map_or(3072, |m| m.max_heap_mib);
     let state = Arc::new(AppState::initialize(
         Ok(root.clone()),
         VERSION,
-        MemoryPolicy::detect(),
+        memory,
         Box::new(NoopSink),
     ));
     let metadata = Arc::new(MetadataService::new(
@@ -364,7 +367,9 @@ async fn the_game_is_played_with_mods_and_skins() {
         variant.cape_frames(),
         server.base,
     );
-    let heap = if mod_set == "medium" { 6144 } else { 3072 };
+    let wanted_heap = if mod_set == "medium" { 6144 } else { 3072 };
+    let heap = wanted_heap.min(max_heap);
+    notes.push(format!("- memory for the game: {heap} MiB"));
     let summary = state
         .update_instance_settings(request(UpdateInstanceSettingsPayload {
             instance_id: instance.id,
