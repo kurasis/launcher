@@ -29,6 +29,12 @@ export type Messages = {
   readonly feed: {
     readonly title: string;
     readonly loading: string;
+    readonly nothing: string;
+    readonly loadingMore: string;
+    readonly loadMore: string;
+    readonly moreFailed: string;
+    readonly tryAgain: string;
+    readonly end: string;
     readonly refresh: string;
     readonly refreshing: string;
     readonly problems: {

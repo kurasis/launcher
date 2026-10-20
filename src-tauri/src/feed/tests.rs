@@ -185,6 +185,106 @@ fn bad_items_are_dropped_and_the_rest_stays() {
 }
 
 #[test]
+fn pages_of_the_endless_list_are_read_strictly() {
+    let all = crate::storage::models::FeedBlock::ALL;
+    let video = json!({
+        "id": "dQw4w9WgXcQ",
+        "channelId": "UCabcdefghijklmnopqrstuv",
+        "channel": "Channel",
+        "title": "A video",
+        "date": "2026-10-18T10:00:00Z",
+        "short": false,
+        "image": "yt/dQw4w9WgXcQ.jpg",
+    });
+    let stream = json!({
+        "login": "somebody",
+        "name": "Somebody",
+        "title": "Building",
+        "viewers": 12,
+        "started": "2026-10-19T10:00:00Z",
+        "image": "tw/somebody.jpg",
+    });
+    let value = json!({
+        "format": 1,
+        "items": [
+            {"stream": stream},
+            {"video": video},
+            {"note": note_card_json("j-26-4-snapshot-4")},
+            {"note": {"id": "../../etc", "title": "x", "date": "2026-10-01T00:00:00Z"}},
+            {"video": {"id": "<script>", "title": "x"}},
+            {"something": {"id": "x"}},
+            "junk",
+        ],
+        "next": "2026-10-14T15:00:00Z~j-26-4-snapshot-4",
+    });
+    let page = page(&value, &all).unwrap();
+    assert_eq!(page.items.len(), 3);
+    assert!(matches!(&page.items[0], FeedItem::Stream { stream } if stream.login == "somebody"));
+    assert!(matches!(&page.items[1], FeedItem::Video { video } if video.id == "dQw4w9WgXcQ"));
+    assert!(matches!(&page.items[2], FeedItem::Note { note } if note.id == "j-26-4-snapshot-4"));
+    assert_eq!(
+        page.next.as_deref(),
+        Some("2026-10-14T15:00:00Z~j-26-4-snapshot-4")
+    );
+    let shown = serde_json::to_value(&page).unwrap();
+    assert_eq!(shown["items"][0]["type"], "stream");
+    assert_eq!(shown["items"][2]["note"]["id"], "j-26-4-snapshot-4");
+
+    // Only the parts asked for, whatever the service sends.
+    let videos = page_of(&value, &[crate::storage::models::FeedBlock::Videos]);
+    assert_eq!(videos.items.len(), 1);
+
+    // A bad cursor or no format refuses the page; no next is the end.
+    let mut bad = value.clone();
+    bad["next"] = json!("../../state");
+    assert!(super::model::page(&bad, &all).is_none());
+    bad["next"] = json!(7);
+    assert!(super::model::page(&bad, &all).is_none());
+    let mut end = value.clone();
+    end["next"] = Value::Null;
+    assert_eq!(page_of(&end, &all).next, None);
+    assert!(super::model::page(&json!({"items": []}), &all).is_none());
+    assert!(super::model::page(&json!({"format": 1}), &all).is_none());
+
+    // Never more items than a page holds.
+    let many = json!({
+        "format": 1,
+        "items": vec![json!({"video": video}); 500],
+    });
+    assert_eq!(page_of(&many, &all).items.len(), 40);
+}
+
+fn page_of(value: &Value, kinds: &[crate::storage::models::FeedBlock]) -> FeedPage {
+    super::model::page(value, kinds).unwrap()
+}
+
+#[test]
+fn cursors_follow_the_service() {
+    for good in [
+        "2026-10-14T15:00:00Z~j-26-4-snapshot-4",
+        "2026-10-14T15:00:00Z~n-a-new-mob",
+        "2026-10-14T15:00:00Z~yt:dQw4w9WgXcQ",
+        "2026-10-14T15:00:00Z~tw:somebody",
+    ] {
+        assert!(cursor(good), "{good}");
+    }
+    for bad in [
+        "",
+        "~",
+        "2026-10-14T15:00:00Z",
+        "2026-10-14T15:00:00+02:00~j-26-4",
+        "2026-10-14~j-26-4",
+        "2026-10-14T15:00:00Z~yt:../x",
+        "2026-10-14T15:00:00Z~tw:Some Body",
+        "2026-10-14T15:00:00Z~x:abc",
+        "2026-10-14T15:00:00Z~j-26-4&kinds=all",
+        &format!("2026-10-14T15:00:00Z~j-{}", "a".repeat(120)),
+    ] {
+        assert!(!cursor(bad), "{bad}");
+    }
+}
+
+#[test]
 fn links_and_pictures_must_be_ours_to_open() {
     let mut value = sample("en");
     let mut news = Vec::new();

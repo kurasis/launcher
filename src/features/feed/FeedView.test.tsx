@@ -4,6 +4,8 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import type {
   AppSnapshot,
   Feed,
+  FeedItem,
+  FeedPage,
   FeedSettings,
   FeedView as FeedAnswer,
   Note,
@@ -151,6 +153,50 @@ function snapshotWith(feed: Partial<FeedSettings> = {}, more: Partial<AppSnapsho
 
 type Handler = (args: Record<string, unknown>) => unknown;
 
+/** What the service would page through for the default settings: no Shorts. */
+function serviceItems(feed: Feed = feedFixture()): FeedItem[] {
+  const [snapshot, release] = feed.versions;
+  const [stream] = feed.streams;
+  const [video] = feed.videos;
+  if (!snapshot || !release || !stream || !video) throw new Error('the fixture changed');
+  return [
+    { type: 'stream', stream },
+    { type: 'video', video },
+    { type: 'note', note: snapshot },
+    { type: 'note', note: newsCard },
+    { type: 'note', note: release },
+  ];
+}
+
+const PAGE = 2;
+
+/** Pages of `items`, `PAGE` at a time, as the core answers `feed_page`. */
+function pager(items: FeedItem[] = serviceItems()): Handler {
+  return (args) => {
+    const part = (item: FeedItem) =>
+      item.type === 'note'
+        ? item.note.id.startsWith('j-')
+          ? 'versions'
+          : 'news'
+        : `${item.type}s`;
+    const shown = items.filter((item) => args.filter === null || part(item) === args.filter);
+    const start = typeof args.before === 'string' ? Number(args.before.slice(1)) : 0;
+    const end = start + PAGE;
+    const page: FeedPage = {
+      items: shown.slice(start, end),
+      next: end < shown.length ? `c${String(end)}` : null,
+    };
+    return page;
+  };
+}
+
+/** The titles of the list's items, in order. */
+function titles(name: string) {
+  return within(screen.getByRole('list', { name }))
+    .getAllByRole('heading', { level: 3 })
+    .map((h) => h.textContent);
+}
+
 function backend(overrides: Record<string, Handler> = {}, answer?: FeedAnswer) {
   const calls: { cmd: string; args: Record<string, unknown> }[] = [];
   mockIPC((cmd, payload) => {
@@ -163,6 +209,8 @@ function backend(overrides: Record<string, Handler> = {}, answer?: FeedAnswer) {
         return answer ?? { feed: feedFixture(), stale: false, problem: null };
       case 'feed_own_videos':
         return [];
+      case 'feed_page':
+        return pager()(args);
       case 'feed_note': {
         const view: NoteView = { note: noteFixture(args.original === true), stale: false };
         return view;
@@ -187,38 +235,47 @@ function show(snapshot: AppSnapshot = snapshotWith()) {
   return { onOpenInstallations, onInstallVersion };
 }
 
-function part(name: string) {
-  return screen.getByRole('region', { name });
-}
-
 describe('FeedView', () => {
   afterEach(() => {
     setLanguage('en');
   });
 
-  it('shows the newest version, articles, videos, streams and the side column', async () => {
-    backend();
+  it('shows the newest version, one mixed list and the side column', async () => {
+    const calls = backend();
     const { onInstallVersion } = show();
     const hero = await screen.findByRole('region', { name: 'Minecraft 26.4 Snapshot 4' });
     expect(within(hero).getByText('Snapshot')).toBeVisible();
     fireEvent.click(within(hero).getByRole('button', { name: 'Install 26.4-snapshot-4' }));
     expect(onInstallVersion).toHaveBeenCalledWith('26.4-snapshot-4');
 
-    const articles = part('Patch notes and news');
-    expect(
-      within(articles)
-        .getAllByRole('heading', { level: 3 })
-        .map((h) => h.textContent),
-    ).toEqual(['Minecraft 26.4 Snapshot 4', 'A new mob', 'Minecraft 26.3']);
-    expect(within(articles).getByText('Machine-translated')).toBeVisible();
-
-    // Shorts are hidden by default.
-    const videos = part('Videos');
-    expect(within(videos).getByRole('button', { name: /A long video/ })).toBeVisible();
-    expect(within(videos).queryByRole('button', { name: /A short one/ })).toBeNull();
-    const streams = part('Live on Twitch');
-    expect(within(streams).getByText(/1,234 viewers/)).toBeVisible();
-    expect(within(streams).getByText('Live')).toBeVisible();
+    // Streams, videos and articles in one list, newest first, a page at a time.
+    await screen.findByRole('list', { name: 'All' });
+    expect(titles('All')).toEqual(['Building a castle', 'A long video']);
+    const stream = screen.getByRole('button', {
+      name: 'Watch Some Streamer live: Building a castle (1,234 viewers)',
+    });
+    expect(stream).toBeVisible();
+    expect(screen.getByText('Live')).toBeVisible();
+    fireEvent.click(screen.getByRole('button', { name: 'Show more' }));
+    // The newest version is above the list, not in it again.
+    await waitFor(() => {
+      expect(titles('All')).toEqual(['Building a castle', 'A long video', 'A new mob']);
+    });
+    expect(screen.getByText('Machine-translated')).toBeVisible();
+    fireEvent.click(screen.getByRole('button', { name: 'Show more' }));
+    expect(await screen.findByText('That’s everything for now.')).toBeVisible();
+    expect(titles('All')).toEqual([
+      'Building a castle',
+      'A long video',
+      'A new mob',
+      'Minecraft 26.3',
+    ]);
+    expect(screen.queryByRole('button', { name: 'Show more' })).toBeNull();
+    expect(calls.filter((c) => c.cmd === 'feed_page').map((c) => c.args)).toEqual([
+      { filter: null, before: null },
+      { filter: null, before: 'c2' },
+      { filter: null, before: 'c4' },
+    ]);
 
     const side = screen.getByRole('complementary', { name: 'Updates, events and tips' });
     expect(within(side).getByText('Next: 26.4')).toBeVisible();
@@ -228,10 +285,61 @@ describe('FeedView', () => {
     expect(within(side).getByText('Press F3 for coordinates.')).toBeVisible();
   });
 
+  it('asks for the next page by itself as the end of the list comes near', async () => {
+    const watched: ((entries: { isIntersecting: boolean }[]) => void)[] = [];
+    class Watcher {
+      constructor(callback: (entries: { isIntersecting: boolean }[]) => void) {
+        watched.push(callback);
+      }
+      observe() {}
+      disconnect() {}
+    }
+    vi.stubGlobal('IntersectionObserver', Watcher);
+    try {
+      const calls = backend();
+      show();
+      await screen.findByRole('list', { name: 'All' });
+      // No button: the list loads more on its own.
+      expect(screen.queryByRole('button', { name: 'Show more' })).toBeNull();
+      watched.at(-1)?.([{ isIntersecting: true }]);
+      await waitFor(() => {
+        expect(titles('All')).toContain('A new mob');
+      });
+      expect(calls.filter((c) => c.cmd === 'feed_page').at(-1)?.args).toEqual({
+        filter: null,
+        before: 'c2',
+      });
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
+
+  it('says when more cannot be loaded, and tries again', async () => {
+    let fail = true;
+    const pages = pager();
+    backend({
+      feed_page: (args) => {
+        if (args.before !== null && fail) {
+          // eslint-disable-next-line @typescript-eslint/only-throw-error
+          throw 'offline';
+        }
+        return pages(args);
+      },
+    });
+    show();
+    fireEvent.click(await screen.findByRole('button', { name: 'Show more' }));
+    expect(await screen.findByText('Couldn’t load more of the feed.')).toBeVisible();
+    fail = false;
+    fireEvent.click(screen.getByRole('button', { name: 'Try again' }));
+    await waitFor(() => {
+      expect(titles('All')).toContain('A new mob');
+    });
+  });
+
   it('loads pictures only from the feed protocol', async () => {
     backend();
     show();
-    await screen.findByRole('region', { name: 'Videos' });
+    await screen.findByRole('list', { name: 'All' });
     const sources = Array.from(document.querySelectorAll('img'), (img) => img.getAttribute('src'));
     expect(sources.length).toBeGreaterThan(0);
     for (const src of sources) expect(src).toMatch(/^feed:\/\/localhost\/(img|yt|tw)\//);
@@ -241,7 +349,7 @@ describe('FeedView', () => {
   });
 
   it('filters by kind with the chips', async () => {
-    backend();
+    const calls = backend();
     show();
     const chips = await screen.findByRole('group', { name: 'Show in the feed' });
     expect(
@@ -254,32 +362,34 @@ describe('FeedView', () => {
       'aria-pressed',
       'true',
     );
-    expect(
-      within(part('Patch notes and news'))
-        .getAllByRole('heading', { level: 3 })
-        .map((h) => h.textContent),
-    ).toEqual(['A new mob']);
-    expect(screen.queryByRole('region', { name: 'Videos' })).toBeNull();
+    await screen.findByRole('list', { name: 'News' });
+    expect(titles('News')).toEqual(['A new mob']);
     fireEvent.click(within(chips).getByRole('button', { name: 'Videos' }));
-    expect(screen.queryByRole('region', { name: 'Patch notes and news' })).toBeNull();
-    expect(part('Videos')).toBeVisible();
-    expect(screen.queryByRole('region', { name: 'Live on Twitch' })).toBeNull();
+    await screen.findByRole('list', { name: 'Videos' });
+    expect(titles('Videos')).toEqual(['A long video']);
+    expect(screen.queryByRole('button', { name: /Some Streamer live/ })).toBeNull();
+    expect(
+      calls
+        .filter((c) => c.cmd === 'feed_page')
+        .map((c) => c.args.filter)
+        .slice(-2),
+    ).toEqual(['news', 'videos']);
   });
 
-  it('follows the settings: snapshots, Shorts and hidden parts', async () => {
-    backend();
+  it('shows the feed the core has when pages cannot be fetched, as the settings say', async () => {
+    backend({
+      feed_page: () => {
+        // eslint-disable-next-line @typescript-eslint/only-throw-error
+        throw 'not_found';
+      },
+    });
     show(snapshotWith({ snapshots: false, shorts: true, hidden: ['streams', 'news'] }));
-    const articles = await screen.findByRole('region', { name: 'Patch notes and news' });
-    expect(
-      within(articles)
-        .getAllByRole('heading', { level: 3 })
-        .map((h) => h.textContent),
-    ).toEqual(['Minecraft 26.3']);
-    // Without snapshots, the newest version is the release.
-    expect(screen.getByRole('button', { name: 'Install 26.3' })).toBeVisible();
-    expect(within(part('Videos')).getByRole('button', { name: /A short one/ })).toBeVisible();
-    expect(within(part('Videos')).getByText('Shorts')).toBeVisible();
-    expect(screen.queryByRole('region', { name: 'Live on Twitch' })).toBeNull();
+    // Without snapshots, the newest version is the release, above the list.
+    expect(await screen.findByRole('button', { name: 'Install 26.3' })).toBeVisible();
+    await screen.findByRole('list', { name: 'All' });
+    expect(titles('All')).toEqual(['A short one', 'A long video']);
+    expect(screen.getByText('Shorts')).toBeVisible();
+    expect(screen.queryByRole('button', { name: 'Show more' })).toBeNull();
     expect(screen.queryByRole('region', { name: 'Update cycle' })).toBeNull();
     const chips = screen.getByRole('group', { name: 'Show in the feed' });
     expect(
@@ -292,6 +402,7 @@ describe('FeedView', () => {
   it('opens a note and renders its blocks as text, never as HTML', async () => {
     const calls = backend();
     show();
+    fireEvent.click(await screen.findByRole('button', { name: 'Show more' }));
     fireEvent.click(await screen.findByRole('button', { name: 'A new mob' }));
     const dialog = await screen.findByRole('dialog', { name: 'A new mob' });
     expect(await within(dialog).findByText('<img src=x onerror=alert(1)>')).toBeVisible();
@@ -389,7 +500,7 @@ describe('FeedView', () => {
     backend({}, { feed: feedFixture(), stale: true, problem: 'offline' });
     show();
     expect(await screen.findByText(/this is the copy from/)).toBeVisible();
-    expect(part('Patch notes and news')).toBeVisible();
+    expect(await screen.findByRole('list', { name: 'All' })).toBeVisible();
   });
 
   it('says why there is no feed, and asks again on Refresh', async () => {
@@ -407,13 +518,13 @@ describe('FeedView', () => {
     expect(await screen.findByRole('alert')).toHaveTextContent('The feed cannot be reached.');
     fail = false;
     fireEvent.click(screen.getByRole('button', { name: 'Refresh' }));
-    expect(await screen.findByRole('region', { name: 'Videos' })).toBeVisible();
+    expect(await screen.findByRole('list', { name: 'All' })).toBeVisible();
     expect(calls.filter((c) => c.cmd === 'feed_get').at(-1)?.args).toEqual({ refresh: true });
   });
 
   it('shows empty parts in words', async () => {
     backend(
-      {},
+      { feed_page: () => ({ items: [], next: null }) },
       {
         feed: feedFixture({ versions: [], news: [], videos: [], streams: [], cycle: null }),
         stale: false,
@@ -421,11 +532,16 @@ describe('FeedView', () => {
       },
     );
     show(snapshotWith({}, { instances: [] }));
-    expect(await screen.findByText('No patch notes or news here yet.')).toBeVisible();
-    expect(screen.getByText('No videos yet.')).toBeVisible();
-    expect(screen.getByText('No one is streaming Minecraft right now.')).toBeVisible();
+    expect(await screen.findByText('Nothing here yet.')).toBeVisible();
     // The newest release still has its card.
     expect(screen.getByRole('region', { name: 'Minecraft 26.3' })).toBeVisible();
+    const chips = screen.getByRole('group', { name: 'Show in the feed' });
+    fireEvent.click(within(chips).getByRole('button', { name: 'News' }));
+    expect(await screen.findByText('No patch notes or news here yet.')).toBeVisible();
+    fireEvent.click(within(chips).getByRole('button', { name: 'Videos' }));
+    expect(await screen.findByText('No videos yet.')).toBeVisible();
+    fireEvent.click(within(chips).getByRole('button', { name: 'Streams' }));
+    expect(await screen.findByText('No one is streaming Minecraft right now.')).toBeVisible();
   });
 
   it('continues the installation played last', async () => {
@@ -465,8 +581,12 @@ describe('FeedView', () => {
       ],
     });
     show();
-    const own = await screen.findByRole('region', { name: 'Your channels' });
-    expect(within(own).getByRole('button', { name: 'Watch “My build” by Mine' })).toBeVisible();
+    await screen.findByRole('list', { name: 'All' });
+    // It waits until the pages reach its time, so the order holds.
+    expect(screen.queryByRole('button', { name: 'Watch “My build” by Mine' })).toBeNull();
+    fireEvent.click(screen.getByRole('button', { name: 'Show more' }));
+    expect(await screen.findByRole('button', { name: 'Watch “My build” by Mine' })).toBeVisible();
+    expect(titles('All')).toEqual(['Building a castle', 'A long video', 'My build', 'A new mob']);
   });
 
   it('reads right to left in Arabic', async () => {

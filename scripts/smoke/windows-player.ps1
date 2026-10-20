@@ -76,11 +76,13 @@ $feed = Wait-For {
 } 30
 if (-not $feed) { throw 'Feed tab not found' }
 Press $feed
-# The feed's video cards are named "Watch “<title>” by <channel>".
+# The feed's video cards are named "Watch “<title>” by <channel>"; streams,
+# mixed in among them, "Watch <name> live: …" and are passed over.
+$videoName = 'Watch ' + [char]0x201C + '*'
 $video = Wait-For {
   $byType = New-Object System.Windows.Automation.PropertyCondition($AE::ControlTypeProperty, $Button)
   foreach ($candidate in $main.FindAll($Scope::Descendants, $byType)) {
-    if ($candidate.Current.Name -like 'Watch *') { return $candidate }
+    if ($candidate.Current.Name -like $videoName) { return $candidate }
   }
 } 60
 if (-not $video) {

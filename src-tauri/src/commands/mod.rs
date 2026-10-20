@@ -2193,7 +2193,7 @@ pub fn mods_open_link<R: Runtime>(app: AppHandle<R>, url: String) -> LauncherRes
 
 // ---- The start page feed (D-067) ----------------------------------------------
 
-use crate::feed::model::{OwnChannel, Video};
+use crate::feed::model::{FeedPage, OwnChannel, Video};
 use crate::feed::{FeedProblem, FeedResult, FeedService, FeedView, Languages, NoteView};
 
 fn feed_service<R: Runtime>(app: &AppHandle<R>) -> Arc<FeedService> {
@@ -2228,6 +2228,20 @@ pub async fn feed_get<R: Runtime>(app: AppHandle<R>, refresh: bool) -> FeedResul
     let root = app.state::<AppState>().data_root();
     feed_service(&app)
         .view(root.as_ref(), languages, refresh)
+        .await
+}
+
+/// A page of the endless list (D-067): `filter` one part or all of them,
+/// `before` the cursor the page before ended with.
+#[tauri::command]
+pub async fn feed_page<R: Runtime>(
+    app: AppHandle<R>,
+    filter: Option<crate::storage::models::FeedBlock>,
+    before: Option<String>,
+) -> FeedResult<FeedPage> {
+    let (languages, settings) = feed_languages(&app)?;
+    feed_service(&app)
+        .page(languages, &settings, filter, before.as_deref())
         .await
 }
 

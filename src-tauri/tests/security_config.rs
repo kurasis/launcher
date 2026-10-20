@@ -260,6 +260,7 @@ fn main_window_capability_grants_only_app_commands() {
             "allow-skins-upload",
             "allow-skins-remove",
             "allow-feed-get",
+            "allow-feed-page",
             "allow-feed-note",
             "allow-feed-play",
             "allow-feed-open-link",

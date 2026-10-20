@@ -31,6 +31,14 @@ pub const OWN_CHANNELS: usize = 2000;
 pub const CHANNEL_TTL: Duration = Duration::from_secs(15 * 60);
 /// Patch notes and news translated: the newest ones only.
 const TRANSLATED: usize = 30;
+/// Patch notes and news in a feed; the endless list pages through the rest.
+pub const FEED_NOTES: usize = 40;
+/// Videos kept per channel: its RSS lists 15, so the rest are kept from
+/// earlier fetches.
+pub const CHANNEL_VIDEOS: usize = 200;
+/// Items in one page of the endless list.
+pub const PAGE_MAX: usize = 40;
+pub const PAGE_DEFAULT: usize = 20;
 
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct Saved {
@@ -262,9 +270,14 @@ impl Feed {
                         video.channel.clone_from(&channel.name);
                     }
                     self.know_videos(&fetched.videos);
-                    lock_mut(&self.saved)
+                    let mut saved = lock_mut(&self.saved);
+                    let kept = saved
                         .channels
-                        .insert(channel.id.clone(), fetched);
+                        .remove(&channel.id)
+                        .map(|c| c.videos)
+                        .unwrap_or_default();
+                    fetched.videos = keep_videos(fetched.videos, kept);
+                    saved.channels.insert(channel.id.clone(), fetched);
                     answered += 1;
                 }
                 Err(e) => eprintln!("a channel's videos could not be fetched: {e}"),
@@ -429,6 +442,7 @@ impl Feed {
         let cards = |ids: &[String]| -> Vec<Value> {
             ids.iter()
                 .filter_map(|id| notes.get(id))
+                .take(FEED_NOTES)
                 .map(|note| self.note_card(note, lang))
                 .collect()
         };
@@ -446,16 +460,7 @@ impl Feed {
             .get(lang)
             .into_iter()
             .flatten()
-            .map(|s| {
-                json!({
-                    "login": s.login,
-                    "name": s.name,
-                    "title": s.title,
-                    "viewers": s.viewers,
-                    "started": s.started,
-                    "image": format!("tw/{}.jpg", s.login),
-                })
-            })
+            .map(stream_card)
             .collect();
         json!({
             "format": FORMAT,
@@ -472,6 +477,76 @@ impl Feed {
             "tip": self.editorial.tip(lang, now),
             "fetched": saved.fetched,
         })
+    }
+
+    /// One page of the endless list: patch notes, news, videos and streams
+    /// mixed, newest first, after `query.before` when given.
+    pub fn page(&self, query: &PageQuery) -> Value {
+        let saved = lock(&self.saved);
+        let notes = lock(&self.notes);
+        // (time, key, item): the time and key order the list and make the
+        // cursor; cards are made only for the page.
+        let mut items: Vec<(String, String, Item<'_>)> = Vec::new();
+        for (ids, kind) in [
+            (&saved.patch_notes, Kind::Versions),
+            (&saved.news, Kind::News),
+        ] {
+            if !query.kinds.contains(&kind) {
+                continue;
+            }
+            for note in ids.iter().filter_map(|id| notes.get(id)) {
+                let snapshot = note.kind.as_deref().is_some_and(|k| k != "release");
+                if snapshot && !query.snapshots {
+                    continue;
+                }
+                if let Some(time) = sort_time(&note.date) {
+                    items.push((time, note.id.clone(), Item::Note(note)));
+                }
+            }
+        }
+        if query.kinds.contains(&Kind::Videos) {
+            let mut seen = HashSet::new();
+            let videos = self
+                .editorial
+                .channels_for(query.videos)
+                .filter_map(|c| saved.channels.get(&c.id))
+                .flat_map(|c| c.videos.iter());
+            for video in videos {
+                if (video.short && !query.shorts) || !seen.insert(video.id.as_str()) {
+                    continue;
+                }
+                if let Some(time) = sort_time(&video.date) {
+                    items.push((time, format!("yt:{}", video.id), Item::Video(video)));
+                }
+            }
+        }
+        if query.kinds.contains(&Kind::Streams) {
+            for stream in saved.streams.get(query.videos).into_iter().flatten() {
+                if let Some(time) = sort_time(&stream.started) {
+                    items.push((time, format!("tw:{}", stream.login), Item::Stream(stream)));
+                }
+            }
+        }
+        items.sort_by(|a, b| b.0.cmp(&a.0).then_with(|| a.1.cmp(&b.1)));
+        let after = |item: &(String, String, Item<'_>)| match &query.before {
+            None => true,
+            Some((time, key)) => item.0 < *time || (item.0 == *time && item.1 > *key),
+        };
+        let mut rest = items.into_iter().filter(after);
+        let page: Vec<(String, String, Item<'_>)> = rest.by_ref().take(query.limit).collect();
+        let next = match (page.last(), rest.next()) {
+            (Some((time, key, _)), Some(_)) => Some(format!("{time}~{key}")),
+            _ => None,
+        };
+        let cards: Vec<Value> = page
+            .into_iter()
+            .map(|(_, _, item)| match item {
+                Item::Note(note) => json!({ "note": self.note_card(note, query.notes) }),
+                Item::Video(video) => json!({ "video": video_card(video) }),
+                Item::Stream(stream) => json!({ "stream": stream_card(stream) }),
+            })
+            .collect();
+        json!({ "format": FORMAT, "items": cards, "next": next })
     }
 
     /// A whole note in a language (the original when there is no
@@ -594,6 +669,95 @@ impl Feed {
             "fetched": saved.fetched,
         })
     }
+}
+
+fn stream_card(stream: &Stream) -> Value {
+    json!({
+        "login": stream.login,
+        "name": stream.name,
+        "title": stream.title,
+        "viewers": stream.viewers,
+        "started": stream.started,
+        "image": format!("tw/{}.jpg", stream.login),
+    })
+}
+
+/// A part of the feed the endless list can hold.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Kind {
+    Versions,
+    News,
+    Videos,
+    Streams,
+}
+
+impl Kind {
+    pub fn parse(kind: &str) -> Option<Self> {
+        match kind {
+            "versions" => Some(Self::Versions),
+            "news" => Some(Self::News),
+            "videos" => Some(Self::Videos),
+            "streams" => Some(Self::Streams),
+            _ => None,
+        }
+    }
+}
+
+/// An item of the endless list before its card is made.
+enum Item<'a> {
+    Note(&'a Note),
+    Video(&'a Video),
+    Stream(&'a Stream),
+}
+
+/// What one page of the endless list asks for.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct PageQuery {
+    /// The language of patch notes and news.
+    pub notes: &'static str,
+    /// The language of videos and streams.
+    pub videos: &'static str,
+    pub kinds: Vec<Kind>,
+    pub snapshots: bool,
+    pub shorts: bool,
+    /// The last item of the page before: its time and key.
+    pub before: Option<(String, String)>,
+    pub limit: usize,
+}
+
+/// A time as the list orders it (`YYYY-MM-DDTHH:MM:SSZ`).
+fn sort_time(time: &str) -> Option<String> {
+    chrono::DateTime::parse_from_rfc3339(time).ok().map(|t| {
+        t.with_timezone(&chrono::Utc)
+            .format("%Y-%m-%dT%H:%M:%SZ")
+            .to_string()
+    })
+}
+
+/// A cursor this service made: `<time>~<key>`, the key a note id, `yt:<id>`
+/// or `tw:<login>`.
+pub fn cursor(raw: &str) -> Option<(String, String)> {
+    if raw.len() > 120 {
+        return None;
+    }
+    let (time, key) = raw.split_once('~')?;
+    let time = sort_time(time).filter(|t| t == time)?;
+    let key_ok = (3..=100).contains(&key.len())
+        && key
+            .bytes()
+            .all(|b| b.is_ascii_alphanumeric() || matches!(b, b'-' | b'_' | b':'));
+    key_ok.then(|| (time, key.to_owned()))
+}
+
+/// Fresh videos first, then those kept from before that the fresh list no
+/// longer has; newest first, at most `CHANNEL_VIDEOS`.
+pub fn keep_videos(fresh: Vec<Video>, kept: Vec<Video>) -> Vec<Video> {
+    let ids: HashSet<String> = fresh.iter().map(|v| v.id.clone()).collect();
+    let mut videos = fresh;
+    videos.extend(kept.into_iter().filter(|v| !ids.contains(&v.id)));
+    videos.sort_by(|a, b| b.date.cmp(&a.date));
+    videos.truncate(CHANNEL_VIDEOS);
+    videos
 }
 
 fn video_card(video: &Video) -> Value {

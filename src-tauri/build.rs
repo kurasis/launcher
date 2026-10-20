@@ -125,6 +125,7 @@ fn main() {
         "skins_upload",
         "skins_remove",
         "feed_get",
+        "feed_page",
         "feed_note",
         "feed_play",
         "feed_open_link",

@@ -196,13 +196,22 @@
   padding: var(--space-4);
 }
 
-/* Patch notes and news. */
-.cards {
+/* The endless list: patch notes, news, videos and streams, one below the other. */
+.list {
   list-style: none;
   margin: 0;
   padding: 0;
   display: grid;
   gap: var(--space-3);
+}
+
+.listEnd {
+  display: grid;
+  justify-items: center;
+  gap: var(--space-2);
+  min-block-size: 1px;
+  padding-block: var(--space-2);
+  text-align: center;
 }
 
 .card {
@@ -277,39 +286,28 @@
   }
 }
 
-/* Videos and streams. */
-.row {
-  list-style: none;
-  margin: 0;
-  padding: 0 0 var(--space-2);
-  display: flex;
-  gap: var(--space-3);
-  overflow-x: auto;
-  scroll-snap-type: inline mandatory;
-}
-
-.tile {
-  flex: 0 0 15rem;
-  scroll-snap-align: start;
-}
-
-.tileButton {
-  font: inherit;
-  color: inherit;
-  text-align: start;
+/* Videos and streams: a big preview over the title. */
+.watch {
+  composes: panelLike;
+  position: relative;
   display: grid;
-  gap: var(--space-1);
-  inline-size: 100%;
-  padding: 0;
-  background: none;
-  border: none;
-  cursor: pointer;
+  gap: var(--space-2);
+  padding: var(--space-3);
 }
 
-.tileButton:focus-visible {
+.watch:hover {
+  border-color: var(--color-border-strong);
+}
+
+.watch:focus-within {
   outline: 2px solid var(--color-focus);
   outline-offset: 2px;
-  border-radius: var(--radius-sm);
+}
+
+.watchText {
+  display: grid;
+  gap: var(--space-1);
+  min-inline-size: 0;
 }
 
 .preview {
@@ -333,15 +331,6 @@
   position: absolute;
   inset-block-start: var(--space-2);
   inset-inline-start: var(--space-2);
-}
-
-.tileTitle {
-  font-weight: 600;
-  display: -webkit-box;
-  -webkit-box-orient: vertical;
-  -webkit-line-clamp: 2;
-  overflow: hidden;
-  overflow-wrap: anywhere;
 }
 
 /* The side column. */

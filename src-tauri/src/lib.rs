@@ -883,6 +883,7 @@ fn handlers<R: tauri::Runtime>() -> impl Fn(tauri::ipc::Invoke<R>) -> bool + Sen
         commands::skins_upload,
         commands::skins_remove,
         commands::feed_get,
+        commands::feed_page,
         commands::feed_note,
         commands::feed_play,
         commands::feed_open_link,
