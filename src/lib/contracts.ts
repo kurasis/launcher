@@ -1799,6 +1799,8 @@ export interface WorldsState {
     room: string;
     connected: boolean;
     refused: WorldsRefusal | null;
+    /** Straight to the host or through relay.lapi.sh, once chosen. */
+    path: 'direct' | 'relay' | null;
   } | null;
   /** Why the last start or join failed: a problem name or an error code. */
   failed: string | null;

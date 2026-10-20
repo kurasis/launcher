@@ -50,6 +50,34 @@ pub fn relay_url() -> LauncherResult<RelayUrl> {
         .map_err(|_| LauncherError::internal("The relay address is not valid."))
 }
 
+/// Which way the tunnel's game data goes now.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum PathKind {
+    /// Straight between the two computers.
+    Direct,
+    /// Through relay.lapi.sh.
+    Relay,
+}
+
+/// The path the connection sends on, once one is chosen.
+pub fn path_of(connection: &Connection) -> Option<PathKind> {
+    connection
+        .paths()
+        .iter()
+        .find(|p| p.is_selected())
+        .map(|p| {
+            if p.is_ip() {
+                PathKind::Direct
+            } else {
+                PathKind::Relay
+            }
+        })
+}
+
+/// How often the chosen path is looked at.
+const PATH_EVERY: Duration = Duration::from_secs(2);
+
 struct Shared {
     client: Arc<WorldsClient>,
     room: String,
@@ -57,6 +85,7 @@ struct Shared {
     first: Mutex<Option<(TicketGrant, Instant)>>,
     status: Mutex<Option<StatusSnapshot>>,
     refused: Mutex<Option<Option<Refusal>>>,
+    path: Mutex<Option<PathKind>>,
     on_change: Arc<dyn Fn() + Send + Sync>,
 }
 
@@ -118,11 +147,13 @@ pub struct RoomGuest {
     connection: Connection,
     endpoint: Endpoint,
     keeper: JoinHandle<()>,
+    watcher: JoinHandle<()>,
 }
 
 impl Drop for RoomGuest {
     fn drop(&mut self) {
         self.keeper.abort();
+        self.watcher.abort();
     }
 }
 
@@ -198,6 +229,7 @@ pub async fn join(
         first: Mutex::new(Some((first, Instant::now()))),
         status: Mutex::new(Some(snapshot(room))),
         refused: Mutex::new(None),
+        path: Mutex::new(path_of(&connection)),
         on_change,
     });
     let listener = guest::listen(Target {
@@ -212,13 +244,30 @@ pub async fn join(
     .map_err(|e| LauncherError::from_io(&e, "Opening the world for the game"))?;
     let relayed = matches!(route, Route::Relay(_));
     let keeper = tokio::spawn(keep(Arc::clone(&shared), relayed));
+    let watcher = tokio::spawn(watch_path(Arc::clone(&shared), connection.clone()));
     Ok(RoomGuest {
         shared,
         listener,
         connection,
         endpoint,
         keeper,
+        watcher,
     })
+}
+
+/// Tells when the connection moves between the relay and a direct path.
+async fn watch_path(shared: Arc<Shared>, connection: Connection) {
+    while connection.close_reason().is_none() {
+        tokio::time::sleep(PATH_EVERY).await;
+        let now = path_of(&connection);
+        let changed = {
+            let mut path = lock(&shared.path);
+            std::mem::replace(&mut *path, now) != now
+        };
+        if changed {
+            (shared.on_change)();
+        }
+    }
 }
 
 async fn keep(shared: Arc<Shared>, relayed: bool) {
@@ -251,6 +300,11 @@ impl RoomGuest {
         *lock(&self.shared.refused)
     }
 
+    /// Which way the game data goes now.
+    pub fn path(&self) -> Option<PathKind> {
+        *lock(&self.shared.path)
+    }
+
     /// Whether the tunnel to the host still stands.
     pub fn connected(&self) -> bool {
         self.connection.close_reason().is_none()
@@ -258,6 +312,7 @@ impl RoomGuest {
 
     pub async fn leave(self) {
         self.keeper.abort();
+        self.watcher.abort();
         self.endpoint.close().await;
     }
 }

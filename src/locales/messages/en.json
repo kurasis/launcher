@@ -1424,7 +1424,11 @@
       "guest": {
         "title": "In {room}",
         "connected": "Connected to the host. Press Play to start the game.",
-        "lost": "The connection to the host was lost."
+        "lost": "The connection to the host was lost.",
+        "path": {
+          "direct": "Connection: directly to the host's computer.",
+          "relay": "Connection: through relay.lapi.sh, as no direct path between the computers was found."
+        }
       },
       "refusals": {
         "BAD_FRAME": "The host's launcher did not understand this launcher. Update both.",

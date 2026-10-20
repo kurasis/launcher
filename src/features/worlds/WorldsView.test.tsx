@@ -205,12 +205,24 @@ describe('WorldsView', () => {
       worlds_state: () => ({
         ...idle,
         failed: 'nick_unfit',
-        guest: { room: OTHER, connected: false, refused: 'ROOM_FULL' },
+        guest: { room: OTHER, connected: false, refused: 'ROOM_FULL', path: 'relay' },
       }),
     });
     expect(await screen.findByText(/cannot be a Minecraft name/)).toBeInTheDocument();
     expect(screen.getByText('The world is full.')).toBeInTheDocument();
     expect(screen.getByText('The connection to the host was lost.')).toBeInTheDocument();
+    // A lost connection says nothing about its path.
+    expect(screen.queryByText(/relay\.lapi\.sh, as no direct path/)).toBeNull();
+  });
+
+  it('says whether the guest plays directly or through the relay', async () => {
+    setup({
+      worlds_state: () => ({
+        ...idle,
+        guest: { room: OTHER, connected: true, refused: null, path: 'relay' },
+      }),
+    });
+    expect(await screen.findByText(/through relay\.lapi\.sh/)).toBeInTheDocument();
   });
 
   it('joins a room with an invite code after a look', async () => {

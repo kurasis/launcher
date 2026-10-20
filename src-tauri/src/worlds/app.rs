@@ -83,6 +83,8 @@ pub struct GuestView {
     pub connected: bool,
     /// Why the host refused the last login, if it did.
     pub refused: Option<Refusal>,
+    /// Straight to the host or through the relay, once chosen.
+    pub path: Option<joining::PathKind>,
 }
 
 /// What the interface shows about this computer's room.
@@ -856,6 +858,7 @@ fn view_of(inner: &Inner) -> WorldsView {
             room: g.room().to_owned(),
             connected: g.connected(),
             refused: g.refused().flatten(),
+            path: g.path(),
         }),
         failed: inner.failed.clone(),
         maintenance: inner.maintenance,

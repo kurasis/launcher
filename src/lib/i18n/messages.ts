@@ -1500,6 +1500,10 @@ export type Messages = {
       readonly title: (values: { room: string | number }) => string;
       readonly connected: string;
       readonly lost: string;
+      readonly path: {
+        readonly direct: string;
+        readonly relay: string;
+      };
     };
     readonly refusals: {
       readonly BAD_FRAME: string;
