@@ -2045,7 +2045,9 @@ archive from the Package workflow, upload it to
   files of the newest release per game version and loader, required dependencies (to
   the end of the chain, each project read at most once a day so a loop ends; 200 per
   project), the icon, the gallery and the pictures in the description (a plain `http:`
-  address of a listed site is fetched over HTTPS), which then point at our copies. Work runs from a queue in the database (retries with
+  address of a listed site is fetched over HTTPS; pictures are asked with a browser's
+  `<img>` headers, since imgur answers a page request with a redirect to its own page),
+  which then point at our copies. Work runs from a queue in the database (retries with
   back-off, survives restarts). Limits: 20 requests an hour and 100 a day per account,
   5 GB a day of files brought per account, 60 an hour per address; an older version's
   files 30 an hour per address.
