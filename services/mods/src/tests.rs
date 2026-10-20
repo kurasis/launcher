@@ -1844,3 +1844,379 @@ fn curseforge_search_pages_are_read_with_care() {
     assert!(curseforge::candidates(&html).is_empty());
     assert!(started.elapsed() < Duration::from_secs(10));
 }
+
+// ----- modpacks -----
+
+const PACK: &str = "PaCkPaCk";
+
+fn mrpack(entries: &[(&str, &[u8])]) -> Vec<u8> {
+    use std::io::Write as _;
+    let mut zip = zip::ZipWriter::new(std::io::Cursor::new(Vec::new()));
+    for (name, bytes) in entries {
+        zip.start_file(*name, zip::write::SimpleFileOptions::default())
+            .unwrap();
+        zip.write_all(bytes).unwrap();
+    }
+    zip.finish().unwrap().into_inner()
+}
+
+fn pack_entry(path: &str, url: &str, bytes: &[u8], client: &str) -> Value {
+    let (sha1, sha512, _) = hashes(bytes);
+    json!({
+        "path": path, "hashes": { "sha1": sha1, "sha512": sha512 },
+        "env": { "client": client, "server": "required" },
+        "downloads": [url], "fileSize": bytes.len(),
+    })
+}
+
+/// A modpack with one version whose archive is `archive`.
+fn modpack_site(sites: &Sites, archive: &[u8]) {
+    sites.json(
+        &modrinth::project_url("pack"),
+        json!({ "id": PACK, "slug": "pack", "project_type": "modpack", "title": "Pack" }),
+    );
+    sites.json(&modrinth::members_url(PACK), json!([]));
+    sites.json(
+        &modrinth::versions_url(PACK),
+        json!([{
+            "id": "pvaaaaaa", "version_number": "1.0", "version_type": "release",
+            "date_published": "2024-01-01T00:00:00Z", "game_versions": ["1.21.1"], "loaders": ["fabric"],
+            "files": [file_json(PACK, "pvaaaaaa", "pack-1.0.mrpack", archive)],
+        }]),
+    );
+    sites.put(
+        &format!("https://cdn.modrinth.com/data/{PACK}/versions/pvaaaaaa/pack-1.0.mrpack"),
+        ok(archive.to_vec()),
+    );
+}
+
+async fn pack_version(t: &T) -> String {
+    t.player(
+        1,
+        "POST",
+        "/v1/imports",
+        json!({ "input": "https://modrinth.com/modpack/pack" }),
+    )
+    .await;
+    t.drain().await;
+    let (_, versions) = t.get("/v1/projects/pack/versions").await;
+    versions["versions"][0]["id"].as_str().unwrap().to_owned()
+}
+
+#[tokio::test]
+async fn a_modpack_is_read_and_all_its_files_are_kept_when_asked() {
+    let t = setup();
+    let sodium = b"jar of sodium in a pack".to_vec();
+    let shader = b"shader from github".to_vec();
+    let sodium_url = format!("https://cdn.modrinth.com/data/{SODIUM}/versions/v9/sodium.jar");
+    let shader_url = "https://github.com/someone/shader/releases/download/1/shader.zip";
+    t.sites.put(&sodium_url, ok(sodium.clone()));
+    t.sites.put(shader_url, ok(shader.clone()));
+    let index = json!({
+        "formatVersion": 1, "game": "minecraft", "versionId": "1.0", "name": "Pack",
+        "dependencies": { "minecraft": "1.21.1", "fabric-loader": "0.16.5" },
+        "files": [
+            pack_entry("mods/sodium.jar", &sodium_url, &sodium, "required"),
+            pack_entry("shaderpacks/shader.zip", shader_url, &shader, "optional"),
+            // Left out: outside the game folder, a program, a server's file.
+            pack_entry("../escape.jar", &sodium_url, &sodium, "required"),
+            pack_entry("config/run.exe", &sodium_url, &sodium, "required"),
+            pack_entry("mods/server-only.jar", &sodium_url, &sodium, "unsupported"),
+        ],
+    });
+    let archive = mrpack(&[
+        ("modrinth.index.json", index.to_string().as_bytes()),
+        ("overrides/config/a.toml", b"a = 1"),
+    ]);
+    modpack_site(&t.sites, &archive);
+    let version = pack_version(&t).await;
+
+    // Nothing of the pack's files is fetched before it is asked for.
+    assert_eq!(t.sites.asked(&sodium_url), 0);
+    let (status, pack) = t.get(&format!("/v1/versions/{version}/pack")).await;
+    assert_eq!(status, StatusCode::OK, "{pack}");
+    assert_eq!(pack["state"], "none");
+    let (status, pack) = t
+        .call(
+            None,
+            "POST",
+            &format!("/v1/versions/{version}/pack"),
+            Value::Null,
+        )
+        .await;
+    assert_eq!(status, StatusCode::ACCEPTED, "{pack}");
+    assert_eq!(pack["state"], "working");
+    t.drain().await;
+
+    let (status, pack) = t.get(&format!("/v1/versions/{version}/pack")).await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(pack["state"], "ready", "{pack}");
+    assert_eq!(pack["game"], "1.21.1");
+    assert_eq!(
+        pack["loader"],
+        json!({ "kind": "fabric", "version": "0.16.5" })
+    );
+    assert_eq!(pack["skipped"], 3);
+    assert_eq!(pack["total"], 2);
+    let files = pack["files"].as_array().unwrap();
+    assert_eq!(files[0]["path"], "mods/sodium.jar");
+    assert_eq!(files[0]["optional"], false);
+    assert_eq!(files[1]["optional"], true);
+    let (_, _, sha256) = hashes(&shader);
+    assert_eq!(files[1]["sha256"], sha256.as_str());
+    assert_eq!(
+        files[1]["url"],
+        format!("https://files.example/f/{sha256}/shader%2Ezip")
+    );
+    assert_eq!(std::fs::read(t.app.blobs.path(&sha256)).unwrap(), shader);
+    let (_, _, archive_sha) = hashes(&archive);
+    assert_eq!(pack["archive"]["sha256"], archive_sha.as_str());
+    assert!(
+        pack["archive"]["url"]
+            .as_str()
+            .unwrap()
+            .starts_with("https://files.example/f/")
+    );
+    assert_eq!(t.sites.asked(&sodium_url), 1);
+
+    // Ready: asked again, nothing more is fetched.
+    let (status, _) = t
+        .call(
+            None,
+            "POST",
+            &format!("/v1/versions/{version}/pack"),
+            Value::Null,
+        )
+        .await;
+    assert_eq!(status, StatusCode::OK);
+    t.drain().await;
+    assert_eq!(t.sites.asked(&sodium_url), 1);
+
+    // Not a modpack, not a version.
+    let (_, versions) = t.get("/v1/projects/pack/versions").await;
+    assert_eq!(versions["versions"][0]["saved"], "all");
+    let (status, _) = t
+        .get("/v1/versions/0190a000-0000-7000-8000-000000000000/pack")
+        .await;
+    assert_eq!(status, StatusCode::NOT_FOUND);
+    let (status, _) = t.get("/v1/versions/..%2Fx/pack").await;
+    assert_eq!(status, StatusCode::NOT_FOUND);
+}
+
+#[tokio::test]
+async fn a_broken_modpack_fails_with_a_reason() {
+    for (archive, code) in [
+        (b"not a zip at all".to_vec(), "bad_pack"),
+        (mrpack(&[("other.json", b"{}")]), "bad_pack"),
+        (
+            mrpack(&[("modrinth.index.json", b"{\"formatVersion\":1")]),
+            "bad_pack",
+        ),
+    ] {
+        let t = setup();
+        modpack_site(&t.sites, &archive);
+        let version = pack_version(&t).await;
+        t.call(
+            None,
+            "POST",
+            &format!("/v1/versions/{version}/pack"),
+            Value::Null,
+        )
+        .await;
+        t.drain().await;
+        let (_, pack) = t.get(&format!("/v1/versions/{version}/pack")).await;
+        assert_eq!(pack["state"], "failed", "{pack}");
+        assert_eq!(pack["error"], code);
+    }
+
+    // A file that is not what the index says is not kept.
+    let t = setup();
+    let url = format!("https://cdn.modrinth.com/data/{SODIUM}/versions/v9/sodium.jar");
+    t.sites.put(&url, ok(b"the real jaX".to_vec()));
+    let index = json!({
+        "formatVersion": 1, "game": "minecraft",
+        "dependencies": { "minecraft": "1.21.1" },
+        "files": [pack_entry("mods/sodium.jar", &url, b"the real jar", "required")],
+    });
+    modpack_site(
+        &t.sites,
+        &mrpack(&[("modrinth.index.json", index.to_string().as_bytes())]),
+    );
+    let version = pack_version(&t).await;
+    t.call(
+        None,
+        "POST",
+        &format!("/v1/versions/{version}/pack"),
+        Value::Null,
+    )
+    .await;
+    t.drain().await;
+    let (_, pack) = t.get(&format!("/v1/versions/{version}/pack")).await;
+    assert_eq!(pack["state"], "failed");
+    assert_eq!(pack["error"], "hash_mismatch");
+    assert!(pack["files"][0]["url"].is_null());
+}
+
+#[test]
+fn pack_paths_stay_in_the_folders_a_pack_fills() {
+    for path in [
+        "mods/sodium.jar",
+        "mods/sodium.jar.disabled",
+        "mods/1.20.1/old.jar",
+        "config/sodium-options.json",
+        "config/.hidden",
+        "kubejs/server_scripts/main.js",
+        "saves/World 1/level.dat",
+        "resourcepacks/Faithful 32x.zip",
+        "options.txt",
+        "servers.dat",
+    ] {
+        assert!(crate::pack::pack_path(path), "{path}");
+    }
+    for path in [
+        "",
+        "/mods/a.jar",
+        "../mods/a.jar",
+        "mods/../../a.jar",
+        "mods/./a.jar",
+        "mods//a.jar",
+        "mods\\a.jar",
+        "C:/mods/a.jar",
+        "mods/a:b.jar",
+        "mods/CON.jar",
+        "mods/lpt1",
+        "mods/a.jar ",
+        "mods/a.",
+        "mods/a\u{0}.jar",
+        "mods/a\n.jar",
+        "Mods/a.jar",
+        "logs/latest.log",
+        "natives/lwjgl.dll",
+        "config/tool.jar",
+        "config/run.exe",
+        "mods/run.EXE",
+        "mods/lib.dll",
+        "kubejs/x.sh",
+        "saves/w/x.bat.disabled",
+        "launcher.json",
+        "a/b/c/d/e/f/g/h/i/j/k/l/m/n/o/p/q.txt",
+    ] {
+        assert!(!crate::pack::pack_path(path), "{path:?}");
+    }
+    assert!(!crate::pack::pack_path(&format!(
+        "config/{}",
+        "a".repeat(400)
+    )));
+}
+
+#[test]
+fn pack_indexes_are_read_with_care() {
+    let jar = b"jar";
+    let good = |files: Value, dependencies: Value| json!({ "formatVersion": 1, "game": "minecraft", "files": files, "dependencies": dependencies });
+    let entry = pack_entry(
+        "mods/a.jar",
+        "https://cdn.modrinth.com/data/x/a.jar",
+        jar,
+        "required",
+    );
+    let read = |v: Value| crate::pack::index(v.to_string().as_bytes());
+    let index = read(good(
+        json!([entry]),
+        json!({ "minecraft": "1.20.1", "neoforge": "20.4.237" }),
+    ))
+    .unwrap();
+    assert_eq!(index.game, "1.20.1");
+    assert_eq!(
+        index.loader,
+        Some(("neoforge".to_owned(), "20.4.237".to_owned()))
+    );
+    assert_eq!(index.files.len(), 1);
+    // An entry with no env is the client's.
+    let mut no_env = entry.clone();
+    no_env.as_object_mut().unwrap().remove("env");
+    assert_eq!(
+        read(good(json!([no_env]), json!({ "minecraft": "1.20.1" })))
+            .unwrap()
+            .files
+            .len(),
+        1
+    );
+
+    let mut other_host = entry.clone();
+    other_host["downloads"] = json!([
+        "https://evil.example/a.jar",
+        "http://cdn.modrinth.com/a.jar"
+    ]);
+    let mut bad_hash = entry.clone();
+    bad_hash["hashes"]["sha1"] = json!("XYZ");
+    let mut no_sha512 = entry.clone();
+    no_sha512["hashes"]
+        .as_object_mut()
+        .unwrap()
+        .remove("sha512");
+    let mut empty = entry.clone();
+    empty["fileSize"] = json!(0);
+    let mut huge = entry.clone();
+    huge["fileSize"] = json!(3u64 * 1024 * 1024 * 1024);
+    let mut same_path = entry.clone();
+    same_path["path"] = json!("mods/A.jar");
+    let fabric = json!({ "minecraft": "1.20.1", "fabric-loader": "0.15" });
+    for (value, code) in [
+        (json!("junk"), "bad_pack"),
+        (
+            json!({ "formatVersion": 2, "game": "minecraft" }),
+            "unsupported_pack",
+        ),
+        (
+            json!({ "formatVersion": 1, "game": "terraria" }),
+            "unsupported_pack",
+        ),
+        (good(json!([]), json!({})), "bad_pack"),
+        (
+            good(json!([]), json!({ "minecraft": "1.20.1; rm -rf" })),
+            "bad_pack",
+        ),
+        (
+            good(
+                json!([]),
+                json!({ "minecraft": "1.20.1", "forge": "47", "fabric-loader": "0.15" }),
+            ),
+            "unsupported_pack",
+        ),
+        (
+            good(json!([]), json!({ "minecraft": "1.20.1", "rift": "1" })),
+            "unsupported_pack",
+        ),
+        (
+            good(json!([other_host]), fabric.clone()),
+            "unsupported_host",
+        ),
+        (good(json!([bad_hash]), fabric.clone()), "bad_pack"),
+        (good(json!([no_sha512]), fabric.clone()), "bad_pack"),
+        (good(json!([empty]), fabric.clone()), "bad_pack"),
+        (good(json!([huge]), fabric.clone()), "too_big"),
+        (
+            good(json!([entry.clone(), same_path]), fabric.clone()),
+            "bad_pack",
+        ),
+        (
+            good(
+                Value::Array(vec![entry.clone(); crate::pack::MAX_FILES + 1]),
+                fabric.clone(),
+            ),
+            "too_big",
+        ),
+    ] {
+        assert_eq!(read(value.clone()), Err(code), "{value}");
+    }
+    // Too much together.
+    let many: Vec<Value> = (0..10)
+        .map(|i| {
+            let mut e = entry.clone();
+            e["path"] = json!(format!("mods/{i}.jar"));
+            e["fileSize"] = json!(2u64 * 1024 * 1024 * 1024);
+            e
+        })
+        .collect();
+    assert_eq!(read(good(json!(many), fabric)), Err("too_big"));
+}

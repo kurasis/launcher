@@ -302,6 +302,83 @@ async fn fetch_version(
     }
 }
 
+/// A modpack version as the launcher installs it: its game version, loader
+/// and files at our addresses, and how far the catalog is with keeping them
+/// (`none`, `working`, `ready` or `failed` with an `error`). `None` when the
+/// version is not a Modrinth modpack.
+fn pack_answer(app: &App, id: &str) -> Result<Option<(Value, bool)>, String> {
+    let Some(archive) = import::pack_archive(app, id)? else {
+        return Ok(None);
+    };
+    let read = app.store.pack_json(id, &app.urls)?;
+    let ready = read
+        .as_ref()
+        .is_some_and(|p| p["kept"] == p["total"] && archive.sha256.is_some());
+    let mut answer = read.unwrap_or_else(|| json!({ "files": [] }));
+    let (state, error) = match app.store.job_state(&import::pack_key(id))? {
+        _ if ready => ("ready", None),
+        None => ("none", None),
+        Some((state, error)) if state == "failed" => ("failed", error),
+        Some((state, _)) if state == "done" => ("none", None),
+        Some(_) => ("working", None),
+    };
+    answer["state"] = state.into();
+    answer["error"] = error.into();
+    answer["archive"] = json!({
+        "name": archive.name,
+        "size": archive.size,
+        "sha256": archive.sha256,
+        "url": archive.sha256.as_deref().map(|s| app.urls.file(s, &archive.name)),
+    });
+    Ok(Some((answer, ready)))
+}
+
+async fn get_pack(State(app): State<Arc<App>>, Path(id): Path<String>) -> Response {
+    let Some(id) = our_id(&id) else {
+        return refuse(StatusCode::NOT_FOUND, "not_found");
+    };
+    match pack_answer(&app, id) {
+        Ok(Some((answer, true))) => cached(answer, 300),
+        Ok(Some((answer, false))) => private(answer, StatusCode::OK),
+        Ok(None) => refuse(StatusCode::NOT_FOUND, "not_a_pack"),
+        Err(e) => failed(&e),
+    }
+}
+
+/// Asks for a modpack version's files to be kept, before an install; open to
+/// anyone, counted per address with the other fetches.
+async fn fetch_pack(
+    State(app): State<Arc<App>>,
+    headers: HeaderMap,
+    Path(id): Path<String>,
+) -> Response {
+    let Some(id) = our_id(&id) else {
+        return refuse(StatusCode::NOT_FOUND, "not_found");
+    };
+    match pack_answer(&app, id) {
+        Ok(Some((answer, true))) => return private(answer, StatusCode::OK),
+        Ok(Some(_)) => {}
+        Ok(None) => return refuse(StatusCode::NOT_FOUND, "not_a_pack"),
+        Err(e) => return failed(&e),
+    }
+    if !app.limiter.allow(
+        &client(&headers),
+        "fetch",
+        FETCHES_PER_HOUR,
+        Duration::from_secs(3600),
+    ) {
+        return refuse(StatusCode::TOO_MANY_REQUESTS, "too_many");
+    }
+    if let Err(e) = import::queue_pack(&app, id) {
+        return failed(&e);
+    }
+    match pack_answer(&app, id) {
+        Ok(Some((answer, _))) => private(answer, StatusCode::ACCEPTED),
+        Ok(None) => refuse(StatusCode::NOT_FOUND, "not_a_pack"),
+        Err(e) => failed(&e),
+    }
+}
+
 #[derive(Deserialize)]
 pub struct LookupBody {
     hashes: Vec<String>,
@@ -481,6 +558,10 @@ pub fn router(app: Arc<App>) -> Router {
         .route("/v1/projects/{project}/versions", get(versions))
         .route("/v1/versions/{version}", get(version))
         .route("/v1/versions/{version}/fetch", post(fetch_version))
+        .route(
+            "/v1/versions/{version}/pack",
+            get(get_pack).post(fetch_pack),
+        )
         .route("/v1/lookup", post(lookup))
         .route("/v1/imports", get(my_imports).post(create_import))
         .route("/v1/imports/{request}", get(get_import))

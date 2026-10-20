@@ -11,7 +11,10 @@
 //! - `files` downloads a version's files, checks them against the source's
 //!   hashes and keeps them;
 //! - `image` keeps an icon or a gallery picture with a small copy, `body`
-//!   the pictures in a project's description, pointing it at our copies.
+//!   the pictures in a project's description, pointing it at our copies;
+//! - `pack` reads a modpack version's index out of its kept `.mrpack` and
+//!   keeps every file it lists (asked for by the launcher before it installs
+//!   the pack, never at once for every version).
 //!
 //! Older versions keep their metadata only, until someone asks for their
 //! files (`POST /v1/versions/{id}/fetch`); then they are kept for good too.
@@ -34,7 +37,7 @@ use crate::blobs::{Hashed, hash_file};
 use crate::fetch::FetchError;
 use crate::input::{self, Input};
 use crate::model::{SourceProject, newest_per_pair};
-use crate::{curseforge, modrinth};
+use crate::{curseforge, modrinth, pack};
 
 pub fn now() -> i64 {
     chrono::Utc::now().timestamp()
@@ -159,6 +162,7 @@ pub async fn run(app: &App, job: &crate::store::Job) -> Result<(), JobError> {
         "files" => files(app, &text("version"), request).await,
         "image" => image(app, &text("project"), &text("kind"), &text("url")).await,
         "body" => body(app, &text("project")).await,
+        "pack" => pack_files(app, &text("version")).await,
         _ => Err(JobError::new("unknown_job", false)),
     }
 }
@@ -223,6 +227,37 @@ pub fn queue_files(app: &App, version: &str, request: Option<&str>) -> Result<bo
         ),
         None => Ok(false),
     }
+}
+
+/// The archive of a modpack version: its `.mrpack`, the main one first.
+pub fn pack_archive(app: &App, version: &str) -> Result<Option<crate::store::FileRow>, String> {
+    Ok(app
+        .store
+        .files(version)?
+        .into_iter()
+        .filter(|f| f.name.to_ascii_lowercase().ends_with(".mrpack"))
+        .min_by_key(|f| (!f.primary, f.ord)))
+}
+
+/// Queues reading a modpack version and keeping its files. A failed one is
+/// tried again when asked an hour later.
+pub fn queue_pack(app: &App, version: &str) -> Result<bool, String> {
+    match app.store.version_state(version)? {
+        Some((project, _)) => app.store.enqueue(
+            &pack_key(version),
+            "pack",
+            &json!({ "version": version }),
+            None,
+            Some(&project),
+            now(),
+            Some(3600),
+        ),
+        None => Ok(false),
+    }
+}
+
+pub fn pack_key(version: &str) -> String {
+    format!("pack:{version}")
 }
 
 /// A request is ready once its project is in and nothing of it waits;
@@ -896,6 +931,62 @@ async fn files(app: &App, version: &str, request: Option<&str>) -> Result<(), Jo
         if let Some(request) = request {
             app.store.add_request_bytes(request, hashed.size)?;
         }
+    }
+    failed.map_or(Ok(()), Err)
+}
+
+async fn pack_files(app: &App, version: &str) -> Result<(), JobError> {
+    let Some(archive) = pack_archive(app, version)? else {
+        return Err(JobError::new("not_a_pack", false));
+    };
+    let Some(sha256) = archive.sha256.filter(|s| app.blobs.has(s)) else {
+        // The archive first.
+        queue_files(app, version, None)?;
+        return Err(JobError::new("waiting_for_files", true));
+    };
+    if !app.store.has_pack(version)? {
+        let path = app.blobs.path(&sha256);
+        let index = match tokio::task::spawn_blocking(move || pack::read(&path)).await {
+            Ok(Ok(index)) => index,
+            Ok(Err("disk_error")) | Err(_) => return Err(JobError::new("disk_error", true)),
+            Ok(Err(code)) => return Err(JobError::new(code, false)),
+        };
+        app.store.set_pack(version, &sha256, &index, now())?;
+    }
+    let mut failed: Option<JobError> = None;
+    for file in app
+        .store
+        .pack_files(version)?
+        .into_iter()
+        .filter(|f| f.sha256.is_none())
+    {
+        if let Some(kept) = app
+            .store
+            .blob_by_hashes(Some(&file.sha1), Some(&file.sha512))?
+            && app.blobs.has(&kept)
+        {
+            app.store.pack_file_kept(version, file.ord, &kept)?;
+            continue;
+        }
+        let declared = u64::try_from(file.size).unwrap_or(0);
+        if !app.blobs.may_keep(declared) {
+            return Err(JobError::new("no_space", true));
+        }
+        let (part, hashed) = match download(app, &file.origin_url, declared).await {
+            Ok(got) => got,
+            Err(e) => {
+                failed = Some(e);
+                continue;
+            }
+        };
+        if hashed.sha512 != file.sha512 || hashed.sha1 != file.sha1 || hashed.size != declared {
+            let _ = std::fs::remove_file(&part);
+            failed = Some(JobError::new("hash_mismatch", true));
+            continue;
+        }
+        keep(app, &part, &hashed, file_type(&file.origin_url))?;
+        app.store
+            .pack_file_kept(version, file.ord, &hashed.sha256)?;
     }
     failed.map_or(Ok(()), Err)
 }
