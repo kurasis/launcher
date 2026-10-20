@@ -3,7 +3,8 @@
 //!
 //! Loader profiles name libraries by coordinate, and Forge's launch arguments
 //! and processors find files by their place in a Maven tree. Each part is checked
-//! strictly, so a coordinate can only name a plain relative path.
+//! strictly, so a coordinate can only name a plain relative path. An extension may
+//! have several dotted parts (`tsrg.lzma`, NeoForge 1.21.11's mappings).
 
 use crate::error::LauncherResult;
 use crate::install::descriptor::{unsupported, validate_relative_path};
@@ -44,8 +45,7 @@ impl Coordinate {
             && valid_part(artifact)
             && valid_part(version)
             && classifier.is_none_or(valid_part)
-            && valid_part(extension)
-            && !extension.contains('.');
+            && extension.split('.').all(valid_part);
         if !parts_ok {
             return Err(bad());
         }
@@ -110,6 +110,13 @@ mod tests {
         let c =
             Coordinate::parse("de.oceanlabs.mcp:mcp_config:1.12.2-20200226.224830@zip").unwrap();
         assert!(c.path().ends_with("mcp_config-1.12.2-20200226.224830.zip"));
+        let c =
+            Coordinate::parse("net.neoforged:neoform:1.21.11-20251209.172050:mappings@tsrg.lzma")
+                .unwrap();
+        assert!(
+            c.path()
+                .ends_with("neoform-1.21.11-20251209.172050-mappings.tsrg.lzma")
+        );
     }
 
     #[test]
@@ -123,7 +130,10 @@ mod tests {
             "a:b:..",
             "a/b:c:d",
             "a:b:c@../x",
-            "a:b:c@tar.gz",
+            "a:b:c@.gz",
+            "a:b:c@tar.",
+            "a:b:c@tar..gz",
+            "a:b:c@tar/gz",
             "a..b:c:d",
             "a:b c:d",
             "a:b:c:\\x",

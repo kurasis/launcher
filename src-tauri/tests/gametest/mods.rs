@@ -76,6 +76,16 @@ async fn get(client: &reqwest::Client, url: &str, query: &[(&str, String)]) -> O
     response.json().await.ok()
 }
 
+/// Modrinth's loader filter: Quilt runs Fabric's mods, and most are published for
+/// Fabric only.
+fn loaders(loader: &str) -> String {
+    if loader == "quilt" {
+        "[\"quilt\",\"fabric\"]".to_owned()
+    } else {
+        format!("[\"{loader}\"]")
+    }
+}
+
 /// The newest release (else the newest of any kind) of a project for this game and loader.
 async fn newest(
     client: &reqwest::Client,
@@ -87,7 +97,7 @@ async fn newest(
         client,
         &format!("{API}/project/{project}/version"),
         &[
-            ("loaders", format!("[\"{loader}\"]")),
+            ("loaders", loaders(loader)),
             ("game_versions", format!("[\"{game}\"]")),
         ],
     )

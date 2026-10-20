@@ -211,16 +211,17 @@ async fn the_game_is_played_with_mods_and_skins() {
     // "vanilla" is the game with no loader: the bot and the skins mod are Java agents.
     let kind: Option<LoaderKind> = (loader_name != "vanilla").then(|| {
         serde_json::from_value(serde_json::json!(loader_name))
-            .expect("GAMETEST_LOADER is vanilla, fabric, neoforge or forge")
+            .expect("GAMETEST_LOADER is vanilla, fabric, quilt, neoforge or forge")
     });
     assert!(
         kind.is_some() || mod_set == "none",
         "the game with no loader plays without mods"
     );
-    let jar_kind = if kind.is_some() {
-        loader_name.as_str()
-    } else {
-        "agent"
+    // Quilt runs Fabric's mods: the bot's Fabric jar.
+    let jar_kind = match kind {
+        Some(LoaderKind::Quilt) => "fabric",
+        Some(_) => loader_name.as_str(),
+        None => "agent",
     };
     let bot_jar = built_jar(&jars, "launchergametest-", jar_kind, &version)
         .expect("the test bot's jar for this version and loader in GAMETEST_JARS");

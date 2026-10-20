@@ -62,14 +62,14 @@ public.
 ## Running it
 
 "Run workflow" on the Game test workflow, on `main`. Inputs pick the versions (26.3,
-1.21.11, 1.21.10, 1.21.8, 1.21.4, 1.21.1, 1.20.1, 1.18.2, 1.16.5, 1.12.2: one release
-of each group the mod builds a jar for), loaders (vanilla, fabric, neoforge, forge), mod
-sets (none, medium), minutes per scenario and the skin variant (`rotate` gives each
-scenario the next one; `animcape` wears a cape that counts 1 to 9 in rainbow colours, so
-its animation shows in a screenshot). 1.12.2 is played with Forge only, 1.16.5 to 1.20.1
-without NeoForge, and the game with no loader without mods. It also runs every night at
-03:00 Moscow time with the defaults (26.3, 1.21.11, 1.21.1, 1.20.1, 1.12.2): 28 scenarios
-of 5 minutes.
+1.21.11, 1.21.10, 1.21.8, 1.21.4, 1.21.1, 1.20.1, 1.18.2, 1.16.5, 1.12.2: one release of
+each group the mod builds a jar for), loaders (vanilla, fabric, quilt, neoforge, forge;
+Quilt plays the Fabric jars and Fabric mods), mod sets (none, medium), minutes per
+scenario and the skin variant (`rotate` gives each scenario the next one; `animcape`
+wears a cape that counts 1 to 9 in rainbow colours, so its animation shows in a
+screenshot). 1.12.2 is played with Forge only, 1.16.5 to 1.20.1 without NeoForge, and
+the game with no loader without mods. It also runs every night at 03:00 Moscow time with
+the defaults (26.3, 1.21.11, 1.21.1, 1.20.1, 1.12.2): 36 scenarios of 5 minutes.
 
 The workflow never runs for pull requests or from other branches.
 

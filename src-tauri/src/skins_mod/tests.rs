@@ -9,9 +9,9 @@ const PLACEHOLDER_SIZE: u64 = 0;
 
 const H: &str = "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef";
 
-const fn pinned(game: &'static str, target: Target, file: &'static str) -> Jar {
+const fn pinned(games: &'static [&'static str], target: Target, file: &'static str) -> Jar {
     Jar {
-        game,
+        games,
         target,
         file,
         sha256: H,
@@ -21,42 +21,50 @@ const fn pinned(game: &'static str, target: Target, file: &'static str) -> Jar {
 
 const TABLE: &[Jar] = &[
     pinned(
-        "26.3",
+        &["26.3"],
         Target::Fabric,
         "launcherskins-fabric-26.3-0.1.2.jar",
     ),
     pinned(
-        "26.3",
+        &["26.3"],
         Target::NeoForge,
         "launcherskins-neoforge-26.3-0.1.2.jar",
     ),
-    pinned("26.3", Target::Forge, "launcherskins-forge-26.3-0.1.2.jar"),
-    pinned("26.3", Target::Agent, "launcherskins-agent-26.3-0.1.2.jar"),
+    pinned(
+        &["26.3"],
+        Target::Forge,
+        "launcherskins-forge-26.3-0.1.2.jar",
+    ),
+    pinned(
+        &["26.3"],
+        Target::Agent,
+        "launcherskins-agent-26.3-0.1.2.jar",
+    ),
     // Not filled in yet.
     Jar {
-        game: "1.21.1",
+        games: &["1.21.1"],
         target: Target::Fabric,
         file: "launcherskins-fabric-1.21.1-0.1.2.jar",
         sha256: PLACEHOLDER_SHA256,
         size: PLACEHOLDER_SIZE,
     },
     pinned(
-        "1.21.1",
+        &["1.21.1"],
         Target::NeoForge,
         "launcherskins-neoforge-1.21.1-0.1.2.jar",
     ),
     pinned(
-        "1.21.1",
+        &["1.21.1"],
         Target::Forge,
         "launcherskins-forge-1.21.1-0.1.2.jar",
     ),
     pinned(
-        "1.21.1",
+        &["1.21.1"],
         Target::Agent,
         "launcherskins-agent-1.21.1-0.1.2.jar",
     ),
     pinned(
-        "1.12.2",
+        &["1.12.2"],
         Target::Forge,
         "launcherskins-forge-1.12.2-0.1.2.jar",
     ),
@@ -68,26 +76,11 @@ fn file_for(game: &str, loader: Option<LoaderKind>) -> Option<&'static str> {
 
 #[test]
 fn the_table_names_every_release_jar_once() {
-    let expected = [
-        ("26.3", Target::Fabric),
-        ("26.3", Target::NeoForge),
-        ("26.3", Target::Forge),
-        ("26.3", Target::Agent),
-        ("1.21.1", Target::Fabric),
-        ("1.21.1", Target::NeoForge),
-        ("1.21.1", Target::Forge),
-        ("1.21.1", Target::Agent),
-        ("1.12.2", Target::Forge),
-    ];
-    assert_eq!(JARS.len(), expected.len());
-    let mut seen = HashSet::new();
-    for (jar, (game, target)) in JARS.iter().zip(expected) {
-        assert_eq!((jar.game, jar.target), (game, target));
-        assert!(seen.insert((jar.game, jar.target.as_str())), "{}", jar.file);
-        assert_eq!(
-            jar.file,
-            format!("launcherskins-{}-{game}-{MOD_VERSION}.jar", target.as_str())
-        );
+    // One pinned jar per build, named and placed as the release has it.
+    assert_eq!(JARS.len(), BUILDS.len());
+    for (jar, build) in JARS.iter().zip(BUILDS) {
+        assert_eq!((jar.games, jar.target), (build.games, build.target));
+        assert_eq!(jar.file, build.file(MOD_VERSION));
         assert!(is_ours(jar.file));
         let url = jar.url();
         assert_eq!(
@@ -100,18 +93,37 @@ fn the_table_names_every_release_jar_once() {
         assert!(SourcePolicy::SkinsMod.check(&url).is_ok(), "{url}");
         // Every released jar is filled in from the release's SHA256SUMS.
         assert!(jar.pinned(), "{} is not filled in", jar.file);
-        let loader = match jar.target {
-            Target::Fabric => Some(LoaderKind::Fabric),
-            Target::NeoForge => Some(LoaderKind::NeoForge),
-            Target::Forge => Some(LoaderKind::Forge),
-            Target::Agent => None,
-        };
-        assert_eq!(
-            find(jar.game, loader).is_some(),
-            jar.pinned(),
-            "{}",
-            jar.file
-        );
+    }
+    // Each game version and loader finds the jar of its build.
+    for game in BUILDS.iter().flat_map(|b| b.games) {
+        for loader in [
+            None,
+            Some(LoaderKind::Fabric),
+            Some(LoaderKind::Quilt),
+            Some(LoaderKind::NeoForge),
+            Some(LoaderKind::Forge),
+        ] {
+            let build = Build::find(game, loader).map(|b| b.file(MOD_VERSION));
+            assert_eq!(
+                find(game, loader).map(|j| j.file.to_owned()),
+                build,
+                "{game} {loader:?}"
+            );
+        }
+    }
+    // Versions the mod has no build for, and junk, get nothing.
+    for game in [
+        "26.3.1",
+        "26.4",
+        "1.21.1-pre1",
+        "1.19.2",
+        "1.12",
+        "",
+        " 26.3",
+        "../26.3",
+    ] {
+        assert_eq!(find(game, Some(LoaderKind::Fabric)), None, "{game:?}");
+        assert_eq!(find(game, None), None, "{game:?}");
     }
     assert!(RELEASE.ends_with(&format!("skins-mod-v{MOD_VERSION}/")));
 }
@@ -203,7 +215,7 @@ fn other_versions_and_junk_get_nothing() {
 #[test]
 fn entries_that_are_not_sane_are_skipped() {
     let base = pinned(
-        "26.3",
+        &["26.3"],
         Target::Fabric,
         "launcherskins-fabric-26.3-0.1.2.jar",
     );
@@ -322,7 +334,7 @@ fn real_table() -> (&'static [Jar], Vec<(&'static str, Vec<u8>)>) {
         let bytes = format!("jar of {file}").into_bytes();
         let sha = hex::encode(Sha256Hasher::digest(&bytes));
         jars.push(Jar {
-            game,
+            games: Box::leak(Box::new([game])),
             target,
             file,
             sha256: Box::leak(sha.into_boxed_str()),
@@ -622,7 +634,7 @@ async fn the_real_table_never_hands_out_a_placeholder() {
             &i.root,
             None,
             &Setup {
-                game_version: jar.game,
+                game_version: jar.games[0],
                 loader,
                 enabled: true,
                 game_dir: &i.game,

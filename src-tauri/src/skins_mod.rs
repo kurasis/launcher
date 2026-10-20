@@ -30,9 +30,9 @@ use crate::net::SourcePolicy;
 use crate::storage::paths::{DataRoot, Sha256};
 
 /// The mod's version these jars are (`mod/VERSION`).
-pub const MOD_VERSION: &str = "0.1.2";
+pub const MOD_VERSION: &str = "0.2.0";
 /// Where the release keeps the jars.
-const RELEASE: &str = "https://github.com/kurasis/launcher/releases/download/skins-mod-v0.1.2/";
+const RELEASE: &str = "https://github.com/kurasis/launcher/releases/download/skins-mod-v0.2.0/";
 /// Verified jars, relative to DATA_ROOT; shared by every installation.
 pub const MANAGED_DIR: &str = "shared/launcherskins";
 /// Every jar of ours starts with this and ends with [`JAR_SUFFIX`].
@@ -61,6 +61,15 @@ impl Target {
             Some(LoaderKind::Fabric | LoaderKind::Quilt) => Self::Fabric,
             Some(LoaderKind::NeoForge) => Self::NeoForge,
             Some(LoaderKind::Forge) => Self::Forge,
+        }
+    }
+
+    /// The target that serves this game version and loader. NeoForge for 1.20.1
+    /// is still Forge and runs Forge's jar.
+    pub fn for_game(game: &str, loader: Option<LoaderKind>) -> Self {
+        match Self::for_loader(loader) {
+            Self::NeoForge if game == "1.20.1" => Self::Forge,
+            target => target,
         }
     }
 
@@ -147,10 +156,7 @@ pub const BUILDS: &[Build] = &[
 impl Build {
     /// The build for this game version and loader, if the mod has one.
     pub fn find(game: &str, loader: Option<LoaderKind>) -> Option<&'static Build> {
-        let mut target = Target::for_loader(loader);
-        if target == Target::NeoForge && game == "1.20.1" {
-            target = Target::Forge;
-        }
+        let target = Target::for_game(game, loader);
         BUILDS
             .iter()
             .find(|b| b.target == target && b.games.contains(&game))
@@ -169,8 +175,8 @@ impl Build {
 /// One jar of the release.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct Jar {
-    /// The exact game version it is for.
-    pub game: &'static str,
+    /// The exact game versions it is for, as in [`BUILDS`].
+    pub games: &'static [&'static str],
     pub target: Target,
     /// Its name in the release, in `mods/` and in [`MANAGED_DIR`].
     pub file: &'static str,
@@ -207,76 +213,300 @@ impl Jar {
     }
 }
 
-/// Every jar the launcher may add to a game, by game version and loader: nine
-/// jars for eleven combinations (the Fabric jar also serves Quilt). Game
-/// versions match exactly; other versions get nothing.
+/// Every jar the launcher may add to a game: one per entry of [`BUILDS`], in
+/// the same order, each for the game versions of its build (the Fabric jar
+/// also serves Quilt). Game versions match exactly; other versions get nothing.
 ///
 /// `sha256` (lowercase hex) and `size` (bytes) come from the release
-/// skins-mod-v0.1.2: its SHA256SUMS and the jars' sizes. A new mod version
+/// skins-mod-v0.2.0: its SHA256SUMS and the jars' sizes. A new mod version
 /// is a new release and a new table; an entry that is not filled in is never used.
 pub const JARS: &[Jar] = &[
     Jar {
-        game: "26.3",
+        games: BAND_26,
         target: Target::Fabric,
-        file: "launcherskins-fabric-26.3-0.1.2.jar",
-        sha256: "48df9eb96ade93002b1b07f476f8b518b9bb73ec1f7e6bf0c0205a2d50b127f3",
-        size: 31767,
+        file: "launcherskins-fabric-26.1-26.3-0.2.0.jar",
+        sha256: "ad78618d5f46172db25117ed614bf65c831544af669765b6cf25088b8ec3b873",
+        size: 31768,
     },
     Jar {
-        game: "26.3",
+        games: BAND_26,
         target: Target::NeoForge,
-        file: "launcherskins-neoforge-26.3-0.1.2.jar",
-        sha256: "2cb563479f25f18fa6aa0abd1d88f052886af6af10fa451b8e08f601bed090d6",
-        size: 30873,
+        file: "launcherskins-neoforge-26.1-26.3-0.2.0.jar",
+        sha256: "fee78bf2c91224b945f631a6538933f15d927127bc4c190d4c43b5382d7babc7",
+        size: 30876,
     },
     Jar {
-        game: "26.3",
+        games: BAND_26,
         target: Target::Forge,
-        file: "launcherskins-forge-26.3-0.1.2.jar",
-        sha256: "b4bdb27f793ae9480f7075623839373fc69fc6f037c261eeabb23651f202d832",
-        size: 31224,
+        file: "launcherskins-forge-26.1-26.3-0.2.0.jar",
+        sha256: "c00d447e783839b049c8a99a3cca17cf443161dd3bb2abd0a10e518594c349e5",
+        size: 31225,
     },
     Jar {
-        game: "26.3",
+        games: BAND_26,
         target: Target::Agent,
-        file: "launcherskins-agent-26.3-0.1.2.jar",
-        sha256: "faeee3ac32061e4f09aede9b011496517ad65c9bd1d1374a166c39498df3521d",
-        size: 33038,
+        file: "launcherskins-agent-26.1-26.3-0.2.0.jar",
+        sha256: "0e4219b8cdc226b38d1bbec42cf172b66921bb671506c92c04192625b40d7d18",
+        size: 33036,
     },
     Jar {
-        game: "1.21.1",
+        games: &["1.21.11"],
         target: Target::Fabric,
-        file: "launcherskins-fabric-1.21.1-0.1.2.jar",
-        sha256: "181d27efa26707e147b619616a03ca5a3fc4e3d8fa1387f7db54d3095c45ecc6",
-        size: 32151,
+        file: "launcherskins-fabric-1.21.11-0.2.0.jar",
+        sha256: "42eccbc9402a4d17a385985fd839c621032598070ceaf0b730357a1613b3087a",
+        size: 32188,
     },
     Jar {
-        game: "1.21.1",
+        games: &["1.21.11"],
         target: Target::NeoForge,
-        file: "launcherskins-neoforge-1.21.1-0.1.2.jar",
-        sha256: "7af9d746a080cab60ac58712685fe32f633a3a0475cdef5d8765eeaef545326a",
-        size: 30820,
+        file: "launcherskins-neoforge-1.21.11-0.2.0.jar",
+        sha256: "5cc75cf30f00f5e52c46624f386bd20b7da5efd3e1cb9ba359feba41880db8c6",
+        size: 30877,
     },
     Jar {
-        game: "1.21.1",
+        games: &["1.21.11"],
         target: Target::Forge,
-        file: "launcherskins-forge-1.21.1-0.1.2.jar",
-        sha256: "fd89533875d7bc46c55b3f331b4e5c86c8fb565af2a889cfafeccf74feb0450e",
-        size: 31163,
+        file: "launcherskins-forge-1.21.11-0.2.0.jar",
+        sha256: "996ef5bf71f55b662eaec3071f434084233528243d06fca333d986d32eab4270",
+        size: 31221,
     },
     Jar {
-        game: "1.21.1",
+        games: &["1.21.11"],
         target: Target::Agent,
-        file: "launcherskins-agent-1.21.1-0.1.2.jar",
-        sha256: "390feee5c24e869e73d304bed43c1563f10f2b1eb6b05aefd540897180cebf9f",
-        size: 219602,
+        file: "launcherskins-agent-1.21.11-0.2.0.jar",
+        sha256: "6c301ba2ca910121abe4aedb2b56976a2710cf1c254c990509999ade6fdb9a59",
+        size: 220001,
     },
     Jar {
-        game: "1.12.2",
+        games: BAND_1_21_9,
+        target: Target::Fabric,
+        file: "launcherskins-fabric-1.21.9-1.21.10-0.2.0.jar",
+        sha256: "d161b2f7f4314f5872b0f4b5caacb341bdce9f4fc9e52d83d7aea4af27f942aa",
+        size: 32192,
+    },
+    Jar {
+        games: BAND_1_21_9,
+        target: Target::NeoForge,
+        file: "launcherskins-neoforge-1.21.9-1.21.10-0.2.0.jar",
+        sha256: "97960eb0ea6419c520021d86777e2c1fe5a47f529f7d1ae3258da419bcfbc0f8",
+        size: 30885,
+    },
+    Jar {
+        games: BAND_1_21_9,
         target: Target::Forge,
-        file: "launcherskins-forge-1.12.2-0.1.2.jar",
-        sha256: "b3378ac26a490f194e07b2fc8a90442aaa64f0f8e7cfaa9396916e7a98fc2d06",
-        size: 32815,
+        file: "launcherskins-forge-1.21.9-1.21.10-0.2.0.jar",
+        sha256: "33c08c4e9c6768167c10805743d3e183ab17725f31db5c4d8be4e425ddfc5823",
+        size: 31226,
+    },
+    Jar {
+        games: &["1.21.10"],
+        target: Target::Agent,
+        file: "launcherskins-agent-1.21.10-0.2.0.jar",
+        sha256: "b7945f30b1e345868b5bd7fa4736e58b35ad06f6034448ce91c180e64bc6323a",
+        size: 219992,
+    },
+    Jar {
+        games: &["1.21.9"],
+        target: Target::Agent,
+        file: "launcherskins-agent-1.21.9-0.2.0.jar",
+        sha256: "0d35e0e23723e994e4fdc5d8b29cd46a92e3996b208cdf77c1545e71133de563",
+        size: 219992,
+    },
+    Jar {
+        games: BAND_1_21_5,
+        target: Target::Fabric,
+        file: "launcherskins-fabric-1.21.5-1.21.8-0.2.0.jar",
+        sha256: "ffe9158952267ef6a765e98991354c0471a1ab451dc2c9868731459fb6ac9046",
+        size: 32171,
+    },
+    Jar {
+        games: BAND_1_21_5,
+        target: Target::NeoForge,
+        file: "launcherskins-neoforge-1.21.5-1.21.8-0.2.0.jar",
+        sha256: "ae0411e8c0b6c0a49994770beaa11f73fc1777e74c75970637d0ef51fd276d34",
+        size: 30834,
+    },
+    Jar {
+        games: BAND_1_21_5,
+        target: Target::Forge,
+        file: "launcherskins-forge-1.21.5-1.21.8-0.2.0.jar",
+        sha256: "00ca1bb0fa6cf90a8a11421ad05ab811e670cf9a6fde3bd91b3ebb7c352d33b6",
+        size: 31174,
+    },
+    Jar {
+        games: &["1.21.8"],
+        target: Target::Agent,
+        file: "launcherskins-agent-1.21.8-0.2.0.jar",
+        sha256: "6bebabbe8919b709b025433c7b162c01d1bd9547ec350e340dc2b28c61419fed",
+        size: 219975,
+    },
+    Jar {
+        games: &["1.21.7"],
+        target: Target::Agent,
+        file: "launcherskins-agent-1.21.7-0.2.0.jar",
+        sha256: "8a2519299c6ae5f9a274f3620a4ffdb27406fcb41ee36cc7616cef00e4a534a6",
+        size: 219979,
+    },
+    Jar {
+        games: &["1.21.6"],
+        target: Target::Agent,
+        file: "launcherskins-agent-1.21.6-0.2.0.jar",
+        sha256: "8280a806a8948029bb6e00a89eb3bb2973a5e636f923ebf57d8b215b078ad027",
+        size: 219982,
+    },
+    Jar {
+        games: &["1.21.5"],
+        target: Target::Agent,
+        file: "launcherskins-agent-1.21.5-0.2.0.jar",
+        sha256: "b3efcbd5b3bd8c5c4f8b56323dea50249be55290a9dbd22d6d0ff0d2ea1b6dec",
+        size: 219978,
+    },
+    Jar {
+        games: BAND_1_21_2,
+        target: Target::Fabric,
+        file: "launcherskins-fabric-1.21.2-1.21.4-0.2.0.jar",
+        sha256: "203d955b22db7fdfda457b14f34998ed4994f61d65cc257ce66bffca007164f8",
+        size: 32066,
+    },
+    Jar {
+        games: BAND_1_21_2,
+        target: Target::NeoForge,
+        file: "launcherskins-neoforge-1.21.2-1.21.4-0.2.0.jar",
+        sha256: "bb7c8f3369ad2bf75d1e54c86ba1ac8447ac2adabec466d4573aab8724499e39",
+        size: 30718,
+    },
+    Jar {
+        games: BAND_1_21_2,
+        target: Target::Forge,
+        file: "launcherskins-forge-1.21.2-1.21.4-0.2.0.jar",
+        sha256: "ba88060c86b22d3a6f5464de822c014e326299aed3dc6bbb4c9f1775a5da4575",
+        size: 31062,
+    },
+    Jar {
+        games: &["1.21.4"],
+        target: Target::Agent,
+        file: "launcherskins-agent-1.21.4-0.2.0.jar",
+        sha256: "f57a9884a1c49e12e95c822474de3fa24ab853ec678b49734da9bdf50bb4da69",
+        size: 219874,
+    },
+    Jar {
+        games: &["1.21.3"],
+        target: Target::Agent,
+        file: "launcherskins-agent-1.21.3-0.2.0.jar",
+        sha256: "39268b1dfc0bef3b2e5ba2a5f02d557f66a6c2ba63e9b66a1404ce64b4e32c7e",
+        size: 219877,
+    },
+    Jar {
+        games: &["1.21.2"],
+        target: Target::Agent,
+        file: "launcherskins-agent-1.21.2-0.2.0.jar",
+        sha256: "695210a8b44f4df9e0585915e05f756e63a1513a3730d8701671b49b2a04371f",
+        size: 219876,
+    },
+    Jar {
+        games: BAND_1_21,
+        target: Target::Fabric,
+        file: "launcherskins-fabric-1.21-1.21.1-0.2.0.jar",
+        sha256: "9e71ae15fa5579d0e4d59bc8685c531def5aa851a877ac5df916fc8baf61dafe",
+        size: 32152,
+    },
+    Jar {
+        games: BAND_1_21,
+        target: Target::NeoForge,
+        file: "launcherskins-neoforge-1.21-1.21.1-0.2.0.jar",
+        sha256: "e5737ee7b04488c3f10a99467b3d0180dd673d5b72450b18885d1092c5300800",
+        size: 30823,
+    },
+    Jar {
+        games: &["1.21.1"],
+        target: Target::Forge,
+        file: "launcherskins-forge-1.21.1-0.2.0.jar",
+        sha256: "bf478b2bea2141e928c74dc055ac80a5e3d1158819eb454578983316de7c92b7",
+        size: 31164,
+    },
+    Jar {
+        games: &["1.21.1"],
+        target: Target::Agent,
+        file: "launcherskins-agent-1.21.1-0.2.0.jar",
+        sha256: "d49d74c9639ae8b9b5a17711829102d50710bdda2a93b03d16cd645f68d525a2",
+        size: 219968,
+    },
+    Jar {
+        games: &["1.21"],
+        target: Target::Agent,
+        file: "launcherskins-agent-1.21-0.2.0.jar",
+        sha256: "1e779748d9862369c419c938b48ddc60369168f586defd17ef665bc04c928b82",
+        size: 219967,
+    },
+    Jar {
+        games: &["1.20.1"],
+        target: Target::Fabric,
+        file: "launcherskins-fabric-1.20.1-0.2.0.jar",
+        sha256: "751b23cc3d5745ef72021ed9d47cf15d52325547fa8fcc2e43664462e9edf680",
+        size: 32314,
+    },
+    Jar {
+        games: &["1.20.1"],
+        target: Target::Forge,
+        file: "launcherskins-forge-1.20.1-0.2.0.jar",
+        sha256: "83f1c56a38cbac9e69f55267b7a0be03486cc9ac87baa98dfbf68f88753b1709",
+        size: 32162,
+    },
+    Jar {
+        games: &["1.20.1"],
+        target: Target::Agent,
+        file: "launcherskins-agent-1.20.1-0.2.0.jar",
+        sha256: "78bb6309dc84fabae5140a9f2517540146d18480aaf65d5eeb32801f2f88bdbd",
+        size: 220071,
+    },
+    Jar {
+        games: &["1.18.2"],
+        target: Target::Fabric,
+        file: "launcherskins-fabric-1.18.2-0.2.0.jar",
+        sha256: "3e0eb4cca4e7b96817dff19a2a6e82fff17867c6143cd67ec47bac572160a4bd",
+        size: 32317,
+    },
+    Jar {
+        games: &["1.18.2"],
+        target: Target::Forge,
+        file: "launcherskins-forge-1.18.2-0.2.0.jar",
+        sha256: "0ca407689356e3eaa5c9f9a0c013c6e77695487365cba6e753bd5e691d5dea04",
+        size: 32161,
+    },
+    Jar {
+        games: &["1.18.2"],
+        target: Target::Agent,
+        file: "launcherskins-agent-1.18.2-0.2.0.jar",
+        sha256: "f2f836a638ebeb8f9eeaf8ac2fb484eba7ee13ac9584681188c7e11f78a55e4f",
+        size: 220070,
+    },
+    Jar {
+        games: &["1.16.5"],
+        target: Target::Fabric,
+        file: "launcherskins-fabric-1.16.5-0.2.0.jar",
+        sha256: "e925936a9d6c7e03cf9e9dd5a824759ee33e8df547bc2497f757a4f9dc901c0c",
+        size: 32316,
+    },
+    Jar {
+        games: &["1.16.5"],
+        target: Target::Forge,
+        file: "launcherskins-forge-1.16.5-0.2.0.jar",
+        sha256: "dd43f924a0c1b243409dd16b04e6bed17856da11bde285a3f8e704572177d7ca",
+        size: 32290,
+    },
+    Jar {
+        games: &["1.16.5"],
+        target: Target::Agent,
+        file: "launcherskins-agent-1.16.5-0.2.0.jar",
+        sha256: "fe4f1a94e2c00182a772d1ea05b333b89fc1704e79981583e2738d798a29285e",
+        size: 219989,
+    },
+    Jar {
+        games: &["1.12.2"],
+        target: Target::Forge,
+        file: "launcherskins-forge-1.12.2-0.2.0.jar",
+        sha256: "e9b38525774122f563f15ea2c3fdde7cd06704dcd8fa6e5c44367ecc7434567f",
+        size: 32816,
     },
 ];
 
@@ -286,10 +516,10 @@ pub fn find(game: &str, loader: Option<LoaderKind>) -> Option<&'static Jar> {
 }
 
 fn find_in<'a>(table: &'a [Jar], game: &str, loader: Option<LoaderKind>) -> Option<&'a Jar> {
-    let target = Target::for_loader(loader);
+    let target = Target::for_game(game, loader);
     table
         .iter()
-        .find(|j| j.game == game && j.target == target && j.pinned())
+        .find(|j| j.games.contains(&game) && j.target == target && j.pinned())
 }
 
 /// `launcherskins-*.jar`, in any case (Windows names are case-insensitive).
