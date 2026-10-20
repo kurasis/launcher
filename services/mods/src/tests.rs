@@ -1690,6 +1690,28 @@ fn curseforge_pages_are_read_with_care() {
     );
     let html = format!("<script>self.__next_f.push({})</script>", json!([1, rsc]));
     assert_eq!(curseforge::page(&html, "jei").body, other);
+    // Screenshots listed beside the project, in their order, each once;
+    // a picture elsewhere or without a thumbnail is not one.
+    let shot = |index: u64, name: &str| {
+        json!({ "url": format!("https://media.forgecdn.net/attachments/1/2/{name}.png"),
+                "thumbnailUrl": "https://media.forgecdn.net/attachments/thumbnails/1/2/t.png",
+                "title": name, "description": "", "displayIndex": index, "isFeatured": false })
+    };
+    let rsc = format!(
+        "1:{}\n2:{}\n",
+        json!(["$", "div", null, { "project": bare }]),
+        json!({ "images": [shot(2, "b"), shot(1, "a"), shot(3, "a"),
+                { "url": "https://media.forgecdn.net/attachments/1/2/c.png" },
+                { "url": "https://evil.example/attachments/x.png", "thumbnailUrl": "x" }] })
+    );
+    let html = format!("<script>self.__next_f.push({})</script>", json!([1, rsc]));
+    let titles: Vec<String> = curseforge::page(&html, "jei")
+        .gallery
+        .into_iter()
+        .map(|g| g.title)
+        .collect();
+    assert_eq!(titles, ["a", "b"]);
+
     // Objects holding a picture are named by their keys.
     let rsc = format!(
         "1:{}\n",
