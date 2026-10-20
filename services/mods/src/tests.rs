@@ -610,6 +610,72 @@ async fn projects_are_checked_for_new_versions_wanted_ones_more_often() {
     assert_eq!(import::refresh(&t.app, None).unwrap(), 2);
 }
 
+/// A chain of `n` mods, each needing the next, the last needing the first.
+fn chain_site(sites: &Sites, n: usize) {
+    for i in 0..n {
+        let id = format!("Chain{i:03}");
+        let next = format!("Chain{:03}", (i + 1) % n);
+        let version = format!("ver{i:05}");
+        let name = format!("chain-{i}.jar");
+        let jar = format!("jar of {name}").into_bytes();
+        sites.put(
+            &format!("https://cdn.modrinth.com/data/{id}/versions/{version}/{name}"),
+            ok(jar.clone()),
+        );
+        let project = json!({ "id": id, "slug": format!("chain{i}"), "project_type": "mod", "title": format!("Chain {i}") });
+        sites.json(
+            &modrinth::project_url(&format!("chain{i}")),
+            project.clone(),
+        );
+        sites.json(&modrinth::project_url(&id), project);
+        sites.json(&modrinth::members_url(&id), json!([]));
+        sites.json(
+            &modrinth::versions_url(&id),
+            json!([{
+                "id": version, "version_number": "1.0", "version_type": "release",
+                "date_published": "2024-01-01T00:00:00Z", "game_versions": ["1.21.1"], "loaders": ["fabric"],
+                "files": [file_json(&id, &version, &name, &jar)],
+                "dependencies": [{ "project_id": next, "dependency_type": "required" }],
+            }]),
+        );
+    }
+}
+
+#[tokio::test]
+async fn dependencies_are_followed_to_the_end_of_a_long_chain_and_a_loop_ends() {
+    let t = setup();
+    chain_site(&t.sites, 25);
+    let (status, _) = t
+        .player(
+            1,
+            "POST",
+            "/v1/imports",
+            json!({ "input": "https://modrinth.com/mod/chain0" }),
+        )
+        .await;
+    assert_eq!(status, StatusCode::ACCEPTED);
+    t.drain().await;
+    // Every link is in the catalog with its file kept, and each was read once
+    // (the first twice: asked by its address, then by its ID from the last).
+    for i in 0..25 {
+        let (status, project) = t.get(&format!("/v1/projects/chain{i}")).await;
+        assert_eq!(status, StatusCode::OK, "chain{i}");
+        let (_, versions) = t
+            .get(&format!(
+                "/v1/projects/{}/versions",
+                project["id"].as_str().unwrap()
+            ))
+            .await;
+        assert_eq!(versions["versions"][0]["saved"], "all", "chain{i}");
+        assert_eq!(
+            t.sites
+                .asked(&modrinth::versions_url(&format!("Chain{i:03}"))),
+            if i == 0 { 2 } else { 1 },
+            "chain{i}"
+        );
+    }
+}
+
 #[tokio::test]
 async fn a_name_offers_projects_to_choose_from() {
     let t = setup();
@@ -1207,12 +1273,23 @@ fn pictures_are_known_by_their_bytes_and_made_small() {
 #[test]
 fn description_pictures_are_found() {
     let body = "![a](https://i.imgur.com/a.png) <img src=\"https://cdn.modrinth.com/data/x/images/b.webp?x=1\">\n\
-                https://i.imgur.com/a.png https://evil.example/c.png https://i.imgur.com/page.html";
+                https://i.imgur.com/a.png https://evil.example/c.png https://i.imgur.com/page.html \
+                <img src=\"http://i.imgur.com/d.png\"> http://evil.example/e.png http://i.imgur.com:8080/f.png";
     assert_eq!(
         import::body_images(body),
         [
-            "https://i.imgur.com/a.png",
-            "https://cdn.modrinth.com/data/x/images/b.webp?x=1"
+            (
+                "https://i.imgur.com/a.png".to_owned(),
+                "https://i.imgur.com/a.png".to_owned()
+            ),
+            (
+                "https://cdn.modrinth.com/data/x/images/b.webp?x=1".to_owned(),
+                "https://cdn.modrinth.com/data/x/images/b.webp?x=1".to_owned()
+            ),
+            (
+                "http://i.imgur.com/d.png".to_owned(),
+                "https://i.imgur.com/d.png".to_owned()
+            ),
         ]
     );
 }
