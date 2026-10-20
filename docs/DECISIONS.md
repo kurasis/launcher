@@ -2176,6 +2176,10 @@ archive from the Package workflow, upload it to
   parameters, and with both, directly and through every proxy. A name now asks Modrinth
   only; CurseForge projects come by their page address. The page reader stays for the
   probe.
+- **Seventh probe (2026-10-20):** the project page does carry the description and the
+  screenshots, apart from the project object: the description as a text chunk of the
+  stream (JEI: 3.6 KB of HTML), the screenshots as objects with `url`, `thumbnailUrl`,
+  `title`, `description` and `displayIndex`. The card reads both from there.
 
 ## D-067 — Start page feed at feed.lapi.sh
 

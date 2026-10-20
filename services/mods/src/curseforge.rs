@@ -410,7 +410,72 @@ pub fn page(html: &str, slug: &str) -> Card {
     {
         card.body = clean(&body, MAX_BODY, true);
     }
+    if card.gallery.is_empty() {
+        card.gallery = screenshots(&stream);
+    }
     card
+}
+
+/// The screenshots the page lists apart from the project object: objects
+/// with a picture `url` on forgecdn and a `thumbnailUrl`, in their
+/// `displayIndex` order, each once. At most 40.
+fn screenshots(stream: &str) -> Vec<SourceImage> {
+    let mut found = Vec::new();
+    let mut seen = 0;
+    for start in chunk_starts(stream) {
+        let Some(Ok(value)) = serde_json::Deserializer::from_str(&stream[start..])
+            .into_iter::<Value>()
+            .next()
+        else {
+            continue;
+        };
+        shots(&value, 0, &mut seen, &mut found);
+    }
+    found.sort_by_key(|(index, _)| *index);
+    let mut gallery: Vec<SourceImage> = Vec::new();
+    for (_, image) in found {
+        if !gallery.iter().any(|g| g.url == image.url) {
+            gallery.push(image);
+        }
+        if gallery.len() >= 40 {
+            break;
+        }
+    }
+    gallery
+}
+
+fn shots(value: &Value, depth: usize, seen: &mut usize, found: &mut Vec<(i64, SourceImage)>) {
+    *seen += 1;
+    if depth > 32 || *seen > 200_000 || found.len() >= 200 {
+        return;
+    }
+    match value {
+        Value::Object(map) => {
+            if let Some(url) = https(map.get("url"))
+                .filter(|u| u.starts_with("https://media.forgecdn.net/attachments/"))
+                && map.contains_key("thumbnailUrl")
+            {
+                found.push((
+                    number(value, "displayIndex"),
+                    SourceImage {
+                        url,
+                        title: text(value, "title", 200),
+                        description: text(value, "description", 1000),
+                    },
+                ));
+                return;
+            }
+            for v in map.values() {
+                shots(v, depth + 1, seen, found);
+            }
+        }
+        Value::Array(items) => {
+            for v in items {
+                shots(v, depth + 1, seen, found);
+            }
+        }
+        _ => {}
+    }
 }
 
 /// The longest description kept, in characters.
