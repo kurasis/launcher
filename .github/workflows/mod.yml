@@ -70,6 +70,20 @@ jobs:
           print(f"Damaged jars removed: {removed}")
           EOF
       - run: ./gradlew --no-daemon build
+      # Forge (mods.toml) reads every mod jar as a resource pack and warns at the
+      # game's start when it has no pack.mcmeta.
+      - name: Check that Forge jars carry pack.mcmeta
+        run: |
+          python3 - <<'EOF'
+          import pathlib, sys, zipfile
+          bad = 0
+          for jar in sorted(pathlib.Path(".").glob("*/*/build/libs/launcherskins-*.jar")):
+              names = set(zipfile.ZipFile(jar).namelist())
+              if "META-INF/mods.toml" in names and "pack.mcmeta" not in names:
+                  print(f"no pack.mcmeta: {jar.name}")
+                  bad += 1
+          sys.exit(1 if bad else 0)
+          EOF
       - name: Drop damaged jars after a failed build
         if: failure()
         run: *drop-damaged-jars
