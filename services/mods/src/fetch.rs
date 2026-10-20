@@ -22,6 +22,8 @@ pub enum Site {
     Modrinth,
     CurseForge,
     Images,
+    /// Where a modpack's files may come from besides Modrinth.
+    Code,
 }
 
 impl Site {
@@ -31,6 +33,7 @@ impl Site {
             Site::Modrinth => 200,
             Site::CurseForge => 60,
             Site::Images => 120,
+            Site::Code => 60,
         }
     }
 }
@@ -45,6 +48,10 @@ pub const HOSTS: &[(&str, Site)] = &[
     ("i.imgur.com", Site::Images),
     ("raw.githubusercontent.com", Site::Images),
     ("user-images.githubusercontent.com", Site::Images),
+    ("github.com", Site::Code),
+    ("objects.githubusercontent.com", Site::Code),
+    ("release-assets.githubusercontent.com", Site::Code),
+    ("gitlab.com", Site::Code),
 ];
 
 /// The site of a URL we may fetch: HTTPS, a listed host, no user or port.

@@ -174,6 +174,29 @@ CREATE TABLE IF NOT EXISTS image_origin (
     sha256 TEXT NOT NULL,
     media_type TEXT NOT NULL
 );
+-- A modpack version's index, read from its kept archive (stage 3).
+CREATE TABLE IF NOT EXISTS pack (
+    version_id TEXT PRIMARY KEY REFERENCES version(id),
+    archive_sha256 TEXT NOT NULL,
+    game TEXT NOT NULL,
+    loader TEXT,
+    loader_version TEXT,
+    skipped INTEGER NOT NULL DEFAULT 0,
+    read INTEGER NOT NULL
+);
+CREATE TABLE IF NOT EXISTS pack_file (
+    version_id TEXT NOT NULL REFERENCES version(id),
+    ord INTEGER NOT NULL,
+    path TEXT NOT NULL,
+    size INTEGER NOT NULL,
+    sha1 TEXT NOT NULL,
+    sha512 TEXT NOT NULL,
+    -- set once the file is kept here
+    sha256 TEXT,
+    optional INTEGER NOT NULL,
+    origin_url TEXT NOT NULL,
+    PRIMARY KEY (version_id, ord)
+);
 CREATE VIRTUAL TABLE IF NOT EXISTS project_fts USING fts5(
     project_id UNINDEXED, title, summary, authors, categories, slug,
     tokenize = 'unicode61 remove_diacritics 2'
@@ -224,6 +247,17 @@ pub struct FileRow {
     pub sha256: Option<String>,
     pub primary: bool,
     pub role: String,
+    pub origin_url: String,
+}
+
+/// A file a modpack lists.
+#[derive(Debug, Clone)]
+pub struct PackFileRow {
+    pub ord: i64,
+    pub size: i64,
+    pub sha1: String,
+    pub sha512: String,
+    pub sha256: Option<String>,
     pub origin_url: String,
 }
 
@@ -889,6 +923,157 @@ impl Store {
         )
         .map_err(sql)?;
         Self::refresh_files_state(&db, version)
+    }
+
+    // ----- modpacks -----
+
+    /// Whether a modpack version's index was read.
+    pub fn has_pack(&self, version: &str) -> Result<bool> {
+        self.db()
+            .query_row(
+                "SELECT 1 FROM pack WHERE version_id = ?1",
+                [version],
+                |_| Ok(()),
+            )
+            .optional()
+            .map(|found| found.is_some())
+            .map_err(sql)
+    }
+
+    /// Records a modpack version's index.
+    pub fn set_pack(
+        &self,
+        version: &str,
+        archive: &str,
+        index: &crate::pack::Index,
+        now: i64,
+    ) -> Result<()> {
+        let mut db = self.db();
+        let tx = db.transaction().map_err(sql)?;
+        tx.execute("DELETE FROM pack_file WHERE version_id = ?1", [version])
+            .map_err(sql)?;
+        tx.execute(
+            "INSERT OR REPLACE INTO pack (version_id, archive_sha256, game, loader, loader_version, skipped, read)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)",
+            params![
+                version,
+                archive,
+                index.game,
+                index.loader.as_ref().map(|l| &l.0),
+                index.loader.as_ref().map(|l| &l.1),
+                index.skipped as i64,
+                now
+            ],
+        )
+        .map_err(sql)?;
+        for (ord, file) in index.files.iter().enumerate() {
+            tx.execute(
+                "INSERT INTO pack_file (version_id, ord, path, size, sha1, sha512, optional, origin_url)
+                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)",
+                params![
+                    version,
+                    ord as i64,
+                    file.path,
+                    file.size as i64,
+                    file.sha1,
+                    file.sha512,
+                    file.optional,
+                    file.url
+                ],
+            )
+            .map_err(sql)?;
+        }
+        tx.commit().map_err(sql)
+    }
+
+    pub fn pack_files(&self, version: &str) -> Result<Vec<PackFileRow>> {
+        let db = self.db();
+        let mut q = db
+            .prepare(
+                "SELECT ord, size, sha1, sha512, sha256, origin_url
+                 FROM pack_file WHERE version_id = ?1 ORDER BY ord",
+            )
+            .map_err(sql)?;
+        q.query_map([version], |r| {
+            Ok(PackFileRow {
+                ord: r.get(0)?,
+                size: r.get(1)?,
+                sha1: r.get(2)?,
+                sha512: r.get(3)?,
+                sha256: r.get(4)?,
+                origin_url: r.get(5)?,
+            })
+        })
+        .map_err(sql)?
+        .collect::<std::result::Result<_, _>>()
+        .map_err(sql)
+    }
+
+    pub fn pack_file_kept(&self, version: &str, ord: i64, sha256: &str) -> Result<()> {
+        self.db()
+            .execute(
+                "UPDATE pack_file SET sha256 = ?3 WHERE version_id = ?1 AND ord = ?2",
+                params![version, ord, sha256],
+            )
+            .map(|_| ())
+            .map_err(sql)
+    }
+
+    /// A modpack version's index with our addresses of its files, once read.
+    pub fn pack_json(
+        &self,
+        version: &str,
+        files: &crate::Urls,
+    ) -> Result<Option<serde_json::Value>> {
+        let db = self.db();
+        let base = db
+            .query_row(
+                "SELECT game, loader, loader_version, skipped FROM pack WHERE version_id = ?1",
+                [version],
+                |r| {
+                    let loader: Option<String> = r.get(1)?;
+                    let loader_version: Option<String> = r.get(2)?;
+                    Ok(serde_json::json!({
+                        "game": r.get::<_, String>(0)?,
+                        "loader": loader.map(|kind| serde_json::json!({
+                            "kind": kind,
+                            "version": loader_version,
+                        })),
+                        "skipped": r.get::<_, i64>(3)?,
+                    }))
+                },
+            )
+            .optional()
+            .map_err(sql)?;
+        let Some(mut pack) = base else {
+            return Ok(None);
+        };
+        let mut q = db
+            .prepare(
+                "SELECT path, size, sha256, optional FROM pack_file WHERE version_id = ?1 ORDER BY ord",
+            )
+            .map_err(sql)?;
+        let list: Vec<serde_json::Value> = q
+            .query_map([version], |r| {
+                let path: String = r.get(0)?;
+                let sha256: Option<String> = r.get(2)?;
+                let name = path.rsplit('/').next().unwrap_or_default().to_owned();
+                Ok(serde_json::json!({
+                    "path": path,
+                    "size": r.get::<_, i64>(1)?,
+                    "sha256": sha256,
+                    "url": sha256.as_deref().map(|s| files.file(s, &name)),
+                    "optional": r.get::<_, bool>(3)?,
+                }))
+            })
+            .map_err(sql)?
+            .collect::<std::result::Result<_, _>>()
+            .map_err(sql)?;
+        let kept = list.iter().filter(|f| !f["sha256"].is_null()).count();
+        pack["total"] = list.len().into();
+        pack["kept"] = kept.into();
+        pack["files"] = list.into();
+        Ok(Some(pack))
     }
 
     pub fn mark_version_gone(&self, version: &str, now: i64) -> Result<()> {

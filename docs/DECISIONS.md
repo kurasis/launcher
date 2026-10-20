@@ -2022,8 +2022,8 @@ archive from the Package workflow, upload it to
 
 ## D-066 — Catalog of mods at mods.lapi.sh
 
-- **Status:** accepted (owner request, 2026-10-19), stages 1–2 of 6 · **Affects:** the new
-  service `services/mods` (`https://mods.lapi.sh`, files at
+- **Status:** accepted (owner request, 2026-10-19), stages 1, 2 and 4 of 6, 3 under
+  way · **Affects:** the new service `services/mods` (`https://mods.lapi.sh`, files at
   `https://files-mods.lapi.sh`, `/home/www/lapi/mods`), the account service's token
   audience. The full design: the project's design document "Вкладка Моды и каталог".
 - **Goal.** A Mods tab with modpacks, mods, resource packs, shaders and worlds that does
@@ -2064,7 +2064,8 @@ archive from the Package workflow, upload it to
   shows no picture from another site, so players' addresses go only to us.
 - **API:** `GET /v1/search`, `/v1/projects/{id|slug}`, `/v1/projects/{id}/versions`,
   `/v1/versions/{id}` (each version says `saved`: `all` kept, else fetched on request),
-  `POST /v1/versions/{id}/fetch`, `POST /v1/lookup` (by SHA-1 or SHA-256); with the
+  `POST /v1/versions/{id}/fetch`, `GET`/`POST /v1/versions/{id}/pack` (stage 3),
+  `POST /v1/lookup` (by SHA-1 or SHA-256); with the
   launcher account's token (audience `mods`): `POST /v1/imports`, `GET /v1/imports`,
   `GET /v1/imports/{id}`, `POST /v1/imports/{id}/choose`.
 - **Plan:** 1 this service and its deploy; 2 the launcher's tab; 3 modpacks (installing
@@ -2180,6 +2181,26 @@ archive from the Package workflow, upload it to
   screenshots, apart from the project object: the description as a text chunk of the
   stream (JEI: 3.6 KB of HTML), the screenshots as objects with `url`, `thumbnailUrl`,
   `title`, `description` and `displayIndex`. The card reads both from there.
+
+### Modpacks (stage 3)
+
+- **Modrinth packs (`.mrpack`) first.** A pack's version is kept like any other (its
+  archive). Its files are kept only when a launcher asks to install it
+  (`POST /v1/versions/{id}/pack`, counted with the other fetches per address): the `pack`
+  job reads `modrinth.index.json` from the kept archive and keeps every file it lists,
+  checked against both hashes and the size. `GET /v1/versions/{id}/pack` gives the game
+  version, the loader and its version, the files at our addresses, the archive (for its
+  overrides) and the state: `none`, `working`, `ready`, or `failed` with a short code.
+- **The index is checked:** format 1, game `minecraft`, one loader of fabric, quilt,
+  forge or neoforge, versions as plain words, at most 5000 files and 16 GB together,
+  SHA-1 and SHA-512 of each, a download from a host Modrinth allows (cdn.modrinth.com,
+  github.com, raw.githubusercontent.com, gitlab.com; GitHub's redirects to its file
+  hosts are followed). A path must be relative with `/` between names safe on every
+  system, in a folder a pack fills (`mods`, `resourcepacks`, `shaderpacks`, `config`,
+  `defaultconfigs`, `kubejs`, `scripts`, `saves`, `datapacks` and a few more mods use) or
+  one of `options.txt`, `optionsof.txt`, `optionsshaders.txt`, `servers.dat`; no program
+  (`.exe`, `.bat`, `.sh`, `.dll` and the like) anywhere, a `.jar` only in `mods/`. A file
+  with any other path, or one the client does not use, is left out and counted.
 
 ## D-067 — Start page feed at feed.lapi.sh
 

@@ -39,6 +39,7 @@ mod import;
 mod input;
 mod model;
 mod modrinth;
+mod pack;
 mod probe;
 mod store;
 mod thumb;
