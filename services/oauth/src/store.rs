@@ -1088,6 +1088,14 @@ impl Store {
             "registeredLastDay": one("SELECT COUNT(*) FROM accounts WHERE created > ?1 - 86400")?,
             "activeSessions": one("SELECT COUNT(*) FROM sessions WHERE revoked = 0 AND expires > ?1")?,
             "lettersWaiting": one("SELECT COUNT(*) FROM outbox WHERE sent IS NULL AND body != '' AND created > ?1 - 3 * 86400")?,
+            // Sign-ins that ended early show here: a reused refresh token
+            // ends its session.
+            "eventsLastDay": {
+                "signedIn": one("SELECT COUNT(*) FROM events WHERE kind = 'signed-in' AND at > ?1 - 86400")?,
+                "signedOut": one("SELECT COUNT(*) FROM events WHERE kind = 'signed-out' AND at > ?1 - 86400")?,
+                "refreshReused": one("SELECT COUNT(*) FROM events WHERE kind = 'refresh-reused' AND at > ?1 - 86400")?,
+            },
+            "sessionsEndedLastDay": one("SELECT COUNT(*) FROM sessions WHERE revoked = 1 AND last_used > ?1 - 86400")?,
         }))
     }
 }
