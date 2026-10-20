@@ -144,12 +144,14 @@ jobs:
             exit 0
           fi
           exit "$status"
+      # With TLS on, the relay serves /generate_204 on plain HTTP only; over
+      # HTTPS it answers /ping.
       - name: Check from outside
         if: steps.ready.outputs.set == 'true'
         run: |
           for i in 1 2 3 4 5 6; do
-            code=$(curl -s -o /dev/null -w '%{http_code}' --max-time 10 https://relay.lapi.sh/generate_204 || true)
-            if [ "$code" = 204 ]; then echo "https://relay.lapi.sh answers"; exit 0; fi
+            code=$(curl -s -o /dev/null -w '%{http_code}' --max-time 10 https://relay.lapi.sh/ping || true)
+            if [ "$code" = 200 ]; then echo "https://relay.lapi.sh answers"; exit 0; fi
             sleep 10
           done
           echo "::warning::https://relay.lapi.sh does not answer yet (DNS record, ports 443/tcp and 7842/udp, or the certificate)"
