@@ -77,7 +77,9 @@ jobs:
           python3 - <<'EOF'
           import pathlib, sys, zipfile
           bad = 0
-          for jar in sorted(pathlib.Path(".").glob("*/*/build/libs/launcherskins-*.jar")):
+          jars = [*pathlib.Path(".").glob("*/*/build/libs/launcherskins-*.jar"),
+                  *pathlib.Path(".").glob("gametest/*/*/build/libs/launchergametest-*.jar")]
+          for jar in sorted(jars):
               names = set(zipfile.ZipFile(jar).namelist())
               if "META-INF/mods.toml" in names and "pack.mcmeta" not in names:
                   print(f"no pack.mcmeta: {jar.name}")
