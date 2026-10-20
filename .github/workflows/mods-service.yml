@@ -16,6 +16,11 @@ name: Mods service
 # wrote and nothing about the server is printed here. "Run workflow" with
 # task=counts shows numbers only; task=probe shows how CurseForge answers the
 # server directly and through each proxy (numbered), in our words and numbers.
+# task=block and task=unblock act on the file named by `hash` (SHA-256 or
+# SHA-1) and task=review-count counts what waits for the owner: fixed words,
+# numbers and that hash only (docs/MODS-CATALOG.md). The secrets
+# LAPI_MODS_CF_ZONE and LAPI_MODS_CF_TOKEN (a token that may only purge the
+# zone's cache) let a block clear the file from Cloudflare's cache.
 
 on:
   push:
@@ -38,10 +43,14 @@ on:
   workflow_dispatch:
     inputs:
       task:
-        description: deploy, counts of the catalog, or a probe of CurseForge
+        description: deploy, counts of the catalog, a probe of CurseForge, or an owner's command
         type: choice
-        options: [deploy, counts, probe]
+        options: [deploy, counts, probe, block, unblock, review-count]
         default: deploy
+      hash:
+        description: for block and unblock, the file's SHA-256 or SHA-1
+        type: string
+        default: ''
 
 permissions:
   contents: read
@@ -177,12 +186,18 @@ jobs:
           TARGET: ${{ secrets.SSH_USER }}@${{ secrets.SSH_HOST }}
           QUOTA_GB: ${{ vars.MODS_MAX_GB || '500' }}
           PROXIES: ${{ secrets.LAPI_MODS_PROXIES }}
+          CF_ZONE: ${{ secrets.LAPI_MODS_CF_ZONE }}
+          CF_TOKEN: ${{ secrets.LAPI_MODS_CF_TOKEN }}
         run: |
           [[ "$QUOTA_GB" =~ ^[0-9]{1,6}$ ]] || { echo "::error::MODS_MAX_GB must be a number of GB"; exit 1; }
           set +e
-          # The proxies travel on standard input, on one line; deploy.sh keeps
-          # them in secrets.env (0640) and prints only the key's name.
-          printf 'LAPI_MODS_PROXIES=%s\n' "$(printf '%s' "$PROXIES" | tr '\r\n' '  ')" |
+          # The secrets travel on standard input, one line each; deploy.sh
+          # keeps them in secrets.env (0640) and prints only the keys' names.
+          {
+            printf 'LAPI_MODS_PROXIES=%s\n' "$(printf '%s' "$PROXIES" | tr '\r\n' '  ')"
+            printf 'LAPI_MODS_CF_ZONE=%s\n' "$(printf '%s' "$CF_ZONE" | tr -d '\r\n ')"
+            printf 'LAPI_MODS_CF_TOKEN=%s\n' "$(printf '%s' "$CF_TOKEN" | tr -d '\r\n ')"
+          } |
             ssh "$TARGET" \
               "bash ~/.lapi-bootstrap/$SETUP/deploy.sh mods $RELEASE $ARCHIVE $QUOTA_GB --secrets" 2>&1 | tee deploy.log
           status=${PIPESTATUS[1]}
@@ -244,3 +259,45 @@ jobs:
               'sudo -n -u lapi-mods /home/www/lapi/mods/current/lapi-mods probe'
             echo '```'
           } | tee -a "$GITHUB_STEP_SUMMARY"
+
+  owner:
+    name: Owner's command
+    if: >-
+      github.event_name == 'workflow_dispatch'
+      && contains(fromJSON('["block", "unblock", "review-count"]'), inputs.task)
+    # It changes what players get: the same approval as a deploy.
+    environment: production
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v7
+      - uses: ./.github/actions/lapi-ssh
+        with:
+          ssh-key: ${{ secrets.SSH_KEY }}
+          known-hosts: ${{ secrets.SSH_KNOWN_HOSTS }}
+      # These print fixed words, numbers and the hash given only.
+      - name: Run
+        env:
+          TARGET: ${{ secrets.SSH_USER }}@${{ secrets.SSH_HOST }}
+          TASK: ${{ inputs.task }}
+          HASH: ${{ inputs.hash }}
+        run: |
+          case "$TASK" in
+            block|unblock)
+              [[ "$HASH" =~ ^([0-9a-fA-F]{40}|[0-9a-fA-F]{64})$ ]] ||
+                { echo "::error::hash must be a SHA-256 or a SHA-1 in hex"; exit 1; }
+              command="$TASK ${HASH,,}"
+              ;;
+            review-count) command="review --count" ;;
+            *) echo "::error::unknown task"; exit 1 ;;
+          esac
+          set +e
+          out=$(ssh "$TARGET" \
+            "sudo -n -u lapi-mods /home/www/lapi/mods/current/lapi-mods $command" 2>&1)
+          status=$?
+          {
+            echo "### $TASK"
+            echo '```text'
+            printf '%s\n' "$out"
+            echo '```'
+          } | tee -a "$GITHUB_STEP_SUMMARY"
+          exit "$status"

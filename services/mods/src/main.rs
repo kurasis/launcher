@@ -13,6 +13,9 @@
 //!                                 (daily, by lapi-mods-backup.timer)
 //! lapi-mods probe                 how CurseForge answers each exit (our
 //!                                 words and numbers only, for a public log)
+//! lapi-mods scan <file>          the scanner's verdict on a file
+//! lapi-mods find|review|block|unblock|remove|forget …
+//!                                 the owner's commands (owner.rs)
 //! lapi-mods thumb <in> <out> <size> <webp|jpeg>
 //!                                 a small picture; the service runs it as a
 //!                                 process of its own for each picture
@@ -28,7 +31,10 @@
 //! proxies to the sources), `LAPI_MODS_DIRECT` (`1`: also connect directly
 //! when there are proxies), `LAPI_MODS_WORKERS` (`4`), `LAPI_MODS_ISSUER`
 //! (`https://oauth.lapi.sh`) and `LAPI_MODS_JWKS`
-//! (`http://127.0.0.1:8783/.well-known/jwks.json`).
+//! (`http://127.0.0.1:8783/.well-known/jwks.json`). The owner's commands read
+//! `LAPI_MODS_CF_ZONE` and `LAPI_MODS_CF_TOKEN` (secrets: Cloudflare's zone
+//! and a token that may only purge its cache) and `LAPI_MODS_PURGE_CURL`
+//! (the plain curl, `curl`).
 
 mod api;
 mod auth;
@@ -39,6 +45,7 @@ mod import;
 mod input;
 mod model;
 mod modrinth;
+mod owner;
 mod pack;
 mod packwiz;
 mod probe;
@@ -131,6 +138,13 @@ fn main() -> std::process::ExitCode {
                 .map_err(|e| e.to_string()),
             _ => Err("usage: lapi-mods scan <file>".to_owned()),
         },
+        Some(
+            command @ ("find" | "review" | "block" | "unblock" | "remove" | "forget"),
+        ) => owner_command(command, &args[1..]).map(|lines| {
+            for line in lines {
+                println!("{line}");
+            }
+        }),
         Some("thumb") => match &args[1..] {
             [input, output, size, format] => size
                 .parse::<u32>()
@@ -144,7 +158,10 @@ fn main() -> std::process::ExitCode {
             println!("lapi-mods {}", env!("CARGO_PKG_VERSION"));
             Ok(())
         }
-        _ => Err("usage: lapi-mods serve|counts|backup|probe|scan|thumb".to_owned()),
+        _ => Err(
+            "usage: lapi-mods serve|counts|backup|probe|scan|thumb|find|review|block|unblock|remove|forget"
+                .to_owned(),
+        ),
     };
     match result {
         Ok(()) => std::process::ExitCode::SUCCESS,
@@ -168,17 +185,68 @@ fn curl() -> fetch::Curl {
     }
 }
 
-/// Run by hand (through sudo, without the service's environment), so the
-/// proxies come from the deploy's secrets file when the environment has none.
-fn probe() -> Result<(), String> {
-    let mut text = std::env::var("LAPI_MODS_PROXIES").unwrap_or_default();
-    if text.trim().is_empty() {
-        let secrets = env("LAPI_MODS_SECRETS", "/home/www/lapi/mods/secrets.env");
-        text = std::fs::read_to_string(secrets)
-            .ok()
-            .and_then(|file| env_file_value(&file, "LAPI_MODS_PROXIES"))
-            .unwrap_or_default();
+/// A secret for a command run by hand (through sudo, without the service's
+/// environment): from the deploy's secrets file when the environment has none.
+fn secret(key: &str) -> String {
+    let text = std::env::var(key).unwrap_or_default();
+    if !text.trim().is_empty() {
+        return text;
     }
+    let secrets = env("LAPI_MODS_SECRETS", "/home/www/lapi/mods/secrets.env");
+    std::fs::read_to_string(secrets)
+        .ok()
+        .and_then(|file| env_file_value(&file, key))
+        .unwrap_or_default()
+}
+
+/// The owner's commands (owner.rs); what they print is the result.
+fn owner_command(command: &str, args: &[String]) -> Result<Vec<String>, String> {
+    let data = data();
+    let store = open()?;
+    let blobs = blobs::Blobs::open(&data, DEFAULT_QUOTA_GB * blobs::GB, MIN_FREE)?;
+    let urls = Urls::new(&env("LAPI_MODS_FILES_URL", "https://files-mods.lapi.sh"));
+    let cloudflare = owner::Cloudflare::new(
+        &secret("LAPI_MODS_CF_ZONE"),
+        &secret("LAPI_MODS_CF_TOKEN"),
+        PathBuf::from(env("LAPI_MODS_PURGE_CURL", "curl")),
+    );
+    let owner = owner::Owner {
+        store: &store,
+        blobs: &blobs,
+        urls: &urls,
+        purge: cloudflare.as_ref().map(|c| c as &dyn owner::Purge),
+        now: import::now(),
+    };
+    let hash =
+        |text: &str| owner::Hash::parse(text).ok_or_else(|| "not a SHA-256 or SHA-1".to_owned());
+    match (command, args) {
+        ("find", [query]) => owner.find(query),
+        ("review", []) => owner.review(),
+        ("review", [count]) if count == "--count" => owner.review_count(),
+        ("review", [id, decision, reason @ ..]) => {
+            let id = id
+                .trim_start_matches('#')
+                .parse()
+                .map_err(|_| "not a number of the queue".to_owned())?;
+            owner.decide(id, decision, &owner::reason(reason))
+        }
+        ("block", [h, reason @ ..]) => owner.block(&hash(h)?, &owner::reason(reason)),
+        ("unblock", [h]) => owner.unblock(&hash(h)?),
+        ("remove", [project, reason @ ..]) => owner.remove(project, &owner::reason(reason)),
+        ("forget", [h, rest @ ..]) => match (hash(h)?, rest) {
+            (owner::Hash::Sha256(sha256), []) => owner.forget(&sha256, false),
+            (owner::Hash::Sha256(sha256), [yes]) if yes == "--yes" => owner.forget(&sha256, true),
+            _ => Err("usage: lapi-mods forget <sha256> [--yes]".to_owned()),
+        },
+        _ => Err(format!(
+            "usage: see lapi-mods {command} in docs/MODS-CATALOG.md"
+        )),
+    }
+}
+
+/// Run by hand, so the proxies may come from the deploy's secrets file.
+fn probe() -> Result<(), String> {
+    let text = secret("LAPI_MODS_PROXIES");
     let tmp = std::env::temp_dir().join(format!("lapi-mods-probe-{}", uuid::Uuid::new_v4()));
     std::fs::create_dir(&tmp).map_err(|e| e.to_string())?;
     let client = fetch::Client::new(Box::new(curl()), fetch::parse_proxies(&text), true, &tmp);

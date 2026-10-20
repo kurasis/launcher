@@ -157,15 +157,16 @@ async fn harmful(State(app): State<Arc<App>>, Query(q): Query<HarmfulQuery>) -> 
         .filter(|a| crate::blobs::is_sha256(a))
         .unwrap_or_default();
     match app.store.harmful_since(since, &after, HARMFUL_PAGE + 1) {
-        Ok(mut files) => {
-            let next = if files.len() as i64 > HARMFUL_PAGE {
-                files.truncate(HARMFUL_PAGE as usize);
-                files
+        Ok(mut found) => {
+            let next = if found.len() as i64 > HARMFUL_PAGE {
+                found.truncate(HARMFUL_PAGE as usize);
+                found
                     .last()
-                    .map(|f| json!({ "since": f["since"], "after": f["sha256"] }))
+                    .map(|(f, key)| json!({ "since": f["since"], "after": key }))
             } else {
                 None
             };
+            let files: Vec<Value> = found.into_iter().map(|(f, _)| f).collect();
             cached(json!({ "files": files, "next": next }), 300)
         }
         Err(e) => failed(&e),
@@ -356,7 +357,7 @@ fn pack_answer(app: &App, id: &str) -> Result<Option<(Value, bool)>, String> {
             .as_array()
             .is_some_and(|files| files.iter().any(|f| f["held"] == true))
     }) || match &archive.sha256 {
-        Some(sha256) => app.store.blob_state(sha256)?.as_deref() == Some("quarantined"),
+        Some(sha256) => app.store.blob_state(sha256)?.is_some_and(|s| s != "stored"),
         None => false,
     };
     let ready = ready && !held;

@@ -3396,3 +3396,335 @@ async fn kept_files_are_scanned_again_under_new_rules() {
     let (status, _) = t.get("/v1/harmful?since=-5&after=../x").await;
     assert_eq!(status, StatusCode::OK);
 }
+
+// ----- the owner's commands (D-066, stage 6) -----
+
+#[derive(Default)]
+struct Purged(Mutex<Vec<String>>);
+
+impl crate::owner::Purge for Purged {
+    fn purge(&self, urls: &[String]) -> Result<usize, String> {
+        self.0.lock().unwrap().extend(urls.iter().cloned());
+        Ok(urls.len())
+    }
+}
+
+fn owner<'a>(t: &'a T, purged: &'a Purged) -> crate::owner::Owner<'a> {
+    crate::owner::Owner {
+        store: &t.app.store,
+        blobs: &t.app.blobs,
+        urls: &t.app.urls,
+        purge: Some(purged),
+        now: now(),
+    }
+}
+
+fn sha(text: &str) -> crate::owner::Hash {
+    crate::owner::Hash::parse(text).unwrap()
+}
+
+async fn sodium_release(t: &T) -> (String, Value) {
+    let (_, versions) = t.get("/v1/projects/sodium/versions").await;
+    let file = versions["versions"][1]["files"][0].clone();
+    (file["sha256"].as_str().unwrap().to_owned(), file)
+}
+
+#[tokio::test]
+async fn a_blocked_file_is_withdrawn_cleared_from_the_cache_and_named_to_launchers() {
+    let t = setup();
+    modrinth_site(&t.sites);
+    t.player(
+        1,
+        "POST",
+        "/v1/imports",
+        json!({ "input": "https://modrinth.com/mod/sodium" }),
+    )
+    .await;
+    t.drain().await;
+    let (sha256, file) = sodium_release(&t).await;
+    let sha1 = file["sha1"].as_str().unwrap().to_owned();
+    assert!(t.app.blobs.has(&sha256));
+    let purged = Purged::default();
+    let o = owner(&t, &purged);
+
+    let lines = o.block(&sha(&sha256), "steals tokens").unwrap();
+    assert_eq!(
+        lines,
+        ["blocked 1", "withdrawn 1", "cache cleared 1 addresses"]
+    );
+    assert_eq!(
+        *purged.0.lock().unwrap(),
+        [format!("{FILES}/f/{sha256}/sodium%2D0%2E6%2Ejar")]
+    );
+    assert!(!t.app.blobs.has(&sha256));
+    assert!(t.app.blobs.holds(&sha256));
+    let (_, file) = sodium_release(&t).await;
+    assert_eq!(file["held"], true);
+    assert!(file["url"].is_null());
+    let (_, harmful) = t.get("/v1/harmful").await;
+    assert_eq!(harmful["files"].as_array().unwrap().len(), 1);
+    assert_eq!(harmful["files"][0]["sha1"], sha1.as_str());
+    assert_eq!(harmful["files"][0]["sha256"], sha256.as_str());
+    // Again: nothing more to do. By its SHA-1: the same file.
+    assert_eq!(o.block(&sha(&sha256), "").unwrap()[0], "blocked 0");
+    assert_eq!(
+        o.block(&sha(&sha1), "").unwrap()[..2],
+        ["blocked 0", "withdrawn 0"]
+    );
+    let found = o.find(&sha256).unwrap().join("\n");
+    assert!(found.contains("quarantined blocked"), "{found}");
+    assert!(found.contains("blocked: steals tokens"), "{found}");
+    assert!(found.contains("in version"), "{found}");
+    assert!(found.contains("block steals tokens"), "{found}");
+    assert_eq!(t.app.store.counts().unwrap()["blocked"], 1);
+
+    // A mistake: the file is served again, and no later scan holds it.
+    assert_eq!(
+        o.unblock(&sha(&sha1)).unwrap(),
+        ["unblocked 1", "released 1"]
+    );
+    assert!(t.app.blobs.has(&sha256));
+    let (_, file) = sodium_release(&t).await;
+    assert_eq!(file["held"], false);
+    assert!(file["url"].is_string());
+    let (_, harmful) = t.get("/v1/harmful").await;
+    assert_eq!(harmful["files"], json!([]));
+    t.app.store.forget_scans();
+    import::rescan(&t.app, 50).await.unwrap();
+    assert!(t.app.blobs.has(&sha256));
+    let found = o.find(&sha256).unwrap().join("\n");
+    assert!(found.contains("stored allowed"), "{found}");
+    assert!(found.contains("allowed by the owner"), "{found}");
+}
+
+#[tokio::test]
+async fn a_file_blocked_before_it_comes_is_held_back_when_it_does() {
+    let t = setup();
+    let site = modrinth_site(&t.sites);
+    let (sha1, _, sha256) = hashes(&site["v2bbbbbb"]);
+    let purged = Purged::default();
+    let o = owner(&t, &purged);
+    assert_eq!(
+        o.block(&sha(&sha1.to_uppercase()), "public report")
+            .unwrap(),
+        ["blocked 1", "not here yet: held back if it ever comes"]
+    );
+    assert!(purged.0.lock().unwrap().is_empty());
+    // Launchers hear of it at once, by its SHA-1.
+    let (_, harmful) = t.get("/v1/harmful").await;
+    assert_eq!(harmful["files"][0]["sha1"], sha1.as_str());
+    assert!(harmful["files"][0]["sha256"].is_null());
+
+    t.player(
+        1,
+        "POST",
+        "/v1/imports",
+        json!({ "input": "https://modrinth.com/mod/sodium" }),
+    )
+    .await;
+    t.drain().await;
+    let (kept, file) = sodium_release(&t).await;
+    assert_eq!(kept, sha256);
+    assert_eq!(file["held"], true);
+    assert!(t.app.blobs.holds(&sha256) && !t.app.blobs.has(&sha256));
+    // Blocked is decided: nothing waits for the owner.
+    assert!(t.app.store.reviews().is_empty());
+    let (_, harmful) = t.get("/v1/harmful").await;
+    assert_eq!(harmful["files"].as_array().unwrap().len(), 1);
+    assert_eq!(harmful["files"][0]["sha256"], sha256.as_str());
+    // The other versions are served as before.
+    let (_, versions) = t.get("/v1/projects/sodium/versions").await;
+    assert_eq!(versions["versions"][0]["files"][0]["held"], false);
+}
+
+#[tokio::test]
+async fn the_owner_decides_what_waits_removes_a_project_and_forgets_a_file() {
+    let t = setup();
+    modrinth_site(&t.sites);
+    sodium_release_is(&t, &dropper_jar());
+    t.player(
+        1,
+        "POST",
+        "/v1/imports",
+        json!({ "input": "https://modrinth.com/mod/sodium" }),
+    )
+    .await;
+    t.drain().await;
+    let (sha256, _) = sodium_release(&t).await;
+    let purged = Purged::default();
+    let o = owner(&t, &purged);
+    let waiting = o.review().unwrap().join("\n");
+    assert!(waiting.starts_with("#1 "), "{waiting}");
+    assert!(
+        waiting.contains(&format!("scan {sha256} suspicious")),
+        "{waiting}"
+    );
+    assert!(waiting.contains("in version"), "{waiting}");
+    assert_eq!(o.review_count().unwrap(), ["scan 1", "total 1"]);
+    assert!(o.decide(1, "maybe", "").is_err());
+    assert!(o.decide(7, "keep", "").is_err());
+
+    let lines = o.decide(1, "keep", "Essential-like, fine").unwrap();
+    assert_eq!(lines.last().unwrap(), "decided #1 keep");
+    assert!(t.app.blobs.has(&sha256));
+    assert!(t.app.store.reviews().is_empty());
+    assert_eq!(o.review().unwrap(), ["nothing waits"]);
+    assert_eq!(o.review_count().unwrap(), ["total 0"]);
+    assert!(o.decide(1, "block", "").is_err(), "decided already");
+
+    let (_, found) = t.get("/v1/search?q=sodium").await;
+    assert_eq!(found["total"], 1, "{found}");
+
+    // The author asks: the project goes, and the files only it needs.
+    let lines = o
+        .remove("https://modrinth.com/mod/sodium", "author asked")
+        .unwrap();
+    assert!(lines[0].starts_with("removed project "), "{lines:?}");
+    assert_eq!(lines[1], "withdrawn 1");
+    assert!(!t.app.blobs.has(&sha256));
+    let (status, _) = t.get("/v1/projects/sodium").await;
+    assert_eq!(status, StatusCode::NOT_FOUND);
+    let (_, found) = t.get("/v1/search?q=sodium").await;
+    assert_eq!(found["total"], 0, "{found}");
+    // Its dependency stays.
+    let (_, api) = t.get("/v1/projects/fabric-api/versions").await;
+    let api_file = api["versions"][0]["files"][0]["sha256"].as_str().unwrap();
+    assert!(t.app.blobs.has(api_file));
+    // An import does not bring it back.
+    let (_, request) = t
+        .player(
+            2,
+            "POST",
+            "/v1/imports",
+            json!({ "input": "https://modrinth.com/mod/sodium" }),
+        )
+        .await;
+    t.drain().await;
+    let (_, request) = t
+        .player(
+            2,
+            "GET",
+            &format!("/v1/imports/{}", request["id"].as_str().unwrap()),
+            Value::Null,
+        )
+        .await;
+    assert_eq!(request["state"], "failed", "{request}");
+    assert_eq!(request["error"], "removed");
+    let (status, _) = t.get("/v1/projects/sodium").await;
+    assert_eq!(status, StatusCode::NOT_FOUND);
+
+    // Deleted for good only when asked twice.
+    assert!(o.forget(api_file, true).is_err(), "a served file stays");
+    let lines = o.forget(&sha256, false).unwrap();
+    assert!(lines[0].starts_with("would delete"));
+    assert!(t.app.blobs.holds(&sha256));
+    assert_eq!(o.forget(&sha256, true).unwrap(), ["forgotten 1"]);
+    assert!(!t.app.blobs.holds(&sha256));
+    assert_eq!(
+        t.app.store.blob_state(&sha256).unwrap().as_deref(),
+        Some("forgotten")
+    );
+    assert!(o.forget(&sha256, true).is_err());
+    let counts = t.app.store.counts().unwrap();
+    assert_eq!(counts["blobsForgotten"], 1);
+    assert_eq!(counts["projectsRemoved"], 1);
+    let found = o.find("sodium").unwrap().join("\n");
+    assert!(found.contains("removed"), "{found}");
+    assert!(found.contains("forgotten"), "{found}");
+    assert!(found.contains("remove author asked"), "{found}");
+}
+
+#[test]
+fn the_owners_input_is_checked() {
+    use crate::owner::{Cloudflare, Hash, purge_config};
+    assert_eq!(
+        Hash::parse(&"AB".repeat(20)),
+        Some(Hash::Sha1("ab".repeat(20)))
+    );
+    assert_eq!(
+        Hash::parse(&"0f".repeat(32)),
+        Some(Hash::Sha256("0f".repeat(32)))
+    );
+    for junk in [
+        "",
+        "abc",
+        &"a".repeat(63),
+        &"g".repeat(64),
+        &"a".repeat(41),
+        "'; DROP TABLE blob; --",
+    ] {
+        assert_eq!(Hash::parse(junk), None, "{junk}");
+    }
+    assert_eq!(
+        crate::owner::reason(&["a\u{0}b".to_owned(), "c\nd".to_owned()]),
+        "ab cd"
+    );
+    assert!(crate::owner::reason(&["x".repeat(5000)]).chars().count() <= 300);
+
+    let curl = std::path::PathBuf::from("curl");
+    let zone = "0123456789abcdef0123456789abcdef";
+    let token = "Abc_def-0123456789xyzXYZ";
+    assert!(Cloudflare::new(zone, token, curl.clone()).is_some());
+    for (zone, token) in [
+        ("", token),
+        ("0123456789abcdef0123456789abcdeg", token),
+        (zone, ""),
+        (zone, "short"),
+        (zone, "Abc_def-0123456789\"\nurl = \"http://evil"),
+        (zone, "Abc def 0123456789xyzXYZ"),
+    ] {
+        assert!(
+            Cloudflare::new(zone, token, curl.clone()).is_none(),
+            "{token}"
+        );
+    }
+    // The token travels on standard input; the body is quoted for curl.
+    let config = purge_config(
+        zone,
+        token,
+        &["https://files.example/f/ab/a%22b.jar".to_owned()],
+    );
+    assert!(config.contains(&format!("zones/{zone}/purge_cache")));
+    assert!(config.contains(&format!("header = \"Authorization: Bearer {token}\"")));
+    assert!(
+        config
+            .contains("data = \"{\\\"files\\\":[\\\"https://files.example/f/ab/a%22b.jar\\\"]}\"")
+    );
+    assert_eq!(config.lines().count(), 5);
+}
+
+#[tokio::test]
+async fn finding_takes_addresses_slugs_and_hashes_and_nothing_else() {
+    let t = setup();
+    modrinth_site(&t.sites);
+    t.player(
+        1,
+        "POST",
+        "/v1/imports",
+        json!({ "input": "https://modrinth.com/mod/sodium" }),
+    )
+    .await;
+    t.drain().await;
+    let purged = Purged::default();
+    let o = owner(&t, &purged);
+    for query in [
+        "sodium",
+        "SODIUM",
+        SODIUM,
+        "https://modrinth.com/mod/sodium",
+    ] {
+        let found = o.find(query).unwrap();
+        assert!(found[0].starts_with("project "), "{query}: {found:?}");
+        assert!(
+            found.iter().any(|l| l.starts_with("  version ")),
+            "{found:?}"
+        );
+    }
+    assert_eq!(o.find("no-such-mod").unwrap(), ["nothing found"]);
+    assert_eq!(o.find("' OR 1=1 --").unwrap(), ["nothing found"]);
+    assert_eq!(o.find(&"0".repeat(64)).unwrap(), ["nothing found"]);
+    assert!(o.find("https://example.com/mod/sodium").is_err());
+    assert!(o.find("so\u{0}dium").is_err());
+    assert!(o.remove("no-such-mod", "").is_err());
+    assert!(o.unblock(&sha(&"0".repeat(40))).unwrap()[0] == "unblocked 0");
+}

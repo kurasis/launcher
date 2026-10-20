@@ -354,10 +354,19 @@ pub fn check_requests(app: &App) {
             if let Some(project) = &request.project_id {
                 // Its project came through (some files or dependencies may
                 // not have; the catalog shows which).
-                if app.store.project_status(project)?.as_deref() == Some("ready") {
-                    app.store
-                        .set_request(&id, "ready", None, None, None, now())?;
-                    continue;
+                match app.store.project_status(project)?.as_deref() {
+                    Some("ready") => {
+                        app.store
+                            .set_request(&id, "ready", None, None, None, now())?;
+                        continue;
+                    }
+                    // Taken out at its author's request (lapi-mods remove).
+                    Some("removed") => {
+                        app.store
+                            .set_request(&id, "failed", Some("removed"), None, None, now())?;
+                        continue;
+                    }
+                    _ => {}
                 }
             }
             if let Some(error) = failed {
@@ -560,6 +569,7 @@ async fn project(
         return Err(JobError::new("unsupported_kind", false));
     };
     let (id, card) = app.store.upsert_project(&found, now())?;
+    not_removed(app, &id)?;
     if let Some(request) = request
         && depth == 0
     {
@@ -698,7 +708,7 @@ async fn project_packwiz(app: &App, url: &str, request: Option<&str>) -> Result<
                 continue;
             }
             let hashed = match app.store.kept_by_origin(&meta.url)? {
-                Some(kept) if app.blobs.holds(&kept.sha256) => kept,
+                Some(kept) if here(app, &kept.sha256) => kept,
                 _ => {
                     if !app.blobs.may_keep(0) {
                         return Err(JobError::new("no_space", true));
@@ -788,6 +798,7 @@ async fn project_packwiz(app: &App, url: &str, request: Option<&str>) -> Result<
         updated: now(),
     };
     let (id, _) = app.store.upsert_project(&project_found, now())?;
+    not_removed(app, &id)?;
     if let Some(request) = request {
         app.store
             .set_request(request, "importing", None, Some(&id), None, now())?;
@@ -937,6 +948,7 @@ async fn project_curseforge(
                 updated: card.updated,
             };
             let (id, card) = app.store.upsert_project(&found, now())?;
+            not_removed(app, &id)?;
             (id, card.then_some(found))
         }
     };
@@ -1223,12 +1235,31 @@ pub async fn rescan(app: &App, limit: i64) -> Result<usize, String> {
     Ok(count)
 }
 
+/// Whether a file need not be fetched: here, served or held, or deleted for
+/// good by the owner.
+fn here(app: &App, sha256: &str) -> bool {
+    app.blobs.holds(sha256)
+        || app
+            .store
+            .blob_state(sha256)
+            .is_ok_and(|state| state.as_deref() == Some("forgotten"))
+}
+
+/// A project the owner removed is not brought back by an import.
+fn not_removed(app: &App, project: &str) -> Result<(), JobError> {
+    if app.store.project_status(project)?.as_deref() == Some("removed") {
+        return Err(JobError::new("removed", false));
+    }
+    Ok(())
+}
+
 /// Moves a hashed part into the kept files and records it. An archive is
 /// scanned first (D-066, stage 6): one the scanner holds back goes into
 /// quarantine instead, is recorded as held and waits for the owner.
 async fn keep(app: &App, part: &Path, hashed: &Hashed, media_type: &str) -> Result<(), JobError> {
-    if app.blobs.holds(&hashed.sha256) && app.store.blob_state(&hashed.sha256)?.is_some() {
-        // Here already, served or held, and scanned then.
+    if here(app, &hashed.sha256) && app.store.blob_state(&hashed.sha256)?.is_some() {
+        // Here already, served or held, and scanned then; or deleted for
+        // good by the owner.
         let _ = std::fs::remove_file(part);
         return Ok(());
     }
@@ -1236,7 +1267,12 @@ async fn keep(app: &App, part: &Path, hashed: &Hashed, media_type: &str) -> Resu
         let _ = std::fs::remove_file(part);
         return Err(JobError::new("no_space", true));
     }
-    let verdict = if crate::scan::scanned_type(media_type) {
+    let blocked = app.store.is_blocked(&hashed.sha256, &hashed.sha1)?;
+    let verdict = if blocked {
+        // The owner blocked it: no scan needed.
+        app.store.complete_block(&hashed.sha256, &hashed.sha1)?;
+        Some(crate::scan::Verdict::blocked())
+    } else if crate::scan::scanned_type(media_type) {
         let path = part.to_path_buf();
         match tokio::task::spawn_blocking(move || crate::scan::scan_file(&path)).await {
             Ok(Ok(verdict)) => Some(verdict),
@@ -1299,7 +1335,7 @@ async fn files(app: &App, version: &str, request: Option<&str>) -> Result<(), Jo
         if let Some(kept) = app
             .store
             .blob_by_hashes(file.sha1.as_deref(), file.sha512.as_deref())?
-            && app.blobs.holds(&kept)
+            && here(app, &kept)
         {
             app.store.file_kept(version, file.ord, &kept)?;
             join_twins(
@@ -1349,9 +1385,9 @@ async fn pack_files(app: &App, version: &str) -> Result<(), JobError> {
         return Err(JobError::new("not_a_pack", false));
     };
     if let Some(sha256) = &archive.sha256
-        && app.store.blob_state(sha256)?.as_deref() == Some("quarantined")
+        && app.store.blob_state(sha256)?.is_some_and(|s| s != "stored")
     {
-        // A held pack is not opened.
+        // A held (or forgotten) pack is not opened.
         return Err(JobError::new("held", false));
     }
     let Some(sha256) = archive.sha256.filter(|s| app.blobs.has(s)) else {
@@ -1388,7 +1424,7 @@ async fn pack_files(app: &App, version: &str) -> Result<(), JobError> {
         if let Some(kept) = app
             .store
             .blob_by_hashes(Some(&file.sha1), Some(&file.sha512))?
-            && app.blobs.holds(&kept)
+            && here(app, &kept)
         {
             app.store.pack_file_kept(version, file.ord, &kept)?;
             continue;
@@ -1449,7 +1485,7 @@ async fn curseforge_pack_file(
         return Err(JobError::new("too_big", false));
     }
     let (part, hashed) = match app.store.kept_by_origin(&file.origin_url)? {
-        Some(kept) if app.blobs.holds(&kept.sha256) => (None, kept),
+        Some(kept) if here(app, &kept.sha256) => (None, kept),
         _ => {
             if !app.blobs.may_keep(declared) {
                 return Err(JobError::new("no_space", true));

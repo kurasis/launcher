@@ -44,6 +44,8 @@ pub enum Level {
     Suspicious,
     /// A marker of known malware: quarantined.
     Malicious,
+    /// Blocked by the owner (not the scanner's word): quarantined.
+    Blocked,
 }
 
 impl Level {
@@ -53,6 +55,7 @@ impl Level {
             Self::Note => "note",
             Self::Suspicious => "suspicious",
             Self::Malicious => "malicious",
+            Self::Blocked => "blocked",
         }
     }
 
@@ -72,6 +75,14 @@ impl Verdict {
     pub fn clean() -> Self {
         Self {
             level: Level::Clean,
+            signs: Vec::new(),
+        }
+    }
+
+    /// The owner's block, for a blocked file fetched again.
+    pub fn blocked() -> Self {
+        Self {
+            level: Level::Blocked,
             signs: Vec::new(),
         }
     }

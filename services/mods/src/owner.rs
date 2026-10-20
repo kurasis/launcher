@@ -1,0 +1,453 @@
+//! The owner's commands (D-066, stage 6), run by hand on the server:
+//!
+//! ```text
+//! lapi-mods find <address, slug, ID, SHA-256 or SHA-1>
+//! lapi-mods review [--count]          what waits for a decision
+//! lapi-mods review <n> keep|block [reason]
+//! lapi-mods block <SHA-256 or SHA-1> [reason]
+//! lapi-mods unblock <SHA-256 or SHA-1>
+//! lapi-mods remove <project> [reason] at its author's request
+//! lapi-mods forget <SHA-256> [--yes]  deletes a held file for good
+//! ```
+//!
+//! `find` and `review` show names and titles: they are for the owner's
+//! terminal. `block`, `unblock` and `review --count` print fixed words and
+//! numbers only, so the workflow may run them in its public log.
+
+use std::io::Write;
+use std::path::PathBuf;
+use std::process::{Command, Stdio};
+
+use crate::Urls;
+use crate::blobs::{Blobs, is_sha256};
+use crate::store::Store;
+
+/// Clears addresses from the cache in front of the kept files.
+pub trait Purge {
+    /// How many addresses were cleared.
+    fn purge(&self, urls: &[String]) -> Result<usize, String>;
+}
+
+/// A file named by one of its hashes.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum Hash {
+    Sha256(String),
+    Sha1(String),
+}
+
+impl Hash {
+    pub fn parse(text: &str) -> Option<Self> {
+        let text = text.trim().to_ascii_lowercase();
+        if is_sha256(&text) {
+            Some(Self::Sha256(text))
+        } else if text.len() == 40 && text.bytes().all(|b| b.is_ascii_hexdigit()) {
+            Some(Self::Sha1(text))
+        } else {
+            None
+        }
+    }
+
+    fn text(&self) -> &str {
+        match self {
+            Self::Sha256(h) | Self::Sha1(h) => h,
+        }
+    }
+}
+
+pub struct Owner<'a> {
+    pub store: &'a Store,
+    pub blobs: &'a Blobs,
+    pub urls: &'a Urls,
+    pub purge: Option<&'a dyn Purge>,
+    pub now: i64,
+}
+
+/// A reason as kept in the journal: one line, bounded.
+pub fn reason(words: &[String]) -> String {
+    crate::model::clean(&words.join(" "), 300, false)
+}
+
+fn day(at: i64) -> String {
+    chrono::DateTime::from_timestamp(at, 0)
+        .map(|t| t.format("%Y-%m-%d").to_string())
+        .unwrap_or_default()
+}
+
+impl Owner<'_> {
+    /// The SHA-256 of a file named by either hash, when it is here.
+    fn kept(&self, hash: &Hash) -> Result<Option<String>, String> {
+        match hash {
+            Hash::Sha256(h) => Ok(self.store.blob_info(h)?.map(|b| b.sha256)),
+            Hash::Sha1(h) => self.store.blob_by_sha1(h),
+        }
+    }
+
+    /// Clears a file's addresses from the cache; a line saying how it went.
+    fn clear(&self, sha256s: &[String]) -> Result<String, String> {
+        let mut urls = Vec::new();
+        for sha256 in sha256s {
+            for name in self.store.served_names(sha256)? {
+                urls.push(self.urls.file(sha256, &name));
+            }
+        }
+        if urls.is_empty() {
+            return Ok("cache nothing to clear".to_owned());
+        }
+        Ok(match self.purge {
+            None => format!(
+                "cache not cleared: no Cloudflare token ({} addresses stay cached up to a year)",
+                urls.len()
+            ),
+            Some(purge) => match purge.purge(&urls) {
+                Ok(n) => format!("cache cleared {n} addresses"),
+                Err(e) => format!("cache not cleared: {e}"),
+            },
+        })
+    }
+
+    /// Takes a kept file out of service at once and lists it for launchers.
+    pub fn block(&self, hash: &Hash, reason: &str) -> Result<Vec<String>, String> {
+        let sha256 = self.kept(hash)?;
+        let info = match &sha256 {
+            Some(s) => self.store.blob_info(s)?,
+            None => None,
+        };
+        let (block256, block1) = match hash {
+            Hash::Sha256(h) => (Some(h.clone()), info.as_ref().map(|b| b.sha1.clone())),
+            Hash::Sha1(h) => (sha256.clone(), Some(h.clone())),
+        };
+        let new = self
+            .store
+            .block(block256.as_deref(), block1.as_deref(), reason, self.now)?;
+        let mut lines = vec![format!("blocked {}", u8::from(new))];
+        let mut withdrawn = 0;
+        if let Some(info) = info {
+            if info.state == "stored" && self.blobs.has(&info.sha256) {
+                self.blobs
+                    .withdraw(&info.sha256)
+                    .map_err(|e| format!("holding back the file: {e}"))?;
+                withdrawn = 1;
+            }
+            self.store
+                .set_held(&info.sha256, Some("blocked"), self.now)?;
+            self.store.decide_reviews(&info.sha256, "block", self.now)?;
+            lines.push(format!("withdrawn {withdrawn}"));
+            lines.push(self.clear(&[info.sha256])?);
+        } else {
+            lines.push("not here yet: held back if it ever comes".to_owned());
+        }
+        self.store
+            .log_decision("block", hash.text(), reason, self.now)?;
+        Ok(lines)
+    }
+
+    /// Lifts a block, or lets a file the scanner held go: served again and
+    /// never held by a later scan.
+    pub fn unblock(&self, hash: &Hash) -> Result<Vec<String>, String> {
+        let sha256 = self.kept(hash)?;
+        let mut lifted = self.store.unblock(hash.text())?;
+        if let Some(sha256) = &sha256 {
+            lifted += self.store.unblock(sha256)?;
+        }
+        let mut released = 0;
+        if let Some(info) = match &sha256 {
+            Some(s) => self.store.blob_info(s)?,
+            None => None,
+        } {
+            if info.state == "quarantined" {
+                if !self.blobs.has(&info.sha256) {
+                    self.blobs
+                        .release(&info.sha256)
+                        .map_err(|e| format!("putting the file back: {e}"))?;
+                }
+                self.store.set_allowed(&info.sha256)?;
+                released = 1;
+            }
+            self.store.decide_reviews(&info.sha256, "keep", self.now)?;
+        }
+        self.store
+            .log_decision("unblock", hash.text(), "", self.now)?;
+        Ok(vec![
+            format!("unblocked {lifted}"),
+            format!("released {released}"),
+        ])
+    }
+
+    /// Deletes a held file for good; without `yes`, says what it would do.
+    pub fn forget(&self, sha256: &str, yes: bool) -> Result<Vec<String>, String> {
+        let info = self
+            .store
+            .blob_info(sha256)?
+            .filter(|b| b.state == "quarantined")
+            .ok_or("only a held file can be forgotten: block it first")?;
+        if !yes {
+            return Ok(vec![
+                format!(
+                    "would delete {} ({} bytes) for good",
+                    info.sha256, info.size
+                ),
+                "run again with --yes to delete it".to_owned(),
+            ]);
+        }
+        self.blobs
+            .forget(&info.sha256)
+            .map_err(|e| format!("deleting the file: {e}"))?;
+        self.store.set_forgotten(&info.sha256)?;
+        self.store
+            .log_decision("forget", &info.sha256, "", self.now)?;
+        Ok(vec!["forgotten 1".to_owned()])
+    }
+
+    /// Takes a project out of the catalog at its author's request; the files
+    /// only it needs go into quarantine.
+    pub fn remove(&self, reference: &str, reason: &str) -> Result<Vec<String>, String> {
+        let id = self
+            .project(reference)?
+            .ok_or("no such project in the catalog")?;
+        let only = self.store.remove_project(&id)?;
+        let mut withdrawn = 0;
+        for sha256 in &only {
+            if self.blobs.has(sha256) {
+                self.blobs
+                    .withdraw(sha256)
+                    .map_err(|e| format!("holding back a file: {e}"))?;
+                withdrawn += 1;
+            }
+            self.store.set_held(sha256, None, self.now)?;
+        }
+        self.store.log_decision("remove", &id, reason, self.now)?;
+        Ok(vec![
+            format!("removed project {id}"),
+            format!("withdrawn {withdrawn}"),
+            self.clear(&only)?,
+        ])
+    }
+
+    /// A project by an address of Modrinth or CurseForge, a slug or an ID.
+    fn project(&self, reference: &str) -> Result<Option<String>, String> {
+        let reference = reference.trim();
+        let wanted = match crate::input::parse(reference) {
+            Some(
+                crate::input::Input::Modrinth { project, .. }
+                | crate::input::Input::ModrinthFile { project, .. },
+            ) => project,
+            Some(crate::input::Input::CurseForge { slug, .. }) => slug,
+            Some(crate::input::Input::Name(name)) => name,
+            _ => return Err("not an address of a project".to_owned()),
+        };
+        self.store.find_project(&wanted)
+    }
+
+    /// What the catalog knows of a project or a file.
+    pub fn find(&self, query: &str) -> Result<Vec<String>, String> {
+        let Some(hash) = Hash::parse(query) else {
+            let Some(id) = self.project(query)? else {
+                return Ok(vec!["nothing found".to_owned()]);
+            };
+            let mut lines = self.store.project_report(&id)?;
+            lines.extend(self.decided(&id)?);
+            return Ok(lines);
+        };
+        let mut lines = Vec::new();
+        let kept = self.kept(&hash)?;
+        if let Some(sha256) = &kept
+            && let Some(b) = self.store.blob_info(sha256)?
+        {
+            lines.push(format!(
+                "file {} sha1 {} {} bytes {} {} {}{}{}",
+                b.sha256,
+                b.sha1,
+                b.size,
+                b.media_type,
+                b.state,
+                b.verdict,
+                if b.signs.is_empty() {
+                    String::new()
+                } else {
+                    format!(" {}", b.signs)
+                },
+                b.held
+                    .map(|at| format!(" held since {}", day(at)))
+                    .unwrap_or_default(),
+            ));
+            if b.allowed {
+                lines.push("  allowed by the owner".to_owned());
+            }
+            lines.extend(self.store.file_uses(sha256)?);
+        }
+        if let Some((_, reason)) = self.store.block_of(hash.text())? {
+            lines.push(format!("  blocked: {reason}").trim_end().to_owned());
+        }
+        if lines.is_empty() {
+            lines.push("nothing found".to_owned());
+        }
+        lines.extend(self.decided(hash.text())?);
+        if let Some(sha256) = kept.filter(|s| s != hash.text()) {
+            lines.extend(self.decided(&sha256)?);
+        }
+        Ok(lines)
+    }
+
+    fn decided(&self, subject: &str) -> Result<Vec<String>, String> {
+        Ok(self
+            .store
+            .decisions(subject)?
+            .into_iter()
+            .map(|(at, action, reason)| format!("  {} {action} {reason}", day(at)))
+            .map(|l| l.trim_end().to_owned())
+            .collect())
+    }
+
+    /// What waits for a decision, oldest first.
+    pub fn review(&self) -> Result<Vec<String>, String> {
+        let mut lines = Vec::new();
+        for (id, kind, subject, created) in self.store.open_reviews(100)? {
+            let what = match kind.as_str() {
+                "scan" => match self.store.blob_info(&subject)? {
+                    Some(b) => format!("{subject} {} {} {} bytes", b.verdict, b.signs, b.size),
+                    None => subject.clone(),
+                },
+                _ => self
+                    .store
+                    .version_brief(&subject)?
+                    .map_or_else(|| subject.clone(), |brief| format!("{subject} {brief}")),
+            };
+            lines.push(format!("#{id} {} {kind} {what}", day(created)));
+            if kind == "scan" {
+                lines.extend(self.store.file_uses(&subject)?.into_iter().take(3));
+            }
+        }
+        if lines.is_empty() {
+            lines.push("nothing waits".to_owned());
+        }
+        Ok(lines)
+    }
+
+    /// How many wait, by kind: numbers only.
+    pub fn review_count(&self) -> Result<Vec<String>, String> {
+        let counts = self.store.review_counts()?;
+        let total: i64 = counts.iter().map(|(_, n)| n).sum();
+        let mut lines: Vec<String> = counts
+            .into_iter()
+            .filter(|(kind, _)| matches!(kind.as_str(), "scan" | "gone" | "report"))
+            .map(|(kind, n)| format!("{kind} {n}"))
+            .collect();
+        lines.push(format!("total {total}"));
+        Ok(lines)
+    }
+
+    /// The owner's decision on an item of the queue: `keep` lets it be,
+    /// `block` blocks its files.
+    pub fn decide(&self, id: i64, decision: &str, reason: &str) -> Result<Vec<String>, String> {
+        let (kind, subject, decided) = self
+            .store
+            .review_item(id)?
+            .ok_or("no such item in the queue")?;
+        if decided {
+            return Err("that item is decided already".to_owned());
+        }
+        let mut lines = match (kind.as_str(), decision) {
+            ("scan", "keep") => self.unblock(&Hash::Sha256(subject.clone()))?,
+            ("scan", "block") => self.block(&Hash::Sha256(subject.clone()), reason)?,
+            (_, "keep") => Vec::new(),
+            (_, "block") => {
+                let mut lines = Vec::new();
+                for sha256 in self.store.version_blobs(&subject)? {
+                    lines.extend(self.block(&Hash::Sha256(sha256), reason)?);
+                }
+                lines
+            }
+            _ => return Err("decide with keep or block".to_owned()),
+        };
+        self.store.decide_reviews(&subject, decision, self.now)?;
+        self.store
+            .log_decision(decision, &subject, reason, self.now)?;
+        lines.push(format!("decided #{id} {decision}"));
+        Ok(lines)
+    }
+}
+
+/// Cloudflare's cache in front of files-mods.lapi.sh, cleared through its
+/// API with a token that may only purge the zone's cache.
+pub struct Cloudflare {
+    zone: String,
+    token: String,
+    curl: PathBuf,
+}
+
+/// Cloudflare takes at most this many addresses a call.
+const PURGE_BATCH: usize = 30;
+
+impl Cloudflare {
+    /// `None` unless both look right: a zone ID and a token.
+    pub fn new(zone: &str, token: &str, curl: PathBuf) -> Option<Self> {
+        let zone = zone.trim();
+        let token = token.trim();
+        let zone_ok = zone.len() == 32 && zone.bytes().all(|b| b.is_ascii_hexdigit());
+        let token_ok = (20..=200).contains(&token.len())
+            && token
+                .bytes()
+                .all(|b| b.is_ascii_alphanumeric() || b == b'-' || b == b'_');
+        (zone_ok && token_ok).then(|| Self {
+            zone: zone.to_ascii_lowercase(),
+            token: token.to_owned(),
+            curl,
+        })
+    }
+}
+
+/// What curl reads on its standard input for one call: the token never
+/// appears in a command line.
+pub fn purge_config(zone: &str, token: &str, urls: &[String]) -> String {
+    let body = serde_json::json!({ "files": urls }).to_string();
+    let quoted = body.replace('\\', "\\\\").replace('"', "\\\"");
+    format!(
+        "url = \"https://api.cloudflare.com/client/v4/zones/{zone}/purge_cache\"\n\
+         request = \"POST\"\n\
+         header = \"Authorization: Bearer {token}\"\n\
+         header = \"Content-Type: application/json\"\n\
+         data = \"{quoted}\"\n"
+    )
+}
+
+impl Purge for Cloudflare {
+    fn purge(&self, urls: &[String]) -> Result<usize, String> {
+        let mut cleared = 0;
+        for batch in urls.chunks(PURGE_BATCH) {
+            let mut child = Command::new(&self.curl)
+                .args([
+                    "-sS",
+                    "--max-time",
+                    "30",
+                    "-o",
+                    "/dev/null",
+                    "-w",
+                    "%{http_code}",
+                    "-K",
+                    "-",
+                ])
+                .stdin(Stdio::piped())
+                .stdout(Stdio::piped())
+                .stderr(Stdio::null())
+                .spawn()
+                .map_err(|_| "curl did not start".to_owned())?;
+            if let Some(mut stdin) = child.stdin.take() {
+                stdin
+                    .write_all(purge_config(&self.zone, &self.token, batch).as_bytes())
+                    .map_err(|_| "curl did not take the request".to_owned())?;
+            }
+            let output = child
+                .wait_with_output()
+                .map_err(|_| "curl did not finish".to_owned())?;
+            let code: u16 = String::from_utf8_lossy(&output.stdout)
+                .trim()
+                .parse()
+                .unwrap_or(0);
+            if code != 200 {
+                return Err(format!("Cloudflare answered {code}"));
+            }
+            cleared += batch.len();
+        }
+        Ok(cleared)
+    }
+}
