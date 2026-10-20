@@ -7,7 +7,6 @@ use axum::body::Body;
 use axum::http::{Request, StatusCode};
 use http_body_util::BodyExt;
 use serde_json::{Value, json};
-use sha2::Digest as _;
 use tower::ServiceExt;
 
 use crate::editorial::{Editorial, link};
@@ -858,22 +857,6 @@ async fn pictures() {
     }
 }
 
-fn base64(bytes: &[u8]) -> String {
-    const ALPHABET: &[u8] = b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
-    let mut out = String::new();
-    for chunk in bytes.chunks(3) {
-        let n = chunk.iter().fold(0u32, |n, &b| n << 8 | u32::from(b)) << (8 * (3 - chunk.len()));
-        for i in 0..4 {
-            out.push(if i <= chunk.len() {
-                ALPHABET[(n >> (18 - 6 * i) & 63) as usize] as char
-            } else {
-                '='
-            });
-        }
-    }
-    out
-}
-
 #[tokio::test]
 async fn player_pages() {
     let dir = tempfile::tempdir().unwrap();
@@ -882,6 +865,7 @@ async fn player_pages() {
     assert_eq!(status, StatusCode::OK);
     let csp = headers["content-security-policy"].to_str().unwrap();
     assert!(csp.starts_with("default-src 'none'"));
+    assert!(!csp.contains("script-src"));
     assert_eq!(
         headers["referrer-policy"],
         "strict-origin-when-cross-origin"
@@ -889,25 +873,7 @@ async fn player_pages() {
     let page = String::from_utf8(body).unwrap();
     assert!(page.contains("https://www.youtube-nocookie.com/embed/abcdefghijk"));
     assert!(page.contains("dir=\"rtl\""));
-    // One script, the one whose hash the CSP names: it takes the spinner,
-    // over the frame and hidden from screen readers, away once the frame loads.
-    assert_eq!(page.matches("<script").count(), 1);
-    let script = page
-        .split("<script>")
-        .nth(1)
-        .and_then(|rest| rest.split("</script>").next())
-        .unwrap();
-    let digest = base64(&sha2::Sha256::digest(script.as_bytes()));
-    let scripts = csp
-        .split(';')
-        .map(str::trim)
-        .find(|directive| directive.starts_with("script-src"))
-        .unwrap();
-    assert_eq!(scripts, format!("script-src 'sha256-{digest}'"));
-    let wait = page
-        .find("<div class=\"wait\" aria-hidden=\"true\">")
-        .unwrap();
-    assert!(wait > page.find("<iframe").unwrap());
+    assert!(!page.contains("<script"));
     let (status, _, body) = get(&app, "/play/twitch/somebody").await;
     assert_eq!(status, StatusCode::OK);
     assert!(
