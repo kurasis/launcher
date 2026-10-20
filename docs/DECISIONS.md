@@ -101,6 +101,9 @@ replaces it), `superseded`.
   so the CI copy only doubled the slowest step (15–19 min on Windows) and held runners.
   macOS (CI and Package) runs only on a manual run with the `macos` input, until the owner
   turns it back on; the release archive needs it, so it is built from such a run.
+  Windows on ARM (CI and Package) likewise runs only on a manual run with the
+  `windows_arm` input, until the owner turns it back on; the release archive comes from a
+  run with both inputs.
 
 ## D-008 — Declared bundle targets
 
