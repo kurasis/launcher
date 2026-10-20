@@ -1722,11 +1722,11 @@ fn cf_search_page() -> String {
 }
 
 #[tokio::test]
-async fn a_name_offers_curseforge_projects_too() {
+async fn a_name_does_not_ask_curseforge() {
     let t = setup();
     curseforge_site(&t.sites);
-    t.sites
-        .put(&curseforge::search_url("just enough"), ok(cf_search_page()));
+    let page = curseforge::search_url("just enough");
+    t.sites.put(&page, ok(cf_search_page()));
     let (_, request) = t
         .player(1, "POST", "/v1/imports", json!({ "input": "just enough" }))
         .await;
@@ -1735,71 +1735,10 @@ async fn a_name_offers_curseforge_projects_too() {
     let (_, request) = t
         .player(1, "GET", &format!("/v1/imports/{id}"), Value::Null)
         .await;
-    // Modrinth found nothing; CurseForge's hits are offered.
-    assert_eq!(request["state"], "choosing", "{request}");
-    let candidates = request["candidates"].as_array().unwrap();
-    let ids: Vec<(&str, &str, &str)> = candidates
-        .iter()
-        .map(|c| {
-            (
-                c["source"].as_str().unwrap(),
-                c["id"].as_str().unwrap(),
-                c["kind"].as_str().unwrap(),
-            )
-        })
-        .collect();
-    assert_eq!(
-        ids,
-        [
-            ("curseforge", "238222", "mod"),
-            ("curseforge", "6", "resourcepack")
-        ]
-    );
-    assert_eq!(candidates[0]["author"], "mezz");
-    assert_eq!(candidates[0]["ref"], "238222/mc-mods/jei");
-
-    // A ref the player sends is not used; the offered one is.
-    let uri = format!("/v1/imports/{id}/choose");
-    let (status, _) = t
-        .player(
-            1,
-            "POST",
-            &uri,
-            json!({ "source": "curseforge", "id": "238222/mc-mods/other" }),
-        )
-        .await;
-    assert_eq!(status, StatusCode::BAD_REQUEST);
-    let (status, chosen) = t
-        .player(
-            1,
-            "POST",
-            &uri,
-            json!({ "source": "curseforge", "id": "238222", "ref": "1/mc-mods/x" }),
-        )
-        .await;
-    assert_eq!(status, StatusCode::ACCEPTED, "{chosen}");
-    t.drain().await;
-    let (_, request) = t
-        .player(1, "GET", &format!("/v1/imports/{id}"), Value::Null)
-        .await;
-    assert_eq!(request["state"], "ready", "{request}");
-    let (_, project) = t.get("/v1/projects/jei").await;
-    assert_eq!(project["title"], "Just Enough Items");
-
-    // Asked again, the hit says it is in the catalog.
-    let (_, again) = t
-        .player(1, "POST", "/v1/imports", json!({ "input": "just enough" }))
-        .await;
-    t.drain().await;
-    let (_, again) = t
-        .player(
-            1,
-            "GET",
-            &format!("/v1/imports/{}", again["id"].as_str().unwrap()),
-            Value::Null,
-        )
-        .await;
-    assert_eq!(again["candidates"][0]["projectId"], project["id"]);
+    // Modrinth found nothing; CurseForge's search page is not read.
+    assert_eq!(request["state"], "failed", "{request}");
+    assert_eq!(request["error"], "nothing_found", "{request}");
+    assert_eq!(t.sites.asked(&page), 0);
 }
 
 #[test]

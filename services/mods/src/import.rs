@@ -300,25 +300,15 @@ async fn resolve(app: &App, id: &str) -> Result<(), JobError> {
             start(app, id, curseforge::SOURCE, &reference, version.as_deref())
         }
         Some(Input::Name(words)) => {
-            // Both sources are asked; one that fails leaves the other's hits.
-            let modrinth = app
+            // Only Modrinth: CurseForge's search answers the server with 403
+            // whatever is asked, and its search page carries no results, so
+            // CurseForge projects come by their page address (D-066).
+            let found = app
                 .client
                 .json(&modrinth::search_url(&words))
-                .await
-                .map(|v| v.map(|v| modrinth::candidates(&v)).unwrap_or_default());
-            let curseforge = app
-                .client
-                .page(&curseforge::search_url(&words), curseforge::MAX_PAGE as u64)
-                .await
-                .map(|page| page.map(|p| curseforge::candidates(&p)).unwrap_or_default());
-            let found: Vec<_> = match (modrinth, curseforge) {
-                (Err(e), Err(_)) => return Err(e.into()),
-                (a, b) => a
-                    .unwrap_or_default()
-                    .into_iter()
-                    .chain(b.unwrap_or_default())
-                    .collect(),
-            };
+                .await?
+                .map(|v| modrinth::candidates(&v))
+                .unwrap_or_default();
             if found.is_empty() {
                 return fail("nothing_found");
             }
