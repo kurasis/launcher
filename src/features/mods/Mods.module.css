@@ -341,6 +341,13 @@
   font-weight: 600;
 }
 
+/* A question under a file's row: who needs it, and what goes with it. */
+.rowAsk {
+  display: grid;
+  flex: 1 0 100%;
+  gap: var(--space-2);
+}
+
 .rowActions {
   display: flex;
   flex-wrap: wrap;

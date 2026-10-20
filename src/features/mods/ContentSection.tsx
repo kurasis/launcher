@@ -9,6 +9,7 @@ import type {
   ContentUpdate,
   ContentView,
   InstanceSummary,
+  ModsNeededBy,
   ModsVersion,
 } from '../../lib/contracts';
 import { formatBytes } from '../../lib/format';
@@ -42,6 +43,7 @@ function Row({
   update,
   known,
   busy,
+  onCheck,
   onToggle,
   onRemove,
   onOpen,
@@ -51,13 +53,55 @@ function Row({
   update: ContentUpdate | undefined;
   known: ContentIdentified | undefined;
   busy: boolean;
+  /** Which mods need this one, before it is turned off or removed. */
+  onCheck: () => Promise<ModsNeededBy | null>;
   onToggle: () => void;
-  onRemove: () => void;
+  /** Removes the file, and these files with it. */
+  onRemove: (also: string[]) => void;
   onOpen: (projectId: string) => void;
   onUpdate: () => void;
 }) {
   const t = strings.mods.content;
-  const [confirming, setConfirming] = useState(false);
+  // Asking before turning a mod off (when others need it) or removing a file.
+  const [asking, setAsking] = useState<'off' | 'remove' | null>(null);
+  const [needs, setNeeds] = useState<ModsNeededBy | null>(null);
+  const [checkingNeeds, setCheckingNeeds] = useState(false);
+  const [alsoUnused, setAlsoUnused] = useState(true);
+  const isMod = item.folder === 'mods' && !item.directory;
+  const ask = (then: (found: ModsNeededBy | null) => void) => {
+    if (!isMod) {
+      then(null);
+      return;
+    }
+    setCheckingNeeds(true);
+    void onCheck()
+      .catch(() => null)
+      .then((found) => {
+        setCheckingNeeds(false);
+        then(found);
+      });
+  };
+  const toggle = () => {
+    if (!item.enabled) {
+      onToggle();
+      return;
+    }
+    ask((found) => {
+      if (found === null || found.neededBy.length === 0) {
+        onToggle();
+      } else {
+        setNeeds(found);
+        setAsking('off');
+      }
+    });
+  };
+  const stopAsking = () => {
+    setAsking(null);
+    setNeeds(null);
+  };
+  const neededBy = needs !== null && needs.neededBy.length > 0 ? needs.neededBy : null;
+  const unused =
+    asking === 'remove' && needs !== null && needs.unused.length > 0 ? needs.unused : null;
   const icon = ourPicture(item.icon);
   const project = item.projectId ?? known?.projectId ?? null;
   return (
@@ -98,8 +142,8 @@ function Row({
             <input
               type="checkbox"
               checked={item.enabled}
-              disabled={busy}
-              onChange={onToggle}
+              disabled={busy || checkingNeeds || asking !== null}
+              onChange={toggle}
               aria-label={t.toggle({ name: item.title ?? item.name })}
             />
             {t.on}
@@ -119,38 +163,61 @@ function Row({
             {t.open}
           </Button>
         )}
-        {!item.directory &&
-          (confirming ? (
-            <>
-              <Button
-                variant="primary"
-                disabled={busy}
-                onClick={() => {
-                  setConfirming(false);
-                  onRemove();
+        {!item.directory && asking === null && (
+          <Button
+            disabled={busy || checkingNeeds}
+            onClick={() => {
+              ask((found) => {
+                setNeeds(found);
+                setAlsoUnused(true);
+                setAsking('remove');
+              });
+            }}
+          >
+            {t.remove}
+          </Button>
+        )}
+      </span>
+      {checkingNeeds && (
+        <p role="status" className={[styles.muted, styles.rowAsk].join(' ')}>
+          {t.checkingNeeds}
+        </p>
+      )}
+      {asking !== null && (
+        <div className={styles.rowAsk}>
+          {neededBy !== null && (
+            <Notice tone="warning">{t.neededBy({ names: neededBy.join(', ') })}</Notice>
+          )}
+          {unused !== null && (
+            <label className={styles.check}>
+              <input
+                type="checkbox"
+                checked={alsoUnused}
+                onChange={(event) => {
+                  setAlsoUnused(event.target.checked);
                 }}
-              >
-                {t.confirmRemove}
-              </Button>
-              <Button
-                onClick={() => {
-                  setConfirming(false);
-                }}
-              >
-                {t.cancel}
-              </Button>
-            </>
-          ) : (
+              />
+              {t.alsoRemove({ names: unused.map((u) => u.title).join(', ') })}
+            </label>
+          )}
+          <span className={styles.rowActions}>
             <Button
+              variant="primary"
               disabled={busy}
               onClick={() => {
-                setConfirming(true);
+                const also = unused !== null && alsoUnused ? unused.map((u) => u.path) : [];
+                const wanted = asking;
+                stopAsking();
+                if (wanted === 'off') onToggle();
+                else onRemove(also);
               }}
             >
-              {t.remove}
+              {asking === 'off' ? t.turnOffAnyway : t.confirmRemove}
             </Button>
-          ))}
-      </span>
+            <Button onClick={stopAsking}>{t.cancel}</Button>
+          </span>
+        </div>
+      )}
     </li>
   );
 }
@@ -387,11 +454,17 @@ export function ContentSection({ instance, onOpen, onUpdate, revision }: Props) 
                     known={knownByPath.get(item.path)}
                     busy={busy}
                     onOpen={onOpen}
+                    onCheck={() => ipc.modsNeededBy(id, item.path)}
                     onToggle={() => {
                       change(ipc.modsSetEnabled(id, item.path, !item.enabled));
                     }}
-                    onRemove={() => {
-                      change(ipc.modsRemove(id, item.path));
+                    onRemove={(also) => {
+                      change(
+                        (async () => {
+                          await ipc.modsRemove(id, item.path);
+                          for (const path of also) await ipc.modsRemove(id, path);
+                        })(),
+                      );
                     }}
                     onUpdate={() => {
                       const offer = byPath.get(item.path);

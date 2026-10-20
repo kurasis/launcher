@@ -145,6 +145,15 @@ impl FetchError {
     }
 }
 
+/// What a browser sends for an `<img>`: asked as a page, some picture hosts
+/// (imgur) answer with a redirect to their own page instead of the picture.
+pub const PICTURE: &[&str] = &[
+    "Accept: image/avif,image/webp,image/apng,image/svg+xml,image/*,*/*;q=0.8",
+    "Sec-Fetch-Dest: image",
+    "Sec-Fetch-Mode: no-cors",
+    "Sec-Fetch-Site: cross-site",
+];
+
 /// One request as curl gets it.
 #[derive(Debug, Clone)]
 pub struct Request {
@@ -473,6 +482,18 @@ impl Client {
         max_bytes: u64,
         json: bool,
     ) -> Result<u64, FetchError> {
+        self.get_with(url, to, max_bytes, json, &[]).await
+    }
+
+    /// [`Client::get`] with headers of our own choosing, such as [`PICTURE`].
+    pub async fn get_with(
+        &self,
+        url: &str,
+        to: &Path,
+        max_bytes: u64,
+        json: bool,
+        headers: &'static [&'static str],
+    ) -> Result<u64, FetchError> {
         let mut url = url.to_owned();
         for _ in 0..6 {
             let site = site(&url).ok_or(FetchError::NotAllowed)?;
@@ -493,7 +514,7 @@ impl Client {
                     to: to.to_owned(),
                     max_bytes,
                     json,
-                    headers: &[],
+                    headers,
                     proxy,
                     resolve,
                     timeout: if json {

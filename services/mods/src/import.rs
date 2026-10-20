@@ -925,9 +925,14 @@ async fn version(
 }
 
 /// Downloads `url` into a new part file and hashes it.
-async fn download(app: &App, url: &str, max: u64) -> Result<(PathBuf, Hashed), JobError> {
+async fn download(
+    app: &App,
+    url: &str,
+    max: u64,
+    headers: &'static [&'static str],
+) -> Result<(PathBuf, Hashed), JobError> {
     let part = app.blobs.part();
-    let result = app.client.get(url, &part, max, false).await;
+    let result = app.client.get_with(url, &part, max, false, headers).await;
     if let Err(e) = result {
         let _ = std::fs::remove_file(&part);
         return Err(e.into());
@@ -995,7 +1000,7 @@ async fn files(app: &App, version: &str, request: Option<&str>) -> Result<(), Jo
             return Err(JobError::new("no_space", true));
         }
         let max = if declared > 0 { declared } else { MAX_FILE };
-        let (part, hashed) = match download(app, &file.origin_url, max).await {
+        let (part, hashed) = match download(app, &file.origin_url, max, &[]).await {
             Ok(got) => got,
             Err(e) => {
                 failed = Some(e);
@@ -1056,7 +1061,7 @@ async fn pack_files(app: &App, version: &str) -> Result<(), JobError> {
         if !app.blobs.may_keep(declared) {
             return Err(JobError::new("no_space", true));
         }
-        let (part, hashed) = match download(app, &file.origin_url, declared).await {
+        let (part, hashed) = match download(app, &file.origin_url, declared, &[]).await {
             Ok(got) => got,
             Err(e) => {
                 failed = Some(e);
@@ -1082,7 +1087,7 @@ async fn keep_image(app: &App, url: &str) -> Result<(String, String), JobError> 
     {
         return Ok((sha256, media_type));
     }
-    let (part, hashed) = download(app, url, MAX_IMAGE).await?;
+    let (part, hashed) = download(app, url, MAX_IMAGE, crate::fetch::PICTURE).await?;
     let mut head = [0u8; 16];
     let read = {
         use std::io::Read as _;

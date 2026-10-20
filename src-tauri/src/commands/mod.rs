@@ -1980,7 +1980,20 @@ async fn mods_plan_for<R: Runtime>(
         world: payload.world.as_deref(),
         replaces: payload.replaces.as_deref(),
     };
-    let mut plan = content::plan(&mods(app).client, &game, &target, &lock, &wanted).await?;
+    // The player's own files the catalog knows: a mod they put there is not
+    // brought again.
+    let mods = mods(app);
+    let files = {
+        let (mods, root) = (Arc::clone(&mods), root.clone());
+        let id = payload.instance_id;
+        tauri::async_runtime::spawn_blocking(move || mods.content.unknown_files(&root, id))
+            .await
+            .map_err(|_| {
+                crate::error::LauncherError::internal("A file operation stopped unexpectedly.")
+            })?
+    };
+    let identified = content::identify(&mods.client, &files).await?;
+    let mut plan = content::plan(&mods.client, &game, &target, &lock, &wanted, &identified).await?;
     // A metered connection (D-051): the plan says why it asks first.
     let settings = state.settings();
     let month_bytes = crate::traffic::month_total(&root);
@@ -2487,6 +2500,50 @@ pub async fn mods_set_enabled<R: Runtime>(
         )
     })
     .await
+}
+
+/// Which mods need a mod about to be turned off or removed, and what only it
+/// needed; without the catalog, what the launcher noted when it installed
+/// them.
+#[tauri::command]
+pub async fn mods_needed_by<R: Runtime>(
+    app: AppHandle<R>,
+    instance_id: crate::storage::paths::InstanceId,
+    path: String,
+) -> LauncherResult<crate::mods::content::NeededBy> {
+    use crate::mods::content;
+    let state = app.state::<AppState>();
+    let (root, _) = content::instance_of(&state, instance_id)?;
+    content::content_path(&root.game_dir(instance_id), &path)?;
+    let online = crate::mods::online(&state).is_ok();
+    let mods = mods(&app);
+    let identified = if online {
+        let files = {
+            let (mods, root) = (Arc::clone(&mods), root.clone());
+            tauri::async_runtime::spawn_blocking(move || {
+                mods.content.unknown_files(&root, instance_id)
+            })
+            .await
+            .map_err(|_| {
+                crate::error::LauncherError::internal("A file operation stopped unexpectedly.")
+            })?
+        };
+        content::identify(&mods.client, &files)
+            .await
+            .unwrap_or_default()
+    } else {
+        Vec::new()
+    };
+    Ok(mods
+        .content
+        .needed_by(
+            online.then_some(&mods.client),
+            &root,
+            instance_id,
+            &identified,
+            &path,
+        )
+        .await)
 }
 
 /// Deletes a file from an installation's content folders.

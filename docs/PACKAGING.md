@@ -5,13 +5,13 @@ installation notes are in [INSTALL.md](INSTALL.md).
 
 ## Targets
 
-| Target        | Package                   | Built on              | Notes                                                      |
-| ------------- | ------------------------- | --------------------- | ---------------------------------------------------------- |
-| windows-x64   | NSIS `*_x64-setup.exe`    | `windows-2025`        | Per-user install; WebView2 download bootstrapper (silent)  |
-| windows-arm64 | NSIS `*_arm64-setup.exe`  | `windows-11-arm`      | Native arm64 build; the Windows 11 interface check (D-048) |
-| macos-arm64   | `.app` in `*_aarch64.dmg` | `macos-15`            | Native build; minimum macOS 11.0                           |
-| macos-x64     | `.app` in `*_x64.dmg`     | `macos-15-intel`      | Native build; minimum macOS 11.0                           |
-| linux-x64     | `.deb`, `.AppImage`       | `debian:12` container | glibc 2.36 baseline; runtime dependencies generated        |
+| Target        | Package                   | Built on              | Notes                                                                                                       |
+| ------------- | ------------------------- | --------------------- | ----------------------------------------------------------------------------------------------------------- |
+| windows-x64   | NSIS `*_x64-setup.exe`    | `windows-2025`        | Per-user install; WebView2 download bootstrapper (silent)                                                   |
+| windows-arm64 | NSIS `*_arm64-setup.exe`  | `windows-11-arm`      | Native arm64 build; the Windows 11 interface check (D-048). Only on a manual run with `windows_arm` (D-007) |
+| macos-arm64   | `.app` in `*_aarch64.dmg` | `macos-15`            | Native build; minimum macOS 11.0                                                                            |
+| macos-x64     | `.app` in `*_x64.dmg`     | `macos-15-intel`      | Native build; minimum macOS 11.0                                                                            |
+| linux-x64     | `.deb`, `.AppImage`       | `debian:12` container | glibc 2.36 baseline; runtime dependencies generated                                                         |
 
 Pull requests neither build the macos-x64 package nor check its Rust core: Intel Macs on
 GitHub are few and slow. `main`, manual runs and the release archive do both.

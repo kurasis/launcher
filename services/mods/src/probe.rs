@@ -154,6 +154,13 @@ fn checks(file: Option<u64>) -> Vec<Check> {
             headers: &[],
         },
         Check {
+            name: "imgur_as_picture",
+            // The same, asked as a browser asks for an <img>.
+            url: "https://i.imgur.com/YTuxxOL.png".into(),
+            look: Look::Nothing,
+            headers: crate::fetch::PICTURE,
+        },
+        Check {
             name: "cf_search_page",
             url: crate::curseforge::search_url(SLUG),
             look: Look::PageData,

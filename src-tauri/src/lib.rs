@@ -887,6 +887,7 @@ fn handlers<R: tauri::Runtime>() -> impl Fn(tauri::ipc::Invoke<R>) -> bool + Sen
         commands::mods_identify,
         commands::mods_updates,
         commands::mods_set_enabled,
+        commands::mods_needed_by,
         commands::mods_remove,
         commands::mods_open_link,
         commands::skins_mine,

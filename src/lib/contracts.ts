@@ -1382,6 +1382,15 @@ export interface ModsPlan {
   totalBytes: number;
   /** On a metered connection, why this download asks first (D-051). */
   approval: ApprovalRequest | null;
+  /** Files there but turned off that this needs: turned on with it. */
+  turnOn: { path: string; title: string }[];
+}
+
+/** Which mods need one about to be turned off or removed. */
+export interface ModsNeededBy {
+  neededBy: string[];
+  /** What the launcher added that only it needed. */
+  unused: { path: string; title: string }[];
 }
 
 export interface ModsInstallPayload {

@@ -1396,6 +1396,7 @@ export type Messages = {
       readonly progress: string;
       readonly stop: string;
       readonly install: string;
+      readonly turnOn: (values: { names: string | number }) => string;
     };
     readonly pack: {
       readonly install: string;
@@ -1511,6 +1512,10 @@ export type Messages = {
         size: string | number;
       }) => string;
       readonly close: string;
+      readonly neededBy: (values: { names: string | number }) => string;
+      readonly turnOffAnyway: string;
+      readonly alsoRemove: (values: { names: string | number }) => string;
+      readonly checkingNeeds: string;
     };
   };
   readonly worlds: {
