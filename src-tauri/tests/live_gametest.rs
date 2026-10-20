@@ -40,7 +40,7 @@ use launcher_lib::net::{PublicClient, SourcePolicy};
 use launcher_lib::secrets::SecretString;
 use launcher_lib::state::dto::{
     CreateInstancePayload, JavaChoice, MutationRequest, SetInstanceJavaPayload,
-    UpdateInstanceSettingsPayload,
+    SetInstanceLoaderPayload, UpdateInstanceSettingsPayload,
 };
 use launcher_lib::state::{AppState, NoopSink};
 use launcher_lib::storage::models::{OperationKind, Outcome, Resolution};
@@ -229,33 +229,39 @@ async fn the_game_is_played_with_mods_and_skins() {
     ));
     let live = Arc::new(LiveSource::new(metadata, VERSION).unwrap());
     let display_name = format!("Game test {version} {loader_name} {mod_set}");
+    // The newest stable loader build, not Forge's "recommended" one: mods follow the
+    // newest builds (JourneyMap 6.0.9 needs a Forge 1.21.1 newer than 52.1.0).
+    let versions = live.loader_versions(kind, &version).await.unwrap();
+    let newest = versions
+        .iter()
+        .find(|v| v.stable)
+        .or_else(|| versions.first())
+        .expect("a loader version for this game version")
+        .id
+        .clone();
     let existing = state
         .snapshot()
         .instances
         .into_iter()
         .find(|i| i.display_name == display_name);
+    // A kept installation moves to the newest build; the install below applies it.
     let instance = match existing {
-        Some(instance) => instance,
-        None => {
-            let versions = live.loader_versions(kind, &version).await.unwrap();
-            let chosen = versions
-                .iter()
-                .find(|v| v.recommended)
-                .or_else(|| versions.first())
-                .expect("a loader version for this game version")
-                .id
-                .clone();
-            state
-                .create_instance(request(CreateInstancePayload {
-                    display_name: display_name.clone(),
-                    version_id: version.clone(),
-                    loader: Some(LoaderChoice {
-                        kind,
-                        version: chosen,
-                    }),
-                }))
-                .unwrap()
-        }
+        Some(instance) => state
+            .set_instance_loader(request(SetInstanceLoaderPayload {
+                instance_id: instance.id,
+                version: newest,
+            }))
+            .unwrap(),
+        None => state
+            .create_instance(request(CreateInstancePayload {
+                display_name: display_name.clone(),
+                version_id: version.clone(),
+                loader: Some(LoaderChoice {
+                    kind,
+                    version: newest,
+                }),
+            }))
+            .unwrap(),
     };
     let loader = instance.loader.clone().unwrap();
     notes.push(format!("- {} {}", loader.kind.name(), loader.version));
