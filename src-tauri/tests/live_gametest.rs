@@ -207,11 +207,23 @@ async fn the_game_is_played_with_mods_and_skins() {
     let mut notes: Vec<String> = Vec::new();
     println!("scenario {scenario}: {}", variant.describe());
 
-    let kind: LoaderKind = serde_json::from_value(serde_json::json!(loader_name))
-        .expect("GAMETEST_LOADER is fabric, neoforge or forge");
-    let bot_jar = built_jar(&jars, "launchergametest-", &loader_name, &version)
+    // "vanilla" is the game with no loader: the bot and the skins mod are Java agents.
+    let kind: Option<LoaderKind> = (loader_name != "vanilla").then(|| {
+        serde_json::from_value(serde_json::json!(loader_name))
+            .expect("GAMETEST_LOADER is vanilla, fabric, neoforge or forge")
+    });
+    assert!(
+        kind.is_some() || mod_set == "none",
+        "the game with no loader plays without mods"
+    );
+    let jar_kind = if kind.is_some() {
+        loader_name.as_str()
+    } else {
+        "agent"
+    };
+    let bot_jar = built_jar(&jars, "launchergametest-", jar_kind, &version)
         .expect("the test bot's jar for this version and loader in GAMETEST_JARS");
-    let skins_jar = built_jar(&jars, "launcherskins-", &loader_name, &version);
+    let skins_jar = built_jar(&jars, "launcherskins-", jar_kind, &version);
 
     // The installation: one per version, loader and mod set, kept between runs.
     let memory = MemoryPolicy::detect();
@@ -231,40 +243,49 @@ async fn the_game_is_played_with_mods_and_skins() {
     let display_name = format!("Game test {version} {loader_name} {mod_set}");
     // The newest stable loader build, not Forge's "recommended" one: mods follow the
     // newest builds (JourneyMap 6.0.9 needs a Forge 1.21.1 newer than 52.1.0).
-    let versions = live.loader_versions(kind, &version).await.unwrap();
-    let newest = versions
-        .iter()
-        .find(|v| v.stable)
-        .or_else(|| versions.first())
-        .expect("a loader version for this game version")
-        .id
-        .clone();
+    let newest = match kind {
+        Some(kind) => {
+            let versions = live.loader_versions(kind, &version).await.unwrap();
+            let newest = versions
+                .iter()
+                .find(|v| v.stable)
+                .or_else(|| versions.first())
+                .expect("a loader version for this game version")
+                .id
+                .clone();
+            Some(LoaderChoice {
+                kind,
+                version: newest,
+            })
+        }
+        None => None,
+    };
     let existing = state
         .snapshot()
         .instances
         .into_iter()
         .find(|i| i.display_name == display_name);
     // A kept installation moves to the newest build; the install below applies it.
-    let instance = match existing {
-        Some(instance) => state
+    let instance = match (existing, &newest) {
+        (Some(instance), Some(newest)) => state
             .set_instance_loader(request(SetInstanceLoaderPayload {
                 instance_id: instance.id,
-                version: newest,
+                version: newest.version.clone(),
             }))
             .unwrap(),
-        None => state
+        (Some(instance), None) => instance,
+        (None, _) => state
             .create_instance(request(CreateInstancePayload {
                 display_name: display_name.clone(),
                 version_id: version.clone(),
-                loader: Some(LoaderChoice {
-                    kind,
-                    version: newest,
-                }),
+                loader: newest.clone(),
             }))
             .unwrap(),
     };
-    let loader = instance.loader.clone().unwrap();
-    notes.push(format!("- {} {}", loader.kind.name(), loader.version));
+    notes.push(match &instance.loader {
+        Some(loader) => format!("- {} {}", loader.kind.name(), loader.version),
+        None => "- no mod loader: the bot and the skins mod run as Java agents".to_owned(),
+    });
     let source: Arc<dyn PlanSource> = live;
     let installer = InstallService::new(
         Arc::new(Arc::clone(&state)) as Arc<dyn StateAccess>,
@@ -303,13 +324,23 @@ async fn the_game_is_played_with_mods_and_skins() {
     clean_game_dir(&game_dir);
     let mods_dir = game_dir.join("mods");
     std::fs::create_dir_all(&mods_dir).unwrap();
-    std::fs::copy(&bot_jar, mods_dir.join(bot_jar.file_name().unwrap())).unwrap();
+    // With no loader the jars stay where they are and go on the command line.
+    let mut agents = Vec::new();
+    if kind.is_some() {
+        std::fs::copy(&bot_jar, mods_dir.join(bot_jar.file_name().unwrap())).unwrap();
+    } else {
+        agents.push(bot_jar.clone());
+    }
     // Our own build of the skins mod goes in under a name the launcher leaves
     // alone; without one the launcher adds the released mod as for a player.
     let own_skins = skins_jar.is_some();
     if let Some(jar) = &skins_jar {
-        let name = format!("gametest-{}", jar.file_name().unwrap().to_string_lossy());
-        std::fs::copy(jar, mods_dir.join(name)).unwrap();
+        if kind.is_some() {
+            let name = format!("gametest-{}", jar.file_name().unwrap().to_string_lossy());
+            std::fs::copy(jar, mods_dir.join(name)).unwrap();
+        } else {
+            agents.push(jar.clone());
+        }
         notes.push(format!(
             "- skins mod: this commit's build ({})",
             jar.file_name().unwrap().to_string_lossy()
@@ -363,8 +394,12 @@ async fn the_game_is_played_with_mods_and_skins() {
     // The skins this run's player wears, served from this computer.
     let server = skins::start().await;
     let bot_out = out.join("bot");
+    let agents: String = agents
+        .iter()
+        .map(|jar| format!("\"-javaagent:{}\" ", jar.display()))
+        .collect();
     let jvm = format!(
-        "\"-Dlaunchergametest.out={}\" -Dlaunchergametest.minutes={minutes} \
+        "{agents}\"-Dlaunchergametest.out={}\" -Dlaunchergametest.minutes={minutes} \
          -Dlaunchergametest.skin={} -Dlaunchergametest.skinFrames={} \
          -Dlaunchergametest.capeFrames={} -Dlauncherskins.api={}",
         bot_out.display(),

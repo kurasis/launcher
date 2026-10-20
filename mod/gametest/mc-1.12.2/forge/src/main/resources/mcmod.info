@@ -1,0 +1,10 @@
+[
+  {
+    "modid": "launchergametest",
+    "name": "Launcher game test",
+    "description": "The test bot of the launcher's game test. Never shipped to players.",
+    "version": "${version}",
+    "mcversion": "1.12.2",
+    "authorList": ["Launcher"]
+  }
+]

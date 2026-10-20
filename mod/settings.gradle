@@ -28,5 +28,6 @@ include 'mc-26.3:fabric', 'mc-26.3:neoforge', 'mc-26.3:forge', 'mc-26.3:agent'
 include 'mc-1.12.2:forge'
 // The test bot for game runs on the test machine (docs/GAMETEST.md); never shipped to players.
 include 'gametest:core'
-include 'gametest:mc-1.21.1:fabric', 'gametest:mc-1.21.1:neoforge', 'gametest:mc-1.21.1:forge'
-include 'gametest:mc-26.3:fabric', 'gametest:mc-26.3:neoforge', 'gametest:mc-26.3:forge'
+include 'gametest:mc-1.21.1:fabric', 'gametest:mc-1.21.1:neoforge', 'gametest:mc-1.21.1:forge', 'gametest:mc-1.21.1:agent'
+include 'gametest:mc-26.3:fabric', 'gametest:mc-26.3:neoforge', 'gametest:mc-26.3:forge', 'gametest:mc-26.3:agent'
+include 'gametest:mc-1.12.2:forge'
