@@ -280,9 +280,9 @@ describe('FeedView', () => {
     ]);
     expect(screen.queryByRole('button', { name: 'Show more' })).toBeNull();
     expect(calls.filter((c) => c.cmd === 'feed_page').map((c) => c.args)).toEqual([
-      { filter: null, before: null },
-      { filter: null, before: 'c2' },
-      { filter: null, before: 'c4' },
+      { filter: null, shortsOnly: false, before: null },
+      { filter: null, shortsOnly: false, before: 'c2' },
+      { filter: null, shortsOnly: false, before: 'c4' },
     ]);
 
     const side = screen.getByRole('complementary', { name: 'Updates, events and tips' });
@@ -315,6 +315,7 @@ describe('FeedView', () => {
       });
       expect(calls.filter((c) => c.cmd === 'feed_page').at(-1)?.args).toEqual({
         filter: null,
+        shortsOnly: false,
         before: 'c2',
       });
     } finally {
@@ -396,15 +397,34 @@ describe('FeedView', () => {
     expect(await screen.findByRole('button', { name: 'Install 26.3' })).toBeVisible();
     await screen.findByRole('list', { name: 'All' });
     expect(titles('All')).toEqual(['A short one', 'A long video']);
-    expect(screen.getByText('Shorts')).toBeVisible();
+    const list = screen.getByRole('list', { name: 'All' });
+    expect(within(list).getByText('Shorts')).toBeVisible();
     expect(screen.queryByRole('button', { name: 'Show more' })).toBeNull();
     expect(screen.queryByRole('region', { name: 'Update cycle' })).toBeNull();
     const chips = screen.getByRole('group', { name: 'Show in the feed' });
+    // With Shorts shown, they have a chip of their own.
     expect(
       within(chips)
         .getAllByRole('button')
         .map((b) => b.textContent),
-    ).toEqual(['All', 'Versions', 'Videos']);
+    ).toEqual(['All', 'Versions', 'Videos', 'Shorts']);
+    fireEvent.click(within(chips).getByRole('button', { name: 'Shorts' }));
+    await screen.findByRole('list', { name: 'Shorts' });
+    expect(titles('Shorts')).toEqual(['A short one']);
+  });
+
+  it('asks the core for Shorts alone under their chip', async () => {
+    const calls = backend();
+    show(snapshotWith({ shorts: true }));
+    const chips = await screen.findByRole('group', { name: 'Show in the feed' });
+    fireEvent.click(within(chips).getByRole('button', { name: 'Shorts' }));
+    await waitFor(() => {
+      expect(calls.filter((c) => c.cmd === 'feed_page').at(-1)?.args).toEqual({
+        filter: 'videos',
+        shortsOnly: true,
+        before: null,
+      });
+    });
   });
 
   it('opens a note and renders its blocks as text, never as HTML', async () => {

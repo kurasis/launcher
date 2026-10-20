@@ -108,7 +108,20 @@ export function NotePanel({
               )}
               <span className={styles.muted}>{shortDate(shown.date)}</span>
             </div>
-            <h2 id={titleId}>{shown.title}</h2>
+            <div className={styles.titleRow}>
+              <h2 id={titleId}>{shown.title}</h2>
+              {shown.version !== null && (
+                <div className={styles.titleAction}>
+                  <VersionAction
+                    snapshot={snapshot}
+                    version={shown.version}
+                    variant="primary"
+                    onOpenInstallations={onOpenInstallations}
+                    onInstallVersion={onInstallVersion}
+                  />
+                </div>
+              )}
+            </div>
           </div>
           <Button ref={closeRef} onClick={onClose}>
             {t.close}
@@ -139,26 +152,15 @@ export function NotePanel({
             <NoteBlocks blocks={note.blocks} onLink={onLink} />
           )}
         </div>
-        {(shown.version !== null || shown.url !== null) && (
+        {shown.url !== null && (
           <footer className={styles.drawerActions}>
-            {shown.version !== null && (
-              <VersionAction
-                snapshot={snapshot}
-                version={shown.version}
-                variant="primary"
-                onOpenInstallations={onOpenInstallations}
-                onInstallVersion={onInstallVersion}
-              />
-            )}
-            {shown.url !== null && (
-              <Button
-                onClick={() => {
-                  if (shown.url !== null) onLink(shown.url);
-                }}
-              >
-                {t.readOnSite}
-              </Button>
-            )}
+            <Button
+              onClick={() => {
+                if (shown.url !== null) onLink(shown.url);
+              }}
+            >
+              {t.readOnSite}
+            </Button>
           </footer>
         )}
       </div>

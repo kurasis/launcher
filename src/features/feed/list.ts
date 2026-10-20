@@ -8,8 +8,13 @@ import type {
 } from '../../lib/contracts';
 import { visibleParts } from './parts';
 
-/** What the chips show. */
-export type FeedFilter = 'all' | FeedBlock;
+/** What the chips show: Shorts are videos alone. */
+export type FeedFilter = 'all' | FeedBlock | 'shorts';
+
+/** The part of the feed a filter pages through; null for all. */
+export function filterPart(filter: FeedFilter): FeedBlock | null {
+  return filter === 'all' ? null : filter === 'shorts' ? 'videos' : filter;
+}
 
 export function itemKey(item: FeedItem): string {
   switch (item.type) {
@@ -42,7 +47,12 @@ function newestFirst(items: FeedItem[]): FeedItem[] {
 }
 
 export function wants(filter: FeedFilter, part: FeedBlock): boolean {
-  return filter === 'all' || filter === part;
+  return filter === 'all' || filterPart(filter) === part;
+}
+
+/** A video the filter shows: Shorts alone under Shorts. */
+export function videoWanted(filter: FeedFilter, video: FeedVideo): boolean {
+  return filter !== 'shorts' || video.short;
 }
 
 /** The feed kept by the core, as one list: shown when the pages cannot be fetched. */
@@ -56,7 +66,11 @@ export function keptItems(feed: Feed, settings: FeedSettings, filter: FeedFilter
     items.push(...parts.news.map((note): FeedItem => ({ type: 'note', note })));
   }
   if (wants(filter, 'videos')) {
-    items.push(...parts.videos.map((video): FeedItem => ({ type: 'video', video })));
+    items.push(
+      ...parts.videos
+        .filter((video) => videoWanted(filter, video))
+        .map((video): FeedItem => ({ type: 'video', video })),
+    );
   }
   if (wants(filter, 'streams')) {
     items.push(...parts.streams.map((stream): FeedItem => ({ type: 'stream', stream })));

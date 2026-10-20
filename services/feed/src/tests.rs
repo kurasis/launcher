@@ -418,7 +418,10 @@ fn streams_are_picked() {
                 "http://static-cdn.jtvnw.net/x.jpg",
             ),
         ],
-        &["blocked".to_owned()],
+        twitch::Blocked {
+            names: &["blocked".to_owned()],
+            words: &[],
+        },
         None,
     );
     let logins: Vec<&str> = streams.iter().map(|s| s.login.as_str()).collect();
@@ -435,7 +438,7 @@ fn streams_are_picked() {
     // A login Helix gave twice is listed once.
     let twice = pick(
         vec![raw("same", 1, false, THUMB), raw("same", 2, false, THUMB)],
-        &[],
+        twitch::Blocked::default(),
         None,
     );
     assert_eq!(twice.len(), 1);
@@ -446,13 +449,16 @@ fn streams_are_picked() {
 fn the_feed_lists_the_most_watched_minecraft_streams() {
     let mut other_game = raw("builder", 9000, false, THUMB);
     other_game.game_id = "509658".into();
-    let streams = twitch::top(vec![other_game, raw("small", 10, false, THUMB)], &[]);
+    let streams = twitch::top(
+        vec![other_game, raw("small", 10, false, THUMB)],
+        twitch::Blocked::default(),
+    );
     let logins: Vec<&str> = streams.iter().map(|s| s.login.as_str()).collect();
     assert_eq!(logins, ["small"]);
     let many: Vec<RawStream> = (0..20)
         .map(|i| raw(&format!("user{i}"), i, false, THUMB))
         .collect();
-    let top = twitch::top(many, &[]);
+    let top = twitch::top(many, twitch::Blocked::default());
     assert_eq!(top.len(), twitch::STREAMS);
     assert_eq!(top[0].login, "user19");
 }
@@ -460,16 +466,43 @@ fn the_feed_lists_the_most_watched_minecraft_streams() {
 #[test]
 fn our_editorial_blocks_streamers() {
     let editorial = Editorial::load(crate::EDITORIAL).unwrap();
+    let mut renamed = raw("someone", 30_000, false, THUMB);
+    renamed.user_name = "ZUBAREFFF_copy".into();
+    let mut casino = raw("casino_bot", 20_000, false, THUMB);
+    casino.title = "БОНУС 500%! Промокод в чате".into();
+    let mut slots = raw("slotter", 15_000, false, THUMB);
+    slots.title = "Big win on SLOTS".into();
     let streams = twitch::top(
         vec![
             raw("zubareff", 50_000, false, THUMB),
             raw("ZubarEFFF", 40_000, false, THUMB),
+            // The copies of the channel.
+            raw("zubarefff_8225539", 35_000, false, THUMB),
+            raw("zubar_efff_tv", 34_000, false, THUMB),
+            renamed,
+            casino,
+            slots,
             raw("small", 10, false, THUMB),
         ],
-        &editorial.twitch_blocked,
+        editorial.twitch_blocks(),
     );
     let logins: Vec<&str> = streams.iter().map(|s| s.login.as_str()).collect();
     assert_eq!(logins, ["small"]);
+    // A player's own channel is theirs to choose.
+    let own = twitch::own(
+        vec![raw("zubarefff_8225539", 35_000, false, THUMB)],
+        &["zubarefff_8225539".to_owned()],
+    );
+    assert_eq!(own.len(), 1);
+}
+
+#[test]
+fn blocked_entries_must_be_long_enough() {
+    assert!(Editorial::load("twitch_blocked = [\"ab_c\"]").is_err());
+    assert!(Editorial::load("twitch_blocked_words = [\" a \"]").is_err());
+    assert!(
+        Editorial::load("twitch_blocked = [\"abcd\"]\ntwitch_blocked_words = [\"bet\"]").is_ok()
+    );
 }
 
 #[test]
@@ -959,6 +992,13 @@ async fn the_endless_list_pages_through_everything() {
     let videos = json_of(&get(&app, "/v1/page?videos=ru&kinds=videos").await.2);
     assert_eq!(videos["items"].as_array().unwrap().len(), 1);
     assert_eq!(videos["items"][0]["video"]["id"], "abcdefghijk");
+    // Shorts only: that video is not one.
+    let shorts = json_of(
+        &get(&app, "/v1/page?videos=ru&kinds=videos&shorts=only")
+            .await
+            .2,
+    );
+    assert!(shorts["items"].as_array().unwrap().is_empty());
     let releases = json_of(&get(&app, "/v1/page?kinds=versions&snapshots=0").await.2);
     assert!(releases["items"].as_array().unwrap().is_empty());
     let en = json_of(&get(&app, "/v1/page").await.2);

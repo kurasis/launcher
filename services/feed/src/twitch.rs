@@ -80,17 +80,44 @@ pub struct RawStream {
     pub is_mature: bool,
 }
 
+/// What keeps a stream out of the automatic list (`editorial.toml`).
+#[derive(Debug, Clone, Copy, Default)]
+pub struct Blocked<'a> {
+    /// Found anywhere in the login or the shown name, `_` aside, so the
+    /// copies of a channel (`name_8225539`) go too.
+    pub names: &'a [String],
+    /// Found anywhere in the title: gambling streams under Minecraft.
+    pub words: &'a [String],
+}
+
+/// Lower case without `_`, as blocked names are matched.
+fn plain(text: &str) -> String {
+    text.to_lowercase().replace('_', "")
+}
+
+impl Blocked<'_> {
+    pub fn stream(&self, login: &str, name: &str, title: &str) -> bool {
+        let (login, name) = (plain(login), plain(name));
+        let title = title.to_lowercase();
+        self.names
+            .iter()
+            .map(|b| plain(b))
+            .any(|b| login.contains(&b) || name.contains(&b))
+            || self.words.iter().any(|w| title.contains(&w.to_lowercase()))
+    }
+}
+
 /// Streams fit for the feed: not marked for adults, not blocked by us, of
 /// `game` when one is given, with a sound login and a Twitch preview address;
 /// each login once, the most watched first.
-pub fn pick(data: Vec<RawStream>, blocked: &[String], game: Option<&str>) -> Vec<Stream> {
+pub fn pick(data: Vec<RawStream>, blocked: Blocked<'_>, game: Option<&str>) -> Vec<Stream> {
     let mut out: Vec<Stream> = data
         .into_iter()
         .filter(|s| !s.is_mature)
         .filter(|s| game.is_none_or(|g| s.game_id == g))
         .filter_map(|s| {
             let login = s.user_login.to_ascii_lowercase();
-            if !twitch_login(&login) || blocked.iter().any(|b| b.eq_ignore_ascii_case(&login)) {
+            if !twitch_login(&login) || blocked.stream(&login, &s.user_name, &s.title) {
                 return None;
             }
             let preview = s
@@ -126,7 +153,7 @@ pub fn pick(data: Vec<RawStream>, blocked: &[String], game: Option<&str>) -> Vec
 }
 
 /// The feed's streams in one language: Minecraft only, at most `STREAMS`.
-pub fn top(data: Vec<RawStream>, blocked: &[String]) -> Vec<Stream> {
+pub fn top(data: Vec<RawStream>, blocked: Blocked<'_>) -> Vec<Stream> {
     let mut streams = pick(data, blocked, Some(MINECRAFT));
     streams.truncate(STREAMS);
     streams
@@ -135,7 +162,7 @@ pub fn top(data: Vec<RawStream>, blocked: &[String]) -> Vec<Stream> {
 /// A player's own channels live now: any game (they chose them), not for
 /// adults, only those asked; the most watched first.
 pub fn own(data: Vec<RawStream>, logins: &[String]) -> Vec<Stream> {
-    let mut streams = pick(data, &[], None);
+    let mut streams = pick(data, Blocked::default(), None);
     streams.retain(|s| logins.contains(&s.login));
     streams.truncate(logins.len());
     streams
@@ -236,7 +263,7 @@ impl Twitch {
         &mut self,
         http: &reqwest::Client,
         lang: &str,
-        blocked: &[String],
+        blocked: Blocked<'_>,
     ) -> Result<Vec<Stream>, String> {
         let url = url::Url::parse_with_params(
             "https://api.twitch.tv/helix/streams",

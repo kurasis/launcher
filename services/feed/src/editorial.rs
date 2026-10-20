@@ -63,6 +63,8 @@ pub struct Tip {
 pub struct Editorial {
     #[serde(default)]
     pub twitch_blocked: Vec<String>,
+    #[serde(default)]
+    pub twitch_blocked_words: Vec<String>,
     #[serde(default, rename = "channel")]
     pub channels: Vec<Channel>,
     #[serde(default, rename = "event")]
@@ -115,8 +117,27 @@ pub struct ShownAnnouncement {
 }
 
 impl Editorial {
+    /// What keeps a stream out of the automatic list.
+    pub fn twitch_blocks(&self) -> crate::twitch::Blocked<'_> {
+        crate::twitch::Blocked {
+            names: &self.twitch_blocked,
+            words: &self.twitch_blocked_words,
+        }
+    }
+
     pub fn load(source: &str) -> Result<Self, String> {
         let editorial: Self = toml::from_str(source).map_err(|e| e.to_string())?;
+        // A short entry would block nearly every stream.
+        for name in &editorial.twitch_blocked {
+            if name.replace('_', "").chars().count() < 4 {
+                return Err(format!("blocked name too short: {name}"));
+            }
+        }
+        for word in &editorial.twitch_blocked_words {
+            if word.trim().chars().count() < 3 {
+                return Err(format!("blocked word too short: {word}"));
+            }
+        }
         for channel in &editorial.channels {
             if !channel_id(&channel.id) {
                 return Err(format!("bad channel id {}", channel.id));

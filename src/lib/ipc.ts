@@ -466,9 +466,15 @@ export const ipc = {
     invoke<OwnStreamer[]>('feed_remove_streamer', { login }),
   /** The live streams of the player's own Twitch channels. */
   feedOwnStreams: (): Promise<FeedStream[]> => invoke<FeedStream[]>('feed_own_streams'),
-  /** A page of the endless list: one part or all (`null`), after the cursor `before`. */
-  feedPage: (filter: FeedBlock | null, before: string | null): Promise<FeedPage> =>
-    invoke<FeedPage>('feed_page', { filter, before }),
+  /**
+   * A page of the endless list: one part or all (`null`), or the Shorts alone,
+   * after the cursor `before`.
+   */
+  feedPage: (
+    filter: FeedBlock | null,
+    before: string | null,
+    shortsOnly = false,
+  ): Promise<FeedPage> => invoke<FeedPage>('feed_page', { filter, shortsOnly, before }),
   // Worlds with friends (D-068). Failures are LauncherErrors; `worldsProblemOf`
   // reads the service's problem from one.
   worldsState: (): Promise<WorldsState> => invoke<WorldsState>('worlds_state'),

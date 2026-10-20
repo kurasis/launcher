@@ -11,7 +11,15 @@ import type {
 } from '../../lib/contracts';
 import { ipc } from '../../lib/ipc';
 import { strings } from '../../lib/strings';
-import { type FeedFilter, itemKey, keptItems, shownItems, wants } from './list';
+import {
+  type FeedFilter,
+  filterPart,
+  itemKey,
+  keptItems,
+  shownItems,
+  videoWanted,
+  wants,
+} from './list';
 import { kindLabel } from './parts';
 import { pictureUrl } from './pictureUrl';
 import { relativeTime, shortDate } from './when';
@@ -182,7 +190,8 @@ export function FeedList({
   // Answers that come after the list is gone are dropped.
   const alive = useRef(true);
   const end = useRef<HTMLDivElement>(null);
-  const part = filter === 'all' ? null : filter;
+  const part = filterPart(filter);
+  const shortsOnly = filter === 'shorts';
   // What the kept list is made from when the pages fail; the list starts
   // again only when its key changes, not when these do.
   const feedRef = useRef(feed);
@@ -195,7 +204,7 @@ export function FeedList({
   useEffect(() => {
     alive.current = true;
     ipc
-      .feedPage(part, null)
+      .feedPage(part, null, shortsOnly)
       .then((page) => {
         if (!alive.current) return;
         setPages(page.items);
@@ -211,13 +220,13 @@ export function FeedList({
     return () => {
       alive.current = false;
     };
-  }, [part, filter]);
+  }, [part, filter, shortsOnly]);
 
   const loadMore = useCallback(() => {
     if (next === null || (loading !== 'idle' && loading !== 'failed')) return;
     setLoading('more');
     ipc
-      .feedPage(part, next)
+      .feedPage(part, next, shortsOnly)
       .then((page) => {
         if (!alive.current) return;
         setPages((before) => {
@@ -230,7 +239,7 @@ export function FeedList({
       .catch(() => {
         if (alive.current) setLoading('failed');
       });
-  }, [next, loading, part]);
+  }, [next, loading, part, shortsOnly]);
 
   const watching = typeof IntersectionObserver !== 'undefined';
   useEffect(() => {
@@ -250,13 +259,13 @@ export function FeedList({
 
   const ownShown =
     wants(filter, 'videos') && !settings.hidden.includes('videos')
-      ? own.filter((video) => settings.shorts || !video.short)
+      ? own.filter((video) => (settings.shorts || !video.short) && videoWanted(filter, video))
       : [];
   const streamsShown =
     wants(filter, 'streams') && !settings.hidden.includes('streams') ? ownStreams : [];
   const items = shownItems(pages, ownShown, streamsShown, next !== null && !kept, skip);
   const empty =
-    filter === 'videos'
+    filter === 'videos' || filter === 'shorts'
       ? t.noVideos
       : filter === 'streams'
         ? t.noStreams
