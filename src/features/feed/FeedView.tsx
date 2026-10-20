@@ -28,7 +28,7 @@ import styles from './Feed.module.css';
 
 const t = strings.feed;
 
-const FILTERS: readonly FeedFilter[] = ['all', 'versions', 'news', 'videos', 'streams'];
+const FILTERS: readonly FeedFilter[] = ['all', 'versions', 'news', 'videos', 'shorts', 'streams'];
 
 interface FeedViewProps {
   snapshot: AppSnapshot;
@@ -469,7 +469,13 @@ function FeedParts({
 }: FeedPartsProps) {
   const filterLabel = useId();
   const parts = visibleParts(feed, settings);
-  const filters = FILTERS.filter((item) => item === 'all' || !parts.hidden.has(item));
+  const filters = FILTERS.filter((item) =>
+    item === 'all'
+      ? true
+      : item === 'shorts'
+        ? settings.shorts && !parts.hidden.has('videos')
+        : !parts.hidden.has(item),
+  );
   const filter = filters.includes(chosen) ? chosen : 'all';
   const heroNote = parts.versions[0] ?? null;
 

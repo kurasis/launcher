@@ -2561,17 +2561,25 @@ pub async fn feed_get<R: Runtime>(app: AppHandle<R>, refresh: bool) -> FeedResul
         .await
 }
 
-/// A page of the endless list (D-067): `filter` one part or all of them,
-/// `before` the cursor the page before ended with.
+/// A page of the endless list (D-067): `filter` one part or all of them, or
+/// `shorts_only` the Shorts alone; `before` the cursor the page before ended
+/// with.
 #[tauri::command]
 pub async fn feed_page<R: Runtime>(
     app: AppHandle<R>,
     filter: Option<crate::storage::models::FeedBlock>,
+    shorts_only: Option<bool>,
     before: Option<String>,
 ) -> FeedResult<FeedPage> {
     let (languages, settings) = feed_languages(&app)?;
     feed_service(&app)
-        .page(languages, &settings, filter, before.as_deref())
+        .page(
+            languages,
+            &settings,
+            filter,
+            shorts_only.unwrap_or(false),
+            before.as_deref(),
+        )
         .await
 }
 

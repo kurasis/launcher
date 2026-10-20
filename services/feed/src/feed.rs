@@ -339,7 +339,7 @@ impl Feed {
         };
         for lang in LANGS {
             let streams = twitch
-                .streams(&self.http, lang, &self.editorial.twitch_blocked)
+                .streams(&self.http, lang, self.editorial.twitch_blocks())
                 .await?;
             lock_mut(&self.saved)
                 .streams
@@ -598,7 +598,10 @@ impl Feed {
                 .filter_map(|c| saved.channels.get(&c.id))
                 .flat_map(|c| c.videos.iter());
             for video in videos {
-                if (video.short && !query.shorts) || !seen.insert(video.id.as_str()) {
+                if (video.short && !query.shorts)
+                    || (!video.short && query.only_shorts)
+                    || !seen.insert(video.id.as_str())
+                {
                     continue;
                 }
                 if let Some(time) = sort_time(&video.date) {
@@ -806,6 +809,8 @@ pub struct PageQuery {
     pub kinds: Vec<Kind>,
     pub snapshots: bool,
     pub shorts: bool,
+    /// Videos are Shorts only (`shorts=only`).
+    pub only_shorts: bool,
     /// The last item of the page before: its time and key.
     pub before: Option<(String, String)>,
     pub limit: usize,

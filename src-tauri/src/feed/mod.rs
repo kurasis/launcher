@@ -33,7 +33,9 @@ use crate::storage::atomic;
 use crate::storage::models::{FeedBlock, FeedSettings, VideoLanguage};
 use crate::storage::paths::DataRoot;
 use crate::sync::lock;
-use model::{Feed, FeedPage, Lang, Note, OwnChannel, OwnStreamer, PictureKind, Stream, Video};
+use model::{
+    Feed, FeedItem, FeedPage, Lang, Note, OwnChannel, OwnStreamer, PictureKind, Stream, Video,
+};
 
 /// The service.
 pub const BASE: &str = "https://feed.lapi.sh";
@@ -543,21 +545,29 @@ impl FeedService {
     }
 
     /// A page of the endless list: `filter` one part or all, as the settings
-    /// show them; `before` the cursor of the page before. Pages are not kept:
-    /// without the service the interface shows the feed kept on disk.
+    /// show them, or with `shorts_only` the Shorts alone (when the settings
+    /// show Shorts); `before` the cursor of the page before. Pages are not
+    /// kept: without the service the interface shows the feed kept on disk.
     pub async fn page(
         &self,
         languages: Languages,
         settings: &FeedSettings,
         filter: Option<FeedBlock>,
+        shorts_only: bool,
         before: Option<&str>,
     ) -> FeedResult<FeedPage> {
         if before.is_some_and(|b| !model::cursor(b)) {
             return Err(FeedProblem::NotFound);
         }
+        let filter = if shorts_only {
+            Some(FeedBlock::Videos)
+        } else {
+            filter
+        };
         let kinds: Vec<FeedBlock> = FeedBlock::ALL
             .into_iter()
             .filter(|k| filter.is_none_or(|f| f == *k) && !settings.hidden.contains(k))
+            .filter(|_| !shorts_only || settings.shorts)
             .collect();
         if kinds.is_empty() {
             return Ok(FeedPage {
@@ -573,7 +583,14 @@ impl FeedService {
                 .append_pair("videos", languages.videos.as_str())
                 .append_pair("kinds", &kind_list(&kinds))
                 .append_pair("snapshots", if settings.snapshots { "1" } else { "0" })
-                .append_pair("shorts", if settings.shorts { "1" } else { "0" });
+                .append_pair(
+                    "shorts",
+                    match (shorts_only, settings.shorts) {
+                        (true, _) => "only",
+                        (false, true) => "1",
+                        (false, false) => "0",
+                    },
+                );
             if let Some(before) = before {
                 query.append_pair("before", before);
             }
@@ -581,7 +598,14 @@ impl FeedService {
         let request = self.client.get(&url).map_err(|_| FeedProblem::Server)?;
         let answer = self.send(request, model::MAX_FEED_BYTES).await?;
         match (answer.status, answer.body) {
-            (200, Some(body)) => model::page(&body, &kinds).ok_or(FeedProblem::Server),
+            (200, Some(body)) => {
+                let mut page = model::page(&body, &kinds).ok_or(FeedProblem::Server)?;
+                if shorts_only {
+                    page.items
+                        .retain(|item| matches!(item, FeedItem::Video { video } if video.short));
+                }
+                Ok(page)
+            }
             (status, body) => Err(problem_of(&Answer { status, body })),
         }
     }

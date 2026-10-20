@@ -66,6 +66,7 @@ export type Messages = {
       readonly versions: string;
       readonly news: string;
       readonly videos: string;
+      readonly shorts: string;
       readonly streams: string;
     };
     readonly articles: string;

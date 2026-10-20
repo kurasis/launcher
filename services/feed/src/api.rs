@@ -164,7 +164,8 @@ async fn get_page(State(app): State<Arc<App>>, Query(q): Query<PageParams>) -> R
         videos: feed::lang(q.videos.as_deref()),
         kinds,
         snapshots: q.snapshots.as_deref() != Some("0"),
-        shorts: q.shorts.as_deref() == Some("1"),
+        shorts: matches!(q.shorts.as_deref(), Some("1" | "only")),
+        only_shorts: q.shorts.as_deref() == Some("only"),
         before,
         limit: q
             .limit
