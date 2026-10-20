@@ -570,6 +570,7 @@ pub fn router(app: Arc<App>) -> Router {
         .route("/authorize", get(web::authorize))
         .route("/login", get(web::login_screen).post(web::login))
         .route("/register", get(web::register_screen).post(web::register))
+        .route("/register/check", post(web::register_check))
         .route("/app/done", get(web::done))
         .route("/delete", get(web::delete_form).post(web::delete))
         .route("/delete/confirm", post(web::delete_confirm))
@@ -581,6 +582,7 @@ pub fn router(app: Arc<App>) -> Router {
             get(web::reset_confirm_form).post(web::reset_confirm),
         )
         .route("/static/style.css", get(web::style))
+        .route("/static/register.js", get(web::register_script))
         // Forms and JSON bodies are small; nothing bigger is read.
         .layer(DefaultBodyLimit::max(16 * 1024))
         .layer(middleware::from_fn_with_state(Arc::clone(&app), admit))

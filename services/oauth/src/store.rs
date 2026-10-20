@@ -360,6 +360,19 @@ impl Store {
             .map_err(|e| e.to_string())
     }
 
+    /// Whether an account has this nick, in any case.
+    pub fn nick_taken(&self, nick: &str) -> Result<bool, String> {
+        self.db()
+            .query_row(
+                "SELECT 1 FROM accounts WHERE nick_key = ?1",
+                [crate::rules::nick_key(nick)],
+                |_| Ok(()),
+            )
+            .optional()
+            .map(|r| r.is_some())
+            .map_err(|e| e.to_string())
+    }
+
     pub fn set_nick(&self, id: &str, nick: &str) -> Result<Result<(), Taken>, String> {
         let key = crate::rules::nick_key(nick);
         let db = self.db();
@@ -1075,6 +1088,14 @@ impl Store {
             "registeredLastDay": one("SELECT COUNT(*) FROM accounts WHERE created > ?1 - 86400")?,
             "activeSessions": one("SELECT COUNT(*) FROM sessions WHERE revoked = 0 AND expires > ?1")?,
             "lettersWaiting": one("SELECT COUNT(*) FROM outbox WHERE sent IS NULL AND body != '' AND created > ?1 - 3 * 86400")?,
+            // Sign-ins that ended early show here: a reused refresh token
+            // ends its session.
+            "eventsLastDay": {
+                "signedIn": one("SELECT COUNT(*) FROM events WHERE kind = 'signed-in' AND at > ?1 - 86400")?,
+                "signedOut": one("SELECT COUNT(*) FROM events WHERE kind = 'signed-out' AND at > ?1 - 86400")?,
+                "refreshReused": one("SELECT COUNT(*) FROM events WHERE kind = 'refresh-reused' AND at > ?1 - 86400")?,
+            },
+            "sessionsEndedLastDay": one("SELECT COUNT(*) FROM sessions WHERE revoked = 1 AND last_used > ?1 - 86400")?,
         }))
     }
 }

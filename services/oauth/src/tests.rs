@@ -1461,3 +1461,97 @@ async fn the_owner_exports_their_data_and_deletes_the_account_for_good() {
     let listed: serde_json::Value = serde_json::from_slice(&bytes).unwrap();
     assert_eq!(listed["deleted"][0]["id"], id);
 }
+
+#[tokio::test]
+async fn the_registration_page_checks_nick_and_password_while_typing() {
+    let t = setup();
+    t.account("Taken", "198.51.100.50").await;
+    let (page, rid, csrf, cookie) = t.open("register", "198.51.100.51").await;
+    assert!(
+        page.body
+            .contains("<script src=\"/static/register.js\" defer>")
+    );
+    let csp = page.headers[header::CONTENT_SECURITY_POLICY]
+        .to_str()
+        .unwrap()
+        .to_owned();
+    assert!(csp.contains("script-src 'self' ") && csp.contains("connect-src 'self' "));
+    let script = t.send(t.get("/static/register.js", "198.51.100.51")).await;
+    assert_eq!(script.status, StatusCode::OK);
+    assert!(script.body.contains("/register/check") && script.body.contains("textContent"));
+    assert!(!script.body.contains("innerHTML"));
+    let check = |nick: &str, password: &str, password2: &str, cookie: Option<&str>| {
+        t.post_form(
+            "/register/check",
+            "198.51.100.51",
+            cookie,
+            &[
+                ("rid", &rid),
+                ("csrf", &csrf),
+                ("nick", nick),
+                ("email", "steve@example.com"),
+                ("password", password),
+                ("password2", password2),
+            ],
+        )
+    };
+    // Taken in any case; free; not a nick; nothing typed yet.
+    let a = t.send(check("tAKEN", "", "", Some(&cookie))).await.json();
+    assert_eq!(a["nick"]["ok"], false);
+    assert_eq!(a["nick"]["text"], "Этот ник уже занят.");
+    assert!(a["password"].is_null() && a["password2"].is_null());
+    let a = t.send(check("Fresh_1", "", "", Some(&cookie))).await.json();
+    assert_eq!(
+        a["nick"],
+        serde_json::json!({"ok": true, "text": "Ник свободен."})
+    );
+    let a = t.send(check("admin", "", "", Some(&cookie))).await.json();
+    assert_eq!(a["nick"]["text"], "Этот ник зарезервирован.");
+    let a = t
+        .send(check("<b>x</b>", "", "", Some(&cookie)))
+        .await
+        .json();
+    assert_eq!(a["nick"]["ok"], false);
+    assert!(t.send(check("", "", "", Some(&cookie))).await.json()["nick"].is_null());
+    // The password as the form checks it, and the repeat.
+    let a = t
+        .send(check("Fresh_1", "short", "", Some(&cookie)))
+        .await
+        .json();
+    assert_eq!(
+        a["password"]["text"],
+        "Пароль должен быть не короче 10 символов."
+    );
+    let a = t
+        .send(check("Fresh_1", "fresh_1fresh_1", "x", Some(&cookie)))
+        .await
+        .json();
+    assert_eq!(
+        a["password"]["text"],
+        "Пароль не должен содержать ник или email."
+    );
+    assert_eq!(a["password2"]["text"], "Пароли не совпадают.");
+    let a = t
+        .send(check("Fresh_1", PASSWORD, PASSWORD, Some(&cookie)))
+        .await
+        .json();
+    assert_eq!(
+        a["password"],
+        serde_json::json!({"ok": true, "text": "Пароль подходит."})
+    );
+    assert_eq!(a["password2"]["ok"], true);
+    // Only the open sign-in with its cookie may ask.
+    assert_eq!(
+        t.send(check("Fresh_1", "", "", None)).await.status,
+        StatusCode::FORBIDDEN
+    );
+    let stranger = t
+        .send(t.post_form(
+            "/register/check",
+            "198.51.100.51",
+            Some(&cookie),
+            &[("rid", "x"), ("csrf", &csrf), ("nick", "Taken")],
+        ))
+        .await;
+    assert_eq!(stranger.status, StatusCode::GONE);
+}

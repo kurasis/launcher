@@ -228,6 +228,7 @@ fn login_page(
             (t.no_account, t.register, &register),
             ("", t.forgot, &reset),
         ],
+        live_checks: false,
     })
 }
 
@@ -301,6 +302,7 @@ fn register_page(
         submit: t.register,
         turnstile: Some((app.config.turnstile_site_key.as_str(), "register")),
         links: &[(t.have_account, t.sign_in, &login)],
+        live_checks: true,
     })
 }
 
@@ -344,6 +346,82 @@ pub async fn register_screen(State(app): State<Arc<App>>, Query(q): Query<RidQue
         Ok(None) => expired(Lang::En),
         Err(()) => failed(Lang::En),
     }
+}
+
+#[derive(Deserialize, Default)]
+#[serde(default)]
+pub struct CheckForm {
+    rid: String,
+    csrf: String,
+    nick: String,
+    email: String,
+    password: String,
+    password2: String,
+}
+
+/// One field's verdict for the registration page.
+fn verdict(ok: bool, text: &str) -> serde_json::Value {
+    serde_json::json!({ "ok": ok, "text": text })
+}
+
+/// Checks the registration fields while they are typed: whether the nick is
+/// free and the password fits, in the page's language. Only an open sign-in
+/// with its cookie may ask, and each address only so often, so the nick check
+/// does not become a list of who has an account. The password is checked as
+/// the form would check it and kept nowhere.
+pub async fn register_check(
+    State(app): State<Arc<App>>,
+    headers: HeaderMap,
+    Form(form): Form<CheckForm>,
+) -> Response {
+    let request = match open_request(&app, &form.rid) {
+        Ok(Some(request)) => request,
+        Ok(None) => return StatusCode::GONE.into_response(),
+        Err(()) => return StatusCode::INTERNAL_SERVER_ERROR.into_response(),
+    };
+    if !csrf_ok(&headers, &form.csrf, &request.csrf) {
+        return StatusCode::FORBIDDEN.into_response();
+    }
+    if !app
+        .limiter
+        .allow(client_ip(&headers), "register-check", 600)
+    {
+        return StatusCode::TOO_MANY_REQUESTS.into_response();
+    }
+    let t = texts(Lang::parse(&request.lang));
+    let nick = match rules::nick(&form.nick) {
+        _ if form.nick.trim().is_empty() => serde_json::Value::Null,
+        Err(p) => verdict(false, (t.problem)(p)),
+        Ok(nick) => match app.store.nick_taken(&nick) {
+            Ok(true) => verdict(false, (t.problem)(Problem::NickTaken)),
+            Ok(false) => verdict(true, t.nick_free),
+            Err(_) => serde_json::Value::Null,
+        },
+    };
+    let password = if form.password.is_empty() {
+        serde_json::Value::Null
+    } else {
+        match rules::password(&form.password, form.nick.trim(), form.email.trim()) {
+            Err(p) => verdict(false, (t.problem)(p)),
+            Ok(()) => verdict(true, t.password_ok),
+        }
+    };
+    let password2 = if form.password2.is_empty() {
+        serde_json::Value::Null
+    } else if form.password2 == form.password {
+        verdict(true, t.passwords_same)
+    } else {
+        verdict(false, (t.problem)(Problem::PasswordsDiffer))
+    };
+    (
+        [(header::CACHE_CONTROL, "no-store")],
+        axum::Json(serde_json::json!({
+            "nick": nick,
+            "password": password,
+            "password2": password2,
+        })),
+    )
+        .into_response()
 }
 
 /// Ends the sign-in with a code and sends the window to the launcher's address.
@@ -670,6 +748,7 @@ fn reset_page(app: &App, lang: Lang, csrf: &str, email: &str, errors: &[&str]) -
             submit: t.reset_send,
             turnstile: Some((app.config.turnstile_site_key.as_str(), "reset")),
             links: &[],
+            live_checks: false,
         }),
         csrf,
     )
@@ -787,6 +866,7 @@ fn new_password_page(lang: Lang, csrf: &str, link_token: &str, errors: &[&str]) 
             submit: t.reset_save,
             turnstile: None,
             links: &[],
+            live_checks: false,
         }),
         csrf,
     )
@@ -903,6 +983,18 @@ pub async fn reset_confirm(
     pages::message(lang, t.reset_title, t.reset_done)
 }
 
+pub async fn register_script() -> Response {
+    (
+        [
+            (header::CONTENT_TYPE, "text/javascript; charset=utf-8"),
+            (header::CACHE_CONTROL, "public, max-age=3600"),
+            (header::X_CONTENT_TYPE_OPTIONS, "nosniff"),
+        ],
+        pages::REGISTER_SCRIPT,
+    )
+        .into_response()
+}
+
 pub async fn style() -> Response {
     (
         [
@@ -956,6 +1048,7 @@ fn delete_page(app: &App, lang: Lang, csrf: &str, login: &str, errors: &[&str]) 
             submit: t.delete_next,
             turnstile,
             links: &[],
+            live_checks: false,
         }),
         csrf,
     )
@@ -1050,6 +1143,7 @@ pub async fn delete(
             submit: t.delete_submit,
             turnstile: None,
             links: &[],
+            live_checks: false,
         }),
         &csrf,
     )
