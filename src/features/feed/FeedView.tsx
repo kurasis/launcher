@@ -5,7 +5,6 @@ import { StatusBadge } from '../../components/StatusBadge';
 import type {
   AppSnapshot,
   Feed,
-  FeedBlock,
   FeedProblem,
   FeedSettings,
   FeedStream,
@@ -18,6 +17,8 @@ import { feedProblem, ipc } from '../../lib/ipc';
 import { strings } from '../../lib/strings';
 import { useCommand } from '../../lib/useCommand';
 import { gameLabel } from '../instances/loaderLabel';
+import { FeedList } from './FeedList';
+import type { FeedFilter } from './list';
 import { NotePanel } from './NotePanel';
 import { kindLabel, visibleParts } from './parts';
 import { pictureUrl } from './pictureUrl';
@@ -26,8 +27,6 @@ import styles from './Feed.module.css';
 
 const t = strings.feed;
 
-/** What the chips show. */
-export type FeedFilter = 'all' | FeedBlock;
 const FILTERS: readonly FeedFilter[] = ['all', 'versions', 'news', 'videos', 'streams'];
 
 interface FeedViewProps {
@@ -48,10 +47,6 @@ function lastPlayed(instances: InstanceSummary[]): InstanceSummary | null {
     }
   }
   return found;
-}
-
-function newestFirst(a: NoteCard, b: NoteCard): number {
-  return b.date.localeCompare(a.date);
 }
 
 /** "Continue playing": the installation played last, with Play. */
@@ -165,103 +160,6 @@ function HeroCard({
         </div>
       </div>
     </section>
-  );
-}
-
-function NoteCardItem({ card, onOpen }: { card: NoteCard; onOpen: (card: NoteCard) => void }) {
-  const image = pictureUrl(card.image);
-  return (
-    <li>
-      <article className={styles.card}>
-        {image !== null && <img className={styles.cardPicture} src={image} alt="" loading="lazy" />}
-        <div className={styles.cardText}>
-          <div className={styles.badges}>
-            <StatusBadge
-              tone={card.kind === null ? 'neutral' : 'success'}
-              label={kindLabel(card)}
-            />
-            <span className={styles.muted}>{shortDate(card.date)}</span>
-            {card.translated && <StatusBadge tone="warning" label={t.machineTranslated} />}
-          </div>
-          <h3 className={styles.cardTitle}>
-            <button
-              type="button"
-              className={styles.cardButton}
-              onClick={() => {
-                onOpen(card);
-              }}
-            >
-              {card.title}
-            </button>
-          </h3>
-          {card.summary !== '' && <p className={styles.summary}>{card.summary}</p>}
-        </div>
-      </article>
-    </li>
-  );
-}
-
-function VideoItem({ video, onPlay }: { video: FeedVideo; onPlay: (video: FeedVideo) => void }) {
-  const image = pictureUrl(video.image);
-  return (
-    <li className={styles.tile}>
-      <button
-        type="button"
-        className={styles.tileButton}
-        aria-label={t.watchVideo({ title: video.title, channel: video.channel })}
-        onClick={() => {
-          onPlay(video);
-        }}
-      >
-        <span className={styles.preview}>
-          {image !== null && <img src={image} alt="" loading="lazy" />}
-          {video.short && (
-            <span className={styles.overlayBadge}>
-              <StatusBadge tone="neutral" label={t.short} />
-            </span>
-          )}
-        </span>
-        <span className={styles.tileTitle}>{video.title}</span>
-        <span className={styles.muted}>
-          {video.channel} · {relativeTime(video.date)}
-        </span>
-      </button>
-    </li>
-  );
-}
-
-function StreamItem({
-  stream,
-  onPlay,
-}: {
-  stream: FeedStream;
-  onPlay: (stream: FeedStream) => void;
-}) {
-  const image = pictureUrl(stream.image);
-  const viewers = t.viewers({ count: stream.viewers });
-  return (
-    <li className={styles.tile}>
-      <button
-        type="button"
-        className={styles.tileButton}
-        aria-label={t.watchStream({ name: stream.name, title: stream.title, viewers })}
-        onClick={() => {
-          onPlay(stream);
-        }}
-      >
-        <span className={styles.preview}>
-          {image !== null && <img src={image} alt="" loading="lazy" />}
-          <span className={styles.overlayBadge}>
-            <StatusBadge tone="danger" label={t.live} />
-          </span>
-        </span>
-        <span className={styles.tileTitle}>{stream.name}</span>
-        <span className={styles.muted}>
-          {viewers}
-          {stream.title !== '' && ` · ${stream.title}`}
-        </span>
-      </button>
-    </li>
   );
 }
 
@@ -388,6 +286,8 @@ export function FeedView({ snapshot, onOpenInstallations, onInstallVersion }: Fe
   const [own, setOwn] = useState<FeedVideo[]>([]);
   const [refreshing, setRefreshing] = useState(false);
   const [chosen, setFilter] = useState<FeedFilter>('all');
+  // Each Refresh starts the list again.
+  const [refreshes, setRefreshes] = useState(0);
   const [open, setOpen] = useState<NoteCard | null>(null);
   const [actionProblem, setActionProblem] = useState<FeedProblem | null>(null);
   const fetchFeed = useCallback(
@@ -452,6 +352,7 @@ export function FeedView({ snapshot, onOpenInstallations, onInstallVersion }: Fe
           setRefreshing(true);
           void fetchFeed(true).finally(() => {
             setRefreshing(false);
+            setRefreshes((count) => count + 1);
           });
         }}
       >
@@ -467,6 +368,7 @@ export function FeedView({ snapshot, onOpenInstallations, onInstallVersion }: Fe
         settings={settings}
         own={own}
         chosen={chosen}
+        reload={`${languages} ${String(online)} ${String(settings.snapshots)} ${String(settings.shorts)} ${settings.hidden.join(',')} ${String(refreshes)}`}
         onFilter={setFilter}
         onOpen={setOpen}
         onInstallVersion={onInstallVersion}
@@ -513,6 +415,8 @@ interface FeedPartsProps {
   settings: FeedSettings;
   own: FeedVideo[];
   chosen: FeedFilter;
+  /** Changes when the list should start again. */
+  reload: string;
   onFilter: (filter: FeedFilter) => void;
   onOpen: (card: NoteCard) => void;
   onInstallVersion: (versionId: string) => void;
@@ -520,12 +424,13 @@ interface FeedPartsProps {
   onPlayStream: (stream: FeedStream) => void;
 }
 
-/** The newest version, the chips and the parts they choose. */
+/** The newest version, the chips and the endless list they choose. */
 function FeedParts({
   feed,
   settings,
   own,
   chosen,
+  reload,
   onFilter,
   onOpen,
   onInstallVersion,
@@ -536,17 +441,6 @@ function FeedParts({
   const parts = visibleParts(feed, settings);
   const filters = FILTERS.filter((item) => item === 'all' || !parts.hidden.has(item));
   const filter = filters.includes(chosen) ? chosen : 'all';
-  const showArticles = filter === 'all' || filter === 'versions' || filter === 'news';
-  const articles = [
-    ...(filter === 'news' ? [] : parts.versions),
-    ...(filter === 'versions' ? [] : parts.news),
-  ].sort(newestFirst);
-  const articlesHidden = parts.hidden.has('versions') && parts.hidden.has('news');
-  const showVideos = (filter === 'all' || filter === 'videos') && !parts.hidden.has('videos');
-  const ownVideos = parts.hidden.has('videos')
-    ? []
-    : own.filter((video) => settings.shorts || !video.short);
-  const showStreams = (filter === 'all' || filter === 'streams') && !parts.hidden.has('streams');
   const heroNote = parts.versions[0] ?? null;
 
   return (
@@ -572,42 +466,17 @@ function FeedParts({
           </button>
         ))}
       </div>
-      {showArticles && !articlesHidden && (
-        <Part title={t.articles} empty={articles.length === 0 ? t.noArticles : null}>
-          <ul className={styles.cards}>
-            {articles.map((card) => (
-              <NoteCardItem key={card.id} card={card} onOpen={onOpen} />
-            ))}
-          </ul>
-        </Part>
-      )}
-      {showVideos && (
-        <Part title={t.videos} empty={parts.videos.length === 0 ? t.noVideos : null}>
-          <ul className={styles.row}>
-            {parts.videos.map((video) => (
-              <VideoItem key={video.id} video={video} onPlay={onPlayVideo} />
-            ))}
-          </ul>
-        </Part>
-      )}
-      {showVideos && ownVideos.length > 0 && (
-        <Part title={t.ownVideos} empty={null}>
-          <ul className={styles.row}>
-            {ownVideos.map((video) => (
-              <VideoItem key={video.id} video={video} onPlay={onPlayVideo} />
-            ))}
-          </ul>
-        </Part>
-      )}
-      {showStreams && (
-        <Part title={t.streams} empty={parts.streams.length === 0 ? t.noStreams : null}>
-          <ul className={styles.row}>
-            {parts.streams.map((stream) => (
-              <StreamItem key={stream.login} stream={stream} onPlay={onPlayStream} />
-            ))}
-          </ul>
-        </Part>
-      )}
+      <FeedList
+        feed={feed}
+        settings={settings}
+        own={own}
+        filter={filter}
+        key={`${filter} ${reload}`}
+        skip={filter === 'all' ? (heroNote?.id ?? null) : null}
+        onOpen={onOpen}
+        onPlayVideo={onPlayVideo}
+        onPlayStream={onPlayStream}
+      />
     </>
   );
 }

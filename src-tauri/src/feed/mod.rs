@@ -29,10 +29,10 @@ use url::Url;
 use crate::error::{ErrorCode, LauncherResult};
 use crate::net::{PublicClient, SourcePolicy};
 use crate::storage::atomic;
-use crate::storage::models::{FeedSettings, VideoLanguage};
+use crate::storage::models::{FeedBlock, FeedSettings, VideoLanguage};
 use crate::storage::paths::DataRoot;
 use crate::sync::lock;
-use model::{Feed, Lang, Note, OwnChannel, PictureKind, Video};
+use model::{Feed, FeedPage, Lang, Note, OwnChannel, PictureKind, Video};
 
 /// The service.
 pub const BASE: &str = "https://feed.lapi.sh";
@@ -147,6 +147,20 @@ pub fn compose(mut base: Feed, notes: Option<Feed>, videos: Option<Feed>) -> Fee
         base.streams = videos.streams;
     }
     base
+}
+
+/// The parts as the service names them, comma separated.
+fn kind_list(kinds: &[FeedBlock]) -> String {
+    kinds
+        .iter()
+        .map(|k| match k {
+            FeedBlock::Versions => "versions",
+            FeedBlock::News => "news",
+            FeedBlock::Videos => "videos",
+            FeedBlock::Streams => "streams",
+        })
+        .collect::<Vec<_>>()
+        .join(",")
 }
 
 /// Parses a `feed:` request path: `/img/<sha>.jpg`, `/yt/<id>.jpg` or
@@ -473,6 +487,50 @@ impl FeedService {
             stale: problem.is_some(),
             problem,
         })
+    }
+
+    /// A page of the endless list: `filter` one part or all, as the settings
+    /// show them; `before` the cursor of the page before. Pages are not kept:
+    /// without the service the interface shows the feed kept on disk.
+    pub async fn page(
+        &self,
+        languages: Languages,
+        settings: &FeedSettings,
+        filter: Option<FeedBlock>,
+        before: Option<&str>,
+    ) -> FeedResult<FeedPage> {
+        if before.is_some_and(|b| !model::cursor(b)) {
+            return Err(FeedProblem::NotFound);
+        }
+        let kinds: Vec<FeedBlock> = FeedBlock::ALL
+            .into_iter()
+            .filter(|k| filter.is_none_or(|f| f == *k) && !settings.hidden.contains(k))
+            .collect();
+        if kinds.is_empty() {
+            return Ok(FeedPage {
+                items: Vec::new(),
+                next: None,
+            });
+        }
+        let mut url = Url::parse(&format!("{BASE}/v1/page")).map_err(|_| FeedProblem::Server)?;
+        {
+            let mut query = url.query_pairs_mut();
+            query
+                .append_pair("notes", languages.notes.as_str())
+                .append_pair("videos", languages.videos.as_str())
+                .append_pair("kinds", &kind_list(&kinds))
+                .append_pair("snapshots", if settings.snapshots { "1" } else { "0" })
+                .append_pair("shorts", if settings.shorts { "1" } else { "0" });
+            if let Some(before) = before {
+                query.append_pair("before", before);
+            }
+        }
+        let request = self.client.get(&url).map_err(|_| FeedProblem::Server)?;
+        let answer = self.send(request, model::MAX_FEED_BYTES).await?;
+        match (answer.status, answer.body) {
+            (200, Some(body)) => model::page(&body, &kinds).ok_or(FeedProblem::Server),
+            (status, body) => Err(problem_of(&Answer { status, body })),
+        }
     }
 
     /// A whole note: from disk when opened lately, else fetched (the copy

@@ -1,0 +1,284 @@
+import { useCallback, useEffect, useRef, useState } from 'react';
+import { Button } from '../../components/Button';
+import { StatusBadge } from '../../components/StatusBadge';
+import type {
+  Feed,
+  FeedItem,
+  FeedSettings,
+  FeedStream,
+  FeedVideo,
+  NoteCard,
+} from '../../lib/contracts';
+import { ipc } from '../../lib/ipc';
+import { strings } from '../../lib/strings';
+import { type FeedFilter, itemKey, keptItems, shownItems, wants } from './list';
+import { kindLabel } from './parts';
+import { pictureUrl } from './pictureUrl';
+import { relativeTime, shortDate } from './when';
+import styles from './Feed.module.css';
+
+const t = strings.feed;
+
+/** How far below the screen the next page is asked for. */
+const AHEAD = '800px';
+
+function NoteItem({ card, onOpen }: { card: NoteCard; onOpen: (card: NoteCard) => void }) {
+  const image = pictureUrl(card.image);
+  return (
+    <article className={styles.card}>
+      {image !== null && <img className={styles.cardPicture} src={image} alt="" loading="lazy" />}
+      <div className={styles.cardText}>
+        <div className={styles.badges}>
+          <StatusBadge tone={card.kind === null ? 'neutral' : 'success'} label={kindLabel(card)} />
+          <span className={styles.muted}>{shortDate(card.date)}</span>
+          {card.translated && <StatusBadge tone="warning" label={t.machineTranslated} />}
+        </div>
+        <h3 className={styles.cardTitle}>
+          <button
+            type="button"
+            className={styles.cardButton}
+            onClick={() => {
+              onOpen(card);
+            }}
+          >
+            {card.title}
+          </button>
+        </h3>
+        {card.summary !== '' && <p className={styles.summary}>{card.summary}</p>}
+      </div>
+    </article>
+  );
+}
+
+/** A video or stream: a big preview over its title, one block of the list. */
+function WatchBlock({
+  label,
+  image,
+  badge,
+  title,
+  line,
+  onPlay,
+}: {
+  label: string;
+  image: string | null;
+  badge: { tone: 'neutral' | 'danger'; label: string } | null;
+  title: string;
+  line: string;
+  onPlay: () => void;
+}) {
+  return (
+    <article className={styles.watch}>
+      <span className={styles.preview}>
+        {image !== null && <img src={image} alt="" loading="lazy" />}
+        {badge !== null && (
+          <span className={styles.overlayBadge}>
+            <StatusBadge tone={badge.tone} label={badge.label} />
+          </span>
+        )}
+      </span>
+      <div className={styles.watchText}>
+        <h3 className={styles.cardTitle}>
+          <button type="button" className={styles.cardButton} aria-label={label} onClick={onPlay}>
+            {title}
+          </button>
+        </h3>
+        <p className={styles.muted}>{line}</p>
+      </div>
+    </article>
+  );
+}
+
+function VideoItem({ video, onPlay }: { video: FeedVideo; onPlay: (video: FeedVideo) => void }) {
+  return (
+    <WatchBlock
+      label={t.watchVideo({ title: video.title, channel: video.channel })}
+      image={pictureUrl(video.image)}
+      badge={video.short ? { tone: 'neutral', label: t.short } : null}
+      title={video.title}
+      line={`${video.channel} · ${relativeTime(video.date)}`}
+      onPlay={() => {
+        onPlay(video);
+      }}
+    />
+  );
+}
+
+function StreamItem({
+  stream,
+  onPlay,
+}: {
+  stream: FeedStream;
+  onPlay: (stream: FeedStream) => void;
+}) {
+  const viewers = t.viewers({ count: stream.viewers });
+  return (
+    <WatchBlock
+      label={t.watchStream({ name: stream.name, title: stream.title, viewers })}
+      image={pictureUrl(stream.image)}
+      badge={{ tone: 'danger', label: t.live }}
+      title={stream.title !== '' ? stream.title : stream.name}
+      line={`${stream.name} · ${viewers}`}
+      onPlay={() => {
+        onPlay(stream);
+      }}
+    />
+  );
+}
+
+interface FeedListProps {
+  /** The feed the core has: shown as one list when the pages cannot be fetched. */
+  feed: Feed;
+  settings: FeedSettings;
+  own: FeedVideo[];
+  filter: FeedFilter;
+  /** A note shown above the list already. */
+  skip: string | null;
+  onOpen: (card: NoteCard) => void;
+  onPlayVideo: (video: FeedVideo) => void;
+  onPlayStream: (stream: FeedStream) => void;
+}
+
+type Loading = 'first' | 'more' | 'idle' | 'failed';
+
+/**
+ * The endless list (D-067): patch notes, news, videos and streams mixed,
+ * newest first, one below the other. The next page is asked for as the end
+ * of the list comes near. Give it a key that changes when the list should
+ * start again (the part, languages, settings, Refresh).
+ */
+export function FeedList({
+  feed,
+  settings,
+  own,
+  filter,
+  skip,
+  onOpen,
+  onPlayVideo,
+  onPlayStream,
+}: FeedListProps) {
+  const [pages, setPages] = useState<FeedItem[]>([]);
+  const [next, setNext] = useState<string | null>(null);
+  const [loading, setLoading] = useState<Loading>('first');
+  /** The pages could not be fetched: the feed the core has is shown. */
+  const [kept, setKept] = useState(false);
+  // Answers that come after the list is gone are dropped.
+  const alive = useRef(true);
+  const end = useRef<HTMLDivElement>(null);
+  const part = filter === 'all' ? null : filter;
+  // What the kept list is made from when the pages fail; the list starts
+  // again only when its key changes, not when these do.
+  const feedRef = useRef(feed);
+  const settingsRef = useRef(settings);
+  useEffect(() => {
+    feedRef.current = feed;
+    settingsRef.current = settings;
+  });
+
+  useEffect(() => {
+    alive.current = true;
+    ipc
+      .feedPage(part, null)
+      .then((page) => {
+        if (!alive.current) return;
+        setPages(page.items);
+        setNext(page.next);
+        setLoading('idle');
+      })
+      .catch(() => {
+        if (!alive.current) return;
+        setPages(keptItems(feedRef.current, settingsRef.current, filter));
+        setKept(true);
+        setLoading('idle');
+      });
+    return () => {
+      alive.current = false;
+    };
+  }, [part, filter]);
+
+  const loadMore = useCallback(() => {
+    if (next === null || (loading !== 'idle' && loading !== 'failed')) return;
+    setLoading('more');
+    ipc
+      .feedPage(part, next)
+      .then((page) => {
+        if (!alive.current) return;
+        setPages((before) => {
+          const seen = new Set(before.map(itemKey));
+          return [...before, ...page.items.filter((item) => !seen.has(itemKey(item)))];
+        });
+        setNext(page.next);
+        setLoading('idle');
+      })
+      .catch(() => {
+        if (alive.current) setLoading('failed');
+      });
+  }, [next, loading, part]);
+
+  const watching = typeof IntersectionObserver !== 'undefined';
+  useEffect(() => {
+    const target = end.current;
+    if (!watching || target === null || next === null || loading !== 'idle') return;
+    const observer = new IntersectionObserver(
+      (entries) => {
+        if (entries.some((entry) => entry.isIntersecting)) loadMore();
+      },
+      { rootMargin: `0px 0px ${AHEAD} 0px` },
+    );
+    observer.observe(target);
+    return () => {
+      observer.disconnect();
+    };
+  }, [watching, next, loading, loadMore]);
+
+  const ownShown =
+    wants(filter, 'videos') && !settings.hidden.includes('videos')
+      ? own.filter((video) => settings.shorts || !video.short)
+      : [];
+  const items = shownItems(pages, ownShown, next !== null && !kept, skip);
+  const empty =
+    filter === 'videos'
+      ? t.noVideos
+      : filter === 'streams'
+        ? t.noStreams
+        : filter === 'all'
+          ? t.nothing
+          : t.noArticles;
+
+  if (loading === 'first') return <p role="status">{t.loading}</p>;
+  return (
+    <>
+      {items.length === 0 ? (
+        <p className={styles.muted}>{empty}</p>
+      ) : (
+        <ul className={styles.list} aria-label={t.filter[filter]}>
+          {items.map((item) => (
+            <li key={itemKey(item)}>
+              {item.type === 'note' ? (
+                <NoteItem card={item.note} onOpen={onOpen} />
+              ) : item.type === 'video' ? (
+                <VideoItem video={item.video} onPlay={onPlayVideo} />
+              ) : (
+                <StreamItem stream={item.stream} onPlay={onPlayStream} />
+              )}
+            </li>
+          ))}
+        </ul>
+      )}
+      <div ref={end} className={styles.listEnd}>
+        {loading === 'more' && <p role="status">{t.loadingMore}</p>}
+        {loading === 'failed' && (
+          <>
+            <p className={styles.muted}>{t.moreFailed}</p>
+            <Button onClick={loadMore}>{t.tryAgain}</Button>
+          </>
+        )}
+        {loading === 'idle' && next !== null && !kept && !watching && (
+          <Button onClick={loadMore}>{t.loadMore}</Button>
+        )}
+        {loading === 'idle' && next === null && items.length > 0 && (
+          <p className={styles.muted}>{t.end}</p>
+        )}
+      </div>
+    </>
+  );
+}

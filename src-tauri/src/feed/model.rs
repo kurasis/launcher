@@ -12,6 +12,8 @@ use std::collections::BTreeMap;
 use serde::Serialize;
 use serde_json::{Map, Value};
 
+use crate::storage::models::FeedBlock;
+
 /// The largest feed document read.
 pub const MAX_FEED_BYTES: usize = 2 * 1024 * 1024;
 /// The largest note (an article with its blocks) read.
@@ -45,6 +47,10 @@ const MAX_DEPTH: usize = 8;
 const MAX_VIEWERS: u64 = 100_000_000;
 /// Versions of an update cycle, at most.
 const MAX_CYCLE_COUNT: u64 = 1000;
+/// Items in one page of the endless list.
+const MAX_PAGE_ITEMS: usize = 40;
+/// The longest cursor the service makes.
+const MAX_CURSOR: usize = 120;
 
 /// The languages the feed is written in.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize)]
@@ -215,6 +221,23 @@ pub struct Feed {
     pub tip: Option<String>,
     /// When each source last answered the service: mojang, youtube, twitch.
     pub fetched: BTreeMap<String, String>,
+}
+
+/// One item of the endless list (D-067).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[serde(tag = "type", rename_all = "camelCase")]
+pub enum FeedItem {
+    Note { note: NoteCard },
+    Video { video: Video },
+    Stream { stream: Stream },
+}
+
+/// A page of the endless list, newest first; `next` asks for the page after.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct FeedPage {
+    pub items: Vec<FeedItem>,
+    pub next: Option<String>,
 }
 
 /// A run of text: bold, italic, code, or a link the launcher may open.
@@ -630,6 +653,66 @@ pub fn feed(value: &Value, wanted: Lang) -> Option<Feed> {
         tip: text(fields.get("tip"), MAX_TEXT),
         fetched,
     })
+}
+
+/// A cursor of the endless list as the service makes it: `<time>~<key>`, the
+/// time `YYYY-MM-DDTHH:MM:SSZ`, the key a note id, `yt:<id>` or `tw:<login>`.
+pub fn cursor(raw: &str) -> bool {
+    if raw.len() > MAX_CURSOR {
+        return false;
+    }
+    let Some((time, key)) = raw.split_once('~') else {
+        return false;
+    };
+    let time_ok = date(Some(&Value::String(time.to_owned()))).is_some_and(|t| t == time);
+    let key_ok = note_id(key)
+        || key.strip_prefix("yt:").is_some_and(video_id)
+        || key.strip_prefix("tw:").is_some_and(twitch_login);
+    time_ok && key_ok
+}
+
+/// Reads a page of the endless list, keeping only items of `kinds`.
+pub fn page(value: &Value, kinds: &[FeedBlock]) -> Option<FeedPage> {
+    let fields = value.as_object()?;
+    fields
+        .get("format")
+        .and_then(Value::as_u64)
+        .filter(|f| *f > 0)?;
+    let items = fields
+        .get("items")?
+        .as_array()?
+        .iter()
+        .filter_map(Value::as_object)
+        .filter_map(|item| {
+            if let Some(note) = item.get("note").and_then(Value::as_object) {
+                let card = note_card(note, None)?;
+                let kind = if card.id.starts_with("j-") {
+                    FeedBlock::Versions
+                } else {
+                    FeedBlock::News
+                };
+                kinds
+                    .contains(&kind)
+                    .then_some(FeedItem::Note { note: card })
+            } else if let Some(fields) = item.get("video").and_then(Value::as_object) {
+                let video = video(fields)?;
+                kinds
+                    .contains(&FeedBlock::Videos)
+                    .then_some(FeedItem::Video { video })
+            } else {
+                let stream = stream(item.get("stream")?.as_object()?)?;
+                kinds
+                    .contains(&FeedBlock::Streams)
+                    .then_some(FeedItem::Stream { stream })
+            }
+        })
+        .take(MAX_PAGE_ITEMS)
+        .collect();
+    let next = match fields.get("next") {
+        None | Some(Value::Null) => None,
+        Some(next) => Some(next.as_str().filter(|n| cursor(n))?.to_owned()),
+    };
+    Some(FeedPage { items, next })
 }
 
 /// Reads a player's videos (`{videos: [...]}`).

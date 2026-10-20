@@ -2216,6 +2216,15 @@ archive from the Package workflow, upload it to
   browser, as the player chooses.
 - **Server setup (owner):** a DNS record for feed.lapi.sh behind Cloudflare, then
   `deploy/bootstrap.sh` once, as for the other services.
+- **Endless list (owner request, 2026-10-20):** under the newest version, the feed is one
+  list of patch notes, news, videos and streams mixed, newest first, one block below the
+  other, and the next page loads as the end comes near. `GET /v1/page` (a minute; notes,
+  videos, kinds, snapshots, shorts, before, limit) pages through it; `before` is a
+  cursor the service made (`<time>~<key>`), checked on both sides, at most 40 items a
+  page. The service keeps up to 400 patch notes and 300 news (20 new bodies a refresh)
+  and 200 videos per channel (its RSS lists 15; older ones stay from earlier fetches);
+  `/v1/feed` still holds the newest 40. Pages are not kept on the player's computer:
+  without the service the list is the feed kept on disk.
 
 ## D-068 — Worlds with Friends
 

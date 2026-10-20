@@ -123,6 +123,55 @@ async fn get_note(
     }
 }
 
+#[derive(Deserialize)]
+struct PageParams {
+    notes: Option<String>,
+    videos: Option<String>,
+    kinds: Option<String>,
+    snapshots: Option<String>,
+    shorts: Option<String>,
+    before: Option<String>,
+    limit: Option<usize>,
+}
+
+/// A page of the endless list. Every parameter is checked: languages fall
+/// back to English, kinds must be known, the cursor must be one we made.
+async fn get_page(State(app): State<Arc<App>>, Query(q): Query<PageParams>) -> Response {
+    let mut kinds = Vec::new();
+    for kind in q
+        .kinds
+        .as_deref()
+        .unwrap_or("versions,news,videos,streams")
+        .split(',')
+    {
+        match feed::Kind::parse(kind) {
+            Some(kind) if !kinds.contains(&kind) => kinds.push(kind),
+            Some(_) => {}
+            None => return refuse(StatusCode::BAD_REQUEST, "bad_kinds"),
+        }
+    }
+    let before = match q.before.as_deref() {
+        None => None,
+        Some(raw) => match feed::cursor(raw) {
+            Some(cursor) => Some(cursor),
+            None => return refuse(StatusCode::BAD_REQUEST, "bad_cursor"),
+        },
+    };
+    let query = feed::PageQuery {
+        notes: feed::lang(q.notes.as_deref()),
+        videos: feed::lang(q.videos.as_deref()),
+        kinds,
+        snapshots: q.snapshots.as_deref() != Some("0"),
+        shorts: q.shorts.as_deref() == Some("1"),
+        before,
+        limit: q
+            .limit
+            .unwrap_or(feed::PAGE_DEFAULT)
+            .clamp(1, feed::PAGE_MAX),
+    };
+    cached(Json(app.feed.page(&query)).into_response(), CACHE_FEED)
+}
+
 async fn picture(app: &App, kind: &'static str, name: &str) -> Response {
     let stream_url = match kind {
         "tw" => name
@@ -331,6 +380,7 @@ pub fn router(app: Arc<App>) -> Router {
     Router::new()
         .route("/v1/health", get(health))
         .route("/v1/feed", get(get_feed))
+        .route("/v1/page", get(get_page))
         .route("/v1/notes/{id}", get(get_note))
         .route("/v1/img/{name}", get(get_img))
         .route("/v1/yt/{name}", get(get_yt))

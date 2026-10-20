@@ -55,6 +55,8 @@ import {
   type SkinsProblem,
   type Wardrobe,
   FEED_PROBLEMS,
+  type FeedBlock,
+  type FeedPage,
   type FeedProblem,
   type FeedVideo,
   type FeedView,
@@ -416,6 +418,9 @@ export const ipc = {
   feedRemoveChannel: (channelId: string): Promise<OwnChannel[]> =>
     invoke<OwnChannel[]>('feed_remove_channel', { channelId }),
   feedOwnVideos: (): Promise<FeedVideo[]> => invoke<FeedVideo[]>('feed_own_videos'),
+  /** A page of the endless list: one part or all (`null`), after the cursor `before`. */
+  feedPage: (filter: FeedBlock | null, before: string | null): Promise<FeedPage> =>
+    invoke<FeedPage>('feed_page', { filter, before }),
   // Worlds with friends (D-068). Failures are LauncherErrors; `worldsProblemOf`
   // reads the service's problem from one.
   worldsState: (): Promise<WorldsState> => invoke<WorldsState>('worlds_state'),

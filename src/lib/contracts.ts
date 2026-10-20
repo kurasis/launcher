@@ -1564,6 +1564,18 @@ export const FEED_PROBLEMS: readonly FeedProblem[] = [
   'unavailable',
 ];
 
+/** One item of the endless list (D-067). */
+export type FeedItem =
+  | { type: 'note'; note: NoteCard }
+  | { type: 'video'; video: FeedVideo }
+  | { type: 'stream'; stream: FeedStream };
+
+/** A page of the endless list, newest first; `next` asks for the page after. */
+export interface FeedPage {
+  items: FeedItem[];
+  next: string | null;
+}
+
 export interface FeedView {
   feed: Feed;
   /** A copy kept on disk is shown: the service did not answer. */

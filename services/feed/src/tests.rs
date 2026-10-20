@@ -14,7 +14,7 @@ use crate::html::{self, Block, Run};
 use crate::images::{self, reencode, sha_name, twitch_login, video_id};
 use crate::mojang::{self, Version, cycle, note_id, version_kind};
 use crate::twitch::{RawStream, pick};
-use crate::youtube::{Wanted, channel_id, id_in_page, parse_rss, wanted};
+use crate::youtube::{self, Wanted, channel_id, id_in_page, parse_rss, wanted};
 use crate::{api, deepl, feed};
 
 // ---------------------------------------------------------------- html ----
@@ -802,6 +802,117 @@ async fn the_feed_in_each_language() {
     // Any other language is English.
     let other = json_of(&get(&app, "/v1/feed?lang=%3Cscript%3E").await.2);
     assert_eq!(other["lang"], "en");
+}
+
+#[tokio::test]
+async fn the_endless_list_pages_through_everything() {
+    let dir = tempfile::tempdir().unwrap();
+    let app = app(dir.path());
+    let (status, headers, body) = get(&app, "/v1/page?notes=ru&videos=ru").await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(headers["cache-control"], "public, max-age=60");
+    let page = json_of(&body);
+    let items = page["items"].as_array().unwrap();
+    // Newest first, mixed: the stream, the video, the patch note.
+    assert_eq!(items.len(), 3);
+    assert_eq!(items[0]["stream"]["login"], "somebody");
+    assert_eq!(items[1]["video"]["id"], "abcdefghijk");
+    assert_eq!(items[2]["note"]["title"], "Заголовок");
+    assert!(page["next"].is_null());
+
+    // One at a time, each page after the cursor of the one before.
+    let mut seen = Vec::new();
+    let mut uri = "/v1/page?notes=ru&videos=ru&limit=1".to_owned();
+    loop {
+        let page = json_of(&get(&app, &uri).await.2);
+        assert_eq!(page["items"].as_array().unwrap().len(), 1);
+        seen.push(page["items"][0].clone());
+        let Some(next) = page["next"].as_str() else {
+            break;
+        };
+        uri = format!("/v1/page?notes=ru&videos=ru&limit=1&before={next}");
+    }
+    assert_eq!(seen.as_slice(), items.as_slice());
+
+    // Parts and snapshots as asked.
+    let videos = json_of(&get(&app, "/v1/page?videos=ru&kinds=videos").await.2);
+    assert_eq!(videos["items"].as_array().unwrap().len(), 1);
+    assert_eq!(videos["items"][0]["video"]["id"], "abcdefghijk");
+    let releases = json_of(&get(&app, "/v1/page?kinds=versions&snapshots=0").await.2);
+    assert!(releases["items"].as_array().unwrap().is_empty());
+    let en = json_of(&get(&app, "/v1/page").await.2);
+    assert_eq!(en["items"].as_array().unwrap().len(), 1);
+    assert_eq!(en["items"][0]["note"]["translated"], false);
+
+    for bad in [
+        "/v1/page?kinds=videos,secrets",
+        "/v1/page?kinds=",
+        "/v1/page?before=2026-10-18T00:00:00Z",
+        "/v1/page?before=yesterday~yt:abc",
+        "/v1/page?before=2026-10-18T00:00:00Z~..%2F..%2Fstate",
+        "/v1/page?before=2026-10-18T00:00:00%2B00:00~yt:abcdefghijk",
+        "/v1/page?limit=-1",
+    ] {
+        assert_eq!(get(&app, bad).await.0, StatusCode::BAD_REQUEST, "{bad}");
+    }
+    // Any limit is bounded.
+    let all = json_of(
+        &get(&app, "/v1/page?notes=ru&videos=ru&limit=100000")
+            .await
+            .2,
+    );
+    assert_eq!(all["items"].as_array().unwrap().len(), 3);
+}
+
+#[test]
+fn cursors_are_checked() {
+    assert_eq!(
+        feed::cursor("2026-10-18T00:00:00Z~yt:abcdefghijk"),
+        Some(("2026-10-18T00:00:00Z".into(), "yt:abcdefghijk".into()))
+    );
+    assert!(feed::cursor("2026-10-18T00:00:00Z~j-26-4").is_some());
+    for bad in [
+        "",
+        "~",
+        "2026-10-18T00:00:00Z",
+        "2026-10-18T00:00:00Z~",
+        "2026-10-18T00:00:00Z~ab",
+        "2026-10-18~yt:abcdefghijk",
+        "2026-10-18T00:00:00+00:00~yt:abcdefghijk",
+        "2026-10-18T00:00:00Z~yt:abc/../x",
+        "2026-10-18T00:00:00Z~<script>",
+        &format!("2026-10-18T00:00:00Z~{}", "a".repeat(101)),
+    ] {
+        assert!(feed::cursor(bad).is_none(), "{bad}");
+    }
+}
+
+#[test]
+fn channels_keep_their_older_videos() {
+    let video = |id: &str, date: &str| youtube::Video {
+        id: id.into(),
+        channel_id: "UCxxxxxxxxxxxxxxxxxxxxxx".into(),
+        channel: "C".into(),
+        title: "T".into(),
+        date: date.into(),
+        short: false,
+    };
+    let fresh = vec![video("bbbbbbbbbbb", "2026-10-19T00:00:00Z")];
+    let kept = vec![
+        video("bbbbbbbbbbb", "2026-10-01T00:00:00Z"),
+        video("aaaaaaaaaaa", "2026-10-02T00:00:00Z"),
+    ];
+    let videos = feed::keep_videos(fresh, kept);
+    let ids: Vec<&str> = videos.iter().map(|v| v.id.as_str()).collect();
+    assert_eq!(ids, ["bbbbbbbbbbb", "aaaaaaaaaaa"]);
+    assert_eq!(videos[0].date, "2026-10-19T00:00:00Z");
+    let many = (0..300)
+        .map(|i| video(&format!("{i:011}"), "2026-10-01T00:00:00Z"))
+        .collect();
+    assert_eq!(
+        feed::keep_videos(Vec::new(), many).len(),
+        feed::CHANNEL_VIDEOS
+    );
 }
 
 #[tokio::test]

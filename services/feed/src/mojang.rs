@@ -9,9 +9,12 @@ use crate::net;
 
 pub const CONTENT: &str = "https://launchercontent.mojang.com/v2/";
 pub const MANIFEST: &str = "https://piston-meta.mojang.com/mc/game/version_manifest_v2.json";
-/// Patch notes and news kept in the feed.
-pub const PATCH_NOTES: usize = 40;
-pub const NEWS: usize = 25;
+/// Patch notes and news kept: the feed shows the newest, the endless list
+/// the rest (D-067).
+pub const PATCH_NOTES: usize = 400;
+pub const NEWS: usize = 300;
+/// Notes fetched in one refresh; older ones follow in later refreshes.
+pub const NEW_PER_REFRESH: usize = 20;
 
 /// An article the launcher can open: a patch note (`j-…`) or a news item
 /// (`n-…`), cleaned.
@@ -176,7 +179,7 @@ pub async fn patch_notes(
             continue;
         };
         order.push(id.clone());
-        if known(&id) {
+        if known(&id) || found.len() >= NEW_PER_REFRESH {
             continue;
         }
         if !entry.content_path.ends_with(".json") || entry.content_path.contains("..") {
@@ -232,7 +235,7 @@ pub async fn news(
             continue;
         };
         order.push(id.clone());
-        if known(&id) {
+        if known(&id) || found.len() >= NEW_PER_REFRESH {
             continue;
         }
         let blocks = entry

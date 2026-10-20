@@ -30,6 +30,12 @@
     "feed": {
       "title": "Feed",
       "loading": "Loading the feed…",
+      "nothing": "Nothing here yet.",
+      "loadingMore": "Loading more…",
+      "loadMore": "Show more",
+      "moreFailed": "Couldn’t load more of the feed.",
+      "tryAgain": "Try again",
+      "end": "That’s everything for now.",
       "refresh": "Refresh",
       "refreshing": "Refreshing…",
       "problems": {
