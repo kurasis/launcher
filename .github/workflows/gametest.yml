@@ -14,8 +14,8 @@ on:
   workflow_dispatch:
     inputs:
       versions:
-        description: Game versions (comma-separated; 26.3, 1.21.1, 1.12.2)
-        default: 26.3,1.21.1,1.12.2
+        description: Game versions (comma-separated; 26.3, 1.21.11, 1.21.10, 1.21.8, 1.21.4, 1.21.1, 1.20.1, 1.18.2, 1.16.5, 1.12.2)
+        default: 26.3,1.21.11,1.21.1,1.20.1,1.12.2
       loaders:
         description: Loaders (comma-separated; vanilla, fabric, neoforge, forge)
         default: vanilla,fabric,neoforge,forge
@@ -26,7 +26,7 @@ on:
         description: Minutes of play per scenario (0.5 to 60)
         default: '5'
       skin:
-        description: Skin variant for every scenario, or rotate (classic, slim128, hd256, hd512, anim64, anim256, legacy256, cape, none)
+        description: Skin variant for every scenario, or rotate (classic, slim128, hd256, hd512, anim64, anim256, animcape, legacy256, cape, none)
         default: rotate
   schedule:
     # 03:00 Moscow time.
@@ -46,11 +46,12 @@ jobs:
     runs-on: ubuntu-24.04
     outputs:
       scenarios: ${{ steps.plan.outputs.scenarios }}
+      folders: ${{ steps.plan.outputs.folders }}
       minutes: ${{ steps.plan.outputs.minutes }}
     steps:
       - id: plan
         env:
-          VERSIONS: ${{ inputs.versions || '26.3,1.21.1,1.12.2' }}
+          VERSIONS: ${{ inputs.versions || '26.3,1.21.11,1.21.1,1.20.1,1.12.2' }}
           LOADERS: ${{ inputs.loaders || 'vanilla,fabric,neoforge,forge' }}
           MODS: ${{ inputs.mods || 'none,medium' }}
           MINUTES: ${{ inputs.minutes || '5' }}
@@ -59,11 +60,11 @@ jobs:
           python3 - <<'EOF'
           import json, os, sys
           allowed = {
-              "VERSIONS": ["26.3", "1.21.1", "1.12.2"],
+              "VERSIONS": ["26.3", "1.21.11", "1.21.10", "1.21.8", "1.21.4", "1.21.1", "1.20.1", "1.18.2", "1.16.5", "1.12.2"],
               "LOADERS": ["vanilla", "fabric", "neoforge", "forge"],
               "MODS": ["none", "medium"],
           }
-          skins = ["hd256", "anim64", "slim128", "hd512", "anim256", "legacy256", "classic", "cape", "none"]
+          skins = ["animcape", "hd256", "anim64", "slim128", "hd512", "anim256", "legacy256", "classic", "cape", "none"]
           picked = {}
           for key, options in allowed.items():
               items = [s.strip() for s in os.environ[key].split(",") if s.strip()]
@@ -80,11 +81,26 @@ jobs:
               sys.exit("minutes: a number")
           if not 0.5 <= minutes <= 60:
               sys.exit("minutes: 0.5 to 60")
-          # 1.12.2 is Forge only; the game with no loader plays without mods.
+          # 1.12.2 is Forge only, 1.16.5 to 1.20.1 have no NeoForge build; the game with
+          # no loader plays without mods.
+          legacy = ["1.16.5", "1.18.2", "1.20.1"]
           def playable(version, loader, mods):
               if version == "1.12.2":
                   return loader == "forge"
+              if version in legacy and loader == "neoforge":
+                  return False
               return loader != "vanilla" or mods == "none"
+          # The mod's folders (mod/settings.gradle) that build each version's jars and bot.
+          bands = {"1.21.1": "mc-1.21.1", "1.21.4": "mc-1.21.2-1.21.4", "1.21.8": "mc-1.21.5-1.21.8",
+                   "1.21.10": "mc-1.21.9-1.21.10", "1.21.11": "mc-1.21.11"}
+          def folders(version):
+              if version in ("26.3", "1.12.2"):
+                  return [f"mc-{version}", f"gametest:mc-{version}"]
+              if version in legacy:
+                  return [f"{root}mc-1.16.5-1.20.1:{loader}:{version}"
+                          for root in ("", "gametest:") for loader in ("fabric", "forge")] + [
+                      f"agents:{version}", f"gametest:mc-1.16.5-1.20.1:agent:{version}"]
+              return [bands[version], f"agents:{version}", f"gametest:mc-{version}"]
           scenarios = []
           for version in picked["VERSIONS"]:
               for loader in picked["LOADERS"]:
@@ -95,10 +111,11 @@ jobs:
                       scenarios.append({"version": version, "loader": loader, "mods": mods, "skin": s,
                                         "name": f"{version} {loader} {mods} {s}"})
           if not scenarios:
-              sys.exit("no scenario: 1.12.2 is Forge only, vanilla plays without mods")
+              sys.exit("no scenario: 1.12.2 is Forge only, 1.16.5 to 1.20.1 have no NeoForge, vanilla plays without mods")
           with open(os.environ["GITHUB_OUTPUT"], "a") as out:
               out.write(f"scenarios={json.dumps(scenarios)}\n")
               out.write(f"minutes={minutes:g}\n")
+              out.write(f"folders={','.join(f for v in picked['VERSIONS'] for f in folders(v))}\n")
           print(f"{len(scenarios)} scenarios, {minutes:g} minutes each")
           EOF
 
@@ -117,24 +134,23 @@ jobs:
           distribution: temurin
           java-version: |
             8
+            17
             21
             25
       - uses: gradle/actions/setup-gradle@v6
+      # Only the picked versions' folders: each Forge release is set up before the build.
       - name: Build
-        run: |
-          tasks=":gametest:core:test :mc-1.12.2:forge:build :gametest:mc-1.12.2:forge:build"
-          for v in 26.3 1.21.1; do
-            for l in fabric neoforge forge agent; do
-              tasks="$tasks :mc-$v:$l:build :gametest:mc-$v:$l:build"
-            done
-          done
-          ./gradlew --no-daemon $tasks
+        env:
+          ONLY: ${{ needs.plan.outputs.folders }}
+        run: ./gradlew --no-daemon "-Ponly=$ONLY" build
       - uses: actions/upload-artifact@v7
         with:
           name: gametest-jars
           path: |
-            mod/mc-*/*/build/libs/launcherskins-*.jar
+            mod/*/*/build/libs/launcherskins-*.jar
+            mod/*/*/*/build/libs/launcherskins-*.jar
             mod/gametest/mc-*/*/build/libs/launchergametest-*.jar
+            mod/gametest/mc-*/*/*/build/libs/launchergametest-*.jar
             !mod/**/*-sources.jar
             !mod/**/*-dev.jar
             !mod/**/*-named.jar

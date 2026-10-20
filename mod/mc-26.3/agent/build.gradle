@@ -7,7 +7,7 @@ plugins {
 // the core, the game layer shared with the loaders (without its Mixin) and the agent,
 // which rewrites PlayerInfo.getSkin() with the JDK's class-file API.
 base {
-    archivesName = "launcherskins-agent-${minecraft_version}"
+    archivesName = "launcherskins-agent-26.1-26.3"
 }
 
 java {

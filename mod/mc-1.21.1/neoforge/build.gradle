@@ -4,7 +4,7 @@ plugins {
 }
 
 base {
-    archivesName = "launcherskins-neoforge-${minecraft_version}"
+    archivesName = "launcherskins-neoforge-1.21-1.21.1"
 }
 
 java {

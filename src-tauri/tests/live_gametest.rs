@@ -38,6 +38,7 @@ use launcher_lib::lifecycle::child::Supervised;
 use launcher_lib::loader::{LoaderChoice, LoaderKind};
 use launcher_lib::net::{PublicClient, SourcePolicy};
 use launcher_lib::secrets::SecretString;
+use launcher_lib::skins_mod;
 use launcher_lib::state::dto::{
     CreateInstancePayload, JavaChoice, MutationRequest, SetInstanceJavaPayload,
     SetInstanceLoaderPayload, UpdateInstanceSettingsPayload,
@@ -223,7 +224,9 @@ async fn the_game_is_played_with_mods_and_skins() {
     };
     let bot_jar = built_jar(&jars, "launchergametest-", jar_kind, &version)
         .expect("the test bot's jar for this version and loader in GAMETEST_JARS");
-    let skins_jar = built_jar(&jars, "launcherskins-", jar_kind, &version);
+    // The skins mod's build for this version: several versions may share one.
+    let skins_jar = skins_mod::Build::find(&version, kind)
+        .and_then(|b| built_jar(&jars, "launcherskins-", b.target.as_str(), b.label));
 
     // The installation: one per version, loader and mod set, kept between runs.
     let memory = MemoryPolicy::detect();

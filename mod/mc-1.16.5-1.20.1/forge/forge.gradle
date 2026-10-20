@@ -1,0 +1,67 @@
+plugins {
+    id 'net.neoforged.moddev.legacyforge' version '2.0.148'
+}
+
+// The Forge jar for one of 1.18.2 and 1.20.1 (1.16.5 has a script of its own): each is a
+// project here, a folder named after the release with its versions in gradle.properties.
+// These Forge releases run with SRG names, so the jar is reobfuscated and the Mixin
+// refmap maps our targets.
+base {
+    archivesName = "launcherskins-forge-${minecraft_version}"
+}
+
+java {
+    toolchain { languageVersion = JavaLanguageVersion.of(17) }
+    // Our classes are Java 8, Forge's libraries Java 17: let both on the class path.
+    disableAutoTargetJvm()
+}
+
+sourceSets.main {
+    java.srcDir "${rootDir}/core/src/main/java"
+    java.srcDir "${projectDir}/../../common/src/main/java"
+    java.srcDir "${projectDir}/../src/main/java"
+    resources.srcDir "${projectDir}/../../common/src/main/resources"
+    resources.srcDir "${projectDir}/../src/main/resources"
+}
+
+legacyForge {
+    version = "${minecraft_version}-${forge_version}"
+    mods {
+        launcherskins {
+            sourceSet sourceSets.main
+        }
+    }
+}
+
+mixin {
+    add sourceSets.main, 'launcherskins.refmap.json'
+    config 'launcherskins.mixins.json'
+}
+
+dependencies {
+    annotationProcessor 'org.spongepowered:mixin:0.8.5:processor'
+}
+
+tasks.withType(JavaCompile).configureEach {
+    options.release = 8
+    options.encoding = 'UTF-8'
+}
+
+jar {
+    manifest {
+        attributes 'MixinConfigs': 'launcherskins.mixins.json'
+    }
+}
+
+processResources {
+    def props = [version: project.version, minecraft: minecraft_version,
+                 forge_major: forge_version.tokenize('.')[0], pack_format: pack_format]
+    inputs.properties props
+    filesMatching(['META-INF/mods.toml', 'pack.mcmeta']) {
+        expand props
+    }
+    // Mixin finds the SRG names of our targets in the refmap only when the config names it.
+    filesMatching('launcherskins.mixins.json') {
+        filter { line -> line.replace('"package"', '"refmap": "launcherskins.refmap.json",\n  "package"') }
+    }
+}

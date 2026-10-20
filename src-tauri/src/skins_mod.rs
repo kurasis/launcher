@@ -74,6 +74,98 @@ impl Target {
     }
 }
 
+/// Which build of the mod serves which game versions, by target: one jar each,
+/// named `launcherskins-<target>-<label>-<mod version>.jar`. Releases whose game
+/// code is the same share a build (mod/settings.gradle). The Java agent of a
+/// release with obfuscated names (before 26.1) is built for that release alone.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct Build {
+    pub target: Target,
+    pub label: &'static str,
+    pub games: &'static [&'static str],
+}
+
+const fn build(target: Target, label: &'static str, games: &'static [&'static str]) -> Build {
+    Build {
+        target,
+        label,
+        games,
+    }
+}
+
+const BAND_1_21: &[&str] = &["1.21", "1.21.1"];
+const BAND_1_21_2: &[&str] = &["1.21.2", "1.21.3", "1.21.4"];
+const BAND_1_21_5: &[&str] = &["1.21.5", "1.21.6", "1.21.7", "1.21.8"];
+const BAND_1_21_9: &[&str] = &["1.21.9", "1.21.10"];
+const BAND_26: &[&str] = &["26.1", "26.1.1", "26.1.2", "26.2", "26.3"];
+
+pub const BUILDS: &[Build] = &[
+    build(Target::Fabric, "26.1-26.3", BAND_26),
+    build(Target::NeoForge, "26.1-26.3", BAND_26),
+    build(Target::Forge, "26.1-26.3", BAND_26),
+    build(Target::Agent, "26.1-26.3", BAND_26),
+    build(Target::Fabric, "1.21.11", &["1.21.11"]),
+    build(Target::NeoForge, "1.21.11", &["1.21.11"]),
+    build(Target::Forge, "1.21.11", &["1.21.11"]),
+    build(Target::Agent, "1.21.11", &["1.21.11"]),
+    build(Target::Fabric, "1.21.9-1.21.10", BAND_1_21_9),
+    build(Target::NeoForge, "1.21.9-1.21.10", BAND_1_21_9),
+    build(Target::Forge, "1.21.9-1.21.10", BAND_1_21_9),
+    build(Target::Agent, "1.21.10", &["1.21.10"]),
+    build(Target::Agent, "1.21.9", &["1.21.9"]),
+    build(Target::Fabric, "1.21.5-1.21.8", BAND_1_21_5),
+    build(Target::NeoForge, "1.21.5-1.21.8", BAND_1_21_5),
+    build(Target::Forge, "1.21.5-1.21.8", BAND_1_21_5),
+    build(Target::Agent, "1.21.8", &["1.21.8"]),
+    build(Target::Agent, "1.21.7", &["1.21.7"]),
+    build(Target::Agent, "1.21.6", &["1.21.6"]),
+    build(Target::Agent, "1.21.5", &["1.21.5"]),
+    build(Target::Fabric, "1.21.2-1.21.4", BAND_1_21_2),
+    build(Target::NeoForge, "1.21.2-1.21.4", BAND_1_21_2),
+    build(Target::Forge, "1.21.2-1.21.4", BAND_1_21_2),
+    build(Target::Agent, "1.21.4", &["1.21.4"]),
+    build(Target::Agent, "1.21.3", &["1.21.3"]),
+    build(Target::Agent, "1.21.2", &["1.21.2"]),
+    build(Target::Fabric, "1.21-1.21.1", BAND_1_21),
+    build(Target::NeoForge, "1.21-1.21.1", BAND_1_21),
+    build(Target::Forge, "1.21.1", &["1.21.1"]),
+    build(Target::Agent, "1.21.1", &["1.21.1"]),
+    build(Target::Agent, "1.21", &["1.21"]),
+    build(Target::Fabric, "1.20.1", &["1.20.1"]),
+    // NeoForge for 1.20.1 is still Forge and runs Forge's jar.
+    build(Target::Forge, "1.20.1", &["1.20.1"]),
+    build(Target::Agent, "1.20.1", &["1.20.1"]),
+    build(Target::Fabric, "1.18.2", &["1.18.2"]),
+    build(Target::Forge, "1.18.2", &["1.18.2"]),
+    build(Target::Agent, "1.18.2", &["1.18.2"]),
+    build(Target::Fabric, "1.16.5", &["1.16.5"]),
+    build(Target::Forge, "1.16.5", &["1.16.5"]),
+    build(Target::Agent, "1.16.5", &["1.16.5"]),
+    build(Target::Forge, "1.12.2", &["1.12.2"]),
+];
+
+impl Build {
+    /// The build for this game version and loader, if the mod has one.
+    pub fn find(game: &str, loader: Option<LoaderKind>) -> Option<&'static Build> {
+        let mut target = Target::for_loader(loader);
+        if target == Target::NeoForge && game == "1.20.1" {
+            target = Target::Forge;
+        }
+        BUILDS
+            .iter()
+            .find(|b| b.target == target && b.games.contains(&game))
+    }
+
+    /// Its jar's name for a mod version.
+    pub fn file(&self, mod_version: &str) -> String {
+        format!(
+            "{PREFIX}{}-{}-{mod_version}{JAR_SUFFIX}",
+            self.target.as_str(),
+            self.label
+        )
+    }
+}
+
 /// One jar of the release.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct Jar {

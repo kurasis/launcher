@@ -1,0 +1,58 @@
+plugins {
+    id 'net.fabricmc.fabric-loom-remap' version '1.19.1'
+    id 'com.gradleup.shadow' version '9.6.1'
+}
+
+// The bot with no mod loader in one of 1.16.5, 1.18.2 and 1.20.1, a Java agent
+// (docs/GAMETEST.md) like gametest/mc-1.21.1/agent: written in Mojang names, then remapped
+// to the release's own names, with ASM bundled under our own package. Java 8.
+base {
+    archivesName = "launchergametest-agent-${minecraft_version}"
+}
+
+java {
+    toolchain { languageVersion = JavaLanguageVersion.of(21) }
+}
+
+sourceSets.main {
+    java.srcDir "${rootDir}/gametest/core/src/main/java"
+    java.srcDir "${projectDir}/../../game/${minecraft_version}"
+    java.srcDir "${rootDir}/gametest/agent/src/main/java"
+}
+
+configurations {
+    bundled
+    implementation.extendsFrom bundled
+}
+
+dependencies {
+    minecraft "com.mojang:minecraft:${minecraft_version}"
+    mappings loom.officialMojangMappings()
+    bundled 'org.ow2.asm:asm:9.9'
+    bundled 'org.ow2.asm:asm-tree:9.9'
+}
+
+tasks.withType(JavaCompile).configureEach {
+    options.release = 8
+    options.encoding = 'UTF-8'
+}
+
+shadowJar {
+    configurations = [project.configurations.bundled]
+    relocate 'org.objectweb.asm', 'app.launcher.gametest.agent.asm'
+    exclude 'module-info.class', 'META-INF/versions/**', 'META-INF/maven/**'
+    archiveClassifier = 'named'
+    manifest {
+        attributes('Premain-Class': 'app.launcher.gametest.agent.Agent')
+    }
+}
+
+// The jar the test uses: the bundled one in the game's own names.
+remapJar {
+    inputFile = shadowJar.archiveFile
+    targetNamespace = 'official'
+}
+
+repositories {
+    mavenCentral()
+}

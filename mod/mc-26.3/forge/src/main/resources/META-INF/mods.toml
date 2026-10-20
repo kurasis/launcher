@@ -1,5 +1,5 @@
 modLoader = "javafml"
-loaderVersion = "[66,)"
+loaderVersion = "[62,)"
 license = "All-Rights-Reserved"
 
 [[mods]]
@@ -13,6 +13,6 @@ displayTest = "IGNORE_ALL_VERSION"
 [[dependencies.launcherskins]]
 modId = "minecraft"
 mandatory = true
-versionRange = "[26.3]"
+versionRange = "[26.1,26.3]"
 ordering = "NONE"
 side = "CLIENT"
