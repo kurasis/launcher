@@ -16,7 +16,7 @@ import { formatBytes } from '../../lib/format';
 import { describeIpcError, ipc } from '../../lib/ipc';
 import { strings } from '../../lib/strings';
 import { ExportDialog } from './ExportDialog';
-import { ourPicture } from './helpers';
+import { ourPicture, packArchive } from './helpers';
 import { PackDialog } from './PackDialog';
 import styles from './Mods.module.css';
 
@@ -283,7 +283,7 @@ export function ContentSection({ instance, onOpen, onUpdate, revision }: Props) 
     if (pack === null) return null;
     try {
       const found = await ipc.modsVersions(pack.projectId, instance.versionId, null);
-      const newest = found.find((v) => v.files.some((f) => f.name.endsWith('.mrpack')));
+      const newest = found.find((v) => v.files.some((f) => packArchive(f.name)));
       return newest !== undefined && newest.id !== pack.versionId ? newest : null;
     } catch {
       return null;

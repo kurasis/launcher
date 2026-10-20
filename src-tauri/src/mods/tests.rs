@@ -1428,6 +1428,16 @@ mod packs {
         }));
         assert_eq!(working.state, "working");
         assert_eq!((working.kept, working.total), (0, 1));
+        // A CurseForge pack whose files are still being found: counted, not
+        // listed yet; a count past the limit is not believed.
+        let finding = PackInfo::from(&json!({
+            "state": "working", "total": 40, "files": [], "archive": {},
+        }));
+        assert_eq!((finding.kept, finding.total), (0, 40));
+        let huge = PackInfo::from(&json!({
+            "state": "working", "total": u64::MAX, "files": [], "archive": {},
+        }));
+        assert_eq!(huge.total, 5000);
 
         let mut bad_path = file_json("mods/a.jar", jar);
         bad_path["path"] = json!("../../evil.jar");

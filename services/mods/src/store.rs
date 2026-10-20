@@ -260,6 +260,8 @@ pub struct FileRow {
 #[derive(Debug, Clone)]
 pub struct PackFileRow {
     pub ord: i64,
+    /// Empty for a CurseForge pack's file not found yet.
+    pub path: String,
     pub size: i64,
     pub sha1: String,
     pub sha512: String,
@@ -1059,25 +1061,119 @@ impl Store {
             )
             .map_err(sql)?;
         }
+        // A CurseForge pack's files: no path, size or hashes until found.
+        for (n, file) in index.curseforge.iter().enumerate() {
+            tx.execute(
+                "INSERT INTO pack_file (version_id, ord, path, size, sha1, sha512, optional, origin_url)
+                 VALUES (?1, ?2, '', 0, '', '', ?3, ?4)",
+                params![
+                    version,
+                    (index.files.len() + n) as i64,
+                    file.optional,
+                    crate::curseforge::download_url(file.project, file.file)
+                ],
+            )
+            .map_err(sql)?;
+        }
         tx.commit().map_err(sql)
+    }
+
+    /// A CurseForge pack's file, found and kept.
+    pub fn pack_file_found(
+        &self,
+        version: &str,
+        ord: i64,
+        path: &str,
+        hashed: &crate::blobs::Hashed,
+    ) -> Result<()> {
+        self.db()
+            .execute(
+                "UPDATE pack_file SET path = ?3, size = ?4, sha1 = ?5, sha512 = ?6, sha256 = ?7
+                 WHERE version_id = ?1 AND ord = ?2",
+                params![
+                    version,
+                    ord,
+                    path,
+                    hashed.size as i64,
+                    hashed.sha1,
+                    hashed.sha512,
+                    hashed.sha256
+                ],
+            )
+            .map(|_| ())
+            .map_err(sql)
+    }
+
+    /// A pack's file left out after all (not something a pack may bring).
+    pub fn pack_file_left_out(&self, version: &str, ord: i64) -> Result<()> {
+        let mut db = self.db();
+        let tx = db.transaction().map_err(sql)?;
+        let gone = tx
+            .execute(
+                "DELETE FROM pack_file WHERE version_id = ?1 AND ord = ?2",
+                params![version, ord],
+            )
+            .map_err(sql)?;
+        tx.execute(
+            "UPDATE pack SET skipped = skipped + ?2 WHERE version_id = ?1",
+            params![version, gone as i64],
+        )
+        .map_err(sql)?;
+        tx.commit().map_err(sql)
+    }
+
+    /// A kept file fetched from this address before, by any version or pack.
+    pub fn kept_by_origin(&self, url: &str) -> Result<Option<crate::blobs::Hashed>> {
+        self.db()
+            .query_row(
+                "SELECT b.sha256, b.size, b.sha1, b.sha512 FROM blob b
+                 WHERE b.state = 'stored' AND b.sha256 IN (
+                     SELECT sha256 FROM version_file WHERE origin_url = ?1 AND sha256 IS NOT NULL
+                     UNION SELECT sha256 FROM pack_file WHERE origin_url = ?1 AND sha256 IS NOT NULL)
+                 LIMIT 1",
+                [url],
+                |r| {
+                    Ok(crate::blobs::Hashed {
+                        sha256: r.get(0)?,
+                        size: u64::try_from(r.get::<_, i64>(1)?).unwrap_or(0),
+                        sha1: r.get(2)?,
+                        sha512: r.get(3)?,
+                    })
+                },
+            )
+            .optional()
+            .map_err(sql)
+    }
+
+    /// The kind of a version's project (`mod`, `modpack`, …).
+    pub fn version_kind(&self, version: &str) -> Result<Option<String>> {
+        self.db()
+            .query_row(
+                "SELECT p.kind FROM version v JOIN project p ON p.id = v.project_id WHERE v.id = ?1",
+                [version],
+                |r| r.get(0),
+            )
+            .optional()
+            .map_err(sql)
     }
 
     pub fn pack_files(&self, version: &str) -> Result<Vec<PackFileRow>> {
         let db = self.db();
         let mut q = db
             .prepare(
-                "SELECT ord, size, sha1, sha512, sha256, origin_url
+                "SELECT ord, path, size, sha1, sha512, sha256, origin_url
                  FROM pack_file WHERE version_id = ?1 ORDER BY ord",
             )
             .map_err(sql)?;
         q.query_map([version], |r| {
             Ok(PackFileRow {
                 ord: r.get(0)?,
-                size: r.get(1)?,
-                sha1: r.get(2)?,
-                sha512: r.get(3)?,
-                sha256: r.get(4)?,
-                origin_url: r.get(5)?,
+                path: r.get(1)?,
+                size: r.get(2)?,
+                sha1: r.get(3)?,
+                sha512: r.get(4)?,
+                sha256: r.get(5)?,
+                origin_url: r.get(6)?,
             })
         })
         .map_err(sql)?
@@ -1145,8 +1241,11 @@ impl Store {
             .map_err(sql)?
             .collect::<std::result::Result<_, _>>()
             .map_err(sql)?;
+        let total = list.len();
+        // A CurseForge pack's files not found yet are counted, not listed.
+        let list: Vec<serde_json::Value> = list.into_iter().filter(|f| f["path"] != "").collect();
         let kept = list.iter().filter(|f| !f["sha256"].is_null()).count();
-        pack["total"] = list.len().into();
+        pack["total"] = total.into();
         pack["kept"] = kept.into();
         pack["files"] = list.into();
         Ok(Some(pack))

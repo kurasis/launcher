@@ -7,7 +7,7 @@ import forms from '../../components/forms.module.css';
 import type { InstanceSummary, ModsProject, ModsVersion, DocNode } from '../../lib/contracts';
 import { describeIpcError, ipc } from '../../lib/ipc';
 import { strings } from '../../lib/strings';
-import { compact, dateOf, installable, loaderOf, ourPicture } from './helpers';
+import { compact, dateOf, installable, loaderOf, ourPicture, packArchive } from './helpers';
 import { RichText } from './RichText';
 import styles from './Mods.module.css';
 
@@ -65,8 +65,8 @@ function VersionRow({
   const [changelog, setChangelog] = useState<DocNode[] | null>(null);
   const [open, setOpen] = useState(false);
   const file = version.files.find((f) => f.primary) ?? version.files[0];
-  // A Modrinth pack; other packs come later.
-  const pack = project.kind === 'modpack' && version.files.some((f) => f.name.endsWith('.mrpack'));
+  // A Modrinth or CurseForge pack.
+  const pack = project.kind === 'modpack' && version.files.some((f) => packArchive(f.name));
   return (
     <li className={styles.version}>
       <div className={styles.versionHead}>

@@ -1,6 +1,8 @@
-//! Modrinth modpacks (`.mrpack`, D-066 stage 3): a pack becomes an
-//! installation of its own, with its game version, loader and memory for its
-//! mods, and its files from files-mods.lapi.sh.
+//! Modrinth modpacks (`.mrpack`, D-066 stage 3) and CurseForge ones (a
+//! `.zip` with `manifest.json`, stage 4): a pack becomes an installation of
+//! its own, with its game version, loader and memory for its mods, and its
+//! files from files-mods.lapi.sh. The catalog turns both into one list, so
+//! everything here is the same for both.
 //!
 //! - The catalog reads the pack's index and keeps every file it lists; the
 //!   launcher asks for that once, then looks every few seconds until it is
@@ -302,7 +304,9 @@ impl PackInfo {
             game,
             loader,
             kept: files.iter().filter(|f| f.url.is_some()).count() as u64,
-            total: files.len() as u64,
+            // A CurseForge pack's files are listed once found; counted before.
+            total: (files.len() as u64)
+                .max(value["total"].as_u64().unwrap_or(0).min(MAX_FILES as u64)),
             skipped: value["skipped"].as_u64().unwrap_or(0),
             mods: u32::try_from(mods).unwrap_or(u32::MAX),
             total_bytes: files

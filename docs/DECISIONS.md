@@ -2029,8 +2029,7 @@ archive from the Package workflow, upload it to
 
 ## D-066 — Catalog of mods at mods.lapi.sh
 
-- **Status:** accepted (owner request, 2026-10-19), stages 1, 2 and 4 of 6, 3 under
-  way · **Affects:** the new service `services/mods` (`https://mods.lapi.sh`, files at
+- **Status:** accepted (owner request, 2026-10-19), stages 1–3 of 6 and stage 4 but for joining projects and worlds · **Affects:** the new service `services/mods` (`https://mods.lapi.sh`, files at
   `https://files-mods.lapi.sh`, `/home/www/lapi/mods`), the account service's token
   audience. The full design: the project's design document "Вкладка Моды и каталог".
 - **Goal.** A Mods tab with modpacks, mods, resource packs, shaders and worlds that does
@@ -2267,6 +2266,18 @@ archive from the Package workflow, upload it to
   SHA-256, with an address on cdn.modrinth.com) are named in the index with their SHA-1,
   SHA-512 and size; everything else is copied into `overrides/`. Without the catalog,
   everything is copied. The archive is written beside the target and renamed into place.
+- **CurseForge packs (stage 4, 2026-10-20).** A modpack version whose file is a `.zip`
+  is read by its `manifest.json`: type `minecraftModpack`, version 1, the game version and
+  its primary loader (`forge-`, `neoforge-`, `fabric-` or `quilt-` and a plain version),
+  at most 5,000 files by project and file number, overrides only in `overrides/` (where
+  the launcher looks). The manifest names no file, folder or hash, so the pack job asks
+  the site for each file's name and size, keeps the file (or takes the copy already kept
+  from the same address) and places it by what it is: a `.jar` in `mods/`, a zip with
+  `shaders/` in `shaderpacks/`, one with `pack.mcmeta` and `assets/` in `resourcepacks/`.
+  Anything else (a data pack, a name we may not write, a path another file has, a file
+  the site no longer has) is left out and counted; `required: false` makes a file optional. Until found, a file is
+  counted in `total` but not listed. From there it is the same list as a `.mrpack`'s,
+  and the launcher installs and updates both alike.
 
 ## D-067 — Start page feed at feed.lapi.sh
 

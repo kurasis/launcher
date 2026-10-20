@@ -2,6 +2,13 @@
 //! kept pack's `modrinth.index.json` and keeps every file it lists, so the
 //! launcher installs a whole pack from files-mods.lapi.sh.
 //!
+//! CurseForge modpacks (a `.zip` with `manifest.json`, stage 4) list their
+//! files by project and file number only, with no name, folder or hash: the
+//! catalog asks the site for each file's name, keeps the file, and places it
+//! by what it is ([`folder_of`]): a `.jar` in `mods/`, a zip with `shaders/`
+//! in `shaderpacks/`, one with `pack.mcmeta` in `resourcepacks/`. Anything
+//! else is left out and counted.
+//!
 //! Everything in the index is checked: the game and one loader with plain
 //! version words, at most `MAX_FILES` files of at most `MAX_TOTAL` bytes, both
 //! hashes of each, a download from a host Modrinth allows. A path must stay
@@ -19,6 +26,8 @@ use serde::Deserialize;
 use crate::model::word;
 
 pub const INDEX: &str = "modrinth.index.json";
+/// A CurseForge pack's list.
+pub const MANIFEST: &str = "manifest.json";
 const MAX_INDEX: u64 = 16 * 1024 * 1024;
 pub const MAX_FILES: usize = 5000;
 /// All the files a pack lists, together.
@@ -153,8 +162,19 @@ pub struct Index {
     /// fabric, quilt, forge or neoforge, with its version.
     pub loader: Option<(String, String)>,
     pub files: Vec<PackFile>,
+    /// A CurseForge pack's files, found once each is asked for.
+    pub curseforge: Vec<CurseForgeFile>,
     /// Files left out: a path a pack may not write, or not for the client.
     pub skipped: u64,
+}
+
+/// A file a CurseForge pack lists: the site's project and file numbers.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct CurseForgeFile {
+    pub project: u64,
+    pub file: u64,
+    /// The pack has it turned off (`required: false`).
+    pub optional: bool,
 }
 
 #[derive(Deserialize)]
@@ -263,15 +283,162 @@ pub fn index(text: &[u8]) -> Result<Index, &'static str> {
         game,
         loader,
         files,
+        curseforge: Vec::new(),
         skipped,
     })
 }
 
-/// Reads the index out of a kept `.mrpack`.
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct RawManifest {
+    #[serde(default)]
+    manifest_type: String,
+    manifest_version: u64,
+    minecraft: RawMinecraft,
+    #[serde(default)]
+    files: Vec<RawCurseForgeFile>,
+    #[serde(default)]
+    overrides: Option<String>,
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct RawMinecraft {
+    version: String,
+    #[serde(default)]
+    mod_loaders: Vec<RawLoader>,
+}
+
+#[derive(Deserialize)]
+struct RawLoader {
+    id: String,
+    #[serde(default)]
+    primary: bool,
+}
+
+#[derive(Deserialize)]
+struct RawCurseForgeFile {
+    #[serde(rename = "projectID")]
+    project: u64,
+    #[serde(rename = "fileID")]
+    file: u64,
+    #[serde(default = "yes")]
+    required: bool,
+}
+
+fn yes() -> bool {
+    true
+}
+
+/// A CurseForge loader name (`forge-47.2.0`, `neoforge-21.1.77`,
+/// `fabric-0.15.7`, `quilt-0.26.0`) as a kind and a version.
+fn curseforge_loader(id: &str) -> Option<(String, String)> {
+    let (name, version) = id.split_once('-')?;
+    let kind = match name.to_ascii_lowercase().as_str() {
+        "forge" => "forge",
+        "neoforge" => "neoforge",
+        "fabric" => "fabric",
+        "quilt" => "quilt",
+        _ => return None,
+    };
+    Some((kind.to_owned(), word(version)?))
+}
+
+/// Reads a CurseForge pack's `manifest.json`; a short code when it is not
+/// one we take. Its overrides must be in `overrides/`, where the launcher
+/// looks for them.
+pub fn manifest(text: &[u8]) -> Result<Index, &'static str> {
+    let raw: RawManifest = serde_json::from_slice(text).map_err(|_| "bad_pack")?;
+    if raw.manifest_type != "minecraftModpack" || raw.manifest_version != 1 {
+        return Err("unsupported_pack");
+    }
+    if raw.overrides.as_deref().is_some_and(|o| o != "overrides") {
+        return Err("unsupported_pack");
+    }
+    if raw.files.len() > MAX_FILES || raw.minecraft.mod_loaders.len() > 4 {
+        return Err("too_big");
+    }
+    let game = word(&raw.minecraft.version).ok_or("bad_pack")?;
+    let loader = match raw
+        .minecraft
+        .mod_loaders
+        .iter()
+        .find(|l| l.primary)
+        .or_else(|| raw.minecraft.mod_loaders.first())
+    {
+        Some(l) => Some(curseforge_loader(&l.id).ok_or("unsupported_pack")?),
+        None => None,
+    };
+    let mut seen = std::collections::HashSet::new();
+    let mut curseforge = Vec::new();
+    for f in raw.files {
+        if f.project == 0 || f.file == 0 || f.project > MAX_ID || f.file > MAX_ID {
+            return Err("bad_pack");
+        }
+        // The same file twice is one file.
+        if seen.insert(f.file) {
+            curseforge.push(CurseForgeFile {
+                project: f.project,
+                file: f.file,
+                optional: !f.required,
+            });
+        }
+    }
+    Ok(Index {
+        game,
+        loader,
+        files: Vec::new(),
+        curseforge,
+        skipped: 0,
+    })
+}
+
+/// The largest project or file number taken (the site's are far smaller).
+const MAX_ID: u64 = 1 << 40;
+
+/// Where a CurseForge pack's file goes, by what it is: a `.jar` in `mods/`;
+/// a zip with `shaders/` in `shaderpacks/`, one with `pack.mcmeta` and
+/// `assets/` in `resourcepacks/`. `None`: left out (a data pack, or
+/// something else).
+pub fn folder_of(path: &Path, name: &str) -> Option<&'static str> {
+    let lower = name.to_ascii_lowercase();
+    if lower.ends_with(".jar") {
+        return Some("mods");
+    }
+    if !lower.ends_with(".zip") {
+        return None;
+    }
+    let file = std::fs::File::open(path).ok()?;
+    let zip = zip::ZipArchive::new(std::io::BufReader::new(file)).ok()?;
+    let (mut shaders, mut mcmeta, mut assets) = (false, false, false);
+    for name in zip.file_names().take(200_000) {
+        // At the top, or one folder down (packs zipped with their folder).
+        let parts: Vec<&str> = name.splitn(3, '/').collect();
+        let holds = |dir: &str| {
+            (parts.len() > 1 && parts[0] == dir) || (parts.len() > 2 && parts[1] == dir)
+        };
+        shaders |= holds("shaders");
+        assets |= holds("assets");
+        mcmeta |= name == "pack.mcmeta" || (parts.len() == 2 && parts[1] == "pack.mcmeta");
+    }
+    if shaders {
+        Some("shaderpacks")
+    } else if mcmeta && assets {
+        Some("resourcepacks")
+    } else {
+        None
+    }
+}
+
+/// Reads the list out of a kept pack: a `.mrpack`'s index, or a CurseForge
+/// pack's manifest.
 pub fn read(archive: &Path) -> Result<Index, &'static str> {
     let file = std::fs::File::open(archive).map_err(|_| "disk_error")?;
     let mut zip = zip::ZipArchive::new(std::io::BufReader::new(file)).map_err(|_| "bad_pack")?;
-    let mut entry = zip.by_name(INDEX).map_err(|_| "bad_pack")?;
+    let curseforge = zip.index_for_name(INDEX).is_none();
+    let mut entry = zip
+        .by_name(if curseforge { MANIFEST } else { INDEX })
+        .map_err(|_| "bad_pack")?;
     if entry.size() > MAX_INDEX {
         return Err("too_big");
     }
@@ -284,5 +451,9 @@ pub fn read(archive: &Path) -> Result<Index, &'static str> {
     if text.len() as u64 > MAX_INDEX {
         return Err("too_big");
     }
-    index(&text)
+    if curseforge {
+        manifest(&text)
+    } else {
+        index(&text)
+    }
 }

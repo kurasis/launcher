@@ -299,13 +299,18 @@ pub fn queue_files(app: &App, version: &str, request: Option<&str>) -> Result<bo
     }
 }
 
-/// The archive of a modpack version: its `.mrpack`, the main one first.
+/// The archive of a modpack version, the main one first: its `.mrpack`, or
+/// the `.zip` of a modpack (CurseForge's).
 pub fn pack_archive(app: &App, version: &str) -> Result<Option<crate::store::FileRow>, String> {
+    let modpack = app.store.version_kind(version)?.as_deref() == Some("modpack");
     Ok(app
         .store
         .files(version)?
         .into_iter()
-        .filter(|f| f.name.to_ascii_lowercase().ends_with(".mrpack"))
+        .filter(|f| {
+            let name = f.name.to_ascii_lowercase();
+            name.ends_with(".mrpack") || (modpack && name.ends_with(".zip"))
+        })
         .min_by_key(|f| (!f.primary, f.ord)))
 }
 
@@ -1043,12 +1048,22 @@ async fn pack_files(app: &App, version: &str) -> Result<(), JobError> {
         app.store.set_pack(version, &sha256, &index, now())?;
     }
     let mut failed: Option<JobError> = None;
-    for file in app
-        .store
-        .pack_files(version)?
-        .into_iter()
-        .filter(|f| f.sha256.is_none())
-    {
+    let rows = app.store.pack_files(version)?;
+    let mut paths: std::collections::HashSet<String> = rows
+        .iter()
+        .filter(|f| !f.path.is_empty())
+        .map(|f| f.path.to_ascii_lowercase())
+        .collect();
+    for file in rows.into_iter().filter(|f| f.sha256.is_none()) {
+        if file.path.is_empty() {
+            if let Err(e) = curseforge_pack_file(app, version, &file, &mut paths).await {
+                if e.code == "no_space" {
+                    return Err(e);
+                }
+                failed = Some(e);
+            }
+            continue;
+        }
         if let Some(kept) = app
             .store
             .blob_by_hashes(Some(&file.sha1), Some(&file.sha512))?
@@ -1078,6 +1093,78 @@ async fn pack_files(app: &App, version: &str) -> Result<(), JobError> {
             .pack_file_kept(version, file.ord, &hashed.sha256)?;
     }
     failed.map_or(Ok(()), Err)
+}
+
+/// Finds, keeps and places one file of a CurseForge pack: its name from the
+/// site, the file from forgecdn (or kept already from the same address), its
+/// folder from what it is. A file that is nothing a pack may bring, or whose
+/// path another file has, is left out.
+async fn curseforge_pack_file(
+    app: &App,
+    version: &str,
+    file: &crate::store::PackFileRow,
+    paths: &mut std::collections::HashSet<String>,
+) -> Result<(), JobError> {
+    let (project, file_id) = curseforge::download_ids(&file.origin_url)
+        .ok_or_else(|| JobError::new("bad_pack", false))?;
+    let Some(answer) = app
+        .client
+        .json(&curseforge::file_url(project, file_id))
+        .await?
+    else {
+        // Gone from the site: the pack goes without it, as counted.
+        app.store.pack_file_left_out(version, file.ord)?;
+        return Ok(());
+    };
+    let (name, declared) = answer
+        .get("data")
+        .and_then(|data| curseforge::pack_file(project, file_id, data))
+        .ok_or_else(|| JobError::new("not_found", false))?;
+    let Some(name) = name else {
+        app.store.pack_file_left_out(version, file.ord)?;
+        return Ok(());
+    };
+    if declared > MAX_FILE {
+        return Err(JobError::new("too_big", false));
+    }
+    let (part, hashed) = match app.store.kept_by_origin(&file.origin_url)? {
+        Some(kept) if app.blobs.has(&kept.sha256) => (None, kept),
+        _ => {
+            if !app.blobs.may_keep(declared) {
+                return Err(JobError::new("no_space", true));
+            }
+            let max = if declared > 0 { declared } else { MAX_FILE };
+            let (part, hashed) = download(app, &file.origin_url, max, &[]).await?;
+            if declared > 0 && hashed.size != declared {
+                let _ = std::fs::remove_file(&part);
+                return Err(JobError::new("hash_mismatch", true));
+            }
+            (Some(part), hashed)
+        }
+    };
+    let look = part
+        .clone()
+        .unwrap_or_else(|| app.blobs.path(&hashed.sha256));
+    let looked = name.clone();
+    let folder = tokio::task::spawn_blocking(move || pack::folder_of(&look, &looked))
+        .await
+        .ok()
+        .flatten();
+    let path = folder.map(|f| format!("{f}/{name}"));
+    let Some(path) = path.filter(|p| pack::pack_path(p) && paths.insert(p.to_ascii_lowercase()))
+    else {
+        if let Some(part) = part {
+            let _ = std::fs::remove_file(part);
+        }
+        app.store.pack_file_left_out(version, file.ord)?;
+        return Ok(());
+    };
+    if let Some(part) = part {
+        keep(app, &part, &hashed, file_type(&name))?;
+    }
+    app.store
+        .pack_file_found(version, file.ord, &path, &hashed)?;
+    Ok(())
 }
 
 /// Keeps a picture from `url` (once per address); its SHA-256 and type.
