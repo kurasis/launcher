@@ -391,6 +391,37 @@ describe('WorldsView', () => {
     expect(payload.name).toBe('New world');
   });
 
+  it('lists snapshots only when asked, with what they mean', async () => {
+    const { calls } = setup({
+      worlds_versions: (args) =>
+        args.snapshots === true ? ['26.1-snapshot-2', '1.21.1'] : ['1.21.1'],
+      worlds_create: () => mine,
+      worlds_accept_eula: () => local,
+    });
+    await screen.findByText('Our base');
+    fireEvent.click(screen.getByRole('button', { name: 'Create a world' }));
+    const dialog = within(screen.getByRole('dialog'));
+    await waitFor(() => {
+      expect(dialog.getByLabelText('Minecraft version')).toHaveValue('1.21.1');
+    });
+    expect(dialog.queryByText(/Snapshots are test versions/)).toBeNull();
+    fireEvent.click(dialog.getByLabelText('Show snapshots'));
+    await dialog.findByText(/Snapshots are test versions/);
+    await dialog.findByRole('option', { name: '26.1-snapshot-2' });
+    expect(called(calls, 'worlds_versions').map((c) => c.args.snapshots)).toEqual([false, true]);
+    fireEvent.change(dialog.getByLabelText('Minecraft version'), {
+      target: { value: '26.1-snapshot-2' },
+    });
+    fireEvent.change(dialog.getByLabelText('World name'), { target: { value: 'Test' } });
+    fireEvent.click(dialog.getByLabelText('I accept the Minecraft EULA'));
+    fireEvent.click(dialog.getByRole('button', { name: 'Create' }));
+    await waitFor(() => {
+      expect(called(calls, 'worlds_create')).toHaveLength(1);
+    });
+    const payload = called(calls, 'worlds_create')[0]?.args.payload as { minecraft: string };
+    expect(payload.minecraft).toBe('26.1-snapshot-2');
+  });
+
   it('manages members and makes invite codes on a room page', async () => {
     const { calls } = setup({
       worlds_invite: () => ({

@@ -6,8 +6,9 @@
 //! or a login with the player's name, or rejects it. It never consumes bytes on
 //! its own: the caller keeps the buffer and replays it unchanged, exactly once,
 //! to the server after admission. A login is read in the Login Start layout of
-//! the protocol its handshake names, for every release from 1.7.6 on; the host
-//! also requires that protocol to be its server's.
+//! the protocol its handshake names, for every release from 1.7.6 on, and in
+//! whichever layout fits for a snapshot; the host also requires that protocol
+//! to be its server's.
 
 use crate::worlds::identity::Nick;
 use crate::worlds::protocol::{decode_varint, read_string};
@@ -18,7 +19,8 @@ pub const MAX_PREFIX: usize = 8 * 1024;
 const MAX_ADDRESS_BYTES: usize = 255 * 4;
 /// The protocol of 1.7.6, the oldest world version.
 const OLDEST_PROTOCOL: i32 = 5;
-/// Snapshot protocols have this bit set; snapshots are not world versions.
+/// Snapshot protocols have this bit set (from 1.16.4's snapshots); their
+/// numbers say nothing about the layout.
 const SNAPSHOT_BIT: i32 = 0x4000_0000;
 /// 1.19's chat signing key in Login Start: an X.509 public key and Mojang's
 /// signature of it (294 and 512 bytes in practice).
@@ -42,8 +44,8 @@ pub enum Reject {
     Malformed,
     /// The pre-1.7 ping starting with 0xFE.
     Legacy,
-    /// A login from a version older than 1.7.6, a snapshot, or another
-    /// version than the server's.
+    /// A login from a version older than 1.7.6, or from another version than
+    /// the server's.
     WrongVersion,
     /// Next state 3: a transfer from another server.
     Transfer,
@@ -75,7 +77,7 @@ fn packet(bytes: &[u8]) -> Result<Option<Packet<'_>>, Reject> {
 }
 
 /// Classifies the bytes read so far from a client connection. A login must
-/// come from a release's client, of `expected` when it is given.
+/// come from a client of 1.7.6 or later, of `expected` when it is given.
 pub fn classify(bytes: &[u8], expected: Option<i32>) -> Result<Classified, Reject> {
     if bytes.first() == Some(&0xFE) {
         return Err(Reject::Legacy);
@@ -116,8 +118,7 @@ fn classify_inner(bytes: &[u8], expected: Option<i32>) -> Result<Classified, Rej
             consumed: handshake_len,
         }),
         2 => {
-            let release = (OLDEST_PROTOCOL..SNAPSHOT_BIT).contains(&client_protocol);
-            if !release || expected.is_some_and(|p| p != client_protocol) {
+            if client_protocol < OLDEST_PROTOCOL || expected.is_some_and(|p| p != client_protocol) {
                 return Err(Reject::WrongVersion);
             }
             login_start(&bytes[handshake_len..], client_protocol).map(|found| match found {
@@ -138,7 +139,9 @@ fn classify_inner(bytes: &[u8], expected: Option<i32>) -> Result<Classified, Rej
 /// - 759 (1.19): an optional signing key;
 /// - 760 (1.19.1–1.19.2): an optional signing key and an optional profile UUID;
 /// - 761–763 (1.19.3–1.20.1): an optional profile UUID;
-/// - 764 and later (1.20.2 on): the profile UUID.
+/// - 764 and later (1.20.2 on): the profile UUID;
+/// - a snapshot's (bit 30): whichever of these fits; the server, which reads
+///   its own, gets the bytes unchanged.
 fn login_start(bytes: &[u8], protocol: i32) -> Result<Option<(Nick, usize)>, Reject> {
     let Some((id, body, length)) = packet(bytes)? else {
         return Ok(None);
@@ -148,14 +151,24 @@ fn login_start(bytes: &[u8], protocol: i32) -> Result<Option<(Nick, usize)>, Rej
     }
     let (name, used) = read_string(body, 16).map_err(|_| Reject::InvalidName)?;
     let rest = &body[used..];
-    let rest = match protocol {
-        ..=758 => Some(rest),
-        759 => signing_key(rest),
-        760 => signing_key(rest).and_then(optional_uuid),
-        761..=763 => optional_uuid(rest),
-        _ => rest.get(16..),
+    let fits = |layout: fn(&[u8]) -> Option<&[u8]>| layout(rest).is_some_and(<[u8]>::is_empty);
+    let fitting = match protocol {
+        ..=758 => fits(nothing),
+        759 => fits(signing_key),
+        760 => fits(|r| signing_key(r).and_then(optional_uuid)),
+        761..=763 => fits(optional_uuid),
+        p if p & SNAPSHOT_BIT != 0 => [
+            nothing as fn(&[u8]) -> Option<&[u8]>,
+            signing_key,
+            |r| signing_key(r).and_then(optional_uuid),
+            optional_uuid,
+            uuid,
+        ]
+        .into_iter()
+        .any(fits),
+        _ => fits(uuid),
     };
-    if !rest.is_some_and(<[u8]>::is_empty) {
+    if !fitting {
         return Err(Reject::Malformed);
     }
     let nick = Nick::parse(&name).map_err(|_| Reject::InvalidName)?;
@@ -169,6 +182,16 @@ fn flag(bytes: &[u8]) -> Option<(bool, &[u8])> {
         (1, rest) => Some((true, rest)),
         _ => None,
     }
+}
+
+/// The name alone: everything follows it.
+fn nothing(bytes: &[u8]) -> Option<&[u8]> {
+    Some(bytes)
+}
+
+/// What follows the profile UUID.
+fn uuid(bytes: &[u8]) -> Option<&[u8]> {
+    bytes.get(16..)
 }
 
 /// What follows a present-or-absent profile UUID.
@@ -347,16 +370,8 @@ pub(crate) mod tests {
     }
 
     #[test]
-    fn only_releases_from_1_7_6_may_log_in() {
-        for protocol in [
-            0,
-            4,
-            -1,
-            i32::MIN,
-            SNAPSHOT_BIT,
-            SNAPSHOT_BIT + 250,
-            i32::MAX,
-        ] {
+    fn only_clients_from_1_7_6_may_log_in() {
+        for protocol in [0, 4, -1, i32::MIN] {
             assert_eq!(
                 login(protocol, &[]),
                 Err(Reject::WrongVersion),
@@ -368,6 +383,42 @@ pub(crate) mod tests {
         wire.extend(login_start_with("Notch", &[]));
         assert!(classify(&wire, Some(5)).is_ok());
         assert_eq!(classify(&wire, Some(47)), Err(Reject::WrongVersion));
+    }
+
+    #[test]
+    fn a_snapshot_login_is_read_in_whichever_layout_fits() {
+        let uuid = [0x11u8; 16];
+        let with_uuid = [&[1u8][..], &uuid].concat();
+        let key = signing_key(294, 512);
+        for protocol in [SNAPSHOT_BIT + 1, SNAPSHOT_BIT + 250, i32::MAX] {
+            for after in [
+                vec![],
+                vec![0],
+                key.clone(),
+                vec![0, 0],
+                [&key[..], &with_uuid].concat(),
+                with_uuid.clone(),
+                uuid.to_vec(),
+            ] {
+                assert!(
+                    matches!(login(protocol, &after), Ok(Classified::Login { .. })),
+                    "{protocol} {after:?}"
+                );
+            }
+            for after in [
+                vec![2],
+                vec![0, 0, 0],
+                uuid[..15].to_vec(),
+                [&uuid[..], &[0]].concat(),
+                signing_key(513, 512),
+            ] {
+                assert_eq!(
+                    login(protocol, &after),
+                    Err(Reject::Malformed),
+                    "{protocol} {after:?}"
+                );
+            }
+        }
     }
 
     #[test]

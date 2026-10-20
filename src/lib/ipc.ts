@@ -481,7 +481,9 @@ export const ipc = {
   // Worlds with friends (D-068). Failures are LauncherErrors; `worldsProblemOf`
   // reads the service's problem from one.
   worldsState: (): Promise<WorldsState> => invoke<WorldsState>('worlds_state'),
-  worldsVersions: (): Promise<string[]> => invoke<string[]>('worlds_versions'),
+  /** Versions a world can be made for, newest first; snapshots too when asked. */
+  worldsVersions: (snapshots = false): Promise<string[]> =>
+    invoke<string[]>('worlds_versions', { snapshots }),
   worldsLocal: (): Promise<LocalWorld[]> => invoke<LocalWorld[]>('worlds_local'),
   worldsRooms: (): Promise<WorldsRoom[]> => invoke<WorldsRoom[]>('worlds_rooms'),
   worldsRoom: (room: string): Promise<WorldsRoomPage> =>

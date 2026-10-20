@@ -279,7 +279,7 @@ pub fn importable(root: &DataRoot, instances: &[InstanceFile]) -> Vec<Importable
     instances
         .iter()
         .filter(|i| i.loader.is_none() && i.world_room.is_none())
-        .filter(|i| tuple::release(&i.version_id).is_some())
+        .filter(|i| tuple::version(&i.version_id).is_some())
         .filter_map(|i| {
             let saves = crate::backup::worlds(&root.game_dir(i.id));
             (!saves.is_empty()).then(|| Importable {

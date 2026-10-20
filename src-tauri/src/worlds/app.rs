@@ -318,8 +318,9 @@ impl Worlds {
     }
 
     /// The Minecraft versions a world can be made for, newest first: the
-    /// catalog's releases from 1.7.6 on. Empty without a catalog.
-    pub async fn versions(&self) -> Vec<String> {
+    /// catalog's releases from 1.7.6 on, and its snapshots from 14w17a when
+    /// `snapshots`. Empty without a catalog.
+    pub async fn versions(&self, snapshots: bool) -> Vec<String> {
         let Some(metadata) = &self.metadata else {
             return Vec::new();
         };
@@ -328,7 +329,12 @@ impl Worlds {
             .map(|c| c.versions)
             .unwrap_or_default()
             .into_iter()
-            .filter(|e| e.version_type == "release" && tuple::release(&e.id).is_some())
+            .filter(|e| match e.version_type.as_str() {
+                "release" => true,
+                "snapshot" => snapshots,
+                _ => false,
+            })
+            .filter(|e| tuple::version(&e.id).is_some())
             .map(|e| e.id)
             .collect()
     }
@@ -763,7 +769,7 @@ impl Worlds {
     async fn join_inner(self: &Arc<Self>, state: &AppState, room: &str) -> LauncherResult<()> {
         let nick = nick_of(state)?;
         let room = self.client.room(room).await?;
-        if tuple::release(&room.minecraft).is_none() {
+        if tuple::version(&room.minecraft).is_none() {
             return Err(LauncherError::invalid_input(
                 "Worlds are not available for this Minecraft version yet.",
             ));

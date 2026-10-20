@@ -36,7 +36,7 @@ pub struct ServerPlan {
 /// Plans the server of a world version from its verified descriptor bytes,
 /// with the Java the descriptor names.
 pub fn plan(bytes: &[u8], minecraft: &str, ctx: &RuleContext) -> LauncherResult<ServerPlan> {
-    if tuple::release(minecraft).is_none() {
+    if tuple::version(minecraft).is_none() {
         return Err(LauncherError::invalid_input(
             "Worlds are not available for this Minecraft version yet.",
         ));
@@ -116,7 +116,7 @@ pub async fn prepare<F: Fetch>(
     })?;
     let entry = catalog
         .find(&world.minecraft)
-        .filter(|e| e.version_type == "release")
+        .filter(|e| matches!(e.version_type.as_str(), "release" | "snapshot"))
         .ok_or_else(|| descriptor::unsupported("version not listed"))?;
     let bytes = metadata.descriptor(entry).await?;
     let plan = plan(&bytes, &world.minecraft, &RuleContext::current()?)?;
@@ -243,7 +243,7 @@ mod tests {
 
     #[test]
     fn only_world_versions_are_planned() {
-        for id in ["1.7.2", "1.6.4", "24w14a", "1.21-pre1"] {
+        for id in ["1.7.2", "1.6.4", "14w02a", "1.21-pre0"] {
             assert!(plan(V1_21_1, id, &ctx()).is_err(), "{id}");
         }
     }

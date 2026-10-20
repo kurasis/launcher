@@ -7,7 +7,7 @@
 
 use serde::{Deserialize, Serialize};
 
-use super::tuple::Release;
+use super::tuple::WorldVersion;
 use crate::error::{LauncherError, LauncherResult};
 use crate::secrets::SecretString;
 
@@ -26,9 +26,10 @@ pub enum Difficulty {
 }
 
 impl Difficulty {
-    /// The value in the file: a name from 1.14 on, a number before.
-    fn value(self, release: Release) -> &'static str {
-        match (self, release.named_modes()) {
+    /// The value in the file: a name from 1.14 on, a number before and for
+    /// snapshots (1.14 and later read both).
+    fn value(self, version: WorldVersion) -> &'static str {
+        match (self, version.named_modes()) {
             (Self::Peaceful, true) => "peaceful",
             (Self::Easy, true) => "easy",
             (Self::Normal, true) => "normal",
@@ -51,9 +52,10 @@ pub enum GameMode {
 }
 
 impl GameMode {
-    /// The value in the file: a name from 1.14 on, a number before.
-    fn value(self, release: Release) -> &'static str {
-        match (self, release.named_modes()) {
+    /// The value in the file: a name from 1.14 on, a number before and for
+    /// snapshots (1.14 and later read both).
+    fn value(self, version: WorldVersion) -> &'static str {
+        match (self, version.named_modes()) {
             (Self::Survival, true) => "survival",
             (Self::Creative, true) => "creative",
             (Self::Adventure, true) => "adventure",
@@ -77,9 +79,10 @@ pub enum Preset {
 
 impl Preset {
     /// The value in the file: a world preset ID from 1.19 on, the world type's
-    /// name before (read without regard to case).
-    fn value(self, release: Release) -> &'static str {
-        match (self, release.preset_ids()) {
+    /// name before and for snapshots (read without regard to case; 1.19 and
+    /// later still map the old names).
+    fn value(self, version: WorldVersion) -> &'static str {
+        match (self, version.preset_ids()) {
             (Self::Normal, true) => "minecraft:normal",
             (Self::Flat, true) => "minecraft:flat",
             (Self::LargeBiomes, true) => "minecraft:large_biomes",
@@ -161,10 +164,10 @@ pub struct RunBinding {
     pub rcon_password: SecretString,
 }
 
-/// The whole file for a server of `release`. `settings` must have passed
+/// The whole file for a server of `version`. `settings` must have passed
 /// [`WorldSettings::validate`]. Keys an older server does not know are kept
 /// and ignored by it.
-pub fn render(settings: &WorldSettings, binding: &RunBinding, release: Release) -> String {
+pub fn render(settings: &WorldSettings, binding: &RunBinding, version: WorldVersion) -> String {
     let difficulty = if settings.hardcore {
         Difficulty::Hard
     } else {
@@ -197,10 +200,10 @@ pub fn render(settings: &WorldSettings, binding: &RunBinding, release: Release) 
         // The world.
         ("level-name", "world".into()),
         ("level-seed", escape(&settings.seed)),
-        ("level-type", escape(settings.preset.value(release))),
+        ("level-type", escape(settings.preset.value(version))),
         ("generate-structures", "true".into()),
-        ("difficulty", difficulty.value(release).into()),
-        ("gamemode", settings.game_mode.value(release).into()),
+        ("difficulty", difficulty.value(version).into()),
+        ("gamemode", settings.game_mode.value(version).into()),
         ("force-gamemode", "false".into()),
         ("hardcore", settings.hardcore.to_string()),
         ("pvp", settings.pvp.to_string()),
@@ -256,8 +259,8 @@ pub fn escape(value: &str) -> String {
 mod tests {
     use super::*;
 
-    fn newest() -> Release {
-        crate::worlds::tuple::release("1.21.1").unwrap()
+    fn newest() -> WorldVersion {
+        crate::worlds::tuple::version("1.21.1").unwrap()
     }
 
     fn binding() -> RunBinding {
@@ -415,9 +418,11 @@ mod tests {
             ("1.18.2", "largebiomes", "easy", "creative"),
             ("1.19", "minecraft:large_biomes", "easy", "creative"),
             ("26.1", "minecraft:large_biomes", "easy", "creative"),
+            ("24w14a", "largebiomes", "1", "1"),
+            ("26.1-snapshot-2", "largebiomes", "1", "1"),
         ] {
-            let release = crate::worlds::tuple::release(id).unwrap();
-            let text = render(&settings, &binding(), release);
+            let version = crate::worlds::tuple::version(id).unwrap();
+            let text = render(&settings, &binding(), version);
             assert_eq!(value(&text, "level-type"), vec![preset.to_owned()], "{id}");
             assert_eq!(
                 value(&text, "difficulty"),
@@ -432,7 +437,7 @@ mod tests {
             );
             assert_eq!(value(&text, "white-list"), vec!["true".to_owned()], "{id}");
         }
-        let old = crate::worlds::tuple::release("1.12.2").unwrap();
+        let old = crate::worlds::tuple::version("1.12.2").unwrap();
         let hardcore = WorldSettings {
             hardcore: true,
             ..WorldSettings::default()

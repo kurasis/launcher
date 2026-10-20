@@ -1550,6 +1550,8 @@
         "name": "World name",
         "description": "Description",
         "version": "Minecraft version",
+        "snapshots": "Show snapshots",
+        "snapshotsNote": "Snapshots are test versions: they change from week to week and can damage a world. A world made on a snapshot does not open in an older version, and friends need exactly the same snapshot.",
         "gameMode": "Game mode",
         "modes": {
           "survival": "Survival",

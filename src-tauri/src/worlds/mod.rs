@@ -2,8 +2,8 @@
 //! docs/worlds-with-friends/).
 //!
 //! A world is a directory `worlds/<worldId>/` with its `world.json` and the
-//! server's working directory. The server is Mojang's own JAR of a release
-//! [`tuple::release`] accepts, run in offline mode on 127.0.0.1; who may enter
+//! server's working directory. The server is Mojang's own JAR of a version
+//! [`tuple::version`] accepts, run in offline mode on 127.0.0.1; who may enter
 //! is decided by the tunnel, not by the server (ADAPTATION A2, A3).
 
 pub mod app;

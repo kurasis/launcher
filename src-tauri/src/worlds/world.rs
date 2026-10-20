@@ -117,7 +117,7 @@ pub fn create(
 ) -> LauncherResult<WorldFile> {
     let name = validate_name(name)?;
     settings.validate()?;
-    if tuple::release(minecraft).is_none() {
+    if tuple::version(minecraft).is_none() {
         return Err(LauncherError::invalid_input(
             "Worlds are not available for this Minecraft version yet.",
         ));
@@ -279,14 +279,14 @@ pub fn prepare_run(
         ));
     }
     world.settings.validate()?;
-    let release = tuple::release(&world.minecraft).ok_or_else(|| {
+    let version = tuple::version(&world.minecraft).ok_or_else(|| {
         LauncherError::invalid_input("Worlds are not available for this Minecraft version yet.")
     })?;
     let dir = root.world_server_dir(world.id);
     std::fs::create_dir_all(&dir).map_err(|e| io(&e))?;
     atomic::write(
         &dir.join("server.properties"),
-        properties::render(&world.settings, binding, release).as_bytes(),
+        properties::render(&world.settings, binding, version).as_bytes(),
     )
     .map_err(|e| io(&e))?;
     write_whitelist(root, world.id, members)?;
@@ -340,7 +340,7 @@ mod tests {
         for name in ["", "   ", "a\nb", &"n".repeat(65)] {
             assert!(create(&root, name, "1.21.1", WorldSettings::default()).is_err());
         }
-        for version in ["1.7.2", "24w14a", "1.21-pre1", "../1.21.1", ""] {
+        for version in ["1.7.2", "14w02a", "20w14infinite", "../1.21.1", ""] {
             assert!(create(&root, "x", version, WorldSettings::default()).is_err());
         }
         let bad = WorldSettings {
@@ -351,6 +351,8 @@ mod tests {
         assert!(list(&root).is_empty());
         let old = create(&root, "x", "1.7.10", WorldSettings::default()).unwrap();
         assert_eq!(old.minecraft, "1.7.10");
+        let snapshot = create(&root, "x", "24w14a", WorldSettings::default()).unwrap();
+        assert_eq!(snapshot.minecraft, "24w14a");
     }
 
     #[test]

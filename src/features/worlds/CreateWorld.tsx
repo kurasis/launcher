@@ -40,6 +40,7 @@ interface Props {
 export function CreateWorld({ onClose, onCreated }: Props) {
   const t = strings.worlds.form;
   const [versions, setVersions] = useState<string[]>([]);
+  const [snapshots, setSnapshots] = useState(false);
   const [name, setName] = useState('');
   const [description, setDescription] = useState('');
   const [minecraft, setMinecraft] = useState('');
@@ -50,13 +51,13 @@ export function CreateWorld({ onClose, onCreated }: Props) {
 
   useEffect(() => {
     void ipc
-      .worldsVersions()
+      .worldsVersions(snapshots)
       .then((list) => {
         setVersions(list);
-        setMinecraft((current) => (current === '' ? (list[0] ?? '') : current));
+        setMinecraft((current) => (list.includes(current) ? current : (list[0] ?? '')));
       })
       .catch(() => undefined);
-  }, []);
+  }, [snapshots]);
 
   const set = <K extends keyof WorldsSettings>(key: K, value: WorldsSettings[K]) => {
     setSettings((current) => ({ ...current, [key]: value }));
@@ -176,6 +177,17 @@ export function CreateWorld({ onClose, onCreated }: Props) {
             )}
           </Field>
         </div>
+        <label className={styles.check}>
+          <input
+            type="checkbox"
+            checked={snapshots}
+            onChange={(e) => {
+              setSnapshots(e.target.checked);
+            }}
+          />
+          {t.snapshots}
+        </label>
+        {snapshots && <Notice tone="warning">{t.snapshotsNote}</Notice>}
         <div className={forms.row}>
           <Field label={t.preset}>
             {(props) => (
