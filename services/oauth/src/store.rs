@@ -997,6 +997,23 @@ impl Store {
             .map_err(|e| e.to_string())
     }
 
+    /// Letters still waiting after a failure, oldest first: minutes since
+    /// queued, attempts and the last failure as stored. No recipient.
+    pub fn mail_failures(&self, now: i64) -> Result<Vec<(i64, i64, String)>, String> {
+        let db = self.db();
+        let mut statement = db
+            .prepare(
+                "SELECT (?1 - created) / 60, attempts, COALESCE(last_error, '') FROM outbox
+                 WHERE sent IS NULL AND body != '' AND attempts > 0 AND created > ?1 - 3 * 86400
+                 ORDER BY id LIMIT 20",
+            )
+            .map_err(|e| e.to_string())?;
+        statement
+            .query_map([now], |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?)))
+            .and_then(Iterator::collect)
+            .map_err(|e| e.to_string())
+    }
+
     /// The outbox in numbers, for `lapi-oauth mail-check`.
     pub fn mail_counts(&self, now: i64) -> Result<serde_json::Value, String> {
         let db = self.db();

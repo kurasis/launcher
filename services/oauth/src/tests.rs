@@ -1129,6 +1129,10 @@ async fn letters_waiting_hold_no_working_link_and_sent_ones_keep_nothing() {
         t.app.store.pending_mail(now + 20, 10).unwrap().is_empty(),
         "the wait grows"
     );
+    assert_eq!(
+        t.app.store.mail_failures(now).unwrap(),
+        vec![(0, 2, "421 busy".to_owned())]
+    );
     t.app.store.mail_done(raw[0].id, None, now).unwrap();
     assert!(t.app.store.pending_mail(now + 7200, 10).unwrap().is_empty());
     // A letter queued before sealing is sealed at start.
