@@ -21,6 +21,8 @@ function draw(node: DocNode, key: number, onLink: Props['onLink']): ReactNode {
       return node.text ?? '';
     case 'p':
       return <p key={key}>{inner}</p>;
+    case 'block':
+      return <div key={key}>{inner}</div>;
     case 'h1':
       return <h3 key={key}>{inner}</h3>;
     case 'h2':

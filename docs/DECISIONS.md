@@ -2042,9 +2042,10 @@ archive from the Package workflow, upload it to
 - **Adding:** a player gives an address (Modrinth project, version or file; CurseForge
   comes in stage 4) or a name; a name offers up to five projects to pick from. The
   service fetches the project, its members and all its versions' metadata, then the
-  files of the newest release per game version and loader, required dependencies (16
-  deep, 50 per project), the icon, the gallery and the pictures in the description,
-  which then point at our copies. Work runs from a queue in the database (retries with
+  files of the newest release per game version and loader, required dependencies (to
+  the end of the chain, each project read at most once a day so a loop ends; 200 per
+  project), the icon, the gallery and the pictures in the description (a plain `http:`
+  address of a listed site is fetched over HTTPS), which then point at our copies. Work runs from a queue in the database (retries with
   back-off, survives restarts). Limits: 20 requests an hour and 100 a day per account,
   5 GB a day of files brought per account, 60 an hour per address; an older version's
   files 30 an hour per address.
@@ -2099,15 +2100,19 @@ archive from the Package workflow, upload it to
 - **Only through the core.** Every call goes through Rust commands (`mods_*`); answers are
   bounded in size and checked (our IDs, closed lists of kinds, loaders and sources,
   lengths). Descriptions and changelogs come as a tree of safe nodes made from the
-  Markdown in the core (pulldown-cmark): HTML is never drawn, only its pictures, line
-  breaks and text; a link is kept only when it is `https:` and opens in the browser
+  Markdown in the core (pulldown-cmark); CurseForge's descriptions are HTML only and are
+  read as HTML. HTML is never drawn: a fixed set of elements (paragraphs, headings,
+  lists, tables, quotes, code, emphasis, links, pictures) becomes the same nodes,
+  attributes are read only for a link's or picture's address, anything else gives its
+  text, and scripts, styles and comments give nothing; a link is kept only when it is `https:` and opens in the browser
   after the player confirms; a picture only when files-mods.lapi.sh serves it. The CSP's
   `img-src` allows exactly that host.
 - **Adding to an installation:** a plan made in the core from the catalog's answers. A
   mod must list the installation's game version and loader (Quilt also takes Fabric's);
   a resource pack, shader or data pack that does not only gets a warning. Required
   dependencies are added (the version the dependency names, else the newest release
-  that fits; 8 deep, 50 files); one with no fitting version, an incompatible project
+  that fits; to the end of the chain, each project once, 200 files at most or no plan);
+  one with no fitting version, an incompatible project
   already there, or a file of the player's at the same name stops the plan. Files the
   catalog does not keep yet are asked for and waited on (20 minutes at most). Every file
   comes from files-mods.lapi.sh through the download executor, checked against its

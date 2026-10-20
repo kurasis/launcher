@@ -214,6 +214,20 @@ fn description(markdown: &str) -> Vec<markdown::Node> {
     markdown::parse(markdown, &our_picture)
 }
 
+/// A project's description: CurseForge's is HTML, Modrinth's Markdown.
+fn project_description(value: &Value) -> Vec<markdown::Node> {
+    let body = value["body"].as_str().unwrap_or_default();
+    let from_curseforge = value["sources"]
+        .as_array()
+        .and_then(|s| s.first())
+        .is_some_and(|s| s["source"] == "curseforge");
+    if from_curseforge {
+        markdown::parse_html(body, &our_picture)
+    } else {
+        description(body)
+    }
+}
+
 fn kind(text: &str) -> Option<String> {
     KINDS.contains(&text).then(|| text.to_owned())
 }
@@ -355,7 +369,7 @@ impl Project {
             slug: line(value["slug"].as_str().unwrap_or_default(), 64),
             title: line(value["title"].as_str().unwrap_or_default(), 256),
             summary: line(value["summary"].as_str().unwrap_or_default(), 512),
-            body: description(value["body"].as_str().unwrap_or_default()),
+            body: project_description(value),
             license: line(value["license"].as_str().unwrap_or_default(), 128),
             icon: value["iconThumb"]
                 .as_str()

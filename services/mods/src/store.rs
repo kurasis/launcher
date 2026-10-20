@@ -1783,6 +1783,37 @@ impl Store {
         let db = self.db();
         let one =
             |query: &str| -> Result<i64> { db.query_row(query, [], |r| r.get(0)).map_err(sql) };
+        // Failed jobs by kind and our error code: words of our own only.
+        let mut failed_by = serde_json::Map::new();
+        let mut query = db
+            .prepare(
+                "SELECT kind, coalesce(error, ''), count(*) FROM job WHERE state = 'failed'
+                 GROUP BY 1, 2 ORDER BY 3 DESC LIMIT 40",
+            )
+            .map_err(sql)?;
+        let rows = query
+            .query_map([], |r| {
+                Ok((
+                    r.get::<_, String>(0)?,
+                    r.get::<_, String>(1)?,
+                    r.get::<_, i64>(2)?,
+                ))
+            })
+            .map_err(sql)?;
+        for row in rows {
+            let (kind, error, count) = row.map_err(sql)?;
+            let word = |w: &str| {
+                if !w.is_empty()
+                    && w.len() <= 40
+                    && w.bytes().all(|b| b.is_ascii_lowercase() || b == b'_')
+                {
+                    w.to_owned()
+                } else {
+                    "other".to_owned()
+                }
+            };
+            failed_by.insert(format!("{}:{}", word(&kind), word(&error)), count.into());
+        }
         Ok(serde_json::json!({
             "projects": one("SELECT count(*) FROM project")?,
             "projectsReady": one("SELECT count(*) FROM project WHERE status = 'ready'")?,
@@ -1794,6 +1825,7 @@ impl Store {
             "requestsFailed": one("SELECT count(*) FROM import_request WHERE state = 'failed'")?,
             "jobsWaiting": one("SELECT count(*) FROM job WHERE state IN ('queued', 'running')")?,
             "jobsFailed": one("SELECT count(*) FROM job WHERE state = 'failed'")?,
+            "jobsFailedBy": failed_by,
         }))
     }
 

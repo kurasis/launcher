@@ -102,6 +102,96 @@ fn markdown_never_carries_html_or_scripts() {
     }
 }
 
+fn html(text: &str) -> Vec<Node> {
+    markdown::parse_html(text, &our_picture)
+}
+
+#[test]
+fn html_descriptions_keep_their_structure() {
+    let nodes = html(&format!(
+        "<h2><span style=\"font-size:14px\">Title</span></h2>\r\n\
+         <p onclick=\"x()\" title=\"hidden words\">Some <strong>bold</strong>, <i>slanted</i>, \
+         <a href=\"https://x.example/a?b=1&amp;c=2\">a link</a> and \
+         <a href=\"javascript:alert(1)\">no link</a>.</p>\n\
+         <ul>\n  <li>one\n  <li>two</li>\n</ul>\n\
+         <p><img src=\"{PICTURE}\" alt=\"shot\" onerror=\"x()\"></p>\
+         <table><tbody><tr><th>a<td>b</tr></tbody></table>\
+         <pre>  keep\n  spaces</pre><p>&rsquo;&#8217;&#x2019;&#8238;&amp;lt; &unknown;</p>\
+         <!-- a note --><div><p>in a block</p></div><code>x &lt; y</code>"
+    ));
+    let k = all_kinds(&nodes);
+    for want in [
+        "h2", "span", "p", "strong", "em", "a", "ul", "li", "img", "table", "tr", "th", "td",
+        "pre", "block", "code",
+    ] {
+        assert!(k.contains(&want), "{want} in {k:?}");
+    }
+    // Items and paragraphs are siblings, not nested in each other.
+    let list = nodes.iter().find(|n| n.k == "ul").unwrap();
+    assert_eq!(list.c.iter().filter(|n| n.k == "li").count(), 2);
+    assert!(nodes.iter().filter(|n| n.k == "p").count() >= 3);
+    assert_eq!(all_hrefs(&nodes), ["https://x.example/a?b=1&c=2", PICTURE]);
+    let text = all_text(&nodes);
+    assert!(
+        text.contains("Some bold, slanted, a link and no link."),
+        "{text}"
+    );
+    assert!(text.contains("  keep\n  spaces"), "{text}");
+    assert!(
+        text.contains("\u{2019}\u{2019}\u{2019}&lt; &unknown;"),
+        "{text}"
+    );
+    assert!(!text.contains('\u{202e}'));
+    assert!(text.contains("x < y"), "{text}");
+    for hidden in ["hidden words", "a note", "x()", "font-size"] {
+        assert!(!text.contains(hidden), "{hidden} in {text}");
+    }
+    // The picture keeps its description.
+    fn find<'a>(nodes: &'a [Node], k: &str) -> Option<&'a Node> {
+        nodes
+            .iter()
+            .find_map(|n| if n.k == k { Some(n) } else { find(&n.c, k) })
+    }
+    assert_eq!(find(&nodes, "img").unwrap().text.as_deref(), Some("shot"));
+}
+
+#[test]
+fn broken_html_is_read_safely() {
+    for junk in [
+        "</div></p></li>",
+        "<b><i>x</b>y</i>z",
+        "<p>a<p>b<div>c</p>d",
+        "<a href=\"https://a.example\"><a>nested</a>",
+        "<script>alert(1)",
+        "<p/><br/><hr><img><img src=>",
+        "<<p>>&#99999999;&#xFFFFFFF;&#0;",
+    ] {
+        let nodes = html(junk);
+        let text = all_text(&nodes);
+        assert!(!text.contains("alert"), "{junk}: {text}");
+        assert!(!text.contains('\u{0}'), "{junk}");
+    }
+    let deep = format!("{}deep", "<div><ul><li>".repeat(5000));
+    let nodes = html(&deep);
+    fn depth(nodes: &[Node]) -> usize {
+        nodes.iter().map(|n| 1 + depth(&n.c)).max().unwrap_or(0)
+    }
+    assert!(depth(&nodes) <= 26, "{}", depth(&nodes));
+    assert!(all_text(&nodes).contains("deep"));
+    assert!(all_kinds(&html(&"<b>a</b>".repeat(100_000))).len() <= 20_001);
+}
+
+#[test]
+fn html_in_markdown_keeps_its_structure_and_the_markdown_around_it() {
+    let nodes = md("<h2 align=\"center\">Hi</h2>\n\nSome *em* and <b>bold\n\nnext <i>one</i>");
+    assert!(all_kinds(&nodes).contains(&"h2"));
+    // An element left open ends with its paragraph.
+    let paragraphs: Vec<&Node> = nodes.iter().filter(|n| n.k == "p").collect();
+    assert_eq!(paragraphs.len(), 2, "{nodes:?}");
+    assert!(all_text(&paragraphs[1].c).starts_with("next one"));
+    assert!(all_kinds(&paragraphs[1].c).contains(&"em"));
+}
+
 #[test]
 fn markdown_links_are_https_only() {
     let nodes = md(
@@ -248,6 +338,15 @@ fn hits_and_projects_from_junk_are_dropped_or_cleaned() {
     assert_eq!(project.categories, ["ok"]);
     assert_eq!(project.client_side, "unknown");
     assert_eq!(project.authors.len(), 1);
+
+    // CurseForge's description is HTML: Markdown's marks in it stay text.
+    let project = Project::from(&json!({
+        "id": id(3), "kind": "mod", "body": "<p>*not em*</p>\n\n    <p>not code</p>",
+        "sources": [{"source": "curseforge"}],
+    }))
+    .unwrap();
+    assert_eq!(all_kinds(&project.body), ["p", "text", "p", "text"]);
+    assert_eq!(all_text(&project.body), "*not em*not code");
 }
 
 #[test]
@@ -582,6 +681,34 @@ async fn a_mod_brings_what_it_requires() {
     assert_eq!(plan.items[1].path, "mods/sodium.jar");
     assert!(plan.items[1].dependency && plan.items[1].kept);
     assert_eq!(plan.total_bytes, 200);
+}
+
+#[tokio::test]
+async fn every_dependency_down_a_long_chain_comes_and_a_loop_ends() {
+    let mut fake = Fake::default();
+    for n in 1..=30u8 {
+        fake.add_project(n, "mod", &format!("Link {n}"));
+        let next = if n == 30 { 1 } else { n + 1 };
+        fake.add_version(
+            100 + n,
+            n,
+            &format!("link-{n}.jar"),
+            json!({"dependencies": [{"kind": "required", "projectId": id(next)}]}),
+        );
+    }
+    let dir = tempfile::tempdir().unwrap();
+    let plan = content::plan(
+        &fake,
+        dir.path(),
+        &fabric(),
+        &ContentLock::default(),
+        &wanted(&id(101)),
+    )
+    .await
+    .unwrap();
+    assert!(plan.ready(), "{plan:?}");
+    assert_eq!(plan.items.len(), 30);
+    assert_eq!(plan.items.last().unwrap().file_name, "link-30.jar");
 }
 
 #[tokio::test]

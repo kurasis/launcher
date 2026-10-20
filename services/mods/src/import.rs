@@ -43,9 +43,9 @@ pub fn now() -> i64 {
     chrono::Utc::now().timestamp()
 }
 
-/// Dependencies are followed this deep, at most this many from a project.
-pub const MAX_DEPTH: i64 = 16;
-const MAX_DEPENDENCIES: usize = 50;
+/// Required dependencies are followed to the end of the chain (each project
+/// once a day, so a loop ends), at most this many from one project.
+const MAX_DEPENDENCIES: usize = 200;
 /// Pages of a CurseForge project's files read at once (newest first, 50 a
 /// page); older files are not listed until the project has fewer.
 const MAX_CURSEFORGE_PAGES: usize = 20;
@@ -576,23 +576,21 @@ async fn project(
     for &i in &chosen {
         queue_files(app, &ids[i], request)?;
     }
-    if depth < MAX_DEPTH {
-        let mut queued = 0;
-        for &i in &chosen {
-            for dependency in &versions[i].dependencies {
-                if dependency.kind != "required" || queued >= MAX_DEPENDENCIES {
-                    continue;
+    let mut queued = 0;
+    for &i in &chosen {
+        for dependency in &versions[i].dependencies {
+            if dependency.kind != "required" || queued >= MAX_DEPENDENCIES {
+                continue;
+            }
+            let added = match (&dependency.version, &dependency.project) {
+                (Some(v), _) => queue_version(app, source, v, depth + 1, request)?,
+                (None, Some(p)) => {
+                    queue_project(app, source, p, depth + 1, request, DEPENDENCY_FRESH)?
                 }
-                let added = match (&dependency.version, &dependency.project) {
-                    (Some(v), _) => queue_version(app, source, v, depth + 1, request)?,
-                    (None, Some(p)) => {
-                        queue_project(app, source, p, depth + 1, request, DEPENDENCY_FRESH)?
-                    }
-                    (None, None) => false,
-                };
-                if added {
-                    queued += 1;
-                }
+                (None, None) => false,
+            };
+            if added {
+                queued += 1;
             }
         }
     }
@@ -782,9 +780,6 @@ fn queue_curseforge_dependencies(
     depth: i64,
     request: Option<&str>,
 ) -> Result<(), JobError> {
-    if depth >= MAX_DEPTH {
-        return Ok(());
-    }
     let mut queued: Vec<&str> = Vec::new();
     for need in needed {
         if need.dependency.kind != "required" || queued.len() >= MAX_DEPENDENCIES {
@@ -914,21 +909,17 @@ async fn version(
         .store
         .upsert_versions(&project, source, std::slice::from_ref(&found))?;
     queue_files(app, &ids[0], request)?;
-    if depth < MAX_DEPTH {
-        for dependency in found
-            .dependencies
-            .iter()
-            .filter(|d| d.kind == "required")
-            .take(MAX_DEPENDENCIES)
-        {
-            match (&dependency.version, &dependency.project) {
-                (Some(v), _) => queue_version(app, source, v, depth + 1, request)?,
-                (None, Some(p)) => {
-                    queue_project(app, source, p, depth + 1, request, DEPENDENCY_FRESH)?
-                }
-                (None, None) => false,
-            };
-        }
+    for dependency in found
+        .dependencies
+        .iter()
+        .filter(|d| d.kind == "required")
+        .take(MAX_DEPENDENCIES)
+    {
+        match (&dependency.version, &dependency.project) {
+            (Some(v), _) => queue_version(app, source, v, depth + 1, request)?,
+            (None, Some(p)) => queue_project(app, source, p, depth + 1, request, DEPENDENCY_FRESH)?,
+            (None, None) => false,
+        };
     }
     Ok(())
 }
@@ -1172,25 +1163,37 @@ async fn image(app: &App, project: &str, kind: &str, url: &str) -> Result<(), Jo
     Ok(())
 }
 
-/// The addresses of pictures a description shows that we may fetch.
-pub fn body_images(body: &str) -> Vec<String> {
-    let mut found: Vec<String> = Vec::new();
+/// The pictures a description shows that we may fetch: each address as
+/// written and as fetched (a plain `http:` one of a listed site over HTTPS,
+/// as older descriptions on CurseForge have them).
+pub fn body_images(body: &str) -> Vec<(String, String)> {
+    let mut found: Vec<(String, String)> = Vec::new();
     let mut rest = body;
-    while let Some(at) = rest.find("https://") {
+    loop {
+        let at = match (rest.find("https://"), rest.find("http://")) {
+            (Some(a), Some(b)) => a.min(b),
+            (Some(a), None) | (None, Some(a)) => a,
+            (None, None) => break,
+        };
         let tail = &rest[at..];
         let end = tail
             .find(|c: char| {
                 c.is_whitespace() || matches!(c, ')' | '"' | '\'' | '<' | '>' | ']' | '`')
             })
             .unwrap_or(tail.len());
-        let url = &tail[..end];
+        let written = &tail[..end];
+        let url = match written.strip_prefix("http://") {
+            Some(plain) => format!("https://{plain}"),
+            None => written.to_owned(),
+        };
         let lower = url.to_ascii_lowercase();
         let path = lower.split(['?', '#']).next().unwrap_or_default();
         let picture = [".png", ".jpg", ".jpeg", ".gif", ".webp"]
             .iter()
             .any(|e| path.ends_with(e));
-        if picture && crate::fetch::site(url).is_some() && !found.iter().any(|f| f == url) {
-            found.push(url.to_owned());
+        if picture && crate::fetch::site(&url).is_some() && !found.iter().any(|(w, _)| w == written)
+        {
+            found.push((written.to_owned(), url));
             if found.len() >= MAX_BODY_IMAGES {
                 break;
             }
@@ -1203,11 +1206,11 @@ pub fn body_images(body: &str) -> Vec<String> {
 async fn body(app: &App, project: &str) -> Result<(), JobError> {
     let text = app.store.body(project)?;
     let mut ours = Vec::new();
-    for url in body_images(&text) {
+    for (written, url) in body_images(&text) {
         // A picture that cannot be had stays as it was; the launcher does not
         // load pictures from other sites.
         if let Ok((sha256, media_type)) = keep_image(app, &url).await {
-            ours.push((url, app.urls.image(&sha256, &media_type)));
+            ours.push((written, app.urls.image(&sha256, &media_type)));
         }
     }
     if ours.is_empty() {

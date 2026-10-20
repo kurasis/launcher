@@ -4,7 +4,8 @@
 //! - A plan is made in the core from the catalog's own answers: the version's
 //!   game versions and loaders must fit the installation (a mod strictly; a
 //!   resource pack, shader or data pack with a warning), required
-//!   dependencies are added (newest release that fits, 8 deep, 50 files), and
+//!   dependencies are added to the end of the chain (the version named, else
+//!   the newest release that fits; 200 files at most, or no plan), and
 //!   an incompatible project already installed stops the plan.
 //! - Files the catalog does not keep yet are asked for and waited on; every
 //!   file comes from files-mods.lapi.sh through the download executor and is
@@ -36,9 +37,9 @@ use crate::storage::paths::{DataRoot, InstanceId, Sha256};
 use crate::sync::lock;
 
 const LOCK_FILE: &str = "content.lock.json";
-/// Files added with one install: the chosen one and what it needs.
-const MAX_PLAN: usize = 50;
-const MAX_DEPTH: usize = 8;
+/// Files added with one install: the chosen one and all it needs. Each
+/// project is taken once, so a loop of dependencies ends.
+const MAX_PLAN: usize = 200;
 /// Files listed per folder.
 const MAX_LISTED: usize = 2000;
 /// Files the catalog is asked to recognize at once.
@@ -464,16 +465,10 @@ pub async fn plan<C: Catalog>(
         approval: None,
     };
     let mut seen: HashSet<String> = HashSet::new();
-    // (version, project title and kind, depth, dependency)
-    let mut queue = vec![(
-        version,
-        project.title.clone(),
-        project.icon.clone(),
-        0,
-        false,
-    )];
+    // (version, project title and icon, dependency)
+    let mut queue = vec![(version, project.title.clone(), project.icon.clone(), false)];
     seen.insert(project.id.clone());
-    while let Some((version, title, icon, depth, dependency)) = queue.pop() {
+    while let Some((version, title, icon, dependency)) = queue.pop() {
         if plan.items.len() >= MAX_PLAN {
             return Err(LauncherError::invalid_input(
                 "This needs too many other projects to install at once.",
@@ -573,9 +568,6 @@ pub async fn plan<C: Catalog>(
                     {
                         continue;
                     }
-                    if depth + 1 > MAX_DEPTH {
-                        continue;
-                    }
                     let other = catalog.project(&project_id).await.ok();
                     let pinned = match &needed.version_id {
                         Some(id) => catalog
@@ -594,7 +586,6 @@ pub async fn plan<C: Catalog>(
                             v,
                             other.as_ref().map(|p| p.title.clone()).unwrap_or_default(),
                             other.as_ref().and_then(|p| p.icon.clone()),
-                            depth + 1,
                             true,
                         )),
                         None => plan.missing.push(Missing {
