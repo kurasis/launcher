@@ -145,6 +145,8 @@ pub struct Request {
     pub to: PathBuf,
     pub max_bytes: u64,
     pub json: bool,
+    /// Headers of our own choosing (never from a player or a source).
+    pub headers: &'static [&'static str],
     /// The proxy's address, or None for a direct connection.
     pub proxy: Option<String>,
     /// For a direct connection: the checked address to connect to.
@@ -203,6 +205,10 @@ impl Curl {
         if request.json {
             args.push("--header".into());
             args.push("Accept: application/json".into());
+        }
+        for header in request.headers {
+            args.push("--header".into());
+            args.push((*header).to_owned());
         }
         if let (Some(address), None) = (request.resolve, &request.proxy)
             && let Some(host) = reqwest::Url::parse(&request.url)
@@ -480,6 +486,7 @@ impl Client {
                     to: to.to_owned(),
                     max_bytes,
                     json,
+                    headers: &[],
                     proxy,
                     resolve,
                     timeout: if json {
@@ -537,6 +544,7 @@ impl Client {
         exit: usize,
         scheme: Option<&str>,
         url: &str,
+        headers: &'static [&'static str],
         to: &Path,
         max_bytes: u64,
     ) -> Result<Reply, FetchError> {
@@ -561,6 +569,7 @@ impl Client {
                 to: to.to_owned(),
                 max_bytes,
                 json: false,
+                headers,
                 proxy,
                 resolve,
                 timeout: Duration::from_secs(60),

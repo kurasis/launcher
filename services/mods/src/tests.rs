@@ -914,9 +914,14 @@ fn curl_gets_its_arguments_one_by_one_and_no_proxy() {
         proxy: Some("socks5h://user:secret@proxy.example:1080".into()),
         resolve: None,
         timeout: Duration::from_secs(30),
+        headers: &["Referer: https://www.curseforge.com/"],
     };
     let args = curl.arguments(&request);
     assert_eq!(&args[0..2], ["--impersonate", "chrome150"]);
+    assert!(
+        args.windows(2)
+            .any(|w| w == ["--header", "Referer: https://www.curseforge.com/"])
+    );
     assert!(args.windows(2).any(|w| w == ["--proto", "=https"]));
     assert!(args.windows(2).any(|w| w == ["--max-redirs", "0"]));
     assert!(args.windows(2).any(|w| w == ["--max-filesize", "1000"]));

@@ -64,6 +64,16 @@ const CLASS_IDS: &[(u64, &str)] = &[
     (17, "worlds"),
 ];
 
+/// The headers the site's own scripts send to its API, for the probe's
+/// search checks.
+pub const SITE_FETCH: &[&str] = &[
+    "Accept: application/json, text/plain, */*",
+    "Referer: https://www.curseforge.com/minecraft/search",
+    "Sec-Fetch-Site: same-origin",
+    "Sec-Fetch-Mode: cors",
+    "Sec-Fetch-Dest: empty",
+];
+
 /// The site's search page for a name (Minecraft only).
 pub fn search_url(words: &str) -> String {
     format!(
