@@ -8,7 +8,7 @@ import type { ModsImportRequest } from '../../lib/contracts';
 import { describeIpcError, ipc, isLauncherError } from '../../lib/ipc';
 import { strings } from '../../lib/strings';
 import { Dialog } from './Dialog';
-import { compact, failureText, stateTone } from './helpers';
+import { compact, failureText, ourPicture, stateTone } from './helpers';
 import styles from './Mods.module.css';
 
 /** How often a request in progress is asked about. */
@@ -76,50 +76,62 @@ export function RequestProgress({
         <>
           <p>{t.choose}</p>
           <ul className={styles.candidates}>
-            {request.candidates.map((c) => (
-              <li key={`${c.source}:${c.id}`} className={styles.candidate}>
-                <span className={styles.cardBody}>
-                  <span className={styles.cardTitle}>
-                    <bdi>{c.title || c.id}</bdi>
-                    <span className={styles.source}>{strings.mods.sources[c.source]}</span>
-                  </span>
-                  {c.author !== '' && (
-                    <span className={styles.muted}>{strings.mods.by({ author: c.author })}</span>
+            {request.candidates.map((c) => {
+              const banner = ourPicture(c.banner);
+              const icon = ourPicture(c.icon);
+              return (
+                <li key={`${c.source}:${c.id}`} className={styles.candidate}>
+                  {banner !== null && (
+                    <img className={styles.banner} src={banner} alt="" loading="lazy" />
                   )}
-                  <span className={styles.summary}>{c.summary}</span>
-                  <span className={styles.meta}>
-                    {strings.mods.downloads({ count: compact(c.downloads) })}
+                  {icon !== null ? (
+                    <img className={styles.icon} src={icon} alt="" loading="lazy" />
+                  ) : (
+                    <span className={styles.icon} aria-hidden="true" />
+                  )}
+                  <span className={styles.cardBody}>
+                    <span className={styles.cardTitle}>
+                      <bdi>{c.title || c.id}</bdi>
+                      <span className={styles.source}>{strings.mods.sources[c.source]}</span>
+                    </span>
+                    {c.author !== '' && (
+                      <span className={styles.muted}>{strings.mods.by({ author: c.author })}</span>
+                    )}
+                    <span className={styles.summary}>{c.summary}</span>
+                    <span className={styles.meta}>
+                      {strings.mods.downloads({ count: compact(c.downloads) })}
+                    </span>
                   </span>
-                </span>
-                {c.projectId !== null ? (
-                  <Button
-                    onClick={() => {
-                      if (c.projectId !== null) onOpen(c.projectId);
-                    }}
-                  >
-                    {t.inCatalog}
-                  </Button>
-                ) : (
-                  <Button
-                    variant="primary"
-                    disabled={choosing}
-                    onClick={() => {
-                      setChoosing(true);
-                      setError(null);
-                      void ipc
-                        .modsChoose(id, c.source, c.id)
-                        .then(onChange)
-                        .catch(setError)
-                        .finally(() => {
-                          setChoosing(false);
-                        });
-                    }}
-                  >
-                    {t.pick}
-                  </Button>
-                )}
-              </li>
-            ))}
+                  {c.projectId !== null ? (
+                    <Button
+                      onClick={() => {
+                        if (c.projectId !== null) onOpen(c.projectId);
+                      }}
+                    >
+                      {t.inCatalog}
+                    </Button>
+                  ) : (
+                    <Button
+                      variant="primary"
+                      disabled={choosing}
+                      onClick={() => {
+                        setChoosing(true);
+                        setError(null);
+                        void ipc
+                          .modsChoose(id, c.source, c.id)
+                          .then(onChange)
+                          .catch(setError)
+                          .finally(() => {
+                            setChoosing(false);
+                          });
+                      }}
+                    >
+                      {t.pick}
+                    </Button>
+                  )}
+                </li>
+              );
+            })}
           </ul>
         </>
       )}

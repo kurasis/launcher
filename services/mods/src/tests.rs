@@ -555,10 +555,15 @@ async fn a_name_offers_projects_to_choose_from() {
         &modrinth::search_url("sodium mod"),
         json!({ "hits": [
             { "project_id": SODIUM, "slug": "sodium", "project_type": "mod", "title": "Sodium",
-              "author": "jellysquid3", "downloads": 5, "icon_url": "https://cdn.modrinth.com/x.png" },
+              "author": "jellysquid3", "downloads": 5, "icon_url": "https://cdn.modrinth.com/x.png",
+              "featured_gallery": "https://cdn.modrinth.com/poster.png" },
             { "project_id": "plugin01", "slug": "a-plugin", "project_type": "plugin", "title": "Not ours" },
         ]}),
     );
+    t.sites
+        .put("https://cdn.modrinth.com/x.png", ok(png(400, 400)));
+    t.sites
+        .put("https://cdn.modrinth.com/poster.png", ok(png(1200, 600)));
     let (_, request) = t
         .player(1, "POST", "/v1/imports", json!({ "input": "sodium mod" }))
         .await;
@@ -570,8 +575,19 @@ async fn a_name_offers_projects_to_choose_from() {
     assert_eq!(request["state"], "choosing");
     let candidates = request["candidates"].as_array().unwrap();
     assert_eq!(candidates.len(), 1);
-    // No pictures from other sites reach the launcher.
+    // Pictures reach the launcher only from here.
     assert!(candidates[0].get("iconUrl").is_none());
+    assert!(candidates[0].get("bannerUrl").is_none());
+    let icon = candidates[0]["icon"].as_str().unwrap();
+    assert!(
+        icon.starts_with("https://files.example/i/") && icon.ends_with(".webp"),
+        "{icon}"
+    );
+    let banner = candidates[0]["banner"].as_str().unwrap();
+    assert!(
+        banner.starts_with("https://files.example/i/") && banner.ends_with(".jpg"),
+        "{banner}"
+    );
 
     // Only what was offered, and only by whoever asked.
     let uri = format!("/v1/imports/{id}/choose");

@@ -1280,10 +1280,17 @@
         "description": "Description",
         "gallery": "Pictures",
         "versions": "Versions",
-        "fitsOnly": "Only versions for {name}",
         "chooseInstallation": "Choose an installation at the top to add a version to it.",
-        "noneFits": "No version fits this installation.",
-        "noVersions": "No versions yet."
+        "noVersions": "No versions yet.",
+        "kept": "In the catalog",
+        "channel": "Type",
+        "anyChannel": "Any",
+        "order": "Order",
+        "newest": "Newest first",
+        "oldest": "Oldest first",
+        "noneMatch": "No version matches the filters.",
+        "showAll": "Show all",
+        "matching": "{count, plural, one {# version} other {# versions}} of {total}"
       },
       "add": {
         "title": "Add {title} to {name}",

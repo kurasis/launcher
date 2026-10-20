@@ -286,7 +286,8 @@ fn import_requests_are_checked() {
     let request = ImportRequest::from(&json!({
         "id": id(1), "state": "choosing", "error": "bad<script>",
         "candidates": [
-            {"source": "modrinth", "id": "sodium", "title": "Sodium"},
+            {"source": "modrinth", "id": "sodium", "title": "Sodium", "icon": PICTURE,
+             "banner": "https://cdn.modrinth.com/poster.png"},
             {"source": "evil", "id": "x"},
             {"source": "modrinth", "id": "../x"},
         ],
@@ -294,6 +295,9 @@ fn import_requests_are_checked() {
     .unwrap();
     assert_eq!(request.error.as_deref(), Some("badscript"));
     assert_eq!(request.candidates.len(), 1);
+    // Pictures only from the catalog.
+    assert_eq!(request.candidates[0].icon.as_deref(), Some(PICTURE));
+    assert_eq!(request.candidates[0].banner, None);
     assert!(import_input("https://modrinth.com/mod/sodium").is_ok());
     assert!(import_input("  ").is_err());
     assert!(import_input("a\nb").is_err());

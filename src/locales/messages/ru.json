@@ -1280,10 +1280,17 @@
         "description": "Описание",
         "gallery": "Картинки",
         "versions": "Версии",
-        "fitsOnly": "Только версии для «{name}»",
         "chooseInstallation": "Выберите установку вверху, чтобы добавить в неё версию.",
-        "noneFits": "Нет версии для этой установки.",
-        "noVersions": "Версий пока нет."
+        "noVersions": "Версий пока нет.",
+        "kept": "В каталоге",
+        "channel": "Тип",
+        "anyChannel": "Любой",
+        "order": "Порядок",
+        "newest": "Сначала новые",
+        "oldest": "Сначала старые",
+        "noneMatch": "Нет версий под выбранные условия.",
+        "showAll": "Показать все",
+        "matching": "{count, plural, one {# версия} few {# версии} many {# версий} other {# версии}} из {total}"
       },
       "add": {
         "title": "Добавить {title} в «{name}»",

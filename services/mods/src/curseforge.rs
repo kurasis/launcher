@@ -996,6 +996,7 @@ fn candidate_of(project: &Value) -> Option<crate::modrinth::Candidate> {
             }
             .text(),
         ),
+        ..crate::modrinth::Candidate::default()
     })
 }
 
