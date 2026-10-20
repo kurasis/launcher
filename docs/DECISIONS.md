@@ -93,10 +93,14 @@ replaces it), `superseded`.
 - **Status:** accepted · **Phase:** P01 · **Affects:** FR13, A25
 - **Decision:** `.github/workflows/ci.yml` runs frontend checks on `ubuntu-24.04` and, on
   `ubuntu-24.04`, `windows-2025`, `macos-15` (arm64) and `macos-15-intel` (x64): clippy with
-  `-D warnings`, `cargo test --locked` and a release build without installers
-  (`tauri build --no-bundle`). Rustfmt runs once on Linux. The workflow has read-only
+  `-D warnings` and `cargo test --locked`. Rustfmt runs once on Linux. The workflow has read-only
   permissions and uses no secrets. Installer packaging and artifact upload belong to P12.
 - **Limitation:** A CI build is compile evidence, not a target-machine test.
+- **Amended 2026-10-20:** the release build without installers (`tauri build --no-bundle`)
+  left CI. The Package workflow builds the same release on every target and smoke-tests it,
+  so the CI copy only doubled the slowest step (15–19 min on Windows) and held runners.
+  macOS (CI and Package) runs only on a manual run with the `macos` input, until the owner
+  turns it back on; the release archive needs it, so it is built from such a run.
 
 ## D-008 — Declared bundle targets
 
