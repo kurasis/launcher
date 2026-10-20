@@ -1,0 +1,61 @@
+plugins {
+    id 'net.fabricmc.fabric-loom' version '1.19.1'
+    id 'com.gradleup.shadow' version '9.6.1'
+}
+
+// The test bot for 26.3 with no mod loader, a Java agent (docs/GAMETEST.md). The game's
+// names are not obfuscated from 26.1, so nothing is remapped. ASM is bundled under our
+// own package.
+base {
+    archivesName = "launchergametest-agent-${minecraft_version}"
+}
+
+java {
+    toolchain { languageVersion = JavaLanguageVersion.of(25) }
+}
+
+sourceSets.main {
+    java.srcDir "${rootDir}/gametest/core/src/main/java"
+    java.srcDir "${projectDir}/../common/src/main/java"
+    java.srcDir "${rootDir}/gametest/agent/src/main/java"
+    java.exclude 'app/launcher/gametest/mixin/**'
+}
+
+configurations {
+    bundled
+    implementation.extendsFrom bundled
+}
+
+dependencies {
+    minecraft "com.mojang:minecraft:${minecraft_version}"
+    bundled 'org.ow2.asm:asm:9.9'
+    bundled 'org.ow2.asm:asm-tree:9.9'
+}
+
+tasks.withType(JavaCompile).configureEach {
+    options.release = 25
+    options.encoding = 'UTF-8'
+}
+
+// The jar the test uses is the bundled one; the plain one is kept aside.
+jar {
+    archiveClassifier = 'named'
+}
+
+shadowJar {
+    configurations = [project.configurations.bundled]
+    relocate 'org.objectweb.asm', 'app.launcher.gametest.agent.asm'
+    exclude 'module-info.class', 'META-INF/versions/**', 'META-INF/maven/**'
+    archiveClassifier = ''
+    manifest {
+        attributes('Premain-Class': 'app.launcher.gametest.agent.Agent')
+    }
+}
+
+tasks.named('assemble') {
+    dependsOn shadowJar
+}
+
+repositories {
+    mavenCentral()
+}

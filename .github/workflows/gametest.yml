@@ -14,11 +14,11 @@ on:
   workflow_dispatch:
     inputs:
       versions:
-        description: Game versions (comma-separated; 26.3, 1.21.1)
-        default: 26.3,1.21.1
+        description: Game versions (comma-separated; 26.3, 1.21.1, 1.12.2)
+        default: 26.3,1.21.1,1.12.2
       loaders:
-        description: Loaders (comma-separated; fabric, neoforge, forge)
-        default: fabric,neoforge,forge
+        description: Loaders (comma-separated; vanilla, fabric, neoforge, forge)
+        default: vanilla,fabric,neoforge,forge
       mods:
         description: Mod sets (comma-separated; none, medium)
         default: none,medium
@@ -50,8 +50,8 @@ jobs:
     steps:
       - id: plan
         env:
-          VERSIONS: ${{ inputs.versions || '26.3,1.21.1' }}
-          LOADERS: ${{ inputs.loaders || 'fabric,neoforge,forge' }}
+          VERSIONS: ${{ inputs.versions || '26.3,1.21.1,1.12.2' }}
+          LOADERS: ${{ inputs.loaders || 'vanilla,fabric,neoforge,forge' }}
           MODS: ${{ inputs.mods || 'none,medium' }}
           MINUTES: ${{ inputs.minutes || '5' }}
           SKIN: ${{ inputs.skin || 'rotate' }}
@@ -59,8 +59,8 @@ jobs:
           python3 - <<'EOF'
           import json, os, sys
           allowed = {
-              "VERSIONS": ["26.3", "1.21.1"],
-              "LOADERS": ["fabric", "neoforge", "forge"],
+              "VERSIONS": ["26.3", "1.21.1", "1.12.2"],
+              "LOADERS": ["vanilla", "fabric", "neoforge", "forge"],
               "MODS": ["none", "medium"],
           }
           skins = ["hd256", "anim64", "slim128", "hd512", "anim256", "legacy256", "classic", "cape", "none"]
@@ -80,13 +80,22 @@ jobs:
               sys.exit("minutes: a number")
           if not 0.5 <= minutes <= 60:
               sys.exit("minutes: 0.5 to 60")
+          # 1.12.2 is Forge only; the game with no loader plays without mods.
+          def playable(version, loader, mods):
+              if version == "1.12.2":
+                  return loader == "forge"
+              return loader != "vanilla" or mods == "none"
           scenarios = []
           for version in picked["VERSIONS"]:
               for loader in picked["LOADERS"]:
                   for mods in picked["MODS"]:
+                      if not playable(version, loader, mods):
+                          continue
                       s = skins[len(scenarios) % len(skins)] if skin == "rotate" else skin
                       scenarios.append({"version": version, "loader": loader, "mods": mods, "skin": s,
                                         "name": f"{version} {loader} {mods} {s}"})
+          if not scenarios:
+              sys.exit("no scenario: 1.12.2 is Forge only, vanilla plays without mods")
           with open(os.environ["GITHUB_OUTPUT"], "a") as out:
               out.write(f"scenarios={json.dumps(scenarios)}\n")
               out.write(f"minutes={minutes:g}\n")
@@ -107,14 +116,15 @@ jobs:
         with:
           distribution: temurin
           java-version: |
+            8
             21
             25
       - uses: gradle/actions/setup-gradle@v6
       - name: Build
         run: |
-          tasks=":gametest:core:test"
+          tasks=":gametest:core:test :mc-1.12.2:forge:build :gametest:mc-1.12.2:forge:build"
           for v in 26.3 1.21.1; do
-            for l in fabric neoforge forge; do
+            for l in fabric neoforge forge agent; do
               tasks="$tasks :mc-$v:$l:build :gametest:mc-$v:$l:build"
             done
           done

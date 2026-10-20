@@ -17,6 +17,13 @@ version × loader × mod set, played by a test bot for a set number of minutes.
      launcher leaves it alone);
    - for the `medium` set, about twenty popular mods from Modrinth with the libraries they
      need (`tests/gametest/mods.rs`), each file checked against Modrinth's SHA-512.
+
+   With no loader (`vanilla`) both are Java agents instead, passed with `-javaagent:`:
+   the bot (`launchergametest-agent-<version>.jar`, `mod/gametest/agent/`) rewrites
+   `Minecraft.tick()` to call it first, as the loaders' Mixin does, and the skins mod is
+   its own agent. Forge 1.12.2 has its own bot (`mod/gametest/mc-1.12.2/forge/`), driven
+   by Forge's client tick event, which turns the bot's commands into 1.12.2 syntax.
+
 3. It serves test skins from the machine itself (`tests/gametest/skins.rs`), the way
    skins.lapi.sh answers: HD skins 64 to 512, slim and wide, animated strips, static and
    animated capes. Each scenario plays as one test player (`GT_<variant>`) whose variant
@@ -53,9 +60,10 @@ public.
 ## Running it
 
 "Run workflow" on the Game test workflow, on `main`. Inputs pick the versions (26.3,
-1.21.1), loaders (fabric, neoforge, forge), mod sets (none, medium), minutes per scenario
-and the skin variant (`rotate` gives each scenario the next one). It also runs every night
-at 03:00 Moscow time with the defaults: 12 scenarios of 5 minutes.
+1.21.1, 1.12.2), loaders (vanilla, fabric, neoforge, forge), mod sets (none, medium),
+minutes per scenario and the skin variant (`rotate` gives each scenario the next one).
+1.12.2 is played with Forge only, and the game with no loader without mods. It also runs
+every night at 03:00 Moscow time with the defaults: 16 scenarios of 5 minutes.
 
 The workflow never runs for pull requests or from other branches.
 
