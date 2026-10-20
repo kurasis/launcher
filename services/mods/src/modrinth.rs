@@ -314,6 +314,11 @@ pub struct Candidate {
     pub summary: String,
     pub author: String,
     pub downloads: i64,
+    /// How the import names the project, when it is not `id` (CurseForge's
+    /// `<id>/<class>/<slug>`). Kept with the request, never taken from the
+    /// player.
+    #[serde(rename = "ref", skip_serializing_if = "Option::is_none")]
+    pub reference: Option<String>,
 }
 
 pub fn candidates(value: &Value) -> Vec<Candidate> {
@@ -340,6 +345,7 @@ pub fn candidates(value: &Value) -> Vec<Candidate> {
                     .and_then(Value::as_i64)
                     .unwrap_or(0)
                     .max(0),
+                reference: None,
             })
         })
         .take(5)

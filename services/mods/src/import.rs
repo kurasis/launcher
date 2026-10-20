@@ -300,12 +300,25 @@ async fn resolve(app: &App, id: &str) -> Result<(), JobError> {
             start(app, id, curseforge::SOURCE, &reference, version.as_deref())
         }
         Some(Input::Name(words)) => {
-            let found = app
+            // Both sources are asked; one that fails leaves the other's hits.
+            let modrinth = app
                 .client
                 .json(&modrinth::search_url(&words))
-                .await?
-                .map(|v| modrinth::candidates(&v))
-                .unwrap_or_default();
+                .await
+                .map(|v| v.map(|v| modrinth::candidates(&v)).unwrap_or_default());
+            let curseforge = app
+                .client
+                .page(&curseforge::search_url(&words), curseforge::MAX_PAGE as u64)
+                .await
+                .map(|page| page.map(|p| curseforge::candidates(&p)).unwrap_or_default());
+            let found: Vec<_> = match (modrinth, curseforge) {
+                (Err(e), Err(_)) => return Err(e.into()),
+                (a, b) => a
+                    .unwrap_or_default()
+                    .into_iter()
+                    .chain(b.unwrap_or_default())
+                    .collect(),
+            };
             if found.is_empty() {
                 return fail("nothing_found");
             }
@@ -313,10 +326,9 @@ async fn resolve(app: &App, id: &str) -> Result<(), JobError> {
             // Those in the catalog already say so.
             if let Some(items) = list.as_array_mut() {
                 for item in items {
+                    let source = item["source"].as_str().unwrap_or_default().to_owned();
                     let source_id = item["id"].as_str().unwrap_or_default().to_owned();
-                    if let Some(project) =
-                        app.store.project_by_source(modrinth::SOURCE, &source_id)?
-                    {
+                    if let Some(project) = app.store.project_by_source(&source, &source_id)? {
                         item["projectId"] = project.into();
                     }
                 }

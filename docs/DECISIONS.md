@@ -2152,6 +2152,16 @@ archive from the Package workflow, upload it to
   the stream, text chunks as `1f:T<length>,…`) and dates as `"$D…"`; the reader now
   follows references, takes more names for dates and pictures, and the probe prints the
   shape of each such field (`fields[…]`, our words and lengths only).
+- **Fourth probe (2026-10-20):** dates come as numbers (`dateCreated`, `updateDate`); the
+  project page carries no description or screenshots at all, so CurseForge cards show
+  the summary only for now.
+- **Name search.** A name asks both sources: Modrinth's search API and CurseForge's
+  search page (its API search is refused). The page's hits are read from the App Router
+  stream (objects with a numeric ID, a slug, a name and a class we keep, Minecraft
+  only), five at most, after Modrinth's. A CurseForge hit carries its import reference
+  (`<id>/<class>/<slug>`) with the request; choosing it uses that stored reference,
+  never one the player sends. One source failing leaves the other's hits. The probe
+  prints how many hits it reads and whether JEI is among them.
 
 ## D-067 — Start page feed at feed.lapi.sh
 

@@ -1210,7 +1210,9 @@ async fn the_probe_asks_every_exit_and_prints_no_answer_text() {
         );
         assert!(of("cf_project_page").contains("403 challenge"), "{lines:?}");
         assert!(
-            of("cf_search_page").ends_with(" 308 0B then 200 48B next_data"),
+            of("cf_search_page").ends_with(
+                " 308 0B then 200 48B next_data hits:0,no_jei,authors:0,summaries:0,downloads:0"
+            ),
             "{lines:?}"
         );
         assert!(
@@ -1686,4 +1688,143 @@ fn curseforge_pages_are_read_with_care() {
     assert_eq!(card.title, "");
     assert!(started.elapsed() < Duration::from_secs(10));
     assert_eq!(curseforge::page("", "jei"), curseforge::Card::default());
+}
+
+/// The search page as the site sends it: hits in the stream, one of a class
+/// we do not keep, one of another game, one twice.
+fn cf_search_page() -> String {
+    let hit = |id: u64, slug: &str, name: &str, class: u64| {
+        json!({ "id": id, "slug": slug, "name": name, "classId": class, "gameId": 432,
+                "summary": format!("About {name}"), "author": { "name": "mezz" }, "downloads": 9 })
+    };
+    let mut other_game = hit(5, "wow-thing", "Not Minecraft", 6);
+    other_game["gameId"] = 1.into();
+    let rsc = format!(
+        "1:{}\n2:{}\n",
+        json!(["$", "div", null, { "results": [
+            hit(JEI, "jei", "Just Enough Items", 6),
+            hit(4, "a-plugin", "A plugin", 5),
+            other_game,
+            { "id": 6, "slug": "pack", "name": "A Pack", "class": { "slug": "texture-packs" } },
+        ]}]),
+        json!({ "again": hit(JEI, "jei", "Just Enough Items", 6) })
+    );
+    format!("<script>self.__next_f.push({})</script>", json!([1, rsc]))
+}
+
+#[tokio::test]
+async fn a_name_offers_curseforge_projects_too() {
+    let t = setup();
+    curseforge_site(&t.sites);
+    t.sites
+        .put(&curseforge::search_url("just enough"), ok(cf_search_page()));
+    let (_, request) = t
+        .player(1, "POST", "/v1/imports", json!({ "input": "just enough" }))
+        .await;
+    let id = request["id"].as_str().unwrap().to_owned();
+    t.drain().await;
+    let (_, request) = t
+        .player(1, "GET", &format!("/v1/imports/{id}"), Value::Null)
+        .await;
+    // Modrinth found nothing; CurseForge's hits are offered.
+    assert_eq!(request["state"], "choosing", "{request}");
+    let candidates = request["candidates"].as_array().unwrap();
+    let ids: Vec<(&str, &str, &str)> = candidates
+        .iter()
+        .map(|c| {
+            (
+                c["source"].as_str().unwrap(),
+                c["id"].as_str().unwrap(),
+                c["kind"].as_str().unwrap(),
+            )
+        })
+        .collect();
+    assert_eq!(
+        ids,
+        [
+            ("curseforge", "238222", "mod"),
+            ("curseforge", "6", "resourcepack")
+        ]
+    );
+    assert_eq!(candidates[0]["author"], "mezz");
+    assert_eq!(candidates[0]["ref"], "238222/mc-mods/jei");
+
+    // A ref the player sends is not used; the offered one is.
+    let uri = format!("/v1/imports/{id}/choose");
+    let (status, _) = t
+        .player(
+            1,
+            "POST",
+            &uri,
+            json!({ "source": "curseforge", "id": "238222/mc-mods/other" }),
+        )
+        .await;
+    assert_eq!(status, StatusCode::BAD_REQUEST);
+    let (status, chosen) = t
+        .player(
+            1,
+            "POST",
+            &uri,
+            json!({ "source": "curseforge", "id": "238222", "ref": "1/mc-mods/x" }),
+        )
+        .await;
+    assert_eq!(status, StatusCode::ACCEPTED, "{chosen}");
+    t.drain().await;
+    let (_, request) = t
+        .player(1, "GET", &format!("/v1/imports/{id}"), Value::Null)
+        .await;
+    assert_eq!(request["state"], "ready", "{request}");
+    let (_, project) = t.get("/v1/projects/jei").await;
+    assert_eq!(project["title"], "Just Enough Items");
+
+    // Asked again, the hit says it is in the catalog.
+    let (_, again) = t
+        .player(1, "POST", "/v1/imports", json!({ "input": "just enough" }))
+        .await;
+    t.drain().await;
+    let (_, again) = t
+        .player(
+            1,
+            "GET",
+            &format!("/v1/imports/{}", again["id"].as_str().unwrap()),
+            Value::Null,
+        )
+        .await;
+    assert_eq!(again["candidates"][0]["projectId"], project["id"]);
+}
+
+#[test]
+fn curseforge_search_pages_are_read_with_care() {
+    assert_eq!(
+        curseforge::search_url("a&b c/\"\u{e9}"),
+        "https://www.curseforge.com/minecraft/search?search=a%26b%20c%2F%22%C3%A9"
+    );
+    assert_eq!(curseforge::candidates(&cf_search_page()).len(), 2);
+    assert!(curseforge::candidates("").is_empty());
+    // Many hits: five at most.
+    let many: Vec<Value> = (1..50)
+        .map(|n| json!({ "id": n, "slug": format!("m{n}"), "name": "M", "classId": 6 }))
+        .collect();
+    let rsc = format!("1:{}\n", json!(many));
+    let html = format!("<script>self.__next_f.push({})</script>", json!([1, rsc]));
+    assert_eq!(curseforge::candidates(&html).len(), 5);
+    // Bad IDs, slugs and names are left out.
+    let bad = json!([
+        { "id": 0, "slug": "a", "name": "A", "classId": 6 },
+        { "id": 12_345_678_901u64, "slug": "a", "name": "A", "classId": 6 },
+        { "id": 7, "slug": "../a", "name": "A", "classId": 6 },
+        { "id": 8, "slug": "a", "name": "\u{7}", "classId": 6 },
+        { "id": "9", "slug": "a", "name": "A", "classId": 6 },
+    ]);
+    let rsc = format!("1:{bad}\n");
+    let html = format!("<script>self.__next_f.push({})</script>", json!([1, rsc]));
+    assert!(curseforge::candidates(&html).is_empty());
+    // Deep nesting and junk end quickly.
+    let started = std::time::Instant::now();
+    let mut junk = String::from("1:");
+    junk.push_str(&"[".repeat(200_000));
+    junk.push_str("\n2:{\"id\":1,");
+    let html = format!("<script>self.__next_f.push({})</script>", json!([1, junk]));
+    assert!(curseforge::candidates(&html).is_empty());
+    assert!(started.elapsed() < Duration::from_secs(10));
 }
