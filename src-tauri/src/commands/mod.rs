@@ -2777,11 +2777,8 @@ pub fn worlds_state<R: Runtime>(app: AppHandle<R>) -> crate::worlds::app::Worlds
 
 /// The Minecraft versions a world can be made for, newest first.
 #[tauri::command]
-pub fn worlds_versions() -> Vec<&'static str> {
-    crate::worlds::tuple::TUPLES
-        .iter()
-        .map(|t| t.minecraft)
-        .collect()
+pub async fn worlds_versions<R: Runtime>(app: AppHandle<R>) -> Vec<String> {
+    worlds(&app).versions().await
 }
 
 /// The worlds kept on this computer.

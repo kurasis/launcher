@@ -317,6 +317,22 @@ impl Worlds {
         self.root.as_ref().ok_or_else(unavailable)
     }
 
+    /// The Minecraft versions a world can be made for, newest first: the
+    /// catalog's releases from 1.7.6 on. Empty without a catalog.
+    pub async fn versions(&self) -> Vec<String> {
+        let Some(metadata) = &self.metadata else {
+            return Vec::new();
+        };
+        let (catalog, ..) = metadata.catalog(false).await;
+        catalog
+            .map(|c| c.versions)
+            .unwrap_or_default()
+            .into_iter()
+            .filter(|e| e.version_type == "release" && tuple::release(&e.id).is_some())
+            .map(|e| e.id)
+            .collect()
+    }
+
     pub fn view(&self) -> WorldsView {
         view_of(&lock(&self.inner))
     }
@@ -747,9 +763,11 @@ impl Worlds {
     async fn join_inner(self: &Arc<Self>, state: &AppState, room: &str) -> LauncherResult<()> {
         let nick = nick_of(state)?;
         let room = self.client.room(room).await?;
-        let tuple = tuple::find(&room.minecraft).ok_or_else(|| {
-            LauncherError::invalid_input("Worlds are not available for this Minecraft version yet.")
-        })?;
+        if tuple::release(&room.minecraft).is_none() {
+            return Err(LauncherError::invalid_input(
+                "Worlds are not available for this Minecraft version yet.",
+            ));
+        }
         if !room.hosting {
             return Err(Problem::NotHosting.into());
         }
@@ -761,8 +779,7 @@ impl Worlds {
                 room: &room,
                 nick,
                 route: Route::Relay(joining::relay_url()?),
-                protocol: tuple.protocol,
-                version_name: tuple.minecraft,
+                version_name: room.minecraft.clone(),
             },
             self.on_change(),
         )

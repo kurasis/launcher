@@ -6,8 +6,25 @@ pub const NAME_MAX: usize = 64;
 pub const DESCRIPTION_MAX: usize = 1000;
 pub const DEVICE_NAME_MAX: usize = 64;
 
-/// Game versions a room can be made for (the launcher's tuples).
-pub const MINECRAFT: [&str; 1] = ["1.21.1"];
+/// A game version a room can be made for, as the launcher's world versions:
+/// a release from 1.7.6 on (`1.7.10`, `1.21`, `26.1`), never a snapshot or a
+/// pre-release.
+pub fn minecraft(text: &str) -> bool {
+    let number = |part: &str| -> Option<u16> {
+        let plain = (1..=3).contains(&part.len())
+            && part.bytes().all(|b| b.is_ascii_digit())
+            && (part == "0" || !part.starts_with('0'));
+        plain.then(|| part.parse().ok()).flatten()
+    };
+    let parts: Option<Vec<u16>> = text.split('.').map(number).collect();
+    match parts.as_deref() {
+        Some(&[major, minor]) => (major == 1 && minor >= 8) || major >= 26,
+        Some(&[major, minor, patch]) => {
+            (major == 1 && (minor >= 8 || (minor == 7 && patch >= 6))) || major >= 26
+        }
+        _ => false,
+    }
+}
 
 fn reorders(c: char) -> bool {
     matches!(c, '\u{202A}'..='\u{202E}' | '\u{2066}'..='\u{2069}' | '\u{200E}' | '\u{200F}')
@@ -66,6 +83,37 @@ pub fn endpoint(text: &str) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn releases_from_1_7_6_are_game_versions() {
+        for ok in [
+            "1.7.6", "1.7.10", "1.8", "1.12.2", "1.20.1", "1.21.1", "26.1", "26.3.1",
+        ] {
+            assert!(minecraft(ok), "{ok}");
+        }
+        for bad in [
+            "",
+            "1.7",
+            "1.7.5",
+            "1.6.4",
+            "b1.7.3",
+            "24w14a",
+            "1.21-pre1",
+            "26.1-snapshot-2",
+            " 1.21",
+            "1.21 ",
+            "1.21.1.1",
+            "1..1",
+            "1.021",
+            "2.0",
+            "25.4",
+            "1.21\n",
+            "1.21/x",
+            "<script>",
+        ] {
+            assert!(!minecraft(bad), "{bad:?}");
+        }
+    }
 
     #[test]
     fn names_and_descriptions_lose_tricks() {

