@@ -1,8 +1,8 @@
 //! `lapi-mods`: the catalog of mods, modpacks, resource packs, shaders and
 //! worlds at mods.lapi.sh, its files at files-mods.lapi.sh (D-066).
 //!
-//! Players add projects of Modrinth by an address or a name, and of
-//! CurseForge by an address; the service fetches their pages, pictures and files through
+//! Players add projects of Modrinth and CurseForge by an address or a name;
+//! the service fetches their pages, pictures and files through
 //! curl-impersonate and keeps them for good, so the launcher no longer
 //! depends on those sites being up. nginx serves the kept files from disk.
 //!

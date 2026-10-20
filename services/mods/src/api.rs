@@ -450,19 +450,20 @@ async fn choose(
     if request.state != "choosing" {
         return refuse(StatusCode::CONFLICT, "not_choosing");
     }
-    // Only one of those offered.
+    // Only one of those offered, named as the import names it.
     let offered = request
         .candidates
         .as_ref()
         .and_then(Value::as_array)
-        .is_some_and(|list| {
+        .and_then(|list| {
             list.iter()
-                .any(|c| c["source"] == body.source && c["id"] == body.id)
-        });
-    if !offered {
+                .find(|c| c["source"] == body.source && c["id"] == body.id)
+        })
+        .map(|c| c["ref"].as_str().unwrap_or(&body.id).to_owned());
+    let Some(reference) = offered else {
         return refuse(StatusCode::BAD_REQUEST, "not_offered");
-    }
-    if let Err(e) = import::start(&app, &request.id, &body.source, &body.id, None) {
+    };
+    if let Err(e) = import::start(&app, &request.id, &body.source, &reference, None) {
         return failed(&e.code);
     }
     match app.store.request(&request.id) {

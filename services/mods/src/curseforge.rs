@@ -54,6 +54,24 @@ pub fn is_slug(text: &str) -> bool {
             .all(|b| b.is_ascii_lowercase() || b.is_ascii_digit() || matches!(b, b'-' | b'_'))
 }
 
+/// The site's class IDs for the classes we keep.
+const CLASS_IDS: &[(u64, &str)] = &[
+    (6, "mc-mods"),
+    (4471, "modpacks"),
+    (12, "texture-packs"),
+    (6552, "shaders"),
+    (6945, "data-packs"),
+    (17, "worlds"),
+];
+
+/// The site's search page for a name (Minecraft only).
+pub fn search_url(words: &str) -> String {
+    format!(
+        "{SITE}/minecraft/search?search={}",
+        percent_encoding::utf8_percent_encode(words, percent_encoding::NON_ALPHANUMERIC)
+    )
+}
+
 pub fn page_url(class: &str, slug: &str) -> String {
     format!("{SITE}/minecraft/{class}/{slug}")
 }
@@ -594,6 +612,135 @@ fn card_of(stream: &str, project: &Value) -> Card {
             .find(|t| *t > 0)
             .unwrap_or(0),
     }
+}
+
+/// The projects a search page lists, in the order the stream gives them:
+/// objects with a numeric ID, a slug, a name and a class we keep. At most
+/// five.
+pub fn candidates(html: &str) -> Vec<crate::modrinth::Candidate> {
+    let html = &html[..floor(html, MAX_PAGE)];
+    let stream = stream(html);
+    let mut found: Vec<crate::modrinth::Candidate> = Vec::new();
+    let mut seen = 0;
+    for start in chunk_starts(&stream) {
+        let Some(Ok(value)) = serde_json::Deserializer::from_str(&stream[start..])
+            .into_iter::<Value>()
+            .next()
+        else {
+            continue;
+        };
+        collect(&value, 0, &mut seen, &mut found);
+        if found.len() >= 5 {
+            break;
+        }
+    }
+    found
+}
+
+/// Where each JSON chunk of the stream starts (after `<hex id>:`).
+fn chunk_starts(text: &str) -> impl Iterator<Item = usize> + '_ {
+    std::iter::once(0)
+        .chain(text.match_indices('\n').map(|(at, _)| at + 1))
+        .filter_map(move |line| {
+            let rest = &text[line..];
+            let colon = rest.find(':').filter(|c| (1..=8).contains(c))?;
+            rest[..colon]
+                .bytes()
+                .all(|b| b.is_ascii_hexdigit())
+                .then_some(line + colon + 1)
+                .filter(|at| matches!(text.as_bytes().get(*at), Some(b'[' | b'{')))
+        })
+        .take(10_000)
+}
+
+fn collect(
+    value: &Value,
+    depth: usize,
+    seen: &mut usize,
+    found: &mut Vec<crate::modrinth::Candidate>,
+) {
+    *seen += 1;
+    if depth > 32 || *seen > 200_000 || found.len() >= 5 {
+        return;
+    }
+    match value {
+        Value::Object(map) => {
+            if let Some(candidate) = candidate_of(value) {
+                if !found.iter().any(|c| c.id == candidate.id) {
+                    found.push(candidate);
+                }
+                return;
+            }
+            for v in map.values() {
+                collect(v, depth + 1, seen, found);
+            }
+        }
+        Value::Array(items) => {
+            for v in items {
+                collect(v, depth + 1, seen, found);
+            }
+        }
+        _ => {}
+    }
+}
+
+/// A search hit: the site's project object, if it is one we keep.
+fn candidate_of(project: &Value) -> Option<crate::modrinth::Candidate> {
+    let id = project
+        .get("id")?
+        .as_u64()
+        .filter(|n| *n > 0 && *n < 10_000_000_000)?;
+    let slug = project.get("slug")?.as_str().filter(|s| is_slug(s))?;
+    let title = text(project, "name", 256);
+    if title.is_empty() {
+        return None;
+    }
+    let class = project
+        .get("classId")
+        .and_then(Value::as_u64)
+        .and_then(|c| CLASS_IDS.iter().find(|(n, _)| *n == c))
+        .map(|(_, name)| *name)
+        .or_else(|| {
+            ["class", "categoryClass"].iter().find_map(|k| {
+                let word = project.get(*k)?.get("slug")?.as_str()?;
+                CLASSES.iter().find(|(c, _)| *c == word).map(|(c, _)| *c)
+            })
+        })?;
+    if project
+        .get("gameId")
+        .and_then(Value::as_u64)
+        .is_some_and(|g| g != GAME)
+    {
+        return None;
+    }
+    let author = project
+        .get("author")
+        .or_else(|| project.get("authors"))
+        .map(names)
+        .and_then(|n| n.into_iter().next())
+        .unwrap_or_else(|| text(project, "authorName", 64));
+    Some(crate::modrinth::Candidate {
+        source: SOURCE,
+        id: id.to_string(),
+        slug: slug.to_owned(),
+        kind: kind_of_class(class)?,
+        title,
+        summary: text(project, "summary", 500),
+        author,
+        downloads: ["downloads", "downloadCount", "totalDownloads"]
+            .iter()
+            .map(|k| number(project, k))
+            .max()
+            .unwrap_or(0),
+        reference: Some(
+            Ref {
+                id: Some(id),
+                class: class.to_owned(),
+                slug: slug.to_owned(),
+            }
+            .text(),
+        ),
+    })
 }
 
 /// Names a project's dates go by.

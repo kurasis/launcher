@@ -90,7 +90,7 @@ fn checks(file: Option<u64>) -> Vec<Check> {
         },
         Check {
             name: "cf_search_page",
-            url: "https://www.curseforge.com/minecraft/search?search=jei".into(),
+            url: crate::curseforge::search_url(SLUG),
             look: Look::PageData,
         },
     ]);
@@ -183,6 +183,26 @@ fn card_report(page: &[u8]) -> String {
     words.join(",")
 }
 
+/// What the adapter finds on the search page: how many hits, whether JEI
+/// (the project searched for) is among them, and how many have an author,
+/// a summary and downloads. Our words and numbers.
+fn search_report(page: &[u8]) -> String {
+    let hits = crate::curseforge::candidates(&String::from_utf8_lossy(page));
+    let count = |f: fn(&crate::modrinth::Candidate) -> bool| hits.iter().filter(|c| f(c)).count();
+    format!(
+        "hits:{},{},authors:{},summaries:{},downloads:{}",
+        hits.len(),
+        if hits.iter().any(|c| c.id == PROJECT.to_string()) {
+            "jei_found"
+        } else {
+            "no_jei"
+        },
+        count(|c| !c.author.is_empty()),
+        count(|c| !c.summary.is_empty()),
+        count(|c| c.downloads > 0),
+    )
+}
+
 /// A proxy's address with another scheme (`http`, `socks5h`), to see
 /// whether the proxy speaks another protocol than its address says.
 pub fn with_scheme(proxy: &str, scheme: &str) -> Option<String> {
@@ -229,10 +249,14 @@ pub async fn run(client: &Client, tmp: &Path) -> Vec<String> {
                 Look::PageData => match &result {
                     Ok(r) if r.status == 200 => {
                         let page = read();
-                        Some(if check.name == "cf_project_page" {
-                            format!("{} {}", page_data(&page), card_report(&page))
-                        } else {
-                            page_data(&page)
+                        Some(match check.name {
+                            "cf_project_page" => {
+                                format!("{} {}", page_data(&page), card_report(&page))
+                            }
+                            "cf_search_page" => {
+                                format!("{} {}", page_data(&page), search_report(&page))
+                            }
+                            _ => page_data(&page),
                         })
                     }
                     // One hop within the site, as a browser would.
@@ -244,7 +268,17 @@ pub async fn run(client: &Client, tmp: &Path) -> Vec<String> {
                                 Some(
                                     match client.once(exit, None, &next, &body, MAX_BYTES).await {
                                         Ok(r) if r.status == 200 => {
-                                            format!("then 200 {}B {}", r.size, page_data(&read()))
+                                            let page = read();
+                                            let mut seen = format!(
+                                                "then 200 {}B {}",
+                                                r.size,
+                                                page_data(&page)
+                                            );
+                                            if check.name == "cf_search_page" {
+                                                seen.push(' ');
+                                                seen.push_str(&search_report(&page));
+                                            }
+                                            seen
                                         }
                                         Ok(r) => format!(
                                             "then {}{}",
