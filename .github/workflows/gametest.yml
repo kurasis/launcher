@@ -17,8 +17,8 @@ on:
         description: Game versions (comma-separated; 26.3, 1.21.11, 1.21.10, 1.21.8, 1.21.4, 1.21.1, 1.20.1, 1.18.2, 1.16.5, 1.12.2)
         default: 26.3,1.21.11,1.21.1,1.20.1,1.12.2
       loaders:
-        description: Loaders (comma-separated; vanilla, fabric, neoforge, forge)
-        default: vanilla,fabric,neoforge,forge
+        description: Loaders (comma-separated; vanilla, fabric, quilt, neoforge, forge)
+        default: vanilla,fabric,quilt,neoforge,forge
       mods:
         description: Mod sets (comma-separated; none, medium)
         default: none,medium
@@ -52,7 +52,7 @@ jobs:
       - id: plan
         env:
           VERSIONS: ${{ inputs.versions || '26.3,1.21.11,1.21.1,1.20.1,1.12.2' }}
-          LOADERS: ${{ inputs.loaders || 'vanilla,fabric,neoforge,forge' }}
+          LOADERS: ${{ inputs.loaders || 'vanilla,fabric,quilt,neoforge,forge' }}
           MODS: ${{ inputs.mods || 'none,medium' }}
           MINUTES: ${{ inputs.minutes || '5' }}
           SKIN: ${{ inputs.skin || 'rotate' }}
@@ -61,7 +61,7 @@ jobs:
           import json, os, sys
           allowed = {
               "VERSIONS": ["26.3", "1.21.11", "1.21.10", "1.21.8", "1.21.4", "1.21.1", "1.20.1", "1.18.2", "1.16.5", "1.12.2"],
-              "LOADERS": ["vanilla", "fabric", "neoforge", "forge"],
+              "LOADERS": ["vanilla", "fabric", "quilt", "neoforge", "forge"],
               "MODS": ["none", "medium"],
           }
           skins = ["animcape", "hd256", "anim64", "slim128", "hd512", "anim256", "legacy256", "classic", "cape", "none"]
@@ -142,7 +142,16 @@ jobs:
       - name: Build
         env:
           ONLY: ${{ needs.plan.outputs.folders }}
-        run: ./gradlew --no-daemon "-Ponly=$ONLY" build
+        run: |
+          # Setting up a Forge release downloads hundreds of files, and Forge's maven
+          # now and then cuts a connection: one more try for that, never for anything else.
+          set -o pipefail
+          for attempt in 1 2; do
+            ./gradlew --no-daemon "-Ponly=$ONLY" build 2>&1 | tee gradle.log && exit 0
+            grep -qE "Connection reset|Connection timed out|HTTP response code: (429|5[0-9][0-9])" gradle.log || exit 1
+            echo "A download was cut off; trying once more"
+          done
+          exit 1
       - uses: actions/upload-artifact@v7
         with:
           name: gametest-jars
