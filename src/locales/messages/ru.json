@@ -2185,7 +2185,7 @@
     "This report preview has expired. Open it again.": "Просмотр отчёта устарел. Откройте его снова.",
     "No mirror URL.": "Нет адреса на зеркале.",
     "No downloaded update is waiting.": "Нет загруженного обновления.",
-    "Close the game and wait for installs to finish, then restart to update.": "Закройте игру и дождитесь окончания установок, затем перезапустите для обновления.",
+    "Close the game and the world you host, and wait for installs to finish, then restart to update.": "Закройте игру и открытый вами мир, дождитесь окончания установок, затем перезапустите для обновления.",
     "The update could not be installed. Download it from the link instead.": "Не удалось установить обновление. Загрузите его по ссылке.",
     "There is no update page to open.": "Нет страницы обновления.",
     "This is not a screen the launcher can open at start.": "Этот раздел нельзя открывать при запуске.",

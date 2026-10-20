@@ -2186,7 +2186,7 @@
     "This report preview has expired. Open it again.": "انتهت صلاحية معاينة التقرير. افتحها مجددًا.",
     "No mirror URL.": "لا يوجد عنوان على المرآة.",
     "No downloaded update is waiting.": "لا يوجد تحديث منزَّل بانتظار التثبيت.",
-    "Close the game and wait for installs to finish, then restart to update.": "أغلق اللعبة وانتظر انتهاء التثبيتات، ثم أعد التشغيل للتحديث.",
+    "Close the game and the world you host, and wait for installs to finish, then restart to update.": "أغلق اللعبة والعالم الذي تستضيفه، وانتظر انتهاء التثبيتات، ثم أعد التشغيل للتحديث.",
     "The update could not be installed. Download it from the link instead.": "تعذّر تثبيت التحديث. نزّله من الرابط بدلًا من ذلك.",
     "There is no update page to open.": "لا توجد صفحة تحديث لفتحها.",
     "This is not a screen the launcher can open at start.": "لا يمكن فتح هذه الشاشة عند البدء.",

@@ -1943,7 +1943,7 @@
     "Choose an empty folder, one that does not exist yet, or one that already holds launcher data.": "Choose an empty folder, one that does not exist yet, or one that already holds launcher data.",
     "Choose the world the data pack goes into.": "Choose the world the data pack goes into.",
     "Choosing a port for the world": "Choosing a port for the world",
-    "Close the game and wait for installs to finish, then restart to update.": "Close the game and wait for installs to finish, then restart to update.",
+    "Close the game and the world you host, and wait for installs to finish, then restart to update.": "Close the game and the world you host, and wait for installs to finish, then restart to update.",
     "Copying launcher data": "Copying launcher data",
     "Copying stopped unexpectedly.": "Copying stopped unexpectedly.",
     "Creating the installation folder": "Creating the installation folder",
