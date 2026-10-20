@@ -166,9 +166,9 @@ public final class LauncherSkins implements Skins.Sink {
                 int[] argb = image.getRGB(0, f * height, width, height, null, 0, width);
                 int frameHeight = height;
                 if (texture.kind == Rules.Kind.SKIN) {
-                    if (height == 32) {
-                        argb = SkinImage.upgradeLegacy(argb);
-                        frameHeight = 64;
+                    if (height * 2 == width) {
+                        argb = SkinImage.upgradeLegacy(argb, width);
+                        frameHeight = width;
                     }
                     SkinImage.opaqueInnerLayer(argb, width);
                 }

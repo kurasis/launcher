@@ -1972,7 +1972,8 @@ archive from the Package workflow, upload it to
   1.12.2 players run Forge; an agent for plain 1.12.2 waits until someone asks.
 
 - **Textures:** PNG only. A skin frame is 64×64 × k (k = 1, 2, 4, 8, so up to 512×512;
-  64×32 only as one frame), a cape frame 64×32 × k. Animation is a vertical strip of
+  64×32 × k, the layout before 1.8, only as one frame: the mod turns it into the
+  square one), a cape frame 64×32 × k. Animation is a vertical strip of
   1–32 frames with one duration or one per frame (50–10 000 ms). Skins up to 2 MiB, capes
   up to 1 MiB. The service decodes with its limits set before decoding, re-encodes and
   stores only its own file, named by its SHA-256; the mod checks size and hash again.

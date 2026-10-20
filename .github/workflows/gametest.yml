@@ -26,7 +26,7 @@ on:
         description: Minutes of play per scenario (0.5 to 60)
         default: '5'
       skin:
-        description: Skin variant for every scenario, or rotate (classic, slim128, hd256, hd512, anim64, anim256, cape, none)
+        description: Skin variant for every scenario, or rotate (classic, slim128, hd256, hd512, anim64, anim256, legacy256, cape, none)
         default: rotate
   schedule:
     # 03:00 Moscow time.
@@ -63,7 +63,7 @@ jobs:
               "LOADERS": ["fabric", "neoforge", "forge"],
               "MODS": ["none", "medium"],
           }
-          skins = ["hd256", "anim64", "slim128", "hd512", "anim256", "classic", "cape", "none"]
+          skins = ["hd256", "anim64", "slim128", "hd512", "anim256", "legacy256", "classic", "cape", "none"]
           picked = {}
           for key, options in allowed.items():
               items = [s.strip() for s in os.environ[key].split(",") if s.strip()]

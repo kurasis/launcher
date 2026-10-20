@@ -13,11 +13,13 @@ class RulesTest {
     void skinSizes() {
         assertEquals(1, Rules.frames(Kind.SKIN, 64, 64));
         assertEquals(1, Rules.frames(Kind.SKIN, 64, 32));
+        assertEquals(1, Rules.frames(Kind.SKIN, 128, 64));
+        assertEquals(1, Rules.frames(Kind.SKIN, 512, 256));
         assertEquals(1, Rules.frames(Kind.SKIN, 128, 128));
         assertEquals(1, Rules.frames(Kind.SKIN, 512, 512));
         assertEquals(8, Rules.frames(Kind.SKIN, 64, 512));
         assertEquals(32, Rules.frames(Kind.SKIN, 512, 512 * 32));
-        for (int[] bad : new int[][] {{65, 65}, {64, 48}, {1024, 1024}, {64, 96}, {64, 64 * 33}, {128, 64},
+        for (int[] bad : new int[][] {{65, 65}, {64, 48}, {1024, 1024}, {64, 96}, {64, 64 * 33}, {128, 32}, {512, 256 * 3},
             {0, 64}, {-64, 64}, {64, 0}, {512, Integer.MAX_VALUE}}) {
             assertEquals(-1, Rules.frames(Kind.SKIN, bad[0], bad[1]), bad[0] + "x" + bad[1]);
         }

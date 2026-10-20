@@ -20,7 +20,7 @@ export interface Part {
 }
 
 /** The front of a skin on a 16×32 figure: head, body, arms and legs, then the outer
- * layer over them. The old 64×32 layout has no left limbs (the right ones, mirrored)
+ * layer over them. The old 64×32 layout (and its HD sizes) has no left limbs (the right ones, mirrored)
  * and no outer layer but the hat. */
 export function skinParts(slim: boolean, legacy: boolean): Part[] {
   const arm = slim ? 3 : 4;

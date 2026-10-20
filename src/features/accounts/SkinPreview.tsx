@@ -28,8 +28,9 @@ interface Props {
 export function SkinPreview({ src, kind, slim, width, height, frames, frameMs, label }: Props) {
   const canvas = useRef<HTMLCanvasElement>(null);
   const scale = width / 64;
-  const legacy = kind === 'skin' && width === 64 && height === 32;
-  const frameHeight = legacy ? 32 : kind === 'skin' ? width : width / 2;
+  // The layout before 1.8: 64×32, or HD like 512×256, always one frame.
+  const legacy = kind === 'skin' && height * 2 === width;
+  const frameHeight = kind === 'skin' && !legacy ? width : width / 2;
   const figure = kind === 'skin' ? { w: 16, h: 32 } : { w: 10, h: 16 };
   const durations = frameDurations(frames, frameMs).join(',');
 

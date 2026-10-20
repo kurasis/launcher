@@ -15,7 +15,8 @@ use tokio::net::TcpListener;
 #[derive(Debug, Clone, Copy)]
 pub struct Variant {
     pub name: &'static str,
-    /// Skin width (64…512), frames, slim model.
+    /// Skin width (64…512), frames (0: one frame in the layout before 1.8, half as
+    /// high as wide), slim model.
     pub skin: Option<(u32, u32, bool)>,
     /// Cape width (64…512) and frames.
     pub cape: Option<(u32, u32)>,
@@ -37,7 +38,7 @@ impl Variant {
     }
 
     pub fn skin_frames(&self) -> u32 {
-        self.skin.map_or(1, |(_, frames, _)| frames)
+        self.skin.map_or(1, |(_, frames, _)| frames.max(1))
     }
 
     pub fn cape_frames(&self) -> u32 {
@@ -47,6 +48,7 @@ impl Variant {
     pub fn describe(&self) -> String {
         let skin = match self.skin {
             None => "no skin".to_owned(),
+            Some((w, 0, _)) => format!("skin {w}×{}, the layout before 1.8", w / 2),
             Some((w, 1, slim)) => format!("skin {w}×{w}{}", if slim { " slim" } else { "" }),
             Some((w, f, slim)) => {
                 format!(
@@ -95,6 +97,11 @@ pub const VARIANTS: &[Variant] = &[
         name: "anim256",
         skin: Some((256, 16, true)),
         cape: Some((128, 8)),
+    },
+    Variant {
+        name: "legacy256",
+        skin: Some((256, 0, false)),
+        cape: Some((64, 1)),
     },
     Variant {
         name: "cape",
@@ -183,6 +190,15 @@ fn texture(width: u32, frame_height: u32, frames: u32, seed: u32, slim: Option<b
     Texture { json, png }
 }
 
+/// A skin: square frames, or one frame half as high (`frames` 0).
+fn skin_texture(width: u32, frames: u32, seed: u32, slim: bool) -> Texture {
+    if frames == 0 {
+        texture(width, width / 2, 1, seed, Some(slim))
+    } else {
+        texture(width, width, frames, seed, Some(slim))
+    }
+}
+
 /// The running stand-in: its address and how often it was asked.
 pub struct Server {
     pub base: String,
@@ -198,7 +214,7 @@ pub async fn start() -> Server {
         let seed = i as u32 + 1;
         let mut profile = json!({ "nick": v.nick() });
         if let Some((w, frames, slim)) = v.skin {
-            let t = texture(w, w, frames, seed, Some(slim));
+            let t = skin_texture(w, frames, seed, slim);
             profile["skin"] = t.json.clone();
             textures.insert(
                 t.json["hash"].as_str().unwrap_or_default().to_owned(),
@@ -344,13 +360,14 @@ fn every_variant_fits_the_mods_rules() {
     for (i, v) in VARIANTS.iter().enumerate() {
         if let Some((w, frames, slim)) = v.skin {
             assert!(
-                [64, 128, 256, 512].contains(&w) && (1..=32).contains(&frames),
+                [64, 128, 256, 512].contains(&w) && (0..=32).contains(&frames),
                 "{}",
                 v.name
             );
-            let t = texture(w, w, frames, i as u32, Some(slim));
+            let t = skin_texture(w, frames, i as u32, slim);
             assert!(t.png.len() <= 2 * 1024 * 1024, "{}", v.name);
-            assert_eq!(t.json["height"], w * frames);
+            let height = if frames == 0 { w / 2 } else { w * frames };
+            assert_eq!(t.json["height"], height);
         }
         if let Some((w, frames)) = v.cape {
             assert!(

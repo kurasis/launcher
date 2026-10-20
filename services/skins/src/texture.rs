@@ -156,13 +156,15 @@ fn frame_ms(text: &str) -> Result<Vec<u32>, Refusal> {
 }
 
 /// The frames of an image of this size, if its shape is one we take: a frame
-/// is `w`×`w` for a skin (or 64×32, the old layout, alone) and `w`×`w/2`
-/// for a cape, stacked into a vertical strip of 1–32.
+/// is `w`×`w` for a skin (or `w`×`w/2`, the layout before 1.8, alone) and
+/// `w`×`w/2` for a cape, stacked into a vertical strip of 1–32.
 pub fn frames_of(kind: Kind, width: u32, height: u32) -> Result<u32, Refusal> {
     if u64::from(width) * u64::from(height) > MAX_PIXELS || !WIDTHS.contains(&width) {
         return Err(Refusal::BadSize);
     }
-    if kind == Kind::Skin && width == 64 && height == 32 {
+    // The layout before 1.8 (64×32, or HD like 512×256) is one frame only: a strip of
+    // them would read the same as a strip of square frames.
+    if kind == Kind::Skin && u64::from(height) * 2 == u64::from(width) {
         return Ok(1);
     }
     let frame = match kind {
@@ -311,6 +313,9 @@ mod tests {
         for (w, h, frames) in [
             (64, 64, 1),
             (64, 32, 1),
+            (128, 64, 1),
+            (256, 128, 1),
+            (512, 256, 1),
             (128, 128, 1),
             (256, 256, 1),
             (512, 512, 1),
@@ -331,7 +336,8 @@ mod tests {
             (64, 96),
             (0, 0),
             (64, 0),
-            (128, 64),
+            (128, 32),
+            (512, 128),
             (30_000, 30_000),
             (u32::MAX, u32::MAX),
         ] {
@@ -344,6 +350,7 @@ mod tests {
         assert_eq!(frames_of(Kind::Skin, 64, 64 * 33), Err(Refusal::BadFrames));
         assert_eq!(frames_of(Kind::Cape, 64, 32 * 33), Err(Refusal::BadFrames));
         assert_eq!(frames_of(Kind::Cape, 64, 48), Err(Refusal::BadSize));
+        assert_eq!(frames_of(Kind::Skin, 512, 256 * 3), Err(Refusal::BadSize));
     }
 
     #[test]
