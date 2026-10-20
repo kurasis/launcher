@@ -131,9 +131,11 @@ pub fn download_host(url: &str) -> bool {
         && parsed.port().is_none()
         && parsed.username().is_empty()
         && parsed.password().is_none()
-        && parsed
+        && (parsed
             .host_str()
             .is_some_and(|h| DOWNLOAD_HOSTS.contains(&h))
+            // A packwiz pack's CurseForge mod, by its project and file.
+            || crate::curseforge::download_ids(url).is_some())
 }
 
 fn hex(text: &str, len: usize) -> bool {

@@ -2029,7 +2029,7 @@ archive from the Package workflow, upload it to
 
 ## D-066 — Catalog of mods at mods.lapi.sh
 
-- **Status:** accepted (owner request, 2026-10-19), stages 1–4 of 6 and stage 5 but for packwiz · **Affects:** the new service `services/mods` (`https://mods.lapi.sh`, files at
+- **Status:** accepted (owner request, 2026-10-19), stages 1–5 of 6 · **Affects:** the new service `services/mods` (`https://mods.lapi.sh`, files at
   `https://files-mods.lapi.sh`, `/home/www/lapi/mods`), the account service's token
   audience. The full design: the project's design document "Вкладка Моды и каталог".
 - **Goal.** A Mods tab with modpacks, mods, resource packs, shaders and worlds that does
@@ -2315,6 +2315,18 @@ archive from the Package workflow, upload it to
   loader's version is the one the source names, else the recommended, else the newest
   stable. A copy that stopped finishes on a retry, keeping files already in place. The
   catalog knows the copied mods by hash as it does any file of the player's.
+- **packwiz packs (stage 5, 2026-10-20).** "Add to the catalog" takes the address of a
+  packwiz `pack.toml` on GitHub (a file's page becomes its raw address), GitLab or
+  raw.githubusercontent.com. The catalog (`services/mods/src/packwiz.rs`) reads it, checks
+  its `index.toml` against the hash `pack.toml` gives and every `.pw.toml` and file
+  against the index, takes each mod from its URL (a host a modpack may download from) or,
+  for `metadata:curseforge`, from CurseForge by project and file (an md5 or murmur2 hash
+  only there), leaves out server-only mods and paths a pack may not write, keeps every
+  file and writes the pack out as a `.mrpack` (mods in the index, other files under
+  `overrides/`, at most 64 MiB each and 512 MiB in all). It becomes a version of a
+  modpack project of source `packwiz` (the pack read again unchanged is the same
+  version; a changed pack is a new one), so the launcher installs and updates it as any
+  modpack. The weekly re-check reads the pack again.
 
 ## D-067 — Start page feed at feed.lapi.sh
 

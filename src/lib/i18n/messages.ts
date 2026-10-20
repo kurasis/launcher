@@ -1323,6 +1323,7 @@ export type Messages = {
     readonly sources: {
       readonly modrinth: string;
       readonly curseforge: string;
+      readonly packwiz: string;
     };
     readonly link: {
       readonly title: string;
