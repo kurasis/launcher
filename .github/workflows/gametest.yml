@@ -169,7 +169,10 @@ jobs:
         scenario: ${{ fromJSON(needs.plan.outputs.scenarios) }}
     defaults:
       run:
-        shell: powershell
+        # Windows PowerShell as the runner's user runs no script files by
+        # default (execution policy Restricted); the policy is lifted for these
+        # steps only, the machine's setting stays as it is.
+        shell: powershell -NoProfile -ExecutionPolicy Bypass -Command ". '{0}'"
     env:
       GAMETEST_VERSION: ${{ matrix.scenario.version }}
       GAMETEST_LOADER: ${{ matrix.scenario.loader }}
@@ -201,7 +204,10 @@ jobs:
         if: always()
         run: |
           Get-ChildItem gt/out -Recurse -Filter summary.md -ErrorAction SilentlyContinue |
-            ForEach-Object { Get-Content $_.FullName -Raw -Encoding utf8 | Out-File -Append -Encoding utf8 $env:GITHUB_STEP_SUMMARY }
+            ForEach-Object {
+              # Windows PowerShell's utf8 adds a byte-order mark; the summary takes plain UTF-8.
+              [IO.File]::AppendAllText($env:GITHUB_STEP_SUMMARY, [IO.File]::ReadAllText($_.FullName), (New-Object Text.UTF8Encoding $false))
+            }
       - uses: actions/upload-artifact@v7
         if: always()
         with:
