@@ -226,6 +226,10 @@ async fn get_tw(State(app): State<Arc<App>>, Path(name): Path<String>) -> Respon
 #[derive(Deserialize)]
 struct Resolve {
     input: String,
+    /// `twitch` for a Twitch channel; a YouTube one without it. Both go
+    /// through this one address, whose lookups nginx limits apart.
+    #[serde(default)]
+    kind: Option<String>,
 }
 
 async fn resolve(
@@ -236,6 +240,11 @@ async fn resolve(
     let Ok(Json(body)) = body else {
         return refuse(StatusCode::BAD_REQUEST, "bad_request");
     };
+    match body.kind.as_deref() {
+        None | Some("youtube") => {}
+        Some("twitch") => return resolve_twitch(&app, &headers, &body.input).await,
+        Some(_) => return refuse(StatusCode::BAD_REQUEST, "bad_request"),
+    }
     let Some(wanted) = youtube::wanted(&body.input) else {
         return refuse(StatusCode::BAD_REQUEST, "bad_input");
     };
@@ -296,19 +305,12 @@ async fn own_videos(
 }
 
 /// A Twitch channel a player named, checked to exist.
-async fn resolve_twitch(
-    State(app): State<Arc<App>>,
-    headers: HeaderMap,
-    body: Result<Json<Resolve>, axum::extract::rejection::JsonRejection>,
-) -> Response {
-    let Ok(Json(body)) = body else {
-        return refuse(StatusCode::BAD_REQUEST, "bad_request");
-    };
-    let Some(login) = twitch::wanted(&body.input) else {
+async fn resolve_twitch(app: &App, headers: &HeaderMap, input: &str) -> Response {
+    let Some(login) = twitch::wanted(input) else {
         return refuse(StatusCode::BAD_REQUEST, "bad_input");
     };
     if !app.limiter.allow(
-        &address(&headers),
+        &address(headers),
         "twitch_resolve",
         RESOLVES_PER_MINUTE,
         Duration::from_secs(60),
@@ -475,7 +477,6 @@ pub fn router(app: Arc<App>) -> Router {
         .route("/v1/tw/{name}", get(get_tw))
         .route("/v1/channels/resolve", post(resolve))
         .route("/v1/videos", get(own_videos))
-        .route("/v1/twitch/resolve", post(resolve_twitch))
         .route("/v1/streams", get(own_streams))
         .route("/play/yt/{id}", get(play_youtube))
         .route("/play/twitch/{login}", get(play_twitch))
