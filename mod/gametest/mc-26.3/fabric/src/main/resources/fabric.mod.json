@@ -1,0 +1,15 @@
+{
+  "schemaVersion": 1,
+  "id": "launchergametest",
+  "version": "${version}",
+  "name": "Launcher Game Test",
+  "description": "The launcher's test bot: plays the game on the test machine and writes a report. Not for players.",
+  "license": "All-Rights-Reserved",
+  "environment": "client",
+  "mixins": ["launchergametest.mixins.json"],
+  "depends": {
+    "fabricloader": ">=0.15.0",
+    "minecraft": "26.3",
+    "java": ">=25"
+  }
+}
