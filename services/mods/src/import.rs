@@ -56,6 +56,14 @@ const MAX_BODY_IMAGES: usize = 30;
 const MAX_ATTEMPTS: i64 = 12;
 /// A project asked for again is fetched anew after this long.
 const PROJECT_FRESH: i64 = 6 * 3600;
+/// A project players wanted lately is checked for new versions once a day,
+/// any other project in the catalog once a week (Ai, 2026-10-20).
+const WANTED_FRESH: i64 = 24 * 3600;
+const IDLE_FRESH: i64 = 7 * 24 * 3600;
+/// Looked at or installed this recently: wanted.
+const WANTED_FOR: i64 = 30 * 24 * 3600;
+/// Projects queued for a check at a time.
+const REFRESH_BATCH: usize = 100;
 const DEPENDENCY_FRESH: i64 = 24 * 3600;
 /// A request that has not finished in a day has failed.
 const REQUEST_DAY: i64 = 86_400;
@@ -171,6 +179,68 @@ pub async fn run(app: &App, job: &crate::store::Job) -> Result<(), JobError> {
 
 fn project_key(source: &str, reference: &str) -> String {
     format!("project:{source}:{}", reference.to_ascii_lowercase())
+}
+
+/// How a project due for a check is named to its source.
+fn due_reference(due: &crate::store::Due) -> Option<String> {
+    match due.source.as_str() {
+        s if s == modrinth::SOURCE => {
+            modrinth::is_ref(&due.source_id).then(|| due.source_id.clone())
+        }
+        s if s == curseforge::SOURCE => {
+            let class = curseforge::CLASSES
+                .iter()
+                .find(|(_, kind)| *kind == due.kind)?
+                .0;
+            Some(
+                curseforge::Ref {
+                    id: Some(curseforge::id(&due.source_id)?),
+                    class: class.to_owned(),
+                    slug: due.source_slug.clone(),
+                }
+                .text(),
+            )
+        }
+        _ => None,
+    }
+}
+
+/// Queues the checks of projects due for one (or of `project` alone, when it
+/// is due); returns how many were queued.
+pub fn refresh(app: &App, project: Option<&str>) -> Result<usize, String> {
+    let now = now();
+    let due = app.store.due_projects(
+        now,
+        now - WANTED_FOR,
+        WANTED_FRESH,
+        IDLE_FRESH,
+        project,
+        REFRESH_BATCH,
+    )?;
+    let mut queued = 0;
+    for due in &due {
+        let Some(reference) = due_reference(due) else {
+            continue;
+        };
+        let fresh = if due.wanted {
+            PROJECT_FRESH
+        } else {
+            IDLE_FRESH
+        };
+        if queue_project(app, &due.source, &reference, 0, None, fresh)? {
+            queued += 1;
+        }
+    }
+    Ok(queued)
+}
+
+/// Players want a project: noted, and checked for new versions now if its
+/// last check is older than [`WANTED_FRESH`].
+pub fn wanted(app: &App, project: &str) {
+    let noted = app.store.note_wanted(project, now());
+    if noted.is_ok() {
+        let _ = refresh(app, Some(project));
+    }
 }
 
 /// Queues a project of a source.

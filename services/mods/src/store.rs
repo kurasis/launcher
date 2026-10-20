@@ -47,6 +47,12 @@ CREATE TABLE IF NOT EXISTS project_source (
     PRIMARY KEY (source, source_id)
 );
 CREATE INDEX IF NOT EXISTS project_source_project ON project_source(project_id);
+-- When players last looked at a project or had it installed (to the hour),
+-- so those are checked for new versions more often.
+CREATE TABLE IF NOT EXISTS project_wanted (
+    project_id TEXT PRIMARY KEY REFERENCES project(id),
+    at INTEGER NOT NULL
+);
 CREATE TABLE IF NOT EXISTS project_author (
     project_id TEXT NOT NULL REFERENCES project(id),
     ord INTEGER NOT NULL,
@@ -287,6 +293,17 @@ pub struct Search {
     pub limit: i64,
 }
 
+/// A project due to be read from its source again.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Due {
+    pub source: String,
+    pub source_id: String,
+    pub source_slug: String,
+    pub kind: String,
+    /// Players wanted it lately.
+    pub wanted: bool,
+}
+
 impl Store {
     pub fn open(data: &Path) -> Result<Self> {
         // nginx reads the kept files next to it; the database is ours alone.
@@ -414,6 +431,65 @@ impl Store {
             )
             .optional()
             .map_err(sql)
+    }
+
+    /// Notes that players want a project now; written at most once an hour.
+    pub fn note_wanted(&self, project: &str, now: i64) -> Result<()> {
+        self.db()
+            .execute(
+                "INSERT INTO project_wanted (project_id, at) SELECT id, ?2 FROM project WHERE id = ?1
+                 ON CONFLICT (project_id) DO UPDATE SET at = excluded.at WHERE at < excluded.at - 3600",
+                params![project, now],
+            )
+            .map(|_| ())
+            .map_err(sql)
+    }
+
+    /// Projects whose source was last read before their time: `wanted_fresh`
+    /// for those wanted since `wanted_since`, `idle_fresh` for the rest;
+    /// longest waiting first, or only `project` when given.
+    pub fn due_projects(
+        &self,
+        now: i64,
+        wanted_since: i64,
+        wanted_fresh: i64,
+        idle_fresh: i64,
+        project: Option<&str>,
+        limit: usize,
+    ) -> Result<Vec<Due>> {
+        let db = self.db();
+        let mut q = db
+            .prepare(
+                "SELECT s.source, s.source_id, s.source_slug, p.kind, coalesce(w.at, 0) >= ?2
+                 FROM project p JOIN project_source s ON s.project_id = p.id
+                 LEFT JOIN project_wanted w ON w.project_id = p.id
+                 WHERE p.status = 'ready' AND p.gone_at IS NULL AND (?5 IS NULL OR p.id = ?5)
+                   AND s.fetched <= ?1 - CASE WHEN coalesce(w.at, 0) >= ?2 THEN ?3 ELSE ?4 END
+                 ORDER BY s.fetched LIMIT ?6",
+            )
+            .map_err(sql)?;
+        q.query_map(
+            params![
+                now,
+                wanted_since,
+                wanted_fresh,
+                idle_fresh,
+                project,
+                limit as i64
+            ],
+            |r| {
+                Ok(Due {
+                    source: r.get(0)?,
+                    source_id: r.get(1)?,
+                    source_slug: r.get(2)?,
+                    kind: r.get(3)?,
+                    wanted: r.get(4)?,
+                })
+            },
+        )
+        .map_err(sql)?
+        .collect::<rusqlite::Result<Vec<_>>>()
+        .map_err(sql)
     }
 
     /// Stores a project as its source describes it; returns our ID.

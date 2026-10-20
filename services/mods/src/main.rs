@@ -267,6 +267,19 @@ fn serve() -> Result<(), String> {
                 upkeep.blobs.reload_quota(&settings());
             }
         });
+        // New versions: projects are checked at their source again in the
+        // background (D-066).
+        let refreshing = Arc::clone(&app);
+        tokio::spawn(async move {
+            loop {
+                tokio::time::sleep(Duration::from_secs(600)).await;
+                match import::refresh(&refreshing, None) {
+                    Ok(0) => {}
+                    Ok(n) => eprintln!("lapi-mods: {n} projects queued for a check"),
+                    Err(e) => eprintln!("lapi-mods: queueing checks failed: {e}"),
+                }
+            }
+        });
         let (stop, stopping) = tokio::sync::watch::channel(false);
         for _ in 0..workers {
             tokio::spawn(import::work(Arc::clone(&app), stopping.clone()));
