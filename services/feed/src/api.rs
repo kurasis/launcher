@@ -245,7 +245,13 @@ async fn own_videos(
 }
 
 /// The player window's page: the video or stream in the provider's embedded
-/// player, and a link to open it in the browser. No script of ours.
+/// player, and a link to open it in the browser. A spinner over the frame
+/// shows that the player is loading; the page's one script, allowed by its
+/// hash alone, takes the spinner away when the frame has loaded.
+const PLAY_SCRIPT: &str = "document.querySelector('iframe').addEventListener('load',function(){document.body.className='ready'})";
+/// `PLAY_SCRIPT`'s SHA-256 in base64, for the page's CSP.
+const PLAY_SCRIPT_HASH: &str = "rPflnP8K0ltC1LurZvLdOaueT4w+lPFlCGYuRJcIkLs=";
+
 fn play_page(lang: &str, title: &str, frame: &str, open: &str) -> Response {
     let (open_text, dir) = match lang {
         "ru" => ("Открыть в браузере", "ltr"),
@@ -257,10 +263,15 @@ fn play_page(lang: &str, title: &str, frame: &str, open: &str) -> Response {
 <meta name=\"viewport\" content=\"width=device-width, initial-scale=1\">\
 <meta name=\"referrer\" content=\"strict-origin-when-cross-origin\"><title>{title}</title>\
 <style>html,body{{margin:0;height:100%;background:#000;color:#ddd;font:14px system-ui,sans-serif}}\
-body{{display:flex;flex-direction:column}}iframe{{flex:1;border:0;width:100%}}\
+body{{display:flex;flex-direction:column}}main{{flex:1;position:relative}}\
+iframe{{position:absolute;inset:0;width:100%;height:100%;border:0}}\
+.wait{{position:absolute;z-index:1;pointer-events:none;transition:opacity .3s,visibility .3s;top:50%;left:50%;width:44px;height:44px;margin:-22px 0 0 -22px;box-sizing:border-box;\
+border:3px solid #2a2a2a;border-top-color:#9cf;border-radius:50%;animation:spin .9s linear infinite}}\
+.ready .wait{{opacity:0;visibility:hidden}}@keyframes spin{{to{{transform:rotate(1turn)}}}}@media (prefers-reduced-motion:reduce){{.wait{{animation-duration:3s}}}}\
 a{{color:#9cf;padding:6px 12px;text-align:end;text-decoration:none}}a:hover{{text-decoration:underline}}</style></head>\
-<body><iframe src=\"{frame}\" title=\"{title}\" allow=\"autoplay; encrypted-media; picture-in-picture; fullscreen\" \
+<body><main><iframe src=\"{frame}\" title=\"{title}\" allow=\"autoplay; encrypted-media; picture-in-picture; fullscreen\" \
 allowfullscreen referrerpolicy=\"strict-origin-when-cross-origin\"></iframe>\
+<div class=\"wait\" aria-hidden=\"true\"></div></main><script>{PLAY_SCRIPT}</script>\
 <a href=\"{open}\" target=\"_blank\" rel=\"noopener noreferrer\">{open_text}</a></body></html>"
     );
     let mut response = Response::new(Body::from(html));
@@ -271,10 +282,12 @@ allowfullscreen referrerpolicy=\"strict-origin-when-cross-origin\"></iframe>\
     );
     headers.insert(
         header::CONTENT_SECURITY_POLICY,
-        HeaderValue::from_static(
+        HeaderValue::from_str(&format!(
             "default-src 'none'; frame-src https://www.youtube-nocookie.com https://player.twitch.tv; \
-             style-src 'unsafe-inline'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'",
-        ),
+             script-src 'sha256-{PLAY_SCRIPT_HASH}'; style-src 'unsafe-inline'; base-uri 'none'; \
+             form-action 'none'; frame-ancestors 'none'"
+        ))
+        .unwrap_or_else(|_| HeaderValue::from_static("default-src 'none'")),
     );
     // YouTube's embedded player refuses to play without the page's origin.
     headers.insert(
