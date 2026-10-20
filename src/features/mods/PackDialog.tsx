@@ -23,6 +23,7 @@ const MAX_NAME = 64;
 
 const FAILURES = [
   'bad_pack',
+  'held',
   'unsupported_pack',
   'unsupported_host',
   'too_big',

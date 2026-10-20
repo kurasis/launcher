@@ -750,6 +750,60 @@ async fn missing_and_incompatible_projects_stop_a_plan() {
 }
 
 #[tokio::test]
+async fn a_file_the_catalog_holds_back_is_not_installed() {
+    let mut fake = Fake::default();
+    fake.add_project(1, "mod", "A");
+    let sha = hash(10);
+    let held = fake.add_version(
+        10,
+        1,
+        "a.jar",
+        json!({"files": [{"name": "a.jar", "size": 100, "sha256": sha, "primary": true, "held": true,
+                          "url": format!("https://files-mods.lapi.sh/f/{sha}/a.jar")}]}),
+    );
+    let file = &fake.versions[&held].files[0];
+    assert!(file.held);
+    // Even if an address came with it.
+    assert!(file.url.is_none());
+    let dir = tempfile::tempdir().unwrap();
+    let plan = content::plan(
+        &fake,
+        dir.path(),
+        &fabric(),
+        &ContentLock::default(),
+        &wanted(&held),
+        &[],
+    )
+    .await
+    .unwrap();
+    assert!(!plan.ready());
+    assert_eq!(plan.conflicts.len(), 1);
+    assert_eq!(plan.conflicts[0].reason, "held");
+    assert_eq!(plan.conflicts[0].title.as_deref(), Some("A"));
+}
+
+#[test]
+fn harmful_files_are_found_by_their_sha1_on_or_off() {
+    use sha1::Digest as _;
+    let (_dir, root, id) = instance();
+    let game = root.game_dir(id);
+    fs::create_dir_all(game.join("mods")).unwrap();
+    fs::write(game.join("mods/bad.jar.disabled"), b"bad").unwrap();
+    fs::write(game.join("mods/good.jar"), b"good").unwrap();
+    let installer = content::Installer::new("0.0.0-test").unwrap();
+    let harmful = std::collections::HashSet::from([hex::encode(sha1::Sha1::digest(b"bad"))]);
+    assert_eq!(
+        installer.harmful_files(&root, id, &harmful),
+        vec!["mods/bad.jar.disabled".to_owned()]
+    );
+    assert!(
+        installer
+            .harmful_files(&root, id, &std::collections::HashSet::new())
+            .is_empty()
+    );
+}
+
+#[tokio::test]
 async fn mods_must_fit_the_installation() {
     let mut fake = Fake::default();
     fake.add_project(1, "mod", "A");
@@ -1465,6 +1519,17 @@ mod packs {
             assert_eq!(read.error.as_deref(), Some("bad_pack"));
             assert!(!read.ready());
         }
+        // A pack with a file the catalog holds back fails with that reason.
+        let mut held = file_json("mods/a.jar", jar);
+        held["url"] = Value::Null;
+        held["held"] = json!(true);
+        let mut answer = info(vec![held], archive, Value::Null);
+        answer["state"] = json!("failed");
+        answer["error"] = json!("held");
+        let read = PackInfo::from(&answer);
+        assert_eq!(read.error.as_deref(), Some("held"));
+        assert!(!read.ready());
+
         let mut wrong_game = info(vec![], archive, Value::Null);
         wrong_game["game"] = json!("1.20.1/../../x");
         assert_eq!(PackInfo::from(&wrong_game).state, "failed");

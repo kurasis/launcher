@@ -1364,6 +1364,7 @@ export type Messages = {
       readonly noneMatch: string;
       readonly showAll: string;
       readonly matching: (values: { count: number; total: string | number }) => string;
+      readonly held: string;
     };
     readonly add: {
       readonly title: (values: { title: string | number; name: string | number }) => string;
@@ -1398,6 +1399,7 @@ export type Messages = {
       readonly stop: string;
       readonly install: string;
       readonly turnOn: (values: { names: string | number }) => string;
+      readonly held: (values: { title: string | number }) => string;
     };
     readonly world: {
       readonly title: (values: { title: string | number; name: string | number }) => string;
@@ -1466,6 +1468,7 @@ export type Messages = {
         readonly too_big: string;
         readonly hash_mismatch: string;
         readonly other: string;
+        readonly held: string;
       };
       readonly updateTitle: (values: { title: string | number }) => string;
       readonly updateNote: string;
@@ -1559,6 +1562,8 @@ export type Messages = {
       readonly turnOffAnyway: string;
       readonly alsoRemove: (values: { names: string | number }) => string;
       readonly checkingNeeds: string;
+      readonly harmfulTitle: string;
+      readonly harmfulText: string;
     };
   };
   readonly worlds: {

@@ -114,6 +114,7 @@
     "allow-mods-export-pack",
     "allow-mods-cancel",
     "allow-mods-content",
+    "allow-mods-harmful",
     "allow-mods-identify",
     "allow-mods-needed-by",
     "allow-mods-updates",

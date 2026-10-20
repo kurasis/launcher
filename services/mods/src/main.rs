@@ -42,6 +42,7 @@ mod modrinth;
 mod pack;
 mod packwiz;
 mod probe;
+mod scan;
 mod store;
 mod thumb;
 
@@ -123,6 +124,13 @@ fn main() -> std::process::ExitCode {
             Ok(())
         }),
         Some("probe") => probe(),
+        // What the scanner makes of a file: its verdict and signs, fixed words.
+        Some("scan") => match &args[1..] {
+            [file] => scan::scan_file(file.as_ref())
+                .map(|v| println!("{} {}", v.level.as_str(), v.signs_text()))
+                .map_err(|e| e.to_string()),
+            _ => Err("usage: lapi-mods scan <file>".to_owned()),
+        },
         Some("thumb") => match &args[1..] {
             [input, output, size, format] => size
                 .parse::<u32>()
@@ -136,7 +144,7 @@ fn main() -> std::process::ExitCode {
             println!("lapi-mods {}", env!("CARGO_PKG_VERSION"));
             Ok(())
         }
-        _ => Err("usage: lapi-mods serve|counts|backup|probe|thumb".to_owned()),
+        _ => Err("usage: lapi-mods serve|counts|backup|probe|scan|thumb".to_owned()),
     };
     match result {
         Ok(()) => std::process::ExitCode::SUCCESS,
@@ -279,6 +287,21 @@ fn serve() -> Result<(), String> {
                     Ok(n) => eprintln!("lapi-mods: {n} projects queued for a check"),
                     Err(e) => eprintln!("lapi-mods: queueing checks failed: {e}"),
                 }
+            }
+        });
+        // Kept archives scanned under older rules, a few at a time.
+        let scanning = Arc::clone(&app);
+        tokio::spawn(async move {
+            loop {
+                let wait = match import::rescan(&scanning, 20).await {
+                    Ok(0) => 3600,
+                    Ok(_) => 30,
+                    Err(e) => {
+                        eprintln!("lapi-mods: scanning kept files failed: {e}");
+                        600
+                    }
+                };
+                tokio::time::sleep(Duration::from_secs(wait)).await;
             }
         });
         let (stop, stopping) = tokio::sync::watch::channel(false);

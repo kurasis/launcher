@@ -698,7 +698,7 @@ async fn project_packwiz(app: &App, url: &str, request: Option<&str>) -> Result<
                 continue;
             }
             let hashed = match app.store.kept_by_origin(&meta.url)? {
-                Some(kept) if app.blobs.has(&kept.sha256) => kept,
+                Some(kept) if app.blobs.holds(&kept.sha256) => kept,
                 _ => {
                     if !app.blobs.may_keep(0) {
                         return Err(JobError::new("no_space", true));
@@ -708,7 +708,7 @@ async fn project_packwiz(app: &App, url: &str, request: Option<&str>) -> Result<
                         let _ = std::fs::remove_file(&part);
                         return Err(JobError::new("hash_mismatch", true));
                     }
-                    keep(app, &part, &hashed, file_type(&meta.path))?;
+                    keep(app, &part, &hashed, file_type(&meta.path)).await?;
                     hashed
                 }
             };
@@ -754,7 +754,7 @@ async fn project_packwiz(app: &App, url: &str, request: Option<&str>) -> Result<
         let _ = std::fs::remove_file(part);
     }
     let (part, archive) = written?;
-    keep(app, &part, &archive, "application/zip")?;
+    keep(app, &part, &archive, "application/zip").await?;
 
     let slug = packwiz::slug(&found.name);
     let title = if found.name.is_empty() {
@@ -1187,18 +1187,86 @@ async fn download(
     }
 }
 
-/// Moves a hashed part into the kept files and records it.
-fn keep(app: &App, part: &Path, hashed: &Hashed, media_type: &str) -> Result<(), JobError> {
-    if !app.blobs.has(&hashed.sha256) && !app.blobs.may_keep(hashed.size) {
+/// Scans up to `limit` kept archives last scanned under older rules (or
+/// never): files kept before the scanner, and all of them again whenever the
+/// rules change. One the scanner holds back now is taken out of service.
+pub async fn rescan(app: &App, limit: i64) -> Result<usize, String> {
+    let due = app.store.to_rescan(limit)?;
+    let count = due.len();
+    for (sha256, _) in due {
+        let path = app.blobs.path(&sha256);
+        let verdict = if path.is_file() {
+            match tokio::task::spawn_blocking(move || crate::scan::scan_file(&path)).await {
+                Ok(Ok(verdict)) => verdict,
+                // Unreadable now: tried again under the next rules.
+                _ => crate::scan::Verdict::clean(),
+            }
+        } else {
+            crate::scan::Verdict::clean()
+        };
+        let held = verdict.level.held();
+        if held && let Err(e) = app.blobs.withdraw(&sha256) {
+            eprintln!("lapi-mods: holding back a file: {e}");
+            continue;
+        }
+        app.store.set_scanned(&sha256, &verdict, held, now())?;
+        if held {
+            eprintln!(
+                "lapi-mods: held back a kept file ({})",
+                verdict.level.as_str()
+            );
+            if verdict.level == crate::scan::Level::Suspicious {
+                app.store.add_review("scan", &sha256, now())?;
+            }
+        }
+    }
+    Ok(count)
+}
+
+/// Moves a hashed part into the kept files and records it. An archive is
+/// scanned first (D-066, stage 6): one the scanner holds back goes into
+/// quarantine instead, is recorded as held and waits for the owner.
+async fn keep(app: &App, part: &Path, hashed: &Hashed, media_type: &str) -> Result<(), JobError> {
+    if app.blobs.holds(&hashed.sha256) && app.store.blob_state(&hashed.sha256)?.is_some() {
+        // Here already, served or held, and scanned then.
+        let _ = std::fs::remove_file(part);
+        return Ok(());
+    }
+    if !app.blobs.may_keep(hashed.size) {
         let _ = std::fs::remove_file(part);
         return Err(JobError::new("no_space", true));
     }
-    if let Err(e) = app.blobs.keep(part, hashed) {
+    let verdict = if crate::scan::scanned_type(media_type) {
+        let path = part.to_path_buf();
+        match tokio::task::spawn_blocking(move || crate::scan::scan_file(&path)).await {
+            Ok(Ok(verdict)) => Some(verdict),
+            _ => {
+                let _ = std::fs::remove_file(part);
+                return Err(JobError::new("disk_error", true));
+            }
+        }
+    } else {
+        None
+    };
+    let held = verdict.as_ref().is_some_and(|v| v.level.held());
+    let placed = if held {
+        app.blobs.hold(part, hashed)
+    } else {
+        app.blobs.keep(part, hashed)
+    };
+    if let Err(e) = placed {
         let _ = std::fs::remove_file(part);
         eprintln!("lapi-mods: keeping a file: {e}");
         return Err(JobError::new("disk_error", true));
     }
-    app.store.add_blob(hashed, media_type, now())?;
+    app.store
+        .add_blob(hashed, media_type, verdict.as_ref(), now())?;
+    if let Some(verdict) = verdict.filter(|v| v.level.held()) {
+        eprintln!("lapi-mods: held back a file ({})", verdict.level.as_str());
+        if verdict.level == crate::scan::Level::Suspicious {
+            app.store.add_review("scan", &hashed.sha256, now())?;
+        }
+    }
     Ok(())
 }
 
@@ -1231,7 +1299,7 @@ async fn files(app: &App, version: &str, request: Option<&str>) -> Result<(), Jo
         if let Some(kept) = app
             .store
             .blob_by_hashes(file.sha1.as_deref(), file.sha512.as_deref())?
-            && app.blobs.has(&kept)
+            && app.blobs.holds(&kept)
         {
             app.store.file_kept(version, file.ord, &kept)?;
             join_twins(
@@ -1266,7 +1334,7 @@ async fn files(app: &App, version: &str, request: Option<&str>) -> Result<(), Jo
             failed = Some(JobError::new("hash_mismatch", true));
             continue;
         }
-        keep(app, &part, &hashed, file_type(&file.name))?;
+        keep(app, &part, &hashed, file_type(&file.name)).await?;
         app.store.file_kept(version, file.ord, &hashed.sha256)?;
         join_twins(app, version, &hashed.sha256, &hashed.sha1)?;
         if let Some(request) = request {
@@ -1280,6 +1348,12 @@ async fn pack_files(app: &App, version: &str) -> Result<(), JobError> {
     let Some(archive) = pack_archive(app, version)? else {
         return Err(JobError::new("not_a_pack", false));
     };
+    if let Some(sha256) = &archive.sha256
+        && app.store.blob_state(sha256)?.as_deref() == Some("quarantined")
+    {
+        // A held pack is not opened.
+        return Err(JobError::new("held", false));
+    }
     let Some(sha256) = archive.sha256.filter(|s| app.blobs.has(s)) else {
         // The archive first.
         queue_files(app, version, None)?;
@@ -1314,7 +1388,7 @@ async fn pack_files(app: &App, version: &str) -> Result<(), JobError> {
         if let Some(kept) = app
             .store
             .blob_by_hashes(Some(&file.sha1), Some(&file.sha512))?
-            && app.blobs.has(&kept)
+            && app.blobs.holds(&kept)
         {
             app.store.pack_file_kept(version, file.ord, &kept)?;
             continue;
@@ -1335,7 +1409,7 @@ async fn pack_files(app: &App, version: &str) -> Result<(), JobError> {
             failed = Some(JobError::new("hash_mismatch", true));
             continue;
         }
-        keep(app, &part, &hashed, file_type(&file.origin_url))?;
+        keep(app, &part, &hashed, file_type(&file.origin_url)).await?;
         app.store
             .pack_file_kept(version, file.ord, &hashed.sha256)?;
     }
@@ -1375,7 +1449,7 @@ async fn curseforge_pack_file(
         return Err(JobError::new("too_big", false));
     }
     let (part, hashed) = match app.store.kept_by_origin(&file.origin_url)? {
-        Some(kept) if app.blobs.has(&kept.sha256) => (None, kept),
+        Some(kept) if app.blobs.holds(&kept.sha256) => (None, kept),
         _ => {
             if !app.blobs.may_keep(declared) {
                 return Err(JobError::new("no_space", true));
@@ -1391,6 +1465,7 @@ async fn curseforge_pack_file(
     };
     let look = part
         .clone()
+        .or_else(|| app.blobs.find(&hashed.sha256))
         .unwrap_or_else(|| app.blobs.path(&hashed.sha256));
     let looked = name.clone();
     let folder = tokio::task::spawn_blocking(move || pack::folder_of(&look, &looked))
@@ -1407,7 +1482,7 @@ async fn curseforge_pack_file(
         return Ok(());
     };
     if let Some(part) = part {
-        keep(app, &part, &hashed, file_type(&name))?;
+        keep(app, &part, &hashed, file_type(&name)).await?;
     }
     app.store
         .pack_file_found(version, file.ord, &path, &hashed)?;
@@ -1431,7 +1506,7 @@ async fn keep_image(app: &App, url: &str) -> Result<(String, String), JobError> 
         let _ = std::fs::remove_file(&part);
         return Err(JobError::new("not_a_picture", false));
     };
-    keep(app, &part, &hashed, media_type)?;
+    keep(app, &part, &hashed, media_type).await?;
     app.store
         .set_image_origin(url, &hashed.sha256, media_type)?;
     Ok((hashed.sha256, media_type.to_owned()))
@@ -1480,7 +1555,7 @@ async fn small_copy(app: &App, sha256: &str, size: u32, format: &str) -> Option<
     } else {
         "image/jpeg"
     };
-    keep(app, &output, &hashed, media_type).ok()?;
+    keep(app, &output, &hashed, media_type).await.ok()?;
     Some(hashed.sha256)
 }
 

@@ -87,7 +87,7 @@ const version: ModsVersion = {
   saved: 'none',
   games: ['1.21.1'],
   loaders: ['fabric'],
-  files: [{ name: 'sodium.jar', size: 1024, sha256: null, primary: true, url: null }],
+  files: [{ name: 'sodium.jar', size: 1024, sha256: null, primary: true, url: null, held: false }],
   dependencies: [],
   goneAt: null,
 };
@@ -184,6 +184,7 @@ function setup(answers: Answers = {}, start: ModsSection = 'mod', instanceId = f
         return content;
       case 'mods_updates':
       case 'mods_identify':
+      case 'mods_harmful':
       case 'mods_imports':
         return [];
       case 'plugin:event|listen':
@@ -437,6 +438,45 @@ describe('ModsView', () => {
     expect(removed.payload).toEqual({ instanceId: fabric.id, path: 'mods/mine.jar.disabled' });
   });
 
+  it('warns about files the catalog marks as malware and removes one', async () => {
+    const calls = setup({ mods_harmful: () => ['mods/mine.jar.disabled'] }, 'installed');
+    expect(await screen.findByText('Harmful files found')).toBeVisible();
+    expect(screen.getByText(/marked these files as malware/)).toBeVisible();
+    // The warning comes before the list, its button first.
+    const remove = screen.getAllByRole('button', { name: 'Remove' })[0] as HTMLElement;
+    fireEvent.click(remove);
+    await waitFor(() => {
+      expect(named('mods_remove', calls)).toHaveLength(1);
+    });
+    const removed = named('mods_remove', calls)[0]?.args.request as {
+      payload: Record<string, unknown>;
+    };
+    expect(removed.payload).toEqual({ instanceId: fabric.id, path: 'mods/mine.jar.disabled' });
+  });
+
+  it('does not offer a version the malware check holds back', async () => {
+    const held: ModsVersion = {
+      ...version,
+      saved: 'all',
+      files: [
+        {
+          name: 'sodium.jar',
+          size: 1024,
+          sha256: 'a'.repeat(64),
+          primary: true,
+          url: null,
+          held: true,
+        },
+      ],
+    };
+    setup({ mods_versions: () => [held] });
+    fireEvent.click(await screen.findByRole('button', { name: /Sodium/ }));
+    const article = await screen.findByRole('article', { name: 'Sodium' });
+    expect(await within(article).findByText(/malware check is holding/)).toBeVisible();
+    expect(within(article).queryByText('In the catalog')).toBeNull();
+    expect(within(article).getByRole('button', { name: 'Add to installation' })).toBeDisabled();
+  });
+
   it('says which mods need one before it is turned off or removed', async () => {
     const calls = setup(
       {
@@ -575,7 +615,16 @@ describe('ModsView', () => {
       ...version,
       number: '1.0',
       name: 'Pack 1.0',
-      files: [{ name: 'pack-1.0.mrpack', size: 2048, sha256: null, primary: true, url: null }],
+      files: [
+        {
+          name: 'pack-1.0.mrpack',
+          size: 2048,
+          sha256: null,
+          primary: true,
+          url: null,
+          held: false,
+        },
+      ],
     };
     const ready: ModsPack = {
       state: 'ready',
@@ -663,7 +712,16 @@ describe('ModsView', () => {
         ...packVersion,
         id: NEWER,
         number: '1.1',
-        files: [{ name: 'pack-1.1.mrpack', size: 2048, sha256: null, primary: true, url: null }],
+        files: [
+          {
+            name: 'pack-1.1.mrpack',
+            size: 2048,
+            sha256: null,
+            primary: true,
+            url: null,
+            held: false,
+          },
+        ],
       };
       const calls = setup(
         {

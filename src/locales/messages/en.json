@@ -1292,7 +1292,8 @@
         "oldest": "Oldest first",
         "noneMatch": "No version matches the filters.",
         "showAll": "Show all",
-        "matching": "{count, plural, one {# version} other {# versions}} of {total}"
+        "matching": "{count, plural, one {# version} other {# versions}} of {total}",
+        "held": "The catalog’s malware check is holding this version’s file back until it is reviewed. It cannot be installed."
       },
       "add": {
         "title": "Add {title} to {name}",
@@ -1326,7 +1327,8 @@
         "progress": "Download progress",
         "stop": "Stop",
         "install": "Install",
-        "turnOn": "Turned on with it: {names}"
+        "turnOn": "Turned on with it: {names}",
+        "held": "{title}: the catalog’s malware check is holding this file back, so it cannot be installed."
       },
       "world": {
         "title": "Add the map {title} to {name}",
@@ -1394,7 +1396,8 @@
           "unsupported_host": "This modpack downloads files from a site the catalog does not fetch from.",
           "too_big": "This modpack is too large for the catalog.",
           "hash_mismatch": "A file of this modpack is not what the modpack says. Try again later.",
-          "other": "The catalog could not prepare this modpack. Try again later."
+          "other": "The catalog could not prepare this modpack. Try again later.",
+          "held": "A file of this modpack is held back by the catalog’s malware check, so the modpack cannot be installed."
         },
         "updateTitle": "Update {title}",
         "updateNote": "Before the update the launcher backs up the whole installation. Files you changed stay as they are.",
@@ -1482,7 +1485,9 @@
         "neededBy": "Needed by {names}; they will not start without it.",
         "turnOffAnyway": "Turn off anyway",
         "alsoRemove": "Also remove what only it needed: {names}",
-        "checkingNeeds": "Checking what needs it…"
+        "checkingNeeds": "Checking what needs it…",
+        "harmfulTitle": "Harmful files found",
+        "harmfulText": "The catalog has marked these files as malware. Remove them from the installation."
       }
     },
     "worlds": {

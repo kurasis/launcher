@@ -259,6 +259,7 @@ fn main_window_capability_grants_only_app_commands() {
             "allow-mods-export-pack",
             "allow-mods-cancel",
             "allow-mods-content",
+            "allow-mods-harmful",
             "allow-mods-identify",
             "allow-mods-needed-by",
             "allow-mods-updates",

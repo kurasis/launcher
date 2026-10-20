@@ -44,6 +44,8 @@ const MAX_PLAN: usize = 200;
 const MAX_LISTED: usize = 2000;
 /// Files the catalog is asked to recognize at once.
 const MAX_IDENTIFY: usize = 1000;
+/// Files of one installation checked against the harmful list.
+const MAX_HARMFUL_CHECKED: usize = 5000;
 /// Larger files are not hashed to be recognized.
 const MAX_HASHED: u64 = 512 * 1024 * 1024;
 /// How long an install waits for the catalog to fetch a version's files.
@@ -375,7 +377,8 @@ pub struct Conflict {
     /// The file already there, relative to the game folder.
     pub path: String,
     /// `incompatible`: a project that does not work with this one;
-    /// `name_taken`: a file the player put there has this name.
+    /// `name_taken`: a file the player put there has this name; `held`: the
+    /// catalog's malware check holds the file back.
     pub reason: String,
     pub title: Option<String>,
 }
@@ -524,6 +527,13 @@ pub async fn plan<C: Catalog>(
                 )
             })?;
         let path = format!("{folder}/{}", file.name);
+        if file.held {
+            plan.conflicts.push(Conflict {
+                path: path.clone(),
+                reason: "held".to_owned(),
+                title: Some(title.clone()),
+            });
+        }
         // An older file of the same project goes, the player's own too: two
         // copies of a mod stop the game.
         let replaces = match lock.of_project(&version.project_id) {
@@ -960,6 +970,33 @@ impl Installer {
 
     /// Files the player put there, with their SHA-1 (by path relative to the
     /// game folder).
+    /// The files of an installation the catalog knows as harmful (by their
+    /// SHA-1, from `harmful`): their paths now, turned off or not.
+    pub fn harmful_files(
+        &self,
+        root: &DataRoot,
+        id: InstanceId,
+        harmful: &HashSet<String>,
+    ) -> Vec<String> {
+        if harmful.is_empty() {
+            return Vec::new();
+        }
+        let game = root.game_dir(id);
+        list(root, id)
+            .items
+            .iter()
+            .filter(|i| !i.directory)
+            .take(MAX_HARMFUL_CHECKED)
+            .filter(|i| {
+                content_path(&game, &i.path)
+                    .ok()
+                    .and_then(|path| self.sha1_of(&path))
+                    .is_some_and(|sha1| harmful.contains(&sha1))
+            })
+            .map(|i| i.path.clone())
+            .collect()
+    }
+
     pub fn unknown_files(&self, root: &DataRoot, id: InstanceId) -> Vec<(String, String)> {
         let view = list(root, id);
         view.items

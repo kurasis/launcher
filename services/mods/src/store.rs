@@ -209,6 +209,18 @@ CREATE TABLE IF NOT EXISTS pack_file (
     origin_url TEXT NOT NULL,
     PRIMARY KEY (version_id, ord)
 );
+-- What waits for the owner's decision (lapi-mods review): a file the
+-- scanner held back (kind scan, subject its SHA-256) or a version its source
+-- took down (kind gone, subject the version).
+CREATE TABLE IF NOT EXISTS review (
+    id INTEGER PRIMARY KEY,
+    kind TEXT NOT NULL,
+    subject TEXT NOT NULL,
+    created INTEGER NOT NULL,
+    decided INTEGER,
+    decision TEXT,
+    UNIQUE (kind, subject)
+);
 CREATE VIRTUAL TABLE IF NOT EXISTS project_fts USING fts5(
     project_id UNINDEXED, title, summary, authors, categories, slug,
     tokenize = 'unicode61 remove_diacritics 2'
@@ -235,6 +247,42 @@ fn card_owner(tx: &rusqlite::Transaction<'_>, project: &str, source: &str) -> Re
         .optional()
         .map_err(sql)?;
     Ok(owner.is_none_or(|o| o == source))
+}
+
+/// Columns added after the first release, to databases made before them.
+const ADDED: &[(&str, &str, &str)] = &[
+    // The scanner's rules a blob was last scanned under (0: never).
+    ("blob", "scanned", "INTEGER NOT NULL DEFAULT 0"),
+    // clean, note, suspicious, malicious; blocked by the owner.
+    ("blob", "verdict", "TEXT NOT NULL DEFAULT 'clean'"),
+    // The scanner's signs, comma-separated fixed words.
+    ("blob", "signs", "TEXT NOT NULL DEFAULT ''"),
+    // Kept by the owner's decision: no later scan holds it back.
+    ("blob", "allowed", "INTEGER NOT NULL DEFAULT 0"),
+    // When it was held back.
+    ("blob", "held", "INTEGER"),
+];
+
+fn migrate(db: &Connection) -> Result<()> {
+    for (table, column, kind) in ADDED {
+        let there: bool = db
+            .query_row(
+                &format!("SELECT count(*) FROM pragma_table_info('{table}') WHERE name = ?1"),
+                [column],
+                |r| r.get::<_, i64>(0),
+            )
+            .map_err(sql)?
+            > 0;
+        if !there {
+            db.execute_batch(&format!("ALTER TABLE {table} ADD COLUMN {column} {kind}"))
+                .map_err(sql)?;
+        }
+    }
+    db.execute_batch(
+        "CREATE INDEX IF NOT EXISTS blob_scanned ON blob(scanned);
+         CREATE INDEX IF NOT EXISTS blob_held ON blob(held);",
+    )
+    .map_err(sql)
 }
 
 fn sql(e: rusqlite::Error) -> String {
@@ -347,6 +395,7 @@ impl Store {
         )
         .map_err(sql)?;
         db.execute_batch(SCHEMA).map_err(sql)?;
+        migrate(&db)?;
         Ok(Self {
             db: Mutex::new(db),
             path,
@@ -1092,7 +1141,8 @@ impl Store {
         .map_err(sql)
     }
 
-    /// The blob of a file, if one with these source hashes is kept already.
+    /// The blob of a file, if one with these source hashes is here already,
+    /// served or held back.
     pub fn blob_by_hashes(
         &self,
         sha1: Option<&str>,
@@ -1101,11 +1151,9 @@ impl Store {
         let db = self.db();
         if let Some(sha512) = sha512
             && let Some(found) = db
-                .query_row(
-                    "SELECT sha256 FROM blob WHERE sha512 = ?1 AND state = 'stored'",
-                    [sha512],
-                    |r| r.get(0),
-                )
+                .query_row("SELECT sha256 FROM blob WHERE sha512 = ?1", [sha512], |r| {
+                    r.get(0)
+                })
                 .optional()
                 .map_err(sql)?
         {
@@ -1113,33 +1161,165 @@ impl Store {
         }
         if let Some(sha1) = sha1 {
             return db
-                .query_row(
-                    "SELECT sha256 FROM blob WHERE sha1 = ?1 AND state = 'stored'",
-                    [sha1],
-                    |r| r.get(0),
-                )
+                .query_row("SELECT sha256 FROM blob WHERE sha1 = ?1", [sha1], |r| {
+                    r.get(0)
+                })
                 .optional()
                 .map_err(sql);
         }
         Ok(None)
     }
 
-    pub fn add_blob(&self, hashed: &Hashed, media_type: &str, now: i64) -> Result<()> {
+    /// Records a kept file; with a scan, its verdict, and held back when
+    /// the verdict says so.
+    pub fn add_blob(
+        &self,
+        hashed: &Hashed,
+        media_type: &str,
+        scan: Option<&crate::scan::Verdict>,
+        now: i64,
+    ) -> Result<()> {
+        let level = scan.map_or(crate::scan::Level::Clean, |v| v.level);
         self.db()
             .execute(
-                "INSERT OR IGNORE INTO blob (sha256, size, sha1, sha512, media_type, state, stored)
-                 VALUES (?1, ?2, ?3, ?4, ?5, 'stored', ?6)",
+                "INSERT OR IGNORE INTO blob
+                     (sha256, size, sha1, sha512, media_type, state, stored, scanned, verdict, signs, held)
+                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11)",
                 params![
                     hashed.sha256,
                     hashed.size as i64,
                     hashed.sha1,
                     hashed.sha512,
                     media_type,
+                    if level.held() { "quarantined" } else { "stored" },
+                    now,
+                    crate::scan::RULES,
+                    level.as_str(),
+                    scan.map(crate::scan::Verdict::signs_text).unwrap_or_default(),
+                    level.held().then_some(now),
+                ],
+            )
+            .map(|_| ())
+            .map_err(sql)
+    }
+
+    /// Whether a kept file is served (`stored`) or held back (`quarantined`).
+    pub fn blob_state(&self, sha256: &str) -> Result<Option<String>> {
+        self.db()
+            .query_row("SELECT state FROM blob WHERE sha256 = ?1", [sha256], |r| {
+                r.get(0)
+            })
+            .optional()
+            .map_err(sql)
+    }
+
+    /// Served archives scanned under older rules, oldest first.
+    pub fn to_rescan(&self, limit: i64) -> Result<Vec<(String, String)>> {
+        let db = self.db();
+        let mut q = db
+            .prepare(
+                "SELECT sha256, media_type FROM blob
+                 WHERE scanned < ?1 AND state = 'stored' AND allowed = 0
+                   AND media_type IN ('application/java-archive', 'application/zip')
+                 ORDER BY stored LIMIT ?2",
+            )
+            .map_err(sql)?;
+        q.query_map(params![crate::scan::RULES, limit], |r| {
+            Ok((r.get(0)?, r.get(1)?))
+        })
+        .map_err(sql)?
+        .collect::<std::result::Result<_, _>>()
+        .map_err(sql)
+    }
+
+    /// A scan's result for a kept file; `held` once it is out of service.
+    pub fn set_scanned(
+        &self,
+        sha256: &str,
+        scan: &crate::scan::Verdict,
+        held: bool,
+        now: i64,
+    ) -> Result<()> {
+        self.db()
+            .execute(
+                "UPDATE blob SET scanned = ?2, verdict = ?3, signs = ?4,
+                     state = CASE WHEN ?5 THEN 'quarantined' ELSE state END,
+                     held = CASE WHEN ?5 THEN ?6 ELSE held END
+                 WHERE sha256 = ?1",
+                params![
+                    sha256,
+                    crate::scan::RULES,
+                    scan.level.as_str(),
+                    scan.signs_text(),
+                    held,
                     now
                 ],
             )
             .map(|_| ())
             .map_err(sql)
+    }
+
+    /// As if every kept file were scanned under older rules.
+    #[cfg(test)]
+    pub fn forget_scans(&self) {
+        self.db()
+            .execute("UPDATE blob SET scanned = 0", [])
+            .unwrap();
+    }
+
+    /// What waits for the owner: kind and subject.
+    #[cfg(test)]
+    pub fn reviews(&self) -> Vec<(String, String)> {
+        let db = self.db();
+        let mut q = db
+            .prepare("SELECT kind, subject FROM review WHERE decided IS NULL ORDER BY id")
+            .unwrap();
+        q.query_map([], |r| Ok((r.get(0)?, r.get(1)?)))
+            .unwrap()
+            .map(std::result::Result::unwrap)
+            .collect()
+    }
+
+    /// Puts something before the owner, once.
+    pub fn add_review(&self, kind: &str, subject: &str, now: i64) -> Result<()> {
+        self.db()
+            .execute(
+                "INSERT OR IGNORE INTO review (kind, subject, created) VALUES (?1, ?2, ?3)",
+                params![kind, subject, now],
+            )
+            .map(|_| ())
+            .map_err(sql)
+    }
+
+    /// Files known to be harmful, held back since `since`: what a launcher
+    /// warns about when one is installed already. Files only suspected stay
+    /// off the list until the owner decides.
+    pub fn harmful_since(
+        &self,
+        since: i64,
+        after: &str,
+        limit: i64,
+    ) -> Result<Vec<serde_json::Value>> {
+        let db = self.db();
+        let mut q = db
+            .prepare(
+                "SELECT sha256, sha1, sha512, held FROM blob
+                 WHERE state = 'quarantined' AND verdict IN ('malicious', 'blocked')
+                   AND (held > ?1 OR (held = ?1 AND sha256 > ?2))
+                 ORDER BY held, sha256 LIMIT ?3",
+            )
+            .map_err(sql)?;
+        q.query_map(params![since, after, limit], |r| {
+            Ok(serde_json::json!({
+                "sha256": r.get::<_, String>(0)?,
+                "sha1": r.get::<_, String>(1)?,
+                "sha512": r.get::<_, String>(2)?,
+                "since": r.get::<_, i64>(3)?,
+            }))
+        })
+        .map_err(sql)?
+        .collect::<std::result::Result<_, _>>()
+        .map_err(sql)
     }
 
     /// Links a kept file to its place in a version.
@@ -1276,12 +1456,13 @@ impl Store {
         tx.commit().map_err(sql)
     }
 
-    /// A kept file fetched from this address before, by any version or pack.
+    /// A file fetched from this address before, by any version or pack, served
+    /// or held back.
     pub fn kept_by_origin(&self, url: &str) -> Result<Option<crate::blobs::Hashed>> {
         self.db()
             .query_row(
                 "SELECT b.sha256, b.size, b.sha1, b.sha512 FROM blob b
-                 WHERE b.state = 'stored' AND b.sha256 IN (
+                 WHERE b.sha256 IN (
                      SELECT sha256 FROM version_file WHERE origin_url = ?1 AND sha256 IS NOT NULL
                      UNION SELECT sha256 FROM pack_file WHERE origin_url = ?1 AND sha256 IS NOT NULL)
                  LIMIT 1",
@@ -1376,19 +1557,24 @@ impl Store {
         };
         let mut q = db
             .prepare(
-                "SELECT path, size, sha256, optional FROM pack_file WHERE version_id = ?1 ORDER BY ord",
+                "SELECT p.path, p.size, p.sha256, p.optional, b.state FROM pack_file p
+                 LEFT JOIN blob b ON b.sha256 = p.sha256
+                 WHERE p.version_id = ?1 ORDER BY p.ord",
             )
             .map_err(sql)?;
         let list: Vec<serde_json::Value> = q
             .query_map([version], |r| {
                 let path: String = r.get(0)?;
                 let sha256: Option<String> = r.get(2)?;
+                let held = r.get::<_, Option<String>>(4)?.as_deref() == Some("quarantined");
                 let name = path.rsplit('/').next().unwrap_or_default().to_owned();
                 Ok(serde_json::json!({
                     "path": path,
                     "size": r.get::<_, i64>(1)?,
                     "sha256": sha256,
-                    "url": sha256.as_deref().map(|s| files.file(s, &name)),
+                    // A held file has no address: nobody downloads it.
+                    "url": sha256.as_deref().filter(|_| !held).map(|s| files.file(s, &name)),
+                    "held": held,
                     "optional": r.get::<_, bool>(3)?,
                 }))
             })
@@ -1405,14 +1591,29 @@ impl Store {
         Ok(Some(pack))
     }
 
+    /// Marks a version its source took down. One with files kept here goes
+    /// before the owner: a source may have taken it down as harmful, and it
+    /// stays offered until the owner decides (D-066).
     pub fn mark_version_gone(&self, version: &str, now: i64) -> Result<()> {
-        self.db()
+        let mut db = self.db();
+        let tx = db.transaction().map_err(sql)?;
+        let newly = tx
             .execute(
-                "UPDATE version SET gone_at = coalesce(gone_at, ?2) WHERE id = ?1",
+                "UPDATE version SET gone_at = ?2 WHERE id = ?1 AND gone_at IS NULL",
                 params![version, now],
             )
-            .map(|_| ())
-            .map_err(sql)
+            .map_err(sql)?
+            > 0;
+        if newly {
+            tx.execute(
+                "INSERT OR IGNORE INTO review (kind, subject, created)
+                 SELECT 'gone', ?1, ?2 WHERE EXISTS (
+                     SELECT 1 FROM version_file WHERE version_id = ?1 AND sha256 IS NOT NULL)",
+                params![version, now],
+            )
+            .map_err(sql)?;
+        }
+        tx.commit().map_err(sql)
     }
 
     // ----- the queue -----
@@ -1831,13 +2032,15 @@ impl Store {
         let file_list: Vec<serde_json::Value> = {
             let mut q = db
                 .prepare(
-                    "SELECT file_name, size, sha1, sha512, sha256, is_primary, role, origin_url
-                     FROM version_file WHERE version_id = ?1 ORDER BY ord",
+                    "SELECT f.file_name, f.size, f.sha1, f.sha512, f.sha256, f.is_primary, f.role, f.origin_url, b.state
+                     FROM version_file f LEFT JOIN blob b ON b.sha256 = f.sha256
+                     WHERE f.version_id = ?1 ORDER BY f.ord",
                 )
                 .map_err(sql)?;
             q.query_map([id], |r| {
                 let name: String = r.get(0)?;
                 let sha256: Option<String> = r.get(4)?;
+                let held = r.get::<_, Option<String>>(8)?.as_deref() == Some("quarantined");
                 Ok(serde_json::json!({
                     "name": name,
                     "size": r.get::<_, i64>(1)?,
@@ -1846,7 +2049,8 @@ impl Store {
                     "sha256": sha256,
                     "primary": r.get::<_, bool>(5)?,
                     "role": r.get::<_, String>(6)?,
-                    "url": sha256.as_deref().map(|s| files.file(s, &name)),
+                    "url": sha256.as_deref().filter(|_| !held).map(|s| files.file(s, &name)),
+                    "held": held,
                     "originUrl": r.get::<_, String>(7)?,
                 }))
             })
@@ -2090,6 +2294,14 @@ impl Store {
             "jobsWaiting": one("SELECT count(*) FROM job WHERE state IN ('queued', 'running')")?,
             "jobsFailed": one("SELECT count(*) FROM job WHERE state = 'failed'")?,
             "jobsFailedBy": failed_by,
+            "blobsHeld": one("SELECT count(*) FROM blob WHERE state = 'quarantined'")?,
+            "blobsNoted": one("SELECT count(*) FROM blob WHERE verdict = 'note'")?,
+            "blobsToRescan": one(&format!(
+                "SELECT count(*) FROM blob WHERE scanned < {} AND state = 'stored' AND allowed = 0
+                 AND media_type IN ('application/java-archive', 'application/zip')",
+                crate::scan::RULES
+            ))?,
+            "reviewOpen": one("SELECT count(*) FROM review WHERE decided IS NULL")?,
         }))
     }
 

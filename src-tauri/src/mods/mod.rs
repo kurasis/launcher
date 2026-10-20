@@ -15,6 +15,7 @@ pub mod markdown;
 pub mod pack;
 pub mod world;
 
+use std::collections::HashSet;
 use std::sync::Arc;
 
 use serde::{Deserialize, Serialize};
@@ -444,6 +445,9 @@ pub struct VersionFile {
     pub primary: bool,
     /// Where the catalog serves it, once kept.
     pub url: Option<String>,
+    /// Held back by the catalog's malware check (D-066, stage 6): it has no
+    /// address and is not installed.
+    pub held: bool,
     /// Its address on Modrinth's CDN, for a modpack's index (an export).
     #[serde(skip)]
     pub origin: Option<String>,
@@ -519,16 +523,18 @@ impl Version {
                 .take(32)
                 .map(|f| {
                     let sha = sha256(f["sha256"].as_str());
+                    let held = f["held"].as_bool() == Some(true);
                     VersionFile {
                         name: line(f["name"].as_str().unwrap_or_default(), 255),
                         size: f["size"].as_u64().unwrap_or(0),
-                        url: sha.as_deref().and_then(|s| {
+                        url: sha.as_deref().filter(|_| !held).and_then(|s| {
                             f["url"]
                                 .as_str()
                                 .and_then(|u| our_file(u, s))
                                 .map(|u| u.to_string())
                         }),
                         sha256: sha,
+                        held,
                         primary: f["primary"].as_bool().unwrap_or(false),
                         origin: f["originUrl"]
                             .as_str()
@@ -1036,12 +1042,59 @@ impl Catalog for Client {
     }
 }
 
+/// Pages of harmful files read at most; 500 a page.
+const MAX_HARMFUL_PAGES: usize = 40;
+/// How long the list of harmful files is kept before it is read again.
+const HARMFUL_FRESH: std::time::Duration = std::time::Duration::from_secs(3600);
+
+impl Client {
+    /// The SHA-1 of every file the catalog holds back as harmful (D-066,
+    /// stage 6), to warn about one installed before it was held.
+    pub async fn harmful(&self) -> LauncherResult<HashSet<String>> {
+        let mut out = HashSet::new();
+        let (mut since, mut after) = (0i64, String::new());
+        for _ in 0..MAX_HARMFUL_PAGES {
+            let mut url = url::Url::parse(&Self::url("/v1/harmful")).map_err(|_| server())?;
+            {
+                let mut q = url.query_pairs_mut();
+                q.append_pair("since", &since.to_string());
+                if !after.is_empty() {
+                    q.append_pair("after", &after);
+                }
+            }
+            let value = self.send(self.http.get(url), MAX_ANSWER_BYTES).await?;
+            for f in value["files"].as_array().into_iter().flatten().take(1000) {
+                if let Some(sha1) = f["sha1"].as_str().filter(|h| {
+                    h.len() == 40 && h.bytes().all(|b| matches!(b, b'0'..=b'9' | b'a'..=b'f'))
+                }) {
+                    out.insert(sha1.to_owned());
+                }
+            }
+            let next = &value["next"];
+            match (
+                next["since"].as_i64(),
+                next["after"].as_str().filter(|a| sha256(Some(a)).is_some()),
+            ) {
+                // Only forward: a page that points back ends the reading.
+                (Some(s), Some(a)) if (s, a) > (since, after.as_str()) => {
+                    since = s;
+                    after = a.to_owned();
+                }
+                _ => break,
+            }
+        }
+        Ok(out)
+    }
+}
+
 /// The catalog's client and what installs into game folders; one per launcher.
 pub struct Mods {
     pub client: Client,
     pub content: content::Installer,
     /// What the player picked to bring in (stage 5), until it is in.
     pub import: std::sync::Mutex<Option<import::Picked>>,
+    /// The harmful files' SHA-1 and when they were read.
+    harmful: std::sync::Mutex<Option<(std::time::Instant, Arc<HashSet<String>>)>>,
 }
 
 impl Mods {
@@ -1050,7 +1103,29 @@ impl Mods {
             client: Client::new(app_version)?,
             content: content::Installer::new(app_version).map_err(|e| e.message)?,
             import: std::sync::Mutex::new(None),
+            harmful: std::sync::Mutex::new(None),
         })
+    }
+
+    /// The harmful files' SHA-1, read again once an hour.
+    pub async fn harmful(&self) -> LauncherResult<Arc<HashSet<String>>> {
+        let kept = self
+            .harmful
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .clone();
+        if let Some((read, list)) = kept
+            && read.elapsed() < HARMFUL_FRESH
+        {
+            return Ok(list);
+        }
+        let list = Arc::new(self.client.harmful().await?);
+        *self
+            .harmful
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner) =
+            Some((std::time::Instant::now(), Arc::clone(&list)));
+        Ok(list)
     }
 }
 
