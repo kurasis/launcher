@@ -102,8 +102,9 @@ jobs:
       - name: cargo test
         run: npm run rust:test
 
-      - name: Release build of the desktop shell (no installer)
-        run: npx tauri build --ci --no-bundle -- --locked
+      # No release build here: the Package workflow builds and smoke-tests the
+      # same release on every target, so a second one only doubled the slowest
+      # step and held runners other pull requests wait for (D-007).
 
   world-server:
     # Worlds with Friends W3: Mojang's 1.21.1 server, installed through the
