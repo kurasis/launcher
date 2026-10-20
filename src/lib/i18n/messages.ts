@@ -1408,6 +1408,38 @@ export type Messages = {
       readonly done: (values: { world: string | number }) => string;
       readonly install: string;
     };
+    readonly bringIn: {
+      readonly button: string;
+      readonly title: string;
+      readonly intro: string;
+      readonly pickZip: string;
+      readonly pickFolder: string;
+      readonly pickZipTitle: string;
+      readonly pickFolderTitle: string;
+      readonly reading: string;
+      readonly formats: {
+        readonly prism: string;
+        readonly folder: string;
+      };
+      readonly summary: (values: { files: number; size: string | number; mods: number }) => string;
+      readonly guessed: string;
+      readonly noGame: string;
+      readonly leftOut: (values: { count: number }) => string;
+      readonly name: string;
+      readonly game: string;
+      readonly loader: string;
+      readonly noLoader: string;
+      readonly create: string;
+      readonly creating: string;
+      readonly copying: (values: { files: string | number; total: string | number }) => string;
+      readonly stop: string;
+      readonly stopped: string;
+      readonly retry: string;
+      readonly done: (values: { name: string | number; count: number }) => string;
+      readonly another: string;
+      readonly cancel: string;
+      readonly close: string;
+    };
     readonly pack: {
       readonly install: string;
       readonly title: (values: { title: string | number }) => string;

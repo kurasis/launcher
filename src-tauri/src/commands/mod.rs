@@ -2157,6 +2157,187 @@ pub async fn mods_install_world<R: Runtime>(
     result
 }
 
+fn picked_import(
+    mods: &crate::mods::Mods,
+) -> std::sync::MutexGuard<'_, Option<crate::mods::import::Picked>> {
+    mods.import
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner)
+}
+
+fn nothing_picked() -> crate::error::LauncherError {
+    crate::error::LauncherError::invalid_input("Choose what to bring in first.")
+}
+
+/// Picks a Prism Launcher or MultiMC instance, a game or mods folder, or a
+/// zip of one in the native dialog, and reads what it holds. The core keeps
+/// it for `mods_import_create`. `Ok(None)` when the dialog was closed.
+#[tauri::command]
+pub async fn mods_import_pick<R: Runtime>(
+    app: AppHandle<R>,
+    folder: bool,
+    title: Option<String>,
+) -> LauncherResult<Option<crate::mods::import::Found>> {
+    use tauri_plugin_dialog::DialogExt;
+    let fallback = if folder {
+        "Choose the instance or mods folder"
+    } else {
+        "Choose the exported instance (zip)"
+    };
+    let title = window_title(title, fallback);
+    let handle = app.clone();
+    let picked = tauri::async_runtime::spawn_blocking(move || {
+        let dialog = handle.dialog().file().set_title(title);
+        if folder {
+            dialog.blocking_pick_folder()
+        } else {
+            dialog.add_filter("Zip", &["zip"]).blocking_pick_file()
+        }
+    })
+    .await
+    .map_err(|_| crate::error::LauncherError::internal("The file dialog failed."))?;
+    let Some(path) = picked.and_then(|p| p.into_path().ok()) else {
+        return Ok(None);
+    };
+    let read = tauri::async_runtime::spawn_blocking(move || crate::mods::import::read(&path))
+        .await
+        .map_err(|_| {
+            crate::error::LauncherError::internal("A file operation stopped unexpectedly.")
+        })??;
+    let found = read.found.clone();
+    *picked_import(&mods(&app)) = Some(read);
+    Ok(Some(found))
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct ModsImportCreatePayload {
+    pub display_name: String,
+    pub game_version: String,
+    pub loader: Option<crate::loader::LoaderKind>,
+}
+
+/// Makes the installation for what was picked: its game version and loader
+/// (the loader's version the source names, else the recommended one).
+#[tauri::command]
+pub async fn mods_import_create<R: Runtime>(
+    app: AppHandle<R>,
+    sources: State<'_, Sources>,
+    request: MutationRequest<ModsImportCreatePayload>,
+) -> LauncherResult<InstanceSummary> {
+    crate::state::ledger::validate_request_id(&request.request_id)?;
+    let payload = request.payload;
+    let mods = mods(&app);
+    let (hint_kind, hint, count) = {
+        let picked = picked_import(&mods);
+        let picked = picked.as_ref().ok_or_else(nothing_picked)?;
+        if picked.instance.is_some() {
+            return Err(crate::error::LauncherError::invalid_input(
+                "An installation was made for this already.",
+            ));
+        }
+        (
+            picked.found.loader,
+            picked.loader_hint.clone(),
+            picked.found.mods,
+        )
+    };
+    if !crate::loader::valid_version(&payload.game_version) {
+        return Err(crate::error::LauncherError::invalid_input(
+            "Choose a Minecraft version.",
+        ));
+    }
+    let loader = match payload.loader {
+        Some(kind) => {
+            let list = sources
+                .get()?
+                .loader_versions(kind, &payload.game_version)
+                .await?;
+            let hint = hint.as_deref().filter(|_| hint_kind == Some(kind));
+            let version =
+                crate::mods::import::pick_loader_version(&list, hint).ok_or_else(|| {
+                    crate::error::LauncherError::invalid_input(
+                        "This mod loader has no version for this Minecraft version.",
+                    )
+                })?;
+            Some(crate::loader::LoaderChoice { kind, version })
+        }
+        None => None,
+    };
+    let create = MutationRequest {
+        request_id: request.request_id,
+        payload: CreateInstancePayload {
+            display_name: payload.display_name,
+            version_id: payload.game_version,
+            loader,
+        },
+    };
+    let summary = blocking(app, move |state| state.create_instance_with(create, count)).await?;
+    if let Some(picked) = picked_import(&mods).as_mut() {
+        picked.instance = Some(summary.id);
+    }
+    Ok(summary)
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct ModsImportApplyPayload {
+    pub instance_id: crate::storage::paths::InstanceId,
+}
+
+/// Copies what was picked into the installation made for it; progress comes
+/// as `mods://progress`. Again after a stop it finishes what is missing.
+#[tauri::command]
+pub async fn mods_import_apply<R: Runtime>(
+    app: AppHandle<R>,
+    request: MutationRequest<ModsImportApplyPayload>,
+) -> LauncherResult<crate::mods::import::Report> {
+    use tauri::Emitter;
+    crate::state::ledger::validate_request_id(&request.request_id)?;
+    let id = request.payload.instance_id;
+    let mods = mods(&app);
+    let picked = picked_import(&mods)
+        .clone()
+        .filter(|p| p.instance == Some(id))
+        .ok_or_else(nothing_picked)?;
+    let claim = mods.content.claim(id)?;
+    let state = app.state::<AppState>();
+    state.activity().ensure_instance_idle(id)?;
+    let (root, _) = crate::mods::content::instance_of(&state, id)?;
+    let game = root.game_dir(id);
+    let emitter = app.clone();
+    let cancel = claim.cancel.clone();
+    let result = tauri::async_runtime::spawn_blocking(move || {
+        let emit = move |progress: crate::mods::content::Progress| {
+            let _ = emitter.emit(crate::mods::PROGRESS_EVENT, progress);
+        };
+        crate::mods::import::copy(&picked, &game, id, &cancel, &emit)
+    })
+    .await
+    .map_err(|_| crate::error::LauncherError::internal("A file operation stopped unexpectedly."))?;
+    let phase = match &result {
+        Ok(_) => {
+            *picked_import(&mods) = None;
+            "done"
+        }
+        Err(e) if e.code == crate::error::ErrorCode::OperationCancelled => "cancelled",
+        Err(_) => "failed",
+    };
+    let _ = app.emit(
+        crate::mods::PROGRESS_EVENT,
+        crate::mods::content::Progress {
+            instance_id: id.to_string(),
+            phase,
+            files: 0,
+            total_files: 0,
+            bytes: 0,
+            total_bytes: 0,
+        },
+    );
+    drop(claim);
+    result
+}
+
 /// A modpack version as the catalog has it (stage 3). `prepare` asks the
 /// catalog to keep its files; the interface does that once, then looks
 /// without it every few seconds until the pack is ready.

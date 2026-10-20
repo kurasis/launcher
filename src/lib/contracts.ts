@@ -1416,6 +1416,34 @@ export interface ModsWorldPlan {
   approval: ApprovalRequest | null;
 }
 
+/** What a picked instance, game folder or mods folder holds (D-066 stage 5). */
+export interface ModsImportFound {
+  format: 'prism' | 'folder';
+  name: string;
+  game: string | null;
+  loader: LoaderKind | null;
+  /** The version and loader were guessed from the mods. */
+  guessed: boolean;
+  files: number;
+  bytes: number;
+  mods: number;
+  leftOut: number;
+}
+
+export interface ModsImportCreatePayload {
+  displayName: string;
+  gameVersion: string;
+  loader: LoaderKind | null;
+}
+
+/** What bringing in copied. */
+export interface ModsImportReport {
+  files: number;
+  /** Already there from an earlier try. */
+  kept: number;
+  leftOut: number;
+}
+
 /** `mods://progress` while an install runs. */
 export interface ModsProgress {
   instanceId: string;
