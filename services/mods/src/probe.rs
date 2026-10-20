@@ -176,6 +176,10 @@ fn card_report(page: &[u8]) -> String {
     words.push(format!("authors:{}", card.authors.len()));
     words.push(format!("gallery:{}", card.gallery.len()));
     words.push(format!("categories:{}", card.categories.len()));
+    let shapes = crate::curseforge::shapes(&String::from_utf8_lossy(page), SLUG);
+    if !shapes.is_empty() {
+        words.push(format!("fields[{}]", shapes.join(" ")));
+    }
     words.join(",")
 }
 

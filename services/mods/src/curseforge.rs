@@ -88,12 +88,30 @@ fn text(value: &Value, key: &str, max: usize) -> String {
 }
 
 fn time(value: &Value, key: &str) -> i64 {
-    value
-        .get(key)
-        .and_then(Value::as_str)
-        .and_then(|s| chrono::DateTime::parse_from_rfc3339(s).ok())
-        .map(|t| t.timestamp())
-        .unwrap_or(0)
+    value.get(key).map_or(0, moment)
+}
+
+/// A moment: RFC 3339 text, or a number of seconds or milliseconds since
+/// 1970 (between 2000 and 2100).
+fn moment(value: &Value) -> i64 {
+    let seconds = match value {
+        Value::String(text) => text
+            .strip_prefix("$D")
+            .map_or(text.as_str(), |t| t)
+            .parse::<chrono::DateTime<chrono::FixedOffset>>()
+            .map(|t| t.timestamp())
+            .unwrap_or(0),
+        Value::Number(n) => {
+            let n = n.as_i64().unwrap_or(0);
+            if n > 100_000_000_000 { n / 1000 } else { n }
+        }
+        _ => 0,
+    };
+    if (946_684_800..4_102_444_800).contains(&seconds) {
+        seconds
+    } else {
+        0
+    }
 }
 
 fn number(value: &Value, key: &str) -> i64 {
@@ -316,7 +334,10 @@ pub const MAX_PAGE: usize = 8 * 1024 * 1024;
 /// tags for what it lacks.
 pub fn page(html: &str, slug: &str) -> Card {
     let html = &html[..floor(html, MAX_PAGE)];
-    let mut card = flight(&stream(html), slug).unwrap_or_default();
+    let stream = stream(html);
+    let mut card = project_in(&stream, slug)
+        .map(|p| card_of(&stream, &p))
+        .unwrap_or_default();
     let ld = ld_json(html);
     let fill = |field: &mut String, value: Option<String>, max: usize| {
         if field.is_empty()
@@ -392,7 +413,7 @@ fn stream(html: &str) -> String {
 
 /// The project object in the stream: an object with this slug, a numeric
 /// `id`, and Minecraft's game (or a class) beside them.
-fn flight(text: &str, slug: &str) -> Option<Card> {
+fn project_in(text: &str, slug: &str) -> Option<Value> {
     let needle = format!("\"slug\":\"{slug}\"");
     let mut tries = 0;
     let mut from = 0;
@@ -411,7 +432,7 @@ fn flight(text: &str, slug: &str) -> Option<Card> {
             if let Some(Ok(value)) = values.next()
                 && let Some(project) = find_project(&value, slug, 0)
             {
-                return Some(card_of(project));
+                return Some(project.clone());
             }
         }
     }
@@ -442,7 +463,47 @@ fn find_project<'a>(value: &'a Value, slug: &str, depth: usize) -> Option<&'a Va
     }
 }
 
-fn card_of(project: &Value) -> Card {
+/// A value of the stream: a reference (`"$1f"`) is replaced by the chunk it
+/// names, a text chunk (`1f:T<hex length>,…`) as a string. Other values
+/// are as they are.
+fn resolved(text: &str, value: &Value) -> Value {
+    let Some(id) = value
+        .as_str()
+        .and_then(|s| s.strip_prefix('$'))
+        .map(|s| s.strip_prefix('L').unwrap_or(s))
+        .filter(|id| !id.is_empty() && id.len() <= 8 && id.bytes().all(|b| b.is_ascii_hexdigit()))
+    else {
+        return value.clone();
+    };
+    chunk(text, id).unwrap_or(Value::Null)
+}
+
+/// The chunk with this ID in the stream.
+fn chunk(text: &str, id: &str) -> Option<Value> {
+    let label = format!("{id}:");
+    let mut from = 0;
+    let at = loop {
+        let at = from + text[from..].find(&label)?;
+        if at == 0 || text.as_bytes()[at - 1] == b'\n' {
+            break at + label.len();
+        }
+        from = at + label.len();
+    };
+    let rest = &text[at..];
+    if let Some(sized) = rest.strip_prefix('T') {
+        let comma = sized.find(',').filter(|c| *c <= 8)?;
+        let length = usize::from_str_radix(&sized[..comma], 16).ok()?;
+        let body = &sized[comma + 1..];
+        return Some(Value::String(body[..floor(body, length)].to_owned()));
+    }
+    serde_json::Deserializer::from_str(rest)
+        .into_iter::<Value>()
+        .next()?
+        .ok()
+}
+
+fn card_of(stream: &str, project: &Value) -> Card {
+    let field = |key: &str| project.get(key).map(|v| resolved(stream, v));
     let first_text = |keys: &[&str], max: usize| -> String {
         keys.iter()
             .map(|k| text(project, k, max))
@@ -468,16 +529,22 @@ fn card_of(project: &Value) -> Card {
             let one = text(project, "authorName", 64);
             if one.is_empty() { vec![] } else { vec![one] }
         });
-    let gallery = project
-        .get("screenshots")
-        .and_then(Value::as_array)
+    let gallery = ["screenshots", "images", "gallery", "attachments"]
+        .iter()
+        .filter_map(|k| field(k))
+        .find(|v| v.as_array().is_some_and(|a| !a.is_empty()))
+        .unwrap_or(Value::Null);
+    let gallery = gallery
+        .as_array()
         .into_iter()
         .flatten()
+        .take(200)
+        .map(|s| resolved(stream, s))
         .filter_map(|s| {
             Some(SourceImage {
                 url: https(s.get("url")).or_else(|| https(s.get("imageUrl")))?,
-                title: text(s, "title", 200),
-                description: text(s, "description", 1000),
+                title: text(&s, "title", 200),
+                description: text(&s, "description", 1000),
             })
         })
         .take(40)
@@ -496,11 +563,14 @@ fn card_of(project: &Value) -> Card {
         id: project.get("id").and_then(Value::as_u64),
         title: first_text(&["name", "title"], 256),
         summary: first_text(&["summary", "description"], 1000),
-        body: project
-            .get("description")
-            .and_then(Value::as_str)
-            .filter(|d| d.contains('<'))
-            .map(|d| clean(d, 64 * 1024, true))
+        body: ["description", "descriptionHtml", "about"]
+            .iter()
+            .filter_map(|k| field(k))
+            .find_map(|d| {
+                d.as_str()
+                    .filter(|d| d.contains('<'))
+                    .map(|d| clean(d, 64 * 1024, true))
+            })
             .unwrap_or_default(),
         icon,
         authors,
@@ -511,17 +581,75 @@ fn card_of(project: &Value) -> Card {
             .map(|k| number(project, k))
             .max()
             .unwrap_or(0),
-        published: ["dateCreated", "dateReleased"]
+        published: PUBLISHED
             .iter()
-            .map(|k| time(project, k))
+            .filter_map(|k| field(k))
+            .map(|v| moment(&v))
             .find(|t| *t > 0)
             .unwrap_or(0),
-        updated: ["dateModified", "dateUpdated"]
+        updated: UPDATED
             .iter()
-            .map(|k| time(project, k))
+            .filter_map(|k| field(k))
+            .map(|v| moment(&v))
             .find(|t| *t > 0)
             .unwrap_or(0),
     }
+}
+
+/// Names a project's dates go by.
+const PUBLISHED: &[&str] = &[
+    "dateCreated",
+    "dateReleased",
+    "creationDate",
+    "releaseDate",
+    "createdAt",
+];
+const UPDATED: &[&str] = &[
+    "dateModified",
+    "dateUpdated",
+    "updateDate",
+    "lastUpdated",
+    "updatedAt",
+];
+
+/// The shapes of the project object's fields the card could use, for the
+/// probe: `<key>:<shape>` for each one present (our words only).
+pub fn shapes(html: &str, slug: &str) -> Vec<String> {
+    let html = &html[..floor(html, MAX_PAGE)];
+    let stream = stream(html);
+    let Some(project) = project_in(&stream, slug) else {
+        return Vec::new();
+    };
+    let keys = [
+        "description",
+        "descriptionHtml",
+        "about",
+        "screenshots",
+        "images",
+        "gallery",
+        "attachments",
+    ]
+    .iter()
+    .chain(PUBLISHED)
+    .chain(UPDATED);
+    keys.filter_map(|key| {
+        let value = project.get(*key)?;
+        let found = resolved(&stream, value);
+        let reference = found != *value;
+        let shape = match found {
+            Value::Null => "null".to_owned(),
+            Value::Bool(_) => "bool".to_owned(),
+            Value::Number(_) => "num".to_owned(),
+            Value::String(s) => format!("str{}", s.len()),
+            Value::Array(a) => format!("list{}", a.len()),
+            Value::Object(_) => "obj".to_owned(),
+        };
+        Some(format!(
+            "{key}:{}{shape}",
+            if reference { "ref_" } else { "" }
+        ))
+    })
+    .collect()
 }
 
 /// Names of authors: a string, `{name}`, `{username}`, or a list of those.
