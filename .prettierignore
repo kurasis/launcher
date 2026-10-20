@@ -9,3 +9,6 @@ docs/spec
 docs/worlds-with-friends/spec
 tests/fixtures
 deploy/**/*.inc
+# Gradle fills in the number: not JSON until then.
+mod/mc-1.16.5-1.20.1/forge/src/main/resources/pack.mcmeta
+mod/gametest/mc-1.16.5-1.20.1/forge/src/main/resources/pack.mcmeta
