@@ -5,3 +5,15 @@ subprojects {
     group = 'app.launcher.skins'
     version = rootProject.file('VERSION').text.trim()
 }
+
+// Loom's remapper shares the open game jars between projects: two remaps at once can close
+// them under each other (ClosedFileSystemException). One remap at a time.
+abstract class OneRemapAtATime implements org.gradle.api.services.BuildService<org.gradle.api.services.BuildServiceParameters.None> {}
+def oneRemap = gradle.sharedServices.registerIfAbsent('oneRemapAtATime', OneRemapAtATime) {
+    maxParallelUsages = 1
+}
+subprojects {
+    tasks.matching { it.name in ['remapJar', 'remapSourcesJar'] }.configureEach {
+        usesService(oneRemap)
+    }
+}
