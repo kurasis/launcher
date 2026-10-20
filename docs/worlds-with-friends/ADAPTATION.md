@@ -209,3 +209,8 @@ tuple; Fabric and other loaders arrive in W12.
   ones (after a session that changed the world) are kept, ones made by hand stay. An export
   holds the save only, never `server.properties` (console password) or the whitelist (names).
   Import is for installations without mods until W12.
+- 2026-10-20 — after the first two-machine run: an install of an installation may run while a
+  world server runs, as the host installs the room's game only after opening its world (Play
+  refused it). An install adds missing files and a runtime goes into its own
+  content-addressed folder, so the server's Java is not replaced. Repair, relocation and
+  reset still wait for the server.
