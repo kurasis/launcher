@@ -187,7 +187,13 @@ pub fn show_player_window<R: Runtime>(app: &AppHandle<R>, url: Url, title: Strin
             // "Open in browser" and the players' own links: the browser, when
             // the launcher may open the address; never a new window here.
             .on_new_window(move |url, _| {
-                open_in_browser(&opener, url.as_str());
+                let opened = open_in_browser(&opener, url.as_str());
+                let outcome = if opened {
+                    "opened in the browser"
+                } else {
+                    "refused"
+                };
+                debug(&opener, &format!("link to {}: {outcome}", short(&url)));
                 tauri::webview::NewWindowResponse::Deny
             })
             .build();
