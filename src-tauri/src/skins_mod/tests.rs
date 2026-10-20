@@ -23,42 +23,42 @@ const TABLE: &[Jar] = &[
     pinned(
         "26.3",
         Target::Fabric,
-        "launcherskins-fabric-26.3-0.1.0.jar",
+        "launcherskins-fabric-26.3-0.1.1.jar",
     ),
     pinned(
         "26.3",
         Target::NeoForge,
-        "launcherskins-neoforge-26.3-0.1.0.jar",
+        "launcherskins-neoforge-26.3-0.1.1.jar",
     ),
-    pinned("26.3", Target::Forge, "launcherskins-forge-26.3-0.1.0.jar"),
-    pinned("26.3", Target::Agent, "launcherskins-agent-26.3-0.1.0.jar"),
+    pinned("26.3", Target::Forge, "launcherskins-forge-26.3-0.1.1.jar"),
+    pinned("26.3", Target::Agent, "launcherskins-agent-26.3-0.1.1.jar"),
     // Not filled in yet.
     Jar {
         game: "1.21.1",
         target: Target::Fabric,
-        file: "launcherskins-fabric-1.21.1-0.1.0.jar",
+        file: "launcherskins-fabric-1.21.1-0.1.1.jar",
         sha256: PLACEHOLDER_SHA256,
         size: PLACEHOLDER_SIZE,
     },
     pinned(
         "1.21.1",
         Target::NeoForge,
-        "launcherskins-neoforge-1.21.1-0.1.0.jar",
+        "launcherskins-neoforge-1.21.1-0.1.1.jar",
     ),
     pinned(
         "1.21.1",
         Target::Forge,
-        "launcherskins-forge-1.21.1-0.1.0.jar",
+        "launcherskins-forge-1.21.1-0.1.1.jar",
     ),
     pinned(
         "1.21.1",
         Target::Agent,
-        "launcherskins-agent-1.21.1-0.1.0.jar",
+        "launcherskins-agent-1.21.1-0.1.1.jar",
     ),
     pinned(
         "1.12.2",
         Target::Forge,
-        "launcherskins-forge-1.12.2-0.1.0.jar",
+        "launcherskins-forge-1.12.2-0.1.1.jar",
     ),
 ];
 
@@ -121,40 +121,40 @@ fn each_loader_and_version_gets_its_own_jar() {
     use LoaderKind::{Fabric, Forge, NeoForge, Quilt};
     assert_eq!(
         file_for("26.3", Some(Fabric)),
-        Some("launcherskins-fabric-26.3-0.1.0.jar")
+        Some("launcherskins-fabric-26.3-0.1.1.jar")
     );
     // Quilt runs the Fabric jar.
     assert_eq!(
         file_for("26.3", Some(Quilt)),
-        Some("launcherskins-fabric-26.3-0.1.0.jar")
+        Some("launcherskins-fabric-26.3-0.1.1.jar")
     );
     assert_eq!(
         file_for("26.3", Some(NeoForge)),
-        Some("launcherskins-neoforge-26.3-0.1.0.jar")
+        Some("launcherskins-neoforge-26.3-0.1.1.jar")
     );
     assert_eq!(
         file_for("26.3", Some(Forge)),
-        Some("launcherskins-forge-26.3-0.1.0.jar")
+        Some("launcherskins-forge-26.3-0.1.1.jar")
     );
     assert_eq!(
         file_for("26.3", None),
-        Some("launcherskins-agent-26.3-0.1.0.jar")
+        Some("launcherskins-agent-26.3-0.1.1.jar")
     );
     assert_eq!(
         file_for("1.21.1", Some(NeoForge)),
-        Some("launcherskins-neoforge-1.21.1-0.1.0.jar")
+        Some("launcherskins-neoforge-1.21.1-0.1.1.jar")
     );
     assert_eq!(
         file_for("1.21.1", Some(Forge)),
-        Some("launcherskins-forge-1.21.1-0.1.0.jar")
+        Some("launcherskins-forge-1.21.1-0.1.1.jar")
     );
     assert_eq!(
         file_for("1.21.1", None),
-        Some("launcherskins-agent-1.21.1-0.1.0.jar")
+        Some("launcherskins-agent-1.21.1-0.1.1.jar")
     );
     assert_eq!(
         file_for("1.12.2", Some(Forge)),
-        Some("launcherskins-forge-1.12.2-0.1.0.jar")
+        Some("launcherskins-forge-1.12.2-0.1.1.jar")
     );
     // A placeholder entry is skipped, for Quilt too.
     assert_eq!(file_for("1.21.1", Some(Fabric)), None);
@@ -205,7 +205,7 @@ fn entries_that_are_not_sane_are_skipped() {
     let base = pinned(
         "26.3",
         Target::Fabric,
-        "launcherskins-fabric-26.3-0.1.0.jar",
+        "launcherskins-fabric-26.3-0.1.1.jar",
     );
     assert!(base.pinned());
     let upper = "0123456789ABCDEF0123456789ABCDEF0123456789ABCDEF0123456789ABCDEF";
@@ -255,7 +255,7 @@ fn entries_that_are_not_sane_are_skipped() {
 #[test]
 fn only_names_like_ours_count_as_ours() {
     for ours in [
-        "launcherskins-fabric-26.3-0.1.0.jar",
+        "launcherskins-fabric-26.3-0.1.1.jar",
         "launcherskins-old.jar",
         "LauncherSkins-Fabric-1.21.1-0.0.1.JAR",
     ] {
@@ -274,7 +274,7 @@ fn only_names_like_ours_count_as_ours() {
         assert!(!is_ours(other), "{other}");
     }
     assert!(is_our_temp(
-        ".launcherskins-fabric-26.3-0.1.0.jar.tmp-0123abcd"
+        ".launcherskins-fabric-26.3-0.1.1.jar.tmp-0123abcd"
     ));
     assert!(!is_our_temp(".sodium.jar.tmp-0123abcd"));
     assert!(!is_our_temp("launcherskins-x.jar"));
@@ -314,10 +314,10 @@ fn real_table() -> (&'static [Jar], Vec<(&'static str, Vec<u8>)>) {
         (
             "26.3",
             Target::Fabric,
-            "launcherskins-fabric-26.3-0.1.0.jar",
+            "launcherskins-fabric-26.3-0.1.1.jar",
         ),
-        ("26.3", Target::Forge, "launcherskins-forge-26.3-0.1.0.jar"),
-        ("26.3", Target::Agent, "launcherskins-agent-26.3-0.1.0.jar"),
+        ("26.3", Target::Forge, "launcherskins-forge-26.3-0.1.1.jar"),
+        ("26.3", Target::Agent, "launcherskins-agent-26.3-0.1.1.jar"),
     ] {
         let bytes = format!("jar of {file}").into_bytes();
         let sha = hex::encode(Sha256Hasher::digest(&bytes));
@@ -369,9 +369,9 @@ fn sync_replaces_our_jars_and_leaves_everything_else() {
     // Ours: an old version, another loader's, other case, a stale temp file.
     for name in [
         "launcherskins-fabric-26.3-0.0.9.jar",
-        "launcherskins-forge-26.3-0.1.0.jar",
+        "launcherskins-forge-26.3-0.1.1.jar",
         "LauncherSkins-Old.JAR",
-        ".launcherskins-fabric-26.3-0.1.0.jar.tmp-0123abcd",
+        ".launcherskins-fabric-26.3-0.1.1.jar.tmp-0123abcd",
     ] {
         put(&mods.join(name), b"old");
     }
@@ -410,7 +410,7 @@ fn sync_without_a_jar_removes_ours_only_and_creates_nothing() {
     assert!(!mods.exists());
 
     put(&mods.join(contents[0].0), &contents[0].1);
-    put(&mods.join("launcherskins-agent-26.3-0.1.0.jar"), b"x");
+    put(&mods.join("launcherskins-agent-26.3-0.1.1.jar"), b"x");
     put(&mods.join("sodium.jar"), b"player's");
     put(&mods.join("launcherskins-x.jar").join("a"), b"kept");
     sync_mods(&mods, None).unwrap();
@@ -558,7 +558,7 @@ async fn an_unsupported_version_has_none_of_ours_in_mods() {
     let (table, _) = real_table();
     let i = install("data");
     let mods = i.game.join("mods");
-    put(&mods.join("launcherskins-fabric-26.3-0.1.0.jar"), b"x");
+    put(&mods.join("launcherskins-fabric-26.3-0.1.1.jar"), b"x");
     put(&mods.join("sodium.jar"), b"player's");
     let prepared = i
         .prepare(table, "1.21.4", Some(LoaderKind::Fabric), true)

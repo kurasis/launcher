@@ -30,9 +30,9 @@ use crate::net::SourcePolicy;
 use crate::storage::paths::{DataRoot, Sha256};
 
 /// The mod's version these jars are (`mod/VERSION`).
-pub const MOD_VERSION: &str = "0.1.0";
+pub const MOD_VERSION: &str = "0.1.1";
 /// Where the release keeps the jars.
-const RELEASE: &str = "https://github.com/kurasis/launcher/releases/download/skins-mod-v0.1.0/";
+const RELEASE: &str = "https://github.com/kurasis/launcher/releases/download/skins-mod-v0.1.1/";
 /// Verified jars, relative to DATA_ROOT; shared by every installation.
 pub const MANAGED_DIR: &str = "shared/launcherskins";
 /// Every jar of ours starts with this and ends with [`JAR_SUFFIX`].
@@ -120,71 +120,71 @@ impl Jar {
 /// versions match exactly; other versions get nothing.
 ///
 /// `sha256` (lowercase hex) and `size` (bytes) come from the release
-/// skins-mod-v0.1.0: its SHA256SUMS and the jars' sizes. A new mod version
+/// skins-mod-v0.1.1: its SHA256SUMS and the jars' sizes. A new mod version
 /// is a new release and a new table; an entry that is not filled in is never used.
 pub const JARS: &[Jar] = &[
     Jar {
         game: "26.3",
         target: Target::Fabric,
-        file: "launcherskins-fabric-26.3-0.1.0.jar",
-        sha256: "42d12dfb0b6f3eefb6d641753949ee83fcd01280954dd0fa71182c8e32889c84",
-        size: 31598,
+        file: "launcherskins-fabric-26.3-0.1.1.jar",
+        sha256: "e53516caf5ad668b153f63c76ee43b9669571fa416ab270cdc5222c6041e5eca",
+        size: 31600,
     },
     Jar {
         game: "26.3",
         target: Target::NeoForge,
-        file: "launcherskins-neoforge-26.3-0.1.0.jar",
-        sha256: "ea41edf69b2157b12fb86ddd7a1988d71e6905de62fb8d59f8ee400203964aaa",
+        file: "launcherskins-neoforge-26.3-0.1.1.jar",
+        sha256: "34ea963e4a5c813c2a409d5f34cad9cd6e94495dd888840edf5d09b921b5f604",
         size: 30706,
     },
     Jar {
         game: "26.3",
         target: Target::Forge,
-        file: "launcherskins-forge-26.3-0.1.0.jar",
-        sha256: "47d6625882ef3fa41f1809a7dcc627d4b4f7d2ebf2a7a22273ed64d60087922d",
-        size: 30882,
+        file: "launcherskins-forge-26.3-0.1.1.jar",
+        sha256: "24c46de358d9deecf04cd14a68a3abba2f1d88825fc58e468d7ae111813a1154",
+        size: 31057,
     },
     Jar {
         game: "26.3",
         target: Target::Agent,
-        file: "launcherskins-agent-26.3-0.1.0.jar",
-        sha256: "d7b94b788c3e6413bc7a84ba645cab4d78bc017d37a2f71f2a20a2fd0eed1d5f",
-        size: 32868,
+        file: "launcherskins-agent-26.3-0.1.1.jar",
+        sha256: "b3dcaed7399cdeb638a359d75813332ab51ba29e6cae7dc94e4ffa24386a9e87",
+        size: 32870,
     },
     Jar {
         game: "1.21.1",
         target: Target::Fabric,
-        file: "launcherskins-fabric-1.21.1-0.1.0.jar",
-        sha256: "7c397dc7467e69c607dbd581587f29b39856b9f4517acc15d12ee597f014595b",
-        size: 31976,
+        file: "launcherskins-fabric-1.21.1-0.1.1.jar",
+        sha256: "bb8971273a23c56477bb02330b253a0a57c1a8a6b417d874dde130c102550dcc",
+        size: 31978,
     },
     Jar {
         game: "1.21.1",
         target: Target::NeoForge,
-        file: "launcherskins-neoforge-1.21.1-0.1.0.jar",
-        sha256: "3f503c52a3968618519eba88cdd43fe8e21104f0609c014f8d5690fed5f7f19b",
-        size: 30652,
+        file: "launcherskins-neoforge-1.21.1-0.1.1.jar",
+        sha256: "6bfb12c8f27c42c1176c102b265f5c54b18bdd5340e0f52e4c70ae8371640fbd",
+        size: 30651,
     },
     Jar {
         game: "1.21.1",
         target: Target::Forge,
-        file: "launcherskins-forge-1.21.1-0.1.0.jar",
-        sha256: "8c93cb6862d60b9ea5fbd18b8075157d107a266dfd2e1f85657e4dd5be4f19ae",
-        size: 30996,
+        file: "launcherskins-forge-1.21.1-0.1.1.jar",
+        sha256: "4c895f7d6ba46986369df898579f5a44c90db3251f110332d7f12d0f9a704801",
+        size: 30995,
     },
     Jar {
         game: "1.21.1",
         target: Target::Agent,
-        file: "launcherskins-agent-1.21.1-0.1.0.jar",
-        sha256: "6ebf988139d8627c36ac387fe5fd747fc53efce432d7204e1a7d12640d74730c",
-        size: 219430,
+        file: "launcherskins-agent-1.21.1-0.1.1.jar",
+        sha256: "dafc028d5dda25bb1a0f2414d9ec2703ef79c33fa60cdf2775ff911ea3e2443b",
+        size: 219432,
     },
     Jar {
         game: "1.12.2",
         target: Target::Forge,
-        file: "launcherskins-forge-1.12.2-0.1.0.jar",
-        sha256: "f67a27cbc4d076b3aa233533114bf93ec45984b7da46760a93773fdfffaf4b83",
-        size: 32646,
+        file: "launcherskins-forge-1.12.2-0.1.1.jar",
+        sha256: "26e56ba237fe037b4214600dc6b667d8a03aeba32fec2f836a2baf37c99bd776",
+        size: 32645,
     },
 ];
 
