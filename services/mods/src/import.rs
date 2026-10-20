@@ -551,7 +551,7 @@ async fn project(
     let Some(found) = modrinth::project(&page, members.as_ref()) else {
         return Err(JobError::new("unsupported_kind", false));
     };
-    let id = app.store.upsert_project(&found, now())?;
+    let (id, card) = app.store.upsert_project(&found, now())?;
     if let Some(request) = request
         && depth == 0
     {
@@ -599,7 +599,9 @@ async fn project(
             }
         }
     }
-    pictures(app, &id, &found)?;
+    if card {
+        pictures(app, &id, &found)?;
+    }
     app.store.set_project_status(&id, "ready")?;
     Ok(())
 }
@@ -706,7 +708,8 @@ async fn project_curseforge(
                 published: card.published,
                 updated: card.updated,
             };
-            (app.store.upsert_project(&found, now())?, Some(found))
+            let (id, card) = app.store.upsert_project(&found, now())?;
+            (id, card.then_some(found))
         }
     };
     if let Some(request) = request
@@ -982,6 +985,15 @@ fn file_type(name: &str) -> &'static str {
     }
 }
 
+/// Joins a version's project with its twin on the other source, known by a
+/// file both have (D-066, stage 4).
+fn join_twins(app: &App, version: &str, sha256: &str, sha1: &str) -> Result<(), JobError> {
+    if let Some((stays, joined)) = app.store.join_twins(version, sha256, sha1, now())? {
+        eprintln!("lapi-mods: joined project {joined} into {stays}");
+    }
+    Ok(())
+}
+
 async fn files(app: &App, version: &str, request: Option<&str>) -> Result<(), JobError> {
     let mut rows = app.store.files(version)?;
     // The main file first.
@@ -994,6 +1006,12 @@ async fn files(app: &App, version: &str, request: Option<&str>) -> Result<(), Jo
             && app.blobs.has(&kept)
         {
             app.store.file_kept(version, file.ord, &kept)?;
+            join_twins(
+                app,
+                version,
+                &kept,
+                file.sha1.as_deref().unwrap_or_default(),
+            )?;
             continue;
         }
         let declared = u64::try_from(file.size).unwrap_or(0);
@@ -1022,6 +1040,7 @@ async fn files(app: &App, version: &str, request: Option<&str>) -> Result<(), Jo
         }
         keep(app, &part, &hashed, file_type(&file.name))?;
         app.store.file_kept(version, file.ord, &hashed.sha256)?;
+        join_twins(app, version, &hashed.sha256, &hashed.sha1)?;
         if let Some(request) = request {
             app.store.add_request_bytes(request, hashed.size)?;
         }

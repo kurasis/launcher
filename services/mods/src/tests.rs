@@ -2626,3 +2626,116 @@ fn curseforge_manifests_are_read_with_care() {
         assert_eq!(curseforge::download_ids(bad), None, "{bad}");
     }
 }
+
+#[tokio::test]
+async fn the_same_project_on_both_sources_becomes_one() {
+    const JEI_MODRINTH: &str = "JeIjEiJe";
+    let t = setup();
+    let jars = curseforge_site(&t.sites);
+    t.player(
+        1,
+        "POST",
+        "/v1/imports",
+        json!({ "input": "https://www.curseforge.com/minecraft/mc-mods/jei" }),
+    )
+    .await;
+    t.drain().await;
+    let (_, cf) = t.get("/v1/projects/jei").await;
+    let cf_id = cf["id"].as_str().unwrap().to_owned();
+
+    // On Modrinth, with the same file as CurseForge's 15.2, and one more.
+    let same = &jars[&5001];
+    let newer = b"jar of jei 15.4".to_vec();
+    for (version, name, bytes) in [
+        ("mjv1aaaa", "jei-15.2.jar", same.clone()),
+        ("mjv2bbbb", "jei-15.4.jar", newer.clone()),
+    ] {
+        t.sites.put(
+            &format!("https://cdn.modrinth.com/data/{JEI_MODRINTH}/versions/{version}/{name}"),
+            ok(bytes),
+        );
+    }
+    t.sites.json(
+        &modrinth::project_url("jei"),
+        json!({ "id": JEI_MODRINTH, "slug": "jei", "project_type": "mod",
+                "title": "JEI on Modrinth", "description": "Items" }),
+    );
+    t.sites
+        .json(&modrinth::members_url(JEI_MODRINTH), json!([]));
+    t.sites.json(
+        &modrinth::versions_url(JEI_MODRINTH),
+        json!([
+            { "id": "mjv2bbbb", "version_number": "15.4", "version_type": "release",
+              "date_published": "2024-06-01T00:00:00Z", "game_versions": ["1.21.1"], "loaders": ["neoforge"],
+              "files": [file_json(JEI_MODRINTH, "mjv2bbbb", "jei-15.4.jar", &newer)] },
+            { "id": "mjv1aaaa", "version_number": "15.2", "version_type": "release",
+              "date_published": "2024-02-01T00:00:00Z", "game_versions": ["1.20.1"], "loaders": ["forge"],
+              "files": [file_json(JEI_MODRINTH, "mjv1aaaa", "jei-15.2.jar", same)] },
+        ]),
+    );
+    t.player(
+        1,
+        "POST",
+        "/v1/imports",
+        json!({ "input": "https://modrinth.com/mod/jei" }),
+    )
+    .await;
+    t.drain().await;
+
+    // One project with Modrinth's card and both sources; CurseForge's ID and
+    // slug lead to it.
+    let (status, project) = t.get(&format!("/v1/projects/{cf_id}")).await;
+    assert_eq!(status, StatusCode::OK, "{project}");
+    let id = project["id"].as_str().unwrap().to_owned();
+    assert_ne!(id, cf_id);
+    assert_eq!(project["title"], "JEI on Modrinth");
+    let mut sources: Vec<&str> = project["sources"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|s| s["source"].as_str().unwrap())
+        .collect();
+    sources.sort_unstable();
+    assert_eq!(sources, ["curseforge", "modrinth"]);
+    let (_, by_slug) = t.get("/v1/projects/jei").await;
+    assert_eq!(by_slug["id"], id.as_str());
+
+    // The shared file shows once, as Modrinth's; the others from both.
+    let (_, versions) = t.get(&format!("/v1/projects/{id}/versions")).await;
+    let numbers: Vec<&str> = versions["versions"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|v| v["number"].as_str().unwrap())
+        .collect();
+    assert!(
+        numbers.contains(&"15.2") && numbers.contains(&"15.4"),
+        "{numbers:?}"
+    );
+    assert!(!numbers.contains(&"jei-15.2.jar"), "{numbers:?}");
+    assert!(numbers.contains(&"jei-15.1.jar"), "{numbers:?}");
+
+    // Searching finds it once.
+    let (_, found) = t.get("/v1/search?q=jei").await;
+    assert_eq!(found["total"], 1, "{found}");
+
+    // CurseForge read again: the card stays Modrinth's.
+    age(&t, 30 * 24 * 3600);
+    t.player(
+        2,
+        "POST",
+        "/v1/imports",
+        json!({ "input": "https://www.curseforge.com/minecraft/mc-mods/jei" }),
+    )
+    .await;
+    t.drain().await;
+    let (_, project) = t.get(&format!("/v1/projects/{id}")).await;
+    assert_eq!(project["title"], "JEI on Modrinth");
+
+    // A project of one source is never joined with another of the same.
+    let db = rusqlite::Connection::open(t.app.store.path()).unwrap();
+    let joined: i64 = db
+        .query_row("SELECT count(*) FROM project_joined", [], |r| r.get(0))
+        .unwrap();
+    assert_eq!(joined, 1);
+}

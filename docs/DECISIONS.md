@@ -2029,7 +2029,7 @@ archive from the Package workflow, upload it to
 
 ## D-066 — Catalog of mods at mods.lapi.sh
 
-- **Status:** accepted (owner request, 2026-10-19), stages 1–3 of 6 and stage 4 but for joining projects and worlds · **Affects:** the new service `services/mods` (`https://mods.lapi.sh`, files at
+- **Status:** accepted (owner request, 2026-10-19), stages 1–3 of 6 and stage 4 but for worlds · **Affects:** the new service `services/mods` (`https://mods.lapi.sh`, files at
   `https://files-mods.lapi.sh`, `/home/www/lapi/mods`), the account service's token
   audience. The full design: the project's design document "Вкладка Моды и каталог".
 - **Goal.** A Mods tab with modpacks, mods, resource packs, shaders and worlds that does
@@ -2278,6 +2278,17 @@ archive from the Package workflow, upload it to
   the site no longer has) is left out and counted; `required: false` makes a file optional. Until found, a file is
   counted in `total` but not listed. From there it is the same list as a `.mrpack`'s,
   and the launcher installs and updates both alike.
+- **One project from both sources (stage 4, 2026-10-20).** When a kept file of a version
+  has the SHA-256 or SHA-1 of a file of another project of the same kind from the other
+  source, the two become one (`join_twins`): the Modrinth one stays (else the older), the
+  other's sources, versions, categories and requests move to it, and its ID and slug lead
+  to it (`project_joined`, status `joined`). Two projects of one source are never joined.
+  The card (title, description, pictures) is Modrinth's; reading CurseForge again only
+  adds its versions. A file on both sources shows once in the versions list, as
+  Modrinth's. The launcher follows a join in its lock: the lock's files are looked up by
+  SHA-256 before a plan, an update check or a removal warning, and a file whose version
+  now belongs to another project takes that project's ID, so a mod installed from
+  CurseForge is still known as there.
 
 ## D-067 — Start page feed at feed.lapi.sh
 

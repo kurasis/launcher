@@ -996,6 +996,49 @@ pub async fn identify<C: Catalog>(
     Ok(out)
 }
 
+/// Follows projects the catalog joined (the same project on Modrinth and
+/// CurseForge becomes one, D-066): the lock's files are looked up by SHA-256,
+/// and a file whose version now belongs to another project takes that
+/// project's ID, in what it requires too. Only in memory; without the
+/// catalog the lock stays as it is.
+pub async fn follow_joins<C: Catalog>(catalog: &C, lock: &mut ContentLock) {
+    let mut renamed: HashMap<String, String> = HashMap::new();
+    let hashes: Vec<String> = lock
+        .items
+        .iter()
+        .take(1000)
+        .map(|i| i.sha256.clone())
+        .collect();
+    for chunk in hashes.chunks(200) {
+        let Ok(found) = catalog.lookup(chunk).await else {
+            return;
+        };
+        for item in &lock.items {
+            if let Some(f) = found.iter().find(|f| {
+                f.hash == item.sha256
+                    && f.version_id == item.version_id
+                    && f.project_id != item.project_id
+                    && super::our_id(&f.project_id)
+            }) {
+                renamed.insert(item.project_id.clone(), f.project_id.clone());
+            }
+        }
+    }
+    if renamed.is_empty() {
+        return;
+    }
+    for item in &mut lock.items {
+        if let Some(new) = renamed.get(&item.project_id) {
+            item.project_id.clone_from(new);
+        }
+        for required in item.requires.iter_mut().flatten() {
+            if let Some(new) = renamed.get(required) {
+                required.clone_from(new);
+            }
+        }
+    }
+}
+
 /// What turning a mod off or removing it leaves without something it needs.
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -1041,7 +1084,10 @@ impl Installer {
         path: &str,
     ) -> NeededBy {
         let view = list(root, id);
-        let content_lock = load_lock(root, id);
+        let mut content_lock = load_lock(root, id);
+        if let Some(catalog) = catalog {
+            follow_joins(catalog, &mut content_lock).await;
+        }
         let mut known: Vec<(KnownMod, Option<String>)> = Vec::new();
         for item in view
             .items
