@@ -12,7 +12,9 @@
 
   function text(value, max) {
     try {
-      return String(value).replace(/[\u0000-\u001f\u007f]+/g, ' ').slice(0, max || 200);
+      return String(value)
+        .replace(/[\u0000-\u001f\u007f]+/g, ' ')
+        .slice(0, max || 200);
     } catch (e) {
       return '?';
     }
@@ -64,19 +66,37 @@
       var frames = document.getElementsByTagName('iframe');
       for (var i = 0; i < frames.length; i += 1) {
         var box = frames[i].getBoundingClientRect();
-        send('frame ' + text(frames[i].src, 120) + ' is ' + Math.round(box.width) + 'x' + Math.round(box.height));
+        send(
+          'frame ' +
+            text(frames[i].src, 120) +
+            ' is ' +
+            Math.round(box.width) +
+            'x' +
+            Math.round(box.height),
+        );
       }
     });
   }
 
-  window.addEventListener('error', function (event) {
-    var target = event.target;
-    if (target && target !== window && (target.src || target.href)) {
-      send('failed to load ' + text(target.tagName) + ' ' + text(target.src || target.href, 150));
-    } else {
-      send('script error ' + text(event.message) + ' at ' + text(event.filename, 120) + ':' + event.lineno);
-    }
-  }, true);
+  window.addEventListener(
+    'error',
+    function (event) {
+      var target = event.target;
+      if (target && target !== window && (target.src || target.href)) {
+        send('failed to load ' + text(target.tagName) + ' ' + text(target.src || target.href, 150));
+      } else {
+        send(
+          'script error ' +
+            text(event.message) +
+            ' at ' +
+            text(event.filename, 120) +
+            ':' +
+            event.lineno,
+        );
+      }
+    },
+    true,
+  );
   window.addEventListener('unhandledrejection', function (event) {
     var reason = event.reason;
     send('unhandled rejection ' + text(reason && reason.message ? reason.message : reason));
