@@ -1999,7 +1999,9 @@ archive from the Package workflow, upload it to
   layer (Mixin hooks in Mojang names, the same source for every loader), thin entry
   points per loader, a Forge 1.12.2 coremod, and per version an `agent` (a `premain` that
   rewrites `PlayerInfo.getSkin()` and reuses the same game layer). One jar per loader and
-  version; the launcher picks the right one.
+  version; the launcher picks the right one. The game never waits for a skin: profiles
+  are asked in batches of up to 50 (`POST /v1/profiles`, so 100 players cost two
+  requests) and textures load on four background threads.
 - **In the launcher (later stage):** Accounts → Launcher account: upload a skin (model
   default or slim, frame duration) and a cape, preview, remove. Installations get the
   matching jar in `mods/` (Fabric, Quilt, NeoForge, Forge) or `-javaagent` (no loader),

@@ -19,6 +19,7 @@ import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicReference;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
@@ -28,6 +29,8 @@ import org.junit.jupiter.api.io.TempDir;
 class ApiTest {
     /** Path → status and body the fake service answers. */
     private final Map<String, Object[]> answers = new ConcurrentHashMap<>();
+    /** Path → how many times it was asked. */
+    private final Map<String, AtomicInteger> asked = new ConcurrentHashMap<>();
     private HttpServer server;
     private Api api;
 
@@ -40,6 +43,7 @@ class ApiTest {
     void start() throws IOException {
         server = HttpServer.create(new InetSocketAddress("127.0.0.1", 0), 0);
         server.createContext("/", exchange -> {
+            asked.computeIfAbsent(exchange.getRequestURI().getPath(), k -> new AtomicInteger()).incrementAndGet();
             Object[] answer = answers.getOrDefault(exchange.getRequestURI().getPath(), new Object[] {404, new byte[0]});
             byte[] body = (byte[]) answer[1];
             if (answer.length > 2) {
@@ -151,7 +155,7 @@ class ApiTest {
 
     @Test
     void loadsSkinsInTheBackgroundAndCachesThem(@TempDir Path dir) throws Exception {
-        answer("/v1/profile/Steve", 200, profileJson("Steve"));
+        answer("/v1/profiles", 200, "{\"profiles\":{\"Steve\":" + profileJson("Steve") + "}}");
         answers.put("/v1/textures/" + skinHash, new Object[] {200, skin});
         answers.put("/v1/textures/" + capeHash, new Object[] {200, cape});
         CountDownLatch ready = new CountDownLatch(1);
@@ -180,5 +184,65 @@ class ApiTest {
         Files.write(dir.resolve("other.txt"), new byte[] {1});
         cache.tidy();
         assertTrue(Files.notExists(dir.resolve("other.txt")));
+    }
+
+    @Test
+    void manyPlayersAreAskedInBatches(@TempDir Path dir) throws Exception {
+        int players = 120;
+        StringBuilder json = new StringBuilder("{\"profiles\":{");
+        for (int i = 0; i < players; i++) {
+            json.append(i == 0 ? "" : ",").append("\"Player").append(i).append("\":").append(profileJson("Player" + i));
+        }
+        answer("/v1/profiles", 200, json.append("}}").toString());
+        answers.put("/v1/textures/" + skinHash, new Object[] {200, skin});
+        answers.put("/v1/textures/" + capeHash, new Object[] {200, cape});
+        CountDownLatch ready = new CountDownLatch(players);
+        Skins skins = new Skins(api, new DiskCache(dir), new Skins.Sink() {
+            @Override
+            public void ready(String key, Profile profile, byte[] skinPng, byte[] capePng) {
+                ready.countDown();
+            }
+
+            @Override
+            public void gone(String key) {}
+        });
+        // The game asks every frame for everyone it draws.
+        long end = System.currentTimeMillis() + 10_000;
+        while (ready.getCount() > 0 && System.currentTimeMillis() < end) {
+            for (int i = 0; i < players; i++) {
+                skins.want("Player" + i);
+            }
+            Thread.sleep(5);
+        }
+        assertEquals(0, ready.getCount());
+        int batches = asked.get("/v1/profiles").get();
+        assertTrue(batches >= 3 && batches <= 6, "profile requests: " + batches);
+        assertNull(asked.get("/v1/profile/Player0"));
+        for (int i = 0; i < players; i++) {
+            assertNotNull(skins.profile("player" + i));
+        }
+    }
+
+    @Test
+    void aFailedBatchIsAskedAgainLater(@TempDir Path dir) throws Exception {
+        answer("/v1/profiles", 500, "{}");
+        Skins skins = new Skins(api, new DiskCache(dir), new Skins.Sink() {
+            @Override
+            public void ready(String key, Profile profile, byte[] skinPng, byte[] capePng) {}
+
+            @Override
+            public void gone(String key) {}
+        });
+        for (int i = 0; i < 200 && asked.get("/v1/profiles") == null; i++) {
+            skins.want("Steve");
+            Thread.sleep(5);
+        }
+        Thread.sleep(200);
+        for (int i = 0; i < 20; i++) {
+            skins.want("Steve");
+        }
+        Thread.sleep(200);
+        assertEquals(1, asked.get("/v1/profiles").get(), "a failure waits before asking again");
+        assertNull(skins.profile("Steve"));
     }
 }
