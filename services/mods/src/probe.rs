@@ -129,6 +129,12 @@ fn checks(file: Option<u64>) -> Vec<Check> {
             headers: &[],
         },
         Check {
+            name: "cf_gallery_create",
+            url: "https://www.curseforge.com/minecraft/mc-mods/create/gallery".into(),
+            look: Look::Media,
+            headers: &[],
+        },
+        Check {
             name: "cf_images_api",
             url: format!("{api}/images"),
             look: Look::Media,
@@ -365,10 +371,11 @@ pub async fn run(client: &Client, tmp: &Path) -> Vec<String> {
                         let page = read();
                         Some(match check.name {
                             "cf_project_page" => format!(
-                                "{} {} {}",
+                                "{} {} {} {}",
                                 page_data(&page),
                                 card_report(&page),
-                                media_report(&page)
+                                media_report(&page),
+                                crate::curseforge::media(&String::from_utf8_lossy(&page))
                             ),
                             "cf_search_page" => {
                                 format!("{} {}", page_data(&page), search_report(&page))
@@ -415,7 +422,14 @@ pub async fn run(client: &Client, tmp: &Path) -> Vec<String> {
                     _ => None,
                 },
                 Look::Hits => ok.then(|| hits(&read())),
-                Look::Media => ok.then(|| media_report(&read())),
+                Look::Media => ok.then(|| {
+                    let page = read();
+                    format!(
+                        "{} {}",
+                        media_report(&page),
+                        crate::curseforge::media(&String::from_utf8_lossy(&page))
+                    )
+                }),
                 Look::ToCdn => match &result {
                     Ok(r) if (300..400).contains(&r.status) => Some(
                         if r.location.as_deref().is_some_and(to_cdn) {
