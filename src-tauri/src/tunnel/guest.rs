@@ -77,8 +77,8 @@ pub type SharedConnection = Arc<std::sync::Mutex<Connection>>;
 pub struct Target {
     pub connection: SharedConnection,
     pub nick: Nick,
-    pub protocol: i32,
-    pub version_name: &'static str,
+    /// The room's Minecraft version, shown in the server list.
+    pub version_name: String,
     pub tickets: Arc<dyn Tickets>,
     pub status: Arc<dyn RoomStatus>,
 }
@@ -120,14 +120,13 @@ pub async fn listen(target: Target) -> std::io::Result<GuestListener> {
             };
             let target = Arc::clone(&target);
             tokio::spawn(async move {
-                let classified =
-                    timeout(CLASSIFY_DEADLINE, classify(socket, target.protocol)).await;
+                let classified = timeout(CLASSIFY_DEADLINE, classify(socket)).await;
                 drop((local_permit, global_permit));
                 match classified {
-                    Ok(Some((socket, buffer, Classified::Status { consumed }))) => {
+                    Ok(Some((socket, buffer, Classified::Status { protocol, consumed }))) => {
                         let _ = timeout(
                             CLASSIFY_DEADLINE,
-                            answer_status(socket, buffer, consumed, &target),
+                            answer_status(socket, buffer, consumed, protocol, &target),
                         )
                         .await;
                     }
@@ -144,14 +143,12 @@ pub async fn listen(target: Target) -> std::io::Result<GuestListener> {
     Ok(GuestListener { port, accept })
 }
 
-async fn classify(
-    mut socket: TcpStream,
-    protocol: i32,
-) -> Option<(TcpStream, Vec<u8>, Classified)> {
+/// The host checks the game version: the guest takes any release's login.
+async fn classify(mut socket: TcpStream) -> Option<(TcpStream, Vec<u8>, Classified)> {
     let mut buffer = Vec::with_capacity(512);
     let mut chunk = [0u8; 1024];
     loop {
-        match handshake::classify(&buffer, protocol) {
+        match handshake::classify(&buffer, None) {
             Ok(Classified::NeedMore) => {}
             Ok(found) => return Some((socket, buffer, found)),
             Err(_) => return None,
@@ -165,9 +162,11 @@ async fn classify(
     }
 }
 
-fn status_json(target: &Target, snapshot: &StatusSnapshot) -> String {
+/// The room as a server entry. The version is the asking client's own: the
+/// launcher starts the room's version, and the host refuses any other.
+fn status_json(target: &Target, snapshot: &StatusSnapshot, protocol: i32) -> String {
     serde_json::json!({
-        "version": {"name": target.version_name, "protocol": target.protocol},
+        "version": {"name": target.version_name, "protocol": protocol},
         "players": {"max": snapshot.max, "online": snapshot.online},
         "description": {"text": snapshot.name},
         "enforcesSecureChat": false,
@@ -181,6 +180,7 @@ async fn answer_status(
     mut socket: TcpStream,
     mut buffer: Vec<u8>,
     consumed: usize,
+    protocol: i32,
     target: &Target,
 ) {
     let Some(snapshot) = target
@@ -209,7 +209,7 @@ async fn answer_status(
             match (packet.first(), packet.len(), answered) {
                 (Some(0x00), 1, false) => {
                     let mut body = Vec::new();
-                    write_string(&mut body, &status_json(target, &snapshot));
+                    write_string(&mut body, &status_json(target, &snapshot, protocol));
                     if write_packet_async(&mut socket, 0x00, &body).await.is_err() {
                         return;
                     }

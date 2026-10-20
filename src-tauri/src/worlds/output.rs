@@ -10,7 +10,7 @@ use super::identity::Nick;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Event {
-    /// `Done (1.234s)! For help, type "help"`.
+    /// `Done (1.234s)! For help, type "help"` (`… or "?"` before 1.13).
     Ready,
     /// The port was taken between choosing and binding it.
     BindFailed,
@@ -34,7 +34,10 @@ fn server_message(line: &str) -> Option<&str> {
 
 pub fn classify(line: &str) -> Option<Event> {
     let message = server_message(line)?;
-    if message.starts_with("Done (") && message.ends_with(r#"For help, type "help""#) {
+    if message.starts_with("Done (")
+        && (message.ends_with(r#"For help, type "help""#)
+            || message.ends_with(r#"For help, type "help" or "?""#))
+    {
         return Some(Event::Ready);
     }
     if message.starts_with("**** FAILED TO BIND TO PORT!") {
@@ -74,6 +77,20 @@ mod tests {
             Some(Event::Ready)
         );
         assert_eq!(
+            classify(
+                r#"[19:20:01] [Server thread/INFO]: Done (2.093s)! For help, type "help" or "?""#
+            ),
+            Some(Event::Ready)
+        );
+        assert_eq!(
+            classify(
+                "[19:21:00] [Server thread/INFO]: Notch lost connection: TextComponent{text='Disconnected', siblings=[], style=Style{}}"
+            ),
+            Some(Event::Left {
+                nick: nick("Notch")
+            })
+        );
+        assert_eq!(
             classify("[19:20:01] [Server thread/WARN]: **** FAILED TO BIND TO PORT!"),
             Some(Event::BindFailed)
         );
@@ -104,6 +121,8 @@ mod tests {
     fn players_cannot_forge_events() {
         for line in [
             r#"[19:21:00] [Server thread/INFO]: <Mallory> Done (1s)! For help, type "help""#,
+            r#"[19:21:00] [Server thread/INFO]: <Mallory> Done (1s)! For help, type "help" or "?""#,
+            r#"[19:21:00] [Server thread/INFO]: [Mallory] Done (1s)! For help, type "help" or "?""#,
             "[19:21:00] [Server thread/INFO]: <Mallory> Notch[/127.0.0.1:1] logged in with entity id 1 at (0, 0, 0)",
             "[19:21:00] [Server thread/INFO]: [Mallory] Notch lost connection: x",
             "[19:21:00] [Server thread/INFO]: * Mallory Notch lost connection: x",

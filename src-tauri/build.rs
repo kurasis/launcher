@@ -122,6 +122,7 @@ fn main() {
         "mods_identify",
         "mods_updates",
         "mods_set_enabled",
+        "mods_needed_by",
         "mods_remove",
         "mods_open_link",
         "skins_mine",

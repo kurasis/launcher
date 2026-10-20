@@ -158,12 +158,31 @@ port, path or command ever accepted from a guest; startup deadline 180 s and sto
 backups only of a stopped world; server output drained and filtered so chat and nicks are not
 stored by default.
 
-## A8. First support tuple
+## A8. World versions
 
-Minecraft 1.21.1 without a loader, the official server JAR from Mojang's version manifest
-(`downloads.server`, SHA-1 and size checked, SHA-256 recorded), Java 21 from the existing
-runtime provider, runtime flavor `unmodified`, `online-mode=false`. 26.x follows as the second
-tuple; Fabric and other loaders arrive in W12.
+Every Minecraft release from 1.7.6 on, without a loader (owner's decision, 2026-10-20). 1.7.6
+is the first server that keeps players by UUID (`whitelist.json`, `playerdata/<uuid>.dat`),
+which the whitelist of offline UUIDs needs; snapshots and pre-releases are not world versions.
+The official server JAR comes from the version's descriptor (`downloads.server`, SHA-1 and size
+checked, SHA-256 recorded), from mirror.lapi.sh when Mojang fails, as every Mojang file; the
+mirror keeps every release's server JAR ahead of time; Java is the one the descriptor names, from the existing
+runtime provider; runtime flavor `unmodified`, `online-mode=false`. What changed between
+releases is handled by release, not by a table of versions:
+
+- the protocol is learned from the server's own status ping when it is ready; the host's
+  tunnel admits only logins of that protocol, and the guest takes any release's;
+- Login Start is read in the layout of the client's protocol (name only up to 1.18.2, the
+  optional signing key of 1.19, the optional UUID of 1.19.1 to 1.20.1, the UUID from 1.20.2);
+- difficulty and game mode are written as numbers before 1.14, `level-type` as the world
+  type's name before 1.19;
+- Log4Shell: the logging configuration drops any message with `${...}` before it is formatted
+  (Mojang's fix for 1.7 to 1.11), adds `{nolookups}` (1.12 to 1.16) and
+  `log4j2.formatMsgNoLookups`, and is passed as `log4j.configurationFile`, which every Log4j 2
+  reads;
+- `Done (...)! For help, type "help" or "?"` (before 1.13) also means ready.
+
+CI runs the real server of 1.7.10, 1.12.2, 1.16.5, 1.18.2, 1.19.2, 1.20.1, 1.21.1 and the
+newest release. Fabric and other loaders arrive in W12.
 
 ## Change log
 
@@ -222,3 +241,7 @@ tuple; Fabric and other loaders arrive in W12.
   host opens a new session on a fresh endpoint while its server runs, and guests reconnect to it
   by themselves. A world server that outlived its launcher is stopped through RCON at the next
   start instead of being adopted.
+- 2026-10-20 — A8 (owner): every release from 1.7.6 on instead of 1.21.1 alone, and the mirror
+  keeps every release's server JAR (still the fallback when Mojang fails). The tuple table is gone: the protocol comes from the server, the
+  Login Start layout from the client's handshake, Java from the descriptor, and the few
+  properties and the logging configuration that changed are written per release.

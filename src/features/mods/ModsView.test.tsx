@@ -116,6 +116,7 @@ const plan: ModsPlan = {
   misfit: null,
   totalBytes: 1024,
   approval: null,
+  turnOn: [],
 };
 
 const content: ContentView = {
@@ -177,6 +178,8 @@ function setup(answers: Answers = {}, start: ModsSection = 'mod', instanceId = f
         return plan;
       case 'mods_install':
         return 1;
+      case 'mods_needed_by':
+        return { neededBy: [], unused: [] };
       case 'mods_content':
         return content;
       case 'mods_updates':
@@ -393,7 +396,7 @@ describe('ModsView', () => {
     const removeButtons = within(mods).getAllByRole('button', { name: 'Remove' });
     fireEvent.click(removeButtons[1] as HTMLElement);
     expect(named('mods_remove', calls)).toHaveLength(0);
-    fireEvent.click(within(mods).getByRole('button', { name: 'Remove the file' }));
+    fireEvent.click(await within(mods).findByRole('button', { name: 'Remove the file' }));
     await waitFor(() => {
       expect(named('mods_remove', calls)).toHaveLength(1);
     });
@@ -401,6 +404,46 @@ describe('ModsView', () => {
       payload: Record<string, unknown>;
     };
     expect(removed.payload).toEqual({ instanceId: fabric.id, path: 'mods/mine.jar.disabled' });
+  });
+
+  it('says which mods need one before it is turned off or removed', async () => {
+    const calls = setup(
+      {
+        mods_needed_by: () => ({
+          neededBy: ['Iris'],
+          unused: [{ path: 'mods/lib.jar', title: 'Library' }],
+        }),
+      },
+      'installed',
+    );
+    const mods = await screen.findByRole('region', { name: 'Mods' });
+    fireEvent.click(within(mods).getByRole('checkbox', { name: 'Sodium is on' }));
+    expect(
+      await within(mods).findByText('Needed by Iris; they will not start without it.'),
+    ).toBeVisible();
+    expect(named('mods_set_enabled', calls)).toHaveLength(0);
+    fireEvent.click(within(mods).getByRole('button', { name: 'Cancel' }));
+    expect(within(mods).queryByText(/Needed by Iris/)).toBeNull();
+    fireEvent.click(within(mods).getByRole('checkbox', { name: 'Sodium is on' }));
+    fireEvent.click(await within(mods).findByRole('button', { name: 'Turn off anyway' }));
+    await waitFor(() => {
+      expect(named('mods_set_enabled', calls)).toHaveLength(1);
+    });
+
+    // Removing: what only it needed goes too, unless the player says not.
+    fireEvent.click(within(mods).getAllByRole('button', { name: 'Remove' })[0] as HTMLElement);
+    const also = await within(mods).findByRole('checkbox', {
+      name: 'Also remove what only it needed: Library',
+    });
+    expect(also).toBeChecked();
+    fireEvent.click(within(mods).getByRole('button', { name: 'Remove the file' }));
+    await waitFor(() => {
+      expect(named('mods_remove', calls)).toHaveLength(2);
+    });
+    const paths = named('mods_remove', calls).map(
+      (c) => (c.args.request as { payload: { path: string } }).payload.path,
+    );
+    expect(paths).toEqual(['mods/sodium.jar', 'mods/lib.jar']);
   });
 
   it('offers updates of what the catalog knows', async () => {

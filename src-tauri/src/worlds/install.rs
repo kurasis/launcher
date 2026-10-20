@@ -1,4 +1,4 @@
-//! The server JAR of a world tuple (PLAN W3, ADAPTATION A8).
+//! The server JAR of a world version (PLAN W3, ADAPTATION A8).
 //!
 //! Mojang's version descriptor names the dedicated server in
 //! `downloads.server`. The JAR goes through the same verified download executor
@@ -11,7 +11,7 @@ use std::path::PathBuf;
 use sha1::Digest as _;
 use uuid::Uuid;
 
-use super::tuple::{self, WorldTuple};
+use super::tuple;
 use super::world::{self, Mutation, MutationKind, ServerPin, WorldFile};
 use crate::catalog::source::{Fetch, MetadataService};
 use crate::download::{CancelToken, Digest, DownloadRequest, Executor, ProgressSink};
@@ -24,29 +24,30 @@ use crate::net::SourcePolicy;
 use crate::runtime::RuntimeInstaller;
 use crate::storage::paths::{DataRoot, JavaProvider, Sha256, WorldId, server_jar_relative};
 
-/// What hosting a tuple needs to download.
+/// What hosting a version needs to download.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ServerPlan {
-    pub tuple: WorldTuple,
+    /// The Java the version's descriptor names.
+    pub java_major: u16,
     pub jar: Download,
     pub runtime: RuntimeRequirement,
 }
 
-/// Plans the server of a qualified tuple from its verified descriptor bytes.
+/// Plans the server of a world version from its verified descriptor bytes,
+/// with the Java the descriptor names.
 pub fn plan(bytes: &[u8], minecraft: &str, ctx: &RuleContext) -> LauncherResult<ServerPlan> {
-    let tuple = *tuple::find(minecraft).ok_or_else(|| {
-        LauncherError::invalid_input("Worlds are not available for this Minecraft version yet.")
-    })?;
+    if tuple::release(minecraft).is_none() {
+        return Err(LauncherError::invalid_input(
+            "Worlds are not available for this Minecraft version yet.",
+        ));
+    }
     let parsed = descriptor::parse(bytes, minecraft)?;
     let jar = parsed
         .server
         .ok_or_else(|| descriptor::unsupported("downloads.server"))?;
-    if parsed.java_major != tuple.java_major {
-        return Err(descriptor::unsupported("javaVersion of the world tuple"));
-    }
     let (os, arch) = runtime_target(ctx)?;
     Ok(ServerPlan {
-        tuple,
+        java_major: parsed.java_major,
         jar,
         runtime: RuntimeRequirement {
             major: runtime_major(parsed.java_major),
@@ -57,7 +58,8 @@ pub fn plan(bytes: &[u8], minecraft: &str, ctx: &RuleContext) -> LauncherResult<
     })
 }
 
-/// The download of the JAR; its URL must be on Mojang's artifact hosts.
+/// The download of the JAR; its URL must be on Mojang's artifact hosts. Like
+/// every Mojang file, it comes from the download mirror when Mojang fails.
 pub fn request(plan: &ServerPlan) -> LauncherResult<DownloadRequest> {
     let source = SourcePolicy::MojangArtifacts;
     Ok(DownloadRequest {
@@ -88,7 +90,7 @@ pub async fn ensure(
 }
 
 /// Everything a world needs before its server can start: the server JAR,
-/// pinned in `world.json`, and the tuple's Java runtime. Returns the world and
+/// pinned in `world.json`, and the version's Java runtime. Returns the world and
 /// the runtime's Java executable.
 #[allow(clippy::too_many_arguments)]
 pub async fn prepare<F: Fetch>(
@@ -114,6 +116,7 @@ pub async fn prepare<F: Fetch>(
     })?;
     let entry = catalog
         .find(&world.minecraft)
+        .filter(|e| e.version_type == "release")
         .ok_or_else(|| descriptor::unsupported("version not listed"))?;
     let bytes = metadata.descriptor(entry).await?;
     let plan = plan(&bytes, &world.minecraft, &RuleContext::current()?)?;
@@ -178,7 +181,7 @@ pub fn pin(root: &DataRoot, plan: &ServerPlan) -> LauncherResult<ServerPin> {
         jar_sha1: plan.jar.sha1.clone(),
         jar_sha256: Sha256::parse(&sha256)?,
         jar_size: size,
-        java_major: plan.tuple.java_major,
+        java_major: plan.java_major,
     })
 }
 
@@ -223,12 +226,26 @@ mod tests {
             "shared/servers/59353fb40c36d304f2035d51e7d6e6baa98dc05c/server.jar"
         );
         assert_eq!(request.url.host_str(), Some("piston-data.mojang.com"));
+        assert!(request.source.mirrored());
     }
 
     #[test]
-    fn only_world_tuples_are_planned() {
-        assert!(plan(V26_3, "26.3", &ctx()).is_err());
-        assert!(plan(V1_21_1, "1.21", &ctx()).is_err());
+    fn the_java_comes_from_the_descriptor() {
+        let plan = plan(V26_3, "26.3", &ctx()).unwrap();
+        assert_eq!((plan.java_major, plan.runtime.major), (25, 25));
+        let mut old: serde_json::Value = serde_json::from_slice(V1_21_1).unwrap();
+        old["id"] = "1.12.2".into();
+        old["javaVersion"] = serde_json::json!({"component": "jre-legacy", "majorVersion": 8});
+        let plan = super::plan(&serde_json::to_vec(&old).unwrap(), "1.12.2", &ctx()).unwrap();
+        assert_eq!(plan.java_major, 8);
+        assert_eq!(plan.runtime.component.as_deref(), Some("jre-legacy"));
+    }
+
+    #[test]
+    fn only_world_versions_are_planned() {
+        for id in ["1.7.2", "1.6.4", "24w14a", "1.21-pre1"] {
+            assert!(plan(V1_21_1, id, &ctx()).is_err(), "{id}");
+        }
     }
 
     fn with_server(server: serde_json::Value) -> Vec<u8> {
@@ -264,7 +281,7 @@ mod tests {
         let body = b"not really a server";
         let sha1 = Sha1::parse(&hex::encode(sha1::Sha1::digest(body))).unwrap();
         let plan = ServerPlan {
-            tuple: *tuple::find("1.21.1").unwrap(),
+            java_major: 21,
             jar: Download {
                 url: "https://piston-data.mojang.com/x.jar".into(),
                 sha1: sha1.clone(),

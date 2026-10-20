@@ -1324,7 +1324,8 @@
         "starting": "Starting…",
         "progress": "Download progress",
         "stop": "Stop",
-        "install": "Install"
+        "install": "Install",
+        "turnOn": "Turned on with it: {names}"
       },
       "pack": {
         "install": "Install",
@@ -1434,7 +1435,11 @@
         "exportStart": "Choose where to save",
         "exporting": "Saving the modpack…",
         "exported": "Saved {name}. Links to Modrinth: {linked}; files inside: {bundled} ({size}).",
-        "close": "Close"
+        "close": "Close",
+        "neededBy": "Needed by {names}; they will not start without it.",
+        "turnOffAnyway": "Turn off anyway",
+        "alsoRemove": "Also remove what only it needed: {names}",
+        "checkingNeeds": "Checking what needs it…"
       }
     },
     "worlds": {

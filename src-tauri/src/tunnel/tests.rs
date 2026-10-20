@@ -132,8 +132,7 @@ async fn setup(ticket: &'static str) -> Setup {
     let listener = guest::listen(Target {
         connection: Arc::new(std::sync::Mutex::new(connection.clone())),
         nick: Nick::parse("Notch").unwrap(),
-        protocol: 767,
-        version_name: "1.21.1",
+        version_name: "1.21.1".into(),
         tickets: Arc::new(FixedTickets(ticket)),
         status: Arc::clone(&status) as Arc<dyn RoomStatus>,
     })
@@ -331,6 +330,30 @@ async fn another_name_never_reaches_the_server() {
     assert_eq!(*setup.admit.released.lock().unwrap(), ["c1"]);
 }
 
+#[tokio::test]
+async fn another_versions_login_never_reaches_the_server() {
+    let _serial = SERIAL.lock().await;
+    let mut setup = setup(GOOD).await;
+    // The guest takes a 1.7.10 login; the host of a 1.21.1 server does not.
+    let (mut send, mut recv) = setup.connection.open_bi().await.unwrap();
+    write_frame(&mut send, &request(GOOD, Service::Gameplay))
+        .await
+        .unwrap();
+    let response: AdmissionResponse = read_frame(&mut recv).await.unwrap();
+    assert!(response.accepted);
+    let mut old = handshake(5, 2);
+    let mut body = Vec::new();
+    crate::worlds::protocol::write_string(&mut body, "Notch");
+    write_packet(&mut old, 0x00, &body).unwrap();
+    send.write_all(&old).await.unwrap();
+    let mut rest = [0u8; 8];
+    let closed = timeout(Duration::from_secs(5), recv.read(&mut rest))
+        .await
+        .unwrap();
+    assert!(matches!(closed, Err(_) | Ok(None)));
+    assert!(no_server_connection(&mut setup).await);
+}
+
 fn request(ticket: &str, service: Service) -> AdmissionRequest {
     AdmissionRequest {
         protocol_version: PROTOCOL_VERSION,
@@ -347,7 +370,9 @@ async fn status_is_answered_locally_and_never_forwarded() {
     let _serial = SERIAL.lock().await;
     let mut setup = setup(GOOD).await;
     let mut game = client(&setup).await;
-    let mut wire = handshake(767, 1);
+    // An older client sees the room as its own version: the host is the one
+    // that refuses another version's login.
+    let mut wire = handshake(340, 1);
     write_packet(&mut wire, 0x00, &[]).unwrap();
     game.write_all(&wire).await.unwrap();
     let mut buffer = vec![0u8; 4096];
@@ -366,7 +391,8 @@ async fn status_is_answered_locally_and_never_forwarded() {
     assert_eq!(id, 0);
     let (json, _) = read_string(&body, 64 * 1024).unwrap();
     let value: serde_json::Value = serde_json::from_str(&json).unwrap();
-    assert_eq!(value["version"]["protocol"], 767);
+    assert_eq!(value["version"]["protocol"], 340);
+    assert_eq!(value["version"]["name"], "1.21.1");
     assert_eq!(value["players"]["online"], 1);
     assert_eq!(value["description"]["text"], "Our \"world\"");
     let mut ping = Vec::new();

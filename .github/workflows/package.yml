@@ -19,6 +19,12 @@ on:
         description: Also build and check macOS
         type: boolean
         default: false
+      windows_arm:
+        # Windows on ARM is off until the owner turns it back on (2026-10-20).
+        # A manual run can still ask for it.
+        description: Also build and check Windows on ARM
+        type: boolean
+        default: false
 
 permissions:
   contents: read
@@ -124,14 +130,16 @@ jobs:
     name: Build and smoke ${{ matrix.name }}
     strategy:
       fail-fast: false
+      # Windows 11 on ARM (the native arm64 build, and the place where the
+      # interface is checked on Windows 11) only on a manual run that asks for
+      # it (the windows_arm input).
       matrix:
-        include:
-          - name: windows-x64
-            os: windows-2025
-          # Windows 11 on ARM: the native arm64 build, and the place where the
-          # interface is checked on Windows 11.
-          - name: windows-arm64
-            os: windows-11-arm
+        include: >-
+          ${{ fromJSON(format('[{0}{1}]',
+          '{"name": "windows-x64", "os": "windows-2025"}',
+          inputs.windows_arm
+          && ', {"name": "windows-arm64", "os": "windows-11-arm"}'
+          || '')) }}
     runs-on: ${{ matrix.os }}
     defaults:
       run:
@@ -284,7 +292,9 @@ jobs:
   release:
     name: Release archive
     needs: [linux, windows, macos]
-    if: github.event_name != 'pull_request'
+    # Every target goes into the archive, so only from a manual run that asks
+    # for all of them.
+    if: github.event_name != 'pull_request' && inputs.macos && inputs.windows_arm
     runs-on: ubuntu-24.04
     steps:
       - name: Signing key configured?

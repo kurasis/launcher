@@ -1325,7 +1325,8 @@
         "starting": "يبدأ…",
         "progress": "تقدّم التنزيل",
         "stop": "إيقاف",
-        "install": "ثبّت"
+        "install": "ثبّت",
+        "turnOn": "سيُشغَّل معه: {names}"
       },
       "pack": {
         "install": "تثبيت",
@@ -1435,7 +1436,11 @@
         "exportStart": "اختر مكان الحفظ",
         "exporting": "جارٍ حفظ الحزمة…",
         "exported": "تم الحفظ: {name}. روابط إلى Modrinth: {linked}؛ ملفات بالداخل: {bundled} ({size}).",
-        "close": "إغلاق"
+        "close": "إغلاق",
+        "neededBy": "تحتاجه هذه التعديلات: {names}. لن تعمل بدونه.",
+        "turnOffAnyway": "إيقافه على أي حال",
+        "alsoRemove": "إزالة ما كان يحتاجه وحده أيضًا: {names}",
+        "checkingNeeds": "جارٍ التحقق مما يحتاجه…"
       }
     },
     "worlds": {

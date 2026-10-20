@@ -101,6 +101,9 @@ replaces it), `superseded`.
   so the CI copy only doubled the slowest step (15–19 min on Windows) and held runners.
   macOS (CI and Package) runs only on a manual run with the `macos` input, until the owner
   turns it back on; the release archive needs it, so it is built from such a run.
+  Windows on ARM (CI and Package) likewise runs only on a manual run with the
+  `windows_arm` input, until the owner turns it back on; the release archive comes from a
+  run with both inputs.
 
 ## D-008 — Declared bundle targets
 
@@ -2045,7 +2048,9 @@ archive from the Package workflow, upload it to
   files of the newest release per game version and loader, required dependencies (to
   the end of the chain, each project read at most once a day so a loop ends; 200 per
   project), the icon, the gallery and the pictures in the description (a plain `http:`
-  address of a listed site is fetched over HTTPS), which then point at our copies. Work runs from a queue in the database (retries with
+  address of a listed site is fetched over HTTPS; pictures are asked with a browser's
+  `<img>` headers, since imgur answers a page request with a redirect to its own page),
+  which then point at our copies. Work runs from a queue in the database (retries with
   back-off, survives restarts). Limits: 20 requests an hour and 100 a day per account,
   5 GB a day of files brought per account, 60 an hour per address; an older version's
   files 30 an hour per address.
@@ -2113,19 +2118,26 @@ archive from the Package workflow, upload it to
   dependencies are added (the version the dependency names, else the newest release
   that fits; to the end of the chain, each project once, 200 files at most or no plan);
   one with no fitting version, an incompatible project
-  already there, or a file of the player's at the same name stops the plan. Files the
+  already there, or a file of the player's at the same name stops the plan. What is in
+  the folder already counts, the player's own files too when the catalog recognizes them
+  by SHA-1: a dependency there is not brought again, one turned off is turned on with
+  the install, the player's own copy of the chosen mod is replaced (two copies of a mod
+  stop the game), and an incompatible project is found among them as well. Files the
   catalog does not keep yet are asked for and waited on (20 minutes at most). Every file
   comes from files-mods.lapi.sh through the download executor, checked against its
   SHA-256 before it is put in place; the traffic counts as "Catalog of mods" and the
   launcher's mirror is not used for it. One change at a time per installation; not
   while the game runs, and the game does not start while one runs.
 - **`content.lock.json`** next to the installation records what the launcher put there
-  (path, SHA-256, project, version). An update replaces only its own file, or the
+  (path, SHA-256, project, version, the projects that version requires). An update replaces only its own file, or the
   player's file they chose to update; a turned-off file stays off.
 - **Installed:** mods, resource packs, shaders and the data packs the launcher added;
   on and off by the `.disabled` suffix, removal after a confirmation, updates of what the
   launcher put there and of the player's own files the catalog recognizes by SHA-1
-  (`POST /v1/lookup`), one at a time or all. Paths from the interface must be in
+  (`POST /v1/lookup`), one at a time or all. Before a mod is turned off or removed the
+  launcher says which mods turned on require it (from the lock, else the catalog; the
+  lock alone offline); removing also offers to remove the dependencies the launcher
+  added that nothing else needs, a mod turned off included. Paths from the interface must be in
   `mods/`, `resourcepacks/`, `shaderpacks/` or `saves/<world>/datapacks/`, one name deep,
   never a link.
 - **Add to the catalog** and **My requests** use the launcher account's token; signed

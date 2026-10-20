@@ -359,7 +359,7 @@ async fn create_room(State(app): State<Arc<App>>, headers: HeaderMap, bytes: Byt
     ) else {
         return refuse("bad_request");
     };
-    if !text::id(&request.world) || !text::MINECRAFT.contains(&request.minecraft.as_str()) {
+    if !text::id(&request.world) || !text::minecraft(&request.minecraft) {
         return refuse("bad_request");
     }
     limit!(app, me, "room", 10, 3600);

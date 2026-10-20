@@ -1046,7 +1046,7 @@ async fn junk_is_refused() {
         ),
         (
             "/v1/rooms",
-            r#"{"name":"x","world":"11111111-1111-4111-8111-111111111112","minecraft":"1.8.9"}"#,
+            r#"{"name":"x","world":"11111111-1111-4111-8111-111111111112","minecraft":"1.7.2"}"#,
         ),
     ] {
         let request = Request::post(path)

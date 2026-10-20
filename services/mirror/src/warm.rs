@@ -4,8 +4,9 @@
 //! It asks the running service for everything (the service keeps files and
 //! metadata, applies the quota and fetches each file once), and skips files
 //! already kept. What it covers, as the launcher requests it:
-//! - Mojang: every release's version file, client jar, libraries, logging
-//!   config, asset index and asset objects, and Mojang's Java runtimes;
+//! - Mojang: every release's version file, client jar, server jar (worlds with
+//!   friends), libraries, logging config, asset index and asset objects, and
+//!   Mojang's Java runtimes;
 //! - Adoptium: the JRE (or JDK where there is none) of every Java major those
 //!   releases need, for Windows, Linux and macOS on x64 and arm64;
 //! - Fabric and Quilt: the newest stable loader's profile and libraries for
@@ -215,6 +216,7 @@ impl<'a> Warm<'a> {
             );
             let mut urls = vec![url];
             urls.extend(text(&descriptor, "/downloads/client/url"));
+            urls.extend(text(&descriptor, "/downloads/server/url"));
             urls.extend(text(&descriptor, "/logging/client/file/url"));
             for library in descriptor["libraries"].as_array().into_iter().flatten() {
                 urls.extend(text(library, "/downloads/artifact/url"));

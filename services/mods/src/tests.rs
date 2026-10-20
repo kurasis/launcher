@@ -420,6 +420,25 @@ async fn an_address_brings_the_project_its_newest_files_pictures_and_dependencie
     assert!(!body.contains("i.imgur.com"), "{body}");
     assert!(body.contains("https://files.example/i/"), "{body}");
     assert!(body.contains("https://evil.example/x.png"));
+    // Pictures are asked as a browser asks for an <img>; files are not.
+    {
+        let asked = t.sites.asked.lock().unwrap();
+        let headers = |url: &str| {
+            asked
+                .iter()
+                .find(|r| r.url == url)
+                .map(|r| r.headers)
+                .unwrap()
+        };
+        assert_eq!(headers("https://i.imgur.com/body1.png"), fetch::PICTURE);
+        assert_eq!(headers("https://i.imgur.com/gallery1.png"), fetch::PICTURE);
+        assert!(
+            asked
+                .iter()
+                .filter(|r| r.url.ends_with(".jar"))
+                .all(|r| r.headers.is_empty())
+        );
+    }
 
     let (_, versions) = t
         .get("/v1/projects/sodium/versions?game=1.21.1&loader=fabric")

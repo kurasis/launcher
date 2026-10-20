@@ -219,6 +219,7 @@ const emptyPlan: ModsPlan = {
   misfit: null,
   totalBytes: 0,
   approval: null,
+  turnOn: [],
 };
 
 function PlanView({
@@ -240,7 +241,7 @@ function PlanView({
 }) {
   const t = strings.mods.add;
   const ready = plan.items.length > 0 && plan.missing.length === 0 && plan.conflicts.length === 0;
-  const needed = plan.items.some((i) => !i.present);
+  const needed = plan.items.some((i) => !i.present) || plan.turnOn.length > 0;
   const fetching = plan.items.some((i) => !i.kept && !i.present);
   const shown = percent(progress);
   return (
@@ -272,6 +273,11 @@ function PlanView({
             </li>
           ))}
         </ul>
+      )}
+      {plan.turnOn.length > 0 && (
+        <p className={styles.muted}>
+          {t.turnOn({ names: plan.turnOn.map((o) => o.title).join(', ') })}
+        </p>
       )}
       {plan.missing.length > 0 && (
         <Notice tone="danger">

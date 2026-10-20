@@ -206,9 +206,8 @@ pub struct Visit<'a> {
     pub room: &'a Room,
     pub nick: Nick,
     pub route: Route,
-    /// The game protocol and version name of the room's Minecraft version.
-    pub protocol: i32,
-    pub version_name: &'static str,
+    /// The room's Minecraft version, shown in the server list.
+    pub version_name: String,
 }
 
 /// Joins a room on `endpoint` (bound without `accept`).
@@ -222,7 +221,6 @@ pub async fn join(
         room,
         nick,
         route,
-        protocol,
         version_name,
     } = visit;
     let endpoint_key = endpoint.id().to_string();
@@ -251,7 +249,6 @@ pub async fn join(
     let listener = guest::listen(Target {
         connection: Arc::clone(&connection),
         nick,
-        protocol,
         version_name,
         tickets: Arc::new(RoomTickets(Arc::clone(&shared))),
         status: Arc::new(Status(Arc::clone(&shared))),
