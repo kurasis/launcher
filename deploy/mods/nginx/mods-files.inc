@@ -31,6 +31,16 @@ location ~ "^/f/([0-9a-f]{2})([0-9a-f]{2})([0-9a-f]{60})/[^/]{1,300}$" {
     include /etc/nginx/lapi/mods-files-headers.inc;
 }
 
+# The same by its hash alone: the reserve of cdn-mods.lapi.sh (R2), whose
+# addresses are /f/<sha256>; the launcher comes here when R2 fails.
+location ~ "^/f/([0-9a-f]{2})([0-9a-f]{2})([0-9a-f]{60})$" {
+    alias /home/www/lapi/mods/data/blobs/$1/$2/$1$2$3;
+    types { }
+    default_type application/octet-stream;
+    add_header Content-Disposition attachment always;
+    include /etc/nginx/lapi/mods-files-headers.inc;
+}
+
 # Pictures: /i/<sha256>.<extension>, with the type the extension names.
 location ~ "^/i/([0-9a-f]{2})([0-9a-f]{2})([0-9a-f]{60})\.png$" {
     alias /home/www/lapi/mods/data/blobs/$1/$2/$1$2$3;

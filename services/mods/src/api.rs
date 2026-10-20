@@ -376,7 +376,14 @@ fn pack_answer(app: &App, id: &str) -> Result<Option<(Value, bool)>, String> {
         "name": archive.name,
         "size": archive.size,
         "sha256": archive.sha256,
-        "url": archive.sha256.as_deref().filter(|_| !held).map(|s| app.urls.file(s, &archive.name)),
+        "url": match archive.sha256.as_deref().filter(|_| !held) {
+            Some(s) => Some(app.urls.served(
+                s,
+                &archive.name,
+                app.store.copy_of(s)?.as_deref() == Some("public"),
+            )),
+            None => None,
+        },
     });
     Ok(Some((answer, ready)))
 }

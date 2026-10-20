@@ -2029,7 +2029,7 @@ archive from the Package workflow, upload it to
 
 ## D-066 — Catalog of mods at mods.lapi.sh
 
-- **Status:** accepted (owner request, 2026-10-19), stages 1–5 of 6 and the scanner and owner's commands of stage 6 · **Affects:** the new service `services/mods` (`https://mods.lapi.sh`, files at
+- **Status:** accepted (owner request, 2026-10-19), stages 1–5 of 6 and the scanner, owner's commands and R2 of stage 6 · **Affects:** the new service `services/mods` (`https://mods.lapi.sh`, files at
   `https://files-mods.lapi.sh`, `/home/www/lapi/mods`), the account service's token
   audience. The full design: the project's design document "Вкладка Моды и каталог".
 - **Goal.** A Mods tab with modpacks, mods, resource packs, shaders and worlds that does
@@ -2375,6 +2375,25 @@ archive from the Package workflow, upload it to
   `decision` with its time and reason. The workflow runs `block`, `unblock` and
   `review --count` (task `review-count`) behind the production approval; they print
   fixed words, numbers and the hash given only.
+- **Serving from Cloudflare R2 (`services/mods/src/r2.rs`, `upkeep.rs`).** A public
+  bucket (`mods-files`, key `f/<sha256>`) behind `https://cdn-mods.lapi.sh/f/<sha256>`,
+  and a private one (`mods-private`) with copies of held files (`q/<sha256>`) and of the
+  database (`db/daily/<day>.db` for a month, `db/monthly/<month>.db` for good). R2 does not
+  charge for what it serves, so players' downloads cost storage only. The service copies
+  kept files in the background, 20 at a time, and the column `blob.copy` records where
+  each one is; an upload names the file's SHA-256 and R2 refuses other bytes. The API
+  gives the R2 address only for a file with a public copy and once `LAPI_MODS_CDN_URL`
+  is set; any other file, and every picture, is served from our disk as before, so the
+  move is gradual and old addresses keep working. A file held back, blocked or removed
+  leaves the public bucket (and Cloudflare's cache) in the next round; a held one gets
+  a private copy, a forgotten one loses it. Once a week 50 public copies are checked
+  against the disk and a wrong one is copied again; `counts` shows how many files are
+  in R2, still to copy, and when the database was last copied. Our disk stays the
+  reserve: nginx also serves `files-mods.lapi.sh/f/<sha256>`, and the launcher, when
+  cdn-mods does not answer or lacks a file, takes the same path from files-mods,
+  whatever the mirror setting. `lapi-mods restore` brings back to the disk, checked by
+  SHA-256, what only R2 has. R2's access key reaches curl on standard input
+  (`--aws-sigv4`), never on a command line.
 
 ## D-067 — Start page feed at feed.lapi.sh
 

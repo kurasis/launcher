@@ -306,6 +306,35 @@ fn pictures_and_files_only_from_the_catalog_host() {
 }
 
 #[test]
+fn files_from_r2_are_ours_and_fall_back_to_our_server() {
+    let sha = hash(7);
+    let cdn = format!("https://cdn-mods.lapi.sh/f/{sha}");
+    let ours = format!("https://files-mods.lapi.sh/f/{sha}");
+    assert!(our_file(&cdn, &sha).is_some());
+    assert!(our_file(&ours, &sha).is_some());
+    for bad in [
+        format!("{cdn}/sodium.jar"),
+        format!("{cdn}/"),
+        format!("{cdn}?a=b"),
+        format!("{cdn}#x"),
+        format!("https://cdn-mods.lapi.sh/f/{}", hash(8)),
+        format!("https://cdn-mods.lapi.sh/i/{sha}"),
+        format!("https://cdn-mods.lapi.sh/f/{sha}/a/b"),
+        format!("https://cdn-mods.lapi.sh:8443/f/{sha}"),
+        format!("http://cdn-mods.lapi.sh/f/{sha}"),
+        format!("https://cdn-mods.lapi.sh.example.com/f/{sha}"),
+        format!("https://user@cdn-mods.lapi.sh/f/{sha}"),
+        format!("https://cdn.modrinth.com/f/{sha}"),
+    ] {
+        assert!(our_file(&bad, &sha).is_none(), "{bad}");
+    }
+    let reserve = reserve_url(&url::Url::parse(&cdn).unwrap()).unwrap();
+    assert_eq!(reserve.as_str(), ours);
+    assert!(reserve_url(&url::Url::parse(&ours).unwrap()).is_none());
+    assert!(reserve_url(&url::Url::parse("https://cdn.modrinth.com/f/x").unwrap()).is_none());
+}
+
+#[test]
 fn hits_and_projects_from_junk_are_dropped_or_cleaned() {
     assert!(Hit::from(&json!({"id": "x", "kind": "mod"})).is_none());
     assert!(Hit::from(&json!({"id": id(1), "kind": "plugin"})).is_none());

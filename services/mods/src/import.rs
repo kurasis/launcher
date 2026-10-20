@@ -1222,6 +1222,19 @@ pub async fn rescan(app: &App, limit: i64) -> Result<usize, String> {
             continue;
         }
         app.store.set_scanned(&sha256, &verdict, held, now())?;
+        if held
+            && let Err(e) = crate::upkeep::clear(
+                &app.store,
+                &app.urls,
+                app.purge.as_deref(),
+                std::slice::from_ref(&sha256),
+            )
+        {
+            eprintln!(
+                "lapi-mods: clearing the cache: {}",
+                crate::model::clean(&e, 200, false)
+            );
+        }
         if held {
             eprintln!(
                 "lapi-mods: held back a kept file ({})",

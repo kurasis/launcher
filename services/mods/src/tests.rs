@@ -26,6 +26,7 @@ use crate::{App, Urls, curseforge, model, modrinth, pack, packwiz};
 
 const ISSUER: &str = "https://oauth.example";
 const FILES: &str = "https://files.example";
+const CDN: &str = "https://cdn.example";
 
 #[derive(Clone, Default)]
 struct Page {
@@ -121,6 +122,28 @@ fn setup() -> T {
 }
 
 fn setup_with(proxies: Vec<String>) -> T {
+    setup_full(proxies, None, None, "")
+}
+
+/// With R2 and Cloudflare's cache played by fakes.
+fn setup_r2() -> (T, Arc<FakeR2>, Arc<Purged>) {
+    let r2 = Arc::new(FakeR2::default());
+    let purged = Arc::new(Purged::default());
+    let t = setup_full(
+        Vec::new(),
+        Some(Arc::clone(&r2) as Arc<dyn crate::r2::Bucket>),
+        Some(Arc::clone(&purged) as Arc<dyn crate::owner::Purge>),
+        CDN,
+    );
+    (t, r2, purged)
+}
+
+fn setup_full(
+    proxies: Vec<String>,
+    r2: Option<Arc<dyn crate::r2::Bucket>>,
+    purge: Option<Arc<dyn crate::owner::Purge>>,
+    cdn: &str,
+) -> T {
     let dir = tempfile::tempdir().unwrap();
     let key = SigningKey::from_bytes(&[5; 32]);
     let tokens = crate::auth::Tokens::new(ISSUER);
@@ -144,8 +167,10 @@ fn setup_with(proxies: Vec<String>) -> T {
         client,
         tokens,
         limiter: crate::api::Limiter::default(),
-        urls: Urls::new(FILES),
+        urls: Urls::new(FILES).with_cdn(cdn),
         thumbs: import::Thumbs::Inline,
+        r2,
+        purge,
     });
     T {
         _dir: dir,
@@ -3415,6 +3440,7 @@ fn owner<'a>(t: &'a T, purged: &'a Purged) -> crate::owner::Owner<'a> {
         blobs: &t.app.blobs,
         urls: &t.app.urls,
         purge: Some(purged),
+        bucket: None,
         now: now(),
     }
 }
@@ -3727,4 +3753,340 @@ async fn finding_takes_addresses_slugs_and_hashes_and_nothing_else() {
     assert!(o.find("so\u{0}dium").is_err());
     assert!(o.remove("no-such-mod", "").is_err());
     assert!(o.unblock(&sha(&"0".repeat(40))).unwrap()[0] == "unblocked 0");
+}
+
+// ----- R2 (D-066, stage 6) -----
+
+/// R2 in memory: objects by bucket and key. Like R2, it refuses bytes that
+/// do not match the SHA-256 an upload names.
+#[derive(Default)]
+struct FakeR2 {
+    objects: Mutex<HashMap<(bool, String), Vec<u8>>>,
+    down: std::sync::atomic::AtomicBool,
+}
+
+impl FakeR2 {
+    fn has(&self, public: bool, key: &str) -> Option<Vec<u8>> {
+        self.objects
+            .lock()
+            .unwrap()
+            .get(&(public, key.to_owned()))
+            .cloned()
+    }
+
+    fn keys(&self) -> Vec<String> {
+        let mut keys: Vec<String> = self
+            .objects
+            .lock()
+            .unwrap()
+            .keys()
+            .map(|(public, key)| format!("{}:{key}", if *public { "public" } else { "private" }))
+            .collect();
+        keys.sort();
+        keys
+    }
+}
+
+impl crate::r2::Bucket for FakeR2 {
+    fn put(
+        &self,
+        which: crate::r2::Which,
+        key: &str,
+        path: &Path,
+        sha256: &str,
+        _media_type: &str,
+    ) -> Result<(), String> {
+        if self.down.load(std::sync::atomic::Ordering::Relaxed) {
+            return Err("R2 answered 503 to an upload".to_owned());
+        }
+        let bytes = std::fs::read(path).map_err(|e| e.to_string())?;
+        if sha256_hex(&bytes) != sha256 {
+            return Err("R2 answered 400 to an upload".to_owned());
+        }
+        self.objects
+            .lock()
+            .unwrap()
+            .insert((which == crate::r2::Which::Public, key.to_owned()), bytes);
+        Ok(())
+    }
+
+    fn delete(&self, which: crate::r2::Which, key: &str) -> Result<(), String> {
+        self.objects
+            .lock()
+            .unwrap()
+            .remove(&(which == crate::r2::Which::Public, key.to_owned()));
+        Ok(())
+    }
+
+    fn size(&self, which: crate::r2::Which, key: &str) -> Result<Option<u64>, String> {
+        Ok(self
+            .has(which == crate::r2::Which::Public, key)
+            .map(|b| b.len() as u64))
+    }
+
+    fn get(&self, which: crate::r2::Which, key: &str, to: &Path) -> Result<bool, String> {
+        match self.has(which == crate::r2::Which::Public, key) {
+            Some(bytes) => {
+                std::fs::write(to, bytes).map_err(|e| e.to_string())?;
+                Ok(true)
+            }
+            None => Ok(false),
+        }
+    }
+}
+
+fn r2_owner<'a>(t: &'a T, purged: &'a Purged, r2: &'a FakeR2) -> crate::owner::Owner<'a> {
+    crate::owner::Owner {
+        bucket: Some(r2),
+        ..owner(t, purged)
+    }
+}
+
+async fn import_sodium(t: &T) {
+    modrinth_site(&t.sites);
+    t.player(
+        1,
+        "POST",
+        "/v1/imports",
+        json!({ "input": "https://modrinth.com/mod/sodium" }),
+    )
+    .await;
+    t.drain().await;
+}
+
+#[tokio::test]
+async fn kept_files_are_served_from_r2_once_copied_and_leave_it_when_held() {
+    let (t, r2, purged) = setup_r2();
+    import_sodium(&t).await;
+    let (sha256, file) = sodium_release(&t).await;
+    // Not copied yet: served from our disk.
+    assert!(file["url"].as_str().unwrap().starts_with(FILES), "{file}");
+    assert!(
+        t.app.store.counts().unwrap()["blobsToCopy"]
+            .as_i64()
+            .unwrap()
+            > 0
+    );
+
+    let copied = crate::upkeep::copy(&t.app, 100).await.unwrap();
+    assert!(copied > 0);
+    assert_eq!(crate::upkeep::copy(&t.app, 100).await.unwrap(), 0);
+    assert_eq!(
+        r2.has(true, &format!("f/{sha256}")),
+        Some(std::fs::read(t.app.blobs.path(&sha256)).unwrap())
+    );
+    // Pictures stay on our disk.
+    assert!(
+        r2.keys().iter().all(|k| k.starts_with("public:f/")),
+        "{:?}",
+        r2.keys()
+    );
+    let (_, file) = sodium_release(&t).await;
+    assert_eq!(file["url"], format!("{CDN}/f/{sha256}"));
+    let counts = t.app.store.counts().unwrap();
+    assert_eq!(counts["blobsToCopy"], 0);
+    assert_eq!(counts["blobsInR2"].as_i64().unwrap() as usize, copied);
+
+    // Blocked: gone from the public bucket at once, both addresses cleared.
+    let lines = r2_owner(&t, &purged, &r2).block(&sha(&sha256), "").unwrap();
+    assert_eq!(lines[2], "cache cleared 2 addresses");
+    assert!(r2.has(true, &format!("f/{sha256}")).is_none());
+    assert!(
+        purged
+            .0
+            .lock()
+            .unwrap()
+            .contains(&format!("{CDN}/f/{sha256}"))
+    );
+    let (_, file) = sodium_release(&t).await;
+    assert!(file["url"].is_null());
+    // The service keeps a copy in the private bucket.
+    assert_eq!(crate::upkeep::copy(&t.app, 100).await.unwrap(), 1);
+    assert!(r2.has(false, &format!("q/{sha256}")).is_some());
+    assert_eq!(t.app.store.counts().unwrap()["blobsHeldInR2"], 1);
+
+    // Let go: public again, the private copy goes.
+    r2_owner(&t, &purged, &r2).unblock(&sha(&sha256)).unwrap();
+    assert_eq!(crate::upkeep::copy(&t.app, 100).await.unwrap(), 1);
+    assert!(r2.has(true, &format!("f/{sha256}")).is_some());
+    assert!(r2.has(false, &format!("q/{sha256}")).is_none());
+
+    // Held by a scan in the background: the cache is cleared at once, and
+    // the service takes the file out of R2.
+    let (_, api) = t.get("/v1/projects/fabric-api/versions").await;
+    let other = api["versions"][0]["files"][0]["sha256"]
+        .as_str()
+        .unwrap()
+        .to_owned();
+    assert!(r2.has(true, &format!("f/{other}")).is_some());
+    purged.0.lock().unwrap().clear();
+    let mut code = built("https://files-8ie.pages.dev/dl");
+    code.push(0xb1);
+    std::fs::write(
+        t.app.blobs.path(&other),
+        jar(&[("a/Stage.class", class_file(&[], &[], &code))]),
+    )
+    .unwrap();
+    t.app.store.forget_scans();
+    import::rescan(&t.app, 50).await.unwrap();
+    assert!(
+        purged
+            .0
+            .lock()
+            .unwrap()
+            .contains(&format!("{CDN}/f/{other}"))
+    );
+    crate::upkeep::copy(&t.app, 1).await.unwrap();
+    assert!(r2.has(true, &format!("f/{other}")).is_none());
+    assert_eq!(t.app.store.copy_of(&other).unwrap().as_deref(), Some(""));
+}
+
+#[tokio::test]
+async fn a_copy_r2_refuses_leaves_the_file_served_from_our_disk() {
+    let (t, r2, _) = setup_r2();
+    import_sodium(&t).await;
+    let (sha256, _) = sodium_release(&t).await;
+    r2.down.store(true, std::sync::atomic::Ordering::Relaxed);
+    assert!(crate::upkeep::copy(&t.app, 100).await.is_err());
+    let (_, file) = sodium_release(&t).await;
+    assert!(file["url"].as_str().unwrap().starts_with(FILES));
+    r2.down.store(false, std::sync::atomic::Ordering::Relaxed);
+
+    // Bytes that do not match their hash are refused, and stay on our disk.
+    std::fs::write(t.app.blobs.path(&sha256), b"other bytes").unwrap();
+    while crate::upkeep::copy(&t.app, 1).await.is_ok_and(|n| n > 0) {}
+    assert!(r2.has(true, &format!("f/{sha256}")).is_none());
+    let (_, file) = sodium_release(&t).await;
+    assert!(file["url"].as_str().unwrap().starts_with(FILES), "{file}");
+}
+
+#[tokio::test]
+async fn what_only_r2_has_comes_back_to_the_disk_checked() {
+    let (t, r2, _) = setup_r2();
+    import_sodium(&t).await;
+    let (sha256, _) = sodium_release(&t).await;
+    crate::upkeep::copy(&t.app, 100).await.unwrap();
+    let bytes = std::fs::read(t.app.blobs.path(&sha256)).unwrap();
+    std::fs::remove_file(t.app.blobs.path(&sha256)).unwrap();
+    // Another file's copy in R2 was damaged.
+    let (_, api) = t.get("/v1/projects/fabric-api/versions").await;
+    let other = api["versions"][0]["files"][0]["sha256"]
+        .as_str()
+        .unwrap()
+        .to_owned();
+    std::fs::remove_file(t.app.blobs.path(&other)).unwrap();
+    r2.objects
+        .lock()
+        .unwrap()
+        .insert((true, format!("f/{other}")), b"damaged".to_vec());
+
+    let lines = crate::upkeep::restore(&t.app.store, &t.app.blobs, r2.as_ref()).unwrap();
+    assert_eq!(lines[0], "restored 1");
+    assert_eq!(lines[3], "wrong in R2 1");
+    assert_eq!(std::fs::read(t.app.blobs.path(&sha256)).unwrap(), bytes);
+    assert!(!t.app.blobs.path(&other).exists());
+}
+
+#[tokio::test]
+async fn the_database_goes_to_r2_daily_and_r2_is_checked_weekly() {
+    let (t, r2, _) = setup_r2();
+    import_sodium(&t).await;
+    crate::upkeep::copy(&t.app, 100).await.unwrap();
+    let backups = t._dir.path().join("backups");
+    let copy = t.app.store.backup(&backups, 14).unwrap();
+    assert!(
+        crate::upkeep::copy_database(&t.app, backups.clone())
+            .await
+            .unwrap()
+    );
+    let (daily, monthly) = crate::r2::database_keys(chrono::Utc::now().date_naive());
+    assert_eq!(r2.has(false, &daily), Some(std::fs::read(&copy).unwrap()));
+    assert!(r2.has(false, &monthly).is_some());
+    // Once a day only.
+    assert!(!crate::upkeep::copy_database(&t.app, backups).await.unwrap());
+
+    assert_eq!(crate::upkeep::check(&t.app).await.unwrap(), Some(0));
+    assert_eq!(crate::upkeep::check(&t.app).await.unwrap(), None);
+    // A copy goes missing: the next weekly check finds it, and it is made again.
+    let (sha256, _) = sodium_release(&t).await;
+    r2.objects
+        .lock()
+        .unwrap()
+        .remove(&(true, format!("f/{sha256}")));
+    t.app.store.set_upkeep("r2_checked", 0).unwrap();
+    assert_eq!(crate::upkeep::check(&t.app).await.unwrap(), Some(1));
+    assert_eq!(t.app.store.counts().unwrap()["r2Mismatched"], 1);
+    crate::upkeep::copy(&t.app, 100).await.unwrap();
+    assert!(r2.has(true, &format!("f/{sha256}")).is_some());
+}
+
+#[test]
+fn r2_settings_and_requests_are_checked() {
+    use crate::r2::{R2, credentials, put_args};
+    let curl = std::path::PathBuf::from("curl");
+    let account = "0123456789abcdef0123456789abcdef";
+    let key = "fedcba9876543210fedcba9876543210";
+    let secret = "ab".repeat(32);
+    assert!(
+        R2::new(
+            account,
+            key,
+            &secret,
+            "mods-files",
+            "mods-private",
+            curl.clone()
+        )
+        .is_some()
+    );
+    for (account, key, secret, public, private) in [
+        ("", key, secret.as_str(), "mods-files", "mods-private"),
+        (
+            account,
+            "short",
+            secret.as_str(),
+            "mods-files",
+            "mods-private",
+        ),
+        (
+            account,
+            key,
+            "x\"\nurl = \"http://evil",
+            "mods-files",
+            "mods-private",
+        ),
+        (account, key, secret.as_str(), "Mods_Files", "mods-private"),
+        (account, key, secret.as_str(), "mods-files", "mods-files"),
+        (account, key, secret.as_str(), "mods-files", "../x"),
+    ] {
+        assert!(R2::new(account, key, secret, public, private, curl.clone()).is_none());
+    }
+    assert_eq!(
+        credentials(key, &secret),
+        format!("user = \"{key}:{secret}\"\n")
+    );
+    let args = put_args(
+        "/data/f",
+        &"0".repeat(64),
+        "application/java-archive",
+        "https://x/f/0",
+    );
+    assert!(args.contains(&format!("x-amz-content-sha256: {}", "0".repeat(64))));
+    assert!(args.contains(&"Content-Disposition: attachment".to_owned()));
+    assert_eq!(args.last().unwrap(), "https://x/f/0");
+    // No secret in the arguments.
+    assert!(!args.iter().any(|a| a.contains(&secret)));
+
+    // The public address: https only, a plain host.
+    for (cdn, served) in [
+        ("https://cdn-mods.lapi.sh", true),
+        ("https://cdn-mods.lapi.sh/", true),
+        ("", false),
+        ("http://cdn-mods.lapi.sh", false),
+        ("https://cdn.example/path?x", false),
+        ("https://user@cdn.example", false),
+    ] {
+        let urls = Urls::new(FILES).with_cdn(cdn);
+        let url = urls.served(&"a".repeat(64), "x.jar", true);
+        assert_eq!(url.starts_with("https://cdn"), served, "{cdn}: {url}");
+    }
 }

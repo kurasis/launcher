@@ -20,10 +20,26 @@ use std::process::{Command, Stdio};
 
 use crate::Urls;
 use crate::blobs::{Blobs, is_sha256};
+use crate::r2::{self, Bucket, Which};
 use crate::store::Store;
 
+/// The addresses a kept file is served at: under each of its names on our
+/// disk, and by its hash in R2.
+pub fn addresses(store: &Store, urls: &Urls, sha256s: &[String]) -> Result<Vec<String>, String> {
+    let mut out = Vec::new();
+    for sha256 in sha256s {
+        for name in store.served_names(sha256)? {
+            out.push(urls.file(sha256, &name));
+        }
+        if let Some(cdn) = urls.cdn_file(sha256) {
+            out.push(cdn);
+        }
+    }
+    Ok(out)
+}
+
 /// Clears addresses from the cache in front of the kept files.
-pub trait Purge {
+pub trait Purge: Send + Sync {
     /// How many addresses were cleared.
     fn purge(&self, urls: &[String]) -> Result<usize, String>;
 }
@@ -59,6 +75,8 @@ pub struct Owner<'a> {
     pub blobs: &'a Blobs,
     pub urls: &'a Urls,
     pub purge: Option<&'a dyn Purge>,
+    /// R2, when the catalog serves from it.
+    pub bucket: Option<&'a dyn Bucket>,
     pub now: i64,
 }
 
@@ -84,12 +102,10 @@ impl Owner<'_> {
 
     /// Clears a file's addresses from the cache; a line saying how it went.
     fn clear(&self, sha256s: &[String]) -> Result<String, String> {
-        let mut urls = Vec::new();
         for sha256 in sha256s {
-            for name in self.store.served_names(sha256)? {
-                urls.push(self.urls.file(sha256, &name));
-            }
+            self.unpublish(sha256)?;
         }
+        let urls = addresses(self.store, self.urls, sha256s)?;
         if urls.is_empty() {
             return Ok("cache nothing to clear".to_owned());
         }
@@ -103,6 +119,18 @@ impl Owner<'_> {
                 Err(e) => format!("cache not cleared: {e}"),
             },
         })
+    }
+
+    /// Deletes a held file's copy from the public bucket at once (the
+    /// service would in its next round).
+    fn unpublish(&self, sha256: &str) -> Result<(), String> {
+        if let Some(bucket) = self.bucket
+            && self.store.copy_of(sha256)?.as_deref() == Some("public")
+        {
+            bucket.delete(Which::Public, &r2::file_key(sha256))?;
+            self.store.set_copy(sha256, "")?;
+        }
+        Ok(())
     }
 
     /// Takes a kept file out of service at once and lists it for launchers.
@@ -188,6 +216,12 @@ impl Owner<'_> {
                 ),
                 "run again with --yes to delete it".to_owned(),
             ]);
+        }
+        if let Some(bucket) = self.bucket
+            && self.store.copy_of(&info.sha256)?.as_deref() == Some("private")
+        {
+            bucket.delete(Which::Private, &r2::held_key(&info.sha256))?;
+            self.store.set_copy(&info.sha256, "")?;
         }
         self.blobs
             .forget(&info.sha256)

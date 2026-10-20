@@ -95,11 +95,12 @@ const ALL_SOURCE_HOSTS: &[&str] = &[
     crate::mirror::MIRROR_HOST,
     "crash.lapi.sh",
     crate::mods::FILES_HOST,
+    crate::mods::CDN_HOST,
     "feed.lapi.sh",
 ];
 
 const CRASH_REPORT_HOSTS: &[&str] = &["crash.lapi.sh"];
-const MODS_CATALOG_HOSTS: &[&str] = &[crate::mods::FILES_HOST];
+const MODS_CATALOG_HOSTS: &[&str] = &[crate::mods::FILES_HOST, crate::mods::CDN_HOST];
 const FEED_HOSTS: &[&str] = &["feed.lapi.sh"];
 const SKINS_MOD_HOSTS: &[&str] = &[
     "github.com",
@@ -165,7 +166,7 @@ impl SourcePolicy {
     }
 }
 
-fn untrusted_url() -> LauncherError {
+pub(crate) fn untrusted_url() -> LauncherError {
     LauncherError::new(
         ErrorCode::UnsupportedVersionMetadata,
         "Metadata points to a download location the launcher does not trust.",

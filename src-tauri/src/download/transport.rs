@@ -135,6 +135,13 @@ impl HttpTransport {
                 })?;
                 match route {
                     Route::Origin => client.get(url),
+                    // The catalog's reserve: our server instead of R2.
+                    Route::Mirror if source == SourcePolicy::ModsCatalog => {
+                        match crate::mods::reserve_url(url) {
+                            Some(reserve) => client.get(&reserve),
+                            None => Err(crate::net::untrusted_url()),
+                        }
+                    }
                     Route::Mirror => client.mirror_get(url),
                 }
                 .map_err(Failure::Fatal)?
