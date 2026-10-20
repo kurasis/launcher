@@ -2068,6 +2068,13 @@ archive from the Package workflow, upload it to
   shows no picture from another site, so players' addresses go only to us. The projects
   a name finds come with their icon and poster (Modrinth's featured gallery picture),
   kept here first like any picture.
+- **New versions:** the service checks the projects it keeps at their source again in
+  the background (every 10 minutes it queues up to 100 that are due, longest waiting
+  first): a project players wanted in the last 30 days (its page opened, or found by
+  hash as installed) once a day, any other once a week (Ai, 2026-10-20). A page opened
+  more than a day after the last check queues one at once. Only the time a project was
+  last wanted is kept, to the hour, never who wanted it. A check reads the project like
+  an import: new versions come in, and the newest per game version and loader is kept.
 - **A project's versions** come whole (up to 2000) and the page filters them by game
   version, loader and type and orders them newest or oldest first; it starts with the
   chosen installation's game version and loader. A version the catalog keeps says

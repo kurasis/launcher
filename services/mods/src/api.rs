@@ -217,6 +217,7 @@ async fn project(State(app): State<Arc<App>>, Path(r): Path<String>) -> Response
         Ok(None) => return refuse(StatusCode::NOT_FOUND, "not_found"),
         Err(e) => return failed(&e),
     };
+    import::wanted(&app, &id);
     match app.store.project_json(&id, &app.urls) {
         Ok(Some(p)) => cached(p, 60),
         Ok(None) => refuse(StatusCode::NOT_FOUND, "not_found"),
@@ -396,7 +397,16 @@ async fn lookup(State(app): State<Arc<App>>, Json(body): Json<LookupBody>) -> Re
         return refuse(StatusCode::BAD_REQUEST, "bad_hashes");
     }
     match app.store.lookup(&body.hashes) {
-        Ok(found) => private(json!({ "found": found }), StatusCode::OK),
+        Ok(found) => {
+            // Installed: checked for new versions more often.
+            let mut seen = std::collections::HashSet::new();
+            for project in found.iter().filter_map(|f| f["projectId"].as_str()) {
+                if seen.insert(project) {
+                    import::wanted(&app, project);
+                }
+            }
+            private(json!({ "found": found }), StatusCode::OK)
+        }
         Err(e) => failed(&e),
     }
 }

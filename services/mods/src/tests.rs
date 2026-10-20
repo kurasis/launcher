@@ -547,6 +547,69 @@ async fn a_file_that_does_not_match_its_hashes_is_not_kept() {
     assert_eq!(t.app.store.counts().unwrap()["jobsFailed"], 1);
 }
 
+/// Moves a catalog's last reads of its sources and its finished jobs back.
+fn age(t: &T, seconds: i64) {
+    let db = rusqlite::Connection::open(t.app.store.path()).unwrap();
+    db.execute(
+        "UPDATE project_source SET fetched = fetched - ?1",
+        [seconds],
+    )
+    .unwrap();
+    db.execute("UPDATE job SET finished = finished - ?1", [seconds])
+        .unwrap();
+}
+
+#[tokio::test]
+async fn projects_are_checked_for_new_versions_wanted_ones_more_often() {
+    let t = setup();
+    modrinth_site(&t.sites);
+    t.player(
+        1,
+        "POST",
+        "/v1/imports",
+        json!({ "input": "https://modrinth.com/mod/sodium" }),
+    )
+    .await;
+    t.drain().await;
+    // The import read it by its slug; a check reads it by its ID.
+    let by_id = modrinth::project_url(SODIUM);
+    let checks = |t: &T| t.sites.asked(&by_id);
+    assert_eq!(checks(&t), 0);
+    // Just read: nothing is due.
+    assert_eq!(import::refresh(&t.app, None).unwrap(), 0);
+
+    // A day on: not yet for a project nobody wanted lately.
+    age(&t, 25 * 3600);
+    assert_eq!(import::refresh(&t.app, None).unwrap(), 0);
+    // A player opens its page: wanted, and checked at once.
+    let (status, _) = t.get("/v1/projects/sodium").await;
+    assert_eq!(status, StatusCode::OK);
+    t.drain().await;
+    assert_eq!(checks(&t), 1);
+    // Opened again soon after: not checked again.
+    t.get("/v1/projects/sodium").await;
+    t.drain().await;
+    assert_eq!(checks(&t), 1);
+
+    // Wanted: the background check comes after a day, not before.
+    age(&t, 20 * 3600);
+    assert_eq!(import::refresh(&t.app, None).unwrap(), 0);
+    age(&t, 5 * 3600);
+    assert_eq!(import::refresh(&t.app, None).unwrap(), 1);
+    t.drain().await;
+    assert_eq!(checks(&t), 2);
+
+    // Nobody wants it for a month: once a week.
+    let db = rusqlite::Connection::open(t.app.store.path()).unwrap();
+    db.execute("UPDATE project_wanted SET at = at - ?1", [31 * 86_400])
+        .unwrap();
+    age(&t, 2 * 86_400);
+    assert_eq!(import::refresh(&t.app, None).unwrap(), 0);
+    // Sodium and the dependency it brought, which nobody opened either.
+    age(&t, 6 * 86_400);
+    assert_eq!(import::refresh(&t.app, None).unwrap(), 2);
+}
+
 #[tokio::test]
 async fn a_name_offers_projects_to_choose_from() {
     let t = setup();
