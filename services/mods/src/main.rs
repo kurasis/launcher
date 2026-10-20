@@ -51,6 +51,7 @@ mod import;
 mod input;
 mod model;
 mod modrinth;
+mod own;
 mod owner;
 mod pack;
 mod packwiz;

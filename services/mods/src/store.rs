@@ -248,6 +248,32 @@ CREATE TABLE IF NOT EXISTS decision (
     reason TEXT NOT NULL DEFAULT ''
 );
 CREATE INDEX IF NOT EXISTS decision_subject ON decision(subject);
+-- Players' own packs (own.rs): who published each, and each version with
+-- the bytes it brought, for the limits per account.
+CREATE TABLE IF NOT EXISTS own_pack (
+    project_id TEXT PRIMARY KEY,
+    account_id TEXT NOT NULL,
+    created INTEGER NOT NULL
+);
+CREATE INDEX IF NOT EXISTS own_pack_account ON own_pack(account_id, created);
+CREATE TABLE IF NOT EXISTS own_version (
+    version_id TEXT PRIMARY KEY,
+    project_id TEXT NOT NULL,
+    account_id TEXT NOT NULL,
+    bytes INTEGER NOT NULL,
+    created INTEGER NOT NULL
+);
+CREATE INDEX IF NOT EXISTS own_version_account ON own_version(account_id, created);
+-- Players' reports about an own pack, one per account; they put the pack
+-- before the owner (review kind `report`).
+CREATE TABLE IF NOT EXISTS report (
+    project_id TEXT NOT NULL,
+    account_id TEXT NOT NULL,
+    reason TEXT NOT NULL,
+    text TEXT NOT NULL DEFAULT '',
+    created INTEGER NOT NULL,
+    PRIMARY KEY (project_id, account_id)
+);
 CREATE VIRTUAL TABLE IF NOT EXISTS project_fts USING fts5(
     project_id UNINDEXED, title, summary, authors, categories, slug,
     tokenize = 'unicode61 remove_diacritics 2'
@@ -260,6 +286,9 @@ pub struct Store {
 }
 
 pub type Result<T> = std::result::Result<T, String>;
+
+/// Reasons with their counts, and the newest texts.
+pub type Reports = (Vec<(String, i64)>, Vec<String>);
 
 /// A kept file as the owner sees it (`lapi-mods find`).
 #[derive(Debug, Clone)]
@@ -581,6 +610,7 @@ impl Store {
                  FROM project p JOIN project_source s ON s.project_id = p.id
                  LEFT JOIN project_wanted w ON w.project_id = p.id
                  WHERE p.status = 'ready' AND p.gone_at IS NULL AND (?5 IS NULL OR p.id = ?5)
+                   AND s.source != 'own'
                    AND s.fetched <= ?1 - CASE WHEN coalesce(w.at, 0) >= ?2 THEN ?3 ELSE ?4 END
                  ORDER BY s.fetched LIMIT ?6",
             )
@@ -1616,6 +1646,187 @@ impl Store {
             )
             .map(|_| ())
             .map_err(sql)
+    }
+
+    // ----- players' own packs -----
+
+    /// The account that published an own pack.
+    pub fn own_account(&self, project: &str) -> Result<Option<String>> {
+        self.db()
+            .query_row(
+                "SELECT account_id FROM own_pack WHERE project_id = ?1",
+                [project],
+                |r| r.get(0),
+            )
+            .optional()
+            .map_err(sql)
+    }
+
+    /// An account's own packs: new ones and versions since `since`, and the
+    /// bytes of all its versions.
+    pub fn own_usage(&self, account: &str, since: i64) -> Result<(i64, i64, i64)> {
+        let db = self.db();
+        let packs: i64 = db
+            .query_row(
+                "SELECT count(*) FROM own_pack WHERE account_id = ?1 AND created >= ?2",
+                params![account, since],
+                |r| r.get(0),
+            )
+            .map_err(sql)?;
+        let (versions, bytes): (i64, i64) = db
+            .query_row(
+                "SELECT coalesce(sum(created >= ?2), 0), coalesce(sum(bytes), 0)
+                 FROM own_version WHERE account_id = ?1",
+                params![account, since],
+                |r| Ok((r.get(0)?, r.get(1)?)),
+            )
+            .map_err(sql)?;
+        Ok((packs, versions, bytes))
+    }
+
+    /// Whether an own pack has a version with this number already.
+    pub fn has_number(&self, project: &str, number: &str) -> Result<bool> {
+        self.db()
+            .query_row(
+                "SELECT 1 FROM version WHERE project_id = ?1 AND number = ?2",
+                params![project, number],
+                |_| Ok(()),
+            )
+            .optional()
+            .map(|found| found.is_some())
+            .map_err(sql)
+    }
+
+    /// Records who published an own pack's version (and the pack, when new).
+    pub fn add_own(
+        &self,
+        project: &str,
+        version: &str,
+        account: &str,
+        bytes: u64,
+        now: i64,
+    ) -> Result<()> {
+        let mut db = self.db();
+        let tx = db.transaction().map_err(sql)?;
+        tx.execute(
+            "INSERT OR IGNORE INTO own_pack (project_id, account_id, created) VALUES (?1, ?2, ?3)",
+            params![project, account, now],
+        )
+        .map_err(sql)?;
+        tx.execute(
+            "INSERT OR REPLACE INTO own_version (version_id, project_id, account_id, bytes, created)
+             VALUES (?1, ?2, ?3, ?4, ?5)",
+            params![version, project, account, bytes as i64, now],
+        )
+        .map_err(sql)?;
+        tx.commit().map_err(sql)
+    }
+
+    /// An account's own packs, newest first.
+    pub fn own_packs(&self, account: &str) -> Result<Vec<serde_json::Value>> {
+        let db = self.db();
+        let mut q = db
+            .prepare(
+                "SELECT p.id, p.slug, p.title, p.status, o.created,
+                   (SELECT count(*) FROM version v WHERE v.project_id = p.id),
+                   (SELECT v.number FROM version v WHERE v.project_id = p.id
+                    ORDER BY v.published DESC, v.id DESC LIMIT 1)
+                 FROM own_pack o JOIN project p ON p.id = o.project_id
+                 WHERE o.account_id = ?1 ORDER BY o.created DESC LIMIT 200",
+            )
+            .map_err(sql)?;
+        q.query_map([account], |r| {
+            Ok(serde_json::json!({
+                "id": r.get::<_, String>(0)?,
+                "slug": r.get::<_, String>(1)?,
+                "title": r.get::<_, String>(2)?,
+                "status": r.get::<_, String>(3)?,
+                "created": r.get::<_, i64>(4)?,
+                "versions": r.get::<_, i64>(5)?,
+                "latest": r.get::<_, Option<String>>(6)?,
+            }))
+        })
+        .map_err(sql)?
+        .collect::<std::result::Result<_, _>>()
+        .map_err(sql)
+    }
+
+    /// Hides an own pack or shows it again, as its author asks; a pack the
+    /// owner removed, or one still importing, stays as it is.
+    pub fn set_own_hidden(&self, project: &str, hidden: bool) -> Result<bool> {
+        let (from, to) = if hidden {
+            ("ready", "hidden")
+        } else {
+            ("hidden", "ready")
+        };
+        self.db()
+            .execute(
+                "UPDATE project SET status = ?3 WHERE id = ?1 AND status IN (?2, ?3)",
+                params![project, from, to],
+            )
+            .map(|n| n > 0)
+            .map_err(sql)
+    }
+
+    /// A player's report about an own pack. A new one (the first from this
+    /// account) opens the owner's review again; returns whether it was new.
+    pub fn add_report(
+        &self,
+        project: &str,
+        account: &str,
+        reason: &str,
+        text: &str,
+        now: i64,
+    ) -> Result<bool> {
+        let mut db = self.db();
+        let tx = db.transaction().map_err(sql)?;
+        let added = tx
+            .execute(
+                "INSERT OR IGNORE INTO report (project_id, account_id, reason, text, created)
+                 VALUES (?1, ?2, ?3, ?4, ?5)",
+                params![project, account, reason, text, now],
+            )
+            .map_err(sql)?
+            > 0;
+        if added {
+            tx.execute(
+                "INSERT INTO review (kind, subject, created) VALUES ('report', ?1, ?2)
+                 ON CONFLICT (kind, subject) DO UPDATE SET decided = NULL, decision = NULL",
+                params![project, now],
+            )
+            .map_err(sql)?;
+        }
+        tx.commit().map_err(sql)?;
+        Ok(added)
+    }
+
+    /// The reports about a pack: each reason with how many sent it, and the
+    /// newest texts.
+    pub fn reports(&self, project: &str) -> Result<Reports> {
+        let db = self.db();
+        let mut q = db
+            .prepare(
+                "SELECT reason, count(*) FROM report WHERE project_id = ?1
+                 GROUP BY reason ORDER BY count(*) DESC, reason",
+            )
+            .map_err(sql)?;
+        let reasons = q
+            .query_map([project], |r| Ok((r.get(0)?, r.get(1)?)))
+            .map_err(sql)?
+            .collect::<std::result::Result<_, _>>()
+            .map_err(sql)?;
+        let mut q = db
+            .prepare(
+                "SELECT text FROM report WHERE project_id = ?1 AND text != ''
+                 ORDER BY created DESC LIMIT 5",
+            )
+            .map_err(sql)?;
+        let texts = q
+            .query_map([project], |r| r.get(0))
+            .map_err(sql)?
+            .collect::<std::result::Result<_, _>>()
+            .map_err(sql)?;
+        Ok((reasons, texts))
     }
 
     /// The SHA-256 of a version's kept files.
@@ -2940,6 +3151,9 @@ impl Store {
             "blocked": one("SELECT count(*) FROM blocked")?,
             "blobsForgotten": one("SELECT count(*) FROM blob WHERE state = 'forgotten'")?,
             "projectsRemoved": one("SELECT count(*) FROM project WHERE status = 'removed'")?,
+            "ownPacks": one("SELECT count(*) FROM own_pack")?,
+            "ownVersions": one("SELECT count(*) FROM own_version")?,
+            "reports": one("SELECT count(*) FROM report")?,
             "blobsInR2": one("SELECT count(*) FROM blob WHERE copy = 'public'")?,
             "blobsHeldInR2": one("SELECT count(*) FROM blob WHERE copy = 'private'")?,
             "blobsToCopy": one(

@@ -4090,3 +4090,453 @@ fn r2_settings_and_requests_are_checked() {
         assert_eq!(url.starts_with("https://cdn"), served, "{cdn}: {url}");
     }
 }
+
+// ----- players' own packs (stage 6) -----
+
+impl T {
+    /// Sends an archive as a request's body.
+    async fn upload(&self, who: Option<u8>, uri: &str, bytes: Vec<u8>) -> (StatusCode, Value) {
+        let mut request = Request::builder()
+            .method("POST")
+            .uri(uri)
+            .header(header::CONTENT_TYPE, "application/zip")
+            // Each from its own address: the tests count accounts.
+            .header("x-real-ip", {
+                static N: std::sync::atomic::AtomicU32 = std::sync::atomic::AtomicU32::new(0);
+                let n = N.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+                format!("198.51.{}.{}", (n / 250) % 250, n % 250 + 1)
+            });
+        if let Some(who) = who {
+            let token = self.token_with(&["account", "mods"], who);
+            request = request.header(header::AUTHORIZATION, format!("Bearer {token}"));
+        }
+        let response = self
+            .router
+            .clone()
+            .oneshot(request.body(Body::from(bytes)).unwrap())
+            .await
+            .unwrap();
+        let status = response.status();
+        let bytes = response.into_body().collect().await.unwrap().to_bytes();
+        (
+            status,
+            serde_json::from_slice(&bytes).unwrap_or(Value::Null),
+        )
+    }
+}
+
+fn own_meta(title: &str, version: &str) -> Vec<u8> {
+    json!({
+        "title": title, "summary": "My settings for a fast game",
+        "body": "# Mine\nWith <script>alert(1)</script> nothing.", "version": version,
+        "changes": "First",
+    })
+    .to_string()
+    .into_bytes()
+}
+
+/// An own pack: Sodium 0.6 from the catalog, a config and the options.
+fn own_pack(version: &str, extra: &[(&str, &[u8])]) -> Vec<u8> {
+    let sodium = b"jar of sodium-0.6.jar";
+    let index = json!({
+        "formatVersion": 1, "game": "minecraft", "versionId": version, "name": "Mine",
+        "files": [pack_entry("mods/sodium-0.6.jar", "https://example.com/x.jar", sodium, "required")],
+        "dependencies": { "minecraft": "1.21.1", "fabric-loader": "0.16.0" },
+    })
+    .to_string();
+    let meta = own_meta("My Pack", version);
+    let icon = png(64, 64);
+    let mut entries: Vec<(&str, &[u8])> = vec![
+        (pack::INDEX, index.as_bytes()),
+        (crate::own::META, &meta),
+        ("icon.png", &icon),
+        ("overrides/config/sodium-options.json", b"{\"fast\":true}"),
+        ("overrides/options.txt", b"fov:0.5"),
+    ];
+    entries.extend_from_slice(extra);
+    mrpack(&entries)
+}
+
+#[tokio::test]
+async fn a_player_publishes_a_pack_of_catalog_mods_and_their_settings() {
+    let t = setup();
+    import_sodium(&t).await;
+    let (status, _) = t.upload(None, "/v1/packs", own_pack("1.0", &[])).await;
+    assert_eq!(status, StatusCode::UNAUTHORIZED);
+    let (status, answer) = t.upload(Some(1), "/v1/packs", own_pack("1.0", &[])).await;
+    assert_eq!(status, StatusCode::CREATED, "{answer}");
+    let project = &answer["project"];
+    let id = project["id"].as_str().unwrap().to_owned();
+    assert_eq!(project["kind"], "modpack");
+    assert_eq!(project["status"], "ready");
+    assert_eq!(project["title"], "My Pack");
+    assert_eq!(project["slug"], "my-pack");
+    assert_eq!(project["sources"][0]["source"], "own");
+    assert_eq!(project["authors"][0]["name"], "Player");
+    assert!(project["icon"].as_str().unwrap().starts_with(FILES));
+    let body = project["body"].as_str().unwrap();
+    assert!(
+        !body.contains('<') && body.contains("&lt;script>"),
+        "{body}"
+    );
+    // Installed like any pack: every file served by the catalog.
+    let (_, versions) = t.get(&format!("/v1/projects/{id}/versions")).await;
+    let version = versions["versions"][0]["id"].as_str().unwrap().to_owned();
+    assert_eq!(versions["versions"][0]["number"], "1.0");
+    let (status, pack) = t.get(&format!("/v1/versions/{version}/pack")).await;
+    assert_eq!(status, StatusCode::OK, "{pack}");
+    assert_eq!(pack["state"], "ready", "{pack}");
+    let file = &pack["files"][0];
+    assert_eq!(file["path"], "mods/sodium-0.6.jar");
+    assert!(file["url"].as_str().unwrap().starts_with(FILES), "{file}");
+    let (_, found) = t.get("/v1/search?q=my%20pack&kind=modpack").await;
+    assert_eq!(found["hits"][0]["id"], id.as_str(), "{found}");
+    // A new version of the same pack; a number once only; only its author.
+    let uri = format!("/v1/packs?project={id}");
+    // Bytes that do not compress.
+    let big: Vec<u8> = (0..40_000u32)
+        .flat_map(|n| sha2::Sha256::digest(n.to_le_bytes()))
+        .collect();
+    let archive = own_pack("1.1", &[("overrides/config/big.dat", &big)]);
+    assert!(archive.len() > 1_000_000);
+    let (status, answer) = t.upload(Some(1), &uri, archive).await;
+    assert_eq!(status, StatusCode::CREATED, "{answer}");
+    assert_eq!(answer["project"]["id"], id.as_str());
+    let (status, answer) = t.upload(Some(1), &uri, own_pack("1.1", &[])).await;
+    assert_eq!(
+        (status, &answer["error"]),
+        (StatusCode::CONFLICT, &json!("version_exists"))
+    );
+    let (status, _) = t.upload(Some(2), &uri, own_pack("1.2", &[])).await;
+    assert_eq!(status, StatusCode::NOT_FOUND);
+    let (status, _) = t
+        .upload(Some(1), "/v1/packs?project=sodium", own_pack("1.2", &[]))
+        .await;
+    assert_eq!(status, StatusCode::NOT_FOUND);
+    let (_, mine) = t.player(1, "GET", "/v1/packs/mine", Value::Null).await;
+    assert_eq!(mine["packs"][0]["id"], id.as_str());
+    assert_eq!(mine["packs"][0]["versions"], 2);
+    assert_eq!(mine["packs"][0]["latest"], "1.1");
+    let (_, theirs) = t.player(2, "GET", "/v1/packs/mine", Value::Null).await;
+    assert_eq!(theirs["packs"], json!([]));
+    // Hidden by its author, and shown again.
+    let hide = format!("/v1/packs/{id}/hidden");
+    let (status, _) = t.player(2, "POST", &hide, json!({ "hidden": true })).await;
+    assert_eq!(status, StatusCode::NOT_FOUND);
+    let (_, answer) = t.player(1, "POST", &hide, json!({ "hidden": true })).await;
+    assert_eq!(answer["status"], "hidden");
+    let (_, found) = t.get("/v1/search?q=my%20pack&kind=modpack").await;
+    assert_eq!(found["total"], 0, "{found}");
+    let (status, _) = t.upload(Some(1), &uri, own_pack("1.2", &[])).await;
+    assert_eq!(status, StatusCode::CREATED);
+    assert_eq!(
+        t.app.store.project_status(&id).unwrap().as_deref(),
+        Some("hidden")
+    );
+    let (_, answer) = t.player(1, "POST", &hide, json!({ "hidden": false })).await;
+    assert_eq!(answer["status"], "ready");
+    let (status, _) = t.player(1, "POST", &hide, json!({ "hidden": "no" })).await;
+    assert!(status.is_client_error());
+    // Never fetched from a source.
+    age(&t, 30 * 86_400);
+    import::refresh(&t.app, None).unwrap();
+    t.drain().await;
+    let counts = t.app.store.counts().unwrap();
+    assert_eq!(counts["ownPacks"], 1);
+    assert_eq!(counts["ownVersions"], 3);
+}
+
+#[tokio::test]
+async fn own_packs_bring_only_catalog_files_and_settings() {
+    let t = setup();
+    import_sodium(&t).await;
+    let refused = |extra: &[(&str, &[u8])]| own_pack("1.0", extra);
+    for (n, (name, bytes)) in [
+        ("overrides/mods/extra.jar", &b"a mod"[..]),
+        ("overrides/config/Evil.class", b"code"),
+        ("overrides/config/run.sh", b"rm"),
+        ("overrides/config/a.jar.disabled", b"a mod"),
+        ("overrides/config/x.dll", b"code"),
+        ("overrides/../escape.txt", b"x"),
+        ("overrides/C:/x.txt", b"x"),
+        ("overrides/unknown-folder/x.txt", b"x"),
+        ("client-overrides/config/x.txt", b"x"),
+        ("evil.txt", b"x"),
+    ]
+    .into_iter()
+    .enumerate()
+    {
+        let who = Some(10 + n as u8);
+        let (status, answer) = t.upload(who, "/v1/packs", refused(&[(name, bytes)])).await;
+        assert_eq!(status, StatusCode::UNPROCESSABLE_ENTITY, "{name}: {answer}");
+        assert_eq!(answer["error"], "not_allowed", "{name}");
+        assert_eq!(answer["paths"].as_array().unwrap().len(), 1, "{name}");
+    }
+    // A file the catalog does not have: named, to add first.
+    let other = b"a mod nobody added";
+    let index = json!({
+        "formatVersion": 1, "game": "minecraft",
+        "files": [pack_entry("mods/other.jar", "https://cdn.modrinth.com/x", other, "required")],
+        "dependencies": { "minecraft": "1.21.1" },
+    })
+    .to_string();
+    let meta = own_meta("Other pack", "1");
+    let archive = mrpack(&[(pack::INDEX, index.as_bytes()), (crate::own::META, &meta)]);
+    let (status, answer) = t.upload(Some(1), "/v1/packs", archive).await;
+    assert_eq!(status, StatusCode::UNPROCESSABLE_ENTITY);
+    assert_eq!(
+        answer,
+        json!({ "error": "not_in_catalog", "paths": ["mods/other.jar"] })
+    );
+    // Broken archives, texts and icons.
+    let index = json!({
+        "formatVersion": 1, "game": "minecraft", "files": [],
+        "dependencies": { "minecraft": "1.21.1" },
+    })
+    .to_string();
+    let with = |meta: &[u8], extra: &[(&str, &[u8])]| {
+        let mut entries: Vec<(&str, &[u8])> = vec![(pack::INDEX, index.as_bytes())];
+        if !meta.is_empty() {
+            entries.push((crate::own::META, meta));
+        }
+        entries.extend_from_slice(extra);
+        mrpack(&entries)
+    };
+    let meta_of = |v: Value| v.to_string().into_bytes();
+    let big = png(3000, 4);
+    let unsupported = json!({
+        "formatVersion": 1, "game": "minecraft",
+        "files": [pack_entry("mods/sodium-0.6.jar", "x", b"jar of sodium-0.6.jar", "unsupported")],
+        "dependencies": { "minecraft": "1.21.1" },
+    })
+    .to_string();
+    for (n, (archive, code)) in [
+        (b"not a zip".to_vec(), "bad_pack"),
+        (Vec::new(), "too_big"),
+        (with(b"", &[]), "bad_meta"),
+        (with(b"{}", &[]), "bad_meta"),
+        (
+            with(&meta_of(json!({ "title": "x", "version": "1" })), &[]),
+            "bad_title",
+        ),
+        (
+            with(&meta_of(json!({ "title": "  !!  ", "version": "1" })), &[]),
+            "bad_title",
+        ),
+        (
+            with(&meta_of(json!({ "title": "Fine", "version": "1 0" })), &[]),
+            "bad_version",
+        ),
+        (
+            with(&meta_of(json!({ "title": "Fine", "version": "../1" })), &[]),
+            "bad_version",
+        ),
+        (
+            with(
+                &meta_of(json!({ "title": "x".repeat(81), "version": "1" })),
+                &[],
+            ),
+            "too_long",
+        ),
+        (
+            with(
+                &meta_of(json!({ "title": "Fine", "version": "1", "body": "x".repeat(70_000) })),
+                &[],
+            ),
+            "too_long",
+        ),
+        (
+            with(
+                &meta_of(json!({ "title": "Fine", "version": "1", "evil": true })),
+                &[],
+            ),
+            "bad_meta",
+        ),
+        (
+            with(&own_meta("Fine", "1"), &[("icon.png", b"not a picture")]),
+            "bad_icon",
+        ),
+        (
+            with(&own_meta("Fine", "1"), &[("icon.png", &big)]),
+            "bad_icon",
+        ),
+        (
+            mrpack(&[
+                (pack::INDEX, unsupported.as_bytes()),
+                (crate::own::META, &own_meta("Fine", "1")),
+            ]),
+            "bad_pack",
+        ),
+        (
+            mrpack(&[(crate::own::META, &own_meta("Fine", "1"))]),
+            "bad_pack",
+        ),
+    ]
+    .into_iter()
+    .enumerate()
+    {
+        let (status, answer) = t.upload(Some(30 + n as u8), "/v1/packs", archive).await;
+        let expected = if code == "too_big" {
+            StatusCode::PAYLOAD_TOO_LARGE
+        } else {
+            StatusCode::BAD_REQUEST
+        };
+        assert_eq!((status, answer["error"].as_str()), (expected, Some(code)));
+    }
+    let (status, _) = t
+        .upload(
+            Some(1),
+            "/v1/packs",
+            vec![0; crate::own::MAX_ARCHIVE as usize + 1],
+        )
+        .await;
+    assert_eq!(status, StatusCode::PAYLOAD_TOO_LARGE);
+    // A file held back: the pack waits for the owner's decision.
+    let (sha256, _) = sodium_release(&t).await;
+    let purged = Purged::default();
+    owner(&t, &purged).block(&sha(&sha256), "").unwrap();
+    let (status, answer) = t.upload(Some(1), "/v1/packs", own_pack("1.0", &[])).await;
+    assert_eq!(status, StatusCode::UNPROCESSABLE_ENTITY);
+    assert_eq!(
+        answer,
+        json!({ "error": "held", "paths": ["mods/sodium-0.6.jar"] })
+    );
+    owner(&t, &purged).unblock(&sha(&sha256)).unwrap();
+    // A bounded number of new packs a day.
+    for n in 0..crate::own::PACKS_PER_DAY {
+        let archive = own_pack(&format!("1.{n}"), &[]);
+        let (status, answer) = t.upload(Some(3), "/v1/packs", archive).await;
+        assert_eq!(status, StatusCode::CREATED, "{answer}");
+    }
+    let (status, answer) = t.upload(Some(3), "/v1/packs", own_pack("2.0", &[])).await;
+    assert_eq!(
+        (status, &answer["error"]),
+        (StatusCode::TOO_MANY_REQUESTS, &json!("too_many_packs"))
+    );
+    assert_eq!(
+        t.app.store.counts().unwrap()["ownPacks"],
+        crate::own::PACKS_PER_DAY
+    );
+}
+
+#[test]
+fn own_pack_texts_and_paths_are_checked() {
+    use crate::own::{meta, overridable, slug};
+    assert_eq!(slug("My Pack!"), "my-pack");
+    assert_eq!(slug("Сборка"), "pack");
+    assert_eq!(slug("  a  "), "pack");
+    assert!(slug(&"long ".repeat(30)).len() <= 40);
+    for ok in [
+        "config/a.json",
+        "options.txt",
+        "resourcepacks/x.zip",
+        "saves/w/level.dat",
+    ] {
+        assert!(overridable(ok), "{ok}");
+    }
+    for bad in [
+        "mods/a.jar",
+        "mods/a.txt",
+        "config/a.jar",
+        "config/a.JAR.disabled",
+        "config/a.class",
+        "config/a.exe.txt",
+        "config/a.ps1",
+        "config/../a.txt",
+        "/config/a.txt",
+        "config\\a.txt",
+        "nowhere/a.txt",
+    ] {
+        assert!(!overridable(bad), "{bad}");
+    }
+    let m = meta(br#"{"title":" Mine\u202e\n","version":"V1.0","body":"<b>x</b>"}"#).unwrap();
+    assert_eq!((m.title.as_str(), m.number.as_str()), ("Mine", "v1.0"));
+    assert_eq!(m.body, "&lt;b>x&lt;/b>");
+    assert!(meta(b"[]").is_err());
+    assert!(meta(br#"{"title":"Mine"}"#).is_err());
+}
+
+#[tokio::test]
+async fn players_report_own_packs_to_the_owner() {
+    let t = setup();
+    import_sodium(&t).await;
+    let (_, answer) = t.upload(Some(1), "/v1/packs", own_pack("1.0", &[])).await;
+    let id = answer["project"]["id"].as_str().unwrap().to_owned();
+    let uri = format!("/v1/projects/{id}/report");
+    let (status, _) = t
+        .call(None, "POST", &uri, json!({ "reason": "malware" }))
+        .await;
+    assert_eq!(status, StatusCode::UNAUTHORIZED);
+    for junk in [
+        json!({ "reason": "boring" }),
+        json!({ "reason": "other", "text": "x".repeat(501) }),
+        json!({ "reason": "other", "extra": 1 }),
+        json!({ "text": "no reason" }),
+    ] {
+        let (status, _) = t.player(2, "POST", &uri, junk.clone()).await;
+        assert!(status.is_client_error(), "{junk}");
+    }
+    // Only players' own packs are reported here.
+    let (_, sodium) = t.get("/v1/projects/sodium").await;
+    let sodium_uri = format!("/v1/projects/{}/report", sodium["id"].as_str().unwrap());
+    let (status, _) = t
+        .player(2, "POST", &sodium_uri, json!({ "reason": "malware" }))
+        .await;
+    assert_eq!(status, StatusCode::NOT_FOUND);
+    let (status, _) = t
+        .player(
+            2,
+            "POST",
+            &uri,
+            json!({ "reason": "malware", "text": "steals\u{0} passwords" }),
+        )
+        .await;
+    assert_eq!(status, StatusCode::ACCEPTED);
+    let (status, _) = t
+        .player(2, "POST", &uri, json!({ "reason": "other" }))
+        .await;
+    assert_eq!(status, StatusCode::ACCEPTED);
+    let purged = Purged::default();
+    let o = owner(&t, &purged);
+    assert_eq!(o.review_count().unwrap(), ["report 1", "total 1"]);
+    let review = o.review().unwrap();
+    assert!(
+        review[0].contains("report") && review[0].contains("malware 1"),
+        "{review:?}"
+    );
+    assert!(
+        review.iter().any(|l| l.contains("\"steals passwords\"")),
+        "{review:?}"
+    );
+    let item: i64 = review[0][1..].split(' ').next().unwrap().parse().unwrap();
+    o.decide(item, "keep", "").unwrap();
+    assert_eq!(o.review_count().unwrap(), ["total 0"]);
+    // Another player's report puts it back; `block` removes the pack.
+    t.player(3, "POST", &uri, json!({ "reason": "stolen" }))
+        .await;
+    let review = o.review().unwrap();
+    let item: i64 = review[0][1..].split(' ').next().unwrap().parse().unwrap();
+    o.decide(item, "block", "stolen").unwrap();
+    assert_eq!(
+        t.app.store.project_status(&id).unwrap().as_deref(),
+        Some("removed")
+    );
+    let (status, answer) = t
+        .upload(
+            Some(1),
+            &format!("/v1/packs?project={id}"),
+            own_pack("1.1", &[]),
+        )
+        .await;
+    assert_eq!(
+        (status, &answer["error"]),
+        (StatusCode::GONE, &json!("removed"))
+    );
+    let (status, _) = t
+        .player(4, "POST", &uri, json!({ "reason": "other" }))
+        .await;
+    assert_eq!(status, StatusCode::NOT_FOUND);
+    let hide = format!("/v1/packs/{id}/hidden");
+    let (_, answer) = t.player(1, "POST", &hide, json!({ "hidden": false })).await;
+    assert_eq!(answer["status"], "removed");
+}

@@ -56,20 +56,23 @@ it). What the launcher puts into an installation is listed in its `content.lock.
       variable `MODS_CDN_URL` to `https://cdn-mods.lapi.sh` and re-run the workflow:
       from then on the API gives R2's addresses for files already copied.
 
+8. **Players' own packs:** after the deploy that brings them, re-run `bootstrap.sh` once
+   on the server, so nginx takes a pack's archive (up to 91 MB) on `/v1/packs`.
+
 ## The owner's commands
 
 On the server, as `sudo -u lapi-mods /home/www/lapi/mods/current/lapi-mods <command>`:
 
-| Command                                          | What it does                                                                                                    |
-| ------------------------------------------------ | --------------------------------------------------------------------------------------------------------------- |
-| `find <address, slug, ID, SHA-256 or SHA-1>`     | a project with its versions and files, or a file: state, verdict, signs, where it is used, decisions            |
-| `review`                                         | what waits: files the scanner held back (`scan`), versions their source took down (`gone`)                      |
-| `review <n> keep` or `review <n> block [reason]` | decides item `n`: `keep` serves a held file again, `block` blocks the files                                     |
-| `block <SHA-256 or SHA-1> [reason]`              | takes the file out of service at once, tells launchers, clears Cloudflare's cache; also for a file not here yet |
-| `unblock <SHA-256 or SHA-1>`                     | lifts a block, or lets a file the scanner held go; no later scan holds it                                       |
-| `remove <project> [reason]`                      | at its author's request: the project leaves search and the API for good, files only it needs are held back      |
-| `forget <SHA-256> [--yes]`                       | deletes a held file for good (asks for `--yes`); the catalog never fetches it again                             |
-| `restore`                                        | brings back to the disk, checked by SHA-256, the files only R2 still has                                        |
+| Command                                          | What it does                                                                                                                  |
+| ------------------------------------------------ | ----------------------------------------------------------------------------------------------------------------------------- |
+| `find <address, slug, ID, SHA-256 or SHA-1>`     | a project with its versions and files, or a file: state, verdict, signs, where it is used, decisions                          |
+| `review`                                         | what waits: files the scanner held back (`scan`), versions their source took down (`gone`), reported packs (`report`)         |
+| `review <n> keep` or `review <n> block [reason]` | decides item `n`: `keep` serves a held file again or dismisses reports, `block` blocks the files or removes the reported pack |
+| `block <SHA-256 or SHA-1> [reason]`              | takes the file out of service at once, tells launchers, clears Cloudflare's cache; also for a file not here yet               |
+| `unblock <SHA-256 or SHA-1>`                     | lifts a block, or lets a file the scanner held go; no later scan holds it                                                     |
+| `remove <project> [reason]`                      | at its author's request: the project leaves search and the API for good, files only it needs are held back                    |
+| `forget <SHA-256> [--yes]`                       | deletes a held file for good (asks for `--yes`); the catalog never fetches it again                                           |
+| `restore`                                        | brings back to the disk, checked by SHA-256, the files only R2 still has                                                      |
 
 `find` and `review` show titles and names: run them in a terminal, not in a workflow.
 Without SSH, Actions → Mods service → Run workflow with `task=block` or `task=unblock` and

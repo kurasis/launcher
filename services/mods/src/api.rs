@@ -614,6 +614,218 @@ async fn choose(
     }
 }
 
+/// Own packs published, per account and per address an hour (own.rs has
+/// the limits a day); reports likewise.
+pub const PUBLISHES_PER_HOUR: u32 = 10;
+pub const PUBLISHES_PER_HOUR_PER_ADDRESS: u32 = 20;
+pub const REPORTS_PER_HOUR: u32 = 10;
+pub const REPORTS_PER_HOUR_PER_ADDRESS: u32 = 30;
+
+#[derive(Deserialize, Default)]
+pub struct PublishQuery {
+    project: Option<String>,
+}
+
+/// Writes a request's body to a part file, at most `max` bytes; `None` when
+/// it is larger or breaks off.
+async fn body_to_part(app: &App, body: axum::body::Body, max: u64) -> Option<std::path::PathBuf> {
+    use http_body_util::BodyExt as _;
+    use tokio::io::AsyncWriteExt as _;
+    let part = app.blobs.part();
+    let written = async {
+        let mut file = tokio::fs::File::create(&part).await.ok()?;
+        let mut body = body;
+        let mut total = 0u64;
+        while let Some(frame) = body.frame().await {
+            let Ok(data) = frame.ok()?.into_data() else {
+                continue;
+            };
+            total += data.len() as u64;
+            if total > max {
+                return None;
+            }
+            file.write_all(&data).await.ok()?;
+        }
+        file.flush().await.ok()?;
+        file.sync_all().await.ok()?;
+        (total > 0).then_some(())
+    }
+    .await;
+    if written.is_none() {
+        let _ = tokio::fs::remove_file(&part).await;
+        return None;
+    }
+    Some(part)
+}
+
+/// A player publishes their own pack (own.rs): the archive is the body, and
+/// `?project=` makes it a new version of one of their packs.
+async fn publish_pack(
+    State(app): State<Arc<App>>,
+    headers: HeaderMap,
+    Query(q): Query<PublishQuery>,
+    body: axum::body::Body,
+) -> Response {
+    let me = match who(&app, &headers) {
+        Ok(me) => me,
+        Err(response) => return *response,
+    };
+    let project = match q.project.as_deref().map(our_id) {
+        None => None,
+        Some(Some(id)) => Some(id.to_owned()),
+        Some(None) => return refuse(StatusCode::NOT_FOUND, "not_found"),
+    };
+    if !app.limiter.allow(
+        &client(&headers),
+        "publish-address",
+        PUBLISHES_PER_HOUR_PER_ADDRESS,
+        Duration::from_secs(3600),
+    ) || !app.limiter.allow(
+        &me.sub,
+        "publish",
+        PUBLISHES_PER_HOUR,
+        Duration::from_secs(3600),
+    ) {
+        return refuse(StatusCode::TOO_MANY_REQUESTS, "too_many");
+    }
+    let declared = headers
+        .get(header::CONTENT_LENGTH)
+        .and_then(|v| v.to_str().ok())
+        .and_then(|v| v.parse::<u64>().ok());
+    if declared.is_some_and(|n| n > crate::own::MAX_ARCHIVE) {
+        return refuse(StatusCode::PAYLOAD_TOO_LARGE, "too_big");
+    }
+    let Some(part) = body_to_part(&app, body, crate::own::MAX_ARCHIVE).await else {
+        return refuse(StatusCode::PAYLOAD_TOO_LARGE, "too_big");
+    };
+    let author = crate::own::Author {
+        account: &me.sub,
+        nick: &me.nick,
+    };
+    match crate::own::publish(&app, &author, project.as_deref(), part).await {
+        Ok(id) => match app.store.project_json(&id, &app.urls) {
+            Ok(Some(p)) => private(json!({ "project": p }), StatusCode::CREATED),
+            Ok(None) => failed("a pack just published is not there"),
+            Err(e) => failed(&e),
+        },
+        Err(refusal) => {
+            if let crate::own::Refusal::Server(e) = &refusal {
+                eprintln!("lapi-mods: publishing a pack: {e}");
+            }
+            let (status, answer) = crate::own::refusal_json(&refusal);
+            private(
+                answer,
+                StatusCode::from_u16(status).unwrap_or(StatusCode::INTERNAL_SERVER_ERROR),
+            )
+        }
+    }
+}
+
+/// The asking account's own packs.
+async fn my_packs(State(app): State<Arc<App>>, headers: HeaderMap) -> Response {
+    let me = match who(&app, &headers) {
+        Ok(me) => me,
+        Err(response) => return *response,
+    };
+    match app.store.own_packs(&me.sub) {
+        Ok(packs) => private(json!({ "packs": packs }), StatusCode::OK),
+        Err(e) => failed(&e),
+    }
+}
+
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct HiddenBody {
+    hidden: bool,
+}
+
+/// The author hides their pack from the catalog, or shows it again.
+async fn set_hidden(
+    State(app): State<Arc<App>>,
+    headers: HeaderMap,
+    Path(id): Path<String>,
+    Json(body): Json<HiddenBody>,
+) -> Response {
+    let me = match who(&app, &headers) {
+        Ok(me) => me,
+        Err(response) => return *response,
+    };
+    let Some(id) = our_id(&id) else {
+        return refuse(StatusCode::NOT_FOUND, "not_found");
+    };
+    match app.store.own_account(id) {
+        Ok(Some(account)) if account == me.sub => {}
+        Ok(_) => return refuse(StatusCode::NOT_FOUND, "not_found"),
+        Err(e) => return failed(&e),
+    }
+    match app.store.set_own_hidden(id, body.hidden) {
+        Ok(_) => match app.store.project_status(id) {
+            Ok(status) => private(json!({ "status": status }), StatusCode::OK),
+            Err(e) => failed(&e),
+        },
+        Err(e) => failed(&e),
+    }
+}
+
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct ReportBody {
+    reason: String,
+    #[serde(default)]
+    text: String,
+}
+
+/// A player reports a player's own pack to the owner.
+async fn report(
+    State(app): State<Arc<App>>,
+    headers: HeaderMap,
+    Path(id): Path<String>,
+    Json(body): Json<ReportBody>,
+) -> Response {
+    let me = match who(&app, &headers) {
+        Ok(me) => me,
+        Err(response) => return *response,
+    };
+    let Some(id) = our_id(&id) else {
+        return refuse(StatusCode::NOT_FOUND, "not_found");
+    };
+    if !crate::own::REASONS.contains(&body.reason.as_str())
+        || body.text.chars().count() > crate::own::MAX_REPORT
+    {
+        return refuse(StatusCode::BAD_REQUEST, "bad_report");
+    }
+    if !app.limiter.allow(
+        &client(&headers),
+        "report-address",
+        REPORTS_PER_HOUR_PER_ADDRESS,
+        Duration::from_secs(3600),
+    ) || !app.limiter.allow(
+        &me.sub,
+        "report",
+        REPORTS_PER_HOUR,
+        Duration::from_secs(3600),
+    ) {
+        return refuse(StatusCode::TOO_MANY_REQUESTS, "too_many");
+    }
+    let own = app
+        .store
+        .own_account(id)
+        .and_then(|a| Ok((a, app.store.project_status(id)?)));
+    match own {
+        Ok((Some(_), Some(status))) if status != "removed" => {}
+        Ok(_) => return refuse(StatusCode::NOT_FOUND, "not_found"),
+        Err(e) => return failed(&e),
+    }
+    let text = crate::model::clean(&body.text, crate::own::MAX_REPORT, false);
+    match app
+        .store
+        .add_report(id, &me.sub, &body.reason, text.trim(), now())
+    {
+        Ok(_) => private(json!({ "reported": true }), StatusCode::ACCEPTED),
+        Err(e) => failed(&e),
+    }
+}
+
 pub fn router(app: Arc<App>) -> Router {
     Router::new()
         .route("/v1/health", get(health))
@@ -631,6 +843,10 @@ pub fn router(app: Arc<App>) -> Router {
         .route("/v1/imports", get(my_imports).post(create_import))
         .route("/v1/imports/{request}", get(get_import))
         .route("/v1/imports/{request}/choose", post(choose))
+        .route("/v1/packs", post(publish_pack))
+        .route("/v1/packs/mine", get(my_packs))
+        .route("/v1/packs/{project}/hidden", post(set_hidden))
+        .route("/v1/projects/{project}/report", post(report))
         .layer(DefaultBodyLimit::max(32 * 1024))
         .with_state(app)
 }

@@ -16,6 +16,7 @@ import { formatBytes } from '../../lib/format';
 import { describeIpcError, ipc } from '../../lib/ipc';
 import { strings } from '../../lib/strings';
 import { ExportDialog } from './ExportDialog';
+import { PublishDialog } from './PublishDialog';
 import { ourPicture, packArchive } from './helpers';
 import { PackDialog } from './PackDialog';
 import styles from './Mods.module.css';
@@ -247,6 +248,7 @@ export function ContentSection({ instance, onOpen, onUpdate, revision }: Props) 
   const [batch, setBatch] = useState<Batch | null>(null);
   const [updatingPack, setUpdatingPack] = useState<ModsVersion | null>(null);
   const [exporting, setExporting] = useState(false);
+  const [publishing, setPublishing] = useState(false);
   // Files the catalog has since marked as malware (D-066, stage 6).
   const [harmful, setHarmful] = useState<string[]>([]);
   const pack = view?.pack ?? null;
@@ -449,6 +451,14 @@ export function ContentSection({ instance, onOpen, onUpdate, revision }: Props) 
         >
           {t.export}
         </Button>
+        <Button
+          disabled={busy}
+          onClick={() => {
+            setPublishing(true);
+          }}
+        >
+          {t.publish}
+        </Button>
       </div>
       {updates !== null && updates.length === 0 && (
         <p className={styles.muted} role="status">
@@ -528,6 +538,18 @@ export function ContentSection({ instance, onOpen, onUpdate, revision }: Props) 
           instance={instance}
           onClose={() => {
             setExporting(false);
+          }}
+        />
+      )}
+      {publishing && (
+        <PublishDialog
+          instance={instance}
+          onClose={() => {
+            setPublishing(false);
+          }}
+          onOpen={(projectId) => {
+            setPublishing(false);
+            onOpen(projectId);
           }}
         />
       )}

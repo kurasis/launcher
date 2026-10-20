@@ -1222,7 +1222,7 @@ export interface FailureSummary {
 
 /** What the catalog holds. */
 export type ModsKind = 'mod' | 'modpack' | 'resourcepack' | 'shader' | 'datapack' | 'world';
-export type ModsSource = 'modrinth' | 'curseforge' | 'packwiz';
+export type ModsSource = 'modrinth' | 'curseforge' | 'packwiz' | 'own';
 export type ModsSort = 'relevance' | 'downloads' | 'updated' | 'new' | 'title';
 
 export interface ModsSearchQuery {
@@ -1541,6 +1541,62 @@ export interface ModsExportResult {
     bytes: number;
   } | null;
 }
+
+/** What publishing an installation as a pack would take (D-066 stage 6). */
+export interface ModsPublishCheck {
+  check: {
+    /** Files named by their hashes in the catalog. */
+    linked: number;
+    /** The player's own files, copied in. */
+    bundled: number;
+    bytes: number;
+    /** Mods the catalog does not have: to be added first. */
+    missing: string[];
+    /** Files the catalog never takes in a pack (code, programs). */
+    refused: string[];
+    /** Files over the size a pack may bring. */
+    tooBig: string[];
+    /** The catalog's pack this installation was published as. */
+    published: string | null;
+  };
+  /** The account's pack this installation was published as. */
+  pack: ModsOwnPack | null;
+  /** The installation's name, for the title. */
+  name: string;
+}
+
+/** One of the player's own packs, as the catalog lists it. */
+export interface ModsOwnPack {
+  id: string;
+  slug: string;
+  title: string;
+  status: 'ready' | 'hidden' | 'removed' | 'importing';
+  versions: number;
+  latest: string | null;
+}
+
+/** What the player fills in to publish a pack. */
+export interface ModsPublishForm {
+  title: string;
+  summary: string;
+  body: string;
+  version: string;
+  changes: string;
+  choice: ModsExportChoice;
+}
+
+/** What the catalog answered to a publish. */
+export type ModsPublished =
+  | { outcome: 'published'; projectId: string; slug: string }
+  | {
+      outcome: 'refused';
+      /** not_in_catalog, held, not_allowed or too_big. */
+      code: string;
+      paths: string[];
+    };
+
+/** What a player may report a pack for. */
+export type ModsReportReason = 'malware' | 'stolen' | 'inappropriate' | 'broken' | 'other';
 
 /** A file of the player's that the catalog recognized. */
 export interface ContentIdentified {

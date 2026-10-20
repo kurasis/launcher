@@ -1252,7 +1252,8 @@
       "sources": {
         "modrinth": "Modrinth",
         "curseforge": "CurseForge",
-        "packwiz": "packwiz"
+        "packwiz": "packwiz",
+        "own": "Сборки игроков"
       },
       "link": {
         "title": "Открыть ссылку?",
@@ -1293,7 +1294,20 @@
         "noneMatch": "Нет версий под выбранные условия.",
         "showAll": "Показать все",
         "matching": "{count, plural, one {# версия} few {# версии} many {# версий} other {# версии}} из {total}",
-        "held": "Проверка каталога на вредоносный код задержала файл этой версии до решения. Поставить её нельзя."
+        "held": "Проверка каталога на вредоносный код задержала файл этой версии до решения. Поставить её нельзя.",
+        "report": "Пожаловаться",
+        "reportReason": "Причина",
+        "reportReasons": {
+          "malware": "Вредоносное",
+          "stolen": "Чужая работа",
+          "inappropriate": "Недопустимое содержимое",
+          "broken": "Не работает",
+          "other": "Другое"
+        },
+        "reportText": "Что не так (необязательно)",
+        "reportSend": "Отправить жалобу",
+        "reportCancel": "Отмена",
+        "reportSent": "Спасибо. Владелец каталога посмотрит сборку."
       },
       "add": {
         "title": "Добавить {title} в «{name}»",
@@ -1487,7 +1501,42 @@
         "alsoRemove": "Удалить и то, что было нужно только ему: {names}",
         "checkingNeeds": "Проверяю, кому он нужен…",
         "harmfulTitle": "Найдены вредоносные файлы",
-        "harmfulText": "Каталог отметил эти файлы как вредоносные. Удалите их из установки."
+        "harmfulText": "Каталог отметил эти файлы как вредоносные. Удалите их из установки.",
+        "publish": "Опубликовать в каталоге",
+        "publishTitle": "Опубликовать сборку в каталоге",
+        "publishHint": "Сборку сразу видят все в каталоге; потом её можно скрыть. Моды, ресурспаки и шейдеры берутся из каталога, поэтому каждый должен там быть. Конфиги и настройки копируются в сборку; код и программы в сборку не попадают никогда. Выключенные файлы, логи и список серверов не берутся.",
+        "publishChecking": "Проверяю файлы установки…",
+        "publishReady": "Готово: из каталога {linked}; копируется {bundled} ({size}).",
+        "publishMissing": "Этих файлов нет в каталоге. Сначала добавьте их в каталог или удалите:",
+        "publishNotAllowed": "Эти файлы нельзя класть в сборку (код или программы). Удалите их:",
+        "publishTooBig": "Эти файлы больше 64 МБ. Удалите их или не берите миры:",
+        "publishedAs": "Опубликована как {title}: {count, plural, one {# версия} few {# версии} many {# версий} other {# версии}}, последняя {latest}. Следующая публикация добавит версию.",
+        "publishHidden": "Сборка скрыта из каталога.",
+        "publishRemoved": "Каталог удалил эту сборку. Публикация создаст новую.",
+        "publishHide": "Скрыть из каталога",
+        "publishShow": "Показать в каталоге",
+        "publishAsNew": "Опубликовать как новую сборку",
+        "publishName": "Название",
+        "publishVersion": "Номер версии",
+        "publishVersionHint": "Буквы, цифры и . - _ +, например 1.0.2. Каждой версии нужен новый номер.",
+        "publishSummary": "Краткое описание",
+        "publishBody": "Описание",
+        "publishBodyHint": "Markdown: заголовки, списки, ссылки, жирный и курсив.",
+        "publishChanges": "Что нового в этой версии",
+        "publishIcon": "Выбрать иконку",
+        "publishIconAgain": "Выбрать другую иконку",
+        "publishIconPreview": "Иконка сборки",
+        "publishing": "Публикую сборку…",
+        "publishDone": "Сборка в каталоге.",
+        "publishStart": "Опубликовать",
+        "publishVersionStart": "Опубликовать новую версию",
+        "publishRefused": {
+          "not_in_catalog": "Этих файлов нет в каталоге:",
+          "held": "Проверка каталога на вредоносное задержала эти файлы:",
+          "not_allowed": "Каталог не принимает эти файлы в сборке:",
+          "too_big": "Эти файлы слишком большие для сборки:",
+          "other": "Каталог не принял сборку."
+        }
       }
     },
     "worlds": {
@@ -2369,6 +2418,25 @@
     "Bringing in the installation": "Перенос установки",
     "Choose what to bring in first.": "Сначала выберите, что перенести.",
     "An installation was made for this already.": "Для этого уже создана установка.",
-    "This mod loader has no version for this Minecraft version.": "У этого загрузчика модов нет версии для этой версии Minecraft."
+    "This mod loader has no version for this Minecraft version.": "У этого загрузчика модов нет версии для этой версии Minecraft.",
+    "A text of the pack is too long.": "Один из текстов сборки слишком длинный.",
+    "A version number is letters, digits and . - _ + only, such as 1.0.2.": "Номер версии: только буквы, цифры и . - _ +, например 1.0.2.",
+    "Choose the icon again.": "Выберите иконку ещё раз.",
+    "Give the pack a title of 2 to 80 characters.": "Дайте сборке название от 2 до 80 символов.",
+    "Publishing was cancelled.": "Публикация отменена.",
+    "Reading the modpack": "Чтение сборки",
+    "Some files of this installation cannot go into a pack. Check the list.": "Некоторые файлы этой установки нельзя положить в сборку. Посмотрите список.",
+    "The catalog removed this pack. It cannot get new versions.": "Каталог удалил эту сборку. Новые версии для неё не принимаются.",
+    "The catalog's check of the pack found something it does not allow, and refused it.": "Проверка каталога нашла в сборке недопустимое и не приняла её.",
+    "The icon could not be read.": "Не удалось прочитать иконку.",
+    "The icon may be 512 KB at most.": "Иконка может быть не больше 512 КБ.",
+    "The icon must be a PNG, JPEG or WebP picture of 2048 pixels at most.": "Иконка должна быть картинкой PNG, JPEG или WebP не больше 2048 пикселей.",
+    "The icon must be a PNG, JPEG or WebP picture.": "Иконка должна быть картинкой PNG, JPEG или WebP.",
+    "The pack is larger than 90 MB packed. Leave out worlds or large files.": "Сборка в архиве больше 90 МБ. Не берите миры или большие файлы.",
+    "This report cannot be sent.": "Эту жалобу нельзя отправить.",
+    "This version number is published already. Raise it.": "Версия с таким номером уже опубликована. Увеличьте номер.",
+    "Your account published 20 versions today. Try again tomorrow.": "Ваш аккаунт сегодня уже опубликовал 20 версий. Попробуйте завтра.",
+    "Your account published 5 new packs today. Try again tomorrow.": "Ваш аккаунт сегодня уже опубликовал 5 новых сборок. Попробуйте завтра.",
+    "Your packs take 2 GB in the catalog, as much as an account may have.": "Ваши сборки занимают в каталоге 2 ГБ, это предел для аккаунта."
   }
 }

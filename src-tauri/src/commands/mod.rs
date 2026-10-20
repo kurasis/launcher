@@ -2668,6 +2668,218 @@ pub async fn mods_export_pack<R: Runtime>(
     })
 }
 
+/// What publishing an installation as a pack would take, and the pack it
+/// was published as, if any (D-066, stage 6).
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ModsPublishCheck {
+    pub check: crate::mods::publish::PublishCheck,
+    /// The account's pack this installation was published as.
+    pub pack: Option<crate::mods::OwnPack>,
+    /// The installation's name, for the title.
+    pub name: String,
+}
+
+#[tauri::command]
+pub async fn mods_publish_check<R: Runtime>(
+    app: AppHandle<R>,
+    instance_id: crate::storage::paths::InstanceId,
+    choice: crate::mods::pack::ExportChoice,
+) -> LauncherResult<ModsPublishCheck> {
+    crate::mods::online(&app.state::<AppState>())?;
+    let mods = mods(&app);
+    let state = app.state::<AppState>();
+    let (root, instance) = crate::mods::content::instance_of(&state, instance_id)?;
+    let lock = crate::mods::content::load_lock(&root, instance_id);
+    let sorted =
+        crate::mods::publish::sort(&mods.client, &root.game_dir(instance_id), choice).await?;
+    let mut check = sorted.check;
+    check.published.clone_from(&lock.published);
+    let pack = match &lock.published {
+        Some(id) => mods
+            .client
+            .own_packs(&app)
+            .await?
+            .into_iter()
+            .find(|p| &p.id == id),
+        None => None,
+    };
+    Ok(ModsPublishCheck {
+        check,
+        pack,
+        name: instance.display_name,
+    })
+}
+
+/// A picture for a pack's icon, checked; the next publish takes it.
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ModsPickedIcon {
+    /// `data:` address of the picture, for the form to show.
+    pub preview: String,
+}
+
+/// Picks a pack's icon in the native dialog. `Ok(None)` when it was closed.
+#[tauri::command]
+pub async fn mods_publish_icon<R: Runtime>(
+    app: AppHandle<R>,
+    title: Option<String>,
+) -> LauncherResult<Option<ModsPickedIcon>> {
+    use base64::Engine as _;
+    use tauri_plugin_dialog::DialogExt;
+    let title = window_title(title, "Choose the pack's icon");
+    let handle = app.clone();
+    let picked = tauri::async_runtime::spawn_blocking(move || {
+        handle
+            .dialog()
+            .file()
+            .set_title(title)
+            .add_filter("PNG, JPEG, WebP", &["png", "jpg", "jpeg", "webp"])
+            .blocking_pick_file()
+    })
+    .await
+    .map_err(|_| crate::error::LauncherError::internal("The file dialog failed."))?;
+    let Some(path) = picked.and_then(|p| p.into_path().ok()) else {
+        return Ok(None);
+    };
+    let (name, bytes) =
+        tauri::async_runtime::spawn_blocking(move || crate::mods::publish::read_icon(&path))
+            .await
+            .map_err(|_| crate::error::LauncherError::internal("The icon could not be read."))??;
+    let media_type = match name {
+        "icon.png" => "image/png",
+        "icon.jpg" => "image/jpeg",
+        _ => "image/webp",
+    };
+    let preview = format!(
+        "data:{media_type};base64,{}",
+        base64::engine::general_purpose::STANDARD.encode(&bytes)
+    );
+    *mods(&app)
+        .icon
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner) = Some((name, bytes));
+    Ok(Some(ModsPickedIcon { preview }))
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct ModsPublishPayload {
+    pub instance_id: crate::storage::paths::InstanceId,
+    pub form: crate::mods::publish::PublishForm,
+    /// With the icon picked last.
+    #[serde(default)]
+    pub icon: bool,
+    /// A new pack even when this installation was published before.
+    #[serde(default)]
+    pub as_new: bool,
+}
+
+/// Publishes an installation as the player's own pack of the catalog, or a
+/// new version of the pack it was published as.
+#[tauri::command]
+pub async fn mods_publish<R: Runtime>(
+    app: AppHandle<R>,
+    payload: ModsPublishPayload,
+) -> LauncherResult<crate::mods::publish::Published> {
+    use crate::mods::publish;
+    crate::mods::online(&app.state::<AppState>())?;
+    let id = payload.instance_id;
+    let mods = mods(&app);
+    let meta = publish::meta(&payload.form)?;
+    let icon =
+        if payload.icon {
+            let picked = mods
+                .icon
+                .lock()
+                .unwrap_or_else(std::sync::PoisonError::into_inner)
+                .clone();
+            Some(picked.ok_or_else(|| {
+                crate::error::LauncherError::invalid_input("Choose the icon again.")
+            })?)
+        } else {
+            None
+        };
+    let claim = mods.content.claim(id)?;
+    let state = app.state::<AppState>();
+    state.activity().ensure_instance_idle(id)?;
+    let (root, instance) = crate::mods::content::instance_of(&state, id)?;
+    let lock = crate::mods::content::load_lock(&root, id);
+    let sorted = publish::sort(&mods.client, &root.game_dir(id), payload.form.choice).await?;
+    if !sorted.check.ready() {
+        return Err(crate::error::LauncherError::invalid_input(
+            "Some files of this installation cannot go into a pack. Check the list.",
+        ));
+    }
+    let target = publish::Target {
+        game: instance.version_id.clone(),
+        loader: instance.loader.clone(),
+    };
+    let part = publish::part_path(&root.instance_dir(id));
+    let archive = {
+        let part = part.clone();
+        let cancel = claim.cancel.clone();
+        tauri::async_runtime::spawn_blocking(move || {
+            let written =
+                publish::write(&part, &sorted, &target, &meta, icon, &cancel).and_then(|()| {
+                    std::fs::read(&part).map_err(|e| {
+                        crate::error::LauncherError::from_io(&e, "Reading the modpack")
+                    })
+                });
+            let _ = std::fs::remove_file(&part);
+            written
+        })
+        .await
+        .map_err(|_| crate::error::LauncherError::internal("The modpack could not be written."))??
+    };
+    let project = if payload.as_new {
+        None
+    } else {
+        lock.published.as_deref()
+    };
+    let published = mods.client.publish(&app, archive, project).await?;
+    if let publish::Published::Published { project_id, .. } = &published {
+        let mut lock = crate::mods::content::load_lock(&root, id);
+        lock.published = Some(project_id.clone());
+        crate::mods::content::save_published(&root, id, &lock)?;
+        *mods
+            .icon
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner) = None;
+        state
+            .console()
+            .info("Mods: an installation was published as a pack");
+    }
+    drop(claim);
+    Ok(published)
+}
+
+/// Hides the player's own pack from the catalog, or shows it again.
+#[tauri::command]
+pub async fn mods_pack_hidden<R: Runtime>(
+    app: AppHandle<R>,
+    project: String,
+    hidden: bool,
+) -> LauncherResult<String> {
+    crate::mods::online(&app.state::<AppState>())?;
+    mods(&app).client.set_hidden(&app, &project, hidden).await
+}
+
+/// Reports a player's own pack to the catalog's owner.
+#[tauri::command]
+pub async fn mods_report<R: Runtime>(
+    app: AppHandle<R>,
+    project: String,
+    reason: String,
+    text: String,
+) -> LauncherResult<()> {
+    crate::mods::online(&app.state::<AppState>())?;
+    mods(&app)
+        .client
+        .report(&app, &project, &reason, &text)
+        .await
+}
+
 /// Stops an install into an installation.
 #[tauri::command]
 pub fn mods_cancel<R: Runtime>(

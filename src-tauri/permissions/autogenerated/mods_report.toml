@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-mods-report"
+description = "Enables the mods_report command without any pre-configured scope."
+commands.allow = ["mods_report"]
+
+[[permission]]
+identifier = "deny-mods-report"
+description = "Denies the mods_report command without any pre-configured scope."
+commands.deny = ["mods_report"]

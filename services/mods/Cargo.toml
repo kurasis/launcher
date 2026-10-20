@@ -25,11 +25,11 @@ rustix = { version = "1", features = ["fs"] }
 toml = { version = "1.1", default-features = false, features = ["parse", "serde", "std"] }
 zip = { version = "8.6.0", default-features = false, features = ["deflate"] }
 image = { version = "0.25", default-features = false, features = ["png", "jpeg", "gif", "webp"] }
+http-body-util = "0.1"
 
 [dev-dependencies]
 tower = { version = "0.5", features = ["util"] }
 tempfile = "3"
-http-body-util = "0.1"
 
 [profile.release]
 lto = "thin"
