@@ -134,6 +134,7 @@ const PORT_TRIES: usize = 256;
 /// listener shows up as a bind failure.
 pub fn pick_ports() -> LauncherResult<(u16, u16)> {
     let mut held: Vec<(u16, TcpListener)> = Vec::with_capacity(2);
+    let mut last_error = std::io::Error::from(std::io::ErrorKind::AddrInUse);
     for _ in 0..PORT_TRIES {
         let mut random = [0u8; 2];
         getrandom::fill(&mut random).map_err(|_| {
@@ -144,15 +145,17 @@ pub fn pick_ports() -> LauncherResult<(u16, u16)> {
         if USUAL_SERVER_PORTS.contains(&port) || held.iter().any(|(p, _)| *p == port) {
             continue;
         }
-        if let Ok(listener) = TcpListener::bind((Ipv4Addr::LOCALHOST, port)) {
-            held.push((port, listener));
-            if let [(first, _), (second, _)] = held.as_slice() {
-                return Ok((*first, *second));
-            }
+        match TcpListener::bind((Ipv4Addr::LOCALHOST, port)) {
+            Ok(listener) => held.push((port, listener)),
+            Err(error) => last_error = error,
+        }
+        if let [(first, _), (second, _)] = held.as_slice() {
+            return Ok((*first, *second));
         }
     }
-    Err(LauncherError::internal(
-        "No free port was found for the world.",
+    Err(LauncherError::from_io(
+        &last_error,
+        "Choosing a port for the world",
     ))
 }
 
