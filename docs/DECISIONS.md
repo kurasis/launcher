@@ -2162,6 +2162,11 @@ archive from the Package workflow, upload it to
   (`<id>/<class>/<slug>`) with the request; choosing it uses that stored reference,
   never one the player sends. One source failing leaves the other's hits. The probe
   prints how many hits it reads and whether JEI is among them.
+- **Fifth probe (2026-10-20):** the search page carries no results; the site loads them
+  in the browser from its search API, which refuses the server (403). The five "hits"
+  read were the site's categories (an ID, slug, name and class too), so a hit now needs
+  a summary and an author. Until the results can be had, a name finds CurseForge
+  projects only by their page address.
 
 ## D-067 — Start page feed at feed.lapi.sh
 

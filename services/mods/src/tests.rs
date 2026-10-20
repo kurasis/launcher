@@ -1705,7 +1705,11 @@ fn cf_search_page() -> String {
             hit(JEI, "jei", "Just Enough Items", 6),
             hit(4, "a-plugin", "A plugin", 5),
             other_game,
-            { "id": 6, "slug": "pack", "name": "A Pack", "class": { "slug": "texture-packs" } },
+            { "id": 6, "slug": "pack", "name": "A Pack", "class": { "slug": "texture-packs" },
+              "summary": "Blocks", "authors": [{ "name": "artist" }] },
+            // The site's categories look alike, with no summary or author.
+            { "id": 423, "slug": "map-information", "name": "Map and Information", "classId": 6,
+              "gameId": 432, "parentCategoryId": 6 },
         ]}]),
         json!({ "again": hit(JEI, "jei", "Just Enough Items", 6) })
     );
@@ -1803,18 +1807,24 @@ fn curseforge_search_pages_are_read_with_care() {
     assert!(curseforge::candidates("").is_empty());
     // Many hits: five at most.
     let many: Vec<Value> = (1..50)
-        .map(|n| json!({ "id": n, "slug": format!("m{n}"), "name": "M", "classId": 6 }))
+        .map(|n| {
+            json!({ "id": n, "slug": format!("m{n}"), "name": "M", "classId": 6,
+                    "summary": "S", "author": "A" })
+        })
         .collect();
     let rsc = format!("1:{}\n", json!(many));
     let html = format!("<script>self.__next_f.push({})</script>", json!([1, rsc]));
     assert_eq!(curseforge::candidates(&html).len(), 5);
-    // Bad IDs, slugs and names are left out.
+    // Bad IDs, slugs and names are left out, and so are hits without a
+    // summary or author.
     let bad = json!([
-        { "id": 0, "slug": "a", "name": "A", "classId": 6 },
-        { "id": 12_345_678_901u64, "slug": "a", "name": "A", "classId": 6 },
-        { "id": 7, "slug": "../a", "name": "A", "classId": 6 },
-        { "id": 8, "slug": "a", "name": "\u{7}", "classId": 6 },
-        { "id": "9", "slug": "a", "name": "A", "classId": 6 },
+        { "id": 10, "slug": "a", "name": "A", "classId": 6, "author": "A" },
+        { "id": 11, "slug": "a", "name": "A", "classId": 6, "summary": "S" },
+        { "id": 0, "slug": "a", "name": "A", "classId": 6, "summary": "S", "author": "A" },
+        { "id": 12_345_678_901u64, "slug": "a", "name": "A", "classId": 6, "summary": "S", "author": "A" },
+        { "id": 7, "slug": "../a", "name": "A", "classId": 6, "summary": "S", "author": "A" },
+        { "id": 8, "slug": "a", "name": "\u{7}", "classId": 6, "summary": "S", "author": "A" },
+        { "id": "9", "slug": "a", "name": "A", "classId": 6, "summary": "S", "author": "A" },
     ]);
     let rsc = format!("1:{bad}\n");
     let html = format!("<script>self.__next_f.push({})</script>", json!([1, rsc]));
