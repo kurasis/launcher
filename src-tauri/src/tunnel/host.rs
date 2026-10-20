@@ -148,12 +148,13 @@ async fn answer(send: &mut SendStream, request_id: &str, refusal: Option<Refusal
 }
 
 /// Reads the login from the admitted stream: the bytes read so far, or `None`
-/// when it is not a login of `expected`.
+/// when it is not a login of `expected` from a client of the server's
+/// `protocol`.
 async fn read_login(recv: &mut RecvStream, protocol: i32, expected: &Nick) -> Option<Vec<u8>> {
     let mut buffer = Vec::with_capacity(512);
     let mut chunk = [0u8; 1024];
     loop {
-        match handshake::classify(&buffer, protocol) {
+        match handshake::classify(&buffer, Some(protocol)) {
             Ok(Classified::NeedMore) => {}
             Ok(Classified::Login { nick, .. }) if nick == *expected => return Some(buffer),
             // A status ping, another name or junk never reaches the server.

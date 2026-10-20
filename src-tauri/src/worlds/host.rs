@@ -14,6 +14,7 @@ use std::io::Write;
 use std::net::{Ipv4Addr, TcpListener};
 use std::path::Path;
 use std::process::ChildStdin;
+use std::sync::atomic::{AtomicI32, Ordering};
 use std::sync::{Arc, Condvar, Mutex, MutexGuard, PoisonError};
 use std::time::{Duration, Instant};
 
@@ -43,6 +44,10 @@ pub const STOP_GRACE: Duration = Duration::from_secs(60);
 /// Time for the status ping to succeed after the `Done (` line.
 const PING_WINDOW: Duration = Duration::from_secs(15);
 const PING_TIMEOUT: Duration = Duration::from_secs(3);
+/// A status ping may name any protocol; the server answers with its own.
+const ANY_PROTOCOL: i32 = -1;
+/// The protocols of releases from 1.7.6 on (snapshots set bit 30).
+const RELEASE_PROTOCOLS: std::ops::Range<i64> = 5..0x4000_0000;
 
 /// Everything one start needs.
 pub struct Launch<'a> {
@@ -104,7 +109,8 @@ pub struct HostedServer {
     world_id: WorldId,
     operation_id: String,
     port: u16,
-    protocol: i32,
+    /// The server's game protocol, as its status ping gave it; 0 until ready.
+    protocol: AtomicI32,
     supervised: Supervised,
     stdin: Mutex<Option<ChildStdin>>,
     signal: Signal,
@@ -129,8 +135,12 @@ pub fn arguments(jar: &Path, heap_mib: u32) -> Vec<String> {
         format!("-Xms{}M", heap_mib.min(1024)),
         format!("-Xmx{heap_mib}M"),
         "-Dfile.encoding=UTF-8".to_owned(),
-        // Relative to the server directory, where prepare_run writes it.
-        format!("-Dlog4j2.configurationFile={}", world::LOG_CONFIG),
+        // Relative to the server directory, where prepare_run writes it. The
+        // old name is the one every Log4j 2 reads, back to 1.7's 2.0-beta9.
+        format!("-Dlog4j.configurationFile={}", world::LOG_CONFIG),
+        // No lookups in messages (Log4Shell) where Log4j reads this (2.10 on);
+        // the configuration's filter covers the older ones too.
+        "-Dlog4j2.formatMsgNoLookups=true".to_owned(),
         "-jar".to_owned(),
         jar.to_string_lossy().into_owned(),
         "--nogui".to_owned(),
@@ -169,9 +179,11 @@ pub fn start(
 ) -> LauncherResult<HostedServer> {
     let root = launch.root;
     let world: WorldFile = world::load(root, launch.world_id)?;
-    let tuple = tuple::find(&world.minecraft).ok_or_else(|| {
-        LauncherError::invalid_input("Worlds are not available for this Minecraft version yet.")
-    })?;
+    if tuple::release(&world.minecraft).is_none() {
+        return Err(LauncherError::invalid_input(
+            "Worlds are not available for this Minecraft version yet.",
+        ));
+    }
     let pin = world.server.clone().ok_or_else(|| {
         server_error(
             ErrorCode::RepairRequired,
@@ -293,7 +305,7 @@ pub fn start(
         world_id,
         operation_id,
         port,
-        protocol: tuple.protocol,
+        protocol: AtomicI32::new(0),
         supervised,
         stdin: Mutex::new(Some(stdin)),
         signal,
@@ -305,9 +317,9 @@ impl HostedServer {
         self.port
     }
 
-    /// The game protocol of the server's version.
+    /// The game protocol of the server's version, known once it is ready.
     pub fn protocol(&self) -> i32 {
-        self.protocol
+        self.protocol.load(Ordering::Acquire)
     }
 
     pub fn world_id(&self) -> WorldId {
@@ -384,9 +396,11 @@ impl HostedServer {
         }
         let ping_until = Instant::now() + PING_WINDOW;
         while Instant::now() < ping_until && !self.supervised.has_exited() {
-            if super::ping::status(self.port, self.protocol, PING_TIMEOUT)
-                .is_some_and(|s| i64::from(self.protocol) == s.protocol)
+            if let Some(protocol) = super::ping::status(self.port, ANY_PROTOCOL, PING_TIMEOUT)
+                .filter(|s| RELEASE_PROTOCOLS.contains(&s.protocol))
+                .and_then(|s| i32::try_from(s.protocol).ok())
             {
+                self.protocol.store(protocol, Ordering::Release);
                 let mut shared = lock(&self.signal);
                 if shared.phase == Some(Phase::Starting) {
                     shared.phase = Some(Phase::Ready);
@@ -561,7 +575,8 @@ mod tests {
                 "-Xms1024M",
                 "-Xmx2048M",
                 "-Dfile.encoding=UTF-8",
-                "-Dlog4j2.configurationFile=launcher-log4j2.xml",
+                "-Dlog4j.configurationFile=launcher-log4j2.xml",
+                "-Dlog4j2.formatMsgNoLookups=true",
                 "-jar",
                 "/data/shared/servers/x/server.jar",
                 "--nogui"

@@ -160,8 +160,7 @@ async fn a_member_plays_in_the_hosts_world_until_removed() {
             room: &room,
             nick: Nick::parse("Guest_One").unwrap(),
             route: Route::Known(host_address.clone()),
-            protocol: 767,
-            version_name: "1.21.1",
+            version_name: "1.21.1".into(),
         },
         Arc::new(|| {}),
     )
@@ -316,8 +315,7 @@ async fn a_guest_plays_again_after_quitting_the_game() {
             room: &room,
             nick: Nick::parse("Guest_One").unwrap(),
             route: Route::Known(host_address.clone()),
-            protocol: 767,
-            version_name: "1.21.1",
+            version_name: "1.21.1".into(),
         },
         Arc::new(|| {}),
     )
@@ -386,8 +384,7 @@ async fn a_lapsed_lease_cuts_guests_off_and_opens_a_new_session() {
             room: &room,
             nick: Nick::parse("Guest_One").unwrap(),
             route: Route::Known(host_address.clone()),
-            protocol: 767,
-            version_name: "1.21.1",
+            version_name: "1.21.1".into(),
         },
         Arc::new(|| {}),
     )
@@ -420,8 +417,7 @@ async fn a_lapsed_lease_cuts_guests_off_and_opens_a_new_session() {
             room: &guest_client.room(ROOM).await.unwrap(),
             nick: Nick::parse("Guest_One").unwrap(),
             route: Route::Known(host.endpoint().addr()),
-            protocol: 767,
-            version_name: "1.21.1",
+            version_name: "1.21.1".into(),
         },
         Arc::new(|| {}),
     )

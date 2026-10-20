@@ -7,6 +7,7 @@
 
 use serde::{Deserialize, Serialize};
 
+use super::tuple::Release;
 use crate::error::{LauncherError, LauncherResult};
 use crate::secrets::SecretString;
 
@@ -25,12 +26,17 @@ pub enum Difficulty {
 }
 
 impl Difficulty {
-    fn as_str(self) -> &'static str {
-        match self {
-            Self::Peaceful => "peaceful",
-            Self::Easy => "easy",
-            Self::Normal => "normal",
-            Self::Hard => "hard",
+    /// The value in the file: a name from 1.14 on, a number before.
+    fn value(self, release: Release) -> &'static str {
+        match (self, release.named_modes()) {
+            (Self::Peaceful, true) => "peaceful",
+            (Self::Easy, true) => "easy",
+            (Self::Normal, true) => "normal",
+            (Self::Hard, true) => "hard",
+            (Self::Peaceful, false) => "0",
+            (Self::Easy, false) => "1",
+            (Self::Normal, false) => "2",
+            (Self::Hard, false) => "3",
         }
     }
 }
@@ -45,11 +51,15 @@ pub enum GameMode {
 }
 
 impl GameMode {
-    fn as_str(self) -> &'static str {
-        match self {
-            Self::Survival => "survival",
-            Self::Creative => "creative",
-            Self::Adventure => "adventure",
+    /// The value in the file: a name from 1.14 on, a number before.
+    fn value(self, release: Release) -> &'static str {
+        match (self, release.named_modes()) {
+            (Self::Survival, true) => "survival",
+            (Self::Creative, true) => "creative",
+            (Self::Adventure, true) => "adventure",
+            (Self::Survival, false) => "0",
+            (Self::Creative, false) => "1",
+            (Self::Adventure, false) => "2",
         }
     }
 }
@@ -66,12 +76,18 @@ pub enum Preset {
 }
 
 impl Preset {
-    fn as_str(self) -> &'static str {
-        match self {
-            Self::Normal => "minecraft:normal",
-            Self::Flat => "minecraft:flat",
-            Self::LargeBiomes => "minecraft:large_biomes",
-            Self::Amplified => "minecraft:amplified",
+    /// The value in the file: a world preset ID from 1.19 on, the world type's
+    /// name before (read without regard to case).
+    fn value(self, release: Release) -> &'static str {
+        match (self, release.preset_ids()) {
+            (Self::Normal, true) => "minecraft:normal",
+            (Self::Flat, true) => "minecraft:flat",
+            (Self::LargeBiomes, true) => "minecraft:large_biomes",
+            (Self::Amplified, true) => "minecraft:amplified",
+            (Self::Normal, false) => "default",
+            (Self::Flat, false) => "flat",
+            (Self::LargeBiomes, false) => "largebiomes",
+            (Self::Amplified, false) => "amplified",
         }
     }
 }
@@ -145,8 +161,10 @@ pub struct RunBinding {
     pub rcon_password: SecretString,
 }
 
-/// The whole file. `settings` must have passed [`WorldSettings::validate`].
-pub fn render(settings: &WorldSettings, binding: &RunBinding) -> String {
+/// The whole file for a server of `release`. `settings` must have passed
+/// [`WorldSettings::validate`]. Keys an older server does not know are kept
+/// and ignored by it.
+pub fn render(settings: &WorldSettings, binding: &RunBinding, release: Release) -> String {
     let difficulty = if settings.hardcore {
         Difficulty::Hard
     } else {
@@ -179,10 +197,10 @@ pub fn render(settings: &WorldSettings, binding: &RunBinding) -> String {
         // The world.
         ("level-name", "world".into()),
         ("level-seed", escape(&settings.seed)),
-        ("level-type", escape(settings.preset.as_str())),
+        ("level-type", escape(settings.preset.value(release))),
         ("generate-structures", "true".into()),
-        ("difficulty", difficulty.as_str().into()),
-        ("gamemode", settings.game_mode.as_str().into()),
+        ("difficulty", difficulty.value(release).into()),
+        ("gamemode", settings.game_mode.value(release).into()),
         ("force-gamemode", "false".into()),
         ("hardcore", settings.hardcore.to_string()),
         ("pvp", settings.pvp.to_string()),
@@ -237,6 +255,10 @@ pub fn escape(value: &str) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn newest() -> Release {
+        crate::worlds::tuple::release("1.21.1").unwrap()
+    }
 
     fn binding() -> RunBinding {
         RunBinding {
@@ -300,7 +322,7 @@ mod tests {
 
     #[test]
     fn fixed_security_settings() {
-        let text = render(&WorldSettings::default(), &binding());
+        let text = render(&WorldSettings::default(), &binding(), newest());
         for (key, expected) in [
             ("online-mode", "false"),
             ("white-list", "true"),
@@ -337,7 +359,7 @@ mod tests {
                 seed: seed.to_owned(),
                 ..WorldSettings::default()
             };
-            let text = render(&settings, &binding());
+            let text = render(&settings, &binding(), newest());
             assert_eq!(
                 value(&text, "level-seed"),
                 vec![seed.to_owned()],
@@ -373,9 +395,50 @@ mod tests {
             difficulty: Difficulty::Peaceful,
             ..WorldSettings::default()
         };
-        let text = render(&settings, &binding());
+        let text = render(&settings, &binding(), newest());
         assert_eq!(value(&text, "difficulty"), vec!["hard".to_owned()]);
         assert_eq!(value(&text, "hardcore"), vec!["true".to_owned()]);
+    }
+
+    #[test]
+    fn values_follow_the_release() {
+        let settings = WorldSettings {
+            preset: Preset::LargeBiomes,
+            difficulty: Difficulty::Easy,
+            game_mode: GameMode::Creative,
+            ..WorldSettings::default()
+        };
+        for (id, preset, difficulty, mode) in [
+            ("1.7.10", "largebiomes", "1", "1"),
+            ("1.13.2", "largebiomes", "1", "1"),
+            ("1.14", "largebiomes", "easy", "creative"),
+            ("1.18.2", "largebiomes", "easy", "creative"),
+            ("1.19", "minecraft:large_biomes", "easy", "creative"),
+            ("26.1", "minecraft:large_biomes", "easy", "creative"),
+        ] {
+            let release = crate::worlds::tuple::release(id).unwrap();
+            let text = render(&settings, &binding(), release);
+            assert_eq!(value(&text, "level-type"), vec![preset.to_owned()], "{id}");
+            assert_eq!(
+                value(&text, "difficulty"),
+                vec![difficulty.to_owned()],
+                "{id}"
+            );
+            assert_eq!(value(&text, "gamemode"), vec![mode.to_owned()], "{id}");
+            assert_eq!(
+                value(&text, "online-mode"),
+                vec!["false".to_owned()],
+                "{id}"
+            );
+            assert_eq!(value(&text, "white-list"), vec!["true".to_owned()], "{id}");
+        }
+        let old = crate::worlds::tuple::release("1.12.2").unwrap();
+        let hardcore = WorldSettings {
+            hardcore: true,
+            ..WorldSettings::default()
+        };
+        let text = render(&hardcore, &binding(), old);
+        assert_eq!(value(&text, "difficulty"), vec!["3".to_owned()]);
     }
 
     #[test]

@@ -113,11 +113,25 @@ jobs:
       # step and held runners other pull requests wait for (D-007).
 
   world-server:
-    # Worlds with Friends W3: Mojang's 1.21.1 server, installed through the
-    # launcher's verified downloads and run in offline mode on loopback. The
-    # test prints fixed words and numbers only.
-    name: World server (linux-x64)
+    # Worlds with Friends W3, A8: Mojang's server of each release below,
+    # installed through the launcher's verified downloads and run in offline
+    # mode on loopback. The test prints fixed words and numbers only.
+    name: World server ${{ matrix.minecraft }} (linux-x64)
     runs-on: ubuntu-24.04
+    strategy:
+      fail-fast: false
+      matrix:
+        # Releases where the server, its Java, Log4j or the Login Start
+        # changed; protocol empty for the newest, whatever it is.
+        include:
+          - { minecraft: '1.7.10', protocol: '5' }
+          - { minecraft: '1.12.2', protocol: '340' }
+          - { minecraft: '1.16.5', protocol: '754' }
+          - { minecraft: '1.18.2', protocol: '758' }
+          - { minecraft: '1.19.2', protocol: '760' }
+          - { minecraft: '1.20.1', protocol: '763' }
+          - { minecraft: '1.21.1', protocol: '767' }
+          - { minecraft: 'latest', protocol: '' }
     steps:
       - uses: actions/checkout@v7
 
@@ -137,7 +151,20 @@ jobs:
         with:
           workspaces: src-tauri
 
-      - name: Install and run a 1.21.1 world server
+      - name: Install and run the world server
+        env:
+          WORLD_VERSION: ${{ matrix.minecraft }}
+          WORLD_PROTOCOL: ${{ matrix.protocol }}
         run: >-
           cargo test --manifest-path src-tauri/Cargo.toml --locked --test live_server
           -- --ignored --nocapture --test-threads=1
+
+  world-servers:
+    # One result for every version above, under the check's earlier name.
+    name: World server (linux-x64)
+    needs: world-server
+    if: always()
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Every world server ran
+        run: test "${{ needs.world-server.result }}" = success
