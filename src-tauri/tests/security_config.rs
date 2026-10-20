@@ -288,6 +288,12 @@ fn main_window_capability_grants_only_app_commands() {
             "allow-worlds-play",
             "allow-worlds-devices",
             "allow-worlds-revoke-device",
+            "allow-worlds-importable",
+            "allow-worlds-import",
+            "allow-worlds-backups",
+            "allow-worlds-back-up",
+            "allow-worlds-restore",
+            "allow-worlds-export",
             "allow-start-lifecycle-test",
             "allow-stop-lifecycle-test",
         ]

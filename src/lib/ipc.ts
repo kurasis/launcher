@@ -63,6 +63,8 @@ import {
   type LocalWorld,
   type WorldsCreatePayload,
   type WorldsDevice,
+  type WorldsImportable,
+  type WorldsImportPayload,
   type WorldsInstance,
   type WorldsNewInvite,
   type WorldsPreview,
@@ -457,6 +459,23 @@ export const ipc = {
   worldsDevices: (): Promise<WorldsDevice[]> => invoke<WorldsDevice[]>('worlds_devices'),
   /** Signs another computer out of worlds; the worlds it hosts close. */
   worldsRevokeDevice: (device: string): Promise<void> => invoke('worlds_revoke_device', { device }),
+  /** Installations whose single-player worlds can be imported (W9). */
+  worldsImportable: (): Promise<WorldsImportable[]> =>
+    invoke<WorldsImportable[]>('worlds_importable'),
+  /** A new world from a copy of a single-player world, and its room. */
+  worldsImport: (payload: WorldsImportPayload): Promise<WorldsRoom> =>
+    invoke<WorldsRoom>('worlds_import', { payload }),
+  /** A world's backups, newest first. */
+  worldsBackups: (world: string): Promise<BackupInfo[]> =>
+    invoke<BackupInfo[]>('worlds_backups', { world }),
+  worldsBackUp: (world: string): Promise<BackupInfo> =>
+    invoke<BackupInfo>('worlds_back_up', { world }),
+  /** Puts a backup in place of the stopped world; it is backed up first. */
+  worldsRestore: (world: string, backup: string): Promise<void> =>
+    invoke('worlds_restore', { world, backup }),
+  /** Saves the stopped world as a zip where the player chooses. */
+  worldsExport: (world: string, title?: string): Promise<ExportResult> =>
+    invoke<ExportResult>('worlds_export', { world, title: title ?? null }),
   /** The interface has shown: a new version's start can count as good. */
   interfaceReady: (): Promise<void> => invoke('interface_ready'),
   /** Debug builds only; release builds have no handler for this command. */

@@ -1533,6 +1533,31 @@
         "device": "worlds.lapi.sh не принял этот компьютер. Попробуйте ещё раз.",
         "refused": "worlds.lapi.sh отказал."
       },
+      "import": {
+        "open": "Импортировать мир",
+        "title": "Импорт одиночного мира",
+        "hint": "Мир копируется в миры с друзьями, оригинал остаётся в своей установке. Сначала закройте игру. Миры установок с модами появятся позже.",
+        "installation": "Установка",
+        "world": "Мир",
+        "source": "{name} · Minecraft {version}",
+        "none": "Нет установок без модов с одиночными мирами на версии Minecraft, которую поддерживают миры с друзьями.",
+        "submit": "Импортировать",
+        "importing": "Копирование…"
+      },
+      "safety": {
+        "title": "Резервные копии",
+        "hint": "Когда мир закрывается после игры, которая его изменила, делается копия; хранятся {count, plural, one {последняя # автоматическая копия} few {последние # автоматические копии} many {последние # автоматических копий} other {последние # автоматической копии}}.",
+        "notPlayed": "Копии и экспорт станут доступны, когда мир откроют для игры.",
+        "backUp": "Сделать копию",
+        "export": "Экспорт в ZIP",
+        "exportTitle": "Экспорт мира",
+        "exported": "Сохранено как {name}.",
+        "whileHosted": "Закройте мир, чтобы сделать копию, восстановить или экспортировать его.",
+        "list": "Копии этого мира",
+        "created": "Копия сделана.",
+        "confirmRestore": "Вернуть копию от {date} вместо мира {world}? Сначала делается копия его текущего состояния.",
+        "restored": "Копия от {date} восстановлена."
+      },
       "devices": {
         "open": "Компьютеры",
         "title": "Компьютеры с мирами",
@@ -2174,6 +2199,22 @@
     "Worlds with friends need a Microsoft account that owns Minecraft. Sign in with it in the launcher once.": "Для миров с друзьями нужен аккаунт Microsoft с купленным Minecraft. Один раз войдите с ним в лаунчере.",
     "worlds.lapi.sh cannot be reached.": "worlds.lapi.sh недоступен.",
     "worlds.lapi.sh is not working right now.": "worlds.lapi.sh сейчас не работает.",
-    "worlds.lapi.sh refused this.": "worlds.lapi.sh отказал."
+    "worlds.lapi.sh refused this.": "worlds.lapi.sh отказал.",
+    "A world is being backed up or copied. Wait for it to finish.": "Мир сейчас копируется. Дождитесь окончания.",
+    "Choose a folder that exists.": "Выберите существующую папку.",
+    "Reading the backups stopped.": "Чтение копий прервалось.",
+    "The backup was not made.": "Копия не сделана.",
+    "The export could not be written.": "Не удалось записать экспорт.",
+    "The world change stopped.": "Изменение мира прервалось.",
+    "The world changed while it was copied. Close the game and try again.": "Мир изменился во время копирования. Закройте игру и попробуйте снова.",
+    "There is not enough free space: {need} MiB more are needed.": "Не хватает свободного места: нужно ещё {need} МиБ.",
+    "This backup belongs to another world.": "Эта копия относится к другому миру.",
+    "This folder is not a Minecraft world.": "Эта папка не мир Minecraft.",
+    "This world has more files than a world can have.": "В этом мире больше файлов, чем допустимо.",
+    "This world has not been played yet: there is nothing to back up.": "В этом мире ещё не играли: копировать нечего.",
+    "This world has not been played yet: there is nothing to export.": "В этом мире ещё не играли: экспортировать нечего.",
+    "This world is being hosted. Stop hosting it first.": "Этот мир сейчас открыт. Сначала закройте его.",
+    "This world is larger than a world can be.": "Этот мир больше допустимого размера.",
+    "Worlds with mods come later: import a world of an installation without mods.": "Миры с модами появятся позже: импортируйте мир из установки без модов."
   }
 }

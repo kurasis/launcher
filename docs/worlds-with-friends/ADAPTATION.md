@@ -202,3 +202,10 @@ tuple; Fabric and other loaders arrive in W12.
   through the tunnel. An invite is a code shown once, pasted or sent in a chat; there is no
   invite web page. The device list names a computer by its system and architecture, never its
   host name. Worlds is not offered as a start screen: rooms need the service.
+- 2026-10-20 — W9: no maintenance lease on worlds.lapi.sh. A world lives on one computer, so
+  backups, restores, imports and exports take a local claim instead: one at a time, never while
+  that world's server runs or a room gets ready, and hosting waits for them. Backups of worlds
+  use the D-047 store in a store of their own under `worlds/backups`; the last 10 automatic
+  ones (after a session that changed the world) are kept, ones made by hand stay. An export
+  holds the save only, never `server.properties` (console password) or the whitelist (names).
+  Import is for installations without mods until W12.

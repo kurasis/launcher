@@ -58,9 +58,16 @@ const local: LocalWorld = {
   },
   createdAt: '2026-10-19T00:00:00Z',
   lastRun: null,
+  played: false,
 };
 
-const idle: WorldsState = { preparing: null, hosting: null, guest: null, failed: null };
+const idle: WorldsState = {
+  preparing: null,
+  hosting: null,
+  guest: null,
+  failed: null,
+  maintenance: false,
+};
 
 /** A LauncherError carrying a worlds.lapi.sh problem. */
 function problem(name: string): Error {
@@ -354,5 +361,110 @@ describe('WorldsView', () => {
       expect(dialog.queryByText('Linux aarch64')).toBeNull();
     });
     expect(called(calls, 'worlds_revoke_device')[0]?.args).toEqual({ device: 'd-2' });
+  });
+
+  it('imports a single-player world as a copy, with the EULA accepted', async () => {
+    const INSTANCE = '33333333-3333-4333-8333-333333333333';
+    const { calls } = setup({
+      worlds_importable: () => [
+        {
+          instanceId: INSTANCE,
+          instanceName: 'Vanilla',
+          minecraft: '1.21.1',
+          saves: ['Home', 'Far'],
+        },
+      ],
+      worlds_import: () => mine,
+      worlds_accept_eula: () => local,
+    });
+    await screen.findByText('Our base');
+    fireEvent.click(screen.getByRole('button', { name: 'Import a world' }));
+    const dialog = within(await screen.findByRole('dialog'));
+    const name = await dialog.findByLabelText('World name');
+    expect(name).toHaveValue('Home');
+    // The name follows the chosen world.
+    fireEvent.change(dialog.getByLabelText('World'), { target: { value: 'Far' } });
+    expect(name).toHaveValue('Far');
+    const submit = dialog.getByRole('button', { name: 'Import' });
+    expect(submit).toBeDisabled();
+    fireEvent.click(dialog.getByLabelText('I accept the Minecraft EULA'));
+    fireEvent.click(submit);
+    await waitFor(() => {
+      expect(called(calls, 'worlds_accept_eula')).toHaveLength(1);
+    });
+    expect(called(calls, 'worlds_import')[0]?.args).toEqual({
+      payload: { instanceId: INSTANCE, save: 'Far', name: 'Far', description: '' },
+    });
+  });
+
+  it('says when nothing can be imported', async () => {
+    setup({ worlds_importable: () => [] });
+    await screen.findByText('Our base');
+    fireEvent.click(screen.getByRole('button', { name: 'Import a world' }));
+    expect(await screen.findByText(/No installation without mods/)).toBeInTheDocument();
+  });
+
+  it('restores a backup after naming its date, and exports the world', async () => {
+    const backup = {
+      id: '44444444-4444-4444-8444-444444444444',
+      instanceId: WORLD,
+      instanceName: 'Our base',
+      versionLabel: 'Minecraft 1.21.1',
+      versionId: '1.21.1',
+      scope: { kind: 'world', name: 'world' },
+      reason: 'after_play',
+      createdAt: '2026-10-19T12:00:00Z',
+      fileCount: 12,
+      totalBytes: 2048,
+      newBytes: 1024,
+    };
+    const { calls } = setup({
+      worlds_local: () => [{ ...local, played: true }],
+      worlds_backups: () => [backup],
+      worlds_export: () => ({ saved: true, fileName: 'Our base.zip' }),
+    });
+    const card = within((await screen.findByText('Our base')).closest('li') as HTMLElement);
+    fireEvent.click(card.getByRole('button', { name: 'Open' }));
+    const list = within(await screen.findByRole('list', { name: 'Backups of this world' }));
+    expect(list.getByText(/After playing/)).toBeInTheDocument();
+    fireEvent.click(list.getByRole('button', { name: 'Restore' }));
+    const dialog = within(screen.getByRole('dialog'));
+    const date = new Date(backup.createdAt).toLocaleString('en');
+    expect(
+      dialog.getByText((text) => text.includes(`from ${date} in place of Our base`)),
+    ).toBeInTheDocument();
+    fireEvent.click(dialog.getByRole('button', { name: 'Restore' }));
+    await waitFor(() => {
+      expect(called(calls, 'worlds_restore')[0]?.args).toEqual({ world: WORLD, backup: backup.id });
+    });
+    fireEvent.click(screen.getByRole('button', { name: 'Export as ZIP' }));
+    expect(await screen.findByText('Saved as Our base.zip.')).toBeInTheDocument();
+    expect(called(calls, 'worlds_export')[0]?.args).toEqual({
+      world: WORLD,
+      title: 'Export the world',
+    });
+  });
+
+  it('waits with backups while the world is open', async () => {
+    setup({
+      worlds_state: () => ({
+        ...idle,
+        hosting: {
+          room: ROOM,
+          world: WORLD,
+          phase: 'ready',
+          players: [],
+          ended: null,
+          clean: null,
+        },
+      }),
+      worlds_local: () => [{ ...local, played: true }],
+      worlds_backups: () => [],
+    });
+    const card = within((await screen.findByText('Our base')).closest('li') as HTMLElement);
+    fireEvent.click(card.getByRole('button', { name: 'Open' }));
+    expect(await screen.findByText(/Close the world to back it up/)).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Back up now' })).toBeDisabled();
+    expect(screen.getByRole('button', { name: 'Export as ZIP' })).toBeDisabled();
   });
 });

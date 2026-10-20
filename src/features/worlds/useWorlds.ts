@@ -3,7 +3,13 @@ import type { WorldsState } from '../../lib/contracts';
 import { describeIpcError, ipc, onWorldsState, worldsProblemOf } from '../../lib/ipc';
 import { strings } from '../../lib/strings';
 
-const IDLE: WorldsState = { preparing: null, hosting: null, guest: null, failed: null };
+const IDLE: WorldsState = {
+  preparing: null,
+  hosting: null,
+  guest: null,
+  failed: null,
+  maintenance: false,
+};
 
 /** What this computer does for a room, kept current from `worlds://state`. */
 export function useWorldsState(): WorldsState {

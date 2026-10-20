@@ -255,13 +255,18 @@ pub fn start(
             if !clean && shared.error.is_none() && !shared.stop_requested {
                 shared.error = Some(ErrorCode::GameExitedWithError);
             }
-            shared.exited = Some(clean);
-            shared.phase = Some(Phase::Exited);
-            shared.players.clear();
             clean
         };
         receipt::clear(&exit_root, &exit_operation);
+        // Written before the exit is told, so whoever waited for it (a
+        // backup after play) finds world.json final.
         finish_world(&exit_root, world_id, clean);
+        {
+            let mut shared = lock(&exit_signal);
+            shared.exited = Some(clean);
+            shared.phase = Some(Phase::Exited);
+            shared.players.clear();
+        }
         drop(permit);
         exit_signal.1.notify_all();
         on_change();

@@ -22,6 +22,7 @@ pub mod properties;
 pub mod protocol;
 pub mod rcon;
 pub mod receipt;
+pub mod safety;
 pub mod service;
 pub mod tuple;
 pub mod world;

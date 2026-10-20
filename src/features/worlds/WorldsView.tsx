@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { Button } from '../../components/Button';
 import { Notice } from '../../components/Notice';
 import { Panel } from '../../components/Panel';
@@ -8,6 +8,7 @@ import { ipc } from '../../lib/ipc';
 import { strings } from '../../lib/strings';
 import { CreateWorld } from './CreateWorld';
 import { Devices } from './Devices';
+import { ImportWorld } from './ImportWorld';
 import { JoinByCode } from './JoinByCode';
 import { RoomActions } from './RoomActions';
 import { RoomPage } from './RoomPage';
@@ -34,7 +35,7 @@ export function WorldsView({ snapshot, onOpenAccounts, initialRoom = null }: Pro
   const [local, setLocal] = useState<LocalWorld[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [room, setRoom] = useState<string | null>(initialRoom);
-  const [dialog, setDialog] = useState<'create' | 'code' | 'devices' | null>(null);
+  const [dialog, setDialog] = useState<'create' | 'import' | 'code' | 'devices' | null>(null);
 
   const load = useCallback(() => {
     void ipc
@@ -62,6 +63,18 @@ export function WorldsView({ snapshot, onOpenAccounts, initialRoom = null }: Pro
   useEffect(() => {
     if (signedIn && hostingRoom !== null) load();
   }, [signedIn, hostingRoom, load]);
+
+  // A world played for the first time, restored or imported shows at once.
+  const changing = useRef(state.maintenance);
+  useEffect(() => {
+    if (changing.current && !state.maintenance) {
+      void ipc
+        .worldsLocal()
+        .then(setLocal)
+        .catch(() => undefined);
+    }
+    changing.current = state.maintenance;
+  }, [state.maintenance]);
 
   const onLocal = (world: LocalWorld) => {
     setLocal((current) => current.map((w) => (w.id === world.id ? world : w)));
@@ -109,6 +122,13 @@ export function WorldsView({ snapshot, onOpenAccounts, initialRoom = null }: Pro
               }}
             >
               {t.create}
+            </Button>
+            <Button
+              onClick={() => {
+                setDialog('import');
+              }}
+            >
+              {t.import.open}
             </Button>
             <Button
               onClick={() => {
@@ -187,6 +207,18 @@ export function WorldsView({ snapshot, onOpenAccounts, initialRoom = null }: Pro
           onCreated={() => {
             setDialog(null);
             load();
+          }}
+        />
+      )}
+      {dialog === 'import' && (
+        <ImportWorld
+          onClose={() => {
+            setDialog(null);
+          }}
+          onImported={(imported) => {
+            setDialog(null);
+            load();
+            setRoom(imported.id);
           }}
         />
       )}

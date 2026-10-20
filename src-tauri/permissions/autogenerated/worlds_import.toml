@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-worlds-import"
+description = "Enables the worlds_import command without any pre-configured scope."
+commands.allow = ["worlds_import"]
+
+[[permission]]
+identifier = "deny-worlds-import"
+description = "Denies the worlds_import command without any pre-configured scope."
+commands.deny = ["worlds_import"]
