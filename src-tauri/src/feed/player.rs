@@ -16,6 +16,14 @@ use super::model::{Lang, twitch_login, video_id};
 /// The player window's label; `capabilities/player.json` grants it nothing.
 pub const WINDOW: &str = "player";
 const PLAY_HOST: &str = "feed.lapi.sh";
+/// Runs in every frame of the player window and reports loads and errors
+/// through the play page's title (Ai asked for the player's details in the
+/// console, D-067).
+const DEBUG_SCRIPT: &str = include_str!("player_debug.js");
+/// Titles that carry a debug line start with this; `DEBUG_SCRIPT` sets it.
+const DEBUG_MARK: &str = "\u{2063}player\u{2063}";
+/// Longest line the console takes from the player window.
+const DEBUG_LINE: usize = 300;
 
 /// What plays.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -107,6 +115,24 @@ pub fn open_in_browser<R: Runtime>(app: &AppHandle<R>, url: &str) -> bool {
     }
 }
 
+/// The address without its query, as the console shows it.
+fn short(url: &Url) -> String {
+    format!("{}{}", url.host_str().unwrap_or(url.scheme()), url.path())
+}
+
+/// One line about the player window in the launcher's console, without
+/// control characters and bounded.
+fn debug<R: Runtime>(app: &AppHandle<R>, line: &str) {
+    if let Some(state) = app.try_state::<crate::state::AppState>() {
+        let line: String = line
+            .chars()
+            .map(|c| if c.is_control() { ' ' } else { c })
+            .take(DEBUG_LINE)
+            .collect();
+        state.console().info(format!("Player: {line}"));
+    }
+}
+
 /// Shows `url` in the player window: the one window is reused, made on
 /// first use. Always queued on the main thread, never inline (CLAUDE.md,
 /// "Windows").
@@ -116,6 +142,11 @@ pub fn show_player_window<R: Runtime>(app: &AppHandle<R>, url: Url, title: Strin
     }
     let handle = app.clone();
     crate::lifecycle::queue_on_main_thread(app, move || {
+        let engine = tauri::webview_version().unwrap_or_else(|_| "unknown".into());
+        debug(
+            &handle,
+            &format!("opening {} (web engine {engine})", short(&url)),
+        );
         if let Some(window) = handle.get_webview_window(WINDOW) {
             let _ = window.navigate(url);
             let _ = window.set_title(&title);
@@ -125,6 +156,7 @@ pub fn show_player_window<R: Runtime>(app: &AppHandle<R>, url: Url, title: Strin
             return;
         }
         let opener = handle.clone();
+        let (loads, titles, navigations) = (handle.clone(), handle.clone(), handle.clone());
         let built = WebviewWindowBuilder::new(&handle, WINDOW, WebviewUrl::External(url))
             .title(&title)
             .inner_size(960.0, 600.0)
@@ -132,7 +164,26 @@ pub fn show_player_window<R: Runtime>(app: &AppHandle<R>, url: Url, title: Strin
             // Nothing of the window's pages stays on the computer.
             .incognito(true)
             .disable_drag_drop_handler()
-            .on_navigation(navigation_allowed)
+            .on_navigation(move |url| {
+                let allowed = navigation_allowed(url);
+                if !allowed {
+                    debug(&navigations, &format!("blocked going to {}", short(url)));
+                }
+                allowed
+            })
+            .initialization_script_for_all_frames(DEBUG_SCRIPT)
+            .on_page_load(move |_, payload| {
+                let event = match payload.event() {
+                    tauri::webview::PageLoadEvent::Started => "loading",
+                    tauri::webview::PageLoadEvent::Finished => "loaded",
+                };
+                debug(&loads, &format!("{event} {}", short(payload.url())));
+            })
+            .on_document_title_changed(move |_, title| {
+                if let Some(line) = title.strip_prefix(DEBUG_MARK) {
+                    debug(&titles, line);
+                }
+            })
             // "Open in browser" and the players' own links: the browser, when
             // the launcher may open the address; never a new window here.
             .on_new_window(move |url, _| {
@@ -144,9 +195,11 @@ pub fn show_player_window<R: Runtime>(app: &AppHandle<R>, url: Url, title: Strin
             Ok(window) => {
                 let _ = window.set_focus();
             }
-            Err(_) => {
+            Err(error) => {
                 if let Some(state) = handle.try_state::<crate::state::AppState>() {
-                    state.console().warn("Feed: the player window did not open");
+                    state
+                        .console()
+                        .warn(format!("Feed: the player window did not open: {error}"));
                 }
             }
         }
