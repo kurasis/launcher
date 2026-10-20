@@ -339,6 +339,44 @@ fn mixin_names_the_mod() {
 }
 
 #[test]
+fn mixin_culprit_is_the_failing_mod_not_the_first_config_in_the_log() {
+    // NeoForge 26.3 with Sodium 0.9.2 (game test, 2026-10-20): every mod's config is
+    // listed at startup, Balm's kuma_api and sodium-frapi long before the failure.
+    let d = run(
+        -1,
+        "[08:17:36] [main/INFO]: Mixin config kuma_api.mixins.json from jar(mods/balm-neoforge.jar)\n\
+         [08:17:36] [main/INFO]: Mixin config sodium-frapi.mixins.json from jar(mods/sodium-neoforge-0.9.2+mc26.3.jar)\n\
+         [08:17:36] [main/WARN]: Reference map 'xaerolib.refmap.json' for xaerolib.mixins.json could not be read.\n\
+         [08:17:48] [Render thread/FATAL]: Mixin apply for mod sodium failed sodium-neoforge.mixins.json:platform.neoforge.LevelExtractorMixin from mod sodium -> net.minecraft.client.renderer.extract.LevelExtractor: org.spongepowered.asm.mixin.injection.throwables.InvalidInjectionException Critical injection failure",
+    );
+    assert_eq!(d.kind, CrashKind::MixinFailed);
+    assert_eq!(detail(&d, "modId"), "sodium");
+}
+
+#[test]
+fn mixin_culprit_from_the_failing_config_when_no_line_names_the_mod() {
+    let d = run(
+        -1,
+        "[main/INFO]: Mixin config kuma_api.mixins.json from jar(mods/balm.jar)\n\
+         org.spongepowered.asm.mixin.throwables.MixinApplyError: Mixin [iris.mixins.json:MixinLevelRenderer] FAILED during APPLY",
+    );
+    assert_eq!(d.kind, CrashKind::MixinFailed);
+    assert_eq!(detail(&d, "modId"), "iris");
+}
+
+#[test]
+fn forge_module_is_not_a_suspect() {
+    let d = run(
+        1,
+        "Failed to create mod instance. ModID: journeymap, class journeymap.common.JourneymapForge\n\
+         \tat TRANSFORMER/journeymap@1.21.1-6.0.9/journeymap.common.JourneymapForge.<init>(JourneymapForge.java:41)\n\
+         \tat TRANSFORMER/net.minecraftforge.forge@52.1.0/net.minecraftforge.fml.ModContainer.x(ModContainer.java:1)",
+    );
+    assert_eq!(d.kind, CrashKind::ModFailedToLoad);
+    assert_eq!(d.suspects, vec!["journeymap"]);
+}
+
+#[test]
 fn fabric_entrypoint_failure() {
     let d = run(
         1,
