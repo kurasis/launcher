@@ -131,7 +131,8 @@ jobs:
       fail-fast: false
       matrix:
         # Releases where the server, its Java, Log4j or the Login Start
-        # changed; protocol empty for the newest, whatever it is.
+        # changed; protocol empty for the newest release and snapshot,
+        # whatever they are.
         include:
           - { minecraft: '1.7.10', protocol: '5' }
           - { minecraft: '1.12.2', protocol: '340' }
@@ -141,6 +142,7 @@ jobs:
           - { minecraft: '1.20.1', protocol: '763' }
           - { minecraft: '1.21.1', protocol: '767' }
           - { minecraft: 'latest', protocol: '' }
+          - { minecraft: 'snapshot', protocol: '' }
     steps:
       - uses: actions/checkout@v7
 

@@ -46,8 +46,9 @@ const PING_WINDOW: Duration = Duration::from_secs(15);
 const PING_TIMEOUT: Duration = Duration::from_secs(3);
 /// A status ping may name any protocol; the server answers with its own.
 const ANY_PROTOCOL: i32 = -1;
-/// The protocols of releases from 1.7.6 on (snapshots set bit 30).
-const RELEASE_PROTOCOLS: std::ops::Range<i64> = 5..0x4000_0000;
+/// The protocols of releases from 1.7.6 on and of snapshots (bit 30 set from
+/// 1.16.4's).
+const GAME_PROTOCOLS: std::ops::RangeInclusive<i64> = 5..=0x7FFF_FFFF;
 
 /// Everything one start needs.
 pub struct Launch<'a> {
@@ -179,7 +180,7 @@ pub fn start(
 ) -> LauncherResult<HostedServer> {
     let root = launch.root;
     let world: WorldFile = world::load(root, launch.world_id)?;
-    if tuple::release(&world.minecraft).is_none() {
+    if tuple::version(&world.minecraft).is_none() {
         return Err(LauncherError::invalid_input(
             "Worlds are not available for this Minecraft version yet.",
         ));
@@ -397,7 +398,7 @@ impl HostedServer {
         let ping_until = Instant::now() + PING_WINDOW;
         while Instant::now() < ping_until && !self.supervised.has_exited() {
             if let Some(protocol) = super::ping::status(self.port, ANY_PROTOCOL, PING_TIMEOUT)
-                .filter(|s| RELEASE_PROTOCOLS.contains(&s.protocol))
+                .filter(|s| GAME_PROTOCOLS.contains(&s.protocol))
                 .and_then(|s| i32::try_from(s.protocol).ok())
             {
                 self.protocol.store(protocol, Ordering::Release);

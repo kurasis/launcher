@@ -3,8 +3,8 @@
 //! network access:
 //! `WORLD_VERSION=1.12.2 WORLD_PROTOCOL=340 cargo test --test live_server -- --ignored --nocapture --test-threads=1`
 //!
-//! `WORLD_VERSION` is a release (1.21.1 when unset, `latest` for the newest
-//! release in the catalog); `WORLD_PROTOCOL`, when set, is the protocol its
+//! `WORLD_VERSION` is a world version (1.21.1 when unset, `latest` for the
+//! newest release in the catalog, `snapshot` for its newest snapshot); `WORLD_PROTOCOL`, when set, is the protocol its
 //! server must report.
 //!
 //! Creates a world, downloads Mojang's server JAR and the Java its descriptor
@@ -133,6 +133,10 @@ async fn host_a_world() {
         Some(v) if v == "latest" => {
             let (catalog, ..) = metadata.catalog(false).await;
             catalog.unwrap().latest_release.unwrap()
+        }
+        Some(v) if v == "snapshot" => {
+            let (catalog, ..) = metadata.catalog(false).await;
+            catalog.unwrap().latest_snapshot.unwrap()
         }
         Some(v) => v,
         None => "1.21.1".to_owned(),

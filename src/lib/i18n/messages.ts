@@ -1630,6 +1630,8 @@ export type Messages = {
       readonly name: string;
       readonly description: string;
       readonly version: string;
+      readonly snapshots: string;
+      readonly snapshotsNote: string;
       readonly gameMode: string;
       readonly modes: {
         readonly survival: string;

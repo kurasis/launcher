@@ -7,9 +7,14 @@ pub const DESCRIPTION_MAX: usize = 1000;
 pub const DEVICE_NAME_MAX: usize = 64;
 
 /// A game version a room can be made for, as the launcher's world versions:
-/// a release from 1.7.6 on (`1.7.10`, `1.21`, `26.1`), never a snapshot or a
-/// pre-release.
+/// a release from 1.7.6 on (`1.7.10`, `1.21`, `26.1`), a snapshot from 14w17a
+/// (`24w14a`), or a pre-release or release candidate of such a release
+/// (`1.21-pre1`, `1.21-rc1`, `26.1-snapshot-2`, `26.1-pre-1`, `26.1-rc-1`).
 pub fn minecraft(text: &str) -> bool {
+    release(text) || snapshot(text)
+}
+
+fn release(text: &str) -> bool {
     let number = |part: &str| -> Option<u16> {
         let plain = (1..=3).contains(&part.len())
             && part.bytes().all(|b| b.is_ascii_digit())
@@ -24,6 +29,33 @@ pub fn minecraft(text: &str) -> bool {
         }
         _ => false,
     }
+}
+
+fn snapshot(text: &str) -> bool {
+    if let Some((year, rest)) = text.split_once('w') {
+        let bytes = rest.as_bytes();
+        let weekly = year.len() == 2
+            && year.bytes().all(|b| b.is_ascii_digit())
+            && bytes.len() == 3
+            && bytes[..2].iter().all(u8::is_ascii_digit)
+            && bytes[2].is_ascii_lowercase();
+        return weekly
+            && match (year.parse::<u8>(), rest[..2].parse::<u8>()) {
+                (Ok(year), Ok(week)) => (1..=53).contains(&week) && (year, week) >= (14, 17),
+                _ => false,
+            };
+    }
+    let Some((base, tail)) = text.split_once('-') else {
+        return false;
+    };
+    let small = |n: &str| {
+        (1..=2).contains(&n.len()) && n.bytes().all(|b| b.is_ascii_digit()) && !n.starts_with('0')
+    };
+    let numbered = ["snapshot-", "pre-", "rc-", "pre", "rc"]
+        .iter()
+        .find_map(|prefix| tail.strip_prefix(prefix))
+        .is_some_and(small);
+    numbered && release(base)
 }
 
 fn reorders(c: char) -> bool {
@@ -85,9 +117,23 @@ mod tests {
     use super::*;
 
     #[test]
-    fn releases_from_1_7_6_are_game_versions() {
+    fn releases_and_snapshots_are_game_versions() {
         for ok in [
-            "1.7.6", "1.7.10", "1.8", "1.12.2", "1.20.1", "1.21.1", "26.1", "26.3.1",
+            "1.7.6",
+            "1.7.10",
+            "1.8",
+            "1.12.2",
+            "1.20.1",
+            "1.21.1",
+            "26.1",
+            "26.3.1",
+            "14w17a",
+            "24w14a",
+            "1.21-pre1",
+            "1.21.1-rc1",
+            "26.1-snapshot-2",
+            "26.1-pre-1",
+            "26.1-rc-1",
         ] {
             assert!(minecraft(ok), "{ok}");
         }
@@ -97,9 +143,13 @@ mod tests {
             "1.7.5",
             "1.6.4",
             "b1.7.3",
-            "24w14a",
-            "1.21-pre1",
-            "26.1-snapshot-2",
+            "14w02a",
+            "24w54a",
+            "20w14infinite",
+            "1.21-pre0",
+            "1.21-pre",
+            "1.7.2-pre1",
+            "1.14 Pre-Release 1",
             " 1.21",
             "1.21 ",
             "1.21.1.1",

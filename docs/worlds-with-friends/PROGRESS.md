@@ -291,3 +291,19 @@ Not claimed: a real game client of every version through the tunnel (the login b
   ones the tunnel reads, checked against each real server); Java 8 on Windows arm64 depends on
   the runtime provider.
 ```
+
+## Snapshots (A8, owner's request)
+
+```text
+Change: "Show snapshots" in the new-world form (off by default) also offers the catalog's
+  snapshots from 14w17a and the pre-releases and release candidates of world releases, with a
+  note on what a snapshot means for a world; worlds.lapi.sh takes the same versions.
+Delivered: snapshot ids recognised strictly (weekly, -preN, -rcN, -snapshot-N, -pre-N, -rc-N;
+  no April fools, combat tests or ids with spaces); properties in the old forms; a snapshot
+  login read in whichever layout fits.
+Checks: cargo fmt, clippy and tests; services/worlds fmt, clippy and tests; tsc, eslint,
+  prettier, the i18n check and vitest (the switch, the note, a snapshot world created).
+Live, locally: 26.4-snapshot-5 (Java 25) and 14w17a (Java 8): start, member login, stranger
+  refused, lookup not resolved.
+CI: the live test also for the newest snapshot.
+```

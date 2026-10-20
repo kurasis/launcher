@@ -162,7 +162,10 @@ stored by default.
 
 Every Minecraft release from 1.7.6 on, without a loader (owner's decision, 2026-10-20). 1.7.6
 is the first server that keeps players by UUID (`whitelist.json`, `playerdata/<uuid>.dat`),
-which the whitelist of offline UUIDs needs; snapshots and pre-releases are not world versions.
+which the whitelist of offline UUIDs needs. With "Show snapshots" on when a world is made
+(off by default, owner's decision 2026-10-20), snapshots from 14w17a (the first after 1.7.6)
+and the pre-releases and release candidates of those releases are offered too, with a note that
+a snapshot can damage a world and that friends need the same snapshot.
 The official server JAR comes from the version's descriptor (`downloads.server`, SHA-1 and size
 checked, SHA-256 recorded), from mirror.lapi.sh when Mojang fails, as every Mojang file; the
 mirror keeps every release's server JAR ahead of time; Java is the one the descriptor names, from the existing
@@ -174,7 +177,11 @@ releases is handled by release, not by a table of versions:
 - Login Start is read in the layout of the client's protocol (name only up to 1.18.2, the
   optional signing key of 1.19, the optional UUID of 1.19.1 to 1.20.1, the UUID from 1.20.2);
 - difficulty and game mode are written as numbers before 1.14, `level-type` as the world
-  type's name before 1.19;
+  type's name before 1.19; for a snapshot, whose id does not say which it reads, always the old
+  forms, which every server from 1.7.6 to 26.3 still reads (26.3's `DedicatedServerProperties`
+  reads numbers and maps the old type names);
+- a snapshot's protocol (bit 30 set) says nothing about its Login Start layout, so the tunnel
+  takes whichever known layout fits; the host still admits only its server's protocol;
 - Log4Shell: the logging configuration drops any message with `${...}` before it is formatted
   (Mojang's fix for 1.7 to 1.11), adds `{nolookups}` (1.12 to 1.16) and
   `log4j2.formatMsgNoLookups`, and is passed as `log4j.configurationFile`, which every Log4j 2
@@ -182,7 +189,7 @@ releases is handled by release, not by a table of versions:
 - `Done (...)! For help, type "help" or "?"` (before 1.13) also means ready.
 
 CI runs the real server of 1.7.10, 1.12.2, 1.16.5, 1.18.2, 1.19.2, 1.20.1, 1.21.1 and the
-newest release. Fabric and other loaders arrive in W12.
+newest release and snapshot. Fabric and other loaders arrive in W12.
 
 ## Change log
 
@@ -245,3 +252,4 @@ newest release. Fabric and other loaders arrive in W12.
   keeps every release's server JAR (still the fallback when Mojang fails). The tuple table is gone: the protocol comes from the server, the
   Login Start layout from the client's handshake, Java from the descriptor, and the few
   properties and the logging configuration that changed are written per release.
+- 2026-10-20 — A8 (owner): snapshots behind a switch in the new-world form, off by default.
