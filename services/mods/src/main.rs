@@ -16,6 +16,7 @@
 //! lapi-mods scan <file>          the scanner's verdict on a file
 //! lapi-mods find|review|block|unblock|remove|forget …
 //!                                 the owner's commands (owner.rs)
+//! lapi-mods restore               brings back to the disk what only R2 has
 //! lapi-mods thumb <in> <out> <size> <webp|jpeg>
 //!                                 a small picture; the service runs it as a
 //!                                 process of its own for each picture
@@ -33,7 +34,12 @@
 //! (`https://oauth.lapi.sh`) and `LAPI_MODS_JWKS`
 //! (`http://127.0.0.1:8783/.well-known/jwks.json`). The owner's commands read
 //! `LAPI_MODS_CF_ZONE` and `LAPI_MODS_CF_TOKEN` (secrets: Cloudflare's zone
-//! and a token that may only purge its cache) and `LAPI_MODS_PURGE_CURL`
+//! and a token that may only purge its cache), `LAPI_MODS_R2_ACCOUNT`,
+//! `LAPI_MODS_R2_KEY`, `LAPI_MODS_R2_SECRET` (secrets: R2's account and an
+//! access key to its two buckets), `LAPI_MODS_R2_PUBLIC` (`mods-files`),
+//! `LAPI_MODS_R2_PRIVATE` (`mods-private`), `LAPI_MODS_CDN_URL` (the public
+//! bucket's address, `https://cdn-mods.lapi.sh`, once it serves; empty:
+//! files are copied but served from our disk) and `LAPI_MODS_PLAIN_CURL`
 //! (the plain curl, `curl`).
 
 mod api;
@@ -49,9 +55,11 @@ mod owner;
 mod pack;
 mod packwiz;
 mod probe;
+mod r2;
 mod scan;
 mod store;
 mod thumb;
+mod upkeep;
 
 use std::path::PathBuf;
 use std::sync::Arc;
@@ -75,16 +83,50 @@ const MIN_FREE: u64 = 5 * blobs::GB;
 #[derive(Debug, Clone)]
 pub struct Urls {
     base: String,
+    /// The public bucket's address (R2, D-066 stage 6), once it serves.
+    cdn: Option<String>,
 }
 
 impl Urls {
     pub fn new(base: &str) -> Self {
         Self {
             base: base.trim_end_matches('/').to_owned(),
+            cdn: None,
         }
     }
 
-    /// A kept file under its own name.
+    /// Files copied to R2 are served from `cdn` (none: from our disk).
+    pub fn with_cdn(mut self, cdn: &str) -> Self {
+        let cdn = cdn.trim().trim_end_matches('/');
+        self.cdn = cdn
+            .strip_prefix("https://")
+            .filter(|host| {
+                !host.is_empty()
+                    && host.len() <= 100
+                    && host.bytes().all(|b| {
+                        b.is_ascii_lowercase() || b.is_ascii_digit() || b == b'.' || b == b'-'
+                    })
+            })
+            .map(|_| cdn.to_owned());
+        self
+    }
+
+    /// Where players download a kept file: from R2 once it is copied there
+    /// (by its hash alone), else from our disk. Our disk stays the reserve
+    /// at the same path on files-mods.lapi.sh.
+    pub fn served(&self, sha256: &str, name: &str, public: bool) -> String {
+        match &self.cdn {
+            Some(cdn) if public => format!("{cdn}/f/{sha256}"),
+            _ => self.file(sha256, name),
+        }
+    }
+
+    /// The address of a kept file in R2, for clearing caches.
+    pub fn cdn_file(&self, sha256: &str) -> Option<String> {
+        self.cdn.as_ref().map(|cdn| format!("{cdn}/f/{sha256}"))
+    }
+
+    /// A kept file under its own name, on our disk.
     pub fn file(&self, sha256: &str, name: &str) -> String {
         format!(
             "{}/f/{sha256}/{}",
@@ -139,7 +181,7 @@ fn main() -> std::process::ExitCode {
             _ => Err("usage: lapi-mods scan <file>".to_owned()),
         },
         Some(
-            command @ ("find" | "review" | "block" | "unblock" | "remove" | "forget"),
+            command @ ("find" | "review" | "block" | "unblock" | "remove" | "forget" | "restore"),
         ) => owner_command(command, &args[1..]).map(|lines| {
             for line in lines {
                 println!("{line}");
@@ -159,7 +201,7 @@ fn main() -> std::process::ExitCode {
             Ok(())
         }
         _ => Err(
-            "usage: lapi-mods serve|counts|backup|probe|scan|thumb|find|review|block|unblock|remove|forget"
+            "usage: lapi-mods serve|counts|backup|probe|scan|thumb|find|review|block|unblock|remove|forget|restore"
                 .to_owned(),
         ),
     };
@@ -199,22 +241,50 @@ fn secret(key: &str) -> String {
         .unwrap_or_default()
 }
 
+/// Where players download: our disk, and R2 once it serves.
+fn urls() -> Urls {
+    Urls::new(&env("LAPI_MODS_FILES_URL", "https://files-mods.lapi.sh"))
+        .with_cdn(&secret("LAPI_MODS_CDN_URL"))
+}
+
+/// The plain curl (not curl-impersonate), for Cloudflare's APIs.
+fn plain_curl() -> PathBuf {
+    PathBuf::from(env("LAPI_MODS_PLAIN_CURL", "curl"))
+}
+
+fn cloudflare() -> Option<owner::Cloudflare> {
+    owner::Cloudflare::new(
+        &secret("LAPI_MODS_CF_ZONE"),
+        &secret("LAPI_MODS_CF_TOKEN"),
+        plain_curl(),
+    )
+}
+
+fn bucket() -> Option<r2::R2> {
+    r2::R2::new(
+        &secret("LAPI_MODS_R2_ACCOUNT"),
+        &secret("LAPI_MODS_R2_KEY"),
+        &secret("LAPI_MODS_R2_SECRET"),
+        &env("LAPI_MODS_R2_PUBLIC", "mods-files"),
+        &env("LAPI_MODS_R2_PRIVATE", "mods-private"),
+        plain_curl(),
+    )
+}
+
 /// The owner's commands (owner.rs); what they print is the result.
 fn owner_command(command: &str, args: &[String]) -> Result<Vec<String>, String> {
     let data = data();
     let store = open()?;
     let blobs = blobs::Blobs::open(&data, DEFAULT_QUOTA_GB * blobs::GB, MIN_FREE)?;
-    let urls = Urls::new(&env("LAPI_MODS_FILES_URL", "https://files-mods.lapi.sh"));
-    let cloudflare = owner::Cloudflare::new(
-        &secret("LAPI_MODS_CF_ZONE"),
-        &secret("LAPI_MODS_CF_TOKEN"),
-        PathBuf::from(env("LAPI_MODS_PURGE_CURL", "curl")),
-    );
+    let urls = urls();
+    let cloudflare = cloudflare();
+    let bucket = bucket();
     let owner = owner::Owner {
         store: &store,
         blobs: &blobs,
         urls: &urls,
         purge: cloudflare.as_ref().map(|c| c as &dyn owner::Purge),
+        bucket: bucket.as_ref().map(|b| b as &dyn r2::Bucket),
         now: import::now(),
     };
     let hash =
@@ -237,6 +307,10 @@ fn owner_command(command: &str, args: &[String]) -> Result<Vec<String>, String> 
             (owner::Hash::Sha256(sha256), []) => owner.forget(&sha256, false),
             (owner::Hash::Sha256(sha256), [yes]) if yes == "--yes" => owner.forget(&sha256, true),
             _ => Err("usage: lapi-mods forget <sha256> [--yes]".to_owned()),
+        },
+        ("restore", []) => match &bucket {
+            Some(bucket) => upkeep::restore(&store, &blobs, bucket),
+            None => Err("R2 is not set up (LAPI_MODS_R2_*)".to_owned()),
         },
         _ => Err(format!(
             "usage: see lapi-mods {command} in docs/MODS-CATALOG.md"
@@ -309,9 +383,16 @@ fn serve() -> Result<(), String> {
         client,
         tokens: auth::Tokens::new(&env("LAPI_MODS_ISSUER", "https://oauth.lapi.sh")),
         limiter: api::Limiter::default(),
-        urls: Urls::new(&env("LAPI_MODS_FILES_URL", "https://files-mods.lapi.sh")),
+        urls: urls(),
         thumbs: import::Thumbs::Process(std::env::current_exe().map_err(|e| e.to_string())?),
+        r2: bucket().map(|b| Arc::new(b) as Arc<dyn r2::Bucket>),
+        purge: cloudflare().map(|c| Arc::new(c) as Arc<dyn owner::Purge>),
     });
+    eprintln!(
+        "lapi-mods: R2 {}, cache clearing {}",
+        if app.r2.is_some() { "on" } else { "off" },
+        if app.purge.is_some() { "on" } else { "off" }
+    );
     let runtime = tokio::runtime::Runtime::new().map_err(|e| e.to_string())?;
     runtime.block_on(async move {
         let keys = Arc::clone(&app);
@@ -372,6 +453,34 @@ fn serve() -> Result<(), String> {
                 tokio::time::sleep(Duration::from_secs(wait)).await;
             }
         });
+        // R2 kept in step with the disk, the database copied there daily,
+        // a sample checked weekly.
+        let copying = Arc::clone(&app);
+        tokio::spawn(async move {
+            if copying.r2.is_none() {
+                return;
+            }
+            let backups = data.join("backups");
+            loop {
+                if let Err(e) = upkeep::copy_database(&copying, backups.clone()).await {
+                    eprintln!("lapi-mods: copying the database to R2 failed: {e}");
+                }
+                match upkeep::check(&copying).await {
+                    Ok(Some(n)) => eprintln!("lapi-mods: R2 checked, {n} copies to make again"),
+                    Ok(None) => {}
+                    Err(e) => eprintln!("lapi-mods: checking R2 failed: {e}"),
+                }
+                let wait = match upkeep::copy(&copying, 20).await {
+                    Ok(0) => 60,
+                    Ok(_) => 1,
+                    Err(e) => {
+                        eprintln!("lapi-mods: copying to R2 failed: {e}");
+                        600
+                    }
+                };
+                tokio::time::sleep(Duration::from_secs(wait)).await;
+            }
+        });
         let (stop, stopping) = tokio::sync::watch::channel(false);
         for _ in 0..workers {
             tokio::spawn(import::work(Arc::clone(&app), stopping.clone()));
@@ -401,6 +510,10 @@ pub struct App {
     pub limiter: api::Limiter,
     pub urls: Urls,
     pub thumbs: import::Thumbs,
+    /// R2, when its settings are there (D-066, stage 6).
+    pub r2: Option<Arc<dyn r2::Bucket>>,
+    /// Cloudflare's cache, when a token is there.
+    pub purge: Option<Arc<dyn owner::Purge>>,
 }
 
 async fn stopped() {

@@ -38,7 +38,7 @@ case "$SERVICE" in
     mods)
         PORT=8786
         QUOTA_GB="$EXTRA"
-        [ "${5:-}" = --secrets ] && SECRETS='^LAPI_MODS_(PROXIES=[^[:cntrl:]]{0,20000}|CF_ZONE=[0-9a-fA-F]{0,32}|CF_TOKEN=[A-Za-z0-9_-]{0,200})$'
+        [ "${5:-}" = --secrets ] && SECRETS='^LAPI_MODS_(PROXIES=[^[:cntrl:]]{0,20000}|CF_ZONE=[0-9a-fA-F]{0,32}|CF_TOKEN=[A-Za-z0-9_-]{0,200}|R2_ACCOUNT=[0-9a-fA-F]{0,32}|R2_KEY=[0-9a-fA-F]{0,32}|R2_SECRET=[0-9a-fA-F]{0,64}|CDN_URL=(https://[a-z0-9.-]{1,100})?)$'
         ;;
     worlds)
         PORT=8788

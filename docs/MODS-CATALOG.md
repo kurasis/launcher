@@ -39,6 +39,23 @@ it). What the launcher puts into an installation is listed in its `content.lock.
    Cloudflare's cache; without them the file stays there up to a year. A deploy writes
    them to `secrets.env` like the proxies.
 
+7. **Optional, Cloudflare R2** (files served from Cloudflare, our server in reserve):
+   1. Cloudflare → R2 Object Storage: turn it on, then create two buckets, `mods-files`
+      and `mods-private` (location Automatic). Leave public access off on both.
+   2. R2 → Manage API tokens → Create API token: permission _Object Read & Write_,
+      applied to these two buckets only. Put its _Access Key ID_ into the secret
+      `LAPI_MODS_R2_KEY`, its _Secret Access Key_ into `LAPI_MODS_R2_SECRET`, and the
+      account ID (R2's overview page) into `LAPI_MODS_R2_ACCOUNT`. Re-run the workflow:
+      the service starts copying files and the database.
+   3. Bucket `mods-files` → Settings → Custom Domains → Connect Domain:
+      `cdn-mods.lapi.sh`. Add a Cache Rule for that hostname like the one for
+      files-mods.
+   4. On the server, re-run `bootstrap.sh` once (nginx learns the address without a
+      name, the launcher's reserve).
+   5. When `task=counts` shows `blobsToCopy` at 0 or close to it, set the repository
+      variable `MODS_CDN_URL` to `https://cdn-mods.lapi.sh` and re-run the workflow:
+      from then on the API gives R2's addresses for files already copied.
+
 ## The owner's commands
 
 On the server, as `sudo -u lapi-mods /home/www/lapi/mods/current/lapi-mods <command>`:
@@ -52,6 +69,7 @@ On the server, as `sudo -u lapi-mods /home/www/lapi/mods/current/lapi-mods <comm
 | `unblock <SHA-256 or SHA-1>`                     | lifts a block, or lets a file the scanner held go; no later scan holds it                                       |
 | `remove <project> [reason]`                      | at its author's request: the project leaves search and the API for good, files only it needs are held back      |
 | `forget <SHA-256> [--yes]`                       | deletes a held file for good (asks for `--yes`); the catalog never fetches it again                             |
+| `restore`                                        | brings back to the disk, checked by SHA-256, the files only R2 still has                                        |
 
 `find` and `review` show titles and names: run them in a terminal, not in a workflow.
 Without SSH, Actions → Mods service → Run workflow with `task=block` or `task=unblock` and

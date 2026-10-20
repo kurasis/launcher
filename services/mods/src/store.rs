@@ -234,6 +234,11 @@ CREATE TABLE IF NOT EXISTS blocked (
 );
 CREATE INDEX IF NOT EXISTS blocked_sha256 ON blocked(sha256);
 CREATE INDEX IF NOT EXISTS blocked_sha1 ON blocked(sha1);
+-- Times and numbers of the service's own upkeep (copies in R2).
+CREATE TABLE IF NOT EXISTS upkeep (
+    key TEXT PRIMARY KEY,
+    value INTEGER NOT NULL
+);
 -- What the owner decided and when (block, unblock, keep, remove, forget).
 CREATE TABLE IF NOT EXISTS decision (
     id INTEGER PRIMARY KEY,
@@ -297,6 +302,9 @@ const ADDED: &[(&str, &str, &str)] = &[
     ("blob", "allowed", "INTEGER NOT NULL DEFAULT 0"),
     // When it was held back.
     ("blob", "held", "INTEGER"),
+    // Its copy in R2: '' none, 'public' served from there, 'private' a held
+    // file's copy (r2.rs).
+    ("blob", "copy", "TEXT NOT NULL DEFAULT ''"),
 ];
 
 fn migrate(db: &Connection) -> Result<()> {
@@ -316,7 +324,8 @@ fn migrate(db: &Connection) -> Result<()> {
     }
     db.execute_batch(
         "CREATE INDEX IF NOT EXISTS blob_scanned ON blob(scanned);
-         CREATE INDEX IF NOT EXISTS blob_held ON blob(held);",
+         CREATE INDEX IF NOT EXISTS blob_held ON blob(held);
+         CREATE INDEX IF NOT EXISTS blob_copy ON blob(copy, state);",
     )
     .map_err(sql)
 }
@@ -1830,6 +1839,105 @@ impl Store {
             .map_err(sql)
     }
 
+    // ----- copies in R2 (r2.rs) -----
+
+    /// Kept files whose copy in R2 is not what their state wants, oldest
+    /// first: sha256, media type, state, copy. Pictures stay on our disk.
+    pub fn to_copy(&self, limit: i64) -> Result<Vec<(String, String, String, String)>> {
+        let db = self.db();
+        let mut q = db
+            .prepare(
+                "SELECT sha256, media_type, state, copy FROM blob
+                 WHERE media_type NOT LIKE 'image/%' AND (
+                     (state = 'stored' AND copy != 'public')
+                     OR (state != 'stored' AND copy = 'public')
+                     OR (state = 'quarantined' AND copy = '')
+                     OR (state = 'forgotten' AND copy = 'private'))
+                 ORDER BY stored LIMIT ?1",
+            )
+            .map_err(sql)?;
+        q.query_map([limit], |r| {
+            Ok((r.get(0)?, r.get(1)?, r.get(2)?, r.get(3)?))
+        })
+        .map_err(sql)?
+        .collect::<std::result::Result<_, _>>()
+        .map_err(sql)
+    }
+
+    /// Where a kept file's copy in R2 is now.
+    pub fn set_copy(&self, sha256: &str, copy: &str) -> Result<()> {
+        self.db()
+            .execute(
+                "UPDATE blob SET copy = ?2 WHERE sha256 = ?1",
+                params![sha256, copy],
+            )
+            .map(|_| ())
+            .map_err(sql)
+    }
+
+    /// Where a kept file's copy in R2 is.
+    pub fn copy_of(&self, sha256: &str) -> Result<Option<String>> {
+        self.db()
+            .query_row("SELECT copy FROM blob WHERE sha256 = ?1", [sha256], |r| {
+                r.get(0)
+            })
+            .optional()
+            .map_err(sql)
+    }
+
+    /// Files served from R2, picked at random: sha256 and size.
+    pub fn sample_public(&self, limit: i64) -> Result<Vec<(String, i64)>> {
+        let db = self.db();
+        let mut q = db
+            .prepare(
+                "SELECT sha256, size FROM blob WHERE copy = 'public' AND state = 'stored'
+                 ORDER BY random() LIMIT ?1",
+            )
+            .map_err(sql)?;
+        q.query_map([limit], |r| Ok((r.get(0)?, r.get(1)?)))
+            .map_err(sql)?
+            .collect::<std::result::Result<_, _>>()
+            .map_err(sql)
+    }
+
+    /// Kept files with a copy in R2, for bringing the disk back: sha256,
+    /// state, copy, media type.
+    pub fn copied(&self, after: &str, limit: i64) -> Result<Vec<(String, String, String, String)>> {
+        let db = self.db();
+        let mut q = db
+            .prepare(
+                "SELECT sha256, state, copy, media_type FROM blob
+                 WHERE copy != '' AND sha256 > ?1 ORDER BY sha256 LIMIT ?2",
+            )
+            .map_err(sql)?;
+        q.query_map(params![after, limit], |r| {
+            Ok((r.get(0)?, r.get(1)?, r.get(2)?, r.get(3)?))
+        })
+        .map_err(sql)?
+        .collect::<std::result::Result<_, _>>()
+        .map_err(sql)
+    }
+
+    pub fn upkeep(&self, key: &str) -> Result<Option<i64>> {
+        self.db()
+            .query_row("SELECT value FROM upkeep WHERE key = ?1", [key], |r| {
+                r.get(0)
+            })
+            .optional()
+            .map_err(sql)
+    }
+
+    pub fn set_upkeep(&self, key: &str, value: i64) -> Result<()> {
+        self.db()
+            .execute(
+                "INSERT INTO upkeep (key, value) VALUES (?1, ?2)
+                 ON CONFLICT (key) DO UPDATE SET value = excluded.value",
+                params![key, value],
+            )
+            .map(|_| ())
+            .map_err(sql)
+    }
+
     /// The SHA-256 of a kept file known by its SHA-1.
     pub fn blob_by_sha1(&self, sha1: &str) -> Result<Option<String>> {
         self.db()
@@ -2075,7 +2183,7 @@ impl Store {
         };
         let mut q = db
             .prepare(
-                "SELECT p.path, p.size, p.sha256, p.optional, b.state FROM pack_file p
+                "SELECT p.path, p.size, p.sha256, p.optional, b.state, b.copy FROM pack_file p
                  LEFT JOIN blob b ON b.sha256 = p.sha256
                  WHERE p.version_id = ?1 ORDER BY p.ord",
             )
@@ -2089,12 +2197,13 @@ impl Store {
                     .as_deref()
                     .is_some_and(|s| s != "stored");
                 let name = path.rsplit('/').next().unwrap_or_default().to_owned();
+                let public = r.get::<_, Option<String>>(5)?.as_deref() == Some("public");
                 Ok(serde_json::json!({
                     "path": path,
                     "size": r.get::<_, i64>(1)?,
                     "sha256": sha256,
                     // A held file has no address: nobody downloads it.
-                    "url": sha256.as_deref().filter(|_| !held).map(|s| files.file(s, &name)),
+                    "url": sha256.as_deref().filter(|_| !held).map(|s| files.served(s, &name, public)),
                     "held": held,
                     "optional": r.get::<_, bool>(3)?,
                 }))
@@ -2553,7 +2662,8 @@ impl Store {
         let file_list: Vec<serde_json::Value> = {
             let mut q = db
                 .prepare(
-                    "SELECT f.file_name, f.size, f.sha1, f.sha512, f.sha256, f.is_primary, f.role, f.origin_url, b.state
+                    "SELECT f.file_name, f.size, f.sha1, f.sha512, f.sha256, f.is_primary, f.role, f.origin_url, b.state,
+                            b.copy
                      FROM version_file f LEFT JOIN blob b ON b.sha256 = f.sha256
                      WHERE f.version_id = ?1 ORDER BY f.ord",
                 )
@@ -2565,6 +2675,7 @@ impl Store {
                     .get::<_, Option<String>>(8)?
                     .as_deref()
                     .is_some_and(|s| s != "stored");
+                let public = r.get::<_, Option<String>>(9)?.as_deref() == Some("public");
                 Ok(serde_json::json!({
                     "name": name,
                     "size": r.get::<_, i64>(1)?,
@@ -2573,7 +2684,7 @@ impl Store {
                     "sha256": sha256,
                     "primary": r.get::<_, bool>(5)?,
                     "role": r.get::<_, String>(6)?,
-                    "url": sha256.as_deref().filter(|_| !held).map(|s| files.file(s, &name)),
+                    "url": sha256.as_deref().filter(|_| !held).map(|s| files.served(s, &name, public)),
                     "held": held,
                     "originUrl": r.get::<_, String>(7)?,
                 }))
@@ -2829,6 +2940,18 @@ impl Store {
             "blocked": one("SELECT count(*) FROM blocked")?,
             "blobsForgotten": one("SELECT count(*) FROM blob WHERE state = 'forgotten'")?,
             "projectsRemoved": one("SELECT count(*) FROM project WHERE status = 'removed'")?,
+            "blobsInR2": one("SELECT count(*) FROM blob WHERE copy = 'public'")?,
+            "blobsHeldInR2": one("SELECT count(*) FROM blob WHERE copy = 'private'")?,
+            "blobsToCopy": one(
+                "SELECT count(*) FROM blob WHERE media_type NOT LIKE 'image/%' AND (
+                     (state = 'stored' AND copy != 'public')
+                     OR (state != 'stored' AND copy = 'public')
+                     OR (state = 'quarantined' AND copy = '')
+                     OR (state = 'forgotten' AND copy = 'private'))"
+            )?,
+            "r2Checked": one("SELECT coalesce(max(value), 0) FROM upkeep WHERE key = 'r2_checked'")?,
+            "r2Mismatched": one("SELECT coalesce(max(value), 0) FROM upkeep WHERE key = 'r2_mismatched'")?,
+            "databaseCopied": one("SELECT coalesce(max(value), 0) FROM upkeep WHERE key = 'database_copied'")?,
         }))
     }
 

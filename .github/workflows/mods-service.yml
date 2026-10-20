@@ -20,7 +20,10 @@ name: Mods service
 # SHA-1) and task=review-count counts what waits for the owner: fixed words,
 # numbers and that hash only (docs/MODS-CATALOG.md). The secrets
 # LAPI_MODS_CF_ZONE and LAPI_MODS_CF_TOKEN (a token that may only purge the
-# zone's cache) let a block clear the file from Cloudflare's cache.
+# zone's cache) let a block clear the file from Cloudflare's cache. The
+# secrets LAPI_MODS_R2_ACCOUNT, LAPI_MODS_R2_KEY and LAPI_MODS_R2_SECRET copy
+# kept files to Cloudflare R2; the variable MODS_CDN_URL
+# (https://cdn-mods.lapi.sh) makes the API hand out R2's addresses.
 
 on:
   push:
@@ -188,6 +191,10 @@ jobs:
           PROXIES: ${{ secrets.LAPI_MODS_PROXIES }}
           CF_ZONE: ${{ secrets.LAPI_MODS_CF_ZONE }}
           CF_TOKEN: ${{ secrets.LAPI_MODS_CF_TOKEN }}
+          R2_ACCOUNT: ${{ secrets.LAPI_MODS_R2_ACCOUNT }}
+          R2_KEY: ${{ secrets.LAPI_MODS_R2_KEY }}
+          R2_SECRET: ${{ secrets.LAPI_MODS_R2_SECRET }}
+          CDN_URL: ${{ vars.MODS_CDN_URL }}
         run: |
           [[ "$QUOTA_GB" =~ ^[0-9]{1,6}$ ]] || { echo "::error::MODS_MAX_GB must be a number of GB"; exit 1; }
           set +e
@@ -197,6 +204,10 @@ jobs:
             printf 'LAPI_MODS_PROXIES=%s\n' "$(printf '%s' "$PROXIES" | tr '\r\n' '  ')"
             printf 'LAPI_MODS_CF_ZONE=%s\n' "$(printf '%s' "$CF_ZONE" | tr -d '\r\n ')"
             printf 'LAPI_MODS_CF_TOKEN=%s\n' "$(printf '%s' "$CF_TOKEN" | tr -d '\r\n ')"
+            printf 'LAPI_MODS_R2_ACCOUNT=%s\n' "$(printf '%s' "$R2_ACCOUNT" | tr -d '\r\n ')"
+            printf 'LAPI_MODS_R2_KEY=%s\n' "$(printf '%s' "$R2_KEY" | tr -d '\r\n ')"
+            printf 'LAPI_MODS_R2_SECRET=%s\n' "$(printf '%s' "$R2_SECRET" | tr -d '\r\n ')"
+            printf 'LAPI_MODS_CDN_URL=%s\n' "$(printf '%s' "$CDN_URL" | tr -d '\r\n ')"
           } |
             ssh "$TARGET" \
               "bash ~/.lapi-bootstrap/$SETUP/deploy.sh mods $RELEASE $ARCHIVE $QUOTA_GB --secrets" 2>&1 | tee deploy.log

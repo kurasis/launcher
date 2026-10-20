@@ -27,8 +27,11 @@ use crate::launcher_account::{AccountProblem, LauncherAccount};
 use crate::state::AppState;
 
 const BASE: &str = "https://mods.lapi.sh";
-/// Where the catalog's files and pictures are served.
+/// Where the catalog's files and pictures are served from our server.
 pub const FILES_HOST: &str = "files-mods.lapi.sh";
+/// Where its files are served from Cloudflare R2 (D-066, stage 6), by hash:
+/// `/f/<sha256>`. Our server has each at the same path, as the reserve.
+pub const CDN_HOST: &str = "cdn-mods.lapi.sh";
 pub const PROGRESS_EVENT: &str = "mods://progress";
 const MAX_ANSWER_BYTES: usize = 4 * 1024 * 1024;
 /// A project's version list (every version of a large mod, without
@@ -191,17 +194,32 @@ pub fn our_picture(raw: &str) -> Option<String> {
     .then(|| raw.to_owned())
 }
 
-/// A file the catalog serves: `https://files-mods.lapi.sh/f/<sha256>/<name>`
-/// for this hash.
+/// A file the catalog serves for this hash: from our server,
+/// `https://files-mods.lapi.sh/f/<sha256>/<name>`, or from R2,
+/// `https://cdn-mods.lapi.sh/f/<sha256>`.
 pub fn our_file(raw: &str, sha256: &str) -> Option<url::Url> {
     let url = url::Url::parse(raw).ok()?;
     let path = url.path().strip_prefix("/f/")?;
-    let (hash, _) = path.split_once('/')?;
+    let hash = match (url.host_str()?, path.split_once('/')) {
+        (FILES_HOST, Some((hash, name))) if !name.is_empty() && !name.contains('/') => hash,
+        (FILES_HOST | CDN_HOST, None) => path,
+        _ => return None,
+    };
     (crate::net::SourcePolicy::ModsCatalog.allows(&url)
         && url.query().is_none()
         && url.fragment().is_none()
         && hash == sha256)
         .then_some(url)
+}
+
+/// The reserve of a file served from R2: the same path on our server.
+pub fn reserve_url(url: &url::Url) -> Option<url::Url> {
+    if url.host_str() != Some(CDN_HOST) || url.scheme() != "https" {
+        return None;
+    }
+    let mut reserve = url.clone();
+    reserve.set_host(Some(FILES_HOST)).ok()?;
+    Some(reserve)
 }
 
 /// A page about the project on its source's site.

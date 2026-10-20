@@ -668,9 +668,13 @@ impl Worker {
         // whether each was tried, so a failing one hands over to the other once.
         let routing = Arc::clone(self.transport.routing());
         let host = request.url.host_str().unwrap_or_default().to_owned();
-        // Sources the mirror does not copy go to their origin only.
-        let mirror = routing.mirror_allowed() && request.source.mirrored();
-        let mut route = if mirror {
+        // Sources the mirror does not copy go to their origin only. A file of
+        // the catalog served from R2 has our server as its reserve instead,
+        // whatever the mirror setting (D-066).
+        let reserve = request.source == SourcePolicy::ModsCatalog
+            && crate::mods::reserve_url(&request.url).is_some();
+        let mirror = (routing.mirror_allowed() && request.source.mirrored()) || reserve;
+        let mut route = if mirror && !reserve {
             routing.first(&host)
         } else {
             Route::Origin
