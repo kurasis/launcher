@@ -204,6 +204,9 @@ pub struct ContentLock {
     pub schema_version: u64,
     #[serde(default)]
     pub items: Vec<LockedItem>,
+    /// The modpack this installation was made from (stage 3).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub pack: Option<super::pack::PackLock>,
 }
 
 impl ContentLock {
@@ -227,11 +230,12 @@ pub fn load_lock(root: &DataRoot, id: InstanceId) -> ContentLock {
         _ => ContentLock {
             schema_version: crate::storage::document::SCHEMA_VERSION,
             items: Vec::new(),
+            pack: None,
         },
     }
 }
 
-fn save_lock(root: &DataRoot, id: InstanceId, lock: &ContentLock) -> LauncherResult<()> {
+pub(super) fn save_lock(root: &DataRoot, id: InstanceId, lock: &ContentLock) -> LauncherResult<()> {
     crate::storage::document::save(&lock_path(root, id), lock, None)
         .map_err(|e| LauncherError::from_io(&e, "Saving the list of installed content"))
 }
@@ -614,7 +618,7 @@ pub async fn plan<C: Catalog>(
 pub struct Progress {
     pub instance_id: String,
     /// `fetching` (the catalog brings files from the source), `downloading`,
-    /// `done`, `failed` or `cancelled`.
+    /// `unpacking` (a modpack's own files), `done`, `failed` or `cancelled`.
     pub phase: &'static str,
     /// Files the catalog still fetches, or files downloaded.
     pub files: u64,
@@ -623,9 +627,9 @@ pub struct Progress {
     pub total_bytes: u64,
 }
 
-struct Sink<'a> {
-    instance: String,
-    emit: &'a (dyn Fn(Progress) + Send + Sync),
+pub(super) struct Sink<'a> {
+    pub(super) instance: String,
+    pub(super) emit: &'a (dyn Fn(Progress) + Send + Sync),
 }
 
 impl ProgressSink for Sink<'_> {
@@ -644,7 +648,7 @@ impl ProgressSink for Sink<'_> {
 /// Installs into game folders; one install or change per installation at a
 /// time.
 pub struct Installer {
-    transport: crate::download::transport::HttpTransport,
+    pub(super) transport: crate::download::transport::HttpTransport,
     running: Mutex<HashMap<InstanceId, CancelToken>>,
     /// SHA-1 of files the player put there, by path.
     hashes: Mutex<HashMap<PathBuf, Hashed>>,

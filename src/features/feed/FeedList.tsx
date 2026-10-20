@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { type ReactNode, useCallback, useEffect, useRef, useState } from 'react';
 import { Button } from '../../components/Button';
 import { StatusBadge } from '../../components/StatusBadge';
 import type {
@@ -22,81 +22,95 @@ const t = strings.feed;
 /** How far below the screen the next page is asked for. */
 const AHEAD = '800px';
 
-function NoteItem({ card, onOpen }: { card: NoteCard; onOpen: (card: NoteCard) => void }) {
-  const image = pictureUrl(card.image);
+type Tone = 'neutral' | 'success' | 'warning' | 'danger';
+
+/**
+ * One tile of the grid: a picture (or, without one, a plain cover with
+ * `cover` on it), badges, the title and a line under it. The title's button
+ * covers the whole tile.
+ */
+function Tile({
+  image,
+  cover,
+  overlay,
+  badges,
+  title,
+  label,
+  line,
+  onClick,
+}: {
+  image: string | null;
+  cover: string;
+  overlay: { tone: Tone; label: string } | null;
+  badges: ReactNode;
+  title: string;
+  /** The button's name when the title alone does not say what it does. */
+  label?: string;
+  line: string;
+  onClick: () => void;
+}) {
   return (
-    <article className={styles.card}>
-      {image !== null && <img className={styles.cardPicture} src={image} alt="" loading="lazy" />}
-      <div className={styles.cardText}>
-        <div className={styles.badges}>
-          <StatusBadge tone={card.kind === null ? 'neutral' : 'success'} label={kindLabel(card)} />
-          <span className={styles.muted}>{shortDate(card.date)}</span>
-          {card.translated && <StatusBadge tone="warning" label={t.machineTranslated} />}
-        </div>
-        <h3 className={styles.cardTitle}>
-          <button
-            type="button"
-            className={styles.cardButton}
-            onClick={() => {
-              onOpen(card);
-            }}
-          >
-            {card.title}
+    <article className={styles.tile}>
+      <span className={styles.preview}>
+        {image !== null ? (
+          <img src={image} alt="" loading="lazy" />
+        ) : (
+          <span className={styles.cover} dir="auto">
+            {cover}
+          </span>
+        )}
+        {overlay !== null && (
+          <span className={styles.overlayBadge}>
+            <StatusBadge tone={overlay.tone} label={overlay.label} />
+          </span>
+        )}
+      </span>
+      <div className={styles.tileText}>
+        {badges !== null && <div className={styles.badges}>{badges}</div>}
+        <h3 className={styles.tileTitle}>
+          <button type="button" className={styles.cardButton} aria-label={label} onClick={onClick}>
+            {title}
           </button>
         </h3>
-        {card.summary !== '' && <p className={styles.summary}>{card.summary}</p>}
+        {line !== '' && <p className={styles.tileLine}>{line}</p>}
       </div>
     </article>
   );
 }
 
-/** A video or stream: a big preview over its title, one block of the list. */
-function WatchBlock({
-  label,
-  image,
-  badge,
-  title,
-  line,
-  onPlay,
-}: {
-  label: string;
-  image: string | null;
-  badge: { tone: 'neutral' | 'danger'; label: string } | null;
-  title: string;
-  line: string;
-  onPlay: () => void;
-}) {
+function NoteItem({ card, onOpen }: { card: NoteCard; onOpen: (card: NoteCard) => void }) {
   return (
-    <article className={styles.watch}>
-      <span className={styles.preview}>
-        {image !== null && <img src={image} alt="" loading="lazy" />}
-        {badge !== null && (
-          <span className={styles.overlayBadge}>
-            <StatusBadge tone={badge.tone} label={badge.label} />
-          </span>
-        )}
-      </span>
-      <div className={styles.watchText}>
-        <h3 className={styles.cardTitle}>
-          <button type="button" className={styles.cardButton} aria-label={label} onClick={onPlay}>
-            {title}
-          </button>
-        </h3>
-        <p className={styles.muted}>{line}</p>
-      </div>
-    </article>
+    <Tile
+      image={pictureUrl(card.image)}
+      cover={card.version ?? kindLabel(card)}
+      overlay={null}
+      badges={
+        <>
+          <StatusBadge tone={card.kind === null ? 'neutral' : 'success'} label={kindLabel(card)} />
+          <span className={styles.muted}>{shortDate(card.date)}</span>
+          {card.translated && <StatusBadge tone="warning" label={t.machineTranslated} />}
+        </>
+      }
+      title={card.title}
+      line={card.summary}
+      onClick={() => {
+        onOpen(card);
+      }}
+    />
   );
 }
 
 function VideoItem({ video, onPlay }: { video: FeedVideo; onPlay: (video: FeedVideo) => void }) {
   return (
-    <WatchBlock
-      label={t.watchVideo({ title: video.title, channel: video.channel })}
+    <Tile
       image={pictureUrl(video.image)}
-      badge={video.short ? { tone: 'neutral', label: t.short } : null}
+      cover={video.channel}
+      overlay={video.short ? { tone: 'neutral', label: t.short } : null}
+      badges={null}
       title={video.title}
+      label={t.watchVideo({ title: video.title, channel: video.channel })}
       line={`${video.channel} · ${relativeTime(video.date)}`}
-      onPlay={() => {
+      onClick={() => {
         onPlay(video);
       }}
     />
@@ -112,13 +126,15 @@ function StreamItem({
 }) {
   const viewers = t.viewers({ count: stream.viewers });
   return (
-    <WatchBlock
-      label={t.watchStream({ name: stream.name, title: stream.title, viewers })}
+    <Tile
       image={pictureUrl(stream.image)}
-      badge={{ tone: 'danger', label: t.live }}
+      cover={stream.name}
+      overlay={{ tone: 'danger', label: t.live }}
+      badges={null}
       title={stream.title !== '' ? stream.title : stream.name}
+      label={t.watchStream({ name: stream.name, title: stream.title, viewers })}
       line={`${stream.name} · ${viewers}`}
-      onPlay={() => {
+      onClick={() => {
         onPlay(stream);
       }}
     />
@@ -142,7 +158,7 @@ type Loading = 'first' | 'more' | 'idle' | 'failed';
 
 /**
  * The endless list (D-067): patch notes, news, videos and streams mixed,
- * newest first, one below the other. The next page is asked for as the end
+ * newest first, as a grid of tiles, several to a row. The next page is asked for as the end
  * of the list comes near. Give it a key that changes when the list should
  * start again (the part, languages, settings, Refresh).
  */

@@ -95,6 +95,8 @@ import {
   type ContentView,
   type ModsImportRequest,
   type ModsInstallPayload,
+  type ModsPack,
+  type ModsPackReport,
   type ModsPlan,
   type ModsProgress,
   type ModsProject,
@@ -382,6 +384,23 @@ export const ipc = {
   /** How many files are in place; progress comes as `onModsProgress`. */
   modsInstall: (payload: ModsInstallPayload, requestId?: string): Promise<number> =>
     invoke<number>('mods_install', { request: mutation(payload, requestId) }),
+  /** A modpack version; `prepare` asks the catalog to keep its files (once). */
+  modsPack: (version: string, prepare: boolean): Promise<ModsPack> =>
+    invoke<ModsPack>('mods_pack', { version, prepare }),
+  /** A new installation for a ready modpack (its files come with `modsApplyPack`). */
+  modsCreatePackInstance: (
+    payload: { version: string; displayName: string },
+    requestId?: string,
+  ): Promise<InstanceSummary> =>
+    invoke<InstanceSummary>('mods_create_pack_instance', {
+      request: mutation(payload, requestId),
+    }),
+  /** Puts a modpack's files into its installation; progress comes as `onModsProgress`. */
+  modsApplyPack: (
+    payload: { instanceId: string; version: string },
+    requestId?: string,
+  ): Promise<ModsPackReport> =>
+    invoke<ModsPackReport>('mods_apply_pack', { request: mutation(payload, requestId) }),
   modsCancel: (instanceId: string): Promise<boolean> =>
     invoke<boolean>('mods_cancel', { instanceId }),
   modsContent: (instanceId: string): Promise<ContentView> =>

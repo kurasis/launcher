@@ -1298,7 +1298,7 @@ export type Messages = {
     readonly more: string;
     readonly notInCatalog: string;
     readonly addToCatalog: string;
-    readonly modpacksLater: string;
+    readonly modpacksHint: string;
     readonly importing: string;
     readonly by: (values: { author: string | number }) => string;
     readonly downloads: (values: { count: string | number }) => string;
@@ -1382,6 +1382,33 @@ export type Messages = {
       readonly progress: string;
       readonly stop: string;
       readonly install: string;
+    };
+    readonly pack: {
+      readonly install: string;
+      readonly title: (values: { title: string | number }) => string;
+      readonly preparing: string;
+      readonly fetching: (values: { kept: string | number; total: string | number }) => string;
+      readonly noLoader: string;
+      readonly mods: (values: { count: number }) => string;
+      readonly size: (values: { size: string | number }) => string;
+      readonly skipped: (values: { count: number }) => string;
+      readonly name: string;
+      readonly start: string;
+      readonly creating: string;
+      readonly unpacking: (values: { files: string | number; total: string | number }) => string;
+      readonly stopped: string;
+      readonly done: (values: { name: string | number }) => string;
+      readonly leftOut: (values: { count: number }) => string;
+      readonly retry: string;
+      readonly close: string;
+      readonly failures: {
+        readonly bad_pack: string;
+        readonly unsupported_pack: string;
+        readonly unsupported_host: string;
+        readonly too_big: string;
+        readonly hash_mismatch: string;
+        readonly other: string;
+      };
     };
     readonly requests: {
       readonly hint: string;

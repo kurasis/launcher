@@ -1390,11 +1390,38 @@ export interface ModsInstallPayload {
 /** `mods://progress` while an install runs. */
 export interface ModsProgress {
   instanceId: string;
-  phase: 'fetching' | 'downloading' | 'done' | 'failed' | 'cancelled';
+  phase: 'fetching' | 'downloading' | 'unpacking' | 'done' | 'failed' | 'cancelled';
   files: number;
   totalFiles: number;
   bytes: number;
   totalBytes: number;
+}
+
+/** A modpack version as the catalog has it (D-066 stage 3). */
+export interface ModsPack {
+  state: 'none' | 'working' | 'ready' | 'failed';
+  /** Why it failed: a short code. */
+  error: string | null;
+  game: string | null;
+  loader: { kind: LoaderKind; version: string } | null;
+  /** Files the catalog keeps already, of all. */
+  kept: number;
+  total: number;
+  /** Files left out by the catalog. */
+  skipped: number;
+  mods: number;
+  totalBytes: number;
+  /** On a metered connection, why the download asks first (D-051). */
+  approval: ApprovalRequest | null;
+}
+
+/** What applying a modpack did. */
+export interface ModsPackReport {
+  files: number;
+  /** The player's own changes, left as they are. */
+  keptYours: number;
+  leftOut: number;
+  removed: number;
 }
 
 export interface ContentItem {
