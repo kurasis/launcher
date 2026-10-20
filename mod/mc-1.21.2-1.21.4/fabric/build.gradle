@@ -1,0 +1,53 @@
+plugins {
+    id 'net.fabricmc.fabric-loom-remap' version '1.19.1'
+}
+
+base {
+    archivesName = "launcherskins-fabric-1.21.2-1.21.4"
+}
+
+java {
+    toolchain { languageVersion = JavaLanguageVersion.of(21) }
+}
+
+// The core and the game layer shared by every loader of this version are compiled in.
+sourceSets.main {
+    java.srcDir "${rootDir}/core/src/main/java"
+    java.srcDir "${projectDir}/../common/src/main/java"
+    resources.srcDir "${projectDir}/../common/src/main/resources"
+}
+
+dependencies {
+    minecraft "com.mojang:minecraft:${minecraft_version}"
+    mappings loom.officialMojangMappings()
+    modImplementation "net.fabricmc:fabric-loader:${fabric_loader_version}"
+}
+
+tasks.withType(JavaCompile).configureEach {
+    options.release = 21
+    options.encoding = 'UTF-8'
+}
+
+processResources {
+    inputs.property 'version', project.version
+    filesMatching('fabric.mod.json') {
+        expand version: project.version
+    }
+}
+
+// Local testing: ./gradlew runClient -PskinsApi=http://127.0.0.1:8899 -PdevNick=Tester
+loom {
+    runs {
+        client {
+            if (project.hasProperty('skinsApi')) {
+                vmArg "-Dlauncherskins.api=${project.property('skinsApi')}"
+            }
+            if (project.hasProperty('devNick')) {
+                programArgs '--username', project.property('devNick').toString()
+            }
+            if (project.hasProperty('devServer')) {
+                programArgs '--quickPlayMultiplayer', project.property('devServer').toString()
+            }
+        }
+    }
+}

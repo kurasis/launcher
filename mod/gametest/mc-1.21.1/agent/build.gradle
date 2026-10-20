@@ -3,9 +3,9 @@ plugins {
     id 'com.gradleup.shadow' version '9.6.1'
 }
 
-// The test bot for 1.21.1 with no mod loader, a Java agent (docs/GAMETEST.md). Written in
-// Mojang names like the loaders' bot, then remapped to the released (obfuscated) game's
-// names. ASM is bundled under our own package.
+// The test bot for a 1.21.x release with no mod loader, a Java agent (docs/GAMETEST.md).
+// Written in Mojang names like the loaders' bot, then remapped to the released
+// (obfuscated) game's names. ASM is bundled under our own package.
 base {
     archivesName = "launchergametest-agent-${minecraft_version}"
 }

@@ -1,0 +1,19 @@
+modLoader = "javafml"
+loaderVersion = "[1,)"
+license = "All-Rights-Reserved"
+
+[[mods]]
+modId = "launchergametest"
+version = "${version}"
+displayName = "Launcher Game Test"
+description = "The launcher's test bot: plays the game on the test machine and writes a report. Not for players."
+
+[[mixins]]
+config = "launchergametest.mixins.json"
+
+[[dependencies.launchergametest]]
+modId = "minecraft"
+type = "required"
+versionRange = "[1.21.8]"
+ordering = "NONE"
+side = "CLIENT"

@@ -12,6 +12,7 @@
 use std::collections::BTreeMap;
 use std::io::Write;
 use std::net::{Ipv4Addr, TcpListener};
+use std::ops::RangeInclusive;
 use std::path::Path;
 use std::process::ChildStdin;
 use std::sync::atomic::{AtomicI32, Ordering};
@@ -117,17 +118,45 @@ pub struct HostedServer {
     signal: Signal,
 }
 
-/// Two distinct free loopback ports. Each is bound and released, so it was free
-/// a moment ago; a race lost to another program shows up as a bind failure.
+/// World ports come from below the ephemeral ranges (Linux from 32768, Windows
+/// and macOS from 49152), so no outgoing connection, of the launcher or of any
+/// other program, can take one in the gap between choosing it and the server
+/// binding it. The gap is long: a server before 1.13 binds RCON only once it is
+/// ready, and a port taken by then leaves the world without its console.
+const WORLD_PORTS: RangeInclusive<u16> = 20000..=32767;
+/// The usual Minecraft server ports, left to a server of the player's own.
+const USUAL_SERVER_PORTS: RangeInclusive<u16> = 25565..=25575;
+/// Random ports tried before giving up.
+const PORT_TRIES: usize = 256;
+
+/// Two distinct free loopback ports from [`WORLD_PORTS`]. Each is bound and
+/// released, so it was free a moment ago; a race lost to another program's
+/// listener shows up as a bind failure.
 pub fn pick_ports() -> LauncherResult<(u16, u16)> {
-    let error = |e: &std::io::Error| LauncherError::from_io(e, "Choosing a port for the world");
-    let first = TcpListener::bind((Ipv4Addr::LOCALHOST, 0)).map_err(|e| error(&e))?;
-    let second = TcpListener::bind((Ipv4Addr::LOCALHOST, 0)).map_err(|e| error(&e))?;
-    let ports = (
-        first.local_addr().map_err(|e| error(&e))?.port(),
-        second.local_addr().map_err(|e| error(&e))?.port(),
-    );
-    Ok(ports)
+    let mut held: Vec<(u16, TcpListener)> = Vec::with_capacity(2);
+    let mut last_error = std::io::Error::from(std::io::ErrorKind::AddrInUse);
+    for _ in 0..PORT_TRIES {
+        let mut random = [0u8; 2];
+        getrandom::fill(&mut random).map_err(|_| {
+            LauncherError::internal("The operating system did not provide random bytes.")
+        })?;
+        let span = WORLD_PORTS.end() - WORLD_PORTS.start() + 1;
+        let port = WORLD_PORTS.start() + u16::from_le_bytes(random) % span;
+        if USUAL_SERVER_PORTS.contains(&port) || held.iter().any(|(p, _)| *p == port) {
+            continue;
+        }
+        match TcpListener::bind((Ipv4Addr::LOCALHOST, port)) {
+            Ok(listener) => held.push((port, listener)),
+            Err(error) => last_error = error,
+        }
+        if let [(first, _), (second, _)] = held.as_slice() {
+            return Ok((*first, *second));
+        }
+    }
+    Err(LauncherError::from_io(
+        &last_error,
+        "Choosing a port for the world",
+    ))
 }
 
 /// The JVM and server arguments, in order.
@@ -545,23 +574,32 @@ mod tests {
     use super::*;
 
     #[test]
-    fn ports_are_free_and_distinct() {
-        let (a, b) = pick_ports().unwrap();
-        assert_ne!(a, b);
-        TcpListener::bind((Ipv4Addr::LOCALHOST, a)).unwrap();
-        TcpListener::bind((Ipv4Addr::LOCALHOST, b)).unwrap();
+    fn ports_are_free_distinct_and_below_the_ephemeral_ranges() {
+        for _ in 0..32 {
+            let (a, b) = pick_ports().unwrap();
+            assert_ne!(a, b);
+            for port in [a, b] {
+                assert!(WORLD_PORTS.contains(&port) && !USUAL_SERVER_PORTS.contains(&port));
+                assert!(port < 32768, "below every ephemeral range");
+            }
+            TcpListener::bind((Ipv4Addr::LOCALHOST, a)).unwrap();
+            TcpListener::bind((Ipv4Addr::LOCALHOST, b)).unwrap();
+        }
     }
 
     #[test]
     fn an_occupied_port_is_never_chosen() {
-        let held: Vec<TcpListener> = (0..32)
-            .map(|_| TcpListener::bind((Ipv4Addr::LOCALHOST, 0)).unwrap())
+        // Every 16th port of the range, held by another listener.
+        let held: Vec<TcpListener> = WORLD_PORTS
+            .step_by(16)
+            .filter_map(|port| TcpListener::bind((Ipv4Addr::LOCALHOST, port)).ok())
             .collect();
         let taken: Vec<u16> = held
             .iter()
             .map(|l| l.local_addr().unwrap().port())
             .collect();
-        for _ in 0..32 {
+        assert!(taken.len() > 100);
+        for _ in 0..64 {
             let (a, b) = pick_ports().unwrap();
             assert!(!taken.contains(&a) && !taken.contains(&b));
         }

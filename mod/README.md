@@ -10,40 +10,50 @@ none for them: a profile without textures whose UUID is not a Mojang one (versio
 - `core/`: plain Java 8 with no game classes: the API client, the disk cache by
   SHA-256, the texture rules, frame timing and the whose-skin rule. Its tests run in
   `build`.
-- `mc-<version>/common/`: the game hook for one game version (a Mixin into
-  `PlayerInfo.getSkin()`), written once in Mojang names.
-- `mc-<version>/{fabric,neoforge,forge}/`: thin entry points. Each loader build takes
-  `core` and `common` as its own sources, so every jar stands alone. The Fabric jar
-  also runs on Quilt.
+- `mc-<versions>/common/`: the game hook for the game versions in the folder's name,
+  which share the same game code (a Mixin into `PlayerInfo.getSkin()`), written once in
+  Mojang names. `mc-1.21.11` takes its code from `mc-26.3/common`.
+- `mc-<versions>/{fabric,neoforge,forge}/`: thin entry points, one jar per loader for
+  every version in the folder's name (`launcherskins-<loader>-<first>-<last>.jar`). Each
+  loader build takes `core` and `common` as its own sources, so every jar stands alone.
+  The Fabric jar also runs on Quilt.
+- `mc-1.16.5-1.20.1/`: one plain Java 8 game layer for 1.16.5, 1.18.2 and 1.20.1, and a
+  project per release under `fabric/` and `forge/`, built by the script beside them
+  (Forge 1.18.2 and 1.20.1 with ModDevGradle's legacy plugin, reobfuscated to SRG).
 - `mc-1.12.2/forge/`: Forge 1.12.2 has no Mixin, so the hook is a coremod: an ASM
   transformer that passes `NetworkPlayerInfo`'s skin, cape, elytra and model through
   `LauncherSkins` (methods matched by MCP name in development, SRG name in a released
   game). Built with RetroFuturaGradle; the jar to ship is the reobfuscated one, not
   `-dev`.
-- `mc-<version>/agent/`: a Java agent for the game with no mod loader
-  (`-javaagent:launcherskins-agent-<version>.jar`). It rewrites `PlayerInfo.getSkin()`
-  the way the Mixin does and uses the same game layer, so HD and animation work too.
-  26.x names are not obfuscated and the JDK's class-file API rewrites the class; the
-  1.21.1 jar is remapped to the released game's names and carries its own ASM
-  (relocated), and finds its target from the remapped descriptor of its hook.
+- Java agents for the game with no mod loader
+  (`-javaagent:launcherskins-agent-<version>.jar`). They rewrite `PlayerInfo`'s skin
+  getters the way the Mixin does and use the same game layer, so HD and animation work
+  too. 26.x names are not obfuscated: `mc-26.3/agent` rewrites the class with the JDK's
+  class-file API. Older releases have one jar each (`agents/<version>/`, built by
+  `agents/agent.gradle` from `agent/`), remapped to that release's names with its own
+  ASM (relocated); it reads its targets from `AgentHooks.targets`, whose calls the
+  remapping rewrites.
 
 - `gametest/`: the test bot for the Game test workflow (docs/GAMETEST.md), never shipped
   to players: a plain Java core (`gametest/core`, the scenario and its checks) and a thin
-  game layer per version with a Mixin into `Minecraft.tick()`, built for each loader as
-  `launchergametest-<loader>-<game version>.jar`. It does nothing unless the game is
-  started with `-Dlaunchergametest.out=<folder>`.
+  game layer per tested version with a Mixin into `Minecraft.tick()`, built for each
+  loader as `launchergametest-<loader>-<game version>.jar`. It does nothing unless the
+  game is started with `-Dlaunchergametest.out=<folder>`.
 
 ## Build
 
-Gradle runs on Java 25 (Fabric Loom and RetroFuturaGradle need it); the jar for 1.12.2
-is built with a Java 8 toolchain, those for 1.21.x with Java 21 and for 26.x with
-Java 25. Missing toolchains are downloaded.
+Gradle runs on Java 25 (Fabric Loom and RetroFuturaGradle need it); the jars for 1.12.2
+to 1.20.1 are built for Java 8 (with Java 8 and 17 toolchains), those for 1.21.x with
+Java 21 and for 26.x with Java 25. Missing toolchains are downloaded.
 
 ```
 ./gradlew build
+./gradlew -Ponly=mc-1.21.11,agents build   # just these folders (and the cores)
 ```
 
-The jars are `mc-*/*/build/libs/launcherskins-<loader>-<game version>-<version>.jar`.
+Every Forge release is downloaded and decompiled when its project is configured, before
+any task runs; `-Ponly` skips the folders not named. The jars are
+`**/build/libs/launcherskins-<loader>-<game versions>-<version>.jar`.
 
 ## Trying it in the game
 

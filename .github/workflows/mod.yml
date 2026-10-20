@@ -33,21 +33,38 @@ concurrency:
 
 jobs:
   build:
-    name: Test and build
+    name: Test and build ${{ matrix.part.name }}
     runs-on: ubuntu-24.04
+    # Every Forge release is downloaded and decompiled before the build starts, so the
+    # folders are split between jobs that run side by side (mod/settings.gradle, -Ponly).
+    strategy:
+      fail-fast: false
+      matrix:
+        part:
+          - name: 1.12.2 and 26.x
+            only: mc-1.12.2,mc-26.3,gametest:mc-1.12.2,gametest:mc-26.3
+          - name: 1.21 to 1.21.4
+            only: mc-1.21.1,mc-1.21.2-1.21.4,gametest:mc-1.21.1,gametest:mc-1.21.4
+          - name: 1.21.5 to 1.21.10
+            only: mc-1.21.5-1.21.8,mc-1.21.9-1.21.10,gametest:mc-1.21.8,gametest:mc-1.21.10
+          - name: 1.21.11
+            only: mc-1.21.11,gametest:mc-1.21.11
+          - name: 1.16.5 to 1.20.1 and the agents
+            only: mc-1.16.5-1.20.1,agents,gametest:mc-1.16.5-1.20.1
     defaults:
       run:
         working-directory: mod
     steps:
       - uses: actions/checkout@v7
       - uses: gradle/actions/wrapper-validation@v6
-      # Java 8 builds the jar for 1.12.2 and 21 those for 1.21.x; Gradle, Fabric Loom
-      # and RetroFuturaGradle run on 25.
+      # Java 8 builds the jar for 1.12.2, 17 those for 1.16.5 to 1.20.1 and 21 those
+      # for 1.21.x; Gradle, Fabric Loom and RetroFuturaGradle run on 25.
       - uses: actions/setup-java@v6
         with:
           distribution: temurin
           java-version: |
             8
+            17
             21
             25
       - uses: gradle/actions/setup-gradle@v6
@@ -69,7 +86,9 @@ jobs:
                   removed += 1
           print(f"Damaged jars removed: {removed}")
           EOF
-      - run: ./gradlew --no-daemon build
+      - run: ./gradlew --no-daemon "-Ponly=$ONLY" build
+        env:
+          ONLY: ${{ matrix.part.only }}
       # Forge (mods.toml) reads every mod jar as a resource pack and warns at the
       # game's start when it has no pack.mcmeta.
       - name: Check that Forge jars carry pack.mcmeta
@@ -77,8 +96,8 @@ jobs:
           python3 - <<'EOF'
           import pathlib, sys, zipfile
           bad = 0
-          jars = [*pathlib.Path(".").glob("*/*/build/libs/launcherskins-*.jar"),
-                  *pathlib.Path(".").glob("gametest/*/*/build/libs/launchergametest-*.jar")]
+          jars = [*pathlib.Path(".").glob("**/build/libs/launcherskins-*.jar"),
+                  *pathlib.Path(".").glob("gametest/**/build/libs/launchergametest-*.jar")]
           for jar in sorted(jars):
               names = set(zipfile.ZipFile(jar).namelist())
               if "META-INF/mods.toml" in names and "pack.mcmeta" not in names:
@@ -91,12 +110,13 @@ jobs:
         run: *drop-damaged-jars
       - uses: actions/upload-artifact@v7
         with:
-          name: launcher-skins
+          name: launcher-skins-${{ strategy.job-index }}
           path: |
             mod/*/*/build/libs/launcherskins-*.jar
-            !mod/*/*/build/libs/*-sources.jar
-            !mod/*/*/build/libs/*-dev.jar
-            !mod/*/*/build/libs/*-named.jar
+            mod/*/*/*/build/libs/launcherskins-*.jar
+            !mod/**/*-sources.jar
+            !mod/**/*-dev.jar
+            !mod/**/*-named.jar
           retention-days: 14
 
   release:
@@ -110,7 +130,7 @@ jobs:
       - uses: actions/checkout@v7
       - uses: actions/download-artifact@v8
         with:
-          name: launcher-skins
+          pattern: launcher-skins-*
           path: artifact
       - name: Make the release
         env:

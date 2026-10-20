@@ -1,0 +1,81 @@
+plugins {
+    id 'java'
+    id 'net.minecraftforge.gradle' version '7.0.40'
+}
+
+base {
+    archivesName = "launcherskins-forge-1.21.5-1.21.8"
+}
+
+java {
+    toolchain { languageVersion = JavaLanguageVersion.of(21) }
+}
+
+sourceSets.main {
+    java.srcDir "${rootDir}/core/src/main/java"
+    java.srcDir "${projectDir}/../common/src/main/java"
+    resources.srcDir "${projectDir}/../common/src/main/resources"
+}
+
+// Forge finds a mod in development only when its classes and resources share a folder.
+sourceSets.each {
+    def dir = layout.buildDirectory.dir("sourcesSets/${it.name}")
+    it.output.resourcesDir = dir
+    it.java.destinationDirectory = dir
+}
+
+minecraft {
+    mappings channel: 'official', version: minecraft_version
+    runs {
+        configureEach {
+            workingDir = layout.projectDirectory.dir('run')
+        }
+        register('client') {
+            // In development there is no jar manifest to name the Mixin config.
+            args '--mixin.config', 'launcherskins.mixins.json'
+            if (project.hasProperty('skinsApi')) {
+                systemProperty 'launcherskins.api', project.property('skinsApi').toString()
+            }
+            if (project.hasProperty('devNick')) {
+                args '--username', project.property('devNick').toString()
+            }
+            if (project.hasProperty('devServer')) {
+                args '--quickPlayMultiplayer', project.property('devServer').toString()
+            }
+            if (project.hasProperty('devWorld')) {
+                args '--quickPlaySingleplayer', project.property('devWorld').toString()
+            }
+        }
+    }
+}
+
+repositories {
+    minecraft.mavenizer(it)
+    maven fg.forgeMaven
+    maven fg.minecraftLibsMaven
+    mavenCentral()
+}
+
+dependencies {
+    implementation minecraft.dependency("net.minecraftforge:forge:${minecraft_version}-${forge_version}")
+    // Forge ships Mixin; only its annotations are needed to compile.
+    compileOnly 'org.spongepowered:mixin:0.8.5'
+}
+
+tasks.withType(JavaCompile).configureEach {
+    options.release = 21
+    options.encoding = 'UTF-8'
+}
+
+jar {
+    manifest {
+        attributes 'MixinConfigs': 'launcherskins.mixins.json'
+    }
+}
+
+processResources {
+    inputs.property 'version', project.version
+    filesMatching('META-INF/mods.toml') {
+        expand version: project.version
+    }
+}

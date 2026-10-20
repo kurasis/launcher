@@ -2,6 +2,8 @@ pluginManagement {
     repositories {
         maven { url = 'https://maven.fabricmc.net/' }
         maven { url = 'https://maven.neoforged.net/releases/' }
+        // Architectury Loom, the build plugin for Forge 1.16.5.
+        maven { url = 'https://maven.architectury.dev/' }
         maven { url = 'https://maven.minecraftforge.net/' }
         // RetroFuturaGradle, the build plugin for Forge 1.12.2.
         maven {
@@ -22,12 +24,60 @@ plugins {
 
 rootProject.name = 'launcher-skins'
 
+// `-Ponly=mc-1.21.1,agents` takes just those folders (paths as in `include`) and the
+// cores. A Forge release is set up (downloaded and decompiled) when its project is
+// configured, so the CI jobs that split the build each name only their own folders.
+def only = providers.gradleProperty('only').map { it.split(',')*.trim().findAll() }.getOrElse([])
+def add = { String path, String script = null ->
+    if (only.isEmpty() || only.any { path == it || path.startsWith("${it}:") }) {
+        include path
+        if (script != null) {
+            project(":${path}").buildFileName = script
+        }
+    }
+}
+
 include 'core'
-include 'mc-1.21.1:fabric', 'mc-1.21.1:neoforge', 'mc-1.21.1:forge', 'mc-1.21.1:agent'
-include 'mc-26.3:fabric', 'mc-26.3:neoforge', 'mc-26.3:forge', 'mc-26.3:agent'
-include 'mc-1.12.2:forge'
+// Each folder serves the game versions in its name with one jar per loader.
+['mc-1.21.1', 'mc-1.21.2-1.21.4', 'mc-1.21.5-1.21.8', 'mc-1.21.9-1.21.10', 'mc-1.21.11', 'mc-26.3'].each { band ->
+    ['fabric', 'neoforge', 'forge'].each { loader -> add "${band}:${loader}" }
+}
+add 'mc-26.3:agent'
+add 'mc-1.12.2:forge'
+// 1.16.5, 1.18.2 and 1.20.1 share a game layer; each release is a project of its own,
+// a folder in mc-1.16.5-1.20.1/<loader> built by that loader's script there.
+['fabric', 'forge'].each { loader ->
+    file("mc-1.16.5-1.20.1/${loader}").eachDir { dir ->
+        if (new File(dir, 'gradle.properties').exists()) {
+            // A folder with a build.gradle of its own is built by it.
+            def own = new File(dir, 'build.gradle').exists()
+            add "mc-1.16.5-1.20.1:${loader}:${dir.name}", own ? null : "../${loader}.gradle"
+        }
+    }
+}
+// The Java agent for releases with obfuscated names: one project per release, each a
+// folder of mod/agents built by mod/agents/agent.gradle.
+file('agents').eachDir { dir ->
+    if (new File(dir, 'gradle.properties').exists()) {
+        add "agents:${dir.name}", '../agent.gradle'
+    }
+}
 // The test bot for game runs on the test machine (docs/GAMETEST.md); never shipped to players.
 include 'gametest:core'
-include 'gametest:mc-1.21.1:fabric', 'gametest:mc-1.21.1:neoforge', 'gametest:mc-1.21.1:forge', 'gametest:mc-1.21.1:agent'
-include 'gametest:mc-26.3:fabric', 'gametest:mc-26.3:neoforge', 'gametest:mc-26.3:forge', 'gametest:mc-26.3:agent'
-include 'gametest:mc-1.12.2:forge'
+// The 1.21.x bots share mc-1.21.1's build scripts; each folder has its own game layer.
+['1.21.1', '1.21.4', '1.21.8', '1.21.10', '1.21.11'].each { version ->
+    ['fabric', 'neoforge', 'forge', 'agent'].each { loader ->
+        add "gametest:mc-${version}:${loader}", version == '1.21.1' ? null : "../../mc-1.21.1/${loader}/build.gradle"
+    }
+}
+['fabric', 'neoforge', 'forge', 'agent'].each { loader -> add "gametest:mc-26.3:${loader}" }
+add 'gametest:mc-1.12.2:forge'
+// The 1.16.5 to 1.20.1 bots: a project per release and loader, laid out like the mod's.
+['fabric', 'forge', 'agent'].each { loader ->
+    file("gametest/mc-1.16.5-1.20.1/${loader}").eachDir { dir ->
+        if (new File(dir, 'gradle.properties').exists()) {
+            def own = new File(dir, 'build.gradle').exists()
+            add "gametest:mc-1.16.5-1.20.1:${loader}:${dir.name}", own ? null : "../${loader}.gradle"
+        }
+    }
+}

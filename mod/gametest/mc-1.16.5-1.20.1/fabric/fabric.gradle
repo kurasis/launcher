@@ -1,0 +1,41 @@
+plugins {
+    id 'net.fabricmc.fabric-loom-remap' version '1.19.1'
+}
+
+// The bot for Fabric in one of 1.16.5, 1.18.2 and 1.20.1: each is a project here, a folder
+// named after the release. They share the Mixin and take the release's own game layer
+// from ../game/<release>. 1.16.5 runs on Java 8, so all of it is Java 8.
+base {
+    archivesName = "launchergametest-fabric-${minecraft_version}"
+}
+
+java {
+    toolchain { languageVersion = JavaLanguageVersion.of(21) }
+}
+
+sourceSets.main {
+    java.srcDir "${rootDir}/gametest/core/src/main/java"
+    java.srcDir "${projectDir}/../../common/src/main/java"
+    java.srcDir "${projectDir}/../../game/${minecraft_version}"
+    resources.srcDir "${projectDir}/../../common/src/main/resources"
+    resources.srcDir "${projectDir}/../src/main/resources"
+}
+
+dependencies {
+    minecraft "com.mojang:minecraft:${minecraft_version}"
+    mappings loom.officialMojangMappings()
+    modImplementation "net.fabricmc:fabric-loader:${fabric_loader_version}"
+}
+
+tasks.withType(JavaCompile).configureEach {
+    options.release = 8
+    options.encoding = 'UTF-8'
+}
+
+processResources {
+    def props = [version: project.version, minecraft: minecraft_version]
+    inputs.properties props
+    filesMatching('fabric.mod.json') {
+        expand props
+    }
+}
