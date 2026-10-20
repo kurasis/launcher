@@ -37,7 +37,7 @@
         "offline": "The feed cannot be reached. Check the internet connection.",
         "server": "The feed did not answer as expected. Try again later.",
         "not_found": "This is no longer in the feed.",
-        "bad_input": "This is not a link to a project on Modrinth or CurseForge, or a name to look for.",
+        "bad_input": "This is not a YouTube channel link, @handle or channel ID.",
         "too_many": "Too many channel lookups for now. Try again in a minute.",
         "full": "You can add up to 30 channels. Remove one first.",
         "unavailable": "The launcher data folder is unavailable."
@@ -1315,7 +1315,7 @@
           "failed": "Failed"
         },
         "failures": {
-          "bad_input": "This is not a link to a project on Modrinth or a name to look for.",
+          "bad_input": "This is not a link to a project on Modrinth or CurseForge, or a name to look for.",
           "curseforge_file_link": "This link is to a file, not a project. Paste the link to the project’s page on CurseForge.",
           "nothing_found": "Nothing was found by this name. Try the project’s link.",
           "not_found": "The source has no such project.",
