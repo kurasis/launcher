@@ -46,6 +46,8 @@ pub enum Reason {
     BeforeRestore,
     /// The installation just before it was deleted (D-055).
     BeforeDelete,
+    /// The installation just before a modpack update changed it (D-066).
+    BeforeUpdate,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]

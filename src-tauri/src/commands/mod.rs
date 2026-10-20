@@ -2138,26 +2138,20 @@ pub struct ModsApplyPackPayload {
     pub version: String,
 }
 
-/// Puts a ready modpack's files and overrides into an installation made for
-/// it; progress comes as `mods://progress`. Again on the same installation it
-/// finishes what stopped, changing only what is still as the pack left it.
-#[tauri::command]
-pub async fn mods_apply_pack<R: Runtime>(
-    app: AppHandle<R>,
-    request: MutationRequest<ModsApplyPackPayload>,
-) -> LauncherResult<crate::mods::pack::PackReport> {
+/// A ready modpack version checked against an installation: the same
+/// Minecraft version and kind of loader. Returns the pack, its loader and who
+/// it is.
+async fn pack_for(
+    client: &crate::mods::Client,
+    instance: &crate::storage::models::InstanceFile,
+    version: &str,
+) -> LauncherResult<(
+    crate::mods::pack::PackInfo,
+    Option<crate::loader::LoaderChoice>,
+    crate::mods::pack::PackMeta,
+)> {
     use crate::mods::Catalog;
-    use tauri::Emitter;
-    crate::state::ledger::validate_request_id(&request.request_id)?;
-    let payload = request.payload;
-    let id = payload.instance_id;
-    let mods = mods(&app);
-    let claim = mods.content.claim(id)?;
-    let state = app.state::<AppState>();
-    state.activity().ensure_instance_idle(id)?;
-    crate::mods::online(&state)?;
-    let (root, instance) = crate::mods::content::instance_of(&state, id)?;
-    let info = mods.client.pack(&payload.version, false).await?;
+    let info = client.pack(version, false).await?;
     if !info.ready() {
         return Err(crate::error::LauncherError::invalid_input(
             "The catalog is still preparing this modpack. Try again soon.",
@@ -2171,16 +2165,31 @@ pub async fn mods_apply_pack<R: Runtime>(
             "This modpack needs another Minecraft version or mod loader than this installation.",
         ));
     }
-    let version = mods.client.version(&payload.version).await?;
-    let project = mods.client.project(&version.project_id).await?;
-    let meta = crate::mods::pack::PackMeta::new(&project, &version)?;
+    let found = client.version(version).await?;
+    let project = client.project(&found.project_id).await?;
+    let meta = crate::mods::pack::PackMeta::new(&project, &found)?;
+    Ok((info, loader, meta))
+}
+
+/// Puts a pack's files in with progress as `mods://progress`, and says when
+/// it stopped.
+async fn run_pack<R: Runtime>(
+    app: &AppHandle<R>,
+    mods: &crate::mods::Mods,
+    root: &crate::storage::paths::DataRoot,
+    id: crate::storage::paths::InstanceId,
+    info: &crate::mods::pack::PackInfo,
+    meta: crate::mods::pack::PackMeta,
+    cancel: &crate::download::CancelToken,
+) -> LauncherResult<crate::mods::pack::PackReport> {
+    use tauri::Emitter;
     let emitter = app.clone();
     let emit = move |progress: crate::mods::content::Progress| {
         let _ = emitter.emit(crate::mods::PROGRESS_EVENT, progress);
     };
     let result = mods
         .content
-        .apply_pack(&root, id, &info, meta, &claim.cancel, &emit)
+        .apply_pack(root, id, info, meta, cancel, &emit)
         .await;
     if let Err(error) = &result {
         let phase = if error.code == crate::error::ErrorCode::OperationCancelled {
@@ -2197,8 +2206,182 @@ pub async fn mods_apply_pack<R: Runtime>(
             total_bytes: 0,
         });
     }
+    result
+}
+
+/// Puts a ready modpack's files and overrides into an installation made for
+/// it; progress comes as `mods://progress`. Again on the same installation it
+/// finishes what stopped, changing only what is still as the pack left it.
+#[tauri::command]
+pub async fn mods_apply_pack<R: Runtime>(
+    app: AppHandle<R>,
+    request: MutationRequest<ModsApplyPackPayload>,
+) -> LauncherResult<crate::mods::pack::PackReport> {
+    crate::state::ledger::validate_request_id(&request.request_id)?;
+    let payload = request.payload;
+    let id = payload.instance_id;
+    let mods = mods(&app);
+    let claim = mods.content.claim(id)?;
+    let state = app.state::<AppState>();
+    state.activity().ensure_instance_idle(id)?;
+    crate::mods::online(&state)?;
+    let (root, instance) = crate::mods::content::instance_of(&state, id)?;
+    let (info, _, meta) = pack_for(&mods.client, &instance, &payload.version).await?;
+    let result = run_pack(&app, &mods, &root, id, &info, meta, &claim.cancel).await;
     drop(claim);
     result
+}
+
+/// Updates an installation made from a modpack to another version of the
+/// same pack (D-066). The whole installation is backed up first (D-047);
+/// the player's own changes stay, and the loader follows the pack.
+#[tauri::command]
+pub async fn mods_update_pack<R: Runtime>(
+    app: AppHandle<R>,
+    request: MutationRequest<ModsApplyPackPayload>,
+) -> LauncherResult<crate::mods::pack::PackReport> {
+    crate::state::ledger::validate_request_id(&request.request_id)?;
+    let payload = request.payload;
+    let id = payload.instance_id;
+    let mods = mods(&app);
+    let claim = mods.content.claim(id)?;
+    let state = app.state::<AppState>();
+    state.activity().ensure_instance_idle(id)?;
+    crate::mods::online(&state)?;
+    let (root, instance) = crate::mods::content::instance_of(&state, id)?;
+    let Some(installed) = crate::mods::content::load_lock(&root, id).pack else {
+        return Err(crate::error::LauncherError::invalid_input(
+            "This installation was not made from a modpack.",
+        ));
+    };
+    let (info, loader, meta) = pack_for(&mods.client, &instance, &payload.version).await?;
+    if meta.project_id != installed.project_id {
+        return Err(crate::error::LauncherError::invalid_input(
+            "This is another modpack than the one the installation was made from.",
+        ));
+    }
+    blocking(app.clone(), move |state| {
+        crate::backup::create(
+            state,
+            id,
+            crate::backup::Scope::Installation,
+            crate::backup::Reason::BeforeUpdate,
+        )
+    })
+    .await?;
+    let report = run_pack(&app, &mods, &root, id, &info, meta, &claim.cancel).await?;
+    if let Some(loader) = loader
+        && instance.loader.as_ref() != Some(&loader)
+    {
+        let change = MutationRequest {
+            request_id: uuid::Uuid::new_v4().to_string(),
+            payload: crate::state::dto::SetInstanceLoaderPayload {
+                instance_id: id,
+                version: loader.version,
+            },
+        };
+        blocking(app.clone(), move |state| state.set_instance_loader(change)).await?;
+    }
+    drop(claim);
+    Ok(report)
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct ModsExportPackPayload {
+    pub instance_id: crate::storage::paths::InstanceId,
+    pub choice: crate::mods::pack::ExportChoice,
+    pub title: Option<String>,
+}
+
+/// What an export wrote.
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ModsExportResult {
+    /// False when the player closed the save dialog.
+    pub saved: bool,
+    /// File name of the written archive (not the full path).
+    pub file_name: Option<String>,
+    pub report: Option<crate::mods::pack::ExportReport>,
+}
+
+/// A file name for a modpack export.
+fn pack_file_name(name: &str) -> String {
+    let base = export_file_name(name);
+    let base = base.strip_suffix(".zip").unwrap_or(&base);
+    let base = if base == "world" { "modpack" } else { base };
+    format!("{base}.mrpack")
+}
+
+/// Saves an installation as a Modrinth modpack (`.mrpack`) where the player
+/// chooses (D-066): mods the catalog knows from Modrinth by address, the
+/// rest copied in.
+#[tauri::command]
+pub async fn mods_export_pack<R: Runtime>(
+    app: AppHandle<R>,
+    payload: ModsExportPackPayload,
+) -> LauncherResult<ModsExportResult> {
+    use tauri_plugin_dialog::DialogExt;
+    let id = payload.instance_id;
+    let mods = mods(&app);
+    let claim = mods.content.claim(id)?;
+    let state = app.state::<AppState>();
+    state.activity().ensure_instance_idle(id)?;
+    let (root, instance) = crate::mods::content::instance_of(&state, id)?;
+    let lock = crate::mods::content::load_lock(&root, id);
+    let handle = app.clone();
+    let title = window_title(payload.title, "Export the modpack");
+    let file_name = pack_file_name(&instance.display_name);
+    let target = tauri::async_runtime::spawn_blocking(move || {
+        handle
+            .dialog()
+            .file()
+            .set_title(title)
+            .set_file_name(file_name)
+            .add_filter("Modrinth modpack", &["mrpack"])
+            .blocking_save_file()
+    })
+    .await
+    .map_err(|_| crate::error::LauncherError::internal("The save dialog failed."))?;
+    let Some(target) = target else {
+        return Ok(ModsExportResult {
+            saved: false,
+            file_name: None,
+            report: None,
+        });
+    };
+    let path = target.into_path().map_err(|_| {
+        crate::error::LauncherError::new(
+            crate::error::ErrorCode::InvalidInput,
+            "This location cannot be used for the export.",
+        )
+    })?;
+    // The dialog took a while; the game may have started meanwhile.
+    state.activity().ensure_instance_idle(id)?;
+    let info = crate::mods::pack::ExportInfo {
+        name: instance.display_name.clone(),
+        version_number: lock
+            .pack
+            .as_ref()
+            .map_or_else(|| "1.0.0".to_owned(), |p| p.version_number.clone()),
+        game: instance.version_id.clone(),
+        loader: instance.loader.clone(),
+    };
+    let report = crate::mods::pack::export(
+        &mods.client,
+        &root.game_dir(id),
+        info,
+        payload.choice,
+        path.clone(),
+        &claim.cancel,
+    )
+    .await?;
+    drop(claim);
+    Ok(ModsExportResult {
+        saved: true,
+        file_name: path.file_name().map(|n| n.to_string_lossy().into_owned()),
+        report: Some(report),
+    })
 }
 
 /// Stops an install into an installation.

@@ -115,6 +115,8 @@ fn main() {
         "mods_pack",
         "mods_create_pack_instance",
         "mods_apply_pack",
+        "mods_update_pack",
+        "mods_export_pack",
         "mods_cancel",
         "mods_content",
         "mods_identify",

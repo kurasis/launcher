@@ -1049,7 +1049,8 @@ export interface ConsolePage {
 /** What a backup holds (D-047). */
 export type BackupScope = { kind: 'world'; name: string } | { kind: 'installation' };
 
-export type BackupReason = 'manual' | 'after_play' | 'before_restore' | 'before_delete';
+export type BackupReason =
+  'manual' | 'after_play' | 'before_restore' | 'before_delete' | 'before_update';
 
 export interface BackupInfo {
   id: string;
@@ -1437,11 +1438,43 @@ export interface ContentItem {
   versionNumber: string | null;
   icon: string | null;
   dependency: boolean;
+  /** The modpack the installation was made from brought it. */
+  fromPack: boolean;
+}
+
+/** The modpack an installation was made from. */
+export interface ContentPack {
+  projectId: string;
+  versionId: string;
+  title: string;
+  versionNumber: string;
+  icon: string | null;
 }
 
 export interface ContentView {
   items: ContentItem[];
   worlds: string[];
+  pack: ContentPack | null;
+}
+
+/** What goes into a modpack export besides mods, packs, shaders and configs. */
+export interface ModsExportChoice {
+  worlds: boolean;
+  options: boolean;
+}
+
+/** What a modpack export wrote. */
+export interface ModsExportResult {
+  /** False when the save dialog was closed. */
+  saved: boolean;
+  fileName: string | null;
+  report: {
+    /** Files named by their address on Modrinth. */
+    linked: number;
+    /** Files copied into the archive. */
+    bundled: number;
+    bytes: number;
+  } | null;
 }
 
 /** A file of the player's that the catalog recognized. */

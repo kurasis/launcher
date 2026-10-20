@@ -1192,6 +1192,24 @@ mod packs {
         assert_eq!(pack.files.len(), 2);
         assert_eq!(pack.overrides.len(), 3);
         assert!(seen.lock().unwrap().contains(&"done"));
+        // The content view shows the pack and what it brought.
+        let view = content::list(&root, id);
+        assert_eq!(
+            view.pack.as_ref().map(|p| p.version_number.as_str()),
+            Some("10.0")
+        );
+        assert!(view.items.iter().all(|i| i.from_pack), "{:?}", view.items);
+        put(&game.join("mods/mine.jar"), b"mine");
+        let view = content::list(&root, id);
+        assert!(
+            !view
+                .items
+                .iter()
+                .find(|i| i.name == "mine.jar")
+                .unwrap()
+                .from_pack
+        );
+        fs::remove_file(game.join("mods/mine.jar")).unwrap();
 
         // The player changes a config and turns a mod off.
         put(&game.join("config/x.toml"), b"x = mine");
@@ -1234,6 +1252,140 @@ mod packs {
                 .iter()
                 .any(|e| e.path == "config/x.toml" && e.sha256 == sha(b"x = 2"))
         );
+    }
+
+    fn read_zip(path: &Path) -> (Value, Vec<String>) {
+        use std::io::Read as _;
+        let mut zip = zip::ZipArchive::new(fs::File::open(path).unwrap()).unwrap();
+        let mut text = String::new();
+        zip.by_name("modrinth.index.json")
+            .unwrap()
+            .read_to_string(&mut text)
+            .unwrap();
+        let mut names: Vec<String> = zip.file_names().map(str::to_owned).collect();
+        names.sort();
+        (serde_json::from_str(&text).unwrap(), names)
+    }
+
+    #[tokio::test]
+    async fn an_installation_is_exported_as_a_modrinth_pack() {
+        use crate::mods::pack::{ExportChoice, ExportInfo, export};
+        let dir = tempfile::tempdir().unwrap();
+        let game = dir.path().join("game");
+        put(&game.join("mods/known.jar"), b"known");
+        put(&game.join("mods/own.jar"), b"own");
+        put(&game.join("mods/off.jar.disabled"), b"off");
+        put(&game.join("mods/run.exe"), b"MZ");
+        put(&game.join("config/a.toml"), b"a = 1");
+        put(&game.join("config/b.jar"), b"not here");
+        put(&game.join("options.txt"), b"fov:70");
+        put(&game.join("servers.dat"), b"private");
+        put(&game.join("saves/World/level.dat"), b"level");
+        put(&game.join("logs/latest.log"), b"log");
+        #[cfg(unix)]
+        std::os::unix::fs::symlink("/etc/passwd", game.join("config/link")).unwrap();
+
+        // The catalog knows known.jar from Modrinth; a kept file without
+        // an address there is copied like any other.
+        let mut catalog = Fake::default();
+        catalog.add_project(1, "mod", "Known");
+        let modrinth = "https://cdn.modrinth.com/data/AAAA/versions/BBBB/known.jar".to_owned();
+        let mut known = catalog.add_version(2, 1, "known.jar", json!({}));
+        let version = catalog.versions.get_mut(&known).unwrap();
+        version.files[0].sha256 = Some(sha(b"known"));
+        version.files[0].origin = Some(modrinth.clone());
+        known = catalog.add_version(3, 1, "own.jar", json!({}));
+        catalog.versions.get_mut(&known).unwrap().files[0].sha256 = Some(sha(b"own"));
+
+        let info = ExportInfo {
+            name: "My \"pack\"".to_owned(),
+            version_number: "1.0.0".to_owned(),
+            game: "1.20.1".to_owned(),
+            loader: Some(crate::loader::LoaderChoice {
+                kind: LoaderKind::Forge,
+                version: "1.20.1-47.2.0".to_owned(),
+            }),
+        };
+        let to = dir.path().join("out.mrpack");
+        let report = export(
+            &catalog,
+            &game,
+            info.clone(),
+            ExportChoice::default(),
+            to.clone(),
+            &CancelToken::new(),
+        )
+        .await
+        .unwrap();
+        assert_eq!((report.linked, report.bundled), (1, 2), "{report:?}");
+        let (index, names) = read_zip(&to);
+        assert_eq!(
+            names,
+            [
+                "modrinth.index.json",
+                "overrides/config/a.toml",
+                "overrides/mods/own.jar"
+            ]
+        );
+        assert_eq!(index["formatVersion"], 1);
+        assert_eq!(index["name"], "My \"pack\"");
+        assert_eq!(index["dependencies"]["minecraft"], "1.20.1");
+        assert_eq!(index["dependencies"]["forge"], "47.2.0");
+        let files = index["files"].as_array().unwrap();
+        assert_eq!(files.len(), 1);
+        assert_eq!(files[0]["path"], "mods/known.jar");
+        assert_eq!(files[0]["downloads"][0], modrinth.as_str());
+        assert_eq!(files[0]["fileSize"], 5);
+        assert_eq!(files[0]["hashes"]["sha512"].as_str().unwrap().len(), 128);
+        assert!(!dir.path().join("out.mrpack.part").exists());
+
+        // What the catalog reads back of it.
+        assert!(crate::mods::pack::pack_path(
+            files[0]["path"].as_str().unwrap()
+        ));
+
+        // Worlds and settings only when asked; never the server list.
+        let report = export(
+            &catalog,
+            &game,
+            info,
+            ExportChoice {
+                worlds: true,
+                options: true,
+            },
+            to.clone(),
+            &CancelToken::new(),
+        )
+        .await
+        .unwrap();
+        assert_eq!(report.bundled, 4, "{report:?}");
+        let (_, names) = read_zip(&to);
+        assert!(names.contains(&"overrides/saves/World/level.dat".to_owned()));
+        assert!(names.contains(&"overrides/options.txt".to_owned()));
+        assert!(
+            !names
+                .iter()
+                .any(|n| n.contains("servers.dat") || n.contains("logs"))
+        );
+    }
+
+    #[test]
+    fn only_modrinths_cdn_is_named_in_an_export() {
+        use crate::mods::pack::modrinth_download;
+        assert!(modrinth_download(
+            "https://cdn.modrinth.com/data/a/versions/b/x.jar"
+        ));
+        for bad in [
+            "http://cdn.modrinth.com/x.jar",
+            "https://cdn.modrinth.com.evil.example/x.jar",
+            "https://user@cdn.modrinth.com/x.jar",
+            "https://cdn.modrinth.com:8443/x.jar",
+            "https://cdn.modrinth.com/a b.jar",
+            "https://github.com/x.jar",
+            "junk",
+        ] {
+            assert!(!modrinth_download(bad), "{bad}");
+        }
     }
 
     #[tokio::test]

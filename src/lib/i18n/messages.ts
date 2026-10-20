@@ -1216,6 +1216,7 @@ export type Messages = {
       readonly after_play: string;
       readonly before_restore: string;
       readonly before_delete: string;
+      readonly before_update: string;
     };
     readonly size: (values: {
       files: number;
@@ -1409,6 +1410,12 @@ export type Messages = {
         readonly hash_mismatch: string;
         readonly other: string;
       };
+      readonly updateTitle: (values: { title: string | number }) => string;
+      readonly updateNote: string;
+      readonly updateStart: string;
+      readonly updated: (values: { version: string | number }) => string;
+      readonly keptYours: (values: { count: number }) => string;
+      readonly updateStopped: string;
     };
     readonly requests: {
       readonly hint: string;
@@ -1473,6 +1480,24 @@ export type Messages = {
       readonly remove: string;
       readonly confirmRemove: string;
       readonly cancel: string;
+      readonly fromPack: string;
+      readonly pack: (values: { title: string | number; version: string | number }) => string;
+      readonly packUpdate: (values: { version: string | number }) => string;
+      readonly packLatest: string;
+      readonly export: string;
+      readonly exportTitle: string;
+      readonly exportHint: string;
+      readonly exportWorlds: string;
+      readonly exportOptions: string;
+      readonly exportStart: string;
+      readonly exporting: string;
+      readonly exported: (values: {
+        name: string | number;
+        linked: string | number;
+        bundled: string | number;
+        size: string | number;
+      }) => string;
+      readonly close: string;
     };
   };
   readonly worlds: {

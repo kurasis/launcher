@@ -250,6 +250,8 @@ fn main_window_capability_grants_only_app_commands() {
             "allow-mods-pack",
             "allow-mods-create-pack-instance",
             "allow-mods-apply-pack",
+            "allow-mods-update-pack",
+            "allow-mods-export-pack",
             "allow-mods-cancel",
             "allow-mods-content",
             "allow-mods-identify",

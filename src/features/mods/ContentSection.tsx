@@ -9,11 +9,14 @@ import type {
   ContentUpdate,
   ContentView,
   InstanceSummary,
+  ModsVersion,
 } from '../../lib/contracts';
 import { formatBytes } from '../../lib/format';
 import { describeIpcError, ipc } from '../../lib/ipc';
 import { strings } from '../../lib/strings';
+import { ExportDialog } from './ExportDialog';
 import { ourPicture } from './helpers';
+import { PackDialog } from './PackDialog';
 import styles from './Mods.module.css';
 
 const FOLDERS = ['mods', 'resourcepacks', 'shaderpacks', 'datapacks'] as const;
@@ -74,7 +77,11 @@ function Row({
           )}
           {!item.enabled && <StatusBadge tone="neutral" label={t.off} />}
           {item.dependency && <StatusBadge tone="neutral" label={t.dependency} />}
-          {item.projectId === null && <StatusBadge tone="neutral" label={t.byHand} />}
+          {item.fromPack ? (
+            <StatusBadge tone="neutral" label={t.fromPack} />
+          ) : (
+            item.projectId === null && <StatusBadge tone="neutral" label={t.byHand} />
+          )}
           {update !== undefined && (
             <StatusBadge tone="warning" label={t.updateTo({ version: update.toNumber })} />
           )}
@@ -163,11 +170,17 @@ export function ContentSection({ instance, onOpen, onUpdate, revision }: Props) 
     revision: number;
     updates: ContentUpdate[];
     known: ContentIdentified[];
+    /** A newer version of the modpack the installation was made from. */
+    pack: ModsVersion | null;
   } | null>(null);
   const updates = checked?.revision === revision ? checked.updates : null;
   const known = checked?.revision === revision ? checked.known : [];
+  const packOffer = checked?.revision === revision ? checked.pack : null;
   const [checking, setChecking] = useState(false);
   const [batch, setBatch] = useState<Batch | null>(null);
+  const [updatingPack, setUpdatingPack] = useState<ModsVersion | null>(null);
+  const [exporting, setExporting] = useState(false);
+  const pack = view?.pack ?? null;
 
   const load = useCallback(() => {
     void ipc
@@ -197,12 +210,32 @@ export function ContentSection({ instance, onOpen, onUpdate, revision }: Props) 
       });
   };
 
+  // The newest version of the pack for this Minecraft version, when it is
+  // not the one installed; the pack's own files are updated with it.
+  const newerPack = async (): Promise<ModsVersion | null> => {
+    if (pack === null) return null;
+    try {
+      const found = await ipc.modsVersions(pack.projectId, instance.versionId, null);
+      const newest = found.find((v) => v.files.some((f) => f.name.endsWith('.mrpack')));
+      return newest !== undefined && newest.id !== pack.versionId ? newest : null;
+    } catch {
+      return null;
+    }
+  };
+
   const check = () => {
     setChecking(true);
     setError(null);
-    Promise.all([ipc.modsUpdates(id), ipc.modsIdentify(id)])
-      .then(([offers, identified]) => {
-        setChecked({ revision, updates: offers, known: identified });
+    Promise.all([ipc.modsUpdates(id), ipc.modsIdentify(id), newerPack()])
+      .then(([offers, identified, newer]) => {
+        // What the pack brought is updated with the pack.
+        const own = new Set((view?.items ?? []).filter((i) => i.fromPack).map((i) => i.path));
+        setChecked({
+          revision,
+          updates: offers.filter((o) => !own.has(o.path)),
+          known: identified,
+          pack: newer,
+        });
       })
       .catch((e: unknown) => {
         setError(describeIpcError(e));
@@ -245,10 +278,48 @@ export function ContentSection({ instance, onOpen, onUpdate, revision }: Props) 
   const items = view?.items ?? [];
   const byPath = new Map((updates ?? []).map((u) => [u.path, u]));
   const knownByPath = new Map(known.map((k) => [k.path, k]));
+  const packIcon = ourPicture(pack?.icon ?? null);
   return (
     <div className={styles.section}>
       {instance.busy && <Notice tone="info">{t.busy}</Notice>}
       {error !== null && <Notice tone="danger">{error}</Notice>}
+      {pack !== null && (
+        <div className={styles.contentRow}>
+          {packIcon !== null ? (
+            <img className={styles.icon} src={packIcon} alt="" />
+          ) : (
+            <span className={styles.icon} aria-hidden="true" />
+          )}
+          <span className={styles.cardBody}>
+            <span className={styles.cardTitle}>
+              {t.pack({ title: pack.title, version: pack.versionNumber })}
+            </span>
+            {updates !== null && packOffer === null && (
+              <span className={styles.muted}>{t.packLatest}</span>
+            )}
+          </span>
+          <span className={styles.rowActions}>
+            {packOffer !== null && (
+              <Button
+                variant="primary"
+                disabled={busy}
+                onClick={() => {
+                  setUpdatingPack(packOffer);
+                }}
+              >
+                {t.packUpdate({ version: packOffer.number })}
+              </Button>
+            )}
+            <Button
+              onClick={() => {
+                onOpen(pack.projectId);
+              }}
+            >
+              {t.open}
+            </Button>
+          </span>
+        </div>
+      )}
       <div className={forms.actions}>
         <Button disabled={checking || busy} onClick={check}>
           {checking ? t.checking : t.check}
@@ -270,6 +341,14 @@ export function ContentSection({ instance, onOpen, onUpdate, revision }: Props) 
           }}
         >
           {t.openFolder}
+        </Button>
+        <Button
+          disabled={busy}
+          onClick={() => {
+            setExporting(true);
+          }}
+        >
+          {t.export}
         </Button>
       </div>
       {updates !== null && updates.length === 0 && (
@@ -324,6 +403,28 @@ export function ContentSection({ instance, onOpen, onUpdate, revision }: Props) 
             </section>
           );
         })
+      )}
+      {updatingPack !== null && pack !== null && (
+        <PackDialog
+          title={pack.title}
+          version={updatingPack}
+          updating={instance}
+          onClose={() => {
+            setUpdatingPack(null);
+          }}
+          onDone={() => {
+            setChecked(null);
+            load();
+          }}
+        />
+      )}
+      {exporting && (
+        <ExportDialog
+          instance={instance}
+          onClose={() => {
+            setExporting(false);
+          }}
+        />
       )}
     </div>
   );

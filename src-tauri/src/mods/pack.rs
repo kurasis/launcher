@@ -825,3 +825,368 @@ impl Installer {
         Ok(report)
     }
 }
+
+// ----- what the interface sees of an installation's pack -----
+
+/// The modpack an installation was made from, for its content view.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PackSummary {
+    pub project_id: String,
+    pub version_id: String,
+    pub title: String,
+    pub version_number: String,
+    pub icon: Option<String>,
+}
+
+impl PackSummary {
+    pub fn of(lock: &PackLock) -> Self {
+        Self {
+            project_id: lock.project_id.clone(),
+            version_id: lock.version_id.clone(),
+            title: lock.title.clone(),
+            version_number: lock.version_number.clone(),
+            icon: lock.icon.clone(),
+        }
+    }
+}
+
+// ----- exporting -----
+
+/// Folders an export takes, besides worlds when asked.
+const EXPORT_FOLDERS: &[&str] = &[
+    "mods",
+    "resourcepacks",
+    "shaderpacks",
+    "config",
+    "defaultconfigs",
+    "kubejs",
+    "scripts",
+    "global_packs",
+    "openloader",
+    "packmenu",
+    "resources",
+    "patchouli_books",
+    "schematics",
+    "customization",
+];
+/// The game's own settings, when asked (never `servers.dat`: the player's
+/// server list stays private).
+const EXPORT_OPTIONS: &[&str] = &["options.txt", "optionsof.txt", "optionsshaders.txt"];
+/// Folders whose files Modrinth may host, named in the index instead of
+/// copied.
+const LINKABLE: &[&str] = &["mods", "resourcepacks", "shaderpacks"];
+const MAX_EXPORT_FILES: usize = 20_000;
+const MAX_EXPORT_BYTES: u64 = 4 * 1024 * 1024 * 1024;
+const MAX_LOOKED_UP: usize = 1000;
+
+/// An address on Modrinth's CDN, the only kind an export names.
+pub fn modrinth_download(raw: &str) -> bool {
+    raw.len() <= 2048
+        && !raw.chars().any(|c| c.is_control() || c.is_whitespace())
+        && url::Url::parse(raw).is_ok_and(|u| {
+            u.scheme() == "https"
+                && u.host_str() == Some("cdn.modrinth.com")
+                && u.port().is_none()
+                && u.username().is_empty()
+                && u.password().is_none()
+        })
+}
+
+/// What goes into an export besides mods, packs, shaders and configs.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct ExportChoice {
+    pub worlds: bool,
+    pub options: bool,
+}
+
+/// What an export holds.
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ExportReport {
+    /// Files named by their address on Modrinth.
+    pub linked: u64,
+    /// Files copied into the archive.
+    pub bundled: u64,
+    pub bytes: u64,
+}
+
+/// Who the export says it is.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ExportInfo {
+    pub name: String,
+    pub version_number: String,
+    pub game: String,
+    pub loader: Option<LoaderChoice>,
+}
+
+struct Gathered {
+    path: String,
+    full: PathBuf,
+    size: u64,
+    /// SHA-1, SHA-512 and SHA-256 of a file that may be on Modrinth.
+    hashes: Option<(String, String, String)>,
+}
+
+fn too_large() -> LauncherError {
+    LauncherError::invalid_input("This installation is too large to export as a modpack.")
+}
+
+fn hashes_of(path: &Path) -> std::io::Result<(String, String, String)> {
+    use sha1::Digest as _;
+    let mut file = fs::File::open(path)?;
+    let (mut one, mut five, mut two) =
+        (sha1::Sha1::new(), sha2::Sha512::new(), sha2::Sha256::new());
+    let mut buffer = vec![0u8; 64 * 1024];
+    loop {
+        let read = file.read(&mut buffer)?;
+        if read == 0 {
+            break;
+        }
+        one.update(&buffer[..read]);
+        five.update(&buffer[..read]);
+        two.update(&buffer[..read]);
+    }
+    Ok((
+        hex::encode(one.finalize()),
+        hex::encode(five.finalize()),
+        hex::encode(two.finalize()),
+    ))
+}
+
+/// The files an export takes: plain files by the pack path rules, turned-off
+/// ones and links left out, bounded in count and size.
+fn gather(game: &Path, choice: ExportChoice) -> LauncherResult<Vec<Gathered>> {
+    let mut out = Vec::new();
+    let mut total = 0u64;
+    let mut add = |path: String, full: PathBuf, size: u64| -> LauncherResult<()> {
+        if path.ends_with(DISABLED) || !pack_path(&path) {
+            return Ok(());
+        }
+        total = total.saturating_add(size);
+        if out.len() >= MAX_EXPORT_FILES || total > MAX_EXPORT_BYTES {
+            return Err(too_large());
+        }
+        let linkable = LINKABLE.contains(&path.split('/').next().unwrap_or_default());
+        let hashes = if linkable {
+            Some(hashes_of(&full).map_err(|e| disk(&e))?)
+        } else {
+            None
+        };
+        out.push(Gathered {
+            path,
+            full,
+            size,
+            hashes,
+        });
+        Ok(())
+    };
+    let mut roots: Vec<&str> = EXPORT_FOLDERS.to_vec();
+    if choice.worlds {
+        roots.push("saves");
+    }
+    for root in roots {
+        let mut stack = vec![(root.to_owned(), game.join(root), 1usize)];
+        while let Some((relative, dir, depth)) = stack.pop() {
+            let Ok(entries) = fs::read_dir(&dir) else {
+                continue;
+            };
+            let mut entries: Vec<_> = entries.flatten().collect();
+            entries.sort_by_key(fs::DirEntry::file_name);
+            for entry in entries {
+                let Some(name) = entry.file_name().to_str().map(str::to_owned) else {
+                    continue;
+                };
+                let Ok(meta) = fs::symlink_metadata(entry.path()) else {
+                    continue;
+                };
+                let path = format!("{relative}/{name}");
+                if meta.is_dir() && depth < MAX_DEPTH {
+                    stack.push((path, entry.path(), depth + 1));
+                } else if meta.is_file() {
+                    add(path, entry.path(), meta.len())?;
+                }
+            }
+        }
+    }
+    if choice.options {
+        for name in EXPORT_OPTIONS {
+            let full = game.join(name);
+            if let Ok(meta) = fs::symlink_metadata(&full)
+                && meta.is_file()
+            {
+                add((*name).to_owned(), full, meta.len())?;
+            }
+        }
+    }
+    Ok(out)
+}
+
+fn index_json(info: &ExportInfo, linked: &[(&Gathered, String)]) -> Value {
+    let mut dependencies = serde_json::Map::new();
+    dependencies.insert("minecraft".to_owned(), info.game.clone().into());
+    if let Some(loader) = &info.loader {
+        let (name, version) = match loader.kind {
+            LoaderKind::Fabric => ("fabric-loader", loader.version.clone()),
+            LoaderKind::Quilt => ("quilt-loader", loader.version.clone()),
+            LoaderKind::Forge => (
+                "forge",
+                loader
+                    .version
+                    .strip_prefix(&format!("{}-", info.game))
+                    .unwrap_or(&loader.version)
+                    .to_owned(),
+            ),
+            LoaderKind::NeoForge => ("neoforge", loader.version.clone()),
+        };
+        dependencies.insert(name.to_owned(), version.into());
+    }
+    let files: Vec<Value> = linked
+        .iter()
+        .filter_map(|(file, url)| {
+            let (sha1, sha512, _) = file.hashes.as_ref()?;
+            Some(serde_json::json!({
+                "path": file.path,
+                "hashes": { "sha1": sha1, "sha512": sha512 },
+                "downloads": [url],
+                "fileSize": file.size,
+            }))
+        })
+        .collect();
+    serde_json::json!({
+        "formatVersion": 1,
+        "game": "minecraft",
+        "versionId": info.version_number,
+        "name": info.name,
+        "files": files,
+        "dependencies": dependencies,
+    })
+}
+
+fn write_archive(
+    to: &Path,
+    index: &Value,
+    bundled: &[&Gathered],
+    cancel: &CancelToken,
+) -> LauncherResult<()> {
+    let write = |e: std::io::Error| LauncherError::from_io(&e, "Writing the modpack");
+    let zipped = |_| LauncherError::internal("The modpack could not be written.");
+    let part = to.with_extension("mrpack.part");
+    let result = (|| {
+        let file = fs::File::create(&part).map_err(write)?;
+        let mut zip = zip::ZipWriter::new(std::io::BufWriter::new(file));
+        let options = zip::write::SimpleFileOptions::default()
+            .compression_method(zip::CompressionMethod::Deflated);
+        zip.start_file(INDEX, options).map_err(zipped)?;
+        zip.write_all(index.to_string().as_bytes()).map_err(write)?;
+        for file in bundled {
+            if cancel.is_cancelled() {
+                return Err(LauncherError::new(
+                    ErrorCode::OperationCancelled,
+                    "The export was cancelled.",
+                ));
+            }
+            let options = options.large_file(file.size >= u64::from(u32::MAX) / 2);
+            zip.start_file(format!("overrides/{}", file.path), options)
+                .map_err(zipped)?;
+            let mut source = fs::File::open(&file.full).map_err(write)?;
+            std::io::copy(&mut source, &mut zip).map_err(write)?;
+        }
+        let mut out = zip.finish().map_err(zipped)?;
+        out.flush().map_err(write)?;
+        out.get_ref().sync_all().map_err(write)?;
+        Ok(())
+    })();
+    match result {
+        Ok(()) => fs::rename(&part, to).map_err(write),
+        Err(e) => {
+            let _ = fs::remove_file(&part);
+            Err(e)
+        }
+    }
+}
+
+/// The name of the index in an archive.
+pub const INDEX: &str = "modrinth.index.json";
+
+/// Saves an installation as a `.mrpack`: files the catalog knows from
+/// Modrinth are named by their address there, everything else is copied
+/// into the overrides. Without the catalog, everything is copied.
+pub async fn export<C: super::Catalog>(
+    catalog: &C,
+    game: &Path,
+    info: ExportInfo,
+    choice: ExportChoice,
+    to: PathBuf,
+    cancel: &CancelToken,
+) -> LauncherResult<ExportReport> {
+    let gathered = {
+        let game = game.to_path_buf();
+        tokio::task::spawn_blocking(move || gather(&game, choice))
+            .await
+            .map_err(|_| LauncherError::internal("A file check stopped unexpectedly."))??
+    };
+    // Which files the catalog has from Modrinth: its versions with the same
+    // SHA-256, then their file with an address on Modrinth's CDN.
+    let shas: Vec<String> = gathered
+        .iter()
+        .filter_map(|g| g.hashes.as_ref().map(|h| h.2.clone()))
+        .collect();
+    let mut versions: Vec<String> = Vec::new();
+    for chunk in shas.chunks(200) {
+        let Ok(found) = catalog.lookup(chunk).await else {
+            versions.clear();
+            break;
+        };
+        for f in found {
+            if !versions.contains(&f.version_id) && versions.len() < MAX_LOOKED_UP {
+                versions.push(f.version_id);
+            }
+        }
+    }
+    let mut origins: HashMap<String, String> = HashMap::new();
+    for id in &versions {
+        if cancel.is_cancelled() {
+            break;
+        }
+        if let Ok(version) = catalog.version(id).await {
+            for file in version.files {
+                if let (Some(sha), Some(origin)) = (file.sha256, file.origin) {
+                    origins.insert(sha, origin);
+                }
+            }
+        }
+    }
+    let mut linked: Vec<(&Gathered, String)> = Vec::new();
+    let mut bundled: Vec<&Gathered> = Vec::new();
+    for g in &gathered {
+        match g.hashes.as_ref().and_then(|h| origins.get(&h.2)) {
+            Some(url) => linked.push((g, url.clone())),
+            None => bundled.push(g),
+        }
+    }
+    let report = ExportReport {
+        linked: linked.len() as u64,
+        bundled: bundled.len() as u64,
+        bytes: bundled.iter().map(|g| g.size).sum(),
+    };
+    let index = index_json(&info, &linked);
+    let bundled: Vec<Gathered> = bundled
+        .into_iter()
+        .map(|g| Gathered {
+            path: g.path.clone(),
+            full: g.full.clone(),
+            size: g.size,
+            hashes: None,
+        })
+        .collect();
+    let cancel = cancel.clone();
+    tokio::task::spawn_blocking(move || {
+        let refs: Vec<&Gathered> = bundled.iter().collect();
+        write_archive(&to, &index, &refs, &cancel)
+    })
+    .await
+    .map_err(|_| LauncherError::internal("The modpack could not be written."))??;
+    Ok(report)
+}

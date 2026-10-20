@@ -97,6 +97,8 @@ import {
   type ModsInstallPayload,
   type ModsPack,
   type ModsPackReport,
+  type ModsExportChoice,
+  type ModsExportResult,
   type ModsPlan,
   type ModsProgress,
   type ModsProject,
@@ -401,6 +403,21 @@ export const ipc = {
     requestId?: string,
   ): Promise<ModsPackReport> =>
     invoke<ModsPackReport>('mods_apply_pack', { request: mutation(payload, requestId) }),
+  /** Updates an installation made from a modpack, after a backup of it (D-047). */
+  modsUpdatePack: (
+    payload: { instanceId: string; version: string },
+    requestId?: string,
+  ): Promise<ModsPackReport> =>
+    invoke<ModsPackReport>('mods_update_pack', { request: mutation(payload, requestId) }),
+  /** Saves an installation as a `.mrpack` where the player chooses. */
+  modsExportPack: (
+    instanceId: string,
+    choice: ModsExportChoice,
+    title?: string,
+  ): Promise<ModsExportResult> =>
+    invoke<ModsExportResult>('mods_export_pack', {
+      payload: { instanceId, choice, title: title ?? null },
+    }),
   modsCancel: (instanceId: string): Promise<boolean> =>
     invoke<boolean>('mods_cancel', { instanceId }),
   modsContent: (instanceId: string): Promise<ContentView> =>

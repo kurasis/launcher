@@ -1064,6 +1064,8 @@ pub struct ContentItem {
     pub version_number: Option<String>,
     pub icon: Option<String>,
     pub dependency: bool,
+    /// The modpack the installation was made from brought it.
+    pub from_pack: bool,
 }
 
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize)]
@@ -1072,6 +1074,8 @@ pub struct ContentView {
     pub items: Vec<ContentItem>,
     /// Worlds a data pack can go into.
     pub worlds: Vec<String>,
+    /// The modpack the installation was made from.
+    pub pack: Option<super::pack::PackSummary>,
 }
 
 fn takes(folder: &str, name: &str, directory: bool) -> bool {
@@ -1129,6 +1133,7 @@ fn scan(
             version_number: None,
             icon: None,
             dependency: false,
+            from_pack: false,
         });
     }
 }
@@ -1174,7 +1179,13 @@ pub fn list(root: &DataRoot, id: InstanceId) -> ContentView {
             );
         }
     }
+    let packed: HashSet<&str> = lock
+        .pack
+        .iter()
+        .flat_map(|p| p.files.iter().chain(&p.overrides).map(|e| e.path.as_str()))
+        .collect();
     for item in &mut items {
+        item.from_pack = packed.contains(enabled_form(&item.path));
         if let Some(ours) = lock.at(enabled_form(&item.path)) {
             item.project_id = Some(ours.project_id.clone());
             item.version_id = Some(ours.version_id.clone());
@@ -1187,7 +1198,12 @@ pub fn list(root: &DataRoot, id: InstanceId) -> ContentView {
     items.sort_by(|a, b| {
         (a.folder.as_str(), a.name.to_lowercase()).cmp(&(b.folder.as_str(), b.name.to_lowercase()))
     });
-    ContentView { items, worlds }
+    let pack = lock.pack.as_ref().map(super::pack::PackSummary::of);
+    ContentView {
+        items,
+        worlds,
+        pack,
+    }
 }
 
 /// Turns a file on or off (adds or removes `.disabled`).

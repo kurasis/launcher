@@ -1149,7 +1149,8 @@
         "manual": "صنعتها أنت",
         "after_play": "بعد اللعب",
         "before_restore": "قبل الاستعادة",
-        "before_delete": "قبل الحذف"
+        "before_delete": "قبل الحذف",
+        "before_update": "قبل تحديث الحزمة"
       },
       "size": "{files, number} ملف · {total} · {added} جديد",
       "restore": "استعادة",
@@ -1338,7 +1339,13 @@
           "too_big": "هذه الحزمة أكبر من أن يحفظها الفهرس.",
           "hash_mismatch": "ملف من هذه الحزمة لا يطابق ما تذكره. حاول لاحقًا.",
           "other": "تعذّر على الفهرس تجهيز هذه الحزمة. حاول لاحقًا."
-        }
+        },
+        "updateTitle": "تحديث «{title}»",
+        "updateNote": "قبل التحديث ينشئ المشغّل نسخة احتياطية من التثبيت كله. تبقى الملفات التي غيّرتها كما هي.",
+        "updateStart": "تحديث",
+        "updated": "تم تحديث الحزمة إلى {version}.",
+        "keptYours": "{count, plural, one {ترك ملف واحد غيّرته} other {تُركت # ملفات غيّرتها}} كما هي.",
+        "updateStopped": "توقف التحديث في منتصفه. اضغط «إعادة المحاولة» لإكماله؛ النسخة الاحتياطية التي أُنشئت قبله موجودة في النسخ الاحتياطية."
       },
       "requests": {
         "hint": "ما طلبت إضافته إلى الفهرس وإلى أين وصل.",
@@ -1402,7 +1409,20 @@
         "open": "في الفهرس",
         "remove": "أزل",
         "confirmRemove": "أزل الملف",
-        "cancel": "إلغاء"
+        "cancel": "إلغاء",
+        "fromPack": "من الحزمة",
+        "pack": "مصنوع من الحزمة {title} {version}",
+        "packUpdate": "تحديث الحزمة إلى {version}",
+        "packLatest": "هذا أحدث إصدار من الحزمة لهذا الإصدار من Minecraft.",
+        "export": "حفظ كحزمة",
+        "exportTitle": "حفظ كحزمة Modrinth",
+        "exportHint": "تُحفظ التعديلات التي يعرفها الفهرس من Modrinth كروابط، ويُنسخ كل شيء آخر داخل الملف. لا تُضمَّن الملفات المعطلة والسجلات وقائمة خوادمك.",
+        "exportWorlds": "تضمين العوالم",
+        "exportOptions": "تضمين إعدادات اللعبة (options.txt)",
+        "exportStart": "اختر مكان الحفظ",
+        "exporting": "جارٍ حفظ الحزمة…",
+        "exported": "تم الحفظ: {name}. روابط إلى Modrinth: {linked}؛ ملفات بالداخل: {bundled} ({size}).",
+        "close": "إغلاق"
       }
     },
     "worlds": {
@@ -2258,6 +2278,12 @@
     "The catalog is still preparing this modpack. Try again soon.": "لا يزال الفهرس يجهّز هذه الحزمة. حاول بعد قليل.",
     "This modpack cannot be installed: its files are not what the launcher accepts.": "لا يمكن تثبيت هذه الحزمة: ملفاتها ليست مما يقبله المشغّل.",
     "This modpack needs another Minecraft version or mod loader than this installation.": "تحتاج هذه الحزمة إصدار Minecraft أو محمّل تعديلات غير الذي في هذا التثبيت.",
-    "Unpacking stopped unexpectedly.": "توقف فك الحزمة على نحو غير متوقع."
+    "Unpacking stopped unexpectedly.": "توقف فك الحزمة على نحو غير متوقع.",
+    "The export was cancelled.": "تم إلغاء الحفظ.",
+    "The modpack could not be written.": "تعذّرت كتابة الحزمة.",
+    "This installation is too large to export as a modpack.": "هذا التثبيت أكبر من أن يُحفظ كحزمة.",
+    "This installation was not made from a modpack.": "لم يُصنع هذا التثبيت من حزمة.",
+    "This is another modpack than the one the installation was made from.": "هذه حزمة أخرى غير التي صُنع منها التثبيت.",
+    "Writing the modpack": "كتابة الحزمة"
   }
 }

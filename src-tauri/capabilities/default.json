@@ -105,6 +105,8 @@
     "allow-mods-pack",
     "allow-mods-create-pack-instance",
     "allow-mods-apply-pack",
+    "allow-mods-update-pack",
+    "allow-mods-export-pack",
     "allow-mods-cancel",
     "allow-mods-content",
     "allow-mods-identify",

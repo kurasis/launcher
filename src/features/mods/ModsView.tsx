@@ -177,7 +177,7 @@ export function ModsView({ snapshot, instanceId, section, onSection, onInstance 
       )}
       {packing !== null && (
         <PackDialog
-          project={packing.project}
+          title={packing.project.title || packing.project.slug}
           version={packing.version}
           onClose={() => {
             setPacking(null);
