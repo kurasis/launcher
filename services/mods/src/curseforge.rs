@@ -405,7 +405,201 @@ pub fn page(html: &str, slug: &str) -> Card {
     if card.published == 0 {
         card.published = ld.as_ref().map_or(0, |v| time(v, "datePublished"));
     }
+    if card.body.is_empty()
+        && let Some(body) = description(&stream)
+    {
+        card.body = clean(&body, MAX_BODY, true);
+    }
     card
+}
+
+/// The longest description kept, in characters.
+const MAX_BODY: usize = 64 * 1024;
+
+/// The description the page renders apart from the project object: the
+/// longest HTML the stream hands over as raw HTML (`{"__html": …}`), else
+/// the longest text chunk with paragraphs in it.
+fn description(stream: &str) -> Option<String> {
+    let mut found = Vec::new();
+    let mut seen = 0;
+    for start in chunk_starts(stream) {
+        let Some(Ok(value)) = serde_json::Deserializer::from_str(&stream[start..])
+            .into_iter::<Value>()
+            .next()
+        else {
+            continue;
+        };
+        raw_html(stream, &value, 0, &mut seen, &mut found);
+    }
+    let html = |s: &String| s.contains('<') && !s.contains("<script");
+    found
+        .into_iter()
+        .filter(html)
+        .max_by_key(String::len)
+        .or_else(|| {
+            text_chunks(stream)
+                .filter(|t| t.contains("<p"))
+                .max_by_key(|t| t.len())
+                .map(str::to_owned)
+        })
+}
+
+/// The strings under `__html` keys (references resolved).
+fn raw_html(stream: &str, value: &Value, depth: usize, seen: &mut usize, found: &mut Vec<String>) {
+    *seen += 1;
+    if depth > 32 || *seen > 200_000 || found.len() >= 64 {
+        return;
+    }
+    match value {
+        Value::Object(map) => {
+            if let Some(html) = map.get("__html")
+                && let Value::String(text) = resolved(stream, html)
+            {
+                found.push(text);
+            }
+            for v in map.values() {
+                raw_html(stream, v, depth + 1, seen, found);
+            }
+        }
+        Value::Array(items) => {
+            for v in items {
+                raw_html(stream, v, depth + 1, seen, found);
+            }
+        }
+        _ => {}
+    }
+}
+
+/// The text chunks of the stream (`<hex id>:T<hex length>,…`).
+fn text_chunks(stream: &str) -> impl Iterator<Item = &str> + '_ {
+    rows(stream).filter_map(move |(_, row)| match row {
+        Row::Text(start, end) => Some(&stream[start..end]),
+        Row::Json(_) => None,
+    })
+}
+
+/// One row of the stream, by where its content lies.
+#[derive(Clone, Copy)]
+enum Row {
+    /// `<hex id>:T<hex length>,…`: the text, which the next row follows
+    /// without a line break.
+    Text(usize, usize),
+    /// `<hex id>:…` up to the line's end: where the content starts.
+    Json(usize),
+}
+
+/// The rows of the stream in order, each with where its ID starts. A line
+/// that does not start a row is skipped. At most 10,000.
+fn rows(text: &str) -> impl Iterator<Item = (usize, Row)> + '_ {
+    let mut at = 0;
+    std::iter::from_fn(move || {
+        while at < text.len() {
+            let rest = &text[at..];
+            let next_line =
+                |from: usize| text[from..].find('\n').map_or(text.len(), |n| from + n + 1);
+            let Some(colon) = rest.find(':').filter(|c| {
+                (1..=8).contains(c) && rest[..*c].bytes().all(|b| b.is_ascii_hexdigit())
+            }) else {
+                at = next_line(at);
+                continue;
+            };
+            let content = at + colon + 1;
+            if let Some(sized) = text[content..].strip_prefix('T') {
+                let body = sized
+                    .find(',')
+                    .filter(|c| (1..=8).contains(c))
+                    .and_then(|comma| {
+                        let length = usize::from_str_radix(&sized[..comma], 16).ok()?;
+                        let start = content + 1 + comma + 1;
+                        let end = start.checked_add(length)?;
+                        (end <= text.len() && text.is_char_boundary(end)).then_some((start, end))
+                    });
+                if let Some((start, end)) = body {
+                    let row = at;
+                    at = end;
+                    return Some((row, Row::Text(start, end)));
+                }
+                at = next_line(content);
+                continue;
+            }
+            let row = at;
+            at = next_line(content);
+            return Some((row, Row::Json(content)));
+        }
+        None
+    })
+    .take(10_000)
+}
+
+/// Where the page's description and pictures sit, for the probe: the
+/// description's length, how many raw HTML values and text chunks with
+/// paragraphs the stream holds, and the key sets of objects that hold a
+/// picture address on forgecdn (the site's key names; our words else).
+pub fn media(html: &str) -> String {
+    let html = &html[..floor(html, MAX_PAGE)];
+    let stream = stream(html);
+    let mut raw = Vec::new();
+    let mut seen = 0;
+    let mut holders: Vec<String> = Vec::new();
+    let mut seen_holders = 0;
+    for start in chunk_starts(&stream) {
+        let Some(Ok(value)) = serde_json::Deserializer::from_str(&stream[start..])
+            .into_iter::<Value>()
+            .next()
+        else {
+            continue;
+        };
+        raw_html(&stream, &value, 0, &mut seen, &mut raw);
+        picture_holders(&value, 0, &mut seen_holders, &mut holders);
+    }
+    holders.sort();
+    holders.dedup();
+    holders.truncate(6);
+    format!(
+        "desc:{},raw_html:{},text_chunks_p:{},holders[{}]",
+        description(&stream).map_or(0, |d| d.len()),
+        raw.iter().filter(|s| s.contains('<')).count(),
+        text_chunks(&stream).filter(|t| t.contains("<p")).count(),
+        holders.join(" ")
+    )
+}
+
+/// The sorted keys of objects with a string value naming a picture on
+/// forgecdn, joined by `+`; keys that are not plain words are left out.
+fn picture_holders(value: &Value, depth: usize, seen: &mut usize, found: &mut Vec<String>) {
+    *seen += 1;
+    if depth > 32 || *seen > 200_000 || found.len() >= 64 {
+        return;
+    }
+    match value {
+        Value::Object(map) => {
+            if map.values().any(|v| {
+                v.as_str()
+                    .is_some_and(|s| s.contains("media.forgecdn.net/attachments"))
+            }) {
+                let mut keys: Vec<&str> = map
+                    .keys()
+                    .map(String::as_str)
+                    .filter(|k| {
+                        (1..=32).contains(&k.len())
+                            && k.bytes().all(|b| b.is_ascii_alphanumeric() || b == b'_')
+                    })
+                    .take(16)
+                    .collect();
+                keys.sort_unstable();
+                found.push(keys.join("+"));
+            }
+            for v in map.values() {
+                picture_holders(v, depth + 1, seen, found);
+            }
+        }
+        Value::Array(items) => {
+            for v in items {
+                picture_holders(v, depth + 1, seen, found);
+            }
+        }
+        _ => {}
+    }
 }
 
 /// The largest char boundary at or below `max`.
@@ -509,25 +703,14 @@ fn resolved(text: &str, value: &Value) -> Value {
 /// The chunk with this ID in the stream.
 fn chunk(text: &str, id: &str) -> Option<Value> {
     let label = format!("{id}:");
-    let mut from = 0;
-    let at = loop {
-        let at = from + text[from..].find(&label)?;
-        if at == 0 || text.as_bytes()[at - 1] == b'\n' {
-            break at + label.len();
-        }
-        from = at + label.len();
-    };
-    let rest = &text[at..];
-    if let Some(sized) = rest.strip_prefix('T') {
-        let comma = sized.find(',').filter(|c| *c <= 8)?;
-        let length = usize::from_str_radix(&sized[..comma], 16).ok()?;
-        let body = &sized[comma + 1..];
-        return Some(Value::String(body[..floor(body, length)].to_owned()));
+    let (_, row) = rows(text).find(|(at, _)| text[*at..].starts_with(&label))?;
+    match row {
+        Row::Text(start, end) => Some(Value::String(text[start..end].to_owned())),
+        Row::Json(at) => serde_json::Deserializer::from_str(&text[at..])
+            .into_iter::<Value>()
+            .next()?
+            .ok(),
     }
-    serde_json::Deserializer::from_str(rest)
-        .into_iter::<Value>()
-        .next()?
-        .ok()
 }
 
 fn card_of(stream: &str, project: &Value) -> Card {
@@ -649,18 +832,10 @@ pub fn candidates(html: &str) -> Vec<crate::modrinth::Candidate> {
 
 /// Where each JSON chunk of the stream starts (after `<hex id>:`).
 fn chunk_starts(text: &str) -> impl Iterator<Item = usize> + '_ {
-    std::iter::once(0)
-        .chain(text.match_indices('\n').map(|(at, _)| at + 1))
-        .filter_map(move |line| {
-            let rest = &text[line..];
-            let colon = rest.find(':').filter(|c| (1..=8).contains(c))?;
-            rest[..colon]
-                .bytes()
-                .all(|b| b.is_ascii_hexdigit())
-                .then_some(line + colon + 1)
-                .filter(|at| matches!(text.as_bytes().get(*at), Some(b'[' | b'{')))
-        })
-        .take(10_000)
+    rows(text).filter_map(move |(_, row)| match row {
+        Row::Json(at) => matches!(text.as_bytes().get(at), Some(b'[' | b'{')).then_some(at),
+        Row::Text(..) => None,
+    })
 }
 
 fn collect(
