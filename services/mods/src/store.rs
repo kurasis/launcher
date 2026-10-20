@@ -101,7 +101,7 @@ CREATE TABLE IF NOT EXISTS blob (
     sha1 TEXT NOT NULL,
     sha512 TEXT NOT NULL,
     media_type TEXT NOT NULL,
-    -- stored, quarantined
+    -- stored, quarantined; forgotten once the owner deleted a held file
     state TEXT NOT NULL,
     stored INTEGER NOT NULL
 );
@@ -221,6 +221,28 @@ CREATE TABLE IF NOT EXISTS review (
     decision TEXT,
     UNIQUE (kind, subject)
 );
+-- Files the owner blocked (lapi-mods block), by SHA-256 or by SHA-1 from a
+-- public report, also before they are here: a blocked file fetched again
+-- goes straight into quarantine, and launchers warn about it. `key` orders
+-- the list launchers read: the SHA-256, or one made from the SHA-1.
+CREATE TABLE IF NOT EXISTS blocked (
+    key TEXT PRIMARY KEY,
+    sha256 TEXT,
+    sha1 TEXT,
+    reason TEXT NOT NULL DEFAULT '',
+    at INTEGER NOT NULL
+);
+CREATE INDEX IF NOT EXISTS blocked_sha256 ON blocked(sha256);
+CREATE INDEX IF NOT EXISTS blocked_sha1 ON blocked(sha1);
+-- What the owner decided and when (block, unblock, keep, remove, forget).
+CREATE TABLE IF NOT EXISTS decision (
+    id INTEGER PRIMARY KEY,
+    at INTEGER NOT NULL,
+    action TEXT NOT NULL,
+    subject TEXT NOT NULL,
+    reason TEXT NOT NULL DEFAULT ''
+);
+CREATE INDEX IF NOT EXISTS decision_subject ON decision(subject);
 CREATE VIRTUAL TABLE IF NOT EXISTS project_fts USING fts5(
     project_id UNINDEXED, title, summary, authors, categories, slug,
     tokenize = 'unicode61 remove_diacritics 2'
@@ -233,6 +255,20 @@ pub struct Store {
 }
 
 pub type Result<T> = std::result::Result<T, String>;
+
+/// A kept file as the owner sees it (`lapi-mods find`).
+#[derive(Debug, Clone)]
+pub struct BlobInfo {
+    pub sha256: String,
+    pub sha1: String,
+    pub size: i64,
+    pub media_type: String,
+    pub state: String,
+    pub verdict: String,
+    pub signs: String,
+    pub allowed: bool,
+    pub held: Option<i64>,
+}
 
 /// Whether `source` owns a project's card: Modrinth's when the project has
 /// it, else the source that brought the project first.
@@ -253,7 +289,7 @@ fn card_owner(tx: &rusqlite::Transaction<'_>, project: &str, source: &str) -> Re
 const ADDED: &[(&str, &str, &str)] = &[
     // The scanner's rules a blob was last scanned under (0: never).
     ("blob", "scanned", "INTEGER NOT NULL DEFAULT 0"),
-    // clean, note, suspicious, malicious; blocked by the owner.
+    // clean, note, suspicious, malicious; blocked or allowed by the owner.
     ("blob", "verdict", "TEXT NOT NULL DEFAULT 'clean'"),
     // The scanner's signs, comma-separated fixed words.
     ("blob", "signs", "TEXT NOT NULL DEFAULT ''"),
@@ -866,7 +902,8 @@ impl Store {
     pub fn set_project_status(&self, id: &str, status: &str) -> Result<()> {
         self.db()
             .execute(
-                "UPDATE project SET status = ?2 WHERE id = ?1",
+                // A project the owner removed stays removed.
+                "UPDATE project SET status = ?2 WHERE id = ?1 AND status != 'removed'",
                 params![id, status],
             )
             .map(|_| ())
@@ -1291,35 +1328,516 @@ impl Store {
             .map_err(sql)
     }
 
-    /// Files known to be harmful, held back since `since`: what a launcher
-    /// warns about when one is installed already. Files only suspected stay
-    /// off the list until the owner decides.
+    /// Files known to be harmful since `since`: what a launcher warns about
+    /// when one is installed already. The scanner's malware and what the
+    /// owner blocked; files only suspected stay off the list until the owner
+    /// decides. Each with its `key`, the order of the list.
     pub fn harmful_since(
         &self,
         since: i64,
         after: &str,
         limit: i64,
-    ) -> Result<Vec<serde_json::Value>> {
+    ) -> Result<Vec<(serde_json::Value, String)>> {
         let db = self.db();
         let mut q = db
             .prepare(
-                "SELECT sha256, sha1, sha512, held FROM blob
-                 WHERE state = 'quarantined' AND verdict IN ('malicious', 'blocked')
-                   AND (held > ?1 OR (held = ?1 AND sha256 > ?2))
-                 ORDER BY held, sha256 LIMIT ?3",
+                "SELECT key, sha256, sha1, sha512, since FROM (
+                     SELECT sha256 AS key, sha256, sha1, sha512, held AS since FROM blob
+                     WHERE state != 'stored' AND verdict = 'malicious' AND held IS NOT NULL
+                     UNION ALL
+                     SELECT key, sha256, sha1, NULL, at FROM blocked WHERE sha1 IS NOT NULL)
+                 WHERE since > ?1 OR (since = ?1 AND key > ?2)
+                 ORDER BY since, key LIMIT ?3",
             )
             .map_err(sql)?;
         q.query_map(params![since, after, limit], |r| {
-            Ok(serde_json::json!({
-                "sha256": r.get::<_, String>(0)?,
-                "sha1": r.get::<_, String>(1)?,
-                "sha512": r.get::<_, String>(2)?,
-                "since": r.get::<_, i64>(3)?,
-            }))
+            Ok((
+                serde_json::json!({
+                    "sha256": r.get::<_, Option<String>>(1)?,
+                    "sha1": r.get::<_, String>(2)?,
+                    "sha512": r.get::<_, Option<String>>(3)?,
+                    "since": r.get::<_, i64>(4)?,
+                }),
+                r.get::<_, String>(0)?,
+            ))
         })
         .map_err(sql)?
         .collect::<std::result::Result<_, _>>()
         .map_err(sql)
+    }
+
+    // ----- the owner's decisions (lapi-mods block, review, …) -----
+
+    /// Whether a file with these hashes is blocked.
+    pub fn is_blocked(&self, sha256: &str, sha1: &str) -> Result<bool> {
+        self.db()
+            .query_row(
+                "SELECT 1 FROM blocked WHERE sha256 = ?1 OR sha1 = ?2 LIMIT 1",
+                params![sha256, sha1],
+                |_| Ok(()),
+            )
+            .optional()
+            .map(|found| found.is_some())
+            .map_err(sql)
+    }
+
+    /// A blocked file is here now: its block learns the hashes it lacked.
+    pub fn complete_block(&self, sha256: &str, sha1: &str) -> Result<()> {
+        self.db()
+            .execute(
+                "UPDATE blocked SET sha256 = coalesce(sha256, ?1), sha1 = coalesce(sha1, ?2)
+                 WHERE sha256 = ?1 OR sha1 = ?2",
+                params![sha256, sha1],
+            )
+            .map(|_| ())
+            .map_err(sql)
+    }
+
+    /// Blocks a file by its SHA-256 or SHA-1; the other comes from the
+    /// kept file when it is here. Returns whether it was not blocked yet.
+    pub fn block(
+        &self,
+        sha256: Option<&str>,
+        sha1: Option<&str>,
+        reason: &str,
+        now: i64,
+    ) -> Result<bool> {
+        let key = match (sha256, sha1) {
+            (Some(sha256), _) => sha256.to_owned(),
+            (None, Some(sha1)) => {
+                use sha2::Digest;
+                hex::encode(sha2::Sha256::digest(format!("sha1:{sha1}")))
+            }
+            (None, None) => return Ok(false),
+        };
+        let db = self.db();
+        let there: bool = db
+            .query_row(
+                "SELECT 1 FROM blocked WHERE key = ?1 OR sha256 = ?2 OR sha1 = ?3",
+                params![key, sha256, sha1],
+                |_| Ok(()),
+            )
+            .optional()
+            .map_err(sql)?
+            .is_some();
+        if there {
+            return Ok(false);
+        }
+        db.execute(
+            "INSERT INTO blocked (key, sha256, sha1, reason, at) VALUES (?1, ?2, ?3, ?4, ?5)",
+            params![key, sha256, sha1, reason, now],
+        )
+        .map_err(sql)?;
+        Ok(true)
+    }
+
+    /// Lifts a block given by any of its hashes; the number lifted.
+    pub fn unblock(&self, hash: &str) -> Result<usize> {
+        self.db()
+            .execute(
+                "DELETE FROM blocked WHERE key = ?1 OR sha256 = ?1 OR sha1 = ?1",
+                [hash],
+            )
+            .map_err(sql)
+    }
+
+    /// A kept file as the owner sees it.
+    pub fn blob_info(&self, sha256: &str) -> Result<Option<BlobInfo>> {
+        self.db()
+            .query_row(
+                "SELECT sha256, sha1, size, media_type, state, verdict, signs, allowed, held
+                 FROM blob WHERE sha256 = ?1",
+                [sha256],
+                |r| {
+                    Ok(BlobInfo {
+                        sha256: r.get(0)?,
+                        sha1: r.get(1)?,
+                        size: r.get(2)?,
+                        media_type: r.get(3)?,
+                        state: r.get(4)?,
+                        verdict: r.get(5)?,
+                        signs: r.get(6)?,
+                        allowed: r.get(7)?,
+                        held: r.get(8)?,
+                    })
+                },
+            )
+            .optional()
+            .map_err(sql)
+    }
+
+    /// A kept file is out of service; `verdict` replaces the scanner's.
+    pub fn set_held(&self, sha256: &str, verdict: Option<&str>, now: i64) -> Result<()> {
+        self.db()
+            .execute(
+                "UPDATE blob SET
+                     state = CASE WHEN state = 'forgotten' THEN state ELSE 'quarantined' END,
+                     verdict = coalesce(?2, verdict), held = coalesce(held, ?3),
+                     allowed = CASE WHEN ?2 IS NULL THEN allowed ELSE 0 END
+                 WHERE sha256 = ?1",
+                params![sha256, verdict, now],
+            )
+            .map(|_| ())
+            .map_err(sql)
+    }
+
+    /// The owner let a held file go: served again, never held by a scan.
+    pub fn set_allowed(&self, sha256: &str) -> Result<()> {
+        self.db()
+            .execute(
+                "UPDATE blob SET state = 'stored', verdict = 'allowed', allowed = 1, held = NULL
+                 WHERE sha256 = ?1 AND state != 'forgotten'",
+                [sha256],
+            )
+            .map(|_| ())
+            .map_err(sql)
+    }
+
+    /// A held file deleted for good: it is not fetched again.
+    pub fn set_forgotten(&self, sha256: &str) -> Result<()> {
+        self.db()
+            .execute(
+                "UPDATE blob SET state = 'forgotten' WHERE sha256 = ?1 AND state = 'quarantined'",
+                [sha256],
+            )
+            .map(|_| ())
+            .map_err(sql)
+    }
+
+    /// The names a kept file is served under, for clearing caches.
+    pub fn served_names(&self, sha256: &str) -> Result<Vec<String>> {
+        let db = self.db();
+        let mut q = db
+            .prepare(
+                "SELECT file_name FROM version_file WHERE sha256 = ?1
+                 UNION SELECT path FROM pack_file WHERE sha256 = ?1
+                 LIMIT 200",
+            )
+            .map_err(sql)?;
+        let names: Vec<String> = q
+            .query_map([sha256], |r| r.get(0))
+            .map_err(sql)?
+            .collect::<std::result::Result<_, _>>()
+            .map_err(sql)?;
+        let mut names: Vec<String> = names
+            .into_iter()
+            .map(|n| n.rsplit('/').next().unwrap_or_default().to_owned())
+            .filter(|n| !n.is_empty())
+            .collect();
+        names.sort();
+        names.dedup();
+        Ok(names)
+    }
+
+    /// Writes down what the owner decided.
+    pub fn log_decision(&self, action: &str, subject: &str, reason: &str, now: i64) -> Result<()> {
+        self.db()
+            .execute(
+                "INSERT INTO decision (at, action, subject, reason) VALUES (?1, ?2, ?3, ?4)",
+                params![now, action, subject, reason],
+            )
+            .map(|_| ())
+            .map_err(sql)
+    }
+
+    /// The owner's decisions about a subject, newest first.
+    pub fn decisions(&self, subject: &str) -> Result<Vec<(i64, String, String)>> {
+        let db = self.db();
+        let mut q = db
+            .prepare(
+                "SELECT at, action, reason FROM decision WHERE subject = ?1
+                 ORDER BY id DESC LIMIT 20",
+            )
+            .map_err(sql)?;
+        q.query_map([subject], |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?)))
+            .map_err(sql)?
+            .collect::<std::result::Result<_, _>>()
+            .map_err(sql)
+    }
+
+    /// What waits for the owner, oldest first: id, kind, subject, created.
+    pub fn open_reviews(&self, limit: i64) -> Result<Vec<(i64, String, String, i64)>> {
+        let db = self.db();
+        let mut q = db
+            .prepare(
+                "SELECT id, kind, subject, created FROM review WHERE decided IS NULL
+                 ORDER BY id LIMIT ?1",
+            )
+            .map_err(sql)?;
+        q.query_map([limit], |r| {
+            Ok((r.get(0)?, r.get(1)?, r.get(2)?, r.get(3)?))
+        })
+        .map_err(sql)?
+        .collect::<std::result::Result<_, _>>()
+        .map_err(sql)
+    }
+
+    /// How many wait for the owner, by kind.
+    pub fn review_counts(&self) -> Result<Vec<(String, i64)>> {
+        let db = self.db();
+        let mut q = db
+            .prepare(
+                "SELECT kind, count(*) FROM review WHERE decided IS NULL GROUP BY kind ORDER BY kind",
+            )
+            .map_err(sql)?;
+        q.query_map([], |r| Ok((r.get(0)?, r.get(1)?)))
+            .map_err(sql)?
+            .collect::<std::result::Result<_, _>>()
+            .map_err(sql)
+    }
+
+    /// One item of the queue: kind, subject and whether it is decided.
+    pub fn review_item(&self, id: i64) -> Result<Option<(String, String, bool)>> {
+        self.db()
+            .query_row(
+                "SELECT kind, subject, decided IS NOT NULL FROM review WHERE id = ?1",
+                [id],
+                |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?)),
+            )
+            .optional()
+            .map_err(sql)
+    }
+
+    /// Closes the open items about a subject (of any kind) with a decision.
+    pub fn decide_reviews(&self, subject: &str, decision: &str, now: i64) -> Result<()> {
+        self.db()
+            .execute(
+                "UPDATE review SET decided = ?3, decision = ?2 WHERE subject = ?1 AND decided IS NULL",
+                params![subject, decision, now],
+            )
+            .map(|_| ())
+            .map_err(sql)
+    }
+
+    /// The SHA-256 of a version's kept files.
+    pub fn version_blobs(&self, version: &str) -> Result<Vec<String>> {
+        let db = self.db();
+        let mut q = db
+            .prepare(
+                "SELECT DISTINCT sha256 FROM version_file WHERE version_id = ?1 AND sha256 IS NOT NULL",
+            )
+            .map_err(sql)?;
+        q.query_map([version], |r| r.get(0))
+            .map_err(sql)?
+            .collect::<std::result::Result<_, _>>()
+            .map_err(sql)
+    }
+
+    /// A project by its ID, slug or a source's ID or slug.
+    pub fn find_project(&self, reference: &str) -> Result<Option<String>> {
+        self.db()
+            .query_row(
+                "SELECT id FROM project WHERE id = ?1 OR slug = lower(?1)
+                 UNION ALL
+                 SELECT project_id FROM project_source WHERE source_id = ?1 OR source_slug = lower(?1)
+                 LIMIT 1",
+                [reference],
+                |r| r.get(0),
+            )
+            .optional()
+            .map_err(sql)
+    }
+
+    /// Takes a project out of the catalog at its author's request: hidden
+    /// from search and the API, never brought back by an import. Returns the
+    /// kept files no other project needs (its own, and those only its packs
+    /// use), for quarantine.
+    pub fn remove_project(&self, id: &str) -> Result<Vec<String>> {
+        let mut db = self.db();
+        let tx = db.transaction().map_err(sql)?;
+        tx.execute("UPDATE project SET status = 'removed' WHERE id = ?1", [id])
+            .map_err(sql)?;
+        let only: Vec<String> = {
+            let mut q = tx
+                .prepare(
+                    "WITH mine(sha256) AS (
+                         SELECT f.sha256 FROM version_file f JOIN version v ON v.id = f.version_id
+                         WHERE v.project_id = ?1 AND f.sha256 IS NOT NULL
+                         UNION
+                         SELECT p.sha256 FROM pack_file p JOIN version v ON v.id = p.version_id
+                         WHERE v.project_id = ?1 AND p.sha256 IS NOT NULL),
+                     used(sha256) AS (
+                         SELECT f.sha256 FROM version_file f JOIN version v ON v.id = f.version_id
+                         JOIN project o ON o.id = v.project_id
+                         WHERE v.project_id != ?1 AND o.status != 'removed' AND f.sha256 IS NOT NULL
+                         UNION
+                         SELECT p.sha256 FROM pack_file p JOIN version v ON v.id = p.version_id
+                         JOIN project o ON o.id = v.project_id
+                         WHERE v.project_id != ?1 AND o.status != 'removed' AND p.sha256 IS NOT NULL)
+                     SELECT sha256 FROM mine WHERE sha256 NOT IN (SELECT sha256 FROM used)
+                     ORDER BY sha256",
+                )
+                .map_err(sql)?;
+            q.query_map([id], |r| r.get(0))
+                .map_err(sql)?
+                .collect::<std::result::Result<_, _>>()
+                .map_err(sql)?
+        };
+        tx.commit().map_err(sql)?;
+        Ok(only)
+    }
+
+    /// What the owner reads about a project: lines of text.
+    pub fn project_report(&self, id: &str) -> Result<Vec<String>> {
+        let db = self.db();
+        let mut out = Vec::new();
+        let head = db
+            .query_row(
+                "SELECT kind, slug, title, status, gone_at FROM project WHERE id = ?1",
+                [id],
+                |r| {
+                    Ok(format!(
+                        "project {id} {} {} \"{}\" {}{}",
+                        r.get::<_, String>(0)?,
+                        r.get::<_, String>(1)?,
+                        r.get::<_, String>(2)?,
+                        r.get::<_, String>(3)?,
+                        if r.get::<_, Option<i64>>(4)?.is_some() {
+                            " gone"
+                        } else {
+                            ""
+                        }
+                    ))
+                },
+            )
+            .optional()
+            .map_err(sql)?;
+        let Some(head) = head else {
+            return Ok(out);
+        };
+        out.push(head);
+        let mut q = db
+            .prepare("SELECT source, source_id, url FROM project_source WHERE project_id = ?1")
+            .map_err(sql)?;
+        for row in q
+            .query_map([id], |r| {
+                Ok(format!(
+                    "  source {} {} {}",
+                    r.get::<_, String>(0)?,
+                    r.get::<_, String>(1)?,
+                    r.get::<_, String>(2)?
+                ))
+            })
+            .map_err(sql)?
+        {
+            out.push(row.map_err(sql)?);
+        }
+        let mut q = db
+            .prepare(
+                "SELECT v.id, v.number, v.gone_at IS NOT NULL, f.file_name, f.sha256,
+                        b.state, b.verdict, b.signs
+                 FROM version v
+                 LEFT JOIN version_file f ON f.version_id = v.id
+                 LEFT JOIN blob b ON b.sha256 = f.sha256
+                 WHERE v.id IN (SELECT id FROM version WHERE project_id = ?1
+                                ORDER BY published DESC LIMIT 30)
+                 ORDER BY v.published DESC, v.id, f.ord",
+            )
+            .map_err(sql)?;
+        let rows = q
+            .query_map([id], |r| {
+                Ok((
+                    r.get::<_, String>(0)?,
+                    r.get::<_, String>(1)?,
+                    r.get::<_, bool>(2)?,
+                    r.get::<_, Option<String>>(3)?,
+                    r.get::<_, Option<String>>(4)?,
+                    r.get::<_, Option<String>>(5)?,
+                    r.get::<_, Option<String>>(6)?,
+                    r.get::<_, Option<String>>(7)?,
+                ))
+            })
+            .map_err(sql)?;
+        let mut last = String::new();
+        for row in rows {
+            let (version, number, gone, name, sha256, state, verdict, signs) = row.map_err(sql)?;
+            if version != last {
+                out.push(format!(
+                    "  version {version} {number}{}",
+                    if gone { " gone" } else { "" }
+                ));
+                last = version;
+            }
+            if let Some(name) = name {
+                out.push(format!(
+                    "    file {} {} {} {} {name}",
+                    sha256.as_deref().unwrap_or("-"),
+                    state.as_deref().unwrap_or("not-kept"),
+                    verdict.as_deref().unwrap_or("-"),
+                    signs.filter(|s| !s.is_empty()).as_deref().unwrap_or("-"),
+                ));
+            }
+        }
+        Ok(out)
+    }
+
+    /// Where a kept file is used: lines of text.
+    pub fn file_uses(&self, sha256: &str) -> Result<Vec<String>> {
+        let db = self.db();
+        let mut out = Vec::new();
+        let mut q = db
+            .prepare(
+                "SELECT 'version', v.id, p.slug, v.number, f.file_name FROM version_file f
+                 JOIN version v ON v.id = f.version_id JOIN project p ON p.id = v.project_id
+                 WHERE f.sha256 = ?1
+                 UNION ALL
+                 SELECT 'pack', v.id, p.slug, v.number, k.path FROM pack_file k
+                 JOIN version v ON v.id = k.version_id JOIN project p ON p.id = v.project_id
+                 WHERE k.sha256 = ?1
+                 LIMIT 50",
+            )
+            .map_err(sql)?;
+        for row in q
+            .query_map([sha256], |r| {
+                Ok(format!(
+                    "  in {} {} {} {} {}",
+                    r.get::<_, String>(0)?,
+                    r.get::<_, String>(1)?,
+                    r.get::<_, String>(2)?,
+                    r.get::<_, String>(3)?,
+                    r.get::<_, String>(4)?
+                ))
+            })
+            .map_err(sql)?
+        {
+            out.push(row.map_err(sql)?);
+        }
+        Ok(out)
+    }
+
+    /// The block of a file, by any of its hashes: its key and reason.
+    pub fn block_of(&self, hash: &str) -> Result<Option<(String, String)>> {
+        self.db()
+            .query_row(
+                "SELECT key, reason FROM blocked WHERE key = ?1 OR sha256 = ?1 OR sha1 = ?1",
+                [hash],
+                |r| Ok((r.get(0)?, r.get(1)?)),
+            )
+            .optional()
+            .map_err(sql)
+    }
+
+    /// A version in a few words: its project's slug and its number.
+    pub fn version_brief(&self, version: &str) -> Result<Option<String>> {
+        self.db()
+            .query_row(
+                "SELECT p.slug || ' ' || v.number FROM version v
+                 JOIN project p ON p.id = v.project_id WHERE v.id = ?1",
+                [version],
+                |r| r.get(0),
+            )
+            .optional()
+            .map_err(sql)
+    }
+
+    /// The SHA-256 of a kept file known by its SHA-1.
+    pub fn blob_by_sha1(&self, sha1: &str) -> Result<Option<String>> {
+        self.db()
+            .query_row("SELECT sha256 FROM blob WHERE sha1 = ?1", [sha1], |r| {
+                r.get(0)
+            })
+            .optional()
+            .map_err(sql)
     }
 
     /// Links a kept file to its place in a version.
@@ -1566,7 +2084,10 @@ impl Store {
             .query_map([version], |r| {
                 let path: String = r.get(0)?;
                 let sha256: Option<String> = r.get(2)?;
-                let held = r.get::<_, Option<String>>(4)?.as_deref() == Some("quarantined");
+                let held = r
+                    .get::<_, Option<String>>(4)?
+                    .as_deref()
+                    .is_some_and(|s| s != "stored");
                 let name = path.rsplit('/').next().unwrap_or_default().to_owned();
                 Ok(serde_json::json!({
                     "path": path,
@@ -2040,7 +2561,10 @@ impl Store {
             q.query_map([id], |r| {
                 let name: String = r.get(0)?;
                 let sha256: Option<String> = r.get(4)?;
-                let held = r.get::<_, Option<String>>(8)?.as_deref() == Some("quarantined");
+                let held = r
+                    .get::<_, Option<String>>(8)?
+                    .as_deref()
+                    .is_some_and(|s| s != "stored");
                 Ok(serde_json::json!({
                     "name": name,
                     "size": r.get::<_, i64>(1)?,
@@ -2302,6 +2826,9 @@ impl Store {
                 crate::scan::RULES
             ))?,
             "reviewOpen": one("SELECT count(*) FROM review WHERE decided IS NULL")?,
+            "blocked": one("SELECT count(*) FROM blocked")?,
+            "blobsForgotten": one("SELECT count(*) FROM blob WHERE state = 'forgotten'")?,
+            "projectsRemoved": one("SELECT count(*) FROM project WHERE status = 'removed'")?,
         }))
     }
 

@@ -2029,7 +2029,7 @@ archive from the Package workflow, upload it to
 
 ## D-066 — Catalog of mods at mods.lapi.sh
 
-- **Status:** accepted (owner request, 2026-10-19), stages 1–5 of 6 and the scanner of stage 6 · **Affects:** the new service `services/mods` (`https://mods.lapi.sh`, files at
+- **Status:** accepted (owner request, 2026-10-19), stages 1–5 of 6 and the scanner and owner's commands of stage 6 · **Affects:** the new service `services/mods` (`https://mods.lapi.sh`, files at
   `https://files-mods.lapi.sh`, `/home/www/lapi/mods`), the account service's token
   audience. The full design: the project's design document "Вкладка Моды и каталог".
 - **Goal.** A Mods tab with modpacks, mods, resource packs, shaders and worlds that does
@@ -2358,6 +2358,23 @@ archive from the Package workflow, upload it to
   Remove. A held file is not installed: the plan names it, a pack with one fails.
 - `lapi-mods scan <file>` prints the verdict and signs of a file; `counts` adds held,
   noted, waiting for a scan and open reviews.
+- **The owner's commands (`services/mods/src/owner.rs`)**, in the same binary, over SSH:
+  `find` (a project by address, slug or ID, or a file by SHA-256 or SHA-1: state,
+  verdict, signs, where it is used, decisions), `review` (the queue) and
+  `review <n> keep|block`, `block <hash> [reason]`, `unblock <hash>`,
+  `remove <project> [reason]` and `forget <sha256> --yes`. A block is kept by hash
+  (table `blocked`), also by a SHA-1 from a public report before the file is here: the
+  file leaves service at once, a copy fetched again goes straight into quarantine, and
+  launchers find it in `/v1/harmful`. `unblock` (and `review keep`) puts a held file
+  back and marks it allowed, so no later scan holds it. A block clears the file's
+  addresses from Cloudflare's cache (they are cached for a year) with a token that may
+  only purge the zone (`LAPI_MODS_CF_ZONE`, `LAPI_MODS_CF_TOKEN`; curl reads the token
+  on standard input). `remove` hides a project for good (an import fails with
+  `removed`) and holds back the files no other project needs; `forget` deletes a held
+  file, and the catalog does not fetch it again. Every decision goes into the table
+  `decision` with its time and reason. The workflow runs `block`, `unblock` and
+  `review --count` (task `review-count`) behind the production approval; they print
+  fixed words, numbers and the hash given only.
 
 ## D-067 — Start page feed at feed.lapi.sh
 

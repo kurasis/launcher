@@ -210,6 +210,32 @@ impl Blobs {
         std::fs::rename(&from, &to)
     }
 
+    /// Puts a held file back in service (the owner let it go).
+    pub fn release(&self, sha256: &str) -> std::io::Result<()> {
+        let from = self.held_path(sha256);
+        let to = self.path(sha256);
+        if let Some(dir) = to.parent() {
+            std::fs::create_dir_all(dir)?;
+        }
+        if to.is_file() {
+            return std::fs::remove_file(&from);
+        }
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            std::fs::set_permissions(&from, std::fs::Permissions::from_mode(0o644))?;
+        }
+        std::fs::rename(&from, &to)
+    }
+
+    /// Deletes a held file for good.
+    pub fn forget(&self, sha256: &str) -> std::io::Result<()> {
+        match std::fs::remove_file(self.held_path(sha256)) {
+            Err(e) if e.kind() != std::io::ErrorKind::NotFound => Err(e),
+            _ => Ok(()),
+        }
+    }
+
     fn place(
         &self,
         part: &Path,
