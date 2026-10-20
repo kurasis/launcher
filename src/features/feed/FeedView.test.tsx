@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
+import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { mockIPC } from '@tauri-apps/api/mocks';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import type {
@@ -143,6 +143,13 @@ function noteFixture(original: boolean): Note {
   };
 }
 
+/** The newest version's whole note. */
+function versionNote(): NoteView {
+  const [card] = feedFixture().versions;
+  if (!card) throw new Error('the fixture changed');
+  return { note: { ...noteFixture(false), ...card, lang: 'en', blocks: [] }, stale: false };
+}
+
 function snapshotWith(feed: Partial<FeedSettings> = {}, more: Partial<AppSnapshot> = {}) {
   const base = snapshotFixture();
   return snapshotFixture({
@@ -208,6 +215,7 @@ function backend(overrides: Record<string, Handler> = {}, answer?: FeedAnswer) {
       case 'feed_get':
         return answer ?? { feed: feedFixture(), stale: false, problem: null };
       case 'feed_own_videos':
+      case 'feed_own_streams':
         return [];
       case 'feed_page':
         return pager()(args);
@@ -261,7 +269,7 @@ describe('FeedView', () => {
     await waitFor(() => {
       expect(titles('All')).toEqual(['Building a castle', 'A long video', 'A new mob']);
     });
-    expect(screen.getByText('Machine-translated')).toBeVisible();
+    expect(screen.queryByText('Machine-translated')).toBeNull();
     fireEvent.click(screen.getByRole('button', { name: 'Show more' }));
     expect(await screen.findByText('That’s everything for now.')).toBeVisible();
     expect(titles('All')).toEqual([
@@ -431,8 +439,8 @@ describe('FeedView', () => {
       });
     });
 
-    // A machine translation says so and shows its original on request.
-    expect(within(dialog).getByText('Machine-translated')).toBeVisible();
+    // A machine translation shows its original on request, without a label.
+    expect(within(dialog).queryByText('Machine-translated')).toBeNull();
     const original = within(dialog).getByRole('button', { name: 'Original' });
     expect(original).toHaveAttribute('aria-pressed', 'false');
     fireEvent.click(original);
@@ -587,6 +595,71 @@ describe('FeedView', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Show more' }));
     expect(await screen.findByRole('button', { name: 'Watch “My build” by Mine' })).toBeVisible();
     expect(titles('All')).toEqual(['Building a castle', 'A long video', 'My build', 'A new mob']);
+  });
+
+  it('streams of the player’s own Twitch channels go in the list', async () => {
+    backend({
+      feed_own_streams: () => [
+        {
+          login: 'ph1lza',
+          name: 'Ph1LzA',
+          title: 'Hardcore day 1',
+          viewers: 50,
+          started: '2026-10-19T11:00:00Z',
+          image: null,
+        },
+      ],
+    });
+    show();
+    await screen.findByRole('list', { name: 'All' });
+    expect(
+      await screen.findByRole('button', { name: 'Watch Ph1LzA live: Hardcore day 1 (50 viewers)' }),
+    ).toBeVisible();
+    expect(titles('All')[0]).toBe('Hardcore day 1');
+  });
+
+  it('a version’s note plays that version where it is installed, and installs it elsewhere', async () => {
+    const calls = backend({ feed_note: versionNote });
+    const ready = instanceFixture({
+      id: '11111111-2222-4333-8444-555555555555',
+      versionId: '26.4-snapshot-4',
+      health: 'ready',
+    });
+    show(snapshotWith({}, { instances: [ready] }));
+    const hero = await screen.findByRole('region', { name: 'Minecraft 26.4 Snapshot 4' });
+    expect(within(hero).getByRole('button', { name: 'Play 26.4-snapshot-4' })).toBeVisible();
+    fireEvent.click(within(hero).getByRole('button', { name: 'Read the patch notes' }));
+    const dialog = await screen.findByRole('dialog', { name: 'Minecraft 26.4 Snapshot 4' });
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Play 26.4-snapshot-4' }));
+    await waitFor(() => {
+      expect(calls.find((c) => c.cmd === 'launch_game')?.args).toMatchObject({
+        request: { payload: { instanceId: ready.id } },
+      });
+    });
+  });
+
+  it('a version’s note installs it, or opens the installation not ready yet', async () => {
+    backend({ feed_note: versionNote });
+    const { onInstallVersion } = show();
+    const hero = await screen.findByRole('region', { name: 'Minecraft 26.4 Snapshot 4' });
+    fireEvent.click(within(hero).getByRole('button', { name: 'Read the patch notes' }));
+    let dialog = await screen.findByRole('dialog', { name: 'Minecraft 26.4 Snapshot 4' });
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Install 26.4-snapshot-4' }));
+    expect(onInstallVersion).toHaveBeenCalledWith('26.4-snapshot-4');
+    cleanup();
+
+    const half = instanceFixture({
+      id: '11111111-2222-4333-8444-666666666666',
+      versionId: '26.4-snapshot-4',
+      health: 'not_installed',
+    });
+    const { onOpenInstallations } = show(snapshotWith({}, { instances: [half] }));
+    fireEvent.click(
+      await screen.findByRole('button', { name: 'Read the patch notes' }, { timeout: 2000 }),
+    );
+    dialog = await screen.findByRole('dialog', { name: 'Minecraft 26.4 Snapshot 4' });
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Install 26.4-snapshot-4' }));
+    expect(onOpenInstallations).toHaveBeenCalledWith(half.id);
   });
 
   it('reads right to left in Arabic', async () => {

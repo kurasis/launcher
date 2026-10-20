@@ -22,6 +22,7 @@ import type { FeedFilter } from './list';
 import { NotePanel } from './NotePanel';
 import { kindLabel, visibleParts } from './parts';
 import { pictureUrl } from './pictureUrl';
+import { VersionAction } from './VersionAction';
 import { dateTime, relativeTime, shortDate } from './when';
 import styles from './Feed.module.css';
 
@@ -99,16 +100,20 @@ function ContinueCard({
   );
 }
 
-/** The newest version: its patch note, and a way to install it. */
+/** The newest version: its patch note, and Play or Install for it. */
 function HeroCard({
+  snapshot,
   feed,
   note,
   onOpen,
+  onOpenInstallations,
   onInstallVersion,
 }: {
+  snapshot: AppSnapshot;
   feed: Feed;
   note: NoteCard | null;
   onOpen: (card: NoteCard) => void;
+  onOpenInstallations: (instanceId: string | null) => void;
   onInstallVersion: (versionId: string) => void;
 }) {
   const headingId = useId();
@@ -131,7 +136,6 @@ function HeroCard({
             </span>
           )}
           <span className={styles.muted}>{shortDate(date)}</span>
-          {note?.translated === true && <StatusBadge tone="warning" label={t.machineTranslated} />}
         </div>
         <h2 id={headingId} className={styles.heroTitle}>
           {note?.title ?? t.versionTitle({ version: release?.id ?? '' })}
@@ -149,13 +153,12 @@ function HeroCard({
             </Button>
           )}
           {version !== null && (
-            <Button
-              onClick={() => {
-                onInstallVersion(version);
-              }}
-            >
-              {t.install({ version })}
-            </Button>
+            <VersionAction
+              snapshot={snapshot}
+              version={version}
+              onOpenInstallations={onOpenInstallations}
+              onInstallVersion={onInstallVersion}
+            />
           )}
         </div>
       </div>
@@ -284,6 +287,7 @@ export function FeedView({ snapshot, onOpenInstallations, onInstallVersion }: Fe
     problem: FeedProblem | null;
   } | null>(null);
   const [own, setOwn] = useState<FeedVideo[]>([]);
+  const [ownStreams, setOwnStreams] = useState<FeedStream[]>([]);
   const [refreshing, setRefreshing] = useState(false);
   const [chosen, setFilter] = useState<FeedFilter>('all');
   // Each Refresh starts the list again.
@@ -319,6 +323,15 @@ export function FeedView({ snapshot, onOpenInstallations, onInstallVersion }: Fe
         setOwn([]);
       });
   }, [online]);
+  // Live now: asked again on Refresh too.
+  useEffect(() => {
+    ipc
+      .feedOwnStreams()
+      .then(setOwnStreams)
+      .catch(() => {
+        setOwnStreams([]);
+      });
+  }, [online, refreshes]);
 
   const openLink = useCallback((url: string) => {
     setActionProblem(null);
@@ -364,13 +377,16 @@ export function FeedView({ snapshot, onOpenInstallations, onInstallVersion }: Fe
   const content =
     view === null ? null : (
       <FeedParts
+        snapshot={snapshot}
         feed={view.feed}
         settings={settings}
         own={own}
+        ownStreams={ownStreams}
         chosen={chosen}
         reload={`${languages} ${String(online)} ${String(settings.snapshots)} ${String(settings.shorts)} ${settings.hidden.join(',')} ${String(refreshes)}`}
         onFilter={setFilter}
         onOpen={setOpen}
+        onOpenInstallations={onOpenInstallations}
         onInstallVersion={onInstallVersion}
         onPlayVideo={playVideo}
         onPlayStream={playStream}
@@ -404,21 +420,32 @@ export function FeedView({ snapshot, onOpenInstallations, onInstallVersion }: Fe
         )}
       </div>
       {open !== null && (
-        <NotePanel key={open.id} card={open} onClose={closeNote} onLink={openLink} />
+        <NotePanel
+          key={open.id}
+          card={open}
+          snapshot={snapshot}
+          onClose={closeNote}
+          onLink={openLink}
+          onOpenInstallations={onOpenInstallations}
+          onInstallVersion={onInstallVersion}
+        />
       )}
     </div>
   );
 }
 
 interface FeedPartsProps {
+  snapshot: AppSnapshot;
   feed: Feed;
   settings: FeedSettings;
   own: FeedVideo[];
+  ownStreams: FeedStream[];
   chosen: FeedFilter;
   /** Changes when the list should start again. */
   reload: string;
   onFilter: (filter: FeedFilter) => void;
   onOpen: (card: NoteCard) => void;
+  onOpenInstallations: (instanceId: string | null) => void;
   onInstallVersion: (versionId: string) => void;
   onPlayVideo: (video: FeedVideo) => void;
   onPlayStream: (stream: FeedStream) => void;
@@ -426,13 +453,16 @@ interface FeedPartsProps {
 
 /** The newest version, the chips and the endless list they choose. */
 function FeedParts({
+  snapshot,
   feed,
   settings,
   own,
+  ownStreams,
   chosen,
   reload,
   onFilter,
   onOpen,
+  onOpenInstallations,
   onInstallVersion,
   onPlayVideo,
   onPlayStream,
@@ -446,7 +476,14 @@ function FeedParts({
   return (
     <>
       {filter === 'all' && (
-        <HeroCard feed={feed} note={heroNote} onOpen={onOpen} onInstallVersion={onInstallVersion} />
+        <HeroCard
+          snapshot={snapshot}
+          feed={feed}
+          note={heroNote}
+          onOpen={onOpen}
+          onOpenInstallations={onOpenInstallations}
+          onInstallVersion={onInstallVersion}
+        />
       )}
       <div className={styles.chips} role="group" aria-labelledby={filterLabel}>
         <span id={filterLabel} className={styles.visuallyHidden}>
@@ -470,6 +507,7 @@ function FeedParts({
         feed={feed}
         settings={settings}
         own={own}
+        ownStreams={ownStreams}
         filter={filter}
         key={`${filter} ${reload}`}
         skip={filter === 'all' ? (heroNote?.id ?? null) : null}

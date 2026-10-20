@@ -18,13 +18,15 @@ use serde_json::{Value, json};
 use crate::feed::{self, Feed};
 use crate::images::{twitch_login, video_id};
 use crate::mojang;
+use crate::twitch;
 use crate::youtube;
 
-/// Channels a player may have of their own.
+/// Channels a player may have of their own (YouTube, and Twitch apart).
 pub const MAX_OWN: usize = 30;
-/// Channel lookups per address a minute (each one asks YouTube).
+/// Channel lookups per address a minute (each one asks YouTube or Twitch).
 pub const RESOLVES_PER_MINUTE: u32 = 10;
-/// Requests for a player's own videos per address a minute.
+/// Requests for a player's own videos, and apart for their own streams, per
+/// address a minute.
 pub const OWN_PER_MINUTE: u32 = 30;
 
 const CACHE_FEED: &str = "public, max-age=60";
@@ -293,6 +295,92 @@ async fn own_videos(
     )
 }
 
+/// A Twitch channel a player named, checked to exist.
+async fn resolve_twitch(
+    State(app): State<Arc<App>>,
+    headers: HeaderMap,
+    body: Result<Json<Resolve>, axum::extract::rejection::JsonRejection>,
+) -> Response {
+    let Ok(Json(body)) = body else {
+        return refuse(StatusCode::BAD_REQUEST, "bad_request");
+    };
+    let Some(login) = twitch::wanted(&body.input) else {
+        return refuse(StatusCode::BAD_REQUEST, "bad_input");
+    };
+    if !app.limiter.allow(
+        &address(&headers),
+        "twitch_resolve",
+        RESOLVES_PER_MINUTE,
+        Duration::from_secs(60),
+    ) {
+        return refuse(StatusCode::TOO_MANY_REQUESTS, "too_many");
+    }
+    let mut twitch = app.feed.twitch.lock().await;
+    let Some(twitch) = twitch.as_mut() else {
+        return refuse(StatusCode::SERVICE_UNAVAILABLE, "unavailable");
+    };
+    match twitch.user(&app.feed.http, &login).await {
+        Ok(Some(name)) => cached(
+            Json(json!({ "login": login, "name": name })).into_response(),
+            "no-store",
+        ),
+        _ => refuse(StatusCode::NOT_FOUND, "not_found"),
+    }
+}
+
+/// The Twitch logins of `/v1/streams`: comma-separated, made lowercase,
+/// each once, at most `MAX_OWN`. Anything else refuses the whole list.
+pub fn stream_logins(raw: &str) -> Option<Vec<String>> {
+    if raw.len() > MAX_OWN * 32 {
+        return None;
+    }
+    let mut logins: Vec<String> = Vec::new();
+    for login in raw.split(',').filter(|s| !s.is_empty()) {
+        let login = login.to_ascii_lowercase();
+        if !twitch_login(&login) {
+            return None;
+        }
+        if !logins.contains(&login) {
+            if logins.len() >= MAX_OWN {
+                return None;
+            }
+            logins.push(login);
+        }
+    }
+    Some(logins)
+}
+
+#[derive(Deserialize)]
+struct StreamsQuery {
+    logins: Option<String>,
+}
+
+/// The live streams of a player's own Twitch channels.
+async fn own_streams(
+    State(app): State<Arc<App>>,
+    headers: HeaderMap,
+    Query(q): Query<StreamsQuery>,
+) -> Response {
+    let Some(logins) = stream_logins(q.logins.as_deref().unwrap_or_default()) else {
+        return refuse(StatusCode::BAD_REQUEST, "bad_logins");
+    };
+    if !app.limiter.allow(
+        &address(&headers),
+        "own_streams",
+        OWN_PER_MINUTE,
+        Duration::from_secs(60),
+    ) {
+        return refuse(StatusCode::TOO_MANY_REQUESTS, "too_many");
+    }
+    match app.feed.own_streams(&logins).await {
+        Ok(streams) => cached(
+            Json(json!({ "streams": streams })).into_response(),
+            CACHE_FEED,
+        ),
+        Err(_) => refuse(StatusCode::SERVICE_UNAVAILABLE, "unavailable"),
+    }
+}
+
 /// The player window's page: the video or stream in the provider's embedded
 /// player, and a link to open it in the browser. No script of ours.
 fn play_page(lang: &str, title: &str, frame: &str, open: &str) -> Response {
@@ -387,6 +475,8 @@ pub fn router(app: Arc<App>) -> Router {
         .route("/v1/tw/{name}", get(get_tw))
         .route("/v1/channels/resolve", post(resolve))
         .route("/v1/videos", get(own_videos))
+        .route("/v1/twitch/resolve", post(resolve_twitch))
+        .route("/v1/streams", get(own_streams))
         .route("/play/yt/{id}", get(play_youtube))
         .route("/play/twitch/{login}", get(play_twitch))
         .fallback(not_found)

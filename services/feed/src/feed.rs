@@ -18,7 +18,7 @@ use crate::editorial::{Editorial, LANGS};
 use crate::html::{self, Block};
 use crate::images::{self, Images};
 use crate::mojang::{self, Note, Version};
-use crate::twitch::{Stream, Twitch};
+use crate::twitch::{self, Stream, Twitch};
 use crate::youtube::{self, Channel, Video};
 
 /// Feed format; the launcher drops what it does not know.
@@ -29,6 +29,12 @@ pub const VIDEOS: usize = 40;
 pub const OWN_CHANNELS: usize = 2000;
 /// A channel's videos are fetched again after this.
 pub const CHANNEL_TTL: Duration = Duration::from_secs(15 * 60);
+/// Players' own live streams are asked of Twitch again after this.
+pub const OWN_STREAMS_TTL: Duration = Duration::from_secs(60);
+/// Lists of players' own Twitch channels kept in memory at once.
+const OWN_STREAM_LISTS: usize = 1000;
+/// Preview addresses of players' own streams kept in memory at once.
+const OWN_PREVIEWS: usize = 5000;
 /// Patch notes and news translated: the newest ones only.
 const TRANSLATED: usize = 30;
 /// Patch notes and news in a feed; the endless list pages through the rest.
@@ -82,6 +88,10 @@ pub struct Feed {
     notes: RwLock<HashMap<String, Note>>,
     translations: RwLock<HashMap<(String, String), Translated>>,
     own: Mutex<HashMap<String, OwnChannel>>,
+    /// Players' own live streams, by their sorted logins, for a minute.
+    own_streams: RwLock<HashMap<String, (Instant, Vec<Stream>)>>,
+    /// Preview addresses of players' own streams lately answered, by login.
+    own_previews: RwLock<HashMap<String, String>>,
     /// Videos whose preview may be fetched: those of any channel we know.
     videos: RwLock<HashSet<String>>,
     pub twitch: tokio::sync::Mutex<Option<Twitch>>,
@@ -161,6 +171,8 @@ impl Feed {
             notes: RwLock::new(notes),
             translations: RwLock::new(translations),
             own: Mutex::new(HashMap::new()),
+            own_streams: RwLock::new(HashMap::new()),
+            own_previews: RwLock::new(HashMap::new()),
             videos: RwLock::new(videos),
             twitch: tokio::sync::Mutex::new(twitch),
             deepl,
@@ -313,9 +325,16 @@ impl Feed {
         lock(&self.videos).contains(id)
     }
 
+    /// The most watched Minecraft streams in each language. Without
+    /// Twitch's secrets the streams are left out.
     pub async fn refresh_twitch(&self) -> Result<(), String> {
         let mut twitch = self.twitch.lock().await;
         let Some(twitch) = twitch.as_mut() else {
+            let had = !lock(&self.saved).streams.is_empty();
+            if had {
+                lock_mut(&self.saved).streams.clear();
+                self.save();
+            }
             return Ok(());
         };
         for lang in LANGS {
@@ -331,7 +350,8 @@ impl Feed {
         Ok(())
     }
 
-    /// The preview address of a stream the feed lists.
+    /// The preview address of a stream the feed lists or a player's own
+    /// list lately had: no other picture is ever fetched.
     pub fn stream_preview(&self, login: &str) -> Option<String> {
         lock(&self.saved)
             .streams
@@ -339,6 +359,72 @@ impl Feed {
             .flatten()
             .find(|s| s.login == login)
             .map(|s| s.preview.clone())
+            .or_else(|| lock(&self.own_previews).get(login).cloned())
+    }
+
+    fn own_streams_cached(&self, key: &str) -> Option<Vec<Stream>> {
+        lock(&self.own_streams)
+            .get(key)
+            .filter(|(fetched, _)| fetched.elapsed() < OWN_STREAMS_TTL)
+            .map(|(_, streams)| streams.clone())
+    }
+
+    /// The streams of a player's own channels live now (checked logins, each
+    /// once), as cards like the feed's.
+    pub async fn own_streams(&self, logins: &[String]) -> Result<Vec<Value>, String> {
+        Ok(self
+            .own_live(logins)
+            .await?
+            .iter()
+            .map(stream_card)
+            .collect())
+    }
+
+    /// The live streams of `own_streams`: the same list is asked of Twitch
+    /// at most once a minute.
+    async fn own_live(&self, logins: &[String]) -> Result<Vec<Stream>, String> {
+        if logins.is_empty() {
+            return Ok(Vec::new());
+        }
+        let mut sorted = logins.to_vec();
+        sorted.sort_unstable();
+        let key = sorted.join(",");
+        if let Some(streams) = self.own_streams_cached(&key) {
+            return Ok(streams);
+        }
+        let data = {
+            let mut twitch = self.twitch.lock().await;
+            // Another player may have asked the same while this one waited.
+            if let Some(streams) = self.own_streams_cached(&key) {
+                return Ok(streams);
+            }
+            let Some(twitch) = twitch.as_mut() else {
+                return Err("no Twitch secrets".to_owned());
+            };
+            twitch.live(&self.http, &sorted).await?
+        };
+        let streams = twitch::own(data, logins);
+        self.remember_previews(&streams);
+        let mut cache = lock_mut(&self.own_streams);
+        if cache.len() >= OWN_STREAM_LISTS {
+            cache.retain(|_, (fetched, _)| fetched.elapsed() < OWN_STREAMS_TTL);
+            if cache.len() >= OWN_STREAM_LISTS {
+                cache.clear();
+            }
+        }
+        cache.insert(key, (Instant::now(), streams.clone()));
+        Ok(streams)
+    }
+
+    /// Where the previews of players' own live streams are fetched.
+    pub fn remember_previews(&self, streams: &[Stream]) {
+        let mut previews = lock_mut(&self.own_previews);
+        if previews.len() + streams.len() > OWN_PREVIEWS {
+            previews.clear();
+        }
+        for stream in streams {
+            previews.insert(stream.login.clone(), stream.preview.clone());
+        }
     }
 
     /// Translates the newest notes that have no translation yet, one at a

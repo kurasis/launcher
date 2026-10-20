@@ -59,6 +59,7 @@ export type Messages = {
     readonly versionTitle: (values: { version: string | number }) => string;
     readonly readNote: string;
     readonly install: (values: { version: string | number }) => string;
+    readonly playVersion: (values: { version: string | number }) => string;
     readonly filters: string;
     readonly filter: {
       readonly all: string;
@@ -90,7 +91,6 @@ export type Messages = {
       title: string | number;
       viewers: string | number;
     }) => string;
-    readonly machineTranslated: string;
     readonly original: string;
     readonly close: string;
     readonly readOnSite: string;
@@ -967,6 +967,11 @@ export type Messages = {
     readonly removeChannel: (values: { title: string | number }) => string;
     readonly noChannels: string;
     readonly channelCount: (values: { count: number; max: number }) => string;
+    readonly streamers: string;
+    readonly streamersHint: string;
+    readonly streamerInput: string;
+    readonly streamerBadInput: string;
+    readonly streamerNotFound: string;
   };
   readonly privacy: {
     readonly shareStats: string;

@@ -60,6 +60,7 @@
       "versionTitle": "Minecraft {version}",
       "readNote": "Read the patch notes",
       "install": "Install {version}",
+      "playVersion": "Play {version}",
       "filters": "Show in the feed",
       "filter": {
         "all": "All",
@@ -87,7 +88,6 @@
       "viewers": "{count, plural, one {# viewer} other {# viewers}}",
       "watchVideo": "Watch “{title}” by {channel}",
       "watchStream": "Watch {name} live: {title} ({viewers})",
-      "machineTranslated": "Machine-translated",
       "original": "Original",
       "close": "Close",
       "readOnSite": "Open on minecraft.net",
@@ -899,7 +899,12 @@
       "remove": "Remove",
       "removeChannel": "Remove {title}",
       "noChannels": "No channels added yet.",
-      "channelCount": "{count, number} of {max, number}"
+      "channelCount": "{count, number} of {max, number}",
+      "streamers": "Your Twitch channels",
+      "streamersHint": "Their streams show in the feed while they are live. The list stays on this computer; only the channel names are sent to the feed to ask whether they are live.",
+      "streamerInput": "Channel link or name",
+      "streamerBadInput": "This is not a Twitch channel link or name.",
+      "streamerNotFound": "There is no such channel on Twitch."
     },
     "privacy": {
       "shareStats": "Share anonymous crash statistics",

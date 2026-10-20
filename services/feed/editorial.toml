@@ -7,8 +7,9 @@
 # is shown where one is missing). Dates are UTC, as 2026-11-01T17:00:00Z.
 # Nothing about players goes here, and this repository is public.
 
-# Twitch logins whose streams the feed never lists.
-twitch_blocked = []
+# Twitch logins whose streams the feed never lists among the most watched
+# Minecraft streams of each language (one streamer, both spellings).
+twitch_blocked = ["zubareff", "zubarefff"]
 
 # YouTube channels: `lang` is the interface language they are shown for
 # (en, ru, ar), or "all". Every channel was checked on 2026-10-19: its RSS

@@ -389,30 +389,43 @@
   text-decoration-thickness: 2px;
 }
 
-/* The note dialog: a drawer on the inline-end side. */
+/* The note dialog: wide, in the middle of the window. */
 .backdrop {
   position: fixed;
   inset: 0;
   display: flex;
-  justify-content: flex-end;
+  align-items: center;
+  justify-content: center;
+  padding: var(--space-6);
   background: rgb(0 0 0 / 55%);
   backdrop-filter: blur(3px);
   /* Above the download button in the corner. */
   z-index: 50;
 }
 
-.drawer {
+.dialog {
   display: flex;
   flex-direction: column;
   gap: var(--space-3);
-  inline-size: min(100%, 46rem);
-  block-size: 100%;
+  inline-size: min(100%, 64rem);
+  max-block-size: 100%;
   overflow: auto;
-  padding: var(--space-6);
+  padding: var(--space-6) var(--space-8);
   background: var(--color-surface-raised);
   color: var(--color-text);
-  border-inline-start: 1px solid var(--color-border-strong);
+  border: 1px solid var(--color-border-strong);
+  border-radius: var(--radius-lg);
   box-shadow: var(--shadow-raised);
+}
+
+@media (max-width: 720px) {
+  .backdrop {
+    padding: var(--space-2);
+  }
+
+  .dialog {
+    padding: var(--space-4);
+  }
 }
 
 .drawerHead {

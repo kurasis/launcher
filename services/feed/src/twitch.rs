@@ -1,8 +1,11 @@
-//! Live Minecraft streams from Twitch's Helix API, with an app access token
-//! (client credentials: no player signs in anywhere).
+//! Live streams from Twitch's Helix API: the most watched Minecraft streams
+//! per language, and those of players' own channels; with an app access
+//! token (client credentials: no player signs in anywhere).
 
+use std::collections::HashSet;
 use std::time::{Duration, Instant};
 
+use serde::de::DeserializeOwned;
 use serde::{Deserialize, Serialize};
 
 use crate::html;
@@ -13,6 +16,8 @@ use crate::net;
 pub const MINECRAFT: &str = "27471";
 /// Streams kept per language.
 pub const STREAMS: usize = 6;
+/// Channels one Helix request may name.
+pub const HELIX_LOGINS: usize = 100;
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct Stream {
@@ -43,11 +48,26 @@ struct Streams {
     data: Vec<RawStream>,
 }
 
+#[derive(Deserialize)]
+struct Users {
+    data: Vec<User>,
+}
+
+/// A channel as Helix gives it.
+#[derive(Deserialize)]
+struct User {
+    login: String,
+    #[serde(default)]
+    display_name: String,
+}
+
 /// A stream as Helix gives it.
 #[derive(Deserialize)]
 pub struct RawStream {
     pub user_login: String,
     pub user_name: String,
+    #[serde(default)]
+    pub game_id: String,
     #[serde(default)]
     pub title: String,
     #[serde(default)]
@@ -60,12 +80,14 @@ pub struct RawStream {
     pub is_mature: bool,
 }
 
-/// Streams fit for the feed: not marked for adults, not blocked by us, with
-/// a sound login and a Twitch preview address; the most watched first.
-pub fn pick(data: Vec<RawStream>, blocked: &[String]) -> Vec<Stream> {
+/// Streams fit for the feed: not marked for adults, not blocked by us, of
+/// `game` when one is given, with a sound login and a Twitch preview address;
+/// each login once, the most watched first.
+pub fn pick(data: Vec<RawStream>, blocked: &[String], game: Option<&str>) -> Vec<Stream> {
     let mut out: Vec<Stream> = data
         .into_iter()
         .filter(|s| !s.is_mature)
+        .filter(|s| game.is_none_or(|g| s.game_id == g))
         .filter_map(|s| {
             let login = s.user_login.to_ascii_lowercase();
             if !twitch_login(&login) || blocked.iter().any(|b| b.eq_ignore_ascii_case(&login)) {
@@ -98,8 +120,59 @@ pub fn pick(data: Vec<RawStream>, blocked: &[String]) -> Vec<Stream> {
         })
         .collect();
     out.sort_by_key(|s| std::cmp::Reverse(s.viewers));
-    out.truncate(STREAMS);
+    let mut seen = HashSet::new();
+    out.retain(|s| seen.insert(s.login.clone()));
     out
+}
+
+/// The feed's streams in one language: Minecraft only, at most `STREAMS`.
+pub fn top(data: Vec<RawStream>, blocked: &[String]) -> Vec<Stream> {
+    let mut streams = pick(data, blocked, Some(MINECRAFT));
+    streams.truncate(STREAMS);
+    streams
+}
+
+/// A player's own channels live now: any game (they chose them), not for
+/// adults, only those asked; the most watched first.
+pub fn own(data: Vec<RawStream>, logins: &[String]) -> Vec<Stream> {
+    let mut streams = pick(data, &[], None);
+    streams.retain(|s| logins.contains(&s.login));
+    streams.truncate(logins.len());
+    streams
+}
+
+/// Reads the channel a player typed: a login, or a link to it on twitch.tv
+/// (with or without scheme, `www.`, a trailing slash or a query). Anything
+/// else, or any other site, is refused before a request is made.
+pub fn wanted(input: &str) -> Option<String> {
+    let input = input.trim();
+    if input.is_empty() || input.len() > 200 || input.chars().any(char::is_control) {
+        return None;
+    }
+    let lower = input.to_ascii_lowercase();
+    if twitch_login(&lower) {
+        return Some(lower);
+    }
+    let with_scheme = if input.contains("://") {
+        input.to_owned()
+    } else {
+        format!("https://{input}")
+    };
+    let url = url::Url::parse(&with_scheme).ok()?;
+    if !matches!(url.scheme(), "https" | "http")
+        || url.port().is_some()
+        || !url.username().is_empty()
+        || url.password().is_some()
+        || !matches!(
+            url.host_str()?,
+            "twitch.tv" | "www.twitch.tv" | "m.twitch.tv"
+        )
+    {
+        return None;
+    }
+    let path = url.path().strip_prefix('/')?;
+    let login = path.strip_suffix('/').unwrap_or(path).to_ascii_lowercase();
+    twitch_login(&login).then_some(login)
 }
 
 impl Twitch {
@@ -136,18 +209,16 @@ impl Twitch {
         Ok(token.access_token)
     }
 
-    /// The most watched Minecraft streams in one language.
-    pub async fn streams(
+    /// One Helix request with our app token; at most `max` bytes are read.
+    async fn helix<T: DeserializeOwned>(
         &mut self,
         http: &reqwest::Client,
-        lang: &str,
-        blocked: &[String],
-    ) -> Result<Vec<Stream>, String> {
+        url: url::Url,
+        max: usize,
+    ) -> Result<T, String> {
         let token = self.token(http).await?;
         let response = http
-            .get(format!(
-                "https://api.twitch.tv/helix/streams?game_id={MINECRAFT}&language={lang}&first=40&type=live"
-            ))
+            .get(url)
             .header("Client-Id", &self.client_id)
             .bearer_auth(&token)
             .send()
@@ -156,8 +227,75 @@ impl Twitch {
         if response.status() == reqwest::StatusCode::UNAUTHORIZED {
             self.token = None;
         }
-        let streams: Streams = serde_json::from_slice(&net::read(response, 1 << 20).await?)
-            .map_err(|_| "bad streams answer".to_owned())?;
-        Ok(pick(streams.data, blocked))
+        serde_json::from_slice(&net::read(response, max).await?)
+            .map_err(|_| "bad Helix answer".to_owned())
+    }
+
+    /// The most watched Minecraft streams in one language.
+    pub async fn streams(
+        &mut self,
+        http: &reqwest::Client,
+        lang: &str,
+        blocked: &[String],
+    ) -> Result<Vec<Stream>, String> {
+        let url = url::Url::parse_with_params(
+            "https://api.twitch.tv/helix/streams",
+            [
+                ("game_id", MINECRAFT),
+                ("language", lang),
+                ("first", "40"),
+                ("type", "live"),
+            ],
+        )
+        .map_err(|e| e.to_string())?;
+        let streams: Streams = self.helix(http, url, 1 << 20).await?;
+        Ok(top(streams.data, blocked))
+    }
+
+    /// The live streams of these channels, any game; no request for none.
+    /// Helix takes at most `HELIX_LOGINS` at once.
+    pub async fn live(
+        &mut self,
+        http: &reqwest::Client,
+        logins: &[String],
+    ) -> Result<Vec<RawStream>, String> {
+        if logins.is_empty() {
+            return Ok(Vec::new());
+        }
+        let url = url::Url::parse_with_params(
+            "https://api.twitch.tv/helix/streams",
+            logins
+                .iter()
+                .take(HELIX_LOGINS)
+                .map(|l| ("user_login", l.as_str()))
+                .chain([("type", "live"), ("first", "100")]),
+        )
+        .map_err(|e| e.to_string())?;
+        let streams: Streams = self.helix(http, url, 1 << 20).await?;
+        Ok(streams.data)
+    }
+
+    /// The display name of a channel, when Twitch has it.
+    pub async fn user(
+        &mut self,
+        http: &reqwest::Client,
+        login: &str,
+    ) -> Result<Option<String>, String> {
+        let url =
+            url::Url::parse_with_params("https://api.twitch.tv/helix/users", [("login", login)])
+                .map_err(|e| e.to_string())?;
+        let users: Users = self.helix(http, url, 64 * 1024).await?;
+        Ok(users
+            .data
+            .into_iter()
+            .find(|u| u.login.eq_ignore_ascii_case(login))
+            .map(|u| {
+                let name = html::clean(&u.display_name, 40).trim().to_owned();
+                if name.is_empty() {
+                    login.to_owned()
+                } else {
+                    name
+                }
+            }))
     }
 }

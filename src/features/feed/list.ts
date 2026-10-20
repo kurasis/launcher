@@ -1,4 +1,11 @@
-import type { Feed, FeedBlock, FeedItem, FeedSettings, FeedVideo } from '../../lib/contracts';
+import type {
+  Feed,
+  FeedBlock,
+  FeedItem,
+  FeedSettings,
+  FeedStream,
+  FeedVideo,
+} from '../../lib/contracts';
 import { visibleParts } from './parts';
 
 /** What the chips show. */
@@ -58,20 +65,24 @@ export function keptItems(feed: Feed, settings: FeedSettings, filter: FeedFilter
 }
 
 /**
- * The pages fetched so far with the player's own videos among them: an own
- * video goes in once the pages have reached its time, so the order holds.
+ * The pages fetched so far with the player's own videos and live streams
+ * among them: an own item goes in once the pages have reached its time, so
+ * the order holds.
  */
 export function shownItems(
   pages: FeedItem[],
   own: FeedVideo[],
+  ownStreams: FeedStream[],
   more: boolean,
   skip: string | null,
 ): FeedItem[] {
   const seen = new Set(pages.map(itemKey));
   const lastItem = pages.at(-1);
   const last = lastItem === undefined ? Infinity : Date.parse(itemDate(lastItem));
-  const ownItems = own
-    .map((video): FeedItem => ({ type: 'video', video }))
+  const ownItems = [
+    ...own.map((video): FeedItem => ({ type: 'video', video })),
+    ...ownStreams.map((stream): FeedItem => ({ type: 'stream', stream })),
+  ]
     .filter((item) => !seen.has(itemKey(item)))
     .filter((item) => !more || Date.parse(itemDate(item)) >= last);
   return newestFirst([...pages, ...ownItems]).filter(

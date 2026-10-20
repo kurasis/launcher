@@ -182,7 +182,8 @@ impl Images {
                 if age(&path).is_some_and(|a| a < STREAM_TTL) {
                     return Some(path);
                 }
-                // Only streams the feed lists have a preview address.
+                // Only streams the feed or a player's own list lately had
+                // have a preview address.
                 let url = stream_url?;
                 match self.fetch(&url, PREVIEW).await {
                     Ok(jpeg) => {

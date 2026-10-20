@@ -58,10 +58,12 @@ import {
   type FeedBlock,
   type FeedPage,
   type FeedProblem,
+  type FeedStream,
   type FeedVideo,
   type FeedView,
   type NoteView,
   type OwnChannel,
+  type OwnStreamer,
   type LocalWorld,
   type WorldsCreatePayload,
   type WorldsDevice,
@@ -456,6 +458,14 @@ export const ipc = {
   feedRemoveChannel: (channelId: string): Promise<OwnChannel[]> =>
     invoke<OwnChannel[]>('feed_remove_channel', { channelId }),
   feedOwnVideos: (): Promise<FeedVideo[]> => invoke<FeedVideo[]>('feed_own_videos'),
+  feedStreamers: (): Promise<OwnStreamer[]> => invoke<OwnStreamer[]>('feed_streamers'),
+  /** Looks a Twitch channel up by its link or name and adds it; the list after. */
+  feedAddStreamer: (input: string): Promise<OwnStreamer[]> =>
+    invoke<OwnStreamer[]>('feed_add_streamer', { input }),
+  feedRemoveStreamer: (login: string): Promise<OwnStreamer[]> =>
+    invoke<OwnStreamer[]>('feed_remove_streamer', { login }),
+  /** The live streams of the player's own Twitch channels. */
+  feedOwnStreams: (): Promise<FeedStream[]> => invoke<FeedStream[]>('feed_own_streams'),
   /** A page of the endless list: one part or all (`null`), after the cursor `before`. */
   feedPage: (filter: FeedBlock | null, before: string | null): Promise<FeedPage> =>
     invoke<FeedPage>('feed_page', { filter, before }),

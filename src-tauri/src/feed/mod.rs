@@ -6,8 +6,9 @@
 //! [`model`], which keeps only what passes its rules. The last good feed of
 //! each language, the notes opened and the pictures shown are kept in
 //! `cache/feed`, so the feed shows without a connection (marked as such). The
-//! YouTube channels a player adds stay on this computer, in
-//! `feed-channels.json`, and are sent only to ask for their videos. Nothing
+//! YouTube and Twitch channels a player adds stay on this computer, in
+//! `feed-channels.json`, and are sent only to ask for their videos and live
+//! streams. Nothing
 //! about a player goes to the launcher's log.
 
 pub mod model;
@@ -32,13 +33,14 @@ use crate::storage::atomic;
 use crate::storage::models::{FeedBlock, FeedSettings, VideoLanguage};
 use crate::storage::paths::DataRoot;
 use crate::sync::lock;
-use model::{Feed, FeedPage, Lang, Note, OwnChannel, PictureKind, Video};
+use model::{Feed, FeedPage, Lang, Note, OwnChannel, OwnStreamer, PictureKind, Stream, Video};
 
 /// The service.
 pub const BASE: &str = "https://feed.lapi.sh";
 /// The protocol the webview loads the feed's pictures from.
 pub const PROTOCOL: &str = "feed";
-/// A player's own YouTube channels, at most (the service's limit).
+/// A player's own YouTube channels, at most (the service's limit), and as
+/// many Twitch channels.
 pub const MAX_OWN_CHANNELS: usize = 30;
 /// The longest channel link, @handle or id a player may type.
 pub const MAX_CHANNEL_INPUT: usize = 200;
@@ -50,6 +52,9 @@ const FEED_FRESH: Duration = Duration::from_secs(60);
 const NOTE_FRESH: Duration = Duration::from_secs(10 * 60);
 /// A player's videos fetched this recently are not fetched again.
 const OWN_FRESH: Duration = Duration::from_secs(5 * 60);
+/// A player's live streams fetched this recently are not fetched again (the
+/// service's own cache time).
+const OWN_STREAMS_FRESH: Duration = Duration::from_secs(60);
 /// Notes kept on disk; the oldest go first.
 const MAX_NOTE_FILES: usize = 60;
 /// The largest picture read.
@@ -302,36 +307,74 @@ pub fn cached_note(root: &DataRoot, id: &str, lang: Lang) -> Option<Note> {
     )
 }
 
-/// The player's own channels, as kept: checked, each once, at most
-/// [`MAX_OWN_CHANNELS`].
-pub fn own_channels(root: &DataRoot) -> Vec<OwnChannel> {
+/// One list kept in `feed-channels.json` under `key`: checked, each once, at
+/// most [`MAX_OWN_CHANNELS`].
+fn own_list<T>(
+    root: &DataRoot,
+    key: &str,
+    item: impl Fn(&Value) -> Option<T>,
+    same: impl Fn(&T, &T) -> bool,
+) -> Vec<T> {
     let Some(value) = read_small(&root.feed_channels(), 64 * 1024)
         .and_then(|bytes| serde_json::from_slice::<Value>(&bytes).ok())
     else {
         return Vec::new();
     };
-    let mut out: Vec<OwnChannel> = Vec::new();
-    for channel in value
-        .get("channels")
+    let mut out: Vec<T> = Vec::new();
+    for found in value
+        .get(key)
         .and_then(Value::as_array)
         .into_iter()
         .flatten()
-        .filter_map(model::own_channel)
+        .filter_map(item)
     {
         if out.len() == MAX_OWN_CHANNELS {
             break;
         }
-        if !out.iter().any(|c| c.channel_id == channel.channel_id) {
-            out.push(channel);
+        if !out.iter().any(|kept| same(kept, &found)) {
+            out.push(found);
         }
     }
     out
 }
 
-fn save_own_channels(root: &DataRoot, channels: &[OwnChannel]) -> FeedResult<()> {
-    let bytes = serde_json::to_vec_pretty(&json!({ "channels": channels }))
+/// The player's own YouTube channels, as kept.
+pub fn own_channels(root: &DataRoot) -> Vec<OwnChannel> {
+    own_list(root, "channels", model::own_channel, |a, b| {
+        a.channel_id == b.channel_id
+    })
+}
+
+/// The player's own Twitch channels, as kept.
+pub fn own_streamers(root: &DataRoot) -> Vec<OwnStreamer> {
+    own_list(root, "twitch", model::own_streamer, |a, b| {
+        a.login == b.login
+    })
+}
+
+fn save_own(root: &DataRoot, channels: &[OwnChannel], streamers: &[OwnStreamer]) -> FeedResult<()> {
+    let bytes = serde_json::to_vec_pretty(&json!({ "channels": channels, "twitch": streamers }))
         .map_err(|_| FeedProblem::Server)?;
     atomic::write(&root.feed_channels(), &bytes).map_err(|_| FeedProblem::Unavailable)
+}
+
+fn save_own_channels(root: &DataRoot, channels: &[OwnChannel]) -> FeedResult<()> {
+    save_own(root, channels, &own_streamers(root))
+}
+
+fn save_own_streamers(root: &DataRoot, streamers: &[OwnStreamer]) -> FeedResult<()> {
+    save_own(root, &own_channels(root), streamers)
+}
+
+/// Removes one of the player's Twitch channels; the list after.
+pub fn remove_own_streamer(root: &DataRoot, login: &str) -> FeedResult<Vec<OwnStreamer>> {
+    let mut streamers = own_streamers(root);
+    let before = streamers.len();
+    streamers.retain(|s| s.login != login);
+    if streamers.len() != before {
+        save_own_streamers(root, &streamers)?;
+    }
+    Ok(streamers)
 }
 
 /// Removes one of the player's channels; the list after.
@@ -375,6 +418,13 @@ struct OwnVideos {
     videos: Vec<Video>,
 }
 
+/// A player's live streams fetched at a time, for these channels.
+struct OwnStreams {
+    at: Instant,
+    logins: Vec<String>,
+    streams: Vec<Stream>,
+}
+
 /// The feed's client and what it keeps in memory.
 pub struct FeedService {
     client: PublicClient,
@@ -382,6 +432,8 @@ pub struct FeedService {
     fresh: Mutex<HashMap<Lang, (Instant, Feed)>>,
     /// The player's videos fetched lately, for these channels.
     own: Mutex<Option<OwnVideos>>,
+    /// The player's live streams fetched lately, for these channels.
+    own_streams: Mutex<Option<OwnStreams>>,
 }
 
 impl FeedService {
@@ -390,6 +442,7 @@ impl FeedService {
             client: PublicClient::new(SourcePolicy::Feed, app_version)?,
             fresh: Mutex::new(HashMap::new()),
             own: Mutex::new(None),
+            own_streams: Mutex::new(None),
         })
     }
 
@@ -609,6 +662,66 @@ impl FeedService {
             *lock(&self.own) = None;
         }
         Ok(channels)
+    }
+
+    /// Looks a Twitch channel up by its link or login and adds it; the list
+    /// after.
+    pub async fn add_streamer(&self, root: &DataRoot, input: &str) -> FeedResult<Vec<OwnStreamer>> {
+        let input = channel_input(input).ok_or(FeedProblem::BadInput)?;
+        let mut streamers = own_streamers(root);
+        if streamers.len() >= MAX_OWN_CHANNELS {
+            return Err(FeedProblem::Full);
+        }
+        let url =
+            Url::parse(&format!("{BASE}/v1/twitch/resolve")).map_err(|_| FeedProblem::Server)?;
+        let request = self
+            .client
+            .post(&url)
+            .map_err(|_| FeedProblem::Server)?
+            .json(&json!({ "input": input }));
+        let answer = self.send(request, model::MAX_SMALL_BYTES).await?;
+        if answer.status != 200 {
+            return Err(problem_of(&answer));
+        }
+        let found = answer
+            .body
+            .as_ref()
+            .and_then(model::own_streamer)
+            .ok_or(FeedProblem::Server)?;
+        if !streamers.iter().any(|s| s.login == found.login) {
+            streamers.push(found);
+            save_own_streamers(root, &streamers)?;
+            *lock(&self.own_streams) = None;
+        }
+        Ok(streamers)
+    }
+
+    /// The live streams of the player's own Twitch channels. Nothing is kept
+    /// on disk: an old stream is no longer live.
+    pub async fn own_streams(&self, root: &DataRoot) -> FeedResult<Vec<Stream>> {
+        let logins: Vec<String> = own_streamers(root).into_iter().map(|s| s.login).collect();
+        if logins.is_empty() {
+            return Ok(Vec::new());
+        }
+        if let Some(own) = lock(&self.own_streams).as_ref()
+            && own.logins == logins
+            && own.at.elapsed() < OWN_STREAMS_FRESH
+        {
+            return Ok(own.streams.clone());
+        }
+        let streams = self
+            .get_ok(
+                &format!("/v1/streams?logins={}", logins.join(",")),
+                model::MAX_SMALL_BYTES,
+            )
+            .await
+            .and_then(|value| model::streams(&value).ok_or(FeedProblem::Server))?;
+        *lock(&self.own_streams) = Some(OwnStreams {
+            at: Instant::now(),
+            logins,
+            streams: streams.clone(),
+        });
+        Ok(streams)
     }
 
     /// The newest videos of the player's own channels.

@@ -60,6 +60,7 @@
       "versionTitle": "Minecraft {version}",
       "readNote": "Читать список изменений",
       "install": "Установить {version}",
+      "playVersion": "Играть в {version}",
       "filters": "Что показать в ленте",
       "filter": {
         "all": "Всё",
@@ -87,7 +88,6 @@
       "viewers": "{count, plural, one {# зритель} few {# зрителя} many {# зрителей} other {# зрителя}}",
       "watchVideo": "Смотреть «{title}» от {channel}",
       "watchStream": "Смотреть эфир {name}: {title} ({viewers})",
-      "machineTranslated": "Переведено машинно",
       "original": "Оригинал",
       "close": "Закрыть",
       "readOnSite": "Открыть на minecraft.net",
@@ -899,7 +899,12 @@
       "remove": "Убрать",
       "removeChannel": "Убрать {title}",
       "noChannels": "Каналы пока не добавлены.",
-      "channelCount": "{count, number} из {max, number}"
+      "channelCount": "{count, number} из {max, number}",
+      "streamers": "Ваши каналы Twitch",
+      "streamersHint": "Их стримы появляются в ленте, пока идёт трансляция. Список хранится только на этом компьютере; ленте отправляются лишь имена каналов, чтобы узнать, идёт ли стрим.",
+      "streamerInput": "Ссылка на канал или его имя",
+      "streamerBadInput": "Это не ссылка на канал Twitch и не его имя.",
+      "streamerNotFound": "Такого канала на Twitch нет."
     },
     "privacy": {
       "shareStats": "Отправлять анонимную статистику вылетов",

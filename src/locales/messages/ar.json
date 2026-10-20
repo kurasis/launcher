@@ -61,6 +61,7 @@
       "versionTitle": "Minecraft {version}",
       "readNote": "اقرأ ملاحظات التحديث",
       "install": "ثبّت {version}",
+      "playVersion": "العب {version}",
       "filters": "ما يُعرض في الموجز",
       "filter": {
         "all": "الكل",
@@ -88,7 +89,6 @@
       "viewers": "{count, plural, zero {لا مشاهدين} one {مشاهد واحد} two {مشاهدان} few {# مشاهدين} many {# مشاهدًا} other {# مشاهد}}",
       "watchVideo": "شاهد «{title}» من {channel}",
       "watchStream": "شاهد بث {name} المباشر: {title} ({viewers})",
-      "machineTranslated": "ترجمة آلية",
       "original": "الأصل",
       "close": "إغلاق",
       "readOnSite": "افتح على minecraft.net",
@@ -900,7 +900,12 @@
       "remove": "أزل",
       "removeChannel": "أزل {title}",
       "noChannels": "لم تُضف أي قنوات بعد.",
-      "channelCount": "{count, number} من {max, number}"
+      "channelCount": "{count, number} من {max, number}",
+      "streamers": "قنواتك على Twitch",
+      "streamersHint": "تظهر بثوثها في الموجز أثناء البث المباشر. تبقى القائمة على هذا الحاسوب فقط؛ ولا يُرسَل إلى الموجز إلا أسماء القنوات لمعرفة ما إذا كانت تبث الآن.",
+      "streamerInput": "رابط القناة أو اسمها",
+      "streamerBadInput": "هذا ليس رابط قناة على Twitch ولا اسمها.",
+      "streamerNotFound": "لا توجد قناة بهذا الاسم على Twitch."
     },
     "privacy": {
       "shareStats": "مشاركة إحصاءات الانهيار المجهولة",

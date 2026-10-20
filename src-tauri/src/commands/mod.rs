@@ -2523,7 +2523,7 @@ pub fn mods_open_link<R: Runtime>(app: AppHandle<R>, url: String) -> LauncherRes
 
 // ---- The start page feed (D-067) ----------------------------------------------
 
-use crate::feed::model::{FeedPage, OwnChannel, Video};
+use crate::feed::model::{FeedPage, OwnChannel, OwnStreamer, Stream, Video};
 use crate::feed::{FeedProblem, FeedResult, FeedService, FeedView, Languages, NoteView};
 
 fn feed_service<R: Runtime>(app: &AppHandle<R>) -> Arc<FeedService> {
@@ -2679,6 +2679,47 @@ pub async fn feed_own_videos<R: Runtime>(app: AppHandle<R>) -> FeedResult<Vec<Vi
     feed_languages(&app)?;
     let root = feed_root(&app)?;
     feed_service(&app).own_videos(&root).await
+}
+
+/// The Twitch channels the player added to the feed.
+#[tauri::command(async)]
+pub fn feed_streamers<R: Runtime>(app: AppHandle<R>) -> Vec<OwnStreamer> {
+    feed_root(&app)
+        .map(|root| crate::feed::own_streamers(&root))
+        .unwrap_or_default()
+}
+
+/// Looks a Twitch channel up by its link or login and adds it; the list after.
+#[tauri::command]
+pub async fn feed_add_streamer<R: Runtime>(
+    app: AppHandle<R>,
+    input: String,
+) -> FeedResult<Vec<OwnStreamer>> {
+    if input.len() > crate::feed::MAX_CHANNEL_INPUT * 4 {
+        return Err(FeedProblem::BadInput);
+    }
+    let root = feed_root(&app)?;
+    feed_service(&app).add_streamer(&root, &input).await
+}
+
+/// Removes one of the player's Twitch channels; the list after.
+#[tauri::command(async)]
+pub fn feed_remove_streamer<R: Runtime>(
+    app: AppHandle<R>,
+    login: String,
+) -> FeedResult<Vec<OwnStreamer>> {
+    if !crate::feed::model::twitch_login(&login) {
+        return Err(FeedProblem::BadInput);
+    }
+    crate::feed::remove_own_streamer(&feed_root(&app)?, &login)
+}
+
+/// The live streams of the player's own Twitch channels.
+#[tauri::command]
+pub async fn feed_own_streams<R: Runtime>(app: AppHandle<R>) -> FeedResult<Vec<Stream>> {
+    feed_languages(&app)?;
+    let root = feed_root(&app)?;
+    feed_service(&app).own_streams(&root).await
 }
 
 // ----- worlds with friends (D-068) -----
