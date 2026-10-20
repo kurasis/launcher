@@ -912,6 +912,12 @@ fn handlers<R: tauri::Runtime>() -> impl Fn(tauri::ipc::Invoke<R>) -> bool + Sen
         commands::worlds_play,
         commands::worlds_devices,
         commands::worlds_revoke_device,
+        commands::worlds_importable,
+        commands::worlds_import,
+        commands::worlds_backups,
+        commands::worlds_back_up,
+        commands::worlds_restore,
+        commands::worlds_export,
         #[cfg(debug_assertions)]
         commands::start_lifecycle_test,
         #[cfg(debug_assertions)]

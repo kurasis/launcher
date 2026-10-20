@@ -1431,7 +1431,11 @@
       "guest": {
         "title": "في «{room}»",
         "connected": "متصل بالمضيف. اضغط «العب» لتشغيل اللعبة.",
-        "lost": "انقطع الاتصال بالمضيف."
+        "lost": "انقطع الاتصال بالمضيف.",
+        "path": {
+          "direct": "الاتصال: مباشرة بحاسوب المضيف.",
+          "relay": "الاتصال: عبر relay.lapi.sh، إذ لم يُعثر على مسار مباشر بين الحاسوبين."
+        }
       },
       "refusals": {
         "BAD_FRAME": "لم يفهم مشغّل المضيف هذا المشغّل. حدّث كليهما.",
@@ -1539,6 +1543,31 @@
         "already_connected": "حسابك يلعب في هذه الغرفة بالفعل.",
         "device": "رفض worlds.lapi.sh هذا الحاسوب. حاول مرة أخرى.",
         "refused": "رفض worlds.lapi.sh هذا."
+      },
+      "import": {
+        "open": "استيراد عالم",
+        "title": "استيراد عالم لاعب فردي",
+        "hint": "يُنسخ العالم إلى العوالم مع الأصدقاء، ويبقى الأصل في تثبيته. أغلق اللعبة أولًا. عوالم التثبيتات ذات التعديلات تأتي لاحقًا.",
+        "installation": "التثبيت",
+        "world": "العالم",
+        "source": "{name} · Minecraft {version}",
+        "none": "لا يوجد تثبيت بلا تعديلات فيه عوالم فردية بإصدار Minecraft تدعمه العوالم مع الأصدقاء.",
+        "submit": "استيراد",
+        "importing": "جارٍ النسخ…"
+      },
+      "safety": {
+        "title": "النسخ الاحتياطية",
+        "hint": "عندما يُغلق العالم بعد لعبة غيّرته، تُنشأ له نسخة احتياطية؛ ويُحتفظ بآخر {count, plural, zero {# نسخة} one {نسخة واحدة} two {نسختين} few {# نسخ} many {# نسخة} other {# نسخة}} تلقائية.",
+        "notPlayed": "تبدأ النسخ الاحتياطية والتصدير بعد فتح العالم للعب مرة.",
+        "backUp": "نسخ احتياطي الآن",
+        "export": "تصدير بصيغة ZIP",
+        "exportTitle": "تصدير العالم",
+        "exported": "حُفظ باسم {name}.",
+        "whileHosted": "أغلق العالم لنسخه احتياطيًا أو استعادته أو تصديره.",
+        "list": "النسخ الاحتياطية لهذا العالم",
+        "created": "تم النسخ الاحتياطي.",
+        "confirmRestore": "هل تضع النسخة الاحتياطية من {date} مكان {world}؟ يُنسخ العالم بحالته الحالية أولًا.",
+        "restored": "أُعيدت النسخة الاحتياطية من {date}."
       },
       "devices": {
         "open": "الحواسيب",
@@ -2181,6 +2210,22 @@
     "Worlds with friends need a Microsoft account that owns Minecraft. Sign in with it in the launcher once.": "تحتاج العوالم مع الأصدقاء إلى حساب Microsoft يملك Minecraft. سجّل الدخول به في المشغّل مرة واحدة.",
     "worlds.lapi.sh cannot be reached.": "تعذّر الوصول إلى worlds.lapi.sh.",
     "worlds.lapi.sh is not working right now.": "لا يعمل worlds.lapi.sh الآن.",
-    "worlds.lapi.sh refused this.": "رفض worlds.lapi.sh هذا."
+    "worlds.lapi.sh refused this.": "رفض worlds.lapi.sh هذا.",
+    "A world is being backed up or copied. Wait for it to finish.": "يجري نسخ عالم الآن. انتظر حتى ينتهي.",
+    "Choose a folder that exists.": "اختر مجلدًا موجودًا.",
+    "Reading the backups stopped.": "توقفت قراءة النسخ الاحتياطية.",
+    "The backup was not made.": "لم تُنشأ النسخة الاحتياطية.",
+    "The export could not be written.": "تعذّرت كتابة ملف التصدير.",
+    "The world change stopped.": "توقف تغيير العالم.",
+    "The world changed while it was copied. Close the game and try again.": "تغيّر العالم أثناء نسخه. أغلق اللعبة وحاول مجددًا.",
+    "There is not enough free space: {need} MiB more are needed.": "لا توجد مساحة كافية: يلزم {need} MiB إضافية.",
+    "This backup belongs to another world.": "هذه النسخة الاحتياطية تخص عالمًا آخر.",
+    "This folder is not a Minecraft world.": "هذا المجلد ليس عالم Minecraft.",
+    "This world has more files than a world can have.": "في هذا العالم ملفات أكثر من المسموح.",
+    "This world has not been played yet: there is nothing to back up.": "لم يُلعب في هذا العالم بعد: لا شيء لنسخه احتياطيًا.",
+    "This world has not been played yet: there is nothing to export.": "لم يُلعب في هذا العالم بعد: لا شيء لتصديره.",
+    "This world is being hosted. Stop hosting it first.": "هذا العالم مفتوح الآن. أغلقه أولًا.",
+    "This world is larger than a world can be.": "هذا العالم أكبر من الحجم المسموح.",
+    "Worlds with mods come later: import a world of an installation without mods.": "العوالم ذات التعديلات تأتي لاحقًا: استورد عالمًا من تثبيت بلا تعديلات."
   }
 }

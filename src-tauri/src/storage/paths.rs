@@ -255,6 +255,12 @@ impl DataRoot {
         self.root.join("worlds")
     }
 
+    /// Backups of the hosted worlds, in a store of their own (W9). Not a
+    /// world id, so the world list passes it by.
+    pub fn world_backups_dir(&self) -> PathBuf {
+        self.worlds_dir().join("backups")
+    }
+
     pub fn world_dir(&self, id: WorldId) -> PathBuf {
         self.worlds_dir().join(id.to_string())
     }

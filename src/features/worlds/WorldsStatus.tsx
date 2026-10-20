@@ -85,6 +85,9 @@ export function WorldsStatus({ state, rooms }: Props) {
         <div className={styles.status}>
           <p className={styles.statusTitle}>{t.guest.title({ room: nameOf(guest.room) })}</p>
           <p>{guest.connected ? t.guest.connected : t.guest.lost}</p>
+          {guest.connected && guest.path !== null && (
+            <p className={styles.muted}>{t.guest.path[guest.path]}</p>
+          )}
           {guest.refused !== null && <Notice tone="warning">{t.refusals[guest.refused]}</Notice>}
         </div>
       )}

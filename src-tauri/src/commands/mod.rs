@@ -2462,6 +2462,141 @@ pub fn worlds_accept_eula<R: Runtime>(
     worlds(&app).accept_eula(world)
 }
 
+/// The installations whose single-player worlds can be brought in.
+#[tauri::command]
+pub async fn worlds_importable<R: Runtime>(
+    app: AppHandle<R>,
+) -> LauncherResult<Vec<crate::worlds::safety::Importable>> {
+    tauri::async_runtime::spawn_blocking(move || worlds(&app).importable(&app.state::<AppState>()))
+        .await
+        .map_err(|_| crate::error::LauncherError::internal("Reading the worlds stopped."))?
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct WorldsImportPayload {
+    pub instance_id: crate::storage::paths::InstanceId,
+    pub save: String,
+    pub name: String,
+    pub description: String,
+}
+
+/// A new world from a copy of a single-player world, and its room.
+#[tauri::command]
+pub async fn worlds_import<R: Runtime>(
+    app: AppHandle<R>,
+    payload: WorldsImportPayload,
+) -> LauncherResult<crate::worlds::service::Room> {
+    worlds(&app)
+        .import(
+            &app.state::<AppState>(),
+            payload.instance_id,
+            payload.save,
+            payload.name,
+            &payload.description,
+        )
+        .await
+}
+
+/// A world's backups, newest first.
+#[tauri::command]
+pub async fn worlds_backups<R: Runtime>(
+    app: AppHandle<R>,
+    world: crate::storage::paths::WorldId,
+) -> LauncherResult<Vec<crate::backup::store::SnapshotInfo>> {
+    let worlds = worlds(&app);
+    tauri::async_runtime::spawn_blocking(move || worlds.backups(world))
+        .await
+        .map_err(|_| crate::error::LauncherError::internal("Reading the backups stopped."))?
+}
+
+/// Backs up a stopped world now.
+#[tauri::command]
+pub async fn worlds_back_up<R: Runtime>(
+    app: AppHandle<R>,
+    world: crate::storage::paths::WorldId,
+) -> LauncherResult<crate::backup::store::SnapshotInfo> {
+    worlds(&app).back_up(world).await
+}
+
+/// Puts a backup in place of a stopped world; the world is backed up first.
+#[tauri::command]
+pub async fn worlds_restore<R: Runtime>(
+    app: AppHandle<R>,
+    world: crate::storage::paths::WorldId,
+    backup: String,
+) -> LauncherResult<()> {
+    worlds(&app).restore(world, backup).await
+}
+
+/// A world's name made fit for a file name: letters, digits, spaces, `-`
+/// and `_`, at most 60 characters.
+fn export_file_name(name: &str) -> String {
+    let kept: String = name
+        .chars()
+        .map(|c| {
+            if c.is_alphanumeric() || c == '-' || c == '_' || c == ' ' {
+                c
+            } else {
+                '_'
+            }
+        })
+        .take(60)
+        .collect();
+    let kept = kept.trim().trim_matches('_');
+    format!("{}.zip", if kept.is_empty() { "world" } else { kept })
+}
+
+/// Saves a stopped world as a zip where the player chooses.
+#[tauri::command]
+pub async fn worlds_export<R: Runtime>(
+    app: AppHandle<R>,
+    world: crate::storage::paths::WorldId,
+    title: Option<String>,
+) -> LauncherResult<ExportResult> {
+    use tauri_plugin_dialog::DialogExt;
+    let worlds = worlds(&app);
+    let name = {
+        let root = app.state::<AppState>().data_root().ok_or_else(|| {
+            crate::error::LauncherError::new(
+                crate::error::ErrorCode::StorageUnavailable,
+                "Launcher data is unavailable.",
+            )
+        })?;
+        crate::worlds::world::load(&root, world)?.name
+    };
+    let handle = app.clone();
+    let title = window_title(title, "Export the world");
+    let target = tauri::async_runtime::spawn_blocking(move || {
+        handle
+            .dialog()
+            .file()
+            .set_title(title)
+            .set_file_name(export_file_name(&name))
+            .add_filter("ZIP archive", &["zip"])
+            .blocking_save_file()
+    })
+    .await
+    .map_err(|_| crate::error::LauncherError::internal("The save dialog failed."))?;
+    let Some(target) = target else {
+        return Ok(ExportResult {
+            saved: false,
+            file_name: None,
+        });
+    };
+    let path = target.into_path().map_err(|_| {
+        crate::error::LauncherError::new(
+            crate::error::ErrorCode::InvalidInput,
+            "This location cannot be used for the export.",
+        )
+    })?;
+    worlds.export(world, path.clone()).await?;
+    Ok(ExportResult {
+        saved: true,
+        file_name: path.file_name().map(|n| n.to_string_lossy().into_owned()),
+    })
+}
+
 /// Removes, bans or unbans a member.
 #[tauri::command]
 pub async fn worlds_moderate<R: Runtime>(
@@ -2647,7 +2782,17 @@ pub async fn worlds_play<R: Runtime>(
 
 #[cfg(test)]
 mod tests {
-    use super::window_title;
+    use super::{export_file_name, window_title};
+
+    #[test]
+    fn export_names_are_plain_file_names() {
+        assert_eq!(export_file_name("Our base"), "Our base.zip");
+        assert_eq!(export_file_name("../../etc/passwd"), "etc_passwd.zip");
+        assert_eq!(export_file_name("a\\b:c*?"), "a_b_c.zip");
+        assert_eq!(export_file_name("   "), "world.zip");
+        assert_eq!(export_file_name("Мир 1"), "Мир 1.zip");
+        assert_eq!(export_file_name(&"x".repeat(200)).len(), 64);
+    }
 
     #[test]
     fn titles_from_the_interface_are_plain_and_short() {

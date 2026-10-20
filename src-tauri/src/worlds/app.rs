@@ -8,6 +8,7 @@
 //! Only one room at a time: hosting and being a guest exclude each other, as
 //! one hosting permit allows one world server.
 
+use std::path::PathBuf;
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
@@ -19,7 +20,8 @@ use super::identity::Nick;
 use super::joining::{self, RoomGuest, Route, Visit};
 use super::properties::WorldSettings;
 use super::service::{Problem, Room, Token, WorldsClient};
-use super::{host, install, tuple, world};
+use super::{host, install, safety, tuple, world};
+use crate::backup::store::{Reason, SnapshotInfo};
 use crate::catalog::source::MetadataService;
 use crate::download::{CancelToken, DownloadProgress, Executor, ExecutorConfig, ProgressSink};
 use crate::error::{ErrorCode, LauncherError, LauncherResult};
@@ -28,7 +30,8 @@ use crate::net::PublicClient;
 use crate::runtime::RuntimeInstaller;
 use crate::secrets::SecretString;
 use crate::state::AppState;
-use crate::storage::paths::{DataRoot, WorldId};
+use crate::storage::models::OperationKind;
+use crate::storage::paths::{DataRoot, InstanceId, WorldId};
 use crate::sync::lock;
 use crate::tunnel::endpoint::{Reach, bind};
 use crate::tunnel::frame::Refusal;
@@ -80,6 +83,8 @@ pub struct GuestView {
     pub connected: bool,
     /// Why the host refused the last login, if it did.
     pub refused: Option<Refusal>,
+    /// Straight to the host or through the relay, once chosen.
+    pub path: Option<joining::PathKind>,
 }
 
 /// What the interface shows about this computer's room.
@@ -91,6 +96,8 @@ pub struct WorldsView {
     pub guest: Option<GuestView>,
     /// Why the last start or join failed, as a problem name or error code.
     pub failed: Option<String>,
+    /// A world is being backed up, restored, imported or exported.
+    pub maintenance: bool,
 }
 
 /// A world kept on this computer.
@@ -105,6 +112,9 @@ pub struct LocalWorld {
     pub settings: WorldSettings,
     pub created_at: chrono::DateTime<chrono::Utc>,
     pub last_run: Option<world::LastRun>,
+    /// Whether the world has been played: only then is there a save to back
+    /// up or export.
+    pub played: bool,
 }
 
 impl From<world::WorldFile> for LocalWorld {
@@ -118,6 +128,7 @@ impl From<world::WorldFile> for LocalWorld {
             settings: world.settings,
             created_at: world.created_at,
             last_run: world.last_run,
+            played: false,
         }
     }
 }
@@ -136,6 +147,8 @@ struct Inner {
     guest: Option<Arc<RoomGuest>>,
     failed: Option<String>,
     told: Option<Instant>,
+    /// A backup, restore, import or export runs ([`Worlds::claim`]).
+    maintenance: bool,
 }
 
 type Emit = Box<dyn Fn(&WorldsView) + Send + Sync>;
@@ -163,6 +176,45 @@ fn busy() -> LauncherError {
         ErrorCode::AppBusy,
         "This computer is already in a room. Leave it first.",
     )
+}
+
+fn changing() -> LauncherError {
+    LauncherError::new(
+        ErrorCode::AppBusy,
+        "A world is being backed up or copied. Wait for it to finish.",
+    )
+}
+
+fn hosted() -> LauncherError {
+    LauncherError::new(
+        ErrorCode::AppBusy,
+        "This world is being hosted. Stop hosting it first.",
+    )
+}
+
+/// Runs file work off the async threads.
+async fn blocking<T: Send + 'static>(
+    work: impl FnOnce() -> LauncherResult<T> + Send + 'static,
+) -> LauncherResult<T> {
+    tokio::task::spawn_blocking(work)
+        .await
+        .map_err(|_| LauncherError::internal("The world change stopped."))?
+}
+
+/// The one backup, restore, import or export at a time; released on drop.
+/// A quiet one (tidying up while listing) is not shown.
+struct Claim<'a> {
+    worlds: &'a Worlds,
+    quiet: bool,
+}
+
+impl Drop for Claim<'_> {
+    fn drop(&mut self) {
+        lock(&self.worlds.inner).maintenance = false;
+        if !self.quiet {
+            self.worlds.tell();
+        }
+    }
 }
 
 /// The name a failure is shown by: the service's problem, else the error code.
@@ -291,6 +343,9 @@ impl Worlds {
             if inner.preparing.is_some() || inner.hosting.is_some() || inner.guest.is_some() {
                 return Err(busy());
             }
+            if inner.maintenance {
+                return Err(changing());
+            }
             inner.preparing = Some(Preparing {
                 room: room.to_owned(),
                 stage,
@@ -314,6 +369,36 @@ impl Worlds {
         self.tell();
     }
 
+    /// Claims the one change of a world's files. Refused while a room gets
+    /// ready (its world may be the one) and while `world` is hosted.
+    fn claim(&self, world: Option<WorldId>) -> LauncherResult<Claim<'_>> {
+        self.claim_as(world, false)
+    }
+
+    fn claim_as(&self, world: Option<WorldId>, quiet: bool) -> LauncherResult<Claim<'_>> {
+        {
+            let mut inner = lock(&self.inner);
+            if inner.maintenance || inner.preparing.is_some() {
+                return Err(changing());
+            }
+            if let (Some(world), Some(hosting)) = (world, inner.hosting.as_ref()) {
+                let server = hosting.server.status();
+                // `clean` is set once the exit is written down.
+                if server.world_id == world && server.clean.is_none() {
+                    return Err(hosted());
+                }
+            }
+            inner.maintenance = true;
+        }
+        if !quiet {
+            self.tell();
+        }
+        Ok(Claim {
+            worlds: self,
+            quiet,
+        })
+    }
+
     /// Stops getting ready (a download in progress ends at once).
     pub fn cancel(&self) {
         if let Some(cancel) = lock(&self.inner).cancel.as_ref() {
@@ -322,13 +407,103 @@ impl Worlds {
     }
 
     /// The worlds kept on this computer, newest first.
+    /// A backup, restore or import an exit cut short is finished first.
     pub fn local(&self) -> LauncherResult<Vec<LocalWorld>> {
-        let mut worlds: Vec<LocalWorld> = world::list(self.root()?)
+        let root = self.root()?;
+        let claim = self.claim_as(None, true).ok();
+        let mut worlds: Vec<LocalWorld> = world::list(root)
             .into_iter()
-            .map(LocalWorld::from)
+            .filter_map(|mut found| {
+                if claim.is_some()
+                    && found.mutation.is_some()
+                    && let Ok(false) = safety::recover(root, &mut found)
+                {
+                    return None;
+                }
+                let played = safety::save_dir(root, found.id).is_dir();
+                Some(LocalWorld {
+                    played,
+                    ..LocalWorld::from(found)
+                })
+            })
             .collect();
+        drop(claim);
         worlds.sort_by_key(|w| std::cmp::Reverse(w.created_at));
         Ok(worlds)
+    }
+
+    /// The world's backups, newest first.
+    pub fn backups(&self, world: WorldId) -> LauncherResult<Vec<SnapshotInfo>> {
+        let root = self.root()?;
+        world::load(root, world)?;
+        Ok(safety::list(root, world))
+    }
+
+    /// Backs up the stopped world now.
+    pub async fn back_up(&self, world: WorldId) -> LauncherResult<SnapshotInfo> {
+        let _claim = self.claim(Some(world))?;
+        let root = self.root()?.clone();
+        blocking(move || safety::backup(&root, world, Reason::Manual))
+            .await?
+            .ok_or_else(|| LauncherError::internal("The backup was not made."))
+    }
+
+    /// Puts a backup in place of the stopped world, backing it up first.
+    pub async fn restore(&self, world: WorldId, backup: String) -> LauncherResult<()> {
+        let _claim = self.claim(Some(world))?;
+        let root = self.root()?.clone();
+        blocking(move || safety::restore(&root, world, &backup)).await
+    }
+
+    /// Writes the stopped world as a zip; returns its size.
+    pub async fn export(&self, world: WorldId, destination: PathBuf) -> LauncherResult<u64> {
+        let _claim = self.claim(Some(world))?;
+        let root = self.root()?.clone();
+        blocking(move || safety::export(&root, world, &destination)).await
+    }
+
+    /// The installations whose single-player worlds can be imported.
+    pub fn importable(&self, state: &AppState) -> LauncherResult<Vec<safety::Importable>> {
+        let instances: Vec<_> = state
+            .instance_ids()
+            .into_iter()
+            .filter_map(|id| state.instance(id))
+            .collect();
+        Ok(safety::importable(self.root()?, &instances))
+    }
+
+    /// Makes a world from a copy of a single-player world and its room. The
+    /// installation must not be running; the original stays as it is. A room
+    /// the service refuses leaves no world behind.
+    pub async fn import(
+        &self,
+        state: &AppState,
+        instance: InstanceId,
+        save: String,
+        name: String,
+        description: &str,
+    ) -> LauncherResult<Room> {
+        check_description(description)?;
+        let root = self.root()?.clone();
+        let instance = state.instance(instance).ok_or_else(|| {
+            LauncherError::new(
+                ErrorCode::InstanceNotFound,
+                "The installation no longer exists.",
+            )
+        })?;
+        let created = {
+            let _claim = self.claim(None)?;
+            let permit = state.activity().try_acquire(
+                OperationKind::Backup,
+                Some(instance.id),
+                uuid::Uuid::new_v4().to_string(),
+            )?;
+            let root = root.clone();
+            let created = blocking(move || safety::import(&root, &instance, &save, &name)).await;
+            drop(permit);
+            created?
+        };
+        self.open_room(&root, &created, description).await
     }
 
     /// Creates a world on this computer and its room. A room the service
@@ -341,17 +516,23 @@ impl Worlds {
         settings: WorldSettings,
     ) -> LauncherResult<Room> {
         let root = self.root()?.clone();
-        if description.chars().count() > 500 {
-            return Err(LauncherError::invalid_input(
-                "A room description has at most 500 characters.",
-            ));
-        }
+        check_description(description)?;
         let created = {
             let (root, name, minecraft) = (root.clone(), name.to_owned(), minecraft.to_owned());
             tokio::task::spawn_blocking(move || world::create(&root, &name, &minecraft, settings))
                 .await
                 .map_err(|_| LauncherError::internal("Creating the world stopped."))??
         };
+        self.open_room(&root, &created, description).await
+    }
+
+    /// The room of a world just made here; refused, the world goes again.
+    async fn open_room(
+        &self,
+        root: &DataRoot,
+        created: &world::WorldFile,
+        description: &str,
+    ) -> LauncherResult<Room> {
         match self
             .client
             .create_room(
@@ -497,22 +678,42 @@ impl Worlds {
     }
 
     /// Stops hosting: the session ends, the tunnel closes and the server
-    /// saves the world and exits.
+    /// saves the world and exits; then the world is backed up.
     pub async fn stop_hosting(&self) {
+        self.stop_hosting_and(true).await;
+    }
+
+    async fn stop_hosting_and(&self, back_up: bool) {
         let hosting = lock(&self.inner).hosting.clone();
         if let Some(hosting) = hosting {
             hosting.host.stop().await;
             stop_server(Arc::clone(&hosting.server)).await;
-            let mut inner = lock(&self.inner);
-            if inner
-                .hosting
-                .as_ref()
-                .is_some_and(|h| Arc::ptr_eq(h, &hosting))
             {
-                inner.hosting = None;
+                let mut inner = lock(&self.inner);
+                if inner
+                    .hosting
+                    .as_ref()
+                    .is_some_and(|h| Arc::ptr_eq(h, &hosting))
+                {
+                    inner.hosting = None;
+                }
+            }
+            if back_up {
+                self.back_up_after_play(hosting.server.status().world_id)
+                    .await;
             }
         }
         self.tell();
+    }
+
+    /// The backup after a hosting session; an unchanged world makes none. A
+    /// failure keeps the world as it is and the earlier backups.
+    async fn back_up_after_play(&self, world: WorldId) {
+        let (Ok(claim), Ok(root)) = (self.claim(None), self.root().cloned()) else {
+            return;
+        };
+        let _ = blocking(move || safety::backup(&root, world, Reason::AfterPlay)).await;
+        drop(claim);
     }
 
     /// Joins `room` as a guest: a place is asked for and the tunnel to the
@@ -582,8 +783,18 @@ impl Worlds {
     pub async fn shutdown(&self) {
         self.cancel();
         self.disconnect().await;
-        self.stop_hosting().await;
+        // No backup on the way out: the next session's backup covers it.
+        self.stop_hosting_and(false).await;
     }
+}
+
+fn check_description(description: &str) -> LauncherResult<()> {
+    if description.chars().count() > 500 {
+        return Err(LauncherError::invalid_input(
+            "A room description has at most 500 characters.",
+        ));
+    }
+    Ok(())
 }
 
 /// The room's world is not on this computer.
@@ -617,6 +828,9 @@ async fn watch_hosting(worlds: std::sync::Weak<Worlds>, hosting: Arc<Hosting>) {
         if let Some(ending) = hosting.host.ended() {
             if ending != Ending::Stopped {
                 stop_server(Arc::clone(&hosting.server)).await;
+                worlds
+                    .back_up_after_play(hosting.server.status().world_id)
+                    .await;
             }
             // Kept in the view until the player closes it or starts again.
             worlds.tell();
@@ -644,8 +858,10 @@ fn view_of(inner: &Inner) -> WorldsView {
             room: g.room().to_owned(),
             connected: g.connected(),
             refused: g.refused().flatten(),
+            path: g.path(),
         }),
         failed: inner.failed.clone(),
+        maintenance: inner.maintenance,
     }
 }
 
@@ -725,7 +941,13 @@ mod tests {
         let json = serde_json::to_value(&view).unwrap();
         assert_eq!(
             json,
-            serde_json::json!({ "preparing": null, "hosting": null, "guest": null, "failed": null })
+            serde_json::json!({
+                "preparing": null,
+                "hosting": null,
+                "guest": null,
+                "failed": null,
+                "maintenance": false
+            })
         );
     }
 }

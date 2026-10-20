@@ -81,7 +81,7 @@ export function RoomActions({ room, local, state, onLocal }: Props) {
       {owner && local?.eulaAccepted === true && !inRoom && (
         <Button
           variant="primary"
-          disabled={busy}
+          disabled={busy || state.maintenance}
           onClick={() => {
             run(() => ipc.worldsHost(room.id), false);
           }}
@@ -111,7 +111,7 @@ export function RoomActions({ room, local, state, onLocal }: Props) {
       {!owner && room.hosting && !inRoom && (
         <Button
           variant="primary"
-          disabled={busy}
+          disabled={busy || state.maintenance}
           onClick={() => {
             run(() => ipc.worldsJoin(room.id), false);
           }}

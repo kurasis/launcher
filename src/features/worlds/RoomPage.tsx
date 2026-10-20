@@ -16,6 +16,7 @@ import { useFriends } from '../friends/useFriends';
 import { worldInviteBody } from '../friends/worldInvite';
 import { Dialog } from '../mods/Dialog';
 import { RoomActions } from './RoomActions';
+import { WorldBackups } from './WorldBackups';
 import { worldsErrorText } from './useWorlds';
 import styles from './Worlds.module.css';
 
@@ -127,6 +128,7 @@ export function RoomPage({ room, local, state, onBack, onLocal, onLeft }: Props)
             <StatusBadge tone="neutral" label={t.roles[found.role]} />
           </div>
           <RoomActions room={found} local={world} state={state} onLocal={onLocal} />
+          {found.role === 'owner' && world !== null && <WorldBackups world={world} state={state} />}
 
           <section className={styles.section} aria-label={t.members}>
             <h4 className={styles.sectionTitle}>{t.members}</h4>

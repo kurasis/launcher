@@ -176,6 +176,8 @@ async fn a_member_plays_in_the_hosts_world_until_removed() {
     );
     assert_eq!(host.status().players, ["Guest_One"]);
     assert_eq!(lock(&fake.world).open_admissions(), 1);
+    // On loopback there is no relay: the game data goes directly.
+    assert_eq!(guest.path(), Some(joining::PathKind::Direct));
 
     // A second game of the same account is refused: one place per account.
     let mut second = TcpStream::connect(("127.0.0.1", guest.port()))

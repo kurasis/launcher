@@ -5,9 +5,11 @@
 //! artifacts and runtimes are never mutated while Java may read them.
 //!
 //! Beside it, one hosting permit covers a world server (Worlds with Friends). A server
-//! runs next to a game, a backup or a restore of an installation, but never next to work
-//! that may replace shared artifacts or whole-data operations: install, repair, data
-//! relocation, and backup or restore work that belongs to no installation (reset).
+//! runs next to a game, and next to an install, a backup or a restore of an installation:
+//! the host installs the room's game while its world is open. An install only adds
+//! missing files and puts a runtime in its own content-addressed folder, so the server's
+//! Java is not replaced. Never next to a repair (it replaces files) or whole-data
+//! operations: data relocation, and backup or restore work of no installation (reset).
 
 use std::sync::{Arc, Mutex, PoisonError};
 
@@ -95,8 +97,10 @@ impl Drop for HostingPermit {
 fn compatible_with_hosting(kind: OperationKind, instance_id: Option<InstanceId>) -> bool {
     match kind {
         OperationKind::Launch => true,
-        OperationKind::Backup | OperationKind::Restore => instance_id.is_some(),
-        OperationKind::Install | OperationKind::Repair | OperationKind::Relocate => false,
+        OperationKind::Install | OperationKind::Backup | OperationKind::Restore => {
+            instance_id.is_some()
+        }
+        OperationKind::Repair | OperationKind::Relocate => false,
     }
 }
 
@@ -356,7 +360,7 @@ mod tests {
             .unwrap();
         let instance = Some(InstanceId::generate());
         for (kind, instance_id) in [
-            (OperationKind::Install, instance),
+            (OperationKind::Install, None),
             (OperationKind::Repair, instance),
             (OperationKind::Relocate, None),
             (OperationKind::Backup, None),
@@ -378,7 +382,6 @@ mod tests {
     fn install_or_reset_blocks_a_server() {
         let registry = ActivityRegistry::new();
         for (kind, instance_id) in [
-            (OperationKind::Install, Some(InstanceId::generate())),
             (OperationKind::Repair, Some(InstanceId::generate())),
             (OperationKind::Relocate, None),
             (OperationKind::Backup, None),
@@ -415,17 +418,39 @@ mod tests {
     }
 
     #[test]
-    fn concurrent_server_and_install_never_overlap() {
+    fn the_host_installs_a_game_while_its_world_is_open() {
+        let registry = ActivityRegistry::new();
+        let host = registry
+            .try_acquire_hosting(Uuid::new_v4(), "host-1")
+            .unwrap();
+        let install = registry
+            .try_acquire(OperationKind::Install, Some(InstanceId::generate()), "op-1")
+            .unwrap();
+        drop(install);
+        drop(host);
+        // And a world opens while an install runs.
+        let _install = registry
+            .try_acquire(OperationKind::Install, Some(InstanceId::generate()), "op-2")
+            .unwrap();
+        assert!(
+            registry
+                .try_acquire_hosting(Uuid::new_v4(), "host-2")
+                .is_ok()
+        );
+    }
+
+    #[test]
+    fn concurrent_server_and_repair_never_overlap() {
         for _ in 0..200 {
             let registry = ActivityRegistry::new();
             let barrier = Arc::new(std::sync::Barrier::new(2));
-            let install = {
+            let repair = {
                 let registry = registry.clone();
                 let barrier = Arc::clone(&barrier);
                 std::thread::spawn(move || {
                     barrier.wait();
                     registry
-                        .try_acquire(OperationKind::Install, Some(InstanceId::generate()), "op")
+                        .try_acquire(OperationKind::Repair, Some(InstanceId::generate()), "op")
                         .ok()
                 })
             };
@@ -437,9 +462,9 @@ mod tests {
                     registry.try_acquire_hosting(Uuid::new_v4(), "host").ok()
                 })
             };
-            let install = install.join().unwrap();
+            let repair = repair.join().unwrap();
             let host = host.join().unwrap();
-            assert!(install.is_some() != host.is_some());
+            assert!(repair.is_some() != host.is_some());
         }
     }
 }

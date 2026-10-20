@@ -156,9 +156,9 @@ fn modified_ms(meta: &fs::Metadata) -> i64 {
 /// Regular files under `dir`, sorted, with paths relative to it. Symbolic links
 /// are skipped: the launcher never creates them and they may point anywhere.
 /// A file found by [`walk`]: relative path, full path, metadata.
-type Found = (String, PathBuf, fs::Metadata);
+pub(crate) type Found = (String, PathBuf, fs::Metadata);
 
-fn walk(dir: &Path) -> LauncherResult<(Vec<Found>, u64)> {
+pub(crate) fn walk(dir: &Path) -> LauncherResult<(Vec<Found>, u64)> {
     let mut files = Vec::new();
     let mut skipped = 0;
     let mut stack = vec![(dir.to_path_buf(), String::new())];
@@ -204,6 +204,11 @@ impl Store {
         Self {
             root: data_root.join("backups"),
         }
+    }
+
+    /// A store of its own in `root`, such as the hosted worlds' (W9).
+    pub fn at(root: PathBuf) -> Self {
+        Self { root }
     }
 
     fn objects(&self) -> PathBuf {

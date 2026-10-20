@@ -1750,6 +1750,23 @@ export interface LocalWorld {
   settings: WorldsSettings;
   createdAt: string;
   lastRun: { endedAt: string; clean: boolean } | null;
+  /** Played at least once: only then is there a save to back up or export. */
+  played: boolean;
+}
+
+/** An installation whose single-player worlds can be imported. */
+export interface WorldsImportable {
+  instanceId: string;
+  instanceName: string;
+  minecraft: string;
+  saves: string[];
+}
+
+export interface WorldsImportPayload {
+  instanceId: string;
+  save: string;
+  name: string;
+  description: string;
 }
 
 export interface WorldsCreatePayload {
@@ -1794,9 +1811,13 @@ export interface WorldsState {
     room: string;
     connected: boolean;
     refused: WorldsRefusal | null;
+    /** Straight to the host or through relay.lapi.sh, once chosen. */
+    path: 'direct' | 'relay' | null;
   } | null;
   /** Why the last start or join failed: a problem name or an error code. */
   failed: string | null;
+  /** A world is being backed up, restored, imported or exported. */
+  maintenance: boolean;
 }
 
 export interface WorldsInstance {

@@ -1506,6 +1506,10 @@ export type Messages = {
       readonly title: (values: { room: string | number }) => string;
       readonly connected: string;
       readonly lost: string;
+      readonly path: {
+        readonly direct: string;
+        readonly relay: string;
+      };
     };
     readonly refusals: {
       readonly BAD_FRAME: string;
@@ -1618,6 +1622,34 @@ export type Messages = {
       readonly already_connected: string;
       readonly device: string;
       readonly refused: string;
+    };
+    readonly import: {
+      readonly open: string;
+      readonly title: string;
+      readonly hint: string;
+      readonly installation: string;
+      readonly world: string;
+      readonly source: (values: { name: string | number; version: string | number }) => string;
+      readonly none: string;
+      readonly submit: string;
+      readonly importing: string;
+    };
+    readonly safety: {
+      readonly title: string;
+      readonly hint: (values: { count: number }) => string;
+      readonly notPlayed: string;
+      readonly backUp: string;
+      readonly export: string;
+      readonly exportTitle: string;
+      readonly exported: (values: { name: string | number }) => string;
+      readonly whileHosted: string;
+      readonly list: string;
+      readonly created: string;
+      readonly confirmRestore: (values: {
+        date: string | number;
+        world: string | number;
+      }) => string;
+      readonly restored: (values: { date: string | number }) => string;
     };
     readonly devices: {
       readonly open: string;

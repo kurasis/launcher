@@ -154,6 +154,12 @@ fn main() {
         "worlds_play",
         "worlds_devices",
         "worlds_revoke_device",
+        "worlds_importable",
+        "worlds_import",
+        "worlds_backups",
+        "worlds_back_up",
+        "worlds_restore",
+        "worlds_export",
         // Registered only in debug builds; release builds have no handler for them.
         "start_lifecycle_test",
         "stop_lifecycle_test",
