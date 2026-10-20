@@ -134,6 +134,7 @@ const content: ContentView = {
       versionNumber: '0.6.0',
       icon: null,
       dependency: false,
+      fromPack: false,
     },
     {
       path: 'mods/mine.jar.disabled',
@@ -149,9 +150,11 @@ const content: ContentView = {
       versionNumber: null,
       icon: null,
       dependency: false,
+      fromPack: false,
     },
   ],
   worlds: [],
+  pack: null,
 };
 
 type Answers = Record<string, (args: Record<string, unknown>) => unknown>;
@@ -507,6 +510,92 @@ describe('ModsView', () => {
       expect(apply.payload).toEqual({
         instanceId: instanceFixture({}).id,
         version: VERSION,
+      });
+    });
+
+    it('updates an installation made from a modpack, after a backup', async () => {
+      const NEWER = '00000000-0000-4000-8000-000000000011';
+      const newer: ModsVersion = {
+        ...packVersion,
+        id: NEWER,
+        number: '1.1',
+        files: [{ name: 'pack-1.1.mrpack', size: 2048, sha256: null, primary: true, url: null }],
+      };
+      const calls = setup(
+        {
+          ...answers(() => ready),
+          mods_versions: () => [newer, packVersion],
+          mods_content: () => ({
+            ...content,
+            items: content.items.map((i, n) => ({ ...i, fromPack: n === 0 })),
+            pack: {
+              projectId: PROJECT,
+              versionId: VERSION,
+              title: 'Pack',
+              versionNumber: '1.0',
+              icon: null,
+            },
+          }),
+          // The pack's own file is updated with the pack, not alone.
+          mods_updates: () => [
+            {
+              path: 'mods/sodium.jar',
+              projectId: PROJECT,
+              fromVersionId: VERSION,
+              toVersionId: NEWER,
+              toNumber: '0.6.1',
+            },
+          ],
+          mods_update_pack: () => ({ files: 5, keptYours: 2, leftOut: 0, removed: 1 }),
+        },
+        'installed',
+      );
+      expect(await screen.findByText('Made from the modpack Pack 1.0')).toBeVisible();
+      expect(screen.getByText('From the modpack')).toBeVisible();
+      fireEvent.click(screen.getByRole('button', { name: 'Check for updates' }));
+      fireEvent.click(await screen.findByRole('button', { name: 'Update the modpack to 1.1' }));
+      expect(screen.queryByText('Update: 0.6.1')).toBeNull();
+      expect(named('mods_versions', calls)[0]?.args).toMatchObject({
+        project: PROJECT,
+        game: fabric.versionId,
+      });
+      const dialog = await screen.findByRole('dialog', { name: 'Update Pack' });
+      expect(await within(dialog).findByText(/backs up the whole installation/)).toBeVisible();
+      expect(within(dialog).queryByLabelText('Installation name')).toBeNull();
+      fireEvent.click(within(dialog).getByRole('button', { name: 'Update' }));
+      expect(await within(dialog).findByText('The modpack is updated to 1.1.')).toBeVisible();
+      expect(within(dialog).getByText(/2 files you changed were left/)).toBeVisible();
+      const update = named('mods_update_pack', calls)[0]?.args.request as {
+        payload: Record<string, unknown>;
+      };
+      expect(update.payload).toEqual({ instanceId: fabric.id, version: NEWER });
+      expect(named('mods_apply_pack', calls)).toHaveLength(0);
+      expect(named('mods_create_pack_instance', calls)).toHaveLength(0);
+    });
+
+    it('saves an installation as a modpack', async () => {
+      const calls = setup(
+        {
+          mods_export_pack: () => ({
+            saved: true,
+            fileName: 'Modded.mrpack',
+            report: { linked: 3, bundled: 2, bytes: 2048 },
+          }),
+        },
+        'installed',
+      );
+      fireEvent.click(await screen.findByRole('button', { name: 'Save as a modpack' }));
+      const dialog = await screen.findByRole('dialog', { name: 'Save as a Modrinth modpack' });
+      fireEvent.click(within(dialog).getByRole('checkbox', { name: 'Include worlds' }));
+      fireEvent.click(within(dialog).getByRole('button', { name: 'Choose where to save' }));
+      expect(await within(dialog).findByText(/Saved Modded.mrpack/)).toBeVisible();
+      expect(within(dialog).getByText(/Links to Modrinth: 3; files inside: 2/)).toBeVisible();
+      expect(named('mods_export_pack', calls)[0]?.args).toEqual({
+        payload: {
+          instanceId: fabric.id,
+          choice: { worlds: true, options: false },
+          title: 'Save as a Modrinth modpack',
+        },
       });
     });
 

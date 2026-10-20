@@ -426,6 +426,9 @@ pub struct VersionFile {
     pub primary: bool,
     /// Where the catalog serves it, once kept.
     pub url: Option<String>,
+    /// Its address on Modrinth's CDN, for a modpack's index (an export).
+    #[serde(skip)]
+    pub origin: Option<String>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
@@ -509,6 +512,10 @@ impl Version {
                         }),
                         sha256: sha,
                         primary: f["primary"].as_bool().unwrap_or(false),
+                        origin: f["originUrl"]
+                            .as_str()
+                            .filter(|u| pack::modrinth_download(u))
+                            .map(str::to_owned),
                     }
                 })
                 .collect(),

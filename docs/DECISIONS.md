@@ -2221,6 +2221,21 @@ archive from the Package workflow, upload it to
   pack left it: a file the player changed stays, one turned off stays off, and what the
   previous version brought and this one no longer has is removed if unchanged. A pack
   that stopped part way can be finished with **Try again** on the same installation.
+- **Updating a pack:** the Installed tab shows the pack an installation was made from and
+  marks what it brought **From the modpack**; those files are updated with the pack, not
+  one by one. **Check for updates** also looks for the newest version of the pack for the
+  installation's Minecraft version. Updating to it backs up the whole installation first
+  (reason "before a modpack update", D-047), then applies it as above; the loader follows
+  the pack's version. A version for another Minecraft version or loader is refused: it
+  installs as a new installation.
+- **Saving an installation as a pack** (**Save as a modpack**) writes a `.mrpack` where
+  the player chooses: the folders a pack fills (not `saves`, `local`, `journeymap` or
+  `datapacks` at the root), worlds and `options*.txt` only when asked, never `servers.dat`,
+  logs, turned-off files, links or programs, at most 20,000 files and 4 GB. Files in
+  `mods`, `resourcepacks` and `shaderpacks` the catalog keeps from Modrinth (looked up by
+  SHA-256, with an address on cdn.modrinth.com) are named in the index with their SHA-1,
+  SHA-512 and size; everything else is copied into `overrides/`. Without the catalog,
+  everything is copied. The archive is written beside the target and renamed into place.
 
 ## D-067 — Start page feed at feed.lapi.sh
 

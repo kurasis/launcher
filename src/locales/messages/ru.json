@@ -1148,7 +1148,8 @@
         "manual": "Вручную",
         "after_play": "После игры",
         "before_restore": "Перед восстановлением",
-        "before_delete": "Перед удалением"
+        "before_delete": "Перед удалением",
+        "before_update": "Перед обновлением сборки"
       },
       "size": "{files, number} файлов · {total} · новых {added}",
       "restore": "Восстановить",
@@ -1337,7 +1338,13 @@
           "too_big": "Эта сборка слишком большая для каталога.",
           "hash_mismatch": "Файл этой сборки не совпадает с тем, что в ней записано. Попробуйте позже.",
           "other": "Каталог не смог подготовить эту сборку. Попробуйте позже."
-        }
+        },
+        "updateTitle": "Обновление «{title}»",
+        "updateNote": "Перед обновлением лаунчер сделает резервную копию всей установки. Файлы, которые вы меняли, останутся как есть.",
+        "updateStart": "Обновить",
+        "updated": "Сборка обновлена до {version}.",
+        "keptYours": "{count, plural, one {# файл, который вы меняли, оставлен} few {# файла, которые вы меняли, оставлены} many {# файлов, которые вы меняли, оставлены} other {# файла, которые вы меняли, оставлены}} как есть.",
+        "updateStopped": "Обновление остановилось на середине. Нажмите «Повторить», чтобы закончить; копия, сделанная перед ним, есть в «Резервных копиях»."
       },
       "requests": {
         "hint": "Что вы просили добавить в каталог и как далеко это продвинулось.",
@@ -1401,7 +1408,20 @@
         "open": "В каталоге",
         "remove": "Удалить",
         "confirmRemove": "Удалить файл",
-        "cancel": "Отмена"
+        "cancel": "Отмена",
+        "fromPack": "Из сборки",
+        "pack": "Сделано из сборки {title} {version}",
+        "packUpdate": "Обновить сборку до {version}",
+        "packLatest": "Это новейшая версия сборки для этой версии Minecraft.",
+        "export": "Сохранить как сборку",
+        "exportTitle": "Сохранить как сборку Modrinth",
+        "exportHint": "Моды, которые каталог знает с Modrinth, сохраняются ссылками, всё остальное копируется в файл. Выключенные файлы, логи и ваш список серверов не попадают в сборку.",
+        "exportWorlds": "Добавить миры",
+        "exportOptions": "Добавить настройки игры (options.txt)",
+        "exportStart": "Выбрать, куда сохранить",
+        "exporting": "Сохраняю сборку…",
+        "exported": "Сохранено: {name}. Ссылок на Modrinth: {linked}; файлов внутри: {bundled} ({size}).",
+        "close": "Закрыть"
       }
     },
     "worlds": {
@@ -2257,6 +2277,12 @@
     "The catalog is still preparing this modpack. Try again soon.": "Каталог ещё готовит эту сборку. Попробуйте чуть позже.",
     "This modpack cannot be installed: its files are not what the launcher accepts.": "Эту сборку нельзя установить: её файлы лаунчер не принимает.",
     "This modpack needs another Minecraft version or mod loader than this installation.": "Этой сборке нужна другая версия Minecraft или другой загрузчик модов, чем в этой установке.",
-    "Unpacking stopped unexpectedly.": "Распаковка неожиданно остановилась."
+    "Unpacking stopped unexpectedly.": "Распаковка неожиданно остановилась.",
+    "The export was cancelled.": "Сохранение отменено.",
+    "The modpack could not be written.": "Не удалось записать сборку.",
+    "This installation is too large to export as a modpack.": "Эта установка слишком большая, чтобы сохранить её как сборку.",
+    "This installation was not made from a modpack.": "Эта установка сделана не из сборки.",
+    "This is another modpack than the one the installation was made from.": "Это другая сборка, не та, из которой сделана установка.",
+    "Writing the modpack": "Запись сборки"
   }
 }

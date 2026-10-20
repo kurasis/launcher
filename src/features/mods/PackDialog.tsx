@@ -7,7 +7,6 @@ import type {
   ModsPack,
   ModsPackReport,
   ModsProgress,
-  ModsProject,
   ModsVersion,
 } from '../../lib/contracts';
 import { formatBytes } from '../../lib/format';
@@ -60,16 +59,19 @@ function percent(progress: ModsProgress | null): number | null {
 /**
  * Installing a modpack as a new installation (D-066 stage 3): the catalog
  * prepares the pack's files, the player names the installation, and the
- * launcher creates it and puts the files in.
+ * launcher creates it and puts the files in. With `updating`, the version
+ * goes into that installation made from the same pack, after a backup.
  */
 export function PackDialog({
-  project,
+  title,
   version,
+  updating = null,
   onClose,
   onDone,
 }: {
-  project: ModsProject;
+  title: string;
   version: ModsVersion;
+  updating?: InstanceSummary | null;
   onClose: () => void;
   onDone: (instanceId: string) => void;
 }) {
@@ -78,9 +80,7 @@ export function PackDialog({
   const [pack, setPack] = useState<ModsPack | null>(null);
   const [stage, setStage] = useState<Stage>({ step: 'preparing' });
   const [error, setError] = useState<string | null>(null);
-  const [name, setName] = useState(
-    `${project.title || project.slug} ${version.number}`.trim().slice(0, MAX_NAME),
-  );
+  const [name, setName] = useState(`${title} ${version.number}`.trim().slice(0, MAX_NAME));
   const [progress, setProgress] = useState<ModsProgress | null>(null);
   const instanceId =
     stage.step === 'installing' || stage.step === 'stopped' || stage.step === 'done'
@@ -129,8 +129,8 @@ export function PackDialog({
     setError(null);
     setProgress(null);
     setStage({ step: 'installing', instance });
-    ipc
-      .modsApplyPack({ instanceId: instance.id, version: version.id })
+    const payload = { instanceId: instance.id, version: version.id };
+    (updating !== null ? ipc.modsUpdatePack(payload) : ipc.modsApplyPack(payload))
       .then((report) => {
         setStage({ step: 'done', instance, report });
         onDone(instance.id);
@@ -167,7 +167,11 @@ export function PackDialog({
   const nameOk = name.trim().length > 0 && name.trim().length <= MAX_NAME;
 
   return (
-    <Dialog title={t.title({ title: project.title || project.slug })} onClose={close} wide>
+    <Dialog
+      title={updating !== null ? t.updateTitle({ title }) : t.title({ title })}
+      onClose={close}
+      wide
+    >
       {stage.step === 'preparing' &&
         (pack?.state === 'failed' ? (
           <Notice tone="danger">{packFailure(pack.error)}</Notice>
@@ -201,18 +205,22 @@ export function PackDialog({
 
       {stage.step === 'ready' && pack !== null && (
         <>
-          <div className={styles.field}>
-            <label htmlFor={nameId}>{t.name}</label>
-            <input
-              id={nameId}
-              className={forms.input}
-              value={name}
-              maxLength={MAX_NAME}
-              onChange={(event) => {
-                setName(event.target.value);
-              }}
-            />
-          </div>
+          {updating !== null ? (
+            <Notice tone="info">{t.updateNote}</Notice>
+          ) : (
+            <div className={styles.field}>
+              <label htmlFor={nameId}>{t.name}</label>
+              <input
+                id={nameId}
+                className={forms.input}
+                value={name}
+                maxLength={MAX_NAME}
+                onChange={(event) => {
+                  setName(event.target.value);
+                }}
+              />
+            </div>
+          )}
           {pack.approval !== null && (
             <Notice tone="warning">
               <p>
@@ -254,11 +262,18 @@ export function PackDialog({
         </div>
       )}
 
-      {stage.step === 'stopped' && <Notice tone="info">{t.stopped}</Notice>}
+      {stage.step === 'stopped' && (
+        <Notice tone="info">{updating !== null ? t.updateStopped : t.stopped}</Notice>
+      )}
 
       {stage.step === 'done' && (
         <Notice tone="info">
-          <p>{t.done({ name: stage.instance.displayName })}</p>
+          <p>
+            {updating !== null
+              ? t.updated({ version: version.number })
+              : t.done({ name: stage.instance.displayName })}
+          </p>
+          {stage.report.keptYours > 0 && <p>{t.keptYours({ count: stage.report.keptYours })}</p>}
           {stage.report.leftOut > 0 && <p>{t.leftOut({ count: stage.report.leftOut })}</p>}
         </Notice>
       )}
@@ -266,11 +281,21 @@ export function PackDialog({
       {error !== null && <Notice tone="danger">{error}</Notice>}
 
       <div className={forms.actions}>
-        {stage.step === 'ready' && (
-          <Button variant="primary" disabled={!nameOk} onClick={install}>
-            {t.start}
-          </Button>
-        )}
+        {stage.step === 'ready' &&
+          (updating !== null ? (
+            <Button
+              variant="primary"
+              onClick={() => {
+                apply(updating);
+              }}
+            >
+              {t.updateStart}
+            </Button>
+          ) : (
+            <Button variant="primary" disabled={!nameOk} onClick={install}>
+              {t.start}
+            </Button>
+          ))}
         {stage.step === 'installing' && (
           <Button
             onClick={() => {

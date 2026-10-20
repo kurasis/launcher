@@ -1148,7 +1148,8 @@
         "manual": "Made by you",
         "after_play": "After playing",
         "before_restore": "Before a restore",
-        "before_delete": "Before deleting"
+        "before_delete": "Before deleting",
+        "before_update": "Before a modpack update"
       },
       "size": "{files, number} files · {total} · {added} new",
       "restore": "Restore",
@@ -1337,7 +1338,13 @@
           "too_big": "This modpack is too large for the catalog.",
           "hash_mismatch": "A file of this modpack is not what the modpack says. Try again later.",
           "other": "The catalog could not prepare this modpack. Try again later."
-        }
+        },
+        "updateTitle": "Update {title}",
+        "updateNote": "Before the update the launcher backs up the whole installation. Files you changed stay as they are.",
+        "updateStart": "Update",
+        "updated": "The modpack is updated to {version}.",
+        "keptYours": "{count, plural, one {# file you changed was} other {# files you changed were}} left as they are.",
+        "updateStopped": "The update stopped partway. Press “Retry” to finish it; the backup made before it is in Backups."
       },
       "requests": {
         "hint": "What you asked to add to the catalog and how far it got.",
@@ -1401,7 +1408,20 @@
         "open": "In the catalog",
         "remove": "Remove",
         "confirmRemove": "Remove the file",
-        "cancel": "Cancel"
+        "cancel": "Cancel",
+        "fromPack": "From the modpack",
+        "pack": "Made from the modpack {title} {version}",
+        "packUpdate": "Update the modpack to {version}",
+        "packLatest": "This is the newest version of the modpack for this Minecraft version.",
+        "export": "Save as a modpack",
+        "exportTitle": "Save as a Modrinth modpack",
+        "exportHint": "Mods the catalog knows from Modrinth are saved as links; everything else is copied into the file. Turned-off files, logs and your server list are left out.",
+        "exportWorlds": "Include worlds",
+        "exportOptions": "Include game settings (options.txt)",
+        "exportStart": "Choose where to save",
+        "exporting": "Saving the modpack…",
+        "exported": "Saved {name}. Links to Modrinth: {linked}; files inside: {bundled} ({size}).",
+        "close": "Close"
       }
     },
     "worlds": {
@@ -2052,6 +2072,7 @@
     "The data folder was already moved. Restart the launcher to use it.": "The data folder was already moved. Restart the launcher to use it.",
     "The download was cancelled.": "The download was cancelled.",
     "The export could not be written.": "The export could not be written.",
+    "The export was cancelled.": "The export was cancelled.",
     "The file dialog failed.": "The file dialog failed.",
     "The file manager could not be opened.": "The file manager could not be opened.",
     "The folder dialog failed.": "The folder dialog failed.",
@@ -2081,6 +2102,7 @@
     "The mod loader installer stopped unexpectedly.": "The mod loader installer stopped unexpectedly.",
     "The mod loader record is missing. Repair the installation.": "The mod loader record is missing. Repair the installation.",
     "The mod loader's published files changed since this installation was made. Create a new installation for this loader version.": "The mod loader's published files changed since this installation was made. Create a new installation for this loader version.",
+    "The modpack could not be written.": "The modpack could not be written.",
     "The monthly limit can be at most {max} MiB.": "The monthly limit can be at most {max} MiB.",
     "The new folder cannot be inside the current data folder, or contain it.": "The new folder cannot be inside the current data folder, or contain it.",
     "The operating system did not provide a per-user application data directory.": "The operating system did not provide a per-user application data directory.",
@@ -2167,9 +2189,12 @@
     "This installation is already being installed or waiting in the queue.": "This installation is already being installed or waiting in the queue.",
     "This installation is busy. Wait for the current operation to finish.": "This installation is busy. Wait for the current operation to finish.",
     "This installation is not installed yet. Install it, then play.": "This installation is not installed yet. Install it, then play.",
+    "This installation is too large to export as a modpack.": "This installation is too large to export as a modpack.",
     "This installation record was written by a newer launcher.": "This installation record was written by a newer launcher.",
     "This installation was created by a newer launcher and is read-only here.": "This installation was created by a newer launcher and is read-only here.",
     "This installation was created by a newer launcher.": "This installation was created by a newer launcher.",
+    "This installation was not made from a modpack.": "This installation was not made from a modpack.",
+    "This is another modpack than the one the installation was made from.": "This is another modpack than the one the installation was made from.",
     "This is not a room.": "This is not a room.",
     "This is not a screen the launcher can open at start.": "This is not a screen the launcher can open at start.",
     "This is not a valid Minecraft version.": "This is not a valid Minecraft version.",
@@ -2236,6 +2261,7 @@
     "Worlds with friends need a Microsoft account that owns Minecraft. Sign in with it in the launcher once.": "Worlds with friends need a Microsoft account that owns Minecraft. Sign in with it in the launcher once.",
     "Worlds with mods come later: import a world of an installation without mods.": "Worlds with mods come later: import a world of an installation without mods.",
     "Writing a cache file": "Writing a cache file",
+    "Writing the modpack": "Writing the modpack",
     "Wrong source policy for Adoptium.": "Wrong source policy for Adoptium.",
     "Wrong source policy for Mojang.": "Wrong source policy for Mojang.",
     "Xbox Live is not available in this account's country or region.": "Xbox Live is not available in this account's country or region.",
