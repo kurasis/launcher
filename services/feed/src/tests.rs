@@ -1178,11 +1178,20 @@ async fn own_videos_refuse_junk() {
     }
 }
 
+/// A Twitch lookup: the YouTube one's address with `kind: twitch` added to
+/// a JSON object body (anything else is sent as it is).
 fn twitch_resolve_request(body: &str, ip: &str) -> Request<Body> {
-    Request::post("/v1/twitch/resolve")
+    let body = match serde_json::from_str::<Value>(body) {
+        Ok(Value::Object(mut fields)) => {
+            fields.insert("kind".into(), "twitch".into());
+            Value::Object(fields).to_string()
+        }
+        _ => body.to_owned(),
+    };
+    Request::post("/v1/channels/resolve")
         .header("content-type", "application/json")
         .header("x-real-ip", ip)
-        .body(Body::from(body.to_owned()))
+        .body(Body::from(body))
         .unwrap()
 }
 
@@ -1227,6 +1236,14 @@ async fn twitch_lookups_refuse_junk() {
     )
     .await;
     assert_eq!(youtube.0, StatusCode::BAD_REQUEST);
+    // A kind it does not know is refused.
+    let (status, _, answer) = call(
+        &app,
+        resolve_request("{\"input\":\"ph1lza\",\"kind\":\"kick\"}", "203.0.113.4"),
+    )
+    .await;
+    assert_eq!(status, StatusCode::BAD_REQUEST);
+    assert_eq!(json_of(&answer)["error"], "bad_request");
 }
 
 #[test]

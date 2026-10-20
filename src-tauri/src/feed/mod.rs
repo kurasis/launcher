@@ -673,12 +673,12 @@ impl FeedService {
             return Err(FeedProblem::Full);
         }
         let url =
-            Url::parse(&format!("{BASE}/v1/twitch/resolve")).map_err(|_| FeedProblem::Server)?;
+            Url::parse(&format!("{BASE}/v1/channels/resolve")).map_err(|_| FeedProblem::Server)?;
         let request = self
             .client
             .post(&url)
             .map_err(|_| FeedProblem::Server)?
-            .json(&json!({ "input": input }));
+            .json(&json!({ "input": input, "kind": "twitch" }));
         let answer = self.send(request, model::MAX_SMALL_BYTES).await?;
         if answer.status != 200 {
             return Err(problem_of(&answer));
