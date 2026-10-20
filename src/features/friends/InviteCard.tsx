@@ -10,13 +10,15 @@ import { type Invite, installationsFor } from './invite';
 
 const t = strings.friends;
 
-/** What the launcher knows about the game for invites. */
+/** What the launcher knows about the game for invites, and can do with them. */
 export interface GameForInvites {
   /** The server the running game is on, as an invite to send; null when none. */
   invite: Invite | null;
   instances: InstanceSummary[];
   /** A game runs now: joining another server waits until it ends. */
   running: boolean;
+  /** Shows a room in Worlds after joining it from a world invite. */
+  openWorld: (room: string) => void;
 }
 
 /** "Minecraft 1.21.1" or "Minecraft 1.21.1 · Fabric". */

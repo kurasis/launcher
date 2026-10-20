@@ -12,6 +12,8 @@ import type {
 } from '../../lib/contracts';
 import { ipc } from '../../lib/ipc';
 import { numberLocale, strings } from '../../lib/strings';
+import { useFriends } from '../friends/useFriends';
+import { worldInviteBody } from '../friends/worldInvite';
 import { Dialog } from '../mods/Dialog';
 import { RoomActions } from './RoomActions';
 import { worldsErrorText } from './useWorlds';
@@ -47,6 +49,9 @@ export function RoomPage({ room, local, state, onBack, onLocal, onLeft }: Props)
   const [invite, setInvite] = useState<WorldsNewInvite | null>(null);
   const [copied, setCopied] = useState(false);
   const [confirming, setConfirming] = useState<Confirming | null>(null);
+  const friends = useFriends();
+  const [friend, setFriend] = useState('');
+  const [sent, setSent] = useState<string | null>(null);
 
   const load = useCallback(() => {
     ipc
@@ -86,6 +91,9 @@ export function RoomPage({ room, local, state, onBack, onLocal, onLeft }: Props)
 
   const found = page?.room ?? null;
   const manages = found !== null && (found.role === 'owner' || found.role === 'manager');
+  // Friends to send a fresh code to in a direct chat.
+  const people = friends?.signedIn === true ? friends.friends : [];
+  const chosen = people.some((p) => p.id === friend) ? friend : (people[0]?.id ?? '');
   const world = found === null ? null : (local.find((w) => w.id === found.world) ?? null);
 
   return (
@@ -227,6 +235,47 @@ export function RoomPage({ room, local, state, onBack, onLocal, onLeft }: Props)
                       {copied ? t.invite.copied : t.invite.copy}
                     </Button>
                   </div>
+                  {people.length > 0 && (
+                    <div className={styles.actions}>
+                      <select
+                        className={forms.select}
+                        aria-label={t.invite.sendTo}
+                        value={chosen}
+                        onChange={(e) => {
+                          setFriend(e.target.value);
+                          setSent(null);
+                        }}
+                      >
+                        {people.map((person) => (
+                          <option key={person.id} value={person.id}>
+                            {person.nick}
+                          </option>
+                        ))}
+                      </select>
+                      <Button
+                        onClick={() => {
+                          const person = people.find((p) => p.id === chosen);
+                          if (person === undefined) return;
+                          act(
+                            async () => {
+                              const chat = await ipc.friendsOpenDirect(person.id);
+                              await ipc.friendsSend(chat, worldInviteBody(invite.code));
+                            },
+                            () => {
+                              setSent(person.nick);
+                            },
+                          );
+                        }}
+                      >
+                        {t.invite.send}
+                      </Button>
+                    </div>
+                  )}
+                  {sent !== null && (
+                    <p className={styles.muted} role="status">
+                      {t.invite.sent({ nick: sent })}
+                    </p>
+                  )}
                 </div>
               )}
             </section>

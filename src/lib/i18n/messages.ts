@@ -1027,6 +1027,9 @@ export type Messages = {
     readonly jobTitle: string;
     readonly jobBody: string;
     readonly jobStop: string;
+    readonly hostingTitle: string;
+    readonly hostingBody: string;
+    readonly hostingStop: string;
   };
   readonly activity: {
     readonly install: string;
@@ -1536,6 +1539,9 @@ export type Messages = {
       readonly copy: string;
       readonly copied: string;
       readonly hint: (values: { uses: number; date: string | number }) => string;
+      readonly sendTo: string;
+      readonly send: string;
+      readonly sent: (values: { nick: string | number }) => string;
     };
     readonly form: {
       readonly name: string;
@@ -1606,6 +1612,15 @@ export type Messages = {
       readonly already_connected: string;
       readonly device: string;
       readonly refused: string;
+    };
+    readonly devices: {
+      readonly open: string;
+      readonly title: string;
+      readonly hint: string;
+      readonly current: string;
+      readonly added: (values: { date: string | number }) => string;
+      readonly revoke: string;
+      readonly confirm: (values: { name: string | number }) => string;
     };
   };
   readonly metered: {
@@ -1834,6 +1849,9 @@ export type Messages = {
     readonly inviteFriend: string;
     readonly inviteSent: (values: { nick: string | number }) => string;
     readonly joining: string;
+    readonly youInvitedWorld: string;
+    readonly invitedToWorld: (values: { nick: string | number }) => string;
+    readonly inWorld: (values: { name: string | number }) => string;
   };
   readonly windowTitles: {
     readonly pickJava: string;

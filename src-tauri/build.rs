@@ -151,6 +151,8 @@ fn main() {
         "worlds_cancel",
         "worlds_instance",
         "worlds_play",
+        "worlds_devices",
+        "worlds_revoke_device",
         // Registered only in debug builds; release builds have no handler for them.
         "start_lifecycle_test",
         "stop_lifecycle_test",

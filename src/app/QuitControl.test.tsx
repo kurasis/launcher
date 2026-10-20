@@ -99,4 +99,30 @@ describe('QuitControl', () => {
     expect(screen.getByRole('button', { name: 'Cancel and quit' })).toBeVisible();
     expect(actions).toEqual(['quit']);
   });
+
+  it('says the world closes for its players when only a world is open', async () => {
+    const actions = backend([
+      { status: 'choice_required', operationId: 'host-1', hosting: true },
+      { status: 'quitting' },
+    ]);
+    render(<QuitControl />);
+    fireEvent.click(screen.getByRole('button', { name: 'Quit' }));
+    const dialog = await screen.findByRole('dialog', { name: 'Your world is open to friends' });
+    expect(dialog).toHaveTextContent('closes it for everyone playing in it');
+    expect(screen.getByRole('button', { name: 'Keep running in background' })).toHaveFocus();
+    fireEvent.click(screen.getByRole('button', { name: 'Close the world and quit' }));
+    await screen.findByRole('button', { name: 'Quit' });
+    expect(actions).toEqual(['quit', 'stop_and_quit']);
+  });
+
+  it('adds the open world to the choice the OS or menu asks for during a run', async () => {
+    backend([]);
+    render(<QuitControl activeKind="launch" />);
+    await act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 0));
+      await emit('quit_requested', { hosting: true });
+    });
+    const dialog = await screen.findByRole('dialog', { name: 'A run is still active' });
+    expect(dialog).toHaveTextContent('closes it for everyone playing in it');
+  });
 });

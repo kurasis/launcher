@@ -7,6 +7,8 @@ import { numberLocale, strings } from '../../lib/strings';
 import styles from './Friends.module.css';
 import { type GameForInvites, InviteCard } from './InviteCard';
 import { inviteBody, parseInvite } from './invite';
+import { WorldInviteCard } from './WorldInviteCard';
+import { parseWorldInvite } from './worldInvite';
 import { problemText, roomTitle, sanctionText } from './useFriends';
 
 const t = strings.friends;
@@ -174,11 +176,17 @@ export function ChatView({
     }
   }
 
-  // Messages that are invites to a server, shown as cards.
+  // Messages that are invites to a server or to a world, shown as cards.
   const invites = new Map(
     messages.flatMap((m) => {
       const invite = parseInvite(m.body);
       return invite === null ? [] : [[m.id, invite] as const];
+    }),
+  );
+  const worldInvites = new Map(
+    messages.flatMap((m) => {
+      const code = parseWorldInvite(m.body);
+      return code === null ? [] : [[m.id, code] as const];
     }),
   );
 
@@ -396,6 +404,7 @@ export function ChatView({
         {messages.map((message) => {
           const mine = message.sender === me?.id;
           const invite = invites.get(message.id);
+          const worldCode = worldInvites.get(message.id);
           return (
             <Fragment key={message.id}>
               {message.id === firstUnread && (
@@ -410,12 +419,19 @@ export function ChatView({
                     {time(message.created)}
                   </time>
                 </p>
-                {invite === undefined ? (
+                {invite !== undefined ? (
+                  <InviteCard invite={invite} from={nick(message.sender)} mine={mine} game={game} />
+                ) : worldCode !== undefined ? (
+                  <WorldInviteCard
+                    code={worldCode}
+                    from={nick(message.sender)}
+                    mine={mine}
+                    onJoined={game.openWorld}
+                  />
+                ) : (
                   <p className={styles.body} dir="auto">
                     {message.body}
                   </p>
-                ) : (
-                  <InviteCard invite={invite} from={nick(message.sender)} mine={mine} game={game} />
                 )}
                 {!mine &&
                   (reported.has(message.id) ? (

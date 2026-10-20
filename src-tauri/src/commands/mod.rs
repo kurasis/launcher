@@ -489,9 +489,14 @@ pub enum QuitResult {
     Quitting,
     /// The window closes; supervision continues in the background.
     InBackground,
-    /// A run is active; the user must choose an action.
+    /// A run is active or a world is open to friends; the user must choose an
+    /// action.
     #[serde(rename_all = "camelCase")]
-    ChoiceRequired { operation_id: String },
+    ChoiceRequired {
+        operation_id: String,
+        /// A world server runs: quitting closes the world for its players.
+        hosting: bool,
+    },
 }
 
 /// Explicit Quit (doc 05 "Window and application states"). Idle: exit. With an
@@ -505,14 +510,21 @@ pub fn request_quit<R: Runtime>(
 ) -> LauncherResult<QuitResult> {
     crate::state::ledger::validate_request_id(&request.request_id)?;
     let controller = app.state::<LifecycleController>();
-    let Some(active) = state.activity().current() else {
+    let active = state.activity().current();
+    let hosting = state.activity().hosting();
+    let Some(operation_id) = active
+        .as_ref()
+        .map(|a| a.operation_id.clone())
+        .or_else(|| hosting.as_ref().map(|h| h.operation_id.clone()))
+    else {
         controller.set_quit_intent();
         app.exit(0);
         return Ok(QuitResult::Quitting);
     };
     match request.payload.action {
         QuitAction::Quit => Ok(QuitResult::ChoiceRequired {
-            operation_id: active.operation_id,
+            operation_id,
+            hosting: hosting.is_some(),
         }),
         QuitAction::KeepInBackground => {
             controller.close_main_window(&app);
@@ -521,13 +533,17 @@ pub fn request_quit<R: Runtime>(
         QuitAction::StopAndQuit => {
             // Stop exactly the active owned work: a game process (or a game that
             // survived a restart), a launch still in preflight, or an install/repair.
-            let id = &active.operation_id;
-            let mut stopped = app.state::<RunHandles>().kill(id);
-            if let Some(launcher) = app.state::<Launcher>().0.as_ref() {
-                stopped |= launcher.cancel_pending(id).is_some() || launcher.stop(id);
-            }
-            if !stopped && let Some(installer) = app.state::<Installer>().0.as_ref() {
-                let _ = installer.cancel(id);
+            // A world server is closed for its players by the exit itself
+            // (`Worlds::shutdown` saves and stops it).
+            if let Some(active) = &active {
+                let id = &active.operation_id;
+                let mut stopped = app.state::<RunHandles>().kill(id);
+                if let Some(launcher) = app.state::<Launcher>().0.as_ref() {
+                    stopped |= launcher.cancel_pending(id).is_some() || launcher.stop(id);
+                }
+                if !stopped && let Some(installer) = app.state::<Installer>().0.as_ref() {
+                    let _ = installer.cancel(id);
+                }
             }
             controller.set_quit_intent();
             let handle = app.clone();
@@ -2450,6 +2466,43 @@ pub async fn worlds_moderate<R: Runtime>(
 #[tauri::command]
 pub async fn worlds_leave_room<R: Runtime>(app: AppHandle<R>, room: String) -> LauncherResult<()> {
     Ok(worlds(&app).client.leave(&room).await?)
+}
+
+/// A computer of the account, for the device list.
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct WorldsDevice {
+    pub id: String,
+    pub name: String,
+    pub created: i64,
+    /// This computer.
+    pub current: bool,
+}
+
+/// The account's computers for worlds, this one first.
+#[tauri::command]
+pub async fn worlds_devices<R: Runtime>(app: AppHandle<R>) -> LauncherResult<Vec<WorldsDevice>> {
+    let (devices, current) = worlds(&app).client.devices().await?;
+    let mut list: Vec<WorldsDevice> = devices
+        .into_iter()
+        .map(|d| WorldsDevice {
+            current: current.as_deref() == Some(d.id.as_str()),
+            id: d.id,
+            name: d.name,
+            created: d.created,
+        })
+        .collect();
+    list.sort_by_key(|d| !d.current);
+    Ok(list)
+}
+
+/// Signs another computer out of worlds; the worlds it hosts close.
+#[tauri::command]
+pub async fn worlds_revoke_device<R: Runtime>(
+    app: AppHandle<R>,
+    device: String,
+) -> LauncherResult<()> {
+    Ok(worlds(&app).client.revoke_device(&device).await?)
 }
 
 /// A new invite code: valid for `hours` (1–168) and `uses` (1–10).

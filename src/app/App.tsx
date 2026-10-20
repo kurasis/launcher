@@ -99,6 +99,8 @@ export function App() {
   const [modsInstance, setModsInstance] = useState<string | null>(null);
   // A version the feed asked to install: Installations opens its form with it.
   const [installVersion, setInstallVersion] = useState<string | null>(null);
+  // A room joined from a chat invite: Worlds opens on it.
+  const [worldsRoom, setWorldsRoom] = useState<{ id: string; at: number } | null>(null);
   const snapshot = state.status === 'ready' ? state.snapshot : null;
   // The start screen is picked once, from the first state the core sends.
   if (chosenView === null && snapshot !== null) setView(startViewOf(snapshot));
@@ -306,6 +308,8 @@ export function App() {
             )}
             {view === 'worlds' && (
               <WorldsView
+                key={worldsRoom?.at ?? 0}
+                initialRoom={worldsRoom?.id ?? null}
                 snapshot={state.snapshot}
                 onOpenAccounts={() => {
                   navigate('account');
@@ -333,6 +337,10 @@ export function App() {
       {snapshot !== null && (
         <FriendsCorner
           snapshot={snapshot}
+          onOpenWorld={(id) => {
+            setWorldsRoom({ id, at: Date.now() });
+            navigate('worlds');
+          }}
           onOpenAccounts={() => {
             navigate('account');
           }}
