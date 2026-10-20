@@ -603,6 +603,7 @@ async fn missing_and_incompatible_projects_stop_a_plan() {
     let lock = ContentLock {
         schema_version: 1,
         items: vec![locked("mods/enemy.jar", 3, 30)],
+        pack: None,
     };
     let plan = content::plan(&fake, dir.path(), &fabric(), &lock, &wanted(&chosen))
         .await
@@ -783,6 +784,7 @@ async fn an_update_replaces_the_launchers_own_file() {
     let lock = ContentLock {
         schema_version: 1,
         items: vec![locked("mods/a-1.jar", 1, 10)],
+        pack: None,
     };
     let plan = content::plan(&fake, dir.path(), &fabric(), &lock, &wanted(&new))
         .await
@@ -837,6 +839,7 @@ fn the_content_view_lists_only_content() {
     let lock = ContentLock {
         schema_version: 1,
         items: vec![locked("mods/b.jar", 1, 10)],
+        pack: None,
     };
     crate::storage::document::save(
         &root.instance_dir(id).join("content.lock.json"),
@@ -883,6 +886,7 @@ fn files_are_turned_off_on_and_removed() {
     let lock = ContentLock {
         schema_version: 1,
         items: vec![locked("mods/a.jar", 1, 10)],
+        pack: None,
     };
     crate::storage::document::save(
         &root.instance_dir(id).join("content.lock.json"),
@@ -929,4 +933,327 @@ fn one_change_per_installation_at_a_time() {
     drop(claim);
     assert!(installer.ensure_idle(id).is_ok());
     assert!(!installer.cancel(id));
+}
+
+// ----- modpacks -----
+
+mod packs {
+    use std::io::Write as _;
+
+    use super::*;
+    use crate::download::CancelToken;
+    use crate::mods::pack::{Fate, PackFile, PackInfo, PackMeta, fate, pack_path};
+
+    fn sha(bytes: &[u8]) -> String {
+        use sha2::Digest as _;
+        hex::encode(sha2::Sha256::digest(bytes))
+    }
+
+    fn url_of(bytes: &[u8], name: &str) -> String {
+        format!("https://files-mods.lapi.sh/f/{}/{name}", sha(bytes))
+    }
+
+    fn file_json(path: &str, bytes: &[u8]) -> Value {
+        let name = path.rsplit('/').next().unwrap();
+        json!({ "path": path, "size": bytes.len(), "sha256": sha(bytes), "url": url_of(bytes, name), "optional": false })
+    }
+
+    fn info(files: Vec<Value>, archive: &[u8], loader: Value) -> Value {
+        json!({
+            "state": "ready", "error": null, "game": "1.20.1", "loader": loader, "skipped": 1,
+            "files": files, "kept": 0, "total": 0,
+            "archive": { "name": "p.mrpack", "size": archive.len(), "sha256": sha(archive), "url": url_of(archive, "p.mrpack") },
+        })
+    }
+
+    fn mrpack(entries: &[(&str, &[u8])], link: Option<&str>) -> Vec<u8> {
+        let mut zip = zip::ZipWriter::new(std::io::Cursor::new(Vec::new()));
+        let options = zip::write::SimpleFileOptions::default()
+            .compression_method(zip::CompressionMethod::Deflated);
+        zip.start_file("modrinth.index.json", options).unwrap();
+        zip.write_all(b"{}").unwrap();
+        zip.add_directory("overrides/config/", options).unwrap();
+        for (name, bytes) in entries {
+            zip.start_file(*name, options).unwrap();
+            zip.write_all(bytes).unwrap();
+        }
+        if let Some(link) = link {
+            zip.add_symlink(link, "/etc/passwd", options).unwrap();
+        }
+        zip.finish().unwrap().into_inner()
+    }
+
+    fn put(path: &Path, bytes: &[u8]) {
+        fs::create_dir_all(path.parent().unwrap()).unwrap();
+        fs::write(path, bytes).unwrap();
+    }
+
+    fn meta(version: u8) -> PackMeta {
+        PackMeta {
+            project_id: id(1),
+            version_id: id(version),
+            title: "Pack".to_owned(),
+            version_number: format!("{version}.0"),
+            icon: None,
+        }
+    }
+
+    #[test]
+    fn pack_paths_match_the_catalogs_rules() {
+        for path in [
+            "mods/a.jar",
+            "mods/a.jar.disabled",
+            "config/a/b.toml",
+            "kubejs/startup_scripts/x.js",
+            "options.txt",
+            "saves/My World/level.dat",
+        ] {
+            assert!(pack_path(path), "{path}");
+        }
+        for path in [
+            "",
+            "../a",
+            "mods/../a.jar",
+            "/mods/a.jar",
+            "mods\\a.jar",
+            "C:/a",
+            "mods/aux.jar",
+            "mods/a.dll",
+            "config/a.jar",
+            "logs/x.log",
+            "content.lock.json",
+            "mods/a\u{7}.jar",
+            "mods/a. ",
+        ] {
+            assert!(!pack_path(path), "{path:?}");
+        }
+    }
+
+    #[test]
+    fn the_catalogs_answer_is_checked() {
+        let jar = b"jar".as_slice();
+        let archive = b"zip".as_slice();
+        let good = PackInfo::from(&info(
+            vec![file_json("mods/a.jar", jar)],
+            archive,
+            json!({ "kind": "forge", "version": "47.2.0" }),
+        ));
+        assert!(good.ready(), "{good:?}");
+        assert_eq!(good.mods, 1);
+        assert_eq!(good.total_bytes, 6);
+        let choice = good.loader_choice().unwrap().unwrap();
+        assert_eq!(choice.kind, LoaderKind::Forge);
+        assert_eq!(choice.version, "1.20.1-47.2.0");
+        let neo = PackInfo::from(&info(
+            vec![],
+            archive,
+            json!({ "kind": "neoforge", "version": "20.1.5" }),
+        ));
+        assert_eq!(neo.loader_choice().unwrap().unwrap().version, "20.1.5");
+        assert_eq!(
+            PackInfo::from(&info(vec![], archive, Value::Null))
+                .loader_choice()
+                .unwrap(),
+            None
+        );
+        // Still being prepared: no addresses yet, and that is fine.
+        let working = PackInfo::from(&json!({
+            "state": "working", "files": [{ "path": "mods/a.jar", "size": 3, "sha256": null, "url": null }],
+            "archive": { "name": "p.mrpack", "size": 3, "sha256": null, "url": null },
+        }));
+        assert_eq!(working.state, "working");
+        assert_eq!((working.kept, working.total), (0, 1));
+
+        let mut bad_path = file_json("mods/a.jar", jar);
+        bad_path["path"] = json!("../../evil.jar");
+        let mut elsewhere = file_json("mods/a.jar", jar);
+        elsewhere["url"] = json!(format!("https://evil.example/f/{}/a.jar", sha(jar)));
+        let mut other_hash = file_json("mods/a.jar", jar);
+        other_hash["url"] = json!(url_of(b"other", "a.jar"));
+        let mut not_kept = file_json("mods/a.jar", jar);
+        not_kept["sha256"] = Value::Null;
+        let twice = vec![file_json("mods/a.jar", jar), file_json("mods/A.jar", jar)];
+        for (files, loader) in [
+            (vec![bad_path], Value::Null),
+            (vec![elsewhere], Value::Null),
+            (vec![other_hash], Value::Null),
+            (vec![not_kept], Value::Null),
+            (twice, Value::Null),
+            (vec![], json!({ "kind": "rift", "version": "1" })),
+            (
+                vec![],
+                json!({ "kind": "fabric", "version": "0.15; rm -rf /" }),
+            ),
+        ] {
+            let read = PackInfo::from(&info(files.clone(), archive, loader.clone()));
+            assert_eq!(read.state, "failed", "{files:?} {loader}");
+            assert_eq!(read.error.as_deref(), Some("bad_pack"));
+            assert!(!read.ready());
+        }
+        let mut wrong_game = info(vec![], archive, Value::Null);
+        wrong_game["game"] = json!("1.20.1/../../x");
+        assert_eq!(PackInfo::from(&wrong_game).state, "failed");
+        let mut no_archive = info(vec![], archive, Value::Null);
+        no_archive["archive"] = json!({});
+        assert_eq!(PackInfo::from(&no_archive).state, "failed");
+        assert_eq!(PackInfo::from(&json!("junk")).state, "failed");
+    }
+
+    #[test]
+    fn a_file_is_replaced_only_while_it_is_as_the_pack_left_it() {
+        let dir = tempfile::tempdir().unwrap();
+        let game = dir.path();
+        let file = |path: &str, bytes: &[u8]| PackFile {
+            path: path.to_owned(),
+            size: bytes.len() as u64,
+            sha256: Some(sha(bytes)),
+            url: None,
+        };
+        let old = sha(b"old");
+        assert_eq!(
+            fate(game, &file("mods/a.jar", b"new"), None),
+            Fate::Fetch { off: false }
+        );
+        put(&game.join("mods/a.jar"), b"new");
+        assert_eq!(fate(game, &file("mods/a.jar", b"new"), None), Fate::Have);
+        put(&game.join("mods/b.jar.disabled"), b"old");
+        assert_eq!(
+            fate(game, &file("mods/b.jar", b"new"), Some(&old)),
+            Fate::Fetch { off: true }
+        );
+        put(&game.join("mods/c.jar"), b"the player's");
+        assert_eq!(
+            fate(game, &file("mods/c.jar", b"new"), Some(&old)),
+            Fate::Yours
+        );
+        fs::create_dir_all(game.join("mods/d.jar")).unwrap();
+        assert_eq!(fate(game, &file("mods/d.jar", b"new"), None), Fate::Yours);
+    }
+
+    #[tokio::test]
+    async fn a_pack_is_applied_then_updated_around_the_players_changes() {
+        let dir = tempfile::tempdir().unwrap();
+        let root = DataRoot::new(dir.path().to_path_buf()).unwrap();
+        let id = InstanceId::generate();
+        let game = root.game_dir(id);
+        let installer = content::Installer::new("0.0.0-test").unwrap();
+        let cancel = CancelToken::new();
+        let seen = std::sync::Mutex::new(Vec::new());
+        let emit = |p: content::Progress| seen.lock().unwrap().push(p.phase);
+
+        // Version 1: two mods, configs, options, and what must stay out.
+        let archive = mrpack(
+            &[
+                ("overrides/config/x.toml", b"x = 1"),
+                ("client-overrides/config/x.toml", b"x = client"),
+                ("overrides/options.txt", b"fov:70"),
+                // The pack's own fix of a file it lists.
+                ("overrides/mods/b.jar", b"B1 fixed"),
+                ("overrides/../escape.txt", b"no"),
+                ("overrides/run.exe", b"MZ"),
+                ("overrides/mods/native.dll", b"MZ"),
+                ("server-overrides/config/s.toml", b"server"),
+            ],
+            Some("overrides/config/link"),
+        );
+        let v1 = PackInfo::from(&info(
+            vec![
+                file_json("mods/a.jar", b"A1"),
+                file_json("mods/b.jar", b"B1"),
+            ],
+            &archive,
+            json!({ "kind": "fabric", "version": "0.16.5" }),
+        ));
+        assert!(v1.ready());
+        // The executor finds them in place (nothing is downloaded in a test).
+        put(&game.join("mods/a.jar"), b"A1");
+        put(&game.join("mods/b.jar"), b"B1");
+        put(&root.instance_dir(id).join("pack/archive.mrpack"), &archive);
+        let report = installer
+            .apply_pack(&root, id, &v1, meta(10), &cancel, &emit)
+            .await
+            .unwrap();
+        assert_eq!(report.files, 5, "{report:?}");
+        assert_eq!(fs::read(game.join("mods/b.jar")).unwrap(), b"B1 fixed");
+        assert_eq!(report.kept_yours, 0);
+        // One from the catalog, four here.
+        assert_eq!(report.left_out, 5, "{report:?}");
+        assert_eq!(fs::read(game.join("config/x.toml")).unwrap(), b"x = client");
+        assert_eq!(fs::read(game.join("options.txt")).unwrap(), b"fov:70");
+        assert!(!dir.path().join("instances").join("escape.txt").exists());
+        assert!(!game.join("run.exe").exists());
+        assert!(!game.join("mods/native.dll").exists());
+        assert!(!game.join("config/s.toml").exists());
+        assert!(!game.join("config/link").exists());
+        assert!(!root.instance_dir(id).join("pack").exists());
+        let lock = content::load_lock(&root, id);
+        let pack = lock.pack.unwrap();
+        assert_eq!(pack.version_id, super::id(10));
+        assert_eq!(pack.files.len(), 2);
+        assert_eq!(pack.overrides.len(), 3);
+        assert!(seen.lock().unwrap().contains(&"done"));
+
+        // The player changes a config and turns a mod off.
+        put(&game.join("config/x.toml"), b"x = mine");
+        fs::rename(game.join("mods/b.jar"), game.join("mods/b.jar.disabled")).unwrap();
+
+        // Version 2: b.jar and options.txt are gone, c.jar and a config are new.
+        let archive = mrpack(
+            &[
+                ("overrides/config/x.toml", b"x = 2"),
+                ("overrides/config/new.toml", b"new"),
+            ],
+            None,
+        );
+        let v2 = PackInfo::from(&info(
+            vec![
+                file_json("mods/a.jar", b"A1"),
+                file_json("mods/c.jar", b"C1"),
+            ],
+            &archive,
+            json!({ "kind": "fabric", "version": "0.16.9" }),
+        ));
+        put(&game.join("mods/c.jar"), b"C1");
+        put(&root.instance_dir(id).join("pack/archive.mrpack"), &archive);
+        let report = installer
+            .apply_pack(&root, id, &v2, meta(11), &cancel, &emit)
+            .await
+            .unwrap();
+        assert_eq!(report.kept_yours, 1, "{report:?}");
+        assert_eq!(report.removed, 2, "{report:?}");
+        assert_eq!(fs::read(game.join("config/x.toml")).unwrap(), b"x = mine");
+        assert_eq!(fs::read(game.join("config/new.toml")).unwrap(), b"new");
+        assert!(!game.join("mods/b.jar.disabled").exists());
+        assert!(!game.join("options.txt").exists());
+        let pack = content::load_lock(&root, id).pack.unwrap();
+        assert_eq!(pack.version_id, super::id(11));
+        // The pack's own config is recorded, so the next update still sees
+        // the player's change.
+        assert!(
+            pack.overrides
+                .iter()
+                .any(|e| e.path == "config/x.toml" && e.sha256 == sha(b"x = 2"))
+        );
+    }
+
+    #[tokio::test]
+    async fn a_broken_archive_stops_the_pack() {
+        let dir = tempfile::tempdir().unwrap();
+        let root = DataRoot::new(dir.path().to_path_buf()).unwrap();
+        let id = InstanceId::generate();
+        let installer = content::Installer::new("0.0.0-test").unwrap();
+        let junk = b"not a zip".to_vec();
+        let pack = PackInfo::from(&info(vec![], &junk, Value::Null));
+        put(&root.instance_dir(id).join("pack/archive.mrpack"), &junk);
+        let error = installer
+            .apply_pack(&root, id, &pack, meta(10), &CancelToken::new(), &|_| {})
+            .await
+            .unwrap_err();
+        assert_eq!(
+            error.code,
+            crate::error::ErrorCode::UnsupportedVersionMetadata
+        );
+        assert!(content::load_lock(&root, id).pack.is_none());
+        assert!(!root.instance_dir(id).join("pack").exists());
+    }
 }

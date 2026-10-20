@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-mods-pack"
+description = "Enables the mods_pack command without any pre-configured scope."
+commands.allow = ["mods_pack"]
+
+[[permission]]
+identifier = "deny-mods-pack"
+description = "Denies the mods_pack command without any pre-configured scope."
+commands.deny = ["mods_pack"]

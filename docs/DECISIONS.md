@@ -2204,6 +2204,23 @@ archive from the Package workflow, upload it to
   one of `options.txt`, `optionsof.txt`, `optionsshaders.txt`, `servers.dat`; no program
   (`.exe`, `.bat`, `.sh`, `.dll` and the like) anywhere, a `.jar` only in `mods/`. A file
   with any other path, or one the client does not use, is left out and counted.
+- **In the launcher:** a Modrinth pack's version has **Install**. The dialog asks the
+  catalog once to prepare the pack and then looks every 3 s, showing how many files it
+  keeps; a failure says why in the player's words. Ready, it shows the game version,
+  loader, mods and size (with the metered-connection notice, D-051) and asks for a name.
+  The core then creates an installation with the pack's game version and loader (Forge's
+  version as `<game>-<forge>`) and memory recommended for its mods (D-058), and puts the
+  pack in: every file through the download executor, checked against its SHA-256; the
+  archive the same way, then `overrides/` and `client-overrides/` (the later winning)
+  unpacked by the same path rules, at most 20,000 files, 1 GB each and 4 GB together as
+  unpacked, links never followed or made. The answer of the catalog is checked again
+  (paths, hashes, addresses only at files-mods.lapi.sh, loader and versions) and a pack
+  that does not fit is refused as a whole.
+- **`content.lock.json` records the pack** (project, version, and the SHA-256 of every
+  file and override it brought). Applying a pack again changes only what is still as the
+  pack left it: a file the player changed stays, one turned off stays off, and what the
+  previous version brought and this one no longer has is removed if unchanged. A pack
+  that stopped part way can be finished with **Try again** on the same installation.
 
 ## D-067 — Start page feed at feed.lapi.sh
 

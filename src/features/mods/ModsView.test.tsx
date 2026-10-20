@@ -6,6 +6,7 @@ import type {
   ContentView,
   DocNode,
   ModsImportRequest,
+  ModsPack,
   ModsPlan,
   ModsProject,
   ModsSearchPage,
@@ -438,5 +439,90 @@ describe('ModsView', () => {
       await screen.findByText('Sign in to your launcher account to add to the catalog.'),
     ).toBeVisible();
     expect(screen.getByRole('button', { name: 'Sign in' })).toBeVisible();
+  });
+
+  describe('modpacks', () => {
+    const packProject: ModsProject = { ...project, kind: 'modpack', slug: 'pack', title: 'Pack' };
+    const packVersion: ModsVersion = {
+      ...version,
+      number: '1.0',
+      name: 'Pack 1.0',
+      files: [{ name: 'pack-1.0.mrpack', size: 2048, sha256: null, primary: true, url: null }],
+    };
+    const ready: ModsPack = {
+      state: 'ready',
+      error: null,
+      game: '1.20.1',
+      loader: { kind: 'forge', version: '47.2.0' },
+      kept: 2,
+      total: 2,
+      skipped: 1,
+      mods: 2,
+      totalBytes: 4096,
+      approval: null,
+    };
+    const answers = (pack: (args: Record<string, unknown>) => ModsPack) => ({
+      mods_project: () => packProject,
+      mods_versions: () => [packVersion],
+      mods_pack: pack,
+      mods_create_pack_instance: () => instanceFixture({ displayName: 'Pack 1.0' }),
+      mods_apply_pack: () => ({ files: 5, keptYours: 0, leftOut: 2, removed: 0 }),
+    });
+
+    it('installs a modpack as a new installation', async () => {
+      const calls = setup(
+        answers(() => ready),
+        'modpack',
+      );
+      fireEvent.click(await screen.findByRole('button', { name: /Sodium/ }));
+      const article = await screen.findByRole('article', { name: 'Pack' });
+      expect(within(article).getByText(/installs as a new installation/)).toBeVisible();
+      // Versions are not filtered by the chosen installation.
+      await waitFor(() => {
+        expect(named('mods_versions', calls)[0]?.args).toMatchObject({ game: null, loader: null });
+      });
+      fireEvent.click(await within(article).findByRole('button', { name: 'Install' }));
+      const dialog = await screen.findByRole('dialog', { name: 'Install Pack' });
+      expect(await within(dialog).findByText(/Forge 47.2.0/)).toBeVisible();
+      expect(within(dialog).getByText(/2 mods/)).toBeVisible();
+      expect(within(dialog).getByText(/1 file is left out/)).toBeVisible();
+      expect(named('mods_pack', calls)[0]?.args).toEqual({ version: VERSION, prepare: true });
+      const name = within(dialog).getByLabelText('Installation name');
+      expect(name).toHaveValue('Pack 1.0');
+      fireEvent.change(name, { target: { value: '   ' } });
+      expect(within(dialog).getByRole('button', { name: 'Install' })).toBeDisabled();
+      fireEvent.change(name, { target: { value: 'My pack' } });
+      fireEvent.click(within(dialog).getByRole('button', { name: 'Install' }));
+      expect(
+        await within(dialog).findByText(/The modpack is installed as “Pack 1.0”/),
+      ).toBeVisible();
+      expect(within(dialog).getByText(/2 files were left out/)).toBeVisible();
+      const create = named('mods_create_pack_instance', calls)[0]?.args.request as {
+        payload: Record<string, unknown>;
+      };
+      expect(create.payload).toEqual({ version: VERSION, displayName: 'My pack' });
+      const apply = named('mods_apply_pack', calls)[0]?.args.request as {
+        payload: Record<string, unknown>;
+      };
+      expect(apply.payload).toEqual({
+        instanceId: instanceFixture({}).id,
+        version: VERSION,
+      });
+    });
+
+    it('says why the catalog could not prepare a modpack', async () => {
+      setup(
+        answers(() => ({ ...ready, state: 'failed', error: 'unsupported_host' })),
+        'modpack',
+      );
+      fireEvent.click(await screen.findByRole('button', { name: /Sodium/ }));
+      const article = await screen.findByRole('article', { name: 'Pack' });
+      fireEvent.click(await within(article).findByRole('button', { name: 'Install' }));
+      const dialog = await screen.findByRole('dialog');
+      expect(
+        await within(dialog).findByText(/from a site the catalog does not fetch/),
+      ).toBeVisible();
+      expect(within(dialog).queryByRole('button', { name: 'Install' })).toBeNull();
+    });
   });
 });
