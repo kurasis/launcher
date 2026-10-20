@@ -986,6 +986,17 @@ impl Store {
             .map_err(|e| e.to_string())
     }
 
+    /// A letter the server refused for good: no more tries, no body kept.
+    pub fn mail_given_up(&self, id: i64, error: &str) -> Result<(), String> {
+        self.db()
+            .execute(
+                "UPDATE outbox SET body = '', html = '', attempts = attempts + 1, last_error = ?2 WHERE id = ?1",
+                params![id, error],
+            )
+            .map(drop)
+            .map_err(|e| e.to_string())
+    }
+
     /// A letter that can no longer be opened (its key is gone).
     pub fn mail_dropped(&self, id: i64) -> Result<(), String> {
         self.db()

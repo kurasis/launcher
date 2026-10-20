@@ -2,7 +2,8 @@
 //! SMTP server in `LAPI_OAUTH_SMTP_URL` once it is set. Until then they wait
 //! (three days at most). A waiting letter's body is sealed with `mail.key`
 //! (not in the database), so a copy of the database opens no link; a sent
-//! letter keeps no body. A failed letter is tried again after a growing wait.
+//! letter keeps no body. A failed letter is tried again after a growing wait,
+//! except one refused with 554, which no retry changes.
 
 use std::sync::Arc;
 use std::time::Duration;
@@ -456,6 +457,12 @@ pub fn public_failure(stored: &str) -> String {
         )
 }
 
+/// A refusal that trying again does not change: 554, the transaction
+/// failed (the provider will not take this letter or this recipient).
+pub fn refused_for_good(failure: &str) -> bool {
+    failure == "refused (554)"
+}
+
 /// A reply code that refuses: 4xx or 5xx.
 fn smtp_code(word: &str) -> bool {
     word.len() == 3 && word.starts_with(['4', '5']) && word.bytes().all(|b| b.is_ascii_digit())
@@ -514,9 +521,11 @@ pub async fn worker(app: Arc<App>, smtp: Smtp) {
                     // The error names the server's answer, never the recipient.
                     eprintln!("sending letter {} failed: {e}", mail.id);
                 }
-                let _ =
-                    app.store
-                        .mail_done(mail.id, result.as_ref().err().map(String::as_str), now());
+                let error = result.as_ref().err().map(String::as_str);
+                let _ = match error {
+                    Some(e) if refused_for_good(e) => app.store.mail_given_up(mail.id, e),
+                    error => app.store.mail_done(mail.id, error, now()),
+                };
             }
         }
         tokio::time::sleep(Duration::from_secs(20)).await;

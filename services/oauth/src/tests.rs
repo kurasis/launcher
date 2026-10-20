@@ -1135,6 +1135,19 @@ async fn letters_waiting_hold_no_working_link_and_sent_ones_keep_nothing() {
     );
     t.app.store.mail_done(raw[0].id, None, now).unwrap();
     assert!(t.app.store.pending_mail(now + 7200, 10).unwrap().is_empty());
+    // A 554 ends the letter: no more tries, no body kept.
+    assert!(crate::mail::refused_for_good("refused (554)"));
+    assert!(!crate::mail::refused_for_good("refused for now (451)"));
+    assert!(!crate::mail::refused_for_good("refused (550)"));
+    t.app
+        .store
+        .queue_mail("gone@example.com", "Gone", "body", "", now)
+        .unwrap();
+    let gone = t.app.store.pending_mail(now, 10).unwrap()[0].id;
+    t.app.store.mail_given_up(gone, "refused (554)").unwrap();
+    assert!(t.app.store.pending_mail(now + 7200, 10).unwrap().is_empty());
+    assert!(t.app.store.mail_failures(now).unwrap().is_empty());
+    assert_eq!(t.app.store.mail_counts(now).unwrap()["givenUpLastWeek"], 1);
     // A letter queued before sealing is sealed at start.
     t.app
         .store
