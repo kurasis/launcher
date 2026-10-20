@@ -779,9 +779,11 @@ mod tests {
     fn a_hosted_world_postpones_the_install() {
         let dir = tempfile::tempdir().unwrap();
         let root = crate::storage::paths::DataRoot::new(dir.path().to_path_buf()).unwrap();
-        let state = crate::install::service::tests::state_at(
-            &root,
-            crate::install::service::tests::Events::default(),
+        let state = AppState::initialize(
+            Ok(root),
+            "0.1.0",
+            crate::validation::MemoryPolicy::from_physical_bytes(16 * 1024 * 1024 * 1024),
+            Box::new(crate::state::NoopSink),
         );
         assert!(!Updates::busy_now(&state));
         let permit = state
