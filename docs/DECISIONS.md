@@ -2167,6 +2167,11 @@ archive from the Package workflow, upload it to
   read were the site's categories (an ID, slug, name and class too), so a hit now needs
   a summary and an author. Until the results can be had, a name finds CurseForge
   projects only by their page address.
+- **Sixth probe (2026-10-20):** the search API refuses the server (403) also with a
+  browser's fetch headers (Accept, Referer, Sec-Fetch-*), with the site's full set of
+  parameters, and with both, directly and through every proxy. A name now asks Modrinth
+  only; CurseForge projects come by their page address. The page reader stays for the
+  probe.
 
 ## D-067 — Start page feed at feed.lapi.sh
 
