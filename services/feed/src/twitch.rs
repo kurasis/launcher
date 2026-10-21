@@ -15,7 +15,7 @@ use crate::net;
 /// Twitch's id of the game Minecraft.
 pub const MINECRAFT: &str = "27471";
 /// Streams kept per language.
-pub const STREAMS: usize = 6;
+pub const STREAMS: usize = 24;
 /// Channels one Helix request may name.
 pub const HELIX_LOGINS: usize = 100;
 
@@ -270,7 +270,7 @@ impl Twitch {
             [
                 ("game_id", MINECRAFT),
                 ("language", lang),
-                ("first", "40"),
+                ("first", "100"),
                 ("type", "live"),
             ],
         )

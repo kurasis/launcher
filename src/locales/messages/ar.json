@@ -132,7 +132,9 @@
         "downShort": "غير متصل",
         "versionItem": "الإصدار: {version}…",
         "menu": "خيارات الإعلان: {name}",
-        "players": "{online, number}"
+        "players": "{online, number}",
+        "licensedOnly": "للحسابات المرخّصة فقط",
+        "needsLicense": "يقبل هذا الخادم فقط اللاعبين الذين سجّلوا الدخول بحساب Microsoft يملك Minecraft. سجّل الدخول من «الحسابات» أو اختر ذلك الحساب لهذا التثبيت."
       },
       "itemMenu": "المزيد: {title}",
       "copyLink": "نسخ الرابط",
@@ -143,6 +145,7 @@
       "channelHidden": "لن يظهر {name} في الموجز بعد الآن.",
       "undo": "تراجع",
       "favoriteBadge": "مفضلة",
+      "watched": "تمت مشاهدته",
       "addChannel": "إضافة قناة",
       "addChannelPlace": "مكان القناة",
       "places": {
@@ -1032,6 +1035,8 @@
       "shorts": "YouTube Shorts",
       "machineTranslation": "ترجمة آلية لملاحظات التحديث والأخبار",
       "machineTranslationHint": "عند الإيقاف: تُعرض بالإنجليزية.",
+      "liveNotifications": "أعلمني حين تبدأ قناة مفضلة بثًا مباشرًا",
+      "liveNotificationsHint": "إشعار من النظام لقنوات Twitch المفضلة، حين لا يكون المشغّل في المقدمة.",
       "hidden": "أخفِ في الموجز",
       "blocks": {
         "versions": "ملاحظات التحديث",

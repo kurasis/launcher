@@ -131,7 +131,9 @@
         "downShort": "Offline",
         "versionItem": "Version: {version}…",
         "menu": "Ad options: {name}",
-        "players": "{online, number}"
+        "players": "{online, number}",
+        "licensedOnly": "licensed accounts only",
+        "needsLicense": "This server lets in only players signed in with a Microsoft account that owns Minecraft. Sign in under Accounts, or choose that account for this installation."
       },
       "itemMenu": "More: {title}",
       "copyLink": "Copy link",
@@ -142,6 +144,7 @@
       "channelHidden": "{name} is hidden from the feed.",
       "undo": "Undo",
       "favoriteBadge": "Favourite",
+      "watched": "Watched",
       "addChannel": "Add a channel",
       "addChannelPlace": "Where the channel is",
       "places": {
@@ -1031,6 +1034,8 @@
       "shorts": "YouTube Shorts",
       "machineTranslation": "Machine-translated patch notes and news",
       "machineTranslationHint": "Off: they show in English.",
+      "liveNotifications": "Tell me when a favourite streamer goes live",
+      "liveNotificationsHint": "A system notification for the favourite Twitch channels, while the launcher is not in front.",
       "hidden": "Hide in the feed",
       "blocks": {
         "versions": "Patch notes",

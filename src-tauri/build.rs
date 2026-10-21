@@ -165,6 +165,7 @@ fn main() {
         "feed_marks",
         "feed_mark",
         "feed_favorites",
+        "feed_watched",
         "worlds_state",
         "worlds_versions",
         "worlds_local",

@@ -198,6 +198,8 @@ pub struct FeedSettingsPatch {
     /// The whole list of hidden blocks; at most one of each.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub hidden: Option<Vec<crate::storage::models::FeedBlock>>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub live_notifications: Option<bool>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]

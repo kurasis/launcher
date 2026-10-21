@@ -123,7 +123,7 @@ fn serve() -> Result<(), String> {
         );
         every(
             "twitch",
-            Duration::from_secs(5 * 60),
+            Duration::from_secs(2 * 60),
             Arc::clone(&app),
             |app| async move { app.feed.refresh_twitch().await },
         );

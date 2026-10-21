@@ -14,7 +14,7 @@ use serde::Deserialize;
 use serde_json::json;
 
 use crate::ads;
-use crate::icons::{Icons, sha_name};
+use crate::icons::{Icons, Kind, sha_name};
 use crate::store::Store;
 use crate::text;
 
@@ -55,7 +55,7 @@ async fn get_ads(State(app): State<Arc<App>>, Query(q): Query<AdsQuery>) -> Resp
     };
     let lang = ads::lang(q.lang.as_deref());
     let now = (app.clock)();
-    let live = match app.store.live(place, now) {
+    let live = match app.store.live(place, lang, now) {
         Ok(live) => live,
         Err(e) => {
             eprintln!("ads: {e}");
@@ -76,15 +76,22 @@ async fn get_ads(State(app): State<Arc<App>>, Query(q): Query<AdsQuery>) -> Resp
 }
 
 async fn get_icon(State(app): State<Arc<App>>, Path(file): Path<String>) -> Response {
-    let Some(sha) = file.strip_suffix(".png").filter(|s| sha_name(s)) else {
+    // Icons are PNGs, banners JPEGs.
+    let found = [Kind::Png, Kind::Jpeg].into_iter().find_map(|kind| {
+        file.strip_suffix(kind.ext())
+            .and_then(|s| s.strip_suffix('.'))
+            .filter(|s| sha_name(s))
+            .map(|sha| (sha, kind))
+    });
+    let Some((sha, kind)) = found else {
         return refuse(StatusCode::NOT_FOUND, "not_found");
     };
-    match app.icons.read(sha) {
+    match app.icons.read(sha, kind) {
         Some(bytes) => {
             let mut response = Response::new(Body::from(bytes));
             response
                 .headers_mut()
-                .insert(header::CONTENT_TYPE, HeaderValue::from_static("image/png"));
+                .insert(header::CONTENT_TYPE, HeaderValue::from_static(kind.mime()));
             cached(response, CACHE_ICON)
         }
         None => refuse(StatusCode::NOT_FOUND, "not_found"),

@@ -1891,6 +1891,9 @@ fn apply_feed_patch(
     if let Some(hidden) = patch.hidden {
         feed.hidden = FeedSettings::hidden_set(hidden);
     }
+    if let Some(on) = patch.live_notifications {
+        feed.live_notifications = on;
+    }
     Ok(())
 }
 

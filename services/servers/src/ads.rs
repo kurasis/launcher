@@ -18,13 +18,14 @@ pub struct Flags {
     switches: Vec<String>,
 }
 
-const SWITCHES: [&str; 6] = [
+const SWITCHES: [&str; 7] = [
     "--quiet",
     "--if-new",
     "--all",
     "--no-ping",
     "--clear-erid",
     "--auto",
+    "--none",
 ];
 
 impl Flags {
@@ -69,9 +70,9 @@ impl Flags {
     }
 }
 
-pub const AD_FLAGS: [&str; 12] = [
+pub const AD_FLAGS: [&str; 13] = [
     "name", "address", "version", "from", "to", "text", "start", "for", "until", "weight", "place",
-    "erid",
+    "erid", "langs",
 ];
 
 /// Texts from `--text`, `--text-file`, `--text-ru`, `--text-ru-file` and so on.
@@ -175,6 +176,8 @@ pub fn build(
             erid: None,
             paused: false,
             icon: None,
+            langs: Vec::new(),
+            banner: None,
         },
     };
     if let Some(name) = flags.get("name") {
@@ -227,6 +230,9 @@ pub fn build(
     if flags.has("--clear-erid") {
         ad.erid = None;
     }
+    if let Some(langs) = flags.get("langs") {
+        ad.langs = text::langs(langs)?;
+    }
     Ok(ad)
 }
 
@@ -245,14 +251,25 @@ pub fn check_run(ad: &Ad, now: i64) -> Result<(), String> {
     Ok(())
 }
 
-/// Pings the ad's server and keeps the result and its icon.
+/// How often a server is asked whether it wants a Microsoft sign-in.
+pub const CHECK_EVERY: i64 = 86_400;
+
+/// Pings the ad's server and keeps the result and its icon. Whether the
+/// server wants a Microsoft sign-in is asked too when `check` is set or the
+/// last check is older than `CHECK_EVERY`.
 pub async fn ping(
     store: &Store,
     icons: &Icons,
     pinger: &Pinger,
     ad: &Ad,
     now: i64,
+    check: bool,
 ) -> Result<Ping, String> {
+    let due = check
+        || store
+            .ping(ad.id)?
+            .and_then(|p| p.checked_at)
+            .is_none_or(|at| now - at >= CHECK_EVERY);
     let result = pinger.ping(&ad.address).await;
     let ping = match result {
         Ok(status) => {
@@ -260,7 +277,16 @@ pub async fn ping(
                 .favicon
                 .as_deref()
                 .and_then(|f| icons::from_status(f).ok())
-                .and_then(|png| icons.keep(&png).ok());
+                .and_then(|png| icons.keep(&png, icons::Kind::Png).ok());
+            // A check that fails keeps the last one.
+            let (licensed, checked_at) = if due {
+                match pinger.licensed(&ad.address, status.protocol).await {
+                    Ok(licensed) => (licensed, Some(now)),
+                    Err(_) => (None, None),
+                }
+            } else {
+                (None, None)
+            };
             Ping {
                 at: now,
                 up: true,
@@ -269,6 +295,8 @@ pub async fn ping(
                 protocol: status.protocol,
                 server_version: status.version,
                 icon,
+                licensed,
+                checked_at,
             }
         }
         Err(_) => Ping {
@@ -328,6 +356,8 @@ pub fn public(store: &Store, ad: &Ad, lang: &str) -> Result<Value, String> {
         "endsAt": ad.ends,
         "weight": ad.weight,
         "erid": ad.erid,
+        "banner": ad.banner,
+        "licensed": ping.as_ref().and_then(|p| p.licensed),
     }))
 }
 

@@ -135,6 +135,8 @@ export type Messages = {
       readonly versionItem: (values: { version: string | number }) => string;
       readonly menu: (values: { name: string | number }) => string;
       readonly players: (values: { online: number }) => string;
+      readonly licensedOnly: string;
+      readonly needsLicense: string;
     };
     readonly itemMenu: (values: { title: string | number }) => string;
     readonly copyLink: string;
@@ -145,6 +147,7 @@ export type Messages = {
     readonly channelHidden: (values: { name: string | number }) => string;
     readonly undo: string;
     readonly favoriteBadge: string;
+    readonly watched: string;
     readonly addChannel: string;
     readonly addChannelPlace: string;
     readonly places: {
@@ -1098,6 +1101,8 @@ export type Messages = {
     readonly shorts: string;
     readonly machineTranslation: string;
     readonly machineTranslationHint: string;
+    readonly liveNotifications: string;
+    readonly liveNotificationsHint: string;
     readonly hidden: string;
     readonly blocks: {
       readonly versions: string;

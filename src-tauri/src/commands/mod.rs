@@ -3319,10 +3319,8 @@ pub fn feed_play<R: Runtime>(
     let target = crate::feed::player::Target::parse(&kind, &id).ok_or(FeedProblem::BadInput)?;
     match settings.player {
         crate::storage::models::PlayerMode::Browser => {
-            if crate::feed::player::open_in_browser(&app, target.browser_url().as_str()) {
-                Ok(())
-            } else {
-                Err(FeedProblem::Server)
+            if !crate::feed::player::open_in_browser(&app, target.browser_url().as_str()) {
+                return Err(FeedProblem::Server);
             }
         }
         crate::storage::models::PlayerMode::Window => {
@@ -3331,9 +3329,24 @@ pub fn feed_play<R: Runtime>(
                 target.player_url(languages.interface),
                 window_title(title, "Player"),
             );
-            Ok(())
         }
     }
+    // A video played is shown dimmed in the feed after; a list that cannot
+    // be written only loses that.
+    if let crate::feed::player::Target::Video(video) = &target
+        && let Ok(root) = feed_root(&app)
+    {
+        let _ = crate::feed::remember_watched(&root, video);
+    }
+    Ok(())
+}
+
+/// The videos the player played from the feed, oldest first.
+#[tauri::command(async)]
+pub fn feed_watched<R: Runtime>(app: AppHandle<R>) -> Vec<String> {
+    feed_root(&app)
+        .map(|root| crate::feed::watched(&root))
+        .unwrap_or_default()
 }
 
 /// Opens a link of the feed in the browser: only addresses the launcher may
