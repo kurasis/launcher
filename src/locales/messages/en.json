@@ -105,7 +105,27 @@
       "eventWhen": "{starts} – {ends}",
       "announcementsTitle": "Announcements",
       "tipTitle": "Tip of the day",
-      "openLink": "Open"
+      "openLink": "Open",
+      "serverAd": {
+        "label": "Ad",
+        "online": "{online, number} of {max, number} online",
+        "onlineOnly": "{online, number} online",
+        "down": "The server does not answer right now",
+        "copy": "Copy the address {address}",
+        "copied": "Copied",
+        "play": "Play",
+        "installed": "{version} · installed",
+        "toDownload": "{version} · downloads first",
+        "installing": "Installing {version}…",
+        "starting": "Starting…",
+        "inGame": "In the game",
+        "chooseVersion": "Choose a version for {name}",
+        "range": "The server lets in {from} to {to}",
+        "serverVersion": "the server's",
+        "installedMark": "installed",
+        "erid": "Ad token: {erid}",
+        "installFailed": "{version} could not be installed. Open Installations to see why."
+      }
     },
     "bootstrap": {
       "loading": "Loading launcher state…",

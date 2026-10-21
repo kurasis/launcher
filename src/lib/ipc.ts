@@ -61,6 +61,7 @@ import {
   type FeedStream,
   type FeedVideo,
   type FeedView,
+  type ServerAdsView,
   type NoteView,
   type OwnChannel,
   type OwnStreamer,
@@ -498,6 +499,9 @@ export const ipc = {
   // `feedProblem` reads it.
   /** `refresh` asks the service again even when it answered a moment ago. */
   feedGet: (refresh = false): Promise<FeedView> => invoke<FeedView>('feed_get', { refresh }),
+  /** The server ads of a place showing now (D-069). */
+  feedServerAds: (place: 'feed', refresh = false): Promise<ServerAdsView> =>
+    invoke<ServerAdsView>('feed_server_ads', { place, refresh }),
   /** A whole note; `original` asks for the English text instead of a translation. */
   feedNote: (id: string, original = false): Promise<NoteView> =>
     invoke<NoteView>('feed_note', { id, original }),

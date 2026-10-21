@@ -106,7 +106,27 @@
       "eventWhen": "{starts} – {ends}",
       "announcementsTitle": "الإعلانات",
       "tipTitle": "نصيحة اليوم",
-      "openLink": "افتح"
+      "openLink": "افتح",
+      "serverAd": {
+        "label": "إعلان",
+        "online": "{online, number} من {max, number} متصل",
+        "onlineOnly": "{online, number} متصل",
+        "down": "الخادم لا يستجيب الآن",
+        "copy": "نسخ العنوان {address}",
+        "copied": "تم النسخ",
+        "play": "العب",
+        "installed": "{version} · مثبّت",
+        "toDownload": "{version} · سيُنزَّل أولًا",
+        "installing": "جارٍ تثبيت {version}…",
+        "starting": "جارٍ التشغيل…",
+        "inGame": "في اللعبة",
+        "chooseVersion": "اختر إصدارًا لـ {name}",
+        "range": "يقبل الخادم من {from} إلى {to}",
+        "serverVersion": "إصدار الخادم",
+        "installedMark": "مثبّت",
+        "erid": "رمز الإعلان: {erid}",
+        "installFailed": "تعذّر تثبيت {version}. افتح التثبيتات لمعرفة السبب."
+      }
     },
     "bootstrap": {
       "loading": "جارٍ تحميل حالة المشغّل…",

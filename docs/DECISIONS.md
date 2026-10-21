@@ -2523,3 +2523,36 @@ archive from the Package workflow, upload it to
   the owner accepted this.
 - **Server setup (owner):** DNS and certificate for worlds.lapi.sh and `deploy/bootstrap.sh`
   once (W5); a VPS, an unproxied DNS record for relay.lapi.sh and `RELAY_SSH_*` secrets (W6).
+
+## D-069 — Ads for Minecraft servers at servers.lapi.sh
+
+- **Status:** accepted (owner request and design approval, 2026-10-21; design in the
+  project) · **Affects:** the new service `services/servers` (`https://servers.lapi.sh`,
+  `/home/www/lapi/servers`, port 8789), the Feed tab (an ad tile), launches straight into a
+  server.
+- **Goal.** Show ads for Minecraft servers in the launcher, first in the feed: the server's
+  icon, the ad's text and the address, a Play button that installs the version if it is
+  missing and starts the game straight into the server, and a button to pick another of the
+  versions the server lets in.
+- **An ad** has a name, an address (as the launcher reads them, `launch/server.rs`), a
+  default version and a range of releases from Mojang's manifest (no snapshots), a text of
+  up to 200 characters (no links, no control or layout characters; optional texts in en, ru
+  and ar), a start and a run from 1 minute to 5 years, a weight among the ads showing at
+  once, a place (`feed` for now) and an optional erid (the Russian ad register's token).
+- **Read only from outside.** The service answers `GET /v1/ads?place=&lang=` (30 seconds),
+  `GET /v1/icons/{sha256}.png` (for good) and `/v1/health`; it has no route that takes a
+  body, and nginx lets through GET and HEAD of those paths only. It listens on 127.0.0.1.
+  Ads are written by the owner's commands on the server alone (`lapi-servers add|edit|…`
+  as the service's user, `docs/SERVER-ADS.md`), never through a workflow, whose logs are
+  public; the one exception is the test ad the owner asked for (task `test-ad`), of a public
+  server, which prints fixed words and a number.
+- **Icons and players online** come from a status ping (Server List Ping) by the service,
+  every hour and when an ad is added: a player's launcher asks no server until its player
+  presses Play. Every length in the ping is bounded by our own code (the ping library looked
+  at, craftping 0.8, reads whatever length a server names); SRV records are followed with
+  hickory-resolver, and only public addresses are pinged, before and after DNS. Icons are
+  decoded with limits, made 64×64 and written again as PNG.
+- **No statistics** in this first version: counting views would mean taking writes from
+  outside.
+- **Server setup (owner):** a DNS record for servers.lapi.sh behind Cloudflare, then
+  `deploy/bootstrap.sh` once.

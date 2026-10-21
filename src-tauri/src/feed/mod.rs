@@ -11,6 +11,7 @@
 //! streams. Nothing
 //! about a player goes to the launcher's log.
 
+pub mod ads;
 pub mod model;
 pub mod player;
 

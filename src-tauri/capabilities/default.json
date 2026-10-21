@@ -132,6 +132,7 @@
     "allow-skins-upload",
     "allow-skins-remove",
     "allow-feed-get",
+    "allow-feed-server-ads",
     "allow-feed-page",
     "allow-feed-note",
     "allow-feed-play",

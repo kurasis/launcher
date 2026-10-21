@@ -1,0 +1,50 @@
+# Installed by deploy/bootstrap.sh as /etc/systemd/system/lapi-servers.service.
+[Unit]
+Description=Sferum launcher ads for Minecraft servers (servers.lapi.sh, D-069)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+User=lapi-servers
+Group=lapi-servers
+EnvironmentFile=/home/www/lapi/servers/servers.env
+ExecStart=/home/www/lapi/servers/current/lapi-servers serve
+Restart=on-failure
+RestartSec=3
+UMask=0027
+NoNewPrivileges=yes
+ProtectSystem=strict
+# /home holds nothing else for it: only its own folder is there, its data writable.
+ProtectHome=tmpfs
+BindReadOnlyPaths=/home/www/lapi/servers
+BindPaths=/home/www/lapi/servers/data
+ReadWritePaths=/home/www/lapi/servers/data
+PrivateTmp=yes
+PrivateDevices=yes
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectControlGroups=yes
+ProtectClock=yes
+ProtectHostname=yes
+# Out: Mojang's version list, DNS and the status ping of each advertised
+# server; addresses that are not public are refused by the service.
+RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX
+RestrictNamespaces=yes
+RestrictRealtime=yes
+LockPersonality=yes
+MemoryDenyWriteExecute=yes
+SystemCallArchitectures=native
+# What a network service needs; anything else fails with EPERM.
+SystemCallFilter=@system-service
+SystemCallErrorNumber=EPERM
+ProtectKernelLogs=yes
+ProtectProc=invisible
+ProcSubset=pid
+RestrictSUIDSGID=yes
+RemoveIPC=yes
+CapabilityBoundingSet=
+MemoryMax=256M
+TasksMax=64
+
+[Install]
+WantedBy=multi-user.target

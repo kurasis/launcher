@@ -12,6 +12,7 @@ import type {
   FeedView as FeedAnswer,
   InstanceSummary,
   NoteCard,
+  ServerAd,
 } from '../../lib/contracts';
 import { feedProblem, ipc } from '../../lib/ipc';
 import { strings } from '../../lib/strings';
@@ -288,6 +289,7 @@ export function FeedView({ snapshot, onOpenInstallations, onInstallVersion }: Fe
   } | null>(null);
   const [own, setOwn] = useState<FeedVideo[]>([]);
   const [ownStreams, setOwnStreams] = useState<FeedStream[]>([]);
+  const [ads, setAds] = useState<ServerAd[]>([]);
   const [refreshing, setRefreshing] = useState(false);
   const [chosen, setFilter] = useState<FeedFilter>('all');
   // Each Refresh starts the list again.
@@ -332,6 +334,32 @@ export function FeedView({ snapshot, onOpenInstallations, onInstallVersion }: Fe
         setOwnStreams([]);
       });
   }, [online, refreshes]);
+
+  // Server ads (D-069): asked again on Refresh and when the connection
+  // returns; each leaves the list the moment it ends.
+  useEffect(() => {
+    ipc
+      .feedServerAds('feed', refreshes > 0)
+      .then((view) => {
+        setAds(view.ads);
+      })
+      .catch(() => {
+        setAds((shown) => (shown.length === 0 ? shown : []));
+      });
+  }, [online, refreshes, languages]);
+  useEffect(() => {
+    if (ads.length === 0) return;
+    const soonest = Math.min(...ads.map((ad) => ad.endsAt)) * 1000 - Date.now();
+    const timer = window.setTimeout(
+      () => {
+        setAds((shown) => shown.filter((ad) => ad.endsAt * 1000 > Date.now()));
+      },
+      Math.max(0, Math.min(soonest, 2 ** 31 - 1)),
+    );
+    return () => {
+      window.clearTimeout(timer);
+    };
+  }, [ads]);
 
   const openLink = useCallback((url: string) => {
     setActionProblem(null);
@@ -390,6 +418,7 @@ export function FeedView({ snapshot, onOpenInstallations, onInstallVersion }: Fe
         onInstallVersion={onInstallVersion}
         onPlayVideo={playVideo}
         onPlayStream={playStream}
+        ads={ads}
       />
     );
 
@@ -449,6 +478,7 @@ interface FeedPartsProps {
   onInstallVersion: (versionId: string) => void;
   onPlayVideo: (video: FeedVideo) => void;
   onPlayStream: (stream: FeedStream) => void;
+  ads: ServerAd[];
 }
 
 /** The newest version, the chips and the endless list they choose. */
@@ -466,6 +496,7 @@ function FeedParts({
   onInstallVersion,
   onPlayVideo,
   onPlayStream,
+  ads,
 }: FeedPartsProps) {
   const filterLabel = useId();
   const parts = visibleParts(feed, settings);
@@ -520,6 +551,8 @@ function FeedParts({
         onOpen={onOpen}
         onPlayVideo={onPlayVideo}
         onPlayStream={onPlayStream}
+        ads={ads}
+        snapshot={snapshot}
       />
     </>
   );

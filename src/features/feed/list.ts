@@ -1,5 +1,6 @@
 import type {
   Feed,
+  ServerAd,
   FeedBlock,
   FeedItem,
   FeedSettings,
@@ -102,4 +103,59 @@ export function shownItems(
   return newestFirst([...pages, ...ownItems]).filter(
     (item) => item.type !== 'note' || item.note.id !== skip,
   );
+}
+
+/** The first server ad is the second tile, then one every this many (D-069). */
+export const AD_FIRST = 1;
+export const AD_EVERY = 16;
+
+/** A small seeded random source, so a list keeps its order while it is shown. */
+function seeded(seed: number): () => number {
+  let state = Math.floor(seed * 2 ** 32) >>> 0;
+  return () => {
+    state = (state + 0x6d2b79f5) >>> 0;
+    let x = state;
+    x = Math.imul(x ^ (x >>> 15), x | 1);
+    x ^= x + Math.imul(x ^ (x >>> 7), x | 61);
+    return ((x ^ (x >>> 14)) >>> 0) / 2 ** 32;
+  };
+}
+
+/** The ads in the order they take their places: heavier ones tend to come first. */
+export function adOrder(ads: ServerAd[], seed: number): ServerAd[] {
+  const random = seeded(seed);
+  const left = [...ads];
+  const order: ServerAd[] = [];
+  while (left.length > 0) {
+    const total = left.reduce((sum, ad) => sum + Math.max(1, ad.weight), 0);
+    let pick = random() * total;
+    let index = 0;
+    for (; index < left.length - 1; index += 1) {
+      pick -= Math.max(1, left[index]?.weight ?? 1);
+      if (pick < 0) break;
+    }
+    order.push(...left.splice(index, 1));
+  }
+  return order;
+}
+
+export type ListEntry =
+  { type: 'item'; item: FeedItem } | { type: 'ad'; ad: ServerAd; slot: number };
+
+/**
+ * The list with server ads among its tiles: the second tile, then one every
+ * `AD_EVERY`, taking the ads in turn. A list too short for a place shows none there.
+ */
+export function withAds(items: FeedItem[], ads: ServerAd[]): ListEntry[] {
+  const entries: ListEntry[] = [];
+  let slot = 0;
+  items.forEach((item, index) => {
+    const ad = ads[slot % Math.max(1, ads.length)];
+    if (ad !== undefined && index >= AD_FIRST && (index - AD_FIRST) % (AD_EVERY - 1) === 0) {
+      entries.push({ type: 'ad', ad, slot });
+      slot += 1;
+    }
+    entries.push({ type: 'item', item });
+  });
+  return entries;
 }

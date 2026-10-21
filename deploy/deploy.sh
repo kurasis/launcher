@@ -44,6 +44,7 @@ case "$SERVICE" in
         PORT=8788
         [ "$EXTRA" = --secrets ] && SECRETS='^LAPI_WORLDS_RELAY_TOKEN=[A-Za-z0-9_-]{0,128}$'
         ;;
+    servers) PORT=8789 ;;
     feed)
         PORT=8787
         [ "$EXTRA" = --secrets ] && SECRETS='^LAPI_FEED_(DEEPL_KEY|TWITCH_CLIENT_ID|TWITCH_SECRET)=[^[:cntrl:]]{0,500}$'

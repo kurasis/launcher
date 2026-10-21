@@ -1,17 +1,20 @@
-import { type ReactNode, useCallback, useEffect, useRef, useState } from 'react';
+import { type ReactNode, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Button } from '../../components/Button';
 import { StatusBadge } from '../../components/StatusBadge';
 import type {
+  AppSnapshot,
   Feed,
   FeedItem,
   FeedSettings,
   FeedStream,
   FeedVideo,
   NoteCard,
+  ServerAd,
 } from '../../lib/contracts';
 import { ipc } from '../../lib/ipc';
 import { strings } from '../../lib/strings';
 import {
+  adOrder,
   type FeedFilter,
   filterPart,
   itemKey,
@@ -19,7 +22,9 @@ import {
   shownItems,
   videoWanted,
   wants,
+  withAds,
 } from './list';
+import { ServerAdTile } from './ServerAdTile';
 import { kindLabel } from './parts';
 import { pictureUrl } from './pictureUrl';
 import { relativeTime, shortDate } from './when';
@@ -161,6 +166,9 @@ interface FeedListProps {
   onOpen: (card: NoteCard) => void;
   onPlayVideo: (video: FeedVideo) => void;
   onPlayStream: (stream: FeedStream) => void;
+  /** Server ads showing now (D-069); they go among the tiles of "All". */
+  ads?: ServerAd[];
+  snapshot?: AppSnapshot;
 }
 
 type Loading = 'first' | 'more' | 'idle' | 'failed';
@@ -181,6 +189,8 @@ export function FeedList({
   onOpen,
   onPlayVideo,
   onPlayStream,
+  ads = [],
+  snapshot,
 }: FeedListProps) {
   const [pages, setPages] = useState<FeedItem[]>([]);
   const [next, setNext] = useState<string | null>(null);
@@ -267,6 +277,10 @@ export function FeedList({
   const streamsShown =
     wants(filter, 'streams') && !settings.hidden.includes('streams') ? ownStreams : [];
   const items = shownItems(pages, ownShown, streamsShown, next !== null && !kept, skip);
+  // The order ads take their places in stays while this list is shown.
+  const [seed] = useState(Math.random);
+  const ordered = useMemo(() => adOrder(ads, seed), [ads, seed]);
+  const entries = withAds(items, filter === 'all' && snapshot !== undefined ? ordered : []);
   const empty =
     filter === 'videos' || filter === 'shorts'
       ? t.noVideos
@@ -283,17 +297,25 @@ export function FeedList({
         <p className={styles.muted}>{empty}</p>
       ) : (
         <ul className={styles.list} aria-label={t.filter[filter]}>
-          {items.map((item) => (
-            <li key={itemKey(item)}>
-              {item.type === 'note' ? (
-                <NoteItem card={item.note} onOpen={onOpen} />
-              ) : item.type === 'video' ? (
-                <VideoItem video={item.video} onPlay={onPlayVideo} />
-              ) : (
-                <StreamItem stream={item.stream} onPlay={onPlayStream} />
-              )}
-            </li>
-          ))}
+          {entries.map((entry) =>
+            entry.type === 'ad' ? (
+              snapshot !== undefined && (
+                <li key={`ad:${String(entry.slot)}:${entry.ad.id}`}>
+                  <ServerAdTile ad={entry.ad} snapshot={snapshot} />
+                </li>
+              )
+            ) : (
+              <li key={itemKey(entry.item)}>
+                {entry.item.type === 'note' ? (
+                  <NoteItem card={entry.item.note} onOpen={onOpen} />
+                ) : entry.item.type === 'video' ? (
+                  <VideoItem video={entry.item.video} onPlay={onPlayVideo} />
+                ) : (
+                  <StreamItem stream={entry.item.stream} onPlay={onPlayStream} />
+                )}
+              </li>
+            ),
+          )}
         </ul>
       )}
       <div ref={end} className={styles.listEnd}>

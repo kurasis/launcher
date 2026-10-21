@@ -105,7 +105,27 @@
       "eventWhen": "{starts} – {ends}",
       "announcementsTitle": "Объявления",
       "tipTitle": "Совет дня",
-      "openLink": "Открыть"
+      "openLink": "Открыть",
+      "serverAd": {
+        "label": "Реклама",
+        "online": "{online, number} из {max, number} онлайн",
+        "onlineOnly": "{online, number} онлайн",
+        "down": "Сервер сейчас не отвечает",
+        "copy": "Скопировать адрес {address}",
+        "copied": "Скопировано",
+        "play": "Играть",
+        "installed": "{version} · установлена",
+        "toDownload": "{version} · сначала скачается",
+        "installing": "Установка {version}…",
+        "starting": "Запуск…",
+        "inGame": "В игре",
+        "chooseVersion": "Выбрать версию для {name}",
+        "range": "Сервер пускает с {from} по {to}",
+        "serverVersion": "версия сервера",
+        "installedMark": "установлена",
+        "erid": "Токен рекламы: {erid}",
+        "installFailed": "Не удалось установить {version}. Откройте «Установки», чтобы узнать почему."
+      }
     },
     "bootstrap": {
       "loading": "Загрузка состояния лаунчера…",

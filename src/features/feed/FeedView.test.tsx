@@ -217,6 +217,8 @@ function backend(overrides: Record<string, Handler> = {}, answer?: FeedAnswer) {
       case 'feed_own_videos':
       case 'feed_own_streams':
         return [];
+      case 'feed_server_ads':
+        return { ads: [], stale: false };
       case 'feed_page':
         return pager()(args);
       case 'feed_note': {
@@ -293,6 +295,36 @@ describe('FeedView', () => {
     expect(within(side).getByText('Press F3 for coordinates.')).toBeVisible();
   });
 
+  it('puts a server ad second in All, and not in the other parts', async () => {
+    const ad = {
+      id: '7',
+      name: 'Northern Land',
+      address: 'play.example.net',
+      text: 'Survival with clans.',
+      version: '26.3',
+      versions: ['26.3'],
+      icon: null,
+      up: null,
+      online: null,
+      max: null,
+      endsAt: Math.floor(Date.now() / 1000) + 3600,
+      weight: 10,
+      erid: null,
+    };
+    const calls = backend({ feed_server_ads: () => ({ ads: [ad], stale: false }) });
+    show();
+    const list = await screen.findByRole('list', { name: 'All' });
+    const tile = await within(list).findByRole('article', { name: 'Ad: Northern Land' });
+    expect(tile.closest('li')).toBe(list.children[1]);
+    expect(calls.find((c) => c.cmd === 'feed_server_ads')?.args).toEqual({
+      place: 'feed',
+      refresh: false,
+    });
+    fireEvent.click(screen.getByRole('button', { name: 'Videos' }));
+    await screen.findByRole('list', { name: 'Videos' });
+    expect(screen.queryByRole('article', { name: 'Ad: Northern Land' })).toBeNull();
+  });
+
   it('asks for the next page by itself as the end of the list comes near', async () => {
     const watched: ((entries: { isIntersecting: boolean }[]) => void)[] = [];
     class Watcher {
@@ -309,8 +341,10 @@ describe('FeedView', () => {
       await screen.findByRole('list', { name: 'All' });
       // No button: the list loads more on its own.
       expect(screen.queryByRole('button', { name: 'Show more' })).toBeNull();
-      watched.at(-1)?.([{ isIntersecting: true }]);
+      // The list can start again while the feed settles, leaving an earlier
+      // watcher behind, so the newest one is told until the page comes.
       await waitFor(() => {
+        watched.at(-1)?.([{ isIntersecting: true }]);
         expect(titles('All')).toContain('A new mob');
       });
       expect(calls.filter((c) => c.cmd === 'feed_page').at(-1)?.args).toEqual({

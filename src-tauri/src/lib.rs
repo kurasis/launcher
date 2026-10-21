@@ -475,6 +475,10 @@ fn setup(app: &mut tauri::App) -> Result<(), Box<dyn std::error::Error>> {
     app.manage(Arc::new(
         feed::FeedService::new(&version).map_err(|e| e.message)?,
     ));
+    // Server ads in the feed (D-069): asked only when the feed shows.
+    app.manage(Arc::new(
+        feed::ads::ServerAds::new(&version).map_err(|e| e.message)?,
+    ));
     // The launcher account (D-064): check the saved sign-in once the start settles.
     let launcher_account = Arc::new(launcher_account::LauncherAccount::new(
         &version,
@@ -907,6 +911,7 @@ fn handlers<R: tauri::Runtime>() -> impl Fn(tauri::ipc::Invoke<R>) -> bool + Sen
         commands::skins_upload,
         commands::skins_remove,
         commands::feed_get,
+        commands::feed_server_ads,
         commands::feed_page,
         commands::feed_note,
         commands::feed_play,
