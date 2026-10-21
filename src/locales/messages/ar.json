@@ -2625,7 +2625,7 @@
     "Too many tries. Wait a minute.": "محاولات كثيرة جدًا. انتظر دقيقة.",
     "Waiting for the world stopped.": "توقّف انتظار العالم.",
     "Worlds with friends need a Microsoft account that owns Minecraft. Sign in with it in the launcher once.": "تحتاج العوالم مع الأصدقاء إلى حساب Microsoft يملك Minecraft. سجّل الدخول به في المشغّل مرة واحدة.",
-    "Worlds with mods are available for Minecraft {versions} for now.": "العوالم ذات التعديلات متاحة حاليًا لـ Minecraft {versions}.",
+    "Worlds with {loader} mods are not available for Minecraft {version} yet.": "العوالم ذات تعديلات {loader} غير متاحة بعد لـ Minecraft {version}.",
     "worlds.lapi.sh cannot be reached.": "تعذّر الوصول إلى worlds.lapi.sh.",
     "worlds.lapi.sh is not working right now.": "لا يعمل worlds.lapi.sh الآن.",
     "worlds.lapi.sh refused this.": "رفض worlds.lapi.sh هذا.",

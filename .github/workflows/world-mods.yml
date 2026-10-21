@@ -1,0 +1,139 @@
+name: World servers with mods
+
+# Worlds with mods W12: a loader's server with a mod from the catalog, as the
+# launcher builds a world's mods, for the releases in
+# src-tauri/src/worlds/tested.json. CI runs `on_every_change` (the oldest
+# and newest release of each loader and one of each kind of installer); the
+# nightly run and "Run workflow" run every release of `tested`. A release is
+# offered to players only once it is in `tested`, so it joins only after it
+# passed here. Logs show versions, mod names and timings only.
+
+on:
+  workflow_call:
+    inputs:
+      set:
+        type: string
+        default: on_every_change
+  schedule:
+    - cron: '17 2 * * *'
+  workflow_dispatch:
+    inputs:
+      set:
+        description: tested (every release) or on_every_change
+        type: choice
+        options: [tested, on_every_change]
+        default: tested
+      loader:
+        description: only this loader (fabric, quilt, neoforge, forge), or all when empty
+        type: string
+        default: ''
+
+permissions:
+  contents: read
+
+env:
+  CARGO_TERM_COLOR: always
+  CARGO_INCREMENTAL: 0
+
+jobs:
+  releases:
+    name: Releases to test
+    runs-on: ubuntu-24.04
+    outputs:
+      include: ${{ steps.list.outputs.include }}
+    steps:
+      - uses: actions/checkout@v7
+      - id: list
+        env:
+          SET: ${{ inputs.set || 'tested' }}
+          LOADER: ${{ inputs.loader }}
+        run: |
+          [[ "$SET" =~ ^(tested|on_every_change)$ ]] ||
+            { echo "::error::set is tested or on_every_change"; exit 1; }
+          [[ "$LOADER" =~ ^(|fabric|quilt|neoforge|forge)$ ]] ||
+            { echo "::error::loader is fabric, quilt, neoforge, forge or empty"; exit 1; }
+          include=$(jq -c --arg set "$SET" --arg only "$LOADER" '.[$set]
+            | to_entries
+            | map(select($only == "" or .key == $only) | .key as $loader
+                | .value[] | {loader: $loader, minecraft: .})' \
+            src-tauri/src/worlds/tested.json)
+          echo "include=$include" >> "$GITHUB_OUTPUT"
+          echo "$(jq length <<< "$include") servers"
+
+  build:
+    # One build of the live test for every server below.
+    name: Build the live test
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Install Linux system dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            libwebkit2gtk-4.1-dev libxdo-dev libssl-dev libdbus-1-dev \
+            libayatana-appindicator3-dev librsvg2-dev
+
+      - name: Install pinned Rust toolchain
+        run: |
+          rustup show active-toolchain || rustup toolchain install
+          rustc --version
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: src-tauri
+          shared-key: world-mods
+
+      - name: Build
+        run: |
+          set -o pipefail
+          binary=$(cargo test --manifest-path src-tauri/Cargo.toml --locked --test live_server \
+            --no-run --message-format=json |
+            jq -r 'select(.reason == "compiler-artifact" and .target.name == "live_server"
+              and .executable != null) | .executable')
+          test -x "$binary"
+          mkdir -p dist
+          cp "$binary" dist/live_server
+
+      - uses: actions/upload-artifact@v7
+        with:
+          name: live-server
+          path: dist/live_server
+          retention-days: 1
+
+  server:
+    name: World server ${{ matrix.loader }} ${{ matrix.minecraft }} (linux-x64)
+    needs: [releases, build]
+    runs-on: ubuntu-24.04
+    strategy:
+      fail-fast: false
+      matrix:
+        include: ${{ fromJSON(needs.releases.outputs.include) }}
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Install Linux system dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            libwebkit2gtk-4.1-0 libxdo3 libayatana-appindicator3-1 librsvg2-2
+
+      - uses: actions/download-artifact@v8
+        with:
+          name: live-server
+
+      - name: Install and run the world server with mods
+        env:
+          WORLD_VERSION: ${{ matrix.minecraft }}
+          WORLD_LOADER: ${{ matrix.loader }}
+        run: |
+          chmod +x live_server
+          ./live_server --ignored --exact host_a_world_with_mods --nocapture --test-threads=1
+
+      - name: Update the world's mods and roll them back (A45)
+        # An update tried on a copy, kept and confirmed; a broken one refused
+        # on the copy, and rolled back from the world itself.
+        if: matrix.loader == 'fabric' && matrix.minecraft == '1.21.1'
+        env:
+          WORLD_VERSION: ${{ matrix.minecraft }}
+        run: ./live_server --ignored --exact update_a_world_with_mods --nocapture --test-threads=1

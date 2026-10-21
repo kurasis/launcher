@@ -324,10 +324,24 @@ fn jar_command<R: Read + std::io::Seek>(
         .and_then(Value::as_str)
         .ok_or_else(|| unsupported("server arguments"))?;
     let coordinate = Coordinate::parse(coordinate)?;
+    let jar = read_entry(
+        zip,
+        &format!("maven/{}", coordinate.path()),
+        MAX_ENTRY_BYTES,
+    )?
+    .ok_or_else(|| unsupported("loader server JAR"))?;
+    command_of_jar(&jar, &coordinate, game)
+}
+
+/// The start command of a loader JAR at `coordinate` in the Maven tree: its
+/// manifest's main class and class path, or, for Forge's shim, the bootstrap.
+fn command_of_jar(
+    jar: &[u8],
+    coordinate: &Coordinate,
+    game: &str,
+) -> LauncherResult<ServerArguments> {
     let path = coordinate.path();
-    let jar = read_entry(zip, &format!("maven/{path}"), MAX_ENTRY_BYTES)?
-        .ok_or_else(|| unsupported("loader server JAR"))?;
-    let manifest = jar_manifest(&jar)?;
+    let manifest = jar_manifest(jar)?;
     let mut classpath = Vec::new();
     if coordinate.classifier.as_deref() != Some("shim") {
         classpath.push(format!("{LIBRARIES}/{path}"));
@@ -346,7 +360,7 @@ fn jar_command<R: Read + std::io::Seek>(
         return built_command(&classpath, class_name(main)?, &[]);
     }
     let mut shim =
-        zip::ZipArchive::new(Cursor::new(&jar)).map_err(|_| unsupported("loader server JAR"))?;
+        zip::ZipArchive::new(Cursor::new(jar)).map_err(|_| unsupported("loader server JAR"))?;
     let read = |shim: &mut zip::ZipArchive<_>, name| -> LauncherResult<String> {
         let bytes = read_entry(shim, name, MAX_ARGUMENTS_BYTES)?
             .ok_or_else(|| unsupported("loader server JAR"))?;
@@ -1049,10 +1063,7 @@ impl InstallerContents {
             install_profile.get("install"),
             install_profile.get("versionInfo"),
         ) {
-            if side == InstallSide::Server {
-                return Err(old_installer(kind));
-            }
-            return Self::legacy(&mut zip, install.clone(), info.clone());
+            return Self::legacy(&mut zip, install.clone(), info.clone(), side);
         }
         let spec = install_profile.get("spec").and_then(Value::as_u64);
         let json_name = install_profile.get("json").and_then(Value::as_str);
@@ -1199,12 +1210,15 @@ impl InstallerContents {
     /// starts). The profile's libraries are rewritten to the current format: the
     /// universal jar comes from the installer, a library without a repository from
     /// Mojang's, and a declared checksum pins the jar (the first is the jar's own; two
-    /// of Forge's old Scala jars have no `.sha1` file). Server-only libraries are left
-    /// out.
+    /// of Forge's old Scala jars have no `.sha1` file). The client leaves out the
+    /// server's own libraries; the server takes only those marked `serverreq`
+    /// (Mojang's server JAR holds the rest) and starts from the universal jar's
+    /// manifest (1.7.10, 1.8.9).
     fn legacy<R: Read + std::io::Seek>(
         zip: &mut zip::ZipArchive<R>,
         mut install: Value,
         mut version_profile: Value,
+        side: InstallSide,
     ) -> LauncherResult<Self> {
         let forge = install
             .get("path")
@@ -1220,8 +1234,19 @@ impl InstallerContents {
         validate_relative_path(&entry)?;
         let bytes = read_entry(zip, &entry, MAX_ENTRY_BYTES)?
             .ok_or_else(|| unsupported("installer entry"))?;
+        let coordinate = Coordinate::parse(&forge)?;
+        let server_arguments = match side {
+            InstallSide::Client => None,
+            InstallSide::Server => {
+                let game = install
+                    .get("minecraft")
+                    .and_then(Value::as_str)
+                    .ok_or_else(|| unsupported("installer game version"))?;
+                Some(command_of_jar(&bytes, &coordinate, game)?)
+            }
+        };
         let universal = EmbeddedFile {
-            path: Coordinate::parse(&forge)?.path(),
+            path: coordinate.path(),
             sha1: Sha1::parse(&sha1_hex(&bytes))?,
             size: bytes.len() as u64,
             entry: Some(entry),
@@ -1237,7 +1262,15 @@ impl InstallerContents {
                 .get("name")
                 .and_then(Value::as_str)
                 .ok_or_else(|| unsupported("loader library name"))?;
-            if library.get("clientreq").and_then(Value::as_bool) == Some(false) {
+            let wanted = match side {
+                InstallSide::Client => {
+                    library.get("clientreq").and_then(Value::as_bool) != Some(false)
+                }
+                InstallSide::Server => {
+                    name == forge || library.get("serverreq").and_then(Value::as_bool) == Some(true)
+                }
+            };
+            if !wanted {
                 continue;
             }
             let path = Coordinate::parse(name)?.path();
@@ -1273,7 +1306,7 @@ impl InstallerContents {
             data: BTreeMap::new(),
             processors: Vec::new(),
             embedded: vec![universal],
-            server_arguments: None,
+            server_arguments,
         })
     }
 }
@@ -1314,6 +1347,10 @@ mod tests {
     }
 
     fn legacy_installer(file_path: &str) -> Vec<u8> {
+        legacy_installer_with(file_path, b"universal")
+    }
+
+    fn legacy_installer_with(file_path: &str, universal: &[u8]) -> Vec<u8> {
         use std::io::Write as _;
         let profile = serde_json::json!({
             "install": {
@@ -1348,8 +1385,73 @@ mod tests {
         zip.write_all(profile.to_string().as_bytes()).unwrap();
         zip.start_file("forge-1.8.9-11.15.1.2318-1.8.9-universal.jar", options)
             .unwrap();
-        zip.write_all(b"universal").unwrap();
+        zip.write_all(universal).unwrap();
         zip.finish().unwrap().into_inner()
+    }
+
+    #[test]
+    fn an_old_forge_server_takes_its_libraries_and_starts_from_the_universal_jar() {
+        let manifest = "Manifest-Version: 1.0\r\nTweakClass: net.minecraftforge.fml.common.launcher.FMLTweaker\r\nClass-Path: libraries/net/minecraft/launchwrapper/1.12/launchwrapper-1\r\n .12.jar libraries/jline/jline/2.13/jline-2.13.jar minecraft_server.1.8.9.jar\r\nMain-Class: net.minecraftforge.fml.relauncher.ServerLaunchWrapper\r\n";
+        let universal = jar_of(&[("META-INF/MANIFEST.MF", manifest)]);
+        let bytes =
+            legacy_installer_with("forge-1.8.9-11.15.1.2318-1.8.9-universal.jar", &universal);
+        let contents =
+            InstallerContents::read_side(&bytes, LoaderKind::Forge, InstallSide::Server).unwrap();
+        let names: Vec<&str> = contents.version_profile["libraries"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|l| l["name"].as_str().unwrap())
+            .collect();
+        // Forge itself and the libraries marked for the server: jline, which
+        // the client leaves out, is in.
+        assert_eq!(
+            names,
+            [
+                "net.minecraftforge:forge:1.8.9-11.15.1.2318-1.8.9",
+                "net.minecraft:launchwrapper:1.12",
+                "jline:jline:2.13",
+                "org.scala-lang:scala-xml_2.11:1.0.2",
+            ]
+        );
+        assert_eq!(contents.embedded.len(), 1);
+        let arguments = contents.server_arguments.unwrap();
+        assert_eq!(
+            arguments.unix,
+            [
+                "-cp",
+                "libraries/net/minecraftforge/forge/1.8.9-11.15.1.2318-1.8.9/forge-1.8.9-11.15.1.2318-1.8.9.jar:libraries/net/minecraft/launchwrapper/1.12/launchwrapper-1.12.jar:libraries/jline/jline/2.13/jline-2.13.jar:{MINECRAFT_JAR}",
+                "net.minecraftforge.fml.relauncher.ServerLaunchWrapper",
+            ]
+        );
+        // The client reads the same installer as before, with no command.
+        assert!(
+            InstallerContents::read(&bytes, LoaderKind::Forge)
+                .unwrap()
+                .server_arguments
+                .is_none()
+        );
+
+        // A universal jar that is no jar, or names files outside `libraries/`
+        // or another game's server JAR, refuses the server.
+        for bad in [
+            b"universal".to_vec(),
+            jar_of(&[(
+                "META-INF/MANIFEST.MF",
+                "Class-Path: ../evil.jar\nMain-Class: a.Main\n",
+            )]),
+            jar_of(&[(
+                "META-INF/MANIFEST.MF",
+                "Class-Path: minecraft_server.1.7.10.jar\nMain-Class: a.Main\n",
+            )]),
+            jar_of(&[("META-INF/MANIFEST.MF", "Class-Path: libraries/a.jar\n")]),
+        ] {
+            let bytes = legacy_installer_with("forge-1.8.9-11.15.1.2318-1.8.9-universal.jar", &bad);
+            assert!(
+                InstallerContents::read_side(&bytes, LoaderKind::Forge, InstallSide::Server)
+                    .is_err()
+            );
+        }
     }
 
     #[test]

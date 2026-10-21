@@ -171,64 +171,12 @@ jobs:
           -- --ignored --exact host_a_world --nocapture --test-threads=1
 
   world-server-mods:
-    # Worlds with mods W12: a loader's server with Fabric API and Sodium from
-    # the catalog (Quilt runs the same Fabric mods; NeoForge JEI and Sodium;
-    # Forge JEI, none for 26.3 yet), as the launcher builds a world's mods. A loader and release
-    # are offered to players only once they pass here (worlds/pack.rs TESTED).
-    name: World server ${{ matrix.loader }} ${{ matrix.minecraft }} (linux-x64)
-    runs-on: ubuntu-24.04
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          - { loader: 'fabric', minecraft: '1.20.1' }
-          - { loader: 'fabric', minecraft: '1.21.1' }
-          - { loader: 'fabric', minecraft: '26.3' }
-          - { loader: 'quilt', minecraft: '1.20.1' }
-          - { loader: 'quilt', minecraft: '1.21.1' }
-          - { loader: 'quilt', minecraft: '26.3' }
-          - { loader: 'neoforge', minecraft: '1.21.1' }
-          - { loader: 'neoforge', minecraft: '26.3' }
-          - { loader: 'forge', minecraft: '1.12.2' }
-          - { loader: 'forge', minecraft: '1.16.5' }
-          - { loader: 'forge', minecraft: '1.20.1' }
-          - { loader: 'forge', minecraft: '26.3' }
-    steps:
-      - uses: actions/checkout@v7
-
-      - name: Install Linux system dependencies
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y --no-install-recommends \
-            libwebkit2gtk-4.1-dev libxdo-dev libssl-dev libdbus-1-dev \
-            libayatana-appindicator3-dev librsvg2-dev
-
-      - name: Install pinned Rust toolchain
-        run: |
-          rustup show active-toolchain || rustup toolchain install
-          rustc --version
-
-      - uses: Swatinem/rust-cache@v2
-        with:
-          workspaces: src-tauri
-
-      - name: Install and run the world server with mods
-        env:
-          WORLD_VERSION: ${{ matrix.minecraft }}
-          WORLD_LOADER: ${{ matrix.loader }}
-        run: >-
-          cargo test --manifest-path src-tauri/Cargo.toml --locked --test live_server
-          -- --ignored --exact host_a_world_with_mods --nocapture --test-threads=1
-
-      - name: Update the world's mods and roll them back (A45)
-        # An update tried on a copy, kept and confirmed; a broken one refused
-        # on the copy, and rolled back from the world itself.
-        if: matrix.loader == 'fabric' && matrix.minecraft == '1.21.1'
-        env:
-          WORLD_VERSION: ${{ matrix.minecraft }}
-        run: >-
-          cargo test --manifest-path src-tauri/Cargo.toml --locked --test live_server
-          -- --ignored --exact update_a_world_with_mods --nocapture --test-threads=1
+    # Worlds with mods W12: the releases of src-tauri/src/worlds/tested.json
+    # that every change tries (world-mods.yml; the nightly run tries all).
+    name: World servers with mods
+    uses: ./.github/workflows/world-mods.yml
+    with:
+      set: on_every_change
 
   world-servers:
     # One result for every version above, under the check's earlier name.

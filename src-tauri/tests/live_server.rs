@@ -438,6 +438,53 @@ async fn host_a_world() {
     println!("force stop recorded as unclean");
 }
 
+/// Whether a catalog slug names the project `slug`: itself, or the name the
+/// catalog gives a twin from another site when the slug is taken
+/// (`fabric-api-modrinth-20953b`).
+fn names_project(found: &str, slug: &str) -> bool {
+    found == slug
+        || found
+            .strip_prefix(slug)
+            .and_then(|rest| rest.strip_prefix('-'))
+            .and_then(|rest| rest.split_once('-'))
+            .is_some_and(|(site, id)| {
+                site.bytes().all(|b| b.is_ascii_lowercase())
+                    && id.len() == 6
+                    && id.bytes().all(|b| b.is_ascii_hexdigit())
+            })
+}
+
+/// The newest release of a catalog project for the version and the loader,
+/// from whichever of its sites has one.
+async fn catalog_release(
+    catalog: &launcher_lib::mods::Client,
+    slug: &str,
+    minecraft: &str,
+    loader: &str,
+) -> Option<launcher_lib::mods::Version> {
+    use launcher_lib::mods::{Catalog as _, SearchQuery};
+    let page = catalog
+        .search(&SearchQuery {
+            text: slug.replace('-', " "),
+            kind: Some("mod".to_owned()),
+            ..SearchQuery::default()
+        })
+        .await
+        .unwrap();
+    for project in page.hits.iter().filter(|h| names_project(&h.slug, slug)) {
+        let release = catalog
+            .versions(&project.id, Some(minecraft), Some(loader))
+            .await
+            .unwrap()
+            .into_iter()
+            .find(|v| v.channel == "release");
+        if release.is_some() {
+            return release;
+        }
+    }
+    None
+}
+
 /// The newest catalog file of a project, for the version and the loader,
 /// downloaded through the launcher's verified path into `mods/`.
 async fn catalog_mod(
@@ -448,36 +495,33 @@ async fn catalog_mod(
     minecraft: &str,
     loader: &str,
 ) -> String {
-    use launcher_lib::mods::{Catalog as _, SearchQuery};
-    let page = catalog
-        .search(&SearchQuery {
-            text: slug.replace('-', " "),
-            kind: Some("mod".to_owned()),
-            ..SearchQuery::default()
-        })
+    let newest = catalog_release(catalog, slug, minecraft, loader)
         .await
-        .unwrap();
-    let project = page
-        .hits
-        .into_iter()
-        .find(|h| h.slug == slug)
-        .unwrap_or_else(|| panic!("{slug} is in the catalog"));
-    let newest = catalog
-        .versions(&project.id, Some(minecraft), Some(loader))
-        .await
-        .unwrap()
-        .into_iter()
-        .find(|v| v.channel == "release")
         .unwrap_or_else(|| panic!("{slug} has a release for this version"));
-    // Files the catalog does not keep yet are fetched on the first ask.
+    keep_mod(catalog, executor, instance, slug, &newest).await
+}
+
+/// A catalog version's file, downloaded into the installation's `mods/` as
+/// `<slug>.jar`.
+async fn keep_mod(
+    catalog: &launcher_lib::mods::Client,
+    executor: &Executor,
+    instance: &str,
+    slug: &str,
+    newest: &launcher_lib::mods::Version,
+) -> String {
+    use launcher_lib::mods::Catalog as _;
+    // Files the catalog does not keep yet are fetched on the first ask, and
+    // scanned: a few minutes when many are asked at once.
     let mut file = None;
-    for _ in 0..30 {
+    for _ in 0..150 {
         catalog.fetch(&newest.id).await.unwrap();
         let version = catalog.version(&newest.id).await.unwrap();
+        // The file an installation takes, once the catalog keeps it.
         file = version
-            .files
-            .into_iter()
-            .find(|f| f.primary && f.sha256.is_some() && f.url.is_some() && !f.held);
+            .main_file()
+            .filter(|f| f.sha256.is_some() && f.url.is_some() && !f.held)
+            .cloned();
         if file.is_some() {
             break;
         }
@@ -522,29 +566,24 @@ async fn host_a_world_with_mods() {
         root.clone(),
     ));
     let minecraft = world_version(&metadata).await;
-    // Quilt runs Fabric mods: the same Fabric API and Sodium serve both. On
-    // NeoForge, JEI runs on both sides and Sodium on the client only; the
-    // catalog has JEI for Forge up to 1.20.1 and nothing for Forge 26.3, so
-    // that test starts Forge with no mod.
-    let (kind, catalog_loader, wanted): (_, _, &[(&str, Side)]) =
+    // Quilt runs Fabric mods: Fabric API serves both. On Forge and NeoForge the
+    // first of these mods with a release for the version proves the loader
+    // loads mods (by its mod id); Sodium, where it has one, stays on the
+    // client.
+    const FORGE_PROOFS: &[(&str, &str)] = &[
+        ("jei", "jei"),
+        ("appleskin", "appleskin"),
+        ("clumps", "clumps"),
+        ("ferrite-core", "ferritecore"),
+        ("spark", "spark"),
+        ("bookshelf-lib", "bookshelf"),
+    ];
+    let (kind, catalog_loader, proofs): (_, _, &[(&str, &str)]) =
         match std::env::var("WORLD_LOADER").as_deref().unwrap_or("fabric") {
-            "fabric" => (
-                LoaderKind::Fabric,
-                "fabric",
-                &[("fabric-api", Side::Both), ("sodium", Side::Client)],
-            ),
-            "quilt" => (
-                LoaderKind::Quilt,
-                "fabric",
-                &[("fabric-api", Side::Both), ("sodium", Side::Client)],
-            ),
-            "neoforge" => (
-                LoaderKind::NeoForge,
-                "neoforge",
-                &[("jei", Side::Both), ("sodium", Side::Client)],
-            ),
-            "forge" if minecraft == "26.3" => (LoaderKind::Forge, "forge", &[]),
-            "forge" => (LoaderKind::Forge, "forge", &[("jei", Side::Both)]),
+            "fabric" => (LoaderKind::Fabric, "fabric", &[("fabric-api", "fabric")]),
+            "quilt" => (LoaderKind::Quilt, "fabric", &[("fabric-api", "fabric")]),
+            "neoforge" => (LoaderKind::NeoForge, "neoforge", FORGE_PROOFS),
+            "forge" => (LoaderKind::Forge, "forge", FORGE_PROOFS),
             other => panic!("WORLD_LOADER {other} has no live test yet"),
         };
     println!("minecraft {minecraft}, {}", kind.name());
@@ -567,19 +606,41 @@ async fn host_a_world_with_mods() {
     let executor = Executor::new(transport.clone(), root.clone(), ExecutorConfig::default());
     let catalog = launcher_lib::mods::Client::new(VERSION).unwrap();
     let instance = launcher_lib::storage::paths::InstanceId::generate();
-    let mut installed = Vec::new();
-    for (slug, side) in wanted {
-        let name = catalog_mod(
+    let mut proof = None;
+    for (slug, id) in proofs {
+        if let Some(release) = catalog_release(&catalog, slug, &minecraft, catalog_loader).await {
+            proof = Some((*slug, *id, release));
+            break;
+        }
+    }
+    let (proof_slug, proof_id, release) = proof.unwrap_or_else(|| {
+        panic!("the catalog has none of {proofs:?} for {catalog_loader} {minecraft}")
+    });
+    let mut installed = vec![(
+        keep_mod(
             &catalog,
             &executor,
             &instance.to_string(),
-            slug,
-            &minecraft,
-            catalog_loader,
+            proof_slug,
+            &release,
         )
-        .await;
-        installed.push((name, *side));
+        .await,
+        Side::Both,
+    )];
+    if let Some(release) = catalog_release(&catalog, "sodium", &minecraft, catalog_loader).await {
+        installed.push((
+            keep_mod(
+                &catalog,
+                &executor,
+                &instance.to_string(),
+                "sodium",
+                &release,
+            )
+            .await,
+            Side::Client,
+        ));
     }
+    println!("mods {installed:?}");
     let game = root.game_dir(instance);
     std::fs::create_dir_all(game.join("config")).unwrap();
     std::fs::write(game.join("config/live-test.json"), b"{\"kept\":true}").unwrap();
@@ -605,8 +666,13 @@ async fn host_a_world_with_mods() {
             .unwrap()
             .side
     };
+    // The proof runs on the server (on both sides, or the server's alone by
+    // the catalog's word); Sodium on the client only.
     for (name, expected) in &installed {
-        assert_eq!(side(name), *expected, "{name}");
+        match expected {
+            Side::Client => assert_eq!(side(name), Side::Client, "{name}"),
+            _ => assert!(side(name).on_server(), "{name}"),
+        }
     }
     assert!(
         generation.files.iter().all(|f| f.path != "options.txt"),
@@ -673,7 +739,7 @@ async fn host_a_world_with_mods() {
     mods.sort();
     let server_mods: Vec<&String> = installed
         .iter()
-        .filter(|(_, side)| *side == Side::Both)
+        .filter(|(_, side)| side.on_server())
         .map(|(name, _)| name)
         .collect();
     assert_eq!(
@@ -681,19 +747,17 @@ async fn host_a_world_with_mods() {
         server_mods,
         "only the server's mods"
     );
-    // Fabric Loader unpacks the modules nested in the mods it loads.
+    // Fabric Loader unpacks the modules nested in the mods it loads (Fabric
+    // API of 1.14 and 1.15 nests none).
     if kind == LoaderKind::Fabric {
         let processed: Vec<String> = std::fs::read_dir(server_dir.join(".fabric/processedMods"))
-            .unwrap()
+            .into_iter()
+            .flatten()
             .filter_map(Result::ok)
             .map(|e| e.file_name().to_string_lossy().to_lowercase())
             .collect();
-        assert!(
-            processed.iter().any(|n| n.starts_with("fabric-api-base")),
-            "Fabric API loaded"
-        );
         assert!(!processed.iter().any(|n| n.contains("sodium")));
-        println!("fabric api loaded, {} modules", processed.len());
+        println!("{} nested modules unpacked", processed.len());
     }
     assert_eq!(
         std::fs::read(server_dir.join("config/live-test.json")).unwrap(),
@@ -712,22 +776,15 @@ async fn host_a_world_with_mods() {
     );
     println!("member in, stranger refused");
 
-    if kind == LoaderKind::Forge {
-        // Checked after the stop: Forge records its mods in the save.
-    } else if kind == LoaderKind::NeoForge {
-        // JEI makes its server settings folder when NeoForge loads it.
-        assert!(server_dir.join("config/jei").is_dir(), "JEI loaded");
-        assert!(!server_dir.join("config/sodium-options.json").exists());
-        println!("jei loaded");
-    } else {
+    if matches!(kind, LoaderKind::Fabric | LoaderKind::Quilt) {
         // Fabric API brings data, which the loader lists as a mod's data
         // pack; without a mod with data only `vanilla` shows.
         let packs = data_packs(&server_dir);
-        assert!(packs.contains("(Fabric mod)"), "Fabric API loaded");
+        println!("data packs: {packs}");
+        assert!(packs.contains("fabric"), "Fabric API loaded");
         assert!(!packs.contains("sodium"));
         println!("fabric api data loaded");
     }
-
     let clean = tokio::task::block_in_place(|| server.stop(STOP_GRACE));
     assert!(clean);
     assert!(!activity.is_busy());
@@ -735,9 +792,9 @@ async fn host_a_world_with_mods() {
         server_dir.join("world").join("level.dat").is_file(),
         "the world was saved"
     );
-    if kind == LoaderKind::Forge {
-        // Forge records the mods it loaded in the save's `level.dat`, from
-        // 1.12.2's FML to now.
+    if matches!(kind, LoaderKind::Forge | LoaderKind::NeoForge) {
+        // FML records the mods it loaded in the save's `level.dat`, from
+        // 1.7.10's Forge to now, and NeoForge's.
         use std::io::Read as _;
         let mut level = Vec::new();
         flate2::read::GzDecoder::new(
@@ -745,12 +802,14 @@ async fn host_a_world_with_mods() {
         )
         .read_to_end(&mut level)
         .unwrap();
+        // Ids by any case: 1.7.10 and 1.8.9 write `Forge` and `FML`.
+        level.make_ascii_lowercase();
         let recorded = |id: &str| level.windows(id.len()).any(|w| w == id.as_bytes());
-        assert!(recorded("forge"), "Forge loaded");
-        for (slug, _) in wanted.iter().filter(|(_, side)| *side == Side::Both) {
-            assert!(recorded(slug), "{slug} loaded");
-        }
-        println!("forge loaded {} mods", wanted.len());
+        // `neoforge`, or `forge` for NeoForge 1.20.1, which kept Forge's id.
+        assert!(recorded("forge"), "the loader recorded");
+        assert!(recorded(proof_id), "{proof_id} loaded");
+        assert!(!recorded("sodium"));
+        println!("{} loaded {proof_id}", kind.name());
     }
     // No chat or nicks in files: a loader that writes its own logs writes
     // nothing into them.

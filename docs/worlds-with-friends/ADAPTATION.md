@@ -302,3 +302,15 @@ Other loaders follow in W12.
   shim's tuning options. Every file a command names is checked before each start. Offered for
   1.12.2, 1.16.5, 1.20.1 and 26.3; the catalog has no mod for Forge 26.3 yet, so its test starts
   Forge alone. OptiFine has no server.
+- 2026-10-21 — W12 coverage (owner asked for the widest coverage of mods): worlds with mods
+  for every release where the loader has a stable build. Fabric from 1.14, Quilt from 1.14.4,
+  NeoForge from 1.20.1 and Forge for 1.7.10, 1.8.9, 1.12.2 and its recommended releases from
+  1.14.4 (Forge calls every other build a beta), all up to 26.3. The list is
+  `src-tauri/src/worlds/tested.json`: every change runs its `on_every_change` releases (the oldest
+  and newest of each loader and one of each kind of installer), the nightly run and a manual run
+  all of `tested`, and a release joins `tested` only after it passed. For each release the live
+  test takes the first catalog mod with a release for it (Fabric API on Fabric and Quilt; JEI,
+  AppleSkin, Clumps, FerriteCore, spark or Bookshelf on Forge and NeoForge) and proves it loaded:
+  Fabric API's data in `datapack list`, the mod's id in the save's `level.dat` (FML and NeoForge
+  record it). Forge 1.7.10 and 1.8.9 servers come from the old installer format: Forge and the
+  libraries it marks for the server, its universal jar, started from that jar's manifest.
