@@ -273,14 +273,15 @@ impl Target {
         }
     }
 
-    /// The loaders whose mods run here; Quilt also runs Fabric's.
+    /// The loaders whose mods run here; Quilt also runs Fabric's. OptiFine on
+    /// its own runs none.
     pub fn mod_loaders(&self) -> &'static [&'static str] {
         match self.loader {
             Some(LoaderKind::Fabric) => &["fabric"],
             Some(LoaderKind::Quilt) => &["quilt", "fabric"],
             Some(LoaderKind::Forge) => &["forge"],
             Some(LoaderKind::NeoForge) => &["neoforge"],
-            None => &[],
+            Some(LoaderKind::OptiFine) | None => &[],
         }
     }
 }

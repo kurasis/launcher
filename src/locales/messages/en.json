@@ -383,14 +383,16 @@
         "fabric": "Fabric",
         "quilt": "Quilt",
         "forge": "Forge",
-        "neoforge": "NeoForge"
+        "neoforge": "NeoForge",
+        "optifine": "OptiFine"
       },
       "hints": {
         "none": "The unmodified game.",
         "fabric": "A lightweight loader for Fabric mods.",
         "quilt": "A loader for Quilt mods that also runs most Fabric mods.",
         "forge": "The long-standing loader for Forge mods. Installing runs the Forge installer, which builds the modded game with the installation's Java.",
-        "neoforge": "The successor of Forge for NeoForge mods. Installing runs its installer, which builds the modded game with the installation's Java."
+        "neoforge": "The successor of Forge for NeoForge mods. Installing runs its installer, which builds the modded game with the installation's Java.",
+        "optifine": "Faster graphics and shader support, without other mods. The launcher takes it from its mods catalog and builds the patched game with the installation's Java."
       },
       "gamesHint": "Only Minecraft versions that {loader} supports are listed.",
       "version": "{loader} version",
@@ -1300,6 +1302,7 @@
           "noFile": "This version has no file.",
           "noLoader": "“{name}” has no mod loader. Mods go into an installation with Fabric, Quilt, Forge or NeoForge.",
           "noLoaders": "This version works with no mod loader, so it cannot be added to an installation.",
+          "optifineOnly": "“{name}” runs OptiFine on its own, which takes no mods. Mods go into an installation with Fabric, Quilt, Forge or NeoForge.",
           "wrongLoader": "This version is for {loaders}, and “{name}” runs {loader}.",
           "wrongGame": "This version is for Minecraft {games}, and “{name}” is on {game}."
         },
@@ -2159,6 +2162,7 @@
     "Notes cannot contain control characters.": "Notes cannot contain control characters.",
     "Opening the game folder": "Opening the game folder",
     "Opening the world for the game": "Opening the world for the game",
+    "OptiFine builds are not available here.": "OptiFine builds are not available here.",
     "Paste the address of a project on Modrinth or CurseForge, or type its name.": "Paste the address of a project on Modrinth or CurseForge, or type its name.",
     "Preparing assets stopped unexpectedly.": "Preparing assets stopped unexpectedly.",
     "Preparing native libraries stopped unexpectedly.": "Preparing native libraries stopped unexpectedly.",
@@ -2290,6 +2294,7 @@
     "The mod loader's published files changed since this installation was made. Create a new installation for this loader version.": "The mod loader's published files changed since this installation was made. Create a new installation for this loader version.",
     "The modpack could not be read.": "The modpack could not be read.",
     "The modpack could not be written.": "The modpack could not be written.",
+    "The mods catalog client could not be created.": "The mods catalog client could not be created.",
     "The monthly limit can be at most {max} MiB.": "The monthly limit can be at most {max} MiB.",
     "The new folder cannot be inside the current data folder, or contain it.": "The new folder cannot be inside the current data folder, or contain it.",
     "The operating system did not provide a per-user application data directory.": "The operating system did not provide a per-user application data directory.",

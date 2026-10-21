@@ -1,4 +1,4 @@
-//! The installer step of Forge and NeoForge (D-039).
+//! The installer step of Forge, NeoForge and OptiFine (D-039).
 //!
 //! A Forge-style installer does more than download: it unpacks files it carries
 //! and runs "processors", Java tools that remap and binary-patch the game into
@@ -133,14 +133,21 @@ pub fn prepare(inputs: &Inputs<'_>) -> LauncherResult<Vec<LockedArtifact>> {
     generated(inputs, installer)
 }
 
-/// Unpacks the installer's `maven/` files that are missing or damaged.
+/// Unpacks the installer's files that are missing or damaged.
 fn unpack(inputs: &Inputs<'_>, installer: &Installer, bytes: &[u8]) -> LauncherResult<()> {
     for file in &installer.embedded {
         let destination = resolve_managed_path(inputs.root, &maven_path(&file.path))?;
         if sha1_file(&destination).is_ok_and(|(sha1, _)| sha1 == file.sha1.as_str()) {
             continue;
         }
-        let content = installer_entry(bytes, &format!("maven/{}", file.path))?;
+        let entry = match &file.entry {
+            Some(entry) => {
+                validate_relative_path(entry)?;
+                entry.clone()
+            }
+            None => format!("maven/{}", file.path),
+        };
+        let content = installer_entry(bytes, &entry)?;
         if hex::encode(sha1::Sha1::digest(&content)) != file.sha1.as_str() {
             return Err(unsupported("installer entry hash"));
         }
@@ -294,7 +301,11 @@ fn run_processors(
             for entry in &processor.classpath {
                 classpath.push(path_text(&maven_file(root, entry)?)?);
             }
-            let main = main_class(&jar)?;
+            let main = match &processor.main_class {
+                Some(main) if crate::install::descriptor::valid_main_class(main) => main.clone(),
+                Some(_) => return Err(unsupported("installer tool main class")),
+                None => main_class(&jar)?,
+            };
             (inputs.log)(format!(
                 "{} installer step {step}/{total}: {}",
                 inputs.manifest.kind.name(),

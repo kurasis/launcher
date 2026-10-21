@@ -864,6 +864,25 @@ message` plus a stack trace), with the event's level.
   allowlist names its host.
 - **Not included:** installing or updating mods, modpacks, changing the loader of an
   existing installation, Forge before 1.12.2 build 14.23.5.2851, LiteLoader, Rift.
+- **OptiFine on its own** (owner request, 2026-10-21): a fifth choice, **OptiFine**,
+  without Forge (`loader::optifine`). Builds come from the mods catalog (D-066, project
+  `optifine`), not from optifine.net: only versions the catalog serves (kept, not held
+  back) for exactly one game version are listed, previews marked beta, the newest
+  release recommended. The id is the file name without `OptiFine_` and `preview_`
+  (`1.21.1_HD_U_J1`). Resolving downloads the jar from `files-mods`/`cdn-mods`
+  (`ModsCatalog`, our server as R2's reserve), checks the catalog's SHA-256 and keeps it
+  as `optifine:OptiFine:<id>:installer`. The jar is its own installer, and the launcher
+  does what that installer does for a vanilla game: `optifine.Patcher` (named in the
+  manifest, since the jar's `Main-Class` is the installer window) builds
+  `optifine:OptiFine:<id>` from the client jar with the installation's Java;
+  `launchwrapper-of-<v>.jar` at the jar's root (`<v>` from `launchwrapper-of.txt`) is
+  unpacked as `optifine:launchwrapper-of:<v>`; the game starts as
+  `net.minecraft.launchwrapper.Launch` with `--tweakClass optifine.OptiFineTweaker`
+  after the game's arguments. The patcher's output differs from run to run, so it has
+  no hash in advance; its hash is recorded once it is built, like Forge's. Builds
+  without `launchwrapper-of` (1.7.10) are refused as an older installer format.
+  OptiFine takes no mods (the Mods tab says so; shaders and resource packs go in), no
+  skins mod, and no worlds yet.
 
 ## D-040 — "No token" names in code; Microsoft setup panel removed from About
 
@@ -2450,7 +2469,7 @@ archive from the Package workflow, upload it to
   a version per row under its `<h2>Minecraft …</h2>` (a file naming another game version
   is left out; `1.8.0` is the catalog's `1.8`). Rows that name a Forge build are mods for
   Forge (`forge`), the build written in the version's changes; previews are `beta`; rows
-  without Forge carry no loader (installing OptiFine on its own comes later). As on
+  without Forge carry no loader (OptiFine on its own is a loader of its own, D-039). As on
   Modrinth, the newest for each game version and loader is kept at once, the rest on
   request; the changelog is read once, for new versions only. A file comes through the
   page its link leads to (`adloadx?f=<file>`), whose link must be

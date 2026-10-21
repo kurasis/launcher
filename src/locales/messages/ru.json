@@ -383,14 +383,16 @@
         "fabric": "Fabric",
         "quilt": "Quilt",
         "forge": "Forge",
-        "neoforge": "NeoForge"
+        "neoforge": "NeoForge",
+        "optifine": "OptiFine"
       },
       "hints": {
         "none": "Игра без изменений.",
         "fabric": "Лёгкий загрузчик для модов Fabric.",
         "quilt": "Загрузчик для модов Quilt; запускает и большинство модов Fabric.",
         "forge": "Давний загрузчик для модов Forge. При установке запускается установщик Forge: он собирает модифицированную игру с помощью Java этой установки.",
-        "neoforge": "Преемник Forge для модов NeoForge. При установке запускается его установщик: он собирает модифицированную игру с помощью Java этой установки."
+        "neoforge": "Преемник Forge для модов NeoForge. При установке запускается его установщик: он собирает модифицированную игру с помощью Java этой установки.",
+        "optifine": "Быстрее графика и поддержка шейдеров, без других модов. Лаунчер берёт его из своего каталога модов и собирает изменённую игру с помощью Java этой установки."
       },
       "gamesHint": "Показаны только версии Minecraft, которые поддерживает {loader}.",
       "version": "Версия {loader}",
@@ -1300,6 +1302,7 @@
           "noFile": "У этой версии нет файла.",
           "noLoader": "В «{name}» нет загрузчика модов. Моды ставятся в установку с Fabric, Quilt, Forge или NeoForge.",
           "noLoaders": "Эта версия не работает ни с одним загрузчиком модов, поэтому её нельзя добавить в установку.",
+          "optifineOnly": "«{name}» запускает OptiFine отдельно, а он не принимает моды. Моды ставятся в установку с Fabric, Quilt, Forge или NeoForge.",
           "wrongLoader": "Эта версия для {loaders}, а в «{name}» стоит {loader}.",
           "wrongGame": "Эта версия для Minecraft {games}, а «{name}» на {game}."
         },
@@ -2028,6 +2031,8 @@
     }
   },
   "errors": {
+    "OptiFine builds are not available here.": "Сборки OptiFine здесь недоступны.",
+    "The mods catalog client could not be created.": "Не удалось создать клиент каталога модов.",
     "A demo player name has 3 to 16 letters, digits or underscores.": "Имя игрока в демо — от 3 до 16 латинских букв, цифр или подчёркиваний.",
     "A download location is invalid.": "Неверный адрес загрузки.",
     "A download source could not be reached. Check the internet connection and try again.": "Источник загрузки недоступен. Проверьте подключение к интернету и попробуйте снова.",

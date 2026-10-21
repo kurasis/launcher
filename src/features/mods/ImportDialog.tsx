@@ -13,7 +13,7 @@ import type {
 import { formatBytes } from '../../lib/format';
 import { describeIpcError, ipc, onModsProgress } from '../../lib/ipc';
 import { strings } from '../../lib/strings';
-import { LOADER_KINDS } from '../instances/loaderLabel';
+import { MOD_LOADER_KINDS } from '../instances/loaderLabel';
 import { Dialog } from './Dialog';
 import styles from './Mods.module.css';
 
@@ -222,7 +222,7 @@ export function ImportDialog({
                 }}
               >
                 <option value="none">{t.noLoader}</option>
-                {LOADER_KINDS.map((kind) => (
+                {MOD_LOADER_KINDS.map((kind) => (
                   <option key={kind} value={kind}>
                     {strings.loaders.names[kind]}
                   </option>

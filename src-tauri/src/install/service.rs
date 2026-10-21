@@ -94,6 +94,8 @@ pub struct LiveSource {
     /// Mod loader hosts and Mojang's artifact hosts, for loader profiles (D-039).
     loaders: PublicClient,
     artifacts: PublicClient,
+    /// OptiFine's builds, kept by the mods catalog.
+    optifine: crate::loader::optifine::CatalogReleases,
 }
 
 impl LiveSource {
@@ -110,6 +112,12 @@ impl LiveSource {
             adoptium: Adoptium::new(PublicClient::new(SourcePolicy::Adoptium, app_version)?)?,
             loaders: PublicClient::new(SourcePolicy::ModLoaders, app_version)?,
             artifacts: PublicClient::new(SourcePolicy::MojangArtifacts, app_version)?,
+            optifine: crate::loader::optifine::CatalogReleases {
+                catalog: crate::mods::Client::new(app_version).map_err(|_| {
+                    LauncherError::internal("The mods catalog client could not be created.")
+                })?,
+                files: PublicClient::new(SourcePolicy::ModsCatalog, app_version)?,
+            },
         })
     }
 
@@ -139,7 +147,10 @@ impl LiveSource {
 
     /// Game versions a loader supports (D-039).
     pub async fn loader_game_versions(&self, kind: LoaderKind) -> LauncherResult<Vec<String>> {
-        meta::game_versions(&self.loaders, kind).await
+        match kind {
+            LoaderKind::OptiFine => crate::loader::optifine::game_versions(&self.optifine).await,
+            _ => meta::game_versions(&self.loaders, kind).await,
+        }
     }
 
     /// Versions of a loader for a game version, newest first (D-039).
@@ -148,13 +159,19 @@ impl LiveSource {
         kind: LoaderKind,
         game: &str,
     ) -> LauncherResult<Vec<meta::LoaderVersion>> {
-        meta::loader_versions(&self.loaders, kind, game).await
+        match kind {
+            LoaderKind::OptiFine => {
+                crate::loader::optifine::loader_versions(&self.optifine, game).await
+            }
+            _ => meta::loader_versions(&self.loaders, kind, game).await,
+        }
     }
 
     fn resolver(&self) -> Resolver<'_> {
         Resolver {
             loaders: &self.loaders,
             mojang: &self.artifacts,
+            optifine: Some(&self.optifine),
             root: self.metadata.root(),
         }
     }
@@ -1095,7 +1112,7 @@ impl Operation {
         Ok(())
     }
 
-    /// Runs a Forge or NeoForge installer step after the downloads (D-039) and
+    /// Runs a Forge, NeoForge or OptiFine installer step after the downloads (D-039) and
     /// returns the files it produced. Nothing to do for other plans.
     async fn prepare_loader(
         &self,

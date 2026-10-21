@@ -1,4 +1,4 @@
-//! Mod loaders: Fabric, Quilt, Forge and NeoForge (D-039).
+//! Mod loaders: Fabric, Quilt, Forge, NeoForge and OptiFine (D-039).
 //!
 //! An installation can run a mod loader on top of a vanilla version. The loader's
 //! version profile inherits from the vanilla descriptor: the launcher merges the
@@ -11,6 +11,8 @@
 //!   file. It holds the version profile, the install profile and the binary
 //!   patches; its processors build the patched game with the private Java runtime
 //!   (see [`processors`]).
+//! - OptiFine on its own comes from the mods catalog, pinned by its SHA-256;
+//!   its jar is also its installer (see [`optifine`]).
 //!
 //! What was resolved is stored once as a launcher-owned [`manifest::LoaderManifest`]
 //! under its SHA-1, which the install lock names, so Repair and launch re-derive
@@ -19,6 +21,7 @@
 pub mod coordinate;
 pub mod manifest;
 pub mod meta;
+pub mod optifine;
 pub mod processors;
 
 use std::cmp::Ordering;
@@ -36,6 +39,9 @@ pub enum LoaderKind {
     Forge,
     #[serde(rename = "neoforge")]
     NeoForge,
+    /// OptiFine on its own, without Forge.
+    #[serde(rename = "optifine")]
+    OptiFine,
 }
 
 impl LoaderKind {
@@ -45,6 +51,7 @@ impl LoaderKind {
             Self::Quilt => "quilt",
             Self::Forge => "forge",
             Self::NeoForge => "neoforge",
+            Self::OptiFine => "optifine",
         }
     }
 
@@ -55,12 +62,18 @@ impl LoaderKind {
             Self::Quilt => "Quilt",
             Self::Forge => "Forge",
             Self::NeoForge => "NeoForge",
+            Self::OptiFine => "OptiFine",
         }
     }
 
     /// Whether the loader ships an installer whose processors must run.
     pub fn uses_installer(self) -> bool {
-        matches!(self, Self::Forge | Self::NeoForge)
+        matches!(self, Self::Forge | Self::NeoForge | Self::OptiFine)
+    }
+
+    /// Whether mods can be added: OptiFine on its own takes none.
+    pub fn takes_mods(self) -> bool {
+        self != Self::OptiFine
     }
 }
 
@@ -70,7 +83,8 @@ impl LoaderKind {
 pub struct LoaderChoice {
     pub kind: LoaderKind,
     /// The loader's own version id: `0.16.14` for Fabric, `1.21.1-52.1.0` (the
-    /// Maven version) for Forge, `21.1.262` for NeoForge.
+    /// Maven version) for Forge, `21.1.262` for NeoForge, `1.21.1_HD_U_J1` (the
+    /// game version and the edition) for OptiFine.
     pub version: String,
 }
 
@@ -212,5 +226,7 @@ mod tests {
         }
         let json = serde_json::to_string(&LoaderKind::NeoForge).unwrap();
         assert_eq!(json, "\"neoforge\"");
+        let json = serde_json::to_string(&LoaderKind::OptiFine).unwrap();
+        assert_eq!(json, "\"optifine\"");
     }
 }

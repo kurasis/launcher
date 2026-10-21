@@ -17,7 +17,7 @@ export interface Invite {
 }
 
 const PREFIX = '🎮 invite ';
-const LOADERS: readonly LoaderKind[] = ['fabric', 'quilt', 'forge', 'neoforge'];
+const LOADERS: readonly LoaderKind[] = ['fabric', 'quilt', 'forge', 'neoforge', 'optifine'];
 const HOST_NAME =
   /^(?=.{1,253}$)([a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?\.)*[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?$/i;
 const IPV6 = /^\[[0-9a-f:.]{2,45}\]$/i;

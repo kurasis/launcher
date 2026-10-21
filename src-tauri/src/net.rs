@@ -139,10 +139,11 @@ impl SourcePolicy {
     }
 
     /// The artifact source whose allowlist names this URL's host: Mojang's
-    /// artifact hosts or a mod loader's. Loader profiles list both.
+    /// artifact hosts or a mod loader's. Loader profiles list both; OptiFine's
+    /// builds come from the mods catalog.
     pub fn for_artifact(raw: &str) -> LauncherResult<(Self, Url)> {
         let url = Url::parse(raw).map_err(|_| untrusted_url())?;
-        match [Self::MojangArtifacts, Self::ModLoaders]
+        match [Self::MojangArtifacts, Self::ModLoaders, Self::ModsCatalog]
             .into_iter()
             .find(|policy| policy.allows(&url))
         {
@@ -571,6 +572,9 @@ mod tests {
         assert_eq!(policy, SourcePolicy::MojangArtifacts);
         let (policy, _) = SourcePolicy::for_artifact("https://maven.fabricmc.net/a/b.jar").unwrap();
         assert_eq!(policy, SourcePolicy::ModLoaders);
+        let (policy, _) = SourcePolicy::for_artifact("https://cdn-mods.lapi.sh/f/0123").unwrap();
+        assert_eq!(policy, SourcePolicy::ModsCatalog);
+        assert!(SourcePolicy::for_artifact("https://mods.lapi.sh/v1/x").is_err());
         assert!(SourcePolicy::for_artifact("https://api.adoptium.net/x").is_err());
         assert!(ok(
             SourcePolicy::SkinsMod,

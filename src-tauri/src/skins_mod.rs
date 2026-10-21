@@ -55,22 +55,24 @@ pub enum Target {
 }
 
 impl Target {
-    pub fn for_loader(loader: Option<LoaderKind>) -> Self {
-        match loader {
+    /// None for OptiFine on its own, which takes no mods.
+    pub fn for_loader(loader: Option<LoaderKind>) -> Option<Self> {
+        Some(match loader {
             None => Self::Agent,
             Some(LoaderKind::Fabric | LoaderKind::Quilt) => Self::Fabric,
             Some(LoaderKind::NeoForge) => Self::NeoForge,
             Some(LoaderKind::Forge) => Self::Forge,
-        }
+            Some(LoaderKind::OptiFine) => return None,
+        })
     }
 
     /// The target that serves this game version and loader. NeoForge for 1.20.1
     /// is still Forge and runs Forge's jar.
-    pub fn for_game(game: &str, loader: Option<LoaderKind>) -> Self {
-        match Self::for_loader(loader) {
+    pub fn for_game(game: &str, loader: Option<LoaderKind>) -> Option<Self> {
+        Some(match Self::for_loader(loader)? {
             Self::NeoForge if game == "1.20.1" => Self::Forge,
             target => target,
-        }
+        })
     }
 
     pub fn as_str(self) -> &'static str {
@@ -193,7 +195,7 @@ pub const BUILDS: &[Build] = &[
 impl Build {
     /// The build for this game version and loader, if the mod has one.
     pub fn find(game: &str, loader: Option<LoaderKind>) -> Option<&'static Build> {
-        let target = Target::for_game(game, loader);
+        let target = Target::for_game(game, loader)?;
         BUILDS
             .iter()
             .find(|b| b.target == target && b.games.contains(&game))
@@ -693,7 +695,7 @@ pub fn find(game: &str, loader: Option<LoaderKind>) -> Option<&'static Jar> {
 }
 
 fn find_in<'a>(table: &'a [Jar], game: &str, loader: Option<LoaderKind>) -> Option<&'a Jar> {
-    let target = Target::for_game(game, loader);
+    let target = Target::for_game(game, loader)?;
     table
         .iter()
         .find(|j| j.games.contains(&game) && j.target == target && j.pinned())

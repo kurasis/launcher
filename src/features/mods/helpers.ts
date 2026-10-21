@@ -65,6 +65,7 @@ const MOD_LOADERS: Record<LoaderKind, readonly string[]> = {
   quilt: ['quilt', 'fabric'],
   forge: ['forge'],
   neoforge: ['neoforge'],
+  optifine: [],
 };
 
 /** At most this many game versions are named in a reason. */
@@ -89,6 +90,7 @@ export function cannotAdd(
   const name = instance.displayName;
   const loader = instance.loader?.kind;
   if (loader === undefined) return t.noLoader({ name });
+  if (loader === 'optifine') return t.optifineOnly({ name });
   if (version.loaders.length === 0) return t.noLoaders;
   const names = strings.mods.loaderNames as Record<string, string | undefined>;
   if (!version.loaders.some((l) => MOD_LOADERS[loader].includes(l))) {

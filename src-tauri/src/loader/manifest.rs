@@ -62,13 +62,17 @@ pub struct LoaderLibrary {
     pub rules: Option<Value>,
 }
 
-/// A file packed under `maven/` inside an installer.
+/// A file packed inside an installer, unpacked into the Maven tree.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct EmbeddedFile {
     pub path: String,
     pub sha1: Sha1,
     pub size: u64,
+    /// Its name in the installer when not `maven/<path>` (OptiFine packs its
+    /// LaunchWrapper at the root).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub entry: Option<String>,
 }
 
 /// One client-side installer processor: a Java tool run with arguments.
@@ -84,9 +88,13 @@ pub struct Processor {
     /// Output file template → expected SHA-1 template.
     #[serde(default)]
     pub outputs: BTreeMap<String, String>,
+    /// The class to start when not the jar's `Main-Class` (OptiFine's jar
+    /// starts its installer window).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub main_class: Option<String>,
 }
 
-/// A Forge or NeoForge installer and its install profile.
+/// A Forge, NeoForge or OptiFine installer and its install profile.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct Installer {
@@ -195,7 +203,7 @@ pub fn store(root: &DataRoot, manifest: &LoaderManifest) -> LauncherResult<Sha1>
 }
 
 /// The unsupported-version error naming the loader.
-fn old_installer(kind: LoaderKind) -> LauncherError {
+pub(super) fn old_installer(kind: LoaderKind) -> LauncherError {
     LauncherError::templated(
         ErrorCode::UnsupportedVersionMetadata,
         "This {loader} version uses an older installer format the launcher does not \
@@ -204,7 +212,7 @@ fn old_installer(kind: LoaderKind) -> LauncherError {
     )
 }
 
-fn not_for_game(kind: LoaderKind) -> LauncherError {
+pub(super) fn not_for_game(kind: LoaderKind) -> LauncherError {
     LauncherError::templated(
         ErrorCode::InvalidInput,
         "This {loader} version is not made for the chosen Minecraft version.",
@@ -241,7 +249,7 @@ pub fn installer_location(
             }
             (NEOFORGE_MAVEN, "net.neoforged", "neoforge")
         }
-        LoaderKind::Fabric | LoaderKind::Quilt => {
+        LoaderKind::Fabric | LoaderKind::Quilt | LoaderKind::OptiFine => {
             return Err(LauncherError::internal("This loader has no installer."));
         }
     };
@@ -291,6 +299,8 @@ pub struct Resolver<'a> {
     pub loaders: &'a dyn Fetch,
     /// Client for Mojang's artifact hosts, which Forge profiles also name.
     pub mojang: &'a dyn Fetch,
+    /// OptiFine's builds, from the mods catalog; none where it is not reached.
+    pub optifine: Option<&'a dyn super::optifine::Releases>,
     pub root: &'a DataRoot,
 }
 
@@ -312,6 +322,12 @@ impl Resolver<'_> {
             }
             LoaderKind::Forge | LoaderKind::NeoForge => {
                 self.installer(choice.kind, game, &choice.version).await?
+            }
+            LoaderKind::OptiFine => {
+                let releases = self.optifine.ok_or_else(|| {
+                    LauncherError::internal("OptiFine builds are not available here.")
+                })?;
+                super::optifine::resolve(releases, self.root, game, &choice.version).await?
             }
         };
         let sha1 = store(self.root, &manifest)?;
@@ -335,7 +351,7 @@ impl Resolver<'_> {
                 self.meta_profile_of(choice.kind, game, &choice.version, "server")
                     .await?
             }
-            LoaderKind::Forge | LoaderKind::NeoForge => {
+            LoaderKind::Forge | LoaderKind::NeoForge | LoaderKind::OptiFine => {
                 return Err(LauncherError::invalid_input(
                     "Worlds with this mod loader come later; Fabric works now.",
                 ));
@@ -737,6 +753,7 @@ impl InstallerContents {
                 classpath,
                 args: strings(processor.get("args"))?,
                 outputs,
+                main_class: None,
             });
         }
 
@@ -755,6 +772,7 @@ impl InstallerContents {
                 path,
                 sha1: Sha1::parse(&sha1_hex(&bytes))?,
                 size: bytes.len() as u64,
+                entry: None,
             });
         }
         embedded.sort_by(|a, b| a.path.cmp(&b.path));
@@ -863,6 +881,7 @@ mod tests {
         let resolver = Resolver {
             loaders: &meta,
             mojang: &meta,
+            optifine: None,
             root: &root,
         };
         let fabric = LoaderChoice {
@@ -894,6 +913,7 @@ mod tests {
         let resolver = Resolver {
             loaders: &meta,
             mojang: &meta,
+            optifine: None,
             root: &root,
         };
         assert!(resolver.resolve_server(&fabric, "1.21.1").await.is_err());
