@@ -287,6 +287,37 @@ CREATE TABLE IF NOT EXISTS external_project (
     days INTEGER NOT NULL,
     added INTEGER NOT NULL
 );
+-- VirusTotal's word on files the scanner suspects (virustotal.rs): a row
+-- a file, its last answer, and the requests made each UTC day.
+CREATE TABLE IF NOT EXISTS virustotal (
+    sha256 TEXT PRIMARY KEY,
+    state TEXT NOT NULL,
+    malicious INTEGER,
+    suspicious INTEGER,
+    undetected INTEGER,
+    harmless INTEGER,
+    analysed INTEGER,
+    checked INTEGER,
+    next_at INTEGER,
+    sent INTEGER,
+    waits INTEGER NOT NULL DEFAULT 0,
+    added INTEGER NOT NULL
+);
+CREATE INDEX IF NOT EXISTS virustotal_next ON virustotal(next_at);
+CREATE TABLE IF NOT EXISTS virustotal_history (
+    sha256 TEXT NOT NULL,
+    at INTEGER NOT NULL,
+    malicious INTEGER NOT NULL,
+    suspicious INTEGER NOT NULL,
+    undetected INTEGER NOT NULL,
+    harmless INTEGER NOT NULL,
+    analysed INTEGER
+);
+CREATE INDEX IF NOT EXISTS virustotal_history_file ON virustotal_history(sha256, at);
+CREATE TABLE IF NOT EXISTS virustotal_usage (
+    day TEXT PRIMARY KEY,
+    requests INTEGER NOT NULL
+);
 CREATE TABLE IF NOT EXISTS external_version (
     source_id TEXT NOT NULL,
     file_url TEXT NOT NULL,
@@ -2366,6 +2397,224 @@ impl Store {
         q.query_map(params![source_id, sha256], |r| r.get(0))
             .map_err(sql)?
             .collect::<rusqlite::Result<Vec<_>>>()
+            .map_err(sql)
+    }
+
+    // ----- VirusTotal -----
+
+    /// Queues the files the scanner suspects (or suspected before the owner
+    /// let them go) that are not queued yet; known malware and blocked or
+    /// deleted files are not asked about.
+    pub fn queue_virustotal(&self, now: i64) -> Result<usize> {
+        self.db()
+            .execute(
+                "INSERT OR IGNORE INTO virustotal (sha256, state, next_at, added)
+                 SELECT b.sha256, 'waiting', 0, coalesce(b.held, b.stored, ?1) FROM blob b
+                 WHERE b.state != 'forgotten' AND b.verdict NOT IN ('blocked', 'malicious')
+                   AND (b.verdict = 'suspicious' OR EXISTS (
+                     SELECT 1 FROM review r WHERE r.kind = 'scan' AND r.subject = b.sha256))",
+                [now],
+            )
+            .map_err(sql)
+    }
+
+    /// The next file to ask about: never asked first, newest first.
+    pub fn next_virustotal(&self, now: i64) -> Result<Option<String>> {
+        self.db()
+            .query_row(
+                "SELECT v.sha256 FROM virustotal v JOIN blob b ON b.sha256 = v.sha256
+                 WHERE v.next_at IS NOT NULL AND v.next_at <= ?1
+                   AND b.state != 'forgotten' AND b.verdict NOT IN ('blocked', 'malicious')
+                 ORDER BY v.state != 'waiting', v.added DESC, v.sha256 LIMIT 1",
+                [now],
+                |r| r.get(0),
+            )
+            .optional()
+            .map_err(sql)
+    }
+
+    pub fn virustotal(&self, sha256: &str) -> Result<Option<crate::virustotal::Row>> {
+        self.db()
+            .query_row(
+                "SELECT state, malicious, suspicious, undetected, harmless, analysed, checked,
+                   next_at, sent, waits
+                 FROM virustotal WHERE sha256 = ?1",
+                [sha256],
+                |r| {
+                    let malicious: Option<i64> = r.get(1)?;
+                    Ok(crate::virustotal::Row {
+                        state: r.get(0)?,
+                        stats: match malicious {
+                            Some(malicious) => Some(crate::virustotal::Stats {
+                                malicious,
+                                suspicious: r.get::<_, Option<i64>>(2)?.unwrap_or(0),
+                                undetected: r.get::<_, Option<i64>>(3)?.unwrap_or(0),
+                                harmless: r.get::<_, Option<i64>>(4)?.unwrap_or(0),
+                                analysed: r.get(5)?,
+                            }),
+                            None => None,
+                        },
+                        checked: r.get(6)?,
+                        next: r.get(7)?,
+                        sent: r.get(8)?,
+                        waits: r.get(9)?,
+                    })
+                },
+            )
+            .optional()
+            .map_err(sql)
+    }
+
+    /// Keeps what VirusTotal said of a file; new counts go into its history
+    /// too (the last 20 kept).
+    #[allow(clippy::too_many_arguments)]
+    pub fn set_virustotal(
+        &self,
+        sha256: &str,
+        state: &str,
+        stats: Option<&crate::virustotal::Stats>,
+        next: Option<i64>,
+        sent: Option<i64>,
+        waits: i64,
+        now: i64,
+    ) -> Result<()> {
+        let mut db = self.db();
+        let tx = db.transaction().map_err(sql)?;
+        tx.execute(
+            "INSERT INTO virustotal (sha256, state, checked, next_at, sent, waits, added)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?3)
+             ON CONFLICT (sha256) DO UPDATE SET state = ?2, checked = ?3, next_at = ?4,
+               sent = ?5, waits = ?6",
+            params![sha256, state, now, next, sent, waits],
+        )
+        .map_err(sql)?;
+        if let Some(s) = stats {
+            tx.execute(
+                "UPDATE virustotal SET malicious = ?2, suspicious = ?3, undetected = ?4,
+                   harmless = ?5, analysed = ?6 WHERE sha256 = ?1",
+                params![
+                    sha256,
+                    s.malicious,
+                    s.suspicious,
+                    s.undetected,
+                    s.harmless,
+                    s.analysed
+                ],
+            )
+            .map_err(sql)?;
+            tx.execute(
+                "INSERT INTO virustotal_history
+                   (sha256, at, malicious, suspicious, undetected, harmless, analysed)
+                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)",
+                params![
+                    sha256,
+                    now,
+                    s.malicious,
+                    s.suspicious,
+                    s.undetected,
+                    s.harmless,
+                    s.analysed
+                ],
+            )
+            .map_err(sql)?;
+            tx.execute(
+                "DELETE FROM virustotal_history WHERE sha256 = ?1 AND rowid NOT IN (
+                   SELECT rowid FROM virustotal_history WHERE sha256 = ?1
+                   ORDER BY at DESC, rowid DESC LIMIT 20)",
+                [sha256],
+            )
+            .map_err(sql)?;
+        }
+        tx.commit().map_err(sql)
+    }
+
+    /// Counts one request against the quotas when there is room under
+    /// `day_limit` and `month_limit`.
+    pub fn take_virustotal(
+        &self,
+        day: &str,
+        month: &str,
+        day_limit: i64,
+        month_limit: i64,
+    ) -> Result<bool> {
+        let mut db = self.db();
+        let tx = db.transaction().map_err(sql)?;
+        let (today, this_month) = Self::virustotal_usage_in(&tx, day, month)?;
+        if today >= day_limit || this_month >= month_limit {
+            return Ok(false);
+        }
+        tx.execute(
+            "INSERT INTO virustotal_usage (day, requests) VALUES (?1, 1)
+             ON CONFLICT (day) DO UPDATE SET requests = requests + 1",
+            [day],
+        )
+        .map_err(sql)?;
+        tx.commit().map_err(sql)?;
+        Ok(true)
+    }
+
+    /// VirusTotal said the quota is spent: none left today.
+    pub fn virustotal_spent(&self, day: &str, day_quota: i64) -> Result<()> {
+        self.db()
+            .execute(
+                "INSERT INTO virustotal_usage (day, requests) VALUES (?1, ?2)
+                 ON CONFLICT (day) DO UPDATE SET requests = max(requests, ?2)",
+                params![day, day_quota],
+            )
+            .map(|_| ())
+            .map_err(sql)
+    }
+
+    /// Requests made today and this month.
+    pub fn virustotal_usage(&self, day: &str, month: &str) -> Result<(i64, i64)> {
+        Self::virustotal_usage_in(&self.db(), day, month)
+    }
+
+    fn virustotal_usage_in(db: &Connection, day: &str, month: &str) -> Result<(i64, i64)> {
+        db.query_row(
+            "SELECT coalesce(sum(CASE WHEN day = ?1 THEN requests END), 0),
+               coalesce(sum(requests), 0)
+             FROM virustotal_usage WHERE substr(day, 1, 7) = ?2",
+            params![day, month],
+            |r| Ok((r.get(0)?, r.get(1)?)),
+        )
+        .map_err(sql)
+    }
+
+    /// Files by state, and how many of those answered have a detection.
+    pub fn virustotal_counts(&self) -> Result<(Vec<(String, i64)>, i64)> {
+        let db = self.db();
+        let mut q = db
+            .prepare("SELECT state, count(*) FROM virustotal GROUP BY state ORDER BY state")
+            .map_err(sql)?;
+        let states = q
+            .query_map([], |r| Ok((r.get(0)?, r.get(1)?)))
+            .map_err(sql)?
+            .collect::<rusqlite::Result<Vec<_>>>()
+            .map_err(sql)?;
+        let flagged = db
+            .query_row(
+                "SELECT count(*) FROM virustotal WHERE malicious > 0",
+                [],
+                |r| r.get(0),
+            )
+            .map_err(sql)?;
+        Ok((states, flagged))
+    }
+
+    /// Whether a kept file comes from a public site (a version or a pack of
+    /// Modrinth, CurseForge or the owner's projects): only such a file is
+    /// sent to VirusTotal, never one only players' own packs carry.
+    pub fn public_file(&self, sha256: &str) -> Result<bool> {
+        self.db()
+            .query_row(
+                "SELECT EXISTS (SELECT 1 FROM version_file f JOIN version v ON v.id = f.version_id
+                   WHERE f.sha256 = ?1 AND v.source IN ('modrinth', 'curseforge', 'external'))
+                 OR EXISTS (SELECT 1 FROM pack_file f JOIN version v ON v.id = f.version_id
+                   WHERE f.sha256 = ?1 AND v.source IN ('modrinth', 'curseforge'))",
+                [sha256],
+                |r| r.get(0),
+            )
             .map_err(sql)
     }
 

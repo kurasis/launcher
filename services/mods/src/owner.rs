@@ -8,11 +8,15 @@
 //! lapi-mods unblock <SHA-256 or SHA-1>
 //! lapi-mods remove <project> [reason] at its author's request
 //! lapi-mods forget <SHA-256> [--yes]  deletes a held file for good
+//! lapi-mods virustotal status         VirusTotal's quota and queue
+//! lapi-mods virustotal check <SHA-256 or SHA-1>
+//!                                     asks VirusTotal about a file now
 //! ```
 //!
 //! `find` and `review` show names and titles: they are for the owner's
-//! terminal. `block`, `unblock` and `review --count` print fixed words and
-//! numbers only, so the workflow may run them in its public log.
+//! terminal. `block`, `unblock`, `review --count` and `virustotal` print
+//! fixed words, numbers and hashes only, so the workflow may run them in its
+//! public log.
 
 use std::io::Write;
 use std::path::PathBuf;
@@ -102,6 +106,8 @@ pub struct Owner<'a> {
     pub purge: Option<&'a dyn Purge>,
     /// R2, when the catalog serves from it.
     pub bucket: Option<&'a dyn Bucket>,
+    /// VirusTotal, when its key is there.
+    pub virustotal: Option<&'a dyn crate::virustotal::Api>,
     pub now: i64,
 }
 
@@ -332,6 +338,9 @@ impl Owner<'_> {
             if b.allowed {
                 lines.push("  allowed by the owner".to_owned());
             }
+            if let Some(line) = self.virustotal_line(sha256, &b.verdict)? {
+                lines.push(format!("  {line}"));
+            }
             lines.extend(self.store.file_uses(sha256)?);
         }
         if let Some((_, reason)) = self.store.block_of(hash.text())? {
@@ -378,6 +387,11 @@ impl Owner<'_> {
                     .map_or_else(|| subject.clone(), |brief| format!("{subject} {brief}")),
             };
             lines.push(format!("#{id} {} {kind} {what}", day(created)));
+            if kind == "scan"
+                && let Some(line) = self.virustotal_line(&subject, "suspicious")?
+            {
+                lines.push(format!("  {line}"));
+            }
             if kind == "scan" {
                 lines.extend(self.store.file_uses(&subject)?.into_iter().take(3));
             }
@@ -403,6 +417,88 @@ impl Owner<'_> {
             .map(|(kind, n)| format!("{kind} {n}"))
             .collect();
         lines.push(format!("total {total}"));
+        let (states, flagged) = self.store.virustotal_counts()?;
+        let of = |state: &str| {
+            states
+                .iter()
+                .find(|(s, _)| s == state)
+                .map_or(0, |(_, n)| *n)
+        };
+        lines.push(format!(
+            "virustotal checked {}, with detections {flagged}, waiting {}",
+            of("found"),
+            of("waiting") + of("sent")
+        ));
+        Ok(lines)
+    }
+
+    /// The `virustotal: …` line of a file: known there, or one the scanner
+    /// suspects and so asked about in turn.
+    fn virustotal_line(&self, sha256: &str, verdict: &str) -> Result<Option<String>, String> {
+        let on = self.virustotal.is_some();
+        Ok(match self.store.virustotal(sha256)? {
+            Some(row) => Some(crate::virustotal::line(&row, on)),
+            None if verdict == "suspicious" => {
+                Some(crate::virustotal::line(&Default::default(), on))
+            }
+            None => None,
+        })
+    }
+
+    /// `virustotal status`: numbers only.
+    pub fn virustotal_status(&self) -> Result<Vec<String>, String> {
+        use crate::virustotal::{QUOTA, day_and_month};
+        let (day, month) = day_and_month(self.now);
+        let (today, this_month) = self.store.virustotal_usage(&day, &month)?;
+        let (states, flagged) = self.store.virustotal_counts()?;
+        let states: Vec<String> = states
+            .iter()
+            .map(|(state, n)| format!("{} {n}", state.replace('_', " ")))
+            .collect();
+        Ok(vec![
+            format!(
+                "virustotal {}",
+                if self.virustotal.is_some() {
+                    "on"
+                } else {
+                    "off"
+                }
+            ),
+            format!(
+                "requests today {today} of {}, this month {this_month} of {}",
+                QUOTA.day, QUOTA.month
+            ),
+            if states.is_empty() {
+                "no files yet".to_owned()
+            } else {
+                states.join(", ")
+            },
+            format!("with detections {flagged}"),
+        ])
+    }
+
+    /// `virustotal check <hash>`: asks now, from the owner's share of the
+    /// quota, about a kept file (suspected or not).
+    pub fn virustotal_check(&self, hash: &Hash) -> Result<Vec<String>, String> {
+        let api = self
+            .virustotal
+            .ok_or("VirusTotal is not set up (LAPI_MODS_VIRUSTOTAL_KEY)")?;
+        let sha256 = self.kept(hash)?.ok_or("no such file here")?;
+        let checked = crate::virustotal::check(
+            self.store,
+            self.blobs,
+            api,
+            &sha256,
+            crate::virustotal::QUOTA,
+            self.now,
+        )?;
+        let mut lines = vec![sha256.clone()];
+        if checked == crate::virustotal::Checked::NoQuota {
+            lines.push("no quota left: try again tomorrow (UTC)".to_owned());
+        }
+        if let Some(row) = self.store.virustotal(&sha256)? {
+            lines.push(crate::virustotal::line(&row, true));
+        }
         Ok(lines)
     }
 

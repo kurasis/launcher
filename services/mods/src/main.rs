@@ -14,7 +14,7 @@
 //! lapi-mods probe                 how CurseForge answers each exit (our
 //!                                 words and numbers only, for a public log)
 //! lapi-mods scan <file>          the scanner's verdict on a file
-//! lapi-mods find|review|block|unblock|remove|forget …
+//! lapi-mods find|review|block|unblock|remove|forget|virustotal …
 //!                                 the owner's commands (owner.rs)
 //! lapi-mods restore               brings back to the disk what only R2 has
 //! lapi-mods thumb <in> <out> <size> <webp|jpeg>
@@ -37,7 +37,8 @@
 //! and a token that may only purge its cache), `LAPI_MODS_R2_ACCOUNT`,
 //! `LAPI_MODS_R2_KEY`, `LAPI_MODS_R2_SECRET` (secrets: R2's account and an
 //! access key to its two buckets), `LAPI_MODS_R2_PUBLIC` (`mods-files`),
-//! `LAPI_MODS_R2_PRIVATE` (`mods-private`), `LAPI_MODS_CDN_URL` (the public
+//! `LAPI_MODS_R2_PRIVATE` (`mods-private`), `LAPI_MODS_VIRUSTOTAL_KEY` (a
+//! secret: VirusTotal's API key), `LAPI_MODS_CDN_URL` (the public
 //! bucket's address, `https://cdn-mods.lapi.sh`, once it serves; empty:
 //! files are copied but served from our disk) and `LAPI_MODS_PLAIN_CURL`
 //! (the plain curl, `curl`).
@@ -62,6 +63,7 @@ mod scan;
 mod store;
 mod thumb;
 mod upkeep;
+mod virustotal;
 
 use std::path::PathBuf;
 use std::sync::Arc;
@@ -189,6 +191,13 @@ fn main() -> std::process::ExitCode {
                 println!("{line}");
             }
         }),
+        // VirusTotal's word on files (virustotal.rs); `--stdin` as below.
+        Some("virustotal") => external_args(&args[1..]).and_then(|given| {
+            for line in owner_command("virustotal", &given)? {
+                println!("{line}");
+            }
+            Ok(())
+        }),
         // Projects from sites that are not catalogs (external.rs).
         // With `--stdin`, its arguments come as a JSON array on the standard
         // input: the workflow passes them so, never through a shell.
@@ -214,7 +223,7 @@ fn main() -> std::process::ExitCode {
             Ok(())
         }
         _ => Err(
-            "usage: lapi-mods serve|counts|backup|probe|scan|thumb|find|review|block|unblock|remove|forget|restore|external"
+            "usage: lapi-mods serve|counts|backup|probe|scan|thumb|find|review|block|unblock|remove|forget|restore|external|virustotal"
                 .to_owned(),
         ),
     };
@@ -273,6 +282,10 @@ fn cloudflare() -> Option<owner::Cloudflare> {
     )
 }
 
+fn virustotal_api() -> Option<virustotal::Curl> {
+    virustotal::Curl::new(&secret("LAPI_MODS_VIRUSTOTAL_KEY"), plain_curl())
+}
+
 fn bucket() -> Option<r2::R2> {
     r2::R2::new(
         &secret("LAPI_MODS_R2_ACCOUNT"),
@@ -292,12 +305,14 @@ fn owner_command(command: &str, args: &[String]) -> Result<Vec<String>, String> 
     let urls = urls();
     let cloudflare = cloudflare();
     let bucket = bucket();
+    let virustotal = virustotal_api();
     let owner = owner::Owner {
         store: &store,
         blobs: &blobs,
         urls: &urls,
         purge: cloudflare.as_ref().map(|c| c as &dyn owner::Purge),
         bucket: bucket.as_ref().map(|b| b as &dyn r2::Bucket),
+        virustotal: virustotal.as_ref().map(|v| v as &dyn virustotal::Api),
         now: import::now(),
     };
     let hash =
@@ -315,6 +330,8 @@ fn owner_command(command: &str, args: &[String]) -> Result<Vec<String>, String> 
         }
         ("block", [h, reason @ ..]) => owner.block(&hash(h)?, &owner::reason(reason)),
         ("unblock", [h]) => owner.unblock(&hash(h)?),
+        ("virustotal", [status]) if status == "status" => owner.virustotal_status(),
+        ("virustotal", [check, h]) if check == "check" => owner.virustotal_check(&hash(h)?),
         ("remove", [project, reason @ ..]) => owner.remove(project, &owner::reason(reason)),
         ("forget", [h, rest @ ..]) => match (hash(h)?, rest) {
             (owner::Hash::Sha256(sha256), []) => owner.forget(&sha256, false),
@@ -414,11 +431,17 @@ fn serve() -> Result<(), String> {
         thumbs: import::Thumbs::Process(std::env::current_exe().map_err(|e| e.to_string())?),
         r2: bucket().map(|b| Arc::new(b) as Arc<dyn r2::Bucket>),
         purge: cloudflare().map(|c| Arc::new(c) as Arc<dyn owner::Purge>),
+        virustotal: virustotal_api().map(|v| Arc::new(v) as Arc<dyn virustotal::Api>),
     });
     eprintln!(
-        "lapi-mods: R2 {}, cache clearing {}",
+        "lapi-mods: R2 {}, cache clearing {}, VirusTotal {}",
         if app.r2.is_some() { "on" } else { "off" },
-        if app.purge.is_some() { "on" } else { "off" }
+        if app.purge.is_some() { "on" } else { "off" },
+        if app.virustotal.is_some() {
+            "on"
+        } else {
+            "off"
+        }
     );
     let runtime = tokio::runtime::Runtime::new().map_err(|e| e.to_string())?;
     runtime.block_on(async move {
@@ -508,6 +531,25 @@ fn serve() -> Result<(), String> {
                 tokio::time::sleep(Duration::from_secs(wait)).await;
             }
         });
+        // VirusTotal's word on suspected files, one file a few minutes.
+        let asking = Arc::clone(&app);
+        tokio::spawn(async move {
+            if asking.virustotal.is_none() {
+                return;
+            }
+            loop {
+                let app = Arc::clone(&asking);
+                let stepped = tokio::task::spawn_blocking(move || {
+                    let api = app.virustotal.as_deref().ok_or("off")?;
+                    virustotal::step(&app.store, &app.blobs, api, import::now())
+                })
+                .await;
+                if let Ok(Err(e)) = stepped {
+                    eprintln!("lapi-mods: asking VirusTotal failed: {e}");
+                }
+                tokio::time::sleep(Duration::from_secs(virustotal::PACE)).await;
+            }
+        });
         let (stop, stopping) = tokio::sync::watch::channel(false);
         for _ in 0..workers {
             tokio::spawn(import::work(Arc::clone(&app), stopping.clone()));
@@ -543,6 +585,8 @@ pub struct App {
     pub r2: Option<Arc<dyn r2::Bucket>>,
     /// Cloudflare's cache, when a token is there.
     pub purge: Option<Arc<dyn owner::Purge>>,
+    /// VirusTotal, when its key is there.
+    pub virustotal: Option<Arc<dyn virustotal::Api>>,
 }
 
 async fn stopped() {

@@ -2494,6 +2494,18 @@ archive from the Package workflow, upload it to
   or rescanned, as if the owner unblocked it (`allowed`, review closed, `trust` in the
   journal). A known malware marker and the owner's block hold it all the same. `off`
   stops it for new files; files let go already stay served (`block` takes one back).
+- **VirusTotal for suspected files** (Ai, 2026-10-21): with the secret
+  `VIRUSTOTAL_API_KEY` (`LAPI_MODS_VIRUSTOTAL_KEY` on the server) the service asks
+  VirusTotal about each file the scanner suspects (held, or let go by `unblock` or
+  trust), newest first, one every 3 minutes. A file VirusTotal does not know is sent to
+  it when it comes from Modrinth, CurseForge or the owner's projects (up to 650 MB;
+  files only players' own packs carry are never sent) and looked up again after 30
+  minutes, 2 hours, then daily. Each file is asked about once, no re-checks for now
+  (Ai); `lapi-mods virustotal check <hash>` asks again. Quotas, counted here for every
+  request by UTC day: 500 a day and 15 500 a month, of which the background takes at
+  most 450 and 15 000. The answer is shown only (`virustotal: 2 / 60` in `find` and
+  `review`, `virustotal status`): it holds back or lets go nothing; engine and threat
+  names are not kept.
 - **Sites the owner names are paced** at 20 requests a minute an exit, rested after a
   refusal like the others; optifine.net is a listed host.
 
