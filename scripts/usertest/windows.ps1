@@ -76,8 +76,13 @@ namespace UserTest {
 $AE = [System.Windows.Automation.AutomationElement]
 $Scope = [System.Windows.Automation.TreeScope]
 $Any = [System.Windows.Automation.Condition]::TrueCondition
-$ui = [IO.File]::ReadAllText($Strings, [Text.Encoding]::UTF8) | ConvertFrom-Json
-New-Item -ItemType Directory -Force $Out | Out-Null
+if (-not $CleanupOnly) {
+  foreach ($name in 'Setup', 'Strings', 'Versions', 'Out') {
+    if (-not (Get-Variable $name -ValueOnly)) { Write-Host "::error::-$name is needed"; exit 2 }
+  }
+  $ui = [IO.File]::ReadAllText($Strings, [Text.Encoding]::UTF8) | ConvertFrom-Json
+  New-Item -ItemType Directory -Force $Out | Out-Null
+}
 
 function Say($text) { Write-Host "[$((Get-Date).ToString('HH:mm:ss'))] $text" }
 
