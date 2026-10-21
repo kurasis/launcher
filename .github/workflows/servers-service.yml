@@ -1,0 +1,184 @@
+name: Servers service
+
+# Ads for Minecraft servers in the launcher at servers.lapi.sh
+# (docs/DECISIONS.md D-069): tests, a release build, and a deploy over SSH to
+# /home/www/lapi/servers. The server needs deploy/bootstrap.sh run as root
+# once, and again when the nginx files change (the deploy warns).
+#
+# Ads are written by the owner over SSH on the server (docs/SERVER-ADS.md),
+# not here: this repository is public, and so are its workflow logs. "Run
+# workflow" with task=counts shows numbers only; task=test-ad adds the one
+# test ad below once (a public server), printing fixed words and a number.
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - services/servers/**
+      - deploy/servers/**
+      - deploy/*.sh
+      - deploy/nginx/**
+      - .github/workflows/servers-service.yml
+      - .github/actions/**
+  pull_request:
+    paths:
+      - services/servers/**
+      - deploy/servers/**
+      - deploy/*.sh
+      - deploy/nginx/**
+      - .github/workflows/servers-service.yml
+      - .github/actions/**
+  workflow_dispatch:
+    inputs:
+      task:
+        description: deploy, counts of the ads, or the one test ad
+        type: choice
+        options: [deploy, counts, test-ad]
+        default: deploy
+
+permissions:
+  contents: read
+
+concurrency:
+  group: servers-service-${{ github.ref }}
+  cancel-in-progress: false
+
+env:
+  CARGO_TERM_COLOR: always
+  CARGO_INCREMENTAL: 0
+
+jobs:
+  test:
+    name: Test and build
+    if: github.event_name != 'workflow_dispatch' || inputs.task == 'deploy'
+    runs-on: ubuntu-24.04
+    defaults:
+      run:
+        working-directory: services/servers
+    steps:
+      - uses: actions/checkout@v7
+      - run: rustup show active-toolchain
+      - uses: actions/cache@v6
+        with:
+          path: |
+            ~/.cargo/registry
+            services/servers/target
+          key: servers-${{ hashFiles('services/servers/Cargo.lock', 'rust-toolchain.toml') }}
+      - run: cargo fmt --check
+      - run: cargo clippy --locked --all-targets -- -D warnings
+      - run: cargo test --locked
+      # Ubuntu 24.04's glibc (2.39) is older than Debian 13's (2.41), so the
+      # binary runs there.
+      - run: cargo build --locked --release
+      - name: Check the nginx files
+        working-directory: ${{ github.workspace }}
+        run: bash deploy/check-nginx.sh
+      - name: Package the release
+        run: |
+          mkdir -p ../../dist-servers/nginx
+          cp target/release/lapi-servers ../../dist-servers/
+          cp ../../deploy/nginx/* ../../deploy/servers/nginx/* ../../dist-servers/nginx/
+          tar -czf ../../lapi-servers.tar.gz -C ../../dist-servers .
+      - uses: actions/upload-artifact@v7
+        with:
+          name: lapi-servers
+          path: lapi-servers.tar.gz
+          retention-days: 14
+
+  deploy:
+    # One deploy of this service at a time, from any branch or run.
+    concurrency:
+      group: servers-deploy
+      cancel-in-progress: false
+    name: Deploy to servers.lapi.sh
+    # Deploys use the production environment: Settings → Environments →
+    # production → Required reviewers makes each one wait for an approval.
+    environment: production
+    needs: test
+    # Only main reaches production, also when run by hand.
+    if: >-
+      github.ref == 'refs/heads/main'
+      && (github.event_name == 'push'
+          || (github.event_name == 'workflow_dispatch' && inputs.task == 'deploy'))
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/download-artifact@v8
+        with:
+          name: lapi-servers
+      - uses: ./.github/actions/lapi-ssh
+        with:
+          ssh-key: ${{ secrets.SSH_KEY }}
+          known-hosts: ${{ secrets.SSH_KNOWN_HOSTS }}
+      - uses: ./.github/actions/lapi-upload
+        with:
+          service: servers
+          target: ${{ secrets.SSH_USER }}@${{ secrets.SSH_HOST }}
+      - name: Deploy
+        env:
+          TARGET: ${{ secrets.SSH_USER }}@${{ secrets.SSH_HOST }}
+        run: |
+          set +e
+          ssh "$TARGET" "bash ~/.lapi-bootstrap/$SETUP/deploy.sh servers $RELEASE $ARCHIVE" 2>&1 | tee deploy.log
+          status=${PIPESTATUS[0]}
+          if grep -q NOT_BOOTSTRAPPED deploy.log; then
+            echo "::warning::The server is not set up yet: run 'sudo bash ~/lapi-bootstrap/bootstrap.sh <deploy-user>' on it once, then re-run this workflow."
+            exit 0
+          fi
+          if grep -qE 'NGINX_(PENDING|CHANGED)' deploy.log; then
+            echo "::warning::The nginx files on the server are not these: run 'sudo bash ~/lapi-bootstrap/bootstrap.sh <deploy-user>' on it to apply them."
+          fi
+          exit "$status"
+      - uses: ./.github/actions/lapi-check
+        with:
+          service: servers
+          ssh-host: ${{ secrets.SSH_HOST }}
+
+  counts:
+    name: Ad counts
+    if: github.event_name == 'workflow_dispatch' && inputs.task == 'counts'
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v7
+      - uses: ./.github/actions/lapi-ssh
+        with:
+          ssh-key: ${{ secrets.SSH_KEY }}
+          known-hosts: ${{ secrets.SSH_KNOWN_HOSTS }}
+      # `counts` prints numbers only.
+      - name: Counts
+        env:
+          TARGET: ${{ secrets.SSH_USER }}@${{ secrets.SSH_HOST }}
+        run: |
+          {
+            echo '### Server ads'
+            echo '```json'
+            ssh "$TARGET" \
+              'sudo -n -u lapi-servers /home/www/lapi/servers/current/lapi-servers counts'
+            echo '```'
+          } | tee -a "$GITHUB_STEP_SUMMARY"
+
+  test-ad:
+    # The owner asked for one ad of a real, public server to try the launcher
+    # with (2026-10-21); they remove it themselves (lapi-servers remove).
+    # --if-new: run again, it adds nothing while that ad shows.
+    name: Add the test ad
+    if: github.event_name == 'workflow_dispatch' && inputs.task == 'test-ad' && github.ref == 'refs/heads/main'
+    environment: production
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v7
+      - uses: ./.github/actions/lapi-ssh
+        with:
+          ssh-key: ${{ secrets.SSH_KEY }}
+          known-hosts: ${{ secrets.SSH_KNOWN_HOSTS }}
+      # --quiet prints fixed words and the ad's number only.
+      - name: Add
+        env:
+          TARGET: ${{ secrets.SSH_USER }}@${{ secrets.SSH_HOST }}
+        run: |
+          ssh "$TARGET" "sudo -n -u lapi-servers /home/www/lapi/servers/current/lapi-servers add \
+            --name CubeCraft --address play.cubecraft.net \
+            --version 1.21.11 --from 1.20 --to 1.21.11 \
+            --text 'CubeCraft: EggWars, SkyWars and more minigames. A test ad.' \
+            --text-ru 'CubeCraft: мини-игры EggWars, SkyWars и другие. Тестовое объявление.' \
+            --for 30d --if-new --quiet"

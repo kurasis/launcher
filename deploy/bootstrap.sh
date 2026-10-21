@@ -2,7 +2,8 @@
 # Root setup of our services on the Debian 13 server: crash.lapi.sh (D-061),
 # mirror.lapi.sh (D-062), upd.lapi.sh (D-063), oauth.lapi.sh and
 # friends.lapi.sh (D-064), skins.lapi.sh (D-065), mods.lapi.sh with
-# files-mods.lapi.sh (D-066), feed.lapi.sh (D-067), worlds.lapi.sh (D-068).
+# files-mods.lapi.sh (D-066), feed.lapi.sh (D-067), worlds.lapi.sh (D-068),
+# servers.lapi.sh (D-069).
 #
 #   sudo bash ~/lapi-bootstrap/bootstrap.sh <deploy-user> [--storage /data]
 #
@@ -15,14 +16,14 @@
 # (root) write any file. Safe to run again: every step checks what is there.
 #
 # For each service folder here (crash/, mirror/, upd/, oauth/, friends/,
-# skins/, mods/, feed/, worlds/):
+# skins/, mods/, feed/, worlds/, servers/):
 #  1. a system user lapi-<service> that runs it;
 #  2. /home/www/lapi/<service>/{releases,data}: the deploy user writes
 #     releases, the service user alone writes its data; /home/www and
 #     /home/www/lapi become root's;
 #  3. its systemd units, if it runs as one (upd is static files and a
 #     command; the mirror also has a warming timer, accounts, friends, skins,
-#     mods and worlds a daily backup timer, docs/SERVER-BACKUPS.md);
+#     mods, worlds and servers a daily backup timer, docs/SERVER-BACKUPS.md);
 #  4. a Let's Encrypt certificate for <service>.lapi.sh (webroot; mods's also
 #     names files-mods.lapi.sh), with a self-signed one as the fallback, and
 #     nginx reloads on renewal;
@@ -53,7 +54,7 @@ id "$DEPLOY_USER" >/dev/null || { echo "no user $DEPLOY_USER"; exit 1; }
 step() { printf '\n== %s\n' "$*"; }
 
 SERVICES=()
-for service in crash mirror upd oauth friends skins mods feed worlds; do
+for service in crash mirror upd oauth friends skins mods feed worlds servers; do
     [ -d "$HERE/$service/nginx" ] && SERVICES+=("$service")
 done
 # A service with a systemd unit runs as a process.
@@ -63,9 +64,10 @@ echo "services: ${SERVICES[*]}"
 
 # Settings per service: folder modes (nginx reads the mirror's kept files;
 # crash reports, accounts, friends and skins are private: textures are served
-# by the service only; the feed and worlds keep their keys there) and the first
+# by the service only; the feed and worlds keep their keys there; the server
+# ads are the owner's until they show) and the first
 # environment file.
-private() { [ "$1" = crash ] || [ "$1" = oauth ] || [ "$1" = friends ] || [ "$1" = skins ] || [ "$1" = feed ] || [ "$1" = worlds ]; }
+private() { [ "$1" = crash ] || [ "$1" = oauth ] || [ "$1" = friends ] || [ "$1" = skins ] || [ "$1" = feed ] || [ "$1" = worlds ] || [ "$1" = servers ]; }
 app_mode() { private "$1" && echo 2750 || echo 2755; }
 data_mode() { private "$1" && echo 0750 || echo 0755; }
 first_env() {
@@ -81,6 +83,8 @@ first_env() {
         # after restoring a backup, put a new one here (docs/SERVER-BACKUPS.md).
         worlds) printf 'LAPI_WORLDS_ADDR=127.0.0.1:8788\nLAPI_WORLDS_DATA=%s/worlds/data\nLAPI_WORLDS_AUTHORITY_EPOCH=%s\n' \
             "$ROOT" "$(head -c 16 /dev/urandom | od -An -tx1 | tr -d ' \n')" ;;
+        # Times in the owner's commands are typed in this offset.
+        servers) printf 'LAPI_SERVERS_ADDR=127.0.0.1:8789\nLAPI_SERVERS_DATA=%s/servers/data\nLAPI_SERVERS_TZ=+03:00\n' "$ROOT" ;;
     esac
 }
 # The names a service answers to; the first names its certificate.
@@ -152,7 +156,7 @@ done
 systemctl daemon-reload
 # A running service whose unit changed restarts with it now; if it does not
 # answer, the unit before comes back, so a stricter unit never leaves it down.
-port_of() { case "$1" in crash) echo 8781 ;; mirror) echo 8782 ;; oauth) echo 8783 ;; friends) echo 8784 ;; skins) echo 8785 ;; mods) echo 8786 ;; feed) echo 8787 ;; worlds) echo 8788 ;; esac; }
+port_of() { case "$1" in crash) echo 8781 ;; mirror) echo 8782 ;; oauth) echo 8783 ;; friends) echo 8784 ;; skins) echo 8785 ;; mods) echo 8786 ;; feed) echo 8787 ;; worlds) echo 8788 ;; servers) echo 8789 ;; esac; }
 answers() {
     for _ in $(seq 1 20); do
         curl -fsS --max-time 2 "http://127.0.0.1:$(port_of "$1")/v1/health" >/dev/null 2>&1 && return 0
@@ -265,7 +269,7 @@ systemctl reload nginx
 step "sudo rights of $DEPLOY_USER"
 sudoers=/etc/sudoers.d/lapi-deploy
 {
-    echo "# Deploys of $ROOT services by GitHub Actions (D-061 to D-068). Nothing else."
+    echo "# Deploys of $ROOT services by GitHub Actions (D-061 to D-069). Nothing else."
     for service in "${SERVICES[@]}"; do
         if daemon "$service"; then
             echo "$DEPLOY_USER ALL=(root) NOPASSWD: /usr/bin/systemctl restart lapi-$service"
