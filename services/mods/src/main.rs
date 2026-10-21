@@ -46,6 +46,7 @@ mod api;
 mod auth;
 mod blobs;
 mod curseforge;
+mod external;
 mod fetch;
 mod import;
 mod input;
@@ -188,6 +189,16 @@ fn main() -> std::process::ExitCode {
                 println!("{line}");
             }
         }),
+        // Projects from sites that are not catalogs (external.rs).
+        // With `--stdin`, its arguments come as a JSON array on the standard
+        // input: the workflow passes them so, never through a shell.
+        Some("external") => external_args(&args[1..]).and_then(|given| {
+            let store = open()?;
+            for line in external::command(&store, &given, import::now())? {
+                println!("{line}");
+            }
+            Ok(())
+        }),
         Some("thumb") => match &args[1..] {
             [input, output, size, format] => size
                 .parse::<u32>()
@@ -202,7 +213,7 @@ fn main() -> std::process::ExitCode {
             Ok(())
         }
         _ => Err(
-            "usage: lapi-mods serve|counts|backup|probe|scan|thumb|find|review|block|unblock|remove|forget|restore"
+            "usage: lapi-mods serve|counts|backup|probe|scan|thumb|find|review|block|unblock|remove|forget|restore|external"
                 .to_owned(),
         ),
     };
@@ -317,6 +328,19 @@ fn owner_command(command: &str, args: &[String]) -> Result<Vec<String>, String> 
             "usage: see lapi-mods {command} in docs/MODS-CATALOG.md"
         )),
     }
+}
+
+fn external_args(args: &[String]) -> Result<Vec<String>, String> {
+    if args != ["--stdin"] {
+        return Ok(args.to_vec());
+    }
+    use std::io::Read;
+    let mut text = String::new();
+    std::io::stdin()
+        .take(64 * 1024 + 1)
+        .read_to_string(&mut text)
+        .map_err(|_| "the standard input is not text".to_owned())?;
+    external::stdin_args(&text)
 }
 
 /// Run by hand, so the proxies may come from the deploy's secrets file.

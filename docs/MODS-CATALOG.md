@@ -75,10 +75,29 @@ On the server, as `sudo -u lapi-mods /home/www/lapi/mods/current/lapi-mods <comm
 | `forget <SHA-256> [--yes]`                       | deletes a held file for good (asks for `--yes`); the catalog never fetches it again                                           |
 | `restore`                                        | brings back to the disk, checked by SHA-256, the files only R2 still has                                                      |
 
+Projects from sites that are not catalogs (D-066, external source) are added by these
+commands only:
+
+| Command                                                                                          | What it does                                                                    |
+| ------------------------------------------------------------------------------------------------ | ------------------------------------------------------------------------------- |
+| `external add optifine [--days N]`                                                               | adds OptiFine from optifine.net (checked every 3 days unless `--days`)          |
+| `external manual <slug> --title T --kind K --page URL [--summary S] [--icon URL] [--days N]`     | adds or changes a project described by hand (checked every 7 days unless set)   |
+| `external version <project> --file URL --game G[,G] [--loader L[,L]] [--number N] [--channel C]` | adds a version of a project described by hand: one file, kept here at once      |
+| `external days <project> <N or default>`                                                         | days between checks, 0 never; for a Modrinth or CurseForge project, the longest |
+| `external check <project>`                                                                       | checks it now                                                                   |
+| `external list`                                                                                  | the owner's projects: kind, days, versions, versions kept, last read            |
+
+Kinds are `mod`, `modpack`, `resourcepack`, `shader`, `datapack` and `world`; channels
+`release`, `beta` and `alpha`. A file must be a `.jar`, `.zip` or `.mrpack` on an HTTPS
+address of a public site.
+
 `find` and `review` show titles and names: run them in a terminal, not in a workflow.
 Without SSH, Actions → Mods service → Run workflow with `task=block` or `task=unblock` and
 the file's hash, or `task=review-count`. They wait for the production approval and print
 fixed words, numbers and the hash only; a reason can be given over SSH only.
+`task=external` runs `external` with `args`, its arguments as a JSON array (for
+example `["add", "optifine"]` or `["days", "optifine", "3"]`); they reach the service on
+its standard input, never through a shell.
 
 ## curl-impersonate
 

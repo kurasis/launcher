@@ -1253,7 +1253,8 @@
         "modrinth": "Modrinth",
         "curseforge": "CurseForge",
         "packwiz": "packwiz",
-        "own": "Players' packs"
+        "own": "Players' packs",
+        "external": "Other site"
       },
       "link": {
         "title": "Open this link?",
@@ -1278,6 +1279,7 @@
           "held": "The malware check is holding this version’s file back.",
           "noFile": "This version has no file.",
           "noLoader": "“{name}” has no mod loader. Mods go into an installation with Fabric, Quilt, Forge or NeoForge.",
+          "noLoaders": "This version works with no mod loader, so it cannot be added to an installation.",
           "wrongLoader": "This version is for {loaders}, and “{name}” runs {loader}.",
           "wrongGame": "This version is for Minecraft {games}, and “{name}” is on {game}."
         },
@@ -1286,6 +1288,7 @@
         "noChanges": "The author wrote nothing about this version.",
         "license": "license {license}",
         "openOn": "Open on {site}",
+        "openSite": "Open the author's site",
         "importingHint": "The catalog is still bringing this project in. Versions and pictures appear as they arrive.",
         "gone": "The source no longer has this project; the catalog keeps it.",
         "description": "Description",

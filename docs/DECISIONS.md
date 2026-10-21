@@ -2438,6 +2438,33 @@ archive from the Package workflow, upload it to
   owner (`review`, kind `report`), where `keep` dismisses them and `block` removes the
   pack. Projects from Modrinth and CurseForge are reported at their source.
 
+### Projects from other sites (external source)
+
+- **Only the owner adds them** (Ai, 2026-10-21): commands `lapi-mods external …`, no
+  "owner" screen in the launcher and nothing for players. Their files are kept here like
+  any other (the authors allowed it, Ai, 2026-10-21) and scanned the same way; whatever
+  comes back must be a zip archive (a jar, `.zip` or `.mrpack`) of at least 1 KB, so a
+  site's error page is never kept. A file has no hashes from its site: ours are made when
+  it is kept, and a file already kept is never fetched again.
+- **OptiFine** (`optifine`, source `external`): read from optifine.net's downloads page,
+  a version per row under its `<h2>Minecraft …</h2>` (a file naming another game version
+  is left out; `1.8.0` is the catalog's `1.8`). Rows that name a Forge build are mods for
+  Forge (`forge`), the build written in the version's changes; previews are `beta`; rows
+  without Forge carry no loader (installing OptiFine on its own comes later). As on
+  Modrinth, the newest for each game version and loader is kept at once, the rest on
+  request; the changelog is read once, for new versions only. A file comes through the
+  page its link leads to (`adloadx?f=<file>`), whose link must be
+  `downloadx?f=<the same file>&x=<32 hex>` on optifine.net.
+- **By hand** (`manual:<slug>`): a card the owner writes (title, kind, page, summary,
+  icon) and versions one file each, given by its address on any public HTTPS site
+  (never an address or an inner name), with game versions, loaders, number and channel.
+- **Checked every N days, each its own** (Ai, 2026-10-21): `recheck_days` on the project,
+  1 to 365 (0: never; a check by hand still runs). External projects use it as their
+  time (OptiFine 3 days, others 7 unless set); for a Modrinth or CurseForge project it is
+  the longest time between checks (`lapi-mods external days <project> <N|default>`).
+- **Sites the owner names are paced** at 20 requests a minute an exit, rested after a
+  refusal like the others; optifine.net is a listed host.
+
 ## D-067 — Start page feed at feed.lapi.sh
 
 - **Status:** accepted (owner request, 2026-10-19; design approved in the project) ·

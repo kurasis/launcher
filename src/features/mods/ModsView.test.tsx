@@ -291,6 +291,10 @@ describe('cannotAdd', () => {
       ),
     ).toMatch(/malware check/);
     expect(cannotAdd('mod', { ...version, files: [] }, fabric)).toBe('This version has no file.');
+    // A mod for no loader (OptiFine without Forge).
+    expect(cannotAdd('mod', { ...version, loaders: [] }, fabric)).toBe(
+      'This version works with no mod loader, so it cannot be added to an installation.',
+    );
     // Other kinds only warn about the game version, and need no loader.
     expect(
       cannotAdd('resourcepack', { ...version, games: ['1.8.9'], loaders: [] }, vanilla),

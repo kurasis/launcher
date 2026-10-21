@@ -2441,6 +2441,33 @@ fn a_packwiz_pack_keeps_its_source_without_a_page_to_open() {
     assert_eq!(project.sources[0].url, None);
 }
 
+#[test]
+fn a_project_from_another_site_opens_its_authors_page_over_https_only() {
+    let project = Project::from(&json!({
+        "id": id(1), "kind": "mod", "title": "OptiFine",
+        "sources": [{ "source": "external", "url": "https://optifine.net/home" }],
+    }))
+    .unwrap();
+    assert_eq!(project.sources[0].source, "external");
+    assert_eq!(
+        project.sources[0].url.as_deref(),
+        Some("https://optifine.net/home")
+    );
+    for url in [
+        "http://optifine.net/home",
+        "javascript:alert(1)",
+        "file:///etc/passwd",
+        "https://user:pw@optifine.net/",
+    ] {
+        let project = Project::from(&json!({
+            "id": id(1), "kind": "mod",
+            "sources": [{ "source": "external", "url": url }],
+        }))
+        .unwrap();
+        assert_eq!(project.sources[0].url, None, "{url}");
+    }
+}
+
 mod publishing {
     use std::io::Read as _;
 

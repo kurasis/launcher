@@ -274,6 +274,30 @@ CREATE TABLE IF NOT EXISTS report (
     created INTEGER NOT NULL,
     PRIMARY KEY (project_id, account_id)
 );
+-- Projects from sites that are not catalogs, as the owner described them
+-- (external.rs), and the versions the owner added to them by hand.
+CREATE TABLE IF NOT EXISTS external_project (
+    source_id TEXT PRIMARY KEY,
+    kind TEXT NOT NULL,
+    slug TEXT NOT NULL,
+    title TEXT NOT NULL,
+    summary TEXT NOT NULL DEFAULT '',
+    page TEXT NOT NULL,
+    icon TEXT,
+    days INTEGER NOT NULL,
+    added INTEGER NOT NULL
+);
+CREATE TABLE IF NOT EXISTS external_version (
+    source_id TEXT NOT NULL,
+    file_url TEXT NOT NULL,
+    file_name TEXT NOT NULL,
+    number TEXT NOT NULL,
+    channel TEXT NOT NULL,
+    games TEXT NOT NULL,
+    loaders TEXT NOT NULL,
+    added INTEGER NOT NULL,
+    PRIMARY KEY (source_id, file_url)
+);
 CREATE VIRTUAL TABLE IF NOT EXISTS project_fts USING fts5(
     project_id UNINDEXED, title, summary, authors, categories, slug,
     tokenize = 'unicode61 remove_diacritics 2'
@@ -334,6 +358,9 @@ const ADDED: &[(&str, &str, &str)] = &[
     // Its copy in R2: '' none, 'public' served from there, 'private' a held
     // file's copy (r2.rs).
     ("blob", "copy", "TEXT NOT NULL DEFAULT ''"),
+    // Days between checks of the project's sources, as the owner set them:
+    // NULL the usual rule, 0 never (external.rs).
+    ("project", "recheck_days", "INTEGER"),
 ];
 
 fn migrate(db: &Connection) -> Result<()> {
@@ -438,6 +465,18 @@ pub struct Search {
     pub limit: i64,
 }
 
+/// A project the owner added from a site that is not a catalog.
+#[derive(Debug, Clone)]
+pub struct ExternalRow {
+    pub source_id: String,
+    pub kind: String,
+    pub days: i64,
+    pub project: Option<String>,
+    pub versions: i64,
+    pub kept: i64,
+    pub fetched: Option<i64>,
+}
+
 /// A project due to be read from its source again.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Due {
@@ -447,6 +486,8 @@ pub struct Due {
     pub kind: String,
     /// Players wanted it lately.
     pub wanted: bool,
+    /// Days between checks, as the owner set them.
+    pub days: Option<i64>,
 }
 
 impl Store {
@@ -593,7 +634,9 @@ impl Store {
 
     /// Projects whose source was last read before their time: `wanted_fresh`
     /// for those wanted since `wanted_since`, `idle_fresh` for the rest;
-    /// longest waiting first, or only `project` when given.
+    /// longest waiting first, or only `project` when given. Days the owner
+    /// set for a project are its time on an external source, and at most
+    /// its time on another; 0 days is never.
     pub fn due_projects(
         &self,
         now: i64,
@@ -606,12 +649,18 @@ impl Store {
         let db = self.db();
         let mut q = db
             .prepare(
-                "SELECT s.source, s.source_id, s.source_slug, p.kind, coalesce(w.at, 0) >= ?2
+                "SELECT s.source, s.source_id, s.source_slug, p.kind, coalesce(w.at, 0) >= ?2,
+                   p.recheck_days
                  FROM project p JOIN project_source s ON s.project_id = p.id
                  LEFT JOIN project_wanted w ON w.project_id = p.id
                  WHERE p.status = 'ready' AND p.gone_at IS NULL AND (?5 IS NULL OR p.id = ?5)
-                   AND s.source != 'own'
-                   AND s.fetched <= ?1 - CASE WHEN coalesce(w.at, 0) >= ?2 THEN ?3 ELSE ?4 END
+                   AND s.source != 'own' AND coalesce(p.recheck_days, -1) != 0
+                   AND s.fetched <= ?1 - CASE
+                     WHEN s.source = 'external' THEN coalesce(p.recheck_days * 86400, ?4)
+                     WHEN p.recheck_days > 0 THEN min(p.recheck_days * 86400,
+                       CASE WHEN coalesce(w.at, 0) >= ?2 THEN ?3 ELSE ?4 END)
+                     ELSE CASE WHEN coalesce(w.at, 0) >= ?2 THEN ?3 ELSE ?4 END
+                   END
                  ORDER BY s.fetched LIMIT ?6",
             )
             .map_err(sql)?;
@@ -631,6 +680,7 @@ impl Store {
                     source_slug: r.get(2)?,
                     kind: r.get(3)?,
                     wanted: r.get(4)?,
+                    days: r.get(5)?,
                 })
             },
         )
@@ -1105,10 +1155,16 @@ impl Store {
             for (ord, f) in v.files.iter().enumerate() {
                 // The same file: by its SHA-1, or (a source with no hashes) by
                 // its name and size.
+                // its name and size; by its name alone when the source gives
+                // no size either (external.rs).
                 let same = kept.iter().find(|k| match &f.sha1 {
                     Some(sha1) => k.sha1.as_ref() == Some(sha1),
-                    None => k.name == f.name && k.size == f.size,
+                    None => k.name == f.name && (f.size == 0 || k.size == f.size),
                 });
+                let size = match same {
+                    Some(k) if f.size == 0 => k.size,
+                    _ => f.size,
+                };
                 let sha1 = f.sha1.clone().or_else(|| same.and_then(|k| k.sha1.clone()));
                 let sha512 = f
                     .sha512
@@ -1119,7 +1175,7 @@ impl Store {
                     "INSERT INTO version_file (version_id, ord, file_name, size, sha1, sha512, sha256,
                        is_primary, role, origin_url)
                      VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10)",
-                    params![id, ord as i64, f.name, f.size, sha1, sha512, sha256, f.primary, f.role, f.url],
+                    params![id, ord as i64, f.name, size, sha1, sha512, sha256, f.primary, f.role, f.url],
                 )
                 .map_err(sql)?;
             }
@@ -2160,18 +2216,206 @@ impl Store {
     }
 
     /// Links a kept file to its place in a version.
-    /// A file is kept; a source that gave no hashes gets ours.
+    /// A file is kept; a source that gave no hashes gets ours, and one that
+    /// gave no size our size.
     pub fn file_kept(&self, version: &str, ord: i64, sha256: &str) -> Result<()> {
         let db = self.db();
         db.execute(
             "UPDATE version_file SET sha256 = ?3,
                sha1 = coalesce(sha1, (SELECT sha1 FROM blob WHERE sha256 = ?3)),
-               sha512 = coalesce(sha512, (SELECT sha512 FROM blob WHERE sha256 = ?3))
+               sha512 = coalesce(sha512, (SELECT sha512 FROM blob WHERE sha256 = ?3)),
+               size = CASE WHEN size > 0 THEN size
+                 ELSE coalesce((SELECT size FROM blob WHERE sha256 = ?3), 0) END
              WHERE version_id = ?1 AND ord = ?2",
             params![version, ord, sha256],
         )
         .map_err(sql)?;
         Self::refresh_files_state(&db, version)
+    }
+
+    // ----- external projects -----
+
+    /// Records (or changes) a project the owner describes.
+    pub fn set_external(&self, card: &crate::external::Card, now: i64) -> Result<()> {
+        self.db()
+            .execute(
+                "INSERT INTO external_project (source_id, kind, slug, title, summary, page, icon, days, added)
+                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)
+                 ON CONFLICT (source_id) DO UPDATE SET kind = ?2, slug = ?3, title = ?4,
+                   summary = ?5, page = ?6, icon = ?7, days = ?8",
+                params![
+                    card.source_id,
+                    card.kind,
+                    card.slug,
+                    card.title,
+                    card.summary,
+                    card.page,
+                    card.icon,
+                    card.days,
+                    now
+                ],
+            )
+            .map(|_| ())
+            .map_err(sql)
+    }
+
+    pub fn external(&self, source_id: &str) -> Result<Option<crate::external::Card>> {
+        self.db()
+            .query_row(
+                "SELECT source_id, kind, slug, title, summary, page, icon, days
+                 FROM external_project WHERE source_id = ?1",
+                [source_id],
+                |r| {
+                    Ok(crate::external::Card {
+                        source_id: r.get(0)?,
+                        kind: r.get(1)?,
+                        slug: r.get(2)?,
+                        title: r.get(3)?,
+                        summary: r.get(4)?,
+                        page: r.get(5)?,
+                        icon: r.get(6)?,
+                        days: r.get(7)?,
+                    })
+                },
+            )
+            .optional()
+            .map_err(sql)
+    }
+
+    /// The owner's projects: ID at the source, kind, days, our ID once
+    /// imported, its versions and how many of them are kept, when last read.
+    pub fn externals(&self) -> Result<Vec<ExternalRow>> {
+        let db = self.db();
+        let mut q = db
+            .prepare(
+                "SELECT e.source_id, e.kind, coalesce(p.recheck_days, e.days), s.project_id,
+                   (SELECT count(*) FROM version v WHERE v.project_id = s.project_id
+                      AND v.source = 'external' AND v.gone_at IS NULL),
+                   (SELECT count(*) FROM version v WHERE v.project_id = s.project_id
+                      AND v.source = 'external' AND v.files_state = 'all'),
+                   s.fetched
+                 FROM external_project e
+                 LEFT JOIN project_source s ON s.source = 'external' AND s.source_id = e.source_id
+                 LEFT JOIN project p ON p.id = s.project_id
+                 ORDER BY e.added",
+            )
+            .map_err(sql)?;
+        q.query_map([], |r| {
+            Ok(ExternalRow {
+                source_id: r.get(0)?,
+                kind: r.get(1)?,
+                days: r.get(2)?,
+                project: r.get(3)?,
+                versions: r.get(4)?,
+                kept: r.get(5)?,
+                fetched: r.get(6)?,
+            })
+        })
+        .map_err(sql)?
+        .collect::<rusqlite::Result<Vec<_>>>()
+        .map_err(sql)
+    }
+
+    /// Adds (or changes) a version the owner gives by its file's address.
+    pub fn add_external_version(
+        &self,
+        source_id: &str,
+        added: &crate::external::Added,
+    ) -> Result<()> {
+        self.db()
+            .execute(
+                "INSERT INTO external_version (source_id, file_url, file_name, number, channel,
+                   games, loaders, added)
+                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)
+                 ON CONFLICT (source_id, file_url) DO UPDATE SET file_name = ?3, number = ?4,
+                   channel = ?5, games = ?6, loaders = ?7",
+                params![
+                    source_id,
+                    added.file_url,
+                    added.file_name,
+                    added.number,
+                    added.channel,
+                    added.games.join(","),
+                    added.loaders.join(","),
+                    added.added
+                ],
+            )
+            .map(|_| ())
+            .map_err(sql)
+    }
+
+    pub fn external_versions(&self, source_id: &str) -> Result<Vec<crate::external::Added>> {
+        let db = self.db();
+        let mut q = db
+            .prepare(
+                "SELECT file_url, file_name, number, channel, games, loaders, added
+                 FROM external_version WHERE source_id = ?1 ORDER BY added",
+            )
+            .map_err(sql)?;
+        let split = |text: String| -> Vec<String> {
+            text.split(',')
+                .filter(|w| !w.is_empty())
+                .map(str::to_owned)
+                .collect()
+        };
+        q.query_map([source_id], |r| {
+            Ok(crate::external::Added {
+                file_url: r.get(0)?,
+                file_name: r.get(1)?,
+                number: r.get(2)?,
+                channel: r.get(3)?,
+                games: split(r.get(4)?),
+                loaders: split(r.get(5)?),
+                added: r.get(6)?,
+            })
+        })
+        .map_err(sql)?
+        .collect::<rusqlite::Result<Vec<_>>>()
+        .map_err(sql)
+    }
+
+    /// Days between checks of a project's sources: `None` the usual rule.
+    pub fn set_recheck_days(&self, project: &str, days: Option<i64>) -> Result<()> {
+        self.db()
+            .execute(
+                "UPDATE project SET recheck_days = ?2 WHERE id = ?1",
+                params![project, days],
+            )
+            .map(|_| ())
+            .map_err(sql)
+    }
+
+    /// Days between checks, unless the owner set them already.
+    pub fn default_recheck_days(&self, project: &str, days: i64) -> Result<()> {
+        self.db()
+            .execute(
+                "UPDATE project SET recheck_days = ?2 WHERE id = ?1 AND recheck_days IS NULL",
+                params![project, days],
+            )
+            .map(|_| ())
+            .map_err(sql)
+    }
+
+    pub fn recheck_days(&self, project: &str) -> Result<Option<i64>> {
+        self.db()
+            .query_row(
+                "SELECT recheck_days FROM project WHERE id = ?1",
+                [project],
+                |r| r.get(0),
+            )
+            .optional()
+            .map(Option::flatten)
+            .map_err(sql)
+    }
+
+    /// The source a version came from.
+    pub fn version_source(&self, version: &str) -> Result<Option<String>> {
+        self.db()
+            .query_row("SELECT source FROM version WHERE id = ?1", [version], |r| {
+                r.get(0)
+            })
+            .optional()
+            .map_err(sql)
     }
 
     // ----- modpacks -----

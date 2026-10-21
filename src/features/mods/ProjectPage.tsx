@@ -412,7 +412,9 @@ export function ProjectPage({ projectRef, instance, onBack, onLink, onAdd, onIns
                       if (s.url !== null) onLink(s.url);
                     }}
                   >
-                    {t.openOn({ site: strings.mods.sources[s.source] })}
+                    {s.source === 'external'
+                      ? t.openSite
+                      : t.openOn({ site: strings.mods.sources[s.source] })}
                   </Button>
                 ),
             )}

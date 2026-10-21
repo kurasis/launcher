@@ -89,6 +89,7 @@ export function cannotAdd(
   const name = instance.displayName;
   const loader = instance.loader?.kind;
   if (loader === undefined) return t.noLoader({ name });
+  if (version.loaders.length === 0) return t.noLoaders;
   const names = strings.mods.loaderNames as Record<string, string | undefined>;
   if (!version.loaders.some((l) => MOD_LOADERS[loader].includes(l))) {
     return t.wrongLoader({
