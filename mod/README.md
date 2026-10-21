@@ -80,6 +80,20 @@ Every Forge release is downloaded and decompiled when its project is configured,
 any task runs; `-Ponly` skips the folders not named. The jars are
 `**/build/libs/launcherskins-<loader>-<game versions>-<version>.jar`.
 
+## Releasing
+
+`mod/VERSION` names the version. "Run workflow" of the Skins mod workflow with publish
+on makes the GitHub release `skins-mod-v<version>` and gives it to the beta channel of
+the signed list on upd.lapi.sh; a green nightly game test gives it to stable
+(docs/DECISIONS.md D-065, "Updates without a launcher update"). Launchers then take it
+without an update of their own. The list names each jar's game versions from
+`builds.json`, which must stay the launcher's `BUILDS` (`src-tauri/src/skins_mod.rs`; a
+test compares them): a new build goes into both. Pinning the release into the launcher's
+`JARS` table afterwards makes it the built-in fallback.
+
+To send launchers back to an older version, run the Skins mod list workflow with that
+version and "rollback".
+
 ## Trying it in the game
 
 Each loader project has a `runClient` task. These properties are optional:

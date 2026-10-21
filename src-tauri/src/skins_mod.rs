@@ -4,8 +4,9 @@
 //! the game version and loader goes into `<game>/mods/` (Fabric, Quilt,
 //! NeoForge, Forge), or the Java agent is passed with `-javaagent` (no loader).
 //! The jars come from this repository's GitHub release `skins-mod-v<version>`
-//! and are pinned here by SHA-256 and size: [`JARS`] is the only list of what
-//! may reach a game. A jar is downloaded once into [`MANAGED_DIR`], shared by
+//! and are pinned by SHA-256 and size: here in [`JARS`], or in the signed list
+//! on upd.lapi.sh ([`list`]), which brings a newer mod version without a new
+//! launcher. Those two are the only lists of what may reach a game. A jar is downloaded once into [`MANAGED_DIR`], shared by
 //! every installation, and checked again each time before it is used.
 //!
 //! Nothing here can stop a launch: a jar that cannot be had means the game
@@ -224,6 +225,68 @@ impl Build {
     }
 }
 
+/// The jar a launch uses: from [`JARS`] or from the signed [`list::List`].
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Pick {
+    pub file: String,
+    pub sha256: String,
+    pub size: u64,
+    pub url: String,
+}
+
+impl Pick {
+    fn of(jar: &Jar) -> Self {
+        Self {
+            file: jar.file.to_owned(),
+            sha256: jar.sha256.to_owned(),
+            size: jar.size,
+            url: jar.url(),
+        }
+    }
+
+    /// Its place under DATA_ROOT.
+    fn managed(&self) -> String {
+        format!("{MANAGED_DIR}/{}", self.file)
+    }
+}
+
+/// The jar for this game version and loader: the signed list's when it is of
+/// a mod version not older than the built-in one (or goes back on purpose),
+/// else the built-in one. A list going back gives only its own jars.
+pub fn choose(
+    table: &[Jar],
+    listed: Option<&list::List>,
+    game: &str,
+    loader: Option<LoaderKind>,
+) -> Option<Pick> {
+    let builtin = || find_in(table, game, loader).map(Pick::of);
+    let Some(list) = listed else {
+        return builtin();
+    };
+    let newer = match (
+        semver::Version::parse(&list.version),
+        semver::Version::parse(MOD_VERSION),
+    ) {
+        (Ok(listed), Ok(built_in)) => listed >= built_in,
+        _ => false,
+    };
+    if !newer && !list.rollback {
+        return builtin();
+    }
+    let target = Target::for_game(game, loader)?;
+    let from_list = list.find(game, target).map(|jar| Pick {
+        file: jar.file.clone(),
+        sha256: jar.sha256.clone(),
+        size: jar.size,
+        url: list.url(jar),
+    });
+    if list.rollback {
+        from_list
+    } else {
+        from_list.or_else(builtin)
+    }
+}
+
 /// One jar of the release.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct Jar {
@@ -241,11 +304,6 @@ impl Jar {
     /// Its download address in the release.
     pub fn url(&self) -> String {
         format!("{RELEASE}{}", self.file)
-    }
-
-    /// Its place under DATA_ROOT.
-    fn managed(&self) -> String {
-        format!("{MANAGED_DIR}/{}", self.file)
     }
 
     /// Whether the entry is filled in and sane: a SHA-256, a size within
@@ -818,7 +876,7 @@ fn api_value(raw: &str) -> Option<&str> {
 
 /// The file at `path`, if it is a regular file with the jar's size and hash.
 /// The bytes returned are the ones checked.
-fn read_verified(path: &Path, jar: &Jar) -> Option<Vec<u8>> {
+fn read_verified(path: &Path, jar: &Pick) -> Option<Vec<u8>> {
     let metadata = std::fs::symlink_metadata(path).ok()?;
     if !metadata.is_file() || metadata.len() != jar.size {
         return None;
@@ -829,7 +887,7 @@ fn read_verified(path: &Path, jar: &Jar) -> Option<Vec<u8>> {
         .take(jar.size + 1)
         .read_to_end(&mut bytes)
         .ok()?;
-    let expected = Sha256::parse(jar.sha256).ok()?;
+    let expected = Sha256::parse(&jar.sha256).ok()?;
     (bytes.len() as u64 == jar.size
         && hex::encode(Sha256Hasher::digest(&bytes)) == expected.as_str())
     .then_some(bytes)
@@ -840,15 +898,18 @@ fn read_verified(path: &Path, jar: &Jar) -> Option<Vec<u8>> {
 async fn managed_bytes(
     root: &DataRoot,
     transport: Option<&HttpTransport>,
-    jar: &'static Jar,
+    jar: &Pick,
     cancel: &CancelToken,
 ) -> Option<Vec<u8>> {
     let path = resolve_managed_path(root, &jar.managed()).ok()?;
-    let check = |path: PathBuf| async move {
-        tokio::task::spawn_blocking(move || read_verified(&path, jar))
-            .await
-            .ok()
-            .flatten()
+    let check = |path: PathBuf| {
+        let jar = jar.clone();
+        async move {
+            tokio::task::spawn_blocking(move || read_verified(&path, &jar))
+                .await
+                .ok()
+                .flatten()
+        }
     };
     if let Some(bytes) = check(path.clone()).await {
         return Some(bytes);
@@ -856,11 +917,11 @@ async fn managed_bytes(
     let transport = transport?;
     let request = DownloadRequest {
         source: SourcePolicy::SkinsMod,
-        url: SourcePolicy::SkinsMod.check(&jar.url()).ok()?,
+        url: SourcePolicy::SkinsMod.check(&jar.url).ok()?,
         path: jar.managed(),
         size: jar.size,
-        digest: Digest::Sha256(Sha256::parse(jar.sha256).ok()?),
-        label: Some(jar.file.to_owned()),
+        digest: Digest::Sha256(Sha256::parse(&jar.sha256).ok()?),
+        label: Some(jar.file.clone()),
     };
     let executor = Executor::new(transport.clone(), root.clone(), ExecutorConfig::default());
     let job = Uuid::new_v4();
@@ -879,7 +940,7 @@ async fn managed_bytes(
 /// `keep` is written atomically unless the same file is there already.
 /// Directories and every file not named like ours are left alone; `mods` is
 /// created only to hold `keep`.
-fn sync_mods(mods: &Path, keep: Option<(&Jar, &[u8])>) -> std::io::Result<()> {
+fn sync_mods(mods: &Path, keep: Option<(&Pick, &[u8])>) -> std::io::Result<()> {
     if keep.is_some() {
         std::fs::create_dir_all(mods)?;
     }
@@ -888,7 +949,7 @@ fn sync_mods(mods: &Path, keep: Option<(&Jar, &[u8])>) -> std::io::Result<()> {
         Err(e) if e.kind() == std::io::ErrorKind::NotFound && keep.is_none() => return Ok(()),
         Err(e) => return Err(e),
     };
-    let keep_name = keep.map(|(jar, _)| jar.file);
+    let keep_name = keep.map(|(jar, _)| jar.file.as_str());
     let mut failed = None;
     for entry in entries {
         let entry = entry?;
@@ -914,7 +975,7 @@ fn sync_mods(mods: &Path, keep: Option<(&Jar, &[u8])>) -> std::io::Result<()> {
     let Some((jar, bytes)) = keep else {
         return failed.map_or(Ok(()), Err);
     };
-    let target = mods.join(jar.file);
+    let target = mods.join(&jar.file);
     if let Some(error) = failed {
         // Two versions of the mod side by side would stop the loader; better
         // none of ours this time.
@@ -939,6 +1000,8 @@ pub struct Setup<'a> {
     /// The installation's switch.
     pub enabled: bool,
     pub game_dir: &'a Path,
+    /// The signed list kept for the player's update channel, checked.
+    pub listed: Option<&'a list::List>,
 }
 
 /// The skins mod for one launch.
@@ -965,7 +1028,7 @@ pub async fn prepare(
 }
 
 async fn prepare_with(
-    table: &'static [Jar],
+    table: &[Jar],
     root: &DataRoot,
     transport: Option<&HttpTransport>,
     setup: &Setup<'_>,
@@ -973,9 +1036,9 @@ async fn prepare_with(
 ) -> Prepared {
     let jar = setup
         .enabled
-        .then(|| find_in(table, setup.game_version, setup.loader))
+        .then(|| choose(table, setup.listed, setup.game_version, setup.loader))
         .flatten();
-    let bytes = match jar {
+    let bytes = match &jar {
         Some(jar) => managed_bytes(root, transport, jar, cancel).await,
         None => None,
     };
@@ -989,8 +1052,8 @@ async fn prepare_with(
             Some("Launcher Skins could not be downloaded; the game starts without it");
     }
     // `mods/` holds our jar only with a loader; otherwise ours are removed.
-    let keep = match (setup.loader, jar, bytes.as_ref()) {
-        (Some(_), Some(jar), Some(bytes)) => Some((jar, bytes.clone())),
+    let keep = match (setup.loader, &jar, bytes.as_ref()) {
+        (Some(_), Some(jar), Some(bytes)) => Some((jar.clone(), bytes.clone())),
         _ => None,
     };
     let mods = setup.game_dir.join("mods");
@@ -998,7 +1061,7 @@ async fn prepare_with(
     let synced = tokio::task::spawn_blocking(move || {
         sync_mods(
             &mods,
-            keep.as_ref().map(|(jar, bytes)| (*jar, bytes.as_slice())),
+            keep.as_ref().map(|(jar, bytes)| (jar, bytes.as_slice())),
         )
     })
     .await;
@@ -1031,6 +1094,8 @@ async fn prepare_with(
     }
     prepared
 }
+
+pub mod list;
 
 #[cfg(test)]
 mod tests;

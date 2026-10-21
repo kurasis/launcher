@@ -10,7 +10,13 @@
 //! lapi-upd revoke <channel> <version>
 //! lapi-upd status
 //! lapi-upd pack <version> --out <file> [--notes <json>] <target>:<bundle>:<path>...   (CI)
+//! lapi-upd skins-mod <channel>
+//! lapi-upd skins-mod-list <mod version> --channel C --builds <json> --sums <file>
+//!          --jars <folder> --out <file> [--rollback]                               (CI)
 //! ```
+//!
+//! `skins-mod` puts `incoming/skins-mod-<channel>.json` (signed by
+//! `skins-mod-list` in CI) in place as the channel's list of Launcher Skins jars.
 //!
 //! `publish` reads `incoming/launcher-<version>-release.tar.gz` (built by the
 //! Package workflow), checks it and makes the version current. Settings come
@@ -22,6 +28,7 @@
 
 mod pack;
 mod release;
+mod skins_mod;
 
 use std::path::PathBuf;
 
@@ -91,7 +98,45 @@ fn main() -> std::process::ExitCode {
             (Some(channel), Some(version)) => server.revoke(channel, version),
             _ => Err("revoke needs a channel and a version".to_owned()),
         },
-        Some("status") => server.status(),
+        Some("status") => server
+            .status()
+            .and_then(|s| Ok(format!("{s}\n{}", server.skins_mod_status()?))),
+        Some("skins-mod") => match arg(1) {
+            Some(channel) => server.install_skins_mod(channel),
+            None => Err("skins-mod needs a channel".to_owned()),
+        },
+        Some("skins-mod-list") => (|| {
+            let version = arg(1).ok_or("skins-mod-list needs a mod version")?;
+            let channel = flag(&args, "--channel").ok_or("skins-mod-list needs --channel")?;
+            let read = |name: &str| -> Result<Vec<u8>, String> {
+                let path = flag(&args, name).ok_or_else(|| format!("skins-mod-list needs {name}"))?;
+                std::fs::read(path).map_err(|e| format!("reading {path}: {e}"))
+            };
+            let serial = u64::try_from(chrono::Utc::now().timestamp())
+                .map_err(|_| "the clock is before 1970")?;
+            let list = skins_mod::build(
+                version,
+                channel,
+                serial,
+                has(&args, "--rollback"),
+                &read("--builds")?,
+                &String::from_utf8_lossy(&read("--sums")?),
+                std::path::Path::new(flag(&args, "--jars").ok_or("skins-mod-list needs --jars")?),
+            )?;
+            let key = pack::secret_key(
+                &std::env::var("TAURI_SIGNING_PRIVATE_KEY")
+                    .map_err(|_| "TAURI_SIGNING_PRIVATE_KEY is not set")?,
+                &std::env::var("TAURI_SIGNING_PRIVATE_KEY_PASSWORD").unwrap_or_default(),
+            )?;
+            let envelope = skins_mod::sign(&list, &key)?;
+            let out = flag(&args, "--out").ok_or("skins-mod-list needs --out")?;
+            std::fs::write(out, serde_json::to_vec(&envelope).map_err(|e| e.to_string())?)
+                .map_err(|e| format!("writing {out}: {e}"))?;
+            Ok(format!(
+                "{out}: skins mod {version} for {channel}, {} jars, serial {serial}",
+                list.jars.len()
+            ))
+        })(),
         Some("pack") => (|| {
             let version = arg(1).ok_or("pack needs a version")?;
             let out = flag(&args, "--out").ok_or("pack needs --out")?;
@@ -117,7 +162,7 @@ fn main() -> std::process::ExitCode {
         })(),
         Some("--version") => Ok(format!("lapi-upd {}", env!("CARGO_PKG_VERSION"))),
         _ => Err(
-            "usage: lapi-upd publish <version> [--channel C] [--rollout N] [--mandatory] [--partial] | rollout <channel> <percent> | pause <channel> | resume <channel> | revoke <channel> <version> | status"
+            "usage: lapi-upd publish <version> [--channel C] [--rollout N] [--mandatory] [--partial] | rollout <channel> <percent> | pause <channel> | resume <channel> | revoke <channel> <version> | status | skins-mod <channel>"
                 .to_owned(),
         ),
     };

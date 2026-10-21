@@ -83,6 +83,10 @@ launcher's `output.log`, and any crash reports. Everything copied out of the gam
 folder, computer name and data folder replaced first: the repository and its artifacts are
 public.
 
+A green nightly run also gives the skins mod release of the tested commit to the stable
+channel of the signed list on upd.lapi.sh (docs/DECISIONS.md D-065), when the mod's code
+is the release's and beta has it; a run by hand does so with "promote".
+
 ## Running it
 
 "Run workflow" on the Game test workflow, on `main`. Inputs pick the versions (26.3,

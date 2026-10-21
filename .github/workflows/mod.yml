@@ -1,11 +1,13 @@
 name: Skins mod
 
 # Launcher Skins (docs/DECISIONS.md D-065): the core's tests and a jar for every
-# loader and game version, kept as artifacts. Nothing here talks to the server.
+# loader and game version, kept as artifacts.
 # "Run workflow" with publish on makes the GitHub release skins-mod-v<mod/VERSION>
 # with the jars and their SHA-256 sums; the launcher downloads them from there,
 # pinned by those sums. A version is published once: a second run of the same
-# version fails instead of replacing files players already have.
+# version fails instead of replacing files players already have. The release
+# then goes to the beta channel's signed list on upd.lapi.sh (Skins mod list
+# workflow); stable gets it after a green nightly game test.
 
 on:
   push:
@@ -165,6 +167,8 @@ jobs:
     runs-on: ubuntu-24.04
     permissions:
       contents: write
+    outputs:
+      version: ${{ steps.release.outputs.version }}
     steps:
       - uses: actions/checkout@v7
       - uses: actions/download-artifact@v8
@@ -172,12 +176,14 @@ jobs:
           pattern: launcher-skins-*
           path: artifact
       - name: Make the release
+        id: release
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
           version=$(tr -d '[:space:]' < mod/VERSION)
           [[ "$version" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]] || { echo "bad version"; exit 1; }
+          echo "version=$version" >> "$GITHUB_OUTPUT"
           mkdir dist
           find artifact -name 'launcherskins-*.jar' -exec cp {} dist/ \;
           (cd dist && sha256sum launcherskins-*.jar > SHA256SUMS)
@@ -186,3 +192,12 @@ jobs:
             --target "$GITHUB_SHA" \
             --title "Launcher Skins $version" \
             --notes "The launcher's skins mod and Java agent (docs/DECISIONS.md D-065). SHA256SUMS lists every jar's sum."
+
+  beta:
+    name: Beta channel
+    needs: release
+    uses: ./.github/workflows/skins-mod-list.yml
+    with:
+      version: ${{ needs.release.outputs.version }}
+      channels: beta
+    secrets: inherit

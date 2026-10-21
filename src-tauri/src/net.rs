@@ -49,6 +49,9 @@ pub enum SourcePolicy {
     /// The Launcher Skins jars on this repository's GitHub releases (D-065),
     /// with the hosts GitHub redirects release downloads to.
     SkinsMod,
+    /// The signed list of those jars on the update server (D-065): one small
+    /// file, no player data, not on the mirror.
+    SkinsModList,
 }
 
 // `launchermeta` is Mojang's previous metadata host; older descriptors still
@@ -105,6 +108,7 @@ const ALL_SOURCE_HOSTS: &[&str] = &[
     "feed.lapi.sh",
     "servers.lapi.sh",
     "reviews.lapi.sh",
+    "upd.lapi.sh",
 ];
 
 const CRASH_REPORT_HOSTS: &[&str] = &["crash.lapi.sh"];
@@ -112,6 +116,7 @@ const MODS_CATALOG_HOSTS: &[&str] = &[crate::mods::FILES_HOST, crate::mods::CDN_
 const FEED_HOSTS: &[&str] = &["feed.lapi.sh"];
 const SERVER_ADS_HOSTS: &[&str] = &["servers.lapi.sh"];
 const REVIEWS_HOSTS: &[&str] = &["reviews.lapi.sh"];
+const SKINS_MOD_LIST_HOSTS: &[&str] = &["upd.lapi.sh"];
 const SKINS_MOD_HOSTS: &[&str] = &[
     "github.com",
     "objects.githubusercontent.com",
@@ -133,6 +138,7 @@ impl SourcePolicy {
             Self::ServerAds => SERVER_ADS_HOSTS,
             Self::Reviews => REVIEWS_HOSTS,
             Self::SkinsMod => SKINS_MOD_HOSTS,
+            Self::SkinsModList => SKINS_MOD_LIST_HOSTS,
         }
     }
 
@@ -140,7 +146,12 @@ impl SourcePolicy {
     pub fn mirrored(self) -> bool {
         !matches!(
             self,
-            Self::CrashReports | Self::ModsCatalog | Self::Feed | Self::ServerAds | Self::Reviews
+            Self::CrashReports
+                | Self::ModsCatalog
+                | Self::Feed
+                | Self::ServerAds
+                | Self::Reviews
+                | Self::SkinsModList
         )
     }
 
@@ -650,6 +661,7 @@ mod tests {
             SourcePolicy::ServerAds,
             SourcePolicy::Reviews,
             SourcePolicy::SkinsMod,
+            SourcePolicy::SkinsModList,
         ] {
             for host in policy.hosts() {
                 assert!(ALL_SOURCE_HOSTS.contains(host), "{host}");

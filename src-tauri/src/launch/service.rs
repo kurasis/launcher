@@ -751,7 +751,21 @@ impl LaunchService {
         .await
         .map_err(|_| LauncherError::internal("Preparing assets stopped unexpectedly."))??;
         check_cancel()?;
-        // Launcher Skins (D-065): never stops the launch.
+        // Launcher Skins (D-065): never stops the launch. The signed list kept
+        // for the player's update channel may name a newer jar.
+        let listed = match crate::update::public_key() {
+            Some(key) if launcher_skins => {
+                let (list_root, key) = (root.clone(), key.to_owned());
+                let channel = self.host.app_state().settings().update_channel;
+                tokio::task::spawn_blocking(move || {
+                    skins_mod::list::kept(&list_root, &key, channel)
+                })
+                .await
+                .ok()
+                .flatten()
+            }
+            _ => None,
+        };
         let skins = skins_mod::prepare(
             root,
             self.skins_mod.as_ref(),
@@ -760,6 +774,7 @@ impl LaunchService {
                 loader: lock.loader.as_ref().map(|l| l.kind),
                 enabled: launcher_skins,
                 game_dir: &game_dir,
+                listed: listed.as_ref(),
             },
             cancel,
         )

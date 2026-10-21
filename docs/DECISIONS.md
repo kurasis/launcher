@@ -2053,6 +2053,41 @@ archive from the Package workflow, upload it to
 - **Server setup (owner):** a DNS record and certificate for skins.lapi.sh, then
   `deploy/bootstrap.sh` once, as for the other services.
 
+### Updates without a launcher update
+
+- **Status:** accepted (owner request, 2026-10-21). A new mod version reaches players
+  without a new launcher; the built-in table stays the fallback.
+- **The list:** `https://upd.lapi.sh/v1/<channel>/skins-mod-list.json` (stable,
+  beta), served by nginx like the update manifests. It is `{list, signature}`:
+  `list` is the exact signed text of `{kind: "skins-mod", channel, serial, version,
+rollback, jars: [{target, games, file, sha256, size}]}`, `signature` a minisign
+  signature with the launcher's update key (D-063) whose trusted comment names
+  `kind:skins-mod`, the channel and the serial. The serial is the signing time in
+  seconds. The jars stay on the GitHub release `skins-mod-v<version>`.
+- **Signing:** only in CI (workflow "Skins mod list"), from the release's
+  `SHA256SUMS`, its jars and `mod/builds.json` (the launcher's `BUILDS` as data; a
+  test keeps the two the same). The key never goes on the server: `lapi-upd
+skins-mod <channel>` there only checks the signature against the public key and
+  that the serial is newer than the channel's, then puts the file in place.
+- **Channels:** a release (Skins mod workflow, publish) goes to beta at once; a
+  green nightly game test gives it to stable when the tested commit's mod code is
+  the release's and beta has it. **Going back** is one "Run workflow" of "Skins mod
+  list" with the older version and `rollback`: a newer serial for an older
+  version.
+- **In the launcher** (`src-tauri/src/skins_mod/list.rs`): asked with the update
+  check (at start and every 6 hours, not offline, not when checks are off; a
+  manual check asks too) for the player's update channel. Taken only when the
+  signature verifies with the built-in key, the comment names this kind, channel
+  and serial, every entry is in bounds (names like ours, SHA-256, size up to
+  16 MiB, plain game versions, at most 256 jars and 512 KiB) and the serial is not
+  lower than the kept list's, so an old signed list cannot be served again. Kept
+  per channel in `shared/launcherskins/list-<channel>.json` and checked again at
+  each launch. The list's jar is used when its version is not older than the
+  built-in `MOD_VERSION` (the built-in jar fills a game version the list lacks),
+  or always when it goes back (then only its own jars). No key built in, no list,
+  a damaged list: the built-in table, as before. Nothing about the player is sent,
+  and nothing stops a launch.
+
 ## D-066 — Catalog of mods at mods.lapi.sh
 
 - **Status:** accepted (owner request, 2026-10-19), stages 1–6 · **Affects:** the new service `services/mods` (`https://mods.lapi.sh`, files at
