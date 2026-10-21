@@ -145,6 +145,11 @@ impl Blobs {
         }
     }
 
+    /// The free space the disk keeps: nothing more is kept below it.
+    pub fn min_free(&self) -> u64 {
+        self.min_free
+    }
+
     pub fn free(&self) -> u64 {
         rustix::fs::statvfs(&self.blobs)
             .map(|s| s.f_bavail.saturating_mul(s.f_frsize))

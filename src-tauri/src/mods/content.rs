@@ -224,9 +224,23 @@ impl ContentLock {
         self.items.iter().find(|i| i.project_id == project)
     }
 
+    /// The project's file in `folder` (relative to the game folder).
+    fn of_project_in(&self, project: &str, folder: &str) -> Option<&LockedItem> {
+        self.items
+            .iter()
+            .find(|i| i.project_id == project && in_folder(&i.path, folder))
+    }
+
     fn at(&self, path: &str) -> Option<&LockedItem> {
         self.items.iter().find(|i| i.path == path)
     }
+}
+
+/// Whether a path (relative to the game folder) lies right in `folder`.
+fn in_folder(path: &str, folder: &str) -> bool {
+    path.strip_prefix(folder)
+        .and_then(|rest| rest.strip_prefix('/'))
+        .is_some_and(|name| !name.contains('/'))
 }
 
 fn lock_path(root: &DataRoot, id: InstanceId) -> PathBuf {
@@ -313,6 +327,22 @@ pub fn misfit(kind: &str, version: &Version, target: &Target) -> Option<Misfit> 
     (!game).then_some(Misfit::WrongGame)
 }
 
+/// How a version goes into an installation: as its project's kind, except a
+/// mod's data pack version (Terralith and the like publish both), which goes
+/// into a world.
+pub fn install_kind<'a>(kind: &'a str, version: &Version) -> &'a str {
+    if kind == "mod" && datapack_version(version) {
+        "datapack"
+    } else {
+        kind
+    }
+}
+
+/// Whether a version is a data pack and nothing else.
+fn datapack_version(version: &Version) -> bool {
+    !version.loaders.is_empty() && version.loaders.iter().all(|l| l == "datapack")
+}
+
 /// The version to take: the newest release, else the newest.
 pub fn best(versions: &[Version]) -> Option<&Version> {
     versions
@@ -338,6 +368,13 @@ async fn fitting<C: Catalog>(
             }
         }
         Ok(Vec::new())
+    } else if kind == "datapack" {
+        // A mod's versions for loaders are not data packs.
+        let found = catalog.versions(project, Some(&target.game), None).await?;
+        Ok(found
+            .into_iter()
+            .filter(|v| v.loaders.is_empty() || datapack_version(v))
+            .collect())
     } else {
         catalog.versions(project, Some(&target.game), None).await
     }
@@ -461,16 +498,17 @@ pub async fn plan<C: Catalog>(
 ) -> LauncherResult<Plan> {
     let version = catalog.version(wanted.version).await?;
     let project = catalog.project(&version.project_id).await?;
-    let folder = folder_of(&project.kind, wanted.world)?;
-    if let Some(world) = wanted.world.filter(|_| project.kind == "datapack")
+    let kind = install_kind(&project.kind, &version).to_owned();
+    let folder = folder_of(&kind, wanted.world)?;
+    if let Some(world) = wanted.world.filter(|_| kind == "datapack")
         && !game.join("saves").join(world).is_dir()
     {
         return Err(LauncherError::invalid_input(
             "This world is not in the installation.",
         ));
     }
-    let found = misfit(&project.kind, &version, target);
-    if project.kind == "mod"
+    let found = misfit(&kind, &version, target);
+    if kind == "mod"
         && let Some(why) = found
     {
         return Err(match why {
@@ -501,14 +539,18 @@ pub async fn plan<C: Catalog>(
     // A project's file in the folder: the launcher's, else one of the
     // player's the catalog recognized; as on disk now.
     let there = |project: &str| -> Option<(String, String)> {
-        if let Some(ours) = lock.of_project(project)
+        if let Some(ours) = lock.of_project_in(project, &folder)
             && let Some(path) = present(game, &ours.path)
         {
             return Some((path, ours.title.clone()));
         }
         identified
             .iter()
-            .find(|i| i.project_id == project && game.join(&i.path).is_file())
+            .find(|i| {
+                i.project_id == project
+                    && in_folder(enabled_form(&i.path), &folder)
+                    && game.join(&i.path).is_file()
+            })
             .map(|i| {
                 let name = i.path.rsplit('/').next().unwrap_or_default();
                 (i.path.clone(), enabled_form(name).to_owned())
@@ -524,11 +566,7 @@ pub async fn plan<C: Catalog>(
                 "This needs too many other projects to install at once.",
             ));
         }
-        let kind = if dependency {
-            "mod"
-        } else {
-            project.kind.as_str()
-        };
+        let kind = if dependency { "mod" } else { kind.as_str() };
         let file = version
             .main_file()
             .filter(|f| catalog_file_name(&f.name, kind))
@@ -547,7 +585,9 @@ pub async fn plan<C: Catalog>(
         }
         // An older file of the same project goes, the player's own too: two
         // copies of a mod stop the game.
-        let replaces = match lock.of_project(&version.project_id) {
+        // Only in the same folder: a mod's data pack in a world leaves the
+        // mod be, and a data pack in one world leaves another world's.
+        let replaces = match lock.of_project_in(&version.project_id, &folder) {
             Some(old) => Some(old.path.clone()),
             None => wanted
                 .replaces
@@ -556,6 +596,7 @@ pub async fn plan<C: Catalog>(
                 .or_else(|| there(&version.project_id).map(|(p, _)| p))
                 .map(|r| enabled_form(&r).to_owned()),
         }
+        .filter(|p| in_folder(p, &folder))
         .filter(|p| present(game, p).is_some());
         let mut same = false;
         if let Some(there) = present(game, &path) {
@@ -915,9 +956,13 @@ impl Installer {
                     game.join(format!("{}{DISABLED}", item.path)),
                 );
             }
-            lock_file
-                .items
-                .retain(|i| i.project_id != item.project_id && i.path != item.path);
+            // The project's file in another folder stays: a mod and its data
+            // pack in a world, or a data pack in two worlds.
+            let folder = item.path.rsplit_once('/').map_or("", |(f, _)| f);
+            lock_file.items.retain(|i| {
+                !(i.project_id == item.project_id && in_folder(&i.path, folder))
+                    && i.path != item.path
+            });
             lock_file.items.push(LockedItem {
                 path: item.path.clone(),
                 sha256: sha.clone(),
@@ -1302,7 +1347,8 @@ pub async fn updates<C: Catalog>(
     let mut offers = Vec::new();
     let mut asked: HashSet<String> = HashSet::new();
     for (path, project, version, kind) in items.into_iter().take(300) {
-        if !asked.insert(project.clone()) {
+        // A mod and its data pack in a world are offered apart.
+        if !asked.insert(format!("{kind} {project}")) {
             continue;
         }
         let list = fitting(catalog, &project, &kind, target).await?;

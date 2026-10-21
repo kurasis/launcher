@@ -51,6 +51,33 @@ pub fn search_url(query: &str) -> String {
     )
 }
 
+/// Modrinth's project types the catalog takes, for the most downloaded.
+pub const POPULAR_TYPES: [&str; 5] = ["mod", "modpack", "resourcepack", "shader", "datapack"];
+
+/// The most downloaded projects of a type, `limit` of them (at most 100).
+pub fn popular_url(project_type: &str, limit: usize) -> String {
+    let facets = format!(r#"[["project_type:{project_type}"]]"#);
+    format!(
+        "{API}/search?limit={}&index=downloads&facets={}",
+        limit.min(100),
+        path_part(&facets)
+    )
+}
+
+/// The project IDs of a search's answer, in its order; anything that is not
+/// an ID is left out.
+pub fn project_ids(value: &Value) -> Vec<String> {
+    value
+        .get("hits")
+        .and_then(Value::as_array)
+        .into_iter()
+        .flatten()
+        .filter_map(|hit| hit.get("project_id")?.as_str().filter(|s| is_ref(s)))
+        .map(str::to_owned)
+        .take(100)
+        .collect()
+}
+
 fn text(value: &Value, key: &str, max: usize) -> String {
     clean(
         value.get(key).and_then(Value::as_str).unwrap_or_default(),

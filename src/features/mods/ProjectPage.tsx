@@ -18,6 +18,7 @@ import {
   compact,
   dateOf,
   installable,
+  installKind,
   loaderOf,
   ourPicture,
   packArchive,
@@ -135,6 +136,8 @@ interface Props {
   onLink: (url: string) => void;
   onAdd: (project: ModsProject, version: ModsVersion) => void;
   onInstallPack: (project: ModsProject, version: ModsVersion) => void;
+  /** Opened from the data packs: a mod's data pack versions show first. */
+  datapacks?: boolean;
 }
 
 /** One version: what it runs on, whether the catalog keeps it, and actions. */
@@ -165,7 +168,7 @@ function VersionRow({
   const pack = project.kind === 'modpack' && version.files.some((f) => packArchive(f.name));
   // Why the version cannot go in, shown on hover; a disabled button gets no
   // pointer events everywhere, so the wrapper carries it too.
-  const blocked = cannotAdd(project.kind, version, instance);
+  const blocked = cannotAdd(installKind(project.kind, version), version, instance);
   const packBlocked = held ? t.cannotAdd.held : null;
   return (
     <li className={styles.version}>
@@ -266,7 +269,15 @@ function VersionRow({
 }
 
 /** A project's page: description, gallery and versions (D-066). */
-export function ProjectPage({ projectRef, instance, onBack, onLink, onAdd, onInstallPack }: Props) {
+export function ProjectPage({
+  projectRef,
+  instance,
+  onBack,
+  onLink,
+  onAdd,
+  onInstallPack,
+  datapacks = false,
+}: Props) {
   const t = strings.mods.project;
   const [project, setProject] = useState<ModsProject | null>(null);
   // Every version of the project, newest first.
@@ -322,6 +333,9 @@ export function ProjectPage({ projectRef, instance, onBack, onLink, onAdd, onIns
   const initial = {
     game: fitting && options.games.includes(instance.versionId) ? instance.versionId : '',
     loader: (() => {
+      if (datapacks && project?.kind === 'mod' && options.loaders.includes('datapack')) {
+        return 'datapack';
+      }
       const loader = fitting ? loaderOf(project.kind, instance) : '';
       return options.loaders.includes(loader) ? loader : '';
     })(),

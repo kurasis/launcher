@@ -586,7 +586,7 @@ describe('FeedView', () => {
     expect(await within(again).findByText('Watched')).toBeVisible();
   });
 
-  it('asks for the live streams again every few minutes: ended ones leave, new ones come', async () => {
+  it('asks for the live streams again every few minutes: ended ones leave, new ones come under Streams', async () => {
     vi.useFakeTimers({ shouldAdvanceTime: true });
     try {
       const [stream] = feedFixture().streams;
@@ -612,15 +612,36 @@ describe('FeedView', () => {
       show();
       await screen.findByRole('list', { name: 'All' });
       expect(titles('All')).toEqual(['Building a castle', 'A long video']);
+      // Ended, a stream leaves the mixed list; that list shows only the
+      // most watched few, so a new one waits for Refresh there.
       live = [later];
       await vi.advanceTimersByTimeAsync(3 * 60 * 1000);
       await waitFor(() => {
-        expect(titles('All')).toEqual(['Hardcore day 1', 'A long video']);
+        expect(titles('All')).toEqual(['A long video']);
       });
       expect(
         calls.filter((c) => c.cmd === 'feed_page' && c.args.filter === 'streams'),
       ).toHaveLength(1);
       expect(calls.filter((c) => c.cmd === 'feed_own_streams').length).toBeGreaterThanOrEqual(2);
+      // Under the Streams chip new ones come in too.
+      const chips = screen.getByRole('group', { name: 'Show in the feed' });
+      fireEvent.click(within(chips).getByRole('button', { name: 'Streams' }));
+      await screen.findByRole('list', { name: 'Streams' });
+      expect(titles('Streams')).toEqual(['Hardcore day 1']);
+      live = [
+        {
+          ...stream,
+          login: 'newcomer',
+          name: 'Newcomer',
+          title: 'Speedrun',
+          started: '2026-10-19T12:00:00Z',
+        },
+        later,
+      ];
+      await vi.advanceTimersByTimeAsync(3 * 60 * 1000);
+      await waitFor(() => {
+        expect(titles('Streams')).toEqual(['Speedrun', 'Hardcore day 1']);
+      });
     } finally {
       vi.useRealTimers();
     }

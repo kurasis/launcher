@@ -956,6 +956,108 @@ async fn kinds_without_a_place_are_refused() {
 }
 
 #[tokio::test]
+async fn a_mods_data_pack_version_goes_into_a_world() {
+    let mut fake = Fake::default();
+    fake.add_project(1, "mod", "Terralith");
+    let jar = fake.add_version(10, 1, "terralith.jar", json!({}));
+    let zip = fake.add_version(11, 1, "terralith.zip", json!({"loaders": ["datapack"]}));
+    assert_eq!(
+        content::install_kind("mod", &fake.versions[&zip]),
+        "datapack"
+    );
+    assert_eq!(content::install_kind("mod", &fake.versions[&jar]), "mod");
+    let dir = tempfile::tempdir().unwrap();
+    fs::create_dir_all(dir.path().join("saves/World")).unwrap();
+    touch(dir.path(), "mods/terralith.jar");
+    let lock = ContentLock {
+        schema_version: 1,
+        items: vec![locked("mods/terralith.jar", 1, 10)],
+        pack: None,
+        published: None,
+    };
+    // A world to go into is needed, as for any data pack.
+    assert!(
+        content::plan(&fake, dir.path(), &fabric(), &lock, &wanted(&zip), &[])
+            .await
+            .is_err()
+    );
+    let w = Wanted {
+        version: &zip,
+        world: Some("World"),
+        replaces: None,
+    };
+    let plan = content::plan(&fake, dir.path(), &fabric(), &lock, &w, &[])
+        .await
+        .unwrap();
+    assert!(plan.ready());
+    assert_eq!(plan.items[0].path, "saves/World/datapacks/terralith.zip");
+    assert_eq!(plan.items[0].kind, "datapack");
+    // The mod stays.
+    assert_eq!(plan.items[0].replaces, None);
+    // And on a vanilla installation, where the mod could not run.
+    let vanilla = Target {
+        game: "1.21.1".to_owned(),
+        loader: None,
+    };
+    let plan = content::plan(&fake, dir.path(), &vanilla, &lock, &w, &[])
+        .await
+        .unwrap();
+    assert_eq!(plan.misfit, None);
+
+    // Updates: the data pack to the next data pack, the mod to the next jar.
+    let newer_zip = fake.add_version(12, 1, "terralith-2.zip", json!({"loaders": ["datapack"]}));
+    let newer_jar = fake.add_version(13, 1, "terralith-2.jar", json!({}));
+    touch(dir.path(), "saves/World/datapacks/terralith.zip");
+    let mut pack = locked("saves/World/datapacks/terralith.zip", 1, 11);
+    pack.kind = "datapack".to_owned();
+    let lock = ContentLock {
+        schema_version: 1,
+        items: vec![locked("mods/terralith.jar", 1, 10), pack],
+        pack: None,
+        published: None,
+    };
+    let offers = content::updates(&fake, &fabric(), &lock, &[], dir.path())
+        .await
+        .unwrap();
+    let to = |path: &str| {
+        offers
+            .iter()
+            .find(|o| o.path == path)
+            .map(|o| o.to_version_id.clone())
+    };
+    assert_eq!(to("mods/terralith.jar"), Some(newer_jar));
+    assert_eq!(to("saves/World/datapacks/terralith.zip"), Some(newer_zip));
+}
+
+#[tokio::test]
+async fn a_data_pack_in_one_world_leaves_another_worlds_be() {
+    let mut fake = Fake::default();
+    fake.add_project(2, "datapack", "Data");
+    let data = fake.add_version(11, 2, "data.zip", json!({"loaders": ["datapack"]}));
+    let dir = tempfile::tempdir().unwrap();
+    fs::create_dir_all(dir.path().join("saves/B")).unwrap();
+    touch(dir.path(), "saves/A/datapacks/data.zip");
+    let mut in_a = locked("saves/A/datapacks/data.zip", 2, 11);
+    in_a.kind = "datapack".to_owned();
+    let lock = ContentLock {
+        schema_version: 1,
+        items: vec![in_a],
+        pack: None,
+        published: None,
+    };
+    let w = Wanted {
+        version: &data,
+        world: Some("B"),
+        replaces: None,
+    };
+    let plan = content::plan(&fake, dir.path(), &fabric(), &lock, &w, &[])
+        .await
+        .unwrap();
+    assert_eq!(plan.items[0].path, "saves/B/datapacks/data.zip");
+    assert_eq!(plan.items[0].replaces, None);
+}
+
+#[tokio::test]
 async fn files_of_the_player_are_never_overwritten() {
     let mut fake = Fake::default();
     fake.add_project(1, "mod", "A");

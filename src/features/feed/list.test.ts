@@ -60,21 +60,28 @@ describe('mergeByTime', () => {
 });
 
 describe('withLiveStreams', () => {
-  it('drops the streams that ended, updates the others and adds new ones by time', () => {
+  it('drops the streams that ended, updates the others and can add new ones by time', () => {
     const items: FeedItem[] = [
       { type: 'stream', stream: stream('ended', '2026-10-21T11:00:00Z') },
       { type: 'stream', stream: stream('going', '2026-10-21T09:30:00Z', 5) },
       video('v1', 'a', '2026-10-21T09:00:00Z'),
       video('v2', 'a', '2026-10-21T07:00:00Z'),
     ];
-    const after = withLiveStreams(items, [
+    const live = [
       stream('going', '2026-10-21T09:30:00Z', 500),
       stream('fresh', '2026-10-21T08:00:00Z'),
-    ]);
+    ];
+    const after = withLiveStreams(items, live, true);
     expect(keys(after)).toEqual(['stream:going', 'video:v1', 'stream:fresh', 'video:v2']);
     const going = after[0];
     expect(going?.type === 'stream' && going.stream.viewers).toBe(500);
+    // The mixed list takes no new ones.
+    expect(keys(withLiveStreams(items, live, false))).toEqual([
+      'stream:going',
+      'video:v1',
+      'video:v2',
+    ]);
     // With nothing live, the other items stay as they were.
-    expect(keys(withLiveStreams(items, []))).toEqual(['video:v1', 'video:v2']);
+    expect(keys(withLiveStreams(items, [], true))).toEqual(['video:v1', 'video:v2']);
   });
 });
