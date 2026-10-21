@@ -3,9 +3,9 @@ plugins {
     id 'com.gradleup.shadow' version '9.6.1'
 }
 
-// The bot with no mod loader in one of 1.16.5, 1.18.2 and 1.20.1, a Java agent
+// The bot with no mod loader in one release from 1.16.5 to 1.20.1, a Java agent
 // (docs/GAMETEST.md) like gametest/mc-1.21.1/agent: written in Mojang names, then remapped
-// to the release's own names, with ASM bundled under our own package. Java 8.
+// to the release's own names, with ASM bundled under our own package.
 base {
     archivesName = "launchergametest-agent-${minecraft_version}"
 }
@@ -16,7 +16,7 @@ java {
 
 sourceSets.main {
     java.srcDir "${rootDir}/gametest/core/src/main/java"
-    java.srcDir "${projectDir}/../../game/${minecraft_version}"
+    java.srcDir "${projectDir}/../../game/${findProperty('game_layer') ?: minecraft_version}"
     java.srcDir "${rootDir}/gametest/agent/src/main/java"
 }
 
@@ -33,7 +33,8 @@ dependencies {
 }
 
 tasks.withType(JavaCompile).configureEach {
-    options.release = 8
+    // Java 8 unless the release's game layer needs more (java_release in gradle.properties).
+    options.release = (findProperty('java_release') ?: '8') as int
     options.encoding = 'UTF-8'
 }
 

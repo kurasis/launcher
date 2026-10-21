@@ -44,8 +44,9 @@ include 'core'
 }
 add 'mc-26.3:agent'
 add 'mc-1.12.2:forge'
-// 1.16.5, 1.18.2 and 1.20.1 share a game layer; each release is a project of its own,
-// a folder in mc-1.16.5-1.20.1/<loader> built by that loader's script there.
+// 1.16 to 1.20.1 share a game layer; each jar is a project of its own, a folder in
+// mc-1.16.5-1.20.1/<loader> named after the release it is built against and built by
+// that loader's script there.
 ['fabric', 'forge'].each { loader ->
     file("mc-1.16.5-1.20.1/${loader}").eachDir { dir ->
         if (new File(dir, 'gradle.properties').exists()) {
@@ -72,7 +73,7 @@ include 'gametest:core'
 }
 ['fabric', 'neoforge', 'forge', 'agent'].each { loader -> add "gametest:mc-26.3:${loader}" }
 add 'gametest:mc-1.12.2:forge'
-// The 1.16.5 to 1.20.1 bots: a project per release and loader, laid out like the mod's.
+// The 1.16 to 1.20.1 bots: a project per release and loader, laid out like the mod's.
 ['fabric', 'forge', 'agent'].each { loader ->
     file("gametest/mc-1.16.5-1.20.1/${loader}").eachDir { dir ->
         if (new File(dir, 'gradle.properties').exists()) {

@@ -25,7 +25,7 @@ import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
 /**
- * The game's side of Launcher Skins (D-065) for Minecraft 1.16.5, 1.18.2 and 1.20.1,
+ * The game's side of Launcher Skins (D-065) for Minecraft 1.16 to 1.20.1,
  * shared by every loader: turns loaded PNGs into textures (one per frame) and hands them
  * out through the hooks on {@code PlayerInfo}'s getters. Plain Java 8, which 1.16.5 runs
  * on. Nothing about players is logged.

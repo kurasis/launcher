@@ -15,7 +15,7 @@ java {
 sourceSets.main {
     java.srcDir "${rootDir}/gametest/core/src/main/java"
     java.srcDir "${projectDir}/../../common/src/main/java"
-    java.srcDir "${projectDir}/../../game/${minecraft_version}"
+    java.srcDir "${projectDir}/../../game/${findProperty('game_layer') ?: minecraft_version}"
     java.srcDir "${projectDir}/../src/main/java"
     resources.srcDir "${projectDir}/../../common/src/main/resources"
     resources.srcDir "${projectDir}/../src/main/resources"

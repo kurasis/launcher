@@ -2,12 +2,14 @@ plugins {
     id 'net.neoforged.moddev.legacyforge' version '2.0.148'
 }
 
-// The Forge jar for one of 1.18.2 and 1.20.1 (1.16.5 has a script of its own): each is a
-// project here, a folder named after the release with its versions in gradle.properties.
-// These Forge releases run with SRG names, so the jar is reobfuscated and the Mixin
-// refmap maps our targets.
+// The Forge jar for 1.17.1 to 1.20.1 (1.16.5 has a script of its own), a project in the
+// folder named after the release it is built against; its gradle.properties name the band
+// (`band`), the releases it accepts (`forge_range`) and the oldest Forge it runs on
+// (`forge_min`). These Forge releases run with SRG names, which keep their numbers from
+// release to release, so the jar is reobfuscated, the Mixin refmap maps our targets, and
+// one jar serves them all.
 base {
-    archivesName = "launcherskins-forge-${minecraft_version}"
+    archivesName = "launcherskins-forge-${band}"
 }
 
 java {
@@ -54,8 +56,8 @@ jar {
 }
 
 processResources {
-    def props = [version: project.version, minecraft: minecraft_version,
-                 forge_major: forge_version.tokenize('.')[0], pack_format: pack_format]
+    def props = [version: project.version, minecraft: forge_range, forge_major: forge_min,
+                 pack_format: pack_format]
     inputs.properties props
     filesMatching(['META-INF/mods.toml', 'pack.mcmeta']) {
         expand props

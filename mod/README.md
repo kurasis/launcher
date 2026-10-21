@@ -17,9 +17,13 @@ none for them: a profile without textures whose UUID is not a Mojang one (versio
   every version in the folder's name (`launcherskins-<loader>-<first>-<last>.jar`). Each
   loader build takes `core` and `common` as its own sources, so every jar stands alone.
   The Fabric jar also runs on Quilt.
-- `mc-1.16.5-1.20.1/`: one plain Java 8 game layer for 1.16.5, 1.18.2 and 1.20.1, and a
-  project per release under `fabric/` and `forge/`, built by the script beside them
-  (Forge 1.18.2 and 1.20.1 with ModDevGradle's legacy plugin, reobfuscated to SRG).
+- `mc-1.16.5-1.20.1/`: one plain Java 8 game layer for 1.16 to 1.20.1. What it uses keeps
+  its intermediary names (Fabric) and SRG names (Forge 1.17.1 on) from release to
+  release, so the jar built against 1.20.1 is byte for byte the one built against any of
+  them: one Fabric jar serves 1.16 to 1.20.1 and one Forge jar 1.17.1 to 1.20.1 (ModDevGradle's
+  legacy plugin, reobfuscated to SRG). Forge 1.16.5, the first Forge with Mixin, has a jar
+  of its own (Architectury Loom). Each is a project in the folder of the release it is
+  built against, whose gradle.properties name its band and range.
 - `mc-1.12.2/forge/`: Forge 1.12.2 has no Mixin, so the hook is a coremod: an ASM
   transformer that passes `NetworkPlayerInfo`'s skin, cape, elytra and model through
   `LauncherSkins` (methods matched by MCP name in development, SRG name in a released
