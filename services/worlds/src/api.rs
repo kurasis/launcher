@@ -660,6 +660,16 @@ async fn redeem_invite(State(app): State<Arc<App>>, headers: HeaderMap, bytes: B
 struct NewSession {
     endpoint: String,
     max_players: i64,
+    /// The world's room pack, for a world with mods.
+    #[serde(default)]
+    pack: Option<NewPack>,
+}
+
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct NewPack {
+    version: String,
+    sha256: String,
 }
 
 async fn start_session(
@@ -677,6 +687,14 @@ async fn start_session(
     if !text::endpoint(&request.endpoint) || !(1..=MAX_PLAYERS).contains(&request.max_players) {
         return refuse("bad_request");
     }
+    let pack = match request.pack {
+        Some(p) if text::id(&p.version) && text::sha256(&p.sha256) => Some(store::Pack {
+            version: p.version,
+            sha256: p.sha256,
+        }),
+        Some(_) => return refuse("bad_request"),
+        None => None,
+    };
     limit!(app, me, "host", 60, 3600);
     let started = app.store.start_session(
         &me.claims.sub,
@@ -684,6 +702,7 @@ async fn start_session(
         &device,
         &request.endpoint,
         request.max_players,
+        pack.as_ref(),
         app.clock.now(),
     );
     if started.is_ok() {
@@ -801,6 +820,7 @@ async fn ticket(
         "hostEpoch": session.epoch.to_string(),
         "hostEndpoint": session.endpoint,
         "expires": expires,
+        "pack": session.pack,
     }))
     .into_response()
 }

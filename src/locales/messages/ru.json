@@ -1644,6 +1644,15 @@
         "UNAVAILABLE": "worlds.lapi.sh не ответил хосту. Попробуйте чуть позже."
       },
       "installing": "Игра для этой комнаты устанавливается. Нажмите «Играть», когда установка закончится.",
+      "installingMods": "Устанавливаются моды комнаты…",
+      "consent": {
+        "title": "В этой комнате {mods, plural, one {# мод} few {# мода} many {# модов} other {# мода}}",
+        "new": "Новых для этого компьютера: {count, plural, one {# мод} few {# мода} many {# модов} other {# мода}}, скачать {size}:",
+        "more": "и ещё {count}",
+        "warning": "Моды — это программы: они работают на вашем компьютере со всеми вашими правами. Лаунчер берёт только файлы, проверенные каталогом, но ставьте их, только если доверяете хосту.",
+        "accept": "Установить моды",
+        "decline": "Не сейчас"
+      },
       "eulaNeeded": "Примите EULA Minecraft, чтобы открыть этот мир на этом компьютере.",
       "acceptEula": "Принять EULA",
       "readEula": "Прочитать EULA Minecraft",
@@ -2160,6 +2169,7 @@
     "The file manager could not be opened.": "Не удалось открыть файловый менеджер.",
     "The folder dialog failed.": "Не удалось открыть выбор папки.",
     "The game exited with an error. The output below may explain why.": "Игра завершилась с ошибкой. Причина может быть видна в выводе ниже.",
+    "The host changed the room's mods. Press Play again to get them.": "Хост изменил моды комнаты. Нажмите «Играть» ещё раз, чтобы получить их.",
     "The installation identifier is invalid.": "Неверный идентификатор установки.",
     "The installation name cannot contain control characters.": "Название установки не может содержать управляющие символы.",
     "The installation name must be 1–{max} characters.": "Название установки — от 1 до {max, plural, one {# символа} other {# символов}}.",
@@ -2364,6 +2374,7 @@
     "The world server stopped while starting.": "Сервер мира остановился во время запуска.",
     "The world's mod loader is missing or changed. Host the world again to install it.": "Загрузчик модов мира отсутствует или изменён. Запустите мир снова, чтобы установить его.",
     "The world's modpack could not be written.": "Не удалось записать сборку модов мира.",
+    "The world's mods changed while they were sent. Open the world again.": "Моды мира изменились, пока они отправлялись. Откройте мир ещё раз.",
     "The world's server file is missing or changed. Install it again.": "Файл сервера мира пропал или изменён. Установите его заново.",
     "The world's server is not installed yet.": "Сервер мира ещё не установлен.",
     "This computer has {physicalMib} MiB of memory. The game ({gameMib} MiB), the world server ({serverMib} MiB) and the system ({reserveMib} MiB) need more. Give the server or the game less memory.": "На этом компьютере {physicalMib} МиБ памяти. Игре ({gameMib} МиБ), серверу мира ({serverMib} МиБ) и системе ({reserveMib} МиБ) нужно больше. Выделите серверу или игре меньше памяти.",
@@ -2415,6 +2426,7 @@
     "The relay address is not valid.": "Адрес ретранслятора неверный.",
     "The room plays another Minecraft version than its installation.": "Комната играет на другой версии Minecraft, чем её установка.",
     "The room plays another mod loader than its installation.": "В комнате другой загрузчик модов, чем в её установке.",
+    "The room's mods changed or are not ready yet. Try again in a moment.": "Моды комнаты изменились или ещё не готовы. Попробуйте чуть позже.",
     "The world's players could not be written.": "Не удалось записать игроков мира.",
     "This computer is already in a room. Leave it first.": "Этот компьютер уже в комнате. Сначала выйдите из неё.",
     "This is not a room.": "Это не комната.",
@@ -2484,6 +2496,7 @@
     "Your packs take 2 GB in the catalog, as much as an account may have.": "Ваши сборки занимают в каталоге 2 ГБ, это предел для аккаунта.",
     "The pack is larger than 512 MB packed. Leave out worlds or large files.": "Сборка в архиве больше 512 МБ. Не берите миры или большие файлы.",
     "The catalog is taking many packs right now. Try again in a few minutes.": "Каталог сейчас принимает много сборок. Попробуйте через несколько минут.",
+    "The catalog no longer takes these files of the world: {files}. Friends cannot install its mods until it is made again without them.": "Каталог больше не принимает эти файлы мира: {files}. Друзья не смогут поставить его моды, пока мир не создан заново без них.",
     "The pack did not reach the catalog whole. Publish it again.": "Сборка дошла до каталога не целиком. Опубликуйте её ещё раз.",
     "The modpack could not be read.": "Не удалось прочитать сборку."
   }

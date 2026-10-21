@@ -743,6 +743,52 @@ async fn one_room_has_one_live_host() {
 }
 
 #[tokio::test]
+async fn a_world_with_mods_tells_its_members_the_room_pack() {
+    let t = setup();
+    let room = t.room_with(&[2]).await;
+    t.register(1).await;
+    t.register(2).await;
+    let pack = json!({
+        "version": "22222222-2222-4222-8222-222222222222",
+        "sha256": "ab".repeat(32),
+    });
+    let sessions = format!("/v1/rooms/{room}/sessions");
+    for bad in [
+        json!({"version": "not-an-id", "sha256": "ab".repeat(32)}),
+        json!({"version": "22222222-2222-4222-8222-222222222222", "sha256": "AB".repeat(32)}),
+        json!({"version": "22222222-2222-4222-8222-222222222222", "sha256": "ab"}),
+        json!({"version": "22222222-2222-4222-8222-222222222222"}),
+        json!({"version": "22222222-2222-4222-8222-222222222222", "sha256": "ab".repeat(32), "url": "x"}),
+        json!("pack"),
+    ] {
+        let body = json!({"endpoint": endpoint(1), "maxPlayers": 8, "pack": bad});
+        let (status, _) = t.on_device("POST", &sessions, 1, Some(body.clone())).await;
+        assert_eq!(status, StatusCode::BAD_REQUEST, "{body}");
+    }
+    let body = json!({"endpoint": endpoint(1), "maxPlayers": 8, "pack": pack});
+    let (status, session) = t.on_device("POST", &sessions, 1, Some(body)).await;
+    assert_eq!(status, StatusCode::OK, "{session}");
+    assert_eq!(session["pack"], pack);
+
+    // Every member sees it while the session is live, and their ticket
+    // names it too.
+    let (_, seen) = t.call("GET", &format!("/v1/rooms/{room}"), 2, None).await;
+    assert_eq!(seen["pack"], pack);
+    let (_, listed) = t.call("GET", "/v1/rooms", 2, None).await;
+    assert_eq!(listed[0]["pack"], pack);
+    let (status, ticket) = t.ticket(&room, 2).await;
+    assert_eq!(status, StatusCode::OK, "{ticket}");
+    assert_eq!(ticket["pack"], pack);
+
+    // A world hosted again without mods plays none.
+    t.host(&room, 8).await;
+    let (_, seen) = t.call("GET", &format!("/v1/rooms/{room}"), 2, None).await;
+    assert!(seen.get("pack").is_none(), "{seen}");
+    let (_, ticket) = t.ticket(&room, 2).await;
+    assert_eq!(ticket["pack"], Value::Null);
+}
+
+#[tokio::test]
 async fn tickets_admit_one_member_once() {
     let t = setup();
     let room = t.room_with(&[2, 3]).await;
@@ -1258,7 +1304,7 @@ async fn the_relay_carries_hosts_and_enrolled_members_only() {
 }
 
 #[test]
-fn an_older_database_gains_the_player_count() {
+fn an_older_database_gains_the_new_columns() {
     let dir = tempfile::tempdir().unwrap();
     {
         let db = rusqlite::Connection::open(dir.path().join("worlds.db")).unwrap();
@@ -1272,7 +1318,7 @@ fn an_older_database_gains_the_player_count() {
         .unwrap();
     }
     crate::store::Store::open(dir.path(), "test").unwrap();
-    // A second start finds the column there.
+    // The player count and the room pack; a second start finds them there.
     crate::store::Store::open(dir.path(), "test").unwrap();
 }
 

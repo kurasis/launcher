@@ -1743,6 +1743,15 @@ export type Messages = {
       readonly UNAVAILABLE: string;
     };
     readonly installing: string;
+    readonly installingMods: string;
+    readonly consent: {
+      readonly title: (values: { mods: number }) => string;
+      readonly new: (values: { count: number; size: string | number }) => string;
+      readonly more: (values: { count: string | number }) => string;
+      readonly warning: string;
+      readonly accept: string;
+      readonly decline: string;
+    };
     readonly eulaNeeded: string;
     readonly acceptEula: string;
     readonly readEula: string;

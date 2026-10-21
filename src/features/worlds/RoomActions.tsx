@@ -1,7 +1,8 @@
 import { useState } from 'react';
 import { Button } from '../../components/Button';
 import { Notice } from '../../components/Notice';
-import type { LocalWorld, WorldsRoom, WorldsState } from '../../lib/contracts';
+import type { LocalWorld, RoomConsent, WorldsRoom, WorldsState } from '../../lib/contracts';
+import { formatBytes } from '../../lib/format';
 import { ipc } from '../../lib/ipc';
 import { strings } from '../../lib/strings';
 import { worldsErrorText } from './useWorlds';
@@ -22,6 +23,7 @@ export function RoomActions({ room, local, state, onLocal }: Props) {
   const [error, setError] = useState<string | null>(null);
   const [note, setNote] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  const [consent, setConsent] = useState<RoomConsent | null>(null);
 
   /** `said` is false where the state already tells why a step failed. */
   const run = (action: () => Promise<unknown>, said = true) => {
@@ -30,6 +32,7 @@ export function RoomActions({ room, local, state, onLocal }: Props) {
     setBusy(true);
     action()
       .catch((e: unknown) => {
+        setNote(null);
         if (said) setError(worldsErrorText(e));
       })
       .finally(() => {
@@ -37,9 +40,17 @@ export function RoomActions({ room, local, state, onLocal }: Props) {
       });
   };
 
-  const play = () => {
+  /** `accept` is the room pack the player agreed to install. */
+  const play = (accept?: string) => {
+    setConsent(null);
     run(async () => {
-      const instance = await ipc.worldsInstance(room.id);
+      if (room.pack !== null && room.role !== 'owner') setNote(t.installingMods);
+      const instance = await ipc.worldsInstance(room.id, accept);
+      setNote(null);
+      if (instance.consent !== null) {
+        setConsent(instance.consent);
+        return;
+      }
       if (!instance.ready) {
         await ipc.installInstance(instance.instanceId);
         setNote(t.installing);
@@ -94,7 +105,9 @@ export function RoomActions({ room, local, state, onLocal }: Props) {
           <Button
             variant="primary"
             disabled={busy || state.hosting?.phase !== 'ready'}
-            onClick={play}
+            onClick={() => {
+              play();
+            }}
           >
             {t.play}
           </Button>
@@ -123,8 +136,10 @@ export function RoomActions({ room, local, state, onLocal }: Props) {
         <>
           <Button
             variant="primary"
-            disabled={busy || state.guest?.connected !== true}
-            onClick={play}
+            disabled={busy || state.guest?.connected !== true || consent !== null}
+            onClick={() => {
+              play();
+            }}
           >
             {t.play}
           </Button>
@@ -141,6 +156,37 @@ export function RoomActions({ room, local, state, onLocal }: Props) {
       {owner && local === null && <span className={styles.muted}>{t.keptElsewhere}</span>}
       {owner && local !== null && !local.eulaAccepted && (
         <span className={styles.muted}>{t.eulaNeeded}</span>
+      )}
+      {consent !== null && (
+        <Notice tone="warning">
+          <strong>{t.consent.title({ mods: consent.mods })}</strong>
+          <p>
+            {t.consent.new({ count: consent.newMods, size: formatBytes(consent.bytes) })}{' '}
+            {consent.names.join(', ')}
+            {consent.newMods > consent.names.length &&
+              ` ${t.consent.more({ count: consent.newMods - consent.names.length })}`}
+          </p>
+          <p>{t.consent.warning}</p>
+          <div className={styles.actions}>
+            <Button
+              variant="primary"
+              disabled={busy}
+              onClick={() => {
+                play(consent.sha256);
+              }}
+            >
+              {t.consent.accept}
+            </Button>
+            <Button
+              disabled={busy}
+              onClick={() => {
+                setConsent(null);
+              }}
+            >
+              {t.consent.decline}
+            </Button>
+          </div>
+        </Notice>
       )}
       {note !== null && <Notice tone="info">{note}</Notice>}
       {error !== null && <Notice tone="danger">{error}</Notice>}

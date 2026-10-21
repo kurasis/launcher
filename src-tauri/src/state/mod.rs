@@ -1076,15 +1076,16 @@ impl AppState {
     }
 
     /// The room instance of a world with friends (D-068): the one made for
-    /// `room` before, or a new vanilla installation of `version` (not
-    /// installed yet). Joining twice reuses it; other installations are never
-    /// used for a room.
+    /// `room` before, or a new installation of `version` with `loader` (not
+    /// installed yet), with memory for `mods`. Joining twice reuses it;
+    /// other installations are never used for a room.
     pub fn room_instance(
         &self,
         room: &str,
         name: &str,
         version: &str,
         loader: Option<crate::loader::LoaderChoice>,
+        mods: u32,
     ) -> LauncherResult<InstanceFile> {
         let room_id = uuid::Uuid::parse_str(room)
             .ok()
@@ -1123,7 +1124,7 @@ impl AppState {
                 display_name,
                 version.as_str().to_owned(),
                 loader,
-                0,
+                mods,
             );
             instance.world_room = Some(room.clone());
             store.create_instance(&instance)?;

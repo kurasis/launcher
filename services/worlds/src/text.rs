@@ -112,6 +112,11 @@ pub fn endpoint(text: &str) -> bool {
     text.len() == 64 && text.bytes().all(|b| matches!(b, b'0'..=b'9' | b'a'..=b'f'))
 }
 
+/// A SHA-256 as the catalog writes it: 64 lowercase hex digits.
+pub fn sha256(text: &str) -> bool {
+    endpoint(text)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

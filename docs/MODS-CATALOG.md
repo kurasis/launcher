@@ -60,6 +60,11 @@ it). What the launcher puts into an installation is listed in its `content.lock.
    on the server, so nginx takes a pack's archive (up to 91 MB) on `/v1/packs` and its
    parts (up to 65 MB each) on `/v1/packs/uploads/`.
 
+   A room pack (worlds with mods, W12) comes the same way with `?room=true` and is
+   checked the same. It is never searched, shown or listed among the account's packs;
+   its guests install it by the version ID the world's session at worlds.lapi.sh names
+   (`GET /v1/versions/{id}/pack`). Each new generation of the world is a new version.
+
 ## The owner's commands
 
 On the server, as `sudo -u lapi-mods /home/www/lapi/mods/current/lapi-mods <command>`:
