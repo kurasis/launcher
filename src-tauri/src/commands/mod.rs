@@ -2816,28 +2816,44 @@ pub async fn mods_publish<R: Runtime>(
         loader: instance.loader.clone(),
     };
     let part = publish::part_path(&root.instance_dir(id));
-    let archive = {
+    {
         let part = part.clone();
         let cancel = claim.cancel.clone();
         tauri::async_runtime::spawn_blocking(move || {
-            let written =
-                publish::write(&part, &sorted, &target, &meta, icon, &cancel).and_then(|()| {
-                    std::fs::read(&part).map_err(|e| {
-                        crate::error::LauncherError::from_io(&e, "Reading the modpack")
-                    })
-                });
-            let _ = std::fs::remove_file(&part);
-            written
+            publish::write(&part, &sorted, &target, &meta, icon, &cancel)
         })
         .await
-        .map_err(|_| crate::error::LauncherError::internal("The modpack could not be written."))??
-    };
+        .map_err(|_| {
+            crate::error::LauncherError::internal("The modpack could not be written.")
+        })??;
+    }
     let project = if payload.as_new {
         None
     } else {
         lock.published.as_deref()
     };
-    let published = mods.client.publish(&app, archive, project).await?;
+    let emitter = app.clone();
+    let instance_id = id.to_string();
+    let sent = move |bytes: u64, total: u64| {
+        let _ = tauri::Emitter::emit(
+            &emitter,
+            crate::mods::PROGRESS_EVENT,
+            crate::mods::content::Progress {
+                instance_id: instance_id.clone(),
+                phase: "uploading",
+                files: 0,
+                total_files: 0,
+                bytes,
+                total_bytes: total,
+            },
+        );
+    };
+    let published = mods
+        .client
+        .publish(&app, &part, project, &claim.cancel, &sent)
+        .await;
+    let _ = std::fs::remove_file(&part);
+    let published = published?;
     if let publish::Published::Published { project_id, .. } = &published {
         let mut lock = crate::mods::content::load_lock(&root, id);
         lock.published = Some(project_id.clone());

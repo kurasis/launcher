@@ -1504,7 +1504,7 @@
         "harmfulText": "Каталог отметил эти файлы как вредоносные. Удалите их из установки.",
         "publish": "Опубликовать в каталоге",
         "publishTitle": "Опубликовать сборку в каталоге",
-        "publishHint": "Сборку сразу видят все в каталоге; потом её можно скрыть. Моды, ресурспаки и шейдеры берутся из каталога, поэтому каждый должен там быть. Конфиги и настройки копируются в сборку; код и программы в сборку не попадают никогда. Выключенные файлы, логи и список серверов не берутся.",
+        "publishHint": "Сборку сразу видят все в каталоге; потом её можно скрыть. Моды, ресурспаки и шейдеры берутся из каталога, поэтому каждый должен там быть. Конфиги и настройки копируются в сборку; код и программы в сборку не попадают никогда. Выключенные файлы, логи и список серверов не берутся. Сборка в архиве может занимать до 512 МБ.",
         "publishChecking": "Проверяю файлы установки…",
         "publishReady": "Готово: из каталога {linked}; копируется {bundled} ({size}).",
         "publishMissing": "Этих файлов нет в каталоге. Сначала добавьте их в каталог или удалите:",
@@ -1536,7 +1536,8 @@
           "not_allowed": "Каталог не принимает эти файлы в сборке:",
           "too_big": "Эти файлы слишком большие для сборки:",
           "other": "Каталог не принял сборку."
-        }
+        },
+        "publishSending": "Отправляю сборку в каталог: {sent} из {total}…"
       }
     },
     "worlds": {
@@ -2432,11 +2433,14 @@
     "The icon may be 512 KB at most.": "Иконка может быть не больше 512 КБ.",
     "The icon must be a PNG, JPEG or WebP picture of 2048 pixels at most.": "Иконка должна быть картинкой PNG, JPEG или WebP не больше 2048 пикселей.",
     "The icon must be a PNG, JPEG or WebP picture.": "Иконка должна быть картинкой PNG, JPEG или WebP.",
-    "The pack is larger than 90 MB packed. Leave out worlds or large files.": "Сборка в архиве больше 90 МБ. Не берите миры или большие файлы.",
     "This report cannot be sent.": "Эту жалобу нельзя отправить.",
     "This version number is published already. Raise it.": "Версия с таким номером уже опубликована. Увеличьте номер.",
     "Your account published 20 versions today. Try again tomorrow.": "Ваш аккаунт сегодня уже опубликовал 20 версий. Попробуйте завтра.",
     "Your account published 5 new packs today. Try again tomorrow.": "Ваш аккаунт сегодня уже опубликовал 5 новых сборок. Попробуйте завтра.",
-    "Your packs take 2 GB in the catalog, as much as an account may have.": "Ваши сборки занимают в каталоге 2 ГБ, это предел для аккаунта."
+    "Your packs take 2 GB in the catalog, as much as an account may have.": "Ваши сборки занимают в каталоге 2 ГБ, это предел для аккаунта.",
+    "The pack is larger than 512 MB packed. Leave out worlds or large files.": "Сборка в архиве больше 512 МБ. Не берите миры или большие файлы.",
+    "The catalog is taking many packs right now. Try again in a few minutes.": "Каталог сейчас принимает много сборок. Попробуйте через несколько минут.",
+    "The pack did not reach the catalog whole. Publish it again.": "Сборка дошла до каталога не целиком. Опубликуйте её ещё раз.",
+    "The modpack could not be read.": "Не удалось прочитать сборку."
   }
 }

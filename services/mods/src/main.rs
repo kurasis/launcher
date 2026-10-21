@@ -384,6 +384,7 @@ fn serve() -> Result<(), String> {
         client,
         tokens: auth::Tokens::new(&env("LAPI_MODS_ISSUER", "https://oauth.lapi.sh")),
         limiter: api::Limiter::default(),
+        uploads: own::Uploads::default(),
         urls: urls(),
         thumbs: import::Thumbs::Process(std::env::current_exe().map_err(|e| e.to_string())?),
         r2: bucket().map(|b| Arc::new(b) as Arc<dyn r2::Bucket>),
@@ -509,6 +510,8 @@ pub struct App {
     pub client: fetch::Client,
     pub tokens: auth::Tokens,
     pub limiter: api::Limiter,
+    /// Own packs' archives being sent in parts.
+    pub uploads: own::Uploads,
     pub urls: Urls,
     pub thumbs: import::Thumbs,
     /// R2, when its settings are there (D-066, stage 6).

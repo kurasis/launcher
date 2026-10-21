@@ -1621,6 +1621,10 @@ export type Messages = {
         readonly too_big: string;
         readonly other: string;
       };
+      readonly publishSending: (values: {
+        sent: string | number;
+        total: string | number;
+      }) => string;
     };
   };
   readonly worlds: {

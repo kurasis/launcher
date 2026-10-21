@@ -167,6 +167,7 @@ fn setup_full(
         client,
         tokens,
         limiter: crate::api::Limiter::default(),
+        uploads: crate::own::Uploads::default(),
         urls: Urls::new(FILES).with_cdn(cdn),
         thumbs: import::Thumbs::Inline,
         r2,
@@ -4096,8 +4097,18 @@ fn r2_settings_and_requests_are_checked() {
 impl T {
     /// Sends an archive as a request's body.
     async fn upload(&self, who: Option<u8>, uri: &str, bytes: Vec<u8>) -> (StatusCode, Value) {
+        self.send_bytes(who, "POST", uri, bytes).await
+    }
+
+    async fn send_bytes(
+        &self,
+        who: Option<u8>,
+        method: &str,
+        uri: &str,
+        bytes: Vec<u8>,
+    ) -> (StatusCode, Value) {
         let mut request = Request::builder()
-            .method("POST")
+            .method(method)
             .uri(uri)
             .header(header::CONTENT_TYPE, "application/zip")
             // Each from its own address: the tests count accounts.
@@ -4155,6 +4166,132 @@ fn own_pack(version: &str, extra: &[(&str, &[u8])]) -> Vec<u8> {
     ];
     entries.extend_from_slice(extra);
     mrpack(&entries)
+}
+
+#[tokio::test]
+async fn a_large_pack_comes_in_parts_and_is_put_together() {
+    let t = setup();
+    import_sodium(&t).await;
+    // Bytes that do not compress: about three parts.
+    let big: Vec<u8> = (0..20_000u32)
+        .flat_map(|n| sha2::Sha256::digest(n.to_le_bytes()))
+        .collect();
+    let archive = own_pack("1.0", &[("overrides/config/big.dat", &big)]);
+    let chunk = crate::own::CHUNK as usize;
+    let count = archive.len().div_ceil(chunk);
+    assert!(count >= 3, "{}", archive.len());
+    let sha256 = hex::encode(sha2::Sha256::digest(&archive));
+    let start = json!({ "size": archive.len(), "sha256": sha256 });
+
+    let (status, _) = t
+        .call(None, "POST", "/v1/packs/uploads", start.clone())
+        .await;
+    assert_eq!(status, StatusCode::UNAUTHORIZED);
+    let (status, answer) = t
+        .player(
+            1,
+            "POST",
+            "/v1/packs/uploads",
+            json!({ "size": archive.len(), "sha256": "x" }),
+        )
+        .await;
+    assert_eq!(
+        (status, &answer["error"]),
+        (StatusCode::BAD_REQUEST, &json!("bad_upload"))
+    );
+    let (status, answer) = t
+        .player(
+            1,
+            "POST",
+            "/v1/packs/uploads",
+            json!({ "size": crate::own::MAX_ARCHIVE + 1, "sha256": sha256 }),
+        )
+        .await;
+    assert_eq!(
+        (status, &answer["error"]),
+        (StatusCode::BAD_REQUEST, &json!("too_big"))
+    );
+    let (status, answer) = t
+        .player(1, "POST", "/v1/packs/uploads", start.clone())
+        .await;
+    assert_eq!(status, StatusCode::CREATED, "{answer}");
+    assert_eq!(answer["parts"], count);
+    assert_eq!(answer["partSize"], crate::own::CHUNK);
+    let id = answer["upload"].as_str().unwrap().to_owned();
+    let part = |n: usize| archive[n * chunk..((n + 1) * chunk).min(archive.len())].to_vec();
+    let uri = |n: usize| format!("/v1/packs/uploads/{id}/{n}");
+
+    // Only its account sends parts, each of its length, none beyond the last.
+    let (status, _) = t.send_bytes(Some(2), "PUT", &uri(0), part(0)).await;
+    assert_eq!(status, StatusCode::NOT_FOUND);
+    let (status, answer) = t.send_bytes(Some(1), "PUT", &uri(0), part(count - 1)).await;
+    assert_eq!(
+        (status, &answer["error"]),
+        (StatusCode::BAD_REQUEST, &json!("bad_part"))
+    );
+    let (status, _) = t.send_bytes(Some(1), "PUT", &uri(count), part(0)).await;
+    assert_eq!(status, StatusCode::BAD_REQUEST);
+    let finish = format!("/v1/packs/uploads/{id}/finish");
+    let (status, answer) = t.player(1, "POST", &finish, Value::Null).await;
+    assert_eq!(
+        (status, &answer["error"]),
+        (StatusCode::BAD_REQUEST, &json!("not_complete"))
+    );
+
+    // In any order, a part sent twice replaces the first.
+    for n in (0..count).rev() {
+        let (status, answer) = t.send_bytes(Some(1), "PUT", &uri(n), part(n)).await;
+        assert_eq!(status, StatusCode::NO_CONTENT, "{answer}");
+    }
+    let (status, _) = t.send_bytes(Some(1), "PUT", &uri(0), part(0)).await;
+    assert_eq!(status, StatusCode::NO_CONTENT);
+    let (status, _) = t.player(2, "POST", &finish, Value::Null).await;
+    assert_eq!(status, StatusCode::NOT_FOUND);
+    let (status, answer) = t.player(1, "POST", &finish, Value::Null).await;
+    assert_eq!(status, StatusCode::CREATED, "{answer}");
+    assert_eq!(answer["project"]["title"], "My Pack");
+    let (status, _) = t.player(1, "POST", &finish, Value::Null).await;
+    assert_eq!(status, StatusCode::NOT_FOUND);
+
+    // Parts that do not make the announced archive are refused.
+    let project = answer["project"]["id"].as_str().unwrap().to_owned();
+    let other = own_pack("1.1", &[("overrides/config/big.dat", &big)]);
+    let (status, answer) = t
+        .player(
+            1,
+            "POST",
+            &format!("/v1/packs/uploads?project={project}"),
+            json!({ "size": other.len(), "sha256": sha256 }),
+        )
+        .await;
+    assert_eq!(status, StatusCode::CREATED, "{answer}");
+    let id = answer["upload"].as_str().unwrap().to_owned();
+    for n in 0..other.len().div_ceil(chunk) {
+        let bytes = other[n * chunk..((n + 1) * chunk).min(other.len())].to_vec();
+        let (status, _) = t
+            .send_bytes(
+                Some(1),
+                "PUT",
+                &format!("/v1/packs/uploads/{id}/{n}"),
+                bytes,
+            )
+            .await;
+        assert_eq!(status, StatusCode::NO_CONTENT);
+    }
+    let (status, answer) = t
+        .player(
+            1,
+            "POST",
+            &format!("/v1/packs/uploads/{id}/finish"),
+            Value::Null,
+        )
+        .await;
+    assert_eq!(
+        (status, &answer["error"]),
+        (StatusCode::BAD_REQUEST, &json!("bad_upload"))
+    );
+    // Nothing is left behind in tmp/.
+    assert_eq!(std::fs::read_dir(t.app.blobs.tmp()).unwrap().count(), 0);
 }
 
 #[tokio::test]

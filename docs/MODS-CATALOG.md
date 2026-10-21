@@ -57,7 +57,8 @@ it). What the launcher puts into an installation is listed in its `content.lock.
       from then on the API gives R2's addresses for files already copied.
 
 8. **Players' own packs:** after the deploy that brings them, re-run `bootstrap.sh` once
-   on the server, so nginx takes a pack's archive (up to 91 MB) on `/v1/packs`.
+   on the server, so nginx takes a pack's archive (up to 91 MB) on `/v1/packs` and its
+   parts (up to 65 MB each) on `/v1/packs/uploads/`.
 
 ## The owner's commands
 

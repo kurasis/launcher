@@ -1504,7 +1504,7 @@
         "harmfulText": "The catalog has marked these files as malware. Remove them from the installation.",
         "publish": "Publish to the catalog",
         "publishTitle": "Publish as a pack in the catalog",
-        "publishHint": "Everyone sees the pack in the catalog right away; you can hide it later. Mods, resource packs and shaders are taken from the catalog, so each must be in it. Configs and settings are copied in; code and programs never go into a pack. Turned-off files, logs and your server list are left out.",
+        "publishHint": "Everyone sees the pack in the catalog right away; you can hide it later. Mods, resource packs and shaders are taken from the catalog, so each must be in it. Configs and settings are copied in; code and programs never go into a pack. Turned-off files, logs and your server list are left out. A pack may take 512 MB packed.",
         "publishChecking": "Checking the installation's files…",
         "publishReady": "Ready: from the catalog {linked}; copied in {bundled} ({size}).",
         "publishMissing": "The catalog does not have these files. Add them to the catalog first, or remove them:",
@@ -1536,7 +1536,8 @@
           "not_allowed": "The catalog does not take these files in a pack:",
           "too_big": "These files are too large for a pack:",
           "other": "The catalog refused the pack."
-        }
+        },
+        "publishSending": "Sending the pack to the catalog: {sent} of {total}…"
       }
     },
     "worlds": {
@@ -2199,6 +2200,7 @@
     "The catalog could not bring the files from their source in time. Try again later.": "The catalog could not bring the files from their source in time. Try again later.",
     "The catalog did not accept this request.": "The catalog did not accept this request.",
     "The catalog is still preparing this modpack. Try again soon.": "The catalog is still preparing this modpack. Try again soon.",
+    "The catalog is taking many packs right now. Try again in a few minutes.": "The catalog is taking many packs right now. Try again in a few minutes.",
     "The catalog of mods could not be reached. Check the internet connection.": "The catalog of mods could not be reached. Check the internet connection.",
     "The catalog of mods is not working right now. Try again later.": "The catalog of mods is not working right now. Try again later.",
     "The catalog removed this pack. It cannot get new versions.": "The catalog removed this pack. It cannot get new versions.",
@@ -2245,6 +2247,7 @@
     "The mod loader installer stopped unexpectedly.": "The mod loader installer stopped unexpectedly.",
     "The mod loader record is missing. Repair the installation.": "The mod loader record is missing. Repair the installation.",
     "The mod loader's published files changed since this installation was made. Create a new installation for this loader version.": "The mod loader's published files changed since this installation was made. Create a new installation for this loader version.",
+    "The modpack could not be read.": "The modpack could not be read.",
     "The modpack could not be written.": "The modpack could not be written.",
     "The monthly limit can be at most {max} MiB.": "The monthly limit can be at most {max} MiB.",
     "The new folder cannot be inside the current data folder, or contain it.": "The new folder cannot be inside the current data folder, or contain it.",
@@ -2252,7 +2255,8 @@
     "The operating system did not provide random bytes.": "The operating system did not provide random bytes.",
     "The operation was cancelled.": "The operation was cancelled.",
     "The output of this game run is no longer kept.": "The output of this game run is no longer kept.",
-    "The pack is larger than 90 MB packed. Leave out worlds or large files.": "The pack is larger than 90 MB packed. Leave out worlds or large files.",
+    "The pack did not reach the catalog whole. Publish it again.": "The pack did not reach the catalog whole. Publish it again.",
+    "The pack is larger than 512 MB packed. Leave out worlds or large files.": "The pack is larger than 512 MB packed. Leave out worlds or large files.",
     "The rebuilt Java runtime differs from the recorded one.": "The rebuilt Java runtime differs from the recorded one.",
     "The rebuilt mod loader files differ from the recorded ones. Create a new installation for this loader version.": "The rebuilt mod loader files differ from the recorded ones. Create a new installation for this loader version.",
     "The relay address is not valid.": "The relay address is not valid.",

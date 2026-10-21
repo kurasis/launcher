@@ -1505,7 +1505,7 @@
         "harmfulText": "صنّف الفهرس هذه الملفات برمجياتٍ ضارة. احذفها من التثبيت.",
         "publish": "النشر في الفهرس",
         "publishTitle": "النشر كحزمة في الفهرس",
-        "publishHint": "يرى الجميع الحزمة في الفهرس فورًا، ويمكنك إخفاؤها لاحقًا. تؤخذ التعديلات وحزم الموارد والمظللات من الفهرس، لذا يجب أن يكون كل منها فيه. تُنسخ ملفات الإعداد والإعدادات إلى الحزمة، ولا يدخل الكود والبرامج حزمةً أبدًا. تُترك الملفات المعطلة والسجلات وقائمة الخوادم.",
+        "publishHint": "يرى الجميع الحزمة في الفهرس فورًا، ويمكنك إخفاؤها لاحقًا. تؤخذ التعديلات وحزم الموارد والمظللات من الفهرس، لذا يجب أن يكون كل منها فيه. تُنسخ ملفات الإعداد والإعدادات إلى الحزمة، ولا يدخل الكود والبرامج حزمةً أبدًا. تُترك الملفات المعطلة والسجلات وقائمة الخوادم. يصل حجم الحزمة المضغوطة إلى 512 ميغابايت.",
         "publishChecking": "جارٍ فحص ملفات التثبيت…",
         "publishReady": "جاهزة: من الفهرس {linked}؛ منسوخة {bundled} ({size}).",
         "publishMissing": "هذه الملفات ليست في الفهرس. أضفها إلى الفهرس أولًا أو احذفها:",
@@ -1537,7 +1537,8 @@
           "not_allowed": "لا يقبل الفهرس هذه الملفات في حزمة:",
           "too_big": "هذه الملفات أكبر من أن تدخل حزمة:",
           "other": "رفض الفهرس الحزمة."
-        }
+        },
+        "publishSending": "جارٍ إرسال الحزمة إلى الفهرس: {sent} من {total}…"
       }
     },
     "worlds": {
@@ -2433,11 +2434,14 @@
     "The icon may be 512 KB at most.": "لا تتجاوز الأيقونة 512 كيلوبايت.",
     "The icon must be a PNG, JPEG or WebP picture of 2048 pixels at most.": "يجب أن تكون الأيقونة صورة PNG أو JPEG أو WebP لا تتجاوز 2048 بكسل.",
     "The icon must be a PNG, JPEG or WebP picture.": "يجب أن تكون الأيقونة صورة PNG أو JPEG أو WebP.",
-    "The pack is larger than 90 MB packed. Leave out worlds or large files.": "الحزمة المضغوطة أكبر من 90 ميغابايت. اترك العوالم أو الملفات الكبيرة.",
     "This report cannot be sent.": "لا يمكن إرسال هذا البلاغ.",
     "This version number is published already. Raise it.": "رقم الإصدار هذا منشور من قبل. ارفعه.",
     "Your account published 20 versions today. Try again tomorrow.": "نشر حسابك 20 إصدارًا اليوم. حاول غدًا.",
     "Your account published 5 new packs today. Try again tomorrow.": "نشر حسابك 5 حزم جديدة اليوم. حاول غدًا.",
-    "Your packs take 2 GB in the catalog, as much as an account may have.": "تشغل حزمك 2 غيغابايت في الفهرس، وهو أقصى ما يُسمح به للحساب."
+    "Your packs take 2 GB in the catalog, as much as an account may have.": "تشغل حزمك 2 غيغابايت في الفهرس، وهو أقصى ما يُسمح به للحساب.",
+    "The pack is larger than 512 MB packed. Leave out worlds or large files.": "الحزمة المضغوطة أكبر من 512 ميغابايت. اترك العوالم أو الملفات الكبيرة.",
+    "The catalog is taking many packs right now. Try again in a few minutes.": "يستقبل الفهرس حزمًا كثيرة الآن. حاول بعد بضع دقائق.",
+    "The pack did not reach the catalog whole. Publish it again.": "لم تصل الحزمة إلى الفهرس كاملة. انشرها مرة أخرى.",
+    "The modpack could not be read.": "تعذرت قراءة الحزمة."
   }
 }

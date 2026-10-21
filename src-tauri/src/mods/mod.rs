@@ -114,6 +114,13 @@ fn signed_out() -> LauncherError {
 }
 
 /// What an answer that is not a success means.
+/// What went wrong with a publish, in the player's words where the catalog
+/// named it.
+fn publish_problem(status: u16, body: &Value) -> LauncherError {
+    publish::problem(status, body["error"].as_str().unwrap_or_default())
+        .unwrap_or_else(|| problem_of(status, body))
+}
+
 fn problem_of(status: u16, body: &Value) -> LauncherError {
     match (status, body["error"].as_str().unwrap_or_default()) {
         (401, _) => signed_out(),
@@ -976,37 +983,111 @@ impl OwnPack {
 }
 
 impl Client {
-    /// Sends an own pack's archive (`?project=` adds a version to it).
+    /// Publishes an archive as an own pack, or a new version of `project`.
+    /// It goes in parts (Cloudflare takes requests up to 100 MB): the
+    /// catalog is told its size and SHA-256, takes each part, and puts them
+    /// together. `sent` hears the bytes sent so far and the total.
     pub async fn publish<R: Runtime>(
         &self,
         app: &AppHandle<R>,
-        archive: Vec<u8>,
+        archive: &std::path::Path,
         project: Option<&str>,
+        cancel: &crate::download::CancelToken,
+        sent: &(dyn Fn(u64, u64) + Send + Sync),
     ) -> LauncherResult<publish::Published> {
-        let mut url = url::Url::parse(&Self::url("/v1/packs")).map_err(|_| server())?;
+        let mut url = url::Url::parse(&Self::url("/v1/packs/uploads")).map_err(|_| server())?;
         if let Some(project) = project {
             if !our_id(project) {
                 return Err(not_found());
             }
             url.query_pairs_mut().append_pair("project", project);
         }
+        let (size, sha256) = {
+            let path = archive.to_path_buf();
+            tauri::async_runtime::spawn_blocking(move || publish::size_and_sha256(&path))
+                .await
+                .map_err(|_| LauncherError::internal("The modpack could not be read."))??
+        };
         let token = self.token(app).await?;
-        let response = self
-            .http
-            .post(url)
-            .bearer_auth(token)
-            .header(reqwest::header::CONTENT_TYPE, "application/zip")
-            .header(reqwest::header::ACCEPT, "application/json")
-            .timeout(std::time::Duration::from_secs(900))
-            .body(archive)
-            .send()
-            .await
-            .map_err(|_| network())?;
-        let status = response.status().as_u16();
-        let bytes = crate::launcher_account::body_within(response, MAX_ANSWER_BYTES)
-            .await
-            .map_err(|_| network())?;
-        let value: Value = serde_json::from_slice(&bytes).unwrap_or(Value::Null);
+        let (status, value) = Self::answer(
+            self.http
+                .post(url)
+                .bearer_auth(token)
+                .json(&json!({ "size": size, "sha256": sha256 })),
+            MAX_ANSWER_BYTES,
+        )
+        .await?;
+        if status != 201 {
+            return Err(publish_problem(status, &value));
+        }
+        let upload = value["upload"]
+            .as_str()
+            .filter(|u| our_id(u))
+            .ok_or_else(server)?
+            .to_owned();
+        let part_size = value["partSize"]
+            .as_u64()
+            .filter(|n| (1..=publish::MAX_PART).contains(n))
+            .ok_or_else(server)?;
+        let parts = size.div_ceil(part_size);
+        if value["parts"].as_u64() != Some(parts) {
+            return Err(server());
+        }
+        sent(0, size);
+        for n in 0..parts {
+            if cancel.is_cancelled() {
+                return Err(LauncherError::new(
+                    ErrorCode::OperationCancelled,
+                    "Publishing was cancelled.",
+                ));
+            }
+            let bytes = {
+                let path = archive.to_path_buf();
+                tauri::async_runtime::spawn_blocking(move || {
+                    publish::read_part(&path, n * part_size, part_size)
+                })
+                .await
+                .map_err(|_| LauncherError::internal("The modpack could not be read."))??
+            };
+            let len = bytes.len() as u64;
+            let uri = Self::url(&format!("/v1/packs/uploads/{upload}/{n}"));
+            // A part that breaks off is sent again, twice at most.
+            let mut tries = 0;
+            loop {
+                tries += 1;
+                let token = self.token(app).await?;
+                let result = Self::answer(
+                    self.http
+                        .put(&uri)
+                        .bearer_auth(token)
+                        .header(reqwest::header::CONTENT_TYPE, "application/octet-stream")
+                        .timeout(std::time::Duration::from_secs(600))
+                        .body(bytes.clone()),
+                    MAX_ANSWER_BYTES,
+                )
+                .await;
+                match result {
+                    Ok((204, _)) => break,
+                    // The catalog restarted, or the upload waited too long.
+                    Ok((404, _)) => return Err(publish::lost()),
+                    Ok((status, value)) if status < 500 || tries >= 3 => {
+                        return Err(publish_problem(status, &value));
+                    }
+                    Err(error) if tries >= 3 => return Err(error),
+                    _ => {}
+                }
+            }
+            sent(n * part_size + len, size);
+        }
+        let token = self.token(app).await?;
+        let (status, value) = Self::answer(
+            self.http
+                .post(Self::url(&format!("/v1/packs/uploads/{upload}/finish")))
+                .bearer_auth(token)
+                .timeout(std::time::Duration::from_secs(900)),
+            MAX_ANSWER_BYTES,
+        )
+        .await?;
         if status == 201 {
             let project = Project::from(&value["project"]).ok_or_else(server)?;
             return Ok(publish::Published::Published {
@@ -1017,10 +1098,27 @@ impl Client {
         if let Some(refused) = publish::refused(status, &value) {
             return Ok(refused);
         }
-        Err(
-            publish::problem(status, value["error"].as_str().unwrap_or_default())
-                .unwrap_or_else(|| problem_of(status, &value)),
-        )
+        if status == 404 && value["error"] == "not_found" {
+            return Err(publish::lost());
+        }
+        Err(publish_problem(status, &value))
+    }
+
+    /// Sends a request; its status and JSON answer, whatever the status.
+    async fn answer(request: reqwest::RequestBuilder, max: usize) -> LauncherResult<(u16, Value)> {
+        let response = request
+            .header(reqwest::header::ACCEPT, "application/json")
+            .send()
+            .await
+            .map_err(|_| network())?;
+        let status = response.status().as_u16();
+        let bytes = crate::launcher_account::body_within(response, max)
+            .await
+            .map_err(|_| network())?;
+        Ok((
+            status,
+            serde_json::from_slice(&bytes).unwrap_or(Value::Null),
+        ))
     }
 
     /// The account's own packs.

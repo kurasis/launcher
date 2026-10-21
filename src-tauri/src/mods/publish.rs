@@ -22,7 +22,9 @@ use crate::error::{ErrorCode, LauncherError, LauncherResult};
 use crate::loader::{LoaderChoice, LoaderKind};
 
 /// The catalog's limits (services/mods/src/own.rs).
-pub const MAX_ARCHIVE: u64 = 90 * 1024 * 1024;
+pub const MAX_ARCHIVE: u64 = 512 * 1024 * 1024;
+/// The largest part the catalog may ask for (it asks for 64 MiB).
+pub const MAX_PART: u64 = 90 * 1024 * 1024;
 pub const MAX_OVERRIDE: u64 = 64 * 1024 * 1024;
 pub const MAX_OVERRIDES: u64 = 512 * 1024 * 1024;
 pub const MAX_ICON: u64 = 512 * 1024;
@@ -345,7 +347,7 @@ pub fn write(
         Ok(()) => {
             let _ = fs::remove_file(to);
             Err(LauncherError::invalid_input(
-                "The pack is larger than 90 MB packed. Leave out worlds or large files.",
+                "The pack is larger than 512 MB packed. Leave out worlds or large files.",
             ))
         }
         Err(e) => {
@@ -353,6 +355,37 @@ pub fn write(
             Err(e)
         }
     }
+}
+
+/// An archive's size and SHA-256, for the catalog to check it by.
+pub fn size_and_sha256(path: &Path) -> LauncherResult<(u64, String)> {
+    use sha2::Digest as _;
+    use std::io::Read as _;
+    let read = |e: std::io::Error| LauncherError::from_io(&e, "Reading the modpack");
+    let mut file = fs::File::open(path).map_err(read)?;
+    let mut hasher = sha2::Sha256::new();
+    let mut buffer = vec![0u8; 256 * 1024];
+    let mut size = 0u64;
+    loop {
+        let n = file.read(&mut buffer).map_err(read)?;
+        if n == 0 {
+            break;
+        }
+        size += n as u64;
+        hasher.update(&buffer[..n]);
+    }
+    Ok((size, hex::encode(hasher.finalize())))
+}
+
+/// `len` bytes of an archive from `offset`, fewer at its end.
+pub fn read_part(path: &Path, offset: u64, len: u64) -> LauncherResult<Vec<u8>> {
+    use std::io::{Read as _, Seek as _};
+    let read = |e: std::io::Error| LauncherError::from_io(&e, "Reading the modpack");
+    let mut file = fs::File::open(path).map_err(read)?;
+    file.seek(std::io::SeekFrom::Start(offset)).map_err(read)?;
+    let mut bytes = Vec::new();
+    file.take(len).read_to_end(&mut bytes).map_err(read)?;
+    Ok(bytes)
 }
 
 /// Reads the icon the player chose.
@@ -397,6 +430,14 @@ pub fn refused(status: u16, value: &Value) -> Option<Published> {
 }
 
 /// What a refused publish means, for the codes that name no files.
+/// The catalog lost or refused the parts of an archive.
+pub fn lost() -> LauncherError {
+    LauncherError::new(
+        ErrorCode::NetworkError,
+        "The pack did not reach the catalog whole. Publish it again.",
+    )
+}
+
 pub fn problem(status: u16, code: &str) -> Option<LauncherError> {
     let error = match (status, code) {
         (409, "version_exists") => {
@@ -406,7 +447,7 @@ pub fn problem(status: u16, code: &str) -> Option<LauncherError> {
             "The catalog removed this pack. It cannot get new versions.",
         ),
         (413, _) => LauncherError::invalid_input(
-            "The pack is larger than 90 MB packed. Leave out worlds or large files.",
+            "The pack is larger than 512 MB packed. Leave out worlds or large files.",
         ),
         (429, "too_many_packs") => LauncherError::new(
             ErrorCode::RateLimited,
@@ -430,6 +471,11 @@ pub fn problem(status: u16, code: &str) -> Option<LauncherError> {
         (400, "bad_icon") => LauncherError::invalid_input(
             "The icon must be a PNG, JPEG or WebP picture of 2048 pixels at most.",
         ),
+        (429, "busy") => LauncherError::new(
+            ErrorCode::RateLimited,
+            "The catalog is taking many packs right now. Try again in a few minutes.",
+        ),
+        (400, "bad_upload" | "bad_part" | "not_complete") => lost(),
         (400, "refused_by_scanner") => LauncherError::invalid_input(
             "The catalog's check of the pack found something it does not allow, and refused it.",
         ),

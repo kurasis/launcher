@@ -28,8 +28,21 @@ use crate::import::now;
 use crate::model::{SourceFile, SourceProject, SourceVersion, clean, word};
 use crate::pack;
 
-/// The archive as uploaded. Cloudflare takes requests up to 100 MB.
-pub const MAX_ARCHIVE: u64 = 90 * 1024 * 1024;
+/// The archive, whole. Cloudflare takes requests up to 100 MB, so a larger
+/// one comes in parts ([`Uploads`]); one request carries at most
+/// [`MAX_SINGLE`].
+pub const MAX_ARCHIVE: u64 = 512 * 1024 * 1024;
+pub const MAX_SINGLE: u64 = 90 * 1024 * 1024;
+/// One part of an archive sent in parts; the last one may be shorter.
+pub const CHUNK: u64 = if cfg!(test) {
+    256 * 1024
+} else {
+    64 * 1024 * 1024
+};
+/// Archives being sent in parts at once, on the whole server, and how long
+/// one waits for its next part.
+const MAX_UPLOADS: usize = 8;
+const UPLOAD_IDLE: std::time::Duration = std::time::Duration::from_secs(30 * 60);
 /// One override, and all of them unpacked.
 pub const MAX_OVERRIDE: u64 = 64 * 1024 * 1024;
 pub const MAX_OVERRIDES: u64 = 512 * 1024 * 1024;
@@ -353,37 +366,51 @@ pub async fn publish(
     result
 }
 
-async fn publish_part(
-    app: &Arc<App>,
-    author: &Author<'_>,
+/// Whose pack `project` is, and whether the account may publish an archive
+/// of `size` bytes now.
+pub fn may_publish(
+    app: &App,
+    account: &str,
     project: Option<&str>,
-    part: &Path,
-) -> Result<String, Refusal> {
-    // Whose pack, and the account's limits.
+    size: u64,
+) -> Result<(), Refusal> {
     if let Some(project) = project {
-        if app.store.own_account(project)?.as_deref() != Some(author.account) {
+        if app.store.own_account(project)?.as_deref() != Some(account) {
             return Err(Refusal::NotFound);
         }
         if app.store.project_status(project)?.as_deref() == Some("removed") {
             return Err(Refusal::Gone);
         }
     }
-    let (packs, versions, bytes) = app.store.own_usage(author.account, now() - 86_400)?;
+    let (packs, versions, bytes) = app.store.own_usage(account, now() - 86_400)?;
     if project.is_none() && packs >= PACKS_PER_DAY {
         return Err(Refusal::Limit("too_many_packs"));
     }
     if versions >= VERSIONS_PER_DAY {
         return Err(Refusal::Limit("too_many_versions"));
     }
-    let size = std::fs::metadata(part)
-        .map_err(|_| Refusal::Server("an upload".into()))?
-        .len();
     if bytes.saturating_add(i64::try_from(size).unwrap_or(i64::MAX)) > BYTES_PER_ACCOUNT {
         return Err(Refusal::Limit("too_much"));
     }
     if !app.blobs.may_keep(size) {
         return Err(Refusal::Server("no space".into()));
     }
+    Ok(())
+}
+
+async fn publish_part(
+    app: &Arc<App>,
+    author: &Author<'_>,
+    project: Option<&str>,
+    part: &Path,
+) -> Result<String, Refusal> {
+    let size = std::fs::metadata(part)
+        .map_err(|_| Refusal::Server("an upload".into()))?
+        .len();
+    if size > MAX_ARCHIVE {
+        return Err(Refusal::Bad("too_big"));
+    }
+    may_publish(app, author.account, project, size)?;
     // The archive, then its files, then the scanner over all of it.
     let path = part.to_path_buf();
     let (archive, hashed, verdict) = tokio::task::spawn_blocking(move || {
@@ -550,6 +577,189 @@ async fn keep_icon(app: &App, project: &str, bytes: &[u8], media_type: &'static 
 }
 
 /// The JSON a refusal answers with.
+/// An archive being sent in parts.
+struct Upload {
+    account: String,
+    project: Option<String>,
+    size: u64,
+    sha256: String,
+    /// Each part's file in `tmp/` once it came.
+    parts: Vec<Option<PathBuf>>,
+    touched: std::time::Instant,
+}
+
+impl Upload {
+    /// How long part `n` is.
+    fn part_len(&self, n: usize) -> u64 {
+        let start = CHUNK.saturating_mul(n as u64);
+        self.size.saturating_sub(start).min(CHUNK)
+    }
+
+    fn drop_files(&self) {
+        for path in self.parts.iter().flatten() {
+            let _ = std::fs::remove_file(path);
+        }
+    }
+}
+
+/// Archives larger than one request takes, sent in parts of [`CHUNK`] and
+/// put together here. Kept in memory: a restart clears `tmp/` and the
+/// launcher starts over.
+#[derive(Default)]
+pub struct Uploads(std::sync::Mutex<std::collections::HashMap<String, Upload>>);
+
+/// An upload put together, to be published.
+pub struct Assembled {
+    pub project: Option<String>,
+    pub part: PathBuf,
+}
+
+impl Uploads {
+    fn map(&self) -> std::sync::MutexGuard<'_, std::collections::HashMap<String, Upload>> {
+        self.0
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+    }
+
+    fn sweep(map: &mut std::collections::HashMap<String, Upload>) {
+        map.retain(|_, u| {
+            let live = u.touched.elapsed() < UPLOAD_IDLE;
+            if !live {
+                u.drop_files();
+            }
+            live
+        });
+    }
+
+    /// Starts an upload of `size` bytes whose SHA-256 is `sha256`; an
+    /// account has one at a time. Returns its ID and the number of parts.
+    pub fn start(
+        &self,
+        app: &App,
+        account: &str,
+        project: Option<&str>,
+        size: u64,
+        sha256: &str,
+    ) -> Result<(String, usize), Refusal> {
+        if size == 0 || size > MAX_ARCHIVE {
+            return Err(Refusal::Bad("too_big"));
+        }
+        if !crate::blobs::is_sha256(sha256) {
+            return Err(Refusal::Bad("bad_upload"));
+        }
+        may_publish(app, account, project, size)?;
+        let mut map = self.map();
+        Self::sweep(&mut map);
+        map.retain(|_, u| {
+            let other = u.account != account;
+            if !other {
+                u.drop_files();
+            }
+            other
+        });
+        if map.len() >= MAX_UPLOADS {
+            return Err(Refusal::Limit("busy"));
+        }
+        let waiting: u64 = map.values().map(|u| u.size).sum();
+        if !app
+            .blobs
+            .may_keep(waiting.saturating_add(size).saturating_mul(2))
+        {
+            return Err(Refusal::Server("no space for uploads".into()));
+        }
+        let count = usize::try_from(size.div_ceil(CHUNK)).unwrap_or(usize::MAX);
+        let id = uuid::Uuid::new_v4().to_string();
+        map.insert(
+            id.clone(),
+            Upload {
+                account: account.to_owned(),
+                project: project.map(str::to_owned),
+                size,
+                sha256: sha256.to_owned(),
+                parts: vec![None; count],
+                touched: std::time::Instant::now(),
+            },
+        );
+        Ok((id, count))
+    }
+
+    /// How long part `n` of the account's upload `id` must be.
+    pub fn expected(&self, account: &str, id: &str, n: usize) -> Result<u64, Refusal> {
+        let map = self.map();
+        let upload = map
+            .get(id)
+            .filter(|u| u.account == account)
+            .ok_or(Refusal::NotFound)?;
+        if n >= upload.parts.len() {
+            return Err(Refusal::Bad("bad_part"));
+        }
+        Ok(upload.part_len(n))
+    }
+
+    /// Takes part `n` (a file in `tmp/`, removed when it does not fit); a
+    /// part sent again replaces the earlier one.
+    pub fn put(&self, account: &str, id: &str, n: usize, file: PathBuf) -> Result<(), Refusal> {
+        let mut map = self.map();
+        let fits = map
+            .get(id)
+            .filter(|u| u.account == account && n < u.parts.len())
+            .is_some_and(|u| std::fs::metadata(&file).is_ok_and(|m| m.len() == u.part_len(n)));
+        let Some(upload) = map.get_mut(id).filter(|_| fits) else {
+            let _ = std::fs::remove_file(&file);
+            return Err(if map.get(id).is_some_and(|u| u.account == account) {
+                Refusal::Bad("bad_part")
+            } else {
+                Refusal::NotFound
+            });
+        };
+        if let Some(old) = upload.parts[n].replace(file) {
+            let _ = std::fs::remove_file(old);
+        }
+        upload.touched = std::time::Instant::now();
+        Ok(())
+    }
+
+    /// Puts the account's upload `id` together in a new part file once all
+    /// its parts came and their SHA-256 is the one announced (blocking).
+    pub fn assemble(&self, app: &App, account: &str, id: &str) -> Result<Assembled, Refusal> {
+        let upload = {
+            let mut map = self.map();
+            match map.get(id) {
+                Some(u) if u.account == account => {}
+                _ => return Err(Refusal::NotFound),
+            }
+            if map[id].parts.iter().any(Option::is_none) {
+                return Err(Refusal::Bad("not_complete"));
+            }
+            map.remove(id).ok_or(Refusal::NotFound)?
+        };
+        let part = app.blobs.part();
+        let joined = (|| {
+            let mut out = std::fs::File::create(&part)?;
+            for path in upload.parts.iter().flatten() {
+                std::io::copy(&mut std::fs::File::open(path)?, &mut out)?;
+            }
+            out.sync_all()
+        })();
+        upload.drop_files();
+        let hashed = joined.and_then(|()| crate::blobs::hash_file(&part));
+        match hashed {
+            Ok(h) if h.size == upload.size && h.sha256 == upload.sha256 => Ok(Assembled {
+                project: upload.project,
+                part,
+            }),
+            Ok(_) => {
+                let _ = std::fs::remove_file(&part);
+                Err(Refusal::Bad("bad_upload"))
+            }
+            Err(_) => {
+                let _ = std::fs::remove_file(&part);
+                Err(Refusal::Server("putting an upload together".into()))
+            }
+        }
+    }
+}
+
 pub fn refusal_json(refusal: &Refusal) -> (u16, Value) {
     match refusal {
         Refusal::Bad(code) => (400, json!({ "error": code })),
