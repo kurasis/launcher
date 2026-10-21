@@ -1,0 +1,57 @@
+plugins {
+    id 'java'
+    id 'xyz.wagyourtail.unimined' version '1.4.1'
+}
+
+// The test bot for Forge 1.8.9 (docs/GAMETEST.md), built by Unimined like the mod's
+// 1.8.9 jar, on Forge's client tick event like the 1.12.2 one.
+base {
+    archivesName = "launchergametest-forge-${minecraft_version}"
+}
+
+java {
+    toolchain { languageVersion = JavaLanguageVersion.of(8) }
+}
+
+sourceSets.main {
+    java.srcDir "${rootDir}/gametest/core/src/main/java"
+}
+
+repositories {
+    // MCP's mappings have no POM; Maven Central answers Forge's groups with 429s.
+    exclusiveContent {
+        forRepository {
+            maven {
+                url = 'https://maven.minecraftforge.net/'
+                metadataSources { mavenPom(); artifact() }
+            }
+        }
+        filter {
+            includeGroupByRegex 'de\\.oceanlabs.*'
+            includeGroupByRegex 'net\\.minecraftforge.*'
+        }
+    }
+    mavenCentral()
+}
+
+unimined.minecraft {
+    version minecraft_version
+    mappings {
+        searge()
+        mcp('stable', '22-1.8.9')
+    }
+    minecraftForge {
+        loader forge_version
+    }
+}
+
+tasks.withType(JavaCompile).configureEach {
+    options.encoding = 'UTF-8'
+}
+
+processResources {
+    inputs.property 'version', project.version
+    filesMatching('mcmod.info') {
+        expand version: project.version
+    }
+}

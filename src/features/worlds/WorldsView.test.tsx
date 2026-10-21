@@ -62,6 +62,9 @@ const local: LocalWorld = {
   played: false,
   loader: null,
   mods: 0,
+  generation: null,
+  source: null,
+  updatePending: false,
 };
 
 const idle: WorldsState = {
@@ -700,6 +703,119 @@ describe('WorldsView', () => {
       world: WORLD,
       title: 'Export the world',
     });
+  });
+
+  it('updates the mods of a world after showing what changes and asking for changed settings', async () => {
+    const source = 'b8f5d6a2-1c3e-4f5a-9b7c-2d4e6f8a0b1c';
+    const fabric = { kind: 'fabric', version: '0.17.2' };
+    const { calls } = setup({
+      worlds_local: () => [
+        { ...local, played: true, loader: fabric, mods: 2, generation: 1, source },
+      ],
+      worlds_backups: () => [],
+      worlds_mod_sources: () => [
+        { instanceId: source, name: 'Fabric pack', minecraft: '1.21.1', loader: fabric },
+        {
+          instanceId: 'c8f5d6a2-1c3e-4f5a-9b7c-2d4e6f8a0b1c',
+          name: 'Older pack',
+          minecraft: '1.20.1',
+          loader: fabric,
+        },
+      ],
+      worlds_update_preview: () => ({
+        fingerprint: 'f'.repeat(64),
+        generation: 1,
+        next: 2,
+        loader: fabric,
+        loaderChanged: false,
+        added: [{ name: 'sodium.jar', side: 'client' }],
+        removed: [{ name: 'ledger.jar', side: 'server' }],
+        updated: [{ name: 'fabric-api-2.jar', side: 'both', from: 'fabric-api-1.jar' }],
+        settings: 1,
+        conflicts: [
+          {
+            path: 'config/spawn.json',
+            base: { text: '{"spawn":1}', bytes: 11, truncated: false },
+            mine: { text: '{"spawn":7}', bytes: 11, truncated: false },
+            theirs: { text: '{"spawn":2}', bytes: 11, truncated: false },
+          },
+        ],
+        same: false,
+      }),
+    });
+    const card = within((await screen.findByText('Our base')).closest('li') as HTMLElement);
+    fireEvent.click(card.getByRole('button', { name: 'Open' }));
+    expect(await screen.findByText("Set 1 of the world's mods, 2 mods.")).toBeInTheDocument();
+    const from = screen.getByLabelText('From the installation');
+    await within(from).findByText('Fabric pack');
+    expect(within(from).queryByText('Older pack')).toBeNull();
+    fireEvent.click(screen.getByRole('button', { name: 'Show the changes' }));
+    expect(await screen.findByText('sodium.jar')).toBeInTheDocument();
+    expect(screen.getByText('fabric-api-2.jar, was fabric-api-1.jar')).toBeInTheDocument();
+    expect(screen.getByText(/1 setting you have not changed takes/)).toBeInTheDocument();
+    expect(screen.getByText('{"spawn":7}')).toBeInTheDocument();
+    expect(called(calls, 'worlds_update_preview')[0]?.args).toEqual({
+      world: WORLD,
+      instanceId: source,
+    });
+    const update = screen.getByRole('button', { name: 'Update the world' });
+    expect(update).toBeDisabled();
+    fireEvent.click(screen.getByLabelText('Take the new one'));
+    fireEvent.click(update);
+    expect(await screen.findByText(/The world has set 2 of its mods/)).toBeInTheDocument();
+    expect(called(calls, 'worlds_update')[0]?.args.payload).toEqual({
+      room: ROOM,
+      world: WORLD,
+      instanceId: source,
+      fingerprint: 'f'.repeat(64),
+      choices: { 'config/spawn.json': 'theirs' },
+    });
+    expect(called(calls, 'worlds_stop_hosting')).toHaveLength(0);
+  });
+
+  it('says the new mods did not start on the copy and the world stayed as it was', async () => {
+    const fabric = { kind: 'fabric', version: '0.17.2' };
+    setup({
+      worlds_local: () => [{ ...local, played: true, loader: fabric, mods: 1, generation: 1 }],
+      worlds_backups: () => [],
+      worlds_mod_sources: () => [
+        {
+          instanceId: 'b8f5d6a2-1c3e-4f5a-9b7c-2d4e6f8a0b1c',
+          name: 'Pack',
+          minecraft: '1.21.1',
+          loader: fabric,
+        },
+      ],
+      worlds_update_preview: () => ({
+        fingerprint: 'a'.repeat(64),
+        generation: 1,
+        next: 2,
+        loader: fabric,
+        loaderChanged: false,
+        added: [{ name: 'broken.jar', side: 'both' }],
+        removed: [],
+        updated: [],
+        settings: 0,
+        conflicts: [],
+        same: false,
+      }),
+      worlds_update: () => {
+        throw Object.assign(new Error('The world server stopped while starting.'), {
+          code: 'GAME_EXITED_WITH_ERROR',
+          retryable: false,
+          diagnosticId: 'd-2',
+          safeDetails: { worldsTrialFailed: true },
+        });
+      },
+    });
+    const card = within((await screen.findByText('Our base')).closest('li') as HTMLElement);
+    fireEvent.click(card.getByRole('button', { name: 'Open' }));
+    await screen.findByRole('option', { name: 'Pack' });
+    fireEvent.click(screen.getByRole('button', { name: 'Show the changes' }));
+    fireEvent.click(await screen.findByRole('button', { name: 'Update the world' }));
+    expect(
+      await screen.findByText(/did not start on a copy of the world, so the world has not changed/),
+    ).toBeInTheDocument();
   });
 
   it('waits with backups while the world is open', async () => {

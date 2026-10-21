@@ -5,7 +5,12 @@ pluginManagement {
         // Architectury Loom, the build plugin for Forge 1.16.5.
         maven { url = 'https://maven.architectury.dev/' }
         maven { url = 'https://maven.minecraftforge.net/' }
-        // RetroFuturaGradle, the build plugin for Forge 1.12.2.
+        // Unimined, the build plugin for Forge 1.8.9.
+        maven {
+            url = 'https://maven.wagyourtail.xyz/releases'
+            mavenContent { includeGroupByRegex 'xyz\\.wagyourtail.*' }
+        }
+        // RetroFuturaGradle, the build plugin for Forge 1.12.2 and 1.7.10.
         maven {
             url = 'https://nexus.gtnewhorizons.com/repository/public/'
             mavenContent {
@@ -44,6 +49,9 @@ include 'core'
 }
 add 'mc-26.3:agent'
 add 'mc-1.12.2:forge'
+// Forge 1.8.9: mc-1.12.2's sources built against 1.8.9 (Unimined).
+add 'mc-1.8.9:forge'
+add 'mc-1.7.10:forge'
 // 1.16 to 1.20.1 share a game layer; each jar is a project of its own, a folder in
 // mc-1.16.5-1.20.1/<loader> named after the release it is built against and built by
 // that loader's script there.
@@ -89,6 +97,8 @@ include 'gametest:core'
 }
 ['fabric', 'neoforge', 'forge', 'agent'].each { loader -> add "gametest:mc-26.3:${loader}" }
 add 'gametest:mc-1.12.2:forge'
+add 'gametest:mc-1.8.9:forge'
+add 'gametest:mc-1.7.10:forge'
 // The 1.16 to 1.20.1 bots: a project per release and loader, laid out like the mod's.
 ['fabric', 'forge', 'agent'].each { loader ->
     file("gametest/mc-1.16.5-1.20.1/${loader}").eachDir { dir ->

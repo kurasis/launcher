@@ -116,3 +116,36 @@
   align-items: center;
   gap: var(--space-2);
 }
+
+.changes {
+  margin: var(--space-1) 0 0;
+  padding-inline-start: var(--space-4);
+  overflow-wrap: anywhere;
+}
+
+.threeWay {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 14rem), 1fr));
+  gap: var(--space-2);
+}
+
+.side {
+  display: grid;
+  align-content: start;
+  gap: var(--space-1);
+  min-width: 0;
+}
+
+.text {
+  max-height: 16rem;
+  margin: 0;
+  padding: var(--space-2);
+  overflow: auto;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+  background: var(--color-surface);
+  font-family: var(--font-mono, monospace);
+  font-size: var(--font-size-sm);
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}

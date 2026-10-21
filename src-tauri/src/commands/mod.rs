@@ -1452,6 +1452,118 @@ pub async fn send_explanation_feedback(
     reports.feedback(&state, &kind, &signature, helpful).await
 }
 
+fn reviews_of<R: Runtime>(app: &AppHandle<R>) -> Arc<crate::reviews::Reviews> {
+    Arc::clone(&app.state::<Arc<crate::reviews::Reviews>>())
+}
+
+fn launcher_account_of<R: Runtime>(
+    app: &AppHandle<R>,
+) -> Arc<crate::launcher_account::LauncherAccount> {
+    Arc::clone(&app.state::<Arc<crate::launcher_account::LauncherAccount>>())
+}
+
+/// The latest logs for a review (D-070), scrubbed, for the player to read
+/// and pick from: of an installation, or of one game run.
+#[tauri::command]
+pub async fn reviews_logs<R: Runtime>(
+    app: AppHandle<R>,
+    instance_id: Option<String>,
+    run_id: Option<String>,
+) -> LauncherResult<crate::reviews::Found> {
+    tauri::async_runtime::spawn_blocking(move || {
+        let home = app.path().home_dir().ok();
+        reviews_of(&app).logs(
+            &app.state::<AppState>(),
+            instance_id.as_deref(),
+            run_id.as_deref(),
+            home.as_deref(),
+        )
+    })
+    .await
+    .map_err(|_| {
+        crate::error::LauncherError::internal("Collecting the logs stopped unexpectedly.")
+    })?
+}
+
+/// A text file the player attached to a review, scrubbed like the logs.
+#[tauri::command]
+pub async fn reviews_text_file<R: Runtime>(
+    app: AppHandle<R>,
+    name: String,
+    text: String,
+) -> LauncherResult<crate::reviews::Found> {
+    if text.len() > 4 * crate::reviews::MAX_TEXT_BYTES || name.len() > 1024 {
+        return Err(crate::error::LauncherError::invalid_input(
+            "This file is too large to attach.",
+        ));
+    }
+    tauri::async_runtime::spawn_blocking(move || {
+        let home = app.path().home_dir().ok();
+        reviews_of(&app).text_file(&app.state::<AppState>(), &name, &text, home.as_deref())
+    })
+    .await
+    .map_err(|_| crate::error::LauncherError::internal("Reading the file stopped unexpectedly."))?
+}
+
+/// A screenshot from the gallery for a review: scaled to 2560 pixels and
+/// written again as PNG (nothing but pixels), base64.
+#[tauri::command]
+pub async fn reviews_screenshot<R: Runtime>(
+    app: AppHandle<R>,
+    instance_id: String,
+    file: String,
+) -> LauncherResult<String> {
+    let id: crate::storage::paths::InstanceId = instance_id.parse().map_err(|_| {
+        crate::error::LauncherError::invalid_input("This screenshot does not exist.")
+    })?;
+    blocking(app, move |state| {
+        let path = crate::gallery::path(state, id, &file)?;
+        let png = crate::gallery::make_thumbnail(&path, 2560)?;
+        Ok(base64::Engine::encode(
+            &base64::engine::general_purpose::STANDARD,
+            png,
+        ))
+    })
+    .await
+}
+
+/// Sends a review, or keeps it to send once the service can be reached.
+#[tauri::command]
+pub async fn reviews_send<R: Runtime>(
+    app: AppHandle<R>,
+    draft: crate::reviews::Draft,
+) -> LauncherResult<crate::reviews::Delivery> {
+    let home = app.path().home_dir().ok();
+    let accounts = launcher_account_of(&app);
+    reviews_of(&app)
+        .send(&app.state::<AppState>(), &*accounts, draft, home.as_deref())
+        .await
+}
+
+/// The player's reviews and the answers; `refresh` asks the service now.
+#[tauri::command]
+pub async fn reviews_mine<R: Runtime>(
+    app: AppHandle<R>,
+    refresh: bool,
+) -> LauncherResult<crate::reviews::Mine> {
+    let accounts = launcher_account_of(&app);
+    reviews_of(&app)
+        .mine(&app.state::<AppState>(), &*accounts, refresh)
+        .await
+}
+
+/// The player has read the answers to their reviews.
+#[tauri::command]
+pub async fn reviews_seen<R: Runtime>(app: AppHandle<R>) -> LauncherResult<()> {
+    blocking(app.clone(), move |state| reviews_of(&app).seen(state)).await
+}
+
+/// Deletes one of the player's reviews, on the service too.
+#[tauri::command]
+pub async fn reviews_delete<R: Runtime>(app: AppHandle<R>, id: i64) -> LauncherResult<()> {
+    reviews_of(&app).delete(&app.state::<AppState>(), id).await
+}
+
 /// Looks for a launcher update now (D-063).
 #[tauri::command]
 pub async fn check_for_update<R: Runtime>(app: AppHandle<R>) -> crate::update::UpdateView {
@@ -3398,6 +3510,19 @@ pub struct WorldsCreatePayload {
     pub instance_id: Option<crate::storage::paths::InstanceId>,
 }
 
+/// An update of a world's mods (W12): what [`worlds_update_preview`] showed,
+/// and the host's answer to each changed setting.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct WorldsUpdatePayload {
+    pub room: String,
+    pub world: crate::storage::paths::WorldId,
+    pub instance_id: crate::storage::paths::InstanceId,
+    pub fingerprint: String,
+    #[serde(default)]
+    pub choices: std::collections::HashMap<String, crate::worlds::update::Keep>,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct WorldsRoomPayload {
@@ -3465,6 +3590,40 @@ pub async fn worlds_create<R: Runtime>(
             &payload.minecraft,
             payload.settings,
             payload.instance_id,
+        )
+        .await
+}
+
+/// What updating a world's mods from an installation would change (W12).
+#[tauri::command]
+pub async fn worlds_update_preview<R: Runtime>(
+    app: AppHandle<R>,
+    mods: State<'_, Arc<crate::mods::Mods>>,
+    world: crate::storage::paths::WorldId,
+    instance_id: crate::storage::paths::InstanceId,
+) -> LauncherResult<crate::worlds::update::Preview> {
+    worlds(&app)
+        .update_preview(&app.state::<AppState>(), &mods, world, instance_id)
+        .await
+}
+
+/// Updates a stopped world's mods: backed up, tried on a copy, then kept
+/// with the way back (W12).
+#[tauri::command]
+pub async fn worlds_update<R: Runtime>(
+    app: AppHandle<R>,
+    mods: State<'_, Arc<crate::mods::Mods>>,
+    payload: WorldsUpdatePayload,
+) -> LauncherResult<()> {
+    worlds(&app)
+        .update(
+            &app.state::<AppState>(),
+            &mods,
+            &payload.room,
+            payload.world,
+            payload.instance_id,
+            &payload.fingerprint,
+            payload.choices,
         )
         .await
 }

@@ -133,21 +133,14 @@ pub fn prepare(inputs: &Inputs<'_>) -> LauncherResult<Vec<LockedArtifact>> {
     generated(inputs, installer)
 }
 
-/// Unpacks the installer's files that are missing or damaged.
+/// Unpacks the installer's packed files that are missing or damaged.
 fn unpack(inputs: &Inputs<'_>, installer: &Installer, bytes: &[u8]) -> LauncherResult<()> {
     for file in &installer.embedded {
         let destination = resolve_managed_path(inputs.root, &maven_path(&file.path))?;
         if sha1_file(&destination).is_ok_and(|(sha1, _)| sha1 == file.sha1.as_str()) {
             continue;
         }
-        let entry = match &file.entry {
-            Some(entry) => {
-                validate_relative_path(entry)?;
-                entry.clone()
-            }
-            None => format!("maven/{}", file.path),
-        };
-        let content = installer_entry(bytes, &entry)?;
+        let content = installer_entry(bytes, &file.entry_name())?;
         if hex::encode(sha1::Sha1::digest(&content)) != file.sha1.as_str() {
             return Err(unsupported("installer entry hash"));
         }

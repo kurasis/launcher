@@ -16,6 +16,7 @@ export type View =
   | 'backups'
   | 'screenshots'
   | 'diagnostics'
+  | 'reviews'
   | 'about';
 
 /**
@@ -39,6 +40,9 @@ export const menuEntries: readonly MenuEntry[] = [
   'separator',
   'diagnostics',
   'console',
+  'separator',
+  // Leave a review (D-070).
+  'reviews',
   'about',
 ];
 

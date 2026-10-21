@@ -811,7 +811,11 @@ message` plus a stack trace), with the event's level.
 - **Supported range:** what each project's metadata lists, except Forge before
   1.12.2 build 14.23.5.2851: those installers use the old format (`install` +
   `versionInfo`) and are neither listed nor installed; a chosen one fails with a clear
-  message.
+  message. Since 2026-10-21 (skins mod for old versions) the last Forge builds for
+  1.7.10 (10.13.4.1614) and 1.8.9 (11.15.1.2318) are the exception: the old profile's
+  libraries are rewritten to the current form (the universal jar from the installer,
+  the rest from Forge's Maven or Mojang's library host, pinned by `.sha1` or the
+  declared checksum, server-only ones left out) and nothing runs at install time.
 - **How a loader is resolved (`src-tauri/src/loader`):**
   - Fabric and Quilt: the loader's version profile from its meta service. Libraries
     without a published SHA-1 (Fabric's intermediary and loader, every Quilt library)
@@ -863,7 +867,8 @@ message` plus a stack trace), with the event's level.
   profiles also name Mojang's library host; each download uses the category whose
   allowlist names its host.
 - **Not included:** installing or updating mods, modpacks, changing the loader of an
-  existing installation, Forge before 1.12.2 build 14.23.5.2851, LiteLoader, Rift.
+  existing installation, Forge before 1.12.2 build 14.23.5.2851 (except the last 1.7.10
+  and 1.8.9 builds), LiteLoader, Rift.
 - **OptiFine on its own** (owner request, 2026-10-21): a fifth choice, **OptiFine**,
   without Forge (`loader::optifine`). Builds come from the mods catalog (D-066, project
   `optifine`), not from optifine.net: only versions the catalog serves (kept, not held
@@ -2648,5 +2653,12 @@ archive from the Package workflow, upload it to
   are read only on the server with `lapi-reviews` (docs/REVIEWS.md); the workflow's
   `task=counts` prints numbers. `show --translate` sends a message to DeepL only when the
   owner asks.
+- **In the launcher.** More → Leave a review, with a dot on More while an answer is
+  unread. "Tell us more" on the crash panel and on the launcher's failure offer, and
+  "Report" on a server ad, open the form with the category, the run, the failure or the ad
+  filled in. A review the service cannot take now waits in `reviews/outbox` of the data
+  folder (30 days) and is sent again in the background; `reviews/sent.json` keeps the
+  numbers and keys. Pictures from a file or the clipboard are drawn again in the window,
+  screenshots from the gallery are scaled by the core; neither keeps metadata.
 - **Server setup (owner):** a DNS record for reviews.lapi.sh behind Cloudflare, then
   `deploy/bootstrap.sh` once, after the first deploy has uploaded the new `deploy/` files.

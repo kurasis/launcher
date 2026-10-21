@@ -26,4 +26,5 @@ pub mod receipt;
 pub mod safety;
 pub mod service;
 pub mod tuple;
+pub mod update;
 pub mod world;

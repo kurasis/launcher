@@ -159,6 +159,25 @@
   transition: transform var(--motion-duration) ease-out;
 }
 
+.newsDot {
+  display: inline-block;
+  width: 0.5rem;
+  height: 0.5rem;
+  margin-inline-start: var(--space-1);
+  border-radius: 50%;
+  background: var(--color-accent);
+  vertical-align: super;
+}
+
+.visuallyHidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+
 .navItem[aria-expanded='true'] .caret {
   transform: rotate(180deg);
 }

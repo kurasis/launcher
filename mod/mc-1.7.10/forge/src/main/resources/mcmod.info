@@ -1,0 +1,10 @@
+[
+  {
+    "modid": "launcherskins",
+    "name": "Launcher Skins",
+    "description": "Skins and capes of launcher accounts, HD and animated.",
+    "version": "${version}",
+    "mcversion": "1.7.10",
+    "authorList": ["Launcher"]
+  }
+]

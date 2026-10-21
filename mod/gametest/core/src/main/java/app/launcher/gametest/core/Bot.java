@@ -57,6 +57,7 @@ public final class Bot {
     private final Set<String> skinIds = new HashSet<>();
     private final Set<String> capeIds = new HashSet<>();
     private Boolean slimSeen;
+    private boolean slimModel = true;
     private final Set<String> done = new HashSet<>();
 
     public Bot(Config config, LongSupplier clock) {
@@ -242,6 +243,7 @@ public final class Bot {
             if (skinIds.size() < MAX_FRAMES_TRACKED) {
                 skinIds.add(skin);
             }
+            slimModel = game.hasSlimModel();
             Boolean slim = game.slim();
             if (slim != null) {
                 slimSeen = slim;
@@ -454,7 +456,8 @@ public final class Bot {
         } else {
             boolean seen = !skinIds.isEmpty();
             boolean slim = config.skin.equals("slim");
-            boolean model = slimSeen != null && slimSeen == slim;
+            // A game with one model draws every skin with it.
+            boolean model = !slimModel || slimSeen != null && slimSeen == slim;
             report.check("skin", seen && model,
                     !seen ? "the launcher skin was never drawn" : model ? "" : "drawn with the wrong model");
             boolean frames = config.skinFrames == 1 ? skinIds.size() == 1 : skinIds.size() >= 2;

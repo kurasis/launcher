@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-reviews-seen"
+description = "Enables the reviews_seen command without any pre-configured scope."
+commands.allow = ["reviews_seen"]
+
+[[permission]]
+identifier = "deny-reviews-seen"
+description = "Denies the reviews_seen command without any pre-configured scope."
+commands.deny = ["reviews_seen"]

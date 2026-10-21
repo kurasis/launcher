@@ -40,6 +40,15 @@ none for them: a profile without textures whose UUID is not a Mojang one (versio
   `LauncherSkins` (methods matched by MCP name in development, SRG name in a released
   game). Built with RetroFuturaGradle; the jar to ship is the reobfuscated one, not
   `-dev`.
+- `mc-1.8.9/forge/`: the same coremod and `LauncherSkins` (sources taken from
+  `mc-1.12.2/forge/`, whose game names 1.8.9 shares), built with Unimined (Forge
+  11.15.1.2318, MCP stable 22).
+- `mc-1.7.10/forge/`: 1.7.10 has no `NetworkPlayerInfo`, so its transformer hooks
+  `AbstractClientPlayer`'s skin, cape and has-cape getters. Its player model is 64x32:
+  a skin is drawn to that size and its top half kept. No slim model. RetroFuturaGradle
+  (MCP stable 12).
+- The core uses Gson 2.2.4 and nothing newer from ASM than 5.0: Forge 1.7.10 and 1.8.9
+  ship those.
 - Java agents for the game with no mod loader
   (`-javaagent:launcherskins-agent-<version>.jar`). They rewrite `PlayerInfo`'s skin
   getters the way the Mixin does and use the same game layer, so HD and animation work
@@ -57,7 +66,7 @@ none for them: a profile without textures whose UUID is not a Mojang one (versio
 
 ## Build
 
-Gradle runs on Java 25 (Fabric Loom and RetroFuturaGradle need it); the jars for 1.12.2
+Gradle runs on Java 25 (Fabric Loom and RetroFuturaGradle need it); the jars for 1.7.10
 to 1.20.1 are built for Java 8 (with Java 8 and 17 toolchains), those for 1.20.2 to 1.21.1
 with Java 17 (1.20.6's Forge jar 21), the later 1.21.x with Java 21 and 26.x with Java 25. Missing toolchains are downloaded.
 
@@ -78,7 +87,7 @@ Each loader project has a `runClient` task. These properties are optional:
   `launcherskins.api`); plain `http` only for a loopback address.
 - `-PdevNick=Tester`: the player's nick.
 - `-PdevServer=127.0.0.1:25565`: join this server at once (an offline-mode server
-  gives the player a non-Mojang UUID, so the mod applies). On 1.12.2 it becomes
+  gives the player a non-Mojang UUID, so the mod applies). On 1.12.2 and older it becomes
   `--server` and `--port`.
 - `-PdevWorld=<save>` (Forge 1.21.1 and 26.3): open this singleplayer world at once.
 

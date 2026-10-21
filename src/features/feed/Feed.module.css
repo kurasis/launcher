@@ -847,3 +847,32 @@
   align-items: center;
   gap: var(--space-3);
 }
+
+.adFoot {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--space-2);
+}
+
+.adReport {
+  margin-inline-start: auto;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--color-text-muted);
+  font: inherit;
+  font-size: var(--font-size-sm);
+  text-decoration: underline;
+  cursor: pointer;
+}
+
+.adReport:hover {
+  color: var(--color-text);
+}
+
+.adReport:focus-visible {
+  outline: 2px solid var(--color-focus);
+  outline-offset: 2px;
+}

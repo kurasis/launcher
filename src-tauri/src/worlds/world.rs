@@ -7,11 +7,15 @@
 //! worlds/<worldId>/pack/             its mods, when it has some (W12)
 //! ```
 //!
+//! An update of a world's mods is tried on a copy first: a world of its own
+//! whose `trialOf` names the world, never listed and removed once tried.
+//!
 //! `world.json` records what the world runs (the version and the pinned server
 //! JAR), what the player chose, whether the EULA was accepted, and the operation
 //! that is changing the world, written before the change starts so an
 //! interrupted one is found on the next start.
 
+use std::collections::BTreeMap;
 use std::path::Path;
 
 use chrono::{DateTime, Utc};
@@ -48,6 +52,8 @@ pub enum MutationKind {
     Import,
     Backup,
     Restore,
+    /// Its mods are updated (W12).
+    Update,
 }
 
 /// An operation changing this world, recorded before it starts.
@@ -92,6 +98,26 @@ pub struct WorldFile {
     /// The catalog project of its room pack; each generation is a version.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub room_pack: Option<String>,
+    /// Earlier generations that a backup was made with, oldest first.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub generations: Vec<super::pack::WorldPack>,
+    /// The generation each backup was made with, by the backup's id.
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub backup_generations: BTreeMap<String, u32>,
+    /// An update of its mods that no start has confirmed yet.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub update: Option<super::update::Pending>,
+    /// The world this copy tries an update for.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub trial_of: Option<WorldId>,
+}
+
+impl WorldFile {
+    /// Whose `pack/` folder holds this world's files: a trial uses its
+    /// world's.
+    pub fn pack_owner(&self) -> WorldId {
+        self.trial_of.unwrap_or(self.id)
+    }
 }
 
 /// A world name: 1–64 characters after trimming, no control characters.
@@ -148,6 +174,10 @@ pub fn create(
         last_run: None,
         pack: None,
         room_pack: None,
+        generations: Vec::new(),
+        backup_generations: BTreeMap::new(),
+        update: None,
+        trial_of: None,
     };
     std::fs::create_dir_all(root.world_server_dir(world.id)).map_err(|e| io(&e))?;
     save(root, &world)?;
@@ -185,17 +215,27 @@ pub fn load(root: &DataRoot, id: WorldId) -> LauncherResult<WorldFile> {
     }
 }
 
-/// Every readable world, by name. Entries that are not world directories are
-/// skipped, never removed.
-pub fn list(root: &DataRoot) -> Vec<WorldFile> {
-    let Ok(entries) = std::fs::read_dir(root.worlds_dir()) else {
-        return Vec::new();
-    };
-    let mut worlds: Vec<WorldFile> = entries
+/// Every readable world directory, trials of updates too.
+fn found(root: &DataRoot) -> impl Iterator<Item = WorldFile> + '_ {
+    std::fs::read_dir(root.worlds_dir())
+        .into_iter()
+        .flatten()
         .filter_map(Result::ok)
         .take(MAX_WORLDS * 4)
         .filter_map(|entry| entry.file_name().to_str()?.parse::<WorldId>().ok())
         .filter_map(|id| load(root, id).ok())
+}
+
+/// Copies an update was tried on and that an exit left behind.
+pub fn trials(root: &DataRoot) -> Vec<WorldFile> {
+    found(root).filter(|w| w.trial_of.is_some()).collect()
+}
+
+/// Every readable world, by name. Entries that are not world directories are
+/// skipped, never removed.
+pub fn list(root: &DataRoot) -> Vec<WorldFile> {
+    let mut worlds: Vec<WorldFile> = found(root)
+        .filter(|w| w.trial_of.is_none())
         .take(MAX_WORLDS)
         .collect();
     worlds.sort_by(|a, b| {

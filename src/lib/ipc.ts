@@ -17,6 +17,9 @@ import {
   type Delivery,
   type FailureSummary,
   type ReportPreview,
+  type MyReviews,
+  type ReviewDraft,
+  type ReviewFound,
   type ReportSubject,
   type DataLocation,
   type ExportResult,
@@ -76,6 +79,8 @@ import {
   type WorldsImportPayload,
   type WorldsInstance,
   type WorldsModSource,
+  type WorldsKeep,
+  type WorldsUpdatePreview,
   type WorldsNewInvite,
   type WorldsPreview,
   type WorldsProblem,
@@ -311,6 +316,18 @@ export const ipc = {
     invoke<ReportPreview>('preview_crash_report', { subject }),
   sendCrashReport: (previewId: string, files: string[], note: string): Promise<Delivery> =>
     invoke<Delivery>('send_crash_report', { previewId, files, note }),
+  reviewsLogs: (instanceId: string | null, runId: string | null): Promise<ReviewFound> =>
+    invoke<ReviewFound>('reviews_logs', { instanceId, runId }),
+  reviewsTextFile: (name: string, text: string): Promise<ReviewFound> =>
+    invoke<ReviewFound>('reviews_text_file', { name, text }),
+  reviewsScreenshot: (instanceId: string, file: string): Promise<string> =>
+    invoke<string>('reviews_screenshot', { instanceId, file }),
+  reviewsSend: (draft: ReviewDraft): Promise<Delivery> =>
+    invoke<Delivery>('reviews_send', { draft }),
+  reviewsMine: (refresh = false): Promise<MyReviews> =>
+    invoke<MyReviews>('reviews_mine', { refresh }),
+  reviewsSeen: (): Promise<void> => invoke('reviews_seen'),
+  reviewsDelete: (id: number): Promise<void> => invoke('reviews_delete', { id }),
   sendExplanationFeedback: (kind: string, signature: string, helpful: boolean): Promise<void> =>
     invoke('send_explanation_feedback', { kind, signature, helpful }),
   checkForUpdate: (): Promise<UpdateView> => invoke<UpdateView>('check_for_update'),
@@ -609,6 +626,20 @@ export const ipc = {
   /** Puts a backup in place of the stopped world; it is backed up first. */
   worldsRestore: (world: string, backup: string): Promise<void> =>
     invoke('worlds_restore', { world, backup }),
+  /** What updating a world's mods from an installation would change (W12). */
+  worldsUpdatePreview: (world: string, instanceId: string): Promise<WorldsUpdatePreview> =>
+    invoke<WorldsUpdatePreview>('worlds_update_preview', { world, instanceId }),
+  /**
+   * Updates a stopped world's mods: backed up, tried on a copy, kept with the
+   * way back. `choices` answers each changed setting by its path.
+   */
+  worldsUpdate: (payload: {
+    room: string;
+    world: string;
+    instanceId: string;
+    fingerprint: string;
+    choices: Record<string, WorldsKeep>;
+  }): Promise<void> => invoke('worlds_update', { payload }),
   /** Saves the stopped world as a zip where the player chooses. */
   worldsExport: (world: string, title?: string): Promise<ExportResult> =>
     invoke<ExportResult>('worlds_export', { world, title: title ?? null }),

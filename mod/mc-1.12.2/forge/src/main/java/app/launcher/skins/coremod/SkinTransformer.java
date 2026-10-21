@@ -49,7 +49,9 @@ public final class SkinTransformer implements IClassTransformer {
         ClassNode node = new ClassNode();
         new ClassReader(basicClass).accept(node, 0);
         int hooked = 0;
-        for (MethodNode method : node.methods) {
+        // Forge 1.8.9's ASM has no generic types: its node.methods is a raw List.
+        for (Object member : node.methods) {
+            MethodNode method = (MethodNode) member;
             String hook = HOOKED.get(method.name);
             String type = "model".equals(hook) ? STRING : LOCATION;
             if (hook == null || !method.desc.equals("()" + type)) {

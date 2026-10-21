@@ -55,6 +55,8 @@ jobs:
             only: mc-1.14.4-1.15.2,gametest:mc-1.14.4-1.15.2
           - name: 1.20.2 to 1.20.6
             only: mc-1.20.2-1.20.6,gametest:mc-1.20.2-1.20.6
+          - name: 1.7.10 and 1.8.9
+            only: mc-1.7.10,mc-1.8.9,gametest:mc-1.7.10,gametest:mc-1.8.9
           - name: the Java agents
             only: agents
     defaults:
@@ -63,7 +65,7 @@ jobs:
     steps:
       - uses: actions/checkout@v7
       - uses: gradle/actions/wrapper-validation@v6
-      # Java 8 builds the jar for 1.12.2, 17 those for 1.16 to 1.20.1 and 21 those
+      # Java 8 builds the jars for 1.7.10 to 1.12.2, 17 those for 1.16 to 1.20.1 and 21 those
       # for 1.21.x; Gradle, Fabric Loom and RetroFuturaGradle run on 25.
       - uses: actions/setup-java@v6
         with:
