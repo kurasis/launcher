@@ -4793,3 +4793,702 @@ async fn players_report_own_packs_to_the_owner() {
     let (_, answer) = t.player(1, "POST", &hide, json!({ "hidden": false })).await;
     assert_eq!(answer["status"], "removed");
 }
+
+// ----- projects from sites that are not catalogs (external.rs) -----
+
+/// A row of optifine.net's downloads page, as the site writes it.
+fn optifine_row(class: &str, title: &str, file: &str, forge: &str, date: &str) -> String {
+    format!(
+        "<tr class='downloadLine {class}'>
+           <td class='colFile'>{title}</td>
+           <td class='colDownload'><a href=\"http://adfoc.us/serve/sitelinks/?id=1&url=http://optifine.net/adloadx?f={file}&x=9ec7\">Download</a></td>
+           <td class='colMirror'><a href=\"http://optifine.net/adloadx?f={file}\">(Mirror)</a></td>
+           <td class='colChangelog'><a href='changelog?f={file}'>Changelog</a></td>
+           <td class='colForge'>{forge}</td>
+           <td class='colDate'>{date}</td>
+         </tr>"
+    )
+}
+
+fn optifine_page() -> String {
+    let mut html = String::from("<html><body><table class='tableRoot'>");
+    html += "<h2>Minecraft 26.2</h2><table class='downloadTable'>";
+    html += &optifine_row(
+        "downloadLinePreview",
+        "OptiFine HD U K2 pre5",
+        "preview_OptiFine_26.2_HD_U_K2_pre5.jar",
+        "Forge N/A",
+        "20.10.2026",
+    );
+    html += "</table><table class='downloadTable mainTable'></table>";
+    html += "<h2>Minecraft 1.21.11</h2><table class='downloadTable mainTable'>";
+    html += &optifine_row(
+        "downloadLineMain",
+        "OptiFine HD U J9",
+        "OptiFine_1.21.11_HD_U_J9.jar",
+        "Forge 61.0.8",
+        "05.02.2026",
+    );
+    html += &optifine_row(
+        "downloadLineMore",
+        "OptiFine HD U J8",
+        "OptiFine_1.21.11_HD_U_J8.jar",
+        "Forge 61.0.2",
+        "05.01.2026",
+    );
+    // A file of another game version under this heading, and junk.
+    html += &optifine_row(
+        "downloadLineMore",
+        "OptiFine HD U J7",
+        "OptiFine_1.21.10_HD_U_J7.jar",
+        "Forge 60.0.1",
+        "05.12.2025",
+    );
+    html += &optifine_row(
+        "downloadLineMore",
+        "OptiFine HD U J6",
+        "OptiFine_1.21.11_HD_U_J6.jar?x=../../etc",
+        "Forge 60",
+        "05.11.2025",
+    );
+    html += &optifine_row(
+        "downloadLineMore",
+        "OptiFine HD U J5",
+        "OptiFine_1.21.11_HD_U_J5.jar",
+        "Forge <script>alert(1)</script>",
+        "31.02.2025",
+    );
+    html += "</table><h2>Minecraft 1.8.0</h2><table class='downloadTable mainTable'>";
+    html += &optifine_row(
+        "downloadLineMain",
+        "OptiFine HD U E7",
+        "OptiFine_1.8.0_HD_U_E7.jar",
+        "Forge #1614",
+        "07.01.2016",
+    );
+    html += "</table><h2>Minecraft <b>x</b></h2><table>";
+    html += &optifine_row(
+        "downloadLineMain",
+        "OptiFine HD U Z1",
+        "OptiFine_x_HD_U_Z1.jar",
+        "Forge N/A",
+        "07.01.2016",
+    );
+    html += "</table></table></body></html>";
+    html
+}
+
+#[test]
+fn optifine_downloads_page_is_read_row_by_row() {
+    use crate::external::{optifine_rows, optifine_version};
+    let rows = optifine_rows(&optifine_page());
+    let files: Vec<&str> = rows.iter().map(|r| r.file.as_str()).collect();
+    assert_eq!(
+        files,
+        [
+            "preview_OptiFine_26.2_HD_U_K2_pre5.jar",
+            "OptiFine_1.21.11_HD_U_J9.jar",
+            "OptiFine_1.21.11_HD_U_J8.jar",
+            "OptiFine_1.8.0_HD_U_E7.jar",
+        ]
+    );
+    assert!(rows[0].preview && rows[0].forge.is_none());
+    assert_eq!(rows[1].forge.as_deref(), Some("61.0.8"));
+    assert_eq!(rows[3].forge.as_deref(), Some("#1614"));
+    assert_eq!(rows[3].game, "1.8");
+    assert_eq!(rows[1].published, 1_770_249_600);
+
+    let version = optifine_version(
+        &rows[1],
+        Some("OptiFine 1.21.11_HD_U_J9\n - fixed\u{202E}x"),
+    );
+    assert_eq!(version.number, "1.21.11 HD U J9");
+    assert_eq!(version.loaders, ["forge"]);
+    assert_eq!(version.channel, "release");
+    assert_eq!(version.games, ["1.21.11"]);
+    assert_eq!(
+        version.files[0].url,
+        "https://optifine.net/adloadx?f=OptiFine_1.21.11_HD_U_J9.jar"
+    );
+    assert!(version.changelog.starts_with("For Forge 61.0.8.\n\n"));
+    assert!(!version.changelog.contains('\u{202E}'));
+    let preview = optifine_version(&rows[0], None);
+    assert_eq!(preview.channel, "beta");
+    assert!(preview.loaders.is_empty());
+    assert!(!preview.details);
+
+    // Junk is no page.
+    assert!(optifine_rows("").is_empty());
+    assert!(optifine_rows("<h2>Minecraft 1.21</h2><tr class='downloadLine'><td").is_empty());
+    assert!(optifine_rows(&"<h2>".repeat(10_000)).is_empty());
+}
+
+#[test]
+fn optifine_link_and_names_take_nothing_else() {
+    use crate::external::{optifine_file, optifine_link, optifine_name};
+    let name = "OptiFine_1.21.1_HD_U_J1.jar";
+    let page = format!(
+        "<a href='downloadx?f={name}&x=3650e05d246f7a2889a76764d27ce3eb' onclick='onDownload()'>"
+    );
+    assert_eq!(
+        optifine_link(&page, name).as_deref(),
+        Some(
+            "https://optifine.net/downloadx?f=OptiFine_1.21.1_HD_U_J1.jar&x=3650e05d246f7a2889a76764d27ce3eb"
+        )
+    );
+    // Another file's link, a short or long token, other characters.
+    let other = page.replace("1.21.1_", "1.21.4_");
+    assert_eq!(optifine_link(&other, name), None);
+    assert_eq!(
+        optifine_link(&page.replace("3650e05d", "3650e05"), name),
+        None
+    );
+    assert_eq!(
+        optifine_link(&page.replace("ce3eb'", "ce3eb0'"), name),
+        None
+    );
+    assert_eq!(
+        optifine_link(&page.replace("3650e05d", "3650E05D"), name),
+        None
+    );
+    assert_eq!(
+        optifine_link(&page.replace("3650e05d", "3650é05"), name),
+        None
+    );
+    assert_eq!(optifine_link("", name), None);
+    assert_eq!(optifine_link(&format!("downloadx?f={name}&x="), name), None);
+
+    for bad in [
+        "",
+        "OptiFine_.jar",
+        "OptiFine_1.21_HD.jar ",
+        "OptiFine_1.21_HD_U_J1.jar/../x",
+        "OptiFine_1.21_HD_U_J1.jar&x=1",
+        "OptiFine_1.21_HD U_J1.jar",
+        "OptiFine_1.a_HD_U_J1.jar",
+        "other_OptiFine_1.21_HD_U_J1.jar",
+        "OptiFine_1.21_HD_U_J1.zip",
+    ] {
+        assert!(!optifine_name(bad), "{bad:?}");
+    }
+    assert!(optifine_name("preview_OptiFine_26.2_HD_U_K2_pre5.jar"));
+    assert_eq!(
+        optifine_file("https://optifine.net/adloadx?f=OptiFine_1.21.1_HD_U_J1.jar").as_deref(),
+        Some(name)
+    );
+    for bad in [
+        "http://optifine.net/adloadx?f=OptiFine_1.21.1_HD_U_J1.jar",
+        "https://optifine.net.evil.example/adloadx?f=OptiFine_1.21.1_HD_U_J1.jar",
+        "https://optifine.net/adloadx?f=OptiFine_1.21.1_HD_U_J1.jar&x=1",
+    ] {
+        assert_eq!(optifine_file(bad), None, "{bad}");
+    }
+}
+
+/// A jar big enough to be one.
+fn optifine_jar(seed: u8) -> Vec<u8> {
+    let filler: Vec<u8> = (0..4000u32)
+        .map(|i| (i.wrapping_mul(2_654_435_761) >> 13) as u8 ^ seed)
+        .collect();
+    mrpack(&[
+        ("META-INF/mods.toml", b"modLoader=\"javafml\"".as_slice()),
+        ("optifine/Filler.bin", &filler),
+    ])
+}
+
+/// optifine.net: its downloads page, changelogs, and each file's page with
+/// a link that gives the jar.
+fn optifine_site(sites: &Sites) -> HashMap<String, Vec<u8>> {
+    sites.put(crate::external::OPTIFINE_DOWNLOADS, ok(optifine_page()));
+    let mut jars = HashMap::new();
+    for (seed, file) in [
+        "preview_OptiFine_26.2_HD_U_K2_pre5.jar",
+        "OptiFine_1.21.11_HD_U_J9.jar",
+        "OptiFine_1.21.11_HD_U_J8.jar",
+        "OptiFine_1.8.0_HD_U_E7.jar",
+    ]
+    .into_iter()
+    .enumerate()
+    {
+        let token = format!("{:032x}", seed + 1);
+        sites.put(
+            &crate::external::optifine_file_url(file),
+            ok(format!(
+                "<a href='downloadx?f={file}&x={token}'>Download</a>"
+            )),
+        );
+        let jar = optifine_jar(seed as u8);
+        sites.put(
+            &format!("https://optifine.net/downloadx?f={file}&x={token}"),
+            ok(jar.clone()),
+        );
+        sites.put(
+            &crate::external::optifine_changelog_url(file),
+            ok(format!("OptiFine {file}\n - fixed things")),
+        );
+        jars.insert(file.to_owned(), jar);
+    }
+    jars
+}
+
+fn external(t: &T, args: &[&str]) -> Result<Vec<String>, String> {
+    let args: Vec<String> = args.iter().map(|a| (*a).to_owned()).collect();
+    crate::external::command(&t.app.store, &args, now())
+}
+
+#[tokio::test]
+async fn optifine_is_kept_from_its_site_and_checked_every_three_days() {
+    let t = setup();
+    let jars = optifine_site(&t.sites);
+    let lines = external(&t, &["add", "https://optifine.net/home"]).unwrap();
+    assert_eq!(lines[0], "optifine: every 3 days");
+    t.drain().await;
+
+    let (status, project) = t.get("/v1/projects/optifine").await;
+    assert_eq!(status, StatusCode::OK, "{project}");
+    assert_eq!(project["title"], "OptiFine");
+    assert_eq!(project["sources"][0]["source"], "external");
+    assert_eq!(project["sources"][0]["url"], "https://optifine.net/home");
+    let (_, list) = t.get("/v1/projects/optifine/versions").await;
+    let versions = list["versions"].as_array().unwrap();
+    assert_eq!(versions.len(), 4);
+    let by_name = |name: &str| {
+        versions
+            .iter()
+            .find(|v| v["name"] == name)
+            .unwrap_or_else(|| panic!("{name}"))
+            .clone()
+    };
+    // The newest for each game version and loader is kept, with our hashes
+    // and size; the older one waits until asked for.
+    let j9 = by_name("OptiFine HD U J9");
+    assert_eq!(j9["saved"], "all");
+    let jar = &jars["OptiFine_1.21.11_HD_U_J9.jar"];
+    assert_eq!(j9["files"][0]["size"], jar.len());
+    assert_eq!(j9["files"][0]["sha1"], hashes(jar).0);
+    assert!(j9["changelog"].as_str().unwrap().contains("- fixed things"));
+    assert_eq!(by_name("OptiFine HD U J8")["saved"], "none");
+    assert_eq!(by_name("OptiFine HD U K2 pre5")["saved"], "all");
+    assert_eq!(by_name("OptiFine HD U E7")["games"], json!(["1.8"]));
+    let changelogs = |t: &T| {
+        t.sites.asked(&crate::external::optifine_changelog_url(
+            "OptiFine_1.21.11_HD_U_J9.jar",
+        ))
+    };
+    assert_eq!(changelogs(&t), 1);
+
+    // Two days on: not yet. Three: read again, its files not fetched again
+    // and its changelogs not read again.
+    let pages = |t: &T| t.sites.asked(crate::external::OPTIFINE_DOWNLOADS);
+    age(&t, 2 * 86_400);
+    assert_eq!(import::refresh(&t.app, None).unwrap(), 0);
+    age(&t, 86_400 + 60);
+    assert_eq!(import::refresh(&t.app, None).unwrap(), 1);
+    t.drain().await;
+    assert_eq!(pages(&t), 2);
+    assert_eq!(changelogs(&t), 1);
+    let (_, list) = t.get("/v1/projects/optifine/versions").await;
+    assert_eq!(list["versions"].as_array().unwrap().len(), 4);
+    let again = list["versions"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|v| v["name"] == "OptiFine HD U J9")
+        .unwrap()
+        .clone();
+    assert_eq!(again["files"][0]["size"], jar.len());
+    assert_eq!(again["saved"], "all");
+
+    // The owner sets other days, or none.
+    assert_eq!(
+        external(&t, &["days", "optifine", "1"]).unwrap(),
+        ["optifine: every 1 days"]
+    );
+    age(&t, 86_400 + 60);
+    assert_eq!(import::refresh(&t.app, None).unwrap(), 1);
+    t.drain().await;
+    external(&t, &["days", "optifine", "0"]).unwrap();
+    age(&t, 400 * 86_400);
+    assert_eq!(import::refresh(&t.app, None).unwrap(), 0);
+    // A check by hand still runs.
+    external(&t, &["check", "optifine"]).unwrap();
+    t.drain().await;
+    assert_eq!(pages(&t), 4);
+    // A page that lost most of its rows marks nothing gone.
+    let mut short = optifine_page();
+    let cut = short.find("<h2>Minecraft 1.21.11").unwrap();
+    short.truncate(cut);
+    t.sites.put(crate::external::OPTIFINE_DOWNLOADS, ok(short));
+    external(&t, &["check", "optifine"]).unwrap();
+    t.drain().await;
+    let (_, list) = t.get("/v1/projects/optifine/versions").await;
+    assert!(
+        list["versions"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .all(|v| v["goneAt"].is_null())
+    );
+    t.sites
+        .put(crate::external::OPTIFINE_DOWNLOADS, ok(optifine_page()));
+    let listed = external(&t, &["list"]).unwrap();
+    assert_eq!(listed[0], "1 projects");
+    assert!(
+        listed[1].starts_with("optifine mod every 0 days, 4 versions, 3 kept"),
+        "{}",
+        listed[1]
+    );
+    assert!(external(&t, &["days", "optifine", "default"]).is_err());
+    assert!(external(&t, &["days", "optifine", "366"]).is_err());
+}
+
+#[tokio::test]
+async fn an_answer_that_is_no_jar_is_not_kept() {
+    let t = setup();
+    optifine_site(&t.sites);
+    // A token the site no longer knows: a 200 with a line of text.
+    let file = "OptiFine_1.21.11_HD_U_J9.jar";
+    sites_put_token(&t.sites, file, b"Request not found.".to_vec());
+    // A page without the link.
+    t.sites.put(
+        &crate::external::optifine_file_url("OptiFine_1.8.0_HD_U_E7.jar"),
+        ok("<html>Please wait</html>"),
+    );
+    external(&t, &["add", "optifine"]).unwrap();
+    t.drain().await;
+    let (_, list) = t.get("/v1/projects/optifine/versions").await;
+    let saved: Vec<(String, String)> = list["versions"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|v| {
+            (
+                v["name"].as_str().unwrap().to_owned(),
+                v["saved"].as_str().unwrap().to_owned(),
+            )
+        })
+        .collect();
+    assert!(
+        saved.contains(&("OptiFine HD U J9".into(), "none".into())),
+        "{saved:?}"
+    );
+    assert!(
+        saved.contains(&("OptiFine HD U E7".into(), "none".into())),
+        "{saved:?}"
+    );
+    assert!(
+        saved.contains(&("OptiFine HD U K2 pre5".into(), "all".into())),
+        "{saved:?}"
+    );
+}
+
+fn sites_put_token(sites: &Sites, file: &str, body: Vec<u8>) {
+    let token = "f".repeat(32);
+    sites.put(
+        &crate::external::optifine_file_url(file),
+        ok(format!(
+            "<a href='downloadx?f={file}&x={token}'>Download</a>"
+        )),
+    );
+    sites.put(
+        &format!("https://optifine.net/downloadx?f={file}&x={token}"),
+        ok(body),
+    );
+}
+
+#[tokio::test]
+async fn the_owner_adds_a_project_and_its_versions_by_hand() {
+    let t = setup();
+    let jar = optifine_jar(9);
+    t.sites.put(
+        "https://files.author.org/dl/Better%20Mod-1.2.jar",
+        ok(jar.clone()),
+    );
+    t.sites
+        .put("https://files.author.org/icon.png", ok(png(64, 64)));
+    external(
+        &t,
+        &[
+            "manual",
+            "better-mod",
+            "--title",
+            "Better Mod",
+            "--kind",
+            "mod",
+            "--page",
+            "https://author.org/better",
+            "--summary",
+            "Makes things better.",
+            "--icon",
+            "https://files.author.org/icon.png",
+        ],
+    )
+    .unwrap();
+    let lines = external(
+        &t,
+        &[
+            "version",
+            "better-mod",
+            "--file",
+            "https://files.author.org/dl/Better%20Mod-1.2.jar",
+            "--game",
+            "1.21.1,1.21",
+            "--loader",
+            "fabric",
+        ],
+    )
+    .unwrap();
+    assert_eq!(lines[0], "manual:better-mod: 1 versions added by hand");
+    t.drain().await;
+    let (status, project) = t.get("/v1/projects/better-mod").await;
+    assert_eq!(status, StatusCode::OK, "{project}");
+    assert_eq!(project["summary"], "Makes things better.");
+    assert!(project["icon"].is_string(), "{project}");
+    let (_, list) = t.get("/v1/projects/better-mod/versions").await;
+    let version = &list["versions"][0];
+    assert_eq!(version["saved"], "all");
+    assert_eq!(version["number"], "BetterMod-1.2");
+    assert_eq!(version["games"], json!(["1.21", "1.21.1"]));
+    assert_eq!(version["files"][0]["name"], "BetterMod-1.2.jar");
+    assert_eq!(version["files"][0]["size"], jar.len());
+
+    // A file that is no archive is not kept.
+    t.sites
+        .put("https://files.author.org/dl/fake.jar", ok(vec![b'x'; 5000]));
+    external(
+        &t,
+        &[
+            "version",
+            "manual:better-mod",
+            "--file",
+            "https://files.author.org/dl/fake.jar",
+            "--game",
+            "1.21.1",
+            "--number",
+            "1.3",
+            "--channel",
+            "beta",
+        ],
+    )
+    .unwrap();
+    t.drain().await;
+    let (_, list) = t.get("/v1/projects/better-mod/versions").await;
+    let fake = list["versions"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|v| v["number"] == "1.3")
+        .unwrap()
+        .clone();
+    assert_eq!(fake["saved"], "none");
+    assert_eq!(fake["channel"], "beta");
+}
+
+#[test]
+fn the_owners_commands_refuse_junk() {
+    let t = setup();
+    for args in [
+        &[
+            "manual",
+            "Bad Slug",
+            "--title",
+            "x",
+            "--kind",
+            "mod",
+            "--page",
+            "https://a.org/",
+        ][..],
+        &[
+            "manual",
+            "ok-slug",
+            "--title",
+            "x",
+            "--kind",
+            "virus",
+            "--page",
+            "https://a.org/",
+        ],
+        &[
+            "manual",
+            "ok-slug",
+            "--title",
+            "x",
+            "--kind",
+            "mod",
+            "--page",
+            "http://a.org/",
+        ],
+        &[
+            "manual",
+            "ok-slug",
+            "--title",
+            "x",
+            "--kind",
+            "mod",
+            "--page",
+            "https://10.0.0.1/",
+        ],
+        &[
+            "manual",
+            "ok-slug",
+            "--title",
+            "x",
+            "--kind",
+            "mod",
+            "--page",
+            "https://router.lan/",
+        ],
+        &[
+            "manual",
+            "ok-slug",
+            "--title",
+            "\u{7}",
+            "--kind",
+            "mod",
+            "--page",
+            "https://a.org/",
+        ],
+        &[
+            "manual",
+            "ok-slug",
+            "--title",
+            "x",
+            "--kind",
+            "mod",
+            "--page",
+            "https://a.org/",
+            "--days",
+            "-1",
+        ],
+        &[
+            "manual",
+            "ok-slug",
+            "--title",
+            "x",
+            "--kind",
+            "mod",
+            "--page",
+            "https://a.org/",
+            "--evil",
+            "1",
+        ],
+        &[
+            "manual",
+            "ok-slug",
+            "--title",
+            "x",
+            "--title",
+            "y",
+            "--kind",
+            "mod",
+            "--page",
+            "https://a.org/",
+        ],
+        &["manual", "ok-slug", "--title"],
+        &["add", "https://modrinth.com/mod/sodium"],
+        &["add", "https://optifine.net.evil.org/"],
+        &[
+            "version",
+            "nobody",
+            "--file",
+            "https://a.org/a.jar",
+            "--game",
+            "1.21",
+        ],
+        &["check", "nobody"],
+        &["nonsense"],
+        &[],
+    ] {
+        assert!(external(&t, args).is_err(), "{args:?}");
+    }
+    external(
+        &t,
+        &[
+            "manual",
+            "ok-slug",
+            "--title",
+            "x",
+            "--kind",
+            "mod",
+            "--page",
+            "https://a.org/",
+        ],
+    )
+    .unwrap();
+    for args in [
+        &[
+            "version",
+            "ok-slug",
+            "--file",
+            "https://a.org/a.exe",
+            "--game",
+            "1.21",
+        ][..],
+        &[
+            "version",
+            "ok-slug",
+            "--file",
+            "https://127.0.0.1/a.jar",
+            "--game",
+            "1.21",
+        ],
+        &[
+            "version",
+            "ok-slug",
+            "--file",
+            "https://a.org/a.jar",
+            "--game",
+            "1.21;drop",
+        ],
+        &["version", "ok-slug", "--file", "https://a.org/a.jar"],
+        &[
+            "version",
+            "ok-slug",
+            "--file",
+            "https://a.org/a.jar",
+            "--game",
+            "1.21",
+            "--channel",
+            "gold",
+        ],
+        &[
+            "version",
+            "optifine",
+            "--file",
+            "https://a.org/a.jar",
+            "--game",
+            "1.21",
+        ],
+    ] {
+        assert!(external(&t, args).is_err(), "{args:?}");
+    }
+    assert!(
+        t.app
+            .store
+            .external_versions("manual:ok-slug")
+            .unwrap()
+            .is_empty()
+    );
+}
+
+#[tokio::test]
+async fn days_set_for_a_catalog_project_bound_its_checks() {
+    let t = setup();
+    modrinth_site(&t.sites);
+    t.player(
+        1,
+        "POST",
+        "/v1/imports",
+        json!({ "input": "https://modrinth.com/mod/sodium" }),
+    )
+    .await;
+    t.drain().await;
+    let id = t.app.store.find_project("sodium").unwrap().unwrap();
+    external(&t, &["days", "sodium", "2"]).unwrap();
+    assert_eq!(t.app.store.recheck_days(&id).unwrap(), Some(2));
+    age(&t, 2 * 86_400 + 60);
+    // Sodium only: its dependency keeps the usual week.
+    assert_eq!(import::refresh(&t.app, None).unwrap(), 1);
+    external(&t, &["days", "sodium", "default"]).unwrap();
+    assert_eq!(t.app.store.recheck_days(&id).unwrap(), None);
+}

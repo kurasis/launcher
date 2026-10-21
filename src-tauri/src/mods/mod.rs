@@ -75,7 +75,7 @@ const LOADERS: &[&str] = &[
 ];
 /// Where the catalog's projects come from; `packwiz` is a pack read from
 /// its `pack.toml` (stage 5), `own` a player's own pack (stage 6).
-const SOURCES: &[&str] = &["modrinth", "curseforge", "packwiz", "own"];
+const SOURCES: &[&str] = &["modrinth", "curseforge", "packwiz", "own", "external"];
 
 /// mods.lapi.sh, or the server a test build was made for
 /// (`LAUNCHER_MODS_URL` at build time; release builds never set it).
@@ -230,15 +230,17 @@ pub fn reserve_url(url: &url::Url) -> Option<url::Url> {
     Some(reserve)
 }
 
-/// A page about the project on its source's site.
-fn source_page(raw: &str) -> Option<String> {
+/// A page about the project on its source's site; for a project the
+/// catalog's owner added from another site (`external`), its author's page
+/// on that site (an HTTPS link, as any).
+fn source_page(raw: &str, source: &str) -> Option<String> {
     let link = markdown::link(raw)?;
     let url = url::Url::parse(&link).ok()?;
-    matches!(
+    let catalog = matches!(
         url.host_str(),
         Some("modrinth.com" | "www.curseforge.com" | "curseforge.com")
-    )
-    .then_some(link)
+    );
+    (catalog || source == "external").then_some(link)
 }
 
 fn description(markdown: &str) -> Vec<markdown::Node> {
@@ -444,7 +446,7 @@ impl Project {
                     let source = s["source"].as_str().filter(|s| SOURCES.contains(s))?;
                     Some(SourceLink {
                         source: source.to_owned(),
-                        url: s["url"].as_str().and_then(source_page),
+                        url: s["url"].as_str().and_then(|u| source_page(u, source)),
                     })
                 })
                 .collect(),

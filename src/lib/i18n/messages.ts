@@ -1345,6 +1345,7 @@ export type Messages = {
       readonly curseforge: string;
       readonly packwiz: string;
       readonly own: string;
+      readonly external: string;
     };
     readonly link: {
       readonly title: string;
@@ -1369,6 +1370,7 @@ export type Messages = {
         readonly held: string;
         readonly noFile: string;
         readonly noLoader: (values: { name: string | number }) => string;
+        readonly noLoaders: string;
         readonly wrongLoader: (values: {
           loaders: string | number;
           name: string | number;
@@ -1385,6 +1387,7 @@ export type Messages = {
       readonly noChanges: string;
       readonly license: (values: { license: string | number }) => string;
       readonly openOn: (values: { site: string | number }) => string;
+      readonly openSite: string;
       readonly importingHint: string;
       readonly gone: string;
       readonly description: string;

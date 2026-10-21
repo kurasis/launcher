@@ -37,7 +37,7 @@ use crate::blobs::{Hashed, hash_file};
 use crate::fetch::FetchError;
 use crate::input::{self, Input};
 use crate::model::{SourceProject, SourceVersion, newest_per_pair};
-use crate::{curseforge, modrinth, pack, packwiz};
+use crate::{curseforge, external, modrinth, pack, packwiz};
 
 pub fn now() -> i64 {
     chrono::Utc::now().timestamp()
@@ -60,6 +60,9 @@ const PROJECT_FRESH: i64 = 6 * 3600;
 /// any other project in the catalog once a week (Ai, 2026-10-20).
 const WANTED_FRESH: i64 = 24 * 3600;
 const IDLE_FRESH: i64 = 7 * 24 * 3600;
+/// A project checked every few days, as the owner set: not queued again
+/// sooner than this.
+const OWNER_FRESH: i64 = 3600;
 /// Looked at or installed this recently: wanted.
 const WANTED_FOR: i64 = 30 * 24 * 3600;
 /// Projects queued for a check at a time.
@@ -191,6 +194,9 @@ fn due_reference(due: &crate::store::Due) -> Option<String> {
             let url = reqwest::Url::parse(&due.source_id).ok()?;
             packwiz::pack_url(&url)
         }
+        s if s == external::SOURCE => {
+            external::is_ref(&due.source_id).then(|| due.source_id.clone())
+        }
         s if s == curseforge::SOURCE => {
             let class = curseforge::CLASSES
                 .iter()
@@ -226,7 +232,10 @@ pub fn refresh(app: &App, project: Option<&str>) -> Result<usize, String> {
         let Some(reference) = due_reference(due) else {
             continue;
         };
-        let fresh = if due.wanted {
+        // Days the owner set are counted by the check above alone.
+        let fresh = if due.days.is_some_and(|d| d > 0) {
+            OWNER_FRESH
+        } else if due.wanted {
             PROJECT_FRESH
         } else {
             IDLE_FRESH
@@ -264,6 +273,20 @@ pub fn queue_project(
         None,
         now(),
         Some(fresh),
+    )
+}
+
+/// Queues a check of a project the owner added (external.rs) at once; run
+/// by the owner's commands, which have the store alone.
+pub fn queue_external(store: &crate::store::Store, source_id: &str) -> Result<bool, String> {
+    store.enqueue(
+        &project_key(external::SOURCE, source_id),
+        "project",
+        &json!({ "source": external::SOURCE, "ref": source_id, "depth": 0 }),
+        None,
+        None,
+        now(),
+        Some(0),
     )
 }
 
@@ -543,6 +566,9 @@ async fn project(
     }
     if source == packwiz::SOURCE {
         return project_packwiz(app, reference, request).await;
+    }
+    if source == external::SOURCE {
+        return project_external(app, reference, request).await;
     }
     if source != modrinth::SOURCE || !modrinth::is_ref(reference) {
         return Err(JobError::new("unsupported_source", false));
@@ -843,6 +869,149 @@ async fn project_packwiz(app: &App, url: &str, request: Option<&str>) -> Result<
     }
     app.store.set_project_status(&id, "ready")?;
     Ok(())
+}
+
+/// A project the owner added from a site that is not a catalog
+/// (external.rs): its card as the owner wrote it, its versions from the
+/// site's page (OptiFine) or as the owner added them.
+async fn project_external(
+    app: &App,
+    source_id: &str,
+    request: Option<&str>,
+) -> Result<(), JobError> {
+    if !external::is_ref(source_id) {
+        return Err(JobError::new("unsupported_source", false));
+    }
+    let card = app
+        .store
+        .external(source_id)?
+        .ok_or_else(|| JobError::new("not_found", false))?;
+    let versions = if source_id == external::OPTIFINE {
+        optifine_versions(app).await?
+    } else {
+        app.store
+            .external_versions(source_id)?
+            .iter()
+            .map(|added| external::added_version(&card, added))
+            .collect()
+    };
+    let found = card.project(now());
+    let (id, owns_card) = app.store.upsert_project(&found, now())?;
+    not_removed(app, &id)?;
+    app.store.default_recheck_days(&id, card.days)?;
+    if let Some(request) = request {
+        app.store
+            .set_request(request, "importing", None, Some(&id), None, now())?;
+    }
+    // A page that lost half of what it listed is read wrong, not emptied:
+    // nothing is marked gone, and it is read again later.
+    let known = app.store.version_sources(&id, external::SOURCE)?.len();
+    if source_id == external::OPTIFINE && versions.len() * 2 < known {
+        return Err(JobError::new("bad_answer", true));
+    }
+    let ids = app
+        .store
+        .upsert_versions(&id, external::SOURCE, &versions)?;
+    for (ours, theirs) in app.store.version_sources(&id, external::SOURCE)? {
+        if !versions.iter().any(|v| v.source_id == theirs) {
+            app.store.mark_version_gone(&ours, now())?;
+        }
+    }
+    // The owner's versions are all wanted; of a site's, the newest for each
+    // game version and loader, as on Modrinth.
+    let chosen: Vec<usize> = if source_id == external::OPTIFINE {
+        newest_per_pair(&versions)
+    } else {
+        (0..versions.len()).collect()
+    };
+    for &i in &chosen {
+        queue_files(app, &ids[i], request)?;
+    }
+    if owns_card {
+        pictures(app, &id, &found)?;
+    }
+    app.store.set_project_status(&id, "ready")?;
+    Ok(())
+}
+
+/// OptiFine's versions from its downloads page; the changelogs of those not
+/// here yet that are fetched at once.
+async fn optifine_versions(app: &App) -> Result<Vec<SourceVersion>, JobError> {
+    let html = app
+        .client
+        .page(external::OPTIFINE_DOWNLOADS, external::MAX_PAGE)
+        .await?
+        .ok_or_else(|| JobError::new("not_found", true))?;
+    let rows = external::optifine_rows(&html);
+    if rows.is_empty() {
+        // The page changed, or this is not it: nothing is marked gone.
+        return Err(JobError::new("bad_answer", true));
+    }
+    let mut versions: Vec<SourceVersion> = rows
+        .iter()
+        .map(|row| external::optifine_version(row, None))
+        .collect();
+    let mut read = 0;
+    for i in newest_per_pair(&versions) {
+        let known = app
+            .store
+            .version_by_source(external::SOURCE, &versions[i].source_id)?
+            .is_some();
+        if known || read >= external::MAX_CHANGELOGS {
+            continue;
+        }
+        read += 1;
+        // A changelog is good to have, not needed.
+        if let Ok(Some(text)) = app
+            .client
+            .page(
+                &external::optifine_changelog_url(&rows[i].file),
+                external::MAX_CHANGELOG,
+            )
+            .await
+        {
+            versions[i] = external::optifine_version(&rows[i], Some(&text));
+        }
+    }
+    Ok(versions)
+}
+
+/// A file of a project the owner added: from OptiFine through the page its
+/// link leads to, else from the address the owner gave. What comes back
+/// must be an archive.
+async fn download_external(app: &App, url: &str, max: u64) -> Result<(PathBuf, Hashed), JobError> {
+    let from = match external::optifine_file(url) {
+        Some(name) => {
+            let page = app
+                .client
+                .page(url, external::MAX_PAGE)
+                .await?
+                .ok_or_else(|| JobError::new("not_found", false))?;
+            external::optifine_link(&page, &name).ok_or_else(|| JobError::new("no_link", true))?
+        }
+        None => url.to_owned(),
+    };
+    let part = app.blobs.part();
+    if let Err(e) = app.client.external(&from, &part, max).await {
+        let _ = std::fs::remove_file(&part);
+        return Err(e.into());
+    }
+    if !external::is_archive(&part) {
+        let _ = std::fs::remove_file(&part);
+        return Err(JobError::new("not_an_archive", true));
+    }
+    let hashing = part.clone();
+    match tokio::task::spawn_blocking(move || hash_file(&hashing)).await {
+        Ok(Ok(hashed)) if hashed.size <= max => Ok((part, hashed)),
+        Ok(Ok(_)) => {
+            let _ = std::fs::remove_file(&part);
+            Err(JobError::new("too_big", false))
+        }
+        _ => {
+            let _ = std::fs::remove_file(&part);
+            Err(JobError::new("disk_error", true))
+        }
+    }
 }
 
 /// Queues a project's icon, gallery and the pictures in its description.
@@ -1351,6 +1520,7 @@ fn join_twins(app: &App, version: &str, sha256: &str, sha1: &str) -> Result<(), 
 
 async fn files(app: &App, version: &str, request: Option<&str>) -> Result<(), JobError> {
     let mut rows = app.store.files(version)?;
+    let outside = app.store.version_source(version)?.as_deref() == Some(external::SOURCE);
     // The main file first.
     rows.sort_by_key(|f| (!f.primary, f.ord));
     let mut failed: Option<JobError> = None;
@@ -1378,7 +1548,12 @@ async fn files(app: &App, version: &str, request: Option<&str>) -> Result<(), Jo
             return Err(JobError::new("no_space", true));
         }
         let max = if declared > 0 { declared } else { MAX_FILE };
-        let (part, hashed) = match download(app, &file.origin_url, max, false).await {
+        let fetched = if outside {
+            download_external(app, &file.origin_url, max).await
+        } else {
+            download(app, &file.origin_url, max, false).await
+        };
+        let (part, hashed) = match fetched {
             Ok(got) => got,
             Err(e) => {
                 failed = Some(e);

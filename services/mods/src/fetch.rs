@@ -24,6 +24,8 @@ pub enum Site {
     Images,
     /// Where a modpack's files may come from besides Modrinth.
     Code,
+    /// Sites the owner added projects from (external.rs).
+    External,
 }
 
 impl Site {
@@ -34,6 +36,7 @@ impl Site {
             Site::CurseForge => 60,
             Site::Images => 120,
             Site::Code => 60,
+            Site::External => 20,
         }
     }
 }
@@ -52,6 +55,7 @@ pub const HOSTS: &[(&str, Site)] = &[
     ("objects.githubusercontent.com", Site::Code),
     ("release-assets.githubusercontent.com", Site::Code),
     ("gitlab.com", Site::Code),
+    ("optifine.net", Site::External),
 ];
 
 /// An HTTPS URL with no user or port, of a sane length.
@@ -91,26 +95,45 @@ const INNER_NAMES: &[&str] = &[
     ".example",
 ];
 
-/// The site of a picture a description shows: a listed host, or any other
-/// public name (never an address, never a name of an inner network), whose
-/// pictures are fetched at the pace of [`Site::Images`]. Whatever comes back
-/// is kept only when it is a picture, and players get our copy.
-pub fn picture_site(url: &str) -> Option<Site> {
-    if let Some(listed) = site(url) {
-        return Some(listed);
-    }
-    let parsed = plain_https(url)?;
+/// Whether a URL names a public host: never an address, never a name of an
+/// inner network.
+fn public_name(parsed: &reqwest::Url) -> bool {
     // `domain` is `None` for an address.
-    let host = parsed.domain()?.trim_end_matches('.').to_ascii_lowercase();
-    let named = host.len() <= 253
+    let Some(host) = parsed.domain() else {
+        return false;
+    };
+    let host = host.trim_end_matches('.').to_ascii_lowercase();
+    host.len() <= 253
         && host.contains('.')
         && host
             .split('.')
             .all(|l| !l.is_empty() && l.len() <= 63 && l.bytes().all(|b| b.is_ascii_alphanumeric() || b == b'-'))
         // A last label of digits only is an address written oddly.
         && !host.rsplit('.').next().is_some_and(|l| l.bytes().all(|b| b.is_ascii_digit()))
-        && !INNER_NAMES.iter().any(|n| host.ends_with(n) || host == n[1..]);
-    named.then_some(Site::Images)
+        && !INNER_NAMES.iter().any(|n| host.ends_with(n) || host == n[1..])
+}
+
+/// The site of a picture a description shows: a listed host, or any other
+/// public name ([`public_name`]), whose pictures are fetched at the pace of
+/// [`Site::Images`]. Whatever comes back is kept only when it is a picture,
+/// and players get our copy.
+pub fn picture_site(url: &str) -> Option<Site> {
+    if let Some(listed) = site(url) {
+        return Some(listed);
+    }
+    let parsed = plain_https(url)?;
+    public_name(&parsed).then_some(Site::Images)
+}
+
+/// The site of a file of a project the owner added (external.rs): a listed
+/// host, or any other public name, at the pace of [`Site::External`].
+/// Whatever comes back is kept only when it is an archive, and scanned.
+pub fn external_site(url: &str) -> Option<Site> {
+    if let Some(listed) = site(url) {
+        return Some(listed);
+    }
+    let parsed = plain_https(url)?;
+    public_name(&parsed).then_some(Site::External)
 }
 
 /// True for globally routable unicast addresses (as the mirror checks).
@@ -531,6 +554,13 @@ impl Client {
     /// ([`picture_site`]), asked as a browser asks for an `<img>`.
     pub async fn picture(&self, url: &str, to: &Path, max_bytes: u64) -> Result<u64, FetchError> {
         self.get_by(picture_site, url, to, max_bytes, false, PICTURE)
+            .await
+    }
+
+    /// A file of a project the owner added, from any public host
+    /// ([`external_site`]).
+    pub async fn external(&self, url: &str, to: &Path, max_bytes: u64) -> Result<u64, FetchError> {
+        self.get_by(external_site, url, to, max_bytes, false, &[])
             .await
     }
 
