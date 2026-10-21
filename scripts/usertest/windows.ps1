@@ -559,8 +559,10 @@ try {
       Start-Sleep -Seconds 15
       if ($game.Process.HasExited) { $result.launch = 'failed'; $result.note = 'the game closed after loading'; throw 'exited' }
       $result.launchSeconds = [int]((Get-Date) - $started).TotalSeconds
-      # The game that runs is the one asked for: SDL logs the game's version.
-      $running = if ((Log-Text $log) -match 'App version: (\S+)') { $Matches[1] } else { '' }
+      # The game that runs is the one asked for: the window title names its version
+      # ("Minecraft 26.1"), and newer versions also log it through SDL.
+      $running = if ((Log-Text $log) -match 'App version: (\S+)') { $Matches[1] }
+        elseif ($game.Title -match '^Minecraft\*? (\S+)') { $Matches[1] } else { '' }
       if ($running -and $running -ne $version) {
         $result.launch = 'wrong version'; $result.note = "the game started as $running"
         throw 'wrong version'
@@ -616,6 +618,9 @@ try {
         Game-Shot $hwnd $folder 'no-world'
       } else {
         $result.world = 'ok'
+        if ((Log-Text $log) -match 'Starting integrated minecraft server version (\S+)' -and $Matches[1] -ne $version) {
+          $result.world = 'wrong version'; $result.note = "the world's server is $($Matches[1])"
+        }
         $result.worldSeconds = [int]((Get-Date) - $started).TotalSeconds
         Say "$version : in the world after $($result.worldSeconds) s"
         # A look around.
