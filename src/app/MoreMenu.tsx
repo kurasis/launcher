@@ -3,7 +3,7 @@ import styles from './App.module.css';
 
 /** One entry of a menu: an item to choose, or a separator between groups. */
 export type MenuItem =
-  | { kind: 'item'; key: string; label: string; current: boolean; onSelect: () => void }
+  | { kind: 'item'; key: string; label: string; current?: boolean; onSelect: () => void }
   | { kind: 'separator'; key: string };
 
 interface MoreMenuProps {
@@ -12,6 +12,14 @@ interface MoreMenuProps {
   /** The current screen is one of the menu's. */
   current: boolean;
   entries: readonly MenuItem[];
+  /** The button's name for assistive technology, when its text alone does not say it. */
+  ariaLabel?: string;
+  /** The button's look, in place of a tab of the main menu. */
+  buttonClassName?: string | undefined;
+  /** The ▾ after the text. */
+  caret?: boolean;
+  /** Something new waits in the menu (an answer to a review): a dot, and this text for screen readers. */
+  news?: string | null;
 }
 
 /**
@@ -20,7 +28,15 @@ interface MoreMenuProps {
  * arrows, Home and End move between items; Escape, Tab or a click elsewhere
  * closes it.
  */
-export function MoreMenu({ label, current, entries }: MoreMenuProps) {
+export function MoreMenu({
+  label,
+  current,
+  entries,
+  ariaLabel,
+  buttonClassName,
+  caret = true,
+  news = null,
+}: MoreMenuProps) {
   const id = useId();
   const buttonId = `${id}-button`;
   const menuId = `${id}-menu`;
@@ -124,7 +140,8 @@ export function MoreMenu({ label, current, entries }: MoreMenuProps) {
         ref={buttonRef}
         id={buttonId}
         type="button"
-        className={styles.navItem}
+        className={buttonClassName ?? styles.navItem}
+        aria-label={ariaLabel}
         aria-haspopup="menu"
         aria-expanded={open}
         aria-controls={open ? menuId : undefined}
@@ -140,9 +157,17 @@ export function MoreMenu({ label, current, entries }: MoreMenuProps) {
         }}
       >
         {label}
-        <span className={styles.caret} aria-hidden="true">
-          ▾
-        </span>
+        {news !== null && (
+          <>
+            <span className={styles.newsDot} aria-hidden="true" />
+            <span className={styles.visuallyHidden}>{news}</span>
+          </>
+        )}
+        {caret && (
+          <span className={styles.caret} aria-hidden="true">
+            ▾
+          </span>
+        )}
       </button>
       {open && (
         <div
@@ -170,7 +195,7 @@ export function MoreMenu({ label, current, entries }: MoreMenuProps) {
                 role="menuitem"
                 tabIndex={-1}
                 className={styles.menuItem}
-                aria-current={entry.current ? 'page' : undefined}
+                aria-current={entry.current === true ? 'page' : undefined}
                 onClick={() => {
                   choose(at);
                 }}

@@ -62,14 +62,39 @@ pub struct LoaderLibrary {
     pub rules: Option<Value>,
 }
 
-/// A file packed under `maven/` inside an installer.
+/// A file packed inside an installer for a path in the Maven tree.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct EmbeddedFile {
     pub path: String,
     pub sha1: Sha1,
     pub size: u64,
+    /// The installer entry, when it is not `maven/` + `path` (the universal jar of
+    /// an old Forge installer).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub entry: Option<String>,
 }
+
+impl EmbeddedFile {
+    /// Where the file is inside the installer.
+    pub fn entry_name(&self) -> String {
+        self.entry
+            .clone()
+            .unwrap_or_else(|| format!("maven/{}", self.path))
+    }
+}
+
+/// Where libraries named without a repository come from.
+const MOJANG_LIBRARIES: &str = "https://libraries.minecraft.net";
+/// Keys of an install profile that are not needed later, and large (base64 images).
+const INSTALLER_EXTRAS: [&str; 6] = [
+    "icon",
+    "logo",
+    "welcome",
+    "mirrorList",
+    "_comment",
+    "_comment_",
+];
 
 /// One client-side installer processor: a Java tool run with arguments.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -670,7 +695,12 @@ impl InstallerContents {
             .ok_or_else(|| unsupported("install_profile.json"))?;
         let mut install_profile: Value = serde_json::from_slice(&install_bytes)
             .map_err(|_| unsupported("install_profile.json"))?;
-        // The old format (`install` + `versionInfo`) has neither field.
+        if let (Some(install), Some(info)) = (
+            install_profile.get("install"),
+            install_profile.get("versionInfo"),
+        ) {
+            return Self::legacy(&mut zip, install.clone(), info.clone());
+        }
         let spec = install_profile.get("spec").and_then(Value::as_u64);
         let json_name = install_profile.get("json").and_then(Value::as_str);
         let (Some(spec), Some(json_name)) = (spec, json_name) else {
@@ -755,19 +785,12 @@ impl InstallerContents {
                 path,
                 sha1: Sha1::parse(&sha1_hex(&bytes))?,
                 size: bytes.len() as u64,
+                entry: None,
             });
         }
         embedded.sort_by(|a, b| a.path.cmp(&b.path));
-        // Not needed later, and large (base64 images).
         if let Some(map) = install_profile.as_object_mut() {
-            for key in [
-                "icon",
-                "logo",
-                "welcome",
-                "mirrorList",
-                "_comment",
-                "_comment_",
-            ] {
+            for key in INSTALLER_EXTRAS {
                 map.remove(key);
             }
         }
@@ -778,6 +801,89 @@ impl InstallerContents {
             data,
             processors,
             embedded,
+        })
+    }
+
+    /// Forge's installers before 1.12.2 build 2851: `install` names the universal jar
+    /// packed in the installer, `versionInfo` is the version profile in the launcher's
+    /// old format, and nothing runs at install time (FML patches the game as it
+    /// starts). The profile's libraries are rewritten to the current format: the
+    /// universal jar comes from the installer, a library without a repository from
+    /// Mojang's, and a declared checksum pins the jar (the first is the jar's own; two
+    /// of Forge's old Scala jars have no `.sha1` file). Server-only libraries are left
+    /// out.
+    fn legacy<R: Read + std::io::Seek>(
+        zip: &mut zip::ZipArchive<R>,
+        mut install: Value,
+        mut version_profile: Value,
+    ) -> LauncherResult<Self> {
+        let forge = install
+            .get("path")
+            .and_then(Value::as_str)
+            .ok_or_else(|| unsupported("install path"))?
+            .to_owned();
+        let entry = install
+            .get("filePath")
+            .and_then(Value::as_str)
+            .filter(|name| !name.contains('/') && !name.contains('\\'))
+            .ok_or_else(|| unsupported("install filePath"))?
+            .to_owned();
+        validate_relative_path(&entry)?;
+        let bytes = read_entry(zip, &entry, MAX_ENTRY_BYTES)?
+            .ok_or_else(|| unsupported("installer entry"))?;
+        let universal = EmbeddedFile {
+            path: Coordinate::parse(&forge)?.path(),
+            sha1: Sha1::parse(&sha1_hex(&bytes))?,
+            size: bytes.len() as u64,
+            entry: Some(entry),
+        };
+
+        let mut libraries = Vec::new();
+        for library in version_profile
+            .get("libraries")
+            .and_then(Value::as_array)
+            .ok_or_else(|| unsupported("loader libraries"))?
+        {
+            let name = library
+                .get("name")
+                .and_then(Value::as_str)
+                .ok_or_else(|| unsupported("loader library name"))?;
+            if library.get("clientreq").and_then(Value::as_bool) == Some(false) {
+                continue;
+            }
+            let path = Coordinate::parse(name)?.path();
+            let url = if name == forge {
+                String::new()
+            } else {
+                let base = match library.get("url") {
+                    None => MOJANG_LIBRARIES,
+                    Some(Value::String(base)) => base.as_str(),
+                    Some(_) => return Err(unsupported("loader library url")),
+                };
+                format!("{}/{path}", base.trim_end_matches('/'))
+            };
+            let mut artifact = serde_json::json!({ "path": path, "url": url });
+            if let Some(sha1) = library.pointer("/checksums/0") {
+                artifact["sha1"] = sha1.clone();
+            }
+            libraries.push(serde_json::json!({
+                "name": name,
+                "downloads": { "artifact": artifact },
+            }));
+        }
+        version_profile["libraries"] = Value::Array(libraries);
+        if let Some(map) = install.as_object_mut() {
+            for key in INSTALLER_EXTRAS {
+                map.remove(key);
+            }
+        }
+        Ok(Self {
+            spec: 0,
+            install_profile: install,
+            version_profile,
+            data: BTreeMap::new(),
+            processors: Vec::new(),
+            embedded: vec![universal],
         })
     }
 }
@@ -815,6 +921,112 @@ mod tests {
         let wrong = installer_location(LoaderKind::NeoForge, "1.21.1", "21.4.1").unwrap_err();
         assert_eq!(wrong.code, ErrorCode::InvalidInput);
         assert!(installer_location(LoaderKind::Forge, "1.21.1", "1.20.1-47.4.10").is_err());
+    }
+
+    fn legacy_installer(file_path: &str) -> Vec<u8> {
+        use std::io::Write as _;
+        let profile = serde_json::json!({
+            "install": {
+                "path": "net.minecraftforge:forge:1.8.9-11.15.1.2318-1.8.9",
+                "filePath": file_path,
+                "minecraft": "1.8.9",
+                "logo": "/big_logo.png",
+            },
+            "versionInfo": {
+                "id": "1.8.9-forge1.8.9-11.15.1.2318-1.8.9",
+                "inheritsFrom": "1.8.9",
+                "jar": "1.8.9",
+                "mainClass": "net.minecraft.launchwrapper.Launch",
+                "minecraftArguments": "--username ${auth_player_name} --tweakClass net.minecraftforge.fml.common.launcher.FMLTweaker",
+                "libraries": [
+                    {"name": "net.minecraftforge:forge:1.8.9-11.15.1.2318-1.8.9", "url": "https://maven.minecraftforge.net/"},
+                    {"name": "net.minecraft:launchwrapper:1.12", "serverreq": true},
+                    {"name": "jline:jline:2.13", "url": "https://maven.minecraftforge.net/", "serverreq": true, "clientreq": false},
+                    {
+                        "name": "org.scala-lang:scala-xml_2.11:1.0.2",
+                        "url": "https://maven.minecraftforge.net/",
+                        "checksums": ["7a80ec00aec122fba7cd4e0d4cdd87ff7e4cb6d0", "62736b01689d56b6d09a0164b7ef9da2b0b9633d"],
+                        "serverreq": true,
+                        "clientreq": true
+                    }
+                ]
+            }
+        });
+        let mut zip = zip::ZipWriter::new(Cursor::new(Vec::new()));
+        let options = zip::write::SimpleFileOptions::default();
+        zip.start_file("install_profile.json", options).unwrap();
+        zip.write_all(profile.to_string().as_bytes()).unwrap();
+        zip.start_file("forge-1.8.9-11.15.1.2318-1.8.9-universal.jar", options)
+            .unwrap();
+        zip.write_all(b"universal").unwrap();
+        zip.finish().unwrap().into_inner()
+    }
+
+    #[test]
+    fn an_old_forge_installer_brings_its_universal_jar_and_a_profile() {
+        let bytes = legacy_installer("forge-1.8.9-11.15.1.2318-1.8.9-universal.jar");
+        let contents = InstallerContents::read(&bytes, LoaderKind::Forge).unwrap();
+        assert_eq!(contents.install_profile["minecraft"], "1.8.9");
+        assert!(contents.install_profile.get("logo").is_none());
+        assert!(contents.processors.is_empty() && contents.data.is_empty());
+        let forge_path =
+            "net/minecraftforge/forge/1.8.9-11.15.1.2318-1.8.9/forge-1.8.9-11.15.1.2318-1.8.9.jar";
+        assert_eq!(
+            contents.embedded,
+            [EmbeddedFile {
+                path: forge_path.to_owned(),
+                sha1: Sha1::parse(&sha1_hex(b"universal")).unwrap(),
+                size: 9,
+                entry: Some("forge-1.8.9-11.15.1.2318-1.8.9-universal.jar".to_owned()),
+            }]
+        );
+        assert_eq!(
+            installer_entry(&bytes, &contents.embedded[0].entry_name()).unwrap(),
+            b"universal"
+        );
+        let libraries = contents.version_profile["libraries"].as_array().unwrap();
+        let artifacts: Vec<&Value> = libraries
+            .iter()
+            .map(|l| &l["downloads"]["artifact"])
+            .collect();
+        // The server-only jline is left out.
+        assert_eq!(artifacts.len(), 3);
+        assert_eq!(artifacts[0]["path"], forge_path);
+        assert_eq!(artifacts[0]["url"], "");
+        assert_eq!(
+            artifacts[1]["url"],
+            "https://libraries.minecraft.net/net/minecraft/launchwrapper/1.12/launchwrapper-1.12.jar"
+        );
+        assert!(artifacts[1].get("sha1").is_none());
+        assert_eq!(
+            artifacts[2]["url"],
+            "https://maven.minecraftforge.net/org/scala-lang/scala-xml_2.11/1.0.2/scala-xml_2.11-1.0.2.jar"
+        );
+        assert_eq!(
+            artifacts[2]["sha1"],
+            "7a80ec00aec122fba7cd4e0d4cdd87ff7e4cb6d0"
+        );
+        assert_eq!(
+            arguments(&contents.version_profile).unwrap().2.as_deref(),
+            Some(
+                "--username ${auth_player_name} --tweakClass net.minecraftforge.fml.common.launcher.FMLTweaker"
+            )
+        );
+        assert_eq!(
+            profile_identity(&contents.version_profile, "1.8.9").unwrap(),
+            (
+                "1.8.9-forge1.8.9-11.15.1.2318-1.8.9".to_owned(),
+                "net.minecraft.launchwrapper.Launch".to_owned()
+            )
+        );
+
+        // The universal jar is named by a plain file name inside the installer.
+        for bad in ["../forge.jar", "maven/forge.jar", "missing.jar", ""] {
+            assert!(
+                InstallerContents::read(&legacy_installer(bad), LoaderKind::Forge).is_err(),
+                "{bad:?}"
+            );
+        }
     }
 
     /// Serves one meta service answer; anything else is offline.

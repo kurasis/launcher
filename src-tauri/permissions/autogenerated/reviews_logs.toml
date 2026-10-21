@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-reviews-logs"
+description = "Enables the reviews_logs command without any pre-configured scope."
+commands.allow = ["reviews_logs"]
+
+[[permission]]
+identifier = "deny-reviews-logs"
+description = "Denies the reviews_logs command without any pre-configured scope."
+commands.deny = ["reviews_logs"]

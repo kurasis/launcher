@@ -17,6 +17,9 @@ import {
   type Delivery,
   type FailureSummary,
   type ReportPreview,
+  type MyReviews,
+  type ReviewDraft,
+  type ReviewFound,
   type ReportSubject,
   type DataLocation,
   type ExportResult,
@@ -65,6 +68,10 @@ import {
   type NoteView,
   type OwnChannel,
   type OwnStreamer,
+  type ChannelMark,
+  type FavoriteFeed,
+  type FeedMarks,
+  type MarkList,
   type LocalWorld,
   type WorldsCreatePayload,
   type WorldsDevice,
@@ -309,6 +316,18 @@ export const ipc = {
     invoke<ReportPreview>('preview_crash_report', { subject }),
   sendCrashReport: (previewId: string, files: string[], note: string): Promise<Delivery> =>
     invoke<Delivery>('send_crash_report', { previewId, files, note }),
+  reviewsLogs: (instanceId: string | null, runId: string | null): Promise<ReviewFound> =>
+    invoke<ReviewFound>('reviews_logs', { instanceId, runId }),
+  reviewsTextFile: (name: string, text: string): Promise<ReviewFound> =>
+    invoke<ReviewFound>('reviews_text_file', { name, text }),
+  reviewsScreenshot: (instanceId: string, file: string): Promise<string> =>
+    invoke<string>('reviews_screenshot', { instanceId, file }),
+  reviewsSend: (draft: ReviewDraft): Promise<Delivery> =>
+    invoke<Delivery>('reviews_send', { draft }),
+  reviewsMine: (refresh = false): Promise<MyReviews> =>
+    invoke<MyReviews>('reviews_mine', { refresh }),
+  reviewsSeen: (): Promise<void> => invoke('reviews_seen'),
+  reviewsDelete: (id: number): Promise<void> => invoke('reviews_delete', { id }),
   sendExplanationFeedback: (kind: string, signature: string, helpful: boolean): Promise<void> =>
     invoke('send_explanation_feedback', { kind, signature, helpful }),
   checkForUpdate: (): Promise<UpdateView> => invoke<UpdateView>('check_for_update'),
@@ -528,6 +547,13 @@ export const ipc = {
     invoke<OwnStreamer[]>('feed_remove_streamer', { login }),
   /** The live streams of the player's own Twitch channels. */
   feedOwnStreams: (): Promise<FeedStream[]> => invoke<FeedStream[]>('feed_own_streams'),
+  /** The channels the player hid from the feed and the ones they put first. */
+  feedMarks: (): Promise<FeedMarks> => invoke<FeedMarks>('feed_marks'),
+  /** Puts a channel on a list, taking it off the other, or (null) off both; the marks after. */
+  feedMark: (channel: ChannelMark, list: MarkList | null): Promise<FeedMarks> =>
+    invoke<FeedMarks>('feed_mark', { ...channel, list }),
+  /** The newest videos and live streams of the favourite channels. */
+  feedFavorites: (): Promise<FavoriteFeed> => invoke<FavoriteFeed>('feed_favorites'),
   /**
    * A page of the endless list: one part or all (`null`), or the Shorts alone,
    * after the cursor `before`.

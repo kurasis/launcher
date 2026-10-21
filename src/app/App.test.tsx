@@ -76,6 +76,10 @@ function fakeBackend(
             retryable: false,
             diagnosticId: 'diag-1',
           };
+        case 'feed_marks':
+          return { hidden: [], favorite: [] };
+        case 'feed_favorites':
+          return { videos: [], streams: [] };
         default:
           return null;
       }
@@ -376,7 +380,16 @@ describe('App', () => {
       Array.from(menu.children, (item) =>
         item.getAttribute('role') === 'separator' ? '-' : item.textContent,
       ),
-    ).toEqual(['Backups', 'Screenshots', '-', 'Diagnostics', 'Console', 'About']);
+    ).toEqual([
+      'Backups',
+      'Screenshots',
+      '-',
+      'Diagnostics',
+      'Console',
+      '-',
+      'Leave a review',
+      'About',
+    ]);
     expect(within(menu).getByRole('menuitem', { name: 'Backups' })).toHaveFocus();
     // A second click closes it.
     fireEvent.click(more);
@@ -506,6 +519,7 @@ describe('App', () => {
 
     fail = true;
     fireEvent.keyDown(moreButton(), { key: 'ArrowUp' });
+    fireEvent.keyDown(focused(), { key: 'ArrowUp' });
     fireEvent.keyDown(focused(), { key: 'ArrowUp' });
     expect(screen.getByRole('menuitem', { name: 'Console' })).toHaveFocus();
     fireEvent.keyDown(focused(), { key: 'Enter' });

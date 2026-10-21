@@ -22,6 +22,8 @@ import styles from './App.module.css';
 import { QuitControl } from './QuitControl';
 import { BackupsView } from '../features/backups/BackupsView';
 import { GalleryView } from '../features/gallery/GalleryView';
+import { ReviewsView } from '../features/reviews/ReviewsView';
+import { onOpenReview, type ReviewPrefill } from '../features/reviews/openReview';
 import { FailureOffer } from '../features/reports/FailureOffer';
 import { UpdateBadge } from '../features/updates/UpdateBadge';
 import { WhatsNew } from '../features/updates/WhatsNew';
@@ -101,6 +103,10 @@ export function App() {
   const [installVersion, setInstallVersion] = useState<string | null>(null);
   // A room joined from a chat invite: Worlds opens on it.
   const [worldsRoom, setWorldsRoom] = useState<{ id: string; at: number } | null>(null);
+  // A review started from elsewhere (a crash, a failure, an ad), and the
+  // answers to reviews not read yet (D-070).
+  const [review, setReview] = useState<{ prefill: ReviewPrefill; at: number } | null>(null);
+  const [unseenAnswers, setUnseenAnswers] = useState(0);
   const snapshot = state.status === 'ready' ? state.snapshot : null;
   // The start screen is picked once, from the first state the core sends.
   if (chosenView === null && snapshot !== null) setView(startViewOf(snapshot));
@@ -144,11 +150,33 @@ export function App() {
             label: strings.nav[entry],
             current: view === entry,
             onSelect: () => {
+              if (entry === 'reviews') setReview(null);
               navigate(entry);
             },
           },
   );
   const inMenu = menuViews.includes(view);
+  // Answers to reviews: asked at start (at most every 6 hours, by the core)
+  // and when a screen asks to write one.
+  const ready = state.status === 'ready';
+  useEffect(() => {
+    if (!ready) return;
+    void ipc
+      .reviewsMine()
+      .then((mine) => {
+        setUnseenAnswers(mine.unseen);
+      })
+      .catch(() => undefined);
+  }, [ready]);
+  // The review screen is a menu screen: never remembered as the start one.
+  useEffect(
+    () =>
+      onOpenReview((prefill) => {
+        setReview({ prefill, at: Date.now() });
+        setView('reviews');
+      }),
+    [],
+  );
   useTheme(snapshot?.settings.theme);
   // A language change (D-038) remounts the screens so every text is read again.
   const lang = useLanguage(snapshot?.settings.language);
@@ -214,6 +242,7 @@ export function App() {
             label={inMenu ? strings.nav.moreCurrent({ view: strings.nav[view] }) : strings.nav.more}
             current={inMenu}
             entries={menuItems}
+            news={unseenAnswers > 0 ? strings.nav.newAnswers({ count: unseenAnswers }) : null}
           />
           <QuitControl activeKind={snapshot?.activeOperation?.kind ?? null} />
         </nav>
@@ -329,6 +358,14 @@ export function App() {
               />
             )}
             {view === 'diagnostics' && <DiagnosticsView snapshot={state.snapshot} />}
+            {view === 'reviews' && (
+              <ReviewsView
+                key={review?.at ?? 0}
+                snapshot={state.snapshot}
+                prefill={review?.prefill ?? null}
+                onUnseen={setUnseenAnswers}
+              />
+            )}
           </>
         )}
       </main>

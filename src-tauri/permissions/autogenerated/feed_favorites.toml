@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-feed-favorites"
+description = "Enables the feed_favorites command without any pre-configured scope."
+commands.allow = ["feed_favorites"]
+
+[[permission]]
+identifier = "deny-feed-favorites"
+description = "Denies the feed_favorites command without any pre-configured scope."
+commands.deny = ["feed_favorites"]

@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-reviews-text-file"
+description = "Enables the reviews_text_file command without any pre-configured scope."
+commands.allow = ["reviews_text_file"]
+
+[[permission]]
+identifier = "deny-reviews-text-file"
+description = "Denies the reviews_text_file command without any pre-configured scope."
+commands.deny = ["reviews_text_file"]

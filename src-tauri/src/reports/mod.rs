@@ -165,7 +165,7 @@ fn gzip(bytes: &[u8]) -> Vec<u8> {
 }
 
 /// The newest `max` bytes of a text, cut at a line start.
-fn newest(text: &str, max: usize) -> String {
+pub(crate) fn newest(text: &str, max: usize) -> String {
     if text.len() <= max {
         return text.to_owned();
     }
@@ -203,6 +203,29 @@ struct Pending {
     failure_id: Option<String>,
 }
 
+/// Who and where to hide in what leaves the computer: the names of saved
+/// accounts and profiles, the home folder and the data folder (also used by
+/// reviews, D-070).
+pub(crate) fn scrub_context<'a>(
+    state: &AppState,
+    root: &'a DataRoot,
+    home: Option<&'a Path>,
+) -> scrub::Context<'a> {
+    let accounts = state.accounts_file();
+    let names = accounts
+        .accounts
+        .iter()
+        .chain(accounts.active.iter())
+        .map(|a| a.profile_name.clone())
+        .chain(accounts.notoken_profiles.iter().map(|p| p.name.clone()))
+        .collect();
+    scrub::Context {
+        names,
+        home,
+        data_root: root.path(),
+    }
+}
+
 /// Previews waiting for the player's choice, and the uploader's wake-up.
 pub struct Reports {
     previews: Mutex<HashMap<String, Preview>>,
@@ -224,19 +247,7 @@ impl Reports {
         root: &'a DataRoot,
         home: Option<&'a Path>,
     ) -> scrub::Context<'a> {
-        let accounts = state.accounts_file();
-        let names = accounts
-            .accounts
-            .iter()
-            .chain(accounts.active.iter())
-            .map(|a| a.profile_name.clone())
-            .chain(accounts.notoken_profiles.iter().map(|p| p.name.clone()))
-            .collect();
-        scrub::Context {
-            names,
-            home,
-            data_root: root.path(),
-        }
+        scrub_context(state, root, home)
     }
 
     /// Builds what a report about `subject` would hold, scrubbed.

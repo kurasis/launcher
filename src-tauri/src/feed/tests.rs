@@ -621,7 +621,7 @@ fn own_channel_list_is_bounded_and_checked_on_disk() {
     // Damaged or oversized files read as no channels.
     std::fs::write(root.feed_channels(), b"{not json").unwrap();
     assert!(own_channels(&root).is_empty());
-    std::fs::write(root.feed_channels(), vec![b' '; 100_000]).unwrap();
+    std::fs::write(root.feed_channels(), vec![b' '; 200_000]).unwrap();
     assert!(own_channels(&root).is_empty());
 }
 
@@ -681,6 +681,132 @@ fn own_twitch_channels_are_read_strictly_and_kept_beside_youtube() {
     remove_own_channel(&root, "UCabcdefghijklmnopqrstuv").unwrap();
     assert_eq!(own_streamers(&root), after);
     assert!(own_channels(&root).is_empty());
+}
+
+#[test]
+fn channel_marks_are_read_strictly() {
+    assert_eq!(
+        channel_mark(&json!({"kind": "twitch", "id": "ph1lza", "name": " Ph1LzA "})),
+        Some(ChannelMark {
+            kind: MarkKind::Twitch,
+            id: "ph1lza".into(),
+            name: "Ph1LzA".into()
+        })
+    );
+    assert!(
+        channel_mark(&json!({"kind": "youtube", "id": "UCabcdefghijklmnopqrstuv", "name": "C"}))
+            .is_some()
+    );
+    for junk in [
+        json!({"kind": "youtube", "id": "ph1lza", "name": "x"}),
+        json!({"kind": "twitch", "id": "UCabcdefghijklmnopqrstuv", "name": "x"}),
+        json!({"kind": "twitch", "id": "../x", "name": "x"}),
+        json!({"kind": "rss", "id": "ph1lza", "name": "x"}),
+        json!({"kind": "twitch", "id": "ph1lza"}),
+        json!({"kind": "twitch", "id": "ph1lza", "name": "\u{0}"}),
+        json!("ph1lza"),
+    ] {
+        assert_eq!(channel_mark(&junk), None, "{junk}");
+    }
+    assert_eq!(mark_name("  a\u{0}b  ").as_deref(), Some("a b"));
+    assert_eq!(
+        mark_name(&"й".repeat(500)).map(|n| n.chars().count()),
+        Some(101)
+    );
+    assert_eq!(mark_name(" \n "), None);
+}
+
+fn twitch_mark(login: &str) -> ChannelMark {
+    ChannelMark {
+        kind: MarkKind::Twitch,
+        id: login.into(),
+        name: login.into(),
+    }
+}
+
+#[test]
+fn a_channel_is_on_one_list_at_most_and_the_others_are_kept() {
+    let (_dir, root) = root();
+    assert_eq!(marks(&root), FeedMarks::default());
+    std::fs::write(
+        root.feed_channels(),
+        serde_json::to_vec(&json!({
+            "channels": [{"channelId": "UCabcdefghijklmnopqrstuv", "title": "Mine"}],
+            "twitch": [{"login": "docm77", "name": "docm77"}],
+            "other": "dropped",
+        }))
+        .unwrap(),
+    )
+    .unwrap();
+    let after = mark(&root, twitch_mark("zubarefff_1"), Some(MarkList::Hidden)).unwrap();
+    assert_eq!(after.hidden, [twitch_mark("zubarefff_1")]);
+    // Favourite takes it off the hidden list.
+    let after = mark(&root, twitch_mark("zubarefff_1"), Some(MarkList::Favorite)).unwrap();
+    assert!(after.hidden.is_empty());
+    assert_eq!(after.favorite, [twitch_mark("zubarefff_1")]);
+    assert_eq!(marks(&root), after);
+    // No list takes it off both.
+    let after = mark(&root, twitch_mark("zubarefff_1"), None).unwrap();
+    assert_eq!(after, FeedMarks::default());
+    // The player's own channels stay; what is not ours does not.
+    assert_eq!(own_channels(&root).len(), 1);
+    assert_eq!(own_streamers(&root).len(), 1);
+    let file: Value =
+        serde_json::from_slice(&std::fs::read(root.feed_channels()).unwrap()).unwrap();
+    assert_eq!(file.get("other"), None);
+    // Adding an own channel keeps the marks.
+    mark(&root, twitch_mark("ph1lza"), Some(MarkList::Hidden)).unwrap();
+    remove_own_streamer(&root, "docm77").unwrap();
+    assert_eq!(marks(&root).hidden, [twitch_mark("ph1lza")]);
+}
+
+#[test]
+fn marks_are_bounded() {
+    let (_dir, root) = root();
+    for i in 0..MAX_OWN_CHANNELS {
+        mark(
+            &root,
+            twitch_mark(&format!("fav{i:03}")),
+            Some(MarkList::Favorite),
+        )
+        .unwrap();
+    }
+    assert_eq!(
+        mark(&root, twitch_mark("onemore"), Some(MarkList::Favorite)),
+        Err(FeedProblem::Full)
+    );
+    // The limit is for each place.
+    let youtube = ChannelMark {
+        kind: MarkKind::Youtube,
+        id: "UCabcdefghijklmnopqrstuv".into(),
+        name: "C".into(),
+    };
+    assert!(mark(&root, youtube, Some(MarkList::Favorite)).is_ok());
+    for i in 0..MAX_HIDDEN {
+        mark(
+            &root,
+            twitch_mark(&format!("hid{i:03}")),
+            Some(MarkList::Hidden),
+        )
+        .unwrap();
+    }
+    assert_eq!(
+        mark(&root, twitch_mark("onemore"), Some(MarkList::Hidden)),
+        Err(FeedProblem::Full)
+    );
+    // A file with more than allowed is read up to the limits.
+    let mut favorite: Vec<Value> = (0..50)
+        .map(|i| json!({"kind": "twitch", "id": format!("many{i:03}"), "name": "x"}))
+        .collect();
+    favorite.push(json!({"kind": "youtube", "id": "UCabcdefghijklmnopqrstuv", "name": "C"}));
+    std::fs::write(
+        root.feed_channels(),
+        serde_json::to_vec(&json!({ "favorite": favorite })).unwrap(),
+    )
+    .unwrap();
+    let read = marks(&root);
+    assert_eq!(read.favorite.len(), MAX_OWN_CHANNELS + 1);
+    assert_eq!(read.favorite[0].kind, MarkKind::Youtube);
 }
 
 #[test]
