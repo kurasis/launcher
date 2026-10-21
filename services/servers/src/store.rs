@@ -36,7 +36,11 @@ CREATE TABLE IF NOT EXISTS ads (
     -- The SHA-256 of an icon the owner gave, over the server's own.
     icon TEXT,
     created INTEGER NOT NULL,
-    updated INTEGER NOT NULL
+    updated INTEGER NOT NULL,
+    -- JSON: the languages whose players see the ad; NULL for everyone.
+    langs TEXT,
+    -- The SHA-256 of a 16:9 picture the owner gave, shown over the icon.
+    banner TEXT
 );
 CREATE INDEX IF NOT EXISTS ads_ends ON ads(ends);
 CREATE TABLE IF NOT EXISTS pings (
@@ -49,7 +53,11 @@ CREATE TABLE IF NOT EXISTS pings (
     -- The server's own words about its version; shown to the owner only.
     server_version TEXT,
     -- The last good icon stays when a ping fails.
-    icon TEXT
+    icon TEXT,
+    -- Whether the server wants a Microsoft sign-in (online mode): 1, 0, or
+    -- NULL when unknown; checked at `checked_at`, about once a day.
+    licensed INTEGER,
+    checked_at INTEGER
 );
 CREATE TABLE IF NOT EXISTS releases (
     id TEXT PRIMARY KEY,
@@ -61,6 +69,14 @@ CREATE TABLE IF NOT EXISTS meta (
     value TEXT NOT NULL
 );
 "#;
+
+/// Columns added since the first release, for databases made before them.
+const ADDED: [(&str, &str, &str); 4] = [
+    ("ads", "langs", "TEXT"),
+    ("ads", "banner", "TEXT"),
+    ("pings", "licensed", "INTEGER"),
+    ("pings", "checked_at", "INTEGER"),
+];
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub struct Ad {
@@ -78,6 +94,9 @@ pub struct Ad {
     pub erid: Option<String>,
     pub paused: bool,
     pub icon: Option<String>,
+    /// The languages whose players see the ad; empty for everyone.
+    pub langs: Vec<String>,
+    pub banner: Option<String>,
 }
 
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize)]
@@ -89,6 +108,10 @@ pub struct Ping {
     pub protocol: Option<i64>,
     pub server_version: Option<String>,
     pub icon: Option<String>,
+    /// Whether the server wants a Microsoft sign-in; None when unknown.
+    pub licensed: Option<bool>,
+    /// When that was checked; None keeps the last check.
+    pub checked_at: Option<i64>,
 }
 
 /// What an ad's state is at a moment.
@@ -112,7 +135,11 @@ fn err(e: rusqlite::Error) -> String {
     format!("database: {e}")
 }
 
-const COLUMNS: &str = "id, name, address, version, oldest, newest, texts, starts, ends, weight, place, erid, paused, icon";
+const COLUMNS: &str = "id, name, address, version, oldest, newest, texts, starts, ends, weight, place, erid, paused, icon, langs, banner";
+
+fn langs_column(langs: &[String]) -> Option<String> {
+    (!langs.is_empty()).then(|| serde_json::to_string(langs).unwrap_or_default())
+}
 
 fn ad_row(row: &rusqlite::Row<'_>) -> rusqlite::Result<Ad> {
     let texts: String = row.get(6)?;
@@ -131,7 +158,30 @@ fn ad_row(row: &rusqlite::Row<'_>) -> rusqlite::Result<Ad> {
         erid: row.get(11)?,
         paused: row.get::<_, i64>(12)? != 0,
         icon: row.get(13)?,
+        langs: row
+            .get::<_, Option<String>>(14)?
+            .and_then(|langs| serde_json::from_str(&langs).ok())
+            .unwrap_or_default(),
+        banner: row.get(15)?,
     })
+}
+
+/// Adds a column a database made before it lacks.
+fn add_column(db: &Connection, table: &str, column: &str, kind: &str) -> Result<(), String> {
+    let found: Option<i64> = db
+        .query_row(
+            "SELECT 1 FROM pragma_table_info(?1) WHERE name = ?2",
+            [table, column],
+            |row| row.get(0),
+        )
+        .optional()
+        .map_err(err)?;
+    if found.is_none() {
+        // The names are this file's constants, never anyone's input.
+        db.execute_batch(&format!("ALTER TABLE {table} ADD COLUMN {column} {kind}"))
+            .map_err(err)?;
+    }
+    Ok(())
 }
 
 impl Store {
@@ -142,6 +192,9 @@ impl Store {
         db.busy_timeout(std::time::Duration::from_secs(10))
             .map_err(err)?;
         db.execute_batch(SCHEMA).map_err(err)?;
+        for (table, column, kind) in ADDED {
+            add_column(&db, table, column, kind)?;
+        }
         #[cfg(unix)]
         {
             use std::os::unix::fs::PermissionsExt;
@@ -160,8 +213,8 @@ impl Store {
         let db = self.db();
         db.execute(
             "INSERT INTO ads (name, address, version, oldest, newest, texts, starts, ends, weight,
-                place, erid, paused, icon, created, updated)
-             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?14)",
+                place, erid, paused, icon, created, updated, langs, banner)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?14, ?15, ?16)",
             params![
                 ad.name,
                 ad.address,
@@ -177,6 +230,8 @@ impl Store {
                 i64::from(ad.paused),
                 ad.icon,
                 now,
+                langs_column(&ad.langs),
+                ad.banner,
             ],
         )
         .map_err(err)?;
@@ -189,7 +244,7 @@ impl Store {
             .execute(
                 "UPDATE ads SET name = ?2, address = ?3, version = ?4, oldest = ?5, newest = ?6,
                     texts = ?7, starts = ?8, ends = ?9, weight = ?10, place = ?11, erid = ?12,
-                    paused = ?13, icon = ?14, updated = ?15
+                    paused = ?13, icon = ?14, updated = ?15, langs = ?16, banner = ?17
                  WHERE id = ?1",
                 params![
                     ad.id,
@@ -207,6 +262,8 @@ impl Store {
                     i64::from(ad.paused),
                     ad.icon,
                     now,
+                    langs_column(&ad.langs),
+                    ad.banner,
                 ],
             )
             .map_err(err)?;
@@ -250,20 +307,31 @@ impl Store {
         rows.collect::<rusqlite::Result<Vec<_>>>().map_err(err)
     }
 
-    /// Ads shown at `now` in `place`, the heaviest first.
-    pub fn live(&self, place: &str, now: i64) -> Result<Vec<Ad>, String> {
+    /// Ads shown at `now` in `place` to players of `lang`, the heaviest
+    /// first, at most `MAX_LIVE`.
+    pub fn live(&self, place: &str, lang: &str, now: i64) -> Result<Vec<Ad>, String> {
         let db = self.db();
         let mut statement = db
             .prepare(&format!(
                 "SELECT {COLUMNS} FROM ads
                  WHERE place = ?1 AND paused = 0 AND starts <= ?2 AND ends > ?2
-                 ORDER BY weight DESC, id ASC LIMIT ?3"
+                 ORDER BY weight DESC, id ASC"
             ))
             .map_err(err)?;
         let rows = statement
-            .query_map(params![place, now, MAX_LIVE as i64], ad_row)
+            .query_map(params![place, now], ad_row)
             .map_err(err)?;
-        rows.collect::<rusqlite::Result<Vec<_>>>().map_err(err)
+        let mut live = Vec::new();
+        for ad in rows {
+            let ad = ad.map_err(err)?;
+            if ad.langs.is_empty() || ad.langs.iter().any(|l| l == lang) {
+                live.push(ad);
+                if live.len() == MAX_LIVE {
+                    break;
+                }
+            }
+        }
+        Ok(live)
     }
 
     /// Ads worth a ping: not ended, starting within `ahead` seconds.
@@ -283,7 +351,8 @@ impl Store {
     pub fn ping(&self, ad: i64) -> Result<Option<Ping>, String> {
         self.db()
             .query_row(
-                "SELECT at, up, online, max, protocol, server_version, icon FROM pings WHERE ad = ?1",
+                "SELECT at, up, online, max, protocol, server_version, icon, licensed, checked_at
+                 FROM pings WHERE ad = ?1",
                 [ad],
                 |row| {
                     Ok(Ping {
@@ -294,6 +363,8 @@ impl Store {
                         protocol: row.get(4)?,
                         server_version: row.get(5)?,
                         icon: row.get(6)?,
+                        licensed: row.get::<_, Option<i64>>(7)?.map(|l| l != 0),
+                        checked_at: row.get(8)?,
                     })
                 },
             )
@@ -301,18 +372,29 @@ impl Store {
             .map_err(err)
     }
 
-    /// Keeps a ping. A failed one keeps the icon of the last good one.
+    /// Keeps a ping. A failed one keeps the icon of the last good one, and
+    /// one without a sign-in check keeps the last check.
     pub fn save_ping(&self, ad: i64, ping: &Ping) -> Result<(), String> {
-        let icon = match &ping.icon {
-            Some(icon) => Some(icon.clone()),
-            None => self.ping(ad)?.and_then(|p| p.icon),
+        let last = self.ping(ad)?;
+        let icon = ping
+            .icon
+            .clone()
+            .or_else(|| last.as_ref().and_then(|p| p.icon.clone()));
+        let (licensed, checked_at) = match ping.checked_at {
+            Some(at) => (ping.licensed, Some(at)),
+            None => last
+                .as_ref()
+                .map(|p| (p.licensed, p.checked_at))
+                .unwrap_or_default(),
         };
         self.db()
             .execute(
-                "INSERT INTO pings (ad, at, up, online, max, protocol, server_version, icon)
-                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)
+                "INSERT INTO pings (ad, at, up, online, max, protocol, server_version, icon,
+                    licensed, checked_at)
+                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10)
                  ON CONFLICT(ad) DO UPDATE SET at = ?2, up = ?3, online = ?4, max = ?5,
-                    protocol = ?6, server_version = ?7, icon = ?8",
+                    protocol = ?6, server_version = ?7, icon = ?8, licensed = ?9,
+                    checked_at = ?10",
                 params![
                     ad,
                     ping.at,
@@ -322,19 +404,22 @@ impl Store {
                     ping.protocol,
                     ping.server_version,
                     icon,
+                    licensed.map(i64::from),
+                    checked_at,
                 ],
             )
             .map(|_| ())
             .map_err(err)
     }
 
-    /// Icons any ad still uses: its own or its server's.
+    /// Pictures any ad still uses: its icon, its server's, its banner.
     pub fn used_icons(&self) -> Result<Vec<String>, String> {
         let db = self.db();
         let mut statement = db
             .prepare(
                 "SELECT icon FROM ads WHERE icon IS NOT NULL
-                 UNION SELECT icon FROM pings WHERE icon IS NOT NULL",
+                 UNION SELECT icon FROM pings WHERE icon IS NOT NULL
+                 UNION SELECT banner FROM ads WHERE banner IS NOT NULL",
             )
             .map_err(err)?;
         let rows = statement

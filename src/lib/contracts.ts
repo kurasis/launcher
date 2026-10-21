@@ -1839,6 +1839,10 @@ export interface ServerAd {
   endsAt: number;
   weight: number;
   erid: string | null;
+  /** A JPEG data URL of a 16:9 picture shown over the icon. */
+  banner: string | null;
+  /** The server wants a Microsoft sign-in (online mode); null when unknown. */
+  licensed: boolean | null;
 }
 
 export interface ServerAdsView {

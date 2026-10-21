@@ -131,7 +131,9 @@
         "downShort": "Офлайн",
         "versionItem": "Версия: {version}…",
         "menu": "Действия с рекламой: {name}",
-        "players": "{online, number}"
+        "players": "{online, number}",
+        "licensedOnly": "только с лицензией",
+        "needsLicense": "Этот сервер пускает только игроков с лицензией Minecraft. Войдите в аккаунт Microsoft во вкладке «Аккаунты» или выберите его для этой установки."
       },
       "itemMenu": "Ещё: {title}",
       "copyLink": "Скопировать ссылку",

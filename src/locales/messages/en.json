@@ -131,7 +131,9 @@
         "downShort": "Offline",
         "versionItem": "Version: {version}…",
         "menu": "Ad options: {name}",
-        "players": "{online, number}"
+        "players": "{online, number}",
+        "licensedOnly": "licensed accounts only",
+        "needsLicense": "This server lets in only players signed in with a Microsoft account that owns Minecraft. Sign in under Accounts, or choose that account for this installation."
       },
       "itemMenu": "More: {title}",
       "copyLink": "Copy link",

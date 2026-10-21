@@ -327,6 +327,8 @@ describe('FeedView', () => {
       endsAt: Math.floor(Date.now() / 1000) + 3600,
       weight: 10,
       erid: null,
+      banner: null,
+      licensed: null,
     };
     const calls = backend({ feed_server_ads: () => ({ ads: [ad], stale: false }) });
     show();

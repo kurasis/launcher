@@ -528,6 +528,11 @@
   filter: blur(22px) saturate(1.3);
 }
 
+.preview .adBanner {
+  position: absolute;
+  inset: 0;
+}
+
 .adShade {
   position: absolute;
   inset: 0;

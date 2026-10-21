@@ -132,7 +132,9 @@
         "downShort": "غير متصل",
         "versionItem": "الإصدار: {version}…",
         "menu": "خيارات الإعلان: {name}",
-        "players": "{online, number}"
+        "players": "{online, number}",
+        "licensedOnly": "للحسابات المرخّصة فقط",
+        "needsLicense": "يقبل هذا الخادم فقط اللاعبين الذين سجّلوا الدخول بحساب Microsoft يملك Minecraft. سجّل الدخول من «الحسابات» أو اختر ذلك الحساب لهذا التثبيت."
       },
       "itemMenu": "المزيد: {title}",
       "copyLink": "نسخ الرابط",
