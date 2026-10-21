@@ -245,6 +245,9 @@ export function FeedList({
   useEffect(() => {
     const target = end.current;
     if (!watching || target === null || next === null || loading !== 'idle') return;
+    // Looked up again here: the global can be gone by the time the effect runs (a test
+    // that stubbed it has put it back while the list is still mounted).
+    if (typeof IntersectionObserver === 'undefined') return;
     const observer = new IntersectionObserver(
       (entries) => {
         if (entries.some((entry) => entry.isIntersecting)) loadMore();

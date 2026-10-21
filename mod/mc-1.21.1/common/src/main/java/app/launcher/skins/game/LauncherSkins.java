@@ -23,8 +23,9 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 /**
- * The game's side of Launcher Skins (D-065) for Minecraft 1.21.1, shared by every loader:
- * turns loaded PNGs into textures (one per frame) and swaps them into a player's skin.
+ * The game's side of Launcher Skins (D-065) for Minecraft 1.20.2 to 1.21.1, shared by every
+ * loader: turns loaded PNGs into textures (one per frame) and swaps them into a player's
+ * skin.
  * Nothing about players is logged.
  */
 public final class LauncherSkins implements Skins.Sink {
@@ -167,7 +168,9 @@ public final class LauncherSkins implements Skins.Sink {
                         frame.setPixelRGBA(x, y, abgrToArgb(argb[y * width + x]));
                     }
                 }
-                frames[f] = ResourceLocation.fromNamespaceAndPath(ID,
+                // tryBuild, unlike fromNamespaceAndPath, is there from 1.20.2 on; the id is
+                // always valid (a lower-case kind, a hex hash and a number).
+                frames[f] = ResourceLocation.tryBuild(ID,
                         texture.kind.name().toLowerCase(java.util.Locale.ROOT) + "/" + texture.hash + "/" + f);
                 Minecraft.getInstance().getTextureManager().register(frames[f], new DynamicTexture(frame));
             }

@@ -51,6 +51,8 @@ jobs:
             only: mc-1.21.11,gametest:mc-1.21.11
           - name: 1.16 to 1.20.1
             only: mc-1.16.5-1.20.1,gametest:mc-1.16.5-1.20.1
+          - name: 1.20.2 to 1.20.6
+            only: mc-1.20.2-1.20.6,gametest:mc-1.20.2-1.20.6
           - name: the Java agents
             only: agents
     defaults:

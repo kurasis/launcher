@@ -1,0 +1,85 @@
+plugins {
+    id 'dev.architectury.loom' version '1.17.493'
+}
+
+// The bot for Forge or NeoForge in one release from 1.20.2 to 1.20.6, built with
+// Architectury Loom like the skins mod's jars for them (mod/mc-1.20.2-1.20.6):
+// `loom.platform` in the project's gradle.properties picks the loader. It shares the Mixin
+// with the 1.16.5 to 1.20.1 bots and takes the release's own game layer from
+// ../game/<release>.
+def neo = project.property('loom.platform') == 'neoforge'
+def loader = neo ? 'neoforge' : 'forge'
+def legacy = "${rootDir}/gametest/mc-1.16.5-1.20.1"
+def entry = neo ? "${projectDir}/../src" : "${legacy}/forge/src"
+
+base {
+    archivesName = "launchergametest-${loader}-${minecraft_version}"
+}
+
+java {
+    toolchain { languageVersion = JavaLanguageVersion.of(java_version as int) }
+}
+
+sourceSets.main {
+    java.srcDir "${rootDir}/gametest/core/src/main/java"
+    java.srcDir "${legacy}/common/src/main/java"
+    java.srcDir "${projectDir}/../../game/${minecraft_version}"
+    java.srcDir "${entry}/main/java"
+    resources.srcDir "${legacy}/common/src/main/resources"
+    resources.srcDir "${entry}/main/resources"
+}
+
+if (!neo) {
+    loom {
+        forge {
+            mixinConfig 'launchergametest.mixins.json'
+        }
+    }
+}
+
+repositories {
+    maven { url = 'https://maven.minecraftforge.net/' }
+    maven { url = 'https://maven.neoforged.net/releases/' }
+    // NeoForge's artifacts only from its Maven: Maven Central, asked first, refuses with 429
+    // when asked too often. Not the groups Loom makes for its remapped copies (a hash at
+    // the end), which it keeps in its own cache.
+    exclusiveContent {
+        forRepository { maven { url = 'https://maven.neoforged.net/releases/' } }
+        filter { includeGroupByRegex 'net\\.neoforged(\\.[a-z]+)*' }
+    }
+}
+
+dependencies {
+    minecraft "com.mojang:minecraft:${minecraft_version}"
+    mappings loom.officialMojangMappings()
+    if (neo) {
+        neoForge "net.neoforged:neoforge:${loader_version}"
+    } else {
+        forge "net.minecraftforge:forge:${minecraft_version}-${loader_version}"
+    }
+}
+
+tasks.withType(JavaCompile).configureEach {
+    options.release = java_version as int
+    options.encoding = 'UTF-8'
+}
+
+jar {
+    manifest {
+        attributes 'MixinConfigs': 'launchergametest.mixins.json'
+    }
+}
+
+processResources {
+    def props = [version: project.version, minecraft: minecraft_version,
+                 forge_major: neo ? '1' : loader_version.tokenize('.')[0], pack_format: pack_format]
+    inputs.properties props
+    filesMatching(['META-INF/mods.toml', 'pack.mcmeta']) {
+        expand props
+    }
+    // NeoForge reads neoforge.mods.toml from 20.5 on (`mods_toml` in gradle.properties).
+    def descriptor = findProperty('mods_toml')
+    if (descriptor) {
+        rename 'mods\\.toml', descriptor
+    }
+}

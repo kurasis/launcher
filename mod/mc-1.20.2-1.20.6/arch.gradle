@@ -1,0 +1,79 @@
+plugins {
+    id 'dev.architectury.loom' version '1.17.493'
+}
+
+// A Forge or NeoForge jar for releases from 1.20.2 to 1.20.6, built with Architectury Loom
+// (`loom.platform` in the project's gradle.properties). The game layer is mc-1.21.1's: the
+// skin is a PlayerSkin from 1.20.2 on. Forge runs 1.20.2 to 1.20.4 with SRG names, which
+// keep their numbers from release to release, and Loom remaps the jar to them, the Mixin
+// targets included; Forge 1.20.6 and NeoForge run with Mojang's names. Each jar is a project
+// in the folder of the release it is built against, whose gradle.properties name the band
+// (`band`), the releases it accepts (`loader_range`) and the oldest loader (`loader_min`).
+def neo = project.property('loom.platform') == 'neoforge'
+def loader = neo ? 'neoforge' : 'forge'
+
+base {
+    archivesName = "launcherskins-${loader}-${band}"
+}
+
+java {
+    toolchain { languageVersion = JavaLanguageVersion.of(java_version as int) }
+}
+
+sourceSets.main {
+    java.srcDir "${rootDir}/core/src/main/java"
+    java.srcDir "${rootDir}/mc-1.21.1/common/src/main/java"
+    java.srcDir "${projectDir}/../src/main/java"
+    resources.srcDir "${rootDir}/mc-1.21.1/common/src/main/resources"
+    resources.srcDir "${projectDir}/../src/main/resources"
+}
+
+if (!neo) {
+    loom {
+        forge {
+            mixinConfig 'launcherskins.mixins.json'
+        }
+    }
+}
+
+repositories {
+    maven { url = 'https://maven.minecraftforge.net/' }
+    maven { url = 'https://maven.neoforged.net/releases/' }
+    // NeoForge's artifacts only from its Maven: Maven Central, asked first, refuses with 429
+    // when asked too often. Not the groups Loom makes for its remapped copies (a hash at
+    // the end), which it keeps in its own cache.
+    exclusiveContent {
+        forRepository { maven { url = 'https://maven.neoforged.net/releases/' } }
+        filter { includeGroupByRegex 'net\\.neoforged(\\.[a-z]+)*' }
+    }
+}
+
+dependencies {
+    minecraft "com.mojang:minecraft:${minecraft_version}"
+    mappings loom.officialMojangMappings()
+    if (neo) {
+        neoForge "net.neoforged:neoforge:${loader_version}"
+    } else {
+        forge "net.minecraftforge:forge:${minecraft_version}-${loader_version}"
+    }
+}
+
+tasks.withType(JavaCompile).configureEach {
+    options.release = java_version as int
+    options.encoding = 'UTF-8'
+}
+
+jar {
+    manifest {
+        attributes 'MixinConfigs': 'launcherskins.mixins.json'
+    }
+}
+
+processResources {
+    def props = [version: project.version, minecraft: loader_range, forge_major: loader_min,
+                 pack_format: pack_format]
+    inputs.properties props
+    filesMatching(['META-INF/mods.toml', 'pack.mcmeta']) {
+        expand props
+    }
+}

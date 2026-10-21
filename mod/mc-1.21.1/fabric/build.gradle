@@ -2,8 +2,11 @@ plugins {
     id 'net.fabricmc.fabric-loom-remap' version '1.19.1'
 }
 
+// One jar for 1.20.2 to 1.21.1: the game layer uses what keeps its intermediary names all
+// through (built against each of them, the classes come out byte for byte the same), and
+// it is Java 17, which 1.20.2 to 1.20.4 run on.
 base {
-    archivesName = "launcherskins-fabric-1.21-1.21.1"
+    archivesName = "launcherskins-fabric-1.20.2-1.21.1"
 }
 
 java {
@@ -24,7 +27,7 @@ dependencies {
 }
 
 tasks.withType(JavaCompile).configureEach {
-    options.release = 21
+    options.release = 17
     options.encoding = 'UTF-8'
 }
 

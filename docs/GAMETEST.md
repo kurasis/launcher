@@ -24,7 +24,9 @@ version × loader × mod set, played by a test bot for a set number of minutes.
    its own agent. Forge 1.12.2 has its own bot (`mod/gametest/mc-1.12.2/forge/`), driven
    by Forge's client tick event, which turns the bot's commands into 1.12.2 syntax. The
    bots for 1.16.5, 1.17.1, 1.18.2, 1.19.2, 1.19.4 and 1.20.1 live in
-   `mod/gametest/mc-1.16.5-1.20.1/` (one game layer per release under `game/`), those for 1.21.x in `mod/gametest/mc-<version>/`.
+   `mod/gametest/mc-1.16.5-1.20.1/` (one game layer per release under `game/`), those for
+   1.20.4 and 1.20.6 in `mod/gametest/mc-1.20.2-1.20.6/`, those for 1.21.x in
+   `mod/gametest/mc-<version>/`.
 
 3. It serves test skins from the machine itself (`tests/gametest/skins.rs`), the way
    skins.lapi.sh answers: HD skins 64 to 512, slim and wide, animated strips, static and
@@ -62,7 +64,7 @@ public.
 ## Running it
 
 "Run workflow" on the Game test workflow, on `main`. Inputs pick the versions (26.3,
-1.21.11, 1.21.10, 1.21.8, 1.21.4, 1.21.1, 1.20.1, 1.19.4, 1.19.2, 1.18.2, 1.17.1, 1.16.5,
+1.21.11, 1.21.10, 1.21.8, 1.21.4, 1.21.1, 1.20.6, 1.20.4, 1.20.1, 1.19.4, 1.19.2, 1.18.2, 1.17.1, 1.16.5,
 1.12.2: one release of each group the mod builds a jar for, and from 1.16 to 1.20.1 the
 releases where the game's own code changes most), loaders (vanilla, fabric, quilt, neoforge, forge;
 Quilt plays the Fabric jars and Fabric mods), mod sets (none, medium), minutes per

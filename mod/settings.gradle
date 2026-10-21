@@ -56,6 +56,15 @@ add 'mc-1.12.2:forge'
         }
     }
 }
+// 1.20.2 to 1.20.6 take mc-1.21.1's game layer; their Forge and NeoForge jars are projects
+// in mc-1.20.2-1.20.6/<loader>, each built by mc-1.20.2-1.20.6/arch.gradle.
+['forge', 'neoforge'].each { loader ->
+    file("mc-1.20.2-1.20.6/${loader}").eachDir { dir ->
+        if (new File(dir, 'gradle.properties').exists()) {
+            add "mc-1.20.2-1.20.6:${loader}:${dir.name}", '../../arch.gradle'
+        }
+    }
+}
 // The Java agent for releases with obfuscated names: one project per release, each a
 // folder of mod/agents built by mod/agents/agent.gradle.
 file('agents').eachDir { dir ->
@@ -79,6 +88,16 @@ add 'gametest:mc-1.12.2:forge'
         if (new File(dir, 'gradle.properties').exists()) {
             def own = new File(dir, 'build.gradle').exists()
             add "gametest:mc-1.16.5-1.20.1:${loader}:${dir.name}", own ? null : "../${loader}.gradle"
+        }
+    }
+}
+// The 1.20.2 to 1.20.6 bots: the same, with Forge and NeoForge built by arch.gradle there and
+// Fabric and the agent by the 1.16.5 to 1.20.1 bots' scripts.
+['fabric', 'forge', 'neoforge', 'agent'].each { loader ->
+    file("gametest/mc-1.20.2-1.20.6/${loader}").eachDir { dir ->
+        if (new File(dir, 'gradle.properties').exists()) {
+            def script = loader in ['forge', 'neoforge'] ? '../../arch.gradle' : "../../../mc-1.16.5-1.20.1/${loader}/${loader}.gradle"
+            add "gametest:mc-1.20.2-1.20.6:${loader}:${dir.name}", script
         }
     }
 }

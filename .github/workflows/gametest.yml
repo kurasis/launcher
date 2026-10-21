@@ -14,7 +14,7 @@ on:
   workflow_dispatch:
     inputs:
       versions:
-        description: Game versions (comma-separated; 26.3, 1.21.11, 1.21.10, 1.21.8, 1.21.4, 1.21.1, 1.20.1, 1.19.4, 1.19.2, 1.18.2, 1.17.1, 1.16.5, 1.12.2)
+        description: Game versions (comma-separated; 26.3, 1.21.11, 1.21.10, 1.21.8, 1.21.4, 1.21.1, 1.20.6, 1.20.4, 1.20.1, 1.19.4, 1.19.2, 1.18.2, 1.17.1, 1.16.5, 1.12.2)
         default: 26.3,1.21.11,1.21.1,1.20.1,1.12.2
       loaders:
         description: Loaders (comma-separated; vanilla, fabric, quilt, neoforge, forge)
@@ -60,8 +60,8 @@ jobs:
           python3 - <<'EOF'
           import json, os, sys
           allowed = {
-              "VERSIONS": ["26.3", "1.21.11", "1.21.10", "1.21.8", "1.21.4", "1.21.1", "1.20.1", "1.19.4", "1.19.2",
-                           "1.18.2", "1.17.1", "1.16.5", "1.12.2"],
+              "VERSIONS": ["26.3", "1.21.11", "1.21.10", "1.21.8", "1.21.4", "1.21.1", "1.20.6", "1.20.4",
+                           "1.20.1", "1.19.4", "1.19.2", "1.18.2", "1.17.1", "1.16.5", "1.12.2"],
               "LOADERS": ["vanilla", "fabric", "quilt", "neoforge", "forge"],
               "MODS": ["none", "medium"],
           }
@@ -104,6 +104,13 @@ jobs:
                   return ["mc-1.16.5-1.20.1:fabric:1.20.1", f"mc-1.16.5-1.20.1:forge:{forge}",
                           f"agents:{version}"] + [
                       f"gametest:mc-1.16.5-1.20.1:{loader}:{version}" for loader in ("fabric", "forge", "agent")]
+              if version in ("1.20.4", "1.20.6"):
+                  # mc-1.21.1's Fabric jar serves 1.20.2 on and its NeoForge jar 1.20.6 on;
+                  # the other Forge and NeoForge jars are built against the release.
+                  neoforge = "mc-1.21.1:neoforge" if version == "1.20.6" else f"mc-1.20.2-1.20.6:neoforge:{version}"
+                  return ["mc-1.21.1:fabric", neoforge, f"mc-1.20.2-1.20.6:forge:{version}",
+                          f"agents:{version}"] + [
+                      f"gametest:mc-1.20.2-1.20.6:{loader}:{version}" for loader in ("fabric", "forge", "neoforge", "agent")]
               return [bands[version], f"agents:{version}", f"gametest:mc-{version}"]
           scenarios = []
           for version in picked["VERSIONS"]:
