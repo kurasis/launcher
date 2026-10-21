@@ -377,7 +377,7 @@ export function FeedList({
   }, [part, filter, shortsOnly]);
 
   // Live streams change while the list is shown: each tick asks for them
-  // again, so ended ones leave and new ones come in.
+  // again, so ended ones leave and, under the Streams chip, new ones come in.
   const liveShown = wants(filter, 'streams') && !settings.hidden.includes('streams') && !kept;
   const tickSeen = useRef(liveTick);
   useEffect(() => {
@@ -386,10 +386,12 @@ export function FeedList({
     if (!liveShown) return;
     liveStreams()
       .then((live) => {
-        if (alive.current) setPages((before) => withLiveStreams(before, live));
+        if (alive.current) {
+          setPages((before) => withLiveStreams(before, live, filter === 'streams'));
+        }
       })
       .catch(() => undefined);
-  }, [liveTick, liveShown]);
+  }, [liveTick, liveShown, filter]);
 
   const loadMore = useCallback(() => {
     if (next === null || (loading !== 'idle' && loading !== 'failed')) return;

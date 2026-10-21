@@ -133,15 +133,22 @@ export function shownItems(
 
 /**
  * The list with its live streams as they are now: those ended leave, the
- * others are updated where they are, and new ones come in by their time.
+ * others are updated where they are, and with `addNew` new ones come in by
+ * their time. The mixed list shows only the most watched few, so it takes
+ * no new ones (they come with Refresh).
  */
-export function withLiveStreams(items: FeedItem[], live: FeedStream[]): FeedItem[] {
+export function withLiveStreams(
+  items: FeedItem[],
+  live: FeedStream[],
+  addNew: boolean,
+): FeedItem[] {
   const now = new Map(live.map((stream) => [stream.login, stream]));
   const kept = items.flatMap((item): FeedItem[] => {
     if (item.type !== 'stream') return [item];
     const stream = now.get(item.stream.login);
     return stream === undefined ? [] : [{ type: 'stream', stream }];
   });
+  if (!addNew) return kept;
   const shown = new Set(kept.map(itemKey));
   return mergeByTime(
     kept,
