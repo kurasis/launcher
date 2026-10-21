@@ -16,15 +16,21 @@ that machine has makes the pick exact.
    owner's uninstall entry and shortcuts are put back afterwards.
 3. In the launcher window, through UI Automation as a player clicks: Accounts → Offline
    and a profile `Tester`; then for each version Installations → New installation → the
-   version → Create installation → Install (allowing the download if asked) → Play.
-4. In the game, through window messages: mouse clicks only, since 26.x reads input
-   through SDL, which gives keys only to the focused window, while mouse messages reach
-   it in the background (so a locked screen does not stop it). Continue on the
-   first-start accessibility screen, Singleplayer, Create (the world list is empty, so
-   the game opens Create New World at once), some seconds in the world, then the window
-   is closed. The game log must show the player joining; the game must exit with 0 and
-   leave no crash report. Screenshots are taken along the way (the game's F2 when its
-   window could be brought to the front, else a copy of the screen region).
+   version typed into the search box and clicked (the form's "Selected" line must name
+   it, since the newest is chosen at first) → Create installation → Install (allowing the
+   download if asked) → Play. The launcher closes its window while a game runs and makes
+   a new one after it, so the window is looked up again for each version.
+4. In the game, with the mouse and keys as a player uses them: 26.x reads input through
+   SDL3, which takes no posted mouse messages and keys only while its window has the
+   focus, so the game window is brought to the front and real clicks and key presses are
+   sent. The test machine therefore needs a signed-in, unlocked desktop. The game log's
+   version must be the one asked for. Continue on the first-start accessibility screen
+   (and Escape, which leaves it if the click missed), Singleplayer, Create (the world list
+   is empty, so the game opens Create New World at once); without a world after that the
+   keyboard way is tried (Escape, Tab, Enter, Enter). Some seconds in the world, then the
+   window is closed. The game log must show the player joining; the game must exit with 0
+   and leave no crash report. Screenshots are taken along the way (the game's F2 and a
+   copy of the screen region).
 
 The run page shows a table per version (install, launch, world, exit, log errors). The
 artifact `usertest-results` has a folder per version with the screenshots, the game's

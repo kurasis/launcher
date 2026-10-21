@@ -106,6 +106,7 @@ jobs:
               "navHome": "nav.home", "navAccount": "nav.account", "modeOffline": "accounts.modeOffline",
               "nameLabel": "accounts.nameLabel", "addProfile": "accounts.addProfile",
               "create": "instances.create", "createSubmit": "createForm.submit",
+              "search": "createForm.search", "selected": "createForm.selected",
               "install": "install.install", "play": "install.play", "retry": "install.retry",
               "allow": "metered.allow",
           }

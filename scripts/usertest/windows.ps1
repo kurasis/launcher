@@ -6,9 +6,9 @@
 # version does what a player does: Accounts -> offline profile, Installations -> New
 # installation -> the version -> Create -> Install -> Play; in the game Singleplayer ->
 # Create New World, a look around, and the window closed. The launcher is driven through
-# UI Automation, the game through window messages (mouse clicks, as a mouse sends them),
-# so a locked screen does not stop it. Nothing is changed in the
-# game files or settings. Results go to <Out>/results.json; screenshots and the
+# UI Automation, the game with the mouse and keys as a player uses them (its window brought
+# to the front), so the test machine needs a signed-in, unlocked desktop. Nothing is
+# changed in the game files or settings. Results go to <Out>/results.json; screenshots and the
 # game's log (machine names replaced) to <Out>/<version>/.
 #
 # Plain ASCII only: Windows PowerShell reads this file in the ANSI code page. The
@@ -49,7 +49,10 @@ namespace UserTest {
     [DllImport("user32.dll")] public static extern bool SetProcessDpiAwarenessContext(IntPtr value);
     [DllImport("user32.dll")] public static extern bool SetCursorPos(int x, int y);
     [DllImport("user32.dll")] public static extern void mouse_event(uint flags, uint dx, uint dy, uint data, IntPtr extra);
+    [DllImport("user32.dll")] public static extern bool ClientToScreen(IntPtr hwnd, ref POINT point);
+    [DllImport("user32.dll")] public static extern uint MapVirtualKey(uint code, uint mapType);
     [StructLayout(LayoutKind.Sequential)] public struct RECT { public int Left, Top, Right, Bottom; }
+    [StructLayout(LayoutKind.Sequential)] public struct POINT { public int X, Y; }
 
     // Visible top-level windows whose title starts with the prefix: "hwnd|pid|title".
     public static List<string> Find(string prefix) {
@@ -154,9 +157,22 @@ function Click($Element) {
     $pattern.Invoke()
     return
   }
+  if ($Element.TryGetCurrentPattern([System.Windows.Automation.TogglePattern]::Pattern, [ref]$pattern)) {
+    $pattern.Toggle()
+    return
+  }
   if ($Element.TryGetCurrentPattern([System.Windows.Automation.SelectionItemPattern]::Pattern, [ref]$pattern)) {
     $pattern.Select()
     return
+  }
+  Mouse-Click $Element
+}
+
+# A real click in the middle of the element, scrolled into view first.
+function Mouse-Click($Element) {
+  $pattern = $null
+  if ($Element.TryGetCurrentPattern([System.Windows.Automation.ScrollItemPattern]::Pattern, [ref]$pattern)) {
+    try { $pattern.ScrollIntoView(); Start-Sleep -Milliseconds 300 } catch { }
   }
   try { $script:main.SetFocus() } catch { }
   $r = $Element.Current.BoundingRectangle
@@ -164,6 +180,30 @@ function Click($Element) {
   Start-Sleep -Milliseconds 100
   [UserTest.Win]::mouse_event(0x0002, 0, 0, 0, [IntPtr]::Zero)
   [UserTest.Win]::mouse_event(0x0004, 0, 0, 0, [IntPtr]::Zero)
+}
+
+# The launcher's main window. It is closed while a game runs and made anew after it, so
+# it is looked up again before each version; a start of launcher.exe brings it back if
+# it is gone (the running launcher shows its window).
+function Get-Launcher {
+  $window = Wait-For { Find-Window 'Launcher' } 60
+  if (-not $window) {
+    Say 'the launcher window is gone: starting launcher.exe again'
+    Start-Process -FilePath $exe | Out-Null
+    $window = Wait-For { Find-Window 'Launcher' } 60
+  }
+  if (-not $window) { throw 'the launcher window did not come back' }
+  $pattern = $null
+  if ($window.TryGetCurrentPattern([System.Windows.Automation.WindowPattern]::Pattern, [ref]$pattern)) {
+    try {
+      if ($pattern.Current.WindowVisualState -eq [System.Windows.Automation.WindowVisualState]::Minimized) {
+        $pattern.SetWindowVisualState([System.Windows.Automation.WindowVisualState]::Normal)
+      }
+    } catch { }
+  }
+  try { $window.SetFocus() } catch { }
+  $script:main = $window
+  Start-Sleep -Seconds 2
 }
 
 function Press($Texts, [string]$What, [int]$Seconds = 30) {
@@ -203,22 +243,43 @@ function Dump-Launcher([string]$Folder) {
   Launcher-Screenshot (Join-Path $Folder 'launcher.png')
 }
 
-# --- The game, through window messages ------------------------------------------------
+# --- The game, with the mouse and the keyboard ------------------------------------------
 #
-# 26.x reads input through SDL, which gives key presses only to the window that has the
-# keyboard focus, while mouse messages reach it in the background. So the way through the
-# menus is the mouse; keys (F2) are used only when the window could be brought to the front.
+# 26.x reads input through SDL3, which takes no posted mouse messages and keys only while
+# its window has the focus. So the window is brought to the front and real input is sent:
+# the cursor is moved onto a button and clicked, keys are pressed as a keyboard does.
 
-$WM_MOUSEMOVE = 0x0200; $WM_LBUTTONDOWN = 0x0201; $WM_LBUTTONUP = 0x0202
 $WM_KEYDOWN = 0x0100; $WM_KEYUP = 0x0101; $WM_CLOSE = 0x0010
-$Keys = @{ Escape = @(0x1B, 0x01); Enter = @(0x0D, 0x1C); Tab = @(0x09, 0x0F); F2 = @(0x71, 0x3C) }
+$Keys = @{ Escape = 0x1B; Enter = 0x0D; Tab = 0x09; F2 = 0x71 }
 
+# Brings the game window to the front (Windows allows it after an Alt press); false on a
+# locked screen or when Windows refuses.
+function Game-Focus([IntPtr]$Hwnd) {
+  if ([UserTest.Win]::GetForegroundWindow() -eq $Hwnd) { return $true }
+  for ($try = 0; $try -lt 3; $try++) {
+    [UserTest.Win]::keybd_event(0x12, 0, 0, [IntPtr]::Zero)
+    [UserTest.Win]::keybd_event(0x12, 0, 2, [IntPtr]::Zero)
+    [UserTest.Win]::SetForegroundWindow($Hwnd) | Out-Null
+    Start-Sleep -Milliseconds 400
+    if ([UserTest.Win]::GetForegroundWindow() -eq $Hwnd) { return $true }
+  }
+  return $false
+}
+
+# A key press; posted to the window only when it could not be brought to the front.
 function Game-Key([IntPtr]$Hwnd, [string]$Key) {
-  $vk, $sc = $Keys[$Key]
-  [UserTest.Win]::PostMessage($Hwnd, $WM_KEYDOWN, [IntPtr]$vk, [IntPtr][int64](1 -bor ($sc -shl 16))) | Out-Null
-  Start-Sleep -Milliseconds 120
-  $up = [int64]1 -bor ([int64]$sc -shl 16) -bor ([int64]1 -shl 30) -bor ([int64]1 -shl 31)
-  [UserTest.Win]::PostMessage($Hwnd, $WM_KEYUP, [IntPtr]$vk, [IntPtr]$up) | Out-Null
+  $vk = $Keys[$Key]
+  $sc = [UserTest.Win]::MapVirtualKey($vk, 0)
+  if (Game-Focus $Hwnd) {
+    [UserTest.Win]::keybd_event([byte]$vk, [byte]$sc, 0, [IntPtr]::Zero)
+    Start-Sleep -Milliseconds 120
+    [UserTest.Win]::keybd_event([byte]$vk, [byte]$sc, 2, [IntPtr]::Zero)
+  } else {
+    [UserTest.Win]::PostMessage($Hwnd, $WM_KEYDOWN, [IntPtr]$vk, [IntPtr][int64](1 -bor ($sc -shl 16))) | Out-Null
+    Start-Sleep -Milliseconds 120
+    $up = [int64]1 -bor ([int64]$sc -shl 16) -bor ([int64]1 -shl 30) -bor ([int64]1 -shl 31)
+    [UserTest.Win]::PostMessage($Hwnd, $WM_KEYUP, [IntPtr]$vk, [IntPtr]$up) | Out-Null
+  }
   Start-Sleep -Milliseconds 400
 }
 
@@ -233,18 +294,8 @@ function Gui-Layout([IntPtr]$Hwnd) {
     GuiWidth = [math]::Ceiling($w / $scale); GuiHeight = [math]::Ceiling($h / $scale) }
 }
 
-# Brings the game window to the front (Windows allows it after an Alt press); false on a
-# locked screen or when Windows refuses.
-function Game-Focus([IntPtr]$Hwnd) {
-  [UserTest.Win]::keybd_event(0x12, 0, 0, [IntPtr]::Zero)
-  [UserTest.Win]::keybd_event(0x12, 0, 2, [IntPtr]::Zero)
-  [UserTest.Win]::SetForegroundWindow($Hwnd) | Out-Null
-  Start-Sleep -Milliseconds 300
-  return [UserTest.Win]::GetForegroundWindow() -eq $Hwnd
-}
-
 # A picture of the game window: the game's own F2 screenshot when the window has the
-# focus, and a copy of the screen region (empty on a locked screen) into the results.
+# focus, and a copy of the screen region into the results.
 $script:shot = 0
 function Game-Shot([IntPtr]$Hwnd, [string]$Folder, [string]$Name) {
   $script:shot++
@@ -259,18 +310,22 @@ function Game-Shot([IntPtr]$Hwnd, [string]$Folder, [string]$Name) {
   } catch { Say "no screen copy: $($_.Exception.Message)" }
 }
 
-# A click at GUI coordinates.
+# A left click at GUI coordinates: the window to the front, the cursor onto the point
+# (screen pixels), a small move there as a hand makes, then the button.
 function Game-Click([IntPtr]$Hwnd, [double]$GuiX, [double]$GuiY) {
+  if (-not (Game-Focus $Hwnd)) { Say 'the game window could not be brought to the front' }
   $layout = Gui-Layout $Hwnd
-  $x = [int]($GuiX * $layout.Scale); $y = [int]($GuiY * $layout.Scale)
-  $lp = [IntPtr][int64](($y -shl 16) -bor ($x -band 0xFFFF))
-  [UserTest.Win]::PostMessage($Hwnd, $WM_MOUSEMOVE, [IntPtr]::Zero, $lp) | Out-Null
-  Start-Sleep -Milliseconds 200
-  [UserTest.Win]::PostMessage($Hwnd, $WM_MOUSEMOVE, [IntPtr]::Zero, $lp) | Out-Null
-  Start-Sleep -Milliseconds 200
-  [UserTest.Win]::PostMessage($Hwnd, $WM_LBUTTONDOWN, [IntPtr]1, $lp) | Out-Null
+  $point = New-Object UserTest.Win+POINT
+  $point.X = [int]($GuiX * $layout.Scale); $point.Y = [int]($GuiY * $layout.Scale)
+  [UserTest.Win]::ClientToScreen($Hwnd, [ref]$point) | Out-Null
+  [UserTest.Win]::SetCursorPos($point.X - 4, $point.Y - 2) | Out-Null
+  Start-Sleep -Milliseconds 150
+  [UserTest.Win]::SetCursorPos($point.X, $point.Y) | Out-Null
+  [UserTest.Win]::mouse_event(0x0001, 0, 0, 0, [IntPtr]::Zero)
+  Start-Sleep -Milliseconds 250
+  [UserTest.Win]::mouse_event(0x0002, 0, 0, 0, [IntPtr]::Zero)
   Start-Sleep -Milliseconds 100
-  [UserTest.Win]::PostMessage($Hwnd, $WM_LBUTTONUP, [IntPtr]::Zero, $lp) | Out-Null
+  [UserTest.Win]::mouse_event(0x0004, 0, 0, 0, [IntPtr]::Zero)
   Start-Sleep -Milliseconds 500
 }
 
@@ -424,8 +479,12 @@ try {
     try {
       # --- Installations: New installation, the version, Create, Install ----------------
       Say "$version : new installation"
+      Get-Launcher
       Press $ui.navHome 'Installations tab'
       Press $ui.create 'New installation'
+      # As a player finds a version: typed into the search box above the list.
+      $search = Wait-For { Find-Input $ui.search } 20
+      if ($search) { Type-Into $search $version; Start-Sleep -Seconds 1 } else { Say 'no version search box' }
       # The row reads "<id><tags><date>": the id ends where a letter, a space or the date starts.
       $pattern = "^$([regex]::Escape($version))(?=$|\s|[^\d.]|20\d\d-)"
       $row = Wait-For {
@@ -434,8 +493,20 @@ try {
         }
       } 60
       if (-not $row) { $result.install = 'failed'; $result.note = 'the version is not in the launcher list'; throw 'version not listed' }
+      # The form says which version is chosen ("Selected: <id>"); the newest is chosen
+      # at first, so the choice is checked before the installation is made.
+      $chosen = @($ui.selected | ForEach-Object { $_.Replace('{id}', $version) })
+      $isChosen = { if (@(Get-Texts | Where-Object { Matches $_ $chosen })) { $true } }
       Click $row
-      Start-Sleep -Seconds 1
+      if (-not (Wait-For $isChosen 5)) {
+        Say "$version : the row click did not choose it; clicking with the mouse"
+        Mouse-Click $row
+      }
+      if (-not (Wait-For $isChosen 5)) {
+        $result.install = 'failed'; $result.note = 'the version could not be chosen in the form'
+        Dump-Launcher $folder
+        throw 'version not chosen'
+      }
       $before = @(Get-ChildItem -Directory (Join-Path $data 'instances') -ErrorAction SilentlyContinue | ForEach-Object Name)
       Press $ui.createSubmit 'Create installation'
       $instance = Wait-For {
@@ -487,22 +558,32 @@ try {
       # The loading overlay fades out after the atlases.
       Start-Sleep -Seconds 15
       if ($game.Process.HasExited) { $result.launch = 'failed'; $result.note = 'the game closed after loading'; throw 'exited' }
-      $result.launch = 'ok'
       $result.launchSeconds = [int]((Get-Date) - $started).TotalSeconds
+      # The game that runs is the one asked for: SDL logs the game's version.
+      $running = if ((Log-Text $log) -match 'App version: (\S+)') { $Matches[1] } else { '' }
+      if ($running -and $running -ne $version) {
+        $result.launch = 'wrong version'; $result.note = "the game started as $running"
+        throw 'wrong version'
+      }
+      $result.launch = 'ok'
       Say "$version : title screen after $($result.launchSeconds) s ($($game.Title))"
       $hwnd = $game.Hwnd
       $layout = Gui-Layout $hwnd
       Say "$version : window $($layout.Width)x$($layout.Height), GUI scale $($layout.Scale)"
       Game-Shot $hwnd $folder 'start'
       # First start: the accessibility welcome screen. Its Continue button is alone in
-      # the 33-high footer; on the title screen nothing is there.
+      # the 33-high footer; on the title screen nothing is there. Escape after it leaves
+      # the welcome screen if the click missed and does nothing on the title screen.
       Game-Click $hwnd ($layout.GuiWidth / 2) ($layout.GuiHeight - 17)
-      Start-Sleep -Seconds 4
+      Start-Sleep -Seconds 3
+      Game-Key $hwnd 'Escape'
+      Start-Sleep -Seconds 3
       Game-Shot $hwnd $folder 'title'
 
       # --- Singleplayer -> Create New World --------------------------------------------------
       $started = Get-Date
       $joined = "$([regex]::Escape($Nick)) joined the game"
+      $inWorld = { if ((Log-Text $log) -match $joined) { $true } }
       # Singleplayer: the first button under the logo, 200x20 at height/4 + 48.
       Game-Click $hwnd ($layout.GuiWidth / 2) ([math]::Floor($layout.GuiHeight / 4) + 48 + 10)
       Start-Sleep -Seconds 5
@@ -511,15 +592,33 @@ try {
       # left of two 150-wide buttons, 8 apart, in the 33-high footer.
       $createX = [math]::Floor(($layout.GuiWidth - 308) / 2) + 75
       Game-Click $hwnd $createX ($layout.GuiHeight - 17)
-      $inWorld = Wait-For { if ((Log-Text $log) -match $joined) { $true } } 180
-      if (-not $inWorld) {
+      $entered = Wait-For $inWorld 60
+      if (-not $entered -and (Log-Text $log) -match 'Starting integrated minecraft server') {
+        # The world is being made: only slower than a minute.
+        $entered = Wait-For $inWorld 180
+      }
+      if (-not $entered) {
+        # The keyboard way, as a player without a mouse: back to the title screen, Tab to
+        # Singleplayer, Enter; Enter again creates the world.
+        Say "$version : no world after the clicks; the keyboard way"
+        Game-Shot $hwnd $folder 'after-clicks'
+        foreach ($i in 1..3) { Game-Key $hwnd 'Escape'; Start-Sleep -Seconds 1 }
+        Game-Key $hwnd 'Tab'
+        Game-Key $hwnd 'Enter'
+        Start-Sleep -Seconds 5
+        Game-Shot $hwnd $folder 'create-world-keys'
+        Game-Key $hwnd 'Enter'
+        $entered = Wait-For $inWorld 180
+        if ($entered) { $result.note = 'world entered with the keyboard' }
+      }
+      if (-not $entered) {
         $result.world = 'failed'; $result.note = 'did not get into a world'
         Game-Shot $hwnd $folder 'no-world'
       } else {
         $result.world = 'ok'
         $result.worldSeconds = [int]((Get-Date) - $started).TotalSeconds
         Say "$version : in the world after $($result.worldSeconds) s"
-        # A look around; without the focus the game shows its pause menu over the world.
+        # A look around.
         Start-Sleep -Seconds 15
         Game-Shot $hwnd $folder 'world'
         Start-Sleep -Seconds 10
