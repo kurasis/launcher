@@ -1,9 +1,12 @@
 # Player test on the test machine
 
 The **Player test** workflow (`.github/workflows/usertest.yml`) checks game versions the
-way a player meets them, on the owner's Windows x64 test machine (the `gametest` runner,
-docs/GAMETEST.md). It runs only by hand ("Run workflow"); the input `versions` takes
-release ids, or `26` for every 26.x release in Mojang's list.
+way a player meets them, on one of the owner's Windows x64 test machines. It runs only by
+hand ("Run workflow"); the input `versions` takes release ids, or `26` for every 26.x
+release in Mojang's list. The inputs `label` (default `TestPC`) and `machine` (default
+`amd-bosgame-8gb`) pick the computer: a job goes to any free runner with the label, so
+it first checks the runner's name and stops at once on another machine. A label only
+that machine has makes the pick exact.
 
 1. A GitHub runner takes the installer from the newest green Package run on `main`
    (`launcher-windows-x64`) and the interface texts of every language.

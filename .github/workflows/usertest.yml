@@ -1,14 +1,14 @@
 name: Player test
 
-# Game versions checked the way a player meets them, on the owner's Windows test
-# machine (docs/USERTEST.md): the newest packaged launcher from main is installed with
+# Game versions checked the way a player meets them, on one of the owner's Windows
+# test machines (docs/USERTEST.md; by default amd-bosgame-8gb, label TestPC): the newest packaged launcher from main is installed with
 # its installer, and for each version a player's steps are taken in its window and in
 # the game: install, play, a new singleplayer world. Only by hand ("Run workflow").
 #
 # The runner is a real computer, so this workflow runs only for the owner's dispatch,
 # never for a pull request. Inputs reach scripts only through env and are checked
 # against Mojang's list. Its own concurrency group: the Game test's queue
-# (one pending run) is left alone; the runner takes one job at a time anyway.
+# (one pending run) is left alone.
 
 on:
   workflow_dispatch:
@@ -16,6 +16,12 @@ on:
       versions:
         description: Game versions (comma-separated release ids), or "26" for every 26.x release
         default: '26'
+      label:
+        description: Runner label of the test machines (several machines may share it)
+        default: TestPC
+      machine:
+        description: Runner name the job must land on; on another machine it stops before touching anything
+        default: amd-bosgame-8gb
 
 permissions:
   contents: read
@@ -38,6 +44,14 @@ jobs:
           sparse-checkout: |
             scripts/usertest
             src/locales
+      - name: Runner inputs
+        env:
+          LABEL: ${{ inputs.label || 'TestPC' }}
+          MACHINE: ${{ inputs.machine || 'amd-bosgame-8gb' }}
+        run: |
+          for value in "$LABEL" "$MACHINE"; do
+            [[ "$value" =~ ^[A-Za-z0-9._-]{1,64}$ ]] || { echo "::error::label and machine: letters, digits, . _ - only"; exit 1; }
+          done
       - id: versions
         env:
           VERSIONS: ${{ inputs.versions || '26' }}
@@ -114,7 +128,9 @@ jobs:
   play:
     name: Play as a player
     needs: prepare
-    runs-on: [self-hosted, windows, x64, gametest]
+    # Labels pick a runner, not a name: several machines may share the label, so the
+    # first step checks that the job landed on the asked machine.
+    runs-on: [self-hosted, windows, x64, "${{ inputs.label || 'TestPC' }}"]
     timeout-minutes: 360
     defaults:
       run:
@@ -122,6 +138,15 @@ jobs:
         # (execution policy Restricted); lifted for these steps only.
         shell: powershell -NoProfile -ExecutionPolicy Bypass -Command ". '{0}'"
     steps:
+      - name: The asked machine
+        env:
+          MACHINE: ${{ inputs.machine || 'amd-bosgame-8gb' }}
+        run: |
+          if ($env:RUNNER_NAME -ne $env:MACHINE) {
+            Write-Host "::error::The job landed on runner $env:RUNNER_NAME, not $env:MACHINE; nothing was done. Run again, or give $env:MACHINE a label of its own."
+            exit 1
+          }
+          Write-Host "Runner $env:RUNNER_NAME"
       - uses: actions/download-artifact@v8
         with:
           name: usertest-input
