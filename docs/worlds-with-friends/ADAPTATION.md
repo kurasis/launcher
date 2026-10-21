@@ -293,3 +293,12 @@ Other loaders follow in W12.
   logging configuration with its own, so A7 is kept by `forge.logging.file.level=off` and
   `forge.logging.debugFile.level=off`: its log files stay empty; its console lines carry the
   logger name, which the console reader accepts. Offered for 1.21.1 and 26.3.
+- 2026-10-21 — W12 Forge (owner, plan doc): Forge goes the NeoForge way: its installer read
+  for the server side, its server processors run by the launcher. Installers without
+  start-arguments files get a command the launcher builds: Forge 1.12.2 and 1.16.5 from the
+  manifest of the loader JAR the install profile names (`Main-Class`, and a `Class-Path` that
+  may only name files under `libraries/` and `minecraft_server.<version>.jar`); Forge 26.x from
+  its shim's own list and properties, whose bootstrap the launcher starts directly, without the
+  shim's tuning options. Every file a command names is checked before each start. Offered for
+  1.12.2, 1.16.5, 1.20.1 and 26.3; the catalog has no mod for Forge 26.3 yet, so its test starts
+  Forge alone. OptiFine has no server.
