@@ -777,9 +777,10 @@ async fn host_a_world_with_mods() {
     println!("member in, stranger refused");
 
     if matches!(kind, LoaderKind::Fabric | LoaderKind::Quilt) {
-        // Fabric API brings data, which the loader lists as a mod's data
-        // pack; without a mod with data only `vanilla` shows.
-        let packs = data_packs(&server_dir);
+        // Fabric API brings data, which it lists as mods' data packs
+        // (`fabric/<mod id>` on 1.14, `Fabric Mods (Fabric mod)` on 1.19.2);
+        // without a mod with data only `vanilla` shows.
+        let packs = data_packs(&server_dir).to_lowercase();
         println!("data packs: {packs}");
         assert!(packs.contains("fabric"), "Fabric API loaded");
         assert!(!packs.contains("sodium"));
