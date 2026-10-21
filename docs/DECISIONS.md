@@ -2611,8 +2611,10 @@ skins-mod <channel>` there only checks the signature against the public key and
 - **A varied, live list (owner request, 2026-10-21):** the service spreads videos so no
   channel has more than 2 of any 10 in a row (a moved video takes a time just below the
   one before it, so the cursor still holds), and pages are shown in the service's order.
-  Up to 24 streams per language, Helix asked every 2 minutes; while the launcher is shown
-  it asks for live streams every 3 minutes, and ended ones leave the list. Channels can
+  Up to 24 streams per language, Helix asked every 2 minutes: the mixed list and the
+  whole feed show the 6 most watched, the Streams chip pages through all of them. While
+  the launcher is shown it asks for live streams every 3 minutes: ended ones leave the
+  list, and under the Streams chip new ones come in. Channels can
   be put first or hidden from a tile's menu (kept in `feed-channels.json`). Videos played
   from the feed are kept in `feed-watched.json` (the latest 500 ids) and shown dimmed. A
   system notification when a favourite Twitch channel goes live is a setting, off by

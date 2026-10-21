@@ -839,6 +839,11 @@ fn note(id: &str, image: Option<&str>) -> mojang::Note {
 
 /// A feed on a stored state, as if the sources had answered.
 fn app(dir: &std::path::Path) -> Arc<api::App> {
+    app_with(dir, |_| {})
+}
+
+/// The service over a saved state that `change` may alter first.
+fn app_with(dir: &std::path::Path, change: impl FnOnce(&mut Value)) -> Arc<api::App> {
     let picture = format!("{}.jpg", "a".repeat(64));
     let editorial = Editorial::load(crate::EDITORIAL).unwrap();
     let ru_channel = editorial
@@ -872,7 +877,7 @@ fn app(dir: &std::path::Path) -> Arc<api::App> {
         .unwrap(),
     )
     .unwrap();
-    let state = json!({
+    let mut state = json!({
         "versions": [
             {"id": "26.4-snapshot-1", "kind": "snapshot", "date": "2026-10-15T00:00:00Z"},
             {"id": "26.3", "kind": "release", "date": "2026-09-10T00:00:00Z"}
@@ -894,6 +899,7 @@ fn app(dir: &std::path::Path) -> Arc<api::App> {
         },
         "fetched": {"mojang": "2026-10-19T00:00:00Z"}
     });
+    change(&mut state);
     std::fs::write(dir.join("state.json"), serde_json::to_vec(&state).unwrap()).unwrap();
     let feed = feed::Feed::open(dir, editorial, crate::net::client().unwrap(), None, None).unwrap();
     Arc::new(api::App {
@@ -1023,6 +1029,67 @@ async fn the_endless_list_pages_through_everything() {
             .2,
     );
     assert_eq!(all["items"].as_array().unwrap().len(), 3);
+}
+
+#[tokio::test]
+async fn the_mixed_list_shows_only_the_most_watched_streams() {
+    let dir = tempfile::tempdir().unwrap();
+    // Kept most watched first, as `twitch::top` keeps them; the least
+    // watched started last, so by time alone they would come first.
+    let streams: Vec<Value> = (0..10)
+        .map(|i| {
+            json!({"login": format!("user{i}"), "name": "S", "title": "T",
+                   "viewers": 1000 - i, "started": format!("2026-10-19T0{i}:00:00Z")})
+        })
+        .collect();
+    let app = app_with(dir.path(), |state| state["streams"]["ar"] = json!(streams));
+    let logins = |page: &Value| -> Vec<String> {
+        page["items"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .filter_map(|item| item["stream"]["login"].as_str().map(str::to_owned))
+            .collect()
+    };
+    let mixed = json_of(&get(&app, "/v1/page?videos=ar&limit=40").await.2);
+    let mut shown = logins(&mixed);
+    shown.sort();
+    let most_watched: Vec<String> = (0..feed::STREAMS_MIXED)
+        .map(|i| format!("user{i}"))
+        .collect();
+    assert_eq!(shown, most_watched);
+    // Streams with videos are still a mixed list.
+    let some = json_of(
+        &get(&app, "/v1/page?videos=ar&kinds=videos,streams&limit=40")
+            .await
+            .2,
+    );
+    assert_eq!(logins(&some).len(), feed::STREAMS_MIXED);
+    // Under the Streams chip all of them, newest first, a page at a time.
+    let first = json_of(
+        &get(&app, "/v1/page?videos=ar&kinds=streams&limit=8")
+            .await
+            .2,
+    );
+    assert_eq!(logins(&first).len(), 8);
+    assert_eq!(logins(&first)[0], "user9");
+    let next = first["next"].as_str().unwrap();
+    let second = json_of(
+        &get(
+            &app,
+            &format!("/v1/page?videos=ar&kinds=streams&limit=8&before={next}"),
+        )
+        .await
+        .2,
+    );
+    assert_eq!(logins(&second), ["user1", "user0"]);
+    // The whole feed holds the most watched too.
+    let whole = json_of(&get(&app, "/v1/feed?lang=ar").await.2);
+    assert_eq!(
+        whole["streams"].as_array().unwrap().len(),
+        feed::STREAMS_MIXED
+    );
+    assert_eq!(whole["streams"][0]["login"], "user0");
 }
 
 #[test]
