@@ -6,9 +6,9 @@
 # version does what a player does: Accounts -> offline profile, Installations -> New
 # installation -> the version -> Create -> Install -> Play; in the game Singleplayer ->
 # Create New World, a look around, and the window closed. The launcher is driven through
-# UI Automation, the game through window messages (clicks and keys, as a mouse and a
-# keyboard send them), so a locked screen does not stop it. Nothing is changed in the
-# game files or settings. Results go to <Out>/results.json; F2 screenshots and the
+# UI Automation, the game through window messages (mouse clicks, as a mouse sends them),
+# so a locked screen does not stop it. Nothing is changed in the
+# game files or settings. Results go to <Out>/results.json; screenshots and the
 # game's log (machine names replaced) to <Out>/<version>/.
 #
 # Plain ASCII only: Windows PowerShell reads this file in the ANSI code page. The
@@ -41,6 +41,9 @@ namespace UserTest {
     [DllImport("user32.dll")] public static extern bool GetClientRect(IntPtr hwnd, out RECT rect);
     [DllImport("user32.dll")] public static extern bool PostMessage(IntPtr hwnd, uint msg, IntPtr wParam, IntPtr lParam);
     [DllImport("user32.dll")] public static extern bool SetForegroundWindow(IntPtr hwnd);
+    [DllImport("user32.dll")] public static extern IntPtr GetForegroundWindow();
+    [DllImport("user32.dll")] public static extern bool GetWindowRect(IntPtr hwnd, out RECT rect);
+    [DllImport("user32.dll")] public static extern void keybd_event(byte vk, byte scan, uint flags, IntPtr extra);
     [DllImport("user32.dll")] public static extern bool SetProcessDpiAwarenessContext(IntPtr value);
     [DllImport("user32.dll")] public static extern bool SetCursorPos(int x, int y);
     [DllImport("user32.dll")] public static extern void mouse_event(uint flags, uint dx, uint dy, uint data, IntPtr extra);
@@ -194,6 +197,10 @@ function Dump-Launcher([string]$Folder) {
 }
 
 # --- The game, through window messages ------------------------------------------------
+#
+# 26.x reads input through SDL, which gives key presses only to the window that has the
+# keyboard focus, while mouse messages reach it in the background. So the way through the
+# menus is the mouse; keys (F2) are used only when the window could be brought to the front.
 
 $WM_MOUSEMOVE = 0x0200; $WM_LBUTTONDOWN = 0x0201; $WM_LBUTTONUP = 0x0202
 $WM_KEYDOWN = 0x0100; $WM_KEYUP = 0x0101; $WM_CLOSE = 0x0010
@@ -219,12 +226,37 @@ function Gui-Layout([IntPtr]$Hwnd) {
     GuiWidth = [math]::Ceiling($w / $scale); GuiHeight = [math]::Ceiling($h / $scale) }
 }
 
+# Brings the game window to the front (Windows allows it after an Alt press); false on a
+# locked screen or when Windows refuses.
+function Game-Focus([IntPtr]$Hwnd) {
+  [UserTest.Win]::keybd_event(0x12, 0, 0, [IntPtr]::Zero)
+  [UserTest.Win]::keybd_event(0x12, 0, 2, [IntPtr]::Zero)
+  [UserTest.Win]::SetForegroundWindow($Hwnd) | Out-Null
+  Start-Sleep -Milliseconds 300
+  return [UserTest.Win]::GetForegroundWindow() -eq $Hwnd
+}
+
+# A picture of the game window: the game's own F2 screenshot when the window has the
+# focus, and a copy of the screen region (empty on a locked screen) into the results.
+$script:shot = 0
+function Game-Shot([IntPtr]$Hwnd, [string]$Folder, [string]$Name) {
+  $script:shot++
+  if (Game-Focus $Hwnd) { Game-Key $Hwnd 'F2' }
+  try {
+    $rect = New-Object UserTest.Win+RECT
+    [UserTest.Win]::GetWindowRect($Hwnd, [ref]$rect) | Out-Null
+    $w = $rect.Right - $rect.Left; $h = $rect.Bottom - $rect.Top
+    $bitmap = New-Object System.Drawing.Bitmap($w, $h)
+    [System.Drawing.Graphics]::FromImage($bitmap).CopyFromScreen($rect.Left, $rect.Top, 0, 0, $bitmap.Size)
+    $bitmap.Save((Join-Path $Folder ('screen-{0:D2}-{1}.png' -f $script:shot, $Name)), [System.Drawing.Imaging.ImageFormat]::Png)
+  } catch { Say "no screen copy: $($_.Exception.Message)" }
+}
+
 # A click at GUI coordinates.
 function Game-Click([IntPtr]$Hwnd, [double]$GuiX, [double]$GuiY) {
   $layout = Gui-Layout $Hwnd
   $x = [int]($GuiX * $layout.Scale); $y = [int]($GuiY * $layout.Scale)
   $lp = [IntPtr][int64](($y -shl 16) -bor ($x -band 0xFFFF))
-  [UserTest.Win]::SetForegroundWindow($Hwnd) | Out-Null
   [UserTest.Win]::PostMessage($Hwnd, $WM_MOUSEMOVE, [IntPtr]::Zero, $lp) | Out-Null
   Start-Sleep -Milliseconds 200
   [UserTest.Win]::PostMessage($Hwnd, $WM_MOUSEMOVE, [IntPtr]::Zero, $lp) | Out-Null
@@ -417,47 +449,37 @@ try {
       $result.launchSeconds = [int]((Get-Date) - $started).TotalSeconds
       Say "$version : title screen after $($result.launchSeconds) s ($($game.Title))"
       $hwnd = $game.Hwnd
-      # First start: the accessibility welcome screen closes with Escape; the title
-      # screen ignores it.
-      Game-Key $hwnd 'Escape'
-      Start-Sleep -Seconds 2
-      Game-Key $hwnd 'F2'
-
-      # --- Singleplayer -> Create New World --------------------------------------------------
       $layout = Gui-Layout $hwnd
       Say "$version : window $($layout.Width)x$($layout.Height), GUI scale $($layout.Scale)"
+      Game-Shot $hwnd $folder 'start'
+      # First start: the accessibility welcome screen. Its Continue button is alone in
+      # the 33-high footer; on the title screen nothing is there.
+      Game-Click $hwnd ($layout.GuiWidth / 2) ($layout.GuiHeight - 17)
+      Start-Sleep -Seconds 4
+      Game-Shot $hwnd $folder 'title'
+
+      # --- Singleplayer -> Create New World --------------------------------------------------
       $started = Get-Date
       $joined = "$([regex]::Escape($Nick)) joined the game"
       # Singleplayer: the first button under the logo, 200x20 at height/4 + 48.
       Game-Click $hwnd ($layout.GuiWidth / 2) ([math]::Floor($layout.GuiHeight / 4) + 48 + 10)
-      Start-Sleep -Seconds 4
-      Game-Key $hwnd 'F2'
+      Start-Sleep -Seconds 5
+      Game-Shot $hwnd $folder 'create-world'
       # With no worlds the game opens Create New World at once; its Create button is the
-      # left of two 150-wide buttons in the footer.
+      # left of two 150-wide buttons, 8 apart, in the 33-high footer.
       $createX = [math]::Floor(($layout.GuiWidth - 308) / 2) + 75
       Game-Click $hwnd $createX ($layout.GuiHeight - 17)
       $inWorld = Wait-For { if ((Log-Text $log) -match $joined) { $true } } 180
       if (-not $inWorld) {
-        # The keyboard way: Tab through the buttons is version dependent, so the
-        # screen is shot and Enter tried on the focused button.
-        Game-Key $hwnd 'F2'
-        Say "$version : no world after the clicks; trying the keyboard"
-        Game-Key $hwnd 'Tab'; Game-Key $hwnd 'Enter'
-        $inWorld = Wait-For { if ((Log-Text $log) -match $joined) { $true } } 120
-      }
-      if (-not $inWorld) {
         $result.world = 'failed'; $result.note = 'did not get into a world'
-        Game-Key $hwnd 'F2'
+        Game-Shot $hwnd $folder 'no-world'
       } else {
         $result.world = 'ok'
         $result.worldSeconds = [int]((Get-Date) - $started).TotalSeconds
         Say "$version : in the world after $($result.worldSeconds) s"
-        # A look around: the game pauses when its window is not in front, so the
-        # pause menu is closed first.
-        Start-Sleep -Seconds 10
-        Game-Key $hwnd 'Escape'
-        Start-Sleep -Seconds 10
-        Game-Key $hwnd 'F2'
+        # A look around; without the focus the game shows its pause menu over the world.
+        Start-Sleep -Seconds 15
+        Game-Shot $hwnd $folder 'world'
         Start-Sleep -Seconds 10
       }
 

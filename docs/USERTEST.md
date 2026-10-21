@@ -17,11 +17,14 @@ that machine has makes the pick exact.
 3. In the launcher window, through UI Automation as a player clicks: Accounts → Offline
    and a profile `Tester`; then for each version Installations → New installation → the
    version → Create installation → Install (allowing the download if asked) → Play.
-4. In the game, through window messages (mouse and keys, so a locked screen does not stop
-   it): Escape for the first-start welcome screen, Singleplayer, Create New World, ten
-   seconds in the world, then the window is closed. The game log must show the player
-   joining; the game must exit with 0 and leave no crash report. F2 screenshots are taken
-   along the way.
+4. In the game, through window messages: mouse clicks only, since 26.x reads input
+   through SDL, which gives keys only to the focused window, while mouse messages reach
+   it in the background (so a locked screen does not stop it). Continue on the
+   first-start accessibility screen, Singleplayer, Create (the world list is empty, so
+   the game opens Create New World at once), some seconds in the world, then the window
+   is closed. The game log must show the player joining; the game must exit with 0 and
+   leave no crash report. Screenshots are taken along the way (the game's F2 when its
+   window could be brought to the front, else a copy of the screen region).
 
 The run page shows a table per version (install, launch, world, exit, log errors). The
 artifact `usertest-results` has a folder per version with the screenshots, the game's
