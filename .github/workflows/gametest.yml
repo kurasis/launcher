@@ -14,7 +14,7 @@ on:
   workflow_dispatch:
     inputs:
       versions:
-        description: Game versions (comma-separated; 26.3, 1.21.11, 1.21.10, 1.21.8, 1.21.4, 1.21.1, 1.20.6, 1.20.4, 1.20.1, 1.19.4, 1.19.2, 1.18.2, 1.17.1, 1.16.5, 1.15.2, 1.14.4, 1.12.2)
+        description: Game versions (comma-separated; 26.3, 1.21.11, 1.21.10, 1.21.8, 1.21.4, 1.21.1, 1.20.6, 1.20.4, 1.20.1, 1.19.4, 1.19.2, 1.18.2, 1.17.1, 1.16.5, 1.15.2, 1.14.4, 1.12.2, 1.8.9, 1.7.10)
         default: 26.3,1.21.11,1.21.1,1.20.1,1.12.2
       loaders:
         description: Loaders (comma-separated; vanilla, fabric, quilt, neoforge, forge)
@@ -62,7 +62,7 @@ jobs:
           allowed = {
               "VERSIONS": ["26.3", "1.21.11", "1.21.10", "1.21.8", "1.21.4", "1.21.1", "1.20.6", "1.20.4",
                            "1.20.1", "1.19.4", "1.19.2", "1.18.2", "1.17.1", "1.16.5",
-                           "1.15.2", "1.14.4", "1.12.2"],
+                           "1.15.2", "1.14.4", "1.12.2", "1.8.9", "1.7.10"],
               "LOADERS": ["vanilla", "fabric", "quilt", "neoforge", "forge"],
               "MODS": ["none", "medium"],
           }
@@ -83,11 +83,11 @@ jobs:
               sys.exit("minutes: a number")
           if not 0.5 <= minutes <= 60:
               sys.exit("minutes: 0.5 to 60")
-          # 1.12.2 is Forge only, 1.14.4 to 1.20.1 have no NeoForge build; the game with
+          # 1.12.2 and older are Forge only, 1.14.4 to 1.20.1 have no NeoForge build; the game with
           # no loader plays without mods.
           legacy = ["1.16.5", "1.17.1", "1.18.2", "1.19.2", "1.19.4", "1.20.1"]
           def playable(version, loader, mods):
-              if version == "1.12.2":
+              if version in ("1.12.2", "1.8.9", "1.7.10"):
                   return loader == "forge"
               if version in legacy + ["1.14.4", "1.15.2"] and loader == "neoforge":
                   return False
@@ -96,7 +96,7 @@ jobs:
           bands = {"1.21.1": "mc-1.21.1", "1.21.4": "mc-1.21.2-1.21.4", "1.21.8": "mc-1.21.5-1.21.8",
                    "1.21.10": "mc-1.21.9-1.21.10", "1.21.11": "mc-1.21.11"}
           def folders(version):
-              if version in ("26.3", "1.12.2"):
+              if version in ("26.3", "1.12.2", "1.8.9", "1.7.10"):
                   return [f"mc-{version}", f"gametest:mc-{version}"]
               if version in legacy:
                   # One Fabric jar (built against 1.20.1) and two Forge jars serve 1.16 to
@@ -128,7 +128,7 @@ jobs:
                       scenarios.append({"version": version, "loader": loader, "mods": mods, "skin": s,
                                         "name": f"{version} {loader} {mods} {s}"})
           if not scenarios:
-              sys.exit("no scenario: 1.12.2 is Forge only, 1.14.4 to 1.20.1 have no NeoForge, vanilla plays without mods")
+              sys.exit("no scenario: 1.12.2 and older are Forge only, 1.14.4 to 1.20.1 have no NeoForge, vanilla plays without mods")
           with open(os.environ["GITHUB_OUTPUT"], "a") as out:
               out.write(f"scenarios={json.dumps(scenarios)}\n")
               out.write(f"minutes={minutes:g}\n")
@@ -165,7 +165,7 @@ jobs:
           set -o pipefail
           for attempt in 1 2; do
             ./gradlew --no-daemon "-Ponly=$ONLY" build 2>&1 | tee gradle.log && exit 0
-            grep -qE "Connection reset|Connection timed out|HTTP response code: (429|5[0-9][0-9])" gradle.log || exit 1
+            grep -qE "Connection reset|Connection timed out|(HTTP response code:|status code) (429|5[0-9][0-9])" gradle.log || exit 1
             echo "A download was cut off; trying once more"
           done
           exit 1

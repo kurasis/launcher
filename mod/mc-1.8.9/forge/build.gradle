@@ -1,0 +1,71 @@
+plugins {
+    id 'java'
+    id 'xyz.wagyourtail.unimined' version '1.4.1'
+}
+
+// Forge 1.8.9 runs the same game code as 1.12.2 for what the mod uses (the SRG names of
+// every method it calls are the same), so this jar is mc-1.12.2's sources built against
+// 1.8.9 by Unimined, with a loading plugin of its own that names 1.8.9.
+base {
+    archivesName = "launcherskins-forge-${minecraft_version}"
+}
+
+java {
+    toolchain { languageVersion = JavaLanguageVersion.of(8) }
+}
+
+def shared = file("${rootDir}/mc-1.12.2/forge/src/main/java")
+sourceSets.main.java {
+    srcDir "${rootDir}/core/src/main/java"
+    srcDir shared
+    // This folder's own LoadingPlugin takes the place of mc-1.12.2's.
+    exclude { it.file == new File(shared, 'app/launcher/skins/coremod/LoadingPlugin.java') }
+}
+
+repositories {
+    // MCP's mappings have no POM; Maven Central answers Forge's groups with 429s.
+    exclusiveContent {
+        forRepository {
+            maven {
+                url = 'https://maven.minecraftforge.net/'
+                metadataSources { mavenPom(); artifact() }
+            }
+        }
+        filter {
+            includeGroupByRegex 'de\\.oceanlabs.*'
+            includeGroupByRegex 'net\\.minecraftforge.*'
+        }
+    }
+    mavenCentral()
+}
+
+unimined.minecraft {
+    version minecraft_version
+    mappings {
+        searge()
+        mcp('stable', '22-1.8.9')
+    }
+    minecraftForge {
+        loader forge_version
+    }
+}
+
+tasks.withType(JavaCompile).configureEach {
+    options.encoding = 'UTF-8'
+}
+
+jar {
+    manifest {
+        attributes(
+            'FMLCorePlugin': 'app.launcher.skins.coremod.LoadingPlugin',
+            'FMLCorePluginContainsFMLMod': 'true'
+        )
+    }
+}
+
+processResources {
+    inputs.property 'version', project.version
+    filesMatching('mcmod.info') {
+        expand version: project.version
+    }
+}

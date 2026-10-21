@@ -1,0 +1,35 @@
+plugins {
+    id 'java'
+    id 'com.gtnewhorizons.retrofuturagradle' version '2.0.6'
+}
+
+// The test bot for Forge 1.7.10 (docs/GAMETEST.md), on Forge's client tick event like
+// the 1.12.2 one.
+base {
+    archivesName = "launchergametest-forge-${minecraft_version}"
+}
+
+java {
+    toolchain { languageVersion = JavaLanguageVersion.of(8) }
+}
+
+sourceSets.main {
+    java.srcDir "${rootDir}/gametest/core/src/main/java"
+}
+
+minecraft {
+    mcVersion = minecraft_version
+    mcpMappingChannel = 'stable'
+    mcpMappingVersion = '12'
+}
+
+tasks.withType(JavaCompile).configureEach {
+    options.encoding = 'UTF-8'
+}
+
+processResources {
+    inputs.property 'version', project.version
+    filesMatching('mcmod.info') {
+        expand version: project.version
+    }
+}

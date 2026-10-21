@@ -71,6 +71,11 @@ public interface Game {
     /** Whether the player is drawn with the slim model; null if unknown. */
     Boolean slim();
 
+    /** False before 1.8: one player model, so every skin is drawn wide. */
+    default boolean hasSlimModel() {
+        return true;
+    }
+
     /** Asks the game to close normally. */
     void quit();
 }

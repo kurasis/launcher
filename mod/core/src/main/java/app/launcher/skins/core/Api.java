@@ -4,6 +4,7 @@ import com.google.gson.JsonArray;
 import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
 import com.google.gson.JsonParser;
+import com.google.gson.JsonPrimitive;
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
@@ -89,7 +90,7 @@ public final class Api {
         JsonArray list = new JsonArray();
         for (String nick : nicks) {
             if (Nicks.valid(nick) && list.size() < MAX_NICKS) {
-                list.add(nick);
+                list.add(new JsonPrimitive(nick));
             }
         }
         Map<String, Profile> found = new HashMap<>();
@@ -154,7 +155,7 @@ public final class Api {
 
     private static JsonElement json(byte[] body) throws IOException {
         try {
-            @SuppressWarnings("deprecation") // JsonParser.parseString is newer than 1.12.2's Gson.
+            @SuppressWarnings("deprecation") // JsonParser.parseString is newer than 1.8.9's Gson.
             JsonElement parsed = new JsonParser().parse(new String(body, StandardCharsets.UTF_8));
             return parsed;
         } catch (RuntimeException e) {
