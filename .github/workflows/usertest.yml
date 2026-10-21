@@ -91,7 +91,7 @@ jobs:
               "navHome": "nav.home", "navAccount": "nav.account", "modeOffline": "accounts.modeOffline",
               "nameLabel": "accounts.nameLabel", "addProfile": "accounts.addProfile",
               "create": "instances.create", "createSubmit": "createForm.submit",
-              "search": "createForm.search", "selected": "createForm.selected",
+              "search": "createForm.search", "selected": "createForm.selected", "cancel": "createForm.cancel",
               "loader": "loaders.loader", "loaderFabric": "loaders.names.fabric",
               "loaderQuilt": "loaders.names.quilt", "loaderForge": "loaders.names.forge",
               "loaderNeoForge": "loaders.names.neoforge",

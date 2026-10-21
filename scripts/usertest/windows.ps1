@@ -316,6 +316,16 @@ function Dump-Launcher([string]$Folder) {
   Launcher-Screenshot (Join-Path $Folder 'launcher.png')
 }
 
+# The end of the launcher's own log, for a failed install: machine names and any IP
+# address replaced (the repository is public).
+function Launcher-Log([string]$Folder) {
+  $file = Join-Path $data 'logs\launcher.log'
+  if (-not (Test-Path $file)) { return }
+  $lines = @((Log-Text $file) -split "`r?`n" | Select-Object -Last 150)
+  $text = (Scrub ($lines -join "`n")) -replace '\b\d{1,3}(\.\d{1,3}){3}\b', '<ip>' -replace '\b[0-9a-fA-F]{1,4}(:[0-9a-fA-F]{0,4}){3,7}\b', '<ip>'
+  [IO.File]::WriteAllText((Join-Path $Folder 'launcher-log.txt'), $text, (New-Object Text.UTF8Encoding $false))
+}
+
 # --- The game, with the mouse and the keyboard ------------------------------------------
 #
 # 26.x reads input through SDL3, which takes no posted mouse messages and keys only while
@@ -558,6 +568,9 @@ try {
       Say "$label : new installation"
       Get-Launcher
       Press $ui.navHome 'Installations tab'
+      # A form left open by an item that stopped halfway is closed first.
+      $open = Find-Pressable $ui.cancel
+      if ($open) { Click $open; Start-Sleep -Seconds 1 }
       Press $ui.create 'New installation'
       if ($loader -ne 'vanilla') {
         $box = Wait-For { Find-Combo $ui.loader } 20
@@ -572,8 +585,9 @@ try {
       # As a player finds a version: typed into the search box above the list.
       $search = Wait-For { Find-Input $ui.search } 20
       if ($search) { Type-Into $search $version; Start-Sleep -Seconds 1 } else { Say 'no version search box' }
-      # The row reads "<id><tags><date>": the id ends where a letter, a space or the date starts.
-      $pattern = "^$([regex]::Escape($version))(?=$|\s|[^\d.]|20\d\d-)"
+      # A version row reads "<id><tags><date>" (an installation card in the list beside
+      # it starts with the id too, but has no date at the end).
+      $pattern = "^$([regex]::Escape($version))((?![\d.])[^\r\n]*)?\d{4}-\d\d-\d\d$"
       $row = Wait-For {
         foreach ($candidate in $script:main.FindAll($Scope::Descendants, $Any)) {
           try { if ($candidate.Current.IsKeyboardFocusable -and $candidate.Current.Name -match $pattern) { return $candidate } } catch { }
@@ -761,7 +775,10 @@ try {
       if ($result.note -eq '') { $result.note = $_.Exception.Message }
       $leftover = Game-Window
       if ($leftover) { Stop-Process -Id $leftover.Process.Id -Force -ErrorAction SilentlyContinue }
-      if ($result.install -ne 'ok' -and $script:main) { try { Dump-Launcher $folder } catch { } }
+      if ($result.install -ne 'ok') {
+        if ($script:main) { try { Dump-Launcher $folder } catch { } }
+        Launcher-Log $folder
+      }
     } finally {
       $passed = $result.world -eq 'ok' -and $result.exit -eq 'ok'
       if ($gameDir -and (Test-Path $log)) {
