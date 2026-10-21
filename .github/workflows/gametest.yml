@@ -210,27 +210,18 @@ jobs:
           retention-days: 3
 
   play:
-    name: Play ${{ matrix.scenario.name }}
+    # All scenarios in one job: the test machine downloads the jars, the harness and
+    # the actions once per run and uploads the results once, not once per scenario.
+    name: Play the scenarios
     needs: [plan, jars, harness]
     runs-on: [self-hosted, windows, x64, gametest]
-    timeout-minutes: 120
-    strategy:
-      fail-fast: false
-      max-parallel: 1
-      matrix:
-        scenario: ${{ fromJSON(needs.plan.outputs.scenarios) }}
+    timeout-minutes: 1440
     defaults:
       run:
         # Windows PowerShell as the runner's user runs no script files by
         # default (execution policy Restricted); the policy is lifted for these
         # steps only, the machine's setting stays as it is.
         shell: powershell -NoProfile -ExecutionPolicy Bypass -Command ". '{0}'"
-    env:
-      GAMETEST_VERSION: ${{ matrix.scenario.version }}
-      GAMETEST_LOADER: ${{ matrix.scenario.loader }}
-      GAMETEST_MODS: ${{ matrix.scenario.mods }}
-      GAMETEST_SKIN: ${{ matrix.scenario.skin }}
-      GAMETEST_MINUTES: ${{ needs.plan.outputs.minutes }}
     steps:
       - uses: actions/download-artifact@v8
         with:
@@ -241,6 +232,9 @@ jobs:
           name: gametest-harness
           path: gt/bin
       - name: Play
+        env:
+          SCENARIOS: ${{ needs.plan.outputs.scenarios }}
+          GAMETEST_MINUTES: ${{ needs.plan.outputs.minutes }}
         run: |
           $ErrorActionPreference = 'Stop'
           $jars = New-Item -ItemType Directory -Force gt/jars
@@ -250,20 +244,43 @@ jobs:
           $env:LAUNCHER_LIVE_ROOT = $env:GAMETEST_ROOT
           $env:GAMETEST_JARS = $jars.FullName
           $env:GAMETEST_OUT = (New-Item -ItemType Directory -Force gt/out).FullName
-          & gt/bin/live_gametest.exe --ignored --nocapture --test-threads=1
-          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          $failed = 0
+          # One scenario after another; a failed one does not stop the rest.
+          foreach ($s in ($env:SCENARIOS | ConvertFrom-Json)) {
+            $env:GAMETEST_VERSION = $s.version
+            $env:GAMETEST_LOADER = $s.loader
+            $env:GAMETEST_MODS = $s.mods
+            $env:GAMETEST_SKIN = $s.skin
+            Write-Host "::group::$($s.name)"
+            & gt/bin/live_gametest.exe --ignored --nocapture --test-threads=1
+            $code = $LASTEXITCODE
+            Write-Host "::endgroup::"
+            if ($code -ne 0) {
+              $failed++
+              Write-Host "::error::$($s.name) failed"
+            }
+            Add-Content gt/results.txt "$($s.name)`t$code"
+          }
+          if ($failed) { exit 1 }
       - name: Summary
         if: always()
         run: |
+          # Windows PowerShell's utf8 adds a byte-order mark; the summary takes plain UTF-8.
+          $utf8 = New-Object Text.UTF8Encoding $false
+          $text = "| Scenario | Result |`n| --- | --- |`n"
+          foreach ($line in (Get-Content gt/results.txt -ErrorAction SilentlyContinue)) {
+            $name, $code = $line -split "`t"
+            $text += "| $name | $(if ($code -eq '0') { 'passed' } else { 'failed' }) |`n"
+          }
+          [IO.File]::AppendAllText($env:GITHUB_STEP_SUMMARY, "$text`n", $utf8)
           Get-ChildItem gt/out -Recurse -Filter summary.md -ErrorAction SilentlyContinue |
             ForEach-Object {
-              # Windows PowerShell's utf8 adds a byte-order mark; the summary takes plain UTF-8.
-              [IO.File]::AppendAllText($env:GITHUB_STEP_SUMMARY, [IO.File]::ReadAllText($_.FullName), (New-Object Text.UTF8Encoding $false))
+              [IO.File]::AppendAllText($env:GITHUB_STEP_SUMMARY, [IO.File]::ReadAllText($_.FullName), $utf8)
             }
       - uses: actions/upload-artifact@v7
         if: always()
         with:
-          name: gametest-${{ matrix.scenario.version }}-${{ matrix.scenario.loader }}-${{ matrix.scenario.mods }}
+          name: gametest-results
           path: gt/out
           retention-days: 7
           if-no-files-found: ignore
