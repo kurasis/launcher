@@ -2509,6 +2509,12 @@ archive from the Package workflow, upload it to
   names are not kept.
 - **Sites the owner names are paced** at 20 requests a minute an exit, rested after a
   refusal like the others; optifine.net is a listed host.
+- **The owner adds catalog projects** (Ai, 2026-10-21): `lapi-mods add <address>...`
+  (Actions `task=add`) adds up to 32 Modrinth or CurseForge projects by their address,
+  as a player's "Add to the catalog" does, under the account `owner`; names are refused,
+  since a search asks someone to choose. `add --status` counts them by state.
+  OptiFine's icon is one made for the catalog (`services/mods/assets`), since its site
+  has none.
 
 ## D-067 — Start page feed at feed.lapi.sh
 

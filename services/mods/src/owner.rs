@@ -11,12 +11,14 @@
 //! lapi-mods virustotal status         VirusTotal's quota and queue
 //! lapi-mods virustotal check <SHA-256 or SHA-1>
 //!                                     asks VirusTotal about a file now
+//! lapi-mods add <address>...          adds projects as a player would
+//! lapi-mods add --status              how the owner's additions went
 //! ```
 //!
 //! `find` and `review` show names and titles: they are for the owner's
 //! terminal. `block`, `unblock`, `review --count` and `virustotal` print
-//! fixed words, numbers and hashes only, so the workflow may run them in its
-//! public log.
+//! fixed words, numbers and hashes only, and `add` the catalog addresses it
+//! was given, so the workflow may run them in its public log.
 
 use std::io::Write;
 use std::path::PathBuf;
@@ -26,6 +28,11 @@ use crate::Urls;
 use crate::blobs::{Blobs, is_sha256};
 use crate::r2::{self, Bucket, Which};
 use crate::store::Store;
+
+/// The account the owner's additions are made under.
+const OWNER: &str = "owner";
+/// Addresses one `add` takes (the workflow passes at most 32 arguments).
+const MAX_ADD: usize = 32;
 
 /// The addresses a kept file is served at: under each of its names on our
 /// disk, and by its hash in R2.
@@ -499,6 +506,75 @@ impl Owner<'_> {
         if let Some(row) = self.store.virustotal(&sha256)? {
             lines.push(crate::virustotal::line(&row, true));
         }
+        Ok(lines)
+    }
+
+    /// Adds projects to the catalog by their Modrinth or CurseForge address,
+    /// as "Add to the catalog" does for a player (D-066); names are refused,
+    /// since a search asks someone to choose.
+    pub fn add(&self, inputs: &[String]) -> Result<Vec<String>, String> {
+        use crate::input::Input;
+        if inputs.is_empty() || inputs.len() > MAX_ADD {
+            return Err(format!("give 1 to {MAX_ADD} addresses"));
+        }
+        let mut addresses = Vec::new();
+        for input in inputs {
+            let text = input.trim();
+            match crate::input::parse(text) {
+                Some(Input::Name(_) | Input::CurseForgeFile) | None => {
+                    return Err(
+                        "each is the address of a project on Modrinth or CurseForge".to_owned()
+                    );
+                }
+                Some(_) => addresses.push(text),
+            }
+        }
+        let mut lines = Vec::new();
+        for text in addresses {
+            let id = uuid::Uuid::now_v7().to_string();
+            self.store.create_request(&id, OWNER, text, self.now)?;
+            self.store.enqueue(
+                &format!("resolve:{id}"),
+                "resolve",
+                &serde_json::json!({ "request": id }),
+                Some(&id),
+                None,
+                self.now,
+                None,
+            )?;
+            lines.push(format!("queued {text}"));
+        }
+        Ok(lines)
+    }
+
+    /// How the owner's additions went: how many in each state, and the
+    /// addresses of those that failed with why.
+    pub fn add_status(&self) -> Result<Vec<String>, String> {
+        let requests = self.store.requests_of(OWNER, 1000)?;
+        let mut states = std::collections::BTreeMap::<&str, usize>::new();
+        let mut lines = Vec::new();
+        for request in &requests {
+            *states.entry(request.state.as_str()).or_default() += 1;
+            if request.state == "failed" {
+                lines.push(format!(
+                    "failed {} ({})",
+                    request.input,
+                    request.error.as_deref().unwrap_or("?")
+                ));
+            }
+        }
+        let counts = states
+            .iter()
+            .map(|(state, n)| format!("{state} {n}"))
+            .collect::<Vec<_>>();
+        lines.insert(
+            0,
+            if counts.is_empty() {
+                "no additions yet".to_owned()
+            } else {
+                counts.join(", ")
+            },
+        );
         Ok(lines)
     }
 

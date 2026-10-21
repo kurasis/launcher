@@ -21,7 +21,9 @@ name: Mods service
 # numbers and that hash only (docs/MODS-CATALOG.md). task=external runs
 # `lapi-mods external` with `args`, a JSON array of its arguments (projects
 # from sites that are not catalogs, such as OptiFine): it prints fixed words,
-# numbers and the owner's names of projects. The secrets
+# numbers and the owner's names of projects. task=add adds projects by
+# their Modrinth or CurseForge address (`args` a JSON array of them, or
+# ["--status"]) and prints those addresses. The secrets
 # LAPI_MODS_CF_ZONE and LAPI_MODS_CF_TOKEN (a token that may only purge the
 # zone's cache) let a block clear the file from Cloudflare's cache. The
 # secrets LAPI_MODS_R2_ACCOUNT, LAPI_MODS_R2_KEY and LAPI_MODS_R2_SECRET copy
@@ -54,14 +56,14 @@ on:
       task:
         description: deploy, counts of the catalog, a probe of CurseForge, or an owner's command
         type: choice
-        options: [deploy, counts, probe, block, unblock, review-count, external, virustotal]
+        options: [deploy, counts, probe, block, unblock, review-count, external, virustotal, add]
         default: deploy
       hash:
         description: for block and unblock, the file's SHA-256 or SHA-1
         type: string
         default: ''
       args:
-        description: 'for external and virustotal, its arguments as a JSON array, such as ["add", "optifine"] or ["status"]'
+        description: 'for external, virustotal and add, its arguments as a JSON array, such as ["add", "optifine"], ["status"] or ["https://modrinth.com/mod/sodium"]'
         type: string
         default: ''
 
@@ -287,7 +289,7 @@ jobs:
     name: Owner's command
     if: >-
       github.event_name == 'workflow_dispatch'
-      && contains(fromJSON('["block", "unblock", "review-count", "external", "virustotal"]'), inputs.task)
+      && contains(fromJSON('["block", "unblock", "review-count", "external", "virustotal", "add"]'), inputs.task)
     # It changes what players get: the same approval as a deploy.
     environment: production
     runs-on: ubuntu-24.04
@@ -297,8 +299,8 @@ jobs:
         with:
           ssh-key: ${{ secrets.SSH_KEY }}
           known-hosts: ${{ secrets.SSH_KNOWN_HOSTS }}
-      # These print fixed words, numbers, the hash given and the owner's names
-      # of projects only.
+      # These print fixed words, numbers, the hash given, the owner's names
+      # of projects and the catalog addresses given to add only.
       - name: Run
         env:
           TARGET: ${{ secrets.SSH_USER }}@${{ secrets.SSH_HOST }}
@@ -314,7 +316,7 @@ jobs:
               command="$TASK ${HASH,,}"
               ;;
             review-count) command="review --count" ;;
-            external|virustotal)
+            external|virustotal|add)
               # The arguments go on the standard input as JSON, never
               # through a shell; the service checks each one again.
               printf '%s' "$ARGS" | jq -e 'type == "array" and length <= 32

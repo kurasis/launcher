@@ -6127,3 +6127,57 @@ fn virustotal_through_curl_keeps_the_key_off_the_command_line() {
         Answer::Failed
     );
 }
+
+#[tokio::test]
+async fn the_owner_adds_projects_by_their_address() {
+    let t = setup();
+    modrinth_site(&t.sites);
+    let purged = Purged::default();
+    let owner = owner(&t, &purged);
+    assert_eq!(owner.add_status().unwrap(), vec!["no additions yet"]);
+    let added = owner
+        .add(&["https://modrinth.com/mod/sodium".to_owned()])
+        .unwrap();
+    assert_eq!(added, vec!["queued https://modrinth.com/mod/sodium"]);
+    t.drain().await;
+    let (status, project) = t.get("/v1/projects/sodium").await;
+    assert_eq!(status, StatusCode::OK, "{project}");
+    assert_eq!(owner.add_status().unwrap(), vec!["ready 1"]);
+}
+
+#[test]
+fn the_owner_adds_only_addresses_of_projects() {
+    let t = setup();
+    let purged = Purged::default();
+    let owner = owner(&t, &purged);
+    let one = |text: &str| owner.add(&[text.to_owned()]);
+    for junk in [
+        "",
+        "sodium",
+        "https://example.com/mod/sodium",
+        "https://edge.forgecdn.net/files/1/2/a.jar",
+        "javascript:alert(1)",
+        "https://modrinth.com/mod/so\ndium",
+        &"x".repeat(600),
+    ] {
+        assert!(one(junk).is_err(), "{junk:?}");
+    }
+    assert!(owner.add(&[]).is_err());
+    let many = vec!["https://modrinth.com/mod/sodium".to_owned(); 33];
+    assert!(owner.add(&many).is_err());
+    // A refused list queues none of it.
+    let mixed = vec![
+        "https://modrinth.com/mod/sodium".to_owned(),
+        "sodium".to_owned(),
+    ];
+    assert!(owner.add(&mixed).is_err());
+    assert_eq!(owner.add_status().unwrap(), vec!["no additions yet"]);
+}
+
+#[test]
+fn optifine_has_an_icon_of_its_own() {
+    let card = crate::external::Card::optifine(3);
+    let icon = card.icon.as_deref().unwrap();
+    assert!(crate::fetch::picture_site(icon).is_some(), "{icon}");
+    assert_eq!(card.project(now()).icon_url.as_deref(), Some(icon));
+}

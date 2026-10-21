@@ -79,6 +79,8 @@ On the server, as `sudo -u lapi-mods /home/www/lapi/mods/current/lapi-mods <comm
 | `remove <project> [reason]`                      | at its author's request: the project leaves search and the API for good, files only it needs are held back                    |
 | `forget <SHA-256> [--yes]`                       | deletes a held file for good (asks for `--yes`); the catalog never fetches it again                                           |
 | `restore`                                        | brings back to the disk, checked by SHA-256, the files only R2 still has                                                      |
+| `add <address>...`                               | adds up to 32 projects by their Modrinth or CurseForge address, as a player's "Add to the catalog" does                       |
+| `add --status`                                   | the owner's additions by state, and those that failed with why                                                                |
 
 Projects from sites that are not catalogs (D-066, external source) are added by these
 commands only:
@@ -112,7 +114,11 @@ fixed words, numbers and the hash only; a reason can be given over SSH only.
 `task=external` runs `external` with `args`, its arguments as a JSON array (for
 example `["add", "optifine"]`, `["days", "optifine", "3"]` or `["trust", "optifine", "on"]`); they reach the service on
 its standard input, never through a shell. `task=virustotal` runs `virustotal` the same
-way (`["status"]` or `["check", "<hash>"]`).
+way (`["status"]` or `["check", "<hash>"]`), and `task=add` runs `add` (a list of
+addresses, or `["--status"]`).
+
+OptiFine's icon is made for the catalog (`services/mods/assets/optifine-icon.png`): its
+site has none.
 
 ## curl-impersonate
 
