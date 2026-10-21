@@ -89,8 +89,9 @@ commands only:
 | `external manual <slug> --title T --kind K --page URL [--summary S] [--icon URL] [--days N]`     | adds or changes a project described by hand (checked every 7 days unless set)   |
 | `external version <project> --file URL --game G[,G] [--loader L[,L]] [--number N] [--channel C]` | adds a version of a project described by hand: one file, kept here at once      |
 | `external days <project> <N or default>`                                                         | days between checks, 0 never; for a Modrinth or CurseForge project, the longest |
+| `external trust <project> on\|off`                                                               | trusts its files: one the scanner only suspects is served (malware stays held)  |
 | `external check <project>`                                                                       | checks it now                                                                   |
-| `external list`                                                                                  | the owner's projects: kind, days, versions, versions kept, last read            |
+| `external list`                                                                                  | the owner's projects: kind, days, versions, versions kept, trust, last read     |
 
 Kinds are `mod`, `modpack`, `resourcepack`, `shader`, `datapack` and `world`; channels
 `release`, `beta` and `alpha`. A file must be a `.jar`, `.zip` or `.mrpack` on an HTTPS
@@ -101,7 +102,7 @@ Without SSH, Actions → Mods service → Run workflow with `task=block` or `tas
 the file's hash, or `task=review-count`. They wait for the production approval and print
 fixed words, numbers and the hash only; a reason can be given over SSH only.
 `task=external` runs `external` with `args`, its arguments as a JSON array (for
-example `["add", "optifine"]` or `["days", "optifine", "3"]`); they reach the service on
+example `["add", "optifine"]`, `["days", "optifine", "3"]` or `["trust", "optifine", "on"]`); they reach the service on
 its standard input, never through a shell.
 
 ## curl-impersonate

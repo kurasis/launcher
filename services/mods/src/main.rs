@@ -194,7 +194,8 @@ fn main() -> std::process::ExitCode {
         // input: the workflow passes them so, never through a shell.
         Some("external") => external_args(&args[1..]).and_then(|given| {
             let store = open()?;
-            for line in external::command(&store, &given, import::now())? {
+            let blobs = blobs::Blobs::open(&data(), DEFAULT_QUOTA_GB * blobs::GB, MIN_FREE)?;
+            for line in external::command(&store, &blobs, &given, import::now())? {
                 println!("{line}");
             }
             Ok(())

@@ -2486,6 +2486,14 @@ archive from the Package workflow, upload it to
   1 to 365 (0: never; a check by hand still runs). External projects use it as their
   time (OptiFine 3 days, others 7 unless set); for a Modrinth or CurseForge project it is
   the longest time between checks (`lapi-mods external days <project> <N|default>`).
+- **Trust, each project its own** (Ai, 2026-10-21): the scanner suspects OptiFine's
+  jars (its installer loads code, reaches the network and runs programs by design), so
+  every new build waited for an `unblock`. `lapi-mods external trust <project> on`
+  (`external_project.trusted`) lets go its held files the scanner only suspects, and from
+  then on such a file of its own versions (source `external`) is served when it is kept
+  or rescanned, as if the owner unblocked it (`allowed`, review closed, `trust` in the
+  journal). A known malware marker and the owner's block hold it all the same. `off`
+  stops it for new files; files let go already stay served (`block` takes one back).
 - **Sites the owner names are paced** at 20 requests a minute an exit, rested after a
   refusal like the others; optifine.net is a listed host.
 

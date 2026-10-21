@@ -1416,6 +1416,7 @@ pub async fn rescan(app: &App, limit: i64) -> Result<usize, String> {
             );
             if verdict.level == crate::scan::Level::Suspicious {
                 app.store.add_review("scan", &sha256, now())?;
+                trusted(app, &sha256)?;
             }
         }
     }
@@ -1518,6 +1519,15 @@ fn join_twins(app: &App, version: &str, sha256: &str, sha1: &str) -> Result<(), 
     Ok(())
 }
 
+/// A file of a project the owner trusts is not held for what the scanner
+/// only suspects (external.rs `trust`).
+fn trusted(app: &App, sha256: &str) -> Result<(), String> {
+    if crate::owner::release_trusted(&app.store, &app.blobs, None, Some(sha256), now())? > 0 {
+        eprintln!("lapi-mods: let a held file of a trusted project go");
+    }
+    Ok(())
+}
+
 async fn files(app: &App, version: &str, request: Option<&str>) -> Result<(), JobError> {
     let mut rows = app.store.files(version)?;
     let outside = app.store.version_source(version)?.as_deref() == Some(external::SOURCE);
@@ -1537,6 +1547,9 @@ async fn files(app: &App, version: &str, request: Option<&str>) -> Result<(), Jo
                 &kept,
                 file.sha1.as_deref().unwrap_or_default(),
             )?;
+            if outside {
+                trusted(app, &kept)?;
+            }
             continue;
         }
         let declared = u64::try_from(file.size).unwrap_or(0);
@@ -1571,6 +1584,9 @@ async fn files(app: &App, version: &str, request: Option<&str>) -> Result<(), Jo
         keep(app, &part, &hashed, file_type(&file.name)).await?;
         app.store.file_kept(version, file.ord, &hashed.sha256)?;
         join_twins(app, version, &hashed.sha256, &hashed.sha1)?;
+        if outside {
+            trusted(app, &hashed.sha256)?;
+        }
         if let Some(request) = request {
             app.store.add_request_bytes(request, hashed.size)?;
         }
