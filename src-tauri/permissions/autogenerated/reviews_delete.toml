@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-reviews-delete"
+description = "Enables the reviews_delete command without any pre-configured scope."
+commands.allow = ["reviews_delete"]
+
+[[permission]]
+identifier = "deny-reviews-delete"
+description = "Denies the reviews_delete command without any pre-configured scope."
+commands.deny = ["reviews_delete"]

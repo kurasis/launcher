@@ -10,7 +10,7 @@ function withSettings(settings: Partial<AppSnapshot['settings']>, more: Partial<
 describe('navigation', () => {
   it('keeps every screen in one place', () => {
     expect(rowViews).toEqual(['feed', 'home', 'mods', 'worlds', 'account', 'settings']);
-    expect(menuViews).toEqual(['backups', 'screenshots', 'diagnostics', 'about']);
+    expect(menuViews).toEqual(['backups', 'screenshots', 'diagnostics', 'reviews', 'about']);
   });
 
   it('remembers only start screens', () => {

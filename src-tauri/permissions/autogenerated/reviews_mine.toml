@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-reviews-mine"
+description = "Enables the reviews_mine command without any pre-configured scope."
+commands.allow = ["reviews_mine"]
+
+[[permission]]
+identifier = "deny-reviews-mine"
+description = "Denies the reviews_mine command without any pre-configured scope."
+commands.deny = ["reviews_mine"]
