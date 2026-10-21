@@ -359,7 +359,7 @@ fn owner_command(command: &str, args: &[String]) -> Result<Vec<String>, String> 
         ("add", [status]) if status == "--status" => owner.add_status(),
         ("add", inputs) => owner.add(inputs),
         ("slug", [project, slug]) => owner.slug(project, slug),
-        ("health", []) => owner.health(popular()),
+        ("health", []) => owner.health(popular(), &data.join("backups")),
         ("remove", [project, reason @ ..]) => owner.remove(project, &owner::reason(reason)),
         ("forget", [h, rest @ ..]) => match (hash(h)?, rest) {
             (owner::Hash::Sha256(sha256), []) => owner.forget(&sha256, false),

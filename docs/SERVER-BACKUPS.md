@@ -15,7 +15,9 @@ service runs:
 | reviews  | `/home/www/lapi/reviews/data/backups/reviews-*.db` | `lapi-reviews-backup.timer` |
 
 The newest 14 copies stay. Each copy can be read only by its service's user. The
-timers are installed by `deploy/bootstrap.sh`. A copy can also be made at any time:
+timers are installed and enabled by `deploy/bootstrap.sh` and started by each deploy of
+their service (`deploy/deploy.sh`); enabled alone, a timer would wait for the next boot.
+A copy can also be made at any time:
 
 ```sh
 sudo -u lapi-oauth /home/www/lapi/oauth/current/lapi-oauth backup

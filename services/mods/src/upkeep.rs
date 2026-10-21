@@ -141,19 +141,7 @@ pub async fn copy_database(app: &Arc<App>, backups: std::path::PathBuf) -> Resul
     {
         return Ok(false);
     }
-    let newest = std::fs::read_dir(&backups)
-        .ok()
-        .into_iter()
-        .flatten()
-        .flatten()
-        .map(|e| e.path())
-        .filter(|p| {
-            p.file_name()
-                .and_then(|n| n.to_str())
-                .is_some_and(|n| n.starts_with("catalog-") && n.ends_with(".db"))
-        })
-        .max();
-    let Some(newest) = newest else {
+    let Some(newest) = crate::store::backup_copies(&backups).pop() else {
         return Ok(false);
     };
     let store = Arc::clone(app);

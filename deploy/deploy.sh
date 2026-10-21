@@ -174,10 +174,20 @@ if grep -q "listen 443" "/etc/nginx/lapi/$SERVICE.conf" 2>/dev/null; then
     health http://127.0.0.1/v1/health || { echo "nginx does not reach the service"; exit 1; }
 fi
 echo "== healthy"
-if [ "$SERVICE" = mirror ]; then
-    # The warming timer runs once there is a release; starting it again is harmless.
-    sudo -n /usr/bin/systemctl start lapi-mirror-warm.timer || echo "WARM_TIMER: not started (run bootstrap.sh)"
-fi
+# The service's timers (the mirror's warming, the daily backups) run once
+# there is a release: bootstrap.sh only enables them, which starts them at
+# the next boot. Starting one again is harmless.
+for timer in "$(dirname "$0")/$SERVICE"/lapi-"$SERVICE"-*.timer; do
+    [ -f "$timer" ] || continue
+    name=$(basename "$timer")
+    if ! sudo -n /usr/bin/systemctl start "$name"; then
+        if [ "$name" = lapi-mirror-warm.timer ]; then
+            echo "WARM_TIMER: not started (run bootstrap.sh)"
+        else
+            echo "TIMER: $name not started (run bootstrap.sh)"
+        fi
+    fi
+done
 
 # Keep the five newest releases, never the current one.
 current=$(readlink "$APP/current")
