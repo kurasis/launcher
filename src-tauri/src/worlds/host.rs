@@ -591,6 +591,8 @@ impl HostedServer {
 
 /// Stops a server that outlived a core restart through its recorded RCON
 /// port and password, after re-checking the process identity. Never kills.
+/// A server before 1.16 can lose its RCON listener at start (a race in the
+/// server); such a survivor is only watched until it exits.
 pub fn stop_survivor(survivor: &receipt::ServerReceipt) -> bool {
     if !survivor.is_alive() {
         return false;

@@ -46,8 +46,8 @@ function initializeCoreMod() {
                     HOOKS,
                     hook,
                     '(' + type + 'L' + INFO + ';)' + type,
-                    false,
-                  ),
+                    false
+                  )
                 );
                 method.instructions.insertBefore(insns[i], call);
               }
