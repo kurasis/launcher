@@ -6,7 +6,7 @@ import net.minecraft.client.multiplayer.PlayerInfo;
 import net.minecraft.resources.ResourceLocation;
 
 /**
- * What the rewritten getters of {@code PlayerInfo} call, for Minecraft 1.16 to 1.20.1.
+ * What the rewritten getters of {@code PlayerInfo} call, for Minecraft 1.14.4 to 1.20.1.
  * With no loader there is no entry point, so Launcher Skins starts the first time
  * a skin is asked for: by then the game knows its folder.
  */
