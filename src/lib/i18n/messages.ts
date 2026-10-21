@@ -129,6 +129,22 @@ export type Messages = {
       readonly erid: (values: { erid: string | number }) => string;
       readonly installFailed: (values: { version: string | number }) => string;
     };
+    readonly itemMenu: (values: { title: string | number }) => string;
+    readonly copyLink: string;
+    readonly linkCopied: string;
+    readonly favorite: (values: { name: string | number }) => string;
+    readonly unfavorite: (values: { name: string | number }) => string;
+    readonly hideChannel: (values: { name: string | number }) => string;
+    readonly channelHidden: (values: { name: string | number }) => string;
+    readonly undo: string;
+    readonly favoriteBadge: string;
+    readonly addChannel: string;
+    readonly addChannelPlace: string;
+    readonly places: {
+      readonly youtube: string;
+      readonly twitch: string;
+    };
+    readonly channelAdded: (values: { name: string | number }) => string;
   };
   readonly bootstrap: {
     readonly loading: string;
@@ -995,6 +1011,12 @@ export type Messages = {
     readonly streamerInput: string;
     readonly streamerBadInput: string;
     readonly streamerNotFound: string;
+    readonly favorites: string;
+    readonly favoritesHint: string;
+    readonly hiddenChannels: string;
+    readonly hiddenChannelsHint: string;
+    readonly noMarks: string;
+    readonly removeMark: (values: { name: string | number }) => string;
   };
   readonly privacy: {
     readonly shareStats: string;
@@ -1749,6 +1771,15 @@ export type Messages = {
       readonly UNAVAILABLE: string;
     };
     readonly installing: string;
+    readonly installingMods: string;
+    readonly consent: {
+      readonly title: (values: { mods: number }) => string;
+      readonly new: (values: { count: number; size: string | number }) => string;
+      readonly more: (values: { count: string | number }) => string;
+      readonly warning: string;
+      readonly accept: string;
+      readonly decline: string;
+    };
     readonly eulaNeeded: string;
     readonly acceptEula: string;
     readonly readEula: string;

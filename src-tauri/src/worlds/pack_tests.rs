@@ -425,6 +425,47 @@ async fn the_generation_is_a_mrpack_with_sides_and_catalog_downloads() {
     assert_eq!(index["files"].as_array().unwrap().len(), 5);
 }
 
+#[tokio::test]
+async fn the_room_pack_holds_the_client_side_and_what_the_catalog_asks() {
+    let s = setup();
+    let (world, pack) = stored(&s).await;
+    let (path, sha256) = room_archive(&s.root, &world, &pack).unwrap();
+    assert_eq!(path.file_name().unwrap(), "room-1.mrpack");
+    let bytes = fs::read(&path).unwrap();
+    assert_eq!(sha256.as_str(), sha256_of(&bytes));
+    let mut zip = zip::ZipArchive::new(std::io::Cursor::new(bytes)).unwrap();
+    let read = |zip: &mut zip::ZipArchive<std::io::Cursor<Vec<u8>>>, name: &str| -> Value {
+        let mut text = String::new();
+        zip.by_name(name)
+            .unwrap()
+            .read_to_string(&mut text)
+            .unwrap();
+        serde_json::from_str(&text).unwrap()
+    };
+    // Named for no one: the world's own name stays on this computer.
+    let meta = read(&mut zip, "catalog.json");
+    assert_eq!(meta["title"], "World pack");
+    let number = meta["version"].as_str().unwrap();
+    assert!(number.starts_with("1-") && number.len() == 10, "{number}");
+    let index = read(&mut zip, "modrinth.index.json");
+    assert_eq!(index["name"], "World pack");
+    let mut paths: Vec<&str> = index["files"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|f| f["path"].as_str().unwrap())
+        .collect();
+    paths.sort_unstable();
+    // The server-only mod stays with the host; guests get the rest.
+    assert!(!paths.contains(&"mods/ledger.jar"), "{paths:?}");
+    assert!(paths.contains(&"mods/sodium.jar"), "{paths:?}");
+    assert!(paths.contains(&"mods/fabric-api.jar"), "{paths:?}");
+    assert!(zip.by_name("overrides/config/sodium.json").is_ok());
+    // Each publish gets a number of its own.
+    let (_, again) = room_archive(&s.root, &world, &pack).unwrap();
+    assert_ne!(again, sha256);
+}
+
 #[test]
 fn sides_come_from_the_jar_then_the_catalog() {
     let dir = tempfile::tempdir().unwrap();
@@ -504,4 +545,185 @@ fn only_tested_loaders_and_releases_are_offered() {
         version: "../0.17.2".into(),
     };
     assert!(check_supported(&junk, "1.21.1").is_err());
+}
+
+#[test]
+fn a_guest_agrees_once_per_pack_and_again_for_new_mods() {
+    use crate::mods::pack::{PackEntry, PackFile as Listed, PackInfo, PackLock};
+    use crate::worlds::service::SessionPack;
+
+    let listed = |path: &str, sha: char| Listed {
+        path: path.to_owned(),
+        size: 1000,
+        sha256: Some(sha.to_string().repeat(64)),
+        url: None,
+    };
+    let info = |files: Vec<Listed>| PackInfo {
+        state: "ready".to_owned(),
+        error: None,
+        game: Some("1.21.1".to_owned()),
+        loader: None,
+        kept: files.len() as u64,
+        total: files.len() as u64,
+        skipped: 0,
+        mods: files.iter().filter(|f| f.path.starts_with("mods/")).count() as u32,
+        total_bytes: 0,
+        approval: None,
+        files,
+        archive: None,
+    };
+    let pack = |version: &str, sha: char| SessionPack {
+        version: version.to_owned(),
+        sha256: sha.to_string().repeat(64),
+    };
+    let first = info(vec![
+        listed("mods/sodium.jar", 'a'),
+        listed("mods/fabric-api.jar", 'b'),
+        listed("config/sodium.json", 'c'),
+    ]);
+    let one = pack(&id(1), '1');
+
+    // Nothing installed yet: every mod is new.
+    let RoomStep::Ask(consent) = room_step(&first, None, &one, None) else {
+        panic!("asks first");
+    };
+    assert_eq!(consent.sha256, one.sha256);
+    assert_eq!((consent.mods, consent.new_mods), (2, 2));
+    assert_eq!(consent.names, ["fabric-api.jar", "sodium.jar"]);
+    assert_eq!(consent.bytes, 2000);
+    // A yes counts for the pack it was shown, not another.
+    assert_eq!(
+        room_step(&first, None, &one, Some(&one.sha256)),
+        RoomStep::Install
+    );
+    assert!(matches!(
+        room_step(&first, None, &one, Some(&"2".repeat(64))),
+        RoomStep::Ask(_)
+    ));
+
+    let lock = PackLock {
+        project_id: id(9),
+        version_id: one.version.clone(),
+        title: "Room".into(),
+        version_number: "1-abc".into(),
+        icon: None,
+        files: vec![
+            PackEntry {
+                path: "mods/sodium.jar".into(),
+                sha256: "a".repeat(64),
+            },
+            PackEntry {
+                path: "mods/fabric-api.jar".into(),
+                sha256: "b".repeat(64),
+            },
+        ],
+        overrides: Vec::new(),
+        installed_at: 0,
+    };
+    assert_eq!(
+        room_step(&first, Some(&lock), &one, None),
+        RoomStep::Installed
+    );
+    // An update that only drops a mod or changes settings goes in at once;
+    // one with a new mod asks again, for that mod alone.
+    let two = pack(&id(2), '2');
+    let fewer = info(vec![
+        listed("mods/sodium.jar", 'a'),
+        listed("config/x.json", 'd'),
+    ]);
+    assert_eq!(
+        room_step(&fewer, Some(&lock), &two, None),
+        RoomStep::Install
+    );
+    let more = info(vec![
+        listed("mods/sodium.jar", 'a'),
+        listed("mods/fabric-api.jar", 'e'),
+    ]);
+    let RoomStep::Ask(consent) = room_step(&more, Some(&lock), &two, None) else {
+        panic!("a new mod asks again");
+    };
+    assert_eq!((consent.mods, consent.new_mods), (2, 1));
+    assert_eq!(consent.names, ["fabric-api.jar"]);
+}
+
+#[tokio::test]
+async fn the_room_pack_is_published_once_per_generation() {
+    use crate::mods::publish::Published;
+    use std::sync::{Arc, Mutex};
+
+    let s = setup();
+    let (world, _) = stored(&s).await;
+    /// Each archive sent, and the project it was for.
+    type Sent = Vec<(Vec<u8>, Option<String>)>;
+    let asked: Arc<Mutex<Sent>> = Arc::default();
+    let publisher = |answer: Published| -> PublishRoom {
+        let asked = Arc::clone(&asked);
+        Box::new(move |archive, project| {
+            asked
+                .lock()
+                .unwrap()
+                .push((fs::read(&archive).unwrap(), project));
+            Box::pin(async move { Ok(answer) })
+        })
+    };
+    let published = || Published::Published {
+        project_id: id(7),
+        slug: "world-pack".into(),
+        version_id: id(8),
+    };
+
+    // A world without mods has none.
+    let plain = made(&s);
+    assert_eq!(
+        publish_room(&s.root, plain.id, publisher(published()))
+            .await
+            .unwrap(),
+        None
+    );
+    assert!(asked.lock().unwrap().is_empty());
+
+    // Refused: the files are named, nothing is recorded.
+    let refused = Published::Refused {
+        code: "held".into(),
+        paths: vec!["mods/sodium.jar".into()],
+    };
+    let error = publish_room(&s.root, world.id, publisher(refused))
+        .await
+        .unwrap_err();
+    assert!(error.message.contains("sodium.jar"), "{}", error.message);
+    assert!(world::load(&s.root, world.id).unwrap().room_pack.is_none());
+
+    let pack = publish_room(&s.root, world.id, publisher(published()))
+        .await
+        .unwrap()
+        .unwrap();
+    assert_eq!(pack.version, id(8));
+    {
+        let asked = asked.lock().unwrap();
+        let (bytes, project) = asked.last().unwrap();
+        assert_eq!(pack.sha256, sha256_of(bytes));
+        assert_eq!(*project, None);
+    }
+    let saved = world::load(&s.root, world.id).unwrap();
+    assert_eq!(saved.room_pack.as_deref(), Some(id(7).as_str()));
+    let room = saved.pack.unwrap().room.unwrap();
+    assert_eq!(
+        (room.version.as_str(), room.sha256.as_str()),
+        (id(8).as_str(), pack.sha256.as_str())
+    );
+    // The archive was only for sending.
+    assert!(
+        !s.root
+            .world_pack_dir(world.id)
+            .join("room-1.mrpack")
+            .exists()
+    );
+
+    // Hosted again: the same pack, nothing sent.
+    let count = asked.lock().unwrap().len();
+    let again = publish_room(&s.root, world.id, publisher(published()))
+        .await
+        .unwrap();
+    assert_eq!(again, Some(pack));
+    assert_eq!(asked.lock().unwrap().len(), count);
 }

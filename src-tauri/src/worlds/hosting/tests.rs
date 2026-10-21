@@ -140,6 +140,7 @@ async fn a_member_plays_in_the_hosts_world_until_removed() {
         loopback(),
         ROOM,
         8,
+        None,
         Arc::new(|| {}),
     )
     .await
@@ -237,6 +238,7 @@ async fn strangers_get_no_ticket_and_lost_sessions_end_hosting() {
         loopback(),
         ROOM,
         8,
+        None,
         Arc::new(|| {}),
     )
     .await
@@ -263,6 +265,7 @@ async fn strangers_get_no_ticket_and_lost_sessions_end_hosting() {
         loopback(),
         ROOM,
         8,
+        None,
         Arc::new(|| {}),
     )
     .await
@@ -302,6 +305,7 @@ async fn a_guest_plays_again_after_quitting_the_game() {
         loopback(),
         ROOM,
         8,
+        None,
         Arc::new(|| {}),
     )
     .await
@@ -370,6 +374,7 @@ async fn a_lapsed_lease_cuts_guests_off_and_opens_a_new_session() {
         loopback(),
         ROOM,
         8,
+        None,
         Arc::new(|| {}),
     )
     .await
@@ -439,6 +444,7 @@ async fn hosting_stopped_while_reopening_stays_stopped() {
         loopback(),
         ROOM,
         8,
+        None,
         Arc::new(|| {}),
     )
     .await
@@ -465,6 +471,7 @@ async fn hosting_stopped_while_reopening_stays_stopped() {
         loopback(),
         ROOM,
         8,
+        None,
         Arc::new(|| {}),
     )
     .await

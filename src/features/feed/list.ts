@@ -1,4 +1,5 @@
 import type {
+  ChannelMark,
   Feed,
   ServerAd,
   FeedBlock,
@@ -103,6 +104,55 @@ export function shownItems(
   return newestFirst([...pages, ...ownItems]).filter(
     (item) => item.type !== 'note' || item.note.id !== skip,
   );
+}
+
+/** The channel an item comes from: a video's YouTube channel, a stream's Twitch channel. */
+export function channelOf(item: FeedItem): ChannelMark | null {
+  switch (item.type) {
+    case 'note':
+      return null;
+    case 'video':
+      return { kind: 'youtube', id: item.video.channelId, name: item.video.channel };
+    case 'stream':
+      return { kind: 'twitch', id: item.stream.login, name: item.stream.name };
+  }
+}
+
+export function onList(list: readonly ChannelMark[], channel: ChannelMark | null): boolean {
+  return (
+    channel !== null && list.some((mark) => mark.kind === channel.kind && mark.id === channel.id)
+  );
+}
+
+/** The item's page on its site, to copy; null when it has none. */
+export function itemLink(item: FeedItem): string | null {
+  switch (item.type) {
+    case 'note':
+      return item.note.url;
+    case 'video':
+      return item.video.short
+        ? `https://www.youtube.com/shorts/${encodeURIComponent(item.video.id)}`
+        : `https://www.youtube.com/watch?v=${encodeURIComponent(item.video.id)}`;
+    case 'stream':
+      return `https://www.twitch.tv/${encodeURIComponent(item.stream.login)}`;
+  }
+}
+
+/**
+ * The list as the player marked it: the favourite channels' items first
+ * (newest first), then the rest; hidden channels left out. Favourites are
+ * those fetched for them up front, so a later page never moves a tile above
+ * the ones already shown.
+ */
+export function markedItems(
+  items: FeedItem[],
+  favorites: FeedItem[],
+  hidden: readonly ChannelMark[],
+): FeedItem[] {
+  const shown = (item: FeedItem) => !onList(hidden, channelOf(item));
+  const first = newestFirst(favorites.filter(shown));
+  const keys = new Set(first.map(itemKey));
+  return [...first, ...items.filter((item) => shown(item) && !keys.has(itemKey(item)))];
 }
 
 /** The first server ad is the second tile, then one every this many (D-069). */

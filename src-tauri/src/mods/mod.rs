@@ -187,7 +187,7 @@ fn clean(text: &str, max: usize) -> String {
 }
 
 /// One line of text.
-fn line(text: &str, max: usize) -> String {
+pub(crate) fn line(text: &str, max: usize) -> String {
     clean(text, max).replace('\n', " ").trim().to_owned()
 }
 
@@ -991,8 +991,8 @@ impl OwnPack {
 }
 
 impl Client {
-    /// Publishes an archive as an own pack, or a new version of `project`.
-    /// It goes in parts (Cloudflare takes requests up to 100 MB): the
+    /// Publishes an archive as an own pack, or a new version of `project`;
+    /// a `room` pack (W12) is never shown in the catalog. It goes in parts (Cloudflare takes requests up to 100 MB): the
     /// catalog is told its size and SHA-256, takes each part, and puts them
     /// together. `sent` hears the bytes sent so far and the total.
     pub async fn publish<R: Runtime>(
@@ -1000,6 +1000,7 @@ impl Client {
         app: &AppHandle<R>,
         archive: &std::path::Path,
         project: Option<&str>,
+        room: bool,
         cancel: &crate::download::CancelToken,
         sent: &(dyn Fn(u64, u64) + Send + Sync),
     ) -> LauncherResult<publish::Published> {
@@ -1009,6 +1010,9 @@ impl Client {
                 return Err(not_found());
             }
             url.query_pairs_mut().append_pair("project", project);
+        }
+        if room {
+            url.query_pairs_mut().append_pair("room", "true");
         }
         let (size, sha256) = {
             let path = archive.to_path_buf();
@@ -1098,9 +1102,14 @@ impl Client {
         .await?;
         if status == 201 {
             let project = Project::from(&value["project"]).ok_or_else(server)?;
+            let version = value["version"]
+                .as_str()
+                .filter(|v| our_id(v))
+                .ok_or_else(server)?;
             return Ok(publish::Published::Published {
                 project_id: project.id,
                 slug: project.slug,
+                version_id: version.to_owned(),
             });
         }
         if let Some(refused) = publish::refused(status, &value) {

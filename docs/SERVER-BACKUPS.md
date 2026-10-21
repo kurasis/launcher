@@ -12,6 +12,7 @@ service runs:
 | mods     | `/home/www/lapi/mods/data/backups/catalog-*.db`    | `lapi-mods-backup.timer`    |
 | worlds   | `/home/www/lapi/worlds/data/backups/worlds-*.db`   | `lapi-worlds-backup.timer`  |
 | servers  | `/home/www/lapi/servers/data/backups/servers-*.db` | `lapi-servers-backup.timer` |
+| reviews  | `/home/www/lapi/reviews/data/backups/reviews-*.db` | `lapi-reviews-backup.timer` |
 
 The newest 14 copies stay. Each copy can be read only by its service's user. The
 timers are installed by `deploy/bootstrap.sh`. A copy can also be made at any time:

@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-feed-mark"
+description = "Enables the feed_mark command without any pre-configured scope."
+commands.allow = ["feed_mark"]
+
+[[permission]]
+identifier = "deny-feed-mark"
+description = "Denies the feed_mark command without any pre-configured scope."
+commands.deny = ["feed_mark"]

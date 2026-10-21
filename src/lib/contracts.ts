@@ -1587,7 +1587,7 @@ export interface ModsPublishForm {
 
 /** What the catalog answered to a publish. */
 export type ModsPublished =
-  | { outcome: 'published'; projectId: string; slug: string }
+  | { outcome: 'published'; projectId: string; slug: string; versionId: string }
   | {
       outcome: 'refused';
       /** not_in_catalog, held, not_allowed or too_big. */
@@ -1830,6 +1830,30 @@ export interface OwnStreamer {
   name: string;
 }
 
+/** Where a marked channel is. */
+export type MarkKind = 'youtube' | 'twitch';
+
+/** A channel the player hid from the feed or put first: a YouTube channel id or a Twitch login. */
+export interface ChannelMark {
+  kind: MarkKind;
+  id: string;
+  name: string;
+}
+
+/** Which list a mark puts a channel on. */
+export type MarkList = 'hidden' | 'favorite';
+
+export interface FeedMarks {
+  hidden: ChannelMark[];
+  favorite: ChannelMark[];
+}
+
+/** The newest videos and live streams of the favourite channels, shown first. */
+export interface FavoriteFeed {
+  videos: FeedVideo[];
+  streams: FeedStream[];
+}
+
 // ----- Worlds with friends (D-068) -----
 
 /** Why a call to worlds.lapi.sh or a step of a room failed. */
@@ -1904,6 +1928,14 @@ export interface WorldsRoom {
   maxPlayers: number;
   created: number;
   updated: number;
+  /** The mods the room plays now, while it is hosted with them. */
+  pack: WorldsSessionPack | null;
+}
+
+/** A world's room pack: the catalog version guests install, and its SHA-256. */
+export interface WorldsSessionPack {
+  version: string;
+  sha256: string;
 }
 
 export interface WorldsMember {
@@ -2059,6 +2091,19 @@ export interface WorldsState {
 export interface WorldsInstance {
   instanceId: string;
   ready: boolean;
+  /** The room's mods wait for the player's word: nothing was installed. */
+  consent: RoomConsent | null;
+}
+
+/** What a guest agrees to before a room's mods go on their computer. */
+export interface RoomConsent {
+  /** The room pack, sent back with the player's yes. */
+  sha256: string;
+  mods: number;
+  /** Mods this computer does not have yet: how many, their names, their bytes. */
+  newMods: number;
+  names: string[];
+  bytes: number;
 }
 
 /** A computer of the launcher account for worlds. */

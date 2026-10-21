@@ -35,7 +35,8 @@ use crate::storage::models::{FeedBlock, FeedSettings, VideoLanguage};
 use crate::storage::paths::DataRoot;
 use crate::sync::lock;
 use model::{
-    Feed, FeedItem, FeedPage, Lang, Note, OwnChannel, OwnStreamer, PictureKind, Stream, Video,
+    ChannelMark, Feed, FeedItem, FeedPage, Lang, MarkKind, Note, OwnChannel, OwnStreamer,
+    PictureKind, Stream, Video,
 };
 
 /// The service.
@@ -310,17 +311,28 @@ pub fn cached_note(root: &DataRoot, id: &str, lang: Lang) -> Option<Note> {
     )
 }
 
+/// The most channels the player can hide.
+pub const MAX_HIDDEN: usize = 200;
+/// The largest `feed-channels.json` read.
+const MAX_CHANNELS_FILE: u64 = 128 * 1024;
+/// The lists `feed-channels.json` holds; anything else in it is dropped.
+const CHANNEL_LISTS: [&str; 4] = ["channels", "twitch", "hidden", "favorite"];
+
+fn channels_file(root: &DataRoot) -> Option<Value> {
+    read_small(&root.feed_channels(), MAX_CHANNELS_FILE)
+        .and_then(|bytes| serde_json::from_slice::<Value>(&bytes).ok())
+}
+
 /// One list kept in `feed-channels.json` under `key`: checked, each once, at
-/// most [`MAX_OWN_CHANNELS`].
+/// most `max`.
 fn own_list<T>(
     root: &DataRoot,
     key: &str,
+    max: usize,
     item: impl Fn(&Value) -> Option<T>,
     same: impl Fn(&T, &T) -> bool,
 ) -> Vec<T> {
-    let Some(value) = read_small(&root.feed_channels(), 64 * 1024)
-        .and_then(|bytes| serde_json::from_slice::<Value>(&bytes).ok())
-    else {
+    let Some(value) = channels_file(root) else {
         return Vec::new();
     };
     let mut out: Vec<T> = Vec::new();
@@ -331,7 +343,7 @@ fn own_list<T>(
         .flatten()
         .filter_map(item)
     {
-        if out.len() == MAX_OWN_CHANNELS {
+        if out.len() == max {
             break;
         }
         if !out.iter().any(|kept| same(kept, &found)) {
@@ -343,30 +355,137 @@ fn own_list<T>(
 
 /// The player's own YouTube channels, as kept.
 pub fn own_channels(root: &DataRoot) -> Vec<OwnChannel> {
-    own_list(root, "channels", model::own_channel, |a, b| {
-        a.channel_id == b.channel_id
-    })
+    own_list(
+        root,
+        "channels",
+        MAX_OWN_CHANNELS,
+        model::own_channel,
+        |a, b| a.channel_id == b.channel_id,
+    )
 }
 
 /// The player's own Twitch channels, as kept.
 pub fn own_streamers(root: &DataRoot) -> Vec<OwnStreamer> {
-    own_list(root, "twitch", model::own_streamer, |a, b| {
-        a.login == b.login
-    })
+    own_list(
+        root,
+        "twitch",
+        MAX_OWN_CHANNELS,
+        model::own_streamer,
+        |a, b| a.login == b.login,
+    )
 }
 
-fn save_own(root: &DataRoot, channels: &[OwnChannel], streamers: &[OwnStreamer]) -> FeedResult<()> {
-    let bytes = serde_json::to_vec_pretty(&json!({ "channels": channels, "twitch": streamers }))
-        .map_err(|_| FeedProblem::Server)?;
+/// Writes one list of `feed-channels.json`, keeping the others.
+fn save_list(root: &DataRoot, key: &str, list: Value) -> FeedResult<()> {
+    let kept = channels_file(root);
+    let mut all = serde_json::Map::new();
+    for name in CHANNEL_LISTS {
+        if name == key {
+            all.insert(name.to_owned(), list.clone());
+        } else if let Some(value) = kept.as_ref().and_then(|k| k.get(name)) {
+            all.insert(name.to_owned(), value.clone());
+        }
+    }
+    let bytes = serde_json::to_vec_pretty(&Value::Object(all)).map_err(|_| FeedProblem::Server)?;
     atomic::write(&root.feed_channels(), &bytes).map_err(|_| FeedProblem::Unavailable)
 }
 
 fn save_own_channels(root: &DataRoot, channels: &[OwnChannel]) -> FeedResult<()> {
-    save_own(root, channels, &own_streamers(root))
+    save_list(root, "channels", json!(channels))
 }
 
 fn save_own_streamers(root: &DataRoot, streamers: &[OwnStreamer]) -> FeedResult<()> {
-    save_own(root, &own_channels(root), streamers)
+    save_list(root, "twitch", json!(streamers))
+}
+
+/// The channels the player hid from the feed and the ones they put first.
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize)]
+pub struct FeedMarks {
+    pub hidden: Vec<ChannelMark>,
+    pub favorite: Vec<ChannelMark>,
+}
+
+/// Which list a mark puts a channel on.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum MarkList {
+    Hidden,
+    Favorite,
+}
+
+impl MarkList {
+    pub fn parse(list: &str) -> Option<Self> {
+        match list {
+            "hidden" => Some(Self::Hidden),
+            "favorite" => Some(Self::Favorite),
+            _ => None,
+        }
+    }
+}
+
+fn same_channel(a: &ChannelMark, b: &ChannelMark) -> bool {
+    a.kind == b.kind && a.id == b.id
+}
+
+/// The marks as kept: at most [`MAX_HIDDEN`] hidden and
+/// [`MAX_OWN_CHANNELS`] favourites of each place.
+pub fn marks(root: &DataRoot) -> FeedMarks {
+    let hidden = own_list(
+        root,
+        "hidden",
+        MAX_HIDDEN,
+        model::channel_mark,
+        same_channel,
+    );
+    let kept = own_list(
+        root,
+        "favorite",
+        MAX_HIDDEN,
+        model::channel_mark,
+        same_channel,
+    );
+    let mut favorite: Vec<ChannelMark> = Vec::new();
+    for kind in [MarkKind::Youtube, MarkKind::Twitch] {
+        favorite.extend(
+            kept.iter()
+                .filter(|m| m.kind == kind)
+                .take(MAX_OWN_CHANNELS)
+                .cloned(),
+        );
+    }
+    FeedMarks { hidden, favorite }
+}
+
+/// Puts a channel on a list, taking it off the other one, or (`None`) takes
+/// it off both; the marks after.
+pub fn mark(
+    root: &DataRoot,
+    channel: ChannelMark,
+    list: Option<MarkList>,
+) -> FeedResult<FeedMarks> {
+    let FeedMarks {
+        mut hidden,
+        mut favorite,
+    } = marks(root);
+    hidden.retain(|m| !same_channel(m, &channel));
+    favorite.retain(|m| !same_channel(m, &channel));
+    match list {
+        Some(MarkList::Hidden) => {
+            if hidden.len() >= MAX_HIDDEN {
+                return Err(FeedProblem::Full);
+            }
+            hidden.push(channel);
+        }
+        Some(MarkList::Favorite) => {
+            if favorite.iter().filter(|m| m.kind == channel.kind).count() >= MAX_OWN_CHANNELS {
+                return Err(FeedProblem::Full);
+            }
+            favorite.push(channel);
+        }
+        None => {}
+    }
+    save_list(root, "hidden", json!(hidden))?;
+    save_list(root, "favorite", json!(favorite))?;
+    Ok(FeedMarks { hidden, favorite })
 }
 
 /// Removes one of the player's Twitch channels; the list after.
@@ -428,6 +547,20 @@ struct OwnStreams {
     streams: Vec<Stream>,
 }
 
+/// What the favourite channels showed at a time, for these marks.
+struct Favorites {
+    at: Instant,
+    marks: Vec<ChannelMark>,
+    found: FavoriteFeed,
+}
+
+/// The newest videos and the live streams of the favourite channels.
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize)]
+pub struct FavoriteFeed {
+    pub videos: Vec<Video>,
+    pub streams: Vec<Stream>,
+}
+
 /// The feed's client and what it keeps in memory.
 pub struct FeedService {
     client: PublicClient,
@@ -437,6 +570,8 @@ pub struct FeedService {
     own: Mutex<Option<OwnVideos>>,
     /// The player's live streams fetched lately, for these channels.
     own_streams: Mutex<Option<OwnStreams>>,
+    /// The favourite channels' videos and streams fetched lately.
+    favorites: Mutex<Option<Favorites>>,
 }
 
 impl FeedService {
@@ -446,6 +581,7 @@ impl FeedService {
             fresh: Mutex::new(HashMap::new()),
             own: Mutex::new(None),
             own_streams: Mutex::new(None),
+            favorites: Mutex::new(None),
         })
     }
 
@@ -747,6 +883,63 @@ impl FeedService {
             streams: streams.clone(),
         });
         Ok(streams)
+    }
+
+    /// The newest videos and the live streams of the favourite channels,
+    /// shown before everything else. A part that cannot be fetched is left
+    /// empty; both failing is a problem.
+    pub async fn favorites(&self, root: &DataRoot) -> FeedResult<FavoriteFeed> {
+        let marks = marks(root).favorite;
+        if marks.is_empty() {
+            return Ok(FavoriteFeed::default());
+        }
+        if let Some(kept) = lock(&self.favorites).as_ref()
+            && kept.marks == marks
+            && kept.at.elapsed() < OWN_STREAMS_FRESH
+        {
+            return Ok(kept.found.clone());
+        }
+        let ids = |kind: MarkKind| -> Vec<&str> {
+            marks
+                .iter()
+                .filter(|m| m.kind == kind)
+                .map(|m| m.id.as_str())
+                .collect()
+        };
+        let (channels, logins) = (ids(MarkKind::Youtube), ids(MarkKind::Twitch));
+        let videos = if channels.is_empty() {
+            Ok(Vec::new())
+        } else {
+            self.get_ok(
+                &format!("/v1/videos?channels={}", channels.join(",")),
+                model::MAX_SMALL_BYTES,
+            )
+            .await
+            .and_then(|value| model::videos(&value).ok_or(FeedProblem::Server))
+        };
+        let streams = if logins.is_empty() {
+            Ok(Vec::new())
+        } else {
+            self.get_ok(
+                &format!("/v1/streams?logins={}", logins.join(",")),
+                model::MAX_SMALL_BYTES,
+            )
+            .await
+            .and_then(|value| model::streams(&value).ok_or(FeedProblem::Server))
+        };
+        let found = match (videos, streams) {
+            (Err(problem), Err(_)) => return Err(problem),
+            (videos, streams) => FavoriteFeed {
+                videos: videos.unwrap_or_default(),
+                streams: streams.unwrap_or_default(),
+            },
+        };
+        *lock(&self.favorites) = Some(Favorites {
+            at: Instant::now(),
+            marks,
+            found: found.clone(),
+        });
+        Ok(found)
     }
 
     /// The newest videos of the player's own channels.

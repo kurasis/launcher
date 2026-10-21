@@ -727,7 +727,12 @@ describe('ModsView', () => {
       {
         mods_publish_check: (args) =>
           (args.choice as { worlds: boolean }).worlds ? check([]) : check(['mods/mine.jar']),
-        mods_publish: () => ({ outcome: 'published', projectId: PROJECT, slug: 'modded' }),
+        mods_publish: () => ({
+          outcome: 'published',
+          projectId: PROJECT,
+          slug: 'modded',
+          versionId: VERSION,
+        }),
       },
       'installed',
     );

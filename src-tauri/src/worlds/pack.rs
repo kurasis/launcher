@@ -8,6 +8,7 @@
 //! ```text
 //! worlds/<worldId>/pack/<sha256>                  each file, by its content
 //! worlds/<worldId>/pack/generation-<n>.mrpack     the generation as a .mrpack
+//! worlds/<worldId>/pack/room-<n>.mrpack           what guests install
 //! ```
 //!
 //! Mods come only from the catalog: each jar in `mods/` is looked up by its
@@ -24,6 +25,11 @@
 //! generation's server mods, and the host's room installation its client
 //! mods; settings are written only where the folder has none yet, so what
 //! the server or the player changed stays.
+//!
+//! Guests get the room pack: the generation's client side only, published
+//! to the catalog as a room pack (never shown there) when the world is first
+//! hosted with it. The world's session names its version and SHA-256, and a
+//! guest installs it into their room installation like any catalog pack.
 
 use std::collections::{HashMap, HashSet};
 use std::fs;
@@ -36,11 +42,12 @@ use serde_json::{Value, json};
 use sha2::Digest as _;
 use uuid::Uuid;
 
+use super::service::SessionPack;
 use super::world::WorldFile;
 use crate::error::{ErrorCode, LauncherError, LauncherResult};
 use crate::loader::{LoaderChoice, LoaderKind};
 use crate::mods::pack::{ExportChoice, gather, hashes_of, loader_dependency, pack_path};
-use crate::mods::publish::{MAX_OVERRIDE, MAX_OVERRIDES, overridable};
+use crate::mods::publish::{MAX_OVERRIDE, MAX_OVERRIDES, Published, overridable};
 use crate::mods::{CDN_HOST, Catalog, FILES_HOST, Project};
 use crate::storage::paths::{DataRoot, Sha1, Sha256, WorldId};
 
@@ -50,8 +57,9 @@ pub const MAX_MODS: usize = 1000;
 const MAX_META: u64 = 1024 * 1024;
 /// Names a refusal lists before it stops.
 const MAX_NAMED: usize = 20;
-/// The `.mrpack` index.
+/// The `.mrpack` index, and the texts the catalog asks of an own pack.
 const INDEX: &str = "modrinth.index.json";
+const ROOM_META: &str = "catalog.json";
 
 /// The releases whose server with this loader passed the live test in CI
 /// (`World server fabric <version>`); others are refused before anything is
@@ -164,6 +172,17 @@ pub struct WorldPack {
     /// The loader's server manifest, pinned when the server is installed.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub server_manifest: Option<Sha1>,
+    /// The room pack in the catalog, once published.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub room: Option<RoomPack>,
+}
+
+/// A generation's room pack as the catalog keeps it.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct RoomPack {
+    pub version: String,
+    pub sha256: Sha256,
 }
 
 impl WorldPack {
@@ -173,6 +192,10 @@ impl WorldPack {
 
     pub fn archive_name(&self) -> String {
         format!("generation-{}.mrpack", self.generation)
+    }
+
+    pub fn room_archive_name(&self) -> String {
+        format!("room-{}.mrpack", self.generation)
     }
 }
 
@@ -317,6 +340,158 @@ fn named(names: &[&str]) -> String {
     list.join(", ")
 }
 
+/// Publishes a room pack's archive to the catalog, as a new version of the
+/// world's room pack when it has one.
+pub type PublishRoom = Box<
+    dyn FnOnce(
+            PathBuf,
+            Option<String>,
+        ) -> crate::install::service::BoxFuture<'static, LauncherResult<Published>>
+        + Send,
+>;
+
+/// The room pack of a world with mods, published once per generation; what
+/// its sessions name. None for a world without mods.
+pub async fn publish_room(
+    root: &DataRoot,
+    world_id: WorldId,
+    publish: PublishRoom,
+) -> LauncherResult<Option<SessionPack>> {
+    let world = super::world::load(root, world_id)?;
+    let Some(generation) = world.pack.clone() else {
+        return Ok(None);
+    };
+    if let Some(room) = &generation.room {
+        return Ok(Some(SessionPack {
+            version: room.version.clone(),
+            sha256: room.sha256.to_string(),
+        }));
+    }
+    let (archive, sha256) = {
+        let (root, world, generation) = (root.clone(), world.clone(), generation.clone());
+        tokio::task::spawn_blocking(move || room_archive(&root, &world, &generation))
+            .await
+            .map_err(|_| LauncherError::internal("The world's modpack could not be written."))??
+    };
+    let published = publish(archive.clone(), world.room_pack.clone()).await;
+    let _ = fs::remove_file(&archive);
+    let (project, version) = match published? {
+        Published::Published {
+            project_id,
+            version_id,
+            ..
+        } => (project_id, version_id),
+        Published::Refused { paths, .. } => return Err(refused_by_catalog(&paths)),
+    };
+    let mut world = super::world::load(root, world_id)?;
+    let Some(now) = world
+        .pack
+        .as_mut()
+        .filter(|p| p.generation == generation.generation)
+    else {
+        return Err(LauncherError::new(
+            ErrorCode::AppBusy,
+            "The world's mods changed while they were sent. Open the world again.",
+        ));
+    };
+    now.room = Some(RoomPack {
+        version: version.clone(),
+        sha256: sha256.clone(),
+    });
+    world.room_pack = Some(project);
+    super::world::save(root, &world)?;
+    Ok(Some(SessionPack {
+        version,
+        sha256: sha256.to_string(),
+    }))
+}
+
+/// What a guest agrees to before the room's mods are installed: mods are
+/// programs that run on their computer.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct RoomConsent {
+    /// The room pack, to send back with the player's yes.
+    pub sha256: String,
+    pub mods: u32,
+    /// Mods this installation does not have yet, their names and bytes.
+    pub new_mods: u32,
+    pub names: Vec<String>,
+    pub bytes: u64,
+}
+
+/// Names a consent lists before it stops.
+const CONSENT_NAMES: usize = 30;
+
+/// What a guest's room installation needs for the room pack `pack`, which
+/// the catalog describes as `info`.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum RoomStep {
+    /// It holds this pack already.
+    Installed,
+    /// The player's word first: mods the installation does not have yet.
+    Ask(RoomConsent),
+    /// Installing it: the player agreed to this pack, or it brings no mod
+    /// they have not agreed to before.
+    Install,
+}
+
+/// The agreement holds for one pack: an update with new mods asks again,
+/// one that only drops or keeps mods (or changes settings) does not.
+pub fn room_step(
+    info: &crate::mods::pack::PackInfo,
+    installed: Option<&crate::mods::pack::PackLock>,
+    pack: &SessionPack,
+    accept: Option<&str>,
+) -> RoomStep {
+    if installed.is_some_and(|p| p.version_id == pack.version) {
+        return RoomStep::Installed;
+    }
+    let had: HashSet<&str> = installed
+        .iter()
+        .flat_map(|p| p.files.iter())
+        .map(|e| e.sha256.as_str())
+        .collect();
+    let new_mods: Vec<&crate::mods::pack::PackFile> = info
+        .files
+        .iter()
+        .filter(|f| f.path.starts_with("mods/"))
+        .filter(|f| f.sha256.as_deref().is_none_or(|s| !had.contains(s)))
+        .collect();
+    if new_mods.is_empty() || accept == Some(pack.sha256.as_str()) {
+        return RoomStep::Install;
+    }
+    let mut names: Vec<String> = new_mods
+        .iter()
+        .filter_map(|f| f.path.rsplit('/').next())
+        .map(str::to_owned)
+        .collect();
+    names.sort_unstable_by_key(|n| n.to_lowercase());
+    names.truncate(CONSENT_NAMES);
+    RoomStep::Ask(RoomConsent {
+        sha256: pack.sha256.clone(),
+        mods: info.mods,
+        new_mods: u32::try_from(new_mods.len()).unwrap_or(u32::MAX),
+        names,
+        bytes: new_mods.iter().map(|f| f.size).sum(),
+    })
+}
+
+/// The catalog refused the room pack for these files: they were taken out
+/// of the catalog or held back since the world was made.
+pub fn refused_by_catalog(paths: &[String]) -> LauncherError {
+    let names: Vec<&str> = paths
+        .iter()
+        .map(|p| p.rsplit('/').next().unwrap_or(p))
+        .collect();
+    LauncherError::templated(
+        ErrorCode::InvalidInput,
+        "The catalog no longer takes these files of the world: {files}. Friends cannot \
+         install its mods until it is made again without them.",
+        crate::error::params([("files", named(&names).into())]),
+    )
+}
+
 /// The first generation of a world made from the installation in `game`,
 /// which runs `loader`. `harmful` holds the SHA-1 of files the catalog
 /// holds back.
@@ -415,6 +590,7 @@ pub async fn build<C: Catalog>(
             made_at: Utc::now(),
             archive_sha256: None,
             server_manifest: None,
+            room: None,
         },
         sources,
     })
@@ -489,13 +665,36 @@ pub fn store(root: &DataRoot, world: &WorldFile, built: Built) -> LauncherResult
         }
     }
     let mut pack = built.pack;
-    pack.archive_sha256 = Some(write_archive(root, world, &pack)?);
+    pack.archive_sha256 = Some(write_archive(root, world, &pack, Archive::Generation)?);
     Ok(pack)
 }
 
 /// The `.mrpack` index of a generation: mods by their hashes from the
 /// catalog's files, with the side each runs on.
 pub fn index(world: &WorldFile, pack: &WorldPack) -> Value {
+    index_of(world, pack, Archive::Generation)
+}
+
+/// What an archive of a generation holds.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum Archive {
+    /// All of it.
+    Generation,
+    /// What guests install: the client side, and the texts the catalog asks
+    /// of a pack.
+    Room,
+}
+
+impl Archive {
+    fn holds(self, file: &PackFile) -> bool {
+        self == Self::Generation || file.side.on_client()
+    }
+}
+
+/// Names a room pack in the catalog; never shown there.
+const ROOM_TITLE: &str = "World pack";
+
+fn index_of(world: &WorldFile, pack: &WorldPack, archive: Archive) -> Value {
     let mut dependencies = serde_json::Map::new();
     dependencies.insert("minecraft".to_owned(), world.minecraft.clone().into());
     let (name, version) = loader_dependency(&world.minecraft, &pack.loader);
@@ -503,6 +702,7 @@ pub fn index(world: &WorldFile, pack: &WorldPack) -> Value {
     let env = |on: bool| if on { "required" } else { "unsupported" };
     let files: Vec<Value> = pack
         .mods()
+        .filter(|f| archive.holds(f))
         .map(|f| {
             json!({
                 "path": f.path,
@@ -520,17 +720,42 @@ pub fn index(world: &WorldFile, pack: &WorldPack) -> Value {
         "formatVersion": 1,
         "game": "minecraft",
         "versionId": format!("generation-{}", pack.generation),
-        "name": world.name,
+        "name": match archive {
+            Archive::Generation => world.name.as_str(),
+            Archive::Room => ROOM_TITLE,
+        },
         "files": files,
         "dependencies": dependencies,
     })
 }
 
-/// Writes the generation's `.mrpack` beside its files; settings go into
+/// Writes the room pack's `.mrpack` beside the generation's files (blocking);
+/// its path and SHA-256.
+pub fn room_archive(
+    root: &DataRoot,
+    world: &WorldFile,
+    pack: &WorldPack,
+) -> LauncherResult<(PathBuf, Sha256)> {
+    let sha256 = write_archive(root, world, pack, Archive::Room)?;
+    Ok((
+        root.world_pack_dir(world.id).join(pack.room_archive_name()),
+        sha256,
+    ))
+}
+
+/// Writes an archive of the generation beside its files; settings go into
 /// `overrides/`. Returns its SHA-256.
-fn write_archive(root: &DataRoot, world: &WorldFile, pack: &WorldPack) -> LauncherResult<Sha256> {
+fn write_archive(
+    root: &DataRoot,
+    world: &WorldFile,
+    pack: &WorldPack,
+    archive: Archive,
+) -> LauncherResult<Sha256> {
     let dir = root.world_pack_dir(world.id);
-    let to = dir.join(pack.archive_name());
+    let to = dir.join(match archive {
+        Archive::Generation => pack.archive_name(),
+        Archive::Room => pack.room_archive_name(),
+    });
     let zipped = |_| LauncherError::internal("The world's modpack could not be written.");
     let temp = dir.join(format!(".archive.tmp-{}", Uuid::new_v4().simple()));
     let result = (|| -> LauncherResult<()> {
@@ -539,9 +764,26 @@ fn write_archive(root: &DataRoot, world: &WorldFile, pack: &WorldPack) -> Launch
         let options = zip::write::SimpleFileOptions::default()
             .compression_method(zip::CompressionMethod::Deflated);
         zip.start_file(INDEX, options).map_err(zipped)?;
-        zip.write_all(index(world, pack).to_string().as_bytes())
+        zip.write_all(index_of(world, pack, archive).to_string().as_bytes())
             .map_err(|e| disk(&e))?;
-        for file in pack.files.iter().filter(|f| !f.is_mod()) {
+        if archive == Archive::Room {
+            // A number of its own each time: a publish whose answer was
+            // lost never blocks the next one.
+            let number = format!(
+                "{}-{}",
+                pack.generation,
+                &Uuid::new_v4().simple().to_string()[..8]
+            );
+            let meta = json!({ "title": ROOM_TITLE, "version": number });
+            zip.start_file(ROOM_META, options).map_err(zipped)?;
+            zip.write_all(meta.to_string().as_bytes())
+                .map_err(|e| disk(&e))?;
+        }
+        for file in pack
+            .files
+            .iter()
+            .filter(|f| !f.is_mod() && archive.holds(f))
+        {
             zip.start_file(format!("overrides/{}", file.path), options)
                 .map_err(zipped)?;
             let mut source =

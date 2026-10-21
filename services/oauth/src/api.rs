@@ -67,6 +67,7 @@ fn access_token(app: &App, account: &Account, session: &str) -> String {
             "skins".into(),
             "mods".into(),
             "worlds".into(),
+            "reviews".into(),
         ],
         iat: now,
         exp: now + ACCESS_SECONDS,

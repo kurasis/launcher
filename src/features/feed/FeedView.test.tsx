@@ -3,15 +3,17 @@ import { mockIPC } from '@tauri-apps/api/mocks';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import type {
   AppSnapshot,
+  ChannelMark,
   Feed,
   FeedItem,
+  FeedMarks,
   FeedPage,
   FeedSettings,
   FeedView as FeedAnswer,
   Note,
   NoteView,
 } from '../../lib/contracts';
-import { loadLanguage, setLanguage } from '../../lib/strings';
+import { loadLanguage, setLanguage, strings } from '../../lib/strings';
 import { instanceFixture, snapshotFixture } from '../../test/fixtures';
 import { FeedView } from './FeedView';
 import { pictureUrl } from './pictureUrl';
@@ -206,6 +208,7 @@ function titles(name: string) {
 
 function backend(overrides: Record<string, Handler> = {}, answer?: FeedAnswer) {
   const calls: { cmd: string; args: Record<string, unknown> }[] = [];
+  let marks: FeedMarks = { hidden: [], favorite: [] };
   mockIPC((cmd, payload) => {
     const args = (payload ?? {}) as Record<string, unknown>;
     calls.push({ cmd, args });
@@ -217,6 +220,20 @@ function backend(overrides: Record<string, Handler> = {}, answer?: FeedAnswer) {
       case 'feed_own_videos':
       case 'feed_own_streams':
         return [];
+      case 'feed_marks':
+        return marks;
+      case 'feed_mark': {
+        const channel = { kind: args.kind, id: args.id, name: args.name } as ChannelMark;
+        const other = (list: ChannelMark[]) =>
+          list.filter((m) => m.kind !== channel.kind || m.id !== channel.id);
+        marks = {
+          hidden: [...other(marks.hidden), ...(args.list === 'hidden' ? [channel] : [])],
+          favorite: [...other(marks.favorite), ...(args.list === 'favorite' ? [channel] : [])],
+        };
+        return marks;
+      }
+      case 'feed_favorites':
+        return { videos: [], streams: [] };
       case 'feed_server_ads':
         return { ads: [], stale: false };
       case 'feed_page':
@@ -544,6 +561,125 @@ describe('FeedView', () => {
     });
   });
 
+  it('hides a channel from a tile’s menu, and Undo brings it back', async () => {
+    const calls = backend();
+    show();
+    await screen.findByRole('list', { name: 'All' });
+    fireEvent.click(screen.getByRole('button', { name: 'Show more' }));
+    fireEvent.click(await screen.findByRole('button', { name: 'More: A long video' }));
+    const menu = screen.getByRole('menu');
+    expect(
+      within(menu)
+        .getAllByRole('menuitem')
+        .map((item) => item.textContent),
+    ).toEqual(['Copy link', 'Show Builder first', 'Don’t show Builder']);
+    fireEvent.click(within(menu).getByRole('menuitem', { name: 'Don’t show Builder' }));
+    expect(await screen.findByText('Builder is hidden from the feed.')).toBeVisible();
+    expect(screen.queryByRole('button', { name: /^Watch “A long video”/ })).toBeNull();
+    expect(calls.find((c) => c.cmd === 'feed_mark')?.args).toEqual({
+      kind: 'youtube',
+      id: 'UCabcdefghijklmnopqrstuv',
+      name: 'Builder',
+      list: 'hidden',
+    });
+    fireEvent.click(screen.getByRole('button', { name: 'Undo' }));
+    expect(await screen.findByRole('button', { name: /^Watch “A long video”/ })).toBeVisible();
+    expect(calls.filter((c) => c.cmd === 'feed_mark').at(-1)?.args.list).toBeNull();
+  });
+
+  it('shows the favourite channels’ videos and streams first', async () => {
+    const old = {
+      id: 'oldvideo001',
+      channelId: 'UCzzzzzzzzzzzzzzzzzzzzzz',
+      channel: 'Loved',
+      title: 'An old favourite',
+      date: '2026-01-01T00:00:00Z',
+      short: false,
+      image: null,
+    };
+    backend({
+      feed_marks: () => ({
+        hidden: [],
+        favorite: [{ kind: 'youtube', id: 'UCzzzzzzzzzzzzzzzzzzzzzz', name: 'Loved' }],
+      }),
+      feed_favorites: () => ({ videos: [old], streams: [] }),
+    });
+    show();
+    await screen.findByRole('list', { name: 'All' });
+    await waitFor(() => {
+      expect(titles('All')[0]).toBe('An old favourite');
+    });
+    const tile = screen
+      .getByRole('button', { name: /^Watch “An old favourite”/ })
+      .closest('article');
+    expect(tile).not.toBeNull();
+    if (tile !== null) expect(within(tile).getByText('Favourite')).toBeVisible();
+    // Taken off, it goes back to its own place at once.
+    fireEvent.click(screen.getByRole('button', { name: 'More: An old favourite' }));
+    fireEvent.click(screen.getByRole('menuitem', { name: 'Stop showing Loved first' }));
+    await waitFor(() => {
+      expect(titles('All')[0]).toBe('Building a castle');
+    });
+  });
+
+  it('copies a stream’s link', async () => {
+    const writeText = vi.fn(() => Promise.resolve());
+    Object.defineProperty(navigator, 'clipboard', { value: { writeText }, configurable: true });
+    backend();
+    show();
+    fireEvent.click(await screen.findByRole('button', { name: 'More: Building a castle' }));
+    fireEvent.click(screen.getByRole('menuitem', { name: 'Copy link' }));
+    expect(writeText).toHaveBeenCalledWith('https://www.twitch.tv/some_streamer');
+    expect(await screen.findByText('Link copied.')).toBeVisible();
+  });
+
+  it('adds a Twitch channel from the + by the chips', async () => {
+    const calls = backend({
+      feed_streamers: () => [],
+      feed_add_streamer: () => [{ login: 'ph1lza', name: 'Ph1LzA' }],
+    });
+    show();
+    fireEvent.click(await screen.findByRole('button', { name: 'Add a channel' }));
+    const dialog = screen.getByRole('dialog', { name: 'Add a channel' });
+    expect(within(dialog).getByRole('radio', { name: 'YouTube' })).toBeChecked();
+    fireEvent.change(within(dialog).getByLabelText('Channel link, @handle or channel ID'), {
+      target: { value: 'https://www.twitch.tv/ph1lza' },
+    });
+    expect(within(dialog).getByRole('radio', { name: 'Twitch' })).toBeChecked();
+    const before = calls.filter((c) => c.cmd === 'feed_own_streams').length;
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Add' }));
+    expect(await screen.findByText('Ph1LzA is added to the feed.')).toBeVisible();
+    expect(calls.find((c) => c.cmd === 'feed_add_streamer')?.args).toEqual({
+      input: 'https://www.twitch.tv/ph1lza',
+    });
+    expect(screen.queryByRole('dialog', { name: 'Add a channel' })).toBeNull();
+    await waitFor(() => {
+      expect(calls.filter((c) => c.cmd === 'feed_own_streams').length).toBeGreaterThan(before);
+    });
+  });
+
+  it('says why a channel from the + was not added', async () => {
+    backend({
+      feed_channels: () => [],
+      feed_add_channel: () => {
+        // eslint-disable-next-line @typescript-eslint/only-throw-error
+        throw 'not_found';
+      },
+    });
+    show();
+    fireEvent.click(await screen.findByRole('button', { name: 'Add a channel' }));
+    const dialog = screen.getByRole('dialog', { name: 'Add a channel' });
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Add' }));
+    expect(await within(dialog).findByRole('alert')).toBeVisible();
+    fireEvent.change(within(dialog).getByRole('textbox'), { target: { value: '@nobody' } });
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Add' }));
+    await waitFor(() => {
+      expect(within(dialog).getByRole('alert')).toHaveTextContent(strings.feed.problems.not_found);
+    });
+    fireEvent.keyDown(within(dialog).getByRole('textbox'), { key: 'Escape' });
+    expect(screen.queryByRole('dialog', { name: 'Add a channel' })).toBeNull();
+  });
+
   it('says when a video cannot be opened', async () => {
     backend({
       feed_play: () => {
@@ -552,7 +688,7 @@ describe('FeedView', () => {
       },
     });
     show();
-    fireEvent.click(await screen.findByRole('button', { name: /A long video/ }));
+    fireEvent.click(await screen.findByRole('button', { name: /^Watch “A long video”/ }));
     expect(await screen.findByRole('alert')).toHaveTextContent(
       'The feed did not answer as expected.',
     );

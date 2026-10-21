@@ -76,6 +76,10 @@ function fakeBackend(
             retryable: false,
             diagnosticId: 'diag-1',
           };
+        case 'feed_marks':
+          return { hidden: [], favorite: [] };
+        case 'feed_favorites':
+          return { videos: [], streams: [] };
         default:
           return null;
       }
