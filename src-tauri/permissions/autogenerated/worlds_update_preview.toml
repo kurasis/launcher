@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-worlds-update-preview"
+description = "Enables the worlds_update_preview command without any pre-configured scope."
+commands.allow = ["worlds_update_preview"]
+
+[[permission]]
+identifier = "deny-worlds-update-preview"
+description = "Denies the worlds_update_preview command without any pre-configured scope."
+commands.deny = ["worlds_update_preview"]

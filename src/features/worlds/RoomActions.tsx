@@ -5,7 +5,7 @@ import type { LocalWorld, RoomConsent, WorldsRoom, WorldsState } from '../../lib
 import { formatBytes } from '../../lib/format';
 import { ipc } from '../../lib/ipc';
 import { strings } from '../../lib/strings';
-import { worldsErrorText } from './useWorlds';
+import { worldsErrorText, worldsMarked } from './useWorlds';
 import styles from './Worlds.module.css';
 
 interface Props {
@@ -33,7 +33,8 @@ export function RoomActions({ room, local, state, onLocal }: Props) {
     action()
       .catch((e: unknown) => {
         setNote(null);
-        if (said) setError(worldsErrorText(e));
+        // The state names a failed start, but not that the mods went back.
+        if (said || worldsMarked(e, 'worldsRolledBack')) setError(worldsErrorText(e));
       })
       .finally(() => {
         setBusy(false);

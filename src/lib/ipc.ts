@@ -72,6 +72,8 @@ import {
   type WorldsImportPayload,
   type WorldsInstance,
   type WorldsModSource,
+  type WorldsKeep,
+  type WorldsUpdatePreview,
   type WorldsNewInvite,
   type WorldsPreview,
   type WorldsProblem,
@@ -598,6 +600,20 @@ export const ipc = {
   /** Puts a backup in place of the stopped world; it is backed up first. */
   worldsRestore: (world: string, backup: string): Promise<void> =>
     invoke('worlds_restore', { world, backup }),
+  /** What updating a world's mods from an installation would change (W12). */
+  worldsUpdatePreview: (world: string, instanceId: string): Promise<WorldsUpdatePreview> =>
+    invoke<WorldsUpdatePreview>('worlds_update_preview', { world, instanceId }),
+  /**
+   * Updates a stopped world's mods: backed up, tried on a copy, kept with the
+   * way back. `choices` answers each changed setting by its path.
+   */
+  worldsUpdate: (payload: {
+    room: string;
+    world: string;
+    instanceId: string;
+    fingerprint: string;
+    choices: Record<string, WorldsKeep>;
+  }): Promise<void> => invoke('worlds_update', { payload }),
   /** Saves the stopped world as a zip where the player chooses. */
   worldsExport: (world: string, title?: string): Promise<ExportResult> =>
     invoke<ExportResult>('worlds_export', { world, title: title ?? null }),

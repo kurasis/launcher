@@ -1602,7 +1602,9 @@
         "server": "Готовим сервер мира и Java",
         "starting": "Запускаем мир",
         "opening": "Открываем комнату для друзей",
-        "joining": "Подключаемся к хосту"
+        "joining": "Подключаемся к хосту",
+        "backing_up": "Делаю резервную копию мира",
+        "trying": "Пробую новые моды на копии мира"
       },
       "progress": "{done} из {total}",
       "hosting": {
@@ -1781,6 +1783,43 @@
         "created": "Копия сделана.",
         "confirmRestore": "Вернуть копию от {date} вместо мира {world}? Сначала делается копия его текущего состояния.",
         "restored": "Копия от {date} восстановлена."
+      },
+      "update": {
+        "title": "Моды мира",
+        "current": "Набор модов мира № {generation}, {count, plural, one {# мод} few {# мода} many {# модов} other {# мода}}.",
+        "pending": "У мира новые моды, и с ними он ещё не запускался. Если он не запустится, вернутся прежние моды и копия мира, сделанная перед обновлением.",
+        "hint": "Поменяйте моды в установке и обновите мир из неё. Сначала делается резервная копия мира, и новые моды пробуются на её копии.",
+        "source": "Из установки",
+        "noSources": "Нет установки с Minecraft {version} и этим загрузчиком модов.",
+        "show": "Показать изменения",
+        "same": "В этой установке те же моды, что у мира.",
+        "next": "После обновления будет набор № {generation}.",
+        "added": "Добавятся",
+        "removed": "Уберутся",
+        "updated": "Обновятся",
+        "was": "{name}, было {from}",
+        "sides": {
+          "client": "только игра",
+          "server": "только сервер",
+          "both": "игра и сервер"
+        },
+        "loaderChanged": "Загрузчик модов сменится на версию {version}.",
+        "settings": "{count, plural, one {# настройка, которую вы не меняли, берётся} few {# настройки, которые вы не меняли, берутся} many {# настроек, которые вы не меняли, берутся} other {# настройки, которые вы не меняли, берутся}} в новой версии.",
+        "conflictsTitle": "Настройки, которые вы меняли на сервере",
+        "conflictsHint": "Новые моды приносят другую версию этих файлов. Оставьте свою или возьмите новую.",
+        "keepMine": "Оставить моё",
+        "takeTheirs": "Взять новое",
+        "base": "С прежними модами",
+        "mine": "Сейчас на сервере",
+        "theirs": "С новыми модами",
+        "noBase": "В прежних модах такого файла не было.",
+        "notText": "Не текст, {size}.",
+        "cut": "Показано только начало.",
+        "whileHosted": "На время обновления комната закроется, а потом откроется снова.",
+        "apply": "Обновить мир",
+        "done": "У мира набор модов № {generation}. Друзья получат его при следующем входе.",
+        "trialFailed": "Новые моды не запустились на копии мира, поэтому мир не изменился.",
+        "rolledBack": "Мир не запустился с новыми модами, поэтому вернулись прежние моды и копия мира, сделанная перед обновлением."
       },
       "devices": {
         "open": "Компьютеры",
@@ -2501,6 +2540,18 @@
     "The catalog is taking many packs right now. Try again in a few minutes.": "Каталог сейчас принимает много сборок. Попробуйте через несколько минут.",
     "The catalog no longer takes these files of the world: {files}. Friends cannot install its mods until it is made again without them.": "Каталог больше не принимает эти файлы мира: {files}. Друзья не смогут поставить его моды, пока мир не создан заново без них.",
     "The pack did not reach the catalog whole. Publish it again.": "Сборка дошла до каталога не целиком. Опубликуйте её ещё раз.",
-    "The modpack could not be read.": "Не удалось прочитать сборку."
+    "The modpack could not be read.": "Не удалось прочитать сборку.",
+    "A setting of the world has an unusable name.": "У настройки мира непригодное имя.",
+    "Choose for every changed setting whether to keep yours or take the new one.": "Для каждой изменённой настройки выберите, оставить вашу или взять новую.",
+    "The installation or the world changed since its changes were shown. Look at them again.": "Установка или мир изменились после показа изменений. Посмотрите их ещё раз.",
+    "The installation plays another Minecraft version than the world.": "В установке другая версия Minecraft, чем у мира.",
+    "The world already has these mods.": "У мира уже эти моды.",
+    "The world server did not stop cleanly with the new mods.": "Сервер мира с новыми модами не остановился чисто.",
+    "The world server's settings are larger than a world's settings can be.": "Настройки сервера мира больше, чем могут быть настройки мира.",
+    "The world update stopped.": "Обновление мира остановилось.",
+    "The world's earlier mods are gone. Restore one of its backups.": "Прежних модов мира больше нет. Восстановите одну из его резервных копий.",
+    "The world's mods can only be updated from an installation with the same mod loader.": "Моды мира можно обновить только из установки с тем же загрузчиком модов.",
+    "This world has no mods. Make a new world from the installation instead.": "У этого мира нет модов. Сделайте новый мир из установки.",
+    "Updating the world's mods": "Обновление модов мира"
   }
 }

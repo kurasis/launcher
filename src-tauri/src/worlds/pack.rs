@@ -30,6 +30,9 @@
 //! to the catalog as a room pack (never shown there) when the world is first
 //! hosted with it. The world's session names its version and SHA-256, and a
 //! guest installs it into their room installation like any catalog pack.
+//!
+//! Earlier generations stay while a backup was made with them; an update
+//! and its way back are in [`super::update`].
 
 use std::collections::{HashMap, HashSet};
 use std::fs;
@@ -49,7 +52,7 @@ use crate::loader::{LoaderChoice, LoaderKind};
 use crate::mods::pack::{ExportChoice, gather, hashes_of, loader_dependency, pack_path};
 use crate::mods::publish::{MAX_OVERRIDE, MAX_OVERRIDES, Published, overridable};
 use crate::mods::{CDN_HOST, Catalog, FILES_HOST, Project};
-use crate::storage::paths::{DataRoot, Sha1, Sha256, WorldId};
+use crate::storage::paths::{DataRoot, InstanceId, Sha1, Sha256, WorldId};
 
 /// Mods one world takes at most.
 pub const MAX_MODS: usize = 1000;
@@ -175,6 +178,9 @@ pub struct WorldPack {
     /// The room pack in the catalog, once published.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub room: Option<RoomPack>,
+    /// The installation it was made from, offered again for an update.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub source: Option<InstanceId>,
 }
 
 /// A generation's room pack as the catalog keeps it.
@@ -208,7 +214,7 @@ fn mod_name(path: &str) -> Option<&str> {
 
 /// A setting a generation takes: in a folder, by the catalog's rules for own
 /// packs; never the player's saves or the look of their game.
-fn setting(path: &str) -> bool {
+pub(super) fn setting(path: &str) -> bool {
     let top = path.split('/').next().unwrap_or_default();
     path.contains('/')
         && !matches!(top, "saves" | "resourcepacks" | "shaderpacks")
@@ -329,7 +335,7 @@ fn candidates(game: &Path) -> LauncherResult<Vec<Candidate>> {
 /// A generation made from an installation, with where its files are now.
 pub struct Built {
     pub pack: WorldPack,
-    sources: Vec<PathBuf>,
+    pub(super) sources: Vec<PathBuf>,
 }
 
 fn named(names: &[&str]) -> String {
@@ -591,6 +597,7 @@ pub async fn build<C: Catalog>(
             archive_sha256: None,
             server_manifest: None,
             room: None,
+            source: None,
         },
         sources,
     })
@@ -612,7 +619,7 @@ fn damaged() -> LauncherError {
 
 /// Copies `from` to `to` through a temporary file beside it, and keeps it
 /// only when it has this SHA-256.
-fn copy_verified(from: &Path, to: &Path, sha256: &Sha256) -> LauncherResult<()> {
+pub(super) fn copy_verified(from: &Path, to: &Path, sha256: &Sha256) -> LauncherResult<()> {
     let parent = to.parent().ok_or_else(damaged)?;
     let temp = parent.join(format!(".world-file.tmp-{}", Uuid::new_v4().simple()));
     let result = (|| -> LauncherResult<bool> {
@@ -648,7 +655,7 @@ fn copy_verified(from: &Path, to: &Path, sha256: &Sha256) -> LauncherResult<()> 
 }
 
 /// Whether a regular file has this size and SHA-256.
-fn holds(path: &Path, size: u64, sha256: &Sha256) -> bool {
+pub(super) fn holds(path: &Path, size: u64, sha256: &Sha256) -> bool {
     fs::symlink_metadata(path).is_ok_and(|m| m.is_file() && m.len() == size)
         && hashes_of(path).is_ok_and(|(_, _, sha)| sha == sha256.as_str())
 }
@@ -814,7 +821,7 @@ fn write_archive(
 /// Every file is checked by SHA-256 on the way (blocking).
 fn place(
     root: &DataRoot,
-    world: WorldId,
+    owner: WorldId,
     pack: &WorldPack,
     dest: &Path,
     wanted: fn(Side) -> bool,
@@ -823,7 +830,7 @@ fn place(
     if pack.files.iter().any(|f| !allowed(&f.path)) {
         return Err(damaged());
     }
-    let store = root.world_pack_dir(world);
+    let store = root.world_pack_dir(owner);
     let mods_dir = dest.join("mods");
     if fs::symlink_metadata(&mods_dir).is_ok_and(|m| !m.is_dir()) {
         return Err(damaged());
@@ -886,7 +893,7 @@ pub fn place_server(root: &DataRoot, world: &WorldFile) -> LauncherResult<()> {
     match &world.pack {
         Some(pack) => place(
             root,
-            world.id,
+            world.pack_owner(),
             pack,
             &root.world_server_dir(world.id),
             Side::on_server,

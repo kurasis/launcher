@@ -1978,7 +1978,57 @@ export interface LocalWorld {
   /** The mod loader of a world with mods, and how many mods it has. */
   loader: LoaderChoice | null;
   mods: number;
+  /** Its generation of mods, and the installation they came from. */
+  generation: number | null;
+  source: string | null;
+  /** Its mods were updated and it has not started with them yet. */
+  updatePending: boolean;
 }
+
+/** A mod an update of a world's mods adds, removes or changes (W12). */
+export interface WorldsModChange {
+  name: string;
+  side: 'client' | 'server' | 'both';
+  /** The file it replaces, for a changed mod. */
+  from?: string;
+}
+
+/** One side of a changed setting, as far as it is shown. */
+export interface WorldsShownSetting {
+  /** Null for a file that is not text. */
+  text: string | null;
+  bytes: number;
+  truncated: boolean;
+}
+
+/** A server setting the host changed that the new mods bring another version of. */
+export interface WorldsSettingConflict {
+  path: string;
+  /** What the current mods brought; null when they had no such file. */
+  base: WorldsShownSetting | null;
+  mine: WorldsShownSetting;
+  theirs: WorldsShownSetting;
+}
+
+/** What updating a world's mods from an installation would change. */
+export interface WorldsUpdatePreview {
+  fingerprint: string;
+  generation: number;
+  next: number;
+  loader: LoaderChoice;
+  loaderChanged: boolean;
+  added: WorldsModChange[];
+  removed: WorldsModChange[];
+  updated: WorldsModChange[];
+  /** Settings that change without asking. */
+  settings: number;
+  conflicts: WorldsSettingConflict[];
+  /** Nothing would change. */
+  same: boolean;
+}
+
+/** The host's answer to a changed setting. */
+export type WorldsKeep = 'mine' | 'theirs';
 
 /** An installation whose single-player worlds can be imported. */
 export interface WorldsImportable {
@@ -2014,7 +2064,7 @@ export interface WorldsCreatePayload {
   instanceId?: string | null;
 }
 
-export type WorldsStage = 'server' | 'starting' | 'opening' | 'joining';
+export type WorldsStage = 'server' | 'starting' | 'opening' | 'joining' | 'backing_up' | 'trying';
 
 export type WorldsEnding = 'stopped' | 'server_exited' | 'session_lost' | 'room_gone';
 

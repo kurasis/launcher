@@ -18,6 +18,7 @@ import { gameLabel } from '../instances/loaderLabel';
 import { Dialog } from '../mods/Dialog';
 import { RoomActions } from './RoomActions';
 import { WorldBackups } from './WorldBackups';
+import { WorldMods } from './WorldMods';
 import { ROOMS_EVERY_MS, roomOpen, worldsErrorText } from './useWorlds';
 import styles from './Worlds.module.css';
 
@@ -149,6 +150,9 @@ export function RoomPage({ room, local, state, onBack, onLocal, onLeft }: Props)
             )}
           </div>
           <RoomActions room={found} local={world} state={state} onLocal={onLocal} />
+          {found.role === 'owner' && world?.loader != null && (
+            <WorldMods room={found.id} world={world} state={state} />
+          )}
           {found.role === 'owner' && world !== null && <WorldBackups world={world} state={state} />}
 
           <section className={styles.section} aria-label={t.members}>

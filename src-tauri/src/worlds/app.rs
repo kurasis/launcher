@@ -20,7 +20,7 @@ use super::identity::Nick;
 use super::joining::{self, RoomGuest, Route, Visit};
 use super::properties::WorldSettings;
 use super::service::{Problem, Room, Token, WorldsClient};
-use super::{host, install, pack, safety, tuple, world};
+use super::{host, install, pack, safety, tuple, update, world};
 use crate::backup::store::{Reason, SnapshotInfo};
 use crate::catalog::source::MetadataService;
 use crate::download::{CancelToken, DownloadProgress, Executor, ExecutorConfig, ProgressSink};
@@ -52,6 +52,10 @@ pub enum Stage {
     Opening,
     /// A guest asks for a place and connects to the host.
     Joining,
+    /// The world is backed up before its mods are updated.
+    BackingUp,
+    /// The world's new mods start on a copy of that backup.
+    Trying,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
@@ -125,10 +129,16 @@ pub struct LocalWorld {
     /// The mod loader of a world with mods, and how many mods it has.
     pub loader: Option<crate::loader::LoaderChoice>,
     pub mods: u32,
+    /// Its generation of mods, and the installation they came from.
+    pub generation: Option<u32>,
+    pub source: Option<InstanceId>,
+    /// Its mods were updated and it has not started with them yet.
+    pub update_pending: bool,
 }
 
 impl From<world::WorldFile> for LocalWorld {
     fn from(world: world::WorldFile) -> Self {
+        let update_pending = update::pending(&world);
         Self {
             id: world.id,
             name: world.name,
@@ -144,6 +154,9 @@ impl From<world::WorldFile> for LocalWorld {
                 .pack
                 .as_ref()
                 .map_or(0, |p| u32::try_from(p.mods().count()).unwrap_or(u32::MAX)),
+            generation: world.pack.as_ref().map(|p| p.generation),
+            source: world.pack.as_ref().and_then(|p| p.source),
+            update_pending,
         }
     }
 }
@@ -487,6 +500,12 @@ impl Worlds {
     pub fn local(&self) -> LauncherResult<Vec<LocalWorld>> {
         let root = self.root()?;
         let claim = self.claim_as(None, true).ok();
+        if claim.is_some() {
+            // Copies an update was tried on when the launcher exited.
+            for trial in world::trials(root) {
+                let _ = std::fs::remove_dir_all(root.world_dir(trial.id));
+            }
+        }
         let mut worlds: Vec<LocalWorld> = world::list(root)
             .into_iter()
             .filter_map(|mut found| {
@@ -679,6 +698,225 @@ impl Worlds {
         world::accept_eula(self.root()?, world).map(LocalWorld::from)
     }
 
+    /// The installation and the world a mods update of `world` would use:
+    /// the world must have mods and be kept here; the installation must be
+    /// the player's, on the world's Minecraft version.
+    fn update_source(
+        &self,
+        state: &AppState,
+        world: WorldId,
+        instance: InstanceId,
+    ) -> LauncherResult<(world::WorldFile, crate::storage::models::InstanceFile)> {
+        let found = world::load(self.root()?, world)?;
+        if found.pack.is_none() {
+            return Err(LauncherError::invalid_input(
+                "This world has no mods. Make a new world from the installation instead.",
+            ));
+        }
+        let instance = state.instance(instance).ok_or_else(instance_gone)?;
+        if instance.world_room.is_some() || instance.loader.is_none() {
+            return Err(LauncherError::invalid_input(
+                "This installation has no mod loader.",
+            ));
+        }
+        if instance.version_id != found.minecraft {
+            return Err(LauncherError::invalid_input(
+                "The installation plays another Minecraft version than the world.",
+            ));
+        }
+        Ok((found, instance))
+    }
+
+    /// What updating `world`'s mods from the installation `instance` would
+    /// change (W12). Nothing changes yet.
+    pub async fn update_preview(
+        &self,
+        state: &AppState,
+        mods: &crate::mods::Mods,
+        world: WorldId,
+        instance: InstanceId,
+    ) -> LauncherResult<update::Preview> {
+        let (found, instance) = self.update_source(state, world, instance)?;
+        let root = self.root()?.clone();
+        let loader = instance.loader.clone().ok_or_else(instance_gone)?;
+        let permit = state.activity().try_acquire(
+            OperationKind::Backup,
+            Some(instance.id),
+            uuid::Uuid::new_v4().to_string(),
+        )?;
+        let built = build_pack(state, mods, &root, &instance, &loader).await?;
+        let preview = blocking(move || update::preview(&root, &found, &built)).await;
+        drop(permit);
+        preview
+    }
+
+    /// Updates the mods of `room`'s stopped world from the installation
+    /// `instance`, when it is still the change `expected` names (W12): the
+    /// world is backed up, the new generation tried on a copy of that backup,
+    /// then kept with the way back. `choices` answers each changed setting.
+    /// The next start confirms it, or puts the earlier mods and the backup
+    /// back.
+    #[allow(clippy::too_many_arguments)]
+    pub async fn update(
+        self: &Arc<Self>,
+        state: &AppState,
+        mods: &crate::mods::Mods,
+        room: &str,
+        world: WorldId,
+        instance: InstanceId,
+        expected: &str,
+        choices: std::collections::HashMap<String, update::Keep>,
+    ) -> LauncherResult<()> {
+        let cancel = self.begin(room, Stage::Server)?;
+        let result = self
+            .update_inner(
+                state, mods, room, world, instance, expected, choices, &cancel,
+            )
+            .await;
+        self.finish(&result);
+        result
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    async fn update_inner(
+        self: &Arc<Self>,
+        state: &AppState,
+        mods: &crate::mods::Mods,
+        room: &str,
+        world_id: WorldId,
+        instance: InstanceId,
+        expected: &str,
+        choices: std::collections::HashMap<String, update::Keep>,
+        cancel: &CancelToken,
+    ) -> LauncherResult<()> {
+        let found = self.client.room(room).await?;
+        if found.role != "owner" {
+            return Err(Problem::Forbidden.into());
+        }
+        if found.world.as_deref() != Some(world_id.to_string().as_str()) {
+            return Err(elsewhere());
+        }
+        let (current, instance) = self.update_source(state, world_id, instance)?;
+        let root = self.root()?.clone();
+        let (metadata, source, runtimes, executor) =
+            match (&self.metadata, &self.source, &self.runtimes, &self.executor) {
+                (Some(m), Some(s), Some(r), Some(e)) => (m, s, r, e),
+                _ => return Err(unavailable()),
+            };
+        let loader = instance.loader.clone().ok_or_else(instance_gone)?;
+        let staged = {
+            let permit = state.activity().try_acquire(
+                OperationKind::Backup,
+                Some(instance.id),
+                uuid::Uuid::new_v4().to_string(),
+            )?;
+            let built = build_pack(state, mods, &root, &instance, &loader).await?;
+            let (root, expected) = (root.clone(), expected.to_owned());
+            let staged =
+                blocking(move || update::stage(&root, &current, built, &expected, &choices)).await;
+            drop(permit);
+            staged?
+        };
+
+        self.set_stage(room, Stage::BackingUp);
+        let backup = if safety::save_dir(&root, world_id).is_dir() {
+            let to = root.clone();
+            let made = blocking(move || safety::backup(&to, world_id, Reason::BeforeUpdate)).await;
+            match made {
+                Ok(made) => made.map(|b| b.id),
+                Err(error) => {
+                    let root = root.clone();
+                    let _ = blocking(move || update::abandon(&root, world_id)).await;
+                    return Err(error);
+                }
+            }
+        } else {
+            None
+        };
+        {
+            let root = root.clone();
+            blocking(move || update::begin(&root, world_id)).await?;
+        }
+
+        self.set_stage(room, Stage::Server);
+        let sink = Progress {
+            worlds: Arc::clone(self),
+        };
+        let starting = {
+            let (worlds, room) = (Arc::downgrade(self), room.to_owned());
+            move || {
+                if let Some(worlds) = worlds.upgrade() {
+                    worlds.set_stage(&room, Stage::Trying);
+                }
+            }
+        };
+        let trial = update::Trial {
+            root: &root,
+            metadata,
+            source: source.as_ref(),
+            runtimes,
+            executor,
+            activity: state.activity(),
+            java: state.java_provider(),
+            game_heap_mib: self.room_game_heap(state, room),
+            physical_memory_bytes: physical_memory(),
+            cancel,
+            sink: &sink,
+            starting: &starting,
+        };
+        let tried = update::try_on_copy(&trial, world_id, &staged, backup.as_deref()).await;
+        let manifest = match tried {
+            Ok(manifest) => manifest,
+            Err(error) => {
+                let root = root.clone();
+                let _ = blocking(move || update::abandon(&root, world_id)).await;
+                // Stopped by the player, the copy said nothing about the mods.
+                if cancel.is_cancelled() {
+                    return Err(error);
+                }
+                return Err(error.with_detail("worldsTrialFailed", true));
+            }
+        };
+        let root = root.clone();
+        blocking(move || update::commit(&root, world_id, staged, manifest, backup).map(|_| ()))
+            .await
+    }
+
+    /// A start that failed: a world waiting for its first start after an
+    /// update of its mods gets its earlier mods and its backup back, and the
+    /// error says so. A failure the mods cannot cause changes nothing.
+    async fn after_failed_start(
+        &self,
+        root: &DataRoot,
+        world: WorldId,
+        error: LauncherError,
+    ) -> LauncherError {
+        let by_mods = matches!(
+            error.code,
+            ErrorCode::GameExitedWithError | ErrorCode::OperationInterrupted
+        );
+        let waiting = world::load(root, world).is_ok_and(|w| update::pending(&w));
+        if !by_mods || !waiting {
+            return error;
+        }
+        let root = root.clone();
+        match blocking(move || update::roll_back(&root, world)).await {
+            Ok(true) => error.with_detail("worldsRolledBack", true),
+            Ok(false) => error,
+            Err(rolled) => rolled,
+        }
+    }
+
+    /// The heap of the host's own game in the room's installation.
+    fn room_game_heap(&self, state: &AppState, room: &str) -> u32 {
+        state
+            .instance_ids()
+            .into_iter()
+            .filter_map(|id| state.instance(id))
+            .find(|i| i.world_room.as_deref() == Some(room))
+            .map_or(0, |i| i.max_heap_mib)
+    }
+
     /// Hosts `room` from its world on this computer: gets the server and Java
     /// ready, starts the server, then the room's session and the tunnel. A
     /// world with mods publishes its room pack with `publish` first, once per
@@ -743,15 +981,8 @@ impl Worlds {
         let permit = state
             .activity()
             .try_acquire_hosting(world_id.uuid(), operation_id.clone())?;
-        let physical = crate::validation::MemoryPolicy::detect()
-            .map(|m| m.physical_mib * 1024 * 1024)
-            .unwrap_or(0);
-        let game_heap = state
-            .instance_ids()
-            .into_iter()
-            .filter_map(|id| state.instance(id))
-            .find(|i| i.world_room.as_deref() == Some(room.id.as_str()))
-            .map_or(0, |i| i.max_heap_mib);
+        let physical = physical_memory();
+        let game_heap = self.room_game_heap(state, &room.id);
         let members = [nick];
         let launch = host::Launch {
             root: &root,
@@ -776,7 +1007,11 @@ impl Worlds {
         };
         if let Err(error) = ready {
             stop_server(Arc::clone(&server)).await;
-            return Err(error);
+            return Err(self.after_failed_start(&root, world_id, error).await);
+        }
+        if update::pending(&prepared) {
+            let root = root.clone();
+            blocking(move || update::confirm(&root, world_id)).await?;
         }
 
         self.set_stage(&room.id, Stage::Opening);
@@ -939,7 +1174,7 @@ fn instance_gone() -> LauncherError {
     )
 }
 
-/// The first generation of mods from an installation with a mod loader.
+/// A generation of mods from an installation with a mod loader.
 async fn build_pack(
     state: &AppState,
     mods: &crate::mods::Mods,
@@ -951,7 +1186,10 @@ async fn build_pack(
     mods.content.ensure_idle(instance.id)?;
     crate::mods::online(state)?;
     let harmful = mods.harmful().await?;
-    pack::build(&mods.client, &harmful, &root.game_dir(instance.id), loader).await
+    let mut built =
+        pack::build(&mods.client, &harmful, &root.game_dir(instance.id), loader).await?;
+    built.pack.source = Some(instance.id);
+    Ok(built)
 }
 
 /// Keeps a generation in a world just made (blocking); a failure takes the
@@ -992,6 +1230,13 @@ fn elsewhere() -> LauncherError {
         ErrorCode::InstanceNotFound,
         "This room's world is kept on another computer.",
     )
+}
+
+/// The computer's memory in bytes, zero when unknown.
+fn physical_memory() -> u64 {
+    crate::validation::MemoryPolicy::detect()
+        .map(|m| m.physical_mib * 1024 * 1024)
+        .unwrap_or(0)
 }
 
 /// Asks the server to save and stop; it is killed if it does not in time.

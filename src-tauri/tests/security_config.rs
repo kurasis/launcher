@@ -317,6 +317,8 @@ fn main_window_capability_grants_only_app_commands() {
             "allow-worlds-backups",
             "allow-worlds-back-up",
             "allow-worlds-restore",
+            "allow-worlds-update-preview",
+            "allow-worlds-update",
             "allow-worlds-export",
             "allow-start-lifecycle-test",
             "allow-stop-lifecycle-test",
