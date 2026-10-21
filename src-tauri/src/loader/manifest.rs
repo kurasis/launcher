@@ -148,6 +148,9 @@ pub struct ServerArguments {
 const MAX_ARGUMENTS_BYTES: u64 = 64 * 1024;
 /// Bound for the tokens of one start-arguments file.
 const MAX_ARGUMENTS: usize = 512;
+/// Bound for a loader JAR's manifest: Forge 1.7.10 and 1.8.9 sign theirs,
+/// with a digest for every class after the main section (112 and 162 KiB).
+const MAX_MANIFEST_BYTES: u64 = 1024 * 1024;
 /// The directory the start arguments name files under.
 const LIBRARIES: &str = "libraries";
 /// JVM options a start-arguments file may not carry: they would load code or
@@ -238,7 +241,7 @@ fn server_arguments<R: Read + std::io::Seek>(
 fn jar_manifest(jar: &[u8]) -> LauncherResult<BTreeMap<String, String>> {
     let mut zip =
         zip::ZipArchive::new(Cursor::new(jar)).map_err(|_| unsupported("loader server JAR"))?;
-    let bytes = read_entry(&mut zip, "META-INF/MANIFEST.MF", MAX_ARGUMENTS_BYTES)?
+    let bytes = read_entry(&mut zip, "META-INF/MANIFEST.MF", MAX_MANIFEST_BYTES)?
         .ok_or_else(|| unsupported("loader server JAR"))?;
     let text = String::from_utf8(bytes).map_err(|_| unsupported("loader server JAR"))?;
     let mut lines: Vec<String> = Vec::new();
@@ -1391,8 +1394,16 @@ mod tests {
 
     #[test]
     fn an_old_forge_server_takes_its_libraries_and_starts_from_the_universal_jar() {
-        let manifest = "Manifest-Version: 1.0\r\nTweakClass: net.minecraftforge.fml.common.launcher.FMLTweaker\r\nClass-Path: libraries/net/minecraft/launchwrapper/1.12/launchwrapper-1\r\n .12.jar libraries/jline/jline/2.13/jline-2.13.jar minecraft_server.1.8.9.jar\r\nMain-Class: net.minecraftforge.fml.relauncher.ServerLaunchWrapper\r\n";
-        let universal = jar_of(&[("META-INF/MANIFEST.MF", manifest)]);
+        let mut manifest = "Manifest-Version: 1.0\r\nTweakClass: net.minecraftforge.fml.common.launcher.FMLTweaker\r\nClass-Path: libraries/net/minecraft/launchwrapper/1.12/launchwrapper-1\r\n .12.jar libraries/jline/jline/2.13/jline-2.13.jar minecraft_server.1.8.9.jar\r\nMain-Class: net.minecraftforge.fml.relauncher.ServerLaunchWrapper\r\n".to_owned();
+        // A signed manifest: a digest for every class follows (162 KiB in
+        // Forge 1.8.9's), and its `Main-Class` entries are not the jar's.
+        for class in 0..2000 {
+            manifest.push_str(&format!(
+                "\r\nName: net/minecraftforge/C{class}.class\r\nMain-Class: x.Y\r\nSHA-256-Digest: MdWIiX4OOfE2aefloA+1GaXaZKW52cSH/VI5Y1e2CuE=\r\n"
+            ));
+        }
+        assert!(manifest.len() > 128 * 1024);
+        let universal = jar_of(&[("META-INF/MANIFEST.MF", &manifest)]);
         let bytes =
             legacy_installer_with("forge-1.8.9-11.15.1.2318-1.8.9-universal.jar", &universal);
         let contents =

@@ -438,51 +438,26 @@ async fn host_a_world() {
     println!("force stop recorded as unclean");
 }
 
-/// Whether a catalog slug names the project `slug`: itself, or the name the
-/// catalog gives a twin from another site when the slug is taken
-/// (`fabric-api-modrinth-20953b`).
-fn names_project(found: &str, slug: &str) -> bool {
-    found == slug
-        || found
-            .strip_prefix(slug)
-            .and_then(|rest| rest.strip_prefix('-'))
-            .and_then(|rest| rest.split_once('-'))
-            .is_some_and(|(site, id)| {
-                site.bytes().all(|b| b.is_ascii_lowercase())
-                    && id.len() == 6
-                    && id.bytes().all(|b| b.is_ascii_hexdigit())
-            })
-}
-
-/// The newest release of a catalog project for the version and the loader,
-/// from whichever of its sites has one.
+/// The newest release of a catalog project for the version and the loader.
+/// The catalog finds a project by any of its slugs, the old slugs of a
+/// joined twin among them.
 async fn catalog_release(
     catalog: &launcher_lib::mods::Client,
     slug: &str,
     minecraft: &str,
     loader: &str,
 ) -> Option<launcher_lib::mods::Version> {
-    use launcher_lib::mods::{Catalog as _, SearchQuery};
-    let page = catalog
-        .search(&SearchQuery {
-            text: slug.replace('-', " "),
-            kind: Some("mod".to_owned()),
-            ..SearchQuery::default()
-        })
+    use launcher_lib::mods::Catalog as _;
+    let project = catalog
+        .project(slug)
         .await
-        .unwrap();
-    for project in page.hits.iter().filter(|h| names_project(&h.slug, slug)) {
-        let release = catalog
-            .versions(&project.id, Some(minecraft), Some(loader))
-            .await
-            .unwrap()
-            .into_iter()
-            .find(|v| v.channel == "release");
-        if release.is_some() {
-            return release;
-        }
-    }
-    None
+        .unwrap_or_else(|e| panic!("{slug} in the catalog: {e:?}"));
+    catalog
+        .versions(&project.id, Some(minecraft), Some(loader))
+        .await
+        .unwrap()
+        .into_iter()
+        .find(|v| v.channel == "release")
 }
 
 /// The newest catalog file of a project, for the version and the loader,
