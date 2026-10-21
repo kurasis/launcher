@@ -2405,16 +2405,24 @@ archive from the Package workflow, upload it to
   list stay out, worlds and `options.txt` only when the player asks. The launcher writes
   an `.mrpack` with `catalog.json` (title, summary, description in Markdown, version
   number, changes) and the icon the player chose (PNG, JPEG or WebP, 512 KB and 2048
-  pixels at most), and sends it with the launcher account's token to
-  `POST /v1/packs[?project=<id>]`. The catalog checks it all again: index files are
+  pixels at most), and sends it with the launcher account's token in parts, since
+  Cloudflare takes requests up to 100 MB: `POST /v1/packs/uploads[?project=<id>]` with
+  its size and SHA-256 (the account's limits are checked here), then each part of
+  64 MiB to `PUT /v1/packs/uploads/<upload>/<n>` (in any order, a part sent again
+  replaces the first; a part that breaks off is sent again twice at most), then
+  `POST /v1/packs/uploads/<upload>/finish`, which puts them together and checks the
+  size and SHA-256. Uploads live in memory and `tmp/`: one per account, eight on the
+  server, 30 idle minutes, gone on a restart (the launcher says to publish again).
+  `POST /v1/packs[?project=<id>]` takes an archive of up to 90 MiB in one request. The
+  catalog checks it all again: index files are
   found among kept files by SHA-1 and SHA-512 (the addresses the index names are not
   used), none held or blocked; the texts (`<` is escaped, the Markdown renders through
   the same safe tree as other descriptions); the icon decoded with limits; and the
   scanner over the archive, whose hold refuses the pack. The pack is then a project of
   kind `modpack` with the source `own`, its author the account's nick, shown at once and
   installed like any other pack; it is never refreshed from a source. The archive is
-  **90 MiB at most**, not the plan's 512 MB: Cloudflare takes requests up to 100 MB
-  (nginx allows 91 MiB on `/v1/packs` alone). An account publishes 5 new packs and 20
+  512 MiB at most (nginx allows 91 MiB on `/v1/packs` and 65 MiB a part on
+  `/v1/packs/uploads/`). An account publishes 5 new packs and 20
   versions a day, 2 GB in all, 10 an hour (20 an hour from one address). The
   installation remembers the pack (`content.lock.json`, `published`), so the next
   publish is a new version with a higher number (a used number answers 409); the author

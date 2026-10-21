@@ -10,7 +10,7 @@ import type {
   ModsPublished,
 } from '../../lib/contracts';
 import { formatBytes } from '../../lib/format';
-import { describeIpcError, ipc } from '../../lib/ipc';
+import { describeIpcError, ipc, onModsProgress } from '../../lib/ipc';
 import { strings } from '../../lib/strings';
 import { Dialog } from './Dialog';
 import styles from './Mods.module.css';
@@ -69,6 +69,18 @@ export function PublishDialog({
   const [working, setWorking] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [result, setResult] = useState<ModsPublished | null>(null);
+  // How much of the pack has gone to the catalog.
+  const [sending, setSending] = useState<{ bytes: number; total: number } | null>(null);
+
+  useEffect(
+    () =>
+      onModsProgress((p) => {
+        if (p.instanceId === instance.id && p.phase === 'uploading') {
+          setSending({ bytes: p.bytes, total: p.totalBytes });
+        }
+      }),
+    [instance.id],
+  );
 
   const choiceKey = `${String(worlds)}/${String(options)}`;
   const checking = checkedFor !== choiceKey;
@@ -139,6 +151,7 @@ export function PublishDialog({
     setWorking(true);
     setError(null);
     setResult(null);
+    setSending(null);
     ipc
       .modsPublish({
         instanceId: instance.id,
@@ -340,7 +353,16 @@ export function PublishDialog({
         </Button>
       </div>
 
-      {working && <p role="status">{t.publishing}</p>}
+      {working && (
+        <p role="status">
+          {sending === null
+            ? t.publishing
+            : t.publishSending({
+                sent: formatBytes(sending.bytes),
+                total: formatBytes(sending.total),
+              })}
+        </p>
+      )}
       {published !== null && (
         <Notice tone="info">
           <p>{t.publishDone}</p>

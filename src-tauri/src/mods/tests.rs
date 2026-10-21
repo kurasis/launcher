@@ -2609,5 +2609,27 @@ mod publishing {
         assert!(problem(409, "version_exists").is_some());
         assert!(problem(429, "too_many_packs").is_some());
         assert!(problem(400, "anything").is_none());
+        assert!(problem(400, "bad_upload").is_some());
+        assert!(problem(429, "busy").is_some());
+    }
+
+    #[test]
+    fn an_archive_is_read_in_parts_with_its_hash() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("pack.mrpack");
+        let bytes: Vec<u8> = (0..10_000u32).map(|n| (n % 251) as u8).collect();
+        fs::write(&path, &bytes).unwrap();
+        let (size, sha256) = crate::mods::publish::size_and_sha256(&path).unwrap();
+        assert_eq!((size, sha256), (10_000, sha(&bytes)));
+        let mut joined = Vec::new();
+        for n in 0..10_000u64.div_ceil(4096) {
+            joined.extend(crate::mods::publish::read_part(&path, n * 4096, 4096).unwrap());
+        }
+        assert_eq!(joined, bytes);
+        assert!(
+            crate::mods::publish::read_part(&path, 20_000, 4096)
+                .unwrap()
+                .is_empty()
+        );
     }
 }

@@ -10,7 +10,7 @@ use std::time::{Duration, Instant};
 use axum::extract::{DefaultBodyLimit, Path, Query, State};
 use axum::http::{HeaderMap, HeaderValue, StatusCode, header};
 use axum::response::{IntoResponse, Response};
-use axum::routing::{get, post};
+use axum::routing::{get, post, put};
 use axum::{Json, Router};
 use serde::Deserialize;
 use serde_json::{Value, json};
@@ -688,21 +688,34 @@ async fn publish_pack(
     ) {
         return refuse(StatusCode::TOO_MANY_REQUESTS, "too_many");
     }
-    let declared = headers
-        .get(header::CONTENT_LENGTH)
-        .and_then(|v| v.to_str().ok())
-        .and_then(|v| v.parse::<u64>().ok());
-    if declared.is_some_and(|n| n > crate::own::MAX_ARCHIVE) {
+    if declared_length(&headers).is_some_and(|n| n > crate::own::MAX_SINGLE) {
         return refuse(StatusCode::PAYLOAD_TOO_LARGE, "too_big");
     }
-    let Some(part) = body_to_part(&app, body, crate::own::MAX_ARCHIVE).await else {
+    let Some(part) = body_to_part(&app, body, crate::own::MAX_SINGLE).await else {
         return refuse(StatusCode::PAYLOAD_TOO_LARGE, "too_big");
     };
+    publish_answer(&app, &me, project.as_deref(), part).await
+}
+
+fn declared_length(headers: &HeaderMap) -> Option<u64> {
+    headers
+        .get(header::CONTENT_LENGTH)
+        .and_then(|v| v.to_str().ok())
+        .and_then(|v| v.parse::<u64>().ok())
+}
+
+/// Publishes an archive put together (`part`) and answers with the pack.
+async fn publish_answer(
+    app: &Arc<App>,
+    me: &Claims,
+    project: Option<&str>,
+    part: std::path::PathBuf,
+) -> Response {
     let author = crate::own::Author {
         account: &me.sub,
         nick: &me.nick,
     };
-    match crate::own::publish(&app, &author, project.as_deref(), part).await {
+    match crate::own::publish(app, &author, project, part).await {
         Ok(id) => match app.store.project_json(&id, &app.urls) {
             Ok(Some(p)) => private(json!({ "project": p }), StatusCode::CREATED),
             Ok(None) => failed("a pack just published is not there"),
@@ -718,6 +731,129 @@ async fn publish_pack(
                 StatusCode::from_u16(status).unwrap_or(StatusCode::INTERNAL_SERVER_ERROR),
             )
         }
+    }
+}
+
+fn refusal(refusal: &crate::own::Refusal) -> Response {
+    if let crate::own::Refusal::Server(e) = refusal {
+        eprintln!("lapi-mods: sending a pack in parts: {e}");
+    }
+    let (status, answer) = crate::own::refusal_json(refusal);
+    private(
+        answer,
+        StatusCode::from_u16(status).unwrap_or(StatusCode::INTERNAL_SERVER_ERROR),
+    )
+}
+
+/// Parts of an archive sent, per account an hour (a 512 MiB archive is 8).
+pub const PARTS_PER_HOUR: u32 = 100;
+
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct UploadBody {
+    size: u64,
+    sha256: String,
+}
+
+/// Starts an archive sent in parts (`?project=` for a new version): the
+/// player sends its size and SHA-256 and gets where to send the parts.
+async fn start_upload(
+    State(app): State<Arc<App>>,
+    headers: HeaderMap,
+    Query(q): Query<PublishQuery>,
+    Json(body): Json<UploadBody>,
+) -> Response {
+    let me = match who(&app, &headers) {
+        Ok(me) => me,
+        Err(response) => return *response,
+    };
+    let project = match q.project.as_deref().map(our_id) {
+        None => None,
+        Some(Some(id)) => Some(id.to_owned()),
+        Some(None) => return refuse(StatusCode::NOT_FOUND, "not_found"),
+    };
+    if !app.limiter.allow(
+        &client(&headers),
+        "publish-address",
+        PUBLISHES_PER_HOUR_PER_ADDRESS,
+        Duration::from_secs(3600),
+    ) || !app.limiter.allow(
+        &me.sub,
+        "publish",
+        PUBLISHES_PER_HOUR,
+        Duration::from_secs(3600),
+    ) {
+        return refuse(StatusCode::TOO_MANY_REQUESTS, "too_many");
+    }
+    match app
+        .uploads
+        .start(&app, &me.sub, project.as_deref(), body.size, &body.sha256)
+    {
+        Ok((id, parts)) => private(
+            json!({ "upload": id, "parts": parts, "partSize": crate::own::CHUNK }),
+            StatusCode::CREATED,
+        ),
+        Err(e) => refusal(&e),
+    }
+}
+
+/// One part of an archive sent in parts; `n` counts from 0.
+async fn put_part(
+    State(app): State<Arc<App>>,
+    headers: HeaderMap,
+    Path((id, n)): Path<(String, usize)>,
+    body: axum::body::Body,
+) -> Response {
+    let me = match who(&app, &headers) {
+        Ok(me) => me,
+        Err(response) => return *response,
+    };
+    let Some(id) = our_id(&id) else {
+        return refuse(StatusCode::NOT_FOUND, "not_found");
+    };
+    if !app
+        .limiter
+        .allow(&me.sub, "part", PARTS_PER_HOUR, Duration::from_secs(3600))
+    {
+        return refuse(StatusCode::TOO_MANY_REQUESTS, "too_many");
+    }
+    let expected = match app.uploads.expected(&me.sub, id, n) {
+        Ok(len) => len,
+        Err(e) => return refusal(&e),
+    };
+    if declared_length(&headers).is_some_and(|len| len != expected) {
+        return refuse(StatusCode::BAD_REQUEST, "bad_part");
+    }
+    let Some(file) = body_to_part(&app, body, expected).await else {
+        return refuse(StatusCode::BAD_REQUEST, "bad_part");
+    };
+    match app.uploads.put(&me.sub, id, n, file) {
+        Ok(()) => StatusCode::NO_CONTENT.into_response(),
+        Err(e) => refusal(&e),
+    }
+}
+
+/// Puts an archive sent in parts together and publishes it.
+async fn finish_upload(
+    State(app): State<Arc<App>>,
+    headers: HeaderMap,
+    Path(id): Path<String>,
+) -> Response {
+    let me = match who(&app, &headers) {
+        Ok(me) => me,
+        Err(response) => return *response,
+    };
+    let Some(id) = our_id(&id).map(str::to_owned) else {
+        return refuse(StatusCode::NOT_FOUND, "not_found");
+    };
+    let assembled = {
+        let (app, account) = (Arc::clone(&app), me.sub.clone());
+        tokio::task::spawn_blocking(move || app.uploads.assemble(&app, &account, &id)).await
+    };
+    match assembled {
+        Ok(Ok(done)) => publish_answer(&app, &me, done.project.as_deref(), done.part).await,
+        Ok(Err(e)) => refusal(&e),
+        Err(_) => failed("putting an upload together stopped"),
     }
 }
 
@@ -844,6 +980,9 @@ pub fn router(app: Arc<App>) -> Router {
         .route("/v1/imports/{request}", get(get_import))
         .route("/v1/imports/{request}/choose", post(choose))
         .route("/v1/packs", post(publish_pack))
+        .route("/v1/packs/uploads", post(start_upload))
+        .route("/v1/packs/uploads/{upload}/{part}", put(put_part))
+        .route("/v1/packs/uploads/{upload}/finish", post(finish_upload))
         .route("/v1/packs/mine", get(my_packs))
         .route("/v1/packs/{project}/hidden", post(set_hidden))
         .route("/v1/projects/{project}/report", post(report))

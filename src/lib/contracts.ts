@@ -1453,7 +1453,7 @@ export interface ModsImportReport {
 /** `mods://progress` while an install runs. */
 export interface ModsProgress {
   instanceId: string;
-  phase: 'fetching' | 'downloading' | 'unpacking' | 'done' | 'failed' | 'cancelled';
+  phase: 'fetching' | 'downloading' | 'unpacking' | 'uploading' | 'done' | 'failed' | 'cancelled';
   files: number;
   totalFiles: number;
   bytes: number;
