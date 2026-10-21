@@ -205,6 +205,30 @@ async fn world_version(metadata: &MetadataService<PublicClient>) -> String {
     }
 }
 
+/// The protocol of 1.16, whose servers mark the RCON listener running before
+/// starting its thread.
+const FIRST_STEADY_RCON: i32 = 735;
+/// Starts of a server before 1.16 until its RCON listener survives its start.
+const RCON_STARTS: usize = 3;
+
+/// Logs in to a ready server's RCON. Servers before 1.13 open it just after the
+/// `Done (` line.
+fn open_console(recorded: &receipt::ServerReceipt) -> Result<rcon::Rcon, rcon::RconError> {
+    let until = Instant::now() + Duration::from_secs(20);
+    loop {
+        match rcon::Rcon::connect(
+            recorded.rcon_port,
+            &recorded.rcon_password(),
+            Duration::from_secs(5),
+        ) {
+            Err(rcon::RconError::Unreachable) if Instant::now() < until => {
+                std::thread::sleep(Duration::from_millis(250));
+            }
+            other => return other,
+        }
+    }
+}
+
 #[tokio::test(flavor = "multi_thread")]
 #[ignore = "network: downloads a server and its Java, runs the server"]
 async fn host_a_world() {
@@ -274,45 +298,48 @@ async fn host_a_world() {
         .unwrap()
     };
 
-    // First run: start, check, stop cleanly.
-    let server = run("live-1");
-    assert!(activity.is_busy());
-    assert!(
-        activity
-            .try_acquire(OperationKind::Install, None, "install")
-            .is_err(),
-        "an install waits for the server"
-    );
-    let started = Instant::now();
-    tokio::task::block_in_place(|| server.wait_ready(STARTUP_DEADLINE)).unwrap();
-    println!("ready in {:.1?}", started.elapsed());
-    assert_eq!(server.status().phase, Phase::Ready);
-    let status = ping::status(server.port(), -1, Duration::from_secs(5)).unwrap();
-    println!("protocol {}", status.protocol);
-    if let Some(expected) = expected {
-        assert_eq!(status.protocol, expected);
-    }
-    assert_eq!(
-        i64::from(server.protocol()),
-        status.protocol,
-        "learned when ready"
-    );
-    assert_eq!((status.online, status.max), (0, 8));
+    // First run: start, check, stop cleanly. A server before 1.16 starts its
+    // RCON listener thread before marking it running, and a thread that wins
+    // that race stops at once, leaving the run without a console; such a run
+    // is stopped and started again.
+    let mut starts = 0;
+    let (server, recorded, mut console) = loop {
+        starts += 1;
+        let server = run("live-1");
+        assert!(activity.is_busy());
+        assert!(
+            activity
+                .try_acquire(OperationKind::Install, None, "install")
+                .is_err(),
+            "an install waits for the server"
+        );
+        let started = Instant::now();
+        tokio::task::block_in_place(|| server.wait_ready(STARTUP_DEADLINE)).unwrap();
+        println!("ready in {:.1?}", started.elapsed());
+        assert_eq!(server.status().phase, Phase::Ready);
+        let status = ping::status(server.port(), -1, Duration::from_secs(5)).unwrap();
+        println!("protocol {}", status.protocol);
+        if let Some(expected) = expected {
+            assert_eq!(status.protocol, expected);
+        }
+        assert_eq!(
+            i64::from(server.protocol()),
+            status.protocol,
+            "learned when ready"
+        );
+        assert_eq!((status.online, status.max), (0, 8));
 
-    let recorded = receipt::read(&root).expect("run receipt");
-    assert!(recorded.is_alive());
-    // Servers before 1.13 open RCON just after the `Done (` line.
-    let rcon_until = Instant::now() + Duration::from_secs(20);
-    let mut console = loop {
-        match rcon::Rcon::connect(
-            recorded.rcon_port,
-            &recorded.rcon_password(),
-            Duration::from_secs(5),
-        ) {
-            Err(rcon::RconError::Unreachable) if Instant::now() < rcon_until => {
-                std::thread::sleep(Duration::from_millis(250));
+        let recorded = receipt::read(&root).expect("run receipt");
+        assert!(recorded.is_alive());
+        match open_console(&recorded) {
+            Ok(console) => break (server, recorded, console),
+            Err(rcon::RconError::Unreachable)
+                if server.protocol() < FIRST_STEADY_RCON && starts < RCON_STARTS =>
+            {
+                println!("rcon listener lost its start race, starting again");
+                assert!(tokio::task::block_in_place(|| server.stop(STOP_GRACE)));
             }
-            other => break other.unwrap(),
+            Err(error) => panic!("rcon answers: {error:?}"),
         }
     };
     let answer = console.command("list").unwrap();

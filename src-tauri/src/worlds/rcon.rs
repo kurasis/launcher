@@ -14,7 +14,7 @@ const COMMAND: i32 = 2;
 const MAX_PACKET: usize = 4096 + 10;
 /// Commands the launcher sends are short console commands.
 pub const MAX_COMMAND_BYTES: usize = 256;
-/// Servers before 1.13 start a client's thread before marking it running, so a
+/// Servers before 1.16 start a client's thread before marking it running, so a
 /// thread that runs first closes the connection unanswered (seen on 1.12.2).
 /// The login is then tried again on a fresh connection, up to this many times.
 const LOGIN_TRIES: usize = 3;
