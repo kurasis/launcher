@@ -297,6 +297,56 @@ pub struct OwnStreamer {
     pub name: String,
 }
 
+/// Where a marked channel is.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "lowercase")]
+pub enum MarkKind {
+    Youtube,
+    Twitch,
+}
+
+impl MarkKind {
+    pub fn parse(kind: &str) -> Option<Self> {
+        match kind {
+            "youtube" => Some(Self::Youtube),
+            "twitch" => Some(Self::Twitch),
+            _ => None,
+        }
+    }
+
+    /// The channel's id in its place: a YouTube channel id or a Twitch login.
+    pub fn id(self, id: &str) -> bool {
+        match self {
+            Self::Youtube => channel_id(id),
+            Self::Twitch => twitch_login(id),
+        }
+    }
+}
+
+/// A channel the player hid from the feed or put first.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct ChannelMark {
+    pub kind: MarkKind,
+    pub id: String,
+    pub name: String,
+}
+
+/// Reads a marked channel (`{kind, id, name}`).
+pub fn channel_mark(value: &Value) -> Option<ChannelMark> {
+    let fields = value.as_object()?;
+    let kind = MarkKind::parse(fields.get("kind")?.as_str()?)?;
+    Some(ChannelMark {
+        kind,
+        id: id_with(fields.get("id"), |id| kind.id(id))?,
+        name: text(fields.get("name"), MAX_NAME)?,
+    })
+}
+
+/// A marked channel's name, as the interface gave it: cleaned and cut short.
+pub fn mark_name(name: &str) -> Option<String> {
+    clean_text(name, MAX_NAME)
+}
+
 // ---- Ids, names and links --------------------------------------------------
 
 /// A note id: `j-` (patch note) or `n-` (news) and lower case letters, digits
