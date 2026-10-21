@@ -22,6 +22,9 @@ const MANUAL: &str = "manual:";
 
 const OPTIFINE_HOST: &str = "optifine.net";
 pub const OPTIFINE_PAGE: &str = "https://optifine.net/home";
+/// OptiFine's icon in the catalog, made for it (services/mods/assets): its
+/// site has none to take.
+pub const OPTIFINE_ICON: &str = "https://raw.githubusercontent.com/kurasis/launcher/main/services/mods/assets/optifine-icon.png";
 pub const OPTIFINE_DOWNLOADS: &str = "https://optifine.net/downloads";
 /// The owner's choice for OptiFine (Ai, 2026-10-21).
 pub const OPTIFINE_DAYS: i64 = 3;
@@ -86,7 +89,7 @@ impl Card {
                       with HD textures, shaders and many settings."
                 .to_owned(),
             page: OPTIFINE_PAGE.to_owned(),
-            icon: None,
+            icon: Some(OPTIFINE_ICON.to_owned()),
             days,
         }
     }

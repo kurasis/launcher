@@ -191,9 +191,10 @@ fn main() -> std::process::ExitCode {
                 println!("{line}");
             }
         }),
-        // VirusTotal's word on files (virustotal.rs); `--stdin` as below.
-        Some("virustotal") => external_args(&args[1..]).and_then(|given| {
-            for line in owner_command("virustotal", &given)? {
+        // VirusTotal's word on files (virustotal.rs), and the owner's
+        // additions to the catalog; `--stdin` as below.
+        Some(command @ ("virustotal" | "add")) => external_args(&args[1..]).and_then(|given| {
+            for line in owner_command(command, &given)? {
                 println!("{line}");
             }
             Ok(())
@@ -223,7 +224,7 @@ fn main() -> std::process::ExitCode {
             Ok(())
         }
         _ => Err(
-            "usage: lapi-mods serve|counts|backup|probe|scan|thumb|find|review|block|unblock|remove|forget|restore|external|virustotal"
+            "usage: lapi-mods serve|counts|backup|probe|scan|thumb|find|review|block|unblock|remove|forget|restore|external|virustotal|add"
                 .to_owned(),
         ),
     };
@@ -332,6 +333,8 @@ fn owner_command(command: &str, args: &[String]) -> Result<Vec<String>, String> 
         ("unblock", [h]) => owner.unblock(&hash(h)?),
         ("virustotal", [status]) if status == "status" => owner.virustotal_status(),
         ("virustotal", [check, h]) if check == "check" => owner.virustotal_check(&hash(h)?),
+        ("add", [status]) if status == "--status" => owner.add_status(),
+        ("add", inputs) => owner.add(inputs),
         ("remove", [project, reason @ ..]) => owner.remove(project, &owner::reason(reason)),
         ("forget", [h, rest @ ..]) => match (hash(h)?, rest) {
             (owner::Hash::Sha256(sha256), []) => owner.forget(&sha256, false),
