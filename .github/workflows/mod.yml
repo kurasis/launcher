@@ -119,12 +119,12 @@ jobs:
           ONLY: ${{ matrix.part.only }}
         run: |
           # Setting up a Forge release downloads hundreds of files, and Forge's maven
-          # now and then cuts a connection or answers 5xx for a while: one more try a minute
+          # now and then cuts a connection, times out or answers 5xx for a while: one more try a minute
           # later for that, never for anything else.
           set -o pipefail
           for attempt in 1 2; do
             ./gradlew --no-daemon "-Ponly=$ONLY" build 2>&1 | tee gradle.log && exit 0
-            grep -qE "Connection reset|Connection timed out|(HTTP response code:|status code) (429|5[0-9][0-9])" gradle.log || exit 1
+            grep -qE "Connection reset|Connection timed out|[Rr]equest timed out|Read timed out|(HTTP response code:|status code) (429|5[0-9][0-9])" gradle.log || exit 1
             [ "$attempt" = 2 ] && exit 1
             echo "A download was cut off; trying once more in a minute"
             sleep 60
