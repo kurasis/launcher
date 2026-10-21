@@ -1,0 +1,144 @@
+name: Skins mod list
+
+# The signed list of Launcher Skins jars on upd.lapi.sh (docs/DECISIONS.md
+# D-065, "Updates without a launcher update"): launchers take a newer mod
+# version from it without a launcher update. The list is built from the GitHub
+# release skins-mod-v<version> and mod/builds.json, signed here with the update
+# key (it never goes to the server) and put in place on the server by
+# `lapi-upd skins-mod <channel>`, which checks the signature and that the list
+# is newer than the channel's.
+#
+# Called by the Skins mod workflow (beta, after a release) and the Game test
+# (stable, after a green nightly run). By hand, "Run workflow" with a version
+# and "rollback" sends launchers back to that version: the one command to undo
+# a bad release.
+
+on:
+  workflow_call:
+    inputs:
+      version:
+        type: string
+        required: true
+      channels:
+        description: beta, stable, or both separated by a space
+        type: string
+        required: true
+      rollback:
+        type: boolean
+        default: false
+  workflow_dispatch:
+    inputs:
+      version:
+        description: Mod version (a published release skins-mod-v<version>)
+        type: string
+        required: true
+      channels:
+        description: Channels to give it to
+        type: choice
+        options: [beta stable, beta, stable]
+        default: beta stable
+      rollback:
+        description: Going back to an older version (launchers take it over a newer built-in one)
+        type: boolean
+        default: true
+
+permissions:
+  contents: read
+
+concurrency:
+  group: skins-mod-list
+  cancel-in-progress: false
+
+jobs:
+  sign:
+    name: Sign and publish the list
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-24.04
+    environment: production
+    steps:
+      - name: Check the inputs
+        env:
+          VERSION: ${{ inputs.version }}
+          CHANNELS: ${{ inputs.channels }}
+        run: |
+          [[ "$VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]] || { echo "::error::not a mod version"; exit 1; }
+          for c in $CHANNELS; do
+            [[ "$c" == beta || "$c" == stable ]] || { echo "::error::unknown channel"; exit 1; }
+          done
+      - name: Signing key configured?
+        id: key
+        env:
+          KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+        run: |
+          if [ -z "$KEY" ]; then
+            echo "::notice::No TAURI_SIGNING_PRIVATE_KEY secret: no list (docs/DECISIONS.md D-065)."
+            echo "present=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "present=true" >> "$GITHUB_OUTPUT"
+          fi
+      - uses: actions/checkout@v7
+        if: steps.key.outputs.present == 'true'
+      - name: Download the release
+        if: steps.key.outputs.present == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          VERSION: ${{ inputs.version }}
+        run: gh release download "skins-mod-v$VERSION" --dir jars --pattern '*.jar' --pattern SHA256SUMS
+      - uses: actions/cache@v6
+        if: steps.key.outputs.present == 'true'
+        with:
+          path: |
+            ~/.cargo/registry
+            services/upd/target
+          key: upd-${{ hashFiles('services/upd/Cargo.lock', 'rust-toolchain.toml') }}
+      - name: Build lapi-upd
+        if: steps.key.outputs.present == 'true'
+        run: cargo build --locked --release --manifest-path services/upd/Cargo.toml
+      - name: Sign
+        if: steps.key.outputs.present == 'true'
+        env:
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+          VERSION: ${{ inputs.version }}
+          CHANNELS: ${{ inputs.channels }}
+          ROLLBACK: ${{ inputs.rollback }}
+        run: |
+          set -euo pipefail
+          back=()
+          [ "$ROLLBACK" = true ] && back=(--rollback)
+          for c in $CHANNELS; do
+            services/upd/target/release/lapi-upd skins-mod-list "$VERSION" --channel "$c" \
+              --builds mod/builds.json --sums jars/SHA256SUMS --jars jars \
+              --out "skins-mod-$c.json" "${back[@]}"
+          done
+      - uses: ./.github/actions/lapi-ssh
+        if: steps.key.outputs.present == 'true'
+        with:
+          ssh-key: ${{ secrets.SSH_KEY }}
+          known-hosts: ${{ secrets.SSH_KNOWN_HOSTS }}
+      - name: Publish
+        if: steps.key.outputs.present == 'true'
+        env:
+          TARGET: ${{ secrets.SSH_USER }}@${{ secrets.SSH_HOST }}
+          CHANNELS: ${{ inputs.channels }}
+        run: |
+          set -euo pipefail
+          for c in $CHANNELS; do
+            scp -q "skins-mod-$c.json" "$TARGET:/home/www/lapi/upd/data/incoming/skins-mod-$c.json"
+            ssh "$TARGET" "sudo -u lapi-upd /home/www/lapi/upd/current/lapi-upd skins-mod $c"
+          done
+      - name: Check what launchers get
+        if: steps.key.outputs.present == 'true'
+        env:
+          VERSION: ${{ inputs.version }}
+          CHANNELS: ${{ inputs.channels }}
+        run: |
+          # Cloudflare keeps the file a minute.
+          for c in $CHANNELS; do
+            for i in 1 2 3 4 5 6 7 8; do
+              got=$(curl -fsS --max-time 10 "https://upd.lapi.sh/v1/$c/skins-mod-list.json" | jq -r '.list | fromjson | .version' || true)
+              [ "$got" = "$VERSION" ] && { echo "$c: $got"; continue 2; }
+              sleep 15
+            done
+            echo "::warning::upd.lapi.sh does not serve $VERSION on $c yet"
+          done

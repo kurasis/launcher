@@ -426,6 +426,7 @@ fn setup(app: &mut tauri::App) -> Result<(), Box<dyn std::error::Error>> {
             tokio::time::sleep(std::time::Duration::from_secs(30)).await;
             loop {
                 updates.check(&handle, false).await;
+                update::refresh_skins_mod(&handle.state::<AppState>(), false).await;
                 tokio::time::sleep(update::EVERY).await;
             }
         });

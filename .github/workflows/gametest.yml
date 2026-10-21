@@ -9,6 +9,10 @@ name: Game test
 # The runner is a real computer, so this workflow runs only from main: by hand
 # ("Run workflow") or on the nightly schedule, never for a pull request. Inputs
 # reach scripts only through env and are checked against fixed lists.
+#
+# A green nightly run gives the skins mod release of this commit (mod/VERSION,
+# already on the beta channel) to the stable channel's signed list on
+# upd.lapi.sh (docs/DECISIONS.md D-065), when the mod's code is the release's.
 
 on:
   workflow_dispatch:
@@ -28,6 +32,10 @@ on:
       skin:
         description: Skin variant for every scenario, or rotate (classic, slim128, hd256, hd512, anim64, anim256, animcape, legacy256, cape, none)
         default: rotate
+      promote:
+        description: After a green run, give this commit's skins mod release to the stable channel (the nightly run does)
+        type: boolean
+        default: false
   schedule:
     # 03:00 Moscow time.
     - cron: '0 0 * * *'
@@ -297,3 +305,52 @@ jobs:
       - name: Clean the workspace
         if: always()
         run: Remove-Item -Recurse -Force gt -ErrorAction SilentlyContinue
+
+  stable:
+    name: Skins mod for the stable channel?
+    needs: play
+    if: >-
+      github.ref == 'refs/heads/main' && needs.play.result == 'success'
+      && (github.event_name == 'schedule' || inputs.promote)
+    runs-on: ubuntu-24.04
+    outputs:
+      version: ${{ steps.decide.outputs.version }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+      - id: decide
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -uo pipefail
+          version=$(tr -d '[:space:]' < mod/VERSION)
+          [[ "$version" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]] || { echo "::error::mod/VERSION is not a version"; exit 1; }
+          listed() {
+            curl -fsS --max-time 10 "https://upd.lapi.sh/v1/$1/skins-mod-list.json" | jq -r '.list | fromjson | .version' 2>/dev/null
+          }
+          if ! gh release view "skins-mod-v$version" >/dev/null 2>&1; then
+            echo "::notice::Skins mod $version is not released: nothing for stable."; exit 0
+          fi
+          # The test played this commit's build: the same code as the release's.
+          if ! git diff --quiet "skins-mod-v$version" HEAD -- mod ':(exclude)mod/gametest'; then
+            echo "::notice::The mod changed since release $version: nothing for stable."; exit 0
+          fi
+          if [ "$(listed beta)" != "$version" ]; then
+            echo "::notice::Beta does not have $version (or went back): nothing for stable."; exit 0
+          fi
+          if [ "$(listed stable)" = "$version" ]; then
+            echo "Stable has $version already."; exit 0
+          fi
+          echo "Giving $version to stable."
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+
+  promote:
+    name: Stable channel
+    needs: stable
+    if: needs.stable.outputs.version != ''
+    uses: ./.github/workflows/skins-mod-list.yml
+    with:
+      version: ${{ needs.stable.outputs.version }}
+      channels: stable
+    secrets: inherit

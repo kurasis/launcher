@@ -390,7 +390,7 @@ fn sync_replaces_our_jars_and_leaves_everything_else() {
     // The current one, damaged.
     put(&mods.join(contents[0].0), b"damaged");
 
-    sync_mods(&mods, Some((&table[0], &contents[0].1))).unwrap();
+    sync_mods(&mods, Some((&Pick::of(&table[0]), &contents[0].1))).unwrap();
     let mut expected: Vec<String> = user.iter().map(|(n, _)| (*n).to_owned()).collect();
     expected.push("launcherskins-x.jar".into());
     expected.push(contents[0].0.into());
@@ -409,7 +409,7 @@ fn sync_replaces_our_jars_and_leaves_everything_else() {
     );
 
     // Again: nothing changes.
-    sync_mods(&mods, Some((&table[0], &contents[0].1))).unwrap();
+    sync_mods(&mods, Some((&Pick::of(&table[0]), &contents[0].1))).unwrap();
     assert_eq!(names(&mods), expected);
 }
 
@@ -435,7 +435,7 @@ fn sync_into_a_mods_path_that_is_a_file_fails_without_harm() {
     let dir = tempfile::tempdir().unwrap();
     let mods = dir.path().join("mods");
     put(&mods, b"not a folder");
-    assert!(sync_mods(&mods, Some((&table[0], &contents[0].1))).is_err());
+    assert!(sync_mods(&mods, Some((&Pick::of(&table[0]), &contents[0].1))).is_err());
     assert_eq!(std::fs::read(&mods).unwrap(), b"not a folder");
 }
 
@@ -450,7 +450,7 @@ fn sync_removes_a_link_named_like_ours_but_not_its_target() {
     std::fs::create_dir_all(&mods).unwrap();
     std::os::unix::fs::symlink(&elsewhere, mods.join("launcherskins-old.jar")).unwrap();
     std::os::unix::fs::symlink(&elsewhere, mods.join(contents[0].0)).unwrap();
-    sync_mods(&mods, Some((&table[0], &contents[0].1))).unwrap();
+    sync_mods(&mods, Some((&Pick::of(&table[0]), &contents[0].1))).unwrap();
     assert_eq!(names(&mods), [contents[0].0]);
     assert!(
         !std::fs::symlink_metadata(mods.join(contents[0].0))
@@ -504,6 +504,7 @@ impl Install {
                 loader,
                 enabled,
                 game_dir: &self.game,
+                listed: None,
             },
             &CancelToken::new(),
         )
@@ -638,6 +639,7 @@ async fn the_real_table_never_hands_out_a_placeholder() {
                 loader,
                 enabled: true,
                 game_dir: &i.game,
+                listed: None,
             },
             &CancelToken::new(),
         )
@@ -799,4 +801,22 @@ fn builds_are_found_by_version_and_loader() {
     ] {
         assert_eq!(label(game, loader), None, "{game} {loader:?}");
     }
+}
+
+/// CI builds the signed list from `mod/builds.json`: it names the same builds.
+#[test]
+fn the_builds_file_for_the_signed_list_matches_the_builds() {
+    let file: Vec<serde_json::Value> =
+        serde_json::from_str(include_str!("../../../mod/builds.json")).unwrap();
+    let ours: Vec<serde_json::Value> = BUILDS
+        .iter()
+        .map(|b| {
+            serde_json::json!({
+                "target": b.target.as_str(),
+                "label": b.label,
+                "games": b.games,
+            })
+        })
+        .collect();
+    assert_eq!(file, ours, "mod/builds.json and BUILDS differ");
 }

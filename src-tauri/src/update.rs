@@ -49,6 +49,41 @@ pub fn public_key() -> Option<&'static str> {
     option_env!("LAUNCHER_UPDATE_PUBKEY").filter(|k| !k.trim().is_empty())
 }
 
+/// Asks the update server for the skins mod's signed list of the player's
+/// channel (D-065) and keeps it when it is newer; with the update check, under
+/// the same conditions: a key built in, not offline, checks not turned off
+/// (unless the player asked). Only a new list is noted in the console.
+pub async fn refresh_skins_mod(state: &AppState, manual: bool) {
+    let (Some(key), Some(root)) = (public_key(), state.data_root()) else {
+        return;
+    };
+    let settings = state.settings();
+    if !manual
+        && (settings.update_mode == UpdateMode::Off
+            || state.network() == crate::state::dto::NetworkStatus::Offline)
+    {
+        return;
+    }
+    let Ok(client) =
+        crate::net::PublicClient::new(crate::net::SourcePolicy::SkinsModList, state.app_version())
+    else {
+        return;
+    };
+    let taken =
+        crate::skins_mod::list::refresh(&root, &client, base(), key, settings.update_channel).await;
+    match taken {
+        Some(crate::skins_mod::list::Taken::New(version)) => state.console().info(format!(
+            "Launcher Skins {version} is available for the next game"
+        )),
+        Some(crate::skins_mod::list::Taken::Refused | crate::skins_mod::list::Taken::Older) => {
+            state
+                .console()
+                .warn("The skins mod list from the update server was refused");
+        }
+        _ => {}
+    }
+}
+
 /// Which versions the player gets (Settings → General).
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
@@ -60,7 +95,7 @@ pub enum UpdateChannel {
 }
 
 impl UpdateChannel {
-    fn path(self) -> &'static str {
+    pub fn path(self) -> &'static str {
         match self {
             Self::Stable => "stable",
             Self::Beta => "beta",

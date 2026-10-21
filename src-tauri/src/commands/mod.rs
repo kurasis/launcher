@@ -1569,6 +1569,7 @@ pub async fn reviews_delete<R: Runtime>(app: AppHandle<R>, id: i64) -> LauncherR
 pub async fn check_for_update<R: Runtime>(app: AppHandle<R>) -> crate::update::UpdateView {
     let updates = Arc::clone(&app.state::<Arc<crate::update::Updates>>());
     updates.check(&app, true).await;
+    crate::update::refresh_skins_mod(&app.state::<AppState>(), true).await;
     app.state::<AppState>().update()
 }
 

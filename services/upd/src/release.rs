@@ -37,7 +37,7 @@ pub const REQUIRED: &[(&str, &str)] = &[
 ];
 /// Install types the launcher only tells about: no signature, no install.
 const NOTICE_ONLY: &[&str] = &["deb"];
-const CHANNELS: &[&str] = &["stable", "beta"];
+pub(crate) const CHANNELS: &[&str] = &["stable", "beta"];
 
 /// `release.json` in a release archive, written by the Package workflow.
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -112,7 +112,7 @@ fn plain_name(name: &str) -> bool {
 }
 
 /// Writes whole, then renames into place.
-fn write_atomic(path: &Path, bytes: &[u8]) -> Result<(), String> {
+pub(crate) fn write_atomic(path: &Path, bytes: &[u8]) -> Result<(), String> {
     let dir = path.parent().ok_or("no folder")?;
     fs::create_dir_all(dir).map_err(|e| format!("creating {}: {e}", dir.display()))?;
     let temp = dir.join(format!(
@@ -166,7 +166,11 @@ impl Server {
         }
     }
 
-    fn channel_dir(&self, channel: &str) -> Result<PathBuf, String> {
+    pub(crate) fn root(&self) -> &Path {
+        &self.root
+    }
+
+    pub(crate) fn channel_dir(&self, channel: &str) -> Result<PathBuf, String> {
         if !CHANNELS.contains(&channel) {
             return Err(format!("unknown channel {channel} (stable or beta)"));
         }
@@ -198,7 +202,7 @@ impl Server {
         serde_json::from_slice(&bytes).map_err(|e| format!("{}: {e}", path.display()))
     }
 
-    fn public_key(&self) -> Result<String, String> {
+    pub(crate) fn public_key(&self) -> Result<String, String> {
         fs::read_to_string(&self.key)
             .map(|k| k.trim().to_owned())
             .ok()
