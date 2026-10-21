@@ -28,7 +28,8 @@ none for them: a profile without textures whose UUID is not a Mojang one (versio
   a texture through another method, so Fabric has a jar for 1.14.4 and one for 1.15 to
   1.15.1 (built by `mc-1.16.5-1.20.1/fabric/fabric.gradle`). Forge 1.14.4 and 1.15.2 have no
   Mixin: their jars (Architectury Loom, one per release, as the layer's SRG names differ)
-  carry a JavaScript coremod (`META-INF/coremods.json`) that rewrites the same getters.
+  carry a JavaScript coremod (`META-INF/coremods.json`) that rewrites the same getters. It
+  runs in Java 8's Nashorn, so it is ES5 only (CI compiles it there).
 - 1.20.2 to 1.20.6 use `mc-1.21.1/common` (the skin is a `PlayerSkin` from 1.20.2 on): its
   Fabric jar serves 1.20.2 to 1.21.1 and its NeoForge jar 1.20.6 to 1.21.1.
   `mc-1.20.2-1.20.6/` builds the rest with Architectury Loom (`arch.gradle`): Forge
