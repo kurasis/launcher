@@ -285,7 +285,7 @@ pub fn start(
                     "The world's server is not installed yet.",
                 )
             })?;
-            let launch = install::loader_launch(root, manifest)?;
+            let launch = install::loader_launch(root, manifest, &root.server_jar(&pin.jar_sha1))?;
             pack::place_server(root, &world)?;
             Some((generation.loader.kind, launch))
         }

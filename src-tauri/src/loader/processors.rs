@@ -228,7 +228,7 @@ pub fn prepare_server(inputs: &ServerInputs<'_>) -> LauncherResult<Vec<LockedArt
         .map(|l| maven_path(&l.path))
         .collect();
     let mut paths: Vec<String> = Vec::new();
-    arguments.command(&inputs.root.maven_root(), &mut |rest| {
+    arguments.command(&inputs.root.maven_root(), &inputs.server_jar, &mut |rest| {
         paths.push(maven_path(rest));
     })?;
     for value in installer.data.values() {

@@ -523,12 +523,28 @@ async fn host_a_world_with_mods() {
     ));
     let minecraft = world_version(&metadata).await;
     // Quilt runs Fabric mods: the same Fabric API and Sodium serve both. On
-    // NeoForge, JEI runs on both sides and Sodium on the client only.
-    let (kind, catalog_loader, server_slug) =
+    // NeoForge, JEI runs on both sides and Sodium on the client only; the
+    // catalog has JEI for Forge up to 1.20.1 and nothing for Forge 26.3, so
+    // that test starts Forge with no mod.
+    let (kind, catalog_loader, wanted): (_, _, &[(&str, Side)]) =
         match std::env::var("WORLD_LOADER").as_deref().unwrap_or("fabric") {
-            "fabric" => (LoaderKind::Fabric, "fabric", "fabric-api"),
-            "quilt" => (LoaderKind::Quilt, "fabric", "fabric-api"),
-            "neoforge" => (LoaderKind::NeoForge, "neoforge", "jei"),
+            "fabric" => (
+                LoaderKind::Fabric,
+                "fabric",
+                &[("fabric-api", Side::Both), ("sodium", Side::Client)],
+            ),
+            "quilt" => (
+                LoaderKind::Quilt,
+                "fabric",
+                &[("fabric-api", Side::Both), ("sodium", Side::Client)],
+            ),
+            "neoforge" => (
+                LoaderKind::NeoForge,
+                "neoforge",
+                &[("jei", Side::Both), ("sodium", Side::Client)],
+            ),
+            "forge" if minecraft == "26.3" => (LoaderKind::Forge, "forge", &[]),
+            "forge" => (LoaderKind::Forge, "forge", &[("jei", Side::Both)]),
             other => panic!("WORLD_LOADER {other} has no live test yet"),
         };
     println!("minecraft {minecraft}, {}", kind.name());
@@ -546,29 +562,24 @@ async fn host_a_world_with_mods() {
     println!("loader {}", loader.version);
     pack::check_supported(&loader, &minecraft).expect("a tested release");
 
-    // An installation's game folder: two mods from the catalog, a setting.
+    // An installation's game folder: mods from the catalog, a setting.
     let transport = HttpTransport::public(VERSION).unwrap();
     let executor = Executor::new(transport.clone(), root.clone(), ExecutorConfig::default());
     let catalog = launcher_lib::mods::Client::new(VERSION).unwrap();
     let instance = launcher_lib::storage::paths::InstanceId::generate();
-    let api = catalog_mod(
-        &catalog,
-        &executor,
-        &instance.to_string(),
-        server_slug,
-        &minecraft,
-        catalog_loader,
-    )
-    .await;
-    let sodium = catalog_mod(
-        &catalog,
-        &executor,
-        &instance.to_string(),
-        "sodium",
-        &minecraft,
-        catalog_loader,
-    )
-    .await;
+    let mut installed = Vec::new();
+    for (slug, side) in wanted {
+        let name = catalog_mod(
+            &catalog,
+            &executor,
+            &instance.to_string(),
+            slug,
+            &minecraft,
+            catalog_loader,
+        )
+        .await;
+        installed.push((name, *side));
+    }
     let game = root.game_dir(instance);
     std::fs::create_dir_all(game.join("config")).unwrap();
     std::fs::write(game.join("config/live-test.json"), b"{\"kept\":true}").unwrap();
@@ -594,8 +605,9 @@ async fn host_a_world_with_mods() {
             .unwrap()
             .side
     };
-    assert_eq!(side(&api), Side::Both);
-    assert_eq!(side(&sodium), Side::Client);
+    for (name, expected) in &installed {
+        assert_eq!(side(name), *expected, "{name}");
+    }
     assert!(
         generation.files.iter().all(|f| f.path != "options.txt"),
         "the player's options stay"
@@ -659,7 +671,16 @@ async fn host_a_world_with_mods() {
         .map(|e| e.file_name().to_string_lossy().into_owned())
         .collect();
     mods.sort();
-    assert_eq!(mods, std::slice::from_ref(&api), "only the server's mods");
+    let server_mods: Vec<&String> = installed
+        .iter()
+        .filter(|(_, side)| *side == Side::Both)
+        .map(|(name, _)| name)
+        .collect();
+    assert_eq!(
+        mods.iter().collect::<Vec<_>>(),
+        server_mods,
+        "only the server's mods"
+    );
     // Fabric Loader unpacks the modules nested in the mods it loads.
     if kind == LoaderKind::Fabric {
         let processed: Vec<String> = std::fs::read_dir(server_dir.join(".fabric/processedMods"))
@@ -691,7 +712,9 @@ async fn host_a_world_with_mods() {
     );
     println!("member in, stranger refused");
 
-    if kind == LoaderKind::NeoForge {
+    if kind == LoaderKind::Forge {
+        // Checked after the stop: Forge records its mods in the save.
+    } else if kind == LoaderKind::NeoForge {
         // JEI makes its server settings folder when NeoForge loads it.
         assert!(server_dir.join("config/jei").is_dir(), "JEI loaded");
         assert!(!server_dir.join("config/sodium-options.json").exists());
@@ -712,6 +735,23 @@ async fn host_a_world_with_mods() {
         server_dir.join("world").join("level.dat").is_file(),
         "the world was saved"
     );
+    if kind == LoaderKind::Forge {
+        // Forge records the mods it loaded in the save's `level.dat`, from
+        // 1.12.2's FML to now.
+        use std::io::Read as _;
+        let mut level = Vec::new();
+        flate2::read::GzDecoder::new(
+            std::fs::File::open(server_dir.join("world/level.dat")).unwrap(),
+        )
+        .read_to_end(&mut level)
+        .unwrap();
+        let recorded = |id: &str| level.windows(id.len()).any(|w| w == id.as_bytes());
+        assert!(recorded("forge"), "Forge loaded");
+        for (slug, _) in wanted.iter().filter(|(_, side)| *side == Side::Both) {
+            assert!(recorded(slug), "{slug} loaded");
+        }
+        println!("forge loaded {} mods", wanted.len());
+    }
     // No chat or nicks in files: a loader that writes its own logs writes
     // nothing into them.
     for entry in std::fs::read_dir(server_dir.join("logs"))

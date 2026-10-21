@@ -554,9 +554,22 @@ fn only_tested_loaders_and_releases_are_offered() {
         kind: LoaderKind::Forge,
         version: "1.20.1-47.4.10".into(),
     };
+    assert!(check_supported(&forge, "1.20.1").is_ok());
+    for version in ["1.12.2", "1.16.5", "26.3"] {
+        let forge = LoaderChoice {
+            kind: LoaderKind::Forge,
+            version: format!("{version}-1.0.0"),
+        };
+        assert!(check_supported(&forge, version).is_ok(), "{version}");
+    }
+    assert!(check_supported(&forge, "1.21.1").is_err());
+    let optifine = LoaderChoice {
+        kind: LoaderKind::OptiFine,
+        version: "1.20.1_HD_U_I6".into(),
+    };
     assert_eq!(
-        check_supported(&forge, "1.20.1").unwrap_err().message,
-        "Worlds with this mod loader come later; Fabric, Quilt and NeoForge work now."
+        check_supported(&optifine, "1.20.1").unwrap_err().message,
+        "OptiFine has no server: a world with mods needs Fabric, Quilt, Forge or NeoForge."
     );
     let junk = LoaderChoice {
         kind: LoaderKind::Fabric,

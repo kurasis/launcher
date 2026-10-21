@@ -1840,7 +1840,7 @@
         "noMods": "Без модов",
         "modSource": "{name} · {game}",
         "modsNote": "Мир берёт моды этой установки и их настройки. Сервер запускает нужные ему моды, а моды только для игры, например Sodium, на него не попадают. Каждый мод должен быть в каталоге.",
-        "modsHow": "Для мира с модами выберите установку с Fabric, Quilt или NeoForge и модами. Миры с модами работают на версиях Minecraft, проверенных с загрузчиком.",
+        "modsHow": "Для мира с модами выберите установку с Fabric, Quilt, Forge или NeoForge и модами. Миры с модами работают на версиях Minecraft, проверенных с загрузчиком.",
         "version": "Версия Minecraft",
         "snapshots": "Показывать снапшоты",
         "snapshotsNote": "Снапшоты — тестовые версии: они меняются каждую неделю и могут повредить мир. Мир, созданный на снапшоте, не откроется в более старой версии, а друзьям нужен ровно тот же снапшот.",
@@ -2625,7 +2625,6 @@
     "Waiting for the world stopped.": "Ожидание мира прервалось.",
     "Worlds with friends need a Microsoft account that owns Minecraft. Sign in with it in the launcher once.": "Для миров с друзьями нужен аккаунт Microsoft с купленным Minecraft. Один раз войдите с ним в лаунчере.",
     "Worlds with mods are available for Minecraft {versions} for now.": "Миры с модами пока доступны для Minecraft {versions}.",
-    "Worlds with this mod loader come later; Fabric, Quilt and NeoForge work now.": "Миры с этим загрузчиком появятся позже; сейчас работают Fabric, Quilt и NeoForge.",
     "worlds.lapi.sh cannot be reached.": "worlds.lapi.sh недоступен.",
     "worlds.lapi.sh is not working right now.": "worlds.lapi.sh сейчас не работает.",
     "worlds.lapi.sh refused this.": "worlds.lapi.sh отказал.",
@@ -2721,6 +2720,7 @@
     "Write a little more: the message needs at least 20 characters.": "Напишите чуть подробнее: в сообщении нужно не меньше 20 символов.",
     "A verified mod loader installer is damaged. Host the world again.": "Проверенный установщик загрузчика модов повреждён. Запустите мир снова.",
     "The server's files could not be recorded.": "Не удалось записать файлы сервера.",
-    "This loader has no server installer.": "У этого загрузчика нет установщика сервера."
+    "This loader has no server installer.": "У этого загрузчика нет установщика сервера.",
+    "OptiFine has no server: a world with mods needs Fabric, Quilt, Forge or NeoForge.": "У OptiFine нет сервера: для мира с модами нужен Fabric, Quilt, Forge или NeoForge."
   }
 }

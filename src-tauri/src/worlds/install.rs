@@ -368,7 +368,11 @@ pub enum LoaderLaunch {
 
 /// How a world's loader server starts, every library checked by its SHA-1
 /// and size, and every file its processors produced by its record.
-pub fn loader_launch(root: &DataRoot, sha1: &Sha1) -> LauncherResult<LoaderLaunch> {
+pub fn loader_launch(
+    root: &DataRoot,
+    sha1: &Sha1,
+    game_jar: &std::path::Path,
+) -> LauncherResult<LoaderLaunch> {
     let not_installed = || {
         LauncherError::new(
             ErrorCode::RepairRequired,
@@ -376,18 +380,48 @@ pub fn loader_launch(root: &DataRoot, sha1: &Sha1) -> LauncherResult<LoaderLaunc
         )
     };
     let loader = manifest::load(root, sha1).ok_or_else(not_installed)?;
+    let (main_class, classpath) = loader_classpath(root, sha1)?;
     let Some(arguments) = &loader.server_arguments else {
-        let (main_class, classpath) = loader_classpath(root, sha1)?;
         return Ok(LoaderLaunch::Classpath {
             main_class,
             classpath,
         });
     };
-    loader_classpath(root, sha1)?;
-    server_files(root, sha1).ok_or_else(not_installed)?;
-    Ok(LoaderLaunch::Arguments(
-        arguments.command(&root.maven_root(), &mut |_| {})?,
-    ))
+    // Every file the arguments name is a library checked by its pin, or a
+    // file the processors produced, checked by its record.
+    let produced = server_files(root, sha1).ok_or_else(not_installed)?;
+    let installer = loader.installer.as_ref().map_or(&[][..], |i| &i.libraries);
+    let mut named = Vec::new();
+    let command = arguments.command(&root.maven_root(), game_jar, &mut |rest| {
+        named.push(maven_path(rest));
+    })?;
+    for path in named {
+        if produced.iter().any(|f| f.path == path) {
+            continue;
+        }
+        let pinned = loader
+            .libraries
+            .iter()
+            .chain(installer)
+            .find(|l| !l.url.is_empty() && maven_path(&l.path) == path)
+            .ok_or_else(not_installed)?;
+        if !intact(root, pinned)? {
+            return Err(not_installed());
+        }
+    }
+    Ok(LoaderLaunch::Arguments(command))
+}
+
+/// Whether a pinned library's file matches its SHA-1 and size.
+fn intact(root: &DataRoot, library: &manifest::LoaderLibrary) -> LauncherResult<bool> {
+    let path = resolve_managed_path(root, &maven_path(&library.path))?;
+    Ok(hash_file(&path).is_ok_and(|(size, file_sha1, _)| {
+        Some(size) == library.size
+            && library
+                .sha1
+                .as_ref()
+                .is_some_and(|s| s.as_str() == file_sha1)
+    }))
 }
 
 /// The main class and classpath of a world's loader server, every library
@@ -402,18 +436,10 @@ fn loader_classpath(root: &DataRoot, sha1: &Sha1) -> LauncherResult<(String, Vec
     let loader = manifest::load(root, sha1).ok_or_else(not_installed)?;
     let mut paths = Vec::new();
     for library in server_libraries(&loader.libraries)? {
-        let path = resolve_managed_path(root, &maven_path(&library.path))?;
-        let intact = hash_file(&path).is_ok_and(|(size, file_sha1, _)| {
-            Some(size) == library.size
-                && library
-                    .sha1
-                    .as_ref()
-                    .is_some_and(|s| s.as_str() == file_sha1)
-        });
-        if !intact {
+        if !intact(root, library)? {
             return Err(not_installed());
         }
-        paths.push(path);
+        paths.push(resolve_managed_path(root, &maven_path(&library.path))?);
     }
     Ok((loader.main_class, paths))
 }

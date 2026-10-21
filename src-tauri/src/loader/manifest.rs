@@ -162,12 +162,27 @@ const REFUSED_OPTIONS: [&str; 7] = [
     "@",
 ];
 
+/// What one element of a start argument names.
+enum Named<'a> {
+    /// `libraries`: the Maven tree itself.
+    Libraries,
+    /// `libraries/<path>`: a file in the Maven tree.
+    Library(&'a str),
+    /// Mojang's server JAR.
+    GameJar,
+}
+
+/// The element that stands for Mojang's server JAR in arguments the launcher
+/// builds from a loader JAR's manifest.
+const GAME_JAR: &str = "{MINECRAFT_JAR}";
+
 /// Maps the files of one argument: an element of a `:` or `;` list (or of the
-/// value of `-Dkey=`) under `libraries/` goes through `place`.
+/// value of `-Dkey=`) under `libraries/`, or the game JAR, goes through
+/// `place`.
 fn map_libraries(
     token: &str,
     separator: char,
-    place: &mut dyn FnMut(&str) -> LauncherResult<String>,
+    place: &mut dyn FnMut(Named<'_>) -> LauncherResult<String>,
 ) -> LauncherResult<String> {
     let (head, value) = match token.split_once('=') {
         Some((key, value)) if key.starts_with("-D") => (Some(key), value),
@@ -176,10 +191,12 @@ fn map_libraries(
     let mut out = Vec::new();
     for element in value.split(separator) {
         out.push(if element == LIBRARIES {
-            place("")?
+            place(Named::Libraries)?
+        } else if element == GAME_JAR {
+            place(Named::GameJar)?
         } else if let Some(rest) = element.strip_prefix("libraries/") {
             validate_relative_path(rest)?;
-            place(rest)?
+            place(Named::Library(rest))?
         } else {
             element.to_owned()
         });
@@ -191,6 +208,19 @@ fn map_libraries(
     })
 }
 
+/// Checks the tokens of a start command.
+fn check_tokens(tokens: &[String], separator: char) -> LauncherResult<()> {
+    let fine = |token: &String| {
+        token.bytes().all(|b| b.is_ascii_graphic())
+            && !REFUSED_OPTIONS.iter().any(|o| token.starts_with(o))
+            && map_libraries(token, separator, &mut |_| Ok(String::new())).is_ok()
+    };
+    if tokens.is_empty() || tokens.len() > MAX_ARGUMENTS || !tokens.iter().all(fine) {
+        return Err(unsupported("server arguments"));
+    }
+    Ok(())
+}
+
 /// Reads and checks one start-arguments file of an installer.
 fn server_arguments<R: Read + std::io::Seek>(
     zip: &mut zip::ZipArchive<R>,
@@ -200,24 +230,163 @@ fn server_arguments<R: Read + std::io::Seek>(
         .ok_or_else(|| unsupported("server arguments"))?;
     let text = String::from_utf8(bytes).map_err(|_| unsupported("server arguments"))?;
     let tokens: Vec<String> = text.split_whitespace().map(str::to_owned).collect();
-    let separator = if name.contains("win_") { ';' } else { ':' };
-    let fine = |token: &String| {
-        token.bytes().all(|b| b.is_ascii_graphic())
-            && !REFUSED_OPTIONS.iter().any(|o| token.starts_with(o))
-            && map_libraries(token, separator, &mut |_| Ok(String::new())).is_ok()
-    };
-    if tokens.is_empty() || tokens.len() > MAX_ARGUMENTS || !tokens.iter().all(fine) {
-        return Err(unsupported("server arguments"));
-    }
+    check_tokens(&tokens, if name.contains("win_") { ';' } else { ':' })?;
     Ok(tokens)
+}
+
+/// The main attributes of a JAR's manifest, continuation lines joined.
+fn jar_manifest(jar: &[u8]) -> LauncherResult<BTreeMap<String, String>> {
+    let mut zip =
+        zip::ZipArchive::new(Cursor::new(jar)).map_err(|_| unsupported("loader server JAR"))?;
+    let bytes = read_entry(&mut zip, "META-INF/MANIFEST.MF", MAX_ARGUMENTS_BYTES)?
+        .ok_or_else(|| unsupported("loader server JAR"))?;
+    let text = String::from_utf8(bytes).map_err(|_| unsupported("loader server JAR"))?;
+    let mut lines: Vec<String> = Vec::new();
+    for line in text.lines() {
+        if line.is_empty() {
+            break;
+        }
+        match (line.strip_prefix(' '), lines.last_mut()) {
+            (Some(more), Some(last)) => last.push_str(more),
+            _ => lines.push(line.to_owned()),
+        }
+    }
+    Ok(lines
+        .iter()
+        .filter_map(|l| l.split_once(": "))
+        .map(|(k, v)| (k.to_owned(), v.to_owned()))
+        .collect())
+}
+
+/// A Java class name, as a start command names its main class.
+fn class_name(name: &str) -> LauncherResult<&str> {
+    let fine = !name.is_empty()
+        && name.len() <= 256
+        && name.split('.').all(|part| {
+            !part.is_empty()
+                && part
+                    .bytes()
+                    .all(|b| b.is_ascii_alphanumeric() || b == b'_' || b == b'$')
+        });
+    if fine {
+        Ok(name)
+    } else {
+        Err(unsupported("loader main class"))
+    }
+}
+
+/// A start command the launcher builds: a class path, a main class and its
+/// arguments, for both separators.
+fn built_command(
+    classpath: &[String],
+    main_class: &str,
+    arguments: &[String],
+) -> LauncherResult<ServerArguments> {
+    let command = |separator: &str| {
+        let mut tokens = vec!["-cp".to_owned(), classpath.join(separator)];
+        tokens.push(main_class.to_owned());
+        tokens.extend(arguments.iter().cloned());
+        tokens
+    };
+    let arguments = ServerArguments {
+        unix: command(":"),
+        windows: command(";"),
+    };
+    check_tokens(&arguments.unix, ':')?;
+    check_tokens(&arguments.windows, ';')?;
+    Ok(arguments)
+}
+
+/// A class-path element of a loader JAR's manifest: a library under
+/// `libraries/`, or Mojang's server JAR by its name in the server folder.
+fn manifest_element(element: &str, game: &str) -> LauncherResult<String> {
+    if element == format!("minecraft_server.{game}.jar") {
+        return Ok(GAME_JAR.to_owned());
+    }
+    let rest = element
+        .strip_prefix("libraries/")
+        .ok_or_else(|| unsupported("loader class path"))?;
+    validate_relative_path(rest)?;
+    Ok(element.to_owned())
+}
+
+/// The server's start command of an installer without start-arguments files
+/// (W12): the loader JAR the install profile names starts the server with its
+/// manifest's class path (Forge 1.12.2 to 1.16.5); Forge's shim (26.1 on) is
+/// replaced by the bootstrap it would start, with the libraries it lists.
+fn jar_command<R: Read + std::io::Seek>(
+    zip: &mut zip::ZipArchive<R>,
+    install_profile: &Value,
+    game: &str,
+) -> LauncherResult<ServerArguments> {
+    let coordinate = install_profile
+        .get("path")
+        .and_then(Value::as_str)
+        .ok_or_else(|| unsupported("server arguments"))?;
+    let coordinate = Coordinate::parse(coordinate)?;
+    let path = coordinate.path();
+    let jar = read_entry(zip, &format!("maven/{path}"), MAX_ENTRY_BYTES)?
+        .ok_or_else(|| unsupported("loader server JAR"))?;
+    let manifest = jar_manifest(&jar)?;
+    let mut classpath = Vec::new();
+    if coordinate.classifier.as_deref() != Some("shim") {
+        classpath.push(format!("{LIBRARIES}/{path}"));
+    }
+    for element in manifest
+        .get("Class-Path")
+        .map_or("", String::as_str)
+        .split_whitespace()
+    {
+        classpath.push(manifest_element(element, game)?);
+    }
+    if coordinate.classifier.as_deref() != Some("shim") {
+        let main = manifest
+            .get("Main-Class")
+            .ok_or_else(|| unsupported("loader main class"))?;
+        return built_command(&classpath, class_name(main)?, &[]);
+    }
+    let mut shim =
+        zip::ZipArchive::new(Cursor::new(&jar)).map_err(|_| unsupported("loader server JAR"))?;
+    let read = |shim: &mut zip::ZipArchive<_>, name| -> LauncherResult<String> {
+        let bytes = read_entry(shim, name, MAX_ARGUMENTS_BYTES)?
+            .ok_or_else(|| unsupported("loader server JAR"))?;
+        String::from_utf8(bytes).map_err(|_| unsupported("loader server JAR"))
+    };
+    let properties = read(&mut shim, "bootstrap-shim.properties")?;
+    let property = |key: &str| {
+        properties.lines().find_map(|line| {
+            let (k, v) = line.split_once('=')?;
+            (k.trim() == key).then(|| v.trim().to_owned())
+        })
+    };
+    let main = property("Main-Class").ok_or_else(|| unsupported("loader main class"))?;
+    let arguments: Vec<String> = property("Arguments")
+        .unwrap_or_default()
+        .split_whitespace()
+        .map(str::to_owned)
+        .collect();
+    for line in read(&mut shim, "bootstrap-shim.list")?.lines() {
+        let library = line
+            .split('\t')
+            .nth(2)
+            .ok_or_else(|| unsupported("loader class path"))?;
+        validate_relative_path(library)?;
+        let element = format!("{LIBRARIES}/{library}");
+        if !classpath.contains(&element) {
+            classpath.push(element);
+        }
+    }
+    built_command(&classpath, class_name(&main)?, &arguments)
 }
 
 impl ServerArguments {
     /// The arguments for this computer, files placed in the Maven tree at
-    /// `maven_root`. `place` also learns each file, for checks.
+    /// `maven_root` and Mojang's server JAR at `game_jar`. `place` also learns
+    /// each file in the Maven tree, for checks.
     pub fn command(
         &self,
         maven_root: &std::path::Path,
+        game_jar: &std::path::Path,
         place: &mut dyn FnMut(&str),
     ) -> LauncherResult<Vec<String>> {
         let (tokens, separator) = if cfg!(windows) {
@@ -225,21 +394,27 @@ impl ServerArguments {
         } else {
             (&self.unix, ':')
         };
-        let root = maven_root.to_str().ok_or_else(|| {
-            LauncherError::new(
-                ErrorCode::UnsupportedPathEncoding,
-                "A game path cannot be represented as text for Java.",
-            )
-        })?;
+        let text = |path: &std::path::Path| {
+            path.to_str().map(str::to_owned).ok_or_else(|| {
+                LauncherError::new(
+                    ErrorCode::UnsupportedPathEncoding,
+                    "A game path cannot be represented as text for Java.",
+                )
+            })
+        };
+        let root = text(maven_root)?;
+        let game_jar = text(game_jar)?;
         tokens
             .iter()
             .map(|token| {
-                map_libraries(token, separator, &mut |rest| {
-                    Ok(if rest.is_empty() {
-                        root.to_owned()
-                    } else {
-                        place(rest);
-                        format!("{root}/{rest}")
+                map_libraries(token, separator, &mut |named| {
+                    Ok(match named {
+                        Named::Libraries => root.clone(),
+                        Named::GameJar => game_jar.clone(),
+                        Named::Library(rest) => {
+                            place(rest);
+                            format!("{root}/{rest}")
+                        }
                     })
                 })
             })
@@ -492,8 +667,8 @@ impl Resolver<'_> {
     /// Resolves and stores the dedicated server's manifest of a loader version
     /// (W12): for Fabric and Quilt the meta service's server profile, whose
     /// main class starts Mojang's server JAR named by `fabric.gameJarPath`
-    /// (Quilt: `loader.gameJarPath`); for NeoForge its installer read for the
-    /// server side, whose processors the launcher runs itself.
+    /// (Quilt: `loader.gameJarPath`); for Forge and NeoForge their installer
+    /// read for the server side, whose processors the launcher runs itself.
     pub async fn resolve_server(
         &self,
         choice: &LoaderChoice,
@@ -508,13 +683,13 @@ impl Resolver<'_> {
                 self.meta_profile_of(choice.kind, game, &choice.version, "server")
                     .await?
             }
-            LoaderKind::NeoForge => {
+            LoaderKind::Forge | LoaderKind::NeoForge => {
                 self.installer_of(choice.kind, game, &choice.version, InstallSide::Server)
                     .await?
             }
-            LoaderKind::Forge | LoaderKind::OptiFine => {
+            LoaderKind::OptiFine => {
                 return Err(LauncherError::invalid_input(
-                    "Worlds with this mod loader come later; Fabric, Quilt and NeoForge work now.",
+                    "OptiFine has no server: a world with mods needs Fabric, Quilt, Forge or NeoForge.",
                 ));
             }
         };
@@ -982,12 +1157,25 @@ impl InstallerContents {
             });
         }
         embedded.sort_by(|a, b| a.path.cmp(&b.path));
+        let shim = install_profile
+            .get("path")
+            .and_then(Value::as_str)
+            .is_some_and(|path| path.ends_with(":shim"));
         let server_arguments = match side {
             InstallSide::Client => None,
-            InstallSide::Server => Some(ServerArguments {
-                unix: server_arguments(&mut zip, "data/unix_args.txt")?,
-                windows: server_arguments(&mut zip, "data/win_args.txt")?,
-            }),
+            InstallSide::Server if !shim && zip.index_for_name("data/unix_args.txt").is_some() => {
+                Some(ServerArguments {
+                    unix: server_arguments(&mut zip, "data/unix_args.txt")?,
+                    windows: server_arguments(&mut zip, "data/win_args.txt")?,
+                })
+            }
+            InstallSide::Server => {
+                let game = install_profile
+                    .get("minecraft")
+                    .and_then(Value::as_str)
+                    .ok_or_else(|| unsupported("install profile"))?;
+                Some(jar_command(&mut zip, &install_profile, game)?)
+            }
         };
         if let Some(map) = install_profile.as_object_mut() {
             for key in INSTALLER_EXTRAS {
@@ -1296,9 +1484,13 @@ mod tests {
 
         let mut named = Vec::new();
         let command = arguments
-            .command(std::path::Path::new("/data/maven"), &mut |rest| {
-                named.push(rest.to_owned());
-            })
+            .command(
+                std::path::Path::new("/data/maven"),
+                std::path::Path::new("/data/server.jar"),
+                &mut |rest: &str| {
+                    named.push(rest.to_owned());
+                },
+            )
             .unwrap();
         assert_eq!(named, ["a/b/1/b-1.jar", "c/d/2/d-2.jar"]);
         if cfg!(windows) {
@@ -1376,6 +1568,137 @@ mod tests {
         assert!(
             InstallerContents::read_side(&old, LoaderKind::Forge, InstallSide::Server).is_err()
         );
+    }
+
+    fn jar_of(entries: &[(&str, &str)]) -> Vec<u8> {
+        use std::io::Write as _;
+        let mut zip = zip::ZipWriter::new(Cursor::new(Vec::new()));
+        let options = zip::write::SimpleFileOptions::default();
+        for (name, body) in entries {
+            zip.start_file(*name, options).unwrap();
+            zip.write_all(body.as_bytes()).unwrap();
+        }
+        zip.finish().unwrap().into_inner()
+    }
+
+    fn forge_installer(path: &str, jar: &[u8]) -> Vec<u8> {
+        use std::io::Write as _;
+        let coordinate = Coordinate::parse(path).unwrap();
+        let profile = serde_json::json!({
+            "spec": 0,
+            "minecraft": "1.12.2",
+            "json": "/version.json",
+            "path": path,
+        });
+        let mut zip = zip::ZipWriter::new(Cursor::new(Vec::new()));
+        let options = zip::write::SimpleFileOptions::default();
+        zip.start_file("install_profile.json", options).unwrap();
+        zip.write_all(profile.to_string().as_bytes()).unwrap();
+        zip.start_file("version.json", options).unwrap();
+        zip.write_all(b"{}").unwrap();
+        zip.start_file(format!("maven/{}", coordinate.path()), options)
+            .unwrap();
+        zip.write_all(jar).unwrap();
+        zip.finish().unwrap().into_inner()
+    }
+
+    fn server_of(bytes: &[u8]) -> LauncherResult<ServerArguments> {
+        InstallerContents::read_side(bytes, LoaderKind::Forge, InstallSide::Server)?
+            .server_arguments
+            .ok_or_else(|| unsupported("server arguments"))
+    }
+
+    #[test]
+    fn an_older_forge_server_starts_from_its_jar_manifest() {
+        let manifest = "Manifest-Version: 1.0\r\nClass-Path: libraries/net/minecraft/launchwrapper/1.12/launchwrapper-1.12.jar libraries/org/ow2/asm\r\n /asm-debug-all/5.2/asm-debug-all-5.2.jar minecraft_server.1.12.2.jar\r\nMain-Class: net.minecraftforge.fml.relauncher.ServerLaunchWrapper\r\n\r\nName: x\r\nMain-Class: Other\r\n";
+        let jar = jar_of(&[("META-INF/MANIFEST.MF", manifest)]);
+        let path = "net.minecraftforge:forge:1.12.2-14.23.5.2864";
+        let arguments = server_of(&forge_installer(path, &jar)).unwrap();
+        assert_eq!(
+            arguments.unix,
+            [
+                "-cp",
+                "libraries/net/minecraftforge/forge/1.12.2-14.23.5.2864/forge-1.12.2-14.23.5.2864.jar:libraries/net/minecraft/launchwrapper/1.12/launchwrapper-1.12.jar:libraries/org/ow2/asm/asm-debug-all/5.2/asm-debug-all-5.2.jar:{MINECRAFT_JAR}",
+                "net.minecraftforge.fml.relauncher.ServerLaunchWrapper",
+            ]
+        );
+        assert_eq!(arguments.windows[1].matches(';').count(), 3);
+        let mut named = Vec::new();
+        let command = arguments
+            .command(
+                std::path::Path::new("/m"),
+                std::path::Path::new("/s/server.jar"),
+                &mut |rest: &str| named.push(rest.to_owned()),
+            )
+            .unwrap();
+        assert_eq!(named.len(), 3);
+        let separator = if cfg!(windows) { ';' } else { ':' };
+        assert!(command[1].ends_with(&format!("{separator}/s/server.jar")));
+
+        // A class path outside `libraries/` or a strange main class refuses
+        // the installer.
+        for (class_path, main) in [
+            ("../evil.jar", "a.Main"),
+            ("/etc/evil.jar", "a.Main"),
+            ("libraries/../evil.jar", "a.Main"),
+            ("minecraft_server.1.16.5.jar", "a.Main"),
+            ("libraries/a.jar", "a Main"),
+            ("libraries/a.jar", "-javaagent:x"),
+            ("libraries/a.jar", ""),
+        ] {
+            let manifest = format!("Class-Path: {class_path}\nMain-Class: {main}\n");
+            let jar = jar_of(&[("META-INF/MANIFEST.MF", &manifest)]);
+            assert!(
+                server_of(&forge_installer(path, &jar)).is_err(),
+                "{class_path} {main}"
+            );
+        }
+        assert!(server_of(&forge_installer(path, b"not a jar")).is_err());
+    }
+
+    #[test]
+    fn forge_s_shim_is_replaced_by_the_bootstrap_it_starts() {
+        let jar = jar_of(&[
+            (
+                "META-INF/MANIFEST.MF",
+                "Class-Path: libraries/a/a/1/a-1.jar libraries/b/b/1/b-1.jar\nMain-Class: net.minecraftforge.bootstrap.shim.Main\n",
+            ),
+            (
+                "bootstrap-shim.properties",
+                "Arguments=--launchTarget forge_server\nJava-Version=25\nMain-Class=net.minecraftforge.bootstrap.ForgeBootstrap\n",
+            ),
+            (
+                "bootstrap-shim.list",
+                "00\tb:b:1\tb/b/1/b-1.jar\n00\tc:c:1\tc/c/1/c-1.jar\n",
+            ),
+        ]);
+        let path = "net.minecraftforge:forge:26.3-66.1.0:shim";
+        let arguments = server_of(&forge_installer(path, &jar)).unwrap();
+        assert_eq!(
+            arguments.unix,
+            [
+                "-cp",
+                "libraries/a/a/1/a-1.jar:libraries/b/b/1/b-1.jar:libraries/c/c/1/c-1.jar",
+                "net.minecraftforge.bootstrap.ForgeBootstrap",
+                "--launchTarget",
+                "forge_server",
+            ]
+        );
+        let bad = jar_of(&[
+            ("META-INF/MANIFEST.MF", "Main-Class: x.Main\n"),
+            ("bootstrap-shim.properties", "Main-Class=a.B\n"),
+            ("bootstrap-shim.list", "00\tc:c:1\t../../c-1.jar\n"),
+        ]);
+        assert!(server_of(&forge_installer(path, &bad)).is_err());
+        let agent = jar_of(&[
+            ("META-INF/MANIFEST.MF", "Main-Class: x.Main\n"),
+            (
+                "bootstrap-shim.properties",
+                "Main-Class=a.B\nArguments=-javaagent:x.jar\n",
+            ),
+            ("bootstrap-shim.list", ""),
+        ]);
+        assert!(server_of(&forge_installer(path, &agent)).is_err());
     }
 
     /// Serves one meta service answer; anything else is offline.
