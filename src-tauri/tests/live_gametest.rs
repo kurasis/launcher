@@ -52,6 +52,11 @@ use serde_json::Value;
 const VERSION: &str = "0.1.0";
 /// Beyond the play time: starting, the world, closing.
 const SLACK: Duration = Duration::from_secs(15 * 60);
+/// Plays of one scenario: the first, and one more for each mod of the set a crash
+/// is blamed on.
+const MAX_ATTEMPTS: u32 = 3;
+/// Our own mods: a crash blamed on them is the test's finding.
+const OURS: &[&str] = &["launcherskins", "launchergametest"];
 
 /// The test player, offline in the full game: its nick picks the skin variant.
 /// It exists only in this test binary, like `live_play`'s harness identity.
@@ -138,6 +143,44 @@ fn built_jar(dir: &Path, prefix: &str, loader: &str, game: &str) -> Option<PathB
                 .iter()
                 .any(|s| name.ends_with(s))
     })
+}
+
+/// The mod of the set the launcher's diagnosis blames, if the first mod it names
+/// is one of the set (and not ours).
+fn blamed<'a>(diagnosis: &Value, set: &'a [mods::ModFile]) -> Option<&'a mods::ModFile> {
+    let named = diagnosis["details"]["modId"].as_str().into_iter().chain(
+        diagnosis["suspects"]
+            .as_array()
+            .into_iter()
+            .flatten()
+            .filter_map(Value::as_str)
+            .map(|s| {
+                // "Sodium (sodium)" or "sodium".
+                s.rsplit_once(" (")
+                    .and_then(|(_, id)| id.strip_suffix(')'))
+                    .unwrap_or(s)
+            }),
+    );
+    for id in named {
+        if OURS.contains(&id) {
+            return None;
+        }
+        if let Some(file) = set.iter().find(|f| f.mod_ids.iter().any(|m| m == id)) {
+            return Some(file);
+        }
+    }
+    None
+}
+
+/// Moves what attempt `n` left in `out` to `out/attempt-<n>/`.
+fn stash(out: &Path, n: u32) {
+    let to = out.join(format!("attempt-{n}"));
+    std::fs::create_dir_all(&to).unwrap();
+    for entry in std::fs::read_dir(out).unwrap().flatten() {
+        if !entry.file_name().to_string_lossy().starts_with("attempt-") {
+            std::fs::rename(entry.path(), to.join(entry.file_name())).unwrap();
+        }
+    }
 }
 
 /// Sets these keys in the game's options.txt, keeping every other line.
@@ -323,288 +366,349 @@ async fn the_game_is_played_with_mods_and_skins() {
         result.downloaded_files
     );
 
-    // The game folder: the bot, the skins mod under test, the mod set, options.
-    let game_dir = root.game_dir(instance.id);
-    clean_game_dir(&game_dir);
-    let mods_dir = game_dir.join("mods");
-    std::fs::create_dir_all(&mods_dir).unwrap();
-    // With no loader the jars stay where they are and go on the command line.
-    let mut agents = Vec::new();
-    if kind.is_some() {
-        std::fs::copy(&bot_jar, mods_dir.join(bot_jar.file_name().unwrap())).unwrap();
-    } else {
-        agents.push(bot_jar.clone());
-    }
-    // Our own build of the skins mod goes in under a name the launcher leaves
-    // alone; without one the launcher adds the released mod as for a player.
-    let own_skins = skins_jar.is_some();
-    if let Some(jar) = &skins_jar {
+    let cache = root_path.join("gametest-cache");
+    let mut avoid = mods::Avoid::load(&cache);
+    let loader = mods::Loader {
+        kind: &loader_name,
+        version: instance.loader.as_ref().map_or("", |l| l.version.as_str()),
+    };
+    // A crash a mod of the set is blamed for plays the scenario again without
+    // that version of it; the scenario then passes only with a warning.
+    let first_notes = notes;
+    let mut retries: Vec<String> = Vec::new();
+    for attempt in 1..=MAX_ATTEMPTS {
+        let mut notes = first_notes.clone();
+        // The game folder: the bot, the skins mod under test, the mod set, options.
+        let game_dir = root.game_dir(instance.id);
+        clean_game_dir(&game_dir);
+        let mods_dir = game_dir.join("mods");
+        std::fs::create_dir_all(&mods_dir).unwrap();
+        // With no loader the jars stay where they are and go on the command line.
+        let mut agents = Vec::new();
         if kind.is_some() {
-            let name = format!("gametest-{}", jar.file_name().unwrap().to_string_lossy());
-            std::fs::copy(jar, mods_dir.join(name)).unwrap();
+            std::fs::copy(&bot_jar, mods_dir.join(bot_jar.file_name().unwrap())).unwrap();
         } else {
-            agents.push(jar.clone());
+            agents.push(bot_jar.clone());
         }
-        notes.push(format!(
-            "- skins mod: this commit's build ({})",
-            jar.file_name().unwrap().to_string_lossy()
-        ));
-    } else {
-        notes.push("- skins mod: the released version the launcher pins".to_owned());
-    }
-    if mod_set == "medium" {
-        let resolved = mods::resolve(&version, &loader_name).await;
-        mods::install(
-            &resolved.files,
-            &root_path.join("gametest-cache").join("mods"),
-            &mods_dir,
-        )
-        .await
-        .expect("the mod set downloads");
-        notes.push(format!(
-            "- mods ({}): {}",
-            resolved.files.len(),
-            resolved
-                .files
-                .iter()
-                .map(|f| format!("{} {}", f.file_name, f.version))
-                .collect::<Vec<_>>()
-                .join(", ")
-        ));
-        if !resolved.skipped.is_empty() {
-            notes.push(format!("- not in the set: {}", resolved.skipped.join("; ")));
+        // Our own build of the skins mod goes in under a name the launcher leaves
+        // alone; without one the launcher adds the released mod as for a player.
+        let own_skins = skins_jar.is_some();
+        if let Some(jar) = &skins_jar {
+            if kind.is_some() {
+                let name = format!("gametest-{}", jar.file_name().unwrap().to_string_lossy());
+                std::fs::copy(jar, mods_dir.join(name)).unwrap();
+            } else {
+                agents.push(jar.clone());
+            }
+            notes.push(format!(
+                "- skins mod: this commit's build ({})",
+                jar.file_name().unwrap().to_string_lossy()
+            ));
+        } else {
+            notes.push("- skins mod: the released version the launcher pins".to_owned());
         }
-        println!("mod set: {} files", resolved.files.len());
-    }
-    write_options(
-        &game_dir,
-        &[
-            ("onboardAccessibility", "false"),
-            ("pauseOnLostFocus", "false"),
-            ("tutorialStep", "none"),
-            ("skipMultiplayerWarning", "true"),
-            ("joinedFirstServer", "true"),
-            ("narrator", "0"),
-            ("soundCategory_master", "0.0"),
-            ("enableVsync", "false"),
-            ("maxFps", "260"),
-            ("renderDistance", "10"),
-            ("simulationDistance", "8"),
-            ("fullscreen", "false"),
-            ("inactivityFpsLimit", "\"minimized\""),
-        ],
-    );
+        // The mod set as played, and the versions it could not take.
+        let mut set: Vec<mods::ModFile> = Vec::new();
+        let mut replaced: Vec<String> = retries.clone();
+        if mod_set == "medium" {
+            let mods_cache = cache.join("mods");
+            let resolved = mods::resolve(&version, &loader, &avoid, &mods_cache).await;
+            mods::install(&resolved.files, &mods_cache, &mods_dir)
+                .await
+                .expect("the mod set downloads");
+            notes.push(format!(
+                "- mods ({}): {}",
+                resolved.files.len(),
+                resolved
+                    .files
+                    .iter()
+                    .map(|f| format!("{} {}", f.file_name, f.version))
+                    .collect::<Vec<_>>()
+                    .join(", ")
+            ));
+            if !resolved.skipped.is_empty() {
+                notes.push(format!("- not in the set: {}", resolved.skipped.join("; ")));
+            }
+            if !resolved.older.is_empty() {
+                notes.push(format!(
+                    "- older versions, for this loader build: {}",
+                    resolved.older.join("; ")
+                ));
+            }
+            println!("mod set: {} files", resolved.files.len());
+            replaced.extend(resolved.replaced);
+            set = resolved.files;
+        }
+        if !replaced.is_empty() {
+            notes.push(format!(
+                "- ⚠️ replaced, crashed on this loader build: {}",
+                replaced.join("; ")
+            ));
+        }
+        write_options(
+            &game_dir,
+            &[
+                ("onboardAccessibility", "false"),
+                ("pauseOnLostFocus", "false"),
+                ("tutorialStep", "none"),
+                ("skipMultiplayerWarning", "true"),
+                ("joinedFirstServer", "true"),
+                ("narrator", "0"),
+                ("soundCategory_master", "0.0"),
+                ("enableVsync", "false"),
+                ("maxFps", "260"),
+                ("renderDistance", "10"),
+                ("simulationDistance", "8"),
+                ("fullscreen", "false"),
+                ("inactivityFpsLimit", "\"minimized\""),
+            ],
+        );
 
-    // The skins this run's player wears, served from this computer.
-    let server = skins::start().await;
-    let bot_out = out.join("bot");
-    let agents: String = agents
-        .iter()
-        .map(|jar| format!("\"-javaagent:{}\" ", jar.display()))
-        .collect();
-    let jvm = format!(
-        "{agents}\"-Dlaunchergametest.out={}\" -Dlaunchergametest.minutes={minutes} \
-         -Dlaunchergametest.skin={} -Dlaunchergametest.skinFrames={} \
-         -Dlaunchergametest.capeFrames={} -Dlauncherskins.api={}",
-        bot_out.display(),
-        variant.expect_skin(),
-        variant.skin_frames(),
-        variant.cape_frames(),
-        server.base,
-    );
-    let wanted_heap = if mod_set == "medium" { 6144 } else { 3072 };
-    let heap = wanted_heap.min(max_heap);
-    notes.push(format!("- memory for the game: {heap} MiB"));
-    let summary = state
-        .update_instance_settings(request(UpdateInstanceSettingsPayload {
-            instance_id: instance.id,
-            max_heap_mib: heap,
-            resolution: Resolution {
-                width: 1280,
-                height: 720,
-            },
-            fullscreen: Some(false),
-            game_arguments: Some(String::new()),
-            launcher_skins: Some(!own_skins),
-        }))
-        .unwrap();
-    let provider = summary
-        .java_provider
-        .or(summary.java.as_ref().map(|j| j.provider))
-        .unwrap_or_default();
-    state
-        .set_instance_java(
-            request(SetInstanceJavaPayload {
+        // The skins this run's player wears, served from this computer.
+        let server = skins::start().await;
+        let bot_out = out.join("bot");
+        let agents: String = agents
+            .iter()
+            .map(|jar| format!("\"-javaagent:{}\" ", jar.display()))
+            .collect();
+        let jvm = format!(
+            "{agents}\"-Dlaunchergametest.out={}\" -Dlaunchergametest.minutes={minutes} \
+             -Dlaunchergametest.skin={} -Dlaunchergametest.skinFrames={} \
+             -Dlaunchergametest.capeFrames={} -Dlauncherskins.api={}",
+            bot_out.display(),
+            variant.expect_skin(),
+            variant.skin_frames(),
+            variant.cape_frames(),
+            server.base,
+        );
+        let wanted_heap = if mod_set == "medium" { 6144 } else { 3072 };
+        let heap = wanted_heap.min(max_heap);
+        notes.push(format!("- memory for the game: {heap} MiB"));
+        let summary = state
+            .update_instance_settings(request(UpdateInstanceSettingsPayload {
                 instance_id: instance.id,
-                java: JavaChoice::Managed { provider },
-                jvm_arguments: jvm,
-                accept_issues: false,
-            }),
-            None,
-        )
-        .unwrap();
+                max_heap_mib: heap,
+                resolution: Resolution {
+                    width: 1280,
+                    height: 720,
+                },
+                fullscreen: Some(false),
+                game_arguments: Some(String::new()),
+                launcher_skins: Some(!own_skins),
+            }))
+            .unwrap();
+        let provider = summary
+            .java_provider
+            .or(summary.java.as_ref().map(|j| j.provider))
+            .unwrap_or_default();
+        state
+            .set_instance_java(
+                request(SetInstanceJavaPayload {
+                    instance_id: instance.id,
+                    java: JavaChoice::Managed { provider },
+                    jvm_arguments: jvm,
+                    accept_issues: false,
+                }),
+                None,
+            )
+            .unwrap();
 
-    // Play.
-    let host = Arc::new(Host {
-        state: Arc::clone(&state),
-        handles: Mutex::default(),
-        finished: Mutex::default(),
-    });
-    let service = LaunchService::new(
-        Arc::clone(&host) as Arc<dyn LaunchHost>,
-        source,
-        Arc::new(TestPlayer(variant.nick())),
-        VERSION,
-    );
-    let started = Instant::now();
-    let run = service
-        .launch_as(
-            &uuid::Uuid::new_v4().to_string(),
-            instance.id,
-            LaunchMode::Account("game-test".into()),
-        )
-        .await
-        .expect("preflight passes and the game starts");
-    let run_id = uuid::Uuid::parse_str(&run.run_id).unwrap();
-    println!("game started");
-    let limit = Duration::from_secs_f64(minutes * 60.0) + SLACK;
-    let report_path = bot_out.join("report.json");
-    let read_report =
-        || -> Option<Value> { serde_json::from_slice(&std::fs::read(&report_path).ok()?).ok() };
-    let mut timed_out = false;
-    while !host.finished.lock().unwrap().contains(&run.run_id) {
-        if started.elapsed() > limit {
-            timed_out = true;
-            println!("no end after {} s: stopping the game", limit.as_secs());
-            service.stop(&run.run_id);
-            let deadline = Instant::now() + Duration::from_secs(60);
-            while !host.finished.lock().unwrap().contains(&run.run_id) && Instant::now() < deadline
-            {
-                tokio::time::sleep(Duration::from_millis(500)).await;
-            }
-            break;
-        }
-        // The bot closes the game itself; give it a minute to do so after its report.
-        if read_report().is_some_and(|r| r["finished"] == true) {
-            let deadline = Instant::now() + Duration::from_secs(90);
-            while !host.finished.lock().unwrap().contains(&run.run_id) && Instant::now() < deadline
-            {
-                tokio::time::sleep(Duration::from_millis(500)).await;
-            }
-            if !host.finished.lock().unwrap().contains(&run.run_id) {
-                notes
-                    .push("- the game did not close after the bot asked it to; stopped".to_owned());
+        // Play.
+        let host = Arc::new(Host {
+            state: Arc::clone(&state),
+            handles: Mutex::default(),
+            finished: Mutex::default(),
+        });
+        let service = LaunchService::new(
+            Arc::clone(&host) as Arc<dyn LaunchHost>,
+            Arc::clone(&source),
+            Arc::new(TestPlayer(variant.nick())),
+            VERSION,
+        );
+        let started = Instant::now();
+        let run = service
+            .launch_as(
+                &uuid::Uuid::new_v4().to_string(),
+                instance.id,
+                LaunchMode::Account("game-test".into()),
+            )
+            .await
+            .expect("preflight passes and the game starts");
+        let run_id = uuid::Uuid::parse_str(&run.run_id).unwrap();
+        println!("game started");
+        let limit = Duration::from_secs_f64(minutes * 60.0) + SLACK;
+        let report_path = bot_out.join("report.json");
+        let read_report =
+            || -> Option<Value> { serde_json::from_slice(&std::fs::read(&report_path).ok()?).ok() };
+        let mut timed_out = false;
+        while !host.finished.lock().unwrap().contains(&run.run_id) {
+            if started.elapsed() > limit {
+                timed_out = true;
+                println!("no end after {} s: stopping the game", limit.as_secs());
                 service.stop(&run.run_id);
-                tokio::time::sleep(Duration::from_secs(10)).await;
+                let deadline = Instant::now() + Duration::from_secs(60);
+                while !host.finished.lock().unwrap().contains(&run.run_id)
+                    && Instant::now() < deadline
+                {
+                    tokio::time::sleep(Duration::from_millis(500)).await;
+                }
+                break;
             }
-            break;
+            // The bot closes the game itself; give it a minute to do so after its report.
+            if read_report().is_some_and(|r| r["finished"] == true) {
+                let deadline = Instant::now() + Duration::from_secs(90);
+                while !host.finished.lock().unwrap().contains(&run.run_id)
+                    && Instant::now() < deadline
+                {
+                    tokio::time::sleep(Duration::from_millis(500)).await;
+                }
+                if !host.finished.lock().unwrap().contains(&run.run_id) {
+                    notes.push(
+                        "- the game did not close after the bot asked it to; stopped".to_owned(),
+                    );
+                    service.stop(&run.run_id);
+                    tokio::time::sleep(Duration::from_secs(10)).await;
+                }
+                break;
+            }
+            tokio::time::sleep(Duration::from_secs(2)).await;
         }
-        tokio::time::sleep(Duration::from_secs(2)).await;
-    }
-    let last = state.snapshot().last_run;
-    let exit_code = last.as_ref().and_then(|r| r.exit_code);
-    println!(
-        "game ended after {:.0} s, exit code {exit_code:?}",
-        started.elapsed().as_secs_f64()
-    );
+        let last = state.snapshot().last_run;
+        let exit_code = last.as_ref().and_then(|r| r.exit_code);
+        println!(
+            "game ended after {:.0} s, exit code {exit_code:?}",
+            started.elapsed().as_secs_f64()
+        );
 
-    // Collect: report, screenshots, cleaned logs and crash reports.
-    let bot_report = read_report();
-    if bot_report.is_some() {
-        report::copy_clean(&report_path, &out.join("report.json"), &redactor);
-    }
-    let _ = std::fs::remove_dir_all(&bot_out);
-    let shots = out.join("screenshots");
-    std::fs::create_dir_all(&shots).unwrap();
-    for shot in report::files_starting(&game_dir.join("screenshots"), "gametest-") {
-        std::fs::copy(&shot, shots.join(shot.file_name().unwrap())).unwrap();
-    }
-    let latest = game_dir.join("logs").join("latest.log");
-    let log_text = std::fs::read_to_string(&latest).unwrap_or_default();
-    let scan = report::scan_log(&log_text, &redactor);
-    report::copy_clean(&latest, &out.join("logs").join("latest.log"), &redactor);
-    report::copy_clean(
-        &root.run_logs(run_id).join("output.log"),
-        &out.join("logs").join("output.log"),
-        &redactor,
-    );
-    let crashes = report::files_starting(&game_dir.join("crash-reports"), "crash-");
-    for crash in &crashes {
+        // Collect: report, screenshots, cleaned logs and crash reports.
+        let bot_report = read_report();
+        if bot_report.is_some() {
+            report::copy_clean(&report_path, &out.join("report.json"), &redactor);
+        }
+        let _ = std::fs::remove_dir_all(&bot_out);
+        let shots = out.join("screenshots");
+        std::fs::create_dir_all(&shots).unwrap();
+        for shot in report::files_starting(&game_dir.join("screenshots"), "gametest-") {
+            std::fs::copy(&shot, shots.join(shot.file_name().unwrap())).unwrap();
+        }
+        let latest = game_dir.join("logs").join("latest.log");
+        let log_text = std::fs::read_to_string(&latest).unwrap_or_default();
+        let scan = report::scan_log(&log_text, &redactor);
+        report::copy_clean(&latest, &out.join("logs").join("latest.log"), &redactor);
         report::copy_clean(
-            crash,
-            &out.join("crash-reports").join(crash.file_name().unwrap()),
+            &root.run_logs(run_id).join("output.log"),
+            &out.join("logs").join("output.log"),
             &redactor,
         );
-    }
-    let diagnosis = last
-        .as_ref()
-        .map(|r| serde_json::to_value(&r.diagnosis).unwrap_or(Value::Null))
-        .unwrap_or(Value::Null);
-
-    let bot_passed = bot_report.as_ref().is_some_and(|r| r["passed"] == true);
-    let clean_exit = exit_code == Some(0) && !timed_out;
-    let passed = bot_passed && clean_exit && crashes.is_empty();
-    let mut lines = vec![format!(
-        "Skins: {} (nick {})",
-        variant.describe(),
-        variant.nick()
-    )];
-    lines.extend(notes);
-    lines.push(format!(
-        "- skin server: {} profile requests, {} textures sent",
-        server.profiles_asked.load(Ordering::Relaxed),
-        server.textures_sent.load(Ordering::Relaxed)
-    ));
-    lines.push(format!(
-        "- game: exit code {}, {} crash reports{}",
-        exit_code.map_or("none".to_owned(), |c| c.to_string()),
-        crashes.len(),
-        if timed_out {
-            ", stopped after the time limit"
-        } else {
-            ""
+        let crashes = report::files_starting(&game_dir.join("crash-reports"), "crash-");
+        for crash in &crashes {
+            report::copy_clean(
+                crash,
+                &out.join("crash-reports").join(crash.file_name().unwrap()),
+                &redactor,
+            );
         }
-    ));
-    lines.push(format!(
-        "- log: {} errors, {} warnings, {} exception lines",
-        scan.errors, scan.warnings, scan.exceptions
-    ));
-    if !diagnosis.is_null() {
+        let diagnosis = last
+            .as_ref()
+            .map(|r| serde_json::to_value(&r.diagnosis).unwrap_or(Value::Null))
+            .unwrap_or(Value::Null);
+
+        let bot_passed = bot_report.as_ref().is_some_and(|r| r["passed"] == true);
+        let clean_exit = exit_code == Some(0) && !timed_out;
+        let passed = bot_passed && clean_exit && crashes.is_empty();
+        let status = match (passed, replaced.is_empty()) {
+            (false, _) => "failed",
+            (true, true) => "passed",
+            (true, false) => "warned",
+        };
+        let mut lines = vec![format!(
+            "Skins: {} (nick {})",
+            variant.describe(),
+            variant.nick()
+        )];
+        lines.extend(notes);
         lines.push(format!(
-            "- launcher's diagnosis: {}",
-            redactor
-                .clean(&diagnosis.to_string())
-                .chars()
-                .take(400)
-                .collect::<String>()
+            "- skin server: {} profile requests, {} textures sent",
+            server.profiles_asked.load(Ordering::Relaxed),
+            server.textures_sent.load(Ordering::Relaxed)
         ));
+        lines.push(format!(
+            "- game: exit code {}, {} crash reports{}",
+            exit_code.map_or("none".to_owned(), |c| c.to_string()),
+            crashes.len(),
+            if timed_out {
+                ", stopped after the time limit"
+            } else {
+                ""
+            }
+        ));
+        lines.push(format!(
+            "- log: {} errors, {} warnings, {} exception lines",
+            scan.errors, scan.warnings, scan.exceptions
+        ));
+        if !diagnosis.is_null() {
+            lines.push(format!(
+                "- launcher's diagnosis: {}",
+                redactor
+                    .clean(&diagnosis.to_string())
+                    .chars()
+                    .take(400)
+                    .collect::<String>()
+            ));
+        }
+        if !scan.samples.is_empty() {
+            lines.push(String::new());
+            lines.push("<details><summary>First error lines</summary>\n\n```".to_owned());
+            lines.extend(scan.samples.iter().cloned());
+            lines.push("```\n</details>".to_owned());
+        }
+        let text = report::summary(&scenario, status, bot_report.as_ref(), &lines);
+        std::fs::write(out.join("summary.md"), &text).unwrap();
+        std::fs::write(
+            out.join("result.json"),
+            serde_json::to_string_pretty(&serde_json::json!({
+                "scenario": scenario,
+                "passed": passed,
+                "status": status,
+                "replaced": replaced,
+                "botPassed": bot_passed,
+                "exitCode": exit_code,
+                "timedOut": timed_out,
+                "crashReports": crashes.len(),
+                "logErrors": scan.errors,
+            }))
+            .unwrap(),
+        )
+        .unwrap();
+        let retry = (status == "failed" && mod_set == "medium" && attempt < MAX_ATTEMPTS)
+            .then(|| blamed(&diagnosis, &set))
+            .flatten();
+        if let Some(file) = retry {
+            println!(
+                "{} {} crashed the game: playing again without it",
+                file.title, file.version
+            );
+            avoid.add(mods::Bad {
+                game: version.clone(),
+                loader: loader.kind.to_owned(),
+                loader_version: loader.version.to_owned(),
+                project: file.project.clone(),
+                version_id: file.version_id.clone(),
+                shown: format!("{} {}", file.title, file.version),
+            });
+            retries.push(format!(
+                "{} {} crashed the game (attempt {attempt}, its files in attempt-{attempt}/)",
+                file.title, file.version
+            ));
+            stash(&out, attempt);
+            continue;
+        }
+        println!("{text}");
+        assert!(
+            status != "failed",
+            "the game test failed; see {}",
+            out.join("summary.md").display()
+        );
+        return;
     }
-    if !scan.samples.is_empty() {
-        lines.push(String::new());
-        lines.push("<details><summary>First error lines</summary>\n\n```".to_owned());
-        lines.extend(scan.samples.iter().cloned());
-        lines.push("```\n</details>".to_owned());
-    }
-    let text = report::summary(&scenario, passed, bot_report.as_ref(), &lines);
-    std::fs::write(out.join("summary.md"), &text).unwrap();
-    std::fs::write(
-        out.join("result.json"),
-        serde_json::to_string_pretty(&serde_json::json!({
-            "scenario": scenario,
-            "passed": passed,
-            "botPassed": bot_passed,
-            "exitCode": exit_code,
-            "timedOut": timed_out,
-            "crashReports": crashes.len(),
-            "logErrors": scan.errors,
-        }))
-        .unwrap(),
-    )
-    .unwrap();
-    println!("{text}");
-    assert!(
-        passed,
-        "the game test failed; see {}",
-        out.join("summary.md").display()
-    );
 }
