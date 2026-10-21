@@ -12,6 +12,7 @@
 //! about a player goes to the launcher's log.
 
 pub mod ads;
+pub mod live;
 pub mod model;
 pub mod player;
 
@@ -309,6 +310,49 @@ pub fn cached_note(root: &DataRoot, id: &str, lang: Lang) -> Option<Note> {
         id,
         lang,
     )
+}
+
+/// Videos remembered as opened from the feed: the latest ones.
+pub const MAX_WATCHED: usize = 500;
+
+/// The videos the player opened from the feed, oldest first: each once, at
+/// most [`MAX_WATCHED`], only sound ids.
+pub fn watched(root: &DataRoot) -> Vec<String> {
+    let Some(value) = read_small(&root.feed_watched(), 64 * 1024)
+        .and_then(|bytes| serde_json::from_slice::<Value>(&bytes).ok())
+    else {
+        return Vec::new();
+    };
+    let mut out: Vec<String> = Vec::new();
+    for id in value
+        .get("videos")
+        .and_then(Value::as_array)
+        .into_iter()
+        .flatten()
+        .filter_map(Value::as_str)
+        .filter(|id| model::video_id(id))
+    {
+        out.retain(|kept| kept != id);
+        out.push(id.to_owned());
+    }
+    let extra = out.len().saturating_sub(MAX_WATCHED);
+    out.drain(..extra);
+    out
+}
+
+/// Remembers a video as opened: it goes last, the oldest leave past the limit.
+pub fn remember_watched(root: &DataRoot, id: &str) -> FeedResult<()> {
+    if !model::video_id(id) {
+        return Err(FeedProblem::BadInput);
+    }
+    let mut videos = watched(root);
+    videos.retain(|kept| kept != id);
+    videos.push(id.to_owned());
+    let extra = videos.len().saturating_sub(MAX_WATCHED);
+    videos.drain(..extra);
+    let bytes =
+        serde_json::to_vec(&json!({ "videos": videos })).map_err(|_| FeedProblem::Server)?;
+    atomic::write(&root.feed_watched(), &bytes).map_err(|_| FeedProblem::Unavailable)
 }
 
 /// The most channels the player can hide.
@@ -940,6 +984,26 @@ impl FeedService {
             found: found.clone(),
         });
         Ok(found)
+    }
+
+    /// The live streams of the favourite Twitch channels alone: what the
+    /// notification that one went live looks at.
+    pub async fn favorite_streams(&self, root: &DataRoot) -> FeedResult<Vec<Stream>> {
+        let logins: Vec<String> = marks(root)
+            .favorite
+            .into_iter()
+            .filter(|m| m.kind == MarkKind::Twitch)
+            .map(|m| m.id)
+            .collect();
+        if logins.is_empty() {
+            return Ok(Vec::new());
+        }
+        self.get_ok(
+            &format!("/v1/streams?logins={}", logins.join(",")),
+            model::MAX_SMALL_BYTES,
+        )
+        .await
+        .and_then(|value| model::streams(&value).ok_or(FeedProblem::Server))
     }
 
     /// The newest videos of the player's own channels.

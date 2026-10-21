@@ -192,6 +192,8 @@ pub struct FeedSettings {
     pub player: PlayerMode,
     /// Parts of the feed not shown; sorted, each once.
     pub hidden: Vec<FeedBlock>,
+    /// A system notification when a favourite Twitch channel goes live.
+    pub live_notifications: bool,
 }
 
 impl Default for FeedSettings {
@@ -204,6 +206,7 @@ impl Default for FeedSettings {
             machine_translation: true,
             player: PlayerMode::Window,
             hidden: Vec::new(),
+            live_notifications: false,
         }
     }
 }
@@ -256,6 +259,7 @@ impl<'de> Deserialize<'de> for FeedSettings {
             machine_translation: flag("machineTranslation", default.machine_translation),
             player: named(fields.get("player")).unwrap_or(default.player),
             hidden,
+            live_notifications: flag("liveNotifications", default.live_notifications),
         })
     }
 }
@@ -940,12 +944,13 @@ mod tests {
         assert_eq!(default.feed.player, PlayerMode::Window);
         assert_eq!(default.feed.video_language, VideoLanguage::Ui);
         assert!(default.feed.hidden.is_empty());
+        assert!(!default.feed.live_notifications);
         for junk in [
             "null",
             "7",
             r#""feed""#,
             "[]",
-            r#"{"enabled":"no","snapshots":1,"shorts":null,"player":"popup","videoLanguage":"de","hidden":"videos","machineTranslation":[]}"#,
+            r#"{"enabled":"no","snapshots":1,"shorts":null,"player":"popup","videoLanguage":"de","hidden":"videos","machineTranslation":[],"liveNotifications":"yes"}"#,
             r#"{"player":{"x":1},"videoLanguage":["ru"],"hidden":[1,null,{"a":1},"<script>"]}"#,
         ] {
             let json = format!(r#"{{"schemaVersion":1,"theme":"dark","feed":{junk}}}"#);
@@ -955,7 +960,7 @@ mod tests {
         }
         let read: Settings = serde_json::from_str(
             r#"{"schemaVersion":1,"feed":{"enabled":false,"snapshots":false,"videoLanguage":"ar",
-            "shorts":true,"machineTranslation":false,"player":"browser",
+            "shorts":true,"machineTranslation":false,"player":"browser","liveNotifications":true,
             "hidden":["videos","news","videos","bogus","streams"],"future":1}}"#,
         )
         .unwrap();
@@ -969,10 +974,12 @@ mod tests {
                 machine_translation: false,
                 player: PlayerMode::Browser,
                 hidden: vec![FeedBlock::News, FeedBlock::Videos, FeedBlock::Streams],
+                live_notifications: true,
             }
         );
         let json = serde_json::to_value(&read).unwrap();
         assert_eq!(json["feed"]["videoLanguage"], "ar");
+        assert_eq!(json["feed"]["liveNotifications"], true);
         assert_eq!(
             json["feed"]["hidden"],
             serde_json::json!(["news", "videos", "streams"])

@@ -990,3 +990,52 @@ fn the_player_window_goes_nowhere_else() {
         assert!(!ok(bad), "{bad}");
     }
 }
+
+#[test]
+fn watched_videos_are_bounded_and_checked_on_disk() {
+    let (_dir, root) = root();
+    assert!(watched(&root).is_empty());
+    remember_watched(&root, "dQw4w9WgXcQ").unwrap();
+    remember_watched(&root, "abcdefghijk").unwrap();
+    // Played again, it moves last.
+    remember_watched(&root, "dQw4w9WgXcQ").unwrap();
+    assert_eq!(watched(&root), ["abcdefghijk", "dQw4w9WgXcQ"]);
+    for bad in ["", "short", "dQw4w9WgXc<", "../../etc/pw", "dQw4w9WgXcQQ"] {
+        assert_eq!(remember_watched(&root, bad), Err(FeedProblem::BadInput));
+    }
+    assert_eq!(watched(&root).len(), 2);
+    // A file with junk keeps only sound ids, each once.
+    fs::write(
+        root.feed_watched(),
+        json!({"videos": ["abcdefghijk", 7, null, "<script>", {"a": 1}, "abcdefghijk", "zyxwvutsrqp"]})
+            .to_string(),
+    )
+    .unwrap();
+    assert_eq!(watched(&root), ["abcdefghijk", "zyxwvutsrqp"]);
+    for junk in [
+        "",
+        "null",
+        "[]",
+        "{\"videos\": \"abcdefghijk\"}",
+        "\u{0}\u{1}",
+    ] {
+        fs::write(root.feed_watched(), junk).unwrap();
+        assert!(watched(&root).is_empty(), "{junk:?}");
+    }
+    // Past the limit the oldest leave.
+    let many: Vec<String> = (0..MAX_WATCHED + 20)
+        .map(|i| format!("video{i:06}"))
+        .collect();
+    fs::write(root.feed_watched(), json!({ "videos": many }).to_string()).unwrap();
+    let kept = watched(&root);
+    assert_eq!(kept.len(), MAX_WATCHED);
+    assert_eq!(kept.first().map(String::as_str), Some("video000020"));
+    remember_watched(&root, "dQw4w9WgXcQ").unwrap();
+    let kept = watched(&root);
+    assert_eq!(kept.len(), MAX_WATCHED);
+    assert_eq!(kept.first().map(String::as_str), Some("video000021"));
+    assert_eq!(kept.last().map(String::as_str), Some("dQw4w9WgXcQ"));
+    // A file too large is not read.
+    fs::write(root.feed_watched(), "x".repeat(65 * 1024)).unwrap();
+    assert!(watched(&root).is_empty());
+}

@@ -1688,6 +1688,8 @@ export interface FeedSettings {
   machineTranslation: boolean;
   player: PlayerMode;
   hidden: FeedBlock[];
+  /** A system notification when a favourite Twitch channel goes live. */
+  liveNotifications: boolean;
 }
 
 /** The feed's languages. */

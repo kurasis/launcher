@@ -81,6 +81,28 @@ export function keptItems(feed: Feed, settings: FeedSettings, filter: FeedFilter
 }
 
 /**
+ * `extra` among `base`, each before the first item of `base` older than it.
+ * The order of `base` stays as it is: the service spreads a busy channel's
+ * videos, so its pages are not strictly newest first.
+ */
+export function mergeByTime(base: FeedItem[], extra: FeedItem[]): FeedItem[] {
+  const waiting = newestFirst(extra);
+  const out: FeedItem[] = [];
+  let next = 0;
+  for (const item of base) {
+    const time = Date.parse(itemDate(item)) || 0;
+    while (next < waiting.length) {
+      const candidate = waiting[next];
+      if (candidate === undefined || (Date.parse(itemDate(candidate)) || 0) < time) break;
+      out.push(candidate);
+      next += 1;
+    }
+    out.push(item);
+  }
+  return [...out, ...waiting.slice(next)];
+}
+
+/**
  * The pages fetched so far with the player's own videos and live streams
  * among them: an own item goes in once the pages have reached its time, so
  * the order holds.
@@ -93,16 +115,39 @@ export function shownItems(
   skip: string | null,
 ): FeedItem[] {
   const seen = new Set(pages.map(itemKey));
-  const lastItem = pages.at(-1);
-  const last = lastItem === undefined ? Infinity : Date.parse(itemDate(lastItem));
+  // The oldest time the pages have reached.
+  const last = pages.reduce(
+    (oldest, item) => Math.min(oldest, Date.parse(itemDate(item)) || 0),
+    Infinity,
+  );
   const ownItems = [
     ...own.map((video): FeedItem => ({ type: 'video', video })),
     ...ownStreams.map((stream): FeedItem => ({ type: 'stream', stream })),
   ]
     .filter((item) => !seen.has(itemKey(item)))
     .filter((item) => !more || Date.parse(itemDate(item)) >= last);
-  return newestFirst([...pages, ...ownItems]).filter(
+  return mergeByTime(pages, ownItems).filter(
     (item) => item.type !== 'note' || item.note.id !== skip,
+  );
+}
+
+/**
+ * The list with its live streams as they are now: those ended leave, the
+ * others are updated where they are, and new ones come in by their time.
+ */
+export function withLiveStreams(items: FeedItem[], live: FeedStream[]): FeedItem[] {
+  const now = new Map(live.map((stream) => [stream.login, stream]));
+  const kept = items.flatMap((item): FeedItem[] => {
+    if (item.type !== 'stream') return [item];
+    const stream = now.get(item.stream.login);
+    return stream === undefined ? [] : [{ type: 'stream', stream }];
+  });
+  const shown = new Set(kept.map(itemKey));
+  return mergeByTime(
+    kept,
+    live
+      .map((stream): FeedItem => ({ type: 'stream', stream }))
+      .filter((item) => !shown.has(itemKey(item))),
   );
 }
 

@@ -299,7 +299,7 @@ export function FeedSettings({ settings }: { settings: SettingsView }) {
   const languageId = useId();
 
   const toggle = (
-    name: 'enabled' | 'snapshots' | 'shorts' | 'machineTranslation',
+    name: 'enabled' | 'snapshots' | 'shorts' | 'machineTranslation' | 'liveNotifications',
     hint?: string,
   ) => (
     <label className={forms.choice}>
@@ -325,6 +325,7 @@ export function FeedSettings({ settings }: { settings: SettingsView }) {
         {toggle('snapshots')}
         {toggle('shorts')}
         {toggle('machineTranslation', t.machineTranslationHint)}
+        {toggle('liveNotifications', t.liveNotificationsHint)}
       </fieldset>
       <fieldset className={forms.choices} disabled={disabled}>
         <legend>{t.hidden}</legend>

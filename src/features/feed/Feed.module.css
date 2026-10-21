@@ -822,3 +822,17 @@
   align-items: center;
   gap: var(--space-3);
 }
+
+/* A video the player opened already: fainter, until hovered or focused. */
+.watched .preview,
+.watched .tileTitle {
+  opacity: 0.55;
+  transition: opacity var(--motion-duration) ease-out;
+}
+
+.watched:hover .preview,
+.watched:hover .tileTitle,
+.watched:focus-within .preview,
+.watched:focus-within .tileTitle {
+  opacity: 1;
+}

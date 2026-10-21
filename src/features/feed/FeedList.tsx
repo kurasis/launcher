@@ -32,6 +32,7 @@ import {
   videoWanted,
   wants,
   withAds,
+  withLiveStreams,
 } from './list';
 import { ServerAdTile } from './ServerAdTile';
 import { kindLabel } from './parts';
@@ -61,6 +62,7 @@ function Tile({
   line,
   onClick,
   menu,
+  dimmed = false,
 }: {
   image: string | null;
   cover: string;
@@ -73,9 +75,11 @@ function Tile({
   onClick: () => void;
   /** The ⋯ menu in the corner. */
   menu: ReactNode;
+  /** Seen already: shown fainter. */
+  dimmed?: boolean;
 }) {
   return (
-    <article className={styles.tile}>
+    <article className={dimmed ? [styles.tile, styles.watched].join(' ') : styles.tile}>
       {menu}
       <span className={styles.preview}>
         {image !== null ? (
@@ -104,11 +108,21 @@ function Tile({
   );
 }
 
+/** The streams live now, as the service lists them (two pages at most). */
+async function liveStreams(): Promise<FeedStream[]> {
+  const first = await ipc.feedPage('streams', null);
+  const second = first.next === null ? null : await ipc.feedPage('streams', first.next);
+  return [...first.items, ...(second?.items ?? [])].flatMap((item) =>
+    item.type === 'stream' ? [item.stream] : [],
+  );
+}
+
 /** What a tile's ⋯ menu does. */
 interface ItemActions {
   marks: FeedMarks;
   onMark: (channel: ChannelMark, list: MarkList | null) => void;
   onCopyLink: (url: string) => void;
+  watched: ReadonlySet<string>;
 }
 
 /** The ⋯ menu of a tile: copy its link, show its channel first or not at all. */
@@ -211,12 +225,21 @@ function VideoItem({
 }) {
   const item: FeedItem = { type: 'video', video };
   const favorite = onList(actions.marks.favorite, channelOf(item));
+  const watched = actions.watched.has(video.id);
   return (
     <Tile
       image={pictureUrl(video.image)}
       cover={video.channel}
       overlay={video.short ? { tone: 'neutral', label: t.short } : null}
-      badges={favorite ? <StatusBadge tone="warning" label={t.favoriteBadge} /> : null}
+      badges={
+        favorite || watched ? (
+          <>
+            {favorite && <StatusBadge tone="warning" label={t.favoriteBadge} />}
+            {watched && <StatusBadge tone="neutral" label={t.watched} />}
+          </>
+        ) : null
+      }
+      dimmed={watched}
       title={video.title}
       label={t.watchVideo({ title: video.title, channel: video.channel })}
       line={`${video.channel} · ${relativeTime(video.date)}`}
@@ -271,6 +294,10 @@ interface FeedListProps {
   marks: FeedMarks;
   onMark: (channel: ChannelMark, list: MarkList | null) => void;
   onCopyLink: (url: string) => void;
+  /** Videos the player opened from the feed: shown dimmed. */
+  watched: ReadonlySet<string>;
+  /** Changes every few minutes: the live streams are asked again. */
+  liveTick: number;
   filter: FeedFilter;
   /** A note shown above the list already. */
   skip: string | null;
@@ -299,6 +326,8 @@ export function FeedList({
   marks,
   onMark,
   onCopyLink,
+  watched,
+  liveTick,
   filter,
   skip,
   onOpen,
@@ -346,6 +375,21 @@ export function FeedList({
       alive.current = false;
     };
   }, [part, filter, shortsOnly]);
+
+  // Live streams change while the list is shown: each tick asks for them
+  // again, so ended ones leave and new ones come in.
+  const liveShown = wants(filter, 'streams') && !settings.hidden.includes('streams') && !kept;
+  const tickSeen = useRef(liveTick);
+  useEffect(() => {
+    if (liveTick === tickSeen.current) return;
+    tickSeen.current = liveTick;
+    if (!liveShown) return;
+    liveStreams()
+      .then((live) => {
+        if (alive.current) setPages((before) => withLiveStreams(before, live));
+      })
+      .catch(() => undefined);
+  }, [liveTick, liveShown]);
 
   const loadMore = useCallback(() => {
     if (next === null || (loading !== 'idle' && loading !== 'failed')) return;
@@ -410,7 +454,7 @@ export function FeedList({
     favoriteItems,
     marks.hidden,
   );
-  const actions: ItemActions = { marks, onMark, onCopyLink };
+  const actions: ItemActions = { marks, onMark, onCopyLink, watched };
   // The order ads take their places in stays while this list is shown.
   const [seed] = useState(Math.random);
   const ordered = useMemo(() => adOrder(ads, seed), [ads, seed]);
