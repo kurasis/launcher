@@ -428,6 +428,7 @@ fn serve() -> Result<(), String> {
         blobs,
         client,
         tokens: auth::Tokens::new(&env("LAPI_MODS_ISSUER", "https://oauth.lapi.sh")),
+        sessions: auth::Sessions::default(),
         limiter: api::Limiter::default(),
         uploads: own::Uploads::default(),
         urls: urls(),
@@ -446,8 +447,23 @@ fn serve() -> Result<(), String> {
             "off"
         }
     );
+    let accounts = env("LAPI_MODS_ACCOUNTS", "http://127.0.0.1:8793")
+        .trim_end_matches('/')
+        .to_owned();
     let runtime = tokio::runtime::Runtime::new().map_err(|e| e.to_string())?;
     runtime.block_on(async move {
+        // Sign-outs, switched-off and deleted accounts reach the catalog
+        // within seconds.
+        let checking = Arc::clone(&app);
+        let asking = http.clone();
+        tokio::spawn(async move {
+            let mut since = 0;
+            loop {
+                tokio::time::sleep(Duration::from_secs(15)).await;
+                api::check_sessions(&checking, &asking, &accounts).await;
+                since = api::purge_deleted(&checking, &asking, &accounts, since).await;
+            }
+        });
         let keys = Arc::clone(&app);
         tokio::spawn(async move {
             loop {
@@ -585,6 +601,8 @@ pub struct App {
     pub blobs: blobs::Blobs,
     pub client: fetch::Client,
     pub tokens: auth::Tokens,
+    /// Sign-outs and deleted accounts, from the account service.
+    pub sessions: auth::Sessions,
     pub limiter: api::Limiter,
     /// Own packs' archives being sent in parts.
     pub uploads: own::Uploads,

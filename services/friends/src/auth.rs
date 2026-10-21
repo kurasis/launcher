@@ -126,6 +126,7 @@ pub async fn fetch_jwks(http: &reqwest::Client, url: &str) -> Result<serde_json:
 pub struct Sessions {
     seen: std::sync::Mutex<std::collections::HashMap<String, std::time::Instant>>,
     ended: std::sync::Mutex<std::collections::HashMap<String, std::time::Instant>>,
+    deleted: std::sync::Mutex<std::collections::HashMap<String, std::time::Instant>>,
 }
 
 /// Longer than any token lives (10 minutes).
@@ -171,6 +172,29 @@ impl Sessions {
         ended.retain(|_, at| now.duration_since(*at) < REMEMBER);
         for sid in sids {
             ended.insert(sid.clone(), now);
+        }
+    }
+
+    /// Whether the account was deleted lately.
+    pub fn gone(&self, account: &str) -> bool {
+        self.deleted
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .contains_key(account)
+    }
+
+    /// Accounts deleted lately: their tokens are refused until they run out,
+    /// even from a session never seen here, so nothing new is kept for them
+    /// after they were cleaned out.
+    pub fn forget(&self, accounts: &[String]) {
+        let now = std::time::Instant::now();
+        let mut deleted = self
+            .deleted
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        deleted.retain(|_, at| now.duration_since(*at) < REMEMBER);
+        for account in accounts {
+            deleted.insert(account.clone(), now);
         }
     }
 }

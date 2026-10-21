@@ -534,6 +534,31 @@ impl Store {
         Ok(true)
     }
 
+    /// Forgets a deleted account (D-064): the reviews it sent with their
+    /// files, and its ban. Returns how many reviews went.
+    pub fn purge(&self, account: &str) -> Result<usize, String> {
+        let ids: Vec<i64> = {
+            let db = self.db();
+            let mut statement = db
+                .prepare("SELECT id FROM reviews WHERE account = ?1")
+                .map_err(err)?;
+            statement
+                .query_map([account], |r| r.get(0))
+                .and_then(Iterator::collect)
+                .map_err(err)?
+        };
+        for id in &ids {
+            self.remove(*id)?;
+        }
+        self.db()
+            .execute(
+                "DELETE FROM bans WHERE kind = 'account' AND value = ?1",
+                [account],
+            )
+            .map_err(err)?;
+        Ok(ids.len())
+    }
+
     /// A review and its files, gone for good.
     pub fn remove(&self, id: i64) -> Result<(), String> {
         {

@@ -168,6 +168,7 @@ fn setup_full(
         blobs,
         client,
         tokens,
+        sessions: crate::auth::Sessions::default(),
         limiter: crate::api::Limiter::default(),
         uploads: crate::own::Uploads::default(),
         urls: Urls::new(FILES).with_cdn(cdn),
@@ -6180,4 +6181,142 @@ fn optifine_has_an_icon_of_its_own() {
     let icon = card.icon.as_deref().unwrap();
     assert!(crate::fetch::picture_site(icon).is_some(), "{icon}");
     assert_eq!(card.project(now()).icon_url.as_deref(), Some(icon));
+}
+
+/// Player `who` starts an upload of `size` bytes from `ip`.
+async fn start_upload_from(t: &T, who: u8, ip: &str, size: u64) -> (StatusCode, Value) {
+    let token = t.token_with(&["account", "mods"], who);
+    let request = Request::builder()
+        .method("POST")
+        .uri("/v1/packs/uploads")
+        .header(header::CONTENT_TYPE, "application/json")
+        .header(header::AUTHORIZATION, format!("Bearer {token}"))
+        .header("x-real-ip", ip)
+        .body(Body::from(
+            json!({ "size": size, "sha256": "ab".repeat(32) }).to_string(),
+        ))
+        .unwrap();
+    let response = t.router.clone().oneshot(request).await.unwrap();
+    let status = response.status();
+    let bytes = response.into_body().collect().await.unwrap().to_bytes();
+    (
+        status,
+        serde_json::from_slice(&bytes).unwrap_or(Value::Null),
+    )
+}
+
+#[tokio::test]
+async fn idle_uploads_of_a_few_accounts_keep_no_one_out() {
+    let t = setup();
+    let small = 1000;
+    let large = crate::own::CHUNK * 3;
+    // An address has two at a time; an IPv6 /64 is one address.
+    for (who, ip, expected) in [
+        (1, "203.0.113.20", StatusCode::CREATED),
+        (2, "203.0.113.20", StatusCode::CREATED),
+        (3, "203.0.113.20", StatusCode::TOO_MANY_REQUESTS),
+        (4, "2001:db8:1:2::1", StatusCode::CREATED),
+        (5, "2001:db8:1:2::ffff", StatusCode::CREATED),
+        (6, "2001:db8:1:2:aaaa::1", StatusCode::TOO_MANY_REQUESTS),
+    ] {
+        let (status, answer) = start_upload_from(&t, who, ip, small).await;
+        assert_eq!(status, expected, "{who} from {ip}: {answer}");
+    }
+    // Idle large uploads fill the large slots, and small packs still come.
+    for who in 10..18 {
+        let (status, answer) =
+            start_upload_from(&t, who, &format!("198.51.100.{who}"), large).await;
+        assert_eq!(status, StatusCode::CREATED, "{answer}");
+    }
+    let (status, answer) = start_upload_from(&t, 18, "198.51.100.18", large).await;
+    assert_eq!(
+        (status, &answer["error"]),
+        (StatusCode::TOO_MANY_REQUESTS, &json!("busy"))
+    );
+    let (status, answer) = start_upload_from(&t, 19, "198.51.100.19", small).await;
+    assert_eq!(status, StatusCode::CREATED, "{answer}");
+}
+
+#[tokio::test]
+async fn signed_out_and_deleted_accounts_are_refused_and_forgotten() {
+    let t = setup();
+    import_sodium(&t).await;
+    let (status, answer) = t.upload(Some(2), "/v1/packs", own_pack("1.0", &[])).await;
+    assert_eq!(status, StatusCode::CREATED, "{answer}");
+    let pack = answer["project"]["id"].as_str().unwrap().to_owned();
+    let (status, _) = t
+        .player(
+            2,
+            "POST",
+            "/v1/imports",
+            json!({ "input": "https://modrinth.com/mod/lithium" }),
+        )
+        .await;
+    assert!(status.is_success(), "{status}");
+    let (_, other) = t.upload(Some(3), "/v1/packs", own_pack("1.0", &[])).await;
+    let other = other["project"]["id"].as_str().unwrap().to_owned();
+    let (status, _) = t
+        .player(
+            2,
+            "POST",
+            &format!("/v1/projects/{other}/report"),
+            json!({ "reason": "broken" }),
+        )
+        .await;
+    assert_eq!(status, StatusCode::ACCEPTED);
+
+    // Player 1 signed out: refused; player 3 is not.
+    t.app.sessions.end(&["s1".to_owned()]);
+    assert_eq!(
+        t.player(1, "GET", "/v1/packs/mine", Value::Null).await.0,
+        StatusCode::UNAUTHORIZED
+    );
+    assert_eq!(
+        t.player(3, "GET", "/v1/packs/mine", Value::Null).await.0,
+        StatusCode::OK
+    );
+
+    // Player 2's account is deleted.
+    crate::api::purge(&t.app, &[(account(2), now())], 0);
+    assert_eq!(
+        t.player(2, "GET", "/v1/packs/mine", Value::Null).await.0,
+        StatusCode::UNAUTHORIZED
+    );
+    let db = rusqlite::Connection::open(t.app.store.path()).unwrap();
+    for (table, column) in [
+        ("import_request", "account_id"),
+        ("report", "account_id"),
+        ("own_pack", "account_id"),
+        ("own_version", "account_id"),
+    ] {
+        let left: i64 = db
+            .query_row(
+                &format!("SELECT count(*) FROM {table} WHERE {column} = ?1"),
+                [account(2)],
+                |r| r.get(0),
+            )
+            .unwrap();
+        assert_eq!(left, 0, "{table}");
+    }
+    let authors: i64 = db
+        .query_row(
+            "SELECT count(*) FROM project_author WHERE project_id = ?1",
+            [&pack],
+            |r| r.get(0),
+        )
+        .unwrap();
+    assert_eq!(authors, 0);
+    assert_eq!(
+        t.app.store.project_status(&pack).unwrap().as_deref(),
+        Some("removed")
+    );
+    assert_eq!(
+        t.get(&format!("/v1/projects/{pack}")).await.0,
+        StatusCode::NOT_FOUND
+    );
+    // Player 3's pack stays.
+    assert_eq!(
+        t.get(&format!("/v1/projects/{other}")).await.0,
+        StatusCode::OK
+    );
 }

@@ -24,7 +24,7 @@ use serde::de::DeserializeOwned;
 use serde_json::{Value, json};
 use sha2::{Digest, Sha256};
 
-use crate::auth::{Claims, Replays, Tokens, verify_proof};
+use crate::auth::{Claims, Replays, Sessions, Tokens, verify_proof};
 use crate::hub::{Event, Hub};
 use crate::store::{self, Moderation, Role, Store};
 use crate::text;
@@ -87,6 +87,8 @@ impl Limiter {
 pub struct App {
     pub store: Store,
     pub tokens: Tokens,
+    /// Sign-outs and deleted accounts, from the account service.
+    pub sessions: Sessions,
     pub tickets: TicketKey,
     pub replays: Replays,
     pub hub: Hub,
@@ -153,6 +155,10 @@ fn who(app: &App, headers: &HeaderMap) -> Result<Caller, Box<Response>> {
         .tokens
         .verify(token, app.clock.now())
         .ok_or_else(|| Box::new(refuse("unauthorized")))?;
+    // Signed out, switched off or deleted.
+    if !app.sessions.admit(&claims.sid, &claims.sub) {
+        return Err(Box::new(refuse("unauthorized")));
+    }
     // The nick is the player's name in the world; one the game would refuse
     // cannot be let in.
     if !text::nick(&claims.nick) {
@@ -1007,6 +1013,65 @@ async fn serve_socket(
         }
     }
     let _ = out.send(WsMessage::Close(None)).await;
+}
+
+// The account service.
+
+/// Asks the account service which recently seen sessions ended and refuses
+/// their tokens from now on. When it cannot be asked, tokens hold until they
+/// run out.
+pub async fn check_sessions(app: &App, http: &reqwest::Client, accounts: &str) {
+    let sessions = app.sessions.recent();
+    for chunk in sessions.chunks(500) {
+        match crate::auth::ended(http, accounts, chunk).await {
+            Ok(ended) => app.sessions.end(&ended),
+            Err(e) => {
+                eprintln!("asking which sessions ended failed: {e}");
+                return;
+            }
+        }
+    }
+}
+
+/// Cleans out accounts the account service says were deleted after
+/// `since`; returns the time to ask from next.
+pub async fn purge_deleted(app: &App, http: &reqwest::Client, accounts: &str, since: i64) -> i64 {
+    let deleted = match crate::auth::deleted(http, accounts, since).await {
+        Ok(deleted) => deleted,
+        Err(e) => {
+            eprintln!("asking which accounts were deleted failed: {e}");
+            return since;
+        }
+    };
+    purge(app, &deleted, since)
+}
+
+/// Refuses the tokens of deleted accounts, then cleans them out.
+pub fn purge(app: &App, deleted: &[(String, i64)], since: i64) -> i64 {
+    let now = app.clock.now();
+    let lately: Vec<String> = deleted
+        .iter()
+        .filter(|(_, at)| now - at < crate::auth::REMEMBER.as_secs().cast_signed())
+        .map(|(account, _)| account.clone())
+        .collect();
+    app.sessions.forget(&lately);
+    let mut newest = since;
+    for (account, at) in deleted {
+        match app.store.purge(account, now) {
+            Ok(rooms) => {
+                for (room, accounts) in rooms {
+                    app.hub.tell_all(&accounts, &Event::Rooms);
+                    changed(app, &room);
+                }
+            }
+            Err(e) => {
+                eprintln!("cleaning out a deleted account failed: {e:?}");
+                return newest;
+            }
+        }
+        newest = newest.max(*at);
+    }
+    newest
 }
 
 pub fn router(app: Arc<App>) -> Router {

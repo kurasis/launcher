@@ -1959,7 +1959,17 @@ archive from the Package workflow, upload it to
   forget the account here. The account service lists deleted accounts on its internal
   port for 90 days; friends cleans them out within 15 seconds (their friends, requests,
   blocks, messages, rooms of two, place in groups, reports they filed). Reports about
-  their messages keep their copy as evidence.
+  their messages keep their copy as evidence. Skins, worlds, mods and reviews do the
+  same within 15 seconds: worn skins; the rooms the account owns with all they hold,
+  its places in other rooms, devices, invites, tickets and relay keys (open admissions
+  are revoked and name no account); its requests to the catalog, its reports, and its
+  own packs, which leave the catalog as at their author's request, without the
+  author's name; its reviews with their files, and a ban of the account.
+- **Sign-outs reach every service.** Friends, skins, worlds, mods and reviews ask the
+  account service every 15 seconds which sessions they saw ended (signed out, password
+  reset, account switched off or deleted) and refuse their access tokens from then on,
+  though the tokens' signatures hold until they run out. A token of an account
+  deleted lately is refused even from a session the service never saw.
 - **Export:** Accounts → _Download my data_ saves one JSON file with what the account
   service (`GET /v1/me/export`) and friends (`GET /v1/export`) keep about the account,
   asked by its own session.

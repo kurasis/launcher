@@ -134,8 +134,8 @@ fn who(app: &App, headers: &HeaderMap) -> Result<Claims, Box<Response>> {
         .tokens
         .verify(token.trim(), now())
         .ok_or_else(unauthorized)?;
-    // Signed out, or the account was switched off.
-    if app.sessions.ended(&claims.sid) {
+    // Signed out, or the account was switched off or deleted.
+    if app.sessions.ended(&claims.sid) || app.sessions.gone(&claims.sub) {
         return Err(unauthorized());
     }
     app.sessions.seen(&claims.sid);
@@ -1002,6 +1002,8 @@ pub async fn purge_deleted(app: &App) {
             return;
         }
     };
+    let accounts: Vec<String> = deleted.iter().map(|(a, _)| a.clone()).collect();
+    app.sessions.forget(&accounts);
     let mut newest = since;
     for (account, at) in deleted {
         if !text::account_id(&account) {
