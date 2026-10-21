@@ -1044,6 +1044,8 @@ pub(crate) fn loader_dependency(game: &str, loader: &LoaderChoice) -> (&'static 
                 .to_owned(),
         ),
         LoaderKind::NeoForge => ("neoforge", loader.version.clone()),
+        // Not in the format; other launchers skip what they do not know.
+        LoaderKind::OptiFine => ("optifine", loader.version.clone()),
     }
 }
 

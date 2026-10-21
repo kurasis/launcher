@@ -741,7 +741,7 @@ pub fn apply_loader(
                 sha1: installer.sha1.clone(),
                 size: installer.size,
             },
-            SourcePolicy::ModLoaders,
+            SourcePolicy::for_artifact(&installer.url)?.0,
             Some(format!(
                 "{} {} installer",
                 manifest.kind.name(),

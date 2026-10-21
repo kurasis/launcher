@@ -271,6 +271,13 @@ describe('cannotAdd', () => {
     // Quilt runs Fabric's mods.
     expect(cannotAdd('mod', version, quilt)).toBeNull();
     expect(cannotAdd('mod', version, vanilla)).toMatch(/“Plain” has no mod loader/);
+    const optifine = instanceFixture({
+      displayName: 'Fast',
+      loader: { kind: 'optifine', version: '1.21.1_HD_U_J1' },
+    });
+    expect(cannotAdd('mod', version, optifine)).toMatch(/“Fast” runs OptiFine on its own/);
+    // Shaders go in.
+    expect(cannotAdd('shader', version, optifine)).toBeNull();
     expect(cannotAdd('mod', { ...version, loaders: ['forge', 'neoforge'] }, fabric)).toBe(
       'This version is for Forge, NeoForge, and “Modded” runs Fabric.',
     );

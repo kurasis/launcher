@@ -223,7 +223,7 @@ export interface SetInstanceLoaderPayload {
 }
 
 /** Mod loaders the launcher installs (D-039). */
-export type LoaderKind = 'fabric' | 'quilt' | 'forge' | 'neoforge';
+export type LoaderKind = 'fabric' | 'quilt' | 'forge' | 'neoforge' | 'optifine';
 
 /** A loader and its exact version. */
 export interface LoaderChoice {

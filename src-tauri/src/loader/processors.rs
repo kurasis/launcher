@@ -1,4 +1,4 @@
-//! The installer step of Forge and NeoForge (D-039).
+//! The installer step of Forge, NeoForge and OptiFine (D-039).
 //!
 //! A Forge-style installer does more than download: it unpacks files it carries
 //! and runs "processors", Java tools that remap and binary-patch the game into
@@ -294,7 +294,11 @@ fn run_processors(
             for entry in &processor.classpath {
                 classpath.push(path_text(&maven_file(root, entry)?)?);
             }
-            let main = main_class(&jar)?;
+            let main = match &processor.main_class {
+                Some(main) if crate::install::descriptor::valid_main_class(main) => main.clone(),
+                Some(_) => return Err(unsupported("installer tool main class")),
+                None => main_class(&jar)?,
+            };
             (inputs.log)(format!(
                 "{} installer step {step}/{total}: {}",
                 inputs.manifest.kind.name(),

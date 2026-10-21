@@ -403,14 +403,16 @@
         "fabric": "Fabric",
         "quilt": "Quilt",
         "forge": "Forge",
-        "neoforge": "NeoForge"
+        "neoforge": "NeoForge",
+        "optifine": "OptiFine"
       },
       "hints": {
         "none": "اللعبة دون تعديل.",
         "fabric": "مُحمِّل خفيف لتعديلات Fabric.",
         "quilt": "مُحمِّل لتعديلات Quilt يشغّل أيضًا معظم تعديلات Fabric.",
         "forge": "المُحمِّل العريق لتعديلات Forge. يشغّل التثبيت مثبّت Forge الذي يبني اللعبة المعدّلة باستخدام Java الخاصة بهذا التثبيت.",
-        "neoforge": "خليفة Forge لتعديلات NeoForge. يشغّل التثبيت مثبّته الذي يبني اللعبة المعدّلة باستخدام Java الخاصة بهذا التثبيت."
+        "neoforge": "خليفة Forge لتعديلات NeoForge. يشغّل التثبيت مثبّته الذي يبني اللعبة المعدّلة باستخدام Java الخاصة بهذا التثبيت.",
+        "optifine": "رسومات أسرع ودعم للمظلّلات، دون تعديلات أخرى. يأخذه المشغّل من كتالوج التعديلات الخاص به ويبني اللعبة المعدّلة باستخدام Java الخاصة بهذا التثبيت."
       },
       "gamesHint": "تُعرض فقط إصدارات Minecraft التي يدعمها {loader}.",
       "version": "إصدار {loader}",
@@ -1439,6 +1441,7 @@
           "noFile": "لا ملف لهذا الإصدار.",
           "noLoader": "لا يوجد محمّل تعديلات في «{name}». تُضاف التعديلات إلى تثبيت فيه Fabric أو Quilt أو Forge أو NeoForge.",
           "noLoaders": "لا يعمل هذا الإصدار مع أي محمّل للمودات، لذا لا يمكن إضافته إلى تثبيت.",
+          "optifineOnly": "يشغّل «{name}» OptiFine وحده، وهو لا يقبل تعديلات. توضع التعديلات في تثبيت مع Fabric أو Quilt أو Forge أو NeoForge.",
           "wrongLoader": "هذا الإصدار لـ {loaders}، و«{name}» يعمل بـ {loader}.",
           "wrongGame": "هذا الإصدار لـ Minecraft {games}، و«{name}» على {game}."
         },
@@ -2215,6 +2218,8 @@
     }
   },
   "errors": {
+    "OptiFine builds are not available here.": "إصدارات OptiFine غير متاحة هنا.",
+    "The mods catalog client could not be created.": "تعذّر إنشاء عميل كتالوج التعديلات.",
     "A demo player name has 3 to 16 letters, digits or underscores.": "يتكون اسم اللاعب في النسخة التجريبية من 3 إلى 16 حرفًا لاتينيًا أو رقمًا أو شرطة سفلية.",
     "A download location is invalid.": "موقع التنزيل غير صالح.",
     "A download source could not be reached. Check the internet connection and try again.": "تعذّر الوصول إلى مصدر التنزيل. تحقق من الاتصال بالإنترنت وحاول مجددًا.",

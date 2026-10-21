@@ -777,3 +777,74 @@ fn a_loader_profile_merges_onto_the_game() {
     provided.libraries.push(loader_library("a.b:c:1", ""));
     assert!(apply_loader(base, &provided, &sha, &ctx(MetaOs::Linux, "x86_64")).is_err());
 }
+
+/// OptiFine's own patcher, run as an installation runs it: set
+/// `OPTIFINE_JAR` (a 1.21.1 build), `CLIENT_JAR` (Mojang's 1.21.1 client) and
+/// `JAVA`, then run with `--ignored`.
+#[test]
+#[ignore = "needs an OptiFine build, the 1.21.1 client and Java"]
+fn optifine_builds_its_library_with_its_own_patcher() {
+    use crate::loader::optifine::{Release, installer_coordinate, manifest};
+    let var = |name: &str| std::env::var(name).unwrap_or_else(|_| panic!("set {name}"));
+    let jar = std::fs::read(var("OPTIFINE_JAR")).unwrap();
+    let release = Release {
+        id: "1.21.1_HD_U_J1".into(),
+        game: "1.21.1".into(),
+        label: "HD U J1".into(),
+        stable: true,
+        url: "https://cdn-mods.lapi.sh/f/x".into(),
+        sha256: String::new(),
+        size: jar.len() as u64,
+    };
+    let path = crate::loader::coordinate::Coordinate::parse(&installer_coordinate(&release.id))
+        .unwrap()
+        .path();
+    let manifest = manifest(&jar, &release, &path).unwrap();
+    let sha = Sha1::parse(&"d".repeat(40)).unwrap();
+    let plan = apply_loader(maven_plan(), &manifest, &sha, &ctx(MetaOs::Linux, "x86_64")).unwrap();
+    assert_eq!(plan.loader_files.len(), 1);
+    assert!(
+        plan.game_arguments
+            .ends_with(&["--tweakClass".into(), "optifine.OptiFineTweaker".into()])
+    );
+
+    let dir = tempfile::tempdir().unwrap();
+    let root = crate::storage::paths::DataRoot::new(dir.path().to_path_buf()).unwrap();
+    let place = |relative: &str, bytes: &[u8]| {
+        let file = crate::download::resolve_managed_path(&root, relative).unwrap();
+        std::fs::create_dir_all(file.parent().unwrap()).unwrap();
+        std::fs::write(file, bytes).unwrap();
+    };
+    place(
+        &plan.client.path,
+        &std::fs::read(var("CLIENT_JAR")).unwrap(),
+    );
+    place(&crate::loader::manifest::maven_path(&path), &jar);
+    let java = std::path::PathBuf::from(var("JAVA"));
+    let lines = std::sync::Mutex::new(Vec::new());
+    let log = |line: String| lines.lock().unwrap().push(line);
+    let cancel = crate::download::CancelToken::new();
+    let generated = crate::loader::processors::prepare(&crate::loader::processors::Inputs {
+        root: &root,
+        manifest: &manifest,
+        plan: &plan,
+        java: &java,
+        work_dir: dir.path().join("work"),
+        cancel: &cancel,
+        log: &log,
+        quiet_limit: crate::loader::processors::QUIET_LIMIT,
+    })
+    .unwrap_or_else(|e| panic!("{e:?} {:?}", lines.lock().unwrap()));
+    let paths: Vec<_> = generated.iter().map(|a| a.path.as_str()).collect();
+    assert_eq!(
+        paths,
+        [
+            "shared/maven/optifine/OptiFine/1.21.1_HD_U_J1/OptiFine-1.21.1_HD_U_J1.jar",
+            "shared/maven/optifine/launchwrapper-of/2.3/launchwrapper-of-2.3.jar",
+        ]
+    );
+    assert!(generated[0].size > 1_000_000, "{:?}", generated[0]);
+    assert!(crate::loader::processors::verify_generated(
+        &root, &generated
+    ));
+}

@@ -65,6 +65,8 @@ async fn json(fetcher: &dyn Fetch, url: &str, kind: LoaderKind) -> LauncherResul
 /// picker keeps Mojang's order and only hides what is not listed here.
 pub async fn game_versions(fetcher: &dyn Fetch, kind: LoaderKind) -> LauncherResult<Vec<String>> {
     let versions: BTreeSet<String> = match kind {
+        // From the mods catalog (`super::optifine`).
+        LoaderKind::OptiFine => return Err(bad_list(kind)),
         LoaderKind::Fabric | LoaderKind::Quilt => {
             let base = if kind == LoaderKind::Fabric {
                 FABRIC_META
@@ -114,6 +116,7 @@ pub async fn loader_versions(
         return Err(LauncherError::invalid_input("Choose a Minecraft version."));
     }
     let mut list = match kind {
+        LoaderKind::OptiFine => return Err(bad_list(kind)),
         LoaderKind::Fabric | LoaderKind::Quilt => {
             let base = if kind == LoaderKind::Fabric {
                 FABRIC_META

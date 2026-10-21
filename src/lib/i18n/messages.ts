@@ -416,6 +416,7 @@ export type Messages = {
       readonly quilt: string;
       readonly forge: string;
       readonly neoforge: string;
+      readonly optifine: string;
     };
     readonly hints: {
       readonly none: string;
@@ -423,6 +424,7 @@ export type Messages = {
       readonly quilt: string;
       readonly forge: string;
       readonly neoforge: string;
+      readonly optifine: string;
     };
     readonly gamesHint: (values: { loader: string | number }) => string;
     readonly version: (values: { loader: string | number }) => string;
@@ -1509,6 +1511,7 @@ export type Messages = {
         readonly noFile: string;
         readonly noLoader: (values: { name: string | number }) => string;
         readonly noLoaders: string;
+        readonly optifineOnly: (values: { name: string | number }) => string;
         readonly wrongLoader: (values: {
           loaders: string | number;
           name: string | number;

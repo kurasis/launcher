@@ -8,6 +8,7 @@ describe('invites', () => {
       { server: 'play.example.com:25565', version: '1.21.1', loader: null },
       { server: '192.0.2.7:25570', version: '1.20.1', loader: 'forge' as const },
       { server: '[2001:db8::1]:25565', version: '24w14a', loader: 'fabric' as const },
+      { server: 'play.example.com:25565', version: '1.21.1', loader: 'optifine' as const },
     ]) {
       expect(parseInvite(inviteBody(invite))).toEqual(invite);
     }
@@ -22,7 +23,7 @@ describe('invites', () => {
       '🎮 invite play.example.com:99999 1.21.1',
       '🎮 invite evil host; --demo 1.21.1',
       '🎮 invite --server:1 1.21.1',
-      '🎮 invite play.example.com:25565 1.21.1 optifine',
+      '🎮 invite play.example.com:25565 1.21.1 liteloader',
       '🎮 invite play.example.com:25565 <b>1.21</b>',
       '🎮 invite play.example.com:25565 1.21.1 fabric extra',
       ' 🎮 invite play.example.com:25565 1.21.1',
