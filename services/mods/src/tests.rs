@@ -122,7 +122,7 @@ fn setup() -> T {
 }
 
 fn setup_with(proxies: Vec<String>) -> T {
-    setup_full(proxies, None, None, "")
+    setup_full(proxies, None, None, "", None)
 }
 
 /// With R2 and Cloudflare's cache played by fakes.
@@ -134,6 +134,7 @@ fn setup_r2() -> (T, Arc<FakeR2>, Arc<Purged>) {
         Some(Arc::clone(&r2) as Arc<dyn crate::r2::Bucket>),
         Some(Arc::clone(&purged) as Arc<dyn crate::owner::Purge>),
         CDN,
+        None,
     );
     (t, r2, purged)
 }
@@ -143,6 +144,7 @@ fn setup_full(
     r2: Option<Arc<dyn crate::r2::Bucket>>,
     purge: Option<Arc<dyn crate::owner::Purge>>,
     cdn: &str,
+    virustotal: Option<Arc<dyn crate::virustotal::Api>>,
 ) -> T {
     let dir = tempfile::tempdir().unwrap();
     let key = SigningKey::from_bytes(&[5; 32]);
@@ -172,6 +174,7 @@ fn setup_full(
         thumbs: import::Thumbs::Inline,
         r2,
         purge,
+        virustotal,
     });
     T {
         _dir: dir,
@@ -3558,6 +3561,7 @@ fn owner<'a>(t: &'a T, purged: &'a Purged) -> crate::owner::Owner<'a> {
         urls: &t.app.urls,
         purge: Some(purged),
         bucket: None,
+        virustotal: t.app.virustotal.as_deref(),
         now: now(),
     }
 }
@@ -3703,7 +3707,14 @@ async fn the_owner_decides_what_waits_removes_a_project_and_forgets_a_file() {
         "{waiting}"
     );
     assert!(waiting.contains("in version"), "{waiting}");
-    assert_eq!(o.review_count().unwrap(), ["scan 1", "total 1"]);
+    assert_eq!(
+        o.review_count().unwrap(),
+        [
+            "scan 1",
+            "total 1",
+            "virustotal checked 0, with detections 0, waiting 0"
+        ]
+    );
     assert!(o.decide(1, "maybe", "").is_err());
     assert!(o.decide(7, "keep", "").is_err());
 
@@ -3712,7 +3723,13 @@ async fn the_owner_decides_what_waits_removes_a_project_and_forgets_a_file() {
     assert!(t.app.blobs.has(&sha256));
     assert!(t.app.store.reviews().is_empty());
     assert_eq!(o.review().unwrap(), ["nothing waits"]);
-    assert_eq!(o.review_count().unwrap(), ["total 0"]);
+    assert_eq!(
+        o.review_count().unwrap(),
+        [
+            "total 0",
+            "virustotal checked 0, with detections 0, waiting 0"
+        ]
+    );
     assert!(o.decide(1, "block", "").is_err(), "decided already");
 
     let (_, found) = t.get("/v1/search?q=sodium").await;
@@ -4813,7 +4830,14 @@ async fn players_report_own_packs_to_the_owner() {
     assert_eq!(status, StatusCode::ACCEPTED);
     let purged = Purged::default();
     let o = owner(&t, &purged);
-    assert_eq!(o.review_count().unwrap(), ["report 1", "total 1"]);
+    assert_eq!(
+        o.review_count().unwrap(),
+        [
+            "report 1",
+            "total 1",
+            "virustotal checked 0, with detections 0, waiting 0"
+        ]
+    );
     let review = o.review().unwrap();
     assert!(
         review[0].contains("report") && review[0].contains("malware 1"),
@@ -4825,7 +4849,13 @@ async fn players_report_own_packs_to_the_owner() {
     );
     let item: i64 = review[0][1..].split(' ').next().unwrap().parse().unwrap();
     o.decide(item, "keep", "").unwrap();
-    assert_eq!(o.review_count().unwrap(), ["total 0"]);
+    assert_eq!(
+        o.review_count().unwrap(),
+        [
+            "total 0",
+            "virustotal checked 0, with detections 0, waiting 0"
+        ]
+    );
     // Another player's report puts it back; `block` removes the pack.
     t.player(3, "POST", &uri, json!({ "reason": "stolen" }))
         .await;
@@ -5657,6 +5687,7 @@ async fn trusting_a_project_lets_its_suspected_files_go_but_not_malware() {
         urls: &t.app.urls,
         purge: None,
         bucket: None,
+        virustotal: None,
         now: now(),
     };
     owner.block(&blocked, "test").unwrap();
@@ -5706,4 +5737,393 @@ fn trust_refuses_junk() {
             "{value:?}"
         );
     }
+}
+
+/// VirusTotal played by a fake: answers by file, and what it was asked.
+#[derive(Default)]
+struct FakeVirusTotal {
+    answers: Mutex<HashMap<String, crate::virustotal::Answer>>,
+    lookups: Mutex<Vec<String>>,
+    uploads: Mutex<Vec<String>>,
+}
+
+impl crate::virustotal::Api for FakeVirusTotal {
+    fn lookup(&self, sha256: &str) -> crate::virustotal::Answer {
+        self.lookups.lock().unwrap().push(sha256.to_owned());
+        self.answers
+            .lock()
+            .unwrap()
+            .get(sha256)
+            .cloned()
+            .unwrap_or(crate::virustotal::Answer::Unknown)
+    }
+
+    fn upload_url(&self) -> crate::virustotal::Answer {
+        crate::virustotal::Answer::Failed
+    }
+
+    fn upload(&self, url: &str, path: &std::path::Path) -> crate::virustotal::Answer {
+        assert_eq!(url, "https://www.virustotal.com/api/v3/files");
+        assert!(path.is_file());
+        self.uploads
+            .lock()
+            .unwrap()
+            .push(path.file_name().unwrap().to_string_lossy().into_owned());
+        crate::virustotal::Answer::Sent
+    }
+}
+
+impl FakeVirusTotal {
+    fn knows(&self, sha256: &str, malicious: i64, suspicious: i64) {
+        self.answers.lock().unwrap().insert(
+            sha256.to_owned(),
+            crate::virustotal::Answer::Found(crate::virustotal::Stats {
+                malicious,
+                suspicious,
+                undetected: 60 - malicious - suspicious,
+                harmless: 0,
+                analysed: Some(1_792_000_000),
+            }),
+        );
+    }
+
+    fn lookups(&self) -> usize {
+        self.lookups.lock().unwrap().len()
+    }
+}
+
+/// Sodium's newest release is a dropper the scanner holds; VirusTotal is a
+/// fake. The held file's SHA-256.
+async fn suspected_with_virustotal() -> (T, Arc<FakeVirusTotal>, String) {
+    let vt = Arc::new(FakeVirusTotal::default());
+    let t = setup_full(
+        Vec::new(),
+        None,
+        None,
+        "",
+        Some(Arc::clone(&vt) as Arc<dyn crate::virustotal::Api>),
+    );
+    modrinth_site(&t.sites);
+    sodium_release_is(&t, &dropper_jar());
+    t.player(
+        1,
+        "POST",
+        "/v1/imports",
+        json!({ "input": "https://modrinth.com/mod/sodium" }),
+    )
+    .await;
+    t.drain().await;
+    let (_, sha256) = t.app.store.reviews().pop().unwrap();
+    (t, vt, sha256)
+}
+
+fn vt_step(t: &T, at: i64) -> bool {
+    crate::virustotal::step(
+        &t.app.store,
+        &t.app.blobs,
+        t.app.virustotal.as_deref().unwrap(),
+        at,
+    )
+    .unwrap()
+}
+
+#[tokio::test]
+async fn a_suspected_file_known_to_virustotal_shows_its_count_once_checked() {
+    let (t, vt, sha256) = suspected_with_virustotal().await;
+    let purged = Purged::default();
+    let review = owner(&t, &purged).review().unwrap();
+    assert!(
+        review.contains(&"  virustotal: waiting".to_owned()),
+        "{review:?}"
+    );
+
+    vt.knows(&sha256, 2, 1);
+    assert!(vt_step(&t, now()));
+    let review = owner(&t, &purged).review().unwrap();
+    assert!(
+        review.contains(&"  virustotal: 2 / 60, 1 suspicious (2026-10-14)".to_owned()),
+        "{review:?}"
+    );
+    let found = owner(&t, &purged).find(&sha256).unwrap();
+    assert!(
+        found.contains(&"  virustotal: 2 / 60, 1 suspicious (2026-10-14)".to_owned()),
+        "{found:?}"
+    );
+    // Asked once: no re-checks for now, and clean files are never asked.
+    assert!(!vt_step(&t, now() + 400 * 86_400));
+    assert_eq!(vt.lookups(), 1);
+    let count = owner(&t, &purged).review_count().unwrap();
+    assert!(
+        count.contains(&"virustotal checked 1, with detections 1, waiting 0".to_owned()),
+        "{count:?}"
+    );
+    // The owner asks again by hand.
+    vt.knows(&sha256, 5, 0);
+    let lines = owner(&t, &purged)
+        .virustotal_check(&crate::owner::Hash::Sha256(sha256.clone()))
+        .unwrap();
+    assert_eq!(lines[1], "virustotal: 5 / 60 (2026-10-14)");
+    assert_eq!(vt.lookups(), 2);
+}
+
+#[tokio::test]
+async fn an_unknown_public_file_is_sent_then_looked_up_again() {
+    let (t, vt, sha256) = suspected_with_virustotal().await;
+    let purged = Purged::default();
+    let start = now();
+    assert!(vt_step(&t, start));
+    assert_eq!(*vt.uploads.lock().unwrap(), vec![sha256.clone()]);
+    let row = t.app.store.virustotal(&sha256).unwrap().unwrap();
+    assert_eq!(
+        crate::virustotal::line(&row, true),
+        "virustotal: sent, analysing"
+    );
+    // Not before half an hour; then still analysing, then known.
+    assert!(!vt_step(&t, start + 60));
+    t.app.store.virustotal_spent("1970-01-01", 0).unwrap();
+    vt.answers
+        .lock()
+        .unwrap()
+        .insert(sha256.clone(), crate::virustotal::Answer::Analysing);
+    assert!(vt_step(&t, start + 31 * 60));
+    assert_eq!(vt.uploads.lock().unwrap().len(), 1, "not sent twice");
+    vt.knows(&sha256, 0, 0);
+    assert!(!vt_step(&t, start + 60 * 60), "waits two hours");
+    assert!(vt_step(&t, start + 31 * 60 + 2 * 3600 + 1));
+    let review = owner(&t, &purged).review().unwrap();
+    assert!(
+        review.iter().any(|l| l.starts_with("  virustotal: 0 / 60")),
+        "{review:?}"
+    );
+}
+
+#[tokio::test]
+async fn virustotal_stays_within_its_quotas() {
+    let (t, vt, sha256) = suspected_with_virustotal().await;
+    vt.knows(&sha256, 1, 0);
+    let purged = Purged::default();
+    let at = now();
+    let (day, month) = crate::virustotal::day_and_month(at);
+    // The background's share of the day is spent: it asks nothing.
+    t.app.store.virustotal_spent(&day, 450).unwrap();
+    assert!(!vt_step(&t, at));
+    assert_eq!(vt.lookups(), 0);
+    // The owner still may, up to the day's quota.
+    let lines = owner(&t, &purged)
+        .virustotal_check(&crate::owner::Hash::Sha256(sha256.clone()))
+        .unwrap();
+    assert_eq!(lines[1], "virustotal: 1 / 60 (2026-10-14)");
+    assert_eq!(
+        t.app.store.virustotal_usage(&day, &month).unwrap(),
+        (451, 451)
+    );
+    t.app.store.virustotal_spent(&day, 500).unwrap();
+    let lines = owner(&t, &purged)
+        .virustotal_check(&crate::owner::Hash::Sha256(sha256.clone()))
+        .unwrap();
+    assert_eq!(lines[1], "no quota left: try again tomorrow (UTC)");
+    assert_eq!(vt.lookups(), 1);
+    // The month's quota counts the other days of the month too.
+    let store = &t.app.store;
+    store.virustotal_spent("2030-01-01", 14_999).unwrap();
+    assert!(
+        store
+            .take_virustotal("2030-01-15", "2030-01", 450, 15_000)
+            .unwrap()
+    );
+    assert!(
+        !store
+            .take_virustotal("2030-01-15", "2030-01", 450, 15_000)
+            .unwrap()
+    );
+    assert!(
+        store
+            .take_virustotal("2030-01-15", "2030-01", 500, 15_500)
+            .unwrap()
+    );
+    assert_eq!(
+        store.virustotal_usage("2030-01-15", "2030-01").unwrap(),
+        (2, 15_001)
+    );
+    // VirusTotal's own word that the quota is spent ends the day.
+    let later = at + 3 * 86_400;
+    vt.answers
+        .lock()
+        .unwrap()
+        .insert(sha256.clone(), crate::virustotal::Answer::Quota);
+    let later_owner = crate::owner::Owner {
+        now: later,
+        ..owner(&t, &purged)
+    };
+    let lines = later_owner
+        .virustotal_check(&crate::owner::Hash::Sha256(sha256.clone()))
+        .unwrap();
+    assert_eq!(lines[1], "no quota left: try again tomorrow (UTC)");
+    let status = later_owner.virustotal_status().unwrap();
+    assert_eq!(status[0], "virustotal on");
+    assert_eq!(
+        status[1].split(',').next().unwrap(),
+        "requests today 500 of 500"
+    );
+    assert_eq!(status[2], "found 1");
+    assert_eq!(status[3], "with detections 1");
+    assert!(!vt_step(&t, later));
+}
+
+#[test]
+fn virustotal_answers_are_read_strictly() {
+    use crate::virustotal::{
+        Answer, Curl, address_answer, lookup_answer, sent_answer, upload_address,
+    };
+    let report = |stats: Value| {
+        json!({ "data": { "attributes": {
+            "last_analysis_stats": stats, "last_analysis_date": 1_792_000_000,
+            "last_analysis_results": { "Engine": { "result": "Evil.Name \u{1b}[31m" } },
+        }}})
+        .to_string()
+    };
+    let Answer::Found(stats) = lookup_answer(
+        200,
+        report(
+            json!({ "malicious": 2, "suspicious": 1, "undetected": 57, "harmless": 0,
+            "timeout": 3, "type-unsupported": 9 }),
+        )
+        .as_bytes(),
+    ) else {
+        panic!()
+    };
+    assert_eq!((stats.malicious, stats.total()), (2, 60));
+    for junk in [
+        report(json!({ "malicious": -1, "undetected": 5 })),
+        report(json!({ "malicious": 99999, "undetected": 5 })),
+        report(json!({ "malicious": "2", "undetected": 5 })),
+        report(json!({ "malicious": 0, "undetected": 0 })),
+        report(json!([1, 2])),
+        "{}".to_owned(),
+        "not json".to_owned(),
+        String::new(),
+    ] {
+        assert_eq!(
+            lookup_answer(200, junk.as_bytes()),
+            Answer::Analysing,
+            "{junk}"
+        );
+    }
+    assert_eq!(lookup_answer(404, b"{}"), Answer::Unknown);
+    assert_eq!(lookup_answer(429, b"{}"), Answer::Quota);
+    for code in [0, 204, 301, 401, 403, 500, 503] {
+        assert_eq!(lookup_answer(code, b"{}"), Answer::Failed, "{code}");
+    }
+    let good = "https://www.virustotal.com/_ah/upload/abc";
+    assert!(upload_address(good));
+    assert_eq!(
+        address_answer(200, json!({ "data": good }).to_string().as_bytes()),
+        Answer::Address(good.to_owned())
+    );
+    for bad in [
+        "http://www.virustotal.com/upload",
+        "https://virustotal.com.evil.org/upload",
+        "https://evilvirustotal.com/upload",
+        "https://user@www.virustotal.com/upload",
+        "https://www.virustotal.com:8443/upload",
+        "file:///etc/passwd",
+        "https://10.0.0.1/upload",
+        "",
+    ] {
+        assert!(!upload_address(bad), "{bad}");
+        assert_eq!(
+            address_answer(200, json!({ "data": bad }).to_string().as_bytes()),
+            Answer::Failed,
+            "{bad}"
+        );
+    }
+    assert_eq!(address_answer(200, b"[]"), Answer::Failed);
+    assert_eq!(sent_answer(200), Answer::Sent);
+    assert_eq!(sent_answer(429), Answer::Quota);
+    assert_eq!(sent_answer(413), Answer::Failed);
+    // A key is letters and digits; anything else turns VirusTotal off.
+    let curl = std::path::PathBuf::from("curl");
+    assert!(Curl::new(&"a1".repeat(32), curl.clone()).is_some());
+    for bad in [
+        String::new(),
+        "a1".repeat(15),
+        "a1".repeat(65),
+        format!("{} {}", "a1".repeat(16), "b2".repeat(16)),
+        format!("{}\"\nurl = \"http://evil", "a1".repeat(32)),
+    ] {
+        assert!(Curl::new(&bad, curl.clone()).is_none(), "{bad:?}");
+    }
+}
+
+#[tokio::test]
+async fn the_virustotal_commands_refuse_junk() {
+    let (t, _vt, _) = suspected_with_virustotal().await;
+    let purged = Purged::default();
+    let owner = owner(&t, &purged);
+    assert!(
+        owner
+            .virustotal_check(&crate::owner::Hash::Sha256("ab".repeat(32)))
+            .is_err()
+    );
+    let off = crate::owner::Owner {
+        virustotal: None,
+        ..owner
+    };
+    assert!(
+        off.virustotal_check(&crate::owner::Hash::Sha256("ab".repeat(32)))
+            .is_err()
+    );
+    assert_eq!(off.virustotal_status().unwrap()[0], "virustotal off");
+    let review = off.review().unwrap();
+    assert!(
+        review.contains(&"  virustotal: off".to_owned()),
+        "{review:?}"
+    );
+}
+
+#[cfg(unix)]
+#[test]
+fn virustotal_through_curl_keeps_the_key_off_the_command_line() {
+    use crate::virustotal::{Answer, Api, Curl};
+    use std::os::unix::fs::PermissionsExt;
+    let dir = tempfile::tempdir().unwrap();
+    let script = dir.path().join("curl");
+    let seen = dir.path().join("seen");
+    std::fs::write(
+        &script,
+        format!(
+            "#!/bin/sh\necho \"$@\" > {0}.args\ncat > {0}.config\n\
+             printf '%s' '{{\"data\":{{\"attributes\":{{\"last_analysis_stats\":\
+             {{\"malicious\":3,\"undetected\":57}}}}}}}}'\nprintf '\\n200'\n",
+            seen.display()
+        ),
+    )
+    .unwrap();
+    std::fs::set_permissions(&script, std::fs::Permissions::from_mode(0o755)).unwrap();
+    let key = "0123456789abcdef".repeat(4);
+    let curl = Curl::new(&key, script).unwrap();
+    let sha256 = "ab".repeat(32);
+    let Answer::Found(stats) = curl.lookup(&sha256) else {
+        panic!("not read")
+    };
+    assert_eq!((stats.malicious, stats.total()), (3, 60));
+    let args = std::fs::read_to_string(dir.path().join("seen.args")).unwrap();
+    let config = std::fs::read_to_string(dir.path().join("seen.config")).unwrap();
+    assert!(!args.contains(&key), "{args}");
+    assert!(config.contains(&format!("header = \"x-apikey: {key}\"")));
+    assert!(config.contains(&format!(
+        "url = \"https://www.virustotal.com/api/v3/files/{sha256}\""
+    )));
+    // Junk is refused before curl runs.
+    assert_eq!(curl.lookup("../etc"), Answer::Failed);
+    let odd = dir.path().join("a\"b");
+    std::fs::write(&odd, b"x").unwrap();
+    assert_eq!(
+        curl.upload("https://www.virustotal.com/api/v3/files", &odd),
+        Answer::Failed
+    );
+    assert_eq!(
+        curl.upload("https://evil.example/upload", &dir.path().join("seen.args")),
+        Answer::Failed
+    );
 }

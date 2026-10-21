@@ -26,7 +26,10 @@ name: Mods service
 # zone's cache) let a block clear the file from Cloudflare's cache. The
 # secrets LAPI_MODS_R2_ACCOUNT, LAPI_MODS_R2_KEY and LAPI_MODS_R2_SECRET copy
 # kept files to Cloudflare R2; the variable MODS_CDN_URL
-# (https://cdn-mods.lapi.sh) makes the API hand out R2's addresses.
+# (https://cdn-mods.lapi.sh) makes the API hand out R2's addresses. The
+# secret VIRUSTOTAL_API_KEY lets the service ask VirusTotal about the files
+# its scanner suspects; task=virustotal runs `lapi-mods virustotal` with
+# `args` (["status"] or ["check", "<hash>"]): numbers and hashes only.
 
 on:
   push:
@@ -51,14 +54,14 @@ on:
       task:
         description: deploy, counts of the catalog, a probe of CurseForge, or an owner's command
         type: choice
-        options: [deploy, counts, probe, block, unblock, review-count, external]
+        options: [deploy, counts, probe, block, unblock, review-count, external, virustotal]
         default: deploy
       hash:
         description: for block and unblock, the file's SHA-256 or SHA-1
         type: string
         default: ''
       args:
-        description: 'for external, its arguments as a JSON array, such as ["add", "optifine"]'
+        description: 'for external and virustotal, its arguments as a JSON array, such as ["add", "optifine"] or ["status"]'
         type: string
         default: ''
 
@@ -201,6 +204,7 @@ jobs:
           R2_ACCOUNT: ${{ secrets.LAPI_MODS_R2_ACCOUNT }}
           R2_KEY: ${{ secrets.LAPI_MODS_R2_KEY }}
           R2_SECRET: ${{ secrets.LAPI_MODS_R2_SECRET }}
+          VIRUSTOTAL_KEY: ${{ secrets.VIRUSTOTAL_API_KEY }}
           CDN_URL: ${{ vars.MODS_CDN_URL }}
         run: |
           [[ "$QUOTA_GB" =~ ^[0-9]{1,6}$ ]] || { echo "::error::MODS_MAX_GB must be a number of GB"; exit 1; }
@@ -214,6 +218,7 @@ jobs:
             printf 'LAPI_MODS_R2_ACCOUNT=%s\n' "$(printf '%s' "$R2_ACCOUNT" | tr -d '\r\n ')"
             printf 'LAPI_MODS_R2_KEY=%s\n' "$(printf '%s' "$R2_KEY" | tr -d '\r\n ')"
             printf 'LAPI_MODS_R2_SECRET=%s\n' "$(printf '%s' "$R2_SECRET" | tr -d '\r\n ')"
+            printf 'LAPI_MODS_VIRUSTOTAL_KEY=%s\n' "$(printf '%s' "$VIRUSTOTAL_KEY" | tr -d '\r\n ')"
             printf 'LAPI_MODS_CDN_URL=%s\n' "$(printf '%s' "$CDN_URL" | tr -d '\r\n ')"
           } |
             ssh "$TARGET" \
@@ -282,7 +287,7 @@ jobs:
     name: Owner's command
     if: >-
       github.event_name == 'workflow_dispatch'
-      && contains(fromJSON('["block", "unblock", "review-count", "external"]'), inputs.task)
+      && contains(fromJSON('["block", "unblock", "review-count", "external", "virustotal"]'), inputs.task)
     # It changes what players get: the same approval as a deploy.
     environment: production
     runs-on: ubuntu-24.04
@@ -309,7 +314,7 @@ jobs:
               command="$TASK ${HASH,,}"
               ;;
             review-count) command="review --count" ;;
-            external)
+            external|virustotal)
               # The arguments go on the standard input as JSON, never
               # through a shell; the service checks each one again.
               printf '%s' "$ARGS" | jq -e 'type == "array" and length <= 32
@@ -317,7 +322,7 @@ jobs:
                 { echo "::error::args must be a JSON array of strings"; exit 1; }
               input=$(mktemp)
               printf '%s' "$ARGS" | jq -c . > "$input"
-              command="external --stdin"
+              command="$TASK --stdin"
               ;;
             *) echo "::error::unknown task"; exit 1 ;;
           esac

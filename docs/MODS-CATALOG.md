@@ -97,13 +97,22 @@ Kinds are `mod`, `modpack`, `resourcepack`, `shader`, `datapack` and `world`; ch
 `release`, `beta` and `alpha`. A file must be a `.jar`, `.zip` or `.mrpack` on an HTTPS
 address of a public site.
 
+VirusTotal's word on the files the scanner suspects (D-066) shows in `find` and
+`review` as `virustotal: 2 / 60` (engines that call it malicious / engines that
+answered, then the analysis date), or `waiting`, `sent, analysing`, `unknown` (only
+players' own packs carry it, so it is not sent), `too big`, `error, again <day>`, `off`
+(no key). `virustotal status` prints the requests made today and this month and the
+files by state; `virustotal check <SHA-256 or SHA-1>` asks now, from the owner's share
+of the quota.
+
 `find` and `review` show titles and names: run them in a terminal, not in a workflow.
 Without SSH, Actions → Mods service → Run workflow with `task=block` or `task=unblock` and
 the file's hash, or `task=review-count`. They wait for the production approval and print
 fixed words, numbers and the hash only; a reason can be given over SSH only.
 `task=external` runs `external` with `args`, its arguments as a JSON array (for
 example `["add", "optifine"]`, `["days", "optifine", "3"]` or `["trust", "optifine", "on"]`); they reach the service on
-its standard input, never through a shell.
+its standard input, never through a shell. `task=virustotal` runs `virustotal` the same
+way (`["status"]` or `["check", "<hash>"]`).
 
 ## curl-impersonate
 
