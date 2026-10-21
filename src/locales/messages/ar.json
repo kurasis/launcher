@@ -1253,7 +1253,8 @@
       "sources": {
         "modrinth": "Modrinth",
         "curseforge": "CurseForge",
-        "packwiz": "packwiz"
+        "packwiz": "packwiz",
+        "own": "حزم اللاعبين"
       },
       "link": {
         "title": "أتفتح هذا الرابط؟",
@@ -1294,7 +1295,20 @@
         "noneMatch": "لا يوجد إصدار يطابق عوامل التصفية.",
         "showAll": "عرض الكل",
         "matching": "{count, plural, zero {لا إصدارات} one {إصدار واحد} two {إصداران} few {# إصدارات} many {# إصدارًا} other {# إصدار}} من {total}",
-        "held": "أوقف فحص البرمجيات الضارة في الفهرس ملف هذا الإصدار إلى أن يُراجَع. لا يمكن تثبيته."
+        "held": "أوقف فحص البرمجيات الضارة في الفهرس ملف هذا الإصدار إلى أن يُراجَع. لا يمكن تثبيته.",
+        "report": "إبلاغ",
+        "reportReason": "السبب",
+        "reportReasons": {
+          "malware": "برمجيات ضارة",
+          "stolen": "عمل مسروق",
+          "inappropriate": "محتوى غير لائق",
+          "broken": "لا تعمل",
+          "other": "شيء آخر"
+        },
+        "reportText": "ما المشكلة (اختياري)",
+        "reportSend": "إرسال البلاغ",
+        "reportCancel": "إلغاء",
+        "reportSent": "شكرًا. سينظر مالك الفهرس في الحزمة."
       },
       "add": {
         "title": "أضف {title} إلى {name}",
@@ -1488,7 +1502,42 @@
         "alsoRemove": "إزالة ما كان يحتاجه وحده أيضًا: {names}",
         "checkingNeeds": "جارٍ التحقق مما يحتاجه…",
         "harmfulTitle": "عُثر على ملفات ضارة",
-        "harmfulText": "صنّف الفهرس هذه الملفات برمجياتٍ ضارة. احذفها من التثبيت."
+        "harmfulText": "صنّف الفهرس هذه الملفات برمجياتٍ ضارة. احذفها من التثبيت.",
+        "publish": "النشر في الفهرس",
+        "publishTitle": "النشر كحزمة في الفهرس",
+        "publishHint": "يرى الجميع الحزمة في الفهرس فورًا، ويمكنك إخفاؤها لاحقًا. تؤخذ التعديلات وحزم الموارد والمظللات من الفهرس، لذا يجب أن يكون كل منها فيه. تُنسخ ملفات الإعداد والإعدادات إلى الحزمة، ولا يدخل الكود والبرامج حزمةً أبدًا. تُترك الملفات المعطلة والسجلات وقائمة الخوادم.",
+        "publishChecking": "جارٍ فحص ملفات التثبيت…",
+        "publishReady": "جاهزة: من الفهرس {linked}؛ منسوخة {bundled} ({size}).",
+        "publishMissing": "هذه الملفات ليست في الفهرس. أضفها إلى الفهرس أولًا أو احذفها:",
+        "publishNotAllowed": "لا يمكن وضع هذه الملفات في حزمة (كود أو برامج). احذفها:",
+        "publishTooBig": "هذه الملفات أكبر من 64 ميغابايت. احذفها أو اترك العوالم:",
+        "publishedAs": "منشورة باسم {title}: {count, plural, zero {لا إصدارات} one {إصدار واحد} two {إصداران} few {# إصدارات} many {# إصدارًا} other {# إصدار}}، الأحدث {latest}. يضيف النشر التالي إصدارًا.",
+        "publishHidden": "الحزمة مخفية من الفهرس.",
+        "publishRemoved": "أزال الفهرس هذه الحزمة. سيُنشئ النشر حزمة جديدة.",
+        "publishHide": "إخفاء من الفهرس",
+        "publishShow": "الإظهار في الفهرس",
+        "publishAsNew": "النشر كحزمة جديدة بدلًا من ذلك",
+        "publishName": "العنوان",
+        "publishVersion": "رقم الإصدار",
+        "publishVersionHint": "حروف وأرقام و . - _ + مثل 1.0.2. يحتاج كل إصدار إلى رقم جديد.",
+        "publishSummary": "وصف قصير",
+        "publishBody": "الوصف",
+        "publishBodyHint": "Markdown: عناوين وقوائم وروابط وخط عريض ومائل.",
+        "publishChanges": "الجديد في هذا الإصدار",
+        "publishIcon": "اختيار أيقونة",
+        "publishIconAgain": "اختيار أيقونة أخرى",
+        "publishIconPreview": "أيقونة الحزمة",
+        "publishing": "جارٍ نشر الحزمة…",
+        "publishDone": "الحزمة في الفهرس.",
+        "publishStart": "نشر",
+        "publishVersionStart": "نشر الإصدار الجديد",
+        "publishRefused": {
+          "not_in_catalog": "هذه الملفات ليست في الفهرس:",
+          "held": "يحتجز فحص البرمجيات الضارة في الفهرس هذه الملفات:",
+          "not_allowed": "لا يقبل الفهرس هذه الملفات في حزمة:",
+          "too_big": "هذه الملفات أكبر من أن تدخل حزمة:",
+          "other": "رفض الفهرس الحزمة."
+        }
       }
     },
     "worlds": {
@@ -2370,6 +2419,25 @@
     "Bringing in the installation": "نقل التثبيت",
     "Choose what to bring in first.": "اختر أولًا ما تريد نقله.",
     "An installation was made for this already.": "أُنشئ تثبيت لهذا من قبل.",
-    "This mod loader has no version for this Minecraft version.": "لا يوجد لمحمّل التعديلات هذا إصدار لهذا الإصدار من Minecraft."
+    "This mod loader has no version for this Minecraft version.": "لا يوجد لمحمّل التعديلات هذا إصدار لهذا الإصدار من Minecraft.",
+    "A text of the pack is too long.": "أحد نصوص الحزمة طويل جدًا.",
+    "A version number is letters, digits and . - _ + only, such as 1.0.2.": "رقم الإصدار حروف وأرقام و . - _ + فقط، مثل 1.0.2.",
+    "Choose the icon again.": "اختر الأيقونة مرة أخرى.",
+    "Give the pack a title of 2 to 80 characters.": "أعطِ الحزمة عنوانًا من 2 إلى 80 حرفًا.",
+    "Publishing was cancelled.": "أُلغي النشر.",
+    "Reading the modpack": "قراءة الحزمة",
+    "Some files of this installation cannot go into a pack. Check the list.": "لا يمكن وضع بعض ملفات هذا التثبيت في حزمة. راجع القائمة.",
+    "The catalog removed this pack. It cannot get new versions.": "أزال الفهرس هذه الحزمة. لا يمكن أن تحصل على إصدارات جديدة.",
+    "The catalog's check of the pack found something it does not allow, and refused it.": "وجد فحص الفهرس في الحزمة شيئًا لا يسمح به فرفضها.",
+    "The icon could not be read.": "تعذرت قراءة الأيقونة.",
+    "The icon may be 512 KB at most.": "لا تتجاوز الأيقونة 512 كيلوبايت.",
+    "The icon must be a PNG, JPEG or WebP picture of 2048 pixels at most.": "يجب أن تكون الأيقونة صورة PNG أو JPEG أو WebP لا تتجاوز 2048 بكسل.",
+    "The icon must be a PNG, JPEG or WebP picture.": "يجب أن تكون الأيقونة صورة PNG أو JPEG أو WebP.",
+    "The pack is larger than 90 MB packed. Leave out worlds or large files.": "الحزمة المضغوطة أكبر من 90 ميغابايت. اترك العوالم أو الملفات الكبيرة.",
+    "This report cannot be sent.": "لا يمكن إرسال هذا البلاغ.",
+    "This version number is published already. Raise it.": "رقم الإصدار هذا منشور من قبل. ارفعه.",
+    "Your account published 20 versions today. Try again tomorrow.": "نشر حسابك 20 إصدارًا اليوم. حاول غدًا.",
+    "Your account published 5 new packs today. Try again tomorrow.": "نشر حسابك 5 حزم جديدة اليوم. حاول غدًا.",
+    "Your packs take 2 GB in the catalog, as much as an account may have.": "تشغل حزمك 2 غيغابايت في الفهرس، وهو أقصى ما يُسمح به للحساب."
   }
 }

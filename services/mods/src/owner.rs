@@ -341,6 +341,12 @@ impl Owner<'_> {
                     Some(b) => format!("{subject} {} {} {} bytes", b.verdict, b.signs, b.size),
                     None => subject.clone(),
                 },
+                "report" => {
+                    let (reasons, _) = self.store.reports(&subject)?;
+                    let reasons: Vec<String> =
+                        reasons.iter().map(|(r, n)| format!("{r} {n}")).collect();
+                    format!("{subject} {}", reasons.join(", "))
+                }
                 _ => self
                     .store
                     .version_brief(&subject)?
@@ -349,6 +355,11 @@ impl Owner<'_> {
             lines.push(format!("#{id} {} {kind} {what}", day(created)));
             if kind == "scan" {
                 lines.extend(self.store.file_uses(&subject)?.into_iter().take(3));
+            }
+            if kind == "report" {
+                lines.extend(self.store.project_report(&subject)?.into_iter().take(2));
+                let (_, texts) = self.store.reports(&subject)?;
+                lines.extend(texts.into_iter().map(|t| format!("  \"{t}\"")));
             }
         }
         if lines.is_empty() {
@@ -371,7 +382,7 @@ impl Owner<'_> {
     }
 
     /// The owner's decision on an item of the queue: `keep` lets it be,
-    /// `block` blocks its files.
+    /// `block` blocks its files (a reported pack is removed).
     pub fn decide(&self, id: i64, decision: &str, reason: &str) -> Result<Vec<String>, String> {
         let (kind, subject, decided) = self
             .store
@@ -383,6 +394,9 @@ impl Owner<'_> {
         let mut lines = match (kind.as_str(), decision) {
             ("scan", "keep") => self.unblock(&Hash::Sha256(subject.clone()))?,
             ("scan", "block") => self.block(&Hash::Sha256(subject.clone()), reason)?,
+            // A report: `block` removes the pack for good.
+            ("report", "keep") => Vec::new(),
+            ("report", "block") => self.remove(&subject, reason)?,
             (_, "keep") => Vec::new(),
             (_, "block") => {
                 let mut lines = Vec::new();

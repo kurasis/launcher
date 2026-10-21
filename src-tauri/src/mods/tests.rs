@@ -767,6 +767,7 @@ async fn missing_and_incompatible_projects_stop_a_plan() {
         schema_version: 1,
         items: vec![locked("mods/enemy.jar", 3, 30)],
         pack: None,
+        published: None,
     };
     let plan = content::plan(&fake, dir.path(), &fabric(), &lock, &wanted(&chosen), &[])
         .await
@@ -1003,6 +1004,7 @@ async fn an_update_replaces_the_launchers_own_file() {
         schema_version: 1,
         items: vec![locked("mods/a-1.jar", 1, 10)],
         pack: None,
+        published: None,
     };
     let plan = content::plan(&fake, dir.path(), &fabric(), &lock, &wanted(&new), &[])
         .await
@@ -1058,6 +1060,7 @@ fn the_content_view_lists_only_content() {
         schema_version: 1,
         items: vec![locked("mods/b.jar", 1, 10)],
         pack: None,
+        published: None,
     };
     crate::storage::document::save(
         &root.instance_dir(id).join("content.lock.json"),
@@ -1105,6 +1108,7 @@ fn files_are_turned_off_on_and_removed() {
         schema_version: 1,
         items: vec![locked("mods/a.jar", 1, 10)],
         pack: None,
+        published: None,
     };
     crate::storage::document::save(
         &root.instance_dir(id).join("content.lock.json"),
@@ -1183,6 +1187,7 @@ async fn what_is_there_already_is_used_and_turned_on_when_off() {
         schema_version: 1,
         items: vec![locked("mods/lib-4.jar", 4, 40)],
         pack: None,
+        published: None,
     };
     let identified = [
         known("mods/my-library.jar", 2, 21),
@@ -1251,6 +1256,7 @@ async fn an_install_turns_on_what_it_needs() {
         schema_version: 1,
         items: vec![locked("mods/a.jar", 1, 10), locked("mods/lib.jar", 2, 20)],
         pack: None,
+        published: None,
     };
     lock.items[1].dependency = true;
     content::save_lock(&root, instance_id, &lock).unwrap();
@@ -1313,6 +1319,7 @@ async fn turning_off_or_removing_a_mod_says_who_needs_it_and_what_goes_unused() 
             schema_version: 1,
             items,
             pack: None,
+            published: None,
         },
     )
     .unwrap();
@@ -2432,4 +2439,175 @@ fn a_packwiz_pack_keeps_its_source_without_a_page_to_open() {
     assert_eq!(project.sources.len(), 1);
     assert_eq!(project.sources[0].source, "packwiz");
     assert_eq!(project.sources[0].url, None);
+}
+
+mod publishing {
+    use std::io::Read as _;
+
+    use super::*;
+    use crate::download::CancelToken;
+    use crate::mods::pack::ExportChoice;
+    use crate::mods::publish::{
+        PublishForm, Published, Target as Game, icon_name, meta, overridable, problem, refused,
+        sort, write,
+    };
+
+    fn put(path: &Path, bytes: &[u8]) {
+        fs::create_dir_all(path.parent().unwrap()).unwrap();
+        fs::write(path, bytes).unwrap();
+    }
+
+    fn sha(bytes: &[u8]) -> String {
+        use sha2::Digest as _;
+        hex::encode(sha2::Sha256::digest(bytes))
+    }
+
+    fn form() -> PublishForm {
+        PublishForm {
+            title: " My pack\n".to_owned(),
+            summary: "Fast".to_owned(),
+            body: "# Mine\nall\u{0} of it".to_owned(),
+            version: "1.0.2".to_owned(),
+            changes: String::new(),
+            choice: ExportChoice::default(),
+        }
+    }
+
+    #[test]
+    fn the_form_and_icon_are_checked_as_the_catalog_checks_them() {
+        let m = meta(&form()).unwrap();
+        assert_eq!(m["title"], "My pack");
+        assert_eq!(m["body"], "# Mine\nall of it");
+        assert_eq!(m["version"], "1.0.2");
+        for (field, value) in [
+            ("title", "x"),
+            ("title", "  !! "),
+            ("title", &"x".repeat(81)),
+            ("version", ""),
+            ("version", "1 0"),
+            ("version", "../1"),
+            ("version", &"1".repeat(49)),
+            ("summary", &"x".repeat(301)),
+        ] {
+            let mut f = form();
+            match field {
+                "title" => f.title = value.to_owned(),
+                "version" => f.version = value.to_owned(),
+                _ => f.summary = value.to_owned(),
+            }
+            assert!(meta(&f).is_err(), "{field} {value:?}");
+        }
+        assert_eq!(icon_name(b"\x89PNG\r\n\x1a\nrest").unwrap(), "icon.png");
+        assert_eq!(icon_name(&[0xFF, 0xD8, 0xFF, 0]).unwrap(), "icon.jpg");
+        assert_eq!(icon_name(b"RIFF....WEBPVP8 ").unwrap(), "icon.webp");
+        assert!(icon_name(b"GIF89a").is_err());
+        assert!(icon_name(b"<svg>").is_err());
+        let mut big = b"\x89PNG\r\n\x1a\n".to_vec();
+        big.resize(512 * 1024 + 1, 0);
+        assert!(icon_name(&big).is_err());
+        for ok in ["config/a.json", "options.txt", "resourcepacks/x.zip"] {
+            assert!(overridable(ok), "{ok}");
+        }
+        for bad in [
+            "mods/a.jar",
+            "mods/a.txt",
+            "config/a.jar",
+            "config/a.JAR.disabled",
+            "config/a.class",
+            "config/a.dll.txt",
+            "x/a.txt",
+        ] {
+            assert!(!overridable(bad), "{bad}");
+        }
+    }
+
+    #[tokio::test]
+    async fn an_installation_is_sorted_and_written_for_the_catalog() {
+        let dir = tempfile::tempdir().unwrap();
+        let game = dir.path().join("game");
+        put(&game.join("mods/known.jar"), b"known");
+        put(&game.join("mods/unknown.jar"), b"unknown");
+        put(&game.join("resourcepacks/mine.zip"), b"my pack");
+        put(&game.join("config/a.toml"), b"a = 1");
+        put(&game.join("config/b.jar"), b"code");
+        put(&game.join("options.txt"), b"fov:70");
+        let mut catalog = Fake::default();
+        catalog.add_project(1, "mod", "Known");
+        let known = catalog.add_version(2, 1, "known.jar", json!({}));
+        catalog.versions.get_mut(&known).unwrap().files[0].sha256 = Some(sha(b"known"));
+        let choice = ExportChoice {
+            worlds: false,
+            options: true,
+        };
+        let sorted = sort(&catalog, &game, choice).await.unwrap();
+        let check = &sorted.check;
+        assert_eq!(check.linked, 1);
+        assert_eq!(check.missing, ["mods/unknown.jar"]);
+        // config/b.jar is not a path a pack writes at all: left out.
+        assert!(check.refused.is_empty(), "{check:?}");
+        assert_eq!(check.bundled, 3, "{check:?}");
+        assert!(!check.ready());
+        fs::remove_file(game.join("mods/unknown.jar")).unwrap();
+        let sorted = sort(&catalog, &game, choice).await.unwrap();
+        assert!(sorted.check.ready(), "{:?}", sorted.check);
+        let to = dir.path().join("out.mrpack");
+        let target = Game {
+            game: "1.20.1".to_owned(),
+            loader: Some(crate::loader::LoaderChoice {
+                kind: LoaderKind::Forge,
+                version: "1.20.1-47.2.0".to_owned(),
+            }),
+        };
+        let icon = Some(("icon.png", b"\x89PNG\r\n\x1a\n".to_vec()));
+        write(
+            &to,
+            &sorted,
+            &target,
+            &meta(&form()).unwrap(),
+            icon,
+            &CancelToken::new(),
+        )
+        .unwrap();
+        let mut zip = zip::ZipArchive::new(fs::File::open(&to).unwrap()).unwrap();
+        let mut names: Vec<String> = zip.file_names().map(str::to_owned).collect();
+        names.sort();
+        assert_eq!(
+            names,
+            [
+                "catalog.json",
+                "icon.png",
+                "modrinth.index.json",
+                "overrides/config/a.toml",
+                "overrides/options.txt",
+                "overrides/resourcepacks/mine.zip",
+            ]
+        );
+        let mut text = String::new();
+        zip.by_name("modrinth.index.json")
+            .unwrap()
+            .read_to_string(&mut text)
+            .unwrap();
+        let index: Value = serde_json::from_str(&text).unwrap();
+        assert_eq!(index["files"][0]["path"], "mods/known.jar");
+        assert_eq!(index["dependencies"]["forge"], "47.2.0");
+        assert_eq!(index["versionId"], "1.0.2");
+    }
+
+    #[test]
+    fn the_catalogs_refusals_are_read_with_care() {
+        let answer =
+            json!({ "error": "not_in_catalog", "paths": ["mods/a.jar", 5, "mods/b\u{0}.jar"] });
+        assert_eq!(
+            refused(422, &answer),
+            Some(Published::Refused {
+                code: "not_in_catalog".to_owned(),
+                paths: vec!["mods/a.jar".to_owned(), "mods/b.jar".to_owned()],
+            })
+        );
+        assert_eq!(refused(422, &json!({ "error": "evil" })), None);
+        assert_eq!(refused(400, &answer), None);
+        assert!(problem(409, "version_exists").is_some());
+        assert!(problem(429, "too_many_packs").is_some());
+        assert!(problem(400, "anything").is_none());
+    }
 }

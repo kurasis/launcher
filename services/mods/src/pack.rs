@@ -68,7 +68,7 @@ pub const ROOT_FILES: &[&str] = &[
 ];
 
 /// Programs a pack never brings, wherever they would go.
-const PROGRAMS: &[&str] = &[
+pub const PROGRAMS: &[&str] = &[
     "exe", "bat", "cmd", "com", "scr", "msi", "ps1", "psm1", "vbs", "vbe", "wsf", "lnk", "sh",
     "command", "dll", "so", "dylib", "jnilib", "reg", "hta", "cpl", "app",
 ];
@@ -211,6 +211,21 @@ struct RawEnv {
 
 /// Reads an index's text; a short code when it is not one we take.
 pub fn index(text: &[u8]) -> Result<Index, &'static str> {
+    parse_index(text, false)
+}
+
+/// The index of a player's own pack (D-066, stage 6): its files are found
+/// here by their hashes, so where it says they download from is not used;
+/// a file it would leave out refuses the pack instead.
+pub fn own_index(text: &[u8]) -> Result<Index, &'static str> {
+    let index = parse_index(text, true)?;
+    if index.skipped > 0 {
+        return Err("bad_pack");
+    }
+    Ok(index)
+}
+
+fn parse_index(text: &[u8], own: bool) -> Result<Index, &'static str> {
     let raw: RawIndex = serde_json::from_slice(text).map_err(|_| "bad_pack")?;
     if raw.format_version != 1 || raw.game != "minecraft" {
         return Err("unsupported_pack");
@@ -266,18 +281,22 @@ pub fn index(text: &[u8]) -> Result<Index, &'static str> {
         if total > MAX_TOTAL {
             return Err("too_big");
         }
-        let url = file
-            .downloads
-            .iter()
-            .take(8)
-            .find(|u| download_host(u))
-            .ok_or("unsupported_host")?;
+        let url = if own {
+            String::new()
+        } else {
+            file.downloads
+                .iter()
+                .take(8)
+                .find(|u| download_host(u))
+                .ok_or("unsupported_host")?
+                .clone()
+        };
         files.push(PackFile {
             path: file.path,
             size: file.file_size,
             sha1: sha1.clone(),
             sha512: sha512.clone(),
-            url: url.clone(),
+            url,
             optional: client == "optional",
         });
     }

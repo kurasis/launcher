@@ -590,6 +590,137 @@ describe('ModsView', () => {
     });
   });
 
+  it('publishes an installation as a pack once its files can go in', async () => {
+    const check = (missing: string[]) => ({
+      check: {
+        linked: 3,
+        bundled: 2,
+        bytes: 2048,
+        missing,
+        refused: [],
+        tooBig: [],
+        published: null,
+      },
+      pack: null,
+      name: 'Modded',
+    });
+    const calls = setup(
+      {
+        mods_publish_check: (args) =>
+          (args.choice as { worlds: boolean }).worlds ? check([]) : check(['mods/mine.jar']),
+        mods_publish: () => ({ outcome: 'published', projectId: PROJECT, slug: 'modded' }),
+      },
+      'installed',
+    );
+    fireEvent.click(await screen.findByRole('button', { name: 'Publish to the catalog' }));
+    const dialog = await screen.findByRole('dialog', { name: 'Publish as a pack in the catalog' });
+    expect(await within(dialog).findByText(/catalog does not have these files/)).toBeVisible();
+    expect(within(dialog).getByText('mods/mine.jar')).toBeVisible();
+    expect(within(dialog).getByRole('button', { name: 'Publish' })).toBeDisabled();
+
+    fireEvent.click(within(dialog).getByRole('checkbox', { name: 'Include worlds' }));
+    expect(await within(dialog).findByText(/from the catalog 3; copied in 2/)).toBeVisible();
+    expect(within(dialog).getByLabelText('Title')).toHaveValue('Modded');
+    fireEvent.change(within(dialog).getByLabelText('Short description'), {
+      target: { value: 'Fast and pretty' },
+    });
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Publish' }));
+    expect(await within(dialog).findByText('The pack is in the catalog.')).toBeVisible();
+    expect(named('mods_publish', calls)[0]?.args).toEqual({
+      payload: {
+        instanceId: fabric.id,
+        form: {
+          title: 'Modded',
+          summary: 'Fast and pretty',
+          body: '',
+          version: '1.0.0',
+          changes: '',
+          choice: { worlds: true, options: false },
+        },
+        icon: false,
+        asNew: true,
+      },
+    });
+  });
+
+  it('offers a new version of a pack published before, and hides it', async () => {
+    const pack = {
+      id: PROJECT,
+      slug: 'modded',
+      title: 'My pack',
+      status: 'ready',
+      versions: 2,
+      latest: '1.1',
+    };
+    const calls = setup(
+      {
+        mods_publish_check: () => ({
+          check: {
+            linked: 1,
+            bundled: 0,
+            bytes: 0,
+            missing: [],
+            refused: [],
+            tooBig: [],
+            published: PROJECT,
+          },
+          pack,
+          name: 'Modded',
+        }),
+        mods_pack_hidden: () => 'hidden',
+        mods_publish: () => ({ outcome: 'refused', code: 'held', paths: ['mods/sodium.jar'] }),
+      },
+      'installed',
+    );
+    fireEvent.click(await screen.findByRole('button', { name: 'Publish to the catalog' }));
+    const dialog = await screen.findByRole('dialog', { name: 'Publish as a pack in the catalog' });
+    expect(await within(dialog).findByText(/Published as My pack: 2 versions/)).toBeVisible();
+    expect(within(dialog).getByLabelText('Title')).toHaveValue('My pack');
+    expect(within(dialog).getByLabelText('Version number')).toHaveValue('');
+    expect(within(dialog).queryByLabelText('Short description')).toBeNull();
+
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Hide from the catalog' }));
+    expect(await within(dialog).findByText('The pack is hidden from the catalog.')).toBeVisible();
+    expect(named('mods_pack_hidden', calls)[0]?.args).toEqual({ project: PROJECT, hidden: true });
+
+    fireEvent.change(within(dialog).getByLabelText('Version number'), {
+      target: { value: '1.2' },
+    });
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Publish the new version' }));
+    expect(await within(dialog).findByText(/malware check holds back these files/)).toBeVisible();
+    const sent = named('mods_publish', calls)[0]?.args.payload as Record<string, unknown>;
+    expect(sent.asNew).toBe(false);
+    expect((sent.form as Record<string, unknown>).version).toBe('1.2');
+  });
+
+  it('reports a player’s pack to the catalog’s owner', async () => {
+    const calls = setup({
+      mods_project: () => ({ ...project, sources: [{ source: 'own', url: null }] }),
+    });
+    fireEvent.click(await screen.findByRole('button', { name: /Sodium/ }));
+    const article = await screen.findByRole('article', { name: 'Sodium' });
+    fireEvent.click(within(article).getByRole('button', { name: 'Report' }));
+    const form = within(article).getByRole('form', { name: 'Report' });
+    fireEvent.change(within(form).getByLabelText('Reason'), { target: { value: 'stolen' } });
+    fireEvent.change(within(form).getByLabelText('What is wrong (optional)'), {
+      target: { value: 'Copied from another pack' },
+    });
+    fireEvent.click(within(form).getByRole('button', { name: 'Send the report' }));
+    expect(await within(article).findByText(/owner will look at the pack/)).toBeVisible();
+    expect(named('mods_report', calls)[0]?.args).toEqual({
+      project: PROJECT,
+      reason: 'stolen',
+      text: 'Copied from another pack',
+    });
+  });
+
+  it('offers no report for projects from other sites', async () => {
+    setup();
+    fireEvent.click(await screen.findByRole('button', { name: /Sodium/ }));
+    const article = await screen.findByRole('article', { name: 'Sodium' });
+    expect(within(article).queryByRole('button', { name: 'Report' })).toBeNull();
+  });
+
   it('offers to sign in when the launcher account is needed', async () => {
     setup(
       {

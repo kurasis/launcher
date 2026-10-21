@@ -1324,6 +1324,7 @@ export type Messages = {
       readonly modrinth: string;
       readonly curseforge: string;
       readonly packwiz: string;
+      readonly own: string;
     };
     readonly link: {
       readonly title: string;
@@ -1365,6 +1366,19 @@ export type Messages = {
       readonly showAll: string;
       readonly matching: (values: { count: number; total: string | number }) => string;
       readonly held: string;
+      readonly report: string;
+      readonly reportReason: string;
+      readonly reportReasons: {
+        readonly malware: string;
+        readonly stolen: string;
+        readonly inappropriate: string;
+        readonly broken: string;
+        readonly other: string;
+      };
+      readonly reportText: string;
+      readonly reportSend: string;
+      readonly reportCancel: string;
+      readonly reportSent: string;
     };
     readonly add: {
       readonly title: (values: { title: string | number; name: string | number }) => string;
@@ -1564,6 +1578,49 @@ export type Messages = {
       readonly checkingNeeds: string;
       readonly harmfulTitle: string;
       readonly harmfulText: string;
+      readonly publish: string;
+      readonly publishTitle: string;
+      readonly publishHint: string;
+      readonly publishChecking: string;
+      readonly publishReady: (values: {
+        linked: string | number;
+        bundled: string | number;
+        size: string | number;
+      }) => string;
+      readonly publishMissing: string;
+      readonly publishNotAllowed: string;
+      readonly publishTooBig: string;
+      readonly publishedAs: (values: {
+        title: string | number;
+        count: number;
+        latest: string | number;
+      }) => string;
+      readonly publishHidden: string;
+      readonly publishRemoved: string;
+      readonly publishHide: string;
+      readonly publishShow: string;
+      readonly publishAsNew: string;
+      readonly publishName: string;
+      readonly publishVersion: string;
+      readonly publishVersionHint: string;
+      readonly publishSummary: string;
+      readonly publishBody: string;
+      readonly publishBodyHint: string;
+      readonly publishChanges: string;
+      readonly publishIcon: string;
+      readonly publishIconAgain: string;
+      readonly publishIconPreview: string;
+      readonly publishing: string;
+      readonly publishDone: string;
+      readonly publishStart: string;
+      readonly publishVersionStart: string;
+      readonly publishRefused: {
+        readonly not_in_catalog: string;
+        readonly held: string;
+        readonly not_allowed: string;
+        readonly too_big: string;
+        readonly other: string;
+      };
     };
   };
   readonly worlds: {

@@ -2031,7 +2031,7 @@ archive from the Package workflow, upload it to
 
 ## D-066 — Catalog of mods at mods.lapi.sh
 
-- **Status:** accepted (owner request, 2026-10-19), stages 1–5 of 6 and the scanner, owner's commands and R2 of stage 6 · **Affects:** the new service `services/mods` (`https://mods.lapi.sh`, files at
+- **Status:** accepted (owner request, 2026-10-19), stages 1–6 · **Affects:** the new service `services/mods` (`https://mods.lapi.sh`, files at
   `https://files-mods.lapi.sh`, `/home/www/lapi/mods`), the account service's token
   audience. The full design: the project's design document "Вкладка Моды и каталог".
 - **Goal.** A Mods tab with modpacks, mods, resource packs, shaders and worlds that does
@@ -2396,6 +2396,34 @@ archive from the Package workflow, upload it to
   whatever the mirror setting. `lapi-mods restore` brings back to the disk, checked by
   SHA-256, what only R2 has. R2's access key reaches curl on standard input
   (`--aws-sigv4`), never on a command line.
+- **Players' own packs (`services/mods/src/own.rs`, launcher `src-tauri/src/mods/publish.rs`).**
+  The Installed tab's _Publish to the catalog_ sorts the installation's files first:
+  mods, resource packs and shaders are named by their hashes and must be in the catalog
+  (a mod it lacks is named, to be added first); settings and configs go into
+  `overrides/` by the catalog's rules (never under `mods/`, no code or program under
+  any extension, 64 MiB a file, 512 MiB in all); turned-off files, logs and the server
+  list stay out, worlds and `options.txt` only when the player asks. The launcher writes
+  an `.mrpack` with `catalog.json` (title, summary, description in Markdown, version
+  number, changes) and the icon the player chose (PNG, JPEG or WebP, 512 KB and 2048
+  pixels at most), and sends it with the launcher account's token to
+  `POST /v1/packs[?project=<id>]`. The catalog checks it all again: index files are
+  found among kept files by SHA-1 and SHA-512 (the addresses the index names are not
+  used), none held or blocked; the texts (`<` is escaped, the Markdown renders through
+  the same safe tree as other descriptions); the icon decoded with limits; and the
+  scanner over the archive, whose hold refuses the pack. The pack is then a project of
+  kind `modpack` with the source `own`, its author the account's nick, shown at once and
+  installed like any other pack; it is never refreshed from a source. The archive is
+  **90 MiB at most**, not the plan's 512 MB: Cloudflare takes requests up to 100 MB
+  (nginx allows 91 MiB on `/v1/packs` alone). An account publishes 5 new packs and 20
+  versions a day, 2 GB in all, 10 an hour (20 an hour from one address). The
+  installation remembers the pack (`content.lock.json`, `published`), so the next
+  publish is a new version with a higher number (a used number answers 409); the author
+  hides the pack or shows it again (`POST /v1/packs/<id>/hidden`) and lists theirs
+  (`GET /v1/packs/mine`). A pack the owner removed takes no versions (410). A player
+  reports another player's pack (`POST /v1/projects/<id>/report`: malware, stolen,
+  inappropriate, broken or other, 500 characters; 10 an hour); the reports go before the
+  owner (`review`, kind `report`), where `keep` dismisses them and `block` removes the
+  pack. Projects from Modrinth and CurseForge are reported at their source.
 
 ## D-067 — Start page feed at feed.lapi.sh
 

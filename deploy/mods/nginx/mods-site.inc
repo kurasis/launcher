@@ -31,6 +31,25 @@ location /v1/ {
     add_header Referrer-Policy no-referrer always;
     add_header Strict-Transport-Security "max-age=31536000" always;
 }
+# Players' own packs: the archive is the body (lapi-mods allows 90 MiB;
+# Cloudflare takes requests up to 100 MB).
+location = /v1/packs {
+    limit_req zone=lapi_mods burst=10 nodelay;
+    limit_req_status 429;
+    limit_conn lapi_mods_conn 4;
+    limit_conn_status 429;
+    client_max_body_size 91m;
+    client_body_timeout 60s;
+    proxy_pass http://127.0.0.1:8786;
+    proxy_http_version 1.1;
+    proxy_set_header Host $host;
+    proxy_set_header X-Real-IP $remote_addr;
+    proxy_set_header X-Forwarded-For "";
+    proxy_read_timeout 300s;
+    add_header X-Content-Type-Options nosniff always;
+    add_header Referrer-Policy no-referrer always;
+    add_header Strict-Transport-Security "max-age=31536000" always;
+}
 location / {
     return 404;
 }

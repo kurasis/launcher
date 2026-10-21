@@ -213,6 +213,10 @@ pub struct ContentLock {
     /// The modpack this installation was made from (stage 3).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub pack: Option<super::pack::PackLock>,
+    /// The catalog's project this installation was published as, by the
+    /// player (stage 6): the next publish adds a version to it.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub published: Option<String>,
 }
 
 impl ContentLock {
@@ -237,8 +241,14 @@ pub fn load_lock(root: &DataRoot, id: InstanceId) -> ContentLock {
             schema_version: crate::storage::document::SCHEMA_VERSION,
             items: Vec::new(),
             pack: None,
+            published: None,
         },
     }
+}
+
+/// Saves the lock after a publish (the installation remembers its pack).
+pub fn save_published(root: &DataRoot, id: InstanceId, lock: &ContentLock) -> LauncherResult<()> {
+    save_lock(root, id, lock)
 }
 
 pub(super) fn save_lock(root: &DataRoot, id: InstanceId, lock: &ContentLock) -> LauncherResult<()> {

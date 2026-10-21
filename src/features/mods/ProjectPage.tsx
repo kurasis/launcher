@@ -4,7 +4,13 @@ import { Field } from '../../components/Field';
 import { Notice } from '../../components/Notice';
 import { StatusBadge } from '../../components/StatusBadge';
 import forms from '../../components/forms.module.css';
-import type { InstanceSummary, ModsProject, ModsVersion, DocNode } from '../../lib/contracts';
+import type {
+  InstanceSummary,
+  ModsProject,
+  ModsReportReason,
+  ModsVersion,
+  DocNode,
+} from '../../lib/contracts';
 import { describeIpcError, ipc } from '../../lib/ipc';
 import { strings } from '../../lib/strings';
 import { compact, dateOf, installable, loaderOf, ourPicture, packArchive } from './helpers';
@@ -31,6 +37,86 @@ function choices(versions: ModsVersion[]): { games: string[]; loaders: string[] 
     for (const l of v.loaders) loaders.add(l);
   }
   return { games: [...games].sort(byGame), loaders: [...loaders].sort() };
+}
+
+const REASONS: ModsReportReason[] = ['malware', 'stolen', 'inappropriate', 'broken', 'other'];
+
+/** A player's report of another player's pack, for the catalog's owner (D-066 stage 6). */
+function ReportForm({ projectId, onClose }: { projectId: string; onClose: () => void }) {
+  const t = strings.mods.project;
+  const [reason, setReason] = useState<ModsReportReason>('broken');
+  const [text, setText] = useState('');
+  const [working, setWorking] = useState(false);
+  const [sent, setSent] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  if (sent) return <Notice tone="info">{t.reportSent}</Notice>;
+  return (
+    <form
+      className={forms.form}
+      aria-label={t.report}
+      onSubmit={(event) => {
+        event.preventDefault();
+        setWorking(true);
+        setError(null);
+        ipc
+          .modsReport(projectId, reason, text)
+          .then(() => {
+            setSent(true);
+          })
+          .catch((e: unknown) => {
+            setError(describeIpcError(e));
+          })
+          .finally(() => {
+            setWorking(false);
+          });
+      }}
+    >
+      <Field label={t.reportReason}>
+        {(props) => (
+          <select
+            {...props}
+            className={forms.select}
+            value={reason}
+            disabled={working}
+            onChange={(e) => {
+              const picked = REASONS.find((r) => r === e.target.value);
+              if (picked !== undefined) setReason(picked);
+            }}
+          >
+            {REASONS.map((r) => (
+              <option key={r} value={r}>
+                {t.reportReasons[r]}
+              </option>
+            ))}
+          </select>
+        )}
+      </Field>
+      <Field label={t.reportText}>
+        {(props) => (
+          <textarea
+            {...props}
+            className={forms.input}
+            value={text}
+            maxLength={500}
+            rows={3}
+            disabled={working}
+            onChange={(e) => {
+              setText(e.target.value);
+            }}
+          />
+        )}
+      </Field>
+      {error !== null && <Notice tone="danger">{error}</Notice>}
+      <div className={forms.actions}>
+        <Button type="submit" variant="primary" disabled={working}>
+          {t.reportSend}
+        </Button>
+        <Button disabled={working} onClick={onClose}>
+          {t.reportCancel}
+        </Button>
+      </div>
+    </form>
+  );
 }
 
 interface Props {
@@ -169,6 +255,7 @@ export function ProjectPage({ projectRef, instance, onBack, onLink, onAdd, onIns
     oldest: boolean;
   } | null>(null);
   const [shown, setShown] = useState(SHOWN);
+  const [reporting, setReporting] = useState(false);
 
   // The parent keys this page by project, so it starts empty.
   useEffect(() => {
@@ -250,6 +337,8 @@ export function ProjectPage({ projectRef, instance, onBack, onLink, onAdd, onIns
     );
   }
   const icon = ourPicture(project.icon);
+  // Players' own packs are reported to the catalog's owner; the rest go to their source.
+  const own = project.sources.some((s) => s.source === 'own');
   return (
     <article className={styles.section} aria-label={project.title}>
       {back}
@@ -301,7 +390,24 @@ export function ProjectPage({ projectRef, instance, onBack, onLink, onAdd, onIns
                   </Button>
                 ),
             )}
+            {own && !reporting && (
+              <Button
+                onClick={() => {
+                  setReporting(true);
+                }}
+              >
+                {t.report}
+              </Button>
+            )}
           </div>
+          {own && reporting && (
+            <ReportForm
+              projectId={project.id}
+              onClose={() => {
+                setReporting(false);
+              }}
+            />
+          )}
         </div>
       </header>
 

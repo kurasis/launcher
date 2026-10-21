@@ -13,6 +13,7 @@ pub mod content;
 pub mod import;
 pub mod markdown;
 pub mod pack;
+pub mod publish;
 pub mod world;
 
 use std::collections::HashSet;
@@ -73,8 +74,8 @@ const LOADERS: &[&str] = &[
     "modloader",
 ];
 /// Where the catalog's projects come from; `packwiz` is a pack read from
-/// its `pack.toml` (stage 5).
-const SOURCES: &[&str] = &["modrinth", "curseforge", "packwiz"];
+/// its `pack.toml` (stage 5), `own` a player's own pack (stage 6).
+const SOURCES: &[&str] = &["modrinth", "curseforge", "packwiz", "own"];
 
 /// mods.lapi.sh, or the server a test build was made for
 /// (`LAUNCHER_MODS_URL` at build time; release builds never set it).
@@ -940,6 +941,153 @@ impl Client {
     }
 }
 
+/// One of the player's own packs, as the catalog lists it.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct OwnPack {
+    pub id: String,
+    pub slug: String,
+    pub title: String,
+    /// ready, hidden (by its author) or removed (by the catalog's owner).
+    pub status: String,
+    pub versions: u64,
+    pub latest: Option<String>,
+}
+
+impl OwnPack {
+    fn from(value: &Value) -> Option<Self> {
+        let id = value["id"].as_str().filter(|i| our_id(i))?;
+        let status = value["status"]
+            .as_str()
+            .filter(|s| matches!(*s, "ready" | "hidden" | "removed" | "importing"))?;
+        Some(Self {
+            id: id.to_owned(),
+            slug: value["slug"]
+                .as_str()
+                .filter(|s| project_ref(s))
+                .unwrap_or_default()
+                .to_owned(),
+            title: line(value["title"].as_str().unwrap_or_default(), 200),
+            status: status.to_owned(),
+            versions: value["versions"].as_u64().unwrap_or(0),
+            latest: value["latest"].as_str().map(|v| line(v, 48)),
+        })
+    }
+}
+
+impl Client {
+    /// Sends an own pack's archive (`?project=` adds a version to it).
+    pub async fn publish<R: Runtime>(
+        &self,
+        app: &AppHandle<R>,
+        archive: Vec<u8>,
+        project: Option<&str>,
+    ) -> LauncherResult<publish::Published> {
+        let mut url = url::Url::parse(&Self::url("/v1/packs")).map_err(|_| server())?;
+        if let Some(project) = project {
+            if !our_id(project) {
+                return Err(not_found());
+            }
+            url.query_pairs_mut().append_pair("project", project);
+        }
+        let token = self.token(app).await?;
+        let response = self
+            .http
+            .post(url)
+            .bearer_auth(token)
+            .header(reqwest::header::CONTENT_TYPE, "application/zip")
+            .header(reqwest::header::ACCEPT, "application/json")
+            .timeout(std::time::Duration::from_secs(900))
+            .body(archive)
+            .send()
+            .await
+            .map_err(|_| network())?;
+        let status = response.status().as_u16();
+        let bytes = crate::launcher_account::body_within(response, MAX_ANSWER_BYTES)
+            .await
+            .map_err(|_| network())?;
+        let value: Value = serde_json::from_slice(&bytes).unwrap_or(Value::Null);
+        if status == 201 {
+            let project = Project::from(&value["project"]).ok_or_else(server)?;
+            return Ok(publish::Published::Published {
+                project_id: project.id,
+                slug: project.slug,
+            });
+        }
+        if let Some(refused) = publish::refused(status, &value) {
+            return Ok(refused);
+        }
+        Err(
+            publish::problem(status, value["error"].as_str().unwrap_or_default())
+                .unwrap_or_else(|| problem_of(status, &value)),
+        )
+    }
+
+    /// The account's own packs.
+    pub async fn own_packs<R: Runtime>(&self, app: &AppHandle<R>) -> LauncherResult<Vec<OwnPack>> {
+        let value = self
+            .with_token(app, self.http.get(Self::url("/v1/packs/mine")))
+            .await?;
+        Ok(value["packs"]
+            .as_array()
+            .into_iter()
+            .flatten()
+            .take(200)
+            .filter_map(OwnPack::from)
+            .collect())
+    }
+
+    /// Hides an own pack from the catalog or shows it again; the status now.
+    pub async fn set_hidden<R: Runtime>(
+        &self,
+        app: &AppHandle<R>,
+        project: &str,
+        hidden: bool,
+    ) -> LauncherResult<String> {
+        if !our_id(project) {
+            return Err(not_found());
+        }
+        let value = self
+            .with_token(
+                app,
+                self.http
+                    .post(Self::url(&format!("/v1/packs/{project}/hidden")))
+                    .json(&json!({ "hidden": hidden })),
+            )
+            .await?;
+        value["status"]
+            .as_str()
+            .filter(|s| matches!(*s, "ready" | "hidden" | "removed" | "importing"))
+            .map(str::to_owned)
+            .ok_or_else(server)
+    }
+
+    /// Reports a player's own pack to the catalog's owner.
+    pub async fn report<R: Runtime>(
+        &self,
+        app: &AppHandle<R>,
+        project: &str,
+        reason: &str,
+        text: &str,
+    ) -> LauncherResult<()> {
+        let text = clean(text, publish::MAX_REPORT + 1);
+        if !our_id(project)
+            || !publish::REASONS.contains(&reason)
+            || text.chars().count() > publish::MAX_REPORT
+        {
+            return Err(LauncherError::invalid_input("This report cannot be sent."));
+        }
+        self.with_token(
+            app,
+            self.http
+                .post(Self::url(&format!("/v1/projects/{project}/report")))
+                .json(&json!({ "reason": reason, "text": text.replace('\n', " ").trim() })),
+        )
+        .await
+        .map(|_| ())
+    }
+}
+
 impl Client {
     /// A modpack version as the catalog has it; `prepare` asks the catalog to
     /// keep its files (once: it is counted, so looking again goes without).
@@ -1113,6 +1261,9 @@ pub struct Mods {
     pub import: std::sync::Mutex<Option<import::Picked>>,
     /// The harmful files' SHA-1 and when they were read.
     harmful: std::sync::Mutex<Option<(std::time::Instant, Arc<HashSet<String>>)>>,
+    /// The icon the player picked for publishing a pack (stage 6): its name
+    /// in the archive and its bytes, checked.
+    pub icon: std::sync::Mutex<Option<(&'static str, Vec<u8>)>>,
 }
 
 impl Mods {
@@ -1122,6 +1273,7 @@ impl Mods {
             content: content::Installer::new(app_version).map_err(|e| e.message)?,
             import: std::sync::Mutex::new(None),
             harmful: std::sync::Mutex::new(None),
+            icon: std::sync::Mutex::new(None),
         })
     }
 

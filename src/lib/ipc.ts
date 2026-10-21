@@ -102,6 +102,11 @@ import {
   type ModsPackReport,
   type ModsExportChoice,
   type ModsExportResult,
+  type ModsOwnPack,
+  type ModsPublishCheck,
+  type ModsPublished,
+  type ModsPublishForm,
+  type ModsReportReason,
   type ModsPlan,
   type ModsImportCreatePayload,
   type ModsImportFound,
@@ -446,6 +451,25 @@ export const ipc = {
     invoke<ModsExportResult>('mods_export_pack', {
       payload: { instanceId, choice, title: title ?? null },
     }),
+  /** What publishing an installation as a pack would take, and the pack it was published as. */
+  modsPublishCheck: (instanceId: string, choice: ModsExportChoice): Promise<ModsPublishCheck> =>
+    invoke<ModsPublishCheck>('mods_publish_check', { instanceId, choice }),
+  /** Picks the pack's icon; `null` when the dialog was closed. */
+  modsPublishIcon: (title?: string): Promise<{ preview: string } | null> =>
+    invoke<{ preview: string } | null>('mods_publish_icon', { title: title ?? null }),
+  /** Publishes an installation as the player's own pack, or a new version of it. */
+  modsPublish: (payload: {
+    instanceId: string;
+    form: ModsPublishForm;
+    icon: boolean;
+    asNew: boolean;
+  }): Promise<ModsPublished> => invoke<ModsPublished>('mods_publish', { payload }),
+  /** Hides the player's own pack from the catalog, or shows it again; returns its status. */
+  modsPackHidden: (project: string, hidden: boolean): Promise<ModsOwnPack['status']> =>
+    invoke<ModsOwnPack['status']>('mods_pack_hidden', { project, hidden }),
+  /** Reports a player's own pack to the catalog's owner. */
+  modsReport: (project: string, reason: ModsReportReason, text: string): Promise<void> =>
+    invoke('mods_report', { project, reason, text }),
   modsCancel: (instanceId: string): Promise<boolean> =>
     invoke<boolean>('mods_cancel', { instanceId }),
   modsContent: (instanceId: string): Promise<ContentView> =>

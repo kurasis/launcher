@@ -1269,7 +1269,12 @@ fn not_removed(app: &App, project: &str) -> Result<(), JobError> {
 /// Moves a hashed part into the kept files and records it. An archive is
 /// scanned first (D-066, stage 6): one the scanner holds back goes into
 /// quarantine instead, is recorded as held and waits for the owner.
-async fn keep(app: &App, part: &Path, hashed: &Hashed, media_type: &str) -> Result<(), JobError> {
+pub(crate) async fn keep(
+    app: &App,
+    part: &Path,
+    hashed: &Hashed,
+    media_type: &str,
+) -> Result<(), JobError> {
     if here(app, &hashed.sha256) && app.store.blob_state(&hashed.sha256)?.is_some() {
         // Here already, served or held, and scanned then; or deleted for
         // good by the owner.
@@ -1562,7 +1567,7 @@ async fn keep_image(app: &App, url: &str) -> Result<(String, String), JobError> 
 }
 
 /// A small copy of a kept picture, kept too; `None` when it cannot be made.
-async fn small_copy(app: &App, sha256: &str, size: u32, format: &str) -> Option<String> {
+pub(crate) async fn small_copy(app: &App, sha256: &str, size: u32, format: &str) -> Option<String> {
     let input = app.blobs.path(sha256);
     let output = app.blobs.part();
     let made = match &app.thumbs {

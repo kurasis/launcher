@@ -77,7 +77,7 @@ pub const ROOT_FILES: &[&str] = &[
 ];
 
 /// Programs a pack never brings, wherever they would go.
-const PROGRAMS: &[&str] = &[
+pub(super) const PROGRAMS: &[&str] = &[
     "exe", "bat", "cmd", "com", "scr", "msi", "ps1", "psm1", "vbs", "vbe", "wsf", "lnk", "sh",
     "command", "dll", "so", "dylib", "jnilib", "reg", "hta", "cpl", "app",
 ];
@@ -133,7 +133,7 @@ fn not_ready() -> LauncherError {
     LauncherError::invalid_input("The catalog is still preparing this modpack. Try again soon.")
 }
 
-fn disk(e: &std::io::Error) -> LauncherError {
+pub(super) fn disk(e: &std::io::Error) -> LauncherError {
     LauncherError::from_io(e, "Putting the modpack's files in place")
 }
 
@@ -881,7 +881,7 @@ const EXPORT_FOLDERS: &[&str] = &[
 const EXPORT_OPTIONS: &[&str] = &["options.txt", "optionsof.txt", "optionsshaders.txt"];
 /// Folders whose files Modrinth may host, named in the index instead of
 /// copied.
-const LINKABLE: &[&str] = &["mods", "resourcepacks", "shaderpacks"];
+pub(super) const LINKABLE: &[&str] = &["mods", "resourcepacks", "shaderpacks"];
 const MAX_EXPORT_FILES: usize = 20_000;
 const MAX_EXPORT_BYTES: u64 = 4 * 1024 * 1024 * 1024;
 const MAX_LOOKED_UP: usize = 1000;
@@ -927,12 +927,12 @@ pub struct ExportInfo {
     pub loader: Option<LoaderChoice>,
 }
 
-struct Gathered {
-    path: String,
-    full: PathBuf,
-    size: u64,
+pub(super) struct Gathered {
+    pub(super) path: String,
+    pub(super) full: PathBuf,
+    pub(super) size: u64,
     /// SHA-1, SHA-512 and SHA-256 of a file that may be on Modrinth.
-    hashes: Option<(String, String, String)>,
+    pub(super) hashes: Option<(String, String, String)>,
 }
 
 fn too_large() -> LauncherError {
@@ -963,7 +963,7 @@ fn hashes_of(path: &Path) -> std::io::Result<(String, String, String)> {
 
 /// The files an export takes: plain files by the pack path rules, turned-off
 /// ones and links left out, bounded in count and size.
-fn gather(game: &Path, choice: ExportChoice) -> LauncherResult<Vec<Gathered>> {
+pub(super) fn gather(game: &Path, choice: ExportChoice) -> LauncherResult<Vec<Gathered>> {
     let mut out = Vec::new();
     let mut total = 0u64;
     let mut add = |path: String, full: PathBuf, size: u64| -> LauncherResult<()> {
