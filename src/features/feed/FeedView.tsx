@@ -4,13 +4,18 @@ import { Notice } from '../../components/Notice';
 import { StatusBadge } from '../../components/StatusBadge';
 import type {
   AppSnapshot,
+  ChannelMark,
+  FavoriteFeed,
   Feed,
   FeedProblem,
   FeedSettings,
   FeedStream,
   FeedVideo,
+  FeedMarks,
   FeedView as FeedAnswer,
   InstanceSummary,
+  MarkKind,
+  MarkList,
   NoteCard,
   ServerAd,
 } from '../../lib/contracts';
@@ -18,6 +23,7 @@ import { feedProblem, ipc } from '../../lib/ipc';
 import { strings } from '../../lib/strings';
 import { useCommand } from '../../lib/useCommand';
 import { gameLabel } from '../instances/loaderLabel';
+import { AddChannel } from './AddChannel';
 import { FeedList } from './FeedList';
 import type { FeedFilter } from './list';
 import { NotePanel } from './NotePanel';
@@ -30,6 +36,16 @@ import styles from './Feed.module.css';
 const t = strings.feed;
 
 const FILTERS: readonly FeedFilter[] = ['all', 'versions', 'news', 'videos', 'shorts', 'streams'];
+const NO_MARKS: FeedMarks = { hidden: [], favorite: [] };
+const NO_FAVORITES: FavoriteFeed = { videos: [], streams: [] };
+/** How long a short notice (link copied) stays. */
+const NOTICE_MS = 4000;
+
+/** A notice over the feed, with Undo when the step can be taken back. */
+interface FeedNotice {
+  text: string;
+  undo: (() => void) | null;
+}
 
 interface FeedViewProps {
   snapshot: AppSnapshot;
@@ -290,6 +306,11 @@ export function FeedView({ snapshot, onOpenInstallations, onInstallVersion }: Fe
   const [own, setOwn] = useState<FeedVideo[]>([]);
   const [ownStreams, setOwnStreams] = useState<FeedStream[]>([]);
   const [ads, setAds] = useState<ServerAd[]>([]);
+  const [marks, setMarks] = useState<FeedMarks>(NO_MARKS);
+  const [favorites, setFavorites] = useState<FavoriteFeed>(NO_FAVORITES);
+  const [notice, setNotice] = useState<FeedNotice | null>(null);
+  // Each channel added from the + asks for the player's own videos and streams again.
+  const [added, setAdded] = useState(0);
   const [refreshing, setRefreshing] = useState(false);
   const [chosen, setFilter] = useState<FeedFilter>('all');
   // Each Refresh starts the list again.
@@ -324,7 +345,7 @@ export function FeedView({ snapshot, onOpenInstallations, onInstallVersion }: Fe
       .catch(() => {
         setOwn([]);
       });
-  }, [online]);
+  }, [online, added]);
   // Live now: asked again on Refresh too.
   useEffect(() => {
     ipc
@@ -333,7 +354,35 @@ export function FeedView({ snapshot, onOpenInstallations, onInstallVersion }: Fe
       .catch(() => {
         setOwnStreams([]);
       });
-  }, [online, refreshes]);
+  }, [online, refreshes, added]);
+  useEffect(() => {
+    ipc
+      .feedMarks()
+      .then(setMarks)
+      .catch(() => {
+        setMarks(NO_MARKS);
+      });
+  }, []);
+  // The favourites' videos and streams: asked again when the favourites change.
+  const favoriteKey = marks.favorite.map((mark) => `${mark.kind}:${mark.id}`).join(',');
+  useEffect(() => {
+    ipc
+      .feedFavorites()
+      .then(setFavorites)
+      .catch(() => {
+        setFavorites(NO_FAVORITES);
+      });
+  }, [favoriteKey, online, refreshes]);
+  // A notice without Undo goes by itself.
+  useEffect(() => {
+    if (notice === null || notice.undo !== null) return;
+    const timer = window.setTimeout(() => {
+      setNotice(null);
+    }, NOTICE_MS);
+    return () => {
+      window.clearTimeout(timer);
+    };
+  }, [notice]);
 
   // Server ads (D-069): asked again on Refresh and when the connection
   // returns; each leaves the list the moment it ends.
@@ -382,6 +431,52 @@ export function FeedView({ snapshot, onOpenInstallations, onInstallVersion }: Fe
   const closeNote = useCallback(() => {
     setOpen(null);
   }, []);
+  const mark = useCallback(
+    (channel: ChannelMark, list: MarkList | null) => {
+      setActionProblem(null);
+      // The list the channel was on, so Undo puts it back there.
+      const same = (item: ChannelMark) => item.kind === channel.kind && item.id === channel.id;
+      const before: MarkList | null = marks.favorite.some(same)
+        ? 'favorite'
+        : marks.hidden.some(same)
+          ? 'hidden'
+          : null;
+      const undo = () => {
+        setNotice(null);
+        ipc
+          .feedMark(channel, before)
+          .then(setMarks)
+          .catch((error: unknown) => {
+            setActionProblem(feedProblem(error));
+          });
+      };
+      ipc
+        .feedMark(channel, list)
+        .then((after) => {
+          setMarks(after);
+          setNotice(
+            list === 'hidden' ? { text: t.channelHidden({ name: channel.name }), undo } : null,
+          );
+        })
+        .catch((error: unknown) => {
+          setActionProblem(feedProblem(error));
+        });
+    },
+    [marks],
+  );
+  const copyLink = useCallback((url: string) => {
+    setActionProblem(null);
+    void navigator.clipboard
+      .writeText(url)
+      .then(() => {
+        setNotice({ text: t.linkCopied, undo: null });
+      })
+      .catch(() => undefined);
+  }, []);
+  const channelAdded = useCallback((_place: MarkKind, name: string) => {
+    setNotice({ text: t.channelAdded({ name }), undo: null });
+    setAdded((count) => count + 1);
+  }, []);
 
   const view = result?.view ?? null;
   const toolbar = (
@@ -410,6 +505,11 @@ export function FeedView({ snapshot, onOpenInstallations, onInstallVersion }: Fe
         settings={settings}
         own={own}
         ownStreams={ownStreams}
+        favorites={favorites}
+        marks={marks}
+        onMark={mark}
+        onCopyLink={copyLink}
+        onChannelAdded={channelAdded}
         chosen={chosen}
         reload={`${languages} ${String(online)} ${String(settings.snapshots)} ${String(settings.shorts)} ${settings.hidden.join(',')} ${String(refreshes)}`}
         onFilter={setFilter}
@@ -432,6 +532,14 @@ export function FeedView({ snapshot, onOpenInstallations, onInstallVersion }: Fe
         <Notice tone="warning">{t.problems[result.problem]}</Notice>
       )}
       {actionProblem !== null && <Notice tone="danger">{t.problems[actionProblem]}</Notice>}
+      {notice !== null && (
+        <Notice tone="info">
+          <span className={styles.noticeRow}>
+            <span>{notice.text}</span>
+            {notice.undo !== null && <Button onClick={notice.undo}>{t.undo}</Button>}
+          </span>
+        </Notice>
+      )}
       <div className={styles.layout}>
         <div className={styles.main}>
           <ContinueCard snapshot={snapshot} onOpenInstallations={onOpenInstallations} />
@@ -469,6 +577,11 @@ interface FeedPartsProps {
   settings: FeedSettings;
   own: FeedVideo[];
   ownStreams: FeedStream[];
+  favorites: FavoriteFeed;
+  marks: FeedMarks;
+  onMark: (channel: ChannelMark, list: MarkList | null) => void;
+  onCopyLink: (url: string) => void;
+  onChannelAdded: (place: MarkKind, name: string) => void;
   chosen: FeedFilter;
   /** Changes when the list should start again. */
   reload: string;
@@ -488,6 +601,11 @@ function FeedParts({
   settings,
   own,
   ownStreams,
+  favorites,
+  marks,
+  onMark,
+  onCopyLink,
+  onChannelAdded,
   chosen,
   reload,
   onFilter,
@@ -522,29 +640,36 @@ function FeedParts({
           onInstallVersion={onInstallVersion}
         />
       )}
-      <div className={styles.chips} role="group" aria-labelledby={filterLabel}>
-        <span id={filterLabel} className={styles.visuallyHidden}>
-          {t.filters}
-        </span>
-        {filters.map((item) => (
-          <button
-            key={item}
-            type="button"
-            className={styles.chip}
-            aria-pressed={filter === item}
-            onClick={() => {
-              onFilter(item);
-            }}
-          >
-            {t.filter[item]}
-          </button>
-        ))}
+      <div className={styles.chipsRow}>
+        <div className={styles.chips} role="group" aria-labelledby={filterLabel}>
+          <span id={filterLabel} className={styles.visuallyHidden}>
+            {t.filters}
+          </span>
+          {filters.map((item) => (
+            <button
+              key={item}
+              type="button"
+              className={styles.chip}
+              aria-pressed={filter === item}
+              onClick={() => {
+                onFilter(item);
+              }}
+            >
+              {t.filter[item]}
+            </button>
+          ))}
+        </div>
+        <AddChannel onAdded={onChannelAdded} />
       </div>
       <FeedList
         feed={feed}
         settings={settings}
         own={own}
         ownStreams={ownStreams}
+        favorites={favorites}
+        marks={marks}
+        onMark={onMark}
+        onCopyLink={onCopyLink}
         filter={filter}
         key={`${filter} ${reload}`}
         skip={filter === 'all' ? (heroNote?.id ?? null) : null}

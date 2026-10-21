@@ -125,7 +125,23 @@
         "installedMark": "установлена",
         "erid": "Токен рекламы: {erid}",
         "installFailed": "Не удалось установить {version}. Откройте «Установки», чтобы узнать почему."
-      }
+      },
+      "itemMenu": "Ещё: {title}",
+      "copyLink": "Скопировать ссылку",
+      "linkCopied": "Ссылка скопирована.",
+      "favorite": "Показывать {name} первым",
+      "unfavorite": "Не показывать {name} первым",
+      "hideChannel": "Не показывать {name}",
+      "channelHidden": "{name} больше не показывается в ленте.",
+      "undo": "Вернуть",
+      "favoriteBadge": "Избранное",
+      "addChannel": "Добавить канал",
+      "addChannelPlace": "Где канал",
+      "places": {
+        "youtube": "YouTube",
+        "twitch": "Twitch"
+      },
+      "channelAdded": "{name} добавлен в ленту."
     },
     "bootstrap": {
       "loading": "Загрузка состояния лаунчера…",
@@ -925,7 +941,13 @@
       "streamersHint": "Их стримы появляются в ленте, пока идёт трансляция. Список хранится только на этом компьютере; ленте отправляются лишь имена каналов, чтобы узнать, идёт ли стрим.",
       "streamerInput": "Ссылка на канал или его имя",
       "streamerBadInput": "Это не ссылка на канал Twitch и не его имя.",
-      "streamerNotFound": "Такого канала на Twitch нет."
+      "streamerNotFound": "Такого канала на Twitch нет.",
+      "favorites": "Показываются первыми",
+      "favoritesHint": "Видео и стримы этих каналов идут в ленте первыми. Добавить канал можно через ⋯ на его карточке.",
+      "hiddenChannels": "Не показываются",
+      "hiddenChannelsHint": "Видео и стримы этих каналов не попадают в ленту.",
+      "noMarks": "Пока пусто.",
+      "removeMark": "Убрать {name}"
     },
     "privacy": {
       "shareStats": "Отправлять анонимную статистику вылетов",

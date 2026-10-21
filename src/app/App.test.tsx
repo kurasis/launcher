@@ -626,6 +626,8 @@ describe('App', () => {
         feed_get: () => ({ feed, stale: false, problem: null }),
         feed_own_videos: () => [],
         feed_own_streams: () => [],
+        feed_marks: () => ({ hidden: [], favorite: [] }),
+        feed_favorites: () => ({ videos: [], streams: [] }),
       },
     );
     render(<App />);

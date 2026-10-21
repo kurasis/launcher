@@ -65,6 +65,10 @@ import {
   type NoteView,
   type OwnChannel,
   type OwnStreamer,
+  type ChannelMark,
+  type FavoriteFeed,
+  type FeedMarks,
+  type MarkList,
   type LocalWorld,
   type WorldsCreatePayload,
   type WorldsDevice,
@@ -526,6 +530,13 @@ export const ipc = {
     invoke<OwnStreamer[]>('feed_remove_streamer', { login }),
   /** The live streams of the player's own Twitch channels. */
   feedOwnStreams: (): Promise<FeedStream[]> => invoke<FeedStream[]>('feed_own_streams'),
+  /** The channels the player hid from the feed and the ones they put first. */
+  feedMarks: (): Promise<FeedMarks> => invoke<FeedMarks>('feed_marks'),
+  /** Puts a channel on a list, taking it off the other, or (null) off both; the marks after. */
+  feedMark: (channel: ChannelMark, list: MarkList | null): Promise<FeedMarks> =>
+    invoke<FeedMarks>('feed_mark', { ...channel, list }),
+  /** The newest videos and live streams of the favourite channels. */
+  feedFavorites: (): Promise<FavoriteFeed> => invoke<FavoriteFeed>('feed_favorites'),
   /**
    * A page of the endless list: one part or all (`null`), or the Shorts alone,
    * after the cursor `before`.

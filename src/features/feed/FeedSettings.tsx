@@ -3,9 +3,12 @@ import { Button } from '../../components/Button';
 import { Notice } from '../../components/Notice';
 import forms from '../../components/forms.module.css';
 import type {
+  ChannelMark,
   FeedBlock,
+  FeedMarks,
   FeedProblem,
   FeedSettings as Settings,
+  MarkList,
   OwnChannel,
   OwnStreamer,
   PlayerMode,
@@ -191,6 +194,101 @@ function OwnStreamers({ disabled }: { disabled: boolean }) {
   );
 }
 
+/** One list of marked channels: their names and a button to take each off. */
+function MarkedList({
+  legend,
+  hint,
+  list,
+  marks,
+  busy,
+  onRemove,
+}: {
+  legend: string;
+  hint: string;
+  list: MarkList;
+  marks: FeedMarks;
+  busy: boolean;
+  onRemove: (channel: ChannelMark) => void;
+}) {
+  const channels = list === 'hidden' ? marks.hidden : marks.favorite;
+  return (
+    <fieldset className={forms.choices}>
+      <legend>{legend}</legend>
+      <p className={styles.hint}>{hint}</p>
+      {channels.length === 0 ? (
+        <p className={styles.hint}>{t.noMarks}</p>
+      ) : (
+        <ul className={forms.choices}>
+          {channels.map((channel) => (
+            <li key={`${channel.kind}:${channel.id}`} className={forms.actions}>
+              <span dir="auto">
+                {channel.name}{' '}
+                <span className={styles.hint}>{strings.feed.places[channel.kind]}</span>
+              </span>
+              <Button
+                disabled={busy}
+                aria-label={t.removeMark({ name: channel.name })}
+                onClick={() => {
+                  onRemove(channel);
+                }}
+              >
+                {t.remove}
+              </Button>
+            </li>
+          ))}
+        </ul>
+      )}
+    </fieldset>
+  );
+}
+
+/** The channels shown first and the ones not shown, set from a tile's ⋯ menu. */
+function MarkedChannels({ disabled }: { disabled: boolean }) {
+  const [marks, setMarks] = useState<FeedMarks>({ hidden: [], favorite: [] });
+  const [busy, setBusy] = useState(false);
+  const [problem, setProblem] = useState<FeedProblem | null>(null);
+  useEffect(() => {
+    ipc
+      .feedMarks()
+      .then(setMarks)
+      .catch(() => undefined);
+  }, []);
+  const remove = (channel: ChannelMark) => {
+    setBusy(true);
+    setProblem(null);
+    ipc
+      .feedMark(channel, null)
+      .then(setMarks)
+      .catch((error: unknown) => {
+        setProblem(feedProblem(error));
+      })
+      .finally(() => {
+        setBusy(false);
+      });
+  };
+  return (
+    <>
+      <MarkedList
+        legend={t.favorites}
+        hint={t.favoritesHint}
+        list="favorite"
+        marks={marks}
+        busy={busy || disabled}
+        onRemove={remove}
+      />
+      <MarkedList
+        legend={t.hiddenChannels}
+        hint={t.hiddenChannelsHint}
+        list="hidden"
+        marks={marks}
+        busy={busy || disabled}
+        onRemove={remove}
+      />
+      {problem !== null && <Notice tone="danger">{strings.feed.problems[problem]}</Notice>}
+    </>
+  );
+}
+
 /** Settings → Feed (D-067). */
 export function FeedSettings({ settings }: { settings: SettingsView }) {
   const feed = settings.feed;
@@ -285,6 +383,7 @@ export function FeedSettings({ settings }: { settings: SettingsView }) {
       {update.error !== null && <Notice tone="danger">{update.error}</Notice>}
       <OwnChannels disabled={!settings.writable} />
       <OwnStreamers disabled={!settings.writable} />
+      <MarkedChannels disabled={!settings.writable} />
     </div>
   );
 }
