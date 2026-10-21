@@ -680,10 +680,17 @@ impl Worlds {
     }
 
     /// Hosts `room` from its world on this computer: gets the server and Java
-    /// ready, starts the server, then the room's session and the tunnel.
-    pub async fn host(self: &Arc<Self>, state: &AppState, room: &str) -> LauncherResult<()> {
+    /// ready, starts the server, then the room's session and the tunnel. A
+    /// world with mods publishes its room pack with `publish` first, once per
+    /// generation.
+    pub async fn host(
+        self: &Arc<Self>,
+        state: &AppState,
+        room: &str,
+        publish: pack::PublishRoom,
+    ) -> LauncherResult<()> {
         let cancel = self.begin(room, Stage::Server)?;
-        let result = self.host_inner(state, room, &cancel).await;
+        let result = self.host_inner(state, room, publish, &cancel).await;
         self.finish(&result);
         result
     }
@@ -692,6 +699,7 @@ impl Worlds {
         self: &Arc<Self>,
         state: &AppState,
         room: &str,
+        publish: pack::PublishRoom,
         cancel: &CancelToken,
     ) -> LauncherResult<()> {
         let nick = nick_of(state)?;
@@ -728,6 +736,7 @@ impl Worlds {
             &sink,
         )
         .await?;
+        let room_pack = pack::publish_room(&root, world_id, publish).await?;
 
         self.set_stage(&room.id, Stage::Starting);
         let operation_id = uuid::Uuid::new_v4().to_string();
@@ -788,6 +797,7 @@ impl Worlds {
                 rebind,
                 &room.id,
                 u32::from(prepared.settings.max_players),
+                room_pack,
                 self.on_change(),
             )
             .await

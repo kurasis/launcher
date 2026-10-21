@@ -2850,7 +2850,7 @@ pub async fn mods_publish<R: Runtime>(
     };
     let published = mods
         .client
-        .publish(&app, &part, project, &claim.cancel, &sent)
+        .publish(&app, &part, project, false, &claim.cancel, &sent)
         .await;
     let _ = std::fs::remove_file(&part);
     let published = published?;
@@ -3339,6 +3339,8 @@ pub struct WorldsRoomPage {
 pub struct WorldsInstance {
     pub instance_id: crate::storage::paths::InstanceId,
     pub ready: bool,
+    /// The room's mods wait for the player's word: nothing was installed.
+    pub consent: Option<crate::worlds::pack::RoomConsent>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -3677,10 +3679,30 @@ pub async fn worlds_redeem<R: Runtime>(
 }
 
 /// Hosts a room from its world on this computer; returns once friends can
-/// join. Stages and download progress come in `worlds://state`.
+/// join. Stages and download progress come in `worlds://state`. A world with
+/// mods publishes its room pack to the catalog first, as this account.
 #[tauri::command]
 pub async fn worlds_host<R: Runtime>(app: AppHandle<R>, room: String) -> LauncherResult<()> {
-    worlds(&app).host(&app.state::<AppState>(), &room).await
+    let (mods, handle) = (mods(&app), app.clone());
+    let publish: crate::worlds::pack::PublishRoom = Box::new(move |archive, project| {
+        Box::pin(async move {
+            crate::mods::online(&handle.state::<AppState>())?;
+            let cancel = crate::download::CancelToken::new();
+            mods.client
+                .publish(
+                    &handle,
+                    &archive,
+                    project.as_deref(),
+                    true,
+                    &cancel,
+                    &|_, _| {},
+                )
+                .await
+        })
+    });
+    worlds(&app)
+        .host(&app.state::<AppState>(), &room, publish)
+        .await
 }
 
 /// Stops hosting; the world is saved.
@@ -3707,29 +3729,124 @@ pub fn worlds_cancel<R: Runtime>(app: AppHandle<R>) {
     worlds(&app).cancel();
 }
 
-/// The installation a room plays, made on first use.
+/// The installation a room plays, made on first use. A guest of a world
+/// with mods gets the room pack in it, once they agreed: `accept` is the
+/// SHA-256 of the room pack they were shown.
 #[tauri::command]
 pub async fn worlds_instance<R: Runtime>(
     app: AppHandle<R>,
     room: String,
+    accept: Option<String>,
 ) -> LauncherResult<WorldsInstance> {
     let worlds = worlds(&app);
     let found = worlds.client.room(&room).await?;
+    let state = app.state::<AppState>();
     // The host's own world with mods: the installation runs its loader and
     // holds its client mods.
     let local = worlds.local_world_of(&found);
-    let loader = local
-        .as_ref()
-        .and_then(|w| w.pack.as_ref())
-        .map(|p| p.loader.clone());
-    let state = app.state::<AppState>();
-    let instance = state.room_instance(&found.id, &found.name, &found.minecraft, loader)?;
+    if local.is_none()
+        && let Some(pack) = &found.pack
+    {
+        return room_pack_instance(&app, &found, pack, accept.as_deref()).await;
+    }
+    let generation = local.as_ref().and_then(|w| w.pack.as_ref());
+    let instance = state.room_instance(
+        &found.id,
+        &found.name,
+        &found.minecraft,
+        generation.map(|p| p.loader.clone()),
+        generation.map_or(0, |p| u32::try_from(p.mods().count()).unwrap_or(u32::MAX)),
+    )?;
     if let Some(world) = local.filter(|w| w.pack.is_some()) {
         worlds.place_client(&world, instance.id).await?;
     }
     Ok(WorldsInstance {
         instance_id: instance.id,
         ready: instance.health == crate::storage::models::InstallationHealth::Ready,
+        consent: None,
+    })
+}
+
+fn room_pack_changed() -> crate::error::LauncherError {
+    crate::error::LauncherError::invalid_input(
+        "The room's mods changed or are not ready yet. Try again in a moment.",
+    )
+}
+
+/// A guest's room installation with the room pack in it (W12): the pack the
+/// session names, checked against its SHA-256, the loader and Minecraft
+/// version the room plays, and a loader the live test covers. Mods the
+/// installation does not have yet wait for the player's word; then the pack
+/// goes in as any catalog pack does, every file checked by SHA-256.
+async fn room_pack_instance<R: Runtime>(
+    app: &AppHandle<R>,
+    room: &crate::worlds::service::Room,
+    pack: &crate::worlds::service::SessionPack,
+    accept: Option<&str>,
+) -> LauncherResult<WorldsInstance> {
+    use crate::mods::Catalog;
+    let state = app.state::<AppState>();
+    if !pack.valid() {
+        return Err(room_pack_changed());
+    }
+    crate::mods::online(&state)?;
+    let mods = mods(app);
+    let info = mods.client.pack(&pack.version, false).await?;
+    if !info.ready() || info.archive.as_ref().map(|a| a.sha256.as_str()) != Some(&pack.sha256) {
+        return Err(room_pack_changed());
+    }
+    let loader = info.loader_choice()?.ok_or_else(room_pack_changed)?;
+    if info.game.as_deref() != Some(room.minecraft.as_str()) {
+        return Err(room_pack_changed());
+    }
+    crate::worlds::pack::check_supported(&loader, &room.minecraft)?;
+    let version = mods.client.version(&pack.version).await?;
+    if version.id != pack.version {
+        return Err(room_pack_changed());
+    }
+    let instance = state.room_instance(
+        &room.id,
+        &room.name,
+        &room.minecraft,
+        Some(loader),
+        info.mods,
+    )?;
+    let id = instance.id;
+    let ready = instance.health == crate::storage::models::InstallationHealth::Ready;
+    let (root, _) = crate::mods::content::instance_of(&state, id)?;
+    let installed = crate::mods::content::load_lock(&root, id).pack;
+    match crate::worlds::pack::room_step(&info, installed.as_ref(), pack, accept) {
+        crate::worlds::pack::RoomStep::Installed => {
+            return Ok(WorldsInstance {
+                instance_id: id,
+                ready,
+                consent: None,
+            });
+        }
+        crate::worlds::pack::RoomStep::Ask(consent) => {
+            return Ok(WorldsInstance {
+                instance_id: id,
+                ready: false,
+                consent: Some(consent),
+            });
+        }
+        crate::worlds::pack::RoomStep::Install => {}
+    }
+    let claim = mods.content.claim(id)?;
+    state.activity().ensure_instance_idle(id)?;
+    let meta = crate::mods::pack::PackMeta {
+        project_id: version.project_id.clone(),
+        version_id: version.id.clone(),
+        title: crate::mods::line(&room.name, 256),
+        version_number: crate::mods::line(&version.number, 128),
+        icon: None,
+    };
+    run_pack(app, &mods, &root, id, &info, meta, &claim.cancel).await?;
+    drop(claim);
+    Ok(WorldsInstance {
+        instance_id: id,
+        ready,
+        consent: None,
     })
 }
 
@@ -3764,6 +3881,20 @@ pub async fn worlds_play<R: Runtime>(
             )
         })?;
     mods.content.ensure_idle(instance.id)?;
+    // A guest plays the mods the room plays now, never an older set.
+    let found = worlds(&app).client.room(&room).await?;
+    if worlds(&app).local_world_of(&found).is_none()
+        && let Some(root) = state.data_root()
+    {
+        let installed = crate::mods::content::load_lock(&root, instance.id)
+            .pack
+            .map(|p| p.version_id);
+        if installed.as_deref() != found.pack.as_ref().map(|p| p.version.as_str()) {
+            return Err(crate::error::LauncherError::invalid_input(
+                "The host changed the room's mods. Press Play again to get them.",
+            ));
+        }
+    }
     let mode =
         crate::launch::service::LaunchMode::World(crate::launch::service::WorldPlay { nick, port });
     launcher

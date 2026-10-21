@@ -1648,6 +1648,15 @@
         "UNAVAILABLE": "لم يُجب worlds.lapi.sh المضيف. حاول بعد قليل."
       },
       "installing": "يجري تثبيت اللعبة لهذه الغرفة. اضغط «العب» عندما يكتمل.",
+      "installingMods": "يجري تثبيت تعديلات الغرفة…",
+      "consent": {
+        "title": "تلعب هذه الغرفة {mods, plural, zero {# تعديلات} one {تعديلًا واحدًا} two {تعديلين} few {# تعديلات} many {# تعديلًا} other {# تعديل}}",
+        "new": "{count, plural, zero {# تعديلات جديدة} one {تعديل واحد جديد} two {تعديلان جديدان} few {# تعديلات جديدة} many {# تعديلًا جديدًا} other {# تعديل جديد}} على هذا الحاسوب، وحجم التنزيل {size}:",
+        "more": "و{count} أخرى",
+        "warning": "التعديلات برامج: تعمل على حاسوبك بكل صلاحياتك. لا يأخذ المشغّل إلا الملفات التي فحصها الفهرس، ومع ذلك لا تثبّتها إلا إذا كنت تثق بالمضيف.",
+        "accept": "ثبّت التعديلات",
+        "decline": "ليس الآن"
+      },
       "eulaNeeded": "اقبل اتفاقية ترخيص Minecraft لتفتح هذا العالم على هذا الحاسوب.",
       "acceptEula": "قبول الاتفاقية",
       "readEula": "قراءة اتفاقية ترخيص Minecraft",
@@ -2164,6 +2173,7 @@
     "The file manager could not be opened.": "تعذّر فتح مدير الملفات.",
     "The folder dialog failed.": "فشل مربع حوار اختيار المجلد.",
     "The game exited with an error. The output below may explain why.": "انتهت اللعبة بخطأ. قد توضح المخرجات أدناه السبب.",
+    "The host changed the room's mods. Press Play again to get them.": "غيّر المضيف تعديلات الغرفة. اضغط «العب» مرة أخرى للحصول عليها.",
     "The installation identifier is invalid.": "معرّف التثبيت غير صالح.",
     "The installation name cannot contain control characters.": "لا يمكن أن يحتوي اسم التثبيت على أحرف تحكم.",
     "The installation name must be 1–{max} characters.": "يجب أن يتكون اسم التثبيت من 1 إلى {max} حرفًا.",
@@ -2368,6 +2378,7 @@
     "The world server stopped while starting.": "توقّف خادم العالم أثناء بدء تشغيله.",
     "The world's mod loader is missing or changed. Host the world again to install it.": "مُحمِّل تعديلات العالم مفقود أو تغيّر. استضف العالم مرة أخرى لتثبيته.",
     "The world's modpack could not be written.": "تعذّرت كتابة حزمة تعديلات العالم.",
+    "The world's mods changed while they were sent. Open the world again.": "تغيّرت تعديلات العالم أثناء إرسالها. افتح العالم مرة أخرى.",
     "The world's server file is missing or changed. Install it again.": "ملف خادم العالم مفقود أو تغيّر. ثبّته مرة أخرى.",
     "The world's server is not installed yet.": "خادم العالم غير مثبّت بعد.",
     "This computer has {physicalMib} MiB of memory. The game ({gameMib} MiB), the world server ({serverMib} MiB) and the system ({reserveMib} MiB) need more. Give the server or the game less memory.": "في هذا الحاسوب {physicalMib} ميبيبايت من الذاكرة. تحتاج اللعبة ({gameMib} ميبيبايت) وخادم العالم ({serverMib} ميبيبايت) والنظام ({reserveMib} ميبيبايت) إلى أكثر من ذلك. خصّص ذاكرة أقل للخادم أو للعبة.",
@@ -2419,6 +2430,7 @@
     "The relay address is not valid.": "عنوان المُرحِّل غير صالح.",
     "The room plays another Minecraft version than its installation.": "تلعب الغرفة إصدارًا من Minecraft غير إصدار تثبيتها.",
     "The room plays another mod loader than its installation.": "تستخدم الغرفة مُحمِّل تعديلات غير الذي في تثبيتها.",
+    "The room's mods changed or are not ready yet. Try again in a moment.": "تغيّرت تعديلات الغرفة أو لم تجهز بعد. حاول مرة أخرى بعد قليل.",
     "The world's players could not be written.": "تعذّرت كتابة لاعبي العالم.",
     "This computer is already in a room. Leave it first.": "هذا الحاسوب في غرفة بالفعل. غادرها أولًا.",
     "This is not a room.": "هذه ليست غرفة.",
@@ -2488,6 +2500,7 @@
     "Your packs take 2 GB in the catalog, as much as an account may have.": "تشغل حزمك 2 غيغابايت في الفهرس، وهو أقصى ما يُسمح به للحساب.",
     "The pack is larger than 512 MB packed. Leave out worlds or large files.": "الحزمة المضغوطة أكبر من 512 ميغابايت. اترك العوالم أو الملفات الكبيرة.",
     "The catalog is taking many packs right now. Try again in a few minutes.": "يستقبل الفهرس حزمًا كثيرة الآن. حاول بعد بضع دقائق.",
+    "The catalog no longer takes these files of the world: {files}. Friends cannot install its mods until it is made again without them.": "لم يعد الفهرس يقبل ملفات العالم هذه: {files}. لن يتمكن الأصدقاء من تثبيت تعديلاته حتى يُنشأ من جديد بدونها.",
     "The pack did not reach the catalog whole. Publish it again.": "لم تصل الحزمة إلى الفهرس كاملة. انشرها مرة أخرى.",
     "The modpack could not be read.": "تعذرت قراءة الحزمة."
   }

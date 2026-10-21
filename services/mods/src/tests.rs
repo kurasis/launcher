@@ -4500,6 +4500,68 @@ async fn a_player_publishes_a_pack_of_catalog_mods_and_their_settings() {
 }
 
 #[tokio::test]
+async fn a_room_pack_is_installed_by_its_version_and_never_shown() {
+    let t = setup();
+    import_sodium(&t).await;
+    let (status, answer) = t
+        .upload(Some(1), "/v1/packs?room=true", own_pack("1", &[]))
+        .await;
+    assert_eq!(status, StatusCode::CREATED, "{answer}");
+    let id = answer["project"]["id"].as_str().unwrap().to_owned();
+    let version = answer["version"].as_str().unwrap().to_owned();
+    assert_eq!(answer["project"]["status"], "room");
+    // Not in the catalog: not searched, not a project, not among the
+    // author's packs, and the author cannot show it.
+    let (_, found) = t.get("/v1/search?q=my%20pack&kind=modpack").await;
+    assert_eq!(found["total"], 0, "{found}");
+    let (status, _) = t.get(&format!("/v1/projects/{id}")).await;
+    assert_eq!(status, StatusCode::NOT_FOUND);
+    let (_, mine) = t.player(1, "GET", "/v1/packs/mine", Value::Null).await;
+    assert_eq!(mine["packs"], json!([]));
+    let hide = format!("/v1/packs/{id}/hidden");
+    t.player(1, "POST", &hide, json!({ "hidden": false })).await;
+    assert_eq!(
+        t.app.store.project_status(&id).unwrap().as_deref(),
+        Some("room")
+    );
+    // Its guests install it by the version the world's session names.
+    let (status, pack) = t.get(&format!("/v1/versions/{version}/pack")).await;
+    assert_eq!(status, StatusCode::OK, "{pack}");
+    assert_eq!(pack["state"], "ready", "{pack}");
+    assert_eq!(pack["files"][0]["path"], "mods/sodium-0.6.jar");
+    let sha256 = pack["archive"]["sha256"].as_str().unwrap();
+    assert_eq!(sha256.len(), 64);
+    // New generations are its versions; a room pack takes no catalog
+    // version and a catalog pack no room version.
+    let uri = format!("/v1/packs?room=true&project={id}");
+    let (status, answer) = t.upload(Some(1), &uri, own_pack("2", &[])).await;
+    assert_eq!(status, StatusCode::CREATED, "{answer}");
+    assert_ne!(answer["version"], version.as_str());
+    let (status, _) = t
+        .upload(
+            Some(1),
+            &format!("/v1/packs?project={id}"),
+            own_pack("3", &[]),
+        )
+        .await;
+    assert_eq!(status, StatusCode::NOT_FOUND);
+    let (_, shown) = t.upload(Some(1), "/v1/packs", own_pack("1", &[])).await;
+    let shown = shown["project"]["id"].as_str().unwrap().to_owned();
+    let (status, _) = t
+        .upload(
+            Some(1),
+            &format!("/v1/packs?room=true&project={shown}"),
+            own_pack("2", &[]),
+        )
+        .await;
+    assert_eq!(status, StatusCode::NOT_FOUND);
+    // Checked as any own pack: a mod the catalog lacks refuses it.
+    let stranger = own_pack("4", &[("overrides/mods/x.jar", b"code")]);
+    let (status, _) = t.upload(Some(1), &uri, stranger).await;
+    assert!(status.is_client_error(), "{status}");
+}
+
+#[tokio::test]
 async fn own_packs_bring_only_catalog_files_and_settings() {
     let t = setup();
     import_sodium(&t).await;

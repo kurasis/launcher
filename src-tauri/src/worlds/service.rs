@@ -157,6 +157,30 @@ pub struct Room {
     pub max_players: i64,
     pub created: i64,
     pub updated: i64,
+    /// The mods the room plays now, while it is hosted with them.
+    #[serde(default)]
+    pub pack: Option<SessionPack>,
+}
+
+/// A world's room pack as its session names it: the catalog version guests
+/// install, and the pack's SHA-256.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SessionPack {
+    pub version: String,
+    pub sha256: String,
+}
+
+impl SessionPack {
+    /// Only what the catalog could have made.
+    pub fn valid(&self) -> bool {
+        crate::mods::our_id(&self.version)
+            && self.sha256.len() == 64
+            && self
+                .sha256
+                .bytes()
+                .all(|b| matches!(b, b'0'..=b'9' | b'a'..=b'f'))
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -243,6 +267,8 @@ pub struct TicketGrant {
     pub host_epoch: String,
     pub host_endpoint: String,
     pub expires: i64,
+    #[serde(default)]
+    pub pack: Option<SessionPack>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -600,11 +626,16 @@ impl WorldsClient {
         room: &str,
         endpoint: &str,
         max_players: u32,
+        pack: Option<&SessionPack>,
     ) -> Result<Session, Problem> {
+        let mut body = json!({ "endpoint": endpoint, "maxPlayers": max_players });
+        if let Some(pack) = pack {
+            body["pack"] = json!(pack);
+        }
         self.call(
             reqwest::Method::POST,
             &format!("/v1/rooms/{}/sessions", id(room)?),
-            Some(json!({ "endpoint": endpoint, "maxPlayers": max_players })),
+            Some(body),
             Proof::Device,
         )
         .await
@@ -836,7 +867,10 @@ mod tests {
         // The registered device's proofs are accepted; refusals come back
         // by name.
         assert_eq!(
-            other.start_session(ROOM, &endpoint, 8).await.unwrap_err(),
+            other
+                .start_session(ROOM, &endpoint, 8, None)
+                .await
+                .unwrap_err(),
             Problem::Forbidden
         );
         assert_eq!(

@@ -27,6 +27,7 @@ const mine: WorldsRoom = {
   maxPlayers: 8,
   created: 1_760_000_000,
   updated: 1_760_000_000,
+  pack: null,
 };
 
 const theirs: WorldsRoom = {
@@ -181,7 +182,7 @@ describe('WorldsView', () => {
           clean: null,
         },
       }),
-      worlds_instance: () => ({ instanceId: 'inst-1', ready }),
+      worlds_instance: () => ({ instanceId: 'inst-1', ready, consent: null }),
       install_instance: () => ({ operationId: 'op-1', instanceId: 'inst-1' }),
     });
     expect(await screen.findByText('Our base is open · Open')).toBeInTheDocument();
@@ -203,6 +204,64 @@ describe('WorldsView', () => {
     await waitFor(() => {
       expect(called(calls, 'worlds_stop_hosting')).toHaveLength(1);
     });
+  });
+
+  it('installs the mods of a room for a guest only after asking', async () => {
+    const sha256 = 'ab'.repeat(32);
+    const modded: WorldsRoom = {
+      ...theirs,
+      pack: { version: '33333333-3333-4333-8333-333333333333', sha256 },
+    };
+    const { calls } = setup({
+      worlds_rooms: () => [mine, modded],
+      worlds_state: () => ({
+        ...idle,
+        guest: {
+          room: OTHER,
+          connected: true,
+          refused: null,
+          path: 'direct',
+          reconnecting: false,
+          gaveUp: false,
+        },
+      }),
+      worlds_instance: (args) =>
+        args.accept === sha256
+          ? { instanceId: 'inst-2', ready: true, consent: null }
+          : {
+              instanceId: 'inst-2',
+              ready: false,
+              consent: {
+                sha256,
+                mods: 3,
+                newMods: 2,
+                names: ['fabric-api.jar', 'sodium.jar'],
+                bytes: 2 * 1024 * 1024,
+              },
+            },
+    });
+    const card = within((await screen.findByText('Friend world')).closest('li') as HTMLElement);
+    fireEvent.click(card.getByRole('button', { name: 'Play' }));
+    expect(await card.findByText('This room plays 3 mods')).toBeInTheDocument();
+    expect(
+      card.getByText(/2 mods are new to this computer, 2.0 MiB to download/),
+    ).toBeInTheDocument();
+    expect(card.getByText(/fabric-api\.jar, sodium\.jar/)).toBeInTheDocument();
+    expect(card.getByText(/Mods are programs/)).toBeInTheDocument();
+    expect(called(calls, 'worlds_instance')[0]?.args).toEqual({ room: OTHER, accept: null });
+    expect(called(calls, 'worlds_play')).toHaveLength(0);
+
+    // Not now: nothing more happens.
+    fireEvent.click(card.getByRole('button', { name: 'Not now' }));
+    expect(card.queryByText('This room plays 3 mods')).not.toBeInTheDocument();
+    expect(called(calls, 'worlds_instance')).toHaveLength(1);
+
+    fireEvent.click(card.getByRole('button', { name: 'Play' }));
+    fireEvent.click(await card.findByRole('button', { name: 'Install the mods' }));
+    await waitFor(() => {
+      expect(called(calls, 'worlds_play')).toHaveLength(1);
+    });
+    expect(called(calls, 'worlds_instance')[2]?.args).toEqual({ room: OTHER, accept: sha256 });
   });
 
   it('shows why a start failed and a refused login', async () => {

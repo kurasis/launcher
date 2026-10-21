@@ -571,9 +571,12 @@ export const ipc = {
   worldsJoin: (room: string): Promise<void> => invoke('worlds_join', { room }),
   worldsDisconnect: (): Promise<void> => invoke('worlds_disconnect'),
   worldsCancel: (): Promise<void> => invoke('worlds_cancel'),
-  /** The installation the room plays, made on first use. */
-  worldsInstance: (room: string): Promise<WorldsInstance> =>
-    invoke<WorldsInstance>('worlds_instance', { room }),
+  /**
+   * The installation the room plays, made on first use. A guest of a world
+   * with mods is asked first; `accept` is the room pack they agreed to.
+   */
+  worldsInstance: (room: string, accept?: string): Promise<WorldsInstance> =>
+    invoke<WorldsInstance>('worlds_instance', { room, accept: accept ?? null }),
   /** Starts the game into the room as the launcher account's nick. */
   worldsPlay: (room: string, requestId?: string): Promise<RunSummary> =>
     invoke<RunSummary>('worlds_play', { request: mutation({ room }, requestId) }),

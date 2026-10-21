@@ -14,6 +14,12 @@
 //! with the source `own`, shown at once, and installed like any other pack.
 //! The account that published it adds versions, hides it or shows it again;
 //! players report it to the owner (`lapi-mods review`, kind `report`).
+//!
+//! A room pack (W12) is published the same way and checked the same, with
+//! `room` asked for: the mods of a world with friends that its guests
+//! install. It is never shown in the catalog, searched or listed among the
+//! account's packs; its guests find a version by its ID only, which the
+//! world's session names.
 
 use std::io::Read as _;
 use std::path::{Path, PathBuf};
@@ -355,31 +361,39 @@ pub struct Author<'a> {
 
 /// Publishes an uploaded archive (`part`, removed in every case) as a new
 /// pack, or as a new version of `project`. Returns the project's ID.
+/// The pack's ID and its new version's.
 pub async fn publish(
     app: &Arc<App>,
     author: &Author<'_>,
     project: Option<&str>,
+    room: bool,
     part: PathBuf,
-) -> Result<String, Refusal> {
-    let result = publish_part(app, author, project, &part).await;
+) -> Result<(String, String), Refusal> {
+    let result = publish_part(app, author, project, room, &part).await;
     let _ = std::fs::remove_file(&part);
     result
 }
 
 /// Whose pack `project` is, and whether the account may publish an archive
-/// of `size` bytes now.
+/// of `size` bytes now. A room pack takes room versions only, and a pack of
+/// the catalog none.
 pub fn may_publish(
     app: &App,
     account: &str,
     project: Option<&str>,
+    room: bool,
     size: u64,
 ) -> Result<(), Refusal> {
     if let Some(project) = project {
         if app.store.own_account(project)?.as_deref() != Some(account) {
             return Err(Refusal::NotFound);
         }
-        if app.store.project_status(project)?.as_deref() == Some("removed") {
+        let status = app.store.project_status(project)?;
+        if status.as_deref() == Some("removed") {
             return Err(Refusal::Gone);
+        }
+        if (status.as_deref() == Some(ROOM)) != room {
+            return Err(Refusal::NotFound);
         }
     }
     let (packs, versions, bytes) = app.store.own_usage(account, now() - 86_400)?;
@@ -402,15 +416,16 @@ async fn publish_part(
     app: &Arc<App>,
     author: &Author<'_>,
     project: Option<&str>,
+    room: bool,
     part: &Path,
-) -> Result<String, Refusal> {
+) -> Result<(String, String), Refusal> {
     let size = std::fs::metadata(part)
         .map_err(|_| Refusal::Server("an upload".into()))?
         .len();
     if size > MAX_ARCHIVE {
         return Err(Refusal::Bad("too_big"));
     }
-    may_publish(app, author.account, project, size)?;
+    may_publish(app, author.account, project, room, size)?;
     // The archive, then its files, then the scanner over all of it.
     let path = part.to_path_buf();
     let (archive, hashed, verdict) = tokio::task::spawn_blocking(move || {
@@ -442,11 +457,28 @@ async fn publish_part(
         return Err(Refusal::Bad("refused_by_scanner"));
     }
     keep_archive(app, part, &hashed, &verdict)?;
-    let id = record(app, author, project, &meta, &index, &hashed, &found).await?;
+    let draft = Draft {
+        meta: &meta,
+        index: &index,
+        hashed: &hashed,
+        found: &found,
+    };
+    let (id, version) = record(app, author, project, room, &draft).await?;
     if let Some((bytes, media_type)) = icon {
         keep_icon(app, &id, &bytes, media_type).await;
     }
-    Ok(id)
+    Ok((id, version))
+}
+
+/// A room pack's status: kept and installed like a shown pack, never shown.
+pub const ROOM: &str = "room";
+
+/// A checked archive to record.
+struct Draft<'a> {
+    meta: &'a Meta,
+    index: &'a pack::Index,
+    hashed: &'a Hashed,
+    found: &'a [String],
 }
 
 fn keep_archive(
@@ -469,11 +501,15 @@ async fn record(
     app: &App,
     author: &Author<'_>,
     project: Option<&str>,
-    meta: &Meta,
-    index: &pack::Index,
-    hashed: &Hashed,
-    found: &[String],
-) -> Result<String, Refusal> {
+    room: bool,
+    draft: &Draft<'_>,
+) -> Result<(String, String), Refusal> {
+    let Draft {
+        meta,
+        index,
+        hashed,
+        found,
+    } = *draft;
     let at = now();
     let source_id = match project {
         Some(project) => app
@@ -544,11 +580,13 @@ async fn record(
     }
     app.store
         .add_own(&id, version, author.account, hashed.size, at)?;
-    // Shown at once; a pack its author hid stays hidden.
+    // Shown at once; a pack its author hid stays hidden, and a room pack
+    // is never shown.
     if app.store.project_status(&id)?.as_deref() == Some("importing") {
-        app.store.set_project_status(&id, "ready")?;
+        app.store
+            .set_project_status(&id, if room { ROOM } else { "ready" })?;
     }
-    Ok(id)
+    Ok((id, version.clone()))
 }
 
 async fn keep_icon(app: &App, project: &str, bytes: &[u8], media_type: &'static str) {
@@ -581,6 +619,7 @@ async fn keep_icon(app: &App, project: &str, bytes: &[u8], media_type: &'static 
 struct Upload {
     account: String,
     project: Option<String>,
+    room: bool,
     size: u64,
     sha256: String,
     /// Each part's file in `tmp/` once it came.
@@ -611,6 +650,7 @@ pub struct Uploads(std::sync::Mutex<std::collections::HashMap<String, Upload>>);
 /// An upload put together, to be published.
 pub struct Assembled {
     pub project: Option<String>,
+    pub room: bool,
     pub part: PathBuf,
 }
 
@@ -638,6 +678,7 @@ impl Uploads {
         app: &App,
         account: &str,
         project: Option<&str>,
+        room: bool,
         size: u64,
         sha256: &str,
     ) -> Result<(String, usize), Refusal> {
@@ -647,7 +688,7 @@ impl Uploads {
         if !crate::blobs::is_sha256(sha256) {
             return Err(Refusal::Bad("bad_upload"));
         }
-        may_publish(app, account, project, size)?;
+        may_publish(app, account, project, room, size)?;
         let mut map = self.map();
         Self::sweep(&mut map);
         map.retain(|_, u| {
@@ -674,6 +715,7 @@ impl Uploads {
             Upload {
                 account: account.to_owned(),
                 project: project.map(str::to_owned),
+                room,
                 size,
                 sha256: sha256.to_owned(),
                 parts: vec![None; count],
@@ -746,6 +788,7 @@ impl Uploads {
         match hashed {
             Ok(h) if h.size == upload.size && h.sha256 == upload.sha256 => Ok(Assembled {
                 project: upload.project,
+                room: upload.room,
                 part,
             }),
             Ok(_) => {

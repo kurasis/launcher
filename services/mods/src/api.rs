@@ -624,6 +624,9 @@ pub const REPORTS_PER_HOUR_PER_ADDRESS: u32 = 30;
 #[derive(Deserialize, Default)]
 pub struct PublishQuery {
     project: Option<String>,
+    /// A room pack (W12): never shown in the catalog.
+    #[serde(default)]
+    room: bool,
 }
 
 /// Writes a request's body to a part file, at most `max` bytes; `None` when
@@ -694,7 +697,7 @@ async fn publish_pack(
     let Some(part) = body_to_part(&app, body, crate::own::MAX_SINGLE).await else {
         return refuse(StatusCode::PAYLOAD_TOO_LARGE, "too_big");
     };
-    publish_answer(&app, &me, project.as_deref(), part).await
+    publish_answer(&app, &me, project.as_deref(), q.room, part).await
 }
 
 fn declared_length(headers: &HeaderMap) -> Option<u64> {
@@ -709,15 +712,19 @@ async fn publish_answer(
     app: &Arc<App>,
     me: &Claims,
     project: Option<&str>,
+    room: bool,
     part: std::path::PathBuf,
 ) -> Response {
     let author = crate::own::Author {
         account: &me.sub,
         nick: &me.nick,
     };
-    match crate::own::publish(app, &author, project, part).await {
-        Ok(id) => match app.store.project_json(&id, &app.urls) {
-            Ok(Some(p)) => private(json!({ "project": p }), StatusCode::CREATED),
+    match crate::own::publish(app, &author, project, room, part).await {
+        Ok((id, version)) => match app.store.project_json(&id, &app.urls) {
+            Ok(Some(p)) => private(
+                json!({ "project": p, "version": version }),
+                StatusCode::CREATED,
+            ),
             Ok(None) => failed("a pack just published is not there"),
             Err(e) => failed(&e),
         },
@@ -785,10 +792,14 @@ async fn start_upload(
     ) {
         return refuse(StatusCode::TOO_MANY_REQUESTS, "too_many");
     }
-    match app
-        .uploads
-        .start(&app, &me.sub, project.as_deref(), body.size, &body.sha256)
-    {
+    match app.uploads.start(
+        &app,
+        &me.sub,
+        project.as_deref(),
+        q.room,
+        body.size,
+        &body.sha256,
+    ) {
         Ok((id, parts)) => private(
             json!({ "upload": id, "parts": parts, "partSize": crate::own::CHUNK }),
             StatusCode::CREATED,
@@ -851,7 +862,9 @@ async fn finish_upload(
         tokio::task::spawn_blocking(move || app.uploads.assemble(&app, &account, &id)).await
     };
     match assembled {
-        Ok(Ok(done)) => publish_answer(&app, &me, done.project.as_deref(), done.part).await,
+        Ok(Ok(done)) => {
+            publish_answer(&app, &me, done.project.as_deref(), done.room, done.part).await
+        }
         Ok(Err(e)) => refusal(&e),
         Err(_) => failed("putting an upload together stopped"),
     }

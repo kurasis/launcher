@@ -89,6 +89,9 @@ pub struct WorldFile {
     /// loader (W12).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub pack: Option<super::pack::WorldPack>,
+    /// The catalog project of its room pack; each generation is a version.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub room_pack: Option<String>,
 }
 
 /// A world name: 1–64 characters after trimming, no control characters.
@@ -144,6 +147,7 @@ pub fn create(
         mutation: None,
         last_run: None,
         pack: None,
+        room_pack: None,
     };
     std::fs::create_dir_all(root.world_server_dir(world.id)).map_err(|e| io(&e))?;
     save(root, &world)?;

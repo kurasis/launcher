@@ -261,3 +261,10 @@ Other loaders follow in W12.
   profile with pinned libraries, never the loader's installer; its `mods/` is rebuilt before each
   start and settings are written only where missing. Fabric first, offered for the releases its
   live test covers (1.20.1, 1.21.1, 26.3); releases only, no snapshots.
+- 2026-10-21 — W12 guests (owner, plan doc): the room pack is the generation's client side,
+  published to the catalog's own packs with `room` (status `room`: never searched, shown or
+  listed) when the world is first hosted with that generation, as a version of the world's room
+  pack. The session at worlds.lapi.sh keeps only its catalog version and SHA-256 and names them
+  in the room and in tickets. A guest's room installation gets it as any catalog pack, after a
+  consent that names mods new to that computer; a yes holds for that pack, an update with new
+  mods asks again. Play refuses while the installation holds another pack than the room plays.

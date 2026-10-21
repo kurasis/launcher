@@ -25,7 +25,7 @@ CREATE TABLE IF NOT EXISTS project (
     icon_thumb TEXT,
     client_side TEXT NOT NULL DEFAULT 'unknown',
     server_side TEXT NOT NULL DEFAULT 'unknown',
-    -- importing, ready, hidden, removed
+    -- importing, ready, hidden, removed, room (a world's own, never shown)
     status TEXT NOT NULL,
     downloads INTEGER NOT NULL DEFAULT 0,
     followers INTEGER NOT NULL DEFAULT 0,
@@ -1788,7 +1788,7 @@ impl Store {
                    (SELECT v.number FROM version v WHERE v.project_id = p.id
                     ORDER BY v.published DESC, v.id DESC LIMIT 1)
                  FROM own_pack o JOIN project p ON p.id = o.project_id
-                 WHERE o.account_id = ?1 ORDER BY o.created DESC LIMIT 200",
+                 WHERE o.account_id = ?1 AND p.status != 'room' ORDER BY o.created DESC LIMIT 200",
             )
             .map_err(sql)?;
         q.query_map([account], |r| {

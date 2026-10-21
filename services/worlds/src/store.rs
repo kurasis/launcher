@@ -95,6 +95,10 @@ CREATE TABLE IF NOT EXISTS sessions (
     lease_until INTEGER NOT NULL,
     started INTEGER NOT NULL,
     ended INTEGER,
+    -- The world's mods: the catalog version of its room pack, and the
+    -- pack's SHA-256 (none for a world without mods).
+    pack_version TEXT,
+    pack_sha256 TEXT,
     UNIQUE (room, epoch)
 );
 CREATE UNIQUE INDEX IF NOT EXISTS sessions_live ON sessions(room) WHERE ended IS NULL;
@@ -205,6 +209,25 @@ pub struct Room {
     pub max_players: i64,
     pub created: i64,
     pub updated: i64,
+    /// The mods the live session plays, for every member.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub pack: Option<Pack>,
+}
+
+/// A world's mods as the catalog keeps them: the version of its room pack
+/// (hidden from the catalog, found by this ID only) and the pack's SHA-256.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct Pack {
+    pub version: String,
+    pub sha256: String,
+}
+
+fn pack_from(version: Option<String>, sha256: Option<String>) -> Option<Pack> {
+    Some(Pack {
+        version: version?,
+        sha256: sha256?,
+    })
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
@@ -247,6 +270,8 @@ pub struct Session {
     pub endpoint: String,
     pub max_players: i64,
     pub lease_until: i64,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub pack: Option<Pack>,
 }
 
 /// What a renewal tells the host.
@@ -362,7 +387,8 @@ SELECT r.id, r.name, r.description, r.minecraft, r.revision, r.owner, o.nick, m.
        (SELECT COUNT(*) FROM members WHERE room = r.id AND state = 'active'),
        s.id, s.max_players,
        MAX((SELECT COUNT(*) FROM admissions a WHERE a.session = s.id AND a.released IS NULL),
-           COALESCE(s.players, 0))
+           COALESCE(s.players, 0)),
+       s.pack_version, s.pack_sha256
 FROM rooms r
 JOIN members m ON m.room = r.id AND m.account = ?1 AND m.state = 'active'
 JOIN members o ON o.room = r.id AND o.account = r.owner
@@ -389,6 +415,7 @@ fn room_from(r: &rusqlite::Row<'_>) -> rusqlite::Result<Room> {
         hosting: session.is_some(),
         max_players: r.get::<_, Option<i64>>(13)?.unwrap_or(0),
         online: r.get::<_, Option<i64>>(14)?.unwrap_or(0),
+        pack: pack_from(r.get(15)?, r.get(16)?),
     })
 }
 
@@ -400,6 +427,7 @@ fn session_from(r: &rusqlite::Row<'_>) -> rusqlite::Result<Session> {
         endpoint: r.get(3)?,
         max_players: r.get(4)?,
         lease_until: r.get(5)?,
+        pack: pack_from(r.get(7)?, r.get(8)?),
     })
 }
 
@@ -413,11 +441,23 @@ fn migrate(db: &Connection) -> rusqlite::Result<()> {
     if !has_players {
         db.execute_batch("ALTER TABLE sessions ADD COLUMN players INTEGER")?;
     }
+    let has_pack: bool = db.query_row(
+        "SELECT EXISTS (SELECT 1 FROM pragma_table_info('sessions') WHERE name = 'pack_version')",
+        [],
+        |r| r.get(0),
+    )?;
+    if !has_pack {
+        db.execute_batch(
+            "ALTER TABLE sessions ADD COLUMN pack_version TEXT;
+             ALTER TABLE sessions ADD COLUMN pack_sha256 TEXT;",
+        )?;
+    }
     Ok(())
 }
 
 const SESSION_SELECT: &str =
-    "SELECT id, room, epoch, endpoint, max_players, lease_until, host_device FROM sessions";
+    "SELECT id, room, epoch, endpoint, max_players, lease_until, host_device,
+       pack_version, pack_sha256 FROM sessions";
 
 impl Store {
     pub fn open(dir: &Path, authority: &str) -> std::result::Result<Self, String> {
@@ -1052,6 +1092,7 @@ impl Store {
     /// The owner starts hosting from one of their devices. A session still
     /// live (the same owner on another start, or a host that crashed) is
     /// superseded: one room has one live session.
+    #[allow(clippy::too_many_arguments)]
     pub fn start_session(
         &self,
         account: &str,
@@ -1059,6 +1100,7 @@ impl Store {
         device: &str,
         endpoint: &str,
         max_players: i64,
+        pack: Option<&Pack>,
         now: i64,
     ) -> Result<Session> {
         let mut db = self.db();
@@ -1087,11 +1129,12 @@ impl Store {
             endpoint: endpoint.to_owned(),
             max_players,
             lease_until: now + LEASE,
+            pack: pack.cloned(),
         };
         tx.execute(
             "INSERT INTO sessions (id, room, host_device, epoch, authority, endpoint, max_players,
-             state, lease_until, started)
-             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, 'live', ?8, ?9)",
+             state, lease_until, started, pack_version, pack_sha256)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, 'live', ?8, ?9, ?10, ?11)",
             params![
                 session.id,
                 room,
@@ -1101,7 +1144,9 @@ impl Store {
                 endpoint,
                 max_players,
                 session.lease_until,
-                now
+                now,
+                pack.map(|p| &p.version),
+                pack.map(|p| &p.sha256)
             ],
         )?;
         tx.commit()?;

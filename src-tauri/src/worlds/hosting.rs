@@ -32,7 +32,7 @@ use tokio::task::JoinHandle;
 use super::host::HostedServer;
 use super::identity::Nick;
 use super::players;
-use super::service::{Problem, Renewal, Session, WorldsClient};
+use super::service::{Problem, Renewal, Session, SessionPack, WorldsClient};
 use crate::error::{ErrorCode, LauncherError, LauncherResult};
 use crate::install::service::BoxFuture;
 use crate::storage::paths::DataRoot;
@@ -307,6 +307,8 @@ struct Opening {
     server: Arc<dyn WorldServer>,
     room: String,
     max_players: u32,
+    /// The world's room pack, named by every session it opens.
+    pack: Option<SessionPack>,
     on_change: Arc<dyn Fn() + Send + Sync>,
     rebind: Rebind,
 }
@@ -381,7 +383,9 @@ impl Drop for RoomHost {
 
 /// Starts hosting `room` on `endpoint` (bound with `accept`) in front of
 /// `server`, which must be ready; `rebind` binds the endpoint of a later
-/// session after a lapsed lease.
+/// session after a lapsed lease. `pack` is the world's room pack, if it
+/// has mods.
+#[allow(clippy::too_many_arguments)]
 pub async fn start(
     client: Arc<WorldsClient>,
     server: Arc<dyn WorldServer>,
@@ -389,6 +393,7 @@ pub async fn start(
     rebind: Rebind,
     room: &str,
     max_players: u32,
+    pack: Option<SessionPack>,
     on_change: Arc<dyn Fn() + Send + Sync>,
 ) -> LauncherResult<RoomHost> {
     if !server.running() {
@@ -402,6 +407,7 @@ pub async fn start(
         server,
         room: room.to_owned(),
         max_players: max_players.clamp(1, 20),
+        pack,
         on_change,
         rebind,
     };
@@ -426,6 +432,7 @@ async fn open(opening: &Opening, endpoint: Endpoint) -> Result<(Arc<Shared>, Gra
             &opening.room,
             &endpoint.id().to_string(),
             opening.max_players,
+            opening.pack.as_ref(),
         )
         .await
     {

@@ -393,7 +393,11 @@ pub fn read_icon(path: &Path) -> LauncherResult<(&'static str, Vec<u8>)> {
 #[serde(rename_all = "camelCase", tag = "outcome")]
 pub enum Published {
     /// The pack is in the catalog.
-    Published { project_id: String, slug: String },
+    Published {
+        project_id: String,
+        slug: String,
+        version_id: String,
+    },
     /// Some files stopped it: `code` says why (`not_in_catalog`, `held`,
     /// `not_allowed`, `too_big`), `paths` which.
     Refused { code: String, paths: Vec<String> },
