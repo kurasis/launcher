@@ -1344,6 +1344,22 @@ export type Messages = {
       readonly fetchAsked: string;
       readonly versionGone: string;
       readonly add: string;
+      readonly cannotAdd: {
+        readonly noInstallation: string;
+        readonly held: string;
+        readonly noFile: string;
+        readonly noLoader: (values: { name: string | number }) => string;
+        readonly wrongLoader: (values: {
+          loaders: string | number;
+          name: string | number;
+          loader: string | number;
+        }) => string;
+        readonly wrongGame: (values: {
+          games: string | number;
+          name: string | number;
+          game: string | number;
+        }) => string;
+      };
       readonly keep: string;
       readonly changes: string;
       readonly noChanges: string;
@@ -1513,6 +1529,7 @@ export type Messages = {
         readonly other: string;
       };
       readonly waitingHint: string;
+      readonly adding: string;
       readonly choose: string;
       readonly inCatalog: string;
       readonly pick: string;

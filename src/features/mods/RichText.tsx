@@ -13,6 +13,13 @@ function children(nodes: DocNode[] | undefined, onLink: Props['onLink']): ReactN
   return (nodes ?? []).map((node, index) => draw(node, index, onLink));
 }
 
+/** Whether a node shows anything: text that is not blank, a picture, a rule. */
+function shows(node: DocNode): boolean {
+  if (node.k === 'text' || node.k === 'code') return (node.text ?? '').trim() !== '';
+  if (node.k === 'img' || node.k === 'hr') return true;
+  return (node.c ?? []).some(shows);
+}
+
 /** One node as an element of our own; anything unknown is plain content. */
 function draw(node: DocNode, key: number, onLink: Props['onLink']): ReactNode {
   const inner = children(node.c, onLink);
@@ -20,18 +27,21 @@ function draw(node: DocNode, key: number, onLink: Props['onLink']): ReactNode {
     case 'text':
       return node.text ?? '';
     case 'p':
-      return <p key={key}>{inner}</p>;
+      // Authors leave empty lines and headings for room; our spacing is enough.
+      return shows(node) ? <p key={key}>{inner}</p> : null;
     case 'block':
       return <div key={key}>{inner}</div>;
+    // The page's own title is above, so a description's levels start lower.
     case 'h1':
-      return <h3 key={key}>{inner}</h3>;
+      return shows(node) ? <h3 key={key}>{inner}</h3> : null;
     case 'h2':
-      return <h4 key={key}>{inner}</h4>;
+      return shows(node) ? <h4 key={key}>{inner}</h4> : null;
     case 'h3':
+      return shows(node) ? <h5 key={key}>{inner}</h5> : null;
     case 'h4':
     case 'h5':
     case 'h6':
-      return <h5 key={key}>{inner}</h5>;
+      return shows(node) ? <h6 key={key}>{inner}</h6> : null;
     case 'quote':
       return <blockquote key={key}>{inner}</blockquote>;
     case 'pre':
