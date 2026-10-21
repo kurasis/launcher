@@ -420,6 +420,60 @@ fn migrate(db: &Connection) -> Result<()> {
     .map_err(sql)
 }
 
+/// The project that stays after a join takes its twin's slug when that is
+/// the name its sources give it and its own is not: the twin had the name
+/// first, so it got `<name>-<source>-<id end>`. The twin gets that one, which
+/// still leads to the project.
+fn take_twin_slug(tx: &Connection, stays: &str, gone: &str) -> Result<()> {
+    let slug = |id: &str| -> Result<String> {
+        tx.query_row("SELECT slug FROM project WHERE id = ?1", [id], |r| r.get(0))
+            .map_err(sql)
+    };
+    let named = |slug: &str| -> Result<bool> {
+        tx.query_row(
+            "SELECT count(*) FROM project_source WHERE project_id = ?1 AND source_slug = ?2",
+            params![stays, slug],
+            |r| r.get::<_, i64>(0),
+        )
+        .map(|n| n > 0)
+        .map_err(sql)
+    };
+    let (mine, theirs) = (slug(stays)?, slug(gone)?);
+    if named(&mine)? || !named(&theirs)? {
+        return Ok(());
+    }
+    // Slugs are unique: the twin's moves aside first.
+    let set = "UPDATE project SET slug = ?2 WHERE id = ?1";
+    tx.execute(set, params![gone, format!("{theirs}-{gone}")])
+        .map_err(sql)?;
+    tx.execute(set, params![stays, theirs]).map_err(sql)?;
+    tx.execute(set, params![gone, mine]).map_err(sql)?;
+    tx.execute(
+        "UPDATE project_fts SET slug = ?2 WHERE project_id = ?1",
+        params![stays, theirs],
+    )
+    .map_err(sql)?;
+    Ok(())
+}
+
+/// Joins made before the staying project took its twin's slug.
+fn take_twin_slugs(db: &mut Connection) -> Result<()> {
+    let tx = db.transaction().map_err(sql)?;
+    let pairs: Vec<(String, String)> = {
+        let mut q = tx
+            .prepare("SELECT into_id, project_id FROM project_joined")
+            .map_err(sql)?;
+        q.query_map([], |r| Ok((r.get(0)?, r.get(1)?)))
+            .map_err(sql)?
+            .collect::<std::result::Result<_, _>>()
+            .map_err(sql)?
+    };
+    for (stays, gone) in pairs {
+        take_twin_slug(&tx, &stays, &gone)?;
+    }
+    tx.commit().map_err(sql)
+}
+
 fn sql(e: rusqlite::Error) -> String {
     format!("database: {e}")
 }
@@ -536,7 +590,7 @@ impl Store {
                 .map_err(|e| e.to_string())?;
         }
         let path = dir.join("catalog.db");
-        let db = Connection::open(&path).map_err(sql)?;
+        let mut db = Connection::open(&path).map_err(sql)?;
         db.busy_timeout(std::time::Duration::from_secs(10))
             .map_err(sql)?;
         db.execute_batch(
@@ -545,6 +599,7 @@ impl Store {
         .map_err(sql)?;
         db.execute_batch(SCHEMA).map_err(sql)?;
         migrate(&db)?;
+        take_twin_slugs(&mut db)?;
         Ok(Self {
             db: Mutex::new(db),
             path,
@@ -1018,6 +1073,7 @@ impl Store {
             params![gone, now],
         )
         .map_err(sql)?;
+        take_twin_slug(&tx, &stays, &gone)?;
         tx.commit().map_err(sql)?;
         Ok(Some((stays, gone)))
     }

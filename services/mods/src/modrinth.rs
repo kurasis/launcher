@@ -79,6 +79,17 @@ fn kind(project_type: &str) -> Option<&'static str> {
     })
 }
 
+/// Modrinth calls a data pack a mod and tells it by its only loader. One
+/// that is also a mod for a loader stays a mod: it installs as one.
+fn only_datapacks(project: &Value) -> bool {
+    project
+        .get("loaders")
+        .and_then(Value::as_array)
+        .is_some_and(|loaders| {
+            !loaders.is_empty() && loaders.iter().all(|l| l.as_str() == Some("datapack"))
+        })
+}
+
 fn side(value: &Value, key: &str) -> String {
     match value.get(key).and_then(Value::as_str) {
         Some(s @ ("required" | "optional" | "unsupported")) => s.to_owned(),
@@ -109,7 +120,10 @@ pub fn project(value: &Value, members: Option<&Value>) -> Option<SourceProject> 
         .unwrap_or(&id)
         .to_ascii_lowercase();
     let project_type = value.get("project_type")?.as_str()?;
-    let kind = kind(project_type)?;
+    let kind = match kind(project_type)? {
+        "mod" if only_datapacks(value) => "datapack",
+        kind => kind,
+    };
     let mut categories: Vec<String> = ["categories", "additional_categories"]
         .iter()
         .flat_map(|k| {
