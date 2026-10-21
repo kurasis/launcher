@@ -795,6 +795,12 @@ async fn a_deleted_account_leaves_nothing_behind() {
         .push(("' OR 1=1 --".to_owned(), now() + 1));
     crate::api::purge_deleted(&t.app).await;
     assert_eq!(t.textures(), 1);
+    // Her token, still signed, wears nothing new after the cleaning.
+    assert_eq!(
+        t.upload(1, "skin", "", image(64, 64, 3)).await.status,
+        StatusCode::UNAUTHORIZED
+    );
+    assert_eq!(t.textures(), 1);
 }
 
 #[tokio::test]

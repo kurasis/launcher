@@ -365,6 +365,9 @@ fn serve() -> Result<(), String> {
         "http://127.0.0.1:8783/.well-known/jwks.json",
     );
     let tokens = auth::Tokens::new(&env("LAPI_REVIEWS_ISSUER", "https://oauth.lapi.sh"));
+    let accounts = env("LAPI_REVIEWS_ACCOUNTS", "http://127.0.0.1:8793")
+        .trim_end_matches('/')
+        .to_owned();
     let runtime = tokio::runtime::Runtime::new().map_err(|e| e.to_string())?;
     runtime.block_on(async move {
         let app = Arc::new(api::App::new(store, tokens, max_stored));
@@ -380,6 +383,21 @@ fn serve() -> Result<(), String> {
                     _ => {}
                 }
                 tokio::time::sleep(Duration::from_secs(6 * 3600)).await;
+            }
+        });
+        // Sign-outs, switched-off and deleted accounts reach reviews within
+        // seconds.
+        let checking = Arc::clone(&app);
+        tokio::spawn(async move {
+            let http = reqwest::Client::builder()
+                .timeout(Duration::from_secs(10))
+                .build()
+                .unwrap_or_default();
+            let mut since = 0;
+            loop {
+                tokio::time::sleep(Duration::from_secs(15)).await;
+                api::check_sessions(&checking, &http, &accounts).await;
+                since = api::purge_deleted(&checking, &http, &accounts, since).await;
             }
         });
         // The account service's keys: at start, then every ten minutes (a

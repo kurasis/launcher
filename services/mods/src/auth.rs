@@ -2,7 +2,9 @@
 //! their audiences, checked here with its published Ed25519 key. Only adding
 //! to the catalog needs one; reading it is open.
 
-use std::sync::RwLock;
+use std::collections::HashMap;
+use std::sync::{Mutex, RwLock};
+use std::time::{Duration, Instant};
 
 use base64::Engine as _;
 use base64::engine::general_purpose::URL_SAFE_NO_PAD as B64;
@@ -118,4 +120,117 @@ pub async fn fetch_jwks(http: &reqwest::Client, url: &str) -> Result<serde_json:
         return Err(format!("{url} answered {}", response.status()));
     }
     response.json().await.map_err(|e| e.to_string())
+}
+
+/// Sessions seen in tokens, those the account service says ended, and
+/// accounts it says were deleted. A token is refused once its session ended
+/// or its account is gone, though its signature still holds until it runs
+/// out.
+#[derive(Default)]
+pub struct Sessions {
+    seen: Mutex<HashMap<String, Instant>>,
+    ended: Mutex<HashMap<String, Instant>>,
+    deleted: Mutex<HashMap<String, Instant>>,
+}
+
+/// Longer than any token lives (10 minutes).
+pub const REMEMBER: Duration = Duration::from_secs(15 * 60);
+
+fn lock<T>(m: &Mutex<T>) -> std::sync::MutexGuard<'_, T> {
+    m.lock().unwrap_or_else(std::sync::PoisonError::into_inner)
+}
+
+impl Sessions {
+    /// False for a token of a session that ended or of a deleted account;
+    /// otherwise its session is noted for the next check.
+    pub fn admit(&self, sid: &str, account: &str) -> bool {
+        if lock(&self.ended).contains_key(sid) || lock(&self.deleted).contains_key(account) {
+            return false;
+        }
+        let mut seen = lock(&self.seen);
+        let now = Instant::now();
+        if seen.len() > 200_000 {
+            seen.retain(|_, at| now.duration_since(*at) < REMEMBER);
+        }
+        seen.insert(sid.to_owned(), now);
+        true
+    }
+
+    /// Sessions seen in a token that may still be valid.
+    pub fn recent(&self) -> Vec<String> {
+        let now = Instant::now();
+        let mut seen = lock(&self.seen);
+        seen.retain(|_, at| now.duration_since(*at) < REMEMBER);
+        seen.keys().cloned().collect()
+    }
+
+    pub fn end(&self, sids: &[String]) {
+        remember(&self.ended, sids);
+    }
+
+    /// Accounts deleted lately: their tokens are refused until they run out.
+    pub fn forget(&self, accounts: &[String]) {
+        remember(&self.deleted, accounts);
+    }
+}
+
+fn remember(map: &Mutex<HashMap<String, Instant>>, keys: &[String]) {
+    let now = Instant::now();
+    let mut map = lock(map);
+    map.retain(|_, at| now.duration_since(*at) < REMEMBER);
+    for key in keys {
+        map.insert(key.clone(), now);
+    }
+}
+
+/// Of these sessions, those that ended (signed out, or the account is
+/// switched off or deleted), from the account service's internal API.
+pub async fn ended(
+    http: &reqwest::Client,
+    base: &str,
+    sessions: &[String],
+) -> Result<Vec<String>, String> {
+    let body: serde_json::Value = http
+        .post(format!("{base}/internal/v1/ended"))
+        .json(&serde_json::json!({ "sessions": sessions }))
+        .send()
+        .await
+        .and_then(reqwest::Response::error_for_status)
+        .map_err(|e| e.without_url().to_string())?
+        .json()
+        .await
+        .map_err(|e| e.without_url().to_string())?;
+    Ok(body["ended"]
+        .as_array()
+        .into_iter()
+        .flatten()
+        .filter_map(|s| Some(s.as_str()?.to_owned()))
+        .collect())
+}
+
+/// Accounts deleted after `since` (Unix time): ID and when.
+pub async fn deleted(
+    http: &reqwest::Client,
+    base: &str,
+    since: i64,
+) -> Result<Vec<(String, i64)>, String> {
+    let body: serde_json::Value = http
+        .get(format!("{base}/internal/v1/deleted"))
+        .query(&[("since", since)])
+        .send()
+        .await
+        .and_then(reqwest::Response::error_for_status)
+        .map_err(|e| e.without_url().to_string())?
+        .json()
+        .await
+        .map_err(|e| e.without_url().to_string())?;
+    Ok(body["deleted"]
+        .as_array()
+        .into_iter()
+        .flatten()
+        .filter_map(|d| Some((d["id"].as_str()?.to_owned(), d["at"].as_i64()?)))
+        .filter(|(id, _)| {
+            uuid::Uuid::parse_str(id).is_ok_and(|u| u.hyphenated().to_string() == *id)
+        })
+        .collect())
 }

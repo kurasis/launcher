@@ -1069,6 +1069,12 @@ async fn a_deleted_account_leaves_nothing_behind() {
     // Asking again changes nothing.
     crate::api::purge_deleted(&t.app).await;
     assert_eq!(t.app.store.counts().unwrap()["friendships"], 0);
+    // His token, still signed, keeps nothing new for him.
+    let (status, _) = t
+        .call(2, "POST", "/v1/requests", json!({ "nick": "Alice" }))
+        .await;
+    assert_eq!(status, StatusCode::UNAUTHORIZED);
+    assert_eq!(t.app.store.counts().unwrap()["requests"], 0);
 }
 
 #[test]

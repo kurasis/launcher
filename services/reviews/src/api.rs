@@ -16,7 +16,7 @@ use serde::Deserialize;
 use serde_json::json;
 use tokio::sync::Semaphore;
 
-use crate::auth::Tokens;
+use crate::auth::{Sessions, Tokens};
 use crate::files;
 use crate::model::{Incoming, MAX_BODY};
 use crate::pow::{self, Challenges};
@@ -106,6 +106,8 @@ pub struct App {
     pub limiter: Limiter,
     pub challenges: Challenges,
     pub tokens: Tokens,
+    /// Sign-outs and deleted accounts, from the account service.
+    pub sessions: Sessions,
     pub uploads: Semaphore,
     /// Stored files, in bytes, beyond which reviews are refused.
     pub max_stored: i64,
@@ -118,6 +120,7 @@ impl App {
             store,
             limiter: Limiter::default(),
             tokens,
+            sessions: Sessions::default(),
             uploads: Semaphore::new(UPLOADS_AT_ONCE),
             max_stored,
         }
@@ -173,13 +176,17 @@ fn account(app: &App, headers: &HeaderMap) -> Result<Option<String>, Refusal> {
     if !app.tokens.has_keys() {
         return Err((StatusCode::SERVICE_UNAVAILABLE, "accounts"));
     }
-    value
+    let (account, session) = value
         .to_str()
         .ok()
         .and_then(|v| v.strip_prefix("Bearer "))
         .and_then(|token| app.tokens.verify(token.trim(), now()))
-        .map(Some)
-        .ok_or((StatusCode::UNAUTHORIZED, "token"))
+        .ok_or((StatusCode::UNAUTHORIZED, "token"))?;
+    // Signed out, switched off or deleted.
+    if !app.sessions.admit(&session, &account) {
+        return Err((StatusCode::UNAUTHORIZED, "token"));
+    }
+    Ok(Some(account))
 }
 
 async fn health() -> Json<serde_json::Value> {
@@ -387,6 +394,63 @@ async fn remove(State(app): State<Arc<App>>, Path(id): Path<i64>, headers: Heade
         Ok(Ok(false)) => refuse(StatusCode::NOT_FOUND, "no such review"),
         _ => refuse(StatusCode::INTERNAL_SERVER_ERROR, "not deleted"),
     }
+}
+
+/// Asks the account service which recently seen sessions ended and refuses
+/// their tokens from now on. When it cannot be asked, tokens hold until they
+/// run out.
+pub async fn check_sessions(app: &App, http: &reqwest::Client, accounts: &str) {
+    let sessions = app.sessions.recent();
+    for chunk in sessions.chunks(500) {
+        match crate::auth::ended(http, accounts, chunk).await {
+            Ok(ended) => app.sessions.end(&ended),
+            Err(e) => {
+                eprintln!("asking which sessions ended failed: {e}");
+                return;
+            }
+        }
+    }
+}
+
+/// Cleans out accounts the account service says were deleted after
+/// `since`; returns the time to ask from next.
+pub async fn purge_deleted(
+    app: &Arc<App>,
+    http: &reqwest::Client,
+    accounts: &str,
+    since: i64,
+) -> i64 {
+    let deleted = match crate::auth::deleted(http, accounts, since).await {
+        Ok(deleted) => deleted,
+        Err(e) => {
+            eprintln!("asking which accounts were deleted failed: {e}");
+            return since;
+        }
+    };
+    let app = Arc::clone(app);
+    tokio::task::spawn_blocking(move || purge(&app, &deleted, since))
+        .await
+        .unwrap_or(since)
+}
+
+/// Refuses the tokens of deleted accounts, then cleans them out.
+pub fn purge(app: &App, deleted: &[(String, i64)], since: i64) -> i64 {
+    let now = now();
+    let lately: Vec<String> = deleted
+        .iter()
+        .filter(|(_, at)| now - at < crate::auth::REMEMBER.as_secs().cast_signed())
+        .map(|(account, _)| account.clone())
+        .collect();
+    app.sessions.forget(&lately);
+    let mut newest = since;
+    for (account, at) in deleted {
+        if let Err(e) = app.store.purge(account) {
+            eprintln!("cleaning out a deleted account failed: {e}");
+            return newest;
+        }
+        newest = newest.max(*at);
+    }
+    newest
 }
 
 /// Biggest body of a status request (50 short pairs).

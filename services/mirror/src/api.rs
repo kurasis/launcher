@@ -84,13 +84,23 @@ fn refuse(status: StatusCode, reason: &str) -> Response {
     (status, Json(json!({ "error": reason }))).into_response()
 }
 
-/// The client's address as nginx passes it, for the per-client limit only.
-fn client(headers: &HeaderMap) -> IpAddr {
-    headers
+/// The client's address as nginx passes it, for the per-client limit only:
+/// an IPv6 /64 counts as one, since one connection usually has a whole /64 to
+/// pick addresses from.
+pub fn client(headers: &HeaderMap) -> IpAddr {
+    let ip = headers
         .get("x-real-ip")
         .and_then(|v| v.to_str().ok())
-        .and_then(|v| v.trim().parse().ok())
+        .and_then(|v| v.trim().parse::<IpAddr>().ok())
         .unwrap_or(IpAddr::from([0, 0, 0, 0]))
+        .to_canonical();
+    match ip {
+        IpAddr::V6(v6) => {
+            let s = v6.segments();
+            IpAddr::from([s[0], s[1], s[2], s[3], 0, 0, 0, 0])
+        }
+        v4 => v4,
+    }
 }
 
 /// Counts a client's running request until dropped.
