@@ -1835,7 +1835,7 @@ archive from the Package workflow, upload it to
   country (`CF-IPCountry`), its language, and a year of events (sign-ins,
   password and nick changes) with country only.
 - **Tokens:** access tokens are JWT signed with Ed25519, 10 minutes, audience
-  `account`, `friends`, `skins` (D-065) and `mods` (D-066), carrying the account ID, session, nick and whether
+  `account`, `friends`, `skins` (D-065), `mods` (D-066), `worlds` (D-068) and `reviews` (D-070), carrying the account ID, session, nick and whether
   the email is confirmed; the key is made on the server at the first start and
   never leaves it (`/.well-known/jwks.json` publishes the public half). Refresh
   tokens are random, live 60 days from their last use and rotate on every use;
@@ -2583,3 +2583,51 @@ archive from the Package workflow, upload it to
   outside.
 - **Server setup (owner):** a DNS record for servers.lapi.sh behind Cloudflare, then
   `deploy/bootstrap.sh` once.
+
+## D-070 — Reviews from players at reviews.lapi.sh
+
+- **Status:** accepted (owner request and design approval, 2026-10-21; design in the
+  project) · **Affects:** the new service `services/reviews` (`https://reviews.lapi.sh`,
+  `/home/www/lapi/reviews`, port 8790), the More menu ("Leave a review"), the account
+  service's tokens (audience `reviews`).
+- **Goal.** Players tell the developers about a bug, an idea, a question or their
+  impression from inside the launcher, with screenshots, text files and, if they want, the
+  latest logs found and scrubbed by the launcher; the owner reads and answers on the server,
+  and the answer shows in the launcher.
+- **A review** has a kind (`bug`, `idea`, `question`, `impression`), a category and
+  subcategory from `services/reviews/categories.json` (one file for the service and the
+  launcher; an unknown subcategory is kept as `other`), a message of 20–5000 characters, an
+  optional rating 1–5 (impressions only), the launcher's version, OS and language, the
+  install ID, and optionally the diagnostic ID of a launcher error or the number of a server
+  ad complained about. Files: up to 5 pictures (PNG, JPEG or WebP by content; the launcher
+  scales them to 2560 pixels; the service decodes them within 8192 pixels a side and 40
+  million in all and encodes them again, so no metadata stays) and up to 12 text files of
+  512 KiB (logs, configs: a list of extensions, valid UTF-8, no NUL, almost no control
+  characters), 16 MiB a request.
+- **Logs.** "Attach the latest logs" collects the launcher log's tail, the last run of the
+  chosen installation (7 days at most), the launcher's failure records of 3 days and a
+  `system.txt`; everything goes through the crash reports' scrubbing (D-061) and the player
+  sees every file before sending. Coming from the crash panel, that run's files are taken;
+  its `diagnosis.json` names the crash's signature, which `lapi-crash` groups by.
+- **Answers.** The service returns a number and a random key (it keeps only its SHA-256).
+  The launcher keeps both and asks `POST /v1/status` for the answers (keys in the body, not
+  in an address), at most every 6 hours and only while a review is open. A player who links
+  the review to their launcher account is known by the account ID only (the token is
+  checked with the account service's published key and never kept), and sees the answers
+  on any computer. Answers are plain text. A player can delete their review.
+- **Spam.** Before a review the launcher solves a proof of work (`GET /v1/challenge`, a
+  signed challenge for ten minutes, taken once; 20 bits, about a second). Limits run before
+  a body is read: per address (an IPv6 /64 counts as one) 5 an hour and 15 a day, per
+  install and per account 10 a day, everyone together 300 an hour and 1000 a day, two
+  bodies decoded at once, 10 GiB of files. Many links, hardly any letters or the same text
+  from one network within a day marks a review as suspect instead of refusing it. Bans by
+  install, account or network; a network is kept only as an HMAC of the address (or its
+  /64) with the service's secret, for 30 days. A banned sender is answered as anyone is and
+  nothing is kept. `pause` stops taking reviews; the launcher keeps them in its outbox.
+- **Privacy.** Kept 180 days (files 90, suspect 14). No address is stored or logged (nginx
+  writes its anonymous format); the service's log has fixed words and numbers only. Reviews
+  are read only on the server with `lapi-reviews` (docs/REVIEWS.md); the workflow's
+  `task=counts` prints numbers. `show --translate` sends a message to DeepL only when the
+  owner asks.
+- **Server setup (owner):** a DNS record for reviews.lapi.sh behind Cloudflare, then
+  `deploy/bootstrap.sh` once, after the first deploy has uploaded the new `deploy/` files.

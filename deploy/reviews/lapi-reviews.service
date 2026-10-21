@@ -1,0 +1,52 @@
+# Installed by deploy/bootstrap.sh as /etc/systemd/system/lapi-reviews.service.
+[Unit]
+Description=Sferum launcher reviews from players (reviews.lapi.sh, D-070)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+User=lapi-reviews
+Group=lapi-reviews
+EnvironmentFile=/home/www/lapi/reviews/reviews.env
+ExecStart=/home/www/lapi/reviews/current/lapi-reviews serve
+Restart=on-failure
+RestartSec=3
+UMask=0027
+NoNewPrivileges=yes
+ProtectSystem=strict
+# /home holds nothing else for it: only its own folder is there, its data writable.
+ProtectHome=tmpfs
+BindReadOnlyPaths=/home/www/lapi/reviews
+BindPaths=/home/www/lapi/reviews/data
+ReadWritePaths=/home/www/lapi/reviews/data
+PrivateTmp=yes
+PrivateDevices=yes
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectControlGroups=yes
+ProtectClock=yes
+ProtectHostname=yes
+# Out: only the account service's keys on this machine (127.0.0.1:8783).
+RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX
+IPAddressDeny=any
+IPAddressAllow=localhost
+RestrictNamespaces=yes
+RestrictRealtime=yes
+LockPersonality=yes
+MemoryDenyWriteExecute=yes
+SystemCallArchitectures=native
+# What a network service needs; anything else fails with EPERM.
+SystemCallFilter=@system-service
+SystemCallErrorNumber=EPERM
+ProtectKernelLogs=yes
+ProtectProc=invisible
+ProcSubset=pid
+RestrictSUIDSGID=yes
+RemoveIPC=yes
+CapabilityBoundingSet=
+# Two pictures are decoded at once, each within 200 MiB.
+MemoryMax=768M
+TasksMax=64
+
+[Install]
+WantedBy=multi-user.target

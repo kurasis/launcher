@@ -1,0 +1,14 @@
+{
+  "kinds": ["bug", "idea", "question", "impression"],
+  "categories": [
+    { "id": "launch", "sub": ["wont_start", "crashes", "freezes", "graphics_sound", "java"] },
+    { "id": "install", "sub": ["slow_download", "version_fails", "loaders", "backups"] },
+    { "id": "mods", "sub": ["catalog", "install_deps", "conflict", "suggest"] },
+    { "id": "accounts", "sub": ["microsoft", "launcher_account", "offline_demo"] },
+    { "id": "skins", "sub": ["not_visible", "upload", "hd_animated"] },
+    { "id": "friends", "sub": ["chat", "worlds_connect", "worlds_play"] },
+    { "id": "feed", "sub": ["news", "video", "server_ads"] },
+    { "id": "launcher", "sub": ["interface", "translation", "updates", "settings", "performance"] },
+    { "id": "other", "sub": [] }
+  ]
+}
