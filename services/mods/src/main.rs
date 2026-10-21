@@ -193,11 +193,24 @@ fn main() -> std::process::ExitCode {
         }),
         // VirusTotal's word on files (virustotal.rs), and the owner's
         // additions to the catalog; `--stdin` as below.
-        Some(command @ ("virustotal" | "add")) => external_args(&args[1..]).and_then(|given| {
-            for line in owner_command(command, &given)? {
+        Some(command @ ("virustotal" | "add" | "slug")) => {
+            external_args(&args[1..]).and_then(|given| {
+                for line in owner_command(command, &given)? {
+                    println!("{line}");
+                }
+                Ok(())
+            })
+        }
+        // The service's own checks (owner.rs `health`): a problem fails the
+        // command, and so the daily workflow that runs it.
+        Some("health") => owner_command("health", &args[1..]).and_then(|lines| {
+            for line in &lines {
                 println!("{line}");
             }
-            Ok(())
+            match lines.last() {
+                Some(last) if last == "all ok" => Ok(()),
+                _ => Err("a check found a problem".to_owned()),
+            }
         }),
         // Projects from sites that are not catalogs (external.rs).
         // With `--stdin`, its arguments come as a JSON array on the standard
@@ -224,7 +237,7 @@ fn main() -> std::process::ExitCode {
             Ok(())
         }
         _ => Err(
-            "usage: lapi-mods serve|counts|backup|probe|scan|thumb|find|review|block|unblock|remove|forget|restore|external|virustotal|add"
+            "usage: lapi-mods serve|counts|backup|probe|scan|thumb|find|review|block|unblock|remove|forget|restore|external|virustotal|add|slug|health"
                 .to_owned(),
         ),
     };
@@ -262,6 +275,15 @@ fn secret(key: &str) -> String {
         .ok()
         .and_then(|file| env_file_value(&file, key))
         .unwrap_or_default()
+}
+
+/// Most downloaded projects of each kind the catalog keeps (0: none).
+fn popular() -> usize {
+    env("LAPI_MODS_POPULAR", &import::POPULAR.to_string())
+        .trim()
+        .parse()
+        .unwrap_or(import::POPULAR)
+        .min(100)
 }
 
 /// Where players download: our disk, and R2 once it serves.
@@ -303,6 +325,7 @@ fn owner_command(command: &str, args: &[String]) -> Result<Vec<String>, String> 
     let data = data();
     let store = open()?;
     let blobs = blobs::Blobs::open(&data, DEFAULT_QUOTA_GB * blobs::GB, MIN_FREE)?;
+    blobs.reload_quota(&settings());
     let urls = urls();
     let cloudflare = cloudflare();
     let bucket = bucket();
@@ -335,6 +358,8 @@ fn owner_command(command: &str, args: &[String]) -> Result<Vec<String>, String> 
         ("virustotal", [check, h]) if check == "check" => owner.virustotal_check(&hash(h)?),
         ("add", [status]) if status == "--status" => owner.add_status(),
         ("add", inputs) => owner.add(inputs),
+        ("slug", [project, slug]) => owner.slug(project, slug),
+        ("health", []) => owner.health(popular()),
         ("remove", [project, reason @ ..]) => owner.remove(project, &owner::reason(reason)),
         ("forget", [h, rest @ ..]) => match (hash(h)?, rest) {
             (owner::Hash::Sha256(sha256), []) => owner.forget(&sha256, false),
@@ -505,6 +530,31 @@ fn serve() -> Result<(), String> {
                     Ok(n) => eprintln!("lapi-mods: {n} projects queued for a check"),
                     Err(e) => eprintln!("lapi-mods: queueing checks failed: {e}"),
                 }
+            }
+        });
+        // Modrinth's most downloaded projects of each kind, looked for once a
+        // day; a failed look is tried again the next hour.
+        let seeding = Arc::clone(&app);
+        let popular = popular();
+        tokio::spawn(async move {
+            if popular == 0 {
+                return;
+            }
+            loop {
+                let last = seeding
+                    .store
+                    .upkeep("popular_seeded")
+                    .ok()
+                    .flatten()
+                    .unwrap_or(0);
+                if import::now() - last >= import::POPULAR_EVERY {
+                    match import::seed(&seeding, popular).await {
+                        Ok(0) => {}
+                        Ok(n) => eprintln!("lapi-mods: {n} popular projects queued"),
+                        Err(e) => eprintln!("lapi-mods: looking for popular projects failed: {e}"),
+                    }
+                }
+                tokio::time::sleep(Duration::from_secs(3600)).await;
             }
         });
         // Kept archives scanned under older rules, a few at a time.

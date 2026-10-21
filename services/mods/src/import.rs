@@ -276,6 +276,43 @@ pub fn queue_project(
     )
 }
 
+// ----- the most downloaded -----
+
+/// Seconds between looks at Modrinth's most downloaded projects.
+pub const POPULAR_EVERY: i64 = 24 * 3600;
+/// Most downloaded projects looked for in each kind, unless
+/// `LAPI_MODS_POPULAR` says otherwise (0 turns it off).
+pub const POPULAR: usize = 50;
+
+/// Queues each kind's `limit` most downloaded projects on Modrinth that the
+/// catalog does not have yet (D-066), so the popular ones are there before
+/// anyone asks; those it has are checked as any other. CurseForge's search
+/// answers the server with 403, and Modrinth has no worlds. Returns how many
+/// were queued.
+pub async fn seed(app: &App, limit: usize) -> Result<usize, String> {
+    let mut queued = 0;
+    for project_type in modrinth::POPULAR_TYPES {
+        let ids = app
+            .client
+            .json(&modrinth::popular_url(project_type, limit))
+            .await
+            .map_err(|e| format!("asking Modrinth for the most downloaded: {}", e.code()))?
+            .map(|v| modrinth::project_ids(&v))
+            .unwrap_or_default();
+        for id in ids.iter().take(limit) {
+            // One the owner removed stays removed: it is known too.
+            if app.store.project_by_source(modrinth::SOURCE, id)?.is_some() {
+                continue;
+            }
+            if queue_project(app, modrinth::SOURCE, id, 0, None, IDLE_FRESH)? {
+                queued += 1;
+            }
+        }
+    }
+    app.store.set_upkeep("popular_seeded", now())?;
+    Ok(queued)
+}
+
 /// Queues a check of a project the owner added (external.rs) at once; run
 /// by the owner's commands, which have the store alone.
 pub fn queue_external(store: &crate::store::Store, source_id: &str) -> Result<bool, String> {

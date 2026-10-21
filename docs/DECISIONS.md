@@ -2366,6 +2366,17 @@ skins-mod <channel>` there only checks the signature against the public key and
   goes to the joined project, so both still lead to it; the service also fixes joins
   made before this at start (2026-10-21: Fabric API had become
   `fabric-api-modrinth-…`).
+- **The catalog keeps the popular projects and checks itself (2026-10-21, Ai: "сделай
+  всё сразу").** Once a day the service queues Modrinth's 50 most downloaded projects of
+  each kind it does not have yet (`LAPI_MODS_POPULAR`); CurseForge's search answers the
+  server with 403 and Modrinth has no worlds, so worlds still come by address. Lists by
+  downloads (no words) put libraries (`library`, `library-api`, `api-and-library`,
+  `api`) after the other projects; a search for words keeps its relevance. A mod that
+  also publishes data pack versions (Terralith) is found among data packs too, and the
+  launcher puts such a version into a world as a data pack; a project's file in one
+  folder (a world, `mods`) no longer replaces its file in another. `lapi-mods slug`
+  renames a project on the server without a deploy, and `lapi-mods health` runs daily
+  in the workflow Mods health, failing on a problem (docs/MODS-CATALOG.md).
 - **Data packs from Modrinth (2026-10-21).** Modrinth's API calls a data pack a mod
   (`project_type` `mod`) and tells it only by its loaders. A project whose only loader is
   `datapack` is a data pack in the catalog; one that is also a mod for a loader stays a
@@ -2623,8 +2634,10 @@ skins-mod <channel>` there only checks the signature against the public key and
 - **A varied, live list (owner request, 2026-10-21):** the service spreads videos so no
   channel has more than 2 of any 10 in a row (a moved video takes a time just below the
   one before it, so the cursor still holds), and pages are shown in the service's order.
-  Up to 24 streams per language, Helix asked every 2 minutes; while the launcher is shown
-  it asks for live streams every 3 minutes, and ended ones leave the list. Channels can
+  Up to 24 streams per language, Helix asked every 2 minutes: the mixed list and the
+  whole feed show the 6 most watched, the Streams chip pages through all of them. While
+  the launcher is shown it asks for live streams every 3 minutes: ended ones leave the
+  list, and under the Streams chip new ones come in. Channels can
   be put first or hidden from a tile's menu (kept in `feed-channels.json`). Videos played
   from the feed are kept in `feed-watched.json` (the latest 500 ids) and shown dimmed. A
   system notification when a favourite Twitch channel goes live is a setting, off by
