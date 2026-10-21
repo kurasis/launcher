@@ -2712,6 +2712,14 @@ skins-mod <channel>` there only checks the signature against the public key and
   does not; anything else is unknown. The launcher says "licensed accounts only" on such an
   ad, and Play tells a player who would play without a Microsoft account so before anything
   is downloaded.
+- **Amendment (2026-10-21): the check's protocol.** A server that takes many versions
+  repeats in its status the protocol it was asked in and may still refuse it at login: the
+  first real ad (asked in 1.21.1's protocol) kicked 1.21.6 and older for their version and
+  asked 1.21.7 to 1.21.11 for encryption, and dropped connections that came a second apart.
+  The check now logs in first in the protocol of the ad's default version (a table of
+  release protocols in `ping.rs`; a release missing there is not guessed), then in the one
+  the status named, then in the newest known, at most three, each after a kick or a failed
+  connection and each four seconds after the last connection.
 
 ## D-070 — Reviews from players at reviews.lapi.sh
 
