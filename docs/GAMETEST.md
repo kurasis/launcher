@@ -57,10 +57,13 @@ limit and leaves no crash report.
 
 ## Results
 
-Each scenario's job adds a summary (checks, frames per second per phase, mods, log error
-count with the first error lines) to the run page, and uploads an artifact with the bot's
-report, its screenshots, the game's `latest.log` and the launcher's `output.log`, and any
-crash reports. Everything copied out of the game folder has the machine's user name, home
+All scenarios play one after another in a single job on the test machine, so it downloads
+the jars and the harness once per run and uploads the results once. The run page shows a
+table of the scenarios with their results, then each scenario's summary (checks, frames per
+second per phase, mods, log error count with the first error lines); a failed scenario fails
+the job without stopping the rest. The artifact `gametest-results` has a folder per
+scenario with the bot's report, its screenshots, the game's `latest.log` and the
+launcher's `output.log`, and any crash reports. Everything copied out of the game folder has the machine's user name, home
 folder, computer name and data folder replaced first: the repository and its artifacts are
 public.
 
