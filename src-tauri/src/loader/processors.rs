@@ -3,7 +3,8 @@
 //! A Forge-style installer does more than download: it unpacks files it carries
 //! and runs "processors", Java tools that remap and binary-patch the game into
 //! the jar the loader starts. The launcher implements the installer's protocol
-//! (install profile spec 0 and 1) itself, client side only:
+//! (install profile spec 0 and 1) itself, for an installation's game and for a
+//! world's dedicated server (W12, [`prepare_server`]):
 //!
 //! - files under `maven/` in the installer are unpacked into the Maven tree after
 //!   their hash is checked;
@@ -11,9 +12,9 @@
 //!   classpath taken from verified downloads, its arguments filled from the
 //!   install profile's `data`; outputs with a declared SHA-1 are checked, and a
 //!   processor whose outputs already match is skipped;
-//! - Mojang's client mappings, which one processor would download itself, are
-//!   taken from the verified download in the plan instead whenever the processor
-//!   would copy them unchanged;
+//! - Mojang's mappings, which one processor would download itself, are taken
+//!   from a verified download instead whenever the processor would copy them
+//!   unchanged;
 //! - every file the step produced is hashed and recorded in the install lock, so
 //!   launch checks it and Repair can rebuild it.
 //!
@@ -28,14 +29,14 @@ use std::time::Duration;
 use sha1::Digest as _;
 
 use super::coordinate::Coordinate;
-use super::manifest::{Installer, LoaderManifest, installer_entry, maven_path};
+use super::manifest::{InstallSide, Installer, LoaderManifest, installer_entry, maven_path};
 use crate::download::{CancelToken, resolve_managed_path};
 use crate::error::{ErrorCode, LauncherError, LauncherResult};
 use crate::install::descriptor::{unsupported, validate_relative_path};
 use crate::install::plan::GamePlan;
 use crate::storage::atomic;
 use crate::storage::models::{ArtifactRole, HashAlgorithm, LockedArtifact};
-use crate::storage::paths::DataRoot;
+use crate::storage::paths::{DataRoot, Sha1};
 
 /// What the step needs.
 pub struct Inputs<'a> {
@@ -51,6 +52,39 @@ pub struct Inputs<'a> {
     pub log: &'a (dyn Fn(String) + Sync),
     /// How long a step may print nothing ([`QUIET_LIMIT`]).
     pub quiet_limit: Duration,
+}
+
+/// What the server side of the step needs (W12): the files go to the Maven
+/// tree, where the server's start arguments name them.
+pub struct ServerInputs<'a> {
+    pub root: &'a DataRoot,
+    pub manifest: &'a LoaderManifest,
+    /// Mojang's server JAR (`{MINECRAFT_JAR}`).
+    pub server_jar: PathBuf,
+    /// Mojang's server mappings, verified: DATA_ROOT-relative path and SHA-1.
+    pub mappings: Option<(String, Sha1)>,
+    /// The world's Java.
+    pub java: &'a Path,
+    /// Scratch directory (`{ROOT}`), removed afterwards.
+    pub work_dir: PathBuf,
+    pub cancel: &'a CancelToken,
+    pub log: &'a (dyn Fn(String) + Sync),
+    pub quiet_limit: Duration,
+}
+
+/// One run of the step, for either side.
+struct Step<'a> {
+    root: &'a DataRoot,
+    manifest: &'a LoaderManifest,
+    java: &'a Path,
+    work_dir: &'a Path,
+    cancel: &'a CancelToken,
+    log: &'a (dyn Fn(String) + Sync),
+    quiet_limit: Duration,
+    side: InstallSide,
+    game_jar: PathBuf,
+    /// Mojang's mappings for the side: DATA_ROOT-relative path and SHA-1.
+    mappings: Option<(String, Sha1)>,
 }
 
 /// Lines of a tool's output kept for the console when it fails.
@@ -123,20 +157,117 @@ pub fn prepare(inputs: &Inputs<'_>) -> LauncherResult<Vec<LockedArtifact>> {
             "A verified mod loader installer is damaged. Repair the installation.",
         ));
     }
-    unpack(inputs, installer, &bytes)?;
+    unpack(inputs.root, installer, &bytes)?;
     if !installer.processors.is_empty() {
+        let step = Step {
+            root: inputs.root,
+            manifest,
+            java: inputs.java,
+            work_dir: &inputs.work_dir,
+            cancel: inputs.cancel,
+            log: inputs.log,
+            quiet_limit: inputs.quiet_limit,
+            side: InstallSide::Client,
+            game_jar: resolve_managed_path(inputs.root, &inputs.plan.client.path)?,
+            mappings: inputs
+                .plan
+                .mappings
+                .as_ref()
+                .map(|m| (m.path.clone(), m.sha1.clone())),
+        };
         std::fs::create_dir_all(&inputs.work_dir).map_err(|e| storage_error(&e))?;
-        let result = run_processors(inputs, installer, &installer_path, &bytes);
+        let result = run_processors(&step, installer, &installer_path, &bytes);
         let _ = std::fs::remove_dir_all(&inputs.work_dir);
         result?;
     }
     generated(inputs, installer)
 }
 
+/// Runs the installer step for a dedicated server and returns every file it
+/// produced that the server's start arguments or the install profile name,
+/// hashed. Libraries the manifest pins are downloaded, not produced.
+pub fn prepare_server(inputs: &ServerInputs<'_>) -> LauncherResult<Vec<LockedArtifact>> {
+    let manifest = inputs.manifest;
+    let (Some(installer), Some(arguments)) = (&manifest.installer, &manifest.server_arguments)
+    else {
+        return Err(LauncherError::internal(
+            "This loader has no server installer.",
+        ));
+    };
+    let installer_path = resolve_managed_path(inputs.root, &maven_path(&installer.path))?;
+    let bytes = std::fs::read(&installer_path).map_err(|e| storage_error(&e))?;
+    if hex::encode(sha1::Sha1::digest(&bytes)) != installer.sha1.as_str() {
+        return Err(LauncherError::new(
+            ErrorCode::RepairRequired,
+            "A verified mod loader installer is damaged. Host the world again.",
+        ));
+    }
+    unpack(inputs.root, installer, &bytes)?;
+    let step = Step {
+        root: inputs.root,
+        manifest,
+        java: inputs.java,
+        work_dir: &inputs.work_dir,
+        cancel: inputs.cancel,
+        log: inputs.log,
+        quiet_limit: inputs.quiet_limit,
+        side: InstallSide::Server,
+        game_jar: inputs.server_jar.clone(),
+        mappings: inputs.mappings.clone(),
+    };
+    std::fs::create_dir_all(&inputs.work_dir).map_err(|e| storage_error(&e))?;
+    let result = run_processors(&step, installer, &installer_path, &bytes);
+    let _ = std::fs::remove_dir_all(&inputs.work_dir);
+    result?;
+
+    let pinned: std::collections::HashSet<String> = manifest
+        .libraries
+        .iter()
+        .chain(&installer.libraries)
+        .filter(|l| !l.url.is_empty())
+        .map(|l| maven_path(&l.path))
+        .collect();
+    let mut paths: Vec<String> = Vec::new();
+    arguments.command(&inputs.root.maven_root(), &mut |rest| {
+        paths.push(maven_path(rest));
+    })?;
+    for value in installer.data.values() {
+        if let Some(coordinate) = value.strip_prefix('[').and_then(|v| v.strip_suffix(']')) {
+            let path = maven_path(&Coordinate::parse(coordinate)?.path());
+            if resolve_managed_path(inputs.root, &path)?.is_file() {
+                paths.push(path);
+            }
+        }
+    }
+    paths.sort();
+    paths.dedup();
+    let mut out = Vec::new();
+    for path in paths.into_iter().filter(|p| !pinned.contains(p)) {
+        let file = resolve_managed_path(inputs.root, &path)?;
+        let Ok((sha1, size)) = sha1_file(&file) else {
+            (inputs.log)(format!(
+                "{} server installer did not produce {path}",
+                manifest.kind.name()
+            ));
+            return Err(failed(manifest.kind.name()));
+        };
+        out.push(LockedArtifact {
+            role: ArtifactRole::Library,
+            path,
+            size,
+            algorithm: HashAlgorithm::Sha1,
+            digest: sha1,
+            url: String::new(),
+            provenance: Some(format!("{} server installer", manifest.kind.name())),
+        });
+    }
+    Ok(out)
+}
+
 /// Unpacks the installer's packed files that are missing or damaged.
-fn unpack(inputs: &Inputs<'_>, installer: &Installer, bytes: &[u8]) -> LauncherResult<()> {
+fn unpack(root: &DataRoot, installer: &Installer, bytes: &[u8]) -> LauncherResult<()> {
     for file in &installer.embedded {
-        let destination = resolve_managed_path(inputs.root, &maven_path(&file.path))?;
+        let destination = resolve_managed_path(root, &maven_path(&file.path))?;
         if sha1_file(&destination).is_ok_and(|(sha1, _)| sha1 == file.sha1.as_str()) {
             continue;
         }
@@ -154,7 +285,7 @@ fn unpack(inputs: &Inputs<'_>, installer: &Installer, bytes: &[u8]) -> LauncherR
 
 /// Values for `{NAME}` in processor arguments.
 fn variables(
-    inputs: &Inputs<'_>,
+    inputs: &Step<'_>,
     installer: &Installer,
     installer_path: &Path,
     bytes: &[u8],
@@ -183,14 +314,13 @@ fn variables(
         };
         values.insert(key.clone(), resolved);
     }
-    let client = resolve_managed_path(root, &inputs.plan.client.path)?;
-    values.insert("SIDE".into(), "client".into());
-    values.insert("MINECRAFT_JAR".into(), path_text(&client)?);
+    values.insert("SIDE".into(), inputs.side.key().into());
+    values.insert("MINECRAFT_JAR".into(), path_text(&inputs.game_jar)?);
     values.insert(
         "MINECRAFT_VERSION".into(),
         inputs.manifest.game_version.clone(),
     );
-    values.insert("ROOT".into(), path_text(&inputs.work_dir)?);
+    values.insert("ROOT".into(), path_text(inputs.work_dir)?);
     values.insert("INSTALLER".into(), path_text(installer_path)?);
     values.insert("LIBRARY_DIR".into(), path_text(&root.maven_root())?);
     Ok(values)
@@ -247,7 +377,7 @@ fn main_class(jar: &Path) -> LauncherResult<String> {
 }
 
 fn run_processors(
-    inputs: &Inputs<'_>,
+    inputs: &Step<'_>,
     installer: &Installer,
     installer_path: &Path,
     bytes: &[u8],
@@ -285,8 +415,9 @@ fn run_processors(
             .collect::<LauncherResult<Vec<_>>>()?;
         if copy_mappings(inputs, &args)? {
             (inputs.log)(format!(
-                "{} installer step {step}/{total}: client mappings from the verified download",
-                inputs.manifest.kind.name()
+                "{} installer step {step}/{total}: {} mappings from the verified download",
+                inputs.manifest.kind.name(),
+                inputs.side.key()
             ));
         } else {
             let jar = maven_file(root, &processor.jar)?;
@@ -307,7 +438,7 @@ fn run_processors(
             run_tool(
                 &Tool {
                     java: inputs.java,
-                    work_dir: &inputs.work_dir,
+                    work_dir: inputs.work_dir,
                     cancel: inputs.cancel,
                     log: inputs.log,
                     quiet_limit: inputs.quiet_limit,
@@ -332,9 +463,9 @@ fn run_processors(
     Ok(())
 }
 
-/// `DOWNLOAD_MOJMAPS` without `--sanitize` copies Mojang's client mappings
-/// unchanged; the verified copy from the plan replaces the tool's own download.
-fn copy_mappings(inputs: &Inputs<'_>, args: &[String]) -> LauncherResult<bool> {
+/// `DOWNLOAD_MOJMAPS` without `--sanitize` copies Mojang's mappings of the side
+/// unchanged; the verified copy replaces the tool's own download.
+fn copy_mappings(inputs: &Step<'_>, args: &[String]) -> LauncherResult<bool> {
     let task = args
         .windows(2)
         .find(|w| w[0] == "--task")
@@ -343,21 +474,21 @@ fn copy_mappings(inputs: &Inputs<'_>, args: &[String]) -> LauncherResult<bool> {
         || args.iter().any(|a| a == "--sanitize")
         || args
             .windows(2)
-            .any(|w| w[0] == "--side" && w[1] != "client")
+            .any(|w| w[0] == "--side" && w[1] != inputs.side.key())
     {
         return Ok(false);
     }
-    let (Some(mappings), Some(output)) = (
-        inputs.plan.mappings.as_ref(),
+    let (Some((mappings, mappings_sha1)), Some(output)) = (
+        inputs.mappings.as_ref(),
         args.windows(2)
             .find(|w| w[0] == "--output")
             .map(|w| PathBuf::from(&w[1])),
     ) else {
         return Ok(false);
     };
-    let source = resolve_managed_path(inputs.root, &mappings.path)?;
+    let source = resolve_managed_path(inputs.root, mappings)?;
     let content = std::fs::read(&source).map_err(|e| storage_error(&e))?;
-    if hex::encode(sha1::Sha1::digest(&content)) != mappings.sha1.as_str() {
+    if hex::encode(sha1::Sha1::digest(&content)) != mappings_sha1.as_str() {
         return Err(LauncherError::new(
             ErrorCode::RepairRequired,
             "Verified game files are damaged. Repair the installation.",

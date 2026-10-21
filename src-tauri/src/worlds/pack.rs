@@ -70,6 +70,7 @@ const ROOM_META: &str = "catalog.json";
 const TESTED: &[(LoaderKind, &[&str])] = &[
     (LoaderKind::Fabric, &["1.20.1", "1.21.1", "26.3"]),
     (LoaderKind::Quilt, &["1.20.1", "1.21.1", "26.3"]),
+    (LoaderKind::NeoForge, &["1.21.1", "26.3"]),
 ];
 
 /// Whether worlds with this loader are offered for this release.
@@ -84,7 +85,7 @@ pub fn check_supported(loader: &LoaderChoice, minecraft: &str) -> LauncherResult
     loader.validate()?;
     if !TESTED.iter().any(|(k, _)| *k == loader.kind) {
         return Err(LauncherError::invalid_input(
-            "Worlds with this mod loader come later; Fabric and Quilt work now.",
+            "Worlds with this mod loader come later; Fabric, Quilt and NeoForge work now.",
         ));
     }
     if !tested(loader.kind, minecraft) {

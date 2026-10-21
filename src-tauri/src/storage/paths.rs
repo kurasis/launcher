@@ -288,6 +288,14 @@ impl DataRoot {
             .join("server.jar")
     }
 
+    /// Scratch space for one run of a loader's server-side processors, beside
+    /// the server JARs it reads.
+    pub fn server_processing_dir(&self, run: Uuid) -> PathBuf {
+        self.shared()
+            .join("servers")
+            .join(format!("processing-{run}"))
+    }
+
     fn shared(&self) -> PathBuf {
         self.root.join("shared")
     }

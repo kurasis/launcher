@@ -134,6 +134,136 @@ pub struct Installer {
     pub embedded: Vec<EmbeddedFile>,
 }
 
+/// The dedicated server's command line from a Forge-style installer
+/// (`data/unix_args.txt`, `data/win_args.txt`): JVM options, the main class and
+/// its arguments, with files named relative to `libraries/`, the Maven tree.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ServerArguments {
+    pub unix: Vec<String>,
+    pub windows: Vec<String>,
+}
+
+/// Bound for one start-arguments file of an installer.
+const MAX_ARGUMENTS_BYTES: u64 = 64 * 1024;
+/// Bound for the tokens of one start-arguments file.
+const MAX_ARGUMENTS: usize = 512;
+/// The directory the start arguments name files under.
+const LIBRARIES: &str = "libraries";
+/// JVM options a start-arguments file may not carry: they would load code or
+/// run commands the launcher did not check.
+const REFUSED_OPTIONS: [&str; 7] = [
+    "-javaagent",
+    "-agentlib",
+    "-agentpath",
+    "-Xbootclasspath",
+    "-XX:",
+    "-Djava.system.class.loader",
+    "@",
+];
+
+/// Maps the files of one argument: an element of a `:` or `;` list (or of the
+/// value of `-Dkey=`) under `libraries/` goes through `place`.
+fn map_libraries(
+    token: &str,
+    separator: char,
+    place: &mut dyn FnMut(&str) -> LauncherResult<String>,
+) -> LauncherResult<String> {
+    let (head, value) = match token.split_once('=') {
+        Some((key, value)) if key.starts_with("-D") => (Some(key), value),
+        _ => (None, token),
+    };
+    let mut out = Vec::new();
+    for element in value.split(separator) {
+        out.push(if element == LIBRARIES {
+            place("")?
+        } else if let Some(rest) = element.strip_prefix("libraries/") {
+            validate_relative_path(rest)?;
+            place(rest)?
+        } else {
+            element.to_owned()
+        });
+    }
+    let value = out.join(&separator.to_string());
+    Ok(match head {
+        Some(key) => format!("{key}={value}"),
+        None => value,
+    })
+}
+
+/// Reads and checks one start-arguments file of an installer.
+fn server_arguments<R: Read + std::io::Seek>(
+    zip: &mut zip::ZipArchive<R>,
+    name: &str,
+) -> LauncherResult<Vec<String>> {
+    let bytes = read_entry(zip, name, MAX_ARGUMENTS_BYTES)?
+        .ok_or_else(|| unsupported("server arguments"))?;
+    let text = String::from_utf8(bytes).map_err(|_| unsupported("server arguments"))?;
+    let tokens: Vec<String> = text.split_whitespace().map(str::to_owned).collect();
+    let separator = if name.contains("win_") { ';' } else { ':' };
+    let fine = |token: &String| {
+        token.bytes().all(|b| b.is_ascii_graphic())
+            && !REFUSED_OPTIONS.iter().any(|o| token.starts_with(o))
+            && map_libraries(token, separator, &mut |_| Ok(String::new())).is_ok()
+    };
+    if tokens.is_empty() || tokens.len() > MAX_ARGUMENTS || !tokens.iter().all(fine) {
+        return Err(unsupported("server arguments"));
+    }
+    Ok(tokens)
+}
+
+impl ServerArguments {
+    /// The arguments for this computer, files placed in the Maven tree at
+    /// `maven_root`. `place` also learns each file, for checks.
+    pub fn command(
+        &self,
+        maven_root: &std::path::Path,
+        place: &mut dyn FnMut(&str),
+    ) -> LauncherResult<Vec<String>> {
+        let (tokens, separator) = if cfg!(windows) {
+            (&self.windows, ';')
+        } else {
+            (&self.unix, ':')
+        };
+        let root = maven_root.to_str().ok_or_else(|| {
+            LauncherError::new(
+                ErrorCode::UnsupportedPathEncoding,
+                "A game path cannot be represented as text for Java.",
+            )
+        })?;
+        tokens
+            .iter()
+            .map(|token| {
+                map_libraries(token, separator, &mut |rest| {
+                    Ok(if rest.is_empty() {
+                        root.to_owned()
+                    } else {
+                        place(rest);
+                        format!("{root}/{rest}")
+                    })
+                })
+            })
+            .collect()
+    }
+}
+
+/// The side an installer is read for.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum InstallSide {
+    Client,
+    Server,
+}
+
+impl InstallSide {
+    /// The install profile's name for the side.
+    pub fn key(self) -> &'static str {
+        match self {
+            Self::Client => "client",
+            Self::Server => "server",
+        }
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct LoaderManifest {
@@ -159,6 +289,10 @@ pub struct LoaderManifest {
     pub minecraft_arguments: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub installer: Option<Installer>,
+    /// A dedicated server's command line (W12), for a server read from an
+    /// installer; its arguments name the main class.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub server_arguments: Option<ServerArguments>,
 }
 
 impl LoaderManifest {
@@ -358,7 +492,8 @@ impl Resolver<'_> {
     /// Resolves and stores the dedicated server's manifest of a loader version
     /// (W12): for Fabric and Quilt the meta service's server profile, whose
     /// main class starts Mojang's server JAR named by `fabric.gameJarPath`
-    /// (Quilt: `loader.gameJarPath`).
+    /// (Quilt: `loader.gameJarPath`); for NeoForge its installer read for the
+    /// server side, whose processors the launcher runs itself.
     pub async fn resolve_server(
         &self,
         choice: &LoaderChoice,
@@ -373,9 +508,13 @@ impl Resolver<'_> {
                 self.meta_profile_of(choice.kind, game, &choice.version, "server")
                     .await?
             }
-            LoaderKind::Forge | LoaderKind::NeoForge | LoaderKind::OptiFine => {
+            LoaderKind::NeoForge => {
+                self.installer_of(choice.kind, game, &choice.version, InstallSide::Server)
+                    .await?
+            }
+            LoaderKind::Forge | LoaderKind::OptiFine => {
                 return Err(LauncherError::invalid_input(
-                    "Worlds with this mod loader come later; Fabric and Quilt work now.",
+                    "Worlds with this mod loader come later; Fabric, Quilt and NeoForge work now.",
                 ));
             }
         };
@@ -573,6 +712,7 @@ impl Resolver<'_> {
             game_arguments,
             minecraft_arguments,
             installer: None,
+            server_arguments: None,
         })
     }
 
@@ -582,6 +722,17 @@ impl Resolver<'_> {
         game: &str,
         version: &str,
     ) -> LauncherResult<LoaderManifest> {
+        self.installer_of(kind, game, version, InstallSide::Client)
+            .await
+    }
+
+    async fn installer_of(
+        &self,
+        kind: LoaderKind,
+        game: &str,
+        version: &str,
+        side: InstallSide,
+    ) -> LauncherResult<LoaderManifest> {
         let (url, path) = installer_location(kind, game, version)?;
         let sha1 = self.sidecar_sha1(&url).await?;
         let size = self.ensure_file(&path, &url, &sha1).await?;
@@ -590,7 +741,7 @@ impl Resolver<'_> {
         if sha1_hex(&bytes) != sha1.as_str() {
             return Err(hash_mismatch("mod loader installer"));
         }
-        let contents = InstallerContents::read(&bytes, kind)?;
+        let contents = InstallerContents::read_side(&bytes, kind, side)?;
         let install = &contents.install_profile;
         if install.get("minecraft").and_then(Value::as_str) != Some(game) {
             return Err(not_for_game(kind));
@@ -639,6 +790,7 @@ impl Resolver<'_> {
                 libraries: tools,
                 embedded: contents.embedded,
             }),
+            server_arguments: contents.server_arguments,
         })
     }
 }
@@ -651,6 +803,8 @@ pub struct InstallerContents {
     pub data: BTreeMap<String, String>,
     pub processors: Vec<Processor>,
     pub embedded: Vec<EmbeddedFile>,
+    /// Read for the server side only.
+    pub server_arguments: Option<ServerArguments>,
 }
 
 fn read_entry<R: Read + std::io::Seek>(
@@ -702,6 +856,14 @@ fn strings(value: Option<&Value>) -> LauncherResult<Vec<String>> {
 
 impl InstallerContents {
     pub fn read(bytes: &[u8], kind: LoaderKind) -> LauncherResult<Self> {
+        Self::read_side(bytes, kind, InstallSide::Client)
+    }
+
+    /// Reads the installer for one side: that side's `data` values and
+    /// processors. For the server, the step that only unpacks start scripts
+    /// is left out, files bound for `{ROOT}/libraries/` go to the Maven tree,
+    /// and the start arguments are read from the installer.
+    pub fn read_side(bytes: &[u8], kind: LoaderKind, side: InstallSide) -> LauncherResult<Self> {
         let mut zip = zip::ZipArchive::new(Cursor::new(bytes))
             .map_err(|_| unsupported("installer archive"))?;
         let install_bytes = read_entry(&mut zip, "install_profile.json", MAX_PROFILE_BYTES as u64)?
@@ -712,6 +874,9 @@ impl InstallerContents {
             install_profile.get("install"),
             install_profile.get("versionInfo"),
         ) {
+            if side == InstallSide::Server {
+                return Err(old_installer(kind));
+            }
             return Self::legacy(&mut zip, install.clone(), info.clone());
         }
         let spec = install_profile.get("spec").and_then(Value::as_u64);
@@ -738,10 +903,10 @@ impl InstallerContents {
                     && key
                         .bytes()
                         .all(|b| b.is_ascii_uppercase() || b.is_ascii_digit() || b == b'_');
-                let client = value.get("client").and_then(Value::as_str);
-                match (valid_key, client) {
-                    (true, Some(client)) => {
-                        data.insert(key.clone(), client.to_owned());
+                let value = value.get(side.key()).and_then(Value::as_str);
+                match (valid_key, value) {
+                    (true, Some(value)) => {
+                        data.insert(key.clone(), value.to_owned());
                     }
                     _ => return Err(unsupported("install profile data")),
                 }
@@ -754,8 +919,22 @@ impl InstallerContents {
             .map_or(&[][..], Vec::as_slice)
         {
             let sides = strings(processor.get("sides"))?;
-            if !sides.is_empty() && !sides.iter().any(|s| s == "client") {
+            if !sides.is_empty() && !sides.iter().any(|s| s == side.key()) {
                 continue;
+            }
+            let mut args = strings(processor.get("args"))?;
+            if side == InstallSide::Server {
+                if args
+                    .windows(2)
+                    .any(|w| w[0] == "--task" && w[1] == "EXTRACT_FILES")
+                {
+                    continue;
+                }
+                for arg in &mut args {
+                    if let Some(rest) = arg.strip_prefix("{ROOT}/libraries/") {
+                        *arg = format!("{{LIBRARY_DIR}}/{rest}");
+                    }
+                }
             }
             let jar = processor
                 .get("jar")
@@ -778,7 +957,7 @@ impl InstallerContents {
             processors.push(Processor {
                 jar: jar.to_owned(),
                 classpath,
-                args: strings(processor.get("args"))?,
+                args,
                 outputs,
                 main_class: None,
             });
@@ -803,6 +982,13 @@ impl InstallerContents {
             });
         }
         embedded.sort_by(|a, b| a.path.cmp(&b.path));
+        let server_arguments = match side {
+            InstallSide::Client => None,
+            InstallSide::Server => Some(ServerArguments {
+                unix: server_arguments(&mut zip, "data/unix_args.txt")?,
+                windows: server_arguments(&mut zip, "data/win_args.txt")?,
+            }),
+        };
         if let Some(map) = install_profile.as_object_mut() {
             for key in INSTALLER_EXTRAS {
                 map.remove(key);
@@ -815,6 +1001,7 @@ impl InstallerContents {
             data,
             processors,
             embedded,
+            server_arguments,
         })
     }
 
@@ -898,6 +1085,7 @@ impl InstallerContents {
             data: BTreeMap::new(),
             processors: Vec::new(),
             embedded: vec![universal],
+            server_arguments: None,
         })
     }
 }
@@ -1041,6 +1229,153 @@ mod tests {
                 "{bad:?}"
             );
         }
+    }
+
+    fn modern_installer(unix: &str, win: &str) -> Vec<u8> {
+        use std::io::Write as _;
+        let profile = serde_json::json!({
+            "spec": 1,
+            "minecraft": "1.21.1",
+            "json": "/version.json",
+            "data": {
+                "BINPATCH": {"client": "/data/client.lzma", "server": "/data/server.lzma"},
+                "PATCHED": {
+                    "client": "[net.neoforged:neoforge:21.1.264:client]",
+                    "server": "[net.neoforged:neoforge:21.1.264:server]"
+                }
+            },
+            "processors": [
+                {"sides": ["server"], "jar": "net.neoforged.installertools:installertools:2.1.2",
+                 "args": ["--task", "EXTRACT_FILES", "--archive", "{INSTALLER}"]},
+                {"sides": ["server"], "jar": "net.neoforged.installertools:installertools:2.1.2",
+                 "args": ["--task", "BUNDLER_EXTRACT", "--input", "{MINECRAFT_JAR}",
+                          "--output", "{ROOT}/libraries/", "--libraries"]},
+                {"sides": ["client"], "jar": "net.neoforged.installertools:installertools:2.1.2",
+                 "args": ["--task", "PROCESS_MINECRAFT_JAR", "--input", "{MINECRAFT_JAR}"]},
+                {"jar": "net.neoforged:binarypatcher:2.0.2", "args": ["--patch", "{BINPATCH}"]}
+            ],
+        });
+        let mut zip = zip::ZipWriter::new(Cursor::new(Vec::new()));
+        let options = zip::write::SimpleFileOptions::default();
+        for (name, body) in [
+            ("install_profile.json", profile.to_string()),
+            ("version.json", "{}".to_owned()),
+            ("data/unix_args.txt", unix.to_owned()),
+            ("data/win_args.txt", win.to_owned()),
+        ] {
+            zip.start_file(name, options).unwrap();
+            zip.write_all(body.as_bytes()).unwrap();
+        }
+        zip.finish().unwrap().into_inner()
+    }
+
+    #[test]
+    fn a_server_reads_its_side_of_the_installer() {
+        let unix = "-DlibraryDirectory=libraries\n-p libraries/a/b/1/b-1.jar:libraries/c/d/2/d-2.jar\n--add-modules ALL-MODULE-PATH\ncpw.mods.bootstraplauncher.BootstrapLauncher --launchTarget forgeserver\n";
+        let win = "-DlibraryDirectory=libraries -p libraries/a/b/1/b-1.jar;libraries/c/d/2/d-2.jar cpw.mods.bootstraplauncher.BootstrapLauncher";
+        let bytes = modern_installer(unix, win);
+        let server =
+            InstallerContents::read_side(&bytes, LoaderKind::NeoForge, InstallSide::Server)
+                .unwrap();
+        assert_eq!(server.data["BINPATCH"], "/data/server.lzma");
+        assert_eq!(
+            server.data["PATCHED"],
+            "[net.neoforged:neoforge:21.1.264:server]"
+        );
+        // The start-script step is left out, the client's step too; the
+        // server's files go to the Maven tree.
+        assert_eq!(server.processors.len(), 2);
+        assert_eq!(server.processors[0].args[5], "{LIBRARY_DIR}/");
+        assert_eq!(
+            server.processors[1].jar,
+            "net.neoforged:binarypatcher:2.0.2"
+        );
+        let arguments = server.server_arguments.unwrap();
+        assert_eq!(arguments.unix.len(), 8);
+        assert_eq!(arguments.windows.len(), 4);
+
+        let mut named = Vec::new();
+        let command = arguments
+            .command(std::path::Path::new("/data/maven"), &mut |rest| {
+                named.push(rest.to_owned());
+            })
+            .unwrap();
+        assert_eq!(named, ["a/b/1/b-1.jar", "c/d/2/d-2.jar"]);
+        if cfg!(windows) {
+            assert_eq!(command[0], "-DlibraryDirectory=/data/maven");
+            assert_eq!(
+                command[2],
+                "/data/maven/a/b/1/b-1.jar;/data/maven/c/d/2/d-2.jar"
+            );
+        } else {
+            assert_eq!(
+                command,
+                [
+                    "-DlibraryDirectory=/data/maven",
+                    "-p",
+                    "/data/maven/a/b/1/b-1.jar:/data/maven/c/d/2/d-2.jar",
+                    "--add-modules",
+                    "ALL-MODULE-PATH",
+                    "cpw.mods.bootstraplauncher.BootstrapLauncher",
+                    "--launchTarget",
+                    "forgeserver",
+                ]
+            );
+        }
+
+        // The client reads the same installer as before.
+        let client = InstallerContents::read(&bytes, LoaderKind::NeoForge).unwrap();
+        assert_eq!(client.data["BINPATCH"], "/data/client.lzma");
+        assert_eq!(client.processors.len(), 2);
+        assert!(client.server_arguments.is_none());
+    }
+
+    #[test]
+    fn server_arguments_load_nothing_unchecked() {
+        for bad in [
+            "-javaagent:libraries/x.jar Main",
+            "-agentlib:jdwp=transport=dt_socket Main",
+            "-agentpath:/tmp/a.so Main",
+            "-Xbootclasspath/a:libraries/x.jar Main",
+            "-XX:OnOutOfMemoryError=calc Main",
+            "-Djava.system.class.loader=Evil Main",
+            "@/etc/args Main",
+            "-p libraries/../../etc/passwd Main",
+            "-p libraries/a/../../x.jar Main",
+            "-cp libraries//x.jar Main",
+            "Main caf\u{e9}",
+            "",
+        ] {
+            let bytes = modern_installer(bad, "Main");
+            assert!(
+                InstallerContents::read_side(&bytes, LoaderKind::NeoForge, InstallSide::Server)
+                    .is_err(),
+                "{bad:?}"
+            );
+        }
+        let many = "Main ".repeat(MAX_ARGUMENTS + 1);
+        let bytes = modern_installer(&many, "Main");
+        assert!(
+            InstallerContents::read_side(&bytes, LoaderKind::NeoForge, InstallSide::Server)
+                .is_err()
+        );
+        let huge = "M".repeat(MAX_ARGUMENTS_BYTES as usize + 1);
+        let bytes = modern_installer(&huge, "Main");
+        assert!(
+            InstallerContents::read_side(&bytes, LoaderKind::NeoForge, InstallSide::Server)
+                .is_err()
+        );
+        // A plain library path and an absolute path outside `libraries/` pass
+        // unchanged: only files under `libraries/` are placed.
+        let bytes = modern_installer("-Dx=y Main", "Main");
+        assert!(
+            InstallerContents::read_side(&bytes, LoaderKind::NeoForge, InstallSide::Server).is_ok()
+        );
+        // An old installer has no server side the launcher runs.
+        let old = legacy_installer("forge-1.8.9-11.15.1.2318-1.8.9-universal.jar");
+        assert!(
+            InstallerContents::read_side(&old, LoaderKind::Forge, InstallSide::Server).is_err()
+        );
     }
 
     /// Serves one meta service answer; anything else is offline.

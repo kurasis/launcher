@@ -728,6 +728,7 @@ fn a_loader_profile_merges_onto_the_game() {
         game_arguments: vec![],
         minecraft_arguments: None,
         installer: None,
+        server_arguments: None,
     };
     let sha = Sha1::parse(&"d".repeat(40)).unwrap();
     let merged =

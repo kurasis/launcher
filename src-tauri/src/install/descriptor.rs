@@ -100,6 +100,8 @@ pub struct Descriptor {
     pub server: Option<Download>,
     /// Mojang's client mappings (1.14.4 and later); Forge's installer needs them.
     pub client_mappings: Option<Download>,
+    /// Mojang's server mappings; a world's NeoForge server installer needs them.
+    pub server_mappings: Option<Download>,
     pub asset_index: AssetIndexRef,
     pub logging: Option<Logging>,
     pub libraries: Vec<Library>,
@@ -236,6 +238,10 @@ pub fn parse(bytes: &[u8], expected_id: &str) -> LauncherResult<Descriptor> {
         None => None,
         Some(mappings) => Some(download(mappings, "downloads.client_mappings")?),
     };
+    let server_mappings = match downloads.get("server_mappings") {
+        None => None,
+        Some(mappings) => Some(download(mappings, "downloads.server_mappings")?),
+    };
 
     let asset_value = value
         .get("assetIndex")
@@ -333,6 +339,7 @@ pub fn parse(bytes: &[u8], expected_id: &str) -> LauncherResult<Descriptor> {
         client,
         server,
         client_mappings,
+        server_mappings,
         asset_index,
         logging,
         libraries,
