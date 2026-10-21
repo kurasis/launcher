@@ -127,7 +127,11 @@
         "installedMark": "установлена",
         "erid": "Токен рекламы: {erid}",
         "installFailed": "Не удалось установить {version}. Откройте «Установки», чтобы узнать почему.",
-        "report": "Пожаловаться"
+        "report": "Пожаловаться",
+        "downShort": "Офлайн",
+        "versionItem": "Версия: {version}…",
+        "menu": "Действия с рекламой: {name}",
+        "players": "{online, number}"
       },
       "itemMenu": "Ещё: {title}",
       "copyLink": "Скопировать ссылку",

@@ -1,4 +1,6 @@
 import { useEffect, useId, useRef, useState } from 'react';
+import { type MenuItem, MoreMenu } from '../../app/MoreMenu';
+import { StatusBadge } from '../../components/StatusBadge';
 import type { AppSnapshot, ServerAd } from '../../lib/contracts';
 import { describeIpcError, ipc } from '../../lib/ipc';
 import { strings } from '../../lib/strings';
@@ -42,14 +44,16 @@ function vanillaOf(snapshot: AppSnapshot, version: string) {
 type Stage = 'idle' | 'creating' | 'installing' | 'starting';
 
 /**
- * An ad for a Minecraft server (D-069): its icon, name, players online, text
- * and address. Play installs the chosen version when no vanilla installation
- * of it is ready, then starts the game straight into the server; the button
- * beside it picks another version the server lets in.
+ * An ad for a Minecraft server (D-069), shaped like the feed's other tiles:
+ * the server's icon as the picture, with the label, players online and Play
+ * on it; the name, the text and the address under it. Play installs the
+ * chosen version when no vanilla installation of it is ready, then starts the
+ * game straight into the server. The ⋯ menu picks another version the server
+ * lets in, copies the address and reports the ad.
  */
 export function ServerAdTile({ ad, snapshot }: { ad: ServerAd; snapshot: AppSnapshot }) {
   const [version, setVersion] = useState(() => rememberedVersion(ad));
-  const [menu, setMenu] = useState(false);
+  const [versions, setVersions] = useState(false);
   const [stage, setStage] = useState<Stage>('idle');
   /** The installation being installed, to join once it is ready. */
   const [waiting, setWaiting] = useState<string | null>(null);
@@ -60,9 +64,9 @@ export function ServerAdTile({ ad, snapshot }: { ad: ServerAd; snapshot: AppSnap
   const seen = useRef(false);
   /** The install's end is being handled: once. */
   const finishing = useRef(false);
-  const menuId = useId();
-  const menuRef = useRef<HTMLDivElement>(null);
-  const versionButton = useRef<HTMLButtonElement>(null);
+  const versionsId = useId();
+  const versionsRef = useRef<HTMLDivElement>(null);
+  const playButton = useRef<HTMLButtonElement>(null);
 
   const instance = vanillaOf(snapshot, version);
   const ready = instance?.health === 'ready';
@@ -115,7 +119,7 @@ export function ServerAdTile({ ad, snapshot }: { ad: ServerAd; snapshot: AppSnap
 
   const play = async () => {
     setError(null);
-    setMenu(false);
+    setVersions(false);
     if (ready) {
       await join(instance.id);
       return;
@@ -142,35 +146,34 @@ export function ServerAdTile({ ad, snapshot }: { ad: ServerAd; snapshot: AppSnap
     }
   };
 
-  // The menu closes on Escape and on a click outside it.
+  // The versions open on the chosen one; Escape and a click outside close them.
   useEffect(() => {
-    if (!menu) return;
-    const close = (event: MouseEvent | KeyboardEvent) => {
+    if (!versions) return;
+    versionsRef.current?.querySelector<HTMLButtonElement>('[aria-checked="true"]')?.focus();
+    const close = (event: PointerEvent | KeyboardEvent) => {
       if (event instanceof KeyboardEvent) {
         if (event.key !== 'Escape') return;
-        setMenu(false);
-        versionButton.current?.focus();
+        setVersions(false);
+        playButton.current?.focus();
         return;
       }
-      const target = event.target as Node;
-      if (!menuRef.current?.contains(target) && !versionButton.current?.contains(target)) {
-        setMenu(false);
-      }
+      if (event.target instanceof Node && versionsRef.current?.contains(event.target)) return;
+      setVersions(false);
     };
-    document.addEventListener('mousedown', close);
+    document.addEventListener('pointerdown', close, true);
     document.addEventListener('keydown', close);
     return () => {
-      document.removeEventListener('mousedown', close);
+      document.removeEventListener('pointerdown', close, true);
       document.removeEventListener('keydown', close);
     };
-  }, [menu]);
+  }, [versions]);
 
   const pick = (choice: string) => {
     setVersion(choice);
     rememberVersion(ad, choice);
-    setMenu(false);
+    setVersions(false);
     setError(null);
-    versionButton.current?.focus();
+    playButton.current?.focus();
   };
 
   const copy = () => {
@@ -185,7 +188,19 @@ export function ServerAdTile({ ad, snapshot }: { ad: ServerAd; snapshot: AppSnap
       .catch(() => undefined);
   };
 
+  const report = () => {
+    const id = Number(ad.id);
+    openReview({
+      kind: 'bug',
+      category: 'feed',
+      subcategory: 'server_ads',
+      ad: Number.isSafeInteger(id) && id > 0 ? id : null,
+    });
+  };
+
   const players =
+    ad.up === false ? s.downShort : ad.online === null ? null : s.players({ online: ad.online });
+  const playersInFull =
     ad.up === false
       ? s.down
       : ad.online === null
@@ -201,80 +216,48 @@ export function ServerAdTile({ ad, snapshot }: { ad: ServerAd; snapshot: AppSnap
         : inGame
           ? s.inGame
           : s.play;
-  const line = ready ? s.installed({ version }) : s.toDownload({ version });
+  const hint = ready ? s.installed({ version }) : s.toDownload({ version });
   const working = stage !== 'idle' || waiting !== null;
   const oldest = ad.versions[ad.versions.length - 1] ?? ad.version;
   const newest = ad.versions[0] ?? ad.version;
 
+  const entries: MenuItem[] = [];
+  if (ad.versions.length > 1 && !working) {
+    entries.push({
+      kind: 'item',
+      key: 'version',
+      label: s.versionItem({ version }),
+      onSelect: () => {
+        setVersions(true);
+      },
+    });
+  }
+  entries.push(
+    { kind: 'item', key: 'copy', label: s.copy({ address: ad.address }), onSelect: copy },
+    { kind: 'separator', key: 'end' },
+    { kind: 'item', key: 'report', label: s.report, onSelect: report },
+  );
+
   return (
-    <article className={styles.adTile} aria-label={`${s.label}: ${ad.name}`}>
-      <span className={styles.adLabel}>{s.label}</span>
-      <div className={styles.adHead}>
-        {ad.icon !== null ? (
-          <img className={styles.adIcon} src={ad.icon} alt="" />
-        ) : (
-          <span className={styles.adIcon} aria-hidden="true" />
-        )}
-        <div className={styles.adName}>
-          <h3 className={styles.tileTitle} dir="auto">
-            {ad.name}
-          </h3>
-          {players !== null && (
-            <p className={styles.muted}>
-              <span
-                className={ad.up === false ? styles.adDotOff : styles.adDot}
-                aria-hidden="true"
-              />{' '}
-              {players}
-            </p>
-          )}
-        </div>
-      </div>
-      <p className={styles.adText} dir="auto">
-        {ad.text}
-      </p>
-      <button
-        type="button"
-        className={styles.adAddress}
-        aria-label={s.copy({ address: ad.address })}
-        onClick={copy}
-      >
-        <span dir="ltr">{ad.address}</span>
-        <span className={styles.muted}>{copied ? s.copied : ''}</span>
-      </button>
-      <div className={styles.adActions}>
-        <button
-          type="button"
-          className={styles.adPlay}
-          disabled={working || running}
-          onClick={() => void play()}
+    <article className={styles.tile} aria-label={`${s.label}: ${ad.name}`}>
+      <span className={styles.tileMenu}>
+        <MoreMenu
+          label="⋯"
+          ariaLabel={s.menu({ name: ad.name })}
+          buttonClassName={styles.tileMenuButton}
+          caret={false}
+          current={false}
+          entries={entries}
+        />
+      </span>
+      {versions && (
+        <div
+          ref={versionsRef}
+          id={versionsId}
+          className={styles.adMenu}
+          role="menu"
+          aria-label={s.chooseVersion({ name: ad.name })}
         >
-          <span>{label}</span>
-          <small>{line}</small>
-        </button>
-        {ad.versions.length > 1 && (
-          <button
-            ref={versionButton}
-            type="button"
-            className={styles.adVersion}
-            aria-haspopup="menu"
-            aria-expanded={menu}
-            aria-controls={menu ? menuId : undefined}
-            aria-label={s.chooseVersion({ name: ad.name })}
-            title={s.chooseVersion({ name: ad.name })}
-            disabled={working}
-            onClick={() => {
-              setMenu((open) => !open);
-            }}
-          >
-            <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
-              <path d="M7 4v16M7 20l-3-3M7 20l3-3M17 20V4M17 4l-3 3M17 4l3 3" />
-            </svg>
-          </button>
-        )}
-      </div>
-      {menu && (
-        <div ref={menuRef} id={menuId} className={styles.adMenu} role="menu">
           <p className={styles.muted}>{s.range({ from: oldest, to: newest })}</p>
           {ad.versions.map((choice) => {
             const mark =
@@ -301,30 +284,77 @@ export function ServerAdTile({ ad, snapshot }: { ad: ServerAd; snapshot: AppSnap
           })}
         </div>
       )}
-      {running && !inGame && stage === 'idle' && <p role="status">{t.gameRunning}</p>}
-      <div className={styles.adFoot}>
-        {ad.erid !== null && <p className={styles.muted}>{s.erid({ erid: ad.erid })}</p>}
-        <button
-          type="button"
-          className={styles.adReport}
-          onClick={() => {
-            const id = Number(ad.id);
-            openReview({
-              kind: 'bug',
-              category: 'feed',
-              subcategory: 'server_ads',
-              ad: Number.isSafeInteger(id) && id > 0 ? id : null,
-            });
-          }}
-        >
-          {s.report}
-        </button>
+      <div className={[styles.preview, styles.adPreview].join(' ')}>
+        {ad.icon !== null ? (
+          <>
+            <img className={styles.adBackdrop} src={ad.icon} alt="" aria-hidden="true" />
+            <span className={styles.adShade} aria-hidden="true" />
+            <img className={styles.adIcon} src={ad.icon} alt="" />
+          </>
+        ) : (
+          <span className={styles.cover} dir="auto">
+            {ad.name}
+          </span>
+        )}
+        <span className={styles.overlayBadge}>
+          <StatusBadge tone="neutral" label={s.label} />
+        </span>
+        <div className={styles.adBar}>
+          {players !== null && (
+            <span className={styles.adOnline} title={playersInFull ?? undefined}>
+              <span
+                className={ad.up === false ? styles.adDotOff : styles.adDot}
+                aria-hidden="true"
+              />
+              <span aria-hidden="true">{players}</span>
+              <span className={styles.visuallyHidden}>{playersInFull}</span>
+            </span>
+          )}
+          <button
+            ref={playButton}
+            type="button"
+            className={styles.adPlay}
+            aria-label={`${label}, ${hint}`}
+            title={hint}
+            disabled={working || running}
+            aria-controls={versions ? versionsId : undefined}
+            onClick={() => void play()}
+          >
+            <svg viewBox="0 0 10 10" aria-hidden="true" focusable="false">
+              <path d="M1 0 9 5 1 10z" />
+            </svg>
+            {label}
+          </button>
+        </div>
       </div>
-      {error !== null && (
-        <p className={styles.adError} role="alert">
-          {error}
+      <div className={styles.tileText}>
+        <h3 className={styles.tileTitle} dir="auto">
+          {ad.name}
+        </h3>
+        <p className={styles.tileLine} dir="auto">
+          {ad.text}
         </p>
-      )}
+        <p className={styles.tileLine} role={copied ? 'status' : undefined}>
+          {copied ? (
+            s.copied
+          ) : (
+            <>
+              <span dir="ltr">{ad.address}</span> · {version}
+            </>
+          )}
+        </p>
+        {ad.erid !== null && <p className={styles.tileLine}>{s.erid({ erid: ad.erid })}</p>}
+        {running && !inGame && stage === 'idle' && (
+          <p className={styles.tileLine} role="status">
+            {t.gameRunning}
+          </p>
+        )}
+        {error !== null && (
+          <p className={styles.adError} role="alert">
+            {error}
+          </p>
+        )}
+      </div>
     </article>
   );
 }

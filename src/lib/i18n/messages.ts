@@ -131,6 +131,10 @@ export type Messages = {
       readonly erid: (values: { erid: string | number }) => string;
       readonly installFailed: (values: { version: string | number }) => string;
       readonly report: string;
+      readonly downShort: string;
+      readonly versionItem: (values: { version: string | number }) => string;
+      readonly menu: (values: { name: string | number }) => string;
+      readonly players: (values: { online: number }) => string;
     };
     readonly itemMenu: (values: { title: string | number }) => string;
     readonly copyLink: string;

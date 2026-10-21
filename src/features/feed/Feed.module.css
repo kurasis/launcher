@@ -512,179 +512,144 @@
   margin-block-start: auto;
 }
 
-/* A server ad (D-069): a tile of the grid with its own border, the label in
-   its corner and Play with the version button under the text. */
-.adTile {
-  position: relative;
+/* A server ad (D-069): the same tile as the others. Its picture is the
+   server's icon, large and sharp on a blur of itself, with the label, players
+   online and Play on it; its ⋯ menu holds the version, the address and Report. */
+.adPreview {
   display: grid;
-  align-content: start;
-  gap: var(--space-2);
-  padding: var(--space-3);
-  border: 1px solid var(--color-accent);
-  border-radius: var(--radius-md);
-  background: var(--color-surface);
-  box-shadow: 0 0 0 3px var(--color-accent-soft);
-  min-inline-size: 0;
+  place-items: center;
 }
 
-.adLabel {
+.preview .adBackdrop {
   position: absolute;
-  inset-block-start: var(--space-2);
-  inset-inline-end: var(--space-2);
-  padding: 0 var(--space-2);
-  border: 1px solid var(--color-border);
-  border-radius: var(--radius-pill);
-  background: var(--color-surface-solid);
-  color: var(--color-text-muted);
-  font-size: var(--font-size-xs);
-  font-weight: 700;
-  letter-spacing: var(--letter-spacing-caps);
-  text-transform: uppercase;
+  inset: -1.5rem;
+  inline-size: calc(100% + 3rem);
+  block-size: calc(100% + 3rem);
+  filter: blur(22px) saturate(1.3);
 }
 
-.adHead {
-  display: flex;
-  align-items: center;
-  gap: var(--space-2);
-  padding-inline-end: var(--space-8);
-  min-inline-size: 0;
+.adShade {
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(180deg, rgb(15 23 42 / 10%), rgb(15 23 42 / 35%));
 }
 
-.adIcon {
-  flex: none;
-  inline-size: 3rem;
-  block-size: 3rem;
-  border-radius: var(--radius-sm);
-  background: var(--color-accent-soft);
+.preview .adIcon {
+  position: relative;
+  inline-size: auto;
+  block-size: 44%;
+  aspect-ratio: 1;
+  border-radius: var(--radius-md);
+  box-shadow: 0 8px 24px rgb(0 0 0 / 35%);
   image-rendering: pixelated;
 }
 
-.adName {
-  display: grid;
-  min-inline-size: 0;
+.tile:hover .preview .adIcon {
+  transform: none;
 }
 
-.adName .tileTitle {
+/* Players online and Play, along the picture's bottom edge. */
+.adBar {
+  position: absolute;
+  inset-inline: var(--space-2);
+  inset-block-end: var(--space-2);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-1);
+}
+
+.adOnline {
+  display: flex;
+  align-items: center;
+  gap: var(--space-1);
+  min-inline-size: 0;
+  padding: 0.125rem var(--space-2);
+  border-radius: var(--radius-pill);
+  background: rgb(15 23 42 / 62%);
+  color: #ffffff;
+  font-size: var(--font-size-xs);
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.adOnline [aria-hidden='true']:not(:first-child) {
   overflow: hidden;
   text-overflow: ellipsis;
-  white-space: nowrap;
 }
 
 .adDot,
 .adDotOff {
-  display: inline-block;
+  flex: none;
   inline-size: 0.45rem;
   block-size: 0.45rem;
   border-radius: 50%;
-  background: var(--color-accent);
+  background: #4ade80;
 }
 
 .adDotOff {
-  background: var(--color-text-muted);
-}
-
-.adText {
-  margin: 0;
-  font-size: var(--font-size-sm);
-  white-space: pre-line;
-  overflow-wrap: anywhere;
-}
-
-.adAddress {
-  display: flex;
-  justify-content: space-between;
-  gap: var(--space-2);
-  padding: var(--space-1) var(--space-2);
-  border: 1px dashed var(--color-border-strong);
-  border-radius: var(--radius-sm);
-  background: transparent;
-  color: inherit;
-  font-family: var(--font-mono);
-  font-size: var(--font-size-xs);
-  text-align: start;
-  cursor: pointer;
-  overflow-wrap: anywhere;
-}
-
-.adAddress:hover {
-  border-color: var(--color-accent);
-}
-
-.adActions {
-  display: flex;
-  gap: var(--space-2);
+  background: #94a3b8;
 }
 
 .adPlay {
-  flex: 1;
-  display: grid;
-  padding: var(--space-2) var(--space-3);
+  flex: none;
+  margin-inline-start: auto;
+  display: flex;
+  align-items: center;
+  gap: var(--space-1);
+  padding: 0.3125rem var(--space-3) 0.3125rem 0.625rem;
   border: 0;
-  border-radius: var(--radius-sm);
+  border-radius: var(--radius-pill);
   background: var(--color-accent);
   color: var(--color-accent-contrast);
   font: inherit;
+  font-size: var(--font-size-sm);
   font-weight: 700;
-  text-align: start;
-  line-height: 1.25;
+  line-height: 1.2;
+  white-space: nowrap;
+  box-shadow: 0 4px 14px var(--color-glow);
   cursor: pointer;
 }
 
-.adPlay small {
-  font-weight: 500;
-  font-size: var(--font-size-xs);
-  opacity: 0.85;
+.adPlay svg {
+  flex: none;
+  inline-size: 0.7rem;
+  block-size: 0.7rem;
+  fill: currentcolor;
 }
 
-.adPlay:disabled,
-.adVersion:disabled {
-  opacity: 0.6;
+.adPlay:disabled {
+  opacity: 0.75;
   cursor: default;
 }
 
-.adVersion {
-  flex: none;
-  display: grid;
-  place-items: center;
-  inline-size: 2.5rem;
-  border: 1px solid var(--color-border);
-  border-radius: var(--radius-sm);
-  background: var(--color-surface-solid);
-  color: inherit;
-  cursor: pointer;
-}
-
-.adVersion svg {
-  inline-size: 1.1rem;
-  block-size: 1.1rem;
-  fill: none;
-  stroke: currentcolor;
-  stroke-width: 2;
-  stroke-linecap: round;
-  stroke-linejoin: round;
-}
-
 .adPlay:focus-visible,
-.adVersion:focus-visible,
-.adAddress:focus-visible,
 .adMenuItem:focus-visible {
   outline: 2px solid var(--color-focus);
   outline-offset: 2px;
 }
 
+/* The versions, over the picture under the ⋯ button. */
 .adMenu {
+  position: absolute;
+  inset-block-start: 2.75rem;
+  inset-inline-end: var(--space-2);
+  z-index: 3;
   display: grid;
   gap: 2px;
-  max-block-size: 14rem;
+  inline-size: min(14rem, calc(100% - 2 * var(--space-2)));
+  max-block-size: 16rem;
   overflow-y: auto;
   padding: var(--space-2);
-  border: 1px solid var(--color-border);
-  border-radius: var(--radius-sm);
+  border: 1px solid var(--color-border-strong);
+  border-radius: var(--radius-md);
   background: var(--color-surface-solid);
+  box-shadow: var(--shadow-raised);
 }
 
 .adMenu p {
   margin: 0 0 var(--space-1);
+  font-size: var(--font-size-xs);
 }
 
 .adMenuItem {
@@ -702,15 +667,25 @@
   cursor: pointer;
 }
 
+.adMenuItem span:last-child {
+  align-self: center;
+  font-size: var(--font-size-xs);
+  white-space: nowrap;
+}
+
 .adMenuItem:hover,
 .adMenuItem[aria-checked='true'] {
   background: var(--color-accent-soft);
 }
 
+.adMenuItem[aria-checked='true'] {
+  font-weight: 700;
+}
+
 .adError {
   margin: 0;
   color: var(--color-danger-text);
-  font-size: var(--font-size-sm);
+  font-size: var(--font-size-xs);
 }
 
 /* A tile's ⋯ menu, in the picture's corner, above the title's button. */
@@ -846,33 +821,4 @@
   flex-wrap: wrap;
   align-items: center;
   gap: var(--space-3);
-}
-
-.adFoot {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: baseline;
-  justify-content: space-between;
-  gap: var(--space-2);
-}
-
-.adReport {
-  margin-inline-start: auto;
-  padding: 0;
-  border: 0;
-  background: none;
-  color: var(--color-text-muted);
-  font: inherit;
-  font-size: var(--font-size-sm);
-  text-decoration: underline;
-  cursor: pointer;
-}
-
-.adReport:hover {
-  color: var(--color-text);
-}
-
-.adReport:focus-visible {
-  outline: 2px solid var(--color-focus);
-  outline-offset: 2px;
 }
