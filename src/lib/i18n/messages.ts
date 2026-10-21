@@ -109,6 +109,26 @@ export type Messages = {
     readonly announcementsTitle: string;
     readonly tipTitle: string;
     readonly openLink: string;
+    readonly serverAd: {
+      readonly label: string;
+      readonly online: (values: { online: number; max: number }) => string;
+      readonly onlineOnly: (values: { online: number }) => string;
+      readonly down: string;
+      readonly copy: (values: { address: string | number }) => string;
+      readonly copied: string;
+      readonly play: string;
+      readonly installed: (values: { version: string | number }) => string;
+      readonly toDownload: (values: { version: string | number }) => string;
+      readonly installing: (values: { version: string | number }) => string;
+      readonly starting: string;
+      readonly inGame: string;
+      readonly chooseVersion: (values: { name: string | number }) => string;
+      readonly range: (values: { from: string | number; to: string | number }) => string;
+      readonly serverVersion: string;
+      readonly installedMark: string;
+      readonly erid: (values: { erid: string | number }) => string;
+      readonly installFailed: (values: { version: string | number }) => string;
+    };
   };
   readonly bootstrap: {
     readonly loading: string;

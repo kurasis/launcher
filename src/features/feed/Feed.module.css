@@ -511,3 +511,204 @@
   gap: var(--space-2);
   margin-block-start: auto;
 }
+
+/* A server ad (D-069): a tile of the grid with its own border, the label in
+   its corner and Play with the version button under the text. */
+.adTile {
+  position: relative;
+  display: grid;
+  align-content: start;
+  gap: var(--space-2);
+  padding: var(--space-3);
+  border: 1px solid var(--color-accent);
+  border-radius: var(--radius-md);
+  background: var(--color-surface);
+  box-shadow: 0 0 0 3px var(--color-accent-soft);
+  min-inline-size: 0;
+}
+
+.adLabel {
+  position: absolute;
+  inset-block-start: var(--space-2);
+  inset-inline-end: var(--space-2);
+  padding: 0 var(--space-2);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-pill);
+  background: var(--color-surface-solid);
+  color: var(--color-text-muted);
+  font-size: var(--font-size-xs);
+  font-weight: 700;
+  letter-spacing: var(--letter-spacing-caps);
+  text-transform: uppercase;
+}
+
+.adHead {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding-inline-end: var(--space-8);
+  min-inline-size: 0;
+}
+
+.adIcon {
+  flex: none;
+  inline-size: 3rem;
+  block-size: 3rem;
+  border-radius: var(--radius-sm);
+  background: var(--color-accent-soft);
+  image-rendering: pixelated;
+}
+
+.adName {
+  display: grid;
+  min-inline-size: 0;
+}
+
+.adName .tileTitle {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.adDot,
+.adDotOff {
+  display: inline-block;
+  inline-size: 0.45rem;
+  block-size: 0.45rem;
+  border-radius: 50%;
+  background: var(--color-accent);
+}
+
+.adDotOff {
+  background: var(--color-text-muted);
+}
+
+.adText {
+  margin: 0;
+  font-size: var(--font-size-sm);
+  white-space: pre-line;
+  overflow-wrap: anywhere;
+}
+
+.adAddress {
+  display: flex;
+  justify-content: space-between;
+  gap: var(--space-2);
+  padding: var(--space-1) var(--space-2);
+  border: 1px dashed var(--color-border-strong);
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: inherit;
+  font-family: var(--font-mono);
+  font-size: var(--font-size-xs);
+  text-align: start;
+  cursor: pointer;
+  overflow-wrap: anywhere;
+}
+
+.adAddress:hover {
+  border-color: var(--color-accent);
+}
+
+.adActions {
+  display: flex;
+  gap: var(--space-2);
+}
+
+.adPlay {
+  flex: 1;
+  display: grid;
+  padding: var(--space-2) var(--space-3);
+  border: 0;
+  border-radius: var(--radius-sm);
+  background: var(--color-accent);
+  color: var(--color-accent-contrast);
+  font: inherit;
+  font-weight: 700;
+  text-align: start;
+  line-height: 1.25;
+  cursor: pointer;
+}
+
+.adPlay small {
+  font-weight: 500;
+  font-size: var(--font-size-xs);
+  opacity: 0.85;
+}
+
+.adPlay:disabled,
+.adVersion:disabled {
+  opacity: 0.6;
+  cursor: default;
+}
+
+.adVersion {
+  flex: none;
+  display: grid;
+  place-items: center;
+  inline-size: 2.5rem;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+  background: var(--color-surface-solid);
+  color: inherit;
+  cursor: pointer;
+}
+
+.adVersion svg {
+  inline-size: 1.1rem;
+  block-size: 1.1rem;
+  fill: none;
+  stroke: currentcolor;
+  stroke-width: 2;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.adPlay:focus-visible,
+.adVersion:focus-visible,
+.adAddress:focus-visible,
+.adMenuItem:focus-visible {
+  outline: 2px solid var(--color-focus);
+  outline-offset: 2px;
+}
+
+.adMenu {
+  display: grid;
+  gap: 2px;
+  max-block-size: 14rem;
+  overflow-y: auto;
+  padding: var(--space-2);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+  background: var(--color-surface-solid);
+}
+
+.adMenu p {
+  margin: 0 0 var(--space-1);
+}
+
+.adMenuItem {
+  display: flex;
+  justify-content: space-between;
+  gap: var(--space-2);
+  padding: var(--space-1) var(--space-2);
+  border: 0;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  font-size: var(--font-size-sm);
+  text-align: start;
+  cursor: pointer;
+}
+
+.adMenuItem:hover,
+.adMenuItem[aria-checked='true'] {
+  background: var(--color-accent-soft);
+}
+
+.adError {
+  margin: 0;
+  color: var(--color-danger-text);
+  font-size: var(--font-size-sm);
+}

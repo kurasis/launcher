@@ -40,6 +40,9 @@ pub enum SourcePolicy {
     /// The start page feed (D-067): our service only, nothing of Mojang,
     /// YouTube or Twitch.
     Feed,
+    /// Ads for Minecraft servers (D-069): our service only; the advertised
+    /// servers are asked nothing until the player presses Play.
+    ServerAds,
     /// The Launcher Skins jars on this repository's GitHub releases (D-065),
     /// with the hosts GitHub redirects release downloads to.
     SkinsMod,
@@ -97,11 +100,13 @@ const ALL_SOURCE_HOSTS: &[&str] = &[
     crate::mods::FILES_HOST,
     crate::mods::CDN_HOST,
     "feed.lapi.sh",
+    "servers.lapi.sh",
 ];
 
 const CRASH_REPORT_HOSTS: &[&str] = &["crash.lapi.sh"];
 const MODS_CATALOG_HOSTS: &[&str] = &[crate::mods::FILES_HOST, crate::mods::CDN_HOST];
 const FEED_HOSTS: &[&str] = &["feed.lapi.sh"];
+const SERVER_ADS_HOSTS: &[&str] = &["servers.lapi.sh"];
 const SKINS_MOD_HOSTS: &[&str] = &[
     "github.com",
     "objects.githubusercontent.com",
@@ -120,13 +125,17 @@ impl SourcePolicy {
             Self::CrashReports => CRASH_REPORT_HOSTS,
             Self::ModsCatalog => MODS_CATALOG_HOSTS,
             Self::Feed => FEED_HOSTS,
+            Self::ServerAds => SERVER_ADS_HOSTS,
             Self::SkinsMod => SKINS_MOD_HOSTS,
         }
     }
 
     /// Whether the download mirror (D-062) copies this source's files.
     pub fn mirrored(self) -> bool {
-        !matches!(self, Self::CrashReports | Self::ModsCatalog | Self::Feed)
+        !matches!(
+            self,
+            Self::CrashReports | Self::ModsCatalog | Self::Feed | Self::ServerAds
+        )
     }
 
     /// The artifact source whose allowlist names this URL's host: Mojang's
@@ -620,6 +629,7 @@ mod tests {
             SourcePolicy::CrashReports,
             SourcePolicy::ModsCatalog,
             SourcePolicy::Feed,
+            SourcePolicy::ServerAds,
             SourcePolicy::SkinsMod,
         ] {
             for host in policy.hosts() {

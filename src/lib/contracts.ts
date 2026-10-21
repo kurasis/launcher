@@ -1764,6 +1764,34 @@ export interface FeedView {
   problem: FeedProblem | null;
 }
 
+/** An ad for a Minecraft server in the feed (D-069), read through the core's rules. */
+export interface ServerAd {
+  id: string;
+  name: string;
+  /** What Play joins: `host`, `host:port` or `[IPv6]:port`. */
+  address: string;
+  text: string;
+  /** The version Play starts by default. */
+  version: string;
+  /** Every version the server lets in, newest first. */
+  versions: string[];
+  /** A PNG data URL. */
+  icon: string | null;
+  /** Whether the server answered its last ping; null before the first. */
+  up: boolean | null;
+  online: number | null;
+  max: number | null;
+  /** Unix seconds; hidden from then on. */
+  endsAt: number;
+  weight: number;
+  erid: string | null;
+}
+
+export interface ServerAdsView {
+  ads: ServerAd[];
+  stale: boolean;
+}
+
 /** A run of text in a note: bold, italic, code, or a link the launcher may open. */
 export interface NoteRun {
   text: string;

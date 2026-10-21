@@ -3135,6 +3135,21 @@ pub async fn feed_get<R: Runtime>(app: AppHandle<R>, refresh: bool) -> FeedResul
         .await
 }
 
+/// The server ads of `place` showing now (D-069), in the interface's
+/// language; `refresh` asks the service again.
+#[tauri::command]
+pub async fn feed_server_ads<R: Runtime>(
+    app: AppHandle<R>,
+    place: String,
+    refresh: bool,
+) -> FeedResult<crate::feed::ads::ServerAdsView> {
+    let (languages, _) = feed_languages(&app)?;
+    let root = app.state::<AppState>().data_root();
+    let ads = Arc::clone(&app.state::<Arc<crate::feed::ads::ServerAds>>());
+    ads.get(root.as_ref(), &place, languages.interface, refresh)
+        .await
+}
+
 /// A page of the endless list (D-067): `filter` one part or all of them, or
 /// `shorts_only` the Shorts alone; `before` the cursor the page before ended
 /// with.
