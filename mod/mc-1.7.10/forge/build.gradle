@@ -1,0 +1,49 @@
+plugins {
+    id 'java'
+    id 'com.gtnewhorizons.retrofuturagradle' version '2.0.6'
+}
+
+// Forge 1.7.10 has no Mixin either: a coremod, as for 1.12.2, but 1.7.10 has no
+// NetworkPlayerInfo, so the hooks sit on AbstractClientPlayer, and FML still lives in
+// the cpw.mods.fml packages.
+base {
+    archivesName = "launcherskins-forge-${minecraft_version}"
+}
+
+java {
+    toolchain { languageVersion = JavaLanguageVersion.of(8) }
+}
+
+sourceSets.main {
+    java.srcDir "${rootDir}/core/src/main/java"
+}
+
+minecraft {
+    mcVersion = minecraft_version
+    mcpMappingChannel = 'stable'
+    mcpMappingVersion = '12'
+    username = project.findProperty('devNick')?.toString() ?: 'Developer'
+    if (project.hasProperty('skinsApi')) {
+        extraRunJvmArguments.add("-Dlauncherskins.api=${project.property('skinsApi')}".toString())
+    }
+}
+
+tasks.withType(JavaCompile).configureEach {
+    options.encoding = 'UTF-8'
+}
+
+jar {
+    manifest {
+        attributes(
+            'FMLCorePlugin': 'app.launcher.skins.coremod.LoadingPlugin',
+            'FMLCorePluginContainsFMLMod': 'true'
+        )
+    }
+}
+
+processResources {
+    inputs.property 'version', project.version
+    filesMatching('mcmod.info') {
+        expand version: project.version
+    }
+}
