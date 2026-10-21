@@ -345,7 +345,8 @@ impl Resolver<'_> {
 
     /// Resolves and stores the dedicated server's manifest of a loader version
     /// (W12): for Fabric and Quilt the meta service's server profile, whose
-    /// main class starts Mojang's server JAR named by `fabric.gameJarPath`.
+    /// main class starts Mojang's server JAR named by `fabric.gameJarPath`
+    /// (Quilt: `loader.gameJarPath`).
     pub async fn resolve_server(
         &self,
         choice: &LoaderChoice,
@@ -362,7 +363,7 @@ impl Resolver<'_> {
             }
             LoaderKind::Forge | LoaderKind::NeoForge => {
                 return Err(LauncherError::invalid_input(
-                    "Worlds with this mod loader come later; Fabric works now.",
+                    "Worlds with this mod loader come later; Fabric and Quilt work now.",
                 ));
             }
         };

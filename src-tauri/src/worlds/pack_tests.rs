@@ -532,13 +532,21 @@ fn only_tested_loaders_and_releases_are_offered() {
     for version in ["1.21.4", "26.4-snapshot-5", "24w14a", "1.12.2", ""] {
         assert!(check_supported(&fabric, version).is_err(), "{version}");
     }
+    let quilt = LoaderChoice {
+        kind: LoaderKind::Quilt,
+        version: "0.30.1".into(),
+    };
+    for version in ["1.20.1", "1.21.1", "26.3"] {
+        assert!(check_supported(&quilt, version).is_ok(), "{version}");
+    }
+    assert!(check_supported(&quilt, "1.21.4").is_err());
     let forge = LoaderChoice {
         kind: LoaderKind::Forge,
         version: "1.20.1-47.4.10".into(),
     };
     assert_eq!(
         check_supported(&forge, "1.20.1").unwrap_err().message,
-        "Worlds with this mod loader come later; Fabric works now."
+        "Worlds with this mod loader come later; Fabric and Quilt work now."
     );
     let junk = LoaderChoice {
         kind: LoaderKind::Fabric,

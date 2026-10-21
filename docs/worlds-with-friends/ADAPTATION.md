@@ -278,3 +278,7 @@ Other loaders follow in W12.
   again. The first start confirms it; a start that fails puts all of it back. Every backup
   records its generation, and a restore brings that generation back; generations no backup
   needs go with their files.
+- 2026-10-21 — W12 Quilt (owner, plan doc): Quilt works as Fabric does, through the server
+  profile of meta.quiltmc.org; Quilt Loader finds Mojang's server by `loader.gameJarPath`, its
+  name for Fabric's `fabric.gameJarPath`. Its live test runs Fabric mods from the catalog, which
+  Quilt loads, since the catalog has no Quilt-only mod. Offered for 1.20.1, 1.21.1 and 26.3.
