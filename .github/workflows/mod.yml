@@ -94,6 +94,24 @@ jobs:
                   removed += 1
           print(f"Damaged jars removed: {removed}")
           EOF
+      # Forge 1.14.4 and 1.15.2 run their JavaScript coremods in Java 8's Nashorn (ES5):
+      # a newer syntax such as a trailing comma in a call stops the coremod at the game's
+      # start. Compile each one there without running it.
+      - name: Check that the coremods are ES5
+        run: |
+          cat > "$RUNNER_TEMP/compile.js" <<'EOF'
+          for (var i = 0; i < arguments.length; i++) {
+            try {
+              var bytes = java.nio.file.Files.readAllBytes(java.nio.file.Paths.get(arguments[i]));
+              new Function(String(new java.lang.String(bytes, 'UTF-8')));
+            } catch (e) {
+              print(arguments[i] + ': ' + e);
+              exit(1);
+            }
+          }
+          EOF
+          find . -path '*/src/main/resources/*.js' -print0 |
+            xargs -0 -r "$JAVA_HOME_8_X64/bin/jjs" "$RUNNER_TEMP/compile.js" --
       - name: Build
         env:
           ONLY: ${{ matrix.part.only }}
