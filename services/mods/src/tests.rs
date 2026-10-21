@@ -2842,8 +2842,12 @@ async fn the_same_project_on_both_sources_becomes_one() {
         .collect();
     sources.sort_unstable();
     assert_eq!(sources, ["curseforge", "modrinth"]);
+    // It takes the plain slug CurseForge's had first; its own still leads.
+    assert_eq!(project["slug"], "jei", "{project}");
     let (_, by_slug) = t.get("/v1/projects/jei").await;
     assert_eq!(by_slug["id"], id.as_str());
+    let (_, found) = t.get("/v1/search?q=jei").await;
+    assert_eq!(found["hits"][0]["slug"], "jei", "{found}");
 
     // The shared file shows once, as Modrinth's; the others from both.
     let (_, versions) = t.get(&format!("/v1/projects/{id}/versions")).await;
@@ -2883,6 +2887,31 @@ async fn the_same_project_on_both_sources_becomes_one() {
         .query_row("SELECT count(*) FROM project_joined", [], |r| r.get(0))
         .unwrap();
     assert_eq!(joined, 1);
+
+    // A join made before that keeps the long slug until the next start.
+    let gone: String = db
+        .query_row("SELECT project_id FROM project_joined", [], |r| r.get(0))
+        .unwrap();
+    let long: String = db
+        .query_row("SELECT slug FROM project WHERE id = ?1", [&gone], |r| {
+            r.get(0)
+        })
+        .unwrap();
+    assert_ne!(long, "jei");
+    for (who, slug) in [(&gone, "aside"), (&id, long.as_str()), (&gone, "jei")] {
+        db.execute(
+            "UPDATE project SET slug = ?2 WHERE id = ?1",
+            rusqlite::params![who, slug],
+        )
+        .unwrap();
+    }
+    drop(db);
+    let data = t.app.store.path().parent().unwrap().parent().unwrap();
+    crate::store::Store::open(data).unwrap();
+    let (_, project) = t.get(&format!("/v1/projects/{id}")).await;
+    assert_eq!(project["slug"], "jei", "{project}");
+    let (_, by_long) = t.get(&format!("/v1/projects/{long}")).await;
+    assert_eq!(by_long["id"], id.as_str());
 }
 
 // ----- packwiz packs (stage 5) -----
