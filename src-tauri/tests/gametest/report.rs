@@ -132,8 +132,14 @@ fn num(value: &Value) -> String {
 }
 
 /// One Markdown section for the workflow summary.
-pub fn summary(scenario: &str, passed: bool, report: Option<&Value>, lines: &[String]) -> String {
-    let mut out = format!("### {} {scenario}\n\n", if passed { "✅" } else { "❌" });
+/// `status` is `passed`, `warned` (passed with a mod of the set replaced) or `failed`.
+pub fn summary(scenario: &str, status: &str, report: Option<&Value>, lines: &[String]) -> String {
+    let icon = match status {
+        "passed" => "✅",
+        "warned" => "⚠️",
+        _ => "❌",
+    };
+    let mut out = format!("### {icon} {scenario}\n\n");
     if let Some(r) = report {
         out.push_str("| Check | Result | Detail |\n|---|---|---|\n");
         for check in r["checks"].as_array().into_iter().flatten() {

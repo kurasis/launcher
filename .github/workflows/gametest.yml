@@ -255,11 +255,19 @@ jobs:
             & gt/bin/live_gametest.exe --ignored --nocapture --test-threads=1
             $code = $LASTEXITCODE
             Write-Host "::endgroup::"
+            # A pass with a mod of the set replaced is "warned" (docs/GAMETEST.md).
+            $status = if ($code -eq 0) { 'passed' } else { 'failed' }
+            $result = Join-Path $env:GAMETEST_OUT "$($s.version)-$($s.loader)-$($s.mods)-$($s.skin)/result.json"
+            if ($code -eq 0 -and (Test-Path $result)) {
+              if ((Get-Content $result -Raw | ConvertFrom-Json).status -eq 'warned') { $status = 'warned' }
+            }
             if ($code -ne 0) {
               $failed++
               Write-Host "::error::$($s.name) failed"
+            } elseif ($status -eq 'warned') {
+              Write-Host "::warning::$($s.name) passed with a mod of the set replaced"
             }
-            Add-Content gt/results.txt "$($s.name)`t$code"
+            Add-Content gt/results.txt "$($s.name)`t$status"
           }
           if ($failed) { exit 1 }
       - name: Summary
@@ -269,8 +277,10 @@ jobs:
           $utf8 = New-Object Text.UTF8Encoding $false
           $text = "| Scenario | Result |`n| --- | --- |`n"
           foreach ($line in (Get-Content gt/results.txt -ErrorAction SilentlyContinue)) {
-            $name, $code = $line -split "`t"
-            $text += "| $name | $(if ($code -eq '0') { 'passed' } else { 'failed' }) |`n"
+            $name, $status = $line -split "`t"
+            # Plain ASCII: Windows PowerShell reads this script in the ANSI code page.
+            $shown = @{ passed = 'passed'; warned = '**passed, a mod of the set replaced**' }[$status]
+            $text += "| $name | $(if ($shown) { $shown } else { '**failed**' }) |`n"
           }
           [IO.File]::AppendAllText($env:GITHUB_STEP_SUMMARY, "$text`n", $utf8)
           Get-ChildItem gt/out -Recurse -Filter summary.md -ErrorAction SilentlyContinue |

@@ -16,7 +16,12 @@ version × loader × mod set, played by a test bot for a set number of minutes.
    - this commit's build of Launcher Skins (renamed `gametest-launcherskins-…` so the
      launcher leaves it alone);
    - for the `medium` set, about twenty popular mods from Modrinth with the libraries they
-     need (`tests/gametest/mods.rs`), each file checked against Modrinth's SHA-512.
+     need (`tests/gametest/mods.rs`), each file checked against Modrinth's SHA-512. Each
+     mod gets its newest version that fits the loader build: one whose jar accepts it
+     (`versionRange` of `forge`/`neoforge` in `mods.toml`, `depends.fabricloader` in
+     `fabric.mod.json`) and that has not crashed on it on this machine. Older releases
+     come next, then newer pre-releases; with none, the mod (and any mod that needs it)
+     is left out.
 
    With no loader (`vanilla`) both are Java agents instead, passed with `-javaagent:`:
    the bot (`launchergametest-agent-<version>.jar`, `mod/gametest/agent/`) rewrites
@@ -54,6 +59,17 @@ The bot (`mod/gametest/core/Bot.java`) then:
 
 A scenario passes when every bot check passes, the game exits with code 0 within the time
 limit and leaves no crash report.
+
+A crash the launcher's diagnosis blames on a mod of the `medium` set is that mod's
+problem, not ours: the harness notes that version as crashing on this loader build
+(`gametest-cache/incompatible.json` in the data folder, kept between runs), and plays the
+scenario again with another version of the mod or without it, up to three plays. A
+scenario that then passes is **warned**, not failed: the job stays green, the results
+table says "passed, a mod of the set replaced" and the summary lists what was replaced;
+later runs take the other version at once and stay warned. The earlier plays' files are
+in `attempt-<n>/` of the scenario's folder. A crash blamed on the skins mod or the bot,
+or on nothing in the set, fails the scenario. To try a remembered version again, delete
+its entry (or the file).
 
 ## Results
 
