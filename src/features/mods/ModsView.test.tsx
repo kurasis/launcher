@@ -14,7 +14,7 @@ import type {
 } from '../../lib/contracts';
 import { instanceFixture, snapshotFixture } from '../../test/fixtures';
 import { PATIENCE_MS } from './AddToCatalog';
-import { cannotAdd } from './helpers';
+import { cannotAdd, installKind } from './helpers';
 import { ModsView, type ModsSection } from './ModsView';
 import { RichText } from './RichText';
 
@@ -306,6 +306,15 @@ describe('cannotAdd', () => {
     expect(
       cannotAdd('resourcepack', { ...version, games: ['1.8.9'], loaders: [] }, vanilla),
     ).toBeNull();
+  });
+
+  it('lets a mod’s data pack version into a world of any installation', () => {
+    const datapack = { ...version, loaders: ['datapack'] };
+    expect(installKind('mod', datapack)).toBe('datapack');
+    expect(installKind('mod', { ...version, loaders: ['datapack', 'fabric'] })).toBe('mod');
+    expect(installKind('mod', { ...version, loaders: [] })).toBe('mod');
+    expect(installKind('resourcepack', datapack)).toBe('resourcepack');
+    expect(cannotAdd(installKind('mod', datapack), datapack, vanilla)).toBeNull();
   });
 });
 

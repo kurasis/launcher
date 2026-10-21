@@ -48,6 +48,19 @@ export function loaderOf(kind: ModsKind, instance: InstanceSummary | null): stri
   return instance.loader.kind;
 }
 
+/**
+ * How a version goes into an installation: as its project's kind, except a
+ * mod's data pack version (Terralith and the like publish both), which goes
+ * into a world. The core decides the same.
+ */
+export function installKind(kind: ModsKind, version: ModsVersion): ModsKind {
+  return kind === 'mod' &&
+    version.loaders.length > 0 &&
+    version.loaders.every((l) => l === 'datapack')
+    ? 'datapack'
+    : kind;
+}
+
 /** Kinds the launcher can put into an installation now. */
 export function installable(kind: ModsKind): boolean {
   return (
