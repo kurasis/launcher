@@ -807,9 +807,9 @@ export type Messages = {
     readonly filesHint: string;
     readonly picture: string;
     readonly remove: string;
-    readonly addPicture: string;
+    readonly dropHere: string;
+    readonly chooseFiles: string;
     readonly fromGallery: string;
-    readonly addFile: string;
     readonly includeLogs: string;
     readonly findingLogs: string;
     readonly logsFound: string;

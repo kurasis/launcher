@@ -126,6 +126,9 @@ fn frontend_is_packaged_locally() {
     let windows = conf["app"]["windows"].as_array().expect("windows");
     assert_eq!(windows.len(), 1);
     assert_eq!(windows[0]["label"], "main");
+    // Files dropped on the window reach the page (the review form), not a
+    // native handler with their paths.
+    assert_eq!(windows[0]["dragDropEnabled"], false);
     assert!(
         windows[0].get("url").is_none(),
         "window must load packaged UI"

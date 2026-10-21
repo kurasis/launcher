@@ -254,8 +254,8 @@ function ReviewForm({ snapshot, prefill, onSent, onShowMine }: ReviewFormProps) 
   const [error, setError] = useState<string | null>(null);
   const [sending, setSending] = useState(false);
   const [delivery, setDelivery] = useState<Delivery | null>(null);
-  const pictureInput = useRef<HTMLInputElement>(null);
-  const textInput = useRef<HTMLInputElement>(null);
+  const fileInput = useRef<HTMLInputElement>(null);
+  const [dragOver, setDragOver] = useState(false);
 
   useEffect(() => {
     saveDraft(message.trim() === '' ? null : { kind, category, subcategory, message });
@@ -350,6 +350,16 @@ function ReviewForm({ snapshot, prefill, onSent, onShowMine }: ReviewFormProps) 
       .catch((reason: unknown) => {
         setError(describeIpcError(reason));
       });
+  };
+
+  /** Pictures and text files from the picker or dropped on the field. */
+  const addFiles = (files: readonly File[]) => {
+    const pictures = files.filter((f) => f.type.startsWith('image/'));
+    const others = files.filter((f) => !f.type.startsWith('image/'));
+    void (async () => {
+      if (pictures.length > 0) await addPictures(pictures);
+      if (others.length > 0) await addTexts(others);
+    })();
   };
 
   const onPaste = (event: ClipboardEvent<HTMLDivElement>) => {
@@ -537,7 +547,6 @@ function ReviewForm({ snapshot, prefill, onSent, onShowMine }: ReviewFormProps) 
 
       <div className={styles.field}>
         <span className={styles.label}>{t.files}</span>
-        <p className={styles.muted}>{t.filesHint}</p>
         {attachments.length > 0 && (
           <ul className={styles.attachments}>
             {attachments.map((a) => (
@@ -564,61 +573,77 @@ function ReviewForm({ snapshot, prefill, onSent, onShowMine }: ReviewFormProps) 
             ))}
           </ul>
         )}
-        <div className={forms.actions}>
-          <Button
-            disabled={sending || images.length >= MAX_IMAGES}
-            onClick={() => {
-              pictureInput.current?.click();
-            }}
-          >
-            {t.addPicture}
-          </Button>
-          <Button
-            disabled={sending || images.length >= MAX_IMAGES}
-            onClick={() => {
-              ipc
-                .listScreenshots()
-                .then(setGallery)
-                .catch((reason: unknown) => {
-                  setError(describeIpcError(reason));
-                });
-            }}
-          >
-            {t.fromGallery}
-          </Button>
-          <Button
-            disabled={sending || texts.length >= MAX_TEXTS}
-            onClick={() => {
-              textInput.current?.click();
-            }}
-          >
-            {t.addFile}
-          </Button>
+        <div
+          className={styles.drop}
+          data-over={dragOver}
+          data-disabled={sending}
+          onDragOver={(event) => {
+            if (sending || !event.dataTransfer.types.includes('Files')) return;
+            event.preventDefault();
+            event.dataTransfer.dropEffect = 'copy';
+            setDragOver(true);
+          }}
+          onDragLeave={(event) => {
+            if (!event.currentTarget.contains(event.relatedTarget as Node | null)) {
+              setDragOver(false);
+            }
+          }}
+          onDrop={(event) => {
+            event.preventDefault();
+            setDragOver(false);
+            if (!sending) addFiles(Array.from(event.dataTransfer.files));
+          }}
+        >
+          <svg className={styles.dropIcon} viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+            <path d="M12 16V4M12 4l-4 4M12 4l4 4M4 15v3a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-3" />
+          </svg>
+          <p className={styles.dropTitle}>{t.dropHere}</p>
+          <p className={styles.dropActions}>
+            <button
+              type="button"
+              className={styles.link}
+              disabled={sending}
+              onClick={() => {
+                fileInput.current?.click();
+              }}
+            >
+              {t.chooseFiles}
+            </button>
+            <span aria-hidden="true">·</span>
+            <button
+              type="button"
+              className={styles.link}
+              disabled={sending || images.length >= MAX_IMAGES}
+              onClick={() => {
+                ipc
+                  .listScreenshots()
+                  .then(setGallery)
+                  .catch((reason: unknown) => {
+                    setError(describeIpcError(reason));
+                  });
+              }}
+            >
+              <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+                <rect x="3" y="5" width="18" height="14" rx="2" />
+                <path d="M3 16l5-5 4 4 3-3 6 6" />
+                <circle cx="16" cy="9" r="1.5" />
+              </svg>
+              {t.fromGallery}
+            </button>
+          </p>
+          <p className={styles.muted}>{t.filesHint}</p>
         </div>
         <input
-          ref={pictureInput}
+          ref={fileInput}
           type="file"
-          accept="image/png,image/jpeg,image/webp"
+          accept={`image/*,${TEXT_ACCEPT}`}
           multiple
           hidden
-          aria-label={t.addPicture}
+          aria-label={t.chooseFiles}
           onChange={(event) => {
             const files = Array.from(event.target.files ?? []);
             event.target.value = '';
-            void addPictures(files);
-          }}
-        />
-        <input
-          ref={textInput}
-          type="file"
-          accept={TEXT_ACCEPT}
-          multiple
-          hidden
-          aria-label={t.addFile}
-          onChange={(event) => {
-            const files = Array.from(event.target.files ?? []);
-            event.target.value = '';
-            void addTexts(files);
+            addFiles(files);
           }}
         />
         {gallery !== null && (

@@ -2679,6 +2679,8 @@ archive from the Package workflow, upload it to
   filled in. A review the service cannot take now waits in `reviews/outbox` of the data
   folder (30 days) and is sent again in the background; `reviews/sent.json` keeps the
   numbers and keys. Pictures from a file or the clipboard are drawn again in the window,
-  screenshots from the gallery are scaled by the core; neither keeps metadata.
+  screenshots from the gallery are scaled by the core; neither keeps metadata. Files are dropped on a field in the form: the main window
+  turns the native drop handler off (`dragDropEnabled: false`), so the page gets the files'
+  contents and never their paths, and a file dropped elsewhere is ignored.
 - **Server setup (owner):** a DNS record for reviews.lapi.sh behind Cloudflare, then
   `deploy/bootstrap.sh` once, after the first deploy has uploaded the new `deploy/` files.
