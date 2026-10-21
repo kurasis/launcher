@@ -310,7 +310,7 @@ Other loaders follow in W12.
   and newest of each loader and one of each kind of installer), the nightly run and a manual run
   all of `tested`, and a release joins `tested` only after it passed. For each release the live
   test takes the first catalog mod with a release for it (Fabric API on Fabric and Quilt; JEI,
-  AppleSkin, Clumps, FerriteCore, spark or Bookshelf on Forge and NeoForge) and proves it loaded:
+  AppleSkin, Clumps, FerriteCore, Cloth Config, spark or Bookshelf on Forge and NeoForge) and proves it loaded:
   Fabric API's data in `datapack list`, the mod's id in the save's `level.dat` (FML and NeoForge
   record it). Forge 1.7.10 and 1.8.9 servers come from the old installer format: Forge and the
   libraries it marks for the server, its universal jar, started from that jar's manifest.

@@ -578,6 +578,9 @@ async fn host_a_world_with_mods() {
         ("appleskin", "appleskin"),
         ("clumps", "clumps"),
         ("ferrite-core", "ferritecore"),
+        // Spark's only Forge 1.20.6 release calls a method that Forge
+        // 1.20.6's newest build does not have.
+        ("cloth-config", "cloth_config"),
         ("spark", "spark"),
         ("bookshelf-lib", "bookshelf"),
     ];
