@@ -53,9 +53,14 @@ const VERSION: &str = "live-test";
 /// A handshake and the Login Start a client of `protocol` sends for `nick`:
 /// no signing key, the offline UUID where the layout has one.
 fn login(protocol: i32, port: u16, nick: &Nick) -> Vec<u8> {
+    login_to(protocol, port, nick, "127.0.0.1")
+}
+
+/// `login`, with the server address the handshake names.
+fn login_to(protocol: i32, port: u16, nick: &Nick, address: &str) -> Vec<u8> {
     let mut body = Vec::new();
     write_varint(&mut body, protocol);
-    write_string(&mut body, "127.0.0.1");
+    write_string(&mut body, address);
     body.extend_from_slice(&port.to_be_bytes());
     write_varint(&mut body, 2);
     let mut wire = Vec::new();
@@ -768,11 +773,18 @@ async fn host_a_world_with_mods() {
     );
 
     let protocol = server.protocol();
-    let member = login(protocol, server.port(), &members[0]);
+    // Forge 1.8 to 1.12.2 lets in only a Forge client, which marks the
+    // server address; the guest's game, with the room pack, is one.
+    let address = if kind == LoaderKind::Forge && (47..=340).contains(&protocol) {
+        "127.0.0.1\0FML\0"
+    } else {
+        "127.0.0.1"
+    };
+    let member = login_to(protocol, server.port(), &members[0], address);
     tunnel_reads(&member, protocol, &members[0]);
     assert!(logged_in(server.port(), &member), "a member gets in");
     let stranger_nick = Nick::parse("Not_A_Member").unwrap();
-    let stranger = login(protocol, server.port(), &stranger_nick);
+    let stranger = login_to(protocol, server.port(), &stranger_nick, address);
     assert!(
         !logged_in(server.port(), &stranger),
         "the whitelist refuses"
