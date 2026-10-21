@@ -1,0 +1,163 @@
+name: Player test
+
+# Game versions checked the way a player meets them, on the owner's Windows test
+# machine (docs/USERTEST.md): the newest packaged launcher from main is installed with
+# its installer, and for each version a player's steps are taken in its window and in
+# the game: install, play, a new singleplayer world. Only by hand ("Run workflow").
+#
+# The runner is a real computer, so this workflow runs only for the owner's dispatch,
+# never for a pull request. Inputs reach scripts only through env and are checked
+# against Mojang's list. Its own concurrency group: the Game test's queue
+# (one pending run) is left alone; the runner takes one job at a time anyway.
+
+on:
+  workflow_dispatch:
+    inputs:
+      versions:
+        description: Game versions (comma-separated release ids), or "26" for every 26.x release
+        default: '26'
+
+permissions:
+  contents: read
+  actions: read
+
+concurrency:
+  group: usertest
+  cancel-in-progress: false
+
+jobs:
+  prepare:
+    name: Launcher package and versions
+    runs-on: ubuntu-24.04
+    outputs:
+      versions: ${{ steps.versions.outputs.versions }}
+      package: ${{ steps.package.outputs.run }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          sparse-checkout: |
+            scripts/usertest
+            src/locales
+      - id: versions
+        env:
+          VERSIONS: ${{ inputs.versions || '26' }}
+        run: |
+          curl -fsS --retry 3 https://piston-meta.mojang.com/mc/game/version_manifest_v2.json -o manifest.json
+          python3 - <<'EOF'
+          import json, os, re, sys
+          releases = [v for v in json.load(open("manifest.json"))["versions"] if v["type"] == "release"]
+          releases.sort(key=lambda v: v["releaseTime"])
+          ids = [v["id"] for v in releases]
+          asked = [s.strip() for s in os.environ["VERSIONS"].split(",") if s.strip()]
+          picked = []
+          for item in asked:
+              if item == "26":
+                  picked += [i for i in ids if re.fullmatch(r"26\.\d+(\.\d+)?", i)]
+              elif item in ids:
+                  picked.append(item)
+              else:
+                  sys.exit(f"versions: {item!r} is not a Mojang release")
+          picked = list(dict.fromkeys(picked))
+          if not picked:
+              sys.exit("versions: none picked")
+          with open(os.environ["GITHUB_OUTPUT"], "a") as out:
+              out.write(f"versions={','.join(picked)}\n")
+          print("Versions:", ", ".join(picked))
+          EOF
+      - id: package
+        name: Newest green Package run on main
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          run=$(gh run list -R "$GITHUB_REPOSITORY" --workflow package.yml --branch main --event push \
+            --status success --limit 1 --json databaseId,headSha,createdAt \
+            --jq '.[0] | "\(.databaseId) \(.headSha) \(.createdAt)"')
+          [ -n "$run" ] || { echo "::error::No green Package run on main"; exit 1; }
+          read -r id sha created <<<"$run"
+          echo "Package run $id, commit $sha, $created"
+          echo "run=$id" >> "$GITHUB_OUTPUT"
+          gh run download "$id" -R "$GITHUB_REPOSITORY" -n launcher-windows-x64 -D input/package
+          ls -l input/package
+          echo "Launcher: $(ls input/package/*-setup.exe | xargs -n1 basename), commit $sha" >> "$GITHUB_STEP_SUMMARY"
+      - name: Interface texts
+        run: |
+          python3 - <<'EOF'
+          import glob, json
+          keys = {
+              "navHome": "nav.home", "navAccount": "nav.account", "modeOffline": "accounts.modeOffline",
+              "nameLabel": "accounts.nameLabel", "addProfile": "accounts.addProfile",
+              "create": "instances.create", "createSubmit": "createForm.submit",
+              "install": "install.install", "play": "install.play", "retry": "install.retry",
+              "allow": "metered.allow",
+          }
+          texts = {k: [] for k in keys}
+          for path in sorted(glob.glob("src/locales/messages/*.json")):
+              ui = json.load(open(path, encoding="utf-8"))["ui"]
+              for name, key in keys.items():
+                  node = ui
+                  for part in key.split("."):
+                      node = node.get(part) if isinstance(node, dict) else None
+                  if isinstance(node, str) and node not in texts[name]:
+                      texts[name].append(node)
+          missing = [k for k, v in texts.items() if not v]
+          if missing:
+              raise SystemExit(f"texts not found: {missing}")
+          json.dump(texts, open("input/ui-strings.json", "w", encoding="utf-8"), ensure_ascii=False)
+          EOF
+          cp scripts/usertest/windows.ps1 input/
+      - uses: actions/upload-artifact@v7
+        with:
+          name: usertest-input
+          path: input
+          retention-days: 3
+
+  play:
+    name: Play as a player
+    needs: prepare
+    runs-on: [self-hosted, windows, x64, gametest]
+    timeout-minutes: 360
+    defaults:
+      run:
+        # Windows PowerShell as the runner's user runs no script files by default
+        # (execution policy Restricted); lifted for these steps only.
+        shell: powershell -NoProfile -ExecutionPolicy Bypass -Command ". '{0}'"
+    steps:
+      - uses: actions/download-artifact@v8
+        with:
+          name: usertest-input
+          path: ut/input
+      - name: Play
+        env:
+          VERSIONS: ${{ needs.prepare.outputs.versions }}
+        run: |
+          $setup = (Get-Item ut/input/package/*-setup.exe | Select-Object -First 1).FullName
+          & powershell.exe -NoProfile -ExecutionPolicy Bypass -File ut/input/windows.ps1 `
+            -Setup $setup -Strings (Resolve-Path ut/input/ui-strings.json).Path `
+            -Versions $env:VERSIONS -Out (New-Item -ItemType Directory -Force ut/out).FullName
+          exit $LASTEXITCODE
+      - name: Summary
+        if: always()
+        run: |
+          $utf8 = New-Object Text.UTF8Encoding $false
+          $text = "| Version | Install | Launch | World | Exit | Log errors | Note |`n| --- | --- | --- | --- | --- | --- | --- |`n"
+          $file = 'ut/out/results.json'
+          if (Test-Path $file) {
+            foreach ($r in @(Get-Content $file -Raw | ConvertFrom-Json)) {
+              $i = if ($r.installSeconds) { "$($r.install) ($($r.installSeconds) s)" } else { $r.install }
+              $l = if ($r.launchSeconds) { "$($r.launch) ($($r.launchSeconds) s)" } else { $r.launch }
+              $w = if ($r.worldSeconds) { "$($r.world) ($($r.worldSeconds) s)" } else { $r.world }
+              $e = if ($null -ne $r.exitCode) { "$($r.exit) ($($r.exitCode))" } else { $r.exit }
+              $text += "| $($r.version) | $i | $l | $w | $e | $($r.logErrors) | $($r.note) |`n"
+            }
+          }
+          [IO.File]::AppendAllText($env:GITHUB_STEP_SUMMARY, "$text`n", $utf8)
+      - uses: actions/upload-artifact@v7
+        if: always()
+        with:
+          name: usertest-results
+          path: ut/out
+          retention-days: 7
+          if-no-files-found: ignore
+      - name: Clean the workspace
+        if: always()
+        run: Remove-Item -Recurse -Force ut -ErrorAction SilentlyContinue
