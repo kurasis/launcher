@@ -531,7 +531,8 @@ fn serve() -> Result<(), String> {
                 tokio::time::sleep(Duration::from_secs(wait)).await;
             }
         });
-        // VirusTotal's word on suspected files, one file a few minutes.
+        // VirusTotal's word on suspected files, one after another while any
+        // waits and the day's quota lasts.
         let asking = Arc::clone(&app);
         tokio::spawn(async move {
             if asking.virustotal.is_none() {
@@ -544,10 +545,15 @@ fn serve() -> Result<(), String> {
                     virustotal::step(&app.store, &app.blobs, api, import::now())
                 })
                 .await;
-                if let Ok(Err(e)) = stepped {
-                    eprintln!("lapi-mods: asking VirusTotal failed: {e}");
-                }
-                tokio::time::sleep(Duration::from_secs(virustotal::PACE)).await;
+                let pace = match stepped {
+                    Ok(Ok(true)) => virustotal::PACE,
+                    Ok(Err(e)) => {
+                        eprintln!("lapi-mods: asking VirusTotal failed: {e}");
+                        virustotal::IDLE
+                    }
+                    _ => virustotal::IDLE,
+                };
+                tokio::time::sleep(Duration::from_secs(pace)).await;
             }
         });
         let (stop, stopping) = tokio::sync::watch::channel(false);
