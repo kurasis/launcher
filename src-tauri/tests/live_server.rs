@@ -438,9 +438,29 @@ async fn host_a_world() {
     println!("force stop recorded as unclean");
 }
 
-/// The newest release of a catalog project for the version and the loader.
-/// The catalog finds a project by any of its slugs, the old slugs of a
-/// joined twin among them.
+/// Whether a release names no game release newer than `minecraft`. A mod
+/// built for 1.21.1 often names 1.21 too, yet asks for 1.21.1's loader:
+/// JEI's NeoForge releases do, and NeoForge 21.0 refuses to load them.
+fn made_for(release: &launcher_lib::mods::Version, minecraft: &str) -> bool {
+    let number = |v: &str| {
+        v.split('.')
+            .map(str::parse::<u32>)
+            .collect::<Result<Vec<_>, _>>()
+            .ok()
+    };
+    let Some(wanted) = number(minecraft) else {
+        return true;
+    };
+    release
+        .games
+        .iter()
+        .filter_map(|g| number(g))
+        .all(|g| g <= wanted)
+}
+
+/// The newest release of a catalog project for the version and the loader,
+/// made for that version where one is. The catalog finds a project by any of
+/// its slugs, the old slugs of a joined twin among them.
 async fn catalog_release(
     catalog: &launcher_lib::mods::Client,
     slug: &str,
@@ -452,12 +472,15 @@ async fn catalog_release(
         .project(slug)
         .await
         .unwrap_or_else(|e| panic!("{slug} in the catalog: {e:?}"));
-    catalog
+    let releases: Vec<_> = catalog
         .versions(&project.id, Some(minecraft), Some(loader))
         .await
         .unwrap()
         .into_iter()
-        .find(|v| v.channel == "release")
+        .filter(|v| v.channel == "release")
+        .collect();
+    let made = releases.iter().position(|v| made_for(v, minecraft));
+    releases.into_iter().nth(made.unwrap_or(0))
 }
 
 /// The newest catalog file of a project, for the version and the loader,
@@ -542,9 +565,9 @@ async fn host_a_world_with_mods() {
     ));
     let minecraft = world_version(&metadata).await;
     // Quilt runs Fabric mods: Fabric API serves both. On Forge and NeoForge the
-    // first of these mods with a release for the version proves the loader
-    // loads mods (by its mod id); Sodium, where it has one, stays on the
-    // client.
+    // first of these mods with a release made for the version (else with any
+    // release for it) proves the loader loads mods (by its mod id); Sodium,
+    // where it has one, stays on the client.
     const FORGE_PROOFS: &[(&str, &str)] = &[
         ("jei", "jei"),
         ("appleskin", "appleskin"),
@@ -584,8 +607,13 @@ async fn host_a_world_with_mods() {
     let mut proof = None;
     for (slug, id) in proofs {
         if let Some(release) = catalog_release(&catalog, slug, &minecraft, catalog_loader).await {
-            proof = Some((*slug, *id, release));
-            break;
+            let made = made_for(&release, &minecraft);
+            if made || proof.is_none() {
+                proof = Some((*slug, *id, release));
+            }
+            if made {
+                break;
+            }
         }
     }
     let (proof_slug, proof_id, release) = proof.unwrap_or_else(|| {
