@@ -116,7 +116,7 @@ fn the_table_names_every_release_jar_once() {
         "26.3.1",
         "26.4",
         "1.21.1-pre1",
-        "1.19.2",
+        "1.13.2",
         "1.12",
         "",
         " 26.3",
@@ -702,8 +702,23 @@ fn builds_are_found_by_version_and_loader() {
     // NeoForge for 1.20.1 runs Forge's jar.
     assert_eq!(
         label("1.20.1", Some(NeoForge)).as_deref(),
-        Some("forge-1.20.1")
+        Some("forge-1.17.1-1.20.1")
     );
+    // One Fabric jar serves 1.16 to 1.20.1, one Forge jar 1.17.1 to 1.20.1; Forge 1.16.5
+    // has its own.
+    assert_eq!(
+        label("1.16.1", Some(Quilt)).as_deref(),
+        Some("fabric-1.16-1.20.1")
+    );
+    assert_eq!(
+        label("1.19.2", Some(Forge)).as_deref(),
+        Some("forge-1.17.1-1.20.1")
+    );
+    assert_eq!(
+        label("1.16.5", Some(Forge)).as_deref(),
+        Some("forge-1.16.5")
+    );
+    assert_eq!(label("1.19.3", None).as_deref(), Some("agent-1.19.3"));
     assert_eq!(label("1.18.2", None).as_deref(), Some("agent-1.18.2"));
     assert_eq!(
         label("1.12.2", Some(Forge)).as_deref(),
@@ -713,7 +728,8 @@ fn builds_are_found_by_version_and_loader() {
         ("1.12.2", Some(Fabric)),
         ("1.12.2", None),
         ("1.18.2", Some(NeoForge)),
-        ("1.19.2", Some(Forge)),
+        // Forge before 1.16.5 has no Mixin.
+        ("1.16.4", Some(Forge)),
         ("26.4", Some(Fabric)),
         ("1.21.1-pre1", None),
         ("", None),
