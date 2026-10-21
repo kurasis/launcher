@@ -6,7 +6,7 @@ plugins {
 // built with Architectury Loom from the same sources as ../forge.gradle. Loom remaps the
 // jar to SRG names, the Mixin targets included, so the jar needs no refmap.
 base {
-    archivesName = "launcherskins-forge-${minecraft_version}"
+    archivesName = "launcherskins-forge-${band}"
 }
 
 java {
@@ -43,8 +43,8 @@ tasks.withType(JavaCompile).configureEach {
 }
 
 processResources {
-    def props = [version: project.version, minecraft: minecraft_version,
-                 forge_major: forge_version.tokenize('.')[0], pack_format: pack_format]
+    def props = [version: project.version, minecraft: forge_range, forge_major: forge_min,
+                 pack_format: pack_format]
     inputs.properties props
     filesMatching(['META-INF/mods.toml', 'pack.mcmeta']) {
         expand props

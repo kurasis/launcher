@@ -14,7 +14,7 @@ on:
   workflow_dispatch:
     inputs:
       versions:
-        description: Game versions (comma-separated; 26.3, 1.21.11, 1.21.10, 1.21.8, 1.21.4, 1.21.1, 1.20.1, 1.18.2, 1.16.5, 1.12.2)
+        description: Game versions (comma-separated; 26.3, 1.21.11, 1.21.10, 1.21.8, 1.21.4, 1.21.1, 1.20.1, 1.19.4, 1.19.2, 1.18.2, 1.17.1, 1.16.5, 1.12.2)
         default: 26.3,1.21.11,1.21.1,1.20.1,1.12.2
       loaders:
         description: Loaders (comma-separated; vanilla, fabric, quilt, neoforge, forge)
@@ -60,7 +60,8 @@ jobs:
           python3 - <<'EOF'
           import json, os, sys
           allowed = {
-              "VERSIONS": ["26.3", "1.21.11", "1.21.10", "1.21.8", "1.21.4", "1.21.1", "1.20.1", "1.18.2", "1.16.5", "1.12.2"],
+              "VERSIONS": ["26.3", "1.21.11", "1.21.10", "1.21.8", "1.21.4", "1.21.1", "1.20.1", "1.19.4", "1.19.2",
+                           "1.18.2", "1.17.1", "1.16.5", "1.12.2"],
               "LOADERS": ["vanilla", "fabric", "quilt", "neoforge", "forge"],
               "MODS": ["none", "medium"],
           }
@@ -81,9 +82,9 @@ jobs:
               sys.exit("minutes: a number")
           if not 0.5 <= minutes <= 60:
               sys.exit("minutes: 0.5 to 60")
-          # 1.12.2 is Forge only, 1.16.5 to 1.20.1 have no NeoForge build; the game with
+          # 1.12.2 is Forge only, 1.16 to 1.20.1 have no NeoForge build; the game with
           # no loader plays without mods.
-          legacy = ["1.16.5", "1.18.2", "1.20.1"]
+          legacy = ["1.16.5", "1.17.1", "1.18.2", "1.19.2", "1.19.4", "1.20.1"]
           def playable(version, loader, mods):
               if version == "1.12.2":
                   return loader == "forge"
@@ -97,9 +98,12 @@ jobs:
               if version in ("26.3", "1.12.2"):
                   return [f"mc-{version}", f"gametest:mc-{version}"]
               if version in legacy:
-                  return [f"{root}mc-1.16.5-1.20.1:{loader}:{version}"
-                          for root in ("", "gametest:") for loader in ("fabric", "forge")] + [
-                      f"agents:{version}", f"gametest:mc-1.16.5-1.20.1:agent:{version}"]
+                  # One Fabric jar (built against 1.20.1) and two Forge jars serve 1.16 to
+                  # 1.20.1; the bot and the agent are built for the release itself.
+                  forge = "1.16.5" if version == "1.16.5" else "1.20.1"
+                  return ["mc-1.16.5-1.20.1:fabric:1.20.1", f"mc-1.16.5-1.20.1:forge:{forge}",
+                          f"agents:{version}"] + [
+                      f"gametest:mc-1.16.5-1.20.1:{loader}:{version}" for loader in ("fabric", "forge", "agent")]
               return [bands[version], f"agents:{version}", f"gametest:mc-{version}"]
           scenarios = []
           for version in picked["VERSIONS"]:
@@ -111,7 +115,7 @@ jobs:
                       scenarios.append({"version": version, "loader": loader, "mods": mods, "skin": s,
                                         "name": f"{version} {loader} {mods} {s}"})
           if not scenarios:
-              sys.exit("no scenario: 1.12.2 is Forge only, 1.16.5 to 1.20.1 have no NeoForge, vanilla plays without mods")
+              sys.exit("no scenario: 1.12.2 is Forge only, 1.16 to 1.20.1 have no NeoForge, vanilla plays without mods")
           with open(os.environ["GITHUB_OUTPUT"], "a") as out:
               out.write(f"scenarios={json.dumps(scenarios)}\n")
               out.write(f"minutes={minutes:g}\n")
