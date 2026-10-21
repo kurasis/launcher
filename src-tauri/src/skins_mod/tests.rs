@@ -726,12 +726,36 @@ fn builds_are_found_by_version_and_loader() {
         label("1.20.1", Some(NeoForge)).as_deref(),
         Some("forge-1.17.1-1.20.1")
     );
-    // One Fabric jar serves 1.16 to 1.20.1, one Forge jar 1.17.1 to 1.20.1; Forge 1.16.5
+    // One Fabric jar serves 1.15.2 to 1.20.1, one Forge jar 1.17.1 to 1.20.1; Forge 1.16.5
     // has its own.
     assert_eq!(
         label("1.16.1", Some(Quilt)).as_deref(),
-        Some("fabric-1.16-1.20.1")
+        Some("fabric-1.15.2-1.20.1")
     );
+    assert_eq!(
+        label("1.15.2", Some(Fabric)).as_deref(),
+        Some("fabric-1.15.2-1.20.1")
+    );
+    // Before 1.15.2 Fabric registers a texture another way: 1.15 and 1.15.1 share a jar,
+    // 1.14.4 has its own. Forge 1.14.4 and 1.15.2 each have one (a coremod).
+    assert_eq!(
+        label("1.15", Some(Quilt)).as_deref(),
+        Some("fabric-1.15-1.15.1")
+    );
+    assert_eq!(
+        label("1.14.4", Some(Fabric)).as_deref(),
+        Some("fabric-1.14.4")
+    );
+    assert_eq!(
+        label("1.15.2", Some(Forge)).as_deref(),
+        Some("forge-1.15.2")
+    );
+    assert_eq!(
+        label("1.14.4", Some(Forge)).as_deref(),
+        Some("forge-1.14.4")
+    );
+    assert_eq!(label("1.15.1", None).as_deref(), Some("agent-1.15.1"));
+    assert_eq!(label("1.14.4", None).as_deref(), Some("agent-1.14.4"));
     assert_eq!(
         label("1.19.2", Some(Forge)).as_deref(),
         Some("forge-1.17.1-1.20.1")
@@ -750,8 +774,11 @@ fn builds_are_found_by_version_and_loader() {
         ("1.12.2", Some(Fabric)),
         ("1.12.2", None),
         ("1.18.2", Some(NeoForge)),
-        // Forge before 1.16.5 has no Mixin.
+        // Forge has builds for 1.14.4, 1.15.2 and 1.16.5 only before 1.17.1.
         ("1.16.4", Some(Forge)),
+        ("1.15.1", Some(Forge)),
+        ("1.14.4", Some(NeoForge)),
+        ("1.14.3", Some(Fabric)),
         // Neither Forge nor NeoForge has a stable build for 1.20.5.
         ("1.20.5", Some(Forge)),
         ("1.20.5", Some(NeoForge)),
