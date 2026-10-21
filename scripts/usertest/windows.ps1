@@ -305,6 +305,13 @@ $uninstallKey = 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Uninstall\Launc
 $keyBackup = Join-Path $root 'uninstall-key.reg'
 $results = New-Object System.Collections.ArrayList
 
+# What an earlier, cancelled run left running from its own folder (the launcher, its
+# Java) is stopped; nothing outside that folder is touched.
+Get-Process -ErrorAction SilentlyContinue | Where-Object {
+  try { $_.Path -and $_.Path.StartsWith($root + '\', [StringComparison]::OrdinalIgnoreCase) } catch { $false }
+} | ForEach-Object { Say "stopping $($_.ProcessName) left by an earlier run"; Stop-Process -Id $_.Id -Force -ErrorAction SilentlyContinue }
+Start-Sleep -Seconds 2
+
 # The installer stops a running launcher.exe, and a second launcher would only hand
 # over to the first: never on the owner's open launcher.
 $running = Get-Process -Name launcher -ErrorAction SilentlyContinue
