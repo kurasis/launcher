@@ -770,9 +770,20 @@ fn builds_are_found_by_version_and_loader() {
         label("1.12.2", Some(Forge)).as_deref(),
         Some("forge-1.12.2")
     );
+    assert_eq!(label("1.8.9", Some(Forge)).as_deref(), Some("forge-1.8.9"));
+    assert_eq!(
+        label("1.7.10", Some(Forge)).as_deref(),
+        Some("forge-1.7.10")
+    );
     for (game, loader) in [
         ("1.12.2", Some(Fabric)),
         ("1.12.2", None),
+        // Before 1.12.2 the mod is Forge only, for 1.8.9 and 1.7.10.
+        ("1.8.9", Some(Fabric)),
+        ("1.8.9", None),
+        ("1.7.10", None),
+        ("1.8.8", Some(Forge)),
+        ("1.7.2", Some(Forge)),
         ("1.18.2", Some(NeoForge)),
         // Forge has builds for 1.14.4, 1.15.2 and 1.16.5 only before 1.17.1.
         ("1.16.4", Some(Forge)),
