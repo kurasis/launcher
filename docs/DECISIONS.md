@@ -2497,7 +2497,8 @@ archive from the Package workflow, upload it to
 - **VirusTotal for suspected files** (Ai, 2026-10-21): with the secret
   `VIRUSTOTAL_API_KEY` (`LAPI_MODS_VIRUSTOTAL_KEY` on the server) the service asks
   VirusTotal about each file the scanner suspects (held, or let go by `unblock` or
-  trust), newest first, one every 3 minutes. A file VirusTotal does not know is sent to
+  trust), newest first, one every 15 seconds while any waits and the day's quota lasts
+  (Ai), otherwise looking again each minute. A file VirusTotal does not know is sent to
   it when it comes from Modrinth, CurseForge or the owner's projects (up to 650 MB;
   files only players' own packs carry are never sent) and looked up again after 30
   minutes, 2 hours, then daily. Each file is asked about once, no re-checks for now

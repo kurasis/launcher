@@ -40,8 +40,11 @@ pub const BACKGROUND: Limits = Limits {
     month: 15_000,
 };
 
-/// Seconds between the background's checks (one file each).
-pub const PACE: u64 = 180;
+/// Seconds between the background's checks (one file each) while files wait
+/// and the day's quota lasts: VirusTotal's free key takes 4 a minute.
+pub const PACE: u64 = 15;
+/// Seconds before looking again when nothing waits or the quota is spent.
+pub const IDLE: u64 = 60;
 /// Sent as is up to this; larger files go to an address asked for first.
 const DIRECT_UPLOAD: i64 = 32 * 1024 * 1024;
 /// VirusTotal takes no larger file.
