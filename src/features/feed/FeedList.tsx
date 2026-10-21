@@ -1,13 +1,18 @@
 import { type ReactNode, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Button } from '../../components/Button';
 import { StatusBadge } from '../../components/StatusBadge';
+import { type MenuItem, MoreMenu } from '../../app/MoreMenu';
 import type {
   AppSnapshot,
+  ChannelMark,
+  FavoriteFeed,
   Feed,
   FeedItem,
   FeedSettings,
   FeedStream,
+  FeedMarks,
   FeedVideo,
+  MarkList,
   NoteCard,
   ServerAd,
 } from '../../lib/contracts';
@@ -15,10 +20,14 @@ import { ipc } from '../../lib/ipc';
 import { strings } from '../../lib/strings';
 import {
   adOrder,
+  channelOf,
   type FeedFilter,
   filterPart,
   itemKey,
+  itemLink,
   keptItems,
+  markedItems,
+  onList,
   shownItems,
   videoWanted,
   wants,
@@ -51,6 +60,7 @@ function Tile({
   label,
   line,
   onClick,
+  menu,
 }: {
   image: string | null;
   cover: string;
@@ -61,9 +71,12 @@ function Tile({
   label?: string;
   line: string;
   onClick: () => void;
+  /** The ⋯ menu in the corner. */
+  menu: ReactNode;
 }) {
   return (
     <article className={styles.tile}>
+      {menu}
       <span className={styles.preview}>
         {image !== null ? (
           <img src={image} alt="" loading="lazy" />
@@ -91,7 +104,81 @@ function Tile({
   );
 }
 
-function NoteItem({ card, onOpen }: { card: NoteCard; onOpen: (card: NoteCard) => void }) {
+/** What a tile's ⋯ menu does. */
+interface ItemActions {
+  marks: FeedMarks;
+  onMark: (channel: ChannelMark, list: MarkList | null) => void;
+  onCopyLink: (url: string) => void;
+}
+
+/** The ⋯ menu of a tile: copy its link, show its channel first or not at all. */
+function ItemMenu({
+  item,
+  title,
+  actions,
+}: {
+  item: FeedItem;
+  title: string;
+  actions: ItemActions;
+}) {
+  const channel = channelOf(item);
+  const link = itemLink(item);
+  const entries: MenuItem[] = [];
+  if (link !== null) {
+    entries.push({
+      kind: 'item',
+      key: 'copy',
+      label: t.copyLink,
+      onSelect: () => {
+        actions.onCopyLink(link);
+      },
+    });
+  }
+  if (channel !== null) {
+    const favorite = onList(actions.marks.favorite, channel);
+    entries.push(
+      {
+        kind: 'item',
+        key: 'favorite',
+        label: favorite ? t.unfavorite({ name: channel.name }) : t.favorite({ name: channel.name }),
+        onSelect: () => {
+          actions.onMark(channel, favorite ? null : 'favorite');
+        },
+      },
+      {
+        kind: 'item',
+        key: 'hide',
+        label: t.hideChannel({ name: channel.name }),
+        onSelect: () => {
+          actions.onMark(channel, 'hidden');
+        },
+      },
+    );
+  }
+  if (entries.length === 0) return null;
+  return (
+    <span className={styles.tileMenu}>
+      <MoreMenu
+        label="⋯"
+        ariaLabel={t.itemMenu({ title })}
+        buttonClassName={styles.tileMenuButton}
+        caret={false}
+        current={false}
+        entries={entries}
+      />
+    </span>
+  );
+}
+
+function NoteItem({
+  card,
+  onOpen,
+  actions,
+}: {
+  card: NoteCard;
+  onOpen: (card: NoteCard) => void;
+  actions: ItemActions;
+}) {
   return (
     <Tile
       image={pictureUrl(card.image)}
@@ -108,23 +195,35 @@ function NoteItem({ card, onOpen }: { card: NoteCard; onOpen: (card: NoteCard) =
       onClick={() => {
         onOpen(card);
       }}
+      menu={<ItemMenu item={{ type: 'note', note: card }} title={card.title} actions={actions} />}
     />
   );
 }
 
-function VideoItem({ video, onPlay }: { video: FeedVideo; onPlay: (video: FeedVideo) => void }) {
+function VideoItem({
+  video,
+  onPlay,
+  actions,
+}: {
+  video: FeedVideo;
+  onPlay: (video: FeedVideo) => void;
+  actions: ItemActions;
+}) {
+  const item: FeedItem = { type: 'video', video };
+  const favorite = onList(actions.marks.favorite, channelOf(item));
   return (
     <Tile
       image={pictureUrl(video.image)}
       cover={video.channel}
       overlay={video.short ? { tone: 'neutral', label: t.short } : null}
-      badges={null}
+      badges={favorite ? <StatusBadge tone="warning" label={t.favoriteBadge} /> : null}
       title={video.title}
       label={t.watchVideo({ title: video.title, channel: video.channel })}
       line={`${video.channel} · ${relativeTime(video.date)}`}
       onClick={() => {
         onPlay(video);
       }}
+      menu={<ItemMenu item={item} title={video.title} actions={actions} />}
     />
   );
 }
@@ -132,23 +231,29 @@ function VideoItem({ video, onPlay }: { video: FeedVideo; onPlay: (video: FeedVi
 function StreamItem({
   stream,
   onPlay,
+  actions,
 }: {
   stream: FeedStream;
   onPlay: (stream: FeedStream) => void;
+  actions: ItemActions;
 }) {
   const viewers = t.viewers({ count: stream.viewers });
+  const item: FeedItem = { type: 'stream', stream };
+  const favorite = onList(actions.marks.favorite, channelOf(item));
+  const title = stream.title !== '' ? stream.title : stream.name;
   return (
     <Tile
       image={pictureUrl(stream.image)}
       cover={stream.name}
       overlay={{ tone: 'danger', label: t.live }}
-      badges={null}
-      title={stream.title !== '' ? stream.title : stream.name}
+      badges={favorite ? <StatusBadge tone="warning" label={t.favoriteBadge} /> : null}
+      title={title}
       label={t.watchStream({ name: stream.name, title: stream.title, viewers })}
       line={`${stream.name} · ${viewers}`}
       onClick={() => {
         onPlay(stream);
       }}
+      menu={<ItemMenu item={item} title={title} actions={actions} />}
     />
   );
 }
@@ -160,6 +265,12 @@ interface FeedListProps {
   own: FeedVideo[];
   /** The live streams of the player's own Twitch channels. */
   ownStreams: FeedStream[];
+  /** The favourite channels' videos and streams, shown first. */
+  favorites: FavoriteFeed;
+  /** The channels the player hid or put first. */
+  marks: FeedMarks;
+  onMark: (channel: ChannelMark, list: MarkList | null) => void;
+  onCopyLink: (url: string) => void;
   filter: FeedFilter;
   /** A note shown above the list already. */
   skip: string | null;
@@ -184,6 +295,10 @@ export function FeedList({
   settings,
   own,
   ownStreams,
+  favorites,
+  marks,
+  onMark,
+  onCopyLink,
   filter,
   skip,
   onOpen,
@@ -270,13 +385,32 @@ export function FeedList({
     };
   }, [watching, next, loading, loadMore]);
 
-  const ownShown =
-    wants(filter, 'videos') && !settings.hidden.includes('videos')
-      ? own.filter((video) => (settings.shorts || !video.short) && videoWanted(filter, video))
+  const videosWanted = wants(filter, 'videos') && !settings.hidden.includes('videos');
+  const streamsWanted = wants(filter, 'streams') && !settings.hidden.includes('streams');
+  const videosShown = (videos: FeedVideo[]) =>
+    videosWanted
+      ? videos.filter((video) => (settings.shorts || !video.short) && videoWanted(filter, video))
       : [];
-  const streamsShown =
-    wants(filter, 'streams') && !settings.hidden.includes('streams') ? ownStreams : [];
-  const items = shownItems(pages, ownShown, streamsShown, next !== null && !kept, skip);
+  // Only channels still marked: a favourite taken off leaves the top at once.
+  const favoriteItems: FeedItem[] = [
+    ...videosShown(favorites.videos).map((video): FeedItem => ({ type: 'video', video })),
+    ...(streamsWanted ? favorites.streams : []).map((stream): FeedItem => ({
+      type: 'stream',
+      stream,
+    })),
+  ].filter((item) => onList(marks.favorite, channelOf(item)));
+  const items = markedItems(
+    shownItems(
+      pages,
+      videosShown(own),
+      streamsWanted ? ownStreams : [],
+      next !== null && !kept,
+      skip,
+    ),
+    favoriteItems,
+    marks.hidden,
+  );
+  const actions: ItemActions = { marks, onMark, onCopyLink };
   // The order ads take their places in stays while this list is shown.
   const [seed] = useState(Math.random);
   const ordered = useMemo(() => adOrder(ads, seed), [ads, seed]);
@@ -307,11 +441,11 @@ export function FeedList({
             ) : (
               <li key={itemKey(entry.item)}>
                 {entry.item.type === 'note' ? (
-                  <NoteItem card={entry.item.note} onOpen={onOpen} />
+                  <NoteItem card={entry.item.note} onOpen={onOpen} actions={actions} />
                 ) : entry.item.type === 'video' ? (
-                  <VideoItem video={entry.item.video} onPlay={onPlayVideo} />
+                  <VideoItem video={entry.item.video} onPlay={onPlayVideo} actions={actions} />
                 ) : (
-                  <StreamItem stream={entry.item.stream} onPlay={onPlayStream} />
+                  <StreamItem stream={entry.item.stream} onPlay={onPlayStream} actions={actions} />
                 )}
               </li>
             ),

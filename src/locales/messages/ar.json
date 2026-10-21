@@ -126,7 +126,23 @@
         "installedMark": "مثبّت",
         "erid": "رمز الإعلان: {erid}",
         "installFailed": "تعذّر تثبيت {version}. افتح التثبيتات لمعرفة السبب."
-      }
+      },
+      "itemMenu": "المزيد: {title}",
+      "copyLink": "نسخ الرابط",
+      "linkCopied": "تم نسخ الرابط.",
+      "favorite": "إظهار {name} أولًا",
+      "unfavorite": "إيقاف إظهار {name} أولًا",
+      "hideChannel": "عدم إظهار {name}",
+      "channelHidden": "لن يظهر {name} في الموجز بعد الآن.",
+      "undo": "تراجع",
+      "favoriteBadge": "مفضلة",
+      "addChannel": "إضافة قناة",
+      "addChannelPlace": "مكان القناة",
+      "places": {
+        "youtube": "YouTube",
+        "twitch": "Twitch"
+      },
+      "channelAdded": "تمت إضافة {name} إلى الموجز."
     },
     "bootstrap": {
       "loading": "جارٍ تحميل حالة المشغّل…",
@@ -926,7 +942,13 @@
       "streamersHint": "تظهر بثوثها في الموجز أثناء البث المباشر. تبقى القائمة على هذا الحاسوب فقط؛ ولا يُرسَل إلى الموجز إلا أسماء القنوات لمعرفة ما إذا كانت تبث الآن.",
       "streamerInput": "رابط القناة أو اسمها",
       "streamerBadInput": "هذا ليس رابط قناة على Twitch ولا اسمها.",
-      "streamerNotFound": "لا توجد قناة بهذا الاسم على Twitch."
+      "streamerNotFound": "لا توجد قناة بهذا الاسم على Twitch.",
+      "favorites": "تظهر أولًا",
+      "favoritesHint": "تأتي مقاطع هذه القنوات وبثوثها أولًا في الموجز. أضف قناة عبر ⋯ على بطاقتها.",
+      "hiddenChannels": "لا تظهر",
+      "hiddenChannelsHint": "لا تظهر مقاطع هذه القنوات وبثوثها في الموجز.",
+      "noMarks": "لا شيء بعد.",
+      "removeMark": "إزالة {name}"
     },
     "privacy": {
       "shareStats": "مشاركة إحصاءات الانهيار المجهولة",

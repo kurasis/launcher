@@ -1830,6 +1830,30 @@ export interface OwnStreamer {
   name: string;
 }
 
+/** Where a marked channel is. */
+export type MarkKind = 'youtube' | 'twitch';
+
+/** A channel the player hid from the feed or put first: a YouTube channel id or a Twitch login. */
+export interface ChannelMark {
+  kind: MarkKind;
+  id: string;
+  name: string;
+}
+
+/** Which list a mark puts a channel on. */
+export type MarkList = 'hidden' | 'favorite';
+
+export interface FeedMarks {
+  hidden: ChannelMark[];
+  favorite: ChannelMark[];
+}
+
+/** The newest videos and live streams of the favourite channels, shown first. */
+export interface FavoriteFeed {
+  videos: FeedVideo[];
+  streams: FeedStream[];
+}
+
 // ----- Worlds with friends (D-068) -----
 
 /** Why a call to worlds.lapi.sh or a step of a room failed. */

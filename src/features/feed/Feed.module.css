@@ -712,3 +712,138 @@
   color: var(--color-danger-text);
   font-size: var(--font-size-sm);
 }
+
+/* A tile's ⋯ menu, in the picture's corner, above the title's button. */
+.tileMenu {
+  position: absolute;
+  inset-block-start: var(--space-2);
+  inset-inline-end: var(--space-2);
+  z-index: 2;
+}
+
+.tileMenuButton {
+  display: grid;
+  place-items: center;
+  inline-size: 2rem;
+  block-size: 2rem;
+  padding: 0;
+  border: 0;
+  border-radius: var(--radius-pill);
+  font: inherit;
+  font-size: var(--font-size-lg);
+  font-weight: 800;
+  line-height: 1;
+  color: var(--color-text);
+  /* Readable on any picture. */
+  background: var(--color-hero-scrim);
+  backdrop-filter: blur(4px);
+  cursor: pointer;
+  opacity: 0.85;
+}
+
+.tileMenuButton:hover,
+.tileMenuButton[aria-expanded='true'] {
+  opacity: 1;
+}
+
+.tileMenuButton:focus-visible {
+  outline: 2px solid var(--color-focus);
+  outline-offset: 2px;
+  opacity: 1;
+}
+
+/* The chips' row ends with + to add a channel. */
+.chipsRow {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--space-2);
+}
+
+.chipsRow .chips {
+  flex: 1;
+}
+
+.addRoot {
+  position: relative;
+}
+
+.addButton {
+  display: grid;
+  place-items: center;
+  inline-size: 2.25rem;
+  block-size: 2.25rem;
+  padding: 0;
+  font: inherit;
+  font-size: var(--font-size-lg);
+  font-weight: 700;
+  line-height: 1;
+  color: var(--color-text);
+  background: var(--color-neutral-bg);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-pill);
+  cursor: pointer;
+}
+
+.addButton:hover,
+.addButton[aria-expanded='true'] {
+  border-color: var(--color-border-strong);
+}
+
+.addButton:focus-visible {
+  outline: 2px solid var(--color-focus);
+  outline-offset: 2px;
+}
+
+.addPanel {
+  position: absolute;
+  top: calc(100% + var(--space-2));
+  inset-inline-end: 0;
+  z-index: 6;
+  display: grid;
+  gap: var(--space-3);
+  inline-size: min(22rem, calc(100vw - 2 * var(--space-4)));
+  padding: var(--space-3);
+  background: var(--color-surface-raised);
+  border: 1px solid var(--color-border-strong);
+  border-radius: var(--radius-md);
+  box-shadow: var(--shadow-raised);
+}
+
+.addPanel fieldset {
+  display: flex;
+  gap: var(--space-3);
+  margin: 0;
+  padding: 0;
+  border: 0;
+}
+
+.addPanel legend {
+  margin-block-end: var(--space-1);
+  font-size: var(--font-size-sm);
+  font-weight: 600;
+}
+
+.addPanel label {
+  display: grid;
+  gap: var(--space-1);
+  font-size: var(--font-size-sm);
+}
+
+.addPanel fieldset label {
+  display: flex;
+  align-items: center;
+  gap: var(--space-1);
+}
+
+.addPanel form {
+  display: grid;
+  gap: var(--space-2);
+}
+
+/* A notice with a button beside its words. */
+.noticeRow {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-3);
+}

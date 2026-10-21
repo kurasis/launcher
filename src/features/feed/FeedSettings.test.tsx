@@ -1,7 +1,13 @@
 import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { mockIPC } from '@tauri-apps/api/mocks';
 import { describe, expect, it } from 'vitest';
-import type { MutationRequest, OwnChannel, OwnStreamer, SettingsPatch } from '../../lib/contracts';
+import type {
+  FeedMarks,
+  MutationRequest,
+  OwnChannel,
+  OwnStreamer,
+  SettingsPatch,
+} from '../../lib/contracts';
 import { snapshotFixture } from '../../test/fixtures';
 import { FeedSettings } from './FeedSettings';
 
@@ -11,10 +17,12 @@ const streamer: OwnStreamer = { login: 'ph1lza', name: 'Ph1LzA' };
 function setup(
   add: (input: string) => OwnChannel[] = () => [mine],
   addStreamer: (input: string) => OwnStreamer[] = () => [streamer],
+  startMarks: FeedMarks = { hidden: [], favorite: [] },
 ) {
   const calls: { cmd: string; args: Record<string, unknown> }[] = [];
   let channels: OwnChannel[] = [];
   let streamers: OwnStreamer[] = [];
+  let marks: FeedMarks = startMarks;
   mockIPC((cmd, payload) => {
     const args = (payload ?? {}) as Record<string, unknown>;
     calls.push({ cmd, args });
@@ -35,6 +43,14 @@ function setup(
       case 'feed_remove_streamer':
         streamers = streamers.filter((s) => s.login !== args.login);
         return streamers;
+      case 'feed_marks':
+        return marks;
+      case 'feed_mark':
+        marks = {
+          hidden: marks.hidden.filter((m) => m.id !== args.id),
+          favorite: marks.favorite.filter((m) => m.id !== args.id),
+        };
+        return marks;
       case 'set_app_settings':
         return snapshotFixture().settings;
       default:
@@ -184,5 +200,27 @@ describe('FeedSettings', () => {
     fireEvent.click(youtube().getByRole('button', { name: 'Add' }));
     expect(await screen.findByRole('alert')).toHaveTextContent('not a YouTube channel link');
     expect(calls.some((c) => c.cmd === 'feed_add_channel')).toBe(false);
+  });
+
+  it('lists the channels shown first and the hidden ones, and takes them off', async () => {
+    const calls = setup(undefined, undefined, {
+      hidden: [{ kind: 'twitch', id: 'zubarefff_1', name: '<b>Copy</b>' }],
+      favorite: [{ kind: 'youtube', id: 'UCabcdefghijklmnopqrstuv', name: 'Loved' }],
+    });
+    const first = within(screen.getByRole('group', { name: 'Shown first' }));
+    const hidden = within(screen.getByRole('group', { name: 'Not shown' }));
+    expect(await first.findByText('Loved')).toBeVisible();
+    expect(first.getByText('YouTube')).toBeVisible();
+    // A name is text, never markup.
+    expect(hidden.getByText('<b>Copy</b>')).toBeVisible();
+    fireEvent.click(hidden.getByRole('button', { name: 'Remove <b>Copy</b>' }));
+    expect(await hidden.findByText('None yet.')).toBeVisible();
+    expect(calls.find((c) => c.cmd === 'feed_mark')?.args).toEqual({
+      kind: 'twitch',
+      id: 'zubarefff_1',
+      name: '<b>Copy</b>',
+      list: null,
+    });
+    expect(first.getByText('Loved')).toBeVisible();
   });
 });

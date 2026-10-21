@@ -125,7 +125,23 @@
         "installedMark": "installed",
         "erid": "Ad token: {erid}",
         "installFailed": "{version} could not be installed. Open Installations to see why."
-      }
+      },
+      "itemMenu": "More: {title}",
+      "copyLink": "Copy link",
+      "linkCopied": "Link copied.",
+      "favorite": "Show {name} first",
+      "unfavorite": "Stop showing {name} first",
+      "hideChannel": "Don’t show {name}",
+      "channelHidden": "{name} is hidden from the feed.",
+      "undo": "Undo",
+      "favoriteBadge": "Favourite",
+      "addChannel": "Add a channel",
+      "addChannelPlace": "Where the channel is",
+      "places": {
+        "youtube": "YouTube",
+        "twitch": "Twitch"
+      },
+      "channelAdded": "{name} is added to the feed."
     },
     "bootstrap": {
       "loading": "Loading launcher state…",
@@ -925,7 +941,13 @@
       "streamersHint": "Their streams show in the feed while they are live. The list stays on this computer; only the channel names are sent to the feed to ask whether they are live.",
       "streamerInput": "Channel link or name",
       "streamerBadInput": "This is not a Twitch channel link or name.",
-      "streamerNotFound": "There is no such channel on Twitch."
+      "streamerNotFound": "There is no such channel on Twitch.",
+      "favorites": "Shown first",
+      "favoritesHint": "Videos and streams of these channels come first in the feed. Add one with ⋯ on its tile.",
+      "hiddenChannels": "Not shown",
+      "hiddenChannelsHint": "Videos and streams of these channels are left out of the feed.",
+      "noMarks": "None yet.",
+      "removeMark": "Remove {name}"
     },
     "privacy": {
       "shareStats": "Share anonymous crash statistics",

@@ -3319,6 +3319,47 @@ pub async fn feed_own_streams<R: Runtime>(app: AppHandle<R>) -> FeedResult<Vec<S
     feed_service(&app).own_streams(&root).await
 }
 
+/// The channels the player hid from the feed and the ones they put first.
+#[tauri::command(async)]
+pub fn feed_marks<R: Runtime>(app: AppHandle<R>) -> crate::feed::FeedMarks {
+    feed_root(&app)
+        .map(|root| crate::feed::marks(&root))
+        .unwrap_or_default()
+}
+
+/// Puts a channel (`youtube` or `twitch`) on a list (`hidden` or
+/// `favorite`), or with no list takes it off both; the marks after.
+#[tauri::command(async)]
+pub fn feed_mark<R: Runtime>(
+    app: AppHandle<R>,
+    kind: String,
+    id: String,
+    name: String,
+    list: Option<String>,
+) -> FeedResult<crate::feed::FeedMarks> {
+    let kind = crate::feed::model::MarkKind::parse(&kind).ok_or(FeedProblem::BadInput)?;
+    if !kind.id(&id) || name.len() > crate::feed::MAX_CHANNEL_INPUT * 4 {
+        return Err(FeedProblem::BadInput);
+    }
+    let name = crate::feed::model::mark_name(&name).unwrap_or_else(|| id.clone());
+    let list = match list.as_deref() {
+        None => None,
+        Some(list) => Some(crate::feed::MarkList::parse(list).ok_or(FeedProblem::BadInput)?),
+    };
+    let channel = crate::feed::model::ChannelMark { kind, id, name };
+    crate::feed::mark(&feed_root(&app)?, channel, list)
+}
+
+/// The newest videos and live streams of the favourite channels.
+#[tauri::command]
+pub async fn feed_favorites<R: Runtime>(
+    app: AppHandle<R>,
+) -> FeedResult<crate::feed::FavoriteFeed> {
+    feed_languages(&app)?;
+    let root = feed_root(&app)?;
+    feed_service(&app).favorites(&root).await
+}
+
 // ----- worlds with friends (D-068) -----
 
 fn worlds<R: Runtime>(app: &AppHandle<R>) -> Arc<crate::worlds::app::Worlds> {
