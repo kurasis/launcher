@@ -327,7 +327,7 @@ async fn register_then_sign_in_with_pkce_and_use_the_tokens() {
     assert_eq!(claims.nick, "Steve_2");
     assert_eq!(
         claims.aud,
-        ["account", "friends", "skins", "mods", "worlds"]
+        ["account", "friends", "skins", "mods", "worlds", "reviews"]
     );
     // Registration kept the address and country for recovery by hand.
     let account = t.app.store.find_login("steve_2").unwrap().unwrap();

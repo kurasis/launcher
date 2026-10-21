@@ -1,0 +1,163 @@
+name: Reviews service
+
+# Reviews players send from the launcher, at reviews.lapi.sh
+# (docs/DECISIONS.md D-070): tests, a release build, and a deploy over SSH to
+# /home/www/lapi/reviews. The server needs deploy/bootstrap.sh run as root
+# once, and again when the nginx files change (the deploy warns).
+#
+# Reviews are read and answered by the owner over SSH on the server
+# (docs/REVIEWS.md), never here: this repository is public, and so are its
+# workflow logs. "Run workflow" with task=counts shows numbers only.
+# Secret: DEEPL_API_KEY (the owner's `show --translate`; optional).
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - services/reviews/**
+      - deploy/reviews/**
+      - deploy/*.sh
+      - deploy/nginx/**
+      - .github/workflows/reviews-service.yml
+      - .github/actions/**
+  pull_request:
+    paths:
+      - services/reviews/**
+      - deploy/reviews/**
+      - deploy/*.sh
+      - deploy/nginx/**
+      - .github/workflows/reviews-service.yml
+      - .github/actions/**
+  workflow_dispatch:
+    inputs:
+      task:
+        description: deploy, or counts of the reviews
+        type: choice
+        options: [deploy, counts]
+        default: deploy
+
+permissions:
+  contents: read
+
+concurrency:
+  group: reviews-service-${{ github.ref }}
+  cancel-in-progress: false
+
+env:
+  CARGO_TERM_COLOR: always
+  CARGO_INCREMENTAL: 0
+
+jobs:
+  test:
+    name: Test and build
+    if: github.event_name != 'workflow_dispatch' || inputs.task == 'deploy'
+    runs-on: ubuntu-24.04
+    defaults:
+      run:
+        working-directory: services/reviews
+    steps:
+      - uses: actions/checkout@v7
+      - run: rustup show active-toolchain
+      - uses: actions/cache@v6
+        with:
+          path: |
+            ~/.cargo/registry
+            services/reviews/target
+          key: reviews-${{ hashFiles('services/reviews/Cargo.lock', 'rust-toolchain.toml') }}
+      - run: cargo fmt --check
+      - run: cargo clippy --locked --all-targets -- -D warnings
+      - run: cargo test --locked
+      # Ubuntu 24.04's glibc (2.39) is older than Debian 13's (2.41), so the
+      # binary runs there.
+      - run: cargo build --locked --release
+      - name: Check the nginx files
+        working-directory: ${{ github.workspace }}
+        run: bash deploy/check-nginx.sh
+      - name: Package the release
+        run: |
+          mkdir -p ../../dist-reviews/nginx
+          cp target/release/lapi-reviews ../../dist-reviews/
+          cp ../../deploy/nginx/* ../../deploy/reviews/nginx/* ../../dist-reviews/nginx/
+          tar -czf ../../lapi-reviews.tar.gz -C ../../dist-reviews .
+      - uses: actions/upload-artifact@v7
+        with:
+          name: lapi-reviews
+          path: lapi-reviews.tar.gz
+          retention-days: 14
+
+  deploy:
+    # One deploy of this service at a time, from any branch or run.
+    concurrency:
+      group: reviews-deploy
+      cancel-in-progress: false
+    name: Deploy to reviews.lapi.sh
+    # Deploys use the production environment: Settings → Environments →
+    # production → Required reviewers makes each one wait for an approval.
+    environment: production
+    needs: test
+    # Only main reaches production, also when run by hand.
+    if: >-
+      github.ref == 'refs/heads/main'
+      && (github.event_name == 'push'
+          || (github.event_name == 'workflow_dispatch' && inputs.task == 'deploy'))
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/download-artifact@v8
+        with:
+          name: lapi-reviews
+      - uses: ./.github/actions/lapi-ssh
+        with:
+          ssh-key: ${{ secrets.SSH_KEY }}
+          known-hosts: ${{ secrets.SSH_KNOWN_HOSTS }}
+      - uses: ./.github/actions/lapi-upload
+        with:
+          service: reviews
+          target: ${{ secrets.SSH_USER }}@${{ secrets.SSH_HOST }}
+      - name: Deploy
+        env:
+          TARGET: ${{ secrets.SSH_USER }}@${{ secrets.SSH_HOST }}
+          DEEPL_API_KEY: ${{ secrets.DEEPL_API_KEY }}
+        run: |
+          set +e
+          # The secret travels on standard input; deploy.sh keeps it in
+          # secrets.env (0640) and prints only its name.
+          printf 'LAPI_REVIEWS_DEEPL_KEY=%s\n' "$DEEPL_API_KEY" |
+            ssh "$TARGET" \
+              "bash ~/.lapi-bootstrap/$SETUP/deploy.sh reviews $RELEASE $ARCHIVE --secrets" 2>&1 | tee deploy.log
+          status=${PIPESTATUS[1]}
+          if grep -q NOT_BOOTSTRAPPED deploy.log; then
+            echo "::warning::The server is not set up yet: run 'sudo bash ~/lapi-bootstrap/bootstrap.sh <deploy-user>' on it once, then re-run this workflow."
+            exit 0
+          fi
+          if grep -qE 'NGINX_(PENDING|CHANGED)' deploy.log; then
+            echo "::warning::The nginx files on the server are not these: run 'sudo bash ~/lapi-bootstrap/bootstrap.sh <deploy-user>' on it to apply them."
+          fi
+          exit "$status"
+      - uses: ./.github/actions/lapi-check
+        with:
+          service: reviews
+          ssh-host: ${{ secrets.SSH_HOST }}
+
+  counts:
+    name: Review counts
+    if: github.event_name == 'workflow_dispatch' && inputs.task == 'counts'
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v7
+      - uses: ./.github/actions/lapi-ssh
+        with:
+          ssh-key: ${{ secrets.SSH_KEY }}
+          known-hosts: ${{ secrets.SSH_KNOWN_HOSTS }}
+      # `overview` prints numbers only.
+      - name: Counts
+        env:
+          TARGET: ${{ secrets.SSH_USER }}@${{ secrets.SSH_HOST }}
+        run: |
+          {
+            echo '### Reviews (7 days)'
+            echo '```json'
+            ssh "$TARGET" \
+              'sudo -n -u lapi-reviews /home/www/lapi/reviews/current/lapi-reviews overview --days 7'
+            echo '```'
+          } | tee -a "$GITHUB_STEP_SUMMARY"
