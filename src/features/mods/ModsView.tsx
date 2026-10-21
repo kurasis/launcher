@@ -13,6 +13,7 @@ import { PackDialog } from './PackDialog';
 import { ProjectPage } from './ProjectPage';
 import { SearchSection } from './SearchSection';
 import { WorldDialog } from './WorldDialog';
+import { installKind } from './helpers';
 import styles from './Mods.module.css';
 
 export type ModsSection = ModsKind | 'installed' | 'requests';
@@ -113,13 +114,14 @@ export function ModsView({ snapshot, instanceId, section, onSection, onInstance 
               setProject(null);
             }}
             onLink={setLink}
+            datapacks={section === 'datapack'}
             onAdd={(found, version) => {
               if (instance === null) return;
               setAdding({
                 instance,
                 versionId: version.id,
                 title: found.title,
-                kind: found.kind,
+                kind: installKind(found.kind, version),
                 replaces: null,
                 world: null,
               });
