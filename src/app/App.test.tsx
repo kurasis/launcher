@@ -76,6 +76,10 @@ function fakeBackend(
             retryable: false,
             diagnosticId: 'diag-1',
           };
+        case 'feed_marks':
+          return { hidden: [], favorite: [] };
+        case 'feed_favorites':
+          return { videos: [], streams: [] };
         default:
           return null;
       }
@@ -626,8 +630,6 @@ describe('App', () => {
         feed_get: () => ({ feed, stale: false, problem: null }),
         feed_own_videos: () => [],
         feed_own_streams: () => [],
-        feed_marks: () => ({ hidden: [], favorite: [] }),
-        feed_favorites: () => ({ videos: [], streams: [] }),
       },
     );
     render(<App />);
