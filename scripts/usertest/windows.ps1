@@ -14,11 +14,13 @@
 # Plain ASCII only: Windows PowerShell reads this file in the ANSI code page. The
 # interface texts come from ui-strings.json (every catalog's text for each key).
 param(
-  [Parameter(Mandatory = $true)][string]$Setup,
-  [Parameter(Mandatory = $true)][string]$Strings,
-  [Parameter(Mandatory = $true)][string]$Versions,
-  [Parameter(Mandatory = $true)][string]$Out,
-  [string]$Nick = 'Tester'
+  [string]$Setup,
+  [string]$Strings,
+  [string]$Versions,
+  [string]$Out,
+  [string]$Nick = 'Tester',
+  # Only puts the machine back: stops and uninstalls what an earlier run left.
+  [switch]$CleanupOnly
 )
 
 $ErrorActionPreference = 'Stop'
@@ -305,12 +307,50 @@ $uninstallKey = 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Uninstall\Launc
 $keyBackup = Join-Path $root 'uninstall-key.reg'
 $results = New-Object System.Collections.ArrayList
 
-# What an earlier, cancelled run left running from its own folder (the launcher, its
-# Java) is stopped; nothing outside that folder is touched.
+$shortcutBackup = Join-Path $root 'shortcuts'
+$shortcutList = Join-Path $root 'shortcuts.txt'
+
+# Puts back what a run changed outside its folder: uninstalls the test launcher, returns
+# the owner's uninstall entry and shortcuts (saved in the folder before the install).
+function Restore-Machine {
+  if ($script:launcher -and -not $script:launcher.HasExited) { Stop-Process -Id $script:launcher.Id -Force -ErrorAction SilentlyContinue }
+  $uninstaller = Join-Path $appDir 'uninstall.exe'
+  if (Test-Path $uninstaller) {
+    Start-Process -FilePath $uninstaller -ArgumentList '/S', "_?=$appDir" -Wait | Out-Null
+  }
+  if (Test-Path $keyBackup) { & reg.exe import $keyBackup 2>&1 | Out-Null }
+  if (Test-Path $shortcutList) {
+    $i = 0
+    foreach ($link in @(Get-Content $shortcutList)) {
+      $saved = Join-Path $shortcutBackup "$i.lnk"
+      if ($link -and (Test-Path $saved)) { Copy-Item $saved $link -Force }
+      $i++
+    }
+  }
+}
+
+# What an earlier, cancelled run left: its processes (the launcher, its Java) are
+# stopped and the machine put back; nothing outside its folder is touched.
 Get-Process -ErrorAction SilentlyContinue | Where-Object {
   try { $_.Path -and $_.Path.StartsWith($root + '\', [StringComparison]::OrdinalIgnoreCase) } catch { $false }
 } | ForEach-Object { Say "stopping $($_.ProcessName) left by an earlier run"; Stop-Process -Id $_.Id -Force -ErrorAction SilentlyContinue }
 Start-Sleep -Seconds 2
+if (Test-Path $root) {
+  Say 'putting back what an earlier run left'
+  Restore-Machine
+  if ((Test-Path $shortcutBackup) -and -not (Test-Path $shortcutList) -and (Get-ChildItem $shortcutBackup)) {
+    # A run before the list was kept: the saved shortcuts stay for the owner.
+    $kept = Join-Path $env:LOCALAPPDATA 'launcher-usertest-shortcuts'
+    Copy-Item -Recurse -Force $shortcutBackup $kept
+    Write-Host "::warning::Saved Launcher shortcuts of an earlier run are in %LOCALAPPDATA%\launcher-usertest-shortcuts."
+  }
+  Remove-Item -Recurse -Force $root -ErrorAction SilentlyContinue
+}
+if ($CleanupOnly) {
+  if (Test-Path $root) { Write-Host '::error::The test folder could not be removed.'; exit 1 }
+  Say 'The machine is clean'
+  exit 0
+}
 
 # The installer stops a running launcher.exe, and a second launcher would only hand
 # over to the first: never on the owner's open launcher.
@@ -320,7 +360,6 @@ if ($running) {
   exit 2
 }
 
-Remove-Item -Recurse -Force $root -ErrorAction SilentlyContinue
 New-Item -ItemType Directory -Force $root | Out-Null
 # The owner's own installation keeps its uninstall entry and shortcuts.
 if (Test-Path $uninstallKey) {
@@ -330,9 +369,10 @@ $shortcuts = @(
   (Join-Path ([Environment]::GetFolderPath('Programs')) 'Launcher.lnk'),
   (Join-Path ([Environment]::GetFolderPath('Desktop')) 'Launcher.lnk')
 ) | Where-Object { Test-Path $_ }
-$shortcutBackup = New-Item -ItemType Directory -Force (Join-Path $root 'shortcuts')
+New-Item -ItemType Directory -Force $shortcutBackup | Out-Null
 $shortcutIndex = 0
 foreach ($link in $shortcuts) { Copy-Item $link (Join-Path $shortcutBackup "$shortcutIndex.lnk"); $shortcutIndex++ }
+Set-Content -Path $shortcutList -Value @($shortcuts)
 
 Say "Install $(Split-Path $Setup -Leaf) into its own folder"
 $started = Get-Date
@@ -346,16 +386,6 @@ Say "Installed in $([int]((Get-Date) - $started).TotalSeconds) s"
 Set-Content -Path (Join-Path $appDir 'portable.txt') -Value 'usertest'
 
 $launcher = $null
-function Restore-Machine {
-  if ($script:launcher -and -not $script:launcher.HasExited) { Stop-Process -Id $script:launcher.Id -Force -ErrorAction SilentlyContinue }
-  $uninstaller = Join-Path $appDir 'uninstall.exe'
-  if (Test-Path $uninstaller) {
-    Start-Process -FilePath $uninstaller -ArgumentList '/S', "_?=$appDir" -Wait | Out-Null
-  }
-  if (Test-Path $keyBackup) { & reg.exe import $keyBackup 2>&1 | Out-Null }
-  $i = 0
-  foreach ($link in $shortcuts) { Copy-Item (Join-Path $shortcutBackup "$i.lnk") $link -Force; $i++ }
-}
 
 try {
   Say 'Start the launcher'

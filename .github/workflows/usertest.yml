@@ -22,13 +22,18 @@ on:
       machine:
         description: Runner name the job must land on; on another machine it stops before touching anything
         default: amd-bosgame-8gb
+      cleanup:
+        description: Only put the machine back (stop and uninstall what an earlier, cancelled run left)
+        type: boolean
+        default: false
 
 permissions:
   contents: read
   actions: read
 
 concurrency:
-  group: usertest
+  # One run per machine; a cleanup of one machine does not wait for a test on another.
+  group: usertest-${{ inputs.machine || 'amd-bosgame-8gb' }}
   cancel-in-progress: false
 
 jobs:
@@ -154,7 +159,12 @@ jobs:
       - name: Play
         env:
           VERSIONS: ${{ needs.prepare.outputs.versions }}
+          CLEANUP: ${{ inputs.cleanup && 'yes' || 'no' }}
         run: |
+          if ($env:CLEANUP -eq 'yes') {
+            & powershell.exe -NoProfile -ExecutionPolicy Bypass -File ut/input/windows.ps1 -CleanupOnly
+            exit $LASTEXITCODE
+          }
           $setup = (Get-Item ut/input/package/*-setup.exe | Select-Object -First 1).FullName
           & powershell.exe -NoProfile -ExecutionPolicy Bypass -File ut/input/windows.ps1 `
             -Setup $setup -Strings (Resolve-Path ut/input/ui-strings.json).Path `

@@ -30,4 +30,6 @@ The run page shows a table per version (install, launch, world, exit, log errors
 artifact `usertest-results` has a folder per version with the screenshots, the game's
 `latest.log` and any crash report, machine names replaced; on a launcher failure also
 what the launcher window showed. The launcher is uninstalled at the end; its data folder
-is removed at the next run's start.
+is removed at the next run's start. A run cancelled halfway leaves the test launcher (and
+maybe the game) running: the next run on that machine stops what runs from its folder and
+puts the machine back first, and a run with `cleanup` does only that.
