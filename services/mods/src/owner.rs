@@ -38,6 +38,31 @@ pub fn addresses(store: &Store, urls: &Urls, sha256s: &[String]) -> Result<Vec<S
     Ok(out)
 }
 
+/// Lets go held files of trusted projects (`lapi-mods external trust`) that
+/// the scanner only suspects, `sha256` alone or all of `source_id`'s: served
+/// again and never held by a later scan, as if the owner unblocked each.
+/// Known malware and the owner's blocks stay held. How many were let go.
+pub fn release_trusted(
+    store: &Store,
+    blobs: &Blobs,
+    source_id: Option<&str>,
+    sha256: Option<&str>,
+    now: i64,
+) -> Result<usize, String> {
+    let suspects = store.trusted_suspects(source_id, sha256)?;
+    for sha256 in &suspects {
+        if !blobs.has(sha256) {
+            blobs
+                .release(sha256)
+                .map_err(|e| format!("putting the file back: {e}"))?;
+        }
+        store.set_allowed(sha256)?;
+        store.decide_reviews(sha256, "keep", now)?;
+        store.log_decision("trust", sha256, "trusted project", now)?;
+    }
+    Ok(suspects.len())
+}
+
 /// Clears addresses from the cache in front of the kept files.
 pub trait Purge: Send + Sync {
     /// How many addresses were cleared.

@@ -361,6 +361,9 @@ const ADDED: &[(&str, &str, &str)] = &[
     // Days between checks of the project's sources, as the owner set them:
     // NULL the usual rule, 0 never (external.rs).
     ("project", "recheck_days", "INTEGER"),
+    // The owner trusts the project's own files: one the scanner only suspects
+    // is served (external.rs `trust`); known malware and blocks still hold.
+    ("external_project", "trusted", "INTEGER NOT NULL DEFAULT 0"),
 ];
 
 fn migrate(db: &Connection) -> Result<()> {
@@ -2314,6 +2317,56 @@ impl Store {
         .map_err(sql)?
         .collect::<rusqlite::Result<Vec<_>>>()
         .map_err(sql)
+    }
+
+    /// The owner trusts (or no longer trusts) a project's own files.
+    pub fn set_external_trusted(&self, source_id: &str, trusted: bool) -> Result<bool> {
+        self.db()
+            .execute(
+                "UPDATE external_project SET trusted = ?2 WHERE source_id = ?1",
+                params![source_id, i64::from(trusted)],
+            )
+            .map(|n| n > 0)
+            .map_err(sql)
+    }
+
+    pub fn external_trusted(&self, source_id: &str) -> Result<bool> {
+        self.db()
+            .query_row(
+                "SELECT trusted FROM external_project WHERE source_id = ?1",
+                [source_id],
+                |r| r.get::<_, i64>(0),
+            )
+            .optional()
+            .map(|t| t == Some(1))
+            .map_err(sql)
+    }
+
+    /// Held files of a trusted project's own versions that the scanner only
+    /// suspects: the owner's trust lets them go. `source_id` narrows it to
+    /// one project, `sha256` to one file.
+    pub fn trusted_suspects(
+        &self,
+        source_id: Option<&str>,
+        sha256: Option<&str>,
+    ) -> Result<Vec<String>> {
+        let db = self.db();
+        let mut q = db
+            .prepare(
+                "SELECT DISTINCT b.sha256 FROM blob b
+                 JOIN version_file f ON f.sha256 = b.sha256
+                 JOIN version v ON v.id = f.version_id AND v.source = 'external'
+                 JOIN project_source s ON s.project_id = v.project_id AND s.source = 'external'
+                 JOIN external_project e ON e.source_id = s.source_id AND e.trusted = 1
+                 WHERE b.state = 'quarantined' AND b.verdict = 'suspicious' AND b.allowed = 0
+                   AND (?1 IS NULL OR e.source_id = ?1) AND (?2 IS NULL OR b.sha256 = ?2)
+                 ORDER BY b.sha256 LIMIT 10000",
+            )
+            .map_err(sql)?;
+        q.query_map(params![source_id, sha256], |r| r.get(0))
+            .map_err(sql)?
+            .collect::<rusqlite::Result<Vec<_>>>()
+            .map_err(sql)
     }
 
     /// Adds (or changes) a version the owner gives by its file's address.

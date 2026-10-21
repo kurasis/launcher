@@ -5095,7 +5095,7 @@ fn optifine_site(sites: &Sites) -> HashMap<String, Vec<u8>> {
 
 fn external(t: &T, args: &[&str]) -> Result<Vec<String>, String> {
     let args: Vec<String> = args.iter().map(|a| (*a).to_owned()).collect();
-    crate::external::command(&t.app.store, &args, now())
+    crate::external::command(&t.app.store, &t.app.blobs, &args, now())
 }
 
 #[tokio::test]
@@ -5553,4 +5553,157 @@ async fn days_set_for_a_catalog_project_bound_its_checks() {
     assert_eq!(import::refresh(&t.app, None).unwrap(), 1);
     external(&t, &["days", "sodium", "default"]).unwrap();
     assert_eq!(t.app.store.recheck_days(&id).unwrap(), None);
+}
+
+/// OptiFine's site with its J9 build suspected (it loads code from the
+/// network) and its K2 preview carrying a known malware marker; the SHA-1
+/// of J9's jar.
+fn optifine_site_with_suspects(sites: &Sites) -> String {
+    optifine_site(sites);
+    let filler: Vec<u8> = (0..4000u32)
+        .map(|i| (i.wrapping_mul(2_654_435_761) >> 13) as u8)
+        .collect();
+    let suspected = jar(&[
+        (
+            "a/Loader.class",
+            class_file(
+                &[
+                    ("java/net/URLClassLoader", "<init>"),
+                    ("java/net/URL", "openConnection"),
+                ],
+                &[],
+                &[0xb1],
+            ),
+        ),
+        ("optifine/Filler.bin", filler.clone()),
+    ]);
+    let mut code = built("http://85.217.144.130:8080/dl");
+    code.push(0xb1);
+    let malware = jar(&[
+        ("dev/Utility.class", class_file(&[], &[], &code)),
+        ("optifine/Filler.bin", filler),
+    ]);
+    for (seed, file, bytes) in [
+        (0, "preview_OptiFine_26.2_HD_U_K2_pre5.jar", &malware),
+        (1, "OptiFine_1.21.11_HD_U_J9.jar", &suspected),
+    ] {
+        let token = format!("{:032x}", seed + 1);
+        sites.put(
+            &format!("https://optifine.net/downloadx?f={file}&x={token}"),
+            ok(bytes.clone()),
+        );
+    }
+    hashes(&suspected).0
+}
+
+/// The SHA-256 a version's first file is kept under, and whether it is held.
+async fn optifine_file(t: &T, name: &str) -> (String, bool) {
+    let (_, list) = t.get("/v1/projects/optifine/versions").await;
+    let version = list["versions"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|v| v["name"] == name)
+        .unwrap_or_else(|| panic!("{name}"))
+        .clone();
+    let file = &version["files"][0];
+    (
+        file["sha256"].as_str().unwrap().to_owned(),
+        file["held"].as_bool().unwrap(),
+    )
+}
+
+#[tokio::test]
+async fn trusting_a_project_lets_its_suspected_files_go_but_not_malware() {
+    let t = setup();
+    let suspected_sha1 = optifine_site_with_suspects(&t.sites);
+    external(&t, &["add", "optifine"]).unwrap();
+    t.drain().await;
+    let (j9, held) = optifine_file(&t, "OptiFine HD U J9").await;
+    assert!(held);
+    let (k2, held) = optifine_file(&t, "OptiFine HD U K2 pre5").await;
+    assert!(held);
+    assert_eq!(t.app.store.reviews(), vec![("scan".to_owned(), j9.clone())]);
+
+    let lines = external(&t, &["trust", "optifine", "on"]).unwrap();
+    assert_eq!(lines, vec!["optifine: trusted", "released 1"]);
+    assert_eq!(
+        optifine_file(&t, "OptiFine HD U J9").await,
+        (j9.clone(), false)
+    );
+    assert!(t.app.blobs.has(&j9) && !t.app.blobs.held_path(&j9).is_file());
+    assert!(t.app.store.reviews().is_empty());
+    assert_eq!(
+        optifine_file(&t, "OptiFine HD U K2 pre5").await,
+        (k2.clone(), true)
+    );
+    assert!(!t.app.blobs.has(&k2));
+    // Again: nothing more to let go.
+    let lines = external(&t, &["trust", "optifine", "on"]).unwrap();
+    assert_eq!(lines[1], "released 0");
+    let list = external(&t, &["list"]).unwrap();
+    assert!(list[1].contains(", trusted,"), "{list:?}");
+    assert_eq!(
+        t.app.store.decisions(&j9).unwrap()[0].1,
+        "trust",
+        "the journal says why"
+    );
+
+    // A block by the owner holds a trusted project's file all the same.
+    let blocked = crate::owner::Hash::parse(&suspected_sha1).unwrap();
+    let owner = crate::owner::Owner {
+        store: &t.app.store,
+        blobs: &t.app.blobs,
+        urls: &t.app.urls,
+        purge: None,
+        bucket: None,
+        now: now(),
+    };
+    owner.block(&blocked, "test").unwrap();
+    assert_eq!(
+        external(&t, &["trust", "optifine", "on"]).unwrap()[1],
+        "released 0"
+    );
+    assert!(!t.app.blobs.has(&j9));
+
+    let lines = external(&t, &["trust", "optifine", "off"]).unwrap();
+    assert!(lines[0].starts_with("optifine: not trusted"), "{lines:?}");
+    assert!(!external(&t, &["list"]).unwrap()[1].contains("trusted"));
+}
+
+#[tokio::test]
+async fn a_trusted_projects_new_files_are_served_at_once() {
+    let t = setup();
+    optifine_site_with_suspects(&t.sites);
+    external(&t, &["add", "optifine"]).unwrap();
+    external(&t, &["trust", "optifine", "on"]).unwrap();
+    t.drain().await;
+    let (j9, held) = optifine_file(&t, "OptiFine HD U J9").await;
+    assert!(!held);
+    assert!(t.app.blobs.has(&j9));
+    assert!(t.app.store.reviews().is_empty());
+    // Known malware is held whatever the owner trusts.
+    let (k2, held) = optifine_file(&t, "OptiFine HD U K2 pre5").await;
+    assert!(held);
+    assert!(t.app.blobs.holds(&k2));
+}
+
+#[test]
+fn trust_refuses_junk() {
+    let t = setup();
+    for args in [
+        &["trust", "optifine", "on"][..],
+        &["trust", "nobody", "on"],
+        &["trust", "optifine"],
+        &["trust", "optifine", "yes", "please"],
+    ] {
+        assert!(external(&t, args).is_err(), "{args:?}");
+    }
+    external(&t, &["add", "optifine"]).unwrap();
+    for value in ["yes", "ON ", "1", "", "on; rm -rf /"] {
+        assert!(
+            external(&t, &["trust", "optifine", value]).is_err(),
+            "{value:?}"
+        );
+    }
 }

@@ -8,6 +8,11 @@
 //!   link (`downloadx`) carries a token; what comes back must be a jar.
 //! - `manual:<slug>`: a project the owner describes, its versions one file
 //!   each, added by a command with the file's address on any public site.
+//!
+//! The owner may trust a project (`external trust <project> on`): a file of
+//! its own versions that the scanner only suspects is served, not held (an
+//! installer such as OptiFine's runs programs and loads code by design).
+//! Known malware and the owner's blocks are held all the same.
 
 use crate::model::{KINDS, SourceFile, SourceProject, SourceVersion, clean, word};
 
@@ -481,7 +486,7 @@ pub fn is_archive(path: &std::path::Path) -> bool {
 const USAGE: &str = "usage: lapi-mods external add optifine [--days N] | \
 manual <slug> --title T --kind K --page URL [--summary S] [--icon URL] [--days N] | \
 version <project> --file URL --game G[,G] [--loader L[,L]] [--number N] [--channel C] | \
-days <project> <N|default> | check <project> | list";
+days <project> <N|default> | trust <project> on|off | check <project> | list";
 
 /// The arguments of a command as the workflow sends them: a JSON array of
 /// at most 32 strings, in at most 64 KB.
@@ -542,6 +547,7 @@ fn named(store: &crate::store::Store, name: &str) -> Result<Option<String>, Stri
 /// owner's own names of projects, fit for the workflow's public log.
 pub fn command(
     store: &crate::store::Store,
+    blobs: &crate::blobs::Blobs,
     args: &[String],
     now: i64,
 ) -> Result<Vec<String>, String> {
@@ -703,6 +709,26 @@ pub fn command(
                 None => format!("{id}: checked as usual"),
             }])
         }
+        [trust, project, value] if trust == "trust" => {
+            let source_id = named(store, project)?.ok_or("no such project of the owner's")?;
+            let trusted = match value.as_str() {
+                "on" => true,
+                "off" => false,
+                _ => return Err("trust is on or off".into()),
+            };
+            store.set_external_trusted(&source_id, trusted)?;
+            if !trusted {
+                return Ok(vec![format!(
+                    "{source_id}: not trusted; its files let go already stay served"
+                )]);
+            }
+            let released =
+                crate::owner::release_trusted(store, blobs, Some(&source_id), None, now)?;
+            Ok(vec![
+                format!("{source_id}: trusted"),
+                format!("released {released}"),
+            ])
+        }
         [check, project] if check == "check" => {
             let source_id = named(store, project)?.ok_or("no such project of the owner's")?;
             Ok(vec![queue(&source_id)?])
@@ -718,8 +744,13 @@ pub fn command(
                             .map_or_else(String::new, |d| d.format("%Y-%m-%d %H:%M").to_string())
                     },
                 );
+                let trusted = if store.external_trusted(&row.source_id)? {
+                    ", trusted"
+                } else {
+                    ""
+                };
                 out.push(format!(
-                    "{} {} every {} days, {} versions, {} kept, read {fetched}",
+                    "{} {} every {} days, {} versions, {} kept{trusted}, read {fetched}",
                     row.source_id, row.kind, row.days, row.versions, row.kept
                 ));
             }
