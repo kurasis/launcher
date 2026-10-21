@@ -2,11 +2,13 @@ plugins {
     id 'net.fabricmc.fabric-loom-remap' version '1.19.1'
 }
 
-// The Fabric jar for 1.16 to 1.20.1, a project in the folder named after the release it
+// The Fabric jar for 1.15.2 to 1.20.1, a project in the folder named after the release it
 // is built against; its gradle.properties name the band (`band`) and the releases it
 // accepts (`fabric_range`). Fabric runs these releases with intermediary names, which
-// stay the same from release to release, so one jar serves them all. 1.16 runs on Java 8,
-// so all of it is Java 8.
+// stay the same from release to release, so one jar serves them all. They run on Java 8,
+// so all of it is Java 8. The jars for 1.14.4 and for 1.15 to 1.15.1
+// (mc-1.14.4-1.15.2/fabric) are built by this script too: there a texture is registered
+// through a method that returns a value.
 base {
     archivesName = "launcherskins-fabric-${band}"
 }
@@ -17,10 +19,10 @@ java {
 
 sourceSets.main {
     java.srcDir "${rootDir}/core/src/main/java"
-    java.srcDir "${projectDir}/../../common/src/main/java"
-    java.srcDir "${projectDir}/../src/main/java"
-    resources.srcDir "${projectDir}/../../common/src/main/resources"
-    resources.srcDir "${projectDir}/../src/main/resources"
+    java.srcDir "${rootDir}/mc-1.16.5-1.20.1/common/src/main/java"
+    java.srcDir "${rootDir}/mc-1.16.5-1.20.1/fabric/src/main/java"
+    resources.srcDir "${rootDir}/mc-1.16.5-1.20.1/common/src/main/resources"
+    resources.srcDir "${rootDir}/mc-1.16.5-1.20.1/fabric/src/main/resources"
 }
 
 dependencies {

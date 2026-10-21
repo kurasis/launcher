@@ -56,6 +56,13 @@ add 'mc-1.12.2:forge'
         }
     }
 }
+// 1.14.4 to 1.15.2 take mc-1.16.5-1.20.1's game layer: the Fabric jars for 1.14.4 and
+// for 1.15 to 1.15.1 are built by that folder's Fabric script, the Forge ones (a coremod,
+// no Mixin yet) by mc-1.14.4-1.15.2/forge.
+['1.14.4', '1.15.1'].each { release ->
+    add "mc-1.14.4-1.15.2:fabric:${release}", '../../../mc-1.16.5-1.20.1/fabric/fabric.gradle'
+}
+['1.14.4', '1.15.2'].each { release -> add "mc-1.14.4-1.15.2:forge:${release}", '../forge.gradle' }
 // 1.20.2 to 1.20.6 take mc-1.21.1's game layer; their Forge and NeoForge jars are projects
 // in mc-1.20.2-1.20.6/<loader>, each built by mc-1.20.2-1.20.6/arch.gradle.
 ['forge', 'neoforge'].each { loader ->
@@ -88,6 +95,16 @@ add 'gametest:mc-1.12.2:forge'
         if (new File(dir, 'gradle.properties').exists()) {
             def own = new File(dir, 'build.gradle').exists()
             add "gametest:mc-1.16.5-1.20.1:${loader}:${dir.name}", own ? null : "../${loader}.gradle"
+        }
+    }
+}
+// The 1.14.4 and 1.15.2 bots: Fabric and the agent built by the 1.16.5 to 1.20.1 bots'
+// scripts, Forge (no Mixin yet: Forge's tick event) by mc-1.14.4-1.15.2/forge.
+['fabric', 'forge', 'agent'].each { loader ->
+    file("gametest/mc-1.14.4-1.15.2/${loader}").eachDir { dir ->
+        if (new File(dir, 'gradle.properties').exists()) {
+            def script = loader == 'forge' ? '../forge.gradle' : "../../../mc-1.16.5-1.20.1/${loader}/${loader}.gradle"
+            add "gametest:mc-1.14.4-1.15.2:${loader}:${dir.name}", script
         }
     }
 }

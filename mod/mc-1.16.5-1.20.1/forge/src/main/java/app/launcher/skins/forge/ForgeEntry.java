@@ -7,7 +7,7 @@ import net.minecraftforge.fml.common.Mod;
 import net.minecraftforge.fml.loading.FMLEnvironment;
 import net.minecraftforge.fml.loading.FMLPaths;
 
-/** Forge (1.16.5 to 1.20.1) starts Launcher Skins here; on a server it does nothing. */
+/** Forge (1.14.4 to 1.20.1) starts Launcher Skins here; on a server it does nothing. */
 @Mod(LauncherSkins.ID)
 public final class ForgeEntry {
     public ForgeEntry() {

@@ -17,13 +17,18 @@ none for them: a profile without textures whose UUID is not a Mojang one (versio
   every version in the folder's name (`launcherskins-<loader>-<first>-<last>.jar`). Each
   loader build takes `core` and `common` as its own sources, so every jar stands alone.
   The Fabric jar also runs on Quilt.
-- `mc-1.16.5-1.20.1/`: one plain Java 8 game layer for 1.16 to 1.20.1. What it uses keeps
+- `mc-1.16.5-1.20.1/`: one plain Java 8 game layer for 1.14.4 to 1.20.1. What it uses keeps
   its intermediary names (Fabric) and SRG names (Forge 1.17.1 on) from release to
   release, so the jar built against 1.20.1 is byte for byte the one built against any of
-  them: one Fabric jar serves 1.16 to 1.20.1 and one Forge jar 1.17.1 to 1.20.1 (ModDevGradle's
-  legacy plugin, reobfuscated to SRG). Forge 1.16.5, the first Forge with Mixin, has a jar
-  of its own (Architectury Loom). Each is a project in the folder of the release it is
+  them: one Fabric jar serves 1.15.2 to 1.20.1 and one Forge jar 1.17.1 to 1.20.1
+  (ModDevGradle's legacy plugin, reobfuscated to SRG). Forge 1.16.5, the first Forge with
+  Mixin, has a jar of its own (Architectury Loom). Each is a project in the folder of the release it is
   built against, whose gradle.properties name its band and range.
+- `mc-1.14.4-1.15.2/`: the rest of that layer's releases. Before 1.15.2 the game registers
+  a texture through another method, so Fabric has a jar for 1.14.4 and one for 1.15 to
+  1.15.1 (built by `mc-1.16.5-1.20.1/fabric/fabric.gradle`). Forge 1.14.4 and 1.15.2 have no
+  Mixin: their jars (Architectury Loom, one per release, as the layer's SRG names differ)
+  carry a JavaScript coremod (`META-INF/coremods.json`) that rewrites the same getters.
 - 1.20.2 to 1.20.6 use `mc-1.21.1/common` (the skin is a `PlayerSkin` from 1.20.2 on): its
   Fabric jar serves 1.20.2 to 1.21.1 and its NeoForge jar 1.20.6 to 1.21.1.
   `mc-1.20.2-1.20.6/` builds the rest with Architectury Loom (`arch.gradle`): Forge

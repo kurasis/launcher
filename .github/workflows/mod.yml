@@ -51,6 +51,8 @@ jobs:
             only: mc-1.21.11,gametest:mc-1.21.11
           - name: 1.16 to 1.20.1
             only: mc-1.16.5-1.20.1,gametest:mc-1.16.5-1.20.1
+          - name: 1.14.4 and 1.15.2
+            only: mc-1.14.4-1.15.2,gametest:mc-1.14.4-1.15.2
           - name: 1.20.2 to 1.20.6
             only: mc-1.20.2-1.20.6,gametest:mc-1.20.2-1.20.6
           - name: the Java agents
@@ -99,7 +101,7 @@ jobs:
           set -o pipefail
           for attempt in 1 2; do
             ./gradlew --no-daemon "-Ponly=$ONLY" build 2>&1 | tee gradle.log && exit 0
-            grep -qE "Connection reset|Connection timed out|HTTP response code: (429|5[0-9][0-9])" gradle.log || exit 1
+            grep -qE "Connection reset|Connection timed out|(HTTP response code:|status code) (429|5[0-9][0-9])" gradle.log || exit 1
             echo "A download was cut off; trying once more"
           done
           exit 1
