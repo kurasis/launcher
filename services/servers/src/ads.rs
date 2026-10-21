@@ -7,7 +7,7 @@ use std::collections::BTreeMap;
 use serde_json::{Value, json};
 
 use crate::icons::{self, Icons};
-use crate::ping::Pinger;
+use crate::ping::{self, Pinger};
 use crate::store::{Ad, Ping, Store};
 use crate::text;
 
@@ -280,7 +280,8 @@ pub async fn ping(
                 .and_then(|png| icons.keep(&png, icons::Kind::Png).ok());
             // A check that fails keeps the last one.
             let (licensed, checked_at) = if due {
-                match pinger.licensed(&ad.address, status.protocol).await {
+                let protocols = ping::check_protocols(&ad.version, status.protocol);
+                match pinger.licensed(&ad.address, &protocols).await {
                     Ok(licensed) => (licensed, Some(now)),
                     Err(_) => (None, None),
                 }

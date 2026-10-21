@@ -82,7 +82,12 @@ sudo -u lapi-servers /home/www/lapi/servers/current/lapi-servers banner 3 - < ba
 The service also asks each server whether it wants a Microsoft sign-in (online mode): about
 once a day, and at once on `add`, `edit` and `ping`. It starts a login as `ServerListCheck`
 and leaves at the server's first answer; an offline-mode server may show that name joining for
-a moment. When a server wants a sign-in, the tile says so, and a player who would play
+a moment. It logs in with the ad's default version first, so a server that refuses that
+version shows as unknown unless a later try (the version its status names, then the newest)
+gets in; the check takes a few seconds and at most about half a minute: it waits four seconds before each
+login. A check that stays unknown often means the server refuses the default version: then
+it refuses players from the ad too, so check the ad's versions (`edit <id> --version …
+--from …`). When a server wants a sign-in, the tile says so, and a player who would play
 without a Microsoft account that owns Minecraft is told so before anything is downloaded.
 `show` prints the last check.
 

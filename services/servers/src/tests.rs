@@ -1,5 +1,6 @@
 use std::collections::BTreeMap;
 use std::sync::Arc;
+use std::time::Duration;
 
 use axum::body::Body;
 use axum::http::{Request, StatusCode};
@@ -499,6 +500,7 @@ async fn an_ad_ping_keeps_the_icon() {
     let (port, _task) = fake_servers(vec![status_packet(&json)]).await;
     let mut pinger = Pinger::new();
     pinger.allow_local = true;
+    pinger.pause = Duration::ZERO;
     let ad = store::Ad {
         address: format!("127.0.0.1:{port}"),
         ..ad
@@ -815,6 +817,7 @@ fn login_packet(id: i32, body: &[u8]) -> Vec<u8> {
 async fn the_sign_in_check_reads_the_first_login_answer() {
     let mut pinger = Pinger::new();
     pinger.allow_local = true;
+    pinger.pause = Duration::ZERO;
     for (answer, expected) in [
         (login_packet(0x01, b"\x00\x05key..\x04tokn"), Some(true)),
         (login_packet(0x02, &[0; 20]), Some(false)),
@@ -824,7 +827,7 @@ async fn the_sign_in_check_reads_the_first_login_answer() {
     ] {
         let (port, task) = fake_servers(vec![answer]).await;
         let got = pinger
-            .licensed(&format!("127.0.0.1:{port}"), Some(769))
+            .licensed(&format!("127.0.0.1:{port}"), &[769])
             .await
             .unwrap();
         assert_eq!(got, expected);
@@ -839,7 +842,7 @@ async fn the_sign_in_check_reads_the_first_login_answer() {
     let (port, _task) = fake_servers(vec![vec![0xff; 8]]).await;
     assert!(
         pinger
-            .licensed(&format!("127.0.0.1:{port}"), None)
+            .licensed(&format!("127.0.0.1:{port}"), &[767])
             .await
             .is_err()
     );
@@ -848,7 +851,7 @@ async fn the_sign_in_check_reads_the_first_login_answer() {
     let (port, _task) = fake_servers(vec![huge]).await;
     assert!(
         pinger
-            .licensed(&format!("127.0.0.1:{port}"), None)
+            .licensed(&format!("127.0.0.1:{port}"), &[767])
             .await
             .is_err()
     );
@@ -856,11 +859,57 @@ async fn the_sign_in_check_reads_the_first_login_answer() {
     let (port, _task) = fake_servers(vec![login_packet(0x01, &[])]).await;
     assert!(
         pinger
-            .licensed(&format!("127.0.0.1:{port}"), None)
+            .licensed(&format!("127.0.0.1:{port}"), &[767])
             .await
             .is_err(),
         "this machine is never asked"
     );
+}
+
+#[tokio::test]
+async fn the_sign_in_check_tries_the_next_protocol_after_a_kick() {
+    let mut pinger = Pinger::new();
+    pinger.allow_local = true;
+    pinger.pause = Duration::ZERO;
+    let kick = login_packet(0x00, b"\x0f\"use 1.21.7 on\"");
+    // A version kick, then an encryption request in the next protocol.
+    let (port, task) = fake_servers(vec![kick.clone(), login_packet(0x01, &[])]).await;
+    let got = pinger
+        .licensed(&format!("127.0.0.1:{port}"), &[767, 774])
+        .await
+        .unwrap();
+    assert_eq!(got, Some(true));
+    let heard = task.await.unwrap();
+    // The handshake's length and id, then its protocol.
+    let speaks = |wire: &[u8], protocol: i32| {
+        let mut varint = Vec::new();
+        ping::write_varint(&mut varint, protocol);
+        wire[2..].starts_with(&varint)
+    };
+    assert!(speaks(&heard[0], 767) && speaks(&heard[1], 774));
+    // Kicked in every protocol: unknown, and three logins at most.
+    let (port, task) = fake_servers(vec![kick.clone(), kick.clone(), kick.clone()]).await;
+    let got = pinger
+        .licensed(&format!("127.0.0.1:{port}"), &[774, 767, 777, 763])
+        .await
+        .unwrap();
+    assert_eq!(got, None);
+    assert_eq!(task.await.unwrap().len(), 3);
+    // Nothing to try is no answer.
+    assert!(pinger.licensed("127.0.0.1:1", &[]).await.is_err());
+}
+
+#[test]
+fn the_sign_in_check_starts_with_the_ads_version() {
+    // CubeCraft-like: the status repeats 1.21.1's protocol it was asked in.
+    assert_eq!(ping::check_protocols("1.21.11", Some(767)), [774, 767, 777]);
+    assert_eq!(ping::check_protocols("1.20.1", Some(763)), [763, 777]);
+    assert_eq!(ping::check_protocols("26.3", Some(777)), [777]);
+    // A release we do not know, and odd status protocols.
+    assert_eq!(ping::check_protocols("26.9", Some(790)), [790, 777]);
+    assert_eq!(ping::check_protocols("1.8.9", None), [47, 777]);
+    assert_eq!(ping::check_protocols("1.12.2", Some(-1)), [340, 777]);
+    assert_eq!(ping::check_protocols("1.7.10", Some(i64::MAX)), [5, 777]);
 }
 
 #[test]
@@ -888,6 +937,7 @@ async fn an_ad_ping_checks_the_sign_in_once_a_day() {
     let icons = Icons::new(dir.path()).unwrap();
     let mut pinger = Pinger::new();
     pinger.allow_local = true;
+    pinger.pause = Duration::ZERO;
     let status = status_packet(
         r#"{"version":{"name":"Paper","protocol":769},"players":{"online":3,"max":10}}"#,
     );

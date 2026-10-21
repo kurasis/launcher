@@ -22,6 +22,118 @@ const PROTOCOL: i32 = 767;
 pub const CHECK_NAME: &str = "ServerListCheck";
 /// The UUID it gives where the protocol wants one (1.20.2 and later).
 const CHECK_UUID: [u8; 16] = *b"ServerListCheck!";
+/// The check tries at most this many protocols.
+const CHECK_TRIES: usize = 3;
+/// Before each login the check waits this long: servers drop connections
+/// that come too fast from one address.
+const CHECK_PAUSE: Duration = Duration::from_secs(4);
+/// The newest protocol we know (26.3).
+const NEWEST: i32 = 777;
+/// Each release's protocol, for the versions an ad can name from 1.7.2 on.
+/// A release missing here is not guessed: the check tries the others.
+const RELEASES: &[(&str, i32)] = &[
+    ("26.3", 777),
+    ("1.21.11", 774),
+    ("1.21.10", 773),
+    ("1.21.9", 773),
+    ("1.21.8", 772),
+    ("1.21.7", 772),
+    ("1.21.6", 771),
+    ("1.21.5", 770),
+    ("1.21.4", 769),
+    ("1.21.3", 768),
+    ("1.21.2", 768),
+    ("1.21.1", 767),
+    ("1.21", 767),
+    ("1.20.6", 766),
+    ("1.20.5", 766),
+    ("1.20.4", 765),
+    ("1.20.3", 765),
+    ("1.20.2", 764),
+    ("1.20.1", 763),
+    ("1.20", 763),
+    ("1.19.4", 762),
+    ("1.19.3", 761),
+    ("1.19.2", 760),
+    ("1.19.1", 760),
+    ("1.19", 759),
+    ("1.18.2", 758),
+    ("1.18.1", 757),
+    ("1.18", 757),
+    ("1.17.1", 756),
+    ("1.17", 755),
+    ("1.16.5", 754),
+    ("1.16.4", 754),
+    ("1.16.3", 753),
+    ("1.16.2", 751),
+    ("1.16.1", 736),
+    ("1.16", 735),
+    ("1.15.2", 578),
+    ("1.15.1", 575),
+    ("1.15", 573),
+    ("1.14.4", 498),
+    ("1.14.3", 490),
+    ("1.14.2", 485),
+    ("1.14.1", 480),
+    ("1.14", 477),
+    ("1.13.2", 404),
+    ("1.13.1", 401),
+    ("1.13", 393),
+    ("1.12.2", 340),
+    ("1.12.1", 338),
+    ("1.12", 335),
+    ("1.11.2", 316),
+    ("1.11.1", 316),
+    ("1.11", 315),
+    ("1.10.2", 210),
+    ("1.10.1", 210),
+    ("1.10", 210),
+    ("1.9.4", 110),
+    ("1.9.3", 110),
+    ("1.9.2", 109),
+    ("1.9.1", 108),
+    ("1.9", 107),
+    ("1.8.9", 47),
+    ("1.8.8", 47),
+    ("1.8.7", 47),
+    ("1.8.6", 47),
+    ("1.8.5", 47),
+    ("1.8.4", 47),
+    ("1.8.3", 47),
+    ("1.8.2", 47),
+    ("1.8.1", 47),
+    ("1.8", 47),
+    ("1.7.10", 5),
+    ("1.7.9", 5),
+    ("1.7.8", 5),
+    ("1.7.7", 5),
+    ("1.7.6", 5),
+    ("1.7.5", 4),
+    ("1.7.4", 4),
+    ("1.7.2", 4),
+];
+
+/// The protocols the sign-in check tries, best first: the ad's default
+/// version's (what a player from the ad joins with), the one the server's
+/// status named, and the newest we know. A server that takes many versions
+/// often repeats in its status the protocol it was asked in, and may still
+/// refuse it at login (one asked in 1.21.1's let in 1.21.7 and later only).
+pub fn check_protocols(version: &str, status: Option<i64>) -> Vec<i32> {
+    let named = status
+        .and_then(|p| i32::try_from(p).ok())
+        .filter(|p| *p > 0);
+    let release = RELEASES
+        .iter()
+        .find(|(id, _)| *id == version)
+        .map(|(_, protocol)| *protocol);
+    let mut protocols = Vec::with_capacity(CHECK_TRIES);
+    for protocol in [release, named, Some(NEWEST)].into_iter().flatten() {
+        if !protocols.contains(&protocol) {
+            protocols.push(protocol);
+        }
+    }
+    protocols
+}
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Status {
@@ -73,6 +185,8 @@ pub struct Pinger {
     resolver: Option<hickory_resolver::TokioResolver>,
     /// Tests ping a server on this machine.
     pub allow_local: bool,
+    /// The wait before each login of the sign-in check.
+    pub pause: Duration,
 }
 
 impl Pinger {
@@ -85,6 +199,7 @@ impl Pinger {
         Self {
             resolver,
             allow_local: false,
+            pause: CHECK_PAUSE,
         }
     }
 
@@ -177,29 +292,28 @@ impl Pinger {
     /// Whether the server lets in only players signed in with Microsoft
     /// (online mode): it then asks for encryption before anything else.
     /// `Some(false)` when it lets the check's name in without, `None` when
-    /// it answers neither (a kick: a whitelist, a version it refuses).
-    /// The check speaks the protocol the server's status named and leaves
-    /// as soon as the server answers; an offline-mode server may show the
-    /// name joining for that moment.
-    pub async fn licensed(
-        &self,
-        address: &str,
-        protocol: Option<i64>,
-    ) -> Result<Option<bool>, String> {
-        tokio::time::timeout(TIMEOUT, self.licensed_inner(address, protocol))
-            .await
-            .map_err(|_| "the server did not answer in time".to_owned())?
+    /// it answers neither in any of `protocols` (a kick: a whitelist, a
+    /// version it refuses). Each protocol is tried after a kick or a failed
+    /// connection, `CHECK_TRIES` at most, and the check leaves as soon as the
+    /// server answers; an offline-mode server may show the name joining for
+    /// that moment.
+    pub async fn licensed(&self, address: &str, protocols: &[i32]) -> Result<Option<bool>, String> {
+        let mut kicked = false;
+        let mut failed = "no protocol to try".to_owned();
+        for &protocol in protocols.iter().take(CHECK_TRIES) {
+            tokio::time::sleep(self.pause).await;
+            match tokio::time::timeout(TIMEOUT, self.login(address, protocol)).await {
+                Ok(Ok(Some(licensed))) => return Ok(Some(licensed)),
+                Ok(Ok(None)) => kicked = true,
+                Ok(Err(e)) => failed = e,
+                Err(_) => failed = "the server did not answer in time".to_owned(),
+            }
+        }
+        if kicked { Ok(None) } else { Err(failed) }
     }
 
-    async fn licensed_inner(
-        &self,
-        address: &str,
-        protocol: Option<i64>,
-    ) -> Result<Option<bool>, String> {
-        let protocol = protocol
-            .and_then(|p| i32::try_from(p).ok())
-            .filter(|p| *p > 0)
-            .unwrap_or(PROTOCOL);
+    /// One login in `protocol`: what its first answer says.
+    async fn login(&self, address: &str, protocol: i32) -> Result<Option<bool>, String> {
         let (mut stream, host, port) = self.connect(address).await?;
         let mut wire = handshake(protocol, &host, port, 2);
         wire.extend_from_slice(&login_start(protocol));
