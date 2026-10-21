@@ -693,10 +693,32 @@ fn builds_are_found_by_version_and_loader() {
         label("1.21.7", Some(Fabric)).as_deref(),
         Some("fabric-1.21.5-1.21.8")
     );
+    // From 1.20.2 the skin is a PlayerSkin: one Fabric jar to 1.21.1, NeoForge from 1.20.6.
     assert_eq!(
         label("1.21", Some(Fabric)).as_deref(),
-        Some("fabric-1.21-1.21.1")
+        Some("fabric-1.20.2-1.21.1")
     );
+    assert_eq!(
+        label("1.20.3", Some(Quilt)).as_deref(),
+        Some("fabric-1.20.2-1.21.1")
+    );
+    assert_eq!(
+        label("1.20.6", Some(NeoForge)).as_deref(),
+        Some("neoforge-1.20.6-1.21.1")
+    );
+    assert_eq!(
+        label("1.20.2", Some(NeoForge)).as_deref(),
+        Some("neoforge-1.20.2-1.20.4")
+    );
+    assert_eq!(
+        label("1.20.4", Some(Forge)).as_deref(),
+        Some("forge-1.20.2-1.20.4")
+    );
+    assert_eq!(
+        label("1.20.6", Some(Forge)).as_deref(),
+        Some("forge-1.20.6")
+    );
+    assert_eq!(label("1.20.5", None).as_deref(), Some("agent-1.20.5"));
     // Forge's jar for 1.21.1 is built for 1.21.1 alone.
     assert_eq!(label("1.21", Some(Forge)), None);
     // NeoForge for 1.20.1 runs Forge's jar.
@@ -730,6 +752,9 @@ fn builds_are_found_by_version_and_loader() {
         ("1.18.2", Some(NeoForge)),
         // Forge before 1.16.5 has no Mixin.
         ("1.16.4", Some(Forge)),
+        // Neither Forge nor NeoForge has a stable build for 1.20.5.
+        ("1.20.5", Some(Forge)),
+        ("1.20.5", Some(NeoForge)),
         ("26.4", Some(Fabric)),
         ("1.21.1-pre1", None),
         ("", None),
