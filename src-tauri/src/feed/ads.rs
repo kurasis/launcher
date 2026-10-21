@@ -1,8 +1,9 @@
 //! Ads for Minecraft servers from servers.lapi.sh (D-069), shown as tiles in
 //! the feed. Each ad is read through the rules here: one that breaks any of
-//! them is left out. Icons are fetched from our service only and handed to
-//! the interface as PNG data URLs; the advertised servers are asked nothing
-//! until the player presses Play, which starts the game straight into one.
+//! them is left out. Icons (PNG) and banners (JPEG) are fetched from our
+//! service only and handed to the interface as data URLs; the advertised
+//! servers are asked nothing until the player presses Play, which starts the
+//! game straight into one.
 
 use std::collections::HashSet;
 use std::path::PathBuf;
@@ -28,6 +29,8 @@ pub const PLACES: [&str; 1] = ["feed"];
 pub const MAX_ADS: usize = 50;
 const MAX_ADS_BYTES: usize = 512 * 1024;
 const MAX_ICON_BYTES: usize = 64 * 1024;
+/// A 640×360 JPEG from the service is far smaller.
+const MAX_BANNER_BYTES: usize = 256 * 1024;
 const MAX_NAME: usize = 40;
 const MAX_TEXT: usize = 200;
 const MAX_LINES: usize = 3;
@@ -35,7 +38,7 @@ const MAX_VERSIONS: usize = 300;
 /// The service's own cache time.
 const FRESH: Duration = Duration::from_secs(30);
 const REQUEST_TIMEOUT: Duration = Duration::from_secs(15);
-/// Icons kept on disk, in all.
+/// Icons and banners kept on disk, in all.
 const MAX_ICONS: usize = 200;
 
 /// One ad as the interface shows it.
@@ -61,6 +64,55 @@ pub struct ServerAd {
     pub ends_at: i64,
     pub weight: i64,
     pub erid: Option<String>,
+    /// A `data:image/jpeg;base64,…` URL of a 16:9 picture shown over the icon.
+    pub banner: Option<String>,
+    /// Whether the server wants a Microsoft sign-in (online mode); None when
+    /// the service does not know.
+    pub licensed: Option<bool>,
+}
+
+/// The pictures of an ad, by SHA-256, before they are fetched.
+#[derive(Debug, Default, PartialEq, Eq)]
+pub struct Pictures {
+    pub icon: Option<String>,
+    pub banner: Option<String>,
+}
+
+/// How a picture of the service is written.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum Kind {
+    Png,
+    Jpeg,
+}
+
+impl Kind {
+    fn ext(self) -> &'static str {
+        match self {
+            Self::Png => "png",
+            Self::Jpeg => "jpg",
+        }
+    }
+
+    fn mime(self) -> &'static str {
+        match self {
+            Self::Png => "image/png",
+            Self::Jpeg => "image/jpeg",
+        }
+    }
+
+    fn max(self) -> usize {
+        match self {
+            Self::Png => MAX_ICON_BYTES,
+            Self::Jpeg => MAX_BANNER_BYTES,
+        }
+    }
+
+    fn holds(self, bytes: &[u8]) -> bool {
+        match self {
+            Self::Png => png(bytes),
+            Self::Jpeg => jpeg(bytes),
+        }
+    }
 }
 
 /// The ads of a place.
@@ -112,9 +164,9 @@ pub fn icon_name(sha: &str) -> bool {
     sha.len() == 64 && sha.bytes().all(|b| matches!(b, b'0'..=b'9' | b'a'..=b'f'))
 }
 
-/// An ad as the service sent it, before its icon is fetched; None when any
-/// part breaks the rules.
-fn ad(value: &Value, now: i64) -> Option<(ServerAd, Option<String>)> {
+/// An ad as the service sent it, before its pictures are fetched; None when
+/// any part breaks the rules.
+fn ad(value: &Value, now: i64) -> Option<(ServerAd, Pictures)> {
     let text = |key: &str| value.get(key).and_then(Value::as_str);
     let number = |key: &str| value.get(key).and_then(Value::as_i64);
     let count = |key: &str| match value.get(key) {
@@ -152,14 +204,20 @@ fn ad(value: &Value, now: i64) -> Option<(ServerAd, Option<String>)> {
     {
         return None;
     }
-    let icon = match value.get("icon") {
-        None | Some(Value::Null) => None,
-        Some(v) => Some(v.as_str().filter(|s| icon_name(s))?.to_owned()),
+    let sha = |key: &str| match value.get(key) {
+        None | Some(Value::Null) => Some(None),
+        Some(v) => Some(Some(v.as_str().filter(|s| icon_name(s))?.to_owned())),
     };
-    let up = match value.get("up") {
-        None | Some(Value::Null) => None,
-        Some(v) => Some(v.as_bool()?),
+    let flag = |key: &str| match value.get(key) {
+        None | Some(Value::Null) => Some(None),
+        Some(v) => Some(Some(v.as_bool()?)),
     };
+    let pictures = Pictures {
+        icon: sha("icon")?,
+        banner: sha("banner")?,
+    };
+    let up = flag("up")?;
+    let licensed = flag("licensed")?;
     let ends_at = number("endsAt")?;
     if ends_at <= now {
         return None;
@@ -190,13 +248,15 @@ fn ad(value: &Value, now: i64) -> Option<(ServerAd, Option<String>)> {
             ends_at,
             weight,
             erid,
+            banner: None,
+            licensed,
         },
-        icon,
+        pictures,
     ))
 }
 
 /// The ads of an answer that keep the rules, at most `MAX_ADS`, each once.
-pub fn ads(value: &Value, now: i64) -> Option<Vec<(ServerAd, Option<String>)>> {
+pub fn ads(value: &Value, now: i64) -> Option<Vec<(ServerAd, Pictures)>> {
     let list = value.get("ads")?.as_array()?;
     let mut seen = HashSet::new();
     Some(
@@ -210,6 +270,10 @@ pub fn ads(value: &Value, now: i64) -> Option<Vec<(ServerAd, Option<String>)>> {
 
 pub fn png(bytes: &[u8]) -> bool {
     bytes.len() > 32 && bytes.starts_with(b"\x89PNG\r\n\x1a\n")
+}
+
+pub fn jpeg(bytes: &[u8]) -> bool {
+    bytes.len() > 32 && bytes.starts_with(&[0xff, 0xd8, 0xff]) && bytes.ends_with(&[0xff, 0xd9])
 }
 
 fn now() -> i64 {
@@ -227,10 +291,10 @@ fn ads_file(root: &DataRoot, place: &str, lang: Lang) -> PathBuf {
         .join(format!("server-ads-{place}-{}.json", lang.as_str()))
 }
 
-fn icon_file(root: &DataRoot, sha: &str) -> PathBuf {
+fn picture_file(root: &DataRoot, sha: &str, kind: Kind) -> PathBuf {
     root.feed_cache_dir()
         .join("server-icons")
-        .join(format!("{sha}.png"))
+        .join(format!("{sha}.{}", kind.ext()))
 }
 
 impl ServerAds {
@@ -241,7 +305,8 @@ impl ServerAds {
         })
     }
 
-    async fn fetch(&self, url: &Url, max: usize) -> FeedResult<(u16, Vec<u8>, bool)> {
+    /// The status, the body and its content type.
+    async fn fetch(&self, url: &Url, max: usize) -> FeedResult<(u16, Vec<u8>, String)> {
         let request = self
             .client
             .get(url)
@@ -254,31 +319,32 @@ impl ServerAds {
                 FeedProblem::Server
             }
         })?;
-        let png_type = headers
+        let kind = headers
             .get(reqwest::header::CONTENT_TYPE)
             .and_then(|v| v.to_str().ok())
-            .is_some_and(|v| v.trim().eq_ignore_ascii_case("image/png"));
-        Ok((status.as_u16(), body, png_type))
+            .map(|v| v.trim().to_ascii_lowercase())
+            .unwrap_or_default();
+        Ok((status.as_u16(), body, kind))
     }
 
-    /// An icon from disk, else fetched and kept; never anything but a PNG.
-    async fn icon(&self, root: Option<&DataRoot>, sha: &str) -> Option<String> {
+    /// A picture from disk, else fetched and kept; never anything but `kind`.
+    async fn picture(&self, root: Option<&DataRoot>, sha: &str, kind: Kind) -> Option<String> {
         if !icon_name(sha) {
             return None;
         }
         let kept = root
-            .and_then(|root| read_small(&icon_file(root, sha), MAX_ICON_BYTES as u64))
-            .filter(|b| png(b));
+            .and_then(|root| read_small(&picture_file(root, sha, kind), kind.max() as u64))
+            .filter(|b| kind.holds(b));
         let bytes = match kept {
             Some(bytes) => bytes,
             None => {
-                let url = Url::parse(&format!("{BASE}/v1/icons/{sha}.png")).ok()?;
-                let (status, bytes, png_type) = self.fetch(&url, MAX_ICON_BYTES).await.ok()?;
-                if status != 200 || !png_type || !png(&bytes) {
+                let url = Url::parse(&format!("{BASE}/v1/icons/{sha}.{}", kind.ext())).ok()?;
+                let (status, bytes, content_type) = self.fetch(&url, kind.max()).await.ok()?;
+                if status != 200 || content_type != kind.mime() || !kind.holds(&bytes) {
                     return None;
                 }
                 if let Some(root) = root {
-                    let file = icon_file(root, sha);
+                    let file = picture_file(root, sha, kind);
                     keep(&file, &bytes);
                     if let Some(dir) = file.parent() {
                         trim_dir(dir, MAX_ICONS, u64::MAX, u64::MAX);
@@ -288,7 +354,8 @@ impl ServerAds {
             }
         };
         Some(format!(
-            "data:image/png;base64,{}",
+            "data:{};base64,{}",
+            kind.mime(),
             base64::engine::general_purpose::STANDARD.encode(bytes)
         ))
     }
@@ -350,9 +417,12 @@ impl ServerAds {
             }
         };
         let mut shown = Vec::with_capacity(list.len());
-        for (mut ad, icon) in list {
-            if let Some(sha) = icon {
-                ad.icon = self.icon(root, &sha).await;
+        for (mut ad, pictures) in list {
+            if let Some(sha) = pictures.icon {
+                ad.icon = self.picture(root, &sha, Kind::Png).await;
+            }
+            if let Some(sha) = pictures.banner {
+                ad.banner = self.picture(root, &sha, Kind::Jpeg).await;
             }
             shown.push(ad);
         }
@@ -385,6 +455,8 @@ mod tests {
             "endsAt": NOW + 3600,
             "weight": 10,
             "erid": null,
+            "banner": "b".repeat(64),
+            "licensed": true,
         })
     }
 
@@ -396,13 +468,21 @@ mod tests {
 
     #[test]
     fn a_good_ad_is_read() {
-        let (ad, icon) = ad(&good(), NOW).unwrap();
+        let (ad, pictures) = ad(&good(), NOW).unwrap();
         assert_eq!(ad.address, "play.example.net");
         assert_eq!(ad.versions.len(), 3);
-        assert_eq!(icon.unwrap().len(), 64);
+        assert_eq!(pictures.icon.unwrap().len(), 64);
+        assert_eq!(pictures.banner.unwrap(), "b".repeat(64));
         assert_eq!(ad.online, Some(12));
+        assert_eq!(ad.licensed, Some(true));
         let quiet = with("up", Value::Null);
         assert_eq!(super::ad(&quiet, NOW).unwrap().0.up, None);
+        // A service from before banners and the sign-in check.
+        let mut old = good();
+        old.as_object_mut().unwrap().remove("banner");
+        old.as_object_mut().unwrap().remove("licensed");
+        let (old, pictures) = super::ad(&old, NOW).unwrap();
+        assert_eq!((old.licensed, pictures.banner), (None, None));
     }
 
     #[test]
@@ -436,6 +516,10 @@ mod tests {
             ("weight", json!(0)),
             ("weight", json!(101)),
             ("erid", json!("a-b")),
+            ("banner", json!("../../x.jpg")),
+            ("banner", json!(1)),
+            ("licensed", json!("yes")),
+            ("licensed", json!(1)),
         ] {
             assert!(
                 super::ad(&with(key, value.clone()), NOW).is_none(),
@@ -464,5 +548,14 @@ mod tests {
         assert!(!ok("https://servers.lapi.sh.evil.example/v1/ads"));
         assert!(png(b"\x89PNG\r\n\x1a\n0123456789012345678901234567890123"));
         assert!(!png(b"<svg onload=alert(1)>"));
+        let mut jpg = vec![0xff, 0xd8, 0xff, 0xe0];
+        jpg.extend_from_slice(&[0; 40]);
+        jpg.extend_from_slice(&[0xff, 0xd9]);
+        assert!(jpeg(&jpg));
+        assert!(!jpeg(&jpg[..jpg.len() - 1]), "cut short");
+        assert!(!jpeg(
+            b"\x89PNG\r\n\x1a\n0123456789012345678901234567890123"
+        ));
+        assert!(!Kind::Jpeg.holds(b"<svg onload=alert(1)>"));
     }
 }

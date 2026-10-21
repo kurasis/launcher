@@ -18,6 +18,10 @@ pub const TIMEOUT: Duration = Duration::from_secs(8);
 pub const MAX_PACKET: usize = 256 * 1024;
 /// The protocol we say we speak (1.21.1); servers answer status anyway.
 const PROTOCOL: i32 = 767;
+/// The player name the login check gives: a valid one, and it says what it is.
+pub const CHECK_NAME: &str = "ServerListCheck";
+/// The UUID it gives where the protocol wants one (1.20.2 and later).
+const CHECK_UUID: [u8; 16] = *b"ServerListCheck!";
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Status {
@@ -139,7 +143,9 @@ impl Pinger {
             .map_err(|_| "the server did not answer in time".to_owned())?
     }
 
-    async fn ping_inner(&self, address: &str) -> Result<Status, String> {
+    /// A connection to the server's first public address, and the name and
+    /// port to say in the handshake.
+    async fn connect(&self, address: &str) -> Result<(TcpStream, String, u16), String> {
         let (addresses, host, port) = self.resolve(address).await?;
         let allowed: Vec<SocketAddr> = addresses
             .into_iter()
@@ -148,18 +154,15 @@ impl Pinger {
         let target = allowed
             .first()
             .ok_or_else(|| "the address is not on the public internet".to_owned())?;
-        let mut stream = TcpStream::connect(target)
+        let stream = TcpStream::connect(target)
             .await
             .map_err(|_| "the server does not accept connections".to_owned())?;
-        let mut handshake = Vec::with_capacity(300);
-        write_varint(&mut handshake, 0x00);
-        write_varint(&mut handshake, PROTOCOL);
-        write_string(&mut handshake, &host);
-        handshake.extend_from_slice(&port.to_be_bytes());
-        write_varint(&mut handshake, 1);
-        let mut wire = Vec::with_capacity(320);
-        write_varint(&mut wire, handshake.len() as i32);
-        wire.extend_from_slice(&handshake);
+        Ok((stream, host, port))
+    }
+
+    async fn ping_inner(&self, address: &str) -> Result<Status, String> {
+        let (mut stream, host, port) = self.connect(address).await?;
+        let mut wire = handshake(PROTOCOL, &host, port, 1);
         // The status request: length 1, id 0.
         wire.extend_from_slice(&[1, 0]);
         stream
@@ -170,6 +173,87 @@ impl Pinger {
         let json = read_string(&body)?;
         parse(&json)
     }
+
+    /// Whether the server lets in only players signed in with Microsoft
+    /// (online mode): it then asks for encryption before anything else.
+    /// `Some(false)` when it lets the check's name in without, `None` when
+    /// it answers neither (a kick: a whitelist, a version it refuses).
+    /// The check speaks the protocol the server's status named and leaves
+    /// as soon as the server answers; an offline-mode server may show the
+    /// name joining for that moment.
+    pub async fn licensed(
+        &self,
+        address: &str,
+        protocol: Option<i64>,
+    ) -> Result<Option<bool>, String> {
+        tokio::time::timeout(TIMEOUT, self.licensed_inner(address, protocol))
+            .await
+            .map_err(|_| "the server did not answer in time".to_owned())?
+    }
+
+    async fn licensed_inner(
+        &self,
+        address: &str,
+        protocol: Option<i64>,
+    ) -> Result<Option<bool>, String> {
+        let protocol = protocol
+            .and_then(|p| i32::try_from(p).ok())
+            .filter(|p| *p > 0)
+            .unwrap_or(PROTOCOL);
+        let (mut stream, host, port) = self.connect(address).await?;
+        let mut wire = handshake(protocol, &host, port, 2);
+        wire.extend_from_slice(&login_start(protocol));
+        stream
+            .write_all(&wire)
+            .await
+            .map_err(|_| "the server closed the connection".to_owned())?;
+        let (id, _) = read_frame(&mut stream).await?;
+        Ok(match id {
+            // Encryption request: a Microsoft sign-in is needed.
+            0x01 => Some(true),
+            // Login success, or compression before it: in without one.
+            0x02 | 0x03 => Some(false),
+            _ => None,
+        })
+    }
+}
+
+/// A handshake packet, framed; `next` is 1 for status, 2 for login.
+fn handshake(protocol: i32, host: &str, port: u16, next: i32) -> Vec<u8> {
+    let mut body = Vec::with_capacity(300);
+    write_varint(&mut body, 0x00);
+    write_varint(&mut body, protocol);
+    write_string(&mut body, host);
+    body.extend_from_slice(&port.to_be_bytes());
+    write_varint(&mut body, next);
+    frame(body)
+}
+
+/// Login Start with the check's name, in the shape `protocol` wants.
+pub fn login_start(protocol: i32) -> Vec<u8> {
+    let mut body = Vec::with_capacity(40);
+    write_varint(&mut body, 0x00);
+    write_string(&mut body, CHECK_NAME);
+    match protocol {
+        // 1.19: no signature data.
+        759 => body.push(0),
+        // 1.19.1 and 1.19.2: no signature data, no UUID.
+        760 => body.extend_from_slice(&[0, 0]),
+        // 1.19.3 to 1.20.1: no UUID.
+        761..=763 => body.push(0),
+        // 1.20.2 and later: a UUID, always.
+        764.. => body.extend_from_slice(&CHECK_UUID),
+        // Older: the name alone.
+        _ => {}
+    }
+    frame(body)
+}
+
+fn frame(body: Vec<u8>) -> Vec<u8> {
+    let mut wire = Vec::with_capacity(body.len() + 5);
+    write_varint(&mut wire, body.len() as i32);
+    wire.extend_from_slice(&body);
+    wire
 }
 
 pub fn write_varint(out: &mut Vec<u8>, value: i32) {
@@ -216,8 +300,10 @@ fn decode_varint(bytes: &[u8]) -> Option<(i32, usize)> {
     None
 }
 
-/// The body of the status packet (id 0), at most `MAX_PACKET` bytes.
-pub async fn read_packet(stream: &mut (impl AsyncReadExt + Unpin)) -> Result<Vec<u8>, String> {
+/// A packet's id and the rest of it, at most `MAX_PACKET` bytes.
+pub async fn read_frame(
+    stream: &mut (impl AsyncReadExt + Unpin),
+) -> Result<(i32, Vec<u8>), String> {
     let length = read_varint(stream).await?;
     let length = usize::try_from(length).map_err(|_| "a negative length".to_owned())?;
     if length == 0 || length > MAX_PACKET {
@@ -228,8 +314,15 @@ pub async fn read_packet(stream: &mut (impl AsyncReadExt + Unpin)) -> Result<Vec
         .read_exact(&mut payload)
         .await
         .map_err(|_| "the server's answer ended early".to_owned())?;
-    match decode_varint(&payload) {
-        Some((0, used)) => Ok(payload.split_off(used)),
+    let (id, used) = decode_varint(&payload)
+        .ok_or_else(|| "the server's answer is not the game's protocol".to_owned())?;
+    Ok((id, payload.split_off(used)))
+}
+
+/// The body of the status packet (id 0), at most `MAX_PACKET` bytes.
+pub async fn read_packet(stream: &mut (impl AsyncReadExt + Unpin)) -> Result<Vec<u8>, String> {
+    match read_frame(stream).await? {
+        (0, body) => Ok(body),
         _ => Err("the server answered something else than its status".to_owned()),
     }
 }

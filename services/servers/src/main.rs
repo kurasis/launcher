@@ -7,7 +7,8 @@
 //! lapi-servers add --name … --address … --version … [--from … --to …]
 //!              --text … | --text-file … [--text-ru … --text-en-file …]
 //!              [--start "2026-10-21 14:00"] --for 7d | --until "…"
-//!              [--weight 10] [--place feed] [--erid …] [--if-new] [--quiet]
+//!              [--weight 10] [--place feed] [--erid …] [--langs ru,en | all]
+//!              [--if-new] [--quiet]
 //! lapi-servers list [--all]          ads now and to come (all: ended too)
 //! lapi-servers show <id>             one ad and its last ping
 //! lapi-servers edit <id> [flags of add] [--clear-erid]
@@ -15,8 +16,10 @@
 //! lapi-servers pause|resume <id>
 //! lapi-servers stop <id>             ends now, kept in the list
 //! lapi-servers remove <id>           gone for good
-//! lapi-servers ping <id>             asks the server now
-//! lapi-servers icon <id> <file.png> | --auto
+//! lapi-servers ping <id>             asks the server now, and whether it
+//!                                    wants a Microsoft sign-in
+//! lapi-servers icon <id> <file.png | -> | --auto
+//! lapi-servers banner <id> <file.png|jpg | -> | --none
 //! lapi-servers counts                numbers only (fit for a public log)
 //! lapi-servers backup                a copy of the database in data/backups
 //! ```
@@ -80,7 +83,30 @@ fn main() -> std::process::ExitCode {
     }
 }
 
-const USAGE: &str = "usage: lapi-servers serve|add|list|show|edit|extend|pause|resume|stop|remove|ping|icon|counts|backup (docs/SERVER-ADS.md)";
+const USAGE: &str = "usage: lapi-servers serve|add|list|show|edit|extend|pause|resume|stop|remove|ping|icon|banner|counts|backup (docs/SERVER-ADS.md)";
+
+/// A picture from a file, or from standard input for `-` (a file in the
+/// owner's home is not readable by the service's user); at most `max` bytes.
+fn picture(file: &str, max: usize) -> Result<Vec<u8>, String> {
+    use std::io::Read;
+    let mut bytes = Vec::new();
+    if file == "-" {
+        std::io::stdin()
+            .take(max as u64 + 1)
+            .read_to_end(&mut bytes)
+            .map_err(|e| format!("standard input: {e}"))?;
+    } else {
+        std::fs::File::open(file)
+            .map_err(|e| format!("{file}: {e}"))?
+            .take(max as u64 + 1)
+            .read_to_end(&mut bytes)
+            .map_err(|e| format!("{file}: {e}"))?;
+    }
+    if bytes.len() > max {
+        return Err(format!("{file} is larger than {} MB", max / (1024 * 1024)));
+    }
+    Ok(bytes)
+}
 
 fn runtime() -> Result<tokio::runtime::Runtime, String> {
     tokio::runtime::Builder::new_multi_thread()
@@ -163,7 +189,7 @@ fn run(command: &str, args: &[String]) -> Result<(), String> {
                 None
             } else {
                 let icons = icons::Icons::new(&data)?;
-                Some(ads::ping(&store, &icons, &ping::Pinger::new(), &ad, now).await?)
+                Some(ads::ping(&store, &icons, &ping::Pinger::new(), &ad, now, true).await?)
             };
             let verb = if command == "add" { "added" } else { "changed" };
             if flags.has("--quiet") {
@@ -212,7 +238,7 @@ fn run(command: &str, args: &[String]) -> Result<(), String> {
         "ping" => runtime()?.block_on(async {
             let ad = store.ad(id_of(&plain)?)?.ok_or("no such ad")?;
             let icons = icons::Icons::new(&data)?;
-            ads::ping(&store, &icons, &ping::Pinger::new(), &ad, now).await?;
+            ads::ping(&store, &icons, &ping::Pinger::new(), &ad, now, true).await?;
             show(&store, &ad, now)
         }),
         "icon" => {
@@ -222,13 +248,11 @@ fn run(command: &str, args: &[String]) -> Result<(), String> {
             if flags.has("--auto") {
                 ad.icon = None;
             } else {
-                let file = plain.get(1).ok_or("give a PNG file, or --auto")?;
-                let meta = std::fs::metadata(file).map_err(|e| format!("{file}: {e}"))?;
-                if meta.len() > icons::MAX_BYTES as u64 {
-                    return Err(format!("{file} is larger than 1 MB"));
-                }
-                let bytes = std::fs::read(file).map_err(|e| format!("{file}: {e}"))?;
-                ad.icon = Some(icons.keep(&icons::clean(&bytes)?)?);
+                let file = plain
+                    .get(1)
+                    .ok_or("give a PNG file, - for standard input, or --auto")?;
+                let bytes = picture(file, icons::MAX_BYTES)?;
+                ad.icon = Some(icons.keep(&icons::clean(&bytes)?, icons::Kind::Png)?);
             }
             store.update(&ad, now)?;
             icons.clean(&store.used_icons()?);
@@ -238,6 +262,31 @@ fn run(command: &str, args: &[String]) -> Result<(), String> {
                     "own icon"
                 } else {
                     "the server's icon"
+                }
+            );
+            Ok(())
+        }
+        "banner" => {
+            let id = id_of(&plain)?;
+            let mut ad = store.ad(id)?.ok_or("no such ad")?;
+            let icons = icons::Icons::new(&data)?;
+            if flags.has("--none") {
+                ad.banner = None;
+            } else {
+                let file = plain
+                    .get(1)
+                    .ok_or("give a PNG or JPEG file, - for standard input, or --none")?;
+                let bytes = picture(file, icons::BANNER_MAX_BYTES)?;
+                ad.banner = Some(icons.keep(&icons::banner(&bytes)?, icons::Kind::Jpeg)?);
+            }
+            store.update(&ad, now)?;
+            icons.clean(&store.used_icons()?);
+            println!(
+                "ad {id}: {}",
+                if ad.banner.is_some() {
+                    "own banner"
+                } else {
+                    "the icon as its picture"
                 }
             );
             Ok(())
@@ -261,6 +310,14 @@ fn show(store: &store::Store, ad: &store::Ad, now: i64) -> Result<(), String> {
     if let Some(erid) = &ad.erid {
         println!("  erid {erid}");
     }
+    if ad.langs.is_empty() {
+        println!("  shown to players of every language");
+    } else {
+        println!("  shown to players of: {}", ad.langs.join(", "));
+    }
+    if ad.banner.is_some() {
+        println!("  own banner");
+    }
     match store.ping(ad.id)? {
         Some(p) if p.up => println!(
             "  pinged {}: answers, {}/{} online, version {:?}, {}",
@@ -278,6 +335,19 @@ fn show(store: &store::Store, ad: &store::Ad, now: i64) -> Result<(), String> {
         ),
         Some(p) => println!("  pinged {}: does not answer", ads::local(p.at, zone)),
         None => println!("  not pinged yet"),
+    }
+    if let Some(p) = store.ping(ad.id)?
+        && let Some(at) = p.checked_at
+    {
+        println!(
+            "  sign-in checked {}: {}",
+            ads::local(at, zone),
+            match p.licensed {
+                Some(true) => "a Microsoft account is needed (online mode)",
+                Some(false) => "any name gets in (offline mode)",
+                None => "the server did not say",
+            }
+        );
     }
     let versions = store.range(&ad.oldest, &ad.newest)?;
     println!("  players choose from {} releases", versions.len());
@@ -326,7 +396,7 @@ fn serve() -> Result<(), String> {
             let due = app.store.to_ping(now, PING_EVERY.as_secs() as i64)?;
             let mut answering = 0;
             for ad in &due {
-                if ads::ping(&app.store, &app.icons, &pinger, ad, now)
+                if ads::ping(&app.store, &app.icons, &pinger, ad, now, false)
                     .await?
                     .up
                 {
