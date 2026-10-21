@@ -33,6 +33,7 @@ use super::world::{self, LastRun, Mutation, MutationKind, WorldFile};
 use super::{install, pack};
 use crate::error::{ErrorCode, LauncherError, LauncherResult};
 use crate::lifecycle::child::{self, ChildOutcome, OutputLine, Supervised};
+use crate::loader::LoaderKind;
 use crate::runtime::probe;
 use crate::secrets::SecretString;
 use crate::state::activity::HostingPermit;
@@ -160,10 +161,11 @@ pub fn pick_ports() -> LauncherResult<(u16, u16)> {
 }
 
 /// What the JVM starts: Mojang's server JAR, or a mod loader's server class
-/// with its libraries, which finds the JAR by `fabric.gameJarPath` (W12).
+/// with its libraries, which finds the JAR by a system property (W12).
 pub enum Main<'a> {
     Jar,
     Loader {
+        kind: LoaderKind,
         main_class: &'a str,
         classpath: &'a [std::path::PathBuf],
     },
@@ -188,11 +190,17 @@ pub fn arguments(jar: &Path, main: &Main<'_>, heap_mib: u32) -> Vec<String> {
             arguments.push(jar.to_string_lossy().into_owned());
         }
         Main::Loader {
+            kind,
             main_class,
             classpath,
         } => {
             let separator = if cfg!(windows) { ";" } else { ":" };
-            arguments.push(format!("-Dfabric.gameJarPath={}", jar.to_string_lossy()));
+            // Quilt Loader renamed Fabric's properties.
+            let property = match kind {
+                LoaderKind::Quilt => "loader.gameJarPath",
+                _ => "fabric.gameJarPath",
+            };
+            arguments.push(format!("-D{property}={}", jar.to_string_lossy()));
             arguments.push("-cp".to_owned());
             arguments.push(
                 classpath
@@ -266,9 +274,9 @@ pub fn start(
                     "The world's server is not installed yet.",
                 )
             })?;
-            let loader = install::loader_classpath(root, manifest)?;
+            let (main_class, classpath) = install::loader_classpath(root, manifest)?;
             pack::place_server(root, &world)?;
-            Some(loader)
+            Some((generation.loader.kind, main_class, classpath))
         }
         None => None,
     };
@@ -302,7 +310,8 @@ pub fn start(
 
     let jar = root.server_jar(&pin.jar_sha1);
     let main = match &loader {
-        Some((main_class, classpath)) => Main::Loader {
+        Some((kind, main_class, classpath)) => Main::Loader {
+            kind: *kind,
             main_class,
             classpath,
         },
@@ -689,6 +698,7 @@ mod tests {
         let args = arguments(
             Path::new("/data/shared/servers/x/server.jar"),
             &Main::Loader {
+                kind: LoaderKind::Fabric,
                 main_class: "net.fabricmc.loader.impl.launch.knot.KnotServer",
                 classpath: &classpath,
             },
@@ -706,5 +716,20 @@ mod tests {
             ]
         );
         assert!(!args.iter().any(|a| a == "-jar"));
+
+        let quilt = arguments(
+            Path::new("/data/shared/servers/x/server.jar"),
+            &Main::Loader {
+                kind: LoaderKind::Quilt,
+                main_class: "org.quiltmc.loader.impl.launch.knot.KnotServer",
+                classpath: &classpath,
+            },
+            3072,
+        );
+        assert_eq!(
+            quilt[5],
+            "-Dloader.gameJarPath=/data/shared/servers/x/server.jar"
+        );
+        assert_eq!(quilt[8], "org.quiltmc.loader.impl.launch.knot.KnotServer");
     }
 }

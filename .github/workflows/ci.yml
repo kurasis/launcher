@@ -172,7 +172,7 @@ jobs:
 
   world-server-mods:
     # Worlds with mods W12: a loader's server with Fabric API and Sodium from
-    # the catalog, as the launcher builds a world's mods. A loader and release
+    # the catalog (Quilt runs the same Fabric mods), as the launcher builds a world's mods. A loader and release
     # are offered to players only once they pass here (worlds/pack.rs TESTED).
     name: World server ${{ matrix.loader }} ${{ matrix.minecraft }} (linux-x64)
     runs-on: ubuntu-24.04
@@ -183,6 +183,9 @@ jobs:
           - { loader: 'fabric', minecraft: '1.20.1' }
           - { loader: 'fabric', minecraft: '1.21.1' }
           - { loader: 'fabric', minecraft: '26.3' }
+          - { loader: 'quilt', minecraft: '1.20.1' }
+          - { loader: 'quilt', minecraft: '1.21.1' }
+          - { loader: 'quilt', minecraft: '26.3' }
     steps:
       - uses: actions/checkout@v7
 
@@ -213,7 +216,7 @@ jobs:
       - name: Update the world's mods and roll them back (A45)
         # An update tried on a copy, kept and confirmed; a broken one refused
         # on the copy, and rolled back from the world itself.
-        if: matrix.minecraft == '1.21.1'
+        if: matrix.loader == 'fabric' && matrix.minecraft == '1.21.1'
         env:
           WORLD_VERSION: ${{ matrix.minecraft }}
         run: >-

@@ -65,9 +65,12 @@ const INDEX: &str = "modrinth.index.json";
 const ROOM_META: &str = "catalog.json";
 
 /// The releases whose server with this loader passed the live test in CI
-/// (`World server fabric <version>`); others are refused before anything is
+/// (`World server <loader> <version>`); others are refused before anything is
 /// downloaded. Snapshots never: loaders and mods rarely follow them.
-const TESTED: &[(LoaderKind, &[&str])] = &[(LoaderKind::Fabric, &["1.20.1", "1.21.1", "26.3"])];
+const TESTED: &[(LoaderKind, &[&str])] = &[
+    (LoaderKind::Fabric, &["1.20.1", "1.21.1", "26.3"]),
+    (LoaderKind::Quilt, &["1.20.1", "1.21.1", "26.3"]),
+];
 
 /// Whether worlds with this loader are offered for this release.
 pub fn tested(kind: LoaderKind, minecraft: &str) -> bool {
@@ -81,7 +84,7 @@ pub fn check_supported(loader: &LoaderChoice, minecraft: &str) -> LauncherResult
     loader.validate()?;
     if !TESTED.iter().any(|(k, _)| *k == loader.kind) {
         return Err(LauncherError::invalid_input(
-            "Worlds with this mod loader come later; Fabric works now.",
+            "Worlds with this mod loader come later; Fabric and Quilt work now.",
         ));
     }
     if !tested(loader.kind, minecraft) {

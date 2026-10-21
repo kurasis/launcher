@@ -494,22 +494,25 @@ async fn host_a_world_with_mods() {
         root.clone(),
     ));
     let minecraft = world_version(&metadata).await;
-    assert_eq!(
-        std::env::var("WORLD_LOADER").as_deref().unwrap_or("fabric"),
-        "fabric"
-    );
-    println!("minecraft {minecraft}, fabric");
+    // Quilt runs Fabric mods: the same Fabric API and Sodium serve both.
+    let kind = match std::env::var("WORLD_LOADER").as_deref().unwrap_or("fabric") {
+        "fabric" => LoaderKind::Fabric,
+        "quilt" => LoaderKind::Quilt,
+        other => panic!("WORLD_LOADER {other} has no live test yet"),
+    };
+    println!("minecraft {minecraft}, {}", kind.name());
     let loaders = PublicClient::new(SourcePolicy::ModLoaders, VERSION).unwrap();
     let loader = LoaderChoice {
-        kind: LoaderKind::Fabric,
-        version: meta::loader_versions(&loaders, LoaderKind::Fabric, &minecraft)
+        kind,
+        version: meta::loader_versions(&loaders, kind, &minecraft)
             .await
             .unwrap()
             .into_iter()
             .find(|v| v.stable)
-            .expect("a stable Fabric loader")
+            .expect("a stable loader")
             .id,
     };
+    println!("loader {}", loader.version);
     pack::check_supported(&loader, &minecraft).expect("a tested release");
 
     // An installation's game folder: two mods from the catalog, a setting.
@@ -625,17 +628,19 @@ async fn host_a_world_with_mods() {
     mods.sort();
     assert_eq!(mods, std::slice::from_ref(&api), "only the server's mods");
     // Fabric Loader unpacks the modules nested in the mods it loads.
-    let processed: Vec<String> = std::fs::read_dir(server_dir.join(".fabric/processedMods"))
-        .unwrap()
-        .filter_map(Result::ok)
-        .map(|e| e.file_name().to_string_lossy().to_lowercase())
-        .collect();
-    assert!(
-        processed.iter().any(|n| n.starts_with("fabric-api-base")),
-        "Fabric API loaded"
-    );
-    assert!(!processed.iter().any(|n| n.contains("sodium")));
-    println!("fabric api loaded, {} modules", processed.len());
+    if kind == LoaderKind::Fabric {
+        let processed: Vec<String> = std::fs::read_dir(server_dir.join(".fabric/processedMods"))
+            .unwrap()
+            .filter_map(Result::ok)
+            .map(|e| e.file_name().to_string_lossy().to_lowercase())
+            .collect();
+        assert!(
+            processed.iter().any(|n| n.starts_with("fabric-api-base")),
+            "Fabric API loaded"
+        );
+        assert!(!processed.iter().any(|n| n.contains("sodium")));
+        println!("fabric api loaded, {} modules", processed.len());
+    }
     assert_eq!(
         std::fs::read(server_dir.join("config/live-test.json")).unwrap(),
         b"{\"kept\":true}"
@@ -653,6 +658,13 @@ async fn host_a_world_with_mods() {
     );
     println!("member in, stranger refused");
 
+    // Fabric API brings data, which the loader lists as a mod's data pack;
+    // without a mod with data only `vanilla` shows.
+    let packs = data_packs(&server_dir);
+    assert!(packs.contains("(Fabric mod)"), "Fabric API loaded");
+    assert!(!packs.contains("sodium"));
+    println!("fabric api data loaded");
+
     let clean = tokio::task::block_in_place(|| server.stop(STOP_GRACE));
     assert!(clean);
     assert!(!activity.is_busy());
@@ -661,6 +673,27 @@ async fn host_a_world_with_mods() {
         "the world was saved"
     );
     println!("stopped clean");
+}
+
+/// The server's `datapack list` through its RCON: the mods' data shows there
+/// whichever loader loaded them.
+fn data_packs(server_dir: &std::path::Path) -> String {
+    let properties = std::fs::read_to_string(server_dir.join("server.properties")).unwrap();
+    let value = |key: &str| {
+        properties
+            .lines()
+            .find_map(|l| l.strip_prefix(key)?.strip_prefix('='))
+            .unwrap_or_else(|| panic!("{key} is set"))
+            .trim()
+            .to_owned()
+    };
+    let mut rcon = launcher_lib::worlds::rcon::Rcon::connect(
+        value("rcon.port").parse().unwrap(),
+        &launcher_lib::secrets::SecretString::new(value("rcon.password")),
+        Duration::from_secs(10),
+    )
+    .unwrap_or_else(|_| panic!("rcon answers"));
+    rcon.command("datapack list").unwrap()
 }
 
 /// Starts a world's server, waits until it is ready or fails, and stops it.
