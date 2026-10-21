@@ -71,6 +71,32 @@ describe('ReviewsView', () => {
     expect(window.localStorage.getItem('launcher.reviewDraft')).toBeNull();
   });
 
+  it('takes text files dropped on the field, scrubbed by the core', async () => {
+    const calls = mock({
+      reviews_mine: none,
+      reviews_text_file: {
+        files: [{ name: 'options.txt', kind: 'text', text: 'lastServer:<address>' }],
+        removed: { chatLines: 0, names: 0, addresses: 1, worlds: 0, ids: 0 },
+      },
+    });
+    render(<ReviewsView snapshot={snapshotFixture()} prefill={null} onUnseen={() => undefined} />);
+    fireEvent.click(screen.getByRole('radio', { name: 'An idea' }));
+    const field = screen.getByText('Drag pictures and text files here').parentElement;
+    if (field === null) throw new Error('no drop field');
+    const file = new File(['lastServer:play.example.net'], 'options.txt', { type: 'text/plain' });
+    fireEvent.dragOver(field, { dataTransfer: { types: ['Files'], files: [file] } });
+    expect(field).toHaveAttribute('data-over', 'true');
+    fireEvent.drop(field, { dataTransfer: { types: ['Files'], files: [file] } });
+
+    expect(await screen.findByText('options.txt')).toBeInTheDocument();
+    expect(field).toHaveAttribute('data-over', 'false');
+    expect(calls.find((c) => c.cmd === 'reviews_text_file')?.args).toEqual({
+      name: 'options.txt',
+      text: 'lastServer:play.example.net',
+    });
+    expect(screen.getByRole('button', { name: 'from screenshots' })).toBeEnabled();
+  });
+
   it('takes what the crash panel knows and finds that run’s logs', async () => {
     const calls = mock({ reviews_mine: none, reviews_logs: logs, reviews_send: 'queued' });
     render(

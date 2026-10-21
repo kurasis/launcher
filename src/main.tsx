@@ -22,6 +22,16 @@ window.addEventListener('unhandledrejection', (event) => {
   );
 });
 
+// A file dropped anywhere but a drop field must not open in the window.
+for (const type of ['dragover', 'drop'] as const) {
+  window.addEventListener(type, (event) => {
+    if (!event.defaultPrevented && event.dataTransfer?.types.includes('Files')) {
+      event.preventDefault();
+      event.dataTransfer.dropEffect = 'none';
+    }
+  });
+}
+
 const container = document.getElementById('root');
 if (!container) {
   throw new Error('Root element #root is missing from index.html');
