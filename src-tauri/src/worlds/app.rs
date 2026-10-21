@@ -20,7 +20,7 @@ use super::identity::Nick;
 use super::joining::{self, RoomGuest, Route, Visit};
 use super::properties::WorldSettings;
 use super::service::{Problem, Room, Token, WorldsClient};
-use super::{host, install, safety, tuple, world};
+use super::{host, install, pack, safety, tuple, world};
 use crate::backup::store::{Reason, SnapshotInfo};
 use crate::catalog::source::MetadataService;
 use crate::download::{CancelToken, DownloadProgress, Executor, ExecutorConfig, ProgressSink};
@@ -122,6 +122,9 @@ pub struct LocalWorld {
     /// Whether the world has been played: only then is there a save to back
     /// up or export.
     pub played: bool,
+    /// The mod loader of a world with mods, and how many mods it has.
+    pub loader: Option<crate::loader::LoaderChoice>,
+    pub mods: u32,
 }
 
 impl From<world::WorldFile> for LocalWorld {
@@ -136,8 +139,45 @@ impl From<world::WorldFile> for LocalWorld {
             created_at: world.created_at,
             last_run: world.last_run,
             played: false,
+            loader: world.pack.as_ref().map(|p| p.loader.clone()),
+            mods: world
+                .pack
+                .as_ref()
+                .map_or(0, |p| u32::try_from(p.mods().count()).unwrap_or(u32::MAX)),
         }
     }
+}
+
+/// An installation a world with mods can be made from (W12).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ModSource {
+    pub instance_id: InstanceId,
+    pub name: String,
+    pub minecraft: String,
+    pub loader: crate::loader::LoaderChoice,
+}
+
+/// The player's installations with a mod loader and release worlds with
+/// mods run, by name; room installations are not theirs to pick.
+pub fn mod_sources(state: &AppState) -> Vec<ModSource> {
+    let mut sources: Vec<ModSource> = state
+        .instance_ids()
+        .into_iter()
+        .filter_map(|id| state.instance(id))
+        .filter(|i| i.world_room.is_none())
+        .filter_map(|i| {
+            let loader = i.loader.clone()?;
+            pack::tested(loader.kind, &i.version_id).then(|| ModSource {
+                instance_id: i.id,
+                name: i.display_name.clone(),
+                minecraft: i.version_id.clone(),
+                loader,
+            })
+        })
+        .collect();
+    sources.sort_by_key(|s| s.name.to_lowercase());
+    sources
 }
 
 struct Hosting {
@@ -509,11 +549,13 @@ impl Worlds {
     }
 
     /// Makes a world from a copy of a single-player world and its room. The
-    /// installation must not be running; the original stays as it is. A room
-    /// the service refuses leaves no world behind.
+    /// installation must not be running; the original stays as it is. A world
+    /// of an installation with a mod loader takes its mods (W12). A room the
+    /// service refuses leaves no world behind.
     pub async fn import(
         &self,
         state: &AppState,
+        mods: &crate::mods::Mods,
         instance: InstanceId,
         save: String,
         name: String,
@@ -521,12 +563,7 @@ impl Worlds {
     ) -> LauncherResult<Room> {
         check_description(description)?;
         let root = self.root()?.clone();
-        let instance = state.instance(instance).ok_or_else(|| {
-            LauncherError::new(
-                ErrorCode::InstanceNotFound,
-                "The installation no longer exists.",
-            )
-        })?;
+        let instance = state.instance(instance).ok_or_else(instance_gone)?;
         let created = {
             let _claim = self.claim(None)?;
             let permit = state.activity().try_acquire(
@@ -534,30 +571,64 @@ impl Worlds {
                 Some(instance.id),
                 uuid::Uuid::new_v4().to_string(),
             )?;
+            let built = match &instance.loader {
+                Some(loader) => Some(build_pack(state, mods, &root, &instance, loader).await?),
+                None => None,
+            };
             let root = root.clone();
-            let created = blocking(move || safety::import(&root, &instance, &save, &name)).await;
+            let created = blocking(move || {
+                let created = safety::import(&root, &instance, &save, &name)?;
+                with_pack(&root, created, built)
+            })
+            .await;
             drop(permit);
             created?
         };
         self.open_room(&root, &created, description).await
     }
 
-    /// Creates a world on this computer and its room. A room the service
-    /// refuses leaves no world behind.
+    /// Creates a world on this computer and its room; with `from`, a world
+    /// with the mods of that installation, on its Minecraft version (W12). A
+    /// room the service refuses leaves no world behind.
+    #[allow(clippy::too_many_arguments)]
     pub async fn create(
         &self,
+        state: &AppState,
+        mods: &crate::mods::Mods,
         name: &str,
         description: &str,
         minecraft: &str,
         settings: WorldSettings,
+        from: Option<InstanceId>,
     ) -> LauncherResult<Room> {
         let root = self.root()?.clone();
         check_description(description)?;
-        let created = {
-            let (root, name, minecraft) = (root.clone(), name.to_owned(), minecraft.to_owned());
-            tokio::task::spawn_blocking(move || world::create(&root, &name, &minecraft, settings))
-                .await
-                .map_err(|_| LauncherError::internal("Creating the world stopped."))??
+        let created = match from {
+            None => {
+                let (root, name, minecraft) = (root.clone(), name.to_owned(), minecraft.to_owned());
+                blocking(move || world::create(&root, &name, &minecraft, settings)).await?
+            }
+            Some(id) => {
+                let instance = state.instance(id).ok_or_else(instance_gone)?;
+                let loader = instance.loader.clone().ok_or_else(|| {
+                    LauncherError::invalid_input("This installation has no mod loader.")
+                })?;
+                // Its files are read while the world is made: not while it runs.
+                let permit = state.activity().try_acquire(
+                    OperationKind::Backup,
+                    Some(instance.id),
+                    uuid::Uuid::new_v4().to_string(),
+                )?;
+                let built = build_pack(state, mods, &root, &instance, &loader).await?;
+                let (root, name) = (root.clone(), name.to_owned());
+                let created = blocking(move || {
+                    let created = world::create(&root, &name, &instance.version_id, settings)?;
+                    with_pack(&root, created, Some(built))
+                })
+                .await;
+                drop(permit);
+                created?
+            }
         };
         self.open_room(&root, &created, description).await
     }
@@ -585,6 +656,23 @@ impl Worlds {
                 Err(problem.into())
             }
         }
+    }
+
+    /// The world of a room this computer keeps, if any.
+    pub fn local_world_of(&self, room: &Room) -> Option<world::WorldFile> {
+        let id = room.world.as_deref()?.parse::<WorldId>().ok()?;
+        world::load(self.root().ok()?, id).ok()
+    }
+
+    /// Puts a world's client mods into the host's room installation.
+    pub async fn place_client(
+        &self,
+        world: &world::WorldFile,
+        instance: InstanceId,
+    ) -> LauncherResult<()> {
+        let root = self.root()?.clone();
+        let world = world.clone();
+        blocking(move || pack::place_client(&root, &world, &root.game_dir(instance))).await
     }
 
     pub fn accept_eula(&self, world: WorldId) -> LauncherResult<LocalWorld> {
@@ -660,7 +748,11 @@ impl Worlds {
             root: &root,
             world_id,
             java: &java,
-            server_heap_mib: super::memory::DEFAULT_SERVER_HEAP_MIB,
+            server_heap_mib: if prepared.pack.is_some() {
+                super::memory::DEFAULT_MODDED_SERVER_HEAP_MIB
+            } else {
+                super::memory::DEFAULT_SERVER_HEAP_MIB
+            },
             game_heap_mib: game_heap,
             physical_memory_bytes: physical,
             members: &members,
@@ -827,6 +919,51 @@ impl Worlds {
         self.disconnect().await;
         // No backup on the way out: the next session's backup covers it.
         self.stop_hosting_and(false).await;
+    }
+}
+
+fn instance_gone() -> LauncherError {
+    LauncherError::new(
+        ErrorCode::InstanceNotFound,
+        "The installation no longer exists.",
+    )
+}
+
+/// The first generation of mods from an installation with a mod loader.
+async fn build_pack(
+    state: &AppState,
+    mods: &crate::mods::Mods,
+    root: &DataRoot,
+    instance: &crate::storage::models::InstanceFile,
+    loader: &crate::loader::LoaderChoice,
+) -> LauncherResult<pack::Built> {
+    pack::check_supported(loader, &instance.version_id)?;
+    mods.content.ensure_idle(instance.id)?;
+    crate::mods::online(state)?;
+    let harmful = mods.harmful().await?;
+    pack::build(&mods.client, &harmful, &root.game_dir(instance.id), loader).await
+}
+
+/// Keeps a generation in a world just made (blocking); a failure takes the
+/// world away again.
+fn with_pack(
+    root: &DataRoot,
+    mut created: world::WorldFile,
+    built: Option<pack::Built>,
+) -> LauncherResult<world::WorldFile> {
+    let Some(built) = built else {
+        return Ok(created);
+    };
+    let kept = pack::store(root, &created, built).and_then(|generation| {
+        created.pack = Some(generation);
+        world::save(root, &created)
+    });
+    match kept {
+        Ok(()) => Ok(created),
+        Err(error) => {
+            let _ = std::fs::remove_dir_all(root.world_dir(created.id));
+            Err(error)
+        }
     }
 }
 

@@ -270,22 +270,31 @@ pub struct Importable {
     pub instance_id: InstanceId,
     pub instance_name: String,
     pub minecraft: String,
+    /// The mod loader, whose mods the world takes (W12).
+    pub loader: Option<crate::loader::LoaderChoice>,
     pub saves: Vec<String>,
 }
 
 /// Installations whose worlds can be imported: a Minecraft version worlds
-/// support, no mod loader yet (W12), and at least one world.
+/// support, a mod loader only where worlds with mods run it (W12), and at
+/// least one world.
 pub fn importable(root: &DataRoot, instances: &[InstanceFile]) -> Vec<Importable> {
     instances
         .iter()
-        .filter(|i| i.loader.is_none() && i.world_room.is_none())
+        .filter(|i| i.world_room.is_none())
         .filter(|i| tuple::version(&i.version_id).is_some())
+        .filter(|i| {
+            i.loader
+                .as_ref()
+                .is_none_or(|l| super::pack::tested(l.kind, &i.version_id))
+        })
         .filter_map(|i| {
             let saves = crate::backup::worlds(&root.game_dir(i.id));
             (!saves.is_empty()).then(|| Importable {
                 instance_id: i.id,
                 instance_name: i.display_name.clone(),
                 minecraft: i.version_id.clone(),
+                loader: i.loader.clone(),
                 saves,
             })
         })
@@ -295,17 +304,13 @@ pub fn importable(root: &DataRoot, instances: &[InstanceFile]) -> Vec<Importable
 /// Makes a new world from a copy of `saves/<save>` of `instance`, which
 /// must not be running (the caller holds its permit). The original stays as
 /// it is. The copy is written beside the new save folder and moved in whole.
+/// The mods of an installation with a mod loader are the caller's to add.
 pub fn import(
     root: &DataRoot,
     instance: &InstanceFile,
     save: &str,
     name: &str,
 ) -> LauncherResult<WorldFile> {
-    if instance.loader.is_some() {
-        return Err(LauncherError::invalid_input(
-            "Worlds with mods come later: import a world of an installation without mods.",
-        ));
-    }
     if !store::valid_world_name(save) {
         return Err(LauncherError::invalid_input("This world name is invalid."));
     }

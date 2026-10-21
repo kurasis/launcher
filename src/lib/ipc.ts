@@ -70,6 +70,7 @@ import {
   type WorldsImportable,
   type WorldsImportPayload,
   type WorldsInstance,
+  type WorldsModSource,
   type WorldsNewInvite,
   type WorldsPreview,
   type WorldsProblem,
@@ -543,6 +544,9 @@ export const ipc = {
   /** A world on this computer and its room. */
   worldsCreate: (payload: WorldsCreatePayload): Promise<WorldsRoom> =>
     invoke<WorldsRoom>('worlds_create', { payload }),
+  /** Installations a world with mods can be made from. */
+  worldsModSources: (): Promise<WorldsModSource[]> =>
+    invoke<WorldsModSource[]>('worlds_mod_sources'),
   worldsAcceptEula: (world: string): Promise<LocalWorld> =>
     invoke<LocalWorld>('worlds_accept_eula', { world }),
   worldsModerate: (

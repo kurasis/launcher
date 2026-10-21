@@ -392,6 +392,12 @@ fn side(value: &Value) -> String {
 }
 
 impl Project {
+    /// A project as the catalog's API gives it, for tests outside this module.
+    #[cfg(test)]
+    pub(crate) fn of_json(value: &Value) -> Option<Self> {
+        Self::from(value)
+    }
+
     fn from(value: &Value) -> Option<Self> {
         let id = value["id"].as_str().filter(|i| our_id(i))?.to_owned();
         Some(Self {

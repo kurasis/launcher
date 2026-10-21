@@ -700,7 +700,7 @@ fn find_in<'a>(table: &'a [Jar], game: &str, loader: Option<LoaderKind>) -> Opti
 }
 
 /// `launcherskins-*.jar`, in any case (Windows names are case-insensitive).
-fn is_ours(name: &str) -> bool {
+pub fn is_ours(name: &str) -> bool {
     let lower = name.to_ascii_lowercase();
     lower.len() > PREFIX.len() + JAR_SUFFIX.len()
         && lower.starts_with(PREFIX)

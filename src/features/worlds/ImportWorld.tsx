@@ -6,6 +6,7 @@ import forms from '../../components/forms.module.css';
 import type { WorldsImportable, WorldsRoom } from '../../lib/contracts';
 import { ipc } from '../../lib/ipc';
 import { strings } from '../../lib/strings';
+import { gameLabel } from '../instances/loaderLabel';
 import { Dialog } from '../mods/Dialog';
 import { worldsErrorText } from './useWorlds';
 import styles from './Worlds.module.css';
@@ -110,7 +111,10 @@ export function ImportWorld({ onClose, onImported }: Props) {
                 >
                   {sources.map((s) => (
                     <option key={s.instanceId} value={s.instanceId}>
-                      {t.source({ name: s.instanceName, version: s.minecraft })}
+                      {form.modSource({
+                        name: s.instanceName,
+                        game: gameLabel({ versionId: s.minecraft, loader: s.loader }),
+                      })}
                     </option>
                   ))}
                 </select>

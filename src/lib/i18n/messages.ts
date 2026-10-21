@@ -1664,6 +1664,7 @@ export type Messages = {
     readonly yours: string;
     readonly keptHere: string;
     readonly keptElsewhere: string;
+    readonly withMods: (values: { game: string | number; mods: number }) => string;
     readonly open: string;
     readonly back: string;
     readonly host: string;
@@ -1755,6 +1756,11 @@ export type Messages = {
     readonly form: {
       readonly name: string;
       readonly description: string;
+      readonly mods: string;
+      readonly noMods: string;
+      readonly modSource: (values: { name: string | number; game: string | number }) => string;
+      readonly modsNote: string;
+      readonly modsHow: string;
       readonly version: string;
       readonly snapshots: string;
       readonly snapshotsNote: string;
@@ -1830,7 +1836,6 @@ export type Messages = {
       readonly hint: string;
       readonly installation: string;
       readonly world: string;
-      readonly source: (values: { name: string | number; version: string | number }) => string;
       readonly none: string;
       readonly submit: string;
       readonly importing: string;

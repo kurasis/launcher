@@ -927,19 +927,19 @@ pub struct ExportInfo {
     pub loader: Option<LoaderChoice>,
 }
 
-pub(super) struct Gathered {
-    pub(super) path: String,
-    pub(super) full: PathBuf,
-    pub(super) size: u64,
+pub(crate) struct Gathered {
+    pub(crate) path: String,
+    pub(crate) full: PathBuf,
+    pub(crate) size: u64,
     /// SHA-1, SHA-512 and SHA-256 of a file that may be on Modrinth.
-    pub(super) hashes: Option<(String, String, String)>,
+    pub(crate) hashes: Option<(String, String, String)>,
 }
 
 fn too_large() -> LauncherError {
     LauncherError::invalid_input("This installation is too large to export as a modpack.")
 }
 
-fn hashes_of(path: &Path) -> std::io::Result<(String, String, String)> {
+pub(crate) fn hashes_of(path: &Path) -> std::io::Result<(String, String, String)> {
     use sha1::Digest as _;
     let mut file = fs::File::open(path)?;
     let (mut one, mut five, mut two) =
@@ -963,7 +963,7 @@ fn hashes_of(path: &Path) -> std::io::Result<(String, String, String)> {
 
 /// The files an export takes: plain files by the pack path rules, turned-off
 /// ones and links left out, bounded in count and size.
-pub(super) fn gather(game: &Path, choice: ExportChoice) -> LauncherResult<Vec<Gathered>> {
+pub(crate) fn gather(game: &Path, choice: ExportChoice) -> LauncherResult<Vec<Gathered>> {
     let mut out = Vec::new();
     let mut total = 0u64;
     let mut add = |path: String, full: PathBuf, size: u64| -> LauncherResult<()> {
@@ -1029,23 +1029,29 @@ pub(super) fn gather(game: &Path, choice: ExportChoice) -> LauncherResult<Vec<Ga
     Ok(out)
 }
 
+/// The loader as a `.mrpack` names it in `dependencies`: Forge without the
+/// game version in front.
+pub(crate) fn loader_dependency(game: &str, loader: &LoaderChoice) -> (&'static str, String) {
+    match loader.kind {
+        LoaderKind::Fabric => ("fabric-loader", loader.version.clone()),
+        LoaderKind::Quilt => ("quilt-loader", loader.version.clone()),
+        LoaderKind::Forge => (
+            "forge",
+            loader
+                .version
+                .strip_prefix(&format!("{game}-"))
+                .unwrap_or(&loader.version)
+                .to_owned(),
+        ),
+        LoaderKind::NeoForge => ("neoforge", loader.version.clone()),
+    }
+}
+
 fn index_json(info: &ExportInfo, linked: &[(&Gathered, String)]) -> Value {
     let mut dependencies = serde_json::Map::new();
     dependencies.insert("minecraft".to_owned(), info.game.clone().into());
     if let Some(loader) = &info.loader {
-        let (name, version) = match loader.kind {
-            LoaderKind::Fabric => ("fabric-loader", loader.version.clone()),
-            LoaderKind::Quilt => ("quilt-loader", loader.version.clone()),
-            LoaderKind::Forge => (
-                "forge",
-                loader
-                    .version
-                    .strip_prefix(&format!("{}-", info.game))
-                    .unwrap_or(&loader.version)
-                    .to_owned(),
-            ),
-            LoaderKind::NeoForge => ("neoforge", loader.version.clone()),
-        };
+        let (name, version) = loader_dependency(&info.game, loader);
         dependencies.insert(name.to_owned(), version.into());
     }
     let files: Vec<Value> = linked

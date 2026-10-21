@@ -6,12 +6,14 @@ import forms from '../../components/forms.module.css';
 import type {
   WorldsDifficulty,
   WorldsGameMode,
+  WorldsModSource,
   WorldsPreset,
   WorldsRoom,
   WorldsSettings,
 } from '../../lib/contracts';
 import { ipc } from '../../lib/ipc';
 import { strings } from '../../lib/strings';
+import { gameLabel } from '../instances/loaderLabel';
 import { Dialog } from '../mods/Dialog';
 import { worldsErrorText } from './useWorlds';
 import styles from './Worlds.module.css';
@@ -44,6 +46,9 @@ export function CreateWorld({ onClose, onCreated }: Props) {
   const [name, setName] = useState('');
   const [description, setDescription] = useState('');
   const [minecraft, setMinecraft] = useState('');
+  const [sources, setSources] = useState<WorldsModSource[]>([]);
+  /** The installation whose mods the world takes; empty for none. */
+  const [from, setFrom] = useState('');
   const [settings, setSettings] = useState<WorldsSettings>(DEFAULTS);
   const [eula, setEula] = useState(false);
   const [busy, setBusy] = useState(false);
@@ -59,12 +64,23 @@ export function CreateWorld({ onClose, onCreated }: Props) {
       .catch(() => undefined);
   }, [snapshots]);
 
+  useEffect(() => {
+    void ipc
+      .worldsModSources()
+      .then(setSources)
+      .catch(() => undefined);
+  }, []);
+
+  const source = sources.find((s) => s.instanceId === from) ?? null;
+  // A world with mods plays its installation's version.
+  const version = source?.minecraft ?? minecraft;
+
   const set = <K extends keyof WorldsSettings>(key: K, value: WorldsSettings[K]) => {
     setSettings((current) => ({ ...current, [key]: value }));
   };
 
   const submit = () => {
-    if (!eula || name.trim() === '' || minecraft === '') return;
+    if (!eula || name.trim() === '' || version === '') return;
     setBusy(true);
     setError(null);
     void (async () => {
@@ -72,8 +88,9 @@ export function CreateWorld({ onClose, onCreated }: Props) {
         const room = await ipc.worldsCreate({
           name: name.trim(),
           description: description.trim(),
-          minecraft,
+          minecraft: version,
           settings,
+          instanceId: source?.instanceId ?? null,
         });
         if (room.world !== null) await ipc.worldsAcceptEula(room.world);
         onCreated(room);
@@ -121,18 +138,42 @@ export function CreateWorld({ onClose, onCreated }: Props) {
             />
           )}
         </Field>
+        <Field label={t.mods}>
+          {(props) => (
+            <select
+              {...props}
+              className={forms.select}
+              value={from}
+              onChange={(e) => {
+                setFrom(e.target.value);
+              }}
+            >
+              <option value="">{t.noMods}</option>
+              {sources.map((s) => (
+                <option key={s.instanceId} value={s.instanceId}>
+                  {t.modSource({
+                    name: s.name,
+                    game: gameLabel({ versionId: s.minecraft, loader: s.loader }),
+                  })}
+                </option>
+              ))}
+            </select>
+          )}
+        </Field>
+        <p className={styles.muted}>{source === null ? t.modsHow : t.modsNote}</p>
         <div className={forms.row}>
           <Field label={t.version}>
             {(props) => (
               <select
                 {...props}
                 className={forms.select}
-                value={minecraft}
+                value={version}
+                disabled={source !== null}
                 onChange={(e) => {
                   setMinecraft(e.target.value);
                 }}
               >
-                {versions.map((v) => (
+                {(source === null ? versions : [source.minecraft]).map((v) => (
                   <option key={v} value={v}>
                     {v}
                   </option>
@@ -177,17 +218,19 @@ export function CreateWorld({ onClose, onCreated }: Props) {
             )}
           </Field>
         </div>
-        <label className={styles.check}>
-          <input
-            type="checkbox"
-            checked={snapshots}
-            onChange={(e) => {
-              setSnapshots(e.target.checked);
-            }}
-          />
-          {t.snapshots}
-        </label>
-        {snapshots && <Notice tone="warning">{t.snapshotsNote}</Notice>}
+        {source === null && (
+          <label className={styles.check}>
+            <input
+              type="checkbox"
+              checked={snapshots}
+              onChange={(e) => {
+                setSnapshots(e.target.checked);
+              }}
+            />
+            {t.snapshots}
+          </label>
+        )}
+        {source === null && snapshots && <Notice tone="warning">{t.snapshotsNote}</Notice>}
         <div className={forms.row}>
           <Field label={t.preset}>
             {(props) => (
@@ -285,7 +328,7 @@ export function CreateWorld({ onClose, onCreated }: Props) {
           <Button
             type="submit"
             variant="primary"
-            disabled={busy || !eula || name.trim() === '' || minecraft === ''}
+            disabled={busy || !eula || name.trim() === '' || version === ''}
           >
             {busy ? t.creating : t.submit}
           </Button>

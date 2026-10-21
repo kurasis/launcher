@@ -4,6 +4,11 @@
 //! `downloads.server`. The JAR goes through the same verified download executor
 //! and host allowlist as client files, into `shared/servers/<sha1>/server.jar`,
 //! and the world pins it by SHA-1, SHA-256 and size.
+//!
+//! A world with mods (W12) also needs its loader's server: the manifest of the
+//! exact loader version the generation names, pinned in `world.json` by its
+//! SHA-1, and each of its libraries in the Maven tree by the hashes the
+//! loader's meta service publishes. No installer of the loader runs.
 
 use std::io::Read;
 use std::path::PathBuf;
@@ -11,18 +16,22 @@ use std::path::PathBuf;
 use sha1::Digest as _;
 use uuid::Uuid;
 
-use super::tuple;
 use super::world::{self, Mutation, MutationKind, ServerPin, WorldFile};
+use super::{pack, tuple};
 use crate::catalog::source::{Fetch, MetadataService};
-use crate::download::{CancelToken, Digest, DownloadRequest, Executor, ProgressSink};
+use crate::download::{
+    CancelToken, Digest, DownloadRequest, Executor, ProgressSink, resolve_managed_path,
+};
 use crate::error::{ErrorCode, LauncherError, LauncherResult};
 use crate::install::descriptor::{self, Download};
 use crate::install::plan::{RuntimeRequirement, runtime_major, runtime_target};
+use crate::install::rules;
 use crate::install::rules::RuleContext;
 use crate::install::service::PlanSource;
+use crate::loader::manifest::{self, LoaderManifest, maven_path};
 use crate::net::SourcePolicy;
 use crate::runtime::RuntimeInstaller;
-use crate::storage::paths::{DataRoot, JavaProvider, Sha256, WorldId, server_jar_relative};
+use crate::storage::paths::{DataRoot, JavaProvider, Sha1, Sha256, WorldId, server_jar_relative};
 
 /// What hosting a version needs to download.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -137,11 +146,114 @@ pub async fn prepare<F: Fetch>(
         world.mutation = None;
         world::save(root, &world)?;
     }
+    ensure_loader(root, source, executor, &mut world, cancel, sink).await?;
     let package = source.runtime(&plan.runtime, java).await?;
     let runtime = runtimes
         .ensure(&package, Uuid::new_v4(), cancel, sink)
         .await?;
     Ok((world, runtime.java))
+}
+
+/// The loader's server of a world with mods: its manifest, resolved once and
+/// pinned in the world, and every library downloaded and verified. A world
+/// without mods needs nothing.
+async fn ensure_loader(
+    root: &DataRoot,
+    source: &dyn PlanSource,
+    executor: &Executor,
+    world: &mut WorldFile,
+    cancel: &CancelToken,
+    sink: &dyn ProgressSink,
+) -> LauncherResult<()> {
+    let Some(generation) = world.pack.as_ref() else {
+        return Ok(());
+    };
+    pack::check_supported(&generation.loader, &world.minecraft)?;
+    let stored = generation.server_manifest.as_ref().and_then(|sha1| {
+        manifest::load(root, sha1)
+            .filter(|m| m.choice() == generation.loader && m.game_version == world.minecraft)
+            .map(|m| (m, sha1.clone()))
+    });
+    let (loader, sha1) = match stored {
+        Some(found) => found,
+        None => {
+            source
+                .server_loader(&generation.loader, &world.minecraft)
+                .await?
+        }
+    };
+    executor
+        .run(Uuid::new_v4(), loader_requests(&loader)?, cancel, sink)
+        .await?;
+    if generation.server_manifest.as_ref() != Some(&sha1)
+        && let Some(generation) = world.pack.as_mut()
+    {
+        generation.server_manifest = Some(sha1);
+        world::save(root, world)?;
+    }
+    Ok(())
+}
+
+/// The libraries of a loader's server that apply on this computer.
+fn server_libraries(loader: &LoaderManifest) -> LauncherResult<Vec<&manifest::LoaderLibrary>> {
+    let ctx = RuleContext::current()?;
+    let mut out = Vec::new();
+    for library in &loader.libraries {
+        if rules::evaluate(library.rules.as_ref(), &ctx)? {
+            out.push(library);
+        }
+    }
+    Ok(out)
+}
+
+/// The downloads of a loader server's libraries; each must name a host on
+/// the allowlist, a SHA-1 and a size.
+pub fn loader_requests(loader: &LoaderManifest) -> LauncherResult<Vec<DownloadRequest>> {
+    server_libraries(loader)?
+        .into_iter()
+        .map(|library| {
+            let (Some(sha1), Some(size)) = (&library.sha1, library.size) else {
+                return Err(descriptor::unsupported("loader library without hash"));
+            };
+            let (source, url) = SourcePolicy::for_artifact(&library.url)?;
+            Ok(DownloadRequest {
+                source,
+                url,
+                path: maven_path(&library.path),
+                size,
+                digest: Digest::Sha1(sha1.clone()),
+                label: Some(library.name.clone()),
+            })
+        })
+        .collect()
+}
+
+/// The main class and classpath of a world's loader server, every library
+/// checked by its SHA-1 and size.
+pub fn loader_classpath(root: &DataRoot, sha1: &Sha1) -> LauncherResult<(String, Vec<PathBuf>)> {
+    let not_installed = || {
+        LauncherError::new(
+            ErrorCode::RepairRequired,
+            "The world's mod loader is missing or changed. Host the world again to install it.",
+        )
+    };
+    let loader = manifest::load(root, sha1).ok_or_else(not_installed)?;
+    let mut paths = Vec::new();
+    for library in server_libraries(&loader)? {
+        let path = resolve_managed_path(root, &maven_path(&library.path))?;
+        let intact = hash_file(&path).is_ok_and(|(size, file_sha1, _)| {
+            Some(size) == library.size
+                && library
+                    .sha1
+                    .as_ref()
+                    .is_some_and(|s| s.as_str() == file_sha1)
+        });
+        if !intact {
+            return Err(not_installed());
+        }
+        paths.push(path);
+    }
+    Ok((loader.main_class, paths))
 }
 
 /// Size, SHA-1 and SHA-256 of a file, read in bounded chunks.

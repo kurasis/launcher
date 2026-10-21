@@ -4,6 +4,7 @@
 //! worlds/<worldId>/world.json        this file, atomically replaced
 //! worlds/<worldId>/world.json.bak    the last good version
 //! worlds/<worldId>/server/           the server's working directory
+//! worlds/<worldId>/pack/             its mods, when it has some (W12)
 //! ```
 //!
 //! `world.json` records what the world runs (the version and the pinned server
@@ -84,6 +85,10 @@ pub struct WorldFile {
     pub mutation: Option<Mutation>,
     #[serde(default)]
     pub last_run: Option<LastRun>,
+    /// The world's mods, when it was made from an installation with a mod
+    /// loader (W12).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub pack: Option<super::pack::WorldPack>,
 }
 
 /// A world name: 1–64 characters after trimming, no control characters.
@@ -138,6 +143,7 @@ pub fn create(
         eula_accepted_at: None,
         mutation: None,
         last_run: None,
+        pack: None,
     };
     std::fs::create_dir_all(root.world_server_dir(world.id)).map_err(|e| io(&e))?;
     save(root, &world)?;

@@ -16,6 +16,14 @@
 //! checks that the run was clean, the receipt removed and the hosting permit
 //! released. A second start is force stopped and must be recorded as unclean.
 //! Prints fixed words and numbers only.
+//!
+//! `host_a_world_with_mods` (W12) does the same for a world with mods: the
+//! newest stable Fabric loader for the version, Fabric API (both sides) and
+//! Sodium (only the game) from the catalog through its verified downloads, a
+//! generation built and stored by the launcher, the loader's server
+//! installed from its meta service. The server must load Fabric API and
+//! never see Sodium; a member gets in, a stranger does not.
+//! `WORLD_LOADER=fabric WORLD_VERSION=1.21.1 cargo test --test live_server host_a_world_with_mods -- --ignored --exact --nocapture`
 
 #![allow(clippy::print_stdout, clippy::unwrap_used)] // prints the evidence summary
 
@@ -83,6 +91,67 @@ fn first_answer(port: u16, wire: &[u8]) -> i32 {
     read_packet(&mut stream, 1 << 20).unwrap().0
 }
 
+/// How a login ends with a modded server, which may compress and ask the
+/// client login questions (Fabric API does both) before it decides: true
+/// for Login Success, false for a Disconnect. Questions get "not understood".
+fn logged_in(port: u16, wire: &[u8]) -> bool {
+    use launcher_lib::worlds::protocol::read_varint;
+    let mut stream = TcpStream::connect((Ipv4Addr::LOCALHOST, port)).unwrap();
+    stream
+        .set_read_timeout(Some(Duration::from_secs(10)))
+        .unwrap();
+    stream.write_all(wire).unwrap();
+    let mut compressed = false;
+    loop {
+        let (id, body) = if compressed {
+            let length = usize::try_from(read_varint(&mut stream).unwrap()).unwrap();
+            let mut frame = vec![0u8; length];
+            stream.read_exact(&mut frame).unwrap();
+            let mut frame = std::io::Cursor::new(frame);
+            let inflated = read_varint(&mut frame).unwrap();
+            let mut data = Vec::new();
+            if inflated == 0 {
+                frame.read_to_end(&mut data).unwrap();
+            } else {
+                flate2::read::ZlibDecoder::new(frame)
+                    .read_to_end(&mut data)
+                    .unwrap();
+            }
+            let mut data = std::io::Cursor::new(data);
+            let id = read_varint(&mut data).unwrap();
+            let mut body = Vec::new();
+            data.read_to_end(&mut body).unwrap();
+            (id, body)
+        } else {
+            read_packet(&mut stream, 1 << 20).unwrap()
+        };
+        match id {
+            0x00 => return false,
+            0x02 => return true,
+            0x03 => compressed = true,
+            0x04 => {
+                let message = read_varint(&mut std::io::Cursor::new(body)).unwrap();
+                let mut answer = Vec::new();
+                write_varint(&mut answer, message);
+                answer.push(0);
+                let mut packet = Vec::new();
+                write_varint(&mut packet, 0x02);
+                packet.extend_from_slice(&answer);
+                let mut framed = Vec::new();
+                if compressed {
+                    write_varint(&mut framed, i32::try_from(packet.len() + 1).unwrap());
+                    write_varint(&mut framed, 0);
+                } else {
+                    write_varint(&mut framed, i32::try_from(packet.len()).unwrap());
+                }
+                framed.extend_from_slice(&packet);
+                stream.write_all(&framed).unwrap();
+            }
+            other => panic!("unexpected login packet {other}"),
+        }
+    }
+}
+
 /// The launcher's own reading of the same bytes: a login of `nick`.
 fn tunnel_reads(wire: &[u8], protocol: i32, nick: &Nick) {
     match handshake::classify(wire, Some(protocol)) {
@@ -117,16 +186,9 @@ fn physical_memory() -> u64 {
     system.total_memory()
 }
 
-#[tokio::test(flavor = "multi_thread")]
-#[ignore = "network: downloads a server and its Java, runs the server"]
-async fn host_a_world() {
-    let dir = tempfile::tempdir().unwrap();
-    let root = DataRoot::new(dir.path().to_path_buf()).unwrap();
-    let metadata = Arc::new(MetadataService::new(
-        PublicClient::new(SourcePolicy::MojangMetadata, VERSION).unwrap(),
-        root.clone(),
-    ));
-    let minecraft = match std::env::var("WORLD_VERSION")
+/// `WORLD_VERSION` as a world version.
+async fn world_version(metadata: &MetadataService<PublicClient>) -> String {
+    match std::env::var("WORLD_VERSION")
         .ok()
         .filter(|v| !v.is_empty())
     {
@@ -140,7 +202,19 @@ async fn host_a_world() {
         }
         Some(v) => v,
         None => "1.21.1".to_owned(),
-    };
+    }
+}
+
+#[tokio::test(flavor = "multi_thread")]
+#[ignore = "network: downloads a server and its Java, runs the server"]
+async fn host_a_world() {
+    let dir = tempfile::tempdir().unwrap();
+    let root = DataRoot::new(dir.path().to_path_buf()).unwrap();
+    let metadata = Arc::new(MetadataService::new(
+        PublicClient::new(SourcePolicy::MojangMetadata, VERSION).unwrap(),
+        root.clone(),
+    ));
+    let minecraft = world_version(&metadata).await;
     let expected: Option<i64> = std::env::var("WORLD_PROTOCOL")
         .ok()
         .filter(|v| !v.is_empty())
@@ -335,4 +409,256 @@ async fn host_a_world() {
             .clean
     );
     println!("force stop recorded as unclean");
+}
+
+/// The newest catalog file of a project, for the version and Fabric,
+/// downloaded through the launcher's verified path into `mods/`.
+async fn catalog_mod(
+    catalog: &launcher_lib::mods::Client,
+    executor: &Executor,
+    instance: &str,
+    slug: &str,
+    minecraft: &str,
+) -> String {
+    use launcher_lib::mods::{Catalog as _, SearchQuery};
+    let page = catalog
+        .search(&SearchQuery {
+            text: slug.replace('-', " "),
+            kind: Some("mod".to_owned()),
+            ..SearchQuery::default()
+        })
+        .await
+        .unwrap();
+    let project = page
+        .hits
+        .into_iter()
+        .find(|h| h.slug == slug)
+        .unwrap_or_else(|| panic!("{slug} is in the catalog"));
+    let newest = catalog
+        .versions(&project.id, Some(minecraft), Some("fabric"))
+        .await
+        .unwrap()
+        .into_iter()
+        .find(|v| v.channel == "release")
+        .unwrap_or_else(|| panic!("{slug} has a release for this version"));
+    // Files the catalog does not keep yet are fetched on the first ask.
+    let mut file = None;
+    for _ in 0..30 {
+        catalog.fetch(&newest.id).await.unwrap();
+        let version = catalog.version(&newest.id).await.unwrap();
+        file = version
+            .files
+            .into_iter()
+            .find(|f| f.primary && f.sha256.is_some() && f.url.is_some() && !f.held);
+        if file.is_some() {
+            break;
+        }
+        tokio::time::sleep(Duration::from_secs(2)).await;
+    }
+    let file = file.unwrap_or_else(|| panic!("{slug} file kept by the catalog"));
+    let name = format!("{slug}.jar");
+    executor
+        .run(
+            uuid::Uuid::new_v4(),
+            vec![launcher_lib::download::DownloadRequest {
+                source: SourcePolicy::ModsCatalog,
+                url: SourcePolicy::ModsCatalog
+                    .check(file.url.as_deref().unwrap())
+                    .unwrap(),
+                path: format!("instances/{instance}/game/mods/{name}"),
+                size: file.size,
+                digest: launcher_lib::download::Digest::Sha256(
+                    launcher_lib::storage::paths::Sha256::parse(file.sha256.as_deref().unwrap())
+                        .unwrap(),
+                ),
+                label: None,
+            }],
+            &CancelToken::new(),
+            &NoProgress,
+        )
+        .await
+        .unwrap();
+    name
+}
+
+#[tokio::test(flavor = "multi_thread")]
+#[ignore = "network: downloads a loader server, mods and Java, runs the server"]
+async fn host_a_world_with_mods() {
+    use launcher_lib::loader::{LoaderChoice, LoaderKind, meta};
+    use launcher_lib::worlds::pack::{self, Side};
+
+    let dir = tempfile::tempdir().unwrap();
+    let root = DataRoot::new(dir.path().to_path_buf()).unwrap();
+    let metadata = Arc::new(MetadataService::new(
+        PublicClient::new(SourcePolicy::MojangMetadata, VERSION).unwrap(),
+        root.clone(),
+    ));
+    let minecraft = world_version(&metadata).await;
+    assert_eq!(
+        std::env::var("WORLD_LOADER").as_deref().unwrap_or("fabric"),
+        "fabric"
+    );
+    println!("minecraft {minecraft}, fabric");
+    let loaders = PublicClient::new(SourcePolicy::ModLoaders, VERSION).unwrap();
+    let loader = LoaderChoice {
+        kind: LoaderKind::Fabric,
+        version: meta::loader_versions(&loaders, LoaderKind::Fabric, &minecraft)
+            .await
+            .unwrap()
+            .into_iter()
+            .find(|v| v.stable)
+            .expect("a stable Fabric loader")
+            .id,
+    };
+    pack::check_supported(&loader, &minecraft).expect("a tested release");
+
+    // An installation's game folder: two mods from the catalog, a setting.
+    let transport = HttpTransport::public(VERSION).unwrap();
+    let executor = Executor::new(transport.clone(), root.clone(), ExecutorConfig::default());
+    let catalog = launcher_lib::mods::Client::new(VERSION).unwrap();
+    let instance = launcher_lib::storage::paths::InstanceId::generate();
+    let api = catalog_mod(
+        &catalog,
+        &executor,
+        &instance.to_string(),
+        "fabric-api",
+        &minecraft,
+    )
+    .await;
+    let sodium = catalog_mod(
+        &catalog,
+        &executor,
+        &instance.to_string(),
+        "sodium",
+        &minecraft,
+    )
+    .await;
+    let game = root.game_dir(instance);
+    std::fs::create_dir_all(game.join("config")).unwrap();
+    std::fs::write(game.join("config/live-test.json"), b"{\"kept\":true}").unwrap();
+    std::fs::write(game.join("options.txt"), b"fov:1").unwrap();
+
+    let harmful = catalog.harmful().await.unwrap();
+    let built = pack::build(&catalog, &harmful, &game, &loader)
+        .await
+        .unwrap();
+    let mut created = world::create(
+        &root,
+        "Live modded world",
+        &minecraft,
+        WorldSettings::default(),
+    )
+    .unwrap();
+    let generation = pack::store(&root, &created, built).unwrap();
+    let side = |name: &str| {
+        generation
+            .files
+            .iter()
+            .find(|f| f.path == format!("mods/{name}"))
+            .unwrap()
+            .side
+    };
+    assert_eq!(side(&api), Side::Both);
+    assert_eq!(side(&sodium), Side::Client);
+    assert!(
+        generation.files.iter().all(|f| f.path != "options.txt"),
+        "the player's options stay"
+    );
+    println!("generation of {} files", generation.files.len());
+    created.pack = Some(generation);
+    world::save(&root, &created).unwrap();
+    world::accept_eula(&root, created.id).unwrap();
+
+    let source = LiveSource::new(Arc::clone(&metadata), VERSION).unwrap();
+    let runtimes = RuntimeInstaller::new(root.clone(), transport, ExecutorConfig::default());
+    let started = Instant::now();
+    let (prepared, java) = install::prepare(
+        &root,
+        &metadata,
+        &source,
+        &runtimes,
+        &executor,
+        created.id,
+        JavaProvider::Mojang,
+        &CancelToken::new(),
+        &NoProgress,
+    )
+    .await
+    .unwrap();
+    assert!(
+        prepared.pack.as_ref().unwrap().server_manifest.is_some(),
+        "the loader's server is pinned"
+    );
+    println!("prepared in {:.1?}", started.elapsed());
+
+    let activity = ActivityRegistry::new();
+    let members = [Nick::parse("Host_Player").unwrap()];
+    let permit = activity
+        .try_acquire_hosting(created.id.uuid(), "live-mods".to_owned())
+        .unwrap();
+    let server = host::start(
+        &Launch {
+            root: &root,
+            world_id: created.id,
+            java: &java,
+            server_heap_mib: 2048,
+            game_heap_mib: 0,
+            physical_memory_bytes: physical_memory(),
+            members: &members,
+            operation_id: "live-mods".to_owned(),
+        },
+        permit,
+        Arc::new(|| {}),
+    )
+    .unwrap();
+    let started = Instant::now();
+    tokio::task::block_in_place(|| server.wait_ready(STARTUP_DEADLINE)).unwrap();
+    println!("ready in {:.1?}", started.elapsed());
+
+    let server_dir = root.world_server_dir(created.id);
+    let mut mods: Vec<String> = std::fs::read_dir(server_dir.join("mods"))
+        .unwrap()
+        .filter_map(Result::ok)
+        .filter(|e| e.file_type().is_ok_and(|t| t.is_file()))
+        .map(|e| e.file_name().to_string_lossy().into_owned())
+        .collect();
+    mods.sort();
+    assert_eq!(mods, std::slice::from_ref(&api), "only the server's mods");
+    // Fabric Loader unpacks the modules nested in the mods it loads.
+    let processed: Vec<String> = std::fs::read_dir(server_dir.join(".fabric/processedMods"))
+        .unwrap()
+        .filter_map(Result::ok)
+        .map(|e| e.file_name().to_string_lossy().to_lowercase())
+        .collect();
+    assert!(
+        processed.iter().any(|n| n.starts_with("fabric-api-base")),
+        "Fabric API loaded"
+    );
+    assert!(!processed.iter().any(|n| n.contains("sodium")));
+    println!("fabric api loaded, {} modules", processed.len());
+    assert_eq!(
+        std::fs::read(server_dir.join("config/live-test.json")).unwrap(),
+        b"{\"kept\":true}"
+    );
+
+    let protocol = server.protocol();
+    let member = login(protocol, server.port(), &members[0]);
+    tunnel_reads(&member, protocol, &members[0]);
+    assert!(logged_in(server.port(), &member), "a member gets in");
+    let stranger_nick = Nick::parse("Not_A_Member").unwrap();
+    let stranger = login(protocol, server.port(), &stranger_nick);
+    assert!(
+        !logged_in(server.port(), &stranger),
+        "the whitelist refuses"
+    );
+    println!("member in, stranger refused");
+
+    let clean = tokio::task::block_in_place(|| server.stop(STOP_GRACE));
+    assert!(clean);
+    assert!(!activity.is_busy());
+    assert!(
+        server_dir.join("world").join("level.dat").is_file(),
+        "the world was saved"
+    );
+    println!("stopped clean");
 }

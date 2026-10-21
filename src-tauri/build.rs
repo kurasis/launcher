@@ -160,6 +160,7 @@ fn main() {
         "worlds_rooms",
         "worlds_room",
         "worlds_create",
+        "worlds_mod_sources",
         "worlds_accept_eula",
         "worlds_moderate",
         "worlds_leave_room",

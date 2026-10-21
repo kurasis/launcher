@@ -16,6 +16,7 @@ pub mod install;
 pub mod joining;
 pub mod memory;
 pub mod output;
+pub mod pack;
 pub mod ping;
 pub mod players;
 pub mod properties;
