@@ -70,6 +70,9 @@ export function ServerAdTile({ ad, snapshot }: { ad: ServerAd; snapshot: AppSnap
 
   const instance = vanillaOf(snapshot, version);
   const ready = instance?.health === 'ready';
+  // Who would play: the installation's profile, else the default one.
+  const player = instance?.profile ?? snapshot.account.defaultProfile;
+  const signInMissing = ad.licensed === true && player?.kind !== 'microsoft';
   const running = snapshot.currentRun !== null;
   const inGame = running && snapshot.currentRun?.instanceId === instance?.id && stage === 'idle';
 
@@ -120,6 +123,11 @@ export function ServerAdTile({ ad, snapshot }: { ad: ServerAd; snapshot: AppSnap
   const play = async () => {
     setError(null);
     setVersions(false);
+    // Nothing is downloaded for a server that would turn the player away.
+    if (signInMissing) {
+      setError(s.needsLicense);
+      return;
+    }
     if (ready) {
       await join(instance.id);
       return;
@@ -285,7 +293,9 @@ export function ServerAdTile({ ad, snapshot }: { ad: ServerAd; snapshot: AppSnap
         </div>
       )}
       <div className={[styles.preview, styles.adPreview].join(' ')}>
-        {ad.icon !== null ? (
+        {ad.banner !== null ? (
+          <img className={styles.adBanner} src={ad.banner} alt="" />
+        ) : ad.icon !== null ? (
           <>
             <img className={styles.adBackdrop} src={ad.icon} alt="" aria-hidden="true" />
             <span className={styles.adShade} aria-hidden="true" />
@@ -340,6 +350,7 @@ export function ServerAdTile({ ad, snapshot }: { ad: ServerAd; snapshot: AppSnap
           ) : (
             <>
               <span dir="ltr">{ad.address}</span> · {version}
+              {ad.licensed === true && ` · ${s.licensedOnly}`}
             </>
           )}
         </p>

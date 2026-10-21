@@ -2699,6 +2699,17 @@ skins-mod <channel>` there only checks the signature against the public key and
   outside.
 - **Server setup (owner):** a DNS record for servers.lapi.sh behind Cloudflare, then
   `deploy/bootstrap.sh` once.
+- **Amendment (owner, 2026-10-21): languages, banners, licensed servers.** An ad may be
+  shown only to players whose launcher is in some languages (`--langs ru,en`; the language
+  the launcher asks with). The owner may give a 16:9 banner (`banner <id> <file>`, PNG or
+  JPEG, cut to 16:9, made 640×360 and written again as JPEG), served at
+  `/v1/icons/{sha256}.jpg` beside the icons, so nginx needs no new path. Once a day, and on
+  `add`, `edit` and `ping`, the service starts a login as `ServerListCheck` in the protocol
+  the server's status named and reads the first answer only: an encryption request means
+  the server wants a Microsoft sign-in (online mode); login success or compression means it
+  does not; anything else is unknown. The launcher says "licensed accounts only" on such an
+  ad, and Play tells a player who would play without a Microsoft account so before anything
+  is downloaded.
 
 ## D-070 — Reviews from players at reviews.lapi.sh
 

@@ -8,7 +8,7 @@ use tokio::io::AsyncWriteExt;
 use tower::ServiceExt;
 
 use crate::ads::{self, Flags};
-use crate::icons::{self, Icons};
+use crate::icons::{self, Icons, Kind};
 use crate::ping::{self, Pinger};
 use crate::store::{self, Store};
 use crate::text;
@@ -264,20 +264,23 @@ fn only_ads_showing_now_go_out() {
     ended.ends = NOW;
     store.update(&ended, NOW).unwrap();
     let ids: Vec<i64> = store
-        .live("feed", NOW)
+        .live("feed", "en", NOW)
         .unwrap()
         .iter()
         .map(|a| a.id)
         .collect();
     assert_eq!(ids, [live.id]);
     assert_eq!(store::state(&later, NOW), "scheduled");
-    assert_eq!(store.live("feed", later.starts).unwrap()[0].id, later.id);
+    assert_eq!(
+        store.live("feed", "en", later.starts).unwrap()[0].id,
+        later.id
+    );
     assert_eq!(
         later.ends,
         later.starts + 7 * 86_400,
         "the run counts from the start"
     );
-    assert!(store.live("home", NOW).unwrap().is_empty());
+    assert!(store.live("home", "en", NOW).unwrap().is_empty());
     let counts = store.counts(NOW).unwrap();
     assert_eq!(counts["live"], 1);
     assert_eq!(counts["scheduled"], 1);
@@ -287,14 +290,14 @@ fn only_ads_showing_now_go_out() {
     let short = add(&store, &["--for", "1m"]);
     assert!(
         store
-            .live("feed", NOW + 59)
+            .live("feed", "en", NOW + 59)
             .unwrap()
             .iter()
             .any(|a| a.id == short.id)
     );
     assert!(
         !store
-            .live("feed", NOW + 60)
+            .live("feed", "en", NOW + 60)
             .unwrap()
             .iter()
             .any(|a| a.id == short.id)
@@ -378,12 +381,13 @@ fn icons_are_decoded_and_written_again() {
     assert!(icons::from_status("data:image/svg+xml;base64,PHN2Zz4=").is_err());
     let dir = tempfile::tempdir().unwrap();
     let icons = Icons::new(dir.path()).unwrap();
-    let sha = icons.keep(&clean).unwrap();
+    let sha = icons.keep(&clean, Kind::Png).unwrap();
     assert!(icons::sha_name(&sha));
-    assert!(icons.read(&sha).is_some());
-    assert!(icons.read("../servers.db").is_none());
+    assert!(icons.read(&sha, Kind::Png).is_some());
+    assert!(icons.read(&sha, Kind::Jpeg).is_none());
+    assert!(icons.read("../servers.db", Kind::Png).is_none());
     icons.clean(&[]);
-    assert!(icons.read(&sha).is_none());
+    assert!(icons.read(&sha, Kind::Png).is_none());
 }
 
 #[test]
@@ -491,16 +495,23 @@ async fn an_ad_ping_keeps_the_icon() {
     );
     let json =
         serde_json::json!({"players": {"online": 1, "max": 2}, "favicon": favicon}).to_string();
-    let port = fake_server(status_packet(&json)).await;
+    // The sign-in check finds no one listening: the ping stands without it.
+    let (port, _task) = fake_servers(vec![status_packet(&json)]).await;
     let mut pinger = Pinger::new();
     pinger.allow_local = true;
     let ad = store::Ad {
         address: format!("127.0.0.1:{port}"),
         ..ad
     };
-    let ping = ads::ping(&store, &icons, &pinger, &ad, NOW).await.unwrap();
+    let ping = ads::ping(&store, &icons, &pinger, &ad, NOW, false)
+        .await
+        .unwrap();
     assert!(ping.up);
-    assert!(icons.read(ping.icon.as_deref().unwrap()).is_some());
+    assert!(
+        icons
+            .read(ping.icon.as_deref().unwrap(), Kind::Png)
+            .is_some()
+    );
 }
 
 #[test]
@@ -601,4 +612,357 @@ async fn nothing_can_be_written_from_outside() {
     assert_eq!(ads.len(), 1, "nothing was added or removed");
     let texts: BTreeMap<String, String> = ads[0].texts.clone();
     assert_eq!(texts.get("*").unwrap(), "Survival with friends.");
+}
+
+#[test]
+fn ads_can_be_shown_to_some_languages_only() {
+    assert_eq!(text::langs("ru").unwrap(), ["ru"]);
+    assert_eq!(text::langs(" RU, en ,ru").unwrap(), ["en", "ru"]);
+    assert!(text::langs("all").unwrap().is_empty());
+    for bad in ["", "de", "ru;en", "ru,,en", "*"] {
+        assert!(text::langs(bad).is_err(), "{bad:?}");
+    }
+    let (_dir, store) = store();
+    let everyone = add(&store, &[]);
+    let russian = add(&store, &["--langs", "ru", "--weight", "50"]);
+    assert_eq!(russian.langs, ["ru"]);
+    let ids = |lang: &str| -> Vec<i64> {
+        store
+            .live("feed", lang, NOW)
+            .unwrap()
+            .iter()
+            .map(|a| a.id)
+            .collect()
+    };
+    assert_eq!(ids("ru"), [russian.id, everyone.id]);
+    assert_eq!(ids("en"), [everyone.id]);
+    assert_eq!(ids("ar"), [everyone.id]);
+    let back = ads::build(
+        &store,
+        Some(&russian),
+        &flags(&["--langs", "all"]),
+        zone(),
+        NOW,
+    )
+    .unwrap();
+    store.update(&back, NOW).unwrap();
+    assert_eq!(ids("en"), [russian.id, everyone.id]);
+    // At most MAX_LIVE go out, counted after the language is matched.
+    for _ in 0..store::MAX_LIVE {
+        add(&store, &["--langs", "ar"]);
+    }
+    assert_eq!(ids("en").len(), 2);
+    assert_eq!(ids("ar").len(), store::MAX_LIVE);
+}
+
+#[test]
+fn a_database_from_before_gets_the_new_columns() {
+    let dir = tempfile::tempdir().unwrap();
+    {
+        let db = rusqlite::Connection::open(dir.path().join("servers.db")).unwrap();
+        db.execute_batch(
+            "CREATE TABLE ads (id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT NOT NULL,
+                address TEXT NOT NULL, version TEXT NOT NULL, oldest TEXT NOT NULL,
+                newest TEXT NOT NULL, texts TEXT NOT NULL, starts INTEGER NOT NULL,
+                ends INTEGER NOT NULL, weight INTEGER NOT NULL, place TEXT NOT NULL, erid TEXT,
+                paused INTEGER NOT NULL DEFAULT 0, icon TEXT, created INTEGER NOT NULL,
+                updated INTEGER NOT NULL);
+             CREATE TABLE pings (ad INTEGER PRIMARY KEY, at INTEGER NOT NULL, up INTEGER NOT NULL,
+                online INTEGER, max INTEGER, protocol INTEGER, server_version TEXT, icon TEXT);
+             INSERT INTO ads (name, address, version, oldest, newest, texts, starts, ends,
+                weight, place, created, updated)
+             VALUES ('Old', 'old.example.net', '1.21.4', '1.21.4', '1.21.4', '{\"*\":\"Old.\"}',
+                0, 1900000000, 10, 'feed', 0, 0);
+             INSERT INTO pings (ad, at, up, icon) VALUES (1, 5, 1, 'kept');",
+        )
+        .unwrap();
+    }
+    let store = Store::open(dir.path()).unwrap();
+    let old = store.ad(1).unwrap().unwrap();
+    assert!(old.langs.is_empty());
+    assert_eq!(old.banner, None);
+    let ping = store.ping(1).unwrap().unwrap();
+    assert_eq!((ping.licensed, ping.checked_at), (None, None));
+    assert_eq!(ping.icon.as_deref(), Some("kept"));
+    // Opening again finds the columns there.
+    drop(store);
+    assert!(Store::open(dir.path()).is_ok());
+}
+
+#[test]
+fn a_ping_without_a_check_keeps_the_last_check() {
+    let (_dir, store) = store();
+    let ad = add(&store, &[]);
+    let checked = store::Ping {
+        at: NOW,
+        up: true,
+        licensed: Some(true),
+        checked_at: Some(NOW),
+        ..Default::default()
+    };
+    store.save_ping(ad.id, &checked).unwrap();
+    store
+        .save_ping(
+            ad.id,
+            &store::Ping {
+                at: NOW + 3600,
+                up: false,
+                ..Default::default()
+            },
+        )
+        .unwrap();
+    let kept = store.ping(ad.id).unwrap().unwrap();
+    assert_eq!((kept.licensed, kept.checked_at), (Some(true), Some(NOW)));
+    assert_eq!(ads::public(&store, &ad, "en").unwrap()["licensed"], true);
+    // A check that found nothing is a check too.
+    store
+        .save_ping(
+            ad.id,
+            &store::Ping {
+                at: NOW + 7200,
+                up: true,
+                licensed: None,
+                checked_at: Some(NOW + 7200),
+                ..Default::default()
+            },
+        )
+        .unwrap();
+    assert_eq!(
+        ads::public(&store, &ad, "en").unwrap()["licensed"],
+        serde_json::Value::Null
+    );
+}
+
+fn picture(width: u32, height: u32, format: image::ImageFormat) -> Vec<u8> {
+    let picture = image::RgbImage::from_fn(width, height, |x, y| {
+        image::Rgb([(x % 256) as u8, (y % 256) as u8, 90])
+    });
+    let mut out = Vec::new();
+    image::DynamicImage::ImageRgb8(picture)
+        .write_to(&mut std::io::Cursor::new(&mut out), format)
+        .unwrap();
+    out
+}
+
+#[test]
+fn banners_are_cut_to_16_9_and_written_again() {
+    use image::ImageFormat::{Jpeg, Png};
+    for (width, height, format) in [
+        (1280, 720, Png),
+        (800, 800, Jpeg),
+        (2000, 400, Png),
+        (480, 270, Jpeg),
+    ] {
+        let jpeg = icons::banner(&picture(width, height, format)).unwrap();
+        assert!(jpeg.starts_with(&[0xff, 0xd8, 0xff]));
+        let decoded = image::load_from_memory(&jpeg).unwrap();
+        assert_eq!(
+            (decoded.width(), decoded.height()),
+            icons::BANNER,
+            "{width}×{height}"
+        );
+    }
+    assert!(
+        icons::banner(&picture(400, 300, image::ImageFormat::Png)).is_err(),
+        "too small"
+    );
+    assert!(icons::banner(b"GIF89a.......").is_err());
+    assert!(icons::banner(b"<svg onload=alert(1)>").is_err());
+    assert!(
+        icons::banner(&[0xff, 0xd8, 0xff, 0xe0, 1, 2, 3]).is_err(),
+        "a broken JPEG"
+    );
+    assert!(icons::banner(&vec![0xff; icons::BANNER_MAX_BYTES + 1]).is_err());
+    assert!(
+        icons::banner(&picture(4100, 270, image::ImageFormat::Png)).is_err(),
+        "too wide to decode"
+    );
+}
+
+/// A server on this machine that answers each of `answers` to one
+/// connection in turn.
+async fn fake_servers(answers: Vec<Vec<u8>>) -> (u16, tokio::task::JoinHandle<Vec<Vec<u8>>>) {
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let port = listener.local_addr().unwrap().port();
+    let task = tokio::spawn(async move {
+        let mut heard = Vec::new();
+        for answer in answers {
+            let (mut stream, _) = listener.accept().await.unwrap();
+            let mut buffer = [0u8; 512];
+            let read = tokio::io::AsyncReadExt::read(&mut stream, &mut buffer)
+                .await
+                .unwrap_or(0);
+            heard.push(buffer[..read].to_vec());
+            let _ = stream.write_all(&answer).await;
+            let _ = stream.flush().await;
+        }
+        heard
+    });
+    (port, task)
+}
+
+fn login_packet(id: i32, body: &[u8]) -> Vec<u8> {
+    let mut packet = Vec::new();
+    ping::write_varint(&mut packet, id);
+    packet.extend_from_slice(body);
+    let mut wire = Vec::new();
+    ping::write_varint(&mut wire, packet.len() as i32);
+    wire.extend_from_slice(&packet);
+    wire
+}
+
+#[tokio::test]
+async fn the_sign_in_check_reads_the_first_login_answer() {
+    let mut pinger = Pinger::new();
+    pinger.allow_local = true;
+    for (answer, expected) in [
+        (login_packet(0x01, b"\x00\x05key..\x04tokn"), Some(true)),
+        (login_packet(0x02, &[0; 20]), Some(false)),
+        (login_packet(0x03, &[0x80, 0x02]), Some(false)),
+        (login_packet(0x00, b"\x0f\"whitelisted\""), None),
+        (login_packet(0x04, &[1, 0]), None),
+    ] {
+        let (port, task) = fake_servers(vec![answer]).await;
+        let got = pinger
+            .licensed(&format!("127.0.0.1:{port}"), Some(769))
+            .await
+            .unwrap();
+        assert_eq!(got, expected);
+        let heard = task.await.unwrap();
+        // The handshake asks for login, then the check's name follows.
+        assert!(
+            heard[0]
+                .windows(ping::CHECK_NAME.len())
+                .any(|w| w == ping::CHECK_NAME.as_bytes())
+        );
+    }
+    let (port, _task) = fake_servers(vec![vec![0xff; 8]]).await;
+    assert!(
+        pinger
+            .licensed(&format!("127.0.0.1:{port}"), None)
+            .await
+            .is_err()
+    );
+    let mut huge = Vec::new();
+    ping::write_varint(&mut huge, i32::MAX);
+    let (port, _task) = fake_servers(vec![huge]).await;
+    assert!(
+        pinger
+            .licensed(&format!("127.0.0.1:{port}"), None)
+            .await
+            .is_err()
+    );
+    pinger.allow_local = false;
+    let (port, _task) = fake_servers(vec![login_packet(0x01, &[])]).await;
+    assert!(
+        pinger
+            .licensed(&format!("127.0.0.1:{port}"), None)
+            .await
+            .is_err(),
+        "this machine is never asked"
+    );
+}
+
+#[test]
+fn login_start_has_the_shape_of_each_protocol() {
+    let body = |protocol: i32| {
+        let wire = ping::login_start(protocol);
+        // Length, id 0, name length, the name, then what the protocol adds.
+        let start = 3 + ping::CHECK_NAME.len();
+        assert_eq!(wire[0] as usize, wire.len() - 1);
+        assert_eq!(&wire[3..start], ping::CHECK_NAME.as_bytes());
+        wire[start..].to_vec()
+    };
+    assert!(body(47).is_empty(), "1.8");
+    assert!(body(758).is_empty(), "1.18.2");
+    assert_eq!(body(759), [0], "1.19");
+    assert_eq!(body(760), [0, 0], "1.19.2");
+    assert_eq!(body(763), [0], "1.20.1");
+    assert_eq!(body(764).len(), 16, "1.20.2");
+    assert_eq!(body(774).len(), 16, "1.21.11");
+}
+
+#[tokio::test]
+async fn an_ad_ping_checks_the_sign_in_once_a_day() {
+    let (dir, store) = store();
+    let icons = Icons::new(dir.path()).unwrap();
+    let mut pinger = Pinger::new();
+    pinger.allow_local = true;
+    let status = status_packet(
+        r#"{"version":{"name":"Paper","protocol":769},"players":{"online":3,"max":10}}"#,
+    );
+    let (port, task) = fake_servers(vec![status.clone(), login_packet(0x01, &[])]).await;
+    let ad = store::Ad {
+        address: format!("127.0.0.1:{port}"),
+        ..add(&store, &[])
+    };
+    let first = ads::ping(&store, &icons, &pinger, &ad, NOW, false)
+        .await
+        .unwrap();
+    assert_eq!((first.licensed, first.checked_at), (Some(true), Some(NOW)));
+    assert_eq!(task.await.unwrap().len(), 2);
+    // An hour later: the status only.
+    let (port, task) = fake_servers(vec![status.clone()]).await;
+    let ad = store::Ad {
+        address: format!("127.0.0.1:{port}"),
+        ..ad
+    };
+    let later = ads::ping(&store, &icons, &pinger, &ad, NOW + 3600, false)
+        .await
+        .unwrap();
+    assert_eq!((later.licensed, later.checked_at), (Some(true), Some(NOW)));
+    assert_eq!(task.await.unwrap().len(), 1);
+    // A day later, or when asked: checked again.
+    let (port, task) = fake_servers(vec![status, login_packet(0x02, &[0; 20])]).await;
+    let ad = store::Ad {
+        address: format!("127.0.0.1:{port}"),
+        ..ad
+    };
+    let next = ads::ping(&store, &icons, &pinger, &ad, NOW + ads::CHECK_EVERY, false)
+        .await
+        .unwrap();
+    assert_eq!(next.licensed, Some(false));
+    assert_eq!(task.await.unwrap().len(), 2);
+}
+
+#[tokio::test]
+async fn the_api_serves_banners_and_the_sign_in_check() {
+    let (dir, store) = store();
+    let mut ad = add(&store, &[]);
+    let icons = Icons::new(dir.path()).unwrap();
+    let jpeg = icons::banner(&picture(1280, 720, image::ImageFormat::Png)).unwrap();
+    ad.banner = Some(icons.keep(&jpeg, Kind::Jpeg).unwrap());
+    store.update(&ad, NOW).unwrap();
+    let sha = ad.banner.clone().unwrap();
+    let app = app(store, dir.path());
+    let (_, body) = call(&app, "GET", "/v1/ads?place=feed&lang=en", "").await;
+    let value: serde_json::Value = serde_json::from_str(&body).unwrap();
+    assert_eq!(value["ads"][0]["banner"], sha.as_str());
+    assert_eq!(value["ads"][0]["licensed"], serde_json::Value::Null);
+    let response = api::router(Arc::clone(&app))
+        .oneshot(
+            Request::builder()
+                .uri(format!("/v1/icons/{sha}.jpg"))
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(response.status(), StatusCode::OK);
+    assert_eq!(response.headers()["content-type"], "image/jpeg");
+    let bytes = response.into_body().collect().await.unwrap().to_bytes();
+    assert_eq!(bytes.as_ref(), jpeg.as_slice());
+    // The banner is no PNG, and no other name finds it.
+    for uri in [
+        format!("/v1/icons/{sha}.png"),
+        format!("/v1/icons/{sha}jpg"),
+        format!("/v1/icons/{sha}.jpeg"),
+        format!("/v1/icons/{sha}.jpg.png"),
+    ] {
+        assert_eq!(
+            call(&app, "GET", &uri, "").await.0,
+            StatusCode::NOT_FOUND,
+            "{uri}"
+        );
+    }
 }

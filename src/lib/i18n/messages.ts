@@ -135,6 +135,8 @@ export type Messages = {
       readonly versionItem: (values: { version: string | number }) => string;
       readonly menu: (values: { name: string | number }) => string;
       readonly players: (values: { online: number }) => string;
+      readonly licensedOnly: string;
+      readonly needsLicense: string;
     };
     readonly itemMenu: (values: { title: string | number }) => string;
     readonly copyLink: string;

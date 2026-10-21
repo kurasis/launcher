@@ -169,11 +169,11 @@ jobs:
           ONLY: ${{ needs.plan.outputs.folders }}
         run: |
           # Setting up a Forge release downloads hundreds of files, and Forge's maven
-          # now and then cuts a connection: one more try for that, never for anything else.
+          # now and then cuts a connection or times out: one more try for that, never for anything else.
           set -o pipefail
           for attempt in 1 2; do
             ./gradlew --no-daemon "-Ponly=$ONLY" build 2>&1 | tee gradle.log && exit 0
-            grep -qE "Connection reset|Connection timed out|(HTTP response code:|status code) (429|5[0-9][0-9])" gradle.log || exit 1
+            grep -qE "Connection reset|Connection timed out|[Rr]equest timed out|Read timed out|(HTTP response code:|status code) (429|5[0-9][0-9])" gradle.log || exit 1
             echo "A download was cut off; trying once more"
           done
           exit 1
