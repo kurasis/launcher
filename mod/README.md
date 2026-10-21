@@ -24,6 +24,12 @@ none for them: a profile without textures whose UUID is not a Mojang one (versio
   legacy plugin, reobfuscated to SRG). Forge 1.16.5, the first Forge with Mixin, has a jar
   of its own (Architectury Loom). Each is a project in the folder of the release it is
   built against, whose gradle.properties name its band and range.
+- 1.20.2 to 1.20.6 use `mc-1.21.1/common` (the skin is a `PlayerSkin` from 1.20.2 on): its
+  Fabric jar serves 1.20.2 to 1.21.1 and its NeoForge jar 1.20.6 to 1.21.1.
+  `mc-1.20.2-1.20.6/` builds the rest with Architectury Loom (`arch.gradle`): Forge
+  1.20.2 to 1.20.4 (SRG names, which keep their numbers across these releases), Forge
+  1.20.6 and NeoForge 1.20.2 to 1.20.4 (Mojang names; NeoForge before 20.5 reads
+  `mods.toml`).
 - `mc-1.12.2/forge/`: Forge 1.12.2 has no Mixin, so the hook is a coremod: an ASM
   transformer that passes `NetworkPlayerInfo`'s skin, cape, elytra and model through
   `LauncherSkins` (methods matched by MCP name in development, SRG name in a released
@@ -47,8 +53,8 @@ none for them: a profile without textures whose UUID is not a Mojang one (versio
 ## Build
 
 Gradle runs on Java 25 (Fabric Loom and RetroFuturaGradle need it); the jars for 1.12.2
-to 1.20.1 are built for Java 8 (with Java 8 and 17 toolchains), those for 1.21.x with
-Java 21 and for 26.x with Java 25. Missing toolchains are downloaded.
+to 1.20.1 are built for Java 8 (with Java 8 and 17 toolchains), those for 1.20.2 to 1.21.1
+with Java 17 (1.20.6's Forge jar 21), the later 1.21.x with Java 21 and 26.x with Java 25. Missing toolchains are downloaded.
 
 ```
 ./gradlew build

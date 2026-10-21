@@ -6,7 +6,7 @@ import net.minecraft.client.multiplayer.PlayerInfo;
 import net.minecraft.client.resources.PlayerSkin;
 
 /**
- * What the rewritten {@code PlayerInfo.getSkin()} calls, for Minecraft 1.21 to 1.21.8.
+ * What the rewritten {@code PlayerInfo.getSkin()} calls, for Minecraft 1.20.2 to 1.21.8.
  * With no loader there is no entry point, so Launcher Skins starts the first time a skin
  * is asked for: by then the game knows its folder.
  */

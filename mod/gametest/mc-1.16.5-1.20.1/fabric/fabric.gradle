@@ -5,7 +5,8 @@ plugins {
 // The bot for Fabric in one release from 1.16.5 to 1.20.1: each is a project here, a
 // folder named after the release. They share the Mixin and take the release's own game
 // layer from ../game/<release>. 1.16.5 runs on Java 8, so it is Java 8 unless a release's
-// layer needs more.
+// layer needs more. The 1.20.2 to 1.20.6 bots (gametest/mc-1.20.2-1.20.6/fabric) are built by
+// this script too, with their own game layers.
 base {
     archivesName = "launchergametest-fabric-${minecraft_version}"
 }
@@ -16,10 +17,10 @@ java {
 
 sourceSets.main {
     java.srcDir "${rootDir}/gametest/core/src/main/java"
-    java.srcDir "${projectDir}/../../common/src/main/java"
+    java.srcDir "${rootDir}/gametest/mc-1.16.5-1.20.1/common/src/main/java"
     java.srcDir "${projectDir}/../../game/${findProperty('game_layer') ?: minecraft_version}"
-    resources.srcDir "${projectDir}/../../common/src/main/resources"
-    resources.srcDir "${projectDir}/../src/main/resources"
+    resources.srcDir "${rootDir}/gametest/mc-1.16.5-1.20.1/common/src/main/resources"
+    resources.srcDir "${rootDir}/gametest/mc-1.16.5-1.20.1/fabric/src/main/resources"
 }
 
 dependencies {
