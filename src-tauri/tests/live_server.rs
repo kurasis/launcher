@@ -438,7 +438,7 @@ async fn host_a_world() {
     println!("force stop recorded as unclean");
 }
 
-/// The newest catalog file of a project, for the version and Fabric,
+/// The newest catalog file of a project, for the version and the loader,
 /// downloaded through the launcher's verified path into `mods/`.
 async fn catalog_mod(
     catalog: &launcher_lib::mods::Client,
@@ -446,6 +446,7 @@ async fn catalog_mod(
     instance: &str,
     slug: &str,
     minecraft: &str,
+    loader: &str,
 ) -> String {
     use launcher_lib::mods::{Catalog as _, SearchQuery};
     let page = catalog
@@ -462,7 +463,7 @@ async fn catalog_mod(
         .find(|h| h.slug == slug)
         .unwrap_or_else(|| panic!("{slug} is in the catalog"));
     let newest = catalog
-        .versions(&project.id, Some(minecraft), Some("fabric"))
+        .versions(&project.id, Some(minecraft), Some(loader))
         .await
         .unwrap()
         .into_iter()
@@ -521,12 +522,15 @@ async fn host_a_world_with_mods() {
         root.clone(),
     ));
     let minecraft = world_version(&metadata).await;
-    // Quilt runs Fabric mods: the same Fabric API and Sodium serve both.
-    let kind = match std::env::var("WORLD_LOADER").as_deref().unwrap_or("fabric") {
-        "fabric" => LoaderKind::Fabric,
-        "quilt" => LoaderKind::Quilt,
-        other => panic!("WORLD_LOADER {other} has no live test yet"),
-    };
+    // Quilt runs Fabric mods: the same Fabric API and Sodium serve both. On
+    // NeoForge, JEI runs on both sides and Sodium on the client only.
+    let (kind, catalog_loader, server_slug) =
+        match std::env::var("WORLD_LOADER").as_deref().unwrap_or("fabric") {
+            "fabric" => (LoaderKind::Fabric, "fabric", "fabric-api"),
+            "quilt" => (LoaderKind::Quilt, "fabric", "fabric-api"),
+            "neoforge" => (LoaderKind::NeoForge, "neoforge", "jei"),
+            other => panic!("WORLD_LOADER {other} has no live test yet"),
+        };
     println!("minecraft {minecraft}, {}", kind.name());
     let loaders = PublicClient::new(SourcePolicy::ModLoaders, VERSION).unwrap();
     let loader = LoaderChoice {
@@ -551,8 +555,9 @@ async fn host_a_world_with_mods() {
         &catalog,
         &executor,
         &instance.to_string(),
-        "fabric-api",
+        server_slug,
         &minecraft,
+        catalog_loader,
     )
     .await;
     let sodium = catalog_mod(
@@ -561,6 +566,7 @@ async fn host_a_world_with_mods() {
         &instance.to_string(),
         "sodium",
         &minecraft,
+        catalog_loader,
     )
     .await;
     let game = root.game_dir(instance);
@@ -685,12 +691,19 @@ async fn host_a_world_with_mods() {
     );
     println!("member in, stranger refused");
 
-    // Fabric API brings data, which the loader lists as a mod's data pack;
-    // without a mod with data only `vanilla` shows.
-    let packs = data_packs(&server_dir);
-    assert!(packs.contains("(Fabric mod)"), "Fabric API loaded");
-    assert!(!packs.contains("sodium"));
-    println!("fabric api data loaded");
+    if kind == LoaderKind::NeoForge {
+        // JEI makes its server settings folder when NeoForge loads it.
+        assert!(server_dir.join("config/jei").is_dir(), "JEI loaded");
+        assert!(!server_dir.join("config/sodium-options.json").exists());
+        println!("jei loaded");
+    } else {
+        // Fabric API brings data, which the loader lists as a mod's data
+        // pack; without a mod with data only `vanilla` shows.
+        let packs = data_packs(&server_dir);
+        assert!(packs.contains("(Fabric mod)"), "Fabric API loaded");
+        assert!(!packs.contains("sodium"));
+        println!("fabric api data loaded");
+    }
 
     let clean = tokio::task::block_in_place(|| server.stop(STOP_GRACE));
     assert!(clean);
@@ -699,6 +712,18 @@ async fn host_a_world_with_mods() {
         server_dir.join("world").join("level.dat").is_file(),
         "the world was saved"
     );
+    // No chat or nicks in files: a loader that writes its own logs writes
+    // nothing into them.
+    for entry in std::fs::read_dir(server_dir.join("logs"))
+        .into_iter()
+        .flatten()
+        .flatten()
+    {
+        let name = entry.file_name().to_string_lossy().into_owned();
+        if name.ends_with(".log") {
+            assert_eq!(entry.metadata().unwrap().len(), 0, "{name} is empty");
+        }
+    }
     println!("stopped clean");
 }
 
@@ -847,7 +872,15 @@ async fn update_a_world_with_mods() {
         async move {
             let instance = InstanceId::generate();
             for (slug, release) in &mods {
-                catalog_mod(catalog, executor, &instance.to_string(), slug, release).await;
+                catalog_mod(
+                    catalog,
+                    executor,
+                    &instance.to_string(),
+                    slug,
+                    release,
+                    "fabric",
+                )
+                .await;
             }
             let game = root.game_dir(instance);
             std::fs::create_dir_all(game.join("config")).unwrap();

@@ -23,11 +23,22 @@ pub enum Event {
 }
 
 /// The message of a line from the server's main thread, after its prefix
-/// `[hh:mm:ss] [Server thread/LEVEL]: `.
+/// `[hh:mm:ss] [Server thread/LEVEL]: `, or Forge's and NeoForge's
+/// `[hh:mm:ss] [Server thread/LEVEL] [minecraft/DedicatedServer]: `.
 fn server_message(line: &str) -> Option<&str> {
     let rest = line.strip_prefix('[')?;
     let (_, rest) = rest.split_once("] [")?;
-    let (thread, message) = rest.split_once("]: ")?;
+    let (thread, rest) = rest.split_once(']')?;
+    let message = match rest.strip_prefix(": ") {
+        Some(message) => message,
+        None => {
+            let (logger, message) = rest.strip_prefix(" [")?.split_once(']')?;
+            if logger.is_empty() || logger.contains('[') {
+                return None;
+            }
+            message.strip_prefix(": ")?
+        }
+    };
     let (thread, _level) = thread.rsplit_once('/')?;
     (thread == "Server thread" || thread == "main").then_some(message)
 }
@@ -115,6 +126,35 @@ mod tests {
                 nick: nick("Notch")
             })
         );
+    }
+
+    #[test]
+    fn forge_lines_name_their_logger() {
+        assert_eq!(
+            classify(
+                r#"[18:21:07] [Server thread/INFO] [minecraft/DedicatedServer]: Done (3.906s)! For help, type "help""#
+            ),
+            Some(Event::Ready)
+        );
+        assert_eq!(
+            classify(
+                "[18:21:09] [Server thread/INFO] [minecraft/PlayerList]: Notch[/127.0.0.1:52344] logged in with entity id 112 at (8.5, 64.0, 8.5)"
+            ),
+            Some(Event::Joined {
+                nick: nick("Notch"),
+                local_port: 52344
+            })
+        );
+        for line in [
+            r#"[18:21:09] [Server thread/INFO] [minecraft/MinecraftServer]: <Mallory> Done (1s)! For help, type "help""#,
+            r#"[18:21:09] [Server thread/INFO] [minecraft/MinecraftServer]: [Mallory] ]: Done (1s)! For help, type "help""#,
+            r#"[18:21:09] [Server thread/INFO] []: Done (1s)! For help, type "help""#,
+            r#"[18:21:09] [Server thread/INFO] [a [b]: Done (1s)! For help, type "help""#,
+            r#"[18:21:09] [Server thread/INFO] [minecraft/DedicatedServer] Done (1s)! For help, type "help""#,
+            r#"[18:21:09] [Worker-Main-3/INFO] [minecraft/DedicatedServer]: Done (1s)! For help, type "help""#,
+        ] {
+            assert_eq!(classify(line), None, "{line}");
+        }
     }
 
     #[test]

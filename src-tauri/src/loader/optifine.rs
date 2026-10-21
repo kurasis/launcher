@@ -334,6 +334,7 @@ pub fn manifest(jar: &[u8], release: &Release, path: &str) -> LauncherResult<Loa
             libraries: Vec::new(),
             embedded: vec![wrapper_file],
         }),
+        server_arguments: None,
     })
 }
 

@@ -282,3 +282,14 @@ Other loaders follow in W12.
   profile of meta.quiltmc.org; Quilt Loader finds Mojang's server by `loader.gameJarPath`, its
   name for Fabric's `fabric.gameJarPath`. Its live test runs Fabric mods from the catalog, which
   Quilt loads, since the catalog has no Quilt-only mod. Offered for 1.20.1, 1.21.1 and 26.3.
+- 2026-10-21 — W12 NeoForge (owner, plan doc): no installer runs. The launcher reads the
+  installer's install profile for the server side (its `server` data, its server processors,
+  without the step that only unpacks start scripts, with `{ROOT}/libraries/` in the Maven tree)
+  and runs those processors with Mojang's verified server JAR and server mappings. Each file
+  they build is recorded by its SHA-1 in `metadata/loaders/<sha1>.server-files.json` and checked
+  before every start. The server starts with the installer's `data/unix_args.txt` or
+  `data/win_args.txt`; a token that would load an agent, change the boot class path, set a
+  `-XX:` option or read an argument file refuses the installer. FML replaces the server's
+  logging configuration with its own, so A7 is kept by `forge.logging.file.level=off` and
+  `forge.logging.debugFile.level=off`: its log files stay empty; its console lines carry the
+  logger name, which the console reader accepts. Offered for 1.21.1 and 26.3.

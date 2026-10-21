@@ -1837,7 +1837,7 @@
         "noMods": "بدون تعديلات",
         "modSource": "{name} · {game}",
         "modsNote": "يأخذ العالم تعديلات هذا التثبيت وإعداداتها. يشغّل الخادم التعديلات التي يحتاجها، أما التعديلات الخاصة باللعبة فقط مثل Sodium فلا تصل إليه. يجب أن يكون كل تعديل في الكتالوج.",
-        "modsHow": "لعالم بتعديلات، اختر تثبيتًا يحتوي على Fabric أو Quilt وتعديلات. تعمل العوالم ذات التعديلات على إصدارات Minecraft التي اختُبرت مع المُحمِّل.",
+        "modsHow": "لعالم بتعديلات، اختر تثبيتًا يحتوي على Fabric أو Quilt أو NeoForge وتعديلات. تعمل العوالم ذات التعديلات على إصدارات Minecraft التي اختُبرت مع المُحمِّل.",
         "version": "إصدار Minecraft",
         "snapshots": "إظهار اللقطات التجريبية",
         "snapshotsNote": "اللقطات التجريبية إصدارات اختبار: تتغير من أسبوع لآخر وقد تُتلف العالم. العالم المنشأ على لقطة تجريبية لا يُفتح في إصدار أقدم، ويحتاج الأصدقاء إلى اللقطة نفسها تمامًا.",
@@ -2622,7 +2622,7 @@
     "Waiting for the world stopped.": "توقّف انتظار العالم.",
     "Worlds with friends need a Microsoft account that owns Minecraft. Sign in with it in the launcher once.": "تحتاج العوالم مع الأصدقاء إلى حساب Microsoft يملك Minecraft. سجّل الدخول به في المشغّل مرة واحدة.",
     "Worlds with mods are available for Minecraft {versions} for now.": "العوالم ذات التعديلات متاحة حاليًا لـ Minecraft {versions}.",
-    "Worlds with this mod loader come later; Fabric and Quilt work now.": "ستأتي العوالم بهذا المُحمِّل لاحقًا؛ يعمل Fabric وQuilt الآن.",
+    "Worlds with this mod loader come later; Fabric, Quilt and NeoForge work now.": "ستأتي العوالم بهذا المُحمِّل لاحقًا؛ يعمل Fabric وQuilt وNeoForge الآن.",
     "worlds.lapi.sh cannot be reached.": "تعذّر الوصول إلى worlds.lapi.sh.",
     "worlds.lapi.sh is not working right now.": "لا يعمل worlds.lapi.sh الآن.",
     "worlds.lapi.sh refused this.": "رفض worlds.lapi.sh هذا.",
@@ -2715,6 +2715,9 @@
     "This review is not on this computer.": "هذا الرأي غير موجود على هذا الجهاز.",
     "This screenshot does not exist.": "لقطة الشاشة هذه غير موجودة.",
     "Too many files: 5 pictures and 12 text files at most.": "ملفات كثيرة جدًا: 5 صور و12 ملفًا نصيًا على الأكثر.",
-    "Write a little more: the message needs at least 20 characters.": "اكتب المزيد قليلًا: تحتاج الرسالة إلى 20 حرفًا على الأقل."
+    "Write a little more: the message needs at least 20 characters.": "اكتب المزيد قليلًا: تحتاج الرسالة إلى 20 حرفًا على الأقل.",
+    "A verified mod loader installer is damaged. Host the world again.": "مثبّت مُحمِّل التعديلات الموثّق تالف. استضف العالم مرة أخرى.",
+    "The server's files could not be recorded.": "تعذّر تسجيل ملفات الخادم.",
+    "This loader has no server installer.": "لا يملك هذا المُحمِّل مثبّتًا للخادم."
   }
 }

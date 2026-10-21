@@ -172,7 +172,8 @@ jobs:
 
   world-server-mods:
     # Worlds with mods W12: a loader's server with Fabric API and Sodium from
-    # the catalog (Quilt runs the same Fabric mods), as the launcher builds a world's mods. A loader and release
+    # the catalog (Quilt runs the same Fabric mods; NeoForge JEI and Sodium),
+    # as the launcher builds a world's mods. A loader and release
     # are offered to players only once they pass here (worlds/pack.rs TESTED).
     name: World server ${{ matrix.loader }} ${{ matrix.minecraft }} (linux-x64)
     runs-on: ubuntu-24.04
@@ -186,6 +187,8 @@ jobs:
           - { loader: 'quilt', minecraft: '1.20.1' }
           - { loader: 'quilt', minecraft: '1.21.1' }
           - { loader: 'quilt', minecraft: '26.3' }
+          - { loader: 'neoforge', minecraft: '1.21.1' }
+          - { loader: 'neoforge', minecraft: '26.3' }
     steps:
       - uses: actions/checkout@v7
 

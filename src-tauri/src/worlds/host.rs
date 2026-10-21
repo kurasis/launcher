@@ -161,7 +161,9 @@ pub fn pick_ports() -> LauncherResult<(u16, u16)> {
 }
 
 /// What the JVM starts: Mojang's server JAR, or a mod loader's server class
-/// with its libraries, which finds the JAR by a system property (W12).
+/// with its libraries, which finds the JAR by a system property (W12), or a
+/// Forge-style loader's own start arguments, which name the server its
+/// processors built.
 pub enum Main<'a> {
     Jar,
     Loader {
@@ -169,6 +171,7 @@ pub enum Main<'a> {
         main_class: &'a str,
         classpath: &'a [std::path::PathBuf],
     },
+    Arguments(&'a [String]),
 }
 
 /// The JVM and server arguments, in order.
@@ -210,6 +213,14 @@ pub fn arguments(jar: &Path, main: &Main<'_>, heap_mib: u32) -> Vec<String> {
                     .join(separator),
             );
             arguments.push((*main_class).to_owned());
+        }
+        Main::Arguments(tokens) => {
+            // FML puts its own logging configuration in place of the one
+            // above: these keep its log files empty, so chat and nicks are
+            // not stored (ADAPTATION A7). Its console still names the thread.
+            arguments.push("-Dforge.logging.file.level=off".to_owned());
+            arguments.push("-Dforge.logging.debugFile.level=off".to_owned());
+            arguments.extend(tokens.iter().cloned());
         }
     }
     arguments.push("--nogui".to_owned());
@@ -274,9 +285,9 @@ pub fn start(
                     "The world's server is not installed yet.",
                 )
             })?;
-            let (main_class, classpath) = install::loader_classpath(root, manifest)?;
+            let launch = install::loader_launch(root, manifest)?;
             pack::place_server(root, &world)?;
-            Some((generation.loader.kind, main_class, classpath))
+            Some((generation.loader.kind, launch))
         }
         None => None,
     };
@@ -310,11 +321,18 @@ pub fn start(
 
     let jar = root.server_jar(&pin.jar_sha1);
     let main = match &loader {
-        Some((kind, main_class, classpath)) => Main::Loader {
+        Some((
+            kind,
+            install::LoaderLaunch::Classpath {
+                main_class,
+                classpath,
+            },
+        )) => Main::Loader {
             kind: *kind,
             main_class,
             classpath,
         },
+        Some((_, install::LoaderLaunch::Arguments(tokens))) => Main::Arguments(tokens),
         None => Main::Jar,
     };
     let mut command = probe::sanitized_command(launch.java);
@@ -733,5 +751,30 @@ mod tests {
             "-Dloader.gameJarPath=/data/shared/servers/x/server.jar"
         );
         assert_eq!(quilt[8], "org.quiltmc.loader.impl.launch.knot.KnotServer");
+
+        // NeoForge: its own start arguments after the launcher's, its log
+        // files kept empty, no game JAR property.
+        let tokens = [
+            "-p".to_owned(),
+            "/data/shared/maven/a.jar".to_owned(),
+            "cpw.mods.bootstraplauncher.BootstrapLauncher".to_owned(),
+        ];
+        let neoforge = arguments(
+            Path::new("/data/shared/servers/x/server.jar"),
+            &Main::Arguments(&tokens),
+            3072,
+        );
+        assert_eq!(&neoforge[..2], ["-Xms1024M", "-Xmx3072M"]);
+        assert_eq!(
+            &neoforge[5..],
+            [
+                "-Dforge.logging.file.level=off",
+                "-Dforge.logging.debugFile.level=off",
+                "-p",
+                "/data/shared/maven/a.jar",
+                "cpw.mods.bootstraplauncher.BootstrapLauncher",
+                "--nogui",
+            ]
+        );
     }
 }
