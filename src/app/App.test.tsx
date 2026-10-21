@@ -364,6 +364,7 @@ describe('App', () => {
       'Installations',
       'Mods',
       'Worlds',
+      'Skins',
       'Accounts',
       'Settings',
       'More▾',
@@ -660,15 +661,22 @@ describe('App', () => {
     expect(screen.getByRole('checkbox', { name: /Show the feed/ })).toBeChecked();
   });
 
-  it('opens Installations for screens not built yet', async () => {
+  it('opens the skins screen when it is the start screen', async () => {
     for (const settings of [
       settingsWith({ startView: 'skins' }),
       settingsWith({ startView: 'last', lastView: 'skins' }),
     ]) {
       fakeBackend(snapshotFixture({ settings }));
       const { unmount } = render(<App />);
-      expect(await screen.findByText(/No installations yet/)).toBeVisible();
-      expect(screen.getByRole('button', { name: 'Installations' })).toHaveAttribute(
+      await waitFor(() => {
+        expect(screen.getByRole('button', { name: 'Skins' })).toHaveAttribute(
+          'aria-current',
+          'page',
+        );
+      });
+      // Without a launcher account there is nothing to wear yet.
+      fireEvent.click(screen.getByRole('button', { name: 'Open Accounts' }));
+      expect(screen.getByRole('button', { name: 'Accounts' })).toHaveAttribute(
         'aria-current',
         'page',
       );

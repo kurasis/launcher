@@ -384,9 +384,16 @@ export const ipc = {
   skinsMine: (): Promise<Wardrobe> => invoke<Wardrobe>('skins_mine'),
   /** A worn texture by its hash, as a `data:` URL. */
   skinsTexture: (hash: string): Promise<string> => invoke<string>('skins_texture', { hash }),
-  /** Picks a PNG in the native dialog; null if it was closed. */
+  /** Picks a PNG, GIF or APNG in the native dialog; null if it was closed. */
   skinsPick: (kind: SkinKind, title?: string): Promise<PickedTexture | null> =>
     invoke<PickedTexture | null>('skins_pick', { kind, title }),
+  /** A file dropped on the page: its name and its contents in base64. */
+  skinsTake: (kind: SkinKind, name: string, data: string): Promise<PickedTexture> =>
+    invoke<PickedTexture>('skins_take', { kind, name, data }),
+  /** Saves a picture of the character (a PNG in base64) where the player chooses;
+   * the file's name, or null if the dialog was closed. */
+  skinsSavePicture: (data: string, name: string, title?: string): Promise<string | null> =>
+    invoke<string | null>('skins_save_picture', { data, name, title }),
   /** Uploads what was picked for `kind`. */
   skinsUpload: (kind: SkinKind, slim: boolean, frameMs: number[] | null): Promise<Wardrobe> =>
     invoke<Wardrobe>('skins_upload', { kind, slim, frameMs }),

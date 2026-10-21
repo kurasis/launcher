@@ -1850,7 +1850,8 @@ pub async fn friends_report<R: Runtime>(
 
 // The launcher account's skin and cape (D-065). What went wrong comes back as
 // a problem code. The interface never names a file: it picks one in the
-// dialog, and uploads what was picked for a kind.
+// dialog or sends the bytes of one dropped on it, and uploads what was picked
+// for a kind.
 
 fn skins<R: Runtime>(app: &AppHandle<R>) -> Arc<crate::skins::Skins> {
     Arc::clone(&app.state::<Arc<crate::skins::Skins>>())
@@ -1870,8 +1871,8 @@ pub async fn skins_texture<R: Runtime>(app: AppHandle<R>, hash: String) -> Skins
     skins(&app).texture(&hash).await
 }
 
-/// Picks a PNG for the skin or cape in the native dialog and checks it.
-/// `Ok(None)` when the dialog was closed.
+/// Picks a PNG, GIF or animated PNG for the skin or cape in the native
+/// dialog and checks it. `Ok(None)` when the dialog was closed.
 #[tauri::command]
 pub async fn skins_pick<R: Runtime>(
     app: AppHandle<R>,
@@ -1880,8 +1881,8 @@ pub async fn skins_pick<R: Runtime>(
 ) -> SkinsResult<Option<crate::skins::PickedView>> {
     use tauri_plugin_dialog::DialogExt;
     let fallback = match kind {
-        crate::skins::Kind::Skin => "Choose a skin (PNG)",
-        crate::skins::Kind::Cape => "Choose a cape (PNG)",
+        crate::skins::Kind::Skin => "Choose a skin (PNG, GIF or APNG)",
+        crate::skins::Kind::Cape => "Choose a cape (PNG, GIF or APNG)",
     };
     let title = window_title(title, fallback);
     let handle = app.clone();
@@ -1890,7 +1891,7 @@ pub async fn skins_pick<R: Runtime>(
             .dialog()
             .file()
             .set_title(title)
-            .add_filter("PNG", &["png"])
+            .add_filter("PNG, GIF, APNG", &["png", "gif", "apng"])
             .blocking_pick_file()
     })
     .await
@@ -1899,6 +1900,30 @@ pub async fn skins_pick<R: Runtime>(
         return Ok(None);
     };
     skins(&app).pick(kind, path).await.map(Some)
+}
+
+/// Checks a file dropped on the page as a picked one: its name and its bytes
+/// as base64 (the window takes no drops itself, so no path ever comes).
+#[tauri::command]
+pub async fn skins_take<R: Runtime>(
+    app: AppHandle<R>,
+    kind: crate::skins::Kind,
+    name: String,
+    data: String,
+) -> SkinsResult<crate::skins::PickedView> {
+    use crate::skins::SkinsProblem;
+    use base64::Engine as _;
+    if name.len() > crate::skins::DROPPED_NAME_BYTES {
+        return Err(SkinsProblem::Invalid);
+    }
+    if data.len() > crate::skins::base64_len(crate::skins_import::IMPORT_MAX_BYTES) {
+        return Err(SkinsProblem::TooLarge);
+    }
+    let bytes = base64::engine::general_purpose::STANDARD
+        .decode(data.as_bytes())
+        .map_err(|_| SkinsProblem::BadPng)?;
+    drop(data);
+    skins(&app).take(kind, &name, bytes).await
 }
 
 /// Uploads the PNG picked for `kind`: a skin with its model, an animation
@@ -1938,6 +1963,52 @@ pub async fn skins_remove<R: Runtime>(
         kind.as_str()
     ));
     Ok(wardrobe)
+}
+
+/// Saves a picture of the character the page drew (a PNG as base64, without
+/// the `data:` prefix) where the player chooses. `Ok(None)` when the save
+/// dialog was closed; else the file's name.
+#[tauri::command]
+pub async fn skins_save_picture<R: Runtime>(
+    app: AppHandle<R>,
+    data: String,
+    name: String,
+    title: Option<String>,
+) -> SkinsResult<Option<String>> {
+    use crate::skins::SkinsProblem;
+    use tauri_plugin_dialog::DialogExt;
+    if name.len() > crate::skins::DROPPED_NAME_BYTES {
+        return Err(SkinsProblem::Invalid);
+    }
+    let png = tauri::async_runtime::spawn_blocking(move || crate::skins::picture(&data))
+        .await
+        .map_err(|_| SkinsProblem::Invalid)??;
+    let title = window_title(title, "Save a picture of the skin");
+    let file_name = crate::skins::picture_file_name(&name);
+    let handle = app.clone();
+    let target = tauri::async_runtime::spawn_blocking(move || {
+        handle
+            .dialog()
+            .file()
+            .set_title(title)
+            .set_file_name(file_name)
+            .add_filter("PNG", &["png"])
+            .blocking_save_file()
+    })
+    .await
+    .map_err(|_| SkinsProblem::NotSaved)?;
+    let Some(path) = target.and_then(|p| p.into_path().ok()) else {
+        return Ok(None);
+    };
+    let saved = path.file_name().and_then(|n| n.to_str()).map(str::to_owned);
+    tauri::async_runtime::spawn_blocking(move || std::fs::write(&path, png))
+        .await
+        .map_err(|_| SkinsProblem::NotSaved)?
+        .map_err(|_| SkinsProblem::NotSaved)?;
+    app.state::<AppState>()
+        .console()
+        .info("Launcher account: a picture of the skin was saved");
+    Ok(saved)
 }
 
 /// Opens where to get the update by hand (a `.deb`, or after installing

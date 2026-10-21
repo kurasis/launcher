@@ -1,0 +1,512 @@
+/* The launcher account's skin and cape (D-065): the character on the left, what is
+   worn or the picked file on the right; one column in a narrow window. */
+.studio {
+  display: grid;
+  gap: var(--space-4);
+  margin-top: var(--space-3);
+}
+
+.studioHead {
+  display: grid;
+  gap: var(--space-1);
+}
+
+.columns {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  gap: var(--space-6);
+}
+
+.side {
+  flex: 999 1 20rem;
+  min-width: 0;
+  display: grid;
+  gap: var(--space-3);
+}
+
+.subtitle {
+  margin: 0;
+  font-size: var(--font-size-sm);
+  font-weight: 700;
+}
+
+.hint {
+  margin: 0;
+  color: var(--color-text-muted);
+  font-size: var(--font-size-sm);
+}
+
+.done {
+  margin: 0;
+}
+
+.signIn {
+  display: grid;
+  justify-items: start;
+  gap: var(--space-3);
+}
+
+/* The character. */
+.stage {
+  flex: 0 1 27.5rem;
+  min-width: 0;
+  display: grid;
+  gap: var(--space-3);
+}
+
+.view {
+  position: relative;
+  display: grid;
+  place-items: center;
+  width: 100%;
+  max-width: 27.5rem;
+  height: 32.5rem;
+  overflow: hidden;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  background:
+    radial-gradient(circle at 50% 35%, var(--color-accent-soft), transparent 60%),
+    var(--color-neutral-bg);
+}
+
+.view[data-background='day'] {
+  background: linear-gradient(
+    180deg,
+    var(--color-stage-day-sky) 0%,
+    var(--color-stage-day-haze) 74%,
+    var(--color-stage-day-grass) 74%,
+    var(--color-stage-day-soil) 100%
+  );
+}
+
+.view[data-background='night'] {
+  background: linear-gradient(
+    180deg,
+    var(--color-stage-night-sky) 0%,
+    var(--color-stage-night-haze) 74%,
+    var(--color-stage-night-grass) 74%,
+    var(--color-stage-night-soil) 100%
+  );
+}
+
+.view[data-background='cave'] {
+  background: radial-gradient(
+    circle at 50% 38%,
+    var(--color-stage-cave-light) 0%,
+    var(--color-stage-cave-dark) 100%
+  );
+}
+
+.canvas {
+  display: block;
+  width: 27.5rem;
+  max-width: 100%;
+  height: 32.5rem;
+  cursor: grab;
+  touch-action: none;
+}
+
+.canvas:active {
+  cursor: grabbing;
+}
+
+.canvas:focus-visible {
+  outline: 2px solid var(--color-focus);
+  outline-offset: -2px;
+}
+
+/* What the character wears: above it, so it never covers the nick. */
+.stageTag {
+  justify-self: start;
+  padding: var(--space-1) var(--space-3);
+  border-radius: var(--radius-pill);
+  background: var(--color-surface-raised);
+  font-size: var(--font-size-xs);
+  font-weight: 600;
+}
+
+.stageTag[data-trying='true'] {
+  background: var(--color-accent);
+  color: var(--color-accent-contrast);
+}
+
+/* Above the frame controls, clear of the nick over the head. */
+.before {
+  position: absolute;
+  bottom: calc(var(--space-3) + 3rem);
+  inset-inline-end: var(--space-3);
+  margin: 0;
+  width: 120px;
+  border: 1px solid var(--color-border-strong);
+  border-radius: var(--radius-md);
+  background: var(--color-surface-raised);
+  text-align: center;
+}
+
+.before canvas {
+  display: block;
+  width: 120px;
+  height: 152px;
+}
+
+.before figcaption {
+  padding-bottom: var(--space-1);
+  font-size: var(--font-size-xs);
+  color: var(--color-text-muted);
+}
+
+.overlay {
+  position: absolute;
+  inset-inline: var(--space-3);
+  bottom: var(--space-3);
+  display: flex;
+  justify-content: center;
+}
+
+.flat {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  justify-content: center;
+  gap: var(--space-4);
+  padding: var(--space-4);
+}
+
+.flat .hint {
+  flex-basis: 100%;
+  text-align: center;
+}
+
+/* Choices under the character. */
+.chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+}
+
+.chipRows {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2) var(--space-4);
+}
+
+.chip,
+.toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  min-height: 2rem;
+  padding: 0 var(--space-3);
+  border: 1px solid var(--color-border-strong);
+  border-radius: var(--radius-pill);
+  background: var(--color-surface);
+  color: var(--color-text);
+  font: inherit;
+  font-size: var(--font-size-sm);
+  cursor: pointer;
+}
+
+.chip:hover,
+.toggle:hover:not(:disabled) {
+  background: var(--color-neutral-bg);
+}
+
+.chip[aria-pressed='true'] {
+  border-color: var(--color-accent);
+  background: var(--color-accent-soft);
+  font-weight: 600;
+}
+
+.toggle:disabled {
+  cursor: not-allowed;
+  opacity: 0.55;
+}
+
+.track {
+  position: relative;
+  width: 1.65rem;
+  height: 0.9rem;
+  border-radius: var(--radius-pill);
+  background: var(--color-border-strong);
+  transition: background var(--motion-duration) ease-out;
+}
+
+.track::after {
+  content: '';
+  position: absolute;
+  top: 2px;
+  inset-inline-start: 2px;
+  width: calc(0.9rem - 4px);
+  height: calc(0.9rem - 4px);
+  border-radius: 50%;
+  background: var(--color-surface-solid);
+  transition: inset-inline-start var(--motion-duration) ease-out;
+}
+
+.toggle[aria-checked='true'] .track {
+  background: var(--color-accent);
+}
+
+.toggle[aria-checked='true'] .track::after {
+  inset-inline-start: calc(100% - 0.9rem + 2px);
+}
+
+.facts {
+  display: grid;
+  gap: var(--space-1);
+  padding: var(--space-2) var(--space-3);
+  border-radius: var(--radius-sm);
+  background: var(--color-neutral-bg);
+  color: var(--color-text-muted);
+  font-family: var(--font-mono);
+  font-size: var(--font-size-xs);
+}
+
+.facts p {
+  margin: 0;
+}
+
+.factsKind {
+  color: var(--color-text);
+  font-family: var(--font-sans);
+  font-weight: 600;
+}
+
+.factsLine {
+  margin: 0;
+  color: var(--color-text-muted);
+  font-family: var(--font-mono);
+  font-size: var(--font-size-xs);
+}
+
+.pictureRow {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-3);
+}
+
+.pictureRow p {
+  margin: 0;
+}
+
+/* What is worn, one card per kind; a file can be dropped on it. */
+.piece {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-4);
+  padding: var(--space-3);
+  border: 2px dashed var(--color-border);
+  border-radius: var(--radius-md);
+  background: var(--color-surface);
+  transition:
+    border-color var(--motion-duration) ease-out,
+    background var(--motion-duration) ease-out;
+}
+
+.piece[data-over='true'] {
+  border-color: var(--color-accent);
+  background: var(--color-accent-soft);
+}
+
+.pieceThumb {
+  display: grid;
+  place-items: center;
+  width: 6.5rem;
+  min-height: 8rem;
+  text-align: center;
+}
+
+.pieceBody {
+  flex: 1 1 14rem;
+  min-width: 0;
+  display: grid;
+  gap: var(--space-2);
+}
+
+.skinPreview,
+.capePreview {
+  height: 8rem;
+  width: auto;
+  padding: var(--space-2);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+  background: var(--color-neutral-bg);
+  image-rendering: pixelated;
+}
+
+.capePreview {
+  height: 5rem;
+}
+
+.small {
+  height: 6rem;
+  padding: var(--space-1);
+}
+
+.capePreview.small {
+  height: 4rem;
+}
+
+/* A picked file. */
+.newTexture {
+  display: grid;
+  gap: var(--space-4);
+}
+
+.newHead {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: var(--space-2);
+}
+
+.checks {
+  display: grid;
+  gap: var(--space-1);
+  margin: 0;
+  padding: var(--space-3);
+  border-radius: var(--radius-md);
+  background: var(--color-neutral-bg);
+  list-style: none;
+}
+
+.checks li {
+  display: flex;
+  gap: var(--space-2);
+}
+
+.checks li::before {
+  flex: none;
+  width: 1rem;
+  font-weight: 700;
+  text-align: center;
+}
+
+.checks li[data-mark='ok']::before {
+  content: '✓';
+  color: var(--color-accent);
+}
+
+.checks li[data-mark='info']::before {
+  content: 'i';
+  color: var(--color-accent-2);
+}
+
+.checks li[data-mark='warn']::before {
+  content: '!';
+  color: var(--color-warning-text);
+}
+
+.framesBlock {
+  display: grid;
+  gap: var(--space-3);
+}
+
+.framesHead {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2) var(--space-3);
+}
+
+.sameToggle {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  margin-inline-start: auto;
+}
+
+.sameMs {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2) var(--space-3);
+}
+
+.sameMs input {
+  width: 7rem;
+}
+
+.frameGrid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(6.5rem, 1fr));
+  gap: var(--space-2);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.frameCell {
+  display: grid;
+  gap: var(--space-1);
+  padding: var(--space-2);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  background: var(--color-surface);
+}
+
+.frameCell[data-held='true'] {
+  border-color: var(--color-accent);
+}
+
+.frameThumb {
+  display: grid;
+  place-items: center;
+  padding: 0;
+  border: 0;
+  border-radius: var(--radius-sm);
+  background: none;
+  cursor: pointer;
+}
+
+.frameThumb .skinPreview,
+.frameThumb .capePreview {
+  border: 0;
+}
+
+.frameMs {
+  display: grid;
+  gap: 2px;
+  font-size: var(--font-size-xs);
+  color: var(--color-text-muted);
+}
+
+.frameMs input {
+  width: 100%;
+  padding: var(--space-1) var(--space-2);
+}
+
+.bad {
+  font-size: var(--font-size-xs);
+  color: var(--color-danger-text);
+}
+
+.frameControls {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-2);
+}
+
+.frameControls .chip {
+  background: var(--color-surface-raised);
+}
+
+.frameLabel {
+  padding: var(--space-1) var(--space-3);
+  border-radius: var(--radius-pill);
+  background: var(--color-surface-raised);
+  font-size: var(--font-size-xs);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .piece,
+  .track,
+  .track::after {
+    transition: none;
+  }
+}

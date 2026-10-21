@@ -33,6 +33,7 @@ pub mod reviews;
 pub mod runtime;
 pub mod secrets;
 pub mod skins;
+pub mod skins_import;
 pub mod skins_mod;
 pub mod state;
 pub mod storage;
@@ -938,8 +939,10 @@ fn handlers<R: tauri::Runtime>() -> impl Fn(tauri::ipc::Invoke<R>) -> bool + Sen
         commands::skins_mine,
         commands::skins_texture,
         commands::skins_pick,
+        commands::skins_take,
         commands::skins_upload,
         commands::skins_remove,
+        commands::skins_save_picture,
         commands::feed_get,
         commands::feed_server_ads,
         commands::feed_page,

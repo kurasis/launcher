@@ -124,39 +124,3 @@
   font-size: var(--font-size-sm);
   font-weight: 700;
 }
-
-/* The launcher account's skin and cape (D-065). */
-.skins {
-  display: grid;
-  gap: var(--space-3);
-  margin-top: var(--space-3);
-}
-
-.pieces {
-  display: grid;
-  gap: var(--space-3);
-  grid-template-columns: repeat(auto-fit, minmax(16rem, 1fr));
-}
-
-.previews {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: flex-end;
-  gap: var(--space-3);
-  min-height: 4rem;
-}
-
-.skinPreview,
-.capePreview {
-  height: 8rem;
-  width: auto;
-  padding: var(--space-2);
-  border: 1px solid var(--color-border);
-  border-radius: var(--radius-sm);
-  background: var(--color-neutral-bg);
-  image-rendering: pixelated;
-}
-
-.capePreview {
-  height: 5rem;
-}
