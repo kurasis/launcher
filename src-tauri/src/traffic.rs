@@ -103,12 +103,13 @@ fn slot(source: SourcePolicy) -> usize {
         SourcePolicy::Adoptium => 1,
         // The skins mod counts with the loaders' files (D-065).
         SourcePolicy::ModLoaders | SourcePolicy::SkinsMod => 2,
-        // Crash reports (D-061), the feed (D-067) and server ads (D-069)
-        // count with the metadata.
+        // Crash reports (D-061), the feed (D-067), server ads (D-069) and
+        // reviews (D-070) count with the metadata.
         SourcePolicy::MojangMetadata
         | SourcePolicy::CrashReports
         | SourcePolicy::Feed
-        | SourcePolicy::ServerAds => 3,
+        | SourcePolicy::ServerAds
+        | SourcePolicy::Reviews => 3,
         SourcePolicy::ModsCatalog => 4,
     }
 }

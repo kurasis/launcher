@@ -1206,6 +1206,60 @@ export interface ReportPreview {
 /** `queued`: the service could not be reached; the report goes later by itself. */
 export type Delivery = 'sent' | 'queued';
 
+/** A file of a review (D-070): scrubbed text, or a PNG or JPEG in base64. */
+export interface ReviewFile {
+  name: string;
+  kind: 'text' | 'image';
+  text?: string;
+  data?: string;
+}
+
+/** Texts found or read for a review, scrubbed, and what the scrubbing replaced. */
+export interface ReviewFound {
+  files: ReviewFile[];
+  removed: ScrubCounts;
+}
+
+export type ReviewKind = 'bug' | 'idea' | 'question' | 'impression';
+
+/** What the review form sends. */
+export interface ReviewDraft {
+  kind: ReviewKind;
+  category: string;
+  subcategory: string | null;
+  message: string;
+  rating: number | null;
+  linkAccount: boolean;
+  diagnosticId: string | null;
+  ad: number | null;
+  files: ReviewFile[];
+}
+
+export type ReviewStatus = 'sent' | 'read' | 'answered' | 'closed' | 'gone';
+
+/** A review this computer sent, with what the service last said of it. */
+export interface SentReview {
+  id: number;
+  sentAt: string;
+  kind: ReviewKind;
+  category: string;
+  subcategory: string;
+  excerpt: string;
+  account: boolean;
+  status: ReviewStatus;
+  reply: string | null;
+  replied: string | null;
+  replySeen: boolean;
+}
+
+export interface MyReviews {
+  reviews: SentReview[];
+  /** Answers not read yet. */
+  unseen: number;
+  /** Reviews waiting to be sent. */
+  waiting: number;
+}
+
 export type FailureKind = 'panic' | 'frontend' | 'unclean_exit';
 
 /** A failure of the launcher itself, newest first. */

@@ -43,6 +43,9 @@ pub enum SourcePolicy {
     /// Ads for Minecraft servers (D-069): our service only; the advertised
     /// servers are asked nothing until the player presses Play.
     ServerAds,
+    /// Reviews the player sends (D-070): our service only, asked only when the
+    /// player sends a review or opens their reviews.
+    Reviews,
     /// The Launcher Skins jars on this repository's GitHub releases (D-065),
     /// with the hosts GitHub redirects release downloads to.
     SkinsMod,
@@ -101,12 +104,14 @@ const ALL_SOURCE_HOSTS: &[&str] = &[
     crate::mods::CDN_HOST,
     "feed.lapi.sh",
     "servers.lapi.sh",
+    "reviews.lapi.sh",
 ];
 
 const CRASH_REPORT_HOSTS: &[&str] = &["crash.lapi.sh"];
 const MODS_CATALOG_HOSTS: &[&str] = &[crate::mods::FILES_HOST, crate::mods::CDN_HOST];
 const FEED_HOSTS: &[&str] = &["feed.lapi.sh"];
 const SERVER_ADS_HOSTS: &[&str] = &["servers.lapi.sh"];
+const REVIEWS_HOSTS: &[&str] = &["reviews.lapi.sh"];
 const SKINS_MOD_HOSTS: &[&str] = &[
     "github.com",
     "objects.githubusercontent.com",
@@ -126,6 +131,7 @@ impl SourcePolicy {
             Self::ModsCatalog => MODS_CATALOG_HOSTS,
             Self::Feed => FEED_HOSTS,
             Self::ServerAds => SERVER_ADS_HOSTS,
+            Self::Reviews => REVIEWS_HOSTS,
             Self::SkinsMod => SKINS_MOD_HOSTS,
         }
     }
@@ -134,7 +140,7 @@ impl SourcePolicy {
     pub fn mirrored(self) -> bool {
         !matches!(
             self,
-            Self::CrashReports | Self::ModsCatalog | Self::Feed | Self::ServerAds
+            Self::CrashReports | Self::ModsCatalog | Self::Feed | Self::ServerAds | Self::Reviews
         )
     }
 
@@ -454,6 +460,14 @@ impl PublicClient {
         Ok(self.client.post(url.clone()))
     }
 
+    /// Starts a DELETE after checking the URL against the policy.
+    pub fn delete(&self, url: &Url) -> LauncherResult<reqwest::RequestBuilder> {
+        if !self.policy.allows(url) {
+            return Err(untrusted_url());
+        }
+        Ok(self.client.delete(url.clone()))
+    }
+
     /// Starts a HEAD request (headers only) after checking the URL against the policy.
     pub fn head(&self, url: &Url) -> LauncherResult<reqwest::RequestBuilder> {
         if !self.policy.allows(url) {
@@ -630,6 +644,7 @@ mod tests {
             SourcePolicy::ModsCatalog,
             SourcePolicy::Feed,
             SourcePolicy::ServerAds,
+            SourcePolicy::Reviews,
             SourcePolicy::SkinsMod,
         ] {
             for host in policy.hosts() {

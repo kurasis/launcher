@@ -2,6 +2,7 @@ import { useEffect, useId, useRef, useState } from 'react';
 import type { AppSnapshot, ServerAd } from '../../lib/contracts';
 import { describeIpcError, ipc } from '../../lib/ipc';
 import { strings } from '../../lib/strings';
+import { openReview } from '../reviews/openReview';
 import { installationOf } from './installations';
 import styles from './Feed.module.css';
 
@@ -301,7 +302,24 @@ export function ServerAdTile({ ad, snapshot }: { ad: ServerAd; snapshot: AppSnap
         </div>
       )}
       {running && !inGame && stage === 'idle' && <p role="status">{t.gameRunning}</p>}
-      {ad.erid !== null && <p className={styles.muted}>{s.erid({ erid: ad.erid })}</p>}
+      <div className={styles.adFoot}>
+        {ad.erid !== null && <p className={styles.muted}>{s.erid({ erid: ad.erid })}</p>}
+        <button
+          type="button"
+          className={styles.adReport}
+          onClick={() => {
+            const id = Number(ad.id);
+            openReview({
+              kind: 'bug',
+              category: 'feed',
+              subcategory: 'server_ads',
+              ad: Number.isSafeInteger(id) && id > 0 ? id : null,
+            });
+          }}
+        >
+          {s.report}
+        </button>
+      </div>
       {error !== null && (
         <p className={styles.adError} role="alert">
           {error}

@@ -18,6 +18,8 @@ interface MoreMenuProps {
   buttonClassName?: string | undefined;
   /** The ▾ after the text. */
   caret?: boolean;
+  /** Something new waits in the menu (an answer to a review): a dot, and this text for screen readers. */
+  news?: string | null;
 }
 
 /**
@@ -33,6 +35,7 @@ export function MoreMenu({
   ariaLabel,
   buttonClassName,
   caret = true,
+  news = null,
 }: MoreMenuProps) {
   const id = useId();
   const buttonId = `${id}-button`;
@@ -154,6 +157,12 @@ export function MoreMenu({
         }}
       >
         {label}
+        {news !== null && (
+          <>
+            <span className={styles.newsDot} aria-hidden="true" />
+            <span className={styles.visuallyHidden}>{news}</span>
+          </>
+        )}
         {caret && (
           <span className={styles.caret} aria-hidden="true">
             ▾

@@ -4,6 +4,7 @@ import { Notice } from '../../components/Notice';
 import type { FailureSummary } from '../../lib/contracts';
 import { describeIpcError, ipc } from '../../lib/ipc';
 import { strings } from '../../lib/strings';
+import { openReview } from '../reviews/openReview';
 import { ReportDialog } from './ReportDialog';
 import styles from './Reports.module.css';
 
@@ -55,6 +56,13 @@ export function FailureOffer() {
             }}
           >
             {t.review}
+          </Button>
+          <Button
+            onClick={() => {
+              openReview({ kind: 'bug', category: 'launcher', diagnosticId: failure.id });
+            }}
+          >
+            {t.tellMore}
           </Button>
           <Button
             onClick={() => {

@@ -29,6 +29,7 @@ pub mod mods;
 pub mod net;
 pub mod reports;
 pub mod reset;
+pub mod reviews;
 pub mod runtime;
 pub mod secrets;
 pub mod skins;
@@ -485,6 +486,23 @@ fn setup(app: &mut tauri::App) -> Result<(), Box<dyn std::error::Error>> {
         Arc::new(auth::vault::KeyringStore),
     )?);
     app.manage(Arc::clone(&launcher_account));
+    // Reviews to the developers (D-070): sent only when the player presses
+    // Send; those that could not go yet wait in the outbox.
+    {
+        let reviews = Arc::new(reviews::Reviews::new(Box::new(reviews::Http::new(
+            &version,
+        )?)));
+        app.manage(Arc::clone(&reviews));
+        let accounts = Arc::clone(&launcher_account);
+        let handle = app.handle().clone();
+        tauri::async_runtime::spawn(async move {
+            tokio::time::sleep(std::time::Duration::from_secs(30)).await;
+            loop {
+                reviews.flush(&handle.state::<AppState>(), &*accounts).await;
+                reviews.wait(std::time::Duration::from_secs(600)).await;
+            }
+        });
+    }
     {
         let handle = app.handle().clone();
         tauri::async_runtime::spawn(async move {
@@ -845,6 +863,13 @@ fn handlers<R: tauri::Runtime>() -> impl Fn(tauri::ipc::Invoke<R>) -> bool + Sen
         commands::preview_crash_report,
         commands::send_crash_report,
         commands::send_explanation_feedback,
+        commands::reviews_logs,
+        commands::reviews_text_file,
+        commands::reviews_screenshot,
+        commands::reviews_send,
+        commands::reviews_mine,
+        commands::reviews_seen,
+        commands::reviews_delete,
         commands::check_for_update,
         commands::download_update,
         commands::restart_to_update,

@@ -17,6 +17,7 @@ import { useCommand } from '../../lib/useCommand';
 import { crashText } from '../diagnostics/crashText';
 import { ExplanationFeedback } from '../reports/ExplanationFeedback';
 import { ReportDialog } from '../reports/ReportDialog';
+import { openReview } from '../reviews/openReview';
 import styles from './CrashHelp.module.css';
 
 const t = strings.crash;
@@ -123,6 +124,19 @@ export function CrashHelp({ instance, run, onEditSettings, onOpenBackups, busy }
           }}
         >
           {strings.reports.offer}
+        </Button>
+        <Button
+          onClick={() => {
+            openReview({
+              kind: 'bug',
+              category: 'launch',
+              subcategory: 'crashes',
+              instanceId: instance.id,
+              runId: run.runId,
+            });
+          }}
+        >
+          {t.tellMore}
         </Button>
       </div>
       {reporting && (
