@@ -443,29 +443,23 @@ async fn host_a_world() {
     println!("force stop recorded as unclean");
 }
 
-/// Whether a release names no game release newer than `minecraft`. A mod
-/// built for 1.21.1 often names 1.21 too, yet asks for 1.21.1's loader:
-/// JEI's NeoForge releases do, and NeoForge 21.0 refuses to load them.
-fn made_for(release: &launcher_lib::mods::Version, minecraft: &str) -> bool {
-    let number = |v: &str| {
-        v.split('.')
-            .map(str::parse::<u32>)
-            .collect::<Result<Vec<_>, _>>()
-            .ok()
-    };
-    let Some(wanted) = number(minecraft) else {
-        return true;
-    };
-    release
-        .games
-        .iter()
-        .filter_map(|g| number(g))
-        .all(|g| g <= wanted)
+/// Asks the catalog again while it answers with an error worth retrying:
+/// "too many requests" when every CI job asks at once.
+async fn patiently<T, F: std::future::Future<Output = launcher_lib::error::LauncherResult<T>>>(
+    mut ask: impl FnMut() -> F,
+) -> T {
+    for _ in 0..40 {
+        match ask().await {
+            Err(e) if e.retryable => tokio::time::sleep(Duration::from_secs(5)).await,
+            answer => return answer.unwrap(),
+        }
+    }
+    ask().await.unwrap()
 }
 
-/// The newest release of a catalog project for the version and the loader,
-/// made for that version where one is. The catalog finds a project by any of
-/// its slugs, the old slugs of a joined twin among them.
+/// The newest release of a catalog project for the version and the loader.
+/// The catalog finds a project by any of its slugs, the old slugs of a joined
+/// twin among them.
 async fn catalog_release(
     catalog: &launcher_lib::mods::Client,
     slug: &str,
@@ -473,19 +467,11 @@ async fn catalog_release(
     loader: &str,
 ) -> Option<launcher_lib::mods::Version> {
     use launcher_lib::mods::Catalog as _;
-    let project = catalog
-        .project(slug)
+    let project = patiently(|| catalog.project(slug)).await;
+    patiently(|| catalog.versions(&project.id, Some(minecraft), Some(loader)))
         .await
-        .unwrap_or_else(|e| panic!("{slug} in the catalog: {e:?}"));
-    let releases: Vec<_> = catalog
-        .versions(&project.id, Some(minecraft), Some(loader))
-        .await
-        .unwrap()
         .into_iter()
-        .filter(|v| v.channel == "release")
-        .collect();
-    let made = releases.iter().position(|v| made_for(v, minecraft));
-    releases.into_iter().nth(made.unwrap_or(0))
+        .find(|v| v.channel == "release")
 }
 
 /// The newest catalog file of a project, for the version and the loader,
@@ -515,11 +501,14 @@ async fn keep_mod(
 ) -> String {
     use launcher_lib::mods::Catalog as _;
     // Files the catalog does not keep yet are fetched on the first ask, and
-    // scanned: a few minutes when many are asked at once.
+    // scanned: a few minutes when many are asked at once. Asked again now and
+    // then, in case a fetch failed.
     let mut file = None;
-    for _ in 0..150 {
-        catalog.fetch(&newest.id).await.unwrap();
-        let version = catalog.version(&newest.id).await.unwrap();
+    for attempt in 0..150 {
+        if attempt % 10 == 0 {
+            patiently(|| catalog.fetch(&newest.id)).await;
+        }
+        let version = patiently(|| catalog.version(&newest.id)).await;
         // The file an installation takes, once the catalog keeps it.
         file = version
             .main_file()
@@ -570,9 +559,8 @@ async fn host_a_world_with_mods() {
     ));
     let minecraft = world_version(&metadata).await;
     // Quilt runs Fabric mods: Fabric API serves both. On Forge and NeoForge the
-    // first of these mods with a release made for the version (else with any
-    // release for it) proves the loader loads mods (by its mod id); Sodium,
-    // where it has one, stays on the client.
+    // first of these mods with a release for the version proves the loader
+    // loads mods (by its mod id); Sodium, where it has one, stays on the client.
     const FORGE_PROOFS: &[(&str, &str)] = &[
         ("jei", "jei"),
         ("appleskin", "appleskin"),
@@ -584,14 +572,21 @@ async fn host_a_world_with_mods() {
         ("spark", "spark"),
         ("bookshelf-lib", "bookshelf"),
     ];
-    let (kind, catalog_loader, proofs): (_, _, &[(&str, &str)]) =
-        match std::env::var("WORLD_LOADER").as_deref().unwrap_or("fabric") {
-            "fabric" => (LoaderKind::Fabric, "fabric", &[("fabric-api", "fabric")]),
-            "quilt" => (LoaderKind::Quilt, "fabric", &[("fabric-api", "fabric")]),
-            "neoforge" => (LoaderKind::NeoForge, "neoforge", FORGE_PROOFS),
-            "forge" => (LoaderKind::Forge, "forge", FORGE_PROOFS),
-            other => panic!("WORLD_LOADER {other} has no live test yet"),
-        };
+    // Releases a proof mod names but does not start on, with the loader's
+    // newest stable build: (loader, version, slug).
+    const BROKEN: &[(&str, &str, &str)] = &[
+        // JEI's newest release naming 1.21 asks for NeoForge 21.1.238 or newer,
+        // a 1.21.1 build.
+        ("neoforge", "1.21", "jei"),
+    ];
+    let loader_name = std::env::var("WORLD_LOADER").unwrap_or_else(|_| "fabric".into());
+    let (kind, catalog_loader, proofs): (_, _, &[(&str, &str)]) = match loader_name.as_str() {
+        "fabric" => (LoaderKind::Fabric, "fabric", &[("fabric-api", "fabric")]),
+        "quilt" => (LoaderKind::Quilt, "fabric", &[("fabric-api", "fabric")]),
+        "neoforge" => (LoaderKind::NeoForge, "neoforge", FORGE_PROOFS),
+        "forge" => (LoaderKind::Forge, "forge", FORGE_PROOFS),
+        other => panic!("WORLD_LOADER {other} has no live test yet"),
+    };
     println!("minecraft {minecraft}, {}", kind.name());
     let loaders = PublicClient::new(SourcePolicy::ModLoaders, VERSION).unwrap();
     let loader = LoaderChoice {
@@ -614,14 +609,12 @@ async fn host_a_world_with_mods() {
     let instance = launcher_lib::storage::paths::InstanceId::generate();
     let mut proof = None;
     for (slug, id) in proofs {
+        if BROKEN.contains(&(loader_name.as_str(), minecraft.as_str(), *slug)) {
+            continue;
+        }
         if let Some(release) = catalog_release(&catalog, slug, &minecraft, catalog_loader).await {
-            let made = made_for(&release, &minecraft);
-            if made || proof.is_none() {
-                proof = Some((*slug, *id, release));
-            }
-            if made {
-                break;
-            }
+            proof = Some((*slug, *id, release));
+            break;
         }
     }
     let (proof_slug, proof_id, release) = proof.unwrap_or_else(|| {
@@ -657,7 +650,7 @@ async fn host_a_world_with_mods() {
     std::fs::write(game.join("config/live-test.json"), b"{\"kept\":true}").unwrap();
     std::fs::write(game.join("options.txt"), b"fov:1").unwrap();
 
-    let harmful = catalog.harmful().await.unwrap();
+    let harmful = patiently(|| catalog.harmful()).await;
     let built = pack::build(&catalog, &harmful, &game, &loader)
         .await
         .unwrap();
@@ -977,7 +970,7 @@ async fn update_a_world_with_mods() {
     let transport = HttpTransport::public(VERSION).unwrap();
     let executor = Executor::new(transport.clone(), root.clone(), ExecutorConfig::default());
     let catalog = launcher_lib::mods::Client::new(VERSION).unwrap();
-    let harmful = catalog.harmful().await.unwrap();
+    let harmful = patiently(|| catalog.harmful()).await;
     let source = LiveSource::new(Arc::clone(&metadata), VERSION).unwrap();
     let runtimes = RuntimeInstaller::new(root.clone(), transport, ExecutorConfig::default());
     let activity = ActivityRegistry::new();
