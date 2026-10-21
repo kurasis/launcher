@@ -86,6 +86,10 @@ describe('FeedSettings', () => {
     expect(
       screen.getByRole('checkbox', { name: /Machine-translated patch notes and news/ }),
     ).toBeChecked();
+    // Off until the player asks for it.
+    expect(
+      screen.getByRole('checkbox', { name: /Tell me when a favourite streamer goes live/ }),
+    ).not.toBeChecked();
     expect(screen.getByRole('radio', { name: 'In a launcher window' })).toBeChecked();
     expect(screen.getByRole('combobox', { name: 'Language of videos and streams' })).toHaveValue(
       'ui',
@@ -110,6 +114,12 @@ describe('FeedSettings', () => {
     fireEvent.click(within(hide).getByRole('checkbox', { name: 'Streams' }));
     await waitFor(() => {
       expect(patches(calls).at(-1)).toEqual({ feed: { hidden: ['streams'] } });
+    });
+    fireEvent.click(
+      screen.getByRole('checkbox', { name: /Tell me when a favourite streamer goes live/ }),
+    );
+    await waitFor(() => {
+      expect(patches(calls).at(-1)).toEqual({ feed: { liveNotifications: true } });
     });
     fireEvent.click(screen.getByRole('checkbox', { name: /Show the feed/ }));
     await waitFor(() => {

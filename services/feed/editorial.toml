@@ -17,8 +17,9 @@ twitch_blocked = ["zubaref"]
 twitch_blocked_words = ["казино", "лудо", "1win", "1вин", "промокод", "casino", "gambling", "slots"]
 
 # YouTube channels: `lang` is the interface language they are shown for
-# (en, ru, ar), or "all". Every channel was checked on 2026-10-19: its RSS
-# answers and most of its videos are about Minecraft.
+# (en, ru, ar), or "all". Every channel was checked when added (2026-10-19,
+# more on 2026-10-21): its RSS answers, it posted in the last months and most
+# of its videos are about Minecraft.
 
 [[channel]]
 id = "UC1sELGmy5jp5fQUugmuYlXQ"
@@ -81,6 +82,71 @@ name = "impulseSV"
 lang = "en"
 
 [[channel]]
+id = "UCodkNmk9oWRTIYZdr_HuSlg"
+name = "GoodTimesWithScar"
+lang = "en"
+
+[[channel]]
+id = "UC4O9HKe9Jt5yAhKuNv3LXpQ"
+name = "docm77"
+lang = "en"
+
+[[channel]]
+id = "UCuQYHhF6on6EXXO-_i_ClHQ"
+name = "FalseSymmetry"
+lang = "en"
+
+[[channel]]
+id = "UCUBsjvdHcwZd3ztdY1Zadcw"
+name = "GeminiTay"
+lang = "en"
+
+[[channel]]
+id = "UC4qdHN4zHhd4VvNy3zNgXPA"
+name = "SmallishBeans"
+lang = "en"
+
+[[channel]]
+id = "UC4YUKOBld2PoOLzk0YZ80lw"
+name = "Tango Tek"
+lang = "en"
+
+[[channel]]
+id = "UClu2e7S8atp6tG2galK9hgg"
+name = "BdoubleO100"
+lang = "en"
+
+[[channel]]
+id = "UCgVWsL9Do0tKUPBD5GpIKZw"
+name = "Eyecraftmc"
+lang = "en"
+
+[[channel]]
+id = "UC_GQ4mac4oN3wl1UdbFuTEA"
+name = "ibxtoycat"
+lang = "en"
+
+[[channel]]
+id = "UC1GJ5aeqpEWklMBQ3oXrPQQ"
+name = "PearlescentMoon"
+lang = "en"
+
+[[channel]]
+id = "UCjI5qxhtyv3srhWr60HemRw"
+name = "ZombieCleo"
+lang = "en"
+
+[[channel]]
+id = "UC3-8qZ-rZvlSVWwkHoeelCA"
+name = "TheMythicalSausage"
+lang = "en"
+
+[[channel]]
+id = "UCiZ2z8F8ilr6SC7lOaxAQ4g"
+name = "camman18"
+lang = "en"
+
+[[channel]]
 id = "UCnuYU4uBan4V5dQ7Pg7NeaQ"
 name = "Greensurs"
 lang = "ru"
@@ -131,6 +197,66 @@ name = "Типичный Стив"
 lang = "ru"
 
 [[channel]]
+id = "UCO3ZWDxdTeXPVSP1WTijl1w"
+name = "ВЛАДУС"
+lang = "ru"
+
+[[channel]]
+id = "UCT2oJWY3-FBbwh_qPfMAi6Q"
+name = "Лейн"
+lang = "ru"
+
+[[channel]]
+id = "UC_EUfr-WUn4Q4zM21azfcQA"
+name = "S_K_I_JL"
+lang = "ru"
+
+[[channel]]
+id = "UC-pCsP5iwF3CaNqaz6FSfgw"
+name = "ksen"
+lang = "ru"
+
+[[channel]]
+id = "UC_lAuQjfc-JIdcpsGE_wWuQ"
+name = "Томатик"
+lang = "ru"
+
+[[channel]]
+id = "UCFpPYQeIU-cUTf-uyRkg9Rw"
+name = "Джейк"
+lang = "ru"
+
+[[channel]]
+id = "UCC-qCeRby7Li9eK_kSY7lNw"
+name = "AlumenatoR"
+lang = "ru"
+
+[[channel]]
+id = "UCSBL8ohURyEzTjJvZq2x_AA"
+name = "Parradix"
+lang = "ru"
+
+[[channel]]
+id = "UCvk_YeENgexaC-Wqoh3Bp4Q"
+name = "Кирка"
+lang = "ru"
+
+[[channel]]
+id = "UCOG4O8wbHAzL61HYWh3j1wg"
+name = "Лолотрек"
+lang = "ru"
+
+[[channel]]
+id = "UCZ8fSWsoySnv1voIfi6mqwQ"
+name = "FixPlay"
+lang = "ru"
+
+[[channel]]
+id = "UCngdQ02MhqK9Ke8Uon5qOug"
+name = "Бурёночек"
+lang = "ru"
+
+[[channel]]
 id = "UCNAzwz__m3ki78cd0JSjzSg"
 name = "CRAFT - كرافت"
 lang = "ar"
@@ -163,6 +289,31 @@ lang = "ar"
 [[channel]]
 id = "UCMoqSEntsv2fZuY8cjZmPpw"
 name = "DDN"
+lang = "ar"
+
+[[channel]]
+id = "UC4XWrslMX6-CO-x0XYZVV4Q"
+name = "Fo9ma"
+lang = "ar"
+
+[[channel]]
+id = "UC5LhGFqOBuPNg8_J1xa8CwA"
+name = "Rest رست"
+lang = "ar"
+
+[[channel]]
+id = "UC_LkIDi-q_pXQeookhpwlgg"
+name = "soul_Addon"
+lang = "ar"
+
+[[channel]]
+id = "UCZwqCYQ5IP_uP9Cx02hyu4A"
+name = "OmarFive - عمر فايف"
+lang = "ar"
+
+[[channel]]
+id = "UCdgdJ9h0lY9k42v7Av9DRqQ"
+name = "Fariis47"
 lang = "ar"
 
 # Events with a countdown on the start page, shown from 14 days before they

@@ -5,7 +5,7 @@
 //! `data/state.json`. Everything is fetched again from the sources, so a
 //! lost folder only means a slow first minute.
 
-use std::collections::{HashMap, HashSet};
+use std::collections::{HashMap, HashSet, VecDeque};
 use std::path::{Path, PathBuf};
 use std::sync::{Mutex, RwLock};
 use std::time::{Duration, Instant};
@@ -42,6 +42,10 @@ pub const FEED_NOTES: usize = 40;
 /// Videos kept per channel: its RSS lists 15, so the rest are kept from
 /// earlier fetches.
 pub const CHANNEL_VIDEOS: usize = 200;
+/// Of any `SPREAD_WINDOW` videos in a row of the list, at most `SPREAD_MAX`
+/// are of one channel, so a channel that posts often does not fill it.
+pub const SPREAD_WINDOW: usize = 10;
+pub const SPREAD_MAX: usize = 2;
 /// Items in one page of the endless list.
 pub const PAGE_MAX: usize = 40;
 pub const PAGE_DEFAULT: usize = 20;
@@ -597,6 +601,7 @@ impl Feed {
                 .channels_for(query.videos)
                 .filter_map(|c| saved.channels.get(&c.id))
                 .flat_map(|c| c.videos.iter());
+            let mut listed: Vec<Listed<'_>> = Vec::new();
             for video in videos {
                 if (video.short && !query.shorts)
                     || (!video.short && query.only_shorts)
@@ -605,9 +610,14 @@ impl Feed {
                     continue;
                 }
                 if let Some(time) = sort_time(&video.date) {
-                    items.push((time, format!("yt:{}", video.id), Item::Video(video)));
+                    listed.push((time, format!("yt:{}", video.id), video));
                 }
             }
+            items.extend(
+                spread(listed)
+                    .into_iter()
+                    .map(|(time, key, video)| (time, key, Item::Video(video))),
+            );
         }
         if query.kinds.contains(&Kind::Streams) {
             for stream in saved.streams.get(query.videos).into_iter().flatten() {
@@ -814,6 +824,99 @@ pub struct PageQuery {
     /// The last item of the page before: its time and key.
     pub before: Option<(String, String)>,
     pub limit: usize,
+}
+
+/// The times the list orders videos by (`time`, `key`, video): their own,
+/// except that a video that would make its channel more than `SPREAD_MAX`
+/// of `SPREAD_WINDOW` videos in a row waits for the first place it fits and
+/// takes the time of the video before it there. Sorted by time (newest
+/// first) and key, the videos come in the order made here; it depends on
+/// the videos alone, so every page sees the same order.
+pub fn spread<'a>(mut videos: Vec<Listed<'a>>) -> Vec<Listed<'a>> {
+    videos.sort_by(|a, b| b.0.cmp(&a.0).then_with(|| a.1.cmp(&b.1)));
+    let mut out: Vec<Listed<'a>> = Vec::with_capacity(videos.len());
+    // Videos waiting for a place, by channel, newest first.
+    let mut waiting: HashMap<&'a str, VecDeque<Listed<'a>>> = HashMap::new();
+    let mut next = videos.into_iter();
+    loop {
+        // A waiting video that fits now is newer than any not yet placed.
+        let ready = newest_waiting(&waiting, |channel| fits(&out, channel));
+        if let Some(video) = ready.and_then(|c| waiting.get_mut(c)?.pop_front()) {
+            place(&mut out, video);
+            continue;
+        }
+        match next.next() {
+            Some(video) if fits(&out, &video.2.channel_id) => place(&mut out, video),
+            Some(video) => waiting
+                .entry(video.2.channel_id.as_str())
+                .or_default()
+                .push_back(video),
+            // Only videos that cannot fit are left: the newest goes.
+            None => match newest_waiting(&waiting, |_| true)
+                .and_then(|c| waiting.get_mut(c)?.pop_front())
+            {
+                Some(video) => place(&mut out, video),
+                None => break,
+            },
+        }
+    }
+    out
+}
+
+/// A video as the list orders it: its time, its key and the video.
+pub type Listed<'a> = (String, String, &'a Video);
+
+/// The channel would have fewer than `SPREAD_MAX` of the last videos.
+fn fits(out: &[Listed<'_>], channel: &str) -> bool {
+    out.iter()
+        .rev()
+        .take(SPREAD_WINDOW - 1)
+        .filter(|(_, _, v)| v.channel_id == channel)
+        .count()
+        < SPREAD_MAX
+}
+
+/// The channel whose first waiting video is the newest, of those `allowed`.
+fn newest_waiting<'a>(
+    waiting: &HashMap<&'a str, VecDeque<Listed<'a>>>,
+    allowed: impl Fn(&str) -> bool,
+) -> Option<&'a str> {
+    waiting
+        .iter()
+        .filter(|(channel, _)| allowed(channel))
+        .filter_map(|(channel, queue)| queue.front().map(|v| (*channel, v)))
+        .max_by(|a, b| a.1.0.cmp(&b.1.0).then_with(|| b.1.1.cmp(&a.1.1)))
+        .map(|(channel, _)| channel)
+}
+
+/// Puts a video last: no later in time than the one before it, and a
+/// second earlier when the same time would sort it first by its key.
+fn place<'a>(out: &mut Vec<Listed<'a>>, (time, key, video): Listed<'a>) {
+    let time = match out.last() {
+        Some((before, before_key, _))
+            if *before < time || (*before == time && key < *before_key) =>
+        {
+            if key < *before_key {
+                second_before(before)
+            } else {
+                before.clone()
+            }
+        }
+        _ => time,
+    };
+    out.push((time, key, video));
+}
+
+/// The time one second before (`YYYY-MM-DDTHH:MM:SSZ`).
+fn second_before(time: &str) -> String {
+    chrono::DateTime::parse_from_rfc3339(time).map_or_else(
+        |_| time.to_owned(),
+        |t| {
+            (t.with_timezone(&chrono::Utc) - chrono::Duration::seconds(1))
+                .format("%Y-%m-%dT%H:%M:%SZ")
+                .to_string()
+        },
+    )
 }
 
 /// A time as the list orders it (`YYYY-MM-DDTHH:MM:SSZ`).

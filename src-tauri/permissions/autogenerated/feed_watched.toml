@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-feed-watched"
+description = "Enables the feed_watched command without any pre-configured scope."
+commands.allow = ["feed_watched"]
+
+[[permission]]
+identifier = "deny-feed-watched"
+description = "Denies the feed_watched command without any pre-configured scope."
+commands.deny = ["feed_watched"]

@@ -143,6 +143,7 @@
       "channelHidden": "لن يظهر {name} في الموجز بعد الآن.",
       "undo": "تراجع",
       "favoriteBadge": "مفضلة",
+      "watched": "تمت مشاهدته",
       "addChannel": "إضافة قناة",
       "addChannelPlace": "مكان القناة",
       "places": {
@@ -1032,6 +1033,8 @@
       "shorts": "YouTube Shorts",
       "machineTranslation": "ترجمة آلية لملاحظات التحديث والأخبار",
       "machineTranslationHint": "عند الإيقاف: تُعرض بالإنجليزية.",
+      "liveNotifications": "أعلمني حين تبدأ قناة مفضلة بثًا مباشرًا",
+      "liveNotificationsHint": "إشعار من النظام لقنوات Twitch المفضلة، حين لا يكون المشغّل في المقدمة.",
       "hidden": "أخفِ في الموجز",
       "blocks": {
         "versions": "ملاحظات التحديث",

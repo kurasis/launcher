@@ -142,6 +142,7 @@
       "channelHidden": "{name} больше не показывается в ленте.",
       "undo": "Вернуть",
       "favoriteBadge": "Избранное",
+      "watched": "Просмотрено",
       "addChannel": "Добавить канал",
       "addChannelPlace": "Где канал",
       "places": {
@@ -1031,6 +1032,8 @@
       "shorts": "YouTube Shorts",
       "machineTranslation": "Машинный перевод списков изменений и новостей",
       "machineTranslationHint": "Выключено: они показываются на английском.",
+      "liveNotifications": "Уведомлять, когда избранный стример выходит в эфир",
+      "liveNotificationsHint": "Системное уведомление для избранных каналов Twitch, пока лаунчер не на переднем плане.",
       "hidden": "Скрыть в ленте",
       "blocks": {
         "versions": "Списки изменений",

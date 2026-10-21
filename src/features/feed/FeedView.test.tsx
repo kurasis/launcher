@@ -234,6 +234,8 @@ function backend(overrides: Record<string, Handler> = {}, answer?: FeedAnswer) {
       }
       case 'feed_favorites':
         return { videos: [], streams: [] };
+      case 'feed_watched':
+        return [];
       case 'feed_server_ads':
         return { ads: [], stale: false };
       case 'feed_page':
@@ -559,6 +561,67 @@ describe('FeedView', () => {
         { kind: 'twitch', id: 'some_streamer', title: 'Video' },
       ]);
     });
+  });
+
+  it('shows the videos played from the feed as watched', async () => {
+    const calls = backend();
+    show();
+    const play = await screen.findByRole('button', { name: /^Watch “A long video”/ });
+    const tile = play.closest('article');
+    if (tile === null) throw new Error('no tile');
+    expect(within(tile).queryByText('Watched')).toBeNull();
+    expect(calls.filter((c) => c.cmd === 'feed_watched')).toHaveLength(1);
+    fireEvent.click(play);
+    expect(await within(tile).findByText('Watched')).toBeVisible();
+    cleanup();
+    // The core remembers them, so they show so when the feed opens again.
+    backend({ feed_watched: () => ['dQw4w9WgXcQ'] });
+    show();
+    const again = (await screen.findByRole('button', { name: /^Watch “A long video”/ })).closest(
+      'article',
+    );
+    if (again === null) throw new Error('no tile');
+    expect(await within(again).findByText('Watched')).toBeVisible();
+  });
+
+  it('asks for the live streams again every few minutes: ended ones leave, new ones come', async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    try {
+      const [stream] = feedFixture().streams;
+      if (!stream) throw new Error('the fixture changed');
+      const later = {
+        login: 'ph1lza',
+        name: 'Ph1LzA',
+        title: 'Hardcore day 1',
+        viewers: 50,
+        started: '2026-10-19T11:30:00Z',
+        image: null,
+      };
+      let live = [stream];
+      const calls = backend({
+        feed_page: (args) =>
+          args.filter === 'streams'
+            ? {
+                items: live.map((item): FeedItem => ({ type: 'stream', stream: item })),
+                next: null,
+              }
+            : pager()(args),
+      });
+      show();
+      await screen.findByRole('list', { name: 'All' });
+      expect(titles('All')).toEqual(['Building a castle', 'A long video']);
+      live = [later];
+      await vi.advanceTimersByTimeAsync(3 * 60 * 1000);
+      await waitFor(() => {
+        expect(titles('All')).toEqual(['Hardcore day 1', 'A long video']);
+      });
+      expect(
+        calls.filter((c) => c.cmd === 'feed_page' && c.args.filter === 'streams'),
+      ).toHaveLength(1);
+      expect(calls.filter((c) => c.cmd === 'feed_own_streams').length).toBeGreaterThanOrEqual(2);
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it('hides a channel from a tile’s menu, and Undo brings it back', async () => {

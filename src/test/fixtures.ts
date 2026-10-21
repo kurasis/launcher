@@ -100,6 +100,7 @@ export function snapshotFixture(overrides: Partial<AppSnapshot> = {}): AppSnapsh
         videoLanguage: 'ui',
         shorts: false,
         machineTranslation: true,
+        liveNotifications: false,
         player: 'window',
         hidden: [],
       },

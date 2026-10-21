@@ -40,6 +40,8 @@ const NO_MARKS: FeedMarks = { hidden: [], favorite: [] };
 const NO_FAVORITES: FavoriteFeed = { videos: [], streams: [] };
 /** How long a short notice (link copied) stays. */
 const NOTICE_MS = 4000;
+/** How often live streams are asked again while the feed is shown. */
+const LIVE_EVERY_MS = 3 * 60 * 1000;
 
 /** A notice over the feed, with Undo when the step can be taken back. */
 interface FeedNotice {
@@ -311,6 +313,9 @@ export function FeedView({ snapshot, onOpenInstallations, onInstallVersion }: Fe
   const [notice, setNotice] = useState<FeedNotice | null>(null);
   // Each channel added from the + asks for the player's own videos and streams again.
   const [added, setAdded] = useState(0);
+  // Every few minutes while the launcher is shown: live streams are asked again.
+  const [liveTick, setLiveTick] = useState(0);
+  const [watched, setWatched] = useState<ReadonlySet<string>>(new Set());
   const [refreshing, setRefreshing] = useState(false);
   const [chosen, setFilter] = useState<FeedFilter>('all');
   // Each Refresh starts the list again.
@@ -354,7 +359,7 @@ export function FeedView({ snapshot, onOpenInstallations, onInstallVersion }: Fe
       .catch(() => {
         setOwnStreams([]);
       });
-  }, [online, refreshes, added]);
+  }, [online, refreshes, added, liveTick]);
   useEffect(() => {
     ipc
       .feedMarks()
@@ -372,7 +377,24 @@ export function FeedView({ snapshot, onOpenInstallations, onInstallVersion }: Fe
       .catch(() => {
         setFavorites(NO_FAVORITES);
       });
-  }, [favoriteKey, online, refreshes]);
+  }, [favoriteKey, online, refreshes, liveTick]);
+  useEffect(() => {
+    if (!online) return;
+    const timer = window.setInterval(() => {
+      if (document.visibilityState === 'visible') setLiveTick((tick) => tick + 1);
+    }, LIVE_EVERY_MS);
+    return () => {
+      window.clearInterval(timer);
+    };
+  }, [online]);
+  useEffect(() => {
+    ipc
+      .feedWatched()
+      .then((ids) => {
+        setWatched(new Set(ids));
+      })
+      .catch(() => undefined);
+  }, []);
   // A notice without Undo goes by itself.
   useEffect(() => {
     if (notice === null || notice.undo !== null) return;
@@ -418,9 +440,14 @@ export function FeedView({ snapshot, onOpenInstallations, onInstallVersion }: Fe
   }, []);
   const playVideo = (video: FeedVideo) => {
     setActionProblem(null);
-    ipc.feedPlay('yt', video.id, strings.windowTitles.player).catch((error: unknown) => {
-      setActionProblem(feedProblem(error));
-    });
+    ipc
+      .feedPlay('yt', video.id, strings.windowTitles.player)
+      .then(() => {
+        setWatched((seen) => new Set(seen).add(video.id));
+      })
+      .catch((error: unknown) => {
+        setActionProblem(feedProblem(error));
+      });
   };
   const playStream = (stream: FeedStream) => {
     setActionProblem(null);
@@ -510,6 +537,8 @@ export function FeedView({ snapshot, onOpenInstallations, onInstallVersion }: Fe
         onMark={mark}
         onCopyLink={copyLink}
         onChannelAdded={channelAdded}
+        watched={watched}
+        liveTick={liveTick}
         chosen={chosen}
         reload={`${languages} ${String(online)} ${String(settings.snapshots)} ${String(settings.shorts)} ${settings.hidden.join(',')} ${String(refreshes)}`}
         onFilter={setFilter}
@@ -582,6 +611,8 @@ interface FeedPartsProps {
   onMark: (channel: ChannelMark, list: MarkList | null) => void;
   onCopyLink: (url: string) => void;
   onChannelAdded: (place: MarkKind, name: string) => void;
+  watched: ReadonlySet<string>;
+  liveTick: number;
   chosen: FeedFilter;
   /** Changes when the list should start again. */
   reload: string;
@@ -606,6 +637,8 @@ function FeedParts({
   onMark,
   onCopyLink,
   onChannelAdded,
+  watched,
+  liveTick,
   chosen,
   reload,
   onFilter,
@@ -670,6 +703,8 @@ function FeedParts({
         marks={marks}
         onMark={onMark}
         onCopyLink={onCopyLink}
+        watched={watched}
+        liveTick={liveTick}
         filter={filter}
         key={`${filter} ${reload}`}
         skip={filter === 'all' ? (heroNote?.id ?? null) : null}

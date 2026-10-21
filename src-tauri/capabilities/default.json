@@ -155,6 +155,7 @@
     "allow-feed-marks",
     "allow-feed-mark",
     "allow-feed-favorites",
+    "allow-feed-watched",
     "allow-worlds-state",
     "allow-worlds-versions",
     "allow-worlds-local",

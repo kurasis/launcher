@@ -321,12 +321,14 @@ fn feed_settings_are_validated_and_persist() {
                 shorts: Some(true),
                 player: Some(PlayerMode::Browser),
                 hidden: Some(vec![FeedBlock::Streams, FeedBlock::News]),
+                live_notifications: Some(true),
                 ..FeedSettingsPatch::default()
             }),
             ..SettingsPatch::default()
         }))
         .unwrap();
     assert!(!view.feed.snapshots && view.feed.shorts && view.feed.machine_translation);
+    assert!(view.feed.live_notifications);
     assert_eq!(view.feed.video_language, VideoLanguage::Ru);
     assert_eq!(view.feed.player, PlayerMode::Browser);
     assert_eq!(view.feed.hidden, [FeedBlock::News, FeedBlock::Streams]);
@@ -354,6 +356,7 @@ fn feed_settings_are_validated_and_persist() {
         r#"{"feed":{"player":"popup"}}"#,
         r#"{"feed":{"hidden":["videos","<img>"]}}"#,
         r#"{"feed":{"videoLanguage":"de"}}"#,
+        r#"{"feed":{"liveNotifications":"yes"}}"#,
     ] {
         assert!(
             serde_json::from_str::<SettingsPatch>(junk).is_err(),
@@ -373,7 +376,7 @@ fn feed_settings_are_validated_and_persist() {
     drop(state);
     let state = state_at(dir.path(), RecordingSink::default());
     let feed = state.snapshot().settings.feed;
-    assert!(!feed.enabled && !feed.snapshots && feed.shorts);
+    assert!(!feed.enabled && !feed.snapshots && feed.shorts && feed.live_notifications);
     assert!(feed.hidden.is_empty());
     assert_eq!(feed.video_language, VideoLanguage::Ru);
 }
