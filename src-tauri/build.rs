@@ -192,6 +192,8 @@ fn main() {
         "worlds_backups",
         "worlds_back_up",
         "worlds_restore",
+        "worlds_update_preview",
+        "worlds_update",
         "worlds_export",
         // Registered only in debug builds; release builds have no handler for them.
         "start_lifecycle_test",

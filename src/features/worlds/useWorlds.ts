@@ -1,6 +1,12 @@
 import { useEffect, useState } from 'react';
 import type { WorldsRoom, WorldsState } from '../../lib/contracts';
-import { describeIpcError, ipc, onWorldsState, worldsProblemOf } from '../../lib/ipc';
+import {
+  describeIpcError,
+  ipc,
+  isLauncherError,
+  onWorldsState,
+  worldsProblemOf,
+} from '../../lib/ipc';
 import { strings } from '../../lib/strings';
 
 const IDLE: WorldsState = {
@@ -50,10 +56,25 @@ export function roomOpen(room: WorldsRoom, state: WorldsState): { open: boolean;
   return { open: room.hosting, online: room.online };
 }
 
+/**
+ * Whether a failure carries this mark: an update of a world's mods failed on
+ * its copy, or the world's earlier mods and backup came back (W12).
+ */
+export function worldsMarked(
+  error: unknown,
+  mark: 'worldsTrialFailed' | 'worldsRolledBack',
+): boolean {
+  return isLauncherError(error) && error.safeDetails?.[mark] === true;
+}
+
 /** A failure of a worlds command, said in the player's language. */
 export function worldsErrorText(error: unknown): string {
   const problem = worldsProblemOf(error);
-  return problem === null ? describeIpcError(error) : strings.worlds.problems[problem];
+  const said = problem === null ? describeIpcError(error) : strings.worlds.problems[problem];
+  if (worldsMarked(error, 'worldsTrialFailed'))
+    return `${strings.worlds.update.trialFailed} ${said}`;
+  if (worldsMarked(error, 'worldsRolledBack')) return `${strings.worlds.update.rolledBack} ${said}`;
+  return said;
 }
 
 /** The `failed` name in the state: a service problem or an error code. */

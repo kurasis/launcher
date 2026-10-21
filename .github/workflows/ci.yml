@@ -210,6 +210,16 @@ jobs:
           cargo test --manifest-path src-tauri/Cargo.toml --locked --test live_server
           -- --ignored --exact host_a_world_with_mods --nocapture --test-threads=1
 
+      - name: Update the world's mods and roll them back (A45)
+        # An update tried on a copy, kept and confirmed; a broken one refused
+        # on the copy, and rolled back from the world itself.
+        if: matrix.minecraft == '1.21.1'
+        env:
+          WORLD_VERSION: ${{ matrix.minecraft }}
+        run: >-
+          cargo test --manifest-path src-tauri/Cargo.toml --locked --test live_server
+          -- --ignored --exact update_a_world_with_mods --nocapture --test-threads=1
+
   world-servers:
     # One result for every version above, under the check's earlier name.
     name: World server (linux-x64)

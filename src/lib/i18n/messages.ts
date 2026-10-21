@@ -1840,6 +1840,8 @@ export type Messages = {
       readonly starting: string;
       readonly opening: string;
       readonly joining: string;
+      readonly backing_up: string;
+      readonly trying: string;
     };
     readonly progress: (values: { done: string | number; total: string | number }) => string;
     readonly hosting: {
@@ -2026,6 +2028,43 @@ export type Messages = {
         world: string | number;
       }) => string;
       readonly restored: (values: { date: string | number }) => string;
+    };
+    readonly update: {
+      readonly title: string;
+      readonly current: (values: { generation: string | number; count: number }) => string;
+      readonly pending: string;
+      readonly hint: string;
+      readonly source: string;
+      readonly noSources: (values: { version: string | number }) => string;
+      readonly show: string;
+      readonly same: string;
+      readonly next: (values: { generation: string | number }) => string;
+      readonly added: string;
+      readonly removed: string;
+      readonly updated: string;
+      readonly was: (values: { name: string | number; from: string | number }) => string;
+      readonly sides: {
+        readonly client: string;
+        readonly server: string;
+        readonly both: string;
+      };
+      readonly loaderChanged: (values: { version: string | number }) => string;
+      readonly settings: (values: { count: number }) => string;
+      readonly conflictsTitle: string;
+      readonly conflictsHint: string;
+      readonly keepMine: string;
+      readonly takeTheirs: string;
+      readonly base: string;
+      readonly mine: string;
+      readonly theirs: string;
+      readonly noBase: string;
+      readonly notText: (values: { size: string | number }) => string;
+      readonly cut: string;
+      readonly whileHosted: string;
+      readonly apply: string;
+      readonly done: (values: { generation: string | number }) => string;
+      readonly trialFailed: string;
+      readonly rolledBack: string;
     };
     readonly devices: {
       readonly open: string;

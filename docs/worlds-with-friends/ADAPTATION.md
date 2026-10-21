@@ -268,3 +268,13 @@ Other loaders follow in W12.
   in the room and in tickets. A guest's room installation gets it as any catalog pack, after a
   consent that names mods new to that computer; a yes holds for that pack, an update with new
   mods asks again. Play refuses while the installation holds another pack than the room plays.
+- 2026-10-21 — W12 updates (owner, plan doc): an update builds the next generation from an
+  installation with the same loader and Minecraft version. A server setting the host changed
+  that the new generation brings another version of is a conflict (keep mine / take the new
+  one, shown in three versions); one the host never changed takes the new version. The stopped
+  world is backed up, the generation is tried on a copy of that backup (a world of its own,
+  `trialOf`, never listed), and only then kept, with the earlier generation, the backup and the
+  replaced settings recorded as the way back. A hosted world closes for the update and opens
+  again. The first start confirms it; a start that fails puts all of it back. Every backup
+  records its generation, and a restore brings that generation back; generations no backup
+  needs go with their files.

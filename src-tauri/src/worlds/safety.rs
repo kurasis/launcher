@@ -71,7 +71,7 @@ fn existing(path: &Path) -> &Path {
     path.ancestors().find(|p| p.is_dir()).unwrap_or(path)
 }
 
-fn ensure_space(path: &Path, need: u64) -> LauncherResult<()> {
+pub(super) fn ensure_space(path: &Path, need: u64) -> LauncherResult<()> {
     if enough_space(crate::download::available_space(existing(path)), need) {
         return Ok(());
     }
@@ -137,6 +137,10 @@ pub fn recover(root: &DataRoot, world: &mut WorldFile) -> LauncherResult<bool> {
     let Some(kind) = world.mutation.as_ref().map(|m| m.kind) else {
         return Ok(true);
     };
+    if kind == MutationKind::Update {
+        super::update::recover(root, world)?;
+        return Ok(true);
+    }
     if !matches!(
         kind,
         MutationKind::Backup | MutationKind::Restore | MutationKind::Import
@@ -237,12 +241,23 @@ fn backup_locked(
         store.prune(owner(world.id), &scope(), KEEP_AFTER_PLAY);
         store.collect();
     }
+    // The generation of its mods comes back with it. Generations of pruned
+    // backups go after a session; an update may be staging one otherwise.
+    if world.pack.is_some() {
+        let mut now = world::load(root, world.id)?;
+        super::update::record_backup(&mut now, &snapshot.info.id);
+        if reason == Reason::AfterPlay {
+            super::update::tidy(root, &mut now);
+        }
+        world::save(root, &now)?;
+    }
     Ok(Some(snapshot.info))
 }
 
 /// Puts `backup` in place of the world's save. The current save is backed
 /// up first; the backup is written beside it and checked before the swap,
-/// so a damaged backup or a full disk keeps the world as it was.
+/// so a damaged backup or a full disk keeps the world as it was. A world
+/// with mods gets back the generation the backup was made with.
 pub fn restore(root: &DataRoot, id: WorldId, backup: &str) -> LauncherResult<()> {
     let store = store(root);
     let snapshot = store.load(backup)?;
@@ -256,10 +271,13 @@ pub fn restore(root: &DataRoot, id: WorldId, backup: &str) -> LauncherResult<()>
     with_mutation(root, id, MutationKind::Restore, |world| {
         if save.is_dir() {
             backup_locked(root, world, Reason::BeforeRestore)?;
-            store.restore_replacing(&snapshot, &save)
+            store.restore_replacing(&snapshot, &save)?;
         } else {
-            store.restore_into(&snapshot, &save)
+            store.restore_into(&snapshot, &save)?;
         }
+        let mut now = world::load(root, id)?;
+        super::update::bring_back(root, &mut now, backup);
+        world::save(root, &now)
     })
 }
 

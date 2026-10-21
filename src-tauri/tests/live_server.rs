@@ -662,3 +662,283 @@ async fn host_a_world_with_mods() {
     );
     println!("stopped clean");
 }
+
+/// Starts a world's server, waits until it is ready or fails, and stops it.
+async fn start_world(
+    root: &DataRoot,
+    world_id: launcher_lib::storage::paths::WorldId,
+    java: &std::path::Path,
+    activity: &ActivityRegistry,
+) -> launcher_lib::error::LauncherResult<()> {
+    let members = [Nick::parse("Host_Player").unwrap()];
+    let permit = activity
+        .try_acquire_hosting(world_id.uuid(), "live-update".to_owned())
+        .unwrap();
+    let server = host::start(
+        &Launch {
+            root,
+            world_id,
+            java,
+            server_heap_mib: 2048,
+            game_heap_mib: 0,
+            physical_memory_bytes: physical_memory(),
+            members: &members,
+            operation_id: "live-update".to_owned(),
+        },
+        permit,
+        Arc::new(|| {}),
+    )?;
+    tokio::task::block_in_place(|| {
+        let ready = server.wait_ready(STARTUP_DEADLINE);
+        let clean = server.stop(STOP_GRACE);
+        ready.map(|()| assert!(clean, "stopped clean"))
+    })
+}
+
+/// Whether `save` holds exactly the files of `snapshot`, by content.
+fn holds_backup(save: &std::path::Path, snapshot: &launcher_lib::backup::store::Snapshot) -> bool {
+    use sha2::Digest as _;
+    let mut count = 0usize;
+    let mut stack = vec![save.to_path_buf()];
+    while let Some(dir) = stack.pop() {
+        for entry in std::fs::read_dir(dir).unwrap().filter_map(Result::ok) {
+            if entry.file_type().unwrap().is_dir() {
+                stack.push(entry.path());
+            } else {
+                count += 1;
+            }
+        }
+    }
+    count == snapshot.files.len()
+        && snapshot.files.iter().all(|entry| {
+            std::fs::read(save.join(&entry.path)).is_ok_and(|bytes| {
+                bytes.len() as u64 == entry.size
+                    && hex::encode(sha2::Sha256::digest(&bytes)) == entry.sha256
+            })
+        })
+}
+
+/// The mods in a world server's `mods/`, by name.
+fn server_mods(root: &DataRoot, world_id: launcher_lib::storage::paths::WorldId) -> Vec<String> {
+    let mut mods: Vec<String> = std::fs::read_dir(root.world_server_dir(world_id).join("mods"))
+        .unwrap()
+        .filter_map(Result::ok)
+        .filter(|e| e.file_type().is_ok_and(|t| t.is_file()))
+        .map(|e| e.file_name().to_string_lossy().into_owned())
+        .collect();
+    mods.sort();
+    mods
+}
+
+/// W12 update and rollback (A45): a played world with Fabric API gets
+/// JEI as an update, tried on a copy of its backup first and confirmed by
+/// a start. An update whose Fabric API is built for another release does not
+/// start: on the copy it leaves the world as it was, and on the world itself
+/// the backup and the earlier mods come back together.
+/// `WORLD_VERSION=1.21.1 cargo test --test live_server update_a_world_with_mods -- --ignored --exact --nocapture`
+#[tokio::test(flavor = "multi_thread")]
+#[ignore = "network: downloads a loader server, mods and Java, runs the server"]
+async fn update_a_world_with_mods() {
+    use launcher_lib::backup::store::Reason;
+    use launcher_lib::loader::{LoaderChoice, LoaderKind, meta};
+    use launcher_lib::storage::paths::InstanceId;
+    use launcher_lib::worlds::{pack, safety, update};
+
+    let dir = tempfile::tempdir().unwrap();
+    let root = DataRoot::new(dir.path().to_path_buf()).unwrap();
+    let metadata = Arc::new(MetadataService::new(
+        PublicClient::new(SourcePolicy::MojangMetadata, VERSION).unwrap(),
+        root.clone(),
+    ));
+    let minecraft = world_version(&metadata).await;
+    // Another release, whose Fabric API this one refuses.
+    let other = if minecraft == "1.20.1" {
+        "1.21.1"
+    } else {
+        "1.20.1"
+    };
+    println!("minecraft {minecraft}, fabric, broken by mods of {other}");
+    let loaders = PublicClient::new(SourcePolicy::ModLoaders, VERSION).unwrap();
+    let loader = LoaderChoice {
+        kind: LoaderKind::Fabric,
+        version: meta::loader_versions(&loaders, LoaderKind::Fabric, &minecraft)
+            .await
+            .unwrap()
+            .into_iter()
+            .find(|v| v.stable)
+            .expect("a stable Fabric loader")
+            .id,
+    };
+    pack::check_supported(&loader, &minecraft).expect("a tested release");
+
+    let transport = HttpTransport::public(VERSION).unwrap();
+    let executor = Executor::new(transport.clone(), root.clone(), ExecutorConfig::default());
+    let catalog = launcher_lib::mods::Client::new(VERSION).unwrap();
+    let harmful = catalog.harmful().await.unwrap();
+    let source = LiveSource::new(Arc::clone(&metadata), VERSION).unwrap();
+    let runtimes = RuntimeInstaller::new(root.clone(), transport, ExecutorConfig::default());
+    let activity = ActivityRegistry::new();
+    let installation = |mods: &[(&str, &str)], setting: &'static [u8]| {
+        let (catalog, executor, root) = (&catalog, &executor, &root);
+        let mods: Vec<(String, String)> = mods
+            .iter()
+            .map(|(s, v)| ((*s).to_owned(), (*v).to_owned()))
+            .collect();
+        async move {
+            let instance = InstanceId::generate();
+            for (slug, release) in &mods {
+                catalog_mod(catalog, executor, &instance.to_string(), slug, release).await;
+            }
+            let game = root.game_dir(instance);
+            std::fs::create_dir_all(game.join("config")).unwrap();
+            std::fs::write(game.join("config/live-test.json"), setting).unwrap();
+            game
+        }
+    };
+
+    // Generation 1, played once.
+    let game = installation(&[("fabric-api", &minecraft)], b"{\"rate\":1}").await;
+    let built = pack::build(&catalog, &harmful, &game, &loader)
+        .await
+        .unwrap();
+    let mut created = world::create(
+        &root,
+        "Live updated world",
+        &minecraft,
+        WorldSettings::default(),
+    )
+    .unwrap();
+    created.pack = Some(pack::store(&root, &created, built).unwrap());
+    world::save(&root, &created).unwrap();
+    world::accept_eula(&root, created.id).unwrap();
+    let id = created.id;
+    let cancel = CancelToken::new();
+    let prepare = |world_id| {
+        install::prepare(
+            &root,
+            &metadata,
+            &source,
+            &runtimes,
+            &executor,
+            world_id,
+            JavaProvider::Mojang,
+            &cancel,
+            &NoProgress,
+        )
+    };
+    let (_, java) = prepare(id).await.unwrap();
+    start_world(&root, id, &java, &activity).await.unwrap();
+    println!("generation 1 played");
+
+    let trial = update::Trial {
+        root: &root,
+        metadata: &metadata,
+        source: &source,
+        runtimes: &runtimes,
+        executor: &executor,
+        activity: &activity,
+        java: JavaProvider::Mojang,
+        game_heap_mib: 0,
+        physical_memory_bytes: physical_memory(),
+        cancel: &cancel,
+        sink: &NoProgress,
+        starting: &|| {},
+    };
+    let no_choices = std::collections::HashMap::new();
+
+    // Generation 2 adds JEI: tried on a copy, kept, confirmed by a start.
+    let game = installation(
+        &[("fabric-api", &minecraft), ("jei", &minecraft)],
+        b"{\"rate\":2}",
+    )
+    .await;
+    let built = pack::build(&catalog, &harmful, &game, &loader)
+        .await
+        .unwrap();
+    let world = world::load(&root, id).unwrap();
+    let shown = update::preview(&root, &world, &built).unwrap();
+    assert_eq!(shown.added.len(), 1, "jei added");
+    assert!(shown.conflicts.is_empty(), "the host changed no setting");
+    assert_eq!(shown.settings, 1);
+    let staged = update::stage(&root, &world, built, &shown.fingerprint, &no_choices).unwrap();
+    let backup = safety::backup(&root, id, Reason::BeforeUpdate)
+        .unwrap()
+        .unwrap()
+        .id;
+    update::begin(&root, id).unwrap();
+    let started = Instant::now();
+    let manifest = update::try_on_copy(&trial, id, &staged, Some(&backup))
+        .await
+        .unwrap();
+    println!("generation 2 tried on a copy in {:.1?}", started.elapsed());
+    assert!(world::trials(&root).is_empty(), "the copy is gone");
+    update::commit(&root, id, staged, manifest, Some(backup)).unwrap();
+    let (prepared, java) = prepare(id).await.unwrap();
+    assert!(update::pending(&prepared));
+    start_world(&root, id, &java, &activity).await.unwrap();
+    update::confirm(&root, id).unwrap();
+    assert_eq!(server_mods(&root, id).len(), 2, "fabric api and jei");
+    assert_eq!(
+        std::fs::read(root.world_server_dir(id).join("config/live-test.json")).unwrap(),
+        b"{\"rate\":2}"
+    );
+    println!("generation 2 confirmed");
+
+    // Generation 3 brings Fabric API of another release.
+    let game = installation(&[("fabric-api", other)], b"{\"rate\":3}").await;
+    let broken = || pack::build(&catalog, &harmful, &game, &loader);
+    let world = world::load(&root, id).unwrap();
+    let shown = update::preview(&root, &world, &broken().await.unwrap()).unwrap();
+    let staged = update::stage(
+        &root,
+        &world,
+        broken().await.unwrap(),
+        &shown.fingerprint,
+        &no_choices,
+    )
+    .unwrap();
+    let backup = safety::backup(&root, id, Reason::BeforeUpdate)
+        .unwrap()
+        .unwrap()
+        .id;
+    update::begin(&root, id).unwrap();
+    let tried = update::try_on_copy(&trial, id, &staged, Some(&backup)).await;
+    assert!(tried.is_err(), "the copy does not start");
+    update::abandon(&root, id).unwrap();
+    let world = world::load(&root, id).unwrap();
+    assert_eq!(
+        world.pack.as_ref().unwrap().generation,
+        2,
+        "the world as it was"
+    );
+    assert!(world::trials(&root).is_empty());
+    println!("generation 3 refused on the copy");
+
+    // The same generation kept without its trial: the world's own start
+    // fails, and its backup and generation 2 come back.
+    let world = world::load(&root, id).unwrap();
+    let shown = update::preview(&root, &world, &broken().await.unwrap()).unwrap();
+    let staged = update::stage(
+        &root,
+        &world,
+        broken().await.unwrap(),
+        &shown.fingerprint,
+        &no_choices,
+    )
+    .unwrap();
+    update::commit(&root, id, staged, None, Some(backup.clone())).unwrap();
+    let (_, java) = prepare(id).await.unwrap();
+    assert!(start_world(&root, id, &java, &activity).await.is_err());
+    assert!(update::roll_back(&root, id).unwrap());
+    let world = world::load(&root, id).unwrap();
+    assert_eq!(world.pack.as_ref().unwrap().generation, 2);
+    let snapshot = safety::store(&root).load(&backup).unwrap();
+    assert!(
+        holds_backup(&safety::save_dir(&root, id), &snapshot),
+        "the save is the backup"
+    );
+    let (_, java) = prepare(id).await.unwrap();
+    start_world(&root, id, &java, &activity).await.unwrap();
+    assert_eq!(server_mods(&root, id).len(), 2);
+    println!("generation 3 rolled back, generation 2 starts again");
+}

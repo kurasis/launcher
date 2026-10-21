@@ -3510,6 +3510,19 @@ pub struct WorldsCreatePayload {
     pub instance_id: Option<crate::storage::paths::InstanceId>,
 }
 
+/// An update of a world's mods (W12): what [`worlds_update_preview`] showed,
+/// and the host's answer to each changed setting.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct WorldsUpdatePayload {
+    pub room: String,
+    pub world: crate::storage::paths::WorldId,
+    pub instance_id: crate::storage::paths::InstanceId,
+    pub fingerprint: String,
+    #[serde(default)]
+    pub choices: std::collections::HashMap<String, crate::worlds::update::Keep>,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct WorldsRoomPayload {
@@ -3577,6 +3590,40 @@ pub async fn worlds_create<R: Runtime>(
             &payload.minecraft,
             payload.settings,
             payload.instance_id,
+        )
+        .await
+}
+
+/// What updating a world's mods from an installation would change (W12).
+#[tauri::command]
+pub async fn worlds_update_preview<R: Runtime>(
+    app: AppHandle<R>,
+    mods: State<'_, Arc<crate::mods::Mods>>,
+    world: crate::storage::paths::WorldId,
+    instance_id: crate::storage::paths::InstanceId,
+) -> LauncherResult<crate::worlds::update::Preview> {
+    worlds(&app)
+        .update_preview(&app.state::<AppState>(), &mods, world, instance_id)
+        .await
+}
+
+/// Updates a stopped world's mods: backed up, tried on a copy, then kept
+/// with the way back (W12).
+#[tauri::command]
+pub async fn worlds_update<R: Runtime>(
+    app: AppHandle<R>,
+    mods: State<'_, Arc<crate::mods::Mods>>,
+    payload: WorldsUpdatePayload,
+) -> LauncherResult<()> {
+    worlds(&app)
+        .update(
+            &app.state::<AppState>(),
+            &mods,
+            &payload.room,
+            payload.world,
+            payload.instance_id,
+            &payload.fingerprint,
+            payload.choices,
         )
         .await
 }
