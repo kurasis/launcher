@@ -2354,6 +2354,10 @@ skins-mod <channel>` there only checks the signature against the public key and
   goes to the joined project, so both still lead to it; the service also fixes joins
   made before this at start (2026-10-21: Fabric API had become
   `fabric-api-modrinth-…`).
+- **Data packs from Modrinth (2026-10-21).** Modrinth's API calls a data pack a mod
+  (`project_type` `mod`) and tells it only by its loaders. A project whose only loader is
+  `datapack` is a data pack in the catalog; one that is also a mod for a loader stays a
+  mod, since it installs as one.
   The card (title, description, pictures) is Modrinth's; reading CurseForge again only
   adds its versions. A file on both sources shows once in the versions list, as
   Modrinth's. The launcher follows a join in its lock: the lock's files are looked up by

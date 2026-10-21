@@ -1063,6 +1063,20 @@ fn modrinth_answers_are_checked() {
     assert_eq!(project.slug, "my-mod");
     assert!(project.icon_url.is_none());
     assert!(project.gallery.is_empty());
+    // Modrinth calls a data pack a mod; only its loaders tell.
+    let kind_with = |loaders: Value| {
+        modrinth::project(
+            &json!({ "id": "abc", "project_type": "mod", "loaders": loaders }),
+            None,
+        )
+        .unwrap()
+        .kind
+    };
+    assert_eq!(kind_with(json!(["datapack"])), "datapack");
+    assert_eq!(kind_with(json!(["datapack", "fabric"])), "mod");
+    assert_eq!(kind_with(json!([])), "mod");
+    assert_eq!(kind_with(json!("datapack")), "mod");
+    assert_eq!(kind_with(json!([null])), "mod");
 }
 
 #[test]
