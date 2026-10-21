@@ -473,10 +473,14 @@ fn setup(app: &mut tauri::App) -> Result<(), Box<dyn std::error::Error>> {
             }
         });
     }
-    // The start page feed (D-067): asked only when the interface shows it.
-    app.manage(Arc::new(
-        feed::FeedService::new(&version).map_err(|e| e.message)?,
-    ));
+    // The start page feed (D-067): asked only when the interface shows it,
+    // and the favourite channels looked at when the player wants to be told
+    // they went live.
+    {
+        let feed = Arc::new(feed::FeedService::new(&version).map_err(|e| e.message)?);
+        app.manage(Arc::clone(&feed));
+        tauri::async_runtime::spawn(feed::live::watch(app.handle().clone(), feed));
+    }
     // Server ads in the feed (D-069): asked only when the feed shows.
     app.manage(Arc::new(
         feed::ads::ServerAds::new(&version).map_err(|e| e.message)?,
@@ -953,6 +957,7 @@ fn handlers<R: tauri::Runtime>() -> impl Fn(tauri::ipc::Invoke<R>) -> bool + Sen
         commands::feed_marks,
         commands::feed_mark,
         commands::feed_favorites,
+        commands::feed_watched,
         commands::worlds_state,
         commands::worlds_versions,
         commands::worlds_local,

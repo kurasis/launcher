@@ -2349,6 +2349,15 @@ skins-mod <channel>` there only checks the signature against the public key and
   source, the two become one (`join_twins`): the Modrinth one stays (else the older), the
   other's sources, versions, categories and requests move to it, and its ID and slug lead
   to it (`project_joined`, status `joined`). Two projects of one source are never joined.
+  When the other had the plain slug first (the staying one then got
+  `<slug>-<source>-<id end>`), the staying one takes the plain slug and the long one
+  goes to the joined project, so both still lead to it; the service also fixes joins
+  made before this at start (2026-10-21: Fabric API had become
+  `fabric-api-modrinth-…`).
+- **Data packs from Modrinth (2026-10-21).** Modrinth's API calls a data pack a mod
+  (`project_type` `mod`) and tells it only by its loaders. A project whose only loader is
+  `datapack` is a data pack in the catalog; one that is also a mod for a loader stays a
+  mod, since it installs as one.
   The card (title, description, pictures) is Modrinth's; reading CurseForge again only
   adds its versions. A file on both sources shows once in the versions list, as
   Modrinth's. The launcher follows a join in its lock: the lock's files are looked up by
@@ -2599,6 +2608,16 @@ skins-mod <channel>` there only checks the signature against the public key and
   and 200 videos per channel (its RSS lists 15; older ones stay from earlier fetches);
   `/v1/feed` still holds the newest 40. Pages are not kept on the player's computer:
   without the service the list is the feed kept on disk.
+- **A varied, live list (owner request, 2026-10-21):** the service spreads videos so no
+  channel has more than 2 of any 10 in a row (a moved video takes a time just below the
+  one before it, so the cursor still holds), and pages are shown in the service's order.
+  Up to 24 streams per language, Helix asked every 2 minutes; while the launcher is shown
+  it asks for live streams every 3 minutes, and ended ones leave the list. Channels can
+  be put first or hidden from a tile's menu (kept in `feed-channels.json`). Videos played
+  from the feed are kept in `feed-watched.json` (the latest 500 ids) and shown dimmed. A
+  system notification when a favourite Twitch channel goes live is a setting, off by
+  default: the core looks every 3 minutes, tells each start once, and only while the
+  launcher is not in front.
 
 ## D-068 — Worlds with Friends
 
@@ -2669,6 +2688,17 @@ skins-mod <channel>` there only checks the signature against the public key and
   outside.
 - **Server setup (owner):** a DNS record for servers.lapi.sh behind Cloudflare, then
   `deploy/bootstrap.sh` once.
+- **Amendment (owner, 2026-10-21): languages, banners, licensed servers.** An ad may be
+  shown only to players whose launcher is in some languages (`--langs ru,en`; the language
+  the launcher asks with). The owner may give a 16:9 banner (`banner <id> <file>`, PNG or
+  JPEG, cut to 16:9, made 640×360 and written again as JPEG), served at
+  `/v1/icons/{sha256}.jpg` beside the icons, so nginx needs no new path. Once a day, and on
+  `add`, `edit` and `ping`, the service starts a login as `ServerListCheck` in the protocol
+  the server's status named and reads the first answer only: an encryption request means
+  the server wants a Microsoft sign-in (online mode); login success or compression means it
+  does not; anything else is unknown. The launcher says "licensed accounts only" on such an
+  ad, and Play tells a player who would play without a Microsoft account so before anything
+  is downloaded.
 
 ## D-070 — Reviews from players at reviews.lapi.sh
 

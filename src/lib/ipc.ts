@@ -554,6 +554,8 @@ export const ipc = {
     invoke<FeedMarks>('feed_mark', { ...channel, list }),
   /** The newest videos and live streams of the favourite channels. */
   feedFavorites: (): Promise<FavoriteFeed> => invoke<FavoriteFeed>('feed_favorites'),
+  /** The videos the player opened from the feed lately, oldest first. */
+  feedWatched: (): Promise<string[]> => invoke<string[]>('feed_watched'),
   /**
    * A page of the endless list: one part or all (`null`), or the Shorts alone,
    * after the cursor `before`.

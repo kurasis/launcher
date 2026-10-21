@@ -303,6 +303,7 @@ fn main_window_capability_grants_only_app_commands() {
             "allow-feed-marks",
             "allow-feed-mark",
             "allow-feed-favorites",
+            "allow-feed-watched",
             "allow-worlds-state",
             "allow-worlds-versions",
             "allow-worlds-local",

@@ -80,6 +80,8 @@ function fakeBackend(
           return { hidden: [], favorite: [] };
         case 'feed_favorites':
           return { videos: [], streams: [] };
+        case 'feed_watched':
+          return [];
         default:
           return null;
       }

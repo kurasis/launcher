@@ -455,12 +455,12 @@ fn the_feed_lists_the_most_watched_minecraft_streams() {
     );
     let logins: Vec<&str> = streams.iter().map(|s| s.login.as_str()).collect();
     assert_eq!(logins, ["small"]);
-    let many: Vec<RawStream> = (0..20)
+    let many: Vec<RawStream> = (0..40)
         .map(|i| raw(&format!("user{i}"), i, false, THUMB))
         .collect();
     let top = twitch::top(many, twitch::Blocked::default());
     assert_eq!(top.len(), twitch::STREAMS);
-    assert_eq!(top[0].login, "user19");
+    assert_eq!(top[0].login, "user39");
 }
 
 #[test]
@@ -522,7 +522,7 @@ fn own_streams_are_picked() {
     // Any game, not for adults, only those asked, the most watched first.
     let found: Vec<&str> = streams.iter().map(|s| s.login.as_str()).collect();
     assert_eq!(found, ["builder", "small"]);
-    let many: Vec<RawStream> = (0..20)
+    let many: Vec<RawStream> = (0..40)
         .map(|i| raw(&format!("user{i}"), i, false, THUMB))
         .collect();
     let asked: Vec<String> = (0..20).map(|i| format!("user{i}")).collect();
@@ -1074,6 +1074,83 @@ fn channels_keep_their_older_videos() {
         feed::keep_videos(Vec::new(), many).len(),
         feed::CHANNEL_VIDEOS
     );
+}
+
+fn spread_video(id: &str, channel: &str, date: &str) -> youtube::Video {
+    youtube::Video {
+        id: id.into(),
+        channel_id: channel.into(),
+        channel: channel.into(),
+        title: "T".into(),
+        date: date.into(),
+        short: false,
+    }
+}
+
+#[test]
+fn one_channel_does_not_fill_the_list() {
+    // A channel posting every hour, six others once a day.
+    let mut videos = Vec::new();
+    for hour in 0..20 {
+        videos.push(spread_video(
+            &format!("busy{hour:07}"),
+            "busy",
+            &format!("2026-10-20T{:02}:00:00Z", 23 - hour),
+        ));
+    }
+    for (n, channel) in ["a", "b", "c", "d", "e", "f"].into_iter().enumerate() {
+        for day in 0..5 {
+            videos.push(spread_video(
+                &format!("{channel}{day:010}"),
+                channel,
+                &format!("2026-10-{:02}T{:02}:30:00Z", 19 - day, 10 + n),
+            ));
+        }
+    }
+    let listed: Vec<feed::Listed<'_>> = videos
+        .iter()
+        .map(|v| (v.date.clone(), format!("yt:{}", v.id), v))
+        .collect();
+    let out = feed::spread(listed.clone());
+    // Every video once.
+    assert_eq!(out.len(), videos.len());
+    let ids: std::collections::HashSet<&str> = out.iter().map(|v| v.2.id.as_str()).collect();
+    assert_eq!(ids.len(), videos.len());
+    // The order made is the order the list sorts by.
+    let mut sorted = out.clone();
+    sorted.sort_by(|a, b| b.0.cmp(&a.0).then_with(|| a.1.cmp(&b.1)));
+    assert_eq!(
+        sorted.iter().map(|v| &v.1).collect::<Vec<_>>(),
+        out.iter().map(|v| &v.1).collect::<Vec<_>>()
+    );
+    // While other channels are left, no 10 in a row have more than 2 of one.
+    let others = out.iter().rposition(|v| v.2.channel_id != "busy").unwrap();
+    for window in out[..=others].windows(feed::SPREAD_WINDOW) {
+        let busy = window.iter().filter(|v| v.2.channel_id == "busy").count();
+        assert!(busy <= feed::SPREAD_MAX, "{busy}");
+    }
+    // The newest video still comes first, and the same videos make the same order.
+    assert_eq!(out[0].2.id, "busy0000000");
+    let again = feed::spread(listed.into_iter().rev().collect());
+    assert_eq!(again, out);
+}
+
+#[test]
+fn spread_leaves_a_varied_list_as_it_is() {
+    let videos: Vec<youtube::Video> = (0..12)
+        .map(|i| {
+            spread_video(
+                &format!("v{i:010}"),
+                &format!("c{}", i % 6),
+                &format!("2026-10-{:02}T12:00:00Z", 20 - i),
+            )
+        })
+        .collect();
+    let listed: Vec<feed::Listed<'_>> = videos
+        .iter()
+        .map(|v| (v.date.clone(), format!("yt:{}", v.id), v))
+        .collect();
+    assert_eq!(feed::spread(listed.clone()), listed);
 }
 
 #[tokio::test]

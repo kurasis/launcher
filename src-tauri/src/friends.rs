@@ -886,7 +886,7 @@ impl Friends {
 /// Text from another player made fit for a system notification: one line of
 /// at most `max` characters, no control or direction characters, and on Linux
 /// no markup (its notification servers read a little HTML in the body).
-fn notification_text(text: &str, max: usize) -> String {
+pub(crate) fn notification_text(text: &str, max: usize) -> String {
     let clean: String = text
         .chars()
         .map(|c| if c == '\n' || c == '\t' { ' ' } else { c })

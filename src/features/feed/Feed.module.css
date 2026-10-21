@@ -528,6 +528,11 @@
   filter: blur(22px) saturate(1.3);
 }
 
+.preview .adBanner {
+  position: absolute;
+  inset: 0;
+}
+
 .adShade {
   position: absolute;
   inset: 0;
@@ -821,4 +826,18 @@
   flex-wrap: wrap;
   align-items: center;
   gap: var(--space-3);
+}
+
+/* A video the player opened already: fainter, until hovered or focused. */
+.watched .preview,
+.watched .tileTitle {
+  opacity: 0.55;
+  transition: opacity var(--motion-duration) ease-out;
+}
+
+.watched:hover .preview,
+.watched:hover .tileTitle,
+.watched:focus-within .preview,
+.watched:focus-within .tileTitle {
+  opacity: 1;
 }

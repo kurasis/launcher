@@ -163,6 +163,30 @@ pub fn place(text: &str) -> Result<&'static str, String> {
         .ok_or_else(|| format!("places are: {}", PLACES.join(", ")))
 }
 
+/// `ru`, `ru,en` (the languages whose players see an ad, in `LANGS`
+/// order) or `all` (everyone: an empty list).
+pub fn langs(text: &str) -> Result<Vec<String>, String> {
+    let text = text.trim().to_ascii_lowercase();
+    if text == "all" {
+        return Ok(Vec::new());
+    }
+    let mut given = Vec::new();
+    for lang in text.split(',').map(str::trim) {
+        if !LANGS.contains(&lang) {
+            return Err(format!(
+                "--langs takes all or some of: {}",
+                LANGS.join(", ")
+            ));
+        }
+        given.push(lang);
+    }
+    Ok(LANGS
+        .iter()
+        .filter(|l| given.contains(l))
+        .map(|l| (*l).to_owned())
+        .collect())
+}
+
 /// `90m`, `12h`, `7d`, `2w`, `3mo`, `1y` in seconds, from a minute to five
 /// years.
 pub fn duration(text: &str) -> Result<i64, String> {

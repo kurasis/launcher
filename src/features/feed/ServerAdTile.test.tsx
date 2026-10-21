@@ -21,6 +21,8 @@ function adFixture(overrides: Partial<ServerAd> = {}): ServerAd {
     endsAt: Math.floor(Date.now() / 1000) + 3600,
     weight: 10,
     erid: null,
+    banner: null,
+    licensed: null,
     ...overrides,
   };
 }
@@ -198,6 +200,62 @@ describe('ServerAdTile', () => {
     expect(screen.getByText('Offline')).toBeTruthy();
     expect(screen.getByText('The server does not answer right now')).toBeTruthy();
     expect(document.querySelectorAll(`img[src="${icon}"]`)).toHaveLength(2);
+  });
+
+  it('shows the banner in place of the icon', () => {
+    listen();
+    const icon = 'data:image/png;base64,iVBORw0KGgo=';
+    const banner = 'data:image/jpeg;base64,/9j/4AAQ';
+    render(<ServerAdTile ad={adFixture({ icon, banner })} snapshot={snapshotFixture()} />);
+    expect(document.querySelectorAll(`img[src="${banner}"]`)).toHaveLength(1);
+    expect(document.querySelector(`img[src="${icon}"]`)).toBeNull();
+  });
+
+  it('downloads nothing for a licensed server without a Microsoft account', async () => {
+    const calls = listen();
+    render(
+      <ServerAdTile
+        ad={adFixture({ licensed: true })}
+        snapshot={snapshotFixture({ instances: [] })}
+      />,
+    );
+    expect(screen.getByText(/licensed accounts only/)).toBeTruthy();
+    fireEvent.click(screen.getByRole('button', { name: /^Play/ }));
+    expect((await screen.findByRole('alert')).textContent).toContain('Microsoft account');
+    expect(calls.some((c) => c.cmd === 'create_instance' || c.cmd === 'install_instance')).toBe(
+      false,
+    );
+  });
+
+  it('plays a licensed server as the Microsoft account', async () => {
+    const ready = instanceFixture({ id: 'ready-2', versionId: '1.21.4', health: 'ready' });
+    const calls = listen();
+    const base = snapshotFixture({ instances: [ready] });
+    const signedIn: AppSnapshot = {
+      ...base,
+      account: { ...base.account, defaultProfile: { kind: 'microsoft', id: 'p-1' } },
+    };
+    render(<ServerAdTile ad={adFixture({ licensed: true })} snapshot={signedIn} />);
+    fireEvent.click(screen.getByRole('button', { name: /^Play/ }));
+    await waitFor(() => {
+      expect(payload(calls, 'launch_game')).toEqual({
+        instanceId: 'ready-2',
+        server: 'play.example.net',
+      });
+    });
+    // The installation's own profile counts over the default one.
+    cleanup();
+    const before = calls.length;
+    const notoken = { ...ready, profile: { kind: 'notoken' as const, id: 'n-1' } };
+    render(
+      <ServerAdTile
+        ad={adFixture({ licensed: true })}
+        snapshot={{ ...signedIn, instances: [notoken] }}
+      />,
+    );
+    fireEvent.click(screen.getByRole('button', { name: /^Play/ }));
+    expect(await screen.findByRole('alert')).toBeTruthy();
+    expect(calls.slice(before).some((c) => c.cmd === 'launch_game')).toBe(false);
   });
 
   it('does not use an installation with a mod loader', () => {

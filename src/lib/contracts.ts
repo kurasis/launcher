@@ -1688,6 +1688,8 @@ export interface FeedSettings {
   machineTranslation: boolean;
   player: PlayerMode;
   hidden: FeedBlock[];
+  /** A system notification when a favourite Twitch channel goes live. */
+  liveNotifications: boolean;
 }
 
 /** The feed's languages. */
@@ -1839,6 +1841,10 @@ export interface ServerAd {
   endsAt: number;
   weight: number;
   erid: string | null;
+  /** A JPEG data URL of a 16:9 picture shown over the icon. */
+  banner: string | null;
+  /** The server wants a Microsoft sign-in (online mode); null when unknown. */
+  licensed: boolean | null;
 }
 
 export interface ServerAdsView {

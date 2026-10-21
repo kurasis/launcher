@@ -235,6 +235,12 @@ impl DataRoot {
         self.root.join("feed-channels.json")
     }
 
+    /// The feed's videos a player opened, to show them fainter (D-067).
+    /// Kept on this computer only.
+    pub fn feed_watched(&self) -> PathBuf {
+        self.root.join("feed-watched.json")
+    }
+
     /// The launcher's log and its failure records.
     pub fn logs_dir(&self) -> PathBuf {
         self.root.join("logs")
