@@ -811,7 +811,11 @@ message` plus a stack trace), with the event's level.
 - **Supported range:** what each project's metadata lists, except Forge before
   1.12.2 build 14.23.5.2851: those installers use the old format (`install` +
   `versionInfo`) and are neither listed nor installed; a chosen one fails with a clear
-  message.
+  message. Since 2026-10-21 (skins mod for old versions) the last Forge builds for
+  1.7.10 (10.13.4.1614) and 1.8.9 (11.15.1.2318) are the exception: the old profile's
+  libraries are rewritten to the current form (the universal jar from the installer,
+  the rest from Forge's Maven or Mojang's library host, pinned by `.sha1` or the
+  declared checksum, server-only ones left out) and nothing runs at install time.
 - **How a loader is resolved (`src-tauri/src/loader`):**
   - Fabric and Quilt: the loader's version profile from its meta service. Libraries
     without a published SHA-1 (Fabric's intermediary and loader, every Quilt library)
@@ -863,7 +867,8 @@ message` plus a stack trace), with the event's level.
   profiles also name Mojang's library host; each download uses the category whose
   allowlist names its host.
 - **Not included:** installing or updating mods, modpacks, changing the loader of an
-  existing installation, Forge before 1.12.2 build 14.23.5.2851, LiteLoader, Rift.
+  existing installation, Forge before 1.12.2 build 14.23.5.2851 (except the last 1.7.10
+  and 1.8.9 builds), LiteLoader, Rift.
 
 ## D-040 — "No token" names in code; Microsoft setup panel removed from About
 
