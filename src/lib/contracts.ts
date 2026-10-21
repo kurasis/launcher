@@ -1967,6 +1967,9 @@ export interface LocalWorld {
   lastRun: { endedAt: string; clean: boolean } | null;
   /** Played at least once: only then is there a save to back up or export. */
   played: boolean;
+  /** The mod loader of a world with mods, and how many mods it has. */
+  loader: LoaderChoice | null;
+  mods: number;
 }
 
 /** An installation whose single-player worlds can be imported. */
@@ -1974,7 +1977,17 @@ export interface WorldsImportable {
   instanceId: string;
   instanceName: string;
   minecraft: string;
+  /** Its mod loader, whose mods the world takes. */
+  loader: LoaderChoice | null;
   saves: string[];
+}
+
+/** An installation a world with mods can be made from. */
+export interface WorldsModSource {
+  instanceId: string;
+  name: string;
+  minecraft: string;
+  loader: LoaderChoice;
 }
 
 export interface WorldsImportPayload {
@@ -1989,6 +2002,8 @@ export interface WorldsCreatePayload {
   description: string;
   minecraft: string;
   settings: WorldsSettings;
+  /** An installation with a mod loader whose mods the world takes. */
+  instanceId?: string | null;
 }
 
 export type WorldsStage = 'server' | 'starting' | 'opening' | 'joining';

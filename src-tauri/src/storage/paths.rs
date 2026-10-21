@@ -275,6 +275,11 @@ impl DataRoot {
         self.world_dir(id).join("server")
     }
 
+    /// The mods of a world with mods, each file under its SHA-256 (W12).
+    pub fn world_pack_dir(&self, id: WorldId) -> PathBuf {
+        self.world_dir(id).join("pack")
+    }
+
     /// A Mojang server JAR, shared by every world of its version.
     pub fn server_jar(&self, sha1: &Sha1) -> PathBuf {
         self.shared()

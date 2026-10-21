@@ -3350,6 +3350,9 @@ pub struct WorldsCreatePayload {
     pub minecraft: String,
     #[serde(default)]
     pub settings: crate::worlds::properties::WorldSettings,
+    /// An installation with a mod loader whose mods the world takes (W12).
+    #[serde(default)]
+    pub instance_id: Option<crate::storage::paths::InstanceId>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -3407,16 +3410,26 @@ pub async fn worlds_room<R: Runtime>(
 #[tauri::command]
 pub async fn worlds_create<R: Runtime>(
     app: AppHandle<R>,
+    mods: State<'_, Arc<crate::mods::Mods>>,
     payload: WorldsCreatePayload,
 ) -> LauncherResult<crate::worlds::service::Room> {
     worlds(&app)
         .create(
+            &app.state::<AppState>(),
+            &mods,
             &payload.name,
             &payload.description,
             &payload.minecraft,
             payload.settings,
+            payload.instance_id,
         )
         .await
+}
+
+/// Installations a world with mods can be made from (W12).
+#[tauri::command]
+pub fn worlds_mod_sources<R: Runtime>(app: AppHandle<R>) -> Vec<crate::worlds::app::ModSource> {
+    crate::worlds::app::mod_sources(&app.state::<AppState>())
 }
 
 /// The player accepted the Minecraft EULA for a world.
@@ -3451,11 +3464,13 @@ pub struct WorldsImportPayload {
 #[tauri::command]
 pub async fn worlds_import<R: Runtime>(
     app: AppHandle<R>,
+    mods: State<'_, Arc<crate::mods::Mods>>,
     payload: WorldsImportPayload,
 ) -> LauncherResult<crate::worlds::service::Room> {
     worlds(&app)
         .import(
             &app.state::<AppState>(),
+            &mods,
             payload.instance_id,
             payload.save,
             payload.name,
@@ -3698,10 +3713,20 @@ pub async fn worlds_instance<R: Runtime>(
     app: AppHandle<R>,
     room: String,
 ) -> LauncherResult<WorldsInstance> {
-    let found = worlds(&app).client.room(&room).await?;
-    let instance =
-        app.state::<AppState>()
-            .room_instance(&found.id, &found.name, &found.minecraft)?;
+    let worlds = worlds(&app);
+    let found = worlds.client.room(&room).await?;
+    // The host's own world with mods: the installation runs its loader and
+    // holds its client mods.
+    let local = worlds.local_world_of(&found);
+    let loader = local
+        .as_ref()
+        .and_then(|w| w.pack.as_ref())
+        .map(|p| p.loader.clone());
+    let state = app.state::<AppState>();
+    let instance = state.room_instance(&found.id, &found.name, &found.minecraft, loader)?;
+    if let Some(world) = local.filter(|w| w.pack.is_some()) {
+        worlds.place_client(&world, instance.id).await?;
+    }
     Ok(WorldsInstance {
         instance_id: instance.id,
         ready: instance.health == crate::storage::models::InstallationHealth::Ready,

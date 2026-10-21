@@ -59,6 +59,8 @@ const local: LocalWorld = {
   createdAt: '2026-10-19T00:00:00Z',
   lastRun: null,
   played: false,
+  loader: null,
+  mods: 0,
 };
 
 const idle: WorldsState = {
@@ -97,6 +99,8 @@ function setup(answers: Answers = {}, signedIn = true) {
         return [local];
       case 'worlds_versions':
         return ['1.21.1'];
+      case 'worlds_mod_sources':
+        return [];
       case 'worlds_room':
         return {
           room: mine,
@@ -391,6 +395,48 @@ describe('WorldsView', () => {
     expect(payload.name).toBe('New world');
   });
 
+  it('makes a world with the mods of an installation, on its version', async () => {
+    const { calls } = setup({
+      worlds_versions: () => ['26.3', '1.21.1'],
+      worlds_mod_sources: () => [
+        {
+          instanceId: 'b8f5d6a2-1c3e-4f5a-9b7c-2d4e6f8a0b1c',
+          name: 'Fabric pack',
+          minecraft: '1.21.1',
+          loader: { kind: 'fabric', version: '0.17.2' },
+        },
+      ],
+      worlds_create: () => mine,
+      worlds_accept_eula: () => local,
+    });
+    await screen.findByText('Our base');
+    fireEvent.click(screen.getByRole('button', { name: 'Create a world' }));
+    const dialog = within(screen.getByRole('dialog'));
+    await dialog.findByText(/choose an installation with Fabric/);
+    const option = await dialog.findByRole('option', {
+      name: 'Fabric pack · Minecraft 1.21.1 · Fabric 0.17.2',
+    });
+    fireEvent.change(dialog.getByLabelText('Mods'), {
+      target: { value: (option as HTMLOptionElement).value },
+    });
+    await dialog.findByText(/stay out of it/);
+    expect(dialog.getByLabelText('Minecraft version')).toHaveValue('1.21.1');
+    expect(dialog.getByLabelText('Minecraft version')).toBeDisabled();
+    expect(dialog.queryByLabelText('Show snapshots')).toBeNull();
+    fireEvent.change(dialog.getByLabelText('World name'), { target: { value: 'Modded' } });
+    fireEvent.click(dialog.getByLabelText('I accept the Minecraft EULA'));
+    fireEvent.click(dialog.getByRole('button', { name: 'Create' }));
+    await waitFor(() => {
+      expect(called(calls, 'worlds_create')).toHaveLength(1);
+    });
+    const payload = called(calls, 'worlds_create')[0]?.args.payload as {
+      minecraft: string;
+      instanceId: string | null;
+    };
+    expect(payload.minecraft).toBe('1.21.1');
+    expect(payload.instanceId).toBe('b8f5d6a2-1c3e-4f5a-9b7c-2d4e6f8a0b1c');
+  });
+
   it('lists snapshots only when asked, with what they mean', async () => {
     const { calls } = setup({
       worlds_versions: (args) =>
@@ -522,6 +568,7 @@ describe('WorldsView', () => {
           instanceId: INSTANCE,
           instanceName: 'Vanilla',
           minecraft: '1.21.1',
+          loader: null,
           saves: ['Home', 'Far'],
         },
       ],
@@ -552,7 +599,7 @@ describe('WorldsView', () => {
     setup({ worlds_importable: () => [] });
     await screen.findByText('Our base');
     fireEvent.click(screen.getByRole('button', { name: 'Import a world' }));
-    expect(await screen.findByText(/No installation without mods/)).toBeInTheDocument();
+    expect(await screen.findByText(/No installation has single-player worlds/)).toBeInTheDocument();
   });
 
   it('restores a backup after naming its date, and exports the world', async () => {

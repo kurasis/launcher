@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-worlds-mod-sources"
+description = "Enables the worlds_mod_sources command without any pre-configured scope."
+commands.allow = ["worlds_mod_sources"]
+
+[[permission]]
+identifier = "deny-worlds-mod-sources"
+description = "Denies the worlds_mod_sources command without any pre-configured scope."
+commands.deny = ["worlds_mod_sources"]

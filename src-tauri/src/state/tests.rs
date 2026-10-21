@@ -860,20 +860,44 @@ fn a_room_gets_one_installation_of_its_own() {
     let state = state_at(dir.path(), RecordingSink::default());
     let mine = create(&state, "Mine", "1.21.1").unwrap();
     let room = "6f1d3b8e-2c4a-4f7e-9b1a-0c2d3e4f5a6b";
-    let first = state.room_instance(room, "Our world", "1.21.1").unwrap();
+    let first = state
+        .room_instance(room, "Our world", "1.21.1", None)
+        .unwrap();
     assert_ne!(first.id, mine.id, "the player's own is not used");
     assert_eq!(first.world_room.as_deref(), Some(room));
     assert_eq!(first.display_name, "Our world");
-    let again = state.room_instance(room, "Renamed", "1.21.1").unwrap();
+    let again = state
+        .room_instance(room, "Renamed", "1.21.1", None)
+        .unwrap();
     assert_eq!(again.id, first.id, "joining twice reuses it");
-    assert!(state.room_instance(room, "x", "1.20.4").is_err());
+    assert!(state.room_instance(room, "x", "1.20.4", None).is_err());
     let other = state
-        .room_instance("7f1d3b8e-2c4a-4f7e-9b1a-0c2d3e4f5a6b", "\n", "1.21.1")
+        .room_instance("7f1d3b8e-2c4a-4f7e-9b1a-0c2d3e4f5a6b", "\n", "1.21.1", None)
         .unwrap();
     assert_ne!(other.id, first.id);
     assert_eq!(other.display_name, "World with friends");
+    // A world with mods: the installation runs its loader, and only it.
+    let fabric = crate::loader::LoaderChoice {
+        kind: crate::loader::LoaderKind::Fabric,
+        version: "0.17.2".into(),
+    };
+    let modded_room = "8f1d3b8e-2c4a-4f7e-9b1a-0c2d3e4f5a6b";
+    let modded = state
+        .room_instance(modded_room, "Mods", "1.21.1", Some(fabric.clone()))
+        .unwrap();
+    assert_eq!(modded.loader.as_ref(), Some(&fabric));
+    assert!(
+        state
+            .room_instance(modded_room, "Mods", "1.21.1", None)
+            .is_err()
+    );
+    assert!(
+        state
+            .room_instance(room, "x", "1.21.1", Some(fabric))
+            .is_err()
+    );
     for junk in ["", "../x", "6F1D3B8E-2C4A-4F7E-9B1A-0C2D3E4F5A6B"] {
-        assert!(state.room_instance(junk, "x", "1.21.1").is_err());
+        assert!(state.room_instance(junk, "x", "1.21.1", None).is_err());
     }
     // It survives a restart as a room installation.
     drop(state);

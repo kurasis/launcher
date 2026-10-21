@@ -189,7 +189,8 @@ releases is handled by release, not by a table of versions:
 - `Done (...)! For help, type "help" or "?"` (before 1.13) also means ready.
 
 CI runs the real server of 1.7.10, 1.12.2, 1.16.5, 1.18.2, 1.19.2, 1.20.1, 1.21.1 and the
-newest release and snapshot. Fabric and other loaders arrive in W12.
+newest release and snapshot, and the Fabric server of 1.20.1, 1.21.1 and 26.3 with mods (W12).
+Other loaders follow in W12.
 
 ## Change log
 
@@ -253,3 +254,10 @@ newest release and snapshot. Fabric and other loaders arrive in W12.
   Login Start layout from the client's handshake, Java from the descriptor, and the few
   properties and the logging configuration that changed are written per release.
 - 2026-10-20 — A8 (owner): snapshots behind a switch in the new-world form, off by default.
+- 2026-10-21 — W12 (owner, plan doc): a world with mods is made from an installation with a
+  loader, or imported from one. Its mods are an immutable generation in the world
+  (`worlds/<id>/pack/`, files by SHA-256, a `.mrpack` with `env` per file), only catalog files,
+  the side of each from its jar, then the catalog, else both. The server is the loader's server
+  profile with pinned libraries, never the loader's installer; its `mods/` is rebuilt before each
+  start and settings are written only where missing. Fabric first, offered for the releases its
+  live test covers (1.20.1, 1.21.1, 26.3); releases only, no snapshots.

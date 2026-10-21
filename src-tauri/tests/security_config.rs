@@ -312,6 +312,7 @@ fn main_window_capability_grants_only_app_commands() {
             "allow-worlds-devices",
             "allow-worlds-revoke-device",
             "allow-worlds-importable",
+            "allow-worlds-mod-sources",
             "allow-worlds-import",
             "allow-worlds-backups",
             "allow-worlds-back-up",

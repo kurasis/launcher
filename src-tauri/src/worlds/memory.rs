@@ -12,6 +12,8 @@ use crate::error::{ErrorCode, LauncherError, LauncherResult};
 const MIB: u64 = 1024 * 1024;
 pub const MIN_SERVER_HEAP_MIB: u32 = 1024;
 pub const DEFAULT_SERVER_HEAP_MIB: u32 = 2048;
+/// A server with mods loads more classes and keeps more per chunk (W12).
+pub const DEFAULT_MODDED_SERVER_HEAP_MIB: u32 = 3072;
 pub const MAX_SERVER_HEAP_MIB: u32 = 16 * 1024;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]

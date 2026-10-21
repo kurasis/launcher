@@ -14,6 +14,7 @@ import { ipc } from '../../lib/ipc';
 import { numberLocale, strings } from '../../lib/strings';
 import { useFriends } from '../friends/useFriends';
 import { worldInviteBody } from '../friends/worldInvite';
+import { gameLabel } from '../instances/loaderLabel';
 import { Dialog } from '../mods/Dialog';
 import { RoomActions } from './RoomActions';
 import { WorldBackups } from './WorldBackups';
@@ -137,6 +138,15 @@ export function RoomPage({ room, local, state, onBack, onLocal, onLeft }: Props)
               }
             />
             <StatusBadge tone="neutral" label={t.roles[found.role]} />
+            {world?.loader != null && (
+              <StatusBadge
+                tone="neutral"
+                label={t.withMods({
+                  game: gameLabel({ versionId: world.minecraft, loader: world.loader }),
+                  mods: world.mods,
+                })}
+              />
+            )}
           </div>
           <RoomActions room={found} local={world} state={state} onLocal={onLocal} />
           {found.role === 'owner' && world !== null && <WorldBackups world={world} state={state} />}

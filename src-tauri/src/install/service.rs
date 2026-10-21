@@ -71,6 +71,20 @@ pub trait PlanSource: Send + Sync {
         requirement: &'a RuntimeRequirement,
         java: JavaProvider,
     ) -> BoxFuture<'a, LauncherResult<RuntimePackage>>;
+
+    /// Resolves the dedicated server's manifest of a loader version, for a
+    /// world with mods (W12).
+    fn server_loader<'a>(
+        &'a self,
+        _choice: &'a LoaderChoice,
+        _game: &'a str,
+    ) -> BoxFuture<'a, LauncherResult<(manifest::LoaderManifest, Sha1)>> {
+        Box::pin(async {
+            Err(LauncherError::internal(
+                "Mod loader servers are not available here.",
+            ))
+        })
+    }
 }
 
 pub struct LiveSource {
@@ -177,6 +191,14 @@ impl PlanSource for LiveSource {
                 None => self.adoptium.resolve(requirement).await,
             }
         })
+    }
+
+    fn server_loader<'a>(
+        &'a self,
+        choice: &'a LoaderChoice,
+        game: &'a str,
+    ) -> BoxFuture<'a, LauncherResult<(manifest::LoaderManifest, Sha1)>> {
+        Box::pin(async move { self.resolver().resolve_server(choice, game).await })
     }
 
     fn locked<'a>(&'a self, lock: &'a InstallLock) -> BoxFuture<'a, LauncherResult<GamePlan>> {

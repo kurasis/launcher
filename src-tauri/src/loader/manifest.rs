@@ -318,6 +318,33 @@ impl Resolver<'_> {
         Ok((manifest, sha1))
     }
 
+    /// Resolves and stores the dedicated server's manifest of a loader version
+    /// (W12): for Fabric and Quilt the meta service's server profile, whose
+    /// main class starts Mojang's server JAR named by `fabric.gameJarPath`.
+    pub async fn resolve_server(
+        &self,
+        choice: &LoaderChoice,
+        game: &str,
+    ) -> LauncherResult<(LoaderManifest, Sha1)> {
+        choice.validate()?;
+        if !valid_version(game) {
+            return Err(LauncherError::invalid_input("Choose a Minecraft version."));
+        }
+        let manifest = match choice.kind {
+            LoaderKind::Fabric | LoaderKind::Quilt => {
+                self.meta_profile_of(choice.kind, game, &choice.version, "server")
+                    .await?
+            }
+            LoaderKind::Forge | LoaderKind::NeoForge => {
+                return Err(LauncherError::invalid_input(
+                    "Worlds with this mod loader come later; Fabric works now.",
+                ));
+            }
+        };
+        let sha1 = store(self.root, &manifest)?;
+        Ok((manifest, sha1))
+    }
+
     fn client_for(&self, url: &str) -> LauncherResult<&dyn Fetch> {
         Ok(match SourcePolicy::for_artifact(url)?.0 {
             SourcePolicy::ModLoaders => self.loaders,
@@ -457,12 +484,23 @@ impl Resolver<'_> {
         game: &str,
         version: &str,
     ) -> LauncherResult<LoaderManifest> {
+        self.meta_profile_of(kind, game, version, "profile").await
+    }
+
+    /// The meta service's `profile` (the game) or `server` profile.
+    async fn meta_profile_of(
+        &self,
+        kind: LoaderKind,
+        game: &str,
+        version: &str,
+        side: &str,
+    ) -> LauncherResult<LoaderManifest> {
         let base = if kind == LoaderKind::Fabric {
             FABRIC_META
         } else {
             QUILT_META
         };
-        let url = format!("{base}/versions/loader/{game}/{version}/profile/json");
+        let url = format!("{base}/versions/loader/{game}/{version}/{side}/json");
         let body = self
             .loaders
             .fetch(&url, None, None, MAX_PROFILE_BYTES)
@@ -777,5 +815,87 @@ mod tests {
         let wrong = installer_location(LoaderKind::NeoForge, "1.21.1", "21.4.1").unwrap_err();
         assert_eq!(wrong.code, ErrorCode::InvalidInput);
         assert!(installer_location(LoaderKind::Forge, "1.21.1", "1.20.1-47.4.10").is_err());
+    }
+
+    /// Serves one meta service answer; anything else is offline.
+    struct Meta(String, Value);
+
+    impl Fetch for Meta {
+        fn fetch<'a>(
+            &'a self,
+            url: &'a str,
+            _etag: Option<&'a str>,
+            _last_modified: Option<&'a str>,
+            _max_bytes: usize,
+        ) -> crate::catalog::source::FetchFuture<'a> {
+            Box::pin(async move {
+                if url != self.0 {
+                    return Err(LauncherError::new(ErrorCode::NetworkError, "offline"));
+                }
+                Ok(crate::catalog::source::Fetched {
+                    not_modified: false,
+                    etag: None,
+                    last_modified: None,
+                    body: self.1.to_string().into_bytes(),
+                })
+            })
+        }
+    }
+
+    #[tokio::test]
+    async fn a_loader_server_comes_from_the_meta_services_server_profile() {
+        let dir = tempfile::tempdir().unwrap();
+        let root = DataRoot::new(dir.path().to_path_buf()).unwrap();
+        let url = "https://meta.fabricmc.net/v2/versions/loader/1.21.1/0.17.2/server/json";
+        let profile = serde_json::json!({
+            "id": "fabric-loader-0.17.2-1.21.1",
+            "inheritsFrom": "1.21.1",
+            "mainClass": "net.fabricmc.loader.impl.launch.knot.KnotServer",
+            "arguments": {"game": []},
+            "libraries": [{
+                "name": "org.ow2.asm:asm:9.8",
+                "url": "https://maven.fabricmc.net/",
+                "sha1": "dc19ecb3f7889b7860697215cae99c0f9b6f6b4b",
+                "size": 126_113
+            }]
+        });
+        let meta = Meta(url.to_owned(), profile.clone());
+        let resolver = Resolver {
+            loaders: &meta,
+            mojang: &meta,
+            root: &root,
+        };
+        let fabric = LoaderChoice {
+            kind: LoaderKind::Fabric,
+            version: "0.17.2".into(),
+        };
+        let (manifest, sha1) = resolver.resolve_server(&fabric, "1.21.1").await.unwrap();
+        assert_eq!(
+            manifest.main_class,
+            "net.fabricmc.loader.impl.launch.knot.KnotServer"
+        );
+        assert_eq!(manifest.source, url);
+        assert_eq!(
+            manifest.libraries[0].url,
+            "https://maven.fabricmc.net/org/ow2/asm/asm/9.8/asm-9.8.jar"
+        );
+        assert_eq!(load(&root, &sha1), Some(manifest));
+
+        // Another game version's profile, or a loader with an installer, is refused.
+        assert!(resolver.resolve_server(&fabric, "1.20.1").await.is_err());
+        let forge = LoaderChoice {
+            kind: LoaderKind::Forge,
+            version: "1.21.1-52.1.0".into(),
+        };
+        assert!(resolver.resolve_server(&forge, "1.21.1").await.is_err());
+        let mut wrong = profile;
+        wrong["inheritsFrom"] = "1.20.1".into();
+        let meta = Meta(url.to_owned(), wrong);
+        let resolver = Resolver {
+            loaders: &meta,
+            mojang: &meta,
+            root: &root,
+        };
+        assert!(resolver.resolve_server(&fabric, "1.21.1").await.is_err());
     }
 }

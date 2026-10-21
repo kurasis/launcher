@@ -23,7 +23,6 @@ use chrono::Utc;
 use serde::Serialize;
 
 use super::identity::Nick;
-use super::install;
 use super::memory::{self, Budget};
 use super::output::{self, Event};
 use super::properties::RunBinding;
@@ -31,6 +30,7 @@ use super::rcon;
 use super::receipt;
 use super::tuple;
 use super::world::{self, LastRun, Mutation, MutationKind, WorldFile};
+use super::{install, pack};
 use crate::error::{ErrorCode, LauncherError, LauncherResult};
 use crate::lifecycle::child::{self, ChildOutcome, OutputLine, Supervised};
 use crate::runtime::probe;
@@ -159,9 +159,19 @@ pub fn pick_ports() -> LauncherResult<(u16, u16)> {
     ))
 }
 
+/// What the JVM starts: Mojang's server JAR, or a mod loader's server class
+/// with its libraries, which finds the JAR by `fabric.gameJarPath` (W12).
+pub enum Main<'a> {
+    Jar,
+    Loader {
+        main_class: &'a str,
+        classpath: &'a [std::path::PathBuf],
+    },
+}
+
 /// The JVM and server arguments, in order.
-pub fn arguments(jar: &Path, heap_mib: u32) -> Vec<String> {
-    vec![
+pub fn arguments(jar: &Path, main: &Main<'_>, heap_mib: u32) -> Vec<String> {
+    let mut arguments = vec![
         format!("-Xms{}M", heap_mib.min(1024)),
         format!("-Xmx{heap_mib}M"),
         "-Dfile.encoding=UTF-8".to_owned(),
@@ -171,10 +181,31 @@ pub fn arguments(jar: &Path, heap_mib: u32) -> Vec<String> {
         // No lookups in messages (Log4Shell) where Log4j reads this (2.10 on);
         // the configuration's filter covers the older ones too.
         "-Dlog4j2.formatMsgNoLookups=true".to_owned(),
-        "-jar".to_owned(),
-        jar.to_string_lossy().into_owned(),
-        "--nogui".to_owned(),
-    ]
+    ];
+    match main {
+        Main::Jar => {
+            arguments.push("-jar".to_owned());
+            arguments.push(jar.to_string_lossy().into_owned());
+        }
+        Main::Loader {
+            main_class,
+            classpath,
+        } => {
+            let separator = if cfg!(windows) { ";" } else { ":" };
+            arguments.push(format!("-Dfabric.gameJarPath={}", jar.to_string_lossy()));
+            arguments.push("-cp".to_owned());
+            arguments.push(
+                classpath
+                    .iter()
+                    .map(|p| p.to_string_lossy())
+                    .collect::<Vec<_>>()
+                    .join(separator),
+            );
+            arguments.push((*main_class).to_owned());
+        }
+    }
+    arguments.push("--nogui".to_owned());
+    arguments
 }
 
 fn set_mutation(root: &DataRoot, world_id: WorldId, mutation: Option<Mutation>) {
@@ -226,6 +257,21 @@ pub fn start(
             "The world's server file is missing or changed. Install it again.",
         ));
     }
+    // A world with mods: its loader's server, and exactly its server mods.
+    let loader = match &world.pack {
+        Some(generation) => {
+            let manifest = generation.server_manifest.as_ref().ok_or_else(|| {
+                server_error(
+                    ErrorCode::RepairRequired,
+                    "The world's server is not installed yet.",
+                )
+            })?;
+            let loader = install::loader_classpath(root, manifest)?;
+            pack::place_server(root, &world)?;
+            Some(loader)
+        }
+        None => None,
+    };
     memory::validate_server_heap(launch.server_heap_mib)?;
     let budget: Budget = memory::budget(
         launch.physical_memory_bytes,
@@ -255,9 +301,16 @@ pub fn start(
     );
 
     let jar = root.server_jar(&pin.jar_sha1);
+    let main = match &loader {
+        Some((main_class, classpath)) => Main::Loader {
+            main_class,
+            classpath,
+        },
+        None => Main::Jar,
+    };
     let mut command = probe::sanitized_command(launch.java);
     command
-        .args(arguments(&jar, launch.server_heap_mib))
+        .args(arguments(&jar, &main, launch.server_heap_mib))
         .current_dir(root.world_server_dir(world.id));
 
     let signal: Signal = Arc::new((Mutex::new(Shared::default()), Condvar::new()));
@@ -607,7 +660,11 @@ mod tests {
 
     #[test]
     fn arguments_bound_the_heap_and_take_no_input_from_the_world() {
-        let args = arguments(Path::new("/data/shared/servers/x/server.jar"), 2048);
+        let args = arguments(
+            Path::new("/data/shared/servers/x/server.jar"),
+            &Main::Jar,
+            2048,
+        );
         assert_eq!(
             args,
             [
@@ -621,5 +678,33 @@ mod tests {
                 "--nogui"
             ]
         );
+    }
+
+    #[test]
+    fn a_loader_server_starts_its_class_with_its_libraries() {
+        let classpath = [
+            std::path::PathBuf::from("/data/shared/maven/a.jar"),
+            std::path::PathBuf::from("/data/shared/maven/b.jar"),
+        ];
+        let args = arguments(
+            Path::new("/data/shared/servers/x/server.jar"),
+            &Main::Loader {
+                main_class: "net.fabricmc.loader.impl.launch.knot.KnotServer",
+                classpath: &classpath,
+            },
+            3072,
+        );
+        let separator = if cfg!(windows) { ";" } else { ":" };
+        assert_eq!(
+            args[5..],
+            [
+                "-Dfabric.gameJarPath=/data/shared/servers/x/server.jar".to_owned(),
+                "-cp".to_owned(),
+                format!("/data/shared/maven/a.jar{separator}/data/shared/maven/b.jar"),
+                "net.fabricmc.loader.impl.launch.knot.KnotServer".to_owned(),
+                "--nogui".to_owned(),
+            ]
+        );
+        assert!(!args.iter().any(|a| a == "-jar"));
     }
 }

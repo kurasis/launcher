@@ -254,22 +254,34 @@ fn an_import_copies_the_world_and_leaves_the_original() {
     assert_eq!(read(&source.join("level.dat")), b"home");
     assert!(source.join("session.lock").exists());
 
-    // Not a world, a path out of saves, a modded installation.
+    // Not a world, a path out of saves.
     assert!(import(&root, &survival, "Notes", "x").is_err());
     for junk in ["../Home", "..", "", "a/b", " Home"] {
         assert!(import(&root, &survival, junk, "x").is_err(), "{junk:?}");
     }
-    let modded = instance(
-        id,
-        Some(crate::loader::LoaderChoice {
-            kind: crate::loader::LoaderKind::Fabric,
-            version: "0.16.0".into(),
-        }),
-    );
-    assert!(import(&root, &modded, "Home", "x").is_err());
-    assert!(importable(&root, &[modded]).is_empty());
     // Only the one world was made.
     assert_eq!(world::list(&root).len(), 1);
+
+    // An installation with a loader worlds with mods run is listed with it;
+    // another loader, or a release not tested with it, is not (W12).
+    let loader = |kind, version: &str| {
+        Some(crate::loader::LoaderChoice {
+            kind,
+            version: version.into(),
+        })
+    };
+    let fabric = instance(id, loader(crate::loader::LoaderKind::Fabric, "0.17.2"));
+    let found = importable(&root, std::slice::from_ref(&fabric));
+    assert_eq!(found.len(), 1);
+    assert_eq!(found[0].loader, fabric.loader);
+    let forge = instance(
+        id,
+        loader(crate::loader::LoaderKind::Forge, "1.21.1-52.1.0"),
+    );
+    assert!(importable(&root, &[forge]).is_empty());
+    let mut untested = fabric.clone();
+    untested.version_id = "1.21.4".into();
+    assert!(importable(&root, &[untested]).is_empty());
 }
 
 #[test]

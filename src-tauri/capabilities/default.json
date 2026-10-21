@@ -167,6 +167,7 @@
     "allow-worlds-devices",
     "allow-worlds-revoke-device",
     "allow-worlds-importable",
+    "allow-worlds-mod-sources",
     "allow-worlds-import",
     "allow-worlds-backups",
     "allow-worlds-back-up",

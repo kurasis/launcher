@@ -19,7 +19,7 @@ use serde_json::{Value, json};
 use super::pack::{self, ExportChoice, Gathered, LINKABLE, disk};
 use crate::download::CancelToken;
 use crate::error::{ErrorCode, LauncherError, LauncherResult};
-use crate::loader::{LoaderChoice, LoaderKind};
+use crate::loader::LoaderChoice;
 
 /// The catalog's limits (services/mods/src/own.rs).
 pub const MAX_ARCHIVE: u64 = 512 * 1024 * 1024;
@@ -251,19 +251,7 @@ fn index_json(
     let mut dependencies = serde_json::Map::new();
     dependencies.insert("minecraft".to_owned(), game.into());
     if let Some(loader) = loader {
-        let (name, version) = match loader.kind {
-            LoaderKind::Fabric => ("fabric-loader", loader.version.clone()),
-            LoaderKind::Quilt => ("quilt-loader", loader.version.clone()),
-            LoaderKind::Forge => (
-                "forge",
-                loader
-                    .version
-                    .strip_prefix(&format!("{game}-"))
-                    .unwrap_or(&loader.version)
-                    .to_owned(),
-            ),
-            LoaderKind::NeoForge => ("neoforge", loader.version.clone()),
-        };
+        let (name, version) = pack::loader_dependency(game, loader);
         dependencies.insert(name.to_owned(), version.into());
     }
     let files: Vec<Value> = linked

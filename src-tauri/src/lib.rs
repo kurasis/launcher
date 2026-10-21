@@ -930,6 +930,7 @@ fn handlers<R: tauri::Runtime>() -> impl Fn(tauri::ipc::Invoke<R>) -> bool + Sen
         commands::worlds_rooms,
         commands::worlds_room,
         commands::worlds_create,
+        commands::worlds_mod_sources,
         commands::worlds_accept_eula,
         commands::worlds_moderate,
         commands::worlds_leave_room,

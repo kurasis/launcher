@@ -168,14 +168,56 @@ jobs:
           WORLD_PROTOCOL: ${{ matrix.protocol }}
         run: >-
           cargo test --manifest-path src-tauri/Cargo.toml --locked --test live_server
-          -- --ignored --nocapture --test-threads=1
+          -- --ignored --exact host_a_world --nocapture --test-threads=1
+
+  world-server-mods:
+    # Worlds with mods W12: a loader's server with Fabric API and Sodium from
+    # the catalog, as the launcher builds a world's mods. A loader and release
+    # are offered to players only once they pass here (worlds/pack.rs TESTED).
+    name: World server ${{ matrix.loader }} ${{ matrix.minecraft }} (linux-x64)
+    runs-on: ubuntu-24.04
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { loader: 'fabric', minecraft: '1.20.1' }
+          - { loader: 'fabric', minecraft: '1.21.1' }
+          - { loader: 'fabric', minecraft: '26.3' }
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Install Linux system dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            libwebkit2gtk-4.1-dev libxdo-dev libssl-dev libdbus-1-dev \
+            libayatana-appindicator3-dev librsvg2-dev
+
+      - name: Install pinned Rust toolchain
+        run: |
+          rustup show active-toolchain || rustup toolchain install
+          rustc --version
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: src-tauri
+
+      - name: Install and run the world server with mods
+        env:
+          WORLD_VERSION: ${{ matrix.minecraft }}
+          WORLD_LOADER: ${{ matrix.loader }}
+        run: >-
+          cargo test --manifest-path src-tauri/Cargo.toml --locked --test live_server
+          -- --ignored --exact host_a_world_with_mods --nocapture --test-threads=1
 
   world-servers:
     # One result for every version above, under the check's earlier name.
     name: World server (linux-x64)
-    needs: world-server
+    needs: [world-server, world-server-mods]
     if: always()
     runs-on: ubuntu-24.04
     steps:
       - name: Every world server ran
-        run: test "${{ needs.world-server.result }}" = success
+        run: >-
+          test "${{ needs.world-server.result }}" = success &&
+          test "${{ needs.world-server-mods.result }}" = success

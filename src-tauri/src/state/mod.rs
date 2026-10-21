@@ -1084,6 +1084,7 @@ impl AppState {
         room: &str,
         name: &str,
         version: &str,
+        loader: Option<crate::loader::LoaderChoice>,
     ) -> LauncherResult<InstanceFile> {
         let room_id = uuid::Uuid::parse_str(room)
             .ok()
@@ -1102,6 +1103,11 @@ impl AppState {
                         "The room plays another Minecraft version than its installation.",
                     ));
                 }
+                if found.loader != loader {
+                    return Err(LauncherError::invalid_input(
+                        "The room plays another mod loader than its installation.",
+                    ));
+                }
                 return Ok(found.clone());
             }
             let display_name = validation::validate_display_name(name)
@@ -1116,7 +1122,7 @@ impl AppState {
                 id,
                 display_name,
                 version.as_str().to_owned(),
-                None,
+                loader,
                 0,
             );
             instance.world_room = Some(room.clone());
