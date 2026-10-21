@@ -60,14 +60,15 @@ describe('ServerAdTile', () => {
     expect(document.querySelector('img[src="x"]')).toBeNull();
     expect(screen.getByText('Ad')).toBeTruthy();
     expect(screen.getByText('12 of 100 online')).toBeTruthy();
+    expect(screen.getByTitle('12 of 100 online').textContent).toContain('12');
+    expect(screen.getByText('play.example.net')).toBeTruthy();
   });
 
   it('joins the server with a ready vanilla installation', async () => {
     const ready = instanceFixture({ id: 'ready-1', versionId: '1.21.4', health: 'ready' });
     const calls = listen();
     render(<ServerAdTile ad={adFixture()} snapshot={snapshotFixture({ instances: [ready] })} />);
-    expect(screen.getByText('1.21.4 · installed')).toBeTruthy();
-    fireEvent.click(screen.getByRole('button', { name: /Play/ }));
+    fireEvent.click(screen.getByRole('button', { name: 'Play, 1.21.4 · installed' }));
     await waitFor(() => {
       expect(payload(calls, 'launch_game')).toEqual({
         instanceId: 'ready-1',
@@ -85,8 +86,7 @@ describe('ServerAdTile', () => {
     });
     const base = snapshotFixture({ instances: [] });
     const { rerender } = render(<ServerAdTile ad={adFixture()} snapshot={base} />);
-    expect(screen.getByText('1.21.4 · downloads first')).toBeTruthy();
-    fireEvent.click(screen.getByRole('button', { name: /Play/ }));
+    fireEvent.click(screen.getByRole('button', { name: 'Play, 1.21.4 · downloads first' }));
     await waitFor(() => {
       expect(payload(calls, 'install_instance')).toEqual({ instanceId: 'new-1' });
     });
@@ -153,10 +153,14 @@ describe('ServerAdTile', () => {
       create_instance: instanceFixture({ id: 'n', versionId: '1.20.1', health: 'not_installed' }),
     });
     render(<ServerAdTile ad={adFixture()} snapshot={snapshotFixture({ instances: [] })} />);
-    fireEvent.click(screen.getByRole('button', { name: 'Choose a version for Northern Land' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Ad options: Northern Land' }));
+    fireEvent.click(screen.getByRole('menuitem', { name: 'Version: 1.21.4…' }));
+    expect(screen.getByRole('menu', { name: 'Choose a version for Northern Land' })).toBeTruthy();
     expect(screen.getByText('The server lets in 1.20.1 to 1.21.11')).toBeTruthy();
+    expect(document.activeElement).toBe(screen.getByRole('menuitemradio', { name: /1\.21\.4/ }));
     fireEvent.click(screen.getByRole('menuitemradio', { name: /1\.20\.1/ }));
-    expect(screen.getByText('1.20.1 · downloads first')).toBeTruthy();
+    expect(screen.queryByRole('menuitemradio')).toBeNull();
+    expect(screen.getByRole('button', { name: 'Play, 1.20.1 · downloads first' })).toBeTruthy();
     expect(window.localStorage.getItem('serverAd.version.7')).toBe('1.20.1');
     fireEvent.click(screen.getByRole('button', { name: /Play/ }));
     await waitFor(() => {
@@ -173,8 +177,27 @@ describe('ServerAdTile', () => {
         snapshot={snapshotFixture({ instances: [] })}
       />,
     );
-    expect(screen.queryByRole('button', { name: /Choose a version/ })).toBeNull();
-    expect(screen.getByText('1.21.4 · downloads first')).toBeTruthy();
+    fireEvent.click(screen.getByRole('button', { name: 'Ad options: Northern Land' }));
+    expect(screen.queryByRole('menuitem', { name: /Version/ })).toBeNull();
+    expect(
+      screen.getByRole('menuitem', { name: 'Copy the address play.example.net' }),
+    ).toBeTruthy();
+    expect(screen.getByRole('menuitem', { name: 'Report' })).toBeTruthy();
+    expect(screen.getByRole('button', { name: 'Play, 1.21.4 · downloads first' })).toBeTruthy();
+  });
+
+  it('shows a server that does not answer, and the icon as the picture', () => {
+    listen();
+    const icon = 'data:image/png;base64,iVBORw0KGgo=';
+    render(
+      <ServerAdTile
+        ad={adFixture({ up: false, online: null, max: null, icon })}
+        snapshot={snapshotFixture()}
+      />,
+    );
+    expect(screen.getByText('Offline')).toBeTruthy();
+    expect(screen.getByText('The server does not answer right now')).toBeTruthy();
+    expect(document.querySelectorAll(`img[src="${icon}"]`)).toHaveLength(2);
   });
 
   it('does not use an installation with a mod loader', () => {
@@ -185,7 +208,7 @@ describe('ServerAdTile', () => {
       loader: { kind: 'forge', version: '54.0.0' },
     });
     render(<ServerAdTile ad={adFixture()} snapshot={snapshotFixture({ instances: [forge] })} />);
-    expect(screen.getByText('1.21.4 · downloads first')).toBeTruthy();
+    expect(screen.getByRole('button', { name: 'Play, 1.21.4 · downloads first' })).toBeTruthy();
   });
 });
 

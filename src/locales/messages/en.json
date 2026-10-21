@@ -127,7 +127,11 @@
         "installedMark": "installed",
         "erid": "Ad token: {erid}",
         "installFailed": "{version} could not be installed. Open Installations to see why.",
-        "report": "Report"
+        "report": "Report",
+        "downShort": "Offline",
+        "versionItem": "Version: {version}…",
+        "menu": "Ad options: {name}",
+        "players": "{online, number}"
       },
       "itemMenu": "More: {title}",
       "copyLink": "Copy link",
