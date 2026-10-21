@@ -500,7 +500,9 @@ fn token_for(app: &App, key: &ed25519_dalek::SigningKey, account: &str, sid: &st
 }
 
 async fn send_as(app: &Arc<App>, ip: &str, token: &str) -> (StatusCode, Value) {
-    let body = solved(app, review(json!({}))).await;
+    let files =
+        json!({ "files": [{ "name": "latest.log", "kind": "text", "text": "a log line\n" }] });
+    let body = solved(app, review(files)).await;
     call(
         app,
         from(ip)
@@ -542,13 +544,27 @@ async fn signed_out_and_deleted_accounts_are_refused_and_forgotten() {
     let (status, _) = send_as(&app, "198.51.100.13", &token_for(&app, &key, ben, "s-ben")).await;
     assert_eq!(status, StatusCode::CREATED);
 
-    // Ann's account is deleted: her reviews, their files and her ban go,
-    // and a token from a session never seen here is refused too.
+    assert!(dir.path().join("files").join(id.to_string()).exists());
+
+    // Ann's account is deleted: her reviews stay without her and without
+    // their files, her ban goes, and a token from a session never seen here
+    // is refused too.
     api::purge(&app, &[(ann.to_owned(), api::now())], 0);
     let db = rusqlite::Connection::open(dir.path().join("reviews.db")).unwrap();
     let count = |sql: &str| -> i64 { db.query_row(sql, [ann], |r| r.get(0)).unwrap() };
     assert_eq!(count("SELECT COUNT(*) FROM reviews WHERE account = ?1"), 0);
     assert_eq!(count("SELECT COUNT(*) FROM bans WHERE value = ?1"), 0);
+    let (account, message, files_gone, files): (Option<String>, String, i64, i64) = db
+        .query_row(
+            "SELECT account, message, files_gone, (SELECT COUNT(*) FROM files WHERE review = ?1)
+             FROM reviews WHERE id = ?1",
+            [id],
+            |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?, r.get(3)?)),
+        )
+        .unwrap();
+    assert_eq!(account, None);
+    assert!(message.contains("Sodium"));
+    assert_eq!((files_gone, files), (1, 0));
     assert!(!dir.path().join("files").join(id.to_string()).exists());
     let others: i64 = db
         .query_row(

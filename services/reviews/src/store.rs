@@ -534,29 +534,40 @@ impl Store {
         Ok(true)
     }
 
-    /// Forgets a deleted account (D-064): the reviews it sent with their
-    /// files, and its ban. Returns how many reviews went.
+    /// Forgets a deleted account (D-064): the reviews it sent stay without
+    /// it and without their files (logs and pictures can name the player),
+    /// and its ban goes. Returns how many reviews it had.
     pub fn purge(&self, account: &str) -> Result<usize, String> {
-        let ids: Vec<i64> = {
-            let db = self.db();
-            let mut statement = db
-                .prepare("SELECT id FROM reviews WHERE account = ?1")
-                .map_err(err)?;
-            statement
-                .query_map([account], |r| r.get(0))
-                .and_then(Iterator::collect)
-                .map_err(err)?
-        };
+        let ids = self.ids("SELECT id FROM reviews WHERE account = ?1", [account])?;
         for id in &ids {
-            self.remove(*id)?;
+            self.drop_files(*id)?;
         }
-        self.db()
-            .execute(
-                "DELETE FROM bans WHERE kind = 'account' AND value = ?1",
-                [account],
-            )
-            .map_err(err)?;
+        let db = self.db();
+        db.execute(
+            "UPDATE reviews SET account = NULL WHERE account = ?1",
+            [account],
+        )
+        .map_err(err)?;
+        db.execute(
+            "DELETE FROM bans WHERE kind = 'account' AND value = ?1",
+            [account],
+        )
+        .map_err(err)?;
         Ok(ids.len())
+    }
+
+    /// A review's files, gone for good; the review stays.
+    fn drop_files(&self, id: i64) -> Result<(), String> {
+        match std::fs::remove_dir_all(self.files.join(id.to_string())) {
+            Err(e) if e.kind() != std::io::ErrorKind::NotFound => return Err(io(e)),
+            _ => {}
+        }
+        let db = self.db();
+        db.execute("DELETE FROM files WHERE review = ?1", [id])
+            .map_err(err)?;
+        db.execute("UPDATE reviews SET files_gone = 1 WHERE id = ?1", [id])
+            .map_err(err)?;
+        Ok(())
     }
 
     /// A review and its files, gone for good.
@@ -854,15 +865,7 @@ impl Store {
             [now - KEEP_FILES_DAYS * DAY],
         )?;
         for id in &stale {
-            match std::fs::remove_dir_all(self.files.join(id.to_string())) {
-                Err(e) if e.kind() != std::io::ErrorKind::NotFound => return Err(io(e)),
-                _ => {}
-            }
-            let db = self.db();
-            db.execute("DELETE FROM files WHERE review = ?1", [id])
-                .map_err(err)?;
-            db.execute("UPDATE reviews SET files_gone = 1 WHERE id = ?1", [id])
-                .map_err(err)?;
+            self.drop_files(*id)?;
         }
         let db = self.db();
         db.execute(

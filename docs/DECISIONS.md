@@ -1962,9 +1962,11 @@ archive from the Package workflow, upload it to
   their messages keep their copy as evidence. Skins, worlds, mods and reviews do the
   same within 15 seconds: worn skins; the rooms the account owns with all they hold,
   its places in other rooms, devices, invites, tickets and relay keys (open admissions
-  are revoked and name no account); its requests to the catalog, its reports, and its
-  own packs, which leave the catalog as at their author's request, without the
-  author's name; its reviews with their files, and a ban of the account.
+  are revoked and name no account); its requests to the catalog and its reports; its
+  reviews' files and a ban of the account. Its own packs and reviews stay, made
+  anonymous (Ai, 2026-10-21): a pack loses its author's name and belongs to no account,
+  so no one can change it and players can still report it; a review loses its link to
+  the account. What the player wrote in them stays.
 - **Sign-outs reach every service.** Friends, skins, worlds, mods and reviews ask the
   account service every 15 seconds which sessions they saw ended (signed out, password
   reset, account switched off or deleted) and refuse their access tokens from then on,

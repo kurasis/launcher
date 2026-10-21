@@ -6319,6 +6319,16 @@ async fn signed_out_and_deleted_accounts_are_refused_and_forgotten() {
         StatusCode::OK
     );
 
+    let found = |hits: &Value, id: &str| {
+        hits["hits"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .any(|h| h["id"] == id)
+    };
+    let (_, hits) = t.get("/v1/search?q=Player").await;
+    assert!(found(&hits, &pack), "{hits}");
+
     // Player 2's account is deleted.
     crate::api::purge(&t.app, &[(account(2), now())], 0);
     assert_eq!(
@@ -6349,14 +6359,32 @@ async fn signed_out_and_deleted_accounts_are_refused_and_forgotten() {
         )
         .unwrap();
     assert_eq!(authors, 0);
-    assert_eq!(
-        t.app.store.project_status(&pack).unwrap().as_deref(),
-        Some("removed")
-    );
-    assert_eq!(
-        t.get(&format!("/v1/projects/{pack}")).await.0,
-        StatusCode::NOT_FOUND
-    );
+    // Its pack stays in the catalog, named by no one and found by no name.
+    let (status, project) = t.get(&format!("/v1/projects/{pack}")).await;
+    assert_eq!(status, StatusCode::OK, "{project}");
+    assert_eq!(project["authors"], json!([]), "{project}");
+    let (_, hits) = t.get("/v1/search?q=Player").await;
+    assert!(!found(&hits, &pack), "{hits}");
+    assert!(found(&hits, &other), "{hits}");
+    // No one can change it, and players can still report it.
+    let (status, _) = t
+        .player(
+            3,
+            "POST",
+            &format!("/v1/packs/{pack}/hidden"),
+            json!({ "hidden": true }),
+        )
+        .await;
+    assert_eq!(status, StatusCode::NOT_FOUND);
+    let (status, _) = t
+        .player(
+            3,
+            "POST",
+            &format!("/v1/projects/{pack}/report"),
+            json!({ "reason": "broken" }),
+        )
+        .await;
+    assert_eq!(status, StatusCode::ACCEPTED);
     // Player 3's pack stays.
     assert_eq!(
         t.get(&format!("/v1/projects/{other}")).await.0,

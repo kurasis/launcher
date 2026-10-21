@@ -335,6 +335,10 @@ CREATE VIRTUAL TABLE IF NOT EXISTS project_fts USING fts5(
 );
 "#;
 
+/// Whose an own pack of a deleted account is: no account's, since account
+/// IDs are UUIDs.
+pub const NO_ACCOUNT: &str = "deleted";
+
 pub struct Store {
     db: Mutex<Connection>,
     path: PathBuf,
@@ -2004,9 +2008,11 @@ impl Store {
             .map_err(sql)
     }
 
-    /// Forgets a deleted account's requests to add to the catalog and its
-    /// reports (D-064). Returns its own packs, for taking out.
-    pub fn purge_account(&self, account: &str) -> Result<Vec<String>> {
+    /// Forgets a deleted account (D-064): its requests to add to the catalog
+    /// and its reports go; its own packs stay, without the author's name and
+    /// owned by no account, so no one can change them. Returns how many packs
+    /// it had.
+    pub fn purge_account(&self, account: &str) -> Result<usize> {
         let mut db = self.db();
         let tx = db.transaction().map_err(sql)?;
         let packs: Vec<String> = {
@@ -2018,30 +2024,30 @@ impl Store {
                 .collect::<std::result::Result<_, _>>()
                 .map_err(sql)?
         };
+        for pack in &packs {
+            tx.execute("DELETE FROM project_author WHERE project_id = ?1", [pack])
+                .map_err(sql)?;
+            tx.execute(
+                "UPDATE project_fts SET authors = '' WHERE project_id = ?1",
+                [pack],
+            )
+            .map_err(sql)?;
+        }
         for statement in [
             "DELETE FROM import_request WHERE account_id = ?1",
             "DELETE FROM report WHERE account_id = ?1",
         ] {
             tx.execute(statement, [account]).map_err(sql)?;
         }
-        tx.commit().map_err(sql)?;
-        Ok(packs)
-    }
-
-    /// What named the author of an own pack taken out of the catalog: its
-    /// author's name and whose it was.
-    pub fn forget_own(&self, project: &str) -> Result<()> {
-        let mut db = self.db();
-        let tx = db.transaction().map_err(sql)?;
         for statement in [
-            "DELETE FROM project_author WHERE project_id = ?1",
-            "DELETE FROM project_fts WHERE project_id = ?1",
-            "DELETE FROM own_version WHERE project_id = ?1",
-            "DELETE FROM own_pack WHERE project_id = ?1",
+            "UPDATE own_pack SET account_id = ?2 WHERE account_id = ?1",
+            "UPDATE own_version SET account_id = ?2 WHERE account_id = ?1",
         ] {
-            tx.execute(statement, [project]).map_err(sql)?;
+            tx.execute(statement, params![account, NO_ACCOUNT])
+                .map_err(sql)?;
         }
-        tx.commit().map_err(sql)
+        tx.commit().map_err(sql)?;
+        Ok(packs.len())
     }
 
     /// Takes a project out of the catalog at its author's request: hidden

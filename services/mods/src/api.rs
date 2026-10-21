@@ -1029,8 +1029,8 @@ pub async fn purge_deleted(
 }
 
 /// Refuses the tokens of deleted accounts, then cleans them out (D-064):
-/// their requests and reports go, and their own packs leave the catalog as
-/// at their author's request, without the author's name (blocking).
+/// their requests and reports go, and their own packs stay without the
+/// author's name or account (blocking).
 pub fn purge(app: &App, deleted: &[(String, i64)], since: i64) -> i64 {
     let now = now();
     let lately: Vec<String> = deleted
@@ -1039,25 +1039,9 @@ pub fn purge(app: &App, deleted: &[(String, i64)], since: i64) -> i64 {
         .map(|(account, _)| account.clone())
         .collect();
     app.sessions.forget(&lately);
-    let owner = crate::owner::Owner {
-        store: &app.store,
-        blobs: &app.blobs,
-        urls: &app.urls,
-        purge: app.purge.as_deref(),
-        bucket: app.r2.as_deref(),
-        virustotal: None,
-        now,
-    };
     let mut newest = since;
     for (account, at) in deleted {
-        let cleaned = app.store.purge_account(account).and_then(|packs| {
-            for pack in packs {
-                owner.remove(&pack, "the account was deleted")?;
-                app.store.forget_own(&pack)?;
-            }
-            Ok(())
-        });
-        if let Err(e) = cleaned {
+        if let Err(e) = app.store.purge_account(account) {
             eprintln!("lapi-mods: cleaning out a deleted account failed: {e}");
             return newest;
         }
