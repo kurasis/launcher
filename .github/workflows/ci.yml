@@ -176,7 +176,7 @@ jobs:
     name: World servers with mods
     uses: ./.github/workflows/world-mods.yml
     with:
-      set: on_every_change
+      set: tested
 
   world-servers:
     # One result for every version above, under the check's earlier name.
