@@ -14,6 +14,22 @@ import styles from './Mods.module.css';
 /** How often a request in progress is asked about. */
 export const POLL_MS = 3000;
 
+/** How long the dialog waits with a spinner: most projects arrive by then. */
+export const PATIENCE_MS = 30_000;
+
+/** How often a request is asked about while the dialog waits for it. */
+export const EAGER_POLL_MS = 1000;
+
+/** The spinner shown while the dialog waits. */
+function Waiting({ label }: { label: string }) {
+  return (
+    <p className={styles.waiting} role="status">
+      <span className={styles.spinner} aria-hidden="true" />
+      {label}
+    </p>
+  );
+}
+
 /** A sign-in button when the error is that the launcher account is signed out. */
 export function SignInNotice({ error }: { error: unknown }) {
   const signedOut = isLauncherError(error) && error.code === 'AUTH_REAUTH_REQUIRED';
@@ -40,10 +56,13 @@ export function RequestProgress({
   request,
   onChange,
   onOpen,
+  eager = false,
 }: {
   request: ModsImportRequest;
   onChange: (request: ModsImportRequest) => void;
   onOpen: (projectId: string) => void;
+  /** Someone waits for it: a spinner and quicker questions, no hint to close. */
+  eager?: boolean;
 }) {
   const t = strings.mods.requests;
   const [error, setError] = useState<unknown>(null);
@@ -53,16 +72,19 @@ export function RequestProgress({
 
   useEffect(() => {
     if (!waiting) return;
-    const timer = window.setInterval(() => {
-      void ipc
-        .modsImportState(id)
-        .then(onChange)
-        .catch(() => undefined);
-    }, POLL_MS);
+    const timer = window.setInterval(
+      () => {
+        void ipc
+          .modsImportState(id)
+          .then(onChange)
+          .catch(() => undefined);
+      },
+      eager ? EAGER_POLL_MS : POLL_MS,
+    );
     return () => {
       window.clearInterval(timer);
     };
-  }, [waiting, id, onChange]);
+  }, [waiting, id, onChange, eager]);
 
   return (
     <div className={styles.request}>
@@ -70,7 +92,8 @@ export function RequestProgress({
         <bdi>{request.input}</bdi>
         <StatusBadge tone={stateTone(request.state)} label={t.states[request.state]} />
       </p>
-      {waiting && <p className={styles.muted}>{t.waitingHint}</p>}
+      {waiting &&
+        (eager ? <Waiting label={t.adding} /> : <p className={styles.muted}>{t.waitingHint}</p>)}
       {request.state === 'failed' && <p>{failureText(request.error)}</p>}
       {request.state === 'choosing' && (
         <>
@@ -154,7 +177,9 @@ export function RequestProgress({
 
 /**
  * "Add to the catalog": a link to a project on Modrinth or CurseForge, or a name (D-066).
- * The dialog can be closed; the request stays in "My requests".
+ * The dialog waits with a spinner for up to [`PATIENCE_MS`] after sending and
+ * again after a pick, since most projects arrive by then; past that it says
+ * the dialog can be closed, and the request stays in "My requests".
  */
 export function AddToCatalog({
   initial,
@@ -170,7 +195,35 @@ export function AddToCatalog({
   const [sending, setSending] = useState(false);
   const [error, setError] = useState<unknown>(null);
   const [request, setRequest] = useState<ModsImportRequest | null>(null);
+  // Each send or pick starts a wait; the spinner shows until it runs out.
+  const [wait, setWait] = useState(0);
+  const [expired, setExpired] = useState(0);
+  const patient = wait > expired;
   const text = input.trim();
+  const state = request?.state ?? null;
+
+  useEffect(() => {
+    if (wait === 0) return;
+    const timer = window.setTimeout(() => {
+      setExpired(wait);
+    }, PATIENCE_MS);
+    return () => {
+      window.clearTimeout(timer);
+    };
+  }, [wait]);
+
+  const change = useCallback(
+    (next: ModsImportRequest) => {
+      // A pick sends the request on: wait for it again.
+      if (state === 'choosing' && (next.state === 'queued' || next.state === 'importing')) {
+        setWait((n) => n + 1);
+      }
+      setRequest(next);
+    },
+    [state],
+  );
+
+  const waiting = state === 'queued' || state === 'importing';
   return (
     <Dialog title={strings.mods.addToCatalog} onClose={onClose} wide>
       {request === null ? (
@@ -181,6 +234,7 @@ export function AddToCatalog({
             if (text === '') return;
             setSending(true);
             setError(null);
+            setWait((n) => n + 1);
             void ipc
               .modsImport(text)
               .then(setRequest)
@@ -203,6 +257,7 @@ export function AddToCatalog({
               />
             )}
           </Field>
+          {sending && <Waiting label={t.adding} />}
           {error !== null && <SignInNotice error={error} />}
           <div className={forms.actions}>
             <Button type="submit" variant="primary" disabled={sending || text === ''}>
@@ -213,8 +268,8 @@ export function AddToCatalog({
         </form>
       ) : (
         <>
-          <RequestProgress request={request} onChange={setRequest} onOpen={onOpen} />
-          <p className={styles.muted}>{t.closeHint}</p>
+          <RequestProgress request={request} onChange={change} onOpen={onOpen} eager={patient} />
+          {!(patient && waiting) && <p className={styles.muted}>{t.closeHint}</p>}
           <div className={forms.actions}>
             <Button onClick={onClose}>{t.close}</Button>
           </div>

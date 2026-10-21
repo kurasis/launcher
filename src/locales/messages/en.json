@@ -1273,6 +1273,14 @@
         "fetchAsked": "The catalog is saving this version.",
         "versionGone": "The source no longer has this version; the catalog keeps it.",
         "add": "Add to installation",
+        "cannotAdd": {
+          "noInstallation": "Choose an installation at the top first.",
+          "held": "The malware check is holding this version’s file back.",
+          "noFile": "This version has no file.",
+          "noLoader": "“{name}” has no mod loader. Mods go into an installation with Fabric, Quilt, Forge or NeoForge.",
+          "wrongLoader": "This version is for {loaders}, and “{name}” runs {loader}.",
+          "wrongGame": "This version is for Minecraft {games}, and “{name}” is on {game}."
+        },
         "keep": "Save to the catalog",
         "changes": "What’s new",
         "noChanges": "The author wrote nothing about this version.",
@@ -1442,6 +1450,7 @@
           "other": "The project could not be added. Try again later."
         },
         "waitingHint": "You can close this; the request stays in “My requests”.",
+        "adding": "Adding to the catalog…",
         "choose": "Several projects have this name. Which one?",
         "inCatalog": "Already in the catalog",
         "pick": "This one",

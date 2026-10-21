@@ -1,5 +1,11 @@
 import type { StatusTone } from '../../components/StatusBadge';
-import type { InstanceSummary, ModsImportRequest, ModsKind } from '../../lib/contracts';
+import type {
+  InstanceSummary,
+  LoaderKind,
+  ModsImportRequest,
+  ModsKind,
+  ModsVersion,
+} from '../../lib/contracts';
 import { numberLocale, strings } from '../../lib/strings';
 
 /** Where pictures of the catalog come from; nothing else is drawn (D-066). */
@@ -51,6 +57,55 @@ export function installable(kind: ModsKind): boolean {
     kind === 'datapack' ||
     kind === 'world'
   );
+}
+
+/** The mods' loaders an installation's loader runs (Quilt runs Fabric's too). */
+const MOD_LOADERS: Record<LoaderKind, readonly string[]> = {
+  fabric: ['fabric'],
+  quilt: ['quilt', 'fabric'],
+  forge: ['forge'],
+  neoforge: ['neoforge'],
+};
+
+/** At most this many game versions are named in a reason. */
+const GAMES_NAMED = 4;
+
+/**
+ * Why a version cannot be added to the installation, in the player's words;
+ * `null` when it can. The launcher's core refuses the same (`misfit` in
+ * src-tauri/src/mods/content.rs); a game version that does not match only
+ * warns for kinds other than mods.
+ */
+export function cannotAdd(
+  kind: ModsKind,
+  version: ModsVersion,
+  instance: InstanceSummary | null,
+): string | null {
+  const t = strings.mods.project.cannotAdd;
+  if (instance === null) return t.noInstallation;
+  if (version.files.some((f) => f.held)) return t.held;
+  if (version.files.length === 0) return t.noFile;
+  if (kind !== 'mod') return null;
+  const name = instance.displayName;
+  const loader = instance.loader?.kind;
+  if (loader === undefined) return t.noLoader({ name });
+  const names = strings.mods.loaderNames as Record<string, string | undefined>;
+  if (!version.loaders.some((l) => MOD_LOADERS[loader].includes(l))) {
+    return t.wrongLoader({
+      loaders: version.loaders.map((l) => names[l] ?? l).join(', '),
+      loader: names[loader] ?? loader,
+      name,
+    });
+  }
+  if (!version.games.includes(instance.versionId)) {
+    const games = version.games.slice(0, GAMES_NAMED).join(', ');
+    return t.wrongGame({
+      games: version.games.length > GAMES_NAMED ? `${games}…` : games,
+      game: instance.versionId,
+      name,
+    });
+  }
+  return null;
 }
 
 /** A modpack's archive: Modrinth's `.mrpack` or CurseForge's `.zip`. */

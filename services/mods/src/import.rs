@@ -682,7 +682,7 @@ async fn project_packwiz(app: &App, url: &str, request: Option<&str>) -> Result<
                 if !paths.insert(file.path.to_ascii_lowercase()) {
                     continue;
                 }
-                let (part, hashed) = download(app, &at, packwiz::MAX_OVERRIDE, &[]).await?;
+                let (part, hashed) = download(app, &at, packwiz::MAX_OVERRIDE, false).await?;
                 overrides.push((file.path.clone(), part));
                 override_bytes += hashed.size;
                 if override_bytes > packwiz::MAX_OVERRIDES {
@@ -713,7 +713,7 @@ async fn project_packwiz(app: &App, url: &str, request: Option<&str>) -> Result<
                     if !app.blobs.may_keep(0) {
                         return Err(JobError::new("no_space", true));
                     }
-                    let (part, hashed) = download(app, &meta.url, MAX_FILE, &[]).await?;
+                    let (part, hashed) = download(app, &meta.url, MAX_FILE, false).await?;
                     if meta.hash.matches(&hashed) == Some(false) {
                         let _ = std::fs::remove_file(&part);
                         return Err(JobError::new("hash_mismatch", true));
@@ -1172,15 +1172,20 @@ async fn version(
     Ok(())
 }
 
-/// Downloads `url` into a new part file and hashes it.
+/// Downloads `url` into a new part file and hashes it; a `picture` may come
+/// from any public host ([`crate::fetch::picture_site`]).
 async fn download(
     app: &App,
     url: &str,
     max: u64,
-    headers: &'static [&'static str],
+    picture: bool,
 ) -> Result<(PathBuf, Hashed), JobError> {
     let part = app.blobs.part();
-    let result = app.client.get_with(url, &part, max, false, headers).await;
+    let result = if picture {
+        app.client.picture(url, &part, max).await
+    } else {
+        app.client.get(url, &part, max, false).await
+    };
     if let Err(e) = result {
         let _ = std::fs::remove_file(&part);
         return Err(e.into());
@@ -1373,7 +1378,7 @@ async fn files(app: &App, version: &str, request: Option<&str>) -> Result<(), Jo
             return Err(JobError::new("no_space", true));
         }
         let max = if declared > 0 { declared } else { MAX_FILE };
-        let (part, hashed) = match download(app, &file.origin_url, max, &[]).await {
+        let (part, hashed) = match download(app, &file.origin_url, max, false).await {
             Ok(got) => got,
             Err(e) => {
                 failed = Some(e);
@@ -1451,7 +1456,7 @@ async fn pack_files(app: &App, version: &str) -> Result<(), JobError> {
         if !app.blobs.may_keep(declared) {
             return Err(JobError::new("no_space", true));
         }
-        let (part, hashed) = match download(app, &file.origin_url, declared, &[]).await {
+        let (part, hashed) = match download(app, &file.origin_url, declared, false).await {
             Ok(got) => got,
             Err(e) => {
                 failed = Some(e);
@@ -1509,7 +1514,7 @@ async fn curseforge_pack_file(
                 return Err(JobError::new("no_space", true));
             }
             let max = if declared > 0 { declared } else { MAX_FILE };
-            let (part, hashed) = download(app, &file.origin_url, max, &[]).await?;
+            let (part, hashed) = download(app, &file.origin_url, max, false).await?;
             if declared > 0 && hashed.size != declared {
                 let _ = std::fs::remove_file(&part);
                 return Err(JobError::new("hash_mismatch", true));
@@ -1550,7 +1555,7 @@ async fn keep_image(app: &App, url: &str) -> Result<(String, String), JobError> 
     {
         return Ok((sha256, media_type));
     }
-    let (part, hashed) = download(app, url, MAX_IMAGE, crate::fetch::PICTURE).await?;
+    let (part, hashed) = download(app, url, MAX_IMAGE, true).await?;
     let mut head = [0u8; 16];
     let read = {
         use std::io::Read as _;
@@ -1632,18 +1637,22 @@ async fn image(app: &App, project: &str, kind: &str, url: &str) -> Result<(), Jo
 }
 
 /// The pictures a description shows that we may fetch: each address as
-/// written and as fetched (a plain `http:` one of a listed site over HTTPS,
-/// as older descriptions on CurseForge have them).
+/// written and as fetched (a plain `http:` one over HTTPS, as older
+/// descriptions on CurseForge have them). A picture is an address with a
+/// picture's ending, or any address a description shows as a picture
+/// (`![…](…)`, `<img src=…>`); what it really is, the download tells.
 pub fn body_images(body: &str) -> Vec<(String, String)> {
     let mut found: Vec<(String, String)> = Vec::new();
-    let mut rest = body;
+    let mut from = 0;
     loop {
+        let rest = &body[from..];
         let at = match (rest.find("https://"), rest.find("http://")) {
             (Some(a), Some(b)) => a.min(b),
             (Some(a), None) | (None, Some(a)) => a,
             (None, None) => break,
         };
-        let tail = &rest[at..];
+        let start = from + at;
+        let tail = &body[start..];
         let end = tail
             .find(|c: char| {
                 c.is_whitespace() || matches!(c, ')' | '"' | '\'' | '<' | '>' | ']' | '`')
@@ -1658,17 +1667,64 @@ pub fn body_images(body: &str) -> Vec<(String, String)> {
         let path = lower.split(['?', '#']).next().unwrap_or_default();
         let picture = [".png", ".jpg", ".jpeg", ".gif", ".webp"]
             .iter()
-            .any(|e| path.ends_with(e));
-        if picture && crate::fetch::site(&url).is_some() && !found.iter().any(|(w, _)| w == written)
+            .any(|e| path.ends_with(e))
+            || shown_as_picture(&body[..start]);
+        if picture
+            && crate::fetch::picture_site(&url).is_some()
+            && !found.iter().any(|(w, _)| w == written)
         {
             found.push((written.to_owned(), url));
             if found.len() >= MAX_BODY_IMAGES {
                 break;
             }
         }
-        rest = &tail[end.max(1)..];
+        from = start + end.max(1);
     }
     found
+}
+
+/// Whether the address that follows `before` is the source of a picture:
+/// `![alt](` in Markdown or `<img … src=` in HTML.
+fn shown_as_picture(before: &str) -> bool {
+    if let Some(inner) = before.strip_suffix("](") {
+        // The `[` that this `]` closes, within a sane length of alt text.
+        let mut depth = 0usize;
+        for (at, c) in inner.char_indices().rev().take(512) {
+            match c {
+                ']' => depth += 1,
+                '[' if depth == 0 => return inner[..at].ends_with('!'),
+                '[' => depth -= 1,
+                _ => {}
+            }
+        }
+        return false;
+    }
+    let attribute = before
+        .strip_suffix('"')
+        .or_else(|| before.strip_suffix('\''))
+        .unwrap_or(before)
+        .trim_end();
+    let Some(attribute) = attribute.strip_suffix('=') else {
+        return false;
+    };
+    let attribute = attribute.trim_end();
+    let lower = attribute
+        .get(attribute.len().saturating_sub(4)..)
+        .unwrap_or_default()
+        .to_ascii_lowercase();
+    if lower != " src" && lower != "\nsrc" && lower != "\tsrc" {
+        return false;
+    }
+    // The tag the attribute is in: the last `<` before it.
+    attribute.rfind('<').is_some_and(|open| {
+        let tag = &attribute[open + 1..];
+        tag.get(..3)
+            .is_some_and(|name| name.eq_ignore_ascii_case("img"))
+            && tag
+                .get(3..)
+                .is_some_and(|t| t.starts_with(char::is_whitespace))
+            && !tag.contains('>')
+    })
 }
 
 async fn body(app: &App, project: &str) -> Result<(), JobError> {

@@ -54,21 +54,63 @@ pub const HOSTS: &[(&str, Site)] = &[
     ("gitlab.com", Site::Code),
 ];
 
-/// The site of a URL we may fetch: HTTPS, a listed host, no user or port.
-pub fn site(url: &str) -> Option<Site> {
+/// An HTTPS URL with no user or port, of a sane length.
+fn plain_https(url: &str) -> Option<reqwest::Url> {
     if url.len() > 2048 || url.chars().any(|c| c.is_control() || c.is_whitespace()) {
         return None;
     }
     let parsed = reqwest::Url::parse(url).ok()?;
-    if parsed.scheme() != "https"
-        || parsed.port().is_some()
-        || !parsed.username().is_empty()
-        || parsed.password().is_some()
-    {
-        return None;
-    }
+    (parsed.scheme() == "https"
+        && parsed.port().is_none()
+        && parsed.username().is_empty()
+        && parsed.password().is_none())
+    .then_some(parsed)
+}
+
+/// The site of a URL we may fetch: HTTPS, a listed host, no user or port.
+pub fn site(url: &str) -> Option<Site> {
+    let parsed = plain_https(url)?;
     let host = parsed.host_str()?;
     HOSTS.iter().find(|(h, _)| *h == host).map(|(_, s)| *s)
+}
+
+/// Names that never lead to the open internet.
+const INNER_NAMES: &[&str] = &[
+    ".localhost",
+    ".local",
+    ".internal",
+    ".intranet",
+    ".lan",
+    ".home",
+    ".corp",
+    ".private",
+    ".arpa",
+    ".onion",
+    ".test",
+    ".invalid",
+    ".example",
+];
+
+/// The site of a picture a description shows: a listed host, or any other
+/// public name (never an address, never a name of an inner network), whose
+/// pictures are fetched at the pace of [`Site::Images`]. Whatever comes back
+/// is kept only when it is a picture, and players get our copy.
+pub fn picture_site(url: &str) -> Option<Site> {
+    if let Some(listed) = site(url) {
+        return Some(listed);
+    }
+    let parsed = plain_https(url)?;
+    // `domain` is `None` for an address.
+    let host = parsed.domain()?.trim_end_matches('.').to_ascii_lowercase();
+    let named = host.len() <= 253
+        && host.contains('.')
+        && host
+            .split('.')
+            .all(|l| !l.is_empty() && l.len() <= 63 && l.bytes().all(|b| b.is_ascii_alphanumeric() || b == b'-'))
+        // A last label of digits only is an address written oddly.
+        && !host.rsplit('.').next().is_some_and(|l| l.bytes().all(|b| b.is_ascii_digit()))
+        && !INNER_NAMES.iter().any(|n| host.ends_with(n) || host == n[1..]);
+    named.then_some(Site::Images)
 }
 
 /// True for globally routable unicast addresses (as the mirror checks).
@@ -482,12 +524,19 @@ impl Client {
         max_bytes: u64,
         json: bool,
     ) -> Result<u64, FetchError> {
-        self.get_with(url, to, max_bytes, json, &[]).await
+        self.get_by(site, url, to, max_bytes, json, &[]).await
     }
 
-    /// [`Client::get`] with headers of our own choosing, such as [`PICTURE`].
-    pub async fn get_with(
+    /// A picture a description shows, from any public host
+    /// ([`picture_site`]), asked as a browser asks for an `<img>`.
+    pub async fn picture(&self, url: &str, to: &Path, max_bytes: u64) -> Result<u64, FetchError> {
+        self.get_by(picture_site, url, to, max_bytes, false, PICTURE)
+            .await
+    }
+
+    async fn get_by(
         &self,
+        rule: fn(&str) -> Option<Site>,
         url: &str,
         to: &Path,
         max_bytes: u64,
@@ -496,7 +545,10 @@ impl Client {
     ) -> Result<u64, FetchError> {
         let mut url = url.to_owned();
         for _ in 0..6 {
-            let site = site(&url).ok_or(FetchError::NotAllowed)?;
+            let site = rule(&url).ok_or(FetchError::NotAllowed)?;
+            // A host nobody listed must have a public name even when a proxy
+            // looks it up for us.
+            let unlisted = self::site(&url).is_none();
             let mut tried = Vec::new();
             let reply = loop {
                 let Some(exit) = self.pick(site, &tried) else {
@@ -507,6 +559,9 @@ impl Client {
                 let resolve = if proxy.is_none() {
                     Some(self.public_address(&url).await?)
                 } else {
+                    if unlisted {
+                        self.public_address(&url).await?;
+                    }
                     None
                 };
                 let request = Request {
@@ -553,8 +608,8 @@ impl Client {
                 }
                 301 | 302 | 303 | 307 | 308 => {
                     let next = reply.location.ok_or(FetchError::Status(reply.status))?;
-                    // The next hop must be listed too, as must every hop after.
-                    self::site(&next).ok_or(FetchError::NotAllowed)?;
+                    // The next hop must pass the same rule, as must every hop after.
+                    rule(&next).ok_or(FetchError::NotAllowed)?;
                     url = next;
                 }
                 404 | 410 => return Err(FetchError::NotFound),

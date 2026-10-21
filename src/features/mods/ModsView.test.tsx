@@ -13,6 +13,8 @@ import type {
   ModsVersion,
 } from '../../lib/contracts';
 import { instanceFixture, snapshotFixture } from '../../test/fixtures';
+import { PATIENCE_MS } from './AddToCatalog';
+import { cannotAdd } from './helpers';
 import { ModsView, type ModsSection } from './ModsView';
 import { RichText } from './RichText';
 
@@ -236,6 +238,64 @@ describe('RichText', () => {
     fireEvent.click(screen.getByRole('link', { name: 'good link' }));
     expect(onLink).toHaveBeenCalledWith('https://example.com');
   });
+
+  it('leaves out empty headings and paragraphs and keeps heading levels apart', () => {
+    const nodes: DocNode[] = [
+      { k: 'h3', c: [] },
+      { k: 'h3', c: [{ k: 'text', text: '  ' }] },
+      { k: 'p', c: [{ k: 'text', text: '\n' }] },
+      { k: 'h2', c: [{ k: 'text', text: 'Big' }] },
+      { k: 'h3', c: [{ k: 'text', text: 'Graphics' }] },
+      { k: 'h4', c: [{ k: 'text', text: 'Small' }] },
+      { k: 'p', c: [{ k: 'img', href: PICTURE, text: 'only a picture' }] },
+    ];
+    const { container } = render(<RichText nodes={nodes} onLink={vi.fn()} />);
+    expect(container.querySelectorAll('h3, h4, h5, h6')).toHaveLength(3);
+    expect(screen.getByRole('heading', { name: 'Big', level: 4 })).toBeVisible();
+    expect(screen.getByRole('heading', { name: 'Graphics', level: 5 })).toBeVisible();
+    expect(screen.getByRole('heading', { name: 'Small', level: 6 })).toBeVisible();
+    expect(container.querySelectorAll('p')).toHaveLength(1);
+  });
+});
+
+describe('cannotAdd', () => {
+  const quilt = instanceFixture({
+    displayName: 'Quilted',
+    loader: { kind: 'quilt', version: '0.27.0' },
+  });
+  const vanilla = instanceFixture({ displayName: 'Plain', loader: null });
+
+  it('says why a version cannot go into the installation', () => {
+    expect(cannotAdd('mod', version, null)).toBe('Choose an installation at the top first.');
+    expect(cannotAdd('mod', version, fabric)).toBeNull();
+    // Quilt runs Fabric's mods.
+    expect(cannotAdd('mod', version, quilt)).toBeNull();
+    expect(cannotAdd('mod', version, vanilla)).toMatch(/“Plain” has no mod loader/);
+    expect(cannotAdd('mod', { ...version, loaders: ['forge', 'neoforge'] }, fabric)).toBe(
+      'This version is for Forge, NeoForge, and “Modded” runs Fabric.',
+    );
+    expect(
+      cannotAdd(
+        'mod',
+        { ...version, games: ['1.20.1', '1.20.2', '1.20.3', '1.20.4', '1.20.5'] },
+        fabric,
+      ),
+    ).toBe(
+      'This version is for Minecraft 1.20.1, 1.20.2, 1.20.3, 1.20.4…, and “Modded” is on 1.21.1.',
+    );
+    expect(
+      cannotAdd(
+        'mod',
+        { ...version, files: version.files.map((f) => ({ ...f, held: true })) },
+        fabric,
+      ),
+    ).toMatch(/malware check/);
+    expect(cannotAdd('mod', { ...version, files: [] }, fabric)).toBe('This version has no file.');
+    // Other kinds only warn about the game version, and need no loader.
+    expect(
+      cannotAdd('resourcepack', { ...version, games: ['1.8.9'], loaders: [] }, vanilla),
+    ).toBeNull();
+  });
 });
 
 describe('ModsView', () => {
@@ -281,6 +341,18 @@ describe('ModsView', () => {
       world: null,
       replaces: null,
     });
+  });
+
+  it('shows on hover why a version cannot be added', async () => {
+    setup({ mods_versions: () => [{ ...version, loaders: ['forge'] }] });
+    fireEvent.click(await screen.findByRole('button', { name: /Sodium/ }));
+    const article = await screen.findByRole('article', { name: 'Sodium' });
+    const add = await within(article).findByRole('button', { name: 'Add to installation' });
+    expect(add).toBeDisabled();
+    const reason = 'This version is for Forge, and “Modded” runs Fabric.';
+    expect(add).toHaveAttribute('title', reason);
+    // A disabled button gets no hover everywhere: its wrapper says it too.
+    expect(add.parentElement).toHaveAttribute('title', reason);
   });
 
   it('adds a map as a new world', async () => {
@@ -588,6 +660,42 @@ describe('ModsView', () => {
       source: 'modrinth',
       id: 'AANobbMI',
     });
+  });
+
+  it('waits for a request with a spinner, then says the dialog can be closed', async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    try {
+      const request: ModsImportRequest = {
+        id: '00000000-0000-4000-8000-000000000098',
+        input: 'https://modrinth.com/mod/sodium',
+        state: 'importing',
+        error: null,
+        projectId: null,
+        candidates: [],
+        created: 1,
+        finished: null,
+      };
+      const calls = setup({ mods_import: () => request, mods_import_state: () => request });
+      fireEvent.change(await screen.findByLabelText('Search'), {
+        target: { value: request.input },
+      });
+      fireEvent.click(screen.getByRole('button', { name: 'Add to the catalog' }));
+      const dialog = screen.getByRole('dialog', { name: 'Add to the catalog' });
+      fireEvent.click(within(dialog).getByRole('button', { name: 'Add' }));
+      expect(await within(dialog).findByText('Being added')).toBeVisible();
+      expect(within(dialog).getByText('Adding to the catalog…')).toBeVisible();
+      expect(within(dialog).queryByText(/You can close this/)).toBeNull();
+      expect(within(dialog).queryByText(/also stays/)).toBeNull();
+      // Asked about every second while the dialog waits.
+      await vi.advanceTimersByTimeAsync(3000);
+      expect(named('mods_import_state', calls).length).toBeGreaterThanOrEqual(2);
+
+      await vi.advanceTimersByTimeAsync(PATIENCE_MS);
+      expect(await within(dialog).findByText(/You can close this/)).toBeVisible();
+      expect(within(dialog).queryByText('Adding to the catalog…')).toBeNull();
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it('publishes an installation as a pack once its files can go in', async () => {

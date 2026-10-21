@@ -1143,6 +1143,122 @@ fn curl_gets_its_arguments_one_by_one_and_no_proxy() {
 }
 
 #[test]
+fn description_pictures_come_from_any_public_host() {
+    let body = "![a](https://rhs.millered001.workers.dev/data/cached_images/a.webp) \
+                [![b](https://github.com/user-attachments/assets/1234-abcd)](https://x.example.org/page) \
+                <IMG alt=\"c\" SRC='https://pics.example.net/c'> <img src=https://pics.example.net/d> \
+                <a href=\"https://pics.example.net/e\">e</a> [f](https://pics.example.net/f) \
+                https://pics.example.net/g.PNG?size=1 <img src=\"https://10.0.0.1/h.png\"> \
+                <img src=\"https://printer.local/i.png\"> <img src=\"https://localhost/j.png\"> \
+                <img src=\"https://intranet/k.png\"> <img src=\"https://0x7f.1/l.png\"> \
+                <img src=\"https://[::1]/m.png\"> <img src=\"https://pics.example.net:8443/n.png\"> \
+                <img src=\"https://u@pics.example.net/o.png\"> <img src=\"ftp://pics.example.net/p.png\"> \
+                <imgx src=\"https://pics.example.net/q\"> é<img src=\"https://pics.example.net/r\">";
+    let fetched: Vec<String> = import::body_images(body)
+        .into_iter()
+        .map(|(_, url)| url)
+        .collect();
+    assert_eq!(
+        fetched,
+        [
+            "https://rhs.millered001.workers.dev/data/cached_images/a.webp",
+            "https://github.com/user-attachments/assets/1234-abcd",
+            "https://pics.example.net/c",
+            "https://pics.example.net/d",
+            "https://pics.example.net/g.PNG?size=1",
+            "https://pics.example.net/r",
+        ]
+    );
+    for url in [
+        "https://pics.example.net/a",
+        "https://I.IMGUR.com/a.png",
+        "https://xn--e1afmkfd.xn--p1ai/a.png",
+        "https://pics.example.net./a.png",
+    ] {
+        assert_eq!(fetch::picture_site(url), Some(fetch::Site::Images), "{url}");
+    }
+    assert_eq!(
+        fetch::picture_site("https://cdn.modrinth.com/a.png"),
+        Some(fetch::Site::Modrinth)
+    );
+    for url in [
+        "http://pics.example.net/a.png",
+        "https://127.0.0.1/a.png",
+        "https://2130706433/a.png",
+        "https://[::1]/a.png",
+        "https://localhost/a.png",
+        "https://a.localhost/a.png",
+        "https://nas.lan/a.png",
+        "https://x.internal/a.png",
+        "https://y.onion/a.png",
+        "https://1.2.3.4.in-addr.arpa/a.png",
+        "https://single/a.png",
+        "https://a_b.example.net/a.png",
+        "https://pics.example.net:444/a.png",
+        "https://u:p@pics.example.net/a.png",
+        "https://pics.example.net/a b.png",
+        &format!("https://pics.example.net/{}", "a".repeat(2100)),
+    ] {
+        assert_eq!(fetch::picture_site(url), None, "{url}");
+    }
+    // Only pictures go anywhere: files and pages stay with listed hosts.
+    assert!(fetch::site("https://pics.example.net/a.png").is_none());
+}
+
+#[tokio::test]
+async fn a_picture_host_that_points_inside_is_refused() {
+    // Directly and through a proxy alike: the name must be public.
+    for proxies in [Vec::new(), vec!["http://proxy1.example:8080".to_owned()]] {
+        let t = setup();
+        let direct = proxies.is_empty();
+        let client = Client::new(
+            Box::new(Shared(Arc::clone(&t.sites))),
+            proxies,
+            direct,
+            t.app.blobs.tmp(),
+        )
+        .with_resolver(resolver([192, 168, 1, 1]));
+        let to = t.app.blobs.part();
+        assert_eq!(
+            client
+                .picture("https://pics.example.net/a.png", &to, 100)
+                .await,
+            Err(FetchError::NotAllowed)
+        );
+        assert!(t.sites.asked.lock().unwrap().is_empty());
+    }
+}
+
+#[tokio::test]
+async fn a_picture_redirect_must_stay_public() {
+    let t = setup();
+    t.sites.put(
+        "https://pics.example.net/a.png",
+        Page {
+            status: 302,
+            location: Some("https://127.0.0.1/a.png".into()),
+            ..Page::default()
+        },
+    );
+    let to = t.app.blobs.part();
+    assert_eq!(
+        t.app
+            .client
+            .picture("https://pics.example.net/a.png", &to, 100)
+            .await,
+        Err(FetchError::NotAllowed)
+    );
+    // A file never comes from a host nobody listed.
+    assert_eq!(
+        t.app
+            .client
+            .get("https://pics.example.net/a.png", &to, 100, false)
+            .await,
+        Err(FetchError::NotAllowed)
+    );
+}
+
+#[test]
 fn only_listed_hosts_over_https() {
     assert!(fetch::site("https://api.modrinth.com/v2/project/x").is_some());
     assert!(fetch::site("https://mediafilez.forgecdn.net/files/1/2/a.jar").is_some());

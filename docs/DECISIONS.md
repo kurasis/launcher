@@ -2049,9 +2049,14 @@ archive from the Package workflow, upload it to
   files of the newest release per game version and loader, required dependencies (to
   the end of the chain, each project read at most once a day so a loop ends; 200 per
   project), the icon, the gallery and the pictures in the description (a plain `http:`
-  address of a listed site is fetched over HTTPS; pictures are asked with a browser's
-  `<img>` headers, since imgur answers a page request with a redirect to its own page),
-  which then point at our copies. Work runs from a queue in the database (retries with
+  address is fetched over HTTPS; pictures are asked with a browser's `<img>` headers,
+  since imgur answers a page request with a redirect to its own page), which then point
+  at our copies. Description pictures may come from any public host, since authors use
+  many (owner, 2026-10-21): a name, never an address or an inner network's name, that
+  resolves to public addresses only (checked also when a proxy connects), every
+  redirect checked the same way, at most 30 a project and 20 MB each, kept only when
+  the bytes are PNG, JPEG, GIF or WebP, paced as picture hosts. Players only ever load
+  our copies. Files and pages still come from listed hosts only. Work runs from a queue in the database (retries with
   back-off, survives restarts). Limits: 20 requests an hour and 100 a day per account,
   5 GB a day of files brought per account, 60 an hour per address; an older version's
   files 30 an hour per address.

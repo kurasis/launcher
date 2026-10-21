@@ -13,7 +13,15 @@ import type {
 } from '../../lib/contracts';
 import { describeIpcError, ipc } from '../../lib/ipc';
 import { strings } from '../../lib/strings';
-import { compact, dateOf, installable, loaderOf, ourPicture, packArchive } from './helpers';
+import {
+  cannotAdd,
+  compact,
+  dateOf,
+  installable,
+  loaderOf,
+  ourPicture,
+  packArchive,
+} from './helpers';
 import { RichText } from './RichText';
 import styles from './Mods.module.css';
 
@@ -155,6 +163,10 @@ function VersionRow({
   const held = version.files.some((f) => f.held);
   // A Modrinth or CurseForge pack.
   const pack = project.kind === 'modpack' && version.files.some((f) => packArchive(f.name));
+  // Why the version cannot go in, shown on hover; a disabled button gets no
+  // pointer events everywhere, so the wrapper carries it too.
+  const blocked = cannotAdd(project.kind, version, instance);
+  const packBlocked = held ? t.cannotAdd.held : null;
   return (
     <li className={styles.version}>
       <div className={styles.versionHead}>
@@ -182,14 +194,28 @@ function VersionRow({
       {error !== null && <Notice tone="danger">{error}</Notice>}
       <div className={forms.actions}>
         {installable(project.kind) && (
-          <Button variant="primary" disabled={instance === null || held} onClick={onAdd}>
-            {t.add}
-          </Button>
+          <span title={blocked ?? undefined}>
+            <Button
+              variant="primary"
+              disabled={blocked !== null}
+              title={blocked ?? undefined}
+              onClick={onAdd}
+            >
+              {t.add}
+            </Button>
+          </span>
         )}
         {pack && (
-          <Button variant="primary" disabled={held} onClick={onInstallPack}>
-            {strings.mods.pack.install}
-          </Button>
+          <span title={packBlocked ?? undefined}>
+            <Button
+              variant="primary"
+              disabled={packBlocked !== null}
+              title={packBlocked ?? undefined}
+              onClick={onInstallPack}
+            >
+              {strings.mods.pack.install}
+            </Button>
+          </span>
         )}
         {!asked && (
           <Button
