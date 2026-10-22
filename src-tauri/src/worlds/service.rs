@@ -25,6 +25,8 @@ use crate::sync::lock;
 
 const BASE: &str = "https://worlds.lapi.sh";
 const MAX_RESPONSE_BYTES: usize = 512 * 1024;
+/// The account's export, which lists every room, invite and admission.
+const MAX_EXPORT_BYTES: usize = 32 * 1024 * 1024;
 /// The device key's entry in the credential store (hex of its 32 bytes).
 pub const DEVICE_KEY: &str = "worlds-device-key";
 
@@ -392,6 +394,19 @@ impl WorldsClient {
         proof: Proof,
         token: &SecretString,
     ) -> Result<Value, Problem> {
+        self.send_within(method, path, body, proof, token, MAX_RESPONSE_BYTES)
+            .await
+    }
+
+    async fn send_within(
+        &self,
+        method: reqwest::Method,
+        path: &str,
+        body: Option<&Value>,
+        proof: Proof,
+        token: &SecretString,
+        max: usize,
+    ) -> Result<Value, Problem> {
         let url = format!("{}{path}", self.base);
         let mut request = self
             .http
@@ -411,7 +426,7 @@ impl WorldsClient {
         }
         let response = request.send().await.map_err(|_| Problem::Network)?;
         let status = response.status();
-        let bytes = crate::launcher_account::body_within(response, MAX_RESPONSE_BYTES)
+        let bytes = crate::launcher_account::body_within(response, max)
             .await
             .map_err(|e| match e {
                 crate::launcher_account::BodyError::Network => Problem::Network,
@@ -514,6 +529,20 @@ impl WorldsClient {
             )
             .await?;
         Ok(())
+    }
+
+    /// Everything worlds keeps about the account (D-064).
+    pub async fn export(&self) -> Result<Value, Problem> {
+        let token = self.token.token().await?;
+        self.send_within(
+            reqwest::Method::GET,
+            "/v1/export",
+            None,
+            Proof::No,
+            &token,
+            MAX_EXPORT_BYTES,
+        )
+        .await
     }
 
     pub async fn rooms(&self) -> Result<Vec<Room>, Problem> {
@@ -835,6 +864,22 @@ mod tests {
         assert_eq!(Problem::from_code("superseded"), Problem::SessionEnded);
         assert_eq!(Problem::from_code("something new"), Problem::Refused);
         assert_eq!(Problem::NotMember.name(), "not_member");
+    }
+
+    #[tokio::test]
+    async fn the_export_is_asked_with_the_accounts_token_only() {
+        let fake = fake_service::start(&[(OWNER, "Owner", true)]).await;
+        let owner = client(&fake.base, Arc::new(MemoryStore::default()), OWNER);
+        let endpoint = "ab".repeat(32);
+        owner.enroll(ROOM, &endpoint).await.unwrap();
+        let data = owner.export().await.unwrap();
+        assert_eq!(
+            data["devices"][0]["name"],
+            lock(&fake.world).device_list[0].2
+        );
+        // No device proof is needed, and none is registered for it.
+        let stranger = client(&fake.base, Arc::new(MemoryStore::default()), OTHER);
+        assert_eq!(stranger.export().await.unwrap_err(), Problem::SignedOut);
     }
 
     #[tokio::test]

@@ -25,7 +25,9 @@ describe('DownloadSourceSettings', () => {
     );
     expect(screen.getByRole('radio', { name: /Automatic/ })).toBeChecked();
     expect(
-      screen.getByText("Not reachable now: Forge, Mojang. Downloading from the launcher's mirror."),
+      screen.getByText(
+        "Down or slower than the mirror now: Forge, Mojang. Downloading from the launcher's mirror.",
+      ),
     ).toBeVisible();
     fireEvent.click(screen.getByRole('radio', { name: /Mirror first/ }));
     await waitFor(() => {

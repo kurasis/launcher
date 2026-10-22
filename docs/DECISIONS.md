@@ -858,6 +858,12 @@ message` plus a stack trace), with the event's level.
     extended timestamp, so the outputs of Forge 1.13–1.16 never match the declared
     hashes. The game itself still runs on the chosen Java. The same holds for a world's
     server;
+  - before a processor runs, a declared output that does not match and the tool's
+    `.cache` file next to it are removed: jarsplitter 1.1.0 (Forge 1.13.2) trusts its
+    cache and would keep an output written wrongly by an earlier run;
+  - `DEOBF_REALMS` (Forge 1.14.3) looks for the version JSON next to the game jar and
+    for libraries three folders up, as in a vanilla game folder; the launcher passes
+    `--json` (the game's Realms library only) and `--libs` (the Maven tree) instead;
   - `DOWNLOAD_MOJMAPS` that would copy Mojang's mappings unchanged is replaced by the
     verified `client_mappings` download from the plan. The sanitizing variant (Forge
     1.21+) runs as shipped and downloads the mappings from Mojang itself, through the
@@ -1667,6 +1673,17 @@ message` plus a stack trace), with the event's level.
     Two such failures of a host within two minutes mark the host as down for 10
     minutes: its requests go straight to the mirror, then one request tries the
     origin again. If the mirror fails too, the origin is tried again.
+- **Slower than the mirror** (owner request, 2026-10-22). Every file the mirror
+  copies reports its size and the time from asking to the last byte (without the
+  disk), so many small files that each wait long count as slow too. When the
+  origin's files of the last minute (at least 4, at least 1 s together) came at
+  under 2 MiB/s, a trial starts: the host's next files take turns between the
+  mirror and the origin until each side has brought 3, so both are measured at the
+  same time on the same kind of files. If the mirror was at least twice as fast,
+  the host's requests go to the mirror for 10 minutes and are then measured
+  again; otherwise no trial for 5 minutes. A mirror failure ends a trial or gives
+  the host back to its origin at once; a trial past 2 minutes is lost. Only the automatic mode compares; the catalog's R2
+  reserve (D-066) and metadata are not measured.
 - **Checks stay the same.** Every file with a checksum in its metadata is checked
   wherever it came from. Metadata without one (loader lists) comes from the mirror
   only when the origin failed; the console and the diagnostic export say which
@@ -1674,8 +1691,8 @@ message` plus a stack trace), with the event's level.
 - **Setting** (Settings → Network → Download source): **Automatic** (above,
   default), **Mirror first** (for blocked or slow origins; the origin is the
   fallback), **Original sites only** (never the mirror).
-- The download manager says when a host is served by the mirror ("Forge is not
-  reachable — downloading from the launcher's mirror").
+- The download manager says when a host is served by the mirror ("Down or slower
+  than the mirror now: Forge. Downloading from the launcher's mirror.").
 - Not covered: Microsoft sign-in (offline play, D-052, still works).
 
 ### Stages
@@ -1984,8 +2001,14 @@ archive from the Package workflow, upload it to
   though the tokens' signatures hold until they run out. A token of an account
   deleted lately is refused even from a session the service never saw.
 - **Export:** Accounts → _Download my data_ saves one JSON file with what the account
-  service (`GET /v1/me/export`) and friends (`GET /v1/export`) keep about the account,
-  asked by its own session.
+  service (`GET /v1/me/export`), friends, worlds, the mods catalog and reviews (each
+  `GET /v1/export`, ten an hour) keep about the account, asked by its own session. A
+  service that does not answer is `null` in the file; the others still come. Worlds
+  gives the account's devices, its rooms, where it is a member, its invites, the
+  sessions its devices hosted and its admissions (tickets and relay grants last minutes
+  and are left out); the catalog its requests to add, its packs and their versions, and
+  its reports; reviews what it wrote, the answers and its files' names and sizes, but
+  not the owner's notes or spam marks.
 - **Moderation** is the owner's, on the server only (docs/MODERATION.md): reports keep
   a copy of their message; `resolve`, `remove-message`, `mute <hours>`, `ban [days]`,
   `lift`. A removed message leaves every member's chat; a muted account reads but
@@ -2570,7 +2593,15 @@ skins-mod <channel>` there only checks the signature against the public key and
   the same safe tree as other descriptions); the icon decoded with limits; and the
   scanner over the archive, whose hold refuses the pack. The pack is then a project of
   kind `modpack` with the source `own`, its author the account's nick, shown at once and
-  installed like any other pack; it is never refreshed from a source. The archive is
+  installed like any other pack; it is never refreshed from a source. Its slug starts
+  with `player-` (a pack called "Sodium" is `player-sodium`), so a player's pack never
+  takes the name of a project a catalog brings in later, and the launcher marks its page
+  _Player's pack_; the prefix is left out of the search index. Packs published before
+  the prefix got it at the service's next start. Publishing (a pack, a room pack, or
+  any part of one) needs a confirmed email once the account service sends letters
+  (`LAPI_MODS_REQUIRE_EMAIL`: `auto`, the default, or `1` always, `0` never), as
+  friends does; the catalog asks the account service every 15 seconds and refuses with
+  `403 email_not_confirmed`, which the launcher shows. The archive is
   512 MiB at most (nginx allows 91 MiB on `/v1/packs` and 65 MiB a part on
   `/v1/packs/uploads/`). An account publishes 5 new packs and 20
   versions a day, 2 GB in all, 10 an hour (20 an hour from one address). The

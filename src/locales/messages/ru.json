@@ -1567,6 +1567,7 @@
         "showAll": "Показать все",
         "matching": "{count, plural, one {# версия} few {# версии} many {# версий} other {# версии}} из {total}",
         "held": "Проверка каталога на вредоносный код задержала файл этой версии до решения. Поставить её нельзя.",
+        "playerPack": "Сборка игрока",
         "report": "Пожаловаться",
         "reportReason": "Причина",
         "reportReasons": {
@@ -2120,12 +2121,12 @@
         "origin_only": "Только оригинальные сайты"
       },
       "hints": {
-        "automatic": "Сначала оригинальные сайты; зеркало лаунчера, если сайт не отвечает, очень медленный или удалил файл.",
+        "automatic": "Сначала оригинальные сайты; зеркало лаунчера, если сайт не отвечает, удалил файл или заметно медленнее зеркала.",
         "mirror_first": "Для подключений, где оригинальные сайты заблокированы или очень медленные. Они остаются запасным вариантом.",
         "origin_only": "Никогда не использовать зеркало. Если сайт недоступен, загрузки ждут."
       },
       "checked": "Каждый файл проверяется по контрольной сумме, с какого бы сайта он ни пришёл.",
-      "inUse": "Сейчас недоступны: {sites}. Загружаем с зеркала лаунчера."
+      "inUse": "Сейчас недоступны или медленнее зеркала: {sites}. Загружаем с зеркала лаунчера."
     },
     "updates": {
       "badge": {
@@ -2653,7 +2654,6 @@
     "The whitelist could not be written.": "Не удалось записать белый список.",
     "The world connection could not be opened on this computer.": "Не удалось открыть подключение к миру на этом компьютере.",
     "The world identifier is invalid.": "Неверный идентификатор мира.",
-    "The world server did not start in time.": "Сервер мира не запустился вовремя.",
     "The world server is not running.": "Сервер мира не запущен.",
     "The world server is stopping.": "Сервер мира останавливается.",
     "The world server started but does not answer.": "Сервер мира запустился, но не отвечает.",
@@ -2765,6 +2765,7 @@
     "A version number is letters, digits and . - _ + only, such as 1.0.2.": "Номер версии: только буквы, цифры и . - _ +, например 1.0.2.",
     "Choose the icon again.": "Выберите иконку ещё раз.",
     "Give the pack a title of 2 to 80 characters.": "Дайте сборке название от 2 до 80 символов.",
+    "Publishing packs needs a confirmed email. Open the letter we sent, or send it again in Accounts.": "Для публикации сборок нужен подтверждённый email. Откройте наше письмо или отправьте его снова в разделе «Аккаунты».",
     "Publishing was cancelled.": "Публикация отменена.",
     "Reading the modpack": "Чтение сборки",
     "Some files of this installation cannot go into a pack. Check the list.": "Некоторые файлы этой установки нельзя положить в сборку. Посмотрите список.",
@@ -2818,6 +2819,16 @@
     "A verified mod loader installer is damaged. Host the world again.": "Проверенный установщик загрузчика модов повреждён. Запустите мир снова.",
     "The server's files could not be recorded.": "Не удалось записать файлы сервера.",
     "This loader has no server installer.": "У этого загрузчика нет установщика сервера.",
-    "OptiFine has no server: a world with mods needs Fabric, Quilt, Forge or NeoForge.": "У OptiFine нет сервера: для мира с модами нужен Fabric, Quilt, Forge или NeoForge."
+    "OptiFine has no server: a world with mods needs Fabric, Quilt, Forge or NeoForge.": "У OptiFine нет сервера: для мира с модами нужен Fabric, Quilt, Forge или NeoForge.",
+    "The world server did not start in 20 minutes.": "Сервер мира не запустился за 20 минут.",
+    "The world server stopped responding while it started.": "Сервер мира перестал отвечать во время запуска.",
+    "A mod in this world needs Java {java} or newer, which this Minecraft version does not run on. Remove the mod or take its release for this version.": "Моду в этом мире нужна Java {java} или новее, а эта версия Minecraft на ней не работает. Уберите мод или возьмите его выпуск для этой версии.",
+    "{mod} does not work with {dependency} {actual}. Take another release of {mod} or remove it.": "{mod} не работает с {dependency} {actual}. Возьмите другой выпуск {mod} или уберите его.",
+    "{mod} is made for Minecraft {version}, and the world is {actual}. Take its release for {actual} or remove it.": "{mod} сделан для Minecraft {version}, а мир на {actual}. Возьмите его выпуск для {actual} или уберите его.",
+    "{mod} is made for another Minecraft version than the world's {actual}. Take its release for {actual} or remove it.": "{mod} сделан для другой версии Minecraft, а мир на {actual}. Возьмите его выпуск для {actual} или уберите его.",
+    "{mod} needs {dependency} {version} or newer, and the world has {actual}. Take an older release of {mod} or remove it.": "Для {mod} нужен {dependency} {version} или новее, а в мире {actual}. Возьмите более старый выпуск {mod} или уберите его.",
+    "{mod} needs {dependency} {version}, and the world has {actual}. Take another release of {mod} or remove it.": "Для {mod} нужен {dependency} {version}, а в мире {actual}. Возьмите другой выпуск {mod} или уберите его.",
+    "{mod} needs {dependency}, which is not in the world. Add it to the installation or remove {mod}, then update the world's mods.": "Для {mod} нужен {dependency}, которого нет в мире. Добавьте его в установку или уберите {mod}, затем обновите моды мира.",
+    "{mod} stopped the world server while it started. Take another release of {mod} or remove it.": "{mod} остановил сервер мира во время запуска. Возьмите другой выпуск {mod} или уберите его."
   }
 }

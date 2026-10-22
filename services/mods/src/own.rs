@@ -76,6 +76,10 @@ const MAX_TITLE: usize = 80;
 const MAX_SUMMARY: usize = 300;
 pub const MAX_BODY: usize = 65_536;
 const MAX_CHANGES: usize = 16_384;
+/// What starts every own pack's slug, so a player's pack never takes the
+/// name of a project a catalog brings in: a pack called "Sodium" is
+/// `player-sodium`, and Modrinth's Sodium keeps `sodium`.
+pub const SLUG_PREFIX: &str = "player-";
 /// What a player may report a pack for.
 pub const REASONS: &[&str] = &["malware", "stolen", "inappropriate", "broken", "other"];
 pub const MAX_REPORT: usize = 500;
@@ -527,7 +531,7 @@ async fn record(
         &SourceProject {
             source: "own",
             source_id,
-            slug: slug.clone(),
+            slug: format!("{SLUG_PREFIX}{slug}"),
             kind: "modpack",
             title: meta.title.clone(),
             summary: meta.summary.clone(),

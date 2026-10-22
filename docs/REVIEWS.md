@@ -83,4 +83,7 @@ and per account, 300 an hour and 1000 a day in all, 10 GiB of files.
   addresses and server names before it goes anywhere else.
 - A player can delete their own review in the launcher. Asked by mail, delete
   by install ID (Settings → Privacy shows it): `r forget <install-id>`.
+- Accounts → _Download my data_ includes the reviews sent with the launcher account
+  (`GET /v1/export`): what was written, the answers, and the files' names and sizes.
+  Notes made with `note`, spam marks and network hashes are not in it.
 - `--translate` sends the message to DeepL; use it only when needed.

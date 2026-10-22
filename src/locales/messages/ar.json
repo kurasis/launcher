@@ -1568,6 +1568,7 @@
         "showAll": "عرض الكل",
         "matching": "{count, plural, zero {لا إصدارات} one {إصدار واحد} two {إصداران} few {# إصدارات} many {# إصدارًا} other {# إصدار}} من {total}",
         "held": "أوقف فحص البرمجيات الضارة في الفهرس ملف هذا الإصدار إلى أن يُراجَع. لا يمكن تثبيته.",
+        "playerPack": "حزمة لاعب",
         "report": "إبلاغ",
         "reportReason": "السبب",
         "reportReasons": {
@@ -2121,12 +2122,12 @@
         "origin_only": "المواقع الأصلية فقط"
       },
       "hints": {
-        "automatic": "المواقع الأصلية أولًا؛ ومرآة المشغّل عندما يفشل موقع أو يكون بطيئًا جدًا أو يحذف ملفًا.",
+        "automatic": "المواقع الأصلية أولًا؛ ومرآة المشغّل عندما يفشل موقع أو يحذف ملفًا أو يكون أبطأ بكثير من المرآة.",
         "mirror_first": "للاتصالات التي تُحجب فيها المواقع الأصلية أو تكون بطيئة جدًا. تبقى هي البديل.",
         "origin_only": "لا تستخدم المرآة أبدًا. تنتظر التنزيلات عندما يتعطل موقع."
       },
       "checked": "يُتحقق من كل ملف بمجموع اختباره، أيًّا كان الموقع الذي جاء منه.",
-      "inUse": "لا يمكن الوصول الآن إلى: {sites}. التنزيل من مرآة المشغّل."
+      "inUse": "غير متاحة الآن أو أبطأ من المرآة: {sites}. التنزيل من مرآة المشغّل."
     },
     "updates": {
       "badge": {
@@ -2654,7 +2655,6 @@
     "The whitelist could not be written.": "تعذّرت كتابة القائمة البيضاء.",
     "The world connection could not be opened on this computer.": "تعذّر فتح الاتصال بالعالم على هذا الحاسوب.",
     "The world identifier is invalid.": "معرّف العالم غير صالح.",
-    "The world server did not start in time.": "لم يبدأ خادم العالم في الوقت المحدد.",
     "The world server is not running.": "خادم العالم لا يعمل.",
     "The world server is stopping.": "خادم العالم قيد الإيقاف.",
     "The world server started but does not answer.": "بدأ خادم العالم لكنه لا يستجيب.",
@@ -2766,6 +2766,7 @@
     "A version number is letters, digits and . - _ + only, such as 1.0.2.": "رقم الإصدار حروف وأرقام و . - _ + فقط، مثل 1.0.2.",
     "Choose the icon again.": "اختر الأيقونة مرة أخرى.",
     "Give the pack a title of 2 to 80 characters.": "أعطِ الحزمة عنوانًا من 2 إلى 80 حرفًا.",
+    "Publishing packs needs a confirmed email. Open the letter we sent, or send it again in Accounts.": "يحتاج نشر الحزم إلى بريد إلكتروني مؤكَّد. افتح الرسالة التي أرسلناها أو أعد إرسالها من الحسابات.",
     "Publishing was cancelled.": "أُلغي النشر.",
     "Reading the modpack": "قراءة الحزمة",
     "Some files of this installation cannot go into a pack. Check the list.": "لا يمكن وضع بعض ملفات هذا التثبيت في حزمة. راجع القائمة.",
@@ -2819,6 +2820,16 @@
     "A verified mod loader installer is damaged. Host the world again.": "مثبّت مُحمِّل التعديلات الموثّق تالف. استضف العالم مرة أخرى.",
     "The server's files could not be recorded.": "تعذّر تسجيل ملفات الخادم.",
     "This loader has no server installer.": "لا يملك هذا المُحمِّل مثبّتًا للخادم.",
-    "OptiFine has no server: a world with mods needs Fabric, Quilt, Forge or NeoForge.": "لا يملك OptiFine خادمًا: يحتاج العالم ذو التعديلات إلى Fabric أو Quilt أو Forge أو NeoForge."
+    "OptiFine has no server: a world with mods needs Fabric, Quilt, Forge or NeoForge.": "لا يملك OptiFine خادمًا: يحتاج العالم ذو التعديلات إلى Fabric أو Quilt أو Forge أو NeoForge.",
+    "The world server did not start in 20 minutes.": "لم يبدأ خادم العالم خلال 20 دقيقة.",
+    "The world server stopped responding while it started.": "توقّف خادم العالم عن الاستجابة أثناء بدء تشغيله.",
+    "A mod in this world needs Java {java} or newer, which this Minecraft version does not run on. Remove the mod or take its release for this version.": "يحتاج أحد التعديلات في هذا العالم إلى Java {java} أو أحدث، وهذا الإصدار من Minecraft لا يعمل عليها. أزل التعديل أو اختر إصداره المخصّص لهذا الإصدار.",
+    "{mod} does not work with {dependency} {actual}. Take another release of {mod} or remove it.": "لا يعمل {mod} مع {dependency} {actual}. اختر إصدارًا آخر من {mod} أو أزله.",
+    "{mod} is made for Minecraft {version}, and the world is {actual}. Take its release for {actual} or remove it.": "صُمّم {mod} لـ Minecraft {version}، والعالم على {actual}. اختر إصداره لـ {actual} أو أزله.",
+    "{mod} is made for another Minecraft version than the world's {actual}. Take its release for {actual} or remove it.": "صُمّم {mod} لإصدار من Minecraft غير إصدار العالم {actual}. اختر إصداره لـ {actual} أو أزله.",
+    "{mod} needs {dependency} {version} or newer, and the world has {actual}. Take an older release of {mod} or remove it.": "يحتاج {mod} إلى {dependency} {version} أو أحدث، والعالم فيه {actual}. اختر إصدارًا أقدم من {mod} أو أزله.",
+    "{mod} needs {dependency} {version}, and the world has {actual}. Take another release of {mod} or remove it.": "يحتاج {mod} إلى {dependency} {version}، والعالم فيه {actual}. اختر إصدارًا آخر من {mod} أو أزله.",
+    "{mod} needs {dependency}, which is not in the world. Add it to the installation or remove {mod}, then update the world's mods.": "يحتاج {mod} إلى {dependency}، وهو غير موجود في العالم. أضفه إلى التثبيت أو أزل {mod}، ثم حدّث تعديلات العالم.",
+    "{mod} stopped the world server while it started. Take another release of {mod} or remove it.": "أوقف {mod} خادم العالم أثناء بدء تشغيله. اختر إصدارًا آخر من {mod} أو أزله."
   }
 }

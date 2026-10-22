@@ -391,6 +391,7 @@ export function ProjectPage({
         <div className={styles.cardBody}>
           <h2 className={styles.projectTitle}>
             {project.title || project.slug}
+            {own && <StatusBadge tone="neutral" label={t.playerPack} />}
             {project.status === 'importing' && (
               <StatusBadge tone="warning" label={strings.mods.importing} />
             )}

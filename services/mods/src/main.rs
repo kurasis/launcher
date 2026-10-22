@@ -454,6 +454,7 @@ fn serve() -> Result<(), String> {
         client,
         tokens: auth::Tokens::new(&env("LAPI_MODS_ISSUER", "https://oauth.lapi.sh")),
         sessions: auth::Sessions::default(),
+        email: auth::EmailRule::named(&env("LAPI_MODS_REQUIRE_EMAIL", "auto")),
         limiter: api::Limiter::default(),
         uploads: own::Uploads::default(),
         urls: urls(),
@@ -485,6 +486,7 @@ fn serve() -> Result<(), String> {
             let mut since = 0;
             loop {
                 tokio::time::sleep(Duration::from_secs(15)).await;
+                api::check_mail(&checking, &asking, &accounts).await;
                 api::check_sessions(&checking, &asking, &accounts).await;
                 since = api::purge_deleted(&checking, &asking, &accounts, since).await;
             }
@@ -680,6 +682,8 @@ pub struct App {
     pub tokens: auth::Tokens,
     /// Sign-outs and deleted accounts, from the account service.
     pub sessions: auth::Sessions,
+    /// Whether publishing a pack needs a confirmed email.
+    pub email: auth::EmailRule,
     pub limiter: api::Limiter,
     /// Own packs' archives being sent in parts.
     pub uploads: own::Uploads,

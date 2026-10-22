@@ -445,6 +445,67 @@ impl Store {
         Ok(id)
     }
 
+    /// Everything kept about an account's reviews (D-064): what it wrote and
+    /// sent along, the answers, and the names and sizes of its files. The
+    /// owner's notes and the spam marks stay out.
+    pub fn export(&self, account: &str) -> Result<Vec<serde_json::Value>, String> {
+        let db = self.db();
+        let mut statement = db
+            .prepare(
+                "SELECT id, received, kind, category, subcategory, message, rating,
+                   launcher_version, os, language, install_id, diagnostic_id, ad, status,
+                   reply, replied
+                 FROM reviews WHERE account = ?1 ORDER BY id LIMIT 10000",
+            )
+            .map_err(err)?;
+        let mut reviews: Vec<serde_json::Value> = statement
+            .query_map([account], |r| {
+                let status: String = r.get(13)?;
+                let shown = shown(&status);
+                let answered = shown == "answered" || shown == "closed";
+                Ok(serde_json::json!({
+                    "id": r.get::<_, i64>(0)?,
+                    "received": r.get::<_, i64>(1)?,
+                    "kind": r.get::<_, String>(2)?,
+                    "category": r.get::<_, String>(3)?,
+                    "subcategory": r.get::<_, String>(4)?,
+                    "message": r.get::<_, String>(5)?,
+                    "rating": r.get::<_, Option<i64>>(6)?,
+                    "launcherVersion": r.get::<_, String>(7)?,
+                    "os": r.get::<_, String>(8)?,
+                    "language": r.get::<_, String>(9)?,
+                    "installId": r.get::<_, Option<String>>(10)?,
+                    "diagnosticId": r.get::<_, Option<String>>(11)?,
+                    "ad": r.get::<_, Option<i64>>(12)?,
+                    "status": shown,
+                    "reply": if answered { r.get::<_, Option<String>>(14)? } else { None },
+                    "replied": if answered { r.get::<_, Option<i64>>(15)? } else { None },
+                }))
+            })
+            .map_err(err)?
+            .collect::<rusqlite::Result<_>>()
+            .map_err(err)?;
+        let mut files = db
+            .prepare("SELECT name, kind, bytes FROM files WHERE review = ?1 ORDER BY n")
+            .map_err(err)?;
+        for review in &mut reviews {
+            let id = review["id"].as_i64().unwrap_or_default();
+            let list: Vec<serde_json::Value> = files
+                .query_map([id], |r| {
+                    Ok(serde_json::json!({
+                        "name": r.get::<_, String>(0)?,
+                        "kind": r.get::<_, String>(1)?,
+                        "bytes": r.get::<_, i64>(2)?,
+                    }))
+                })
+                .map_err(err)?
+                .collect::<rusqlite::Result<_>>()
+                .map_err(err)?;
+            review["files"] = serde_json::Value::Array(list);
+        }
+        Ok(reviews)
+    }
+
     /// The player's reviews: those whose key they hold, and those of their
     /// account.
     pub fn statuses(

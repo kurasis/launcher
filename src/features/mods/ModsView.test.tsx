@@ -832,6 +832,8 @@ describe('ModsView', () => {
     });
     fireEvent.click(await screen.findByRole('button', { name: /Sodium/ }));
     const article = await screen.findByRole('article', { name: 'Sodium' });
+    // Marked as a player's pack, not one of a catalog's projects.
+    expect(within(article).getByText('Player’s pack')).toBeVisible();
     fireEvent.click(within(article).getByRole('button', { name: 'Report' }));
     const form = within(article).getByRole('form', { name: 'Report' });
     fireEvent.change(within(form).getByLabelText('Reason'), { target: { value: 'stolen' } });
@@ -852,6 +854,7 @@ describe('ModsView', () => {
     fireEvent.click(await screen.findByRole('button', { name: /Sodium/ }));
     const article = await screen.findByRole('article', { name: 'Sodium' });
     expect(within(article).queryByRole('button', { name: 'Report' })).toBeNull();
+    expect(within(article).queryByText('Player’s pack')).toBeNull();
   });
 
   it('offers to sign in when the launcher account is needed', async () => {

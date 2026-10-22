@@ -1687,11 +1687,21 @@ pub async fn launcher_account_export<R: Runtime>(
         "exported": chrono::Utc::now().to_rfc3339(),
         "account": account.export(&state).await?,
     });
-    // Friends may be down; the account's own data still comes.
-    data["friends"] = friends(&app)
-        .export(&app)
-        .await
-        .unwrap_or(serde_json::Value::Null);
+    // A service may be down; what the others keep still comes.
+    let (friends_data, worlds_data, mods_data, reviews_data) = tokio::join!(
+        async { friends(&app).export(&app).await.ok() },
+        async { worlds(&app).client.export().await.ok() },
+        async { mods(&app).client.export(&app).await.ok() },
+        async { reviews_of(&app).export(&state, account.as_ref()).await },
+    );
+    for (name, value) in [
+        ("friends", friends_data),
+        ("worlds", worlds_data),
+        ("mods", mods_data),
+        ("reviews", reviews_data),
+    ] {
+        data[name] = value.unwrap_or(serde_json::Value::Null);
+    }
     let title = window_title(title, "Save my launcher account data");
     let handle = app.clone();
     let name = format!(
