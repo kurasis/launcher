@@ -21,6 +21,18 @@ window (D-037) and to the launcher account window (D-064).
 - Test any window change on Windows: a package from the Package workflow (`windows-x64`
   or `windows-arm64` artifact).
 
+## Interface design
+
+- The interface follows concept A «Верстак» (D-072): `docs/DESIGN.md` is the brief. New UI
+  takes its colors, sizes and fonts from `src/styles/tokens.css`, icons from
+  `src/components/Icon.tsx`, and never adds gradients, glows, blur or text in capitals.
+- Use the design skills in `.claude/skills/` (`frontend-design`, `impeccable`,
+  `ui-ux-pro-max`) for UI work; `docs/DESIGN.md` wins where they disagree. Their scripts
+  were reviewed and trimmed: do not reinstall or update a skill (`npx skills …`) without
+  the same review.
+- Look at every UI change in light and dark, in Arabic (right to left) and at the 820 px
+  minimum width.
+
 ## Standing rules
 
 - Security first: validate and bound everything from forms, the network and files; test

@@ -17,3 +17,4 @@ mod/mc-1.20.2-1.20.6/neoforge/src/main/resources/pack.mcmeta
 mod/gametest/mc-1.20.2-1.20.6/neoforge/src/main/resources/pack.mcmeta
 # The Game test workflow writes it, one mod file per line.
 src-tauri/tests/gametest/medium.lock.json
+.claude/skills
