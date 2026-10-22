@@ -504,8 +504,13 @@ async fn an_address_brings_the_project_its_newest_files_pictures_and_dependencie
         )),
         0
     );
-    // The dependency came along, with its file.
+    // Kept and scanned clean: checked by the catalog.
+    assert_eq!(kept["checked"], true, "{kept}");
+    assert_eq!(versions[0]["files"][0]["checked"], false);
+    // The dependency came along, with its file and its card.
     assert_eq!(versions[1]["dependencies"][0]["kind"], "required");
+    assert_eq!(versions[1]["dependencies"][0]["title"], "Fabric API");
+    assert_eq!(versions[1]["dependencies"][0]["slug"], "fabric-api");
     let dependency = versions[1]["dependencies"][0]["projectId"]
         .as_str()
         .unwrap();
@@ -3502,6 +3507,7 @@ async fn a_suspicious_file_is_held_back_and_put_before_the_owner() {
     let (_, versions) = t.get("/v1/projects/sodium/versions").await;
     let file = &versions["versions"][1]["files"][0];
     assert_eq!(file["held"], true, "{file}");
+    assert_eq!(file["checked"], false, "{file}");
     assert!(file["url"].is_null(), "{file}");
     let sha256 = file["sha256"].as_str().unwrap();
     assert!(!t.app.blobs.has(sha256));
@@ -7068,4 +7074,393 @@ async fn an_account_exports_what_the_catalog_keeps_about_it() {
     }
     let (status, _) = t.player(2, "GET", "/v1/export", Value::Null).await;
     assert_eq!(status, StatusCode::TOO_MANY_REQUESTS);
+}
+
+// ----- the catalog for the new interface (D-072) -----
+
+#[tokio::test]
+async fn categories_of_both_sites_are_one_list_with_counts() {
+    let t = setup();
+    stored_project(
+        &t,
+        "OptAAAAA",
+        "sodium-like",
+        900,
+        &["optimization"],
+        &["fabric"],
+    );
+    // CurseForge's words for the same.
+    stored_project(
+        &t,
+        "OptBBBBB",
+        "lithium-like",
+        800,
+        &["performance"],
+        &["fabric", "forge"],
+    );
+    stored_project(&t, "OptCCCCC", "fixer", 50, &["bug-fixes"], &["forge"]);
+    stored_project(&t, "UtlAAAAA", "tool", 10, &["utility-qol"], &["fabric"]);
+    stored_project(&t, "LibAAAAA", "lib", 5000, &["library"], &["fabric"]);
+    assert_eq!(
+        slugs_of(&t, "kind=mod&category=mod.optimization").await,
+        ["sodium-like", "lithium-like", "fixer"]
+    );
+    // Several: a project in any of them.
+    assert_eq!(
+        slugs_of(
+            &t,
+            "kind=mod&category=mod.optimization,mod.utility&loader=fabric"
+        )
+        .await,
+        ["sodium-like", "lithium-like", "tool"]
+    );
+    // A site's own slug still works, and an unknown one finds nothing.
+    assert_eq!(slugs_of(&t, "category=performance").await, ["lithium-like"]);
+    assert!(slugs_of(&t, "category=mod.nothing").await.is_empty());
+    for bad in [
+        "category=a%27b",
+        "category=1,2,3,4,5,6,7,8,9",
+        "source=elsewhere",
+        "since=0",
+        "since=400",
+        "collection=Not%20a%20key",
+        "sort=popular",
+    ] {
+        let (status, _) = t.get(&format!("/v1/search?{bad}")).await;
+        assert_eq!(status, StatusCode::BAD_REQUEST, "{bad}");
+    }
+
+    // A tile has its loaders (of the game version asked), categories and cover.
+    let (_, found) = t
+        .get("/v1/search?kind=mod&category=mod.optimization&loader=forge")
+        .await;
+    let hit = &found["hits"][0];
+    assert_eq!(hit["slug"], "lithium-like");
+    assert_eq!(hit["loaders"], json!(["fabric", "forge"]));
+    assert_eq!(hit["categoryIds"], json!(["mod.optimization"]));
+    assert!(hit["cover"].is_null());
+    let (_, found) = t.get("/v1/search?kind=mod&game=1.20.1").await;
+    assert_eq!(found["total"], 0);
+
+    // Counts under the filters, whatever categories are chosen.
+    let counts = |answer: &Value| -> Vec<(String, i64)> {
+        answer["categories"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|c| {
+                (
+                    c["id"].as_str().unwrap().to_owned(),
+                    c["count"].as_i64().unwrap(),
+                )
+            })
+            .collect()
+    };
+    let (status, answer) = t.get("/v1/categories?kind=mod&category=mod.magic").await;
+    assert_eq!(status, StatusCode::OK);
+    let all = counts(&answer);
+    assert_eq!(all.len(), crate::categories::of_kind("mod").count());
+    let count = |list: &[(String, i64)], id: &str| list.iter().find(|(i, _)| i == id).unwrap().1;
+    assert_eq!(count(&all, "mod.optimization"), 3);
+    assert_eq!(count(&all, "mod.utility"), 1);
+    assert_eq!(count(&all, "mod.library"), 1);
+    assert_eq!(count(&all, "mod.magic"), 0);
+    let (_, answer) = t.get("/v1/categories?kind=mod&loader=forge").await;
+    let forge = counts(&answer);
+    assert_eq!(count(&forge, "mod.optimization"), 2);
+    assert_eq!(count(&forge, "mod.utility"), 0);
+    let (status, _) = t.get("/v1/categories?kind=plugin").await;
+    assert_eq!(status, StatusCode::BAD_REQUEST);
+
+    // A project's page names its categories too.
+    let (_, page) = t.get("/v1/projects/fixer").await;
+    assert_eq!(page["categoryIds"], json!(["mod.optimization"]));
+    assert_eq!(page["categories"], json!(["bug-fixes"]));
+
+    // The owner sees how much of what the sites say the list covers.
+    let purged = Purged::default();
+    let owner = owner(&t, &purged);
+    let lines = owner.categories(&[]).unwrap();
+    assert!(
+        lines.contains(&"mod.optimization 3".to_owned()),
+        "{lines:?}"
+    );
+    assert_eq!(
+        lines.last().unwrap(),
+        "mod: 0 slugs in no category, 0 projects in none"
+    );
+    assert!(owner.categories(&["plugin".to_owned()]).is_err());
+}
+
+#[tokio::test]
+async fn similar_projects_share_the_most_categories() {
+    let t = setup();
+    let page = stored_project(
+        &t,
+        "PrjAAAAA",
+        "page",
+        100,
+        &["optimization", "utility"],
+        &["fabric"],
+    );
+    stored_project(
+        &t,
+        "PrjBBBBB",
+        "both",
+        10,
+        &["performance", "utility-qol"],
+        &["fabric"],
+    );
+    stored_project(&t, "PrjCCCCC", "one", 1000, &["optimization"], &["fabric"]);
+    stored_project(
+        &t,
+        "PrjDDDDD",
+        "forge-one",
+        2000,
+        &["optimization"],
+        &["forge"],
+    );
+    stored_project(
+        &t,
+        "PrjEEEEE",
+        "a-library",
+        5000,
+        &["optimization", "library"],
+        &["fabric"],
+    );
+    stored_project(&t, "PrjFFFFF", "magic", 9000, &["magic"], &["fabric"]);
+    let similar = |answer: &Value| -> Vec<String> {
+        answer["hits"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|h| h["slug"].as_str().unwrap().to_owned())
+            .collect()
+    };
+    let (status, answer) = t.get("/v1/projects/page/similar").await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(similar(&answer), ["both", "forge-one", "one"]);
+    let (_, answer) = t
+        .get(&format!("/v1/projects/{page}/similar?loader=fabric"))
+        .await;
+    assert_eq!(similar(&answer), ["both", "one"]);
+    assert_eq!(
+        answer["hits"][0]["categoryIds"],
+        json!(["mod.optimization", "mod.utility"])
+    );
+    let (status, _) = t.get("/v1/projects/nothing/similar").await;
+    assert_eq!(status, StatusCode::NOT_FOUND);
+    let (status, _) = t.get("/v1/projects/page/similar?game=a%20b").await;
+    assert_eq!(status, StatusCode::BAD_REQUEST);
+}
+
+#[tokio::test]
+async fn versions_come_in_pages_with_what_they_are_for() {
+    let t = setup();
+    let id = stored_project(&t, "VerAAAAA", "many", 1, &["utility"], &[]);
+    let versions: Vec<model::SourceVersion> = (0..5)
+        .map(|n| model::SourceVersion {
+            source_id: format!("VerAAAAAv{n}"),
+            number: format!("1.{n}"),
+            name: String::new(),
+            changelog: String::new(),
+            channel: if n == 4 { "beta" } else { "release" }.to_owned(),
+            published: n,
+            downloads: 0,
+            games: vec![if n < 2 { "1.20.1" } else { "1.21.1" }.to_owned()],
+            loaders: vec![if n % 2 == 0 { "fabric" } else { "forge" }.to_owned()],
+            files: Vec::new(),
+            dependencies: Vec::new(),
+            details: true,
+        })
+        .collect();
+    t.app
+        .store
+        .upsert_versions(&id, modrinth::SOURCE, &versions)
+        .unwrap();
+    let numbers = |answer: &Value| -> Vec<String> {
+        answer["versions"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|v| v["number"].as_str().unwrap().to_owned())
+            .collect()
+    };
+    // As before without a page: all of them.
+    let (_, all) = t.get("/v1/projects/many/versions").await;
+    assert_eq!(numbers(&all), ["1.4", "1.3", "1.2", "1.1", "1.0"]);
+    assert_eq!(all["total"], 5);
+    assert_eq!(all["games"], json!(["1.21.1", "1.20.1"]));
+    assert_eq!(all["loaders"], json!(["fabric", "forge"]));
+    let (_, page) = t.get("/v1/projects/many/versions?limit=2&offset=2").await;
+    assert_eq!(numbers(&page), ["1.2", "1.1"]);
+    assert_eq!(page["total"], 5);
+    let (_, releases) = t
+        .get("/v1/projects/many/versions?channel=release&game=1.21.1&limit=10")
+        .await;
+    assert_eq!(numbers(&releases), ["1.3", "1.2"]);
+    assert_eq!(releases["total"], 2);
+    // The lists to choose from stay whole.
+    assert_eq!(releases["games"], json!(["1.21.1", "1.20.1"]));
+    for bad in ["channel=nightly", "loader=a%20b"] {
+        let (status, _) = t.get(&format!("/v1/projects/many/versions?{bad}")).await;
+        assert_eq!(status, StatusCode::BAD_REQUEST, "{bad}");
+    }
+}
+
+#[tokio::test]
+async fn the_week_s_most_popular_gained_the_most_downloads() {
+    let t = setup();
+    stored_project(&t, "PopAAAAA", "steady", 1000, &["utility"], &["fabric"]);
+    stored_project(&t, "PopBBBBB", "rising", 900, &["utility"], &["fabric"]);
+    t.app.store.note_downloads(now() - 6 * 86_400).unwrap();
+    stored_project(&t, "PopBBBBB", "rising", 950, &["utility"], &["fabric"]);
+    assert_eq!(
+        slugs_of(&t, "kind=mod&sort=downloads").await,
+        ["steady", "rising"]
+    );
+    assert_eq!(
+        slugs_of(&t, "kind=mod&sort=trending").await,
+        ["rising", "steady"]
+    );
+    // Today's note, and two weeks kept.
+    assert_eq!(t.app.store.note_downloads(now()).unwrap(), 2);
+    assert_eq!(t.app.store.note_downloads(now() + 30 * 86_400).unwrap(), 2);
+    assert_eq!(
+        slugs_of(&t, "kind=mod&sort=trending").await,
+        ["steady", "rising"]
+    );
+}
+
+#[tokio::test]
+async fn collections_are_the_owner_s_and_the_catalog_s() {
+    let t = setup();
+    stored_project(
+        &t,
+        "ColAAAAA",
+        "sodium",
+        900,
+        &["optimization"],
+        &["fabric"],
+    );
+    stored_project(
+        &t,
+        "ColBBBBB",
+        "lithium",
+        800,
+        &["optimization"],
+        &["fabric"],
+    );
+    stored_project(&t, "ColCCCCC", "jei", 700, &["utility"], &["forge"]);
+    let purged = Purged::default();
+    let owner = owner(&t, &purged);
+    let args = |words: &[&str]| -> Vec<String> { words.iter().map(|w| (*w).to_owned()).collect() };
+    assert_eq!(
+        owner.collection(&args(&["add", "fps", "mod"])).unwrap(),
+        ["collection fps set"]
+    );
+    assert_eq!(
+        owner
+            .collection(&args(&["title", "fps", "ru", "Больше", "кадров"]))
+            .unwrap(),
+        ["collection fps title ru set"]
+    );
+    owner
+        .collection(&args(&[
+            "note",
+            "fps",
+            "en",
+            "Faster without losing the look",
+        ]))
+        .unwrap();
+    assert_eq!(
+        owner
+            .collection(&args(&[
+                "put", "fps", "lithium", "sodium", "nothing", "sodium"
+            ]))
+            .unwrap(),
+        ["collection fps: 2 projects, 1 not found"]
+    );
+    owner
+        .collection(&args(&["add", "forge-set", "mod", "1.21.1", "forge"]))
+        .unwrap();
+    owner
+        .collection(&args(&["put", "forge-set", "jei"]))
+        .unwrap();
+    assert_eq!(
+        owner.collection(&args(&["list"])).unwrap(),
+        [
+            "fps mod - - 2 projects, titles ru, notes en",
+            "forge-set mod 1.21.1 forge 1 projects, titles -, notes -",
+            "2 collections"
+        ]
+    );
+    for bad in [
+        &["add", "Bad Key", "mod"][..],
+        &["add", "k", "plugin"],
+        &["add", "popular-week", "mod"],
+        &["add", "new", "modpack"],
+        &["title", "fps", "de", "Mehr"],
+        &["title", "nothing", "ru", "x"],
+        &["put", "nothing", "sodium"],
+        &["remove", "nothing"],
+        &["dance"],
+    ] {
+        assert!(owner.collection(&args(bad)).is_err(), "{bad:?}");
+    }
+    let long = "x".repeat(65);
+    assert!(
+        owner
+            .collection(&args(&["title", "fps", "ru", &long]))
+            .is_err()
+    );
+
+    // A collection lists in the owner's order.
+    assert_eq!(slugs_of(&t, "collection=fps").await, ["lithium", "sodium"]);
+    assert_eq!(
+        slugs_of(&t, "collection=fps&sort=downloads").await,
+        ["sodium", "lithium"]
+    );
+    assert!(slugs_of(&t, "collection=none").await.is_empty());
+
+    let (status, answer) = t
+        .get("/v1/collections?kind=mod&game=1.21.1&loader=fabric")
+        .await;
+    assert_eq!(status, StatusCode::OK);
+    let list = answer["collections"].as_array().unwrap();
+    let ids: Vec<&str> = list.iter().map(|c| c["id"].as_str().unwrap()).collect();
+    // Forge's set is for Forge only; everything was added just now.
+    assert_eq!(ids, ["popular-week", "new", "fps"]);
+    assert_eq!(list[0]["query"], json!({ "sort": "trending" }));
+    assert_eq!(list[0]["count"], 2);
+    assert_eq!(list[0]["preset"], true);
+    assert_eq!(list[1]["query"], json!({ "sort": "new", "since": 7 }));
+    let fps = &list[2];
+    assert_eq!(fps["preset"], false);
+    assert_eq!(fps["titles"], json!({ "ru": "Больше кадров" }));
+    assert_eq!(
+        fps["notes"],
+        json!({ "en": "Faster without losing the look" })
+    );
+    assert_eq!(fps["query"], json!({ "collection": "fps" }));
+    assert_eq!(fps["count"], 2);
+    assert_eq!(fps["names"], json!(["lithium", "sodium"]));
+    let (_, forge) = t
+        .get("/v1/collections?kind=mod&game=1.21.1&loader=forge")
+        .await;
+    let ids: Vec<&str> = forge["collections"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|c| c["id"].as_str().unwrap())
+        .collect();
+    assert_eq!(ids, ["popular-week", "new", "forge-set"]);
+    let (status, _) = t.get("/v1/collections?kind=plugin").await;
+    assert_eq!(status, StatusCode::BAD_REQUEST);
+
+    assert_eq!(
+        owner.collection(&args(&["remove", "fps"])).unwrap(),
+        ["collection fps removed"]
+    );
+    assert!(slugs_of(&t, "collection=fps").await.is_empty());
 }

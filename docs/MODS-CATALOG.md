@@ -96,25 +96,56 @@ gives `[]`. A new reader version (`MANIFEST_RULES` in `import.rs`) reads them al
   OptiFine's jar goes by `optifine`). The launcher checks a set against it at install
   and before a launch; offline, against the list it last had, else the built-in one.
 
+## Browsing (D-072)
+
+- Categories are one shared list in `services/mods/src/categories.rs`: an ID like
+  `mod.optimization` or `shader.realistic` maps the slugs Modrinth and CurseForge use
+  for that kind. Projects keep the sites' slugs; answers add `categoryIds`.
+  `GET /v1/search?category=a,b` takes up to 8, shared IDs or slugs, and finds a
+  project in any of them. `GET /v1/categories` takes the search's own parameters and
+  counts the projects in each category of the kind, the categories asked for aside.
+- A search also takes `source` (`own` for players' packs), `since` (added in the last
+  1 to 365 days), `collection` (a key) and `sort=trending` (downloads gained in the
+  last week). Hits carry `loaders`, `categoryIds` and `cover` (the gallery's featured
+  picture, small).
+- `GET /v1/collections?kind=&game=&loader=` lists the collections that have projects
+  there: `popular-week` (the 20 that gained the most downloads), `new` (added in 7
+  days), `players-packs` (modpacks only) and the owner's, each with `query` (what to
+  search for to list it), `count`, four icons and two titles. Answers are kept for a
+  minute. Weekly gains come from a daily copy of every project's download count, kept
+  two weeks.
+- `GET /v1/projects/{id}/similar?game=&loader=` gives up to five ready projects of the
+  same kind sharing most categories, libraries left out unless it is one.
+- `GET /v1/projects/{id}/versions?game=&loader=&channel=&offset=&limit=` gives `total`
+  and, whatever the filters, the `games` (newest first) and `loaders` its versions are
+  for. Without `limit` it gives them all, as before.
+- A version's files say `checked` when the catalog keeps them and its check found
+  them clean (or the owner let them go); dependencies carry `title`, `slug` and
+  `iconThumb` when the catalog has the project.
+
 ## The owner's commands
 
 On the server, as `sudo -u lapi-mods /home/www/lapi/mods/current/lapi-mods <command>`:
 
-| Command                                                           | What it does                                                                                                                       |
-| ----------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------- |
-| `find <address, slug, ID, SHA-256 or SHA-1>`                      | a project with its versions and files, or a file: state, verdict, signs, where it is used, decisions                               |
-| `review`                                                          | what waits: files the scanner held back (`scan`), versions their source took down (`gone`), reported packs (`report`)              |
-| `review <n> keep` or `review <n> block [reason]`                  | decides item `n`: `keep` serves a held file again or dismisses reports, `block` blocks the files or removes the reported pack      |
-| `block <SHA-256 or SHA-1> [reason]`                               | takes the file out of service at once, tells launchers, clears Cloudflare's cache; also for a file not here yet                    |
-| `unblock <SHA-256 or SHA-1>`                                      | lifts a block, or lets a file the scanner held go; no later scan holds it                                                          |
-| `remove <project> [reason]`                                       | at its author's request: the project leaves search and the API for good, files only it needs are held back                         |
-| `forget <SHA-256> [--yes]`                                        | deletes a held file for good (asks for `--yes`); the catalog never fetches it again                                                |
-| `restore`                                                         | brings back to the disk, checked by SHA-256, the files only R2 still has                                                           |
-| `add <address>...`                                                | adds up to 32 projects by their Modrinth or CurseForge address, as a player's "Add to the catalog" does                            |
-| `add --status`                                                    | the owner's additions by state, and those that failed with why                                                                     |
-| `slug <project> <slug>`                                           | gives a project another slug (small letters, digits, inner hyphens; not another project's); the old one leads on only via a source |
-| `clash list`, `clash add <mod> <mod>`, `clash remove <mod> <mod>` | the list of mods that do not start together, by mod ID (`/v1/clashes`); a known one removed stays off                              |
-| `health`                                                          | the service's own checks, one line each (`ok`, `problem` or `off` with numbers); fails when any finds a problem                    |
+| Command                                                                                           | What it does                                                                                                                       |
+| ------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------- |
+| `find <address, slug, ID, SHA-256 or SHA-1>`                                                      | a project with its versions and files, or a file: state, verdict, signs, where it is used, decisions                               |
+| `review`                                                                                          | what waits: files the scanner held back (`scan`), versions their source took down (`gone`), reported packs (`report`)              |
+| `review <n> keep` or `review <n> block [reason]`                                                  | decides item `n`: `keep` serves a held file again or dismisses reports, `block` blocks the files or removes the reported pack      |
+| `block <SHA-256 or SHA-1> [reason]`                                                               | takes the file out of service at once, tells launchers, clears Cloudflare's cache; also for a file not here yet                    |
+| `unblock <SHA-256 or SHA-1>`                                                                      | lifts a block, or lets a file the scanner held go; no later scan holds it                                                          |
+| `remove <project> [reason]`                                                                       | at its author's request: the project leaves search and the API for good, files only it needs are held back                         |
+| `forget <SHA-256> [--yes]`                                                                        | deletes a held file for good (asks for `--yes`); the catalog never fetches it again                                                |
+| `restore`                                                                                         | brings back to the disk, checked by SHA-256, the files only R2 still has                                                           |
+| `add <address>...`                                                                                | adds up to 32 projects by their Modrinth or CurseForge address, as a player's "Add to the catalog" does                            |
+| `add --status`                                                                                    | the owner's additions by state, and those that failed with why                                                                     |
+| `slug <project> <slug>`                                                                           | gives a project another slug (small letters, digits, inner hyphens; not another project's); the old one leads on only via a source |
+| `clash list`, `clash add <mod> <mod>`, `clash remove <mod> <mod>`                                 | the list of mods that do not start together, by mod ID (`/v1/clashes`); a known one removed stays off                              |
+| `collection add <key> <kind> [game\|-] [loader\|-]`, `collection remove <key>`, `collection list` | the owner's collections (D-072): a key of small letters, digits and hyphens, for a kind and optionally a game version and loader   |
+| `collection title <key> <ru\|en\|ar> [text]`, `collection note …`                                 | its title (64 characters) and line (160) by language; no text takes it away                                                        |
+| `collection put <key> <project>...`                                                               | its projects (up to 100, by ID or slug) in the order shown                                                                         |
+| `categories [kind]`                                                                               | how many projects of a kind are in each shared category, and how many of the sites' slugs the list leaves out                      |
+| `health`                                                                                          | the service's own checks, one line each (`ok`, `problem` or `off` with numbers); fails when any finds a problem                    |
 
 Projects from sites that are not catalogs (D-066, external source) are added by these
 commands only:
@@ -149,7 +180,9 @@ fixed words, numbers and the hash only; a reason can be given over SSH only.
 example `["add", "optifine"]`, `["days", "optifine", "3"]` or `["trust", "optifine", "on"]`); they reach the service on
 its standard input, never through a shell. `task=virustotal` runs `virustotal` the same
 way (`["status"]` or `["check", "<hash>"]`), `task=add` runs `add` (a list of
-addresses, or `["--status"]`), and `task=slug` runs `slug` (`["<project>", "<slug>"]`).
+addresses, or `["--status"]`), `task=slug` runs `slug` (`["<project>", "<slug>"]`),
+`task=collection` runs `collection` (`["put", "fps", "sodium", "lithium"]`) and
+`task=categories` runs `categories` (`["mod"]`, or nothing for mods).
 
 `health` runs every morning in the workflow Mods health; a problem fails the run, and
 GitHub mails it. It checks: a job due over 12 hours and still waiting (`queue`); at

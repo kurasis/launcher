@@ -341,7 +341,11 @@ async fn skins_standard_old_hd_and_animated() {
     // The public lookup shows the same, under the current nick.
     let found = t.get("/v1/profile/alice").await;
     assert_eq!(found.status, StatusCode::OK);
-    assert_eq!(found.json(), answer.json());
+    let mut own = answer.json();
+    // Only the account itself sees its uploads left.
+    assert_eq!(own["uploads"]["left"], 1);
+    own.as_object_mut().unwrap().remove("uploads");
+    assert_eq!(found.json(), own);
     assert_eq!(found.header(header::CACHE_CONTROL), "public, max-age=60");
 }
 
@@ -914,7 +918,8 @@ async fn the_own_profile_and_export() {
     assert_eq!(empty.status, StatusCode::OK);
     assert_eq!(
         empty.json(),
-        json!({ "nick": "Alice", "skin": null, "cape": null })
+        json!({ "nick": "Alice", "skin": null, "cape": null,
+                "uploads": { "left": 10, "reset": 0 } })
     );
     assert_eq!(empty.header(header::CACHE_CONTROL), "no-store");
     t.upload(1, "skin", "model=slim", image(64, 64, 1)).await;
@@ -995,4 +1000,438 @@ async fn backups_are_whole_private_and_only_the_newest_stay() {
     }
     let second = t.app.store.backup(&dir, 1).unwrap();
     assert!(!first.exists() && second.exists(), "only the newest stays");
+}
+
+impl T {
+    /// A request with a JSON body.
+    async fn json(&self, who: u8, method: &str, uri: &str, body: Value) -> Answer {
+        self.send(
+            Request::builder()
+                .method(method)
+                .uri(uri)
+                .header(header::AUTHORIZATION, format!("Bearer {}", self.token(who)))
+                .header(header::CONTENT_TYPE, "application/json")
+                .body(Body::from(body.to_string()))
+                .unwrap(),
+        )
+        .await
+    }
+
+    /// `POST /v1/me/<kind>?<query>` with a PNG body.
+    async fn add(&self, who: u8, kind: &str, query: &str, png: Vec<u8>) -> Answer {
+        self.send(
+            Request::post(format!("/v1/me/{kind}?{query}"))
+                .header(header::AUTHORIZATION, format!("Bearer {}", self.token(who)))
+                .header(header::CONTENT_TYPE, "image/png")
+                .body(Body::from(png))
+                .unwrap(),
+        )
+        .await
+    }
+
+    /// Keeps a texture in a wardrobe straight in the store (no upload).
+    fn keep(&self, who: u8, kind: crate::texture::Kind, png: &[u8]) -> crate::store::Kept {
+        let texture =
+            crate::texture::process(kind, png, &crate::texture::Options::default()).unwrap();
+        self.app
+            .store
+            .add_item(&id(who), &texture, "", now())
+            .unwrap()
+    }
+}
+
+#[tokio::test]
+async fn a_wardrobe_keeps_skins_capes_and_sets() {
+    let t = setup();
+    let empty = t.call(1, "GET", "/v1/me/wardrobe").await;
+    assert_eq!(empty.status, StatusCode::OK);
+    assert_eq!(empty.header(header::CACHE_CONTROL), "no-store");
+    let data = empty.json();
+    assert_eq!(data["items"], json!([]));
+    assert_eq!(data["sets"], json!([]));
+    assert_eq!(
+        data["limits"],
+        json!({ "skins": 30, "capes": 10, "sets": 20 })
+    );
+    assert_eq!(data["uploads"]["left"], 10);
+
+    // Kept without being worn; the name comes percent-encoded.
+    let added = t
+        .add(
+            1,
+            "skin",
+            "model=slim&name=%20%D0%9C%D0%BE%D0%B9%20skin%20",
+            image(64, 64, 1),
+        )
+        .await;
+    assert_eq!(added.status, StatusCode::OK);
+    let data = added.json();
+    assert!(data["skin"].is_null());
+    assert_eq!(data["uploads"]["left"], 9);
+    let item = &data["items"][0];
+    assert_eq!(item["name"], "Мой skin");
+    assert_eq!(
+        (item["kind"].as_str(), item["model"].as_str()),
+        (Some("skin"), Some("slim"))
+    );
+    assert_eq!(item["favourite"], false);
+    assert_eq!(item["worn"], 0);
+    let skin_id = item["id"].as_str().unwrap().to_owned();
+    let skin_hash = item["hash"].as_str().unwrap().to_owned();
+    assert_eq!(skin_id.len(), 32);
+
+    // Worn from the wardrobe: no upload counted.
+    let worn = t
+        .call(1, "POST", &format!("/v1/me/wardrobe/items/{skin_id}/wear"))
+        .await;
+    assert_eq!(worn.status, StatusCode::OK);
+    let data = worn.json();
+    assert_eq!(data["skin"]["hash"], skin_hash.as_str());
+    assert_eq!(data["skin"]["model"], "slim");
+    assert_eq!(data["uploads"]["left"], 9);
+    assert!(data["items"][0]["worn"].as_i64().unwrap() > 0);
+    assert_eq!(
+        t.get("/v1/profile/Alice").await.json()["skin"]["hash"],
+        skin_hash.as_str()
+    );
+
+    // A cape worn by upload, then kept as it is.
+    t.upload(1, "cape", "", image(64, 32, 2)).await;
+    let saved = t
+        .json(
+            1,
+            "POST",
+            "/v1/me/wardrobe/save",
+            json!({ "kind": "cape", "name": "Плащ" }),
+        )
+        .await;
+    assert_eq!(saved.status, StatusCode::OK);
+    let items = saved.json()["items"].as_array().unwrap().clone();
+    assert_eq!(items.len(), 2);
+    let cape = items.iter().find(|i| i["kind"] == "cape").unwrap();
+    assert_eq!(cape["name"], "Плащ");
+    // Kept again: still one item.
+    let again = t
+        .json(
+            1,
+            "POST",
+            "/v1/me/wardrobe/save",
+            json!({ "kind": "cape", "name": "x" }),
+        )
+        .await;
+    assert_eq!(again.json()["items"].as_array().unwrap().len(), 2);
+
+    // What is worn, as a set.
+    let set = t
+        .json(1, "POST", "/v1/me/wardrobe/sets", json!({ "name": "Всё" }))
+        .await;
+    assert_eq!(set.status, StatusCode::OK);
+    let set = set.json()["sets"][0].clone();
+    assert_eq!(set["name"], "Всё");
+    assert_eq!(set["skin"]["hash"], skin_hash.as_str());
+    assert_eq!(set["skin"]["model"], "slim");
+    assert_eq!(set["cape"]["hash"], cape["hash"]);
+    let set_id = set["id"].as_str().unwrap().to_owned();
+
+    // Taken off, the textures stay for the wardrobe.
+    t.call(1, "DELETE", "/v1/me/skin").await;
+    t.call(1, "DELETE", "/v1/me/cape").await;
+    assert_eq!(t.textures(), 2);
+    let worn = t
+        .call(1, "POST", &format!("/v1/me/wardrobe/sets/{set_id}/wear"))
+        .await
+        .json();
+    assert_eq!(worn["skin"]["hash"], skin_hash.as_str());
+    assert_eq!(worn["cape"]["hash"], cape["hash"]);
+    assert!(worn["sets"][0]["worn"].as_i64().unwrap() > 0);
+
+    // Renamed and marked; junk is refused.
+    let changed = t
+        .json(
+            1,
+            "PATCH",
+            &format!("/v1/me/wardrobe/items/{skin_id}"),
+            json!({ "name": "Новый", "favourite": true }),
+        )
+        .await;
+    assert_eq!(changed.status, StatusCode::OK);
+    let item = changed.json()["items"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|i| i["id"] == skin_id.as_str())
+        .unwrap()
+        .clone();
+    assert_eq!(
+        (item["name"].as_str(), item["favourite"].as_bool()),
+        (Some("Новый"), Some(true))
+    );
+    let only_mark = t
+        .json(
+            1,
+            "PATCH",
+            &format!("/v1/me/wardrobe/sets/{set_id}"),
+            json!({ "favourite": true }),
+        )
+        .await;
+    assert_eq!(only_mark.json()["sets"][0]["name"], "Всё");
+    assert_eq!(only_mark.json()["sets"][0]["favourite"], true);
+    for (body, code) in [
+        (json!({ "name": "a".repeat(33) }), "bad_name"),
+        (json!({ "name": "skin\u{202E}gnp" }), "bad_name"),
+        (json!({ "name": "a\nb" }), "bad_name"),
+        (json!({ "name": "\u{200B}" }), "bad_name"),
+        (json!({ "hash": "x" }), "bad_request"),
+        (json!({ "favourite": "yes" }), "bad_request"),
+    ] {
+        let answer = t
+            .json(
+                1,
+                "PATCH",
+                &format!("/v1/me/wardrobe/items/{skin_id}"),
+                body.clone(),
+            )
+            .await;
+        assert!(answer.status.is_client_error(), "{body}");
+        assert_eq!(answer.json()["error"], code, "{body}");
+    }
+    // 32 characters of any script fit.
+    let long = "Ж".repeat(32);
+    let answer = t
+        .json(
+            1,
+            "PATCH",
+            &format!("/v1/me/wardrobe/items/{skin_id}"),
+            json!({ "name": long }),
+        )
+        .await;
+    assert_eq!(answer.status, StatusCode::OK);
+
+    // Another account sees and touches none of it.
+    for (method, uri) in [
+        ("PATCH", format!("/v1/me/wardrobe/items/{skin_id}")),
+        ("DELETE", format!("/v1/me/wardrobe/items/{skin_id}")),
+        ("POST", format!("/v1/me/wardrobe/items/{skin_id}/wear")),
+        ("DELETE", format!("/v1/me/wardrobe/sets/{set_id}")),
+        ("POST", format!("/v1/me/wardrobe/sets/{set_id}/wear")),
+    ] {
+        let answer = t.json(2, method, &uri, json!({})).await;
+        assert_eq!(answer.status, StatusCode::NOT_FOUND, "{method} {uri}");
+    }
+    assert_eq!(
+        t.call(2, "GET", "/v1/me/wardrobe").await.json()["items"],
+        json!([])
+    );
+    for junk in [
+        "../../me",
+        "ABCDEF0123456789ABCDEF0123456789",
+        "1",
+        "%27%20OR%201%3D1",
+    ] {
+        let answer = t
+            .call(1, "POST", &format!("/v1/me/wardrobe/items/{junk}/wear"))
+            .await;
+        assert_eq!(answer.status, StatusCode::NOT_FOUND, "{junk}");
+    }
+
+    // Deleting an item leaves on what is worn; the set still holds it.
+    let deleted = t
+        .call(1, "DELETE", &format!("/v1/me/wardrobe/items/{skin_id}"))
+        .await;
+    assert_eq!(deleted.status, StatusCode::OK);
+    assert_eq!(deleted.json()["items"].as_array().unwrap().len(), 1);
+    assert_eq!(deleted.json()["skin"]["hash"], skin_hash.as_str());
+    assert_eq!(
+        t.call(1, "DELETE", &format!("/v1/me/wardrobe/items/{skin_id}"))
+            .await
+            .status,
+        StatusCode::NOT_FOUND
+    );
+    t.call(1, "DELETE", &format!("/v1/me/wardrobe/sets/{set_id}"))
+        .await;
+    assert_eq!(t.textures(), 2, "both worn still");
+    // Off, and kept nowhere: it goes.
+    t.call(1, "DELETE", "/v1/me/skin").await;
+    assert_eq!(t.textures(), 1);
+    assert_eq!(
+        t.get(&format!("/v1/textures/{skin_hash}")).await.status,
+        StatusCode::NOT_FOUND
+    );
+}
+
+#[tokio::test]
+async fn a_full_wardrobe_takes_nothing_and_costs_no_upload() {
+    use crate::store::{Kept, Refused};
+    use crate::texture::Kind;
+    let t = setup();
+    for i in 0..30 {
+        assert!(matches!(
+            t.keep(1, Kind::Skin, &image(64, 64, i)),
+            Kept::Yes(_)
+        ));
+    }
+    assert_eq!(
+        t.keep(1, Kind::Skin, &image(64, 64, 200)),
+        Kept::No(Refused::Full)
+    );
+    assert_eq!(t.textures(), 30, "the refused one is not kept");
+    let full = t.add(1, "skin", "", image(64, 64, 201)).await;
+    assert_eq!(full.status, StatusCode::CONFLICT);
+    assert_eq!(full.json()["error"], "wardrobe_full");
+    // Capes have their own room.
+    assert_eq!(
+        t.add(1, "cape", "", image(64, 32, 1)).await.status,
+        StatusCode::OK
+    );
+    assert_eq!(
+        t.call(1, "GET", "/v1/me").await.json()["uploads"]["left"],
+        9
+    );
+    t.upload(1, "skin", "", image(64, 64, 202)).await;
+    let save = t
+        .json(1, "POST", "/v1/me/wardrobe/save", json!({ "kind": "skin" }))
+        .await;
+    assert_eq!(save.status, StatusCode::CONFLICT);
+    assert_eq!(save.json()["error"], "wardrobe_full");
+    // Twenty sets.
+    for _ in 0..20 {
+        assert!(matches!(
+            t.app.store.save_set(&id(1), "", now()).unwrap(),
+            Kept::Yes(_)
+        ));
+    }
+    let set = t
+        .json(1, "POST", "/v1/me/wardrobe/sets", json!({ "name": "x" }))
+        .await;
+    assert_eq!(set.status, StatusCode::CONFLICT);
+    assert_eq!(set.json()["error"], "wardrobe_full");
+    let data = t.call(1, "GET", "/v1/me/wardrobe").await.json();
+    assert_eq!(data["items"].as_array().unwrap().len(), 31);
+    assert_eq!(data["sets"].as_array().unwrap().len(), 20);
+}
+
+#[tokio::test]
+async fn nothing_worn_is_nothing_to_keep() {
+    let t = setup();
+    for (uri, body) in [
+        (
+            "/v1/me/wardrobe/save",
+            json!({ "kind": "skin", "name": "a" }),
+        ),
+        ("/v1/me/wardrobe/sets", json!({ "name": "a" })),
+    ] {
+        let answer = t.json(1, "POST", uri, body).await;
+        assert_eq!(answer.status, StatusCode::CONFLICT, "{uri}");
+        assert_eq!(answer.json()["error"], "nothing_worn", "{uri}");
+    }
+    for body in [
+        json!({ "kind": "hat" }),
+        json!({}),
+        json!({ "kind": "skin", "name": 5 }),
+        json!({ "kind": "skin", "account": id(2) }),
+    ] {
+        let answer = t
+            .json(1, "POST", "/v1/me/wardrobe/save", body.clone())
+            .await;
+        assert!(answer.status.is_client_error(), "{body}");
+    }
+    let with_kind = t
+        .json(1, "POST", "/v1/me/wardrobe/sets", json!({ "kind": "skin" }))
+        .await;
+    assert_eq!(with_kind.status, StatusCode::BAD_REQUEST);
+    // A bad name costs no upload.
+    let named = t.add(1, "skin", "name=a%0Ab", image(64, 64, 1)).await;
+    assert_eq!(named.json()["error"], "bad_name");
+    let twice = t.add(1, "skin", "name=a&name=b", image(64, 64, 1)).await;
+    assert_eq!(twice.json()["error"], "bad_name");
+    let unsigned = t
+        .send(Request::get("/v1/me/wardrobe").body(Body::empty()).unwrap())
+        .await;
+    assert_eq!(unsigned.status, StatusCode::UNAUTHORIZED);
+    assert_eq!(
+        t.call(1, "GET", "/v1/me").await.json()["uploads"]["left"],
+        10
+    );
+}
+
+#[tokio::test]
+async fn wearing_from_the_wardrobe_has_its_own_limit() {
+    let t = setup();
+    let id_of = t.add(1, "skin", "", image(64, 64, 1)).await.json()["items"][0]["id"]
+        .as_str()
+        .unwrap()
+        .to_owned();
+    for _ in 0..120 {
+        let answer = t
+            .call(1, "POST", &format!("/v1/me/wardrobe/items/{id_of}/wear"))
+            .await;
+        assert_eq!(answer.status, StatusCode::OK);
+    }
+    let over = t
+        .call(1, "POST", &format!("/v1/me/wardrobe/items/{id_of}/wear"))
+        .await;
+    assert_eq!(over.status, StatusCode::TOO_MANY_REQUESTS);
+    // Uploads are their own.
+    assert_eq!(
+        t.call(1, "GET", "/v1/me").await.json()["uploads"]["left"],
+        9
+    );
+}
+
+#[tokio::test]
+async fn deleting_and_removing_reach_the_wardrobe() {
+    let t = setup();
+    // Alice keeps and wears a skin and a cape, and a set of both.
+    let skin = t.add(1, "skin", "", image(64, 64, 1)).await.json()["items"][0]["id"]
+        .as_str()
+        .unwrap()
+        .to_owned();
+    t.call(1, "POST", &format!("/v1/me/wardrobe/items/{skin}/wear"))
+        .await;
+    t.upload(1, "cape", "", image(64, 32, 1)).await;
+    t.json(1, "POST", "/v1/me/wardrobe/sets", json!({ "name": "a" }))
+        .await;
+    // A set with the skin alone.
+    t.call(1, "DELETE", "/v1/me/cape").await;
+    t.json(1, "POST", "/v1/me/wardrobe/sets", json!({ "name": "b" }))
+        .await;
+    t.upload(1, "cape", "", image(64, 32, 1)).await;
+    // Bob keeps the same skin picture.
+    t.add(2, "skin", "", image(64, 64, 1)).await;
+    assert_eq!(t.textures(), 2);
+
+    // The owner removes Alice's skin: gone from her wardrobe and sets, not Bob's.
+    assert!(crate::remove(&t.app.store, &[id(1), "skin".into()]).is_ok());
+    let data = t.call(1, "GET", "/v1/me/wardrobe").await.json();
+    assert!(data["skin"].is_null());
+    assert_eq!(data["items"], json!([]));
+    let sets = data["sets"].as_array().unwrap();
+    assert_eq!(sets.len(), 1, "the set of the skin alone went");
+    assert!(sets[0]["skin"].is_null());
+    assert!(!sets[0]["cape"].is_null());
+    assert_eq!(
+        t.call(2, "GET", "/v1/me/wardrobe").await.json()["items"]
+            .as_array()
+            .unwrap()
+            .len(),
+        1
+    );
+    assert_eq!(t.textures(), 2);
+
+    // Export shows the wardrobe, by hashes.
+    let export = t.call(1, "GET", "/v1/export").await.json();
+    assert_eq!(export["sets"].as_array().unwrap().len(), 1);
+    assert_eq!(export["items"], json!([]));
+
+    // A deleted account leaves nothing behind.
+    t.deleted.lock().unwrap().push((id(1), now()));
+    crate::api::purge_deleted(&t.app).await;
+    assert!(t.app.store.sets(&id(1)).unwrap().is_empty());
+    assert!(t.app.store.items(&id(1)).unwrap().is_empty());
+    assert_eq!(t.textures(), 1, "Bob's");
+    let counts = t.app.store.counts().unwrap();
+    assert_eq!(
+        (counts["items"].as_i64(), counts["sets"].as_i64()),
+        (Some(1), Some(0))
+    );
 }

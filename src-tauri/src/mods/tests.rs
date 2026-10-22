@@ -350,13 +350,27 @@ fn hits_and_projects_from_junk_are_dropped_or_cleaned() {
     assert_eq!(hit.icon, None);
     assert_eq!(hit.sources, ["modrinth"]);
     assert_eq!(hit.status, "importing");
+    assert!(hit.loaders.is_empty() && hit.category_ids.is_empty() && hit.cover.is_none());
+    let hit = Hit::from(&json!({
+        "id": id(1), "kind": "mod", "loaders": ["fabric", "evil"],
+        "categoryIds": ["mod.utility", "mod utility"], "cover": PICTURE,
+    }))
+    .unwrap();
+    assert_eq!(hit.loaders, ["fabric"]);
+    assert_eq!(hit.category_ids, ["mod.utility"]);
+    assert_eq!(hit.cover.as_deref(), Some(PICTURE));
+    let hit =
+        Hit::from(&json!({"id": id(1), "kind": "mod", "cover": "https://evil.example/c.jpg"}))
+            .unwrap();
+    assert_eq!(hit.cover, None);
 
     let project = Project::from(&json!({
         "id": id(2), "kind": "mod", "body": "<script>x</script>hi",
         "sources": [{"source": "modrinth", "url": "https://evil.example/x"},
                     {"source": "curseforge", "url": "https://www.curseforge.com/minecraft/mc-mods/x"}],
         "gallery": [{"url": "https://evil.example/a.png"}, {"url": PICTURE}],
-        "categories": ["ok", "bad category", "x".repeat(40)],
+        "categories": ["ok", "bad category", "x".repeat(49), "512x+", "Upper"],
+        "categoryIds": ["mod.optimization", "<b>"],
         "clientSide": "<b>", "authors": [{"name": ""}, {"name": "Someone", "role": "owner"}],
     }))
     .unwrap();
@@ -364,7 +378,8 @@ fn hits_and_projects_from_junk_are_dropped_or_cleaned() {
     assert_eq!(project.sources[0].url, None);
     assert!(project.sources[1].url.is_some());
     assert_eq!(project.gallery.len(), 1);
-    assert_eq!(project.categories, ["ok"]);
+    assert_eq!(project.categories, ["ok", "512x+"]);
+    assert_eq!(project.category_ids, ["mod.optimization"]);
     assert_eq!(project.client_side, "unknown");
     assert_eq!(project.authors.len(), 1);
 
@@ -390,7 +405,15 @@ fn versions_keep_only_files_the_catalog_serves() {
                  "url": format!("https://files-mods.lapi.sh/f/{sha}/a.jar")},
                 {"name": "b.jar", "sha256": "XYZ", "url": "https://evil.example/b.jar"},
             ],
-            "dependencies": [{"kind": "required", "projectId": id(3)}, {"kind": "weird"}],
+            "dependencies": [
+                {"kind": "required", "projectId": id(3), "title": "Fabric\u{1b} API",
+                 "slug": "fabric-api", "iconThumb": PICTURE, "source": "modrinth",
+                 "sourceProject": "P7dR8mSH"},
+                {"kind": "weird"},
+                {"kind": "optional", "source": "modrinth", "sourceProject": "../x",
+                 "slug": "a b", "iconThumb": "https://evil.example/i.png"},
+                {"kind": "optional", "source": "curseforge", "sourceProject": "238222"},
+            ],
             "changelog": "x",
         }),
         false,
@@ -402,10 +425,58 @@ fn versions_keep_only_files_the_catalog_serves() {
     assert!(version.files[0].url.is_some());
     assert_eq!(version.files[1].sha256, None);
     assert_eq!(version.files[1].url, None);
-    assert_eq!(version.dependencies.len(), 1);
+    assert_eq!(version.dependencies.len(), 3);
+    let fabric = &version.dependencies[0];
+    assert_eq!(fabric.title.as_deref(), Some("Fabric API"));
+    assert_eq!(fabric.slug.as_deref(), Some("fabric-api"));
+    assert_eq!(fabric.icon.as_deref(), Some(PICTURE));
+    assert_eq!(
+        fabric.source_page.as_deref(),
+        Some("https://modrinth.com/project/P7dR8mSH")
+    );
+    let junk = &version.dependencies[1];
+    assert!(junk.slug.is_none() && junk.icon.is_none() && junk.source_page.is_none());
+    // CurseForge's pages need a slug the catalog does not keep.
+    assert!(version.dependencies[2].source_page.is_none());
+    // Not said: not checked.
+    assert!(!version.files[0].checked);
     assert!(version.changelog.is_empty());
     assert_eq!(version.main_file().unwrap().name, "a.jar");
     assert!(Version::from(&json!({"id": id(1), "projectId": "x"}), true).is_none());
+}
+
+#[test]
+fn collections_from_the_catalog_are_checked() {
+    let collection = Collection::from(&json!({
+        "id": "fps", "preset": false,
+        "titles": {"ru": "Больше\u{1b} кадров", "de": "Mehr", "en": ""},
+        "notes": {"en": "x".repeat(400)},
+        "game": "1.21.1", "loader": "evil",
+        "query": {"collection": "fps", "sort": "random", "since": 9999, "source": "own"},
+        "count": -3,
+        "icons": [PICTURE, "https://evil.example/i.png", PICTURE, PICTURE, PICTURE, PICTURE],
+        "names": ["Sodium", "Lithium", "Iris"],
+    }))
+    .unwrap();
+    assert_eq!(collection.titles.len(), 1);
+    assert_eq!(collection.titles["ru"], "Больше кадров");
+    assert_eq!(collection.notes["en"].chars().count(), 160);
+    assert_eq!(collection.game.as_deref(), Some("1.21.1"));
+    assert_eq!(collection.loader, None);
+    assert_eq!(
+        collection.query,
+        CollectionQuery {
+            sort: None,
+            since: None,
+            source: Some("own".to_owned()),
+            collection: Some("fps".to_owned()),
+        }
+    );
+    assert_eq!(collection.count, 0);
+    assert_eq!(collection.icons.len(), 4);
+    assert_eq!(collection.names, ["Sodium", "Lithium"]);
+    assert!(Collection::from(&json!({"id": "../x"})).is_none());
+    assert!(Collection::from(&json!({"id": "x".repeat(33)})).is_none());
 }
 
 #[test]
@@ -470,9 +541,51 @@ fn searches_are_checked_and_bounded() {
             game: Some("1.21&x=y".to_owned()),
             ..Default::default()
         },
+        SearchQuery {
+            categories: (0..9).map(|n| format!("c{n}")).collect(),
+            ..Default::default()
+        },
+        SearchQuery {
+            categories: vec!["mod.optimization&x=y".to_owned()],
+            ..Default::default()
+        },
+        SearchQuery {
+            source: Some("elsewhere".to_owned()),
+            ..Default::default()
+        },
+        SearchQuery {
+            since: Some(0),
+            ..Default::default()
+        },
+        SearchQuery {
+            since: Some(366),
+            ..Default::default()
+        },
+        SearchQuery {
+            collection: Some("Not a key".to_owned()),
+            ..Default::default()
+        },
     ] {
         assert!(bad.url().is_err(), "{bad:?}");
     }
+    // Several categories, IDs of the shared list or the sites' own slugs.
+    let url = SearchQuery {
+        category: Some("512x+".to_owned()),
+        categories: vec!["mod.optimization".to_owned(), "mod.utility".to_owned()],
+        source: Some("own".to_owned()),
+        since: Some(7),
+        collection: Some("fps".to_owned()),
+        sort: Some("trending".to_owned()),
+        ..Default::default()
+    }
+    .url()
+    .unwrap();
+    let pairs: HashMap<String, String> = url.query_pairs().into_owned().collect();
+    assert_eq!(pairs["category"], "512x+,mod.optimization,mod.utility");
+    assert_eq!(pairs["source"], "own");
+    assert_eq!(pairs["since"], "7");
+    assert_eq!(pairs["collection"], "fps");
+    assert_eq!(pairs["sort"], "trending");
     assert!(serde_json::from_value::<SearchQuery>(json!({"text": "a", "evil": 1})).is_err());
 }
 

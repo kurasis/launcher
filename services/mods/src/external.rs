@@ -494,12 +494,13 @@ days <project> <N|default> | trust <project> on|off | check <project> | list";
 /// The arguments of a command as the workflow sends them: a JSON array of
 /// at most 32 strings, in at most 64 KB.
 pub fn stdin_args(text: &str) -> Result<Vec<String>, String> {
-    let bad = || "the arguments are a JSON array of at most 32 strings".to_owned();
+    let bad = || "the arguments are a JSON array of at most 104 strings".to_owned();
     if text.len() > 64 * 1024 {
         return Err(bad());
     }
     let list: Vec<String> = serde_json::from_str(text).map_err(|_| bad())?;
-    if list.len() > 32 || list.iter().any(|a| a.len() > 2048) {
+    // A collection's key and up to 100 projects at most.
+    if list.len() > 104 || list.iter().any(|a| a.len() > 2048) {
         return Err(bad());
     }
     Ok(list)

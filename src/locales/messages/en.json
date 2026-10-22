@@ -1502,7 +1502,8 @@
         "downloads": "Downloads",
         "updated": "Recently updated",
         "new": "Newest",
-        "title": "Name"
+        "title": "Name",
+        "trending": "Popular this week"
       },
       "find": "Find",
       "results": "{count, plural, one {# project} other {# projects}}",

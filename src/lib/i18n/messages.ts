@@ -1585,6 +1585,7 @@ export type Messages = {
       readonly updated: string;
       readonly new: string;
       readonly title: string;
+      readonly trending: string;
     };
     readonly find: string;
     readonly results: (values: { count: number }) => string;

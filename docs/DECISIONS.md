@@ -2096,9 +2096,12 @@ archive from the Package workflow, upload it to
   the launcher account's access token (audience `skins`, added to the account
   service's tokens). Nicks are resolved through the account service's internal API, so
   a nick change moves the skin at once; deleted accounts are cleaned out within 15
-  seconds. Uploads: 10 an hour per account. Nothing about players goes into logs;
-  `counts` prints numbers only; `remove <account> [skin|cape]` is the owner's
-  moderation command.
+  seconds. Uploads: 10 an hour per account; `GET /v1/me` and the answers to `PUT` and
+  `DELETE` say how many are left (`uploads: {left, reset}`, reset in seconds). The
+  wardrobe (`/v1/me/wardrobe…`, below) takes the same token. Nothing about players
+  goes into logs; `counts` prints numbers only; `remove <account> [skin|cape]` is the
+  owner's moderation command and also takes that texture out of the account's
+  wardrobe.
 - **Mod (`mod/`):** one Gradle build. `core` (plain Java 8: the API client, a disk cache
   by hash, PNG checks, frame timing, the whose-skin rule), per game version a `common`
   layer (Mixin hooks in Mojang names, the same source for every loader), thin entry
@@ -2236,6 +2239,23 @@ skins-mod <channel>` there only checks the signature against the public key and
   mod shows it, as in Minecraft), and the board the owner chose (D-072) has this
   button. Textures come only by hash and are checked against it. Nicks never go into
   the log or an address beyond the profile lookup.
+- **The wardrobe on the server (stage 2, 2026-10-22, for the redesign, D-072):** an
+  account keeps up to 30 skins, 10 capes and 20 sets (a skin, a cape or both), the
+  same on every computer. An item is a texture by hash with its arms, frame
+  durations, a name (up to 32 characters, trimmed; no control, zero-width or
+  direction characters), a favourite mark, when it was added and when last worn; one
+  texture is kept once per account. `GET /v1/me/wardrobe` gives the profile, the
+  uploads left, the items, the sets and the limits. `POST /v1/me/skin` (or `cape`)
+  adds a PNG without wearing it (an upload, counted like one; a full wardrobe refuses
+  it before it is counted), `POST /v1/me/wardrobe/save` keeps what is worn and
+  `POST /v1/me/wardrobe/sets` keeps it as a set (neither is an upload). Items and sets
+  are renamed or marked with `PATCH`, removed with `DELETE` and put on with
+  `POST …/{id}/wear`: 120 an hour, never counted as uploads; putting on a set takes off
+  what it lacks. Other changes: 600 an hour. A full wardrobe answers `wardrobe_full`,
+  saving with nothing worn `nothing_worn`, a bad name `bad_name`; ids are 32 hex
+  characters, anything else is not found. A texture stays on the server while it is
+  worn or in a wardrobe. `GET /v1/export` includes the wardrobe; deleting the account
+  deletes it.
 
 ## D-066 — Catalog of mods at mods.lapi.sh
 
@@ -2745,6 +2765,19 @@ skins-mod <channel>` there only checks the signature against the public key and
   catalog is not reached, and a launch waits for it at most three seconds. What is left
   is a warning ("start anyway", "open the mods", "not now"), never a block, and what
   cannot be compared counts as fine, so a set that starts is never stopped.
+- **Browsing for concept A (2026-10-22, D-072).** The tiles, collections and categories
+  the owner chose need the catalog to say more. Categories are one shared list
+  (`services/mods/src/categories.rs`, IDs like `mod.optimization`), each mapping
+  Modrinth's and CurseForge's own slugs for one kind; a search takes up to 8 at once and
+  `/v1/categories` counts the projects in each for the same search. Hits carry their
+  loaders, shared categories and a cover (the gallery's featured picture). Collections
+  are the week's most popular (downloads gained, from a daily copy of the sources'
+  public numbers: our own installs are counted only for players who chose to send
+  statistics), what was added in 7 days, players' packs, and the owner's own, titled
+  in ru, en and ar (`lapi-mods collection`). A version's files say whether the
+  catalog's check found them clean (`checked`); dependencies carry their title, icon
+  and slug; versions come a page at a time with the game versions and loaders to filter
+  by; `/similar` gives up to five projects of the same kind sharing most categories.
 
 ## D-067 — Start page feed at feed.lapi.sh
 

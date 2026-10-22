@@ -208,10 +208,91 @@ pub struct SearchQuery {
     kind: Option<String>,
     game: Option<String>,
     loader: Option<String>,
+    /// Categories' IDs (`mod.optimization`) or the sites' own slugs, comma
+    /// between; a project in any of them.
     category: Option<String>,
+    /// Where projects came from (`own`: players' packs).
+    source: Option<String>,
+    /// Added in the last this many days.
+    since: Option<i64>,
+    /// An owner's collection, by its key.
+    collection: Option<String>,
     sort: Option<String>,
     offset: Option<i64>,
     limit: Option<i64>,
+}
+
+/// Where a project in the catalog can come from.
+const SOURCES: &[&str] = &["modrinth", "curseforge", "packwiz", "own", "external"];
+
+/// Days a search for what is new looks back at most.
+const MAX_SINCE_DAYS: i64 = 365;
+
+impl SearchQuery {
+    /// What it asks for, checked; `None` for anything malformed.
+    fn checked(&self) -> Option<Search> {
+        let (Ok(kind), Ok(game), Ok(loader), Ok(source), Ok(collection)) = (
+            filter(&self.kind),
+            filter(&self.game),
+            filter(&self.loader),
+            filter(&self.source),
+            filter(&self.collection),
+        ) else {
+            return None;
+        };
+        if kind.as_deref().is_some_and(|k| !KINDS.contains(&k))
+            || source.as_deref().is_some_and(|s| !SOURCES.contains(&s))
+            || collection.as_deref().is_some_and(|c| !collection_key(c))
+        {
+            return None;
+        }
+        let categories = categories(self.category.as_deref().unwrap_or_default())?;
+        let since = match self.since {
+            None => None,
+            Some(days @ 1..=MAX_SINCE_DAYS) => Some(now() - days * 86_400),
+            Some(_) => return None,
+        };
+        let sort = match self.sort.as_deref() {
+            // Relevance with words, the most downloaded without.
+            None | Some("" | "relevance") => "relevance",
+            Some("downloads") => "downloads",
+            Some("updated") => "updated",
+            Some("new") => "new",
+            Some("title") => "title",
+            Some("trending") => "trending",
+            Some(_) => return None,
+        };
+        Some(Search {
+            words: words(self.q.as_deref().unwrap_or_default()),
+            kind,
+            game,
+            loader,
+            categories,
+            source,
+            since,
+            collection,
+            sort,
+            offset: self.offset.unwrap_or(0).clamp(0, MAX_OFFSET),
+            limit: self.limit.unwrap_or(20).clamp(1, 50),
+        })
+    }
+}
+
+/// The categories asked for: at most 8, each a word.
+fn categories(text: &str) -> Option<Vec<String>> {
+    let mut out = Vec::new();
+    for part in text.split(',').map(str::trim).filter(|p| !p.is_empty()) {
+        out.push(word(part)?);
+    }
+    (out.len() <= crate::categories::MAX_ASKED).then_some(out)
+}
+
+/// A collection's key: 1 to 32 of `a-z`, `0-9` and `-`.
+pub fn collection_key(key: &str) -> bool {
+    (1..=32).contains(&key.len())
+        && key
+            .bytes()
+            .all(|b| b.is_ascii_lowercase() || b.is_ascii_digit() || b == b'-')
 }
 
 /// The words of a search: letters and digits, at most 8 of 32 characters.
@@ -236,41 +317,225 @@ fn filter(value: &Option<String>) -> Result<Option<String>, ()> {
 }
 
 async fn search(State(app): State<Arc<App>>, Query(q): Query<SearchQuery>) -> Response {
-    let bad = || refuse(StatusCode::BAD_REQUEST, "bad_query");
-    let (Ok(kind), Ok(game), Ok(loader), Ok(category)) = (
-        filter(&q.kind),
-        filter(&q.game),
-        filter(&q.loader),
-        filter(&q.category),
-    ) else {
-        return bad();
-    };
-    if kind.as_deref().is_some_and(|k| !KINDS.contains(&k)) {
-        return bad();
-    }
-    let sort = match q.sort.as_deref() {
-        // Relevance with words, the most downloaded without.
-        None | Some("" | "relevance") => "relevance",
-        Some("downloads") => "downloads",
-        Some("updated") => "updated",
-        Some("new") => "new",
-        Some("title") => "title",
-        Some(_) => return bad(),
-    };
-    let search = Search {
-        words: words(q.q.as_deref().unwrap_or_default()),
-        kind,
-        game,
-        loader,
-        category,
-        sort,
-        offset: q.offset.unwrap_or(0).clamp(0, MAX_OFFSET),
-        limit: q.limit.unwrap_or(20).clamp(1, 50),
+    let Some(search) = q.checked() else {
+        return refuse(StatusCode::BAD_REQUEST, "bad_query");
     };
     match app.store.search(&search, &app.urls) {
         Ok((total, hits)) => cached(json!({ "total": total, "hits": hits }), 60),
         Err(e) => failed(&e),
     }
+}
+
+/// How many projects a search finds in each category of its kind (`mod`
+/// when none is given), the categories it asks for aside.
+async fn category_counts(State(app): State<Arc<App>>, Query(q): Query<SearchQuery>) -> Response {
+    let Some(search) = q.checked() else {
+        return refuse(StatusCode::BAD_REQUEST, "bad_query");
+    };
+    match app.store.category_counts(&search) {
+        Ok(counts) => {
+            let list: Vec<Value> = counts
+                .into_iter()
+                .map(|(id, count)| json!({ "id": id, "count": count }))
+                .collect();
+            cached(json!({ "categories": list }), 60)
+        }
+        Err(e) => failed(&e),
+    }
+}
+
+#[derive(Deserialize, Default)]
+pub struct SimilarQuery {
+    game: Option<String>,
+    loader: Option<String>,
+}
+
+/// Up to five projects like one, for a game version and a loader.
+async fn similar(
+    State(app): State<Arc<App>>,
+    Path(r): Path<String>,
+    Query(q): Query<SimilarQuery>,
+) -> Response {
+    let (Ok(game), Ok(loader)) = (filter(&q.game), filter(&q.loader)) else {
+        return refuse(StatusCode::BAD_REQUEST, "bad_query");
+    };
+    let Some(r) = reference(&r) else {
+        return refuse(StatusCode::NOT_FOUND, "not_found");
+    };
+    let id = match app.store.project_id(r) {
+        Ok(Some(id)) => id,
+        Ok(None) => return refuse(StatusCode::NOT_FOUND, "not_found"),
+        Err(e) => return failed(&e),
+    };
+    match app
+        .store
+        .similar(&id, game.as_deref(), loader.as_deref(), &app.urls)
+    {
+        Ok(hits) => cached(json!({ "hits": hits }), 600),
+        Err(e) => failed(&e),
+    }
+}
+
+#[derive(Deserialize, Default)]
+pub struct CollectionsQuery {
+    kind: Option<String>,
+    game: Option<String>,
+    loader: Option<String>,
+}
+
+/// Projects of a collection shown on its card at most.
+const COLLECTION_ICONS: i64 = 4;
+/// Projects the week's most popular has.
+const POPULAR: i64 = 20;
+/// Days what is new looks back.
+const NEW_DAYS: i64 = 7;
+
+/// Collections for a kind (`mod` when none is given), a game version and a
+/// loader: the week's most popular, what is new, players' packs (for
+/// modpacks) and the owner's. Each says what to search for to list it
+/// (`query`, the search's own parameters), how many projects it has under the
+/// game version and loader, and the first ones' icons and titles for its
+/// card. Empty ones are left out.
+async fn collections(State(app): State<Arc<App>>, Query(q): Query<CollectionsQuery>) -> Response {
+    let (Ok(kind), Ok(game), Ok(loader)) = (filter(&q.kind), filter(&q.game), filter(&q.loader))
+    else {
+        return refuse(StatusCode::BAD_REQUEST, "bad_query");
+    };
+    let kind = kind.unwrap_or_else(|| "mod".to_owned());
+    if !KINDS.contains(&kind.as_str()) {
+        return refuse(StatusCode::BAD_REQUEST, "bad_query");
+    }
+    // By the catalog's file too: tests run several catalogs in one process.
+    let key = format!(
+        "{} collections {kind} {} {}",
+        app.store.path().display(),
+        game.as_deref().unwrap_or("-"),
+        loader.as_deref().unwrap_or("-")
+    );
+    if let Some(answer) = remembered(&key) {
+        return cached(answer, 60);
+    }
+    let base = Search {
+        kind: Some(kind.clone()),
+        game: game.clone(),
+        loader: loader.clone(),
+        sort: "relevance",
+        limit: COLLECTION_ICONS,
+        ..Search::default()
+    };
+    let mut wanted: Vec<(String, Option<crate::store::CollectionRow>, Search, Value)> = vec![
+        (
+            "popular-week".to_owned(),
+            None,
+            Search {
+                sort: "trending",
+                ..base.clone()
+            },
+            json!({ "sort": "trending" }),
+        ),
+        (
+            "new".to_owned(),
+            None,
+            Search {
+                sort: "new",
+                since: Some(now() - NEW_DAYS * 86_400),
+                ..base.clone()
+            },
+            json!({ "sort": "new", "since": NEW_DAYS }),
+        ),
+    ];
+    if kind == "modpack" {
+        wanted.push((
+            "players-packs".to_owned(),
+            None,
+            Search {
+                source: Some("own".to_owned()),
+                sort: "new",
+                ..base.clone()
+            },
+            json!({ "source": "own", "sort": "new" }),
+        ));
+    }
+    match app
+        .store
+        .collections(&kind, game.as_deref(), loader.as_deref())
+    {
+        Ok(rows) => {
+            for row in rows {
+                let search = Search {
+                    collection: Some(row.key.clone()),
+                    ..base.clone()
+                };
+                let query = json!({ "collection": row.key });
+                wanted.push((row.key.clone(), Some(row), search, query));
+            }
+        }
+        Err(e) => return failed(&e),
+    }
+    let mut list = Vec::new();
+    for (id, row, search, query) in wanted {
+        let (total, hits) = match app.store.search(&search, &app.urls) {
+            Ok(found) => found,
+            Err(e) => return failed(&e),
+        };
+        let count = if id == "popular-week" {
+            total.min(POPULAR)
+        } else {
+            total
+        };
+        if count == 0 {
+            continue;
+        }
+        let icons: Vec<&Value> = hits
+            .iter()
+            .filter_map(|h| h.get("iconThumb").filter(|i| !i.is_null()))
+            .collect();
+        let names: Vec<&Value> = hits.iter().filter_map(|h| h.get("title")).take(2).collect();
+        list.push(json!({
+            "id": id,
+            "preset": row.is_none(),
+            "titles": row.as_ref().map(|r| Value::Object(r.titles.clone())),
+            "notes": row.as_ref().map(|r| Value::Object(r.notes.clone())),
+            "game": row.as_ref().and_then(|r| r.game.clone()),
+            "loader": row.as_ref().and_then(|r| r.loader.clone()),
+            "query": query,
+            "count": count,
+            "icons": icons,
+            "names": names,
+        }));
+    }
+    let answer = json!({ "collections": list });
+    remember(key, answer.clone());
+    cached(answer, 60)
+}
+
+/// The catalog's own collections' keys: not the owner's to take.
+pub const PRESETS: &[&str] = &["popular-week", "new", "players-packs"];
+
+/// Answers that take long to make, for a minute: collections.
+static REMEMBERED: Mutex<Option<HashMap<String, (Instant, Value)>>> = Mutex::new(None);
+/// Answers remembered at most.
+const MAX_REMEMBERED: usize = 500;
+
+fn remembered(key: &str) -> Option<Value> {
+    let mut map = REMEMBERED.lock().unwrap_or_else(|e| e.into_inner());
+    let map = map.get_or_insert_with(HashMap::new);
+    match map.get(key) {
+        Some((at, value)) if at.elapsed() < Duration::from_secs(60) => Some(value.clone()),
+        _ => None,
+    }
+}
+
+fn remember(key: String, value: Value) {
+    let mut map = REMEMBERED.lock().unwrap_or_else(|e| e.into_inner());
+    let map = map.get_or_insert_with(HashMap::new);
+    if map.len() >= MAX_REMEMBERED {
+        map.retain(|_, (at, _)| at.elapsed() < Duration::from_secs(60));
+        if map.len() >= MAX_REMEMBERED {
+            map.clear();
+        }
+    }
+    map.insert(key, (Instant::now(), value));
 }
 
 async fn project(State(app): State<Arc<App>>, Path(r): Path<String>) -> Response {
@@ -294,6 +559,11 @@ async fn project(State(app): State<Arc<App>>, Path(r): Path<String>) -> Response
 pub struct VersionsQuery {
     game: Option<String>,
     loader: Option<String>,
+    /// `release`, `beta` or `alpha`.
+    channel: Option<String>,
+    offset: Option<i64>,
+    /// At most 100; without it, every version (up to 2000) as before.
+    limit: Option<i64>,
 }
 
 async fn versions(
@@ -301,9 +571,17 @@ async fn versions(
     Path(r): Path<String>,
     Query(q): Query<VersionsQuery>,
 ) -> Response {
-    let (Ok(game), Ok(loader)) = (filter(&q.game), filter(&q.loader)) else {
+    let (Ok(game), Ok(loader), Ok(channel)) =
+        (filter(&q.game), filter(&q.loader), filter(&q.channel))
+    else {
         return refuse(StatusCode::BAD_REQUEST, "bad_query");
     };
+    if channel
+        .as_deref()
+        .is_some_and(|c| !matches!(c, "release" | "beta" | "alpha"))
+    {
+        return refuse(StatusCode::BAD_REQUEST, "bad_query");
+    }
     let Some(r) = reference(&r) else {
         return refuse(StatusCode::NOT_FOUND, "not_found");
     };
@@ -312,12 +590,26 @@ async fn versions(
         Ok(None) => return refuse(StatusCode::NOT_FOUND, "not_found"),
         Err(e) => return failed(&e),
     };
-    match app
-        .store
-        .versions(&id, game.as_deref(), loader.as_deref(), &app.urls)
-    {
+    let page = crate::store::VersionsPage {
+        game,
+        loader,
+        channel,
+        offset: q.offset.unwrap_or(0).clamp(0, MAX_OFFSET),
+        limit: q
+            .limit
+            .map_or(crate::store::MAX_VERSIONS, |l| l.clamp(1, 100)),
+    };
+    match app.store.versions(&id, &page, &app.urls) {
         // "saved": "all" is kept here; anything else is fetched when asked.
-        Ok(list) => cached(json!({ "versions": list }), 60),
+        Ok(list) => cached(
+            json!({
+                "versions": list.versions,
+                "total": list.total,
+                "games": list.games,
+                "loaders": list.loaders,
+            }),
+            60,
+        ),
         Err(e) => failed(&e),
     }
 }
@@ -1141,6 +1433,9 @@ pub fn router(app: Arc<App>) -> Router {
         .route("/v1/search", get(search))
         .route("/v1/projects/{project}", get(project))
         .route("/v1/projects/{project}/versions", get(versions))
+        .route("/v1/projects/{project}/similar", get(similar))
+        .route("/v1/categories", get(category_counts))
+        .route("/v1/collections", get(collections))
         .route("/v1/versions/{version}", get(version))
         .route("/v1/versions/{version}/fetch", post(fetch_version))
         .route("/v1/provides/{mod}", get(provides))
