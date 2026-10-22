@@ -123,11 +123,89 @@ jobs:
       # same release on every target, so a second one only doubled the slowest
       # step and held runners other pull requests wait for (D-007).
 
+  changes:
+    # The world servers below take most of CI's runners: a pull request runs
+    # them only when it changes the launcher's code, its build or these
+    # workflows. Pushes to main, manual runs and the nightly run try them all.
+    name: What changed
+    runs-on: ubuntu-24.04
+    outputs:
+      launcher: ${{ steps.diff.outputs.launcher }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          # A pull request is checked out as its merge into the base branch;
+          # the merge's first parent is the base.
+          fetch-depth: 2
+
+      - id: diff
+        env:
+          EVENT: ${{ github.event_name }}
+        run: |
+          if [ "$EVENT" != pull_request ]; then
+            echo "launcher=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          changed=$(git diff --name-only HEAD^1 HEAD)
+          if grep -qE '^(src-tauri/|rust-toolchain\.toml$|\.github/workflows/(ci|world-mods)\.yml$)' <<< "$changed"; then
+            echo "launcher=true" >> "$GITHUB_OUTPUT"
+            echo "The launcher changed: world servers run"
+          else
+            echo "launcher=false" >> "$GITHUB_OUTPUT"
+            echo "The launcher did not change: no world servers"
+          fi
+
+  live-test:
+    # One build of the live test for every world server below, with and
+    # without mods.
+    name: Build the live test
+    needs: changes
+    if: needs.changes.outputs.launcher == 'true'
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+
+      - name: Install Linux system dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            libwebkit2gtk-4.1-dev libxdo-dev libssl-dev libdbus-1-dev \
+            libayatana-appindicator3-dev librsvg2-dev
+
+      - name: Install pinned Rust toolchain
+        run: |
+          rustup show active-toolchain || rustup toolchain install
+          rustc --version
+
+      - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2
+        with:
+          workspaces: src-tauri
+          shared-key: world-mods
+
+      - name: Build
+        run: |
+          set -o pipefail
+          binary=$(cargo test --manifest-path src-tauri/Cargo.toml --locked --test live_server \
+            --no-run --message-format=json |
+            jq -r 'select(.reason == "compiler-artifact" and .target.name == "live_server"
+              and .executable != null) | .executable')
+          test -x "$binary"
+          mkdir -p dist
+          cp "$binary" dist/live_server
+
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
+        with:
+          name: live-server
+          path: dist/live_server
+          retention-days: 1
+
   world-server:
     # Worlds with Friends W3, A8: Mojang's server of each release below,
     # installed through the launcher's verified downloads and run in offline
     # mode on loopback. The test prints fixed words and numbers only.
     name: World server ${{ matrix.minecraft }} (linux-x64)
+    needs: [changes, live-test]
+    if: needs.changes.outputs.launcher == 'true'
     runs-on: ubuntu-24.04
     strategy:
       fail-fast: false
@@ -152,42 +230,50 @@ jobs:
         run: |
           sudo apt-get update
           sudo apt-get install -y --no-install-recommends \
-            libwebkit2gtk-4.1-dev libxdo-dev libssl-dev libdbus-1-dev \
-            libayatana-appindicator3-dev librsvg2-dev
+            libwebkit2gtk-4.1-0 libxdo3 libayatana-appindicator3-1 librsvg2-2
 
-      - name: Install pinned Rust toolchain
-        run: |
-          rustup show active-toolchain || rustup toolchain install
-          rustc --version
-
-      - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8
         with:
-          workspaces: src-tauri
+          name: live-server
 
       - name: Install and run the world server
         env:
           WORLD_VERSION: ${{ matrix.minecraft }}
           WORLD_PROTOCOL: ${{ matrix.protocol }}
-        run: >-
-          cargo test --manifest-path src-tauri/Cargo.toml --locked --test live_server
-          -- --ignored --exact host_a_world --nocapture --test-threads=1
+        run: |
+          chmod +x live_server
+          ./live_server --ignored --exact host_a_world --nocapture --test-threads=1
 
   world-server-mods:
     # Worlds with mods W12: the releases of src-tauri/src/worlds/tested.json
-    # that every change tries (world-mods.yml; the nightly run tries all).
+    # that every change tries (world-mods.yml; the nightly run tries all),
+    # with the live test built above.
     name: World servers with mods
+    needs: [changes, live-test]
+    if: needs.changes.outputs.launcher == 'true'
     uses: ./.github/workflows/world-mods.yml
     with:
       set: on_every_change
+      prebuilt: true
 
   world-servers:
     # One result for every version above, under the check's earlier name.
+    # Passes without them when the launcher did not change.
     name: World server (linux-x64)
-    needs: [world-server, world-server-mods]
+    needs: [changes, world-server, world-server-mods]
     if: always()
     runs-on: ubuntu-24.04
     steps:
       - name: Every world server ran
-        run: >-
-          test "${{ needs.world-server.result }}" = success &&
-          test "${{ needs.world-server-mods.result }}" = success
+        env:
+          CHANGES: ${{ needs.changes.result }}
+          LAUNCHER: ${{ needs.changes.outputs.launcher }}
+          VANILLA: ${{ needs.world-server.result }}
+          MODS: ${{ needs.world-server-mods.result }}
+        run: |
+          test "$CHANGES" = success
+          if [ "$LAUNCHER" != true ]; then
+            echo "The launcher did not change: no world servers needed"
+            exit 0
+          fi
+          test "$VANILLA" = success && test "$MODS" = success
