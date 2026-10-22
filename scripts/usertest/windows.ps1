@@ -889,11 +889,21 @@ try {
       if (-not $entered) {
         $result.world = 'failed'; $result.note = 'did not get into a world'
         Game-Shot $hwnd $folder 'no-world'
-        # What the game saved, for an old version whose world is checked by its files.
+        # Where the game saved, for an old version whose world is checked by its files:
+        # the installation's saves, any new world file in the test's folders, and how
+        # many test worlds the default game folder holds (names of other worlds there
+        # are not listed).
         if ($oldSingleplayer) {
-          Get-ChildItem (Join-Path $gameDir 'saves') -Recurse -File -ErrorAction SilentlyContinue |
-            ForEach-Object { '{0:u} {1,10} {2}' -f $_.LastWriteTime.ToUniversalTime(), $_.Length, $_.FullName.Substring($gameDir.Length) } |
-            Set-Content (Join-Path $folder 'saves.txt') -Encoding UTF8
+          $saved = @('installation saves:')
+          $saved += @(Get-ChildItem (Join-Path $gameDir 'saves') -Recurse -File -ErrorAction SilentlyContinue |
+            ForEach-Object { '{0:u} {1,10} {2}' -f $_.LastWriteTime.ToUniversalTime(), $_.Length, $_.FullName.Substring($gameDir.Length) })
+          $saved += 'new world files in the test folder:'
+          $saved += @(Get-ChildItem $root, $cache -Recurse -File -Include level.dat, session.lock -ErrorAction SilentlyContinue |
+            Where-Object { $_.LastWriteTime -gt $started } | ForEach-Object { $_.FullName.Substring($env:LOCALAPPDATA.Length) })
+          $default = Join-Path $env:APPDATA '.minecraft\saves'
+          $tests = @(Get-ChildItem $default -Directory -ErrorAction SilentlyContinue | Where-Object { $_.Name -match '^New World-*$' })
+          $saved += "default game folder: $($tests.Count) test worlds, $(@($tests | Where-Object { $_.LastWriteTime -gt $started }).Count) changed during this item"
+          Set-Content (Join-Path $folder 'saves.txt') -Value $saved -Encoding UTF8
         }
       } else {
         $result.world = 'ok'
