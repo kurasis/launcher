@@ -2794,6 +2794,15 @@ skins-mod <channel>` there only checks the signature against the public key and
   system notification when a favourite Twitch channel goes live is a setting, off by
   default: the core looks every 3 minutes, tells each start once, and only while the
   launcher is not in front.
+- **Pictures for the mosaic (D-072, 2026-10-22):** a Short also has an upright preview
+  `ys/<id>.jpg` (`imageTall`, 360×640: YouTube's own upright picture, else the middle of
+  its 16:9 preview); videos and streams have the channel's picture `ya/<channel id>.jpg`
+  or `ta/<login>.jpg` (`avatar`, 96 px square). The service looks a channel's picture up
+  only when a launcher asks for it, and only for channels it knows (ours, those players
+  named, streams it lists): from the channel page on YouTube, from Helix on Twitch, at
+  most once in 10 minutes each, kept a week. Note cards carry their picture's
+  `imageWidth` and `imageHeight`. Video length stays out: the RSS feed has none, and the
+  Data API would need a key.
 
 ## D-068 — Worlds with Friends
 

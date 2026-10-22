@@ -1,5 +1,9 @@
-/** A picture name the feed may use (D-067): its article pictures, video and stream previews. */
-const PICTURE = /^(?:img\/[0-9a-f]{64}|yt\/[A-Za-z0-9_-]{11}|tw\/[a-z0-9_]{3,25})\.jpg$/;
+/**
+ * A picture name the feed may use (D-067): its article pictures, video previews
+ * (upright ones of Shorts too), stream previews and channel pictures.
+ */
+const PICTURE =
+  /^(?:img\/[0-9a-f]{64}|y[ts]\/[A-Za-z0-9_-]{11}|t[wa]\/[a-z0-9_]{3,25}|ya\/UC[A-Za-z0-9_-]{22})\.jpg$/;
 
 /**
  * Address of a feed picture on the `feed:` protocol that Rust serves; null for

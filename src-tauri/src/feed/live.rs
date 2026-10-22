@@ -122,6 +122,7 @@ mod tests {
             viewers: 10,
             started: started.into(),
             image: None,
+            avatar: None,
         }
     }
 

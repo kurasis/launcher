@@ -29,6 +29,8 @@ const newsCard: Feed['news'][number] = {
   version: null,
   kind: null,
   image: null,
+  imageWidth: null,
+  imageHeight: null,
   url: 'https://www.minecraft.net/en-us/article/a-new-mob',
 };
 
@@ -47,6 +49,8 @@ function feedFixture(overrides: Partial<Feed> = {}): Feed {
         version: '26.4-snapshot-4',
         kind: 'snapshot',
         image: `img/${SHA}.jpg`,
+        imageWidth: 1280,
+        imageHeight: 720,
         url: null,
       },
       {
@@ -58,6 +62,8 @@ function feedFixture(overrides: Partial<Feed> = {}): Feed {
         version: '26.3',
         kind: 'release',
         image: null,
+        imageWidth: null,
+        imageHeight: null,
         url: null,
       },
     ],
@@ -71,6 +77,8 @@ function feedFixture(overrides: Partial<Feed> = {}): Feed {
         date: '2026-10-18T09:00:00Z',
         short: false,
         image: 'yt/dQw4w9WgXcQ.jpg',
+        imageTall: null,
+        avatar: 'ya/UCabcdefghijklmnopqrstuv.jpg',
       },
       {
         id: 'shortshort1',
@@ -80,6 +88,8 @@ function feedFixture(overrides: Partial<Feed> = {}): Feed {
         date: '2026-10-18T10:00:00Z',
         short: true,
         image: 'yt/shortshort1.jpg',
+        imageTall: 'ys/shortshort1.jpg',
+        avatar: 'ya/UCabcdefghijklmnopqrstuv.jpg',
       },
     ],
     streams: [
@@ -90,6 +100,7 @@ function feedFixture(overrides: Partial<Feed> = {}): Feed {
         viewers: 1234,
         started: '2026-10-19T10:00:00Z',
         image: 'tw/some_streamer.jpg',
+        avatar: 'ta/some_streamer.jpg',
       },
     ],
     cycle: {
@@ -410,6 +421,23 @@ describe('FeedView', () => {
     expect(pictureUrl('yt/../../settings.json')).toBeNull();
     expect(pictureUrl('https://evil.example/x.jpg')).toBeNull();
     expect(pictureUrl(`img/${SHA}.jpg`)).toBe(`feed://localhost/img/${SHA}.jpg`);
+    // Upright Short previews and channel pictures.
+    for (const path of [
+      'ys/shortshort1.jpg',
+      'ya/UCabcdefghijklmnopqrstuv.jpg',
+      'ta/some_streamer.jpg',
+    ]) {
+      expect(pictureUrl(path)).toBe(`feed://localhost/${path}`);
+    }
+    for (const bad of [
+      'ya/some_streamer.jpg',
+      'ya/UCabcdefghijklmnopqrstu.jpg',
+      'ta/Some.jpg',
+      'ys/../x.jpg',
+      'ga/some_streamer.jpg',
+    ]) {
+      expect(pictureUrl(bad)).toBeNull();
+    }
   });
 
   it('filters by kind with the chips', async () => {
@@ -598,6 +626,7 @@ describe('FeedView', () => {
         viewers: 50,
         started: '2026-10-19T11:30:00Z',
         image: null,
+        avatar: null,
       };
       let live = [stream];
       const calls = backend({
@@ -682,6 +711,8 @@ describe('FeedView', () => {
       date: '2026-01-01T00:00:00Z',
       short: false,
       image: null,
+      imageTall: null,
+      avatar: null,
     };
     backend({
       feed_marks: () => ({
@@ -861,6 +892,8 @@ describe('FeedView', () => {
           date: '2026-10-17T09:00:00Z',
           short: false,
           image: null,
+          imageTall: null,
+          avatar: null,
         },
       ],
     });
@@ -883,6 +916,7 @@ describe('FeedView', () => {
           viewers: 50,
           started: '2026-10-19T11:00:00Z',
           image: null,
+          avatar: null,
         },
       ],
     });

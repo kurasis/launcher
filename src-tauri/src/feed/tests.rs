@@ -18,6 +18,8 @@ fn note_card_json(id: &str) -> Value {
         "version": "26.4-snapshot-4",
         "kind": "snapshot",
         "image": format!("img/{SHA}.jpg"),
+        "imageWidth": 1280,
+        "imageHeight": 720,
     })
 }
 
@@ -43,6 +45,8 @@ fn sample(lang: &str) -> Value {
             "date": "2026-10-18T09:00:00Z",
             "short": true,
             "image": "yt/dQw4w9WgXcQ.jpg",
+            "imageTall": "ys/dQw4w9WgXcQ.jpg",
+            "avatar": "ya/UCabcdefghijklmnopqrstuv.jpg",
         }],
         "streams": [{
             "login": "some_streamer",
@@ -51,6 +55,7 @@ fn sample(lang: &str) -> Value {
             "viewers": 1234,
             "started": "2026-10-19T10:00:00Z",
             "image": "tw/some_streamer.jpg",
+            "avatar": "ta/some_streamer.jpg",
         }],
         "cycle": {
             "target": "26.4", "snapshots": 4, "pre": 0, "rc": 0, "released": false,
@@ -84,9 +89,25 @@ fn a_whole_feed_is_read() {
     // Any RFC 3339 date becomes UTC with a Z.
     assert_eq!(feed.news[0].date, "2026-10-10T08:00:00Z");
     assert!(feed.news[0].translated);
+    assert_eq!(
+        (feed.versions[0].image_width, feed.versions[0].image_height),
+        (Some(1280), Some(720))
+    );
     assert_eq!(feed.videos[0].image.as_deref(), Some("yt/dQw4w9WgXcQ.jpg"));
+    assert_eq!(
+        feed.videos[0].image_tall.as_deref(),
+        Some("ys/dQw4w9WgXcQ.jpg")
+    );
+    assert_eq!(
+        feed.videos[0].avatar.as_deref(),
+        Some("ya/UCabcdefghijklmnopqrstuv.jpg")
+    );
     assert!(feed.videos[0].short);
     assert_eq!(feed.streams[0].viewers, 1234);
+    assert_eq!(
+        feed.streams[0].avatar.as_deref(),
+        Some("ta/some_streamer.jpg")
+    );
     assert_eq!(feed.cycle.as_ref().unwrap().snapshots, 4);
     assert_eq!(feed.latest.release.as_ref().unwrap().id, "26.3");
     assert_eq!(feed.events.len(), 1);
@@ -182,6 +203,91 @@ fn bad_items_are_dropped_and_the_rest_stays() {
     assert_eq!(feed.latest, Latest::default());
     // The news card stays.
     assert_eq!(feed.news.len(), 1);
+}
+
+#[test]
+fn picture_sizes_and_channel_pictures_are_checked() {
+    let mut value = sample("en");
+    let card = |change: Value| {
+        let mut card = note_card_json("j-sized");
+        for (key, v) in change.as_object().unwrap() {
+            card[key] = v.clone();
+        }
+        card
+    };
+    value["versions"] = json!([
+        card(json!({"imageWidth": 1280, "imageHeight": null})),
+        card(json!({"imageWidth": 0})),
+        card(json!({"imageHeight": 9000})),
+        card(json!({"imageWidth": "1280"})),
+        card(json!({"imageWidth": 12.5})),
+        card(json!({"imageWidth": -1})),
+        card(json!({"image": null})),
+        card(json!({"image": "img/../../secret.jpg"})),
+        card(json!({"imageWidth": 8192, "imageHeight": 1})),
+    ]);
+    let video = |change: Value| {
+        let mut video = sample("en")["videos"][0].clone();
+        for (key, v) in change.as_object().unwrap() {
+            video[key] = v.clone();
+        }
+        video
+    };
+    value["videos"] = json!([
+        video(json!({"short": false})),
+        video(json!({"imageTall": "ys/aaaaaaaaaaa.jpg"})),
+        video(json!({"imageTall": "yt/dQw4w9WgXcQ.jpg"})),
+        video(json!({"avatar": "ya/UCzzzzzzzzzzzzzzzzzzzzzz.jpg"})),
+        video(json!({"avatar": "ya/../../secret.jpg"})),
+        video(json!({"avatar": "ta/dQw4w9WgXcQ.jpg"})),
+        video(json!({"avatar": 5})),
+    ]);
+    value["streams"] = json!([
+        {"login": "one_streamer", "name": "n", "viewers": 1, "started": "2026-10-19T10:00:00Z",
+         "avatar": "ta/other_streamer.jpg"},
+        {"login": "two_streamer", "name": "n", "viewers": 1, "started": "2026-10-19T10:00:00Z",
+         "avatar": "tw/two_streamer.jpg"},
+    ]);
+    let feed = feed(&value, Lang::En).unwrap();
+    let sizes: Vec<_> = feed
+        .versions
+        .iter()
+        .map(|v| (v.image_width, v.image_height))
+        .collect();
+    assert_eq!(
+        sizes,
+        [
+            (None, None),
+            (None, None),
+            (None, None),
+            (None, None),
+            (None, None),
+            (None, None),
+            (None, None),
+            (None, None),
+            (Some(8192), Some(1)),
+        ]
+    );
+    // A video that is not a Short has no upright preview; pictures of other
+    // videos or channels are not shown.
+    let shown: Vec<_> = feed
+        .videos
+        .iter()
+        .map(|v| (v.image_tall.is_some(), v.avatar.is_some()))
+        .collect();
+    assert_eq!(
+        shown,
+        [
+            (false, true),
+            (false, true),
+            (false, true),
+            (true, false),
+            (true, false),
+            (true, false),
+            (true, false),
+        ]
+    );
+    assert!(feed.streams.iter().all(|s| s.avatar.is_none()));
 }
 
 #[test]
@@ -410,6 +516,19 @@ fn ids_and_picture_names_follow_the_service() {
     assert!(!picture_name(PictureKind::Yt, "dQw4w9WgXc.jpg"));
     assert!(picture_name(PictureKind::Tw, "some_streamer.jpg"));
     assert!(!picture_name(PictureKind::Tw, "Some.jpg"));
+    assert!(picture_name(PictureKind::Ys, "dQw4w9WgXcQ.jpg"));
+    assert!(!picture_name(PictureKind::Ys, "dQw4w9WgXcQ.png"));
+    assert!(picture_name(
+        PictureKind::Ya,
+        "UCabcdefghijklmnopqrstuv.jpg"
+    ));
+    assert!(!picture_name(PictureKind::Ya, "dQw4w9WgXcQ.jpg"));
+    assert!(!picture_name(
+        PictureKind::Ya,
+        "UCabcdefghijklmnopqrst/v.jpg"
+    ));
+    assert!(picture_name(PictureKind::Ta, "some_streamer.jpg"));
+    assert!(!picture_name(PictureKind::Ta, "../x.jpg"));
     assert_eq!(
         picture_path("yt/dQw4w9WgXcQ.jpg"),
         Some((PictureKind::Yt, "dQw4w9WgXcQ.jpg"))
@@ -428,6 +547,19 @@ fn protocol_paths_name_only_pictures() {
         parse_picture_request("/tw/some_streamer.jpg"),
         Some((PictureKind::Tw, "some_streamer.jpg".to_owned()))
     );
+    assert_eq!(
+        parse_picture_request("/ys/dQw4w9WgXcQ.jpg"),
+        Some((PictureKind::Ys, "dQw4w9WgXcQ.jpg".to_owned()))
+    );
+    assert_eq!(
+        parse_picture_request("/ya/UCabcdefghijklmnopqrstuv.jpg"),
+        Some((PictureKind::Ya, "UCabcdefghijklmnopqrstuv.jpg".to_owned()))
+    );
+    assert_eq!(
+        parse_picture_request("/ta/some_streamer.jpg"),
+        Some((PictureKind::Ta, "some_streamer.jpg".to_owned()))
+    );
+    assert_eq!(parse_picture_request("/ya/some_streamer.jpg"), None);
     for bad in [
         "",
         "/",
