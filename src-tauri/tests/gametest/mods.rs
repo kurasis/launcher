@@ -49,6 +49,17 @@ pub const MEDIUM: &[&str] = &[
 /// No more than this many files, libraries included.
 const MAX_FILES: usize = 40;
 const API: &str = "https://api.modrinth.com/v2";
+/// Our mod catalog (docs/DECISIONS.md D-066) keeps the files of the mods players
+/// use: a file Modrinth does not give is taken from there.
+const CATALOG: &str = "https://mods.lapi.sh/v1";
+/// Where the catalog hands out its files.
+const CATALOG_FILES: &[&str] = &["https://files-mods.lapi.sh/", "https://cdn-mods.lapi.sh/"];
+
+/// The locked medium sets (docs/GAMETEST.md): for each "<game> <loader>", the mod
+/// versions that last passed when the newest were taken. The Game test workflow
+/// writes it; the nightly test plays these, so another mod's new release does not
+/// change what is tested.
+const LOCK: &str = include_str!("medium.lock.json");
 
 /// One chosen file.
 #[derive(Debug, Clone)]
@@ -63,7 +74,58 @@ pub struct ModFile {
     pub mod_ids: Vec<String>,
     url: String,
     sha512: String,
+    /// Our catalog finds the file by it; empty when Modrinth gave none.
+    sha1: String,
     size: u64,
+}
+
+impl ModFile {
+    /// A file at Modrinth's own CDN with a plain jar name and its hashes, as
+    /// Modrinth or the lock gives it; `None` for anything else.
+    #[allow(clippy::too_many_arguments)]
+    fn checked(
+        title: &str,
+        version: &str,
+        file_name: &str,
+        project: &str,
+        version_id: &str,
+        url: &str,
+        sha512: &str,
+        sha1: &str,
+        size: u64,
+    ) -> Option<Self> {
+        let hex = |h: &str, len: usize| h.len() == len && h.bytes().all(|b| b.is_ascii_hexdigit());
+        let id = |i: &str| {
+            !i.is_empty() && i.len() <= 32 && i.bytes().all(|b| b.is_ascii_alphanumeric())
+        };
+        let ok_name = file_name.ends_with(".jar")
+            && file_name.len() <= 128
+            && file_name
+                .bytes()
+                .all(|b| b.is_ascii_alphanumeric() || b"._+-".contains(&b));
+        let ok = url.starts_with("https://cdn.modrinth.com/")
+            && url.len() <= 512
+            && ok_name
+            && id(project)
+            && id(version_id)
+            && hex(sha512, 128)
+            && (sha1.is_empty() || hex(sha1, 40))
+            && !title.is_empty()
+            && title.len() <= 200
+            && version.len() <= 100;
+        ok.then(|| Self {
+            title: title.to_owned(),
+            version: version.to_owned(),
+            file_name: file_name.to_owned(),
+            project: project.to_owned(),
+            version_id: version_id.to_owned(),
+            mod_ids: Vec::new(),
+            url: url.to_owned(),
+            sha512: sha512.to_ascii_lowercase(),
+            sha1: sha1.to_ascii_lowercase(),
+            size,
+        })
+    }
 }
 
 /// What the resolution chose and what it left out, with why.
@@ -74,8 +136,12 @@ pub struct Resolved {
     /// Versions passed over because their jar does not accept the loader build.
     pub older: Vec<String>,
     /// Versions passed over, or mods left out, because they crashed on this loader
-    /// build here before: the scenario then passes only with a warning.
+    /// build here before (or, from the lock, could not be downloaded or refuse the
+    /// loader build): the scenario then passes only with a warning.
     pub replaced: Vec<String>,
+    /// Modrinth answered every question: a set chosen without all answers is not
+    /// locked.
+    pub complete: bool,
 }
 
 /// A mod version that crashed the game on a loader build, kept on the test machine
@@ -151,14 +217,25 @@ fn client() -> reqwest::Client {
         .expect("an HTTP client")
 }
 
-async fn get(client: &reqwest::Client, url: &str, query: &[(&str, String)]) -> Option<Value> {
-    let mut url = url::Url::parse(url).ok()?;
-    url.query_pairs_mut().extend_pairs(query);
-    let response = client.get(url).send().await.ok()?;
-    if !response.status().is_success() {
-        return None;
+/// The JSON at `url`: `None` when there is nothing there (404), an error when
+/// there was no answer.
+async fn answer(
+    client: &reqwest::Client,
+    url: &str,
+    query: &[(&str, String)],
+) -> Result<Option<Value>, String> {
+    let mut url = url::Url::parse(url).map_err(|e| e.to_string())?;
+    if !query.is_empty() {
+        url.query_pairs_mut().extend_pairs(query);
     }
-    response.json().await.ok()
+    let response = client.get(url).send().await.map_err(|e| e.to_string())?;
+    if response.status() == reqwest::StatusCode::NOT_FOUND {
+        return Ok(None);
+    }
+    if !response.status().is_success() {
+        return Err(format!("answered {}", response.status()));
+    }
+    response.json().await.map(Some).map_err(|e| e.to_string())
 }
 
 /// Modrinth's loader filter: Quilt runs Fabric's mods, and most are published for
@@ -173,14 +250,15 @@ fn loaders(loader: &str) -> String {
 
 /// A project's versions for this game and loader in the order they are tried: the
 /// newest release (else the newest of any kind), older releases, then the
-/// pre-releases newer than that release, newest first.
+/// pre-releases newer than that release, newest first. `None` when it has none,
+/// an error when Modrinth did not answer.
 async fn candidates(
     client: &reqwest::Client,
     project: &str,
     game: &str,
     loader: &str,
-) -> Option<Vec<Value>> {
-    let versions = get(
+) -> Result<Option<Vec<Value>>, String> {
+    let versions = answer(
         client,
         &format!("{API}/project/{project}/version"),
         &[
@@ -189,11 +267,11 @@ async fn candidates(
         ],
     )
     .await?;
-    let list = versions.as_array()?;
-    if list.is_empty() {
-        return None;
-    }
-    Some(order(list))
+    Ok(versions
+        .as_ref()
+        .and_then(Value::as_array)
+        .filter(|list| !list.is_empty())
+        .map(|list| order(list)))
 }
 
 fn order(list: &[Value]) -> Vec<Value> {
@@ -217,28 +295,73 @@ fn file_of(version: &Value, title: &str) -> Option<ModFile> {
         .iter()
         .find(|f| f["primary"] == true)
         .or_else(|| files.first())?;
-    let url = file["url"].as_str()?;
-    let name = file["filename"].as_str()?;
-    // Only Modrinth's own CDN, and a plain jar name.
-    let ok_name = name.ends_with(".jar")
-        && name.len() <= 128
-        && name
-            .bytes()
-            .all(|b| b.is_ascii_alphanumeric() || b"._+-".contains(&b));
-    if !url.starts_with("https://cdn.modrinth.com/") || !ok_name {
+    ModFile::checked(
+        title,
+        version["version_number"].as_str().unwrap_or("?"),
+        file["filename"].as_str()?,
+        version["project_id"].as_str()?,
+        version["id"].as_str()?,
+        file["url"].as_str()?,
+        file["hashes"]["sha512"].as_str()?,
+        file["hashes"]["sha1"].as_str().unwrap_or(""),
+        file["size"].as_u64().unwrap_or(0),
+    )
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct LockedSet {
+    loader: String,
+    files: Vec<LockedFile>,
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct LockedFile {
+    title: String,
+    version: String,
+    file_name: String,
+    project: String,
+    version_id: String,
+    url: String,
+    sha512: String,
+    #[serde(default)]
+    sha1: String,
+    #[serde(default)]
+    size: u64,
+}
+
+/// The locked set for this game version and loader: the loader build it passed
+/// on and its files. `None` when there is none, or when an entry is not a plain
+/// Modrinth file.
+pub fn locked(game: &str, loader: &str) -> Option<(String, Vec<ModFile>)> {
+    locked_in(LOCK, game, loader)
+}
+
+fn locked_in(text: &str, game: &str, loader: &str) -> Option<(String, Vec<ModFile>)> {
+    let mut all: HashMap<String, LockedSet> = serde_json::from_str(text).ok()?;
+    let set = all.remove(&format!("{game} {loader}"))?;
+    if set.files.is_empty() || set.files.len() > MAX_FILES {
         return None;
     }
-    Some(ModFile {
-        title: title.to_owned(),
-        version: version["version_number"].as_str().unwrap_or("?").to_owned(),
-        file_name: name.to_owned(),
-        project: version["project_id"].as_str()?.to_owned(),
-        version_id: version["id"].as_str()?.to_owned(),
-        mod_ids: Vec::new(),
-        url: url.to_owned(),
-        sha512: file["hashes"]["sha512"].as_str()?.to_ascii_lowercase(),
-        size: file["size"].as_u64().unwrap_or(0),
-    })
+    let files = set
+        .files
+        .iter()
+        .map(|f| {
+            ModFile::checked(
+                &f.title,
+                &f.version,
+                &f.file_name,
+                &f.project,
+                &f.version_id,
+                &f.url,
+                &f.sha512,
+                &f.sha1,
+                f.size,
+            )
+        })
+        .collect::<Option<Vec<_>>>()?;
+    Some((set.loader, files))
 }
 
 /// The loader under test, as the mods' jars name it.
@@ -256,7 +379,10 @@ pub struct Loader<'a> {
 /// looks into stay in `cache`.
 pub async fn resolve(game: &str, loader: &Loader<'_>, avoid: &Avoid, cache: &Path) -> Resolved {
     let client = client();
-    let mut resolved = Resolved::default();
+    let mut resolved = Resolved {
+        complete: true,
+        ..Resolved::default()
+    };
     let mut chosen: HashMap<String, Value> = HashMap::new();
     let mut queue: Vec<(String, String)> = MEDIUM
         .iter()
@@ -275,7 +401,18 @@ pub async fn resolve(game: &str, loader: &Loader<'_>, avoid: &Avoid, cache: &Pat
             left_out.push(title);
             continue;
         }
-        let Some(list) = candidates(&client, &project, game, loader.kind).await else {
+        let found = match candidates(&client, &project, game, loader.kind).await {
+            Ok(found) => found,
+            Err(e) => {
+                resolved
+                    .skipped
+                    .push(format!("{title}: Modrinth did not answer ({e})"));
+                resolved.complete = false;
+                left_out.push(title);
+                continue;
+            }
+        };
+        let Some(list) = found else {
             if MEDIUM.contains(&project.as_str()) {
                 resolved
                     .skipped
@@ -299,6 +436,7 @@ pub async fn resolve(game: &str, loader: &Loader<'_>, avoid: &Avoid, cache: &Pat
         let mut picked = None;
         let mut crashed: Vec<String> = Vec::new();
         let mut older: Vec<String> = Vec::new();
+        let mut not_downloaded = 0;
         for version in list.iter().take(MAX_TRIED) {
             let Some(mut file) = file_of(version, &title) else {
                 continue;
@@ -308,6 +446,7 @@ pub async fn resolve(game: &str, loader: &Loader<'_>, avoid: &Avoid, cache: &Pat
                 continue;
             }
             let Ok(path) = cached(&client, cache, &file).await else {
+                not_downloaded += 1;
                 continue;
             };
             let meta = jar_meta(&path);
@@ -341,8 +480,16 @@ pub async fn resolve(game: &str, loader: &Loader<'_>, avoid: &Avoid, cache: &Pat
                 older.len()
             ));
         }
+        if not_downloaded > 0 {
+            // A version not looked into may have been the one to take.
+            resolved.complete = false;
+        }
         let Some((version, file)) = picked else {
-            if crashed.is_empty() {
+            if not_downloaded > 0 {
+                resolved.skipped.push(format!(
+                    "{title}: {not_downloaded} versions could not be downloaded"
+                ));
+            } else if crashed.is_empty() {
                 resolved.skipped.push(format!(
                     "{title}: no version accepts {} {}{}",
                     loader.kind,
@@ -393,8 +540,14 @@ pub async fn resolve(game: &str, loader: &Loader<'_>, avoid: &Avoid, cache: &Pat
         chosen.insert(id, version);
         resolved.files.push(file);
     }
-    // A library left out leaves the mods that need it unable to start: they go
-    // too, and the mods that need those.
+    drop_needing(&mut resolved, left_out);
+    resolved
+}
+
+/// Drops the files that need a mod left out (by the "(needed by …)" of their
+/// titles): a library left out leaves the mods that need it unable to start, and
+/// the mods that need those.
+fn drop_needing(resolved: &mut Resolved, left_out: Vec<String>) {
     let mut gone: Vec<String> = left_out;
     let mut i = 0;
     while i < gone.len() {
@@ -405,7 +558,6 @@ pub async fn resolve(game: &str, loader: &Loader<'_>, avoid: &Avoid, cache: &Pat
         }
         i += 1;
     }
-    let before = resolved.files.len();
     let mut dropped = Vec::new();
     resolved.files.retain(|f| {
         let keep = !gone.contains(&f.title);
@@ -414,12 +566,59 @@ pub async fn resolve(game: &str, loader: &Loader<'_>, avoid: &Avoid, cache: &Pat
         }
         keep
     });
-    if resolved.files.len() < before {
+    if !dropped.is_empty() {
         resolved.skipped.push(format!(
             "{}: a library they need is left out",
             dropped.join(", ")
         ));
     }
+}
+
+/// The locked set, as it was chosen: every file downloaded and looked into. A file
+/// that crashed on this loader build here before, cannot be downloaded or refuses
+/// the build is left out with the mods that need it, and noted in `replaced`.
+pub async fn from_lock(
+    game: &str,
+    loader: &Loader<'_>,
+    files: Vec<ModFile>,
+    avoid: &Avoid,
+    cache: &Path,
+) -> Resolved {
+    let client = client();
+    let build = loader_build(game, loader.version);
+    let mut resolved = Resolved {
+        complete: true,
+        ..Resolved::default()
+    };
+    let mut left_out = Vec::new();
+    for mut file in files {
+        let shown = format!("{} {}", file.title, file.version);
+        let why = if avoid.has(game, loader.kind, loader.version, &file.version_id) {
+            Some("crashed on this loader build before".to_owned())
+        } else {
+            match cached(&client, cache, &file).await {
+                Err(e) => Some(format!("could not be downloaded ({e})")),
+                Ok(path) => {
+                    let meta = jar_meta(&path);
+                    match meta.refuses(loader.kind, &build, loader.provides) {
+                        Some(wants) => Some(format!("needs {wants}")),
+                        None => {
+                            file.mod_ids = meta.ids;
+                            None
+                        }
+                    }
+                }
+            }
+        };
+        match why {
+            Some(why) => {
+                resolved.replaced.push(format!("{shown} {why}: left out"));
+                left_out.push(file.title);
+            }
+            None => resolved.files.push(file),
+        }
+    }
+    drop_needing(&mut resolved, left_out);
     resolved
 }
 
@@ -876,33 +1075,24 @@ fn fabric_accepts(predicate: &str, build: &str) -> Option<bool> {
     Some(all)
 }
 
-/// The verified file in `cache`, downloading it first when it is missing.
+/// No mod file larger than this is downloaded.
+const MAX_JAR: u64 = 256 * 1024 * 1024;
+
+/// The verified file in `cache`, downloading it first when it is missing: from
+/// Modrinth, else from our catalog.
 async fn cached(client: &reqwest::Client, cache: &Path, file: &ModFile) -> Result<PathBuf, String> {
     let path = cache.join(format!("{}.jar", &file.sha512[..32]));
-    let matches = |bytes: &[u8]| hex::encode(Sha512::digest(bytes)) == file.sha512;
     if let Ok(bytes) = tokio::fs::read(&path).await
-        && matches(&bytes)
+        && hex::encode(Sha512::digest(&bytes)) == file.sha512
     {
         return Ok(path);
     }
-    let response = client
-        .get(&file.url)
-        .send()
-        .await
-        .map_err(|e| format!("{}: {e}", file.title))?;
-    if !response.status().is_success() {
-        return Err(format!("{}: answered {}", file.title, response.status()));
-    }
-    let bytes = response
-        .bytes()
-        .await
-        .map_err(|e| format!("{}: {e}", file.title))?;
-    if (file.size > 0 && bytes.len() as u64 != file.size) || !matches(&bytes) {
-        return Err(format!(
-            "{}: the download does not match its hash",
-            file.title
-        ));
-    }
+    let bytes = match fetch(client, &file.url, file).await {
+        Ok(bytes) => bytes,
+        Err(modrinth) => from_catalog(client, file)
+            .await
+            .map_err(|ours| format!("{}: {modrinth}; our catalog: {ours}", file.title))?,
+    };
     tokio::fs::create_dir_all(cache)
         .await
         .map_err(|e| e.to_string())?;
@@ -914,6 +1104,74 @@ async fn cached(client: &reqwest::Client, cache: &Path, file: &ModFile) -> Resul
         .await
         .map_err(|e| e.to_string())?;
     Ok(path)
+}
+
+/// The file at `url`, when it is the one wanted: its size and SHA-512.
+async fn fetch(client: &reqwest::Client, url: &str, file: &ModFile) -> Result<Vec<u8>, String> {
+    let mut response = client.get(url).send().await.map_err(|e| e.to_string())?;
+    if !response.status().is_success() {
+        return Err(format!("answered {}", response.status()));
+    }
+    let limit = if file.size > 0 { file.size } else { MAX_JAR };
+    if response.content_length().is_some_and(|len| len > limit) {
+        return Err("larger than the file".to_owned());
+    }
+    let mut bytes = Vec::new();
+    while let Some(chunk) = response.chunk().await.map_err(|e| e.to_string())? {
+        bytes.extend_from_slice(&chunk);
+        if bytes.len() as u64 > limit {
+            return Err("larger than the file".to_owned());
+        }
+    }
+    if (file.size > 0 && bytes.len() as u64 != file.size)
+        || hex::encode(Sha512::digest(&bytes)) != file.sha512
+    {
+        return Err("the download does not match its hash".to_owned());
+    }
+    Ok(bytes)
+}
+
+/// The file from our catalog, found by its SHA-1.
+async fn from_catalog(client: &reqwest::Client, file: &ModFile) -> Result<Vec<u8>, String> {
+    if file.sha1.is_empty() {
+        return Err("no SHA-1 to find it by".to_owned());
+    }
+    let found: Value = client
+        .post(format!("{CATALOG}/lookup"))
+        .json(&serde_json::json!({ "hashes": [file.sha1] }))
+        .send()
+        .await
+        .and_then(reqwest::Response::error_for_status)
+        .map_err(|e| e.to_string())?
+        .json()
+        .await
+        .map_err(|e| e.to_string())?;
+    let id = found["found"][0]["versionId"]
+        .as_str()
+        .filter(|id| catalog_id(id))
+        .ok_or("not in the catalog")?;
+    let version = answer(client, &format!("{CATALOG}/versions/{id}"), &[])
+        .await?
+        .ok_or("not in the catalog")?;
+    let url = catalog_url(&version, &file.sha1).ok_or("no file to download")?;
+    fetch(client, url, file).await
+}
+
+/// A catalog version id: a UUID.
+fn catalog_id(id: &str) -> bool {
+    !id.is_empty() && id.len() <= 64 && id.bytes().all(|b| b.is_ascii_hexdigit() || b == b'-')
+}
+
+/// Where the catalog hands out the file with this SHA-1 of a version, when that
+/// is one of its file hosts.
+fn catalog_url<'a>(version: &'a Value, sha1: &str) -> Option<&'a str> {
+    version["files"].as_array()?.iter().find(|f| {
+        f["sha1"]
+            .as_str()
+            .is_some_and(|h| h.eq_ignore_ascii_case(sha1))
+    })?["url"]
+        .as_str()
+        .filter(|url| url.len() <= 512 && CATALOG_FILES.iter().any(|host| url.starts_with(host)))
 }
 
 /// Copies every chosen file into `mods`.
@@ -1170,6 +1428,7 @@ fn the_stack_names_the_mod_whose_class_comes_first() {
         mod_ids: Vec::new(),
         url: String::new(),
         sha512: String::new(),
+        sha1: String::new(),
         size: 0,
     };
     let set = [
@@ -1241,4 +1500,109 @@ fn the_avoid_list_survives_junk_and_stays_bounded() {
     assert_eq!(kept.all.len(), MAX_BAD);
     assert!(!kept.has("26.3", "neoforge", "26.3.0.95-beta", "v0"));
     let _ = std::fs::remove_dir_all(&dir);
+}
+
+#[test]
+fn a_locked_set_takes_only_plain_modrinth_files() {
+    let file = |url: &str, name: &str, sha512: &str| {
+        serde_json::json!({
+            "title": "rZrAKGe1 (needed by storagedrawers)",
+            "version": "1.21.1-2.0.0",
+            "fileName": name,
+            "project": "rZrAKGe1",
+            "versionId": "Ab3dEf9h",
+            "url": url,
+            "sha512": sha512,
+            "sha1": "A".repeat(40),
+            "size": 12,
+        })
+    };
+    let good = file(
+        "https://cdn.modrinth.com/data/rZrAKGe1/versions/Ab3dEf9h/lib-2.0.0.jar",
+        "lib-2.0.0.jar",
+        &"ab".repeat(64),
+    );
+    let lock = |files: Vec<Value>| {
+        serde_json::json!({ "1.21.1 neoforge": { "loader": "21.1.200", "files": files } })
+            .to_string()
+    };
+    let (loader, files) = locked_in(&lock(vec![good.clone()]), "1.21.1", "neoforge").unwrap();
+    assert_eq!(loader, "21.1.200");
+    assert_eq!(files[0].version_id, "Ab3dEf9h");
+    assert_eq!(files[0].sha1, "a".repeat(40));
+    assert!(locked_in(&lock(vec![good.clone()]), "1.21.1", "forge").is_none());
+    // One bad entry spoils the set: another host, a path in the name, a short hash.
+    for bad in [
+        file(
+            "https://evil.example/lib.jar",
+            "lib-2.0.0.jar",
+            &"ab".repeat(64),
+        ),
+        file(
+            "http://cdn.modrinth.com/lib.jar",
+            "lib-2.0.0.jar",
+            &"ab".repeat(64),
+        ),
+        file(
+            "https://cdn.modrinth.com/x.jar",
+            "../../lib.jar",
+            &"ab".repeat(64),
+        ),
+        file(
+            "https://cdn.modrinth.com/x.jar",
+            "lib.exe",
+            &"ab".repeat(64),
+        ),
+        file("https://cdn.modrinth.com/x.jar", "lib-2.0.0.jar", "abcd"),
+        file(
+            "https://cdn.modrinth.com/x.jar",
+            "lib-2.0.0.jar",
+            &"zz".repeat(64),
+        ),
+    ] {
+        assert!(locked_in(&lock(vec![good.clone(), bad]), "1.21.1", "neoforge").is_none());
+    }
+    assert!(locked_in(&lock(Vec::new()), "1.21.1", "neoforge").is_none());
+    assert!(locked_in(&lock(vec![good; MAX_FILES + 1]), "1.21.1", "neoforge").is_none());
+    assert!(locked_in("{not json", "1.21.1", "neoforge").is_none());
+    assert!(locked_in("[]", "1.21.1", "neoforge").is_none());
+    // Every set in the repository's file reads.
+    let all: HashMap<String, Value> = serde_json::from_str(LOCK).unwrap();
+    for key in all.keys() {
+        let (game, loader) = key.split_once(' ').unwrap();
+        assert!(locked(game, loader).is_some(), "{key} reads");
+    }
+}
+
+#[test]
+fn the_catalog_gives_files_only_from_its_hosts() {
+    let sha1 = "0a".repeat(20);
+    let version = |url: &str| {
+        serde_json::json!({ "files": [
+            { "sha1": "ff".repeat(20), "url": "https://files-mods.lapi.sh/f/other/x.jar" },
+            { "sha1": sha1.to_ascii_uppercase(), "url": url },
+        ] })
+    };
+    let ok = "https://cdn-mods.lapi.sh/f/abc";
+    assert_eq!(catalog_url(&version(ok), &sha1), Some(ok));
+    let ok = "https://files-mods.lapi.sh/f/abc/lib.jar";
+    assert_eq!(catalog_url(&version(ok), &sha1), Some(ok));
+    for bad in [
+        "https://evil.example/f/abc",
+        "http://cdn-mods.lapi.sh/f/abc",
+        "https://cdn-mods.lapi.sh.evil.example/f/abc",
+    ] {
+        assert_eq!(catalog_url(&version(bad), &sha1), None);
+    }
+    let long = format!("https://cdn-mods.lapi.sh/{}", "a".repeat(600));
+    assert_eq!(catalog_url(&version(&long), &sha1), None);
+    assert_eq!(catalog_url(&version(ok), &"11".repeat(20)), None);
+    assert_eq!(
+        catalog_url(&serde_json::json!({ "files": "junk" }), &sha1),
+        None
+    );
+    assert!(catalog_id("0b3e5a1c-7f2d-4e8a-9c6b-1d2e3f4a5b6c"));
+    assert!(!catalog_id("../versions"));
+    assert!(!catalog_id(""));
+    assert!(!catalog_id(&"a".repeat(65)));
 }

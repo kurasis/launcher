@@ -136,7 +136,10 @@ fn num(value: &Value) -> String {
 pub fn summary(scenario: &str, status: &str, report: Option<&Value>, lines: &[String]) -> String {
     let icon = match status {
         "passed" => "✅",
-        "warned" => "⚠️",
+        // Passed with a mod of the set replaced; another mod's or a download's trouble.
+        "warned" | "theirs" => "⚠️",
+        // The newest mods are the locked ones: not played again.
+        "unchanged" => "⏭️",
         _ => "❌",
     };
     let mut out = format!("### {icon} {scenario}\n\n");

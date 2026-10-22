@@ -10,9 +10,17 @@ name: Game test
 # ("Run workflow") or on the nightly schedule, never for a pull request. Inputs
 # reach scripts only through env and are checked against fixed lists.
 #
+# The medium set plays the mod versions locked in
+# src-tauri/tests/gametest/medium.lock.json. The nightly run then plays the
+# medium scenarios again with each mod's newest version: a failure there is
+# another mod's news and holds nothing, and a set that passes is committed to
+# the lock for the next runs (docs/GAMETEST.md).
+#
 # A green nightly run gives the skins mod release of this commit (mod/VERSION,
 # already on the beta channel) to the stable channel's signed list on
 # upd.lapi.sh (docs/DECISIONS.md D-065), when the mod's code is the release's.
+# Only our own failures turn a run red: a crash blamed on another mod, or a
+# download that failed, is a warning.
 
 on:
   workflow_dispatch:
@@ -36,6 +44,10 @@ on:
         description: After a green run, give this commit's skins mod release to the stable channel (the nightly run does)
         type: boolean
         default: false
+      newest:
+        description: Then play the medium scenarios with the newest mods and lock the sets that pass (the nightly run does)
+        type: boolean
+        default: false
   schedule:
     # 03:00 Moscow time.
     - cron: '0 0 * * *'
@@ -54,6 +66,7 @@ jobs:
     runs-on: ubuntu-24.04
     outputs:
       scenarios: ${{ steps.plan.outputs.scenarios }}
+      newest: ${{ steps.plan.outputs.newest }}
       folders: ${{ steps.plan.outputs.folders }}
       minutes: ${{ steps.plan.outputs.minutes }}
     steps:
@@ -64,6 +77,7 @@ jobs:
           MODS: ${{ inputs.mods || 'none,medium' }}
           MINUTES: ${{ inputs.minutes || '5' }}
           SKIN: ${{ inputs.skin || 'rotate' }}
+          NEWEST: ${{ github.event_name == 'schedule' || inputs.newest }}
         run: |
           python3 - <<'EOF'
           import json, os, sys
@@ -137,8 +151,11 @@ jobs:
                                         "name": f"{version} {loader} {mods} {s}"})
           if not scenarios:
               sys.exit("no scenario: 1.12.2 and older are Forge only, 1.14.4 to 1.20.1 have no NeoForge, vanilla plays without mods")
+          # Played again with the newest mods after the locked ones.
+          newest = [s for s in scenarios if s["mods"] == "medium"] if os.environ["NEWEST"] == "true" else []
           with open(os.environ["GITHUB_OUTPUT"], "a") as out:
               out.write(f"scenarios={json.dumps(scenarios)}\n")
+              out.write(f"newest={json.dumps(newest)}\n")
               out.write(f"minutes={minutes:g}\n")
               out.write(f"folders={','.join(f for v in picked['VERSIONS'] for f in folders(v))}\n")
           print(f"{len(scenarios)} scenarios, {minutes:g} minutes each")
@@ -216,13 +233,21 @@ jobs:
     needs: [plan, jars, harness]
     runs-on: [self-hosted, windows, x64, gametest]
     timeout-minutes: 1440
-    defaults:
+    env:
+      SCENARIOS: ${{ needs.plan.outputs.scenarios }}
+      GAMETEST_MOD_VERSIONS: locked
+      RESULTS: gametest-results
+      LOCK: gametest-lock-gate
+    outputs:
+      played: ${{ steps.play.outputs.played }}
+    defaults: &on-the-test-machine
       run:
         # Windows PowerShell as the runner's user runs no script files by
         # default (execution policy Restricted); the policy is lifted for these
         # steps only, the machine's setting stays as it is.
         shell: powershell -NoProfile -ExecutionPolicy Bypass -Command ". '{0}'"
-    steps:
+    # The newest job plays with the same steps.
+    steps: &play
       - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8
         with:
           name: gametest-jars
@@ -232,8 +257,8 @@ jobs:
           name: gametest-harness
           path: gt/bin
       - name: Play
+        id: play
         env:
-          SCENARIOS: ${{ needs.plan.outputs.scenarios }}
           GAMETEST_MINUTES: ${{ needs.plan.outputs.minutes }}
         run: |
           $ErrorActionPreference = 'Stop'
@@ -244,7 +269,10 @@ jobs:
           $env:LAUNCHER_LIVE_ROOT = $env:GAMETEST_ROOT
           $env:GAMETEST_JARS = $jars.FullName
           $env:GAMETEST_OUT = (New-Item -ItemType Directory -Force gt/out).FullName
+          # With the newest mods a failure is another mod's news: a warning.
+          $newest = $env:GAMETEST_MOD_VERSIONS -eq 'newest'
           $failed = 0
+          $played = 0
           # One scenario after another; a failed one does not stop the rest.
           foreach ($s in ($env:SCENARIOS | ConvertFrom-Json)) {
             $env:GAMETEST_VERSION = $s.version
@@ -255,31 +283,47 @@ jobs:
             & gt/bin/live_gametest.exe --ignored --nocapture --test-threads=1
             $code = $LASTEXITCODE
             Write-Host "::endgroup::"
-            # A pass with a mod of the set replaced is "warned" (docs/GAMETEST.md).
+            # A pass is "warned" with a mod of the set replaced, "theirs" when another
+            # mod or a download stopped the play, "unchanged" when the newest mods are
+            # the locked ones (docs/GAMETEST.md).
             $status = if ($code -eq 0) { 'passed' } else { 'failed' }
             $result = Join-Path $env:GAMETEST_OUT "$($s.version)-$($s.loader)-$($s.mods)-$($s.skin)/result.json"
             if ($code -eq 0 -and (Test-Path $result)) {
-              if ((Get-Content $result -Raw | ConvertFrom-Json).status -eq 'warned') { $status = 'warned' }
+              $said = (Get-Content $result -Raw -Encoding UTF8 | ConvertFrom-Json).status
+              if ($said -in 'warned', 'theirs', 'unchanged') { $status = $said }
             }
-            if ($code -ne 0) {
+            if ($status -in 'passed', 'warned') { $played++ }
+            if ($status -eq 'failed' -and $newest) {
+              Write-Host "::warning::$($s.name) failed with the newest mods"
+            } elseif ($status -eq 'failed') {
               $failed++
               Write-Host "::error::$($s.name) failed"
             } elseif ($status -eq 'warned') {
-              Write-Host "::warning::$($s.name) passed with a mod of the set replaced"
+              Write-Host "::warning::$($s.name) passed with a mod of the set replaced or left out"
+            } elseif ($status -eq 'theirs') {
+              Write-Host "::warning::$($s.name) not played to the end: another mod or a download failed"
             }
             Add-Content gt/results.txt "$($s.name)`t$status"
           }
+          Add-Content $env:GITHUB_OUTPUT "played=$played"
           if ($failed) { exit 1 }
       - name: Summary
         if: always()
         run: |
           # Windows PowerShell's utf8 adds a byte-order mark; the summary takes plain UTF-8.
           $utf8 = New-Object Text.UTF8Encoding $false
-          $text = "| Scenario | Result |`n| --- | --- |`n"
+          $text = if ($env:GAMETEST_MOD_VERSIONS -eq 'newest') { "## With the newest mods`n`n" } else { '' }
+          $text += "| Scenario | Result |`n| --- | --- |`n"
+          # Plain ASCII: Windows PowerShell reads this script in the ANSI code page.
+          $words = @{
+            passed = 'passed'
+            warned = '**passed, a mod of the set replaced or left out**'
+            theirs = '**not ours: another mod or a download failed**'
+            unchanged = 'the locked mods: not played again'
+          }
           foreach ($line in (Get-Content gt/results.txt -ErrorAction SilentlyContinue)) {
             $name, $status = $line -split "`t"
-            # Plain ASCII: Windows PowerShell reads this script in the ANSI code page.
-            $shown = @{ passed = 'passed'; warned = '**passed, a mod of the set replaced**' }[$status]
+            $shown = $words[$status]
             $text += "| $name | $(if ($shown) { $shown } else { '**failed**' }) |`n"
           }
           [IO.File]::AppendAllText($env:GITHUB_STEP_SUMMARY, "$text`n", $utf8)
@@ -290,13 +334,85 @@ jobs:
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
         if: always()
         with:
-          name: gametest-results
+          name: ${{ env.RESULTS }}
           path: gt/out
           retention-days: 7
+          if-no-files-found: ignore
+      # The sets that passed with the newest versions, for the lock job.
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
+        if: always()
+        with:
+          name: ${{ env.LOCK }}
+          path: gt/out/*/lock.json
+          retention-days: 3
           if-no-files-found: ignore
       - name: Clean the workspace
         if: always()
         run: Remove-Item -Recurse -Force gt -ErrorAction SilentlyContinue
+
+  newest:
+    # The medium scenarios again with each mod's newest version that fits and the
+    # loader's newest build: a failure is a warning. A scenario whose newest mods are
+    # the locked ones is not played again.
+    name: Play with the newest mods
+    needs: [plan, jars, harness, play]
+    if: >-
+      !cancelled() && needs.jars.result == 'success' && needs.harness.result == 'success'
+      && needs.plan.outputs.newest != '[]' && needs.plan.outputs.newest != ''
+    runs-on: [self-hosted, windows, x64, gametest]
+    timeout-minutes: 1440
+    env:
+      SCENARIOS: ${{ needs.plan.outputs.newest }}
+      GAMETEST_MOD_VERSIONS: newest
+      RESULTS: gametest-newest-results
+      LOCK: gametest-lock-newest
+    defaults: *on-the-test-machine
+    steps: *play
+
+  lock:
+    # The sets that passed with the newest versions go into the lock on main (the
+    # newest run's over the gate's), so the next runs play them.
+    name: Lock the mod sets that passed
+    needs: [play, newest]
+    if: ${{ !cancelled() && github.ref == 'refs/heads/main' }}
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          ref: main
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8
+        with:
+          pattern: gametest-lock-gate
+          path: ${{ runner.temp }}/lock/gate
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8
+        with:
+          pattern: gametest-lock-newest
+          path: ${{ runner.temp }}/lock/newest
+      - name: Commit the locked sets
+        env:
+          FRAGMENTS: ${{ runner.temp }}/lock
+        run: |
+          set -euo pipefail
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          lock=src-tauri/tests/gametest/medium.lock.json
+          # main may move meanwhile: each try starts from its newest commit.
+          for try in 1 2 3; do
+            git fetch -q origin main
+            git reset -q --hard origin/main
+            python3 -I .github/gametest/lock.py "$lock" "$FRAGMENTS/gate" "$FRAGMENTS/newest" "$RUNNER_TEMP/lock.md"
+            if git diff --quiet -- "$lock"; then exit 0; fi
+            git commit -q -m 'Game test: lock the medium mod sets that passed' -- "$lock"
+            if git push -q origin HEAD:main; then
+              cat "$RUNNER_TEMP/lock.md" >> "$GITHUB_STEP_SUMMARY"
+              exit 0
+            fi
+            sleep $((try * 10))
+          done
+          echo '::error::The locked sets could not be pushed to main.'
+          exit 1
 
   stable:
     name: Skins mod for the stable channel?
@@ -314,8 +430,13 @@ jobs:
       - id: decide
         env:
           GH_TOKEN: ${{ github.token }}
+          PLAYED: ${{ needs.play.outputs.played }}
         run: |
           set -uo pipefail
+          # Others' trouble does not hold the run, but a run that played nothing shows nothing.
+          if [ "${PLAYED:-0}" = "0" ]; then
+            echo "::notice::No scenario was played to the end: nothing for stable."; exit 0
+          fi
           version=$(tr -d '[:space:]' < mod/VERSION)
           [[ "$version" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]] || { echo "::error::mod/VERSION is not a version"; exit 1; }
           listed() {
