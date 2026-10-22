@@ -45,6 +45,8 @@ const MAX_RUN_TEXT: usize = 20_000;
 const MAX_DEPTH: usize = 8;
 /// Viewers of a stream, at most.
 const MAX_VIEWERS: u64 = 100_000_000;
+/// The width or height of a picture, at most (the service's own limit).
+const MAX_PICTURE_SIDE: u64 = 8192;
 /// Versions of an update cycle, at most.
 const MAX_CYCLE_COUNT: u64 = 1000;
 /// Items in one page of the endless list.
@@ -124,6 +126,10 @@ pub struct NoteCard {
     pub kind: Option<VersionKind>,
     /// `img/<sha256>.jpg`.
     pub image: Option<String>,
+    /// The picture's width and height in pixels: both or neither, only with
+    /// a picture.
+    pub image_width: Option<u32>,
+    pub image_height: Option<u32>,
     /// The article on www.minecraft.net (news).
     pub url: Option<String>,
 }
@@ -138,8 +144,12 @@ pub struct Video {
     pub date: String,
     /// A YouTube Short.
     pub short: bool,
-    /// `yt/<id>.jpg`.
+    /// `yt/<id>.jpg` (16:9).
     pub image: Option<String>,
+    /// `ys/<id>.jpg`: a Short's upright preview (9:16), only for a Short.
+    pub image_tall: Option<String>,
+    /// `ya/<channel id>.jpg`: the channel's picture (square).
+    pub avatar: Option<String>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
@@ -152,6 +162,8 @@ pub struct Stream {
     pub started: String,
     /// `tw/<login>.jpg`.
     pub image: Option<String>,
+    /// `ta/<login>.jpg`: the channel's picture (square).
+    pub avatar: Option<String>,
 }
 
 /// Where the current update cycle is.
@@ -407,8 +419,14 @@ pub enum PictureKind {
     Img,
     /// Video previews.
     Yt,
+    /// Upright previews of Shorts.
+    Ys,
     /// Stream previews.
     Tw,
+    /// YouTube channels' pictures.
+    Ya,
+    /// Twitch channels' pictures.
+    Ta,
 }
 
 impl PictureKind {
@@ -416,7 +434,10 @@ impl PictureKind {
         match self {
             Self::Img => "img",
             Self::Yt => "yt",
+            Self::Ys => "ys",
             Self::Tw => "tw",
+            Self::Ya => "ya",
+            Self::Ta => "ta",
         }
     }
 
@@ -424,14 +445,17 @@ impl PictureKind {
         match kind {
             "img" => Some(Self::Img),
             "yt" => Some(Self::Yt),
+            "ys" => Some(Self::Ys),
             "tw" => Some(Self::Tw),
+            "ya" => Some(Self::Ya),
+            "ta" => Some(Self::Ta),
             _ => None,
         }
     }
 }
 
-/// A picture's file name of `kind`: `<64 hex>.jpg`, `<video id>.jpg` or
-/// `<login>.jpg`.
+/// A picture's file name of `kind`: `<64 hex>.jpg`, `<video id>.jpg`,
+/// `<login>.jpg` or `<channel id>.jpg`.
 pub fn picture_name(kind: PictureKind, name: &str) -> bool {
     let Some(stem) = name.strip_suffix(".jpg") else {
         return false;
@@ -443,13 +467,14 @@ pub fn picture_name(kind: PictureKind, name: &str) -> bool {
                     .bytes()
                     .all(|b| b.is_ascii_digit() || (b'a'..=b'f').contains(&b))
         }
-        PictureKind::Yt => video_id(stem),
-        PictureKind::Tw => twitch_login(stem),
+        PictureKind::Yt | PictureKind::Ys => video_id(stem),
+        PictureKind::Tw | PictureKind::Ta => twitch_login(stem),
+        PictureKind::Ya => channel_id(stem),
     }
 }
 
 /// A picture path as the feed names it: `img/<sha>.jpg`, `yt/<id>.jpg`,
-/// `tw/<login>.jpg`.
+/// `ys/<id>.jpg`, `tw/<login>.jpg`, `ya/<channel id>.jpg`, `ta/<login>.jpg`.
 pub fn picture_path(path: &str) -> Option<(PictureKind, &str)> {
     let (kind, name) = path.split_once('/')?;
     let kind = PictureKind::parse(kind)?;
@@ -549,6 +574,22 @@ fn picture(value: Option<&Value>, kind: PictureKind) -> Option<String> {
         .map(|_| path.to_owned())
 }
 
+/// The picture of `kind` named exactly `<kind>/<name>.jpg`.
+fn picture_of(value: Option<&Value>, kind: PictureKind, name: &str) -> Option<String> {
+    picture(value, kind).filter(|path| *path == format!("{}/{name}.jpg", kind.as_str()))
+}
+
+/// A picture's width and height: both whole numbers from 1 to
+/// `MAX_PICTURE_SIDE`, or neither.
+fn picture_size(fields: &Map<String, Value>) -> Option<(u32, u32)> {
+    let side = |key| {
+        count(fields.get(key), MAX_PICTURE_SIDE)
+            .filter(|n| *n > 0)
+            .and_then(|n| u32::try_from(n).ok())
+    };
+    Some((side("imageWidth")?, side("imageHeight")?))
+}
+
 fn optional_link(value: Option<&Value>, rule: fn(&str) -> bool) -> Option<String> {
     let url = value?.as_str()?;
     rule(url).then(|| url.to_owned())
@@ -581,6 +622,8 @@ fn note_card(fields: &Map<String, Value>, prefix: Option<&str>) -> Option<NoteCa
     if prefix.is_some_and(|p| !id.starts_with(p)) {
         return None;
     }
+    let image = picture(fields.get("image"), PictureKind::Img);
+    let size = image.as_ref().and_then(|_| picture_size(fields));
     Some(NoteCard {
         title: text(fields.get("title"), MAX_TITLE)?,
         date: date(fields.get("date"))?,
@@ -588,7 +631,9 @@ fn note_card(fields: &Map<String, Value>, prefix: Option<&str>) -> Option<NoteCa
         translated: flag(fields.get("translated")),
         version: id_with(fields.get("version"), version_id),
         kind: fields.get("kind").and_then(VersionKind::parse),
-        image: picture(fields.get("image"), PictureKind::Img),
+        image,
+        image_width: size.map(|(width, _)| width),
+        image_height: size.map(|(_, height)| height),
         url: optional_link(fields.get("url"), article_link),
         id,
     })
@@ -596,14 +641,17 @@ fn note_card(fields: &Map<String, Value>, prefix: Option<&str>) -> Option<NoteCa
 
 fn video(fields: &Map<String, Value>) -> Option<Video> {
     let id = id_with(fields.get("id"), video_id)?;
+    let channel_id = id_with(fields.get("channelId"), channel_id)?;
+    let short = flag(fields.get("short"));
     Some(Video {
-        channel_id: id_with(fields.get("channelId"), channel_id)?,
         channel: text(fields.get("channel"), MAX_NAME)?,
         title: text(fields.get("title"), MAX_TITLE)?,
         date: date(fields.get("date"))?,
-        short: flag(fields.get("short")),
-        image: picture(fields.get("image"), PictureKind::Yt)
-            .filter(|path| *path == format!("yt/{id}.jpg")),
+        short,
+        image: picture_of(fields.get("image"), PictureKind::Yt, &id),
+        image_tall: picture_of(fields.get("imageTall"), PictureKind::Ys, &id).filter(|_| short),
+        avatar: picture_of(fields.get("avatar"), PictureKind::Ya, &channel_id),
+        channel_id,
         id,
     })
 }
@@ -615,8 +663,8 @@ fn stream(fields: &Map<String, Value>) -> Option<Stream> {
         title: text(fields.get("title"), MAX_TITLE).unwrap_or_default(),
         viewers: count(fields.get("viewers"), MAX_VIEWERS)?,
         started: date(fields.get("started"))?,
-        image: picture(fields.get("image"), PictureKind::Tw)
-            .filter(|path| *path == format!("tw/{login}.jpg")),
+        image: picture_of(fields.get("image"), PictureKind::Tw, &login),
+        avatar: picture_of(fields.get("avatar"), PictureKind::Ta, &login),
         login,
     })
 }

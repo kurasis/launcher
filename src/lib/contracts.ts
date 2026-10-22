@@ -1757,6 +1757,9 @@ export interface NoteCard {
   kind: VersionKind | null;
   /** `img/<sha>.jpg` on the `feed:` protocol. */
   image: string | null;
+  /** The picture's size in pixels: both or neither, only with a picture. */
+  imageWidth: number | null;
+  imageHeight: number | null;
   /** The article on www.minecraft.net (news). */
   url: string | null;
 }
@@ -1768,7 +1771,15 @@ export interface FeedVideo {
   title: string;
   date: string;
   short: boolean;
+  /** `yt/<id>.jpg`, 16:9. */
   image: string | null;
+  /** `ys/<id>.jpg`, a Short's upright preview (9:16, 360×640); only for a Short. */
+  imageTall: string | null;
+  /**
+   * `ya/<channel id>.jpg`, the channel's picture (square, 96 px). The service
+   * may have none yet: show a stand-in when it does not load.
+   */
+  avatar: string | null;
 }
 
 export interface FeedStream {
@@ -1777,7 +1788,10 @@ export interface FeedStream {
   title: string;
   viewers: number;
   started: string;
+  /** `tw/<login>.jpg`, 16:9. */
   image: string | null;
+  /** `ta/<login>.jpg`, the channel's picture (square, 96 px), as for videos. */
+  avatar: string | null;
 }
 
 export interface FeedCycle {

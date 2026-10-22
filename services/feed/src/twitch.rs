@@ -59,6 +59,21 @@ struct User {
     login: String,
     #[serde(default)]
     display_name: String,
+    #[serde(default)]
+    profile_image_url: String,
+}
+
+/// A channel picture's address from Helix: Twitch's picture host, over https.
+pub fn avatar_url(raw: &str) -> Option<String> {
+    if raw.len() > 400 {
+        return None;
+    }
+    let url = url::Url::parse(raw).ok()?;
+    (url.scheme() == "https"
+        && url.port().is_none()
+        && url.username().is_empty()
+        && url.host_str() == Some("static-cdn.jtvnw.net"))
+    .then(|| url.into())
 }
 
 /// A stream as Helix gives it.
@@ -302,12 +317,12 @@ impl Twitch {
         Ok(streams.data)
     }
 
-    /// The display name of a channel, when Twitch has it.
-    pub async fn user(
+    /// A channel, when Twitch has it.
+    async fn find_user(
         &mut self,
         http: &reqwest::Client,
         login: &str,
-    ) -> Result<Option<String>, String> {
+    ) -> Result<Option<User>, String> {
         let url =
             url::Url::parse_with_params("https://api.twitch.tv/helix/users", [("login", login)])
                 .map_err(|e| e.to_string())?;
@@ -315,14 +330,34 @@ impl Twitch {
         Ok(users
             .data
             .into_iter()
-            .find(|u| u.login.eq_ignore_ascii_case(login))
-            .map(|u| {
-                let name = html::clean(&u.display_name, 40).trim().to_owned();
-                if name.is_empty() {
-                    login.to_owned()
-                } else {
-                    name
-                }
-            }))
+            .find(|u| u.login.eq_ignore_ascii_case(login)))
+    }
+
+    /// The address of a channel's picture, when Twitch has one.
+    pub async fn avatar(
+        &mut self,
+        http: &reqwest::Client,
+        login: &str,
+    ) -> Result<Option<String>, String> {
+        Ok(self
+            .find_user(http, login)
+            .await?
+            .and_then(|u| avatar_url(&u.profile_image_url)))
+    }
+
+    /// The display name of a channel, when Twitch has it.
+    pub async fn user(
+        &mut self,
+        http: &reqwest::Client,
+        login: &str,
+    ) -> Result<Option<String>, String> {
+        Ok(self.find_user(http, login).await?.map(|u| {
+            let name = html::clean(&u.display_name, 40).trim().to_owned();
+            if name.is_empty() {
+                login.to_owned()
+            } else {
+                name
+            }
+        }))
     }
 }

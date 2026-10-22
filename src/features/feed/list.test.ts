@@ -13,12 +13,22 @@ function video(id: string, channel: string, date: string): FeedItem {
       date,
       short: false,
       image: null,
+      imageTall: null,
+      avatar: null,
     },
   };
 }
 
 function stream(login: string, started: string, viewers = 10): FeedStream {
-  return { login, name: login, title: `${login} live`, viewers, started, image: null };
+  return {
+    login,
+    name: login,
+    title: `${login} live`,
+    viewers,
+    started,
+    image: null,
+    avatar: null,
+  };
 }
 
 const keys = (items: FeedItem[]) => items.map(itemKey);

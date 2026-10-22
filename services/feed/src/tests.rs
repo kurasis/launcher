@@ -366,6 +366,41 @@ fn junk_channel_names_are_refused() {
 }
 
 #[test]
+fn a_channel_picture_in_a_page() {
+    let url = "https://yt3.googleusercontent.com/abc_DEF-123=s900-c-k-c0x00ffffff-no-rj";
+    let page = format!("<head><meta property=\"og:image\" content=\"{url}\"></head>");
+    assert_eq!(youtube::avatar_in_page(&page).as_deref(), Some(url));
+    let data = format!("x\"avatar\":{{\"thumbnails\":[{{\"url\":\"{url}\",\"width\":900}}");
+    assert_eq!(youtube::avatar_in_page(&data).as_deref(), Some(url));
+    // A bad first one does not hide a good second one.
+    let both = format!("<meta property=\"og:image\" content=\"https://evil.example/x.jpg\">{data}");
+    assert_eq!(youtube::avatar_in_page(&both).as_deref(), Some(url));
+    let long = format!("https://yt3.ggpht.com/{}", "a".repeat(500));
+    for bad in [
+        "https://evil.example/a.jpg",
+        "http://yt3.ggpht.com/a",
+        "https://yt3.ggpht.com:8443/a",
+        "https://yt3.ggpht.com.evil.example/a",
+        "https://user@yt3.ggpht.com/a",
+        "javascript:alert(1)",
+        "https://yt3.ggpht.com/a?x=1&amp;y=2",
+        "https://yt3.ggpht.com/a\\u0026b",
+        "//yt3.ggpht.com/a",
+        "",
+        &long,
+    ] {
+        let page = format!("<meta property=\"og:image\" content=\"{bad}\">");
+        assert_eq!(youtube::avatar_in_page(&page), None, "{bad}");
+    }
+    assert_eq!(youtube::avatar_in_page("<html></html>"), None);
+    // A page cut in the middle of the address.
+    assert_eq!(
+        youtube::avatar_in_page("<meta property=\"og:image\" content=\"https://yt3.ggpht.com/a"),
+        None
+    );
+}
+
+#[test]
 fn channel_id_in_a_page() {
     let id = "UC1sELGmy5jp5fQUugmuYlXQ";
     assert_eq!(
@@ -591,6 +626,25 @@ fn twitch_channels_named_by_players() {
 }
 
 #[test]
+fn twitch_channel_pictures() {
+    let ok = "https://static-cdn.jtvnw.net/jtv_user_pictures/abc-profile_image-300x300.png";
+    assert_eq!(twitch::avatar_url(ok).as_deref(), Some(ok));
+    let long = format!("https://static-cdn.jtvnw.net/{}", "a".repeat(400));
+    for bad in [
+        "",
+        "not an address",
+        "http://static-cdn.jtvnw.net/a.png",
+        "https://evil.example/a.png",
+        "https://static-cdn.jtvnw.net.evil.example/a.png",
+        "https://static-cdn.jtvnw.net:444/a.png",
+        "https://u@static-cdn.jtvnw.net/a.png",
+        &long,
+    ] {
+        assert_eq!(twitch::avatar_url(bad), None, "{bad}");
+    }
+}
+
+#[test]
 fn twitch_needs_both_secrets() {
     assert!(crate::twitch::Twitch::new(String::new(), "s".into()).is_none());
     assert!(crate::twitch::Twitch::new("c".into(), "  ".into()).is_none());
@@ -775,34 +829,50 @@ fn png(width: u32, height: u32) -> Vec<u8> {
 
 #[test]
 fn pictures_are_reencoded() {
-    let jpeg = reencode(&png(2000, 1000), images::PREVIEW).unwrap();
+    let jpeg = reencode(&png(2000, 1000), images::PREVIEW, None).unwrap();
     let back = image::load_from_memory(&jpeg).unwrap();
     assert_eq!((back.width(), back.height()), (480, 240));
     assert_eq!(&jpeg[..3], &[0xFF, 0xD8, 0xFF]);
-    let small = reencode(&png(100, 50), images::WIDE).unwrap();
+    let small = reencode(&png(100, 50), images::WIDE, None).unwrap();
     assert_eq!(image::load_from_memory(&small).unwrap().width(), 100);
 }
 
 #[test]
 fn junk_pictures_are_refused() {
-    assert!(reencode(b"", 100).is_err());
-    assert!(reencode(b"<svg xmlns='http://www.w3.org/2000/svg'/>", 100).is_err());
-    assert!(reencode(b"GIF89a\x01", 100).is_err());
+    assert!(reencode(b"", 100, None).is_err());
+    assert!(reencode(b"<svg xmlns='http://www.w3.org/2000/svg'/>", 100, None).is_err());
+    assert!(reencode(b"GIF89a\x01", 100, None).is_err());
     let mut cut = png(64, 64);
     cut.truncate(cut.len() / 2);
-    assert!(reencode(&cut, 100).is_err());
+    assert!(reencode(&cut, 100, None).is_err());
     // A PNG that claims to be 100000 pixels wide.
     let mut huge = png(1, 1);
     huge[16..20].copy_from_slice(&100_000u32.to_be_bytes());
-    assert!(reencode(&huge, 100).is_err());
+    assert!(reencode(&huge, 100, None).is_err());
     // A BMP is a picture but not one we take.
     let mut bmp = Vec::new();
     image::DynamicImage::ImageRgb8(image::RgbImage::new(2, 2))
         .write_to(&mut std::io::Cursor::new(&mut bmp), image::ImageFormat::Bmp)
         .ok();
     if !bmp.is_empty() {
-        assert!(reencode(&bmp, 100).is_err());
+        assert!(reencode(&bmp, 100, None).is_err());
     }
+}
+
+#[test]
+fn pictures_are_cut_to_shape() {
+    assert_eq!(images::middle(1280, 720, (9, 16)), (437, 0, 405, 720));
+    assert_eq!(images::middle(1080, 1920, (9, 16)), (0, 0, 1080, 1920));
+    assert_eq!(images::middle(100, 300, (1, 1)), (0, 100, 100, 100));
+    assert_eq!(images::middle(1, 1, (9, 16)), (0, 0, 1, 1));
+    assert_eq!(images::middle(1, 8192, (9, 16)), (0, 4095, 1, 1));
+    // The middle of a Short's 16:9 preview, upright at 360×640.
+    let tall = reencode(&png(1280, 720), images::TALL, Some((9, 16))).unwrap();
+    let back = image::load_from_memory(&tall).unwrap();
+    assert_eq!((back.width(), back.height()), (360, 640));
+    let square = reencode(&png(300, 200), images::AVATAR, Some((1, 1))).unwrap();
+    let back = image::load_from_memory(&square).unwrap();
+    assert_eq!((back.width(), back.height()), (96, 96));
 }
 
 #[test]
@@ -856,7 +926,7 @@ fn app_with(dir: &std::path::Path, change: impl FnOnce(&mut Value)) -> Arc<api::
     std::fs::create_dir_all(dir.join("img")).unwrap();
     std::fs::write(
         dir.join("img").join(&picture),
-        reencode(&png(4, 4), 10).unwrap(),
+        reencode(&png(4, 4), 10, None).unwrap(),
     )
     .unwrap();
     let id = "j-26-4-snapshot-1";
@@ -947,8 +1017,18 @@ async fn the_feed_in_each_language() {
     assert_eq!(feed["versions"][0]["title"], "Заголовок");
     assert_eq!(feed["versions"][0]["translated"], true);
     assert!(feed["versions"][0].get("blocks").is_none());
-    assert_eq!(feed["videos"][0]["image"], "yt/abcdefghijk.jpg");
+    assert_eq!(feed["versions"][0]["imageWidth"], 4);
+    assert_eq!(feed["versions"][0]["imageHeight"], 4);
+    let video = &feed["videos"][0];
+    assert_eq!(video["image"], "yt/abcdefghijk.jpg");
+    assert_eq!(
+        video["avatar"],
+        format!("ya/{}.jpg", video["channelId"].as_str().unwrap())
+    );
+    // Only a Short has an upright preview.
+    assert!(video.get("imageTall").is_none());
     assert_eq!(feed["streams"][0]["image"], "tw/somebody.jpg");
+    assert_eq!(feed["streams"][0]["avatar"], "ta/somebody.jpg");
     assert_eq!(feed["latest"]["release"]["id"], "26.3");
     assert_eq!(feed["cycle"]["target"], "26.4");
     assert!(feed["tip"].is_string());
@@ -1229,6 +1309,7 @@ async fn notes() {
     assert_eq!(headers["cache-control"], "public, max-age=600");
     let note = json_of(&body);
     assert_eq!(note["blocks"][0]["c"][0]["text"], "Текст");
+    assert_eq!(note["imageWidth"], 4);
     let en = json_of(&get(&app, "/v1/notes/j-26-4-snapshot-1").await.2);
     assert_eq!(en["blocks"][0]["c"][0]["text"], "Body");
     for bad in [
@@ -1271,6 +1352,75 @@ async fn pictures() {
     ] {
         assert_eq!(get(&app, &bad).await.0, StatusCode::NOT_FOUND, "{bad}");
     }
+}
+
+#[tokio::test]
+async fn upright_previews_and_channel_pictures() {
+    let dir = tempfile::tempdir().unwrap();
+    let app = app_with(dir.path(), |state| {
+        let channel = state["channels"]
+            .as_object_mut()
+            .unwrap()
+            .values_mut()
+            .next()
+            .unwrap();
+        let id = channel["videos"][0]["channelId"].clone();
+        channel["videos"].as_array_mut().unwrap().push(json!({
+            "id": "shortshort1", "channelId": id, "channel": "Канал",
+            "title": "Короткое", "date": "2026-10-19T00:00:00Z", "short": true
+        }));
+    });
+    let page = json_of(
+        &get(&app, "/v1/page?videos=ru&kinds=videos&shorts=only")
+            .await
+            .2,
+    );
+    let short = &page["items"][0]["video"];
+    assert_eq!(short["imageTall"], "ys/shortshort1.jpg");
+    assert_eq!(short["image"], "yt/shortshort1.jpg");
+    let avatar = short["avatar"].as_str().unwrap().to_owned();
+    assert!(avatar.starts_with("ya/UC"), "{avatar}");
+
+    // Stored pictures are sent without asking anyone.
+    let jpeg = reencode(&png(4, 4), 10, None).unwrap();
+    for path in ["ys/shortshort1.jpg", avatar.as_str(), "ta/somebody.jpg"] {
+        std::fs::write(dir.path().join(path), &jpeg).unwrap();
+        let (status, headers, body) = get(&app, &format!("/v1/{path}")).await;
+        assert_eq!(status, StatusCode::OK, "{path}");
+        assert_eq!(headers["content-type"], "image/jpeg");
+        assert_eq!(headers["cache-control"], "public, max-age=86400");
+        assert_eq!(body, jpeg);
+    }
+    // Pictures of videos and channels we do not know are never fetched.
+    for bad in [
+        "/v1/ys/zzzzzzzzzzz.jpg".to_owned(),
+        "/v1/ys/..%2Fstate.json".to_owned(),
+        format!("/v1/ya/UC{}.jpg", "z".repeat(22)),
+        "/v1/ya/UCshort.jpg".to_owned(),
+        "/v1/ya/..%2F..%2Fstate.json".to_owned(),
+        "/v1/ta/nobody_here.jpg".to_owned(),
+        "/v1/ta/Somebody.jpg".to_owned(),
+        "/v1/ta/..%2Fstate.json".to_owned(),
+        "/v1/ta/somebody.png".to_owned(),
+    ] {
+        assert_eq!(get(&app, &bad).await.0, StatusCode::NOT_FOUND, "{bad}");
+    }
+    // A stream's channel with no stored picture: without Twitch's secrets
+    // there is none to fetch.
+    std::fs::remove_file(dir.path().join("ta/somebody.jpg")).unwrap();
+    assert_eq!(
+        get(&app, "/v1/ta/somebody.jpg").await.0,
+        StatusCode::NOT_FOUND
+    );
+}
+
+#[test]
+fn channel_pictures_are_looked_up_seldom() {
+    let dir = tempfile::tempdir().unwrap();
+    let app = app(dir.path());
+    assert!(app.feed.may_look_up("ta:somebody".to_owned()));
+    assert!(!app.feed.may_look_up("ta:somebody".to_owned()));
+    assert!(app.feed.may_look_up("ya:somebody".to_owned()));
 }
 
 #[tokio::test]

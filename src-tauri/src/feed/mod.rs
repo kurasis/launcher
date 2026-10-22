@@ -173,8 +173,9 @@ fn kind_list(kinds: &[FeedBlock]) -> String {
         .join(",")
 }
 
-/// Parses a `feed:` request path: `/img/<sha>.jpg`, `/yt/<id>.jpg` or
-/// `/tw/<login>.jpg`, nothing else.
+/// Parses a `feed:` request path: `/img/<sha>.jpg`, `/yt/<id>.jpg`,
+/// `/ys/<id>.jpg`, `/tw/<login>.jpg`, `/ya/<channel id>.jpg` or
+/// `/ta/<login>.jpg`, nothing else.
 pub fn parse_picture_request(path: &str) -> Option<(PictureKind, String)> {
     let (kind, name) = path.strip_prefix('/')?.split_once('/')?;
     let kind = PictureKind::parse(kind)?;
@@ -186,7 +187,9 @@ fn picture_fresh(kind: PictureKind) -> Duration {
     match kind {
         // Named by their content: never change.
         PictureKind::Img => Duration::from_secs(365 * 24 * 3600),
-        PictureKind::Yt => Duration::from_secs(24 * 3600),
+        PictureKind::Yt | PictureKind::Ys | PictureKind::Ya | PictureKind::Ta => {
+            Duration::from_secs(24 * 3600)
+        }
         PictureKind::Tw => Duration::from_secs(5 * 60),
     }
 }

@@ -663,6 +663,8 @@ describe('App', () => {
           version: '1.21.1',
           kind: 'release',
           image: null,
+          imageWidth: null,
+          imageHeight: null,
           url: null,
         },
       ],
