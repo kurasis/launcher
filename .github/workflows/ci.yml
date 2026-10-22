@@ -68,6 +68,7 @@ jobs:
         run: |
           java/legacy-tweaker/build.sh
           git diff --exit-code -- java/legacy-tweaker/legacy-tweaker.jar
+          test -z "$(git status --porcelain --ignored -- java/legacy-tweaker/legacy-tweaker.jar)"
       - name: The game folder is set before the game starts
         run: JAVA8="$JAVA_HOME_8_X64" java/legacy-tweaker/check.sh
 
@@ -173,7 +174,7 @@ jobs:
             exit 0
           fi
           changed=$(git diff --name-only HEAD^1 HEAD)
-          if grep -qE '^(src-tauri/|rust-toolchain\.toml$|\.github/workflows/(ci|world-mods)\.yml$)' <<< "$changed"; then
+          if grep -qE '^(src-tauri/|java/|rust-toolchain\.toml$|\.github/workflows/(ci|world-mods)\.yml$)' <<< "$changed"; then
             echo "launcher=true" >> "$GITHUB_OUTPUT"
             echo "The launcher changed: world servers run"
           else

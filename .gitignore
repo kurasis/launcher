@@ -27,3 +27,5 @@ dist/
 
 # The Gradle wrapper of the skins mod (mod/)
 !mod/gradle/wrapper/gradle-wrapper.jar
+# The launcher's tweaker for games before 1.6 (built by java/legacy-tweaker/build.sh)
+!java/legacy-tweaker/legacy-tweaker.jar
