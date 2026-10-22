@@ -905,7 +905,11 @@ try {
         Stop-Process -Id $game.Process.Id -Force -ErrorAction SilentlyContinue
       } else {
         $result.exitCode = $game.Process.ExitCode
-        $result.exit = if ($result.exitCode -eq 0) { 'ok' } else { 'failed' }
+        # Before 1.6 the game's window listener prints "Someone is closing me!" and
+        # exits with code 1 when the window is closed: that is the player's close.
+        Start-Sleep -Seconds 2
+        $windowClosed = $result.exitCode -eq 1 -and $runLog -and (Log-Text $runLog).Contains('Someone is closing me!')
+        $result.exit = if ($result.exitCode -eq 0 -or $windowClosed) { 'ok' } else { 'failed' }
       }
       $crashes = @(Get-ChildItem (Join-Path $gameDir 'crash-reports') -ErrorAction SilentlyContinue)
       if ($crashes) { $result.exit = 'crashed'; $result.note = "$($result.note); crash report".Trim('; ') }

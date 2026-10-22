@@ -1110,10 +1110,13 @@ impl LaunchService {
                         },
                     );
                 }
+                // A game before 1.6 exits with code 1 when its window is closed.
+                let window_closed =
+                    exit.is_some_and(|e| super::crash::closed_by_its_window(e, &lines));
                 let (run_state, exit_code, error) = match &outcome.status {
                     Ok(status) if stopped => (RunState::Stopped, status.code(), None),
                     // A clean exit after a crash report: Forge's mod error screen.
-                    Ok(status) if status.success() && diagnosis.is_none() => {
+                    Ok(status) if (status.success() || window_closed) && diagnosis.is_none() => {
                         (RunState::Exited, status.code(), None)
                     }
                     Ok(status) => (
