@@ -10,7 +10,9 @@ use crate::images::video_id;
 use crate::net;
 
 const MAX_RSS: usize = 512 * 1024;
-const MAX_PAGE: usize = 3 * 1024 * 1024;
+pub const MAX_PAGE: usize = 3 * 1024 * 1024;
+/// The longest address of a channel's picture taken from its page.
+const MAX_AVATAR_URL: usize = 400;
 /// Characters of one element's text kept while reading a feed.
 const MAX_TEXT: usize = 4096;
 
@@ -259,6 +261,59 @@ pub fn id_in_page(page: &str) -> Option<String> {
         }
     }
     None
+}
+
+/// The address of the channel's picture in a channel page: on YouTube's
+/// picture hosts only, over https.
+pub fn avatar_in_page(page: &str) -> Option<String> {
+    for marker in [
+        "<meta property=\"og:image\" content=\"",
+        "\"avatar\":{\"thumbnails\":[{\"url\":\"",
+    ] {
+        let Some(at) = page.find(marker) else {
+            continue;
+        };
+        let rest = &page[at + marker.len()..];
+        let Some(raw) = rest
+            .find('"')
+            .filter(|end| *end <= MAX_AVATAR_URL)
+            .map(|end| &rest[..end])
+        else {
+            continue;
+        };
+        // Plain addresses only: no escapes, entities, queries or user names.
+        if !raw
+            .bytes()
+            .all(|b| b.is_ascii_alphanumeric() || b"-._~/:=".contains(&b))
+        {
+            continue;
+        }
+        if let Ok(url) = url::Url::parse(raw)
+            && url.scheme() == "https"
+            && url.port().is_none()
+            && matches!(
+                url.host_str(),
+                Some("yt3.googleusercontent.com" | "yt3.ggpht.com")
+            )
+        {
+            return Some(url.into());
+        }
+    }
+    None
+}
+
+/// The address of a channel's picture, from its page.
+pub async fn avatar(http: &reqwest::Client, id: &str) -> Result<String, String> {
+    if !channel_id(id) {
+        return Err("bad channel id".to_owned());
+    }
+    let page = net::get_text(
+        http,
+        &format!("https://www.youtube.com/channel/{id}"),
+        MAX_PAGE,
+    )
+    .await?;
+    avatar_in_page(&page).ok_or_else(|| "no picture on the page".to_owned())
 }
 
 #[derive(Deserialize)]

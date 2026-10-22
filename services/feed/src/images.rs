@@ -3,15 +3,19 @@
 //! hostile file never reaches a player, and players never ask YouTube,
 //! Twitch or Mojang for anything.
 //!
-//! Three kinds, each in its own folder of `data/`:
+//! Six kinds, each in its own folder of `data/`:
 //! - `img/<sha256>.jpg`: article pictures, named by their content, kept
 //!   while the feed refers to them;
-//! - `yt/<video id>.jpg`: a YouTube video's preview, fetched the first time a
-//!   launcher asks for it;
+//! - `yt/<video id>.jpg`: a YouTube video's preview (16:9), fetched the first
+//!   time a launcher asks for it;
+//! - `ys/<video id>.jpg`: the same for a Short, upright (9:16);
 //! - `tw/<login>.jpg`: a live stream's preview, fetched again after
-//!   `STREAM_TTL`.
+//!   `STREAM_TTL`;
+//! - `ya/<channel id>.jpg`, `ta/<login>.jpg`: a YouTube or Twitch channel's
+//!   picture (square), fetched again after `AVATAR_TTL`.
 
 use std::collections::HashSet;
+use std::future::Future;
 use std::io::Cursor;
 use std::path::{Path, PathBuf};
 use std::time::{Duration, SystemTime};
@@ -20,6 +24,7 @@ use image::ImageDecoder;
 use sha2::{Digest, Sha256};
 
 use crate::net;
+use crate::youtube::channel_id;
 
 /// The largest file fetched.
 const MAX_FILE: usize = 8 * 1024 * 1024;
@@ -30,14 +35,25 @@ const MAX_ALLOC: u64 = 160 * 1024 * 1024;
 const QUALITY: u8 = 82;
 /// A stream preview is fetched again after this.
 pub const STREAM_TTL: Duration = Duration::from_secs(10 * 60);
-/// Unused article pictures, video and stream previews older than these go.
+/// A channel's picture is fetched again after this.
+pub const AVATAR_TTL: Duration = Duration::from_secs(7 * 24 * 3600);
+/// Unused article pictures, previews and channel pictures older than these go.
 const KEEP_ARTICLE: Duration = Duration::from_secs(3 * 24 * 3600);
 const KEEP_VIDEO: Duration = Duration::from_secs(30 * 24 * 3600);
 const KEEP_STREAM: Duration = Duration::from_secs(24 * 3600);
+const KEEP_AVATAR: Duration = Duration::from_secs(30 * 24 * 3600);
 
-/// Picture widths: article pictures and previews.
+/// Picture widths: article pictures, previews, upright Short previews
+/// (360×640) and channel pictures.
 pub const WIDE: u32 = 1280;
 pub const PREVIEW: u32 = 480;
+pub const TALL: u32 = 360;
+pub const AVATAR: u32 = 96;
+
+/// Where a Short's upright preview is looked for, best first: YouTube's own
+/// upright picture (1080×1920), then the middle of its 16:9 previews, which
+/// show the Short between blurred sides.
+const TALL_SOURCES: [&str; 3] = ["oar2.jpg", "hq720.jpg", "hqdefault.jpg"];
 
 pub fn sha_name(name: &str) -> bool {
     name.len() == 68
@@ -61,9 +77,10 @@ pub fn twitch_login(login: &str) -> bool {
             .all(|b| b.is_ascii_lowercase() || b.is_ascii_digit() || b == b'_')
 }
 
-/// Decodes a picture of any of our formats, scales it to at most `width`
-/// pixels wide and gives it back as a JPEG.
-pub fn reencode(bytes: &[u8], width: u32) -> Result<Vec<u8>, String> {
+/// Decodes a picture of any of our formats, cuts the middle of it to the
+/// `ratio` of width to height when one is given, scales it to at most
+/// `width` pixels wide and gives it back as a JPEG.
+pub fn reencode(bytes: &[u8], width: u32, ratio: Option<(u32, u32)>) -> Result<Vec<u8>, String> {
     let reader = image::ImageReader::new(Cursor::new(bytes))
         .with_guessed_format()
         .map_err(|e| e.to_string())?;
@@ -87,7 +104,11 @@ pub fn reencode(bytes: &[u8], width: u32) -> Result<Vec<u8>, String> {
     if w == 0 || h == 0 || w > MAX_SIDE || h > MAX_SIDE {
         return Err("picture too large".to_owned());
     }
-    let picture = image::DynamicImage::from_decoder(decoder).map_err(|e| e.to_string())?;
+    let mut picture = image::DynamicImage::from_decoder(decoder).map_err(|e| e.to_string())?;
+    if let Some(ratio) = ratio {
+        let (x, y, w, h) = middle(picture.width(), picture.height(), ratio);
+        picture = picture.crop_imm(x, y, w, h);
+    }
     let picture = if picture.width() > width {
         let height = (u64::from(picture.height()) * u64::from(width) / u64::from(picture.width()))
             .max(1) as u32;
@@ -101,6 +122,35 @@ pub fn reencode(bytes: &[u8], width: u32) -> Result<Vec<u8>, String> {
         .encode_image(&rgb)
         .map_err(|e| e.to_string())?;
     Ok(out)
+}
+
+/// The middle part (x, y, width, height) of a `width`×`height` picture with
+/// the `ratio` of width to height, as large as fits.
+pub fn middle(width: u32, height: u32, (rw, rh): (u32, u32)) -> (u32, u32, u32, u32) {
+    let (w, h) = (u64::from(width), u64::from(height));
+    let (rw, rh) = (u64::from(rw.max(1)), u64::from(rh.max(1)));
+    // Too wide: full height; otherwise full width.
+    let (cw, ch) = if w * rh > h * rw {
+        ((h * rw / rh).max(1), h)
+    } else {
+        (w, (w * rh / rw).max(1))
+    };
+    (
+        ((w - cw) / 2) as u32,
+        ((h - ch) / 2) as u32,
+        cw as u32,
+        ch as u32,
+    )
+}
+
+/// The width and height of a stored picture, read from its header.
+pub fn size_of(path: &Path) -> Option<(u32, u32)> {
+    image::ImageReader::open(path)
+        .ok()?
+        .with_guessed_format()
+        .ok()?
+        .into_dimensions()
+        .ok()
 }
 
 pub struct Images {
@@ -121,7 +171,7 @@ fn age(path: &Path) -> Option<Duration> {
 
 impl Images {
     pub fn new(dir: &Path, http: reqwest::Client) -> Result<Self, String> {
-        for sub in ["img", "yt", "tw"] {
+        for sub in ["img", "yt", "ys", "tw", "ya", "ta"] {
             std::fs::create_dir_all(dir.join(sub)).map_err(|e| e.to_string())?;
         }
         Ok(Self {
@@ -130,19 +180,30 @@ impl Images {
         })
     }
 
-    async fn fetch(&self, url: &str, width: u32) -> Result<Vec<u8>, String> {
+    async fn fetch(
+        &self,
+        url: &str,
+        width: u32,
+        ratio: Option<(u32, u32)>,
+    ) -> Result<Vec<u8>, String> {
         if !url.starts_with("https://") {
             return Err("not https".to_owned());
         }
         let bytes = net::get(&self.http, url, MAX_FILE).await?;
-        tokio::task::spawn_blocking(move || reencode(&bytes, width))
+        tokio::task::spawn_blocking(move || reencode(&bytes, width, ratio))
             .await
             .map_err(|e| e.to_string())?
     }
 
+    /// The width and height of an article picture (`img/<sha>.jpg`).
+    pub fn size(&self, path: &str) -> Option<(u32, u32)> {
+        let name = path.strip_prefix("img/").filter(|n| sha_name(n))?;
+        size_of(&self.dir.join("img").join(name))
+    }
+
     /// An article picture: fetched, kept by content, named `img/<sha>.jpg`.
     pub async fn article(&self, url: &str, width: u32) -> Result<String, String> {
-        let jpeg = self.fetch(url, width).await?;
+        let jpeg = self.fetch(url, width, None).await?;
         let name = format!("{}.jpg", hex::encode(Sha256::digest(&jpeg)));
         let path = self.dir.join("img").join(&name);
         if !path.exists() {
@@ -151,8 +212,8 @@ impl Images {
         Ok(format!("img/{name}"))
     }
 
-    /// The stored file of a public picture path (`img/…`, `yt/…`, `tw/…`),
-    /// fetching a preview first when it is not there or too old.
+    /// The stored file of a public picture path (`img/…`, `yt/…`, `ys/…`,
+    /// `tw/…`), fetching a preview first when it is not there or too old.
     pub async fn file(
         &self,
         kind: &str,
@@ -172,9 +233,24 @@ impl Images {
                 }
                 // The 16:9 preview, without the black bars of `hqdefault`.
                 let url = format!("https://i.ytimg.com/vi/{id}/mqdefault.jpg");
-                let jpeg = self.fetch(&url, PREVIEW).await.ok()?;
+                let jpeg = self.fetch(&url, PREVIEW, None).await.ok()?;
                 write_atomic(&path, &jpeg).ok()?;
                 Some(path)
+            }
+            "ys" => {
+                let id = name.strip_suffix(".jpg").filter(|id| video_id(id))?;
+                let path = self.dir.join("ys").join(name);
+                if path.exists() {
+                    return Some(path);
+                }
+                for source in TALL_SOURCES {
+                    let url = format!("https://i.ytimg.com/vi/{id}/{source}");
+                    if let Ok(jpeg) = self.fetch(&url, TALL, Some((9, 16))).await {
+                        write_atomic(&path, &jpeg).ok()?;
+                        return Some(path);
+                    }
+                }
+                None
             }
             "tw" => {
                 let login = name.strip_suffix(".jpg").filter(|l| twitch_login(l))?;
@@ -185,7 +261,7 @@ impl Images {
                 // Only streams the feed or a player's own list lately had
                 // have a preview address.
                 let url = stream_url?;
-                match self.fetch(&url, PREVIEW).await {
+                match self.fetch(&url, PREVIEW, None).await {
                     Ok(jpeg) => {
                         write_atomic(&path, &jpeg).ok()?;
                         Some(path)
@@ -197,14 +273,52 @@ impl Images {
         }
     }
 
+    /// A channel's picture, `ya/<channel id>.jpg` or `ta/<login>.jpg`: the
+    /// stored one while fresh, else fetched from where `source` says (asked
+    /// only then); the old one when that fails.
+    pub async fn avatar(
+        &self,
+        kind: &str,
+        name: &str,
+        source: impl Future<Output = Option<String>>,
+    ) -> Option<PathBuf> {
+        let stem = name.strip_suffix(".jpg")?;
+        let named = match kind {
+            "ya" => channel_id(stem),
+            "ta" => twitch_login(stem),
+            _ => false,
+        };
+        if !named {
+            return None;
+        }
+        let path = self.dir.join(kind).join(name);
+        if age(&path).is_some_and(|a| a < AVATAR_TTL) {
+            return Some(path);
+        }
+        let fetched = match source.await {
+            Some(url) => self.fetch(&url, AVATAR, Some((1, 1))).await.ok(),
+            None => None,
+        };
+        match fetched {
+            Some(jpeg) => {
+                write_atomic(&path, &jpeg).ok()?;
+                Some(path)
+            }
+            None => path.exists().then_some(path),
+        }
+    }
+
     /// Removes pictures no one needs: article pictures not in `used` and
-    /// older than a few days, old video and stream previews.
+    /// older than a few days, old previews and channel pictures.
     pub fn clean(&self, used: &HashSet<String>) -> usize {
         let mut removed = 0;
         for (sub, keep) in [
             ("img", KEEP_ARTICLE),
             ("yt", KEEP_VIDEO),
+            ("ys", KEEP_VIDEO),
             ("tw", KEEP_STREAM),
+            ("ya", KEEP_AVATAR),
+            ("ta", KEEP_AVATAR),
         ] {
             let Ok(entries) = std::fs::read_dir(self.dir.join(sub)) else {
                 continue;

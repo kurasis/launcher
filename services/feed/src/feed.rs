@@ -52,6 +52,11 @@ pub const SPREAD_MAX: usize = 2;
 /// Items in one page of the endless list.
 pub const PAGE_MAX: usize = 40;
 pub const PAGE_DEFAULT: usize = 20;
+/// A channel's picture is looked up at most once in this time (another
+/// launcher asking meanwhile gets the old one, or none).
+pub const AVATAR_RETRY: Duration = Duration::from_secs(10 * 60);
+/// Channel picture lookups remembered at once.
+const AVATAR_TRIES: usize = 10_000;
 
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct Saved {
@@ -101,6 +106,10 @@ pub struct Feed {
     own_previews: RwLock<HashMap<String, String>>,
     /// Videos whose preview may be fetched: those of any channel we know.
     videos: RwLock<HashSet<String>>,
+    /// The width and height of article pictures, by path.
+    sizes: RwLock<HashMap<String, (u32, u32)>>,
+    /// When each channel's picture was last looked up (`ya:<id>`, `ta:<login>`).
+    avatar_tries: Mutex<HashMap<String, Instant>>,
     pub twitch: tokio::sync::Mutex<Option<Twitch>>,
     pub deepl: Option<DeepL>,
 }
@@ -169,8 +178,14 @@ impl Feed {
             .values()
             .flat_map(|c| c.videos.iter().map(|v| v.id.clone()))
             .collect();
+        let images = Images::new(dir, http.clone())?;
+        let sizes = notes
+            .values()
+            .filter_map(|note: &Note| note.image.as_ref())
+            .filter_map(|path| Some((path.clone(), images.size(path)?)))
+            .collect();
         Ok(Self {
-            images: Images::new(dir, http.clone())?,
+            images,
             dir: dir.to_owned(),
             editorial,
             http,
@@ -181,6 +196,8 @@ impl Feed {
             own_streams: RwLock::new(HashMap::new()),
             own_previews: RwLock::new(HashMap::new()),
             videos: RwLock::new(videos),
+            sizes: RwLock::new(sizes),
+            avatar_tries: Mutex::new(HashMap::new()),
             twitch: tokio::sync::Mutex::new(twitch),
             deepl,
         })
@@ -209,6 +226,11 @@ impl Feed {
         let mut note = found.note;
         if let Some(url) = found.image_url {
             note.image = self.images.article(&url, images::WIDE).await.ok();
+        }
+        if let Some(path) = &note.image
+            && let Some(size) = self.images.size(path)
+        {
+            lock_mut(&self.sizes).insert(path.clone(), size);
         }
         let mut wanted = Vec::new();
         html::images(&note.blocks, &mut wanted);
@@ -266,14 +288,21 @@ impl Feed {
             .filter(|id| !keep.contains(*id))
             .cloned()
             .collect();
-        for id in gone {
-            lock_mut(&self.notes).remove(&id);
-            lock_mut(&self.translations).retain(|(note, _), _| note != &id);
+        for id in &gone {
+            lock_mut(&self.notes).remove(id);
+            lock_mut(&self.translations).retain(|(note, _), _| note != id);
             let _ = std::fs::remove_file(self.dir.join("notes").join(format!("{id}.json")));
             for lang in ["ru", "ar"] {
                 let _ =
                     std::fs::remove_file(self.dir.join("notes").join(format!("{id}.{lang}.json")));
             }
+        }
+        if !gone.is_empty() {
+            let pictures: HashSet<String> = lock(&self.notes)
+                .values()
+                .filter_map(|note| note.image.clone())
+                .collect();
+            lock_mut(&self.sizes).retain(|path, _| pictures.contains(path));
         }
     }
 
@@ -330,6 +359,61 @@ impl Feed {
 
     pub fn video_known(&self, id: &str) -> bool {
         lock(&self.videos).contains(id)
+    }
+
+    /// A channel of ours or one a player lately named.
+    pub fn channel_known(&self, id: &str) -> bool {
+        self.editorial.channels.iter().any(|c| c.id == id)
+            || self
+                .own
+                .lock()
+                .unwrap_or_else(std::sync::PoisonError::into_inner)
+                .contains_key(id)
+    }
+
+    /// Whether a channel's picture may be looked up now: once in
+    /// `AVATAR_RETRY` each, so no one makes us ask YouTube or Twitch often.
+    pub fn may_look_up(&self, key: String) -> bool {
+        let mut tries = self
+            .avatar_tries
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        if tries.len() >= AVATAR_TRIES {
+            tries.retain(|_, tried| tried.elapsed() < AVATAR_RETRY);
+            if tries.len() >= AVATAR_TRIES {
+                tries.clear();
+            }
+        }
+        if tries
+            .get(&key)
+            .is_some_and(|tried| tried.elapsed() < AVATAR_RETRY)
+        {
+            return false;
+        }
+        tries.insert(key, Instant::now());
+        true
+    }
+
+    /// Where a YouTube channel's picture is fetched: read from its page.
+    pub async fn youtube_avatar(&self, id: &str) -> Option<String> {
+        if !self.may_look_up(format!("ya:{id}")) {
+            return None;
+        }
+        youtube::avatar(&self.http, id).await.ok()
+    }
+
+    /// Where a Twitch channel's picture is fetched: asked of Helix.
+    pub async fn twitch_avatar(&self, login: &str) -> Option<String> {
+        if !self.may_look_up(format!("ta:{login}")) {
+            return None;
+        }
+        let mut twitch = self.twitch.lock().await;
+        twitch
+            .as_mut()?
+            .avatar(&self.http, login)
+            .await
+            .ok()
+            .flatten()
     }
 
     /// The most watched Minecraft streams in each language. Without
@@ -523,6 +607,14 @@ impl Feed {
             if let Some(value) = value {
                 card[key] = json!(value);
             }
+        }
+        if let Some((width, height)) = note
+            .image
+            .as_ref()
+            .and_then(|path| lock(&self.sizes).get(path).copied())
+        {
+            card["imageWidth"] = json!(width);
+            card["imageHeight"] = json!(height);
         }
         card
     }
@@ -792,6 +884,7 @@ fn stream_card(stream: &Stream) -> Value {
         "viewers": stream.viewers,
         "started": stream.started,
         "image": format!("tw/{}.jpg", stream.login),
+        "avatar": format!("ta/{}.jpg", stream.login),
     })
 }
 
@@ -969,7 +1062,7 @@ pub fn keep_videos(fresh: Vec<Video>, kept: Vec<Video>) -> Vec<Video> {
 }
 
 fn video_card(video: &Video) -> Value {
-    json!({
+    let mut card = json!({
         "id": video.id,
         "channelId": video.channel_id,
         "channel": video.channel,
@@ -977,7 +1070,12 @@ fn video_card(video: &Video) -> Value {
         "date": video.date,
         "short": video.short,
         "image": format!("yt/{}.jpg", video.id),
-    })
+        "avatar": format!("ya/{}.jpg", video.channel_id),
+    });
+    if video.short {
+        card["imageTall"] = json!(format!("ys/{}.jpg", video.id));
+    }
+    card
 }
 
 /// The newest release and the newest snapshot (or pre-release, release

@@ -20,6 +20,7 @@ use crate::images::{twitch_login, video_id};
 use crate::mojang;
 use crate::twitch;
 use crate::youtube;
+use crate::youtube::channel_id;
 
 /// Channels a player may have of their own (YouTube, and Twitch apart).
 pub const MAX_OWN: usize = 30;
@@ -28,6 +29,9 @@ pub const RESOLVES_PER_MINUTE: u32 = 10;
 /// Requests for a player's own videos, and apart for their own streams, per
 /// address a minute.
 pub const OWN_PER_MINUTE: u32 = 30;
+/// Channel pictures looked up on YouTube or Twitch per address a minute
+/// (stored ones are sent without counting).
+pub const AVATARS_PER_MINUTE: u32 = 30;
 
 const CACHE_FEED: &str = "public, max-age=60";
 const CACHE_NOTE: &str = "public, max-age=600";
@@ -181,7 +185,7 @@ async fn picture(app: &App, kind: &'static str, name: &str) -> Response {
             .strip_suffix(".jpg")
             .filter(|l| twitch_login(l))
             .and_then(|login| app.feed.stream_preview(login)),
-        "yt" => {
+        "yt" | "ys" => {
             // Only previews of videos some channel we fetched has: no one
             // makes us fetch arbitrary pictures.
             if !name
@@ -194,7 +198,42 @@ async fn picture(app: &App, kind: &'static str, name: &str) -> Response {
         }
         _ => None,
     };
-    let Some(path) = app.feed.images.file(kind, name, stream_url).await else {
+    let path = app.feed.images.file(kind, name, stream_url).await;
+    send_picture(kind, path).await
+}
+
+/// A channel's picture: of a channel of ours or one a player lately named
+/// (YouTube), of a stream the feed or a player's list lately had (Twitch).
+async fn avatar(app: &App, headers: &HeaderMap, kind: &'static str, name: &str) -> Response {
+    let key = name.strip_suffix(".jpg").unwrap_or_default();
+    let known = match kind {
+        "ya" => channel_id(key) && app.feed.channel_known(key),
+        "ta" => twitch_login(key) && app.feed.stream_preview(key).is_some(),
+        _ => false,
+    };
+    if !known {
+        return refuse(StatusCode::NOT_FOUND, "not_found");
+    }
+    let source = async {
+        if !app.limiter.allow(
+            &address(headers),
+            "avatar",
+            AVATARS_PER_MINUTE,
+            Duration::from_secs(60),
+        ) {
+            return None;
+        }
+        match kind {
+            "ya" => app.feed.youtube_avatar(key).await,
+            _ => app.feed.twitch_avatar(key).await,
+        }
+    };
+    let path = app.feed.images.avatar(kind, name, source).await;
+    send_picture(kind, path).await
+}
+
+async fn send_picture(kind: &str, path: Option<std::path::PathBuf>) -> Response {
+    let Some(path) = path else {
         return refuse(StatusCode::NOT_FOUND, "not_found");
     };
     let Ok(bytes) = tokio::fs::read(&path).await else {
@@ -202,7 +241,7 @@ async fn picture(app: &App, kind: &'static str, name: &str) -> Response {
     };
     let policy = match kind {
         "img" => CACHE_PICTURE,
-        "yt" => CACHE_PREVIEW,
+        "yt" | "ys" | "ya" | "ta" => CACHE_PREVIEW,
         _ => CACHE_STREAM,
     };
     let mut response = Response::new(Body::from(bytes));
@@ -222,6 +261,26 @@ async fn get_yt(State(app): State<Arc<App>>, Path(name): Path<String>) -> Respon
 
 async fn get_tw(State(app): State<Arc<App>>, Path(name): Path<String>) -> Response {
     picture(&app, "tw", &name).await
+}
+
+async fn get_ys(State(app): State<Arc<App>>, Path(name): Path<String>) -> Response {
+    picture(&app, "ys", &name).await
+}
+
+async fn get_ya(
+    State(app): State<Arc<App>>,
+    headers: HeaderMap,
+    Path(name): Path<String>,
+) -> Response {
+    avatar(&app, &headers, "ya", &name).await
+}
+
+async fn get_ta(
+    State(app): State<Arc<App>>,
+    headers: HeaderMap,
+    Path(name): Path<String>,
+) -> Response {
+    avatar(&app, &headers, "ta", &name).await
 }
 
 #[derive(Deserialize)]
@@ -476,6 +535,9 @@ pub fn router(app: Arc<App>) -> Router {
         .route("/v1/img/{name}", get(get_img))
         .route("/v1/yt/{name}", get(get_yt))
         .route("/v1/tw/{name}", get(get_tw))
+        .route("/v1/ys/{name}", get(get_ys))
+        .route("/v1/ya/{name}", get(get_ya))
+        .route("/v1/ta/{name}", get(get_ta))
         .route("/v1/channels/resolve", post(resolve))
         .route("/v1/videos", get(own_videos))
         .route("/v1/streams", get(own_streams))
