@@ -343,6 +343,14 @@ describe('InstancesView', () => {
     expect(screen.queryByRole('heading', { level: 3, name: 'Survival' })).toBeNull();
   });
 
+  it('brings focus back to New installation when the form closes', () => {
+    backend();
+    render(<InstancesView snapshot={snapshot(many)} onEditSettings={() => undefined} />);
+    fireEvent.click(screen.getByRole('button', { name: 'New installation' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Back to installations' }));
+    expect(screen.getByRole('button', { name: 'New installation' })).toHaveFocus();
+  });
+
   it('says how to start when there is no installation', () => {
     backend();
     render(<InstancesView snapshot={snapshot([])} onEditSettings={() => undefined} />);

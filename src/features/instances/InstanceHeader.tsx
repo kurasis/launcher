@@ -62,7 +62,7 @@ export function InstanceHeader({
             <h3 id={headingId} ref={headingRef} tabIndex={-1} className={styles.name}>
               {instance.displayName}
             </h3>
-            <span className={styles.version}>{gameLabel(instance)}</span>
+            <bdi className={styles.version}>{gameLabel(instance)}</bdi>
             <StatusBadge
               className={styles.headState}
               tone={healthTone[health]}

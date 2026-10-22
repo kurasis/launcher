@@ -186,6 +186,12 @@
   padding: var(--space-6) var(--space-8);
 }
 
+/* Focus lands here only from code (after the palette moves to a page), so the reader
+   starts at the page; a ring around the whole page would point at nothing. */
+.content:focus {
+  outline: none;
+}
+
 .footer {
   padding: var(--space-3) var(--space-8);
   color: var(--color-text-muted);

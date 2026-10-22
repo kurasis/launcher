@@ -122,7 +122,7 @@ export function InstanceList({
                   <InstanceTile id={instance.id} size={40} />
                   <span className={styles.rowText}>
                     <span className={styles.rowName}>{instance.displayName}</span>
-                    <span className={styles.rowMeta}>{gameLabel(instance)}</span>
+                    <bdi className={styles.rowMeta}>{gameLabel(instance)}</bdi>
                   </span>
                   <StatusBadge
                     className={styles.rowState}

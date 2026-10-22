@@ -69,6 +69,9 @@ function hit(overrides: Partial<ModsHit>): ModsHit {
     updated: 0,
     author: null,
     sources: ['modrinth'],
+    loaders: [],
+    categoryIds: [],
+    cover: null,
     ...overrides,
   };
 }

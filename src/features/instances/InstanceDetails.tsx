@@ -132,7 +132,9 @@ export function InstanceDetails({
           </h4>
           <dl className={styles.details}>
             <dt>{t.version}</dt>
-            <dd>{gameLabel(instance)}</dd>
+            <dd>
+              <bdi>{gameLabel(instance)}</bdi>
+            </dd>
             <dt>{t.java}</dt>
             <dd>{javaLabel(instance)}</dd>
             <dt>{t.memoryShort}</dt>
@@ -165,7 +167,12 @@ export function InstanceDetails({
             {!playedInHead && instance.lastPlayedAt !== null && (
               <>
                 <dt>{t.lastPlayed}</dt>
-                <dd>{new Date(instance.lastPlayedAt).toLocaleString(numberLocale())}</dd>
+                <dd>
+                  {new Date(instance.lastPlayedAt).toLocaleString(numberLocale(), {
+                    dateStyle: 'medium',
+                    timeStyle: 'short',
+                  })}
+                </dd>
               </>
             )}
             {last !== null && last.kind !== 'launch' && (

@@ -82,16 +82,7 @@
   --color-rail-field: rgb(255 255 255 / 8%);
   --color-bar: #ffffff;
 
-  /* Hero scene. */
-  --color-sky-top: #cfe3ee;
-  --color-sky-bottom: #e4eff4;
-  --color-sun: #f2d27a;
-  --color-cloud: rgb(255 255 255 / 85%);
-  --color-star: transparent;
-  --color-hill-far: #8fb49c;
-  --color-hill-near: #5fae57;
-  --color-ground: #4e9a4a;
-  --color-soil: #7a5236;
+  /* Text laid over a picture in the feed. */
   --color-hero-scrim: rgb(255 255 255 / 86%);
 
   /* Installation tiles (InstanceTile): a top band over a body, like a block. The pair
@@ -180,15 +171,6 @@
     --color-rail-field: rgb(255 255 255 / 6%);
     --color-bar: #16211b;
 
-    --color-sky-top: #1f3340;
-    --color-sky-bottom: #213a2e;
-    --color-sun: #e8e2c2;
-    --color-cloud: rgb(203 213 225 / 14%);
-    --color-star: rgb(255 255 255 / 75%);
-    --color-hill-far: #1e3a2e;
-    --color-hill-near: #2e5a33;
-    --color-ground: #35603a;
-    --color-soil: #4a3220;
     --color-hero-scrim: rgb(15 23 19 / 82%);
 
     --tile-1-top: #4f9a4a;
@@ -257,15 +239,6 @@
   --color-rail-field: rgb(255 255 255 / 6%);
   --color-bar: #16211b;
 
-  --color-sky-top: #1f3340;
-  --color-sky-bottom: #213a2e;
-  --color-sun: #e8e2c2;
-  --color-cloud: rgb(203 213 225 / 14%);
-  --color-star: rgb(255 255 255 / 75%);
-  --color-hill-far: #1e3a2e;
-  --color-hill-near: #2e5a33;
-  --color-ground: #35603a;
-  --color-soil: #4a3220;
   --color-hero-scrim: rgb(15 23 19 / 82%);
 
   --tile-1-top: #4f9a4a;

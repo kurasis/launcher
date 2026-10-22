@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState, type ReactNode } from 'react';
 import { Button } from '../components/Button';
 import { Icon } from '../components/Icon';
+import { InstanceTile } from '../components/InstanceTile';
 import type { AppSnapshot, InstanceSummary } from '../lib/contracts';
 import { ipc } from '../lib/ipc';
 import { strings } from '../lib/strings';
@@ -44,7 +45,7 @@ export function LaunchBar({ snapshot, onOpenInstallations, request }: LaunchBarP
   if (instance === null) {
     return (
       <section className={styles.bar} aria-label={strings.nav.launchBar}>
-        <span className={styles.tile} aria-hidden="true" />
+        <span className={styles.emptyTile} aria-hidden="true" />
         <p className={styles.what}>
           <span className={styles.name}>{strings.nav.noInstallation}</span>
         </p>
@@ -136,11 +137,11 @@ function ChosenBar({
 
   const chosen = (
     <>
-      <span className={styles.tile} aria-hidden="true" />
+      <InstanceTile id={instance.id} size={40} />
       <span className={styles.what}>
         <span className={styles.name}>{instance.displayName}</span>
         <span className={styles.note}>
-          {gameLabel(instance)} · {strings.instances.health[health]}
+          <bdi>{gameLabel(instance)}</bdi> · {strings.instances.health[health]}
         </span>
       </span>
     </>

@@ -593,7 +593,6 @@ export type Messages = {
   };
   readonly loaders: {
     readonly loader: string;
-    readonly none: string;
     readonly noneShort: string;
     readonly names: {
       readonly fabric: string;
@@ -690,7 +689,6 @@ export type Messages = {
     readonly perKind: string;
     readonly perKindHint: string;
     readonly fixed: string;
-    readonly fixedLine: (values: { mib: number }) => string;
     readonly workload: {
       readonly legacy: string;
       readonly vanilla: string;

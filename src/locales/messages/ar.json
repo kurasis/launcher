@@ -567,7 +567,6 @@
     },
     "loaders": {
       "loader": "مُحمِّل التعديلات",
-      "none": "بلا (اللعبة الأصلية)",
       "noneShort": "بدون",
       "names": {
         "fabric": "Fabric",
@@ -649,13 +648,12 @@
       "cancel": "إلغاء"
     },
     "memory": {
-      "recommended": "المُوصى به: {mib, number, ::group-off} MiB لـ {reason}.",
-      "limited": "المُوصى به: {mib, number, ::group-off} MiB لـ {reason}؛ يحتاج إلى نحو {wanted, number, ::group-off} MiB، لكن هذا الحاسوب لا يتسع لذلك.",
+      "recommended": "المُوصى به: ⁨{mib, number, ::group-off} MiB⁩ لـ ⁨{reason}⁩.",
+      "limited": "المُوصى به: ⁨{mib, number, ::group-off} MiB⁩ لـ ⁨{reason}⁩؛ يحتاج إلى نحو ⁨{wanted, number, ::group-off} MiB⁩، لكن هذا الحاسوب لا يتسع لذلك.",
       "use": "استخدام المُوصى به",
       "perKind": "المُوصى به لكل نوع من التثبيتات",
       "perKindHint": "Minecraft 1.12.2 وما قبله: 2048 MiB؛ الإصدارات الأحدث: 3072 MiB؛ مع مُحمِّل تعديلات: 4096 MiB وأكثر عند كثرة التعديلات. لا يتجاوز أبدًا نصف ذاكرة الحاسوب.",
       "fixed": "القيمة نفسها لكل تثبيت جديد",
-      "fixedLine": "الذاكرة: {mib, number, ::group-off} MiB (إعدادك للتثبيتات الجديدة).",
       "workload": {
         "legacy": "Minecraft 1.12.2 وما قبله",
         "vanilla": "Minecraft دون تعديلات",

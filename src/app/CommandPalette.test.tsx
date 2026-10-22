@@ -142,6 +142,9 @@ function hit(id: string, title: string): ModsHit {
     updated: 0,
     author: null,
     sources: ['modrinth'],
+    loaders: [],
+    categoryIds: [],
+    cover: null,
   };
 }
 
@@ -337,7 +340,7 @@ describe('CommandPalette', () => {
       'New installation with Fabric Installations Create',
     );
     fireEvent.keyDown(field(), { key: 'Enter' });
-    expect(await screen.findByLabelText('Mod loader')).toHaveValue('fabric');
+    expect(await screen.findByRole('radio', { name: 'Fabric' })).toBeChecked();
   });
 
   it('chooses a row with a click, keeping focus in the field', async () => {

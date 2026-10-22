@@ -1,6 +1,7 @@
 import { Fragment, useEffect, useId, useRef, useState, type KeyboardEvent } from 'react';
 import { createPortal } from 'react-dom';
 import { Icon } from '../components/Icon';
+import { InstanceTile } from '../components/InstanceTile';
 import type { AppSnapshot, ContentItem, InstanceSummary, ModsHit } from '../lib/contracts';
 import { ipc } from '../lib/ipc';
 import { strings } from '../lib/strings';
@@ -76,7 +77,7 @@ function Marked({ text, ranges }: { text: string; ranges: readonly Range[] }) {
 
 function Lead({ entry }: { entry: PaletteEntry }) {
   const lead = entry.lead;
-  if (lead.kind === 'tile') return <span className={styles.tile} aria-hidden="true" />;
+  if (lead.kind === 'tile') return <InstanceTile id={lead.id} size={32} />;
   if (lead.kind === 'icon') {
     return (
       <span className={styles.square} aria-hidden="true">

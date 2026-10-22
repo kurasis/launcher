@@ -149,7 +149,15 @@ export function MoreMenu({
   };
 
   return (
-    <div className={styles.menuRoot} ref={rootRef}>
+    <div
+      className={styles.menuRoot}
+      ref={rootRef}
+      onBlur={(event) => {
+        // Focus moving out (to the palette after Ctrl+K, say) closes the menu too.
+        const to = event.relatedTarget;
+        if (open && !(to instanceof Node && event.currentTarget.contains(to))) setActive(null);
+      }}
+    >
       <button
         ref={buttonRef}
         id={buttonId}

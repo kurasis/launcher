@@ -808,7 +808,9 @@ describe('App', () => {
     const find = screen.getByRole('button', { name: 'Find' });
     const nav = screen.getByRole('navigation', { name: 'Main' });
     expect(nav).not.toContainElement(find);
-    expect(screen.getByRole('banner')).toContainElement(find);
+    // The rail: the header that holds the main tabs (a screen's own header is no banner
+    // in a browser, but the test library counts every header as one).
+    expect(find.closest('header')).toContainElement(nav);
     expect(find.compareDocumentPosition(nav) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
     expect(find).toHaveAttribute('aria-expanded', 'false');
     // The key caps are for the eye; the name is only the word.

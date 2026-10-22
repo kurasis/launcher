@@ -43,7 +43,7 @@ export type PaletteTarget =
 /** What a row shows before its name. */
 export type PaletteLead =
   | { kind: 'icon'; icon: IconName }
-  | { kind: 'tile' }
+  | { kind: 'tile'; id: string }
   | { kind: 'picture'; url: string | null; letter: string };
 
 export interface PaletteEntry {
@@ -450,7 +450,7 @@ export function installationEntries(
     label: instance.displayName,
     detail: installationDetail(instance),
     action: actionOf(instance),
-    lead: { kind: 'tile' },
+    lead: { kind: 'tile', id: instance.id },
     target: { kind: 'installation', instanceId: instance.id },
   }));
 }

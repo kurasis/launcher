@@ -107,9 +107,8 @@
   background: var(--color-selected);
 }
 
-/* Leads: a grass tile for an installation, an icon square for a page, a picture
+/* Leads: an installation's tile (InstanceTile), an icon square for a page, a picture
    or a letter for a mod. */
-.tile,
 .square,
 .picture,
 .letter {
@@ -117,11 +116,6 @@
   inline-size: 2rem;
   block-size: 2rem;
   border-radius: calc(var(--radius-sm) * 0.75);
-}
-
-.tile {
-  background: var(--color-soil);
-  box-shadow: inset 0 0.65rem 0 var(--color-hill-near);
 }
 
 .square,
@@ -170,9 +164,11 @@
   color: var(--color-text-muted);
   font-size: var(--font-size-xs);
   /* Its own direction from its first letter, so "Minecraft 1.21.1 · Fabric 0.16.9"
-     keeps its order in Arabic; aligned with the name above all the same. */
+     keeps its order in Arabic; as wide as its text and set at the row's start, so it
+     stays under the name on either side. */
   unicode-bidi: plaintext;
-  text-align: match-parent;
+  justify-self: start;
+  max-inline-size: 100%;
 }
 
 /* The matched part: the accent's soft fill, never a weight change, so Arabic

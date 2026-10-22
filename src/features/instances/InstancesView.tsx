@@ -1,4 +1,4 @@
-import { useId, useState } from 'react';
+import { useId, useRef, useState } from 'react';
 import { Button } from '../../components/Button';
 import { Icon } from '../../components/Icon';
 import { Notice } from '../../components/Notice';
@@ -50,6 +50,8 @@ export function InstancesView({
   const [creating, setCreating] = useState(createRequest !== null);
   const [deleted, setDeleted] = useState<string | null>(null);
   const [bringing, setBringing] = useState(false);
+  // Set when the form closes, so focus comes back to the button that opens it.
+  const returnFocus = useRef(false);
   const select = useCommand((requestId: string, id: string) =>
     ipc.setAppSettings({ selectedInstanceId: id }, requestId),
   );
@@ -75,6 +77,7 @@ export function InstancesView({
         initialVersion={createRequest?.version ?? null}
         initialLoader={createRequest?.loader ?? null}
         onDone={(createdId) => {
+          returnFocus.current = true;
           setCreating(false);
           // The new installation is the one to install and play next.
           if (createdId !== undefined && createdId !== selectedId) {
@@ -101,6 +104,12 @@ export function InstancesView({
         </div>
         <div className={styles.pageActions}>
           <Button
+            ref={(node) => {
+              if (node !== null && returnFocus.current) {
+                returnFocus.current = false;
+                node.focus();
+              }
+            }}
             onClick={() => {
               setCreating(true);
             }}
