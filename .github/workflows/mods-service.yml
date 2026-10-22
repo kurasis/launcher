@@ -40,6 +40,7 @@ on:
     branches: [main]
     paths:
       - services/mods/**
+      - crates/mod-meta/**
       - deploy/mods/**
       - deploy/*.sh
       - deploy/nginx/**
@@ -48,6 +49,7 @@ on:
   pull_request:
     paths:
       - services/mods/**
+      - crates/mod-meta/**
       - deploy/mods/**
       - deploy/*.sh
       - deploy/nginx/**

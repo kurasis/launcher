@@ -588,6 +588,21 @@ fn serve() -> Result<(), String> {
                 tokio::time::sleep(Duration::from_secs(wait)).await;
             }
         });
+        // What the mods in kept jars need and break, read once per jar.
+        let reading = Arc::clone(&app);
+        tokio::spawn(async move {
+            loop {
+                let wait = match import::read_manifests(&reading, 50).await {
+                    Ok(0) => 300,
+                    Ok(_) => 10,
+                    Err(e) => {
+                        eprintln!("lapi-mods: reading kept mods failed: {e}");
+                        600
+                    }
+                };
+                tokio::time::sleep(Duration::from_secs(wait)).await;
+            }
+        });
         // A first copy of the database, beside the requests rather than
         // before them: copying takes a while.
         let backing = Arc::clone(&app);

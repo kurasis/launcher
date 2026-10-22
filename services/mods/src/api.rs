@@ -319,6 +319,33 @@ async fn version(State(app): State<Arc<App>>, Path(id): Path<String>) -> Respons
     }
 }
 
+/// The projects whose kept jars give a mod ID, as the jars name it: what a
+/// mod's own descriptor needs, found where its page names nothing (D-066).
+async fn provides(
+    State(app): State<Arc<App>>,
+    Path(id): Path<String>,
+    Query(q): Query<VersionsQuery>,
+) -> Response {
+    let (Ok(game), Ok(loader)) = (filter(&q.game), filter(&q.loader)) else {
+        return refuse(StatusCode::BAD_REQUEST, "bad_query");
+    };
+    let id = id.to_ascii_lowercase();
+    let ok = (1..=64).contains(&id.len())
+        && id
+            .bytes()
+            .all(|b| b.is_ascii_alphanumeric() || matches!(b, b'_' | b'-' | b'.'));
+    if !ok {
+        return refuse(StatusCode::NOT_FOUND, "not_found");
+    }
+    match app
+        .store
+        .provided_by(&id, game.as_deref(), loader.as_deref())
+    {
+        Ok(list) => cached(json!({ "projects": list }), 60),
+        Err(e) => failed(&e),
+    }
+}
+
 /// Asks for an older version's files to be kept; open to anyone, counted per
 /// address.
 async fn fetch_version(
@@ -1058,6 +1085,7 @@ pub fn router(app: Arc<App>) -> Router {
         .route("/v1/projects/{project}/versions", get(versions))
         .route("/v1/versions/{version}", get(version))
         .route("/v1/versions/{version}/fetch", post(fetch_version))
+        .route("/v1/provides/{mod}", get(provides))
         .route(
             "/v1/versions/{version}/pack",
             get(get_pack).post(fetch_pack),

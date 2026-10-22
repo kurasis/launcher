@@ -3586,6 +3586,108 @@ async fn kept_files_are_scanned_again_under_new_rules() {
     assert_eq!(status, StatusCode::OK);
 }
 
+#[tokio::test]
+async fn kept_jars_say_what_their_mods_need() {
+    let t = setup();
+    modrinth_site(&t.sites);
+    t.player(
+        1,
+        "POST",
+        "/v1/imports",
+        json!({ "input": "https://modrinth.com/mod/sodium" }),
+    )
+    .await;
+    t.drain().await;
+    let (_, versions) = t.get("/v1/projects/sodium/versions").await;
+    let kept = &versions["versions"][1];
+    let sha256 = kept["files"][0]["sha256"].as_str().unwrap().to_owned();
+    std::fs::write(
+        t.app.blobs.path(&sha256),
+        jar(&[(
+            "fabric.mod.json",
+            br#"{"schemaVersion": 1, "id": "sodium", "version": "0.6.0",
+                "provides": ["rubidium"],
+                "depends": {"minecraft": ">=1.21", "fabricloader": ">=0.16"},
+                "breaks": {"optifabric": "*"}}"#
+                .to_vec(),
+        )]),
+    )
+    .unwrap();
+    // Each kept archive is read once: Sodium's jar and Fabric API's.
+    assert_eq!(import::read_manifests(&t.app, 50).await.unwrap(), 2);
+    assert_eq!(import::read_manifests(&t.app, 50).await.unwrap(), 0);
+
+    let id = kept["id"].as_str().unwrap();
+    let (status, version) = t.get(&format!("/v1/versions/{id}")).await;
+    assert_eq!(status, StatusCode::OK);
+    let manifests = &version["files"][0]["manifests"];
+    assert_eq!(manifests[0]["loader"], "fabric", "{manifests}");
+    assert_eq!(manifests[0]["mods"][0]["id"], "sodium");
+    assert_eq!(manifests[0]["mods"][1]["id"], "rubidium");
+    let needs = manifests[0]["needs"].as_array().unwrap();
+    let game = needs.iter().find(|n| n["id"] == "minecraft").unwrap();
+    assert_eq!(game["by"], "sodium");
+    assert_eq!(game["versions"], json!([">=1.21"]));
+    assert_eq!(manifests[0]["breaks"][0]["id"], "optifabric");
+    // What it read comes back as the launcher reads it.
+    let read: Vec<mod_meta::Manifest> = serde_json::from_value(manifests.clone()).unwrap();
+    assert_eq!(read[0].mods.len(), 2);
+    // Lists leave them out; a version not kept has none.
+    let (_, versions) = t.get("/v1/projects/sodium/versions").await;
+    assert!(versions["versions"][1]["files"][0]["manifests"].is_null());
+    let beta = versions["versions"][0]["id"].as_str().unwrap();
+    let (_, beta) = t.get(&format!("/v1/versions/{beta}")).await;
+    assert!(beta["files"][0]["manifests"].is_null(), "{beta}");
+    // Fabric API's jar here is no mod: read, with nothing in it.
+    let (_, api) = t.get("/v1/projects/fabric-api/versions").await;
+    let api = api["versions"][0]["id"].as_str().unwrap();
+    let (_, api) = t.get(&format!("/v1/versions/{api}")).await;
+    assert_eq!(api["files"][0]["manifests"], json!([]));
+
+    // Who gives a mod: by its own ID or one it provides.
+    for asked in [
+        "/v1/provides/sodium",
+        "/v1/provides/rubidium",
+        "/v1/provides/Rubidium?game=1.21.1&loader=fabric",
+    ] {
+        let (status, given) = t.get(asked).await;
+        assert_eq!(status, StatusCode::OK, "{asked}");
+        assert_eq!(given["projects"][0]["slug"], "sodium", "{asked}: {given}");
+        assert_eq!(given["projects"][0]["kind"], "mod");
+    }
+    for asked in [
+        "/v1/provides/rubidium?loader=forge",
+        "/v1/provides/rubidium?game=1.20.1",
+        "/v1/provides/minecraft",
+        "/v1/provides/fabric-api",
+    ] {
+        let (status, given) = t.get(asked).await;
+        assert_eq!(status, StatusCode::OK, "{asked}");
+        assert_eq!(given["projects"], json!([]), "{asked}");
+    }
+    let long = "a".repeat(65);
+    for asked in [
+        format!("/v1/provides/{long}"),
+        "/v1/provides/a%20b".to_owned(),
+        "/v1/provides/%27%3B--".to_owned(),
+        "/v1/provides/%E2%80%AE".to_owned(),
+    ] {
+        let (status, _) = t.get(&asked).await;
+        assert_eq!(status, StatusCode::NOT_FOUND, "{asked}");
+    }
+    let (status, _) = t.get("/v1/provides/sodium?game=1.21%27--").await;
+    assert_eq!(status, StatusCode::BAD_REQUEST);
+
+    // A held jar gives nothing.
+    t.app.blobs.withdraw(&sha256).unwrap();
+    t.app
+        .store
+        .set_scanned(&sha256, &crate::scan::Verdict::clean(), true, 1)
+        .unwrap();
+    let (_, given) = t.get("/v1/provides/rubidium").await;
+    assert_eq!(given["projects"], json!([]));
+}
+
 // ----- the owner's commands (D-066, stage 6) -----
 
 #[derive(Default)]

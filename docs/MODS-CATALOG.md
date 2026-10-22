@@ -65,6 +65,25 @@ it). What the launcher puts into an installation is listed in its `content.lock.
    its guests install it by the version ID the world's session at worlds.lapi.sh names
    (`GET /v1/versions/{id}/pack`). Each new generation of the world is a new version.
 
+## What mods need
+
+Sources' pages say only part of what a mod needs, and sometimes for the wrong game
+version. So the service reads every jar (and zip) it keeps the way the loaders read it
+at start, with the shared crate `crates/mod-meta` the launcher uses too:
+`fabric.mod.json`, `quilt.mod.json`, `META-INF/neoforge.mods.toml`,
+`META-INF/mods.toml` and `mcmod.info`, jars inside jars included, every size, count and
+depth bounded. A loop reads 50 jars at a time; one that cannot be read, or is no mod,
+gives `[]`. A new reader version (`MANIFEST_RULES` in `import.rs`) reads them all again.
+
+- `GET /v1/versions/{id}` gives each kept file's `manifests`: per loader, the mods the
+  jar gives (`mods`, with `nested` for those inside it), what they need (`needs`) and
+  what they do not start with (`breaks`), version ranges in the loader's own words.
+  Lists of versions leave them out.
+- `GET /v1/provides/{mod}?game=&loader=` gives up to five ready projects whose kept
+  jars give that mod ID (their own or one they `provide`), most downloaded first:
+  where a jar needs a mod its page does not name, this finds it. A held jar gives
+  nothing.
+
 ## The owner's commands
 
 On the server, as `sudo -u lapi-mods /home/www/lapi/mods/current/lapi-mods <command>`:
