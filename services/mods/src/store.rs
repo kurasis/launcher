@@ -335,6 +335,10 @@ CREATE VIRTUAL TABLE IF NOT EXISTS project_fts USING fts5(
 );
 "#;
 
+/// Whose an own pack of a deleted account is: no account's, since account
+/// IDs are UUIDs.
+pub const NO_ACCOUNT: &str = "deleted";
+
 pub struct Store {
     db: Mutex<Connection>,
     path: PathBuf,
@@ -540,6 +544,10 @@ pub struct Request {
     pub finished: Option<i64>,
 }
 
+/// Categories of libraries other projects need, on Modrinth and CurseForge;
+/// lists by downloads put them last.
+pub const LIBRARIES: [&str; 4] = ["library", "library-api", "api-and-library", "api"];
+
 /// What a search asks for, already checked.
 #[derive(Debug, Clone, Default)]
 pub struct Search {
@@ -551,6 +559,31 @@ pub struct Search {
     pub sort: &'static str,
     pub offset: i64,
     pub limit: i64,
+}
+
+/// What `lapi-mods health` judges: times are seconds since 1970.
+#[derive(Debug, Clone, Default)]
+pub struct Health {
+    /// When the longest-waiting job became due (now when none waits).
+    pub queue_oldest: i64,
+    /// Jobs finished in the last day, done and failed.
+    pub jobs_done: i64,
+    pub jobs_failed: i64,
+    /// Requests to add projects in the last day, and those that failed.
+    pub requests: i64,
+    pub requests_failed: i64,
+    /// When the oldest open review was opened (now when none is).
+    pub review_oldest: i64,
+    /// Bytes of the files kept, held ones too.
+    pub kept_bytes: i64,
+    /// VirusTotal requests this month.
+    pub virustotal_month: i64,
+    /// R2's last weekly check: copies that were wrong.
+    pub r2_mismatched: i64,
+    /// When the database was last copied to R2, and the popular projects
+    /// last looked for (0: never).
+    pub database_copied: i64,
+    pub popular_seeded: i64,
 }
 
 /// A project the owner added from a site that is not a catalog.
@@ -2002,6 +2035,137 @@ impl Store {
             )
             .optional()
             .map_err(sql)
+    }
+
+    /// Forgets a deleted account (D-064): its requests to add to the catalog
+    /// and its reports go; its own packs stay, without the author's name and
+    /// owned by no account, so no one can change them. Returns how many packs
+    /// it had.
+    pub fn purge_account(&self, account: &str) -> Result<usize> {
+        let mut db = self.db();
+        let tx = db.transaction().map_err(sql)?;
+        let packs: Vec<String> = {
+            let mut q = tx
+                .prepare("SELECT project_id FROM own_pack WHERE account_id = ?1")
+                .map_err(sql)?;
+            q.query_map([account], |r| r.get(0))
+                .map_err(sql)?
+                .collect::<std::result::Result<_, _>>()
+                .map_err(sql)?
+        };
+        for pack in &packs {
+            tx.execute("DELETE FROM project_author WHERE project_id = ?1", [pack])
+                .map_err(sql)?;
+            tx.execute(
+                "UPDATE project_fts SET authors = '' WHERE project_id = ?1",
+                [pack],
+            )
+            .map_err(sql)?;
+        }
+        for statement in [
+            "DELETE FROM import_request WHERE account_id = ?1",
+            "DELETE FROM report WHERE account_id = ?1",
+        ] {
+            tx.execute(statement, [account]).map_err(sql)?;
+        }
+        for statement in [
+            "UPDATE own_pack SET account_id = ?2 WHERE account_id = ?1",
+            "UPDATE own_version SET account_id = ?2 WHERE account_id = ?1",
+        ] {
+            tx.execute(statement, params![account, NO_ACCOUNT])
+                .map_err(sql)?;
+        }
+        tx.commit().map_err(sql)?;
+        Ok(packs.len())
+    }
+
+    /// Gives a project another slug, in the search index too; refused when
+    /// another project has it. Returns the slug it had.
+    pub fn set_slug(&self, id: &str, slug: &str) -> Result<String> {
+        let mut db = self.db();
+        let tx = db.transaction().map_err(sql)?;
+        let old: String = tx
+            .query_row("SELECT slug FROM project WHERE id = ?1", [id], |r| r.get(0))
+            .optional()
+            .map_err(sql)?
+            .ok_or("no such project in the catalog")?;
+        let taken = tx
+            .query_row(
+                "SELECT 1 FROM project WHERE slug = ?1 AND id != ?2",
+                params![slug, id],
+                |_| Ok(()),
+            )
+            .optional()
+            .map_err(sql)?
+            .is_some();
+        if taken {
+            return Err("another project has this slug".to_owned());
+        }
+        tx.execute(
+            "UPDATE project SET slug = ?2 WHERE id = ?1",
+            params![id, slug],
+        )
+        .map_err(sql)?;
+        tx.execute(
+            "UPDATE project_fts SET slug = ?2 WHERE project_id = ?1",
+            params![id, slug],
+        )
+        .map_err(sql)?;
+        tx.commit().map_err(sql)?;
+        Ok(old)
+    }
+
+    /// The numbers `lapi-mods health` judges, as of `now`.
+    pub fn health(&self, now: i64, day: &str, month: &str) -> Result<Health> {
+        let db = self.db();
+        let one = |query: &str, at: i64| -> Result<i64> {
+            db.query_row(query, [at], |r| r.get(0)).map_err(sql)
+        };
+        let plain =
+            |query: &str| -> Result<i64> { db.query_row(query, [], |r| r.get(0)).map_err(sql) };
+        let upkeep = |key: &str| -> Result<i64> {
+            db.query_row(
+                "SELECT coalesce(max(value), 0) FROM upkeep WHERE key = ?1",
+                [key],
+                |r| r.get(0),
+            )
+            .map_err(sql)
+        };
+        let since = now - 86_400;
+        let (_, virustotal_month) = Self::virustotal_usage_in(&db, day, month)?;
+        Ok(Health {
+            queue_oldest: one(
+                "SELECT coalesce(min(run_after), ?1) FROM job WHERE state = 'queued' AND run_after <= ?1",
+                now,
+            )?,
+            jobs_done: one(
+                "SELECT count(*) FROM job WHERE state = 'done' AND finished >= ?1",
+                since,
+            )?,
+            jobs_failed: one(
+                "SELECT count(*) FROM job WHERE state = 'failed' AND finished >= ?1",
+                since,
+            )?,
+            requests: one(
+                "SELECT count(*) FROM import_request WHERE created >= ?1",
+                since,
+            )?,
+            requests_failed: one(
+                "SELECT count(*) FROM import_request WHERE created >= ?1 AND state = 'failed'",
+                since,
+            )?,
+            review_oldest: one(
+                "SELECT coalesce(min(created), ?1) FROM review WHERE decided IS NULL",
+                now,
+            )?,
+            kept_bytes: plain(
+                "SELECT coalesce(sum(size), 0) FROM blob WHERE state IN ('stored', 'quarantined')",
+            )?,
+            virustotal_month,
+            r2_mismatched: upkeep("r2_mismatched")?,
+            database_copied: upkeep("database_copied")?,
+            popular_seeded: upkeep("popular_seeded")?,
+        })
     }
 
     /// Takes a project out of the catalog at its author's request: hidden
@@ -3598,6 +3762,28 @@ impl Store {
             _ if fts.is_some() => "bm25(project_fts), p.downloads DESC",
             _ => "p.downloads DESC",
         };
+        // Libraries (Fabric API and the like) come after the projects
+        // players look for in the lists by downloads; a search for words keeps
+        // its relevance, and a list of libraries its order.
+        let libraries_last = fts.is_none()
+            && matches!(s.sort, "relevance" | "downloads")
+            && !s
+                .category
+                .as_deref()
+                .is_some_and(|c| LIBRARIES.contains(&c));
+        let order = if libraries_last {
+            format!(
+                "EXISTS (SELECT 1 FROM project_category c WHERE c.project_id = p.id
+                   AND c.category IN ({})), {order}",
+                LIBRARIES
+                    .iter()
+                    .map(|c| format!("'{c}'"))
+                    .collect::<Vec<_>>()
+                    .join(", ")
+            )
+        } else {
+            order.to_owned()
+        };
         let from = if fts.is_some() {
             "project_fts JOIN project p ON p.id = project_fts.project_id"
         } else {
@@ -3613,7 +3799,10 @@ impl Store {
         let filter = format!(
             "{from} WHERE p.status IN ('importing', 'ready')
                AND {words}
-               AND (?2 IS NULL OR p.kind = ?2)
+               AND (?2 IS NULL OR p.kind = ?2
+                    OR (?2 = 'datapack' AND p.kind = 'mod'
+                        AND EXISTS (SELECT 1 FROM version v JOIN version_loader l ON l.version_id = v.id
+                                    WHERE v.project_id = p.id AND l.loader = 'datapack')))
                AND (?3 IS NULL OR EXISTS (SELECT 1 FROM version v JOIN version_game g ON g.version_id = v.id
                                          WHERE v.project_id = p.id AND g.game = ?3))
                AND (?4 IS NULL OR EXISTS (SELECT 1 FROM version v JOIN version_loader l ON l.version_id = v.id

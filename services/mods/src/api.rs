@@ -88,14 +88,23 @@ fn private(value: Value, status: StatusCode) -> Response {
     response
 }
 
-/// The client's address as nginx passes it, for the limits only.
+/// The client's address as nginx passes it, for the limits only: an IPv6
+/// /64 counts as one, since one connection usually has a whole /64 to pick
+/// addresses from.
 fn client(headers: &HeaderMap) -> String {
-    headers
+    let ip = headers
         .get("x-real-ip")
         .and_then(|v| v.to_str().ok())
         .and_then(|v| v.trim().parse::<IpAddr>().ok())
         .unwrap_or(IpAddr::from([0, 0, 0, 0]))
-        .to_string()
+        .to_canonical();
+    match ip {
+        IpAddr::V6(v6) => {
+            let s = v6.segments();
+            format!("{:x}:{:x}:{:x}:{:x}::/64", s[0], s[1], s[2], s[3])
+        }
+        IpAddr::V4(v4) => v4.to_string(),
+    }
 }
 
 /// The account behind a request's bearer token.
@@ -106,9 +115,15 @@ fn who(app: &App, headers: &HeaderMap) -> Result<Claims, Box<Response>> {
         .and_then(|v| v.to_str().ok())
         .and_then(|v| v.strip_prefix("Bearer "))
         .ok_or_else(unauthorized)?;
-    app.tokens
+    let claims = app
+        .tokens
         .verify(token.trim(), now())
-        .ok_or_else(unauthorized)
+        .ok_or_else(unauthorized)?;
+    // Signed out, switched off or deleted.
+    if !app.sessions.admit(&claims.sid, &claims.sub) {
+        return Err(unauthorized());
+    }
+    Ok(claims)
 }
 
 /// Our IDs are UUIDs; slugs are short, plain ASCII.
@@ -795,6 +810,7 @@ async fn start_upload(
     match app.uploads.start(
         &app,
         &me.sub,
+        &client(&headers),
         project.as_deref(),
         q.room,
         body.size,
@@ -973,6 +989,65 @@ async fn report(
         Ok(_) => private(json!({ "reported": true }), StatusCode::ACCEPTED),
         Err(e) => failed(&e),
     }
+}
+
+/// Asks the account service which recently seen sessions ended and refuses
+/// their tokens from now on. When it cannot be asked, tokens hold until they
+/// run out.
+pub async fn check_sessions(app: &App, http: &reqwest::Client, accounts: &str) {
+    let sessions = app.sessions.recent();
+    for chunk in sessions.chunks(500) {
+        match crate::auth::ended(http, accounts, chunk).await {
+            Ok(ended) => app.sessions.end(&ended),
+            Err(e) => {
+                eprintln!("lapi-mods: asking which sessions ended failed: {e}");
+                return;
+            }
+        }
+    }
+}
+
+/// Cleans out accounts the account service says were deleted after
+/// `since`; returns the time to ask from next.
+pub async fn purge_deleted(
+    app: &Arc<App>,
+    http: &reqwest::Client,
+    accounts: &str,
+    since: i64,
+) -> i64 {
+    let deleted = match crate::auth::deleted(http, accounts, since).await {
+        Ok(deleted) => deleted,
+        Err(e) => {
+            eprintln!("lapi-mods: asking which accounts were deleted failed: {e}");
+            return since;
+        }
+    };
+    let app = Arc::clone(app);
+    tokio::task::spawn_blocking(move || purge(&app, &deleted, since))
+        .await
+        .unwrap_or(since)
+}
+
+/// Refuses the tokens of deleted accounts, then cleans them out (D-064):
+/// their requests and reports go, and their own packs stay without the
+/// author's name or account (blocking).
+pub fn purge(app: &App, deleted: &[(String, i64)], since: i64) -> i64 {
+    let now = now();
+    let lately: Vec<String> = deleted
+        .iter()
+        .filter(|(_, at)| now - at < crate::auth::REMEMBER.as_secs().cast_signed())
+        .map(|(account, _)| account.clone())
+        .collect();
+    app.sessions.forget(&lately);
+    let mut newest = since;
+    for (account, at) in deleted {
+        if let Err(e) = app.store.purge_account(account) {
+            eprintln!("lapi-mods: cleaning out a deleted account failed: {e}");
+            return newest;
+        }
+        newest = newest.max(*at);
+    }
+    newest
 }
 
 pub fn router(app: Arc<App>) -> Router {

@@ -168,6 +168,7 @@ fn setup_full(
         blobs,
         client,
         tokens,
+        sessions: crate::auth::Sessions::default(),
         limiter: crate::api::Limiter::default(),
         uploads: crate::own::Uploads::default(),
         urls: Urls::new(FILES).with_cdn(cdn),
@@ -6223,4 +6224,440 @@ fn optifine_has_an_icon_of_its_own() {
     let icon = card.icon.as_deref().unwrap();
     assert!(crate::fetch::picture_site(icon).is_some(), "{icon}");
     assert_eq!(card.project(now()).icon_url.as_deref(), Some(icon));
+}
+
+/// Player `who` starts an upload of `size` bytes from `ip`.
+async fn start_upload_from(t: &T, who: u8, ip: &str, size: u64) -> (StatusCode, Value) {
+    let token = t.token_with(&["account", "mods"], who);
+    let request = Request::builder()
+        .method("POST")
+        .uri("/v1/packs/uploads")
+        .header(header::CONTENT_TYPE, "application/json")
+        .header(header::AUTHORIZATION, format!("Bearer {token}"))
+        .header("x-real-ip", ip)
+        .body(Body::from(
+            json!({ "size": size, "sha256": "ab".repeat(32) }).to_string(),
+        ))
+        .unwrap();
+    let response = t.router.clone().oneshot(request).await.unwrap();
+    let status = response.status();
+    let bytes = response.into_body().collect().await.unwrap().to_bytes();
+    (
+        status,
+        serde_json::from_slice(&bytes).unwrap_or(Value::Null),
+    )
+}
+
+#[tokio::test]
+async fn idle_uploads_of_a_few_accounts_keep_no_one_out() {
+    let t = setup();
+    let small = 1000;
+    let large = crate::own::CHUNK * 3;
+    // An address has two at a time; an IPv6 /64 is one address.
+    for (who, ip, expected) in [
+        (1, "203.0.113.20", StatusCode::CREATED),
+        (2, "203.0.113.20", StatusCode::CREATED),
+        (3, "203.0.113.20", StatusCode::TOO_MANY_REQUESTS),
+        (4, "2001:db8:1:2::1", StatusCode::CREATED),
+        (5, "2001:db8:1:2::ffff", StatusCode::CREATED),
+        (6, "2001:db8:1:2:aaaa::1", StatusCode::TOO_MANY_REQUESTS),
+    ] {
+        let (status, answer) = start_upload_from(&t, who, ip, small).await;
+        assert_eq!(status, expected, "{who} from {ip}: {answer}");
+    }
+    // Idle large uploads fill the large slots, and small packs still come.
+    for who in 10..18 {
+        let (status, answer) =
+            start_upload_from(&t, who, &format!("198.51.100.{who}"), large).await;
+        assert_eq!(status, StatusCode::CREATED, "{answer}");
+    }
+    let (status, answer) = start_upload_from(&t, 18, "198.51.100.18", large).await;
+    assert_eq!(
+        (status, &answer["error"]),
+        (StatusCode::TOO_MANY_REQUESTS, &json!("busy"))
+    );
+    let (status, answer) = start_upload_from(&t, 19, "198.51.100.19", small).await;
+    assert_eq!(status, StatusCode::CREATED, "{answer}");
+}
+
+#[tokio::test]
+async fn signed_out_and_deleted_accounts_are_refused_and_forgotten() {
+    let t = setup();
+    import_sodium(&t).await;
+    let (status, answer) = t.upload(Some(2), "/v1/packs", own_pack("1.0", &[])).await;
+    assert_eq!(status, StatusCode::CREATED, "{answer}");
+    let pack = answer["project"]["id"].as_str().unwrap().to_owned();
+    let (status, _) = t
+        .player(
+            2,
+            "POST",
+            "/v1/imports",
+            json!({ "input": "https://modrinth.com/mod/lithium" }),
+        )
+        .await;
+    assert!(status.is_success(), "{status}");
+    let (_, other) = t.upload(Some(3), "/v1/packs", own_pack("1.0", &[])).await;
+    let other = other["project"]["id"].as_str().unwrap().to_owned();
+    let (status, _) = t
+        .player(
+            2,
+            "POST",
+            &format!("/v1/projects/{other}/report"),
+            json!({ "reason": "broken" }),
+        )
+        .await;
+    assert_eq!(status, StatusCode::ACCEPTED);
+
+    // Player 1 signed out: refused; player 3 is not.
+    t.app.sessions.end(&["s1".to_owned()]);
+    assert_eq!(
+        t.player(1, "GET", "/v1/packs/mine", Value::Null).await.0,
+        StatusCode::UNAUTHORIZED
+    );
+    assert_eq!(
+        t.player(3, "GET", "/v1/packs/mine", Value::Null).await.0,
+        StatusCode::OK
+    );
+
+    let found = |hits: &Value, id: &str| {
+        hits["hits"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .any(|h| h["id"] == id)
+    };
+    let (_, hits) = t.get("/v1/search?q=Player").await;
+    assert!(found(&hits, &pack), "{hits}");
+
+    // Player 2's account is deleted.
+    crate::api::purge(&t.app, &[(account(2), now())], 0);
+    assert_eq!(
+        t.player(2, "GET", "/v1/packs/mine", Value::Null).await.0,
+        StatusCode::UNAUTHORIZED
+    );
+    let db = rusqlite::Connection::open(t.app.store.path()).unwrap();
+    for (table, column) in [
+        ("import_request", "account_id"),
+        ("report", "account_id"),
+        ("own_pack", "account_id"),
+        ("own_version", "account_id"),
+    ] {
+        let left: i64 = db
+            .query_row(
+                &format!("SELECT count(*) FROM {table} WHERE {column} = ?1"),
+                [account(2)],
+                |r| r.get(0),
+            )
+            .unwrap();
+        assert_eq!(left, 0, "{table}");
+    }
+    let authors: i64 = db
+        .query_row(
+            "SELECT count(*) FROM project_author WHERE project_id = ?1",
+            [&pack],
+            |r| r.get(0),
+        )
+        .unwrap();
+    assert_eq!(authors, 0);
+    // Its pack stays in the catalog, named by no one and found by no name.
+    let (status, project) = t.get(&format!("/v1/projects/{pack}")).await;
+    assert_eq!(status, StatusCode::OK, "{project}");
+    assert_eq!(project["authors"], json!([]), "{project}");
+    let (_, hits) = t.get("/v1/search?q=Player").await;
+    assert!(!found(&hits, &pack), "{hits}");
+    assert!(found(&hits, &other), "{hits}");
+    // No one can change it, and players can still report it.
+    let (status, _) = t
+        .player(
+            3,
+            "POST",
+            &format!("/v1/packs/{pack}/hidden"),
+            json!({ "hidden": true }),
+        )
+        .await;
+    assert_eq!(status, StatusCode::NOT_FOUND);
+    let (status, _) = t
+        .player(
+            3,
+            "POST",
+            &format!("/v1/projects/{pack}/report"),
+            json!({ "reason": "broken" }),
+        )
+        .await;
+    assert_eq!(status, StatusCode::ACCEPTED);
+    // Player 3's pack stays.
+    assert_eq!(
+        t.get(&format!("/v1/projects/{other}")).await.0,
+        StatusCode::OK
+    );
+}
+
+// ----- slugs, the most downloaded, health, search order -----
+
+/// A project straight in the store, as an import would put it.
+fn stored_project(
+    t: &T,
+    source_id: &str,
+    slug: &str,
+    downloads: i64,
+    categories: &[&str],
+    loaders: &[&str],
+) -> String {
+    let (id, _) = t
+        .app
+        .store
+        .upsert_project(
+            &model::SourceProject {
+                source: modrinth::SOURCE,
+                source_id: source_id.to_owned(),
+                slug: slug.to_owned(),
+                kind: "mod",
+                title: slug.to_owned(),
+                summary: String::new(),
+                body: String::new(),
+                license: String::new(),
+                icon_url: None,
+                client_side: "unknown".to_owned(),
+                server_side: "unknown".to_owned(),
+                downloads,
+                followers: 0,
+                categories: categories.iter().map(|c| (*c).to_owned()).collect(),
+                authors: Vec::new(),
+                gallery: Vec::new(),
+                url: format!("https://modrinth.com/mod/{slug}"),
+                published: 0,
+                updated: 0,
+            },
+            now(),
+        )
+        .unwrap();
+    let versions: Vec<model::SourceVersion> = loaders
+        .iter()
+        .enumerate()
+        .map(|(n, loader)| model::SourceVersion {
+            source_id: format!("{source_id}v{n}"),
+            number: format!("1.{n}"),
+            name: String::new(),
+            changelog: String::new(),
+            channel: "release".to_owned(),
+            published: 0,
+            downloads: 0,
+            games: vec!["1.21.1".to_owned()],
+            loaders: vec![(*loader).to_owned()],
+            files: Vec::new(),
+            dependencies: Vec::new(),
+            details: true,
+        })
+        .collect();
+    t.app
+        .store
+        .upsert_versions(&id, modrinth::SOURCE, &versions)
+        .unwrap();
+    id
+}
+
+async fn slugs_of(t: &T, query: &str) -> Vec<String> {
+    let (status, found) = t.get(&format!("/v1/search?{query}")).await;
+    assert_eq!(status, StatusCode::OK, "{found}");
+    found["hits"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|h| h["slug"].as_str().unwrap().to_owned())
+        .collect()
+}
+
+#[tokio::test]
+async fn libraries_come_last_in_lists_by_downloads() {
+    let t = setup();
+    stored_project(
+        &t,
+        "LibAAAAA",
+        "big-library",
+        9000,
+        &["library"],
+        &["fabric"],
+    );
+    stored_project(
+        &t,
+        "LibBBBBB",
+        "cf-library",
+        8000,
+        &["library-api"],
+        &["fabric"],
+    );
+    stored_project(&t, "ModAAAAA", "small-mod", 10, &["utility"], &["fabric"]);
+    assert_eq!(
+        slugs_of(&t, "kind=mod").await,
+        ["small-mod", "big-library", "cf-library"]
+    );
+    assert_eq!(
+        slugs_of(&t, "kind=mod&sort=downloads").await,
+        ["small-mod", "big-library", "cf-library"]
+    );
+    // Words keep relevance, other orders theirs, and a list of libraries the
+    // downloads.
+    assert_eq!(
+        slugs_of(&t, "q=library&sort=downloads").await[0],
+        "big-library"
+    );
+    assert_eq!(slugs_of(&t, "kind=mod&sort=title").await[0], "big-library");
+    assert_eq!(slugs_of(&t, "category=library").await, ["big-library"]);
+}
+
+#[tokio::test]
+async fn mods_that_are_data_packs_too_are_found_with_data_packs() {
+    let t = setup();
+    stored_project(
+        &t,
+        "HybAAAAA",
+        "terralith",
+        500,
+        &["worldgen"],
+        &["fabric", "datapack"],
+    );
+    stored_project(
+        &t,
+        "ModAAAAA",
+        "sodium-like",
+        900,
+        &["optimization"],
+        &["fabric"],
+    );
+    assert_eq!(slugs_of(&t, "kind=datapack").await, ["terralith"]);
+    let (_, found) = t.get("/v1/search?kind=datapack").await;
+    // Still a mod: the launcher puts its data pack version into a world.
+    assert_eq!(found["hits"][0]["kind"], "mod");
+    assert_eq!(found["total"], 1);
+    assert_eq!(slugs_of(&t, "kind=mod").await, ["sodium-like", "terralith"]);
+}
+
+#[tokio::test]
+async fn the_owner_gives_a_project_another_slug() {
+    let t = setup();
+    let id = stored_project(
+        &t,
+        "FabAAAAA",
+        "fabric-api-modrinth-20953b",
+        1,
+        &[],
+        &["fabric"],
+    );
+    stored_project(&t, "OthAAAAA", "other", 1, &[], &["fabric"]);
+    let purged = Purged::default();
+    let owner = owner(&t, &purged);
+    assert_eq!(
+        owner
+            .slug("fabric-api-modrinth-20953b", "fabric-api")
+            .unwrap(),
+        ["slug fabric-api-modrinth-20953b is now fabric-api"]
+    );
+    let (status, project) = t.get("/v1/projects/fabric-api").await;
+    assert_eq!(status, StatusCode::OK, "{project}");
+    assert_eq!(project["id"], id.as_str());
+    assert_eq!(slugs_of(&t, "q=fabric").await, ["fabric-api"]);
+    // Its source's slug still finds it by address; another's slug is taken.
+    assert!(
+        owner
+            .slug("https://modrinth.com/mod/fabric-api", "fapi")
+            .is_ok()
+    );
+    assert!(owner.slug("fapi", "other").is_err());
+    assert!(owner.slug("nothing-here", "free").is_err());
+    for junk in [
+        "",
+        "Fabric",
+        "-fabric",
+        "fabric-",
+        "fab ric",
+        "fab/ric",
+        "fab\nric",
+        "fäbric",
+        &"x".repeat(65),
+        "01a16010-29a4-7019-8eb8-1dad2b20953b",
+    ] {
+        assert!(owner.slug("fapi", junk).is_err(), "{junk:?}");
+    }
+}
+
+#[test]
+fn the_most_downloaded_are_read_from_modrinths_answer() {
+    let url = modrinth::popular_url("shader", 500);
+    assert!(url.contains("limit=100&index=downloads"), "{url}");
+    assert!(url.contains("project%5Ftype%3Ashader"), "{url}");
+    let ids = modrinth::project_ids(&json!({ "hits": [
+        { "project_id": "AANobbMI" },
+        { "project_id": "../../x" },
+        { "project_id": 7 },
+        { "slug": "no-id" },
+        { "project_id": "P7dR8mSH" },
+    ]}));
+    assert_eq!(ids, ["AANobbMI", "P7dR8mSH"]);
+    assert!(modrinth::project_ids(&json!({ "hits": "x" })).is_empty());
+}
+
+#[tokio::test]
+async fn the_most_downloaded_are_added_once() {
+    let t = setup();
+    modrinth_site(&t.sites);
+    for project_type in modrinth::POPULAR_TYPES {
+        let hits = if project_type == "mod" {
+            json!([{ "project_id": SODIUM }])
+        } else {
+            json!([])
+        };
+        t.sites.json(
+            &modrinth::popular_url(project_type, 50),
+            json!({ "hits": hits }),
+        );
+    }
+    assert_eq!(import::seed(&t.app, 50).await.unwrap(), 1);
+    t.drain().await;
+    let (status, project) = t.get("/v1/projects/sodium").await;
+    assert_eq!(status, StatusCode::OK, "{project}");
+    assert!(t.app.store.upkeep("popular_seeded").unwrap().is_some());
+    // Known now: not queued again.
+    assert_eq!(import::seed(&t.app, 50).await.unwrap(), 0);
+}
+
+#[tokio::test]
+async fn health_names_its_problems_in_words_and_numbers() {
+    let t = setup();
+    let purged = Purged::default();
+    let owner = owner(&t, &purged);
+    let lines = owner.health(0).unwrap();
+    assert_eq!(lines.last().unwrap(), "all ok", "{lines:?}");
+    assert!(lines.contains(&"popular off".to_owned()), "{lines:?}");
+    // Popular projects never looked for, and a job due for a day.
+    t.app
+        .store
+        .enqueue(
+            "stuck",
+            "project",
+            &json!({}),
+            None,
+            None,
+            now() - 86_400,
+            None,
+        )
+        .unwrap();
+    let lines = owner.health(50).unwrap();
+    assert_eq!(lines.last().unwrap(), "problems 2", "{lines:?}");
+    assert!(
+        lines
+            .iter()
+            .any(|l| l.starts_with("queue problem oldest waits 24 h")),
+        "{lines:?}"
+    );
+    assert!(
+        lines.iter().any(|l| l.starts_with("popular problem")),
+        "{lines:?}"
+    );
+    for line in &lines {
+        assert!(
+            line.bytes()
+                .all(|b| b.is_ascii_alphanumeric() || b" ,".contains(&b)),
+            "{line}"
+        );
+    }
 }

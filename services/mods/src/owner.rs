@@ -13,12 +13,15 @@
 //!                                     asks VirusTotal about a file now
 //! lapi-mods add <address>...          adds projects as a player would
 //! lapi-mods add --status              how the owner's additions went
+//! lapi-mods slug <project> <slug>     gives a project another slug
+//! lapi-mods health                    the service's own checks, once a day
 //! ```
 //!
 //! `find` and `review` show names and titles: they are for the owner's
-//! terminal. `block`, `unblock`, `review --count` and `virustotal` print
-//! fixed words, numbers and hashes only, and `add` the catalog addresses it
-//! was given, so the workflow may run them in its public log.
+//! terminal. `block`, `unblock`, `review --count`, `virustotal` and `health`
+//! print fixed words, numbers and hashes only, and `add` and `slug` the
+//! catalog addresses and slugs they were given, so the workflow may run them
+//! in its public log.
 
 use std::io::Write;
 use std::path::PathBuf;
@@ -33,6 +36,34 @@ use crate::store::Store;
 const OWNER: &str = "owner";
 /// Addresses one `add` takes (the workflow passes at most 32 arguments).
 const MAX_ADD: usize = 32;
+
+/// What `health` calls a problem.
+const HOUR: i64 = 3600;
+const DAY: i64 = 24 * HOUR;
+/// A job due this long and still waiting: the workers are stuck or swamped.
+const QUEUE_LATE: i64 = 12 * HOUR;
+/// Failed jobs of the last day: at least this many, and over a quarter.
+const JOBS_FAILING: i64 = 20;
+/// Failed requests to add projects of the last day: at least this many, and
+/// over half.
+const REQUESTS_FAILING: i64 = 5;
+/// An open review older than this waits for the owner.
+const REVIEW_LATE: i64 = 3 * DAY;
+/// The database copy to R2 and the look for popular projects, daily: two
+/// days without one is a problem.
+const DAILY_LATE: i64 = 2 * DAY;
+
+/// Whether a slug the owner gives is one: small letters, digits and inner
+/// hyphens, at most 64, and not shaped like a project's ID.
+pub fn plain_slug(text: &str) -> bool {
+    (1..=64).contains(&text.len())
+        && text
+            .bytes()
+            .all(|b| b.is_ascii_lowercase() || b.is_ascii_digit() || b == b'-')
+        && !text.starts_with('-')
+        && !text.ends_with('-')
+        && uuid::Uuid::parse_str(text).is_err()
+}
 
 /// The addresses a kept file is served at: under each of its names on our
 /// disk, and by its hash in R2.
@@ -575,6 +606,121 @@ impl Owner<'_> {
                 counts.join(", ")
             },
         );
+        Ok(lines)
+    }
+
+    /// Gives a project another slug, for one the catalog named badly (as
+    /// `fabric-api-modrinth-20953b` was); another project's slug is refused.
+    /// The old slug leads to it only when a source has it.
+    pub fn slug(&self, reference: &str, slug: &str) -> Result<Vec<String>, String> {
+        let slug = slug.trim();
+        if !plain_slug(slug) {
+            return Err("a slug is 1 to 64 small letters, digits and hyphens inside".to_owned());
+        }
+        let found = self
+            .project(reference)?
+            .ok_or("no such project in the catalog")?;
+        // A project joined into another: the one it joined.
+        let id = self.store.project_id(&found)?.unwrap_or(found);
+        let old = self.store.set_slug(&id, slug)?;
+        Ok(vec![format!("slug {old} is now {slug}")])
+    }
+
+    /// The service's own checks: a line each, `ok` or `problem` with its
+    /// numbers, and a last line `all ok` or `problems <n>`. `popular` is how
+    /// many most downloaded projects of each kind are looked for (0: off).
+    pub fn health(&self, popular: usize) -> Result<Vec<String>, String> {
+        let (day, month) = crate::virustotal::day_and_month(self.now);
+        let h = self.store.health(self.now, &day, &month)?;
+        let mut lines = Vec::new();
+        let mut problems = 0;
+        // `None`: the part is off.
+        let mut check = |name: &str, fine: Option<bool>, numbers: String| match fine {
+            Some(fine) => {
+                if !fine {
+                    problems += 1;
+                }
+                lines.push(format!(
+                    "{name} {} {numbers}",
+                    if fine { "ok" } else { "problem" }
+                ));
+            }
+            None => lines.push(format!("{name} off")),
+        };
+        let waiting = self.now - h.queue_oldest;
+        check(
+            "queue",
+            Some(waiting < QUEUE_LATE),
+            format!("oldest waits {} h", waiting / HOUR),
+        );
+        check(
+            "imports",
+            Some(
+                !(h.jobs_failed >= JOBS_FAILING && h.jobs_failed * 4 > h.jobs_done + h.jobs_failed),
+            ),
+            format!("{} done, {} failed in a day", h.jobs_done, h.jobs_failed),
+        );
+        check(
+            "requests",
+            Some(!(h.requests_failed >= REQUESTS_FAILING && h.requests_failed * 2 > h.requests)),
+            format!("{}, {} failed in a day", h.requests, h.requests_failed),
+        );
+        let review = self.now - h.review_oldest;
+        check(
+            "review",
+            Some(review < REVIEW_LATE),
+            format!("oldest open {} days", review / DAY),
+        );
+        let free = self.blobs.free();
+        let quota = self.blobs.quota();
+        let kept = u64::try_from(h.kept_bytes).unwrap_or(0);
+        let gb = |bytes: u64| bytes / crate::blobs::GB;
+        check(
+            "disk",
+            // Free space near the reserve, or kept files over 90% of the
+            // quota: soon nothing new is kept.
+            Some(
+                free >= self.blobs.min_free().saturating_mul(2)
+                    && kept.saturating_mul(10) < quota.saturating_mul(9),
+            ),
+            format!(
+                "{} GB free, kept {} GB of {} GB",
+                gb(free),
+                gb(kept),
+                gb(quota)
+            ),
+        );
+        let limit = crate::virustotal::BACKGROUND.month;
+        check(
+            "virustotal",
+            self.virustotal
+                .is_some()
+                .then_some(h.virustotal_month * 10 < limit * 9),
+            format!("{} of {limit} this month", h.virustotal_month),
+        );
+        let copied = self.now - h.database_copied;
+        check(
+            "r2",
+            self.bucket
+                .is_some()
+                .then_some(h.r2_mismatched == 0 && copied < DAILY_LATE),
+            format!(
+                "{} wrong copies, database copied {} h ago",
+                h.r2_mismatched,
+                copied / HOUR
+            ),
+        );
+        let looked = self.now - h.popular_seeded;
+        check(
+            "popular",
+            (popular > 0).then_some(looked < DAILY_LATE),
+            format!("looked {} h ago", looked / HOUR),
+        );
+        lines.push(if problems == 0 {
+            "all ok".to_owned()
+        } else {
+            format!("problems {problems}")
+        });
         Ok(lines)
     }
 

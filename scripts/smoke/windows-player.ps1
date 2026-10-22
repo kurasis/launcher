@@ -1,8 +1,8 @@
 # Player window check (D-067) for the Windows package smoke test.
 # Usage: powershell -File scripts/smoke/windows-player.ps1 [-Screenshot <png>]
 #
-# With the launcher running on the feed, presses the first video of the feed
-# through UI Automation, then reads the player window's accessibility tree: the
+# With the launcher running on the feed, shows its videos and presses the first
+# one through UI Automation, then reads the player window's accessibility tree: the
 # embedded player in the play page must show something of its own, not only
 # the page's "Open in browser" link. Prints what the window shows, saves a
 # screenshot, and fails when the window is missing or the player is empty.
@@ -54,13 +54,16 @@ function Save-Screenshot($Window) {
   Write-Host "Screenshot: $Screenshot"
 }
 
-# The tabs are buttons or tabs; whichever pattern the element offers presses it.
+# The tabs are buttons or tabs, the chips toggle buttons (aria-pressed);
+# whichever pattern the element offers presses it.
 function Press($Element) {
   $pattern = $null
   if ($Element.TryGetCurrentPattern([System.Windows.Automation.InvokePattern]::Pattern, [ref]$pattern)) {
     $pattern.Invoke()
   } elseif ($Element.TryGetCurrentPattern([System.Windows.Automation.SelectionItemPattern]::Pattern, [ref]$pattern)) {
     $pattern.Select()
+  } elseif ($Element.TryGetCurrentPattern([System.Windows.Automation.TogglePattern]::Pattern, [ref]$pattern)) {
+    $pattern.Toggle()
   } else {
     throw "'$($Element.Current.Name)' cannot be pressed"
   }
@@ -76,8 +79,21 @@ $feed = Wait-For {
 } 30
 if (-not $feed) { throw 'Feed tab not found' }
 Press $feed
-# The feed's video cards are named "Watch “<title>” by <channel>"; streams,
-# mixed in among them, "Watch <name> live: …" and are passed over.
+# The Videos chip: the mixed list can open with patch notes, news, streams or
+# ads, so the check does not hang on what the live feed holds right now.
+$videosChip = Wait-For {
+  $byType = New-Object System.Windows.Automation.PropertyCondition($AE::ControlTypeProperty, $Button)
+  foreach ($candidate in $main.FindAll($Scope::Descendants, $byType)) {
+    if ($candidate.Current.Name -ieq 'Videos') { return $candidate }
+  }
+} 30
+if (-not $videosChip) {
+  Write-Host 'Main window shows:'; Get-Texts $main | Select-Object -First 60 | Write-Host
+  throw 'Videos chip not found'
+}
+Press $videosChip
+# The feed's video cards are named "Watch “<title>” by <channel>"; anything
+# else (streams are "Watch <name> live: …") is passed over.
 $videoName = 'Watch ' + [char]0x201C + '*'
 $video = Wait-For {
   $byType = New-Object System.Windows.Automation.PropertyCondition($AE::ControlTypeProperty, $Button)

@@ -123,6 +123,7 @@ fn serve() -> Result<(), String> {
     let app = Arc::new(api::App {
         store,
         tokens: auth::Tokens::new(&env("LAPI_WORLDS_ISSUER", "https://oauth.lapi.sh")),
+        sessions: auth::Sessions::default(),
         tickets,
         replays: auth::Replays::default(),
         hub: hub::Hub::default(),
@@ -133,8 +134,23 @@ fn serve() -> Result<(), String> {
             .to_owned(),
         relay_token: relay_token(),
     });
+    let accounts = env("LAPI_WORLDS_ACCOUNTS", "http://127.0.0.1:8793")
+        .trim_end_matches('/')
+        .to_owned();
     let runtime = tokio::runtime::Runtime::new().map_err(|e| e.to_string())?;
     runtime.block_on(async move {
+        // Sign-outs, switched-off and deleted accounts reach worlds within
+        // seconds.
+        let checking = Arc::clone(&app);
+        let asking = http.clone();
+        tokio::spawn(async move {
+            let mut since = 0;
+            loop {
+                tokio::time::sleep(Duration::from_secs(15)).await;
+                api::check_sessions(&checking, &asking, &accounts).await;
+                since = api::purge_deleted(&checking, &asking, &accounts, since).await;
+            }
+        });
         // The account service's keys: at start, then every 10 minutes.
         let keys = Arc::clone(&app);
         tokio::spawn(async move {

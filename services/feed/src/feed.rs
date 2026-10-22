@@ -42,6 +42,9 @@ pub const FEED_NOTES: usize = 40;
 /// Videos kept per channel: its RSS lists 15, so the rest are kept from
 /// earlier fetches.
 pub const CHANNEL_VIDEOS: usize = 200;
+/// The streams the mixed list and the whole feed show: the most watched.
+/// Under the Streams chip the list pages through all of them.
+pub const STREAMS_MIXED: usize = 6;
 /// Of any `SPREAD_WINDOW` videos in a row of the list, at most `SPREAD_MAX`
 /// are of one channel, so a channel that posts often does not fill it.
 pub const SPREAD_WINDOW: usize = 10;
@@ -550,6 +553,7 @@ impl Feed {
             .get(lang)
             .into_iter()
             .flatten()
+            .take(STREAMS_MIXED)
             .map(stream_card)
             .collect();
         json!({
@@ -620,7 +624,17 @@ impl Feed {
             );
         }
         if query.kinds.contains(&Kind::Streams) {
-            for stream in saved.streams.get(query.videos).into_iter().flatten() {
+            // Among other items only the most watched, so the list does not
+            // open with a wall of streams.
+            let mixed = query.kinds.iter().any(|kind| *kind != Kind::Streams);
+            let shown = if mixed { STREAMS_MIXED } else { usize::MAX };
+            for stream in saved
+                .streams
+                .get(query.videos)
+                .into_iter()
+                .flatten()
+                .take(shown)
+            {
                 if let Some(time) = sort_time(&stream.started) {
                     items.push((time, format!("tw:{}", stream.login), Item::Stream(stream)));
                 }

@@ -350,3 +350,19 @@ async fn head_of_a_file_not_kept_fetches_nothing_to_keep() {
         "nothing kept for a HEAD"
     );
 }
+
+#[test]
+fn an_ipv6_64_is_one_client() {
+    let of = |ip: &str| {
+        let mut headers = axum::http::HeaderMap::new();
+        headers.insert("x-real-ip", ip.parse().unwrap());
+        crate::api::client(&headers)
+    };
+    assert_eq!(
+        of("2001:db8:1:2::1"),
+        of("2001:db8:1:2:ffff:ffff:ffff:ffff")
+    );
+    assert_ne!(of("2001:db8:1:2::1"), of("2001:db8:1:3::1"));
+    assert_eq!(of("::ffff:203.0.113.5"), of("203.0.113.5"));
+    assert_ne!(of("203.0.113.5"), of("203.0.113.6"));
+}

@@ -1,0 +1,55 @@
+name: Mods health
+
+# Once a day, the catalog of mods checks itself on the server (`lapi-mods
+# health`, docs/MODS-CATALOG.md): the job queue, failed imports and
+# requests, reviews waiting for the owner, the disk, VirusTotal's monthly
+# quota, the copies in R2 and the daily look for Modrinth's most downloaded
+# projects. A problem fails the run, and GitHub mails a failed scheduled run
+# to whoever last changed this schedule; otherwise nothing is said. The
+# command prints fixed words and numbers only (the repository and its logs
+# are public).
+#
+# GitHub stops scheduled workflows in a public repository after 60 days
+# without activity; "Run workflow" (or any push) starts them again.
+
+on:
+  schedule:
+    - cron: '41 6 * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: mods-health
+  cancel-in-progress: false
+
+jobs:
+  health:
+    name: Health of the catalog
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v7
+      - uses: ./.github/actions/lapi-ssh
+        with:
+          ssh-key: ${{ secrets.SSH_KEY }}
+          known-hosts: ${{ secrets.SSH_KNOWN_HOSTS }}
+      - name: Check
+        env:
+          TARGET: ${{ secrets.SSH_USER }}@${{ secrets.SSH_HOST }}
+        run: |
+          set +e
+          out=$(ssh "$TARGET" \
+            'sudo -n -u lapi-mods /home/www/lapi/mods/current/lapi-mods health' 2>&1)
+          status=$?
+          {
+            echo '### Catalog of mods'
+            echo '```text'
+            printf '%s\n' "$out"
+            echo '```'
+          } | tee -a "$GITHUB_STEP_SUMMARY"
+          if [ "$status" -ne 0 ]; then
+            echo "::error::the catalog of mods found a problem (see above)"
+          fi
+          exit "$status"

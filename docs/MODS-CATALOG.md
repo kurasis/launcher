@@ -69,18 +69,20 @@ it). What the launcher puts into an installation is listed in its `content.lock.
 
 On the server, as `sudo -u lapi-mods /home/www/lapi/mods/current/lapi-mods <command>`:
 
-| Command                                          | What it does                                                                                                                  |
-| ------------------------------------------------ | ----------------------------------------------------------------------------------------------------------------------------- |
-| `find <address, slug, ID, SHA-256 or SHA-1>`     | a project with its versions and files, or a file: state, verdict, signs, where it is used, decisions                          |
-| `review`                                         | what waits: files the scanner held back (`scan`), versions their source took down (`gone`), reported packs (`report`)         |
-| `review <n> keep` or `review <n> block [reason]` | decides item `n`: `keep` serves a held file again or dismisses reports, `block` blocks the files or removes the reported pack |
-| `block <SHA-256 or SHA-1> [reason]`              | takes the file out of service at once, tells launchers, clears Cloudflare's cache; also for a file not here yet               |
-| `unblock <SHA-256 or SHA-1>`                     | lifts a block, or lets a file the scanner held go; no later scan holds it                                                     |
-| `remove <project> [reason]`                      | at its author's request: the project leaves search and the API for good, files only it needs are held back                    |
-| `forget <SHA-256> [--yes]`                       | deletes a held file for good (asks for `--yes`); the catalog never fetches it again                                           |
-| `restore`                                        | brings back to the disk, checked by SHA-256, the files only R2 still has                                                      |
-| `add <address>...`                               | adds up to 32 projects by their Modrinth or CurseForge address, as a player's "Add to the catalog" does                       |
-| `add --status`                                   | the owner's additions by state, and those that failed with why                                                                |
+| Command                                          | What it does                                                                                                                       |
+| ------------------------------------------------ | ---------------------------------------------------------------------------------------------------------------------------------- |
+| `find <address, slug, ID, SHA-256 or SHA-1>`     | a project with its versions and files, or a file: state, verdict, signs, where it is used, decisions                               |
+| `review`                                         | what waits: files the scanner held back (`scan`), versions their source took down (`gone`), reported packs (`report`)              |
+| `review <n> keep` or `review <n> block [reason]` | decides item `n`: `keep` serves a held file again or dismisses reports, `block` blocks the files or removes the reported pack      |
+| `block <SHA-256 or SHA-1> [reason]`              | takes the file out of service at once, tells launchers, clears Cloudflare's cache; also for a file not here yet                    |
+| `unblock <SHA-256 or SHA-1>`                     | lifts a block, or lets a file the scanner held go; no later scan holds it                                                          |
+| `remove <project> [reason]`                      | at its author's request: the project leaves search and the API for good, files only it needs are held back                         |
+| `forget <SHA-256> [--yes]`                       | deletes a held file for good (asks for `--yes`); the catalog never fetches it again                                                |
+| `restore`                                        | brings back to the disk, checked by SHA-256, the files only R2 still has                                                           |
+| `add <address>...`                               | adds up to 32 projects by their Modrinth or CurseForge address, as a player's "Add to the catalog" does                            |
+| `add --status`                                   | the owner's additions by state, and those that failed with why                                                                     |
+| `slug <project> <slug>`                          | gives a project another slug (small letters, digits, inner hyphens; not another project's); the old one leads on only via a source |
+| `health`                                         | the service's own checks, one line each (`ok`, `problem` or `off` with numbers); fails when any finds a problem                    |
 
 Projects from sites that are not catalogs (D-066, external source) are added by these
 commands only:
@@ -114,8 +116,22 @@ fixed words, numbers and the hash only; a reason can be given over SSH only.
 `task=external` runs `external` with `args`, its arguments as a JSON array (for
 example `["add", "optifine"]`, `["days", "optifine", "3"]` or `["trust", "optifine", "on"]`); they reach the service on
 its standard input, never through a shell. `task=virustotal` runs `virustotal` the same
-way (`["status"]` or `["check", "<hash>"]`), and `task=add` runs `add` (a list of
-addresses, or `["--status"]`).
+way (`["status"]` or `["check", "<hash>"]`), `task=add` runs `add` (a list of
+addresses, or `["--status"]`), and `task=slug` runs `slug` (`["<project>", "<slug>"]`).
+
+`health` runs every morning in the workflow Mods health; a problem fails the run, and
+GitHub mails it. It checks: a job due over 12 hours and still waiting (`queue`); at
+least 20 failed jobs in a day and over a quarter of them (`imports`); at least 5 failed
+requests to add projects in a day and over half (`requests`); a review open over 3
+days (`review`); free disk under twice the reserve or kept files over 90% of the quota
+(`disk`); VirusTotal's background over 90% of its month (`virustotal`); a wrong copy in
+R2 or no database copy in 2 days (`r2`); no look for the most downloaded projects in 2
+days (`popular`).
+
+Every day the service also queues Modrinth's 50 most downloaded mods, modpacks,
+resource packs, shaders and data packs it does not have yet (`LAPI_MODS_POPULAR` in the
+service's environment sets how many, at most 100; 0 turns it off). Those it has are
+checked as any other; one the owner removed stays removed.
 
 OptiFine's icon is made for the catalog (`services/mods/assets/optifine-icon.png`): its
 site has none.

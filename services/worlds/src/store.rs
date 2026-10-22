@@ -1431,6 +1431,67 @@ impl Store {
         Ok(grants)
     }
 
+    /// Forgets a deleted account (D-064): the rooms it owns go with all
+    /// they hold, and so do its places in other rooms, its devices, invites,
+    /// tickets and relay keys. Its open admissions are revoked, so their
+    /// hosts close them at the next renewal, and name no account any more.
+    /// Returns the rooms that changed, each with the accounts that lost it.
+    pub fn purge(&self, account: &str, now: i64) -> Result<Vec<(String, Vec<String>)>> {
+        let mut db = self.db();
+        let tx = db.transaction_with_behavior(TransactionBehavior::Immediate)?;
+        let owned: Vec<String> = {
+            let mut statement = tx.prepare("SELECT id FROM rooms WHERE owner = ?1")?;
+            statement
+                .query_map([account], |r| r.get(0))?
+                .collect::<rusqlite::Result<_>>()?
+        };
+        let mut changed = Vec::new();
+        for room in owned {
+            let mut lost = active_accounts(&tx, &room)?;
+            lost.retain(|a| a != account);
+            for sql in [
+                "DELETE FROM admissions WHERE session IN (SELECT id FROM sessions WHERE room = ?1)",
+                "DELETE FROM tickets WHERE session IN (SELECT id FROM sessions WHERE room = ?1)",
+                "DELETE FROM relay_grants WHERE session IN (SELECT id FROM sessions WHERE room = ?1)",
+                "DELETE FROM sessions WHERE room = ?1",
+                "DELETE FROM invites WHERE room = ?1",
+                "DELETE FROM members WHERE room = ?1",
+                "DELETE FROM rooms WHERE id = ?1",
+            ] {
+                tx.execute(sql, [&room])?;
+            }
+            changed.push((room, lost));
+        }
+        let joined: Vec<String> = {
+            let mut statement =
+                tx.prepare("SELECT room FROM members WHERE account = ?1 AND state = 'active'")?;
+            statement
+                .query_map([account], |r| r.get(0))?
+                .collect::<rusqlite::Result<_>>()?
+        };
+        for room in joined {
+            revoke_admissions(&tx, &room, account, now)?;
+            bump(&tx, &room, now)?;
+            changed.push((room, Vec::new()));
+        }
+        for sql in [
+            "DELETE FROM members WHERE account = ?1",
+            "DELETE FROM invites WHERE created_by = ?1",
+            "DELETE FROM tickets WHERE account = ?1",
+            "DELETE FROM relay_grants WHERE account = ?1",
+            "DELETE FROM admissions WHERE account = ?1 AND released IS NOT NULL",
+            "DELETE FROM devices WHERE account = ?1",
+        ] {
+            tx.execute(sql, [account])?;
+        }
+        tx.execute(
+            "UPDATE admissions SET account = ?2 WHERE account = ?1",
+            params![account, format!("deleted-{}", new_id())],
+        )?;
+        tx.commit()?;
+        Ok(changed)
+    }
+
     /// Ends what ran out and forgets what is old.
     pub fn sweep(&self, now: i64) -> Result<()> {
         let db = self.db();

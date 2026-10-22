@@ -13,7 +13,7 @@ use tower::ServiceExt;
 
 use crate::api::{App, Clock, Limiter, router};
 use crate::auth::testing::{jwk, proof, sign};
-use crate::auth::{Replays, Tokens};
+use crate::auth::{Replays, Sessions, Tokens};
 use crate::hub::{Event, Hub};
 use crate::store::Store;
 use crate::tickets::TicketKey;
@@ -54,6 +54,7 @@ fn app_in(dir: &std::path::Path, authority: &str, issuer: &SigningKey) -> Arc<Ap
     Arc::new(App {
         store: Store::open(dir, authority).unwrap(),
         tokens,
+        sessions: Sessions::default(),
         tickets: TicketKey::load_or_create(&dir.join("ticket-key")).unwrap(),
         replays: Replays::default(),
         hub: Hub::default(),
@@ -1390,4 +1391,147 @@ async fn deleting_revoking_and_removing_each_keep_to_their_scope() {
     assert_ne!(status, StatusCode::OK, "a late change");
     assert_ne!(t.call("DELETE", &path, 1, None).await.0, StatusCode::OK);
     assert_eq!(t.call("GET", &path, 2, None).await.0, StatusCode::NOT_FOUND);
+}
+
+/// The account service's internal API, as far as worlds asks it: these
+/// sessions ended and these accounts were deleted.
+async fn account_service(ended: Vec<&str>, deleted: Vec<(String, i64)>) -> String {
+    use axum::routing::{get, post};
+    let ended: Vec<String> = ended.into_iter().map(str::to_owned).collect();
+    let deleted: Vec<Value> = deleted
+        .into_iter()
+        .map(|(id, at)| json!({"id": id, "at": at}))
+        .collect();
+    let service = Router::new()
+        .route(
+            "/internal/v1/ended",
+            post(move |axum::Json(asked): axum::Json<Value>| async move {
+                let asked: Vec<String> = serde_json::from_value(asked["sessions"].clone()).unwrap();
+                let ended: Vec<&String> = ended.iter().filter(|s| asked.contains(s)).collect();
+                axum::Json(json!({ "ended": ended }))
+            }),
+        )
+        .route(
+            "/internal/v1/deleted",
+            get(move || async move { axum::Json(json!({ "deleted": deleted })) }),
+        );
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let address = listener.local_addr().unwrap();
+    tokio::spawn(async move { axum::serve(listener, service).await.unwrap() });
+    format!("http://{address}")
+}
+
+#[tokio::test]
+async fn signed_out_and_deleted_accounts_are_refused_before_their_tokens_run_out() {
+    let t = setup();
+    for n in [1, 2] {
+        assert_eq!(t.call("GET", "/v1/rooms", n, None).await.0, StatusCode::OK);
+    }
+    // Alice signed out (her session s1 ended); Dave's account was deleted
+    // before he ever came here.
+    let now = t.app.clock.now();
+    let accounts = account_service(vec!["s1"], vec![(account(4), now)]).await;
+    let http = reqwest::Client::new();
+    crate::api::check_sessions(&t.app, &http, &accounts).await;
+    let since = crate::api::purge_deleted(&t.app, &http, &accounts, 0).await;
+    assert_eq!(since, now);
+    let (status, body) = t.call("GET", "/v1/rooms", 1, None).await;
+    assert_eq!(
+        (status, error(&body)),
+        (StatusCode::UNAUTHORIZED, "unauthorized")
+    );
+    assert_eq!(
+        t.call("GET", "/v1/rooms", 4, None).await.0,
+        StatusCode::UNAUTHORIZED
+    );
+    // Bob's session holds.
+    assert_eq!(t.call("GET", "/v1/rooms", 2, None).await.0, StatusCode::OK);
+}
+
+#[tokio::test]
+async fn a_deleted_account_leaves_nothing_behind() {
+    let t = setup();
+    let room = t.room_with(&[2, 3]).await;
+    for n in 1..=3 {
+        t.register(n).await;
+    }
+    let session = t.host(&room, 8).await;
+    let session_id = session["id"].as_str().unwrap();
+    let (_, grant) = t.ticket(&room, 2).await;
+    let (_, admitted) = t
+        .admit(session_id, grant["ticket"].as_str().unwrap(), &endpoint(2))
+        .await;
+    t.ticket(&room, 2).await;
+    let (status, _) = t
+        .on_device(
+            "POST",
+            &format!("/v1/rooms/{room}/relay"),
+            2,
+            Some(json!({"endpoint": endpoint(2)})),
+        )
+        .await;
+    assert_eq!(status, StatusCode::OK);
+    let manager = format!("/v1/rooms/{room}/members/{}/role", account(2));
+    let (status, _) = t
+        .call("POST", &manager, 1, Some(json!({"role": "manager"})))
+        .await;
+    assert_eq!(status, StatusCode::OK);
+    t.invite(&room, 2, json!({})).await;
+    // Bob's own room, with Carol in it.
+    let (_, own) = t
+        .call(
+            "POST",
+            "/v1/rooms",
+            2,
+            Some(json!({"name": "Bob's", "world": WORLD, "minecraft": "1.21.1"})),
+        )
+        .await;
+    let own = own["id"].as_str().unwrap().to_owned();
+    let code = t.invite(&own, 2, json!({})).await;
+    t.call("POST", "/v1/invites/redeem", 3, Some(json!({"code": code})))
+        .await;
+
+    let now = t.app.clock.now();
+    crate::api::purge(&t.app, &[(account(2), now)], 0);
+
+    let db = rusqlite::Connection::open(t.dir.path().join("worlds.db")).unwrap();
+    for (table, column) in [
+        ("devices", "account"),
+        ("rooms", "owner"),
+        ("members", "account"),
+        ("invites", "created_by"),
+        ("tickets", "account"),
+        ("admissions", "account"),
+        ("relay_grants", "account"),
+    ] {
+        let left: i64 = db
+            .query_row(
+                &format!("SELECT COUNT(*) FROM {table} WHERE {column} = ?1"),
+                [account(2)],
+                |r| r.get(0),
+            )
+            .unwrap();
+        assert_eq!(left, 0, "{table}");
+    }
+    let nick: i64 = db
+        .query_row("SELECT COUNT(*) FROM members WHERE nick = 'Bob'", [], |r| {
+            r.get(0)
+        })
+        .unwrap();
+    assert_eq!(nick, 0);
+    // His room is gone for Carol; Alice's room and session go on, and the
+    // host closes his place at the next renewal.
+    assert_eq!(
+        t.call("GET", &format!("/v1/rooms/{own}"), 3, None).await.0,
+        StatusCode::NOT_FOUND
+    );
+    let (_, renewal) = t.renew(session_id).await;
+    assert_eq!(renewal["revoked"], json!([admitted["id"]]));
+    assert_eq!(renewal["members"], json!(["Alice", "Carol"]));
+    assert_eq!(t.ticket(&room, 3).await.0, StatusCode::OK);
+    // His token is refused from now on.
+    assert_eq!(
+        t.call("GET", "/v1/rooms", 2, None).await.0,
+        StatusCode::UNAUTHORIZED
+    );
 }

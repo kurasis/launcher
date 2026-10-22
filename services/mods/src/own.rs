@@ -45,9 +45,13 @@ pub const CHUNK: u64 = if cfg!(test) {
 } else {
     64 * 1024 * 1024
 };
-/// Archives being sent in parts at once, on the whole server, and how long
-/// one waits for its next part.
+/// Archives of more than one part being sent at once, on the whole server
+/// (each keeps one alive only by sending a whole part), archives of one part
+/// (each takes a request or two), those from one address (an IPv6 /64 counts
+/// as one), and how long one waits for its next part.
 const MAX_UPLOADS: usize = 8;
+const MAX_SMALL_UPLOADS: usize = 256;
+const MAX_UPLOADS_PER_ADDRESS: usize = 2;
 const UPLOAD_IDLE: std::time::Duration = std::time::Duration::from_secs(30 * 60);
 /// One override, and all of them unpacked.
 pub const MAX_OVERRIDE: u64 = 64 * 1024 * 1024;
@@ -618,6 +622,8 @@ async fn keep_icon(app: &App, project: &str, bytes: &[u8], media_type: &'static 
 /// An archive being sent in parts.
 struct Upload {
     account: String,
+    /// Who sent it, for the limit per address only.
+    address: String,
     project: Option<String>,
     room: bool,
     size: u64,
@@ -672,11 +678,14 @@ impl Uploads {
     }
 
     /// Starts an upload of `size` bytes whose SHA-256 is `sha256`; an
-    /// account has one at a time. Returns its ID and the number of parts.
+    /// account has one at a time, an address two. Returns its ID and the
+    /// number of parts.
+    #[allow(clippy::too_many_arguments)]
     pub fn start(
         &self,
         app: &App,
         account: &str,
+        address: &str,
         project: Option<&str>,
         room: bool,
         size: u64,
@@ -698,7 +707,22 @@ impl Uploads {
             }
             other
         });
-        if map.len() >= MAX_UPLOADS {
+        // Idle uploads of a few accounts must not keep everyone else's
+        // packs out: an address has two at a time, and only archives of
+        // more than one part share the few large slots.
+        if map.values().filter(|u| u.address == address).count() >= MAX_UPLOADS_PER_ADDRESS {
+            return Err(Refusal::Limit("busy"));
+        }
+        let large = |size: u64| size > CHUNK;
+        let (slots, taken) = if large(size) {
+            (MAX_UPLOADS, map.values().filter(|u| large(u.size)).count())
+        } else {
+            (
+                MAX_SMALL_UPLOADS,
+                map.values().filter(|u| !large(u.size)).count(),
+            )
+        };
+        if taken >= slots {
             return Err(Refusal::Limit("busy"));
         }
         let waiting: u64 = map.values().map(|u| u.size).sum();
@@ -714,6 +738,7 @@ impl Uploads {
             id.clone(),
             Upload {
                 account: account.to_owned(),
+                address: address.to_owned(),
                 project: project.map(str::to_owned),
                 room,
                 size,

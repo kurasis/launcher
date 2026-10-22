@@ -23,7 +23,9 @@ name: Mods service
 # from sites that are not catalogs, such as OptiFine): it prints fixed words,
 # numbers and the owner's names of projects. task=add adds projects by
 # their Modrinth or CurseForge address (`args` a JSON array of them, or
-# ["--status"]) and prints those addresses. The secrets
+# ["--status"]) and prints those addresses; task=slug gives a project
+# another slug (`args` ["<project>", "<slug>"]) and prints both. The
+# service's daily checks run in the workflow Mods health. The secrets
 # LAPI_MODS_CF_ZONE and LAPI_MODS_CF_TOKEN (a token that may only purge the
 # zone's cache) let a block clear the file from Cloudflare's cache. The
 # secrets LAPI_MODS_R2_ACCOUNT, LAPI_MODS_R2_KEY and LAPI_MODS_R2_SECRET copy
@@ -56,14 +58,15 @@ on:
       task:
         description: deploy, counts of the catalog, a probe of CurseForge, or an owner's command
         type: choice
-        options: [deploy, counts, probe, block, unblock, review-count, external, virustotal, add]
+        options:
+          [deploy, counts, probe, block, unblock, review-count, external, virustotal, add, slug]
         default: deploy
       hash:
         description: for block and unblock, the file's SHA-256 or SHA-1
         type: string
         default: ''
       args:
-        description: 'for external, virustotal and add, its arguments as a JSON array, such as ["add", "optifine"], ["status"] or ["https://modrinth.com/mod/sodium"]'
+        description: 'for external, virustotal, add and slug, its arguments as a JSON array, such as ["add", "optifine"], ["status"], ["https://modrinth.com/mod/sodium"] or ["fabric-api-modrinth-20953b", "fabric-api"]'
         type: string
         default: ''
 
@@ -289,7 +292,7 @@ jobs:
     name: Owner's command
     if: >-
       github.event_name == 'workflow_dispatch'
-      && contains(fromJSON('["block", "unblock", "review-count", "external", "virustotal", "add"]'), inputs.task)
+      && contains(fromJSON('["block", "unblock", "review-count", "external", "virustotal", "add", "slug"]'), inputs.task)
     # It changes what players get: the same approval as a deploy.
     environment: production
     runs-on: ubuntu-24.04
@@ -300,7 +303,8 @@ jobs:
           ssh-key: ${{ secrets.SSH_KEY }}
           known-hosts: ${{ secrets.SSH_KNOWN_HOSTS }}
       # These print fixed words, numbers, the hash given, the owner's names
-      # of projects and the catalog addresses given to add only.
+      # of projects and the catalog addresses and slugs given to add and slug
+      # only.
       - name: Run
         env:
           TARGET: ${{ secrets.SSH_USER }}@${{ secrets.SSH_HOST }}
@@ -316,7 +320,7 @@ jobs:
               command="$TASK ${HASH,,}"
               ;;
             review-count) command="review --count" ;;
-            external|virustotal|add)
+            external|virustotal|add|slug)
               # The arguments go on the standard input as JSON, never
               # through a shell; the service checks each one again.
               printf '%s' "$ARGS" | jq -e 'type == "array" and length <= 32

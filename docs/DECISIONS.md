@@ -1959,7 +1959,19 @@ archive from the Package workflow, upload it to
   forget the account here. The account service lists deleted accounts on its internal
   port for 90 days; friends cleans them out within 15 seconds (their friends, requests,
   blocks, messages, rooms of two, place in groups, reports they filed). Reports about
-  their messages keep their copy as evidence.
+  their messages keep their copy as evidence. Skins, worlds, mods and reviews do the
+  same within 15 seconds: worn skins; the rooms the account owns with all they hold,
+  its places in other rooms, devices, invites, tickets and relay keys (open admissions
+  are revoked and name no account); its requests to the catalog and its reports; its
+  reviews' files and a ban of the account. Its own packs and reviews stay, made
+  anonymous (Ai, 2026-10-21): a pack loses its author's name and belongs to no account,
+  so no one can change it and players can still report it; a review loses its link to
+  the account. What the player wrote in them stays.
+- **Sign-outs reach every service.** Friends, skins, worlds, mods and reviews ask the
+  account service every 15 seconds which sessions they saw ended (signed out, password
+  reset, account switched off or deleted) and refuse their access tokens from then on,
+  though the tokens' signatures hold until they run out. A token of an account
+  deleted lately is refused even from a session the service never saw.
 - **Export:** Accounts → _Download my data_ saves one JSON file with what the account
   service (`GET /v1/me/export`) and friends (`GET /v1/export`) keep about the account,
   asked by its own session.
@@ -2354,6 +2366,17 @@ skins-mod <channel>` there only checks the signature against the public key and
   goes to the joined project, so both still lead to it; the service also fixes joins
   made before this at start (2026-10-21: Fabric API had become
   `fabric-api-modrinth-…`).
+- **The catalog keeps the popular projects and checks itself (2026-10-21, Ai: "сделай
+  всё сразу").** Once a day the service queues Modrinth's 50 most downloaded projects of
+  each kind it does not have yet (`LAPI_MODS_POPULAR`); CurseForge's search answers the
+  server with 403 and Modrinth has no worlds, so worlds still come by address. Lists by
+  downloads (no words) put libraries (`library`, `library-api`, `api-and-library`,
+  `api`) after the other projects; a search for words keeps its relevance. A mod that
+  also publishes data pack versions (Terralith) is found among data packs too, and the
+  launcher puts such a version into a world as a data pack; a project's file in one
+  folder (a world, `mods`) no longer replaces its file in another. `lapi-mods slug`
+  renames a project on the server without a deploy, and `lapi-mods health` runs daily
+  in the workflow Mods health, failing on a problem (docs/MODS-CATALOG.md).
 - **Data packs from Modrinth (2026-10-21).** Modrinth's API calls a data pack a mod
   (`project_type` `mod`) and tells it only by its loaders. A project whose only loader is
   `datapack` is a data pack in the catalog; one that is also a mod for a loader stays a
@@ -2611,8 +2634,10 @@ skins-mod <channel>` there only checks the signature against the public key and
 - **A varied, live list (owner request, 2026-10-21):** the service spreads videos so no
   channel has more than 2 of any 10 in a row (a moved video takes a time just below the
   one before it, so the cursor still holds), and pages are shown in the service's order.
-  Up to 24 streams per language, Helix asked every 2 minutes; while the launcher is shown
-  it asks for live streams every 3 minutes, and ended ones leave the list. Channels can
+  Up to 24 streams per language, Helix asked every 2 minutes: the mixed list and the
+  whole feed show the 6 most watched, the Streams chip pages through all of them. While
+  the launcher is shown it asks for live streams every 3 minutes: ended ones leave the
+  list, and under the Streams chip new ones come in. Channels can
   be put first or hidden from a tile's menu (kept in `feed-channels.json`). Videos played
   from the feed are kept in `feed-watched.json` (the latest 500 ids) and shown dimmed. A
   system notification when a favourite Twitch channel goes live is a setting, off by
@@ -2699,6 +2724,14 @@ skins-mod <channel>` there only checks the signature against the public key and
   does not; anything else is unknown. The launcher says "licensed accounts only" on such an
   ad, and Play tells a player who would play without a Microsoft account so before anything
   is downloaded.
+- **Amendment (2026-10-21): the check's protocol.** A server that takes many versions
+  repeats in its status the protocol it was asked in and may still refuse it at login: the
+  first real ad (asked in 1.21.1's protocol) kicked 1.21.6 and older for their version and
+  asked 1.21.7 to 1.21.11 for encryption, and dropped connections that came a second apart.
+  The check now logs in first in the protocol of the ad's default version (a table of
+  release protocols in `ping.rs`; a release missing there is not guessed), then in the one
+  the status named, then in the newest known, at most three, each after a kick or a failed
+  connection and each four seconds after the last connection.
 
 ## D-070 — Reviews from players at reviews.lapi.sh
 
