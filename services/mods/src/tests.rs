@@ -6611,13 +6611,47 @@ async fn the_most_downloaded_are_added_once() {
             json!({ "hits": hits }),
         );
     }
-    assert_eq!(import::seed(&t.app, 50).await.unwrap(), 1);
+    let mut missing = import::popular(&t.app, 50).await.unwrap();
+    assert_eq!(missing, [SODIUM]);
+    assert!(t.app.store.upkeep("popular_seeded").unwrap().is_some());
+    assert_eq!(import::seed(&t.app, &mut missing).unwrap(), 1);
+    assert!(missing.is_empty());
     t.drain().await;
     let (status, project) = t.get("/v1/projects/sodium").await;
     assert_eq!(status, StatusCode::OK, "{project}");
-    assert!(t.app.store.upkeep("popular_seeded").unwrap().is_some());
-    // Known now: not queued again.
-    assert_eq!(import::seed(&t.app, 50).await.unwrap(), 0);
+    // Known now: not looked for again.
+    assert!(import::popular(&t.app, 50).await.unwrap().is_empty());
+}
+
+#[tokio::test]
+async fn the_most_downloaded_wait_while_players_requests_are_queued() {
+    let t = setup();
+    for n in 0..import::SEED_WHEN_BELOW {
+        t.app
+            .store
+            .enqueue(
+                &format!("busy:{n}"),
+                "body",
+                &json!({}),
+                None,
+                None,
+                now(),
+                None,
+            )
+            .unwrap();
+    }
+    let mut missing: Vec<String> = ["AANobbMI", "P7dR8mSH", "gvQqBUqZ"]
+        .map(str::to_owned)
+        .to_vec();
+    assert_eq!(import::seed(&t.app, &mut missing).unwrap(), 0);
+    assert_eq!(missing.len(), 3);
+    // Nearly empty again: a few at a time.
+    t.drain().await;
+    assert_eq!(
+        import::seed(&t.app, &mut missing).unwrap(),
+        import::SEED_AT_ONCE
+    );
+    assert_eq!(missing.len(), 3 - import::SEED_AT_ONCE);
 }
 
 #[tokio::test]
@@ -6677,4 +6711,24 @@ async fn health_names_its_problems_in_words_and_numbers() {
             "{line}"
         );
     }
+}
+
+#[tokio::test]
+async fn a_first_copy_of_the_database_is_made_once() {
+    let t = setup();
+    let backups = t._dir.path().join("backups");
+    assert!(crate::upkeep::first_backup(&t.app.store, &backups).unwrap());
+    assert!(!crate::upkeep::first_backup(&t.app.store, &backups).unwrap());
+    let names: Vec<String> = std::fs::read_dir(&backups)
+        .unwrap()
+        .map(|e| e.unwrap().file_name().to_string_lossy().into_owned())
+        .collect();
+    assert_eq!(names.len(), 1, "{names:?}");
+    assert!(
+        names[0].starts_with("catalog-") && names[0].ends_with(".db"),
+        "{names:?}"
+    );
+    // A copy left half made is not taken for one.
+    std::fs::write(backups.join("catalog-29991231-000000-000.db.part"), b"half").unwrap();
+    assert_eq!(crate::store::backup_copies(&backups).len(), 1);
 }

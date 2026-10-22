@@ -284,13 +284,18 @@ pub const POPULAR_EVERY: i64 = 24 * 3600;
 /// `LAPI_MODS_POPULAR` says otherwise (0 turns it off).
 pub const POPULAR: usize = 50;
 
-/// Queues each kind's `limit` most downloaded projects on Modrinth that the
-/// catalog does not have yet (D-066), so the popular ones are there before
-/// anyone asks; those it has are checked as any other. CurseForge's search
-/// answers the server with 403, and Modrinth has no worlds. Returns how many
-/// were queued.
-pub async fn seed(app: &App, limit: usize) -> Result<usize, String> {
-    let mut queued = 0;
+/// Projects queued at a time from the most downloaded, and only while fewer
+/// jobs than `SEED_WHEN_BELOW` are due: what players ask for never waits
+/// behind them for long.
+pub const SEED_AT_ONCE: usize = 2;
+pub const SEED_WHEN_BELOW: i64 = 20;
+
+/// Each kind's `limit` most downloaded projects on Modrinth that the catalog
+/// does not have yet (D-066), so the popular ones are there before anyone
+/// asks; those it has are checked as any other. CurseForge's search answers
+/// the server with 403, and Modrinth has no worlds. `seed` queues them.
+pub async fn popular(app: &App, limit: usize) -> Result<Vec<String>, String> {
+    let mut missing = Vec::new();
     for project_type in modrinth::POPULAR_TYPES {
         let ids = app
             .client
@@ -299,17 +304,41 @@ pub async fn seed(app: &App, limit: usize) -> Result<usize, String> {
             .map_err(|e| format!("asking Modrinth for the most downloaded: {}", e.code()))?
             .map(|v| modrinth::project_ids(&v))
             .unwrap_or_default();
-        for id in ids.iter().take(limit) {
+        for id in ids.into_iter().take(limit) {
             // One the owner removed stays removed: it is known too.
-            if app.store.project_by_source(modrinth::SOURCE, id)?.is_some() {
-                continue;
-            }
-            if queue_project(app, modrinth::SOURCE, id, 0, None, IDLE_FRESH)? {
-                queued += 1;
+            if app
+                .store
+                .project_by_source(modrinth::SOURCE, &id)?
+                .is_none()
+            {
+                missing.push(id);
             }
         }
     }
     app.store.set_upkeep("popular_seeded", now())?;
+    Ok(missing)
+}
+
+/// Queues up to `SEED_AT_ONCE` of the popular projects still missing, when
+/// the queue is nearly empty. Returns how many were queued.
+pub fn seed(app: &App, missing: &mut Vec<String>) -> Result<usize, String> {
+    if app.store.jobs_due(now())? >= SEED_WHEN_BELOW {
+        return Ok(0);
+    }
+    let mut queued = 0;
+    while queued < SEED_AT_ONCE {
+        let Some(id) = missing.pop() else { break };
+        if app
+            .store
+            .project_by_source(modrinth::SOURCE, &id)?
+            .is_some()
+        {
+            continue;
+        }
+        if queue_project(app, modrinth::SOURCE, &id, 0, None, IDLE_FRESH)? {
+            queued += 1;
+        }
+    }
     Ok(queued)
 }
 
