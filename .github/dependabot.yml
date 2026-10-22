@@ -27,6 +27,10 @@ updates:
       - /services/mirror
       - /services/oauth
       - /services/upd
+      - /services/mods
+      - /services/reviews
+      - /services/feed
+      - /services/servers
     schedule:
       interval: monthly
     open-pull-requests-limit: 3
@@ -37,6 +41,8 @@ updates:
       - dependency-name: '*'
         update-types: [version-update:semver-major]
 
+  # Actions are pinned by commit SHA with the tag in a comment; Dependabot
+  # moves both.
   - package-ecosystem: github-actions
     directory: /
     schedule:

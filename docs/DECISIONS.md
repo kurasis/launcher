@@ -1582,8 +1582,10 @@ message` plus a stack trace), with the event's level.
   around Cloudflare's protection; the client address is taken from
   `CF-Connecting-IP` only on those connections. The workflow checks from outside
   that the server refuses direct requests.
-- **Limits before work.** Rate limits per address (an IPv6 /64 counts as one)
-  and over all addresses together run before a body is read or unpacked; at
+- **Limits before work.** Rate limits per address (an IPv6 /64 counts as one,
+  and an IPv6 /48 gets five addresses' allowance, so one rented network cannot
+  use up everyone's) and over all addresses together run before a body is read
+  or unpacked; at
   most four reports are read at once; the unpacked body stops at 8.25 MiB (a
   gzip bomb ends there); stored reports stop at 5 GiB and the daily statistics
   rows at a fixed number, so a flood can fill neither memory nor disk. nginx
@@ -2817,8 +2819,9 @@ skins-mod <channel>` there only checks the signature against the public key and
   checked with the account service's published key and never kept), and sees the answers
   on any computer. Answers are plain text. A player can delete their review.
 - **Spam.** Before a review the launcher solves a proof of work (`GET /v1/challenge`, a
-  signed challenge for ten minutes, taken once; 20 bits, about a second). Limits run before
-  a body is read: per address (an IPv6 /64 counts as one) 5 an hour and 15 a day, per
+  signed challenge for ten minutes, taken once; 20 bits, about a second; a restart makes
+  the challenges issued before it void). Limits run before a body is read: per address
+  (an IPv6 /64 counts as one) 5 an hour and 15 a day, five times that per IPv6 /48, per
   install and per account 10 a day, everyone together 300 an hour and 1000 a day, two
   bodies decoded at once, 10 GiB of files. Many links, hardly any letters or the same text
   from one network within a day marks a review as suspect instead of refusing it. Bans by

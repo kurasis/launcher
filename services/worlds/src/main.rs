@@ -125,7 +125,6 @@ fn serve() -> Result<(), String> {
         tokens: auth::Tokens::new(&env("LAPI_WORLDS_ISSUER", "https://oauth.lapi.sh")),
         sessions: auth::Sessions::default(),
         tickets,
-        replays: auth::Replays::default(),
         hub: hub::Hub::default(),
         limiter: api::Limiter::default(),
         clock: api::Clock::default(),

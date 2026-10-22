@@ -76,7 +76,7 @@ jobs:
           else
             echo "present=true" >> "$GITHUB_OUTPUT"
           fi
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         if: steps.key.outputs.present == 'true'
       - name: Download the release
         if: steps.key.outputs.present == 'true'
@@ -84,7 +84,7 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           VERSION: ${{ inputs.version }}
         run: gh release download "skins-mod-v$VERSION" --dir jars --pattern '*.jar' --pattern SHA256SUMS
-      - uses: actions/cache@v6
+      - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6
         if: steps.key.outputs.present == 'true'
         with:
           path: |

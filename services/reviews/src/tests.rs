@@ -212,8 +212,17 @@ async fn a_challenge_is_needed_and_taken_once() {
         !Challenges::new([2; 32]).take(&challenge, &nonce, 100),
         "other secret"
     );
+    assert!(
+        !Challenges::new([1; 32]).take(&challenge, &nonce, 100),
+        "issued before a restart"
+    );
+    let (body, signature) = challenge.rsplit_once('.').unwrap();
+    for signature in ["", "zz", &signature[..30]] {
+        assert!(!challenges.take(&format!("{body}.{signature}"), &nonce, 100));
+    }
     assert!(!challenges.take(&challenge, "12a", 100));
     assert!(challenges.take(&challenge, &nonce, 100));
+    assert!(!challenges.take(&challenge, &nonce, 100), "taken");
 }
 
 #[tokio::test]
@@ -576,4 +585,34 @@ async fn signed_out_and_deleted_accounts_are_refused_and_forgotten() {
     assert_eq!(others, 2);
     let (status, _) = send_as(&app, "198.51.100.14", &token_for(&app, &key, ann, "s-new")).await;
     assert_eq!(status, StatusCode::UNAUTHORIZED);
+}
+
+#[test]
+fn one_ipv6_48_cannot_use_up_everyones_allowance() {
+    use crate::api::Limiter;
+    let limiter = Limiter::default();
+    let hour = std::time::Duration::from_secs(3600);
+    // Every /64 of one /48 stays within its own limit, yet the /48 stops at
+    // five players' allowance.
+    let allowed = (0..200u16)
+        .filter(|i| {
+            let ip = std::net::IpAddr::from([0x2001, 0xdb8, 7, *i, 0, 0, 0, 1]);
+            limiter.allow(ip, "reviews", hour, 5, Some(300))
+        })
+        .count();
+    assert_eq!(allowed, 25);
+    // Another /48 and an IPv4 address are still let in.
+    let other = std::net::IpAddr::from([0x2001, 0xdb8, 8, 0, 0, 0, 0, 1]);
+    assert!(limiter.allow(other, "reviews", hour, 5, Some(300)));
+    let v4 = std::net::IpAddr::from([192, 0, 2, 9]);
+    assert!(limiter.allow(v4, "reviews", hour, 5, Some(300)));
+    // A /64 whose fourth group is zero is not taken for its /48.
+    let limiter = Limiter::default();
+    let first = std::net::IpAddr::from([0x2001, 0xdb8, 9, 0, 0, 0, 0, 1]);
+    for _ in 0..5 {
+        assert!(limiter.allow(first, "reviews", hour, 5, None));
+    }
+    assert!(!limiter.allow(first, "reviews", hour, 5, None));
+    let next = std::net::IpAddr::from([0x2001, 0xdb8, 9, 1, 0, 0, 0, 1]);
+    assert!(limiter.allow(next, "reviews", hour, 5, None));
 }

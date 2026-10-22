@@ -69,7 +69,7 @@ pub fn parse_rss(xml: &str, channel_id: &str) -> Result<Channel, String> {
     loop {
         match reader.read_event().map_err(|e| e.to_string())? {
             Event::Start(e) => {
-                let name = String::from_utf8_lossy(e.name().as_ref()).into_owned();
+                let name = e.name().as_ref().to_owned();
                 if name == "entry" {
                     current = Some(Default::default());
                 }
@@ -81,12 +81,14 @@ pub fn parse_rss(xml: &str, channel_id: &str) -> Result<Channel, String> {
             }
             Event::Empty(e) => {
                 let name = e.name();
-                if name.as_ref() == b"link"
+                if name.as_ref() == "link"
                     && let Some(entry) = current.as_mut()
                 {
                     for attr in e.attributes().flatten() {
-                        if attr.key.as_ref() == b"href" {
-                            let href = attr.unescape_value().map_err(|e| e.to_string())?;
+                        if attr.key.as_ref() == "href" {
+                            let href = attr
+                                .normalized_value(quick_xml::XmlVersion::Implicit1_0)
+                                .map_err(|e| e.to_string())?;
                             entry.3 = href.contains("/shorts/");
                         }
                     }
@@ -94,16 +96,16 @@ pub fn parse_rss(xml: &str, channel_id: &str) -> Result<Channel, String> {
             }
             Event::Text(t) => {
                 if text.len() < MAX_TEXT {
-                    text.push_str(&t.decode().map_err(|e| e.to_string())?);
+                    text.push_str(&t.xml10_content());
                 }
             }
             Event::CData(t) => {
                 if text.len() < MAX_TEXT {
-                    text.push_str(&String::from_utf8_lossy(&t));
+                    text.push_str(&t.xml10_content());
                 }
             }
             Event::GeneralRef(r) => {
-                let name = r.decode().map_err(|e| e.to_string())?;
+                let name = r.xml10_content();
                 // Only XML's own five and character references exist here.
                 if text.len() < MAX_TEXT
                     && let Ok(c) = quick_xml::escape::unescape(&format!("&{name};"))
@@ -129,7 +131,7 @@ pub fn parse_rss(xml: &str, channel_id: &str) -> Result<Channel, String> {
                     }
                     _ => {}
                 }
-                if e.name().as_ref() == b"entry"
+                if e.name().as_ref() == "entry"
                     && let Some((id, video_title, published, short)) = current.take()
                     && video_id(&id)
                     && !video_title.is_empty()

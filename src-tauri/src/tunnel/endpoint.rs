@@ -1,10 +1,12 @@
 //! Tunnel endpoints (ADAPTATION A5): iroh with our own relay and no public
 //! discovery. Endpoint addresses travel only through the worlds API, so no
 //! address lookup service is configured, and every room session gets a fresh
-//! key, so an endpoint is never shared between rooms.
+//! key, so an endpoint is never shared between rooms. The relay's name is
+//! looked up with the system's nameservers only.
 
 use std::time::Duration;
 
+use iroh::dns::DnsResolver;
 use iroh::endpoint::{IdleTimeout, QuicTransportConfig, VarInt, presets};
 use iroh::{Endpoint, RelayMode, SecretKey};
 
@@ -24,6 +26,16 @@ fn transport() -> LauncherResult<QuicTransportConfig> {
         .keep_alive_interval(Duration::from_secs(5))
         .max_idle_timeout(Some(idle))
         .build())
+}
+
+/// The system's nameservers and nothing else. iroh's own default falls back
+/// to public resolvers (Cloudflare, Google, Quad9) when the system ones do not
+/// answer, which would tell them the relay's name.
+fn dns() -> DnsResolver {
+    DnsResolver::builder()
+        .with_system_defaults()
+        .disable_fallback()
+        .build()
 }
 
 fn internal() -> LauncherError {
@@ -47,7 +59,8 @@ pub enum Reach {
 pub async fn bind(reach: Reach, accept: bool) -> LauncherResult<Endpoint> {
     let mut builder = Endpoint::builder(presets::Minimal)
         .secret_key(SecretKey::generate())
-        .transport_config(transport()?);
+        .transport_config(transport()?)
+        .dns_resolver(dns());
     if accept {
         builder = builder.alpns(vec![ALPN.to_vec()]);
     }

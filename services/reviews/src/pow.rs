@@ -1,7 +1,9 @@
 //! Proof of work: before a review the launcher asks for a challenge and finds
 //! a number that, hashed with it, starts with enough zero bits. A second on a
 //! player's computer; a thousand a second for a spammer. A challenge is signed
-//! by the service, lives ten minutes and is taken once.
+//! by the service, lives ten minutes and is taken once. Taken challenges are
+//! remembered in memory only, so a restart signs with a fresh salt and the
+//! challenges issued before it are refused.
 
 use std::collections::HashMap;
 use std::sync::Mutex;
@@ -16,15 +18,13 @@ pub const MAX_BITS: u8 = 28;
 
 pub struct Challenges {
     secret: [u8; 32],
+    /// New at every start.
+    salt: [u8; 16],
     used: Mutex<HashMap<String, i64>>,
 }
 
-fn mac(secret: &[u8; 32], text: &str) -> String {
-    let mut mac = Hmac::<Sha256>::new_from_slice(secret).expect("any key length");
-    mac.update(b"pow|");
-    mac.update(text.as_bytes());
-    hex::encode(&mac.finalize().into_bytes()[..16])
-}
+/// Signature bytes a challenge carries (as hex).
+const SIGNATURE: usize = 16;
 
 /// Leading zero bits of a hash.
 fn zeros(hash: &[u8]) -> u32 {
@@ -56,10 +56,21 @@ pub fn solve(challenge: &str, bits: u8) -> String {
 
 impl Challenges {
     pub fn new(secret: [u8; 32]) -> Self {
+        let mut salt = [0u8; 16];
+        getrandom::fill(&mut salt).expect("system randomness");
         Self {
             secret,
+            salt,
             used: Mutex::new(HashMap::new()),
         }
+    }
+
+    fn mac(&self, text: &str) -> Hmac<Sha256> {
+        let mut mac = Hmac::<Sha256>::new_from_slice(&self.secret).expect("any key length");
+        mac.update(b"pow|");
+        mac.update(&self.salt);
+        mac.update(text.as_bytes());
+        mac
     }
 
     /// `bits.expires.random.signature`.
@@ -67,7 +78,7 @@ impl Challenges {
         let mut random = [0u8; 12];
         getrandom::fill(&mut random).expect("system randomness");
         let body = format!("{bits}.{}.{}", now + LIFETIME, hex::encode(random));
-        let signature = mac(&self.secret, &body);
+        let signature = hex::encode(&self.mac(&body).finalize().into_bytes()[..SIGNATURE]);
         format!("{body}.{signature}")
     }
 
@@ -82,7 +93,11 @@ impl Challenges {
         let Some((body, signature)) = challenge.rsplit_once('.') else {
             return false;
         };
-        if mac(&self.secret, body) != signature {
+        // Compared in constant time.
+        let signed = hex::decode(signature).is_ok_and(|tag| {
+            tag.len() == SIGNATURE && self.mac(body).verify_truncated_left(&tag).is_ok()
+        });
+        if !signed {
             return false;
         }
         let mut parts = body.split('.');

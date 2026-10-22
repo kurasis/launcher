@@ -67,11 +67,11 @@ jobs:
       run:
         working-directory: mod
     steps:
-      - uses: actions/checkout@v7
-      - uses: gradle/actions/wrapper-validation@v6
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+      - uses: gradle/actions/wrapper-validation@3f5f9adaf7d9fecd50b5935e54106014257a94e6 # v6
       # Java 8 builds the jars for 1.7.10 to 1.12.2, 17 those for 1.16 to 1.20.1 and 21 those
       # for 1.21.x; Gradle, Fabric Loom and RetroFuturaGradle run on 25.
-      - uses: actions/setup-java@v6
+      - uses: actions/setup-java@b843ebf9b913146b38da2eaa7aeddf76074ae1ad # v6
         with:
           distribution: temurin
           java-version: |
@@ -79,7 +79,7 @@ jobs:
             17
             21
             25
-      - uses: gradle/actions/setup-gradle@v6
+      - uses: gradle/actions/setup-gradle@3f5f9adaf7d9fecd50b5935e54106014257a94e6 # v6
       # ForgeGradle keeps the jars it downloads and never checks them again, and the
       # Gradle cache is saved even when a build fails: a jar cut off in transfer
       # would break every later build. Drop unreadable jars before the build, and
@@ -140,7 +140,7 @@ jobs:
       - name: Drop damaged jars after a failed build
         if: failure()
         run: *drop-damaged-jars
-      - uses: actions/upload-artifact@v7
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
         with:
           name: launcher-skins-${{ strategy.job-index }}
           path: |
@@ -161,8 +161,8 @@ jobs:
     outputs:
       version: ${{ steps.release.outputs.version }}
     steps:
-      - uses: actions/checkout@v7
-      - uses: actions/download-artifact@v8
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8
         with:
           pattern: launcher-skins-*
           path: artifact
