@@ -1925,6 +1925,22 @@ pub async fn skins_heads<R: Runtime>(
     skins(&app).heads(&nicks).await
 }
 
+/// The heads of the Microsoft accounts signed in on this computer, by
+/// profile ID: the skin Mojang serves for each, or none (the default skin).
+#[tauri::command]
+pub async fn skins_microsoft_heads<R: Runtime>(
+    app: AppHandle<R>,
+) -> SkinsResult<std::collections::BTreeMap<String, Option<String>>> {
+    let ids: Vec<String> = app
+        .state::<AppState>()
+        .accounts_file()
+        .accounts
+        .into_iter()
+        .map(|a| a.profile_id)
+        .collect();
+    Ok(skins(&app).microsoft_heads(&ids).await)
+}
+
 /// Takes the skin or cape another player wears, by nick, as a picked one to
 /// try on and upload.
 #[tauri::command]
@@ -2014,6 +2030,53 @@ pub async fn skins_upload<R: Runtime>(
         kind.as_str()
     ));
     Ok(wardrobe)
+}
+
+/// The account's wardrobe: what it wears, keeps and may keep.
+#[tauri::command]
+pub async fn skins_wardrobe<R: Runtime>(app: AppHandle<R>) -> SkinsResult<crate::skins::Closet> {
+    skins(&app).closet(&app).await
+}
+
+/// Uploads the PNG picked for `kind` into the wardrobe without wearing it,
+/// as `skins_upload` does, with a name (up to 32 characters; empty lets the
+/// interface name it).
+#[tauri::command]
+pub async fn skins_keep<R: Runtime>(
+    app: AppHandle<R>,
+    kind: crate::skins::Kind,
+    slim: bool,
+    frame_ms: Option<Vec<u32>>,
+    name: String,
+) -> SkinsResult<crate::skins::Closet> {
+    if frame_ms
+        .as_ref()
+        .is_some_and(|list| list.len() > crate::skins::MAX_FRAMES as usize)
+    {
+        return Err(crate::skins::SkinsProblem::BadFrameMs);
+    }
+    let closet = skins(&app)
+        .keep_picked(&app, kind, slim, frame_ms.as_deref(), &name)
+        .await?;
+    app.state::<AppState>().console().info(format!(
+        "Launcher account: the {} was kept in the wardrobe",
+        kind.as_str()
+    ));
+    Ok(closet)
+}
+
+/// Keeps what is worn, renames, marks, removes or puts on a wardrobe item
+/// or set; the wardrobe as it is then.
+#[tauri::command]
+pub async fn skins_wardrobe_change<R: Runtime>(
+    app: AppHandle<R>,
+    change: crate::skins::WardrobeChange,
+) -> SkinsResult<crate::skins::Closet> {
+    let closet = skins(&app).change(&app, &change).await?;
+    app.state::<AppState>()
+        .console()
+        .info(format!("Launcher account: wardrobe {}", change.word()));
+    Ok(closet)
 }
 
 /// Takes the skin or cape off.

@@ -74,7 +74,7 @@ function backend(answers: Record<string, Answer>) {
       if (typeof value === 'string' && cmd !== 'skins_texture') throw value;
       return value;
     }
-    if (cmd === 'skins_mine') return { skin: null, cape: null } satisfies Wardrobe;
+    if (cmd === 'skins_mine') return { skin: null, cape: null, uploads: null } satisfies Wardrobe;
     if (cmd === 'skins_texture') return PNG;
     return null;
   });

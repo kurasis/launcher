@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-skins-microsoft-heads"
+description = "Enables the skins_microsoft_heads command without any pre-configured scope."
+commands.allow = ["skins_microsoft_heads"]
+
+[[permission]]
+identifier = "deny-skins-microsoft-heads"
+description = "Denies the skins_microsoft_heads command without any pre-configured scope."
+commands.deny = ["skins_microsoft_heads"]

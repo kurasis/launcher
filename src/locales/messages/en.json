@@ -392,6 +392,10 @@
           "invalid": "Pick the file again.",
           "not_saved": "The picture could not be saved there. Choose another folder.",
           "not_found": "Nobody with that nick wears a launcher skin or cape.",
+          "wardrobe_full": "The wardrobe is full: up to 30 skins, 10 capes and 20 sets. Remove something and try again.",
+          "nothing_worn": "Nothing is worn now, so there is nothing to keep.",
+          "bad_name": "A name has up to 32 characters, without invisible or control characters.",
+          "gone": "This is no longer in the wardrobe: it was removed on another computer.",
           "server": "Something went wrong on the skins server. Try again later."
         }
       }

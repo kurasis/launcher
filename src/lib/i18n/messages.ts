@@ -411,6 +411,10 @@ export type Messages = {
         readonly invalid: string;
         readonly not_saved: string;
         readonly not_found: string;
+        readonly wardrobe_full: string;
+        readonly nothing_worn: string;
+        readonly bad_name: string;
+        readonly gone: string;
         readonly server: string;
       };
     };

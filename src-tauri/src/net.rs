@@ -55,6 +55,10 @@ pub enum SourcePolicy {
     /// The signed list of those jars on the update server (D-065): one small
     /// file, no player data, not on the mirror.
     SkinsModList,
+    /// The skins of the player's own Microsoft accounts, for their heads
+    /// (D-065): Mojang's public session server and texture host, asked by
+    /// profile ID without any token. Not on the mirror.
+    MojangSkins,
 }
 
 // `launchermeta` is Mojang's previous metadata host; older descriptors still
@@ -113,6 +117,8 @@ const ALL_SOURCE_HOSTS: &[&str] = &[
     "reviews.lapi.sh",
     "stats.lapi.sh",
     "upd.lapi.sh",
+    "sessionserver.mojang.com",
+    "textures.minecraft.net",
 ];
 
 const CRASH_REPORT_HOSTS: &[&str] = &["crash.lapi.sh"];
@@ -125,6 +131,7 @@ const SKINS_MOD_LIST_HOSTS: &[&str] = &["upd.lapi.sh"];
 /// Players get the skins mod from our update server only, never from GitHub
 /// (D-065).
 const SKINS_MOD_HOSTS: &[&str] = &["upd.lapi.sh"];
+const MOJANG_SKINS_HOSTS: &[&str] = &["sessionserver.mojang.com", "textures.minecraft.net"];
 
 pub const MAX_REDIRECTS: usize = 5;
 
@@ -143,6 +150,7 @@ impl SourcePolicy {
             Self::Stats => STATS_HOSTS,
             Self::SkinsMod => SKINS_MOD_HOSTS,
             Self::SkinsModList => SKINS_MOD_LIST_HOSTS,
+            Self::MojangSkins => MOJANG_SKINS_HOSTS,
         }
     }
 
@@ -158,6 +166,7 @@ impl SourcePolicy {
                 | Self::Stats
                 | Self::SkinsMod
                 | Self::SkinsModList
+                | Self::MojangSkins
         )
     }
 

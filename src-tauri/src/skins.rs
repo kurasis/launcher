@@ -12,10 +12,13 @@
 //! Textures are shown from `GET /v1/textures/{sha256}`, fetched here (the
 //! window's CSP loads no remote image) and checked against their hash.
 //! Other players' heads and skins are looked up by nick (`POST /v1/profiles`,
-//! `GET /v1/profile/{nick}`). Nothing about a player, a nick included, goes
-//! into the log.
+//! `GET /v1/profile/{nick}`), the Microsoft accounts' heads at Mojang
+//! (`mojang`). The wardrobe the account keeps on the service is read and
+//! changed here too; every answer is checked before the page sees it.
+//! Nothing about a player, a nick included, goes into the log.
 
 pub mod heads;
+pub mod mojang;
 
 use std::collections::{BTreeMap, HashMap, VecDeque};
 use std::io::{Cursor, Read};
@@ -39,6 +42,16 @@ use crate::sync::lock;
 const BASE: &str = "https://skins.lapi.sh";
 /// A profile answer: two textures' descriptions.
 const MAX_PROFILE_BYTES: usize = 64 * 1024;
+/// An answer to the account's own requests: its wardrobe of up to 40
+/// textures and 20 sets, each with up to 32 frame durations.
+const MAX_ANSWER_BYTES: usize = 512 * 1024;
+/// Most items and sets taken from a wardrobe answer (the service keeps 30
+/// skins, 10 capes and 20 sets), and the most a limit may say.
+const MAX_KEPT: usize = 128;
+const MAX_LIMIT: u32 = 1000;
+/// The longest name of a wardrobe item or set, in characters (the
+/// service's rule).
+pub const WARDROBE_NAME_CHARS: usize = 32;
 
 /// Largest file per kind, as the service takes it.
 pub const SKIN_MAX_BYTES: usize = 2 * 1024 * 1024;
@@ -71,6 +84,11 @@ const LOOKUPS_KEPT: usize = 2048;
 const HEADS_KEPT: usize = 512;
 /// Skins fetched at once for heads.
 const HEADS_AT_ONCE: usize = 4;
+/// How long a Microsoft account's head is kept before Mojang is asked again.
+const MICROSOFT_HOLDS: Duration = Duration::from_secs(10 * 60);
+/// Microsoft accounts whose heads are asked at once (the launcher keeps a
+/// handful).
+pub const MAX_MICROSOFT: usize = 16;
 /// The longest file name shown for a picked file.
 const NAME_CHARS: usize = 80;
 /// The longest name a dropped file may have.
@@ -96,6 +114,17 @@ fn base() -> &'static str {
     option_env!("LAUNCHER_SKINS_URL")
         .filter(|u| !u.trim().is_empty())
         .unwrap_or(BASE)
+}
+
+/// An answer's status and body.
+type Got = Option<(u16, Vec<u8>)>;
+
+/// How Mojang is asked for the Microsoft accounts' skins: through the
+/// public client and its host list, or a test's answers by URL.
+enum MojangHttp {
+    Public(crate::net::PublicClient),
+    #[cfg(test)]
+    Canned(Arc<dyn Fn(&str) -> Got + Send + Sync>),
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -159,6 +188,15 @@ pub enum SkinsProblem {
     NotSaved,
     /// Nobody with that nick wears a skin (or a cape) of ours.
     NotFound,
+    /// The wardrobe has as many skins, capes or sets as it may.
+    WardrobeFull,
+    /// Nothing worn to keep in the wardrobe.
+    NothingWorn,
+    /// A wardrobe name longer than 32 characters, or with control or
+    /// direction characters.
+    BadName,
+    /// That wardrobe item or set is gone (removed on another computer).
+    Gone,
     Server,
 }
 
@@ -172,6 +210,10 @@ fn problem_of(status: u16, body: &Value) -> SkinsProblem {
         (_, "bad_frame_ms") => SkinsProblem::BadFrameMs,
         (_, "bad_model") => SkinsProblem::BadModel,
         (413, _) | (_, "too_large") => SkinsProblem::TooLarge,
+        (_, "wardrobe_full") => SkinsProblem::WardrobeFull,
+        (_, "nothing_worn") => SkinsProblem::NothingWorn,
+        (_, "bad_name") => SkinsProblem::BadName,
+        (404, "not_found") => SkinsProblem::Gone,
         (400 | 404, _) => SkinsProblem::Invalid,
         _ => SkinsProblem::Server,
     }
@@ -192,12 +234,135 @@ pub struct Worn {
     pub frame_ms: Vec<u32>,
 }
 
-/// What the account wears.
+/// What the account wears, and the uploads it has left this hour (none
+/// for another player's profile).
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct Wardrobe {
     pub skin: Option<Worn>,
     pub cape: Option<Worn>,
+    pub uploads: Option<Uploads>,
+}
+
+/// Uploads left of the hour's ten, and in how many seconds the count starts
+/// over (0 when none was made this hour).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct Uploads {
+    pub left: u32,
+    pub reset_seconds: u64,
+}
+
+/// A skin or cape kept in the account's wardrobe. Times are seconds since
+/// 1970; `worn` is 0 for one never worn.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct WardrobeItem {
+    pub id: String,
+    pub kind: Kind,
+    pub name: String,
+    pub favourite: bool,
+    pub created: i64,
+    pub worn: i64,
+    pub texture: Worn,
+}
+
+/// A skin and a cape (or one of them) kept to be worn together.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct WardrobeSet {
+    pub id: String,
+    pub name: String,
+    pub favourite: bool,
+    pub created: i64,
+    pub worn: i64,
+    pub skin: Option<Worn>,
+    pub cape: Option<Worn>,
+}
+
+/// How many skins, capes and sets a wardrobe may keep.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub struct WardrobeLimits {
+    pub skins: u32,
+    pub capes: u32,
+    pub sets: u32,
+}
+
+/// The account's wardrobe, the same on every computer: what it wears, what
+/// it keeps, and how much it may keep.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct Closet {
+    pub worn: Wardrobe,
+    pub items: Vec<WardrobeItem>,
+    pub sets: Vec<WardrobeSet>,
+    pub limits: WardrobeLimits,
+}
+
+/// Whether a wardrobe change names an item or a set.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum Of {
+    Item,
+    Set,
+}
+
+impl Of {
+    fn path(self) -> &'static str {
+        match self {
+            Self::Item => "items",
+            Self::Set => "sets",
+        }
+    }
+}
+
+/// A change to the wardrobe, as the interface asks for it. Keeping and
+/// wearing what is in it are never uploads.
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
+#[serde(tag = "action", rename_all = "camelCase", deny_unknown_fields)]
+pub enum WardrobeChange {
+    /// Keeps the skin or cape worn now.
+    KeepWorn {
+        kind: Kind,
+        name: String,
+    },
+    /// Keeps the skin and cape worn now as a set.
+    KeepSet {
+        name: String,
+    },
+    Rename {
+        of: Of,
+        id: String,
+        name: String,
+    },
+    Favourite {
+        of: Of,
+        id: String,
+        favourite: bool,
+    },
+    Delete {
+        of: Of,
+        id: String,
+    },
+    /// Puts an item on, or a set (taking off what it lacks).
+    Wear {
+        of: Of,
+        id: String,
+    },
+}
+
+impl WardrobeChange {
+    /// What the log may say of it: a fixed word.
+    pub fn word(&self) -> &'static str {
+        match self {
+            Self::KeepWorn { .. } => "kept",
+            Self::KeepSet { .. } => "kept as a set",
+            Self::Rename { .. } => "renamed",
+            Self::Favourite { .. } => "marked",
+            Self::Delete { .. } => "removed from the wardrobe",
+            Self::Wear { .. } => "put on from the wardrobe",
+        }
+    }
 }
 
 #[derive(Deserialize)]
@@ -213,44 +378,167 @@ struct TextureAnswer {
 }
 
 #[derive(Deserialize)]
+struct UploadsAnswer {
+    left: u32,
+    reset: u64,
+}
+
+#[derive(Deserialize)]
 struct ProfileAnswer {
+    #[serde(default)]
+    skin: Option<TextureAnswer>,
+    #[serde(default)]
+    cape: Option<TextureAnswer>,
+    #[serde(default)]
+    uploads: Option<UploadsAnswer>,
+}
+
+#[derive(Deserialize)]
+struct ItemAnswer {
+    id: String,
+    kind: Kind,
+    name: String,
+    favourite: bool,
+    created: i64,
+    worn: i64,
+    #[serde(flatten)]
+    texture: TextureAnswer,
+}
+
+#[derive(Deserialize)]
+struct SetAnswer {
+    id: String,
+    name: String,
+    favourite: bool,
+    created: i64,
+    worn: i64,
     #[serde(default)]
     skin: Option<TextureAnswer>,
     #[serde(default)]
     cape: Option<TextureAnswer>,
 }
 
-/// The service's answer, checked: a texture that breaks the rules is not
-/// one it would have kept.
+#[derive(Deserialize)]
+struct ClosetAnswer {
+    items: Vec<ItemAnswer>,
+    sets: Vec<SetAnswer>,
+    limits: WardrobeLimits,
+}
+
+/// A texture the service described, checked: one that breaks the rules is
+/// not one it would have kept.
+fn worn_of(kind: Kind, t: TextureAnswer) -> Result<Worn, SkinsProblem> {
+    if !is_hash(&t.hash)
+        || frames_of(kind, t.width, t.height) != Ok(t.frames)
+        || t.frame_ms.len() > MAX_FRAMES as usize
+    {
+        return Err(SkinsProblem::Server);
+    }
+    Ok(Worn {
+        hash: t.hash,
+        slim: kind == Kind::Skin && t.model.as_deref() == Some("slim"),
+        width: t.width,
+        height: t.height,
+        frames: t.frames,
+        frame_ms: t
+            .frame_ms
+            .into_iter()
+            .map(|ms| ms.clamp(FRAME_MS_MIN, FRAME_MS_MAX))
+            .collect(),
+    })
+}
+
+/// The service's answer, checked.
 fn wardrobe_of(value: Value) -> Result<Wardrobe, SkinsProblem> {
     let answer: ProfileAnswer = serde_json::from_value(value).map_err(|_| SkinsProblem::Server)?;
-    let worn = |kind: Kind, texture: Option<TextureAnswer>| -> Result<Option<Worn>, SkinsProblem> {
-        let Some(t) = texture else {
-            return Ok(None);
-        };
-        if !is_hash(&t.hash)
-            || frames_of(kind, t.width, t.height) != Ok(t.frames)
-            || t.frame_ms.len() > MAX_FRAMES as usize
-        {
-            return Err(SkinsProblem::Server);
-        }
-        Ok(Some(Worn {
-            hash: t.hash,
-            slim: kind == Kind::Skin && t.model.as_deref() == Some("slim"),
-            width: t.width,
-            height: t.height,
-            frames: t.frames,
-            frame_ms: t
-                .frame_ms
-                .into_iter()
-                .map(|ms| ms.clamp(FRAME_MS_MIN, FRAME_MS_MAX))
-                .collect(),
-        }))
-    };
     Ok(Wardrobe {
-        skin: worn(Kind::Skin, answer.skin)?,
-        cape: worn(Kind::Cape, answer.cape)?,
+        skin: answer.skin.map(|t| worn_of(Kind::Skin, t)).transpose()?,
+        cape: answer.cape.map(|t| worn_of(Kind::Cape, t)).transpose()?,
+        uploads: answer.uploads.map(|u| Uploads {
+            left: u.left.min(MAX_LIMIT),
+            reset_seconds: u.reset.min(24 * 3600),
+        }),
     })
+}
+
+/// The service's wardrobe document, checked as the worn textures are: IDs
+/// and names by the service's own rules, and no more than a wardrobe holds.
+fn closet_of(value: Value) -> Result<Closet, SkinsProblem> {
+    let worn = wardrobe_of(value.clone())?;
+    let answer: ClosetAnswer = serde_json::from_value(value).map_err(|_| SkinsProblem::Server)?;
+    let limits = answer.limits;
+    if answer.items.len() > MAX_KEPT
+        || answer.sets.len() > MAX_KEPT
+        || [limits.skins, limits.capes, limits.sets]
+            .iter()
+            .any(|n| *n > MAX_LIMIT)
+    {
+        return Err(SkinsProblem::Server);
+    }
+    let plain = |id: &str, name: &str, created: i64, worn: i64| {
+        is_wardrobe_id(id)
+            && wardrobe_name(name).as_deref() == Some(name)
+            && created >= 0
+            && worn >= 0
+    };
+    let items = answer
+        .items
+        .into_iter()
+        .map(|i| {
+            if !plain(&i.id, &i.name, i.created, i.worn) {
+                return Err(SkinsProblem::Server);
+            }
+            Ok(WardrobeItem {
+                texture: worn_of(i.kind, i.texture)?,
+                id: i.id,
+                kind: i.kind,
+                name: i.name,
+                favourite: i.favourite,
+                created: i.created,
+                worn: i.worn,
+            })
+        })
+        .collect::<Result<Vec<_>, _>>()?;
+    let sets = answer
+        .sets
+        .into_iter()
+        .map(|s| {
+            if !plain(&s.id, &s.name, s.created, s.worn) || (s.skin.is_none() && s.cape.is_none()) {
+                return Err(SkinsProblem::Server);
+            }
+            Ok(WardrobeSet {
+                skin: s.skin.map(|t| worn_of(Kind::Skin, t)).transpose()?,
+                cape: s.cape.map(|t| worn_of(Kind::Cape, t)).transpose()?,
+                id: s.id,
+                name: s.name,
+                favourite: s.favourite,
+                created: s.created,
+                worn: s.worn,
+            })
+        })
+        .collect::<Result<Vec<_>, _>>()?;
+    Ok(Closet {
+        worn,
+        items,
+        sets,
+        limits,
+    })
+}
+
+/// A wardrobe item's or set's ID: 32 lowercase hex digits.
+pub fn is_wardrobe_id(text: &str) -> bool {
+    text.len() == 32 && text.bytes().all(|b| matches!(b, b'0'..=b'9' | b'a'..=b'f'))
+}
+
+/// A wardrobe name as the service keeps it: trimmed, up to 32 characters,
+/// without control, zero-width or direction characters. Empty is allowed
+/// (the interface then shows its own name).
+pub fn wardrobe_name(text: &str) -> Option<String> {
+    let name = text.trim();
+    let plain = name.chars().all(|c| {
+        !c.is_control() && !is_bidi_format(c) && !matches!(c, '\u{200B}'..='\u{200D}' | '\u{FEFF}')
+    });
+    (plain && name.chars().count() <= WARDROBE_NAME_CHARS).then(|| name.to_owned())
 }
 
 /// A texture's name: 64 lowercase hex digits.
@@ -508,6 +796,56 @@ fn data_url(png: &[u8]) -> String {
     )
 }
 
+/// What a request to the service carries.
+enum Payload {
+    None,
+    Png(Vec<u8>),
+    Json(Value),
+}
+
+/// The request a wardrobe change makes, its IDs and names checked first:
+/// only 32 hex digits ever go into the address.
+fn change_request(
+    change: &WardrobeChange,
+) -> Result<(reqwest::Method, String, Payload), SkinsProblem> {
+    let name_of = |name: &str| wardrobe_name(name).ok_or(SkinsProblem::BadName);
+    let at = |of: Of, id: &str| {
+        if is_wardrobe_id(id) {
+            Ok(format!("/v1/me/wardrobe/{}/{id}", of.path()))
+        } else {
+            Err(SkinsProblem::Invalid)
+        }
+    };
+    Ok(match change {
+        WardrobeChange::KeepWorn { kind, name } => (
+            reqwest::Method::POST,
+            "/v1/me/wardrobe/save".to_owned(),
+            Payload::Json(serde_json::json!({ "kind": kind, "name": name_of(name)? })),
+        ),
+        WardrobeChange::KeepSet { name } => (
+            reqwest::Method::POST,
+            "/v1/me/wardrobe/sets".to_owned(),
+            Payload::Json(serde_json::json!({ "name": name_of(name)? })),
+        ),
+        WardrobeChange::Rename { of, id, name } => (
+            reqwest::Method::PATCH,
+            at(*of, id)?,
+            Payload::Json(serde_json::json!({ "name": name_of(name)? })),
+        ),
+        WardrobeChange::Favourite { of, id, favourite } => (
+            reqwest::Method::PATCH,
+            at(*of, id)?,
+            Payload::Json(serde_json::json!({ "favourite": favourite })),
+        ),
+        WardrobeChange::Delete { of, id } => (reqwest::Method::DELETE, at(*of, id)?, Payload::None),
+        WardrobeChange::Wear { of, id } => (
+            reqwest::Method::POST,
+            format!("{}/wear", at(*of, id)?),
+            Payload::None,
+        ),
+    })
+}
+
 /// A file the player picked and has not uploaded yet: the PNG to send.
 struct Picked {
     bytes: Vec<u8>,
@@ -542,25 +880,37 @@ pub struct PickedView {
 
 pub struct Skins {
     http: reqwest::Client,
+    /// For Mojang's session server and texture host.
+    mojang: MojangHttp,
     /// The picked file per kind (skin, cape).
     picked: Mutex<[Option<Picked>; 2]>,
     /// Recently shown textures as `data:` URLs, by hash; the last used last.
     textures: Mutex<VecDeque<(String, String)>>,
     /// Nicks looked up for heads (in lowercase): when, and their skin's hash.
     lookups: Mutex<HashMap<String, (Instant, Option<String>)>>,
-    /// Heads as `data:` URLs, by their skin's hash.
+    /// Heads as `data:` URLs, by their skin's hash (`mojang:<id>` for a
+    /// Mojang texture).
     heads: Mutex<VecDeque<(String, String)>>,
+    /// The player's Microsoft accounts' heads, by profile ID: when asked,
+    /// and the head (none for Mojang's default skin).
+    microsoft: Mutex<HashMap<String, (Instant, Option<String>)>>,
 }
 
 impl Skins {
     pub fn new(app_version: &str) -> Result<Self, String> {
         let http = crate::launcher_account::our_client(app_version, base())?;
+        let mojang = MojangHttp::Public(
+            crate::net::PublicClient::new(crate::net::SourcePolicy::MojangSkins, app_version)
+                .map_err(|e| e.message)?,
+        );
         Ok(Self {
             http,
+            mojang,
             picked: Mutex::new([None, None]),
             textures: Mutex::new(VecDeque::new()),
             lookups: Mutex::new(HashMap::new()),
             heads: Mutex::new(VecDeque::new()),
+            microsoft: Mutex::new(HashMap::new()),
         })
     }
 
@@ -586,21 +936,25 @@ impl Skins {
         token: &str,
         method: reqwest::Method,
         path: &str,
-        png: Option<Vec<u8>>,
+        payload: Payload,
     ) -> Result<Value, SkinsProblem> {
         let mut request = self
             .http
             .request(method, format!("{}{path}", base()))
             .bearer_auth(token)
             .header(reqwest::header::ACCEPT, "application/json");
-        if let Some(png) = png {
-            request = request
-                .header(reqwest::header::CONTENT_TYPE, "image/png")
-                .body(png);
+        match payload {
+            Payload::None => {}
+            Payload::Png(png) => {
+                request = request
+                    .header(reqwest::header::CONTENT_TYPE, "image/png")
+                    .body(png);
+            }
+            Payload::Json(json) => request = request.json(&json),
         }
         let response = request.send().await.map_err(|_| SkinsProblem::Network)?;
         let status = response.status().as_u16();
-        let bytes = body_within(response, MAX_PROFILE_BYTES)
+        let bytes = body_within(response, MAX_ANSWER_BYTES)
             .await
             .map_err(|e| match e {
                 BodyError::Network => SkinsProblem::Network,
@@ -622,7 +976,7 @@ impl Skins {
 
     async fn mine_with(&self, token: &str) -> Result<Wardrobe, SkinsProblem> {
         wardrobe_of(
-            self.call(token, reqwest::Method::GET, "/v1/me", None)
+            self.call(token, reqwest::Method::GET, "/v1/me", Payload::None)
                 .await?,
         )
     }
@@ -767,6 +1121,28 @@ impl Skins {
         slim: bool,
         frame_ms: Option<&[u32]>,
     ) -> Result<Wardrobe, SkinsProblem> {
+        let (bytes, query) = self.picked_upload(kind, slim, frame_ms)?;
+        let answer = self
+            .call(
+                token,
+                reqwest::Method::PUT,
+                &format!("/v1/me/{}?{query}", kind.as_str()),
+                Payload::Png(bytes),
+            )
+            .await?;
+        let wardrobe = wardrobe_of(answer)?;
+        lock(&self.picked)[kind.slot()] = None;
+        self.worn_changed();
+        Ok(wardrobe)
+    }
+
+    /// The PNG picked for `kind` and the query to upload it with.
+    fn picked_upload(
+        &self,
+        kind: Kind,
+        slim: bool,
+        frame_ms: Option<&[u32]>,
+    ) -> Result<(Vec<u8>, String), SkinsProblem> {
         let (bytes, shape, own_ms) = {
             let picked = lock(&self.picked);
             let picked = picked[kind.slot()].as_ref().ok_or(SkinsProblem::Invalid)?;
@@ -774,18 +1150,84 @@ impl Skins {
         };
         // No durations from the interface: the file's own, if it has them.
         let frame_ms = frame_ms.or((!own_ms.is_empty()).then_some(own_ms.as_slice()));
-        let query = upload_query(kind, slim, shape.frames, frame_ms)?;
+        Ok((bytes, upload_query(kind, slim, shape.frames, frame_ms)?))
+    }
+
+    /// The account's wardrobe.
+    pub async fn closet<R: Runtime>(&self, app: &AppHandle<R>) -> Result<Closet, SkinsProblem> {
+        let token = self.token(app).await?;
+        closet_of(
+            self.call(
+                &token,
+                reqwest::Method::GET,
+                "/v1/me/wardrobe",
+                Payload::None,
+            )
+            .await?,
+        )
+    }
+
+    /// Uploads what was picked for `kind` into the wardrobe without wearing
+    /// it (an upload, counted like one); it is forgotten once kept.
+    pub async fn keep_picked<R: Runtime>(
+        &self,
+        app: &AppHandle<R>,
+        kind: Kind,
+        slim: bool,
+        frame_ms: Option<&[u32]>,
+        name: &str,
+    ) -> Result<Closet, SkinsProblem> {
+        let token = self.token(app).await?;
+        self.keep_picked_with(&token, kind, slim, frame_ms, name)
+            .await
+    }
+
+    async fn keep_picked_with(
+        &self,
+        token: &str,
+        kind: Kind,
+        slim: bool,
+        frame_ms: Option<&[u32]>,
+        name: &str,
+    ) -> Result<Closet, SkinsProblem> {
+        let name = wardrobe_name(name).ok_or(SkinsProblem::BadName)?;
+        let (bytes, mut query) = self.picked_upload(kind, slim, frame_ms)?;
+        if !name.is_empty() {
+            query.push_str("&name=");
+            query.extend(url::form_urlencoded::byte_serialize(name.as_bytes()));
+        }
         let answer = self
             .call(
                 token,
-                reqwest::Method::PUT,
+                reqwest::Method::POST,
                 &format!("/v1/me/{}?{query}", kind.as_str()),
-                Some(bytes),
+                Payload::Png(bytes),
             )
             .await?;
-        let wardrobe = wardrobe_of(answer)?;
+        let closet = closet_of(answer)?;
         lock(&self.picked)[kind.slot()] = None;
-        Ok(wardrobe)
+        Ok(closet)
+    }
+
+    /// Changes the wardrobe; the wardrobe as it is then.
+    pub async fn change<R: Runtime>(
+        &self,
+        app: &AppHandle<R>,
+        change: &WardrobeChange,
+    ) -> Result<Closet, SkinsProblem> {
+        let (method, path, payload) = change_request(change)?;
+        let token = self.token(app).await?;
+        let closet = closet_of(self.call(&token, method, &path, payload).await?)?;
+        if matches!(change, WardrobeChange::Wear { .. }) {
+            self.worn_changed();
+        }
+        Ok(closet)
+    }
+
+    /// What the account wears changed: the nicks looked up for heads are
+    /// asked again, so its own head (the rail's) shows the change at once.
+    fn worn_changed(&self) {
+        lock(&self.lookups).clear();
     }
 
     /// Takes the skin or cape off.
@@ -795,15 +1237,17 @@ impl Skins {
         kind: Kind,
     ) -> Result<Wardrobe, SkinsProblem> {
         let token = self.token(app).await?;
-        wardrobe_of(
+        let wardrobe = wardrobe_of(
             self.call(
                 &token,
                 reqwest::Method::DELETE,
                 &format!("/v1/me/{}", kind.as_str()),
-                None,
+                Payload::None,
             )
             .await?,
-        )
+        )?;
+        self.worn_changed();
+        Ok(wardrobe)
     }
 
     /// A worn texture as a `data:` URL; it must be the PNG its hash names.
@@ -915,6 +1359,114 @@ impl Skins {
                 (nick, head)
             })
             .collect())
+    }
+
+    /// The heads of the player's own Microsoft accounts, by profile ID: the
+    /// skin Mojang serves for each, cut as `heads` cuts ours, or none for
+    /// Mojang's default skin or one that cannot be had now (the interface
+    /// draws the default). Kept ten minutes; IDs that cannot be one are
+    /// never sent.
+    pub async fn microsoft_heads(&self, ids: &[String]) -> BTreeMap<String, Option<String>> {
+        let now = Instant::now();
+        let mut out = BTreeMap::new();
+        let mut ask = Vec::new();
+        {
+            let kept = lock(&self.microsoft);
+            for id in ids.iter().take(MAX_MICROSOFT) {
+                if !mojang::is_profile_id(id) || out.contains_key(id) || ask.contains(id) {
+                    continue;
+                }
+                match kept.get(id) {
+                    Some((at, head)) if now.duration_since(*at) < MICROSOFT_HOLDS => {
+                        out.insert(id.clone(), head.clone());
+                    }
+                    _ => ask.push(id.clone()),
+                }
+            }
+        }
+        let found: Vec<(String, Option<Option<String>>)> = futures_util::stream::iter(ask)
+            .map(|id| async move {
+                let head = self.microsoft_head(&id).await;
+                (id, head)
+            })
+            .buffer_unordered(HEADS_AT_ONCE)
+            .collect()
+            .await;
+        let mut kept = lock(&self.microsoft);
+        kept.retain(|_, (at, _)| now.duration_since(*at) < MICROSOFT_HOLDS);
+        for (id, head) in found {
+            // Mojang not reached now: asked again next time.
+            if let Some(head) = &head {
+                kept.insert(id.clone(), (now, head.clone()));
+            }
+            out.insert(id, head.flatten());
+        }
+        out
+    }
+
+    /// One Microsoft account's head: `None` when Mojang could not be asked
+    /// now, `Some(None)` for its default skin or an answer that is not a
+    /// skin's.
+    async fn microsoft_head(&self, id: &str) -> Option<Option<String>> {
+        let (status, body) = self
+            .mojang_get(
+                &format!("{}/session/minecraft/profile/{id}", mojang::SESSION),
+                mojang::MAX_SESSION_BYTES,
+            )
+            .await?;
+        match status {
+            200 => {}
+            // No such profile any more.
+            204 | 404 => return Some(None),
+            _ => return None,
+        }
+        let Some(mojang::Wears::Skin(texture)) = mojang::wears(id, &body) else {
+            return Some(None);
+        };
+        let key = format!("mojang:{texture}");
+        if let Some((_, head)) = lock(&self.heads).iter().find(|(k, _)| *k == key) {
+            return Some(Some(head.clone()));
+        }
+        let (status, png) = self
+            .mojang_get(
+                &format!("{}/texture/{texture}", mojang::TEXTURES),
+                mojang::MAX_SKIN_BYTES,
+            )
+            .await?;
+        if status != 200 {
+            return None;
+        }
+        if !png.starts_with(PNG_SIGNATURE) {
+            return Some(None);
+        }
+        let Ok(head) = tauri::async_runtime::spawn_blocking(move || heads::head(&png))
+            .await
+            .ok()?
+        else {
+            return Some(None);
+        };
+        let url = data_url(&head);
+        let mut heads = lock(&self.heads);
+        if heads.len() >= HEADS_KEPT {
+            heads.pop_front();
+        }
+        heads.push_back((key, url.clone()));
+        Some(Some(url))
+    }
+
+    /// A GET of Mojang's: the status and body (up to `max` bytes), or none
+    /// without an answer. Only the hosts of `MojangSkins` are asked.
+    async fn mojang_get(&self, url: &str, max: usize) -> Got {
+        match &self.mojang {
+            MojangHttp::Public(client) => {
+                let url = url::Url::parse(url).ok()?;
+                let (status, _, body) =
+                    client.get_bounded(client.get(&url).ok()?, max).await.ok()?;
+                Some((status.as_u16(), body))
+            }
+            #[cfg(test)]
+            MojangHttp::Canned(answer) => answer(url).filter(|(_, body)| body.len() <= max),
+        }
     }
 
     /// The hash of the skin each nick wears, from lookups of the last minute
@@ -1922,12 +2474,14 @@ mod tests {
             skins.upload_with("token", Kind::Cape, false, None).await,
             Err(SkinsProblem::Invalid)
         );
+        lock(&skins.lookups).insert("steve".into(), (Instant::now(), None));
         let wardrobe = skins
             .upload_with("token", Kind::Skin, false, Some(&[250]))
             .await
             .unwrap();
         LOCAL_SERVER.with(|s| s.set(None));
         assert_eq!(wardrobe.skin.unwrap().hash, hash);
+        assert!(lock(&skins.lookups).is_empty(), "heads asked again");
         let requests = lock(&requests).clone();
         assert_eq!(requests.len(), 1);
         let (head, body) = &requests[0];
@@ -1976,5 +2530,402 @@ mod tests {
         for hash in ["", "../../v1/me", &"A".repeat(64), &"a".repeat(65)] {
             assert_eq!(skins.texture(hash).await, Err(SkinsProblem::Invalid));
         }
+    }
+
+    fn texture_json(hash: &str, height: u32) -> Value {
+        json!({ "hash": hash, "model": "slim", "width": 64, "height": height,
+            "frames": height / 64, "frame_ms": if height > 64 { json!([100, 200]) } else { json!([]) },
+            "url": format!("https://skins.lapi.sh/v1/textures/{hash}") })
+    }
+
+    /// A wardrobe document as the service sends it.
+    fn closet_json() -> Value {
+        let (skin, cape) = ("a".repeat(64), "b".repeat(64));
+        let mut item = texture_json(&skin, 128);
+        for (key, value) in [
+            ("id", json!("0123456789abcdef0123456789abcdef")),
+            ("kind", json!("skin")),
+            ("name", json!("Летний")),
+            ("favourite", json!(true)),
+            ("created", json!(1_760_000_000)),
+            ("worn", json!(0)),
+        ] {
+            item[key] = value;
+        }
+        let mut cape_item = json!({ "hash": cape, "width": 64, "height": 32, "frames": 1,
+            "frame_ms": [], "id": "f".repeat(32), "kind": "cape", "name": "",
+            "favourite": false, "created": 1_760_000_001, "worn": 1_760_000_002 });
+        cape_item["url"] = json!("x");
+        json!({
+            "nick": "Steve",
+            "skin": texture_json(&skin, 128),
+            "cape": null,
+            "uploads": { "left": 7, "reset": 1800 },
+            "items": [item, cape_item],
+            "sets": [{ "id": "e".repeat(32), "name": "Всё", "favourite": false,
+                "created": 1_760_000_003, "worn": 0, "skin": texture_json(&skin, 128),
+                "cape": null }],
+            "limits": { "skins": 30, "capes": 10, "sets": 20 },
+        })
+    }
+
+    #[test]
+    fn a_wardrobe_answer_is_checked() {
+        let closet = closet_of(closet_json()).unwrap();
+        assert_eq!(
+            closet.worn.uploads,
+            Some(Uploads {
+                left: 7,
+                reset_seconds: 1800
+            })
+        );
+        assert!(closet.worn.skin.as_ref().unwrap().slim);
+        assert_eq!(closet.items.len(), 2);
+        let item = &closet.items[0];
+        assert_eq!(
+            (item.kind, item.name.as_str(), item.favourite),
+            (Kind::Skin, "Летний", true)
+        );
+        assert_eq!(
+            (item.texture.frames, &item.texture.frame_ms[..]),
+            (2, &[100, 200][..])
+        );
+        // A cape has no arms, whatever the answer says.
+        assert!(!closet.items[1].texture.slim);
+        assert_eq!(closet.sets[0].skin, closet.worn.skin);
+        assert_eq!(
+            closet.limits,
+            WardrobeLimits {
+                skins: 30,
+                capes: 10,
+                sets: 20
+            }
+        );
+        // As the page gets it.
+        let shown = serde_json::to_value(&closet).unwrap();
+        assert_eq!(
+            shown["worn"]["uploads"],
+            json!({ "left": 7, "resetSeconds": 1800 })
+        );
+        assert_eq!(shown["items"][0]["texture"]["frameMs"], json!([100, 200]));
+        // The old service's profile has no uploads: none, not an error.
+        let mut old = closet_json();
+        old.as_object_mut().unwrap().remove("uploads");
+        assert_eq!(closet_of(old).unwrap().worn.uploads, None);
+
+        let junk: [(&str, Value); 11] = [
+            ("/items/0/id", json!("../../v1/me")),
+            ("/items/0/id", json!("0123456789ABCDEF0123456789ABCDEF")),
+            ("/items/0/name", json!("a\u{202E}gnp.exe")),
+            ("/items/0/name", json!("x".repeat(33))),
+            ("/items/0/name", json!(" padded ")),
+            ("/items/0/kind", json!("hat")),
+            ("/items/0/hash", json!("../x")),
+            ("/items/0/height", json!(100)),
+            ("/items/0/created", json!(-1)),
+            ("/sets/0/skin", Value::Null),
+            ("/limits/sets", json!(100_000)),
+        ];
+        for (at, value) in junk {
+            let mut bad = closet_json();
+            *bad.pointer_mut(at).unwrap() = value;
+            assert_eq!(closet_of(bad), Err(SkinsProblem::Server), "{at}");
+        }
+        let mut many = closet_json();
+        let item = many["items"][0].clone();
+        many["items"] = json!(vec![item; MAX_KEPT + 1]);
+        assert_eq!(closet_of(many), Err(SkinsProblem::Server));
+        let mut no_items = closet_json();
+        no_items.as_object_mut().unwrap().remove("items");
+        assert_eq!(closet_of(no_items), Err(SkinsProblem::Server));
+    }
+
+    #[test]
+    fn wardrobe_names_follow_the_services_rule() {
+        assert_eq!(wardrobe_name("  Летний  ").as_deref(), Some("Летний"));
+        assert_eq!(wardrobe_name("").as_deref(), Some(""));
+        assert_eq!(
+            wardrobe_name(&"я".repeat(32)).map(|n| n.chars().count()),
+            Some(32)
+        );
+        for bad in [
+            "я".repeat(33),
+            "a\nb".into(),
+            "a\u{200B}b".into(),
+            "a\u{2066}b".into(),
+            "\u{FEFF}a".into(),
+            "a\u{0}".into(),
+        ] {
+            assert_eq!(wardrobe_name(&bad), None, "{bad:?}");
+        }
+    }
+
+    #[test]
+    fn wardrobe_changes_make_their_requests() {
+        let id = "0123456789abcdef0123456789abcdef";
+        let request = |change: Value| {
+            let change: WardrobeChange = serde_json::from_value(change).unwrap();
+            let (method, path, payload) = change_request(&change).unwrap();
+            let body = match payload {
+                Payload::None => Value::Null,
+                Payload::Json(json) => json,
+                Payload::Png(_) => unreachable!(),
+            };
+            (method.to_string(), path, body)
+        };
+        assert_eq!(
+            request(json!({ "action": "keepWorn", "kind": "cape", "name": " Плащ " })),
+            (
+                "POST".into(),
+                "/v1/me/wardrobe/save".into(),
+                json!({ "kind": "cape", "name": "Плащ" })
+            )
+        );
+        assert_eq!(
+            request(json!({ "action": "keepSet", "name": "" })),
+            (
+                "POST".into(),
+                "/v1/me/wardrobe/sets".into(),
+                json!({ "name": "" })
+            )
+        );
+        assert_eq!(
+            request(json!({ "action": "rename", "of": "set", "id": id, "name": "Б" })),
+            (
+                "PATCH".into(),
+                format!("/v1/me/wardrobe/sets/{id}"),
+                json!({ "name": "Б" })
+            )
+        );
+        assert_eq!(
+            request(json!({ "action": "favourite", "of": "item", "id": id, "favourite": true })),
+            (
+                "PATCH".into(),
+                format!("/v1/me/wardrobe/items/{id}"),
+                json!({ "favourite": true })
+            )
+        );
+        assert_eq!(
+            request(json!({ "action": "delete", "of": "item", "id": id })),
+            (
+                "DELETE".into(),
+                format!("/v1/me/wardrobe/items/{id}"),
+                Value::Null
+            )
+        );
+        assert_eq!(
+            request(json!({ "action": "wear", "of": "set", "id": id })),
+            (
+                "POST".into(),
+                format!("/v1/me/wardrobe/sets/{id}/wear"),
+                Value::Null
+            )
+        );
+        // IDs and names are checked before anything is sent.
+        for bad_id in [
+            "",
+            "../../me",
+            &id.to_uppercase(),
+            &format!("{id}0"),
+            "0123456789abcdef0123456789abcde/",
+        ] {
+            let change = WardrobeChange::Wear {
+                of: Of::Item,
+                id: bad_id.to_owned(),
+            };
+            assert!(
+                matches!(change_request(&change), Err(SkinsProblem::Invalid)),
+                "{bad_id}"
+            );
+        }
+        let change = WardrobeChange::KeepSet {
+            name: "x\u{202E}".into(),
+        };
+        assert!(matches!(
+            change_request(&change),
+            Err(SkinsProblem::BadName)
+        ));
+        // The page cannot send what no change is.
+        for junk in [
+            json!({ "action": "upload", "kind": "skin" }),
+            json!({ "action": "wear", "of": "hat", "id": id }),
+            json!({ "action": "wear", "of": "item", "id": id, "path": "/v1/me" }),
+            json!({ "action": "favourite", "of": "item", "id": id }),
+            json!({ "of": "item", "id": id }),
+        ] {
+            assert!(
+                serde_json::from_value::<WardrobeChange>(junk.clone()).is_err(),
+                "{junk}"
+            );
+        }
+    }
+
+    #[test]
+    fn wardrobe_refusals_have_their_codes() {
+        for (status, code, problem) in [
+            (409, "wardrobe_full", SkinsProblem::WardrobeFull),
+            (409, "nothing_worn", SkinsProblem::NothingWorn),
+            (400, "bad_name", SkinsProblem::BadName),
+            (404, "not_found", SkinsProblem::Gone),
+            (404, "", SkinsProblem::Invalid),
+            (429, "rate_limited", SkinsProblem::RateLimited),
+        ] {
+            assert_eq!(
+                problem_of(status, &json!({ "error": code })),
+                problem,
+                "{code}"
+            );
+        }
+        assert_eq!(
+            serde_json::to_value([
+                SkinsProblem::WardrobeFull,
+                SkinsProblem::NothingWorn,
+                SkinsProblem::BadName,
+                SkinsProblem::Gone
+            ])
+            .unwrap(),
+            json!(["wardrobe_full", "nothing_worn", "bad_name", "gone"])
+        );
+    }
+
+    #[tokio::test]
+    async fn a_pick_is_kept_in_the_wardrobe_with_its_name() {
+        let (address, requests) = local_server(200, closet_json()).await;
+        LOCAL_SERVER.with(|s| s.set(Some(Box::leak(address.into_boxed_str()))));
+        let skins = Skins::new("test").unwrap();
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("skin.png");
+        let png = png_of(64, 64);
+        std::fs::write(&path, &png).unwrap();
+        skins.pick(Kind::Skin, path).await.unwrap();
+
+        // A bad name sends nothing and keeps the pick.
+        assert_eq!(
+            skins
+                .keep_picked_with("token", Kind::Skin, true, None, &"x".repeat(33))
+                .await,
+            Err(SkinsProblem::BadName)
+        );
+        assert!(lock(&requests).is_empty());
+        let closet = skins
+            .keep_picked_with("token", Kind::Skin, true, None, " Мой скин & co ")
+            .await
+            .unwrap();
+        assert_eq!(closet.items.len(), 2);
+        // Without a name, no name goes.
+        let again = skins
+            .keep_picked_with("token", Kind::Skin, false, None, "")
+            .await;
+        LOCAL_SERVER.with(|s| s.set(None));
+        assert_eq!(again, Err(SkinsProblem::Invalid), "kept: forgotten");
+        let requests = lock(&requests).clone();
+        assert_eq!(requests.len(), 1);
+        let (head, body) = &requests[0];
+        assert!(
+            head.starts_with(
+                "POST /v1/me/skin?model=slim&frames=1&name=%D0%9C%D0%BE%D0%B9+%D1%81%D0%BA%D0%B8%D0%BD+%26+co HTTP/1.1"
+            ),
+            "{head}"
+        );
+        assert!(
+            head.to_ascii_lowercase()
+                .contains("content-type: image/png")
+        );
+        assert_eq!(body, &png);
+    }
+
+    #[tokio::test]
+    async fn a_wardrobe_change_sends_json_and_reads_the_wardrobe() {
+        let (address, requests) = local_server(200, closet_json()).await;
+        LOCAL_SERVER.with(|s| s.set(Some(Box::leak(address.into_boxed_str()))));
+        let skins = Skins::new("test").unwrap();
+        let change = WardrobeChange::Rename {
+            of: Of::Item,
+            id: "f".repeat(32),
+            name: "Новое".into(),
+        };
+        let (method, path, payload) = change_request(&change).unwrap();
+        let closet = closet_of(skins.call("token", method, &path, payload).await.unwrap());
+        LOCAL_SERVER.with(|s| s.set(None));
+        assert_eq!(closet.unwrap().sets.len(), 1);
+        let (head, body) = lock(&requests)[0].clone();
+        assert!(
+            head.starts_with(&format!(
+                "PATCH /v1/me/wardrobe/items/{} HTTP/1.1",
+                "f".repeat(32)
+            )),
+            "{head}"
+        );
+        assert!(
+            head.to_ascii_lowercase()
+                .contains("content-type: application/json")
+        );
+        assert_eq!(
+            serde_json::from_slice::<Value>(&body).unwrap(),
+            json!({ "name": "Новое" })
+        );
+    }
+
+    #[tokio::test]
+    async fn microsoft_heads_come_from_mojang_and_are_kept() {
+        let (mine, plain, away) = (
+            "0123456789abcdef0123456789abcdef",
+            "f".repeat(32),
+            "e".repeat(32),
+        );
+        let skin = png_of(64, 64);
+        let asked = Arc::new(Mutex::new(Vec::<String>::new()));
+        let mut skins = Skins::new("test").unwrap();
+        let (seen, plain_id, away_id) = (Arc::clone(&asked), plain.clone(), away.clone());
+        skins.mojang = MojangHttp::Canned(Arc::new(move |url: &str| {
+            lock(&seen).push(url.to_owned());
+            let session = "https://sessionserver.mojang.com/session/minecraft/profile/";
+            match url.strip_prefix(session) {
+                Some(id) if id == mine => Some((
+                    200,
+                    mojang::tests::answer(
+                        mine,
+                        json!({ "SKIN": { "url": "http://textures.minecraft.net/texture/ABC" } }),
+                    ),
+                )),
+                Some(id) if id == plain_id => {
+                    Some((200, mojang::tests::answer(&plain_id, json!({}))))
+                }
+                // Mojang does not answer for this one now.
+                Some(id) if id == away_id => None,
+                _ if url == "https://textures.minecraft.net/texture/abc" => {
+                    Some((200, skin.clone()))
+                }
+                _ => Some((404, Vec::new())),
+            }
+        }));
+        let ids: Vec<String> = [mine, &plain, &away, "../../v1/me", mine]
+            .iter()
+            .map(|s| (*s).to_owned())
+            .collect();
+        let heads = skins.microsoft_heads(&ids).await;
+        assert!(
+            heads[mine]
+                .as_deref()
+                .unwrap()
+                .starts_with("data:image/png;base64,")
+        );
+        assert_eq!(heads[&plain], None);
+        assert_eq!(heads[&away], None);
+        assert!(!heads.contains_key("../../v1/me"), "never asked");
+        assert_eq!(lock(&asked).len(), 4, "{:?}", lock(&asked));
+        // Kept for ten minutes, but the one Mojang did not answer is asked again.
+        let again = skins.microsoft_heads(&ids).await;
+        assert_eq!(again, heads);
+        let asked = lock(&asked).clone();
+        assert_eq!(asked.len(), 5);
+        assert!(asked[4].ends_with(&away));
+        // Only these hosts are allowed for it, by the public client's list.
+        let policy = crate::net::SourcePolicy::MojangSkins;
+        for url in &asked[..2] {
+            assert!(policy.allows(&url::Url::parse(url).unwrap()), "{url}");
+        }
+        assert!(!policy.allows(&url::Url::parse("https://skins.lapi.sh/v1/me").unwrap()));
+        assert!(!policy.mirrored());
     }
 }
