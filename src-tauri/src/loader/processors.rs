@@ -545,9 +545,8 @@ fn realms_arguments(inputs: &Step<'_>, args: &mut Vec<String>) -> LauncherResult
         })
         .collect();
     let json = inputs.work_dir.join("realms-version.json");
-    let bytes = serde_json::to_vec(&serde_json::json!({ "libraries": libraries }))
-        .map_err(|_| LauncherError::internal("The Realms library could not be described."))?;
-    std::fs::write(&json, bytes).map_err(|e| storage_error(&e))?;
+    let text = serde_json::json!({ "libraries": libraries }).to_string();
+    std::fs::write(&json, text).map_err(|e| storage_error(&e))?;
     args.extend([
         "--json".to_owned(),
         path_text(&json)?,
