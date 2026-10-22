@@ -1,2 +1,11 @@
 allow-unwrap-in-tests = true
 allow-expect-in-tests = true
+
+# The zip crate's own extraction follows symbolic links and keeps Unix
+# permission bits (RUSTSEC-2026-0367, 0368, 0369); entries are read one by one
+# with our own checks instead.
+disallowed-methods = [
+    { path = "zip::read::ZipArchive::extract", reason = "unsafe extraction; read entries one by one" },
+    { path = "zip::read::ZipArchive::extract_unwrapped_root_dir", reason = "unsafe extraction; read entries one by one" },
+    { path = "zip::read::stream::ZipStreamReader::extract", reason = "unsafe extraction; read entries one by one" },
+]

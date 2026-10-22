@@ -33,7 +33,13 @@ const REPORTS_PER_INSTALL_DAY: i64 = 30;
 pub const UPLOADS_AT_ONCE: usize = 4;
 
 /// Requests counted since the start of the hour, per address and kind.
-type Windows = HashMap<(IpAddr, &'static str), (Instant, u32)>;
+/// Requests counted since the hour began, per address (with its prefix
+/// length) and kind.
+type Windows = HashMap<(IpAddr, u8, &'static str), (Instant, u32)>;
+
+/// An IPv6 /48, a site's whole network where one person can take as many
+/// /64s as they like, gets this many players' allowance.
+const NETWORK_TIMES: u32 = 5;
 
 #[derive(Default)]
 pub struct Limiter {
@@ -56,12 +62,24 @@ fn subject(ip: IpAddr) -> IpAddr {
     }
 }
 
+/// The /48 of an IPv6 address; none for IPv4.
+fn network(ip: IpAddr) -> Option<IpAddr> {
+    match subject(ip) {
+        IpAddr::V4(_) => None,
+        IpAddr::V6(v6) => {
+            let mut segments = v6.segments();
+            segments[3..].fill(0);
+            Some(IpAddr::from(segments))
+        }
+    }
+}
+
 /// The address that stands for "everyone" in the overall limits.
 const ALL: IpAddr = IpAddr::V6(std::net::Ipv6Addr::UNSPECIFIED);
 
 impl Limiter {
     /// Counts one request; false once the hour's allowance of the address,
-    /// or of everyone together, is used.
+    /// of its IPv6 /48, or of everyone together, is used.
     pub fn allow(&self, ip: IpAddr, bucket: &'static str, per_hour: u32, overall: u32) -> bool {
         let mut windows = self
             .windows
@@ -71,16 +89,20 @@ impl Limiter {
         if windows.len() > 100_000 {
             windows.retain(|_, (start, _)| now.duration_since(*start) < Duration::from_secs(3600));
         }
-        let mut count = |key: IpAddr| {
-            let entry = windows.entry((key, bucket)).or_insert((now, 0));
+        let mut count = |key: IpAddr, prefix: u8| {
+            let entry = windows.entry((key, prefix, bucket)).or_insert((now, 0));
             if now.duration_since(entry.0) >= Duration::from_secs(3600) {
                 *entry = (now, 0);
             }
             entry.1 = entry.1.saturating_add(1);
             entry.1
         };
-        // An address over its own limit does not use up everyone's.
-        count(subject(ip)) <= per_hour && count(ALL) <= overall
+        // An address over its own limit does not use up its network's, nor a
+        // network over its limit everyone's.
+        count(subject(ip), 64) <= per_hour
+            && network(ip)
+                .is_none_or(|net| count(net, 48) <= per_hour.saturating_mul(NETWORK_TIMES))
+            && count(ALL, 0) <= overall
     }
 }
 

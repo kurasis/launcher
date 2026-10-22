@@ -39,8 +39,13 @@ pub const UPLOADS_AT_ONCE: usize = 2;
 /// Reviews a player asks about in one request.
 const MAX_STATUS_ITEMS: usize = 50;
 
-/// Requests counted since the window began, per address, kind and window.
-type Windows = HashMap<(IpAddr, &'static str, u64), (Instant, u32)>;
+/// An IPv6 /48, a site's whole network where one person can take as many
+/// /64s as they like, gets this many players' allowance.
+const NETWORK_TIMES: u32 = 5;
+
+/// Requests counted since the window began, per address (with its prefix
+/// length), kind and window.
+type Windows = HashMap<(IpAddr, u8, &'static str, u64), (Instant, u32)>;
 
 #[derive(Default)]
 pub struct Limiter {
@@ -62,12 +67,25 @@ pub fn subject(ip: IpAddr) -> IpAddr {
     }
 }
 
+/// The /48 of an IPv6 address; none for IPv4.
+pub fn network(ip: IpAddr) -> Option<IpAddr> {
+    match subject(ip) {
+        IpAddr::V4(_) => None,
+        IpAddr::V6(v6) => {
+            let mut segments = v6.segments();
+            segments[3..].fill(0);
+            Some(IpAddr::from(segments))
+        }
+    }
+}
+
 /// The address that stands for "everyone" in the overall limits.
 const ALL: IpAddr = IpAddr::V6(std::net::Ipv6Addr::UNSPECIFIED);
 
 impl Limiter {
     /// Counts one request; false once the window's allowance of the address,
-    /// or of everyone together (`overall`, when given), is used.
+    /// of its IPv6 /48, or of everyone together (`overall`, when given), is
+    /// used.
     pub fn allow(
         &self,
         ip: IpAddr,
@@ -82,13 +100,13 @@ impl Limiter {
             .unwrap_or_else(std::sync::PoisonError::into_inner);
         let now = Instant::now();
         if windows.len() > 100_000 {
-            windows.retain(|(_, _, secs), (start, _)| {
+            windows.retain(|(_, _, _, secs), (start, _)| {
                 now.duration_since(*start) < Duration::from_secs(*secs)
             });
         }
-        let mut count = |key: IpAddr| {
+        let mut count = |key: IpAddr, prefix: u8| {
             let entry = windows
-                .entry((key, bucket, window.as_secs()))
+                .entry((key, prefix, bucket, window.as_secs()))
                 .or_insert((now, 0));
             if now.duration_since(entry.0) >= window {
                 *entry = (now, 0);
@@ -96,8 +114,11 @@ impl Limiter {
             entry.1 = entry.1.saturating_add(1);
             entry.1
         };
-        // An address over its own limit does not use up everyone's.
-        count(subject(ip)) <= each && overall.is_none_or(|all| count(ALL) <= all)
+        // An address over its own limit does not use up its network's, nor a
+        // network over its limit everyone's.
+        count(subject(ip), 64) <= each
+            && network(ip).is_none_or(|net| count(net, 48) <= each.saturating_mul(NETWORK_TIMES))
+            && overall.is_none_or(|all| count(ALL, 0) <= all)
     }
 }
 

@@ -278,37 +278,16 @@ pub fn token_hash(token: &str) -> String {
 /// Proofs older or newer than this are refused.
 pub const PROOF_WINDOW: i64 = 60;
 
-/// Proof IDs seen in the window, so a captured proof cannot be replayed.
-#[derive(Default)]
-pub struct Replays {
-    seen: Mutex<HashMap<String, Instant>>,
-}
-
-impl Replays {
-    /// True the first time `jti` is seen.
-    pub fn first(&self, jti: &str) -> bool {
-        let mut seen = lock(&self.seen);
-        let now = Instant::now();
-        if seen.len() > 100_000 {
-            seen.retain(|_, at| now.duration_since(*at) < Duration::from_secs(300));
-        }
-        if seen.contains_key(jti) {
-            return false;
-        }
-        seen.insert(jti.to_owned(), now);
-        true
-    }
-}
-
-/// Checks a DPoP proof for `method` and `url` bound to `access_token`.
-/// Returns the device key it was made with.
+/// Checks a DPoP proof for `method` and `url` bound to `access_token`;
+/// `first` says whether its `jti` (made at `iat`) is new, so a captured proof
+/// cannot be replayed. Returns the device key it was made with.
 pub fn verify_proof(
     proof: &str,
     method: &str,
     url: &str,
     access_token: &str,
     now: i64,
-    replays: &Replays,
+    first: impl FnOnce(&str, i64) -> bool,
 ) -> Option<String> {
     let (header, _) = parts(proof)?;
     if header.get("typ")?.as_str()? != "dpop+jwt" {
@@ -322,8 +301,7 @@ pub fn verify_proof(
     let bound = payload.get("htm")?.as_str()? == method
         && payload.get("htu")?.as_str()? == url
         && payload.get("ath")?.as_str()? == token_hash(access_token);
-    (fresh && bound && (16..=128).contains(&jti.len()) && replays.first(jti))
-        .then(|| key_text(&key))
+    (fresh && bound && (16..=128).contains(&jti.len()) && first(jti, iat)).then(|| key_text(&key))
 }
 
 #[cfg(test)]
@@ -372,16 +350,17 @@ mod tests {
     #[test]
     fn proofs_are_bound_fresh_and_single_use() {
         let device = SigningKey::from_bytes(&[7; 32]);
-        let replays = Replays::default();
+        let seen = std::cell::RefCell::new(std::collections::HashSet::new());
+        let replays = |jti: &str, _| seen.borrow_mut().insert(jti.to_owned());
         let url = "https://worlds.lapi.sh/v1/rooms/r/tickets";
         let now = 1_000_000;
         let good = proof(&device, "POST", url, "tok", now);
         assert_eq!(
-            verify_proof(&good, "POST", url, "tok", now, &replays),
+            verify_proof(&good, "POST", url, "tok", now, replays),
             Some(key_text(&device.verifying_key()))
         );
         assert_eq!(
-            verify_proof(&good, "POST", url, "tok", now, &replays),
+            verify_proof(&good, "POST", url, "tok", now, replays),
             None,
             "replay"
         );
@@ -393,7 +372,7 @@ mod tests {
             ("POST", url, "tok", now + 61),
         ] {
             let p = proof(&device, "POST", url, "tok", iat);
-            assert_eq!(verify_proof(&p, method, u, token, now, &replays), None);
+            assert_eq!(verify_proof(&p, method, u, token, now, replays), None);
         }
         // Signed by another key than the one in its header.
         let other = SigningKey::from_bytes(&[8; 32]);
@@ -403,7 +382,7 @@ mod tests {
             &serde_json::json!({"jti": "0123456789abcdef", "htm": "POST", "htu": url, "iat": now, "ath": token_hash("tok")}),
         );
         assert_eq!(
-            verify_proof(&forged, "POST", url, "tok", now, &replays),
+            verify_proof(&forged, "POST", url, "tok", now, replays),
             None
         );
         let none_alg = good.replacen(
@@ -412,7 +391,7 @@ mod tests {
             1,
         );
         assert_eq!(
-            verify_proof(&none_alg, "POST", url, "tok", now, &replays),
+            verify_proof(&none_alg, "POST", url, "tok", now, replays),
             None
         );
     }
