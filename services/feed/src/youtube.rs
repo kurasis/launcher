@@ -26,6 +26,9 @@ pub struct Video {
     pub date: String,
     /// A YouTube Short.
     pub short: bool,
+    /// Its length in seconds, from the Data API (RSS has none).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub seconds: Option<u32>,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -149,6 +152,7 @@ pub fn parse_rss(xml: &str, channel_id: &str) -> Result<Channel, String> {
                             .format("%Y-%m-%dT%H:%M:%SZ")
                             .to_string(),
                         short,
+                        seconds: None,
                     });
                 }
                 path.pop();
@@ -263,8 +267,27 @@ pub fn id_in_page(page: &str) -> Option<String> {
     None
 }
 
-/// The address of the channel's picture in a channel page: on YouTube's
-/// picture hosts only, over https.
+/// A channel picture's address: on YouTube's picture hosts only, over
+/// https, plain (no escapes, entities, queries or user names).
+pub fn picture_url(raw: &str) -> Option<String> {
+    if raw.len() > MAX_AVATAR_URL
+        || !raw
+            .bytes()
+            .all(|b| b.is_ascii_alphanumeric() || b"-._~/:=".contains(&b))
+    {
+        return None;
+    }
+    let url = url::Url::parse(raw).ok()?;
+    (url.scheme() == "https"
+        && url.port().is_none()
+        && matches!(
+            url.host_str(),
+            Some("yt3.googleusercontent.com" | "yt3.ggpht.com")
+        ))
+    .then(|| url.into())
+}
+
+/// The address of the channel's picture in a channel page.
 pub fn avatar_in_page(page: &str) -> Option<String> {
     for marker in [
         "<meta property=\"og:image\" content=\"",
@@ -274,29 +297,12 @@ pub fn avatar_in_page(page: &str) -> Option<String> {
             continue;
         };
         let rest = &page[at + marker.len()..];
-        let Some(raw) = rest
+        let found = rest
             .find('"')
             .filter(|end| *end <= MAX_AVATAR_URL)
-            .map(|end| &rest[..end])
-        else {
-            continue;
-        };
-        // Plain addresses only: no escapes, entities, queries or user names.
-        if !raw
-            .bytes()
-            .all(|b| b.is_ascii_alphanumeric() || b"-._~/:=".contains(&b))
-        {
-            continue;
-        }
-        if let Ok(url) = url::Url::parse(raw)
-            && url.scheme() == "https"
-            && url.port().is_none()
-            && matches!(
-                url.host_str(),
-                Some("yt3.googleusercontent.com" | "yt3.ggpht.com")
-            )
-        {
-            return Some(url.into());
+            .and_then(|end| picture_url(&rest[..end]));
+        if found.is_some() {
+            return found;
         }
     }
     None

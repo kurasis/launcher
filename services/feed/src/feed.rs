@@ -20,6 +20,7 @@ use crate::images::{self, Images};
 use crate::mojang::{self, Note, Version};
 use crate::twitch::{self, Stream, Twitch};
 use crate::youtube::{self, Channel, Video};
+use crate::ytdata::DataApi;
 
 /// Feed format; the launcher drops what it does not know.
 pub const FORMAT: u32 = 1;
@@ -57,6 +58,13 @@ pub const PAGE_DEFAULT: usize = 20;
 pub const AVATAR_RETRY: Duration = Duration::from_secs(10 * 60);
 /// Channel picture lookups remembered at once.
 const AVATAR_TRIES: usize = 10_000;
+/// Video lengths asked of the Data API in one refresh of our channels.
+const LENGTHS_PER_REFRESH: usize = 1000;
+/// A video YouTube gave no length for (live, not yet aired, removed) is
+/// asked again after this.
+const NO_LENGTH_RETRY: Duration = Duration::from_secs(6 * 3600);
+/// Videos without a length remembered at once.
+const NO_LENGTHS: usize = 20_000;
 
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct Saved {
@@ -112,6 +120,10 @@ pub struct Feed {
     avatar_tries: Mutex<HashMap<String, Instant>>,
     pub twitch: tokio::sync::Mutex<Option<Twitch>>,
     pub deepl: Option<DeepL>,
+    /// YouTube's Data API: video lengths, channel pictures.
+    pub data_api: Option<DataApi>,
+    /// Videos the Data API gave no length for, and when.
+    no_length: Mutex<HashMap<String, Instant>>,
 }
 
 pub fn now_text() -> String {
@@ -154,6 +166,7 @@ impl Feed {
         http: reqwest::Client,
         twitch: Option<Twitch>,
         deepl: Option<DeepL>,
+        data_api: Option<DataApi>,
     ) -> Result<Self, String> {
         std::fs::create_dir_all(dir.join("notes")).map_err(|e| e.to_string())?;
         let saved: Saved = read_json(&dir.join("state.json")).unwrap_or_default();
@@ -200,6 +213,8 @@ impl Feed {
             avatar_tries: Mutex::new(HashMap::new()),
             twitch: tokio::sync::Mutex::new(twitch),
             deepl,
+            data_api,
+            no_length: Mutex::new(HashMap::new()),
         })
     }
 
@@ -344,6 +359,25 @@ impl Feed {
         if answered == 0 && !self.editorial.channels.is_empty() {
             return Err("no channel answered".to_owned());
         }
+        let missing: Vec<String> = lock(&self.saved)
+            .channels
+            .values()
+            .flat_map(|c| c.videos.iter())
+            .filter(|v| v.seconds.is_none())
+            .map(|v| v.id.clone())
+            .collect();
+        let lengths = self.lengths(missing, LENGTHS_PER_REFRESH).await;
+        if !lengths.is_empty() {
+            for video in lock_mut(&self.saved)
+                .channels
+                .values_mut()
+                .flat_map(|c| c.videos.iter_mut())
+            {
+                if let Some(s) = lengths.get(&video.id) {
+                    video.seconds = Some(*s);
+                }
+            }
+        }
         self.mark("youtube");
         self.save();
         Ok(())
@@ -359,6 +393,58 @@ impl Feed {
 
     pub fn video_known(&self, id: &str) -> bool {
         lock(&self.videos).contains(id)
+    }
+
+    /// The lengths of up to `max` of these videos from the Data API, in
+    /// seconds; none without its key or past the day's quota. A video given
+    /// no length is not asked again for `NO_LENGTH_RETRY`.
+    pub async fn lengths(&self, ids: Vec<String>, max: usize) -> HashMap<String, u32> {
+        let Some(api) = &self.data_api else {
+            return HashMap::new();
+        };
+        let wanted: Vec<String> = {
+            let mut no_length = self
+                .no_length
+                .lock()
+                .unwrap_or_else(std::sync::PoisonError::into_inner);
+            if no_length.len() >= NO_LENGTHS {
+                no_length.retain(|_, asked| asked.elapsed() < NO_LENGTH_RETRY);
+                if no_length.len() >= NO_LENGTHS {
+                    no_length.clear();
+                }
+            }
+            let mut seen = HashSet::new();
+            ids.into_iter()
+                .filter(|id| {
+                    no_length
+                        .get(id)
+                        .is_none_or(|asked| asked.elapsed() >= NO_LENGTH_RETRY)
+                })
+                .filter(|id| seen.insert(id.clone()))
+                .take(max)
+                .collect()
+        };
+        if wanted.is_empty() {
+            return HashMap::new();
+        }
+        let found = match api.lengths(&self.http, &wanted).await {
+            Ok(found) => found,
+            Err(e) => {
+                eprintln!("video lengths: {e}");
+                return HashMap::new();
+            }
+        };
+        let now = Instant::now();
+        let mut no_length = self
+            .no_length
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        for id in wanted {
+            if !found.contains_key(&id) {
+                no_length.insert(id, now);
+            }
+        }
+        found
     }
 
     /// A channel of ours or one a player lately named.
@@ -398,6 +484,12 @@ impl Feed {
     pub async fn youtube_avatar(&self, id: &str) -> Option<String> {
         if !self.may_look_up(format!("ya:{id}")) {
             return None;
+        }
+        // One unit of the Data API's quota instead of a whole channel page.
+        if let Some(api) = &self.data_api
+            && let Ok(Some(url)) = api.channel_picture(&self.http, id).await
+        {
+            return Some(url);
         }
         youtube::avatar(&self.http, id).await.ok()
     }
@@ -788,41 +880,70 @@ impl Feed {
                 .map(|id| async move { (id.clone(), youtube::fetch(&self.http, id).await) }),
         )
         .await;
-        let mut own = self
-            .own
-            .lock()
-            .unwrap_or_else(std::sync::PoisonError::into_inner);
-        for (id, result) in fetched {
-            if let Ok(channel) = result {
-                self.know_videos(&channel.videos);
-                let now = Instant::now();
-                own.insert(
-                    id,
-                    OwnChannel {
-                        channel,
-                        fetched: now,
-                        used: now,
-                    },
-                );
+        let mut videos: Vec<Video> = {
+            let mut own = self
+                .own
+                .lock()
+                .unwrap_or_else(std::sync::PoisonError::into_inner);
+            for (id, result) in fetched {
+                if let Ok(mut channel) = result {
+                    self.know_videos(&channel.videos);
+                    // Lengths already known stay with their videos.
+                    if let Some(before) = own.get(&id) {
+                        channel.videos = keep_videos(channel.videos, before.channel.videos.clone());
+                    }
+                    let now = Instant::now();
+                    own.insert(
+                        id,
+                        OwnChannel {
+                            channel,
+                            fetched: now,
+                            used: now,
+                        },
+                    );
+                }
             }
-        }
-        let mut videos: Vec<Video> = Vec::new();
-        for id in ids {
-            if let Some(entry) = own.get_mut(id) {
-                entry.used = Instant::now();
-                videos.extend(entry.channel.videos.iter().cloned());
+            let mut videos: Vec<Video> = Vec::new();
+            for id in ids {
+                if let Some(entry) = own.get_mut(id) {
+                    entry.used = Instant::now();
+                    videos.extend(entry.channel.videos.iter().cloned());
+                }
             }
-        }
-        if own.len() > OWN_CHANNELS {
-            let mut by_use: Vec<(String, Instant)> =
-                own.iter().map(|(k, v)| (k.clone(), v.used)).collect();
-            by_use.sort_by_key(|(_, used)| *used);
-            for (id, _) in by_use.into_iter().take(own.len() - OWN_CHANNELS) {
-                own.remove(&id);
+            if own.len() > OWN_CHANNELS {
+                let mut by_use: Vec<(String, Instant)> =
+                    own.iter().map(|(k, v)| (k.clone(), v.used)).collect();
+                by_use.sort_by_key(|(_, used)| *used);
+                for (id, _) in by_use.into_iter().take(own.len() - OWN_CHANNELS) {
+                    own.remove(&id);
+                }
             }
-        }
+            videos
+        };
         videos.sort_by(|a, b| b.date.cmp(&a.date));
         videos.truncate(VIDEOS);
+        let missing = videos
+            .iter()
+            .filter(|v| v.seconds.is_none())
+            .map(|v| v.id.clone())
+            .collect();
+        let lengths = self.lengths(missing, VIDEOS).await;
+        if !lengths.is_empty() {
+            for video in &mut videos {
+                video.seconds = video.seconds.or_else(|| lengths.get(&video.id).copied());
+            }
+            let mut own = self
+                .own
+                .lock()
+                .unwrap_or_else(std::sync::PoisonError::into_inner);
+            for id in ids {
+                if let Some(entry) = own.get_mut(id) {
+                    for video in &mut entry.channel.videos {
+                        video.seconds = video.seconds.or_else(|| lengths.get(&video.id).copied());
+                    }
+                }
+            }
+        }
         videos.iter().map(video_card).collect()
     }
 
@@ -868,6 +989,13 @@ impl Feed {
             "news": saved.news.len(),
             "channels": saved.channels.len(),
             "videos": saved.channels.values().map(|c| c.videos.len()).sum::<usize>(),
+            "lengths": saved
+                .channels
+                .values()
+                .flat_map(|c| c.videos.iter())
+                .filter(|v| v.seconds.is_some())
+                .count(),
+            "dataApiUnits": self.data_api.as_ref().map_or(0, DataApi::spent),
             "streams": saved.streams.values().map(Vec::len).sum::<usize>(),
             "translations": lock(&self.translations).len(),
             "ownChannels": self.own.lock().map(|o| o.len()).unwrap_or(0),
@@ -1051,10 +1179,21 @@ pub fn cursor(raw: &str) -> Option<(String, String)> {
 }
 
 /// Fresh videos first, then those kept from before that the fresh list no
-/// longer has; newest first, at most `CHANNEL_VIDEOS`.
+/// longer has; newest first, at most `CHANNEL_VIDEOS`. A fresh video keeps
+/// the length found for it before.
 pub fn keep_videos(fresh: Vec<Video>, kept: Vec<Video>) -> Vec<Video> {
     let ids: HashSet<String> = fresh.iter().map(|v| v.id.clone()).collect();
-    let mut videos = fresh;
+    let lengths: HashMap<&str, u32> = kept
+        .iter()
+        .filter_map(|v| Some((v.id.as_str(), v.seconds?)))
+        .collect();
+    let mut videos: Vec<Video> = fresh
+        .into_iter()
+        .map(|mut v| {
+            v.seconds = v.seconds.or_else(|| lengths.get(v.id.as_str()).copied());
+            v
+        })
+        .collect();
     videos.extend(kept.into_iter().filter(|v| !ids.contains(&v.id)));
     videos.sort_by(|a, b| b.date.cmp(&a.date));
     videos.truncate(CHANNEL_VIDEOS);
@@ -1074,6 +1213,9 @@ fn video_card(video: &Video) -> Value {
     });
     if video.short {
         card["imageTall"] = json!(format!("ys/{}.jpg", video.id));
+    }
+    if let Some(seconds) = video.seconds {
+        card["duration"] = json!(seconds);
     }
     card
 }

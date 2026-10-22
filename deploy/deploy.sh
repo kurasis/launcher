@@ -13,7 +13,7 @@
 # they differ. For the mirror and mods, the quota goes to settings.json, which
 # the service reads every minute. upd is a command, not a process: its release is
 # installed with the update public key and nothing is restarted. oauth (Turnstile,
-# SMTP), mods (proxies to the sources), feed (DeepL, Twitch), worlds (the
+# SMTP), mods (proxies to the sources), feed (DeepL, Twitch, YouTube), worlds (the
 # relay's token) and reviews (DeepL, for the owner's --translate) read their
 # secrets from standard input with --secrets, as KEY=value lines, into
 # secrets.env; they never appear in a command line or a log.
@@ -52,7 +52,7 @@ case "$SERVICE" in
         ;;
     feed)
         PORT=8787
-        [ "$EXTRA" = --secrets ] && SECRETS='^LAPI_FEED_(DEEPL_KEY|TWITCH_CLIENT_ID|TWITCH_SECRET)=[^[:cntrl:]]{0,500}$'
+        [ "$EXTRA" = --secrets ] && SECRETS='^LAPI_FEED_(DEEPL_KEY|TWITCH_CLIENT_ID|TWITCH_SECRET|YOUTUBE_KEY)=[^[:cntrl:]]{0,500}$'
         ;;
     *) echo "unknown service $SERVICE"; exit 1 ;;
 esac
