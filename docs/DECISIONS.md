@@ -858,6 +858,12 @@ message` plus a stack trace), with the event's level.
     extended timestamp, so the outputs of Forge 1.13–1.16 never match the declared
     hashes. The game itself still runs on the chosen Java. The same holds for a world's
     server;
+  - before a processor runs, a declared output that does not match and the tool's
+    `.cache` file next to it are removed: jarsplitter 1.1.0 (Forge 1.13.2) trusts its
+    cache and would keep an output written wrongly by an earlier run;
+  - `DEOBF_REALMS` (Forge 1.14.3) looks for the version JSON next to the game jar and
+    for libraries three folders up, as in a vanilla game folder; the launcher passes
+    `--json` (the game's Realms library only) and `--libs` (the Maven tree) instead;
   - `DOWNLOAD_MOJMAPS` that would copy Mojang's mappings unchanged is replaced by the
     verified `client_mappings` download from the plan. The sanitizing variant (Forge
     1.21+) runs as shipped and downloads the mappings from Mojang itself, through the
