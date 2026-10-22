@@ -823,4 +823,21 @@ describe('App', () => {
     // Focus can land on the screen itself when what the palette was opened from is gone.
     expect(screen.getByRole('main')).toHaveAttribute('tabindex', '-1');
   });
+  it('closes the More menu when focus moves on, not when the window loses it', async () => {
+    fakeBackend(snapshotFixture());
+    render(<App />);
+    await screen.findByText(/No installations yet/);
+    fireEvent.click(moreButton());
+    const menu = screen.getByRole('menu');
+    const first = within(menu).getAllByRole('menuitem')[0];
+    if (first === undefined) throw new Error('The More menu is empty.');
+    // The window losing focus: no element gets it.
+    fireEvent.blur(first, { relatedTarget: null });
+    expect(screen.getByRole('menu')).toBeVisible();
+    // Ctrl+K: the palette's field takes focus and the menu closes behind it.
+    fireEvent.keyDown(window, { key: 'k', code: 'KeyK', ctrlKey: true });
+    const field = await screen.findByRole('combobox', { name: 'Find in the launcher' });
+    expect(field).toHaveFocus();
+    expect(screen.queryByRole('menu')).toBeNull();
+  });
 });

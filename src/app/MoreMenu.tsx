@@ -153,9 +153,11 @@ export function MoreMenu({
       className={styles.menuRoot}
       ref={rootRef}
       onBlur={(event) => {
-        // Focus moving out (to the palette after Ctrl+K, say) closes the menu too.
+        // Focus moving to another element (the palette after Ctrl+K, say) closes the
+        // menu. Focus leaving the window has no target and keeps it open: Windows UI
+        // Automation, which the package smoke test drives the menu with, does that.
         const to = event.relatedTarget;
-        if (open && !(to instanceof Node && event.currentTarget.contains(to))) setActive(null);
+        if (open && to instanceof Node && !event.currentTarget.contains(to)) setActive(null);
       }}
     >
       <button
