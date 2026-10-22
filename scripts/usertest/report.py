@@ -31,6 +31,9 @@ def main():
         items = [i for i in part["items"].split(",") if i]
         found = {}
         path = parts_dir / f"usertest-results-{part['part']}" / "results.json"
+        if not path.is_file() and len(plan) == 1:
+            # download-artifact puts a single matching artifact straight into the folder.
+            path = parts_dir / "results.json"
         if path.is_file():
             data = json.loads(path.read_text(encoding="utf-8-sig") or "[]")
             for entry in data if isinstance(data, list) else [data]:
