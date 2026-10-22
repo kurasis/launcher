@@ -274,13 +274,13 @@ fn an_import_copies_the_world_and_leaves_the_original() {
     let found = importable(&root, std::slice::from_ref(&fabric));
     assert_eq!(found.len(), 1);
     assert_eq!(found[0].loader, fabric.loader);
-    let forge = instance(
+    let optifine = instance(
         id,
-        loader(crate::loader::LoaderKind::Forge, "1.21.1-52.1.0"),
+        loader(crate::loader::LoaderKind::OptiFine, "1.20.1_HD_U_I6"),
     );
-    assert!(importable(&root, &[forge]).is_empty());
+    assert!(importable(&root, &[optifine]).is_empty());
     let mut untested = fabric.clone();
-    untested.version_id = "1.21.4".into();
+    untested.version_id = "1.13.2".into();
     assert!(importable(&root, &[untested]).is_empty());
 }
 

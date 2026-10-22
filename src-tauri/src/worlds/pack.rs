@@ -64,27 +64,40 @@ const MAX_NAMED: usize = 20;
 const INDEX: &str = "modrinth.index.json";
 const ROOM_META: &str = "catalog.json";
 
-/// The releases whose server with this loader passed the live test in CI
-/// (`World server <loader> <version>`); others are refused before anything is
-/// downloaded. Snapshots never: loaders and mods rarely follow them.
-const TESTED: &[(LoaderKind, &[&str])] = &[
-    (LoaderKind::Fabric, &["1.20.1", "1.21.1", "26.3"]),
-    (LoaderKind::Quilt, &["1.20.1", "1.21.1", "26.3"]),
-    (LoaderKind::NeoForge, &["1.21.1", "26.3"]),
-    (LoaderKind::Forge, &["1.12.2", "1.16.5", "1.20.1", "26.3"]),
-];
+/// The releases whose server with each loader passed the live test in CI
+/// (`World server <loader> <version>`), from `tested.json`; others are refused
+/// before anything is downloaded. Snapshots never: loaders and mods rarely
+/// follow them. Every change runs the test for `on_every_change`, the nightly
+/// run for all of `tested`, and a release joins `tested` only once it passed.
+const TESTED_FILE: &str = include_str!("tested.json");
+
+#[derive(Default, Deserialize)]
+struct TestedFile {
+    tested: HashMap<LoaderKind, Vec<String>>,
+    #[cfg_attr(not(test), allow(dead_code))]
+    on_every_change: HashMap<LoaderKind, Vec<String>>,
+}
+
+fn tested_file() -> &'static TestedFile {
+    // Its tests read it; were it broken, no release would be offered.
+    static FILE: std::sync::LazyLock<TestedFile> =
+        std::sync::LazyLock::new(|| serde_json::from_str(TESTED_FILE).unwrap_or_default());
+    &FILE
+}
+
+fn tested_releases(kind: LoaderKind) -> Option<&'static [String]> {
+    tested_file().tested.get(&kind).map(Vec::as_slice)
+}
 
 /// Whether worlds with this loader are offered for this release.
 pub fn tested(kind: LoaderKind, minecraft: &str) -> bool {
-    TESTED
-        .iter()
-        .any(|(k, versions)| *k == kind && versions.contains(&minecraft))
+    tested_releases(kind).is_some_and(|releases| releases.iter().any(|r| r == minecraft))
 }
 
 /// Refuses a loader or release worlds with mods do not support yet.
 pub fn check_supported(loader: &LoaderChoice, minecraft: &str) -> LauncherResult<()> {
     loader.validate()?;
-    if !TESTED.iter().any(|(k, _)| *k == loader.kind) {
+    if tested_releases(loader.kind).is_none() {
         return Err(LauncherError::invalid_input(
             "OptiFine has no server: a world with mods needs Fabric, Quilt, Forge or NeoForge.",
         ));
@@ -92,20 +105,14 @@ pub fn check_supported(loader: &LoaderChoice, minecraft: &str) -> LauncherResult
     if !tested(loader.kind, minecraft) {
         return Err(LauncherError::templated(
             ErrorCode::InvalidInput,
-            "Worlds with mods are available for Minecraft {versions} for now.",
-            crate::error::params([("versions", supported_versions(loader.kind).into())]),
+            "Worlds with {loader} mods are not available for Minecraft {version} yet.",
+            crate::error::params([
+                ("loader", loader.kind.name().into()),
+                ("version", minecraft.into()),
+            ]),
         ));
     }
     Ok(())
-}
-
-fn supported_versions(kind: LoaderKind) -> String {
-    TESTED
-        .iter()
-        .filter(|(k, _)| *k == kind)
-        .flat_map(|(_, v)| v.iter().copied())
-        .collect::<Vec<_>>()
-        .join(", ")
 }
 
 /// Where a file runs.

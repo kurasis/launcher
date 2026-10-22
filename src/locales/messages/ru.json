@@ -2721,7 +2721,7 @@
     "Too many tries. Wait a minute.": "Слишком много попыток. Подождите минуту.",
     "Waiting for the world stopped.": "Ожидание мира прервалось.",
     "Worlds with friends need a Microsoft account that owns Minecraft. Sign in with it in the launcher once.": "Для миров с друзьями нужен аккаунт Microsoft с купленным Minecraft. Один раз войдите с ним в лаунчере.",
-    "Worlds with mods are available for Minecraft {versions} for now.": "Миры с модами пока доступны для Minecraft {versions}.",
+    "Worlds with {loader} mods are not available for Minecraft {version} yet.": "Миры с модами {loader} пока недоступны для Minecraft {version}.",
     "worlds.lapi.sh cannot be reached.": "worlds.lapi.sh недоступен.",
     "worlds.lapi.sh is not working right now.": "worlds.lapi.sh сейчас не работает.",
     "worlds.lapi.sh refused this.": "worlds.lapi.sh отказал.",

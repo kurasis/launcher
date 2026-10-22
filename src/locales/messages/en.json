@@ -2790,7 +2790,7 @@
     "Window size must be {minWidth}–{maxWidth} × {minHeight}–{maxHeight} pixels.": "Window size must be {minWidth}–{maxWidth} × {minHeight}–{maxHeight} pixels.",
     "Worlds are not available for this Minecraft version yet.": "Worlds are not available for this Minecraft version yet.",
     "Worlds with friends need a Microsoft account that owns Minecraft. Sign in with it in the launcher once.": "Worlds with friends need a Microsoft account that owns Minecraft. Sign in with it in the launcher once.",
-    "Worlds with mods are available for Minecraft {versions} for now.": "Worlds with mods are available for Minecraft {versions} for now.",
+    "Worlds with {loader} mods are not available for Minecraft {version} yet.": "Worlds with {loader} mods are not available for Minecraft {version} yet.",
     "Write a little more: the message needs at least 20 characters.": "Write a little more: the message needs at least 20 characters.",
     "Writing a cache file": "Writing a cache file",
     "Writing the modpack": "Writing the modpack",

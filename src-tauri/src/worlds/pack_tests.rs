@@ -525,57 +525,94 @@ fn sides_come_from_the_jar_then_the_catalog() {
 
 #[test]
 fn only_tested_loaders_and_releases_are_offered() {
-    let fabric = fabric();
-    for version in ["1.20.1", "1.21.1", "26.3"] {
-        assert!(check_supported(&fabric, version).is_ok(), "{version}");
-    }
-    for version in ["1.21.4", "26.4-snapshot-5", "24w14a", "1.12.2", ""] {
-        assert!(check_supported(&fabric, version).is_err(), "{version}");
-    }
-    let quilt = LoaderChoice {
-        kind: LoaderKind::Quilt,
-        version: "0.30.1".into(),
+    let choice = |kind, version: &str| LoaderChoice {
+        kind,
+        version: version.into(),
     };
-    for version in ["1.20.1", "1.21.1", "26.3"] {
-        assert!(check_supported(&quilt, version).is_ok(), "{version}");
+    let kinds = [
+        (LoaderKind::Fabric, "0.17.2"),
+        (LoaderKind::Quilt, "0.30.1"),
+        (LoaderKind::NeoForge, "21.1.264"),
+        (LoaderKind::Forge, "1.20.1-47.4.10"),
+    ];
+    for (kind, version) in kinds {
+        let loader = choice(kind, version);
+        let releases = tested_releases(kind).expect("a loader with servers");
+        assert!(!releases.is_empty(), "{kind:?}");
+        for release in releases {
+            assert!(
+                check_supported(&loader, release).is_ok(),
+                "{kind:?} {release}"
+            );
+        }
+        // Snapshots, releases older than every loader, junk.
+        for release in [
+            "26.4-snapshot-5",
+            "24w14a",
+            "1.6.4",
+            "",
+            "1.21.1 ",
+            "../1.21.1",
+        ] {
+            assert!(
+                check_supported(&loader, release).is_err(),
+                "{kind:?} {release:?}"
+            );
+        }
     }
-    assert!(check_supported(&quilt, "1.21.4").is_err());
-    let neoforge = LoaderChoice {
-        kind: LoaderKind::NeoForge,
-        version: "21.1.264".into(),
-    };
-    for version in ["1.21.1", "26.3"] {
-        assert!(check_supported(&neoforge, version).is_ok(), "{version}");
-    }
-    for version in ["1.20.1", "1.21.4"] {
-        assert!(check_supported(&neoforge, version).is_err(), "{version}");
-    }
-    let forge = LoaderChoice {
-        kind: LoaderKind::Forge,
-        version: "1.20.1-47.4.10".into(),
-    };
-    assert!(check_supported(&forge, "1.20.1").is_ok());
-    for version in ["1.12.2", "1.16.5", "26.3"] {
-        let forge = LoaderChoice {
-            kind: LoaderKind::Forge,
-            version: format!("{version}-1.0.0"),
-        };
-        assert!(check_supported(&forge, version).is_ok(), "{version}");
-    }
-    assert!(check_supported(&forge, "1.21.1").is_err());
-    let optifine = LoaderChoice {
-        kind: LoaderKind::OptiFine,
-        version: "1.20.1_HD_U_I6".into(),
-    };
+    let refused = check_supported(&choice(LoaderKind::Fabric, "0.17.2"), "1.6.4").unwrap_err();
     assert_eq!(
-        check_supported(&optifine, "1.20.1").unwrap_err().message,
+        refused.message,
+        "Worlds with Fabric mods are not available for Minecraft 1.6.4 yet."
+    );
+    assert_eq!(
+        check_supported(&choice(LoaderKind::OptiFine, "1.20.1_HD_U_I6"), "1.20.1")
+            .unwrap_err()
+            .message,
         "OptiFine has no server: a world with mods needs Fabric, Quilt, Forge or NeoForge."
     );
-    let junk = LoaderChoice {
-        kind: LoaderKind::Fabric,
-        version: "../0.17.2".into(),
+    assert!(check_supported(&choice(LoaderKind::Fabric, "../0.17.2"), "1.21.1").is_err());
+}
+
+#[test]
+fn the_tested_releases_are_releases_in_order() {
+    let file: serde_json::Value = serde_json::from_str(TESTED_FILE).unwrap();
+    let parsed: TestedFile = serde_json::from_str(TESTED_FILE).unwrap();
+    assert_eq!(
+        file.as_object().unwrap().keys().collect::<Vec<_>>(),
+        ["on_every_change", "tested"]
+    );
+    let release = |v: &str| {
+        let parts: Vec<&str> = v.split('.').collect();
+        (2..=3).contains(&parts.len())
+            && parts
+                .iter()
+                .all(|p| !p.is_empty() && p.len() <= 3 && p.bytes().all(|b| b.is_ascii_digit()))
     };
-    assert!(check_supported(&junk, "1.21.1").is_err());
+    for kind in [
+        LoaderKind::Fabric,
+        LoaderKind::Quilt,
+        LoaderKind::NeoForge,
+        LoaderKind::Forge,
+    ] {
+        let tested = &parsed.tested[&kind];
+        let every = &parsed.on_every_change[&kind];
+        for list in [tested, every] {
+            assert!(list.iter().all(|v| release(v)), "{kind:?} {list:?}");
+            assert!(
+                list.windows(2)
+                    .all(|w| crate::loader::compare_versions(&w[0], &w[1])
+                        == std::cmp::Ordering::Less),
+                "{kind:?} oldest first, once each: {list:?}"
+            );
+        }
+        // Every change tries the oldest and the newest release of each loader.
+        assert!(every.iter().all(|v| tested.contains(v)), "{kind:?}");
+        assert!(every.contains(tested.first().unwrap()), "{kind:?}");
+        assert!(every.contains(tested.last().unwrap()), "{kind:?}");
+    }
+    assert_eq!(parsed.tested.len(), 4);
+    assert_eq!(parsed.on_every_change.len(), 4);
 }
 
 #[test]
