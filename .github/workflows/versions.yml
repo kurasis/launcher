@@ -41,21 +41,47 @@ jobs:
   check:
     name: Download and check the jars
     runs-on: ubuntu-24.04
-    timeout-minutes: 90
+    timeout-minutes: 150
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
       - name: Download every jar
         timeout-minutes: 45
         run: node scripts/extra-versions-files.mjs jars
       - name: Check for viruses
-        timeout-minutes: 40
+        timeout-minutes: 100
         run: |
           set -uo pipefail
           # The official image comes with the virus database of its day;
-          # freshclam takes a newer one when the database servers let it.
-          docker run --rm -v "$PWD/jars:/scan:ro" --entrypoint /bin/sh clamav/clamav:stable -c \
-            'freshclam --stdout >/dev/null 2>&1; clamscan --recursive --infected --no-summary /scan' \
-            > clamscan.txt 2> clamscan.err
+          # freshclam takes a newer one when the database servers let it. Four
+          # scanners at once, each opening every jar whole: a jar holds tens of
+          # thousands of files, past ClamAV's usual limits, and one still past
+          # these is a finding rather than skipped in silence.
+          cat > scan.sh <<'SCAN'
+          freshclam --stdout >/dev/null 2>&1
+          # The scanner must find the standard test file (built here, so the
+          # repository holds no copy of it), or nothing it says counts.
+          printf '%s%s' 'X5O!P%@AP[4\PZX54(P^)7CC)7}$EICAR-STANDARD-ANTIVIRUS' '-TEST-FILE!$H+H*' > /tmp/test.txt
+          clamscan --no-summary /tmp/test.txt | grep -q ' FOUND$' ||
+            { echo "the scanner did not find the test file" >&2; exit 3; }
+          i=0
+          for jar in /scan/*.jar; do
+            echo "$jar" >> "/tmp/list$((i % 4))"
+            i=$((i + 1))
+          done
+          pids=""
+          for n in 0 1 2 3; do
+            [ -s "/tmp/list$n" ] || continue
+            clamscan --infected --no-summary --file-list="/tmp/list$n" \
+              --max-files=500000 --max-scansize=4000M --max-filesize=1000M \
+              --max-recursion=30 --alert-exceeds-max=yes &
+            pids="$pids $!"
+          done
+          status=0
+          for pid in $pids; do wait "$pid" || status=1; done
+          exit "$status"
+          SCAN
+          docker run --rm -v "$PWD/jars:/scan:ro" -v "$PWD/scan.sh:/scan.sh:ro" \
+            --entrypoint /bin/sh clamav/clamav:stable /scan.sh > clamscan.txt 2> clamscan.err
           status=$?
           found=$(grep -c ' FOUND$' clamscan.txt || true)
           echo "jars checked: $(find jars -name '*.jar' | wc -l), viruses found: $found"
