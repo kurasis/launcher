@@ -332,7 +332,7 @@ function Launcher-Log([string]$Folder) {
 # its window has the focus. So the window is brought to the front and real input is sent:
 # the cursor is moved onto a button and clicked, keys are pressed as a keyboard does.
 
-$WM_KEYDOWN = 0x0100; $WM_KEYUP = 0x0101; $WM_CLOSE = 0x0010
+$WM_KEYDOWN = 0x0100; $WM_KEYUP = 0x0101; $WM_SYSCOMMAND = 0x0112; $SC_CLOSE = 0xF060
 $Keys = @{ Escape = 0x1B; Enter = 0x0D; Tab = 0x09; F2 = 0x71 }
 
 # Brings the game window to the front (Windows allows it after an Alt press); false on a
@@ -717,13 +717,19 @@ try {
       # The world list's Create New World: the right of two 150-wide buttons at
       # height - 52. Newer versions open Create New World at once for an empty list,
       # and that spot is empty there.
+      # Old versions (1.5.2) sometimes let a click pass, so it is given twice: after a
+      # first one that worked, the second lands on an empty spot of Create New World.
       Game-Click $hwnd ([math]::Floor($layout.GuiWidth / 2) + 4 + 75) ($layout.GuiHeight - 52 + 10)
-      Start-Sleep -Seconds 4
+      Start-Sleep -Milliseconds 1500
+      Game-Click $hwnd ([math]::Floor($layout.GuiWidth / 2) + 4 + 75) ($layout.GuiHeight - 52 + 10)
+      Start-Sleep -Seconds 3
       Game-Shot $hwnd $folder 'create-world'
       # Create New World: the left of two 150-wide buttons at the bottom (height - 28
       # in older versions, the 33-high footer in newer ones; the same spot).
       $createX = [math]::Floor($layout.GuiWidth / 2) - 155 + 75
       Game-Click $hwnd $createX ($layout.GuiHeight - 17)
+      # Twice for the same reason; a world being made does not mind the second.
+      if (-not (Wait-For $inWorld 3)) { Game-Click $hwnd $createX ($layout.GuiHeight - 17) }
       $entered = Wait-For $inWorld 60
       if (-not $entered -and (& $text) -match 'Starting integrated minecraft server') {
         # The world is being made: only slower than a minute.
@@ -759,8 +765,20 @@ try {
       }
 
       # --- Close the game window, as a player does ------------------------------------
-      [UserTest.Win]::PostMessage($hwnd, $WM_CLOSE, [IntPtr]::Zero, [IntPtr]::Zero) | Out-Null
-      if (-not $game.Process.WaitForExit(120000)) {
+      # What the window's close button sends (LWJGL 2, before 1.13, closes on it and lets
+      # a bare WM_CLOSE pass); Alt+F4 as a player presses it if the window stays.
+      [UserTest.Win]::PostMessage($hwnd, $WM_SYSCOMMAND, [IntPtr]$SC_CLOSE, [IntPtr]::Zero) | Out-Null
+      if (-not $game.Process.WaitForExit(30000)) {
+        Say "$label : still open after the close message; Alt+F4"
+        if (Game-Focus $hwnd) {
+          [UserTest.Win]::keybd_event(0x12, 0x38, 0, [IntPtr]::Zero)
+          [UserTest.Win]::keybd_event(0x73, 0x3E, 0, [IntPtr]::Zero)
+          Start-Sleep -Milliseconds 100
+          [UserTest.Win]::keybd_event(0x73, 0x3E, 2, [IntPtr]::Zero)
+          [UserTest.Win]::keybd_event(0x12, 0x38, 2, [IntPtr]::Zero)
+        }
+      }
+      if (-not $game.Process.WaitForExit(90000)) {
         $result.exit = 'hung'; $result.note = "$($result.note); the game did not close in 2 minutes".Trim('; ')
         Stop-Process -Id $game.Process.Id -Force -ErrorAction SilentlyContinue
       } else {
