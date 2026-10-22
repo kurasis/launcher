@@ -3274,6 +3274,17 @@ impl Store {
             .map_err(sql)
     }
 
+    /// Jobs due now, waiting or running.
+    pub fn jobs_due(&self, now: i64) -> Result<i64> {
+        self.db()
+            .query_row(
+                "SELECT count(*) FROM job WHERE state IN ('queued', 'running') AND run_after <= ?1",
+                [now],
+                |r| r.get(0),
+            )
+            .map_err(sql)
+    }
+
     /// Takes the next waiting job.
     pub fn claim(&self, now: i64) -> Result<Option<Job>> {
         let db = self.db();

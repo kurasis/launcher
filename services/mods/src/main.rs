@@ -533,13 +533,19 @@ fn serve() -> Result<(), String> {
             }
         });
         // Modrinth's most downloaded projects of each kind, looked for once a
-        // day; a failed look is tried again the next hour.
+        // day (a failed look is tried again the next hour) and queued a few
+        // at a time while the queue is nearly empty.
         let seeding = Arc::clone(&app);
         let popular = popular();
         tokio::spawn(async move {
             if popular == 0 {
                 return;
             }
+            // What is still missing lives in memory: looked for again at
+            // each start, so a restart loses none of it.
+            let mut missing = Vec::new();
+            let mut looked = false;
+            let mut tried = 0;
             loop {
                 let last = seeding
                     .store
@@ -547,14 +553,24 @@ fn serve() -> Result<(), String> {
                     .ok()
                     .flatten()
                     .unwrap_or(0);
-                if import::now() - last >= import::POPULAR_EVERY {
-                    match import::seed(&seeding, popular).await {
-                        Ok(0) => {}
-                        Ok(n) => eprintln!("lapi-mods: {n} popular projects queued"),
+                let now = import::now();
+                if (!looked || now - last >= import::POPULAR_EVERY) && now - tried >= 3600 {
+                    tried = now;
+                    match import::popular(&seeding, popular).await {
+                        Ok(found) => {
+                            looked = true;
+                            eprintln!("lapi-mods: {} popular projects to add", found.len());
+                            missing = found;
+                            // Taken from the end: the most downloaded first.
+                            missing.reverse();
+                        }
                         Err(e) => eprintln!("lapi-mods: looking for popular projects failed: {e}"),
                     }
                 }
-                tokio::time::sleep(Duration::from_secs(3600)).await;
+                if let Err(e) = import::seed(&seeding, &mut missing) {
+                    eprintln!("lapi-mods: queueing popular projects failed: {e}");
+                }
+                tokio::time::sleep(Duration::from_secs(60)).await;
             }
         });
         // Kept archives scanned under older rules, a few at a time.

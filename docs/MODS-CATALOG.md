@@ -129,10 +129,12 @@ VirusTotal's background over 90% of its month (`virustotal`); a wrong copy in
 R2 or no database copy in 2 days (`r2`); no look for the most downloaded projects in 2
 days (`popular`).
 
-Every day the service also queues Modrinth's 50 most downloaded mods, modpacks,
-resource packs, shaders and data packs it does not have yet (`LAPI_MODS_POPULAR` in the
-service's environment sets how many, at most 100; 0 turns it off). Those it has are
-checked as any other; one the owner removed stays removed.
+Every day (and at each start) the service also looks for Modrinth's 50 most downloaded
+mods, modpacks, resource packs, shaders and data packs it does not have yet
+(`LAPI_MODS_POPULAR` in the service's environment sets how many, at most 100; 0 turns it
+off). It queues them two at a time, and only while fewer than 20 jobs are due, so what
+players ask for never waits behind them for long. Those it has are checked as any other;
+one the owner removed stays removed.
 
 OptiFine's icon is made for the catalog (`services/mods/assets/optifine-icon.png`): its
 site has none.
