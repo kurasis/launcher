@@ -744,6 +744,35 @@ struct Operation {
     gate: Arc<Gate>,
 }
 
+/// The Java a Forge-style installer step runs on: the game's own, or Temurin of
+/// the same major when the game's Java is too old to produce the files the
+/// installer declares ([`processors::java_too_old`], Mojang's 8u51 on Windows).
+#[allow(clippy::too_many_arguments)]
+pub async fn installer_java(
+    source: &dyn PlanSource,
+    runtimes: &RuntimeInstaller,
+    requirement: &RuntimeRequirement,
+    game: &InstalledRuntime,
+    job: Uuid,
+    cancel: &CancelToken,
+    sink: &dyn ProgressSink,
+    log: &(dyn Fn(String) + Sync),
+) -> LauncherResult<std::path::PathBuf> {
+    let version = &game.receipt.probe.java_version;
+    if !processors::java_too_old(version) {
+        return Ok(game.java.clone());
+    }
+    let package = tokio::select! {
+        package = source.runtime(requirement, JavaProvider::Temurin) => package?,
+        () = cancel.cancelled() => return Err(cancelled()),
+    };
+    log(format!(
+        "Java {version} writes the installer's files differently; running the installer on {} {} ({})",
+        package.provider, package.key.major, package.release_name
+    ));
+    Ok(runtimes.ensure(&package, job, cancel, sink).await?.java)
+}
+
 fn cancelled() -> LauncherError {
     LauncherError::new(
         ErrorCode::OperationCancelled,
@@ -1138,12 +1167,18 @@ impl Operation {
             loader.kind.name(),
             loader.version
         ));
-        let (root, game, java, cancel) = (
-            self.root.clone(),
-            game.clone(),
-            installed.java.clone(),
-            self.cancel.clone(),
-        );
+        let java = installer_java(
+            self.source.as_ref(),
+            &self.runtime,
+            &game.runtime,
+            installed,
+            self.job,
+            &self.cancel,
+            &self.sink(InstallState::PreparingLoader),
+            &|line| console.info(line),
+        )
+        .await?;
+        let (root, game, cancel) = (self.root.clone(), game.clone(), self.cancel.clone());
         let work_dir = self.root.download_staging(self.job).join("loader");
         let host = Arc::clone(&self.host);
         let result = tokio::task::spawn_blocking(move || {

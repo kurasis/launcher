@@ -8,7 +8,8 @@
 //!
 //! - files under `maven/` in the installer are unpacked into the Maven tree after
 //!   their hash is checked;
-//! - each processor runs with the installation's private Java, its tool jar and
+//! - each processor runs with the installation's private Java (Temurin 8 when that
+//!   is a Java 8 older than 8u202, see [`java_too_old`]), its tool jar and
 //!   classpath taken from verified downloads, its arguments filled from the
 //!   install profile's `data`; outputs with a declared SHA-1 are checked, and a
 //!   processor whose outputs already match is skipped;
@@ -93,6 +94,24 @@ const OUTPUT_TAIL: usize = 200;
 /// software holding Java, a stalled download) and ended. The tools print a
 /// line per file, so a working step is never this quiet.
 pub const QUIET_LIMIT: Duration = Duration::from_secs(10 * 60);
+
+/// True for a Java 8 older than 8u202, whose zip writer leaves out the extended
+/// timestamp of an entry dated before 1980. The installers' declared hashes were
+/// made on a newer Java, so on such a Java the outputs of Forge 1.13–1.16 never
+/// match (Mojang's `jre-legacy` for Windows is 8u51). The step then runs on another
+/// Java ([`crate::install::service::installer_java`]).
+pub fn java_too_old(java_version: &str) -> bool {
+    let Some(rest) = java_version.strip_prefix("1.8.0") else {
+        return false;
+    };
+    let digits: String = rest
+        .strip_prefix('_')
+        .unwrap_or("")
+        .chars()
+        .take_while(char::is_ascii_digit)
+        .collect();
+    digits.parse::<u32>().map_or(true, |update| update < 202)
+}
 
 fn storage_error(error: &std::io::Error) -> LauncherError {
     LauncherError::from_io(error, "Preparing the mod loader")
@@ -725,6 +744,23 @@ pub fn verify_generated(root: &DataRoot, generated: &[LockedArtifact]) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn java_8_before_8u202_is_too_old_for_the_step() {
+        for old in ["1.8.0_51", "1.8.0_74", "1.8.0_201", "1.8.0", "1.8.0_x"] {
+            assert!(java_too_old(old), "{old}");
+        }
+        for new in [
+            "1.8.0_202",
+            "1.8.0_462",
+            "1.8.0_462-b08",
+            "17.0.15",
+            "21.0.7",
+            "",
+        ] {
+            assert!(!java_too_old(new), "{new}");
+        }
+    }
 
     #[test]
     fn arguments_fill_values_and_coordinates() {

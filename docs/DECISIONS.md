@@ -852,6 +852,12 @@ message` plus a stack trace), with the event's level.
     jar and classpath from verified downloads, its arguments from the install
     profile's `data`; declared output hashes are checked, and a processor whose
     outputs already match is skipped;
+  - when that Java is a Java 8 older than 8u202 (Mojang's `jre-legacy` for Windows is
+    8u51), the step runs on Temurin 8 instead, installed like any private runtime (fix
+    of 2026-10-22): such a Java writes zip entries dated before 1980 without the
+    extended timestamp, so the outputs of Forge 1.13–1.16 never match the declared
+    hashes. The game itself still runs on the chosen Java. The same holds for a world's
+    server;
   - `DOWNLOAD_MOJMAPS` that would copy Mojang's mappings unchanged is replaced by the
     verified `client_mappings` download from the plan. The sanitizing variant (Forge
     1.21+) runs as shipped and downloads the mappings from Mojang itself, through the
