@@ -18,6 +18,8 @@
 //! lapi-servers remove <id>           gone for good
 //! lapi-servers ping <id>             asks the server now, and whether it
 //!                                    wants a Microsoft sign-in
+//! lapi-servers online <id> [--days 14]  players online per day, from the
+//!                                    hourly pings (from when it was added)
 //! lapi-servers icon <id> <file.png | -> | --auto
 //! lapi-servers banner <id> <file.png|jpg | -> | --none
 //! lapi-servers counts                numbers only (fit for a public log)
@@ -83,7 +85,7 @@ fn main() -> std::process::ExitCode {
     }
 }
 
-const USAGE: &str = "usage: lapi-servers serve|add|list|show|edit|extend|pause|resume|stop|remove|ping|icon|banner|counts|backup (docs/SERVER-ADS.md)";
+const USAGE: &str = "usage: lapi-servers serve|add|list|show|edit|extend|pause|resume|stop|remove|ping|online|icon|banner|counts|backup (docs/SERVER-ADS.md)";
 
 /// A picture from a file, or from standard input for `-` (a file in the
 /// owner's home is not readable by the service's user); at most `max` bytes.
@@ -241,6 +243,24 @@ fn run(command: &str, args: &[String]) -> Result<(), String> {
             ads::ping(&store, &icons, &ping::Pinger::new(), &ad, now, true).await?;
             show(&store, &ad, now)
         }),
+        "online" => {
+            let ad = store.ad(id_of(&plain)?)?.ok_or("no such ad")?;
+            let days = match flags.get("days") {
+                None => 14,
+                Some(days) => days
+                    .parse::<i64>()
+                    .ok()
+                    .filter(|d| (1..=400).contains(d))
+                    .ok_or("--days takes a number from 1 to 400")?,
+            };
+            let zone = zone()?;
+            println!("{}", ads::line(&ad, now, zone));
+            println!("  day         players online (average, highest)  hours answered");
+            for line in ads::online_days(&store.online(ad.id, now - days * 86_400)?, &ad, zone) {
+                println!("  {line}");
+            }
+            Ok(())
+        }
         "icon" => {
             let id = id_of(&plain)?;
             let mut ad = store.ad(id)?.ok_or("no such ad")?;
@@ -393,7 +413,7 @@ fn serve() -> Result<(), String> {
         every("ping", PING_EVERY, Arc::clone(&app), |app| async move {
             let pinger = ping::Pinger::new();
             let now = api::now();
-            let due = app.store.to_ping(now, PING_EVERY.as_secs() as i64)?;
+            let due = app.store.to_ping(now)?;
             let mut answering = 0;
             for ad in &due {
                 if ads::ping(&app.store, &app.icons, &pinger, ad, now, false)

@@ -376,6 +376,43 @@ pub fn line(ad: &Ad, now: i64, zone: chrono::FixedOffset) -> String {
     )
 }
 
+/// One line per day of the hourly pings, in the owner's offset: players
+/// online on average and at most of the hours that answered, and whether
+/// the ad showed that day.
+pub fn online_days(
+    hours: &[crate::store::Hour],
+    ad: &Ad,
+    zone: chrono::FixedOffset,
+) -> Vec<String> {
+    let mut days: BTreeMap<String, (i64, i64, i64, i64, bool)> = BTreeMap::new();
+    for hour in hours {
+        let day = chrono::DateTime::from_timestamp(hour.at, 0)
+            .map(|t| t.with_timezone(&zone).format("%Y-%m-%d").to_string())
+            .unwrap_or_default();
+        let entry = days.entry(day).or_default();
+        entry.0 += 1;
+        if let (true, Some(online)) = (hour.up, hour.online) {
+            entry.1 += 1;
+            entry.2 += online;
+            entry.3 = entry.3.max(online);
+        }
+        entry.4 |= hour.at >= ad.starts && hour.at < ad.ends;
+    }
+    days.into_iter()
+        .map(|(day, (asked, answered, sum, most, showing))| {
+            let players = if answered > 0 {
+                format!("{:>6} {:>6}", sum / answered, most)
+            } else {
+                format!("{:>6} {:>6}", "-", "-")
+            };
+            format!(
+                "{day}  {players}                         {answered:>2} of {asked:<2}{}",
+                if showing { "  while the ad shows" } else { "" }
+            )
+        })
+        .collect()
+}
+
 pub fn local(at: i64, zone: chrono::FixedOffset) -> String {
     chrono::DateTime::from_timestamp(at, 0)
         .map(|t| t.with_timezone(&zone).format("%Y-%m-%d %H:%M").to_string())

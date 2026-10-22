@@ -44,6 +44,7 @@ jobs:
           check https://oauth.lapi.sh/v1/health 200
           check https://friends.lapi.sh/v1/health 200
           check https://mods.lapi.sh/v1/health 200
+          check https://stats.lapi.sh/v1/health 200
           # No stable release yet answers 204; both mean the service is up.
           check https://upd.lapi.sh/v1/stable/windows-x86_64-nsis.json '200 204'
           exit "$failed"

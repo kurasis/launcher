@@ -1,0 +1,125 @@
+name: Stats service
+
+# Anonymous statistics of the launcher and counts of the server ads at
+# stats.lapi.sh (docs/DECISIONS.md D-071): tests, a release build, and a
+# deploy over SSH to /home/www/lapi/stats. The server needs
+# deploy/bootstrap.sh run as root once, and again when the nginx files change
+# (the deploy warns).
+#
+# The numbers are read on the server by the owner (docs/STATS.md), never
+# here: this repository is public, and so are its workflow logs. No task of
+# this workflow prints a number of the statistics.
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - services/stats/**
+      - deploy/stats/**
+      - deploy/*.sh
+      - deploy/nginx/**
+      - .github/workflows/stats-service.yml
+      - .github/actions/**
+  pull_request:
+    paths:
+      - services/stats/**
+      - deploy/stats/**
+      - deploy/*.sh
+      - deploy/nginx/**
+      - .github/workflows/stats-service.yml
+      - .github/actions/**
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: stats-service-${{ github.ref }}
+  cancel-in-progress: false
+
+env:
+  CARGO_TERM_COLOR: always
+  CARGO_INCREMENTAL: 0
+
+jobs:
+  test:
+    name: Test and build
+    runs-on: ubuntu-24.04
+    defaults:
+      run:
+        working-directory: services/stats
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+      - run: rustup show active-toolchain
+      - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6
+        with:
+          path: |
+            ~/.cargo/registry
+            services/stats/target
+          key: stats-${{ hashFiles('services/stats/Cargo.lock', 'rust-toolchain.toml') }}
+      - run: cargo fmt --check
+      - run: cargo clippy --locked --all-targets -- -D warnings
+      - run: cargo test --locked
+      # Ubuntu 24.04's glibc (2.39) is older than Debian 13's (2.41), so the
+      # binary runs there.
+      - run: cargo build --locked --release
+      - name: Check the nginx files
+        working-directory: ${{ github.workspace }}
+        run: bash deploy/check-nginx.sh
+      - name: Package the release
+        run: |
+          mkdir -p ../../dist-stats/nginx
+          cp target/release/lapi-stats ../../dist-stats/
+          cp ../../deploy/nginx/* ../../deploy/stats/nginx/* ../../dist-stats/nginx/
+          tar -czf ../../lapi-stats.tar.gz -C ../../dist-stats .
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
+        with:
+          name: lapi-stats
+          path: lapi-stats.tar.gz
+          retention-days: 14
+
+  deploy:
+    # One deploy of this service at a time, from any branch or run.
+    concurrency:
+      group: stats-deploy
+      cancel-in-progress: false
+    name: Deploy to stats.lapi.sh
+    # Deploys use the production environment: Settings → Environments →
+    # production → Required reviewers makes each one wait for an approval.
+    environment: production
+    needs: test
+    # Only main reaches production, also when run by hand.
+    if: github.ref == 'refs/heads/main' && github.event_name != 'pull_request'
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8
+        with:
+          name: lapi-stats
+      - uses: ./.github/actions/lapi-ssh
+        with:
+          ssh-key: ${{ secrets.SSH_KEY }}
+          known-hosts: ${{ secrets.SSH_KNOWN_HOSTS }}
+      - uses: ./.github/actions/lapi-upload
+        with:
+          service: stats
+          target: ${{ secrets.SSH_USER }}@${{ secrets.SSH_HOST }}
+      - name: Deploy
+        env:
+          TARGET: ${{ secrets.SSH_USER }}@${{ secrets.SSH_HOST }}
+        run: |
+          set +e
+          ssh "$TARGET" "bash ~/.lapi-bootstrap/$SETUP/deploy.sh stats $RELEASE $ARCHIVE" 2>&1 | tee deploy.log
+          status=${PIPESTATUS[0]}
+          if grep -q NOT_BOOTSTRAPPED deploy.log; then
+            echo "::warning::The server is not set up yet: run 'sudo bash ~/lapi-bootstrap/bootstrap.sh <deploy-user>' on it once, then re-run this workflow."
+            exit 0
+          fi
+          if grep -qE 'NGINX_(PENDING|CHANGED)' deploy.log; then
+            echo "::warning::The nginx files on the server are not these: run 'sudo bash ~/lapi-bootstrap/bootstrap.sh <deploy-user>' on it to apply them."
+          fi
+          exit "$status"
+      - uses: ./.github/actions/lapi-check
+        with:
+          service: stats
+          ssh-host: ${{ secrets.SSH_HOST }}
