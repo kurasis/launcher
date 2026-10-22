@@ -112,6 +112,11 @@ replaces it), `superseded`.
   live test is built once per run (`Build the live test`) and every server job, with and
   without mods, runs that binary instead of compiling it again. With several pull requests
   at once, those jobs had kept other pull requests waiting about 30 minutes for runners.
+  **Amended again 2026-10-22 (owner request):** a pull request runs them only when it
+  changes the worlds' code (`src-tauri/src/worlds/`, `src-tauri/src/tunnel/`), their live
+  test (`src-tauri/tests/live_server.rs`) or `world-mods.yml`. Changes to code they share
+  with the rest of the launcher (downloads, loaders, mods, Java) are tried by the push to
+  `main` and the nightly run.
 - **Amended 2026-10-22 (owner request):** every Ubuntu package install goes through
   `.github/actions/apt-install` (the Package workflow's Debian container repeats its loop
   inline): each `apt-get update` and `install` has a time limit, and a try that runs out
