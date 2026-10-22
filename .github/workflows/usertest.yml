@@ -1,36 +1,52 @@
 name: Player test
 
 # Game versions checked the way a player meets them, on the owner's Windows test
-# machine (docs/USERTEST.md): the newest packaged launcher from main is installed with
-# its installer, and for each version a player's steps are taken in its window and in
-# the game: install, play, a new singleplayer world. Only by hand ("Run workflow").
+# machines (docs/USERTEST.md; label TestPC): the newest packaged launcher from main is
+# installed with its installer, and for each version, vanilla or with a mod loader, a
+# player's steps are taken in its window and in the game: install, play, a new
+# singleplayer world. Only by hand ("Run workflow"). A long list is cut into parts that
+# run as separate jobs, so every machine with the label takes some.
 #
 # The runner is a real computer, so this workflow runs only for the owner's dispatch,
 # never for a pull request. Inputs reach scripts only through env and are checked
-# against Mojang's list. Its own concurrency group: the Game test's queue
-# (one pending run) is left alone; the runner takes one job at a time anyway.
+# against Mojang's and the loaders' lists. No concurrency group: a runner takes one job
+# at a time, and the Game test's queue (one pending run) is left alone.
 
 on:
   workflow_dispatch:
     inputs:
       versions:
-        description: Game versions (comma-separated release ids), or "26" for every 26.x release
+        description: >-
+          What to play, comma-separated: "26" (every 26.x release), "all" (every release,
+          vanilla and with each loader), "vanilla", "fabric", "quilt", "forge", "neoforge"
+          (every release that one supports), a release id (vanilla) or loader:id
         default: '26'
+      label:
+        description: Runner label of the test machines (several machines may share it)
+        default: TestPC
+      machine:
+        description: >-
+          Runner name the jobs must land on (on another machine a job stops before touching
+          anything), or "any" for every machine with the label
+        default: amd-bosgame-8gb
+      part_size:
+        description: Items per job (a job of 12 takes about 45 minutes)
+        default: '12'
+      cleanup:
+        description: Only put the machine back (stop and uninstall what an earlier, cancelled run left)
+        type: boolean
+        default: false
 
 permissions:
   contents: read
   actions: read
-
-concurrency:
-  group: usertest
-  cancel-in-progress: false
 
 jobs:
   prepare:
     name: Launcher package and versions
     runs-on: ubuntu-24.04
     outputs:
-      versions: ${{ steps.versions.outputs.versions }}
+      parts: ${{ steps.versions.outputs.parts }}
       package: ${{ steps.package.outputs.run }}
     steps:
       - uses: actions/checkout@v7
@@ -38,32 +54,20 @@ jobs:
           sparse-checkout: |
             scripts/usertest
             src/locales
+      - name: Runner inputs
+        env:
+          LABEL: ${{ inputs.label || 'TestPC' }}
+          MACHINE: ${{ inputs.machine || 'amd-bosgame-8gb' }}
+        run: |
+          for value in "$LABEL" "$MACHINE"; do
+            [[ "$value" =~ ^[A-Za-z0-9._-]{1,64}$ ]] || { echo "::error::label and machine: letters, digits, . _ - only"; exit 1; }
+          done
       - id: versions
         env:
           VERSIONS: ${{ inputs.versions || '26' }}
-        run: |
-          curl -fsS --retry 3 https://piston-meta.mojang.com/mc/game/version_manifest_v2.json -o manifest.json
-          python3 - <<'EOF'
-          import json, os, re, sys
-          releases = [v for v in json.load(open("manifest.json"))["versions"] if v["type"] == "release"]
-          releases.sort(key=lambda v: v["releaseTime"])
-          ids = [v["id"] for v in releases]
-          asked = [s.strip() for s in os.environ["VERSIONS"].split(",") if s.strip()]
-          picked = []
-          for item in asked:
-              if item == "26":
-                  picked += [i for i in ids if re.fullmatch(r"26\.\d+(\.\d+)?", i)]
-              elif item in ids:
-                  picked.append(item)
-              else:
-                  sys.exit(f"versions: {item!r} is not a Mojang release")
-          picked = list(dict.fromkeys(picked))
-          if not picked:
-              sys.exit("versions: none picked")
-          with open(os.environ["GITHUB_OUTPUT"], "a") as out:
-              out.write(f"versions={','.join(picked)}\n")
-          print("Versions:", ", ".join(picked))
-          EOF
+          PART_SIZE: ${{ inputs.part_size || '12' }}
+          CLEANUP: ${{ inputs.cleanup && 'yes' || 'no' }}
+        run: python3 scripts/usertest/plan.py
       - id: package
         name: Newest green Package run on main
         env:
@@ -87,6 +91,10 @@ jobs:
               "navHome": "nav.home", "navAccount": "nav.account", "modeOffline": "accounts.modeOffline",
               "nameLabel": "accounts.nameLabel", "addProfile": "accounts.addProfile",
               "create": "instances.create", "createSubmit": "createForm.submit",
+              "search": "createForm.search", "selected": "createForm.selected", "cancel": "createForm.cancel",
+              "loader": "loaders.loader", "loaderFabric": "loaders.names.fabric",
+              "loaderQuilt": "loaders.names.quilt", "loaderForge": "loaders.names.forge",
+              "loaderNeoForge": "loaders.names.neoforge",
               "install": "install.install", "play": "install.play", "retry": "install.retry",
               "allow": "metered.allow",
           }
@@ -112,34 +120,54 @@ jobs:
           retention-days: 3
 
   play:
-    name: Play as a player
+    name: Play as a player (part ${{ matrix.part }})
     needs: prepare
-    runs-on: [self-hosted, windows, x64, gametest]
+    # Labels pick a runner, not a name: several machines may share the label, so the
+    # first step checks that the job landed on the asked machine (unless "any").
+    runs-on: [self-hosted, windows, x64, "${{ inputs.label || 'TestPC' }}"]
     timeout-minutes: 360
+    strategy:
+      fail-fast: false
+      matrix:
+        include: ${{ fromJSON(needs.prepare.outputs.parts) }}
     defaults:
       run:
         # Windows PowerShell as the runner's user runs no script files by default
         # (execution policy Restricted); lifted for these steps only.
         shell: powershell -NoProfile -ExecutionPolicy Bypass -Command ". '{0}'"
     steps:
+      - name: The asked machine
+        env:
+          MACHINE: ${{ inputs.machine || 'amd-bosgame-8gb' }}
+        run: |
+          if ($env:MACHINE -ne 'any' -and $env:RUNNER_NAME -ne $env:MACHINE) {
+            Write-Host "::error::The job landed on runner $env:RUNNER_NAME, not $env:MACHINE; nothing was done. Run again, or give $env:MACHINE a label of its own."
+            exit 1
+          }
+          Write-Host "Runner $env:RUNNER_NAME"
       - uses: actions/download-artifact@v8
         with:
           name: usertest-input
           path: ut/input
       - name: Play
         env:
-          VERSIONS: ${{ needs.prepare.outputs.versions }}
+          ITEMS: ${{ matrix.items }}
+          CLEANUP: ${{ inputs.cleanup && 'yes' || 'no' }}
         run: |
+          if ($env:CLEANUP -eq 'yes') {
+            & powershell.exe -NoProfile -ExecutionPolicy Bypass -File ut/input/windows.ps1 -CleanupOnly
+            exit $LASTEXITCODE
+          }
           $setup = (Get-Item ut/input/package/*-setup.exe | Select-Object -First 1).FullName
           & powershell.exe -NoProfile -ExecutionPolicy Bypass -File ut/input/windows.ps1 `
             -Setup $setup -Strings (Resolve-Path ut/input/ui-strings.json).Path `
-            -Versions $env:VERSIONS -Out (New-Item -ItemType Directory -Force ut/out).FullName
+            -Items $env:ITEMS -Out (New-Item -ItemType Directory -Force ut/out).FullName
           exit $LASTEXITCODE
       - name: Summary
         if: always()
         run: |
           $utf8 = New-Object Text.UTF8Encoding $false
-          $text = "| Version | Install | Launch | World | Exit | Log errors | Note |`n| --- | --- | --- | --- | --- | --- | --- |`n"
+          $text = "| Version | Loader | Install | Launch | World | Exit | Log errors | Note |`n| --- | --- | --- | --- | --- | --- | --- | --- |`n"
           $file = 'ut/out/results.json'
           if (Test-Path $file) {
             foreach ($r in @(Get-Content $file -Raw | ConvertFrom-Json)) {
@@ -147,17 +175,41 @@ jobs:
               $l = if ($r.launchSeconds) { "$($r.launch) ($($r.launchSeconds) s)" } else { $r.launch }
               $w = if ($r.worldSeconds) { "$($r.world) ($($r.worldSeconds) s)" } else { $r.world }
               $e = if ($null -ne $r.exitCode) { "$($r.exit) ($($r.exitCode))" } else { $r.exit }
-              $text += "| $($r.version) | $i | $l | $w | $e | $($r.logErrors) | $($r.note) |`n"
+              $text += "| $($r.version) | $($r.loader) $($r.loaderVersion) | $i | $l | $w | $e | $($r.logErrors) | $($r.note) |`n"
             }
           }
           [IO.File]::AppendAllText($env:GITHUB_STEP_SUMMARY, "$text`n", $utf8)
       - uses: actions/upload-artifact@v7
         if: always()
         with:
-          name: usertest-results
+          name: usertest-results-${{ matrix.part }}
           path: ut/out
           retention-days: 7
           if-no-files-found: ignore
       - name: Clean the workspace
         if: always()
         run: Remove-Item -Recurse -Force ut -ErrorAction SilentlyContinue
+
+  report:
+    name: All results
+    needs: [prepare, play]
+    if: always() && needs.prepare.result == 'success'
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          sparse-checkout: scripts/usertest
+      - uses: actions/download-artifact@v8
+        with:
+          pattern: usertest-results-*
+          path: parts
+      - name: One table
+        env:
+          PARTS: ${{ needs.prepare.outputs.parts }}
+        run: python3 scripts/usertest/report.py parts report
+      - uses: actions/upload-artifact@v7
+        with:
+          name: usertest-report
+          path: report
+          retention-days: 30
+          if-no-files-found: ignore
