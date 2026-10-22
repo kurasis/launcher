@@ -1,7 +1,8 @@
 //! The skins API (D-065). Lookups by nick and the textures themselves are
 //! public; changes carry the account service's access token, and the account
-//! is its `sub`, never anything the request says. Nothing about a player (a
-//! nick, an address) is ever written to the log.
+//! is its `sub`, never anything the request says. Each account has a
+//! wardrobe of skins, capes and sets to wear again. Nothing about a player (a
+//! nick, an address, a name in a wardrobe) is ever written to the log.
 
 use std::collections::{BTreeMap, HashMap};
 use std::net::IpAddr;
@@ -14,27 +15,35 @@ use axum::extract::{DefaultBodyLimit, Path, Query, Request, State};
 use axum::http::{HeaderMap, HeaderValue, StatusCode, Uri, header};
 use axum::middleware::Next;
 use axum::response::{IntoResponse, Response};
-use axum::routing::{get, post, put};
+use axum::routing::{get, patch, post, put};
 use axum::{Json, Router};
 use serde::Deserialize;
 use serde_json::{Value, json};
 
 use crate::auth::{Claims, Sessions, Tokens};
 use crate::directory::{self, Directory};
-use crate::store::{Store, Worn};
+use crate::store::{self, Change, Item, Kept, Refused, Set, Store, Worn};
 use crate::texture::{self, Kind};
 
 /// Nicks in one `POST /v1/profiles`.
 pub const MAX_NICKS: usize = 50;
 /// Uploads per account an hour.
 pub const UPLOADS_PER_HOUR: u32 = 10;
+/// Wardrobe items and sets put on per account an hour (no upload counted).
+pub const WEARS_PER_HOUR: u32 = 120;
+/// Other changes to a wardrobe per account an hour.
+pub const CHANGES_PER_HOUR: u32 = 600;
+/// The longest name of a wardrobe item or set, in characters.
+pub const NAME_CHARS: usize = 32;
 /// Requests per address a minute (an IPv6 /64 counts as one), besides
 /// nginx's own limit.
 pub const READS_PER_MINUTE: u32 = 600;
 /// Uploads decoded at once: each may hold up to 32 MiB of pixels.
 pub const DECODING_AT_ONCE: usize = 2;
-/// Longest query of an upload (32 frame durations fit easily).
+/// Longest query of an upload (32 frame durations fit easily), and of one
+/// to the wardrobe (with a name of 32 characters, percent-encoded).
 const QUERY_MAX: usize = 512;
+const ADD_QUERY_MAX: usize = 1024;
 /// Most of an upload's body ever read: more than nginx lets through (3 MiB),
 /// less than would matter.
 const READ_MAX: usize = 4 * 1024 * 1024;
@@ -84,6 +93,28 @@ impl Limiter {
         }
         entry.1 = entry.1.saturating_add(n);
         entry.1 <= limit
+    }
+
+    /// What is left of a limit, without counting anything: how many, and the
+    /// seconds until the window starts over (0 when nothing was counted).
+    pub fn left(
+        &self,
+        key: &str,
+        bucket: &'static str,
+        limit: u32,
+        window: Duration,
+    ) -> (u32, u64) {
+        let windows = self
+            .windows
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        match windows.get(&(key.to_owned(), bucket)) {
+            Some((start, n)) if start.elapsed() < window => (
+                limit.saturating_sub(*n),
+                (window - start.elapsed()).as_secs() + 1,
+            ),
+            _ => (limit, 0),
+        }
     }
 }
 
@@ -320,9 +351,79 @@ async fn get_texture(
     response
 }
 
-/// The account's own profile, also when it wears nothing.
+/// The account's own profile, also when it wears nothing, with the uploads
+/// it has left this hour.
+fn mine_json(app: &App, me: &Claims) -> Result<Value, String> {
+    let mut out = profile(app, &me.sub, &me.nick, true)?.unwrap_or_default();
+    let (left, reset) = app.limiter.left(
+        &me.sub,
+        "upload",
+        UPLOADS_PER_HOUR,
+        Duration::from_secs(3600),
+    );
+    out["uploads"] = json!({ "left": left, "reset": reset });
+    Ok(out)
+}
+
 fn mine(app: &App, me: &Claims) -> Response {
-    match profile(app, &me.sub, &me.nick, true) {
+    match mine_json(app, me) {
+        Ok(found) => Json(found).into_response(),
+        Err(e) => failed(&e),
+    }
+}
+
+/// An item of the wardrobe: its texture as a worn one reads, and its own
+/// fields.
+fn item_json(app: &App, item: &Item) -> Value {
+    let mut out = texture_json(app, &item.texture);
+    out["id"] = json!(item.id);
+    out["kind"] = json!(item.texture.kind.as_str());
+    out["name"] = json!(item.name);
+    out["favourite"] = json!(item.favourite);
+    out["created"] = json!(item.created);
+    out["worn"] = json!(item.worn);
+    out
+}
+
+fn set_json(app: &App, set: &Set) -> Value {
+    let look = |w: &Option<Worn>| w.as_ref().map_or(Value::Null, |w| texture_json(app, w));
+    json!({
+        "id": set.id,
+        "name": set.name,
+        "favourite": set.favourite,
+        "created": set.created,
+        "worn": set.worn,
+        "skin": look(&set.skin),
+        "cape": look(&set.cape),
+    })
+}
+
+/// The account's profile with its wardrobe: items, sets and their limits.
+fn wardrobe(app: &App, me: &Claims) -> Response {
+    let document = || -> Result<Value, String> {
+        let mut out = mine_json(app, me)?;
+        let items: Vec<Value> = app
+            .store
+            .items(&me.sub)?
+            .iter()
+            .map(|i| item_json(app, i))
+            .collect();
+        let sets: Vec<Value> = app
+            .store
+            .sets(&me.sub)?
+            .iter()
+            .map(|s| set_json(app, s))
+            .collect();
+        out["items"] = json!(items);
+        out["sets"] = json!(sets);
+        out["limits"] = json!({
+            "skins": store::MAX_SKINS,
+            "capes": store::MAX_CAPES,
+            "sets": store::MAX_SETS,
+        });
+        Ok(out)
+    };
+    match document() {
         Ok(found) => Json(found).into_response(),
         Err(e) => failed(&e),
     }
@@ -337,6 +438,15 @@ fn kind_of(kind: Result<Path<String>, PathRejection>) -> Option<Kind> {
     kind.ok().and_then(|Path(kind)| Kind::parse(&kind))
 }
 
+/// What was not read of an upload is read to its end and dropped (nginx
+/// lets 3 MiB through at most), so a refusal reaches the launcher instead of
+/// a connection closed under nginx.
+async fn drain(body: Option<Body>) {
+    if let Some(rest) = body {
+        let _ = axum::body::to_bytes(rest, READ_MAX).await;
+    }
+}
+
 /// `PUT /v1/me/skin|cape`: the PNG is the body (`Content-Type: image/png`),
 /// the rest is in the query.
 async fn upload(
@@ -348,12 +458,7 @@ async fn upload(
 ) -> Response {
     let mut body = Some(body);
     let response = wear(&app, kind, &uri, &headers, &mut body).await;
-    // What was not read is read to its end and dropped (nginx lets 3 MiB
-    // through at most), so a refusal reaches the launcher instead of a
-    // connection closed under nginx.
-    if let Some(rest) = body {
-        let _ = axum::body::to_bytes(rest, READ_MAX).await;
-    }
+    drain(body).await;
     response
 }
 
@@ -368,7 +473,108 @@ async fn wear(
         return refuse(StatusCode::NOT_FOUND, "not_found");
     };
     let me = me!(app, headers);
-    // Limits before work: nothing is decoded past an exhausted limit.
+    let texture = match received(app, &me, kind, uri, headers, body, QUERY_MAX).await {
+        Ok(texture) => texture,
+        Err(response) => return *response,
+    };
+    if let Err(e) = app.store.wear(&me.sub, &texture, now()) {
+        return failed(&e);
+    }
+    mine(app, &me)
+}
+
+/// `POST /v1/me/skin|cape`: an upload kept in the wardrobe without being
+/// worn; its name (optional) is in the query with the rest. It shares the
+/// address of `PUT`, so nginx gives both the same body limit.
+async fn add_upload(
+    State(app): State<Arc<App>>,
+    kind: Result<Path<String>, PathRejection>,
+    uri: Uri,
+    headers: HeaderMap,
+    body: Body,
+) -> Response {
+    let mut body = Some(body);
+    let response = add(&app, kind, &uri, &headers, &mut body).await;
+    drain(body).await;
+    response
+}
+
+async fn add(
+    app: &App,
+    kind: Result<Path<String>, PathRejection>,
+    uri: &Uri,
+    headers: &HeaderMap,
+    body: &mut Option<Body>,
+) -> Response {
+    let Some(kind) = kind_of(kind) else {
+        return refuse(StatusCode::NOT_FOUND, "not_found");
+    };
+    let me = me!(app, headers);
+    if uri.query().map_or(0, str::len) > ADD_QUERY_MAX {
+        return refuse(StatusCode::BAD_REQUEST, "bad_query");
+    }
+    let Ok(Query(pairs)) = Query::<Vec<(String, String)>>::try_from_uri(uri) else {
+        return refuse(StatusCode::BAD_REQUEST, "bad_query");
+    };
+    let mut names = pairs.iter().filter(|(k, _)| k == "name").map(|(_, v)| v);
+    let name = match (names.next(), names.next()) {
+        (None, _) => String::new(),
+        (Some(name), None) => match wardrobe_name(name) {
+            Some(name) => name,
+            None => return refuse(StatusCode::BAD_REQUEST, "bad_name"),
+        },
+        (Some(_), Some(_)) => return refuse(StatusCode::BAD_REQUEST, "bad_name"),
+    };
+    if !app.limiter.allow(
+        &me.sub,
+        "wardrobe",
+        CHANGES_PER_HOUR,
+        Duration::from_secs(3600),
+    ) {
+        return refuse(StatusCode::TOO_MANY_REQUESTS, "rate_limited");
+    }
+    // A full wardrobe takes nothing, and costs no upload.
+    let max = match kind {
+        Kind::Skin => store::MAX_SKINS,
+        Kind::Cape => store::MAX_CAPES,
+    };
+    match app.store.items_of(&me.sub, kind) {
+        Ok(count) if count >= max => return refuse(StatusCode::CONFLICT, "wardrobe_full"),
+        Ok(_) => {}
+        Err(e) => return failed(&e),
+    }
+    let texture = match received(app, &me, kind, uri, headers, body, ADD_QUERY_MAX).await {
+        Ok(texture) => texture,
+        Err(response) => return *response,
+    };
+    match app.store.add_item(&me.sub, &texture, &name, now()) {
+        Ok(Kept::Yes(_)) => wardrobe(app, &me),
+        Ok(Kept::No(refused)) => refused_by(refused),
+        Err(e) => failed(&e),
+    }
+}
+
+fn refused_by(refused: Refused) -> Response {
+    match refused {
+        Refused::Full => refuse(StatusCode::CONFLICT, "wardrobe_full"),
+        Refused::NothingWorn => refuse(StatusCode::CONFLICT, "nothing_worn"),
+    }
+}
+
+/// Reads an upload's body and decodes it into one of our own PNGs. The
+/// account's hourly uploads count it first: nothing is decoded past an
+/// exhausted limit.
+async fn received(
+    app: &App,
+    me: &Claims,
+    kind: Kind,
+    uri: &Uri,
+    headers: &HeaderMap,
+    body: &mut Option<Body>,
+    query_max: usize,
+) -> Result<texture::Texture, Box<Response>> {
+    let refuse = |status, code| Err(Box::new(refuse(status, code)));
+    let failed = |e| Err(Box::new(failed(e)));
     if !app.limiter.allow(
         &me.sub,
         "upload",
@@ -377,7 +583,7 @@ async fn wear(
     ) {
         return refuse(StatusCode::TOO_MANY_REQUESTS, "rate_limited");
     }
-    if uri.query().map_or(0, str::len) > QUERY_MAX {
+    if uri.query().map_or(0, str::len) > query_max {
         return refuse(StatusCode::BAD_REQUEST, "bad_query");
     }
     let options = match Query::<Vec<(String, String)>>::try_from_uri(uri) {
@@ -420,22 +626,269 @@ async fn wear(
         texture::process(kind, &bytes, &options)
     })
     .await;
-    let texture = match processed {
-        Ok(Ok(texture)) => texture,
+    match processed {
+        Ok(Ok(texture)) => Ok(texture),
         Ok(Err(refusal)) => {
             let status = if refusal == texture::Refusal::TooLarge {
                 StatusCode::PAYLOAD_TOO_LARGE
             } else {
                 StatusCode::BAD_REQUEST
             };
-            return refuse(status, refusal.code());
+            refuse(status, refusal.code())
         }
-        Err(_) => return failed("decoding an upload stopped"),
-    };
-    if let Err(e) = app.store.wear(&me.sub, &texture, now()) {
-        return failed(&e);
+        Err(_) => failed("decoding an upload stopped"),
     }
-    mine(app, &me)
+}
+
+/// A name for a wardrobe item or set: at most 32 characters with the spaces
+/// at its ends dropped, no control or bidi formatting characters (which
+/// could make it read as something else). Empty is a name too: the launcher
+/// shows its own.
+fn wardrobe_name(text: &str) -> Option<String> {
+    let name = text.trim();
+    let plain = name.chars().all(|c| {
+        !c.is_control()
+            && !matches!(
+                c,
+                '\u{200B}'..='\u{200F}' | '\u{202A}'..='\u{202E}' | '\u{2066}'..='\u{2069}' | '\u{FEFF}'
+            )
+    });
+    (plain && name.chars().count() <= NAME_CHARS).then(|| name.to_owned())
+}
+
+/// An item's or set's ID: 32 lowercase hex digits.
+fn wardrobe_id(id: Result<Path<String>, PathRejection>) -> Option<String> {
+    let Path(id) = id.ok()?;
+    (id.len() == 32 && id.bytes().all(|b| matches!(b, b'0'..=b'9' | b'a'..=b'f'))).then_some(id)
+}
+
+/// Counts a change against the account's hourly limit of its bucket.
+fn allowed(app: &App, me: &Claims, bucket: &'static str, limit: u32) -> bool {
+    app.limiter
+        .allow(&me.sub, bucket, limit, Duration::from_secs(3600))
+}
+
+/// `GET /v1/me/wardrobe`.
+async fn get_wardrobe(State(app): State<Arc<App>>, headers: HeaderMap) -> Response {
+    let me = me!(app, headers);
+    wardrobe(&app, &me)
+}
+
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct SaveBody {
+    kind: Option<String>,
+    #[serde(default)]
+    name: String,
+}
+
+/// `POST /v1/me/wardrobe/save` `{"kind", "name"}`: keeps what is worn of the
+/// kind in the wardrobe (no upload counted).
+async fn save_worn(
+    State(app): State<Arc<App>>,
+    headers: HeaderMap,
+    body: Result<Json<SaveBody>, JsonRejection>,
+) -> Response {
+    let me = me!(app, headers);
+    let body = match body {
+        Ok(Json(body)) => body,
+        Err(rejection) => return refuse(rejection.status(), "bad_request"),
+    };
+    let Some(kind) = body.kind.as_deref().and_then(Kind::parse) else {
+        return refuse(StatusCode::BAD_REQUEST, "bad_request");
+    };
+    let Some(name) = wardrobe_name(&body.name) else {
+        return refuse(StatusCode::BAD_REQUEST, "bad_name");
+    };
+    if !allowed(&app, &me, "wardrobe", CHANGES_PER_HOUR) {
+        return refuse(StatusCode::TOO_MANY_REQUESTS, "rate_limited");
+    }
+    match app.store.save_worn(&me.sub, kind, &name, now()) {
+        Ok(Kept::Yes(_)) => wardrobe(&app, &me),
+        Ok(Kept::No(refused)) => refused_by(refused),
+        Err(e) => failed(&e),
+    }
+}
+
+/// `POST /v1/me/wardrobe/sets` `{"name"}`: keeps what is worn, skin and
+/// cape, as a set.
+async fn save_set(
+    State(app): State<Arc<App>>,
+    headers: HeaderMap,
+    body: Result<Json<SaveBody>, JsonRejection>,
+) -> Response {
+    let me = me!(app, headers);
+    let body = match body {
+        Ok(Json(body)) => body,
+        Err(rejection) => return refuse(rejection.status(), "bad_request"),
+    };
+    if body.kind.is_some() {
+        return refuse(StatusCode::BAD_REQUEST, "bad_request");
+    }
+    let Some(name) = wardrobe_name(&body.name) else {
+        return refuse(StatusCode::BAD_REQUEST, "bad_name");
+    };
+    if !allowed(&app, &me, "wardrobe", CHANGES_PER_HOUR) {
+        return refuse(StatusCode::TOO_MANY_REQUESTS, "rate_limited");
+    }
+    match app.store.save_set(&me.sub, &name, now()) {
+        Ok(Kept::Yes(_)) => wardrobe(&app, &me),
+        Ok(Kept::No(refused)) => refused_by(refused),
+        Err(e) => failed(&e),
+    }
+}
+
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct ChangeBody {
+    name: Option<String>,
+    favourite: Option<bool>,
+}
+
+/// Which of the account's items or sets a request names.
+#[derive(Clone, Copy)]
+enum Of {
+    Items,
+    Sets,
+}
+
+/// `PATCH /v1/me/wardrobe/items|sets/{id}` `{"name"?, "favourite"?}`.
+async fn change(
+    app: &App,
+    of: Of,
+    id: Result<Path<String>, PathRejection>,
+    headers: &HeaderMap,
+    body: Result<Json<ChangeBody>, JsonRejection>,
+) -> Response {
+    let me = me!(app, headers);
+    let Some(id) = wardrobe_id(id) else {
+        return refuse(StatusCode::NOT_FOUND, "not_found");
+    };
+    let body = match body {
+        Ok(Json(body)) => body,
+        Err(rejection) => return refuse(rejection.status(), "bad_request"),
+    };
+    let name = match body.name.as_deref().map(wardrobe_name) {
+        None => None,
+        Some(Some(name)) => Some(name),
+        Some(None) => return refuse(StatusCode::BAD_REQUEST, "bad_name"),
+    };
+    if !allowed(app, &me, "wardrobe", CHANGES_PER_HOUR) {
+        return refuse(StatusCode::TOO_MANY_REQUESTS, "rate_limited");
+    }
+    let change = Change {
+        name: name.as_deref(),
+        favourite: body.favourite,
+    };
+    let changed = match of {
+        Of::Items => app.store.change_item(&me.sub, &id, &change),
+        Of::Sets => app.store.change_set(&me.sub, &id, &change),
+    };
+    match changed {
+        Ok(true) => wardrobe(app, &me),
+        Ok(false) => refuse(StatusCode::NOT_FOUND, "not_found"),
+        Err(e) => failed(&e),
+    }
+}
+
+/// `DELETE /v1/me/wardrobe/items|sets/{id}`; what is worn stays on.
+async fn delete(
+    app: &App,
+    of: Of,
+    id: Result<Path<String>, PathRejection>,
+    headers: &HeaderMap,
+) -> Response {
+    let me = me!(app, headers);
+    let Some(id) = wardrobe_id(id) else {
+        return refuse(StatusCode::NOT_FOUND, "not_found");
+    };
+    if !allowed(app, &me, "wardrobe", CHANGES_PER_HOUR) {
+        return refuse(StatusCode::TOO_MANY_REQUESTS, "rate_limited");
+    }
+    let deleted = match of {
+        Of::Items => app.store.delete_item(&me.sub, &id),
+        Of::Sets => app.store.delete_set(&me.sub, &id),
+    };
+    match deleted {
+        Ok(true) => wardrobe(app, &me),
+        Ok(false) => refuse(StatusCode::NOT_FOUND, "not_found"),
+        Err(e) => failed(&e),
+    }
+}
+
+/// `POST /v1/me/wardrobe/items|sets/{id}/wear`: no upload counted.
+async fn put_on(
+    app: &App,
+    of: Of,
+    id: Result<Path<String>, PathRejection>,
+    headers: &HeaderMap,
+) -> Response {
+    let me = me!(app, headers);
+    let Some(id) = wardrobe_id(id) else {
+        return refuse(StatusCode::NOT_FOUND, "not_found");
+    };
+    if !allowed(app, &me, "wear", WEARS_PER_HOUR) {
+        return refuse(StatusCode::TOO_MANY_REQUESTS, "rate_limited");
+    }
+    let worn = match of {
+        Of::Items => app.store.wear_item(&me.sub, &id, now()),
+        Of::Sets => app.store.wear_set(&me.sub, &id, now()),
+    };
+    match worn {
+        Ok(true) => wardrobe(app, &me),
+        Ok(false) => refuse(StatusCode::NOT_FOUND, "not_found"),
+        Err(e) => failed(&e),
+    }
+}
+
+async fn change_item(
+    State(app): State<Arc<App>>,
+    id: Result<Path<String>, PathRejection>,
+    headers: HeaderMap,
+    body: Result<Json<ChangeBody>, JsonRejection>,
+) -> Response {
+    change(&app, Of::Items, id, &headers, body).await
+}
+
+async fn change_set(
+    State(app): State<Arc<App>>,
+    id: Result<Path<String>, PathRejection>,
+    headers: HeaderMap,
+    body: Result<Json<ChangeBody>, JsonRejection>,
+) -> Response {
+    change(&app, Of::Sets, id, &headers, body).await
+}
+
+async fn delete_item(
+    State(app): State<Arc<App>>,
+    id: Result<Path<String>, PathRejection>,
+    headers: HeaderMap,
+) -> Response {
+    delete(&app, Of::Items, id, &headers).await
+}
+
+async fn delete_set(
+    State(app): State<Arc<App>>,
+    id: Result<Path<String>, PathRejection>,
+    headers: HeaderMap,
+) -> Response {
+    delete(&app, Of::Sets, id, &headers).await
+}
+
+async fn wear_item(
+    State(app): State<Arc<App>>,
+    id: Result<Path<String>, PathRejection>,
+    headers: HeaderMap,
+) -> Response {
+    put_on(&app, Of::Items, id, &headers).await
+}
+
+async fn wear_set(
+    State(app): State<Arc<App>>,
+    id: Result<Path<String>, PathRejection>,
+    headers: HeaderMap,
+) -> Response {
+    put_on(&app, Of::Sets, id, &headers).await
 }
 
 async fn take_off(
@@ -460,7 +913,7 @@ async fn take_off(
 }
 
 /// What is kept about the account, for "Download my data": the textures by
-/// their hashes, not the files.
+/// their hashes, not the files, worn and in the wardrobe.
 async fn export(State(app): State<Arc<App>>, headers: HeaderMap) -> Response {
     let me = me!(app, headers);
     if !app
@@ -482,10 +935,18 @@ async fn export(State(app): State<Arc<App>>, headers: HeaderMap) -> Response {
                 out
             })
     };
+    let (items, sets) = match (app.store.items(&me.sub), app.store.sets(&me.sub)) {
+        (Ok(items), Ok(sets)) => (items, sets),
+        (Err(e), _) | (_, Err(e)) => return failed(&e),
+    };
+    let items: Vec<Value> = items.iter().map(|i| item_json(&app, i)).collect();
+    let sets: Vec<Value> = sets.iter().map(|s| set_json(&app, s)).collect();
     Json(json!({
         "account": me.sub,
         "skin": of(Kind::Skin),
         "cape": of(Kind::Cape),
+        "items": items,
+        "sets": sets,
     }))
     .into_response()
 }
@@ -593,7 +1054,23 @@ pub fn router(app: Arc<App>) -> Router {
         .route("/v1/profiles", post(post_profiles))
         .route("/v1/textures/{hash}", get(get_texture))
         .route("/v1/me", get(get_me))
-        .route("/v1/me/{kind}", put(upload).delete(take_off))
+        .route(
+            "/v1/me/{kind}",
+            put(upload).post(add_upload).delete(take_off),
+        )
+        .route("/v1/me/wardrobe", get(get_wardrobe))
+        .route("/v1/me/wardrobe/save", post(save_worn))
+        .route("/v1/me/wardrobe/sets", post(save_set))
+        .route(
+            "/v1/me/wardrobe/items/{id}",
+            patch(change_item).delete(delete_item),
+        )
+        .route("/v1/me/wardrobe/items/{id}/wear", post(wear_item))
+        .route(
+            "/v1/me/wardrobe/sets/{id}",
+            patch(change_set).delete(delete_set),
+        )
+        .route("/v1/me/wardrobe/sets/{id}/wear", post(wear_set))
         .route("/v1/export", get(export))
         .layer(axum::middleware::from_fn_with_state(
             Arc::clone(&app),

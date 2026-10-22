@@ -8,8 +8,9 @@
 //! lapi-skins counts                   numbers only (fit for a public log)
 //! lapi-skins remove <account> [skin|cape]
 //!                                     takes a skin or cape (or both) off an
-//!                                     account; `lapi-oauth find <nick>`
-//!                                     shows the account ID of a nick
+//!                                     account and out of its wardrobe;
+//!                                     `lapi-oauth find <nick>` shows the
+//!                                     account ID of a nick
 //! lapi-skins backup                   a copy of the database in data/backups
 //!                                     (daily, by lapi-skins-backup.timer)
 //! ```
@@ -41,7 +42,8 @@ fn env(name: &str, default: &str) -> String {
 const DATA: &str = "/home/www/lapi/skins/data";
 const USAGE: &str = "usage: lapi-skins serve|counts|remove <account> [skin|cape]|backup";
 
-/// The owner's command: takes textures off an account. The running service
+/// The owner's command: takes textures off an account, and out of its
+/// wardrobe and sets so they cannot be put on again. The running service
 /// shows it at once (profiles are read from the database each time; the
 /// mod and Cloudflare keep a profile a minute).
 fn remove(store: &store::Store, args: &[String]) -> Result<(), String> {
@@ -54,7 +56,7 @@ fn remove(store: &store::Store, args: &[String]) -> Result<(), String> {
         None => None,
         Some(kind) => Some(texture::Kind::parse(kind).ok_or("give skin or cape, or neither")?),
     };
-    if !store.take_off(account, kind)? {
+    if !store.remove(account, kind)? {
         return Err("that account wears nothing of the kind".to_owned());
     }
     println!(

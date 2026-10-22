@@ -1,6 +1,6 @@
 [package]
 name = "lapi-skins"
-version = "0.1.0"
+version = "0.2.0"
 edition = "2024"
 rust-version = "1.97"
 description = "Skins and capes of launcher accounts, looked up by nick (D-065)"
@@ -12,7 +12,7 @@ tokio = { version = "1", features = ["rt-multi-thread", "macros", "net", "signal
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 rusqlite = { version = "0.37", features = ["bundled"] }
-uuid = "1"
+uuid = { version = "1", features = ["v4"] }
 chrono = { version = "0.4", default-features = false, features = ["clock", "std"] }
 ed25519-dalek = "2"
 base64 = "0.22"
