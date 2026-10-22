@@ -342,6 +342,7 @@ $Keys = @{ Escape = 0x1B; Enter = 0x0D; Tab = 0x09; F2 = 0x71 }
 # locked screen or when Windows refuses.
 function Game-Focus([IntPtr]$Hwnd) {
   if ([UserTest.Win]::GetForegroundWindow() -eq $Hwnd) { return $true }
+  Close-DriverReports
   for ($try = 0; $try -lt 3; $try++) {
     [UserTest.Win]::keybd_event(0x12, 0, 0, [IntPtr]::Zero)
     [UserTest.Win]::keybd_event(0x12, 0, 2, [IntPtr]::Zero)
@@ -434,6 +435,57 @@ function Log-Text([string]$Log) {
     $stream = [IO.File]::Open($Log, 'Open', 'Read', 'ReadWrite,Delete')
     try { return (New-Object IO.StreamReader($stream)).ReadToEnd() } finally { $stream.Dispose() }
   } catch { return '' }
+}
+
+# Launcher Skins, the launcher's own skins mod, for the run just played: '' when the
+# launcher has no build of it for this version, 'ok' when the game took it, 'not added'
+# when the launcher could not add it, 'not loaded' when the game's logs never name it,
+# 'failed' when they name it with an error. A loader names the mod id in its mod list
+# (Fabric, Quilt), its mod file scan (Forge, NeoForge: debug.log) or its connection
+# handshake (Forge 1.7.10, 1.12.2); the Java agent of the game without a loader writes
+# only when it cannot hook in.
+function Skins-State([string]$Loader, [int]$From, [string]$GameDir, [string]$RunLog) {
+  $launcherText = Log-Text (Join-Path $data 'logs\launcher.log')
+  if ($launcherText.Length -lt $From) { $From = 0 }
+  $since = $launcherText.Substring($From)
+  if ($since -match '(?m)\swarn\s+Launcher Skins (could not|cannot)') { return 'not added' }
+  if (-not $since.Contains('Launcher Skins added to the game')) { return '' }
+  $text = ''
+  if ($GameDir) {
+    foreach ($f in @(Get-ChildItem (Join-Path $GameDir 'logs') -Filter *.log -ErrorAction SilentlyContinue)) { $text += (Log-Text $f.FullName) + "`n" }
+  }
+  if ($RunLog) { $text += Log-Text $RunLog }
+  if ($text -match "Launcher Skins: (the agent's targets were not found|PlayerInfo left unchanged)" -or
+      $text -match '(?im)^.*launcherskins.*(ERROR|FATAL|exception|failed|invalid|incompatible|could not).*$' -or
+      $text -match '(?im)^.*(ERROR|FATAL|exception|failed|invalid|incompatible|could not).*launcherskins.*$') { return 'failed' }
+  if ($Loader -eq 'vanilla' -or $text -match '(?i)launcherskins') { return 'ok' }
+  return 'not loaded'
+}
+
+# --- A graphics driver crash: neither the launcher's nor the game's hang ------------
+# Windows logs a display driver that stopped responding and was restarted (TDR) as
+# System event 4101, and its dump as a LiveKernelEvent of Windows Error Reporting. The
+# AMD driver then opens its bug report window, which also takes the focus from the game.
+function Driver-Reports {
+  Get-Process -ErrorAction SilentlyContinue | Where-Object {
+    $_.ProcessName -match '(?i)BugReport' -or $_.MainWindowTitle -match '(?i)Bug Report Tool|AMD Bug Report|driver timeout' }
+}
+
+function Close-DriverReports {
+  foreach ($p in @(Driver-Reports)) {
+    Say "closing the graphics driver's report window ($($p.ProcessName))"
+    try { [void]$p.CloseMainWindow() } catch { }
+    if ($p.ProcessName -match '(?i)BugReport' -and -not $p.WaitForExit(5000)) {
+      Stop-Process -Id $p.Id -Force -ErrorAction SilentlyContinue
+    }
+  }
+}
+
+function Driver-Crashed([datetime]$Since) {
+  if (@(Get-WinEvent -FilterHashtable @{ LogName = 'System'; Id = 4101; StartTime = $Since } -ErrorAction SilentlyContinue).Count) { return $true }
+  if (@(Get-WinEvent -FilterHashtable @{ LogName = 'Application'; Id = 1001; StartTime = $Since } -ErrorAction SilentlyContinue |
+      Where-Object { $_.Message -match 'LiveKernelEvent' }).Count) { return $true }
+  return @(Driver-Reports).Count -gt 0
 }
 
 # --- Machine names out of anything uploaded (the repository is public) -------------
@@ -588,16 +640,21 @@ try {
   $setup = New-Item -ItemType Directory -Force (Join-Path $Out 'setup')
   Dump-Launcher $setup
 
-  foreach ($item in $plan) {
+  # An item the graphics driver crashed under is played once more, at the end.
+  $queue = [Collections.ArrayList]@($plan)
+  $replayed = @{}
+  for ($n = 0; $n -lt $queue.Count; $n++) {
+    $item = $queue[$n]
     $loader, $version = $item -split ':', 2
     $label = if ($loader -eq 'vanilla') { $version } else { "$version $($loaderNames[$loader])" }
     $folder = New-Item -ItemType Directory -Force (Join-Path $Out "$loader-$version")
     $result = [ordered]@{ item = $item; loader = $loader; version = $version; loaderVersion = ''
       machine = $env:RUNNER_NAME; install = 'not run'; installSeconds = $null
       launch = 'not run'; launchSeconds = $null; world = 'not run'; worldSeconds = $null
-      exit = 'not run'; exitCode = $null; logErrors = 0; note = '' }
+      exit = 'not run'; exitCode = $null; skins = ''; driver = ''; logErrors = 0; note = '' }
     [void]$results.Add($result)
-    $gameDir = $null; $runLog = $null; $keep = $false
+    $gameDir = $null; $runLog = $null; $keep = $false; $launcherLogFrom = $null; $itemStarted = Get-Date
+    Close-DriverReports
     Write-Host "::group::$label"
     try {
       # --- Installations: New installation, the loader, the version, Create, Install ---------
@@ -684,11 +741,24 @@ try {
 
       # --- Play ----------------------------------------------------------------------------
       $gameDir = Join-Path $instance.FullName 'game'
+      if ((Compare-Version $version '1.7') -lt 0) {
+        # Before 1.7 the world list reads and drops every mouse event of a frame drawn
+        # without the button down, which loses the test's clicks on its buttons; the
+        # game's own touchscreen mode skips that. Written before the first start.
+        # Touchscreen mode came in 1.4.6: before it a click counts only when a tick
+        # reads it before the next frame is drawn, so those versions get the power saver
+        # frame limit (35 frames for 20 ticks a second) and more tries.
+        New-Item -ItemType Directory -Force $gameDir | Out-Null
+        $options = Join-Path $gameDir 'options.txt'
+        $lines = if ((Compare-Version $version '1.4.6') -lt 0) { @('touchscreen:true', 'fpsLimit:2') } else { @('touchscreen:true') }
+        if (-not (Test-Path $options)) { Set-Content -Path $options -Value $lines -Encoding ASCII }
+      }
       $log = Join-Path $gameDir 'logs\latest.log'
       $shots = Join-Path $gameDir 'screenshots'
       $runs = Join-Path $data 'logs\runs'
       $runsBefore = @(Get-ChildItem -Directory $runs -ErrorAction SilentlyContinue | ForEach-Object Name)
       $started = Get-Date
+      $launcherLogFrom = (Log-Text (Join-Path $data 'logs\launcher.log')).Length
       Click $ready
       $game = Wait-For { Game-Window } 300
       # What the launcher kept of the game's output (versions before 1.7 write no
@@ -737,10 +807,11 @@ try {
 
       # --- Singleplayer -> Create New World --------------------------------------------------
       $started = Get-Date
-      $joined = "$([regex]::Escape($Nick)) joined the game"
-      # Before 1.3 singleplayer had no server inside and logs no join: there the new
-      # world's level.dat shows the world was made.
-      $oldSingleplayer = (Compare-Version $version '1.3') -lt 0
+      # 1.4.6 to 1.6.x log the server's "<nick>[/127.0.0.1:0] logged in with entity id".
+      $joined = "$([regex]::Escape($Nick)) joined the game|$([regex]::Escape($Nick))\[[^\]]*\] logged in with entity id"
+      # Before 1.3 singleplayer had no server inside, and up to 1.4.5 the server inside
+      # logs nowhere: there the new world's level.dat shows the world was made.
+      $oldSingleplayer = (Compare-Version $version '1.4.6') -lt 0
       $inWorld = {
         if ((& $text) -match $joined) { return $true }
         if ($oldSingleplayer -and (Get-ChildItem (Join-Path $gameDir 'saves') -Recurse -Filter level.dat -ErrorAction SilentlyContinue |
@@ -765,8 +836,9 @@ try {
       # height - 52. Newer versions open Create New World at once for an empty list,
       # and that spot is empty there.
       # Old versions (1.6.4 and before) may let a click pass, so it is given three
-      # times: after one that worked, the next land on an empty spot of Create New World.
-      foreach ($i in 1..3) {
+      # times (eight before 1.4.6): after one that worked, the next land on an empty
+      # spot of Create New World.
+      foreach ($i in 1..$(if ((Compare-Version $version '1.4.6') -lt 0) { 8 } else { 3 })) {
         Game-Click $hwnd ([math]::Floor($layout.GuiWidth / 2) + 4 + 75) ($layout.GuiHeight - 52 + 10)
         Start-Sleep -Milliseconds 1500
       }
@@ -848,7 +920,15 @@ try {
         Launcher-Log $folder
       }
     } finally {
-      $passed = $result.world -eq 'ok' -and $result.exit -eq 'ok'
+      if ($null -ne $launcherLogFrom) { $result.skins = Skins-State $loader $launcherLogFrom $gameDir $runLog }
+      $passed = $result.world -eq 'ok' -and $result.exit -eq 'ok' -and $result.skins -notmatch '^not|^failed'
+      if ($result.skins -match '^not|^failed') { $result.note = "$($result.note); Launcher Skins $($result.skins)".Trim('; ') }
+      if (Driver-Crashed $itemStarted) {
+        $result.driver = 'crashed'
+        $result.note = "$($result.note); the graphics driver crashed".Trim('; ')
+        Close-DriverReports
+      }
+      if ($replayed[$item]) { $result.note = "$($result.note); played again after a graphics driver crash".Trim('; ') }
       if ($gameDir -and (Test-Path $log)) {
         $all = Log-Text $log
         $result.logErrors = ([regex]::Matches($all, '/(ERROR|FATAL)\]')).Count
@@ -869,6 +949,12 @@ try {
       # Kept after each one, so a cancelled run still has what it did.
       ConvertTo-Json -InputObject @($results) -Depth 4 | Set-Content -Encoding UTF8 (Join-Path $Out 'results.json')
     }
+    if ($result.driver -and -not $passed -and -not $replayed[$item]) {
+      Say "$label : the graphics driver crashed; played once more at the end"
+      $replayed[$item] = $true
+      $results.Remove($result)
+      [void]$queue.Add($item)
+    }
   }
 } catch {
   Say "stopped: $($_.Exception.Message)"
@@ -879,5 +965,5 @@ try {
   Restore-Machine
 }
 
-$failed = @($results | Where-Object { $_.world -ne 'ok' -or $_.exit -ne 'ok' })
+$failed = @($results | Where-Object { $_.world -ne 'ok' -or $_.exit -ne 'ok' -or $_.skins -match '^not|^failed' })
 if ($failed) { exit 1 }

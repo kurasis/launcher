@@ -22,6 +22,12 @@ def timed(state, seconds):
     return f"{state} ({seconds} s)" if seconds else cell(state)
 
 
+def passed(row):
+    skins = row.get("skins") or ""
+    return (row.get("world") == "ok" and row.get("exit") == "ok"
+            and not skins.startswith(("not", "failed")))
+
+
 def main():
     parts_dir, out_dir = Path(sys.argv[1]), Path(sys.argv[2])
     out_dir.mkdir(parents=True, exist_ok=True)
@@ -31,6 +37,9 @@ def main():
         items = [i for i in part["items"].split(",") if i]
         found = {}
         path = parts_dir / f"usertest-results-{part['part']}" / "results.json"
+        if not path.is_file() and len(plan) == 1:
+            # download-artifact puts a single matching artifact straight into the folder.
+            path = parts_dir / "results.json"
         if path.is_file():
             data = json.loads(path.read_text(encoding="utf-8-sig") or "[]")
             for entry in data if isinstance(data, list) else [data]:
@@ -46,24 +55,26 @@ def main():
             entry["part"] = part["part"]
             rows.append(entry)
 
-    passed = sum(1 for r in rows if r.get("world") == "ok" and r.get("exit") == "ok")
+    crashed = sum(1 for r in rows if r.get("driver") and not passed(r))
     lines = [
-        f"**{passed} of {sum(1 for r in rows if r.get('version'))} passed**",
+        f"**{sum(1 for r in rows if passed(r))} of {sum(1 for r in rows if r.get('version'))} passed**"
+        + (f" (⚠️ {crashed} failed with a graphics driver crash)" if crashed else ""),
         "",
-        "| Version | Loader | Install | Launch | World | Exit | Log errors | Machine | Note |",
-        "| --- | --- | --- | --- | --- | --- | --- | --- | --- |",
+        "| Version | Loader | Install | Launch | World | Exit | Launcher Skins | Log errors | Machine | Note |",
+        "| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |",
     ]
     for r in rows:
-        ok = r.get("world") == "ok" and r.get("exit") == "ok"
+        ok = passed(r)
         loader = " ".join(x for x in (NAMES.get(r.get("loader", ""), ""), r.get("loaderVersion") or "") if x)
         exit_state = f"{r.get('exit')} ({r.get('exitCode')})" if r.get("exitCode") is not None else cell(r.get("exit"))
         lines.append("| " + " | ".join([
-            ("✅ " if ok else "❌ ") + cell(r.get("version") or r.get("item")),
+            ("✅ " if ok else "⚠️ " if r.get("driver") else "❌ ") + cell(r.get("version") or r.get("item")),
             cell(loader),
             timed(r.get("install"), r.get("installSeconds")),
             timed(r.get("launch"), r.get("launchSeconds")),
             timed(r.get("world"), r.get("worldSeconds")),
             exit_state,
+            cell(r.get("skins")),
             cell(r.get("logErrors")),
             cell(r.get("machine")),
             cell(r.get("note")),
