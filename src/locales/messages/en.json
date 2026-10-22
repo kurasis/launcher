@@ -36,6 +36,33 @@
       "chooseInstallation": "Choose an installation",
       "openInstallations": "Open Installations"
     },
+    "palette": {
+      "find": "Find",
+      "findHint": "Find ({keys})",
+      "title": "Find in the launcher",
+      "placeholder": "What to find",
+      "results": "{count, plural, =0 {Nothing found} one {# result} other {# results}}",
+      "listLabel": "Results",
+      "pages": "Pages and actions",
+      "nothing": "Nothing found. Try a shorter word or another spelling.",
+      "offline": "The catalog is searched when the internet connection returns.",
+      "searching": "Searching the catalog…",
+      "scope": "Searches installations, mods, pages and settings",
+      "screen": "Page",
+      "newWith": "New installation with {loader}",
+      "inInstallation": "Installed in “{name}”",
+      "catalog": "In the catalog",
+      "go": "Go",
+      "create": "Create",
+      "open": "Open",
+      "modPage": "Mod page",
+      "hints": {
+        "move": "move",
+        "open": "open",
+        "main": "main action",
+        "close": "close"
+      }
+    },
     "feed": {
       "title": "Feed",
       "loading": "Loading the feed…",

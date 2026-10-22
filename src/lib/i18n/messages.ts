@@ -35,6 +35,33 @@ export type Messages = {
     readonly chooseInstallation: string;
     readonly openInstallations: string;
   };
+  readonly palette: {
+    readonly find: string;
+    readonly findHint: (values: { keys: string | number }) => string;
+    readonly title: string;
+    readonly placeholder: string;
+    readonly results: (values: { count: number }) => string;
+    readonly listLabel: string;
+    readonly pages: string;
+    readonly nothing: string;
+    readonly offline: string;
+    readonly searching: string;
+    readonly scope: string;
+    readonly screen: string;
+    readonly newWith: (values: { loader: string | number }) => string;
+    readonly inInstallation: (values: { name: string | number }) => string;
+    readonly catalog: string;
+    readonly go: string;
+    readonly create: string;
+    readonly open: string;
+    readonly modPage: string;
+    readonly hints: {
+      readonly move: string;
+      readonly open: string;
+      readonly main: string;
+      readonly close: string;
+    };
+  };
   readonly feed: {
     readonly title: string;
     readonly loading: string;

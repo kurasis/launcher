@@ -1,21 +1,34 @@
-import type { ReactNode } from 'react';
+import { useEffect, useRef, useState, type ReactNode } from 'react';
 import { Button } from '../components/Button';
 import { Icon } from '../components/Icon';
 import type { AppSnapshot, InstanceSummary } from '../lib/contracts';
-import { progressPercent } from '../lib/format';
 import { ipc } from '../lib/ipc';
 import { strings } from '../lib/strings';
 import { useCommand } from '../lib/useCommand';
 import { gameLabel } from '../features/instances/loaderLabel';
+import { mainActionOf } from '../features/instances/mainAction';
 import { PlayAs } from '../features/instances/PlayAs';
 import styles from './LaunchBar.module.css';
 
-const t = strings.install;
+/** A request to run an installation's main action in the bar, e.g. from the command palette. */
+export interface LaunchRequest {
+  instanceId: string;
+  /** When it was asked (Date.now()): each request runs once. */
+  at: number;
+}
+
+/** A request the bar has not reached in this long is dropped (its installation was never chosen). */
+const REQUEST_LIFETIME_MS = 15_000;
 
 interface LaunchBarProps {
   snapshot: AppSnapshot;
   /** Opens Installations; left out on Installations itself, where the bar links nowhere. */
   onOpenInstallations?: (() => void) | undefined;
+  /**
+   * Runs the main action of this installation once it is the chosen one, so its
+   * pending state, error and progress show here.
+   */
+  request?: LaunchRequest | undefined;
 }
 
 /**
@@ -23,7 +36,9 @@ interface LaunchBarProps {
  * who plays it, and its main action (Play, Install or Repair). Progress and the
  * running game show here too; their details stay on Installations.
  */
-export function LaunchBar({ snapshot, onOpenInstallations }: LaunchBarProps) {
+export function LaunchBar({ snapshot, onOpenInstallations, request }: LaunchBarProps) {
+  // The last request taken, kept here: the chosen bar below remounts with every choice.
+  const [handledAt, setHandledAt] = useState<number | null>(null);
   const instance =
     snapshot.instances.find((i) => i.id === snapshot.settings.selectedInstanceId) ?? null;
   if (instance === null) {
@@ -50,6 +65,12 @@ export function LaunchBar({ snapshot, onOpenInstallations }: LaunchBarProps) {
       instance={instance}
       snapshot={snapshot}
       onOpenInstallations={onOpenInstallations}
+      request={
+        request !== undefined && request.instanceId === instance.id && request.at !== handledAt
+          ? request
+          : undefined
+      }
+      onRequestHandled={setHandledAt}
     />
   );
 }
@@ -58,78 +79,57 @@ function ChosenBar({
   instance,
   snapshot,
   onOpenInstallations,
-}: LaunchBarProps & { instance: InstanceSummary }) {
+  request,
+  onRequestHandled,
+}: LaunchBarProps & {
+  instance: InstanceSummary;
+  onRequestHandled: (at: number) => void;
+}) {
   const install = useCommand((requestId: string, id: string) => ipc.installInstance(id, requestId));
   const repair = useCommand((requestId: string, id: string) => ipc.repairInstance(id, requestId));
   const play = useCommand((requestId: string, id: string) => ipc.launchGame(id, requestId));
-  const active = snapshot.activeOperation;
-  const mine = active?.instanceId === instance.id ? active : null;
-  const otherBusy = active !== null && mine === null;
   const offline = snapshot.network === 'offline';
-  // While something else runs, install and repair wait in the queue (D-049).
-  const queued = snapshot.queue.find((q) => q.instanceId === instance.id) ?? null;
-  const progress =
-    mine !== null && snapshot.operationProgress?.operationId === mine.operationId
-      ? snapshot.operationProgress
-      : null;
-  const percent = progressPercent(progress);
-  const running = mine?.kind === 'launch' || snapshot.currentRun?.instanceId === instance.id;
   const health = instance.health;
-  const last = snapshot.recentOperations.find((r) => r.instanceId === instance.id) ?? null;
-  const unfinished =
-    last !== null &&
-    last.kind === 'install' &&
-    last.outcome !== 'succeeded' &&
-    health === 'not_installed';
   const error = play.error ?? install.error ?? repair.error;
+  const main = mainActionOf(instance, snapshot, {
+    play: play.pending,
+    install: install.pending,
+    repair: repair.pending,
+  });
+  const runMain = () => {
+    if (main.command === 'launch') void play.run(instance.id);
+    else if (main.command === 'install') void install.run(instance.id);
+    else if (main.command === 'repair') void repair.run(instance.id);
+  };
+
+  // A request from elsewhere runs once, while it is fresh and the action can run;
+  // `taken` also keeps a development double run of effects from running it twice.
+  const taken = useRef<number | null>(null);
+  useEffect(() => {
+    if (request === undefined || taken.current === request.at) return;
+    taken.current = request.at;
+    onRequestHandled(request.at);
+    if (main.enabled && Date.now() - request.at < REQUEST_LIFETIME_MS) runMain();
+  });
 
   let action: ReactNode = null;
-  if (running) {
+  if (main.kind === 'running' || main.kind === 'busy') {
     action = (
       <p className={styles.state} role="status">
-        {t.gameRunning}
+        {main.label}
       </p>
     );
-  } else if (mine !== null) {
+  } else if (main.kind === 'play') {
     action = (
-      <p className={styles.state} role="status">
-        {percent !== null
-          ? `${strings.activity[mine.kind]} ${strings.activity.percent({ percent })}`
-          : strings.activity[mine.kind]}
-      </p>
-    );
-  } else if (health === 'ready') {
-    action = (
-      <Button
-        variant="primary"
-        size="large"
-        disabled={otherBusy || play.pending}
-        onClick={() => void play.run(instance.id)}
-      >
+      <Button variant="primary" size="large" disabled={!main.enabled} onClick={runMain}>
         <Icon name="play" size={18} className={styles.playIcon} />
-        {play.pending ? t.starting : t.play}
+        {main.label}
       </Button>
     );
-  } else if (health === 'not_installed') {
+  } else if (main.kind !== 'none') {
     action = (
-      <Button
-        variant="primary"
-        size="large"
-        disabled={install.pending || queued !== null}
-        onClick={() => void install.run(instance.id)}
-      >
-        {otherBusy || offline ? strings.downloads.addToQueue : unfinished ? t.retry : t.install}
-      </Button>
-    );
-  } else if (health !== 'unsupported') {
-    action = (
-      <Button
-        variant="primary"
-        size="large"
-        disabled={repair.pending || queued !== null}
-        onClick={() => void repair.run(instance.id)}
-      >
-        {otherBusy || offline ? strings.downloads.addToQueue : t.repair}
+      <Button variant="primary" size="large" disabled={!main.enabled} onClick={runMain}>
+        {main.label}
       </Button>
     );
   }
@@ -166,15 +166,13 @@ function ChosenBar({
           {error}
         </p>
       )}
-      {queued !== null && (
+      {main.queued && (
         <p className={styles.note} role="status">
           {offline ? strings.downloads.waitingForNetwork : strings.downloads.queued}
         </p>
       )}
       <div className={styles.end}>
-        {health === 'ready' && !running && mine === null && (
-          <PlayAs instance={instance} account={snapshot.account} compact />
-        )}
+        {main.kind === 'play' && <PlayAs instance={instance} account={snapshot.account} compact />}
         {action}
       </div>
     </section>

@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
+import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { mockIPC } from '@tauri-apps/api/mocks';
 import { describe, expect, it, vi } from 'vitest';
 import type { AppSnapshot, InstanceSummary, OperationResult } from '../lib/contracts';
@@ -235,6 +235,68 @@ describe('LaunchBar', () => {
     );
     expect(within(bar()).getByRole('status')).toHaveTextContent(/Install/);
     expect(within(bar()).queryByRole('button', { name: /^(Install|Retry install)$/ })).toBeNull();
+  });
+
+  it('runs its main action once when asked, for the chosen installation only', async () => {
+    const calls = backend();
+    const ready = instanceFixture({ health: 'ready' });
+    const other = instanceFixture({
+      id: '1f1e2d3c-4b5a-4978-8796-a5b4c3d2e1f0',
+      displayName: 'Creative',
+    });
+    const launches = () => calls.filter((c) => c.cmd === 'launch_game').length;
+    const installs = () => calls.filter((c) => c.cmd === 'install_instance').length;
+    const at = Date.now();
+    // Asked for an installation that is not the chosen one (yet): nothing runs.
+    const { rerender } = render(
+      <LaunchBar snapshot={chosen([ready, other])} request={{ instanceId: other.id, at }} />,
+    );
+    await act(async () => {
+      await Promise.resolve();
+    });
+    expect(launches() + installs()).toBe(0);
+    // It becomes the chosen one: its own main action runs, here Install.
+    rerender(
+      <LaunchBar snapshot={chosen([other, ready])} request={{ instanceId: other.id, at }} />,
+    );
+    await waitFor(() => {
+      expect(installs()).toBe(1);
+    });
+    expect(calls.find((c) => c.cmd === 'install_instance')?.args).toMatchObject({
+      request: { payload: { instanceId: other.id } },
+    });
+    // The same request never runs again, not even when the bar comes back to it.
+    rerender(
+      <LaunchBar snapshot={chosen([ready, other])} request={{ instanceId: other.id, at }} />,
+    );
+    rerender(
+      <LaunchBar snapshot={chosen([other, ready])} request={{ instanceId: other.id, at }} />,
+    );
+    await act(async () => {
+      await Promise.resolve();
+    });
+    expect(installs()).toBe(1);
+    // A new request plays the chosen installed one.
+    rerender(
+      <LaunchBar
+        snapshot={chosen([ready, other])}
+        request={{ instanceId: ready.id, at: at + 1 }}
+      />,
+    );
+    await waitFor(() => {
+      expect(launches()).toBe(1);
+    });
+    // An old request (its installation was never chosen in time) is dropped.
+    rerender(
+      <LaunchBar
+        snapshot={chosen([ready, other])}
+        request={{ instanceId: ready.id, at: at - 60_000 }}
+      />,
+    );
+    await act(async () => {
+      await Promise.resolve();
+    });
+    expect(launches()).toBe(1);
   });
 
   it('opens Installations from other screens only', () => {

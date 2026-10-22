@@ -1,0 +1,301 @@
+/* The command palette (D-072): a plain surface near the top of the window over a
+   scrim. No blur, no glow; only a short fade, which stops under reduced motion. */
+.backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 50;
+  display: flex;
+  align-items: flex-start;
+  justify-content: center;
+  padding: 12vh var(--space-4) var(--space-4);
+  background: var(--color-scrim);
+  animation: appear var(--motion-duration) ease-out;
+}
+
+@keyframes appear {
+  from {
+    opacity: 0;
+  }
+}
+
+.dialog {
+  container-type: inline-size;
+  display: flex;
+  flex-direction: column;
+  inline-size: min(40rem, 100%);
+  max-block-size: calc(88vh - var(--space-4));
+  overflow: hidden;
+  background: var(--color-surface-raised);
+  color: var(--color-text);
+  border: 1px solid var(--color-border-strong);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-raised);
+}
+
+/* The field: the only stop for focus, so the ring frames its whole row. */
+.field {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  padding: var(--space-3) var(--space-4);
+  border-block-end: 1px solid var(--color-border);
+  border-start-start-radius: var(--radius-lg);
+  border-start-end-radius: var(--radius-lg);
+}
+
+.field:focus-within {
+  outline: 2px solid var(--focus-ring, var(--color-focus));
+  outline-offset: -2px;
+}
+
+.searchIcon {
+  color: var(--color-text-muted);
+}
+
+.input {
+  flex: 1;
+  min-inline-size: 0;
+  padding: var(--space-1) 0;
+  border: 0;
+  background: transparent;
+  color: var(--color-text);
+  font: inherit;
+  font-size: var(--font-size-lg);
+  text-align: start;
+}
+
+.input:focus-visible {
+  outline: none;
+}
+
+.input::placeholder {
+  color: var(--color-text-muted);
+  opacity: 1;
+}
+
+.results {
+  flex: 1;
+  min-block-size: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  padding: var(--space-2);
+}
+
+.group + .group {
+  margin-block-start: var(--space-2);
+}
+
+.heading {
+  padding: var(--space-2) var(--space-3) var(--space-1);
+  color: var(--color-text-muted);
+  font-size: var(--font-size-xs);
+  font-weight: 600;
+}
+
+.option {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  min-block-size: 3rem;
+  padding: var(--space-2) var(--space-3);
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  transition: background-color var(--motion-duration) ease-out;
+}
+
+.option[aria-selected='true'] {
+  background: var(--color-selected);
+}
+
+/* Leads: a grass tile for an installation, an icon square for a page, a picture
+   or a letter for a mod. */
+.tile,
+.square,
+.picture,
+.letter {
+  flex: none;
+  inline-size: 2rem;
+  block-size: 2rem;
+  border-radius: calc(var(--radius-sm) * 0.75);
+}
+
+.tile {
+  background: var(--color-soil);
+  box-shadow: inset 0 0.65rem 0 var(--color-hill-near);
+}
+
+.square,
+.letter {
+  display: grid;
+  place-items: center;
+  border: 1px solid var(--color-border);
+  background: var(--color-surface-sunken);
+  color: var(--color-text-2);
+}
+
+.letter {
+  border-color: transparent;
+  background: var(--color-accent-soft);
+  color: var(--color-accent-text);
+  font-size: var(--font-size-sm);
+  font-weight: 600;
+  line-height: 1;
+}
+
+.picture {
+  object-fit: cover;
+  background: var(--color-surface-sunken);
+}
+
+.text {
+  display: grid;
+  flex: 1;
+  min-inline-size: 0;
+  line-height: 1.35;
+}
+
+.name,
+.detail {
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.name {
+  font-size: var(--font-size-sm);
+  font-weight: 500;
+}
+
+.detail {
+  color: var(--color-text-muted);
+  font-size: var(--font-size-xs);
+  /* Its own direction from its first letter, so "Minecraft 1.21.1 · Fabric 0.16.9"
+     keeps its order in Arabic; aligned with the name above all the same. */
+  unicode-bidi: plaintext;
+  text-align: match-parent;
+}
+
+/* The matched part: the accent's soft fill, never a weight change, so Arabic
+   letters stay joined across it. */
+.option mark {
+  border-radius: calc(var(--radius-sm) / 4);
+  background: var(--color-accent-soft);
+  color: var(--color-accent-text);
+}
+
+/* On the chosen row the soft fill is the row's own color: the plain surface instead. */
+.option[aria-selected='true'] mark {
+  background: var(--color-surface);
+}
+
+.end {
+  display: flex;
+  flex: none;
+  align-items: center;
+  gap: var(--space-2);
+  max-inline-size: 45%;
+}
+
+.action {
+  overflow: hidden;
+  color: var(--color-accent-text);
+  font-size: var(--font-size-sm);
+  font-weight: 500;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  font-variant-numeric: tabular-nums;
+}
+
+/* The running game or an operation in progress: a state, not an action. */
+.status {
+  color: var(--color-text-muted);
+  font-weight: 400;
+}
+
+.note,
+.empty {
+  padding: var(--space-2) var(--space-3);
+  color: var(--color-text-muted);
+  font-size: var(--font-size-xs);
+}
+
+.empty {
+  padding-block: var(--space-6);
+  font-size: var(--font-size-sm);
+  text-align: center;
+}
+
+.keys {
+  display: inline-flex;
+  flex: none;
+  gap: 2px;
+}
+
+.key {
+  display: inline-grid;
+  place-items: center;
+  min-inline-size: 1.5rem;
+  padding: 0 var(--space-1);
+  border: 1px solid var(--color-border);
+  border-radius: calc(var(--radius-sm) / 2);
+  background: var(--color-surface-sunken);
+  color: var(--color-text-2);
+  font: inherit;
+  font-size: var(--font-size-xs);
+  line-height: 1.5;
+  font-variant-numeric: tabular-nums;
+}
+
+.footer {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2) var(--space-4);
+  padding: var(--space-2) var(--space-4);
+  border-block-start: 1px solid var(--color-border);
+  background: var(--color-surface-sunken);
+  color: var(--color-text-muted);
+  font-size: var(--font-size-xs);
+}
+
+.footer .key {
+  background: var(--color-surface);
+}
+
+.hint {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
+}
+
+.scope {
+  flex: 1 1 10rem;
+  min-inline-size: 0;
+  text-align: end;
+}
+
+.visuallyHidden {
+  position: absolute;
+  inline-size: 1px;
+  block-size: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+
+/* A narrow palette (large text in a small window): rows keep their names, the
+   end of a row only on the chosen one, and the footer only its keys. */
+@container (max-width: 34rem) {
+  .scope,
+  .escape {
+    display: none;
+  }
+
+  .option:not([aria-selected='true']) .end {
+    display: none;
+  }
+
+  .end {
+    max-inline-size: 40%;
+  }
+}

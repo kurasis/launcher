@@ -800,4 +800,25 @@ describe('App', () => {
       'not affiliated with or endorsed by Mojang Studios or Microsoft',
     );
   });
+
+  it('puts Find in the rail, after the brand and outside the main tabs', async () => {
+    fakeBackend(snapshotFixture());
+    render(<App />);
+    await screen.findByText(/No installations yet/);
+    const find = screen.getByRole('button', { name: 'Find' });
+    const nav = screen.getByRole('navigation', { name: 'Main' });
+    expect(nav).not.toContainElement(find);
+    expect(screen.getByRole('banner')).toContainElement(find);
+    expect(find.compareDocumentPosition(nav) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(find).toHaveAttribute('aria-expanded', 'false');
+    // The key caps are for the eye; the name is only the word.
+    expect(find).toHaveTextContent('FindCtrlK');
+    expect(find).toHaveAccessibleName('Find');
+    // The closed palette leaves nothing behind that screens' names could collide with.
+    expect(screen.queryByRole('dialog')).toBeNull();
+    expect(screen.queryByRole('option')).toBeNull();
+    expect(screen.queryByRole('combobox', { name: 'Find in the launcher' })).toBeNull();
+    // Focus can land on the screen itself when what the palette was opened from is gone.
+    expect(screen.getByRole('main')).toHaveAttribute('tabindex', '-1');
+  });
 });

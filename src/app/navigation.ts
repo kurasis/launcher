@@ -3,6 +3,7 @@
 // A new top-level screen is a new `View`, a place in `rowViews` or in
 // `menuEntries`, and a text in `strings.nav`. A start view the interface does
 // not have yet opens Installations.
+import type { IconName } from '../components/Icon';
 import type { AppSnapshot, RememberedView, SettingsView } from '../lib/contracts';
 
 /** Screens of the main window. */
@@ -62,6 +63,23 @@ function isMenuView(entry: MenuEntry): entry is View {
 
 /** Screens reached from the More menu. */
 export const menuViews: readonly View[] = menuEntries.filter(isMenuView);
+
+/** The icon of each screen and of the console window: the rail and the command palette. */
+export const VIEW_ICONS: Readonly<Record<View | 'console', IconName>> = {
+  feed: 'feed',
+  home: 'home',
+  mods: 'mods',
+  worlds: 'worlds',
+  skins: 'skins',
+  account: 'account',
+  settings: 'settings',
+  backups: 'db',
+  screenshots: 'image',
+  diagnostics: 'stethoscope',
+  reviews: 'comment',
+  about: 'info',
+  console: 'console',
+};
 
 const views: readonly View[] = [...rowViews, ...menuViews];
 
