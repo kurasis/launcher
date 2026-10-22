@@ -416,6 +416,7 @@ export type Messages = {
         readonly rate_limited: string;
         readonly invalid: string;
         readonly not_saved: string;
+        readonly not_found: string;
         readonly server: string;
       };
     };

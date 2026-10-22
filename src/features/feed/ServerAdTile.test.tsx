@@ -424,6 +424,7 @@ describe('server ads in the list', () => {
       viewers: 1,
       started: '2026-10-19T10:00:00Z',
       image: 'tw/s.jpg',
+      avatar: null,
     },
   }));
 

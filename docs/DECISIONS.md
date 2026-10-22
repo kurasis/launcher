@@ -2224,6 +2224,18 @@ skins-mod <channel>` there only checks the signature against the public key and
 - **Saving the picture:** `skins_save_picture` (async: it opens a native dialog) takes
   only a PNG that decodes fully, at most 2048 pixels a side and 16 MiB; the offered
   name is the nick reduced to letters, digits, `_` and `-`. The log gets a fixed line.
+- **Heads and skins by nick (2026-10-22, for the redesign, D-072):** `skins_heads`
+  gives the heads of up to 200 players for friends, rooms and chats: the face of the
+  skin's first frame with the hat over it (a skin of the layout before 1.8 whose hat
+  area has no transparency shows its face alone, as in the game), a square PNG 8
+  pixels per 64 of the skin's width. Nicks that cannot be one (3–16 Latin letters,
+  digits, `_`) are never sent; the rest go 50 a request to `POST /v1/profiles` and are
+  kept a minute, the heads by their skin's hash. `skins_by_nick` takes the skin or
+  cape another player wears as a picked file, with its owner's arms and frame
+  durations, to try on and wear. A worn skin is public already (every game with the
+  mod shows it, as in Minecraft), and the board the owner chose (D-072) has this
+  button. Textures come only by hash and are checked against it. Nicks never go into
+  the log or an address beyond the profile lookup.
 
 ## D-066 — Catalog of mods at mods.lapi.sh
 
@@ -2794,6 +2806,15 @@ skins-mod <channel>` there only checks the signature against the public key and
   system notification when a favourite Twitch channel goes live is a setting, off by
   default: the core looks every 3 minutes, tells each start once, and only while the
   launcher is not in front.
+- **Pictures for the mosaic (D-072, 2026-10-22):** a Short also has an upright preview
+  `ys/<id>.jpg` (`imageTall`, 360×640: YouTube's own upright picture, else the middle of
+  its 16:9 preview); videos and streams have the channel's picture `ya/<channel id>.jpg`
+  or `ta/<login>.jpg` (`avatar`, 96 px square). The service looks a channel's picture up
+  only when a launcher asks for it, and only for channels it knows (ours, those players
+  named, streams it lists): from the channel page on YouTube, from Helix on Twitch, at
+  most once in 10 minutes each, kept a week. Note cards carry their picture's
+  `imageWidth` and `imageHeight`. Video length stays out: the RSS feed has none, and the
+  Data API would need a key.
 
 ## D-068 — Worlds with Friends
 

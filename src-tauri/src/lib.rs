@@ -970,6 +970,8 @@ fn handlers<R: tauri::Runtime>() -> impl Fn(tauri::ipc::Invoke<R>) -> bool + Sen
         commands::mods_open_link,
         commands::skins_mine,
         commands::skins_texture,
+        commands::skins_heads,
+        commands::skins_by_nick,
         commands::skins_pick,
         commands::skins_take,
         commands::skins_upload,

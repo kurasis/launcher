@@ -1912,6 +1912,30 @@ pub async fn skins_texture<R: Runtime>(app: AppHandle<R>, hash: String) -> Skins
     skins(&app).texture(&hash).await
 }
 
+/// Other players' heads by nick, for friends, rooms and chats: a square PNG
+/// as a `data:` URL each, or none.
+#[tauri::command]
+pub async fn skins_heads<R: Runtime>(
+    app: AppHandle<R>,
+    nicks: Vec<String>,
+) -> SkinsResult<std::collections::BTreeMap<String, Option<String>>> {
+    if nicks.len() > crate::skins::MAX_HEAD_NICKS {
+        return Err(crate::skins::SkinsProblem::Invalid);
+    }
+    skins(&app).heads(&nicks).await
+}
+
+/// Takes the skin or cape another player wears, by nick, as a picked one to
+/// try on and upload.
+#[tauri::command]
+pub async fn skins_by_nick<R: Runtime>(
+    app: AppHandle<R>,
+    kind: crate::skins::Kind,
+    nick: String,
+) -> SkinsResult<crate::skins::PickedView> {
+    skins(&app).by_nick(kind, &nick).await
+}
+
 /// Picks a PNG, GIF or animated PNG for the skin or cape in the native
 /// dialog and checks it. `Ok(None)` when the dialog was closed.
 #[tauri::command]
