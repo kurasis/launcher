@@ -2120,12 +2120,12 @@
         "origin_only": "Original sites only"
       },
       "hints": {
-        "automatic": "Original sites first; the launcher's mirror when one fails, is very slow or lost a file.",
+        "automatic": "Original sites first; the launcher's mirror when one fails, lost a file or is much slower than the mirror.",
         "mirror_first": "For connections where original sites are blocked or very slow. They stay the fallback.",
         "origin_only": "Never use the mirror. Downloads wait when a site is down."
       },
       "checked": "Every file is checked against its checksum, whichever site it comes from.",
-      "inUse": "Not reachable now: {sites}. Downloading from the launcher's mirror."
+      "inUse": "Down or slower than the mirror now: {sites}. Downloading from the launcher's mirror."
     },
     "updates": {
       "badge": {

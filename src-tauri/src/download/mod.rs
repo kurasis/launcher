@@ -674,8 +674,10 @@ impl Worker {
         let reserve = request.source == SourcePolicy::ModsCatalog
             && crate::mods::reserve_url(&request.url).is_some();
         let mirror = (routing.mirror_allowed() && request.source.mirrored()) || reserve;
-        let mut route = if mirror && !reserve {
-            routing.first(&host)
+        // Files the mirror copies tell how fast their host is against it.
+        let measured = mirror && !reserve;
+        let mut route = if measured {
+            routing.first_for_file(&host)
         } else {
             Route::Origin
         };
@@ -694,9 +696,16 @@ impl Worker {
                 .attempt(&request, &destination, &mut credit, route)
                 .await
             {
-                Ok(()) => {
-                    if route == Route::Origin {
-                        routing.origin_worked(&host);
+                Ok(took) => {
+                    match route {
+                        Route::Origin if measured => {
+                            routing.origin_served(&host, request.size, took);
+                        }
+                        Route::Origin => routing.origin_worked(&host),
+                        Route::Mirror if measured => {
+                            routing.mirror_served(&host, request.size, took);
+                        }
+                        Route::Mirror => {}
                     }
                     self.counters.verified.fetch_add(1, Ordering::Relaxed);
                     self.counters
@@ -709,6 +718,9 @@ impl Worker {
                 }
                 Err(failure) => failure,
             };
+            if route == Route::Mirror && measured && !matches!(failure, Failure::Cancelled) {
+                routing.mirror_failed(&host);
+            }
             // The other source, if it is allowed and was not tried yet.
             let other = match route {
                 Route::Origin if mirror && !mirror_tried => Some(Route::Mirror),
@@ -783,7 +795,7 @@ impl Worker {
         destination: &Path,
         credit: &mut Credit<'_>,
         route: Route,
-    ) -> Result<(), Failure> {
+    ) -> Result<Duration, Failure> {
         let storage = |e: std::io::Error| {
             Failure::Fatal(LauncherError::from_io(&e, "Saving a download failed"))
         };
@@ -793,6 +805,8 @@ impl Worker {
         if let Some(parent) = part.parent() {
             tokio::fs::create_dir_all(parent).await.map_err(storage)?;
         }
+        // From asking to the last byte: what the source took, without the disk.
+        let asked = std::time::Instant::now();
         let mut response = tokio::select! {
             response = self.transport.open(request.source, &request.url, route) => response?,
             () = self.stop.cancelled() => return Err(Failure::Cancelled),
@@ -868,6 +882,7 @@ impl Worker {
                 .with_detail("transport", "short_read"),
             ));
         }
+        let took = asked.elapsed();
         file.sync_all().await.map_err(storage)?;
         drop(file);
         if hasher.finish() != request.digest.hex() {
@@ -897,7 +912,7 @@ impl Worker {
         }
         let mut guard = guard;
         guard.0 = None;
-        Ok(())
+        Ok(took)
     }
 }
 
