@@ -45,6 +45,7 @@ jobs:
   releases:
     name: Releases to test
     runs-on: ubuntu-24.04
+    timeout-minutes: 5
     outputs:
       include: ${{ steps.list.outputs.include }}
     steps:
@@ -72,14 +73,16 @@ jobs:
     name: Build the live test
     if: ${{ !inputs.prebuilt }}
     runs-on: ubuntu-24.04
+    timeout-minutes: 45
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
 
       - name: Install Linux system dependencies
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y --no-install-recommends \
-            libwebkit2gtk-4.1-dev libxdo-dev libssl-dev libdbus-1-dev \
+        timeout-minutes: 25
+        uses: ./.github/actions/apt-install
+        with:
+          packages: >-
+            libwebkit2gtk-4.1-dev libxdo-dev libssl-dev libdbus-1-dev
             libayatana-appindicator3-dev librsvg2-dev
 
       - name: Install pinned Rust toolchain
@@ -116,6 +119,7 @@ jobs:
       ${{ !cancelled() && needs.releases.result == 'success'
       && (needs.build.result == 'success' || needs.build.result == 'skipped') }}
     runs-on: ubuntu-24.04
+    timeout-minutes: 45
     strategy:
       fail-fast: false
       matrix:
@@ -124,9 +128,10 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
 
       - name: Install Linux system dependencies
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y --no-install-recommends \
+        timeout-minutes: 25
+        uses: ./.github/actions/apt-install
+        with:
+          packages: >-
             libwebkit2gtk-4.1-0 libxdo3 libayatana-appindicator3-1 librsvg2-2
 
       - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8
@@ -157,6 +162,7 @@ jobs:
     needs: build
     if: ${{ !cancelled() && (needs.build.result == 'success' || needs.build.result == 'skipped') }}
     runs-on: ubuntu-24.04
+    timeout-minutes: 30
     strategy:
       fail-fast: false
       matrix:
@@ -168,10 +174,13 @@ jobs:
           - forge-crash
           - forge-old
     steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+
       - name: Install Linux system dependencies
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y --no-install-recommends \
+        timeout-minutes: 25
+        uses: ./.github/actions/apt-install
+        with:
+          packages: >-
             libwebkit2gtk-4.1-0 libxdo3 libayatana-appindicator3-1 librsvg2-2
 
       - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8

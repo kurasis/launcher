@@ -34,6 +34,7 @@ jobs:
   frontend:
     name: Frontend checks
     runs-on: ubuntu-24.04
+    timeout-minutes: 20
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7
@@ -66,6 +67,7 @@ jobs:
           && ', {"name": "macos-arm64", "os": "macos-15"}, {"name": "macos-x64", "os": "macos-15-intel"}'
           || '')) }}
     runs-on: ${{ matrix.os }}
+    timeout-minutes: 60
     defaults:
       run:
         shell: bash
@@ -74,10 +76,11 @@ jobs:
 
       - name: Install Linux system dependencies
         if: runner.os == 'Linux'
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y --no-install-recommends \
-            libwebkit2gtk-4.1-dev libxdo-dev libssl-dev libdbus-1-dev \
+        timeout-minutes: 25
+        uses: ./.github/actions/apt-install
+        with:
+          packages: >-
+            libwebkit2gtk-4.1-dev libxdo-dev libssl-dev libdbus-1-dev
             libayatana-appindicator3-dev librsvg2-dev
 
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7
@@ -129,6 +132,7 @@ jobs:
     # workflows. Pushes to main, manual runs and the nightly run try them all.
     name: What changed
     runs-on: ubuntu-24.04
+    timeout-minutes: 5
     outputs:
       launcher: ${{ steps.diff.outputs.launcher }}
     steps:
@@ -162,14 +166,16 @@ jobs:
     needs: changes
     if: needs.changes.outputs.launcher == 'true'
     runs-on: ubuntu-24.04
+    timeout-minutes: 45
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
 
       - name: Install Linux system dependencies
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y --no-install-recommends \
-            libwebkit2gtk-4.1-dev libxdo-dev libssl-dev libdbus-1-dev \
+        timeout-minutes: 25
+        uses: ./.github/actions/apt-install
+        with:
+          packages: >-
+            libwebkit2gtk-4.1-dev libxdo-dev libssl-dev libdbus-1-dev
             libayatana-appindicator3-dev librsvg2-dev
 
       - name: Install pinned Rust toolchain
@@ -207,6 +213,7 @@ jobs:
     needs: [changes, live-test]
     if: needs.changes.outputs.launcher == 'true'
     runs-on: ubuntu-24.04
+    timeout-minutes: 45
     strategy:
       fail-fast: false
       matrix:
@@ -227,9 +234,10 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
 
       - name: Install Linux system dependencies
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y --no-install-recommends \
+        timeout-minutes: 25
+        uses: ./.github/actions/apt-install
+        with:
+          packages: >-
             libwebkit2gtk-4.1-0 libxdo3 libayatana-appindicator3-1 librsvg2-2
 
       - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8
@@ -263,6 +271,7 @@ jobs:
     needs: [changes, world-server, world-server-mods]
     if: always()
     runs-on: ubuntu-24.04
+    timeout-minutes: 5
     steps:
       - name: Every world server ran
         env:

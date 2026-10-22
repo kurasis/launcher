@@ -1,0 +1,40 @@
+name: Install Ubuntu packages
+description: >-
+  apt-get on a GitHub runner with time limits. The runner's Azure mirror
+  sometimes stops answering, and apt then waits on it for hours (2026-10-22: a
+  world server job sat two hours in apt-get). Each try is bounded; a try that
+  does not finish drops that mirror and tries again from archive.ubuntu.com.
+inputs:
+  packages:
+    description: Packages to install, separated by spaces.
+    required: true
+runs:
+  using: composite
+  steps:
+    - shell: bash
+      env:
+        PACKAGES: ${{ inputs.packages }}
+      run: |
+        read -ra packages <<< "$PACKAGES"
+        opts=(-o Acquire::Retries=2 -o Acquire::http::Timeout=20
+          -o Acquire::https::Timeout=20 -o DPkg::Lock::Timeout=120)
+        for try in 1 2 3; do
+          if timeout 120 sudo apt-get "${opts[@]}" update &&
+            timeout 300 sudo DEBIAN_FRONTEND=noninteractive apt-get "${opts[@]}" \
+              install -y --no-install-recommends "${packages[@]}"; then
+            exit 0
+          fi
+          echo "::warning::apt-get try $try did not finish; trying again without the Azure mirror"
+          sudo dpkg --configure -a || true
+          # The runner's mirror list (mirror+file:) keeps archive.ubuntu.com after it.
+          if [ -f /etc/apt/apt-mirrors.txt ]; then
+            sudo sed -i '/azure\.archive\.ubuntu\.com/d' /etc/apt/apt-mirrors.txt
+          fi
+          for list in /etc/apt/sources.list /etc/apt/sources.list.d/*.sources /etc/apt/sources.list.d/*.list; do
+            if [ -f "$list" ]; then
+              sudo sed -i 's#http://azure\.archive\.ubuntu\.com/#http://archive.ubuntu.com/#g' "$list"
+            fi
+          done
+        done
+        echo "::error::apt-get did not finish in 3 tries"
+        exit 1

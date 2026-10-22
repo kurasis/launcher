@@ -112,6 +112,12 @@ replaces it), `superseded`.
   live test is built once per run (`Build the live test`) and every server job, with and
   without mods, runs that binary instead of compiling it again. With several pull requests
   at once, those jobs had kept other pull requests waiting about 30 minutes for runners.
+- **Amended 2026-10-22 (owner request):** every Ubuntu package install goes through
+  `.github/actions/apt-install` (the Package workflow's Debian container repeats its loop
+  inline): each `apt-get update` and `install` has a time limit, and a try that runs out
+  drops the runner's Azure mirror and tries again from `archive.ubuntu.com`, three tries in
+  all. The step stops at 25 minutes and every job has its own limit. A job had waited two
+  hours on an Azure mirror that stopped answering.
 
 ## D-008 — Declared bundle targets
 
