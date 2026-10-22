@@ -435,6 +435,10 @@ pub fn problem(status: u16, code: &str) -> Option<LauncherError> {
         (409, "version_exists") => {
             LauncherError::invalid_input("This version number is published already. Raise it.")
         }
+        (403, "email_not_confirmed") => LauncherError::new(
+            ErrorCode::AuthForbidden,
+            "Publishing packs needs a confirmed email. Open the letter we sent, or send it again in Accounts.",
+        ),
         (410, _) => LauncherError::invalid_input(
             "The catalog removed this pack. It cannot get new versions.",
         ),

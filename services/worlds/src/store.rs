@@ -1498,6 +1498,107 @@ impl Store {
         Ok(changed)
     }
 
+    /// Everything kept about an account (D-064): its devices, the rooms it
+    /// owns, the rooms it is in, the invites it made, the sessions its devices
+    /// hosted and its admissions to sessions. Tickets and relay grants last
+    /// minutes and are left out. The oldest 10,000 of each.
+    pub fn export(&self, account: &str) -> Result<serde_json::Value> {
+        use serde_json::{Value, json};
+        let db = self.db();
+        let rows = |query: &str,
+                    row: &dyn Fn(&rusqlite::Row<'_>) -> rusqlite::Result<Value>|
+         -> Result<Vec<Value>> {
+            let mut statement = db.prepare(query)?;
+            let rows = statement
+                .query_map([account], |r| row(r))?
+                .collect::<rusqlite::Result<_>>()?;
+            Ok(rows)
+        };
+        let devices = rows(
+            "SELECT id, name, key, created, revoked FROM devices WHERE account = ?1
+             ORDER BY created LIMIT 10000",
+            &|r| {
+                Ok(json!({
+                    "id": r.get::<_, String>(0)?, "name": r.get::<_, String>(1)?,
+                    "key": r.get::<_, String>(2)?, "created": r.get::<_, i64>(3)?,
+                    "revoked": r.get::<_, Option<i64>>(4)?,
+                }))
+            },
+        )?;
+        let rooms = rows(
+            "SELECT id, name, description, world, minecraft, created, updated, deleted
+             FROM rooms WHERE owner = ?1 ORDER BY created LIMIT 10000",
+            &|r| {
+                Ok(json!({
+                    "id": r.get::<_, String>(0)?, "name": r.get::<_, String>(1)?,
+                    "description": r.get::<_, String>(2)?, "world": r.get::<_, String>(3)?,
+                    "minecraft": r.get::<_, String>(4)?, "created": r.get::<_, i64>(5)?,
+                    "updated": r.get::<_, i64>(6)?, "deleted": r.get::<_, Option<i64>>(7)?,
+                }))
+            },
+        )?;
+        let memberships = rows(
+            "SELECT m.room, r.name, m.nick, m.role, m.state, m.joined, m.changed
+             FROM members m JOIN rooms r ON r.id = m.room WHERE m.account = ?1
+             ORDER BY m.joined LIMIT 10000",
+            &|r| {
+                Ok(json!({
+                    "room": r.get::<_, String>(0)?, "roomName": r.get::<_, String>(1)?,
+                    "nick": r.get::<_, String>(2)?, "role": r.get::<_, String>(3)?,
+                    "state": r.get::<_, String>(4)?, "joined": r.get::<_, i64>(5)?,
+                    "changed": r.get::<_, i64>(6)?,
+                }))
+            },
+        )?;
+        let invites = rows(
+            "SELECT id, room, created, expires, max_uses, uses, revoked FROM invites
+             WHERE created_by = ?1 ORDER BY created LIMIT 10000",
+            &|r| {
+                Ok(json!({
+                    "id": r.get::<_, String>(0)?, "room": r.get::<_, String>(1)?,
+                    "created": r.get::<_, i64>(2)?, "expires": r.get::<_, i64>(3)?,
+                    "maxUses": r.get::<_, i64>(4)?, "uses": r.get::<_, i64>(5)?,
+                    "revoked": r.get::<_, Option<i64>>(6)?,
+                }))
+            },
+        )?;
+        let hosted = rows(
+            "SELECT s.id, s.room, s.host_device, s.max_players, s.state, s.started, s.ended,
+               s.pack_version
+             FROM sessions s JOIN devices d ON d.id = s.host_device WHERE d.account = ?1
+             ORDER BY s.started LIMIT 10000",
+            &|r| {
+                Ok(json!({
+                    "id": r.get::<_, String>(0)?, "room": r.get::<_, String>(1)?,
+                    "device": r.get::<_, String>(2)?, "maxPlayers": r.get::<_, i64>(3)?,
+                    "state": r.get::<_, String>(4)?, "started": r.get::<_, i64>(5)?,
+                    "ended": r.get::<_, Option<i64>>(6)?,
+                    "packVersion": r.get::<_, Option<String>>(7)?,
+                }))
+            },
+        )?;
+        let admissions = rows(
+            "SELECT id, session, room, device, created, revoked, released FROM admissions
+             WHERE account = ?1 ORDER BY created LIMIT 10000",
+            &|r| {
+                Ok(json!({
+                    "id": r.get::<_, String>(0)?, "session": r.get::<_, String>(1)?,
+                    "room": r.get::<_, String>(2)?, "device": r.get::<_, String>(3)?,
+                    "created": r.get::<_, i64>(4)?, "revoked": r.get::<_, Option<i64>>(5)?,
+                    "released": r.get::<_, Option<i64>>(6)?,
+                }))
+            },
+        )?;
+        Ok(json!({
+            "devices": devices,
+            "rooms": rooms,
+            "memberships": memberships,
+            "invites": invites,
+            "hostedSessions": hosted,
+            "admissions": admissions,
+        }))
+    }
+
     /// True the first time a DPoP proof's `jti` is seen.
     pub fn first_proof(&self, jti: &str, iat: i64) -> Result<bool> {
         let added = self.db().execute(

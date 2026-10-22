@@ -1564,3 +1564,58 @@ fn a_proof_stays_single_use_across_a_restart() {
     store.sweep(iat + crate::auth::PROOF_WINDOW + 1).unwrap();
     assert!(store.first_proof(jti, iat).unwrap());
 }
+
+#[tokio::test]
+async fn an_account_exports_what_worlds_keeps_about_it() {
+    let t = setup();
+    let unsigned = Request::get("/v1/export").body(Body::empty()).unwrap();
+    assert_eq!(t.send(unsigned).await.0, StatusCode::UNAUTHORIZED);
+    let room = t.room_with(&[2]).await;
+    t.register(1).await;
+    t.register(2).await;
+    let session = t.host(&room, 4).await;
+    let session_id = session["id"].as_str().unwrap();
+    let (_, grant) = t.ticket(&room, 2).await;
+    let ticket = grant["ticket"].as_str().unwrap();
+    let (status, admitted) = t.admit(session_id, ticket, &endpoint(2)).await;
+    assert_eq!(status, StatusCode::OK, "{admitted}");
+
+    let (status, alice) = t.call("GET", "/v1/export", 1, None).await;
+    assert_eq!(status, StatusCode::OK, "{alice}");
+    assert_eq!(alice["devices"][0]["name"], "Desk");
+    assert_eq!(alice["rooms"][0]["id"], room.as_str());
+    assert_eq!(alice["rooms"][0]["world"], WORLD);
+    assert_eq!(alice["memberships"][0]["role"], "owner");
+    assert_eq!(alice["invites"].as_array().unwrap().len(), 1);
+    assert_eq!(alice["hostedSessions"][0]["id"], session_id);
+    assert_eq!(alice["admissions"], json!([]));
+
+    let (_, bob) = t.call("GET", "/v1/export", 2, None).await;
+    assert_eq!(bob["rooms"], json!([]));
+    assert_eq!(bob["memberships"][0]["room"], room.as_str());
+    assert_eq!(bob["memberships"][0]["nick"], "Bob");
+    assert_eq!(bob["admissions"][0]["session"], session_id);
+    assert_eq!(bob["hostedSessions"], json!([]));
+    assert_eq!(bob["invites"], json!([]));
+
+    // Someone outside has nothing, and asks ten times an hour.
+    for _ in 0..10 {
+        let (status, carol) = t.call("GET", "/v1/export", 3, None).await;
+        assert_eq!(status, StatusCode::OK);
+        for list in [
+            "devices",
+            "rooms",
+            "memberships",
+            "invites",
+            "hostedSessions",
+            "admissions",
+        ] {
+            assert_eq!(carol[list], json!([]), "{list}");
+        }
+    }
+    let (status, body) = t.call("GET", "/v1/export", 3, None).await;
+    assert_eq!(
+        (status, error(&body)),
+        (StatusCode::TOO_MANY_REQUESTS, "too_many")
+    );
+}

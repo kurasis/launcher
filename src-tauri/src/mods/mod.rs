@@ -35,6 +35,8 @@ pub const FILES_HOST: &str = "files-mods.lapi.sh";
 pub const CDN_HOST: &str = "cdn-mods.lapi.sh";
 pub const PROGRESS_EVENT: &str = "mods://progress";
 const MAX_ANSWER_BYTES: usize = 4 * 1024 * 1024;
+/// The account's export, which lists every request, pack and report.
+const MAX_EXPORT_BYTES: usize = 32 * 1024 * 1024;
 /// A project's version list (every version of a large mod, without
 /// changelogs).
 const MAX_VERSIONS_BYTES: usize = 32 * 1024 * 1024;
@@ -883,6 +885,16 @@ impl Client {
         let token = self.token(app).await?;
         self.send(request.bearer_auth(token), MAX_ANSWER_BYTES)
             .await
+    }
+
+    /// Everything the catalog keeps about the account (D-064).
+    pub async fn export<R: Runtime>(&self, app: &AppHandle<R>) -> LauncherResult<Value> {
+        let token = self.token(app).await?;
+        self.send(
+            self.http.get(Self::url("/v1/export")).bearer_auth(token),
+            MAX_EXPORT_BYTES,
+        )
+        .await
     }
 
     pub async fn imports<R: Runtime>(

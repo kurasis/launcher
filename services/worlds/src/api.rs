@@ -385,6 +385,13 @@ async fn create_room(State(app): State<Arc<App>>, headers: HeaderMap, bytes: Byt
     answer(made)
 }
 
+/// Everything worlds keeps about the caller (D-064).
+async fn export(State(app): State<Arc<App>>, headers: HeaderMap) -> Response {
+    let me = me!(app, headers);
+    limit!(app, me, "export", 10, 3600);
+    answer(app.store.export(&me.claims.sub))
+}
+
 async fn rooms(State(app): State<Arc<App>>, headers: HeaderMap) -> Response {
     let me = me!(app, headers);
     answer(app.store.rooms(&me.claims.sub, app.clock.now()))
@@ -1115,6 +1122,7 @@ pub fn router(app: Arc<App>) -> Router {
             post(release),
         )
         .route("/v1/live", get(live))
+        .route("/v1/export", get(export))
         .layer(DefaultBodyLimit::max(16 * 1024))
         .with_state(app)
 }

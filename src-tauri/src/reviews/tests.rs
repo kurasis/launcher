@@ -39,6 +39,7 @@ impl Transport for Fake {
                     (status, json!({ "id": 7, "key": KEY }))
                 }
                 ("POST", "/v1/status") => (200, self.statuses.lock().unwrap().clone()),
+                ("GET", "/v1/export") => (200, json!({ "reviews": [{ "id": 7 }] })),
                 ("DELETE", _) => (204, Value::Null),
                 _ => (404, Value::Null),
             };
@@ -326,4 +327,33 @@ fn logs_hold_the_latest_files_scrubbed() {
             .starts_with("Launcher 0.1.0")
     );
     assert!(reviews.logs(&state, Some("../x"), None, None).is_err());
+}
+
+struct SignedOut;
+
+impl Accounts for SignedOut {
+    fn token<'a>(&'a self, _: &'a AppState) -> Boxed<'a, Token> {
+        Box::pin(async { Token::SignedOut })
+    }
+}
+
+#[tokio::test]
+async fn the_accounts_reviews_are_exported_with_its_token() {
+    let (_dir, state, reviews, fake) = setup(201);
+    let data = reviews.export(&state, &NoAccount).await.unwrap();
+    assert_eq!(data["reviews"][0]["id"], 7);
+    let calls = fake.calls.lock().unwrap().clone();
+    assert_eq!(calls.len(), 1);
+    assert_eq!(
+        (calls[0].0.as_str(), calls[0].1.as_str()),
+        ("GET", "/v1/export")
+    );
+    assert!(
+        calls[0]
+            .3
+            .contains(&("authorization", "Bearer account-token".to_owned()))
+    );
+    // Signed out: nothing is asked.
+    assert_eq!(reviews.export(&state, &SignedOut).await, None);
+    assert_eq!(fake.calls.lock().unwrap().len(), 1);
 }

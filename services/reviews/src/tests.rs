@@ -616,3 +616,53 @@ fn one_ipv6_48_cannot_use_up_everyones_allowance() {
     let next = std::net::IpAddr::from([0x2001, 0xdb8, 9, 1, 0, 0, 0, 1]);
     assert!(limiter.allow(next, "reviews", hour, 5, None));
 }
+
+#[tokio::test]
+async fn an_account_exports_its_reviews_and_the_answers() {
+    let (_dir, app) = app();
+    let key = ed25519_dalek::SigningKey::from_bytes(&[9; 32]);
+    let (ann, ben) = (
+        "1e2d3c4b-5a69-4788-8796-a5b4c3d2e1f0",
+        "2e2d3c4b-5a69-4788-8796-a5b4c3d2e1f0",
+    );
+    let (status, first) =
+        send_as(&app, "198.51.100.20", &token_for(&app, &key, ann, "s-ann")).await;
+    assert_eq!(status, StatusCode::CREATED, "{first}");
+    let (status, _) = send_as(&app, "198.51.100.21", &token_for(&app, &key, ben, "s-ben")).await;
+    assert_eq!(status, StatusCode::CREATED);
+    let id = first["id"].as_i64().unwrap();
+    app.store.reply(id, "Thank you", api::now()).unwrap();
+    app.store.note(id, "for the owner only").unwrap();
+
+    let export = |token: Option<String>| {
+        let mut request = from("198.51.100.30").method("GET").uri("/v1/export");
+        if let Some(token) = token {
+            request = request.header("authorization", format!("Bearer {token}"));
+        }
+        call(&app, request.body(Body::empty()).unwrap())
+    };
+    let (status, _) = export(None).await;
+    assert_eq!(status, StatusCode::UNAUTHORIZED);
+    let (status, mine) = export(Some(token_for(&app, &key, ann, "s-ann"))).await;
+    assert_eq!(status, StatusCode::OK, "{mine}");
+    let reviews = mine["reviews"].as_array().unwrap();
+    assert_eq!(reviews.len(), 1, "{mine}");
+    let review = &reviews[0];
+    assert_eq!(review["id"], id);
+    assert!(review["message"].as_str().unwrap().contains("Sodium"));
+    assert_eq!(review["status"], "answered");
+    assert_eq!(review["reply"], "Thank you");
+    assert_eq!(review["files"][0]["name"], "latest.log");
+    assert_eq!(review["files"][0]["kind"], "text");
+    // The owner's note and the spam marks are not the player's data.
+    assert!(!mine.to_string().contains("for the owner only"));
+    assert!(review.get("suspect").is_none() && review.get("net").is_none());
+    // Ben gets his own review only; a signed-out session gets nothing.
+    let (_, his) = export(Some(token_for(&app, &key, ben, "s-ben"))).await;
+    let his = his["reviews"].as_array().unwrap();
+    assert_eq!(his.len(), 1);
+    assert_ne!(his[0]["id"], id);
+    app.sessions.end(&["s-ann".to_owned()]);
+    let (status, _) = export(Some(token_for(&app, &key, ann, "s-ann"))).await;
+    assert_eq!(status, StatusCode::UNAUTHORIZED);
+}

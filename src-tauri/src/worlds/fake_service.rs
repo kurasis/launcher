@@ -249,6 +249,15 @@ fn handle(world: &Mutex<World>, base: &str, head: &str, body: &str) -> (u16, Str
                 json!({ "id": id, "name": name, "created": 1 }).to_string(),
             )
         }
+        ("GET", ["v1", "export"]) => {
+            let devices: Vec<Value> = world
+                .device_list
+                .iter()
+                .filter(|(_, account, _)| *account == me.id)
+                .map(|(id, _, name)| json!({ "id": id, "name": name }))
+                .collect();
+            (200, json!({ "devices": devices }).to_string())
+        }
         ("GET", ["v1", "devices"]) => {
             let mine: Vec<Value> = world
                 .device_list

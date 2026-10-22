@@ -1568,6 +1568,7 @@
         "showAll": "عرض الكل",
         "matching": "{count, plural, zero {لا إصدارات} one {إصدار واحد} two {إصداران} few {# إصدارات} many {# إصدارًا} other {# إصدار}} من {total}",
         "held": "أوقف فحص البرمجيات الضارة في الفهرس ملف هذا الإصدار إلى أن يُراجَع. لا يمكن تثبيته.",
+        "playerPack": "حزمة لاعب",
         "report": "إبلاغ",
         "reportReason": "السبب",
         "reportReasons": {
@@ -2766,6 +2767,7 @@
     "A version number is letters, digits and . - _ + only, such as 1.0.2.": "رقم الإصدار حروف وأرقام و . - _ + فقط، مثل 1.0.2.",
     "Choose the icon again.": "اختر الأيقونة مرة أخرى.",
     "Give the pack a title of 2 to 80 characters.": "أعطِ الحزمة عنوانًا من 2 إلى 80 حرفًا.",
+    "Publishing packs needs a confirmed email. Open the letter we sent, or send it again in Accounts.": "يحتاج نشر الحزم إلى بريد إلكتروني مؤكَّد. افتح الرسالة التي أرسلناها أو أعد إرسالها من الحسابات.",
     "Publishing was cancelled.": "أُلغي النشر.",
     "Reading the modpack": "قراءة الحزمة",
     "Some files of this installation cannot go into a pack. Check the list.": "لا يمكن وضع بعض ملفات هذا التثبيت في حزمة. راجع القائمة.",
