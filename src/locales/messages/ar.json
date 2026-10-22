@@ -39,7 +39,7 @@
     },
     "palette": {
       "find": "بحث",
-      "findHint": "بحث ({keys})",
+      "findHint": "بحث (⁦{keys}⁩)",
       "title": "البحث في المشغّل",
       "placeholder": "عمّ تبحث؟",
       "results": "{count, plural, =0 {لم يُعثر على شيء} one {نتيجة واحدة} two {نتيجتان} few {# نتائج} many {# نتيجة} other {# نتيجة}}",
@@ -51,7 +51,7 @@
       "scope": "يبحث في التثبيتات والتعديلات والصفحات والإعدادات",
       "screen": "صفحة",
       "newWith": "تثبيت جديد مع {loader}",
-      "inInstallation": "مثبّت في «{name}»",
+      "inInstallation": "مثبّت في «⁨{name}⁩»",
       "catalog": "في الفهرس",
       "go": "انتقال",
       "create": "إنشاء",

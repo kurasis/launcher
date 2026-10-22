@@ -52,6 +52,10 @@ export function MoreMenu({
   const rootRef = useRef<HTMLDivElement>(null);
   const buttonRef = useRef<HTMLButtonElement>(null);
   const itemRefs = useRef<(HTMLButtonElement | null)[]>([]);
+  // A press on the button or an item is under way: WebKit on macOS moves focus off
+  // the item on such a press (buttons take no focus from the mouse there), and that
+  // blur must not close the menu before the click lands.
+  const pressing = useRef(false);
   /** The focused item while open; null while closed. */
   const [active, setActive] = useState<number | null>(null);
   const open = active !== null;
@@ -71,6 +75,18 @@ export function MoreMenu({
     if (!open) onOpen?.();
     setActive(index);
   };
+
+  useEffect(() => {
+    const released = () => {
+      pressing.current = false;
+    };
+    document.addEventListener('pointerup', released, true);
+    document.addEventListener('pointercancel', released, true);
+    return () => {
+      document.removeEventListener('pointerup', released, true);
+      document.removeEventListener('pointercancel', released, true);
+    };
+  }, []);
 
   // A press anywhere outside the menu and its button closes it.
   useEffect(() => {
@@ -152,12 +168,17 @@ export function MoreMenu({
     <div
       className={styles.menuRoot}
       ref={rootRef}
+      onPointerDown={() => {
+        pressing.current = true;
+      }}
       onBlur={(event) => {
         // Focus moving to another element (the palette after Ctrl+K, say) closes the
         // menu. Focus leaving the window has no target and keeps it open: Windows UI
         // Automation, which the package smoke test drives the menu with, does that.
+        // So does a press inside the menu, which its own click handles.
         const to = event.relatedTarget;
-        if (open && to instanceof Node && !event.currentTarget.contains(to)) setActive(null);
+        if (!open || pressing.current) return;
+        if (to instanceof Node && !event.currentTarget.contains(to)) setActive(null);
       }}
     >
       <button

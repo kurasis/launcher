@@ -1,4 +1,4 @@
-import { Fragment, useEffect, useId, useRef, useState, type KeyboardEvent } from 'react';
+import { Fragment, useEffect, useId, useMemo, useRef, useState, type KeyboardEvent } from 'react';
 import { createPortal } from 'react-dom';
 import { Icon } from '../components/Icon';
 import { InstanceTile } from '../components/InstanceTile';
@@ -33,6 +33,9 @@ const CATALOG_DELAY_MS = 250;
 
 /** Installations whose mods folders are read at the same time. */
 const CONTENT_READERS = 3;
+
+/** How soon after an IME composition ends a key still belongs to it, in ms. */
+const COMPOSITION_ENTER_MS = 300;
 
 interface CommandPaletteProps {
   snapshot: AppSnapshot | null;
@@ -116,8 +119,11 @@ export function CommandPalette({ snapshot, macos, onClose, onChoose }: CommandPa
   const listId = `${baseId}-list`;
   const inputRef = useRef<HTMLInputElement>(null);
   const listRef = useRef<HTMLDivElement>(null);
-  // The Enter that ends an IME composition never chooses a row (WebKit sends it after the end).
-  const composed = useRef(false);
+  // When the last IME composition ended. WebKit sends the Enter that ends one just
+  // after compositionend, without isComposing: an Enter (or arrow, or Escape) that
+  // soon, before a key is released, belongs to the composition. A candidate picked
+  // with the mouse releases no key, so the mark also lapses after a moment.
+  const composedAt = useRef<number | null>(null);
   const [raw, setRaw] = useState('');
   const [activeKey, setActiveKey] = useState<string | null>(null);
   const query = normalizeQuery(raw);
@@ -225,9 +231,13 @@ export function CommandPalette({ snapshot, macos, onClose, onChoose }: CommandPa
     query,
     CAPS.installations,
   );
-  const installedRows = empty
-    ? []
-    : rankEntries(installedModEntries(modded, content), query, CAPS.installedMods);
+  // Built once per folder read and ranked once per query, never again for the arrows
+  // or the pointer: there can be thousands of installed mods.
+  const installedEntries = useMemo(() => installedModEntries(modded, content), [modded, content]);
+  const installedRows = useMemo(
+    () => (empty ? [] : rankEntries(installedEntries, query, CAPS.installedMods)),
+    [installedEntries, query, empty],
+  );
   const shownProjects = new Set(
     installedRows.flatMap(({ entry }) =>
       entry.target.kind === 'installedMod' && entry.target.projectId !== null
@@ -291,7 +301,9 @@ export function CommandPalette({ snapshot, macos, onClose, onChoose }: CommandPa
   };
 
   const onKeyDown = (event: KeyboardEvent<HTMLInputElement>) => {
-    const composing = event.nativeEvent.isComposing || composed.current;
+    const composing =
+      event.nativeEvent.isComposing ||
+      (composedAt.current !== null && event.timeStamp - composedAt.current < COMPOSITION_ENTER_MS);
     switch (event.key) {
       case 'ArrowDown':
       case 'ArrowUp': {
@@ -305,7 +317,7 @@ export function CommandPalette({ snapshot, macos, onClose, onChoose }: CommandPa
       }
       case 'Enter': {
         if (composing) {
-          composed.current = false;
+          composedAt.current = null;
           return;
         }
         event.preventDefault();
@@ -335,10 +347,24 @@ export function CommandPalette({ snapshot, macos, onClose, onChoose }: CommandPa
     <div
       className={styles.backdrop}
       onMouseDown={(event) => {
-        if (event.target === event.currentTarget) onClose();
+        if (event.target !== event.currentTarget) return;
+        // The browser would move focus to what lies under the pointer once the
+        // palette is gone, over the focus it gave back.
+        event.preventDefault();
+        onClose();
       }}
     >
-      <div role="dialog" aria-modal="true" aria-label={t.title} className={styles.dialog}>
+      <div
+        role="dialog"
+        aria-modal="true"
+        aria-label={t.title}
+        className={styles.dialog}
+        onMouseDown={(event) => {
+          // A press on a heading, a hint or the space between rows keeps focus in the
+          // field, where the keys work.
+          if (event.target !== inputRef.current) event.preventDefault();
+        }}
+      >
         <div className={styles.field}>
           <Icon name="search" size={20} className={styles.searchIcon} />
           <input
@@ -363,10 +389,10 @@ export function CommandPalette({ snapshot, macos, onClose, onChoose }: CommandPa
             }}
             onKeyDown={onKeyDown}
             onKeyUp={() => {
-              composed.current = false;
+              composedAt.current = null;
             }}
-            onCompositionEnd={() => {
-              composed.current = true;
+            onCompositionEnd={(event) => {
+              composedAt.current = event.timeStamp;
             }}
           />
           <Keys keys={['Esc']} className={styles.escape} />
@@ -468,7 +494,7 @@ export function CommandPalette({ snapshot, macos, onClose, onChoose }: CommandPa
         </div>
 
         <p role="status" className={styles.visuallyHidden}>
-          {modsNote === t.offline ? `${count}. ${modsNote}` : count}
+          {modsNote === null ? count : `${count}. ${modsNote}`}
         </p>
 
         <div className={styles.footer}>

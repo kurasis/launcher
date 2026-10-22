@@ -3,20 +3,23 @@ import styles from './Panel.module.css';
 
 interface PanelProps {
   title: string;
+  /** The heading's level: 2 for a screen's own panels, deeper inside another section. */
+  level?: 2 | 3 | 4;
   /** Optional element rendered next to the heading, e.g. a status badge. */
   aside?: ReactNode;
   children: ReactNode;
 }
 
 /** A titled content section exposed to assistive technology as a labelled region. */
-export function Panel({ title, aside, children }: PanelProps) {
+export function Panel({ title, level = 2, aside, children }: PanelProps) {
   const headingId = useId();
+  const Heading = `h${String(level)}` as 'h2' | 'h3' | 'h4';
   return (
     <section className={styles.panel} aria-labelledby={headingId}>
       <header className={styles.header}>
-        <h2 id={headingId} className={styles.title}>
+        <Heading id={headingId} className={styles.title}>
           {title}
-        </h2>
+        </Heading>
         {aside}
       </header>
       <div className={styles.body}>{children}</div>

@@ -4,6 +4,7 @@ import { instanceFixture, snapshotFixture } from '../test/fixtures';
 import { LOADER_KINDS } from '../features/instances/loaderLabel';
 import { menuViews, rowViews } from './navigation';
 import {
+  MAX_INSTALLED_MODS,
   MAX_QUERY,
   type PaletteEntry,
   catalogEntries,
@@ -247,6 +248,26 @@ describe('palette sources', () => {
     expect(holdsMods(instanceFixture({ loader: { kind: 'optifine', version: 'x' } }))).toBe(false);
     expect(holdsMods(instanceFixture({ loader: { kind: 'fabric', version: '0.16.9' } }))).toBe(
       true,
+    );
+  });
+
+  it('searches a bounded number of installed mods, the first installations first', () => {
+    const first = instanceFixture({ displayName: 'Pack one' });
+    const second = instanceFixture({ id: '2f1e2d3c-4b5a-4978-8796-a5b4c3d2e1f0' });
+    const many = (count: number) =>
+      Array.from({ length: count }, (_, i) =>
+        contentItem({ path: `mods/m${String(i)}.jar`, title: `Mod ${String(i)}` }),
+      );
+    const rows = installedModEntries(
+      [first, second],
+      new Map([
+        [first.id, many(MAX_INSTALLED_MODS - 10)],
+        [second.id, many(50)],
+      ]),
+    );
+    expect(rows).toHaveLength(MAX_INSTALLED_MODS);
+    expect(rows.filter((row) => row.detail === 'Installed in “Pack one”')).toHaveLength(
+      MAX_INSTALLED_MODS - 10,
     );
   });
 

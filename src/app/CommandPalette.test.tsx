@@ -391,6 +391,47 @@ describe('CommandPalette', () => {
     });
   });
 
+  it('opens an installation with plain Enter, leaving a new-installation form', async () => {
+    const calls = backend(withInstances([SURVIVAL, CREATIVE]));
+    await ready();
+    fireEvent.click(screen.getByRole('button', { name: 'New installation' }));
+    expect(screen.getByRole('heading', { name: 'New installation' })).toBeVisible();
+    press({ ctrlKey: true });
+    type('creat');
+    fireEvent.keyDown(field(), { key: 'Enter' });
+    expect(palette()).toBeNull();
+    // The list with the installation asked for, not the form left open.
+    expect(await screen.findByRole('heading', { level: 2, name: 'Installations' })).toBeVisible();
+    expect(screen.queryByRole('heading', { name: 'New installation' })).toBeNull();
+    await waitFor(() => {
+      expect(calls.find((c) => c.cmd === 'set_app_settings')?.args).toMatchObject({
+        request: { payload: { selectedInstanceId: CREATIVE.id } },
+      });
+    });
+    // Opening is not playing.
+    expect(calls.some((c) => c.cmd === 'install_instance' || c.cmd === 'launch_game')).toBe(false);
+  });
+
+  it('keeps focus in the field when its frame is pressed, and gives it back from the scrim', async () => {
+    backend(withInstances([SURVIVAL]));
+    await ready();
+    const find = findButton();
+    fireEvent.click(find);
+    const dialog = palette();
+    if (dialog === null) throw new Error('The palette is closed.');
+    // A press on a hint or a group heading keeps the keys working in the field.
+    expect(fireEvent.mouseDown(within(dialog).getByText('main action'))).toBe(false);
+    expect(fireEvent.mouseDown(within(dialog).getByText('Pages and actions'))).toBe(false);
+    // The field itself takes presses as usual.
+    expect(fireEvent.mouseDown(field())).toBe(true);
+    // A press on the dimmed screen closes it, and the browser does not move focus after.
+    const backdrop = dialog.parentElement;
+    if (backdrop === null) throw new Error('The palette has no backdrop.');
+    expect(fireEvent.mouseDown(backdrop)).toBe(false);
+    expect(palette()).toBeNull();
+    expect(find).toHaveFocus();
+  });
+
   it('says when nothing is found', async () => {
     backend(withInstances([SURVIVAL]));
     await ready();
@@ -435,6 +476,8 @@ describe('CommandPalette', () => {
     });
     expect(searches()).toHaveLength(0);
     expect(screen.getByText('Searching the catalog…')).toBeVisible();
+    // Heard too, so "Nothing found" is never said alone while the catalog is asked.
+    expect(announced()).toHaveTextContent(/Searching the catalog…$/);
     await act(async () => {
       await vi.advanceTimersByTimeAsync(1);
     });
@@ -558,6 +601,20 @@ describe('CommandPalette', () => {
     fireEvent.keyDown(field(), { key: 'Enter' });
     expect(palette()).toBeVisible();
     fireEvent.keyUp(field(), { key: 'Enter' });
+    fireEvent.keyDown(field(), { key: 'Enter' });
+    expect(palette()).toBeNull();
+  });
+
+  it('takes an Enter after a candidate picked with the mouse', async () => {
+    backend(withInstances([SURVIVAL]));
+    await ready();
+    press({ ctrlKey: true });
+    type('sett');
+    const now = Date.now();
+    const clock = vi.spyOn(Date, 'now').mockReturnValue(now);
+    fireEvent.compositionEnd(field());
+    // No key was released; a moment later the Enter is the player's own.
+    clock.mockReturnValue(now + 1000);
     fireEvent.keyDown(field(), { key: 'Enter' });
     expect(palette()).toBeNull();
   });

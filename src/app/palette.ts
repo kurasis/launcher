@@ -21,6 +21,12 @@ export const MAX_QUERY = 200;
 /** The catalog is asked only from this many characters on. */
 export const CATALOG_MIN_QUERY = 2;
 
+/**
+ * Installed mods searched at most, the chosen installation's first: every key ranks
+ * them all, and a few modpacks can hold thousands.
+ */
+export const MAX_INSTALLED_MODS = 1500;
+
 /** How many rows each group shows at most. */
 export const CAPS = {
   installations: 6,
@@ -109,6 +115,19 @@ interface Folded {
  * length ('İ' is two units in lower case) never shifts the original positions.
  */
 function fold(text: string): Folded {
+  const known = folds.get(text);
+  if (known !== undefined) return known;
+  const result = foldUncached(text);
+  if (folds.size >= MAX_FOLDS) folds.clear();
+  folds.set(text, result);
+  return result;
+}
+
+/** Texts folded already: the same names are folded again on every key. */
+const folds = new Map<string, Folded>();
+const MAX_FOLDS = 4096;
+
+function foldUncached(text: string): Folded {
   let folded = '';
   const from: number[] = [];
   const to: number[] = [];
@@ -465,13 +484,13 @@ function letterOf(name: string): string {
   return /[\p{L}\p{N}]/u.exec(name)?.[0] ?? '';
 }
 
-/** Mods in the mods folders of these installations (in their order). */
+/** Mods in the mods folders of these installations (in their order), at most `MAX_INSTALLED_MODS`. */
 export function installedModEntries(
   instances: readonly InstanceSummary[],
   content: ReadonlyMap<string, readonly ContentItem[]>,
 ): PaletteEntry[] {
   const t = strings.palette;
-  return instances.flatMap((instance) =>
+  const entries = instances.flatMap((instance) =>
     (content.get(instance.id) ?? [])
       .filter((item) => item.folder === 'mods')
       .map((item): PaletteEntry => {
@@ -487,6 +506,7 @@ export function installedModEntries(
         };
       }),
   );
+  return entries.slice(0, MAX_INSTALLED_MODS);
 }
 
 /** Catalog hits as rows, without the projects already listed as installed. */

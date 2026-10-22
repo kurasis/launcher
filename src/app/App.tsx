@@ -119,6 +119,9 @@ export function App() {
   const [worldsRoom, setWorldsRoom] = useState<{ id: string; at: number } | null>(null);
   // A mod's page asked for from the command palette: Mods opens on it.
   const [modsProject, setModsProject] = useState<{ id: string; at: number } | null>(null);
+  // Counts navigations: Installations and Mods start afresh on each one, so a form or
+  // a mod page left open gives way to what was asked for (from the rail or the palette).
+  const [visits, setVisits] = useState(0);
   // The command palette (Ctrl+K, ⌘K on macOS), and a main action it asked the launch bar to run.
   const [paletteOpen, setPaletteOpen] = useState(false);
   const [launchRequest, setLaunchRequest] = useState<LaunchRequest | null>(null);
@@ -136,6 +139,7 @@ export function App() {
   /** Opens a screen; with "Last opened" the core remembers it for the next start. */
   const navigate = (next: View) => {
     setView(next);
+    setVisits((count) => count + 1);
     setCreateRequest(null);
     setModsProject(null);
     const remembered = rememberedView(next);
@@ -345,9 +349,12 @@ export function App() {
         >
           <Icon name="search" />
           <span className={styles.navLabel}>{strings.palette.find}</span>
-          <span className={styles.findKeys} dir="ltr" aria-hidden="true">
-            <kbd>{macos ? '⌘' : 'Ctrl'}</kbd>
-            <kbd>K</kbd>
+          {/* Pushed to the end in the rail's direction; the keys themselves read left to right. */}
+          <span className={styles.findKeys} aria-hidden="true">
+            <span className={styles.findKeyRow} dir="ltr">
+              <kbd>{macos ? '⌘' : 'Ctrl'}</kbd>
+              <kbd>K</kbd>
+            </span>
           </span>
         </button>
         {appInfo.status === 'ready' && appInfo.info.buildProfile === 'debug' && (
@@ -490,7 +497,7 @@ export function App() {
                   />
                   {stopping.error !== null && <Notice tone="danger">{stopping.error}</Notice>}
                   <InstancesView
-                    key={createRequest?.at ?? 0}
+                    key={`${String(visits)}:${String(createRequest?.at ?? 0)}`}
                     snapshot={state.snapshot}
                     createRequest={createRequest}
                     onEditSettings={(instanceId) => {
@@ -514,7 +521,7 @@ export function App() {
               )}
               {view === 'mods' && (
                 <ModsView
-                  key={modsProject?.at ?? 0}
+                  key={`${String(visits)}:${String(modsProject?.at ?? 0)}`}
                   initialProject={modsProject?.id ?? null}
                   snapshot={state.snapshot}
                   instanceId={modsInstance}

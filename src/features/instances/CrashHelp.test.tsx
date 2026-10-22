@@ -133,6 +133,12 @@ describe('CrashHelp', () => {
       />,
     );
     const region = screen.getByRole('region', { name: 'Why the game stopped' });
+    // Under the installation's name (h3) on Installations.
+    expect(screen.getByRole('heading', { name: 'Why the game stopped' })).toHaveProperty(
+      'tagName',
+      'H4',
+    );
+    expect(screen.getByRole('heading', { name: 'Cause' })).toHaveProperty('tagName', 'H5');
     expect(region).toHaveTextContent('The game ran out of memory');
     expect(region).toHaveTextContent('The game used all 2048 MiB it was given.');
     expect(region).toHaveTextContent('4096 MiB is a good start');

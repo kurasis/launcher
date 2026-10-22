@@ -115,8 +115,12 @@
 .findKeys {
   display: inline-flex;
   flex: none;
-  gap: 2px;
   margin-inline-start: auto;
+}
+
+.findKeyRow {
+  display: inline-flex;
+  gap: 2px;
 }
 
 .findKeys kbd {

@@ -90,13 +90,14 @@ export function CrashHelp({ instance, run, onEditSettings, onOpenBackups, busy }
   };
 
   return (
-    <Panel title={t.title} aside={<StatusBadge tone="danger" label={text.title} />}>
+    // Inside the installation's section, under its name (h3).
+    <Panel title={t.title} level={4} aside={<StatusBadge tone="danger" label={text.title} />}>
       <div className={styles.section}>
-        <h3 className={styles.heading}>{t.cause}</h3>
+        <h5 className={styles.heading}>{t.cause}</h5>
         <p>{text.cause}</p>
       </div>
       <div className={styles.section}>
-        <h3 className={styles.heading}>{t.fix}</h3>
+        <h5 className={styles.heading}>{t.fix}</h5>
         <p>{text.fix}</p>
       </div>
       {diagnosis.suspects.length > 0 && (

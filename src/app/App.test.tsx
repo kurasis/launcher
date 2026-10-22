@@ -840,4 +840,24 @@ describe('App', () => {
     expect(field).toHaveFocus();
     expect(screen.queryByRole('menu')).toBeNull();
   });
+
+  it('lets an item of the More menu be clicked where a press takes focus off it', async () => {
+    fakeBackend(snapshotFixture());
+    render(<App />);
+    await screen.findByText(/No installations yet/);
+    fireEvent.click(moreButton());
+    const about = within(screen.getByRole('menu')).getByRole('menuitem', { name: 'About' });
+    // WebKit on macOS: buttons take no focus from the mouse, so the press moves focus
+    // from the focused item to the screen.
+    fireEvent.pointerDown(about);
+    fireEvent.blur(focused(), { relatedTarget: screen.getByRole('main') });
+    expect(screen.getByRole('menu')).toBeVisible();
+    fireEvent.pointerUp(about);
+    fireEvent.click(about);
+    expect(screen.queryByRole('menu')).toBeNull();
+    expect(screen.getByRole('button', { name: 'More: About' })).toHaveAttribute(
+      'aria-current',
+      'page',
+    );
+  });
 });
