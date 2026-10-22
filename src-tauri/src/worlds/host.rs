@@ -104,8 +104,9 @@ struct Shared {
     error: Option<ErrorCode>,
     /// Bridge-side local port to the player who logged in through it.
     players: BTreeMap<u16, Nick>,
-    /// When the server last wrote a line.
+    /// When the server last wrote a line, and how many it wrote.
     last_output: Option<Instant>,
+    lines: u64,
     /// What its loader said about mods while it started.
     problems: Vec<Problem>,
 }
@@ -361,6 +362,7 @@ pub fn start(
         {
             let mut shared = lock(&sink_signal);
             shared.last_output = Some(Instant::now());
+            shared.lines += 1;
             // Before anyone can join, so no player wrote the line.
             if shared.phase == Some(Phase::Starting) {
                 failure::note(&mut shared.problems, &line.text);
@@ -593,7 +595,15 @@ impl HostedServer {
     /// What the loader and this start's crash reports say, in place of
     /// `otherwise` when they name a mod.
     fn why_not_started(&self, otherwise: LauncherError) -> LauncherError {
-        let mut problems = lock(&self.signal).problems.clone();
+        let (mut problems, lines, quiet) = {
+            let shared = lock(&self.signal);
+            let quiet = shared.last_output.unwrap_or(self.spawned).elapsed();
+            (shared.problems.clone(), shared.lines, quiet.as_secs())
+        };
+        // How far the server got: numbers only, for support.
+        let otherwise = otherwise
+            .with_detail("serverLines", lines)
+            .with_detail("serverQuietSeconds", quiet);
         for problem in failure::crash_reports(&self.server_dir, self.spawned_at) {
             if !problems.contains(&problem) {
                 problems.push(problem);
