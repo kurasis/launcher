@@ -1,54 +1,55 @@
 import { useEffect, useRef } from 'react';
-import type { SkinKind } from '../../lib/contracts';
-import styles from './Accounts.module.css';
-import { CAPE_PARTS, frameDurations, skinParts } from './skinTextures';
+import styles from './Skins.module.css';
+import {
+  CAPE_PARTS,
+  type Side,
+  type Texture,
+  frameDurations,
+  frameHeight,
+  isLegacy,
+  reducedMotion,
+  skinParts,
+} from './textures';
 
 /** Canvas pixels per texture pixel of a standard (64-wide) texture. */
 const UNIT = 8;
 
-function reducedMotion(): boolean {
-  return typeof window.matchMedia === 'function'
-    ? window.matchMedia('(prefers-reduced-motion: reduce)').matches
-    : false;
-}
-
-interface Props {
-  /** The PNG, as a `data:` URL. */
-  src: string;
-  kind: SkinKind;
-  slim: boolean;
-  width: number;
-  height: number;
-  frames: number;
-  frameMs: readonly number[];
+interface Props extends Texture {
   label: string;
+  /** Which side of a skin; a cape is always seen from behind. */
+  side?: Side;
+  /** One frame only, held still; otherwise the frames show in turn. */
+  frame?: number | undefined;
+  /** A smaller drawing, for the strip of frames. */
+  small?: boolean;
 }
 
-/** A flat front view of a skin or cape, its frames shown in turn. */
-export function SkinPreview({ src, kind, slim, width, height, frames, frameMs, label }: Props) {
+/** A flat view of a skin or cape, its frames shown in turn. Also what the screen
+ * shows when the 3D view cannot run. */
+export function SkinPreview({ label, side = 'front', frame, small = false, ...texture }: Props) {
   const canvas = useRef<HTMLCanvasElement>(null);
+  const { src, kind, slim, width, frames, frameMs } = texture;
   const scale = width / 64;
-  // The layout before 1.8: 64×32, or HD like 512×256, always one frame.
-  const legacy = kind === 'skin' && height * 2 === width;
-  const frameHeight = kind === 'skin' && !legacy ? width : width / 2;
+  const legacy = isLegacy(texture);
+  const height = frameHeight(texture);
   const figure = kind === 'skin' ? { w: 16, h: 32 } : { w: 10, h: 16 };
   const durations = frameDurations(frames, frameMs).join(',');
 
   useEffect(() => {
     const target = canvas.current;
     if (target === null) return;
-    const parts = kind === 'skin' ? skinParts(slim, legacy) : CAPE_PARTS;
+    const parts = kind === 'skin' ? skinParts(slim, legacy, side) : CAPE_PARTS;
     const times = durations.split(',').map(Number);
     let timer: ReturnType<typeof setTimeout> | undefined;
     let live = true;
     const image = new Image();
 
-    const draw = (frame: number) => {
+    const draw = (shown: number) => {
       const context = target.getContext('2d');
       if (context === null) return;
       context.clearRect(0, 0, target.width, target.height);
       context.imageSmoothingEnabled = false;
-      const top = frame * frameHeight;
+      const top = shown * height;
       for (const p of parts) {
         const sx = p.sx * scale;
         const sy = top + p.sy * scale;
@@ -76,18 +77,18 @@ export function SkinPreview({ src, kind, slim, width, height, frames, frameMs, l
       }
     };
 
-    const show = (frame: number) => {
+    const show = (shown: number) => {
       if (!live) return;
-      draw(frame);
-      if (times.length > 1 && !reducedMotion()) {
+      draw(shown);
+      if (frame === undefined && times.length > 1 && !reducedMotion()) {
         timer = setTimeout(() => {
-          show((frame + 1) % times.length);
-        }, times[frame]);
+          show((shown + 1) % times.length);
+        }, times[shown]);
       }
     };
 
     image.onload = () => {
-      show(0);
+      show(frame === undefined ? 0 : Math.min(Math.max(0, frame), times.length - 1));
     };
     image.src = src;
     return () => {
@@ -95,12 +96,14 @@ export function SkinPreview({ src, kind, slim, width, height, frames, frameMs, l
       image.onload = null;
       if (timer !== undefined) clearTimeout(timer);
     };
-  }, [src, kind, slim, legacy, scale, frameHeight, durations]);
+  }, [src, kind, slim, legacy, side, scale, height, durations, frame]);
 
   return (
     <canvas
       ref={canvas}
-      className={kind === 'skin' ? styles.skinPreview : styles.capePreview}
+      className={[kind === 'skin' ? styles.skinPreview : styles.capePreview, small && styles.small]
+        .filter(Boolean)
+        .join(' ')}
       width={figure.w * UNIT}
       height={figure.h * UNIT}
       role="img"

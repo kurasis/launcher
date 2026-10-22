@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-skins-save-picture"
+description = "Enables the skins_save_picture command without any pre-configured scope."
+commands.allow = ["skins_save_picture"]
+
+[[permission]]
+identifier = "deny-skins-save-picture"
+description = "Denies the skins_save_picture command without any pre-configured scope."
+commands.deny = ["skins_save_picture"]

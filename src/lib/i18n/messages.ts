@@ -16,6 +16,7 @@ export type Messages = {
     readonly home: string;
     readonly mods: string;
     readonly worlds: string;
+    readonly skins: string;
     readonly account: string;
     readonly backups: string;
     readonly screenshots: string;
@@ -270,32 +271,131 @@ export type Messages = {
       readonly cape: string;
       readonly noSkin: string;
       readonly noCape: string;
+      readonly notShown: string;
       readonly loading: string;
       readonly uploadSkin: string;
       readonly uploadCape: string;
       readonly removeSkin: string;
       readonly removeCape: string;
-      readonly picked: (values: {
-        name: string | number;
-        width: string | number;
-        height: string | number;
-        frames: number;
-      }) => string;
+      readonly dropHere: string;
       readonly model: string;
       readonly classic: string;
       readonly slim: string;
-      readonly frameMs: string;
       readonly frameMsHint: string;
-      readonly send: string;
       readonly cancel: string;
       readonly skinUploaded: string;
       readonly capeUploaded: string;
+      readonly inGame: string;
       readonly skinRemoved: string;
       readonly capeRemoved: string;
       readonly previewSkin: string;
       readonly previewCape: string;
-      readonly previewPicked: string;
       readonly limit: string;
+      readonly signInFirst: string;
+      readonly signInAgain: string;
+      readonly openAccounts: string;
+      readonly tag: {
+        readonly worn: string;
+        readonly trying: string;
+        readonly noMod: string;
+      };
+      readonly before: string;
+      readonly stageLabel: string;
+      readonly flat: string;
+      readonly flatSkinFront: string;
+      readonly flatSkinBack: string;
+      readonly flatCape: string;
+      readonly animations: {
+        readonly label: string;
+        readonly idle: string;
+        readonly walk: string;
+        readonly run: string;
+        readonly wave: string;
+        readonly crouch: string;
+        readonly hit: string;
+        readonly fly: string;
+      };
+      readonly views: {
+        readonly label: string;
+        readonly front: string;
+        readonly threeQuarter: string;
+        readonly back: string;
+        readonly spin: string;
+      };
+      readonly backgrounds: {
+        readonly label: string;
+        readonly theme: string;
+        readonly day: string;
+        readonly night: string;
+        readonly cave: string;
+      };
+      readonly layer2: string;
+      readonly nameTag: string;
+      readonly compare: string;
+      readonly noMod: string;
+      readonly backLabel: string;
+      readonly backCape: string;
+      readonly backElytra: string;
+      readonly noModHint: string;
+      readonly plainFacts: string;
+      readonly facts: {
+        readonly size: (values: { width: string | number; height: string | number }) => string;
+        readonly hd: (values: { scale: string | number }) => string;
+        readonly frames: (values: { count: number }) => string;
+        readonly cycle: (values: { seconds: number }) => string;
+        readonly kb: (values: { kb: number }) => string;
+      };
+      readonly picture: string;
+      readonly pictureSaved: (values: { name: string | number }) => string;
+      readonly notes: {
+        readonly merged: (values: { from: string | number; to: string | number }) => string;
+        readonly everyNth: (values: {
+          from: string | number;
+          step: number;
+          to: string | number;
+        }) => string;
+        readonly clamped: (values: {
+          frame: string | number;
+          was: string | number;
+          now: string | number;
+        }) => string;
+      };
+      readonly picked: {
+        readonly titleSkin: string;
+        readonly titleCape: string;
+        readonly checks: string;
+        readonly size: (values: { width: string | number; height: string | number }) => string;
+        readonly sizeHd: (values: {
+          width: string | number;
+          height: string | number;
+          scale: string | number;
+        }) => string;
+        readonly strip: (values: { count: number }) => string;
+        readonly oneFrame: string;
+        readonly weight: (values: { kb: number; max: number }) => string;
+        readonly fromGif: string;
+        readonly fromApng: string;
+        readonly moreClamped: (values: { count: number }) => string;
+        readonly guessSlim: string;
+        readonly guessClassic: string;
+        readonly frames: string;
+        readonly cycle: (values: { count: number; seconds: number }) => string;
+        readonly same: string;
+        readonly eachFrame: string;
+        readonly showFrame: (values: { frame: string | number }) => string;
+        readonly frameNumber: (values: { frame: string | number }) => string;
+        readonly frameMs: (values: { frame: string | number }) => string;
+        readonly wear: string;
+        readonly pause: string;
+        readonly play: string;
+        readonly previous: string;
+        readonly next: string;
+        readonly frameOf: (values: {
+          frame: string | number;
+          count: string | number;
+          ms: number;
+        }) => string;
+      };
       readonly problems: {
         readonly signed_out: string;
         readonly network: string;
@@ -306,8 +406,10 @@ export type Messages = {
         readonly bad_frame_ms: string;
         readonly bad_model: string;
         readonly too_large: string;
+        readonly too_many_frames: string;
         readonly rate_limited: string;
         readonly invalid: string;
+        readonly not_saved: string;
         readonly server: string;
       };
     };
@@ -2334,5 +2436,6 @@ export type Messages = {
     readonly pickSkin: string;
     readonly pickCape: string;
     readonly player: string;
+    readonly saveSkinPicture: string;
   };
 };

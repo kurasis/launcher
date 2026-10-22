@@ -481,8 +481,10 @@ export type SkinsProblem =
   | 'bad_frame_ms'
   | 'bad_model'
   | 'too_large'
+  | 'too_many_frames'
   | 'rate_limited'
   | 'invalid'
+  | 'not_saved'
   | 'server';
 
 export const SKINS_PROBLEMS: readonly SkinsProblem[] = [
@@ -495,8 +497,10 @@ export const SKINS_PROBLEMS: readonly SkinsProblem[] = [
   'bad_frame_ms',
   'bad_model',
   'too_large',
+  'too_many_frames',
   'rate_limited',
   'invalid',
+  'not_saved',
   'server',
 ];
 
@@ -518,7 +522,16 @@ export interface Wardrobe {
   cape: WornTexture | null;
 }
 
-/** A PNG the player picked and has not uploaded yet, checked by the core. */
+/** What importing a GIF or APNG changed: identical frames in a row joined, every
+ * n-th of more than 32 frames kept, a duration brought within 50–10 000 ms
+ * (`frame` counts from 0). */
+export type ImportNote =
+  | { kind: 'merged'; from: number; to: number }
+  | { kind: 'everyNth'; from: number; to: number; step: number }
+  | { kind: 'clamped'; frame: number; was: number; now: number };
+
+/** A file the player picked or dropped and has not uploaded yet, checked by the
+ * core; a GIF or APNG is already a strip of frames. */
 export interface PickedTexture {
   kind: SkinKind;
   /** The file's name, plain text. */
@@ -526,7 +539,13 @@ export interface PickedTexture {
   width: number;
   height: number;
   frames: number;
-  /** The file as a `data:` URL. */
+  /** The file's own durations, one per frame; empty when it has none. */
+  frameMs: number[];
+  source: 'png' | 'apng' | 'gif';
+  notes: ImportNote[];
+  /** Size of the PNG that will be uploaded. */
+  bytes: number;
+  /** That PNG as a `data:` URL. */
   preview: string;
 }
 

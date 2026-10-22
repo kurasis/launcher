@@ -1,11 +1,13 @@
 //! The launcher account's skin and cape at skins.lapi.sh (D-065, stage 2).
 //!
-//! The player picks a PNG in a native dialog; the core reads it (never more
-//! than its kind may weigh), checks it against the service's rules and keeps
-//! it in memory until the player uploads it or picks another. The interface
-//! never sends a path: it names the kind, and the core uploads what was
-//! picked for it. The service stays the authority; the checks here only say
-//! what is wrong before anything is sent.
+//! The player picks a PNG, GIF or animated PNG in a native dialog, or drops
+//! one on the page (which sends its name and bytes); the core reads it
+//! (never more than an import may weigh), makes an animation one PNG strip
+//! (`skins_import`), checks it against the service's rules and keeps it in
+//! memory until the player uploads it or picks another. The interface never
+//! sends a path: it names the kind, and the core uploads what was picked for
+//! it. The service stays the authority; the checks here only say what is
+//! wrong before anything is sent.
 //!
 //! Textures are shown from `GET /v1/textures/{sha256}`, fetched here (the
 //! window's CSP loads no remote image) and checked against their hash.
@@ -23,6 +25,7 @@ use sha2::{Digest, Sha256};
 use tauri::{AppHandle, Manager, Runtime};
 
 use crate::launcher_account::{AccountProblem, BodyError, LauncherAccount, body_within};
+use crate::skins_import::{self, IMPORT_MAX_BYTES, Imported, Note, Source};
 use crate::state::AppState;
 use crate::sync::lock;
 
@@ -44,13 +47,23 @@ pub const FRAME_MS_MIN: u32 = 50;
 pub const FRAME_MS_MAX: u32 = 10_000;
 /// What the decoder may allocate for itself; the image buffer is bounded by
 /// the size rules.
-const DECODER_BYTES: usize = 4 * 1024 * 1024;
+pub(crate) const DECODER_BYTES: usize = 4 * 1024 * 1024;
 /// Textures kept for the preview (two worn, a few recent).
 const TEXTURE_CACHE: usize = 6;
 /// The longest file name shown for a picked file.
 const NAME_CHARS: usize = 80;
+/// The longest name a dropped file may have.
+pub const DROPPED_NAME_BYTES: usize = 1024;
+/// What a dropped file's name ends with (its content says what it is).
+const DROPPED_ENDINGS: [&str; 3] = [".png", ".gif", ".apng"];
+/// A picture of the character to save: at most this wide and high, and
+/// this heavy.
+pub const PICTURE_MAX_SIDE: u32 = 2048;
+pub const PICTURE_MAX_BYTES: usize = 16 * 1024 * 1024;
+/// The longest name offered for a saved picture, before `.png`.
+const PICTURE_NAME_CHARS: usize = 32;
 
-const PNG_SIGNATURE: &[u8; 8] = b"\x89PNG\r\n\x1a\n";
+pub(crate) const PNG_SIGNATURE: &[u8; 8] = b"\x89PNG\r\n\x1a\n";
 
 /// skins.lapi.sh, or the server a test build was made for
 /// (`LAUNCHER_SKINS_URL` at build time; release builds never set it).
@@ -113,12 +126,16 @@ pub enum SkinsProblem {
     /// A frame duration outside 50–10 000 ms, or more than one per frame.
     BadFrameMs,
     BadModel,
-    /// Heavier than the kind may be.
+    /// Heavier than the kind may be, or than a file to import.
     TooLarge,
+    /// An animation of more than 256 frames, or too many for its size.
+    TooManyFrames,
     /// Ten uploads an hour.
     RateLimited,
     /// Nothing picked for that kind, or a request the core refuses to make.
     Invalid,
+    /// A picture could not be saved.
+    NotSaved,
     Server,
 }
 
@@ -361,13 +378,78 @@ pub fn upload_query(
 
 /// A picked file's name as shown: plain text, short.
 fn shown_name(path: &Path) -> String {
-    path.file_name()
-        .map(|n| n.to_string_lossy())
-        .unwrap_or_default()
-        .chars()
-        .filter(|c| !c.is_control())
+    plain_name(
+        &path
+            .file_name()
+            .map(|n| n.to_string_lossy())
+            .unwrap_or_default(),
+    )
+}
+
+/// A dropped file's name as shown, without any folders before it.
+fn dropped_name(name: &str) -> String {
+    plain_name(name.rsplit(['/', '\\']).next().unwrap_or_default())
+}
+
+/// A name without control characters or bidi formatting (which could show
+/// `gnp.exe` as `exe.png`), short.
+fn plain_name(name: &str) -> String {
+    name.chars()
+        .filter(|c| !c.is_control() && !is_bidi_format(*c))
         .take(NAME_CHARS)
         .collect()
+}
+
+fn is_bidi_format(c: char) -> bool {
+    matches!(
+        c,
+        '\u{200E}' | '\u{200F}' | '\u{202A}'..='\u{202E}' | '\u{2066}'..='\u{2069}'
+    )
+}
+
+/// A dropped file is taken only by the name of a picture it may be.
+fn is_picture_name(name: &str) -> bool {
+    let name = name.to_ascii_lowercase();
+    DROPPED_ENDINGS.iter().any(|ending| name.ends_with(ending))
+}
+
+/// Characters base64 needs for `bytes` bytes.
+pub const fn base64_len(bytes: usize) -> usize {
+    bytes.div_ceil(3) * 4
+}
+
+/// A picture of the character the page drew (base64 of a PNG, without the
+/// `data:` prefix): a whole PNG of at most 2048×2048, checked before
+/// anything is written. Not a skin: no skin rule applies.
+pub fn picture(data: &str) -> Result<Vec<u8>, SkinsProblem> {
+    let bad = SkinsProblem::Invalid;
+    if data.len() > base64_len(PICTURE_MAX_BYTES) {
+        return Err(bad);
+    }
+    let png = base64::engine::general_purpose::STANDARD
+        .decode(data)
+        .map_err(|_| bad)?;
+    if png.len() > PICTURE_MAX_BYTES {
+        return Err(bad);
+    }
+    let (width, height) = header_size(&png).map_err(|_| bad)?;
+    let sides = 1..=PICTURE_MAX_SIDE;
+    if !sides.contains(&width) || !sides.contains(&height) {
+        return Err(bad);
+    }
+    decodes(&png, width, height).ok_or(bad)?;
+    Ok(png)
+}
+
+/// The name the save dialog offers for a picture: letters, digits, `_` and
+/// `-` of `name` (or `skin`), then `.png`.
+pub fn picture_file_name(name: &str) -> String {
+    let stem: String = name
+        .chars()
+        .filter(|c| c.is_ascii_alphanumeric() || matches!(c, '_' | '-'))
+        .take(PICTURE_NAME_CHARS)
+        .collect();
+    format!("{}.png", if stem.is_empty() { "skin" } else { &stem })
 }
 
 /// Reads a file, never more than `max` bytes of it.
@@ -397,10 +479,12 @@ fn data_url(png: &[u8]) -> String {
     )
 }
 
-/// A file the player picked and has not uploaded yet.
+/// A file the player picked and has not uploaded yet: the PNG to send.
 struct Picked {
     bytes: Vec<u8>,
     shape: Shape,
+    /// The file's own durations, one per frame; empty for a single frame.
+    frame_ms: Vec<u32>,
 }
 
 /// What the interface shows of a picked file.
@@ -412,7 +496,15 @@ pub struct PickedView {
     pub width: u32,
     pub height: u32,
     pub frames: u32,
-    /// The file as a `data:` URL, for the preview.
+    /// The file's durations, one per frame; empty for a single frame.
+    pub frame_ms: Vec<u32>,
+    pub source: Source,
+    /// What the import changed.
+    pub notes: Vec<Note>,
+    /// The weight of the PNG to upload.
+    pub bytes: usize,
+    /// The PNG to upload (the strip, for a GIF or an animated PNG) as a
+    /// `data:` URL, for the preview.
     pub preview: String,
 }
 
@@ -504,23 +596,66 @@ impl Skins {
         path: std::path::PathBuf,
     ) -> Result<PickedView, SkinsProblem> {
         let name = shown_name(&path);
-        let (bytes, shape) = tauri::async_runtime::spawn_blocking(move || {
-            let bytes = read_within(&path, kind.max_bytes())?;
-            let shape = check(kind, &bytes)?;
-            Ok::<_, SkinsProblem>((bytes, shape))
+        let imported = tauri::async_runtime::spawn_blocking(move || {
+            let bytes = read_within(&path, IMPORT_MAX_BYTES)?;
+            skins_import::import(kind, &bytes)
         })
         .await
         .map_err(|_| SkinsProblem::Unreadable)??;
+        Ok(self.keep(kind, name, imported))
+    }
+
+    /// Checks a file dropped on the page, by its name and bytes, and keeps
+    /// it for upload as a picked one.
+    pub async fn take(
+        &self,
+        kind: Kind,
+        name: &str,
+        bytes: Vec<u8>,
+    ) -> Result<PickedView, SkinsProblem> {
+        if name.len() > DROPPED_NAME_BYTES {
+            return Err(SkinsProblem::Invalid);
+        }
+        if !is_picture_name(name) {
+            return Err(SkinsProblem::BadPng);
+        }
+        if bytes.len() > IMPORT_MAX_BYTES {
+            return Err(SkinsProblem::TooLarge);
+        }
+        let name = dropped_name(name);
+        let imported =
+            tauri::async_runtime::spawn_blocking(move || skins_import::import(kind, &bytes))
+                .await
+                .map_err(|_| SkinsProblem::Unreadable)??;
+        Ok(self.keep(kind, name, imported))
+    }
+
+    fn keep(&self, kind: Kind, name: String, imported: Imported) -> PickedView {
+        let Imported {
+            png,
+            shape,
+            frame_ms,
+            source,
+            notes,
+        } = imported;
         let view = PickedView {
             kind,
             name,
             width: shape.width,
             height: shape.height,
             frames: shape.frames,
-            preview: data_url(&bytes),
+            frame_ms: frame_ms.clone(),
+            source,
+            notes,
+            bytes: png.len(),
+            preview: data_url(&png),
         };
-        lock(&self.picked)[kind.slot()] = Some(Picked { bytes, shape });
-        Ok(view)
+        lock(&self.picked)[kind.slot()] = Some(Picked {
+            bytes: png,
+            shape,
+            frame_ms,
+        });
+        view
     }
 
     /// Uploads what was picked for `kind`; it is forgotten once the service
@@ -543,11 +678,13 @@ impl Skins {
         slim: bool,
         frame_ms: Option<&[u32]>,
     ) -> Result<Wardrobe, SkinsProblem> {
-        let (bytes, shape) = {
+        let (bytes, shape, own_ms) = {
             let picked = lock(&self.picked);
             let picked = picked[kind.slot()].as_ref().ok_or(SkinsProblem::Invalid)?;
-            (picked.bytes.clone(), picked.shape)
+            (picked.bytes.clone(), picked.shape, picked.frame_ms.clone())
         };
+        // No durations from the interface: the file's own, if it has them.
+        let frame_ms = frame_ms.or((!own_ms.is_empty()).then_some(own_ms.as_slice()));
         let query = upload_query(kind, slim, shape.frames, frame_ms)?;
         let answer = self
             .call(
@@ -948,6 +1085,218 @@ mod tests {
                 .chars()
                 .count(),
             NAME_CHARS
+        );
+        // Bidi formatting cannot make one ending read as another.
+        assert_eq!(
+            shown_name(Path::new("/x/skin\u{202E}gnp.exe")),
+            "skingnp.exe"
+        );
+        assert_eq!(
+            plain_name(
+                "a\u{200E}b\u{200F}c\u{202A}d\u{202B}e\u{202C}f\u{202D}g\u{202E}h\u{2066}i\u{2067}j\u{2068}k\u{2069}l"
+            ),
+            "abcdefghijkl"
+        );
+        assert_eq!(plain_name("Скин 皮肤 ✓.png"), "Скин 皮肤 ✓.png");
+        assert_eq!(dropped_name("C:\\Users\\x\\my.png"), "my.png");
+        assert_eq!(dropped_name("../../a\u{2066}b.gif"), "ab.gif");
+        assert_eq!(
+            dropped_name(&format!("{}.gif", "n".repeat(500)))
+                .chars()
+                .count(),
+            NAME_CHARS
+        );
+    }
+
+    /// A GIF of full frames in turns of black, red, green and blue, one per
+    /// delay (hundredths of a second).
+    fn gif_of(width: u16, height: u16, delays: &[u16]) -> Vec<u8> {
+        let palette = [0, 0, 0, 255, 0, 0, 0, 255, 0, 0, 0, 255];
+        let mut encoder = gif::Encoder::new(Vec::new(), width, height, &palette).unwrap();
+        for (i, &delay) in delays.iter().enumerate() {
+            let pixels = vec![(i % 4) as u8; usize::from(width) * usize::from(height)];
+            encoder
+                .write_frame(&gif::Frame {
+                    delay,
+                    width,
+                    height,
+                    buffer: pixels.into(),
+                    ..gif::Frame::default()
+                })
+                .unwrap();
+        }
+        encoder.into_inner().unwrap()
+    }
+
+    #[tokio::test]
+    async fn dropped_and_picked_animations_become_strips() {
+        let skins = Skins::new("test").unwrap();
+        let gif = gif_of(64, 64, &[10, 20]);
+        for name in [
+            "skin.jpg",
+            "skin.svg",
+            "skin",
+            "skin.png.exe",
+            "skin.gif\u{200E}",
+            "",
+        ] {
+            assert_eq!(
+                skins.take(Kind::Skin, name, gif.clone()).await,
+                Err(SkinsProblem::BadPng),
+                "{name}"
+            );
+        }
+        assert_eq!(
+            skins.take(Kind::Skin, &"a".repeat(2000), gif.clone()).await,
+            Err(SkinsProblem::Invalid)
+        );
+        assert_eq!(
+            skins.take(Kind::Cape, "x.png", b"<svg/>".to_vec()).await,
+            Err(SkinsProblem::BadPng)
+        );
+        assert_eq!(
+            skins
+                .take(Kind::Cape, "x.gif", vec![0; IMPORT_MAX_BYTES + 1])
+                .await,
+            Err(SkinsProblem::TooLarge)
+        );
+        assert!(lock(&skins.picked).iter().all(Option::is_none));
+        for name in ["a.apng", "B.GIF", "c.Png"] {
+            assert!(is_picture_name(name), "{name}");
+        }
+
+        // The content says what a file is, whatever its name.
+        let view = skins
+            .take(Kind::Skin, "C:\\x\\My\u{202E}fig.PNG", gif.clone())
+            .await
+            .unwrap();
+        assert_eq!(view.name, "Myfig.PNG");
+        assert_eq!(view.source, Source::Gif);
+        assert_eq!((view.width, view.height, view.frames), (64, 128, 2));
+        assert_eq!(view.frame_ms, [100, 200]);
+        assert!(view.notes.is_empty());
+        {
+            let picked = lock(&skins.picked);
+            let picked = picked[0].as_ref().unwrap();
+            assert_eq!(view.bytes, picked.bytes.len());
+            assert_eq!(view.preview, data_url(&picked.bytes));
+            assert_eq!(picked.frame_ms, [100, 200]);
+        }
+        let mut keys: Vec<String> = serde_json::to_value(&view)
+            .unwrap()
+            .as_object()
+            .unwrap()
+            .keys()
+            .cloned()
+            .collect();
+        keys.sort();
+        assert_eq!(
+            keys,
+            [
+                "bytes", "frameMs", "frames", "height", "kind", "name", "notes", "preview",
+                "source", "width"
+            ]
+        );
+
+        // Picked in the dialog, by its path.
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("cape.gif");
+        std::fs::write(&path, gif_of(64, 32, &[5, 5, 5])).unwrap();
+        let view = skins.pick(Kind::Cape, path).await.unwrap();
+        assert_eq!((view.name.as_str(), view.frames), ("cape.gif", 3));
+        assert_eq!(view.frame_ms, [50, 50, 50]);
+        let path = dir.path().join("big.gif");
+        std::fs::write(&path, vec![0u8; IMPORT_MAX_BYTES + 1]).unwrap();
+        assert_eq!(
+            skins.pick(Kind::Cape, path).await,
+            Err(SkinsProblem::TooLarge)
+        );
+    }
+
+    #[tokio::test]
+    async fn an_animation_is_uploaded_with_its_own_durations() {
+        let (address, requests) = local_server(200, json!({ "skin": null, "cape": null })).await;
+        LOCAL_SERVER.with(|s| s.set(Some(Box::leak(address.into_boxed_str()))));
+        let skins = Skins::new("test").unwrap();
+        let gif = gif_of(64, 64, &[10, 20]);
+        let first = skins.take(Kind::Skin, "a.gif", gif.clone()).await.unwrap();
+        skins
+            .upload_with("token", Kind::Skin, true, None)
+            .await
+            .unwrap();
+        // Durations from the interface win.
+        skins.take(Kind::Skin, "a.gif", gif).await.unwrap();
+        skins
+            .upload_with("token", Kind::Skin, false, Some(&[300]))
+            .await
+            .unwrap();
+        LOCAL_SERVER.with(|s| s.set(None));
+        let requests = lock(&requests).clone();
+        assert_eq!(requests.len(), 2);
+        assert!(
+            requests[0]
+                .0
+                .starts_with("PUT /v1/me/skin?model=slim&frames=2&frame_ms=100,200 HTTP/1.1"),
+            "{}",
+            requests[0].0
+        );
+        assert!(
+            requests[1]
+                .0
+                .starts_with("PUT /v1/me/skin?model=default&frames=2&frame_ms=300 HTTP/1.1"),
+            "{}",
+            requests[1].0
+        );
+        // The strip is sent, not the GIF.
+        assert!(requests[0].1.starts_with(PNG_SIGNATURE));
+        assert_eq!(requests[0].1.len(), first.bytes);
+    }
+
+    #[test]
+    fn pictures_to_save_are_whole_pngs_of_a_bounded_size() {
+        let encode = |bytes: &[u8]| base64::engine::general_purpose::STANDARD.encode(bytes);
+        // Not a skin's size: a picture has no skin rules.
+        let good = png_of(300, 200);
+        assert_eq!(picture(&encode(&good)), Ok(good.clone()));
+        let wide = png_of(2048, 2);
+        assert_eq!(picture(&encode(&wide)), Ok(wide));
+        for bad in [
+            String::new(),
+            "not base64!".to_owned(),
+            encode(b"<svg onload=alert(1)>"),
+            encode(&header_only(4096, 4096)),
+            encode(&header_only(2049, 10)),
+            encode(&header_only(10, 2049)),
+            encode(&header_only(0, 0)),
+            encode(&header_only(64, 64)),
+            encode(&good[..good.len() / 2]),
+            encode(&good[..good.len() - 12]),
+            format!("data:image/png;base64,{}", encode(&good)),
+            "A".repeat(base64_len(PICTURE_MAX_BYTES) + 4),
+        ] {
+            assert_eq!(picture(&bad), Err(SkinsProblem::Invalid));
+        }
+        assert_eq!(base64_len(0), 0);
+        assert_eq!(base64_len(1), 4);
+        assert_eq!(base64_len(3), 4);
+        assert_eq!(base64_len(4), 8);
+        assert_eq!(picture_file_name("Steve"), "Steve.png");
+        assert_eq!(picture_file_name("my_skin-2"), "my_skin-2.png");
+        assert_eq!(picture_file_name("../../etc/passwd"), "etcpasswd.png");
+        assert_eq!(picture_file_name("con.png\u{202E}"), "conpng.png");
+        assert_eq!(picture_file_name(""), "skin.png");
+        assert_eq!(picture_file_name("Скин"), "skin.png");
+        assert_eq!(
+            picture_file_name(&"n".repeat(100)),
+            format!("{}.png", "n".repeat(32))
+        );
+    }
+
+    #[test]
+    fn new_problems_have_their_codes() {
+        assert_eq!(
+            serde_json::to_value([SkinsProblem::TooManyFrames, SkinsProblem::NotSaved]).unwrap(),
+            json!(["too_many_frames", "not_saved"])
         );
     }
 

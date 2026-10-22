@@ -10,7 +10,7 @@ import { accountProblem, ipc } from '../../lib/ipc';
 import { strings } from '../../lib/strings';
 import { useCommand } from '../../lib/useCommand';
 import styles from './Accounts.module.css';
-import { SkinsSection } from './SkinsSection';
+import { SkinStudio } from '../skins/SkinStudio';
 
 const a = strings.accounts;
 
@@ -258,7 +258,7 @@ export function LauncherAccountPanel({ view, isDefault, busy, onDefault, mode }:
           )}
         </div>
       )}
-      {signedIn && !view.needsSignIn && <SkinsSection />}
+      {signedIn && !view.needsSignIn && <SkinStudio nick={view.nick} />}
       {view.signingIn && <p role="status">{a.launcherWaiting}</p>}
       {done !== null && <p role="status">{done}</p>}
       {shown !== null && <Notice tone="warning">{a.launcherProblems[shown]}</Notice>}

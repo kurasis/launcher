@@ -2100,6 +2100,48 @@ skins-mod <channel>` there only checks the signature against the public key and
   a damaged list: the built-in table, as before. Nothing about the player is sent,
   and nothing stops a launch.
 
+### The skin and cape screen
+
+- **Status:** accepted (owner, 2026-10-21, with all five proposed defaults). Stage 1
+  of 4 is built: the screen in the launcher; the wardrobe on the server (stage 2) and
+  the head avatar, skin by nick and refresh in a running game (stage 3) follow; stage
+  4 (Microsoft skin, launcher capes, ears, an editor) only when the owner asks.
+- **Where:** a block in Accounts → Launcher account and a tab "Skins" in the main row
+  (the same component, `src/features/skins`). The account window (D-064) has no IPC, so
+  the screen lives in the main window.
+- **The character:** skinview3d 3.4.2 (MIT, three.js), bundled and loaded only when the
+  screen opens; nothing comes from the network. Textures reach the page as `data:`
+  URLs from the core (the CSP has no `blob:`), are cut into one canvas per frame and
+  change by the wall clock, as the mod does. Animations (standing, walking, running,
+  waving, crouching, hitting, flying on elytra), four views (front, 3/4, back,
+  turning), four backgrounds, the second layer, the nick over the head, cape or
+  elytra, "before and after" while a file is tried on, "as seen without the mod" (a
+  stand-in for the game's own skin, drawn by us: Mojang's may not be copied) and a
+  1024×1024 PNG with a transparent background, saved through a native dialog. Arrow
+  keys turn it, a double click resets it, the pointer over it stops it turning. No
+  WebGL, a lost context or a failed start: flat front and back drawings instead. The
+  OS setting "reduce motion" stops everything that moves by itself.
+- **A new file:** picked in a dialog or dropped on the skin or cape card. The window's
+  own drop handler stays off (D-070 needs it off), so the page reads the dropped file
+  (`.png`, `.gif`, `.apng` by name, up to 8 MiB) and hands the bytes to the core
+  (`skins_take`), which checks them as it checks a picked file. A GIF or an APNG
+  becomes a vertical strip with its frame durations; the screen says what the import
+  did (identical frames merged, every n-th frame kept, durations raised to 50 ms).
+  The arms are guessed from the file. Before it is worn the player sees each frame
+  and can hold one, give one duration to all or one per frame (50–10 000 ms).
+- **Import limits (core, `src-tauri/src/skins_import.rs`):** the format is read from
+  the bytes, never the name. The work is bounded before it starts: at most 8 MiB, then
+  the picture's size from the header (a skin or cape size), then at most 256 frames in
+  the file (an APNG's announced count is checked before any frame is read) and 16 Mi
+  pixels for all of them together. Each frame is drawn onto the whole picture with its
+  disposal and blending, as browsers draw it; frames that look the same in a row
+  become one, more than 32 are thinned to every n-th, and durations are brought into
+  50–10 000 ms (a GIF delay of 10 ms or less counts as 100, as in browsers). A broken
+  file is refused, never half shown.
+- **Saving the picture:** `skins_save_picture` (async: it opens a native dialog) takes
+  only a PNG that decodes fully, at most 2048 pixels a side and 16 MiB; the offered
+  name is the nick reduced to letters, digits, `_` and `-`. The log gets a fixed line.
+
 ## D-066 — Catalog of mods at mods.lapi.sh
 
 - **Status:** accepted (owner request, 2026-10-19), stages 1–6 · **Affects:** the new service `services/mods` (`https://mods.lapi.sh`, files at

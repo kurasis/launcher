@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-skins-take"
+description = "Enables the skins_take command without any pre-configured scope."
+commands.allow = ["skins_take"]
+
+[[permission]]
+identifier = "deny-skins-take"
+description = "Denies the skins_take command without any pre-configured scope."
+commands.deny = ["skins_take"]

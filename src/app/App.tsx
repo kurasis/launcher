@@ -32,6 +32,7 @@ import { FriendsCorner } from '../features/friends/FriendsCorner';
 import { ModsView, type ModsSection } from '../features/mods/ModsView';
 import { WorldsView } from '../features/worlds/WorldsView';
 import { FeedView } from '../features/feed/FeedView';
+import { SkinsView } from '../features/skins/SkinsView';
 import { useTheme } from './useTheme';
 import { useAppInfo } from './useAppInfo';
 import { MoreMenu, type MenuItem } from './MoreMenu';
@@ -339,6 +340,14 @@ export function App() {
               <WorldsView
                 key={worldsRoom?.at ?? 0}
                 initialRoom={worldsRoom?.id ?? null}
+                snapshot={state.snapshot}
+                onOpenAccounts={() => {
+                  navigate('account');
+                }}
+              />
+            )}
+            {view === 'skins' && (
+              <SkinsView
                 snapshot={state.snapshot}
                 onOpenAccounts={() => {
                   navigate('account');

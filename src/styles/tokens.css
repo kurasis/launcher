@@ -70,6 +70,18 @@
   --color-soil: #7c5a3c;
   --color-hero-scrim: rgb(255 255 255 / 78%);
 
+  /* Backgrounds behind the 3D character: the same in both themes. */
+  --color-stage-day-sky: #7dd3fc;
+  --color-stage-day-haze: #e0f2fe;
+  --color-stage-day-grass: #4d9a6b;
+  --color-stage-day-soil: #3f7d55;
+  --color-stage-night-sky: #0b1026;
+  --color-stage-night-haze: #312e81;
+  --color-stage-night-grass: #14532d;
+  --color-stage-night-soil: #166534;
+  --color-stage-cave-light: #4a3b33;
+  --color-stage-cave-dark: #0e0a08;
+
   --shadow-panel: 0 1px 2px rgb(15 23 42 / 6%), 0 12px 32px rgb(15 23 42 / 8%);
   --shadow-raised: 0 18px 48px rgb(15 23 42 / 18%);
 }
