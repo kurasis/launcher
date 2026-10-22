@@ -2855,8 +2855,13 @@ skins-mod <channel>` there only checks the signature against the public key and
   only when a launcher asks for it, and only for channels it knows (ours, those players
   named, streams it lists): from the channel page on YouTube, from Helix on Twitch, at
   most once in 10 minutes each, kept a week. Note cards carry their picture's
-  `imageWidth` and `imageHeight`. Video length stays out: the RSS feed has none, and the
-  Data API would need a key.
+  `imageWidth` and `imageHeight`.
+- **Video lengths (owner request, 2026-10-22):** RSS has none, so the service asks
+  YouTube's Data API v3 with a key (secret `YOUTUBE_API_KEY`) for videos that have
+  none yet: 1 unit per 50 videos, kept with the video, so a day takes a few hundred of
+  the free 10 000 units; it stops at 8 000 a day. Cards carry `duration` in seconds when
+  known (not for live streams or premieres). With the key, channel pictures come from
+  the API too (1 unit) instead of the 1.4 MB channel page. Without it both work as before.
 
 ## D-068 — Worlds with Friends
 

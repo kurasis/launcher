@@ -1882,6 +1882,8 @@ export interface FeedVideo {
    * may have none yet: show a stand-in when it does not load.
    */
   avatar: string | null;
+  /** Length in seconds, when the service knows it (not for live streams). */
+  duration: number | null;
 }
 
 export interface FeedStream {

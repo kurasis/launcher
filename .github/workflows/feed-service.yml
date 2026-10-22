@@ -6,9 +6,10 @@ name: Feed service
 # files change (the deploy warns).
 #
 # Secrets: DEEPL_API_KEY (translations of patch notes and news),
-# TWITCH_CLIENT_ID and TWITCH_CLIENT_SECRET (live streams) go to the server
-# through standard input, never a command line. Without them those parts of
-# the feed are left out.
+# TWITCH_CLIENT_ID and TWITCH_CLIENT_SECRET (live streams), YOUTUBE_API_KEY
+# (video lengths, YouTube Data API v3) go to the server through standard
+# input, never a command line. Without them those parts of the feed are left
+# out.
 #
 # This repository is public, and so are its workflow logs: nothing about a
 # player and nothing about the server is printed here. "Run workflow" with
@@ -124,12 +125,13 @@ jobs:
           DEEPL_API_KEY: ${{ secrets.DEEPL_API_KEY }}
           TWITCH_CLIENT_ID: ${{ secrets.TWITCH_CLIENT_ID }}
           TWITCH_CLIENT_SECRET: ${{ secrets.TWITCH_CLIENT_SECRET }}
+          YOUTUBE_API_KEY: ${{ secrets.YOUTUBE_API_KEY }}
         run: |
           set +e
           # The secrets travel on standard input; deploy.sh keeps them in
           # secrets.env (0640) and prints only their names.
-          printf 'LAPI_FEED_DEEPL_KEY=%s\nLAPI_FEED_TWITCH_CLIENT_ID=%s\nLAPI_FEED_TWITCH_SECRET=%s\n' \
-            "$DEEPL_API_KEY" "$TWITCH_CLIENT_ID" "$TWITCH_CLIENT_SECRET" |
+          printf 'LAPI_FEED_DEEPL_KEY=%s\nLAPI_FEED_TWITCH_CLIENT_ID=%s\nLAPI_FEED_TWITCH_SECRET=%s\nLAPI_FEED_YOUTUBE_KEY=%s\n' \
+            "$DEEPL_API_KEY" "$TWITCH_CLIENT_ID" "$TWITCH_CLIENT_SECRET" "$YOUTUBE_API_KEY" |
             ssh "$TARGET" \
               "bash ~/.lapi-bootstrap/$SETUP/deploy.sh feed $RELEASE $ARCHIVE --secrets" 2>&1 | tee deploy.log
           status=${PIPESTATUS[1]}
