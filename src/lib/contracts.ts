@@ -489,6 +489,10 @@ export type SkinsProblem =
   | 'invalid'
   | 'not_saved'
   | 'not_found'
+  | 'wardrobe_full'
+  | 'nothing_worn'
+  | 'bad_name'
+  | 'gone'
   | 'server';
 
 export const SKINS_PROBLEMS: readonly SkinsProblem[] = [
@@ -506,6 +510,10 @@ export const SKINS_PROBLEMS: readonly SkinsProblem[] = [
   'invalid',
   'not_saved',
   'not_found',
+  'wardrobe_full',
+  'nothing_worn',
+  'bad_name',
+  'gone',
   'server',
 ];
 
@@ -522,10 +530,66 @@ export interface WornTexture {
   frameMs: number[];
 }
 
+/** What the account wears, and its uploads left this hour (null when the
+ * service did not say). */
 export interface Wardrobe {
   skin: WornTexture | null;
   cape: WornTexture | null;
+  uploads: SkinUploads | null;
 }
+
+/** Uploads left of the hour's ten, and in how many seconds the count starts
+ * over (0 when none was made this hour). */
+export interface SkinUploads {
+  left: number;
+  resetSeconds: number;
+}
+
+/** A skin or cape kept in the wardrobe. Times are seconds since 1970; `worn` is
+ * 0 for one never worn. An empty name is the interface's to fill. */
+export interface WardrobeItem {
+  /** 32 hex digits. */
+  id: string;
+  kind: SkinKind;
+  name: string;
+  favourite: boolean;
+  created: number;
+  worn: number;
+  texture: WornTexture;
+}
+
+/** A skin and a cape (or one of them) kept to be worn together. */
+export interface WardrobeSet {
+  id: string;
+  name: string;
+  favourite: boolean;
+  created: number;
+  worn: number;
+  skin: WornTexture | null;
+  cape: WornTexture | null;
+}
+
+/** The account's wardrobe, the same on every computer: what it wears, what it
+ * keeps (newest first) and how much it may keep. */
+export interface Closet {
+  worn: Wardrobe;
+  items: WardrobeItem[];
+  sets: WardrobeSet[];
+  limits: { skins: number; capes: number; sets: number };
+}
+
+/** The longest wardrobe name, in characters. */
+export const WARDROBE_NAME_CHARS = 32;
+
+/** A change to the wardrobe. Keeping what is worn and putting on what is kept
+ * are never uploads. */
+export type WardrobeChange =
+  | { action: 'keepWorn'; kind: SkinKind; name: string }
+  | { action: 'keepSet'; name: string }
+  | { action: 'rename'; of: 'item' | 'set'; id: string; name: string }
+  | { action: 'favourite'; of: 'item' | 'set'; id: string; favourite: boolean }
+  | { action: 'delete'; of: 'item' | 'set'; id: string }
+  | { action: 'wear'; of: 'item' | 'set'; id: string };
 
 /** What importing a GIF or APNG changed: identical frames in a row joined, every
  * n-th of more than 32 frames kept, a duration brought within 50–10 000 ms

@@ -58,6 +58,8 @@ import {
   type SkinKind,
   type SkinsProblem,
   type Wardrobe,
+  type Closet,
+  type WardrobeChange,
   FEED_PROBLEMS,
   type FeedBlock,
   type FeedPage,
@@ -425,6 +427,10 @@ export const ipc = {
   skinsHeads: (nicks: string[]): Promise<Record<string, string | null>> =>
     invoke<Record<string, string | null>>('skins_heads', { nicks }),
   /** Takes the skin or cape another player wears, by nick, as a picked one. */
+  /** The heads of the Microsoft accounts signed in here, by profile ID: the skin
+   * Mojang serves for each, or null (draw the default). */
+  skinsMicrosoftHeads: (): Promise<Record<string, string | null>> =>
+    invoke<Record<string, string | null>>('skins_microsoft_heads'),
   skinsByNick: (kind: SkinKind, nick: string): Promise<PickedTexture> =>
     invoke<PickedTexture>('skins_by_nick', { kind, nick }),
   /** Picks a PNG, GIF or APNG in the native dialog; null if it was closed. */
@@ -441,6 +447,18 @@ export const ipc = {
   skinsUpload: (kind: SkinKind, slim: boolean, frameMs: number[] | null): Promise<Wardrobe> =>
     invoke<Wardrobe>('skins_upload', { kind, slim, frameMs }),
   skinsRemove: (kind: SkinKind): Promise<Wardrobe> => invoke<Wardrobe>('skins_remove', { kind }),
+  /** The account's wardrobe (D-065). */
+  skinsWardrobe: (): Promise<Closet> => invoke<Closet>('skins_wardrobe'),
+  /** Uploads what was picked for `kind` into the wardrobe without wearing it
+   * (counted as an upload); an empty name lets the interface name it. */
+  skinsKeep: (
+    kind: SkinKind,
+    slim: boolean,
+    frameMs: number[] | null,
+    name: string,
+  ): Promise<Closet> => invoke<Closet>('skins_keep', { kind, slim, frameMs, name }),
+  skinsWardrobeChange: (change: WardrobeChange): Promise<Closet> =>
+    invoke<Closet>('skins_wardrobe_change', { change }),
   /** Saves the account's data as a file; its name, or null if the dialog was closed. */
   launcherAccountExport: (title?: string): Promise<string | null> =>
     invoke<string | null>('launcher_account_export', { title }),

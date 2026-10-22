@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-skins-wardrobe"
+description = "Enables the skins_wardrobe command without any pre-configured scope."
+commands.allow = ["skins_wardrobe"]
+
+[[permission]]
+identifier = "deny-skins-wardrobe"
+description = "Denies the skins_wardrobe command without any pre-configured scope."
+commands.deny = ["skins_wardrobe"]

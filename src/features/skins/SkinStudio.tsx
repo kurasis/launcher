@@ -27,7 +27,7 @@ import {
   looksSlim,
 } from './textures';
 
-const NOTHING: Wardrobe = { skin: null, cape: null };
+const NOTHING: Wardrobe = { skin: null, cape: null, uploads: null };
 /** The largest file the core imports (a GIF or APNG before it becomes a strip). */
 const DROP_MAX_BYTES = 8 * 1024 * 1024;
 /** Files that can be dropped: the core checks what they really are. */

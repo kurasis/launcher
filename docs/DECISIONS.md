@@ -2255,7 +2255,20 @@ skins-mod <channel>` there only checks the signature against the public key and
   saving with nothing worn `nothing_worn`, a bad name `bad_name`; ids are 32 hex
   characters, anything else is not found. A texture stays on the server while it is
   worn or in a wardrobe. `GET /v1/export` includes the wardrobe; deleting the account
-  deletes it.
+  deletes it. In the launcher: `skins_wardrobe` reads it, `skins_keep` uploads the
+  picked file into it, and `skins_wardrobe_change` keeps what is worn (or as a set),
+  renames, marks, removes and puts on; each answers with the whole wardrobe, checked
+  as worn textures are (IDs, names by the same rule, at most 128 items and sets).
+  `skins_mine` also gives the uploads left. Previews are kept by hash, 64 of them.
+- **Heads of Microsoft accounts (2026-10-22, for the redesign, D-072):**
+  `skins_microsoft_heads` gives the head of each Microsoft account signed in on this
+  computer (the rail and Accounts), by profile ID. Only those IDs are asked, without
+  any token, from Mojang's public session server; the skin is then fetched from
+  textures.minecraft.net (only `/texture/<hex>` there, whatever URL the answer
+  names) and cut as our heads are. Both hosts are a source category of their own
+  (`MojangSkins`: HTTPS, public addresses only, not on the mirror). The window's CSP
+  stays as it is: the page gets a `data:` URL. Mojang's default skin, or no answer,
+  gives none and the page draws the default; heads are kept ten minutes.
 
 ## D-066 — Catalog of mods at mods.lapi.sh
 
