@@ -6675,7 +6675,8 @@ async fn health_names_its_problems_in_words_and_numbers() {
         lines.contains(&"backups ok 1 copies, newest 0 h ago".to_owned()),
         "{lines:?}"
     );
-    // Popular projects never looked for, and a job due for a day.
+    // Popular projects never looked for, and a job due for a day by the
+    // owner's clock (a second may have passed since it was read).
     t.app
         .store
         .enqueue(
@@ -6684,7 +6685,7 @@ async fn health_names_its_problems_in_words_and_numbers() {
             &json!({}),
             None,
             None,
-            now() - 86_400,
+            owner.now - 86_400,
             None,
         )
         .unwrap();
