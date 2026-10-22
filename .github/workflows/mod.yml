@@ -122,19 +122,28 @@ jobs:
         # A build that failed on a download is tried once more through the mirror.
         run: bash ../.github/gradle/ci-build.sh
       # Forge (mods.toml) reads every mod jar as a resource pack and warns at the
-      # game's start when it has no pack.mcmeta.
-      - name: Check that Forge jars carry pack.mcmeta
+      # game's start when it has no pack.mcmeta. Forge, and NeoForge before 20.4
+      # (FML 1), refuse a jar whose mods.toml has a dependency without `mandatory`.
+      - name: Check the Forge jars' pack.mcmeta and mods.toml
         run: |
           python3 - <<'EOF'
-          import pathlib, sys, zipfile
+          import pathlib, re, sys, zipfile
           bad = 0
           jars = [*pathlib.Path(".").glob("**/build/libs/launcherskins-*.jar"),
                   *pathlib.Path(".").glob("gametest/**/build/libs/launchergametest-*.jar")]
           for jar in sorted(jars):
-              names = set(zipfile.ZipFile(jar).namelist())
-              if "META-INF/mods.toml" in names and "pack.mcmeta" not in names:
+              zip = zipfile.ZipFile(jar)
+              names = set(zip.namelist())
+              if "META-INF/mods.toml" not in names:
+                  continue
+              if "pack.mcmeta" not in names:
                   print(f"no pack.mcmeta: {jar.name}")
                   bad += 1
+              toml = zip.read("META-INF/mods.toml").decode()
+              for block in re.split(r"(?m)^\s*\[", toml):
+                  if block.startswith("[dependencies.") and not re.search(r"(?m)^\s*mandatory\s*=", block):
+                      print(f"a dependency without mandatory: {jar.name}")
+                      bad += 1
           sys.exit(1 if bad else 0)
           EOF
       - name: Drop damaged jars after a failed build
