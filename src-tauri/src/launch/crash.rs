@@ -214,6 +214,23 @@ impl ExitInfo {
     }
 }
 
+/// What the window listener of clients before 1.6 prints before it ends the
+/// game with code 1 when the player closes the window.
+const CLOSED_BY_WINDOW: &str = "Someone is closing me!";
+
+/// Whether a game before 1.6 ended because the player closed its window: it
+/// exits with code 1 then, which is no failure.
+pub fn closed_by_its_window(exit: ExitInfo, output: &[String]) -> bool {
+    exit.code == Some(1)
+        && exit.signal.is_none()
+        && output
+            .iter()
+            .rev()
+            .filter(|line| !line.trim().is_empty())
+            .take(10)
+            .any(|line| line.trim() == CLOSED_BY_WINDOW)
+}
+
 /// A file the game wrote during the run.
 pub struct RunFile<'a> {
     pub name: &'a str,
@@ -1415,7 +1432,8 @@ pub fn diagnose(input: &CrashInput<'_>) -> Option<CrashDiagnosis> {
         .as_ref()
         .map(|r| r.text.lines().map(str::to_owned).collect())
         .unwrap_or_default();
-    let clean = input.exit.clean() && report.is_empty() && input.jvm_error.is_none();
+    let ended_well = input.exit.clean() || closed_by_its_window(input.exit, input.output);
+    let clean = ended_well && report.is_empty() && input.jvm_error.is_none();
     let mut lines = plain(input.output);
     lines.extend(report.iter().cloned());
     if let Some(jvm) = &input.jvm_error {
@@ -1467,7 +1485,7 @@ pub fn diagnose(input: &CrashInput<'_>) -> Option<CrashDiagnosis> {
         (None, Some(question)) => question,
         (None, None) => exit_status(&cx),
     };
-    if input.exit.clean() && d.kind == CrashKind::Unknown {
+    if ended_well && d.kind == CrashKind::Unknown {
         return None;
     }
     d.details

@@ -1,0 +1,45 @@
+# Installed by deploy/bootstrap.sh; started daily by lapi-stats-backup.timer.
+# A copy of the statistics database in /home/www/lapi/stats/data/backups (the
+# newest 14 stay). Copy the folder off the server to survive a lost disk
+# (docs/SERVER-BACKUPS.md).
+[Unit]
+Description=Back up the statistics database
+
+[Service]
+Type=oneshot
+User=lapi-stats
+Group=lapi-stats
+EnvironmentFile=/home/www/lapi/stats/stats.env
+ExecStart=/home/www/lapi/stats/current/lapi-stats backup
+Nice=10
+IOSchedulingClass=idle
+UMask=0077
+NoNewPrivileges=yes
+ProtectSystem=strict
+ProtectHome=tmpfs
+BindReadOnlyPaths=/home/www/lapi/stats
+BindPaths=/home/www/lapi/stats/data
+ReadWritePaths=/home/www/lapi/stats/data
+PrivateTmp=yes
+PrivateDevices=yes
+PrivateNetwork=yes
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectControlGroups=yes
+ProtectClock=yes
+ProtectHostname=yes
+RestrictAddressFamilies=AF_UNIX
+RestrictNamespaces=yes
+RestrictRealtime=yes
+LockPersonality=yes
+MemoryDenyWriteExecute=yes
+SystemCallArchitectures=native
+SystemCallFilter=@system-service
+SystemCallErrorNumber=EPERM
+ProtectKernelLogs=yes
+ProtectProc=invisible
+ProcSubset=pid
+RestrictSUIDSGID=yes
+CapabilityBoundingSet=
+MemoryMax=512M
+TasksMax=16

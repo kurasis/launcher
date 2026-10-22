@@ -1,0 +1,51 @@
+# Installed by deploy/bootstrap.sh as /etc/systemd/system/lapi-stats.service.
+[Unit]
+Description=Sferum launcher anonymous statistics (stats.lapi.sh, D-071)
+After=network.target
+
+[Service]
+User=lapi-stats
+Group=lapi-stats
+EnvironmentFile=/home/www/lapi/stats/stats.env
+ExecStart=/home/www/lapi/stats/current/lapi-stats serve
+Restart=on-failure
+RestartSec=3
+UMask=0027
+NoNewPrivileges=yes
+ProtectSystem=strict
+# /home holds nothing else for it: only its own folder is there, its data writable.
+ProtectHome=tmpfs
+BindReadOnlyPaths=/home/www/lapi/stats
+BindPaths=/home/www/lapi/stats/data
+ReadWritePaths=/home/www/lapi/stats/data
+PrivateTmp=yes
+PrivateDevices=yes
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectControlGroups=yes
+ProtectClock=yes
+ProtectHostname=yes
+RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX
+# It answers nginx on this server and asks only the ads service here
+# (127.0.0.1:8789) which ads show.
+IPAddressDeny=any
+IPAddressAllow=localhost
+RestrictNamespaces=yes
+RestrictRealtime=yes
+LockPersonality=yes
+MemoryDenyWriteExecute=yes
+SystemCallArchitectures=native
+# What a network service needs; anything else fails with EPERM.
+SystemCallFilter=@system-service
+SystemCallErrorNumber=EPERM
+ProtectKernelLogs=yes
+ProtectProc=invisible
+ProcSubset=pid
+RestrictSUIDSGID=yes
+RemoveIPC=yes
+CapabilityBoundingSet=
+MemoryMax=256M
+TasksMax=64
+
+[Install]
+WantedBy=multi-user.target

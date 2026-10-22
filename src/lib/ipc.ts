@@ -66,6 +66,8 @@ import {
   type FeedVideo,
   type FeedView,
   type ServerAdsView,
+  type AdEvent,
+  type StatsSent,
   type NoteView,
   type OwnChannel,
   type OwnStreamer,
@@ -294,7 +296,8 @@ export const ipc = {
     }),
   /** Plays as the installation's profile: a Microsoft account, or the demo (D-045). */
   /**
-   * Starts the game; with `server` (a friend's invite) straight into that server.
+   * Starts the game; with `server` (a friend's invite or a server ad) straight into
+   * that server. `ad` names the ad whose Play it was, for the statistics (D-071).
    * When the mods' own files say it may not start, the player is asked first
    * (D-066); `null` when they chose not to.
    */
@@ -302,13 +305,21 @@ export const ipc = {
     instanceId: string,
     requestId?: string,
     server?: string,
+    ad?: string,
   ): Promise<RunSummary | null> => {
     const found = await invoke<ModsSetProblem[] | null>('mods_check', { instanceId }).catch(
       () => null,
     );
     if (!(await askToStart(instanceId, Array.isArray(found) ? found : []))) return null;
     return invoke<RunSummary>('launch_game', {
-      request: mutation(server === undefined ? { instanceId } : { instanceId, server }, requestId),
+      request: mutation(
+        server === undefined
+          ? { instanceId }
+          : ad === undefined
+            ? { instanceId, server }
+            : { instanceId, server, ad },
+        requestId,
+      ),
     });
   },
   stopGame: (runId: string, requestId?: string): Promise<boolean> =>
@@ -345,6 +356,8 @@ export const ipc = {
   reviewsDelete: (id: number): Promise<void> => invoke('reviews_delete', { id }),
   sendExplanationFeedback: (kind: string, signature: string, helpful: boolean): Promise<void> =>
     invoke('send_explanation_feedback', { kind, signature, helpful }),
+  /** The last ping and ad counts as they went, and today's ping (D-071). */
+  statsSent: (): Promise<StatsSent> => invoke<StatsSent>('stats_sent'),
   checkForUpdate: (): Promise<UpdateView> => invoke<UpdateView>('check_for_update'),
   downloadUpdate: (): Promise<UpdateView> => invoke<UpdateView>('download_update'),
   /** Installs the downloaded update and starts the new version. */
@@ -546,6 +559,9 @@ export const ipc = {
   /** The server ads of a place showing now (D-069). */
   feedServerAds: (place: 'feed', refresh = false): Promise<ServerAdsView> =>
     invoke<ServerAdsView>('feed_server_ads', { place, refresh }),
+  /** Counts a view or a press in an ad's tile for the statistics (D-071). */
+  feedServerAdEvent: (ad: string, event: AdEvent): Promise<void> =>
+    invoke('feed_server_ad_event', { ad, event }),
   /** A whole note; `original` asks for the English text instead of a translation. */
   feedNote: (id: string, original = false): Promise<NoteView> =>
     invoke<NoteView>('feed_note', { id, original }),

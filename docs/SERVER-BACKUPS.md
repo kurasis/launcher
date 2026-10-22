@@ -13,6 +13,7 @@ service runs:
 | worlds   | `/home/www/lapi/worlds/data/backups/worlds-*.db`   | `lapi-worlds-backup.timer`  |
 | servers  | `/home/www/lapi/servers/data/backups/servers-*.db` | `lapi-servers-backup.timer` |
 | reviews  | `/home/www/lapi/reviews/data/backups/reviews-*.db` | `lapi-reviews-backup.timer` |
+| stats    | `/home/www/lapi/stats/data/backups/stats-*.db`     | `lapi-stats-backup.timer`   |
 
 The newest 14 copies stay. Each copy can be read only by its service's user. The
 timers are installed and enabled by `deploy/bootstrap.sh` and started by each deploy of

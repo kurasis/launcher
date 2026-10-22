@@ -143,3 +143,19 @@
   gap: var(--space-1);
   font-weight: 600;
 }
+
+/* What the statistics send, as it went (D-071). */
+.packet {
+  font-family: var(--font-mono);
+  font-size: var(--font-size-sm);
+  font-weight: 400;
+  max-height: 18rem;
+  overflow: auto;
+  margin: 0;
+  padding: var(--space-3);
+  background: rgb(0 0 0 / 25%);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}

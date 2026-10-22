@@ -335,10 +335,14 @@ pub struct Settings {
     /// replaced on request. Never the account or player.
     #[serde(default)]
     pub install_id: Option<String>,
-    /// Anonymous statistics and explanation feedback (D-061 stage 3); off by
-    /// default.
+    /// Anonymous statistics without IDs (D-071), with the counts of crashes
+    /// (D-061 stage 3); on unless the player turns them off. The earlier
+    /// `shareStats`, off by default, is not read.
+    #[serde(default = "on")]
+    pub stats: bool,
+    /// The line saying so was read (Got it, or Settings).
     #[serde(default)]
-    pub share_stats: bool,
+    pub stats_notice_seen: bool,
     /// Where downloads come from: origins, the mirror as fallback, or the
     /// mirror first (D-062).
     #[serde(default)]
@@ -421,7 +425,8 @@ impl Default for Settings {
             monthly_limit_mib: 0,
             default_fullscreen: false,
             install_id: None,
-            share_stats: false,
+            stats: true,
+            stats_notice_seen: false,
             download_source: crate::mirror::DownloadSource::Automatic,
             update_mode: crate::update::UpdateMode::Auto,
             update_seed: None,

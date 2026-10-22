@@ -425,6 +425,20 @@ impl LaunchService {
         mode: LaunchMode,
         server: Option<&str>,
     ) -> LauncherResult<RunSummary> {
+        self.launch_from(request_id, instance_id, mode, server, None)
+            .await
+    }
+
+    /// The same, for the Play of a server ad (D-069): what the game does
+    /// there is counted for the statistics (D-071).
+    pub async fn launch_from(
+        &self,
+        request_id: &str,
+        instance_id: InstanceId,
+        mode: LaunchMode,
+        server: Option<&str>,
+        ad: Option<Arc<crate::stats::AdRun>>,
+    ) -> LauncherResult<RunSummary> {
         let join = server
             .map(|text| {
                 super::server::parse_address(text)
@@ -596,11 +610,16 @@ impl LaunchService {
                     (command, &java),
                     &secrets,
                     permit,
+                    ad.clone(),
                 )
             }
         };
         match spawned {
-            Ok(()) => {}
+            Ok(()) => {
+                if let Some(ad) = &ad {
+                    ad.started(state, &instance.version_id);
+                }
+            }
             Err(error) => {
                 *lock_or(&self.pending) = None;
                 let _ = std::fs::remove_dir_all(&run_dir);
@@ -947,6 +966,7 @@ impl LaunchService {
         (command, java): (Command, &std::path::Path),
         secrets: &[String],
         permit: crate::state::activity::ActivityPermit,
+        ad: Option<Arc<crate::stats::AdRun>>,
     ) -> LauncherResult<()> {
         let state = self.host.app_state();
         let logs_dir = root.run_logs(Uuid::parse_str(run_id).unwrap_or_default());
@@ -988,6 +1008,7 @@ impl LaunchService {
         let (sink_asked, question_id) = (Arc::clone(&asked), run_id.to_owned());
         let (mut questions, mut ended) = (0u32, false);
         let server_run = run_id.to_owned();
+        let (sink_ad, finish_ad) = (ad.clone(), ad);
         let sink = Box::new(move |line: OutputLine| {
             // The server the game joins, for inviting friends (D-064).
             if line.stream == Stream::Stdout
@@ -996,6 +1017,11 @@ impl LaunchService {
                 console_host.app_state().update_run(&server_run, |run| {
                     run.server = Some(server);
                 });
+            }
+            // Whether a game started from an ad got onto its server (D-071):
+            // fixed words only, nothing of the line is kept.
+            if let Some(ad) = &sink_ad {
+                ad.line(console_host.app_state(), &line.text);
             }
             if super::crash::is_console_question(&line.text) {
                 questions += 1;
@@ -1038,6 +1064,9 @@ impl LaunchService {
             move || exited_host.process_exited(&exited_id),
             move |outcome| {
                 let state = finish_host.app_state();
+                if let Some(ad) = &finish_ad {
+                    ad.ended(state);
+                }
                 let lines: Vec<String> = lock_or(&tail).lines().map(|l| l.text.clone()).collect();
                 let dropped = lock_or(&tail).dropped();
                 let start = lines.len().saturating_sub(SUMMARY_TAIL_LINES);
@@ -1057,7 +1086,8 @@ impl LaunchService {
                         &crash_redactor,
                     )
                 });
-                // Anonymous statistics, when the player turned them on (D-061).
+                // Anonymous statistics, unless the player turned them off
+                // (D-061, D-071).
                 if let Some(d) = &diagnosis {
                     let instance = state.instance(instance_id);
                     let loader = instance.as_ref().and_then(|i| i.loader.clone());
@@ -1080,10 +1110,13 @@ impl LaunchService {
                         },
                     );
                 }
+                // A game before 1.6 exits with code 1 when its window is closed.
+                let window_closed =
+                    exit.is_some_and(|e| super::crash::closed_by_its_window(e, &lines));
                 let (run_state, exit_code, error) = match &outcome.status {
                     Ok(status) if stopped => (RunState::Stopped, status.code(), None),
                     // A clean exit after a crash report: Forge's mod error screen.
-                    Ok(status) if status.success() && diagnosis.is_none() => {
+                    Ok(status) if (status.success() || window_closed) && diagnosis.is_none() => {
                         (RunState::Exited, status.code(), None)
                     }
                     Ok(status) => (

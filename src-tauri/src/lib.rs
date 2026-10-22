@@ -36,6 +36,7 @@ pub mod skins;
 pub mod skins_import;
 pub mod skins_mod;
 pub mod state;
+pub mod stats;
 pub mod storage;
 pub mod sync;
 pub mod traffic;
@@ -416,6 +417,26 @@ fn setup(app: &mut tauri::App) -> Result<(), Box<dyn std::error::Error>> {
             state.announce_runs();
         });
     }
+    // Anonymous statistics without IDs (D-071): a ping a day and the server
+    // ads' counts, unless the player turned them off. Before the update
+    // check below notes this version: a launcher that never ran before gets
+    // its install week.
+    {
+        let stats = Arc::new(stats::Stats::new(Box::new(
+            stats::Http::new(&version).map_err(|e| e.message)?,
+        )));
+        stats.init(&app.state::<AppState>());
+        app.manage(Arc::clone(&stats));
+        let handle = app.handle().clone();
+        tauri::async_runtime::spawn(async move {
+            // Let the start settle (network check) first.
+            tokio::time::sleep(std::time::Duration::from_secs(45)).await;
+            loop {
+                stats.send(&handle.state::<AppState>()).await;
+                tokio::time::sleep(stats::EVERY).await;
+            }
+        });
+    }
     // Launcher updates (D-063): notice a new version, then look for the next.
     {
         let updates = Arc::new(update::Updates::default());
@@ -461,7 +482,7 @@ fn setup(app: &mut tauri::App) -> Result<(), Box<dyn std::error::Error>> {
                             exit_code: None,
                         },
                     );
-                    if state.settings().share_stats {
+                    if state.settings().stats {
                         let _ = journal::update(&logs, &failure.id, |f| f.counted = true);
                     }
                 }
@@ -791,6 +812,15 @@ pub fn run() {
             // A hosted world saves and its room's session ends (D-068).
             let worlds = Arc::clone(&handle.state::<Arc<worlds::app::Worlds>>());
             tauri::async_runtime::block_on(worlds.shutdown());
+            // The ad counts of this session go now if they can, else at the
+            // next start (D-071).
+            let stats = Arc::clone(&handle.state::<Arc<stats::Stats>>());
+            stats.seal(&handle.state::<AppState>());
+            tauri::async_runtime::block_on(async {
+                let state = handle.state::<AppState>();
+                let _ = tokio::time::timeout(std::time::Duration::from_secs(2), stats.send(&state))
+                    .await;
+            });
             if let Some(root) = handle.state::<AppState>().data_root() {
                 traffic::flush(&root);
                 handle.state::<AppState>().console().info("Launcher closed");
@@ -869,6 +899,7 @@ fn handlers<R: tauri::Runtime>() -> impl Fn(tauri::ipc::Invoke<R>) -> bool + Sen
         commands::preview_crash_report,
         commands::send_crash_report,
         commands::send_explanation_feedback,
+        commands::stats_sent,
         commands::reviews_logs,
         commands::reviews_text_file,
         commands::reviews_screenshot,
@@ -946,6 +977,7 @@ fn handlers<R: tauri::Runtime>() -> impl Fn(tauri::ipc::Invoke<R>) -> bool + Sen
         commands::skins_save_picture,
         commands::feed_get,
         commands::feed_server_ads,
+        commands::feed_server_ad_event,
         commands::feed_page,
         commands::feed_note,
         commands::feed_play,

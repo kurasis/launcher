@@ -2,8 +2,6 @@ import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { mockIPC } from '@tauri-apps/api/mocks';
 import { describe, expect, it } from 'vitest';
 import type { FailureSummary, ReportPreview } from '../../lib/contracts';
-import { snapshotFixture } from '../../test/fixtures';
-import { PrivacySettings } from '../settings/PrivacySettings';
 import { ExplanationFeedback } from './ExplanationFeedback';
 import { FailureOffer } from './FailureOffer';
 import { ReportDialog } from './ReportDialog';
@@ -153,34 +151,5 @@ describe('ExplanationFeedback', () => {
       helpful: false,
     });
     expect(screen.queryByRole('button', { name: 'Yes' })).toBeNull();
-  });
-});
-
-describe('PrivacySettings', () => {
-  it('turns statistics on and makes a new install ID', async () => {
-    const calls = mock({ get_app_snapshot: snapshotFixture() });
-    const base = snapshotFixture().settings;
-    const { rerender } = render(<PrivacySettings settings={base} />);
-    expect(screen.getByText('Not created yet: it appears with your first report.')).toBeVisible();
-    const toggle = screen.getByRole('checkbox', { name: /Share anonymous crash statistics/ });
-    expect(toggle).not.toBeChecked();
-    fireEvent.click(toggle);
-    await waitFor(() => {
-      expect(calls.find((c) => c.cmd === 'set_app_settings')?.args).toMatchObject({
-        request: { payload: { shareStats: true } },
-      });
-    });
-    rerender(
-      <PrivacySettings
-        settings={{ ...base, shareStats: true, installId: '9b2f1c3e-0000-4000-8000-000000000001' }}
-      />,
-    );
-    expect(screen.getByText('9b2f1c3e-0000-4000-8000-000000000001')).toBeVisible();
-    fireEvent.click(screen.getByRole('button', { name: 'Make a new ID' }));
-    await waitFor(() => {
-      expect(calls.filter((c) => c.cmd === 'set_app_settings')[1]?.args).toMatchObject({
-        request: { payload: { newInstallId: true } },
-      });
-    });
   });
 });

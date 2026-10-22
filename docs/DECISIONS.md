@@ -1549,9 +1549,9 @@ message` plus a stack trace), with the event's level.
 
 ### Stage 3 — learning from them
 
-- **Anonymous statistics**, a separate setting, off by default: cause, loader and
-  versions, Minecraft version, OS, exit code, analyser version and signature, counted
-  per day on the server, no install ID, no files.
+- **Anonymous statistics**, a separate setting, off by default (on since D-071):
+  cause, loader and versions, Minecraft version, OS, exit code, analyser version and
+  signature, counted per day on the server, no install ID, no files.
 - **"Did this help?"** under an explanation sends yes or no with its cause and
   signature, only when the player presses one of them; no install ID, no files.
 - **Rules as data** (not built yet, the next step). The analyser's patterns move into
@@ -1618,6 +1618,10 @@ message` plus a stack trace), with the event's level.
   its deployment. A launcher failure is offered on the Home screen for 14 days, until
   it is sent or declined ("Don't send"). The rule bundle of stage 3 is left for later:
   first the reports show which rules are missing.
+- **Amendment (owner, 2026-10-22, D-071):** the anonymous statistics are on by default
+  and turned off in Settings → Privacy. One switch covers these crash statistics and the
+  launcher's statistics of D-071; turning it off also erases the crash statistics that
+  wait. Reports still leave only when the player sends them.
 
 ## D-062 — Download mirror at mirror.lapi.sh
 
@@ -2892,3 +2896,71 @@ skins-mod <channel>` there only checks the signature against the public key and
   contents and never their paths, and a file dropped elsewhere is ignored.
 - **Server setup (owner):** a DNS record for reviews.lapi.sh behind Cloudflare, then
   `deploy/bootstrap.sh` once, after the first deploy has uploaded the new `deploy/` files.
+
+## D-071 — Anonymous statistics at stats.lapi.sh
+
+- **Status:** accepted (owner request and design approval, 2026-10-22; design in the
+  project) · **Affects:** the new service `services/stats` (`https://stats.lapi.sh`,
+  `/home/www/lapi/stats`, port 8791), servers.lapi.sh (players online by hour), the
+  launcher (`src-tauri/src/stats`, the feed's ad tile, launches from an ad, Settings →
+  Privacy), the statistics of D-061 and the rule in CLAUDE.md. Replaces docs/spec/07's
+  "No telemetry" at the owner's word (ignore the specification's telemetry and analytics
+  parts).
+- **Goal.** Know how many players there are and from where, which systems, versions and
+  languages they have, whether they stay, and how each server ad does: impressions,
+  reach, clicks, Play to the server and minutes there, with the impressions per erid the
+  Russian ad register needs.
+- **On by default.** The owner chose statistics on, with a switch in Settings → Privacy
+  ("Anonymous statistics") that also covers the crash statistics of D-061. At the first
+  start, and once after the update that brings it, a line at the bottom of the feed (or of
+  Installations when the feed is off) says what is sent, with "Got it" and "Settings".
+  Turning it off stops sending at once and erases what waits; a settings reset keeps the
+  player's choice. "What is sent" shows the last ping and ad counts as they went, and
+  today's ping before it goes. Crash reports still leave only when the player sends them.
+- **Counting without IDs.** The launcher keeps only the day of its last ping and its
+  install week (`old` for a launcher that ran before statistics). Once a UTC day it sends
+  a ping with flags: the first of the day, of the week, of the month, ever. The service
+  adds one to each of a few independent cuts under each flag (country, system, version,
+  languages, country and time zone, memory and cores, kinds of accounts, install week),
+  so no stored row describes one launcher, and retention comes from the install weeks.
+  The ping has the launcher's version, channel and way installed, the OS, its version
+  (Windows and macOS major version, a Linux distribution's ID) and the architecture, the
+  interface and system languages, the time zone, memory and cores in ranges, and which
+  kinds of accounts are signed in. Never an account, nick, address, path, install ID or a
+  server's text. The country is Cloudflare's; the address is used only in memory for the
+  limits, an hour.
+- **Ad counts** are counted in the core for ads the feed handed out (D-069): shown (half
+  of the tile on screen for a second while the window shows; again 5 minutes later at
+  the earliest), menu, version list, address copied, report, Play, "needs a Microsoft
+  account", installed or failed to install, the game started (with its version), joined
+  the server, turned away by reason, ten minutes played, minutes on the server, and back
+  to play a day or a week after the first time. Joining is read from the game's log by
+  fixed words (a connection, then a chat line or two minutes without a refusal); the log
+  never leaves the computer. A day of one ad is capped (300 shown, 50 clicks, 20 plays,
+  1440 minutes). Counts go out in a batch every hour and at exit, kept 7 days offline.
+- **Sending.** gzip JSON to `POST /v1/ping` and `POST /v1/counts` only, through the
+  launcher's source rules (stats.lapi.sh is never mirrored), also on a metered
+  connection (a few KiB). A random batch ID makes a resend count once. A proof of work
+  (SHA-256 of `stats.lapi.sh|<batch>|<day>|<nonce>` with 20 leading zero bits, about a
+  second; the service can ask for more, the launcher does up to 24) makes made-up
+  requests cost. Refused requests are dropped, others wait for the next pass.
+- **Service.** Rust and SQLite like the others, behind Cloudflare only, with nothing
+  readable over HTTP. Limits before a body is read (per address, an IPv6 /64 counting as
+  one, five times that per IPv6 /48, and overall), bodies of 8 and 64 KiB, values outside
+  their words counted as `other`, caps on values and rows a day. Counts are taken only for
+  ads the ads service showed that day (it is asked every 5 minutes on the server; it
+  stays read only). A burst from one network (an IPv4 /24, an IPv6 /48) in an hour, more
+  than 100 new launchers or 1,000 impressions of one ad, is counted apart and left out of
+  the numbers and the ad register's. Sums by day are kept 2 years and then by month; ad
+  counts 3 years; batch IDs 8 days; a backup daily.
+- **Reading.** Only on the server, with `lapi-stats` (overview, players, cut, retention,
+  ads, ad, ord; docs/STATS.md). No number goes into a workflow log, an issue or a pull
+  request. servers.lapi.sh keeps each ad's players online by hour from when the ad is
+  added and gives them to the statistics service on the server only.
+- **Later stages** (not built yet): launches and crashes by version (the crash
+  statistics of D-061 move here), play time, installs and the mirror, updates, error
+  codes, tabs, the newcomer's way to a first game; a report file for an advertiser and
+  `lapi-stats alerts`.
+- **Server setup (owner):** a DNS record for stats.lapi.sh behind Cloudflare (proxied,
+  with IP Geolocation on, so `CF-IPCountry` comes), then `deploy/bootstrap.sh` once, after
+  the first deploy has uploaded the new `deploy/` files.

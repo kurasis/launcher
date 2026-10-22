@@ -1,11 +1,12 @@
-//! Crash reports the player chooses to send, and anonymous statistics they
-//! agreed to (D-061 stages 2 and 3).
+//! Crash reports the player chooses to send, and anonymous counts of crashes
+//! (D-061 stages 2 and 3).
 //!
 //! A report is first a [`Preview`]: scrubbed files the player reads and picks
 //! from. Sending puts it in `reports/outbox/` (gzip); the uploader posts it to
 //! the crash service when the computer is online and tries again later after a
-//! failure. Nothing is sent without the player's press, except the statistics
-//! and feedback of a player who turned them on in Settings → Privacy.
+//! failure. Nothing is sent without the player's press, except the counts of
+//! crashes, which go with the anonymous statistics (D-071): on unless the
+//! player turned them off in Settings → Privacy.
 
 pub mod scrub;
 
@@ -158,7 +159,7 @@ impl Poster for HttpPoster {
     }
 }
 
-fn gzip(bytes: &[u8]) -> Vec<u8> {
+pub(crate) fn gzip(bytes: &[u8]) -> Vec<u8> {
     let mut gz = flate2::write::GzEncoder::new(Vec::new(), flate2::Compression::default());
     let _ = gz.write_all(bytes);
     gz.finish().unwrap_or_default()
@@ -596,7 +597,7 @@ impl Reports {
     }
 
     async fn flush_stats(&self, state: &AppState, root: &DataRoot) {
-        if !state.settings().share_stats {
+        if !state.settings().stats {
             return;
         }
         let path = stats_queue(root);
@@ -662,10 +663,10 @@ fn stats_queue(root: &DataRoot) -> PathBuf {
     root.path().join("reports").join("stats.json")
 }
 
-/// Counts an event for the anonymous statistics, when the player turned them
-/// on; sent by the uploader.
+/// Counts an event for the anonymous statistics, unless the player turned
+/// them off; sent by the uploader.
 pub fn count(state: &AppState, event: Event) {
-    if !state.settings().share_stats {
+    if !state.settings().stats {
         return;
     }
     let Some(root) = state.data_root() else {
@@ -684,6 +685,13 @@ pub fn count(state: &AppState, event: Event) {
         let _ = fs::create_dir_all(parent);
     }
     let _ = crate::storage::atomic::write(&path, &serde_json::to_vec(&events).unwrap_or_default());
+}
+
+/// The statistics were turned off: counted events that wait go.
+pub fn forget_stats(state: &AppState) {
+    if let Some(root) = state.data_root() {
+        let _ = fs::remove_file(stats_queue(&root));
+    }
 }
 
 #[cfg(test)]

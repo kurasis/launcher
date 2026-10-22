@@ -1,7 +1,7 @@
-//! Ads, their last ping and the Minecraft releases in SQLite
-//! (`data/servers.db`). Only the owner's commands on the server write ads;
-//! the service writes pings and releases. Every query takes its values as
-//! parameters.
+//! Ads, their last ping, their players online by hour and the Minecraft
+//! releases in SQLite (`data/servers.db`). Only the owner's commands on the
+//! server write ads; the service writes pings and releases. Every query
+//! takes its values as parameters.
 
 use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
@@ -59,6 +59,17 @@ CREATE TABLE IF NOT EXISTS pings (
     licensed INTEGER,
     checked_at INTEGER
 );
+-- Players online at each hourly ping (D-071): whether an ad brought
+-- players, before it started and while it shows. Goes with the ad.
+CREATE TABLE IF NOT EXISTS online (
+    ad INTEGER NOT NULL REFERENCES ads(id) ON DELETE CASCADE,
+    -- Unix seconds of the hour's start.
+    hour INTEGER NOT NULL,
+    up INTEGER NOT NULL,
+    online INTEGER,
+    max INTEGER,
+    PRIMARY KEY (ad, hour)
+) WITHOUT ROWID;
 CREATE TABLE IF NOT EXISTS releases (
     id TEXT PRIMARY KEY,
     -- 0 is the newest release.
@@ -112,6 +123,16 @@ pub struct Ping {
     pub licensed: Option<bool>,
     /// When that was checked; None keeps the last check.
     pub checked_at: Option<i64>,
+}
+
+/// Players online in one hour, from that hour's ping.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+pub struct Hour {
+    /// Unix seconds of the hour's start.
+    pub at: i64,
+    pub up: bool,
+    pub online: Option<i64>,
+    pub max: Option<i64>,
 }
 
 /// What an ad's state is at a moment.
@@ -277,6 +298,8 @@ impl Store {
         let db = self.db();
         db.execute("DELETE FROM pings WHERE ad = ?1", [id])
             .map_err(err)?;
+        db.execute("DELETE FROM online WHERE ad = ?1", [id])
+            .map_err(err)?;
         match db
             .execute("DELETE FROM ads WHERE id = ?1", [id])
             .map_err(err)?
@@ -334,16 +357,38 @@ impl Store {
         Ok(live)
     }
 
-    /// Ads worth a ping: not ended, starting within `ahead` seconds.
-    pub fn to_ping(&self, now: i64, ahead: i64) -> Result<Vec<Ad>, String> {
+    /// Ads worth a ping: every one not ended, also those still to start, so
+    /// their players online before the ad are known (D-071).
+    pub fn to_ping(&self, now: i64) -> Result<Vec<Ad>, String> {
         let db = self.db();
         let mut statement = db
             .prepare(&format!(
-                "SELECT {COLUMNS} FROM ads WHERE ends > ?1 AND starts <= ?2 ORDER BY id"
+                "SELECT {COLUMNS} FROM ads WHERE ends > ?1 ORDER BY id"
             ))
             .map_err(err)?;
+        let rows = statement.query_map([now], ad_row).map_err(err)?;
+        rows.collect::<rusqlite::Result<Vec<_>>>().map_err(err)
+    }
+
+    /// The ad's players online by hour since `since` (unix seconds), the
+    /// oldest first: (hour, up, online, max).
+    pub fn online(&self, ad: i64, since: i64) -> Result<Vec<Hour>, String> {
+        let db = self.db();
+        let mut statement = db
+            .prepare(
+                "SELECT hour, up, online, max FROM online WHERE ad = ?1 AND hour >= ?2
+                 ORDER BY hour",
+            )
+            .map_err(err)?;
         let rows = statement
-            .query_map(params![now, now + ahead], ad_row)
+            .query_map(params![ad, since], |row| {
+                Ok(Hour {
+                    at: row.get(0)?,
+                    up: row.get::<_, i64>(1)? != 0,
+                    online: row.get(2)?,
+                    max: row.get(3)?,
+                })
+            })
             .map_err(err)?;
         rows.collect::<rusqlite::Result<Vec<_>>>().map_err(err)
     }
@@ -372,8 +417,9 @@ impl Store {
             .map_err(err)
     }
 
-    /// Keeps a ping. A failed one keeps the icon of the last good one, and
-    /// one without a sign-in check keeps the last check.
+    /// Keeps a ping, and its players online as the hour's. A failed one
+    /// keeps the icon of the last good one, and one without a sign-in check
+    /// keeps the last check.
     pub fn save_ping(&self, ad: i64, ping: &Ping) -> Result<(), String> {
         let last = self.ping(ad)?;
         let icon = ping
@@ -406,6 +452,24 @@ impl Store {
                     icon,
                     licensed.map(i64::from),
                     checked_at,
+                ],
+            )
+            .map_err(err)?;
+        let (online, max) = if ping.up {
+            (ping.online, ping.max)
+        } else {
+            (None, None)
+        };
+        self.db()
+            .execute(
+                "INSERT INTO online (ad, hour, up, online, max) VALUES (?1, ?2, ?3, ?4, ?5)
+                 ON CONFLICT(ad, hour) DO UPDATE SET up = ?3, online = ?4, max = ?5",
+                params![
+                    ad,
+                    ping.at - ping.at.rem_euclid(3600),
+                    i64::from(ping.up),
+                    online,
+                    max
                 ],
             )
             .map(|_| ())

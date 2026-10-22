@@ -45,6 +45,7 @@ case "$SERVICE" in
         [ "$EXTRA" = --secrets ] && SECRETS='^LAPI_WORLDS_RELAY_TOKEN=[A-Za-z0-9_-]{0,128}$'
         ;;
     servers) PORT=8789 ;;
+    stats) PORT=8791 ;;
     reviews)
         PORT=8790
         [ "$EXTRA" = --secrets ] && SECRETS='^LAPI_REVIEWS_DEEPL_KEY=[^[:cntrl:]]{0,500}$'

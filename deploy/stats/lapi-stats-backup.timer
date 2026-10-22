@@ -1,0 +1,12 @@
+# Installed by deploy/bootstrap.sh: a copy of the statistics database every
+# day; a day missed while the server was off is made up at boot.
+[Unit]
+Description=Back up the statistics database daily
+
+[Timer]
+OnCalendar=daily
+RandomizedDelaySec=30min
+Persistent=true
+
+[Install]
+WantedBy=timers.target

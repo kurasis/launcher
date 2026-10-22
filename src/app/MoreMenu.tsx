@@ -20,6 +20,8 @@ interface MoreMenuProps {
   caret?: boolean;
   /** Something new waits in the menu (an answer to a review): a dot, and this text for screen readers. */
   news?: string | null;
+  /** Told each time the menu opens. */
+  onOpen?: () => void;
 }
 
 /**
@@ -36,6 +38,7 @@ export function MoreMenu({
   buttonClassName,
   caret = true,
   news = null,
+  onOpen,
 }: MoreMenuProps) {
   const id = useId();
   const buttonId = `${id}-button`;
@@ -56,6 +59,11 @@ export function MoreMenu({
   const close = (refocus: boolean) => {
     setActive(null);
     if (refocus) buttonRef.current?.focus();
+  };
+
+  const openAt = (index: number) => {
+    if (!open) onOpen?.();
+    setActive(index);
   };
 
   // A press anywhere outside the menu and its button closes it.
@@ -79,11 +87,11 @@ export function MoreMenu({
       case 'ArrowDown':
         // Handled here so the browser's own click does not toggle it again.
         event.preventDefault();
-        setActive(0);
+        openAt(0);
         break;
       case 'ArrowUp':
         event.preventDefault();
-        setActive(last);
+        openAt(last);
         break;
       case 'Escape':
         if (open) {
@@ -148,7 +156,7 @@ export function MoreMenu({
         aria-current={current ? 'page' : undefined}
         onClick={() => {
           if (open) close(false);
-          else setActive(0);
+          else openAt(0);
         }}
         onKeyDown={onButtonKeyDown}
         onKeyUp={(event) => {
