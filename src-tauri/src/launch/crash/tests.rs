@@ -648,6 +648,22 @@ fn clean_exit_needs_no_explanation() {
 }
 
 #[test]
+fn closing_an_old_game_window_is_no_crash() {
+    // 1.5.2: the window listener prints this and exits with code 1.
+    let lines = output(
+        "2026-10-22 04:22:00 [CLIENT] [INFO] [CHAT] Saved screenshot\nSomeone is closing me!\nAL lib: (EE) alc_cleanup: 1 device not closed",
+    );
+    assert!(closed_by_its_window(failed(1), &lines));
+    assert_eq!(diagnose(&input(failed(1), &lines)), None);
+    // Another code, or the line long before the end, is still a failure.
+    assert!(!closed_by_its_window(failed(2), &lines));
+    let mut early = lines.clone();
+    early.extend((0..20).map(|i| format!("line {i}")));
+    assert!(!closed_by_its_window(failed(1), &early));
+    assert!(diagnose(&input(failed(1), &early)).is_some());
+}
+
+#[test]
 fn evidence_is_short() {
     let long = format!(
         "java.lang.OutOfMemoryError: Java heap space {}",
