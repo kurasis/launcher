@@ -342,6 +342,7 @@ $Keys = @{ Escape = 0x1B; Enter = 0x0D; Tab = 0x09; F2 = 0x71 }
 # locked screen or when Windows refuses.
 function Game-Focus([IntPtr]$Hwnd) {
   if ([UserTest.Win]::GetForegroundWindow() -eq $Hwnd) { return $true }
+  Close-DriverReports
   for ($try = 0; $try -lt 3; $try++) {
     [UserTest.Win]::keybd_event(0x12, 0, 0, [IntPtr]::Zero)
     [UserTest.Win]::keybd_event(0x12, 0, 2, [IntPtr]::Zero)
@@ -459,6 +460,32 @@ function Skins-State([string]$Loader, [int]$From, [string]$GameDir, [string]$Run
       $text -match '(?im)^.*(ERROR|FATAL|exception|failed|invalid|incompatible|could not).*launcherskins.*$') { return 'failed' }
   if ($Loader -eq 'vanilla' -or $text -match '(?i)launcherskins') { return 'ok' }
   return 'not loaded'
+}
+
+# --- A graphics driver crash: neither the launcher's nor the game's hang ------------
+# Windows logs a display driver that stopped responding and was restarted (TDR) as
+# System event 4101, and its dump as a LiveKernelEvent of Windows Error Reporting. The
+# AMD driver then opens its bug report window, which also takes the focus from the game.
+function Driver-Reports {
+  Get-Process -ErrorAction SilentlyContinue | Where-Object {
+    $_.ProcessName -match '(?i)BugReport' -or $_.MainWindowTitle -match '(?i)Bug Report Tool|AMD Bug Report|driver timeout' }
+}
+
+function Close-DriverReports {
+  foreach ($p in @(Driver-Reports)) {
+    Say "closing the graphics driver's report window ($($p.ProcessName))"
+    try { [void]$p.CloseMainWindow() } catch { }
+    if ($p.ProcessName -match '(?i)BugReport' -and -not $p.WaitForExit(5000)) {
+      Stop-Process -Id $p.Id -Force -ErrorAction SilentlyContinue
+    }
+  }
+}
+
+function Driver-Crashed([datetime]$Since) {
+  if (@(Get-WinEvent -FilterHashtable @{ LogName = 'System'; Id = 4101; StartTime = $Since } -ErrorAction SilentlyContinue).Count) { return $true }
+  if (@(Get-WinEvent -FilterHashtable @{ LogName = 'Application'; Id = 1001; StartTime = $Since } -ErrorAction SilentlyContinue |
+      Where-Object { $_.Message -match 'LiveKernelEvent' }).Count) { return $true }
+  return @(Driver-Reports).Count -gt 0
 }
 
 # --- Machine names out of anything uploaded (the repository is public) -------------
@@ -613,16 +640,21 @@ try {
   $setup = New-Item -ItemType Directory -Force (Join-Path $Out 'setup')
   Dump-Launcher $setup
 
-  foreach ($item in $plan) {
+  # An item the graphics driver crashed under is played once more, at the end.
+  $queue = [Collections.ArrayList]@($plan)
+  $replayed = @{}
+  for ($n = 0; $n -lt $queue.Count; $n++) {
+    $item = $queue[$n]
     $loader, $version = $item -split ':', 2
     $label = if ($loader -eq 'vanilla') { $version } else { "$version $($loaderNames[$loader])" }
     $folder = New-Item -ItemType Directory -Force (Join-Path $Out "$loader-$version")
     $result = [ordered]@{ item = $item; loader = $loader; version = $version; loaderVersion = ''
       machine = $env:RUNNER_NAME; install = 'not run'; installSeconds = $null
       launch = 'not run'; launchSeconds = $null; world = 'not run'; worldSeconds = $null
-      exit = 'not run'; exitCode = $null; skins = ''; logErrors = 0; note = '' }
+      exit = 'not run'; exitCode = $null; skins = ''; driver = ''; logErrors = 0; note = '' }
     [void]$results.Add($result)
-    $gameDir = $null; $runLog = $null; $keep = $false; $launcherLogFrom = $null
+    $gameDir = $null; $runLog = $null; $keep = $false; $launcherLogFrom = $null; $itemStarted = Get-Date
+    Close-DriverReports
     Write-Host "::group::$label"
     try {
       # --- Installations: New installation, the loader, the version, Create, Install ---------
@@ -885,6 +917,12 @@ try {
       if ($null -ne $launcherLogFrom) { $result.skins = Skins-State $loader $launcherLogFrom $gameDir $runLog }
       $passed = $result.world -eq 'ok' -and $result.exit -eq 'ok' -and $result.skins -notmatch '^not|^failed'
       if ($result.skins -match '^not|^failed') { $result.note = "$($result.note); Launcher Skins $($result.skins)".Trim('; ') }
+      if (Driver-Crashed $itemStarted) {
+        $result.driver = 'crashed'
+        $result.note = "$($result.note); the graphics driver crashed".Trim('; ')
+        Close-DriverReports
+      }
+      if ($replayed[$item]) { $result.note = "$($result.note); played again after a graphics driver crash".Trim('; ') }
       if ($gameDir -and (Test-Path $log)) {
         $all = Log-Text $log
         $result.logErrors = ([regex]::Matches($all, '/(ERROR|FATAL)\]')).Count
@@ -904,6 +942,12 @@ try {
       Say ("$label : install {0}, launch {1}, world {2}, exit {3} {4}" -f $result.install, $result.launch, $result.world, $result.exit, $result.note)
       # Kept after each one, so a cancelled run still has what it did.
       ConvertTo-Json -InputObject @($results) -Depth 4 | Set-Content -Encoding UTF8 (Join-Path $Out 'results.json')
+    }
+    if ($result.driver -and -not $passed -and -not $replayed[$item]) {
+      Say "$label : the graphics driver crashed; played once more at the end"
+      $replayed[$item] = $true
+      $results.Remove($result)
+      [void]$queue.Add($item)
     }
   }
 } catch {

@@ -55,8 +55,10 @@ def main():
             entry["part"] = part["part"]
             rows.append(entry)
 
+    crashed = sum(1 for r in rows if r.get("driver") and not passed(r))
     lines = [
-        f"**{sum(1 for r in rows if passed(r))} of {sum(1 for r in rows if r.get('version'))} passed**",
+        f"**{sum(1 for r in rows if passed(r))} of {sum(1 for r in rows if r.get('version'))} passed**"
+        + (f" (⚠️ {crashed} failed with a graphics driver crash)" if crashed else ""),
         "",
         "| Version | Loader | Install | Launch | World | Exit | Launcher Skins | Log errors | Machine | Note |",
         "| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |",
@@ -66,7 +68,7 @@ def main():
         loader = " ".join(x for x in (NAMES.get(r.get("loader", ""), ""), r.get("loaderVersion") or "") if x)
         exit_state = f"{r.get('exit')} ({r.get('exitCode')})" if r.get("exitCode") is not None else cell(r.get("exit"))
         lines.append("| " + " | ".join([
-            ("✅ " if ok else "❌ ") + cell(r.get("version") or r.get("item")),
+            ("✅ " if ok else "⚠️ " if r.get("driver") else "❌ ") + cell(r.get("version") or r.get("item")),
             cell(loader),
             timed(r.get("install"), r.get("installSeconds")),
             timed(r.get("launch"), r.get("launchSeconds")),

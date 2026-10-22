@@ -60,7 +60,11 @@ mirror rule wants), `mirror_first` (the mirror, the origin when it fails) or
    `launcherskins`, `not loaded` when a loader's logs never name the mod (Fabric and
    Quilt list their mods, Forge and NeoForge scan them), `ok` otherwise; vanilla takes
    it as an agent, so the launcher's line is enough there. Anything but `ok` or empty
-   fails the item. Screen copies are taken along
+   fails the item. A graphics driver that crashed during the item (Windows' System event
+   4101 for a driver restarted, a LiveKernelEvent report, or the AMD driver's bug report
+   window, which the test closes since it takes the focus from the game) is noted in
+   the `driver` field; an item that failed with it is played once more at the end of
+   the part, and if it fails again the tables mark it ⚠️ instead of ❌. Screen copies are taken along
    the way; the game's F2 screenshots and logs are kept for a failure only.
 
 Each part's page shows its table; the last job, **All results**, joins them into one
