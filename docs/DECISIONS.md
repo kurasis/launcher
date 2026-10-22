@@ -2992,3 +2992,30 @@ skins-mod <channel>` there only checks the signature against the public key and
 - **Server setup (owner):** a DNS record for stats.lapi.sh behind Cloudflare (proxied,
   with IP Geolocation on, so `CF-IPCountry` comes), then `deploy/bootstrap.sh` once, after
   the first deploy has uploaded the new `deploy/` files.
+
+## D-072 — Interface concept A
+
+- **Status:** accepted (owner's choice, 2026-10-22, from three concepts drawn for every
+  screen) · **Affects:** the whole interface (`src/`), `docs/DESIGN.md`, the design skills
+  in `.claude/skills/`, CLAUDE.md.
+- **Decision:** The interface moves to concept A «Верстак»: a deep green left rail with
+  the navigation and the player, a paper ground with white surfaces, one green accent,
+  Golos Text and Noto Sans Arabic bundled with the app, stroke icons, skin heads as
+  avatars and a launch bar at the bottom with the chosen installation and Play. No
+  gradients, glows, blur or text in capitals. The owner also chose the feed as a mosaic,
+  the mods catalog as tiles with collections and categories with icons, and the mod page
+  with a sticky project card. `docs/DESIGN.md` is the brief.
+- **Skills:** three design skills are committed so every session uses them:
+  `frontend-design` (anthropics/skills), `impeccable` (pbakaus/impeccable, Apache-2.0) and
+  `ui-ux-pro-max` (nextlevelbuilder/ui-ux-pro-max-skill, MIT); sources in
+  `skills-lock.json`. After a review, what runs code we do not need is left out:
+  impeccable's engine (it downloads a binary on first run) and its live mode (it injects a
+  script and loosens the page CSP), and ui-ux-pro-max's tests, data validator and catalog
+  snapshots. Its search script reads only its own CSV files. Each changed SKILL.md says
+  so at the top. An update of a skill is reviewed the same way before it is committed.
+- **Order:** tokens and shell, then Installations and the launch bar, the new
+  installation form, the feed, the catalog, the mod page and the remaining screens, each
+  in its own pull request. Features the new screens need from a service go to the thread
+  that owns it.
+- **Verification:** screenshots in light, dark, Arabic and at the 820 px minimum width for
+  each pull request; a Windows package for window changes (CLAUDE.md).
