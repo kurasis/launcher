@@ -250,6 +250,7 @@ fn main_window_capability_grants_only_app_commands() {
             "allow-mods-import-state",
             "allow-mods-choose",
             "allow-mods-plan",
+            "allow-mods-check",
             "allow-mods-install",
             "allow-mods-world-plan",
             "allow-mods-install-world",

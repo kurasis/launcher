@@ -329,6 +329,30 @@ CREATE TABLE IF NOT EXISTS external_version (
     added INTEGER NOT NULL,
     PRIMARY KEY (source_id, file_url)
 );
+-- What the mods in a kept jar need and break (mod-meta), read under the
+-- reader's rules; [] for a jar that is no mod.
+CREATE TABLE IF NOT EXISTS manifest (
+    sha256 TEXT PRIMARY KEY,
+    rules INTEGER NOT NULL,
+    json TEXT NOT NULL
+);
+-- The mods a kept jar gives on its own (not those inside it), by mod ID.
+CREATE TABLE IF NOT EXISTS mod_provided (
+    id TEXT NOT NULL,
+    sha256 TEXT NOT NULL,
+    PRIMARY KEY (id, sha256)
+);
+CREATE INDEX IF NOT EXISTS mod_provided_sha256 ON mod_provided(sha256);
+-- Two mods known not to start together though neither jar says so, by mod
+-- ID: the owner's list, started from mod-meta's (`listed` 0 once removed, so
+-- a known one stays off).
+CREATE TABLE IF NOT EXISTS clash (
+    a TEXT NOT NULL,
+    b TEXT NOT NULL,
+    listed INTEGER NOT NULL,
+    changed INTEGER NOT NULL,
+    PRIMARY KEY (a, b)
+);
 CREATE VIRTUAL TABLE IF NOT EXISTS project_fts USING fts5(
     project_id UNINDEXED, title, summary, authors, categories, slug,
     tokenize = 'unicode61 remove_diacritics 2'
@@ -689,6 +713,13 @@ impl Store {
         migrate(&db)?;
         take_twin_slugs(&mut db)?;
         prefix_own_slugs(&mut db)?;
+        for (a, b) in mod_meta::CLASHES {
+            db.execute(
+                "INSERT OR IGNORE INTO clash (a, b, listed, changed) VALUES (?1, ?2, 1, 0)",
+                params![a, b],
+            )
+            .map_err(sql)?;
+        }
         Ok(Self {
             db: Mutex::new(db),
             path,
@@ -1541,6 +1572,128 @@ impl Store {
         .map_err(sql)?
         .collect::<std::result::Result<_, _>>()
         .map_err(sql)
+    }
+
+    /// Kept jars (and zips, which old mods came as) whose mods are not read
+    /// yet under the reader's `rules`.
+    pub fn to_read_manifests(&self, rules: i64, limit: i64) -> Result<Vec<String>> {
+        let db = self.db();
+        let mut q = db
+            .prepare(
+                "SELECT b.sha256 FROM blob b LEFT JOIN manifest m ON m.sha256 = b.sha256
+                 WHERE b.state = 'stored'
+                   AND b.media_type IN ('application/java-archive', 'application/zip')
+                   AND (m.rules IS NULL OR m.rules < ?1)
+                 ORDER BY b.stored LIMIT ?2",
+            )
+            .map_err(sql)?;
+        q.query_map(params![rules, limit], |r| r.get(0))
+            .map_err(sql)?
+            .collect::<std::result::Result<_, _>>()
+            .map_err(sql)
+    }
+
+    /// What a kept jar's mods need and break, and the mods it gives.
+    pub fn set_manifests(
+        &self,
+        sha256: &str,
+        rules: i64,
+        manifests: &[mod_meta::Manifest],
+    ) -> Result<()> {
+        let json = serde_json::to_string(manifests).map_err(|e| e.to_string())?;
+        let mut db = self.db();
+        let tx = db.transaction().map_err(sql)?;
+        tx.execute(
+            "INSERT OR REPLACE INTO manifest (sha256, rules, json) VALUES (?1, ?2, ?3)",
+            params![sha256, rules, json],
+        )
+        .map_err(sql)?;
+        tx.execute("DELETE FROM mod_provided WHERE sha256 = ?1", [sha256])
+            .map_err(sql)?;
+        for given in manifests.iter().flat_map(|m| &m.mods).filter(|p| !p.nested) {
+            tx.execute(
+                "INSERT OR IGNORE INTO mod_provided (id, sha256) VALUES (?1, ?2)",
+                params![given.id, sha256],
+            )
+            .map_err(sql)?;
+        }
+        tx.commit().map_err(sql)
+    }
+
+    /// The projects whose kept jars give a mod ID, most downloaded first,
+    /// for a game version and a loader.
+    pub fn provided_by(
+        &self,
+        id: &str,
+        game: Option<&str>,
+        loader: Option<&str>,
+    ) -> Result<Vec<serde_json::Value>> {
+        let db = self.db();
+        let mut q = db
+            .prepare(
+                "SELECT p.id, p.slug, p.title, p.kind FROM project p
+                 WHERE p.status = 'ready' AND p.gone_at IS NULL AND EXISTS (
+                   SELECT 1 FROM mod_provided m
+                   JOIN blob b ON b.sha256 = m.sha256 AND b.state = 'stored'
+                   JOIN version_file f ON f.sha256 = m.sha256
+                   JOIN version v ON v.id = f.version_id
+                   WHERE m.id = ?1 AND v.project_id = p.id AND v.gone_at IS NULL
+                     AND (?2 IS NULL OR EXISTS (SELECT 1 FROM version_game g WHERE g.version_id = v.id AND g.game = ?2))
+                     AND (?3 IS NULL OR EXISTS (SELECT 1 FROM version_loader l WHERE l.version_id = v.id AND l.loader = ?3)))
+                 ORDER BY p.downloads DESC LIMIT 5",
+            )
+            .map_err(sql)?;
+        q.query_map(params![id, game, loader], |r| {
+            Ok(serde_json::json!({
+                "id": r.get::<_, String>(0)?,
+                "slug": r.get::<_, String>(1)?,
+                "title": r.get::<_, String>(2)?,
+                "kind": r.get::<_, String>(3)?,
+            }))
+        })
+        .map_err(sql)?
+        .collect::<std::result::Result<_, _>>()
+        .map_err(sql)
+    }
+
+    /// The clashes on the list.
+    pub fn clashes(&self) -> Result<Vec<mod_meta::Clash>> {
+        let db = self.db();
+        let mut q = db
+            .prepare("SELECT a, b FROM clash WHERE listed = 1 ORDER BY a, b LIMIT 1000")
+            .map_err(sql)?;
+        q.query_map([], |r| {
+            Ok(mod_meta::Clash {
+                a: r.get(0)?,
+                b: r.get(1)?,
+            })
+        })
+        .map_err(sql)?
+        .collect::<std::result::Result<_, _>>()
+        .map_err(sql)
+    }
+
+    /// Puts a clash on the list or takes it off; whether that changed it.
+    pub fn set_clash(&self, clash: &mod_meta::Clash, listed: bool, now: i64) -> Result<bool> {
+        let db = self.db();
+        let was: Option<bool> = db
+            .query_row(
+                "SELECT listed FROM clash WHERE a = ?1 AND b = ?2",
+                params![clash.a, clash.b],
+                |r| r.get(0),
+            )
+            .optional()
+            .map_err(sql)?;
+        if was == Some(listed) || (was.is_none() && !listed) {
+            return Ok(false);
+        }
+        db.execute(
+            "INSERT INTO clash (a, b, listed, changed) VALUES (?1, ?2, ?3, ?4)
+             ON CONFLICT (a, b) DO UPDATE SET listed = ?3, changed = ?4",
+            params![clash.a, clash.b, listed, now],
+        )
+        .map_err(sql)?;
+        Ok(true)
     }
 
     /// A scan's result for a kept file; `held` once it is out of service.
@@ -3846,8 +3999,32 @@ impl Store {
         Ok(Some(version))
     }
 
+    /// A version on its own, with what its kept jars' mods need and break
+    /// (`manifests` of a file, once read; lists leave them out for size).
     pub fn version(&self, id: &str, files: &crate::Urls) -> Result<Option<serde_json::Value>> {
-        Self::version_json(&self.db(), id, files)
+        let db = self.db();
+        let Some(mut version) = Self::version_json(&db, id, files)? else {
+            return Ok(None);
+        };
+        for file in version["files"].as_array_mut().into_iter().flatten() {
+            let Some(sha256) = file["sha256"].as_str() else {
+                continue;
+            };
+            let read: Option<String> = db
+                .query_row(
+                    "SELECT json FROM manifest WHERE sha256 = ?1",
+                    [sha256],
+                    |r| r.get(0),
+                )
+                .optional()
+                .map_err(sql)?;
+            if let Some(manifests) =
+                read.and_then(|j| serde_json::from_str::<serde_json::Value>(&j).ok())
+            {
+                file["manifests"] = manifests;
+            }
+        }
+        Ok(Some(version))
     }
 
     /// A project's versions, newest first, for a game version and a loader.

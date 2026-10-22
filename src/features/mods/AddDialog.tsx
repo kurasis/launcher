@@ -10,6 +10,7 @@ import { describeIpcError, ipc, onModsProgress } from '../../lib/ipc';
 import { strings } from '../../lib/strings';
 import { Dialog } from './Dialog';
 import styles from './Mods.module.css';
+import { Problems } from './Problems';
 
 const metered = strings.metered;
 const MIB = 1024 * 1024;
@@ -63,6 +64,8 @@ export function AddDialog({
   const [stage, setStage] = useState<Stage>(choosing ? { step: 'world' } : { step: 'planning' });
   const [error, setError] = useState<string | null>(null);
   const [progress, setProgress] = useState<ModsProgress | null>(null);
+  // Another version of the project, when the plan offers one that runs here.
+  const [versionId, setVersionId] = useState(target.versionId);
 
   useEffect(() => {
     if (!choosing) return;
@@ -77,17 +80,17 @@ export function AddDialog({
       });
   }, [choosing, instance.id]);
 
-  const payload = {
+  const payloadFor = (version: string) => ({
     instanceId: instance.id,
-    version: target.versionId,
+    version,
     world: datapack ? world : null,
     replaces: target.replaces,
-  };
+  });
 
   // State changes only when the answer comes.
-  const requestPlan = () => {
+  const requestPlan = (version = versionId) => {
     ipc
-      .modsPlan(payload)
+      .modsPlan(payloadFor(version))
       .then((found) => {
         setStage({ step: 'plan', plan: found });
       })
@@ -97,10 +100,10 @@ export function AddDialog({
       });
   };
 
-  const plan = () => {
+  const plan = (version = versionId) => {
     setError(null);
     setStage({ step: 'planning' });
-    requestPlan();
+    requestPlan(version);
   };
 
   useEffect(() => {
@@ -122,7 +125,7 @@ export function AddDialog({
     setProgress(null);
     setStage({ step: 'installing', plan: ready });
     ipc
-      .modsInstall(payload)
+      .modsInstall(payloadFor(versionId))
       .then((count) => {
         setStage({ step: 'done', count });
         onDone();
@@ -172,7 +175,13 @@ export function AddDialog({
           )}
           {error !== null && <Notice tone="danger">{error}</Notice>}
           <div className={forms.actions}>
-            <Button variant="primary" disabled={world === ''} onClick={plan}>
+            <Button
+              variant="primary"
+              disabled={world === ''}
+              onClick={() => {
+                plan();
+              }}
+            >
               {t.next}
             </Button>
             <Button onClick={onClose}>{t.cancel}</Button>
@@ -190,6 +199,10 @@ export function AddDialog({
           error={error}
           onInstall={() => {
             install(stage.plan);
+          }}
+          onInstead={(version) => {
+            setVersionId(version);
+            plan(version);
           }}
           onCancel={() => {
             void ipc.modsCancel(instance.id).catch(() => undefined);
@@ -220,6 +233,8 @@ const emptyPlan: ModsPlan = {
   totalBytes: 0,
   approval: null,
   turnOn: [],
+  problems: [],
+  instead: null,
 };
 
 function PlanView({
@@ -228,6 +243,7 @@ function PlanView({
   progress,
   error,
   onInstall,
+  onInstead,
   onCancel,
   onClose,
 }: {
@@ -236,6 +252,7 @@ function PlanView({
   progress: ModsProgress | null;
   error: string | null;
   onInstall: () => void;
+  onInstead: (version: string) => void;
   onCancel: () => void;
   onClose: () => void;
 }) {
@@ -247,6 +264,18 @@ function PlanView({
   return (
     <>
       {plan.misfit !== null && <Notice tone="warning">{t.misfit[plan.misfit]}</Notice>}
+      {plan.instead !== null && !installing && (
+        <Notice tone="info">
+          <p>{t.instead({ number: plan.instead.number })}</p>
+          <Button
+            onClick={() => {
+              if (plan.instead !== null) onInstead(plan.instead.versionId);
+            }}
+          >
+            {t.takeInstead({ number: plan.instead.number })}
+          </Button>
+        </Notice>
+      )}
       {plan.items.length > 0 && (
         <ul className={styles.planList}>
           {plan.items.map((item) => (
@@ -304,6 +333,7 @@ function PlanView({
           </ul>
         </Notice>
       )}
+      <Problems problems={plan.problems} />
       {ready && needed && (
         <p className={styles.muted}>
           {t.total({ size: formatBytes(plan.totalBytes) })}

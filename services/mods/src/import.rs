@@ -1489,6 +1489,31 @@ pub async fn rescan(app: &App, limit: i64) -> Result<usize, String> {
     Ok(count)
 }
 
+/// The rules [`read_manifests`] reads under; one up when the reader learns
+/// something new, and every kept jar is read again.
+pub const MANIFEST_RULES: i64 = 1;
+
+/// Reads what the mods in kept jars need and break (D-066), a few at a time:
+/// the launcher checks a set by it before installing. A jar that cannot be
+/// read gives none, as does one that is no mod.
+pub async fn read_manifests(app: &App, limit: i64) -> Result<usize, String> {
+    let due = app.store.to_read_manifests(MANIFEST_RULES, limit)?;
+    let count = due.len();
+    for sha256 in due {
+        let path = app.blobs.path(&sha256);
+        let manifests = tokio::task::spawn_blocking(move || {
+            std::fs::File::open(path)
+                .map(|file| mod_meta::read(std::io::BufReader::new(file)))
+                .unwrap_or_default()
+        })
+        .await
+        .unwrap_or_default();
+        app.store
+            .set_manifests(&sha256, MANIFEST_RULES, &manifests)?;
+    }
+    Ok(count)
+}
+
 /// Whether a file need not be fetched: here, served or held, or deleted for
 /// good by the owner.
 fn here(app: &App, sha256: &str) -> bool {

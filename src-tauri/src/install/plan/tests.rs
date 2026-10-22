@@ -849,3 +849,40 @@ fn optifine_builds_its_library_with_its_own_patcher() {
         &root, &generated
     ));
 }
+
+#[test]
+fn forge_bootstrap_gets_the_library_directory_when_the_profile_leaves_it_out() {
+    use crate::loader::manifest::LoaderManifest;
+    let manifest = |jvm: Vec<serde_json::Value>| LoaderManifest {
+        schema_version: 1,
+        kind: LoaderKind::Forge,
+        version: "49.0.2".into(),
+        game_version: "1.21.1".into(),
+        source: "https://maven.minecraftforge.net/x".into(),
+        profile_id: "1.20.3-forge-49.0.2".into(),
+        main_class: "net.minecraftforge.bootstrap.ForgeBootstrap".into(),
+        libraries: vec![],
+        jvm_arguments: jvm,
+        game_arguments: vec![],
+        minecraft_arguments: None,
+        installer: None,
+        server_arguments: None,
+    };
+    let sha = Sha1::parse(&"d".repeat(40)).unwrap();
+    let count = |plan: &GamePlan| {
+        plan.jvm_arguments
+            .iter()
+            .filter(|a| a.starts_with("-DlibraryDirectory="))
+            .count()
+    };
+    let without = manifest(vec![json!("-Djava.net.preferIPv6Addresses=system")]);
+    let plan = apply_loader(maven_plan(), &without, &sha, &ctx(MetaOs::Linux, "x86_64")).unwrap();
+    assert_eq!(
+        plan.jvm_arguments.last().map(String::as_str),
+        Some("-DlibraryDirectory=${library_directory}")
+    );
+    assert_eq!(count(&plan), 1);
+    let with = manifest(vec![json!("-DlibraryDirectory=${library_directory}")]);
+    let plan = apply_loader(maven_plan(), &with, &sha, &ctx(MetaOs::Linux, "x86_64")).unwrap();
+    assert_eq!(count(&plan), 1);
+}

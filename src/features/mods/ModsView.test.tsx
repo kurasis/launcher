@@ -119,6 +119,8 @@ const plan: ModsPlan = {
   totalBytes: 1024,
   approval: null,
   turnOn: [],
+  problems: [],
+  instead: null,
 };
 
 const content: ContentView = {
@@ -361,6 +363,64 @@ describe('ModsView', () => {
       world: null,
       replaces: null,
     });
+  });
+
+  it('warns of what the mods’ files say and offers a version that runs', async () => {
+    const OTHER = '00000000-0000-4000-8000-000000000099';
+    const calls = setup({
+      mods_plan: (args) =>
+        (args.payload as { version: string }).version === OTHER
+          ? plan
+          : {
+              ...plan,
+              instead: { versionId: OTHER, number: '0.5.9' },
+              problems: [
+                {
+                  kind: 'wrong',
+                  titles: ['Sodium'],
+                  id: 'fabricloader',
+                  versions: ['>=0.17'],
+                  found: '0.16.14',
+                  from: null,
+                  loader: null,
+                },
+                {
+                  kind: 'missing',
+                  titles: ['Sodium'],
+                  id: 'cloth-config',
+                  versions: ['>=15', '<12'],
+                  found: null,
+                  from: null,
+                  loader: null,
+                },
+              ],
+            },
+    });
+    fireEvent.click(await screen.findByRole('button', { name: /Sodium/ }));
+    const article = await screen.findByRole('article', { name: 'Sodium' });
+    fireEvent.click(await within(article).findByRole('button', { name: 'Add to installation' }));
+    const dialog = await screen.findByRole('dialog', { name: 'Add Sodium to Modded' });
+    const strip = (text: string | null) => (text ?? '').replace(/[\u2068\u2069]/g, '');
+    const items = (await within(dialog).findAllByRole('listitem')).map((li) =>
+      strip(li.textContent),
+    );
+    expect(items).toContain('Sodium needs Fabric Loader >=0.17; the installation has 0.16.14.');
+    expect(items).toContain(
+      'Sodium needs cloth-config >=15 or <12, which is not in the installation.',
+    );
+    // A warning, not a block.
+    expect(within(dialog).getByRole('button', { name: 'Install' })).toBeEnabled();
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Take version 0.5.9' }));
+    await waitFor(() => {
+      expect(within(dialog).queryByRole('button', { name: 'Take version 0.5.9' })).toBeNull();
+    });
+    expect(within(dialog).queryByText(/Fabric Loader/)).toBeNull();
+    fireEvent.click(await within(dialog).findByRole('button', { name: 'Install' }));
+    expect(await within(dialog).findByText(/1 file is in place/)).toBeVisible();
+    const install = named('mods_install', calls)[0]?.args.request as {
+      payload: Record<string, unknown>;
+    };
+    expect(install.payload).toMatchObject({ version: OTHER });
   });
 
   it('shows on hover why a version cannot be added', async () => {

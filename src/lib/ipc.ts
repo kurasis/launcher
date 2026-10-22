@@ -3,6 +3,7 @@
 // declared in one place.
 import { invoke as tauriInvoke } from '@tauri-apps/api/core';
 import { listen, type UnlistenFn } from '@tauri-apps/api/event';
+import { askToStart } from './launchCheck';
 import { localizeError } from './strings';
 import { strings } from './strings';
 import {
@@ -121,6 +122,7 @@ import {
   type ModsPublishForm,
   type ModsReportReason,
   type ModsPlan,
+  type ModsSetProblem,
   type ModsImportCreatePayload,
   type ModsImportFound,
   type ModsImportReport,
@@ -293,15 +295,23 @@ export const ipc = {
       request: mutation({ runId, title }, requestId),
     }),
   /** Plays as the installation's profile: a Microsoft account, or the demo (D-045). */
-  /** Starts the game; with `server` (a friend's invite or a server ad) straight into
-   * that server. `ad` names the ad whose Play it was, for the statistics (D-071). */
-  launchGame: (
+  /**
+   * Starts the game; with `server` (a friend's invite or a server ad) straight into
+   * that server. `ad` names the ad whose Play it was, for the statistics (D-071).
+   * When the mods' own files say it may not start, the player is asked first
+   * (D-066); `null` when they chose not to.
+   */
+  launchGame: async (
     instanceId: string,
     requestId?: string,
     server?: string,
     ad?: string,
-  ): Promise<RunSummary> =>
-    invoke<RunSummary>('launch_game', {
+  ): Promise<RunSummary | null> => {
+    const found = await invoke<ModsSetProblem[] | null>('mods_check', { instanceId }).catch(
+      () => null,
+    );
+    if (!(await askToStart(instanceId, Array.isArray(found) ? found : []))) return null;
+    return invoke<RunSummary>('launch_game', {
       request: mutation(
         server === undefined
           ? { instanceId }
@@ -310,7 +320,8 @@ export const ipc = {
             : { instanceId, server, ad },
         requestId,
       ),
-    }),
+    });
+  },
   stopGame: (runId: string, requestId?: string): Promise<boolean> =>
     invoke<boolean>('stop_game', { request: mutation({ runId }, requestId) }),
   listSupportedVersions: (refresh: boolean): Promise<CatalogView> =>

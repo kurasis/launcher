@@ -3589,6 +3589,108 @@ async fn kept_files_are_scanned_again_under_new_rules() {
     assert_eq!(status, StatusCode::OK);
 }
 
+#[tokio::test]
+async fn kept_jars_say_what_their_mods_need() {
+    let t = setup();
+    modrinth_site(&t.sites);
+    t.player(
+        1,
+        "POST",
+        "/v1/imports",
+        json!({ "input": "https://modrinth.com/mod/sodium" }),
+    )
+    .await;
+    t.drain().await;
+    let (_, versions) = t.get("/v1/projects/sodium/versions").await;
+    let kept = &versions["versions"][1];
+    let sha256 = kept["files"][0]["sha256"].as_str().unwrap().to_owned();
+    std::fs::write(
+        t.app.blobs.path(&sha256),
+        jar(&[(
+            "fabric.mod.json",
+            br#"{"schemaVersion": 1, "id": "sodium", "version": "0.6.0",
+                "provides": ["rubidium"],
+                "depends": {"minecraft": ">=1.21", "fabricloader": ">=0.16"},
+                "breaks": {"optifabric": "*"}}"#
+                .to_vec(),
+        )]),
+    )
+    .unwrap();
+    // Each kept archive is read once: Sodium's jar and Fabric API's.
+    assert_eq!(import::read_manifests(&t.app, 50).await.unwrap(), 2);
+    assert_eq!(import::read_manifests(&t.app, 50).await.unwrap(), 0);
+
+    let id = kept["id"].as_str().unwrap();
+    let (status, version) = t.get(&format!("/v1/versions/{id}")).await;
+    assert_eq!(status, StatusCode::OK);
+    let manifests = &version["files"][0]["manifests"];
+    assert_eq!(manifests[0]["loader"], "fabric", "{manifests}");
+    assert_eq!(manifests[0]["mods"][0]["id"], "sodium");
+    assert_eq!(manifests[0]["mods"][1]["id"], "rubidium");
+    let needs = manifests[0]["needs"].as_array().unwrap();
+    let game = needs.iter().find(|n| n["id"] == "minecraft").unwrap();
+    assert_eq!(game["by"], "sodium");
+    assert_eq!(game["versions"], json!([">=1.21"]));
+    assert_eq!(manifests[0]["breaks"][0]["id"], "optifabric");
+    // What it read comes back as the launcher reads it.
+    let read: Vec<mod_meta::Manifest> = serde_json::from_value(manifests.clone()).unwrap();
+    assert_eq!(read[0].mods.len(), 2);
+    // Lists leave them out; a version not kept has none.
+    let (_, versions) = t.get("/v1/projects/sodium/versions").await;
+    assert!(versions["versions"][1]["files"][0]["manifests"].is_null());
+    let beta = versions["versions"][0]["id"].as_str().unwrap();
+    let (_, beta) = t.get(&format!("/v1/versions/{beta}")).await;
+    assert!(beta["files"][0]["manifests"].is_null(), "{beta}");
+    // Fabric API's jar here is no mod: read, with nothing in it.
+    let (_, api) = t.get("/v1/projects/fabric-api/versions").await;
+    let api = api["versions"][0]["id"].as_str().unwrap();
+    let (_, api) = t.get(&format!("/v1/versions/{api}")).await;
+    assert_eq!(api["files"][0]["manifests"], json!([]));
+
+    // Who gives a mod: by its own ID or one it provides.
+    for asked in [
+        "/v1/provides/sodium",
+        "/v1/provides/rubidium",
+        "/v1/provides/Rubidium?game=1.21.1&loader=fabric",
+    ] {
+        let (status, given) = t.get(asked).await;
+        assert_eq!(status, StatusCode::OK, "{asked}");
+        assert_eq!(given["projects"][0]["slug"], "sodium", "{asked}: {given}");
+        assert_eq!(given["projects"][0]["kind"], "mod");
+    }
+    for asked in [
+        "/v1/provides/rubidium?loader=forge",
+        "/v1/provides/rubidium?game=1.20.1",
+        "/v1/provides/minecraft",
+        "/v1/provides/fabric-api",
+    ] {
+        let (status, given) = t.get(asked).await;
+        assert_eq!(status, StatusCode::OK, "{asked}");
+        assert_eq!(given["projects"], json!([]), "{asked}");
+    }
+    let long = "a".repeat(65);
+    for asked in [
+        format!("/v1/provides/{long}"),
+        "/v1/provides/a%20b".to_owned(),
+        "/v1/provides/%27%3B--".to_owned(),
+        "/v1/provides/%E2%80%AE".to_owned(),
+    ] {
+        let (status, _) = t.get(&asked).await;
+        assert_eq!(status, StatusCode::NOT_FOUND, "{asked}");
+    }
+    let (status, _) = t.get("/v1/provides/sodium?game=1.21%27--").await;
+    assert_eq!(status, StatusCode::BAD_REQUEST);
+
+    // A held jar gives nothing.
+    t.app.blobs.withdraw(&sha256).unwrap();
+    t.app
+        .store
+        .set_scanned(&sha256, &crate::scan::Verdict::clean(), true, 1)
+        .unwrap();
+    let (_, given) = t.get("/v1/provides/rubidium").await;
+    assert_eq!(given["projects"], json!([]));
+}
+
 // ----- the owner's commands (D-066, stage 6) -----
 
 #[derive(Default)]
@@ -6740,6 +6842,75 @@ async fn a_first_copy_of_the_database_is_made_once() {
     // A copy left half made is not taken for one.
     std::fs::write(backups.join("catalog-29991231-000000-000.db.part"), b"half").unwrap();
     assert_eq!(crate::store::backup_copies(&backups).len(), 1);
+}
+
+#[tokio::test]
+async fn the_owner_keeps_the_list_of_mods_that_do_not_start_together() {
+    let t = setup();
+    let (status, list) = t.get("/v1/clashes").await;
+    assert_eq!(status, StatusCode::OK);
+    let pairs = |list: &Value| -> Vec<(String, String)> {
+        list["clashes"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|c| {
+                (
+                    c["a"].as_str().unwrap().to_owned(),
+                    c["b"].as_str().unwrap().to_owned(),
+                )
+            })
+            .collect()
+    };
+    // Starts from the known ones.
+    assert!(pairs(&list).contains(&("sodium".to_owned(), "optifine".to_owned())));
+    let known = pairs(&list).len();
+    assert_eq!(known, mod_meta::CLASHES.len());
+
+    let purged = Purged::default();
+    let owner = owner(&t, &purged);
+    let args = |words: &[&str]| -> Vec<String> { words.iter().map(|w| (*w).to_owned()).collect() };
+    assert_eq!(
+        owner.clash(&args(&["add", "Embeddium", "sodium"])).unwrap(),
+        ["clash embeddium sodium added"]
+    );
+    assert_eq!(
+        owner.clash(&args(&["add", "embeddium", "sodium"])).unwrap(),
+        ["clash embeddium sodium listed already"]
+    );
+    assert_eq!(
+        owner.clash(&args(&["remove", "iris", "optifine"])).unwrap(),
+        ["clash iris optifine removed"]
+    );
+    assert_eq!(
+        owner.clash(&args(&["remove", "nope", "none"])).unwrap(),
+        ["clash nope none not listed"]
+    );
+    let lines = owner.clash(&args(&["list"])).unwrap();
+    assert_eq!(lines.last().unwrap(), &format!("{known} clashes"));
+    assert!(lines.contains(&"embeddium sodium".to_owned()));
+    assert!(!lines.contains(&"iris optifine".to_owned()));
+    // A known one taken off stays off when the service starts again.
+    let data = t.app.store.path().parent().unwrap().parent().unwrap();
+    let again = crate::store::Store::open(data).unwrap();
+    assert!(
+        !again
+            .clashes()
+            .unwrap()
+            .iter()
+            .any(|c| c.a == "iris" && c.b == "optifine")
+    );
+    for junk in [
+        &["add", "sodium"][..],
+        &["add", "sodium", "sodium"],
+        &["add", "so dium", "x"],
+        &["add", "a\u{202e}", "b"],
+        &["add", "", "b"],
+        &["drop", "a", "b"],
+        &[],
+    ] {
+        assert!(owner.clash(&args(junk)).is_err(), "{junk:?}");
+    }
 }
 
 #[tokio::test]

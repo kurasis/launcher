@@ -1468,6 +1468,26 @@ export interface ModsPlan {
   approval: ApprovalRequest | null;
   /** Files there but turned off that this needs: turned on with it. */
   turnOn: { path: string; title: string }[];
+  /** What the mods' own jars say may stop the game (D-066); not in the way. */
+  problems: ModsSetProblem[];
+  /** The version asked for does not run here, and this one does. */
+  instead: { versionId: string; number: string } | null;
+}
+
+/** Something in the way of a set of mods starting, as their jars say. */
+export interface ModsSetProblem {
+  kind: 'missing' | 'wrong' | 'breaks' | 'twice' | 'other_loader';
+  /** The mod that says so; for `twice`, the files that are the same mod. */
+  titles: string[];
+  /** The mod it needs or breaks: a mod ID, or `minecraft`, the loader's ID or `java`. */
+  id: string;
+  /** The versions it takes, in the loader's own words; none: any. */
+  versions: string[];
+  found: string | null;
+  /** The mod that gives what was found; null: the game, the loader or Java. */
+  from: string | null;
+  /** For `other_loader`: the loader the jar is made for. */
+  loader: 'fabric' | 'quilt' | 'forge' | 'neoforge' | null;
 }
 
 /** Which mods need one about to be turned off or removed. */

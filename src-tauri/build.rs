@@ -112,6 +112,7 @@ fn main() {
         "mods_import_state",
         "mods_choose",
         "mods_plan",
+        "mods_check",
         "mods_install",
         "mods_world_plan",
         "mods_install_world",

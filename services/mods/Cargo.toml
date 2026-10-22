@@ -22,6 +22,8 @@ sha2 = "0.10"
 hex = "0.4"
 percent-encoding = "2"
 rustix = { version = "1", features = ["fs"] }
+# What the mods in kept jars need and break, shared with the launcher.
+mod-meta = { path = "../../crates/mod-meta" }
 toml = { version = "1.1", default-features = false, features = ["parse", "serde", "std"] }
 zip = { version = "8.6.0", default-features = false, features = ["deflate"] }
 image = { version = "0.25", default-features = false, features = ["png", "jpeg", "gif", "webp"] }

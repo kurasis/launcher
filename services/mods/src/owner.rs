@@ -609,6 +609,51 @@ impl Owner<'_> {
         Ok(lines)
     }
 
+    /// The list of mods that do not start together (D-066): `list`, or `add`
+    /// and `remove` with two mod IDs as the jars name them, the first being
+    /// the one shown as not starting with the second.
+    pub fn clash(&self, args: &[String]) -> Result<Vec<String>, String> {
+        let pair = |a: &str, b: &str| {
+            let clash = mod_meta::Clash {
+                a: a.trim().to_ascii_lowercase(),
+                b: b.trim().to_ascii_lowercase(),
+            };
+            if clash.is_clean() {
+                Ok(clash)
+            } else {
+                Err("two different mod IDs: small letters, digits, _ - and . (1 to 64)".to_owned())
+            }
+        };
+        match args {
+            [list] if list == "list" => {
+                let clashes = self.store.clashes()?;
+                let mut lines: Vec<String> =
+                    clashes.iter().map(|c| format!("{} {}", c.a, c.b)).collect();
+                lines.push(format!("{} clashes", clashes.len()));
+                Ok(lines)
+            }
+            [verb, a, b] if verb == "add" || verb == "remove" => {
+                let clash = pair(a, b)?;
+                let listed = verb == "add";
+                let changed = self.store.set_clash(&clash, listed, self.now)?;
+                Ok(vec![format!(
+                    "clash {} {} {}",
+                    clash.a,
+                    clash.b,
+                    match (changed, listed) {
+                        (true, true) => "added",
+                        (true, false) => "removed",
+                        (false, true) => "listed already",
+                        (false, false) => "not listed",
+                    }
+                )])
+            }
+            _ => {
+                Err("usage: lapi-mods clash list | add <mod> <mod> | remove <mod> <mod>".to_owned())
+            }
+        }
+    }
+
     /// Gives a project another slug, for one the catalog named badly (as
     /// `fabric-api-modrinth-20953b` was); another project's slug is refused.
     /// The old slug leads to it only when a source has it.

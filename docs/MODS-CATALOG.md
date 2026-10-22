@@ -72,24 +72,49 @@ it). What the launcher puts into an installation is listed in its `content.lock.
    its guests install it by the version ID the world's session at worlds.lapi.sh names
    (`GET /v1/versions/{id}/pack`). Each new generation of the world is a new version.
 
+## What mods need
+
+Sources' pages say only part of what a mod needs, and sometimes for the wrong game
+version. So the service reads every jar (and zip) it keeps the way the loaders read it
+at start, with the shared crate `crates/mod-meta` the launcher uses too:
+`fabric.mod.json`, `quilt.mod.json`, `META-INF/neoforge.mods.toml`,
+`META-INF/mods.toml` and `mcmod.info`, jars inside jars included, every size, count and
+depth bounded. A loop reads 50 jars at a time; one that cannot be read, or is no mod,
+gives `[]`. A new reader version (`MANIFEST_RULES` in `import.rs`) reads them all again.
+
+- `GET /v1/versions/{id}` gives each kept file's `manifests`: per loader, the mods the
+  jar gives (`mods`, with `nested` for those inside it), what they need (`needs`) and
+  what they do not start with (`breaks`), version ranges in the loader's own words.
+  Lists of versions leave them out.
+- `GET /v1/provides/{mod}?game=&loader=` gives up to five ready projects whose kept
+  jars give that mod ID (their own or one they `provide`), most downloaded first:
+  where a jar needs a mod its page does not name, this finds it. A held jar gives
+  nothing.
+- `GET /v1/clashes` gives the owner's list of mods that do not start together though
+  neither jar says so (`{"a", "b"}`: `a` is shown as not starting with `b`), started
+  from `mod_meta::CLASHES` (OptiFine with Sodium, Iris, Embeddium, Rubidium and Oculus;
+  OptiFine's jar goes by `optifine`). The launcher checks a set against it at install
+  and before a launch; offline, against the list it last had, else the built-in one.
+
 ## The owner's commands
 
 On the server, as `sudo -u lapi-mods /home/www/lapi/mods/current/lapi-mods <command>`:
 
-| Command                                          | What it does                                                                                                                       |
-| ------------------------------------------------ | ---------------------------------------------------------------------------------------------------------------------------------- |
-| `find <address, slug, ID, SHA-256 or SHA-1>`     | a project with its versions and files, or a file: state, verdict, signs, where it is used, decisions                               |
-| `review`                                         | what waits: files the scanner held back (`scan`), versions their source took down (`gone`), reported packs (`report`)              |
-| `review <n> keep` or `review <n> block [reason]` | decides item `n`: `keep` serves a held file again or dismisses reports, `block` blocks the files or removes the reported pack      |
-| `block <SHA-256 or SHA-1> [reason]`              | takes the file out of service at once, tells launchers, clears Cloudflare's cache; also for a file not here yet                    |
-| `unblock <SHA-256 or SHA-1>`                     | lifts a block, or lets a file the scanner held go; no later scan holds it                                                          |
-| `remove <project> [reason]`                      | at its author's request: the project leaves search and the API for good, files only it needs are held back                         |
-| `forget <SHA-256> [--yes]`                       | deletes a held file for good (asks for `--yes`); the catalog never fetches it again                                                |
-| `restore`                                        | brings back to the disk, checked by SHA-256, the files only R2 still has                                                           |
-| `add <address>...`                               | adds up to 32 projects by their Modrinth or CurseForge address, as a player's "Add to the catalog" does                            |
-| `add --status`                                   | the owner's additions by state, and those that failed with why                                                                     |
-| `slug <project> <slug>`                          | gives a project another slug (small letters, digits, inner hyphens; not another project's); the old one leads on only via a source |
-| `health`                                         | the service's own checks, one line each (`ok`, `problem` or `off` with numbers); fails when any finds a problem                    |
+| Command                                                           | What it does                                                                                                                       |
+| ----------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------- |
+| `find <address, slug, ID, SHA-256 or SHA-1>`                      | a project with its versions and files, or a file: state, verdict, signs, where it is used, decisions                               |
+| `review`                                                          | what waits: files the scanner held back (`scan`), versions their source took down (`gone`), reported packs (`report`)              |
+| `review <n> keep` or `review <n> block [reason]`                  | decides item `n`: `keep` serves a held file again or dismisses reports, `block` blocks the files or removes the reported pack      |
+| `block <SHA-256 or SHA-1> [reason]`                               | takes the file out of service at once, tells launchers, clears Cloudflare's cache; also for a file not here yet                    |
+| `unblock <SHA-256 or SHA-1>`                                      | lifts a block, or lets a file the scanner held go; no later scan holds it                                                          |
+| `remove <project> [reason]`                                       | at its author's request: the project leaves search and the API for good, files only it needs are held back                         |
+| `forget <SHA-256> [--yes]`                                        | deletes a held file for good (asks for `--yes`); the catalog never fetches it again                                                |
+| `restore`                                                         | brings back to the disk, checked by SHA-256, the files only R2 still has                                                           |
+| `add <address>...`                                                | adds up to 32 projects by their Modrinth or CurseForge address, as a player's "Add to the catalog" does                            |
+| `add --status`                                                    | the owner's additions by state, and those that failed with why                                                                     |
+| `slug <project> <slug>`                                           | gives a project another slug (small letters, digits, inner hyphens; not another project's); the old one leads on only via a source |
+| `clash list`, `clash add <mod> <mod>`, `clash remove <mod> <mod>` | the list of mods that do not start together, by mod ID (`/v1/clashes`); a known one removed stays off                              |
+| `health`                                                          | the service's own checks, one line each (`ok`, `problem` or `off` with numbers); fails when any finds a problem                    |
 
 Projects from sites that are not catalogs (D-066, external source) are added by these
 commands only:

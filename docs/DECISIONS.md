@@ -2671,6 +2671,23 @@ skins-mod <channel>` there only checks the signature against the public key and
   since a search asks someone to choose. `add --status` counts them by state.
   OptiFine's icon is one made for the catalog (`services/mods/assets`), since its site
   has none.
+- **A set of mods is checked by what the jars say (2026-10-22, Ai: "Всё сразу").**
+  Pages say only part of what a mod needs, and sometimes for the wrong game version, so
+  the shared crate `crates/mod-meta` reads a jar as the loaders do (`fabric.mod.json`,
+  `quilt.mod.json`, `mods.toml`, `neoforge.mods.toml`, `mcmod.info`, jars inside jars)
+  and checks a set against the game version, the loader and its version. The catalog
+  reads every jar it keeps and gives it with a version (`files[].manifests`) and by mod
+  ID (`/v1/provides/{mod}`). An install plan takes for a dependency the newest version
+  whose jar runs on the installation's loader version (it is fixed with the
+  installation), looks a mod only a jar names up by its ID, updates a mod there already
+  that is too old for a new one, and offers another version of the mod asked for when
+  that one does not run. Before a launch the folder's jars are checked on the computer.
+  Mods that say nothing of each other but do not start together (OptiFine with Sodium,
+  Iris, Embeddium, Rubidium, Oculus) are a list the owner keeps in the catalog
+  (`/v1/clashes`, `clash add|remove`); the launcher has it built in for when the
+  catalog is not reached, and a launch waits for it at most three seconds. What is left
+  is a warning ("start anyway", "open the mods", "not now"), never a block, and what
+  cannot be compared counts as fine, so a set that starts is never stopped.
 
 ## D-067 — Start page feed at feed.lapi.sh
 

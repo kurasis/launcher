@@ -29,6 +29,7 @@ import { UpdateBadge } from '../features/updates/UpdateBadge';
 import { WhatsNew } from '../features/updates/WhatsNew';
 import { DownloadManager } from '../features/downloads/DownloadManager';
 import { FriendsCorner } from '../features/friends/FriendsCorner';
+import { LaunchCheck } from '../features/mods/LaunchCheck';
 import { ModsView, type ModsSection } from '../features/mods/ModsView';
 import { WorldsView } from '../features/worlds/WorldsView';
 import { FeedView } from '../features/feed/FeedView';
@@ -392,6 +393,13 @@ export function App() {
       </main>
 
       {snapshot !== null && <DownloadManager snapshot={snapshot} />}
+      <LaunchCheck
+        onOpenMods={(instanceId) => {
+          setModsInstance(instanceId);
+          setModsSection('installed');
+          navigate('mods');
+        }}
+      />
       {snapshot !== null && (
         <FriendsCorner
           snapshot={snapshot}
