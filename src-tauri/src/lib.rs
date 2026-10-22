@@ -404,12 +404,12 @@ fn setup(app: &mut tauri::App) -> Result<(), Box<dyn std::error::Error>> {
                 .unwrap_or_else(std::sync::PoisonError::into_inner);
             for host in now.iter().filter(|h| !before.contains(h)) {
                 state.console().warn(format!(
-                    "{host} is not reachable; its downloads come from the mirror ({})",
+                    "{host} is down or slower than the mirror; its downloads come from the mirror ({})",
                     mirror::MIRROR_HOST
                 ));
             }
             for host in before.iter().filter(|h| !now.contains(h)) {
-                state.console().info(format!("{host} answers again"));
+                state.console().info(format!("{host} is used again"));
             }
             *before = now;
             drop(before);

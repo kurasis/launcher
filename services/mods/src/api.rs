@@ -126,6 +126,20 @@ fn who(app: &App, headers: &HeaderMap) -> Result<Claims, Box<Response>> {
     Ok(claims)
 }
 
+/// The account behind a request that publishes a pack: its email must be
+/// confirmed when the rule asks for that, so publishing takes more than a
+/// throwaway account.
+fn publisher(app: &App, headers: &HeaderMap) -> Result<Claims, Box<Response>> {
+    let me = who(app, headers)?;
+    if app.email.required() && !me.ev {
+        return Err(Box::new(refuse(
+            StatusCode::FORBIDDEN,
+            "email_not_confirmed",
+        )));
+    }
+    Ok(me)
+}
+
 /// Our IDs are UUIDs; slugs are short, plain ASCII.
 fn reference(text: &str) -> Option<&str> {
     (!text.is_empty()
@@ -719,7 +733,7 @@ async fn publish_pack(
     Query(q): Query<PublishQuery>,
     body: axum::body::Body,
 ) -> Response {
-    let me = match who(&app, &headers) {
+    let me = match publisher(&app, &headers) {
         Ok(me) => me,
         Err(response) => return *response,
     };
@@ -820,7 +834,7 @@ async fn start_upload(
     Query(q): Query<PublishQuery>,
     Json(body): Json<UploadBody>,
 ) -> Response {
-    let me = match who(&app, &headers) {
+    let me = match publisher(&app, &headers) {
         Ok(me) => me,
         Err(response) => return *response,
     };
@@ -866,7 +880,7 @@ async fn put_part(
     Path((id, n)): Path<(String, usize)>,
     body: axum::body::Body,
 ) -> Response {
-    let me = match who(&app, &headers) {
+    let me = match publisher(&app, &headers) {
         Ok(me) => me,
         Err(response) => return *response,
     };
@@ -901,7 +915,7 @@ async fn finish_upload(
     headers: HeaderMap,
     Path(id): Path<String>,
 ) -> Response {
-    let me = match who(&app, &headers) {
+    let me = match publisher(&app, &headers) {
         Ok(me) => me,
         Err(response) => return *response,
     };
@@ -1026,6 +1040,42 @@ async fn report(
     }
 }
 
+/// Asks the account service whether it sends letters, for the email rule.
+pub async fn check_mail(app: &App, http: &reqwest::Client, accounts: &str) {
+    if app.email.mode != crate::auth::EmailMode::Auto {
+        return;
+    }
+    match crate::auth::mail_sent(http, accounts).await {
+        Ok(sent) => app.email.set_mail_sent(sent),
+        Err(e) => eprintln!("lapi-mods: asking whether letters are sent failed: {e}"),
+    }
+}
+
+/// Exports an account asks for an hour.
+const EXPORTS_PER_HOUR: u32 = 10;
+
+/// Everything the catalog keeps about the asking account (D-064): its
+/// requests to add to the catalog, its packs with their versions, and its
+/// reports.
+async fn export(State(app): State<Arc<App>>, headers: HeaderMap) -> Response {
+    let me = match who(&app, &headers) {
+        Ok(me) => me,
+        Err(response) => return *response,
+    };
+    if !app.limiter.allow(
+        &me.sub,
+        "export",
+        EXPORTS_PER_HOUR,
+        Duration::from_secs(3600),
+    ) {
+        return refuse(StatusCode::TOO_MANY_REQUESTS, "too_many");
+    }
+    match app.store.export_account(&me.sub) {
+        Ok(data) => private(data, StatusCode::OK),
+        Err(e) => failed(&e),
+    }
+}
+
 /// Asks the account service which recently seen sessions ended and refuses
 /// their tokens from now on. When it cannot be asked, tokens hold until they
 /// run out.
@@ -1111,6 +1161,7 @@ pub fn router(app: Arc<App>) -> Router {
         .route("/v1/packs/mine", get(my_packs))
         .route("/v1/packs/{project}/hidden", post(set_hidden))
         .route("/v1/projects/{project}/report", post(report))
+        .route("/v1/export", get(export))
         .layer(DefaultBodyLimit::max(32 * 1024))
         .with_state(app)
 }

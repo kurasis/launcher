@@ -1567,6 +1567,7 @@
         "showAll": "Show all",
         "matching": "{count, plural, one {# version} other {# versions}} of {total}",
         "held": "The catalog’s malware check is holding this version’s file back until it is reviewed. It cannot be installed.",
+        "playerPack": "Player’s pack",
         "report": "Report",
         "reportReason": "Reason",
         "reportReasons": {
@@ -2148,12 +2149,12 @@
         "origin_only": "Original sites only"
       },
       "hints": {
-        "automatic": "Original sites first; the launcher's mirror when one fails, is very slow or lost a file.",
+        "automatic": "Original sites first; the launcher's mirror when one fails, lost a file or is much slower than the mirror.",
         "mirror_first": "For connections where original sites are blocked or very slow. They stay the fallback.",
         "origin_only": "Never use the mirror. Downloads wait when a site is down."
       },
       "checked": "Every file is checked against its checksum, whichever site it comes from.",
-      "inUse": "Not reachable now: {sites}. Downloading from the launcher's mirror."
+      "inUse": "Down or slower than the mirror now: {sites}. Downloading from the launcher's mirror."
     },
     "updates": {
       "badge": {
@@ -2497,6 +2498,7 @@
     "Preparing the mod loader": "Preparing the mod loader",
     "Preparing the report stopped unexpectedly.": "Preparing the report stopped unexpectedly.",
     "Preparing the sign-in callback": "Preparing the sign-in callback",
+    "Publishing packs needs a confirmed email. Open the letter we sent, or send it again in Accounts.": "Publishing packs needs a confirmed email. Open the letter we sent, or send it again in Accounts.",
     "Publishing was cancelled.": "Publishing was cancelled.",
     "Putting the modpack's files in place": "Putting the modpack's files in place",
     "Reading a screenshot": "Reading a screenshot",

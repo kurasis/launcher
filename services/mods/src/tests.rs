@@ -169,6 +169,7 @@ fn setup_full(
         client,
         tokens,
         sessions: crate::auth::Sessions::default(),
+        email: crate::auth::EmailRule::new(crate::auth::EmailMode::Auto),
         limiter: crate::api::Limiter::default(),
         uploads: crate::own::Uploads::default(),
         urls: Urls::new(FILES).with_cdn(cdn),
@@ -195,7 +196,9 @@ impl T {
         let header = json!({ "alg": "EdDSA", "typ": "JWT", "kid": "k1" });
         let claims = json!({
             "iss": ISSUER, "sub": account(who), "aud": aud,
-            "iat": now(), "exp": now() + 600, "sid": format!("s{who}"), "nick": "Player", "ev": true,
+            "iat": now(), "exp": now() + 600, "sid": format!("s{who}"), "nick": "Player",
+            // Accounts from 90 up have not confirmed their email.
+            "ev": who < 90,
         });
         let input = format!(
             "{}.{}",
@@ -4427,6 +4430,10 @@ fn own_meta(title: &str, version: &str) -> Vec<u8> {
 
 /// An own pack: Sodium 0.6 from the catalog, a config and the options.
 fn own_pack(version: &str, extra: &[(&str, &[u8])]) -> Vec<u8> {
+    own_pack_named("My Pack", version, extra)
+}
+
+fn own_pack_named(title: &str, version: &str, extra: &[(&str, &[u8])]) -> Vec<u8> {
     let sodium = b"jar of sodium-0.6.jar";
     let index = json!({
         "formatVersion": 1, "game": "minecraft", "versionId": version, "name": "Mine",
@@ -4434,7 +4441,7 @@ fn own_pack(version: &str, extra: &[(&str, &[u8])]) -> Vec<u8> {
         "dependencies": { "minecraft": "1.21.1", "fabric-loader": "0.16.0" },
     })
     .to_string();
-    let meta = own_meta("My Pack", version);
+    let meta = own_meta(title, version);
     let icon = png(64, 64);
     let mut entries: Vec<(&str, &[u8])> = vec![
         (pack::INDEX, index.as_bytes()),
@@ -4586,7 +4593,8 @@ async fn a_player_publishes_a_pack_of_catalog_mods_and_their_settings() {
     assert_eq!(project["kind"], "modpack");
     assert_eq!(project["status"], "ready");
     assert_eq!(project["title"], "My Pack");
-    assert_eq!(project["slug"], "my-pack");
+    // Its slug leaves the plain name to the catalogs' projects.
+    assert_eq!(project["slug"], "player-my-pack");
     assert_eq!(project["sources"][0]["source"], "own");
     assert_eq!(project["authors"][0]["name"], "Player");
     assert!(project["icon"].as_str().unwrap().starts_with(FILES));
@@ -6903,4 +6911,161 @@ async fn the_owner_keeps_the_list_of_mods_that_do_not_start_together() {
     ] {
         assert!(owner.clash(&args(junk)).is_err(), "{junk:?}");
     }
+}
+
+#[tokio::test]
+async fn publishing_a_pack_needs_a_confirmed_email_once_letters_are_sent() {
+    let t = setup();
+    import_sodium(&t).await;
+    // Letters not sent yet: anyone signed in publishes.
+    let (status, answer) = t.upload(Some(90), "/v1/packs", own_pack("1.0", &[])).await;
+    assert_eq!(status, StatusCode::CREATED, "{answer}");
+    t.app.email.set_mail_sent(true);
+    let (status, answer) = t.upload(Some(91), "/v1/packs", own_pack("1.0", &[])).await;
+    assert_eq!(status, StatusCode::FORBIDDEN, "{answer}");
+    assert_eq!(answer["error"], "email_not_confirmed");
+    let (status, answer) = t
+        .player(
+            91,
+            "POST",
+            "/v1/packs/uploads",
+            json!({ "size": 1000, "sha256": "0".repeat(64) }),
+        )
+        .await;
+    assert_eq!(status, StatusCode::FORBIDDEN, "{answer}");
+    let (status, _) = t
+        .player(
+            91,
+            "POST",
+            "/v1/packs/uploads/00000000-0000-7000-8000-000000000000/finish",
+            Value::Null,
+        )
+        .await;
+    assert_eq!(status, StatusCode::FORBIDDEN);
+    // Reading, its own list and adding to the catalog stay open.
+    let (status, _) = t.player(91, "GET", "/v1/packs/mine", Value::Null).await;
+    assert_eq!(status, StatusCode::OK);
+    let (status, _) = t.player(91, "GET", "/v1/imports", Value::Null).await;
+    assert_eq!(status, StatusCode::OK);
+    // A confirmed email publishes.
+    let (status, answer) = t.upload(Some(2), "/v1/packs", own_pack("1.0", &[])).await;
+    assert_eq!(status, StatusCode::CREATED, "{answer}");
+    // Set to never ask, it does not.
+    let off = crate::auth::EmailRule::named("0");
+    off.set_mail_sent(true);
+    assert!(!off.required());
+    assert!(crate::auth::EmailRule::named("1").required());
+    assert!(!crate::auth::EmailRule::named("auto").required());
+}
+
+#[tokio::test]
+async fn own_packs_leave_the_plain_slug_to_the_catalogs() {
+    let t = setup();
+    import_sodium(&t).await;
+    let (_, sodium) = t.get("/v1/projects/sodium").await;
+    let sodium = sodium["id"].as_str().unwrap().to_owned();
+    // A pack called "Sodium" does not take Sodium's slug.
+    let (status, answer) = t
+        .upload(Some(1), "/v1/packs", own_pack_named("Sodium", "1.0", &[]))
+        .await;
+    assert_eq!(status, StatusCode::CREATED, "{answer}");
+    let pack = answer["project"]["id"].as_str().unwrap().to_owned();
+    assert_eq!(answer["project"]["slug"], "player-sodium", "{answer}");
+    let (_, found) = t.get("/v1/projects/sodium").await;
+    assert_eq!(found["id"], sodium.as_str());
+    // Searched by its words, not by the prefix every own pack has.
+    let path = t.app.store.path().to_owned();
+    let indexed = |id: &str| -> String {
+        rusqlite::Connection::open(&path)
+            .unwrap()
+            .query_row(
+                "SELECT slug FROM project_fts WHERE project_id = ?1",
+                [id],
+                |r| r.get(0),
+            )
+            .unwrap()
+    };
+    assert_eq!(indexed(&pack), "sodium");
+    // Packs published before the prefix get it at the next start, with a
+    // tail when another project has that slug already.
+    let db = rusqlite::Connection::open(&path).unwrap();
+    db.execute(
+        "UPDATE project SET slug = 'old-pack' WHERE id = ?1",
+        [&pack],
+    )
+    .unwrap();
+    db.execute(
+        "UPDATE project SET slug = 'player-old-pack' WHERE id = ?1",
+        [&sodium],
+    )
+    .unwrap();
+    drop(db);
+    let reopened = crate::store::Store::open(path.parent().unwrap().parent().unwrap()).unwrap();
+    let slug_of = |id: &str| -> String {
+        rusqlite::Connection::open(&path)
+            .unwrap()
+            .query_row("SELECT slug FROM project WHERE id = ?1", [id], |r| r.get(0))
+            .unwrap()
+    };
+    assert_eq!(
+        slug_of(&pack),
+        format!("player-old-pack-{}", &pack[pack.len() - 6..])
+    );
+    assert_eq!(slug_of(&sodium), "player-old-pack");
+    assert_eq!(
+        indexed(&pack),
+        format!("old pack {}", &pack[pack.len() - 6..])
+    );
+    // Once is enough: the next start changes nothing.
+    drop(reopened);
+    crate::store::Store::open(path.parent().unwrap().parent().unwrap()).unwrap();
+    assert_eq!(
+        slug_of(&pack),
+        format!("player-old-pack-{}", &pack[pack.len() - 6..])
+    );
+}
+
+#[tokio::test]
+async fn an_account_exports_what_the_catalog_keeps_about_it() {
+    let t = setup();
+    import_sodium(&t).await;
+    let (status, _) = t.get("/v1/export").await;
+    assert_eq!(status, StatusCode::UNAUTHORIZED);
+    let (status, answer) = t.upload(Some(1), "/v1/packs", own_pack("1.0", &[])).await;
+    assert_eq!(status, StatusCode::CREATED, "{answer}");
+    let pack = answer["project"]["id"].as_str().unwrap().to_owned();
+    let (status, _) = t
+        .player(
+            2,
+            "POST",
+            &format!("/v1/projects/{pack}/report"),
+            json!({ "reason": "broken", "text": "It does not start" }),
+        )
+        .await;
+    assert!(status.is_success(), "{status}");
+    let (status, mine) = t.player(1, "GET", "/v1/export", Value::Null).await;
+    assert_eq!(status, StatusCode::OK, "{mine}");
+    assert_eq!(
+        mine["requests"][0]["input"],
+        "https://modrinth.com/mod/sodium"
+    );
+    assert_eq!(mine["requests"][0]["state"], "ready");
+    assert_eq!(mine["packs"][0]["id"], pack.as_str());
+    assert_eq!(mine["packs"][0]["title"], "My Pack");
+    assert_eq!(mine["versions"][0]["pack"], pack.as_str());
+    assert_eq!(mine["versions"][0]["number"], "1.0");
+    assert_eq!(mine["reports"], json!([]));
+    // Another account sees its own report and nothing of the first.
+    let (_, theirs) = t.player(2, "GET", "/v1/export", Value::Null).await;
+    assert_eq!(theirs["requests"], json!([]));
+    assert_eq!(theirs["packs"], json!([]));
+    assert_eq!(theirs["reports"][0]["pack"], pack.as_str());
+    assert_eq!(theirs["reports"][0]["text"], "It does not start");
+    // Ten an hour.
+    for _ in 0..9 {
+        let (status, _) = t.player(2, "GET", "/v1/export", Value::Null).await;
+        assert_eq!(status, StatusCode::OK);
+    }
+    let (status, _) = t.player(2, "GET", "/v1/export", Value::Null).await;
+    assert_eq!(status, StatusCode::TOO_MANY_REQUESTS);
 }

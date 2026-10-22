@@ -20,7 +20,8 @@ pub enum Event {
     Room { id: String },
 }
 
-type Connections = HashMap<String, Vec<(u64, mpsc::Sender<Event>)>>;
+/// Each account's open connections: number, session, events.
+type Connections = HashMap<String, Vec<(u64, String, mpsc::Sender<Event>)>>;
 
 #[derive(Default)]
 pub struct Hub {
@@ -33,25 +34,26 @@ fn lock<T>(m: &Mutex<T>) -> std::sync::MutexGuard<'_, T> {
 }
 
 impl Hub {
-    /// A new connection of `account`; none when it has too many.
-    pub fn join(&self, account: &str) -> Option<(u64, mpsc::Receiver<Event>)> {
+    /// A new connection of `account` in session `sid`; none when it has too
+    /// many.
+    pub fn join(&self, account: &str, sid: &str) -> Option<(u64, mpsc::Receiver<Event>)> {
         let mut connections = lock(&self.connections);
         let list = connections.entry(account.to_owned()).or_default();
-        list.retain(|(_, sender)| !sender.is_closed());
+        list.retain(|(_, _, sender)| !sender.is_closed());
         if list.len() >= PER_ACCOUNT {
             return None;
         }
         let mut next = lock(&self.next);
         *next += 1;
         let (sender, receiver) = mpsc::channel(64);
-        list.push((*next, sender));
+        list.push((*next, sid.to_owned(), sender));
         Some((*next, receiver))
     }
 
     pub fn leave(&self, account: &str, id: u64) {
         let mut connections = lock(&self.connections);
         if let Some(list) = connections.get_mut(account) {
-            list.retain(|(i, _)| *i != id);
+            list.retain(|(i, _, _)| *i != id);
             if list.is_empty() {
                 connections.remove(account);
             }
@@ -62,7 +64,7 @@ impl Hub {
     /// keep up misses the event; it asks again when it reconnects.
     pub fn tell(&self, account: &str, event: &Event) {
         let connections = lock(&self.connections);
-        for (_, sender) in connections.get(account).into_iter().flatten() {
+        for (_, _, sender) in connections.get(account).into_iter().flatten() {
             let _ = sender.try_send(event.clone());
         }
     }
@@ -71,5 +73,29 @@ impl Hub {
         for account in accounts {
             self.tell(account, event);
         }
+    }
+
+    /// The sessions with an open connection.
+    pub fn sessions(&self) -> Vec<String> {
+        lock(&self.connections)
+            .values()
+            .flatten()
+            .map(|(_, sid, _)| sid.clone())
+            .collect()
+    }
+
+    /// Closes the connections of ended sessions: dropping their senders ends
+    /// the socket.
+    pub fn end(&self, sids: &[String]) {
+        let mut connections = lock(&self.connections);
+        for list in connections.values_mut() {
+            list.retain(|(_, sid, _)| !sids.contains(sid));
+        }
+        connections.retain(|_, list| !list.is_empty());
+    }
+
+    /// Closes every connection of a deleted account.
+    pub fn end_account(&self, account: &str) {
+        lock(&self.connections).remove(account);
     }
 }

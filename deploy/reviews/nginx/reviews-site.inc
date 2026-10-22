@@ -42,6 +42,15 @@ location ~ "^/v1/reviews/[0-9]{1,12}$" {
     client_max_body_size 1k;
     include /etc/nginx/lapi/reviews-proxy.inc;
 }
+# Everything kept about the signed-in player's reviews (D-064).
+location = /v1/export {
+    limit_except GET {
+        deny all;
+    }
+    limit_req zone=lapi_reviews burst=20 nodelay;
+    client_max_body_size 1k;
+    include /etc/nginx/lapi/reviews-proxy.inc;
+}
 # A proof-of-work challenge, and the deploy's health check.
 location ~ "^/v1/(challenge|health)$" {
     limit_except GET {

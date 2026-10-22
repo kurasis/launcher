@@ -13,7 +13,7 @@ use tower::ServiceExt;
 
 use crate::api::{App, Clock, Limiter, router};
 use crate::auth::testing::{jwk, proof, sign};
-use crate::auth::{Replays, Sessions, Tokens};
+use crate::auth::{Sessions, Tokens};
 use crate::hub::{Event, Hub};
 use crate::store::Store;
 use crate::tickets::TicketKey;
@@ -56,7 +56,6 @@ fn app_in(dir: &std::path::Path, authority: &str, issuer: &SigningKey) -> Arc<Ap
         tokens,
         sessions: Sessions::default(),
         tickets: TicketKey::load_or_create(&dir.join("ticket-key")).unwrap(),
-        replays: Replays::default(),
         hub: Hub::default(),
         limiter: Limiter::default(),
         clock: Clock::default(),
@@ -1019,7 +1018,7 @@ async fn removed_members_are_closed_at_the_next_renewal() {
     // Carol holds a ticket she has not used yet.
     let (_, pending) = t.ticket(&room, 3).await;
 
-    let (events_id, mut events) = t.app.hub.join(&account(1)).unwrap();
+    let (events_id, mut events) = t.app.hub.join(&account(1), "s1").unwrap();
     let remove = |n: u8| format!("/v1/rooms/{room}/members/{}/remove", account(n));
     assert_eq!(t.call("POST", &remove(2), 1, None).await.0, StatusCode::OK);
     assert_eq!(t.call("POST", &remove(3), 1, None).await.0, StatusCode::OK);
@@ -1427,6 +1426,11 @@ async fn signed_out_and_deleted_accounts_are_refused_before_their_tokens_run_out
     for n in [1, 2] {
         assert_eq!(t.call("GET", "/v1/rooms", n, None).await.0, StatusCode::OK);
     }
+    // Live connections: Alice's, Bob's, and Dave's in a session never seen
+    // by the API.
+    let (_, mut alice) = t.app.hub.join(&account(1), "s1").unwrap();
+    let (_, mut bob) = t.app.hub.join(&account(2), "s2").unwrap();
+    let (_, mut dave) = t.app.hub.join(&account(4), "s4").unwrap();
     // Alice signed out (her session s1 ended); Dave's account was deleted
     // before he ever came here.
     let now = t.app.clock.now();
@@ -1435,6 +1439,12 @@ async fn signed_out_and_deleted_accounts_are_refused_before_their_tokens_run_out
     crate::api::check_sessions(&t.app, &http, &accounts).await;
     let since = crate::api::purge_deleted(&t.app, &http, &accounts, 0).await;
     assert_eq!(since, now);
+    // Their live connections closed; Bob's stays open.
+    use tokio::sync::mpsc::error::TryRecvError;
+    assert_eq!(alice.try_recv(), Err(TryRecvError::Disconnected));
+    assert_eq!(dave.try_recv(), Err(TryRecvError::Disconnected));
+    assert_eq!(bob.try_recv(), Err(TryRecvError::Empty));
+    assert_eq!(t.app.hub.sessions(), vec!["s2".to_owned()]);
     let (status, body) = t.call("GET", "/v1/rooms", 1, None).await;
     assert_eq!(
         (status, error(&body)),
@@ -1533,5 +1543,79 @@ async fn a_deleted_account_leaves_nothing_behind() {
     assert_eq!(
         t.call("GET", "/v1/rooms", 2, None).await.0,
         StatusCode::UNAUTHORIZED
+    );
+}
+
+#[test]
+fn a_proof_stays_single_use_across_a_restart() {
+    let dir = tempfile::tempdir().unwrap();
+    let jti = "0123456789abcdef";
+    let iat = 1_000_000;
+    let store = Store::open(dir.path(), AUTHORITY).unwrap();
+    assert!(store.first_proof(jti, iat).unwrap());
+    assert!(!store.first_proof(jti, iat).unwrap());
+    drop(store);
+    // The service restarts while the proof is still fresh.
+    let store = Store::open(dir.path(), AUTHORITY).unwrap();
+    assert!(!store.first_proof(jti, iat).unwrap());
+    store.sweep(iat + crate::auth::PROOF_WINDOW).unwrap();
+    assert!(!store.first_proof(jti, iat).unwrap());
+    // Once the proof is stale, and refused for that, its ID is let go.
+    store.sweep(iat + crate::auth::PROOF_WINDOW + 1).unwrap();
+    assert!(store.first_proof(jti, iat).unwrap());
+}
+
+#[tokio::test]
+async fn an_account_exports_what_worlds_keeps_about_it() {
+    let t = setup();
+    let unsigned = Request::get("/v1/export").body(Body::empty()).unwrap();
+    assert_eq!(t.send(unsigned).await.0, StatusCode::UNAUTHORIZED);
+    let room = t.room_with(&[2]).await;
+    t.register(1).await;
+    t.register(2).await;
+    let session = t.host(&room, 4).await;
+    let session_id = session["id"].as_str().unwrap();
+    let (_, grant) = t.ticket(&room, 2).await;
+    let ticket = grant["ticket"].as_str().unwrap();
+    let (status, admitted) = t.admit(session_id, ticket, &endpoint(2)).await;
+    assert_eq!(status, StatusCode::OK, "{admitted}");
+
+    let (status, alice) = t.call("GET", "/v1/export", 1, None).await;
+    assert_eq!(status, StatusCode::OK, "{alice}");
+    assert_eq!(alice["devices"][0]["name"], "Desk");
+    assert_eq!(alice["rooms"][0]["id"], room.as_str());
+    assert_eq!(alice["rooms"][0]["world"], WORLD);
+    assert_eq!(alice["memberships"][0]["role"], "owner");
+    assert_eq!(alice["invites"].as_array().unwrap().len(), 1);
+    assert_eq!(alice["hostedSessions"][0]["id"], session_id);
+    assert_eq!(alice["admissions"], json!([]));
+
+    let (_, bob) = t.call("GET", "/v1/export", 2, None).await;
+    assert_eq!(bob["rooms"], json!([]));
+    assert_eq!(bob["memberships"][0]["room"], room.as_str());
+    assert_eq!(bob["memberships"][0]["nick"], "Bob");
+    assert_eq!(bob["admissions"][0]["session"], session_id);
+    assert_eq!(bob["hostedSessions"], json!([]));
+    assert_eq!(bob["invites"], json!([]));
+
+    // Someone outside has nothing, and asks ten times an hour.
+    for _ in 0..10 {
+        let (status, carol) = t.call("GET", "/v1/export", 3, None).await;
+        assert_eq!(status, StatusCode::OK);
+        for list in [
+            "devices",
+            "rooms",
+            "memberships",
+            "invites",
+            "hostedSessions",
+            "admissions",
+        ] {
+            assert_eq!(carol[list], json!([]), "{list}");
+        }
+    }
+    let (status, body) = t.call("GET", "/v1/export", 3, None).await;
+    assert_eq!(
+        (status, error(&body)),
+        (StatusCode::TOO_MANY_REQUESTS, "too_many")
     );
 }

@@ -60,6 +60,13 @@ it). What the launcher puts into an installation is listed in its `content.lock.
    on the server, so nginx takes a pack's archive (up to 91 MB) on `/v1/packs` and its
    parts (up to 65 MB each) on `/v1/packs/uploads/`.
 
+   Publishing needs a confirmed email once the account service sends letters, as
+   friends does (`LAPI_MODS_REQUIRE_EMAIL` in the service's environment: `auto` by
+   default, `1` always, `0` never). An own pack's slug starts with `player-`; the packs
+   published before that get the prefix at the first start of this version (a slug
+   another project holds gets a tail of the pack's ID). `slug <project> <slug>` changes
+   one by hand if needed.
+
    A room pack (worlds with mods, W12) comes the same way with `?room=true` and is
    checked the same. It is never searched, shown or listed among the account's packs;
    its guests install it by the version ID the world's session at worlds.lapi.sh names

@@ -30,11 +30,13 @@ use std::time::Duration;
 use sha1::Digest as _;
 
 use super::coordinate::Coordinate;
-use super::manifest::{InstallSide, Installer, LoaderManifest, installer_entry, maven_path};
+use super::manifest::{
+    InstallSide, Installer, LoaderManifest, MAVEN_PREFIX, installer_entry, maven_path,
+};
 use crate::download::{CancelToken, resolve_managed_path};
 use crate::error::{ErrorCode, LauncherError, LauncherResult};
 use crate::install::descriptor::{unsupported, validate_relative_path};
-use crate::install::plan::GamePlan;
+use crate::install::plan::{GamePlan, PlannedArtifact};
 use crate::storage::atomic;
 use crate::storage::models::{ArtifactRole, HashAlgorithm, LockedArtifact};
 use crate::storage::paths::{DataRoot, Sha1};
@@ -86,6 +88,8 @@ struct Step<'a> {
     game_jar: PathBuf,
     /// Mojang's mappings for the side: DATA_ROOT-relative path and SHA-1.
     mappings: Option<(String, Sha1)>,
+    /// The game's libraries, for `DEOBF_REALMS` (client only).
+    libraries: &'a [PlannedArtifact],
 }
 
 /// Lines of a tool's output kept for the console when it fails.
@@ -193,6 +197,7 @@ pub fn prepare(inputs: &Inputs<'_>) -> LauncherResult<Vec<LockedArtifact>> {
                 .mappings
                 .as_ref()
                 .map(|m| (m.path.clone(), m.sha1.clone())),
+            libraries: &inputs.plan.libraries,
         };
         std::fs::create_dir_all(&inputs.work_dir).map_err(|e| storage_error(&e))?;
         let result = run_processors(&step, installer, &installer_path, &bytes);
@@ -233,6 +238,7 @@ pub fn prepare_server(inputs: &ServerInputs<'_>) -> LauncherResult<Vec<LockedArt
         side: InstallSide::Server,
         game_jar: inputs.server_jar.clone(),
         mappings: inputs.mappings.clone(),
+        libraries: &[],
     };
     std::fs::create_dir_all(&inputs.work_dir).map_err(|e| storage_error(&e))?;
     let result = run_processors(&step, installer, &installer_path, &bytes);
@@ -427,11 +433,17 @@ fn run_processors(
             ));
             continue;
         }
-        let args = processor
+        // A tool may keep a stale output: jarsplitter 1.1.0 trusts its `.cache`
+        // file and leaves an output an older Java wrote with the wrong bytes.
+        for (file, _) in &outputs {
+            remove_stale(root, file)?;
+        }
+        let mut args = processor
             .args
             .iter()
             .map(|a| fill(root, a, &values))
             .collect::<LauncherResult<Vec<_>>>()?;
+        realms_arguments(inputs, &mut args)?;
         if copy_mappings(inputs, &args)? {
             (inputs.log)(format!(
                 "{} installer step {step}/{total}: {} mappings from the verified download",
@@ -479,6 +491,68 @@ fn run_processors(
             }
         }
     }
+    Ok(())
+}
+
+/// Removes a declared output that does not match and the tool's `.cache` file
+/// next to it, so the tool writes the output again.
+fn remove_stale(root: &DataRoot, file: &Path) -> LauncherResult<()> {
+    if !crate::storage::paths::is_within(&root.maven_root(), file) {
+        return Ok(());
+    }
+    let mut cache = file.as_os_str().to_owned();
+    cache.push(".cache");
+    for path in [file.to_path_buf(), PathBuf::from(cache)] {
+        match std::fs::remove_file(&path) {
+            Ok(()) => {}
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => {}
+            Err(e) => return Err(storage_error(&e)),
+        }
+    }
+    Ok(())
+}
+
+/// `DEOBF_REALMS` (Forge 1.14.3) reads the game's version JSON next to
+/// `--mc` and the libraries from `../../../libraries`, as in a vanilla game
+/// folder. The launcher's layout differs, so the task gets a JSON naming the
+/// game's Realms library and the Maven tree it is in.
+fn realms_arguments(inputs: &Step<'_>, args: &mut Vec<String>) -> LauncherResult<()> {
+    let task = args
+        .windows(2)
+        .find(|w| w[0] == "--task")
+        .map(|w| w[1].as_str());
+    if task != Some("DEOBF_REALMS") || args.iter().any(|a| a == "--json" || a == "--libs") {
+        return Ok(());
+    }
+    let prefix = format!("{MAVEN_PREFIX}/");
+    let libraries: Vec<serde_json::Value> = inputs
+        .libraries
+        .iter()
+        .filter_map(|library| {
+            let name = library.provenance.as_deref()?;
+            let path = library.path.strip_prefix(&prefix)?;
+            name.starts_with("com.mojang:realms:").then(|| {
+                serde_json::json!({
+                    "name": name,
+                    "downloads": {"artifact": {
+                        "path": path,
+                        "url": library.url,
+                        "sha1": library.sha1.as_str(),
+                        "size": library.size,
+                    }},
+                })
+            })
+        })
+        .collect();
+    let json = inputs.work_dir.join("realms-version.json");
+    let text = serde_json::json!({ "libraries": libraries }).to_string();
+    std::fs::write(&json, text).map_err(|e| storage_error(&e))?;
+    args.extend([
+        "--json".to_owned(),
+        path_text(&json)?,
+        "--libs".to_owned(),
+        path_text(&inputs.root.maven_root())?,
+    ]);
     Ok(())
 }
 
@@ -760,6 +834,26 @@ mod tests {
         ] {
             assert!(!java_too_old(new), "{new}");
         }
+    }
+
+    #[test]
+    fn a_stale_output_and_its_cache_are_removed_inside_the_maven_tree_only() {
+        let dir = tempfile::tempdir().unwrap();
+        let root = DataRoot::new(dir.path().to_path_buf()).unwrap();
+        let folder = root.maven_root().join("net/minecraft/client/1.13.2");
+        std::fs::create_dir_all(&folder).unwrap();
+        let slim = folder.join("client-1.13.2-slim.jar");
+        let cache = folder.join("client-1.13.2-slim.jar.cache");
+        std::fs::write(&slim, b"old").unwrap();
+        std::fs::write(&cache, b"Output: old").unwrap();
+        remove_stale(&root, &slim).unwrap();
+        assert!(!slim.exists() && !cache.exists());
+        remove_stale(&root, &slim).unwrap();
+
+        let outside = dir.path().join("outside.jar");
+        std::fs::write(&outside, b"keep").unwrap();
+        remove_stale(&root, &outside).unwrap();
+        assert!(outside.exists());
     }
 
     #[test]

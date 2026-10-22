@@ -1657,6 +1657,7 @@ export type Messages = {
       readonly showAll: string;
       readonly matching: (values: { count: number; total: string | number }) => string;
       readonly held: string;
+      readonly playerPack: string;
       readonly report: string;
       readonly reportReason: string;
       readonly reportReasons: {

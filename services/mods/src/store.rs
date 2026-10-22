@@ -502,6 +502,61 @@ fn take_twin_slugs(db: &mut Connection) -> Result<()> {
     tx.commit().map_err(sql)
 }
 
+/// Gives the own packs published before their slugs had a prefix
+/// (`own::SLUG_PREFIX`) one now, so the plain name is left to the project a
+/// catalog brings in.
+fn prefix_own_slugs(db: &mut Connection) -> Result<()> {
+    let prefix = crate::own::SLUG_PREFIX;
+    let tx = db.transaction().map_err(sql)?;
+    let plain: Vec<(String, String)> = {
+        let mut q = tx
+            .prepare(
+                "SELECT p.id, p.slug FROM project p JOIN project_source s ON s.project_id = p.id
+                 WHERE s.source = 'own' AND substr(p.slug, 1, length(?1)) != ?1",
+            )
+            .map_err(sql)?;
+        q.query_map([prefix], |r| Ok((r.get(0)?, r.get(1)?)))
+            .map_err(sql)?
+            .collect::<std::result::Result<_, _>>()
+            .map_err(sql)?
+    };
+    for (id, slug) in plain {
+        let mut wanted = format!("{prefix}{slug}");
+        let taken = tx
+            .query_row("SELECT 1 FROM project WHERE slug = ?1", [&wanted], |_| {
+                Ok(())
+            })
+            .optional()
+            .map_err(sql)?
+            .is_some();
+        if taken {
+            wanted = format!("{wanted}-{}", &id[id.len().saturating_sub(6)..]);
+        }
+        tx.execute(
+            "UPDATE project SET slug = ?2 WHERE id = ?1",
+            params![id, wanted],
+        )
+        .map_err(sql)?;
+        tx.execute(
+            "UPDATE project_fts SET slug = ?2 WHERE project_id = ?1",
+            params![id, slug_words(&wanted, true)],
+        )
+        .map_err(sql)?;
+    }
+    tx.commit().map_err(sql)
+}
+
+/// A slug as the search index holds it: its words, without the prefix of an
+/// own pack's slug (searching "player" would find every own pack).
+fn slug_words(slug: &str, own: bool) -> String {
+    let slug = if own {
+        slug.strip_prefix(crate::own::SLUG_PREFIX).unwrap_or(slug)
+    } else {
+        slug
+    };
+    slug.replace(['-', '_'], " ")
+}
+
 fn sql(e: rusqlite::Error) -> String {
     format!("database: {e}")
 }
@@ -657,6 +712,7 @@ impl Store {
         db.execute_batch(SCHEMA).map_err(sql)?;
         migrate(&db)?;
         take_twin_slugs(&mut db)?;
+        prefix_own_slugs(&mut db)?;
         for (a, b) in mod_meta::CLASHES {
             db.execute(
                 "INSERT OR IGNORE INTO clash (a, b, listed, changed) VALUES (?1, ?2, 1, 0)",
@@ -1013,7 +1069,7 @@ impl Store {
                     .collect::<Vec<_>>()
                     .join(" "),
                 p.categories.join(" "),
-                slug.replace(['-', '_'], " ")
+                slug_words(&slug, p.source == "own")
             ],
         )
         .map_err(sql)?;
@@ -2081,6 +2137,84 @@ impl Store {
         .map_err(sql)?
         .collect::<std::result::Result<_, _>>()
         .map_err(sql)
+    }
+
+    /// Everything kept about an account (D-064): its requests to add to the
+    /// catalog, its own packs (room packs too) with their versions, and its
+    /// reports. The newest 10,000 of each.
+    pub fn export_account(&self, account: &str) -> Result<serde_json::Value> {
+        let db = self.db();
+        let rows = |query: &str,
+                    row: &dyn Fn(&rusqlite::Row<'_>) -> rusqlite::Result<serde_json::Value>|
+         -> Result<Vec<serde_json::Value>> {
+            let mut q = db.prepare(query).map_err(sql)?;
+            q.query_map([account], |r| row(r))
+                .map_err(sql)?
+                .collect::<std::result::Result<_, _>>()
+                .map_err(sql)
+        };
+        let requests = rows(
+            "SELECT id, input, state, error, project_id, bytes, created, finished
+             FROM import_request WHERE account_id = ?1 ORDER BY created DESC LIMIT 10000",
+            &|r| {
+                Ok(serde_json::json!({
+                    "id": r.get::<_, String>(0)?,
+                    "input": r.get::<_, String>(1)?,
+                    "state": r.get::<_, String>(2)?,
+                    "error": r.get::<_, Option<String>>(3)?,
+                    "project": r.get::<_, Option<String>>(4)?,
+                    "bytes": r.get::<_, i64>(5)?,
+                    "created": r.get::<_, i64>(6)?,
+                    "finished": r.get::<_, Option<i64>>(7)?,
+                }))
+            },
+        )?;
+        let packs = rows(
+            "SELECT o.project_id, p.slug, p.title, p.status, o.created
+             FROM own_pack o JOIN project p ON p.id = o.project_id
+             WHERE o.account_id = ?1 ORDER BY o.created DESC LIMIT 10000",
+            &|r| {
+                Ok(serde_json::json!({
+                    "id": r.get::<_, String>(0)?,
+                    "slug": r.get::<_, String>(1)?,
+                    "title": r.get::<_, String>(2)?,
+                    "status": r.get::<_, String>(3)?,
+                    "created": r.get::<_, i64>(4)?,
+                }))
+            },
+        )?;
+        let versions = rows(
+            "SELECT o.version_id, o.project_id, v.number, o.bytes, o.created
+             FROM own_version o LEFT JOIN version v ON v.id = o.version_id
+             WHERE o.account_id = ?1 ORDER BY o.created DESC LIMIT 10000",
+            &|r| {
+                Ok(serde_json::json!({
+                    "id": r.get::<_, String>(0)?,
+                    "pack": r.get::<_, String>(1)?,
+                    "number": r.get::<_, Option<String>>(2)?,
+                    "bytes": r.get::<_, i64>(3)?,
+                    "created": r.get::<_, i64>(4)?,
+                }))
+            },
+        )?;
+        let reports = rows(
+            "SELECT project_id, reason, text, created FROM report
+             WHERE account_id = ?1 ORDER BY created DESC LIMIT 10000",
+            &|r| {
+                Ok(serde_json::json!({
+                    "pack": r.get::<_, String>(0)?,
+                    "reason": r.get::<_, String>(1)?,
+                    "text": r.get::<_, String>(2)?,
+                    "created": r.get::<_, i64>(3)?,
+                }))
+            },
+        )?;
+        Ok(serde_json::json!({
+            "requests": requests,
+            "packs": packs,
+            "versions": versions,
+            "reports": reports,
+        }))
     }
 
     /// Hides an own pack or shows it again, as its author asks; a pack the

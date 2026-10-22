@@ -73,9 +73,9 @@ conversation (the answer stays visible).
 - `pow` shows the proof of work's difficulty, `pow 22` raises it (each bit
   doubles the work; 20 is about a second on a player's computer, 28 at most).
 
-Limits that hold without you: 5 reviews an hour and 15 a day per network, 10 a
-day per install and per account, 300 an hour and 1000 a day in all, 10 GiB of
-files.
+Limits that hold without you: 5 reviews an hour and 15 a day per network (an
+address or its IPv6 /64), five times that per IPv6 /48, 10 a day per install
+and per account, 300 an hour and 1000 a day in all, 10 GiB of files.
 
 ## Privacy
 
@@ -83,4 +83,7 @@ files.
   addresses and server names before it goes anywhere else.
 - A player can delete their own review in the launcher. Asked by mail, delete
   by install ID (Settings → Privacy shows it): `r forget <install-id>`.
+- Accounts → _Download my data_ includes the reviews sent with the launcher account
+  (`GET /v1/export`): what was written, the answers, and the files' names and sizes.
+  Notes made with `note`, spam marks and network hashes are not in it.
 - `--translate` sends the message to DeepL; use it only when needed.

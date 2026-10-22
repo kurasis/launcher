@@ -122,6 +122,53 @@ pub async fn fetch_jwks(http: &reqwest::Client, url: &str) -> Result<serde_json:
     response.json().await.map_err(|e| e.to_string())
 }
 
+/// When publishing a pack asks for a confirmed email: never (`0`), always
+/// (`1`), or once the account service sends letters (`auto`, the default),
+/// as friends does.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum EmailMode {
+    Off,
+    On,
+    Auto,
+}
+
+pub struct EmailRule {
+    pub mode: EmailMode,
+    /// The account service sends letters (asked every 15 seconds).
+    mail_sent: std::sync::atomic::AtomicBool,
+}
+
+impl EmailRule {
+    pub fn new(mode: EmailMode) -> Self {
+        Self {
+            mode,
+            mail_sent: std::sync::atomic::AtomicBool::new(false),
+        }
+    }
+
+    /// The rule a setting names; anything else is `auto`.
+    pub fn named(setting: &str) -> Self {
+        Self::new(match setting {
+            "0" => EmailMode::Off,
+            "1" => EmailMode::On,
+            _ => EmailMode::Auto,
+        })
+    }
+
+    pub fn required(&self) -> bool {
+        match self.mode {
+            EmailMode::Off => false,
+            EmailMode::On => true,
+            EmailMode::Auto => self.mail_sent.load(std::sync::atomic::Ordering::Relaxed),
+        }
+    }
+
+    pub fn set_mail_sent(&self, sent: bool) {
+        self.mail_sent
+            .store(sent, std::sync::atomic::Ordering::Relaxed);
+    }
+}
+
 /// Sessions seen in tokens, those the account service says ended, and
 /// accounts it says were deleted. A token is refused once its session ended
 /// or its account is gone, though its signature still holds until it runs
@@ -233,4 +280,20 @@ pub async fn deleted(
             uuid::Uuid::parse_str(id).is_ok_and(|u| u.hyphenated().to_string() == *id)
         })
         .collect())
+}
+
+/// Whether the account service sends letters, from its internal API.
+pub async fn mail_sent(http: &reqwest::Client, base: &str) -> Result<bool, String> {
+    let body: serde_json::Value = http
+        .get(format!("{base}/internal/v1/mail"))
+        .send()
+        .await
+        .and_then(reqwest::Response::error_for_status)
+        .map_err(|e| e.without_url().to_string())?
+        .json()
+        .await
+        .map_err(|e| e.without_url().to_string())?;
+    body["sending"]
+        .as_bool()
+        .ok_or_else(|| "no answer about letters".to_owned())
 }

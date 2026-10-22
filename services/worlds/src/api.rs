@@ -24,7 +24,7 @@ use serde::de::DeserializeOwned;
 use serde_json::{Value, json};
 use sha2::{Digest, Sha256};
 
-use crate::auth::{Claims, Replays, Sessions, Tokens, verify_proof};
+use crate::auth::{Claims, Sessions, Tokens, verify_proof};
 use crate::hub::{Event, Hub};
 use crate::store::{self, Moderation, Role, Store};
 use crate::text;
@@ -90,7 +90,6 @@ pub struct App {
     /// Sign-outs and deleted accounts, from the account service.
     pub sessions: Sessions,
     pub tickets: TicketKey,
-    pub replays: Replays,
     pub hub: Hub,
     pub limiter: Limiter,
     pub clock: Clock,
@@ -193,7 +192,7 @@ fn proof_key(
         &url,
         &caller.token,
         app.clock.now(),
-        &app.replays,
+        |jti, iat| app.store.first_proof(jti, iat).unwrap_or(false),
     )
     .ok_or_else(invalid)
 }
@@ -384,6 +383,13 @@ async fn create_room(State(app): State<Arc<App>>, headers: HeaderMap, bytes: Byt
         app.hub.tell(&me.claims.sub, &Event::Rooms);
     }
     answer(made)
+}
+
+/// Everything worlds keeps about the caller (D-064).
+async fn export(State(app): State<Arc<App>>, headers: HeaderMap) -> Response {
+    let me = me!(app, headers);
+    limit!(app, me, "export", 10, 3600);
+    answer(app.store.export(&me.claims.sub))
 }
 
 async fn rooms(State(app): State<Arc<App>>, headers: HeaderMap) -> Response {
@@ -960,13 +966,15 @@ async fn relay_allow(State(app): State<Arc<App>>, headers: HeaderMap) -> Respons
 
 // Live hints.
 
+/// The connection lasts as long as its token (the launcher comes back with a
+/// fresh one), or until its session ends or its account is deleted.
 async fn live(
     State(app): State<Arc<App>>,
     headers: HeaderMap,
     upgrade: WebSocketUpgrade,
 ) -> Response {
     let me = me!(app, headers);
-    let Some((id, events)) = app.hub.join(&me.claims.sub) else {
+    let Some((id, events)) = app.hub.join(&me.claims.sub, &me.claims.sid) else {
         return refuse("too_many");
     };
     let lasts =
@@ -1017,14 +1025,20 @@ async fn serve_socket(
 
 // The account service.
 
-/// Asks the account service which recently seen sessions ended and refuses
-/// their tokens from now on. When it cannot be asked, tokens hold until they
-/// run out.
+/// Asks the account service which recently seen sessions ended, refuses
+/// their tokens from now on and closes their live connections. When it
+/// cannot be asked, tokens hold until they run out.
 pub async fn check_sessions(app: &App, http: &reqwest::Client, accounts: &str) {
-    let sessions = app.sessions.recent();
+    let mut sessions = app.sessions.recent();
+    sessions.extend(app.hub.sessions());
+    sessions.sort();
+    sessions.dedup();
     for chunk in sessions.chunks(500) {
         match crate::auth::ended(http, accounts, chunk).await {
-            Ok(ended) => app.sessions.end(&ended),
+            Ok(ended) => {
+                app.sessions.end(&ended);
+                app.hub.end(&ended);
+            }
             Err(e) => {
                 eprintln!("asking which sessions ended failed: {e}");
                 return;
@@ -1057,6 +1071,7 @@ pub fn purge(app: &App, deleted: &[(String, i64)], since: i64) -> i64 {
     app.sessions.forget(&lately);
     let mut newest = since;
     for (account, at) in deleted {
+        app.hub.end_account(account);
         match app.store.purge(account, now) {
             Ok(rooms) => {
                 for (room, accounts) in rooms {
@@ -1107,6 +1122,7 @@ pub fn router(app: Arc<App>) -> Router {
             post(release),
         )
         .route("/v1/live", get(live))
+        .route("/v1/export", get(export))
         .layer(DefaultBodyLimit::max(16 * 1024))
         .with_state(app)
 }
