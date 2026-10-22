@@ -372,7 +372,8 @@ impl Worlds {
 
     /// The Minecraft versions a world can be made for, newest first: the
     /// catalog's releases from 1.7.6 on, and its snapshots from 14w17a when
-    /// `snapshots`. Empty without a catalog.
+    /// `snapshots`. Empty without a catalog. Not the versions of our own list
+    /// (D-073), which get a switch of their own.
     pub async fn versions(&self, snapshots: bool) -> Vec<String> {
         let Some(metadata) = &self.metadata else {
             return Vec::new();
@@ -382,6 +383,7 @@ impl Worlds {
             .map(|c| c.versions)
             .unwrap_or_default()
             .into_iter()
+            .filter(|e| e.special.is_none())
             .filter(|e| match e.version_type.as_str() {
                 "release" => true,
                 "snapshot" => snapshots,

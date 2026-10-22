@@ -342,14 +342,25 @@ fn setup(app: &mut tauri::App) -> Result<(), Box<dyn std::error::Error>> {
         ));
     }
     let metadata = match state.data_root() {
-        Some(root) => Some(Arc::new(catalog::source::MetadataService::new(
-            net::PublicClient::new(
-                net::SourcePolicy::MojangMetadata,
-                &app.package_info().version.to_string(),
+        Some(root) => Some(Arc::new(
+            catalog::source::MetadataService::new(
+                net::PublicClient::new(
+                    net::SourcePolicy::MojangMetadata,
+                    &app.package_info().version.to_string(),
+                )
+                .map_err(|e| e.message)?,
+                root,
             )
-            .map_err(|e| e.message)?,
-            root,
-        ))),
+            // The versions Mojang's list does not have, from our update
+            // server (D-073).
+            .with_extra(
+                Box::new(
+                    net::PublicClient::new(net::SourcePolicy::ExtraVersions, &version)
+                        .map_err(|e| e.message)?,
+                ),
+                update::public_key(),
+            ),
+        )),
         None => None,
     };
     let source: Option<Arc<install::service::LiveSource>> = match &metadata {

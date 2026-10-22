@@ -305,3 +305,195 @@ async fn plan_requires_a_verified_asset_index() {
             .is_err()
     );
 }
+
+/// Our list of versions Mojang's does not have (D-073), from the repository.
+const EXTRA_DATA: &[u8] = include_bytes!("../../../../data/extra-versions.json");
+
+/// A version of the repository's data: its list entry and version file.
+fn extra_version(id: &str) -> (serde_json::Value, Vec<u8>) {
+    let data: serde_json::Value = serde_json::from_slice(EXTRA_DATA).unwrap();
+    let version = data["versions"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|v| v["id"] == id)
+        .unwrap()
+        .clone();
+    let descriptor = version["descriptor"].as_str().unwrap().as_bytes().to_vec();
+    let mut entry = extra::tests::listed(id, version["sha1"].as_str().unwrap());
+    entry["name"] = version["name"].clone();
+    entry["group"] = version["group"].clone();
+    entry["type"] = version["type"].clone();
+    entry["size"] = json!(descriptor.len());
+    (entry, descriptor)
+}
+
+fn extra_service(
+    keys: &extra::tests::Keys,
+    key: bool,
+) -> (
+    tempfile::TempDir,
+    FixtureFetcher,
+    FixtureFetcher,
+    MetadataService<FixtureFetcher>,
+) {
+    let (dir, mojang, service) = service();
+    let ours = FixtureFetcher::default();
+    let service = service.with_extra(Box::new(ours.clone()), key.then_some(keys.public.as_str()));
+    (dir, mojang, ours, service)
+}
+
+fn serve_list(ours: &FixtureFetcher, keys: &extra::tests::Keys, serial: u64, ids: &[&str]) {
+    let mut versions = Vec::new();
+    for id in ids {
+        let (entry, descriptor) = extra_version(id);
+        ours.set(
+            &format!(
+                "https://upd.lapi.sh/versions/meta/{}.json",
+                entry["sha1"].as_str().unwrap()
+            ),
+            Ok((descriptor, None)),
+        );
+        versions.push(entry);
+    }
+    let list = extra::tests::list(serial, versions);
+    ours.set(
+        extra::URL,
+        Ok((
+            extra::tests::signed(keys, &list),
+            Some(format!("\"{serial}\"")),
+        )),
+    );
+}
+
+fn ids(view: &CatalogView) -> Vec<&str> {
+    view.versions.iter().map(|v| v.id.as_str()).collect()
+}
+
+#[tokio::test]
+async fn our_versions_follow_mojangs_with_version_files_from_our_server() {
+    let keys = extra::tests::keys();
+    let (dir, mojang, ours, service) = extra_service(&keys, true);
+    serve_list(&ours, &keys, 5, &["24w14potato", "2.0-blue"]);
+    let view = service.supported_versions(false).await;
+    assert!(view.error.is_none());
+    assert_eq!(
+        ids(&view),
+        [
+            "26.4-snapshot-4",
+            "26.3",
+            "1.21.1",
+            "24w14potato",
+            "2.0-blue"
+        ]
+    );
+    let blue = view.versions.last().unwrap();
+    let special = blue.special.as_ref().unwrap();
+    assert_eq!(
+        (special.name.as_str(), special.group.as_str()),
+        ("2.0 Blue", "joke")
+    );
+    assert!(!blue.verified);
+    assert!(view.versions[..3].iter().all(|v| v.special.is_none()));
+
+    let (catalog, ..) = service.catalog(false).await;
+    let entry = catalog.unwrap().find("2.0-blue").unwrap().clone();
+    assert!(entry.url.starts_with("https://upd.lapi.sh/versions/meta/"));
+    let bytes = service.descriptor(&entry).await.unwrap();
+    assert_eq!(sha1_hex(&bytes), entry.sha1.as_str());
+    assert_eq!(ours.calls_to(&entry.url), 1);
+    assert_eq!(mojang.calls_to(&entry.url), 0);
+    assert!(dir.path().join("metadata/extra-versions.json").exists());
+
+    // An installed version's file is pinned by its lock: no list is needed.
+    std::fs::remove_dir_all(dir.path().join("metadata/versions")).unwrap();
+    let (_dir, _mojang, ours, service) = extra_service(&keys, false);
+    ours.set(&entry.url, Ok((bytes.clone(), None)));
+    assert_eq!(service.descriptor(&entry).await.unwrap(), bytes);
+    // Without our server, our addresses are not trusted.
+    let (_dir, mojang, plain) = self::service();
+    mojang.set(&entry.url, Ok((bytes, None)));
+    assert_eq!(
+        plain.descriptor(&entry).await.unwrap_err().code,
+        ErrorCode::UnsupportedVersionMetadata
+    );
+    assert_eq!(mojang.calls_to(&entry.url), 0);
+}
+
+#[tokio::test]
+async fn our_list_is_taken_only_signed_and_never_older() {
+    let keys = extra::tests::keys();
+    let (_dir, _mojang, ours, service) = extra_service(&keys, true);
+    serve_list(&ours, &keys, 5, &["2.0-blue"]);
+    assert_eq!(
+        ids(&service.supported_versions(false).await).last(),
+        Some(&"2.0-blue")
+    );
+    // Fresh: not asked again; a refresh asks with the ETag it has.
+    service.supported_versions(false).await;
+    assert_eq!(ours.calls_to(extra::URL), 1);
+    service.supported_versions(true).await;
+    let calls = ours.calls.lock().unwrap().clone();
+    assert_eq!(calls.last().unwrap().1.as_deref(), Some("\"5\""));
+
+    // An older list, one signed with another key, junk, or no answer: the
+    // list kept stays.
+    serve_list(&ours, &keys, 4, &["2.0-red"]);
+    let other = extra::tests::keys();
+    let view = service.supported_versions(true).await;
+    assert_eq!(view.versions.last().unwrap().id, "2.0-blue");
+    serve_list(&ours, &other, 9, &["2.0-red"]);
+    assert_eq!(
+        service
+            .supported_versions(true)
+            .await
+            .versions
+            .last()
+            .unwrap()
+            .id,
+        "2.0-blue"
+    );
+    ours.set(extra::URL, Ok((b"{\"list\":\"[]\"}".to_vec(), None)));
+    assert_eq!(
+        service
+            .supported_versions(true)
+            .await
+            .versions
+            .last()
+            .unwrap()
+            .id,
+        "2.0-blue"
+    );
+    ours.set(
+        extra::URL,
+        Err(LauncherError::new(ErrorCode::NetworkError, "down")),
+    );
+    let view = service.supported_versions(true).await;
+    assert!(view.error.is_none(), "our list never fails the catalog");
+    assert_eq!(view.versions.last().unwrap().id, "2.0-blue");
+
+    // A newer one is taken.
+    serve_list(&ours, &keys, 6, &["2.0-red"]);
+    let view = service.supported_versions(true).await;
+    assert_eq!(view.versions.last().unwrap().id, "2.0-red");
+    assert!(!ids(&view).contains(&"2.0-blue"));
+
+    // A build without the update key takes no list at all.
+    let (_dir, _mojang, ours, service) = extra_service(&keys, false);
+    serve_list(&ours, &keys, 5, &["2.0-blue"]);
+    let view = service.supported_versions(false).await;
+    assert!(view.versions.iter().all(|v| v.special.is_none()));
+    assert_eq!(ours.calls_to(extra::URL), 0);
+}
+
+#[tokio::test]
+async fn a_damaged_kept_list_is_asked_again() {
+    let keys = extra::tests::keys();
+    let (dir, _mojang, ours, service) = extra_service(&keys, true);
+    serve_list(&ours, &keys, 5, &["2.0-blue"]);
+    service.supported_versions(false).await;
+    std::fs::write(dir.path().join("metadata/extra-versions.json"), b"tampered").unwrap();
+    let view = service.supported_versions(false).await;
+    assert_eq!(view.versions.last().unwrap().id, "2.0-blue");
+    assert_eq!(ours.calls_to(extra::URL), 2);
+}

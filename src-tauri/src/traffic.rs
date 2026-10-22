@@ -99,7 +99,9 @@ static FILE: Mutex<()> = Mutex::new(());
 
 fn slot(source: SourcePolicy) -> usize {
     match source {
-        SourcePolicy::MojangArtifacts => 0,
+        // The jars of versions Mojang's list does not have count as the game's
+        // (D-073).
+        SourcePolicy::MojangArtifacts | SourcePolicy::ExtraVersions => 0,
         SourcePolicy::Adoptium => 1,
         // The skins mod counts with the loaders' files (D-065).
         SourcePolicy::ModLoaders | SourcePolicy::SkinsMod => 2,

@@ -13,8 +13,8 @@ use serde::{Deserialize, Serialize};
 use sha1::Digest;
 use tokio::sync::Mutex;
 
-use super::compatibility;
 use super::manifest::{self, Catalog, CatalogEntry};
+use super::{compatibility, extra};
 use crate::error::{ErrorCode, LauncherError, LauncherResult};
 use crate::install::descriptor::{self, MAX_DESCRIPTOR_BYTES};
 use crate::install::plan::{self, GamePlan, LibraryLayout, MAX_ASSET_INDEX_BYTES, PlannedArtifact};
@@ -133,12 +133,16 @@ pub struct VersionView {
     /// checked by this project (doc 01 "Supported release policy").
     pub verified: bool,
     pub availability: Availability,
+    /// A version of our own list, not Mojang's (D-073): shown on a tab of its
+    /// own, with its name.
+    pub special: Option<extra::Special>,
 }
 
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct CatalogView {
-    /// Newest first, as Mojang lists them.
+    /// Newest first, as Mojang lists them, then the versions of our own list in
+    /// its order (D-073).
     pub versions: Vec<VersionView>,
     pub fetched_at: Option<DateTime<Utc>>,
     /// True when shown from cache because the refresh failed.
@@ -172,8 +176,24 @@ pub struct PlanSummary {
 
 pub struct MetadataService<F: Fetch> {
     fetcher: F,
+    extra: Option<Extra>,
     root: DataRoot,
     catalog_lock: Mutex<()>,
+}
+
+/// Our update server, for the versions Mojang's list does not have (D-073).
+struct Extra {
+    fetcher: Box<dyn Fetch>,
+    /// The update key built in; without one no list is taken, but version
+    /// files already pinned (an installed version's) still are.
+    public_key: Option<String>,
+}
+
+/// The list kept, checked again.
+struct KeptList {
+    receipt: Option<CatalogReceipt>,
+    bytes: Vec<u8>,
+    list: extra::List,
 }
 
 fn sha1_hex(bytes: &[u8]) -> String {
@@ -201,9 +221,21 @@ impl<F: Fetch> MetadataService<F> {
     pub fn new(fetcher: F, root: DataRoot) -> Self {
         Self {
             fetcher,
+            extra: None,
             root,
             catalog_lock: Mutex::new(()),
         }
+    }
+
+    /// With the versions Mojang's list does not have, from `fetcher` (our
+    /// update server) and checked with `public_key` (D-073).
+    #[must_use]
+    pub fn with_extra(mut self, fetcher: Box<dyn Fetch>, public_key: Option<&str>) -> Self {
+        self.extra = Some(Extra {
+            fetcher,
+            public_key: public_key.map(str::to_owned),
+        });
+        self
     }
 
     fn cached_catalog(&self) -> Option<(CatalogReceipt, Vec<u8>)> {
@@ -215,8 +247,10 @@ impl<F: Fetch> MetadataService<F> {
         (sha256_hex(&bytes) == receipt.sha256).then_some((receipt, bytes))
     }
 
-    /// Returns the catalog, refreshing it when requested or stale. Concurrent
-    /// callers are coalesced. A failed refresh falls back to the cache.
+    /// Returns the catalog, refreshing it when requested or stale, with the
+    /// versions of our own list after Mojang's (D-073). Concurrent callers are
+    /// coalesced. A failed refresh falls back to the cache; our list never
+    /// stops the catalog.
     pub async fn catalog(
         &self,
         refresh: bool,
@@ -227,6 +261,24 @@ impl<F: Fetch> MetadataService<F> {
         Option<LauncherError>,
     ) {
         let _guard = self.catalog_lock.lock().await;
+        let (mut catalog, fetched_at, stale, error) = self.mojang_catalog(refresh).await;
+        if let Some(catalog) = &mut catalog
+            && let Some(list) = self.extra_list(refresh).await
+        {
+            catalog.add_extra(&list);
+        }
+        (catalog, fetched_at, stale, error)
+    }
+
+    async fn mojang_catalog(
+        &self,
+        refresh: bool,
+    ) -> (
+        Option<Catalog>,
+        Option<DateTime<Utc>>,
+        bool,
+        Option<LauncherError>,
+    ) {
         let cached = self.cached_catalog();
         let fresh_enough = cached.as_ref().is_some_and(|(r, _)| {
             Utc::now() - r.fetched_at < Duration::hours(CATALOG_MAX_AGE_HOURS)
@@ -296,6 +348,100 @@ impl<F: Fetch> MetadataService<F> {
         Ok((catalog, now))
     }
 
+    fn kept_list(&self, public_key: &str) -> Option<KeptList> {
+        use std::io::Read as _;
+        let mut bytes = Vec::new();
+        std::fs::File::open(self.root.extra_versions())
+            .ok()?
+            .take(extra::MAX_BYTES as u64 + 1)
+            .read_to_end(&mut bytes)
+            .ok()?;
+        let list = extra::verify(public_key, &bytes)?;
+        let receipt =
+            match document::load::<CatalogReceipt>(&self.root.extra_versions_receipt(), None) {
+                Ok(Loaded::Valid(receipt)) if receipt.sha256 == sha256_hex(&bytes) => Some(receipt),
+                _ => None,
+            };
+        Some(KeptList {
+            receipt,
+            bytes,
+            list,
+        })
+    }
+
+    /// Our list of versions Mojang's does not have: the one kept while it is
+    /// fresh, else asked again. Only a list signed with the update key and not
+    /// older than the one kept is taken; anything else keeps the old one.
+    async fn extra_list(&self, refresh: bool) -> Option<extra::List> {
+        let extra = self.extra.as_ref()?;
+        let key = extra.public_key.as_deref()?;
+        let kept = self.kept_list(key);
+        let fresh = kept
+            .as_ref()
+            .and_then(|k| k.receipt.as_ref())
+            .is_some_and(|r| Utc::now() - r.fetched_at < Duration::hours(CATALOG_MAX_AGE_HOURS));
+        if !refresh && fresh {
+            return kept.map(|k| k.list);
+        }
+        match self.refresh_extra(extra, key, kept.as_ref()).await {
+            Ok(list) => Some(list),
+            Err(_) => kept.map(|k| k.list),
+        }
+    }
+
+    async fn refresh_extra(
+        &self,
+        extra: &Extra,
+        key: &str,
+        kept: Option<&KeptList>,
+    ) -> LauncherResult<extra::List> {
+        let receipt = kept.and_then(|k| k.receipt.as_ref());
+        let fetched = extra
+            .fetcher
+            .fetch(
+                extra::URL,
+                receipt.and_then(|r| r.etag.as_deref()),
+                receipt.and_then(|r| r.last_modified.as_deref()),
+                extra::MAX_BYTES,
+            )
+            .await?;
+        let refused = || {
+            LauncherError::new(
+                ErrorCode::UnsupportedVersionMetadata,
+                "The list of other Minecraft versions was refused.",
+            )
+        };
+        let bytes = if fetched.not_modified {
+            kept.map(|k| k.bytes.clone()).ok_or_else(refused)?
+        } else {
+            fetched.body
+        };
+        let list = extra::verify(key, &bytes).ok_or_else(refused)?;
+        // An older list than the one kept: someone serves an old file.
+        if kept.is_some_and(|k| k.list.serial > list.serial) {
+            return Err(refused());
+        }
+        if let Some(parent) = self.root.extra_versions().parent() {
+            std::fs::create_dir_all(parent).map_err(|e| storage_error(&e))?;
+        }
+        if kept.is_none_or(|k| k.bytes != bytes) {
+            atomic::write(&self.root.extra_versions(), &bytes).map_err(|e| storage_error(&e))?;
+        }
+        document::save(
+            &self.root.extra_versions_receipt(),
+            &CatalogReceipt {
+                schema_version: SCHEMA_VERSION,
+                fetched_at: Utc::now(),
+                etag: fetched.etag,
+                last_modified: fetched.last_modified,
+                sha256: sha256_hex(&bytes),
+            },
+            None,
+        )
+        .map_err(|e| storage_error(&e))?;
+        Ok(list)
+    }
+
     /// Every vanilla version in the catalog, newest first. Without a catalog the
     /// shipped verified versions are listed as unavailable.
     pub async fn supported_versions(&self, refresh: bool) -> CatalogView {
@@ -309,8 +455,9 @@ impl<F: Fetch> MetadataService<F> {
                     id: entry.id.clone(),
                     version_type: entry.version_type.clone(),
                     release_time: entry.release_time.clone(),
-                    verified: verified(&entry.id, &entry.sha1),
+                    verified: entry.special.is_none() && verified(&entry.id, &entry.sha1),
                     availability: Availability::Available,
+                    special: entry.special.clone(),
                 })
                 .collect(),
             None => compatibility::SUPPORTED_VERSIONS
@@ -321,6 +468,7 @@ impl<F: Fetch> MetadataService<F> {
                     release_time: None,
                     verified: true,
                     availability: Availability::CatalogUnavailable,
+                    special: None,
                 })
                 .collect(),
         };
@@ -346,9 +494,18 @@ impl<F: Fetch> MetadataService<F> {
         {
             return Ok(bytes);
         }
-        SourcePolicy::MojangMetadata.check(&entry.url)?;
-        let fetched = self
-            .fetcher
+        // Version files of our own list come from our server (D-073), every
+        // other one from Mojang's.
+        let fetcher: &dyn Fetch = if extra::ours(&entry.url) {
+            self.extra
+                .as_ref()
+                .map(|e| e.fetcher.as_ref())
+                .ok_or_else(net::untrusted_url)?
+        } else {
+            SourcePolicy::MojangMetadata.check(&entry.url)?;
+            &self.fetcher
+        };
+        let fetched = fetcher
             .fetch(&entry.url, None, None, MAX_DESCRIPTOR_BYTES)
             .await?;
         if sha1_hex(&fetched.body) != entry.sha1.as_str() {
@@ -446,6 +603,7 @@ impl<F: Fetch> MetadataService<F> {
             url: descriptor_url.to_owned(),
             sha1: descriptor_sha1.clone(),
             release_time: None,
+            special: None,
         };
         let bytes = self.descriptor(&entry).await?;
         let mut plan =
