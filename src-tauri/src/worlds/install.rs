@@ -34,7 +34,7 @@ use crate::install::service::PlanSource;
 use crate::loader::manifest::{self, LoaderManifest, maven_path};
 use crate::loader::processors;
 use crate::net::SourcePolicy;
-use crate::runtime::RuntimeInstaller;
+use crate::runtime::{InstalledRuntime, RuntimeInstaller};
 use crate::storage::models::LockedArtifact;
 use crate::storage::paths::{DataRoot, JavaProvider, Sha1, Sha256, WorldId, server_jar_relative};
 
@@ -165,7 +165,8 @@ pub async fn prepare<F: Fetch>(
         &mut world,
         &Server {
             plan: &plan,
-            java: &runtime.java,
+            runtime: &runtime,
+            runtimes,
         },
         cancel,
         sink,
@@ -177,7 +178,9 @@ pub async fn prepare<F: Fetch>(
 /// The world's server and Java, for a loader's server-side processors.
 struct Server<'a> {
     plan: &'a ServerPlan,
-    java: &'a std::path::Path,
+    runtime: &'a InstalledRuntime,
+    /// Installs another Java when the world's is too old for the processors.
+    runtimes: &'a RuntimeInstaller,
 }
 
 /// Where the files a loader's server-side processors produced are recorded.
@@ -204,8 +207,10 @@ fn mappings_path(plan: &ServerPlan) -> Option<(String, Download)> {
 
 /// Runs a Forge-style loader's server-side processors unless the files they
 /// produce are recorded and intact.
+#[allow(clippy::too_many_arguments)]
 async fn ensure_processed(
     root: &DataRoot,
+    source: &dyn PlanSource,
     executor: &Executor,
     loader: &LoaderManifest,
     sha1: &Sha1,
@@ -241,12 +246,20 @@ async fn ensure_processed(
         });
     }
     executor.run(Uuid::new_v4(), requests, cancel, sink).await?;
+    let java = crate::install::service::installer_java(
+        source,
+        server.runtimes,
+        &server.plan.runtime,
+        server.runtime,
+        Uuid::new_v4(),
+        cancel,
+        sink,
+        &|_line| {},
+    )
+    .await?;
 
     let (root, loader, sha1, cancel) = (root.clone(), loader.clone(), sha1.clone(), cancel.clone());
-    let (jar, java) = (
-        root.server_jar(&server.plan.jar.sha1),
-        server.java.to_path_buf(),
-    );
+    let jar = root.server_jar(&server.plan.jar.sha1);
     let mappings = mappings.map(|(path, download)| (path, download.sha1));
     tokio::task::spawn_blocking(move || {
         // The tools' output is not kept: it names paths on this computer.
@@ -303,7 +316,7 @@ async fn ensure_loader(
     executor
         .run(Uuid::new_v4(), loader_requests(&loader)?, cancel, sink)
         .await?;
-    ensure_processed(root, executor, &loader, &sha1, server, cancel, sink).await?;
+    ensure_processed(root, source, executor, &loader, &sha1, server, cancel, sink).await?;
     if generation.server_manifest.as_ref() != Some(&sha1)
         && let Some(generation) = world.pack.as_mut()
     {
