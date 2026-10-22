@@ -49,10 +49,13 @@ mirror rule wants), `mirror_first` (the mirror, the origin when it fails) or
    empty there), Create, and from 1.19.3 Yes when the game asks to confirm experimental
    features. Before 1.7 the world list drops the mouse events of a frame drawn without
    the button down, which loses synthetic clicks, so the game's own touchscreen mode is
-   set in a fresh `options.txt` for those versions. Without a world after that the
+   set in a fresh `options.txt` for those versions. That mode came in 1.4.6; before it a
+   click counts only when a game tick reads it before the next frame is drawn, so those
+   versions also get the power saver frame limit and eight clicks. Without a world after that the
    keyboard way is tried (Escape, Tab, Enter, Enter). Some seconds in the world, then the window is closed. The game's
    log (or for versions before 1.7, the output the launcher kept) must show the player
-   joining; before 1.3, which had no server inside, the new world's `level.dat` counts.
+   joining (1.4.6 to 1.6.x log it as the player logged in); up to 1.4.5, whose server
+   inside logs nothing (before 1.3 there was none), the new world's `level.dat` counts.
    The game must exit with 0 and leave no crash report. Where the launcher has a
    Launcher Skins build for the version, the column Launcher Skins says whether it got
    in: `not added` when the launcher's log warns it could not put it in, `failed` when

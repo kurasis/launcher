@@ -745,9 +745,13 @@ try {
         # Before 1.7 the world list reads and drops every mouse event of a frame drawn
         # without the button down, which loses the test's clicks on its buttons; the
         # game's own touchscreen mode skips that. Written before the first start.
+        # Touchscreen mode came in 1.4.6: before it a click counts only when a tick
+        # reads it before the next frame is drawn, so those versions get the power saver
+        # frame limit (35 frames for 20 ticks a second) and more tries.
         New-Item -ItemType Directory -Force $gameDir | Out-Null
         $options = Join-Path $gameDir 'options.txt'
-        if (-not (Test-Path $options)) { Set-Content -Path $options -Value 'touchscreen:true' -Encoding ASCII }
+        $lines = if ((Compare-Version $version '1.4.6') -lt 0) { @('touchscreen:true', 'fpsLimit:2') } else { @('touchscreen:true') }
+        if (-not (Test-Path $options)) { Set-Content -Path $options -Value $lines -Encoding ASCII }
       }
       $log = Join-Path $gameDir 'logs\latest.log'
       $shots = Join-Path $gameDir 'screenshots'
@@ -803,10 +807,11 @@ try {
 
       # --- Singleplayer -> Create New World --------------------------------------------------
       $started = Get-Date
-      $joined = "$([regex]::Escape($Nick)) joined the game"
-      # Before 1.3 singleplayer had no server inside and logs no join: there the new
-      # world's level.dat shows the world was made.
-      $oldSingleplayer = (Compare-Version $version '1.3') -lt 0
+      # 1.4.6 to 1.6.x log the server's "<nick>[/127.0.0.1:0] logged in with entity id".
+      $joined = "$([regex]::Escape($Nick)) joined the game|$([regex]::Escape($Nick))\[[^\]]*\] logged in with entity id"
+      # Before 1.3 singleplayer had no server inside, and up to 1.4.5 the server inside
+      # logs nowhere: there the new world's level.dat shows the world was made.
+      $oldSingleplayer = (Compare-Version $version '1.4.6') -lt 0
       $inWorld = {
         if ((& $text) -match $joined) { return $true }
         if ($oldSingleplayer -and (Get-ChildItem (Join-Path $gameDir 'saves') -Recurse -Filter level.dat -ErrorAction SilentlyContinue |
@@ -831,8 +836,9 @@ try {
       # height - 52. Newer versions open Create New World at once for an empty list,
       # and that spot is empty there.
       # Old versions (1.6.4 and before) may let a click pass, so it is given three
-      # times: after one that worked, the next land on an empty spot of Create New World.
-      foreach ($i in 1..3) {
+      # times (eight before 1.4.6): after one that worked, the next land on an empty
+      # spot of Create New World.
+      foreach ($i in 1..$(if ((Compare-Version $version '1.4.6') -lt 0) { 8 } else { 3 })) {
         Game-Click $hwnd ([math]::Floor($layout.GuiWidth / 2) + 4 + 75) ($layout.GuiHeight - 52 + 10)
         Start-Sleep -Milliseconds 1500
       }
