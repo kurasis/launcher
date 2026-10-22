@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { Icon } from '../../components/Icon';
 import type { UpdateView } from '../../lib/contracts';
 import { strings } from '../../lib/strings';
 import { UpdateDialog } from './UpdateDialog';
@@ -23,11 +24,13 @@ export function UpdateBadge({ update }: { update: UpdateView }) {
       <button
         type="button"
         className={styles.badge}
+        title={label}
         onClick={() => {
           setOpen(true);
         }}
       >
-        {label}
+        <Icon name="update" size={18} className={styles.badgeIcon} />
+        <span className={styles.badgeLabel}>{label}</span>
       </button>
       {open && (
         <UpdateDialog

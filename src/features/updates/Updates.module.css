@@ -4,8 +4,7 @@
   display: grid;
   place-items: center;
   padding: var(--space-4);
-  background: rgb(0 0 0 / 55%);
-  backdrop-filter: blur(4px);
+  background: var(--color-scrim);
   z-index: 10;
 }
 
@@ -48,18 +47,53 @@
   gap: var(--space-3);
 }
 
+/* Concept A: a notice block in the rail, above who plays. */
 .badge {
-  border: 1px solid var(--color-accent);
-  background: var(--color-accent-soft);
-  color: var(--color-text);
+  display: flex;
+  align-items: flex-start;
+  gap: var(--space-2);
+  width: 100%;
+  border: 0;
+  background: var(--color-rail-active);
+  color: var(--color-rail-text);
   border-radius: var(--radius-sm);
-  padding: var(--space-1) var(--space-2);
+  padding: var(--space-2) var(--space-3);
   font: inherit;
-  font-size: var(--font-size-sm);
+  font-size: var(--font-size-xs);
+  font-weight: 500;
+  line-height: 1.35;
+  text-align: start;
   cursor: pointer;
+}
+
+.badge:hover {
+  background: var(--color-rail-hover);
 }
 
 .badge:focus-visible {
   outline: 2px solid var(--color-focus);
   outline-offset: 2px;
+}
+
+.badgeIcon {
+  flex: none;
+  color: var(--color-mint);
+}
+
+/* The icon-only rail of a narrow window (App.module.css). */
+@media (max-width: 1040px) {
+  .badge {
+    justify-content: center;
+    padding-inline: 0;
+  }
+
+  .badgeLabel {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    margin: -1px;
+    overflow: hidden;
+    clip-path: inset(50%);
+    white-space: nowrap;
+  }
 }

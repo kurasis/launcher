@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { Button } from '../components/Button';
+import { Icon } from '../components/Icon';
 import { Notice } from '../components/Notice';
 import type { OperationKind, QuitAction } from '../lib/contracts';
 import { describeIpcError, ipc, onQuitRequested } from '../lib/ipc';
@@ -12,9 +13,11 @@ const t = strings.quit;
 interface QuitControlProps {
   /** Kind of the active operation, which decides the wording of the choice. */
   activeKind?: OperationKind | null;
+  /** An icon button, as in the rail; its name stays "Quit". */
+  compact?: boolean;
 }
 
-export function QuitControl({ activeKind = null }: QuitControlProps) {
+export function QuitControl({ activeKind = null, compact = false }: QuitControlProps) {
   const [choosing, setChoosing] = useState(false);
   const [hosting, setHosting] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -55,15 +58,29 @@ export function QuitControl({ activeKind = null }: QuitControlProps) {
 
   return (
     <>
-      <Button
-        onClick={() => {
-          void send('quit');
-        }}
-      >
-        {t.button}
-      </Button>
+      {compact ? (
+        <button
+          type="button"
+          className={styles.iconButton}
+          aria-label={t.button}
+          title={t.button}
+          onClick={() => {
+            void send('quit');
+          }}
+        >
+          <Icon name="power" size={18} />
+        </button>
+      ) : (
+        <Button
+          onClick={() => {
+            void send('quit');
+          }}
+        >
+          {t.button}
+        </Button>
+      )}
       {!choosing && error !== null && (
-        <p role="alert" className={styles.error}>
+        <p role="alert" className={compact ? styles.railError : styles.error}>
           {error}
         </p>
       )}

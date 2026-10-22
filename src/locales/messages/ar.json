@@ -29,7 +29,13 @@
       "more": "المزيد",
       "moreCurrent": "المزيد: {view}",
       "reviews": "اترك رأيًا",
-      "newAnswers": "{count, plural, zero {لا ردود جديدة} one {رد جديد واحد على رأيك} two {ردان جديدان على آرائك} few {# ردود جديدة على آرائك} many {# ردًا جديدًا على آرائك} other {# رد جديد على آرائك}}"
+      "newAnswers": "{count, plural, zero {لا ردود جديدة} one {رد جديد واحد على رأيك} two {ردان جديدان على آرائك} few {# ردود جديدة على آرائك} many {# ردًا جديدًا على آرائك} other {# رد جديد على آرائك}}",
+      "tools": "الأصدقاء والتنزيلات والمزيد",
+      "playsByDefault": "يلعب افتراضيًا",
+      "launchBar": "التشغيل",
+      "noInstallation": "لم يتم اختيار تثبيت",
+      "chooseInstallation": "اختر تثبيتًا",
+      "openInstallations": "فتح التثبيتات"
     },
     "feed": {
       "title": "الموجز",
@@ -1331,7 +1337,8 @@
       "license": "الترخيص: لم يُختر بعد. لم ينشر مالك المشروع ترخيصًا لهذه الشيفرة المصدرية.",
       "officialTitle": "معلومات Minecraft الرسمية",
       "eula": "اتفاقية ترخيص Minecraft",
-      "help": "مساعدة Minecraft"
+      "help": "مساعدة Minecraft",
+      "fonts": "الخطوط: Golos Text وNoto Sans Arabic، بموجب رخصة SIL Open Font License 1.1"
     },
     "foundation": {
       "body": "التثبيت والإصلاح والتشغيل منجزة. من دون حساب Microsoft تبدأ اللعبة كنسخة Minecraft التجريبية، باسم ملف شخصي بلا حساب أو بحساب المشغّل."
@@ -2250,6 +2257,7 @@
       "open": "الأصدقاء والمحادثات",
       "unread": "{count, plural, zero {لا رسائل غير مقروءة} one {رسالة واحدة غير مقروءة} two {رسالتان غير مقروءتين} few {# رسائل غير مقروءة} many {# رسالة غير مقروءة} other {# رسالة غير مقروءة}}",
       "title": "الأصدقاء",
+      "close": "إغلاق",
       "tabs": {
         "chats": "المحادثات",
         "friends": "الأصدقاء",

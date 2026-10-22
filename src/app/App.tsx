@@ -1,9 +1,9 @@
 import { useEffect, useState } from 'react';
 import { Button } from '../components/Button';
+import { Icon, type IconName } from '../components/Icon';
 import { Logo } from '../components/Logo';
 import { Notice } from '../components/Notice';
 import { StatusBadge } from '../components/StatusBadge';
-import { AccountChip } from '../features/accounts/AccountChip';
 import { AccountView } from '../features/accounts/AccountView';
 import { RunStatus } from '../features/diagnostics/RunStatus';
 import { progressPercent } from '../lib/format';
@@ -19,7 +19,9 @@ import { type SettingsSection, strings } from '../lib/strings';
 import { useLanguage } from '../lib/useLanguage';
 import { AboutView } from './AboutView';
 import styles from './App.module.css';
+import { LaunchBar } from './LaunchBar';
 import { QuitControl } from './QuitControl';
+import { RailUser } from './RailUser';
 import { BackupsView } from '../features/backups/BackupsView';
 import { GalleryView } from '../features/gallery/GalleryView';
 import { ReviewsView } from '../features/reviews/ReviewsView';
@@ -49,7 +51,18 @@ import {
 } from './navigation';
 import { localizeError } from '../lib/strings';
 
-/** Compact header status of the running operation, visible on every screen. */
+/** The rail's icon for each screen of the main row. */
+const NAV_ICONS: Partial<Record<View, IconName>> = {
+  feed: 'feed',
+  home: 'home',
+  mods: 'mods',
+  worlds: 'worlds',
+  skins: 'skins',
+  account: 'account',
+  settings: 'settings',
+};
+
+/** Compact status of the running operation in the rail, visible on every screen. */
 function ActivityIndicator({ snapshot }: { snapshot: AppSnapshot }) {
   const active = snapshot.activeOperation;
   if (active === null) return null;
@@ -57,7 +70,11 @@ function ActivityIndicator({ snapshot }: { snapshot: AppSnapshot }) {
   const percent = progressPercent(progress?.operationId === active.operationId ? progress : null);
   return (
     <p className={styles.activity} role="status">
-      <StatusBadge tone="neutral" label={strings.activity[active.kind]} />
+      <StatusBadge
+        tone="neutral"
+        label={strings.activity[active.kind]}
+        className={styles.railChip}
+      />
       {percent !== null && strings.activity.percent({ percent })}
     </p>
   );
@@ -73,7 +90,7 @@ function NetworkIndicator({ network }: { network: NetworkStatus }) {
       role="status"
       title={checking.error ?? strings.network.offlineHint}
     >
-      <StatusBadge tone="warning" label={strings.network.offline} />
+      <StatusBadge tone="warning" label={strings.network.offline} className={styles.railChip} />
       <button
         type="button"
         className={styles.textButton}
@@ -211,210 +228,252 @@ export function App() {
 
   return (
     <div className={styles.shell} key={lang}>
-      <header className={styles.topbar}>
+      {/* Concept A: the rail on the inline-start side holds the brand, the screens,
+          friends, downloads, More and who plays; the launch bar sits at the foot. */}
+      <header className={styles.rail}>
         <div className={styles.brandRow}>
           <Logo />
           <h1 className={styles.brand}>
             <span className={styles.brandName}>{strings.brand.name}</span>{' '}
             <span className={styles.brandSuffix}>{strings.brand.suffix}</span>
           </h1>
-          {appInfo.status === 'ready' && appInfo.info.buildProfile === 'debug' && (
-            <StatusBadge tone="neutral" label={strings.devBuildTag} />
-          )}
-          {appInfo.status === 'ready' && appInfo.info.testProfile !== null && (
-            <StatusBadge
-              tone="warning"
-              label={strings.testProfileTag({ name: appInfo.info.testProfile })}
+        </div>
+        {appInfo.status === 'ready' && appInfo.info.buildProfile === 'debug' && (
+          <StatusBadge tone="neutral" label={strings.devBuildTag} className={styles.railChip} />
+        )}
+        {appInfo.status === 'ready' && appInfo.info.testProfile !== null && (
+          <StatusBadge
+            tone="warning"
+            label={strings.testProfileTag({ name: appInfo.info.testProfile })}
+            className={styles.railChip}
+          />
+        )}
+        <nav aria-label={strings.nav.label} className={styles.nav}>
+          {tabs.map((item) => {
+            const icon = NAV_ICONS[item];
+            return (
+              <button
+                key={item}
+                type="button"
+                className={styles.navItem}
+                aria-current={view === item ? 'page' : undefined}
+                title={strings.nav[item]}
+                onClick={() => {
+                  navigate(item);
+                }}
+              >
+                {icon !== undefined && <Icon name={icon} />}
+                <span className={styles.navLabel}>{strings.nav[item]}</span>
+              </button>
+            );
+          })}
+        </nav>
+        <div className={styles.railEnd}>
+          {snapshot !== null && <ActivityIndicator snapshot={snapshot} />}
+          {snapshot !== null && <NetworkIndicator network={snapshot.network} />}
+          <nav aria-label={strings.nav.tools} className={styles.tools}>
+            {snapshot !== null && (
+              <FriendsCorner
+                placement="rail"
+                snapshot={snapshot}
+                onOpenWorld={(id) => {
+                  setWorldsRoom({ id, at: Date.now() });
+                  navigate('worlds');
+                }}
+                onOpenAccounts={() => {
+                  navigate('account');
+                }}
+              />
+            )}
+            {snapshot !== null && <DownloadManager placement="rail" snapshot={snapshot} />}
+            <MoreMenu
+              label={
+                inMenu ? strings.nav.moreCurrent({ view: strings.nav[view] }) : strings.nav.more
+              }
+              current={inMenu}
+              entries={menuItems}
+              news={unseenAnswers > 0 ? strings.nav.newAnswers({ count: unseenAnswers }) : null}
+              icon={<Icon name="more" />}
+              menuClassName={styles.railMenu}
             />
+          </nav>
+          {snapshot !== null && <UpdateBadge update={snapshot.update} />}
+          {snapshot !== null ? (
+            <RailUser
+              account={snapshot.account}
+              activeKind={snapshot.activeOperation?.kind ?? null}
+            />
+          ) : (
+            // Quit and its app-menu listener stay while the core is loading or failed.
+            <div className={styles.user}>
+              <QuitControl activeKind={null} compact />
+            </div>
           )}
         </div>
-        {snapshot !== null && <ActivityIndicator snapshot={snapshot} />}
-        {snapshot !== null && <NetworkIndicator network={snapshot.network} />}
-        {snapshot !== null && <UpdateBadge update={snapshot.update} />}
-        {snapshot !== null && <AccountChip account={snapshot.account} />}
-        <nav aria-label={strings.nav.label} className={styles.nav}>
-          {tabs.map((item) => (
-            <button
-              key={item}
-              type="button"
-              className={styles.navItem}
-              aria-current={view === item ? 'page' : undefined}
-              onClick={() => {
-                navigate(item);
-              }}
-            >
-              {strings.nav[item]}
-            </button>
-          ))}
-          <MoreMenu
-            label={inMenu ? strings.nav.moreCurrent({ view: strings.nav[view] }) : strings.nav.more}
-            current={inMenu}
-            entries={menuItems}
-            news={unseenAnswers > 0 ? strings.nav.newAnswers({ count: unseenAnswers }) : null}
-          />
-          <QuitControl activeKind={snapshot?.activeOperation?.kind ?? null} />
-        </nav>
       </header>
 
-      <main className={styles.content}>
-        {consoleOpening.error !== null && <Notice tone="danger">{consoleOpening.error}</Notice>}
-        {view === 'about' ? (
-          <AboutView />
-        ) : state.status === 'loading' ? (
-          <p role="status">{strings.bootstrap.loading}</p>
-        ) : state.status === 'error' ? (
-          <Notice tone="danger">
-            <p>
-              {strings.bootstrap.errorTitle}: {state.message}
-            </p>
-            <Button onClick={appStore.refresh}>{strings.bootstrap.retry}</Button>
-          </Notice>
-        ) : state.snapshot.dataRoot.status === 'unavailable' ? (
-          <Notice tone="danger">
-            <p>
-              <strong>{strings.bootstrap.unavailableTitle}</strong>
-            </p>
-            <p>
-              {state.snapshot.dataRoot.error ? localizeError(state.snapshot.dataRoot.error) : null}
-            </p>
-          </Notice>
-        ) : (
-          <>
-            <StorageIssues issues={state.snapshot.storageIssues} />
-            {view === 'feed' && (
-              <FeedView
-                snapshot={state.snapshot}
-                onOpenInstallations={(instanceId) => {
-                  navigate('home');
-                  if (
-                    instanceId !== null &&
-                    instanceId !== state.snapshot.settings.selectedInstanceId
-                  ) {
-                    void ipc
-                      .setAppSettings({ selectedInstanceId: instanceId })
-                      .catch(() => undefined);
-                  }
-                }}
-                onInstallVersion={(versionId) => {
-                  navigate('home');
-                  setInstallVersion(versionId);
-                }}
-              />
-            )}
-            {view === 'feed' && (
-              <StatsNotice settings={state.snapshot.settings} onSettings={openPrivacy} />
-            )}
-            {view === 'home' && <WhatsNew update={state.snapshot.update} />}
-            {view === 'home' && <FailureOffer />}
-            {view === 'home' && (
-              <>
-                <RunStatus
-                  current={state.snapshot.currentRun}
-                  last={state.snapshot.lastRun}
-                  onStop={(runId) => {
-                    stopping.clear();
-                    void ipc.stopGame(runId).catch(stopping.catcher);
-                  }}
-                />
-                {stopping.error !== null && <Notice tone="danger">{stopping.error}</Notice>}
-                <InstancesView
-                  key={installVersion ?? ''}
+      <div className={styles.column}>
+        <main className={styles.content}>
+          {consoleOpening.error !== null && <Notice tone="danger">{consoleOpening.error}</Notice>}
+          {view === 'about' ? (
+            <AboutView />
+          ) : state.status === 'loading' ? (
+            <p role="status">{strings.bootstrap.loading}</p>
+          ) : state.status === 'error' ? (
+            <Notice tone="danger">
+              <p>
+                {strings.bootstrap.errorTitle}: {state.message}
+              </p>
+              <Button onClick={appStore.refresh}>{strings.bootstrap.retry}</Button>
+            </Notice>
+          ) : state.snapshot.dataRoot.status === 'unavailable' ? (
+            <Notice tone="danger">
+              <p>
+                <strong>{strings.bootstrap.unavailableTitle}</strong>
+              </p>
+              <p>
+                {state.snapshot.dataRoot.error
+                  ? localizeError(state.snapshot.dataRoot.error)
+                  : null}
+              </p>
+            </Notice>
+          ) : (
+            <>
+              <StorageIssues issues={state.snapshot.storageIssues} />
+              {view === 'feed' && (
+                <FeedView
                   snapshot={state.snapshot}
-                  createVersion={installVersion}
-                  onEditSettings={(instanceId) => {
-                    setSettingsInstance(instanceId);
-                    setSettingsSection('installations');
-                    navigate('settings');
+                  onOpenInstallations={(instanceId) => {
+                    navigate('home');
+                    if (
+                      instanceId !== null &&
+                      instanceId !== state.snapshot.settings.selectedInstanceId
+                    ) {
+                      void ipc
+                        .setAppSettings({ selectedInstanceId: instanceId })
+                        .catch(() => undefined);
+                    }
                   }}
-                  onOpenBackups={() => {
-                    navigate('backups');
-                  }}
-                  onOpenContent={(instanceId) => {
-                    setModsInstance(instanceId);
-                    setModsSection('installed');
-                    navigate('mods');
+                  onInstallVersion={(versionId) => {
+                    navigate('home');
+                    setInstallVersion(versionId);
                   }}
                 />
-                {!state.snapshot.settings.feed.enabled && (
-                  <StatsNotice settings={state.snapshot.settings} onSettings={openPrivacy} />
-                )}
-              </>
-            )}
-            {view === 'mods' && (
-              <ModsView
-                snapshot={state.snapshot}
-                instanceId={modsInstance}
-                section={modsSection}
-                onSection={setModsSection}
-                onInstance={setModsInstance}
-              />
-            )}
-            {view === 'worlds' && (
-              <WorldsView
-                key={worldsRoom?.at ?? 0}
-                initialRoom={worldsRoom?.id ?? null}
-                snapshot={state.snapshot}
-                onOpenAccounts={() => {
-                  navigate('account');
-                }}
-              />
-            )}
-            {view === 'skins' && (
-              <SkinsView
-                snapshot={state.snapshot}
-                onOpenAccounts={() => {
-                  navigate('account');
-                }}
-              />
-            )}
-            {view === 'account' && <AccountView snapshot={state.snapshot} />}
-            {view === 'backups' && <BackupsView snapshot={state.snapshot} />}
-            {view === 'screenshots' && <GalleryView snapshot={state.snapshot} />}
-            {view === 'settings' && (
-              <SettingsView
-                key={settingsInstance ?? ''}
-                snapshot={state.snapshot}
-                section={settingsSection}
-                onSection={setSettingsSection}
-                instanceId={settingsInstance}
-              />
-            )}
-            {view === 'diagnostics' && <DiagnosticsView snapshot={state.snapshot} />}
-            {view === 'reviews' && (
-              <ReviewsView
-                key={review?.at ?? 0}
-                snapshot={state.snapshot}
-                prefill={review?.prefill ?? null}
-                onUnseen={setUnseenAnswers}
-              />
-            )}
-          </>
-        )}
-      </main>
+              )}
+              {view === 'feed' && (
+                <StatsNotice settings={state.snapshot.settings} onSettings={openPrivacy} />
+              )}
+              {view === 'home' && <WhatsNew update={state.snapshot.update} />}
+              {view === 'home' && <FailureOffer />}
+              {view === 'home' && (
+                <>
+                  <RunStatus
+                    current={state.snapshot.currentRun}
+                    last={state.snapshot.lastRun}
+                    onStop={(runId) => {
+                      stopping.clear();
+                      void ipc.stopGame(runId).catch(stopping.catcher);
+                    }}
+                  />
+                  {stopping.error !== null && <Notice tone="danger">{stopping.error}</Notice>}
+                  <InstancesView
+                    key={installVersion ?? ''}
+                    snapshot={state.snapshot}
+                    createVersion={installVersion}
+                    onEditSettings={(instanceId) => {
+                      setSettingsInstance(instanceId);
+                      setSettingsSection('installations');
+                      navigate('settings');
+                    }}
+                    onOpenBackups={() => {
+                      navigate('backups');
+                    }}
+                    onOpenContent={(instanceId) => {
+                      setModsInstance(instanceId);
+                      setModsSection('installed');
+                      navigate('mods');
+                    }}
+                  />
+                  {!state.snapshot.settings.feed.enabled && (
+                    <StatsNotice settings={state.snapshot.settings} onSettings={openPrivacy} />
+                  )}
+                </>
+              )}
+              {view === 'mods' && (
+                <ModsView
+                  snapshot={state.snapshot}
+                  instanceId={modsInstance}
+                  section={modsSection}
+                  onSection={setModsSection}
+                  onInstance={setModsInstance}
+                />
+              )}
+              {view === 'worlds' && (
+                <WorldsView
+                  key={worldsRoom?.at ?? 0}
+                  initialRoom={worldsRoom?.id ?? null}
+                  snapshot={state.snapshot}
+                  onOpenAccounts={() => {
+                    navigate('account');
+                  }}
+                />
+              )}
+              {view === 'skins' && (
+                <SkinsView
+                  snapshot={state.snapshot}
+                  onOpenAccounts={() => {
+                    navigate('account');
+                  }}
+                />
+              )}
+              {view === 'account' && <AccountView snapshot={state.snapshot} />}
+              {view === 'backups' && <BackupsView snapshot={state.snapshot} />}
+              {view === 'screenshots' && <GalleryView snapshot={state.snapshot} />}
+              {view === 'settings' && (
+                <SettingsView
+                  key={settingsInstance ?? ''}
+                  snapshot={state.snapshot}
+                  section={settingsSection}
+                  onSection={setSettingsSection}
+                  instanceId={settingsInstance}
+                />
+              )}
+              {view === 'diagnostics' && <DiagnosticsView snapshot={state.snapshot} />}
+              {view === 'reviews' && (
+                <ReviewsView
+                  key={review?.at ?? 0}
+                  snapshot={state.snapshot}
+                  prefill={review?.prefill ?? null}
+                  onUnseen={setUnseenAnswers}
+                />
+              )}
+            </>
+          )}
+        </main>
 
-      {snapshot !== null && <DownloadManager snapshot={snapshot} />}
-      <LaunchCheck
-        onOpenMods={(instanceId) => {
-          setModsInstance(instanceId);
-          setModsSection('installed');
-          navigate('mods');
-        }}
-      />
-      {snapshot !== null && (
-        <FriendsCorner
-          snapshot={snapshot}
-          onOpenWorld={(id) => {
-            setWorldsRoom({ id, at: Date.now() });
-            navigate('worlds');
-          }}
-          onOpenAccounts={() => {
-            navigate('account');
+        <LaunchCheck
+          onOpenMods={(instanceId) => {
+            setModsInstance(instanceId);
+            setModsSection('installed');
+            navigate('mods');
           }}
         />
-      )}
-      <footer className={styles.footer}>
-        <p>{strings.independentNotice}</p>
-      </footer>
+        <footer className={styles.footer}>
+          <p>{strings.independentNotice}</p>
+        </footer>
+        {snapshot !== null && (
+          <LaunchBar
+            snapshot={snapshot}
+            onOpenInstallations={
+              view === 'home'
+                ? undefined
+                : () => {
+                    navigate('home');
+                  }
+            }
+          />
+        )}
+      </div>
     </div>
   );
 }

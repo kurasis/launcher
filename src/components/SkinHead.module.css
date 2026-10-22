@@ -1,0 +1,7 @@
+.head {
+  flex: none;
+  display: block;
+  border-radius: 20%;
+  image-rendering: pixelated;
+  background: var(--color-neutral-bg);
+}

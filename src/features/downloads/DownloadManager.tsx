@@ -53,7 +53,15 @@ function RotatingName({ names }: { names: string[] }) {
  * percent, speed, files and the names of files being fetched), the queue
  * waiting behind it, and recent results.
  */
-export function DownloadManager({ snapshot }: { snapshot: AppSnapshot }) {
+export function DownloadManager({
+  snapshot,
+  placement = 'corner',
+}: {
+  snapshot: AppSnapshot;
+  /** "rail": a row of concept A's rail with the panel beside it; "corner": a round button. */
+  placement?: 'corner' | 'rail';
+}) {
+  const rail = placement === 'rail';
   const [open, setOpen] = useState(false);
   const cancel = useCommand((requestId: string, id: string) => ipc.cancelOperation(id, requestId));
   const active =
@@ -106,13 +114,16 @@ export function DownloadManager({ snapshot }: { snapshot: AppSnapshot }) {
 
   return (
     <div
-      className={styles.corner}
+      className={rail ? styles.railSlot : styles.corner}
       onKeyDown={(event) => {
         if (event.key === 'Escape') close();
       }}
     >
       {shown && (
-        <section className={styles.panel} aria-label={t.title}>
+        <section
+          className={[styles.panel, rail && styles.railPanel].filter(Boolean).join(' ')}
+          aria-label={t.title}
+        >
           <h2 className={styles.title}>{t.title}</h2>
           {(snapshot.update.phase === 'downloading' || snapshot.update.phase === 'ready') &&
             snapshot.update.version !== null && (
@@ -219,7 +230,7 @@ export function DownloadManager({ snapshot }: { snapshot: AppSnapshot }) {
       )}
       <button
         type="button"
-        className={styles.button}
+        className={rail ? styles.railButton : styles.button}
         data-working={working && asking === null ? 'true' : undefined}
         data-asking={asking !== null ? 'true' : undefined}
         aria-label={t.open}
@@ -239,6 +250,11 @@ export function DownloadManager({ snapshot }: { snapshot: AppSnapshot }) {
           <path className={styles.arrow} d="M12 3v11m0 0-4.5-4.5M12 14l4.5-4.5" />
           <path d="M4 15v3.5A2.5 2.5 0 0 0 6.5 21h11a2.5 2.5 0 0 0 2.5-2.5V15" />
         </svg>
+        {rail && (
+          <span className={styles.railLabel} aria-hidden="true">
+            {percent !== null ? `${t.title} · ${t.percent({ percent })}` : t.title}
+          </span>
+        )}
         {queue.length > 0 && <span className={styles.badge}>{queue.length}</span>}
       </button>
     </div>

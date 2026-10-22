@@ -11,23 +11,13 @@ body {
 }
 
 body {
-  background-color: var(--color-bg);
-  /* Two soft glows over a faint block grid. */
-  background-image:
-    radial-gradient(60rem 40rem at 10% -10%, var(--color-bg-glow-1), transparent 70%),
-    radial-gradient(50rem 36rem at 100% 0%, var(--color-bg-glow-2), transparent 70%),
-    linear-gradient(var(--color-grid) 1px, transparent 1px),
-    linear-gradient(90deg, var(--color-grid) 1px, transparent 1px);
-  background-size:
-    auto,
-    auto,
-    32px 32px,
-    32px 32px;
-  background-attachment: fixed;
+  /* Concept A: a plain paper ground, no glows, no grid. */
+  background: var(--color-bg);
   color: var(--color-text);
   font-family: var(--font-sans);
   font-size: var(--font-size-md);
   line-height: var(--line-height);
+  font-optical-sizing: auto;
   -webkit-font-smoothing: antialiased;
 }
 
@@ -47,12 +37,23 @@ button {
 }
 
 a {
-  color: var(--color-accent);
+  color: var(--color-accent-text);
 }
 
 :focus-visible {
-  outline: 3px solid var(--color-focus);
+  /* --focus-ring: the rail's mint, kept off the dialogs and surfaces opened from it. */
+  outline: 2px solid var(--focus-ring, var(--color-focus));
   outline-offset: 2px;
+}
+
+[role='dialog'],
+[role='alertdialog'] {
+  --focus-ring: var(--color-focus);
+}
+
+/* The sticky launch bar never hides the control that has focus. */
+html {
+  scroll-padding-block-end: calc(var(--bar-height) + var(--space-3));
 }
 
 ::selection {

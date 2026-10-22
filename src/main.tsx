@@ -1,6 +1,9 @@
 import { StrictMode } from 'react';
 import { createRoot } from 'react-dom/client';
 import { getCurrentWebviewWindow } from '@tauri-apps/api/webviewWindow';
+// Concept A's fonts ship with the launcher: the CSP allows fonts only from the app (font-src 'self').
+import '@fontsource-variable/golos-text/wght.css';
+import '@fontsource-variable/noto-sans-arabic/wght.css';
 import './styles/tokens.css';
 import './styles/global.css';
 import { loadLanguage, setLanguage, storedLanguage } from './lib/strings';

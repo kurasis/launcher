@@ -28,7 +28,13 @@
       "more": "More",
       "moreCurrent": "More: {view}",
       "reviews": "Leave a review",
-      "newAnswers": "{count, plural, one {# new answer to your review} other {# new answers to your reviews}}"
+      "newAnswers": "{count, plural, one {# new answer to your review} other {# new answers to your reviews}}",
+      "tools": "Friends, downloads and more",
+      "playsByDefault": "Plays by default",
+      "launchBar": "Launch",
+      "noInstallation": "No installation chosen",
+      "chooseInstallation": "Choose an installation",
+      "openInstallations": "Open Installations"
     },
     "feed": {
       "title": "Feed",
@@ -1330,7 +1336,8 @@
       "license": "License: not chosen yet. The project owner has not published a license for this source code.",
       "officialTitle": "Official Minecraft information",
       "eula": "Minecraft EULA",
-      "help": "Minecraft Help"
+      "help": "Minecraft Help",
+      "fonts": "Fonts: Golos Text and Noto Sans Arabic, under the SIL Open Font License 1.1"
     },
     "foundation": {
       "body": "Installing, repairing and launching are implemented. Without a Microsoft account the game starts as Minecraft's demo, under a profile without an account or the launcher account."
@@ -2249,6 +2256,7 @@
       "open": "Friends and chats",
       "unread": "{count, plural, one {# unread message} other {# unread messages}}",
       "title": "Friends",
+      "close": "Close",
       "tabs": {
         "chats": "Chats",
         "friends": "Friends",

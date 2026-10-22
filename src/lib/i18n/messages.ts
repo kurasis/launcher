@@ -28,6 +28,12 @@ export type Messages = {
     readonly moreCurrent: (values: { view: string | number }) => string;
     readonly reviews: string;
     readonly newAnswers: (values: { count: number }) => string;
+    readonly tools: string;
+    readonly playsByDefault: string;
+    readonly launchBar: string;
+    readonly noInstallation: string;
+    readonly chooseInstallation: string;
+    readonly openInstallations: string;
   };
   readonly feed: {
     readonly title: string;
@@ -1409,6 +1415,7 @@ export type Messages = {
     readonly officialTitle: string;
     readonly eula: string;
     readonly help: string;
+    readonly fonts: string;
   };
   readonly foundation: {
     readonly body: string;
@@ -2390,6 +2397,7 @@ export type Messages = {
     readonly open: string;
     readonly unread: (values: { count: number }) => string;
     readonly title: string;
+    readonly close: string;
     readonly tabs: {
       readonly chats: string;
       readonly friends: string;

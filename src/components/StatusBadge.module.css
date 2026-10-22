@@ -2,25 +2,21 @@
   display: inline-flex;
   align-items: center;
   gap: 0.4em;
-  padding: 0.2rem 0.65rem;
+  padding: 0.125rem 0.5rem;
   border-radius: var(--radius-pill);
-  border: 1px solid currentcolor;
-  border-color: color-mix(in srgb, currentcolor 25%, transparent);
   font-size: var(--font-size-xs);
-  font-weight: 700;
-  letter-spacing: var(--letter-spacing-caps);
-  text-transform: uppercase;
+  font-weight: 600;
+  line-height: 1.4;
   white-space: nowrap;
 }
 
-/* Status light. */
+/* Status light: a plain dot, the label carries the meaning. */
 .badge::before {
   content: '';
-  width: 0.45rem;
-  height: 0.45rem;
+  width: 0.4rem;
+  height: 0.4rem;
   border-radius: 50%;
   background: currentcolor;
-  box-shadow: 0 0 6px currentcolor;
 }
 
 .neutral {
@@ -29,7 +25,6 @@
 }
 
 .neutral::before {
-  box-shadow: none;
   opacity: 0.6;
 }
 

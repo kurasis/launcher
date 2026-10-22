@@ -120,7 +120,6 @@ export function InstancesView({
             <InstallPanel
               key={`install-${selected.id}`}
               instance={selected}
-              account={snapshot.account}
               activeOperation={snapshot.activeOperation}
               progress={snapshot.operationProgress}
               recentOperations={snapshot.recentOperations}
