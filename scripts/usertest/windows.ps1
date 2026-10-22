@@ -55,6 +55,7 @@ namespace UserTest {
     [DllImport("user32.dll")] public static extern void mouse_event(uint flags, uint dx, uint dy, uint data, IntPtr extra);
     [DllImport("user32.dll")] public static extern bool ClientToScreen(IntPtr hwnd, ref POINT point);
     [DllImport("user32.dll")] public static extern uint MapVirtualKey(uint code, uint mapType);
+    [DllImport("user32.dll")] public static extern int GetSystemMetrics(int index);
     [StructLayout(LayoutKind.Sequential)] public struct RECT { public int Left, Top, Right, Bottom; }
     [StructLayout(LayoutKind.Sequential)] public struct POINT { public int X, Y; }
 
@@ -409,12 +410,21 @@ function Game-Click([IntPtr]$Hwnd, [double]$GuiX, [double]$GuiY) {
   Start-Sleep -Milliseconds 150
   [UserTest.Win]::SetCursorPos($point.X, $point.Y) | Out-Null
   [UserTest.Win]::mouse_event(0x0001, 0, 0, 0, [IntPtr]::Zero)
-  Start-Sleep -Milliseconds 400
+  # Before 1.4.6 the game takes in the window's messages just before it draws a frame,
+  # and the world list drops the mouse events a frame sees, so a click is gone before a
+  # tick reads it. While F7 is held those versions take the messages in after the frame
+  # instead (their own debugging key), so the next tick, when one is due, gets the click.
+  $f7 = (Compare-Version $version '1.4.6') -lt 0
+  if ($f7) { [UserTest.Win]::keybd_event(0x76, 0x41, 0, [IntPtr]::Zero) }
+  # A random part of a tick, so that a run of clicks does not keep the same step with
+  # the game's 20 ticks a second.
+  Start-Sleep -Milliseconds (400 + (Get-Random -Maximum 50))
   # Held for a quarter second: versions before 1.7 read button presses only on their
   # 20-per-second ticks, and their world list drops what a frame sees after release.
   [UserTest.Win]::mouse_event(0x0002, 0, 0, 0, [IntPtr]::Zero)
   Start-Sleep -Milliseconds 250
   [UserTest.Win]::mouse_event(0x0004, 0, 0, 0, [IntPtr]::Zero)
+  if ($f7) { Start-Sleep -Milliseconds 200; [UserTest.Win]::keybd_event(0x76, 0x41, 2, [IntPtr]::Zero) }
   Start-Sleep -Milliseconds 500
 }
 
@@ -615,6 +625,9 @@ if ($Downloads -ne 'automatic') {
   [IO.File]::WriteAllText((Join-Path $data 'settings.json'), "{`"schemaVersion`":1,`"downloadSource`":`"$Downloads`"}", $utf8)
 }
 Say "Downloads: $Downloads"
+# Old games (LWJGL 2) take a mouse button as held only when Windows counts mouse
+# buttons, and with no mouse plugged in it may count none: noted for a failed click.
+Say "Mouse buttons Windows counts: $([UserTest.Win]::GetSystemMetrics(43))"
 
 $launcher = $null
 
@@ -746,8 +759,9 @@ try {
         # without the button down, which loses the test's clicks on its buttons; the
         # game's own touchscreen mode skips that. Written before the first start.
         # Touchscreen mode came in 1.4.6: before it a click counts only when a tick
-        # reads it before the next frame is drawn, so those versions get the power saver
-        # frame limit (35 frames for 20 ticks a second) and more tries.
+        # reads it before the next frame is drawn (Game-Click holds F7 for that), so
+        # those versions get the power saver frame limit (40 frames a second in menus for
+        # 20 ticks, so a tick is due about every second frame) and more tries.
         New-Item -ItemType Directory -Force $gameDir | Out-Null
         $options = Join-Path $gameDir 'options.txt'
         $lines = if ((Compare-Version $version '1.4.6') -lt 0) { @('touchscreen:true', 'fpsLimit:2') } else { @('touchscreen:true') }
