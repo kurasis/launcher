@@ -87,6 +87,34 @@ fn a_download_elsewhere_is_not_ours() {
 }
 
 #[test]
+fn ids_are_folder_names_and_names_plain_text() {
+    for id in ["2.0-blue", "1.14.2 Pre-Release 4", "c0.0.11a", "13w12_"] {
+        assert!(id_ok(id), "{id}");
+    }
+    for id in [
+        "", ".hidden", "a.", "a ", " a", "a/b", "a\\b", "..", "CON", "nul.txt", "com1", "LPT9.x",
+        "1.2\n", "١.٢",
+    ] {
+        assert!(!id_ok(id), "{id:?}");
+    }
+    assert!(id_ok("COM10") && id_ok("console"));
+    assert!(text_ok("20w14\u{221E}") && text_ok("Combat Test 8c"));
+    for text in [
+        "",
+        " a",
+        "a\u{202E}b",
+        "a\u{2066}b",
+        "a\u{200B}b",
+        "a\u{061C}b",
+        "a\u{FEFF}",
+        "a\u{7}b",
+        &"x".repeat(65),
+    ] {
+        assert!(!text_ok(text), "{text:?}");
+    }
+}
+
+#[test]
 fn signed_lists_verify_and_others_do_not() {
     let (public, secret) = keys();
     let (list, _) = build(DATA, 7).unwrap();

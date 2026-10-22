@@ -177,12 +177,40 @@ pub fn id_ok(id: &str) -> bool {
             .all(|b| b.is_ascii_alphanumeric() || matches!(b, b'.' | b'_' | b'-' | b' '))
         && !id.starts_with([' ', '.'])
         && !id.ends_with([' ', '.'])
+        && !windows_reserved(id)
 }
 
-/// Shown text: 1 to 64 characters, none of them control characters.
+/// A name Windows keeps for a device, which the launcher refuses as a folder
+/// name too.
+fn windows_reserved(id: &str) -> bool {
+    let stem = id
+        .split('.')
+        .next()
+        .unwrap_or_default()
+        .to_ascii_uppercase();
+    matches!(stem.as_str(), "CON" | "PRN" | "AUX" | "NUL")
+        || ((stem.starts_with("COM") || stem.starts_with("LPT"))
+            && stem.len() == 4
+            && stem.as_bytes()[3].is_ascii_digit())
+}
+
+/// Shown text: 1 to 64 characters, no control characters and nothing that
+/// changes how the text around it reads (bidi formatting, zero-width).
 fn text_ok(text: &str) -> bool {
     let count = text.chars().count();
-    (1..=64).contains(&count) && !text.chars().any(char::is_control) && text.trim() == text
+    (1..=64).contains(&count)
+        && !text.chars().any(|c| {
+            c.is_control()
+                || matches!(
+                    c,
+                    '\u{061C}'
+                        | '\u{200B}'..='\u{200F}'
+                        | '\u{202A}'..='\u{202E}'
+                        | '\u{2066}'..='\u{2069}'
+                        | '\u{FEFF}'
+                )
+        })
+        && text.trim() == text
 }
 
 fn time_ok(text: &str) -> bool {
