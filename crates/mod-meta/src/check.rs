@@ -122,6 +122,27 @@ pub fn clashes() -> Vec<Clash> {
         .collect()
 }
 
+/// The versions of the game or the loader a loader also takes where a mod
+/// asks for them, beside its own (FML's `VersionSupportMatrix`): Forge on
+/// 1.19.2 takes mods made for 1.19.1 and Forge 42.0.9, on 1.20.1 those for
+/// Forge 47.1.79, on 1.21.1 those for 1.21 and Forge 51.0.33; NeoForge on
+/// 1.21.1 those for 1.21 and NeoForge 21.0.166, on 1.21.8 those for 1.21.7
+/// and NeoForge 21.7.26-beta.
+fn also_taken(setup: &Setup<'_>, id: &str) -> &'static [&'static str] {
+    match (setup.loader, setup.game, id) {
+        (Loader::Forge, "1.19.2", "minecraft") => &["1.19.1"],
+        (Loader::Forge, "1.19.2", "forge") => &["42.0.9"],
+        (Loader::Forge, "1.20.1", "forge") => &["47.1.79"],
+        (Loader::Forge, "1.21.1", "minecraft") => &["1.21"],
+        (Loader::Forge, "1.21.1", "forge") => &["51.0.33"],
+        (Loader::NeoForge, "1.21.1", "minecraft") => &["1.21"],
+        (Loader::NeoForge, "1.21.1", "neoforge") => &["21.0.166"],
+        (Loader::NeoForge, "1.21.8", "minecraft") => &["1.21.7"],
+        (Loader::NeoForge, "1.21.8", "neoforge") => &["21.7.26-beta"],
+        _ => &[],
+    }
+}
+
 /// Everything in the way of the set starting; none when it should.
 pub fn check(setup: &Setup<'_>, jars: &[Jar<'_>]) -> Vec<Problem> {
     check_with(setup, jars, &[])
@@ -204,9 +225,18 @@ pub fn check_with(setup: &Setup<'_>, jars: &[Jar<'_>], clashes: &[Clash]) -> Vec
             };
             // Fine when any copy fits, or when that cannot be told.
             let mut wrong: Option<&Giver<'_>> = None;
+            let also = also_taken(setup, &need.id);
             let fits = givers.iter().any(|g| match g.version {
                 None => true,
                 Some(version) => match allows(m.loader, &need.versions, version) {
+                    Some(false)
+                        if g.file.is_none()
+                            && also
+                                .iter()
+                                .any(|v| allows(m.loader, &need.versions, v) == Some(true)) =>
+                    {
+                        true
+                    }
                     Some(false) => {
                         if wrong.is_none_or(|w| {
                             w.version.and_then(|w| compare(version, w)) == Some(Ordering::Greater)

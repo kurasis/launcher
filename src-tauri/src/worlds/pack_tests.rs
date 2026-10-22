@@ -241,6 +241,173 @@ async fn a_mod_the_catalog_lacks_or_holds_back_stops_the_world() {
     );
 }
 
+/// The error a generation of these jars gets on `minecraft` and `loader`,
+/// each jar its own catalog project named `Mod <n>`.
+async fn checked(
+    jars: &[(&str, Vec<u8>)],
+    minecraft: &str,
+    loader: LoaderChoice,
+) -> Option<LauncherError> {
+    let dir = tempfile::tempdir().unwrap();
+    let mut catalog = Fake::default();
+    for (n, (name, bytes)) in (10u8..).zip(jars) {
+        put(&dir.path().join("mods").join(name), bytes);
+        catalog.add(n, bytes, "required", "required");
+    }
+    let built = build(&catalog, &HashSet::new(), dir.path(), &loader)
+        .await
+        .unwrap();
+    check_server(&catalog, &built, minecraft).await.err()
+}
+
+fn fabric_needing(id: &str, depends: Value, environment: &str) -> Vec<u8> {
+    let meta = json!({"schemaVersion": 1, "id": id, "version": "1.0",
+        "environment": environment, "depends": depends});
+    zip_of(&[("fabric.mod.json", meta.to_string().as_bytes())])
+}
+
+#[tokio::test]
+async fn a_server_mod_that_says_it_does_not_start_stops_the_world() {
+    // The installation of the other tests: nothing any jar needs is missing.
+    let s = setup();
+    let built = build(&s.catalog, &HashSet::new(), &s.game, &fabric())
+        .await
+        .unwrap();
+    check_server(&s.catalog, &built, "1.21.1").await.unwrap();
+
+    let newer = fabric_needing("lithium", json!({"fabricloader": ">=0.18.0"}), "*");
+    let error = checked(&[("lithium.jar", newer.clone())], "1.21.1", fabric())
+        .await
+        .unwrap();
+    assert_eq!(error.code, ErrorCode::InvalidInput);
+    assert_eq!(
+        error.message,
+        "Mod 10 needs Fabric Loader 0.18.0 or newer, and the world has 0.17.2. Take an older release of Mod 10 or remove it."
+    );
+    let missing = fabric_needing("appleskin", json!({"fabric-api": "*"}), "*");
+    assert_eq!(
+        checked(&[("appleskin.jar", missing.clone())], "1.21.1", fabric())
+            .await
+            .unwrap()
+            .message,
+        "Mod 10 needs Fabric API, which is not in the world. Add it to the installation or remove Mod 10, then update the world's mods."
+    );
+    let game = fabric_needing("old", json!({"minecraft": "~1.20.1"}), "*");
+    assert!(
+        checked(&[("old.jar", game)], "1.21.1", fabric())
+            .await
+            .unwrap()
+            .message
+            .starts_with("Mod 10 is made for another Minecraft version than the world's 1.21.1.")
+    );
+    // With what it needs, it starts; a client mod is not on the server.
+    let api = fabric_needing("fabric-api", json!({}), "*");
+    assert!(
+        checked(
+            &[("appleskin.jar", missing), ("fabric-api.jar", api)],
+            "1.21.1",
+            fabric()
+        )
+        .await
+        .is_none()
+    );
+    let client = fabric_needing("menus", json!({"fabricloader": ">=0.18.0"}), "client");
+    assert!(
+        checked(&[("menus.jar", client)], "1.21.1", fabric())
+            .await
+            .is_none()
+    );
+    // What cannot be told passes: a jar that is no mod, a version of its own.
+    let own = fabric_needing("own", json!({"fabricloader": ">=${loader}"}), "*");
+    assert!(
+        checked(
+            &[
+                ("library.jar", zip_of(&[("a.class", b"x")])),
+                ("own.jar", own)
+            ],
+            "1.21.1",
+            fabric()
+        )
+        .await
+        .is_none()
+    );
+
+    // JEI's release for 1.21 on 1.21's newest NeoForge, as its jar says it.
+    let toml = r#"modLoader="javafml"
+loaderVersion="[4,)"
+license="MIT"
+[[mods]]
+modId="jei"
+version="19.64.0.455"
+[[dependencies.jei]]
+modId="neoforge"
+type="required"
+versionRange="[21.1.238,)"
+side="BOTH"
+[[dependencies.jei]]
+modId="minecraft"
+type="required"
+versionRange="[1.21,1.21.1]"
+side="BOTH"
+"#;
+    let jei = zip_of(&[("META-INF/neoforge.mods.toml", toml.as_bytes())]);
+    let neoforge = LoaderChoice {
+        kind: LoaderKind::NeoForge,
+        version: "21.0.167".into(),
+    };
+    assert_eq!(
+        checked(&[("jei-19.64.0.455.jar", jei.clone())], "1.21", neoforge)
+            .await
+            .unwrap()
+            .message,
+        "Mod 10 needs NeoForge 21.1.238 or newer, and the world has 21.0.167. Take an older release of Mod 10 or remove it."
+    );
+    let fits = LoaderChoice {
+        kind: LoaderKind::NeoForge,
+        version: "21.1.238".into(),
+    };
+    assert!(
+        checked(&[("jei-19.64.0.455.jar", jei)], "1.21.1", fits)
+            .await
+            .is_none()
+    );
+    // Forge's version is the game's and the loader's: the loader's counts.
+    let forge_toml = r#"modLoader="javafml"
+loaderVersion="[47,)"
+license="MIT"
+[[mods]]
+modId="tool"
+version="1.0"
+[[dependencies.tool]]
+modId="forge"
+mandatory=true
+versionRange="[47.4,)"
+ordering="NONE"
+side="BOTH"
+"#;
+    let tool = zip_of(&[("META-INF/mods.toml", forge_toml.as_bytes())]);
+    let forge = |version: &str| LoaderChoice {
+        kind: LoaderKind::Forge,
+        version: version.into(),
+    };
+    assert!(
+        checked(
+            &[("tool.jar", tool.clone())],
+            "1.20.1",
+            forge("1.20.1-47.4.0")
+        )
+        .await
+        .is_none()
+    );
+    assert!(
+        checked(&[("tool.jar", tool)], "1.20.1", forge("1.20.1-47.3.0"))
+            .await
+            .unwrap()
+            .message
+            .starts_with("Mod 10 needs Forge 47.4 or newer, and the world has 47.3.0.")
+    );
+}
+
 fn made(s: &Setup) -> WorldFile {
     world::create(&s.root, "Modded", "1.21.1", WorldSettings::default()).unwrap()
 }

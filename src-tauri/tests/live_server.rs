@@ -216,6 +216,88 @@ const FIRST_STEADY_RCON: i32 = 735;
 /// Starts of a server before 1.16 until its RCON listener survives its start.
 const RCON_STARTS: usize = 3;
 
+/// A start on a CI runner is ready well before this; one still starting then
+/// has its threads printed once, to show where it waits.
+const SLOW_START: Duration = Duration::from_secs(150);
+
+/// Waits until a world's server is ready, as `wait_ready` does, printing where
+/// its threads are if that takes longer than [`SLOW_START`].
+fn wait_ready(
+    root: &DataRoot,
+    server: &host::HostedServer,
+) -> launcher_lib::error::LauncherResult<()> {
+    let (done, wait) = std::sync::mpsc::channel::<()>();
+    let root = root.clone();
+    let watch = std::thread::spawn(move || {
+        if wait.recv_timeout(SLOW_START) == Err(std::sync::mpsc::RecvTimeoutError::Timeout) {
+            print_threads(&root);
+        }
+    });
+    let ready = server.wait_ready(STARTUP_SILENCE);
+    drop(done);
+    watch.join().unwrap();
+    ready
+}
+
+/// The threads of the running server, through the runner's `jstack`: thread
+/// names, states, methods and locked classes only, never other text.
+fn print_threads(root: &DataRoot) {
+    let Some(recorded) = receipt::read(root) else {
+        println!("slow start, no run receipt");
+        return;
+    };
+    let jstack = std::env::var_os("JAVA_HOME")
+        .map(|home| std::path::PathBuf::from(home).join("bin").join("jstack"))
+        .filter(|path| path.is_file())
+        .unwrap_or_else(|| "jstack".into());
+    let Ok(dump) = std::process::Command::new(jstack)
+        .arg(recorded.pid.to_string())
+        .output()
+    else {
+        println!("slow start, no jstack");
+        return;
+    };
+    println!("slow start, the server's threads:");
+    for line in String::from_utf8_lossy(&dump.stdout)
+        .lines()
+        .filter_map(code_line)
+        .take(800)
+    {
+        println!("{line}");
+    }
+}
+
+/// A `jstack` line reduced to code names: a thread's name, its state, a
+/// frame's method, or the class of a lock it holds or waits for.
+fn code_line(line: &str) -> Option<String> {
+    let code = |text: &str| {
+        !text.is_empty()
+            && text
+                .chars()
+                .all(|c| c.is_ascii_alphanumeric() || "._$<>/#:-() ".contains(c))
+    };
+    if let Some(rest) = line.strip_prefix('"') {
+        let (name, _) = rest.split_once('"')?;
+        // Never an address, as in `RCON Client /127.0.0.1` of newer servers.
+        return (code(name) && !name.contains('/')).then(|| format!("thread {name}"));
+    }
+    let line = line.trim_start();
+    if let Some(state) = line.strip_prefix("java.lang.Thread.State: ") {
+        return code(state).then(|| format!("  {state}"));
+    }
+    if let Some(frame) = line.strip_prefix("at ") {
+        let method = frame.split('(').next()?;
+        return code(method).then(|| format!("  at {method}"));
+    }
+    if let Some(lock) = line.strip_prefix("- ") {
+        let (what, rest) = lock.split_once(" <")?;
+        let class = rest.split_once("(a ")?.1.strip_suffix(')')?;
+        return (code(what) && code(class)).then(|| format!("  - {what} {class}"));
+    }
+    line.starts_with("Found one Java-level deadlock")
+        .then(|| "deadlock".to_owned())
+}
+
 /// Logs in to a ready server's RCON. Servers before 1.13 open it just after the
 /// `Done (` line.
 fn open_console(recorded: &receipt::ServerReceipt) -> Result<rcon::Rcon, rcon::RconError> {
@@ -319,7 +401,7 @@ async fn host_a_world() {
             "an install waits for the server"
         );
         let started = Instant::now();
-        tokio::task::block_in_place(|| server.wait_ready(STARTUP_SILENCE)).unwrap();
+        tokio::task::block_in_place(|| wait_ready(&root, &server)).unwrap();
         println!("ready in {:.1?}", started.elapsed());
         assert_eq!(server.status().phase, Phase::Ready);
         let status = ping::status(server.port(), -1, Duration::from_secs(5)).unwrap();
@@ -428,7 +510,7 @@ async fn host_a_world() {
 
     // Second run: a force stop is recorded as unclean.
     let server = run("live-2");
-    tokio::task::block_in_place(|| server.wait_ready(STARTUP_SILENCE)).unwrap();
+    tokio::task::block_in_place(|| wait_ready(&root, &server)).unwrap();
     server.force_stop();
     let clean = tokio::task::block_in_place(|| server.wait_exit(Duration::from_secs(30)));
     assert_eq!(clean, Some(false));
@@ -654,6 +736,9 @@ async fn host_a_world_with_mods() {
     let built = pack::build(&catalog, &harmful, &game, &loader)
         .await
         .unwrap();
+    pack::check_server(&catalog, &built, &minecraft)
+        .await
+        .expect("the mods' jars say they start");
     let mut created = world::create(
         &root,
         "Live modded world",
@@ -711,29 +796,60 @@ async fn host_a_world_with_mods() {
 
     let activity = ActivityRegistry::new();
     let members = [Nick::parse("Host_Player").unwrap()];
-    let permit = activity
-        .try_acquire_hosting(created.id.uuid(), "live-mods".to_owned())
-        .unwrap();
-    let server = host::start(
-        &Launch {
-            root: &root,
-            world_id: created.id,
-            java: &java,
-            server_heap_mib: 2048,
-            game_heap_mib: 0,
-            physical_memory_bytes: physical_memory(),
-            members: &members,
-            operation_id: "live-mods".to_owned(),
-        },
-        permit,
-        Arc::new(|| {}),
-    )
-    .unwrap();
-    let started = Instant::now();
-    tokio::task::block_in_place(|| server.wait_ready(STARTUP_SILENCE)).unwrap();
-    println!("ready in {:.1?}", started.elapsed());
-
     let server_dir = root.world_server_dir(created.id);
+    // Fabric API brings data, which it lists as mods' data packs
+    // (`fabric/<mod id>` on 1.14, `Fabric Mods (Fabric mod)` on 1.19.2);
+    // without a mod with data only `vanilla` shows. The list is read through
+    // RCON, so a run before 1.16 that lost its listener at start is stopped
+    // and started again, as in `host_a_world`.
+    let reads_data_packs = matches!(kind, LoaderKind::Fabric | LoaderKind::Quilt);
+    let mut starts = 0;
+    let server = loop {
+        starts += 1;
+        let permit = activity
+            .try_acquire_hosting(created.id.uuid(), "live-mods".to_owned())
+            .unwrap();
+        let server = host::start(
+            &Launch {
+                root: &root,
+                world_id: created.id,
+                java: &java,
+                server_heap_mib: 2048,
+                game_heap_mib: 0,
+                physical_memory_bytes: physical_memory(),
+                members: &members,
+                operation_id: "live-mods".to_owned(),
+            },
+            permit,
+            Arc::new(|| {}),
+        )
+        .unwrap();
+        let started = Instant::now();
+        tokio::task::block_in_place(|| wait_ready(&root, &server)).unwrap();
+        println!("ready in {:.1?}", started.elapsed());
+        if !reads_data_packs {
+            break server;
+        }
+        let recorded = receipt::read(&root).expect("run receipt");
+        match open_console(&recorded) {
+            Ok(mut console) => {
+                let packs = console.command("datapack list").unwrap().to_lowercase();
+                println!("data packs: {packs}");
+                assert!(packs.contains("fabric"), "Fabric API loaded");
+                assert!(!packs.contains("sodium"));
+                println!("fabric api data loaded");
+                break server;
+            }
+            Err(rcon::RconError::Unreachable)
+                if server.protocol() < FIRST_STEADY_RCON && starts < RCON_STARTS =>
+            {
+                println!("rcon listener lost its start race, starting again");
+                assert!(tokio::task::block_in_place(|| server.stop(STOP_GRACE)));
+            }
+            Err(error) => panic!("rcon answers: {error:?}"),
+        }
+    };
+
     let mut mods: Vec<String> = std::fs::read_dir(server_dir.join("mods"))
         .unwrap()
         .filter_map(Result::ok)
@@ -787,16 +903,6 @@ async fn host_a_world_with_mods() {
     );
     println!("member in, stranger refused");
 
-    if matches!(kind, LoaderKind::Fabric | LoaderKind::Quilt) {
-        // Fabric API brings data, which it lists as mods' data packs
-        // (`fabric/<mod id>` on 1.14, `Fabric Mods (Fabric mod)` on 1.19.2);
-        // without a mod with data only `vanilla` shows.
-        let packs = data_packs(&server_dir).to_lowercase();
-        println!("data packs: {packs}");
-        assert!(packs.contains("fabric"), "Fabric API loaded");
-        assert!(!packs.contains("sodium"));
-        println!("fabric api data loaded");
-    }
     let clean = tokio::task::block_in_place(|| server.stop(STOP_GRACE));
     assert!(clean);
     assert!(!activity.is_busy());
@@ -838,27 +944,6 @@ async fn host_a_world_with_mods() {
     println!("stopped clean");
 }
 
-/// The server's `datapack list` through its RCON: the mods' data shows there
-/// whichever loader loaded them.
-fn data_packs(server_dir: &std::path::Path) -> String {
-    let properties = std::fs::read_to_string(server_dir.join("server.properties")).unwrap();
-    let value = |key: &str| {
-        properties
-            .lines()
-            .find_map(|l| l.strip_prefix(key)?.strip_prefix('='))
-            .unwrap_or_else(|| panic!("{key} is set"))
-            .trim()
-            .to_owned()
-    };
-    let mut rcon = launcher_lib::worlds::rcon::Rcon::connect(
-        value("rcon.port").parse().unwrap(),
-        &launcher_lib::secrets::SecretString::new(value("rcon.password")),
-        Duration::from_secs(10),
-    )
-    .unwrap_or_else(|_| panic!("rcon answers"));
-    rcon.command("datapack list").unwrap()
-}
-
 /// Starts a world's server, waits until it is ready or fails, and stops it.
 async fn start_world(
     root: &DataRoot,
@@ -885,7 +970,7 @@ async fn start_world(
         Arc::new(|| {}),
     )?;
     tokio::task::block_in_place(|| {
-        let ready = server.wait_ready(STARTUP_SILENCE);
+        let ready = wait_ready(root, &server);
         let clean = server.stop(STOP_GRACE);
         ready.map(|()| assert!(clean, "stopped clean"))
     })
@@ -1005,6 +1090,9 @@ async fn update_a_world_with_mods() {
     let built = pack::build(&catalog, &harmful, &game, &loader)
         .await
         .unwrap();
+    pack::check_server(&catalog, &built, &minecraft)
+        .await
+        .unwrap();
     let mut created = world::create(
         &root,
         "Live updated world",
@@ -1059,6 +1147,9 @@ async fn update_a_world_with_mods() {
     let built = pack::build(&catalog, &harmful, &game, &loader)
         .await
         .unwrap();
+    pack::check_server(&catalog, &built, &minecraft)
+        .await
+        .unwrap();
     let world = world::load(&root, id).unwrap();
     let shown = update::preview(&root, &world, &built).unwrap();
     assert_eq!(shown.added.len(), 1, "jei added");
@@ -1091,6 +1182,13 @@ async fn update_a_world_with_mods() {
     // Generation 3 brings Fabric API of another release.
     let game = installation(&[("fabric-api", other)], b"{\"rate\":3}").await;
     let broken = || pack::build(&catalog, &harmful, &game, &loader);
+    // Its jars say so before anything is tried; a start on a copy still
+    // catches what they cannot tell.
+    let told = pack::check_server(&catalog, &broken().await.unwrap(), &minecraft)
+        .await
+        .expect_err("Fabric API of another release does not start");
+    assert_eq!(told.code, launcher_lib::error::ErrorCode::InvalidInput);
+    println!("generation 3 refused before its trial");
     let world = world::load(&root, id).unwrap();
     let shown = update::preview(&root, &world, &broken().await.unwrap()).unwrap();
     let staged = update::stage(
@@ -1148,9 +1246,10 @@ async fn update_a_world_with_mods() {
 }
 
 /// A world whose mods do not start says why (W12): which mod, and what it
-/// needs that the world does not have, from the loader's own words or the
-/// crash report of the start. Each case is a release of a catalog mod that
-/// does not start with the loader's newest stable build.
+/// needs that the world does not have. Before the world is made when the
+/// mod's jar says so, else from the loader's own words or the crash report of
+/// the start. Each case is a release of a catalog mod that does not start
+/// with the loader's newest stable build.
 /// `WORLD_CASE=neoforge-range cargo test --test live_server a_world_that_does_not_start_says_why -- --ignored --exact --nocapture`
 #[tokio::test(flavor = "multi_thread")]
 #[ignore = "network: downloads a loader server, mods and Java, runs the server"]
@@ -1167,7 +1266,9 @@ async fn a_world_that_does_not_start_says_why() {
         slug: &'static str,
         made_for: &'static str,
         number: &'static str,
-        /// The start's error: its template and the mod it names.
+        /// Told before the world is made, by the mod's jar; else by the start.
+        before: bool,
+        /// The error: its template and the mod it names.
         template: &'static str,
         named: &'static str,
     }
@@ -1181,8 +1282,9 @@ async fn a_world_that_does_not_start_says_why() {
             slug: "jei",
             made_for: "1.21",
             number: "19.64.0.455",
+            before: true,
             template: "{mod} needs {dependency} {version} or newer, and the world has {actual}. Take an older release of {mod} or remove it.",
-            named: "jei",
+            named: "Just Enough Items (JEI)",
         },
         "fabric-minecraft" => Case {
             kind: LoaderKind::Fabric,
@@ -1191,6 +1293,7 @@ async fn a_world_that_does_not_start_says_why() {
             slug: "fabric-api",
             made_for: "1.20.1",
             number: "0.92.12+1.20.1",
+            before: true,
             template: "{mod} is made for another Minecraft version than the world's {actual}. Take its release for {actual} or remove it.",
             named: "Fabric API",
         },
@@ -1202,6 +1305,7 @@ async fn a_world_that_does_not_start_says_why() {
             slug: "appleskin",
             made_for: "1.21.1",
             number: "3.0.6+mc1.21",
+            before: true,
             template: "{mod} needs {dependency}, which is not in the world. Add it to the installation or remove {mod}, then update the world's mods.",
             named: "AppleSkin",
         },
@@ -1212,8 +1316,9 @@ async fn a_world_that_does_not_start_says_why() {
             slug: "jei",
             made_for: "1.19.2",
             number: "11.68.0.1086",
+            before: true,
             template: "{mod} is made for another Minecraft version than the world's {actual}. Take its release for {actual} or remove it.",
-            named: "jei",
+            named: "Just Enough Items (JEI)",
         },
         // Spark's only release for Forge 1.20.6 calls a method Forge 1.20.6's
         // newest build does not have.
@@ -1224,6 +1329,7 @@ async fn a_world_that_does_not_start_says_why() {
             slug: "spark",
             made_for: "1.20.6",
             number: "1.10.66-forge",
+            before: false,
             template: "{mod} stopped the world server while it started. Take another release of {mod} or remove it.",
             named: "spark",
         },
@@ -1234,6 +1340,7 @@ async fn a_world_that_does_not_start_says_why() {
             slug: "jei",
             made_for: "1.11.2",
             number: "4.5.0.294",
+            before: false,
             template: "{mod} is made for another Minecraft version than the world's {actual}. Take its release for {actual} or remove it.",
             named: "jei",
         },
@@ -1281,6 +1388,15 @@ async fn a_world_that_does_not_start_says_why() {
     let built = pack::build(&catalog, &harmful, &game, &loader)
         .await
         .unwrap();
+    let told = pack::check_server(&catalog, &built, case.minecraft).await;
+    assert_eq!(told.is_err(), case.before, "told before the world is made");
+    if let Err(error) = told {
+        let text = error.text.as_ref().expect("the check says why");
+        assert_eq!(text.template, case.template);
+        assert_eq!(text.params["mod"].to_string(), case.named);
+        println!("refused before the world is made, naming the mod");
+        return;
+    }
     let mut created = world::create(
         &root,
         "Live broken world",

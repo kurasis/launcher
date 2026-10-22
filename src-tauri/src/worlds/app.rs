@@ -1188,6 +1188,7 @@ async fn build_pack(
     let harmful = mods.harmful().await?;
     let mut built =
         pack::build(&mods.client, &harmful, &root.game_dir(instance.id), loader).await?;
+    pack::check_server(&mods.client, &built, &instance.version_id).await?;
     built.pack.source = Some(instance.id);
     Ok(built)
 }

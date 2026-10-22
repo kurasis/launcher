@@ -6,6 +6,9 @@
 //! [`clean_name`], versions and a Java release. A crash report is read from
 //! the world's own `crash-reports/`, written during this start, bounded in
 //! size; nothing leaves the computer.
+//!
+//! What the mods' jars say would stop the server is told in the same words
+//! before a world is made or its mods are updated ([`from_jars`]).
 
 use std::path::Path;
 use std::time::{Duration, SystemTime};
@@ -153,6 +156,69 @@ fn maven_needs(range: &str) -> Needs {
         }
     }
     Needs::Other
+}
+
+/// One plain version, with no wildcard such as `1.21.x` and no empty part;
+/// Fabric's `1.20.1-` (its pre-releases too) is told as `1.20.1`.
+fn one_version(version: &str) -> Option<String> {
+    clean_version(version.strip_suffix('-').unwrap_or(version)).filter(|v| {
+        !v.split(['.', '-', '+'])
+            .any(|part| part.is_empty() || part.eq_ignore_ascii_case("x"))
+    })
+}
+
+/// A range in a jar's own words, where it is one version or a lower bound:
+/// Maven's for Forge and NeoForge, and Fabric's predicates (`>=0.16.0`,
+/// `1.21.1`) for Fabric and Quilt.
+fn jar_needs(loader: mod_meta::Loader, ranges: &[String]) -> Needs {
+    let [range] = ranges else {
+        return Needs::Other;
+    };
+    let range = range.trim();
+    if loader.maven() {
+        return maven_needs(range);
+    }
+    if let Some(low) = range.strip_prefix(">=") {
+        return one_version(low).map_or(Needs::Other, Needs::AtLeast);
+    }
+    one_version(range.strip_prefix('=').unwrap_or(range)).map_or(Needs::Other, Needs::Exactly)
+}
+
+/// What the jars of a world's server mods say would stop it (D-066), told as
+/// a failed start would tell it; `name` is the title of the mod the jar is.
+/// Two copies of a mod and a jar for another loader are not told: the
+/// loaders take some of those, and the start says the rest.
+pub fn from_jars(
+    problem: &mod_meta::Problem,
+    loader: mod_meta::Loader,
+    name: Option<&str>,
+) -> Option<Problem> {
+    use mod_meta::Problem as P;
+    match problem {
+        P::Missing { by, id, .. } => Some(Problem::Missing {
+            by: Named::new(by, name)?,
+            dependency: Named::new(id, None)?,
+        }),
+        P::Wrong {
+            by,
+            id,
+            versions,
+            found,
+            ..
+        } => Some(Problem::Wrong {
+            by: Named::new(by, name)?,
+            dependency: Named::new(id, None)?,
+            needs: jar_needs(loader, versions),
+            actual: clean_version(found)?,
+        }),
+        P::Breaks { by, id, found, .. } => Some(Problem::Wrong {
+            by: Named::new(by, name)?,
+            dependency: Named::new(id, None)?,
+            needs: Needs::Other,
+            actual: clean_version(found.as_deref()?)?,
+        }),
+        P::Twice { .. } | P::OtherLoader { .. } => None,
+    }
 }
 
 /// Fabric Loader's words for a requirement: `version 0.16.0 or later`,

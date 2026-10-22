@@ -366,3 +366,145 @@ fn a_world_file_is_matched_to_its_mod_id() {
     assert!(file_is("fabric-api-0.92.2+1.20.1.jar", "fabric-api"));
     assert!(!file_is("jeresources.jar", "jei"));
 }
+
+#[test]
+fn what_the_jars_say_is_told_like_a_failed_start() {
+    use mod_meta::{Loader, Problem as P};
+    let wrong = |by: &str, id: &str, range: &str, found: &str| P::Wrong {
+        file: "mods/a.jar".into(),
+        by: by.into(),
+        id: id.into(),
+        versions: vec![range.into()],
+        found: found.into(),
+        from: None,
+    };
+    let told = |problem: &P, loader: Loader, name: Option<&str>| {
+        from_jars(problem, loader, name).map(|p| explain(&p).message)
+    };
+
+    let missing = P::Missing {
+        file: "mods/appleskin.jar".into(),
+        by: "appleskin".into(),
+        id: "fabric-api".into(),
+        versions: Vec::new(),
+    };
+    assert_eq!(
+        told(&missing, Loader::Fabric, Some("AppleSkin")).unwrap(),
+        "AppleSkin needs Fabric API, which is not in the world. Add it to the installation or remove AppleSkin, then update the world's mods."
+    );
+    let range = wrong("jei", "neoforge", "[21.1.238,)", "21.0.167");
+    assert_eq!(
+        told(&range, Loader::NeoForge, None).unwrap(),
+        "jei needs NeoForge 21.1.238 or newer, and the world has 21.0.167. Take an older release of jei or remove it."
+    );
+    // The jar's title names it; the game and the loaders keep their own names.
+    assert!(
+        told(&range, Loader::NeoForge, Some("Just Enough Items"))
+            .unwrap()
+            .starts_with("Just Enough Items needs NeoForge 21.1.238")
+    );
+    assert_eq!(
+        told(
+            &wrong("jei", "minecraft", "[1.19,1.19.2]", "1.20.1"),
+            Loader::Forge,
+            None
+        )
+        .unwrap(),
+        "jei is made for another Minecraft version than the world's 1.20.1. Take its release for 1.20.1 or remove it."
+    );
+
+    // Fabric's predicates: one version, a lower bound, and the rest.
+    let fabric = |range: &str| {
+        from_jars(
+            &wrong("lithium", "fabricloader", range, "0.15.0"),
+            Loader::Fabric,
+            None,
+        )
+    };
+    let needs = |range: &str| match fabric(range) {
+        Some(Problem::Wrong { needs, .. }) => needs,
+        other => panic!("{other:?}"),
+    };
+    assert_eq!(needs(">=0.16.0"), Needs::AtLeast("0.16.0".into()));
+    assert_eq!(needs("0.16.0"), Needs::Exactly("0.16.0".into()));
+    assert_eq!(needs("=0.16.0"), Needs::Exactly("0.16.0".into()));
+    assert_eq!(needs(">=0.16.0-"), Needs::AtLeast("0.16.0".into()));
+    for other in ["~0.16", "0.16.x", "^0.16.0", ">=0.16 <1", "*", ">=0.16.0--"] {
+        assert_eq!(needs(other), Needs::Other, "{other}");
+    }
+    assert_eq!(
+        told(
+            &wrong("fabric-api", "minecraft", "1.20.1", "1.21.1"),
+            Loader::Fabric,
+            None
+        )
+        .unwrap(),
+        "Fabric API is made for Minecraft 1.20.1, and the world is 1.21.1. Take its release for 1.21.1 or remove it."
+    );
+    // Two ranges are told as another version.
+    let either = P::Wrong {
+        file: "mods/jei.jar".into(),
+        by: "jei".into(),
+        id: "minecraft".into(),
+        versions: vec!["[1.20,1.20.1]".into(), "[1.21]".into()],
+        found: "1.21.1".into(),
+        from: None,
+    };
+    assert!(matches!(
+        from_jars(&either, Loader::Forge, None),
+        Some(Problem::Wrong {
+            needs: Needs::Other,
+            ..
+        })
+    ));
+
+    // What a mod does not start with.
+    let breaks = |found: Option<&str>| P::Breaks {
+        file: "mods/sodium.jar".into(),
+        by: "sodium".into(),
+        id: "optifabric".into(),
+        found: found.map(str::to_owned),
+        from: Some("mods/optifabric.jar".into()),
+    };
+    assert_eq!(
+        told(&breaks(Some("1.14.3")), Loader::Fabric, Some("Sodium")).unwrap(),
+        "Sodium does not work with optifabric 1.14.3. Take another release of Sodium or remove it."
+    );
+    assert_eq!(from_jars(&breaks(None), Loader::Fabric, None), None);
+
+    // Left to the loader and the start.
+    let twice = P::Twice {
+        id: "jei".into(),
+        files: vec!["mods/a.jar".into(), "mods/b.jar".into()],
+    };
+    let other = P::OtherLoader {
+        file: "mods/a.jar".into(),
+        loader: Loader::Forge,
+    };
+    assert_eq!(from_jars(&twice, Loader::Fabric, None), None);
+    assert_eq!(from_jars(&other, Loader::Fabric, None), None);
+
+    // A name or version that is not plain is dropped; an id that is not one
+    // tells nothing.
+    assert!(
+        told(&range, Loader::NeoForge, Some("<b>JEI</b>"))
+            .unwrap()
+            .starts_with("jei needs")
+    );
+    assert_eq!(
+        from_jars(
+            &wrong("jei", "neoforge", "[21.1.238,)", "21.0.167\n[x]"),
+            Loader::NeoForge,
+            None
+        ),
+        None
+    );
+    assert_eq!(
+        from_jars(
+            &wrong("Jei", "neoforge", "[21.1.238,)", "21.0.167"),
+            Loader::NeoForge,
+            None
+        ),
+        None
+    );
+}
