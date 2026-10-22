@@ -3976,20 +3976,27 @@ impl Store {
         self.db()
             .execute("VACUUM INTO ?1", [path.to_string_lossy()])
             .map_err(|e| format!("copying the database: {e}"))?;
-        let mut copies: Vec<PathBuf> = std::fs::read_dir(dir)
-            .map_err(|e| e.to_string())?
-            .flatten()
-            .map(|entry| entry.path())
-            .filter(|p| {
-                p.file_name()
-                    .and_then(|n| n.to_str())
-                    .is_some_and(|n| n.starts_with("catalog-") && n.ends_with(".db"))
-            })
-            .collect();
-        copies.sort();
+        let mut copies = backup_copies(dir);
         while copies.len() > keep {
             let _ = std::fs::remove_file(copies.remove(0));
         }
         Ok(path)
     }
+}
+
+/// The database copies `Store::backup` made in `dir`, oldest first.
+pub fn backup_copies(dir: &Path) -> Vec<PathBuf> {
+    let mut copies: Vec<PathBuf> = std::fs::read_dir(dir)
+        .into_iter()
+        .flatten()
+        .flatten()
+        .map(|entry| entry.path())
+        .filter(|p| {
+            p.file_name()
+                .and_then(|n| n.to_str())
+                .is_some_and(|n| n.starts_with("catalog-") && n.ends_with(".db"))
+        })
+        .collect();
+    copies.sort();
+    copies
 }

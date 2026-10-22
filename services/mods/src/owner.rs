@@ -629,9 +629,17 @@ impl Owner<'_> {
     /// The service's own checks: a line each, `ok` or `problem` with its
     /// numbers, and a last line `all ok` or `problems <n>`. `popular` is how
     /// many most downloaded projects of each kind are looked for (0: off).
-    pub fn health(&self, popular: usize) -> Result<Vec<String>, String> {
+    pub fn health(&self, popular: usize, backups: &std::path::Path) -> Result<Vec<String>, String> {
         let (day, month) = crate::virustotal::day_and_month(self.now);
         let h = self.store.health(self.now, &day, &month)?;
+        // How long ago in hours; `never` for a time not yet recorded.
+        let ago = |at: i64| {
+            if at <= 0 {
+                "never".to_owned()
+            } else {
+                format!("{} h ago", (self.now - at) / HOUR)
+            }
+        };
         let mut lines = Vec::new();
         let mut problems = 0;
         // `None`: the part is off.
@@ -690,6 +698,19 @@ impl Owner<'_> {
                 gb(quota)
             ),
         );
+        // The daily copies of the database (lapi-mods-backup.timer).
+        let copies = crate::store::backup_copies(backups);
+        let newest = copies
+            .last()
+            .and_then(|p| p.metadata().ok())
+            .and_then(|m| m.modified().ok())
+            .and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok())
+            .map_or(0, |d| i64::try_from(d.as_secs()).unwrap_or(0));
+        check(
+            "backups",
+            Some(newest > 0 && self.now - newest < DAILY_LATE),
+            format!("{} copies, newest {}", copies.len(), ago(newest)),
+        );
         let limit = crate::virustotal::BACKGROUND.month;
         check(
             "virustotal",
@@ -705,16 +726,16 @@ impl Owner<'_> {
                 .is_some()
                 .then_some(h.r2_mismatched == 0 && copied < DAILY_LATE),
             format!(
-                "{} wrong copies, database copied {} h ago",
+                "{} wrong copies, database copied {}",
                 h.r2_mismatched,
-                copied / HOUR
+                ago(h.database_copied)
             ),
         );
         let looked = self.now - h.popular_seeded;
         check(
             "popular",
             (popular > 0).then_some(looked < DAILY_LATE),
-            format!("looked {} h ago", looked / HOUR),
+            format!("looked {}", ago(h.popular_seeded)),
         );
         lines.push(if problems == 0 {
             "all ok".to_owned()

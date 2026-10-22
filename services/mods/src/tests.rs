@@ -6625,9 +6625,22 @@ async fn health_names_its_problems_in_words_and_numbers() {
     let t = setup();
     let purged = Purged::default();
     let owner = owner(&t, &purged);
-    let lines = owner.health(0).unwrap();
+    // No copy of the database yet: the backup timer never ran.
+    let backups = t._dir.path().join("backups");
+    let lines = owner.health(0, &backups).unwrap();
+    assert_eq!(lines.last().unwrap(), "problems 1", "{lines:?}");
+    assert!(
+        lines.contains(&"backups problem 0 copies, newest never".to_owned()),
+        "{lines:?}"
+    );
+    t.app.store.backup(&backups, 14).unwrap();
+    let lines = owner.health(0, &backups).unwrap();
     assert_eq!(lines.last().unwrap(), "all ok", "{lines:?}");
     assert!(lines.contains(&"popular off".to_owned()), "{lines:?}");
+    assert!(
+        lines.contains(&"backups ok 1 copies, newest 0 h ago".to_owned()),
+        "{lines:?}"
+    );
     // Popular projects never looked for, and a job due for a day.
     t.app
         .store
@@ -6641,8 +6654,12 @@ async fn health_names_its_problems_in_words_and_numbers() {
             None,
         )
         .unwrap();
-    let lines = owner.health(50).unwrap();
+    let lines = owner.health(50, &backups).unwrap();
     assert_eq!(lines.last().unwrap(), "problems 2", "{lines:?}");
+    assert!(
+        lines.contains(&"popular problem looked never".to_owned()),
+        "{lines:?}"
+    );
     assert!(
         lines
             .iter()
