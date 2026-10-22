@@ -53,6 +53,10 @@ listing what a failed or cancelled part did not reach as not run. The artifacts
 `usertest-results-<part>` have a folder per item with the screen copies and, for a
 failure, the logs, the game's screenshots and any crash report, machine names replaced;
 on a launcher failure also what the launcher window showed. The launcher is uninstalled at the end; its data folder
-is removed at the next run's start. A run cancelled halfway leaves the test launcher (and
+is removed at the next run's start. The game files all installations share (libraries
+and assets, which the launcher checks before use) are kept in
+`%LOCALAPPDATA%\launcher-usertest-cache` between the parts a machine plays, up to
+25 GiB, so only the first part on a machine downloads them; a run with `cleanup`
+removes them. A run cancelled halfway leaves the test launcher (and
 maybe the game) running: the next run on that machine stops what runs from its folder and
 puts the machine back first, and a run with `cleanup` does only that.
