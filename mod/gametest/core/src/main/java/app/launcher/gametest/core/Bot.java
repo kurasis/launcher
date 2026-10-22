@@ -43,6 +43,7 @@ public final class Bot {
     private String lastScreen;
     private long screenSince;
     private boolean stuckShot;
+    private final Set<String> closedScreens = new HashSet<>();
     private long creatingSince;
     private long playStart;
     private long lastSample;
@@ -113,7 +114,9 @@ public final class Bot {
         }
         String screen = game.screen();
         if (screen != null && !screen.equals(lastScreen)) {
-            if (!report.screensBeforeWorld.contains(screen) && report.screensBeforeWorld.size() < 20) {
+            // In the order last seen, so the title shown again after a closed screen comes last.
+            report.screensBeforeWorld.remove(screen);
+            if (report.screensBeforeWorld.size() < 20) {
                 report.screensBeforeWorld.add(screen);
             }
         }
@@ -129,6 +132,14 @@ public final class Bot {
         if (title && steady >= TITLE_SETTLE) {
             create(game, now);
         } else if (!title && steady >= STUCK) {
+            // A mod's own notice (a welcome or "install this too") is closed once, as a player
+            // would; the game's and the loaders' screens are not.
+            if (screen != null && modScreen(screen) && closedScreens.add(screen)) {
+                report.problem("closed a mod's screen before the title: " + screen);
+                game.closeScreen();
+                screenSince = now;
+                return;
+            }
             if (!stuckShot) {
                 stuckShot = true;
                 shot(game, "stuck");
@@ -202,6 +213,27 @@ public final class Bot {
     }
 
     /** Chat, and the game's own screens while terrain loads (after a far teleport). */
+    /** Packages of the game's and the loaders' screens. */
+    private static final String[] GAME_PACKAGES = {"net.minecraft.", "com.mojang.", "net.minecraftforge.",
+        "net.neoforged.", "net.fabricmc.", "org.quiltmc.", "cpw.mods."};
+
+    /**
+     * Whether a screen comes from a mod: a class in a package of its own. Obfuscated game
+     * classes have no package. The layers may add the screen's title after a space.
+     */
+    static boolean modScreen(String screen) {
+        String name = screen.split(" ", 2)[0];
+        if (name.indexOf('.') < 0) {
+            return false;
+        }
+        for (String prefix : GAME_PACKAGES) {
+            if (name.startsWith(prefix)) {
+                return false;
+            }
+        }
+        return true;
+    }
+
     private static boolean ownScreen(String screen) {
         String name = screen.toLowerCase(Locale.ROOT);
         return name.contains("chat") || name.contains("levelloading") || name.contains("receivinglevel")

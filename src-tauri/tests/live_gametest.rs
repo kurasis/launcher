@@ -368,9 +368,36 @@ async fn the_game_is_played_with_mods_and_skins() {
 
     let cache = root_path.join("gametest-cache");
     let mut avoid = mods::Avoid::load(&cache);
+    let loader_version = instance.loader.as_ref().map_or("", |l| l.version.as_str());
+    // Quilt stands in for Fabric's loader at a version of its own: the mod set
+    // is chosen against that version, not Quilt's.
+    let provides = if loader_name == "quilt" {
+        let jar = root
+            .maven_root()
+            .join("org/quiltmc/quilt-loader")
+            .join(loader_version)
+            .join(format!("quilt-loader-{loader_version}.jar"));
+        let provides = mods::quilt_provides(&jar);
+        notes.push(format!(
+            "- Quilt provides to Fabric's mods: {}",
+            if provides.is_empty() {
+                "unknown (its jar could not be read)".to_owned()
+            } else {
+                provides
+                    .iter()
+                    .map(|(id, v)| format!("{id} {v}"))
+                    .collect::<Vec<_>>()
+                    .join(", ")
+            }
+        ));
+        provides
+    } else {
+        Vec::new()
+    };
     let loader = mods::Loader {
         kind: &loader_name,
-        version: instance.loader.as_ref().map_or("", |l| l.version.as_str()),
+        version: loader_version,
+        provides: &provides,
     };
     // A crash a mod of the set is blamed for plays the scenario again without
     // that version of it; the scenario then passes only with a warning.
@@ -680,8 +707,21 @@ async fn the_game_is_played_with_mods_and_skins() {
             .unwrap(),
         )
         .unwrap();
+        // The launcher's diagnosis first; else the crash's stack: the crash
+        // report, or the log from the last exception that ended the game.
+        let stack = crashes
+            .first()
+            .and_then(|c| std::fs::read_to_string(c).ok())
+            .or_else(|| {
+                let at = log_text.rfind("Unhandled game exception")?;
+                Some(log_text[at..].to_owned())
+            })
+            .unwrap_or_default();
         let retry = (status == "failed" && mod_set == "medium" && attempt < MAX_ATTEMPTS)
-            .then(|| blamed(&diagnosis, &set))
+            .then(|| {
+                blamed(&diagnosis, &set)
+                    .or_else(|| mods::blamed_by_stack(&stack, &set, &game_dir.join("mods")))
+            })
             .flatten();
         if let Some(file) = retry {
             println!(

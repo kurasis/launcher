@@ -137,7 +137,8 @@ class BotTest {
 
         @Override
         public void closeScreen() {
-            screen = null;
+            // Without a world the game shows its title again.
+            screen = world ? null : "net.minecraft.client.gui.screens.TitleScreen";
         }
 
         @Override
@@ -233,6 +234,31 @@ class BotTest {
         assertFalse(report.checks.get(0).ok);
         assertTrue(game.shots.contains("gametest-01-stuck.png"));
         assertNotNull(report.problems.get(0));
+    }
+
+    @Test
+    void aModsNoticeBeforeTheTitleIsClosedOnce(@TempDir Path dir) {
+        long[] now = {0};
+        Bot bot = new Bot(config(dir.toFile()), () -> now[0]);
+        FakeGame game = new FakeGame();
+        game.screen = "net.mehvahdjukaar.supplementaries.client.screens.WelcomeMessageScreen \"Warning\"";
+        Report report = run(bot, game, now);
+
+        assertTrue(report.passed(), report.toJson());
+        assertEquals("closed a mod's screen before the title: " + report.screensBeforeWorld.get(0),
+                report.problems.get(0));
+        assertTrue(report.screensBeforeWorld.get(1).endsWith("TitleScreen"));
+        assertFalse(game.shots.contains("gametest-01-stuck.png"));
+    }
+
+    @Test
+    void onlyModsScreensAreTheirOwn() {
+        assertTrue(Bot.modScreen("com.example.mod.Notice \"Hi\""));
+        assertFalse(Bot.modScreen("net.minecraftforge.client.gui.LoadingErrorScreen"));
+        assertFalse(Bot.modScreen("net.neoforged.neoforge.client.gui.LoadingErrorScreen"));
+        assertFalse(Bot.modScreen("net.minecraft.class_442 \"Title\""));
+        assertFalse(Bot.modScreen("org.quiltmc.loader.impl.gui.QuiltErrorScreen"));
+        assertFalse(Bot.modScreen("fzy"));
     }
 
     @Test

@@ -19,9 +19,12 @@ version × loader × mod set, played by a test bot for a set number of minutes.
      need (`tests/gametest/mods.rs`), each file checked against Modrinth's SHA-512. Each
      mod gets its newest version that fits the loader build: one whose jar accepts it
      (`versionRange` of `forge`/`neoforge` in `mods.toml`, `depends.fabricloader` in
-     `fabric.mod.json`) and that has not crashed on it on this machine. Older releases
-     come next, then newer pre-releases; with none, the mod (and any mod that needs it)
-     is left out.
+     `fabric.mod.json`; on Quilt, the `fabricloader` and `mixinextras` versions Quilt
+     provides, read from its jar's `quilt.mod.json`) and that has not crashed on it on
+     this machine. Older releases come next, then newer pre-releases; with none, the mod
+     (and any mod that needs it) is left out. Sodium before 0.6 comes with Indium, as
+     players add it: mods that draw through Fabric's rendering API stop the game
+     without one.
 
    With no loader (`vanilla`) both are Java agents instead, passed with `-javaagent:`:
    the bot (`launchergametest-agent-<version>.jar`, `mod/gametest/agent/`) rewrites
@@ -45,7 +48,9 @@ version × loader × mod set, played by a test bot for a set number of minutes.
 The bot (`mod/gametest/core/Bot.java`) then:
 
 - waits for the title screen and notes every screen before it: a loader's warning or
-  error screen fails the check `title-screen` and is screenshotted;
+  error screen fails the check `title-screen` and is screenshotted; a mod's own notice
+  (a welcome, "install this mod too") is closed once after 20 seconds, as a player
+  would, and listed under the bot's problems without failing the check;
 - creates a world with a fixed seed and commands allowed;
 - plays in rounds of six phases, 30 seconds each: **skin** (third person from the front
   and back), **walk** (survival, sprinting and jumping), **fly**, **far** (five teleports
@@ -60,8 +65,9 @@ The bot (`mod/gametest/core/Bot.java`) then:
 A scenario passes when every bot check passes, the game exits with code 0 within the time
 limit and leaves no crash report.
 
-A crash the launcher's diagnosis blames on a mod of the `medium` set is that mod's
-problem, not ours: the harness notes that version as crashing on this loader build
+A crash the launcher's diagnosis blames on a mod of the `medium` set, or whose stack
+trace (crash report, else the log from the exception that ended the game) first reaches
+a class of one of its jars, is that mod's problem, not ours: the harness notes that version as crashing on this loader build
 (`gametest-cache/incompatible.json` in the data folder, kept between runs), and plays the
 scenario again with another version of the mod or without it, up to three plays. A
 scenario that then passes is **warned**, not failed: the job stays green, the results
