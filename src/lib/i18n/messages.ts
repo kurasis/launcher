@@ -513,8 +513,11 @@ export type Messages = {
   };
   readonly createForm: {
     readonly title: string;
+    readonly back: string;
     readonly name: string;
+    readonly nameHint: string;
     readonly version: string;
+    readonly typesLabel: string;
     readonly versionTypes: {
       readonly release: string;
       readonly snapshot: string;
@@ -533,6 +536,7 @@ export type Messages = {
     readonly latest: string;
     readonly selected: (values: { id: string | number }) => string;
     readonly noneSelected: string;
+    readonly noSupported: (values: { loader: string | number }) => string;
     readonly isolation: string;
     readonly submit: string;
     readonly cancel: string;
@@ -544,8 +548,12 @@ export type Messages = {
     };
     readonly stale: string;
     readonly refresh: string;
+    readonly retry: string;
     readonly estimate: string;
     readonly estimating: string;
+    readonly memory: string;
+    readonly memoryFixed: (values: { mib: number }) => string;
+    readonly memoryHint: string;
     readonly planTitle: (values: { version: string | number }) => string;
     readonly planJava: string;
     readonly planLibraries: string;
@@ -559,6 +567,7 @@ export type Messages = {
   readonly loaders: {
     readonly loader: string;
     readonly none: string;
+    readonly noneShort: string;
     readonly names: {
       readonly fabric: string;
       readonly quilt: string;

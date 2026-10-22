@@ -1,8 +1,8 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useId, useRef, useState } from 'react';
 import { Button } from '../../components/Button';
 import { Field } from '../../components/Field';
+import { Icon } from '../../components/Icon';
 import { Notice } from '../../components/Notice';
-import { Panel } from '../../components/Panel';
 import { StatusBadge, type StatusTone } from '../../components/StatusBadge';
 import forms from '../../components/forms.module.css';
 import type {
@@ -18,13 +18,13 @@ import { formatBytes } from '../../lib/format';
 import { describeIpcError, ipc } from '../../lib/ipc';
 import { strings } from '../../lib/strings';
 import { useCommand } from '../../lib/useCommand';
-import styles from './Instances.module.css';
-import { VersionPicker } from './VersionPicker';
-import { LOADER_KINDS } from './loaderLabel';
 import { recommendationText, useRecommendation } from '../settings/memoryLabel';
+import styles from './CreateInstance.module.css';
+import { LoaderPills } from './LoaderPills';
+import { VersionPicker } from './VersionPicker';
 
 interface CreateInstanceFormProps {
-  /** Closes the form; with the new installation's ID after creating one. */
+  /** Closes the page; with the new installation's ID after creating one. */
   onDone: (createdId?: string) => void;
   /** When the connection returns, the version list is fetched again (D-052). */
   network?: NetworkStatus;
@@ -38,6 +38,8 @@ interface CreateInstanceFormProps {
 
 const t = strings.createForm;
 const tl = strings.loaders;
+/** The core accepts 1–64 characters (src-tauri/src/validation.rs). */
+const NAME_MAX_LENGTH = 64;
 
 /** The default name: the version, and the loader when there is one. */
 function defaultName(versionId: string, kind: LoaderKind | 'none'): string {
@@ -50,6 +52,10 @@ const availabilityTone: Record<VersionAvailability, StatusTone> = {
   catalog_unavailable: 'warning',
 };
 
+/**
+ * The new-installation page (D-072): the way back and the title, then one card
+ * with the name, mod loader and memory beside the Minecraft version.
+ */
 export function CreateInstanceForm({
   onDone,
   network = 'online',
@@ -74,10 +80,19 @@ export function CreateInstanceForm({
   const [versionsByKey, setVersionsByKey] = useState<Record<string, LoaderVersion[]>>({});
   const [pickedByKey, setPickedByKey] = useState<Record<string, string>>({});
   const [loaderError, setLoaderError] = useState<{ key: string; message: string } | null>(null);
+  // Bumped by Try again: the loader requests run again for what is not cached.
+  const [loaderAttempt, setLoaderAttempt] = useState(0);
   const create = useCommand(
     (requestId: string, displayName: string, version: string, loader: LoaderChoice | null) =>
       ipc.createInstance({ displayName, versionId: version, loader }, requestId),
   );
+  const headingId = useId();
+  const headingRef = useRef<HTMLHeadingElement>(null);
+
+  // The page replaces what was on screen: start reading it from its title.
+  useEffect(() => {
+    headingRef.current?.focus();
+  }, []);
 
   const loaderKey = loaderKind === 'none' ? '' : `${loaderKind}:${versionId}`;
   const loaderGames = loaderKind === 'none' ? null : (gamesByKind[loaderKind] ?? null);
@@ -96,14 +111,25 @@ export function CreateInstanceForm({
     loaderError !== null && (loaderError.key === loaderKey || loaderError.key === loaderKind)
       ? loaderError.message
       : null;
+  // The chosen game version is one the loader does not support, or none is.
+  const unsupported = loaderGames !== null && versionId !== '' && !loaderGames.has(versionId);
+  const noneSupported =
+    loaderGames !== null &&
+    catalog !== null &&
+    !catalog.versions.some((version) => loaderGames.has(version.id));
 
   // The backend reports catalog outages inside the view; a rejection only means
   // the core did not answer, which the availability badge shows as unreachable.
+  // Only the latest request's answer counts: Check again, the connection's return
+  // and the first load can finish in any order.
+  const catalogAsked = useRef(0);
   const fetchCatalog = useCallback(
-    (refresh: boolean) =>
-      ipc
+    (refresh: boolean) => {
+      const asked = ++catalogAsked.current;
+      return ipc
         .listSupportedVersions(refresh)
         .then((view) => {
+          if (asked !== catalogAsked.current) return;
           setCatalog(view);
           // Preselect the version asked for, else the latest release.
           const initial =
@@ -115,11 +141,12 @@ export function CreateInstanceForm({
           }
         })
         .catch(() => {
-          setCatalog(null);
+          if (asked === catalogAsked.current) setCatalog(null);
         })
         .finally(() => {
-          setChecking(false);
-        }),
+          if (asked === catalogAsked.current) setChecking(false);
+        });
+    },
     [initialVersion],
   );
 
@@ -127,17 +154,20 @@ export function CreateInstanceForm({
     void fetchCatalog(false);
   }, [fetchCatalog]);
 
-  // Back online: check the version list again.
-  const wasOffline = useRef(network === 'offline');
-  useEffect(() => {
-    if (network === 'online' && wasOffline.current) void fetchCatalog(true);
-    wasOffline.current = network === 'offline';
-  }, [network, fetchCatalog]);
-
   const loadCatalog = (refresh: boolean) => {
     setChecking(true);
     void fetchCatalog(refresh);
   };
+
+  // Back online: check the version list again, and say so while it runs.
+  const wasOffline = useRef(network === 'offline');
+  useEffect(() => {
+    if (network === 'online' && wasOffline.current) {
+      setChecking(true);
+      void fetchCatalog(true);
+    }
+    wasOffline.current = network === 'offline';
+  }, [network, fetchCatalog]);
 
   /** Moves the selection to the newest supported release when needed. */
   const keepSupported = useCallback(
@@ -163,6 +193,7 @@ export function CreateInstanceForm({
         if (!current) return;
         const allowed = new Set(games);
         setGamesByKind((known) => ({ ...known, [loaderKind]: allowed }));
+        setLoaderError((error) => (error?.key === loaderKind ? null : error));
         keepSupported(allowed);
       })
       .catch((error: unknown) => {
@@ -171,7 +202,15 @@ export function CreateInstanceForm({
     return () => {
       current = false;
     };
-  }, [loaderKind, gamesByKind, keepSupported]);
+  }, [loaderKind, gamesByKind, keepSupported, loaderAttempt]);
+
+  // The loader's list can arrive before the catalog (a loader chosen from the
+  // command palette): the selection moves once both are there.
+  const [catalogSeen, setCatalogSeen] = useState<CatalogView | null>(null);
+  if (catalog !== catalogSeen) {
+    setCatalogSeen(catalog);
+    if (catalog !== null && loaderGames !== null) keepSupported(loaderGames);
+  }
 
   // The loader's versions for the chosen game version, fetched once each.
   useEffect(() => {
@@ -187,7 +226,9 @@ export function CreateInstanceForm({
     ipc
       .listLoaderVersions(loaderKind, versionId)
       .then((versions) => {
-        if (current) setVersionsByKey((known) => ({ ...known, [loaderKey]: versions }));
+        if (!current) return;
+        setVersionsByKey((known) => ({ ...known, [loaderKey]: versions }));
+        setLoaderError((error) => (error?.key === loaderKey ? null : error));
       })
       .catch((error: unknown) => {
         if (current) setLoaderError({ key: loaderKey, message: describeIpcError(error) });
@@ -195,28 +236,42 @@ export function CreateInstanceForm({
     return () => {
       current = false;
     };
-  }, [loaderKind, versionId, loaderGames, loaderKey, versionsByKey]);
+  }, [loaderKind, versionId, loaderGames, loaderKey, versionsByKey, loaderAttempt]);
+
+  /** Asks again for what failed; nothing failed is cached, so it is fetched anew. */
+  const retryLoader = () => {
+    setLoaderError(null);
+    setLoaderAttempt((attempt) => attempt + 1);
+  };
 
   const selected = catalog?.versions.find((version) => version.id === versionId);
   const availability = selected?.availability ?? 'catalog_unavailable';
   const loaderReady = loaderKind === 'none' || loader !== null;
+  const loaderLoading =
+    loaderKind !== 'none' && loaderVersions === null && shownError === null && !unsupported;
 
   // An estimate answers for the version and loader it was asked for: one that
-  // arrives after either changed is dropped.
-  const planAsked = useRef(0);
+  // arrives after either changed is dropped. The effect counts only a real
+  // change, so an effect that runs late, after a click on Estimate for the same
+  // choice, does not drop that estimate.
+  const planFor = JSON.stringify([versionId, loaderKind, loaderVersion]);
+  const planAsked = useRef({ count: 0, planFor: '' });
   useEffect(() => {
-    planAsked.current += 1;
-  }, [versionId, loaderKind, loaderVersion]);
+    if (planAsked.current.planFor !== planFor) {
+      planAsked.current = { count: planAsked.current.count + 1, planFor };
+    }
+  }, [planFor]);
 
   const estimate = async () => {
-    const asked = ++planAsked.current;
+    const asked = planAsked.current.count + 1;
+    planAsked.current = { count: asked, planFor };
     setEstimating(true);
     setPlanError(null);
     try {
       const answer = await ipc.previewInstallPlan(versionId, loader);
-      if (asked === planAsked.current) setPlan(answer);
+      if (asked === planAsked.current.count) setPlan(answer);
     } catch (error) {
-      if (asked === planAsked.current) {
+      if (asked === planAsked.current.count) {
         setPlan(null);
         setPlanError(describeIpcError(error));
       }
@@ -231,170 +286,208 @@ export function CreateInstanceForm({
   };
 
   return (
-    <Panel title={t.title}>
+    <section className={styles.page} aria-labelledby={headingId}>
+      <header className={styles.header}>
+        <button
+          type="button"
+          className={styles.back}
+          aria-label={t.back}
+          title={t.back}
+          onClick={() => {
+            onDone();
+          }}
+        >
+          <Icon name="back" size={18} className={styles.backIcon} />
+        </button>
+        <h2 id={headingId} ref={headingRef} tabIndex={-1} className={styles.title}>
+          {t.title}
+        </h2>
+      </header>
       <form
-        className={forms.form}
+        className={styles.card}
         onSubmit={(event) => {
           event.preventDefault();
           void submit();
         }}
       >
-        <Field label={t.name}>
-          {(props) => (
-            <input
-              {...props}
-              className={forms.input}
-              value={name}
-              maxLength={64}
-              required
-              autoComplete="off"
-              onChange={(event) => {
-                setTypedName(event.target.value);
-              }}
-            />
-          )}
-        </Field>
-        <Field
-          label={tl.loader}
-          hint={loaderKind === 'none' ? tl.hints.none : tl.hints[loaderKind]}
-        >
-          {(props) => (
-            <select
-              {...props}
-              className={forms.select}
+        <div className={styles.columns}>
+          <div className={styles.column}>
+            <Field label={t.name} hint={t.nameHint}>
+              {(props) => (
+                <input
+                  {...props}
+                  className={forms.input}
+                  value={name}
+                  maxLength={NAME_MAX_LENGTH}
+                  required
+                  autoComplete="off"
+                  spellCheck={false}
+                  // "26.3 Fabric" reads left to right in Arabic too; an Arabic name right to left.
+                  dir="auto"
+                  onChange={(event) => {
+                    setTypedName(event.target.value.slice(0, NAME_MAX_LENGTH));
+                  }}
+                />
+              )}
+            </Field>
+            <LoaderPills
               value={loaderKind}
-              onChange={(event) => {
-                const kind = event.target.value as LoaderKind | 'none';
+              onChange={(kind) => {
                 setLoaderKind(kind);
                 const known = kind === 'none' ? undefined : gamesByKind[kind];
                 if (known !== undefined) keepSupported(known);
                 setPlan(null);
                 setPlanError(null);
               }}
-            >
-              <option value="none">{tl.none}</option>
-              {LOADER_KINDS.map((kind) => (
-                <option key={kind} value={kind}>
-                  {tl.names[kind]}
-                </option>
-              ))}
-            </select>
-          )}
-        </Field>
-        <fieldset className={forms.choices}>
-          <legend>{t.version}</legend>
-          {loaderKind !== 'none' && loaderGames !== null && (
-            <p className={styles.muted}>{tl.gamesHint({ loader: tl.names[loaderKind] })}</p>
-          )}
-          {catalog !== null && (
-            <VersionPicker
-              catalog={catalog}
-              value={versionId}
-              allowed={loaderKind === 'none' ? null : loaderGames}
-              onChange={(version) => {
-                setVersionId(version.id);
-                setPlan(null);
-                setPlanError(null);
-              }}
             />
-          )}
-          <p role="status" className={styles.muted}>
-            {versionId === '' ? t.noneSelected : t.selected({ id: versionId })}
-          </p>
-          <p className={styles.muted}>{t.isolation}</p>
-        </fieldset>
-        {loaderKind !== 'none' && (
-          <Field
-            label={tl.version({ loader: tl.names[loaderKind] })}
-            hint={
-              loaderVersions?.length === 0
-                ? tl.noVersions({ loader: tl.names[loaderKind], version: versionId })
-                : tl.modsHint
-            }
-          >
-            {(props) => (
-              <select
-                {...props}
-                className={forms.select}
-                value={loaderVersion}
-                disabled={loaderVersions === null || loaderVersions.length === 0}
-                onChange={(event) => {
-                  const picked = event.target.value;
-                  setPickedByKey((known) => ({ ...known, [loaderKey]: picked }));
-                  setPlan(null);
-                  setPlanError(null);
-                }}
-              >
-                {loaderVersions === null && <option value="">{tl.loading}</option>}
-                {loaderVersions?.map((version) => (
-                  <option key={version.id} value={version.id}>
-                    {version.recommended
-                      ? tl.recommended({ label: version.label })
-                      : version.stable
-                        ? version.label
-                        : tl.unstable({ label: version.label })}
-                  </option>
-                ))}
-              </select>
+            {loaderKind !== 'none' && (
+              <div className={styles.stack}>
+                <Field
+                  label={tl.version({ loader: tl.names[loaderKind] })}
+                  hint={
+                    unsupported || loaderVersions?.length === 0
+                      ? tl.noVersions({ loader: tl.names[loaderKind], version: versionId })
+                      : tl.modsHint
+                  }
+                >
+                  {(props) => (
+                    <select
+                      {...props}
+                      className={forms.select}
+                      value={loaderVersion}
+                      disabled={loaderVersions === null || loaderVersions.length === 0}
+                      onChange={(event) => {
+                        const picked = event.target.value;
+                        setPickedByKey((known) => ({ ...known, [loaderKey]: picked }));
+                        setPlan(null);
+                        setPlanError(null);
+                      }}
+                    >
+                      {loaderVersions === null && (
+                        <option value="">{loaderLoading ? tl.loading : ''}</option>
+                      )}
+                      {loaderVersions?.map((version) => (
+                        <option key={version.id} value={version.id}>
+                          {version.recommended
+                            ? tl.recommended({ label: version.label })
+                            : version.stable
+                              ? version.label
+                              : tl.unstable({ label: version.label })}
+                        </option>
+                      ))}
+                    </select>
+                  )}
+                </Field>
+                {shownError !== null && (
+                  <>
+                    <Notice tone="danger">{shownError}</Notice>
+                    <div className={styles.row}>
+                      <Button onClick={retryLoader}>
+                        <Icon name="refresh" size={16} />
+                        {t.retry}
+                      </Button>
+                    </div>
+                  </>
+                )}
+              </div>
             )}
-          </Field>
-        )}
-        {shownError !== null && <Notice tone="danger">{shownError}</Notice>}
-        <div className={forms.actions}>
-          <span role="status">
-            {checking ? (
-              <span className={styles.muted}>{t.availability.checking}</span>
-            ) : (
-              <StatusBadge
-                tone={availabilityTone[availability]}
-                label={t.availability[availability]}
+            {versionId !== '' && (
+              <MemoryLine
+                versionId={versionId}
+                modded={loaderKind !== 'none'}
+                fixedHeapMib={fixedHeapMib}
               />
             )}
-          </span>
-          <Button
-            disabled={checking}
-            onClick={() => {
-              loadCatalog(true);
-            }}
-          >
-            {t.refresh}
-          </Button>
-          <Button
-            disabled={estimating || availability !== 'available' || !loaderReady}
-            onClick={() => void estimate()}
-          >
-            {estimating ? t.estimating : t.estimate}
-          </Button>
+          </div>
+          <div className={styles.column}>
+            <div className={styles.stack}>
+              <fieldset className={styles.group}>
+                <legend className={styles.legend}>{t.version}</legend>
+                {loaderKind !== 'none' && noneSupported ? (
+                  <Notice tone="info">{t.noSupported({ loader: tl.names[loaderKind] })}</Notice>
+                ) : (
+                  catalog !== null && (
+                    <VersionPicker
+                      catalog={catalog}
+                      value={versionId}
+                      allowed={loaderKind === 'none' ? null : loaderGames}
+                      note={
+                        loaderKind !== 'none' && loaderGames !== null
+                          ? tl.gamesHint({ loader: tl.names[loaderKind] })
+                          : null
+                      }
+                      onChange={(version) => {
+                        setVersionId(version.id);
+                        setPlan(null);
+                        setPlanError(null);
+                      }}
+                    />
+                  )
+                )}
+              </fieldset>
+              <div className={styles.chosenRow}>
+                <p role="status" className={styles.chosen}>
+                  <span>{versionId === '' ? t.noneSelected : t.selected({ id: versionId })}</span>{' '}
+                  <span className={styles.separator} aria-hidden="true">
+                    ·
+                  </span>{' '}
+                  <span>
+                    {checking ? (
+                      t.availability.checking
+                    ) : (
+                      <StatusBadge
+                        tone={availabilityTone[availability]}
+                        label={t.availability[availability]}
+                      />
+                    )}
+                  </span>
+                </p>
+                <Button
+                  disabled={checking}
+                  onClick={() => {
+                    loadCatalog(true);
+                  }}
+                >
+                  <Icon name="refresh" size={16} />
+                  {t.refresh}
+                </Button>
+              </div>
+              <div className={styles.row}>
+                <Button
+                  disabled={estimating || availability !== 'available' || !loaderReady}
+                  onClick={() => void estimate()}
+                >
+                  {estimating ? t.estimating : t.estimate}
+                </Button>
+              </div>
+            </div>
+            {catalog?.stale === true && <Notice tone="warning">{t.stale}</Notice>}
+            {planError !== null && <Notice tone="danger">{planError}</Notice>}
+            {plan !== null && <PlanFacts plan={plan} />}
+          </div>
         </div>
-        {catalog?.stale === true && <Notice tone="warning">{t.stale}</Notice>}
-        {planError !== null && <Notice tone="danger">{planError}</Notice>}
-        {plan !== null && <PlanFacts plan={plan} />}
-        {versionId !== '' && (
-          <MemoryLine
-            versionId={versionId}
-            modded={loaderKind !== 'none'}
-            fixedHeapMib={fixedHeapMib}
-          />
-        )}
-        {create.error !== null && <Notice tone="danger">{create.error}</Notice>}
-        <div className={forms.actions}>
-          <Button
-            variant="primary"
-            type="submit"
-            disabled={create.pending || name.trim() === '' || versionId === '' || !loaderReady}
-          >
-            {t.submit}
-          </Button>
-          <Button
-            onClick={() => {
-              onDone();
-            }}
-          >
-            {t.cancel}
-          </Button>
+        <div className={styles.footer}>
+          <p className={styles.isolation}>{t.isolation}</p>
+          {create.error !== null && <Notice tone="danger">{create.error}</Notice>}
+          <div className={styles.row}>
+            <Button
+              variant="primary"
+              type="submit"
+              disabled={create.pending || name.trim() === '' || versionId === '' || !loaderReady}
+            >
+              {t.submit}
+            </Button>
+            <Button
+              onClick={() => {
+                onDone();
+              }}
+            >
+              {t.cancel}
+            </Button>
+          </div>
         </div>
       </form>
-    </Panel>
+    </section>
   );
 }
 
@@ -411,16 +504,23 @@ function MemoryLine({
   const recommendation = useRecommendation(fixedHeapMib === null ? { versionId, modded } : null);
   const text =
     fixedHeapMib !== null
-      ? strings.memory.fixedLine({ mib: fixedHeapMib })
+      ? t.memoryFixed({ mib: fixedHeapMib })
       : recommendation === null
         ? null
         : recommendationText(recommendation);
-  return text === null ? null : <p className={styles.muted}>{text}</p>;
+  if (text === null) return null;
+  return (
+    <div className={styles.block}>
+      <p className={styles.label}>{t.memory}</p>
+      <p>{text}</p>
+      <p className={styles.muted}>{t.memoryHint}</p>
+    </div>
+  );
 }
 
 function PlanFacts({ plan }: { plan: PlanSummary }) {
   return (
-    <section aria-label={t.planTitle({ version: plan.versionId })}>
+    <section className={styles.plan} aria-label={t.planTitle({ version: plan.versionId })}>
       <dl className={styles.facts}>
         <dt>{t.planJava}</dt>
         <dd>{plan.javaMajor}</dd>

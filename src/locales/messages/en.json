@@ -486,8 +486,11 @@
     },
     "createForm": {
       "title": "New installation",
+      "back": "Back to installations",
       "name": "Name",
+      "nameHint": "Filled in from the version. You can rename it later.",
       "version": "Minecraft version",
+      "typesLabel": "Version type",
       "versionTypes": {
         "release": "Releases",
         "snapshot": "Snapshots",
@@ -506,6 +509,7 @@
       "latest": "Latest",
       "selected": "Selected: {id}",
       "noneSelected": "Choose a version.",
+      "noSupported": "{loader} supports none of the versions in the Mojang catalog. Choose another loader or check the catalog again.",
       "isolation": "Each installation gets its own game folder for worlds, options and screenshots. The version cannot be changed later; create another installation to play a different version.",
       "submit": "Create installation",
       "cancel": "Cancel",
@@ -517,8 +521,12 @@
       },
       "stale": "Showing the last saved catalog because it could not be refreshed.",
       "refresh": "Check again",
+      "retry": "Try again",
       "estimate": "Estimate download",
       "estimating": "Estimating…",
+      "memory": "Memory",
+      "memoryFixed": "{mib, number, ::group-off} MiB, your setting for new installations.",
+      "memoryHint": "You can change it later in the installation’s settings.",
       "planTitle": "Download estimate for {version}",
       "planJava": "Java",
       "planLibraries": "Libraries",
@@ -532,6 +540,7 @@
     "loaders": {
       "loader": "Mod loader",
       "none": "None (vanilla)",
+      "noneShort": "None",
       "names": {
         "fabric": "Fabric",
         "quilt": "Quilt",
