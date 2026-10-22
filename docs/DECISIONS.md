@@ -686,6 +686,18 @@ replaces it), `superseded`.
 - **Verification:** every catalog version plans on Windows, Linux and Intel macOS, and
   on Apple silicon from 1.19 (`live_all_versions`); real installs and launches on Linux
   from rd-132211 (2009) to 26.4-snapshot-4 (docs/VERIFICATION.md).
+- **Amendment (2026-10-22, Player test):** versions started by Mojang's launchwrapper
+  1.5 with its default tweaker (every release before 1.6, beta, alpha) get the
+  launcher's own tweaker, `app.launcher.legacy.LegacyTweaker` (`java/legacy-tweaker`,
+  about 30 lines, built for Java 8 into a committed jar that CI rebuilds and checks).
+  Mojang's tweaker stores the game folder in the game's static `File` field only at
+  the end of `Minecraft.main`, after the game thread has started; when that thread
+  reads the field first, the game takes the system user's default `.minecraft` for its
+  options, saves and statistics (seen with 1.2.1–1.2.4 on Windows). The launcher's
+  tweaker is Mojang's with the same field set once the class is loaded, before `main`;
+  anything unexpected leaves Mojang's behaviour. The jar is written to
+  `shared/launcher/legacy-tweaker-<sha256 prefix>.jar`, added to the classpath and named
+  with `--tweakClass`. A descriptor that names its own tweaker keeps it.
 
 ## D-036 — Mojang Java runtimes and one Settings screen
 

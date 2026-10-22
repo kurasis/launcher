@@ -1,12 +1,14 @@
 //! Launch preparation for older versions (D-035): native jars extracted into
-//! the run's natives directory, and asset files laid out by name for the legacy
-//! asset schemes. Modern versions need neither.
+//! the run's natives directory, asset files laid out by name for the legacy
+//! asset schemes, and the launcher's tweaker for games before 1.6. Modern
+//! versions need none of them.
 
 use std::fs;
 use std::io::{self, Read as _};
 use std::path::{Path, PathBuf};
 
 use serde_json::Value;
+use sha2::{Digest as _, Sha256};
 
 use crate::error::{ErrorCode, LauncherError, LauncherResult};
 use crate::install::descriptor::validate_relative_path;
@@ -112,6 +114,43 @@ pub fn prepare_assets(
     Ok(dir)
 }
 
+/// Launchwrapper 1.5, which starts every Mojang release before 1.6.
+const LAUNCHWRAPPER_1_5: &str = "net.minecraft:launchwrapper:1.5";
+
+/// The launcher's tweaker for launchwrapper 1.5 (`java/legacy-tweaker`): Mojang's
+/// own tweaker sets the game folder only at the end of `Minecraft.main`, after the
+/// game thread has started, and that thread may take the system user's default
+/// `.minecraft` folder for its options, saves and statistics first. This one sets
+/// the folder before `main` runs.
+pub const LEGACY_TWEAKER_CLASS: &str = "app.launcher.legacy.LegacyTweaker";
+const LEGACY_TWEAKER_JAR: &[u8] = include_bytes!("../../../java/legacy-tweaker/legacy-tweaker.jar");
+
+/// A vanilla game started by launchwrapper 1.5 with Mojang's default tweaker.
+pub fn needs_legacy_tweaker(plan: &GamePlan) -> bool {
+    plan.loader.is_none()
+        && plan.main_class == super::service::LAUNCHWRAPPER_MAIN_CLASS
+        && plan
+            .libraries
+            .iter()
+            .any(|l| l.provenance.as_deref() == Some(LAUNCHWRAPPER_1_5))
+        && !plan.game_arguments.iter().any(|a| a == "--tweakClass")
+}
+
+/// Writes the tweaker jar into the shared files, named by its content so a game
+/// still running with an older one keeps it, and returns its path.
+pub fn legacy_tweaker_jar(root: &DataRoot) -> LauncherResult<PathBuf> {
+    let digest = hex::encode(Sha256::digest(LEGACY_TWEAKER_JAR));
+    let path = root.legacy_tweaker(&digest[..16]);
+    if fs::read(&path).is_ok_and(|bytes| bytes == LEGACY_TWEAKER_JAR) {
+        return Ok(path);
+    }
+    if let Some(parent) = path.parent() {
+        fs::create_dir_all(parent).map_err(|e| storage(&e))?;
+    }
+    crate::storage::atomic::write(&path, LEGACY_TWEAKER_JAR).map_err(|e| storage(&e))?;
+    Ok(path)
+}
+
 fn repair() -> LauncherError {
     LauncherError::new(
         ErrorCode::RepairRequired,
@@ -158,6 +197,22 @@ mod tests {
         assert_eq!(fs::read(dest.join("liblwjgl64.so")).unwrap(), b"so");
         assert_eq!(fs::read(dest.join("sub/openal.so")).unwrap(), b"al");
         assert!(!dest.join("META-INF").exists());
+    }
+
+    #[test]
+    fn the_legacy_tweaker_is_written_once_by_its_content() {
+        let dir = tempfile::tempdir().unwrap();
+        let root = DataRoot::new(dir.path().to_path_buf()).unwrap();
+        let path = legacy_tweaker_jar(&root).unwrap();
+        assert!(path.starts_with(dir.path().join("shared").join("launcher")));
+        assert_eq!(fs::read(&path).unwrap(), LEGACY_TWEAKER_JAR);
+        let archive = zip::ZipArchive::new(fs::File::open(&path).unwrap()).unwrap();
+        let class = format!("{}.class", LEGACY_TWEAKER_CLASS.replace('.', "/"));
+        assert!(archive.file_names().any(|name| name == class));
+        // A damaged copy is replaced; the name stays.
+        fs::write(&path, b"broken").unwrap();
+        assert_eq!(legacy_tweaker_jar(&root).unwrap(), path);
+        assert_eq!(fs::read(&path).unwrap(), LEGACY_TWEAKER_JAR);
     }
 
     #[test]

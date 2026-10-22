@@ -193,6 +193,7 @@ fn real_jvm_arguments_are_accepted_by_the_managed_java() {
         fullscreen: false,
         skins_agent: None,
         skins_api: None,
+        legacy_tweaker: None,
     })
     .unwrap();
     assert!(
