@@ -27,6 +27,8 @@ sudo -u lapi-mods /home/www/lapi/mods/current/lapi-mods backup
 
 The catalog of mods (mods.lapi.sh) copies only its database: the kept files under
 `data/blobs` are named by their SHA-256 and can be fetched again from the sources.
+When it starts without any copy, it makes a first one at once, and with R2 set up it
+sends the newest copy to the private bucket once a day.
 
 What a copy holds, and what it does not:
 

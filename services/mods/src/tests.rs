@@ -6678,3 +6678,23 @@ async fn health_names_its_problems_in_words_and_numbers() {
         );
     }
 }
+
+#[tokio::test]
+async fn a_first_copy_of_the_database_is_made_once() {
+    let t = setup();
+    let backups = t._dir.path().join("backups");
+    assert!(crate::upkeep::first_backup(&t.app.store, &backups).unwrap());
+    assert!(!crate::upkeep::first_backup(&t.app.store, &backups).unwrap());
+    let names: Vec<String> = std::fs::read_dir(&backups)
+        .unwrap()
+        .map(|e| e.unwrap().file_name().to_string_lossy().into_owned())
+        .collect();
+    assert_eq!(names.len(), 1, "{names:?}");
+    assert!(
+        names[0].starts_with("catalog-") && names[0].ends_with(".db"),
+        "{names:?}"
+    );
+    // A copy left half made is not taken for one.
+    std::fs::write(backups.join("catalog-29991231-000000-000.db.part"), b"half").unwrap();
+    assert_eq!(crate::store::backup_copies(&backups).len(), 1);
+}

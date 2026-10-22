@@ -572,6 +572,17 @@ fn serve() -> Result<(), String> {
                 tokio::time::sleep(Duration::from_secs(wait)).await;
             }
         });
+        // A first copy of the database, beside the requests rather than
+        // before them: copying takes a while.
+        let backing = Arc::clone(&app);
+        let backups = data.join("backups");
+        tokio::task::spawn_blocking(
+            move || match upkeep::first_backup(&backing.store, &backups) {
+                Ok(true) => eprintln!("lapi-mods: made a first copy of the database"),
+                Ok(false) => {}
+                Err(e) => eprintln!("lapi-mods: copying the database failed: {e}"),
+            },
+        );
         // R2 kept in step with the disk, the database copied there daily,
         // a sample checked weekly.
         let copying = Arc::clone(&app);

@@ -127,6 +127,16 @@ pub async fn copy(app: &Arc<App>, limit: i64) -> Result<usize, String> {
     Ok(count)
 }
 
+/// A first copy of the database when there is none yet: the daily timer
+/// makes the next ones, and a new server should not wait a day for one.
+pub fn first_backup(store: &Store, backups: &std::path::Path) -> Result<bool, String> {
+    if !crate::store::backup_copies(backups).is_empty() {
+        return Ok(false);
+    }
+    store.backup(backups, 14)?;
+    Ok(true)
+}
+
 /// Copies the newest database copy (lapi-mods-backup.timer makes one a day)
 /// to the private bucket once a day; daily copies are kept for a month,
 /// one a month for good.

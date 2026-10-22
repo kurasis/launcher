@@ -3973,9 +3973,14 @@ impl Store {
             "catalog-{}.db",
             chrono::Utc::now().format("%Y%m%d-%H%M%S-%3f")
         ));
+        // Written under another name first, so the copy to R2 never takes
+        // one half made.
+        let part = path.with_extension("db.part");
+        let _ = std::fs::remove_file(&part);
         self.db()
-            .execute("VACUUM INTO ?1", [path.to_string_lossy()])
+            .execute("VACUUM INTO ?1", [part.to_string_lossy()])
             .map_err(|e| format!("copying the database: {e}"))?;
+        std::fs::rename(&part, &path).map_err(|e| format!("naming the copy: {e}"))?;
         let mut copies = backup_copies(dir);
         while copies.len() > keep {
             let _ = std::fs::remove_file(copies.remove(0));
