@@ -8,10 +8,16 @@ name: Skins mod list
 # `lapi-upd skins-mod <channel>`, which checks the signature and that the list
 # is newer than the channel's.
 #
+# Players download the jars only from upd.lapi.sh, never from GitHub: every
+# run first uploads the release's jars, `lapi-upd skins-mod-jars <version>`
+# checks them against SHA256SUMS and puts them at /skins-mod/<version>/, and the
+# server takes a list only once all its jars are there.
+#
 # Called by the Skins mod workflow (beta, after a release) and the Game test
 # (stable, after a green nightly run). By hand, "Run workflow" with a version
 # and "rollback" sends launchers back to that version: the one command to undo
-# a bad release.
+# a bad release. Channel "none" only uploads the jars (for a version built into
+# the launcher that no list names).
 
 on:
   workflow_call:
@@ -20,7 +26,7 @@ on:
         type: string
         required: true
       channels:
-        description: beta, stable, or both separated by a space
+        description: beta, stable, both separated by a space, or none (jars only)
         type: string
         required: true
       rollback:
@@ -35,7 +41,7 @@ on:
       channels:
         description: Channels to give it to
         type: choice
-        options: [beta stable, beta, stable]
+        options: [beta stable, beta, stable, none]
         default: beta stable
       rollback:
         description: Going back to an older version (launchers take it over a newer built-in one)
@@ -51,7 +57,7 @@ concurrency:
 
 jobs:
   sign:
-    name: Sign and publish the list
+    name: Publish the jars and the list
     if: github.ref == 'refs/heads/main'
     runs-on: ubuntu-24.04
     environment: production
@@ -63,23 +69,25 @@ jobs:
         run: |
           [[ "$VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]] || { echo "::error::not a mod version"; exit 1; }
           for c in $CHANNELS; do
-            [[ "$c" == beta || "$c" == stable ]] || { echo "::error::unknown channel"; exit 1; }
+            [[ "$c" == beta || "$c" == stable || "$c" == none ]] || { echo "::error::unknown channel"; exit 1; }
           done
       - name: Signing key configured?
         id: key
         env:
           KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          CHANNELS: ${{ inputs.channels }}
         run: |
-          if [ -z "$KEY" ]; then
+          if [ "$CHANNELS" = none ]; then
+            echo "Channel none: the jars only, no list."
+            echo "present=false" >> "$GITHUB_OUTPUT"
+          elif [ -z "$KEY" ]; then
             echo "::notice::No TAURI_SIGNING_PRIVATE_KEY secret: no list (docs/DECISIONS.md D-065)."
             echo "present=false" >> "$GITHUB_OUTPUT"
           else
             echo "present=true" >> "$GITHUB_OUTPUT"
           fi
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
-        if: steps.key.outputs.present == 'true'
       - name: Download the release
-        if: steps.key.outputs.present == 'true'
         env:
           GH_TOKEN: ${{ github.token }}
           VERSION: ${{ inputs.version }}
@@ -112,10 +120,39 @@ jobs:
               --out "skins-mod-$c.json" "${back[@]}"
           done
       - uses: ./.github/actions/lapi-ssh
-        if: steps.key.outputs.present == 'true'
         with:
           ssh-key: ${{ secrets.SSH_KEY }}
           known-hosts: ${{ secrets.SSH_KNOWN_HOSTS }}
+      - name: Put the jars on upd.lapi.sh
+        env:
+          TARGET: ${{ secrets.SSH_USER }}@${{ secrets.SSH_HOST }}
+          VERSION: ${{ inputs.version }}
+        run: |
+          set -euo pipefail
+          dir="/home/www/lapi/upd/data/incoming/skins-mod-$VERSION"
+          ssh "$TARGET" "rm -rf '$dir' && mkdir -m 0750 '$dir'"
+          scp -q jars/SHA256SUMS jars/launcherskins-*.jar "$TARGET:$dir/"
+          set +e
+          ssh "$TARGET" "sudo -u lapi-upd /home/www/lapi/upd/current/lapi-upd skins-mod-jars $VERSION"
+          status=$?
+          set -e
+          ssh "$TARGET" "rm -rf '$dir'"
+          exit "$status"
+      - name: Check what launchers download
+        env:
+          VERSION: ${{ inputs.version }}
+        run: |
+          set -euo pipefail
+          mkdir -p served
+          while read -r sum name; do
+            name="${name#\*}"
+            [[ "$name" =~ ^launcherskins-[a-z0-9.-]+\.jar$ ]] || continue
+            curl -fsS --retry 3 --max-time 60 -o "served/$name" \
+              "https://upd.lapi.sh/skins-mod/$VERSION/$name"
+            echo "$sum  served/$name" | sha256sum -c --quiet - ||
+              { echo "::error::upd.lapi.sh serves another $name"; exit 1; }
+          done < jars/SHA256SUMS
+          echo "upd.lapi.sh serves every jar of $VERSION"
       - name: Publish
         if: steps.key.outputs.present == 'true'
         env:

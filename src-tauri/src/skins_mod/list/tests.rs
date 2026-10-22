@@ -83,8 +83,7 @@ fn a_list_signed_for_this_channel_verifies() {
     let jar = list.find("26.3", Target::Fabric).unwrap();
     assert_eq!(
         list.url(jar),
-        "https://github.com/kurasis/launcher/releases/download/skins-mod-v0.7.0/\
-         launcherskins-fabric-26.1-26.3-0.7.0.jar"
+        "https://upd.lapi.sh/skins-mod/0.7.0/launcherskins-fabric-26.1-26.3-0.7.0.jar"
     );
     assert!(list.find("26.3", Target::Forge).is_none());
     assert!(list.find("26.2", Target::Fabric).is_none());
@@ -217,7 +216,7 @@ fn a_newer_list_wins_and_the_built_in_jars_fill_its_gaps() {
     let fabric = Some(LoaderKind::Fabric);
     let pick = choose(JARS, Some(&newer), "26.3", fabric).unwrap();
     assert_eq!(pick.file, "launcherskins-fabric-26.1-26.3-99.0.0.jar");
-    assert!(pick.url.contains("skins-mod-v99.0.0/"));
+    assert!(pick.url.contains("/skins-mod/99.0.0/"));
     // A version only the list knows.
     assert!(choose(JARS, Some(&newer), "99.1", fabric).is_some());
     assert!(choose(JARS, None, "99.1", fabric).is_none());

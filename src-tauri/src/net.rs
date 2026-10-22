@@ -122,11 +122,9 @@ const SERVER_ADS_HOSTS: &[&str] = &["servers.lapi.sh"];
 const REVIEWS_HOSTS: &[&str] = &["reviews.lapi.sh"];
 const STATS_HOSTS: &[&str] = &["stats.lapi.sh"];
 const SKINS_MOD_LIST_HOSTS: &[&str] = &["upd.lapi.sh"];
-const SKINS_MOD_HOSTS: &[&str] = &[
-    "github.com",
-    "objects.githubusercontent.com",
-    "release-assets.githubusercontent.com",
-];
+/// Players get the skins mod from our update server only, never from GitHub
+/// (D-065).
+const SKINS_MOD_HOSTS: &[&str] = &["upd.lapi.sh"];
 
 pub const MAX_REDIRECTS: usize = 5;
 
@@ -158,6 +156,7 @@ impl SourcePolicy {
                 | Self::ServerAds
                 | Self::Reviews
                 | Self::Stats
+                | Self::SkinsMod
                 | Self::SkinsModList
         )
     }
@@ -610,9 +609,22 @@ mod tests {
         assert!(SourcePolicy::for_artifact("https://api.adoptium.net/x").is_err());
         assert!(ok(
             SourcePolicy::SkinsMod,
+            "https://upd.lapi.sh/skins-mod/0.1.0/a.jar"
+        ));
+        assert!(!ok(
+            SourcePolicy::SkinsMod,
+            "https://mirror.lapi.sh/github.com/kurasis/launcher/releases/download/skins-mod-v0.1.0/a.jar"
+        ));
+        assert!(!ok(
+            SourcePolicy::SkinsMod,
             "https://github.com/kurasis/launcher/releases/download/skins-mod-v0.1.0/a.jar"
         ));
+        assert!(!ok(
+            SourcePolicy::SkinsMod,
+            "https://release-assets.githubusercontent.com/x.jar"
+        ));
         assert!(!ok(SourcePolicy::SkinsMod, "https://skins.lapi.sh/x.jar"));
+        assert!(!SourcePolicy::SkinsMod.mirrored());
         assert!(SourcePolicy::for_artifact("https://github.com/x/y.jar").is_err());
         assert!(SourcePolicy::MojangArtifacts.check("not a url").is_err());
     }
