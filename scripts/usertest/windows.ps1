@@ -405,9 +405,11 @@ function Game-Click([IntPtr]$Hwnd, [double]$GuiX, [double]$GuiY) {
   Start-Sleep -Milliseconds 150
   [UserTest.Win]::SetCursorPos($point.X, $point.Y) | Out-Null
   [UserTest.Win]::mouse_event(0x0001, 0, 0, 0, [IntPtr]::Zero)
-  Start-Sleep -Milliseconds 250
+  Start-Sleep -Milliseconds 400
+  # Held for a quarter second: versions before 1.7 read button presses only on their
+  # 20-per-second ticks, and their world list drops what a frame sees after release.
   [UserTest.Win]::mouse_event(0x0002, 0, 0, 0, [IntPtr]::Zero)
-  Start-Sleep -Milliseconds 100
+  Start-Sleep -Milliseconds 250
   [UserTest.Win]::mouse_event(0x0004, 0, 0, 0, [IntPtr]::Zero)
   Start-Sleep -Milliseconds 500
 }
@@ -740,19 +742,20 @@ try {
       # The world list's Create New World: the right of two 150-wide buttons at
       # height - 52. Newer versions open Create New World at once for an empty list,
       # and that spot is empty there.
-      # Old versions (1.5.2) sometimes let a click pass, so it is given twice: after a
-      # first one that worked, the second lands on an empty spot of Create New World.
-      Game-Click $hwnd ([math]::Floor($layout.GuiWidth / 2) + 4 + 75) ($layout.GuiHeight - 52 + 10)
-      Start-Sleep -Milliseconds 1500
-      Game-Click $hwnd ([math]::Floor($layout.GuiWidth / 2) + 4 + 75) ($layout.GuiHeight - 52 + 10)
-      Start-Sleep -Seconds 3
+      # Old versions (1.6.4 and before) may let a click pass, so it is given three
+      # times: after one that worked, the next land on an empty spot of Create New World.
+      foreach ($i in 1..3) {
+        Game-Click $hwnd ([math]::Floor($layout.GuiWidth / 2) + 4 + 75) ($layout.GuiHeight - 52 + 10)
+        Start-Sleep -Milliseconds 1500
+      }
+      Start-Sleep -Seconds 2
       Game-Shot $hwnd $folder 'create-world'
       # Create New World: the left of two 150-wide buttons at the bottom (height - 28
       # in older versions, the 33-high footer in newer ones; the same spot).
       $createX = [math]::Floor($layout.GuiWidth / 2) - 155 + 75
       Game-Click $hwnd $createX ($layout.GuiHeight - 17)
-      # Twice for the same reason; a world being made does not mind the second.
-      if (-not (Wait-For $inWorld 3)) { Game-Click $hwnd $createX ($layout.GuiHeight - 17) }
+      # Again for the same reason; a world being made does not mind the others.
+      foreach ($i in 1..2) { if (-not (Wait-For $inWorld 3)) { Game-Click $hwnd $createX ($layout.GuiHeight - 17) } }
       $entered = Wait-For $inWorld 60
       if (-not $entered -and (& $text) -match 'Starting integrated minecraft server') {
         # The world is being made: only slower than a minute.
