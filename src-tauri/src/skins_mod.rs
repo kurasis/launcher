@@ -3,8 +3,9 @@
 //! When an installation starts, the launcher adds its skins mod: the jar for
 //! the game version and loader goes into `<game>/mods/` (Fabric, Quilt,
 //! NeoForge, Forge), or the Java agent is passed with `-javaagent` (no loader).
-//! The jars come from this repository's GitHub release `skins-mod-v<version>`
-//! and are pinned by SHA-256 and size: here in [`JARS`], or in the signed list
+//! The jars are this repository's GitHub release `skins-mod-v<version>`, which
+//! players download only from upd.lapi.sh, never from GitHub, and are pinned by
+//! SHA-256 and size: here in [`JARS`], or in the signed list
 //! on upd.lapi.sh ([`list`]), which brings a newer mod version without a new
 //! launcher. Those two are the only lists of what may reach a game. A jar is downloaded once into [`MANAGED_DIR`], shared by
 //! every installation, and checked again each time before it is used.
@@ -32,8 +33,11 @@ use crate::storage::paths::{DataRoot, Sha256};
 
 /// The mod's version these jars are (`mod/VERSION`).
 pub const MOD_VERSION: &str = "0.6.1";
-/// Where the release keeps the jars.
-const RELEASE: &str = "https://github.com/kurasis/launcher/releases/download/skins-mod-v0.6.1/";
+/// Where players get a release's jars: `<RELEASES><version>/<file>` on our
+/// update server, which CI fills from the GitHub release (D-065).
+const RELEASES: &str = "https://upd.lapi.sh/skins-mod/";
+/// The jars of [`MOD_VERSION`].
+const RELEASE: &str = "https://upd.lapi.sh/skins-mod/0.6.1/";
 /// Verified jars, relative to DATA_ROOT; shared by every installation.
 pub const MANAGED_DIR: &str = "shared/launcherskins";
 /// Every jar of ours starts with this and ends with [`JAR_SUFFIX`].
@@ -301,7 +305,7 @@ pub struct Jar {
 }
 
 impl Jar {
-    /// Its download address in the release.
+    /// Its download address.
     pub fn url(&self) -> String {
         format!("{RELEASE}{}", self.file)
     }

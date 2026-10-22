@@ -7,9 +7,15 @@
 //! `/v1/<channel>/skins-mod-list.json`, check the signature themselves, and take
 //! no list older (by serial) than one they already have.
 //!
+//! Players download the jars only from here, never from GitHub (D-065):
+//! CI uploads a release's jars and its SHA256SUMS, `skins-mod-jars` checks them
+//! and puts them in place, and a list goes in place only once all its jars are.
+//!
 //! ```text
 //! <root>/incoming/skins-mod-<channel>.json           uploaded by CI
+//! <root>/incoming/skins-mod-<version>/               SHA256SUMS and jars, by CI
 //! <root>/channels/<channel>/skins-mod-list.json      what launchers read
+//! <root>/skins-mod/<version>/<jar>                   what launchers download
 //! ```
 
 use std::fs;
@@ -26,6 +32,11 @@ use crate::release::{CHANNELS, Server, write_atomic};
 pub const KIND: &str = "skins-mod";
 /// Its name in a channel's folder and in the launcher's address.
 pub const FILE: &str = "skins-mod-list.json";
+/// The folder under the root that holds each version's jars, as launchers ask
+/// for them: `/skins-mod/<version>/<file>`.
+const JARS: &str = "skins-mod";
+/// The largest SHA256SUMS taken.
+const MAX_SUMS_BYTES: u64 = 64 * 1024;
 const TARGETS: &[&str] = &["fabric", "neoforge", "forge", "agent"];
 /// Bounds for what a list may hold; the launcher has the same.
 pub const MAX_BYTES: u64 = 512 * 1024;
@@ -41,7 +52,8 @@ pub struct List {
     /// Grows with every list signed (the signing time in seconds): launchers
     /// take no list with a lower one than they have.
     pub serial: u64,
-    /// The mod version; the jars are on the GitHub release `skins-mod-v<version>`.
+    /// The mod version; the jars are the GitHub release `skins-mod-v<version>`,
+    /// served at `/skins-mod/<version>/<file>`.
     pub version: String,
     /// Set when the list goes back to an older mod version: launchers then take
     /// it over the version built into them, even a newer one.
@@ -83,6 +95,50 @@ fn plain(text: &str, max: usize, extra: &[u8]) -> bool {
             .all(|b| b.is_ascii_lowercase() || b.is_ascii_digit() || extra.contains(&b))
 }
 
+/// A jar of ours: `launcherskins-<target>-<label>-<version>.jar`.
+fn jar_name_ok(file: &str) -> bool {
+    plain(file, 128, b".-") && file.starts_with("launcherskins-") && file.ends_with(".jar")
+}
+
+fn sum_ok(sum: &str) -> bool {
+    sum.len() == 64
+        && sum
+            .bytes()
+            .all(|b| b.is_ascii_digit() || (b'a'..=b'f').contains(&b))
+}
+
+fn sha256_hex(bytes: &[u8]) -> String {
+    hex::encode(sha2::Sha256::digest(bytes))
+}
+
+/// `(file, sum)` for every line of a SHA256SUMS (`<sum>  <file>`, or `*<file>`).
+fn parse_sums(sums: &str) -> Vec<(String, String)> {
+    sums.lines()
+        .filter_map(|l| {
+            let (sum, name) = l.split_once(char::is_whitespace)?;
+            Some((
+                name.trim().trim_start_matches('*').to_owned(),
+                sum.to_ascii_lowercase(),
+            ))
+        })
+        .collect()
+}
+
+/// A file's bytes, refused past `max`.
+fn read_bounded(path: &Path, max: u64) -> Result<Vec<u8>, String> {
+    let name = path.file_name().and_then(|n| n.to_str()).unwrap_or("file");
+    let mut bytes = Vec::new();
+    fs::File::open(path)
+        .map_err(|_| format!("no {name}"))?
+        .take(max + 1)
+        .read_to_end(&mut bytes)
+        .map_err(|e| format!("reading {name}: {e}"))?;
+    if bytes.len() as u64 > max {
+        return Err(format!("{name} is too large"));
+    }
+    Ok(bytes)
+}
+
 /// A mod version as releases are named: `0.6.1`.
 pub fn version_ok(version: &str) -> bool {
     let parts: Vec<&str> = version.split('.').collect();
@@ -109,18 +165,12 @@ impl List {
             return Err(format!("{} jars (1 to {MAX_JARS})", self.jars.len()));
         }
         for jar in &self.jars {
-            let name_ok = plain(&jar.file, 128, b".-")
-                && jar.file.starts_with("launcherskins-")
-                && jar.file.ends_with(".jar");
             let games_ok = !jar.games.is_empty()
                 && jar.games.len() <= MAX_GAMES
                 && jar.games.iter().all(|g| plain(g, 16, b".-"));
-            let sum_ok = jar.sha256.len() == 64
-                && jar.sha256.bytes().all(|b| b.is_ascii_hexdigit())
-                && jar.sha256 == jar.sha256.to_ascii_lowercase();
-            if !name_ok
+            if !jar_name_ok(&jar.file)
                 || !games_ok
-                || !sum_ok
+                || !sum_ok(&jar.sha256)
                 || !TARGETS.contains(&jar.target.as_str())
                 || !(1..=MAX_JAR_BYTES).contains(&jar.size)
             {
@@ -145,16 +195,7 @@ pub fn build(
 ) -> Result<List, String> {
     let builds: Vec<Build> =
         serde_json::from_slice(builds).map_err(|e| format!("builds.json: {e}"))?;
-    let sums: Vec<(String, String)> = sums
-        .lines()
-        .filter_map(|l| {
-            let (sum, name) = l.split_once(char::is_whitespace)?;
-            Some((
-                name.trim().trim_start_matches('*').to_owned(),
-                sum.to_owned(),
-            ))
-        })
-        .collect();
+    let sums = parse_sums(sums);
     let mut list = List {
         kind: KIND.to_owned(),
         channel: channel.to_owned(),
@@ -168,10 +209,10 @@ pub fn build(
         let sum = sums
             .iter()
             .find(|(name, _)| *name == file)
-            .map(|(_, sum)| sum.to_ascii_lowercase())
+            .map(|(_, sum)| sum.clone())
             .ok_or_else(|| format!("{file} is not in SHA256SUMS"))?;
         let bytes = fs::read(jars.join(&file)).map_err(|e| format!("reading {file}: {e}"))?;
-        if hex::encode(sha2::Sha256::digest(&bytes)) != sum {
+        if sha256_hex(&bytes) != sum {
             return Err(format!("{file} does not match SHA256SUMS"));
         }
         list.jars.push(Jar {
@@ -285,8 +326,83 @@ impl Server {
         }
     }
 
+    /// Where the jars of `version` are served from.
+    fn jars_dir(&self, version: &str) -> Result<std::path::PathBuf, String> {
+        if !version_ok(version) {
+            return Err(format!("{version} is not a mod version"));
+        }
+        Ok(self.root().join(JARS).join(version))
+    }
+
+    /// The jars of `list` that are not in place with their size and sum.
+    fn missing_jars<'a>(&self, list: &'a List) -> Result<Vec<&'a str>, String> {
+        let dir = self.jars_dir(&list.version)?;
+        Ok(list
+            .jars
+            .iter()
+            .filter(|jar| {
+                !read_bounded(&dir.join(&jar.file), MAX_JAR_BYTES).is_ok_and(|bytes| {
+                    bytes.len() as u64 == jar.size && sha256_hex(&bytes) == jar.sha256
+                })
+            })
+            .map(|jar| jar.file.as_str())
+            .collect())
+    }
+
+    /// Puts the jars of `version` in place from `incoming/skins-mod-<version>/`
+    /// (the release's SHA256SUMS and its jars, uploaded by CI). Every jar is
+    /// checked against its sum before any is written. A jar already in place
+    /// stays; one in place with other bytes is refused, since a published file
+    /// never changes at its address.
+    pub fn install_skins_mod_jars(&self, version: &str) -> Result<String, String> {
+        let dir = self.jars_dir(version)?;
+        let incoming = self
+            .root()
+            .join("incoming")
+            .join(format!("skins-mod-{version}"));
+        let sums = read_bounded(&incoming.join("SHA256SUMS"), MAX_SUMS_BYTES)?;
+        let jars: Vec<(String, String)> = parse_sums(&String::from_utf8_lossy(&sums))
+            .into_iter()
+            .filter(|(file, _)| file.ends_with(".jar"))
+            .collect();
+        if jars.is_empty() || jars.len() > MAX_JARS {
+            return Err(format!(
+                "{} jars in SHA256SUMS (1 to {MAX_JARS})",
+                jars.len()
+            ));
+        }
+        let mut new = Vec::new();
+        for (file, sum) in &jars {
+            if !jar_name_ok(file) || !sum_ok(sum) {
+                return Err("SHA256SUMS names a file that is not a jar of the mod".to_owned());
+            }
+            let bytes = read_bounded(&incoming.join(file), MAX_JAR_BYTES)?;
+            if sha256_hex(&bytes) != *sum {
+                return Err(format!("{file} does not match SHA256SUMS"));
+            }
+            match fs::read(dir.join(file)) {
+                Ok(have) if sha256_hex(&have) == *sum => {}
+                Ok(_) => return Err(format!("{file} is already published with other bytes")),
+                Err(_) => new.push((file, sum)),
+            }
+        }
+        for (file, sum) in &new {
+            let bytes = read_bounded(&incoming.join(file), MAX_JAR_BYTES)?;
+            if sha256_hex(&bytes) != **sum {
+                return Err(format!("{file} changed while it was put in place"));
+            }
+            write_atomic(&dir.join(file), &bytes)?;
+        }
+        Ok(format!(
+            "skins mod {version}: {} jars, {} new",
+            jars.len(),
+            new.len()
+        ))
+    }
+
     /// Puts `incoming/skins-mod-<channel>.json` in place after checking it
-    /// against the public key and that its serial is newer than the channel's.
+    /// against the public key, that its serial is newer than the channel's and
+    /// that every jar it names is in place (`skins-mod-jars`).
     pub fn install_skins_mod(&self, channel: &str) -> Result<String, String> {
         let path = self.skins_mod_path(channel)?;
         let incoming = self
@@ -300,6 +416,16 @@ impl Server {
             .read_to_end(&mut bytes)
             .map_err(|e| format!("reading {}: {e}", incoming.display()))?;
         let list = verify(&self.public_key()?, &bytes, channel)?;
+        let missing = self.missing_jars(&list)?;
+        if !missing.is_empty() {
+            return Err(format!(
+                "{} of {} jars of skins mod {} are not in place: run skins-mod-jars {} first",
+                missing.len(),
+                list.jars.len(),
+                list.version,
+                list.version
+            ));
+        }
         if let Some(current) = self.skins_mod_current(channel)?
             && current.serial >= list.serial
         {
@@ -325,10 +451,12 @@ impl Server {
         for channel in CHANNELS {
             out.push_str(&match self.skins_mod_current(channel)? {
                 Some(l) => format!(
-                    "skins mod on {channel}: {}{} (serial {})\n",
+                    "skins mod on {channel}: {}{} (serial {}, {} of {} jars in place)\n",
                     l.version,
                     if l.rollback { ", a rollback" } else { "" },
-                    l.serial
+                    l.serial,
+                    l.jars.len() - self.missing_jars(&l)?.len(),
+                    l.jars.len()
                 ),
                 None => format!("skins mod on {channel}: no list\n"),
             });

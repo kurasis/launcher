@@ -176,6 +176,19 @@ fn setup() -> Setup {
 }
 
 impl Setup {
+    /// The release's jars and SHA256SUMS in `incoming/skins-mod-<version>/`, as
+    /// CI uploads them.
+    fn upload_jars(&self, version: &str) -> PathBuf {
+        let dir = self
+            .root
+            .join("incoming")
+            .join(format!("skins-mod-{version}"));
+        fs::create_dir_all(&dir).unwrap();
+        let sums = release(&dir, version);
+        fs::write(dir.join("SHA256SUMS"), sums).unwrap();
+        dir
+    }
+
     fn upload(&self, channel: &str, serial: u64) {
         let jars = self.root.join("jars");
         fs::create_dir_all(&jars).unwrap();
@@ -198,11 +211,22 @@ fn the_server_takes_only_newer_lists() {
         "nothing uploaded"
     );
     s.upload("beta", 10);
+    let refused = s.server.install_skins_mod("beta").unwrap_err();
+    assert!(refused.contains("not in place"), "{refused}");
+    assert!(!s.root.join("channels/beta").join(FILE).exists());
+    s.upload_jars("0.6.2");
+    s.server.install_skins_mod_jars("0.6.2").unwrap();
     assert!(
         s.server
             .install_skins_mod("beta")
             .unwrap()
             .contains("0.6.2")
+    );
+    assert!(
+        s.server
+            .skins_mod_status()
+            .unwrap()
+            .contains("2 of 2 jars in place")
     );
     let served = s.root.join("channels/beta").join(FILE);
     assert!(served.is_file());
@@ -224,4 +248,65 @@ fn the_server_takes_only_newer_lists() {
     .unwrap();
     assert!(s.server.install_skins_mod("beta").is_err());
     assert!(s.server.install_skins_mod("../x").is_err());
+}
+
+#[test]
+fn the_server_serves_a_release_s_jars_only_as_they_were_signed_off() {
+    let s = setup();
+    assert!(
+        s.server.install_skins_mod_jars("0.6.2").is_err(),
+        "nothing uploaded"
+    );
+    let dir = s.upload_jars("0.6.2");
+    assert_eq!(
+        s.server.install_skins_mod_jars("0.6.2").unwrap(),
+        "skins mod 0.6.2: 2 jars, 2 new"
+    );
+    let served = s
+        .root
+        .join("skins-mod/0.6.2/launcherskins-fabric-26.1-26.3-0.6.2.jar");
+    assert_eq!(fs::read(&served).unwrap(), vec![1u8; 100]);
+    // Again: nothing changes.
+    assert_eq!(
+        s.server.install_skins_mod_jars("0.6.2").unwrap(),
+        "skins mod 0.6.2: 2 jars, 0 new"
+    );
+    // A published jar never changes, even with a matching SHA256SUMS.
+    let forge = "launcherskins-forge-1.12.2-0.6.2.jar";
+    fs::write(dir.join(forge), b"other").unwrap();
+    fs::write(
+        dir.join("SHA256SUMS"),
+        format!("{}  {forge}\n", sha256_hex(b"other")),
+    )
+    .unwrap();
+    assert!(s.server.install_skins_mod_jars("0.6.2").is_err());
+    assert_eq!(
+        fs::read(s.root.join("skins-mod/0.6.2").join(forge)).unwrap(),
+        vec![2u8; 101]
+    );
+
+    // A jar that does not match: none of the release is written.
+    let dir = s.upload_jars("0.6.3");
+    fs::write(dir.join(forge.replace("0.6.2", "0.6.3")), b"broken").unwrap();
+    assert!(s.server.install_skins_mod_jars("0.6.3").is_err());
+    assert!(!s.root.join("skins-mod/0.6.3").exists());
+
+    // Names that are not jars of ours, and junk versions.
+    for line in [
+        format!("{}  ../launcherskins-x.jar", "a".repeat(64)),
+        format!("{}  other.jar", "a".repeat(64)),
+        format!("{}  launcherskins-x.jar", "z".repeat(64)),
+    ] {
+        fs::write(dir.join("SHA256SUMS"), format!("{line}\n")).unwrap();
+        assert!(s.server.install_skins_mod_jars("0.6.3").is_err(), "{line}");
+    }
+    fs::write(dir.join("SHA256SUMS"), "").unwrap();
+    assert!(s.server.install_skins_mod_jars("0.6.3").is_err());
+    for version in ["../x", "0.6", "", "0.6.3/../../x"] {
+        assert!(
+            s.server.install_skins_mod_jars(version).is_err(),
+            "{version}"
+        );
+    }
+    assert!(!s.root.join("x").exists());
 }

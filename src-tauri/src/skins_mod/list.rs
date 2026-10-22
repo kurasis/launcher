@@ -18,7 +18,7 @@ use std::path::PathBuf;
 use base64::Engine as _;
 use serde::Deserialize;
 
-use super::{MANAGED_DIR, MAX_JAR_BYTES, Target, is_ours};
+use super::{MANAGED_DIR, MAX_JAR_BYTES, RELEASES, Target, is_ours};
 use crate::download::resolve_managed_path;
 use crate::net::{PublicClient, SourcePolicy};
 use crate::storage::paths::{DataRoot, Sha256};
@@ -32,8 +32,6 @@ pub const FILE: &str = "skins-mod-list.json";
 pub const MAX_BYTES: u64 = 512 * 1024;
 const MAX_JARS: usize = 256;
 const MAX_GAMES: usize = 128;
-/// Where the jars of a listed version are.
-const RELEASES: &str = "https://github.com/kurasis/launcher/releases/download/skins-mod-v";
 
 #[derive(Deserialize)]
 struct Envelope {

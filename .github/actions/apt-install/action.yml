@@ -4,6 +4,7 @@ description: >-
   sometimes stops answering, and apt then waits on it for hours (2026-10-22: a
   world server job sat two hours in apt-get). Each try is bounded; a try that
   does not finish drops that mirror and tries again from archive.ubuntu.com.
+  Errors from lists other than Ubuntu's do not stop the install.
 inputs:
   packages:
     description: Packages to install, separated by spaces.
@@ -19,12 +20,17 @@ runs:
         opts=(-o Acquire::Retries=2 -o Acquire::http::Timeout=20
           -o Acquire::https::Timeout=20 -o DPkg::Lock::Timeout=120)
         for try in 1 2 3; do
-          if timeout 120 sudo apt-get "${opts[@]}" update &&
-            timeout 300 sudo DEBIAN_FRONTEND=noninteractive apt-get "${opts[@]}" \
-              install -y --no-install-recommends "${packages[@]}"; then
+          # Only Ubuntu's own packages are needed here, so a broken third-party
+          # list on the runner image (packages.microsoft.com answered 403 on
+          # 2026-10-22) must not stop them: an update that ends with errors
+          # still goes on to the install, which says whether it was enough.
+          timeout 120 sudo apt-get "${opts[@]}" update ||
+            echo "::warning::apt-get update try $try ended with errors"
+          if timeout 300 sudo DEBIAN_FRONTEND=noninteractive apt-get "${opts[@]}" \
+            install -y --no-install-recommends "${packages[@]}"; then
             exit 0
           fi
-          echo "::warning::apt-get try $try did not finish; trying again without the Azure mirror"
+          echo "::warning::apt-get install try $try did not finish; trying again without the Azure mirror"
           sudo dpkg --configure -a || true
           # The runner's mirror list (mirror+file:) keeps archive.ubuntu.com after it.
           if [ -f /etc/apt/apt-mirrors.txt ]; then
