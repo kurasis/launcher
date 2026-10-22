@@ -50,6 +50,8 @@ keyring = { version = "3.6.3", features = ["apple-native", "windows-native", "sy
 tokio = { version = "1.53.3", features = ["sync", "time", "net", "rt", "macros", "io-util", "fs"] }
 tauri-plugin-updater = "2"
 semver = "1"
+# What mods' jars need and break, shared with the catalog service (D-066).
+mod-meta = { path = "../crates/mod-meta" }
 # The skins mod's signed list (D-065), as the updater checks launcher updates.
 minisign-verify = "0.3"
 tokio-tungstenite = { version = "0.28", default-features = false, features = ["connect", "handshake", "rustls-tls-native-roots"] }

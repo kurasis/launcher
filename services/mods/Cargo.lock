@@ -766,6 +766,7 @@ dependencies = [
  "hex",
  "http-body-util",
  "image",
+ "mod-meta",
  "percent-encoding",
  "reqwest",
  "rusqlite",
@@ -864,6 +865,16 @@ dependencies = [
  "libc",
  "wasi",
  "windows-sys",
+]
+
+[[package]]
+name = "mod-meta"
+version = "0.1.0"
+dependencies = [
+ "serde",
+ "serde_json",
+ "toml",
+ "zip",
 ]
 
 [[package]]

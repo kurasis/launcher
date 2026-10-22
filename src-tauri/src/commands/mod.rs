@@ -2176,19 +2176,34 @@ async fn mods_plan_for<R: Runtime>(
     };
     // The player's own files the catalog knows: a mod they put there is not
     // brought again.
+    // And what the jars there say, to check the set as a whole.
     let mods = mods(app);
-    let files = {
+    let (files, local) = {
         let (mods, root) = (Arc::clone(&mods), root.clone());
         let id = payload.instance_id;
-        tauri::async_runtime::spawn_blocking(move || mods.content.unknown_files(&root, id))
-            .await
-            .map_err(|_| {
-                crate::error::LauncherError::internal("A file operation stopped unexpectedly.")
-            })?
+        tauri::async_runtime::spawn_blocking(move || {
+            (
+                mods.content.unknown_files(&root, id),
+                mods.content.local_jars(&root, id),
+            )
+        })
+        .await
+        .map_err(|_| {
+            crate::error::LauncherError::internal("A file operation stopped unexpectedly.")
+        })?
     };
     let identified = content::identify(&mods.client, &files).await?;
     content::follow_joins(&mods.client, &mut lock).await;
-    let mut plan = content::plan(&mods.client, &game, &target, &lock, &wanted, &identified).await?;
+    let mut plan = content::checked_plan(
+        &mods.client,
+        &game,
+        &target,
+        &lock,
+        &wanted,
+        &identified,
+        &local,
+    )
+    .await?;
     // A metered connection (D-051): the plan says why it asks first.
     let settings = state.settings();
     let month_bytes = crate::traffic::month_total(&root);
@@ -2217,6 +2232,47 @@ pub async fn mods_plan<R: Runtime>(
 ) -> LauncherResult<crate::mods::content::Plan> {
     mods_plan_for(&app, &payload).await.map(|(_, plan)| plan)
 }
+
+/// What the mods' own jars in an installation say may stop the game from
+/// starting (D-066), asked before a launch: the jars only, offline too.
+#[tauri::command]
+pub async fn mods_check<R: Runtime>(
+    app: AppHandle<R>,
+    instance_id: crate::storage::paths::InstanceId,
+) -> LauncherResult<Vec<crate::mods::content::SetProblem>> {
+    use crate::mods::content;
+    let (root, instance) = content::instance_of(&app.state::<AppState>(), instance_id)?;
+    let target = content::Target::of(&instance);
+    if target.setup().is_none() {
+        return Ok(Vec::new());
+    }
+    let lock = content::load_lock(&root, instance_id);
+    let mods = mods(&app);
+    // The catalog's list of clashes when it answers quickly; else the one last
+    // read, so a launch never waits on the network.
+    let clashes = if crate::mods::online(&app.state::<AppState>()).is_ok() {
+        use crate::mods::Catalog as _;
+        tokio::time::timeout(CLASHES_WAIT, mods.client.clashes())
+            .await
+            .ok()
+            .and_then(Result::ok)
+            .unwrap_or_else(|| mods.client.known_clashes())
+    } else {
+        mods.client.known_clashes()
+    };
+    let local = {
+        let mods = Arc::clone(&mods);
+        tauri::async_runtime::spawn_blocking(move || mods.content.local_jars(&root, instance_id))
+            .await
+            .map_err(|_| {
+                crate::error::LauncherError::internal("A file operation stopped unexpectedly.")
+            })?
+    };
+    Ok(content::check_folder(&target, &lock, &local, &clashes))
+}
+
+/// How long the check before a launch waits for the catalog's list of clashes.
+const CLASHES_WAIT: std::time::Duration = std::time::Duration::from_secs(3);
 
 /// Installs a version (and the mods it needs) into an installation; progress
 /// comes as `mods://progress`. Returns how many files are in place.

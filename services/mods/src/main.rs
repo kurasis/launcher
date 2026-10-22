@@ -193,7 +193,7 @@ fn main() -> std::process::ExitCode {
         }),
         // VirusTotal's word on files (virustotal.rs), and the owner's
         // additions to the catalog; `--stdin` as below.
-        Some(command @ ("virustotal" | "add" | "slug")) => {
+        Some(command @ ("virustotal" | "add" | "slug" | "clash")) => {
             external_args(&args[1..]).and_then(|given| {
                 for line in owner_command(command, &given)? {
                     println!("{line}");
@@ -237,7 +237,7 @@ fn main() -> std::process::ExitCode {
             Ok(())
         }
         _ => Err(
-            "usage: lapi-mods serve|counts|backup|probe|scan|thumb|find|review|block|unblock|remove|forget|restore|external|virustotal|add|slug|health"
+            "usage: lapi-mods serve|counts|backup|probe|scan|thumb|find|review|block|unblock|remove|forget|restore|external|virustotal|add|slug|clash|health"
                 .to_owned(),
         ),
     };
@@ -359,6 +359,7 @@ fn owner_command(command: &str, args: &[String]) -> Result<Vec<String>, String> 
         ("add", [status]) if status == "--status" => owner.add_status(),
         ("add", inputs) => owner.add(inputs),
         ("slug", [project, slug]) => owner.slug(project, slug),
+        ("clash", args) => owner.clash(args),
         ("health", []) => owner.health(popular(), &data.join("backups")),
         ("remove", [project, reason @ ..]) => owner.remove(project, &owner::reason(reason)),
         ("forget", [h, rest @ ..]) => match (hash(h)?, rest) {
@@ -584,6 +585,21 @@ fn serve() -> Result<(), String> {
                     Ok(_) => 30,
                     Err(e) => {
                         eprintln!("lapi-mods: scanning kept files failed: {e}");
+                        600
+                    }
+                };
+                tokio::time::sleep(Duration::from_secs(wait)).await;
+            }
+        });
+        // What the mods in kept jars need and break, read once per jar.
+        let reading = Arc::clone(&app);
+        tokio::spawn(async move {
+            loop {
+                let wait = match import::read_manifests(&reading, 50).await {
+                    Ok(0) => 300,
+                    Ok(_) => 10,
+                    Err(e) => {
+                        eprintln!("lapi-mods: reading kept mods failed: {e}");
                         600
                     }
                 };

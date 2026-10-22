@@ -1616,7 +1616,35 @@
         "stop": "إيقاف",
         "install": "ثبّت",
         "turnOn": "سيُشغَّل معه: {names}",
-        "held": "{title}: أوقف فحص البرمجيات الضارة في الفهرس هذا الملف، فلا يمكن تثبيته."
+        "held": "{title}: أوقف فحص البرمجيات الضارة في الفهرس هذا الملف، فلا يمكن تثبيته.",
+        "instead": "الإصدار {number} من هذا المشروع يعمل مع هذا التثبيت.",
+        "takeInstead": "خذ الإصدار {number}"
+      },
+      "problems": {
+        "intro": "تقول ملفات التعديلات نفسها إن اللعبة قد لا تبدأ مع هذا:",
+        "missing": "{title} يحتاج {mod}{versions}، وهو غير موجود في التثبيت.",
+        "wrongHere": "{title} يحتاج {mod}{versions}؛ وفي التثبيت {found}.",
+        "wrong": "{title} يحتاج {mod}{versions}؛ وإصدار {from} هو {found}.",
+        "breaks": "{title} لا يعمل مع {from}.",
+        "breaksHere": "{title} لا يعمل مع {mod} {found}.",
+        "twice": "{mod} موجود في التثبيت أكثر من مرة: {files}. أبقِ واحدًا منها.",
+        "otherLoader": "{title} مصنوع لـ {loader}، لا لمحمّل التعديلات في هذا التثبيت.",
+        "or": " أو ",
+        "more": "…و{count} غيرها.",
+        "names": {
+          "minecraft": "Minecraft",
+          "fabricloader": "Fabric Loader",
+          "quilt_loader": "Quilt Loader",
+          "forge": "Forge",
+          "neoforge": "NeoForge",
+          "java": "Java"
+        }
+      },
+      "launchCheck": {
+        "title": "قد لا تبدأ اللعبة",
+        "start": "شغّل على أي حال",
+        "openMods": "افتح تعديلات التثبيت",
+        "cancel": "ليس الآن"
       },
       "world": {
         "title": "أضف الخريطة {title} إلى {name}",

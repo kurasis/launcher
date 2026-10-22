@@ -4,6 +4,7 @@ import type {
   LoaderKind,
   ModsImportRequest,
   ModsKind,
+  ModsSetProblem,
   ModsVersion,
 } from '../../lib/contracts';
 import { numberLocale, strings } from '../../lib/strings';
@@ -156,4 +157,37 @@ export function stateTone(state: ModsImportRequest['state']): StatusTone {
       : state === 'choosing'
         ? 'warning'
         : 'neutral';
+}
+
+/** A name or version kept whole inside a sentence of either direction. */
+const isolate = (text: string) => `\u2068${text}\u2069`;
+
+/** A problem the mods' jars report, in words (D-066). */
+export function describeProblem(problem: ModsSetProblem): string {
+  const t = strings.mods.problems;
+  const names = t.names as Record<string, string | undefined>;
+  const loaders = strings.mods.loaderNames as Record<string, string | undefined>;
+  const mod = isolate(names[problem.id] ?? problem.id);
+  const versions =
+    problem.versions.length > 0 ? ` ${problem.versions.map(isolate).join(t.or)}` : '';
+  const title = isolate(problem.titles[0] ?? '');
+  const found = isolate(problem.found ?? '');
+  switch (problem.kind) {
+    case 'missing':
+      return t.missing({ title, mod, versions });
+    case 'wrong':
+      return problem.from === null
+        ? t.wrongHere({ title, mod, versions, found })
+        : t.wrong({ title, mod, versions, found, from: isolate(problem.from) });
+    case 'breaks':
+      return problem.from === null
+        ? t.breaksHere({ title, mod, found })
+        : t.breaks({ title, from: isolate(problem.from) });
+    case 'twice':
+      return t.twice({ mod, files: problem.titles.map(isolate).join(', ') });
+    case 'other_loader': {
+      const loader = problem.loader ?? '';
+      return t.otherLoader({ title, loader: loaders[loader] ?? loader });
+    }
+  }
 }

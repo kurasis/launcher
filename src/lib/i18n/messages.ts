@@ -1706,6 +1706,53 @@ export type Messages = {
       readonly install: string;
       readonly turnOn: (values: { names: string | number }) => string;
       readonly held: (values: { title: string | number }) => string;
+      readonly instead: (values: { number: string | number }) => string;
+      readonly takeInstead: (values: { number: string | number }) => string;
+    };
+    readonly problems: {
+      readonly intro: string;
+      readonly missing: (values: {
+        title: string | number;
+        mod: string | number;
+        versions: string | number;
+      }) => string;
+      readonly wrongHere: (values: {
+        title: string | number;
+        mod: string | number;
+        versions: string | number;
+        found: string | number;
+      }) => string;
+      readonly wrong: (values: {
+        title: string | number;
+        mod: string | number;
+        versions: string | number;
+        from: string | number;
+        found: string | number;
+      }) => string;
+      readonly breaks: (values: { title: string | number; from: string | number }) => string;
+      readonly breaksHere: (values: {
+        title: string | number;
+        mod: string | number;
+        found: string | number;
+      }) => string;
+      readonly twice: (values: { mod: string | number; files: string | number }) => string;
+      readonly otherLoader: (values: { title: string | number; loader: string | number }) => string;
+      readonly or: string;
+      readonly more: (values: { count: string | number }) => string;
+      readonly names: {
+        readonly minecraft: string;
+        readonly fabricloader: string;
+        readonly quilt_loader: string;
+        readonly forge: string;
+        readonly neoforge: string;
+        readonly java: string;
+      };
+    };
+    readonly launchCheck: {
+      readonly title: string;
+      readonly start: string;
+      readonly openMods: string;
+      readonly cancel: string;
     };
     readonly world: {
       readonly title: (values: { title: string | number; name: string | number }) => string;

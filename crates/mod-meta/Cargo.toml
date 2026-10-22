@@ -1,0 +1,22 @@
+[package]
+name = "mod-meta"
+version = "0.1.0"
+edition = "2024"
+rust-version = "1.97"
+description = "What a Minecraft mod's jar says about itself (the mods it provides, needs and breaks) and whether a set of mods can start"
+publish = false
+
+[dependencies]
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+toml = { version = "1.1", default-features = false, features = ["parse", "serde", "std"] }
+zip = { version = "8.6.0", default-features = false, features = ["deflate"] }
+
+[lints.rust]
+unsafe_code = "forbid"
+
+[lints.clippy]
+dbg_macro = "deny"
+print_stdout = "warn"
+todo = "deny"
+unwrap_used = "warn"
