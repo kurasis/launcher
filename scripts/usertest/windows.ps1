@@ -734,6 +734,16 @@ try {
         if ($oldSingleplayer -and (Get-ChildItem (Join-Path $gameDir 'saves') -Recurse -Filter level.dat -ErrorAction SilentlyContinue |
             Where-Object { $_.LastWriteTime -gt $started })) { return $true }
       }
+      # Since 1.19.3 a loader's world (Forge 1.19.3, NeoForge 1.20.5) may be made with
+      # experimental features, and Create first asks to confirm them: Yes is the left of
+      # two 150-wide buttons at height/6 + 96. Where the world is already being made, or
+      # the question is not asked, that spot is a harmless one of Create New World.
+      $confirms = (Compare-Version $version '1.19.3') -ge 0
+      function Confirm-Experiments {
+        if ($confirms -and -not (Wait-For $inWorld 5)) {
+          Game-Click $hwnd ([math]::Floor($layout.GuiWidth / 2) - 155 + 75) ([math]::Floor($layout.GuiHeight / 6) + 96 + 10)
+        }
+      }
       # Singleplayer: the first button under the logo, 200x20 at height/4 + 48, in
       # every version.
       Game-Click $hwnd ($layout.GuiWidth / 2) ([math]::Floor($layout.GuiHeight / 4) + 48 + 10)
@@ -756,6 +766,7 @@ try {
       Game-Click $hwnd $createX ($layout.GuiHeight - 17)
       # Again for the same reason; a world being made does not mind the others.
       foreach ($i in 1..2) { if (-not (Wait-For $inWorld 3)) { Game-Click $hwnd $createX ($layout.GuiHeight - 17) } }
+      Confirm-Experiments
       $entered = Wait-For $inWorld 60
       if (-not $entered -and (& $text) -match 'Starting integrated minecraft server') {
         # The world is being made: only slower than a minute.
@@ -772,6 +783,7 @@ try {
         Start-Sleep -Seconds 5
         Game-Shot $hwnd $folder 'create-world-keys'
         Game-Key $hwnd 'Enter'
+        Confirm-Experiments
         $entered = Wait-For $inWorld 240
         if ($entered) { $result.note = 'world entered with the keyboard' }
       }
