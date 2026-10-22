@@ -822,6 +822,10 @@ pub trait Catalog: Send + Sync {
     fn fetch(&self, id: &str) -> impl Future<Output = LauncherResult<()>> + Send;
     /// Kept files by SHA-1 or SHA-256 (at most 200).
     fn lookup(&self, hashes: &[String]) -> impl Future<Output = LauncherResult<Vec<Found>>> + Send;
+    /// Mods known not to start together though neither jar says so.
+    fn clashes(&self) -> impl Future<Output = LauncherResult<Vec<mod_meta::Clash>>> + Send {
+        async { Ok(mod_meta::clashes()) }
+    }
     /// The projects whose kept jars give a mod ID, most downloaded first.
     fn provides(
         &self,
@@ -836,13 +840,27 @@ pub trait Catalog: Send + Sync {
 /// The catalog's API.
 pub struct Client {
     http: reqwest::Client,
+    /// The catalog's list of mods that do not start together, and when it
+    /// was read.
+    clashes: std::sync::Mutex<Option<(std::time::Instant, Vec<mod_meta::Clash>)>>,
 }
+
+/// How long the list of clashes is kept before it is read again.
+const CLASHES_FRESH: std::time::Duration = std::time::Duration::from_secs(3600);
 
 impl Client {
     pub fn new(app_version: &str) -> Result<Self, String> {
         Ok(Self {
             http: crate::launcher_account::our_client(app_version, base())?,
+            clashes: std::sync::Mutex::new(None),
         })
+    }
+
+    /// The list of clashes last read, else the one built in; no network.
+    pub fn known_clashes(&self) -> Vec<mod_meta::Clash> {
+        crate::sync::lock(&self.clashes)
+            .as_ref()
+            .map_or_else(mod_meta::clashes, |(_, list)| list.clone())
     }
 
     async fn send(&self, request: reqwest::RequestBuilder, max: usize) -> LauncherResult<Value> {
@@ -1346,6 +1364,28 @@ impl Catalog for Client {
                 })
             })
             .collect())
+    }
+
+    async fn clashes(&self) -> LauncherResult<Vec<mod_meta::Clash>> {
+        if let Some((at, list)) = crate::sync::lock(&self.clashes).as_ref()
+            && at.elapsed() < CLASHES_FRESH
+        {
+            return Ok(list.clone());
+        }
+        let Ok(value) = self.get("/v1/clashes", MAX_ANSWER_BYTES).await else {
+            // Not reached: the list last read, else the built-in one.
+            return Ok(self.known_clashes());
+        };
+        let list: Vec<mod_meta::Clash> = value["clashes"]
+            .as_array()
+            .into_iter()
+            .flatten()
+            .take(1000)
+            .filter_map(|c| serde_json::from_value::<mod_meta::Clash>(c.clone()).ok())
+            .filter(mod_meta::Clash::is_clean)
+            .collect();
+        *crate::sync::lock(&self.clashes) = Some((std::time::Instant::now(), list.clone()));
+        Ok(list)
     }
 
     async fn provides(

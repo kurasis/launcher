@@ -6835,3 +6835,72 @@ async fn a_first_copy_of_the_database_is_made_once() {
     std::fs::write(backups.join("catalog-29991231-000000-000.db.part"), b"half").unwrap();
     assert_eq!(crate::store::backup_copies(&backups).len(), 1);
 }
+
+#[tokio::test]
+async fn the_owner_keeps_the_list_of_mods_that_do_not_start_together() {
+    let t = setup();
+    let (status, list) = t.get("/v1/clashes").await;
+    assert_eq!(status, StatusCode::OK);
+    let pairs = |list: &Value| -> Vec<(String, String)> {
+        list["clashes"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|c| {
+                (
+                    c["a"].as_str().unwrap().to_owned(),
+                    c["b"].as_str().unwrap().to_owned(),
+                )
+            })
+            .collect()
+    };
+    // Starts from the known ones.
+    assert!(pairs(&list).contains(&("sodium".to_owned(), "optifine".to_owned())));
+    let known = pairs(&list).len();
+    assert_eq!(known, mod_meta::CLASHES.len());
+
+    let purged = Purged::default();
+    let owner = owner(&t, &purged);
+    let args = |words: &[&str]| -> Vec<String> { words.iter().map(|w| (*w).to_owned()).collect() };
+    assert_eq!(
+        owner.clash(&args(&["add", "Embeddium", "sodium"])).unwrap(),
+        ["clash embeddium sodium added"]
+    );
+    assert_eq!(
+        owner.clash(&args(&["add", "embeddium", "sodium"])).unwrap(),
+        ["clash embeddium sodium listed already"]
+    );
+    assert_eq!(
+        owner.clash(&args(&["remove", "iris", "optifine"])).unwrap(),
+        ["clash iris optifine removed"]
+    );
+    assert_eq!(
+        owner.clash(&args(&["remove", "nope", "none"])).unwrap(),
+        ["clash nope none not listed"]
+    );
+    let lines = owner.clash(&args(&["list"])).unwrap();
+    assert_eq!(lines.last().unwrap(), &format!("{known} clashes"));
+    assert!(lines.contains(&"embeddium sodium".to_owned()));
+    assert!(!lines.contains(&"iris optifine".to_owned()));
+    // A known one taken off stays off when the service starts again.
+    let data = t.app.store.path().parent().unwrap().parent().unwrap();
+    let again = crate::store::Store::open(data).unwrap();
+    assert!(
+        !again
+            .clashes()
+            .unwrap()
+            .iter()
+            .any(|c| c.a == "iris" && c.b == "optifine")
+    );
+    for junk in [
+        &["add", "sodium"][..],
+        &["add", "sodium", "sodium"],
+        &["add", "so dium", "x"],
+        &["add", "a\u{202e}", "b"],
+        &["add", "", "b"],
+        &["drop", "a", "b"],
+        &[],
+    ] {
+        assert!(owner.clash(&args(junk)).is_err(), "{junk:?}");
+    }
+}

@@ -85,8 +85,50 @@ struct Giver<'a> {
     nested: bool,
 }
 
+/// Two mods known not to start together though neither jar says so (the
+/// catalog's list): reported as `a` breaking `b`.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct Clash {
+    pub a: String,
+    pub b: String,
+}
+
+/// The clashes known when this was built; the catalog's owner keeps the list
+/// that is used, starting from these.
+pub const CLASHES: &[(&str, &str)] = &[
+    ("sodium", crate::jar::OPTIFINE),
+    ("iris", crate::jar::OPTIFINE),
+    ("embeddium", crate::jar::OPTIFINE),
+    ("rubidium", crate::jar::OPTIFINE),
+    ("oculus", crate::jar::OPTIFINE),
+];
+
+impl Clash {
+    /// Whether both are mod IDs as the reader cleans them, and not the same.
+    pub fn is_clean(&self) -> bool {
+        let id = |id: &str| crate::jar::clean_id(id).as_deref() == Some(id);
+        id(&self.a) && id(&self.b) && self.a != self.b
+    }
+}
+
+/// [`CLASHES`] as a list.
+pub fn clashes() -> Vec<Clash> {
+    CLASHES
+        .iter()
+        .map(|(a, b)| Clash {
+            a: (*a).to_owned(),
+            b: (*b).to_owned(),
+        })
+        .collect()
+}
+
 /// Everything in the way of the set starting; none when it should.
 pub fn check(setup: &Setup<'_>, jars: &[Jar<'_>]) -> Vec<Problem> {
+    check_with(setup, jars, &[])
+}
+
+/// [`check`], with clashes known from elsewhere.
+pub fn check_with(setup: &Setup<'_>, jars: &[Jar<'_>], clashes: &[Clash]) -> Vec<Problem> {
     let java = setup.java.map(|j| j.to_string());
     let mut given: BTreeMap<&str, Vec<Giver<'_>>> = BTreeMap::new();
     // What the game, the loader and Java give; loaders of today carry
@@ -206,6 +248,24 @@ pub fn check(setup: &Setup<'_>, jars: &[Jar<'_>]) -> Vec<Problem> {
                     found: g.version.map(str::to_owned),
                     from: g.file.map(str::to_owned),
                 });
+            }
+        }
+        for p in m.mods.iter().filter(|p| p.side.applies(setup.side)) {
+            for clash in clashes.iter().filter(|c| c.a == p.id && c.b != p.id) {
+                let hit = given.get(clash.b.as_str()).and_then(|givers| {
+                    givers
+                        .iter()
+                        .find(|g| g.file.is_some() && g.file != Some(file))
+                });
+                if let Some(g) = hit {
+                    problems.push(Problem::Breaks {
+                        file: (*file).to_owned(),
+                        by: p.id.clone(),
+                        id: clash.b.clone(),
+                        found: g.version.map(str::to_owned),
+                        from: g.file.map(str::to_owned),
+                    });
+                }
             }
         }
     }

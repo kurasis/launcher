@@ -1199,7 +1199,7 @@ fn a_folder_is_checked_before_a_launch() {
     ];
     let mut lock = ContentLock::default();
     lock.items.push(locked("mods/library.jar", 5, 50));
-    let problems = content::check_folder(&fabric_at("0.16.14"), &lock, &local);
+    let problems = content::check_folder(&fabric_at("0.16.14"), &lock, &local, &[]);
     let mut found: Vec<(&str, &str, Option<&str>, Option<&str>)> = problems
         .iter()
         .map(|p| {
@@ -1224,7 +1224,55 @@ fn a_folder_is_checked_before_a_launch() {
         loader: None,
         ..fabric()
     };
-    assert!(content::check_folder(&vanilla, &lock, &local).is_empty());
+    assert!(content::check_folder(&vanilla, &lock, &local, &[]).is_empty());
+}
+
+#[test]
+fn mods_known_not_to_start_together_are_named_before_a_launch() {
+    let jar = |path: &str, manifests: Value| content::LocalJar {
+        path: path.to_owned(),
+        manifests: serde_json::from_value(manifests).unwrap(),
+    };
+    let optifine =
+        json!([{"loader": "fabric", "mods": [{"id": "optifine", "side": "client"}], "needs": []}]);
+    let local = [
+        jar("mods/sodium.jar", fabric_jar("sodium", "0.6.13", &[])),
+        jar("mods/OptiFine_1.21.1_HD_U_J1.jar", optifine),
+    ];
+    let lock = ContentLock::default();
+    let problems = content::check_folder(&fabric_at("0.17.2"), &lock, &local, &mod_meta::clashes());
+    let found: Vec<(&str, &str, &str, Option<&str>)> = problems
+        .iter()
+        .map(|p| {
+            (
+                p.kind.as_str(),
+                p.titles[0].as_str(),
+                p.id.as_str(),
+                p.from.as_deref(),
+            )
+        })
+        .collect();
+    assert_eq!(
+        found,
+        [(
+            "breaks",
+            "sodium.jar",
+            "optifine",
+            Some("OptiFine_1.21.1_HD_U_J1.jar")
+        )]
+    );
+    // A pair the owner took off the list is no longer named.
+    assert!(content::check_folder(&fabric_at("0.17.2"), &lock, &local, &[]).is_empty());
+    // On its own, either one is fine.
+    assert!(
+        content::check_folder(
+            &fabric_at("0.17.2"),
+            &lock,
+            &local[..1],
+            &mod_meta::clashes()
+        )
+        .is_empty()
+    );
 }
 
 #[tokio::test]

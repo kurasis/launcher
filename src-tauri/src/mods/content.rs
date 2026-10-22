@@ -619,6 +619,7 @@ pub async fn checked_plan<C: Catalog>(
         },
         seen: HashSet::from([project.id.clone()]),
         queue: Vec::new(),
+        clashes: Vec::new(),
     };
     let setup = target.setup().filter(|_| planner.kind == "mod");
     // The version asked for does not run here: one that does, if any.
@@ -755,6 +756,8 @@ struct Planner<'a, C> {
     /// Projects required so far.
     seen: HashSet<String>,
     queue: Vec<Queued>,
+    /// Mods known not to start together, from the catalog.
+    clashes: Vec<mod_meta::Clash>,
 }
 
 impl<C: Catalog> Planner<'_, C> {
@@ -1036,7 +1039,7 @@ impl<C: Catalog> Planner<'_, C> {
                 });
             }
         }
-        mod_meta::check(setup, &jars)
+        mod_meta::check_with(setup, &jars, &self.clashes)
     }
 
     /// Mends what the jars say is in the way, a few rounds at most: a mod
@@ -1048,6 +1051,11 @@ impl<C: Catalog> Planner<'_, C> {
         setup: &mod_meta::Setup<'_>,
         local: &[LocalJar],
     ) -> LauncherResult<()> {
+        self.clashes = self
+            .catalog
+            .clashes()
+            .await
+            .unwrap_or_else(|_| mod_meta::clashes());
         let mut asked: HashSet<String> = HashSet::new();
         let mut updated: HashSet<String> = HashSet::new();
         for _ in 0..MAX_ROUNDS {
@@ -1217,7 +1225,12 @@ impl<C: Catalog> Planner<'_, C> {
 
 /// What the mods turned on in an installation's folder say is in the way of
 /// the game starting, with the titles the lock knows.
-pub fn check_folder(target: &Target, lock: &ContentLock, local: &[LocalJar]) -> Vec<SetProblem> {
+pub fn check_folder(
+    target: &Target,
+    lock: &ContentLock,
+    local: &[LocalJar],
+    clashes: &[mod_meta::Clash],
+) -> Vec<SetProblem> {
     let Some(setup) = target.setup() else {
         return Vec::new();
     };
@@ -1229,7 +1242,7 @@ pub fn check_folder(target: &Target, lock: &ContentLock, local: &[LocalJar]) -> 
             manifests: &j.manifests,
         })
         .collect();
-    mod_meta::check(&setup, &jars)
+    mod_meta::check_with(&setup, &jars, clashes)
         .iter()
         .map(|p| {
             describe(p, |path| match lock.at(path) {

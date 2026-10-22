@@ -4,8 +4,8 @@ use std::io::Write;
 use serde_json::json;
 
 use crate::{
-    Jar, Loader, Manifest, Need, Problem, Setup, Side, allows, check, compare, for_loader,
-    read_bytes,
+    Clash, Jar, Loader, Manifest, Need, Problem, Setup, Side, allows, check, check_with, clashes,
+    compare, for_loader, read_bytes,
 };
 
 fn zip_of(entries: &[(&str, &[u8])]) -> Vec<u8> {
@@ -821,5 +821,68 @@ fn manifests_from_elsewhere_are_checked() {
         json!({"loader": "fabric"}),
     ] {
         assert!(serde_json::from_value::<Vec<Manifest>>(junk).is_err());
+    }
+}
+
+#[test]
+fn optifine_and_what_does_not_start_with_it_are_known() {
+    let optifine = zip_of(&[
+        ("net/optifine/Config.class", b"\xca\xfe"),
+        ("optifine/Installer.class", b"\xca\xfe"),
+    ]);
+    let read = read_bytes(&optifine);
+    assert_eq!(read.len(), 2);
+    assert_eq!(read[0].loader, Loader::Forge);
+    assert_eq!(read[1].loader, Loader::Fabric);
+    assert_eq!(read[0].mods[0].id, "optifine");
+    assert_eq!(read[0].mods[0].side, Side::Client);
+    // A mod that only mentions it is no OptiFine.
+    let mentions = zip_of(&[
+        ("fabric.mod.json", br#"{"id": "compat", "version": "1"}"#),
+        ("net/optifine/Shim.class", b"\xca\xfe"),
+    ]);
+    assert_eq!(read_bytes(&mentions)[0].mods[0].id, "compat");
+    assert!(read_bytes(&zip_of(&[("a/B.class", b"\xca\xfe")])).is_empty());
+
+    let sodium = fabric_mod("sodium", "0.6.0", json!({}));
+    let jars = [("sodium.jar", sodium), ("optifine.jar", optifine)];
+    let fabric = setup("1.21.1", Loader::Fabric, Some("0.16.14"));
+    // Neither says so.
+    assert!(run(&fabric, &jars).is_empty());
+    let known = clashes();
+    assert!(known.iter().all(Clash::is_clean));
+    let read: Vec<(&str, Vec<Manifest>)> = jars.iter().map(|(f, b)| (*f, read_bytes(b))).collect();
+    let set: Vec<Jar<'_>> = read
+        .iter()
+        .map(|(file, manifests)| Jar { file, manifests })
+        .collect();
+    assert_eq!(
+        check_with(&fabric, &set, &known),
+        [Problem::Breaks {
+            file: "sodium.jar".to_owned(),
+            by: "sodium".to_owned(),
+            id: "optifine".to_owned(),
+            found: None,
+            from: Some("optifine.jar".to_owned()),
+        }]
+    );
+    // On a server OptiFine is not there.
+    let server = Setup {
+        side: Side::Server,
+        ..fabric
+    };
+    assert!(check_with(&server, &set, &known).is_empty());
+
+    for bad in [
+        ("Sodium", "optifine"),
+        ("sodium", "sodium"),
+        ("", "x"),
+        ("a b", "c"),
+    ] {
+        let clash = Clash {
+            a: bad.0.to_owned(),
+            b: bad.1.to_owned(),
+        };
+        assert!(!clash.is_clean(), "{bad:?}");
     }
 }

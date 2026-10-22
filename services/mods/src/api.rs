@@ -346,6 +346,14 @@ async fn provides(
     }
 }
 
+/// Mods known not to start together though neither jar says so (D-066).
+async fn clashes(State(app): State<Arc<App>>) -> Response {
+    match app.store.clashes() {
+        Ok(list) => cached(json!({ "clashes": list }), 600),
+        Err(e) => failed(&e),
+    }
+}
+
 /// Asks for an older version's files to be kept; open to anyone, counted per
 /// address.
 async fn fetch_version(
@@ -1086,6 +1094,7 @@ pub fn router(app: Arc<App>) -> Router {
         .route("/v1/versions/{version}", get(version))
         .route("/v1/versions/{version}/fetch", post(fetch_version))
         .route("/v1/provides/{mod}", get(provides))
+        .route("/v1/clashes", get(clashes))
         .route(
             "/v1/versions/{version}/pack",
             get(get_pack).post(fetch_pack),

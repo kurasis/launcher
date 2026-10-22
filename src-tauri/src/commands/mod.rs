@@ -2238,14 +2238,31 @@ pub async fn mods_check<R: Runtime>(
     }
     let lock = content::load_lock(&root, instance_id);
     let mods = mods(&app);
-    let local =
+    // The catalog's list of clashes when it answers quickly; else the one last
+    // read, so a launch never waits on the network.
+    let clashes = if crate::mods::online(&app.state::<AppState>()).is_ok() {
+        use crate::mods::Catalog as _;
+        tokio::time::timeout(CLASHES_WAIT, mods.client.clashes())
+            .await
+            .ok()
+            .and_then(Result::ok)
+            .unwrap_or_else(|| mods.client.known_clashes())
+    } else {
+        mods.client.known_clashes()
+    };
+    let local = {
+        let mods = Arc::clone(&mods);
         tauri::async_runtime::spawn_blocking(move || mods.content.local_jars(&root, instance_id))
             .await
             .map_err(|_| {
                 crate::error::LauncherError::internal("A file operation stopped unexpectedly.")
-            })?;
-    Ok(content::check_folder(&target, &lock, &local))
+            })?
+    };
+    Ok(content::check_folder(&target, &lock, &local, &clashes))
 }
+
+/// How long the check before a launch waits for the catalog's list of clashes.
+const CLASHES_WAIT: std::time::Duration = std::time::Duration::from_secs(3);
 
 /// Installs a version (and the mods it needs) into an installation; progress
 /// comes as `mods://progress`. Returns how many files are in place.

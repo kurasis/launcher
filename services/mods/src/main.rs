@@ -193,7 +193,7 @@ fn main() -> std::process::ExitCode {
         }),
         // VirusTotal's word on files (virustotal.rs), and the owner's
         // additions to the catalog; `--stdin` as below.
-        Some(command @ ("virustotal" | "add" | "slug")) => {
+        Some(command @ ("virustotal" | "add" | "slug" | "clash")) => {
             external_args(&args[1..]).and_then(|given| {
                 for line in owner_command(command, &given)? {
                     println!("{line}");
@@ -237,7 +237,7 @@ fn main() -> std::process::ExitCode {
             Ok(())
         }
         _ => Err(
-            "usage: lapi-mods serve|counts|backup|probe|scan|thumb|find|review|block|unblock|remove|forget|restore|external|virustotal|add|slug|health"
+            "usage: lapi-mods serve|counts|backup|probe|scan|thumb|find|review|block|unblock|remove|forget|restore|external|virustotal|add|slug|clash|health"
                 .to_owned(),
         ),
     };
@@ -359,6 +359,7 @@ fn owner_command(command: &str, args: &[String]) -> Result<Vec<String>, String> 
         ("add", [status]) if status == "--status" => owner.add_status(),
         ("add", inputs) => owner.add(inputs),
         ("slug", [project, slug]) => owner.slug(project, slug),
+        ("clash", args) => owner.clash(args),
         ("health", []) => owner.health(popular(), &data.join("backups")),
         ("remove", [project, reason @ ..]) => owner.remove(project, &owner::reason(reason)),
         ("forget", [h, rest @ ..]) => match (hash(h)?, rest) {

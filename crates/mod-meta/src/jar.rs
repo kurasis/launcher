@@ -70,7 +70,34 @@ pub fn read<R: Read + Seek>(jar: R) -> Vec<Manifest> {
             out.push(manifest);
         }
     }
+    // OptiFine names itself nowhere a loader reads, but other mods do not
+    // start with it: it goes by `optifine` for Forge and, through
+    // OptiFabric, for Fabric.
+    if out.is_empty() && optifine(&zip) {
+        for loader in [Loader::Forge, Loader::Fabric] {
+            out.push(Manifest {
+                loader,
+                mods: vec![Provided {
+                    id: OPTIFINE.to_owned(),
+                    version: None,
+                    nested: false,
+                    side: Side::Client,
+                }],
+                needs: Vec::new(),
+                breaks: Vec::new(),
+            });
+        }
+    }
     out
+}
+
+/// The ID OptiFine's jar goes by here.
+pub const OPTIFINE: &str = "optifine";
+
+/// Whether a jar with no descriptor is OptiFine, by its classes.
+fn optifine<R: Read + Seek>(zip: &zip::ZipArchive<R>) -> bool {
+    zip.file_names()
+        .any(|name| name.starts_with("net/optifine/") || name.starts_with("optifine/"))
 }
 
 /// Descriptors read together: a Quilt jar may hold Fabric jars, a Forge jar
@@ -119,7 +146,7 @@ fn bytes<R: Read + Seek>(zip: &mut zip::ZipArchive<R>, name: &str, most: u64) ->
 }
 
 /// A mod ID as the loaders accept it.
-fn clean_id(id: &str) -> Option<String> {
+pub(crate) fn clean_id(id: &str) -> Option<String> {
     let id = id.trim();
     let ok = (1..=64).contains(&id.len())
         && id

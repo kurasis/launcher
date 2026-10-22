@@ -343,6 +343,16 @@ CREATE TABLE IF NOT EXISTS mod_provided (
     PRIMARY KEY (id, sha256)
 );
 CREATE INDEX IF NOT EXISTS mod_provided_sha256 ON mod_provided(sha256);
+-- Two mods known not to start together though neither jar says so, by mod
+-- ID: the owner's list, started from mod-meta's (`listed` 0 once removed, so
+-- a known one stays off).
+CREATE TABLE IF NOT EXISTS clash (
+    a TEXT NOT NULL,
+    b TEXT NOT NULL,
+    listed INTEGER NOT NULL,
+    changed INTEGER NOT NULL,
+    PRIMARY KEY (a, b)
+);
 CREATE VIRTUAL TABLE IF NOT EXISTS project_fts USING fts5(
     project_id UNINDEXED, title, summary, authors, categories, slug,
     tokenize = 'unicode61 remove_diacritics 2'
@@ -647,6 +657,13 @@ impl Store {
         db.execute_batch(SCHEMA).map_err(sql)?;
         migrate(&db)?;
         take_twin_slugs(&mut db)?;
+        for (a, b) in mod_meta::CLASHES {
+            db.execute(
+                "INSERT OR IGNORE INTO clash (a, b, listed, changed) VALUES (?1, ?2, 1, 0)",
+                params![a, b],
+            )
+            .map_err(sql)?;
+        }
         Ok(Self {
             db: Mutex::new(db),
             path,
@@ -1581,6 +1598,46 @@ impl Store {
         .map_err(sql)?
         .collect::<std::result::Result<_, _>>()
         .map_err(sql)
+    }
+
+    /// The clashes on the list.
+    pub fn clashes(&self) -> Result<Vec<mod_meta::Clash>> {
+        let db = self.db();
+        let mut q = db
+            .prepare("SELECT a, b FROM clash WHERE listed = 1 ORDER BY a, b LIMIT 1000")
+            .map_err(sql)?;
+        q.query_map([], |r| {
+            Ok(mod_meta::Clash {
+                a: r.get(0)?,
+                b: r.get(1)?,
+            })
+        })
+        .map_err(sql)?
+        .collect::<std::result::Result<_, _>>()
+        .map_err(sql)
+    }
+
+    /// Puts a clash on the list or takes it off; whether that changed it.
+    pub fn set_clash(&self, clash: &mod_meta::Clash, listed: bool, now: i64) -> Result<bool> {
+        let db = self.db();
+        let was: Option<bool> = db
+            .query_row(
+                "SELECT listed FROM clash WHERE a = ?1 AND b = ?2",
+                params![clash.a, clash.b],
+                |r| r.get(0),
+            )
+            .optional()
+            .map_err(sql)?;
+        if was == Some(listed) || (was.is_none() && !listed) {
+            return Ok(false);
+        }
+        db.execute(
+            "INSERT INTO clash (a, b, listed, changed) VALUES (?1, ?2, ?3, ?4)
+             ON CONFLICT (a, b) DO UPDATE SET listed = ?3, changed = ?4",
+            params![clash.a, clash.b, listed, now],
+        )
+        .map_err(sql)?;
+        Ok(true)
     }
 
     /// A scan's result for a kept file; `held` once it is out of service.

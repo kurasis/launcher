@@ -17,8 +17,8 @@ mod check;
 mod jar;
 mod version;
 
-pub use check::{Jar, Problem, Setup, check, for_loader};
-pub use jar::{read, read_bytes};
+pub use check::{CLASHES, Clash, Jar, Problem, Setup, check, check_with, clashes, for_loader};
+pub use jar::{OPTIFINE, read, read_bytes};
 pub use version::{allows, compare};
 
 use serde::{Deserialize, Serialize};
