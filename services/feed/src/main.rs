@@ -10,8 +10,8 @@
 //! Settings come from the environment: `LAPI_FEED_DATA` (default
 //! `/home/www/lapi/feed/data`), `LAPI_FEED_ADDR` (`127.0.0.1:8787`), and the
 //! secrets `LAPI_FEED_DEEPL_KEY` (translations), `LAPI_FEED_TWITCH_CLIENT_ID`
-//! and `LAPI_FEED_TWITCH_SECRET` (streams). Without a secret its part is
-//! simply left out.
+//! and `LAPI_FEED_TWITCH_SECRET` (streams), `LAPI_FEED_YOUTUBE_KEY` (video
+//! lengths). Without a secret its part is simply left out.
 
 mod api;
 mod deepl;
@@ -23,6 +23,7 @@ mod mojang;
 mod net;
 mod twitch;
 mod youtube;
+mod ytdata;
 
 use std::path::PathBuf;
 use std::sync::Arc;
@@ -50,6 +51,7 @@ fn open(http: reqwest::Client) -> Result<feed::Feed, String> {
             env("LAPI_FEED_TWITCH_SECRET", ""),
         ),
         deepl::DeepL::new(env("LAPI_FEED_DEEPL_KEY", "")),
+        ytdata::DataApi::new(env("LAPI_FEED_YOUTUBE_KEY", "")),
     )
 }
 

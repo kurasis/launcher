@@ -732,6 +732,34 @@ fn runs(version: &Version, setup: &mod_meta::Setup<'_>, want: Option<&Want<'_>>)
     Some(fine && gives)
 }
 
+/// A mod's version to install here: the newest release whose jar runs (and
+/// gives `want`), else the newest of another channel, else the first tried.
+async fn choose<C: Catalog>(
+    catalog: &C,
+    target: &Target,
+    project: &str,
+    want: Option<&Want<'_>>,
+) -> LauncherResult<Option<Version>> {
+    let list = fitting(catalog, project, "mod", target).await?;
+    let mut order: Vec<&Version> = list.iter().filter(|v| v.channel == "release").collect();
+    order.extend(list.iter().filter(|v| v.channel != "release"));
+    let setup = target.setup();
+    let mut first = None;
+    for candidate in order.into_iter().take(MAX_TRIED) {
+        // Lists leave out what the jars say.
+        let Ok(version) = catalog.version(&candidate.id).await else {
+            continue;
+        };
+        match setup.as_ref().and_then(|s| runs(&version, s, want)) {
+            Some(false) => {
+                first.get_or_insert(version);
+            }
+            _ => return Ok(Some(version)),
+        }
+    }
+    Ok(first.or_else(|| best(&list).cloned()))
+}
+
 /// A version waiting to go into the plan.
 struct Queued {
     version: Version,
@@ -985,24 +1013,7 @@ impl<C: Catalog> Planner<'_, C> {
         project: &str,
         want: Option<&Want<'_>>,
     ) -> LauncherResult<Option<Version>> {
-        let list = fitting(self.catalog, project, "mod", self.target).await?;
-        let mut order: Vec<&Version> = list.iter().filter(|v| v.channel == "release").collect();
-        order.extend(list.iter().filter(|v| v.channel != "release"));
-        let setup = self.target.setup();
-        let mut first = None;
-        for candidate in order.into_iter().take(MAX_TRIED) {
-            // Lists leave out what the jars say.
-            let Ok(version) = self.catalog.version(&candidate.id).await else {
-                continue;
-            };
-            match setup.as_ref().and_then(|s| runs(&version, s, want)) {
-                Some(false) => {
-                    first.get_or_insert(version);
-                }
-                _ => return Ok(Some(version)),
-            }
-        }
-        Ok(first.or_else(|| best(&list).cloned()))
+        choose(self.catalog, self.target, project, want).await
     }
 
     /// The set as it would be after the install: the folder's mods that are
@@ -1251,6 +1262,140 @@ pub fn check_folder(
             })
         })
         .collect()
+}
+
+/// A mod the game said is missing or too old, as the crash window offers to
+/// put it in (D-072): the catalog's project that gives it and the version.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ModFix {
+    /// As the loader named it.
+    pub mod_id: String,
+    pub project_id: String,
+    pub title: String,
+    pub icon: Option<String>,
+    pub version_id: String,
+    pub number: String,
+    /// The file there now that gives the mod: the fix is an update.
+    pub installed: Option<String>,
+    /// A file of the player's the install replaces (the launcher's own are
+    /// replaced anyway).
+    pub replaces: Option<String>,
+}
+
+/// A mod ID as the loaders write it.
+fn mod_id(id: &str) -> bool {
+    (1..=64).contains(&id.len())
+        && id
+            .bytes()
+            .all(|b| b.is_ascii_lowercase() || b.is_ascii_digit() || b"_-.".contains(&b))
+}
+
+/// What puts in, or updates, mod `id` so the jars there that need it get a
+/// version they take; `None` when the catalog has nothing better.
+pub async fn mod_fix<C: Catalog>(
+    catalog: &C,
+    target: &Target,
+    lock: &ContentLock,
+    local: &[LocalJar],
+    identified: &[Identified],
+    id: &str,
+) -> LauncherResult<Option<ModFix>> {
+    let Some(setup) = target.setup() else {
+        return Ok(None);
+    };
+    if !mod_id(id) {
+        return Ok(None);
+    }
+    let on: Vec<&LocalJar> = local
+        .iter()
+        .filter(|j| !j.path.ends_with(DISABLED))
+        .collect();
+    let jars: Vec<mod_meta::Jar<'_>> = on
+        .iter()
+        .map(|j| mod_meta::Jar {
+            file: &j.path,
+            manifests: &j.manifests,
+        })
+        .collect();
+    // The versions the first mod that needs it takes; none: any.
+    let versions = mod_meta::check(&setup, &jars)
+        .into_iter()
+        .find_map(|p| match p {
+            mod_meta::Problem::Missing {
+                id: i, versions, ..
+            }
+            | mod_meta::Problem::Wrong {
+                id: i, versions, ..
+            } if i == id => Some(versions),
+            _ => None,
+        })
+        .unwrap_or_default();
+    let want = Want {
+        id,
+        versions: &versions,
+        loader: setup.loader,
+    };
+    // The jar there that is the mod itself, not one that carries it inside.
+    let installed = on
+        .iter()
+        .find(|j| {
+            mod_meta::for_loader(&j.manifests, setup.loader, setup.game)
+                .is_some_and(|m| m.mods.iter().any(|p| p.id == id && !p.nested))
+        })
+        .map(|j| j.path.clone());
+    let (known, now) = match installed.as_deref() {
+        Some(path) => match lock.at(path) {
+            Some(ours) => (Some(ours.project_id.clone()), Some(ours.version_id.clone())),
+            None => identified
+                .iter()
+                .find(|i| enabled_form(&i.path) == path)
+                .map_or((None, None), |i| {
+                    (Some(i.project_id.clone()), Some(i.version_id.clone()))
+                }),
+        },
+        None => (None, None),
+    };
+    let replaces = installed
+        .as_deref()
+        .filter(|path| lock.at(path).is_none())
+        .map(str::to_owned);
+    let mut projects: Vec<String> = known.into_iter().collect();
+    if projects.is_empty() {
+        for name in target.mod_loaders() {
+            projects = catalog
+                .provides(id, &target.game, name)
+                .await
+                .unwrap_or_default();
+            if !projects.is_empty() {
+                break;
+            }
+        }
+    }
+    for project in projects.iter().take(5) {
+        let Some(version) = choose(catalog, target, project, Some(&want)).await? else {
+            continue;
+        };
+        if runs(&version, &setup, Some(&want)) == Some(false)
+            || now.as_deref() == Some(version.id.as_str())
+        {
+            continue;
+        }
+        let card = catalog.project(project).await.ok();
+        return Ok(Some(ModFix {
+            mod_id: id.to_owned(),
+            project_id: project.clone(),
+            title: card
+                .as_ref()
+                .map_or_else(|| id.to_owned(), |p| p.title.clone()),
+            icon: card.and_then(|p| p.icon),
+            number: version.number.clone(),
+            version_id: version.id,
+            installed,
+            replaces,
+        }));
+    }
+    Ok(None)
 }
 
 /// A problem in words the interface shows, with the mods' titles.
@@ -2205,6 +2350,113 @@ pub fn list(root: &DataRoot, id: InstanceId) -> ContentView {
         worlds,
         pack,
     }
+}
+
+/// Content of an installation a search over all of them found (D-072).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct InstalledMatch {
+    pub instance_id: InstanceId,
+    pub instance_name: String,
+    pub item: ContentItem,
+}
+
+/// Matches one search over the installations gives at most.
+pub const MAX_INSTALLED_MATCHES: usize = 100;
+
+/// What to look for in every installation: words (all of them in its title
+/// from the catalog or its file name), or a catalog project by its ID.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct InstalledQuery {
+    words: Vec<String>,
+    project: Option<String>,
+}
+
+impl InstalledQuery {
+    /// From the player's text (up to 8 words of 64 characters are used) and
+    /// a project ID; nothing to look for when both are empty.
+    pub fn new(text: &str, project: Option<&str>) -> LauncherResult<Option<Self>> {
+        let project = match project.map(str::trim).filter(|p| !p.is_empty()) {
+            Some(p) if super::project_ref(p) => Some(p.to_owned()),
+            Some(_) => return Err(LauncherError::invalid_input("This search cannot be made.")),
+            None => None,
+        };
+        let words: Vec<String> = text
+            .chars()
+            .take(200)
+            .collect::<String>()
+            .to_lowercase()
+            .split_whitespace()
+            .filter(|w| w.chars().all(|c| !c.is_control()))
+            .take(8)
+            .map(|w| w.chars().take(64).collect())
+            .collect();
+        Ok((!words.is_empty() || project.is_some()).then_some(Self { words, project }))
+    }
+
+    fn takes(&self, item: &ContentItem) -> bool {
+        if let Some(project) = &self.project
+            && item.project_id.as_deref() != Some(project.as_str())
+        {
+            return false;
+        }
+        let haystack = format!(
+            "{} {}",
+            item.title.as_deref().unwrap_or_default(),
+            item.name
+        )
+        .to_lowercase();
+        self.words.iter().all(|w| haystack.contains(w.as_str()))
+    }
+}
+
+/// The content of these installations, in their order, that a query finds.
+pub fn find_installed(
+    root: &DataRoot,
+    instances: &[(InstanceId, String)],
+    query: &InstalledQuery,
+) -> Vec<InstalledMatch> {
+    let mut found = Vec::new();
+    for (id, name) in instances {
+        for item in list(root, *id).items {
+            if found.len() >= MAX_INSTALLED_MATCHES {
+                return found;
+            }
+            if query.takes(&item) {
+                found.push(InstalledMatch {
+                    instance_id: *id,
+                    instance_name: name.clone(),
+                    item,
+                });
+            }
+        }
+    }
+    found
+}
+
+/// The same over every installation, the last played first.
+pub fn find_in_all(
+    state: &crate::state::AppState,
+    query: &InstalledQuery,
+) -> LauncherResult<Vec<InstalledMatch>> {
+    let root = state.data_root().ok_or_else(storage_gone)?;
+    let mut instances: Vec<InstanceFile> = state
+        .instance_ids()
+        .into_iter()
+        .filter_map(|id| state.instance(id))
+        .collect();
+    instances.sort_by(|a, b| {
+        b.last_played_at.cmp(&a.last_played_at).then_with(|| {
+            a.display_name
+                .to_lowercase()
+                .cmp(&b.display_name.to_lowercase())
+        })
+    });
+    let instances: Vec<(InstanceId, String)> = instances
+        .into_iter()
+        .map(|i| (i.id, i.display_name))
+        .collect();
+    Ok(find_installed(&root, &instances, query))
 }
 
 /// Turns a file on or off (adds or removes `.disabled`).

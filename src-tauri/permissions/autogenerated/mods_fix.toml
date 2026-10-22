@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-mods-fix"
+description = "Enables the mods_fix command without any pre-configured scope."
+commands.allow = ["mods_fix"]
+
+[[permission]]
+identifier = "deny-mods-fix"
+description = "Denies the mods_fix command without any pre-configured scope."
+commands.deny = ["mods_fix"]

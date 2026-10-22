@@ -15,6 +15,7 @@ use crate::images::{self, reencode, sha_name, twitch_login, video_id};
 use crate::mojang::{self, Version, cycle, note_id, version_kind};
 use crate::twitch::{self, RawStream, pick};
 use crate::youtube::{self, Wanted, channel_id, id_in_page, parse_rss, wanted};
+use crate::ytdata::{self, DataApi};
 use crate::{api, deepl, feed};
 
 // ---------------------------------------------------------------- html ----
@@ -645,6 +646,101 @@ fn twitch_channel_pictures() {
 }
 
 #[test]
+fn video_lengths_are_read() {
+    for (text, want) in [
+        ("PT15M33S", 933),
+        ("PT1H", 3600),
+        ("PT59S", 59),
+        ("P1DT2H3M4S", 93_784),
+        ("P1W", 604_800),
+        ("P2D", 172_800),
+        ("PT10H0M1S", 36_001),
+    ] {
+        assert_eq!(ytdata::seconds(text), Some(want), "{text}");
+    }
+    for bad in [
+        "",
+        "P",
+        "PT",
+        "P0D",
+        "PT0S",
+        "PT15M33",
+        "15M",
+        "PT1.5S",
+        "P1M",
+        "P1Y",
+        "PT1S2M",
+        "PT1M1M",
+        "P1DT",
+        "PTH",
+        "PT-1S",
+        "P31D",
+        "PT99999999999999999999S",
+        "PT1H\u{200f}",
+        "pt1m",
+        "P1D1W",
+        "PT1H2M3S4S",
+    ] {
+        assert_eq!(ytdata::seconds(bad), None, "{bad}");
+    }
+    assert_eq!(ytdata::seconds(&format!("PT{}S", "1".repeat(50))), None);
+}
+
+#[test]
+fn data_api_answers_are_checked() {
+    let answer = json!({"items": [
+        {"id": "aaaaaaaaaaa", "contentDetails": {"duration": "PT4M2S"}},
+        {"id": "bbbbbbbbbbb", "contentDetails": {"duration": "P0D"}},
+        {"id": "ccccccccccc", "contentDetails": {}},
+        {"id": "ddddddddddd"},
+        // Not asked: ignored.
+        {"id": "zzzzzzzzzzz", "contentDetails": {"duration": "PT1M"}}
+    ]});
+    let asked = ["aaaaaaaaaaa", "bbbbbbbbbbb", "ccccccccccc", "ddddddddddd"];
+    let lengths = ytdata::read_lengths(&serde_json::to_vec(&answer).unwrap(), &asked).unwrap();
+    assert_eq!(lengths.len(), 1);
+    assert_eq!(lengths["aaaaaaaaaaa"], 242);
+    assert!(ytdata::read_lengths(b"{}", &asked).unwrap().is_empty());
+    assert!(ytdata::read_lengths(b"<html>", &asked).is_err());
+    assert!(ytdata::read_lengths(br#"{"items": "x"}"#, &asked).is_err());
+
+    let url = "https://yt3.ggpht.com/abc_DEF-1=s240-c-k-c0x00ffffff-no-rj";
+    let picture = |thumbnails: Value| {
+        let answer = json!({"items": [{"snippet": {"thumbnails": thumbnails}}]});
+        ytdata::read_picture(&serde_json::to_vec(&answer).unwrap()).unwrap()
+    };
+    assert_eq!(
+        picture(json!({"default": {"url": "https://yt3.ggpht.com/x=s88"}, "medium": {"url": url}}))
+            .as_deref(),
+        Some(url)
+    );
+    assert_eq!(picture(json!({"high": {"url": url}})).as_deref(), Some(url));
+    assert_eq!(
+        picture(json!({"medium": {"url": "https://evil.example/a.jpg"}})),
+        None
+    );
+    assert_eq!(
+        picture(json!({"medium": {"url": "http://yt3.ggpht.com/a"}})),
+        None
+    );
+    assert_eq!(picture(json!({})), None);
+    assert_eq!(ytdata::read_picture(br#"{"items": []}"#).unwrap(), None);
+    assert!(ytdata::read_picture(b"[1]").is_err());
+}
+
+#[test]
+fn the_data_api_stays_in_its_day() {
+    assert!(DataApi::new(String::new()).is_none());
+    assert!(DataApi::new("  ".to_owned()).is_none());
+    let api = DataApi::new(" key ".to_owned()).unwrap();
+    for _ in 0..ytdata::DAY_UNITS {
+        assert!(api.spend());
+    }
+    assert!(!api.spend());
+    assert_eq!(api.spent(), ytdata::DAY_UNITS);
+}
+
+#[test]
 fn twitch_needs_both_secrets() {
     assert!(crate::twitch::Twitch::new(String::new(), "s".into()).is_none());
     assert!(crate::twitch::Twitch::new("c".into(), "  ".into()).is_none());
@@ -959,7 +1055,8 @@ fn app_with(dir: &std::path::Path, change: impl FnOnce(&mut Value)) -> Arc<api::
                 "title": "Канал",
                 "videos": [{
                     "id": "abcdefghijk", "channelId": ru_channel, "channel": "Канал",
-                    "title": "Видео", "date": "2026-10-18T00:00:00Z", "short": false
+                    "title": "Видео", "date": "2026-10-18T00:00:00Z", "short": false,
+                    "seconds": 754
                 }]
             }
         },
@@ -971,7 +1068,15 @@ fn app_with(dir: &std::path::Path, change: impl FnOnce(&mut Value)) -> Arc<api::
     });
     change(&mut state);
     std::fs::write(dir.join("state.json"), serde_json::to_vec(&state).unwrap()).unwrap();
-    let feed = feed::Feed::open(dir, editorial, crate::net::client().unwrap(), None, None).unwrap();
+    let feed = feed::Feed::open(
+        dir,
+        editorial,
+        crate::net::client().unwrap(),
+        None,
+        None,
+        None,
+    )
+    .unwrap();
     Arc::new(api::App {
         feed,
         limiter: api::Limiter::default(),
@@ -1027,6 +1132,7 @@ async fn the_feed_in_each_language() {
     );
     // Only a Short has an upright preview.
     assert!(video.get("imageTall").is_none());
+    assert_eq!(video["duration"], 754);
     assert_eq!(feed["streams"][0]["image"], "tw/somebody.jpg");
     assert_eq!(feed["streams"][0]["avatar"], "ta/somebody.jpg");
     assert_eq!(feed["latest"]["release"]["id"], "26.3");
@@ -1204,16 +1310,21 @@ fn channels_keep_their_older_videos() {
         title: "T".into(),
         date: date.into(),
         short: false,
+        seconds: None,
     };
     let fresh = vec![video("bbbbbbbbbbb", "2026-10-19T00:00:00Z")];
     let kept = vec![
         video("bbbbbbbbbbb", "2026-10-01T00:00:00Z"),
         video("aaaaaaaaaaa", "2026-10-02T00:00:00Z"),
     ];
-    let videos = feed::keep_videos(fresh, kept);
+    let videos = feed::keep_videos(fresh.clone(), kept);
     let ids: Vec<&str> = videos.iter().map(|v| v.id.as_str()).collect();
     assert_eq!(ids, ["bbbbbbbbbbb", "aaaaaaaaaaa"]);
     assert_eq!(videos[0].date, "2026-10-19T00:00:00Z");
+    // A length found before stays with the fresh video.
+    let mut timed = video("bbbbbbbbbbb", "2026-10-01T00:00:00Z");
+    timed.seconds = Some(754);
+    assert_eq!(feed::keep_videos(fresh, vec![timed])[0].seconds, Some(754));
     let many = (0..300)
         .map(|i| video(&format!("{i:011}"), "2026-10-01T00:00:00Z"))
         .collect();
@@ -1231,6 +1342,7 @@ fn spread_video(id: &str, channel: &str, date: &str) -> youtube::Video {
         title: "T".into(),
         date: date.into(),
         short: false,
+        seconds: None,
     }
 }
 
@@ -1377,6 +1489,8 @@ async fn upright_previews_and_channel_pictures() {
     );
     let short = &page["items"][0]["video"];
     assert_eq!(short["imageTall"], "ys/shortshort1.jpg");
+    // No length known (no Data API key here): none given.
+    assert!(short.get("duration").is_none());
     assert_eq!(short["image"], "yt/shortshort1.jpg");
     let avatar = short["avatar"].as_str().unwrap().to_owned();
     assert!(avatar.starts_with("ya/UC"), "{avatar}");
@@ -1697,6 +1811,7 @@ fn a_broken_state_is_started_afresh() {
         dir.path(),
         Editorial::load(crate::EDITORIAL).unwrap(),
         crate::net::client().unwrap(),
+        None,
         None,
         None,
     )

@@ -107,6 +107,31 @@ describe('friends corner', () => {
     expect(onOpenAccounts).toHaveBeenCalled();
   });
 
+  it("moves focus into the rail's sheet and back to its button when it closes", async () => {
+    mockIPC((cmd) => (cmd === 'friends_state' ? signedIn() : null), { shouldMockEvents: true });
+    render(
+      <FriendsCorner
+        placement="rail"
+        snapshot={snapshotFixture()}
+        onOpenAccounts={vi.fn()}
+        onOpenWorld={vi.fn()}
+      />,
+    );
+    const button = await screen.findByRole('button', { name: /Friends and chats/ });
+    fireEvent.click(button);
+    const sheet = screen.getByRole('region', { name: 'Friends' });
+    expect(within(sheet).getByRole('heading', { name: 'Friends' })).toHaveFocus();
+    // The sheet follows its button, so Tab goes from one into the other.
+    expect(button.compareDocumentPosition(sheet) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    fireEvent.click(within(sheet).getByRole('button', { name: 'Close' }));
+    expect(screen.queryByRole('region', { name: 'Friends' })).toBeNull();
+    expect(button).toHaveFocus();
+    fireEvent.click(button);
+    fireEvent.keyDown(screen.getByRole('heading', { name: 'Friends' }), { key: 'Escape' });
+    expect(screen.queryByRole('region', { name: 'Friends' })).toBeNull();
+    expect(button).toHaveFocus();
+  });
+
   it('shows unread messages and requests on the button', async () => {
     setup(signedIn({ incoming: [{ ...NOTCH, at: 3, online: false, playing: null }] }));
     const button = await screen.findByRole('button', { name: /1 unread message/ });

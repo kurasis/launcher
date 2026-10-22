@@ -2791,6 +2791,15 @@ skins-mod <channel>` there only checks the signature against the public key and
   catalog's check found them clean (`checked`); dependencies carry their title, icon
   and slug; versions come a page at a time with the game versions and loaders to filter
   by; `/similar` gives up to five projects of the same kind sharing most categories.
+- **Installed mods and the crash window (2026-10-22, D-072).** The search finds a mod,
+  pack or shader in every installation by the words of its title or file name, or by
+  its catalog project (`mods_find_installed`, at most 100, the last played installation
+  first), so it can say where a mod is installed. When the game stopped because a mod is
+  missing or too old (`missing_dependency`, `wrong_dependency_version`), the crash
+  window asks the catalog for the mod's project by its ID and the newest release whose
+  jar gives the version the jars there need (`mods_fix`), and offers "Update <mod>" or
+  "Install <mod>" with the usual plan. Offline, or when the catalog has nothing
+  better, the button is not shown.
 
 ## D-067 — Start page feed at feed.lapi.sh
 
@@ -2859,8 +2868,13 @@ skins-mod <channel>` there only checks the signature against the public key and
   only when a launcher asks for it, and only for channels it knows (ours, those players
   named, streams it lists): from the channel page on YouTube, from Helix on Twitch, at
   most once in 10 minutes each, kept a week. Note cards carry their picture's
-  `imageWidth` and `imageHeight`. Video length stays out: the RSS feed has none, and the
-  Data API would need a key.
+  `imageWidth` and `imageHeight`.
+- **Video lengths (owner request, 2026-10-22):** RSS has none, so the service asks
+  YouTube's Data API v3 with a key (secret `YOUTUBE_API_KEY`) for videos that have
+  none yet: 1 unit per 50 videos, kept with the video, so a day takes a few hundred of
+  the free 10 000 units; it stops at 8 000 a day. Cards carry `duration` in seconds when
+  known (not for live streams or premieres). With the key, channel pictures come from
+  the API too (1 unit) instead of the 1.4 MB channel page. Without it both work as before.
 
 ## D-068 — Worlds with Friends
 

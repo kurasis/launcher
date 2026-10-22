@@ -15,6 +15,7 @@ function video(id: string, channel: string, date: string): FeedItem {
       image: null,
       imageTall: null,
       avatar: null,
+      duration: null,
     },
   };
 }

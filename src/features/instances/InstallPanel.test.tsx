@@ -2,31 +2,15 @@ import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { mockIPC } from '@tauri-apps/api/mocks';
 import { describe, expect, it } from 'vitest';
 import type { OperationProgress, OperationResult } from '../../lib/contracts';
-import { accountFixture, instanceFixture, snapshotFixture } from '../../test/fixtures';
+import { instanceFixture, snapshotFixture } from '../../test/fixtures';
 import { InstallPanel } from './InstallPanel';
 
-let launchFails = false;
-
 function backend() {
-  launchFails = false;
   const calls: { cmd: string; args: unknown }[] = [];
   mockIPC((cmd, args) => {
     calls.push({ cmd, args });
     if (cmd === 'install_instance' || cmd === 'repair_instance') return { operationId: 'op-1' };
     if (cmd === 'cancel_operation') return { state: 'cancel_requested' };
-    if (cmd === 'launch_game') {
-      if (launchFails) {
-        // eslint-disable-next-line @typescript-eslint/only-throw-error -- mirrors the IPC error envelope
-        throw {
-          code: 'AUTH_NOT_CONFIGURED',
-          message: 'Sign-in is not configured in this build.',
-          retryable: false,
-          diagnosticId: 'd',
-        };
-      }
-      return { runId: 'run-1', kind: 'game', state: 'preflight' };
-    }
-    if (cmd === 'set_instance_profile') return instanceFixture();
     if (cmd === 'get_app_snapshot') return snapshotFixture();
     return null;
   });
@@ -71,7 +55,6 @@ describe('InstallPanel', () => {
     backend();
     render(
       <InstallPanel
-        account={accountFixture()}
         instance={instanceFixture({ health: 'ready', busy: true })}
         activeOperation={{ kind: 'launch', instanceId: instanceFixture().id, operationId: 'run-1' }}
         progress={null}
@@ -83,23 +66,29 @@ describe('InstallPanel', () => {
     expect(screen.queryByText('Reading version metadata')).toBeNull();
   });
 
-  it('starts an install for a new installation', async () => {
-    const calls = backend();
-    render(
+  it('leaves Play, Install, Repair and "Play as" to the launch bar', () => {
+    backend();
+    const { rerender } = render(
       <InstallPanel
-        account={accountFixture()}
-        instance={instanceFixture()}
+        instance={instanceFixture({ health: 'ready' })}
         activeOperation={null}
         progress={null}
         recentOperations={[]}
       />,
     );
-    fireEvent.click(screen.getByRole('button', { name: 'Install' }));
-    await waitFor(() => {
-      expect(calls.find((c) => c.cmd === 'install_instance')?.args).toMatchObject({
-        request: { payload: { instanceId: instanceFixture().id } },
-      });
-    });
+    expect(screen.queryByRole('button', { name: 'Play' })).toBeNull();
+    expect(screen.queryByLabelText('Play as')).toBeNull();
+    for (const health of ['not_installed', 'repair_required'] as const) {
+      rerender(
+        <InstallPanel
+          instance={instanceFixture({ health })}
+          activeOperation={null}
+          progress={null}
+          recentOperations={[]}
+        />,
+      );
+      expect(screen.queryByRole('button', { name: /Install|Repair/ })).toBeNull();
+    }
   });
 
   it('shows real progress and cancels the running operation', async () => {
@@ -107,7 +96,6 @@ describe('InstallPanel', () => {
     const instance = instanceFixture({ busy: true });
     render(
       <InstallPanel
-        account={accountFixture()}
         instance={instance}
         activeOperation={{ kind: 'install', instanceId: instance.id, operationId: 'op-1' }}
         progress={progress}
@@ -121,7 +109,6 @@ describe('InstallPanel', () => {
     );
     expect(screen.getByText('1,200 of 3,961 files verified')).toBeVisible();
     expect(screen.getByText(/512\.0 MiB of 1\.0 GiB · 4\.0 MiB\/s/)).toBeVisible();
-    expect(screen.queryByRole('button', { name: 'Install' })).not.toBeInTheDocument();
     fireEvent.click(screen.getByRole('button', { name: 'Cancel' }));
     await waitFor(() => {
       expect(calls.find((c) => c.cmd === 'cancel_operation')?.args).toMatchObject({
@@ -130,11 +117,10 @@ describe('InstallPanel', () => {
     });
   });
 
-  it('offers retry after a cancelled install and explains kept files', () => {
+  it('explains the files kept by a cancelled install', () => {
     backend();
     render(
       <InstallPanel
-        account={accountFixture()}
         instance={instanceFixture()}
         activeOperation={null}
         progress={null}
@@ -142,14 +128,12 @@ describe('InstallPanel', () => {
       />,
     );
     expect(screen.getByText(/Files verified so far were kept/)).toBeVisible();
-    expect(screen.getByRole('button', { name: 'Retry install' })).toBeEnabled();
   });
 
-  it('offers repair for damaged files and verification for ready ones', async () => {
+  it('explains repair for damaged files and verifies ready ones', async () => {
     const calls = backend();
     const { rerender } = render(
       <InstallPanel
-        account={accountFixture()}
         instance={instanceFixture({ health: 'repair_required' })}
         activeOperation={null}
         progress={null}
@@ -157,30 +141,27 @@ describe('InstallPanel', () => {
       />,
     );
     expect(screen.getByText(/never changes worlds/)).toBeVisible();
-    fireEvent.click(screen.getByRole('button', { name: 'Repair' }));
-    await waitFor(() => {
-      expect(calls.some((c) => c.cmd === 'repair_instance')).toBe(true);
-    });
     rerender(
       <InstallPanel
-        account={accountFixture()}
         instance={instanceFixture({ health: 'ready' })}
         activeOperation={null}
         progress={null}
         recentOperations={[result({})]}
       />,
     );
-    expect(screen.getByRole('button', { name: 'Verify files' })).toBeVisible();
     expect(
       screen.getByText(/Installation finished\. Downloaded 3,961 files \(877\.2 MiB\)/),
     ).toBeVisible();
+    fireEvent.click(screen.getByRole('button', { name: 'Verify files' }));
+    await waitFor(() => {
+      expect(calls.some((c) => c.cmd === 'repair_instance')).toBe(true);
+    });
   });
 
-  it('queues installs while another installation is busy', async () => {
+  it('shows the queue while another installation is busy, and removes from it', async () => {
     const calls = backend();
     const { rerender } = render(
       <InstallPanel
-        account={accountFixture()}
         instance={instanceFixture()}
         activeOperation={{ kind: 'install', instanceId: 'other', operationId: 'op-9' }}
         progress={null}
@@ -188,13 +169,8 @@ describe('InstallPanel', () => {
       />,
     );
     expect(screen.getByText(/added to the queue/)).toBeVisible();
-    fireEvent.click(screen.getByRole('button', { name: 'Add to queue' }));
-    await waitFor(() => {
-      expect(calls.some((c) => c.cmd === 'install_instance')).toBe(true);
-    });
     rerender(
       <InstallPanel
-        account={accountFixture()}
         instance={instanceFixture()}
         activeOperation={{ kind: 'install', instanceId: 'other', operationId: 'op-9' }}
         progress={null}
@@ -209,7 +185,6 @@ describe('InstallPanel', () => {
         ]}
       />,
     );
-    expect(screen.getByRole('button', { name: 'Add to queue' })).toBeDisabled();
     fireEvent.click(screen.getByRole('button', { name: 'Remove' }));
     await waitFor(() => {
       expect(calls.find((c) => c.cmd === 'cancel_operation')?.args).toMatchObject({
@@ -218,11 +193,10 @@ describe('InstallPanel', () => {
     });
   });
 
-  it('offline, plays installed versions and queues downloads for the connection', () => {
+  it('says offline what still works and what waits for the connection', () => {
     backend();
     const { rerender } = render(
       <InstallPanel
-        account={accountFixture()}
         instance={instanceFixture({ health: 'ready' })}
         activeOperation={null}
         progress={null}
@@ -233,10 +207,8 @@ describe('InstallPanel', () => {
     expect(
       screen.getByText(/No internet connection\. Installed versions still start/),
     ).toBeVisible();
-    expect(screen.getByRole('button', { name: 'Play' })).toBeEnabled();
     rerender(
       <InstallPanel
-        account={accountFixture()}
         instance={instanceFixture()}
         activeOperation={null}
         progress={null}
@@ -253,81 +225,5 @@ describe('InstallPanel', () => {
       />,
     );
     expect(screen.getByText('Waiting for the internet connection')).toBeVisible();
-    expect(screen.getByRole('button', { name: 'Add to queue' })).toBeDisabled();
-  });
-
-  it('plays as the default player or the chosen one, always labelled Play', async () => {
-    const calls = backend();
-    const instance = instanceFixture({ health: 'ready' });
-    const { rerender } = render(
-      <InstallPanel
-        account={accountFixture()}
-        instance={instance}
-        activeOperation={null}
-        progress={null}
-        recentOperations={[]}
-      />,
-    );
-    // One "Play" label for every player; the demo hint is gone.
-    expect(screen.queryByText(/five in-game days/)).toBeNull();
-    expect(screen.getByLabelText('Play as')).toHaveDisplayValue('Default: Player');
-    fireEvent.click(screen.getByRole('button', { name: 'Play' }));
-    await waitFor(() => {
-      expect(calls.find((c) => c.cmd === 'launch_game')?.args).toMatchObject({
-        request: { payload: { instanceId: instance.id } },
-      });
-    });
-
-    const account = accountFixture({
-      accounts: [
-        {
-          profileId: 'steve',
-          profileName: 'Steve_Test',
-          state: 'verified_access',
-          error: null,
-        },
-      ],
-      notokenProfiles: [{ id: 'alex', name: 'Alex' }],
-      defaultProfile: { kind: 'microsoft', id: 'steve' },
-    });
-    rerender(
-      <InstallPanel
-        account={account}
-        instance={instance}
-        activeOperation={null}
-        progress={null}
-        recentOperations={[]}
-      />,
-    );
-    launchFails = true;
-    fireEvent.click(screen.getByRole('button', { name: 'Play' }));
-    expect(await screen.findByText('Sign-in is not configured in this build.')).toBeVisible();
-    // The default player is listed once, as the default.
-    const options = Array.from(
-      screen.getByLabelText<HTMLSelectElement>('Play as').options,
-      (o) => o.textContent,
-    );
-    expect(options).toEqual(['Default: Steve_Test (Microsoft)', 'Alex']);
-
-    // The installation can play as the demo profile instead.
-    fireEvent.change(screen.getByLabelText('Play as'), { target: { value: 'notoken:alex' } });
-    await waitFor(() => {
-      expect(calls.find((c) => c.cmd === 'set_instance_profile')?.args).toMatchObject({
-        request: {
-          payload: { instanceId: instance.id, profile: { kind: 'notoken', id: 'alex' } },
-        },
-      });
-    });
-    rerender(
-      <InstallPanel
-        account={account}
-        instance={{ ...instance, profile: { kind: 'notoken', id: 'alex' } }}
-        activeOperation={null}
-        progress={null}
-        recentOperations={[]}
-      />,
-    );
-    expect(screen.getByRole('button', { name: 'Play' })).toBeVisible();
-    expect(screen.getByLabelText('Play as')).toHaveDisplayValue('Alex');
   });
 });

@@ -3,7 +3,6 @@ import { Notice } from '../../components/Notice';
 import { Panel } from '../../components/Panel';
 import forms from '../../components/forms.module.css';
 import type {
-  AccountSummary,
   ActiveActivity,
   InstanceSummary,
   NetworkStatus,
@@ -18,13 +17,10 @@ import { useCommand } from '../../lib/useCommand';
 import styles from './Instances.module.css';
 import { localizeError } from '../../lib/strings';
 import { gameLabel } from './loaderLabel';
-import { PlayAs } from './PlayAs';
 import { DownloadApproval } from '../network/DownloadApproval';
 
 interface InstallPanelProps {
   instance: InstanceSummary;
-  /** Accounts and profiles: who plays this installation (D-045). */
-  account: AccountSummary;
   activeOperation: ActiveActivity | null;
   progress: OperationProgress | null;
   recentOperations: OperationResult[];
@@ -93,19 +89,19 @@ function ResultView({ result }: { result: OperationResult }) {
   }
 }
 
-/** Install, retry, repair and cancel for one installation, with live progress. */
+/**
+ * One installation's state, progress, queue and last result, with Cancel and Verify.
+ * Play, Install, Repair and "Play as" live in the launch bar (D-072).
+ */
 export function InstallPanel({
   instance,
-  account,
   activeOperation,
   progress,
   recentOperations,
   queue = [],
   network = 'online',
 }: InstallPanelProps) {
-  const install = useCommand((requestId: string, id: string) => ipc.installInstance(id, requestId));
   const repair = useCommand((requestId: string, id: string) => ipc.repairInstance(id, requestId));
-  const play = useCommand((requestId: string, id: string) => ipc.launchGame(id, requestId));
   const cancel = useCommand((requestId: string, operationId: string) =>
     ipc.cancelOperation(operationId, requestId),
   );
@@ -117,12 +113,7 @@ export function InstallPanel({
   const ownProgress = mine !== null && progress?.operationId === mine.operationId ? progress : null;
   const last = recentOperations.find((r) => r.instanceId === instance.id) ?? null;
   const health = instance.health;
-  const unfinished =
-    last !== null &&
-    last.kind === 'install' &&
-    last.outcome !== 'succeeded' &&
-    health === 'not_installed';
-  const error = play.error ?? install.error ?? repair.error ?? cancel.error;
+  const error = repair.error ?? cancel.error;
 
   return (
     <Panel
@@ -174,49 +165,16 @@ export function InstallPanel({
       ) : (
         otherBusy && <Notice tone="info">{t.otherBusy}</Notice>
       )}
-      {mine === null && health !== 'unsupported' && (
-        <div className={styles.heroActions}>
-          {health === 'not_installed' ? (
-            <Button
-              variant="primary"
-              size="large"
-              disabled={install.pending || queued !== null}
-              onClick={() => void install.run(instance.id)}
-            >
-              {otherBusy || offline
-                ? strings.downloads.addToQueue
-                : unfinished
-                  ? t.retry
-                  : t.install}
-            </Button>
-          ) : (
-            <>
-              {health === 'ready' && (
-                <Button
-                  variant="primary"
-                  size="large"
-                  disabled={otherBusy || play.pending}
-                  onClick={() => void play.run(instance.id)}
-                >
-                  {play.pending ? t.starting : t.play}
-                </Button>
-              )}
-              <Button
-                variant={health === 'ready' ? 'secondary' : 'primary'}
-                disabled={repair.pending || queued !== null}
-                onClick={() => void repair.run(instance.id)}
-              >
-                {(otherBusy || offline) && health !== 'ready'
-                  ? strings.downloads.addToQueue
-                  : health === 'ready'
-                    ? t.verify
-                    : t.repair}
-              </Button>
-            </>
-          )}
+      {mine === null && health === 'ready' && (
+        <div className={forms.actions}>
+          <Button
+            disabled={repair.pending || queued !== null}
+            onClick={() => void repair.run(instance.id)}
+          >
+            {t.verify}
+          </Button>
         </div>
       )}
-      {health === 'ready' && <PlayAs instance={instance} account={account} />}
       {health !== 'not_installed' && <p className={styles.muted}>{t.userData}</p>}
       {error !== null && <Notice tone="danger">{error}</Notice>}
     </Panel>

@@ -47,6 +47,8 @@ const MAX_DEPTH: usize = 8;
 const MAX_VIEWERS: u64 = 100_000_000;
 /// The width or height of a picture, at most (the service's own limit).
 const MAX_PICTURE_SIDE: u64 = 8192;
+/// A video's length in seconds, at most (30 days, the service's own limit).
+const MAX_DURATION: u64 = 30 * 24 * 3600;
 /// Versions of an update cycle, at most.
 const MAX_CYCLE_COUNT: u64 = 1000;
 /// Items in one page of the endless list.
@@ -150,6 +152,8 @@ pub struct Video {
     pub image_tall: Option<String>,
     /// `ya/<channel id>.jpg`: the channel's picture (square).
     pub avatar: Option<String>,
+    /// Its length in seconds, when the service knows it.
+    pub duration: Option<u32>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
@@ -651,6 +655,9 @@ fn video(fields: &Map<String, Value>) -> Option<Video> {
         image: picture_of(fields.get("image"), PictureKind::Yt, &id),
         image_tall: picture_of(fields.get("imageTall"), PictureKind::Ys, &id).filter(|_| short),
         avatar: picture_of(fields.get("avatar"), PictureKind::Ya, &channel_id),
+        duration: count(fields.get("duration"), MAX_DURATION)
+            .filter(|s| *s > 0)
+            .and_then(|s| u32::try_from(s).ok()),
         channel_id,
         id,
     })

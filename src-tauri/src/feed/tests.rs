@@ -47,6 +47,7 @@ fn sample(lang: &str) -> Value {
             "image": "yt/dQw4w9WgXcQ.jpg",
             "imageTall": "ys/dQw4w9WgXcQ.jpg",
             "avatar": "ya/UCabcdefghijklmnopqrstuv.jpg",
+            "duration": 59,
         }],
         "streams": [{
             "login": "some_streamer",
@@ -103,6 +104,7 @@ fn a_whole_feed_is_read() {
         Some("ya/UCabcdefghijklmnopqrstuv.jpg")
     );
     assert!(feed.videos[0].short);
+    assert_eq!(feed.videos[0].duration, Some(59));
     assert_eq!(feed.streams[0].viewers, 1234);
     assert_eq!(
         feed.streams[0].avatar.as_deref(),
@@ -241,6 +243,12 @@ fn picture_sizes_and_channel_pictures_are_checked() {
         video(json!({"avatar": "ya/../../secret.jpg"})),
         video(json!({"avatar": "ta/dQw4w9WgXcQ.jpg"})),
         video(json!({"avatar": 5})),
+        video(json!({"duration": 0})),
+        video(json!({"duration": 2_592_001})),
+        video(json!({"duration": "59"})),
+        video(json!({"duration": -5})),
+        video(json!({"duration": 1.5})),
+        video(json!({"duration": 2_592_000})),
     ]);
     value["streams"] = json!([
         {"login": "one_streamer", "name": "n", "viewers": 1, "started": "2026-10-19T10:00:00Z",
@@ -285,8 +293,16 @@ fn picture_sizes_and_channel_pictures_are_checked() {
             (true, false),
             (true, false),
             (true, false),
+            (true, true),
+            (true, true),
+            (true, true),
+            (true, true),
+            (true, true),
+            (true, true),
         ]
     );
+    let durations: Vec<_> = feed.videos[7..].iter().map(|v| v.duration).collect();
+    assert_eq!(durations, [None, None, None, None, None, Some(2_592_000)]);
     assert!(feed.streams.iter().all(|s| s.avatar.is_none()));
 }
 

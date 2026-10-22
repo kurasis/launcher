@@ -639,7 +639,8 @@
   position: absolute;
   inset-block-start: 2.75rem;
   inset-inline-end: var(--space-2);
-  z-index: 3;
+  /* Over the launch bar (z-index 4) on a tile near the bottom. */
+  z-index: 7;
   display: grid;
   gap: 2px;
   inline-size: min(14rem, calc(100% - 2 * var(--space-2)));
@@ -699,6 +700,11 @@
   inset-block-start: var(--space-2);
   inset-inline-end: var(--space-2);
   z-index: 2;
+}
+
+/* Open, its list goes over the launch bar (z-index 4) on a tile near the bottom. */
+.tileMenu:has([aria-expanded='true']) {
+  z-index: 7;
 }
 
 .tileMenuButton {

@@ -268,6 +268,18 @@ describe('App', () => {
     expect(await screen.findByRole('alert')).toHaveTextContent('Another launcher process');
   });
 
+  it('keeps Quit in the rail when the core cannot be reached', async () => {
+    fakeBackend(snapshotFixture(), appInfoFixture, {
+      get_app_snapshot: () => {
+        // eslint-disable-next-line @typescript-eslint/only-throw-error -- mirrors the IPC error envelope
+        throw { code: 'INTERNAL', message: 'Core failed.', retryable: true, diagnosticId: 'd' };
+      },
+    });
+    render(<App />);
+    expect(await screen.findByRole('button', { name: 'Try again' })).toBeVisible();
+    expect(screen.getByRole('button', { name: 'Quit' })).toBeVisible();
+  });
+
   it('navigates to settings and about', async () => {
     fakeBackend(snapshotFixture());
     render(<App />);
@@ -289,6 +301,10 @@ describe('App', () => {
     expect(screen.getByRole('button', { name: 'Settings' })).not.toHaveAttribute('aria-current');
     expect(await screen.findByText('linux / x86_64')).toBeVisible();
     expect(screen.queryByRole('region', { name: 'Microsoft sign-in setup' })).toBeNull();
+    // The bundled fonts show their OFL notice.
+    fireEvent.click(screen.getByText(/^Fonts: Golos Text and Noto Sans Arabic/));
+    expect(screen.getByText(/Copyright 2019 The Golos Text Project Authors/)).toBeVisible();
+    expect(screen.getByText(/Copyright 2022 The Noto Project Authors/)).toBeVisible();
   });
 
   it('opens diagnostics and the project source link from the UI only', async () => {
@@ -351,7 +367,7 @@ describe('App', () => {
     });
   });
 
-  it('shows the main tabs in a row and the other screens in the More menu', async () => {
+  it('shows the main tabs in the rail and the other screens in the More menu', async () => {
     fakeBackend(snapshotFixture());
     render(<App />);
     await screen.findByText(/No installations yet/);
@@ -367,9 +383,10 @@ describe('App', () => {
       'Skins',
       'Accounts',
       'Settings',
-      'More▾',
-      'Quit',
     ]);
+    const tools = screen.getByRole('navigation', { name: 'Friends, downloads and more' });
+    expect(within(tools).getByRole('button', { name: /^More/ })).toBeVisible();
+    expect(screen.getByRole('button', { name: 'Quit' })).toBeVisible();
     const more = moreButton();
     expect(more).toHaveAttribute('aria-haspopup', 'menu');
     expect(more).toHaveAttribute('aria-expanded', 'false');

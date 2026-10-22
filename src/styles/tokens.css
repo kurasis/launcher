@@ -3,18 +3,21 @@
 :root {
   color-scheme: light dark;
 
+  /* Golos Text for Latin and Cyrillic, Noto Sans Arabic for Arabic; both ship with
+     the launcher (font-src 'self'), the system font is only a fallback. */
   --font-sans:
-    system-ui, -apple-system, 'Segoe UI Variable', 'Segoe UI', Roboto, Ubuntu, Cantarell,
-    'Noto Sans', sans-serif;
+    'Golos Text Variable', 'Noto Sans Arabic Variable', system-ui, -apple-system,
+    'Segoe UI Variable', 'Segoe UI', Roboto, Ubuntu, Cantarell, 'Noto Sans', sans-serif;
   --font-mono: ui-monospace, 'SFMono-Regular', 'Cascadia Mono', 'DejaVu Sans Mono', monospace;
   --font-size-xs: 0.75rem;
   --font-size-sm: 0.875rem;
-  --font-size-md: 1rem;
-  --font-size-lg: 1.25rem;
-  --font-size-xl: 1.75rem;
-  --font-size-hero: 2.25rem;
+  --font-size-md: 0.9375rem;
+  --font-size-lg: 1.125rem;
+  --font-size-xl: 1.375rem;
+  --font-size-hero: 1.75rem;
   --line-height: 1.5;
-  --letter-spacing-caps: 0.08em;
+  /* Concept A writes nothing in capitals; kept for the few places that still read it. */
+  --letter-spacing-caps: 0;
 
   --space-1: 0.25rem;
   --space-2: 0.5rem;
@@ -24,51 +27,72 @@
   --space-8: 2rem;
 
   --radius-sm: 8px;
-  --radius-md: 14px;
-  --radius-lg: 20px;
+  --radius-md: 10px;
+  --radius-lg: 12px;
   --radius-pill: 999px;
 
   --motion-duration: 150ms;
-  --blur: 14px;
+  --blur: 0px;
 
-  /* Light palette. */
-  --color-bg: #e9eef5;
-  --color-bg-glow-1: rgb(34 197 94 / 18%);
-  --color-bg-glow-2: rgb(14 165 233 / 14%);
-  --color-grid: rgb(15 23 42 / 4%);
-  --color-surface: rgb(255 255 255 / 82%);
+  /* Concept A «Верстак», light: paper ground, white surfaces, deep green rail. */
+  --color-bg: #f3f5f0;
+  --color-bg-glow-1: transparent;
+  --color-bg-glow-2: transparent;
+  --color-grid: transparent;
+  --color-surface: #ffffff;
   --color-surface-solid: #ffffff;
-  --color-surface-raised: rgb(255 255 255 / 95%);
-  --color-border: rgb(15 23 42 / 12%);
-  --color-border-strong: rgb(15 23 42 / 22%);
-  --color-text: #0f172a;
-  --color-text-muted: #475569;
-  --color-accent: #15803d;
-  --color-accent-2: #0e7490;
+  --color-surface-raised: #ffffff;
+  --color-surface-sunken: #eef2ec;
+  --color-border: #d6ded8;
+  --color-border-strong: #b9c6bd;
+  --color-border-soft: #e6ece8;
+  --color-text: #15231c;
+  --color-text-2: #2f4a3c;
+  --color-text-muted: #5b6b61;
+  --color-accent: #1e7a4c;
+  --color-accent-hover: #176a41;
+  --color-accent-2: #2e6c8e;
   --color-accent-contrast: #ffffff;
-  --color-accent-soft: rgb(21 128 61 / 12%);
-  --color-glow: rgb(22 163 74 / 35%);
-  --color-focus: #1d4ed8;
-  --color-warning-bg: #fef3c7;
-  --color-warning-text: #713f12;
-  --color-success-bg: #dcfce7;
-  --color-success-text: #14532d;
-  --color-danger-bg: #fee2e2;
-  --color-danger-text: #7f1d1d;
-  --color-neutral-bg: rgb(15 23 42 / 7%);
-  --color-neutral-text: #334155;
+  --color-accent-soft: #e3f1e8;
+  --color-accent-text: #145a36;
+  --color-mint: #3dd68c;
+  --color-glow: transparent;
+  --color-focus: #0b6bcb;
+  --color-hover: #eaf0ec;
+  --color-selected: #e3f1e8;
+  --color-scrim: rgb(18 59 42 / 38%);
+  --color-warning-bg: #fbefd9;
+  --color-warning-text: #7a4b12;
+  --color-success-bg: #e3f1e8;
+  --color-success-text: #145a36;
+  --color-danger-bg: #fbe4e0;
+  --color-danger-text: #9a3b2e;
+  --color-info-bg: #e9f0fa;
+  --color-info-text: #1f3a5f;
+  --color-neutral-bg: #eaf0ec;
+  --color-neutral-text: #2f4a3c;
+
+  /* The left rail and the launch bar (concept A shell). */
+  --color-rail: #123b2a;
+  --color-rail-hover: #184a35;
+  --color-rail-active: #1e5a40;
+  --color-rail-text: #e3eee7;
+  --color-rail-muted: #9fbbaa;
+  --color-rail-border: rgb(255 255 255 / 10%);
+  --color-rail-field: rgb(255 255 255 / 8%);
+  --color-bar: #ffffff;
 
   /* Hero scene. */
-  --color-sky-top: #7dd3fc;
-  --color-sky-bottom: #e0f2fe;
-  --color-sun: #fde68a;
+  --color-sky-top: #cfe3ee;
+  --color-sky-bottom: #e4eff4;
+  --color-sun: #f2d27a;
   --color-cloud: rgb(255 255 255 / 85%);
   --color-star: transparent;
-  --color-hill-far: #86b7a0;
-  --color-hill-near: #4d9a6b;
-  --color-ground: #3f7d55;
-  --color-soil: #7c5a3c;
-  --color-hero-scrim: rgb(255 255 255 / 78%);
+  --color-hill-far: #8fb49c;
+  --color-hill-near: #5fae57;
+  --color-ground: #4e9a4a;
+  --color-soil: #7a5236;
+  --color-hero-scrim: rgb(255 255 255 / 86%);
 
   /* Backgrounds behind the 3D character: the same in both themes. */
   --color-stage-day-sky: #7dd3fc;
@@ -82,95 +106,143 @@
   --color-stage-cave-light: #4a3b33;
   --color-stage-cave-dark: #0e0a08;
 
-  --shadow-panel: 0 1px 2px rgb(15 23 42 / 6%), 0 12px 32px rgb(15 23 42 / 8%);
-  --shadow-raised: 0 18px 48px rgb(15 23 42 / 18%);
+  --shadow-panel: none;
+  --shadow-raised: 0 8px 28px rgb(21 35 28 / 16%);
+  --shadow-float: 0 4px 14px rgb(21 35 28 / 14%);
+
+  /* Layout of the shell. */
+  --rail-width: 15rem;
+  --bar-height: 4.5rem;
+  --control-height: 2.25rem;
 }
 
 /* Dark palette: follows the OS unless the user picked a theme in Settings. */
 @media (prefers-color-scheme: dark) {
   :root:not([data-theme='light']) {
-    --color-bg: #070a12;
-    --color-bg-glow-1: rgb(34 197 94 / 16%);
-    --color-bg-glow-2: rgb(99 102 241 / 16%);
-    --color-grid: rgb(148 163 184 / 5%);
-    --color-surface: rgb(17 23 36 / 72%);
-    --color-surface-solid: #111724;
-    --color-surface-raised: rgb(24 31 47 / 92%);
-    --color-border: rgb(148 163 184 / 14%);
-    --color-border-strong: rgb(148 163 184 / 28%);
-    --color-text: #eef2f8;
-    --color-text-muted: #9ba7ba;
-    --color-accent: #3ddc84;
-    --color-accent-2: #22d3ee;
-    --color-accent-contrast: #03140a;
-    --color-accent-soft: rgb(61 220 132 / 12%);
-    --color-glow: rgb(61 220 132 / 45%);
-    --color-focus: #7cc4ff;
-    --color-warning-bg: rgb(250 204 21 / 14%);
-    --color-warning-text: #fde68a;
-    --color-success-bg: rgb(61 220 132 / 14%);
-    --color-success-text: #86efac;
-    --color-danger-bg: rgb(248 113 113 / 14%);
-    --color-danger-text: #fca5a5;
-    --color-neutral-bg: rgb(148 163 184 / 12%);
-    --color-neutral-text: #cbd5e1;
+    --color-bg: #0f1713;
+    --color-bg-glow-1: transparent;
+    --color-bg-glow-2: transparent;
+    --color-grid: transparent;
+    --color-surface: #16211b;
+    --color-surface-solid: #16211b;
+    --color-surface-raised: #1b2a22;
+    --color-surface-sunken: #121c17;
+    --color-border: #263a2f;
+    --color-border-strong: #36503f;
+    --color-border-soft: #1f3028;
+    --color-text: #e6efe9;
+    --color-text-2: #c6d6cc;
+    --color-text-muted: #9db3a6;
+    --color-accent: #3dd68c;
+    --color-accent-hover: #5be0a0;
+    --color-accent-2: #6fb7e0;
+    --color-accent-contrast: #0e2a1e;
+    --color-accent-soft: #1a3a2a;
+    --color-accent-text: #8fd9b4;
+    --color-mint: #3dd68c;
+    --color-glow: transparent;
+    --color-focus: #8fd3ff;
+    --color-hover: #1d2c24;
+    --color-selected: #1a3a2a;
+    --color-scrim: rgb(5 12 9 / 60%);
+    --color-warning-bg: #3a2e18;
+    --color-warning-text: #e0a458;
+    --color-success-bg: #1a3a2a;
+    --color-success-text: #8fd9b4;
+    --color-danger-bg: #3a1f1c;
+    --color-danger-text: #f08a7a;
+    --color-info-bg: #16303a;
+    --color-info-text: #8fd3ff;
+    --color-neutral-bg: #1f3028;
+    --color-neutral-text: #c6d6cc;
 
-    --color-sky-top: #0b1026;
-    --color-sky-bottom: #312e81;
-    --color-sun: #e2e8f0;
+    --color-rail: #0b2219;
+    --color-rail-hover: #123326;
+    --color-rail-active: #1e4a35;
+    --color-rail-text: #e3eee7;
+    --color-rail-muted: #8fac9b;
+    --color-rail-border: rgb(255 255 255 / 8%);
+    --color-rail-field: rgb(255 255 255 / 6%);
+    --color-bar: #16211b;
+
+    --color-sky-top: #1f3340;
+    --color-sky-bottom: #213a2e;
+    --color-sun: #e8e2c2;
     --color-cloud: rgb(203 213 225 / 14%);
     --color-star: rgb(255 255 255 / 75%);
-    --color-hill-far: #1e3a3a;
-    --color-hill-near: #14532d;
-    --color-ground: #166534;
-    --color-soil: #3b2a1e;
-    --color-hero-scrim: rgb(7 10 18 / 70%);
+    --color-hill-far: #1e3a2e;
+    --color-hill-near: #2e5a33;
+    --color-ground: #35603a;
+    --color-soil: #4a3220;
+    --color-hero-scrim: rgb(15 23 19 / 82%);
 
-    --shadow-panel: 0 1px 0 rgb(255 255 255 / 4%) inset, 0 16px 40px rgb(0 0 0 / 35%);
-    --shadow-raised: 0 24px 64px rgb(0 0 0 / 55%);
+    --shadow-panel: none;
+    --shadow-raised: 0 12px 36px rgb(0 0 0 / 50%);
+    --shadow-float: 0 4px 14px rgb(0 0 0 / 40%);
   }
 }
 
 :root[data-theme='dark'] {
-  --color-bg: #070a12;
-  --color-bg-glow-1: rgb(34 197 94 / 16%);
-  --color-bg-glow-2: rgb(99 102 241 / 16%);
-  --color-grid: rgb(148 163 184 / 5%);
-  --color-surface: rgb(17 23 36 / 72%);
-  --color-surface-solid: #111724;
-  --color-surface-raised: rgb(24 31 47 / 92%);
-  --color-border: rgb(148 163 184 / 14%);
-  --color-border-strong: rgb(148 163 184 / 28%);
-  --color-text: #eef2f8;
-  --color-text-muted: #9ba7ba;
-  --color-accent: #3ddc84;
-  --color-accent-2: #22d3ee;
-  --color-accent-contrast: #03140a;
-  --color-accent-soft: rgb(61 220 132 / 12%);
-  --color-glow: rgb(61 220 132 / 45%);
-  --color-focus: #7cc4ff;
-  --color-warning-bg: rgb(250 204 21 / 14%);
-  --color-warning-text: #fde68a;
-  --color-success-bg: rgb(61 220 132 / 14%);
-  --color-success-text: #86efac;
-  --color-danger-bg: rgb(248 113 113 / 14%);
-  --color-danger-text: #fca5a5;
-  --color-neutral-bg: rgb(148 163 184 / 12%);
-  --color-neutral-text: #cbd5e1;
+  --color-bg: #0f1713;
+  --color-bg-glow-1: transparent;
+  --color-bg-glow-2: transparent;
+  --color-grid: transparent;
+  --color-surface: #16211b;
+  --color-surface-solid: #16211b;
+  --color-surface-raised: #1b2a22;
+  --color-surface-sunken: #121c17;
+  --color-border: #263a2f;
+  --color-border-strong: #36503f;
+  --color-border-soft: #1f3028;
+  --color-text: #e6efe9;
+  --color-text-2: #c6d6cc;
+  --color-text-muted: #9db3a6;
+  --color-accent: #3dd68c;
+  --color-accent-hover: #5be0a0;
+  --color-accent-2: #6fb7e0;
+  --color-accent-contrast: #0e2a1e;
+  --color-accent-soft: #1a3a2a;
+  --color-accent-text: #8fd9b4;
+  --color-mint: #3dd68c;
+  --color-glow: transparent;
+  --color-focus: #8fd3ff;
+  --color-hover: #1d2c24;
+  --color-selected: #1a3a2a;
+  --color-scrim: rgb(5 12 9 / 60%);
+  --color-warning-bg: #3a2e18;
+  --color-warning-text: #e0a458;
+  --color-success-bg: #1a3a2a;
+  --color-success-text: #8fd9b4;
+  --color-danger-bg: #3a1f1c;
+  --color-danger-text: #f08a7a;
+  --color-info-bg: #16303a;
+  --color-info-text: #8fd3ff;
+  --color-neutral-bg: #1f3028;
+  --color-neutral-text: #c6d6cc;
 
-  --color-sky-top: #0b1026;
-  --color-sky-bottom: #312e81;
-  --color-sun: #e2e8f0;
+  --color-rail: #0b2219;
+  --color-rail-hover: #123326;
+  --color-rail-active: #1e4a35;
+  --color-rail-text: #e3eee7;
+  --color-rail-muted: #8fac9b;
+  --color-rail-border: rgb(255 255 255 / 8%);
+  --color-rail-field: rgb(255 255 255 / 6%);
+  --color-bar: #16211b;
+
+  --color-sky-top: #1f3340;
+  --color-sky-bottom: #213a2e;
+  --color-sun: #e8e2c2;
   --color-cloud: rgb(203 213 225 / 14%);
   --color-star: rgb(255 255 255 / 75%);
-  --color-hill-far: #1e3a3a;
-  --color-hill-near: #14532d;
-  --color-ground: #166534;
-  --color-soil: #3b2a1e;
-  --color-hero-scrim: rgb(7 10 18 / 70%);
+  --color-hill-far: #1e3a2e;
+  --color-hill-near: #2e5a33;
+  --color-ground: #35603a;
+  --color-soil: #4a3220;
+  --color-hero-scrim: rgb(15 23 19 / 82%);
 
-  --shadow-panel: 0 1px 0 rgb(255 255 255 / 4%) inset, 0 16px 40px rgb(0 0 0 / 35%);
-  --shadow-raised: 0 24px 64px rgb(0 0 0 / 55%);
+  --shadow-panel: none;
+  --shadow-raised: 0 12px 36px rgb(0 0 0 / 50%);
+  --shadow-float: 0 4px 14px rgb(0 0 0 / 40%);
 }
 
 @media (prefers-reduced-motion: reduce) {
@@ -185,4 +257,11 @@
 
 :root[data-theme='dark'] {
   color-scheme: dark;
+}
+
+/* Below 1040 px (the window can be 820 px wide) the rail keeps only its icons. */
+@media (max-width: 1040px) {
+  :root {
+    --rail-width: 4.5rem;
+  }
 }

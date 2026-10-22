@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Button } from '../../components/Button';
 import { Notice } from '../../components/Notice';
 import { Panel } from '../../components/Panel';
@@ -9,12 +9,14 @@ import type {
   CrashDiagnosis,
   GameFolder,
   InstanceSummary,
+  ModsFix,
   RunSummary,
 } from '../../lib/contracts';
 import { ipc } from '../../lib/ipc';
 import { strings } from '../../lib/strings';
 import { useCommand } from '../../lib/useCommand';
 import { crashText } from '../diagnostics/crashText';
+import { AddDialog } from '../mods/AddDialog';
 import { ExplanationFeedback } from '../reports/ExplanationFeedback';
 import { ReportDialog } from '../reports/ReportDialog';
 import { openReview } from '../reviews/openReview';
@@ -50,6 +52,30 @@ export function CrashHelp({ instance, run, onEditSettings, onOpenBackups, busy }
   const [reporting, setReporting] = useState(false);
   const text = crashText(diagnosis);
   const error = openFolder.error ?? repair.error;
+  // The mod the game needs, from the catalog (D-072): offered once it is found.
+  const needed = diagnosis.actions.includes('update_mod')
+    ? (diagnosis.details.dependencyId ?? null)
+    : null;
+  const key = needed === null ? null : `${instance.id} ${needed}`;
+  const [found, setFound] = useState<{ key: string; fix: ModsFix | null } | null>(null);
+  const fix = found !== null && found.key === key ? found.fix : null;
+  const [adding, setAdding] = useState<ModsFix | null>(null);
+  useEffect(() => {
+    if (needed === null || key === null) return;
+    let live = true;
+    ipc
+      .modsFix(instance.id, needed)
+      .then((answer) => {
+        if (live) setFound({ key, fix: answer });
+      })
+      .catch(() => {
+        // Offline or the catalog does not answer: the other actions stay.
+      });
+    return () => {
+      live = false;
+    };
+  }, [instance.id, needed, key]);
+  const shown = diagnosis.actions.filter((action) => action !== 'update_mod' || fix !== null);
 
   const act = (action: CrashAction) => {
     const folder = folders[action];
@@ -59,6 +85,7 @@ export function CrashHelp({ instance, run, onEditSettings, onOpenBackups, busy }
         if (started !== undefined) setRepairing(true);
       });
     else if (action === 'backups') onOpenBackups();
+    else if (action === 'update_mod') setAdding(fix);
     else onEditSettings();
   };
 
@@ -98,9 +125,9 @@ export function CrashHelp({ instance, run, onEditSettings, onOpenBackups, busy }
           .filter(Boolean)
           .join(' · ')}
       </p>
-      {diagnosis.actions.length > 0 && (
+      {shown.length > 0 && (
         <div className={forms.actions}>
-          {diagnosis.actions.map((action) => (
+          {shown.map((action) => (
             <Button
               key={action}
               onClick={() => {
@@ -111,7 +138,9 @@ export function CrashHelp({ instance, run, onEditSettings, onOpenBackups, busy }
                 (folders[action] !== undefined && openFolder.pending)
               }
             >
-              {t.actions[action]}
+              {action === 'update_mod' && fix !== null
+                ? (fix.installed === null ? t.installMod : t.updateMod)({ title: fix.title })
+                : t.actions[action]}
             </Button>
           ))}
         </div>
@@ -139,6 +168,24 @@ export function CrashHelp({ instance, run, onEditSettings, onOpenBackups, busy }
           {t.tellMore}
         </Button>
       </div>
+      {adding !== null && (
+        <AddDialog
+          target={{
+            instance,
+            versionId: adding.versionId,
+            title: adding.title,
+            kind: 'mod',
+            replaces: adding.replaces,
+            world: null,
+          }}
+          onClose={() => {
+            setAdding(null);
+          }}
+          onDone={() => {
+            setFound(null);
+          }}
+        />
+      )}
       {reporting && (
         <ReportDialog
           subject={{ type: 'game', runId: run.runId, instanceId: instance.id }}

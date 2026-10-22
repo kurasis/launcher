@@ -135,6 +135,8 @@ fn main() {
         "mods_report",
         "mods_cancel",
         "mods_content",
+        "mods_find_installed",
+        "mods_fix",
         "mods_harmful",
         "mods_identify",
         "mods_updates",

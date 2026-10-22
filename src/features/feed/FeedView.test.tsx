@@ -79,6 +79,7 @@ function feedFixture(overrides: Partial<Feed> = {}): Feed {
         image: 'yt/dQw4w9WgXcQ.jpg',
         imageTall: null,
         avatar: 'ya/UCabcdefghijklmnopqrstuv.jpg',
+        duration: 754,
       },
       {
         id: 'shortshort1',
@@ -90,6 +91,7 @@ function feedFixture(overrides: Partial<Feed> = {}): Feed {
         image: 'yt/shortshort1.jpg',
         imageTall: 'ys/shortshort1.jpg',
         avatar: 'ya/UCabcdefghijklmnopqrstuv.jpg',
+        duration: null,
       },
     ],
     streams: [
@@ -713,6 +715,7 @@ describe('FeedView', () => {
       image: null,
       imageTall: null,
       avatar: null,
+      duration: null,
     };
     backend({
       feed_marks: () => ({
@@ -894,6 +897,7 @@ describe('FeedView', () => {
           image: null,
           imageTall: null,
           avatar: null,
+          duration: null,
         },
       ],
     });

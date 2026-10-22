@@ -80,6 +80,31 @@
   font-weight: 700;
 }
 
+.head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-2);
+}
+
+.close {
+  display: grid;
+  place-items: center;
+  width: 2rem;
+  height: 2rem;
+  padding: 0;
+  border: 0;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--color-text-muted);
+  cursor: pointer;
+}
+
+.close:hover {
+  background: var(--color-neutral-bg);
+  color: var(--color-text);
+}
+
 .subtitle {
   font-size: var(--font-size-sm);
   font-weight: 700;
@@ -504,4 +529,84 @@
   font-size: var(--font-size-sm);
   font-weight: 600;
   word-break: break-all;
+}
+
+/* Concept A: a row of the rail; the chats open as a sheet at the window's inline-end edge. */
+.railSlot {
+  display: contents;
+}
+
+.railButton {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  width: 100%;
+  min-height: 2.25rem;
+  padding: var(--space-1) var(--space-3);
+  border: 0;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--color-rail-text);
+  font-size: var(--font-size-sm);
+  font-weight: 500;
+  text-align: start;
+  cursor: pointer;
+}
+
+.railButton:hover {
+  background: var(--color-rail-hover);
+}
+
+.railButton[aria-expanded='true'] {
+  background: var(--color-rail-active);
+}
+
+.railButton .icon {
+  width: 1.25rem;
+  height: 1.25rem;
+  stroke-width: 1.75;
+}
+
+.railButton .badge {
+  position: static;
+  margin-inline-start: auto;
+  background: var(--color-mint);
+  color: #0e2a1e;
+}
+
+.railLabel {
+  min-width: 0;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.railSlot .panel {
+  /* Out of the rail's colors: the sheet is a plain surface. */
+  --focus-ring: var(--color-focus);
+  position: fixed;
+  /* Down to the launch bar, which stays usable while a chat is open. */
+  inset-block: 0 var(--bar-height);
+  inset-inline-end: 0;
+  z-index: 41;
+  width: min(34rem, calc(100vw - var(--rail-width)));
+  max-height: none;
+  border-radius: 0;
+  border-block-start: 0;
+  border-inline-end: 0;
+  animation: none;
+  color: var(--color-text);
+}
+
+/* The icon-only rail of a narrow window (App.module.css). */
+@media (max-width: 1040px) {
+  .railButton {
+    justify-content: center;
+    padding-inline: 0;
+  }
+
+  .railLabel {
+    display: none;
+  }
 }

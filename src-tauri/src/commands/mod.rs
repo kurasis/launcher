@@ -2403,6 +2403,39 @@ pub async fn mods_plan<R: Runtime>(
     mods_plan_for(&app, &payload).await.map(|(_, plan)| plan)
 }
 
+/// The catalog's mod that puts in or updates a mod the game said is
+/// missing or too old (D-072), for the crash window's "Update <mod>":
+/// `None` when it has nothing better.
+#[tauri::command]
+pub async fn mods_fix<R: Runtime>(
+    app: AppHandle<R>,
+    instance_id: crate::storage::paths::InstanceId,
+    mod_id: String,
+) -> LauncherResult<Option<crate::mods::content::ModFix>> {
+    use crate::mods::content;
+    let state = app.state::<AppState>();
+    crate::mods::online(&state)?;
+    let (root, instance) = content::instance_of(&state, instance_id)?;
+    let target = content::Target::of(&instance);
+    let lock = content::load_lock(&root, instance_id);
+    let mods = mods(&app);
+    let (files, local) = {
+        let mods = Arc::clone(&mods);
+        tauri::async_runtime::spawn_blocking(move || {
+            (
+                mods.content.unknown_files(&root, instance_id),
+                mods.content.local_jars(&root, instance_id),
+            )
+        })
+        .await
+        .map_err(|_| {
+            crate::error::LauncherError::internal("A file operation stopped unexpectedly.")
+        })?
+    };
+    let identified = content::identify(&mods.client, &files).await?;
+    content::mod_fix(&mods.client, &target, &lock, &local, &identified, &mod_id).await
+}
+
 /// What the mods' own jars in an installation say may stop the game from
 /// starting (D-066), asked before a launch: the jars only, offline too.
 #[tauri::command]
@@ -3334,6 +3367,24 @@ pub async fn mods_content<R: Runtime>(
     blocking(app, move |state| {
         let (root, _) = crate::mods::content::instance_of(state, instance_id)?;
         Ok(crate::mods::content::list(&root, instance_id))
+    })
+    .await
+}
+
+/// Mods, packs and shaders in every installation whose title or file name
+/// has the player's words, or that are a catalog project (D-072): where it
+/// is installed, for the search.
+#[tauri::command]
+pub async fn mods_find_installed<R: Runtime>(
+    app: AppHandle<R>,
+    text: String,
+    project: Option<String>,
+) -> LauncherResult<Vec<crate::mods::content::InstalledMatch>> {
+    let Some(query) = crate::mods::content::InstalledQuery::new(&text, project.as_deref())? else {
+        return Ok(Vec::new());
+    };
+    blocking(app, move |state| {
+        crate::mods::content::find_in_all(state, &query)
     })
     .await
 }
