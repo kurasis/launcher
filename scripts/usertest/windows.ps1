@@ -824,11 +824,12 @@ try {
       # 1.4.6 to 1.6.x log the server's "<nick>[/127.0.0.1:0] logged in with entity id".
       $joined = "$([regex]::Escape($Nick)) joined the game|$([regex]::Escape($Nick))\[[^\]]*\] logged in with entity id"
       # Before 1.3 singleplayer had no server inside, and up to 1.4.5 the server inside
-      # logs nowhere: there the new world's level.dat shows the world was made.
+      # logs nowhere: there the new world's files show the world was made (any of
+      # them: 1.2.4 got into its world in the test without a level.dat to be seen).
       $oldSingleplayer = (Compare-Version $version '1.4.6') -lt 0
       $inWorld = {
         if ((& $text) -match $joined) { return $true }
-        if ($oldSingleplayer -and (Get-ChildItem (Join-Path $gameDir 'saves') -Recurse -Filter level.dat -ErrorAction SilentlyContinue |
+        if ($oldSingleplayer -and (Get-ChildItem (Join-Path $gameDir 'saves') -Recurse -File -ErrorAction SilentlyContinue |
             Where-Object { $_.LastWriteTime -gt $started })) { return $true }
       }
       # Since 1.19.3 a loader's world (Forge 1.19.3, NeoForge 1.20.5) may be made with
@@ -888,6 +889,12 @@ try {
       if (-not $entered) {
         $result.world = 'failed'; $result.note = 'did not get into a world'
         Game-Shot $hwnd $folder 'no-world'
+        # What the game saved, for an old version whose world is checked by its files.
+        if ($oldSingleplayer) {
+          Get-ChildItem (Join-Path $gameDir 'saves') -Recurse -File -ErrorAction SilentlyContinue |
+            ForEach-Object { '{0:u} {1,10} {2}' -f $_.LastWriteTime.ToUniversalTime(), $_.Length, $_.FullName.Substring($gameDir.Length) } |
+            Set-Content (Join-Path $folder 'saves.txt') -Encoding UTF8
+        }
       } else {
         $result.world = 'ok'
         if ((& $text) -match 'Starting integrated minecraft server version (\S+)' -and $Matches[1] -ne $version) {
