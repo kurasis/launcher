@@ -2001,8 +2001,14 @@ archive from the Package workflow, upload it to
   though the tokens' signatures hold until they run out. A token of an account
   deleted lately is refused even from a session the service never saw.
 - **Export:** Accounts → _Download my data_ saves one JSON file with what the account
-  service (`GET /v1/me/export`) and friends (`GET /v1/export`) keep about the account,
-  asked by its own session.
+  service (`GET /v1/me/export`), friends, worlds, the mods catalog and reviews (each
+  `GET /v1/export`, ten an hour) keep about the account, asked by its own session. A
+  service that does not answer is `null` in the file; the others still come. Worlds
+  gives the account's devices, its rooms, where it is a member, its invites, the
+  sessions its devices hosted and its admissions (tickets and relay grants last minutes
+  and are left out); the catalog its requests to add, its packs and their versions, and
+  its reports; reviews what it wrote, the answers and its files' names and sizes, but
+  not the owner's notes or spam marks.
 - **Moderation** is the owner's, on the server only (docs/MODERATION.md): reports keep
   a copy of their message; `resolve`, `remove-message`, `mute <hours>`, `ban [days]`,
   `lift`. A removed message leaves every member's chat; a muted account reads but
@@ -2587,7 +2593,15 @@ skins-mod <channel>` there only checks the signature against the public key and
   the same safe tree as other descriptions); the icon decoded with limits; and the
   scanner over the archive, whose hold refuses the pack. The pack is then a project of
   kind `modpack` with the source `own`, its author the account's nick, shown at once and
-  installed like any other pack; it is never refreshed from a source. The archive is
+  installed like any other pack; it is never refreshed from a source. Its slug starts
+  with `player-` (a pack called "Sodium" is `player-sodium`), so a player's pack never
+  takes the name of a project a catalog brings in later, and the launcher marks its page
+  _Player's pack_; the prefix is left out of the search index. Packs published before
+  the prefix got it at the service's next start. Publishing (a pack, a room pack, or
+  any part of one) needs a confirmed email once the account service sends letters
+  (`LAPI_MODS_REQUIRE_EMAIL`: `auto`, the default, or `1` always, `0` never), as
+  friends does; the catalog asks the account service every 15 seconds and refuses with
+  `403 email_not_confirmed`, which the launcher shows. The archive is
   512 MiB at most (nginx allows 91 MiB on `/v1/packs` and 65 MiB a part on
   `/v1/packs/uploads/`). An account publishes 5 new packs and 20
   versions a day, 2 GB in all, 10 an hour (20 an hour from one address). The

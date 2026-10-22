@@ -2740,6 +2740,9 @@ mod publishing {
         assert!(problem(400, "anything").is_none());
         assert!(problem(400, "bad_upload").is_some());
         assert!(problem(429, "busy").is_some());
+        let unconfirmed = problem(403, "email_not_confirmed").unwrap();
+        assert_eq!(unconfirmed.code, ErrorCode::AuthForbidden);
+        assert!(unconfirmed.message.contains("confirmed email"));
     }
 
     #[test]

@@ -417,6 +417,19 @@ async fn remove(State(app): State<Arc<App>>, Path(id): Path<i64>, headers: Heade
     }
 }
 
+/// Everything kept about the signed-in player's reviews (D-064).
+async fn export(State(app): State<Arc<App>>, headers: HeaderMap) -> Response {
+    let account = match account(&app, &headers) {
+        Ok(Some(account)) => account,
+        Ok(None) => return refuse(StatusCode::UNAUTHORIZED, "token"),
+        Err((status, reason)) => return refuse(status, reason),
+    };
+    match tokio::task::spawn_blocking(move || app.store.export(&account)).await {
+        Ok(Ok(reviews)) => Json(json!({ "reviews": reviews })).into_response(),
+        _ => refuse(StatusCode::INTERNAL_SERVER_ERROR, "not read"),
+    }
+}
+
 /// Asks the account service which recently seen sessions ended and refuses
 /// their tokens from now on. When it cannot be asked, tokens hold until they
 /// run out.
@@ -490,6 +503,7 @@ pub fn router(app: Arc<App>) -> Router {
             post(status).layer(DefaultBodyLimit::max(SMALL_BODY)),
         )
         .route("/v1/reviews/{id}", delete(remove))
+        .route("/v1/export", get(export))
         .layer(middleware::from_fn_with_state(Arc::clone(&app), admit))
         .with_state(app)
 }

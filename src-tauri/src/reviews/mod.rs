@@ -255,9 +255,15 @@ impl Transport for Http {
                     .header(reqwest::header::CONTENT_TYPE, "application/json")
                     .body(body);
             }
+            // The account's export may list many reviews.
+            let max = if path == "/v1/export" {
+                16 * 1024 * 1024
+            } else {
+                256 * 1024
+            };
             let (status, _, body) = self
                 .0
-                .get_bounded(request, 256 * 1024)
+                .get_bounded(request, max)
                 .await
                 .map_err(|e| e.message)?;
             Ok((status.as_u16(), body))
@@ -925,6 +931,23 @@ impl Reviews {
             unseen,
             waiting,
         })
+    }
+
+    /// Everything the service keeps about the signed-in account's reviews
+    /// (D-064); none when signed out or the service did not answer.
+    pub async fn export(&self, state: &AppState, accounts: &dyn Accounts) -> Option<Value> {
+        let Token::Token(token) = accounts.token(state).await else {
+            return None;
+        };
+        let headers = vec![("authorization", format!("Bearer {token}"))];
+        match self
+            .transport
+            .call("GET", "/v1/export", None, headers)
+            .await
+        {
+            Ok((200, body)) => serde_json::from_slice(&body).ok(),
+            _ => None,
+        }
     }
 
     /// Asks the service for the reviews' states; true when it answered.

@@ -1567,6 +1567,7 @@
         "showAll": "Показать все",
         "matching": "{count, plural, one {# версия} few {# версии} many {# версий} other {# версии}} из {total}",
         "held": "Проверка каталога на вредоносный код задержала файл этой версии до решения. Поставить её нельзя.",
+        "playerPack": "Сборка игрока",
         "report": "Пожаловаться",
         "reportReason": "Причина",
         "reportReasons": {
@@ -2765,6 +2766,7 @@
     "A version number is letters, digits and . - _ + only, such as 1.0.2.": "Номер версии: только буквы, цифры и . - _ +, например 1.0.2.",
     "Choose the icon again.": "Выберите иконку ещё раз.",
     "Give the pack a title of 2 to 80 characters.": "Дайте сборке название от 2 до 80 символов.",
+    "Publishing packs needs a confirmed email. Open the letter we sent, or send it again in Accounts.": "Для публикации сборок нужен подтверждённый email. Откройте наше письмо или отправьте его снова в разделе «Аккаунты».",
     "Publishing was cancelled.": "Публикация отменена.",
     "Reading the modpack": "Чтение сборки",
     "Some files of this installation cannot go into a pack. Check the list.": "Некоторые файлы этой установки нельзя положить в сборку. Посмотрите список.",
