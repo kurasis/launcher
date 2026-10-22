@@ -110,6 +110,7 @@ fn version(name: &str, games: &[&str], channel: &str) -> Version {
             url: Some(format!("https://cdn-mods.lapi.sh/f/{}", "a".repeat(64))),
             held: false,
             origin: None,
+            manifests: None,
         }],
         dependencies: Vec::new(),
         gone_at: None,

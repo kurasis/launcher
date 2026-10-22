@@ -91,6 +91,15 @@ pub struct Manifest {
     pub breaks: Vec<Need>,
 }
 
+impl Manifest {
+    /// Whether it is one [`read`] could give: every ID, version and range as
+    /// the reader cleans them and within its bounds. For manifests that come
+    /// from elsewhere, such as the catalog's answers.
+    pub fn is_clean(&self) -> bool {
+        jar::clean(self)
+    }
+}
+
 /// A mod a jar gives, under its ID.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Provided {

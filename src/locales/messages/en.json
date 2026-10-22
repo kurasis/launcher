@@ -1614,7 +1614,35 @@
         "stop": "Stop",
         "install": "Install",
         "turnOn": "Turned on with it: {names}",
-        "held": "{title}: the catalog’s malware check is holding this file back, so it cannot be installed."
+        "held": "{title}: the catalog’s malware check is holding this file back, so it cannot be installed.",
+        "instead": "Version {number} of this project works with this installation.",
+        "takeInstead": "Take version {number}"
+      },
+      "problems": {
+        "intro": "The mods’ own files say the game may not start with this:",
+        "missing": "{title} needs {mod}{versions}, which is not in the installation.",
+        "wrongHere": "{title} needs {mod}{versions}; the installation has {found}.",
+        "wrong": "{title} needs {mod}{versions}; {from} is version {found}.",
+        "breaks": "{title} does not work together with {from}.",
+        "breaksHere": "{title} does not work with {mod} {found}.",
+        "twice": "{mod} is in the installation more than once: {files}. Keep one of them.",
+        "otherLoader": "{title} is made for {loader}, not for this installation’s mod loader.",
+        "or": " or ",
+        "more": "…and {count} more.",
+        "names": {
+          "minecraft": "Minecraft",
+          "fabricloader": "Fabric Loader",
+          "quilt_loader": "Quilt Loader",
+          "forge": "Forge",
+          "neoforge": "NeoForge",
+          "java": "Java"
+        }
+      },
+      "launchCheck": {
+        "title": "The game may not start",
+        "start": "Start anyway",
+        "openMods": "Open the installation’s mods",
+        "cancel": "Not now"
       },
       "world": {
         "title": "Add the map {title} to {name}",

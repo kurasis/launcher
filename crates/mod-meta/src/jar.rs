@@ -137,6 +137,32 @@ fn clean_version(version: &str) -> Option<String> {
     ok.then(|| version.to_owned())
 }
 
+/// Whether a manifest is one [`read`] could give: IDs, versions and ranges
+/// as it cleans them, within its bounds.
+pub(crate) fn clean(manifest: &Manifest) -> bool {
+    let id = |id: &str| clean_id(id).as_deref() == Some(id);
+    let version = |v: &Option<String>| {
+        v.as_deref()
+            .is_none_or(|v| clean_version(v).as_deref() == Some(v))
+    };
+    let need = |n: &Need| {
+        id(&n.by)
+            && id(&n.id)
+            && n.versions.len() <= MAX_RANGES
+            && n.versions
+                .iter()
+                .all(|r| r.len() <= MAX_RANGE && !r.chars().any(char::is_control))
+    };
+    (1..=MAX_MODS).contains(&manifest.mods.len())
+        && manifest.needs.len() <= MAX_NEEDS
+        && manifest.breaks.len() <= MAX_NEEDS
+        && manifest
+            .mods
+            .iter()
+            .all(|p| id(&p.id) && version(&p.version))
+        && manifest.needs.iter().chain(&manifest.breaks).all(need)
+}
+
 /// The ranges of a need: a string, a list of them (any one), or Quilt's
 /// `{"any": […]}` and `{"all": […]}`. `None` for anything else.
 fn ranges(value: &Value) -> Option<Vec<String>> {

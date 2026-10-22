@@ -4,7 +4,8 @@ use std::io::Write;
 use serde_json::json;
 
 use crate::{
-    Jar, Loader, Manifest, Problem, Setup, Side, allows, check, compare, for_loader, read_bytes,
+    Jar, Loader, Manifest, Need, Problem, Setup, Side, allows, check, compare, for_loader,
+    read_bytes,
 };
 
 fn zip_of(entries: &[(&str, &[u8])]) -> Vec<u8> {
@@ -776,4 +777,49 @@ fn the_descriptor_a_loader_reads_is_picked() {
         Some(Loader::Fabric)
     );
     assert!(for_loader(&fabric, Loader::Forge, "1.21.1").is_none());
+}
+
+#[test]
+fn manifests_from_elsewhere_are_checked() {
+    let read = read_bytes(&fabric_mod(
+        "sodium",
+        "0.6.0",
+        json!({"minecraft": ">=1.21", "fabricloader": ">=0.16"}),
+    ));
+    assert!(read[0].is_clean());
+    // As the catalog gives them back.
+    let back: Vec<Manifest> = serde_json::from_value(serde_json::to_value(&read).unwrap()).unwrap();
+    assert_eq!(back, read);
+    assert!(back[0].is_clean());
+
+    let bad = |change: &dyn Fn(&mut Manifest)| {
+        let mut m = read[0].clone();
+        change(&mut m);
+        !m.is_clean()
+    };
+    assert!(bad(&|m| m.mods.clear()));
+    assert!(bad(&|m| m.mods[0].id = "Sodium".to_owned()));
+    assert!(bad(&|m| m.mods[0].id = "a\u{202e}b".to_owned()));
+    assert!(bad(&|m| m.mods[0].id = "x".repeat(65)));
+    assert!(bad(&|m| m.mods[0].version = Some("1.0\u{7}".to_owned())));
+    assert!(bad(&|m| m.mods[0].version = Some("${version}".to_owned())));
+    assert!(bad(&|m| m.mods[0].version = Some("1".repeat(129))));
+    assert!(bad(&|m| m.needs[0].by = "../x".to_owned()));
+    assert!(bad(&|m| m.needs[0].versions = vec!["1\n2".to_owned()]));
+    assert!(bad(&|m| m.needs[0].versions = vec!["1".to_owned(); 17]));
+    assert!(bad(&|m| m.breaks.push(Need {
+        by: "sodium".to_owned(),
+        id: "".to_owned(),
+        versions: Vec::new(),
+        side: Side::Both,
+    })));
+    // Junk does not deserialize at all.
+    for junk in [
+        json!([{"loader": "rift", "mods": []}]),
+        json!([{"loader": "fabric"}]),
+        json!([{"loader": "fabric", "mods": [{"id": 5}]}]),
+        json!({"loader": "fabric"}),
+    ] {
+        assert!(serde_json::from_value::<Vec<Manifest>>(junk).is_err());
+    }
 }

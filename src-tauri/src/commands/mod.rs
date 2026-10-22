@@ -2166,19 +2166,34 @@ async fn mods_plan_for<R: Runtime>(
     };
     // The player's own files the catalog knows: a mod they put there is not
     // brought again.
+    // And what the jars there say, to check the set as a whole.
     let mods = mods(app);
-    let files = {
+    let (files, local) = {
         let (mods, root) = (Arc::clone(&mods), root.clone());
         let id = payload.instance_id;
-        tauri::async_runtime::spawn_blocking(move || mods.content.unknown_files(&root, id))
-            .await
-            .map_err(|_| {
-                crate::error::LauncherError::internal("A file operation stopped unexpectedly.")
-            })?
+        tauri::async_runtime::spawn_blocking(move || {
+            (
+                mods.content.unknown_files(&root, id),
+                mods.content.local_jars(&root, id),
+            )
+        })
+        .await
+        .map_err(|_| {
+            crate::error::LauncherError::internal("A file operation stopped unexpectedly.")
+        })?
     };
     let identified = content::identify(&mods.client, &files).await?;
     content::follow_joins(&mods.client, &mut lock).await;
-    let mut plan = content::plan(&mods.client, &game, &target, &lock, &wanted, &identified).await?;
+    let mut plan = content::checked_plan(
+        &mods.client,
+        &game,
+        &target,
+        &lock,
+        &wanted,
+        &identified,
+        &local,
+    )
+    .await?;
     // A metered connection (D-051): the plan says why it asks first.
     let settings = state.settings();
     let month_bytes = crate::traffic::month_total(&root);
@@ -2206,6 +2221,30 @@ pub async fn mods_plan<R: Runtime>(
     payload: ModsInstallPayload,
 ) -> LauncherResult<crate::mods::content::Plan> {
     mods_plan_for(&app, &payload).await.map(|(_, plan)| plan)
+}
+
+/// What the mods' own jars in an installation say may stop the game from
+/// starting (D-066), asked before a launch: the jars only, offline too.
+#[tauri::command]
+pub async fn mods_check<R: Runtime>(
+    app: AppHandle<R>,
+    instance_id: crate::storage::paths::InstanceId,
+) -> LauncherResult<Vec<crate::mods::content::SetProblem>> {
+    use crate::mods::content;
+    let (root, instance) = content::instance_of(&app.state::<AppState>(), instance_id)?;
+    let target = content::Target::of(&instance);
+    if target.setup().is_none() {
+        return Ok(Vec::new());
+    }
+    let lock = content::load_lock(&root, instance_id);
+    let mods = mods(&app);
+    let local =
+        tauri::async_runtime::spawn_blocking(move || mods.content.local_jars(&root, instance_id))
+            .await
+            .map_err(|_| {
+                crate::error::LauncherError::internal("A file operation stopped unexpectedly.")
+            })?;
+    Ok(content::check_folder(&target, &lock, &local))
 }
 
 /// Installs a version (and the mods it needs) into an installation; progress

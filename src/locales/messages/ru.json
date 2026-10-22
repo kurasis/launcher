@@ -1614,7 +1614,35 @@
         "stop": "Остановить",
         "install": "Установить",
         "turnOn": "Вместе с ним включатся: {names}",
-        "held": "{title}: проверка каталога на вредоносный код задержала этот файл, поставить его нельзя."
+        "held": "{title}: проверка каталога на вредоносный код задержала этот файл, поставить его нельзя.",
+        "instead": "Версия {number} этого проекта подходит к этой установке.",
+        "takeInstead": "Взять версию {number}"
+      },
+      "problems": {
+        "intro": "По файлам самих модов игра с этим может не запуститься:",
+        "missing": "{title}: нужен {mod}{versions}, а его в установке нет.",
+        "wrongHere": "{title}: нужен {mod}{versions}, а в установке {found}.",
+        "wrong": "{title}: нужен {mod}{versions}, а {from} — версии {found}.",
+        "breaks": "{title} не работает вместе с {from}.",
+        "breaksHere": "{title} не работает с {mod} {found}.",
+        "twice": "{mod} есть в установке несколько раз: {files}. Оставьте один.",
+        "otherLoader": "{title} сделан для {loader}, а не для загрузчика модов этой установки.",
+        "or": " или ",
+        "more": "…и ещё {count}.",
+        "names": {
+          "minecraft": "Minecraft",
+          "fabricloader": "Fabric Loader",
+          "quilt_loader": "Quilt Loader",
+          "forge": "Forge",
+          "neoforge": "NeoForge",
+          "java": "Java"
+        }
+      },
+      "launchCheck": {
+        "title": "Игра может не запуститься",
+        "start": "Всё равно запустить",
+        "openMods": "Открыть моды установки",
+        "cancel": "Не сейчас"
       },
       "world": {
         "title": "Добавить карту {title} в «{name}»",

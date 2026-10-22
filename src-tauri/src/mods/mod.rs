@@ -485,6 +485,10 @@ pub struct VersionFile {
     /// Its address on Modrinth's CDN, for a modpack's index (an export).
     #[serde(skip)]
     pub origin: Option<String>,
+    /// What the mods in the jar need and break, as the catalog read the kept
+    /// file (a version on its own); `None` when not known.
+    #[serde(skip)]
+    pub manifests: Option<Vec<mod_meta::Manifest>>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
@@ -574,6 +578,7 @@ impl Version {
                             .as_str()
                             .filter(|u| pack::modrinth_download(u))
                             .map(str::to_owned),
+                        manifests: manifests(&f["manifests"]),
                     }
                 })
                 .collect(),
@@ -612,6 +617,18 @@ impl Version {
             .find(|f| f.primary)
             .or_else(|| self.files.first())
     }
+}
+
+/// What the catalog read in a kept jar, when every manifest is one the
+/// reader could give.
+fn manifests(value: &Value) -> Option<Vec<mod_meta::Manifest>> {
+    if value.as_array()?.len() > 8 {
+        return None;
+    }
+    let list: Vec<mod_meta::Manifest> = serde_json::from_value(value.clone()).ok()?;
+    list.iter()
+        .all(mod_meta::Manifest::is_clean)
+        .then_some(list)
 }
 
 /// A project a name found, to choose from.
@@ -805,6 +822,15 @@ pub trait Catalog: Send + Sync {
     fn fetch(&self, id: &str) -> impl Future<Output = LauncherResult<()>> + Send;
     /// Kept files by SHA-1 or SHA-256 (at most 200).
     fn lookup(&self, hashes: &[String]) -> impl Future<Output = LauncherResult<Vec<Found>>> + Send;
+    /// The projects whose kept jars give a mod ID, most downloaded first.
+    fn provides(
+        &self,
+        _id: &str,
+        _game: &str,
+        _loader: &str,
+    ) -> impl Future<Output = LauncherResult<Vec<String>>> + Send {
+        async { Ok(Vec::new()) }
+    }
 }
 
 /// The catalog's API.
@@ -1319,6 +1345,40 @@ impl Catalog for Client {
                     version_id: f["versionId"].as_str().filter(|i| our_id(i))?.to_owned(),
                 })
             })
+            .collect())
+    }
+
+    async fn provides(
+        &self,
+        id: &str,
+        game: &str,
+        loader_name: &str,
+    ) -> LauncherResult<Vec<String>> {
+        let ok = (1..=64).contains(&id.len())
+            && id
+                .bytes()
+                .all(|b| b.is_ascii_lowercase() || b.is_ascii_digit() || b"_-.".contains(&b));
+        if !ok {
+            return Ok(Vec::new());
+        }
+        let mut url =
+            url::Url::parse(&Self::url(&format!("/v1/provides/{id}"))).map_err(|_| not_found())?;
+        {
+            let mut q = url.query_pairs_mut();
+            if game_version(game) {
+                q.append_pair("game", game);
+            }
+            if loader(loader_name) {
+                q.append_pair("loader", loader_name);
+            }
+        }
+        let value = self.send(self.http.get(url), MAX_ANSWER_BYTES).await?;
+        Ok(value["projects"]
+            .as_array()
+            .into_iter()
+            .flatten()
+            .take(5)
+            .filter_map(|p| p["id"].as_str().filter(|i| our_id(i)).map(str::to_owned))
             .collect())
     }
 }

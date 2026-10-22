@@ -585,6 +585,25 @@ impl Fake {
         self.versions.insert(version.id.clone(), version);
         id(v)
     }
+
+    /// What the jar of version `v` says, as the catalog read it.
+    fn says(&mut self, v: u8, manifests: Value) {
+        let file = &mut self.versions.get_mut(&id(v)).unwrap().files[0];
+        file.manifests = Some(serde_json::from_value(manifests).unwrap());
+    }
+}
+
+/// A Fabric jar's manifests: the mod, the version it is, and what it needs.
+fn fabric_jar(mod_id: &str, version: &str, needs: &[(&str, &str)]) -> Value {
+    let needs: Vec<Value> = needs
+        .iter()
+        // As the reader gives it: `*` is no range at all.
+        .map(|(id, range)| {
+            let versions: Vec<&str> = [*range].into_iter().filter(|r| *r != "*").collect();
+            json!({"by": mod_id, "id": id, "versions": versions})
+        })
+        .collect();
+    json!([{"loader": "fabric", "mods": [{"id": mod_id, "version": version}], "needs": needs}])
 }
 
 impl Catalog for Fake {
@@ -618,6 +637,30 @@ impl Catalog for Fake {
         Ok(())
     }
 
+    async fn provides(
+        &self,
+        mod_id: &str,
+        game: &str,
+        loader: &str,
+    ) -> LauncherResult<Vec<String>> {
+        let mut out: Vec<String> = self
+            .versions
+            .values()
+            .filter(|v| v.games.iter().any(|g| g == game) && v.loaders.iter().any(|l| l == loader))
+            .filter(|v| {
+                v.files[0]
+                    .manifests
+                    .iter()
+                    .flatten()
+                    .any(|m| m.mods.iter().any(|p| p.id == mod_id && !p.nested))
+            })
+            .map(|v| v.project_id.clone())
+            .collect();
+        out.sort();
+        out.dedup();
+        Ok(out)
+    }
+
     async fn lookup(&self, hashes: &[String]) -> LauncherResult<Vec<Found>> {
         Ok(self
             .versions
@@ -640,6 +683,7 @@ fn fabric() -> Target {
     Target {
         game: "1.21.1".to_owned(),
         loader: Some(LoaderKind::Fabric),
+        loader_version: None,
     }
 }
 
@@ -741,6 +785,446 @@ async fn every_dependency_down_a_long_chain_comes_and_a_loop_ends() {
     assert!(plan.ready(), "{plan:?}");
     assert_eq!(plan.items.len(), 30);
     assert_eq!(plan.items.last().unwrap().file_name, "link-30.jar");
+}
+
+/// Fabric with its loader's version known.
+fn fabric_at(loader: &str) -> Target {
+    Target {
+        loader_version: Some(loader.to_owned()),
+        ..fabric()
+    }
+}
+
+#[test]
+fn loaders_are_checked_by_their_own_number() {
+    let forge = Target {
+        game: "1.21.1".to_owned(),
+        loader: Some(LoaderKind::Forge),
+        loader_version: Some("1.21.1-52.1.0".to_owned()),
+    };
+    let setup = forge.setup().unwrap();
+    assert_eq!(setup.loader, mod_meta::Loader::Forge);
+    assert_eq!(setup.loader_version, Some("52.1.0"));
+    let old = Target {
+        game: "1.7.10".to_owned(),
+        loader_version: Some("1.7.10-10.13.4.1614-1.7.10".to_owned()),
+        ..forge.clone()
+    };
+    assert_eq!(old.setup().unwrap().loader_version, Some("10.13.4.1614"));
+    assert_eq!(
+        fabric_at("0.16.14").setup().unwrap().loader_version,
+        Some("0.16.14")
+    );
+    // OptiFine on its own and no loader: nothing to check.
+    let optifine = Target {
+        loader: Some(LoaderKind::OptiFine),
+        ..forge
+    };
+    assert!(optifine.setup().is_none());
+    assert!(
+        Target {
+            loader: None,
+            ..fabric()
+        }
+        .setup()
+        .is_none()
+    );
+}
+
+#[test]
+fn what_the_catalog_read_in_a_jar_is_taken_only_when_clean() {
+    let file = |manifests: Value| {
+        let value = json!({
+            "id": id(1), "projectId": id(2),
+            "files": [{"name": "a.jar", "size": 1, "manifests": manifests}],
+        });
+        Version::from(&value, true).unwrap().files[0]
+            .manifests
+            .clone()
+    };
+    let read = file(fabric_jar("sodium", "0.6.0", &[("minecraft", ">=1.21")])).unwrap();
+    assert_eq!(read[0].mods[0].id, "sodium");
+    assert_eq!(read[0].needs[0].versions, [">=1.21"]);
+    assert_eq!(file(json!([])), Some(Vec::new()));
+    for junk in [
+        Value::Null,
+        json!("x"),
+        fabric_jar("Sodium", "1", &[]),
+        fabric_jar("sodium", "1\u{7}", &[]),
+        fabric_jar("sodium", "1", &[("a\u{202e}", "*")]),
+        json!([{"loader": "rift", "mods": [{"id": "a"}]}]),
+        json!(vec![fabric_jar("a", "1", &[])[0].clone(); 9]),
+    ] {
+        assert_eq!(file(junk.clone()), None, "{junk}");
+    }
+}
+
+#[tokio::test]
+async fn a_dependency_is_a_version_whose_jar_runs_on_the_loader() {
+    let mut fake = Fake::default();
+    fake.add_project(1, "mod", "Extra");
+    fake.add_project(2, "mod", "Library");
+    let chosen = fake.add_version(
+        10,
+        1,
+        "extra.jar",
+        json!({"dependencies": [{"kind": "required", "projectId": id(2)}]}),
+    );
+    fake.add_version(20, 2, "library-1.jar", json!({}));
+    fake.add_version(21, 2, "library-2.jar", json!({}));
+    fake.says(
+        20,
+        fabric_jar("library", "1.0", &[("fabricloader", ">=0.14")]),
+    );
+    fake.says(
+        21,
+        fabric_jar("library", "2.0", &[("fabricloader", ">=0.16")]),
+    );
+    let dir = tempfile::tempdir().unwrap();
+    let lock = ContentLock::default();
+    let names = |plan: &content::Plan| -> Vec<String> {
+        plan.items.iter().map(|i| i.file_name.clone()).collect()
+    };
+    // Loader 0.15: the newest release asks for 0.16, the one before runs.
+    let plan = content::plan(
+        &fake,
+        dir.path(),
+        &fabric_at("0.15.11"),
+        &lock,
+        &wanted(&chosen),
+        &[],
+    )
+    .await
+    .unwrap();
+    assert_eq!(names(&plan), ["extra.jar", "library-1.jar"]);
+    assert!(plan.problems.is_empty(), "{plan:?}");
+    // Loader 0.16, or a loader version not known: the newest.
+    for target in [fabric_at("0.16.14"), fabric()] {
+        let plan = content::plan(&fake, dir.path(), &target, &lock, &wanted(&chosen), &[])
+            .await
+            .unwrap();
+        assert_eq!(names(&plan), ["extra.jar", "library-2.jar"]);
+    }
+    // No version runs: the newest, and why it does not.
+    fake.says(
+        20,
+        fabric_jar("library", "1.0", &[("fabricloader", ">=0.16")]),
+    );
+    let plan = content::plan(
+        &fake,
+        dir.path(),
+        &fabric_at("0.15.11"),
+        &lock,
+        &wanted(&chosen),
+        &[],
+    )
+    .await
+    .unwrap();
+    assert_eq!(names(&plan), ["extra.jar", "library-2.jar"]);
+    assert_eq!(plan.problems.len(), 1, "{plan:?}");
+    let problem = &plan.problems[0];
+    assert_eq!(problem.kind, "wrong");
+    assert_eq!(problem.titles, ["Library"]);
+    assert_eq!(problem.id, "fabricloader");
+    assert_eq!(problem.versions, [">=0.16"]);
+    assert_eq!(problem.found.as_deref(), Some("0.15.11"));
+    assert_eq!(problem.from, None);
+    // Shown, not in the way.
+    assert!(plan.ready());
+}
+
+#[tokio::test]
+async fn a_version_that_runs_is_offered_instead_of_one_that_does_not() {
+    let mut fake = Fake::default();
+    fake.add_project(1, "mod", "Extra");
+    let old = fake.add_version(10, 1, "extra-1.jar", json!({}));
+    let new = fake.add_version(11, 1, "extra-2.jar", json!({}));
+    fake.says(10, fabric_jar("extra", "1.0", &[("minecraft", "1.21.x")]));
+    fake.says(11, fabric_jar("extra", "2.0", &[("minecraft", ">=1.21.2")]));
+    let dir = tempfile::tempdir().unwrap();
+    let plan = content::plan(
+        &fake,
+        dir.path(),
+        &fabric_at("0.16.14"),
+        &ContentLock::default(),
+        &wanted(&new),
+        &[],
+    )
+    .await
+    .unwrap();
+    let instead = plan.instead.as_ref().unwrap();
+    assert_eq!(instead.version_id, old);
+    assert_eq!(instead.number, "10.0");
+    assert_eq!(plan.problems[0].id, "minecraft");
+    assert_eq!(plan.problems[0].found.as_deref(), Some("1.21.1"));
+    // The one that runs offers nothing else.
+    let plan = content::plan(
+        &fake,
+        dir.path(),
+        &fabric_at("0.16.14"),
+        &ContentLock::default(),
+        &wanted(&old),
+        &[],
+    )
+    .await
+    .unwrap();
+    assert!(
+        plan.instead.is_none() && plan.problems.is_empty(),
+        "{plan:?}"
+    );
+}
+
+#[tokio::test]
+async fn a_mod_only_the_jar_names_is_found_by_its_id() {
+    let mut fake = Fake::default();
+    fake.add_project(1, "mod", "Extra");
+    fake.add_project(4, "mod", "Cloth Config");
+    fake.add_project(5, "mod", "Cloth Config (old)");
+    // The page names nothing; the jar needs Cloth Config 15.
+    let chosen = fake.add_version(10, 1, "extra.jar", json!({}));
+    fake.says(10, fabric_jar("extra", "1.0", &[("cloth-config", ">=15")]));
+    fake.add_version(40, 4, "cloth-config-15.jar", json!({}));
+    fake.says(40, fabric_jar("cloth-config", "15.0.140", &[]));
+    // A project that gives it too, but too old.
+    fake.add_version(50, 5, "cloth-config-11.jar", json!({}));
+    fake.says(50, fabric_jar("cloth-config", "11.1.0", &[]));
+    let dir = tempfile::tempdir().unwrap();
+    let plan = content::checked_plan(
+        &fake,
+        dir.path(),
+        &fabric_at("0.16.14"),
+        &ContentLock::default(),
+        &wanted(&chosen),
+        &[],
+        &[],
+    )
+    .await
+    .unwrap();
+    let names: Vec<&str> = plan.items.iter().map(|i| i.file_name.as_str()).collect();
+    assert_eq!(names, ["extra.jar", "cloth-config-15.jar"], "{plan:?}");
+    assert!(plan.items[1].dependency);
+    // Noted as needed by Extra, so it is not taken for unused.
+    assert_eq!(plan.items[0].requires, [id(4)]);
+    assert!(plan.problems.is_empty() && plan.ready(), "{plan:?}");
+
+    // One there already, turned on, gives it: nothing to add.
+    let local = [content::LocalJar {
+        path: "mods/cloth.jar".to_owned(),
+        manifests: serde_json::from_value(fabric_jar("cloth-config", "15.0.1", &[])).unwrap(),
+    }];
+    touch(dir.path(), "mods/cloth.jar");
+    let plan = content::checked_plan(
+        &fake,
+        dir.path(),
+        &fabric_at("0.16.14"),
+        &ContentLock::default(),
+        &wanted(&chosen),
+        &[],
+        &local,
+    )
+    .await
+    .unwrap();
+    assert_eq!(plan.items.len(), 1, "{plan:?}");
+    assert!(plan.problems.is_empty());
+}
+
+#[tokio::test]
+async fn a_mod_there_already_too_old_for_a_new_one_is_updated() {
+    let mut fake = Fake::default();
+    fake.add_project(1, "mod", "Extra");
+    fake.add_project(5, "mod", "Library");
+    let chosen = fake.add_version(10, 1, "extra.jar", json!({}));
+    fake.says(10, fabric_jar("extra", "1.0", &[("library", ">=2.0")]));
+    fake.add_version(50, 5, "library-1.jar", json!({}));
+    fake.says(50, fabric_jar("library", "1.0", &[]));
+    fake.add_version(51, 5, "library-2.jar", json!({}));
+    fake.says(51, fabric_jar("library", "2.1", &[]));
+    let dir = tempfile::tempdir().unwrap();
+    touch(dir.path(), "mods/library-1.jar");
+    let mut lock = ContentLock::default();
+    let mut ours = locked("mods/library-1.jar", 5, 50);
+    ours.dependency = true;
+    lock.items.push(ours);
+    let local = [content::LocalJar {
+        path: "mods/library-1.jar".to_owned(),
+        manifests: serde_json::from_value(fabric_jar("library", "1.0", &[])).unwrap(),
+    }];
+    let plan = content::checked_plan(
+        &fake,
+        dir.path(),
+        &fabric_at("0.16.14"),
+        &lock,
+        &wanted(&chosen),
+        &[],
+        &local,
+    )
+    .await
+    .unwrap();
+    assert_eq!(plan.items.len(), 2, "{plan:?}");
+    let update = &plan.items[1];
+    assert_eq!(update.file_name, "library-2.jar");
+    assert_eq!(update.replaces.as_deref(), Some("mods/library-1.jar"));
+    assert!(update.dependency);
+    assert!(plan.problems.is_empty(), "{plan:?}");
+
+    // The player's own copy, recognized, is updated too and stays theirs.
+    let identified = [content::Identified {
+        path: "mods/library-1.jar".to_owned(),
+        project_id: id(5),
+        version_id: id(50),
+    }];
+    let plan = content::checked_plan(
+        &fake,
+        dir.path(),
+        &fabric_at("0.16.14"),
+        &ContentLock::default(),
+        &wanted(&chosen),
+        &identified,
+        &local,
+    )
+    .await
+    .unwrap();
+    assert_eq!(
+        plan.items[1].replaces.as_deref(),
+        Some("mods/library-1.jar")
+    );
+    assert!(!plan.items[1].dependency);
+
+    // Not known to the catalog: shown, the file left be.
+    let plan = content::checked_plan(
+        &fake,
+        dir.path(),
+        &fabric_at("0.16.14"),
+        &ContentLock::default(),
+        &wanted(&chosen),
+        &[],
+        &local,
+    )
+    .await
+    .unwrap();
+    assert_eq!(plan.items.len(), 1);
+    let problem = &plan.problems[0];
+    assert_eq!(problem.kind, "wrong");
+    assert_eq!(problem.titles, ["Extra"]);
+    assert_eq!(problem.id, "library");
+    assert_eq!(problem.found.as_deref(), Some("1.0"));
+    assert_eq!(problem.from.as_deref(), Some("library-1.jar"));
+}
+
+#[tokio::test]
+async fn only_problems_the_install_has_to_do_with_are_shown() {
+    let mut fake = Fake::default();
+    fake.add_project(1, "mod", "Extra");
+    let chosen = fake.add_version(10, 1, "extra.jar", json!({}));
+    fake.says(10, fabric_jar("extra", "1.0", &[("nowhere", "*")]));
+    let dir = tempfile::tempdir().unwrap();
+    let jar = |path: &str, manifests: Value| content::LocalJar {
+        path: path.to_owned(),
+        manifests: serde_json::from_value(manifests).unwrap(),
+    };
+    let local = [
+        // The player's own copy of the same mod.
+        jar("mods/extra-own.jar", fabric_jar("extra", "0.9", &[])),
+        // Something wrong before the install, and off.
+        jar(
+            "mods/broken.jar",
+            fabric_jar("broken", "1", &[("gone", "*")]),
+        ),
+        jar(
+            "mods/off.jar.disabled",
+            fabric_jar("off", "1", &[("extra", "<1")]),
+        ),
+        // Made for Forge.
+        jar(
+            "mods/forge.jar",
+            json!([{"loader": "forge", "mods": [{"id": "forgemod"}]}]),
+        ),
+    ];
+    let plan = content::checked_plan(
+        &fake,
+        dir.path(),
+        &fabric_at("0.16.14"),
+        &ContentLock::default(),
+        &wanted(&chosen),
+        &[],
+        &local,
+    )
+    .await
+    .unwrap();
+    let mut kinds: Vec<(&str, Vec<String>)> = plan
+        .problems
+        .iter()
+        .map(|p| (p.kind.as_str(), p.titles.clone()))
+        .collect();
+    kinds.sort();
+    assert_eq!(
+        kinds,
+        [
+            ("missing", vec!["Extra".to_owned()]),
+            (
+                "twice",
+                vec!["extra-own.jar".to_owned(), "Extra".to_owned()]
+            ),
+        ],
+        "{plan:?}"
+    );
+    let missing = plan.problems.iter().find(|p| p.kind == "missing").unwrap();
+    assert_eq!(missing.id, "nowhere");
+    assert!(missing.versions.is_empty());
+}
+
+#[test]
+fn a_folder_is_checked_before_a_launch() {
+    let jar = |path: &str, manifests: Value| content::LocalJar {
+        path: path.to_owned(),
+        manifests: serde_json::from_value(manifests).unwrap(),
+    };
+    let local = [
+        jar(
+            "mods/extra.jar",
+            fabric_jar(
+                "extra",
+                "1.0",
+                &[("library", ">=2"), ("fabricloader", ">=0.17")],
+            ),
+        ),
+        jar("mods/library.jar", fabric_jar("library", "1.5", &[])),
+        // Off: not loaded, so not checked.
+        jar(
+            "mods/off.jar.disabled",
+            fabric_jar("off", "1", &[("nowhere", "*")]),
+        ),
+        // No mod at all.
+        jar("mods/notes.zip", json!([])),
+    ];
+    let mut lock = ContentLock::default();
+    lock.items.push(locked("mods/library.jar", 5, 50));
+    let problems = content::check_folder(&fabric_at("0.16.14"), &lock, &local);
+    let mut found: Vec<(&str, &str, Option<&str>, Option<&str>)> = problems
+        .iter()
+        .map(|p| {
+            (
+                p.id.as_str(),
+                p.titles[0].as_str(),
+                p.found.as_deref(),
+                p.from.as_deref(),
+            )
+        })
+        .collect();
+    found.sort();
+    assert_eq!(
+        found,
+        [
+            ("fabricloader", "extra.jar", Some("0.16.14"), None),
+            ("library", "extra.jar", Some("1.5"), Some("Project 5")),
+        ]
+    );
+    // Nothing to check without a mod loader.
+    let vanilla = Target {
+        loader: None,
+        ..fabric()
+    };
+    assert!(content::check_folder(&vanilla, &lock, &local).is_empty());
 }
 
 #[tokio::test]
@@ -854,6 +1338,7 @@ async fn mods_must_fit_the_installation() {
     let vanilla = Target {
         game: "1.21.1".to_owned(),
         loader: None,
+        loader_version: None,
     };
     let fits = fake.add_version(12, 1, "c.jar", json!({}));
     assert!(
@@ -865,6 +1350,7 @@ async fn mods_must_fit_the_installation() {
     let quilt = Target {
         game: "1.21.1".to_owned(),
         loader: Some(LoaderKind::Quilt),
+        loader_version: None,
     };
     assert!(
         content::plan(&fake, dir.path(), &quilt, &lock, &wanted(&fits), &[])
@@ -887,6 +1373,7 @@ async fn packs_may_not_fit_with_a_warning() {
     let vanilla = Target {
         game: "1.21.1".to_owned(),
         loader: None,
+        loader_version: None,
     };
     let plan = content::plan(
         &fake,
@@ -998,6 +1485,7 @@ async fn a_mods_data_pack_version_goes_into_a_world() {
     let vanilla = Target {
         game: "1.21.1".to_owned(),
         loader: None,
+        loader_version: None,
     };
     let plan = content::plan(&fake, dir.path(), &vanilla, &lock, &w, &[])
         .await

@@ -7,6 +7,11 @@
 //!   dependencies are added to the end of the chain (the version named, else
 //!   the newest release that fits; 200 files at most, or no plan), and
 //!   an incompatible project already installed stops the plan.
+//! - Then the set is checked as the mods' own jars say (`mod-meta`, read by
+//!   the catalog for its files and here for the folder): a dependency is a
+//!   version whose jar runs on the installation's loader version, a mod only
+//!   a jar names is looked up by its ID, and a mod there already that is too
+//!   old for a new one is updated. What is left is a warning, not a block.
 //! - Files the catalog does not keep yet are asked for and waited on; every
 //!   file comes from files-mods.lapi.sh through the download executor and is
 //!   checked against its SHA-256 before it is renamed into place.
@@ -277,6 +282,9 @@ pub(super) fn save_lock(root: &DataRoot, id: InstanceId, lock: &ContentLock) -> 
 pub struct Target {
     pub game: String,
     pub loader: Option<LoaderKind>,
+    /// The loader's version, as the installation names it; fixed like the
+    /// game version.
+    pub loader_version: Option<String>,
 }
 
 impl Target {
@@ -284,7 +292,30 @@ impl Target {
         Self {
             game: instance.version_id.clone(),
             loader: instance.loader.as_ref().map(|l| l.kind),
+            loader_version: instance.loader.as_ref().map(|l| l.version.clone()),
         }
+    }
+
+    /// What the mods' jars are checked against (D-066); `None` without a mod
+    /// loader.
+    pub fn setup(&self) -> Option<mod_meta::Setup<'_>> {
+        let loader = match self.loader? {
+            LoaderKind::Fabric => mod_meta::Loader::Fabric,
+            LoaderKind::Quilt => mod_meta::Loader::Quilt,
+            LoaderKind::Forge => mod_meta::Loader::Forge,
+            LoaderKind::NeoForge => mod_meta::Loader::NeoForge,
+            LoaderKind::OptiFine => return None,
+        };
+        Some(mod_meta::Setup {
+            game: &self.game,
+            loader,
+            loader_version: self
+                .loader_version
+                .as_deref()
+                .map(|v| loader_number(v, &self.game)),
+            java: None,
+            side: mod_meta::Side::Client,
+        })
     }
 
     /// The loaders whose mods run here; Quilt also runs Fabric's. OptiFine on
@@ -298,6 +329,19 @@ impl Target {
             Some(LoaderKind::OptiFine) | None => &[],
         }
     }
+}
+
+/// The loader's own number, as mods ask for it: Forge's `1.21.1-52.1.0` is
+/// `52.1.0`, and `1.7.10-10.13.4.1614-1.7.10` is `10.13.4.1614`.
+fn loader_number<'a>(version: &'a str, game: &str) -> &'a str {
+    let version = version
+        .strip_prefix(game)
+        .and_then(|v| v.strip_prefix('-'))
+        .unwrap_or(version);
+    version
+        .strip_suffix(game)
+        .and_then(|v| v.strip_suffix('-'))
+        .unwrap_or(version)
 }
 
 /// Why a version does not fit an installation.
@@ -408,6 +452,9 @@ pub struct PlanItem {
     /// The projects this version requires (kept in the lock).
     #[serde(skip)]
     pub requires: Vec<String>,
+    /// What its jar says, as the catalog read it.
+    #[serde(skip)]
+    pub manifests: Option<Vec<mod_meta::Manifest>>,
 }
 
 /// A required project the catalog has no fitting version of.
@@ -448,6 +495,11 @@ pub struct Plan {
     /// Files there already but turned off that this needs: turned on with
     /// the install.
     pub turn_on: Vec<TurnOn>,
+    /// What the mods' jars say is still in the way of the set starting; shown,
+    /// not in the way of the install.
+    pub problems: Vec<SetProblem>,
+    /// The version asked for does not run here, and this one does.
+    pub instead: Option<Instead>,
 }
 
 /// A file turned off that an install turns on.
@@ -487,7 +539,8 @@ fn present(game: &Path, path: &str) -> Option<String> {
     }
 }
 
-/// The plan for putting a version (and what it needs) into an installation.
+/// The plan for putting a version (and what it needs) into an installation,
+/// with what the plan adds checked as the mods' jars say.
 pub async fn plan<C: Catalog>(
     catalog: &C,
     game: &Path,
@@ -495,6 +548,23 @@ pub async fn plan<C: Catalog>(
     lock: &ContentLock,
     wanted: &Wanted<'_>,
     identified: &[Identified],
+) -> LauncherResult<Plan> {
+    checked_plan(catalog, game, target, lock, wanted, identified, &[]).await
+}
+
+/// [`plan`], with the whole set checked as the mods' jars say (D-066): the
+/// mods already in the folder (`local`) and those the plan adds. A mod a jar
+/// needs that no page names is looked up by its ID; one there already that
+/// is too old for a mod the plan adds is updated. What is left is shown in
+/// `problems`, and does not stop the install.
+pub async fn checked_plan<C: Catalog>(
+    catalog: &C,
+    game: &Path,
+    target: &Target,
+    lock: &ContentLock,
+    wanted: &Wanted<'_>,
+    identified: &[Identified],
+    local: &[LocalJar],
 ) -> LauncherResult<Plan> {
     let version = catalog.version(wanted.version).await?;
     let project = catalog.project(&version.project_id).await?;
@@ -527,184 +597,718 @@ pub async fn plan<C: Catalog>(
         content_path(game, replaces)?;
     }
 
-    let mut plan = Plan {
-        items: Vec::new(),
-        missing: Vec::new(),
-        conflicts: Vec::new(),
-        misfit: found,
-        total_bytes: 0,
-        approval: None,
-        turn_on: Vec::new(),
+    let mut planner = Planner {
+        catalog,
+        game,
+        target,
+        lock,
+        identified,
+        replaces: wanted.replaces,
+        kind,
+        folder,
+        plan: Plan {
+            items: Vec::new(),
+            missing: Vec::new(),
+            conflicts: Vec::new(),
+            misfit: found,
+            total_bytes: 0,
+            approval: None,
+            turn_on: Vec::new(),
+            problems: Vec::new(),
+            instead: None,
+        },
+        seen: HashSet::from([project.id.clone()]),
+        queue: Vec::new(),
     };
-    // A project's file in the folder: the launcher's, else one of the
-    // player's the catalog recognized; as on disk now.
-    let there = |project: &str| -> Option<(String, String)> {
-        if let Some(ours) = lock.of_project_in(project, &folder)
-            && let Some(path) = present(game, &ours.path)
+    let setup = target.setup().filter(|_| planner.kind == "mod");
+    // The version asked for does not run here: one that does, if any.
+    if let Some(setup) = &setup
+        && runs(&version, setup, None) == Some(false)
+        && let Some(other) = planner.choose(&project.id, None).await?
+        && other.id != version.id
+        && runs(&other, setup, None) == Some(true)
+    {
+        planner.plan.instead = Some(Instead {
+            version_id: other.id.clone(),
+            number: other.number.clone(),
+        });
+    }
+    planner.queue.push(Queued {
+        version,
+        title: project.title.clone(),
+        icon: project.icon.clone(),
+        main: true,
+        dependency: false,
+    });
+    planner.run().await?;
+    if let Some(setup) = &setup {
+        planner.settle(setup, local).await?;
+    }
+    Ok(planner.plan)
+}
+
+/// A jar in an installation's mods folder and what it says.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct LocalJar {
+    /// As on disk now (`.disabled` when off), relative to the game folder.
+    pub path: String,
+    pub manifests: Vec<mod_meta::Manifest>,
+}
+
+/// Something in the way of a set of mods starting, as their jars say.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SetProblem {
+    /// `missing`, `wrong`, `breaks`, `twice` or `other_loader`.
+    pub kind: String,
+    /// The mod that says so (its title, else its file's name); for `twice`,
+    /// the files that are the same mod.
+    pub titles: Vec<String>,
+    /// The mod it needs or does not start with; `minecraft`, the loader's ID
+    /// (`fabricloader`, `quilt_loader`, `forge`, `neoforge`) or `java` too.
+    pub id: String,
+    /// The versions it takes, in the loader's own words; none: any.
+    pub versions: Vec<String>,
+    /// The version there.
+    pub found: Option<String>,
+    /// The mod that gives it (its title); `None`: the game, the loader or
+    /// Java.
+    pub from: Option<String>,
+    /// For `other_loader`: the loader the jar is made for.
+    pub loader: Option<String>,
+}
+
+/// A version of the project asked for that runs here.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct Instead {
+    pub version_id: String,
+    pub number: String,
+}
+
+/// A mod a jar needs: its ID and the versions it takes, in the words of the
+/// loader the jar is made for.
+struct Want<'a> {
+    id: &'a str,
+    versions: &'a [String],
+    loader: mod_meta::Loader,
+}
+
+/// Versions asked about on their own when choosing one, at most.
+const MAX_TRIED: usize = 6;
+/// Times the set is checked and mended.
+const MAX_ROUNDS: usize = 3;
+
+/// Whether a version's jar runs on `setup` (and gives `want`), as the
+/// catalog read it; `None` when that is not known.
+fn runs(version: &Version, setup: &mod_meta::Setup<'_>, want: Option<&Want<'_>>) -> Option<bool> {
+    let manifests = version.main_file()?.manifests.as_deref()?;
+    if manifests.is_empty() {
+        return None;
+    }
+    let jar = [mod_meta::Jar {
+        file: "",
+        manifests,
+    }];
+    let fine = !mod_meta::check(setup, &jar).iter().any(|p| {
+        matches!(
+            p,
+            mod_meta::Problem::Wrong { from: None, .. }
+                | mod_meta::Problem::Breaks { from: None, .. }
+                | mod_meta::Problem::OtherLoader { .. }
+        )
+    });
+    let gives = want.is_none_or(|w| {
+        mod_meta::for_loader(manifests, setup.loader, setup.game).is_some_and(|m| {
+            m.mods.iter().any(|p| {
+                p.id == w.id
+                    && p.version
+                        .as_deref()
+                        .is_none_or(|v| mod_meta::allows(w.loader, w.versions, v) != Some(false))
+            })
+        })
+    });
+    Some(fine && gives)
+}
+
+/// A version waiting to go into the plan.
+struct Queued {
+    version: Version,
+    title: String,
+    icon: Option<String>,
+    /// The version asked for.
+    main: bool,
+    dependency: bool,
+}
+
+struct Planner<'a, C> {
+    catalog: &'a C,
+    game: &'a Path,
+    target: &'a Target,
+    lock: &'a ContentLock,
+    identified: &'a [Identified],
+    /// The player's file the version asked for replaces.
+    replaces: Option<&'a str>,
+    kind: String,
+    folder: String,
+    plan: Plan,
+    /// Projects required so far.
+    seen: HashSet<String>,
+    queue: Vec<Queued>,
+}
+
+impl<C: Catalog> Planner<'_, C> {
+    /// A project's file in the folder: the launcher's, else one of the
+    /// player's the catalog recognized; as on disk now.
+    fn there(&self, project: &str) -> Option<(String, String)> {
+        if let Some(ours) = self.lock.of_project_in(project, &self.folder)
+            && let Some(path) = present(self.game, &ours.path)
         {
             return Some((path, ours.title.clone()));
         }
-        identified
+        self.identified
             .iter()
             .find(|i| {
                 i.project_id == project
-                    && in_folder(enabled_form(&i.path), &folder)
-                    && game.join(&i.path).is_file()
+                    && in_folder(enabled_form(&i.path), &self.folder)
+                    && self.game.join(&i.path).is_file()
             })
             .map(|i| {
                 let name = i.path.rsplit('/').next().unwrap_or_default();
                 (i.path.clone(), enabled_form(name).to_owned())
             })
-    };
-    let mut seen: HashSet<String> = HashSet::new();
-    // (version, project title and icon, dependency)
-    let mut queue = vec![(version, project.title.clone(), project.icon.clone(), false)];
-    seen.insert(project.id.clone());
-    while let Some((version, title, icon, dependency)) = queue.pop() {
-        if plan.items.len() >= MAX_PLAN {
-            return Err(LauncherError::invalid_input(
-                "This needs too many other projects to install at once.",
-            ));
-        }
-        let kind = if dependency { "mod" } else { kind.as_str() };
-        let file = version
-            .main_file()
-            .filter(|f| catalog_file_name(&f.name, kind))
-            .ok_or_else(|| {
-                LauncherError::invalid_input(
-                    "This version has no file the launcher can put into an installation.",
-                )
-            })?;
-        let path = format!("{folder}/{}", file.name);
-        if file.held {
-            plan.conflicts.push(Conflict {
-                path: path.clone(),
-                reason: "held".to_owned(),
-                title: Some(title.clone()),
-            });
-        }
-        // An older file of the same project goes, the player's own too: two
-        // copies of a mod stop the game.
-        // Only in the same folder: a mod's data pack in a world leaves the
-        // mod be, and a data pack in one world leaves another world's.
-        let replaces = match lock.of_project_in(&version.project_id, &folder) {
-            Some(old) => Some(old.path.clone()),
-            None => wanted
-                .replaces
-                .filter(|_| !dependency)
-                .map(str::to_owned)
-                .or_else(|| there(&version.project_id).map(|(p, _)| p))
-                .map(|r| enabled_form(&r).to_owned()),
-        }
-        .filter(|p| in_folder(p, &folder))
-        .filter(|p| present(game, p).is_some());
-        let mut same = false;
-        if let Some(there) = present(game, &path) {
-            match lock.at(&path) {
-                Some(o) if o.project_id != version.project_id => plan.conflicts.push(Conflict {
-                    path: there,
-                    reason: "name_taken".to_owned(),
-                    title: Some(o.title.clone()),
-                }),
-                Some(o) => same = file.sha256.as_deref() == Some(o.sha256.as_str()),
-                None if replaces.as_deref() == Some(path.as_str()) => {}
-                None => plan.conflicts.push(Conflict {
-                    path: there,
-                    reason: "name_taken".to_owned(),
-                    title: None,
-                }),
-            }
-        }
-        let replaces = replaces.filter(|r| !(same && *r == path));
-        plan.items.push(PlanItem {
-            project_id: version.project_id.clone(),
+    }
+
+    /// Puts what is queued into the plan, with what it requires.
+    async fn run(&mut self) -> LauncherResult<()> {
+        let (game, lock) = (self.game, self.lock);
+        while let Some(Queued {
+            version,
             title,
-            kind: kind.to_owned(),
             icon,
-            version_id: version.id.clone(),
-            number: version.number.clone(),
-            published: version.published,
-            file_name: file.name.clone(),
-            size: file.size,
-            kept: file.sha256.is_some() && file.url.is_some(),
+            main,
             dependency,
-            path,
-            replaces,
-            present: same,
-            requires: version
-                .dependencies
-                .iter()
-                .filter(|d| d.kind == "required")
-                .filter_map(|d| d.project_id.clone())
-                .collect(),
-        });
-        if !same {
-            plan.total_bytes += file.size;
-        }
-        if kind != "mod" {
-            continue;
-        }
-        for needed in &version.dependencies {
-            match needed.kind.as_str() {
-                "incompatible" => {
-                    if let Some((path, title)) = needed.project_id.as_deref().and_then(there) {
-                        plan.conflicts.push(Conflict {
-                            path: enabled_form(&path).to_owned(),
-                            reason: "incompatible".to_owned(),
-                            title: Some(title),
-                        });
+        }) = self.queue.pop()
+        {
+            if self.plan.items.len() >= MAX_PLAN {
+                return Err(LauncherError::invalid_input(
+                    "This needs too many other projects to install at once.",
+                ));
+            }
+            let kind = if main { self.kind.as_str() } else { "mod" }.to_owned();
+            let folder = self.folder.clone();
+            let file = version
+                .main_file()
+                .filter(|f| catalog_file_name(&f.name, &kind))
+                .ok_or_else(|| {
+                    LauncherError::invalid_input(
+                        "This version has no file the launcher can put into an installation.",
+                    )
+                })?;
+            let path = format!("{folder}/{}", file.name);
+            if file.held {
+                self.plan.conflicts.push(Conflict {
+                    path: path.clone(),
+                    reason: "held".to_owned(),
+                    title: Some(title.clone()),
+                });
+            }
+            // An older file of the same project goes, the player's own too: two
+            // copies of a mod stop the game.
+            // Only in the same folder: a mod's data pack in a world leaves the
+            // mod be, and a data pack in one world leaves another world's.
+            let replaces = match lock.of_project_in(&version.project_id, &folder) {
+                Some(old) => Some(old.path.clone()),
+                None => self
+                    .replaces
+                    .filter(|_| main)
+                    .map(str::to_owned)
+                    .or_else(|| self.there(&version.project_id).map(|(p, _)| p))
+                    .map(|r| enabled_form(&r).to_owned()),
+            }
+            .filter(|p| in_folder(p, &folder))
+            .filter(|p| present(game, p).is_some());
+            let mut same = false;
+            if let Some(there) = present(game, &path) {
+                match lock.at(&path) {
+                    Some(o) if o.project_id != version.project_id => {
+                        self.plan.conflicts.push(Conflict {
+                            path: there,
+                            reason: "name_taken".to_owned(),
+                            title: Some(o.title.clone()),
+                        })
                     }
+                    Some(o) => same = file.sha256.as_deref() == Some(o.sha256.as_str()),
+                    None if replaces.as_deref() == Some(path.as_str()) => {}
+                    None => self.plan.conflicts.push(Conflict {
+                        path: there,
+                        reason: "name_taken".to_owned(),
+                        title: None,
+                    }),
                 }
-                "required" => {
-                    let Some(project_id) = needed.project_id.clone() else {
-                        plan.missing.push(Missing {
+            }
+            let replaces = replaces.filter(|r| !(same && *r == path));
+            self.plan.items.push(PlanItem {
+                project_id: version.project_id.clone(),
+                title,
+                kind: kind.clone(),
+                icon,
+                version_id: version.id.clone(),
+                number: version.number.clone(),
+                published: version.published,
+                file_name: file.name.clone(),
+                size: file.size,
+                kept: file.sha256.is_some() && file.url.is_some(),
+                dependency,
+                path,
+                replaces,
+                present: same,
+                requires: version
+                    .dependencies
+                    .iter()
+                    .filter(|d| d.kind == "required")
+                    .filter_map(|d| d.project_id.clone())
+                    .collect(),
+                manifests: file.manifests.clone(),
+            });
+            if !same {
+                self.plan.total_bytes += file.size;
+            }
+            if kind != "mod" {
+                continue;
+            }
+            for needed in &version.dependencies {
+                match needed.kind.as_str() {
+                    "incompatible" => {
+                        if let Some((path, title)) =
+                            needed.project_id.as_deref().and_then(|p| self.there(p))
+                        {
+                            self.plan.conflicts.push(Conflict {
+                                path: enabled_form(&path).to_owned(),
+                                reason: "incompatible".to_owned(),
+                                title: Some(title),
+                            });
+                        }
+                    }
+                    "required" => match needed.project_id.clone() {
+                        Some(project_id) => {
+                            self.require(project_id, needed.version_id.as_deref(), None)
+                                .await?;
+                        }
+                        None => self.plan.missing.push(Missing {
                             project_id: None,
                             title: None,
-                        });
-                        continue;
-                    };
-                    if !seen.insert(project_id.clone()) {
-                        continue;
-                    }
-                    // There already: nothing to add; turned off, it is turned on.
-                    if let Some((path, title)) = there(&project_id) {
-                        if path.ends_with(DISABLED) && !plan.turn_on.iter().any(|t| t.path == path)
-                        {
-                            plan.turn_on.push(TurnOn { path, title });
-                        }
-                        continue;
-                    }
-                    let other = catalog.project(&project_id).await.ok();
-                    let pinned = match &needed.version_id {
-                        Some(id) => catalog
-                            .version(id)
-                            .await
-                            .ok()
-                            .filter(|v| misfit("mod", v, target).is_none()),
-                        None => None,
-                    };
-                    let chosen = match pinned {
-                        Some(v) => Some(v),
-                        None => best(&fitting(catalog, &project_id, "mod", target).await?).cloned(),
-                    };
-                    match chosen {
-                        Some(v) => queue.push((
-                            v,
-                            other.as_ref().map(|p| p.title.clone()).unwrap_or_default(),
-                            other.as_ref().and_then(|p| p.icon.clone()),
-                            true,
-                        )),
-                        None => plan.missing.push(Missing {
-                            project_id: Some(project_id),
-                            title: other.map(|p| p.title),
                         }),
-                    }
+                    },
+                    _ => {}
                 }
-                _ => {}
+            }
+        }
+        Ok(())
+    }
+
+    /// Brings a project something needs: queued, unless it is there already
+    /// (turned on if off). Whether it is queued or turned on.
+    async fn require(
+        &mut self,
+        project_id: String,
+        pinned: Option<&str>,
+        want: Option<&Want<'_>>,
+    ) -> LauncherResult<bool> {
+        if !self.seen.insert(project_id.clone()) {
+            return Ok(false);
+        }
+        // There already: nothing to add; turned off, it is turned on.
+        if let Some((path, title)) = self.there(&project_id) {
+            if path.ends_with(DISABLED) && !self.plan.turn_on.iter().any(|t| t.path == path) {
+                self.plan.turn_on.push(TurnOn { path, title });
+                return Ok(true);
+            }
+            return Ok(false);
+        }
+        let other = self.catalog.project(&project_id).await.ok();
+        let pinned = match pinned {
+            Some(id) => self
+                .catalog
+                .version(id)
+                .await
+                .ok()
+                .filter(|v| misfit("mod", v, self.target).is_none()),
+            None => None,
+        };
+        let chosen = match pinned {
+            Some(v) => Some(v),
+            None => self.choose(&project_id, want).await?,
+        };
+        // Looked up by what a jar needs: only a version known to give it.
+        let chosen = chosen.filter(|v| {
+            want.is_none_or(|w| {
+                self.target
+                    .setup()
+                    .is_some_and(|s| runs(v, &s, Some(w)) == Some(true))
+            })
+        });
+        match chosen {
+            Some(version) => {
+                self.queue.push(Queued {
+                    version,
+                    title: other.as_ref().map(|p| p.title.clone()).unwrap_or_default(),
+                    icon: other.as_ref().and_then(|p| p.icon.clone()),
+                    main: false,
+                    dependency: true,
+                });
+                Ok(true)
+            }
+            None if want.is_some() => {
+                // Another project may give it.
+                self.seen.remove(&project_id);
+                Ok(false)
+            }
+            None => {
+                self.plan.missing.push(Missing {
+                    project_id: Some(project_id),
+                    title: other.map(|p| p.title),
+                });
+                Ok(false)
             }
         }
     }
-    Ok(plan)
+
+    /// The version of a project to bring: the newest release whose jar runs
+    /// here (and gives `want`), else the newest such version; where no jar
+    /// says, the newest release that fits by the catalog's lists ([`best`]).
+    async fn choose(
+        &self,
+        project: &str,
+        want: Option<&Want<'_>>,
+    ) -> LauncherResult<Option<Version>> {
+        let list = fitting(self.catalog, project, "mod", self.target).await?;
+        let mut order: Vec<&Version> = list.iter().filter(|v| v.channel == "release").collect();
+        order.extend(list.iter().filter(|v| v.channel != "release"));
+        let setup = self.target.setup();
+        let mut first = None;
+        for candidate in order.into_iter().take(MAX_TRIED) {
+            // Lists leave out what the jars say.
+            let Ok(version) = self.catalog.version(&candidate.id).await else {
+                continue;
+            };
+            match setup.as_ref().and_then(|s| runs(&version, s, want)) {
+                Some(false) => {
+                    first.get_or_insert(version);
+                }
+                _ => return Ok(Some(version)),
+            }
+        }
+        Ok(first.or_else(|| best(&list).cloned()))
+    }
+
+    /// The set as it would be after the install: the folder's mods that are
+    /// on (or turned on by it) and not replaced, and what it adds.
+    fn check(&self, setup: &mod_meta::Setup<'_>, local: &[LocalJar]) -> Vec<mod_meta::Problem> {
+        let replaced: HashSet<&str> = self
+            .plan
+            .items
+            .iter()
+            .filter_map(|i| i.replaces.as_deref())
+            .collect();
+        let mut jars = Vec::new();
+        for jar in local {
+            let on = !jar.path.ends_with(DISABLED)
+                || self.plan.turn_on.iter().any(|t| t.path == jar.path);
+            let file = enabled_form(&jar.path);
+            if on && !replaced.contains(file) {
+                jars.push(mod_meta::Jar {
+                    file,
+                    manifests: &jar.manifests,
+                });
+            }
+        }
+        for item in self
+            .plan
+            .items
+            .iter()
+            .filter(|i| i.kind == "mod" && !i.present)
+        {
+            if let Some(manifests) = &item.manifests {
+                jars.push(mod_meta::Jar {
+                    file: &item.path,
+                    manifests,
+                });
+            }
+        }
+        mod_meta::check(setup, &jars)
+    }
+
+    /// Mends what the jars say is in the way, a few rounds at most: a mod
+    /// needed that nothing here gives is looked up by its ID, and a mod there
+    /// already that is too old for one the plan adds is updated. The rest is
+    /// noted in the plan.
+    async fn settle(
+        &mut self,
+        setup: &mod_meta::Setup<'_>,
+        local: &[LocalJar],
+    ) -> LauncherResult<()> {
+        let mut asked: HashSet<String> = HashSet::new();
+        let mut updated: HashSet<String> = HashSet::new();
+        for _ in 0..MAX_ROUNDS {
+            let mut more = false;
+            for problem in self.check(setup, local) {
+                match problem {
+                    mod_meta::Problem::Missing {
+                        file, id, versions, ..
+                    } if asked.insert(id.clone()) => {
+                        more |= self.provide(&file, &id, &versions).await?;
+                    }
+                    mod_meta::Problem::Wrong {
+                        file,
+                        id,
+                        versions,
+                        from: Some(from),
+                        ..
+                    } if self.adds(&file) && !self.adds(&from) => {
+                        let Some(project) = self.project_at(&from) else {
+                            continue;
+                        };
+                        if updated.insert(project.clone()) {
+                            more |= self.update(&project, &id, &versions).await?;
+                        }
+                    }
+                    _ => {}
+                }
+            }
+            if !more {
+                break;
+            }
+            self.run().await?;
+        }
+        let problems = self.check(setup, local);
+        self.plan.problems = problems
+            .iter()
+            .filter(|p| self.touches(p))
+            .map(|p| describe(p, |path| self.title_of(path)))
+            .collect();
+        Ok(())
+    }
+
+    /// Whether the plan adds the file at `path`.
+    fn adds(&self, path: &str) -> bool {
+        self.plan.items.iter().any(|i| i.path == path && !i.present)
+    }
+
+    /// Whether a problem has to do with what the plan adds; the others were
+    /// there before it.
+    fn touches(&self, problem: &mod_meta::Problem) -> bool {
+        use mod_meta::Problem as P;
+        match problem {
+            P::Missing { file, .. } | P::OtherLoader { file, .. } => self.adds(file),
+            P::Wrong { file, from, .. } | P::Breaks { file, from, .. } => {
+                self.adds(file) || from.as_deref().is_some_and(|f| self.adds(f))
+            }
+            P::Twice { files, .. } => files.iter().any(|f| self.adds(f)),
+        }
+    }
+
+    /// The catalog's project of a file in the folder, by the lock or the
+    /// player's files it recognized.
+    fn project_at(&self, path: &str) -> Option<String> {
+        self.lock
+            .at(path)
+            .map(|o| o.project_id.clone())
+            .or_else(|| {
+                self.identified
+                    .iter()
+                    .find(|i| enabled_form(&i.path) == path)
+                    .map(|i| i.project_id.clone())
+            })
+    }
+
+    fn title_of(&self, path: &str) -> String {
+        if let Some(item) = self.plan.items.iter().find(|i| i.path == path) {
+            return item.title.clone();
+        }
+        if let Some(ours) = self.lock.at(path) {
+            return ours.title.clone();
+        }
+        enabled_form(path.rsplit('/').next().unwrap_or(path)).to_owned()
+    }
+
+    /// A mod a jar needs that nothing here gives: a project whose jars give
+    /// it, the most downloaded first, noted as required by what needs it.
+    async fn provide(&mut self, file: &str, id: &str, versions: &[String]) -> LauncherResult<bool> {
+        let Some(setup) = self.target.setup() else {
+            return Ok(false);
+        };
+        let loader = self
+            .plan
+            .items
+            .iter()
+            .find(|i| i.path == file)
+            .and_then(|i| i.manifests.as_deref())
+            .and_then(|m| mod_meta::for_loader(m, setup.loader, setup.game))
+            .map_or(setup.loader, |m| m.loader);
+        let want = Want {
+            id,
+            versions,
+            loader,
+        };
+        let mut found = Vec::new();
+        for name in self.target.mod_loaders() {
+            // An older catalog does not know; nothing is found then.
+            found = self
+                .catalog
+                .provides(id, &self.target.game, name)
+                .await
+                .unwrap_or_default();
+            if !found.is_empty() {
+                break;
+            }
+        }
+        for project in found {
+            if self.require(project.clone(), None, Some(&want)).await? {
+                if let Some(item) = self.plan.items.iter_mut().find(|i| i.path == file) {
+                    item.requires.push(project);
+                }
+                return Ok(true);
+            }
+        }
+        Ok(false)
+    }
+
+    /// A mod there already that is too old for one the plan adds: its newest
+    /// version known to give what is asked, in place of its file.
+    async fn update(
+        &mut self,
+        project: &str,
+        id: &str,
+        versions: &[String],
+    ) -> LauncherResult<bool> {
+        let Some(setup) = self.target.setup() else {
+            return Ok(false);
+        };
+        let want = Want {
+            id,
+            versions,
+            loader: setup.loader,
+        };
+        let Some(version) = self
+            .choose(project, Some(&want))
+            .await?
+            .filter(|v| runs(v, &setup, Some(&want)) == Some(true))
+        else {
+            return Ok(false);
+        };
+        if self.queue.iter().any(|q| q.version.project_id == project)
+            || self.plan.items.iter().any(|i| i.project_id == project)
+        {
+            return Ok(false);
+        }
+        let other = self.catalog.project(project).await.ok();
+        self.queue.push(Queued {
+            version,
+            title: other.as_ref().map(|p| p.title.clone()).unwrap_or_default(),
+            icon: other.as_ref().and_then(|p| p.icon.clone()),
+            main: false,
+            // A mod the player put there stays theirs.
+            dependency: self.lock.of_project(project).is_some_and(|o| o.dependency),
+        });
+        Ok(true)
+    }
+}
+
+/// What the mods turned on in an installation's folder say is in the way of
+/// the game starting, with the titles the lock knows.
+pub fn check_folder(target: &Target, lock: &ContentLock, local: &[LocalJar]) -> Vec<SetProblem> {
+    let Some(setup) = target.setup() else {
+        return Vec::new();
+    };
+    let jars: Vec<mod_meta::Jar<'_>> = local
+        .iter()
+        .filter(|j| !j.path.ends_with(DISABLED))
+        .map(|j| mod_meta::Jar {
+            file: &j.path,
+            manifests: &j.manifests,
+        })
+        .collect();
+    mod_meta::check(&setup, &jars)
+        .iter()
+        .map(|p| {
+            describe(p, |path| match lock.at(path) {
+                Some(ours) => ours.title.clone(),
+                None => path.rsplit('/').next().unwrap_or(path).to_owned(),
+            })
+        })
+        .collect()
+}
+
+/// A problem in words the interface shows, with the mods' titles.
+pub fn describe(problem: &mod_meta::Problem, title_of: impl Fn(&str) -> String) -> SetProblem {
+    use mod_meta::Problem as P;
+    let mut out = SetProblem {
+        kind: String::new(),
+        titles: Vec::new(),
+        id: String::new(),
+        versions: Vec::new(),
+        found: None,
+        from: None,
+        loader: None,
+    };
+    match problem {
+        P::Missing {
+            file, id, versions, ..
+        } => {
+            out.kind = "missing".to_owned();
+            out.titles = vec![title_of(file)];
+            out.id.clone_from(id);
+            out.versions.clone_from(versions);
+        }
+        P::Wrong {
+            file,
+            id,
+            versions,
+            found,
+            from,
+            ..
+        } => {
+            out.kind = "wrong".to_owned();
+            out.titles = vec![title_of(file)];
+            out.id.clone_from(id);
+            out.versions.clone_from(versions);
+            out.found = Some(found.clone());
+            out.from = from.as_deref().map(&title_of);
+        }
+        P::Breaks {
+            file,
+            id,
+            found,
+            from,
+            ..
+        } => {
+            out.kind = "breaks".to_owned();
+            out.titles = vec![title_of(file)];
+            out.id.clone_from(id);
+            out.found.clone_from(found);
+            out.from = from.as_deref().map(&title_of);
+        }
+        P::Twice { id, files } => {
+            out.kind = "twice".to_owned();
+            out.titles = files.iter().map(|f| title_of(f)).collect();
+            out.id.clone_from(id);
+        }
+        P::OtherLoader { file, loader } => {
+            out.kind = "other_loader".to_owned();
+            out.titles = vec![title_of(file)];
+            out.loader = Some(
+                match loader {
+                    mod_meta::Loader::Fabric => "fabric",
+                    mod_meta::Loader::Quilt => "quilt",
+                    mod_meta::Loader::Forge => "forge",
+                    mod_meta::Loader::NeoForge => "neoforge",
+                }
+                .to_owned(),
+            );
+        }
+    }
+    out
 }
 
 // ----- installing -----
@@ -751,7 +1355,12 @@ pub struct Installer {
     hashes: Mutex<HashMap<PathBuf, Hashed>>,
     /// The projects a catalog version requires, as the catalog said.
     requires: Mutex<HashMap<String, Vec<String>>>,
+    /// What the jars in mods folders say, by path.
+    read: Mutex<HashMap<PathBuf, ReadJar>>,
 }
+
+/// A jar's size, time and manifests when it was last read.
+type ReadJar = (u64, Option<SystemTime>, Vec<mod_meta::Manifest>);
 
 /// A file's size, time and SHA-1 when it was last read.
 type Hashed = (u64, Option<SystemTime>, String);
@@ -776,6 +1385,7 @@ impl Installer {
             running: Mutex::new(HashMap::new()),
             hashes: Mutex::new(HashMap::new()),
             requires: Mutex::new(HashMap::new()),
+            read: Mutex::new(HashMap::new()),
         })
     }
 
@@ -1064,6 +1674,44 @@ impl Installer {
                 Some((i.path.clone(), self.sha1_of(&path)?))
             })
             .collect()
+    }
+}
+
+impl Installer {
+    /// What the jars in an installation's mods folder say, turned off ones
+    /// too; a jar is read again only once it changed.
+    pub fn local_jars(&self, root: &DataRoot, id: InstanceId) -> Vec<LocalJar> {
+        let game = root.game_dir(id);
+        let mut found = Vec::new();
+        scan(&game, "mods", "mods", None, &mut found);
+        found
+            .into_iter()
+            .filter_map(|item| {
+                let path = content_path(&game, &item.path).ok()?;
+                Some(LocalJar {
+                    manifests: self.manifests_of(&path)?,
+                    path: item.path,
+                })
+            })
+            .collect()
+    }
+
+    fn manifests_of(&self, path: &Path) -> Option<Vec<mod_meta::Manifest>> {
+        let meta = fs::metadata(path).ok()?;
+        if meta.len() > MAX_HASHED {
+            return None;
+        }
+        let modified = meta.modified().ok();
+        if let Some((size, time, read)) = lock(&self.read).get(path)
+            && *size == meta.len()
+            && *time == modified
+        {
+            return Some(read.clone());
+        }
+        let file = fs::File::open(path).ok()?;
+        let read = mod_meta::read(std::io::BufReader::new(file));
+        lock(&self.read).insert(path.to_path_buf(), (meta.len(), modified, read.clone()));
+        Some(read)
     }
 }
 

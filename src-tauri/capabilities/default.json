@@ -101,6 +101,7 @@
     "allow-mods-import-state",
     "allow-mods-choose",
     "allow-mods-plan",
+    "allow-mods-check",
     "allow-mods-install",
     "allow-mods-world-plan",
     "allow-mods-install-world",
