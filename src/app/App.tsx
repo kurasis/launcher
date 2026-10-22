@@ -34,6 +34,7 @@ import { ModsView, type ModsSection } from '../features/mods/ModsView';
 import { WorldsView } from '../features/worlds/WorldsView';
 import { FeedView } from '../features/feed/FeedView';
 import { SkinsView } from '../features/skins/SkinsView';
+import { StatsNotice } from '../features/settings/StatsNotice';
 import { useTheme } from './useTheme';
 import { useAppInfo } from './useAppInfo';
 import { MoreMenu, type MenuItem } from './MoreMenu';
@@ -130,6 +131,11 @@ export function App() {
       // Only a convenience: a failure leaves the previous screen remembered.
       void ipc.setAppSettings({ lastView: remembered }).catch(() => undefined);
     }
+  };
+  /** Settings → Privacy, from the line about the statistics (D-071). */
+  const openPrivacy = () => {
+    setSettingsSection('privacy');
+    navigate('settings');
   };
   const openConsole = () => {
     clearConsoleError();
@@ -295,6 +301,9 @@ export function App() {
                 }}
               />
             )}
+            {view === 'feed' && (
+              <StatsNotice settings={state.snapshot.settings} onSettings={openPrivacy} />
+            )}
             {view === 'home' && <WhatsNew update={state.snapshot.update} />}
             {view === 'home' && <FailureOffer />}
             {view === 'home' && (
@@ -326,6 +335,9 @@ export function App() {
                     navigate('mods');
                   }}
                 />
+                {!state.snapshot.settings.feed.enabled && (
+                  <StatsNotice settings={state.snapshot.settings} onSettings={openPrivacy} />
+                )}
               </>
             )}
             {view === 'mods' && (

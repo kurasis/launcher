@@ -60,6 +60,9 @@ rustls = { version = "0.23", default-features = false, features = ["aws_lc_rs", 
 rustls-platform-verifier = "0.7"
 pulldown-cmark = { version = "0.13.4", default-features = false }
 tauri-plugin-notification = "2.7.0"
+# The system's language and time zone for the anonymous statistics (D-071).
+sys-locale = "0.3.2"
+iana-time-zone = "0.1.65"
 
 [target.'cfg(unix)'.dependencies]
 # statvfs for free-space checks on the data directory's own filesystem; the clock

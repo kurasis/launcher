@@ -1016,3 +1016,101 @@ async fn the_api_serves_banners_and_the_sign_in_check() {
         );
     }
 }
+
+#[tokio::test]
+async fn players_online_are_kept_by_hour_from_when_an_ad_is_added() {
+    let (dir, store) = store();
+    let now_ad = add(&store, &[]);
+    // Added a week before it starts: pinged from now on, for "before".
+    let later = add(
+        &store,
+        &[
+            "--start",
+            "2027-01-22 15:00",
+            "--for",
+            "7d",
+            "--name",
+            "Later",
+        ],
+    );
+    assert!(later.starts > NOW + 86_400);
+    let due: Vec<i64> = store.to_ping(NOW).unwrap().iter().map(|a| a.id).collect();
+    assert_eq!(due, [now_ad.id, later.id]);
+    assert!(
+        store.to_ping(later.ends).unwrap().is_empty(),
+        "ended ads are not pinged"
+    );
+    let ping = |at: i64, up: bool, online: Option<i64>| store::Ping {
+        at,
+        up,
+        online,
+        max: Some(100),
+        ..Default::default()
+    };
+    store
+        .save_ping(now_ad.id, &ping(NOW, true, Some(12)))
+        .unwrap();
+    // Asked again within the hour: one row, the newest answer.
+    store
+        .save_ping(now_ad.id, &ping(NOW + 60, true, Some(15)))
+        .unwrap();
+    store
+        .save_ping(now_ad.id, &ping(NOW + 3600, false, Some(99)))
+        .unwrap();
+    let hours = store.online(now_ad.id, NOW - 86_400).unwrap();
+    let hour = NOW - NOW % 3600;
+    assert_eq!(
+        hours,
+        [
+            store::Hour {
+                at: hour,
+                up: true,
+                online: Some(15),
+                max: Some(100)
+            },
+            store::Hour {
+                at: hour + 3600,
+                up: false,
+                online: None,
+                max: None
+            },
+        ]
+    );
+    let lines = ads::online_days(&hours, &now_ad, zone());
+    assert_eq!(lines.len(), 1);
+    assert!(lines[0].contains("    15     15"), "{lines:?}");
+    assert!(lines[0].contains(" 1 of 2"), "{lines:?}");
+    assert!(lines[0].ends_with("while the ad shows"), "{lines:?}");
+
+    let app = app(store, dir.path());
+    let (status, body) = call(&app, "GET", &format!("/v1/online/{}", now_ad.id), "").await;
+    assert_eq!(status, StatusCode::OK);
+    let value: serde_json::Value = serde_json::from_str(&body).unwrap();
+    assert_eq!(value["ad"], now_ad.id.to_string());
+    assert_eq!(value["starts"], now_ad.starts);
+    assert_eq!(value["hours"][0]["online"], 15);
+    assert_eq!(value["hours"][1]["up"], false);
+    for uri in [
+        "/v1/online/999",
+        "/v1/online/x1",
+        "/v1/online/-1",
+        "/v1/online/1234567890123",
+    ] {
+        assert_eq!(
+            call(&app, "GET", uri, "").await.0,
+            StatusCode::NOT_FOUND,
+            "{uri}"
+        );
+    }
+    app.store.remove(now_ad.id).unwrap();
+    assert!(app.store.online(now_ad.id, 0).unwrap().is_empty());
+}
+
+#[test]
+fn the_history_of_players_online_is_not_served_outside() {
+    // nginx passes three paths on; the statistics service asks this one on
+    // the server itself.
+    let site = include_str!("../../../deploy/servers/nginx/servers-site.inc");
+    assert!(!site.contains("online"));
+    assert!(site.contains("location / {\n    return 404;\n}"));
+}

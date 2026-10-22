@@ -60,6 +60,7 @@ sudo -u lapi-servers /home/www/lapi/servers/current/lapi-servers add … --text-
 | `stop <id>`                 | Ends it now; it stays in `list --all`                                 |
 | `remove <id>`               | Deletes it for good                                                   |
 | `ping <id>`                 | Asks the server now (the service also asks every server every hour)   |
+| `online <id> [--days 14]`   | Players online per day from the hourly pings, marked while it shows   |
 | `icon <id> <file.png>`      | Uses this square PNG instead of the server's icon; `--auto` goes back |
 | `banner <id> <file>`        | A 16:9 picture shown instead of the icon; `--none` takes it away      |
 | `counts`                    | Numbers only                                                          |
@@ -95,6 +96,9 @@ without a Microsoft account that owns Minecraft is told so before anything is do
 
 Every hour it pings each ad's server (never an address that is not public) and keeps its
 icon, made 64×64, and the number of players online; when a ping fails, the last icon stays
-and the tile says the server does not answer. Once a day it checks whether the server wants
+and the tile says the server does not answer. Pings start when the ad is added, also for one
+that starts later, and each hour's number of players stays with the ad (`online <id>`): add
+an ad a week before its `--start`, and its statistics show players online before the ad and
+while it shows (`lapi-stats ad <id>`, docs/STATS.md). Once a day it checks whether the server wants
 a Microsoft sign-in (above). Every six hours it reads Mojang's list of releases. Nothing
 about players is kept or logged.

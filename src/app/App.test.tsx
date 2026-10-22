@@ -608,6 +608,46 @@ describe('App', () => {
     expect(quiet.some((c) => c.cmd.startsWith('feed_'))).toBe(false);
   });
 
+  it('says under the feed that statistics are sent, and opens Privacy from there', async () => {
+    const unseen = { stats: true, statsNoticeSeen: false };
+    const calls = fakeBackend(
+      snapshotFixture({ settings: settingsWith({ ...unseen, startView: 'feed' }) }),
+    );
+    const { unmount } = render(<App />);
+    const line = await screen.findByText(/sends anonymous statistics without any ID/);
+    // At the bottom of the feed.
+    expect(screen.getByRole('main').lastElementChild?.contains(line)).toBe(true);
+    fireEvent.click(screen.getByRole('button', { name: 'Privacy settings' }));
+    expect(await screen.findByRole('tab', { name: 'Privacy' })).toHaveAttribute(
+      'aria-selected',
+      'true',
+    );
+    expect(screen.getByRole('checkbox', { name: /Anonymous statistics/ })).toBeChecked();
+    expect(screen.queryByText(/sends anonymous statistics without any ID/)).toBeNull();
+    await waitFor(() => {
+      expect(
+        calls.some(
+          (c) =>
+            c.cmd === 'set_app_settings' &&
+            JSON.stringify(c.args).includes('"statsNoticeSeen":true'),
+        ),
+      ).toBe(true);
+    });
+    unmount();
+
+    // With the feed off, under the installations.
+    const off = settingsWith({
+      ...unseen,
+      feed: { ...snapshotFixture().settings.feed, enabled: false },
+    });
+    fakeBackend(snapshotFixture({ settings: off }));
+    render(<App />);
+    const under = await screen.findByText(/sends anonymous statistics without any ID/);
+    expect(screen.getByRole('main').lastElementChild?.contains(under)).toBe(true);
+    fireEvent.click(screen.getByRole('button', { name: 'Got it' }));
+    expect(screen.queryByText(/sends anonymous statistics without any ID/)).toBeNull();
+  });
+
   it("installs the feed's newest version through the new-installation form", async () => {
     const feed = {
       format: 1,

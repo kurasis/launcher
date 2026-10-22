@@ -261,8 +261,11 @@ export interface SettingsView {
   meteredWarnMib: number;
   /** Monthly traffic limit in MiB; 0 is no limit. */
   monthlyLimitMib: number;
-  /** Anonymous crash statistics go to the developers; off by default (D-061). */
-  shareStats: boolean;
+  /** Anonymous statistics without IDs, with the counts of crashes; on
+   * unless the player turns them off (D-071). */
+  stats: boolean;
+  /** The line about the statistics was read. */
+  statsNoticeSeen: boolean;
   /** A short sound for a new chat message or friend request (D-064). */
   chatSound: boolean;
   /** A system notification for one while the launcher is not in front. */
@@ -972,7 +975,9 @@ export interface SettingsPatch {
   metered?: boolean;
   meteredWarnMib?: number;
   monthlyLimitMib?: number;
-  shareStats?: boolean;
+  /** False also erases what waits to go. */
+  stats?: boolean;
+  statsNoticeSeen?: boolean;
   chatSound?: boolean;
   chatNotifications?: boolean;
   launcherAccountOffline?: boolean;
@@ -1889,6 +1894,28 @@ export interface ServerAd {
 export interface ServerAdsView {
   ads: ServerAd[];
   stale: boolean;
+}
+
+/** A view or a press in a server ad's tile, counted for the statistics (D-071). */
+export type AdEvent =
+  | 'shown'
+  | 'menu'
+  | 'versionList'
+  | 'copy'
+  | 'report'
+  | 'play'
+  | 'license'
+  | 'installed'
+  | 'installFailed';
+
+/** Settings → Privacy → What is sent (D-071): the last ping and ad counts as
+ * they went, and today's ping before it goes. */
+export interface StatsSent {
+  ping: unknown;
+  counts: unknown;
+  next: unknown;
+  /** Pings and batches waiting on this computer. */
+  waiting: number;
 }
 
 /** A run of text in a note: bold, italic, code, or a link the launcher may open. */

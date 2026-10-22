@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-feed-server-ad-event"
+description = "Enables the feed_server_ad_event command without any pre-configured scope."
+commands.allow = ["feed_server_ad_event"]
+
+[[permission]]
+identifier = "deny-feed-server-ad-event"
+description = "Denies the feed_server_ad_event command without any pre-configured scope."
+commands.deny = ["feed_server_ad_event"]
