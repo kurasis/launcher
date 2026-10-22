@@ -34,12 +34,12 @@ on:
         default: '12'
       downloads:
         description: >-
-          Where the launcher downloads from (Settings, Network): mirror_first (our mirror,
-          the origin when it fails), automatic (the origin, the mirror when it fails or is
-          very slow; what a new player has) or origin_only
+          Where the launcher downloads from (Settings, Network): automatic (the origin, our
+          mirror when it fails or is very slow; what a new player has), mirror_first (the
+          mirror, the origin when it fails) or origin_only
         type: choice
-        options: [mirror_first, automatic, origin_only]
-        default: mirror_first
+        options: [automatic, mirror_first, origin_only]
+        default: automatic
       cleanup:
         description: Only put the machine back (stop and uninstall what an earlier, cancelled run left)
         type: boolean
@@ -160,7 +160,7 @@ jobs:
       - name: Play
         env:
           ITEMS: ${{ matrix.items }}
-          DOWNLOADS: ${{ inputs.downloads || 'mirror_first' }}
+          DOWNLOADS: ${{ inputs.downloads || 'automatic' }}
           CLEANUP: ${{ inputs.cleanup && 'yes' || 'no' }}
         run: |
           if ($env:CLEANUP -eq 'yes') {

@@ -282,7 +282,7 @@ pub fn queue_project(
 pub const POPULAR_EVERY: i64 = 24 * 3600;
 /// Most downloaded projects looked for in each kind, unless
 /// `LAPI_MODS_POPULAR` says otherwise (0 turns it off).
-pub const POPULAR: usize = 50;
+pub const POPULAR: usize = 100;
 
 /// Projects queued at a time from the most downloaded, and only while fewer
 /// jobs than `SEED_WHEN_BELOW` are due: what players ask for never waits

@@ -18,10 +18,10 @@ how a long list is shared between them. A label only one machine has makes the p
 exact.
 
 The input `downloads` is the launcher's Settings → Network choice, written into the
-fresh data folder before the first start: `mirror_first` (default: our mirror, the
-origin when it fails, so a slow test machine does not lose items to download timeouts),
-`automatic` (what a new player has: the origin, the mirror when it fails or is very
-slow) or `origin_only`.
+fresh data folder before the first start: `automatic` (default, what a new player has:
+the origin first, our mirror only when it fails or is very slow, as the project's
+mirror rule wants), `mirror_first` (the mirror, the origin when it fails) or
+`origin_only`.
 
 1. A GitHub runner takes the installer from the newest green Package run on `main`
    (`launcher-windows-x64`) and the interface texts of every language.

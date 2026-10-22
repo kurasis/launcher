@@ -1699,6 +1699,9 @@ message` plus a stack trace), with the event's level.
   at `/home/www/lapi/mirror/data` (owner `lapi-mirror`, mode 0755).
 - "Run workflow" on "Mirror service" with `task=reports` shows kept files per host,
   the quota and the free disk.
+- The mod's Gradle builds in CI (Skins mod, Game test) use it the same way: a build
+  that failed on a download runs once more with the Maven repositories of the mirrored
+  hosts read through it (`.github/gradle/`). The origins always come first.
 
 ## D-063 — Launcher updates at upd.lapi.sh
 
@@ -2417,9 +2420,10 @@ skins-mod <channel>` there only checks the signature against the public key and
   made before this at start (2026-10-21: Fabric API had become
   `fabric-api-modrinth-…`).
 - **The catalog keeps the popular projects and checks itself (2026-10-21, Ai: "сделай
-  всё сразу").** Once a day the service queues Modrinth's 50 most downloaded projects of
-  each kind it does not have yet (`LAPI_MODS_POPULAR`); CurseForge's search answers the
-  server with 403 and Modrinth has no worlds, so worlds still come by address. Lists by
+  всё сразу").** Once a day the service queues Modrinth's 100 most downloaded projects
+  of each kind it does not have yet (`LAPI_MODS_POPULAR`; 50 until Ai asked for 50 more
+  on 2026-10-22); CurseForge's search answers the server with 403 and Modrinth has no
+  worlds, so worlds still come by address. Lists by
   downloads (no words) put libraries (`library`, `library-api`, `api-and-library`,
   `api`) after the other projects; a search for words keeps its relevance. A mod that
   also publishes data pack versions (Terralith) is found among data packs too, and the
