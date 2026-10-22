@@ -7,6 +7,7 @@
 //! is decided by the tunnel, not by the server (ADAPTATION A2, A3).
 
 pub mod app;
+pub mod failure;
 #[cfg(test)]
 pub(crate) mod fake_service;
 pub mod host;

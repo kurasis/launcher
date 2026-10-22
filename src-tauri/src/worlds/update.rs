@@ -663,7 +663,7 @@ async fn try_trial<F: Fetch>(run: &Trial<'_, F>, trial: WorldId) -> LauncherResu
     let outcome = {
         let server = Arc::clone(&server);
         tokio::task::spawn_blocking(move || {
-            let ready = server.wait_ready(host::STARTUP_DEADLINE);
+            let ready = server.wait_ready(host::STARTUP_SILENCE);
             let clean = server.stop(host::STOP_GRACE);
             ready.and_then(|()| {
                 if clean {

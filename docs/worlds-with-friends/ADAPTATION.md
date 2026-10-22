@@ -154,7 +154,7 @@ Core keeps:
 What stays as specified: leases of 30 s renewed every 10 s with deadlines from the request
 start; 60 s single-use tickets; tunnel buffers of 256 KiB per stream direction and 64 MiB per
 launcher; at most 4 unadmitted streams per endpoint context and 64 per host; no destination,
-port, path or command ever accepted from a guest; startup deadline 180 s and stop grace 60 s;
+port, path or command ever accepted from a guest; stop grace 60 s;
 backups only of a stopped world; server output drained and filtered so chat and nicks are not
 stored by default.
 
@@ -314,3 +314,13 @@ Other loaders follow in W12.
   Fabric API's data in `datapack list`, the mod's id in the save's `level.dat` (FML and NeoForge
   record it). Forge 1.7.10 and 1.8.9 servers come from the old installer format: Forge and the
   libraries it marks for the server, its universal jar, started from that jar's manifest.
+- 2026-10-22 — Starting a server (owner): the startup deadline of 180 s counts from the server's
+  last line instead of from spawn, so a server that keeps writing (a big pack on a slow computer)
+  gets time, up to 20 minutes in all; a server silent for 180 s is stopped as before. A start
+  that fails says why where the loader or the start's crash report names a mod: the mod, what it
+  needs (a missing mod, another Minecraft version, a newer loader build or Java) and what the
+  world has, or the mod that failed (`src-tauri/src/worlds/failure.rs`). While the server
+  starts, before anyone can join, only those values are kept from its lines; a crash report is
+  read from the world's own `crash-reports/`, written during this start, at most 4 MiB, and
+  never leaves the computer. CI starts six worlds whose mods do not start (NeoForge, Fabric,
+  Forge before and after 1.13) and checks the mod is named.

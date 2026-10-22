@@ -2337,6 +2337,7 @@
     "A library has the same content as the game client.": "A library has the same content as the game client.",
     "A metadata document exceeded the launcher's size limit.": "A metadata document exceeded the launcher's size limit.",
     "A mod file changed while the world was being made. Try again.": "A mod file changed while the world was being made. Try again.",
+    "A mod in this world needs Java {java} or newer, which this Minecraft version does not run on. Remove the mod or take its release for this version.": "A mod in this world needs Java {java} or newer, which this Minecraft version does not run on. Remove the mod or take its release for this version.",
     "A mod loader record could not be written.": "A mod loader record could not be written.",
     "A native library archive contains an unsafe entry. Repair the installation.": "A native library archive contains an unsafe entry. Repair the installation.",
     "A picture could not be read. Add it again.": "A picture could not be read. Add it again.",
@@ -2653,11 +2654,12 @@
     "The world changed while it was copied. Close the game and try again.": "The world changed while it was copied. Close the game and try again.",
     "The world connection could not be opened on this computer.": "The world connection could not be opened on this computer.",
     "The world identifier is invalid.": "The world identifier is invalid.",
-    "The world server did not start in time.": "The world server did not start in time.",
+    "The world server did not start in 20 minutes.": "The world server did not start in 20 minutes.",
     "The world server did not stop cleanly with the new mods.": "The world server did not stop cleanly with the new mods.",
     "The world server is not running.": "The world server is not running.",
     "The world server is stopping.": "The world server is stopping.",
     "The world server started but does not answer.": "The world server started but does not answer.",
+    "The world server stopped responding while it started.": "The world server stopped responding while it started.",
     "The world server stopped while starting.": "The world server stopped while starting.",
     "The world server's settings are larger than a world's settings can be.": "The world server's settings are larger than a world's settings can be.",
     "The world update stopped.": "The world update stopped.",
@@ -2820,6 +2822,13 @@
     "{context}: a file operation failed.": "{context}: a file operation failed.",
     "{context}: antivirus software blocked the file. Allow the launcher's data folder in it, then try again.": "{context}: antivirus software blocked the file. Allow the launcher's data folder in it, then try again.",
     "{context}: permission denied by the operating system.": "{context}: permission denied by the operating system.",
-    "{context}: the disk is full. Free some space and try again.": "{context}: the disk is full. Free some space and try again."
+    "{context}: the disk is full. Free some space and try again.": "{context}: the disk is full. Free some space and try again.",
+    "{mod} does not work with {dependency} {actual}. Take another release of {mod} or remove it.": "{mod} does not work with {dependency} {actual}. Take another release of {mod} or remove it.",
+    "{mod} is made for Minecraft {version}, and the world is {actual}. Take its release for {actual} or remove it.": "{mod} is made for Minecraft {version}, and the world is {actual}. Take its release for {actual} or remove it.",
+    "{mod} is made for another Minecraft version than the world's {actual}. Take its release for {actual} or remove it.": "{mod} is made for another Minecraft version than the world's {actual}. Take its release for {actual} or remove it.",
+    "{mod} needs {dependency} {version} or newer, and the world has {actual}. Take an older release of {mod} or remove it.": "{mod} needs {dependency} {version} or newer, and the world has {actual}. Take an older release of {mod} or remove it.",
+    "{mod} needs {dependency} {version}, and the world has {actual}. Take another release of {mod} or remove it.": "{mod} needs {dependency} {version}, and the world has {actual}. Take another release of {mod} or remove it.",
+    "{mod} needs {dependency}, which is not in the world. Add it to the installation or remove {mod}, then update the world's mods.": "{mod} needs {dependency}, which is not in the world. Add it to the installation or remove {mod}, then update the world's mods.",
+    "{mod} stopped the world server while it started. Take another release of {mod} or remove it.": "{mod} stopped the world server while it started. Take another release of {mod} or remove it."
   }
 }
