@@ -684,6 +684,14 @@ try {
 
       # --- Play ----------------------------------------------------------------------------
       $gameDir = Join-Path $instance.FullName 'game'
+      if ((Compare-Version $version '1.7') -lt 0) {
+        # Before 1.7 the world list reads and drops every mouse event of a frame drawn
+        # without the button down, which loses the test's clicks on its buttons; the
+        # game's own touchscreen mode skips that. Written before the first start.
+        New-Item -ItemType Directory -Force $gameDir | Out-Null
+        $options = Join-Path $gameDir 'options.txt'
+        if (-not (Test-Path $options)) { Set-Content -Path $options -Value 'touchscreen:true' -Encoding ASCII }
+      }
       $log = Join-Path $gameDir 'logs\latest.log'
       $shots = Join-Path $gameDir 'screenshots'
       $runs = Join-Path $data 'logs\runs'

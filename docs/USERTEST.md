@@ -46,8 +46,11 @@ mirror rule wants), `mirror_first` (the mirror, the origin when it fails) or
    Continue on the first-start accessibility screen (1.19.4 and later; Escape, which
    leaves it too, for every version), Singleplayer, Create New World in the world list
    (newer versions open Create New World at once for an empty list, and the spot is
-   empty there), Create. Without a world after that the keyboard way is tried (Escape,
-   Tab, Enter, Enter). Some seconds in the world, then the window is closed. The game's
+   empty there), Create, and from 1.19.3 Yes when the game asks to confirm experimental
+   features. Before 1.7 the world list drops the mouse events of a frame drawn without
+   the button down, which loses synthetic clicks, so the game's own touchscreen mode is
+   set in a fresh `options.txt` for those versions. Without a world after that the
+   keyboard way is tried (Escape, Tab, Enter, Enter). Some seconds in the world, then the window is closed. The game's
    log (or for versions before 1.7, the output the launcher kept) must show the player
    joining; before 1.3, which had no server inside, the new world's `level.dat` counts.
    The game must exit with 0 and leave no crash report. Screen copies are taken along
