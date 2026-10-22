@@ -353,6 +353,34 @@ CREATE TABLE IF NOT EXISTS clash (
     changed INTEGER NOT NULL,
     PRIMARY KEY (a, b)
 );
+-- Collections the owner keeps (lapi-mods collection): a key, the kind and
+-- the game version and loader they are for, titles and a line in each
+-- language as JSON objects, and their projects in order.
+CREATE TABLE IF NOT EXISTS collection (
+    id INTEGER PRIMARY KEY,
+    key TEXT NOT NULL UNIQUE,
+    kind TEXT NOT NULL,
+    game TEXT,
+    loader TEXT,
+    titles TEXT NOT NULL DEFAULT '{}',
+    notes TEXT NOT NULL DEFAULT '{}',
+    changed INTEGER NOT NULL
+);
+CREATE TABLE IF NOT EXISTS collection_item (
+    collection_id INTEGER NOT NULL REFERENCES collection(id),
+    project_id TEXT NOT NULL,
+    ord INTEGER NOT NULL,
+    PRIMARY KEY (collection_id, project_id)
+);
+CREATE INDEX IF NOT EXISTS collection_item_project ON collection_item(project_id);
+-- A project's downloads on its sites, once a day, for the week's most
+-- popular; two weeks are kept.
+CREATE TABLE IF NOT EXISTS project_downloads (
+    project_id TEXT NOT NULL,
+    day INTEGER NOT NULL,
+    downloads INTEGER NOT NULL,
+    PRIMARY KEY (project_id, day)
+);
 CREATE VIRTUAL TABLE IF NOT EXISTS project_fts USING fts5(
     project_id UNINDEXED, title, summary, authors, categories, slug,
     tokenize = 'unicode61 remove_diacritics 2'
@@ -423,6 +451,8 @@ const ADDED: &[(&str, &str, &str)] = &[
     // The owner trusts the project's own files: one the scanner only suspects
     // is served (external.rs `trust`); known malware and blocks still hold.
     ("external_project", "trusted", "INTEGER NOT NULL DEFAULT 0"),
+    // The picture its site shows first (Modrinth's `featured`): the cover.
+    ("gallery", "featured", "INTEGER NOT NULL DEFAULT 0"),
 ];
 
 fn migrate(db: &Connection) -> Result<()> {
@@ -561,6 +591,213 @@ fn sql(e: rusqlite::Error) -> String {
     format!("database: {e}")
 }
 
+/// The day a time falls on, counted from 1970.
+pub fn day_of(at: i64) -> i64 {
+    at.div_euclid(86_400)
+}
+
+/// The values of a search's filter, `?1` to `?8`.
+struct SearchValues {
+    words: Option<String>,
+    kind: Option<String>,
+    game: Option<String>,
+    loader: Option<String>,
+    /// The slugs asked for, as a JSON array.
+    categories: Option<String>,
+    source: Option<String>,
+    since: Option<i64>,
+    collection: Option<String>,
+}
+
+impl SearchValues {
+    fn params(&self) -> [&dyn rusqlite::ToSql; 8] {
+        [
+            &self.words,
+            &self.kind,
+            &self.game,
+            &self.loader,
+            &self.categories,
+            &self.source,
+            &self.since,
+            &self.collection,
+        ]
+    }
+}
+
+/// The projects a search matches, as `FROM … WHERE …` over `p`, and its
+/// values.
+fn search_filter(s: &Search) -> (String, SearchValues) {
+    let words = (!s.words.is_empty()).then(|| {
+        s.words
+            .iter()
+            .map(|w| format!("\"{}\"*", w.replace('"', "")))
+            .collect::<Vec<_>>()
+            .join(" ")
+    });
+    let categories = (!s.categories.is_empty()).then(|| {
+        let slugs = crate::categories::asked(&s.categories).unwrap_or_default();
+        serde_json::Value::from(slugs).to_string()
+    });
+    let from = if words.is_some() {
+        "project_fts JOIN project p ON p.id = project_fts.project_id"
+    } else {
+        "project p"
+    };
+    // FTS5's MATCH cannot sit under an OR: without words, ?1 is NULL and
+    // the FTS table is not in the query.
+    let matching = if words.is_some() {
+        "project_fts MATCH ?1"
+    } else {
+        "?1 IS NULL"
+    };
+    let filter = format!(
+        "{from} WHERE p.status IN ('importing', 'ready')
+           AND {matching}
+           AND (?2 IS NULL OR p.kind = ?2
+                OR (?2 = 'datapack' AND p.kind = 'mod'
+                    AND EXISTS (SELECT 1 FROM version v JOIN version_loader l ON l.version_id = v.id
+                                WHERE v.project_id = p.id AND l.loader = 'datapack')))
+           AND (?3 IS NULL OR EXISTS (SELECT 1 FROM version v JOIN version_game g ON g.version_id = v.id
+                                     WHERE v.project_id = p.id AND g.game = ?3))
+           AND (?4 IS NULL OR EXISTS (SELECT 1 FROM version v JOIN version_loader l ON l.version_id = v.id
+                                     WHERE v.project_id = p.id AND l.loader = ?4))
+           AND (?5 IS NULL OR EXISTS (SELECT 1 FROM project_category c WHERE c.project_id = p.id
+                                     AND c.category IN (SELECT value FROM json_each(?5))))
+           AND (?6 IS NULL OR EXISTS (SELECT 1 FROM project_source s WHERE s.project_id = p.id AND s.source = ?6))
+           AND (?7 IS NULL OR p.imported >= ?7)
+           AND (?8 IS NULL OR EXISTS (SELECT 1 FROM collection_item i JOIN collection k ON k.id = i.collection_id
+                                     WHERE k.key = ?8 AND i.project_id = p.id))"
+    );
+    let values = SearchValues {
+        words,
+        kind: s.kind.clone(),
+        game: s.game.clone(),
+        loader: s.loader.clone(),
+        categories,
+        source: s.source.clone(),
+        since: s.since,
+        collection: s.collection.clone(),
+    };
+    (filter, values)
+}
+
+/// How a search's projects are ordered.
+fn search_order(s: &Search, words: bool) -> String {
+    let week = day_of(crate::import::now()) - 7;
+    let order = match s.sort {
+        "updated" => "p.updated DESC".to_owned(),
+        "new" => "p.imported DESC".to_owned(),
+        "title" => "p.title COLLATE NOCASE".to_owned(),
+        "downloads" => "p.downloads DESC".to_owned(),
+        // What gained the most downloads on its sites in the last week.
+        "trending" => format!(
+            "p.downloads - COALESCE((SELECT d.downloads FROM project_downloads d
+                                     WHERE d.project_id = p.id AND d.day >= {week}
+                                     ORDER BY d.day LIMIT 1), p.downloads) DESC, p.downloads DESC"
+        ),
+        _ if words => "bm25(project_fts), p.downloads DESC".to_owned(),
+        // A collection in the order the owner gave it.
+        _ if s.collection.is_some() => "(SELECT i.ord FROM collection_item i JOIN collection k
+                                         ON k.id = i.collection_id
+                                         WHERE k.key = ?8 AND i.project_id = p.id)"
+            .to_owned(),
+        _ => "p.downloads DESC".to_owned(),
+    };
+    // Libraries (Fabric API and the like) come after the projects players
+    // look for in the lists by downloads; a search for words keeps its
+    // relevance, a collection its order, and a list of libraries its order.
+    let libraries_last = !words
+        && matches!(s.sort, "relevance" | "downloads" | "trending")
+        && !(s.sort == "relevance" && s.collection.is_some())
+        && !s
+            .categories
+            .iter()
+            .any(|c| crate::categories::is_library(c));
+    if libraries_last {
+        format!(
+            "EXISTS (SELECT 1 FROM project_category c WHERE c.project_id = p.id
+               AND c.category IN ({})), {order}",
+            LIBRARIES
+                .iter()
+                .map(|c| format!("'{c}'"))
+                .collect::<Vec<_>>()
+                .join(", ")
+        )
+    } else {
+        order
+    }
+}
+
+/// A project in a list: what a tile shows. `kind` names the categories it
+/// is listed under (a data pack Modrinth keeps as a mod is listed as a data
+/// pack); `game` limits the loaders to those of that game version.
+fn hit_json(
+    db: &Connection,
+    id: &str,
+    kind: Option<&str>,
+    game: Option<&str>,
+    files: &crate::Urls,
+) -> Result<Option<serde_json::Value>> {
+    let base = db
+        .query_row(
+            "SELECT p.id, p.kind, p.slug, p.title, p.summary, p.icon_thumb, p.downloads, p.status, p.updated,
+               (SELECT name FROM project_author a WHERE a.project_id = p.id ORDER BY ord LIMIT 1),
+               (SELECT group_concat(source) FROM project_source s WHERE s.project_id = p.id),
+               (SELECT g.thumb_sha256 FROM gallery g WHERE g.project_id = p.id AND g.thumb_sha256 IS NOT NULL
+                ORDER BY g.featured DESC, g.ord LIMIT 1)
+             FROM project p WHERE p.id = ?1",
+            [id],
+            |r| {
+                let thumb: Option<String> = r.get(5)?;
+                let sources: Option<String> = r.get(10)?;
+                let cover: Option<String> = r.get(11)?;
+                Ok(serde_json::json!({
+                    "id": r.get::<_, String>(0)?,
+                    "kind": r.get::<_, String>(1)?,
+                    "slug": r.get::<_, String>(2)?,
+                    "title": r.get::<_, String>(3)?,
+                    "summary": r.get::<_, String>(4)?,
+                    "iconThumb": thumb.as_deref().map(|t| files.image(t, "image/webp")),
+                    "cover": cover.as_deref().map(|t| files.image(t, "image/jpeg")),
+                    "downloads": r.get::<_, i64>(6)?,
+                    "status": r.get::<_, String>(7)?,
+                    "updated": r.get::<_, i64>(8)?,
+                    "author": r.get::<_, Option<String>>(9)?,
+                    "sources": sources.map(|s| s.split(',').map(str::to_owned).collect::<Vec<_>>()).unwrap_or_default(),
+                }))
+            },
+        )
+        .optional()
+        .map_err(sql)?;
+    let Some(mut hit) = base else {
+        return Ok(None);
+    };
+    let list = |query: &str, values: &[&dyn rusqlite::ToSql]| -> Result<Vec<String>> {
+        let mut q = db.prepare_cached(query).map_err(sql)?;
+        q.query_map(values, |r| r.get(0))
+            .map_err(sql)?
+            .collect::<std::result::Result<_, _>>()
+            .map_err(sql)
+    };
+    hit["loaders"] = list(
+        "SELECT DISTINCT l.loader FROM version v JOIN version_loader l ON l.version_id = v.id
+         WHERE v.project_id = ?1
+           AND (?2 IS NULL OR EXISTS (SELECT 1 FROM version_game g WHERE g.version_id = v.id AND g.game = ?2))
+         ORDER BY l.loader",
+        &[&id, &game],
+    )?
+    .into();
+    let slugs = list(
+        "SELECT category FROM project_category WHERE project_id = ?1",
+        &[&id],
+    )?;
+    let kind = kind
+        .map(str::to_owned)
+        .unwrap_or_else(|| hit["kind"].as_str().unwrap_or_default().to_owned());
+    hit["categoryIds"] = crate::categories::ids(&kind, &slugs).into();
+    Ok(Some(hit))
+}
+
 /// A gallery picture kept already: its address, SHA-256, type and small copy.
 type KeptPicture = (String, Option<String>, Option<String>, Option<String>);
 
@@ -634,10 +871,57 @@ pub struct Search {
     pub kind: Option<String>,
     pub game: Option<String>,
     pub loader: Option<String>,
-    pub category: Option<String>,
+    /// Categories' IDs or the sites' own slugs; a project in any of them.
+    pub categories: Vec<String>,
+    /// Where the project came from (`own`: players' packs).
+    pub source: Option<String>,
+    /// Added to the catalog at this time or later.
+    pub since: Option<i64>,
+    /// An owner's collection, by its key.
+    pub collection: Option<String>,
     pub sort: &'static str,
     pub offset: i64,
     pub limit: i64,
+}
+
+/// Versions in one answer at most.
+pub const MAX_VERSIONS: i64 = 2000;
+
+/// Which of a project's versions to list.
+#[derive(Debug, Clone, Default)]
+pub struct VersionsPage {
+    pub game: Option<String>,
+    pub loader: Option<String>,
+    /// `release`, `beta` or `alpha`.
+    pub channel: Option<String>,
+    pub offset: i64,
+    pub limit: i64,
+}
+
+/// A page of a project's versions.
+#[derive(Debug, Clone)]
+pub struct VersionList {
+    /// How many match, on every page.
+    pub total: i64,
+    pub versions: Vec<serde_json::Value>,
+    /// The game versions and loaders of all its versions.
+    pub games: Vec<String>,
+    pub loaders: Vec<String>,
+}
+
+/// A collection the owner keeps.
+#[derive(Debug, Clone)]
+pub struct CollectionRow {
+    pub key: String,
+    pub kind: String,
+    pub game: Option<String>,
+    pub loader: Option<String>,
+    /// By language: `ru`, `en`, `ar`.
+    pub titles: serde_json::Map<String, serde_json::Value>,
+    /// One line about it, by language.
+    pub notes: serde_json::Map<String, serde_json::Value>,
+    /// Its projects shown.
+    pub count: i64,
 }
 
 /// What `lapi-mods health` judges: times are seconds since 1970.
@@ -1034,8 +1318,9 @@ impl Store {
         for (ord, image) in p.gallery.iter().enumerate() {
             let kept = old.iter().find(|(url, ..)| *url == image.url);
             tx.execute(
-                "INSERT INTO gallery (project_id, ord, origin_url, title, description, sha256, media_type, thumb_sha256)
-                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)",
+                "INSERT INTO gallery (project_id, ord, origin_url, title, description, sha256, media_type, thumb_sha256,
+                   featured)
+                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)",
                 params![
                     id,
                     ord as i64,
@@ -1044,7 +1329,8 @@ impl Store {
                     image.description,
                     kept.and_then(|k| k.1.clone()),
                     kept.and_then(|k| k.2.clone()),
-                    kept.and_then(|k| k.3.clone())
+                    kept.and_then(|k| k.3.clone()),
+                    image.featured
                 ],
             )
             .map_err(sql)?;
@@ -3886,6 +4172,8 @@ impl Store {
             .map_err(sql)?
         };
         project["authors"] = authors.into();
+        let kind = project["kind"].as_str().unwrap_or_default().to_owned();
+        project["categoryIds"] = crate::categories::ids(&kind, &categories).into();
         project["categories"] = categories.into();
         project["sources"] = sources.into();
         project["gallery"] = gallery.into();
@@ -3938,7 +4226,7 @@ impl Store {
             let mut q = db
                 .prepare(
                     "SELECT f.file_name, f.size, f.sha1, f.sha512, f.sha256, f.is_primary, f.role, f.origin_url, b.state,
-                            b.copy
+                            b.copy, b.scanned > 0 AND (b.verdict IN ('clean', 'note') OR b.allowed = 1)
                      FROM version_file f LEFT JOIN blob b ON b.sha256 = f.sha256
                      WHERE f.version_id = ?1 ORDER BY f.ord",
                 )
@@ -3961,6 +4249,8 @@ impl Store {
                     "role": r.get::<_, String>(6)?,
                     "url": sha256.as_deref().filter(|_| !held).map(|s| files.served(s, &name, public)),
                     "held": held,
+                    // Kept here and found clean by the scanner, or kept by the owner's word.
+                    "checked": !held && r.get::<_, Option<bool>>(10)?.unwrap_or(false),
                     "originUrl": r.get::<_, String>(7)?,
                 }))
             })
@@ -3972,23 +4262,29 @@ impl Store {
         let dependencies: Vec<serde_json::Value> = {
             let mut q = db
                 .prepare(
-                    "SELECT d.kind, d.source, d.source_project, d.source_version, ps.project_id, v.id, v.project_id
+                    "SELECT d.kind, d.source, d.source_project, d.source_version, COALESCE(ps.project_id, v.project_id), v.id,
+                            p.slug, p.title,
+                            p.icon_thumb
                      FROM dependency d
                      LEFT JOIN project_source ps ON ps.source = d.source AND ps.source_id = d.source_project
                      LEFT JOIN version v ON v.source = d.source AND v.source_id = d.source_version
+                     LEFT JOIN project p ON p.id = COALESCE(ps.project_id, v.project_id)
                      WHERE d.version_id = ?1 ORDER BY d.ord",
                 )
                 .map_err(sql)?;
             q.query_map([id], |r| {
-                let project: Option<String> = r.get(4)?;
-                let version_project: Option<String> = r.get(6)?;
+                let thumb: Option<String> = r.get(8)?;
                 Ok(serde_json::json!({
                     "kind": r.get::<_, String>(0)?,
-                    "projectId": project.or(version_project),
+                    "projectId": r.get::<_, Option<String>>(4)?,
                     "versionId": r.get::<_, Option<String>>(5)?,
                     "source": r.get::<_, String>(1)?,
                     "sourceProject": r.get::<_, Option<String>>(2)?,
                     "sourceVersion": r.get::<_, Option<String>>(3)?,
+                    // The project's card, when the catalog has it.
+                    "slug": r.get::<_, Option<String>>(6)?,
+                    "title": r.get::<_, Option<String>>(7)?,
+                    "iconThumb": thumb.as_deref().map(|t| files.image(t, "image/webp")),
                 }))
             })
             .map_err(sql)?
@@ -4027,150 +4323,480 @@ impl Store {
         Ok(Some(version))
     }
 
-    /// A project's versions, newest first, for a game version and a loader.
+    /// A page of a project's versions, newest first, for a game version, a
+    /// loader and a channel; with how many there are, and the game versions
+    /// and loaders of all of them, newest first.
     pub fn versions(
         &self,
         project: &str,
-        game: Option<&str>,
-        loader: Option<&str>,
+        page: &VersionsPage,
         files: &crate::Urls,
-    ) -> Result<Vec<serde_json::Value>> {
+    ) -> Result<VersionList> {
         let db = self.db();
-        let ids: Vec<String> = {
-            let mut q = db
-                .prepare(
-                    "SELECT v.id FROM version v WHERE v.project_id = ?1
-                       AND (?2 IS NULL OR EXISTS (SELECT 1 FROM version_game g WHERE g.version_id = v.id AND g.game = ?2))
-                       AND (?3 IS NULL OR EXISTS (SELECT 1 FROM version_loader l WHERE l.version_id = v.id AND l.loader = ?3))
-                       -- A joined project's file on both sources is shown once, as Modrinth's.
-                       AND NOT (v.source != 'modrinth' AND EXISTS (
-                         SELECT 1 FROM version_file f
-                         LEFT JOIN blob b ON b.sha256 = f.sha256
-                         JOIN version_file g ON g.sha256 = f.sha256 OR g.sha1 = b.sha1
-                         JOIN version w ON w.id = g.version_id
-                         WHERE f.version_id = v.id AND w.project_id = v.project_id AND w.source = 'modrinth'))
-                     ORDER BY v.published DESC LIMIT 2000",
-                )
-                .map_err(sql)?;
-            q.query_map(params![project, game, loader], |r| r.get(0))
+        // A joined project's file on both sources is shown once, as Modrinth's.
+        let shown = "WITH shown AS (
+                       SELECT v.id, v.published, v.channel FROM version v WHERE v.project_id = ?1
+                         AND NOT (v.source != 'modrinth' AND EXISTS (
+                           SELECT 1 FROM version_file f
+                           LEFT JOIN blob b ON b.sha256 = f.sha256
+                           JOIN version_file g ON g.sha256 = f.sha256 OR g.sha1 = b.sha1
+                           JOIN version w ON w.id = g.version_id
+                           WHERE f.version_id = v.id AND w.project_id = v.project_id AND w.source = 'modrinth')))";
+        let matching = "FROM shown s WHERE
+                          (?2 IS NULL OR EXISTS (SELECT 1 FROM version_game g WHERE g.version_id = s.id AND g.game = ?2))
+                          AND (?3 IS NULL OR EXISTS (SELECT 1 FROM version_loader l WHERE l.version_id = s.id AND l.loader = ?3))
+                          AND (?4 IS NULL OR s.channel = ?4)";
+        let values = params![project, page.game, page.loader, page.channel];
+        let total: i64 = db
+            .query_row(
+                &format!("{shown} SELECT count(*) {matching}"),
+                values,
+                |r| r.get(0),
+            )
+            .map_err(sql)?;
+        let list = |query: &str, values: &[&dyn rusqlite::ToSql]| -> Result<Vec<String>> {
+            let mut q = db.prepare(query).map_err(sql)?;
+            q.query_map(values, |r| r.get(0))
                 .map_err(sql)?
                 .collect::<std::result::Result<_, _>>()
-                .map_err(sql)?
+                .map_err(sql)
         };
-        let mut out = Vec::with_capacity(ids.len());
+        let ids = list(
+            &format!(
+                "{shown} SELECT s.id {matching} ORDER BY s.published DESC LIMIT {} OFFSET {}",
+                page.limit.clamp(1, MAX_VERSIONS),
+                page.offset.clamp(0, MAX_VERSIONS * 50)
+            ),
+            values,
+        )?;
+        // Every one, whatever the filters: what the filters can choose from.
+        let games = list(
+            &format!(
+                "{shown} SELECT g.game FROM shown s JOIN version_game g ON g.version_id = s.id
+             GROUP BY g.game ORDER BY max(s.published) DESC LIMIT 500"
+            ),
+            &[&project],
+        )?;
+        let loaders = list(
+            &format!(
+                "{shown} SELECT l.loader FROM shown s JOIN version_loader l ON l.version_id = s.id
+             GROUP BY l.loader ORDER BY count(*) DESC LIMIT 50"
+            ),
+            &[&project],
+        )?;
+        let mut versions = Vec::with_capacity(ids.len());
         for id in ids {
             if let Some(v) = Self::version_json(&db, &id, files)? {
-                out.push(v);
+                versions.push(v);
             }
         }
-        Ok(out)
+        Ok(VersionList {
+            total,
+            versions,
+            games,
+            loaders,
+        })
     }
 
     /// Projects matching a search, with the total.
     pub fn search(&self, s: &Search, files: &crate::Urls) -> Result<(i64, Vec<serde_json::Value>)> {
         let db = self.db();
-        let fts = (!s.words.is_empty()).then(|| {
-            s.words
-                .iter()
-                .map(|w| format!("\"{}\"*", w.replace('"', "")))
-                .collect::<Vec<_>>()
-                .join(" ")
-        });
-        let order = match s.sort {
-            "updated" => "p.updated DESC",
-            "new" => "p.imported DESC",
-            "title" => "p.title COLLATE NOCASE",
-            "downloads" => "p.downloads DESC",
-            _ if fts.is_some() => "bm25(project_fts), p.downloads DESC",
-            _ => "p.downloads DESC",
-        };
-        // Libraries (Fabric API and the like) come after the projects
-        // players look for in the lists by downloads; a search for words keeps
-        // its relevance, and a list of libraries its order.
-        let libraries_last = fts.is_none()
-            && matches!(s.sort, "relevance" | "downloads")
-            && !s
-                .category
-                .as_deref()
-                .is_some_and(|c| LIBRARIES.contains(&c));
-        let order = if libraries_last {
-            format!(
-                "EXISTS (SELECT 1 FROM project_category c WHERE c.project_id = p.id
-                   AND c.category IN ({})), {order}",
-                LIBRARIES
-                    .iter()
-                    .map(|c| format!("'{c}'"))
-                    .collect::<Vec<_>>()
-                    .join(", ")
-            )
-        } else {
-            order.to_owned()
-        };
-        let from = if fts.is_some() {
-            "project_fts JOIN project p ON p.id = project_fts.project_id"
-        } else {
-            "project p"
-        };
-        // FTS5's MATCH cannot sit under an OR: without words, ?1 is NULL and
-        // the FTS table is not in the query.
-        let words = if fts.is_some() {
-            "project_fts MATCH ?1"
-        } else {
-            "?1 IS NULL"
-        };
-        let filter = format!(
-            "{from} WHERE p.status IN ('importing', 'ready')
-               AND {words}
-               AND (?2 IS NULL OR p.kind = ?2
-                    OR (?2 = 'datapack' AND p.kind = 'mod'
-                        AND EXISTS (SELECT 1 FROM version v JOIN version_loader l ON l.version_id = v.id
-                                    WHERE v.project_id = p.id AND l.loader = 'datapack')))
-               AND (?3 IS NULL OR EXISTS (SELECT 1 FROM version v JOIN version_game g ON g.version_id = v.id
-                                         WHERE v.project_id = p.id AND g.game = ?3))
-               AND (?4 IS NULL OR EXISTS (SELECT 1 FROM version v JOIN version_loader l ON l.version_id = v.id
-                                         WHERE v.project_id = p.id AND l.loader = ?4))
-               AND (?5 IS NULL OR EXISTS (SELECT 1 FROM project_category c WHERE c.project_id = p.id AND c.category = ?5))"
-        );
+        let (filter, values) = search_filter(s);
+        let order = search_order(s, values.words.is_some());
         let total: i64 = db
             .query_row(
                 &format!("SELECT count(*) FROM {filter}"),
-                params![fts, s.kind, s.game, s.loader, s.category],
+                values.params(),
                 |r| r.get(0),
             )
             .map_err(sql)?;
+        let ids: Vec<String> = {
+            let mut q = db
+                .prepare(&format!(
+                    "SELECT p.id FROM {filter} ORDER BY {order} LIMIT {} OFFSET {}",
+                    s.limit.clamp(1, 100),
+                    s.offset.max(0)
+                ))
+                .map_err(sql)?;
+            q.query_map(values.params(), |r| r.get(0))
+                .map_err(sql)?
+                .collect::<std::result::Result<_, _>>()
+                .map_err(sql)?
+        };
+        let mut hits = Vec::with_capacity(ids.len());
+        for id in &ids {
+            if let Some(hit) = hit_json(&db, id, s.kind.as_deref(), s.game.as_deref(), files)? {
+                hits.push(hit);
+            }
+        }
+        Ok((total, hits))
+    }
+
+    /// How many projects a search finds in each category of its kind, the
+    /// categories it asks for left out; in list order, empty ones too.
+    pub fn category_counts(&self, s: &Search) -> Result<Vec<(String, i64)>> {
+        let kind = s.kind.as_deref().unwrap_or("mod");
+        let mut counts: Vec<(String, &'static [&'static str], i64)> =
+            crate::categories::of_kind(kind)
+                .map(|(id, slugs)| (id, slugs, 0))
+                .collect();
+        let all = Search {
+            categories: Vec::new(),
+            ..s.clone()
+        };
+        let db = self.db();
+        let (filter, values) = search_filter(&all);
+        // A project counts once in a category, whichever of its slugs put it there.
         let mut q = db
             .prepare(&format!(
-                "SELECT p.id, p.kind, p.slug, p.title, p.summary, p.icon_thumb, p.downloads, p.status, p.updated,
-                   (SELECT name FROM project_author a WHERE a.project_id = p.id ORDER BY ord LIMIT 1),
-                   (SELECT group_concat(source) FROM project_source s WHERE s.project_id = p.id)
-                 FROM {filter} ORDER BY {order} LIMIT ?6 OFFSET ?7"
+                "SELECT x.id, group_concat(c.category, ',') FROM (SELECT p.id AS id FROM {filter}) x
+                 JOIN project_category c ON c.project_id = x.id GROUP BY x.id"
             ))
             .map_err(sql)?;
-        let hits = q
+        let rows = q
+            .query_map(values.params(), |r| {
+                Ok((r.get::<_, String>(0)?, r.get::<_, String>(1)?))
+            })
+            .map_err(sql)?;
+        for row in rows {
+            let (_, slugs) = row.map_err(sql)?;
+            let slugs: Vec<&str> = slugs.split(',').collect();
+            for (_, of, n) in &mut counts {
+                if of.iter().any(|s| slugs.contains(s)) {
+                    *n += 1;
+                }
+            }
+        }
+        Ok(counts.into_iter().map(|(id, _, n)| (id, n)).collect())
+    }
+
+    /// For the owner: how many distinct site slugs the projects a search
+    /// finds have that none of its kind's categories maps, and how many of
+    /// those projects are in no category at all.
+    pub fn unmapped_categories(&self, s: &Search) -> Result<(usize, i64)> {
+        let kind = s.kind.as_deref().unwrap_or("mod");
+        let mapped: Vec<&str> = crate::categories::of_kind(kind)
+            .flat_map(|(_, slugs)| slugs.iter().copied())
+            .collect();
+        let db = self.db();
+        let (filter, values) = search_filter(s);
+        let mut q = db
+            .prepare(&format!(
+                "SELECT x.id, group_concat(c.category, ',') FROM (SELECT p.id AS id FROM {filter}) x
+                 JOIN project_category c ON c.project_id = x.id GROUP BY x.id"
+            ))
+            .map_err(sql)?;
+        let rows = q
+            .query_map(values.params(), |r| r.get::<_, String>(1))
+            .map_err(sql)?;
+        let mut unmapped = std::collections::BTreeSet::new();
+        let mut projects = 0;
+        for row in rows {
+            let slugs = row.map_err(sql)?;
+            let mut any = false;
+            for slug in slugs.split(',') {
+                if mapped.contains(&slug) {
+                    any = true;
+                } else {
+                    unmapped.insert(slug.to_owned());
+                }
+            }
+            if !any {
+                projects += 1;
+            }
+        }
+        Ok((unmapped.len(), projects))
+    }
+
+    /// Up to five projects like this one: of its kind, in the most of its
+    /// categories, then the most downloaded; libraries only for a library.
+    pub fn similar(
+        &self,
+        id: &str,
+        game: Option<&str>,
+        loader: Option<&str>,
+        files: &crate::Urls,
+    ) -> Result<Vec<serde_json::Value>> {
+        let db = self.db();
+        let Some(kind) = db
+            .query_row("SELECT kind FROM project WHERE id = ?1", [id], |r| {
+                r.get::<_, String>(0)
+            })
+            .optional()
+            .map_err(sql)?
+        else {
+            return Ok(Vec::new());
+        };
+        let own: Vec<String> = {
+            let mut q = db
+                .prepare("SELECT category FROM project_category WHERE project_id = ?1")
+                .map_err(sql)?;
+            q.query_map([id], |r| r.get(0))
+                .map_err(sql)?
+                .collect::<std::result::Result<_, _>>()
+                .map_err(sql)?
+        };
+        let groups = crate::categories::ids(&kind, &own);
+        if groups.is_empty() {
+            return Ok(Vec::new());
+        }
+        let slugs: Vec<&str> = groups
+            .iter()
+            .filter_map(|g| crate::categories::slugs(g))
+            .flat_map(|(_, slugs)| slugs.iter().copied())
+            .collect();
+        let library = own.iter().any(|c| crate::categories::is_library(c));
+        let libraries = serde_json::Value::from(if library {
+            Vec::new()
+        } else {
+            LIBRARIES.to_vec()
+        });
+        let mut q = db
+            .prepare(
+                "SELECT p.id, p.downloads, group_concat(c.category, ',') FROM project p
+                 JOIN project_category c ON c.project_id = p.id
+                 WHERE p.status IN ('importing', 'ready') AND p.kind = ?1 AND p.id != ?2
+                   AND c.category IN (SELECT value FROM json_each(?3))
+                   AND NOT EXISTS (SELECT 1 FROM project_category l WHERE l.project_id = p.id
+                                   AND l.category IN (SELECT value FROM json_each(?4)))
+                   AND (?5 IS NULL OR EXISTS (SELECT 1 FROM version v JOIN version_game g ON g.version_id = v.id
+                                             WHERE v.project_id = p.id AND g.game = ?5))
+                   AND (?6 IS NULL OR EXISTS (SELECT 1 FROM version v JOIN version_loader l ON l.version_id = v.id
+                                             WHERE v.project_id = p.id AND l.loader = ?6))
+                 GROUP BY p.id ORDER BY count(*) DESC, p.downloads DESC LIMIT 200",
+            )
+            .map_err(sql)?;
+        let mut found: Vec<(usize, i64, String)> = q
             .query_map(
-                params![fts, s.kind, s.game, s.loader, s.category, s.limit, s.offset],
+                params![
+                    kind,
+                    id,
+                    serde_json::Value::from(slugs).to_string(),
+                    libraries.to_string(),
+                    game,
+                    loader
+                ],
                 |r| {
-                    let thumb: Option<String> = r.get(5)?;
-                    let sources: Option<String> = r.get(10)?;
-                    Ok(serde_json::json!({
-                        "id": r.get::<_, String>(0)?,
-                        "kind": r.get::<_, String>(1)?,
-                        "slug": r.get::<_, String>(2)?,
-                        "title": r.get::<_, String>(3)?,
-                        "summary": r.get::<_, String>(4)?,
-                        "iconThumb": thumb.as_deref().map(|t| files.image(t, "image/webp")),
-                        "downloads": r.get::<_, i64>(6)?,
-                        "status": r.get::<_, String>(7)?,
-                        "updated": r.get::<_, i64>(8)?,
-                        "author": r.get::<_, Option<String>>(9)?,
-                        "sources": sources.map(|s| s.split(',').map(str::to_owned).collect::<Vec<_>>()).unwrap_or_default(),
-                    }))
+                    Ok((
+                        r.get::<_, String>(0)?,
+                        r.get::<_, i64>(1)?,
+                        r.get::<_, String>(2)?,
+                    ))
                 },
             )
             .map_err(sql)?
-            .collect::<std::result::Result<Vec<_>, _>>()
+            .filter_map(std::result::Result::ok)
+            .map(|(other, downloads, theirs)| {
+                let theirs: Vec<String> = theirs.split(',').map(str::to_owned).collect();
+                let shared = crate::categories::ids(&kind, &theirs)
+                    .iter()
+                    .filter(|g| groups.contains(g))
+                    .count();
+                (shared, downloads, other)
+            })
+            .collect();
+        drop(q);
+        found.sort_by(|a, b| b.0.cmp(&a.0).then(b.1.cmp(&a.1)));
+        let mut out = Vec::new();
+        for (_, _, other) in found.into_iter().take(5) {
+            if let Some(hit) = hit_json(&db, &other, Some(&kind), game, files)? {
+                out.push(hit);
+            }
+        }
+        Ok(out)
+    }
+
+    /// Notes each project's downloads on its sites today, and forgets the
+    /// days before the last two weeks.
+    pub fn note_downloads(&self, now: i64) -> Result<usize> {
+        let db = self.db();
+        let today = day_of(now);
+        let noted = db
+            .execute(
+                "INSERT OR REPLACE INTO project_downloads (project_id, day, downloads)
+                 SELECT id, ?1, downloads FROM project WHERE status IN ('importing', 'ready')",
+                [today],
+            )
             .map_err(sql)?;
-        Ok((total, hits))
+        db.execute("DELETE FROM project_downloads WHERE day < ?1", [today - 14])
+            .map_err(sql)?;
+        Ok(noted)
+    }
+
+    /// The owner's collections for a kind, a game version and a loader: those
+    /// for any game version or loader too.
+    pub fn collections(
+        &self,
+        kind: &str,
+        game: Option<&str>,
+        loader: Option<&str>,
+    ) -> Result<Vec<CollectionRow>> {
+        let db = self.db();
+        let mut q = db
+            .prepare(
+                "SELECT k.key, k.kind, k.game, k.loader, k.titles, k.notes,
+                   (SELECT count(*) FROM collection_item i JOIN project p ON p.id = i.project_id
+                    WHERE i.collection_id = k.id AND p.status IN ('importing', 'ready'))
+                 FROM collection k
+                 WHERE k.kind = ?1 AND (k.game IS NULL OR k.game = ?2) AND (k.loader IS NULL OR k.loader = ?3)
+                 ORDER BY k.game IS NULL, k.loader IS NULL, k.id",
+            )
+            .map_err(sql)?;
+        q.query_map(params![kind, game, loader], |r| {
+            Ok(CollectionRow {
+                key: r.get(0)?,
+                kind: r.get(1)?,
+                game: r.get(2)?,
+                loader: r.get(3)?,
+                titles: serde_json::from_str(&r.get::<_, String>(4)?).unwrap_or_default(),
+                notes: serde_json::from_str(&r.get::<_, String>(5)?).unwrap_or_default(),
+                count: r.get(6)?,
+            })
+        })
+        .map_err(sql)?
+        .collect::<std::result::Result<_, _>>()
+        .map_err(sql)
+    }
+
+    /// Every collection, for the owner.
+    pub fn all_collections(&self) -> Result<Vec<CollectionRow>> {
+        let db = self.db();
+        let mut q = db
+            .prepare(
+                "SELECT k.key, k.kind, k.game, k.loader, k.titles, k.notes,
+                   (SELECT count(*) FROM collection_item i WHERE i.collection_id = k.id)
+                 FROM collection k ORDER BY k.kind, k.id",
+            )
+            .map_err(sql)?;
+        q.query_map([], |r| {
+            Ok(CollectionRow {
+                key: r.get(0)?,
+                kind: r.get(1)?,
+                game: r.get(2)?,
+                loader: r.get(3)?,
+                titles: serde_json::from_str(&r.get::<_, String>(4)?).unwrap_or_default(),
+                notes: serde_json::from_str(&r.get::<_, String>(5)?).unwrap_or_default(),
+                count: r.get(6)?,
+            })
+        })
+        .map_err(sql)?
+        .collect::<std::result::Result<_, _>>()
+        .map_err(sql)
+    }
+
+    /// Makes a collection, or changes what it is for; its projects stay.
+    pub fn set_collection(
+        &self,
+        key: &str,
+        kind: &str,
+        game: Option<&str>,
+        loader: Option<&str>,
+        now: i64,
+    ) -> Result<()> {
+        self.db()
+            .execute(
+                "INSERT INTO collection (key, kind, game, loader, changed) VALUES (?1, ?2, ?3, ?4, ?5)
+                 ON CONFLICT(key) DO UPDATE SET kind = ?2, game = ?3, loader = ?4, changed = ?5",
+                params![key, kind, game, loader, now],
+            )
+            .map_err(sql)?;
+        Ok(())
+    }
+
+    /// Sets a collection's title or line (`notes`) in a language; empty text
+    /// takes it away. False when there is no such collection.
+    pub fn set_collection_text(
+        &self,
+        key: &str,
+        field: &str,
+        lang: &str,
+        text: &str,
+        now: i64,
+    ) -> Result<bool> {
+        let column = match field {
+            "titles" => "titles",
+            _ => "notes",
+        };
+        let db = self.db();
+        let Some(current) = db
+            .query_row(
+                &format!("SELECT {column} FROM collection WHERE key = ?1"),
+                [key],
+                |r| r.get::<_, String>(0),
+            )
+            .optional()
+            .map_err(sql)?
+        else {
+            return Ok(false);
+        };
+        let mut texts: serde_json::Map<String, serde_json::Value> =
+            serde_json::from_str(&current).unwrap_or_default();
+        if text.is_empty() {
+            texts.remove(lang);
+        } else {
+            texts.insert(lang.to_owned(), text.into());
+        }
+        db.execute(
+            &format!("UPDATE collection SET {column} = ?2, changed = ?3 WHERE key = ?1"),
+            params![key, serde_json::Value::Object(texts).to_string(), now],
+        )
+        .map_err(sql)?;
+        Ok(true)
+    }
+
+    /// Puts projects in a collection in this order, in place of those it
+    /// had. Returns how many were put; false when there is no such collection.
+    pub fn set_collection_items(
+        &self,
+        key: &str,
+        projects: &[String],
+        now: i64,
+    ) -> Result<Option<usize>> {
+        let mut db = self.db();
+        let tx = db.transaction().map_err(sql)?;
+        let Some(id) = tx
+            .query_row("SELECT id FROM collection WHERE key = ?1", [key], |r| {
+                r.get::<_, i64>(0)
+            })
+            .optional()
+            .map_err(sql)?
+        else {
+            return Ok(None);
+        };
+        tx.execute("DELETE FROM collection_item WHERE collection_id = ?1", [id])
+            .map_err(sql)?;
+        let mut put = 0;
+        for (ord, project) in projects.iter().enumerate() {
+            put += tx
+                .execute(
+                    "INSERT OR IGNORE INTO collection_item (collection_id, project_id, ord) VALUES (?1, ?2, ?3)",
+                    params![id, project, ord as i64],
+                )
+                .map_err(sql)?;
+        }
+        tx.execute(
+            "UPDATE collection SET changed = ?2 WHERE id = ?1",
+            params![id, now],
+        )
+        .map_err(sql)?;
+        tx.commit().map_err(sql)?;
+        Ok(Some(put))
+    }
+
+    /// Removes a collection; false when there was none.
+    pub fn remove_collection(&self, key: &str) -> Result<bool> {
+        let mut db = self.db();
+        let tx = db.transaction().map_err(sql)?;
+        tx.execute(
+            "DELETE FROM collection_item WHERE collection_id IN (SELECT id FROM collection WHERE key = ?1)",
+            [key],
+        )
+        .map_err(sql)?;
+        let removed = tx
+            .execute("DELETE FROM collection WHERE key = ?1", [key])
+            .map_err(sql)?;
+        tx.commit().map_err(sql)?;
+        Ok(removed > 0)
     }
 
     /// Kept files by SHA-1 or SHA-256, with their version and project.

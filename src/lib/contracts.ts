@@ -1301,14 +1301,24 @@ export interface FailureSummary {
 /** What the catalog holds. */
 export type ModsKind = 'mod' | 'modpack' | 'resourcepack' | 'shader' | 'datapack' | 'world';
 export type ModsSource = 'modrinth' | 'curseforge' | 'packwiz' | 'own' | 'external';
-export type ModsSort = 'relevance' | 'downloads' | 'updated' | 'new' | 'title';
+/** `trending`: the most downloads gained in the last week. */
+export type ModsSort = 'relevance' | 'downloads' | 'updated' | 'new' | 'title' | 'trending';
 
 export interface ModsSearchQuery {
   text: string;
   kind: ModsKind | null;
   game: string | null;
   loader: string | null;
+  /** A category: an ID of the shared list (`mod.optimization`) or a site's slug. */
   category: string | null;
+  /** More categories: a project in any of them (8 at most, with `category`). */
+  categories?: string[];
+  /** Where projects came from: `own` for players' packs. */
+  source?: ModsSource | null;
+  /** Added to the catalog in the last this many days (1 to 365). */
+  since?: number | null;
+  /** One of the catalog's collections, by its ID. */
+  collection?: string | null;
   sort: ModsSort | null;
   offset: number;
   limit: number | null;
@@ -1330,6 +1340,12 @@ export interface ModsHit {
   updated: number;
   author: string | null;
   sources: ModsSource[];
+  /** Loaders its versions are for (of the game version searched for). */
+  loaders: string[];
+  /** Its categories in the shared list (`mod.optimization`). */
+  categoryIds: string[];
+  /** The first picture of its gallery, small; only from files-mods.lapi.sh. */
+  cover: string | null;
 }
 
 export interface ModsSearchPage {
@@ -1368,7 +1384,10 @@ export interface ModsProject {
   /** When the source stopped having it; the catalog keeps it. */
   goneAt: number | null;
   authors: { name: string; role: string }[];
+  /** The sites' own slugs. */
   categories: string[];
+  /** Its categories in the shared list (`mod.optimization`). */
+  categoryIds: string[];
   sources: { source: ModsSource; url: string | null }[];
   gallery: { url: string; thumb: string | null; title: string; description: string }[];
 }
@@ -1381,6 +1400,8 @@ export interface ModsVersionFile {
   url: string | null;
   /** Held back by the catalog's malware check: not installed. */
   held: boolean;
+  /** Kept by the catalog and found clean by its check (or kept by the owner's word). */
+  checked: boolean;
 }
 
 export interface ModsVersion {
@@ -1402,8 +1423,65 @@ export interface ModsVersion {
     kind: 'required' | 'optional' | 'incompatible' | 'embedded';
     projectId: string | null;
     versionId: string | null;
+    /** Its card, when the catalog has the project. */
+    title: string | null;
+    slug: string | null;
+    icon: string | null;
+    /** Its page on Modrinth when the catalog has not got it: to add it. */
+    sourcePage: string | null;
   }[];
   goneAt: number | null;
+}
+
+/** How many projects a search finds in one category of the shared list. */
+export interface ModsCategoryCount {
+  id: string;
+  count: number;
+}
+
+/**
+ * A collection of the catalog's (D-072). Presets (`popular-week`, `new`,
+ * `players-packs`) are named by the interface; the owner's carry titles.
+ */
+export interface ModsCollection {
+  id: string;
+  preset: boolean;
+  /** By language: `ru`, `en`, `ar`. */
+  titles: Record<string, string>;
+  notes: Record<string, string>;
+  /** The game version and loader the owner made it for. */
+  game: string | null;
+  loader: string | null;
+  /** The search fields that list it. */
+  query: {
+    sort: ModsSort | null;
+    since: number | null;
+    source: ModsSource | null;
+    collection: string | null;
+  };
+  /** Its projects for the game version and loader asked for. */
+  count: number;
+  /** The first projects' icons (4 at most) and titles (2). */
+  icons: string[];
+  names: string[];
+}
+
+export interface ModsVersionsQuery {
+  game: string | null;
+  loader: string | null;
+  channel: 'release' | 'beta' | 'alpha' | null;
+  offset: number;
+  /** At most 100; 50 when null. */
+  limit: number | null;
+}
+
+export interface ModsVersionPage {
+  /** How many match the query. */
+  total: number;
+  versions: ModsVersion[];
+  /** The game versions (newest first) and loaders of all its versions: the filters' choices. */
+  games: string[];
+  loaders: string[];
 }
 
 export interface ModsCandidate {

@@ -109,6 +109,7 @@ fn version(name: &str, games: &[&str], channel: &str) -> Version {
             primary: true,
             url: Some(format!("https://cdn-mods.lapi.sh/f/{}", "a".repeat(64))),
             held: false,
+            checked: true,
             origin: None,
             manifests: None,
         }],

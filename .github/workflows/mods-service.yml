@@ -26,7 +26,13 @@ name: Mods service
 # ["--status"]) and prints those addresses; task=slug gives a project
 # another slug (`args` ["<project>", "<slug>"]) and prints both; task=clash
 # keeps the list of mods that do not start together (`args` ["list"],
-# ["add", "<mod>", "<mod>"] or ["remove", "<mod>", "<mod>"], mod IDs). The
+# ["add", "<mod>", "<mod>"] or ["remove", "<mod>", "<mod>"], mod IDs);
+# task=collection keeps the owner's collections (`args` ["list"], ["add",
+# "<key>", "<kind>", "<game>|-", "<loader>|-"], ["title"|"note", "<key>",
+# "ru|en|ar", "<text>"], ["put", "<key>", "<project>", ...] or ["remove",
+# "<key>"]) and prints keys, counts and languages; task=categories counts
+# the projects of a kind (`args` [] or ["<kind>"]) in each category of the
+# shared list and the site slugs it leaves out: our IDs and numbers. The
 # service's daily checks run in the workflow Mods health. The secrets
 # LAPI_MODS_CF_ZONE and LAPI_MODS_CF_TOKEN (a token that may only purge the
 # zone's cache) let a block clear the file from Cloudflare's cache. The
@@ -75,6 +81,8 @@ on:
             add,
             slug,
             clash,
+            collection,
+            categories,
           ]
         default: deploy
       hash:
@@ -82,7 +90,7 @@ on:
         type: string
         default: ''
       args:
-        description: 'for external, virustotal, add, slug and clash, its arguments as a JSON array, such as ["add", "optifine"], ["status"], ["https://modrinth.com/mod/sodium"], ["fabric-api-modrinth-20953b", "fabric-api"] or ["add", "sodium", "optifine"]'
+        description: 'for external, virustotal, add, slug, clash, collection and categories, its arguments as a JSON array, such as ["add", "optifine"], ["status"], ["https://modrinth.com/mod/sodium"], ["fabric-api-modrinth-20953b", "fabric-api"], ["add", "sodium", "optifine"], ["put", "fps", "sodium", "lithium"] or ["mod"]'
         type: string
         default: ''
 
@@ -308,7 +316,7 @@ jobs:
     name: Owner's command
     if: >-
       github.event_name == 'workflow_dispatch'
-      && contains(fromJSON('["block", "unblock", "review-count", "external", "virustotal", "add", "slug", "clash"]'), inputs.task)
+      && contains(fromJSON('["block", "unblock", "review-count", "external", "virustotal", "add", "slug", "clash", "collection", "categories"]'), inputs.task)
     # It changes what players get: the same approval as a deploy.
     environment: production
     runs-on: ubuntu-24.04
@@ -320,7 +328,8 @@ jobs:
           known-hosts: ${{ secrets.SSH_KNOWN_HOSTS }}
       # These print fixed words, numbers, the hash given, the owner's names
       # of projects, the catalog addresses and slugs given to add and slug,
-      # and the mod IDs of the list of clashes only.
+      # the mod IDs of the list of clashes, collections' keys and languages,
+      # and category IDs only.
       - name: Run
         env:
           TARGET: ${{ secrets.SSH_USER }}@${{ secrets.SSH_HOST }}
@@ -336,10 +345,11 @@ jobs:
               command="$TASK ${HASH,,}"
               ;;
             review-count) command="review --count" ;;
-            external|virustotal|add|slug|clash)
+            external|virustotal|add|slug|clash|collection|categories)
               # The arguments go on the standard input as JSON, never
               # through a shell; the service checks each one again.
-              printf '%s' "$ARGS" | jq -e 'type == "array" and length <= 32
+              ARGS=${ARGS:-[]}
+              printf '%s' "$ARGS" | jq -e 'type == "array" and length <= 104
                 and all(.[]; type == "string")' > /dev/null ||
                 { echo "::error::args must be a JSON array of strings"; exit 1; }
               input=$(mktemp)

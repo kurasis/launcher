@@ -134,6 +134,12 @@ import {
   type ModsSearchQuery,
   type ModsSource,
   type ModsVersion,
+  type ModsCategoryCount,
+  type ModsCollection,
+  type ModsHit,
+  type ModsKind,
+  type ModsVersionPage,
+  type ModsVersionsQuery,
 } from './contracts';
 
 function newRequestId(): string {
@@ -441,6 +447,22 @@ export const ipc = {
     game: string | null,
     loader: string | null,
   ): Promise<ModsVersion[]> => invoke<ModsVersion[]>('mods_versions', { project, game, loader }),
+  /** A page of versions, newest first, with the game versions and loaders to filter by. */
+  modsVersionsPage: (project: string, query: ModsVersionsQuery): Promise<ModsVersionPage> =>
+    invoke<ModsVersionPage>('mods_versions_page', { project, query }),
+  /** How many projects the search finds in each category of its kind. */
+  modsCategories: (query: ModsSearchQuery): Promise<ModsCategoryCount[]> =>
+    invoke<ModsCategoryCount[]>('mods_categories', { query }),
+  /** Up to five projects like this one. */
+  modsSimilar: (project: string, game: string | null, loader: string | null): Promise<ModsHit[]> =>
+    invoke<ModsHit[]>('mods_similar', { project, game, loader }),
+  /** The catalog's collections; each lists with `modsSearch` and its `query`. */
+  modsCollections: (
+    kind: ModsKind,
+    game: string | null,
+    loader: string | null,
+  ): Promise<ModsCollection[]> =>
+    invoke<ModsCollection[]>('mods_collections', { kind, game, loader }),
   modsVersion: (version: string): Promise<ModsVersion> =>
     invoke<ModsVersion>('mods_version', { version }),
   /** Asks the catalog to keep a version's files. */

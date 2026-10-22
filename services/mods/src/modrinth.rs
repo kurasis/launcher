@@ -194,6 +194,7 @@ pub fn project(value: &Value, members: Option<&Value>) -> Option<SourceProject> 
                     url: https(g.get("raw_url").or_else(|| g.get("url")))?,
                     title: text(g, "title", 200),
                     description: text(g, "description", 1000),
+                    featured: g.get("featured").and_then(Value::as_bool) == Some(true),
                 },
             ))
         })

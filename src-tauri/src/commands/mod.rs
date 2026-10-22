@@ -2089,6 +2089,58 @@ pub async fn mods_search<R: Runtime>(
     mods(&app).client.search(&query).await
 }
 
+/// How many projects a search finds in each category of its kind, the
+/// categories it asks for aside (D-072).
+#[tauri::command]
+pub async fn mods_categories<R: Runtime>(
+    app: AppHandle<R>,
+    query: crate::mods::SearchQuery,
+) -> LauncherResult<Vec<crate::mods::CategoryCount>> {
+    crate::mods::online(&app.state::<AppState>())?;
+    mods(&app).client.categories(&query).await
+}
+
+/// Up to five projects like one, for a game version and a loader.
+#[tauri::command]
+pub async fn mods_similar<R: Runtime>(
+    app: AppHandle<R>,
+    project: String,
+    game: Option<String>,
+    loader: Option<String>,
+) -> LauncherResult<Vec<crate::mods::Hit>> {
+    crate::mods::online(&app.state::<AppState>())?;
+    mods(&app)
+        .client
+        .similar(&project, game.as_deref(), loader.as_deref())
+        .await
+}
+
+/// The catalog's collections for a kind, a game version and a loader.
+#[tauri::command]
+pub async fn mods_collections<R: Runtime>(
+    app: AppHandle<R>,
+    kind: String,
+    game: Option<String>,
+    loader: Option<String>,
+) -> LauncherResult<Vec<crate::mods::Collection>> {
+    crate::mods::online(&app.state::<AppState>())?;
+    mods(&app)
+        .client
+        .collections(&kind, game.as_deref(), loader.as_deref())
+        .await
+}
+
+/// A page of a project's versions, newest first, with what they are for.
+#[tauri::command]
+pub async fn mods_versions_page<R: Runtime>(
+    app: AppHandle<R>,
+    project: String,
+    query: crate::mods::VersionsQuery,
+) -> LauncherResult<crate::mods::VersionPage> {
+    crate::mods::online(&app.state::<AppState>())?;
+    mods(&app).client.versions_page(&project, &query).await
+}
+
 /// A project's page, by our ID or its slug.
 #[tauri::command]
 pub async fn mods_project<R: Runtime>(
