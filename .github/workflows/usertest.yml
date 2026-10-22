@@ -176,7 +176,7 @@ jobs:
         if: always()
         run: |
           $utf8 = New-Object Text.UTF8Encoding $false
-          $text = "| Version | Loader | Install | Launch | World | Exit | Log errors | Note |`n| --- | --- | --- | --- | --- | --- | --- | --- |`n"
+          $text = "| Version | Loader | Install | Launch | World | Exit | Launcher Skins | Log errors | Note |`n| --- | --- | --- | --- | --- | --- | --- | --- | --- |`n"
           $file = 'ut/out/results.json'
           if (Test-Path $file) {
             foreach ($r in @(Get-Content $file -Raw | ConvertFrom-Json)) {
@@ -184,7 +184,7 @@ jobs:
               $l = if ($r.launchSeconds) { "$($r.launch) ($($r.launchSeconds) s)" } else { $r.launch }
               $w = if ($r.worldSeconds) { "$($r.world) ($($r.worldSeconds) s)" } else { $r.world }
               $e = if ($null -ne $r.exitCode) { "$($r.exit) ($($r.exitCode))" } else { $r.exit }
-              $text += "| $($r.version) | $($r.loader) $($r.loaderVersion) | $i | $l | $w | $e | $($r.logErrors) | $($r.note) |`n"
+              $text += "| $($r.version) | $($r.loader) $($r.loaderVersion) | $i | $l | $w | $e | $($r.skins) | $($r.logErrors) | $($r.note) |`n"
             }
           }
           [IO.File]::AppendAllText($env:GITHUB_STEP_SUMMARY, "$text`n", $utf8)

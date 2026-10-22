@@ -53,7 +53,14 @@ mirror rule wants), `mirror_first` (the mirror, the origin when it fails) or
    keyboard way is tried (Escape, Tab, Enter, Enter). Some seconds in the world, then the window is closed. The game's
    log (or for versions before 1.7, the output the launcher kept) must show the player
    joining; before 1.3, which had no server inside, the new world's `level.dat` counts.
-   The game must exit with 0 and leave no crash report. Screen copies are taken along
+   The game must exit with 0 and leave no crash report. Where the launcher has a
+   Launcher Skins build for the version, the column Launcher Skins says whether it got
+   in: `not added` when the launcher's log warns it could not put it in, `failed` when
+   the game's logs show the mod's agent missing its targets or an error naming
+   `launcherskins`, `not loaded` when a loader's logs never name the mod (Fabric and
+   Quilt list their mods, Forge and NeoForge scan them), `ok` otherwise; vanilla takes
+   it as an agent, so the launcher's line is enough there. Anything but `ok` or empty
+   fails the item. Screen copies are taken along
    the way; the game's F2 screenshots and logs are kept for a failure only.
 
 Each part's page shows its table; the last job, **All results**, joins them into one

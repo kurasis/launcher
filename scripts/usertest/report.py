@@ -22,6 +22,12 @@ def timed(state, seconds):
     return f"{state} ({seconds} s)" if seconds else cell(state)
 
 
+def passed(row):
+    skins = row.get("skins") or ""
+    return (row.get("world") == "ok" and row.get("exit") == "ok"
+            and not skins.startswith(("not", "failed")))
+
+
 def main():
     parts_dir, out_dir = Path(sys.argv[1]), Path(sys.argv[2])
     out_dir.mkdir(parents=True, exist_ok=True)
@@ -49,15 +55,14 @@ def main():
             entry["part"] = part["part"]
             rows.append(entry)
 
-    passed = sum(1 for r in rows if r.get("world") == "ok" and r.get("exit") == "ok")
     lines = [
-        f"**{passed} of {sum(1 for r in rows if r.get('version'))} passed**",
+        f"**{sum(1 for r in rows if passed(r))} of {sum(1 for r in rows if r.get('version'))} passed**",
         "",
-        "| Version | Loader | Install | Launch | World | Exit | Log errors | Machine | Note |",
-        "| --- | --- | --- | --- | --- | --- | --- | --- | --- |",
+        "| Version | Loader | Install | Launch | World | Exit | Launcher Skins | Log errors | Machine | Note |",
+        "| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |",
     ]
     for r in rows:
-        ok = r.get("world") == "ok" and r.get("exit") == "ok"
+        ok = passed(r)
         loader = " ".join(x for x in (NAMES.get(r.get("loader", ""), ""), r.get("loaderVersion") or "") if x)
         exit_state = f"{r.get('exit')} ({r.get('exitCode')})" if r.get("exitCode") is not None else cell(r.get("exit"))
         lines.append("| " + " | ".join([
@@ -67,6 +72,7 @@ def main():
             timed(r.get("launch"), r.get("launchSeconds")),
             timed(r.get("world"), r.get("worldSeconds")),
             exit_state,
+            cell(r.get("skins")),
             cell(r.get("logErrors")),
             cell(r.get("machine")),
             cell(r.get("note")),

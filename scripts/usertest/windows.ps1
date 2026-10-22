@@ -436,6 +436,31 @@ function Log-Text([string]$Log) {
   } catch { return '' }
 }
 
+# Launcher Skins, the launcher's own skins mod, for the run just played: '' when the
+# launcher has no build of it for this version, 'ok' when the game took it, 'not added'
+# when the launcher could not add it, 'not loaded' when the game's logs never name it,
+# 'failed' when they name it with an error. A loader names the mod id in its mod list
+# (Fabric, Quilt), its mod file scan (Forge, NeoForge: debug.log) or its connection
+# handshake (Forge 1.7.10, 1.12.2); the Java agent of the game without a loader writes
+# only when it cannot hook in.
+function Skins-State([string]$Loader, [int]$From, [string]$GameDir, [string]$RunLog) {
+  $launcherText = Log-Text (Join-Path $data 'logs\launcher.log')
+  if ($launcherText.Length -lt $From) { $From = 0 }
+  $since = $launcherText.Substring($From)
+  if ($since -match '(?m)\swarn\s+Launcher Skins (could not|cannot)') { return 'not added' }
+  if (-not $since.Contains('Launcher Skins added to the game')) { return '' }
+  $text = ''
+  if ($GameDir) {
+    foreach ($f in @(Get-ChildItem (Join-Path $GameDir 'logs') -Filter *.log -ErrorAction SilentlyContinue)) { $text += (Log-Text $f.FullName) + "`n" }
+  }
+  if ($RunLog) { $text += Log-Text $RunLog }
+  if ($text -match "Launcher Skins: (the agent's targets were not found|PlayerInfo left unchanged)" -or
+      $text -match '(?im)^.*launcherskins.*(ERROR|FATAL|exception|failed|invalid|incompatible|could not).*$' -or
+      $text -match '(?im)^.*(ERROR|FATAL|exception|failed|invalid|incompatible|could not).*launcherskins.*$') { return 'failed' }
+  if ($Loader -eq 'vanilla' -or $text -match '(?i)launcherskins') { return 'ok' }
+  return 'not loaded'
+}
+
 # --- Machine names out of anything uploaded (the repository is public) -------------
 
 $machine = @($env:USERPROFILE, $env:LOCALAPPDATA, $env:APPDATA, $env:USERNAME, $env:COMPUTERNAME) |
@@ -595,9 +620,9 @@ try {
     $result = [ordered]@{ item = $item; loader = $loader; version = $version; loaderVersion = ''
       machine = $env:RUNNER_NAME; install = 'not run'; installSeconds = $null
       launch = 'not run'; launchSeconds = $null; world = 'not run'; worldSeconds = $null
-      exit = 'not run'; exitCode = $null; logErrors = 0; note = '' }
+      exit = 'not run'; exitCode = $null; skins = ''; logErrors = 0; note = '' }
     [void]$results.Add($result)
-    $gameDir = $null; $runLog = $null; $keep = $false
+    $gameDir = $null; $runLog = $null; $keep = $false; $launcherLogFrom = $null
     Write-Host "::group::$label"
     try {
       # --- Installations: New installation, the loader, the version, Create, Install ---------
@@ -697,6 +722,7 @@ try {
       $runs = Join-Path $data 'logs\runs'
       $runsBefore = @(Get-ChildItem -Directory $runs -ErrorAction SilentlyContinue | ForEach-Object Name)
       $started = Get-Date
+      $launcherLogFrom = (Log-Text (Join-Path $data 'logs\launcher.log')).Length
       Click $ready
       $game = Wait-For { Game-Window } 300
       # What the launcher kept of the game's output (versions before 1.7 write no
@@ -856,7 +882,9 @@ try {
         Launcher-Log $folder
       }
     } finally {
-      $passed = $result.world -eq 'ok' -and $result.exit -eq 'ok'
+      if ($null -ne $launcherLogFrom) { $result.skins = Skins-State $loader $launcherLogFrom $gameDir $runLog }
+      $passed = $result.world -eq 'ok' -and $result.exit -eq 'ok' -and $result.skins -notmatch '^not|^failed'
+      if ($result.skins -match '^not|^failed') { $result.note = "$($result.note); Launcher Skins $($result.skins)".Trim('; ') }
       if ($gameDir -and (Test-Path $log)) {
         $all = Log-Text $log
         $result.logErrors = ([regex]::Matches($all, '/(ERROR|FATAL)\]')).Count
@@ -887,5 +915,5 @@ try {
   Restore-Machine
 }
 
-$failed = @($results | Where-Object { $_.world -ne 'ok' -or $_.exit -ne 'ok' })
+$failed = @($results | Where-Object { $_.world -ne 'ok' -or $_.exit -ne 'ok' -or $_.skins -match '^not|^failed' })
 if ($failed) { exit 1 }
