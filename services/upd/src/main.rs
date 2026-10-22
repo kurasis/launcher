@@ -10,13 +10,17 @@
 //! lapi-upd revoke <channel> <version>
 //! lapi-upd status
 //! lapi-upd pack <version> --out <file> [--notes <json>] <target>:<bundle>:<path>...   (CI)
+//! lapi-upd skins-mod-jars <mod version>
 //! lapi-upd skins-mod <channel>
 //! lapi-upd skins-mod-list <mod version> --channel C --builds <json> --sums <file>
 //!          --jars <folder> --out <file> [--rollback]                               (CI)
 //! ```
 //!
-//! `skins-mod` puts `incoming/skins-mod-<channel>.json` (signed by
-//! `skins-mod-list` in CI) in place as the channel's list of Launcher Skins jars.
+//! `skins-mod-jars` puts a Launcher Skins release's jars from
+//! `incoming/skins-mod-<version>/` (uploaded by CI with its SHA256SUMS) in place
+//! at `/skins-mod/<version>/`, where players download them. `skins-mod` puts
+//! `incoming/skins-mod-<channel>.json` (signed by `skins-mod-list` in CI) in
+//! place as the channel's list of Launcher Skins jars, once all its jars are.
 //!
 //! `publish` reads `incoming/launcher-<version>-release.tar.gz` (built by the
 //! Package workflow), checks it and makes the version current. Settings come
@@ -101,6 +105,10 @@ fn main() -> std::process::ExitCode {
         Some("status") => server
             .status()
             .and_then(|s| Ok(format!("{s}\n{}", server.skins_mod_status()?))),
+        Some("skins-mod-jars") => match arg(1) {
+            Some(version) => server.install_skins_mod_jars(version),
+            None => Err("skins-mod-jars needs a mod version".to_owned()),
+        },
         Some("skins-mod") => match arg(1) {
             Some(channel) => server.install_skins_mod(channel),
             None => Err("skins-mod needs a channel".to_owned()),
@@ -162,7 +170,7 @@ fn main() -> std::process::ExitCode {
         })(),
         Some("--version") => Ok(format!("lapi-upd {}", env!("CARGO_PKG_VERSION"))),
         _ => Err(
-            "usage: lapi-upd publish <version> [--channel C] [--rollout N] [--mandatory] [--partial] | rollout <channel> <percent> | pause <channel> | resume <channel> | revoke <channel> <version> | status | skins-mod <channel>"
+            "usage: lapi-upd publish <version> [--channel C] [--rollout N] [--mandatory] [--partial] | rollout <channel> <percent> | pause <channel> | resume <channel> | revoke <channel> <version> | status | skins-mod-jars <mod version> | skins-mod <channel>"
                 .to_owned(),
         ),
     };

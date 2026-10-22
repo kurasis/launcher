@@ -85,10 +85,7 @@ fn the_table_names_every_release_jar_once() {
         let url = jar.url();
         assert_eq!(
             url,
-            format!(
-                "https://mirror.lapi.sh/github.com/kurasis/launcher/releases/download/skins-mod-v{MOD_VERSION}/{}",
-                jar.file
-            )
+            format!("https://upd.lapi.sh/skins-mod/{MOD_VERSION}/{}", jar.file)
         );
         assert!(SourcePolicy::SkinsMod.check(&url).is_ok(), "{url}");
         // Every released jar is filled in from the release's SHA256SUMS.

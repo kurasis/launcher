@@ -122,8 +122,9 @@ const SERVER_ADS_HOSTS: &[&str] = &["servers.lapi.sh"];
 const REVIEWS_HOSTS: &[&str] = &["reviews.lapi.sh"];
 const STATS_HOSTS: &[&str] = &["stats.lapi.sh"];
 const SKINS_MOD_LIST_HOSTS: &[&str] = &["upd.lapi.sh"];
-/// Players get the skins mod from our mirror only, never from GitHub (D-065).
-const SKINS_MOD_HOSTS: &[&str] = &[crate::mirror::MIRROR_HOST];
+/// Players get the skins mod from our update server only, never from GitHub
+/// (D-065).
+const SKINS_MOD_HOSTS: &[&str] = &["upd.lapi.sh"];
 
 pub const MAX_REDIRECTS: usize = 5;
 
@@ -607,6 +608,10 @@ mod tests {
         assert!(SourcePolicy::for_artifact("https://mods.lapi.sh/v1/x").is_err());
         assert!(SourcePolicy::for_artifact("https://api.adoptium.net/x").is_err());
         assert!(ok(
+            SourcePolicy::SkinsMod,
+            "https://upd.lapi.sh/skins-mod/0.1.0/a.jar"
+        ));
+        assert!(!ok(
             SourcePolicy::SkinsMod,
             "https://mirror.lapi.sh/github.com/kurasis/launcher/releases/download/skins-mod-v0.1.0/a.jar"
         ));

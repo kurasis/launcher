@@ -84,9 +84,8 @@ pub fn parse(path: &str, query: Option<&str>) -> Option<Origin> {
     let (host, tail) = rest.split_once('/').unwrap_or((rest, ""));
     let host = *HOSTS.iter().find(|h| **h == host)?;
     let tail = format!("/{tail}");
-    // GitHub hosts anyone's files: only Adoptium's Java releases and our skins
-    // mod's jars are ours.
-    if host == "github.com" && !adoptium_release(&tail) && !skins_mod_release(&tail) {
+    // GitHub hosts anyone's files: only Adoptium's Java releases are ours.
+    if host == "github.com" && !adoptium_release(&tail) {
         return None;
     }
     let lower = tail.to_ascii_lowercase();
@@ -152,30 +151,6 @@ fn adoptium_release(tail: &str) -> bool {
     parts.len() >= 7 && parts[1] == "adoptium" && parts[3] == "releases" && parts[4] == "download"
 }
 
-/// `/kurasis/launcher/releases/download/skins-mod-v<version>/launcherskins-<…>.jar`:
-/// a jar of the launcher's skins mod (D-065). Players get these only from the
-/// mirror, never from GitHub.
-fn skins_mod_release(tail: &str) -> bool {
-    let parts: Vec<&str> = tail.split('/').collect();
-    let ["", "kurasis", "launcher", "releases", "download", tag, file] = parts.as_slice() else {
-        return false;
-    };
-    let version_ok = tag.strip_prefix("skins-mod-v").is_some_and(|v| {
-        let numbers: Vec<&str> = v.split('.').collect();
-        numbers.len() == 3
-            && numbers
-                .iter()
-                .all(|n| (1..=6).contains(&n.len()) && n.bytes().all(|b| b.is_ascii_digit()))
-    });
-    let file_ok = file.len() <= 128
-        && file.starts_with("launcherskins-")
-        && file.ends_with(".jar")
-        && file
-            .bytes()
-            .all(|b| b.is_ascii_lowercase() || b.is_ascii_digit() || matches!(b, b'.' | b'-'));
-    version_ok && file_ok
-}
-
 /// Content addressed by hash, a fixed version or a release tag.
 fn never_changes(host: &str, tail: &str) -> bool {
     let name = tail.rsplit('/').next().unwrap_or_default();
@@ -185,7 +160,7 @@ fn never_changes(host: &str, tail: &str) -> bool {
         }
         "piston-data.mojang.com" | "launcher.mojang.com" => tail.starts_with("/v1/objects/"),
         "resources.download.minecraft.net" => true,
-        "github.com" => adoptium_release(tail) || skins_mod_release(tail),
+        "github.com" => adoptium_release(tail),
         "libraries.minecraft.net"
         | "maven.fabricmc.net"
         | "maven.quiltmc.org"
@@ -216,7 +191,6 @@ mod tests {
             "/libraries.minecraft.net/org/lwjgl/lwjgl/3.3.3/lwjgl-3.3.3.jar",
             "/maven.neoforged.net/releases/net/neoforged/neoforge/21.1.1/neoforge-21.1.1-installer.jar",
             "/github.com/adoptium/temurin21-binaries/releases/download/jdk-21.0.5+11/OpenJDK21U-jre_x64_linux_hotspot_21.0.5_11.tar.gz",
-            "/github.com/kurasis/launcher/releases/download/skins-mod-v0.6.3/launcherskins-fabric-26.1-26.3-0.6.3.jar",
         ] {
             assert_eq!(class(path, None), Some(file(path)), "{path}");
         }
@@ -270,18 +244,8 @@ mod tests {
             "/127.0.0.1/x",
             "/objects.githubusercontent.com/x",
             "/github.com.evil.example/x",
-            // GitHub: only Adoptium's release downloads and our skins mod's jars.
+            // GitHub: only Adoptium's release downloads.
             "/github.com/someone/repo/releases/download/v1/page.html",
-            "/github.com/kurasis/launcher/releases/download/v1.0.0/launcher.exe",
-            "/github.com/kurasis/launcher/releases/download/skins-mod-v0.6.3/SHA256SUMS",
-            "/github.com/kurasis/launcher/releases/download/skins-mod-v0.6.3/other.jar",
-            "/github.com/kurasis/launcher/releases/download/skins-mod-v0.6/launcherskins-a.jar",
-            "/github.com/kurasis/launcher/releases/download/skins-mod-vx.y.z/launcherskins-a.jar",
-            "/github.com/kurasis/launcher/releases/download/skins-mod-v0.6.3/launcherskins-A.jar",
-            "/github.com/kurasis/launcher/releases/download/skins-mod-v0.6.3/x/launcherskins-a.jar",
-            "/github.com/kurasis/launcher-evil/releases/download/skins-mod-v0.6.3/launcherskins-a.jar",
-            "/github.com/someone/launcher/releases/download/skins-mod-v0.6.3/launcherskins-a.jar",
-            "/github.com/kurasis/launcher/archive/skins-mod-v0.6.3/launcherskins-a.jar",
             "/github.com/adoptium/temurin21-binaries",
             "/github.com/login",
             "/libraries.minecraft.net/../etc/passwd",

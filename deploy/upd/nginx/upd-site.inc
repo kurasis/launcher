@@ -36,6 +36,16 @@ location ~ "^/releases/[0-9][0-9A-Za-z.+-]*/[0-9A-Za-z._+-]+$" {
     try_files $uri =404;
 }
 
+# Launcher Skins jars (D-065): players download them only from here, as
+# `lapi-upd skins-mod-jars` put them. They never change at their address.
+location ~ "^/skins-mod/[0-9]+\.[0-9]+\.[0-9]+/launcherskins-[a-z0-9.-]+\.jar$" {
+    types {}
+    default_type application/java-archive;
+    add_header Cache-Control "public, max-age=31536000, immutable" always;
+    add_header X-Content-Type-Options nosniff always;
+    try_files $uri =404;
+}
+
 location = /download/ {
     add_header Cache-Control "public, max-age=60" always;
     add_header X-Content-Type-Options nosniff always;
