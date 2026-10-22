@@ -912,3 +912,49 @@ async fn a_file_missing_everywhere_fails_once_each() {
         (1, 1)
     );
 }
+
+#[tokio::test]
+async fn a_slow_origin_of_small_files_is_compared_and_handed_to_a_faster_mirror() {
+    use crate::mirror::{DownloadSource, Route, SPEED_MIN_FILES, TRIAL_FILES};
+    let f = Fixture::new().await;
+    let routing = f.routing(DownloadSource::Automatic);
+    let mut requests = Vec::new();
+    let mut paths = Vec::new();
+    for i in 0..12u8 {
+        let body = content(i, 2000);
+        let path = format!("/small{i}.png");
+        let slow = body.clone();
+        // Each file waits 300 ms at the origin; the mirror answers at once.
+        f.server.route(&path, move |_| Reply::Stall {
+            body: slow.clone(),
+            first: 1000,
+            wait: Duration::from_millis(300),
+        });
+        f.server.serve(&copy(&path), &body);
+        requests.push(request_at(&f.server, &path, &body, &format!("s{i}")));
+        paths.push(path);
+    }
+    let report = Executor::new(
+        HttpTransport::loopback_with(Arc::clone(&routing)),
+        f.root.clone(),
+        ExecutorConfig {
+            concurrency: 1,
+            ..fast_config()
+        },
+    )
+    .run(Uuid::new_v4(), requests, &CancelToken::new(), &NoProgress)
+    .await;
+    report.unwrap();
+    let origin: usize = paths.iter().map(|p| f.server.hits(p)).sum();
+    let mirror: usize = paths.iter().map(|p| f.server.hits(&copy(p))).sum();
+    // Four to judge, then turns until each side has its files, then the mirror.
+    assert_eq!(
+        (origin, mirror),
+        (
+            SPEED_MIN_FILES + TRIAL_FILES,
+            12 - SPEED_MIN_FILES - TRIAL_FILES
+        )
+    );
+    assert_eq!(routing.first("127.0.0.1"), Route::Mirror);
+    assert_eq!(routing.mirrored(), ["127.0.0.1"]);
+}

@@ -1667,6 +1667,17 @@ message` plus a stack trace), with the event's level.
     Two such failures of a host within two minutes mark the host as down for 10
     minutes: its requests go straight to the mirror, then one request tries the
     origin again. If the mirror fails too, the origin is tried again.
+- **Slower than the mirror** (owner request, 2026-10-22). Every file the mirror
+  copies reports its size and the time from asking to the last byte (without the
+  disk), so many small files that each wait long count as slow too. When the
+  origin's files of the last minute (at least 4, at least 1 s together) came at
+  under 2 MiB/s, a trial starts: the host's next files take turns between the
+  mirror and the origin until each side has brought 3, so both are measured at the
+  same time on the same kind of files. If the mirror was at least twice as fast,
+  the host's requests go to the mirror for 10 minutes and are then measured
+  again; otherwise no trial for 5 minutes. A mirror failure ends a trial or gives
+  the host back to its origin at once; a trial past 2 minutes is lost. Only the automatic mode compares; the catalog's R2
+  reserve (D-066) and metadata are not measured.
 - **Checks stay the same.** Every file with a checksum in its metadata is checked
   wherever it came from. Metadata without one (loader lists) comes from the mirror
   only when the origin failed; the console and the diagnostic export say which
@@ -1674,8 +1685,8 @@ message` plus a stack trace), with the event's level.
 - **Setting** (Settings → Network → Download source): **Automatic** (above,
   default), **Mirror first** (for blocked or slow origins; the origin is the
   fallback), **Original sites only** (never the mirror).
-- The download manager says when a host is served by the mirror ("Forge is not
-  reachable — downloading from the launcher's mirror").
+- The download manager says when a host is served by the mirror ("Down or slower
+  than the mirror now: Forge. Downloading from the launcher's mirror.").
 - Not covered: Microsoft sign-in (offline play, D-052, still works).
 
 ### Stages
