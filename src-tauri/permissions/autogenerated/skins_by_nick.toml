@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-skins-by-nick"
+description = "Enables the skins_by_nick command without any pre-configured scope."
+commands.allow = ["skins_by_nick"]
+
+[[permission]]
+identifier = "deny-skins-by-nick"
+description = "Denies the skins_by_nick command without any pre-configured scope."
+commands.deny = ["skins_by_nick"]

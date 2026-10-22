@@ -11,12 +11,19 @@
 //!
 //! Textures are shown from `GET /v1/textures/{sha256}`, fetched here (the
 //! window's CSP loads no remote image) and checked against their hash.
-//! Nothing about the player goes into the log.
+//! Other players' heads and skins are looked up by nick (`POST /v1/profiles`,
+//! `GET /v1/profile/{nick}`). Nothing about a player, a nick included, goes
+//! into the log.
 
-use std::collections::VecDeque;
+pub mod heads;
+
+use std::collections::{BTreeMap, HashMap, VecDeque};
 use std::io::{Cursor, Read};
 use std::path::Path;
 use std::sync::{Arc, Mutex};
+use std::time::{Duration, Instant};
+
+use futures_util::StreamExt as _;
 
 use base64::Engine as _;
 use serde::{Deserialize, Serialize};
@@ -48,8 +55,22 @@ pub const FRAME_MS_MAX: u32 = 10_000;
 /// What the decoder may allocate for itself; the image buffer is bounded by
 /// the size rules.
 pub(crate) const DECODER_BYTES: usize = 4 * 1024 * 1024;
-/// Textures kept for the preview (two worn, a few recent).
-const TEXTURE_CACHE: usize = 6;
+/// Textures kept for the preview, as `data:` URLs: enough for a wardrobe's
+/// grid, never more than this many characters in all.
+const TEXTURES_KEPT: usize = 64;
+const TEXTURES_KEPT_CHARS: usize = 48 * 1024 * 1024;
+/// Most nicks in one `skins_heads`, and in one `POST /v1/profiles`.
+pub const MAX_HEAD_NICKS: usize = 200;
+const PROFILES_AT_ONCE: usize = 50;
+/// A batch of profiles: 50 of them with two textures each.
+const MAX_PROFILES_BYTES: usize = 256 * 1024;
+/// How long a nick's lookup holds: the service's own cache time.
+const LOOKUP_HOLDS: Duration = Duration::from_secs(60);
+const LOOKUPS_KEPT: usize = 2048;
+/// Heads kept by their skin's hash (a few kilobytes each).
+const HEADS_KEPT: usize = 512;
+/// Skins fetched at once for heads.
+const HEADS_AT_ONCE: usize = 4;
 /// The longest file name shown for a picked file.
 const NAME_CHARS: usize = 80;
 /// The longest name a dropped file may have.
@@ -136,6 +157,8 @@ pub enum SkinsProblem {
     Invalid,
     /// A picture could not be saved.
     NotSaved,
+    /// Nobody with that nick wears a skin (or a cape) of ours.
+    NotFound,
     Server,
 }
 
@@ -233,6 +256,12 @@ fn wardrobe_of(value: Value) -> Result<Wardrobe, SkinsProblem> {
 /// A texture's name: 64 lowercase hex digits.
 pub fn is_hash(text: &str) -> bool {
     text.len() == 64 && text.bytes().all(|b| matches!(b, b'0'..=b'9' | b'a'..=b'f'))
+}
+
+/// A launcher account's nick, as the service takes it: 3–16 Latin letters,
+/// digits and `_`. Nothing else is ever sent as one.
+pub fn is_nick(text: &str) -> bool {
+    (3..=16).contains(&text.len()) && text.bytes().all(|b| b.is_ascii_alphanumeric() || b == b'_')
 }
 
 /// The frames of an image of this size, if its shape is one the service
@@ -506,14 +535,21 @@ pub struct PickedView {
     /// The PNG to upload (the strip, for a GIF or an animated PNG) as a
     /// `data:` URL, for the preview.
     pub preview: String,
+    /// A skin taken by nick: whether its owner wears it with slim arms.
+    /// None for a file, whose model the player chooses.
+    pub slim: Option<bool>,
 }
 
 pub struct Skins {
     http: reqwest::Client,
     /// The picked file per kind (skin, cape).
     picked: Mutex<[Option<Picked>; 2]>,
-    /// Recently shown textures as `data:` URLs, by hash.
+    /// Recently shown textures as `data:` URLs, by hash; the last used last.
     textures: Mutex<VecDeque<(String, String)>>,
+    /// Nicks looked up for heads (in lowercase): when, and their skin's hash.
+    lookups: Mutex<HashMap<String, (Instant, Option<String>)>>,
+    /// Heads as `data:` URLs, by their skin's hash.
+    heads: Mutex<VecDeque<(String, String)>>,
 }
 
 impl Skins {
@@ -523,6 +559,8 @@ impl Skins {
             http,
             picked: Mutex::new([None, None]),
             textures: Mutex::new(VecDeque::new()),
+            lookups: Mutex::new(HashMap::new()),
+            heads: Mutex::new(VecDeque::new()),
         })
     }
 
@@ -602,7 +640,7 @@ impl Skins {
         })
         .await
         .map_err(|_| SkinsProblem::Unreadable)??;
-        Ok(self.keep(kind, name, imported))
+        Ok(self.keep(kind, name, imported, None))
     }
 
     /// Checks a file dropped on the page, by its name and bytes, and keeps
@@ -627,10 +665,60 @@ impl Skins {
             tauri::async_runtime::spawn_blocking(move || skins_import::import(kind, &bytes))
                 .await
                 .map_err(|_| SkinsProblem::Unreadable)??;
-        Ok(self.keep(kind, name, imported))
+        Ok(self.keep(kind, name, imported, None))
     }
 
-    fn keep(&self, kind: Kind, name: String, imported: Imported) -> PickedView {
+    /// The skin or cape another player wears, by nick, kept for upload as a
+    /// picked one: the texture the service keeps, checked against its hash,
+    /// with its owner's frame durations and, for a skin, arms.
+    pub async fn by_nick(&self, kind: Kind, nick: &str) -> Result<PickedView, SkinsProblem> {
+        if !is_nick(nick) {
+            return Err(SkinsProblem::Invalid);
+        }
+        let response = self
+            .http
+            .get(format!("{}/v1/profile/{nick}", base()))
+            .header(reqwest::header::ACCEPT, "application/json")
+            .send()
+            .await
+            .map_err(|_| SkinsProblem::Network)?;
+        let status = response.status().as_u16();
+        if status == 404 {
+            return Err(SkinsProblem::NotFound);
+        }
+        let bytes = body_within(response, MAX_PROFILE_BYTES)
+            .await
+            .map_err(|e| match e {
+                BodyError::Network => SkinsProblem::Network,
+                BodyError::TooLarge => SkinsProblem::Server,
+            })?;
+        if status != 200 {
+            return Err(SkinsProblem::Server);
+        }
+        let value: Value = serde_json::from_slice(&bytes).map_err(|_| SkinsProblem::Server)?;
+        let wardrobe = wardrobe_of(value)?;
+        let worn = match kind {
+            Kind::Skin => wardrobe.skin,
+            Kind::Cape => wardrobe.cape,
+        }
+        .ok_or(SkinsProblem::NotFound)?;
+        let png = self.texture_png(&worn.hash).await?;
+        let mut imported =
+            tauri::async_runtime::spawn_blocking(move || skins_import::import(kind, &png))
+                .await
+                .map_err(|_| SkinsProblem::Unreadable)??;
+        // What the service keeps is a strip: its durations come with the profile.
+        if imported.shape.frames != worn.frames {
+            return Err(SkinsProblem::Server);
+        }
+        if worn.frames > 1 && worn.frame_ms.len() == worn.frames as usize {
+            imported.frame_ms = worn.frame_ms;
+        }
+        let slim = (kind == Kind::Skin).then_some(worn.slim);
+        Ok(self.keep(kind, nick.to_owned(), imported, slim))
+    }
+
+    fn keep(&self, kind: Kind, name: String, imported: Imported, slim: Option<bool>) -> PickedView {
         let Imported {
             png,
             shape,
@@ -649,6 +737,7 @@ impl Skins {
             notes,
             bytes: png.len(),
             preview: data_url(&png),
+            slim,
         };
         lock(&self.picked)[kind.slot()] = Some(Picked {
             bytes: png,
@@ -722,8 +811,31 @@ impl Skins {
         if !is_hash(hash) {
             return Err(SkinsProblem::Invalid);
         }
-        if let Some((_, url)) = lock(&self.textures).iter().find(|(h, _)| h == hash) {
-            return Ok(url.clone());
+        {
+            let mut cache = lock(&self.textures);
+            if let Some(at) = cache.iter().position(|(h, _)| h == hash) {
+                let entry = cache.remove(at).expect("found above");
+                let url = entry.1.clone();
+                cache.push_back(entry);
+                return Ok(url);
+            }
+        }
+        let url = data_url(&self.texture_png(hash).await?);
+        let mut cache = lock(&self.textures);
+        let mut chars: usize = cache.iter().map(|(_, u)| u.len()).sum();
+        while !cache.is_empty()
+            && (cache.len() >= TEXTURES_KEPT || chars + url.len() > TEXTURES_KEPT_CHARS)
+        {
+            chars -= cache.pop_front().map_or(0, |(_, u)| u.len());
+        }
+        cache.push_back((hash.to_owned(), url.clone()));
+        Ok(url)
+    }
+
+    /// The PNG a hash names, from the service; it must be that PNG.
+    async fn texture_png(&self, hash: &str) -> Result<Vec<u8>, SkinsProblem> {
+        if !is_hash(hash) {
+            return Err(SkinsProblem::Server);
         }
         let response = self
             .http
@@ -743,13 +855,149 @@ impl Skins {
         if !png.starts_with(PNG_SIGNATURE) || hex::encode(Sha256::digest(&png)) != hash {
             return Err(SkinsProblem::Server);
         }
-        let url = data_url(&png);
-        let mut cache = lock(&self.textures);
-        if cache.len() >= TEXTURE_CACHE {
-            cache.pop_front();
+        Ok(png)
+    }
+
+    /// The heads of these players, by nick as asked: a square PNG as a
+    /// `data:` URL, or none for a nick nobody has, a player without a skin
+    /// of ours, or a skin that could not be fetched now. A nick that cannot
+    /// be one is never sent and has none.
+    pub async fn heads(
+        &self,
+        nicks: &[String],
+    ) -> Result<BTreeMap<String, Option<String>>, SkinsProblem> {
+        if nicks.len() > MAX_HEAD_NICKS {
+            return Err(SkinsProblem::Invalid);
         }
-        cache.push_back((hash.to_owned(), url.clone()));
-        Ok(url)
+        let hashes = self.skins_of(nicks).await?;
+        let mut wanted: Vec<String> = hashes.values().flatten().cloned().collect();
+        wanted.sort();
+        wanted.dedup();
+        let missing: Vec<String> = {
+            let heads = lock(&self.heads);
+            wanted
+                .into_iter()
+                .filter(|h| !heads.iter().any(|(k, _)| k == h))
+                .collect()
+        };
+        let made: Vec<(String, String)> = futures_util::stream::iter(missing)
+            .map(|hash| async move {
+                let png = self.texture_png(&hash).await.ok()?;
+                let head = tauri::async_runtime::spawn_blocking(move || heads::head(&png))
+                    .await
+                    .ok()?
+                    .ok()?;
+                Some((hash, data_url(&head)))
+            })
+            .buffer_unordered(HEADS_AT_ONCE)
+            .filter_map(std::future::ready)
+            .collect()
+            .await;
+        let heads = {
+            let mut heads = lock(&self.heads);
+            for entry in made {
+                if heads.len() >= HEADS_KEPT {
+                    heads.pop_front();
+                }
+                heads.push_back(entry);
+            }
+            heads.clone()
+        };
+        Ok(hashes
+            .into_iter()
+            .map(|(nick, hash)| {
+                let head = hash.and_then(|h| {
+                    heads
+                        .iter()
+                        .find(|(k, _)| *k == h)
+                        .map(|(_, url)| url.clone())
+                });
+                (nick, head)
+            })
+            .collect())
+    }
+
+    /// The hash of the skin each nick wears, from lookups of the last minute
+    /// or from the service, 50 nicks a request.
+    async fn skins_of(
+        &self,
+        nicks: &[String],
+    ) -> Result<BTreeMap<String, Option<String>>, SkinsProblem> {
+        let now = Instant::now();
+        let mut out = BTreeMap::new();
+        let mut ask: Vec<&str> = Vec::new();
+        {
+            let lookups = lock(&self.lookups);
+            for nick in nicks {
+                if out.contains_key(nick) {
+                    continue;
+                }
+                if !is_nick(nick) {
+                    out.insert(nick.clone(), None);
+                    continue;
+                }
+                match lookups.get(&nick.to_ascii_lowercase()) {
+                    Some((at, hash)) if now.duration_since(*at) < LOOKUP_HOLDS => {
+                        out.insert(nick.clone(), hash.clone());
+                    }
+                    _ if !ask.iter().any(|n| n.eq_ignore_ascii_case(nick)) => ask.push(nick),
+                    _ => {}
+                }
+            }
+        }
+        for batch in ask.chunks(PROFILES_AT_ONCE) {
+            let response = self
+                .http
+                .post(format!("{}/v1/profiles", base()))
+                .header(reqwest::header::ACCEPT, "application/json")
+                .json(&serde_json::json!({ "nicks": batch }))
+                .send()
+                .await
+                .map_err(|_| SkinsProblem::Network)?;
+            let status = response.status().as_u16();
+            let bytes = body_within(response, MAX_PROFILES_BYTES)
+                .await
+                .map_err(|e| match e {
+                    BodyError::Network => SkinsProblem::Network,
+                    BodyError::TooLarge => SkinsProblem::Server,
+                })?;
+            if status == 429 {
+                return Err(SkinsProblem::RateLimited);
+            }
+            if status != 200 {
+                return Err(SkinsProblem::Server);
+            }
+            let value: Value = serde_json::from_slice(&bytes).map_err(|_| SkinsProblem::Server)?;
+            let profiles = value["profiles"].as_object().ok_or(SkinsProblem::Server)?;
+            let mut lookups = lock(&self.lookups);
+            if lookups.len() + batch.len() > LOOKUPS_KEPT {
+                lookups.retain(|_, (at, _)| now.duration_since(*at) < LOOKUP_HOLDS);
+                if lookups.len() + batch.len() > LOOKUPS_KEPT {
+                    lookups.clear();
+                }
+            }
+            for &nick in batch {
+                // A profile that breaks the rules is no skin.
+                let hash = profiles
+                    .get(nick)
+                    .filter(|p| !p.is_null())
+                    .and_then(|p| wardrobe_of(p.clone()).ok())
+                    .and_then(|w| w.skin)
+                    .map(|s| s.hash);
+                lookups.insert(nick.to_ascii_lowercase(), (now, hash.clone()));
+                out.insert(nick.to_owned(), hash);
+            }
+        }
+        // Asked twice in other cases: both get the answer.
+        for nick in nicks {
+            if !out.contains_key(nick) {
+                let hash = lock(&self.lookups)
+                    .get(&nick.to_ascii_lowercase())
+                    .and_then(|(_, h)| h.clone());
+                out.insert(nick.clone(), hash);
+            }
+        }
+        Ok(out)
     }
 }
 
@@ -1193,7 +1441,7 @@ mod tests {
         assert_eq!(
             keys,
             [
-                "bytes", "frameMs", "frames", "height", "kind", "name", "notes", "preview",
+                "bytes", "frameMs", "frames", "height", "kind", "name", "notes", "preview", "slim",
                 "source", "width"
             ]
         );
@@ -1295,8 +1543,13 @@ mod tests {
     #[test]
     fn new_problems_have_their_codes() {
         assert_eq!(
-            serde_json::to_value([SkinsProblem::TooManyFrames, SkinsProblem::NotSaved]).unwrap(),
-            json!(["too_many_frames", "not_saved"])
+            serde_json::to_value([
+                SkinsProblem::TooManyFrames,
+                SkinsProblem::NotSaved,
+                SkinsProblem::NotFound
+            ])
+            .unwrap(),
+            json!(["too_many_frames", "not_saved", "not_found"])
         );
     }
 
@@ -1351,6 +1604,292 @@ mod tests {
             }
         });
         (address, requests)
+    }
+
+    /// Answers by path: the first route whose path begins the request's
+    /// gets its status, type and body; others get 404. Keeps each request's
+    /// head and body.
+    async fn routed_server(
+        routes: Vec<(String, u16, &'static str, Vec<u8>)>,
+    ) -> (String, Arc<Mutex<Vec<(String, Vec<u8>)>>>) {
+        use tokio::io::{AsyncReadExt, AsyncWriteExt};
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let address = format!("http://{}", listener.local_addr().unwrap());
+        let requests = Arc::new(Mutex::new(Vec::new()));
+        let kept = Arc::clone(&requests);
+        let routes = Arc::new(routes);
+        tokio::spawn(async move {
+            while let Ok((mut socket, _)) = listener.accept().await {
+                let kept = Arc::clone(&kept);
+                let routes = Arc::clone(&routes);
+                tokio::spawn(async move {
+                    let mut request = Vec::new();
+                    let mut buffer = [0u8; 16 * 1024];
+                    let head = loop {
+                        let n = socket.read(&mut buffer).await.unwrap_or(0);
+                        if n == 0 {
+                            return;
+                        }
+                        request.extend_from_slice(&buffer[..n]);
+                        let Some(end) = request.windows(4).position(|w| w == b"\r\n\r\n") else {
+                            continue;
+                        };
+                        let head = String::from_utf8_lossy(&request[..end]).into_owned();
+                        let length = head
+                            .lines()
+                            .find_map(|l| {
+                                l.to_ascii_lowercase()
+                                    .strip_prefix("content-length:")
+                                    .map(|v| v.trim().parse::<usize>().unwrap_or(0))
+                            })
+                            .unwrap_or(0);
+                        if request.len() - end - 4 >= length {
+                            lock(&kept).push((head.clone(), request[end + 4..].to_vec()));
+                            break head;
+                        }
+                    };
+                    let path = head.split(' ').nth(1).unwrap_or_default().to_owned();
+                    let (status, kind, body) = routes
+                        .iter()
+                        .find(|(prefix, ..)| path.starts_with(prefix.as_str()))
+                        .map_or((404, "application/json", b"{}".to_vec()), |(_, s, k, b)| {
+                            (*s, *k, b.clone())
+                        });
+                    let mut reply = format!(
+                        "HTTP/1.1 {status} X\r\ncontent-type: {kind}\r\ncontent-length: {}\r\nconnection: close\r\n\r\n",
+                        body.len()
+                    )
+                    .into_bytes();
+                    reply.extend_from_slice(&body);
+                    let _ = socket.write_all(&reply).await;
+                });
+            }
+        });
+        (address, requests)
+    }
+
+    fn sha(png: &[u8]) -> String {
+        hex::encode(Sha256::digest(png))
+    }
+
+    fn profile(hash: &str, slim: bool, height: u32, frame_ms: &[u32]) -> Value {
+        json!({ "nick": "x", "cape": null, "skin": {
+            "hash": hash, "model": if slim { "slim" } else { "default" }, "width": 64,
+            "height": height, "frames": height / 64, "frame_ms": frame_ms } })
+    }
+
+    #[tokio::test]
+    async fn heads_are_looked_up_in_batches_and_kept() {
+        let steve = png_of(64, 64);
+        let alex = png_of(64, 128);
+        let (steve_hash, alex_hash) = (sha(&steve), sha(&alex));
+        let lying = "c".repeat(64);
+        let profiles = json!({ "profiles": {
+            "Steve": profile(&steve_hash, false, 64, &[]),
+            "Alex": profile(&alex_hash, true, 128, &[100, 100]),
+            "Bob": profile(&steve_hash, false, 64, &[]),
+            "Lies": profile(&lying, false, 64, &[]),
+            "Nobody": null,
+            "Junky": { "skin": { "hash": "../../v1/me", "width": 64, "height": 64, "frames": 1 } },
+        } });
+        let (address, requests) = routed_server(vec![
+            (
+                "/v1/profiles".into(),
+                200,
+                "application/json",
+                profiles.to_string().into_bytes(),
+            ),
+            (
+                format!("/v1/textures/{steve_hash}"),
+                200,
+                "image/png",
+                steve,
+            ),
+            (format!("/v1/textures/{alex_hash}"), 200, "image/png", alex),
+            (
+                format!("/v1/textures/{lying}"),
+                200,
+                "image/png",
+                png_of(64, 64),
+            ),
+        ])
+        .await;
+        LOCAL_SERVER.with(|s| s.set(Some(Box::leak(address.into_boxed_str()))));
+        let skins = Skins::new("test").unwrap();
+        let nicks: Vec<String> = [
+            "Steve", "Alex", "Bob", "Lies", "Nobody", "Junky", "../x", "Steve",
+        ]
+        .map(String::from)
+        .to_vec();
+        let heads = skins.heads(&nicks).await.unwrap();
+        let again = skins.heads(&nicks[..3]).await.unwrap();
+        LOCAL_SERVER.with(|s| s.set(None));
+
+        assert_eq!(heads.len(), 7);
+        let steve_head = heads["Steve"].clone().unwrap();
+        assert!(steve_head.starts_with("data:image/png;base64,"));
+        assert_eq!(heads["Bob"].as_deref(), Some(steve_head.as_str()));
+        assert!(heads["Alex"].is_some());
+        for none in ["Lies", "Nobody", "Junky", "../x"] {
+            assert_eq!(heads[none], None, "{none}");
+        }
+        assert_eq!(again["Steve"].as_deref(), Some(steve_head.as_str()));
+        let requests = lock(&requests).clone();
+        let posts: Vec<_> = requests
+            .iter()
+            .filter(|(h, _)| h.starts_with("POST "))
+            .collect();
+        // Asked once, junk left out; the second call is answered from what is kept.
+        assert_eq!(posts.len(), 1);
+        let asked: Value = serde_json::from_slice(&posts[0].1).unwrap();
+        assert_eq!(
+            asked,
+            json!({ "nicks": ["Steve", "Alex", "Bob", "Lies", "Nobody", "Junky"] })
+        );
+        // Each texture once: Bob wears Steve's.
+        assert_eq!(requests.len(), 4);
+        // A nick goes nowhere but the request's body.
+        assert!(requests.iter().all(|(h, _)| !h.contains("Steve")));
+
+        assert_eq!(
+            skins
+                .heads(&vec!["Steve".to_owned(); MAX_HEAD_NICKS + 1])
+                .await,
+            Err(SkinsProblem::Invalid)
+        );
+    }
+
+    #[tokio::test]
+    async fn many_nicks_go_fifty_at_a_time() {
+        let (address, requests) = routed_server(vec![(
+            "/v1/profiles".into(),
+            200,
+            "application/json",
+            br#"{"profiles":{}}"#.to_vec(),
+        )])
+        .await;
+        LOCAL_SERVER.with(|s| s.set(Some(Box::leak(address.into_boxed_str()))));
+        let skins = Skins::new("test").unwrap();
+        let nicks: Vec<String> = (0..120).map(|i| format!("player_{i}")).collect();
+        let heads = skins.heads(&nicks).await.unwrap();
+        LOCAL_SERVER.with(|s| s.set(None));
+        assert_eq!(heads.len(), 120);
+        assert!(heads.values().all(Option::is_none));
+        let sizes: Vec<usize> = lock(&requests)
+            .iter()
+            .map(|(_, body)| {
+                serde_json::from_slice::<Value>(body).unwrap()["nicks"]
+                    .as_array()
+                    .unwrap()
+                    .len()
+            })
+            .collect();
+        assert_eq!(sizes, [50, 50, 20]);
+    }
+
+    #[tokio::test]
+    async fn a_skin_is_taken_by_nick_with_its_arms_and_durations() {
+        let strip = png_of(64, 128);
+        let hash = sha(&strip);
+        let (address, requests) = routed_server(vec![
+            (
+                "/v1/profile/Alex".into(),
+                200,
+                "application/json",
+                profile(&hash, true, 128, &[120, 240])
+                    .to_string()
+                    .into_bytes(),
+            ),
+            (
+                "/v1/profile/Liar".into(),
+                200,
+                "application/json",
+                profile(&"d".repeat(64), true, 64, &[])
+                    .to_string()
+                    .into_bytes(),
+            ),
+            (
+                format!("/v1/textures/{hash}"),
+                200,
+                "image/png",
+                strip.clone(),
+            ),
+            (
+                format!("/v1/textures/{}", "d".repeat(64)),
+                200,
+                "image/png",
+                strip.clone(),
+            ),
+            (
+                "/v1/me/skin".into(),
+                200,
+                "application/json",
+                br#"{"skin":null,"cape":null}"#.to_vec(),
+            ),
+        ])
+        .await;
+        LOCAL_SERVER.with(|s| s.set(Some(Box::leak(address.into_boxed_str()))));
+        let skins = Skins::new("test").unwrap();
+        let view = skins.by_nick(Kind::Skin, "Alex").await.unwrap();
+        let cape = skins.by_nick(Kind::Cape, "Alex").await;
+        let missing = skins.by_nick(Kind::Skin, "Nobody").await;
+        let lying = skins.by_nick(Kind::Skin, "Liar").await;
+        let junk = skins.by_nick(Kind::Skin, "../../v1/me").await;
+        let uploaded = skins.upload_with("token", Kind::Skin, true, None).await;
+        LOCAL_SERVER.with(|s| s.set(None));
+
+        assert_eq!((view.name.as_str(), view.frames), ("Alex", 2));
+        assert_eq!(view.frame_ms, [120, 240]);
+        assert_eq!(view.slim, Some(true));
+        assert_eq!(view.preview, data_url(&strip));
+        assert_eq!(cape, Err(SkinsProblem::NotFound));
+        assert_eq!(missing, Err(SkinsProblem::NotFound));
+        assert_eq!(lying, Err(SkinsProblem::Server));
+        assert_eq!(junk, Err(SkinsProblem::Invalid));
+        assert!(uploaded.is_ok());
+        let requests = lock(&requests).clone();
+        assert!(requests.iter().all(|(h, _)| !h.contains("../")));
+        let (head, body) = requests.last().unwrap();
+        assert!(
+            head.starts_with("PUT /v1/me/skin?model=slim&frames=2&frame_ms=120,240 HTTP/1.1"),
+            "{head}"
+        );
+        assert_eq!(body, &strip);
+    }
+
+    #[tokio::test]
+    async fn previews_are_kept_by_count_and_size() {
+        let textures: Vec<Vec<u8>> = (0..TEXTURES_KEPT as u32 + 2)
+            .map(|i| {
+                png_of(64, 64 * (1 + i % 2))
+                    .into_iter()
+                    .chain([i as u8])
+                    .collect()
+            })
+            .collect();
+        let routes = textures
+            .iter()
+            .map(|t| {
+                (
+                    format!("/v1/textures/{}", sha(t)),
+                    200,
+                    "image/png",
+                    t.clone(),
+                )
+            })
+            .collect();
+        let (address, requests) = routed_server(routes).await;
+        LOCAL_SERVER.with(|s| s.set(Some(Box::leak(address.into_boxed_str()))));
+        let skins = Skins::new("test").unwrap();
+        for t in &textures {
+            skins.texture(&sha(t)).await.unwrap();
+        }
+        // The last one again, from what is kept; the first one went.
+        skins.texture(&sha(textures.last().unwrap())).await.unwrap();
+        skins.texture(&sha(&textures[0])).await.unwrap();
+        LOCAL_SERVER.with(|s| s.set(None));
+        assert_eq!(lock(&requests).len(), textures.len() + 1);
+        assert_eq!(lock(&skins.textures).len(), TEXTURES_KEPT);
     }
 
     #[tokio::test]

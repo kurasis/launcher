@@ -278,6 +278,8 @@ fn main_window_capability_grants_only_app_commands() {
             "allow-mods-open-link",
             "allow-skins-mine",
             "allow-skins-texture",
+            "allow-skins-heads",
+            "allow-skins-by-nick",
             "allow-skins-pick",
             "allow-skins-take",
             "allow-skins-upload",

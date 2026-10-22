@@ -289,7 +289,7 @@ impl Canvas {
 }
 
 /// `source` over `target` with its alpha, neither premultiplied.
-fn over(target: &mut [u8; 4], source: [u8; 4]) {
+pub(crate) fn over(target: &mut [u8; 4], source: [u8; 4]) {
     let alpha = u32::from(source[3]);
     if alpha == 0 {
         return;
@@ -595,7 +595,7 @@ fn finish(kind: Kind, source: Source, frames: Frames) -> Result<Imported, SkinsP
     })
 }
 
-fn encode(width: u32, height: u32, rgba: &[u8]) -> Result<Vec<u8>, SkinsProblem> {
+pub(crate) fn encode(width: u32, height: u32, rgba: &[u8]) -> Result<Vec<u8>, SkinsProblem> {
     let failed = |_| SkinsProblem::BadPng;
     let mut png = Vec::new();
     let mut encoder = png::Encoder::new(&mut png, width, height);

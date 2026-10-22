@@ -2224,6 +2224,18 @@ skins-mod <channel>` there only checks the signature against the public key and
 - **Saving the picture:** `skins_save_picture` (async: it opens a native dialog) takes
   only a PNG that decodes fully, at most 2048 pixels a side and 16 MiB; the offered
   name is the nick reduced to letters, digits, `_` and `-`. The log gets a fixed line.
+- **Heads and skins by nick (2026-10-22, for the redesign, D-072):** `skins_heads`
+  gives the heads of up to 200 players for friends, rooms and chats: the face of the
+  skin's first frame with the hat over it (a skin of the layout before 1.8 whose hat
+  area has no transparency shows its face alone, as in the game), a square PNG 8
+  pixels per 64 of the skin's width. Nicks that cannot be one (3–16 Latin letters,
+  digits, `_`) are never sent; the rest go 50 a request to `POST /v1/profiles` and are
+  kept a minute, the heads by their skin's hash. `skins_by_nick` takes the skin or
+  cape another player wears as a picked file, with its owner's arms and frame
+  durations, to try on and wear. A worn skin is public already (every game with the
+  mod shows it, as in Minecraft), and the board the owner chose (D-072) has this
+  button. Textures come only by hash and are checked against it. Nicks never go into
+  the log or an address beyond the profile lookup.
 
 ## D-066 — Catalog of mods at mods.lapi.sh
 
