@@ -1,4 +1,4 @@
-import { fireEvent, render, screen } from '@testing-library/react';
+import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { mockIPC } from '@tauri-apps/api/mocks';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { CrashDiagnosis, CrashKind, RunSummary } from '../../lib/contracts';
@@ -156,6 +156,78 @@ describe('CrashHelp', () => {
     expect(calls.find((c) => c.cmd === 'preview_crash_report')?.args).toEqual({
       subject: { type: 'game', runId: 'run-1', instanceId: 'i-1' },
     });
+  });
+
+  it('offers the mod the game needs from the catalog, and only when it has one', async () => {
+    const missing: CrashDiagnosis = {
+      ...diagnosis,
+      kind: 'wrong_dependency_version',
+      details: { mod: 'Iris', dependency: 'Sodium', dependencyId: 'sodium', required: '0.6' },
+      notes: [],
+      actions: ['update_mod', 'open_mods'],
+    };
+    const calls: { cmd: string; args: unknown }[] = [];
+    let answer: unknown = {
+      modId: 'sodium',
+      projectId: 'p-1',
+      title: 'Sodium',
+      icon: null,
+      versionId: 'v-2',
+      number: '0.6.0',
+      installed: 'mods/sodium-0.5.jar',
+      replaces: null,
+    };
+    mockIPC((cmd, args) => {
+      calls.push({ cmd, args });
+      if (cmd === 'mods_fix') return answer;
+      if (cmd === 'mods_plan') {
+        return {
+          items: [],
+          missing: [],
+          conflicts: [],
+          misfit: null,
+          totalBytes: 0,
+          approval: null,
+          turnOn: [],
+          problems: [],
+          instead: null,
+        };
+      }
+      return null;
+    });
+    const view = (
+      <CrashHelp
+        instance={instanceFixture({ id: 'i-1' })}
+        run={{ ...run, diagnosis: missing }}
+        onEditSettings={() => undefined}
+        onOpenBackups={() => undefined}
+        busy={false}
+      />
+    );
+    const { unmount } = render(view);
+    // Asked about the mod the loader named; the plan opens on a click.
+    fireEvent.click(await screen.findByRole('button', { name: 'Update Sodium' }));
+    expect(calls.find((c) => c.cmd === 'mods_fix')?.args).toEqual({
+      instanceId: 'i-1',
+      modId: 'sodium',
+    });
+    expect(await screen.findByRole('dialog')).toBeVisible();
+    expect(calls.find((c) => c.cmd === 'mods_plan')?.args).toMatchObject({
+      payload: { instanceId: 'i-1', version: 'v-2', replaces: null },
+    });
+    unmount();
+
+    // Nothing better in the catalog: only the folder.
+    answer = null;
+    render(view);
+    await waitFor(() => {
+      expect(calls.filter((c) => c.cmd === 'mods_fix')).toHaveLength(2);
+    });
+    await act(async () => {
+      await Promise.resolve();
+    });
+    expect(screen.getByRole('button', { name: 'Open the mods folder' })).toBeVisible();
+    expect(screen.queryByRole('button', { name: /Update|Install/ })).toBeNull();
   });
 
   it('has a sentence for every cause in every language, with or without details', async () => {

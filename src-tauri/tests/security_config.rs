@@ -273,6 +273,8 @@ fn main_window_capability_grants_only_app_commands() {
             "allow-mods-report",
             "allow-mods-cancel",
             "allow-mods-content",
+            "allow-mods-find-installed",
+            "allow-mods-fix",
             "allow-mods-harmful",
             "allow-mods-identify",
             "allow-mods-needed-by",

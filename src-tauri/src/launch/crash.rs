@@ -113,6 +113,9 @@ pub enum CrashKind {
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum CrashAction {
+    /// Put in or update the mod `dependencyId` from the catalog (D-072),
+    /// when it has one.
+    UpdateMod,
     OpenMods,
     OpenConfig,
     OpenCrashReports,
@@ -1492,6 +1495,18 @@ pub fn diagnose(input: &CrashInput<'_>) -> Option<CrashDiagnosis> {
         .entry("exitCode".to_owned())
         .or_insert_with(|| input.exit.code.map_or_else(String::new, |c| c.to_string()));
     d.details.retain(|_, v| !v.is_empty());
+    // A mod missing or too old: the catalog may have the one it needs.
+    if matches!(
+        d.kind,
+        CrashKind::MissingDependency | CrashKind::WrongDependencyVersion
+    ) && d.details.get("dependencyId").is_some_and(|id| {
+        (1..=64).contains(&id.len())
+            && id
+                .bytes()
+                .all(|b| b.is_ascii_lowercase() || b.is_ascii_digit() || b"_-.".contains(&b))
+    }) {
+        d.actions.insert(0, CrashAction::UpdateMod);
+    }
     d.suspects = suspects(&cx);
     d.report = cx.report_file();
     if d.report.is_some() && !d.actions.contains(&CrashAction::OpenCrashReports) {

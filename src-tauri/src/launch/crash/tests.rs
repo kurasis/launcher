@@ -62,7 +62,10 @@ fn fabric_dependency_at_wrong_version() {
     assert_eq!(detail(&d, "dependencyId"), "fabric-api");
     assert_eq!(detail(&d, "required"), "0.92.0 or later");
     assert_eq!(detail(&d, "found"), "0.83.0+1.20.1");
-    assert_eq!(d.actions, vec![CrashAction::OpenMods]);
+    assert_eq!(
+        d.actions,
+        vec![CrashAction::UpdateMod, CrashAction::OpenMods]
+    );
     assert_eq!(d.evidence.len(), MAX_EVIDENCE);
 }
 
@@ -76,7 +79,10 @@ fn fabric_missing_dependency_named_by_id() {
     assert_eq!(detail(&d, "dependency"), "fabric-api");
     assert_eq!(detail(&d, "required"), "0.92.0+1.20.1 or later");
     assert!(!d.details.contains_key("found"));
-    assert_eq!(d.actions, vec![CrashAction::OpenMods]);
+    assert_eq!(
+        d.actions,
+        vec![CrashAction::UpdateMod, CrashAction::OpenMods]
+    );
 }
 
 #[test]
@@ -87,7 +93,10 @@ fn quilt_missing_dependency() {
     assert_eq!(detail(&d, "mod"), "Sodium Extra");
     assert_eq!(detail(&d, "dependency"), "sodium");
     assert_eq!(detail(&d, "required"), "[0.8.13+mc1.21.1, ∞)");
-    assert_eq!(d.actions, vec![CrashAction::OpenMods]);
+    assert_eq!(
+        d.actions,
+        vec![CrashAction::UpdateMod, CrashAction::OpenMods]
+    );
 }
 
 #[test]
@@ -172,7 +181,11 @@ fn forge_missing_dependency_even_after_a_clean_exit() {
     assert!(!d.details.contains_key("found"));
     assert_eq!(
         d.actions,
-        vec![CrashAction::OpenMods, CrashAction::OpenCrashReports]
+        vec![
+            CrashAction::UpdateMod,
+            CrashAction::OpenMods,
+            CrashAction::OpenCrashReports
+        ]
     );
 }
 

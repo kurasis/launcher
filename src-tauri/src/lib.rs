@@ -965,6 +965,8 @@ fn handlers<R: tauri::Runtime>() -> impl Fn(tauri::ipc::Invoke<R>) -> bool + Sen
         commands::mods_report,
         commands::mods_cancel,
         commands::mods_content,
+        commands::mods_find_installed,
+        commands::mods_fix,
         commands::mods_harmful,
         commands::mods_identify,
         commands::mods_updates,
