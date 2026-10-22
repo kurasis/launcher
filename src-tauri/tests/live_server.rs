@@ -714,29 +714,60 @@ async fn host_a_world_with_mods() {
 
     let activity = ActivityRegistry::new();
     let members = [Nick::parse("Host_Player").unwrap()];
-    let permit = activity
-        .try_acquire_hosting(created.id.uuid(), "live-mods".to_owned())
-        .unwrap();
-    let server = host::start(
-        &Launch {
-            root: &root,
-            world_id: created.id,
-            java: &java,
-            server_heap_mib: 2048,
-            game_heap_mib: 0,
-            physical_memory_bytes: physical_memory(),
-            members: &members,
-            operation_id: "live-mods".to_owned(),
-        },
-        permit,
-        Arc::new(|| {}),
-    )
-    .unwrap();
-    let started = Instant::now();
-    tokio::task::block_in_place(|| server.wait_ready(STARTUP_SILENCE)).unwrap();
-    println!("ready in {:.1?}", started.elapsed());
-
     let server_dir = root.world_server_dir(created.id);
+    // Fabric API brings data, which it lists as mods' data packs
+    // (`fabric/<mod id>` on 1.14, `Fabric Mods (Fabric mod)` on 1.19.2);
+    // without a mod with data only `vanilla` shows. The list is read through
+    // RCON, so a run before 1.16 that lost its listener at start is stopped
+    // and started again, as in `host_a_world`.
+    let reads_data_packs = matches!(kind, LoaderKind::Fabric | LoaderKind::Quilt);
+    let mut starts = 0;
+    let server = loop {
+        starts += 1;
+        let permit = activity
+            .try_acquire_hosting(created.id.uuid(), "live-mods".to_owned())
+            .unwrap();
+        let server = host::start(
+            &Launch {
+                root: &root,
+                world_id: created.id,
+                java: &java,
+                server_heap_mib: 2048,
+                game_heap_mib: 0,
+                physical_memory_bytes: physical_memory(),
+                members: &members,
+                operation_id: "live-mods".to_owned(),
+            },
+            permit,
+            Arc::new(|| {}),
+        )
+        .unwrap();
+        let started = Instant::now();
+        tokio::task::block_in_place(|| server.wait_ready(STARTUP_SILENCE)).unwrap();
+        println!("ready in {:.1?}", started.elapsed());
+        if !reads_data_packs {
+            break server;
+        }
+        let recorded = receipt::read(&root).expect("run receipt");
+        match open_console(&recorded) {
+            Ok(mut console) => {
+                let packs = console.command("datapack list").unwrap().to_lowercase();
+                println!("data packs: {packs}");
+                assert!(packs.contains("fabric"), "Fabric API loaded");
+                assert!(!packs.contains("sodium"));
+                println!("fabric api data loaded");
+                break server;
+            }
+            Err(rcon::RconError::Unreachable)
+                if server.protocol() < FIRST_STEADY_RCON && starts < RCON_STARTS =>
+            {
+                println!("rcon listener lost its start race, starting again");
+                assert!(tokio::task::block_in_place(|| server.stop(STOP_GRACE)));
+            }
+            Err(error) => panic!("rcon answers: {error:?}"),
+        }
+    };
+
     let mut mods: Vec<String> = std::fs::read_dir(server_dir.join("mods"))
         .unwrap()
         .filter_map(Result::ok)
@@ -790,16 +821,6 @@ async fn host_a_world_with_mods() {
     );
     println!("member in, stranger refused");
 
-    if matches!(kind, LoaderKind::Fabric | LoaderKind::Quilt) {
-        // Fabric API brings data, which it lists as mods' data packs
-        // (`fabric/<mod id>` on 1.14, `Fabric Mods (Fabric mod)` on 1.19.2);
-        // without a mod with data only `vanilla` shows.
-        let packs = data_packs(&server_dir).to_lowercase();
-        println!("data packs: {packs}");
-        assert!(packs.contains("fabric"), "Fabric API loaded");
-        assert!(!packs.contains("sodium"));
-        println!("fabric api data loaded");
-    }
     let clean = tokio::task::block_in_place(|| server.stop(STOP_GRACE));
     assert!(clean);
     assert!(!activity.is_busy());
@@ -839,27 +860,6 @@ async fn host_a_world_with_mods() {
         }
     }
     println!("stopped clean");
-}
-
-/// The server's `datapack list` through its RCON: the mods' data shows there
-/// whichever loader loaded them.
-fn data_packs(server_dir: &std::path::Path) -> String {
-    let properties = std::fs::read_to_string(server_dir.join("server.properties")).unwrap();
-    let value = |key: &str| {
-        properties
-            .lines()
-            .find_map(|l| l.strip_prefix(key)?.strip_prefix('='))
-            .unwrap_or_else(|| panic!("{key} is set"))
-            .trim()
-            .to_owned()
-    };
-    let mut rcon = launcher_lib::worlds::rcon::Rcon::connect(
-        value("rcon.port").parse().unwrap(),
-        &launcher_lib::secrets::SecretString::new(value("rcon.password")),
-        Duration::from_secs(10),
-    )
-    .unwrap_or_else(|_| panic!("rcon answers"));
-    rcon.command("datapack list").unwrap()
 }
 
 /// Starts a world's server, waits until it is ready or fails, and stops it.
