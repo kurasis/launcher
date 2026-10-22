@@ -32,6 +32,14 @@ on:
       part_size:
         description: Items per job (a job of 12 takes about 45 minutes)
         default: '12'
+      downloads:
+        description: >-
+          Where the launcher downloads from (Settings, Network): mirror_first (our mirror,
+          the origin when it fails), automatic (the origin, the mirror when it fails or is
+          very slow; what a new player has) or origin_only
+        type: choice
+        options: [mirror_first, automatic, origin_only]
+        default: mirror_first
       cleanup:
         description: Only put the machine back (stop and uninstall what an earlier, cancelled run left)
         type: boolean
@@ -152,6 +160,7 @@ jobs:
       - name: Play
         env:
           ITEMS: ${{ matrix.items }}
+          DOWNLOADS: ${{ inputs.downloads || 'mirror_first' }}
           CLEANUP: ${{ inputs.cleanup && 'yes' || 'no' }}
         run: |
           if ($env:CLEANUP -eq 'yes') {
@@ -161,7 +170,7 @@ jobs:
           $setup = (Get-Item ut/input/package/*-setup.exe | Select-Object -First 1).FullName
           & powershell.exe -NoProfile -ExecutionPolicy Bypass -File ut/input/windows.ps1 `
             -Setup $setup -Strings (Resolve-Path ut/input/ui-strings.json).Path `
-            -Items $env:ITEMS -Out (New-Item -ItemType Directory -Force ut/out).FullName
+            -Items $env:ITEMS -Downloads $env:DOWNLOADS -Out (New-Item -ItemType Directory -Force ut/out).FullName
           exit $LASTEXITCODE
       - name: Summary
         if: always()
