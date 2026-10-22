@@ -1,0 +1,205 @@
+name: Versions
+
+# The Minecraft versions Mojang's version list does not have (docs/EXTRA-VERSIONS.md,
+# docs/DECISIONS.md D-073): April Fools versions, 2.0, Combat Tests, experimental
+# snapshots, the unobfuscated builds and the old versions kept by archives. Their
+# list is data/extra-versions.json (scripts/extra-versions.mjs writes it); launchers
+# get the list, the version files and every game jar from upd.lapi.sh only.
+#
+# "Check" downloads every jar from where it came from (Mojang or the archives),
+# checks its SHA-1 and size, and checks them all for viruses with ClamAV; any
+# finding stops the run. On main, "Publish" then signs the list with the update
+# key (it never goes to the server), uploads the jars upd.lapi.sh does not have
+# yet (each the same bytes "Check" scanned, by SHA-256), the version files and the
+# list, and lapi-upd puts them in place: `versions-files`, then `versions`, which
+# checks the signature and that every file is there. Logs hold numbers only.
+#
+# The server serves /versions/ once deploy/bootstrap.sh has installed the nginx
+# files with it (the last step warns until then).
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - data/extra-versions.json
+      - .github/workflows/versions.yml
+  pull_request:
+    paths:
+      - data/extra-versions.json
+      - scripts/extra-versions*.mjs
+      - .github/workflows/versions.yml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: versions-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  check:
+    name: Download and check the jars
+    runs-on: ubuntu-24.04
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+      - name: Download every jar
+        timeout-minutes: 45
+        run: node scripts/extra-versions-files.mjs jars
+      - name: Check for viruses
+        timeout-minutes: 40
+        run: |
+          set -uo pipefail
+          # The official image comes with the virus database of its day;
+          # freshclam takes a newer one when the database servers let it.
+          docker run --rm -v "$PWD/jars:/scan:ro" --entrypoint /bin/sh clamav/clamav:stable -c \
+            'freshclam --stdout >/dev/null 2>&1; clamscan --recursive --infected --no-summary /scan' \
+            > clamscan.txt 2> clamscan.err
+          status=$?
+          found=$(grep -c ' FOUND$' clamscan.txt || true)
+          echo "jars checked: $(find jars -name '*.jar' | wc -l), viruses found: $found"
+          if [ "$status" != 0 ] || [ "$found" != 0 ]; then
+            echo "::error::ClamAV did not pass every jar (exit $status, $found found)"
+            exit 1
+          fi
+      - name: Note what was checked
+        run: (cd jars && sha256sum -- *.jar) > checked.sha256
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
+        with:
+          name: checked
+          path: checked.sha256
+          retention-days: 3
+
+  publish:
+    name: Publish on upd.lapi.sh
+    needs: check
+    if: github.ref == 'refs/heads/main' && github.event_name != 'pull_request'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 120
+    environment: production
+    steps:
+      - name: Signing key configured?
+        env:
+          KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+        run: |
+          if [ -z "$KEY" ]; then
+            echo "::error::No TAURI_SIGNING_PRIVATE_KEY secret: the list cannot be signed (docs/DECISIONS.md D-073)."
+            exit 1
+          fi
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8
+        with:
+          name: checked
+      - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6
+        with:
+          path: |
+            ~/.cargo/registry
+            services/upd/target
+          key: upd-${{ hashFiles('services/upd/Cargo.lock', 'rust-toolchain.toml') }}
+      - name: Build lapi-upd
+        run: cargo build --locked --release --manifest-path services/upd/Cargo.toml
+      - name: Sign the list
+        env:
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+        run: services/upd/target/release/lapi-upd versions-list --data data/extra-versions.json --out out
+      - uses: ./.github/actions/lapi-ssh
+        with:
+          ssh-key: ${{ secrets.SSH_KEY }}
+          known-hosts: ${{ secrets.SSH_KNOWN_HOSTS }}
+      - name: Wait for a lapi-upd with versions
+        env:
+          TARGET: ${{ secrets.SSH_USER }}@${{ secrets.SSH_HOST }}
+        run: |
+          # The Update service workflow deploys it; on the same merge it may
+          # still be on its way.
+          for i in $(seq 1 30); do
+            if ssh "$TARGET" "sudo -u lapi-upd /home/www/lapi/upd/current/lapi-upd versions-have" > have.txt 2>/dev/null; then
+              echo "jars on upd.lapi.sh: $(grep -c . have.txt || true)"
+              exit 0
+            fi
+            sleep 60
+          done
+          echo "::error::lapi-upd on the server has no versions commands: deploy the Update service first."
+          exit 1
+      - name: Download the jars upd.lapi.sh does not have
+        timeout-minutes: 45
+        run: |
+          set -euo pipefail
+          node scripts/extra-versions-files.mjs jars --skip have.txt
+          # Each one the same bytes the check passed.
+          (cd jars && find . -name '*.jar' | sed 's|^\./||' | sort) > new.txt
+          grep -F -f new.txt checked.sha256 > new.sha256 || true
+          [ "$(grep -c . new.sha256 || true)" = "$(grep -c . new.txt || true)" ] ||
+            { echo "::error::a jar was not in the check"; exit 1; }
+          if [ -s new.sha256 ]; then (cd jars && sha256sum -c --quiet ../new.sha256); fi
+          echo "jars to upload: $(grep -c . new.txt || true), $(du -sm jars | cut -f1) MB"
+      - name: Upload the jars and the version files
+        timeout-minutes: 60
+        env:
+          TARGET: ${{ secrets.SSH_USER }}@${{ secrets.SSH_HOST }}
+        run: |
+          set -euo pipefail
+          incoming=/home/www/lapi/upd/data/incoming/versions
+          lapi="sudo -u lapi-upd /home/www/lapi/upd/current/lapi-upd"
+          free=$(ssh "$TARGET" "df --output=avail -BG /home/www/lapi/upd/data | tail -1 | tr -dc 0-9")
+          echo "free on the server: $free GB"
+          [ "$free" -ge 8 ] || { echo "::error::less than 8 GB free on the server"; exit 1; }
+          # One batch of about 1 GB at a time: the server copies each batch in
+          # place before the next comes.
+          batch() {
+            ssh "$TARGET" "rm -rf '$incoming' && mkdir -m 2750 -p '$incoming/files' '$incoming/meta'"
+            scp -q batch.sums "$TARGET:$incoming/SHA1SUMS"
+            if [ -s batch.files ]; then
+              tar -C out -cf - -T batch.files 2>/dev/null | ssh "$TARGET" "tar -C '$incoming' -xf -"
+            fi
+            ssh "$TARGET" "$lapi versions-files"
+            ssh "$TARGET" "rm -rf '$incoming'"
+          }
+          mkdir -p out/files
+          size=0
+          : > batch.sums
+          : > batch.files
+          while read -r name; do
+            sum="${name%.jar}"
+            mv "jars/$name" "out/files/$name"
+            echo "$sum  files/$name" >> batch.sums
+            echo "files/$name" >> batch.files
+            size=$((size + $(stat -c %s "out/files/$name")))
+            if [ "$size" -ge 1000000000 ]; then
+              batch
+              rm -f out/files/*.jar
+              size=0
+              : > batch.sums
+              : > batch.files
+            fi
+          done < new.txt
+          [ -s batch.sums ] && batch
+          rm -f out/files/*.jar
+          # The version files, with the jars upd.lapi.sh had: all are named.
+          cp out/SHA1SUMS batch.sums
+          (cd out && find meta -name '*.json') > batch.files
+          batch
+      - name: Publish the list
+        env:
+          TARGET: ${{ secrets.SSH_USER }}@${{ secrets.SSH_HOST }}
+        run: |
+          set -euo pipefail
+          scp -q out/versions.json "$TARGET:/home/www/lapi/upd/data/incoming/versions.json"
+          ssh "$TARGET" "sudo -u lapi-upd /home/www/lapi/upd/current/lapi-upd versions"
+      - name: Check what launchers get
+        run: |
+          serial=$(jq -r '.list | fromjson | .serial' out/versions.json)
+          # A query of its own, so Cloudflare does not answer with an older copy.
+          got=$(curl -fsS --max-time 20 "https://upd.lapi.sh/versions/manifest.json?run=$GITHUB_RUN_ID" | jq -r '.list | fromjson | .serial' || true)
+          if [ "$got" != "$serial" ]; then
+            echo "::warning::upd.lapi.sh does not serve the list yet: run 'sudo bash ~/lapi-bootstrap/bootstrap.sh <deploy-user>' on the server for its nginx files."
+            exit 0
+          fi
+          sum=$(jq -r '.list | fromjson | .versions[0].sha1' out/versions.json)
+          curl -fsS --max-time 30 -o meta.json "https://upd.lapi.sh/versions/meta/$sum.json"
+          echo "$(jq -r '.downloads.client.sha1' meta.json)  client.jar" > client.sha1
+          curl -fsS --max-time 300 -o client.jar "$(jq -r '.downloads.client.url' meta.json)"
+          echo "$sum  meta.json" | sha1sum -c --quiet - && sha1sum -c --quiet client.sha1 &&
+            echo "upd.lapi.sh serves the list (serial $serial), its version files and jars"

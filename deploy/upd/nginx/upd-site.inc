@@ -46,6 +46,31 @@ location ~ "^/skins-mod/[0-9]+\.[0-9]+\.[0-9]+/launcherskins-[a-z0-9.-]+\.jar$" 
     try_files $uri =404;
 }
 
+# Minecraft versions Mojang's list does not have (D-073): the signed list, the
+# version files and the game jars, as `lapi-upd versions` put them. Players
+# download these jars only from here.
+location = /versions/manifest.json {
+    default_type application/json;
+    add_header Cache-Control "public, max-age=300" always;
+    add_header X-Content-Type-Options nosniff always;
+    try_files $uri =404;
+}
+
+location ~ "^/versions/meta/[0-9a-f]{40}\.json$" {
+    default_type application/json;
+    add_header Cache-Control "public, max-age=31536000, immutable" always;
+    add_header X-Content-Type-Options nosniff always;
+    try_files $uri =404;
+}
+
+location ~ "^/versions/files/[0-9a-f]{40}\.jar$" {
+    types {}
+    default_type application/java-archive;
+    add_header Cache-Control "public, max-age=31536000, immutable" always;
+    add_header X-Content-Type-Options nosniff always;
+    try_files $uri =404;
+}
+
 location = /download/ {
     add_header Cache-Control "public, max-age=60" always;
     add_header X-Content-Type-Options nosniff always;
