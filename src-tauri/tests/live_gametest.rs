@@ -7,10 +7,13 @@
 //! `LAUNCHER_LIVE_ROOT=<data dir> GAMETEST_VERSION=26.3 GAMETEST_LOADER=fabric
 //!  GAMETEST_JARS=<built jars> GAMETEST_OUT=<results> cargo test --test live_gametest -- --ignored --nocapture`
 //!
-//! Optional: `GAMETEST_MODS=medium`, `GAMETEST_MINUTES=5`, `GAMETEST_SKIN=hd512`
-//! (see `gametest::skins::VARIANTS`). The run's results (the bot's report,
-//! screenshots, cleaned logs, a Markdown summary) go to
-//! `GAMETEST_OUT/<scenario>/`; the test fails when a check fails.
+//! Optional: `GAMETEST_MODS=medium`, `GAMETEST_MOD_VERSIONS=newest` (the medium
+//! set's newest versions instead of the locked ones), `GAMETEST_MINUTES=5`,
+//! `GAMETEST_SKIN=hd512` (see `gametest::skins::VARIANTS`). The run's results
+//! (the bot's report, screenshots, cleaned logs, a Markdown summary) go to
+//! `GAMETEST_OUT/<scenario>/`; the test fails when a check fails. A scenario that
+//! could not show anything about our mods (another mod crashed the game in every
+//! play, a download failed) passes with the status `theirs` in its `result.json`.
 
 #![allow(clippy::print_stdout, clippy::unwrap_used, clippy::expect_used)] // a harness: prints its evidence
 
@@ -27,7 +30,7 @@ use gametest::{mods, skins};
 use launcher_lib::catalog::source::MetadataService;
 use launcher_lib::download::ExecutorConfig;
 use launcher_lib::download::transport::HttpTransport;
-use launcher_lib::error::LauncherResult;
+use launcher_lib::error::{ErrorCode, LauncherError, LauncherResult};
 use launcher_lib::install::service::{
     BoxFuture, InstallService, LiveSource, PlanSource, StateAccess,
 };
@@ -172,6 +175,39 @@ fn blamed<'a>(diagnosis: &Value, set: &'a [mods::ModFile]) -> Option<&'a mods::M
     None
 }
 
+/// Errors of a download, not of the launcher: the scenario is `theirs`.
+fn download_trouble(error: &LauncherError) -> bool {
+    matches!(
+        error.code,
+        ErrorCode::NetworkError
+            | ErrorCode::RateLimited
+            | ErrorCode::ServiceUnavailable
+            | ErrorCode::HashMismatch
+    )
+}
+
+/// Ends a scenario before or without its play: `theirs` when others' trouble
+/// stopped it, `unchanged` when the newest mods are the locked ones. Its summary
+/// and result say why, in fixed words and public names only.
+fn ended_early(out: &Path, scenario: &str, status: &str, reason: &str, notes: &[String]) {
+    let mut lines = notes.to_vec();
+    lines.push(format!("- {reason}"));
+    let text = report::summary(scenario, status, None, &lines);
+    std::fs::write(out.join("summary.md"), &text).unwrap();
+    std::fs::write(
+        out.join("result.json"),
+        serde_json::to_string_pretty(&serde_json::json!({
+            "scenario": scenario,
+            "passed": false,
+            "status": status,
+            "reason": reason,
+        }))
+        .unwrap(),
+    )
+    .unwrap();
+    println!("{text}");
+}
+
 /// Moves what attempt `n` left in `out` to `out/attempt-<n>/`.
 fn stash(out: &Path, n: u32) {
     let to = out.join(format!("attempt-{n}"));
@@ -232,6 +268,11 @@ async fn the_game_is_played_with_mods_and_skins() {
         ["none", "medium"].contains(&mod_set.as_str()),
         "GAMETEST_MODS is none or medium"
     );
+    let mod_versions = env("GAMETEST_MOD_VERSIONS").unwrap_or_else(|| "locked".to_owned());
+    assert!(
+        ["locked", "newest"].contains(&mod_versions.as_str()),
+        "GAMETEST_MOD_VERSIONS is locked or newest"
+    );
     let minutes: f64 = env("GAMETEST_MINUTES")
         .and_then(|m| m.parse().ok())
         .unwrap_or(5.0);
@@ -288,21 +329,40 @@ async fn the_game_is_played_with_mods_and_skins() {
     ));
     let live = Arc::new(LiveSource::new(metadata, VERSION).unwrap());
     let display_name = format!("Game test {version} {loader_name} {mod_set}");
-    // The newest stable loader build, not Forge's "recommended" one: mods follow the
-    // newest builds (JourneyMap 6.0.9 needs a Forge 1.21.1 newer than 52.1.0).
-    let newest = match kind {
+    // The medium set that last passed with the newest versions, and the loader
+    // build it passed on (docs/GAMETEST.md).
+    let locked = (kind.is_some() && mod_set == "medium")
+        .then(|| mods::locked(&version, &loader_name))
+        .flatten();
+    let play_locked = mod_versions == "locked" && locked.is_some();
+    // The locked set's loader build; else the newest stable build, not Forge's
+    // "recommended" one: mods follow the newest builds (JourneyMap 6.0.9 needs a
+    // Forge 1.21.1 newer than 52.1.0).
+    let choice = match kind {
         Some(kind) => {
-            let versions = live.loader_versions(kind, &version).await.unwrap();
-            let newest = versions
-                .iter()
-                .find(|v| v.stable)
-                .or_else(|| versions.first())
-                .expect("a loader version for this game version")
-                .id
-                .clone();
+            let build = match &locked {
+                Some((build, _)) if play_locked => build.clone(),
+                _ => match live.loader_versions(kind, &version).await {
+                    Ok(versions) => versions
+                        .iter()
+                        .find(|v| v.stable)
+                        .or_else(|| versions.first())
+                        .expect("a loader version for this game version")
+                        .id
+                        .clone(),
+                    Err(e) if download_trouble(&e) => {
+                        let reason = format!(
+                            "the loader's builds could not be fetched ({:?}): not played",
+                            e.code
+                        );
+                        return ended_early(&out, &scenario, "theirs", &reason, &notes);
+                    }
+                    Err(e) => panic!("the loader's builds: {e}"),
+                },
+            };
             Some(LoaderChoice {
                 kind,
-                version: newest,
+                version: build,
             })
         }
         None => None,
@@ -312,12 +372,12 @@ async fn the_game_is_played_with_mods_and_skins() {
         .instances
         .into_iter()
         .find(|i| i.display_name == display_name);
-    // A kept installation moves to the newest build; the install below applies it.
-    let instance = match (existing, &newest) {
-        (Some(instance), Some(newest)) => state
+    // A kept installation moves to the chosen build; the install below applies it.
+    let instance = match (existing, &choice) {
+        (Some(instance), Some(choice)) => state
             .set_instance_loader(request(SetInstanceLoaderPayload {
                 instance_id: instance.id,
-                version: newest.version.clone(),
+                version: choice.version.clone(),
             }))
             .unwrap(),
         (Some(instance), None) => instance,
@@ -325,7 +385,7 @@ async fn the_game_is_played_with_mods_and_skins() {
             .create_instance(request(CreateInstancePayload {
                 display_name: display_name.clone(),
                 version_id: version.clone(),
-                loader: newest.clone(),
+                loader: choice.clone(),
             }))
             .unwrap(),
     };
@@ -354,12 +414,15 @@ async fn the_game_is_played_with_mods_and_skins() {
         }
         tokio::time::sleep(Duration::from_millis(500)).await;
     };
-    assert_eq!(
-        result.outcome,
-        Outcome::Succeeded,
-        "install: {:?}",
-        result.error
-    );
+    if result.outcome != Outcome::Succeeded {
+        match &result.error {
+            Some(e) if download_trouble(e) => {
+                let reason = format!("the install could not download ({:?}): not played", e.code);
+                return ended_early(&out, &scenario, "theirs", &reason, &notes);
+            }
+            error => panic!("install: {error:?}"),
+        }
+    }
     println!(
         "installed in {:.0} s ({} files downloaded)",
         started.elapsed().as_secs_f64(),
@@ -437,12 +500,59 @@ async fn the_game_is_played_with_mods_and_skins() {
         // The mod set as played, and the versions it could not take.
         let mut set: Vec<mods::ModFile> = Vec::new();
         let mut replaced: Vec<String> = retries.clone();
+        // A set chosen from the newest versions, with every answer, goes to the lock
+        // when it passes.
+        let mut lockable = false;
         if mod_set == "medium" {
             let mods_cache = cache.join("mods");
-            let resolved = mods::resolve(&version, &loader, &avoid, &mods_cache).await;
-            mods::install(&resolved.files, &mods_cache, &mods_dir)
-                .await
-                .expect("the mod set downloads");
+            let resolved = match &locked {
+                Some((_, files)) if play_locked => {
+                    notes.push(
+                        "- mod versions: the locked set (src-tauri/tests/gametest/medium.lock.json)"
+                            .to_owned(),
+                    );
+                    mods::from_lock(&version, &loader, files.clone(), &avoid, &mods_cache).await
+                }
+                _ => {
+                    notes.push(
+                        if mod_versions == "newest" {
+                            "- mod versions: the newest that fit"
+                        } else {
+                            "- mod versions: the newest that fit (no set is locked for this version and loader yet)"
+                        }
+                        .to_owned(),
+                    );
+                    let resolved = mods::resolve(&version, &loader, &avoid, &mods_cache).await;
+                    lockable = resolved.complete;
+                    if !resolved.complete {
+                        replaced.push(
+                            "Modrinth did not answer for every mod: the set is not complete"
+                                .to_owned(),
+                        );
+                    }
+                    resolved
+                }
+            };
+            // The newest are the locked set: this was played already.
+            let ids = |files: &[mods::ModFile]| -> std::collections::BTreeSet<String> {
+                files.iter().map(|f| f.version_id.clone()).collect()
+            };
+            if let Some((build, files)) = &locked
+                && mod_versions == "newest"
+                && attempt == 1
+                && resolved.complete
+                && build == loader.version
+                && ids(files) == ids(&resolved.files)
+            {
+                let reason =
+                    "the newest mods and loader build are the locked set: not played again";
+                return ended_early(&out, &scenario, "unchanged", reason, &notes);
+            }
+            if let Err(e) = mods::install(&resolved.files, &mods_cache, &mods_dir).await {
+                println!("mod set: {e}");
+                let reason = "the mod set could not be downloaded: not played";
+                return ended_early(&out, &scenario, "theirs", reason, &notes);
+            }
             notes.push(format!(
                 "- mods ({}): {}",
                 resolved.files.len(),
@@ -468,7 +578,7 @@ async fn the_game_is_played_with_mods_and_skins() {
         }
         if !replaced.is_empty() {
             notes.push(format!(
-                "- ⚠️ replaced, crashed on this loader build: {}",
+                "- ⚠️ replaced or left out: {}",
                 replaced.join("; ")
             ));
         }
@@ -643,11 +753,52 @@ async fn the_game_is_played_with_mods_and_skins() {
         let bot_passed = bot_report.as_ref().is_some_and(|r| r["passed"] == true);
         let clean_exit = exit_code == Some(0) && !timed_out;
         let passed = bot_passed && clean_exit && crashes.is_empty();
+        // A crash the launcher's diagnosis blames on a mod of the set; else the one
+        // whose class comes first in the crash's stack: the crash report, or the log
+        // from the last exception that ended the game.
+        let crashed = !clean_exit || !crashes.is_empty();
+        let stack = crashes
+            .first()
+            .and_then(|c| std::fs::read_to_string(c).ok())
+            .or_else(|| {
+                let at = log_text.rfind("Unhandled game exception")?;
+                Some(log_text[at..].to_owned())
+            })
+            .unwrap_or_default();
+        let culprit = (!passed && crashed && mod_set == "medium")
+            .then(|| {
+                blamed(&diagnosis, &set)
+                    .or_else(|| mods::blamed_by_stack(&stack, &set, &game_dir.join("mods")))
+            })
+            .flatten();
+        let retry = culprit.is_some() && attempt < MAX_ATTEMPTS;
+        // Another mod crashed the game in every play: not ours, the run is not held.
         let status = match (passed, replaced.is_empty()) {
-            (false, _) => "failed",
             (true, true) => "passed",
             (true, false) => "warned",
+            (false, _) if culprit.is_some() && !retry => "theirs",
+            (false, _) => "failed",
         };
+        if let Some(file) = culprit {
+            avoid.add(mods::Bad {
+                game: version.clone(),
+                loader: loader.kind.to_owned(),
+                loader_version: loader.version.to_owned(),
+                project: file.project.clone(),
+                version_id: file.version_id.clone(),
+                shown: format!("{} {}", file.title, file.version),
+            });
+            notes.push(format!(
+                "- ⚠️ {} {} crashed the game{}",
+                file.title,
+                file.version,
+                if retry {
+                    ": played again without it"
+                } else {
+                    " in every play: another mod's fault, not ours"
+                }
+            ));
+        }
         let mut lines = vec![format!(
             "Skins: {} (nick {})",
             variant.describe(),
@@ -697,6 +848,7 @@ async fn the_game_is_played_with_mods_and_skins() {
                 "scenario": scenario,
                 "passed": passed,
                 "status": status,
+                "modVersions": if play_locked { "locked" } else { "newest" },
                 "replaced": replaced,
                 "botPassed": bot_passed,
                 "exitCode": exit_code,
@@ -707,41 +859,35 @@ async fn the_game_is_played_with_mods_and_skins() {
             .unwrap(),
         )
         .unwrap();
-        // The launcher's diagnosis first; else the crash's stack: the crash
-        // report, or the log from the last exception that ended the game.
-        let stack = crashes
-            .first()
-            .and_then(|c| std::fs::read_to_string(c).ok())
-            .or_else(|| {
-                let at = log_text.rfind("Unhandled game exception")?;
-                Some(log_text[at..].to_owned())
-            })
-            .unwrap_or_default();
-        let retry = (status == "failed" && mod_set == "medium" && attempt < MAX_ATTEMPTS)
-            .then(|| {
-                blamed(&diagnosis, &set)
-                    .or_else(|| mods::blamed_by_stack(&stack, &set, &game_dir.join("mods")))
-            })
-            .flatten();
-        if let Some(file) = retry {
+        if let Some(file) = culprit.filter(|_| retry) {
             println!(
                 "{} {} crashed the game: playing again without it",
                 file.title, file.version
             );
-            avoid.add(mods::Bad {
-                game: version.clone(),
-                loader: loader.kind.to_owned(),
-                loader_version: loader.version.to_owned(),
-                project: file.project.clone(),
-                version_id: file.version_id.clone(),
-                shown: format!("{} {}", file.title, file.version),
-            });
             retries.push(format!(
                 "{} {} crashed the game (attempt {attempt}, its files in attempt-{attempt}/)",
                 file.title, file.version
             ));
             stash(&out, attempt);
             continue;
+        }
+        // The set played and passed: the lock job takes it (docs/GAMETEST.md).
+        if lockable && matches!(status, "passed" | "warned") {
+            let files: Vec<Value> = set
+                .iter()
+                .map(|f| serde_json::json!({ "title": f.title, "versionId": f.version_id }))
+                .collect();
+            std::fs::write(
+                out.join("lock.json"),
+                serde_json::to_string_pretty(&serde_json::json!({
+                    "game": version,
+                    "loader": loader_name,
+                    "loaderVersion": loader_version,
+                    "files": files,
+                }))
+                .unwrap(),
+            )
+            .unwrap();
         }
         println!("{text}");
         assert!(
