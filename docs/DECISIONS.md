@@ -1697,6 +1697,9 @@ message` plus a stack trace), with the event's level.
   at `/home/www/lapi/mirror/data` (owner `lapi-mirror`, mode 0755).
 - "Run workflow" on "Mirror service" with `task=reports` shows kept files per host,
   the quota and the free disk.
+- The mod's Gradle builds in CI (Skins mod, Game test) use it the same way: a build
+  that failed on a download runs once more with the Maven repositories of the mirrored
+  hosts read through it (`.github/gradle/`). The origins always come first.
 
 ## D-063 — Launcher updates at upd.lapi.sh
 

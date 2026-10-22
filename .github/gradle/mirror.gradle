@@ -1,0 +1,27 @@
+// Init script for the second try of a CI build that failed on a download
+// (ci-build.sh): the Maven repositories on hosts the launcher's mirror stands for
+// are read through mirror.lapi.sh (docs/DECISIONS.md D-062). The first try always goes
+// to the origins; the mirror is only the fallback.
+
+def mirrored = ['maven.minecraftforge.net', 'maven.neoforged.net', 'maven.fabricmc.net',
+                'maven.quiltmc.org', 'libraries.minecraft.net'] as Set
+
+def throughMirror = { repository ->
+    if (repository instanceof MavenArtifactRepository) {
+        def url = repository.url
+        if (url?.scheme == 'https' && url.host in mirrored && url.port == -1) {
+            repository.url = "https://mirror.lapi.sh/${url.host}${url.rawPath ?: '/'}"
+        }
+    }
+}
+
+beforeSettings { settings ->
+    settings.buildscript.repositories.configureEach(throughMirror)
+    settings.pluginManagement.repositories.configureEach(throughMirror)
+    settings.dependencyResolutionManagement.repositories.configureEach(throughMirror)
+}
+
+allprojects {
+    buildscript.repositories.configureEach(throughMirror)
+    repositories.configureEach(throughMirror)
+}
