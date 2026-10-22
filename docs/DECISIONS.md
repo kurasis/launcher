@@ -2644,9 +2644,13 @@ skins-mod <channel>` there only checks the signature against the public key and
   whose jar runs on the installation's loader version (it is fixed with the
   installation), looks a mod only a jar names up by its ID, updates a mod there already
   that is too old for a new one, and offers another version of the mod asked for when
-  that one does not run. Before a launch the folder's jars are checked offline. What is
-  left is a warning ("start anyway", "open the mods", "not now"), never a block, and
-  what cannot be compared counts as fine, so a set that starts is never stopped.
+  that one does not run. Before a launch the folder's jars are checked on the computer.
+  Mods that say nothing of each other but do not start together (OptiFine with Sodium,
+  Iris, Embeddium, Rubidium, Oculus) are a list the owner keeps in the catalog
+  (`/v1/clashes`, `clash add|remove`); the launcher has it built in for when the
+  catalog is not reached, and a launch waits for it at most three seconds. What is left
+  is a warning ("start anyway", "open the mods", "not now"), never a block, and what
+  cannot be compared counts as fine, so a set that starts is never stopped.
 
 ## D-067 — Start page feed at feed.lapi.sh
 
