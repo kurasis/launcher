@@ -453,10 +453,27 @@ $results = New-Object System.Collections.ArrayList
 $shortcutBackup = Join-Path $root 'shortcuts'
 $shortcutList = Join-Path $root 'shortcuts.txt'
 
+# The game files every installation shares (libraries, assets: content-addressed and
+# checked by the launcher before use) are kept between the parts a machine plays, so a
+# long run does not fetch the same gigabytes again for each part. Up to 25 GiB; the
+# cleanup run removes them.
+$cache = Join-Path $env:LOCALAPPDATA 'launcher-usertest-cache'
+function Keep-Shared {
+  $shared = Join-Path $data 'shared'
+  if (-not (Test-Path $shared)) { return }
+  $bytes = (Get-ChildItem $shared -Recurse -File -ErrorAction SilentlyContinue | Measure-Object Length -Sum).Sum
+  Remove-Item -Recurse -Force $cache -ErrorAction SilentlyContinue
+  if ($bytes -lt 25GB) {
+    New-Item -ItemType Directory -Force $cache | Out-Null
+    try { Move-Item $shared (Join-Path $cache 'shared') } catch { Say "shared files not kept: $($_.Exception.Message)" }
+  }
+}
+
 # Puts back what a run changed outside its folder: uninstalls the test launcher, returns
 # the owner's uninstall entry and shortcuts (saved in the folder before the install).
 function Restore-Machine {
   if ($script:launcher -and -not $script:launcher.HasExited) { Stop-Process -Id $script:launcher.Id -Force -ErrorAction SilentlyContinue }
+  if (-not $CleanupOnly) { Start-Sleep -Seconds 2; Keep-Shared }
   $uninstaller = Join-Path $appDir 'uninstall.exe'
   if (Test-Path $uninstaller) {
     Start-Process -FilePath $uninstaller -ArgumentList '/S', "_?=$appDir" -Wait | Out-Null
@@ -490,7 +507,8 @@ if (Test-Path $root) {
   Remove-Item -Recurse -Force $root -ErrorAction SilentlyContinue
 }
 if ($CleanupOnly) {
-  if (Test-Path $root) { Write-Host '::error::The test folder could not be removed.'; exit 1 }
+  Remove-Item -Recurse -Force $cache -ErrorAction SilentlyContinue
+  if ((Test-Path $root) -or (Test-Path $cache)) { Write-Host '::error::The test folder could not be removed.'; exit 1 }
   Say 'The machine is clean'
   exit 0
 }
@@ -527,6 +545,10 @@ if ($install.ExitCode -ne 0 -or -not (Test-Path $exe)) {
 Say "Installed in $([int]((Get-Date) - $started).TotalSeconds) s"
 # Portable mode: the data folder beside the launcher, apart from the owner's.
 Set-Content -Path (Join-Path $appDir 'portable.txt') -Value 'usertest'
+if (Test-Path (Join-Path $cache 'shared')) {
+  New-Item -ItemType Directory -Force $data | Out-Null
+  try { Move-Item (Join-Path $cache 'shared') (Join-Path $data 'shared'); Say 'shared game files of earlier parts in place' } catch { Say "shared files not reused: $($_.Exception.Message)" }
+}
 
 $launcher = $null
 
@@ -670,8 +692,9 @@ try {
       Start-Sleep -Seconds $(if ($loader -eq 'vanilla') { 15 } else { 30 })
       if ($game.Process.HasExited) { $result.launch = 'failed'; $result.note = 'the game closed after loading'; throw 'exited' }
       # A loading window of a loader may have given way to the game's own.
+      # (the process object stays the first one: it holds the handle for the exit code).
       $again = Game-Window
-      if ($again -and $again.Process.Id -eq $game.Process.Id) { $game = $again }
+      if ($again -and $again.Process.Id -eq $game.Process.Id) { $game.Hwnd = $again.Hwnd; $game.Title = $again.Title }
       $result.launchSeconds = [int]((Get-Date) - $started).TotalSeconds
       # The game that runs is the one asked for: the window title names its version
       # ("Minecraft 26.1"), and newer versions also log it through SDL.
