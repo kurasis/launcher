@@ -104,6 +104,20 @@ replaces it), `superseded`.
   Windows on ARM (CI and Package) likewise runs only on a manual run with the
   `windows_arm` input, until the owner turns it back on; the release archive comes from a
   run with both inputs.
+- **Amended 2026-10-22 (owner request):** the live world servers (9 vanilla releases and
+  the `on_every_change` releases with mods, about 30 jobs) run on a pull request only when
+  it changes `src-tauri/`, `rust-toolchain.toml`, `ci.yml` or `world-mods.yml`; pushes to
+  `main`, manual runs and the nightly run try them always. The check
+  `World server (linux-x64)` passes without them when the launcher did not change. The
+  live test is built once per run (`Build the live test`) and every server job, with and
+  without mods, runs that binary instead of compiling it again. With several pull requests
+  at once, those jobs had kept other pull requests waiting about 30 minutes for runners.
+- **Amended 2026-10-22 (owner request):** every Ubuntu package install goes through
+  `.github/actions/apt-install` (the Package workflow's Debian container repeats its loop
+  inline): each `apt-get update` and `install` has a time limit, and a try that runs out
+  drops the runner's Azure mirror and tries again from `archive.ubuntu.com`, three tries in
+  all. The step stops at 25 minutes and every job has its own limit. A job had waited two
+  hours on an Azure mirror that stopped answering.
 
 ## D-008 — Declared bundle targets
 

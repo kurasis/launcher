@@ -54,9 +54,16 @@ jobs:
         shell: bash
     steps:
       - name: Install build dependencies
+        # Bounded like .github/actions/apt-install, which needs a checkout
+        # this container does not have yet.
+        timeout-minutes: 25
         run: |
-          apt-get update
-          apt-get install -y --no-install-recommends \
+          opts=(-o Acquire::Retries=2 -o Acquire::http::Timeout=20 -o Acquire::https::Timeout=20)
+          for try in 1 2 3; do
+            timeout 180 apt-get "${opts[@]}" update && break
+            [ "$try" = 3 ] && exit 1
+          done
+          timeout 600 apt-get "${opts[@]}" install -y --no-install-recommends \
             build-essential ca-certificates curl file git pkg-config xz-utils \
             libwebkit2gtk-4.1-dev libxdo-dev libssl-dev libdbus-1-dev \
             libayatana-appindicator3-dev librsvg2-dev
