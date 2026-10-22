@@ -771,7 +771,7 @@ try {
       $shots = Join-Path $gameDir 'screenshots'
       $runs = Join-Path $data 'logs\runs'
       $runsBefore = @(Get-ChildItem -Directory $runs -ErrorAction SilentlyContinue | ForEach-Object Name)
-      $started = Get-Date
+      $started = Get-Date; $playStarted = $started
       $launcherLogFrom = (Log-Text (Join-Path $data 'logs\launcher.log')).Length
       Click $ready
       $game = Wait-For { Game-Window } 300
@@ -903,6 +903,10 @@ try {
           $default = Join-Path $env:APPDATA '.minecraft\saves'
           $tests = @(Get-ChildItem $default -Directory -ErrorAction SilentlyContinue | Where-Object { $_.Name -match '^New World-*$' })
           $saved += "default game folder: $($tests.Count) test worlds, $(@($tests | Where-Object { $_.LastWriteTime -gt $started }).Count) changed during this item"
+          $changed = @('options.txt', 'saves', 'resources', 'screenshots', 'stats', 'lastlogin') | Where-Object {
+            $entry = Get-Item (Join-Path $env:APPDATA ".minecraft\$_") -ErrorAction SilentlyContinue
+            $entry -and $entry.LastWriteTime -gt $playStarted }
+          $saved += "default game folder entries changed since the game started: $($changed -join ', ')"
           Set-Content (Join-Path $folder 'saves.txt') -Value $saved -Encoding UTF8
         }
       } else {
