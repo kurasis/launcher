@@ -516,6 +516,87 @@ versionRange="[21.1.0,)"
 }
 
 #[test]
+fn a_loader_takes_mods_for_the_versions_it_names_beside_its_own() {
+    // JEI's release for NeoForge 1.21.1 asks for [1.21, 1.21.1), and
+    // NeoForge on 1.21.1 runs it: it also takes mods made for 1.21.
+    let toml = r#"
+[[mods]]
+modId="jei"
+version="19.64.0.455"
+[[dependencies.jei]]
+modId="neoforge"
+type="required"
+versionRange="[21.1.238,)"
+[[dependencies.jei]]
+modId="minecraft"
+type="required"
+versionRange="[1.21, 1.21.1)"
+"#;
+    let jei = zip_of(&[("META-INF/neoforge.mods.toml", toml.as_bytes())]);
+    assert!(
+        run(
+            &setup("1.21.1", Loader::NeoForge, Some("21.1.264")),
+            &[("jei.jar", jei.clone())]
+        )
+        .is_empty()
+    );
+    // Only where the loader says so: not on 1.21.2.
+    assert_eq!(
+        run(
+            &setup("1.21.2", Loader::NeoForge, Some("21.2.1")),
+            &[("jei.jar", jei)]
+        )
+        .len(),
+        1
+    );
+
+    let mod_for = |minecraft: &str, loader: &str, range: &str| {
+        let toml = format!(
+            "[[mods]]\nmodId=\"tool\"\nversion=\"1.0\"\n\
+             [[dependencies.tool]]\nmodId=\"minecraft\"\nmandatory=true\nversionRange=\"{minecraft}\"\n\
+             [[dependencies.tool]]\nmodId=\"{loader}\"\nmandatory=true\nversionRange=\"{range}\"\n"
+        );
+        let name = if loader == "neoforge" {
+            "META-INF/neoforge.mods.toml"
+        } else {
+            "META-INF/mods.toml"
+        };
+        zip_of(&[(name, toml.as_bytes())])
+    };
+    let starts = |setup: &Setup<'_>, jar: Vec<u8>| run(setup, &[("tool.jar", jar)]).is_empty();
+    // NeoForge 21.0.166, the build for 1.21, counts on 1.21.1.
+    assert!(starts(
+        &setup("1.21.1", Loader::NeoForge, Some("21.1.264")),
+        mod_for("[1.21.1]", "neoforge", "[21.0.166]")
+    ));
+    assert!(!starts(
+        &setup("1.21.1", Loader::NeoForge, Some("21.1.264")),
+        mod_for("[1.21.1]", "neoforge", "[21.0.167]")
+    ));
+    assert!(starts(
+        &setup("1.21.8", Loader::NeoForge, Some("21.8.52")),
+        mod_for("[1.21.7]", "neoforge", "[21.7.26-beta,)")
+    ));
+    assert!(starts(
+        &setup("1.19.2", Loader::Forge, Some("43.5.0")),
+        mod_for("[1.19.1]", "forge", "[42.0.9,)")
+    ));
+    assert!(starts(
+        &setup("1.20.1", Loader::Forge, Some("47.4.0")),
+        mod_for("[1.20.1]", "forge", "[47.1.79]")
+    ));
+    assert!(starts(
+        &setup("1.21.1", Loader::Forge, Some("52.1.0")),
+        mod_for("[1.21, 1.21.1)", "forge", "[51.0.33,)")
+    ));
+    // Forge on 1.20.1 takes no other game version.
+    assert!(!starts(
+        &setup("1.20.1", Loader::Forge, Some("47.4.0")),
+        mod_for("[1.20]", "forge", "[47,)")
+    ));
+}
+
+#[test]
 fn needs_are_checked_across_the_set() {
     let mine = fabric_mod(
         "mine",
