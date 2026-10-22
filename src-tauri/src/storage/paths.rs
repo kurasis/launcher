@@ -166,6 +166,14 @@ impl DataRoot {
             .join(format!("{sha1}.json"))
     }
 
+    /// The launcher's tweaker for games before 1.6, named by a prefix of its
+    /// SHA-256 (hex).
+    pub fn legacy_tweaker(&self, digest: &str) -> PathBuf {
+        self.shared()
+            .join("launcher")
+            .join(format!("legacy-tweaker-{digest}.jar"))
+    }
+
     pub fn assets_root(&self) -> PathBuf {
         self.shared().join("assets")
     }

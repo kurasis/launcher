@@ -58,6 +58,10 @@ pub struct LaunchInputs<'a> {
     /// The skins API address of a test build (`-Dlauncherskins.api`); `None`
     /// leaves the mod's own default.
     pub skins_api: Option<&'a str>,
+    /// The launcher's tweaker jar for a game before 1.6
+    /// ([`super::legacy::needs_legacy_tweaker`]): added to the classpath and named
+    /// with `--tweakClass`.
+    pub legacy_tweaker: Option<&'a Path>,
 }
 
 /// A fully resolved launch, ready to spawn.
@@ -164,6 +168,16 @@ pub fn compile(inputs: &LaunchInputs<'_>) -> LauncherResult<CompiledLaunch> {
         }
         classpath.push(text);
     }
+    if let Some(jar) = inputs.legacy_tweaker {
+        let text = path_text(jar)?;
+        if text.contains(CLASSPATH_SEPARATOR) {
+            return Err(LauncherError::new(
+                ErrorCode::UnsupportedDataPath,
+                "A game file path contains the Java classpath separator.",
+            ));
+        }
+        classpath.push(text);
+    }
     let natives = path_text(inputs.natives_dir)?;
     let token = identity.access_token.expose().to_owned();
     if token.is_empty() {
@@ -259,6 +273,10 @@ pub fn compile(inputs: &LaunchInputs<'_>) -> LauncherResult<CompiledLaunch> {
         .iter()
         .map(|template| substitute(template, &values))
         .collect::<LauncherResult<Vec<_>>>()?;
+    if inputs.legacy_tweaker.is_some() {
+        game_args.push("--tweakClass".to_owned());
+        game_args.push(super::legacy::LEGACY_TWEAKER_CLASS.to_owned());
+    }
     // Plans are evaluated with `is_demo_user` false; both qualified descriptors
     // map that feature to exactly this argument. Mod loaders pass it on to the
     // game's own main class.

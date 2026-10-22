@@ -49,6 +49,29 @@ jobs:
       - run: npm test
       - run: npm run build
 
+  legacy-tweaker:
+    # The launcher's tweaker for games before 1.6 (java/legacy-tweaker): the
+    # committed jar is what its source builds to, and it sets the game folder
+    # before a game's thread reads it.
+    name: Legacy tweaker
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+      - uses: actions/setup-java@b843ebf9b913146b38da2eaa7aeddf76074ae1ad # v6
+        with:
+          distribution: temurin
+          java-version: |
+            8
+            21
+      - name: The jar matches its source
+        run: |
+          java/legacy-tweaker/build.sh
+          git diff --exit-code -- java/legacy-tweaker/legacy-tweaker.jar
+          test -z "$(git status --porcelain --ignored -- java/legacy-tweaker/legacy-tweaker.jar)"
+      - name: The game folder is set before the game starts
+        run: JAVA8="$JAVA_HOME_8_X64" java/legacy-tweaker/check.sh
+
   rust:
     name: Rust core (${{ matrix.name }})
     strategy:
@@ -128,13 +151,15 @@ jobs:
 
   changes:
     # The world servers below take most of CI's runners: a pull request runs
-    # them only when it changes the launcher's code, its build or these
-    # workflows. Pushes to main, manual runs and the nightly run try them all.
+    # them only when it changes the worlds' code (worlds/, tunnel/), their
+    # live test or world-mods.yml (owner request). Pushes to main, manual runs
+    # and the nightly run try them all, so anything else they use is still
+    # tried before long.
     name: What changed
     runs-on: ubuntu-24.04
     timeout-minutes: 5
     outputs:
-      launcher: ${{ steps.diff.outputs.launcher }}
+      worlds: ${{ steps.diff.outputs.worlds }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
@@ -147,16 +172,16 @@ jobs:
           EVENT: ${{ github.event_name }}
         run: |
           if [ "$EVENT" != pull_request ]; then
-            echo "launcher=true" >> "$GITHUB_OUTPUT"
+            echo "worlds=true" >> "$GITHUB_OUTPUT"
             exit 0
           fi
           changed=$(git diff --name-only HEAD^1 HEAD)
-          if grep -qE '^(src-tauri/|rust-toolchain\.toml$|\.github/workflows/(ci|world-mods)\.yml$)' <<< "$changed"; then
-            echo "launcher=true" >> "$GITHUB_OUTPUT"
-            echo "The launcher changed: world servers run"
+          if grep -qE '^(src-tauri/src/(worlds|tunnel)/|src-tauri/tests/live_server\.rs$|\.github/workflows/world-mods\.yml$)' <<< "$changed"; then
+            echo "worlds=true" >> "$GITHUB_OUTPUT"
+            echo "The worlds changed: world servers run"
           else
-            echo "launcher=false" >> "$GITHUB_OUTPUT"
-            echo "The launcher did not change: no world servers"
+            echo "worlds=false" >> "$GITHUB_OUTPUT"
+            echo "The worlds did not change: no world servers"
           fi
 
   live-test:
@@ -164,7 +189,7 @@ jobs:
     # without mods.
     name: Build the live test
     needs: changes
-    if: needs.changes.outputs.launcher == 'true'
+    if: needs.changes.outputs.worlds == 'true'
     runs-on: ubuntu-24.04
     timeout-minutes: 45
     steps:
@@ -211,7 +236,7 @@ jobs:
     # mode on loopback. The test prints fixed words and numbers only.
     name: World server ${{ matrix.minecraft }} (linux-x64)
     needs: [changes, live-test]
-    if: needs.changes.outputs.launcher == 'true'
+    if: needs.changes.outputs.worlds == 'true'
     runs-on: ubuntu-24.04
     timeout-minutes: 45
     strategy:
@@ -258,7 +283,7 @@ jobs:
     # with the live test built above.
     name: World servers with mods
     needs: [changes, live-test]
-    if: needs.changes.outputs.launcher == 'true'
+    if: needs.changes.outputs.worlds == 'true'
     uses: ./.github/workflows/world-mods.yml
     with:
       set: on_every_change
@@ -266,7 +291,7 @@ jobs:
 
   world-servers:
     # One result for every version above, under the check's earlier name.
-    # Passes without them when the launcher did not change.
+    # Passes without them when the worlds did not change.
     name: World server (linux-x64)
     needs: [changes, world-server, world-server-mods]
     if: always()
@@ -276,13 +301,13 @@ jobs:
       - name: Every world server ran
         env:
           CHANGES: ${{ needs.changes.result }}
-          LAUNCHER: ${{ needs.changes.outputs.launcher }}
+          WORLDS: ${{ needs.changes.outputs.worlds }}
           VANILLA: ${{ needs.world-server.result }}
           MODS: ${{ needs.world-server-mods.result }}
         run: |
           test "$CHANGES" = success
-          if [ "$LAUNCHER" != true ]; then
-            echo "The launcher did not change: no world servers needed"
+          if [ "$WORLDS" != true ]; then
+            echo "The worlds did not change: no world servers needed"
             exit 0
           fi
           test "$VANILLA" = success && test "$MODS" = success

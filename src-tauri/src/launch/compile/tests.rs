@@ -1,4 +1,4 @@
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
 use super::*;
 use crate::install::plan::plan_game;
@@ -50,6 +50,14 @@ fn compile_for(plan: &GamePlan) -> CompiledLaunch {
 }
 
 fn compile_as(plan: &GamePlan, identity: &LaunchIdentity) -> CompiledLaunch {
+    compile_with(plan, identity, None)
+}
+
+fn compile_with(
+    plan: &GamePlan,
+    identity: &LaunchIdentity,
+    legacy_tweaker: Option<&Path>,
+) -> CompiledLaunch {
     let root = root();
     let id = "0f1e2d3c-4b5a-4978-8796-a5b4c3d2e1f0";
     let game_dir = root.path().join("instances").join(id).join("game");
@@ -78,6 +86,7 @@ fn compile_as(plan: &GamePlan, identity: &LaunchIdentity) -> CompiledLaunch {
         fullscreen: false,
         skins_agent: None,
         skins_api: None,
+        legacy_tweaker,
     })
     .unwrap()
 }
@@ -201,6 +210,7 @@ fn unknown_or_misplaced_placeholders_are_errors() {
         fullscreen: false,
         skins_agent: None,
         skins_api: None,
+        legacy_tweaker: None,
     };
     let error = compile(&inputs(&p)).err().unwrap();
     assert_eq!(error.code, ErrorCode::UnsupportedVersionMetadata);
@@ -240,6 +250,7 @@ fn user_jvm_options_come_last_and_are_not_substituted() {
         fullscreen: false,
         skins_agent: None,
         skins_api: None,
+        legacy_tweaker: None,
     })
     .unwrap();
     assert_eq!(c.jvm_args[..2], ["-Xmx2048M", "-Xms512M"]);
@@ -275,6 +286,7 @@ fn the_skins_agent_comes_before_the_user_jvm_options() {
             fullscreen: false,
             skins_agent: agent,
             skins_api: api,
+            legacy_tweaker: None,
         };
         let without = compile(&inputs(None, None)).unwrap();
         assert!(
@@ -341,6 +353,7 @@ fn fullscreen_and_user_game_arguments_come_last_and_are_not_substituted() {
         fullscreen: true,
         skins_agent: None,
         skins_api: None,
+        legacy_tweaker: None,
     })
     .unwrap();
     let n = c.game_args.len();
@@ -415,6 +428,54 @@ fn launch_wrapper_versions_take_positional_name_and_session() {
 }
 
 #[test]
+fn games_on_launchwrapper_1_5_get_the_launchers_tweaker() {
+    use crate::launch::legacy::{LEGACY_TWEAKER_CLASS, needs_legacy_tweaker};
+    let old = plan(B1_7_3, "b1.7.3", MetaOs::Windows, "x86_64");
+    assert!(needs_legacy_tweaker(&old));
+    assert!(!needs_legacy_tweaker(&plan(
+        V1_6_4,
+        "1.6.4",
+        MetaOs::Windows,
+        "x86_64"
+    )));
+    assert!(!needs_legacy_tweaker(&plan(
+        V1_21_1,
+        "1.21.1",
+        MetaOs::Windows,
+        "x86_64"
+    )));
+    // A descriptor that names its own tweaker keeps it.
+    let mut own = old.clone();
+    own.game_arguments
+        .extend(["--tweakClass".to_owned(), "x.Tweaker".to_owned()]);
+    assert!(!needs_legacy_tweaker(&own));
+
+    let jar = root()
+        .path()
+        .join("shared")
+        .join("launcher")
+        .join("legacy-tweaker-0.jar");
+    let c = compile_with(&old, &identity(), Some(&jar));
+    let jar_text = jar.to_str().unwrap();
+    assert!(
+        c.jvm_args.iter().any(|a| a.ends_with(jar_text)),
+        "the jar ends the classpath"
+    );
+    let at = c
+        .game_args
+        .iter()
+        .position(|a| a == "--tweakClass")
+        .unwrap();
+    assert_eq!(c.game_args[at + 1], LEGACY_TWEAKER_CLASS);
+    assert!(at > c.game_args.iter().position(|a| a == "--assetsDir").unwrap());
+    assert!(
+        !compile_for(&old)
+            .game_args
+            .contains(&"--tweakClass".to_owned())
+    );
+}
+
+#[test]
 fn a_world_launch_plays_the_nick_with_its_offline_uuid_and_without_demo() {
     let p = plan(V1_21_1, "1.21.1", MetaOs::Linux, "x86_64");
     let root = root();
@@ -439,6 +500,7 @@ fn a_world_launch_plays_the_nick_with_its_offline_uuid_and_without_demo() {
         fullscreen: false,
         skins_agent: None,
         skins_api: None,
+        legacy_tweaker: None,
     })
     .unwrap();
     assert!(!c.game_args.contains(&"--demo".to_owned()), "no demo");

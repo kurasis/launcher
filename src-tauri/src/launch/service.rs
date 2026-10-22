@@ -805,6 +805,25 @@ impl LaunchService {
         } else if skins.active {
             console.info("Launcher Skins added to the game");
         }
+        // Games before 1.6: the game folder set before the game starts. Without
+        // the jar the game starts as Mojang's launcher starts it.
+        let legacy_tweaker = if super::legacy::needs_legacy_tweaker(&plan) {
+            let tweaker_root = root.clone();
+            match tokio::task::spawn_blocking(move || {
+                super::legacy::legacy_tweaker_jar(&tweaker_root)
+            })
+            .await
+            {
+                Ok(Ok(jar)) => Some(jar),
+                _ => {
+                    console
+                        .warn("The game folder fix for versions before 1.6 could not be written");
+                    None
+                }
+            }
+        } else {
+            None
+        };
         let compiled = compile::compile(&LaunchInputs {
             plan: &plan,
             root,
@@ -820,6 +839,7 @@ impl LaunchService {
             fullscreen,
             skins_agent: skins.agent.as_deref(),
             skins_api: skins.active.then(skins_mod::mod_api).flatten(),
+            legacy_tweaker: legacy_tweaker.as_deref(),
         })?;
         let storage = |e: std::io::Error| LauncherError::from_io(&e, "Preparing the launch");
         std::fs::create_dir_all(&game_dir).map_err(storage)?;

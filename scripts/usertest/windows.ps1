@@ -55,6 +55,7 @@ namespace UserTest {
     [DllImport("user32.dll")] public static extern void mouse_event(uint flags, uint dx, uint dy, uint data, IntPtr extra);
     [DllImport("user32.dll")] public static extern bool ClientToScreen(IntPtr hwnd, ref POINT point);
     [DllImport("user32.dll")] public static extern uint MapVirtualKey(uint code, uint mapType);
+    [DllImport("user32.dll")] public static extern int GetSystemMetrics(int index);
     [StructLayout(LayoutKind.Sequential)] public struct RECT { public int Left, Top, Right, Bottom; }
     [StructLayout(LayoutKind.Sequential)] public struct POINT { public int X, Y; }
 
@@ -409,12 +410,21 @@ function Game-Click([IntPtr]$Hwnd, [double]$GuiX, [double]$GuiY) {
   Start-Sleep -Milliseconds 150
   [UserTest.Win]::SetCursorPos($point.X, $point.Y) | Out-Null
   [UserTest.Win]::mouse_event(0x0001, 0, 0, 0, [IntPtr]::Zero)
-  Start-Sleep -Milliseconds 400
+  # Before 1.4.6 the game takes in the window's messages just before it draws a frame,
+  # and the world list drops the mouse events a frame sees, so a click is gone before a
+  # tick reads it. While F7 is held those versions take the messages in after the frame
+  # instead (their own debugging key), so the next tick, when one is due, gets the click.
+  $f7 = (Compare-Version $version '1.4.6') -lt 0
+  if ($f7) { [UserTest.Win]::keybd_event(0x76, 0x41, 0, [IntPtr]::Zero) }
+  # A random part of a tick, so that a run of clicks does not keep the same step with
+  # the game's 20 ticks a second.
+  Start-Sleep -Milliseconds (400 + (Get-Random -Maximum 50))
   # Held for a quarter second: versions before 1.7 read button presses only on their
   # 20-per-second ticks, and their world list drops what a frame sees after release.
   [UserTest.Win]::mouse_event(0x0002, 0, 0, 0, [IntPtr]::Zero)
   Start-Sleep -Milliseconds 250
   [UserTest.Win]::mouse_event(0x0004, 0, 0, 0, [IntPtr]::Zero)
+  if ($f7) { Start-Sleep -Milliseconds 200; [UserTest.Win]::keybd_event(0x76, 0x41, 2, [IntPtr]::Zero) }
   Start-Sleep -Milliseconds 500
 }
 
@@ -615,6 +625,9 @@ if ($Downloads -ne 'automatic') {
   [IO.File]::WriteAllText((Join-Path $data 'settings.json'), "{`"schemaVersion`":1,`"downloadSource`":`"$Downloads`"}", $utf8)
 }
 Say "Downloads: $Downloads"
+# Old games (LWJGL 2) take a mouse button as held only when Windows counts mouse
+# buttons, and with no mouse plugged in it may count none: noted for a failed click.
+Say "Mouse buttons Windows counts: $([UserTest.Win]::GetSystemMetrics(43))"
 
 $launcher = $null
 
@@ -746,8 +759,9 @@ try {
         # without the button down, which loses the test's clicks on its buttons; the
         # game's own touchscreen mode skips that. Written before the first start.
         # Touchscreen mode came in 1.4.6: before it a click counts only when a tick
-        # reads it before the next frame is drawn, so those versions get the power saver
-        # frame limit (35 frames for 20 ticks a second) and more tries.
+        # reads it before the next frame is drawn (Game-Click holds F7 for that), so
+        # those versions get the power saver frame limit (40 frames a second in menus for
+        # 20 ticks, so a tick is due about every second frame) and more tries.
         New-Item -ItemType Directory -Force $gameDir | Out-Null
         $options = Join-Path $gameDir 'options.txt'
         $lines = if ((Compare-Version $version '1.4.6') -lt 0) { @('touchscreen:true', 'fpsLimit:2') } else { @('touchscreen:true') }
@@ -757,7 +771,7 @@ try {
       $shots = Join-Path $gameDir 'screenshots'
       $runs = Join-Path $data 'logs\runs'
       $runsBefore = @(Get-ChildItem -Directory $runs -ErrorAction SilentlyContinue | ForEach-Object Name)
-      $started = Get-Date
+      $started = Get-Date; $playStarted = $started
       $launcherLogFrom = (Log-Text (Join-Path $data 'logs\launcher.log')).Length
       Click $ready
       $game = Wait-For { Game-Window } 300
@@ -810,11 +824,12 @@ try {
       # 1.4.6 to 1.6.x log the server's "<nick>[/127.0.0.1:0] logged in with entity id".
       $joined = "$([regex]::Escape($Nick)) joined the game|$([regex]::Escape($Nick))\[[^\]]*\] logged in with entity id"
       # Before 1.3 singleplayer had no server inside, and up to 1.4.5 the server inside
-      # logs nowhere: there the new world's level.dat shows the world was made.
+      # logs nowhere: there the new world's files show the world was made (any of
+      # them: 1.2.4 got into its world in the test without a level.dat to be seen).
       $oldSingleplayer = (Compare-Version $version '1.4.6') -lt 0
       $inWorld = {
         if ((& $text) -match $joined) { return $true }
-        if ($oldSingleplayer -and (Get-ChildItem (Join-Path $gameDir 'saves') -Recurse -Filter level.dat -ErrorAction SilentlyContinue |
+        if ($oldSingleplayer -and (Get-ChildItem (Join-Path $gameDir 'saves') -Recurse -File -ErrorAction SilentlyContinue |
             Where-Object { $_.LastWriteTime -gt $started })) { return $true }
       }
       # Since 1.19.3 a loader's world (Forge 1.19.3, NeoForge 1.20.5) may be made with
@@ -874,6 +889,26 @@ try {
       if (-not $entered) {
         $result.world = 'failed'; $result.note = 'did not get into a world'
         Game-Shot $hwnd $folder 'no-world'
+        # Where the game saved, for an old version whose world is checked by its files:
+        # the installation's saves, any new world file in the test's folders, and how
+        # many test worlds the default game folder holds (names of other worlds there
+        # are not listed).
+        if ($oldSingleplayer) {
+          $saved = @('installation saves:')
+          $saved += @(Get-ChildItem (Join-Path $gameDir 'saves') -Recurse -File -ErrorAction SilentlyContinue |
+            ForEach-Object { '{0:u} {1,10} {2}' -f $_.LastWriteTime.ToUniversalTime(), $_.Length, $_.FullName.Substring($gameDir.Length) })
+          $saved += 'new world files in the test folder:'
+          $saved += @(Get-ChildItem $root, $cache -Recurse -File -Include level.dat, session.lock -ErrorAction SilentlyContinue |
+            Where-Object { $_.LastWriteTime -gt $started } | ForEach-Object { $_.FullName.Substring($env:LOCALAPPDATA.Length) })
+          $default = Join-Path $env:APPDATA '.minecraft\saves'
+          $tests = @(Get-ChildItem $default -Directory -ErrorAction SilentlyContinue | Where-Object { $_.Name -match '^New World-*$' })
+          $saved += "default game folder: $($tests.Count) test worlds, $(@($tests | Where-Object { $_.LastWriteTime -gt $started }).Count) changed during this item"
+          $changed = @('options.txt', 'saves', 'resources', 'screenshots', 'stats', 'lastlogin') | Where-Object {
+            $entry = Get-Item (Join-Path $env:APPDATA ".minecraft\$_") -ErrorAction SilentlyContinue
+            $entry -and $entry.LastWriteTime -gt $playStarted }
+          $saved += "default game folder entries changed since the game started: $($changed -join ', ')"
+          Set-Content (Join-Path $folder 'saves.txt') -Value $saved -Encoding UTF8
+        }
       } else {
         $result.world = 'ok'
         if ((& $text) -match 'Starting integrated minecraft server version (\S+)' -and $Matches[1] -ne $version) {
