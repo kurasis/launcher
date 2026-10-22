@@ -919,6 +919,13 @@ try {
         # A look around.
         Start-Sleep -Seconds 10
         Game-Shot $hwnd $folder 'world'
+        # A world file of an old version is written before the world loads, and these
+        # versions show a crash in the window and exit normally later (1.2.4 did): the
+        # game's own F2 screenshot shows it is really in the world.
+        if ($oldSingleplayer -and $result.world -eq 'ok' -and -not (Wait-For {
+            Get-ChildItem $shots -Filter *.png -ErrorAction SilentlyContinue | Where-Object { $_.LastWriteTime -gt $started } } 10)) {
+          $result.world = 'failed'; $result.note = 'no game screenshot in the world (a crash screen?)'
+        }
       }
 
       # --- Close the game window, as a player does ------------------------------------
