@@ -2107,7 +2107,8 @@ archive from the Package workflow, upload it to
   8. automatic install by the launcher, tested on a Windows package.
 - **Automatic install (stage 8):** the jars come from the GitHub release
   `skins-mod-v<version>`, pinned by SHA-256 and size in the launcher
-  (`src-tauri/src/skins_mod.rs`), downloaded once (not through the mirror) into
+  (`src-tauri/src/skins_mod.rs`), downloaded once (from mirror.lapi.sh only, see the
+  amendment below) into
   `shared/launcherskins` and checked again at every launch; with a loader the jar is
   copied into `mods/` (other `launcherskins-*.jar` there are removed), without one it is
   added with `-javaagent`.
@@ -2116,6 +2117,16 @@ archive from the Package workflow, upload it to
   be had never stops the game, it starts without it.
 - **Server setup (owner):** a DNS record and certificate for skins.lapi.sh, then
   `deploy/bootstrap.sh` once, as for the other services.
+- **Amended 2026-10-22 (owner request: no GitHub for players, only our domain):**
+  players download the jars only from mirror.lapi.sh, at
+  `https://mirror.lapi.sh/github.com/kurasis/launcher/releases/download/skins-mod-v<version>/<file>`,
+  never from GitHub, and no other host passes the launcher's check for them. The
+  mirror takes them from the GitHub release once and keeps them for good; it
+  accepts only `launcherskins-*.jar` of a `skins-mod-v<x.y.z>` release of this
+  repository (`services/mirror/src/origin.rs`). For this mod the mirror is the
+  source, not a fallback (D-062 does not apply to it). The workflow "Skins mod
+  list" fetches every jar through the mirror and checks it against `SHA256SUMS`
+  before a list goes out.
 
 ### Updates without a launcher update
 
@@ -2127,7 +2138,8 @@ archive from the Package workflow, upload it to
 rollback, jars: [{target, games, file, sha256, size}]}`, `signature` a minisign
   signature with the launcher's update key (D-063) whose trusted comment names
   `kind:skins-mod`, the channel and the serial. The serial is the signing time in
-  seconds. The jars stay on the GitHub release `skins-mod-v<version>`.
+  seconds. The jars stay on the GitHub release `skins-mod-v<version>`; players get
+  them from mirror.lapi.sh (amendment above).
 - **Signing:** only in CI (workflow "Skins mod list"), from the release's
   `SHA256SUMS`, its jars and `mod/builds.json` (the launcher's `BUILDS` as data; a
   test keeps the two the same). The key never goes on the server: `lapi-upd

@@ -41,7 +41,8 @@ pub struct List {
     /// Grows with every list signed (the signing time in seconds): launchers
     /// take no list with a lower one than they have.
     pub serial: u64,
-    /// The mod version; the jars are on the GitHub release `skins-mod-v<version>`.
+    /// The mod version; the jars are on the GitHub release `skins-mod-v<version>`,
+    /// and players get them from mirror.lapi.sh's copy (D-065).
     pub version: String,
     /// Set when the list goes back to an older mod version: launchers then take
     /// it over the version built into them, even a newer one.

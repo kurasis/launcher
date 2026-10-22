@@ -83,7 +83,7 @@ fn a_list_signed_for_this_channel_verifies() {
     let jar = list.find("26.3", Target::Fabric).unwrap();
     assert_eq!(
         list.url(jar),
-        "https://github.com/kurasis/launcher/releases/download/skins-mod-v0.7.0/\
+        "https://mirror.lapi.sh/github.com/kurasis/launcher/releases/download/skins-mod-v0.7.0/\
          launcherskins-fabric-26.1-26.3-0.7.0.jar"
     );
     assert!(list.find("26.3", Target::Forge).is_none());
