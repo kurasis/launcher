@@ -216,6 +216,88 @@ const FIRST_STEADY_RCON: i32 = 735;
 /// Starts of a server before 1.16 until its RCON listener survives its start.
 const RCON_STARTS: usize = 3;
 
+/// A start on a CI runner is ready well before this; one still starting then
+/// has its threads printed once, to show where it waits.
+const SLOW_START: Duration = Duration::from_secs(150);
+
+/// Waits until a world's server is ready, as `wait_ready` does, printing where
+/// its threads are if that takes longer than [`SLOW_START`].
+fn wait_ready(
+    root: &DataRoot,
+    server: &host::HostedServer,
+) -> launcher_lib::error::LauncherResult<()> {
+    let (done, wait) = std::sync::mpsc::channel::<()>();
+    let root = root.clone();
+    let watch = std::thread::spawn(move || {
+        if wait.recv_timeout(SLOW_START) == Err(std::sync::mpsc::RecvTimeoutError::Timeout) {
+            print_threads(&root);
+        }
+    });
+    let ready = server.wait_ready(STARTUP_SILENCE);
+    drop(done);
+    watch.join().unwrap();
+    ready
+}
+
+/// The threads of the running server, through the runner's `jstack`: thread
+/// names, states, methods and locked classes only, never other text.
+fn print_threads(root: &DataRoot) {
+    let Some(recorded) = receipt::read(root) else {
+        println!("slow start, no run receipt");
+        return;
+    };
+    let jstack = std::env::var_os("JAVA_HOME")
+        .map(|home| std::path::PathBuf::from(home).join("bin").join("jstack"))
+        .filter(|path| path.is_file())
+        .unwrap_or_else(|| "jstack".into());
+    let Ok(dump) = std::process::Command::new(jstack)
+        .arg(recorded.pid.to_string())
+        .output()
+    else {
+        println!("slow start, no jstack");
+        return;
+    };
+    println!("slow start, the server's threads:");
+    for line in String::from_utf8_lossy(&dump.stdout)
+        .lines()
+        .filter_map(code_line)
+        .take(800)
+    {
+        println!("{line}");
+    }
+}
+
+/// A `jstack` line reduced to code names: a thread's name, its state, a
+/// frame's method, or the class of a lock it holds or waits for.
+fn code_line(line: &str) -> Option<String> {
+    let code = |text: &str| {
+        !text.is_empty()
+            && text
+                .chars()
+                .all(|c| c.is_ascii_alphanumeric() || "._$<>/#:-() ".contains(c))
+    };
+    if let Some(rest) = line.strip_prefix('"') {
+        let (name, _) = rest.split_once('"')?;
+        // Never an address, as in `RCON Client /127.0.0.1` of newer servers.
+        return (code(name) && !name.contains('/')).then(|| format!("thread {name}"));
+    }
+    let line = line.trim_start();
+    if let Some(state) = line.strip_prefix("java.lang.Thread.State: ") {
+        return code(state).then(|| format!("  {state}"));
+    }
+    if let Some(frame) = line.strip_prefix("at ") {
+        let method = frame.split('(').next()?;
+        return code(method).then(|| format!("  at {method}"));
+    }
+    if let Some(lock) = line.strip_prefix("- ") {
+        let (what, rest) = lock.split_once(" <")?;
+        let class = rest.split_once("(a ")?.1.strip_suffix(')')?;
+        return (code(what) && code(class)).then(|| format!("  - {what} {class}"));
+    }
+    line.starts_with("Found one Java-level deadlock")
+        .then(|| "deadlock".to_owned())
+}
+
 /// Logs in to a ready server's RCON. Servers before 1.13 open it just after the
 /// `Done (` line.
 fn open_console(recorded: &receipt::ServerReceipt) -> Result<rcon::Rcon, rcon::RconError> {
@@ -319,7 +401,7 @@ async fn host_a_world() {
             "an install waits for the server"
         );
         let started = Instant::now();
-        tokio::task::block_in_place(|| server.wait_ready(STARTUP_SILENCE)).unwrap();
+        tokio::task::block_in_place(|| wait_ready(&root, &server)).unwrap();
         println!("ready in {:.1?}", started.elapsed());
         assert_eq!(server.status().phase, Phase::Ready);
         let status = ping::status(server.port(), -1, Duration::from_secs(5)).unwrap();
@@ -428,7 +510,7 @@ async fn host_a_world() {
 
     // Second run: a force stop is recorded as unclean.
     let server = run("live-2");
-    tokio::task::block_in_place(|| server.wait_ready(STARTUP_SILENCE)).unwrap();
+    tokio::task::block_in_place(|| wait_ready(&root, &server)).unwrap();
     server.force_stop();
     let clean = tokio::task::block_in_place(|| server.wait_exit(Duration::from_secs(30)));
     assert_eq!(clean, Some(false));
@@ -743,7 +825,7 @@ async fn host_a_world_with_mods() {
         )
         .unwrap();
         let started = Instant::now();
-        tokio::task::block_in_place(|| server.wait_ready(STARTUP_SILENCE)).unwrap();
+        tokio::task::block_in_place(|| wait_ready(&root, &server)).unwrap();
         println!("ready in {:.1?}", started.elapsed());
         if !reads_data_packs {
             break server;
@@ -888,7 +970,7 @@ async fn start_world(
         Arc::new(|| {}),
     )?;
     tokio::task::block_in_place(|| {
-        let ready = server.wait_ready(STARTUP_SILENCE);
+        let ready = wait_ready(root, &server);
         let clean = server.stop(STOP_GRACE);
         ready.map(|()| assert!(clean, "stopped clean"))
     })
