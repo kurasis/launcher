@@ -1286,6 +1286,116 @@ async fn only_problems_the_install_has_to_do_with_are_shown() {
     assert!(missing.versions.is_empty());
 }
 
+#[tokio::test]
+async fn a_mod_the_game_needs_is_found_to_put_in_or_update() {
+    let mut fake = Fake::default();
+    fake.add_project(1, "mod", "Sodium");
+    fake.add_version(10, 1, "sodium-0.5.jar", json!({}));
+    fake.says(10, fabric_jar("sodium", "0.5.0", &[]));
+    fake.add_version(11, 1, "sodium-0.6.jar", json!({}));
+    fake.says(11, fabric_jar("sodium", "0.6.0", &[]));
+    // A beta that is newer still: a release comes first.
+    let beta = fake.add_version(12, 1, "sodium-0.7.jar", json!({"channel": "beta"}));
+    fake.says(12, fabric_jar("sodium", "0.7.0", &[]));
+    let jar = |path: &str, manifests: Value| content::LocalJar {
+        path: path.to_owned(),
+        manifests: serde_json::from_value(manifests).unwrap(),
+    };
+    let iris = jar(
+        "mods/iris.jar",
+        fabric_jar("iris", "1.8", &[("sodium", ">=0.6.0")]),
+    );
+    let empty = ContentLock::default();
+    let fix =
+        |lock: ContentLock, local: Vec<content::LocalJar>, identified: Vec<content::Identified>| {
+            let fake = &fake;
+            async move {
+                content::mod_fix(fake, &fabric(), &lock, &local, &identified, "sodium")
+                    .await
+                    .unwrap()
+            }
+        };
+
+    // Missing: found by its ID, the newest release that gives it.
+    let found = fix(empty.clone(), vec![iris.clone()], vec![])
+        .await
+        .unwrap();
+    assert_eq!(found.project_id, id(1));
+    assert_eq!(found.title, "Sodium");
+    assert_eq!(found.version_id, id(11));
+    assert_eq!(found.number, "11.0");
+    assert_eq!((found.installed, found.replaces), (None, None));
+
+    // Too old, put there by the launcher: an update in place of its file.
+    let lock = ContentLock {
+        items: vec![locked("mods/sodium-0.5.jar", 1, 10)],
+        ..ContentLock::default()
+    };
+    let local = vec![
+        iris.clone(),
+        jar("mods/sodium-0.5.jar", fabric_jar("sodium", "0.5.0", &[])),
+    ];
+    let found = fix(lock, local.clone(), vec![]).await.unwrap();
+    assert_eq!(found.version_id, id(11));
+    assert_eq!(found.installed.as_deref(), Some("mods/sodium-0.5.jar"));
+    assert_eq!(found.replaces, None);
+
+    // The player's own copy the catalog recognized: it is replaced.
+    let identified = vec![content::Identified {
+        path: "mods/sodium-0.5.jar".to_owned(),
+        project_id: id(1),
+        version_id: id(10),
+    }];
+    let found = fix(empty.clone(), local.clone(), identified).await.unwrap();
+    assert_eq!(found.replaces.as_deref(), Some("mods/sodium-0.5.jar"));
+
+    // The newest that gives what is needed is there already: nothing better.
+    let lock = ContentLock {
+        items: vec![locked("mods/sodium-0.6.jar", 1, 11)],
+        ..ContentLock::default()
+    };
+    let local = vec![
+        jar(
+            "mods/iris.jar",
+            fabric_jar("iris", "1.8", &[("sodium", ">=0.8.0")]),
+        ),
+        jar("mods/sodium-0.6.jar", fabric_jar("sodium", "0.6.0", &[])),
+    ];
+    assert_eq!(fix(lock, local, vec![]).await, None);
+
+    // Only a beta gives the version needed: that one.
+    let wants_beta = jar(
+        "mods/iris.jar",
+        fabric_jar("iris", "1.9", &[("sodium", ">=0.7.0")]),
+    );
+    let found = fix(empty.clone(), vec![wants_beta], vec![]).await.unwrap();
+    assert_eq!(found.version_id, beta);
+
+    // Nothing gives it, or the ID cannot be one.
+    let other = jar("mods/a.jar", fabric_jar("a", "1", &[("nowhere", "*")]));
+    assert_eq!(
+        content::mod_fix(&fake, &fabric(), &empty, &[other], &[], "nowhere")
+            .await
+            .unwrap(),
+        None
+    );
+    for bad in ["", "Sodium", "../a", "a b"] {
+        assert_eq!(
+            content::mod_fix(
+                &fake,
+                &fabric(),
+                &empty,
+                std::slice::from_ref(&iris),
+                &[],
+                bad
+            )
+            .await
+            .unwrap(),
+            None
+        );
+    }
+}
+
 #[test]
 fn a_folder_is_checked_before_a_launch() {
     let jar = |path: &str, manifests: Value| content::LocalJar {
@@ -1836,6 +1946,64 @@ fn the_content_view_lists_only_content() {
     assert_eq!(b.title.as_deref(), Some("Project 1"));
     assert!(view.items[3].directory);
     assert_eq!(view.worlds, ["World"]);
+}
+
+#[test]
+fn installed_content_is_found_across_installations() {
+    let (_dir, root, first) = instance();
+    let second = InstanceId::generate();
+    touch(&root.game_dir(first), "mods/sodium-fabric-0.6.jar");
+    touch(&root.game_dir(first), "mods/lithium.jar.disabled");
+    touch(&root.game_dir(second), "mods/b.jar");
+    touch(&root.game_dir(second), "shaderpacks/Sodium Shaders.zip");
+    let lock = ContentLock {
+        schema_version: 1,
+        items: vec![locked("mods/b.jar", 1, 10)],
+        pack: None,
+        published: None,
+    };
+    crate::storage::document::save(
+        &root.instance_dir(second).join("content.lock.json"),
+        &lock,
+        None,
+    )
+    .unwrap();
+    let instances = [(first, "Fabric".to_owned()), (second, "Forge".to_owned())];
+    let find = |text: &str, project: Option<&str>| -> Vec<(String, String)> {
+        let query = content::InstalledQuery::new(text, project)
+            .unwrap()
+            .unwrap();
+        content::find_installed(&root, &instances, &query)
+            .into_iter()
+            .map(|m| (m.instance_name, m.item.path))
+            .collect()
+    };
+    let pair = |a: &str, b: &str| (a.to_owned(), b.to_owned());
+    assert_eq!(
+        find("SODIUM", None),
+        [
+            pair("Fabric", "mods/sodium-fabric-0.6.jar"),
+            pair("Forge", "shaderpacks/Sodium Shaders.zip")
+        ]
+    );
+    // Every word, in the title from the catalog or the file name.
+    assert_eq!(
+        find("sodium fabric", None),
+        [pair("Fabric", "mods/sodium-fabric-0.6.jar")]
+    );
+    assert_eq!(find("project 1", None), [pair("Forge", "mods/b.jar")]);
+    assert_eq!(
+        find("lithium", None),
+        [pair("Fabric", "mods/lithium.jar.disabled")]
+    );
+    // A catalog project wherever it is installed.
+    let one = id(1);
+    assert_eq!(find("", Some(&one)), [pair("Forge", "mods/b.jar")]);
+    assert!(find("sodium", Some(&one)).is_empty());
+    // Nothing to look for, or a project that cannot be one.
+    assert_eq!(content::InstalledQuery::new("  \t ", None).unwrap(), None);
+    assert!(content::InstalledQuery::new("x", Some("../a")).is_err());
+    assert!(content::InstalledQuery::new(&"x ".repeat(10_000), None).is_ok());
 }
 
 #[test]

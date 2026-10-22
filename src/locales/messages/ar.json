@@ -598,7 +598,10 @@
       "signal": "الإشارة {signal}",
       "notes": "وُجد أيضًا",
       "repairStarted": "بدأ الإصلاح.",
+      "updateMod": "حدّث {title}",
+      "installMod": "ثبّت {title}",
       "actions": {
+        "update_mod": "تحديث التعديل",
         "open_mods": "فتح مجلد التعديلات",
         "open_config": "فتح مجلد الإعدادات",
         "open_crash_reports": "فتح تقارير الانهيار",

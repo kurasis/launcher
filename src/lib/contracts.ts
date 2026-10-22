@@ -776,6 +776,8 @@ export type CrashKind =
 
 /** What the player can do about a crash from the launcher. */
 export type CrashAction =
+  /** Put in or update the mod `dependencyId` from the catalog, when it has one (`modsFix`). */
+  | 'update_mod'
   | 'open_mods'
   | 'open_config'
   | 'open_crash_reports'
@@ -1686,6 +1688,28 @@ export interface ContentItem {
   dependency: boolean;
   /** The modpack the installation was made from brought it. */
   fromPack: boolean;
+}
+
+/** Content of an installation that a search over all of them found. */
+export interface ModsInstalledMatch {
+  instanceId: string;
+  instanceName: string;
+  item: ContentItem;
+}
+
+/** The catalog's mod that puts in or updates one the game said is missing or too old. */
+export interface ModsFix {
+  /** As the loader named it. */
+  modId: string;
+  projectId: string;
+  title: string;
+  icon: string | null;
+  versionId: string;
+  number: string;
+  /** The file there now that gives the mod: the fix is an update. */
+  installed: string | null;
+  /** A file of the player's the install replaces: pass it as `replaces` to the plan. */
+  replaces: string | null;
 }
 
 /** The modpack an installation was made from. */

@@ -597,7 +597,10 @@
       "signal": "Signal {signal}",
       "notes": "Also found",
       "repairStarted": "Repair started.",
+      "updateMod": "Update {title}",
+      "installMod": "Install {title}",
       "actions": {
+        "update_mod": "Update the mod",
         "open_mods": "Open the mods folder",
         "open_config": "Open the config folder",
         "open_crash_reports": "Open crash reports",

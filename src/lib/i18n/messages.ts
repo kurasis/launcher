@@ -630,7 +630,10 @@ export type Messages = {
     readonly signal: (values: { signal: string | number }) => string;
     readonly notes: string;
     readonly repairStarted: string;
+    readonly updateMod: (values: { title: string | number }) => string;
+    readonly installMod: (values: { title: string | number }) => string;
     readonly actions: {
+      readonly update_mod: string;
       readonly open_mods: string;
       readonly open_config: string;
       readonly open_crash_reports: string;

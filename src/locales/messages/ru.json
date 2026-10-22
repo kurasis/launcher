@@ -597,7 +597,10 @@
       "signal": "Сигнал {signal}",
       "notes": "Также найдено",
       "repairStarted": "Восстановление запущено.",
+      "updateMod": "Обновить {title}",
+      "installMod": "Установить {title}",
       "actions": {
+        "update_mod": "Обновить мод",
         "open_mods": "Открыть папку модов",
         "open_config": "Открыть папку настроек",
         "open_crash_reports": "Открыть отчёты о сбоях",
