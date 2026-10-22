@@ -4,7 +4,8 @@
 //!
 //! Each mod gets the newest version that fits the loader build under test: one
 //! whose jar accepts that build (`versionRange` of `neoforge`/`forge` in its
-//! `mods.toml`, `depends.fabricloader` in its `fabric.mod.json`), and that this
+//! `mods.toml`, `depends.fabricloader` in its `fabric.mod.json`; on Quilt, what
+//! Quilt provides in Fabric's place, see [`quilt_provides`]), and that this
 //! machine has not seen crash on it ([`Avoid`]). When the newest does not fit,
 //! older releases come next, then newer pre-releases; with none, the mod is left out.
 
@@ -246,6 +247,9 @@ pub struct Loader<'a> {
     pub kind: &'a str,
     /// The build, as the launcher names it (`52.1.0`, `26.3.0.95`, `0.16.10`).
     pub version: &'a str,
+    /// On Quilt, the mods it provides to Fabric's mods with their versions
+    /// (`fabricloader`, its own `mixinextras`).
+    pub provides: &'a [(String, String)],
 }
 
 /// Chooses the medium set for this game version and loader build; the jars it
@@ -307,8 +311,8 @@ pub async fn resolve(game: &str, loader: &Loader<'_>, avoid: &Avoid, cache: &Pat
                 continue;
             };
             let meta = jar_meta(&path);
-            if let Some(range) = meta.refuses(loader.kind, &build) {
-                older.push(format!("{} {range}", loader.kind));
+            if let Some(wants) = meta.refuses(loader.kind, &build, loader.provides) {
+                older.push(wants);
                 continue;
             }
             file.mod_ids = meta.ids;
@@ -377,6 +381,15 @@ pub async fn resolve(game: &str, loader: &Loader<'_>, avoid: &Avoid, cache: &Pat
                 ));
             }
         }
+        // Sodium before 0.6 has no Fabric rendering API: mods that draw through
+        // it (Supplementaries stops the game without one) need Indium beside it,
+        // as players add it.
+        if project == "sodium"
+            && matches!(loader.kind, "fabric" | "quilt")
+            && without_renderer(&file.version)
+        {
+            queue.push(("indium".to_owned(), "indium (for Sodium)".to_owned()));
+        }
         chosen.insert(id, version);
         resolved.files.push(file);
     }
@@ -410,6 +423,15 @@ pub async fn resolve(game: &str, loader: &Loader<'_>, avoid: &Avoid, cache: &Pat
     resolved
 }
 
+/// Whether a Sodium version (`mc1.20.1-0.5.13-fabric`, `0.5.8+mc1.20.1`) comes
+/// before 0.6, the first with Fabric's rendering API of its own.
+fn without_renderer(version: &str) -> bool {
+    version
+        .split(['-', '+'])
+        .find(|part| part.starts_with(|c: char| c.is_ascii_digit()))
+        .is_some_and(|v| compare(v, "0.6") == Ordering::Less)
+}
+
 /// "lib (needed by Sodium)" → "Sodium"; the parent may be a library itself.
 fn needed_by(title: &str) -> Option<&str> {
     let (_, rest) = title.split_once(" (needed by ")?;
@@ -438,34 +460,45 @@ struct JarMeta {
     forge_range: Option<String>,
     /// Its `depends.fabricloader`: any one of them will do.
     fabric_ranges: Vec<String>,
+    /// Its other `depends` of `fabric.mod.json`, as mod id and predicates.
+    fabric_depends: Vec<(String, Vec<String>)>,
 }
 
 /// No metadata file larger than this is read.
 const MAX_META: u64 = 256 * 1024;
 const MAX_IDS: usize = 16;
+const MAX_DEPENDS: usize = 64;
+/// A jar inside the Quilt Loader jar larger than this is not looked into.
+const MAX_NESTED_JAR: u64 = 8 * 1024 * 1024;
 
 impl JarMeta {
-    /// The range a jar asks for when it refuses this loader build; a range it
-    /// cannot be read counts as accepting.
-    fn refuses(&self, kind: &str, build: &str) -> Option<String> {
+    /// What a jar asks for when it refuses this loader build (`forge [52.1,)`,
+    /// `fabricloader >=0.19.5`); a range that cannot be read counts as accepting.
+    /// Quilt answers for Fabric's mods with what it provides in Fabric's place
+    /// (`provides`), so there each of those the jar depends on is checked.
+    fn refuses(&self, kind: &str, build: &str, provides: &[(String, String)]) -> Option<String> {
+        // None of the predicates takes `version`, when there are any.
+        let refused = |ranges: &[String], version: &str| {
+            !ranges.is_empty()
+                && ranges
+                    .iter()
+                    .all(|r| fabric_accepts(r, version) == Some(false))
+        };
         match kind {
             "forge" | "neoforge" => {
                 let range = self.forge_range.as_ref()?;
-                (maven_accepts(range, build) == Some(false)).then(|| range.clone())
+                (maven_accepts(range, build) == Some(false)).then(|| format!("{kind} {range}"))
             }
-            "fabric" => {
-                if self.fabric_ranges.is_empty()
-                    || self
-                        .fabric_ranges
-                        .iter()
-                        .any(|r| fabric_accepts(r, build) != Some(false))
-                {
-                    None
+            "fabric" => refused(&self.fabric_ranges, build)
+                .then(|| format!("fabricloader {}", self.fabric_ranges.join(" or "))),
+            "quilt" => provides.iter().find_map(|(id, version)| {
+                let ranges = if id == "fabricloader" {
+                    &self.fabric_ranges
                 } else {
-                    Some(self.fabric_ranges.join(" or "))
-                }
-            }
-            // Quilt answers for Fabric's mods with its own idea of their versions.
+                    &self.fabric_depends.iter().find(|(d, _)| d == id)?.1
+                };
+                refused(ranges, version).then(|| format!("{id} {}", ranges.join(" or ")))
+            }),
             _ => None,
         }
     }
@@ -491,14 +524,26 @@ fn jar_meta(path: &Path) -> JarMeta {
     if let Some(json) = text("fabric.mod.json") {
         let value: Value = serde_json::from_str(&json).unwrap_or(Value::Null);
         meta.ids.extend(value["id"].as_str().map(str::to_owned));
-        meta.fabric_ranges = match &value["depends"]["fabricloader"] {
-            Value::String(s) => vec![s.clone()],
-            Value::Array(list) => list
-                .iter()
-                .filter_map(|v| v.as_str().map(str::to_owned))
-                .collect(),
-            _ => Vec::new(),
+        let predicates = |v: &Value| -> Vec<String> {
+            match v {
+                Value::String(s) => vec![s.clone()],
+                Value::Array(list) => list
+                    .iter()
+                    .filter_map(|v| v.as_str().map(str::to_owned))
+                    .take(MAX_IDS)
+                    .collect(),
+                _ => Vec::new(),
+            }
         };
+        if let Some(depends) = value["depends"].as_object() {
+            for (id, v) in depends.iter().take(MAX_DEPENDS) {
+                if id == "fabricloader" {
+                    meta.fabric_ranges = predicates(v);
+                } else {
+                    meta.fabric_depends.push((id.clone(), predicates(v)));
+                }
+            }
+        }
     }
     if let Some(json) = text("quilt.mod.json") {
         let value: Value = serde_json::from_str(&json).unwrap_or(Value::Null);
@@ -533,6 +578,125 @@ fn jar_meta(path: &Path) -> JarMeta {
     meta.ids.dedup();
     meta.ids.truncate(MAX_IDS);
     meta
+}
+
+/// The mod of the set whose jar holds the first class of a stack trace that
+/// belongs to a mod (`at com.example.Mod.run(Mod.java:10)`), unless that class
+/// is one of ours (`app.launcher.`). Forge for 1.12.2 lists no suspects in its
+/// crash reports, and an exception that Fabric only logs comes with none; the
+/// stack still names the mod. The jars are read from `mods`, the game's folder.
+pub fn blamed_by_stack<'a>(stack: &str, set: &'a [ModFile], mods: &Path) -> Option<&'a ModFile> {
+    let classes: Vec<HashSet<String>> = set
+        .iter()
+        .map(|file| {
+            std::fs::File::open(mods.join(&file.file_name))
+                .ok()
+                .and_then(|f| zip::ZipArchive::new(f).ok())
+                .map(|zip| {
+                    zip.file_names()
+                        .filter_map(|n| n.strip_suffix(".class"))
+                        .map(str::to_owned)
+                        .collect()
+                })
+                .unwrap_or_default()
+        })
+        .collect();
+    let frames = stack.lines().filter_map(|line| {
+        let frame = line.trim().strip_prefix("at ")?;
+        let call = frame.split('(').next()?;
+        let (class, _method) = call.rsplit_once('.')?;
+        // "java.base/java.lang.Thread": the module goes.
+        Some(class.rsplit('/').next().unwrap_or(class).to_owned())
+    });
+    for class in frames.take(MAX_FRAMES) {
+        if class.starts_with("app.launcher.") {
+            return None;
+        }
+        let path = class.replace('.', "/");
+        if let Some(i) = classes.iter().position(|c| c.contains(&path)) {
+            return set.get(i);
+        }
+    }
+    None
+}
+
+/// Frames of a stack trace looked at for the mod to blame.
+const MAX_FRAMES: usize = 200;
+
+/// What a Quilt Loader jar provides to Fabric's mods: the ids in its
+/// `quilt.mod.json` `provides` (`fabricloader` at the version Quilt stands in
+/// for) and the mods it carries inside (`mixinextras`), each with its version.
+/// Nothing when the jar cannot be read.
+pub fn quilt_provides(jar: &Path) -> Vec<(String, String)> {
+    fn entry(
+        zip: &mut zip::ZipArchive<impl std::io::Read + std::io::Seek>,
+        name: &str,
+        max: u64,
+    ) -> Option<Vec<u8>> {
+        let entry = zip.by_name(name).ok()?;
+        if entry.size() > max {
+            return None;
+        }
+        let mut out = Vec::new();
+        entry.take(max).read_to_end(&mut out).ok()?;
+        Some(out)
+    }
+    // A mod's id and version from its `fabric.mod.json` or `quilt.mod.json`.
+    fn id_version(
+        zip: &mut zip::ZipArchive<impl std::io::Read + std::io::Seek>,
+    ) -> Option<(String, String)> {
+        let fabric = entry(zip, "fabric.mod.json", MAX_META)
+            .and_then(|b| serde_json::from_slice::<Value>(&b).ok());
+        if let Some(v) = fabric {
+            return Some((
+                v["id"].as_str()?.to_owned(),
+                v["version"].as_str()?.to_owned(),
+            ));
+        }
+        let quilt: Value = serde_json::from_slice(&entry(zip, "quilt.mod.json", MAX_META)?).ok()?;
+        let q = &quilt["quilt_loader"];
+        Some((
+            q["id"].as_str()?.to_owned(),
+            q["version"].as_str()?.to_owned(),
+        ))
+    }
+    let Ok(file) = std::fs::File::open(jar) else {
+        return Vec::new();
+    };
+    let Ok(mut zip) = zip::ZipArchive::new(file) else {
+        return Vec::new();
+    };
+    let Some(json) = entry(&mut zip, "quilt.mod.json", MAX_META)
+        .and_then(|b| serde_json::from_slice::<Value>(&b).ok())
+    else {
+        return Vec::new();
+    };
+    let q = &json["quilt_loader"];
+    let mut out: Vec<(String, String)> = q["provides"]
+        .as_array()
+        .into_iter()
+        .flatten()
+        .filter_map(|p| {
+            Some((
+                p["id"].as_str()?.to_owned(),
+                p["version"].as_str()?.to_owned(),
+            ))
+        })
+        .collect();
+    for name in q["jars"]
+        .as_array()
+        .into_iter()
+        .flatten()
+        .filter_map(Value::as_str)
+    {
+        let inner = entry(&mut zip, name, MAX_NESTED_JAR)
+            .and_then(|bytes| zip::ZipArchive::new(std::io::Cursor::new(bytes)).ok());
+        if let Some(found) = inner.and_then(|mut inner| id_version(&mut inner)) {
+            out.push(found);
+        }
+    }
+    out.truncate(MAX_IDS);
+    out
 }
 
 /// The mod ids of a `mods.toml` and the `versionRange` it asks of the loader.
@@ -873,18 +1037,171 @@ fn a_jar_refuses_a_build_only_when_its_range_says_so() {
         ..JarMeta::default()
     };
     assert_eq!(
-        forge.refuses("forge", "52.0.40").as_deref(),
-        Some("[52.1,)")
+        forge.refuses("forge", "52.0.40", &[]).as_deref(),
+        Some("forge [52.1,)")
     );
-    assert_eq!(forge.refuses("forge", "52.1.0"), None);
+    assert_eq!(forge.refuses("forge", "52.1.0", &[]), None);
     let fabric = JarMeta {
         fabric_ranges: vec![">=0.17".to_owned(), "0.16.x".to_owned()],
+        fabric_depends: vec![("mixinextras".to_owned(), vec![">=0.5.5".to_owned()])],
         ..JarMeta::default()
     };
-    assert_eq!(fabric.refuses("fabric", "0.16.14"), None);
-    assert!(fabric.refuses("fabric", "0.15.11").is_some());
-    assert_eq!(fabric.refuses("quilt", "0.15.11"), None);
-    assert_eq!(JarMeta::default().refuses("neoforge", "1"), None);
+    assert_eq!(fabric.refuses("fabric", "0.16.14", &[]), None);
+    assert_eq!(
+        fabric.refuses("fabric", "0.15.11", &[]).as_deref(),
+        Some("fabricloader >=0.17 or 0.16.x")
+    );
+    // Quilt: what it provides counts, not its own build.
+    let quilt = |fabric: &str, mixinextras: &str| {
+        vec![
+            ("fabricloader".to_owned(), fabric.to_owned()),
+            ("mixinextras".to_owned(), mixinextras.to_owned()),
+        ]
+    };
+    assert_eq!(
+        fabric.refuses("quilt", "0.30.1", &quilt("0.17.2", "0.5.5")),
+        None
+    );
+    assert_eq!(
+        fabric
+            .refuses("quilt", "0.30.1", &quilt("0.15.11", "0.5.5"))
+            .as_deref(),
+        Some("fabricloader >=0.17 or 0.16.x")
+    );
+    assert_eq!(
+        fabric
+            .refuses("quilt", "0.30.1", &quilt("0.17.2", "0.5.4"))
+            .as_deref(),
+        Some("mixinextras >=0.5.5")
+    );
+    assert_eq!(fabric.refuses("quilt", "0.30.1", &[]), None);
+    assert_eq!(JarMeta::default().refuses("neoforge", "1", &[]), None);
+}
+
+#[test]
+fn quilt_provides_fabric_loader_and_the_mods_it_carries() {
+    use std::io::Write as _;
+    let zip_of = |files: &[(&str, &[u8])]| -> Vec<u8> {
+        let mut zip = zip::ZipWriter::new(std::io::Cursor::new(Vec::new()));
+        for (name, bytes) in files {
+            zip.start_file(*name, zip::write::SimpleFileOptions::default())
+                .unwrap();
+            zip.write_all(bytes).unwrap();
+        }
+        zip.finish().unwrap().into_inner()
+    };
+    let mixinextras = zip_of(&[(
+        "fabric.mod.json",
+        br#"{"id": "mixinextras", "version": "0.5.4"}"#,
+    )]);
+    let loader = zip_of(&[
+        (
+            "quilt.mod.json",
+            br#"{"quilt_loader": {"id": "quilt_loader", "version": "0.30.1",
+                "provides": [{"id": "fabricloader", "version": "0.19.3"}, "junk"],
+                "jars": ["META-INF/jars/mixinextras-fabric-0.5.4.jar", "META-INF/jars/missing.jar"]}}"#,
+        ),
+        ("META-INF/jars/mixinextras-fabric-0.5.4.jar", &mixinextras),
+    ]);
+    let dir = tempfile::tempdir().unwrap();
+    let jar = dir.path().join("quilt-loader-0.30.1.jar");
+    std::fs::write(&jar, loader).unwrap();
+    assert_eq!(
+        quilt_provides(&jar),
+        [
+            ("fabricloader".to_owned(), "0.19.3".to_owned()),
+            ("mixinextras".to_owned(), "0.5.4".to_owned()),
+        ]
+    );
+    std::fs::write(&jar, b"not a zip").unwrap();
+    assert!(quilt_provides(&jar).is_empty());
+    assert!(quilt_provides(&dir.path().join("none.jar")).is_empty());
+}
+
+#[test]
+fn a_jars_depends_are_kept_apart_from_its_loader_range() {
+    use std::io::Write as _;
+    let mut zip = zip::ZipWriter::new(std::io::Cursor::new(Vec::new()));
+    zip.start_file("fabric.mod.json", zip::write::SimpleFileOptions::default())
+        .unwrap();
+    zip.write_all(
+        br#"{"id": "lithium", "depends": {"fabricloader": ">=0.19.5", "mixinextras": [">=0.5.5"], "minecraft": "26.3"}}"#,
+    )
+    .unwrap();
+    let dir = tempfile::tempdir().unwrap();
+    let jar = dir.path().join("lithium.jar");
+    std::fs::write(&jar, zip.finish().unwrap().into_inner()).unwrap();
+    let meta = jar_meta(&jar);
+    assert_eq!(meta.ids, ["lithium"]);
+    assert_eq!(meta.fabric_ranges, [">=0.19.5"]);
+    assert!(
+        meta.fabric_depends
+            .contains(&("mixinextras".to_owned(), vec![">=0.5.5".to_owned()]))
+    );
+}
+
+#[test]
+fn the_stack_names_the_mod_whose_class_comes_first() {
+    use std::io::Write as _;
+    let dir = tempfile::tempdir().unwrap();
+    let jar = |name: &str, classes: &[&str]| {
+        let mut zip = zip::ZipWriter::new(std::io::Cursor::new(Vec::new()));
+        for class in classes {
+            zip.start_file(
+                format!("{class}.class"),
+                zip::write::SimpleFileOptions::default(),
+            )
+            .unwrap();
+            zip.write_all(b"\xca\xfe").unwrap();
+        }
+        std::fs::write(dir.path().join(name), zip.finish().unwrap().into_inner()).unwrap();
+    };
+    jar("chameleon.jar", &["com/jaquadro/chameleon/DefaultRegister"]);
+    jar(
+        "drawers.jar",
+        &["com/jaquadro/drawers/ModBlocks$Registration"],
+    );
+    let file = |title: &str, name: &str| ModFile {
+        title: title.to_owned(),
+        version: "1".to_owned(),
+        file_name: name.to_owned(),
+        project: title.to_owned(),
+        version_id: title.to_owned(),
+        mod_ids: Vec::new(),
+        url: String::new(),
+        sha512: String::new(),
+        size: 0,
+    };
+    let set = [
+        file("Storage Drawers", "drawers.jar"),
+        file("Chameleon", "chameleon.jar"),
+    ];
+    let report = "java.lang.NoSuchMethodError: net.minecraft.item.Item.getItemFromBlock\n\
+        \tat com.jaquadro.chameleon.DefaultRegister.getItem(DefaultRegister.java:25)\n\
+        \tat com.jaquadro.drawers.ModBlocks$Registration.registerModels(ModBlocks.java:215)\n";
+    let blamed = blamed_by_stack(report, &set, dir.path()).map(|f| f.title.as_str());
+    assert_eq!(blamed, Some("Chameleon"));
+    // Frames of the game, the JDK or missing jars are passed over.
+    let later = "\tat java.base/java.lang.Thread.run(Thread.java:1)\n\
+        \tat net.minecraft.class_310.method_1514(class_310.java:781)\n\
+        \tat com.jaquadro.drawers.ModBlocks$Registration.registerModels(ModBlocks.java:215)\n";
+    let blamed = blamed_by_stack(later, &set, dir.path()).map(|f| f.title.as_str());
+    assert_eq!(blamed, Some("Storage Drawers"));
+    // Our own class first: no mod of the set is blamed.
+    let ours = "\tat app.launcher.gametest.core.Bot.tick(Bot.java:1)\n\
+        \tat com.jaquadro.chameleon.DefaultRegister.getItem(DefaultRegister.java:25)\n";
+    assert!(blamed_by_stack(ours, &set, dir.path()).is_none());
+    assert!(blamed_by_stack("no stack at all", &set, dir.path()).is_none());
+}
+
+#[test]
+fn sodium_before_0_6_has_no_renderer() {
+    assert!(without_renderer("mc1.20.1-0.5.13-fabric"));
+    assert!(without_renderer("0.5.8+mc1.20.1"));
+    assert!(!without_renderer("mc1.21.1-0.6.13-fabric"));
+    assert!(!without_renderer("mc26.3-0.9.2-fabric"));
+    assert!(!without_renderer("mc1.21.1-0.6.0-beta.2-fabric"));
+    assert!(!without_renderer("unknown"));
 }
 
 #[test]
