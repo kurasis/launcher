@@ -20,6 +20,9 @@ param(
   [string]$Items,
   [string]$Out,
   [string]$Nick = 'Tester',
+  # Settings, Network: where downloads come from.
+  [ValidateSet('automatic', 'mirror_first', 'origin_only')]
+  [string]$Downloads = 'automatic',
   # Only puts the machine back: stops and uninstalls what an earlier run left.
   [switch]$CleanupOnly
 )
@@ -551,6 +554,15 @@ if (Test-Path (Join-Path $cache 'shared')) {
   New-Item -ItemType Directory -Force $data | Out-Null
   try { Move-Item (Join-Path $cache 'shared') (Join-Path $data 'shared'); Say 'shared game files of earlier parts in place' } catch { Say "shared files not reused: $($_.Exception.Message)" }
 }
+
+if ($Downloads -ne 'automatic') {
+  # The choice a player makes in Settings, Network, written before the first start; the
+  # launcher fills in the rest of its settings.
+  New-Item -ItemType Directory -Force $data | Out-Null
+  $utf8 = New-Object Text.UTF8Encoding $false
+  [IO.File]::WriteAllText((Join-Path $data 'settings.json'), "{`"schemaVersion`":1,`"downloadSource`":`"$Downloads`"}", $utf8)
+}
+Say "Downloads: $Downloads"
 
 $launcher = $null
 
