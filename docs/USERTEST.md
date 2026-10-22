@@ -59,7 +59,9 @@ mirror rule wants), `mirror_first` (the mirror, the origin when it fails) or
    log (or for versions before 1.7, the output the launcher kept) must show the player
    joining (1.4.6 to 1.6.x log it as the player logged in); up to 1.4.5, whose server
    inside logs nothing (before 1.3 there was none), a file the new world wrote counts
-   (when it fails, `saves.txt` lists what the game saved).
+   (when it fails, `saves.txt` lists what the game saved), and the game's own F2
+   screenshot must appear in the world: those versions show a crash in the window and
+   exit normally afterwards, after the world's files were written.
    The game must exit with 0 (before 1.6 with 1 after its "Someone is closing me!",
    which is how those versions end when the window is closed) and leave no crash report. Where the launcher has a
    Launcher Skins build for the version, the column Launcher Skins says whether it got
