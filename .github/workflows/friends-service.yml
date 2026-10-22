@@ -57,9 +57,9 @@ jobs:
       run:
         working-directory: services/friends
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
       - run: rustup show active-toolchain
-      - uses: actions/cache@v6
+      - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6
         with:
           path: |
             ~/.cargo/registry
@@ -80,7 +80,7 @@ jobs:
           cp target/release/lapi-friends ../../dist-friends/
           cp ../../deploy/nginx/* ../../deploy/friends/nginx/* ../../dist-friends/nginx/
           tar -czf ../../lapi-friends.tar.gz -C ../../dist-friends .
-      - uses: actions/upload-artifact@v7
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
         with:
           name: lapi-friends
           path: lapi-friends.tar.gz
@@ -103,8 +103,8 @@ jobs:
           || (github.event_name == 'workflow_dispatch' && inputs.task == 'deploy'))
     runs-on: ubuntu-24.04
     steps:
-      - uses: actions/checkout@v7
-      - uses: actions/download-artifact@v8
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8
         with:
           name: lapi-friends
       - uses: ./.github/actions/lapi-ssh
@@ -141,7 +141,7 @@ jobs:
     if: github.event_name == 'workflow_dispatch' && inputs.task == 'counts'
     runs-on: ubuntu-24.04
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
       - uses: ./.github/actions/lapi-ssh
         with:
           ssh-key: ${{ secrets.SSH_KEY }}

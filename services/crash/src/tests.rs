@@ -301,6 +301,24 @@ fn many_addresses_together_meet_the_overall_limit() {
     assert!(limiter.allow(std::net::IpAddr::from([10, 0, 0, 2]), "reports", 5, 30));
 }
 
+#[test]
+fn one_ipv6_48_cannot_use_up_everyones_allowance() {
+    let limiter = Limiter::default();
+    // Every /64 of one /48 stays within its own limit, yet the /48 stops at
+    // five players' allowance.
+    let allowed = (0..200u16)
+        .filter(|i| {
+            let ip = std::net::IpAddr::from([0x2001, 0xdb8, 7, *i, 0, 0, 0, 1]);
+            limiter.allow(ip, "reports", 5, 600)
+        })
+        .count();
+    assert_eq!(allowed, 25);
+    // Another /48 and an IPv4 address are still let in.
+    let other = std::net::IpAddr::from([0x2001, 0xdb8, 8, 0, 0, 0, 0, 1]);
+    assert!(limiter.allow(other, "reports", 5, 600));
+    assert!(limiter.allow(std::net::IpAddr::from([10, 0, 0, 3]), "reports", 5, 600));
+}
+
 #[tokio::test]
 async fn at_the_storage_limit_the_oldest_reports_make_room() {
     let (_dir, app) = app_with(1);

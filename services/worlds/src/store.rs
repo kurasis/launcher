@@ -123,6 +123,12 @@ CREATE TABLE IF NOT EXISTS admissions (
 -- One slot per account per room until the host releases it.
 CREATE UNIQUE INDEX IF NOT EXISTS admissions_slot ON admissions(room, account) WHERE released IS NULL;
 CREATE INDEX IF NOT EXISTS admissions_session ON admissions(session);
+-- DPoP proof IDs seen while their proofs are fresh, so a captured proof
+-- cannot be replayed, after a restart either.
+CREATE TABLE IF NOT EXISTS proofs (
+    jti TEXT PRIMARY KEY,
+    iat INTEGER NOT NULL
+);
 -- Guests' tunnel keys the relay may carry, one per member and session,
 -- renewed by the guest every 10 seconds.
 CREATE TABLE IF NOT EXISTS relay_grants (
@@ -1492,10 +1498,23 @@ impl Store {
         Ok(changed)
     }
 
+    /// True the first time a DPoP proof's `jti` is seen.
+    pub fn first_proof(&self, jti: &str, iat: i64) -> Result<bool> {
+        let added = self.db().execute(
+            "INSERT OR IGNORE INTO proofs (jti, iat) VALUES (?1, ?2)",
+            params![jti, iat],
+        )?;
+        Ok(added == 1)
+    }
+
     /// Ends what ran out and forgets what is old.
     pub fn sweep(&self, now: i64) -> Result<()> {
         let db = self.db();
         expire(&db, &self.authority, now)?;
+        db.execute(
+            "DELETE FROM proofs WHERE iat < ?1",
+            [now - crate::auth::PROOF_WINDOW],
+        )?;
         db.execute("DELETE FROM tickets WHERE expires < ?1", [now - 3600])?;
         db.execute("DELETE FROM relay_grants WHERE until < ?1", [now - 3600])?;
         db.execute(
