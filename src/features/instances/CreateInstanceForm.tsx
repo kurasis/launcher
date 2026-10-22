@@ -32,6 +32,8 @@ interface CreateInstanceFormProps {
   fixedHeapMib?: number | null;
   /** The version chosen first, when the catalog has it (the feed's Install). */
   initialVersion?: string | null;
+  /** The mod loader chosen first (the command palette's "New installation with …"). */
+  initialLoader?: LoaderKind | null | undefined;
 }
 
 const t = strings.createForm;
@@ -53,6 +55,7 @@ export function CreateInstanceForm({
   network = 'online',
   fixedHeapMib = null,
   initialVersion = null,
+  initialLoader = null,
 }: CreateInstanceFormProps) {
   // The name follows the chosen version and loader until the user types one.
   const [typedName, setTypedName] = useState<string | null>(null);
@@ -64,7 +67,7 @@ export function CreateInstanceForm({
   const [estimating, setEstimating] = useState(false);
   // Mod loader (D-039): the game versions each loader supports, its versions
   // per game version (by `kind:game`), and the user's pick among them.
-  const [loaderKind, setLoaderKind] = useState<LoaderKind | 'none'>('none');
+  const [loaderKind, setLoaderKind] = useState<LoaderKind | 'none'>(initialLoader ?? 'none');
   const [gamesByKind, setGamesByKind] = useState<Partial<Record<LoaderKind, ReadonlySet<string>>>>(
     {},
   );

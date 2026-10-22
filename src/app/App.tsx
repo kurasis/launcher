@@ -10,7 +10,7 @@ import { progressPercent } from '../lib/format';
 import { useShownError } from '../lib/useShownError';
 import { ipc } from '../lib/ipc';
 import { StorageIssues } from '../features/diagnostics/StorageIssues';
-import { InstancesView } from '../features/instances/InstancesView';
+import { InstancesView, type CreateRequest } from '../features/instances/InstancesView';
 import { SettingsView } from '../features/settings/SettingsView';
 import type { AppSnapshot, NetworkStatus } from '../lib/contracts';
 import { DiagnosticsView } from '../features/diagnostics/DiagnosticsView';
@@ -119,8 +119,9 @@ export function App() {
   const [settingsInstance, setSettingsInstance] = useState<string | null>(null);
   const [modsSection, setModsSection] = useState<ModsSection>('mod');
   const [modsInstance, setModsInstance] = useState<string | null>(null);
-  // A version the feed asked to install: Installations opens its form with it.
-  const [installVersion, setInstallVersion] = useState<string | null>(null);
+  // The new-installation form asked for from elsewhere (the feed's Install, the
+  // command palette): Installations opens it, keyed by when it was asked.
+  const [createRequest, setCreateRequest] = useState<(CreateRequest & { at: number }) | null>(null);
   // A room joined from a chat invite: Worlds opens on it.
   const [worldsRoom, setWorldsRoom] = useState<{ id: string; at: number } | null>(null);
   // A review started from elsewhere (a crash, a failure, an ad), and the
@@ -137,7 +138,7 @@ export function App() {
   /** Opens a screen; with "Last opened" the core remembers it for the next start. */
   const navigate = (next: View) => {
     setView(next);
-    setInstallVersion(null);
+    setCreateRequest(null);
     const remembered = rememberedView(next);
     if (
       settings?.startView === 'last' &&
@@ -356,7 +357,7 @@ export function App() {
                   }}
                   onInstallVersion={(versionId) => {
                     navigate('home');
-                    setInstallVersion(versionId);
+                    setCreateRequest({ version: versionId, loader: null, at: Date.now() });
                   }}
                 />
               )}
@@ -377,9 +378,9 @@ export function App() {
                   />
                   {stopping.error !== null && <Notice tone="danger">{stopping.error}</Notice>}
                   <InstancesView
-                    key={installVersion ?? ''}
+                    key={createRequest?.at ?? 0}
                     snapshot={state.snapshot}
-                    createVersion={installVersion}
+                    createRequest={createRequest}
                     onEditSettings={(instanceId) => {
                       setSettingsInstance(instanceId);
                       setSettingsSection('installations');

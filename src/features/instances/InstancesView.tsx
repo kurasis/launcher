@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { Button } from '../../components/Button';
 import { Notice } from '../../components/Notice';
 import forms from '../../components/forms.module.css';
-import type { AppSnapshot } from '../../lib/contracts';
+import type { AppSnapshot, LoaderKind } from '../../lib/contracts';
 import { ipc } from '../../lib/ipc';
 import { strings } from '../../lib/strings';
 import { useCommand } from '../../lib/useCommand';
@@ -21,8 +21,16 @@ interface InstancesViewProps {
   onOpenBackups?: () => void;
   /** What an installation holds, in the Mods tab (D-066). */
   onOpenContent?: (instanceId: string) => void;
-  /** Opens the new-installation form with this game version chosen (from the feed). */
-  createVersion?: string | null;
+  /**
+   * Opens the new-installation form, with this game version (the feed's Install) or
+   * mod loader (the command palette) chosen when given.
+   */
+  createRequest?: CreateRequest | null | undefined;
+}
+
+export interface CreateRequest {
+  version: string | null;
+  loader: LoaderKind | null;
 }
 
 const t = strings.instances;
@@ -32,9 +40,9 @@ export function InstancesView({
   onEditSettings,
   onOpenBackups = () => undefined,
   onOpenContent,
-  createVersion = null,
+  createRequest = null,
 }: InstancesViewProps) {
-  const [creating, setCreating] = useState(createVersion !== null);
+  const [creating, setCreating] = useState(createRequest !== null);
   const [deleted, setDeleted] = useState<string | null>(null);
   const [bringing, setBringing] = useState(false);
   const select = useCommand((requestId: string, id: string) =>
@@ -105,7 +113,8 @@ export function InstancesView({
           <CreateInstanceForm
             network={snapshot.network}
             fixedHeapMib={snapshot.settings.defaultMaxHeapMib}
-            initialVersion={createVersion}
+            initialVersion={createRequest?.version ?? null}
+            initialLoader={createRequest?.loader ?? null}
             onDone={(createdId) => {
               setCreating(false);
               // The new installation is the one to install and play next.
