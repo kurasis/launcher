@@ -90,6 +90,9 @@ pub fn runtime_major(declared: u16) -> u16 {
 
 /// JVM arguments for legacy descriptors, which declare none (what Mojang's
 /// launcher supplied for them).
+/// Main class of Forge 1.20.3+ (`net.minecraftforge:bootstrap`).
+const FORGE_BOOTSTRAP: &str = "net.minecraftforge.bootstrap.ForgeBootstrap";
+
 fn legacy_jvm_arguments(ctx: &RuleContext) -> Vec<String> {
     let mut args = Vec::new();
     if ctx.os == MetaOs::Windows {
@@ -730,6 +733,17 @@ pub fn apply_loader(
             plan.game_arguments
                 .extend(evaluate_arguments(&manifest.game_arguments, ctx)?);
         }
+    }
+    // Forge's bootstrap finds its libraries by `libraryDirectory` and otherwise
+    // looks in `./libraries`; some profiles (Forge 49.0.2 for 1.20.3) do not set it.
+    if manifest.main_class == FORGE_BOOTSTRAP
+        && !plan
+            .jvm_arguments
+            .iter()
+            .any(|a| a.starts_with("-DlibraryDirectory="))
+    {
+        plan.jvm_arguments
+            .push("-DlibraryDirectory=${library_directory}".to_owned());
     }
 
     if let Some(installer) = &manifest.installer {
