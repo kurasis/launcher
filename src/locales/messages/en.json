@@ -417,7 +417,32 @@
         "repair_required": "Repair required",
         "unsupported": "Unsupported"
       },
-      "busy": "Busy"
+      "busy": "Busy",
+      "count": "{count, plural, one {# installation} other {# installations}}",
+      "find": "Find in the list",
+      "sortBy": "Order",
+      "sorts": {
+        "recent": "Recent",
+        "name": "Name",
+        "version": "Version"
+      },
+      "nothingFound": "Nothing found.",
+      "clearSearch": "Clear search",
+      "choose": "Choose an installation in the list to see it here.",
+      "actions": "Installation actions",
+      "lastRun": {
+        "played": "Last played {when}.",
+        "playedFor": "Last played {when}, {duration}.",
+        "outcome": {
+          "succeeded": "The game ended without errors.",
+          "failed": "The game ended with an error.",
+          "cancelled": "The game was stopped."
+        },
+        "lessThanMinute": "less than a minute",
+        "minutes": "{count, plural, one {# minute} other {# minutes}}",
+        "hours": "{count, plural, one {# hour} other {# hours}}",
+        "hoursMinutes": "{hours} {minutes}"
+      }
     },
     "install": {
       "install": "Install",
@@ -537,7 +562,6 @@
       "title": "Installation settings",
       "summaryTitle": "Details",
       "version": "Version",
-      "openFolder": "Open game folder",
       "openFolderHint": "Worlds, screenshots and options of this installation are stored there.",
       "name": "Name",
       "rename": "Rename",
@@ -551,10 +575,8 @@
         "shaderpacks": "Shader packs"
       },
       "lastPlayed": "Last played",
-      "neverPlayed": "Not yet",
       "lastResult": "Last result",
       "exitCode": "exit code {code}",
-      "noResult": "None yet",
       "memory": "Maximum memory (MiB)",
       "memoryHint": "Between {min, number, ::group-off} and {max, number, ::group-off} MiB on this computer.",
       "lowMemory": "This computer has less than 8 GiB of memory. The game may run poorly with the available amount.",
@@ -567,9 +589,6 @@
       "java": "Java",
       "jvmArguments": "JVM options",
       "javaNone": "Chosen when it is installed",
-      "window": "Memory and window",
-      "windowValue": "{mib, number, ::group-off} MiB · {width, number, ::group-off}×{height, number, ::group-off}",
-      "edit": "Change settings",
       "notes": "Notes",
       "notesHint": "Only for you: what this installation is for, its mods, servers or anything to remember.",
       "notesSave": "Save notes",
@@ -579,7 +598,18 @@
       "launcherSkinsHint": "Shows the skins and capes of launcher accounts, HD and animated, in this game. Only in supported game versions.",
       "gameArguments": "Minecraft arguments",
       "gameArgumentsHint": "Added after the game's own arguments, for example --quickPlaySingleplayer \"My World\" to open a world at start. Quotes keep spaces inside one value. The player, folders, window size and fullscreen are set by the launcher.",
-      "content": "Mods and content"
+      "content": "Mods and content",
+      "memoryShort": "Memory",
+      "memoryValue": "{mib, number, ::group-off} MiB",
+      "windowShort": "Window",
+      "windowSize": "{width, number, ::group-off}×{height, number, ::group-off}",
+      "windowFullscreen": "{width, number, ::group-off}×{height, number, ::group-off}, fullscreen",
+      "launcherSkinsOn": "On",
+      "launcherSkinsOff": "Off",
+      "notesEmpty": "No notes yet.",
+      "notesEdit": "Edit",
+      "notesEditLabel": "Edit notes",
+      "cancel": "Cancel"
     },
     "memory": {
       "recommended": "Recommended: {mib, number, ::group-off} MiB for {reason}.",

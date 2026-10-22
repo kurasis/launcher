@@ -94,6 +94,21 @@
   --color-soil: #7a5236;
   --color-hero-scrim: rgb(255 255 255 / 86%);
 
+  /* Installation tiles (InstanceTile): a top band over a body, like a block. The pair
+     is chosen from the installation's id, so a tile keeps its colors in any order. */
+  --tile-1-top: #5fae57;
+  --tile-1-body: #7a5236;
+  --tile-2-top: #94ad9b;
+  --tile-2-body: #4f6b58;
+  --tile-3-top: #e3c682;
+  --tile-3-body: #b0864e;
+  --tile-4-top: #a9d4e8;
+  --tile-4-body: #5f7486;
+  --tile-5-top: #df9a62;
+  --tile-5-body: #7d4a2e;
+  --tile-6-top: #cf6660;
+  --tile-6-body: #5a3434;
+
   /* Backgrounds behind the 3D character: the same in both themes. */
   --color-stage-day-sky: #7dd3fc;
   --color-stage-day-haze: #e0f2fe;
@@ -176,6 +191,19 @@
     --color-soil: #4a3220;
     --color-hero-scrim: rgb(15 23 19 / 82%);
 
+    --tile-1-top: #4f9a4a;
+    --tile-1-body: #6a4630;
+    --tile-2-top: #7f9a87;
+    --tile-2-body: #435d4c;
+    --tile-3-top: #c8ad6e;
+    --tile-3-body: #94703f;
+    --tile-4-top: #8fbcd0;
+    --tile-4-body: #50637a;
+    --tile-5-top: #c9854f;
+    --tile-5-body: #6e4027;
+    --tile-6-top: #b9574f;
+    --tile-6-body: #4e2c2c;
+
     --shadow-panel: none;
     --shadow-raised: 0 12px 36px rgb(0 0 0 / 50%);
     --shadow-float: 0 4px 14px rgb(0 0 0 / 40%);
@@ -239,6 +267,19 @@
   --color-ground: #35603a;
   --color-soil: #4a3220;
   --color-hero-scrim: rgb(15 23 19 / 82%);
+
+  --tile-1-top: #4f9a4a;
+  --tile-1-body: #6a4630;
+  --tile-2-top: #7f9a87;
+  --tile-2-body: #435d4c;
+  --tile-3-top: #c8ad6e;
+  --tile-3-body: #94703f;
+  --tile-4-top: #8fbcd0;
+  --tile-4-body: #50637a;
+  --tile-5-top: #c9854f;
+  --tile-5-body: #6e4027;
+  --tile-6-top: #b9574f;
+  --tile-6-body: #4e2c2c;
 
   --shadow-panel: none;
   --shadow-raised: 0 12px 36px rgb(0 0 0 / 50%);

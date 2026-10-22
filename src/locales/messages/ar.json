@@ -418,7 +418,32 @@
         "repair_required": "يحتاج إلى إصلاح",
         "unsupported": "غير مدعوم"
       },
-      "busy": "مشغول"
+      "busy": "مشغول",
+      "count": "{count, plural, zero {لا توجد تثبيتات} one {تثبيت واحد} two {تثبيتان} few {# تثبيتات} many {# تثبيتًا} other {# تثبيت}}",
+      "find": "البحث في القائمة",
+      "sortBy": "الترتيب",
+      "sorts": {
+        "recent": "الأحدث",
+        "name": "حسب الاسم",
+        "version": "حسب الإصدار"
+      },
+      "nothingFound": "لم يُعثر على شيء.",
+      "clearSearch": "مسح البحث",
+      "choose": "اختر تثبيتًا من القائمة لعرضه هنا.",
+      "actions": "إجراءات التثبيت",
+      "lastRun": {
+        "played": "آخر تشغيل يوم {when}.",
+        "playedFor": "آخر تشغيل يوم {when}، لمدة {duration}.",
+        "outcome": {
+          "succeeded": "انتهت اللعبة دون أخطاء.",
+          "failed": "انتهت اللعبة بخطأ.",
+          "cancelled": "أُوقفت اللعبة."
+        },
+        "lessThanMinute": "أقل من دقيقة",
+        "minutes": "{count, plural, zero {# دقيقة} one {دقيقة واحدة} two {دقيقتين} few {# دقائق} many {# دقيقة} other {# دقيقة}}",
+        "hours": "{count, plural, zero {# ساعة} one {ساعة واحدة} two {ساعتين} few {# ساعات} many {# ساعة} other {# ساعة}}",
+        "hoursMinutes": "{hours} و{minutes}"
+      }
     },
     "install": {
       "install": "تثبيت",
@@ -538,7 +563,6 @@
       "title": "إعدادات التثبيت",
       "summaryTitle": "التفاصيل",
       "version": "الإصدار",
-      "openFolder": "فتح مجلد اللعبة",
       "openFolderHint": "تُخزَّن هناك عوالم هذا التثبيت ولقطات الشاشة والإعدادات.",
       "name": "الاسم",
       "rename": "إعادة التسمية",
@@ -552,10 +576,8 @@
         "shaderpacks": "حزم الظلال"
       },
       "lastPlayed": "آخر تشغيل",
-      "neverPlayed": "لم يُشغَّل بعد",
       "lastResult": "النتيجة الأخيرة",
       "exitCode": "رمز الخروج {code}",
-      "noResult": "لا شيء بعد",
       "memory": "الحد الأقصى للذاكرة (MiB)",
       "memoryHint": "بين {min, number, ::group-off} و{max, number, ::group-off} MiB على هذا الحاسوب.",
       "lowMemory": "ذاكرة هذا الحاسوب أقل من 8 GiB، وقد يكون أداء اللعبة ضعيفًا بالكمية المتاحة.",
@@ -568,9 +590,6 @@
       "java": "Java",
       "jvmArguments": "خيارات JVM",
       "javaNone": "يُختار عند التثبيت",
-      "window": "الذاكرة والنافذة",
-      "windowValue": "⁦{mib, number, ::group-off} MiB⁩ · ⁦{width, number, ::group-off}×{height, number, ::group-off}⁩",
-      "edit": "تغيير الإعدادات",
       "notes": "ملاحظات",
       "notesHint": "لك وحدك: الغرض من هذا التثبيت وتعديلاته وخوادمه وأي شيء تريد تذكّره.",
       "notesSave": "حفظ الملاحظات",
@@ -580,7 +599,18 @@
       "launcherSkinsHint": "يعرض في هذه اللعبة مظاهر حسابات المشغّل وعباءاتها، بدقة عالية ومتحركة. في إصدارات اللعبة المدعومة فقط.",
       "gameArguments": "وسائط Minecraft",
       "gameArgumentsHint": "تُضاف بعد وسائط اللعبة نفسها، مثل ‎--quickPlaySingleplayer \"عالمي\"‎ لفتح عالم عند البدء. تحافظ علامات الاقتباس على المسافات داخل قيمة واحدة. يحدد المشغّل اللاعب والمجلدات وحجم النافذة وملء الشاشة.",
-      "content": "التعديلات والمحتوى"
+      "content": "التعديلات والمحتوى",
+      "memoryShort": "الذاكرة",
+      "memoryValue": "⁦{mib, number, ::group-off} MiB⁩",
+      "windowShort": "النافذة",
+      "windowSize": "⁦{width, number, ::group-off}×{height, number, ::group-off}⁩",
+      "windowFullscreen": "⁦{width, number, ::group-off}×{height, number, ::group-off}⁩، ملء الشاشة",
+      "launcherSkinsOn": "مفعّلة",
+      "launcherSkinsOff": "معطّلة",
+      "notesEmpty": "لا توجد ملاحظات بعد.",
+      "notesEdit": "تعديل",
+      "notesEditLabel": "تعديل الملاحظات",
+      "cancel": "إلغاء"
     },
     "memory": {
       "recommended": "المُوصى به: {mib, number, ::group-off} MiB لـ {reason}.",

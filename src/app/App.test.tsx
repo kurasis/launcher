@@ -134,7 +134,7 @@ describe('App', () => {
     expect(
       await screen.findByRole('button', { name: 'Настройки' }, { timeout: 5000 }),
     ).toBeVisible();
-    fireEvent.click(screen.getByRole('button', { name: 'Изменить настройки' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Настройки установки' }));
     fireEvent.change(await screen.findByLabelText('Максимум памяти (МиБ)'), {
       target: { value: '2048' },
     });
@@ -233,9 +233,10 @@ describe('App', () => {
     );
     render(<App />);
     // Installation settings live on the Settings screen.
-    expect(await screen.findByText('4096 MiB · 1280×720')).toBeVisible();
+    expect(await screen.findByText('4096 MiB')).toBeVisible();
+    expect(screen.getByText('1280×720')).toBeVisible();
     expect(screen.queryByLabelText('Maximum memory (MiB)')).not.toBeInTheDocument();
-    fireEvent.click(screen.getByRole('button', { name: 'Change settings' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Installation settings' }));
     expect(screen.getByRole('tab', { name: 'Installations' })).toHaveAttribute(
       'aria-selected',
       'true',

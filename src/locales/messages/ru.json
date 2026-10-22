@@ -417,7 +417,32 @@
         "repair_required": "Нужно восстановление",
         "unsupported": "Не поддерживается"
       },
-      "busy": "Занята"
+      "busy": "Занята",
+      "count": "{count, plural, one {# установка} few {# установки} many {# установок} other {# установки}}",
+      "find": "Найти в списке",
+      "sortBy": "Порядок",
+      "sorts": {
+        "recent": "Недавние",
+        "name": "По названию",
+        "version": "По версии"
+      },
+      "nothingFound": "Ничего не найдено.",
+      "clearSearch": "Очистить поиск",
+      "choose": "Выберите установку в списке, чтобы увидеть её здесь.",
+      "actions": "Действия с установкой",
+      "lastRun": {
+        "played": "Последний запуск {when}.",
+        "playedFor": "Последний запуск {when}, {duration}.",
+        "outcome": {
+          "succeeded": "Игра завершилась без ошибок.",
+          "failed": "Игра завершилась с ошибкой.",
+          "cancelled": "Игру остановили."
+        },
+        "lessThanMinute": "меньше минуты",
+        "minutes": "{count, plural, one {# минута} few {# минуты} many {# минут} other {# минуты}}",
+        "hours": "{count, plural, one {# час} few {# часа} many {# часов} other {# часа}}",
+        "hoursMinutes": "{hours} {minutes}"
+      }
     },
     "install": {
       "install": "Установить",
@@ -537,7 +562,6 @@
       "title": "Настройки установки",
       "summaryTitle": "Сведения",
       "version": "Версия",
-      "openFolder": "Открыть папку игры",
       "openFolderHint": "Там хранятся миры, скриншоты и настройки этой установки.",
       "name": "Название",
       "rename": "Переименовать",
@@ -551,10 +575,8 @@
         "shaderpacks": "Шейдеры"
       },
       "lastPlayed": "Последний запуск",
-      "neverPlayed": "Ещё не запускалась",
       "lastResult": "Последний результат",
       "exitCode": "код выхода {code}",
-      "noResult": "Пока нет",
       "memory": "Максимум памяти (МиБ)",
       "memoryHint": "От {min, number, ::group-off} до {max, number, ::group-off} МиБ на этом компьютере.",
       "lowMemory": "На этом компьютере меньше 8 ГиБ памяти. С доступным объёмом игра может работать плохо.",
@@ -567,9 +589,6 @@
       "java": "Java",
       "jvmArguments": "Параметры JVM",
       "javaNone": "Выбирается при установке",
-      "window": "Память и окно",
-      "windowValue": "{mib, number, ::group-off} МиБ · {width, number, ::group-off}×{height, number, ::group-off}",
-      "edit": "Изменить настройки",
       "notes": "Заметки",
       "notesHint": "Только для вас: для чего эта установка, какие моды, серверы — всё, что стоит запомнить.",
       "notesSave": "Сохранить заметки",
@@ -579,7 +598,18 @@
       "launcherSkinsHint": "Показывает в этой игре скины и плащи аккаунтов лаунчера, в том числе HD и анимированные. Только в поддерживаемых версиях игры.",
       "gameArguments": "Аргументы Minecraft",
       "gameArgumentsHint": "Добавляются после аргументов самой игры, например --quickPlaySingleplayer \"Мой мир\", чтобы сразу открыть мир. Кавычки сохраняют пробелы внутри одного значения. Игрока, папки, размер окна и полноэкранный режим задаёт лаунчер.",
-      "content": "Моды и содержимое"
+      "content": "Моды и содержимое",
+      "memoryShort": "Память",
+      "memoryValue": "{mib, number, ::group-off} МиБ",
+      "windowShort": "Окно",
+      "windowSize": "{width, number, ::group-off}×{height, number, ::group-off}",
+      "windowFullscreen": "{width, number, ::group-off}×{height, number, ::group-off}, полный экран",
+      "launcherSkinsOn": "Включены",
+      "launcherSkinsOff": "Выключены",
+      "notesEmpty": "Заметок пока нет.",
+      "notesEdit": "Изменить",
+      "notesEditLabel": "Изменить заметки",
+      "cancel": "Отмена"
     },
     "memory": {
       "recommended": "Рекомендуется {mib, number, ::group-off} МиБ: {reason}.",

@@ -1,6 +1,5 @@
 import { Button } from '../../components/Button';
 import { Notice } from '../../components/Notice';
-import { Panel } from '../../components/Panel';
 import forms from '../../components/forms.module.css';
 import type {
   ActiveActivity,
@@ -16,7 +15,6 @@ import { strings } from '../../lib/strings';
 import { useCommand } from '../../lib/useCommand';
 import styles from './Instances.module.css';
 import { localizeError } from '../../lib/strings';
-import { gameLabel } from './loaderLabel';
 import { DownloadApproval } from '../network/DownloadApproval';
 
 interface InstallPanelProps {
@@ -90,8 +88,9 @@ function ResultView({ result }: { result: OperationResult }) {
 }
 
 /**
- * One installation's state, progress, queue and last result, with Cancel and Verify.
- * Play, Install, Repair and "Play as" live in the launch bar (D-072).
+ * One installation's state, progress, queue and last result, with Cancel. It sits in
+ * the chosen installation's panel under its toolbar (Verify files is there); Play,
+ * Install, Repair and "Play as" live in the launch bar (D-072).
  */
 export function InstallPanel({
   instance,
@@ -101,7 +100,6 @@ export function InstallPanel({
   queue = [],
   network = 'online',
 }: InstallPanelProps) {
-  const repair = useCommand((requestId: string, id: string) => ipc.repairInstance(id, requestId));
   const cancel = useCommand((requestId: string, operationId: string) =>
     ipc.cancelOperation(operationId, requestId),
   );
@@ -113,17 +111,15 @@ export function InstallPanel({
   const ownProgress = mine !== null && progress?.operationId === mine.operationId ? progress : null;
   const last = recentOperations.find((r) => r.instanceId === instance.id) ?? null;
   const health = instance.health;
-  const error = repair.error ?? cancel.error;
 
   return (
-    <Panel
-      variant="hero"
-      title={instance.displayName}
-      aside={<span className={styles.version}>{gameLabel(instance)}</span>}
-    >
-      <p className={styles.muted}>{t.explain[health]}</p>
+    <div className={styles.state}>
+      <p className={styles.explain}>
+        {t.explain[health]}
+        {health !== 'not_installed' && ` ${t.userData}`}
+      </p>
       {instance.loader !== null && health === 'not_installed' && (
-        <p className={styles.muted}>
+        <p className={styles.explain}>
           {strings.loaders.sources({ loader: strings.loaders.names[instance.loader.kind] })}
         </p>
       )}
@@ -165,18 +161,7 @@ export function InstallPanel({
       ) : (
         otherBusy && <Notice tone="info">{t.otherBusy}</Notice>
       )}
-      {mine === null && health === 'ready' && (
-        <div className={forms.actions}>
-          <Button
-            disabled={repair.pending || queued !== null}
-            onClick={() => void repair.run(instance.id)}
-          >
-            {t.verify}
-          </Button>
-        </div>
-      )}
-      {health !== 'not_installed' && <p className={styles.muted}>{t.userData}</p>}
-      {error !== null && <Notice tone="danger">{error}</Notice>}
-    </Panel>
+      {cancel.error !== null && <Notice tone="danger">{cancel.error}</Notice>}
+    </div>
   );
 }
