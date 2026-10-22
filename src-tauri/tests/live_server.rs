@@ -654,6 +654,9 @@ async fn host_a_world_with_mods() {
     let built = pack::build(&catalog, &harmful, &game, &loader)
         .await
         .unwrap();
+    pack::check_server(&catalog, &built, &minecraft)
+        .await
+        .expect("the mods' jars say they start");
     let mut created = world::create(
         &root,
         "Live modded world",
@@ -1005,6 +1008,9 @@ async fn update_a_world_with_mods() {
     let built = pack::build(&catalog, &harmful, &game, &loader)
         .await
         .unwrap();
+    pack::check_server(&catalog, &built, &minecraft)
+        .await
+        .unwrap();
     let mut created = world::create(
         &root,
         "Live updated world",
@@ -1059,6 +1065,9 @@ async fn update_a_world_with_mods() {
     let built = pack::build(&catalog, &harmful, &game, &loader)
         .await
         .unwrap();
+    pack::check_server(&catalog, &built, &minecraft)
+        .await
+        .unwrap();
     let world = world::load(&root, id).unwrap();
     let shown = update::preview(&root, &world, &built).unwrap();
     assert_eq!(shown.added.len(), 1, "jei added");
@@ -1091,6 +1100,13 @@ async fn update_a_world_with_mods() {
     // Generation 3 brings Fabric API of another release.
     let game = installation(&[("fabric-api", other)], b"{\"rate\":3}").await;
     let broken = || pack::build(&catalog, &harmful, &game, &loader);
+    // Its jars say so before anything is tried; a start on a copy still
+    // catches what they cannot tell.
+    let told = pack::check_server(&catalog, &broken().await.unwrap(), &minecraft)
+        .await
+        .expect_err("Fabric API of another release does not start");
+    assert_eq!(told.code, launcher_lib::error::ErrorCode::InvalidInput);
+    println!("generation 3 refused before its trial");
     let world = world::load(&root, id).unwrap();
     let shown = update::preview(&root, &world, &broken().await.unwrap()).unwrap();
     let staged = update::stage(
@@ -1148,9 +1164,10 @@ async fn update_a_world_with_mods() {
 }
 
 /// A world whose mods do not start says why (W12): which mod, and what it
-/// needs that the world does not have, from the loader's own words or the
-/// crash report of the start. Each case is a release of a catalog mod that
-/// does not start with the loader's newest stable build.
+/// needs that the world does not have. Before the world is made when the
+/// mod's jar says so, else from the loader's own words or the crash report of
+/// the start. Each case is a release of a catalog mod that does not start
+/// with the loader's newest stable build.
 /// `WORLD_CASE=neoforge-range cargo test --test live_server a_world_that_does_not_start_says_why -- --ignored --exact --nocapture`
 #[tokio::test(flavor = "multi_thread")]
 #[ignore = "network: downloads a loader server, mods and Java, runs the server"]
@@ -1167,7 +1184,9 @@ async fn a_world_that_does_not_start_says_why() {
         slug: &'static str,
         made_for: &'static str,
         number: &'static str,
-        /// The start's error: its template and the mod it names.
+        /// Told before the world is made, by the mod's jar; else by the start.
+        before: bool,
+        /// The error: its template and the mod it names.
         template: &'static str,
         named: &'static str,
     }
@@ -1181,8 +1200,9 @@ async fn a_world_that_does_not_start_says_why() {
             slug: "jei",
             made_for: "1.21",
             number: "19.64.0.455",
+            before: true,
             template: "{mod} needs {dependency} {version} or newer, and the world has {actual}. Take an older release of {mod} or remove it.",
-            named: "jei",
+            named: "Just Enough Items (JEI)",
         },
         "fabric-minecraft" => Case {
             kind: LoaderKind::Fabric,
@@ -1191,6 +1211,7 @@ async fn a_world_that_does_not_start_says_why() {
             slug: "fabric-api",
             made_for: "1.20.1",
             number: "0.92.12+1.20.1",
+            before: true,
             template: "{mod} is made for another Minecraft version than the world's {actual}. Take its release for {actual} or remove it.",
             named: "Fabric API",
         },
@@ -1202,6 +1223,7 @@ async fn a_world_that_does_not_start_says_why() {
             slug: "appleskin",
             made_for: "1.21.1",
             number: "3.0.6+mc1.21",
+            before: true,
             template: "{mod} needs {dependency}, which is not in the world. Add it to the installation or remove {mod}, then update the world's mods.",
             named: "AppleSkin",
         },
@@ -1212,8 +1234,9 @@ async fn a_world_that_does_not_start_says_why() {
             slug: "jei",
             made_for: "1.19.2",
             number: "11.68.0.1086",
+            before: true,
             template: "{mod} is made for another Minecraft version than the world's {actual}. Take its release for {actual} or remove it.",
-            named: "jei",
+            named: "Just Enough Items (JEI)",
         },
         // Spark's only release for Forge 1.20.6 calls a method Forge 1.20.6's
         // newest build does not have.
@@ -1224,6 +1247,7 @@ async fn a_world_that_does_not_start_says_why() {
             slug: "spark",
             made_for: "1.20.6",
             number: "1.10.66-forge",
+            before: false,
             template: "{mod} stopped the world server while it started. Take another release of {mod} or remove it.",
             named: "spark",
         },
@@ -1234,6 +1258,7 @@ async fn a_world_that_does_not_start_says_why() {
             slug: "jei",
             made_for: "1.11.2",
             number: "4.5.0.294",
+            before: false,
             template: "{mod} is made for another Minecraft version than the world's {actual}. Take its release for {actual} or remove it.",
             named: "jei",
         },
@@ -1281,6 +1306,15 @@ async fn a_world_that_does_not_start_says_why() {
     let built = pack::build(&catalog, &harmful, &game, &loader)
         .await
         .unwrap();
+    let told = pack::check_server(&catalog, &built, case.minecraft).await;
+    assert_eq!(told.is_err(), case.before, "told before the world is made");
+    if let Err(error) = told {
+        let text = error.text.as_ref().expect("the check says why");
+        assert_eq!(text.template, case.template);
+        assert_eq!(text.params["mod"].to_string(), case.named);
+        println!("refused before the world is made, naming the mod");
+        return;
+    }
     let mut created = world::create(
         &root,
         "Live broken world",

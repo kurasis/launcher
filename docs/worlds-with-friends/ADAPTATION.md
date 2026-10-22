@@ -324,3 +324,13 @@ Other loaders follow in W12.
   read from the world's own `crash-reports/`, written during this start, at most 4 MiB, and
   never leaves the computer. CI starts six worlds whose mods do not start (NeoForge, Fabric,
   Forge before and after 1.13) and checks the mod is named.
+- 2026-10-22 — Making a world with mods (owner): before a world is made or its mods are updated,
+  the jars of its server mods are checked against the world's version and loader build with the
+  shared `mod_meta` reader (D-066). A mod that needs a mod the world lacks, another Minecraft
+  version, a newer loader build or another mod version, or that does not start with a mod there,
+  stops the world with the same words as a failed start, naming the mod by its catalog title.
+  Only what the jars say for certain counts; the rest is left to the start. Choosing a release
+  that runs on the installation's loader build is the Mods tab's own (D-066), so a world made
+  from such an installation passes. Of the six CI worlds whose mods do not start, four are now
+  refused before they are made, and two (a mod that crashes, a pre-1.13 version range) by the
+  start.

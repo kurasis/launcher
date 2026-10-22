@@ -13,10 +13,12 @@
 //!
 //! Mods come only from the catalog: each jar in `mods/` is looked up by its
 //! SHA-256, and one the catalog does not have, or holds back as harmful,
-//! stops the world from being made. The player's settings come along by the
-//! catalog's rules for own packs (text, no code or programs, bounded in size);
-//! `options.txt`, saves, screenshots and logs never do, nor the launcher's own
-//! skins mod, which every game gets at launch.
+//! stops the world from being made, as does a server mod whose jar says it
+//! does not start on the world's version and loader build. The player's
+//! settings come along by the catalog's rules for own packs (text, no code or
+//! programs, bounded in size); `options.txt`, saves, screenshots and logs
+//! never do, nor the launcher's own skins mod, which every game gets at
+//! launch.
 //!
 //! The side of a mod is read from data, never from its name: the jar's own
 //! description first (`environment` of `fabric.mod.json`, of
@@ -45,10 +47,12 @@ use serde_json::{Value, json};
 use sha2::Digest as _;
 use uuid::Uuid;
 
+use super::failure;
 use super::service::SessionPack;
 use super::world::WorldFile;
 use crate::error::{ErrorCode, LauncherError, LauncherResult};
 use crate::loader::{LoaderChoice, LoaderKind};
+use crate::mods::content::Target;
 use crate::mods::pack::{ExportChoice, gather, hashes_of, loader_dependency, pack_path};
 use crate::mods::publish::{MAX_OVERRIDE, MAX_OVERRIDES, Published, overridable};
 use crate::mods::{CDN_HOST, Catalog, FILES_HOST, Project};
@@ -613,6 +617,102 @@ pub async fn build<C: Catalog>(
         },
         sources,
     })
+}
+
+/// Refuses a generation whose server mods say they do not start on the
+/// world's version and loader build (D-066): a mod that needs another mod the
+/// world lacks, another version of the game, the loader or a mod, or that
+/// does not start with a mod there. Only what the jars say for certain
+/// counts: a jar that cannot be read, or a version that cannot be compared,
+/// passes, and a failed start names the rest. The mod is told by the title
+/// of its jar's catalog project.
+pub async fn check_server<C: Catalog>(
+    catalog: &C,
+    built: &Built,
+    minecraft: &str,
+) -> LauncherResult<()> {
+    let loader = &built.pack.loader;
+    let target = Target {
+        game: minecraft.to_owned(),
+        loader: Some(loader.kind),
+        loader_version: Some(loader.version.clone()),
+    };
+    let Some(mut setup) = target.setup() else {
+        return Ok(());
+    };
+    setup.side = mod_meta::Side::Server;
+    let jars: Vec<(String, PathBuf, Option<String>)> = built
+        .pack
+        .files
+        .iter()
+        .zip(&built.sources)
+        .filter(|(f, _)| f.is_mod() && f.side.on_server())
+        .map(|(f, full)| (f.path.clone(), full.clone(), f.project_id.clone()))
+        .collect();
+    let read = tokio::task::spawn_blocking(move || {
+        jars.into_iter()
+            .map(|(path, full, project)| {
+                let manifests = fs::File::open(&full)
+                    .map(|f| mod_meta::read(std::io::BufReader::new(f)))
+                    .unwrap_or_default();
+                (path, manifests, project)
+            })
+            .collect::<Vec<_>>()
+    })
+    .await
+    .map_err(|_| LauncherError::internal("A file check stopped unexpectedly."))?;
+    let jars: Vec<mod_meta::Jar<'_>> = read
+        .iter()
+        .map(|(path, manifests, _)| mod_meta::Jar {
+            file: path,
+            manifests,
+        })
+        .collect();
+    let found = mod_meta::check(&setup, &jars);
+    let (raw, problems): (Vec<&mod_meta::Problem>, Vec<failure::Problem>) = found
+        .iter()
+        .filter_map(|p| Some((p, failure::from_jars(p, setup.loader, None)?)))
+        .unzip();
+    let files: Vec<String> = read
+        .iter()
+        .filter_map(|(path, ..)| mod_name(path).map(str::to_owned))
+        .collect();
+    let Some(chief) = failure::chief(&problems, &files) else {
+        return Ok(());
+    };
+    let Some(problem) = problems
+        .iter()
+        .position(|p| std::ptr::eq(p, chief))
+        .map(|i| raw[i])
+    else {
+        return Ok(());
+    };
+    let project = jar_of(problem).and_then(|file| {
+        read.iter()
+            .find(|(path, ..)| path == file)
+            .and_then(|(_, _, project)| project.as_deref())
+    });
+    let title = match project {
+        Some(id) => catalog.project(id).await.ok().map(|p| p.title),
+        None => None,
+    };
+    let told = failure::from_jars(problem, setup.loader, title.as_deref())
+        .unwrap_or_else(|| chief.clone());
+    let mut error = failure::explain(&told);
+    error.code = ErrorCode::InvalidInput;
+    Err(error)
+}
+
+/// The jar a problem of a set is about.
+fn jar_of(problem: &mod_meta::Problem) -> Option<&str> {
+    use mod_meta::Problem as P;
+    match problem {
+        P::Missing { file, .. }
+        | P::Wrong { file, .. }
+        | P::Breaks { file, .. }
+        | P::OtherLoader { file, .. } => Some(file),
+        P::Twice { .. } => None,
+    }
 }
 
 fn changed() -> LauncherError {
