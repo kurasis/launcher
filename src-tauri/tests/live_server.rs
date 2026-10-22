@@ -42,7 +42,7 @@ use launcher_lib::state::activity::ActivityRegistry;
 use launcher_lib::storage::models::OperationKind;
 use launcher_lib::storage::paths::{DataRoot, JavaProvider};
 use launcher_lib::tunnel::handshake::{self, Classified};
-use launcher_lib::worlds::host::{self, Launch, Phase, STARTUP_DEADLINE, STOP_GRACE};
+use launcher_lib::worlds::host::{self, Launch, Phase, STARTUP_SILENCE, STOP_GRACE};
 use launcher_lib::worlds::identity::Nick;
 use launcher_lib::worlds::properties::WorldSettings;
 use launcher_lib::worlds::protocol::{read_packet, write_packet, write_string, write_varint};
@@ -319,7 +319,7 @@ async fn host_a_world() {
             "an install waits for the server"
         );
         let started = Instant::now();
-        tokio::task::block_in_place(|| server.wait_ready(STARTUP_DEADLINE)).unwrap();
+        tokio::task::block_in_place(|| server.wait_ready(STARTUP_SILENCE)).unwrap();
         println!("ready in {:.1?}", started.elapsed());
         assert_eq!(server.status().phase, Phase::Ready);
         let status = ping::status(server.port(), -1, Duration::from_secs(5)).unwrap();
@@ -428,7 +428,7 @@ async fn host_a_world() {
 
     // Second run: a force stop is recorded as unclean.
     let server = run("live-2");
-    tokio::task::block_in_place(|| server.wait_ready(STARTUP_DEADLINE)).unwrap();
+    tokio::task::block_in_place(|| server.wait_ready(STARTUP_SILENCE)).unwrap();
     server.force_stop();
     let clean = tokio::task::block_in_place(|| server.wait_exit(Duration::from_secs(30)));
     assert_eq!(clean, Some(false));
@@ -730,7 +730,7 @@ async fn host_a_world_with_mods() {
     )
     .unwrap();
     let started = Instant::now();
-    tokio::task::block_in_place(|| server.wait_ready(STARTUP_DEADLINE)).unwrap();
+    tokio::task::block_in_place(|| server.wait_ready(STARTUP_SILENCE)).unwrap();
     println!("ready in {:.1?}", started.elapsed());
 
     let server_dir = root.world_server_dir(created.id);
@@ -885,7 +885,7 @@ async fn start_world(
         Arc::new(|| {}),
     )?;
     tokio::task::block_in_place(|| {
-        let ready = server.wait_ready(STARTUP_DEADLINE);
+        let ready = server.wait_ready(STARTUP_SILENCE);
         let clean = server.stop(STOP_GRACE);
         ready.map(|()| assert!(clean, "stopped clean"))
     })
@@ -1145,4 +1145,174 @@ async fn update_a_world_with_mods() {
     start_world(&root, id, &java, &activity).await.unwrap();
     assert_eq!(server_mods(&root, id).len(), 2);
     println!("generation 3 rolled back, generation 2 starts again");
+}
+
+/// A world whose mods do not start says why (W12): which mod, and what it
+/// needs that the world does not have, from the loader's own words or the
+/// crash report of the start. Each case is a release of a catalog mod that
+/// does not start with the loader's newest stable build.
+/// `WORLD_CASE=neoforge-range cargo test --test live_server a_world_that_does_not_start_says_why -- --ignored --exact --nocapture`
+#[tokio::test(flavor = "multi_thread")]
+#[ignore = "network: downloads a loader server, mods and Java, runs the server"]
+async fn a_world_that_does_not_start_says_why() {
+    use launcher_lib::loader::{LoaderChoice, LoaderKind, meta};
+    use launcher_lib::mods::Catalog as _;
+    use launcher_lib::worlds::pack;
+
+    struct Case {
+        kind: LoaderKind,
+        catalog_loader: &'static str,
+        minecraft: &'static str,
+        /// The mod's slug, the release it is made for and its version number.
+        slug: &'static str,
+        made_for: &'static str,
+        number: &'static str,
+        /// The start's error: its template and the mod it names.
+        template: &'static str,
+        named: &'static str,
+    }
+    let case = std::env::var("WORLD_CASE").unwrap_or_else(|_| "neoforge-range".into());
+    let case = match case.as_str() {
+        // JEI's release for 1.21 asks for NeoForge 21.1.238, a 1.21.1 build.
+        "neoforge-range" => Case {
+            kind: LoaderKind::NeoForge,
+            catalog_loader: "neoforge",
+            minecraft: "1.21",
+            slug: "jei",
+            made_for: "1.21",
+            number: "19.64.0.455",
+            template: "{mod} needs {dependency} {version} or newer, and the world has {actual}. Take an older release of {mod} or remove it.",
+            named: "jei",
+        },
+        "fabric-minecraft" => Case {
+            kind: LoaderKind::Fabric,
+            catalog_loader: "fabric",
+            minecraft: "1.21.1",
+            slug: "fabric-api",
+            made_for: "1.20.1",
+            number: "0.92.12+1.20.1",
+            template: "{mod} is made for another Minecraft version than the world's {actual}. Take its release for {actual} or remove it.",
+            named: "Fabric API",
+        },
+        // AppleSkin needs Fabric API, which the world does not have.
+        "fabric-missing" => Case {
+            kind: LoaderKind::Fabric,
+            catalog_loader: "fabric",
+            minecraft: "1.21.1",
+            slug: "appleskin",
+            made_for: "1.21.1",
+            number: "3.0.6+mc1.21",
+            template: "{mod} needs {dependency}, which is not in the world. Add it to the installation or remove {mod}, then update the world's mods.",
+            named: "AppleSkin",
+        },
+        "forge-minecraft" => Case {
+            kind: LoaderKind::Forge,
+            catalog_loader: "forge",
+            minecraft: "1.20.1",
+            slug: "jei",
+            made_for: "1.19.2",
+            number: "11.68.0.1086",
+            template: "{mod} is made for another Minecraft version than the world's {actual}. Take its release for {actual} or remove it.",
+            named: "jei",
+        },
+        // Spark's only release for Forge 1.20.6 calls a method Forge 1.20.6's
+        // newest build does not have.
+        "forge-crash" => Case {
+            kind: LoaderKind::Forge,
+            catalog_loader: "forge",
+            minecraft: "1.20.6",
+            slug: "spark",
+            made_for: "1.20.6",
+            number: "1.10.66-forge",
+            template: "{mod} stopped the world server while it started. Take another release of {mod} or remove it.",
+            named: "spark",
+        },
+        "forge-old" => Case {
+            kind: LoaderKind::Forge,
+            catalog_loader: "forge",
+            minecraft: "1.12.2",
+            slug: "jei",
+            made_for: "1.11.2",
+            number: "4.5.0.294",
+            template: "{mod} is made for another Minecraft version than the world's {actual}. Take its release for {actual} or remove it.",
+            named: "jei",
+        },
+        other => panic!("WORLD_CASE {other} is not a case"),
+    };
+    let dir = tempfile::tempdir().unwrap();
+    let root = DataRoot::new(dir.path().to_path_buf()).unwrap();
+    let metadata = Arc::new(MetadataService::new(
+        PublicClient::new(SourcePolicy::MojangMetadata, VERSION).unwrap(),
+        root.clone(),
+    ));
+    let loaders = PublicClient::new(SourcePolicy::ModLoaders, VERSION).unwrap();
+    let loader = LoaderChoice {
+        kind: case.kind,
+        version: meta::loader_versions(&loaders, case.kind, case.minecraft)
+            .await
+            .unwrap()
+            .into_iter()
+            .find(|v| v.stable)
+            .expect("a stable loader")
+            .id,
+    };
+    println!("minecraft {}, loader {}", case.minecraft, loader.version);
+    let transport = HttpTransport::public(VERSION).unwrap();
+    let executor = Executor::new(transport.clone(), root.clone(), ExecutorConfig::default());
+    let catalog = launcher_lib::mods::Client::new(VERSION).unwrap();
+    let instance = launcher_lib::storage::paths::InstanceId::generate();
+    let project = patiently(|| catalog.project(case.slug)).await;
+    let release =
+        patiently(|| catalog.versions(&project.id, Some(case.made_for), Some(case.catalog_loader)))
+            .await
+            .into_iter()
+            .find(|v| v.number == case.number)
+            .unwrap_or_else(|| panic!("{} {} in the catalog", case.slug, case.number));
+    keep_mod(
+        &catalog,
+        &executor,
+        &instance.to_string(),
+        case.slug,
+        &release,
+    )
+    .await;
+    let game = root.game_dir(instance);
+    let harmful = patiently(|| catalog.harmful()).await;
+    let built = pack::build(&catalog, &harmful, &game, &loader)
+        .await
+        .unwrap();
+    let mut created = world::create(
+        &root,
+        "Live broken world",
+        case.minecraft,
+        WorldSettings::default(),
+    )
+    .unwrap();
+    created.pack = Some(pack::store(&root, &created, built).unwrap());
+    world::save(&root, &created).unwrap();
+    world::accept_eula(&root, created.id).unwrap();
+    let source = LiveSource::new(Arc::clone(&metadata), VERSION).unwrap();
+    let runtimes = RuntimeInstaller::new(root.clone(), transport, ExecutorConfig::default());
+    let (_, java) = install::prepare(
+        &root,
+        &metadata,
+        &source,
+        &runtimes,
+        &executor,
+        created.id,
+        JavaProvider::Mojang,
+        &CancelToken::new(),
+        &NoProgress,
+    )
+    .await
+    .unwrap();
+    let activity = ActivityRegistry::new();
+    let started = Instant::now();
+    let error = start_world(&root, created.id, &java, &activity)
+        .await
+        .expect_err("the world does not start");
+    let text = error.text.as_ref().expect("the start says why");
+    assert_eq!(text.template, case.template);
+    assert_eq!(text.params["mod"].to_string(), case.named);
+    println!("refused in {:.1?}, naming the mod", started.elapsed());
 }

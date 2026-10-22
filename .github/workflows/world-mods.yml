@@ -6,7 +6,8 @@ name: World servers with mods
 # and newest release of each loader and one of each kind of installer); the
 # nightly run and "Run workflow" run every release of `tested`. A release is
 # offered to players only once it is in `tested`, so it joins only after it
-# passed here. Logs show versions, mod names and timings only.
+# passed here. `refused` starts worlds whose mods do not start and checks that
+# the start names the mod. Logs show versions, mod names and timings only.
 
 on:
   workflow_call:
@@ -137,3 +138,38 @@ jobs:
         env:
           WORLD_VERSION: ${{ matrix.minecraft }}
         run: ./live_server --ignored --exact update_a_world_with_mods --nocapture --test-threads=1
+
+  refused:
+    # A world whose mods do not start says which mod and why: each case is a
+    # catalog release that does not start with its loader's newest stable
+    # build, so a change in the loaders' words shows here.
+    name: World server refusing ${{ matrix.case }} (linux-x64)
+    needs: build
+    runs-on: ubuntu-24.04
+    strategy:
+      fail-fast: false
+      matrix:
+        case:
+          - neoforge-range
+          - fabric-minecraft
+          - fabric-missing
+          - forge-minecraft
+          - forge-crash
+          - forge-old
+    steps:
+      - name: Install Linux system dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            libwebkit2gtk-4.1-0 libxdo3 libayatana-appindicator3-1 librsvg2-2
+
+      - uses: actions/download-artifact@v8
+        with:
+          name: live-server
+
+      - name: Start the world and read why it did not start
+        env:
+          WORLD_CASE: ${{ matrix.case }}
+        run: |
+          chmod +x live_server
+          ./live_server --ignored --exact a_world_that_does_not_start_says_why --nocapture --test-threads=1

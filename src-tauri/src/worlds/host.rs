@@ -13,15 +13,16 @@ use std::collections::BTreeMap;
 use std::io::Write;
 use std::net::{Ipv4Addr, TcpListener};
 use std::ops::RangeInclusive;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::process::ChildStdin;
 use std::sync::atomic::{AtomicI32, Ordering};
 use std::sync::{Arc, Condvar, Mutex, MutexGuard, PoisonError};
-use std::time::{Duration, Instant};
+use std::time::{Duration, Instant, SystemTime};
 
 use chrono::Utc;
 use serde::Serialize;
 
+use super::failure::{self, Problem};
 use super::identity::Nick;
 use super::memory::{self, Budget};
 use super::output::{self, Event};
@@ -39,8 +40,12 @@ use crate::secrets::SecretString;
 use crate::state::activity::HostingPermit;
 use crate::storage::paths::{DataRoot, WorldId};
 
-/// Spec 06: a server that is not ready in this time is stopped.
-pub const STARTUP_DEADLINE: Duration = Duration::from_secs(180);
+/// A starting server that writes nothing for this long is stopped (spec 06's
+/// startup deadline, counted from its last line instead of from spawn).
+pub const STARTUP_SILENCE: Duration = Duration::from_secs(180);
+/// A server still writing is stopped when it is not ready after this long: a
+/// big pack on a slow computer gets time, a server that loops does not run on.
+pub const STARTUP_LIMIT: Duration = Duration::from_secs(20 * 60);
 /// Spec 06: time a server gets to save and exit after `stop`.
 pub const STOP_GRACE: Duration = Duration::from_secs(60);
 /// Time for the status ping to succeed after the `Done (` line.
@@ -99,6 +104,10 @@ struct Shared {
     error: Option<ErrorCode>,
     /// Bridge-side local port to the player who logged in through it.
     players: BTreeMap<u16, Nick>,
+    /// When the server last wrote a line.
+    last_output: Option<Instant>,
+    /// What its loader said about mods while it started.
+    problems: Vec<Problem>,
 }
 
 type Signal = Arc<(Mutex<Shared>, Condvar)>;
@@ -117,6 +126,9 @@ pub struct HostedServer {
     supervised: Supervised,
     stdin: Mutex<Option<ChildStdin>>,
     signal: Signal,
+    spawned: Instant,
+    spawned_at: SystemTime,
+    server_dir: PathBuf,
 }
 
 /// World ports come from below the ephemeral ranges (Linux from 32768, Windows
@@ -345,11 +357,17 @@ pub fn start(
     let sink_signal = Arc::clone(&signal);
     let sink_change = Arc::clone(&on_change);
     let sink: child::LineSink = Box::new(move |line: OutputLine| {
-        let Some(event) = output::classify(&line.text) else {
-            return;
-        };
+        let event = output::classify(&line.text);
         {
             let mut shared = lock(&sink_signal);
+            shared.last_output = Some(Instant::now());
+            // Before anyone can join, so no player wrote the line.
+            if shared.phase == Some(Phase::Starting) {
+                failure::note(&mut shared.problems, &line.text);
+            }
+            let Some(event) = event else {
+                return;
+            };
             match event {
                 Event::Ready => shared.done_line = true,
                 Event::BindFailed => shared.bind_failed = true,
@@ -394,6 +412,7 @@ pub fn start(
         on_change();
     };
 
+    let (spawned, spawned_at) = (Instant::now(), SystemTime::now());
     let (supervised, stdin) =
         child::spawn_with_stdin(command, sink, || {}, on_exit).map_err(|e| {
             set_mutation(root, world.id, None);
@@ -419,7 +438,58 @@ pub fn start(
         supervised,
         stdin: Mutex::new(Some(stdin)),
         signal,
+        spawned,
+        spawned_at,
+        server_dir: root.world_server_dir(world_id),
     })
+}
+
+/// How waiting for a start ended.
+#[derive(Debug, PartialEq, Eq)]
+enum Waited {
+    Done,
+    BindFailed,
+    EulaRequired,
+    Exited,
+    /// Nothing written for the whole silence.
+    Silent,
+    /// Still not ready at the limit.
+    TooLong,
+}
+
+/// Waits for the `Done (` line or the start's end: a server is given time as
+/// long as it writes, up to `limit` from `spawned`.
+fn wait_start(signal: &Signal, spawned: Instant, silence: Duration, limit: Duration) -> Waited {
+    let mut shared = lock(signal);
+    loop {
+        if shared.bind_failed {
+            return Waited::BindFailed;
+        }
+        if shared.eula_required {
+            return Waited::EulaRequired;
+        }
+        if shared.exited.is_some() {
+            return Waited::Exited;
+        }
+        if shared.done_line {
+            return Waited::Done;
+        }
+        let now = Instant::now();
+        let quiet_until = shared.last_output.unwrap_or(spawned).max(spawned) + silence;
+        let limit_at = spawned + limit;
+        if now >= limit_at {
+            return Waited::TooLong;
+        }
+        if now >= quiet_until {
+            return Waited::Silent;
+        }
+        // Lines do not wake the wait: it looks again when the silence would end.
+        shared = signal
+            .1
+            .wait_timeout(shared, quiet_until.min(limit_at) - now)
+            .unwrap_or_else(PoisonError::into_inner)
+            .0;
+    }
 }
 
 impl HostedServer {
@@ -457,51 +527,45 @@ impl HostedServer {
         lock(&self.signal).players.get(&local_port).cloned()
     }
 
-    /// Waits until the server accepts players, or fails. A server that is not
-    /// ready by `deadline` is stopped.
-    pub fn wait_ready(&self, deadline: Duration) -> LauncherResult<()> {
-        let until = Instant::now() + deadline;
-        {
-            let mut shared = lock(&self.signal);
-            loop {
-                if shared.bind_failed {
-                    drop(shared);
-                    self.force_stop();
-                    return Err(server_error(
-                        ErrorCode::AppBusy,
-                        "Another program took the world's port. Start the world again.",
-                    ));
-                }
-                if shared.eula_required {
-                    return Err(server_error(
-                        ErrorCode::InvalidInput,
-                        "Accept the Minecraft EULA to host this world.",
-                    ));
-                }
-                if shared.exited.is_some() {
-                    return Err(server_error(
-                        ErrorCode::GameExitedWithError,
-                        "The world server stopped while starting.",
-                    ));
-                }
-                if shared.done_line {
-                    break;
-                }
-                let left = until.saturating_duration_since(Instant::now());
-                if left.is_zero() {
-                    drop(shared);
-                    self.stop(STOP_GRACE);
-                    return Err(server_error(
-                        ErrorCode::OperationInterrupted,
-                        "The world server did not start in time.",
-                    ));
-                }
-                shared = self
-                    .signal
-                    .1
-                    .wait_timeout(shared, left)
-                    .unwrap_or_else(PoisonError::into_inner)
-                    .0;
+    /// Waits until the server accepts players, or fails. A server that writes
+    /// nothing for `silence`, or is not ready after [`STARTUP_LIMIT`], is
+    /// stopped. A failed start says which mod it failed on where the loader or
+    /// a crash report of this start names one.
+    pub fn wait_ready(&self, silence: Duration) -> LauncherResult<()> {
+        match wait_start(&self.signal, self.spawned, silence, STARTUP_LIMIT) {
+            Waited::Done => {}
+            Waited::BindFailed => {
+                self.force_stop();
+                return Err(server_error(
+                    ErrorCode::AppBusy,
+                    "Another program took the world's port. Start the world again.",
+                ));
+            }
+            Waited::EulaRequired => {
+                return Err(server_error(
+                    ErrorCode::InvalidInput,
+                    "Accept the Minecraft EULA to host this world.",
+                ));
+            }
+            Waited::Exited => {
+                return Err(self.why_not_started(server_error(
+                    ErrorCode::GameExitedWithError,
+                    "The world server stopped while starting.",
+                )));
+            }
+            Waited::Silent => {
+                self.stop(STOP_GRACE);
+                return Err(self.why_not_started(server_error(
+                    ErrorCode::OperationInterrupted,
+                    "The world server stopped responding while it started.",
+                )));
+            }
+            Waited::TooLong => {
+                self.stop(STOP_GRACE);
+                return Err(self.why_not_started(server_error(
+                    ErrorCode::OperationInterrupted,
+                    "The world server did not start in 20 minutes.",
+                )));
             }
         }
         let ping_until = Instant::now() + PING_WINDOW;
@@ -524,6 +588,27 @@ impl HostedServer {
             ErrorCode::GameExitedWithError,
             "The world server started but does not answer.",
         ))
+    }
+
+    /// What the loader and this start's crash reports say, in place of
+    /// `otherwise` when they name a mod.
+    fn why_not_started(&self, otherwise: LauncherError) -> LauncherError {
+        let mut problems = lock(&self.signal).problems.clone();
+        for problem in failure::crash_reports(&self.server_dir, self.spawned_at) {
+            if !problems.contains(&problem) {
+                problems.push(problem);
+            }
+        }
+        let mod_files: Vec<String> = std::fs::read_dir(self.server_dir.join("mods"))
+            .map(|entries| {
+                entries
+                    .filter_map(Result::ok)
+                    .take(4096)
+                    .map(|e| e.file_name().to_string_lossy().into_owned())
+                    .collect()
+            })
+            .unwrap_or_default();
+        failure::chief(&problems, &mod_files).map_or(otherwise, failure::explain)
     }
 
     /// Sends one console command through stdin.
@@ -684,6 +769,96 @@ mod tests {
         for _ in 0..64 {
             let (a, b) = pick_ports().unwrap();
             assert!(!taken.contains(&a) && !taken.contains(&b));
+        }
+    }
+
+    fn signal() -> Signal {
+        Arc::new((Mutex::new(Shared::default()), Condvar::new()))
+    }
+
+    #[test]
+    fn a_start_has_time_while_the_server_writes() {
+        let silence = Duration::from_millis(300);
+        // Writing for a second, then quiet: stopped one silence after the
+        // last line, well past a fixed deadline of one silence.
+        let writing = signal();
+        let spawned = Instant::now();
+        let writer = {
+            let writing = Arc::clone(&writing);
+            std::thread::spawn(move || {
+                while spawned.elapsed() < Duration::from_secs(1) {
+                    lock(&writing).last_output = Some(Instant::now());
+                    std::thread::sleep(Duration::from_millis(50));
+                }
+            })
+        };
+        assert_eq!(
+            wait_start(&writing, spawned, silence, Duration::from_secs(10)),
+            Waited::Silent
+        );
+        let waited = spawned.elapsed();
+        assert!(waited >= Duration::from_secs(1) + silence / 2, "{waited:?}");
+        assert!(waited < Duration::from_secs(5), "{waited:?}");
+        writer.join().unwrap();
+
+        // Writing without end: stopped at the limit.
+        let busy = signal();
+        let spawned = Instant::now();
+        let stop = Arc::new(std::sync::atomic::AtomicBool::new(false));
+        let writer = {
+            let (busy, stop) = (Arc::clone(&busy), Arc::clone(&stop));
+            std::thread::spawn(move || {
+                while !stop.load(Ordering::Relaxed) {
+                    lock(&busy).last_output = Some(Instant::now());
+                    std::thread::sleep(Duration::from_millis(20));
+                }
+            })
+        };
+        assert_eq!(
+            wait_start(&busy, spawned, silence, Duration::from_millis(900)),
+            Waited::TooLong
+        );
+        assert!(spawned.elapsed() >= Duration::from_millis(900));
+        stop.store(true, Ordering::Relaxed);
+        writer.join().unwrap();
+
+        // Never a line: one silence from spawn.
+        let quiet = signal();
+        let spawned = Instant::now();
+        assert_eq!(
+            wait_start(&quiet, spawned, silence, Duration::from_secs(10)),
+            Waited::Silent
+        );
+        assert!(spawned.elapsed() >= silence);
+    }
+
+    #[test]
+    fn a_start_ends_on_what_the_server_said() {
+        for (set, expected) in [
+            (
+                (|s: &mut Shared| s.done_line = true) as fn(&mut Shared),
+                Waited::Done,
+            ),
+            (|s| s.bind_failed = true, Waited::BindFailed),
+            (|s| s.eula_required = true, Waited::EulaRequired),
+            (|s| s.exited = Some(false), Waited::Exited),
+        ] {
+            let shared = signal();
+            let spawned = Instant::now();
+            let later = {
+                let shared = Arc::clone(&shared);
+                std::thread::spawn(move || {
+                    std::thread::sleep(Duration::from_millis(100));
+                    set(&mut lock(&shared));
+                    shared.1.notify_all();
+                })
+            };
+            assert_eq!(
+                wait_start(&shared, spawned, Duration::from_secs(30), STARTUP_LIMIT),
+                expected
+            );
+            assert!(spawned.elapsed() < Duration::from_secs(10));
+            later.join().unwrap();
         }
     }
 

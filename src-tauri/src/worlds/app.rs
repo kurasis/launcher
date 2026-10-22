@@ -1001,7 +1001,7 @@ impl Worlds {
         let server = Arc::new(host::start(&launch, permit, self.on_change())?);
         let ready = {
             let server = Arc::clone(&server);
-            tokio::task::spawn_blocking(move || server.wait_ready(host::STARTUP_DEADLINE))
+            tokio::task::spawn_blocking(move || server.wait_ready(host::STARTUP_SILENCE))
                 .await
                 .map_err(|_| LauncherError::internal("Waiting for the world stopped."))?
         };
