@@ -193,6 +193,16 @@ pub struct AdRead {
     pub picked: Vec<(String, u32)>,
 }
 
+impl AdRead {
+    /// The impressions of the batch.
+    pub fn shown(&self) -> u32 {
+        self.events
+            .iter()
+            .find(|(event, _)| *event == "shown")
+            .map_or(0, |(_, n)| *n)
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct CountsRead {
     pub day: NaiveDate,

@@ -779,6 +779,11 @@ impl AppState {
         &self.app_version
     }
 
+    /// The computer's memory, when it could be read.
+    pub fn physical_mib(&self) -> Option<u64> {
+        self.memory.as_ref().ok().map(|m| m.physical_mib)
+    }
+
     /// The crash report install ID (D-061), made and saved on first use.
     pub fn install_id(&self) -> LauncherResult<String> {
         if let Some(id) = self.settings().install_id {
@@ -1244,8 +1249,9 @@ impl AppState {
         Ok(memory.recommend(validation::Workload::of(version_id, modded, 0)))
     }
 
-    /// Puts the launcher settings back to their defaults (D-057). The language
-    /// and the selected installation stay.
+    /// Puts the launcher settings back to their defaults (D-057). The language,
+    /// the selected installation and the statistics choice stay: a reset never
+    /// turns the statistics back on (D-071).
     pub fn reset_settings(&self) -> LauncherResult<()> {
         self.change(|data, store, changes| {
             if !data.settings_writable {
@@ -1257,6 +1263,8 @@ impl AppState {
             let settings = Settings {
                 language: data.settings.language.clone(),
                 selected_instance_id: data.settings.selected_instance_id,
+                stats: data.settings.stats,
+                stats_notice_seen: data.settings.stats_notice_seen,
                 ..Settings::default()
             };
             store.save_settings(&settings)?;
@@ -1789,8 +1797,11 @@ impl AppState {
                 if let Some(mib) = patch.monthly_limit_mib {
                     settings.monthly_limit_mib = crate::traffic::validate_limit(mib)?;
                 }
-                if let Some(on) = patch.share_stats {
-                    settings.share_stats = on;
+                if let Some(on) = patch.stats {
+                    settings.stats = on;
+                }
+                if let Some(seen) = patch.stats_notice_seen {
+                    settings.stats_notice_seen = seen;
                 }
                 if let Some(on) = patch.chat_sound {
                     settings.chat_sound = on;

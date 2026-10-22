@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-stats-sent"
+description = "Enables the stats_sent command without any pre-configured scope."
+commands.allow = ["stats_sent"]
+
+[[permission]]
+identifier = "deny-stats-sent"
+description = "Denies the stats_sent command without any pre-configured scope."
+commands.deny = ["stats_sent"]

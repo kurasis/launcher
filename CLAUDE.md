@@ -33,8 +33,10 @@ window (D-037) and to the launcher account window (D-064).
   `/home/www/lapi/<service>`, bind-mounted from the larger disk (docs/SERVER-STORAGE.md).
 - `lapi` appears only as the domain (`*.lapi.sh`), never as a name in code.
 - The update signing key never goes on the server.
-- Crash reports are sent only when the player presses send; stats are opt-in, off by
-  default.
+- Crash reports are sent only when the player presses send. Anonymous statistics without
+  IDs (D-071) are on by default and turned off in Settings → Privacy, which stops sending
+  and erases what waits; nothing else turns them back on. Their numbers are read only on
+  the server (docs/STATS.md), never in workflow logs.
 - After editing the UI language catalogs, run `npm run i18n`.
 - `OFFLINE_NEEDS_OWNER` (`src-tauri/src/state/mod.rs`) is off only while Microsoft has
   not approved the launcher's sign-in and builds are not published. Before any public

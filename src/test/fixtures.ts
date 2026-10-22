@@ -82,7 +82,9 @@ export function snapshotFixture(overrides: Partial<AppSnapshot> = {}): AppSnapsh
       metered: false,
       meteredWarnMib: 100,
       monthlyLimitMib: 0,
-      shareStats: false,
+      stats: true,
+      // The line about the statistics is read; its own tests show it.
+      statsNoticeSeen: true,
       chatSound: true,
       chatNotifications: true,
       launcherAccountOffline: false,

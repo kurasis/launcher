@@ -1246,13 +1246,28 @@ export type Messages = {
     readonly removeMark: (values: { name: string | number }) => string;
   };
   readonly privacy: {
-    readonly shareStats: string;
-    readonly shareStatsHint: string;
+    readonly stats: string;
+    readonly statsHint: string;
+    readonly whatIsSent: string;
+    readonly sentIntro: string;
+    readonly sentNext: string;
+    readonly sentPing: string;
+    readonly sentCounts: string;
+    readonly sentNothing: string;
+    readonly sentOff: string;
+    readonly sentWaiting: (values: { count: number }) => string;
+    readonly sentLoading: string;
     readonly reports: string;
     readonly installId: string;
     readonly installIdNone: string;
     readonly newInstallId: string;
     readonly newInstallIdHint: string;
+    readonly notice: {
+      readonly text: string;
+      readonly gotIt: string;
+      readonly settings: string;
+      readonly settingsLabel: string;
+    };
   };
   readonly storage: {
     readonly issuesTitle: string;

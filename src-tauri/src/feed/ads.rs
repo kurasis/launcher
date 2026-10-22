@@ -280,10 +280,15 @@ fn now() -> i64 {
     chrono::Utc::now().timestamp()
 }
 
+/// Ads remembered as shown, for the statistics' counts (D-071).
+const MAX_KNOWN: usize = 500;
+
 /// The client of servers.lapi.sh and the ads fetched lately.
 pub struct ServerAds {
     client: PublicClient,
     fresh: Mutex<Option<(Instant, String, Vec<ServerAd>)>>,
+    /// Every ad handed to the interface since start: only these count.
+    known: Mutex<HashSet<String>>,
 }
 
 fn ads_file(root: &DataRoot, place: &str, lang: Lang) -> PathBuf {
@@ -302,7 +307,21 @@ impl ServerAds {
         Ok(Self {
             client: PublicClient::new(SourcePolicy::ServerAds, app_version)?,
             fresh: Mutex::new(None),
+            known: Mutex::new(HashSet::new()),
         })
+    }
+
+    /// Whether the interface was given this ad.
+    pub fn known(&self, id: &str) -> bool {
+        lock(&self.known).contains(id)
+    }
+
+    fn remember(&self, ads: &[ServerAd]) {
+        let mut known = lock(&self.known);
+        if known.len() + ads.len() > MAX_KNOWN {
+            known.clear();
+        }
+        known.extend(ads.iter().map(|ad| ad.id.clone()));
     }
 
     /// The status, the body and its content type.
@@ -379,10 +398,9 @@ impl ServerAds {
             && at.elapsed() < FRESH
             && *fresh_key == key
         {
-            return Ok(ServerAdsView {
-                ads: ads.iter().filter(|a| a.ends_at > now).cloned().collect(),
-                stale: false,
-            });
+            let ads: Vec<ServerAd> = ads.iter().filter(|a| a.ends_at > now).cloned().collect();
+            self.remember(&ads);
+            return Ok(ServerAdsView { ads, stale: false });
         }
         let url = Url::parse(&format!(
             "{BASE}/v1/ads?place={place}&lang={}",
@@ -429,6 +447,7 @@ impl ServerAds {
         if !stale {
             *lock(&self.fresh) = Some((Instant::now(), key, shown.clone()));
         }
+        self.remember(&shown);
         Ok(ServerAdsView { ads: shown, stale })
     }
 }

@@ -208,7 +208,7 @@ async fn a_launcher_failure_report_marks_the_record_sent() {
 }
 
 #[tokio::test]
-async fn statistics_go_only_with_consent() {
+async fn statistics_go_unless_turned_off() {
     let (_dir, state, reports, fake) = setup(204);
     let event = Event {
         source: "game".into(),
@@ -222,27 +222,44 @@ async fn statistics_go_only_with_consent() {
         analyzer_version: 2,
         exit_code: Some(-1),
     };
+    // On by default (D-071).
     count(&state, event.clone());
     reports.flush(&state).await;
-    assert!(fake.sent.lock().unwrap().is_empty(), "off by default");
+    {
+        let sent = fake.sent.lock().unwrap();
+        assert_eq!(sent.len(), 1);
+        assert_eq!(sent[0].0, STATS_URL);
+        assert_eq!(sent[0].1["events"][0]["kind"], "out_of_memory");
+        assert!(
+            sent[0].1.get("installId").is_none(),
+            "no install id in statistics"
+        );
+    }
 
+    // Counted while the service did not answer, then turned off: the
+    // waiting events go, and nothing more is counted or sent.
+    *fake.status.lock().unwrap() = 503;
+    count(&state, event.clone());
+    reports.flush(&state).await;
+    let queue = stats_queue(&state.data_root().unwrap());
+    assert!(queue.exists());
     state
         .set_app_settings(MutationRequest {
             request_id: uuid::Uuid::new_v4().to_string(),
             payload: SettingsPatch {
-                share_stats: Some(true),
+                stats: Some(false),
                 ..SettingsPatch::default()
             },
         })
         .unwrap();
+    forget_stats(&state);
+    assert!(!queue.exists());
+    *fake.status.lock().unwrap() = 204;
     count(&state, event);
     reports.flush(&state).await;
-    let sent = fake.sent.lock().unwrap();
-    assert_eq!(sent.len(), 1);
-    assert_eq!(sent[0].0, STATS_URL);
-    assert_eq!(sent[0].1["events"][0]["kind"], "out_of_memory");
-    assert!(
-        sent[0].1.get("installId").is_none(),
-        "no install id in statistics"
+    assert_eq!(
+        fake.sent.lock().unwrap().len(),
+        2,
+        "nothing after turning off"
     );
 }

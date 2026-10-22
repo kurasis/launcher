@@ -46,6 +46,9 @@ pub enum SourcePolicy {
     /// Reviews the player sends (D-070): our service only, asked only when the
     /// player sends a review or opens their reviews.
     Reviews,
+    /// Anonymous statistics without IDs (D-071): our service only, a ping a
+    /// day and ad counts an hour; never while the player turned them off.
+    Stats,
     /// The Launcher Skins jars on this repository's GitHub releases (D-065),
     /// with the hosts GitHub redirects release downloads to.
     SkinsMod,
@@ -108,6 +111,7 @@ const ALL_SOURCE_HOSTS: &[&str] = &[
     "feed.lapi.sh",
     "servers.lapi.sh",
     "reviews.lapi.sh",
+    "stats.lapi.sh",
     "upd.lapi.sh",
 ];
 
@@ -116,6 +120,7 @@ const MODS_CATALOG_HOSTS: &[&str] = &[crate::mods::FILES_HOST, crate::mods::CDN_
 const FEED_HOSTS: &[&str] = &["feed.lapi.sh"];
 const SERVER_ADS_HOSTS: &[&str] = &["servers.lapi.sh"];
 const REVIEWS_HOSTS: &[&str] = &["reviews.lapi.sh"];
+const STATS_HOSTS: &[&str] = &["stats.lapi.sh"];
 const SKINS_MOD_LIST_HOSTS: &[&str] = &["upd.lapi.sh"];
 const SKINS_MOD_HOSTS: &[&str] = &[
     "github.com",
@@ -137,6 +142,7 @@ impl SourcePolicy {
             Self::Feed => FEED_HOSTS,
             Self::ServerAds => SERVER_ADS_HOSTS,
             Self::Reviews => REVIEWS_HOSTS,
+            Self::Stats => STATS_HOSTS,
             Self::SkinsMod => SKINS_MOD_HOSTS,
             Self::SkinsModList => SKINS_MOD_LIST_HOSTS,
         }
@@ -151,6 +157,7 @@ impl SourcePolicy {
                 | Self::Feed
                 | Self::ServerAds
                 | Self::Reviews
+                | Self::Stats
                 | Self::SkinsModList
         )
     }
@@ -660,6 +667,7 @@ mod tests {
             SourcePolicy::Feed,
             SourcePolicy::ServerAds,
             SourcePolicy::Reviews,
+            SourcePolicy::Stats,
             SourcePolicy::SkinsMod,
             SourcePolicy::SkinsModList,
         ] {

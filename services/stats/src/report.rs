@@ -390,8 +390,9 @@ pub fn retention(
     Ok(out)
 }
 
-/// Events of the `ads` table, as the funnel goes.
-const EVENTS: [&str; 23] = [
+/// Events of the `ads` table, as the funnel goes; `burst` last, as it is
+/// not in the others.
+const EVENTS: [&str; 24] = [
     "shown",
     "reach_day",
     "reach_ever",
@@ -415,6 +416,7 @@ const EVENTS: [&str; 23] = [
     "minutes",
     "back_day",
     "back_week",
+    "burst",
 ];
 
 pub fn ads(store: &Store, today: NaiveDate, days: i64, csv: bool) -> Result<String, String> {
@@ -434,7 +436,7 @@ pub fn ads(store: &Store, today: NaiveDate, days: i64, csv: bool) -> Result<Stri
         let _ = writeln!(out, "Ads, {from} to {to}");
         let _ = writeln!(
             out,
-            "   ad  name                                         shown    reach   play    CTR  joined  10 min"
+            "   ad  name                                         shown    reach   play    CTR  joined  10 min   burst"
         );
     }
     for (ad, events) in &by_ad {
@@ -448,13 +450,14 @@ pub fn ads(store: &Store, today: NaiveDate, days: i64, csv: bool) -> Result<Stri
             let name: String = name.chars().take(40).collect();
             let _ = writeln!(
                 out,
-                "{ad:>5}  {name:<40}  {:>8} {:>8} {:>6} {:>6} {:>7} {:>7}",
+                "{ad:>5}  {name:<40}  {:>8} {:>8} {:>6} {:>6} {:>7} {:>7} {:>7}",
                 number(n("shown")),
                 number(n("reach_day")),
                 number(n("play")),
                 share(n("play"), n("shown")),
                 number(n("joined")),
-                number(n("played"))
+                number(n("played")),
+                number(n("burst"))
             );
         }
     }
@@ -524,6 +527,14 @@ pub fn ad(
             "-".to_owned()
         }
     );
+    if n("burst") > 0 {
+        let _ = writeln!(
+            out,
+            "Burst          {:>9}   impressions past {} an hour from one network, not counted here",
+            number(n("burst")),
+            number(i64::from(crate::api::BURST_SHOWN))
+        );
+    }
     let _ = writeln!(
         out,
         "Play           {:>9}   {} of the shown",

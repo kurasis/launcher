@@ -1,6 +1,6 @@
 import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { mockIPC } from '@tauri-apps/api/mocks';
-import { afterEach, describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { AppSnapshot, FeedItem, ServerAd } from '../../lib/contracts';
 import { instanceFixture, snapshotFixture } from '../../test/fixtures';
 import { AD_EVERY, adOrder, withAds } from './list';
@@ -44,6 +44,11 @@ function payload(calls: Calls, cmd: string): Record<string, unknown> | undefined
   return request?.payload;
 }
 
+/** What the tile counted for the statistics (D-071), in order. */
+function events(calls: Calls): unknown[] {
+  return calls.filter((c) => c.cmd === 'feed_server_ad_event').map((c) => c.args);
+}
+
 afterEach(() => {
   cleanup();
   window.localStorage.clear();
@@ -75,6 +80,7 @@ describe('ServerAdTile', () => {
       expect(payload(calls, 'launch_game')).toEqual({
         instanceId: 'ready-1',
         server: 'play.example.net',
+        ad: '7',
       });
     });
     expect(calls.some((c) => c.cmd === 'create_instance')).toBe(false);
@@ -115,13 +121,18 @@ describe('ServerAdTile', () => {
       expect(payload(calls, 'launch_game')).toEqual({
         instanceId: 'new-1',
         server: 'play.example.net',
+        ad: '7',
       });
     });
+    expect(events(calls)).toEqual([
+      { ad: '7', event: 'play' },
+      { ad: '7', event: 'installed' },
+    ]);
   });
 
   it('says so when the install ends without a ready installation', async () => {
     const created = instanceFixture({ id: 'new-2', versionId: '1.21.4', health: 'not_installed' });
-    listen({ create_instance: created, install_instance: { operationId: 'op-2' } });
+    const calls = listen({ create_instance: created, install_instance: { operationId: 'op-2' } });
     const base = snapshotFixture({ instances: [] });
     const { rerender } = render(<ServerAdTile ad={adFixture()} snapshot={base} />);
     fireEvent.click(screen.getByRole('button', { name: /Play/ }));
@@ -148,6 +159,10 @@ describe('ServerAdTile', () => {
       />,
     );
     expect(await screen.findByRole('alert')).toBeTruthy();
+    expect(events(calls)).toEqual([
+      { ad: '7', event: 'play' },
+      { ad: '7', event: 'installFailed' },
+    ]);
   });
 
   it('picks another version the server lets in and remembers it', async () => {
@@ -225,6 +240,10 @@ describe('ServerAdTile', () => {
     expect(calls.some((c) => c.cmd === 'create_instance' || c.cmd === 'install_instance')).toBe(
       false,
     );
+    expect(events(calls)).toEqual([
+      { ad: '7', event: 'play' },
+      { ad: '7', event: 'license' },
+    ]);
   });
 
   it('plays a licensed server as the Microsoft account', async () => {
@@ -241,6 +260,7 @@ describe('ServerAdTile', () => {
       expect(payload(calls, 'launch_game')).toEqual({
         instanceId: 'ready-2',
         server: 'play.example.net',
+        ad: '7',
       });
     });
     // The installation's own profile counts over the default one.
@@ -267,6 +287,130 @@ describe('ServerAdTile', () => {
     });
     render(<ServerAdTile ad={adFixture()} snapshot={snapshotFixture({ instances: [forge] })} />);
     expect(screen.getByRole('button', { name: 'Play, 1.21.4 · downloads first' })).toBeTruthy();
+  });
+});
+
+describe('counting an ad (D-071)', () => {
+  type Sight = { isIntersecting: boolean; intersectionRatio: number }[];
+
+  /** Stands in for the browser's watcher: `see` says how much of the tile is in sight. */
+  function sight(): (ratio: number) => void {
+    const watched: ((entries: Sight) => void)[] = [];
+    class Watcher {
+      constructor(callback: (entries: Sight) => void) {
+        watched.push(callback);
+      }
+      observe() {}
+      disconnect() {}
+    }
+    vi.stubGlobal('IntersectionObserver', Watcher);
+    return (ratio) => {
+      act(() => {
+        watched.at(-1)?.([{ isIntersecting: ratio > 0, intersectionRatio: ratio }]);
+      });
+    };
+  }
+
+  const wait = (ms: number) => {
+    act(() => {
+      vi.advanceTimersByTime(ms);
+    });
+  };
+
+  afterEach(() => {
+    vi.useRealTimers();
+    vi.unstubAllGlobals();
+    Reflect.deleteProperty(document, 'visibilityState');
+  });
+
+  it('counts a view after a second with half of it in sight, and again 5 minutes later', () => {
+    vi.useFakeTimers();
+    const see = sight();
+    const calls = listen();
+    render(<ServerAdTile ad={adFixture()} snapshot={snapshotFixture()} />);
+    const shown = { ad: '7', event: 'shown' };
+    see(0.3);
+    wait(5000);
+    expect(events(calls)).toEqual([]);
+    see(0.6);
+    wait(900);
+    expect(events(calls)).toEqual([]);
+    wait(100);
+    expect(events(calls)).toEqual([shown]);
+    // Staying in sight is one view, and so is coming back soon after.
+    wait(60_000);
+    see(0);
+    see(1);
+    wait(1000);
+    expect(events(calls)).toEqual([shown]);
+    // Out of sight for 5 minutes, it counts again when it comes back.
+    see(0);
+    wait(5 * 60_000);
+    see(1);
+    wait(1000);
+    expect(events(calls)).toEqual([shown, shown]);
+    // Nothing counts while the window is hidden.
+    see(0);
+    wait(10 * 60_000);
+    Object.defineProperty(document, 'visibilityState', { configurable: true, get: () => 'hidden' });
+    see(1);
+    wait(60_000);
+    expect(events(calls)).toHaveLength(2);
+    Reflect.deleteProperty(document, 'visibilityState');
+    act(() => {
+      document.dispatchEvent(new Event('visibilitychange'));
+    });
+    wait(1000);
+    expect(events(calls)).toEqual([shown, shown, shown]);
+  });
+
+  it('counts a view only once it has been on screen for a second', () => {
+    vi.useFakeTimers();
+    const see = sight();
+    const calls = listen();
+    const { unmount } = render(<ServerAdTile ad={adFixture()} snapshot={snapshotFixture()} />);
+    see(1);
+    wait(500);
+    see(0);
+    wait(5000);
+    see(1);
+    wait(500);
+    unmount();
+    wait(5000);
+    expect(events(calls)).toEqual([]);
+  });
+
+  it('counts the menu, the version list, copying, reporting and Play', async () => {
+    const writeText = vi.fn(() => Promise.resolve());
+    Object.defineProperty(navigator, 'clipboard', { value: { writeText }, configurable: true });
+    const ready = instanceFixture({ id: 'ready-1', versionId: '1.21.4', health: 'ready' });
+    const calls = listen();
+    render(<ServerAdTile ad={adFixture()} snapshot={snapshotFixture({ instances: [ready] })} />);
+    const menu = () => {
+      fireEvent.click(screen.getByRole('button', { name: 'Ad options: Northern Land' }));
+    };
+    menu();
+    fireEvent.click(screen.getByRole('menuitem', { name: 'Version: 1.21.4…' }));
+    fireEvent.click(screen.getByRole('menuitemradio', { name: /1\.21\.4/ }));
+    menu();
+    fireEvent.click(screen.getByRole('menuitem', { name: 'Copy the address play.example.net' }));
+    menu();
+    fireEvent.click(screen.getByRole('menuitem', { name: 'Report' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Play, 1.21.4 · installed' }));
+    await waitFor(() => {
+      expect(payload(calls, 'launch_game')?.ad).toBe('7');
+    });
+    expect(writeText).toHaveBeenCalledWith('play.example.net');
+    expect(events(calls).map((e) => (e as { event: string }).event)).toEqual([
+      'menu',
+      'versionList',
+      'menu',
+      'copy',
+      'menu',
+      'report',
+      'play',
+    ]);
+    Reflect.deleteProperty(navigator, 'clipboard');
   });
 });
 

@@ -979,7 +979,7 @@
         "defaults": "Memory, window size and fullscreen given to each new installation.",
         "network": "Metered connections, the traffic the launcher downloads, and where downloads come from.",
         "installations": "Memory, window, fullscreen, Minecraft arguments, mod loader version and Java of an existing installation.",
-        "privacy": "What the launcher sends to its developers, and only with your consent.",
+        "privacy": "What the launcher sends to its developers, and how to turn it off.",
         "reset": "Put chosen parts of the launcher back to how they were at first start."
       },
       "javaProvider": "Java runtime source",
@@ -1100,7 +1100,7 @@
           "gameFiles": "{size}: libraries, assets, Java and version files shared by installations. Installed versions download them again at their next repair.",
           "backups": "Deletes {count, plural, one {# backup} other {# backups}} ({size}).",
           "accounts": "Signs out {microsoft, plural, one {# Microsoft account} other {# Microsoft accounts}} and removes {profiles, plural, one {# profile} other {# profiles}} without an account.",
-          "settings": "Theme, defaults for new installations, Java source, metered connection and automatic backups. The language and the data folder stay.",
+          "settings": "Theme, defaults for new installations, Java source, metered connection and automatic backups. The language, the data folder and the statistics choice stay.",
           "traffic": "Forgets the traffic counted this month and before.",
           "temporary": "{size}: unfinished downloads, thumbnails and game logs."
         },
@@ -1168,13 +1168,28 @@
       "removeMark": "Remove {name}"
     },
     "privacy": {
-      "shareStats": "Share anonymous crash statistics",
-      "shareStatsHint": "After a crash, its kind, the launcher, game and loader versions and the system are counted. No logs, names or install ID are sent.",
+      "stats": "Anonymous statistics",
+      "statsHint": "Counted without any ID: once a day, the launcher and system versions, the languages and the week the launcher was installed; how often server ads in the feed are shown, opened and played; after a crash, its kind and the versions. The service takes only the country from the connection and keeps no addresses. Turning it off stops sending and erases what has not gone yet.",
+      "whatIsSent": "What is sent",
+      "sentIntro": "Exactly what goes to stats.lapi.sh, as it is sent.",
+      "sentNext": "Goes next",
+      "sentPing": "Last daily count",
+      "sentCounts": "Last ad counts",
+      "sentNothing": "Nothing has been sent yet.",
+      "sentOff": "Statistics are off: nothing is sent.",
+      "sentWaiting": "{count, plural, one {# packet waits} other {# packets wait}} to be sent.",
+      "sentLoading": "Loading…",
       "reports": "Crash reports are sent only when you press Send after reading them. They carry a random install ID so reports from one computer can be read together.",
       "installId": "Install ID",
       "installIdNone": "Not created yet: it appears with your first report.",
       "newInstallId": "Make a new ID",
-      "newInstallIdHint": "With a new ID, later reports are not linked to earlier ones."
+      "newInstallIdHint": "With a new ID, later reports are not linked to earlier ones.",
+      "notice": {
+        "text": "The launcher sends anonymous statistics without any ID: versions, system, country, what is launched, ad impressions.",
+        "gotIt": "Got it",
+        "settings": "Settings",
+        "settingsLabel": "Privacy settings"
+      }
     },
     "storage": {
       "issuesTitle": "Storage notices"
@@ -2723,6 +2738,7 @@
     "This is not a valid Minecraft version.": "This is not a valid Minecraft version.",
     "This is not a valid language code.": "This is not a valid language code.",
     "This is not an account.": "This is not an account.",
+    "This is not an ad of the feed.": "This is not an ad of the feed.",
     "This launcher already keeps the most worlds it can.": "This launcher already keeps the most worlds it can.",
     "This link cannot be opened.": "This link cannot be opened.",
     "This link is not on the launcher's list of allowed destinations.": "This link is not on the launcher's list of allowed destinations.",

@@ -23,7 +23,7 @@ use crate::ads::Shown;
 use crate::model::{self, Counts, Ping};
 use crate::pow;
 use crate::store::{Fresh, Store};
-use crate::tally::Tally;
+use crate::tally::{Fate, Tally};
 
 /// Per address (an IPv6 /64 counts as one) and hour. Generous: many players
 /// can share one address behind a carrier's NAT, and each sends one ping a
@@ -41,6 +41,22 @@ pub const COUNTS_BODY: usize = 64 * 1024;
 /// Requests counted since the hour began, per address (with its prefix
 /// length) and kind.
 type Windows = HashMap<(IpAddr, u8, &'static str), (Instant, u32)>;
+
+/// Addresses and networks the limits remember at most. Past this, during a
+/// flood from more addresses than an hour should see, a new address waits
+/// (its launcher sends again later) and the memory stays bounded.
+pub const MAX_WINDOWS: usize = 200_000;
+
+const HOUR: Duration = Duration::from_secs(3600);
+
+/// Per network (an IPv4 /24, an IPv6 /48) and hour: pings of more new
+/// launchers than this, or more impressions of one ad, are a burst. They are
+/// counted apart (`burst`) and not in the numbers, so a script on one
+/// network can make neither an audience nor an ad's impressions. One
+/// network seldom has this many launchers in an hour, even behind a
+/// carrier's NAT.
+pub const BURST_PINGS: u32 = 100;
+pub const BURST_SHOWN: u32 = 1_000;
 
 /// An IPv6 /48, a site's whole network where one person can take as many
 /// /64s as they like, gets this many addresses' allowance.
@@ -91,16 +107,24 @@ impl Limiter {
             .lock()
             .unwrap_or_else(std::sync::PoisonError::into_inner);
         let now = Instant::now();
-        if windows.len() > 100_000 {
-            windows.retain(|_, (start, _)| now.duration_since(*start) < Duration::from_secs(3600));
+        if windows.len() >= MAX_WINDOWS {
+            windows.retain(|_, (start, _)| now.duration_since(*start) < HOUR);
         }
-        let mut count = |key: IpAddr, prefix: u8| {
-            let entry = windows.entry((key, prefix, bucket)).or_insert((now, 0));
-            if now.duration_since(entry.0) >= Duration::from_secs(3600) {
-                *entry = (now, 0);
+        let full = windows.len() >= MAX_WINDOWS;
+        let mut count = |key: IpAddr, prefix: u8| match windows.get_mut(&(key, prefix, bucket)) {
+            Some(entry) => {
+                if now.duration_since(entry.0) >= HOUR {
+                    *entry = (now, 0);
+                }
+                entry.1 = entry.1.saturating_add(1);
+                entry.1
             }
-            entry.1 = entry.1.saturating_add(1);
-            entry.1
+            // Nothing left to remember it by: it waits.
+            None if full => u32::MAX,
+            None => {
+                windows.insert((key, prefix, bucket), (now, 1));
+                1
+            }
         };
         // An address over its own limit does not use up its network's, nor a
         // network over its limit everyone's.
@@ -111,11 +135,58 @@ impl Limiter {
     }
 }
 
+/// The network a burst is counted by: an IPv4 /24, an IPv6 /48.
+fn burst_network(ip: IpAddr) -> IpAddr {
+    match subject(ip) {
+        IpAddr::V4(v4) => {
+            let [a, b, c, _] = v4.octets();
+            IpAddr::from([a, b, c, 0])
+        }
+        v6 => network(v6).unwrap_or(v6),
+    }
+}
+
+/// What each network sent this hour, for the bursts: new launchers' pings
+/// (as ad 0) and each ad's impressions. In memory only, like the limits.
+#[derive(Default)]
+pub struct Bursts {
+    windows: Mutex<HashMap<(IpAddr, i64), (Instant, u32)>>,
+}
+
+impl Bursts {
+    /// Adds `n` to the network's hour of `what`; false once the hour holds
+    /// more than `limit`. A network not remembered during a flood of many is
+    /// not a burst: the limits hold it back instead.
+    pub fn within(&self, ip: IpAddr, what: i64, n: u32, limit: u32) -> bool {
+        let mut windows = self
+            .windows
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        let now = Instant::now();
+        if windows.len() >= MAX_WINDOWS {
+            windows.retain(|_, (start, _)| now.duration_since(*start) < HOUR);
+        }
+        let key = (burst_network(ip), what);
+        let full = windows.len() >= MAX_WINDOWS;
+        let entry = match windows.get_mut(&key) {
+            Some(entry) => entry,
+            None if full => return true,
+            None => windows.entry(key).or_insert((now, 0)),
+        };
+        if now.duration_since(entry.0) >= HOUR {
+            *entry = (now, 0);
+        }
+        entry.1 = entry.1.saturating_add(n);
+        entry.1 <= limit
+    }
+}
+
 pub struct App {
     pub store: Store,
     pub tally: Tally,
     pub shown: Shown,
     pub limiter: Limiter,
+    pub bursts: Bursts,
     /// Zero bits a request's work must give.
     pub bits: u32,
     /// The time now; tests set their own.
@@ -134,6 +205,7 @@ impl App {
             tally: Tally::default(),
             shown,
             limiter: Limiter::default(),
+            bursts: Bursts::default(),
             bits,
             clock,
         })
@@ -257,7 +329,11 @@ async fn ping(
     };
     match first_time(&app, batch, today).await {
         Some(Fresh::New) => {
-            app.tally.ping(&read);
+            if app.bursts.within(client(&headers), 0, 1, BURST_PINGS) {
+                app.tally.ping(&read);
+            } else {
+                app.tally.dropped(today, "burst");
+            }
             StatusCode::NO_CONTENT.into_response()
         }
         Some(Fresh::Seen) => {
@@ -300,8 +376,18 @@ async fn counts(
     };
     match first_time(&app, batch, today).await {
         Some(Fresh::New) => {
+            let from = client(&headers);
             app.tally.counts(&read, &country(&headers), |ad| {
-                app.shown.known(ad, read.day)
+                if !app.shown.known(ad.ad, read.day) {
+                    Fate::Unknown
+                } else if app
+                    .bursts
+                    .within(from, ad.ad, ad.shown().max(1), BURST_SHOWN)
+                {
+                    Fate::Counted
+                } else {
+                    Fate::Burst
+                }
             });
             StatusCode::NO_CONTENT.into_response()
         }

@@ -9,7 +9,7 @@ use std::time::Duration;
 
 use chrono::NaiveDate;
 
-use crate::model::{CountsRead, Period, PingRead};
+use crate::model::{AdRead, CountsRead, Period, PingRead};
 
 pub const FLUSH_EVERY: Duration = Duration::from_secs(10);
 /// Different rows waiting at most; beyond them new rows are lost (and
@@ -37,6 +37,17 @@ pub enum Key {
         day: NaiveDate,
         reason: &'static str,
     },
+}
+
+/// What becomes of one ad's counts in a batch.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Fate {
+    Counted,
+    /// The ad did not show that day: left out.
+    Unknown,
+    /// Past its network's hour: only its impressions are kept, apart, as
+    /// `burst`.
+    Burst,
 }
 
 #[derive(Default)]
@@ -90,14 +101,39 @@ impl Tally {
         }
     }
 
-    /// A batch of ad counts; an ad `known` does not hold for (not shown that
-    /// day) is left out. Returns how many were left out.
-    pub fn counts(&self, read: &CountsRead, country: &str, known: impl Fn(i64) -> bool) -> usize {
+    /// A batch of ad counts, each ad as `fate` says. Returns how many ads
+    /// were not counted.
+    pub fn counts(
+        &self,
+        read: &CountsRead,
+        country: &str,
+        mut fate: impl FnMut(&AdRead) -> Fate,
+    ) -> usize {
         let mut map = self.map();
-        let mut unknown = 0;
+        let mut left = 0;
         for ad in &read.ads {
-            if !known(ad.ad) {
-                unknown += 1;
+            let reason = match fate(ad) {
+                Fate::Counted => None,
+                Fate::Unknown => Some("unknown_ad"),
+                Fate::Burst => {
+                    let key = Key::Ad {
+                        day: read.day,
+                        ad: ad.ad,
+                        event: "burst",
+                        cut: "all",
+                        value: String::new(),
+                    };
+                    self.add_to(&mut map, key, i64::from(ad.shown()));
+                    Some("burst")
+                }
+            };
+            if let Some(reason) = reason {
+                left += 1;
+                let key = Key::Dropped {
+                    day: read.day,
+                    reason,
+                };
+                self.add_to(&mut map, key, 1);
                 continue;
             }
             for (event, n) in &ad.events {
@@ -123,17 +159,7 @@ impl Tally {
                 self.add_to(&mut map, key, i64::from(*n));
             }
         }
-        for _ in 0..unknown {
-            self.add_to(
-                &mut map,
-                Key::Dropped {
-                    day: read.day,
-                    reason: "unknown_ad",
-                },
-                1,
-            );
-        }
-        unknown
+        left
     }
 
     /// Everything counted since the last call.

@@ -1,7 +1,7 @@
 import { useEffect, useId, useRef, useState } from 'react';
 import { type MenuItem, MoreMenu } from '../../app/MoreMenu';
 import { StatusBadge } from '../../components/StatusBadge';
-import type { AppSnapshot, ServerAd } from '../../lib/contracts';
+import type { AdEvent, AppSnapshot, ServerAd } from '../../lib/contracts';
 import { describeIpcError, ipc } from '../../lib/ipc';
 import { strings } from '../../lib/strings';
 import { openReview } from '../reviews/openReview';
@@ -12,6 +12,16 @@ const t = strings.feed;
 const s = strings.feed.serverAd;
 
 const VERSION_KEY = 'serverAd.version.';
+/** Half of the tile in sight this long, while the window shows, is a view. */
+const SHOWN_AFTER_MS = 1000;
+/** The same tile counts again 5 minutes later at the earliest; the core holds to it too. */
+const SHOWN_AGAIN_MS = 5 * 60 * 1000;
+
+/** Counts a view or a press for the anonymous statistics (D-071): only the
+ * ad's number and the event go to the core, and nothing waits on it. */
+function count(ad: ServerAd, event: AdEvent) {
+  void ipc.feedServerAdEvent(ad.id, event).catch(() => undefined);
+}
 
 /** The version this player picked for an ad before, if the ad still offers it. */
 function rememberedVersion(ad: ServerAd): string {
@@ -49,7 +59,8 @@ type Stage = 'idle' | 'creating' | 'installing' | 'starting';
  * on it; the name, the text and the address under it. Play installs the
  * chosen version when no vanilla installation of it is ready, then starts the
  * game straight into the server. The ⋯ menu picks another version the server
- * lets in, copies the address and reports the ad.
+ * lets in, copies the address and reports the ad. Views and presses are
+ * counted for the anonymous statistics (D-071).
  */
 export function ServerAdTile({ ad, snapshot }: { ad: ServerAd; snapshot: AppSnapshot }) {
   const [version, setVersion] = useState(() => rememberedVersion(ad));
@@ -67,6 +78,47 @@ export function ServerAdTile({ ad, snapshot }: { ad: ServerAd; snapshot: AppSnap
   const versionsId = useId();
   const versionsRef = useRef<HTMLDivElement>(null);
   const playButton = useRef<HTMLButtonElement>(null);
+  const tile = useRef<HTMLElement>(null);
+
+  // A view: half of the tile in sight for a second while the window shows.
+  // It counts again once the tile has left and come back, 5 minutes later
+  // at the earliest.
+  useEffect(() => {
+    const target = tile.current;
+    if (target === null || typeof IntersectionObserver === 'undefined') return;
+    let inView = false;
+    let timer: number | undefined;
+    let counted = -Infinity;
+    let shown = false;
+    const watch = () => {
+      window.clearTimeout(timer);
+      if (!inView || document.visibilityState !== 'visible') {
+        shown = false;
+        return;
+      }
+      if (shown) return;
+      timer = window.setTimeout(() => {
+        if (Date.now() - counted < SHOWN_AGAIN_MS) return;
+        counted = Date.now();
+        shown = true;
+        void ipc.feedServerAdEvent(ad.id, 'shown').catch(() => undefined);
+      }, SHOWN_AFTER_MS);
+    };
+    const observer = new IntersectionObserver(
+      (entries) => {
+        inView = entries.some((entry) => entry.isIntersecting && entry.intersectionRatio >= 0.5);
+        watch();
+      },
+      { threshold: [0, 0.5, 1] },
+    );
+    observer.observe(target);
+    document.addEventListener('visibilitychange', watch);
+    return () => {
+      window.clearTimeout(timer);
+      observer.disconnect();
+      document.removeEventListener('visibilitychange', watch);
+    };
+  }, [ad.id]);
 
   const instance = vanillaOf(snapshot, version);
   const ready = instance?.health === 'ready';
@@ -80,7 +132,7 @@ export function ServerAdTile({ ad, snapshot }: { ad: ServerAd; snapshot: AppSnap
     setStage('starting');
     requestId.current ??= crypto.randomUUID();
     try {
-      await ipc.launchGame(instanceId, requestId.current, ad.address);
+      await ipc.launchGame(instanceId, requestId.current, ad.address, ad.id);
       requestId.current = null;
     } catch (failure) {
       requestId.current = null;
@@ -110,8 +162,10 @@ export function ServerAdTile({ ad, snapshot }: { ad: ServerAd; snapshot: AppSnap
     void Promise.resolve().then(() => {
       setWaiting(null);
       if (done) {
+        count(ad, 'installed');
         void join(waiting);
       } else {
+        count(ad, 'installFailed');
         setStage('idle');
         setError(s.installFailed({ version }));
       }
@@ -123,8 +177,10 @@ export function ServerAdTile({ ad, snapshot }: { ad: ServerAd; snapshot: AppSnap
   const play = async () => {
     setError(null);
     setVersions(false);
+    count(ad, 'play');
     // Nothing is downloaded for a server that would turn the player away.
     if (signInMissing) {
+      count(ad, 'license');
       setError(s.needsLicense);
       return;
     }
@@ -149,6 +205,7 @@ export function ServerAdTile({ ad, snapshot }: { ad: ServerAd; snapshot: AppSnap
       await ipc.installInstance(id);
       setWaiting(id);
     } catch (failure) {
+      count(ad, 'installFailed');
       setStage('idle');
       setError(describeIpcError(failure));
     }
@@ -185,6 +242,7 @@ export function ServerAdTile({ ad, snapshot }: { ad: ServerAd; snapshot: AppSnap
   };
 
   const copy = () => {
+    count(ad, 'copy');
     void navigator.clipboard
       .writeText(ad.address)
       .then(() => {
@@ -197,6 +255,7 @@ export function ServerAdTile({ ad, snapshot }: { ad: ServerAd; snapshot: AppSnap
   };
 
   const report = () => {
+    count(ad, 'report');
     const id = Number(ad.id);
     openReview({
       kind: 'bug',
@@ -236,6 +295,7 @@ export function ServerAdTile({ ad, snapshot }: { ad: ServerAd; snapshot: AppSnap
       key: 'version',
       label: s.versionItem({ version }),
       onSelect: () => {
+        count(ad, 'versionList');
         setVersions(true);
       },
     });
@@ -247,7 +307,7 @@ export function ServerAdTile({ ad, snapshot }: { ad: ServerAd; snapshot: AppSnap
   );
 
   return (
-    <article className={styles.tile} aria-label={`${s.label}: ${ad.name}`}>
+    <article ref={tile} className={styles.tile} aria-label={`${s.label}: ${ad.name}`}>
       <span className={styles.tileMenu}>
         <MoreMenu
           label="⋯"
@@ -256,6 +316,9 @@ export function ServerAdTile({ ad, snapshot }: { ad: ServerAd; snapshot: AppSnap
           caret={false}
           current={false}
           entries={entries}
+          onOpen={() => {
+            count(ad, 'menu');
+          }}
         />
       </span>
       {versions && (

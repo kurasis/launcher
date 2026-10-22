@@ -443,9 +443,27 @@ pub async fn pick_java_file<R: Runtime>(
 #[tauri::command(async)]
 pub fn set_app_settings(
     state: State<'_, AppState>,
+    stats: State<'_, Arc<crate::stats::Stats>>,
     request: MutationRequest<SettingsPatch>,
 ) -> LauncherResult<SettingsView> {
-    state.set_app_settings(request)
+    let off = request.payload.stats == Some(false);
+    let view = state.set_app_settings(request)?;
+    // Turning the statistics off erases what waits to go (D-071).
+    if off && !view.stats {
+        stats.forget(&state);
+        crate::reports::forget_stats(&state);
+    }
+    Ok(view)
+}
+
+/// Settings → Privacy → What is sent: the last ping and ad counts as they
+/// went, and today's ping before it goes (D-071).
+#[tauri::command(async)]
+pub fn stats_sent(
+    state: State<'_, AppState>,
+    stats: State<'_, Arc<crate::stats::Stats>>,
+) -> crate::stats::SentView {
+    stats.sent(&state)
 }
 
 /// Opens (or focuses) the console window (D-037).
@@ -926,6 +944,10 @@ pub struct LaunchPayload {
     /// A server to start the game straight into (a friend's invite).
     #[serde(default)]
     pub server: Option<String>,
+    /// The server ad whose Play started it (D-069), for the statistics'
+    /// counts (D-071); only an ad the feed was given, with its server.
+    #[serde(default)]
+    pub ad: Option<String>,
 }
 
 /// Checks the installation and the account of the installation's profile (or
@@ -936,10 +958,18 @@ pub struct LaunchPayload {
 pub async fn launch_game(
     launcher: State<'_, Launcher>,
     mods: State<'_, Arc<crate::mods::Mods>>,
+    ads: State<'_, Arc<crate::feed::ads::ServerAds>>,
+    stats: State<'_, Arc<crate::stats::Stats>>,
     request: MutationRequest<LaunchPayload>,
 ) -> LauncherResult<crate::state::dto::RunSummary> {
     let launcher = launcher.get()?;
     let id = request.payload.instance_id;
+    let ad = request
+        .payload
+        .ad
+        .as_deref()
+        .filter(|ad| request.payload.server.is_some() && crate::stats::ad_id(ad) && ads.known(ad))
+        .map(|ad| Arc::new(stats.ad_run(ad)));
     // Not while mods are being put into its game folder (D-066).
     mods.content.ensure_idle(id)?;
     #[cfg(debug_assertions)]
@@ -949,11 +979,12 @@ pub async fn launch_game(
     #[cfg(not(debug_assertions))]
     let mode = launcher.mode_for(id);
     launcher
-        .launch_joining(
+        .launch_from(
             &request.request_id,
             id,
             mode,
             request.payload.server.as_deref(),
+            ad,
         )
         .await
 }
@@ -3327,6 +3358,27 @@ pub async fn feed_get<R: Runtime>(app: AppHandle<R>, refresh: bool) -> FeedResul
     feed_service(&app)
         .view(root.as_ref(), languages, refresh)
         .await
+}
+
+/// A view or a press in a server ad's tile, for the anonymous statistics
+/// (D-071). Only ads the feed was given count; nothing is said back.
+#[tauri::command(async)]
+pub fn feed_server_ad_event(
+    state: State<'_, AppState>,
+    ads: State<'_, Arc<crate::feed::ads::ServerAds>>,
+    stats: State<'_, Arc<crate::stats::Stats>>,
+    ad: String,
+    event: crate::stats::AdEvent,
+) -> LauncherResult<()> {
+    if !crate::stats::ad_id(&ad) {
+        return Err(crate::error::LauncherError::invalid_input(
+            "This is not an ad of the feed.",
+        ));
+    }
+    if ads.known(&ad) {
+        stats.ad_event(&state, &ad, event);
+    }
+    Ok(())
 }
 
 /// The server ads of `place` showing now (D-069), in the interface's

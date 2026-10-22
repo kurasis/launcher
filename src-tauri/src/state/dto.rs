@@ -147,8 +147,12 @@ pub struct SettingsPatch {
     /// 0 removes the limit.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub monthly_limit_mib: Option<u32>,
+    /// Anonymous statistics (D-071); false also erases what waits to go.
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub share_stats: Option<bool>,
+    pub stats: Option<bool>,
+    /// The line about the statistics was read.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub stats_notice_seen: Option<bool>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub chat_sound: Option<bool>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -218,7 +222,8 @@ pub struct SettingsView {
     pub metered: bool,
     pub metered_warn_mib: u32,
     pub monthly_limit_mib: u32,
-    pub share_stats: bool,
+    pub stats: bool,
+    pub stats_notice_seen: bool,
     pub chat_sound: bool,
     pub chat_notifications: bool,
     pub launcher_account_offline: bool,
@@ -252,7 +257,8 @@ impl SettingsView {
             metered: settings.metered,
             metered_warn_mib: settings.metered_warn_mib,
             monthly_limit_mib: settings.monthly_limit_mib,
-            share_stats: settings.share_stats,
+            stats: settings.stats,
+            stats_notice_seen: settings.stats_notice_seen,
             chat_sound: settings.chat_sound,
             chat_notifications: settings.chat_notifications,
             launcher_account_offline: settings.launcher_account_offline,

@@ -89,6 +89,7 @@ fn a_reset_backs_up_player_data_then_removes_the_chosen_parts() {
         .set_app_settings(request(SettingsPatch {
             theme: Some(Theme::Dark),
             language: Some("ru".into()),
+            stats: Some(false),
             ..SettingsPatch::default()
         }))
         .unwrap();
@@ -148,10 +149,12 @@ fn a_reset_backs_up_player_data_then_removes_the_chosen_parts() {
     );
     assert!(!root.downloads_dir().exists());
     assert!(!root.path().join("logs/runs").exists());
-    // Settings are back to defaults except the language.
+    // Settings are back to defaults except the language and the statistics
+    // choice: a reset does not turn the statistics back on.
     let settings = state.settings();
     assert_eq!(settings.theme, Theme::default());
     assert_eq!(settings.language.as_str(), "ru");
+    assert!(!settings.stats);
     assert!(state.accounts_file().notoken_profiles.is_empty());
     assert!(state.activity().current().is_none(), "permit released");
 }

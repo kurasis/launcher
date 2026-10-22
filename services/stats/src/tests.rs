@@ -7,7 +7,7 @@ use http_body_util::BodyExt;
 use serde_json::{Value, json};
 use tower::ServiceExt;
 
-use crate::api::{self, App};
+use crate::api::{self, App, BURST_PINGS};
 use crate::model::{self, Counts, Period, Ping};
 use crate::store::{ShownAd, Store};
 use crate::{ads, pow, report};
@@ -491,6 +491,120 @@ async fn one_address_is_limited_per_hour() {
     let (status, health) = answer(&app, request).await;
     assert_eq!(status, StatusCode::OK);
     assert_eq!(health["service"], "lapi-stats");
+}
+
+#[tokio::test]
+async fn bursts_from_one_network_are_counted_apart() {
+    let (_dir, app) = app();
+    let players = |app: &App| -> i64 {
+        values(app, Period::Day, "country")
+            .iter()
+            .map(|(_, n)| n)
+            .sum()
+    };
+    // A hundred launchers of one /24 in an hour are counted, from as many
+    // addresses as they like; more are a burst.
+    for i in 1..=100 {
+        let ip = format!("198.51.100.{i}");
+        let (status, _) = post_from(&app, "/v1/ping", &ping(&["day"]), "RU", &ip).await;
+        assert_eq!(status, StatusCode::NO_CONTENT);
+    }
+    for ip in ["198.51.100.200", "198.51.100.201"] {
+        let (status, _) = post_from(&app, "/v1/ping", &ping(&["day"]), "RU", ip).await;
+        assert_eq!(status, StatusCode::NO_CONTENT, "told nothing");
+    }
+    assert_eq!(players(&app), 100);
+    // Another network is not.
+    let (status, _) = post_from(&app, "/v1/ping", &ping(&["day"]), "RU", "198.51.101.1").await;
+    assert_eq!(status, StatusCode::NO_CONTENT);
+    assert_eq!(players(&app), 101);
+    // An IPv6 /48 is one network, whichever /64s it uses.
+    for i in 0..=BURST_PINGS {
+        let ip = format!("2001:db8:7:{i:x}::1");
+        post_from(&app, "/v1/ping", &ping(&["day"]), "DE", &ip).await;
+    }
+    assert_eq!(players(&app), 201);
+
+    // An ad's impressions: past 1,000 an hour from one network, a batch's
+    // counts of that ad are kept apart, its other ads counted.
+    show(&app, &[3, 4]);
+    let mut many = ad("3");
+    many["shown"] = json!(model::MAX_SHOWN);
+    for i in 1..=3 {
+        let ip = format!("203.0.113.{i}");
+        post_from(&app, "/v1/counts", &counts(json!([many])), "RU", &ip).await;
+    }
+    let (status, _) = post_from(
+        &app,
+        "/v1/counts",
+        &counts(json!([many, ad("4")])),
+        "RU",
+        "203.0.113.9",
+    )
+    .await;
+    assert_eq!(status, StatusCode::NO_CONTENT);
+    post_from(
+        &app,
+        "/v1/counts",
+        &counts(json!([many])),
+        "RU",
+        "192.0.2.1",
+    )
+    .await;
+    app.flush().unwrap();
+    let totals = app.store.ad_totals(today(), today(), None).unwrap();
+    let n = |ad: i64, event: &str| totals.get(&(ad, event.to_owned())).copied().unwrap_or(0);
+    assert_eq!(n(3, "shown"), 4 * i64::from(model::MAX_SHOWN));
+    assert_eq!(n(3, "burst"), i64::from(model::MAX_SHOWN));
+    assert_eq!(
+        n(3, "play"),
+        4 * 2,
+        "nothing of the burst but its impressions"
+    );
+    assert_eq!(n(4, "shown"), 4);
+    assert_eq!(n(4, "burst"), 0);
+    let left = app.store.dropped(today(), today()).unwrap();
+    assert!(
+        left.contains(&("burst".to_owned(), 2 + 1 + 1)),
+        "two pings of each network and one ad: {left:?}"
+    );
+    let shown = report::ad(&app.store, today(), (3, 30), Err("-".into()), false).unwrap();
+    assert!(shown.contains("Burst"), "{shown}");
+    assert!(
+        shown.contains("300   impressions past 1,000 an hour"),
+        "{shown}"
+    );
+    let table = report::ads(&app.store, today(), 30, false).unwrap();
+    assert!(table.lines().nth(1).unwrap().ends_with("burst"), "{table}");
+    // The ad register gets the impressions counted, not the burst.
+    let ord = report::ord(&app.store, &today().format("%Y-%m").to_string(), true).unwrap();
+    assert!(ord.contains("2SDnjeXYZ,3,1200,1200"), "{ord}");
+}
+
+#[test]
+fn the_limits_remember_a_bounded_number_of_addresses() {
+    let limiter = api::Limiter::default();
+    // One window is everyone's.
+    for i in 0..(api::MAX_WINDOWS - 1) as u32 {
+        let ip = std::net::IpAddr::from((0x0a00_0000 + i).to_be_bytes());
+        assert!(limiter.allow(ip, "ping", 300, u32::MAX));
+    }
+    // Full: an address seen before goes on, a new one waits.
+    assert!(limiter.allow("10.0.0.1".parse().unwrap(), "ping", 300, u32::MAX));
+    assert!(!limiter.allow("192.0.2.1".parse().unwrap(), "ping", 300, u32::MAX));
+    let bursts = api::Bursts::default();
+    for i in 0..api::MAX_WINDOWS as u32 {
+        let ip = std::net::IpAddr::from((0x0a00_0000 + (i << 8)).to_be_bytes());
+        assert!(bursts.within(ip, 0, 1, 1));
+    }
+    assert!(
+        !bursts.within("10.0.0.9".parse().unwrap(), 0, 1, 1),
+        "remembered"
+    );
+    assert!(
+        bursts.within("192.0.2.1".parse().unwrap(), 0, 5, 1),
+        "not remembered"
+    );
 }
 
 #[tokio::test]
