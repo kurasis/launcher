@@ -1,4 +1,4 @@
-import { type KeyboardEvent, useEffect, useId, useRef, useState } from 'react';
+import { type KeyboardEvent, type ReactNode, useEffect, useId, useRef, useState } from 'react';
 import styles from './App.module.css';
 
 /** One entry of a menu: an item to choose, or a separator between groups. */
@@ -22,6 +22,10 @@ interface MoreMenuProps {
   news?: string | null;
   /** Told each time the menu opens. */
   onOpen?: () => void;
+  /** An icon before the text, as in the rail. */
+  icon?: ReactNode;
+  /** Where the list opens, in place of under the button. */
+  menuClassName?: string | undefined;
 }
 
 /**
@@ -39,6 +43,8 @@ export function MoreMenu({
   caret = true,
   news = null,
   onOpen,
+  icon = null,
+  menuClassName,
 }: MoreMenuProps) {
   const id = useId();
   const buttonId = `${id}-button`;
@@ -154,6 +160,7 @@ export function MoreMenu({
         aria-expanded={open}
         aria-controls={open ? menuId : undefined}
         aria-current={current ? 'page' : undefined}
+        title={icon === null ? undefined : label}
         onClick={() => {
           if (open) close(false);
           else openAt(0);
@@ -164,7 +171,8 @@ export function MoreMenu({
           if (event.key === ' ') event.preventDefault();
         }}
       >
-        {label}
+        {icon}
+        {icon === null ? label : <span className={styles.navLabel}>{label}</span>}
         {news !== null && (
           <>
             <span className={styles.newsDot} aria-hidden="true" />
@@ -182,7 +190,7 @@ export function MoreMenu({
           id={menuId}
           role="menu"
           aria-labelledby={buttonId}
-          className={styles.menu}
+          className={[styles.menu, menuClassName].filter(Boolean).join(' ')}
           onKeyDown={onMenuKeyDown}
           onKeyUp={(event) => {
             if (event.key === ' ') event.preventDefault();

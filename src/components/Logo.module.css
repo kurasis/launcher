@@ -2,21 +2,21 @@
   width: 2.25rem;
   height: 2.25rem;
   flex: none;
-  filter: drop-shadow(0 4px 12px var(--color-glow));
 }
 
+/* Concept A: a mint block on the dark rail. */
 .top {
-  fill: var(--color-accent);
+  fill: var(--color-mint);
 }
 
 .left {
-  fill: var(--color-accent-2);
-  opacity: 0.85;
+  fill: var(--color-mint);
+  opacity: 0.7;
 }
 
 .right {
-  fill: var(--color-accent-2);
-  opacity: 0.55;
+  fill: var(--color-mint);
+  opacity: 0.45;
 }
 
 .shine {

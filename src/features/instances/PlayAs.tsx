@@ -26,9 +26,12 @@ function decode(value: string): ProfileRef | null {
 export function PlayAs({
   instance,
   account,
+  compact = false,
 }: {
   instance: InstanceSummary;
   account: AccountSummary;
+  /** In one line, as in the launch bar. */
+  compact?: boolean;
 }) {
   const id = useId();
   const choose = useCommand((requestId: string, profile: ProfileRef | null) =>
@@ -43,7 +46,7 @@ export function PlayAs({
       ? null
       : instance.profile;
   return (
-    <div className={styles.playAs}>
+    <div className={compact ? styles.playAsCompact : styles.playAs}>
       <label htmlFor={id}>{a.playAs}</label>
       <select
         id={id}

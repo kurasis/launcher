@@ -289,6 +289,22 @@ pub fn header_size(bytes: &[u8]) -> Result<(u32, u32), SkinsProblem> {
     Ok((width, height))
 }
 
+/// A worn texture as the service may serve it: the PNG its hash names, in a
+/// size a skin or a cape can have. The rail draws the player's head from it at
+/// every start, so a larger image is never handed to the page to decode.
+fn check_worn(png: &[u8], hash: &str) -> Result<(), SkinsProblem> {
+    if !png.starts_with(PNG_SIGNATURE) || hex::encode(Sha256::digest(png)) != hash {
+        return Err(SkinsProblem::Server);
+    }
+    let (width, height) = header_size(png).map_err(|_| SkinsProblem::Server)?;
+    if frames_of(Kind::Skin, width, height).is_err()
+        && frames_of(Kind::Cape, width, height).is_err()
+    {
+        return Err(SkinsProblem::Server);
+    }
+    Ok(())
+}
+
 /// A picked file's shape, once it passed every check.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct Shape {
@@ -740,9 +756,7 @@ impl Skins {
                 BodyError::Network => SkinsProblem::Network,
                 BodyError::TooLarge => SkinsProblem::Server,
             })?;
-        if !png.starts_with(PNG_SIGNATURE) || hex::encode(Sha256::digest(&png)) != hash {
-            return Err(SkinsProblem::Server);
-        }
+        check_worn(&png, hash)?;
         let url = data_url(&png);
         let mut cache = lock(&self.textures);
         if cache.len() >= TEXTURE_CACHE {
@@ -1437,5 +1451,35 @@ mod tests {
         for hash in ["", "../../v1/me", &"A".repeat(64), &"a".repeat(65)] {
             assert_eq!(skins.texture(hash).await, Err(SkinsProblem::Invalid));
         }
+    }
+
+    #[test]
+    fn a_worn_texture_is_its_hash_and_a_size_the_service_takes() {
+        let hash_of = |png: &[u8]| hex::encode(Sha256::digest(png));
+        for (width, height) in [(64, 64), (64, 32), (512, 256), (64, 128)] {
+            let png = png_of(width, height);
+            assert_eq!(check_worn(&png, &hash_of(&png)), Ok(()), "{width}×{height}");
+        }
+        let skin = png_of(64, 64);
+        assert_eq!(
+            check_worn(&skin, &hash_of(&png_of(64, 32))),
+            Err(SkinsProblem::Server)
+        );
+        for png in [png_of(100, 100), png_of(64, 48)] {
+            assert_eq!(check_worn(&png, &hash_of(&png)), Err(SkinsProblem::Server));
+        }
+        // A header that claims a huge image: refused before anything decodes it.
+        let mut huge = skin;
+        huge[16..20].copy_from_slice(&23_000u32.to_be_bytes());
+        huge[20..24].copy_from_slice(&23_000u32.to_be_bytes());
+        assert_eq!(
+            check_worn(&huge, &hash_of(&huge)),
+            Err(SkinsProblem::Server)
+        );
+        let text = b"<script>alert(1)</script>".to_vec();
+        assert_eq!(
+            check_worn(&text, &hash_of(&text)),
+            Err(SkinsProblem::Server)
+        );
     }
 }

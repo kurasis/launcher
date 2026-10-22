@@ -17,6 +17,7 @@ import { FrameControls, NewTexture } from './NewTexture';
 import { SkinPreview } from './SkinPreview';
 import { type Outfit, SkinStage } from './SkinStage';
 import styles from './Skins.module.css';
+import { ownSkinChanged } from './ownSkin';
 import {
   type Texture,
   cutFrames,
@@ -262,6 +263,7 @@ export function SkinStudio({ nick }: Props) {
     try {
       const next: unknown = await action();
       setWardrobe(isWardrobe(next) ? next : NOTHING);
+      ownSkinChanged();
       setDone(message);
       return true;
     } catch (e) {

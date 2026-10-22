@@ -1,0 +1,266 @@
+import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
+import { mockIPC } from '@tauri-apps/api/mocks';
+import { describe, expect, it, vi } from 'vitest';
+import type { AppSnapshot, InstanceSummary, OperationResult } from '../lib/contracts';
+import { accountFixture, instanceFixture, snapshotFixture } from '../test/fixtures';
+import { LaunchBar } from './LaunchBar';
+
+let launchFails = false;
+
+function backend() {
+  launchFails = false;
+  const calls: { cmd: string; args: unknown }[] = [];
+  mockIPC((cmd, args) => {
+    calls.push({ cmd, args });
+    if (cmd === 'install_instance' || cmd === 'repair_instance') return { operationId: 'op-1' };
+    if (cmd === 'launch_game') {
+      if (launchFails) {
+        // eslint-disable-next-line @typescript-eslint/only-throw-error -- mirrors the IPC error envelope
+        throw {
+          code: 'AUTH_NOT_CONFIGURED',
+          message: 'Sign-in is not configured in this build.',
+          retryable: false,
+          diagnosticId: 'd',
+        };
+      }
+      return { runId: 'run-1', kind: 'game', state: 'preflight' };
+    }
+    if (cmd === 'set_instance_profile') return instanceFixture();
+    if (cmd === 'get_app_snapshot') return snapshotFixture();
+    return null;
+  });
+  return calls;
+}
+
+/** A snapshot with these installations, the first one chosen. */
+function chosen(instances: InstanceSummary[], rest: Partial<AppSnapshot> = {}): AppSnapshot {
+  return snapshotFixture({
+    instances,
+    settings: { ...snapshotFixture().settings, selectedInstanceId: instances[0]?.id ?? null },
+    ...rest,
+  });
+}
+
+const QUEUED = {
+  queueId: 'q-1',
+  instanceId: instanceFixture().id,
+  kind: 'install' as const,
+  queuedAt: '2026-10-17T00:00:00Z',
+};
+
+function cancelledInstall(): OperationResult {
+  return {
+    operationId: 'op-0',
+    instanceId: instanceFixture().id,
+    kind: 'install',
+    outcome: 'cancelled',
+    error: null,
+    finishedAt: '2026-10-17T00:00:00Z',
+    downloadedFiles: 10,
+    networkBytes: 1000,
+    reusedFiles: 0,
+  };
+}
+
+function bar() {
+  return screen.getByRole('region', { name: 'Launch' });
+}
+
+describe('LaunchBar', () => {
+  it('plays as the default player or the chosen one, always labelled Play', async () => {
+    const calls = backend();
+    const instance = instanceFixture({ health: 'ready' });
+    const { rerender } = render(
+      <LaunchBar snapshot={chosen([instance])} onOpenInstallations={vi.fn()} />,
+    );
+    expect(within(bar()).getByText('Survival')).toBeVisible();
+    expect(within(bar()).getByLabelText('Play as')).toHaveDisplayValue('Default: Player');
+    fireEvent.click(within(bar()).getByRole('button', { name: 'Play' }));
+    await waitFor(() => {
+      expect(calls.find((c) => c.cmd === 'launch_game')?.args).toMatchObject({
+        request: { payload: { instanceId: instance.id } },
+      });
+    });
+
+    const account = accountFixture({
+      accounts: [
+        { profileId: 'steve', profileName: 'Steve_Test', state: 'verified_access', error: null },
+      ],
+      notokenProfiles: [{ id: 'alex', name: 'Alex' }],
+      defaultProfile: { kind: 'microsoft', id: 'steve' },
+    });
+    rerender(
+      <LaunchBar snapshot={chosen([instance], { account })} onOpenInstallations={vi.fn()} />,
+    );
+    launchFails = true;
+    fireEvent.click(within(bar()).getByRole('button', { name: 'Play' }));
+    expect(await within(bar()).findByRole('alert')).toHaveTextContent(
+      'Sign-in is not configured in this build.',
+    );
+    const options = Array.from(
+      within(bar()).getByLabelText<HTMLSelectElement>('Play as').options,
+      (o) => o.textContent,
+    );
+    expect(options).toEqual(['Default: Steve_Test (Microsoft)', 'Alex']);
+    fireEvent.change(within(bar()).getByLabelText('Play as'), {
+      target: { value: 'notoken:alex' },
+    });
+    await waitFor(() => {
+      expect(calls.find((c) => c.cmd === 'set_instance_profile')?.args).toMatchObject({
+        request: {
+          payload: { instanceId: instance.id, profile: { kind: 'notoken', id: 'alex' } },
+        },
+      });
+    });
+  });
+
+  it('forgets an error when another installation is chosen', async () => {
+    backend();
+    const first = instanceFixture({ health: 'ready' });
+    const second = instanceFixture({
+      id: '1f1e2d3c-4b5a-4978-8796-a5b4c3d2e1f0',
+      displayName: 'Creative',
+      health: 'ready',
+    });
+    const { rerender } = render(
+      <LaunchBar snapshot={chosen([first, second])} onOpenInstallations={vi.fn()} />,
+    );
+    launchFails = true;
+    fireEvent.click(within(bar()).getByRole('button', { name: 'Play' }));
+    expect(await within(bar()).findByRole('alert')).toBeVisible();
+    rerender(<LaunchBar snapshot={chosen([second, first])} onOpenInstallations={vi.fn()} />);
+    expect(within(bar()).getByText('Creative')).toBeVisible();
+    expect(within(bar()).queryByRole('alert')).toBeNull();
+  });
+
+  it('installs a new installation and retries an unfinished install', async () => {
+    const calls = backend();
+    const { rerender } = render(
+      <LaunchBar snapshot={chosen([instanceFixture()])} onOpenInstallations={vi.fn()} />,
+    );
+    expect(within(bar()).queryByRole('button', { name: 'Play' })).toBeNull();
+    expect(within(bar()).queryByLabelText('Play as')).toBeNull();
+    fireEvent.click(within(bar()).getByRole('button', { name: 'Install' }));
+    await waitFor(() => {
+      expect(calls.find((c) => c.cmd === 'install_instance')?.args).toMatchObject({
+        request: { payload: { instanceId: instanceFixture().id } },
+      });
+    });
+    rerender(
+      <LaunchBar
+        snapshot={chosen([instanceFixture()], { recentOperations: [cancelledInstall()] })}
+        onOpenInstallations={vi.fn()}
+      />,
+    );
+    expect(within(bar()).getByRole('button', { name: 'Retry install' })).toBeEnabled();
+  });
+
+  it('repairs damaged files', async () => {
+    const calls = backend();
+    render(
+      <LaunchBar
+        snapshot={chosen([instanceFixture({ health: 'repair_required' })])}
+        onOpenInstallations={vi.fn()}
+      />,
+    );
+    fireEvent.click(within(bar()).getByRole('button', { name: 'Repair' }));
+    await waitFor(() => {
+      expect(calls.some((c) => c.cmd === 'repair_instance')).toBe(true);
+    });
+  });
+
+  it('queues an install while another installation is busy', async () => {
+    const calls = backend();
+    const busy = { kind: 'install' as const, instanceId: 'other', operationId: 'op-9' };
+    const { rerender } = render(
+      <LaunchBar
+        snapshot={chosen([instanceFixture()], { activeOperation: busy })}
+        onOpenInstallations={vi.fn()}
+      />,
+    );
+    fireEvent.click(within(bar()).getByRole('button', { name: 'Add to queue' }));
+    await waitFor(() => {
+      expect(calls.some((c) => c.cmd === 'install_instance')).toBe(true);
+    });
+    rerender(
+      <LaunchBar
+        snapshot={chosen([instanceFixture()], { activeOperation: busy, queue: [QUEUED] })}
+        onOpenInstallations={vi.fn()}
+      />,
+    );
+    expect(within(bar()).getByRole('button', { name: 'Add to queue' })).toBeDisabled();
+    expect(within(bar()).getByRole('status')).toHaveTextContent(/^Queued: starts when/);
+  });
+
+  it('offline, plays installed versions and queues downloads for the connection', () => {
+    backend();
+    const { rerender } = render(
+      <LaunchBar
+        snapshot={chosen([instanceFixture({ health: 'ready' })], { network: 'offline' })}
+        onOpenInstallations={vi.fn()}
+      />,
+    );
+    expect(within(bar()).getByRole('button', { name: 'Play' })).toBeEnabled();
+    rerender(
+      <LaunchBar
+        snapshot={chosen([instanceFixture()], { network: 'offline', queue: [QUEUED] })}
+        onOpenInstallations={vi.fn()}
+      />,
+    );
+    expect(within(bar()).getByRole('button', { name: 'Add to queue' })).toBeDisabled();
+    expect(within(bar()).getByText('Waiting for the internet connection')).toBeVisible();
+  });
+
+  it('shows the running game and its own install as a status, not as a button', () => {
+    backend();
+    const id = instanceFixture().id;
+    const { rerender } = render(
+      <LaunchBar
+        snapshot={chosen([instanceFixture({ health: 'ready' })], {
+          activeOperation: { kind: 'launch', instanceId: id, operationId: 'op-9' },
+        })}
+        onOpenInstallations={vi.fn()}
+      />,
+    );
+    expect(within(bar()).getByRole('status')).toHaveTextContent('The game is running.');
+    expect(within(bar()).queryByRole('button', { name: 'Play' })).toBeNull();
+    expect(within(bar()).queryByLabelText('Play as')).toBeNull();
+    rerender(
+      <LaunchBar
+        snapshot={chosen([instanceFixture()], {
+          activeOperation: { kind: 'install', instanceId: id, operationId: 'op-1' },
+        })}
+        onOpenInstallations={vi.fn()}
+      />,
+    );
+    expect(within(bar()).getByRole('status')).toHaveTextContent(/Install/);
+    expect(within(bar()).queryByRole('button', { name: /^(Install|Retry install)$/ })).toBeNull();
+  });
+
+  it('opens Installations from other screens only', () => {
+    backend();
+    const open = vi.fn();
+    const { rerender } = render(
+      <LaunchBar snapshot={snapshotFixture()} onOpenInstallations={open} />,
+    );
+    expect(within(bar()).getByText('No installation chosen')).toBeVisible();
+    fireEvent.click(within(bar()).getByRole('button', { name: 'Open Installations' }));
+    expect(open).toHaveBeenCalledOnce();
+    fireEvent.click(rerenderChosen(rerender, open));
+    expect(open).toHaveBeenCalledTimes(2);
+
+    // On Installations itself the bar links nowhere.
+    rerender(<LaunchBar snapshot={snapshotFixture()} />);
+    expect(within(bar()).queryByRole('button')).toBeNull();
+    rerender(<LaunchBar snapshot={chosen([instanceFixture({ health: 'ready' })])} />);
+    expect(within(bar()).queryByRole('button', { name: /Survival/ })).toBeNull();
+  });
+});
+
+/** Shows a chosen installation and returns the bar's button that opens Installations. */
+function rerenderChosen(rerender: (ui: React.ReactElement) => void, open: () => void): HTMLElement {
+  rerender(<LaunchBar snapshot={chosen([instanceFixture()])} onOpenInstallations={open} />);
+  return within(bar()).getByRole('button', {
+    name: 'Open Installations: Survival, Minecraft 1.21.1 · Not installed',
+  });
+}

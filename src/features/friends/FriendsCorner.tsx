@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { Button } from '../../components/Button';
 import { Field } from '../../components/Field';
+import { Icon } from '../../components/Icon';
 import forms from '../../components/forms.module.css';
 import type {
   AppSnapshot,
@@ -61,14 +62,18 @@ export function FriendsCorner({
   snapshot,
   onOpenAccounts,
   onOpenWorld,
+  placement = 'corner',
 }: {
   snapshot: AppSnapshot;
+  /** "rail": a row of concept A's rail, the panel a sheet at the window's edge; "corner": a round button. */
+  placement?: 'corner' | 'rail';
   onOpenAccounts: () => void;
   /** Shows a room in Worlds, such as one joined from a chat invite. */
   onOpenWorld: (room: string) => void;
 }) {
   const settings = snapshot.settings;
   const [open, setOpen] = useState(false);
+  const buttonRef = useRef<HTMLButtonElement>(null);
   const game = gameForInvites(snapshot, (room) => {
     setOpen(false);
     onOpenWorld(room);
@@ -78,29 +83,39 @@ export function FriendsCorner({
   useChime(view, settings, open ? roomId : null);
   if (view === null) return null;
   const waiting = view.unread + view.incoming.length;
+  const rail = placement === 'rail';
+  // Closing puts focus back on the button, wherever the panel was.
+  const close = () => {
+    setOpen(false);
+    buttonRef.current?.focus();
+  };
+  const panel = open && (
+    <FriendsPanel
+      view={view}
+      settings={settings}
+      game={game}
+      roomId={roomId}
+      onRoom={setRoomId}
+      onOpenAccounts={() => {
+        setOpen(false);
+        onOpenAccounts();
+      }}
+      onClose={rail ? close : undefined}
+    />
+  );
   return (
     <div
-      className={styles.corner}
+      className={rail ? styles.railSlot : styles.corner}
       onKeyDown={(event) => {
-        if (event.key === 'Escape') setOpen(false);
+        if (event.key === 'Escape' && open) close();
       }}
     >
-      {open && (
-        <FriendsPanel
-          view={view}
-          settings={settings}
-          game={game}
-          roomId={roomId}
-          onRoom={setRoomId}
-          onOpenAccounts={() => {
-            setOpen(false);
-            onOpenAccounts();
-          }}
-        />
-      )}
+      {/* The corner's panel sits above its button; the rail's sheet comes after it. */}
+      {!rail && panel}
       <button
+        ref={buttonRef}
         type="button"
-        className={styles.button}
+        className={rail ? styles.railButton : styles.button}
         aria-label={view.unread > 0 ? `${t.open}, ${t.unread({ count: view.unread })}` : t.open}
         aria-expanded={open}
         title={t.open}
@@ -112,10 +127,16 @@ export function FriendsCorner({
           <path d="M20 12.5a7.5 7.5 0 0 1-11 6.6L4 20.5l1.4-4.6A7.5 7.5 0 1 1 20 12.5Z" />
           <path d="M9 12.5h.01M12.5 12.5h.01M16 12.5h.01" />
         </svg>
+        {rail && (
+          <span className={styles.railLabel} aria-hidden="true">
+            {t.title}
+          </span>
+        )}
         {view.signedIn && waiting > 0 && (
           <span className={styles.badge}>{waiting > 99 ? '99+' : waiting}</span>
         )}
       </button>
+      {rail && panel}
     </div>
   );
 }
@@ -233,6 +254,7 @@ function FriendsPanel({
   roomId,
   onRoom,
   onOpenAccounts,
+  onClose,
 }: {
   view: FriendsView;
   settings: SettingsView;
@@ -240,8 +262,15 @@ function FriendsPanel({
   roomId: string | null;
   onRoom: (room: string | null) => void;
   onOpenAccounts: () => void;
+  /** The rail's sheet: focus moves into it when it opens, and it has its own Close. */
+  onClose?: (() => void) | undefined;
 }) {
   const [tab, setTab] = useState<Tab>('chats');
+  const heading = useRef<HTMLHeadingElement>(null);
+  const sheet = onClose !== undefined;
+  useEffect(() => {
+    if (sheet) heading.current?.focus();
+  }, [sheet]);
   const [grouping, setGrouping] = useState(false);
   const room = roomId === null ? undefined : view.rooms.find((r) => r.id === roomId);
   const setRoomId = onRoom;
@@ -332,7 +361,22 @@ function FriendsPanel({
       aria-label={t.title}
       data-signed-in={view.signedIn ? 'true' : undefined}
     >
-      <h2 className={styles.title}>{t.title}</h2>
+      <div className={styles.head}>
+        <h2 ref={heading} className={styles.title} tabIndex={sheet ? -1 : undefined}>
+          {t.title}
+        </h2>
+        {onClose !== undefined && (
+          <button
+            type="button"
+            className={styles.close}
+            aria-label={t.close}
+            title={t.close}
+            onClick={onClose}
+          >
+            <Icon name="x" size={18} />
+          </button>
+        )}
+      </div>
       {view.sanction !== null && (
         <p className={styles.error} role="status">
           {sanctionText(view.sanction)}

@@ -205,19 +205,23 @@
   font-weight: 600;
 }
 
-.heroActions {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: var(--space-3);
-  margin-top: var(--space-2);
-}
-
 .playAs {
   display: grid;
   gap: var(--space-1);
   max-width: 26rem;
   font-size: var(--font-size-sm);
+}
+
+.playAsCompact {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  font-size: var(--font-size-sm);
+  color: var(--color-text-muted);
+}
+
+.playAsCompact select {
+  max-width: 16rem;
 }
 
 .strong {

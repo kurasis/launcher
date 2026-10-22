@@ -2,14 +2,14 @@
   padding: var(--space-3) var(--space-4);
   border-radius: var(--radius-sm);
   border: 1px solid transparent;
-  border-inline-start-width: 4px;
+  border-inline-start-width: 3px;
+  font-size: var(--font-size-sm);
 }
 
 .info {
-  background: var(--color-neutral-bg);
-  border-color: var(--color-border);
-  border-inline-start-color: var(--color-accent-2);
-  color: var(--color-neutral-text);
+  background: var(--color-info-bg);
+  border-inline-start-color: currentcolor;
+  color: var(--color-info-text);
 }
 
 .warning {

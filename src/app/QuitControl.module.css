@@ -4,8 +4,7 @@
   display: grid;
   place-items: center;
   padding: var(--space-4);
-  background: rgb(0 0 0 / 55%);
-  backdrop-filter: blur(4px);
+  background: var(--color-scrim);
   z-index: 10;
 }
 
@@ -35,4 +34,35 @@
 .error {
   color: var(--color-danger-text);
   font-size: var(--font-size-sm);
+}
+
+/* The same in the rail: a light chip across the rail's width, readable on its green. */
+.railError {
+  flex-basis: 100%;
+  padding: var(--space-1) var(--space-2);
+  border-radius: var(--radius-sm);
+  background: var(--color-danger-bg);
+  color: var(--color-danger-text);
+  font-size: var(--font-size-xs);
+  overflow-wrap: anywhere;
+}
+
+/* The rail's Quit: an icon button on the dark rail. */
+.iconButton {
+  display: grid;
+  place-items: center;
+  flex: none;
+  width: 2rem;
+  height: 2rem;
+  padding: 0;
+  border: 0;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--color-rail-muted);
+  cursor: pointer;
+}
+
+.iconButton:hover {
+  background: var(--color-rail-hover);
+  color: var(--color-rail-text);
 }

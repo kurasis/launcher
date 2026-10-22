@@ -1,3 +1,5 @@
+import golosLicense from '@fontsource-variable/golos-text/LICENSE?raw';
+import notoArabicLicense from '@fontsource-variable/noto-sans-arabic/LICENSE?raw';
 import { Button } from '../components/Button';
 import { Notice } from '../components/Notice';
 import { Panel } from '../components/Panel';
@@ -39,6 +41,16 @@ export function AboutView() {
         <div className={styles.linkRow}>
           <LinkButton link="source_code" label={t.sourceCode} />
         </div>
+        {/* The bundled fonts travel with their copyright notice and license (OFL 1.1). */}
+        <details className={styles.fontLicenses}>
+          <summary>{t.fonts}</summary>
+          <pre className={styles.licenseText} dir="ltr" lang="en">
+            {golosLicense}
+          </pre>
+          <pre className={styles.licenseText} dir="ltr" lang="en">
+            {notoArabicLicense}
+          </pre>
+        </details>
       </Panel>
       <Panel title={t.officialTitle}>
         <div className={styles.linkRow}>
