@@ -1,12 +1,14 @@
 import { useEffect, useId, useMemo, useRef, useState, type KeyboardEvent } from 'react';
 import { Icon } from '../../components/Icon';
 import forms from '../../components/forms.module.css';
-import type { CatalogView, VersionType, VersionView } from '../../lib/contracts';
+import type { CatalogView, SpecialVersion, VersionType, VersionView } from '../../lib/contracts';
 import { numberLocale, strings } from '../../lib/strings';
 import styles from './VersionPicker.module.css';
 
 const t = strings.createForm;
-const TYPES: VersionType[] = ['release', 'snapshot', 'old_beta', 'old_alpha'];
+/** Mojang's version types, then the versions of the launcher's own list (D-073). */
+type Tab = VersionType | 'special';
+const TYPES: Tab[] = ['release', 'snapshot', 'old_beta', 'old_alpha', 'special'];
 /** Version ids are short; a longer search cannot match anything. */
 const SEARCH_MAX_LENGTH = 32;
 
@@ -28,8 +30,21 @@ function releaseDate(releaseTime: string | null): string {
   return date.toLocaleDateString(numberLocale(), { dateStyle: 'medium' });
 }
 
+function tabOf(version: VersionView): Tab {
+  return version.special == null ? version.versionType : 'special';
+}
+
+function matches(version: VersionView, needle: string): boolean {
+  if (needle === '') return true;
+  const special = version.special;
+  return [version.id, special?.name, special?.title].some(
+    (text) => text != null && text.toLowerCase().includes(needle),
+  );
+}
+
 /**
- * Every Mojang version, one tab per version type that has any (D-035). The tabs
+ * Every Mojang version, one tab per version type that has any (D-035), and the
+ * versions Mojang's list does not have on a tab of their own (D-073). The tabs
  * follow the tabs pattern: one tab stop, arrow keys (mirrored right to left), Home
  * and End. The tab follows the selection when it moves to another type.
  */
@@ -47,34 +62,40 @@ export function VersionPicker({
   const selected = versions.find((v) => v.id === value);
   // The tab the player chose, and for which selection: a selection that moves
   // elsewhere (another loader, the catalog refreshed) takes the tab with it.
-  const [picked, setPicked] = useState<{ type: VersionType; value: string } | null>(null);
+  const [picked, setPicked] = useState<{ type: Tab; value: string } | null>(null);
   const [query, setQuery] = useState('');
   const baseId = useId();
   const searchId = `${baseId}-search`;
   const panelId = `${baseId}-panel`;
-  const tabId = (type: VersionType) => `${baseId}-tab-${type}`;
+  const tabId = (type: Tab) => `${baseId}-tab-${type}`;
   const listRef = useRef<HTMLUListElement>(null);
 
   const counts = useMemo(() => {
-    const result: Record<VersionType, number> = {
+    const result: Record<Tab, number> = {
       release: 0,
       snapshot: 0,
       old_beta: 0,
       old_alpha: 0,
+      special: 0,
     };
-    for (const version of versions) result[version.versionType] += 1;
+    for (const version of versions) result[tabOf(version)] += 1;
     return result;
   }, [versions]);
   const visible = TYPES.filter((type) => counts[type] > 0);
-  const wanted = picked?.value === value ? picked.type : (selected?.versionType ?? 'release');
-  const type = visible.includes(wanted) ? wanted : (selected?.versionType ?? visible[0] ?? wanted);
+  const selectedTab = selected === undefined ? undefined : tabOf(selected);
+  const wanted = picked?.value === value ? picked.type : (selectedTab ?? 'release');
+  const type = visible.includes(wanted) ? wanted : (selectedTab ?? visible[0] ?? wanted);
   const tabbed = visible.length > 1;
 
   const needle = query.trim().toLowerCase();
-  const shown = versions.filter(
-    (v) => v.versionType === type && (needle === '' || v.id.toLowerCase().includes(needle)),
-  );
-  const latest = type === 'snapshot' ? catalog.latestSnapshot : catalog.latestRelease;
+  // Ours keep the list's order: April Fools versions first, then the rest.
+  const shown = versions.filter((v) => tabOf(v) === type && matches(v, needle));
+  const latest =
+    type === 'special'
+      ? null
+      : type === 'snapshot'
+        ? catalog.latestSnapshot
+        : catalog.latestRelease;
 
   // The chosen version stays in sight inside the list, without scrolling the page.
   useEffect(() => {
@@ -88,7 +109,7 @@ export function VersionPicker({
     }
   }, [value, type]);
 
-  const choose = (next: VersionType) => {
+  const choose = (next: Tab) => {
     setPicked({ type: next, value });
   };
 
@@ -192,11 +213,24 @@ export function VersionPicker({
                   onChange(version);
                 }}
               >
-                <span className={styles.id}>{version.id}</span>
+                {version.special == null ? (
+                  <span className={styles.id}>{version.id}</span>
+                ) : (
+                  <SpecialName version={version} special={version.special} />
+                )}
                 {version.id === latest && (
                   <span className={[styles.tag, styles.latest].join(' ')}>{t.latest}</span>
                 )}
                 {version.verified && <span className={styles.tag}>{t.verified}</span>}
+                {version.special != null && (
+                  <>
+                    <span className={styles.tag}>{t.groups[version.special.group]}</span>
+                    {version.special.variant === 'first-build' &&
+                      version.special.group !== 'first-build' && (
+                        <span className={styles.tag}>{t.groups['first-build']}</span>
+                      )}
+                  </>
+                )}
                 {version.releaseTime !== null && (
                   <time className={styles.date} dateTime={version.releaseTime}>
                     {releaseDate(version.releaseTime)}
@@ -208,5 +242,28 @@ export function VersionPicker({
         </ul>
       </div>
     </div>
+  );
+}
+
+/** A version of the launcher's own list: its name, an April Fools update's name,
+ * and for an earlier build its id, which tells it from the build Mojang kept.
+ * Latin text is isolated for right to left. */
+function SpecialName({ version, special }: { version: VersionView; special: SpecialVersion }) {
+  return (
+    <>
+      <span className={styles.id}>
+        <bdi>{special.name}</bdi>
+      </span>
+      {special.title !== null && (
+        <span className={styles.title}>
+          <bdi>{special.title}</bdi>
+        </span>
+      )}
+      {special.variant === 'first-build' && special.name !== version.id && (
+        <span className={styles.alias}>
+          <bdi>{version.id}</bdi>
+        </span>
+      )}
+    </>
   );
 }

@@ -106,7 +106,12 @@ export function CreateInstanceForm({
     loaderKind === 'none' || loaderVersion === ''
       ? null
       : { kind: loaderKind, version: loaderVersion };
-  const name = typedName ?? (versionId === '' ? '' : defaultName(versionId, loaderKind));
+  // A version of the launcher's own list is shown by its name (D-073); an
+  // earlier build by its id, which tells it from the build Mojang kept.
+  const special = catalog?.versions.find((version) => version.id === versionId)?.special;
+  const versionName =
+    special == null || special.variant === 'first-build' ? versionId : special.name;
+  const name = typedName ?? (versionId === '' ? '' : defaultName(versionName, loaderKind));
   const shownError =
     loaderError !== null && (loaderError.key === loaderKey || loaderError.key === loaderKind)
       ? loaderError.message
@@ -427,7 +432,14 @@ export function CreateInstanceForm({
               </fieldset>
               <div className={styles.chosenRow}>
                 <p role="status" className={styles.chosen}>
-                  <span>{versionId === '' ? t.noneSelected : t.selected({ id: versionId })}</span>{' '}
+                  <span>
+                    {versionId === ''
+                      ? t.noneSelected
+                      : t.selected({
+                          // A name with spaces keeps its order in Arabic.
+                          id: versionName === versionId ? versionId : `\u2068${versionName}\u2069`,
+                        })}
+                  </span>{' '}
                   <span className={styles.separator} aria-hidden="true">
                     ·
                   </span>{' '}
@@ -437,7 +449,11 @@ export function CreateInstanceForm({
                     ) : (
                       <StatusBadge
                         tone={availabilityTone[availability]}
-                        label={t.availability[availability]}
+                        label={
+                          availability === 'available' && selected?.special != null
+                            ? t.availability.special
+                            : t.availability[availability]
+                        }
                       />
                     )}
                   </span>

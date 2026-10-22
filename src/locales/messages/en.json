@@ -522,13 +522,28 @@
         "release": "Releases",
         "snapshot": "Snapshots",
         "old_beta": "Beta",
-        "old_alpha": "Alpha"
+        "old_alpha": "Alpha",
+        "special": "Special"
       },
       "typeHints": {
         "release": "Stable versions.",
         "snapshot": "Test versions before a release. They can damage worlds; keep copies of worlds you care about.",
         "old_beta": "Beta versions from 2010–2011. They run on Java 8 and have no demo mode, so playing needs a signed-in account.",
-        "old_alpha": "Alpha, Classic and pre-Classic versions from 2009–2010. They run on Java 8 and have no demo mode, so playing needs a signed-in account."
+        "old_alpha": "Alpha, Classic and pre-Classic versions from 2009–2010. They run on Java 8 and have no demo mode, so playing needs a signed-in account.",
+        "special": "Versions Mojang's list does not have: April Fools versions, 2.0, Combat Tests, experimental and early builds. Game files come from the launcher's server, checked for viruses. Older ones need a signed-in account; keep copies of worlds you care about."
+      },
+      "groups": {
+        "joke": "April Fools",
+        "unobfuscated": "Unobfuscated",
+        "experimental": "Experimental",
+        "combat": "Combat Test",
+        "first-build": "First build",
+        "early-release": "Early 1.x",
+        "beta": "Beta",
+        "alpha": "Alpha",
+        "infdev": "Infdev",
+        "indev": "Indev",
+        "classic": "Classic"
       },
       "search": "Find a version",
       "noMatch": "No version matches.",
@@ -544,7 +559,8 @@
         "available": "Available from Mojang",
         "not_in_catalog": "Not in the Mojang catalog",
         "catalog_unavailable": "Mojang catalog not reachable",
-        "checking": "Checking the Mojang catalog…"
+        "checking": "Checking the Mojang catalog…",
+        "special": "Available from the launcher's server"
       },
       "stale": "Showing the last saved catalog because it could not be refreshed.",
       "refresh": "Check again",
@@ -2720,6 +2736,7 @@
     "The launcher sets {option} itself; window size and fullscreen are separate settings.": "The launcher sets {option} itself; window size and fullscreen are separate settings.",
     "The launcher stopped before this operation finished. Verified files were kept; start it again to continue.": "The launcher stopped before this operation finished. Verified files were kept; start it again to continue.",
     "The launcher's own folder is unknown.": "The launcher's own folder is unknown.",
+    "The list of other Minecraft versions was refused.": "The list of other Minecraft versions was refused.",
     "The message is too long: 5000 characters at most.": "The message is too long: 5000 characters at most.",
     "The mod loader installer stopped unexpectedly.": "The mod loader installer stopped unexpectedly.",
     "The mod loader record is missing. Repair the installation.": "The mod loader record is missing. Repair the installation.",

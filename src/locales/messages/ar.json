@@ -523,13 +523,28 @@
         "release": "الإصدارات",
         "snapshot": "اللقطات",
         "old_beta": "بيتا",
-        "old_alpha": "ألفا"
+        "old_alpha": "ألفا",
+        "special": "خاصة"
       },
       "typeHints": {
         "release": "إصدارات مستقرة.",
         "snapshot": "إصدارات تجريبية تسبق الإصدار. قد تُتلف العوالم، فاحتفظ بنسخ من العوالم المهمة لك.",
         "old_beta": "إصدارات بيتا من 2010–2011. تعمل على Java 8 وليس لها وضع تجريبي، لذا يتطلب اللعب تسجيل الدخول.",
-        "old_alpha": "إصدارات Alpha وClassic وما قبل Classic من 2009–2010. تعمل على Java 8 وليس لها وضع تجريبي، لذا يتطلب اللعب تسجيل الدخول."
+        "old_alpha": "إصدارات Alpha وClassic وما قبل Classic من 2009–2010. تعمل على Java 8 وليس لها وضع تجريبي، لذا يتطلب اللعب تسجيل الدخول.",
+        "special": "إصدارات لا توجد في قائمة Mojang: كذبة أبريل و2.0 وCombat Test والإصدارات التجريبية والمبكرة. ملفات اللعبة من خادم المشغّل بعد فحصها من الفيروسات. تتطلب الإصدارات القديمة تسجيل الدخول؛ احتفظ بنسخ من العوالم المهمة لك."
+      },
+      "groups": {
+        "joke": "كذبة أبريل",
+        "unobfuscated": "بلا تشويش",
+        "experimental": "تجريبية",
+        "combat": "Combat Test",
+        "first-build": "البناء الأول",
+        "early-release": "1.x مبكر",
+        "beta": "بيتا",
+        "alpha": "ألفا",
+        "infdev": "Infdev",
+        "indev": "Indev",
+        "classic": "Classic"
       },
       "search": "ابحث عن إصدار",
       "noMatch": "لا يوجد إصدار مطابق.",
@@ -545,7 +560,8 @@
         "available": "متاح من Mojang",
         "not_in_catalog": "غير موجود في فهرس Mojang",
         "catalog_unavailable": "تعذّر الوصول إلى فهرس Mojang",
-        "checking": "جارٍ التحقق من فهرس Mojang…"
+        "checking": "جارٍ التحقق من فهرس Mojang…",
+        "special": "متاح من خادم المشغّل"
       },
       "stale": "يُعرض آخر فهرس محفوظ لأن تحديثه تعذّر.",
       "refresh": "تحقّق مجددًا",
@@ -2955,6 +2971,7 @@
     "{mod} needs {dependency} {version} or newer, and the world has {actual}. Take an older release of {mod} or remove it.": "يحتاج {mod} إلى {dependency} {version} أو أحدث، والعالم فيه {actual}. اختر إصدارًا أقدم من {mod} أو أزله.",
     "{mod} needs {dependency} {version}, and the world has {actual}. Take another release of {mod} or remove it.": "يحتاج {mod} إلى {dependency} {version}، والعالم فيه {actual}. اختر إصدارًا آخر من {mod} أو أزله.",
     "{mod} needs {dependency}, which is not in the world. Add it to the installation or remove {mod}, then update the world's mods.": "يحتاج {mod} إلى {dependency}، وهو غير موجود في العالم. أضفه إلى التثبيت أو أزل {mod}، ثم حدّث تعديلات العالم.",
-    "{mod} stopped the world server while it started. Take another release of {mod} or remove it.": "أوقف {mod} خادم العالم أثناء بدء تشغيله. اختر إصدارًا آخر من {mod} أو أزله."
+    "{mod} stopped the world server while it started. Take another release of {mod} or remove it.": "أوقف {mod} خادم العالم أثناء بدء تشغيله. اختر إصدارًا آخر من {mod} أو أزله.",
+    "The list of other Minecraft versions was refused.": "رُفضت قائمة إصدارات Minecraft الأخرى."
   }
 }

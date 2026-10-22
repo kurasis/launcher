@@ -550,12 +550,27 @@ export type Messages = {
       readonly snapshot: string;
       readonly old_beta: string;
       readonly old_alpha: string;
+      readonly special: string;
     };
     readonly typeHints: {
       readonly release: string;
       readonly snapshot: string;
       readonly old_beta: string;
       readonly old_alpha: string;
+      readonly special: string;
+    };
+    readonly groups: {
+      readonly joke: string;
+      readonly unobfuscated: string;
+      readonly experimental: string;
+      readonly combat: string;
+      readonly 'first-build': string;
+      readonly 'early-release': string;
+      readonly beta: string;
+      readonly alpha: string;
+      readonly infdev: string;
+      readonly indev: string;
+      readonly classic: string;
     };
     readonly search: string;
     readonly noMatch: string;
@@ -572,6 +587,7 @@ export type Messages = {
       readonly not_in_catalog: string;
       readonly catalog_unavailable: string;
       readonly checking: string;
+      readonly special: string;
     };
     readonly stale: string;
     readonly refresh: string;
