@@ -391,6 +391,7 @@
           "rate_limited": "Too many uploads: up to 10 an hour. Try again later.",
           "invalid": "Pick the file again.",
           "not_saved": "The picture could not be saved there. Choose another folder.",
+          "not_found": "Nobody with that nick wears a launcher skin or cape.",
           "server": "Something went wrong on the skins server. Try again later."
         }
       }

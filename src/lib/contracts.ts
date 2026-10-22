@@ -488,6 +488,7 @@ export type SkinsProblem =
   | 'rate_limited'
   | 'invalid'
   | 'not_saved'
+  | 'not_found'
   | 'server';
 
 export const SKINS_PROBLEMS: readonly SkinsProblem[] = [
@@ -504,6 +505,7 @@ export const SKINS_PROBLEMS: readonly SkinsProblem[] = [
   'rate_limited',
   'invalid',
   'not_saved',
+  'not_found',
   'server',
 ];
 
@@ -550,6 +552,9 @@ export interface PickedTexture {
   bytes: number;
   /** That PNG as a `data:` URL. */
   preview: string;
+  /** A skin taken by nick: whether its owner wears it with slim arms; null for a
+   * file, whose arms the player chooses. */
+  slim: boolean | null;
 }
 
 /** A request was sent, or it met theirs and you are friends now. */

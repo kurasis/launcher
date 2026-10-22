@@ -412,6 +412,13 @@ export const ipc = {
   skinsMine: (): Promise<Wardrobe> => invoke<Wardrobe>('skins_mine'),
   /** A worn texture by its hash, as a `data:` URL. */
   skinsTexture: (hash: string): Promise<string> => invoke<string>('skins_texture', { hash }),
+  /** Other players' heads by nick (up to 200): a square PNG `data:` URL, or null
+   * for a nick without a skin of ours. */
+  skinsHeads: (nicks: string[]): Promise<Record<string, string | null>> =>
+    invoke<Record<string, string | null>>('skins_heads', { nicks }),
+  /** Takes the skin or cape another player wears, by nick, as a picked one. */
+  skinsByNick: (kind: SkinKind, nick: string): Promise<PickedTexture> =>
+    invoke<PickedTexture>('skins_by_nick', { kind, nick }),
   /** Picks a PNG, GIF or APNG in the native dialog; null if it was closed. */
   skinsPick: (kind: SkinKind, title?: string): Promise<PickedTexture | null> =>
     invoke<PickedTexture | null>('skins_pick', { kind, title }),

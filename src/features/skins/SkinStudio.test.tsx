@@ -53,6 +53,7 @@ function picked(overrides: Partial<PickedTexture> = {}): PickedTexture {
     notes: [],
     bytes: 3000,
     preview: PNG,
+    slim: null,
     ...overrides,
   };
 }

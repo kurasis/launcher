@@ -140,6 +140,8 @@ fn main() {
         "mods_open_link",
         "skins_mine",
         "skins_texture",
+        "skins_heads",
+        "skins_by_nick",
         "skins_pick",
         "skins_take",
         "skins_upload",
