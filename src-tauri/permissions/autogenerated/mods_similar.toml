@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-mods-similar"
+description = "Enables the mods_similar command without any pre-configured scope."
+commands.allow = ["mods_similar"]
+
+[[permission]]
+identifier = "deny-mods-similar"
+description = "Denies the mods_similar command without any pre-configured scope."
+commands.deny = ["mods_similar"]

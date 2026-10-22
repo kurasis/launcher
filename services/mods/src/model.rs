@@ -16,6 +16,8 @@ pub struct SourceImage {
     pub url: String,
     pub title: String,
     pub description: String,
+    /// The one its site shows first.
+    pub featured: bool,
 }
 
 #[derive(Debug, Clone)]

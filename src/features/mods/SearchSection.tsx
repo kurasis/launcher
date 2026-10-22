@@ -17,7 +17,7 @@ import { compact, dateOf, loaderOf, loadersFor, ourPicture } from './helpers';
 import styles from './Mods.module.css';
 
 const PAGE = 20;
-const SORTS: ModsSort[] = ['relevance', 'downloads', 'updated', 'new', 'title'];
+const SORTS: ModsSort[] = ['relevance', 'downloads', 'trending', 'updated', 'new', 'title'];
 
 interface Filters {
   text: string;

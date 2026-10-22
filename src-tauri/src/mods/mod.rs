@@ -179,6 +179,19 @@ pub fn loader(text: &str) -> bool {
     LOADERS.contains(&text)
 }
 
+/// A category's ID in the catalog's shared list (`mod.optimization`), or a
+/// site's own slug (`512x+`).
+pub fn category(text: &str) -> bool {
+    !text.is_empty()
+        && text.len() <= 48
+        && text.bytes().all(|b| {
+            b.is_ascii_lowercase() || b.is_ascii_digit() || matches!(b, b'.' | b'-' | b'_' | b'+')
+        })
+}
+
+/// Categories one search asks for at most.
+pub const MAX_CATEGORIES: usize = 8;
+
 /// Text from the catalog: no control characters but line breaks, at most
 /// `max` characters.
 fn clean(text: &str, max: usize) -> String {
@@ -302,6 +315,12 @@ pub struct Hit {
     pub updated: i64,
     pub author: Option<String>,
     pub sources: Vec<String>,
+    /// Loaders its versions are for (of the game version searched for).
+    pub loaders: Vec<String>,
+    /// Its categories in the catalog's shared list (`mod.optimization`).
+    pub category_ids: Vec<String>,
+    /// The first picture of its gallery, small.
+    pub cover: Option<String>,
 }
 
 impl Hit {
@@ -319,6 +338,9 @@ impl Hit {
             updated: value["updated"].as_i64().unwrap_or(0),
             author: value["author"].as_str().map(|a| line(a, 128)),
             sources: list_of(&value["sources"], |s| SOURCES.contains(&s)),
+            loaders: list_of(&value["loaders"], loader),
+            category_ids: list_of(&value["categoryIds"], category),
+            cover: value["cover"].as_str().and_then(our_picture),
         })
     }
 }
@@ -383,7 +405,10 @@ pub struct Project {
     /// When the source stopped having it; it stays here.
     pub gone_at: Option<i64>,
     pub authors: Vec<Author>,
+    /// The sites' own slugs.
     pub categories: Vec<String>,
+    /// Its categories in the catalog's shared list (`mod.optimization`).
+    pub category_ids: Vec<String>,
     pub sources: Vec<SourceLink>,
     pub gallery: Vec<Picture>,
 }
@@ -435,11 +460,8 @@ impl Project {
                 })
                 .filter(|a| !a.name.is_empty())
                 .collect(),
-            categories: list_of(&value["categories"], |c| {
-                c.len() <= 32
-                    && c.bytes()
-                        .all(|b| b.is_ascii_alphanumeric() || matches!(b, b'-' | b'_'))
-            }),
+            categories: list_of(&value["categories"], category),
+            category_ids: list_of(&value["categoryIds"], category),
             sources: value["sources"]
                 .as_array()
                 .into_iter()
@@ -484,6 +506,9 @@ pub struct VersionFile {
     /// Held back by the catalog's malware check (D-066, stage 6): it has no
     /// address and is not installed.
     pub held: bool,
+    /// Kept by the catalog and found clean by its check, or kept by the
+    /// owner's word.
+    pub checked: bool,
     /// Its address on Modrinth's CDN, for a modpack's index (an export).
     #[serde(skip)]
     pub origin: Option<String>,
@@ -502,6 +527,13 @@ pub struct Dependency {
     pub project_id: Option<String>,
     /// A version the dependency names exactly.
     pub version_id: Option<String>,
+    /// The project's card, when the catalog has it.
+    pub title: Option<String>,
+    pub slug: Option<String>,
+    pub icon: Option<String>,
+    /// Where the source keeps it, when the catalog has not got it: its page
+    /// to add to the catalog (Modrinth's only; CurseForge's need a slug).
+    pub source_page: Option<String>,
 }
 
 /// A version of a project.
@@ -574,6 +606,7 @@ impl Version {
                                 .map(|u| u.to_string())
                         }),
                         sha256: sha,
+                        checked: !held && f["checked"].as_bool() == Some(true),
                         held,
                         primary: f["primary"].as_bool().unwrap_or(false),
                         origin: f["originUrl"]
@@ -605,6 +638,17 @@ impl Version {
                             .as_str()
                             .filter(|i| our_id(i))
                             .map(str::to_owned),
+                        title: d["title"].as_str().map(|t| line(t, 256)),
+                        slug: d["slug"]
+                            .as_str()
+                            .filter(|s| project_ref(s))
+                            .map(str::to_owned),
+                        icon: d["iconThumb"].as_str().and_then(our_picture),
+                        source_page: (d["source"].as_str() == Some("modrinth"))
+                            .then(|| d["sourceProject"].as_str())
+                            .flatten()
+                            .filter(|p| project_ref(p))
+                            .map(|p| format!("https://modrinth.com/project/{p}")),
                     })
                 })
                 .collect(),
@@ -737,7 +781,18 @@ pub struct SearchQuery {
     pub game: Option<String>,
     pub loader: Option<String>,
     pub category: Option<String>,
-    /// `relevance`, `downloads`, `updated`, `new` or `title`.
+    /// Several categories: a project in any of them (at most 8, with
+    /// `category`).
+    #[serde(default)]
+    pub categories: Vec<String>,
+    /// Where projects came from: `own` for players' packs.
+    pub source: Option<String>,
+    /// Added to the catalog in the last this many days (1 to 365).
+    pub since: Option<u32>,
+    /// One of the catalog's collections, by its key.
+    pub collection: Option<String>,
+    /// `relevance`, `downloads`, `updated`, `new`, `title` or `trending`
+    /// (the most downloads gained in the last week).
     pub sort: Option<String>,
     #[serde(default)]
     pub offset: u32,
@@ -747,8 +802,13 @@ pub struct SearchQuery {
 impl SearchQuery {
     /// The query string, or why it is refused.
     fn url(&self) -> LauncherResult<url::Url> {
+        self.url_of("/v1/search")
+    }
+
+    /// The query string at a path of the catalog's API.
+    fn url_of(&self, path: &str) -> LauncherResult<url::Url> {
         let bad = || LauncherError::invalid_input("This search cannot be made.");
-        let mut url = url::Url::parse(&format!("{}/v1/search", base())).map_err(|_| bad())?;
+        let mut url = url::Url::parse(&format!("{}{path}", base())).map_err(|_| bad())?;
         {
             let mut q = url.query_pairs_mut();
             let text = line(&self.text, 200);
@@ -773,16 +833,36 @@ impl SearchQuery {
                 }
                 q.append_pair("loader", l);
             }
-            if let Some(category) = &self.category {
-                if !project_ref(category) || category.len() > 32 {
+            let categories: Vec<&String> = self.category.iter().chain(&self.categories).collect();
+            if categories.len() > MAX_CATEGORIES || !categories.iter().all(|c| category(c)) {
+                return Err(bad());
+            }
+            if !categories.is_empty() {
+                let joined: Vec<&str> = categories.iter().map(|c| c.as_str()).collect();
+                q.append_pair("category", &joined.join(","));
+            }
+            if let Some(source) = &self.source {
+                if !SOURCES.contains(&source.as_str()) {
                     return Err(bad());
                 }
-                q.append_pair("category", category);
+                q.append_pair("source", source);
+            }
+            if let Some(since) = self.since {
+                if !(1..=365).contains(&since) {
+                    return Err(bad());
+                }
+                q.append_pair("since", &since.to_string());
+            }
+            if let Some(key) = &self.collection {
+                if !collection_key(key) {
+                    return Err(bad());
+                }
+                q.append_pair("collection", key);
             }
             if let Some(sort) = &self.sort {
                 if !matches!(
                     sort.as_str(),
-                    "relevance" | "downloads" | "updated" | "new" | "title"
+                    "relevance" | "downloads" | "updated" | "new" | "title" | "trending"
                 ) {
                     return Err(bad());
                 }
@@ -793,6 +873,160 @@ impl SearchQuery {
         }
         Ok(url)
     }
+}
+
+/// A collection's key: 1 to 32 of `a-z`, `0-9` and `-`.
+pub fn collection_key(key: &str) -> bool {
+    (1..=32).contains(&key.len())
+        && key
+            .bytes()
+            .all(|b| b.is_ascii_lowercase() || b.is_ascii_digit() || b == b'-')
+}
+
+/// How many projects a search finds in one category.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct CategoryCount {
+    /// In the catalog's shared list: `mod.optimization`.
+    pub id: String,
+    pub count: i64,
+}
+
+/// What to search for to list a collection: these fields of a search.
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct CollectionQuery {
+    pub sort: Option<String>,
+    pub since: Option<u32>,
+    pub source: Option<String>,
+    pub collection: Option<String>,
+}
+
+/// A collection of the catalog's (D-072): the week's most popular
+/// (`popular-week`), what is new (`new`), players' packs (`players-packs`),
+/// or one the owner keeps, with its titles.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct Collection {
+    pub id: String,
+    /// One of the catalog's own, named by the interface.
+    pub preset: bool,
+    /// The owner's title and line, by language (`ru`, `en`, `ar`).
+    pub titles: std::collections::BTreeMap<String, String>,
+    pub notes: std::collections::BTreeMap<String, String>,
+    /// The game version and loader the owner made it for.
+    pub game: Option<String>,
+    pub loader: Option<String>,
+    pub query: CollectionQuery,
+    /// Its projects for the game version and loader asked for.
+    pub count: i64,
+    /// The first projects' icons (four at most) and titles (two).
+    pub icons: Vec<String>,
+    pub names: Vec<String>,
+}
+
+/// Texts of a collection by language, as the catalog gives them.
+fn texts(value: &Value, max: usize) -> std::collections::BTreeMap<String, String> {
+    value
+        .as_object()
+        .into_iter()
+        .flatten()
+        .filter(|(lang, _)| matches!(lang.as_str(), "ru" | "en" | "ar"))
+        .filter_map(|(lang, text)| {
+            let text = line(text.as_str()?, max);
+            (!text.is_empty()).then(|| (lang.clone(), text))
+        })
+        .collect()
+}
+
+impl Collection {
+    fn from(value: &Value) -> Option<Self> {
+        let id = value["id"]
+            .as_str()
+            .filter(|k| collection_key(k))?
+            .to_owned();
+        let q = &value["query"];
+        let query = CollectionQuery {
+            sort: q["sort"]
+                .as_str()
+                .filter(|s| {
+                    matches!(
+                        *s,
+                        "relevance" | "downloads" | "updated" | "new" | "title" | "trending"
+                    )
+                })
+                .map(str::to_owned),
+            since: q["since"]
+                .as_u64()
+                .filter(|d| (1..=365).contains(d))
+                .map(|d| d as u32),
+            source: q["source"]
+                .as_str()
+                .filter(|s| SOURCES.contains(s))
+                .map(str::to_owned),
+            collection: q["collection"]
+                .as_str()
+                .filter(|k| collection_key(k))
+                .map(str::to_owned),
+        };
+        Some(Self {
+            id,
+            preset: value["preset"].as_bool().unwrap_or(false),
+            titles: texts(&value["titles"], 64),
+            notes: texts(&value["notes"], 160),
+            game: value["game"]
+                .as_str()
+                .filter(|g| game_version(g))
+                .map(str::to_owned),
+            loader: value["loader"]
+                .as_str()
+                .filter(|l| loader(l))
+                .map(str::to_owned),
+            query,
+            count: value["count"].as_i64().unwrap_or(0).max(0),
+            icons: value["icons"]
+                .as_array()
+                .into_iter()
+                .flatten()
+                .filter_map(|i| i.as_str().and_then(our_picture))
+                .take(4)
+                .collect(),
+            names: value["names"]
+                .as_array()
+                .into_iter()
+                .flatten()
+                .filter_map(|n| n.as_str().map(|n| line(n, 256)))
+                .take(2)
+                .collect(),
+        })
+    }
+}
+
+/// Which of a project's versions to list, a page at a time.
+#[derive(Debug, Clone, Default, PartialEq, Eq, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct VersionsQuery {
+    pub game: Option<String>,
+    pub loader: Option<String>,
+    /// `release`, `beta` or `alpha`.
+    pub channel: Option<String>,
+    #[serde(default)]
+    pub offset: u32,
+    /// At most 100; 50 when not given.
+    pub limit: Option<u32>,
+}
+
+/// A page of a project's versions.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct VersionPage {
+    /// How many match the query, on every page.
+    pub total: i64,
+    pub versions: Vec<Version>,
+    /// The game versions (newest first) and loaders of all its versions,
+    /// whatever the query: what its filters can choose from.
+    pub games: Vec<String>,
+    pub loaders: Vec<String>,
 }
 
 /// Text the player typed into "Add to the catalog": one line, at most 512
@@ -907,6 +1141,150 @@ impl Client {
                 .take(50)
                 .filter_map(Hit::from)
                 .collect(),
+        })
+    }
+
+    /// How many projects a search finds in each category of its kind, the
+    /// categories it asks for aside.
+    pub async fn categories(&self, query: &SearchQuery) -> LauncherResult<Vec<CategoryCount>> {
+        let value = self
+            .send(
+                self.http.get(query.url_of("/v1/categories")?),
+                MAX_ANSWER_BYTES,
+            )
+            .await?;
+        Ok(value["categories"]
+            .as_array()
+            .into_iter()
+            .flatten()
+            .take(200)
+            .filter_map(|c| {
+                Some(CategoryCount {
+                    id: c["id"].as_str().filter(|i| category(i))?.to_owned(),
+                    count: c["count"].as_i64().unwrap_or(0).max(0),
+                })
+            })
+            .collect())
+    }
+
+    /// Up to five projects like one, for a game version and a loader.
+    pub async fn similar(
+        &self,
+        project: &str,
+        game: Option<&str>,
+        loader_name: Option<&str>,
+    ) -> LauncherResult<Vec<Hit>> {
+        if !project_ref(project) {
+            return Err(not_found());
+        }
+        let mut url = url::Url::parse(&Self::url(&format!("/v1/projects/{project}/similar")))
+            .map_err(|_| not_found())?;
+        {
+            let mut q = url.query_pairs_mut();
+            if let Some(game) = game.filter(|g| game_version(g)) {
+                q.append_pair("game", game);
+            }
+            if let Some(l) = loader_name.filter(|l| loader(l)) {
+                q.append_pair("loader", l);
+            }
+        }
+        let value = self.send(self.http.get(url), MAX_ANSWER_BYTES).await?;
+        Ok(value["hits"]
+            .as_array()
+            .into_iter()
+            .flatten()
+            .take(5)
+            .filter_map(Hit::from)
+            .collect())
+    }
+
+    /// The catalog's collections for a kind, a game version and a loader.
+    pub async fn collections(
+        &self,
+        kind_name: &str,
+        game: Option<&str>,
+        loader_name: Option<&str>,
+    ) -> LauncherResult<Vec<Collection>> {
+        let bad = || LauncherError::invalid_input("This search cannot be made.");
+        if !KINDS.contains(&kind_name)
+            || game.is_some_and(|g| !game_version(g))
+            || loader_name.is_some_and(|l| !loader(l))
+        {
+            return Err(bad());
+        }
+        let mut url = url::Url::parse(&Self::url("/v1/collections")).map_err(|_| bad())?;
+        {
+            let mut q = url.query_pairs_mut();
+            q.append_pair("kind", kind_name);
+            if let Some(game) = game {
+                q.append_pair("game", game);
+            }
+            if let Some(l) = loader_name {
+                q.append_pair("loader", l);
+            }
+        }
+        let value = self.send(self.http.get(url), MAX_ANSWER_BYTES).await?;
+        Ok(value["collections"]
+            .as_array()
+            .into_iter()
+            .flatten()
+            .take(50)
+            .filter_map(Collection::from)
+            .collect())
+    }
+
+    /// A page of a project's versions, newest first.
+    pub async fn versions_page(
+        &self,
+        project: &str,
+        query: &VersionsQuery,
+    ) -> LauncherResult<VersionPage> {
+        let bad = || LauncherError::invalid_input("This search cannot be made.");
+        if !project_ref(project) {
+            return Err(not_found());
+        }
+        if query.game.as_deref().is_some_and(|g| !game_version(g))
+            || query.loader.as_deref().is_some_and(|l| !loader(l))
+            || query
+                .channel
+                .as_deref()
+                .is_some_and(|c| !matches!(c, "release" | "beta" | "alpha"))
+        {
+            return Err(bad());
+        }
+        let mut url = url::Url::parse(&Self::url(&format!("/v1/projects/{project}/versions")))
+            .map_err(|_| not_found())?;
+        let limit = query.limit.unwrap_or(50).clamp(1, 100);
+        {
+            let mut q = url.query_pairs_mut();
+            for (name, value) in [
+                ("game", &query.game),
+                ("loader", &query.loader),
+                ("channel", &query.channel),
+            ] {
+                if let Some(value) = value {
+                    q.append_pair(name, value);
+                }
+            }
+            q.append_pair("offset", &query.offset.min(10_000).to_string());
+            q.append_pair("limit", &limit.to_string());
+        }
+        let value = self.send(self.http.get(url), MAX_ANSWER_BYTES).await?;
+        let versions: Vec<Version> = value["versions"]
+            .as_array()
+            .into_iter()
+            .flatten()
+            .take(limit as usize)
+            .filter_map(|v| Version::from(v, false))
+            .collect();
+        Ok(VersionPage {
+            total: value["total"]
+                .as_i64()
+                .unwrap_or(versions.len() as i64)
+                .max(0),
+            versions,
+            games: list_of(&value["games"], game_version),
+            loaders: list_of(&value["loaders"], loader),
         })
     }
 

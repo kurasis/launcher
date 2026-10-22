@@ -46,6 +46,7 @@
 mod api;
 mod auth;
 mod blobs;
+mod categories;
 mod curseforge;
 mod external;
 mod fetch;
@@ -193,7 +194,7 @@ fn main() -> std::process::ExitCode {
         }),
         // VirusTotal's word on files (virustotal.rs), and the owner's
         // additions to the catalog; `--stdin` as below.
-        Some(command @ ("virustotal" | "add" | "slug" | "clash")) => {
+        Some(command @ ("virustotal" | "add" | "slug" | "clash" | "collection" | "categories")) => {
             external_args(&args[1..]).and_then(|given| {
                 for line in owner_command(command, &given)? {
                     println!("{line}");
@@ -237,7 +238,7 @@ fn main() -> std::process::ExitCode {
             Ok(())
         }
         _ => Err(
-            "usage: lapi-mods serve|counts|backup|probe|scan|thumb|find|review|block|unblock|remove|forget|restore|external|virustotal|add|slug|clash|health"
+            "usage: lapi-mods serve|counts|backup|probe|scan|thumb|find|review|block|unblock|remove|forget|restore|external|virustotal|add|slug|clash|collection|categories|health"
                 .to_owned(),
         ),
     };
@@ -360,6 +361,8 @@ fn owner_command(command: &str, args: &[String]) -> Result<Vec<String>, String> 
         ("add", inputs) => owner.add(inputs),
         ("slug", [project, slug]) => owner.slug(project, slug),
         ("clash", args) => owner.clash(args),
+        ("collection", args) => owner.collection(args),
+        ("categories", args) => owner.categories(args),
         ("health", []) => owner.health(popular(), &data.join("backups")),
         ("remove", [project, reason @ ..]) => owner.remove(project, &owner::reason(reason)),
         ("forget", [h, rest @ ..]) => match (hash(h)?, rest) {
@@ -520,6 +523,27 @@ fn serve() -> Result<(), String> {
                 tokio::time::sleep(Duration::from_secs(5)).await;
                 import::check_requests(&upkeep);
                 upkeep.blobs.reload_quota(&settings());
+            }
+        });
+        // Each project's downloads on its sites, once a day, for the week's
+        // most popular (D-072).
+        let noting = Arc::clone(&app);
+        tokio::spawn(async move {
+            loop {
+                let today = store::day_of(import::now());
+                let noted = noting.store.upkeep("downloads_noted").ok().flatten();
+                if noted != Some(today) {
+                    let store = Arc::clone(&noting);
+                    let done = tokio::task::spawn_blocking(move || {
+                        store.store.note_downloads(import::now())?;
+                        store.store.set_upkeep("downloads_noted", today)
+                    })
+                    .await;
+                    if !matches!(done, Ok(Ok(()))) {
+                        eprintln!("lapi-mods: noting downloads failed");
+                    }
+                }
+                tokio::time::sleep(Duration::from_secs(3600)).await;
             }
         });
         // New versions: projects are checked at their source again in the

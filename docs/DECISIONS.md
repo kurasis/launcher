@@ -2745,6 +2745,19 @@ skins-mod <channel>` there only checks the signature against the public key and
   catalog is not reached, and a launch waits for it at most three seconds. What is left
   is a warning ("start anyway", "open the mods", "not now"), never a block, and what
   cannot be compared counts as fine, so a set that starts is never stopped.
+- **Browsing for concept A (2026-10-22, D-072).** The tiles, collections and categories
+  the owner chose need the catalog to say more. Categories are one shared list
+  (`services/mods/src/categories.rs`, IDs like `mod.optimization`), each mapping
+  Modrinth's and CurseForge's own slugs for one kind; a search takes up to 8 at once and
+  `/v1/categories` counts the projects in each for the same search. Hits carry their
+  loaders, shared categories and a cover (the gallery's featured picture). Collections
+  are the week's most popular (downloads gained, from a daily copy of the sources'
+  public numbers: our own installs are counted only for players who chose to send
+  statistics), what was added in 7 days, players' packs, and the owner's own, titled
+  in ru, en and ar (`lapi-mods collection`). A version's files say whether the
+  catalog's check found them clean (`checked`); dependencies carry their title, icon
+  and slug; versions come a page at a time with the game versions and loaders to filter
+  by; `/similar` gives up to five projects of the same kind sharing most categories.
 
 ## D-067 — Start page feed at feed.lapi.sh
 

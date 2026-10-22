@@ -494,6 +494,7 @@ fn shots(value: &Value, depth: usize, seen: &mut usize, found: &mut Vec<(i64, So
                         url,
                         title: text(value, "title", 200),
                         description: text(value, "description", 1000),
+                        featured: false,
                     },
                 ));
                 return;
@@ -854,6 +855,7 @@ fn card_of(stream: &str, project: &Value) -> Card {
                 url: https(s.get("url")).or_else(|| https(s.get("imageUrl")))?,
                 title: text(&s, "title", 200),
                 description: text(&s, "description", 1000),
+                featured: false,
             })
         })
         .take(40)

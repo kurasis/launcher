@@ -42,6 +42,9 @@ const page: ModsSearchPage = {
       updated: 1_760_000_000,
       author: 'jellysquid',
       sources: ['modrinth'],
+      loaders: ['fabric', 'quilt'],
+      categoryIds: ['mod.optimization'],
+      cover: null,
     },
   ],
 };
@@ -73,6 +76,7 @@ const project: ModsProject = {
   goneAt: null,
   authors: [{ name: 'jellysquid', role: 'owner' }],
   categories: ['optimization'],
+  categoryIds: ['mod.optimization'],
   sources: [{ source: 'modrinth', url: 'https://modrinth.com/mod/sodium' }],
   gallery: [],
 };
@@ -89,7 +93,17 @@ const version: ModsVersion = {
   saved: 'none',
   games: ['1.21.1'],
   loaders: ['fabric'],
-  files: [{ name: 'sodium.jar', size: 1024, sha256: null, primary: true, url: null, held: false }],
+  files: [
+    {
+      name: 'sodium.jar',
+      size: 1024,
+      sha256: null,
+      primary: true,
+      url: null,
+      held: false,
+      checked: false,
+    },
+  ],
   dependencies: [],
   goneAt: null,
 };
@@ -618,6 +632,7 @@ describe('ModsView', () => {
           primary: true,
           url: null,
           held: true,
+          checked: false,
         },
       ],
     };
@@ -950,6 +965,7 @@ describe('ModsView', () => {
           primary: true,
           url: null,
           held: false,
+          checked: false,
         },
       ],
     };
@@ -1047,6 +1063,7 @@ describe('ModsView', () => {
             primary: true,
             url: null,
             held: false,
+            checked: false,
           },
         ],
       };

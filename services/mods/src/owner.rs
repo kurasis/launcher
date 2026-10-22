@@ -654,6 +654,172 @@ impl Owner<'_> {
         }
     }
 
+    /// The owner's collections in the catalog (D-072): `list`, `add <key>
+    /// <kind> [game|-] [loader|-]`, `title` or `note <key> <ru|en|ar>
+    /// [text]` (no text takes it away), `put <key> <project>…` in their order,
+    /// and `remove <key>`.
+    pub fn collection(&self, args: &[String]) -> Result<Vec<String>, String> {
+        const USAGE: &str = "usage: lapi-mods collection list | add <key> <kind> [game|-] [loader|-] \
+                             | title <key> <ru|en|ar> [text] | note <key> <ru|en|ar> [text] \
+                             | put <key> <project>... | remove <key>";
+        let key = |k: &str| {
+            let k = k.trim();
+            if crate::api::collection_key(k) {
+                Ok(k.to_owned())
+            } else {
+                Err("a key is 1 to 32 small letters, digits and hyphens".to_owned())
+            }
+        };
+        let optional = |v: Option<&String>| -> Result<Option<String>, String> {
+            match v.map(|v| v.trim()) {
+                None | Some("-" | "") => Ok(None),
+                Some(v) => crate::model::word(v)
+                    .filter(|w| w.len() <= 32)
+                    .map(Some)
+                    .ok_or_else(|| "a game version or loader is one word".to_owned()),
+            }
+        };
+        match args {
+            [list] if list == "list" => {
+                let rows = self.store.all_collections()?;
+                let mut lines: Vec<String> = rows
+                    .iter()
+                    .map(|r| {
+                        let langs = |m: &serde_json::Map<String, serde_json::Value>| {
+                            let mut l: Vec<&str> = m.keys().map(String::as_str).collect();
+                            l.sort_unstable();
+                            if l.is_empty() {
+                                "-".to_owned()
+                            } else {
+                                l.join(",")
+                            }
+                        };
+                        format!(
+                            "{} {} {} {} {} projects, titles {}, notes {}",
+                            r.key,
+                            r.kind,
+                            r.game.as_deref().unwrap_or("-"),
+                            r.loader.as_deref().unwrap_or("-"),
+                            r.count,
+                            langs(&r.titles),
+                            langs(&r.notes)
+                        )
+                    })
+                    .collect();
+                lines.push(format!("{} collections", rows.len()));
+                Ok(lines)
+            }
+            [verb, k, kind, rest @ ..] if verb == "add" && rest.len() <= 2 => {
+                let k = key(k)?;
+                if crate::api::PRESETS.contains(&k.as_str()) {
+                    return Err(format!("{k} is one of the catalog's own collections"));
+                }
+                let kind = kind.trim().to_ascii_lowercase();
+                if !crate::model::KINDS.contains(&kind.as_str()) {
+                    return Err(format!(
+                        "a kind is one of {}",
+                        crate::model::KINDS.join(", ")
+                    ));
+                }
+                let game = optional(rest.first())?;
+                let loader = optional(rest.get(1))?;
+                self.store.set_collection(
+                    &k,
+                    &kind,
+                    game.as_deref(),
+                    loader.as_deref(),
+                    self.now,
+                )?;
+                Ok(vec![format!("collection {k} set")])
+            }
+            [verb, k, lang, text @ ..] if verb == "title" || verb == "note" => {
+                let k = key(k)?;
+                let lang = lang.trim();
+                if !matches!(lang, "ru" | "en" | "ar") {
+                    return Err("a language is ru, en or ar".to_owned());
+                }
+                let text = text.join(" ");
+                let text = text.trim();
+                let longest = if verb == "title" { 64 } else { 160 };
+                if text.chars().count() > longest || text.chars().any(char::is_control) {
+                    return Err(format!("one line of at most {longest} characters"));
+                }
+                let field = if verb == "title" { "titles" } else { "notes" };
+                if !self
+                    .store
+                    .set_collection_text(&k, field, lang, text, self.now)?
+                {
+                    return Err(format!("no collection {k}"));
+                }
+                Ok(vec![format!(
+                    "collection {k} {verb} {lang} {}",
+                    if text.is_empty() { "removed" } else { "set" }
+                )])
+            }
+            [verb, k, projects @ ..] if verb == "put" => {
+                let k = key(k)?;
+                if projects.len() > 100 {
+                    return Err("at most 100 projects".to_owned());
+                }
+                let mut found = Vec::new();
+                let mut missing = 0;
+                for project in projects {
+                    match self.store.project_id(project.trim())? {
+                        Some(id) if !found.contains(&id) => found.push(id),
+                        Some(_) => {}
+                        None => missing += 1,
+                    }
+                }
+                match self.store.set_collection_items(&k, &found, self.now)? {
+                    Some(put) => Ok(vec![format!(
+                        "collection {k}: {put} projects, {missing} not found"
+                    )]),
+                    None => Err(format!("no collection {k}")),
+                }
+            }
+            [verb, k] if verb == "remove" => {
+                let k = key(k)?;
+                if self.store.remove_collection(&k)? {
+                    Ok(vec![format!("collection {k} removed")])
+                } else {
+                    Err(format!("no collection {k}"))
+                }
+            }
+            _ => Err(USAGE.to_owned()),
+        }
+    }
+
+    /// How many projects of a kind (`mod` when none is given) are in each
+    /// category, and how many of the sites' slugs no category maps.
+    pub fn categories(&self, args: &[String]) -> Result<Vec<String>, String> {
+        let kind = match args {
+            [] => "mod".to_owned(),
+            [kind] if crate::model::KINDS.contains(&kind.as_str()) => kind.clone(),
+            _ => {
+                return Err(format!(
+                    "usage: lapi-mods categories [{}]",
+                    crate::model::KINDS.join("|")
+                ));
+            }
+        };
+        let search = crate::store::Search {
+            kind: Some(kind.clone()),
+            sort: "relevance",
+            ..crate::store::Search::default()
+        };
+        let mut lines: Vec<String> = self
+            .store
+            .category_counts(&search)?
+            .into_iter()
+            .map(|(id, n)| format!("{id} {n}"))
+            .collect();
+        let (slugs, projects) = self.store.unmapped_categories(&search)?;
+        lines.push(format!(
+            "{kind}: {slugs} slugs in no category, {projects} projects in none"
+        ));
+        Ok(lines)
+    }
+
     /// Gives a project another slug, for one the catalog named badly (as
     /// `fabric-api-modrinth-20953b` was); another project's slug is refused.
     /// The old slug leads to it only when a source has it.
