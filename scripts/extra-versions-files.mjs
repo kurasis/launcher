@@ -5,9 +5,12 @@
 // D-073). Prints numbers only.
 //
 //   node scripts/extra-versions-files.mjs <dir> [--skip <file with one SHA-1 per line>]
+//                                              [--shard <i>/<n>]
 //
 // A jar already in <dir> with the right SHA-1 is kept. A jar whose SHA-1 is in
-// the skip file (what upd.lapi.sh has already) is not downloaded.
+// the skip file (what upd.lapi.sh has already) is not downloaded. With a shard,
+// only every n-th jar by SHA-1 from the i-th (counting from 0), so n runners
+// share the virus check.
 import { createHash } from 'node:crypto';
 import { existsSync, mkdirSync, readFileSync, renameSync, rmSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
@@ -16,8 +19,16 @@ const DATA = new URL('../data/extra-versions.json', import.meta.url);
 const AT_ONCE = 4;
 
 const [dir, ...rest] = process.argv.slice(2);
-if (!dir) throw new Error('usage: extra-versions-files.mjs <dir> [--skip <file>]');
-const skipFile = rest[0] === '--skip' ? rest[1] : null;
+const option = (name) => {
+  const at = rest.indexOf(name);
+  return at === -1 ? null : rest[at + 1];
+};
+const skipFile = option('--skip');
+const shard = (option('--shard') ?? '0/1').match(/^(\d{1,2})\/(\d{1,2})$/);
+if (!dir || !shard || Number(shard[1]) >= Number(shard[2])) {
+  throw new Error('usage: extra-versions-files.mjs <dir> [--skip <file>] [--shard <i>/<n>]');
+}
+const [index, count] = [Number(shard[1]), Number(shard[2])];
 const skip = new Set(
   skipFile
     ? readFileSync(skipFile, 'utf8')
@@ -55,8 +66,11 @@ async function download(file) {
 }
 
 mkdirSync(dir, { recursive: true });
-const wanted = [...files.values()].filter((file) => !skip.has(file.sha1));
-const counts = { jars: files.size, skipped: files.size - wanted.length };
+const mine = [...files.values()]
+  .sort((a, b) => (a.sha1 < b.sha1 ? -1 : 1))
+  .filter((_, at) => at % count === index);
+const wanted = mine.filter((file) => !skip.has(file.sha1));
+const counts = { jars: mine.length, skipped: mine.length - wanted.length };
 let next = 0;
 await Promise.all(
   Array.from({ length: AT_ONCE }, async () => {

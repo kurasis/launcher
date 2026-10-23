@@ -7,12 +7,14 @@ name: Versions
 # get the list, the version files and every game jar from upd.lapi.sh only.
 #
 # "Check" downloads every jar from where it came from (Mojang or the archives),
-# checks its SHA-1 and size, and checks them all for viruses with ClamAV; any
-# finding stops the run. On main, "Publish" then signs the list with the update
-# key (it never goes to the server), uploads the jars upd.lapi.sh does not have
-# yet (each the same bytes "Check" scanned, by SHA-256), the version files and the
-# list, and lapi-upd puts them in place: `versions-files`, then `versions`, which
-# checks the signature and that every file is there. Logs hold numbers only.
+# checks its SHA-1 and size, and checks them all for viruses with ClamAV, on
+# four runners; any finding stops the run. On main, "Publish" then signs the
+# list with the update key (it never goes to the server), uploads the jars
+# upd.lapi.sh does not have yet (each the same bytes "Check" scanned, by
+# SHA-256), the version files and the list, and lapi-upd puts them in place:
+# `versions-files`, then `versions`, which checks the signature and that every
+# file is there. Logs hold numbers, and for a finding the jar's SHA-1 and what
+# ClamAV named.
 #
 # The server serves /versions/ once deploy/bootstrap.sh has installed the nginx
 # files with it (the last step warns until then).
@@ -39,18 +41,24 @@ concurrency:
 
 jobs:
   check:
-    name: Download and check the jars
+    name: Download and check the jars (${{ matrix.shard }}/4)
     runs-on: ubuntu-24.04
-    timeout-minutes: 150
+    timeout-minutes: 120
+    strategy:
+      fail-fast: false
+      matrix:
+        # Four runners share the jars by SHA-1, four scanners each.
+        shard: [0, 1, 2, 3]
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
-      - name: Download every jar
-        timeout-minutes: 45
-        run: node scripts/extra-versions-files.mjs jars
+      - name: Download the jars
+        timeout-minutes: 30
+        run: node scripts/extra-versions-files.mjs jars --shard ${{ matrix.shard }}/4
       - name: Check for viruses
-        timeout-minutes: 100
+        timeout-minutes: 90
         run: |
-          set -uo pipefail
+          # The scanner's exit is read below, not left to stop the step.
+          set +e -uo pipefail
           # The official image comes with the virus database of its day;
           # freshclam takes a newer one when the database servers let it. Four
           # scanners at once, each opening every jar whole: a jar holds tens of
@@ -73,28 +81,33 @@ jobs:
             [ -s "/tmp/list$n" ] || continue
             clamscan --infected --no-summary --file-list="/tmp/list$n" \
               --max-files=500000 --max-scansize=4000M --max-filesize=1000M \
-              --max-recursion=30 --alert-exceeds-max=yes &
+              --max-recursion=30 --max-scantime=1800000 --alert-exceeds-max=yes &
             pids="$pids $!"
           done
           status=0
-          for pid in $pids; do wait "$pid" || status=1; done
+          for pid in $pids; do wait "$pid" || status=$?; done
           exit "$status"
           SCAN
           docker run --rm -v "$PWD/jars:/scan:ro" -v "$PWD/scan.sh:/scan.sh:ro" \
             --entrypoint /bin/sh clamav/clamav:stable /scan.sh > clamscan.txt 2> clamscan.err
           status=$?
           found=$(grep -c ' FOUND$' clamscan.txt || true)
-          echo "jars checked: $(find jars -name '*.jar' | wc -l), viruses found: $found"
+          echo "jars checked: $(find jars -name '*.jar' | wc -l), findings: $found, scanner exit: $status"
+          # Each finding as the jar's SHA-1 and what ClamAV named; these are
+          # public game files, nothing about players.
+          sed -n 's|^/scan/\([0-9a-f]\{40\}\)\.jar: \(.*\) FOUND$|\1 \2|p' clamscan.txt
           if [ "$status" != 0 ] || [ "$found" != 0 ]; then
+            grep -v '^/scan/' clamscan.txt | tail -n 20 || true
+            tail -n 20 clamscan.err || true
             echo "::error::ClamAV did not pass every jar (exit $status, $found found)"
             exit 1
           fi
       - name: Note what was checked
-        run: (cd jars && sha256sum -- *.jar) > checked.sha256
+        run: (cd jars && sha256sum -- *.jar) > checked-${{ matrix.shard }}.sha256
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
         with:
-          name: checked
-          path: checked.sha256
+          name: checked-${{ matrix.shard }}
+          path: checked-${{ matrix.shard }}.sha256
           retention-days: 3
 
   publish:
@@ -116,7 +129,12 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
       - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8
         with:
-          name: checked
+          pattern: checked-*
+          merge-multiple: true
+      - name: Every jar checked
+        run: |
+          cat checked-*.sha256 > checked.sha256
+          echo "jars checked: $(grep -c . checked.sha256)"
       - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6
         with:
           path: |
