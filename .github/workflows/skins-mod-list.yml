@@ -147,7 +147,11 @@ jobs:
           while read -r sum name; do
             name="${name#\*}"
             [[ "$name" =~ ^launcherskins-[a-z0-9.-]+\.jar$ ]] || continue
-            curl -fsS --retry 3 --max-time 60 -o "served/$name" \
+            # Some Cloudflare data centres reach the server badly (525, or a
+            # file that stops coming: 2026-10-23, PDX and SEA, where runners
+            # land), so a failed or stalled try is tried again.
+            curl -fsS --retry 5 --retry-all-errors --retry-delay 5 \
+              --speed-limit 4096 --speed-time 15 --max-time 60 -o "served/$name" \
               "https://upd.lapi.sh/skins-mod/$VERSION/$name"
             echo "$sum  served/$name" | sha256sum -c --quiet - ||
               { echo "::error::upd.lapi.sh serves another $name"; exit 1; }

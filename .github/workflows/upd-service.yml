@@ -5,7 +5,10 @@ name: Update service
 # public key (repository variable UPDATE_PUBLIC_KEY). nginx serves the updates
 # as static files; publishing a launcher version is done on the server:
 #   sudo -u lapi-upd /home/www/lapi/upd/current/lapi-upd publish <version>
-# "Run workflow" with task=reports shows what each channel offers.
+# "Run workflow" with task=reports shows what each channel offers; task=server
+# shows what the server is short of when Cloudflare cannot reach it (525, slow
+# files): numbers from the server, and the newest skins mod's jars fetched
+# through Cloudflare and TLS straight to the server from a runner.
 
 on:
   push:
@@ -30,9 +33,9 @@ on:
   workflow_dispatch:
     inputs:
       task:
-        description: deploy, or reports for what each channel offers
+        description: deploy, reports for what each channel offers, or server for a check of the server
         type: choice
-        options: [deploy, reports]
+        options: [deploy, reports, server]
         default: deploy
 
 permissions:
@@ -163,5 +166,93 @@ jobs:
             echo '```'
             ssh "$TARGET" \
               'sudo -n -u lapi-upd /home/www/lapi/upd/current/lapi-upd status'
+            echo '```'
+          } | tee -a "$GITHUB_STEP_SUMMARY"
+
+  server:
+    name: Server check
+    if: github.event_name == 'workflow_dispatch' && inputs.task == 'server'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+      - uses: ./.github/actions/lapi-ssh
+        with:
+          ssh-key: ${{ secrets.SSH_KEY }}
+          known-hosts: ${{ secrets.SSH_KNOWN_HOSTS }}
+      - name: The server
+        env:
+          TARGET: ${{ secrets.SSH_USER }}@${{ secrets.SSH_HOST }}
+        run: |
+          {
+            echo '### The server, before'
+            echo '```'
+            ssh "$TARGET" bash -s < scripts/server-check.sh
+            echo '```'
+          } | tee -a "$GITHUB_STEP_SUMMARY"
+      - name: Files through Cloudflare
+        timeout-minutes: 10
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          # The newest skins mod's jars, each past Cloudflare's cache (a query
+          # of its own) so every one is a request to the server, eight at a
+          # time. One line per request: data centre (the part of cf-ray after
+          # the dash, like IAD), status, bytes received of the file's size,
+          # seconds.
+          tag=$(gh release list --limit 50 --json tagName \
+            -q '[.[] | select(.tagName | startswith("skins-mod-v"))][0].tagName')
+          version=${tag#skins-mod-v}
+          gh release download "$tag" --pattern SHA256SUMS
+          awk '{ sub(/^\*/, "", $2) } $2 ~ /^launcherskins-[a-z0-9.-]+\.jar$/ { print $2 }' SHA256SUMS > names
+          export version
+          fetch() {
+            out=$(curl -sS -o /dev/null --max-time 20 \
+              -w '%{http_code} %{size_download} %{time_total} %header{cf-ray} %header{content-length}' \
+              "https://upd.lapi.sh/skins-mod/$version/$1?check=$GITHUB_RUN_ID" 2>/dev/null)
+            read -r code bytes secs ray length <<< "$out"
+            echo "${ray##*-} ${code:-000} ${bytes:-0} of ${length:-?} ${secs:-20}"
+          }
+          export -f fetch
+          xargs -P 8 -I{} bash -c 'fetch {}' < names | sort > answers
+          {
+            echo "### Skins mod $version through Cloudflare: $(wc -l < answers) requests"
+            echo '```'
+            echo "data centre, status: requests"
+            awk '{ print $1 ", " $2 }' answers | sort | uniq -c
+            awk '{ t += $NF; if ($NF > m) m = $NF } END { printf "seconds: average %.2f, longest %.2f\n", t / NR, m }' answers
+            echo "not whole (data centre, status, bytes of size, seconds):"
+            awk '$3 != $5' answers | head -40
+            echo '```'
+          } | tee -a "$GITHUB_STEP_SUMMARY"
+      - name: TLS straight to the server
+        env:
+          SSH_HOST: ${{ secrets.SSH_HOST }}
+        run: |
+          # Only handshakes: the server answers nothing around Cloudflare.
+          ip=$(getent ahostsv4 "$SSH_HOST" | awk 'NR == 1 { print $1 }')
+          [ -n "$ip" ] && echo "::add-mask::$ip"
+          ok=0 failed=0 slow=0
+          for _ in $(seq 1 40); do
+            start=$(date +%s%N)
+            if echo | timeout 10 openssl s_client -connect "$ip:443" -servername upd.lapi.sh >/dev/null 2>&1; then
+              ok=$((ok + 1))
+              [ $(( ($(date +%s%N) - start) / 1000000 )) -gt 1000 ] && slow=$((slow + 1))
+            else
+              failed=$((failed + 1))
+            fi
+          done
+          {
+            echo '### TLS straight to the server'
+            echo "handshakes: $ok of 40 ok, $failed failed, $slow over a second"
+          } | tee -a "$GITHUB_STEP_SUMMARY"
+      - name: The server, after
+        env:
+          TARGET: ${{ secrets.SSH_USER }}@${{ secrets.SSH_HOST }}
+        run: |
+          {
+            echo '### The server, after'
+            echo '```'
+            ssh "$TARGET" bash -s < scripts/server-check.sh
             echo '```'
           } | tee -a "$GITHUB_STEP_SUMMARY"
