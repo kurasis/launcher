@@ -42,7 +42,8 @@ version × loader × mod set, played by a test bot for a set number of minutes.
    1.14.4 and 1.15.2 in `mod/gametest/mc-1.14.4-1.15.2/` (on Forge, which has no Mixin
    there, driven by Forge's client tick event), those for 1.20.4 and 1.20.6 in
    `mod/gametest/mc-1.20.2-1.20.6/`, those for 1.21.x in
-   `mod/gametest/mc-<version>/`.
+   `mod/gametest/mc-<version>/`, and the newest snapshot's are 26.3's built against it
+   (`mod/gametest/mc-snapshot/`).
 
 3. It serves test skins from the machine itself (`tests/gametest/skins.rs`), the way
    skins.lapi.sh answers: HD skins 64 to 512, slim and wide, animated strips, static and
@@ -129,7 +130,8 @@ hand does so with "promote". The run with the newest mods has its own results
 
 ## Running it
 
-"Run workflow" on the Game test workflow, on `main`. Inputs pick the versions (26.3,
+"Run workflow" on the Game test workflow, on `main`. Inputs pick the versions (the newest
+snapshot, 26.4-snapshot-5, with Fabric and without a loader only; 26.3,
 1.21.11, 1.21.10, 1.21.8, 1.21.4, 1.21.1, 1.20.6, 1.20.4, 1.20.1, 1.19.4, 1.19.2, 1.18.2, 1.17.1, 1.16.5,
 1.15.2, 1.14.4, 1.12.2, 1.8.9, 1.7.10: one release of each group the mod builds a jar for, and from 1.16 to 1.20.1 the
 releases where the game's own code changes most), loaders (vanilla, fabric, quilt, neoforge, forge;
@@ -140,7 +142,8 @@ screenshot) and "newest" (then play the `medium` scenarios with the newest mods 
 what passes). 1.12.2, 1.8.9 and 1.7.10 are played with Forge only, 1.14.4 to 1.20.1 without NeoForge, and
 the game with no loader without mods. It also runs every night at 03:00 Moscow time with
 the defaults (26.3, 1.21.11, 1.21.1, 1.20.1, 1.12.2): 36 scenarios of 5 minutes, then the
-`medium` ones with the newest mods.
+`medium` ones with the newest mods. Each night also plays three of the other versions in
+turn, without the `medium` set, so every version is played within five nights.
 
 The workflow never runs for pull requests or from other branches.
 

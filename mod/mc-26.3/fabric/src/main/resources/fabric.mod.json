@@ -12,7 +12,7 @@
   "mixins": ["launcherskins.mixins.json"],
   "depends": {
     "fabricloader": ">=0.15.0",
-    "minecraft": ">=26.1 <=26.3",
+    "minecraft": "${minecraft}",
     "java": ">=25"
   }
 }

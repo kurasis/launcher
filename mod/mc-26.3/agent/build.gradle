@@ -6,8 +6,10 @@ plugins {
 // command line. Loom only supplies the game's classes to compile against; the jar holds
 // the core, the game layer shared with the loaders (without its Mixin) and the agent,
 // which rewrites PlayerInfo.getSkin() with the JDK's class-file API.
+// Also built for the newest snapshot (mc-snapshot/agent), whose gradle.properties name
+// the game version and the band (`band`).
 base {
-    archivesName = "launcherskins-agent-26.1-26.3"
+    archivesName = "launcherskins-agent-${band}"
 }
 
 java {
@@ -15,9 +17,23 @@ java {
 }
 
 sourceSets.main {
-    java.srcDir "${rootDir}/core/src/main/java"
-    java.srcDir "${projectDir}/../common/src/main/java"
+    java.srcDirs = ["${rootDir}/core/src/main/java", "${rootDir}/mc-26.3/common/src/main/java",
+                    "${rootDir}/mc-26.3/agent/src/main/java"]
     java.exclude 'app/launcher/skins/mixin/**'
+}
+
+// The newest snapshot (mc-snapshot) uses its own copy of each class in mc-snapshot/common
+// instead of mc-26.3's, where its game code differs from 26.3's.
+def ownLayer = file("${projectDir}/../common/src/main/java")
+def sharedLayer = file("${rootDir}/mc-26.3/common/src/main/java")
+if (ownLayer != sharedLayer && ownLayer.isDirectory()) {
+    def replaced = fileTree(ownLayer).collect { ownLayer.toPath().relativize(it.toPath()).toString().replace('\\', '/') } as Set
+    sourceSets.main.java.srcDir ownLayer
+    sourceSets.main.java.exclude { e -> e.file.path.startsWith(sharedLayer.path) && replaced.contains(e.relativePath.pathString) }
+}
+
+sourceSets.test {
+    java.srcDirs = ["${rootDir}/mc-26.3/agent/src/test/java"]
 }
 
 dependencies {

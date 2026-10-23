@@ -11,10 +11,11 @@ java {
 }
 
 // The bot and this version's game layer are compiled in.
+// Also the bot for the newest snapshot (gametest/mc-snapshot/fabric).
 sourceSets.main {
-    java.srcDir "${rootDir}/gametest/core/src/main/java"
-    java.srcDir "${projectDir}/../common/src/main/java"
-    resources.srcDir "${projectDir}/../common/src/main/resources"
+    java.srcDirs = ["${rootDir}/gametest/core/src/main/java", "${rootDir}/gametest/mc-26.3/common/src/main/java"]
+    resources.srcDirs = ["${rootDir}/gametest/mc-26.3/common/src/main/resources",
+                         "${rootDir}/gametest/mc-26.3/fabric/src/main/resources"]
 }
 
 dependencies {
@@ -29,7 +30,8 @@ tasks.withType(JavaCompile).configureEach {
 
 processResources {
     inputs.property 'version', project.version
+    inputs.property 'minecraft', minecraft_version
     filesMatching('fabric.mod.json') {
-        expand version: project.version
+        expand version: project.version, minecraft: minecraft_version
     }
 }

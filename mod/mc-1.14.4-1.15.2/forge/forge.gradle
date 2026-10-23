@@ -2,8 +2,8 @@ plugins {
     id 'dev.architectury.loom' version '1.17.493'
 }
 
-// The Forge jar for 1.14.4 or 1.15.2 (a project in the folder of its release). These
-// Forge releases have no Mixin, so a JavaScript coremod (src/main/resources) passes what
+// The Forge jars for 1.14.2 to 1.16.4 (a project in the folder of the release each is built
+// against). Forge has no Mixin before 1.16.1 (and not in every 1.16.1 build), so a JavaScript coremod (src/main/resources) passes what
 // the player's skin getters return through LauncherSkins, as the Mixin of 1.16.5 on does.
 // The game layer is mc-1.16.5-1.20.1's; Architectury Loom remaps the jar to the release's
 // SRG names, which differ between the two for what the layer uses.

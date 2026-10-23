@@ -48,6 +48,9 @@ include 'core'
     ['fabric', 'neoforge', 'forge'].each { loader -> add "${band}:${loader}" }
 }
 add 'mc-26.3:agent'
+// The newest snapshot: mc-26.3's sources and scripts against that snapshot.
+add 'mc-snapshot:fabric', '../../mc-26.3/fabric/build.gradle'
+add 'mc-snapshot:agent', '../../mc-26.3/agent/build.gradle'
 add 'mc-1.12.2:forge'
 // Forge 1.8.9: mc-1.12.2's sources built against 1.8.9 (Unimined).
 add 'mc-1.8.9:forge'
@@ -70,7 +73,7 @@ add 'mc-1.7.10:forge'
 ['1.14.4', '1.15.1'].each { release ->
     add "mc-1.14.4-1.15.2:fabric:${release}", '../../../mc-1.16.5-1.20.1/fabric/fabric.gradle'
 }
-['1.14.4', '1.15.2'].each { release -> add "mc-1.14.4-1.15.2:forge:${release}", '../forge.gradle' }
+['1.14.4', '1.15.1', '1.15.2'].each { release -> add "mc-1.14.4-1.15.2:forge:${release}", '../forge.gradle' }
 // 1.20.2 to 1.20.6 take mc-1.21.1's game layer; their Forge and NeoForge jars are projects
 // in mc-1.20.2-1.20.6/<loader>, each built by mc-1.20.2-1.20.6/arch.gradle.
 ['forge', 'neoforge'].each { loader ->
@@ -96,6 +99,7 @@ include 'gametest:core'
     }
 }
 ['fabric', 'neoforge', 'forge', 'agent'].each { loader -> add "gametest:mc-26.3:${loader}" }
+['fabric', 'agent'].each { loader -> add "gametest:mc-snapshot:${loader}", "../../mc-26.3/${loader}/build.gradle" }
 add 'gametest:mc-1.12.2:forge'
 add 'gametest:mc-1.8.9:forge'
 add 'gametest:mc-1.7.10:forge'

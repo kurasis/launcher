@@ -137,6 +137,24 @@ fn request<P>(payload: P) -> MutationRequest<P> {
 }
 
 /// The one jar in `dir` named `<prefix><loader>-<game>-<version>.jar`.
+/// The target and label of this commit's skins mod build for a game version and
+/// loader, from `mod/builds.json`: the launcher's `BUILDS` lag behind it until a
+/// new mod version is pinned.
+fn skins_label(game: &str, loader: Option<LoaderKind>) -> Option<(&'static str, String)> {
+    let target = skins_mod::Target::for_game(game, loader)?.as_str();
+    let builds: Vec<Value> = serde_json::from_str(include_str!("../../mod/builds.json")).ok()?;
+    builds
+        .iter()
+        .find(|b| {
+            b["target"] == target
+                && b["games"]
+                    .as_array()
+                    .is_some_and(|g| g.iter().any(|v| v == game))
+        })
+        .and_then(|b| b["label"].as_str())
+        .map(|label| (target, label.to_owned()))
+}
+
 fn built_jar(dir: &Path, prefix: &str, loader: &str, game: &str) -> Option<PathBuf> {
     let start = format!("{prefix}{loader}-{game}-");
     report::files_starting(dir, &start).into_iter().find(|p| {
@@ -310,8 +328,8 @@ async fn the_game_is_played_with_mods_and_skins() {
     let bot_jar = built_jar(&jars, "launchergametest-", jar_kind, &version)
         .expect("the test bot's jar for this version and loader in GAMETEST_JARS");
     // The skins mod's build for this version: several versions may share one.
-    let skins_jar = skins_mod::Build::find(&version, kind)
-        .and_then(|b| built_jar(&jars, "launcherskins-", b.target.as_str(), b.label));
+    let skins_jar = skins_label(&version, kind)
+        .and_then(|(target, label)| built_jar(&jars, "launcherskins-", target, &label));
 
     // The installation: one per version, loader and mod set, kept between runs.
     let memory = MemoryPolicy::detect();

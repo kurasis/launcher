@@ -2093,42 +2093,44 @@ archive from the Package workflow, upload it to
   behaviour only, as Prism was for sign-in; nothing is copied.
 - **Game versions (owner's choice):** 26.x, 1.21.x and 1.12.2 first (2026-10-19), then
   every release down to 1.14.4 and Forge 1.8.9 and 1.7.10 (2026-10-21, "масштабно
-  расширь"); no snapshots. What mod 0.6.3 covers, as `mod/builds.json` and the
-  launcher's `BUILDS` list it (updated 2026-10-23):
+  расширь"); of snapshots only the newest one (2026-10-23: an older snapshot has no
+  players, so a new one replaces it in `mod/mc-snapshot`, `builds.json` and `BUILDS`).
+  What mod 0.7.0 covers, as `mod/builds.json` lists it (updated 2026-10-23):
 
-  | Game version   | Fabric (also Quilt) | NeoForge               | Forge                    | Without a loader |
-  | -------------- | ------------------- | ---------------------- | ------------------------ | ---------------- |
-  | 26.1–26.3      | yes                 | yes                    | yes                      | Java agent       |
-  | 1.21.2–1.21.11 | yes                 | yes                    | yes                      | Java agent       |
-  | 1.21.1         | yes                 | yes                    | yes                      | Java agent       |
-  | 1.21           | yes                 | yes                    | no                       | Java agent       |
-  | 1.20.6         | yes                 | yes                    | yes                      | Java agent       |
-  | 1.20.5         | yes                 | no                     | no                       | Java agent       |
-  | 1.20.2–1.20.4  | yes                 | yes                    | yes                      | Java agent       |
-  | 1.20.1         | yes                 | yes (runs Forge's jar) | yes                      | Java agent       |
-  | 1.17.1–1.20    | yes                 | no NeoForge then       | yes                      | Java agent       |
-  | 1.17           | yes                 | no NeoForge then       | no                       | Java agent       |
-  | 1.16.5         | yes                 | no NeoForge then       | yes (first with Mixin)   | Java agent       |
-  | 1.16–1.16.4    | yes                 | no NeoForge then       | no                       | Java agent       |
-  | 1.15.2         | yes                 | no NeoForge then       | yes (JavaScript coremod) | Java agent       |
-  | 1.15–1.15.1    | yes                 | no NeoForge then       | no                       | Java agent       |
-  | 1.14.4         | yes                 | no NeoForge then       | yes (JavaScript coremod) | Java agent       |
-  | 1.12.2         | no Fabric then      | no NeoForge then       | yes (ASM coremod)        | no               |
-  | 1.8.9          | no Fabric then      | no NeoForge then       | yes (ASM coremod)        | no               |
-  | 1.7.10         | no Fabric then      | no NeoForge then       | yes (ASM coremod)        | no               |
+  | Game version    | Fabric (also Quilt) | NeoForge               | Forge                    | Without a loader |
+  | --------------- | ------------------- | ---------------------- | ------------------------ | ---------------- |
+  | 26.4-snapshot-5 | yes                 | none for snapshots     | none for snapshots       | Java agent       |
+  | 26.1–26.3       | yes                 | yes                    | yes                      | Java agent       |
+  | 1.20.6–1.21.11  | yes                 | yes                    | yes                      | Java agent       |
+  | 1.20.5          | yes                 | yes                    | no Forge then            | Java agent       |
+  | 1.20.2–1.20.4   | yes                 | yes                    | yes                      | Java agent       |
+  | 1.20.1          | yes                 | yes (runs Forge's jar) | yes                      | Java agent       |
+  | 1.17.1–1.20     | yes                 | no NeoForge then       | yes                      | Java agent       |
+  | 1.17            | yes                 | no NeoForge then       | no Forge then            | Java agent       |
+  | 1.16.5          | yes                 | no NeoForge then       | yes (Mixin)              | Java agent       |
+  | 1.16.1–1.16.4   | yes                 | no NeoForge then       | yes (JavaScript coremod) | Java agent       |
+  | 1.16            | yes                 | no NeoForge then       | no Forge then            | Java agent       |
+  | 1.15.2          | yes                 | no NeoForge then       | yes (JavaScript coremod) | Java agent       |
+  | 1.15–1.15.1     | yes                 | no NeoForge then       | yes (JavaScript coremod) | Java agent       |
+  | 1.14.4          | yes                 | no NeoForge then       | yes (JavaScript coremod) | Java agent       |
+  | 1.14.2–1.14.3   | yes                 | no NeoForge then       | yes (JavaScript coremod) | no               |
+  | 1.14–1.14.1     | yes                 | no NeoForge then       | no Forge then            | no               |
+  | 1.12.2          | no Fabric then      | no NeoForge then       | yes (ASM coremod)        | no               |
+  | 1.8.9           | no Fabric then      | no NeoForge then       | yes (ASM coremod)        | no               |
+  | 1.7.10          | no Fabric then      | no NeoForge then       | yes (ASM coremod)        | no               |
 
   Everywhere: skins and capes by nick, HD up to 512 and animation. 1.7.10 has no slim
-  arms (the game has none). A game version not in the table, a snapshot or a release
-  candidate gets no jar and starts without it. The agent rewrites the same game method
-  the mods hook: one for 26.x, whose names are not obfuscated, and one per release before
-  26.1, built in Mojang names and remapped to that release's names. Forge 1.12.2 and
-  older have no agent: their players run Forge.
+  arms (the game has none). A game version not in the table, an older snapshot, a
+  pre-release or a release candidate gets no jar and starts without it. The agent
+  rewrites the same game method the mods hook: one for 26.x and the snapshot, whose names
+  are not obfuscated, and one per release before 26.1, built in Mojang names and remapped
+  to that release's names. Forge 1.12.2 and older have no agent: their players run Forge.
 
   Played in the real game by the Game test (docs/GAMETEST.md) every night: 26.3,
   1.21.11, 1.21.1 and 1.20.1 with every loader they have and without one, and 1.12.2
-  on Forge. The test also has bots for 1.21.10, 1.21.8, 1.21.4, 1.20.6, 1.20.4, 1.19.4,
-  1.19.2, 1.18.2, 1.17.1, 1.16.5, 1.15.2, 1.14.4, 1.8.9 and 1.7.10, played when a run
-  names them.
+  on Forge; and in turn three more of the versions it has bots for (the snapshot,
+  1.21.10, 1.21.8, 1.21.4, 1.20.6, 1.20.4, 1.19.4, 1.19.2, 1.18.2, 1.17.1, 1.16.5, 1.15.2,
+  1.14.4, 1.8.9 and 1.7.10) without the mod set, so each is played within five nights.
 
 - **Textures:** PNG only. A skin frame is 64×64 × k (k = 1, 2, 4, 8, so up to 512×512;
   64×32 × k, the layout before 1.8, only as one frame: the mod turns it into the
