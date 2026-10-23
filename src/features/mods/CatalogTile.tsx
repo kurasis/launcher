@@ -10,7 +10,13 @@ import styles from './Catalog.module.css';
 const TONES = [styles.tone0, styles.tone1, styles.tone2, styles.tone3, styles.tone4];
 
 /** A project's icon: the catalog's picture, else a letter on a color of its own. */
-export function ProjectIcon({ hit, className }: { hit: ModsHit; className?: string | undefined }) {
+export function ProjectIcon({
+  hit,
+  className,
+}: {
+  hit: Pick<ModsHit, 'icon' | 'title' | 'slug'>;
+  className?: string | undefined;
+}) {
   const icon = ourPicture(hit.icon);
   const [broken, setBroken] = useState(false);
   const name = hit.title || hit.slug;

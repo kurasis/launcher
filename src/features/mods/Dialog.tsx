@@ -14,6 +14,15 @@ interface DialogProps {
 export function Dialog({ title, onClose, children, wide = false }: DialogProps) {
   const titleId = useId();
   const ref = useRef<HTMLDivElement>(null);
+  // The focus goes back to what opened the dialog when it closes.
+  useEffect(() => {
+    const before = document.activeElement;
+    return () => {
+      if (before instanceof HTMLElement && before !== document.body && before.isConnected) {
+        before.focus({ preventScroll: true });
+      }
+    };
+  }, []);
   useEffect(() => {
     const first = ref.current?.querySelector<HTMLElement>('input, select, button');
     first?.focus();

@@ -8,14 +8,6 @@
   gap: var(--space-3);
 }
 
-.controls {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: flex-end;
-  gap: var(--space-3);
-  margin: var(--space-3) 0;
-}
-
 .field {
   display: grid;
   gap: var(--space-1);
@@ -27,15 +19,6 @@
   width: 3rem;
   height: 3rem;
   border-radius: var(--radius-sm);
-  background: var(--color-neutral-bg);
-  object-fit: cover;
-}
-
-.bigIcon {
-  flex: none;
-  width: 6rem;
-  height: 6rem;
-  border-radius: var(--radius-md);
   background: var(--color-neutral-bg);
   object-fit: cover;
 }
@@ -83,31 +66,6 @@
   font-weight: 500;
 }
 
-.tags {
-  display: flex;
-  flex-wrap: wrap;
-  gap: var(--space-1);
-}
-
-.back {
-  justify-self: start;
-}
-
-.projectHead {
-  display: flex;
-  flex-wrap: wrap;
-  gap: var(--space-4);
-  align-items: flex-start;
-}
-
-.projectTitle {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: var(--space-2);
-  font-size: var(--font-size-xl);
-}
-
 .subTitle {
   margin-top: var(--space-4);
   font-size: var(--font-size-md);
@@ -125,26 +83,24 @@
   margin: 0 0 var(--space-4);
 }
 
-.rich :where(h3, h4, h5, h6) {
+.rich :where(h4, h5, h6) {
   margin: var(--space-6) 0 var(--space-3);
-  font-weight: 700;
+  font-weight: 600;
   line-height: 1.25;
 }
 
-.rich h3 {
-  font-size: 2em;
-}
-
+/* Under the panel's own title: the scale's steps, never larger than it. */
 .rich h4 {
-  font-size: 1.5em;
+  font-size: var(--font-size-md);
 }
 
 .rich h5 {
-  font-size: 1.25em;
+  font-size: var(--font-size-sm);
 }
 
 .rich h6 {
-  font-size: 1em;
+  font-size: var(--font-size-sm);
+  color: var(--color-text-2);
 }
 
 .rich > :first-child {
@@ -179,13 +135,13 @@
 
 .rich code {
   font-family: var(--font-mono);
-  font-size: 0.9em;
+  font-size: var(--font-size-sm);
 }
 
 .rich blockquote {
   margin: 0;
   padding-inline-start: var(--space-3);
-  border-inline-start: 3px solid var(--color-border-strong);
+  border-inline-start: 2px solid var(--color-border-strong);
   color: var(--color-text-muted);
 }
 
@@ -215,34 +171,6 @@
   vertical-align: middle;
 }
 
-.gallery {
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(min(100%, 14rem), 1fr));
-  gap: var(--space-3);
-  margin: 0;
-  padding: 0;
-  list-style: none;
-}
-
-.gallery figure {
-  display: grid;
-  gap: var(--space-1);
-  margin: 0;
-}
-
-.gallery img {
-  width: 100%;
-  aspect-ratio: 16 / 9;
-  border-radius: var(--radius-sm);
-  background: var(--color-neutral-bg);
-  object-fit: cover;
-}
-
-.gallery figcaption {
-  color: var(--color-text-muted);
-  font-size: var(--font-size-xs);
-}
-
 .check {
   display: inline-flex;
   align-items: center;
@@ -250,7 +178,6 @@
   font-size: var(--font-size-sm);
 }
 
-.versions,
 .contentList,
 .requests,
 .candidates,
@@ -262,7 +189,6 @@
   list-style: none;
 }
 
-.version,
 .request,
 .contentRow,
 .candidate,
@@ -294,19 +220,6 @@
   object-fit: cover;
 }
 
-.versionHead {
-  display: grid;
-  gap: var(--space-1);
-}
-
-.versionName {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: var(--space-2);
-  font-weight: 600;
-}
-
 /* A question under a file's row: who needs it, and what goes with it. */
 .rowAsk {
   display: grid;
@@ -319,11 +232,6 @@
   flex-wrap: wrap;
   align-items: center;
   gap: var(--space-2);
-}
-
-.note {
-  color: var(--color-warning-text);
-  font-size: var(--font-size-sm);
 }
 
 .progress {
