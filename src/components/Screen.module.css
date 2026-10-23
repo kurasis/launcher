@@ -48,9 +48,11 @@
   min-inline-size: 0;
 }
 
+/* At the head's end, also once they wrap under a long title. */
 .actions {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
   gap: var(--space-2);
+  margin-inline-start: auto;
 }

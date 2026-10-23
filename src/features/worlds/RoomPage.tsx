@@ -94,10 +94,13 @@ export function RoomPage({
   const opener = useRef<HTMLElement | null>(null);
   const play = useRef<HTMLButtonElement>(null);
   const start = useRef<HTMLButtonElement>(null);
-  useFocusBack(asking === null ? null : asking.kind, opener, headingRef);
+  const memberList = useRef<HTMLUListElement>(null);
+  // A member removed or banned takes the row's buttons along: the list has the focus.
+  useFocusBack(asking === null ? null : asking.kind, opener, memberList, headingRef);
 
+  /** The page again; it settles once shown, whether or not it came. */
   const load = useCallback(() => {
-    ipc
+    return ipc
       .worldsRoom(room)
       .then((next) => {
         setPage(next);
@@ -109,8 +112,10 @@ export function RoomPage({
   }, [room]);
 
   useEffect(() => {
-    load();
-    const timer = window.setInterval(load, ROOMS_EVERY_MS);
+    void load();
+    const timer = window.setInterval(() => {
+      void load();
+    }, ROOMS_EVERY_MS);
     return () => {
       window.clearInterval(timer);
     };
@@ -119,14 +124,15 @@ export function RoomPage({
   // Opening or closing the world here shows at once.
   const hostingHere = state.hosting?.room === room ? state.hosting.phase : null;
   useEffect(() => {
-    if (hostingHere !== null) load();
+    if (hostingHere !== null) void load();
   }, [hostingHere, load]);
 
   const found = page?.room ?? listed;
   const world = found === null ? null : (local.find((w) => w.id === found.world) ?? null);
   const actions = useRoomActions({ roomId: room, room: found, local: world, onLocal });
-  // Accept the EULA goes with its answer: Open for friends takes the focus.
-  useFocusBack(world?.eulaAccepted, start);
+  // Accept the EULA goes with its answer: Open for friends takes the focus, or the title
+  // while another room is played here.
+  useFocusBack(world?.eulaAccepted, start, headingRef);
   const here = activeRoom(state) === room;
 
   const ask = (next: Asking, from: HTMLElement | null) => {
@@ -207,6 +213,7 @@ export function RoomPage({
   return (
     <Screen
       title={found.name}
+      isolateTitle
       headingRef={headingRef}
       top={back}
       aside={
@@ -304,6 +311,7 @@ export function RoomPage({
             }}
             onAnswer={answer}
             onDone={load}
+            listRef={memberList}
           />
           {owner && world?.loader != null && (
             <WorldMods room={found.id} world={world} state={state} />
@@ -335,6 +343,7 @@ function Members({
   onNo,
   onAnswer,
   onDone,
+  listRef,
 }: {
   page: WorldsRoomPage | null;
   role: WorldsRole;
@@ -347,7 +356,9 @@ function Members({
   onAsk: (next: Asking, from: HTMLElement | null) => void;
   onNo: () => void;
   onAnswer: (action: () => Promise<unknown>, after: () => void) => void;
-  onDone: () => void;
+  /** The page again: the question closes once it shows what the answer did. */
+  onDone: () => Promise<void>;
+  listRef: RefObject<HTMLUListElement | null>;
 }) {
   const friends = useFriends();
   const members = page?.members ?? [];
@@ -418,7 +429,10 @@ function Members({
               cancel={t.cancel}
               pending={answering}
               onYes={() => {
-                onAnswer(() => ipc.worldsModerate(room, member.account, asking.kind), onDone);
+                onAnswer(
+                  () => ipc.worldsModerate(room, member.account, asking.kind).then(onDone),
+                  () => undefined,
+                );
               }}
               onNo={onNo}
             />
@@ -434,7 +448,7 @@ function Members({
       {page === null ? (
         <p className={styles.muted}>{t.loading}</p>
       ) : (
-        <ul className={styles.memberList}>
+        <ul ref={listRef} className={styles.memberList} aria-label={t.members} tabIndex={-1}>
           {present.map(row)}
           {former.map(row)}
         </ul>
@@ -460,7 +474,8 @@ function Invite({ room }: { room: string }) {
   const chosen = people.some((p) => p.id === friend) ? friend : (people[0]?.id ?? '');
 
   const make = () => {
-    if (making) return;
+    // A code sent meanwhile would be said of the new one.
+    if (making || sending) return;
     setMaking(true);
     setError(null);
     setCopied(false);
@@ -539,7 +554,7 @@ function Invite({ room }: { room: string }) {
             </select>
           )}
         </Field>
-        <Button aria-disabled={making || undefined} onClick={make}>
+        <Button aria-disabled={making || sending || undefined} onClick={make}>
           <Icon name="key" size={18} />
           {t.invite.make}
         </Button>
@@ -608,7 +623,7 @@ function Invite({ room }: { room: string }) {
               </Button>
             </div>
           )}
-          <p className={styles.panelHint} role="status">
+          <p className={styles.live} role="status">
             {sent === null ? '' : t.invite.sent({ nick: isolate(sent) })}
           </p>
         </div>

@@ -144,7 +144,9 @@ export function WorldMods({ room, world, state }: Props) {
     ? chosen
     : (list.find((s) => s.instanceId === world.source)?.instanceId ?? list[0]?.instanceId ?? '');
   const hosted = state.hosting?.world === world.id && state.hosting.clean === null;
-  const waiting = state.maintenance || state.preparing !== null || state.guest !== null;
+  // The update's own press sets `maintenance`: that wait keeps the focus where it is.
+  const waiting = state.preparing !== null || state.guest !== null;
+  const working = busy || state.maintenance;
   const answered = preview !== null && preview.conflicts.every((c) => c.path in choices);
   // Update the world goes with the preview it answered: the focus goes to the toggle.
   useFocusBack(preview === null, toggle);
@@ -164,7 +166,7 @@ export function WorldMods({ room, world, state }: Props) {
   };
 
   const show = () => {
-    if (busy) return;
+    if (working) return;
     setPreview(null);
     setChoices({});
     run(async () => {
@@ -174,7 +176,7 @@ export function WorldMods({ room, world, state }: Props) {
   };
 
   const apply = (shown: WorldsUpdatePreview) => {
-    if (busy) return;
+    if (working) return;
     const reopen = hosted;
     run(async () => {
       if (reopen) await ipc.worldsStopHosting();
@@ -247,7 +249,7 @@ export function WorldMods({ room, world, state }: Props) {
               </Field>
               <Button
                 disabled={waiting || picked === ''}
-                aria-disabled={busy || undefined}
+                aria-disabled={working || undefined}
                 onClick={show}
               >
                 {t.show}
@@ -292,7 +294,7 @@ export function WorldMods({ room, world, state }: Props) {
                   <Button
                     variant="primary"
                     disabled={waiting || !answered}
-                    aria-disabled={busy || undefined}
+                    aria-disabled={working || undefined}
                     onClick={() => {
                       apply(preview);
                     }}
@@ -304,7 +306,7 @@ export function WorldMods({ room, world, state }: Props) {
             ))}
         </div>
       )}
-      <p className={styles.panelHint} role="status">
+      <p className={styles.live} role="status">
         {busy && preview === null ? strings.backups.working : (note ?? '')}
       </p>
       {error !== null && <Notice tone="danger">{error}</Notice>}

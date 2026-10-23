@@ -65,7 +65,10 @@ export function WorldBackups({ world, state }: Props) {
   useFocusBack(restoring?.id ?? null, opener, list);
 
   const hosted = state.hosting?.world === world.id && state.hosting.clean === null;
-  const waiting = hosted || state.maintenance || state.preparing !== null;
+  // Waits something else set stay disabled; a backup, restore or export under way (its
+  // own press sets `maintenance`) keeps the focus on the pressed button.
+  const waiting = hosted || state.preparing !== null;
+  const working = busy || state.maintenance;
 
   const load = useCallback(() => {
     ipc
@@ -83,7 +86,7 @@ export function WorldBackups({ world, state }: Props) {
   }, [load, state.maintenance]);
 
   const run = (action: () => Promise<string | null>) => {
-    if (busy) return;
+    if (working || waiting) return;
     setBusy(true);
     setError(null);
     setNote(null);
@@ -101,7 +104,7 @@ export function WorldBackups({ world, state }: Props) {
   };
 
   const played = world.played || (backups?.length ?? 0) > 0;
-  const pending = busy || undefined;
+  const pending = working || undefined;
 
   return (
     <Panel title={t.title} level={3}>
@@ -110,8 +113,6 @@ export function WorldBackups({ world, state }: Props) {
         <p className={styles.panelHint}>{t.notPlayed}</p>
       ) : (
         <div className={styles.actions}>
-          {/* Waits the world's state sets stay disabled; a press under way does not take
-              the focus from the pressed button. */}
           <Button
             size="small"
             disabled={waiting}
@@ -141,8 +142,8 @@ export function WorldBackups({ world, state }: Props) {
         </div>
       )}
       {hosted && <p className={styles.panelHint}>{t.whileHosted}</p>}
-      <p className={styles.panelHint} role="status">
-        {busy || state.maintenance ? b.working : (note ?? '')}
+      <p className={styles.live} role="status">
+        {working ? b.working : (note ?? '')}
       </p>
       {error !== null && <Notice tone="danger">{error}</Notice>}
       {backups !== null && backups.length > 0 && (
@@ -159,7 +160,7 @@ export function WorldBackups({ world, state }: Props) {
                   disabled={waiting}
                   aria-disabled={pending}
                   onClick={(event) => {
-                    if (busy) return;
+                    if (working) return;
                     opener.current = event.currentTarget;
                     setRestoring(backup);
                   }}
@@ -175,7 +176,7 @@ export function WorldBackups({ world, state }: Props) {
                     action={b.restore}
                     actionVariant="primary"
                     cancel={strings.worlds.cancel}
-                    pending={false}
+                    pending={working}
                     onYes={() => {
                       setRestoring(null);
                       run(async () => {

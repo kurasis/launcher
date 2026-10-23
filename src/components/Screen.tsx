@@ -4,6 +4,8 @@ import styles from './Screen.module.css';
 interface ScreenProps {
   /** The screen's title: a level 2 heading, under the brand's. */
   title: string;
+  /** The title is a name someone gave (a room's): it keeps its own direction. */
+  isolateTitle?: boolean;
   /** A way back before the title, on a screen opened from another ("‹ Wardrobe"). */
   back?: ReactNode;
   /** A way back on its own line above the title, for a long title with facts after it. */
@@ -25,6 +27,7 @@ interface ScreenProps {
  */
 export function Screen({
   title,
+  isolateTitle = false,
   back,
   top,
   aside,
@@ -41,7 +44,7 @@ export function Screen({
       className={styles.title}
       tabIndex={headingRef === undefined ? undefined : -1}
     >
-      {title}
+      {isolateTitle ? <bdi>{title}</bdi> : title}
     </h2>
   );
   return (
@@ -51,7 +54,9 @@ export function Screen({
     >
       {top !== undefined && <div className={styles.top}>{top}</div>}
       <header className={styles.head}>
-        {back === undefined && aside === undefined ? (
+        {/* The title keeps its place while the facts after it come and go, so a focused
+            title stays focused. */}
+        {back === undefined && top === undefined && aside === undefined ? (
           heading
         ) : (
           <div className={styles.titleRow}>
