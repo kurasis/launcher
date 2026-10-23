@@ -5,7 +5,9 @@
 #   only at the end of main;
 # - the oldest games (AlphaVanillaTweaker, launchwrapper 1.5 and 1.6): a window its
 #   player closes ends the game with code 1, and only the launcher's tweaker says so
-#   first. These open a window, so without a display the script runs under xvfb-run.
+#   first; when a shutdown hook hangs, as Classic's do on Windows, only the launcher's
+#   tweaker still ends the game. These open a window, so without a display the script
+#   runs under xvfb-run.
 set -eu
 [ -n "${DISPLAY:-}" ] || exec xvfb-run -a "$0" "$@"
 here=$(cd "$(dirname "$0")" && pwd)
@@ -35,10 +37,13 @@ echo "the launcher's tweaker: ${ours#game thread folder: }"
 [ "$mojang" = "game thread folder: null" ]
 [ "$ours" = "game thread folder: $work/folder" ]
 
-# Prints the exit code of a closed stand-in window and whether the launcher's line came.
+# Prints the exit code of a closed stand-in window (137: still running after 20 s and
+# killed, since a hanging exit holds off SIGTERM too) and whether the launcher's line
+# came. A third argument "hang" makes its exit hang.
 closed() {
   code=0
-  out=$(cd "$work" && timeout 60 "$JAVA8/bin/java" -cp "$work/launchwrapper-$1.jar:$libs" \
+  out=$(cd "$work" && timeout -s KILL 20 "$JAVA8/bin/java" -Dstandin.hang="$([ "${3:-}" = hang ] && echo true || echo false)" \
+    -cp "$work/launchwrapper-$1.jar:$libs" \
     net.minecraft.launchwrapper.Launch Player token --gameDir "$work/folder" --tweakClass "$2" 2>&1) || code=$?
   case "$out" in
     *"Launcher: the game window was closed"*) echo "$code said" ;;
@@ -46,9 +51,15 @@ closed() {
   esac
 }
 for wrapper in 1.5 1.6; do
-  mojang=$(closed "$wrapper" net.minecraft.launchwrapper.AlphaVanillaTweaker)
-  ours=$(closed "$wrapper" app.launcher.legacy.AlphaTweaker)
-  echo "launchwrapper $wrapper, window closed: Mojang's tweaker $mojang, the launcher's $ours"
-  [ "$mojang" = "1 silent" ]
-  [ "$ours" = "1 said" ]
+  for exit in ends hang; do
+    mojang=$(closed "$wrapper" net.minecraft.launchwrapper.AlphaVanillaTweaker "$exit")
+    ours=$(closed "$wrapper" app.launcher.legacy.AlphaTweaker "$exit")
+    echo "launchwrapper $wrapper, window closed, exit $exit: Mojang's tweaker $mojang, the launcher's $ours"
+    if [ "$exit" = hang ]; then
+      [ "$mojang" = "137 silent" ]
+    else
+      [ "$mojang" = "1 silent" ]
+    fi
+    [ "$ours" = "1 said" ]
+  done
 done
