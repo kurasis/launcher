@@ -1,5 +1,4 @@
 import type { ModsCollection, ModsKind, ModsSearchPage, ModsSort } from '../../lib/contracts';
-import { numberLocale } from '../../lib/strings';
 
 /** The filters as the player is typing them. */
 export interface Filters {
@@ -108,14 +107,4 @@ export function writeMark(mark: Mark) {
   } catch {
     // Storage may be off or full: the mark is only a convenience.
   }
-}
-
-/** "yesterday", "3 days ago", in the interface language. */
-export function daysAgo(at: number): string {
-  const day = (time: number) => {
-    const date = new Date(time);
-    return Date.UTC(date.getFullYear(), date.getMonth(), date.getDate()) / DAY_MS;
-  };
-  const days = Math.max(0, Math.round(day(Date.now()) - day(at)));
-  return new Intl.RelativeTimeFormat(numberLocale(), { numeric: 'auto' }).format(-days, 'day');
 }

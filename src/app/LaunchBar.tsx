@@ -2,10 +2,13 @@ import { useEffect, useRef, useState, type ReactNode } from 'react';
 import { Button } from '../components/Button';
 import { Icon } from '../components/Icon';
 import { InstanceTile } from '../components/InstanceTile';
-import type { AppSnapshot, InstanceSummary } from '../lib/contracts';
+import { ProgressBar } from '../components/ProgressBar';
+import type { ActiveActivity, AppSnapshot, InstanceSummary } from '../lib/contracts';
+import { progressPercent } from '../lib/format';
 import { ipc } from '../lib/ipc';
 import { strings } from '../lib/strings';
 import { useCommand } from '../lib/useCommand';
+import { detailSentences, percentTail, stateLine } from '../features/downloads/operationText';
 import { gameLabel } from '../features/instances/loaderLabel';
 import { mainActionOf } from '../features/instances/mainAction';
 import { PlayAs } from '../features/instances/PlayAs';
@@ -34,8 +37,9 @@ interface LaunchBarProps {
 
 /**
  * Concept A's launch bar at the foot of every screen (D-072): the chosen installation,
- * who plays it, and its main action (Play, Install or Repair). Progress and the
- * running game show here too; their details stay on Installations.
+ * who plays it, and its main action (Play, Install or Repair). While an install or
+ * repair runs it shows that instead (name, phase, bytes, files, a bar and Cancel),
+ * unless the chosen installation can still be added to the queue.
  */
 export function LaunchBar({ snapshot, onOpenInstallations, request }: LaunchBarProps) {
   // The last request taken, kept here: the chosen bar below remounts with every choice.
@@ -43,6 +47,10 @@ export function LaunchBar({ snapshot, onOpenInstallations, request }: LaunchBarP
   const instance =
     snapshot.instances.find((i) => i.id === snapshot.settings.selectedInstanceId) ?? null;
   if (instance === null) {
+    const operation = downloadOf(snapshot);
+    if (operation !== null) {
+      return <OperationStrip snapshot={snapshot} operation={operation} error={null} />;
+    }
     return (
       <section className={styles.bar} aria-label={strings.nav.launchBar}>
         <span className={styles.emptyTile} aria-hidden="true" />
@@ -113,6 +121,20 @@ function ChosenBar({
     if (main.enabled && Date.now() - request.at < REQUEST_LIFETIME_MS) runMain();
   });
 
+  // The install or repair that runs, in place of the chosen installation, unless that
+  // one offers Add to queue. The hooks above stay: a request is taken (and dropped)
+  // now, never run later.
+  const operation = downloadOf(snapshot);
+  if (
+    operation !== null &&
+    (operation.instanceId === instance.id ||
+      main.kind === 'play' ||
+      main.kind === 'busy' ||
+      main.kind === 'none')
+  ) {
+    return <OperationStrip snapshot={snapshot} operation={operation} error={error} />;
+  }
+
   let action: ReactNode = null;
   if (main.kind === 'running' || main.kind === 'busy') {
     action = (
@@ -175,6 +197,79 @@ function ChosenBar({
       <div className={styles.end}>
         {main.kind === 'play' && <PlayAs instance={instance} account={snapshot.account} compact />}
         {action}
+      </div>
+    </section>
+  );
+}
+
+/** The install or repair that runs, if one does. */
+function downloadOf(snapshot: AppSnapshot): ActiveActivity | null {
+  const active = snapshot.activeOperation;
+  return active !== null && (active.kind === 'install' || active.kind === 'repair') ? active : null;
+}
+
+/** An install or repair in progress: name, phase, bytes, files, a bar and Cancel. */
+function OperationStrip({
+  snapshot,
+  operation,
+  error,
+}: {
+  snapshot: AppSnapshot;
+  operation: ActiveActivity;
+  /** What the chosen installation's last command answered. */
+  error: string | null;
+}) {
+  const cancel = useCommand((requestId: string, id: string) => ipc.cancelOperation(id, requestId));
+  const progress =
+    snapshot.operationProgress?.operationId === operation.operationId
+      ? snapshot.operationProgress
+      : null;
+  const running = snapshot.instances.find((i) => i.id === operation.instanceId);
+  const cancelling = progress?.phase === 'cancel_requested';
+  const problem = cancel.error ?? error;
+  return (
+    <section className={styles.bar} aria-label={strings.nav.launchBar}>
+      {running === undefined ? (
+        <span className={styles.emptyTile} aria-hidden="true" />
+      ) : (
+        <InstanceTile id={running.id} size={40} />
+      )}
+      <div className={styles.operation}>
+        <p className={styles.line}>
+          <span className={styles.name}>{running?.displayName ?? strings.downloads.unknown}</span>
+          <span className={styles.phase}>
+            {/* Read out when the phase changes, not with every percent. */}
+            <span role="status">{stateLine(operation.kind, progress)}</span>
+            {percentTail(progress)}
+          </span>
+          <span className={styles.details}>{detailSentences(progress).join(' ')}</span>
+        </p>
+        <ProgressBar
+          value={progressPercent(progress)}
+          label={strings.downloads.progress}
+          className={styles.progress}
+        />
+      </div>
+      {problem !== null && (
+        <p className={styles.error} role="alert">
+          {problem}
+        </p>
+      )}
+      <div className={styles.end}>
+        {snapshot.queue.length > 0 && (
+          <p className={styles.queue}>
+            {strings.downloads.queue({ count: snapshot.queue.length })}
+          </p>
+        )}
+        <Button
+          variant="secondary"
+          aria-disabled={cancel.pending || cancelling || undefined}
+          onClick={() => {
+            if (!cancel.pending && !cancelling) void cancel.run(operation.operationId);
+          }}
+        >
+          {cancelling ? strings.install.cancelling : strings.install.cancel}
+        </Button>
       </div>
     </section>
   );

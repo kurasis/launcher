@@ -2660,7 +2660,25 @@
       "recent": "مؤخرًا",
       "queued": "في قائمة الانتظار: يبدأ عند انتهاء العملية الحالية.",
       "addToQueue": "أضف إلى قائمة الانتظار",
-      "waitingForNetwork": "بانتظار الاتصال بالإنترنت"
+      "waitingForNetwork": "بانتظار الاتصال بالإنترنت",
+      "close": "إغلاق",
+      "state": "{kind, select, repair {الإصلاح} other {التثبيت}}: {phase, select, resolving {قراءة وصف الإصدار} checking_files {التحقق من الملفات} downloading {التنزيل} extracting_runtime {تجهيز Java} preparing_loader {يعمل مثبّت مُحمِّل التعديلات} finalizing {الإنهاء} cancel_requested {الإلغاء} awaiting_approval {بانتظار إذنك} other {قيد العمل}}",
+      "percentTail": "، {percent}٪",
+      "transfer": "{done} من {total}، {rate}/ث.",
+      "transferNoSpeed": "{done} من {total}.",
+      "filesDone": "{done, number} من {total, plural, zero {# ملف} one {ملف واحد} two {ملفين} few {# ملفات} many {# ملفًا} other {# ملف}}.",
+      "startsAfter": "{kind, select, repair {الإصلاح} other {التثبيت}}. يبدأ عند انتهاء العملية الحالية.",
+      "waitsForNetwork": "{kind, select, repair {الإصلاح} other {التثبيت}}. بانتظار الاتصال بالإنترنت.",
+      "removeNamed": "إزالة «{name}» من قائمة الانتظار",
+      "result": {
+        "succeeded": "اكتمل {kind, select, repair {الإصلاح} other {التثبيت}} {when}.",
+        "failed": "فشل {kind, select, repair {الإصلاح} other {التثبيت}} {when}.",
+        "cancelled": "أُلغي {kind, select, repair {الإصلاح} other {التثبيت}} {when}.",
+        "interrupted": "انقطع {kind, select, repair {الإصلاح} other {التثبيت}} {when}."
+      },
+      "downloaded": "نُزِّل {bytes}، {files, plural, zero {# ملف} one {ملف واحد} two {ملفان} few {# ملفات} many {# ملفًا} other {# ملف}}.",
+      "metered": "اتصال محدود البيانات: نُزِّل هذا الشهر {used} من {limit}.",
+      "meteredNoLimit": "اتصال محدود البيانات: نُزِّل هذا الشهر {used}."
     },
     "friends": {
       "open": "الأصدقاء والمحادثات",

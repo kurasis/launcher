@@ -2659,7 +2659,25 @@
       "recent": "Недавно",
       "queued": "В очереди: начнётся, когда закончится текущая операция.",
       "addToQueue": "Добавить в очередь",
-      "waitingForNetwork": "Ждёт подключения к интернету"
+      "waitingForNetwork": "Ждёт подключения к интернету",
+      "close": "Закрыть",
+      "state": "{kind, select, repair {Восстановление} other {Установка}}: {phase, select, resolving {чтение описания версии} checking_files {проверка файлов} downloading {загрузка} extracting_runtime {подготовка Java} preparing_loader {работает установщик загрузчика модов} finalizing {завершение} cancel_requested {отмена} awaiting_approval {ждёт вашего разрешения} other {выполняется}}",
+      "percentTail": ", {percent}%",
+      "transfer": "{done} из {total}, {rate}/с.",
+      "transferNoSpeed": "{done} из {total}.",
+      "filesDone": "{done, number} из {total, plural, one {# файла} other {# файлов}}.",
+      "startsAfter": "{kind, select, repair {Восстановление} other {Установка}}. Начнётся, когда закончится текущая операция.",
+      "waitsForNetwork": "{kind, select, repair {Восстановление} other {Установка}}. Ждёт подключения к интернету.",
+      "removeNamed": "Убрать «{name}» из очереди",
+      "result": {
+        "succeeded": "{kind, select, repair {Восстановление завершено} other {Установка завершена}} {when}.",
+        "failed": "{kind, select, repair {Восстановление не удалось} other {Установка не удалась}} {when}.",
+        "cancelled": "{kind, select, repair {Восстановление отменено} other {Установка отменена}} {when}.",
+        "interrupted": "{kind, select, repair {Восстановление прервано} other {Установка прервана}} {when}."
+      },
+      "downloaded": "Загружено {bytes}, {files, plural, one {# файл} few {# файла} many {# файлов} other {# файла}}.",
+      "metered": "Лимитное подключение: скачано в этом месяце {used} из {limit}.",
+      "meteredNoLimit": "Лимитное подключение: скачано в этом месяце {used}."
     },
     "friends": {
       "open": "Друзья и чаты",

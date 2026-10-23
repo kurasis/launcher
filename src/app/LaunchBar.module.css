@@ -95,3 +95,50 @@ div.chosen {
   fill: currentcolor;
   stroke: none;
 }
+
+/* An install or repair in progress, in place of the chosen installation. */
+.operation {
+  display: grid;
+  flex: 1;
+  gap: var(--space-2);
+  min-width: 0;
+}
+
+.line {
+  display: flex;
+  align-items: baseline;
+  gap: var(--space-2);
+  min-width: 0;
+  white-space: nowrap;
+}
+
+.line .name {
+  flex: none;
+  max-inline-size: 40%;
+}
+
+.phase {
+  flex: none;
+  color: var(--color-text-muted);
+  font-size: var(--font-size-sm);
+  font-variant-numeric: tabular-nums;
+}
+
+.details {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  color: var(--color-text-muted);
+  font-size: var(--font-size-xs);
+  font-variant-numeric: tabular-nums;
+}
+
+.progress {
+  max-inline-size: 35rem;
+}
+
+.queue {
+  color: var(--color-text-muted);
+  font-size: var(--font-size-sm);
+  white-space: nowrap;
+}

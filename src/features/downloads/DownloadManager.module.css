@@ -1,239 +1,6 @@
-/* The download manager sits in the bottom corner on every screen (D-049). */
-.corner {
-  position: fixed;
-  inset-inline-end: var(--space-6);
-  inset-block-end: var(--space-6);
-  z-index: 40;
-  display: flex;
-  flex-direction: column;
-  align-items: flex-end;
-  gap: var(--space-2);
-}
-
-.button {
-  --progress: 0%;
-  position: relative;
-  display: grid;
-  place-items: center;
-  width: 3.25rem;
-  height: 3.25rem;
-  border: none;
-  border-radius: 50%;
-  cursor: pointer;
-  color: var(--color-text-muted);
-  background: var(--color-surface-raised);
-  box-shadow: var(--shadow-raised);
-  transition: transform 150ms ease;
-}
-
-.button:hover {
-  transform: scale(1.05);
-}
-
-/* While downloading: a progress ring around the button and a moving arrow. */
-.button[data-working] {
-  color: var(--color-accent);
-  background:
-    radial-gradient(closest-side, var(--color-surface-raised) 82%, transparent 84%),
-    conic-gradient(var(--color-accent) var(--progress), var(--color-accent-soft) 0);
-}
-
-.button[data-working]::after {
-  content: '';
-  position: absolute;
-  inset: -4px;
-  border-radius: 50%;
-  border: 2px solid var(--color-accent-soft);
-  animation: pulse 1.6s ease-out infinite;
-}
-
-.icon {
-  width: 1.5rem;
-  height: 1.5rem;
-  fill: none;
-  stroke: currentcolor;
-  stroke-width: 2;
-  stroke-linecap: round;
-  stroke-linejoin: round;
-}
-
-.button[data-asking] {
-  color: var(--color-warning-text);
-  background: var(--color-warning-bg);
-}
-
-.button[data-working] .arrow {
-  animation: drop 1.2s ease-in-out infinite;
-}
-
-.badge {
-  position: absolute;
-  inset-block-start: -2px;
-  inset-inline-end: -2px;
-  min-width: 1.25rem;
-  height: 1.25rem;
-  padding: 0 0.3rem;
-  border-radius: 999px;
-  background: var(--color-accent-2);
-  color: var(--color-accent-contrast);
-  font-size: var(--font-size-xs);
-  font-weight: 700;
-  line-height: 1.25rem;
-}
-
-.panel {
-  width: min(24rem, calc(100vw - 3rem));
-  max-height: min(32rem, calc(100vh - 8rem));
-  overflow: auto;
-  padding: var(--space-4);
-  border: 1px solid var(--color-border);
-  border-radius: var(--radius-md);
-  background: var(--color-surface-raised);
-  box-shadow: var(--shadow-raised);
-  animation: rise 160ms ease-out;
-}
-
-.title {
-  font-size: var(--font-size-md);
-  font-weight: 700;
-  margin-bottom: var(--space-2);
-}
-
-.subtitle {
-  font-size: var(--font-size-sm);
-  font-weight: 700;
-  margin: var(--space-3) 0 var(--space-1);
-}
-
-.item {
-  display: grid;
-  gap: var(--space-1);
-}
-
-.item > button {
-  justify-self: start;
-}
-
-.itemHead {
-  display: flex;
-  justify-content: space-between;
-  gap: var(--space-2);
-}
-
-.muted {
-  color: var(--color-text-muted);
-  font-size: var(--font-size-sm);
-}
-
-.bar {
-  width: 100%;
-  height: 0.5rem;
-  accent-color: var(--color-accent);
-}
-
-/* The name of each file in flight, one after another. */
-.file {
-  overflow: hidden;
-  color: var(--color-text-muted);
-  font-family: var(--font-mono);
-  font-size: var(--font-size-xs);
-  white-space: nowrap;
-  text-overflow: ellipsis;
-  animation: slide 300ms ease-out;
-}
-
-.queue {
-  display: grid;
-  gap: var(--space-1);
-  margin: 0;
-  padding: 0;
-  list-style: none;
-}
-
-.queued {
-  display: flex;
-  justify-content: space-between;
-  gap: var(--space-2);
-  font-size: var(--font-size-sm);
-}
-
-.link {
-  justify-self: start;
-  padding: 0;
-  border: none;
-  background: none;
-  color: var(--color-accent-2);
-  font-size: var(--font-size-sm);
-  cursor: pointer;
-}
-
-.link:disabled {
-  color: var(--color-text-muted);
-  cursor: default;
-}
-
-.result[data-outcome='failed'] {
-  color: var(--color-danger-text);
-}
-
-.result[data-outcome='succeeded'] {
-  color: var(--color-success-text);
-}
-
-.error {
-  margin-top: var(--space-2);
-  color: var(--color-danger-text);
-  font-size: var(--font-size-sm);
-}
-
-@keyframes drop {
-  0%,
-  100% {
-    transform: translateY(-2px);
-  }
-
-  50% {
-    transform: translateY(2px);
-  }
-}
-
-@keyframes pulse {
-  from {
-    opacity: 1;
-    transform: scale(1);
-  }
-
-  to {
-    opacity: 0;
-    transform: scale(1.25);
-  }
-}
-
-@keyframes rise {
-  from {
-    opacity: 0;
-    transform: translateY(6px);
-  }
-}
-
-@keyframes slide {
-  from {
-    opacity: 0;
-    transform: translateY(4px);
-  }
-}
-
-@media (prefers-reduced-motion: reduce) {
-  .button[data-working] .arrow,
-  .button[data-working]::after,
-  .panel,
-  .file {
-    animation: none;
-  }
-}
-
-/* Concept A: a row of the rail; the panel opens beside the rail, at its foot. */
-.railSlot {
+/* Downloads (D-049) in concept A: a row of the rail, and a panel beside the rail that
+   ends above the launch bar. */
+.slot {
   display: contents;
 }
 
@@ -251,6 +18,7 @@
   color: var(--color-rail-text);
   font-size: var(--font-size-sm);
   font-weight: 500;
+  font-variant-numeric: tabular-nums;
   text-align: start;
   cursor: pointer;
 }
@@ -263,10 +31,8 @@
   background: var(--color-rail-active);
 }
 
-.railButton .icon {
-  width: 1.25rem;
-  height: 1.25rem;
-  stroke-width: 1.75;
+.icon {
+  flex: none;
 }
 
 /* Mint on the icon only: the label stays readable on the open row's background. */
@@ -279,11 +45,19 @@
   background: var(--color-warning-bg);
 }
 
-.railButton .badge {
-  position: static;
+/* How many requests wait in the queue. */
+.badge {
+  min-width: 1.25rem;
+  height: 1.25rem;
   margin-inline-start: auto;
+  padding: 0 0.3rem;
+  border-radius: var(--radius-pill);
   background: var(--color-mint);
   color: #0e2a1e;
+  font-size: var(--font-size-xs);
+  font-weight: 700;
+  line-height: 1.25rem;
+  text-align: center;
 }
 
 .railLabel {
@@ -293,15 +67,199 @@
   text-overflow: ellipsis;
 }
 
-.railPanel {
+.panel {
   /* Out of the rail's colors: the panel is a plain surface. */
   --focus-ring: var(--color-focus);
   position: fixed;
   inset-inline-start: calc(var(--rail-width) + var(--space-3));
-  inset-block-end: var(--space-3);
+  inset-block-end: calc(var(--bar-height) + var(--space-3));
   z-index: 40;
+  display: grid;
+  align-content: start;
+  gap: var(--space-3);
+  inline-size: min(26.25rem, calc(100vw - var(--rail-width) - 2 * var(--space-3)));
+  max-block-size: calc(100vh - var(--bar-height) - 2 * var(--space-3));
+  overflow: auto;
+  padding: var(--space-4) calc(var(--space-4) + var(--space-1));
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-lg);
   background: var(--color-surface-solid);
+  box-shadow: var(--shadow-raised);
   color: var(--color-text);
+  font-size: var(--font-size-sm);
+  text-align: start;
+  animation: rise 160ms ease-out;
+}
+
+.head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-2);
+}
+
+.title {
+  font-size: var(--font-size-md);
+  font-weight: 600;
+}
+
+.title:focus {
+  outline: none;
+}
+
+.close {
+  display: grid;
+  place-items: center;
+  width: 2rem;
+  height: 2rem;
+  padding: 0;
+  border: 0;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--color-text-muted);
+  cursor: pointer;
+}
+
+.close:hover {
+  background: var(--color-neutral-bg);
+  color: var(--color-text);
+}
+
+/* The running operation, or the launcher's own update. */
+.card {
+  display: grid;
+  gap: var(--space-2);
+  padding: var(--space-3) var(--space-4);
+  border-radius: var(--radius-md);
+  background: var(--color-surface-sunken);
+}
+
+.card > button {
+  justify-self: start;
+}
+
+.group {
+  display: grid;
+  gap: var(--space-1);
+}
+
+/* "In queue: 1", "Recently": quiet labels of the lists under them. */
+.label {
+  color: var(--color-text-muted);
+  font-size: var(--font-size-sm);
+  font-weight: 400;
+}
+
+.list {
+  display: grid;
+  gap: var(--space-1);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+/* Tile, name and what it is about, then the row's action. */
+.row {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: center;
+  gap: var(--space-3);
+}
+
+.list > .row {
+  padding: var(--space-1) var(--space-2);
+  margin-inline: calc(-1 * var(--space-2));
+  border-radius: var(--radius-md);
+}
+
+.list > .row:hover {
+  background: var(--color-hover);
+}
+
+.what {
+  display: grid;
+  min-width: 0;
+}
+
+.name {
+  overflow-wrap: anywhere;
+  font-weight: 600;
+}
+
+.nameRow {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-1) var(--space-2);
+}
+
+.version {
+  color: var(--color-text-muted);
+  font-weight: 400;
+}
+
+.hint {
+  color: var(--color-text-muted);
+  font-size: var(--font-size-sm);
+  overflow-wrap: anywhere;
+}
+
+.numbers {
+  font-variant-numeric: tabular-nums;
+}
+
+.clamp {
+  display: -webkit-box;
+  overflow: hidden;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+}
+
+/* The name of each file in flight, one after another. */
+.file {
+  display: inline-block;
+  max-inline-size: 100%;
+  overflow: hidden;
+  font-family: var(--font-mono);
+  font-size: var(--font-size-xs);
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  vertical-align: bottom;
+  animation: slide 300ms ease-out;
+}
+
+/* A removed installation: an empty outline where its tile would be. */
+.noTile {
+  inline-size: 2rem;
+  block-size: 2rem;
+  border-radius: 18%;
+  border: 1px dashed var(--color-border-strong);
+}
+
+.error {
+  color: var(--color-danger-text);
+  font-size: var(--font-size-sm);
+}
+
+@keyframes rise {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+}
+
+@keyframes slide {
+  from {
+    opacity: 0;
+    transform: translateY(4px);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .panel,
+  .file {
+    animation: none;
+  }
 }
 
 /* The icon-only rail of a narrow window (App.module.css). */
@@ -313,5 +271,11 @@
 
   .railLabel {
     display: none;
+  }
+
+  .badge {
+    position: absolute;
+    inset-block-start: 0;
+    inset-inline-end: var(--space-1);
   }
 }

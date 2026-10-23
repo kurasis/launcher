@@ -7,6 +7,7 @@ import type { AppSnapshot, TrafficSummary, TrafficUsage } from '../../lib/contra
 import { formatBytes, toInt } from '../../lib/format';
 import { describeIpcError, ipc } from '../../lib/ipc';
 import { numberLocale, strings } from '../../lib/strings';
+import { trafficTotal } from '../../lib/traffic';
 import { useCommand } from '../../lib/useCommand';
 import styles from './Network.module.css';
 
@@ -15,10 +16,6 @@ const MIB = 1024 * 1024;
 /** How often the count refreshes while the section is open. */
 const REFRESH_MS = 5000;
 const SOURCES: (keyof TrafficUsage)[] = ['game', 'java', 'loaders', 'mods', 'metadata'];
-
-function total(usage: TrafficUsage): number {
-  return usage.game + usage.java + usage.loaders + usage.mods + usage.metadata;
-}
 
 /** "October 2026" for `2026-10`. */
 function monthName(month: string): string {
@@ -69,7 +66,7 @@ export function NetworkSettings({ snapshot }: { snapshot: AppSnapshot }) {
     };
   }, [reload]);
 
-  const used = traffic === null ? 0 : total(traffic.thisMonth);
+  const used = traffic === null ? 0 : trafficTotal(traffic.thisMonth);
   const limitBytes = settings.monthlyLimitMib * MIB;
 
   return (

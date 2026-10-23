@@ -1170,12 +1170,16 @@ message` plus a stack trace), with the event's level.
   with a queue entry's ID removes it. The queue lives in memory only: closing the
   launcher forgets it, and nothing half-done is left behind because a queued request
   has not started.
-- **Corner button:** a download button sits in the lower corner of every screen. It
-  animates (a moving arrow and a progress ring) while an install or repair runs and
-  shows how many requests wait. Clicking it opens a panel with the running operation
-  (installation name, game and loader version, install or repair, phase, percent,
-  downloaded and total bytes, speed, files), the queue (each entry can be removed) and
-  the last three results.
+- **Downloads row:** in concept A (D-072) Downloads is a row of the rail. It shows the
+  running install or repair's percent and how many requests wait. Clicking it opens a
+  panel beside the rail, above the launch bar, with the running operation
+  (installation, install or repair, phase, percent, downloaded and total bytes, speed,
+  files, Cancel), the queue (each entry can be removed) and the last three results
+  with when they ended and what they downloaded; the version shows where installations
+  share a name. On a metered connection (D-051) it also shows the month's traffic.
+- **Launch bar:** while an install or repair runs, the launch bar shows it (name,
+  phase, bytes, files, a bar and Cancel) in place of the chosen installation, unless
+  that one can still be added to the queue.
 - **Percent:** bytes while downloading; checked files while the launcher checks what
   is already present, before any byte is known.
 - **File names:** progress names the files being transferred at that moment, at most

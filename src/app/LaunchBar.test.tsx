@@ -299,6 +299,102 @@ describe('LaunchBar', () => {
     expect(launches()).toBe(1);
   });
 
+  it('shows an install of another installation in place of Play, with Cancel', async () => {
+    const calls = backend();
+    const ready = instanceFixture({ health: 'ready' });
+    const other = instanceFixture({
+      id: '1f1e2d3c-4b5a-4978-8796-a5b4c3d2e1f0',
+      displayName: 'Creative',
+      busy: true,
+    });
+    const view = (phase: 'downloading' | 'cancel_requested') =>
+      chosen([ready, other], {
+        activeOperation: { kind: 'install', instanceId: other.id, operationId: 'op-7' },
+        operationProgress: {
+          sessionEpoch: 'epoch-1',
+          operationId: 'op-7',
+          instanceId: other.id,
+          kind: 'install',
+          sequence: 1,
+          revision: 1,
+          phase,
+          downloadedBytes: 203 * 1024 * 1024,
+          totalDownloadBytes: 460 * 1024 * 1024,
+          verifiedFiles: 1240,
+          totalFiles: 3120,
+          bytesPerSecond: 12 * 1024 * 1024,
+          currentFiles: [],
+          approval: null,
+          timestamp: '',
+        },
+        queue: [{ ...QUEUED, instanceId: ready.id, kind: 'repair' }],
+      });
+    const { rerender } = render(<LaunchBar snapshot={view('downloading')} />);
+    const bar = screen.getByRole('region', { name: 'Launch' });
+    expect(within(bar).getByText('Creative')).toBeVisible();
+    expect(within(bar).getByRole('status')).toHaveTextContent('Installation: downloading');
+    expect(bar).toHaveTextContent('Installation: downloading, 44%');
+    expect(bar).toHaveTextContent('203.0 MiB of 460.0 MiB, 12.0 MiB/s. 1,240 of 3,120 files.');
+    expect(within(bar).getByRole('progressbar', { name: 'Download progress' })).toHaveAttribute(
+      'value',
+      '44',
+    );
+    expect(within(bar).getByText('Waiting in line: 1')).toBeVisible();
+    expect(within(bar).queryByRole('button', { name: /Play/ })).toBeNull();
+    fireEvent.click(within(bar).getByRole('button', { name: 'Cancel' }));
+    await waitFor(() => {
+      expect(calls.find((c) => c.cmd === 'cancel_operation')?.args).toMatchObject({
+        request: { payload: { operationId: 'op-7' } },
+      });
+    });
+    rerender(<LaunchBar snapshot={view('cancel_requested')} />);
+    expect(within(bar).getByRole('button', { name: 'Cancelling…' })).toHaveAttribute(
+      'aria-disabled',
+      'true',
+    );
+  });
+
+  it('drops a request that came while another installation installs', async () => {
+    const calls = backend();
+    const ready = instanceFixture({ health: 'ready' });
+    const other = instanceFixture({ id: '1f1e2d3c-4b5a-4978-8796-a5b4c3d2e1f0', busy: true });
+    const at = Date.now();
+    const installing = chosen([ready, other], {
+      activeOperation: { kind: 'install', instanceId: other.id, operationId: 'op-7' },
+    });
+    const { rerender } = render(
+      <LaunchBar snapshot={installing} request={{ instanceId: ready.id, at }} />,
+    );
+    await act(async () => {
+      await Promise.resolve();
+    });
+    // The install ends: Play comes back, and the old request does not run now.
+    rerender(
+      <LaunchBar snapshot={chosen([ready, other])} request={{ instanceId: ready.id, at }} />,
+    );
+    await act(async () => {
+      await Promise.resolve();
+    });
+    expect(screen.getByRole('button', { name: 'Play' })).toBeEnabled();
+    expect(calls.filter((c) => c.cmd === 'launch_game')).toHaveLength(0);
+  });
+
+  it('shows an install while no installation is chosen', () => {
+    backend();
+    const other = instanceFixture({ busy: true });
+    render(
+      <LaunchBar
+        snapshot={snapshotFixture({
+          instances: [other],
+          activeOperation: { kind: 'repair', instanceId: other.id, operationId: 'op-8' },
+        })}
+      />,
+    );
+    const bar = screen.getByRole('region', { name: 'Launch' });
+    expect(within(bar).getByRole('status')).toHaveTextContent('Repair: reading version metadata');
+    expect(within(bar).getByRole('button', { name: 'Cancel' })).toBeVisible();
+  });
+
   it('opens Installations from other screens only', () => {
     backend();
     const open = vi.fn();

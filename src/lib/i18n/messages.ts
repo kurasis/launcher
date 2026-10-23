@@ -2835,6 +2835,28 @@ export type Messages = {
     readonly queued: string;
     readonly addToQueue: string;
     readonly waitingForNetwork: string;
+    readonly close: string;
+    readonly state: (values: { kind: string; phase: string }) => string;
+    readonly percentTail: (values: { percent: string | number }) => string;
+    readonly transfer: (values: {
+      done: string | number;
+      total: string | number;
+      rate: string | number;
+    }) => string;
+    readonly transferNoSpeed: (values: { done: string | number; total: string | number }) => string;
+    readonly filesDone: (values: { done: number; total: number }) => string;
+    readonly startsAfter: (values: { kind: string }) => string;
+    readonly waitsForNetwork: (values: { kind: string }) => string;
+    readonly removeNamed: (values: { name: string | number }) => string;
+    readonly result: {
+      readonly succeeded: (values: { kind: string; when: string | number }) => string;
+      readonly failed: (values: { kind: string; when: string | number }) => string;
+      readonly cancelled: (values: { kind: string; when: string | number }) => string;
+      readonly interrupted: (values: { kind: string; when: string | number }) => string;
+    };
+    readonly downloaded: (values: { bytes: string | number; files: number }) => string;
+    readonly metered: (values: { used: string | number; limit: string | number }) => string;
+    readonly meteredNoLimit: (values: { used: string | number }) => string;
   };
   readonly friends: {
     readonly open: string;
