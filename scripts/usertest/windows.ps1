@@ -1,12 +1,15 @@
 # Player's-eye check of game versions on the Windows test machine (docs/USERTEST.md).
 # Usage: powershell -NoProfile -ExecutionPolicy Bypass -File windows.ps1 `
-#          -Setup <setup.exe> -Strings <ui-strings.json> -Items vanilla:26.1,forge:1.20.1 -Out <folder>
+#          -Setup <setup.exe> -Strings <ui-strings.json> -Items vanilla:26.1,forge:1.20.1 -Out <folder> `
+#          [-Special <special.json>]
 #
 # Installs the packaged launcher into its own folder in portable mode, then for each
 # item (a loader, or vanilla, and a game version) does what a player does: Accounts ->
 # offline profile, Installations -> New installation -> the loader -> the version ->
 # Create -> Install -> Play; in the game Singleplayer ->
-# Create New World, a look around, and the window closed. The launcher is driven through
+# Create New World, a look around, and the window closed. A special version (special:<id>,
+# the launcher's own list, D-073) is chosen on the form's Special tab and played to its
+# title screen only. The launcher is driven through
 # UI Automation, the game with the mouse and keys as a player uses them (its window brought
 # to the front), so the test machine needs a signed-in, unlocked desktop. Nothing is
 # changed in the game files or settings. Results go to <Out>/results.json; screenshots and the
@@ -19,6 +22,8 @@ param(
   [string]$Strings,
   [string]$Items,
   [string]$Out,
+  # The special versions of the plan: { "<id>": { "name": ..., "selected": ... } }.
+  [string]$Special,
   [string]$Nick = 'Tester',
   # Settings, Network: where downloads come from.
   [ValidateSet('automatic', 'mirror_first', 'origin_only')]
@@ -90,13 +95,23 @@ if (-not $CleanupOnly) {
   }
   $ui = [IO.File]::ReadAllText($Strings, [Text.Encoding]::UTF8) | ConvertFrom-Json
   New-Item -ItemType Directory -Force $Out | Out-Null
-  # "<loader>:<version>" each; anything else stops the run before it touches the machine.
+  # A special version's row starts with its name, and the form says "Selected: <name>"
+  # (an earlier build: its id).
+  $specials = @{}
+  if ($Special) {
+    $listed = [IO.File]::ReadAllText($Special, [Text.Encoding]::UTF8) | ConvertFrom-Json
+    foreach ($entry in $listed.PSObject.Properties) { $specials[$entry.Name] = $entry.Value }
+  }
+  # "<loader>:<version>" or "special:<id>" each; anything else stops the run before it
+  # touches the machine.
   $plan = @($Items -split ',' | ForEach-Object { $_.Trim() } | Where-Object { $_ })
   foreach ($item in $plan) {
-    if ($item -notmatch '^(vanilla|fabric|quilt|forge|neoforge):[0-9][0-9a-z.\-]{0,31}$') { Write-Host "::error::not an item: $item"; exit 2 }
+    if ($item -match '^special:([A-Za-z0-9][A-Za-z0-9 ._\-]{0,63})$') {
+      if (-not $specials.ContainsKey($Matches[1])) { Write-Host "::error::not in the special versions: $item"; exit 2 }
+    } elseif ($item -notmatch '^(vanilla|fabric|quilt|forge|neoforge):[0-9][0-9a-z.\-]{0,31}$') { Write-Host "::error::not an item: $item"; exit 2 }
   }
   # The loader's name as the form offers it (the same in every language).
-  $loaderNames = @{ vanilla = ''; fabric = $ui.loaderFabric[0]; quilt = $ui.loaderQuilt[0]
+  $loaderNames = @{ vanilla = ''; special = ''; fabric = $ui.loaderFabric[0]; quilt = $ui.loaderQuilt[0]
     forge = $ui.loaderForge[0]; neoforge = $ui.loaderNeoForge[0] }
 }
 
@@ -137,8 +152,10 @@ function Find-Window([string]$Name) {
 }
 
 # Any of the key's texts (every language), compared without case: WebView2 reports
-# CSS-transformed text. A pattern ending in '*' matches a name's start.
+# CSS-transformed text. A pattern ending in '*' matches a name's start. Bidi isolates
+# (around a special version's name in "Selected: ...") do not count.
 function Matches([string]$Name, $Texts) {
+  $Name = $Name -replace '[\u2066-\u2069]', ''
   foreach ($text in @($Texts)) {
     if ($text.EndsWith('*')) {
       if ($Name.StartsWith($text.TrimEnd('*'), [StringComparison]::OrdinalIgnoreCase)) { return $true }
@@ -498,6 +515,15 @@ function Driver-Crashed([datetime]$Since) {
   return @(Driver-Reports).Count -gt 0
 }
 
+# An item passes with its world entered and the game closed normally, and Launcher Skins
+# in where it is added. A special version passes at its title screen, without Launcher
+# Skins (the launcher adds none to these).
+function Passed($Result) {
+  if ($Result.exit -ne 'ok' -or $Result.skins -match '^not|^failed') { return $false }
+  if ($Result.loader -eq 'special') { return $Result.launch -eq 'ok' -and -not $Result.skins }
+  return $Result.world -eq 'ok'
+}
+
 # --- Machine names out of anything uploaded (the repository is public) -------------
 
 $machine = @($env:USERPROFILE, $env:LOCALAPPDATA, $env:APPDATA, $env:USERNAME, $env:COMPUTERNAME) |
@@ -659,7 +685,9 @@ try {
   for ($n = 0; $n -lt $queue.Count; $n++) {
     $item = $queue[$n]
     $loader, $version = $item -split ':', 2
-    $label = if ($loader -eq 'vanilla') { $version } else { "$version $($loaderNames[$loader])" }
+    $isSpecial = $loader -eq 'special'
+    $modded = [bool]$loaderNames[$loader]
+    $label = if ($loader -eq 'vanilla') { $version } elseif ($isSpecial) { "$version (special)" } else { "$version $($loaderNames[$loader])" }
     $folder = New-Item -ItemType Directory -Force (Join-Path $Out "$loader-$version")
     $result = [ordered]@{ item = $item; loader = $loader; version = $version; loaderVersion = ''
       machine = $env:RUNNER_NAME; install = 'not run'; installSeconds = $null
@@ -678,7 +706,7 @@ try {
       $open = Find-Pressable $ui.cancel
       if ($open) { Click $open; Start-Sleep -Seconds 1 }
       Press $ui.create 'New installation'
-      if ($loader -ne 'vanilla') {
+      if ($modded) {
         $box = Wait-For { Find-Combo $ui.loader } 20
         if (-not $box) { $result.install = 'failed'; $result.note = 'no loader choice in the form'; throw 'no loader box' }
         if (-not (Choose-Option $box $loaderNames[$loader])) {
@@ -688,28 +716,54 @@ try {
         # The version list then shows only what the loader supports.
         Start-Sleep -Seconds 2
       }
-      # As a player finds a version: typed into the search box above the list.
+      if ($isSpecial) {
+        # The launcher's own versions are on a tab of their own, after Alpha; its name
+        # ends with the count. Only the chosen tab is in the tab order.
+        $tabTexts = @($ui.special | ForEach-Object { "$_*" })
+        $byTab = New-Object System.Windows.Automation.PropertyCondition($AE::ControlTypeProperty, [System.Windows.Automation.ControlType]::TabItem)
+        $tab = Wait-For {
+          foreach ($candidate in $script:main.FindAll($Scope::Descendants, $byTab)) {
+            try { if (Matches $candidate.Current.Name $tabTexts) { return $candidate } } catch { }
+          }
+        } 30
+        if (-not $tab) { $result.install = 'failed'; $result.note = 'no Special tab: the launcher shows no special versions'; throw 'no special tab' }
+        Click $tab
+        Start-Sleep -Seconds 1
+        $selection = $null
+        if ($tab.TryGetCurrentPattern([System.Windows.Automation.SelectionItemPattern]::Pattern, [ref]$selection) -and -not $selection.Current.IsSelected) {
+          Mouse-Click $tab
+          Start-Sleep -Seconds 1
+        }
+      }
+      # As a player finds a version: typed into the search box above the list (it finds
+      # a special version by its id too).
       $search = Wait-For { Find-Input $ui.search } 20
       if ($search) { Type-Into $search $version; Start-Sleep -Seconds 1 } else { Say 'no version search box' }
       # A version row reads "<id><tags><date>" (an installation card in the list beside
-      # it starts with the id too, but has no date at the end).
-      $pattern = "^$([regex]::Escape($version))((?![\d.])[^\r\n]*)?\d{4}-\d\d-\d\d$"
-      $row = Wait-For {
+      # it starts with the id too, but has no date at the end); a special version's
+      # starts with its name, which an earlier build shares with the build Mojang kept.
+      $shown = if ($isSpecial) { $specials[$version] } else { [pscustomobject]@{ name = $version; selected = $version } }
+      $pattern = "^$([regex]::Escape($shown.name))((?![\d.])[^\r\n]*)?\d{4}-\d\d-\d\d$"
+      $rows = Wait-For {
         foreach ($candidate in $script:main.FindAll($Scope::Descendants, $Any)) {
-          try { if ($candidate.Current.IsKeyboardFocusable -and $candidate.Current.Name -match $pattern) { return $candidate } } catch { }
+          try { if ($candidate.Current.IsKeyboardFocusable -and $candidate.Current.Name -match $pattern) { $candidate } } catch { }
         }
       } 60
-      if (-not $row) { $result.install = 'failed'; $result.note = 'the version is not in the launcher list'; throw 'version not listed' }
+      if (-not $rows) { $result.install = 'failed'; $result.note = 'the version is not in the launcher list'; throw 'version not listed' }
       # The form says which version is chosen ("Selected: <id>"); the newest is chosen
-      # at first, so the choice is checked before the installation is made.
-      $chosen = @($ui.selected | ForEach-Object { $_.Replace('{id}', $version) })
+      # at first, so the choice is checked before the installation is made. Of rows
+      # with the same name, the one that the form names.
+      $chosen = @($ui.selected | ForEach-Object { $_.Replace('{id}', $shown.selected) })
       $isChosen = { if (@(Get-Texts | Where-Object { Matches $_ $chosen })) { $true } }
-      Click $row
-      if (-not (Wait-For $isChosen 5)) {
-        Say "$label : the row click did not choose it; clicking with the mouse"
-        Mouse-Click $row
+      foreach ($row in @($rows)) {
+        Click $row
+        if (-not (Wait-For $isChosen 5)) {
+          Say "$label : the row click did not choose it; clicking with the mouse"
+          Mouse-Click $row
+        }
+        if (Wait-For $isChosen 5) { break }
       }
-      if (-not (Wait-For $isChosen 5)) {
+      if (-not (Wait-For $isChosen 1)) {
         $result.install = 'failed'; $result.note = 'the version could not be chosen in the form'
         throw 'version not chosen'
       }
@@ -719,10 +773,10 @@ try {
       $submit = Wait-For { Find-Pressable $ui.createSubmit } 120
       if (-not $submit) {
         $result.install = 'failed'
-        $result.note = if ($loader -eq 'vanilla') { 'Create installation stayed unavailable' } else { "no $($loaderNames[$loader]) version offered" }
+        $result.note = if (-not $modded) { 'Create installation stayed unavailable' } else { "no $($loaderNames[$loader]) version offered" }
         throw 'cannot create'
       }
-      if ($loader -ne 'vanilla') {
+      if ($modded) {
         $picked = @(Find-AllCombos | Where-Object { -not (Matches $_.Current.Name $ui.loader) } | ForEach-Object { Combo-Value $_ } | Where-Object { $_ })
         if ($picked) { $result.loaderVersion = $picked[0] }
       }
@@ -754,7 +808,7 @@ try {
 
       # --- Play ----------------------------------------------------------------------------
       $gameDir = Join-Path $instance.FullName 'game'
-      if ((Compare-Version $version '1.7') -lt 0) {
+      if (-not $isSpecial -and (Compare-Version $version '1.7') -lt 0) {
         # Before 1.7 the world list reads and drops every mouse event of a frame drawn
         # without the button down, which loses the test's clicks on its buttons; the
         # game's own touchscreen mode skips that. Written before the first start.
@@ -787,7 +841,7 @@ try {
       if ($game.Process.HasExited) { $result.launch = 'failed'; $result.note = 'the game closed while loading'; throw 'exited' }
       if (-not $up) { Say "$label : no loading marker in the log; going on after the wait" }
       # The loading overlay fades out after the atlases; modded games load on for longer.
-      Start-Sleep -Seconds $(if ($loader -eq 'vanilla') { 15 } else { 30 })
+      Start-Sleep -Seconds $(if ($modded) { 30 } else { 15 })
       if ($game.Process.HasExited) { $result.launch = 'failed'; $result.note = 'the game closed after loading'; throw 'exited' }
       # A loading window of a loader may have given way to the game's own.
       # (the process object stays the first one: it holds the handle for the exit code).
@@ -798,7 +852,9 @@ try {
       # ("Minecraft 26.1"), and newer versions also log it through SDL.
       $running = if ((& $text) -match 'App version: (\S+)') { $Matches[1] }
         elseif ($game.Title -match '^Minecraft\*? (\d\S*)') { $Matches[1] } else { '' }
-      if ($running -and $running -ne $version) {
+      # A special version is not checked by name: its title may name the release it
+      # came from (2.0) or only part of its id.
+      if (-not $isSpecial -and $running -and $running -ne $version) {
         $result.launch = 'wrong version'; $result.note = "the game started as $running"
         throw 'wrong version'
       }
@@ -808,123 +864,132 @@ try {
       $layout = Gui-Layout $hwnd
       Say "$label : window $($layout.Width)x$($layout.Height), GUI scale $($layout.Scale)"
       Game-Shot $hwnd $folder 'start'
-      # From 1.19.4 the first start shows the accessibility welcome screen. Its Continue
-      # button is alone in the 33-high footer. Escape leaves it too if the click missed,
-      # and does nothing on a title screen.
-      if ((Compare-Version $version '1.19.4') -ge 0) {
-        Game-Click $hwnd ($layout.GuiWidth / 2) ($layout.GuiHeight - 17)
-        Start-Sleep -Seconds 3
-      }
-      Game-Key $hwnd 'Escape'
-      Start-Sleep -Seconds 3
-      Game-Shot $hwnd $folder 'title'
-
-      # --- Singleplayer -> Create New World --------------------------------------------------
-      $started = Get-Date
-      # 1.4.6 to 1.6.x log the server's "<nick>[/127.0.0.1:0] logged in with entity id".
-      $joined = "$([regex]::Escape($Nick)) joined the game|$([regex]::Escape($Nick))\[[^\]]*\] logged in with entity id"
-      # Before 1.3 singleplayer had no server inside, and up to 1.4.5 the server inside
-      # logs nowhere: there the new world's files show the world was made (any of
-      # them: 1.2.4 got into its world in the test without a level.dat to be seen).
-      $oldSingleplayer = (Compare-Version $version '1.4.6') -lt 0
-      $inWorld = {
-        if ((& $text) -match $joined) { return $true }
-        if ($oldSingleplayer -and (Get-ChildItem (Join-Path $gameDir 'saves') -Recurse -File -ErrorAction SilentlyContinue |
-            Where-Object { $_.LastWriteTime -gt $started })) { return $true }
-      }
-      # Since 1.19.3 a loader's world (Forge 1.19.3, NeoForge 1.20.5) may be made with
-      # experimental features, and Create first asks to confirm them: Yes is the left of
-      # two 150-wide buttons at height/6 + 96. Where the world is already being made, or
-      # the question is not asked, that spot is a harmless one of Create New World.
-      $confirms = (Compare-Version $version '1.19.3') -ge 0
-      function Confirm-Experiments {
-        if ($confirms -and -not (Wait-For $inWorld 5)) {
-          Game-Click $hwnd ([math]::Floor($layout.GuiWidth / 2) - 155 + 75) ([math]::Floor($layout.GuiHeight / 6) + 96 + 10)
-        }
-      }
-      # Singleplayer: the first button under the logo, 200x20 at height/4 + 48, in
-      # every version.
-      Game-Click $hwnd ($layout.GuiWidth / 2) ([math]::Floor($layout.GuiHeight / 4) + 48 + 10)
-      Start-Sleep -Seconds 5
-      Game-Shot $hwnd $folder 'worlds'
-      # The world list's Create New World: the right of two 150-wide buttons at
-      # height - 52. Newer versions open Create New World at once for an empty list,
-      # and that spot is empty there.
-      # Old versions (1.6.4 and before) may let a click pass, so it is given three
-      # times (eight before 1.4.6): after one that worked, the next land on an empty
-      # spot of Create New World.
-      foreach ($i in 1..$(if ((Compare-Version $version '1.4.6') -lt 0) { 8 } else { 3 })) {
-        Game-Click $hwnd ([math]::Floor($layout.GuiWidth / 2) + 4 + 75) ($layout.GuiHeight - 52 + 10)
-        Start-Sleep -Milliseconds 1500
-      }
-      Start-Sleep -Seconds 2
-      Game-Shot $hwnd $folder 'create-world'
-      # Create New World: the left of two 150-wide buttons at the bottom (height - 28
-      # in older versions, the 33-high footer in newer ones; the same spot).
-      $createX = [math]::Floor($layout.GuiWidth / 2) - 155 + 75
-      Game-Click $hwnd $createX ($layout.GuiHeight - 17)
-      # Again for the same reason; a world being made does not mind the others.
-      foreach ($i in 1..2) { if (-not (Wait-For $inWorld 3)) { Game-Click $hwnd $createX ($layout.GuiHeight - 17) } }
-      Confirm-Experiments
-      $entered = Wait-For $inWorld 60
-      if (-not $entered -and (& $text) -match 'Starting integrated minecraft server') {
-        # The world is being made: only slower than a minute.
-        $entered = Wait-For $inWorld 240
-      }
-      if (-not $entered) {
-        # The keyboard way, as a player without a mouse: back to the title screen, Tab to
-        # Singleplayer, Enter; Enter again creates the world.
-        Say "$label : no world after the clicks; the keyboard way"
-        Game-Shot $hwnd $folder 'after-clicks'
-        foreach ($i in 1..3) { Game-Key $hwnd 'Escape'; Start-Sleep -Seconds 1 }
-        Game-Key $hwnd 'Tab'
-        Game-Key $hwnd 'Enter'
+      if ($isSpecial) {
+        # A version of the launcher's own list is checked to its title screen: its game
+        # files came from the launcher's server, and some of these games have menus of
+        # their own (the oldest none), so no world is made.
         Start-Sleep -Seconds 5
-        Game-Shot $hwnd $folder 'create-world-keys'
-        Game-Key $hwnd 'Enter'
-        Confirm-Experiments
-        $entered = Wait-For $inWorld 240
-        if ($entered) { $result.note = 'world entered with the keyboard' }
-      }
-      if (-not $entered) {
-        $result.world = 'failed'; $result.note = 'did not get into a world'
-        Game-Shot $hwnd $folder 'no-world'
-        # Where the game saved, for an old version whose world is checked by its files:
-        # the installation's saves, any new world file in the test's folders, and how
-        # many test worlds the default game folder holds (names of other worlds there
-        # are not listed).
-        if ($oldSingleplayer) {
-          $saved = @('installation saves:')
-          $saved += @(Get-ChildItem (Join-Path $gameDir 'saves') -Recurse -File -ErrorAction SilentlyContinue |
-            ForEach-Object { '{0:u} {1,10} {2}' -f $_.LastWriteTime.ToUniversalTime(), $_.Length, $_.FullName.Substring($gameDir.Length) })
-          $saved += 'new world files in the test folder:'
-          $saved += @(Get-ChildItem $root, $cache -Recurse -File -Include level.dat, session.lock -ErrorAction SilentlyContinue |
-            Where-Object { $_.LastWriteTime -gt $started } | ForEach-Object { $_.FullName.Substring($env:LOCALAPPDATA.Length) })
-          $default = Join-Path $env:APPDATA '.minecraft\saves'
-          $tests = @(Get-ChildItem $default -Directory -ErrorAction SilentlyContinue | Where-Object { $_.Name -match '^New World-*$' })
-          $saved += "default game folder: $($tests.Count) test worlds, $(@($tests | Where-Object { $_.LastWriteTime -gt $started }).Count) changed during this item"
-          $changed = @('options.txt', 'saves', 'resources', 'screenshots', 'stats', 'lastlogin') | Where-Object {
-            $entry = Get-Item (Join-Path $env:APPDATA ".minecraft\$_") -ErrorAction SilentlyContinue
-            $entry -and $entry.LastWriteTime -gt $playStarted }
-          $saved += "default game folder entries changed since the game started: $($changed -join ', ')"
-          Set-Content (Join-Path $folder 'saves.txt') -Value $saved -Encoding UTF8
-        }
+        Game-Shot $hwnd $folder 'title'
+        $result.world = 'not checked'
       } else {
-        $result.world = 'ok'
-        if ((& $text) -match 'Starting integrated minecraft server version (\S+)' -and $Matches[1] -ne $version) {
-          $result.world = 'wrong version'; $result.note = "the world's server is $($Matches[1])"
+        # From 1.19.4 the first start shows the accessibility welcome screen. Its Continue
+        # button is alone in the 33-high footer. Escape leaves it too if the click missed,
+        # and does nothing on a title screen.
+        if ((Compare-Version $version '1.19.4') -ge 0) {
+          Game-Click $hwnd ($layout.GuiWidth / 2) ($layout.GuiHeight - 17)
+          Start-Sleep -Seconds 3
         }
-        $result.worldSeconds = [int]((Get-Date) - $started).TotalSeconds
-        Say "$label : in the world after $($result.worldSeconds) s"
-        # A look around.
-        Start-Sleep -Seconds 10
-        Game-Shot $hwnd $folder 'world'
-        # A world file of an old version is written before the world loads, and these
-        # versions show a crash in the window and exit normally later (1.2.4 did): the
-        # game's own F2 screenshot shows it is really in the world.
-        if ($oldSingleplayer -and $result.world -eq 'ok' -and -not (Wait-For {
-            Get-ChildItem $shots -Filter *.png -ErrorAction SilentlyContinue | Where-Object { $_.LastWriteTime -gt $started } } 10)) {
-          $result.world = 'failed'; $result.note = 'no game screenshot in the world (a crash screen?)'
+        Game-Key $hwnd 'Escape'
+        Start-Sleep -Seconds 3
+        Game-Shot $hwnd $folder 'title'
+
+        # --- Singleplayer -> Create New World --------------------------------------------------
+        $started = Get-Date
+        # 1.4.6 to 1.6.x log the server's "<nick>[/127.0.0.1:0] logged in with entity id".
+        $joined = "$([regex]::Escape($Nick)) joined the game|$([regex]::Escape($Nick))\[[^\]]*\] logged in with entity id"
+        # Before 1.3 singleplayer had no server inside, and up to 1.4.5 the server inside
+        # logs nowhere: there the new world's files show the world was made (any of
+        # them: 1.2.4 got into its world in the test without a level.dat to be seen).
+        $oldSingleplayer = (Compare-Version $version '1.4.6') -lt 0
+        $inWorld = {
+          if ((& $text) -match $joined) { return $true }
+          if ($oldSingleplayer -and (Get-ChildItem (Join-Path $gameDir 'saves') -Recurse -File -ErrorAction SilentlyContinue |
+              Where-Object { $_.LastWriteTime -gt $started })) { return $true }
+        }
+        # Since 1.19.3 a loader's world (Forge 1.19.3, NeoForge 1.20.5) may be made with
+        # experimental features, and Create first asks to confirm them: Yes is the left of
+        # two 150-wide buttons at height/6 + 96. Where the world is already being made, or
+        # the question is not asked, that spot is a harmless one of Create New World.
+        $confirms = (Compare-Version $version '1.19.3') -ge 0
+        function Confirm-Experiments {
+          if ($confirms -and -not (Wait-For $inWorld 5)) {
+            Game-Click $hwnd ([math]::Floor($layout.GuiWidth / 2) - 155 + 75) ([math]::Floor($layout.GuiHeight / 6) + 96 + 10)
+          }
+        }
+        # Singleplayer: the first button under the logo, 200x20 at height/4 + 48, in
+        # every version.
+        Game-Click $hwnd ($layout.GuiWidth / 2) ([math]::Floor($layout.GuiHeight / 4) + 48 + 10)
+        Start-Sleep -Seconds 5
+        Game-Shot $hwnd $folder 'worlds'
+        # The world list's Create New World: the right of two 150-wide buttons at
+        # height - 52. Newer versions open Create New World at once for an empty list,
+        # and that spot is empty there.
+        # Old versions (1.6.4 and before) may let a click pass, so it is given three
+        # times (eight before 1.4.6): after one that worked, the next land on an empty
+        # spot of Create New World.
+        foreach ($i in 1..$(if ((Compare-Version $version '1.4.6') -lt 0) { 8 } else { 3 })) {
+          Game-Click $hwnd ([math]::Floor($layout.GuiWidth / 2) + 4 + 75) ($layout.GuiHeight - 52 + 10)
+          Start-Sleep -Milliseconds 1500
+        }
+        Start-Sleep -Seconds 2
+        Game-Shot $hwnd $folder 'create-world'
+        # Create New World: the left of two 150-wide buttons at the bottom (height - 28
+        # in older versions, the 33-high footer in newer ones; the same spot).
+        $createX = [math]::Floor($layout.GuiWidth / 2) - 155 + 75
+        Game-Click $hwnd $createX ($layout.GuiHeight - 17)
+        # Again for the same reason; a world being made does not mind the others.
+        foreach ($i in 1..2) { if (-not (Wait-For $inWorld 3)) { Game-Click $hwnd $createX ($layout.GuiHeight - 17) } }
+        Confirm-Experiments
+        $entered = Wait-For $inWorld 60
+        if (-not $entered -and (& $text) -match 'Starting integrated minecraft server') {
+          # The world is being made: only slower than a minute.
+          $entered = Wait-For $inWorld 240
+        }
+        if (-not $entered) {
+          # The keyboard way, as a player without a mouse: back to the title screen, Tab to
+          # Singleplayer, Enter; Enter again creates the world.
+          Say "$label : no world after the clicks; the keyboard way"
+          Game-Shot $hwnd $folder 'after-clicks'
+          foreach ($i in 1..3) { Game-Key $hwnd 'Escape'; Start-Sleep -Seconds 1 }
+          Game-Key $hwnd 'Tab'
+          Game-Key $hwnd 'Enter'
+          Start-Sleep -Seconds 5
+          Game-Shot $hwnd $folder 'create-world-keys'
+          Game-Key $hwnd 'Enter'
+          Confirm-Experiments
+          $entered = Wait-For $inWorld 240
+          if ($entered) { $result.note = 'world entered with the keyboard' }
+        }
+        if (-not $entered) {
+          $result.world = 'failed'; $result.note = 'did not get into a world'
+          Game-Shot $hwnd $folder 'no-world'
+          # Where the game saved, for an old version whose world is checked by its files:
+          # the installation's saves, any new world file in the test's folders, and how
+          # many test worlds the default game folder holds (names of other worlds there
+          # are not listed).
+          if ($oldSingleplayer) {
+            $saved = @('installation saves:')
+            $saved += @(Get-ChildItem (Join-Path $gameDir 'saves') -Recurse -File -ErrorAction SilentlyContinue |
+              ForEach-Object { '{0:u} {1,10} {2}' -f $_.LastWriteTime.ToUniversalTime(), $_.Length, $_.FullName.Substring($gameDir.Length) })
+            $saved += 'new world files in the test folder:'
+            $saved += @(Get-ChildItem $root, $cache -Recurse -File -Include level.dat, session.lock -ErrorAction SilentlyContinue |
+              Where-Object { $_.LastWriteTime -gt $started } | ForEach-Object { $_.FullName.Substring($env:LOCALAPPDATA.Length) })
+            $default = Join-Path $env:APPDATA '.minecraft\saves'
+            $tests = @(Get-ChildItem $default -Directory -ErrorAction SilentlyContinue | Where-Object { $_.Name -match '^New World-*$' })
+            $saved += "default game folder: $($tests.Count) test worlds, $(@($tests | Where-Object { $_.LastWriteTime -gt $started }).Count) changed during this item"
+            $changed = @('options.txt', 'saves', 'resources', 'screenshots', 'stats', 'lastlogin') | Where-Object {
+              $entry = Get-Item (Join-Path $env:APPDATA ".minecraft\$_") -ErrorAction SilentlyContinue
+              $entry -and $entry.LastWriteTime -gt $playStarted }
+            $saved += "default game folder entries changed since the game started: $($changed -join ', ')"
+            Set-Content (Join-Path $folder 'saves.txt') -Value $saved -Encoding UTF8
+          }
+        } else {
+          $result.world = 'ok'
+          if ((& $text) -match 'Starting integrated minecraft server version (\S+)' -and $Matches[1] -ne $version) {
+            $result.world = 'wrong version'; $result.note = "the world's server is $($Matches[1])"
+          }
+          $result.worldSeconds = [int]((Get-Date) - $started).TotalSeconds
+          Say "$label : in the world after $($result.worldSeconds) s"
+          # A look around.
+          Start-Sleep -Seconds 10
+          Game-Shot $hwnd $folder 'world'
+          # A world file of an old version is written before the world loads, and these
+          # versions show a crash in the window and exit normally later (1.2.4 did): the
+          # game's own F2 screenshot shows it is really in the world.
+          if ($oldSingleplayer -and $result.world -eq 'ok' -and -not (Wait-For {
+              Get-ChildItem $shots -Filter *.png -ErrorAction SilentlyContinue | Where-Object { $_.LastWriteTime -gt $started } } 10)) {
+            $result.world = 'failed'; $result.note = 'no game screenshot in the world (a crash screen?)'
+          }
         }
       }
 
@@ -966,9 +1031,10 @@ try {
         Launcher-Log $folder
       }
     } finally {
-      if ($null -ne $launcherLogFrom) { $result.skins = Skins-State $loader $launcherLogFrom $gameDir $runLog }
-      $passed = $result.world -eq 'ok' -and $result.exit -eq 'ok' -and $result.skins -notmatch '^not|^failed'
+      if ($null -ne $launcherLogFrom) { $result.skins = Skins-State $(if ($isSpecial) { 'vanilla' } else { $loader }) $launcherLogFrom $gameDir $runLog }
+      $passed = Passed $result
       if ($result.skins -match '^not|^failed') { $result.note = "$($result.note); Launcher Skins $($result.skins)".Trim('; ') }
+      elseif ($isSpecial -and $result.skins) { $result.note = "$($result.note); Launcher Skins added to a special version".Trim('; ') }
       if (Driver-Crashed $itemStarted) {
         $result.driver = 'crashed'
         $result.note = "$($result.note); the graphics driver crashed".Trim('; ')
@@ -1011,5 +1077,5 @@ try {
   Restore-Machine
 }
 
-$failed = @($results | Where-Object { $_.world -ne 'ok' -or $_.exit -ne 'ok' -or $_.skins -match '^not|^failed' })
+$failed = @($results | Where-Object { -not (Passed $_) })
 if ($failed) { exit 1 }

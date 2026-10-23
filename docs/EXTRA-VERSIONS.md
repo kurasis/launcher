@@ -41,6 +41,9 @@ with where they came from).
   from here too. A world made for one has `"special": true` in `world.json`. The worlds service
   takes the same ids for rooms from `data/extra-world-versions.txt`.
 - The skins mod is not offered on them: it is chosen by exact game version.
+- The Player test (docs/USERTEST.md) plays them from the packaged launcher on the owner's
+  Windows test machine as a player does, to the title screen: `versions: special:joke` (a
+  group), `special:<id>` or `special` (all 233).
 
 ## A new version
 
