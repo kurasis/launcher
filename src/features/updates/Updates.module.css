@@ -80,3 +80,45 @@
     white-space: nowrap;
   }
 }
+
+/* About: the notes of a version, a list that scrolls when long. */
+.notesBox {
+  max-block-size: 12rem;
+  overflow: auto;
+  overflow-wrap: anywhere;
+  font-size: var(--font-size-sm);
+}
+
+.noteList {
+  display: grid;
+  gap: var(--space-1);
+  margin: 0;
+  padding-inline-start: 0;
+}
+
+/* The markers sit in the margin of each line, on whichever side the text starts. */
+.noteList > li {
+  margin-inline-start: var(--space-6);
+}
+
+/* About: where the update stands. It takes the focus when the button that had it goes. */
+.line {
+  margin: 0;
+  color: var(--color-text-muted);
+  font-size: var(--font-size-sm);
+}
+
+.line:focus {
+  outline: none;
+}
+
+.progress {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+}
+
+.wide {
+  flex: 1 1 auto;
+  inline-size: 100%;
+}

@@ -439,7 +439,7 @@ export function App() {
         <main className={styles.content} tabIndex={-1}>
           {consoleOpening.error !== null && <Notice tone="danger">{consoleOpening.error}</Notice>}
           {view === 'about' ? (
-            <AboutView />
+            <AboutView snapshot={snapshot} />
           ) : state.status === 'loading' ? (
             <p role="status">{strings.bootstrap.loading}</p>
           ) : state.status === 'error' ? (
@@ -493,9 +493,13 @@ export function App() {
                   <RunStatus
                     current={state.snapshot.currentRun}
                     last={state.snapshot.lastRun}
+                    names={new Map(state.snapshot.instances.map((i) => [i.id, i.displayName]))}
                     onStop={(runId) => {
                       stopping.clear();
-                      void ipc.stopGame(runId).catch(stopping.catcher);
+                      return ipc.stopGame(runId).catch((error: unknown) => {
+                        stopping.catcher(error);
+                        throw error;
+                      });
                     }}
                   />
                   {stopping.error !== null && <Notice tone="danger">{stopping.error}</Notice>}

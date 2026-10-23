@@ -183,7 +183,8 @@ describe('App', () => {
     chooseFromMore('About');
     // The About view shows the same core info once it has loaded.
     expect(await screen.findByText('Release')).toBeVisible();
-    expect(screen.queryByText(/build$/)).toBeNull();
+    expect(screen.getByText('Version 0.1.0, release build')).toBeVisible();
+    expect(screen.queryByText('Development build')).toBeNull();
   });
 
   it('shows no test profile mark normally', async () => {

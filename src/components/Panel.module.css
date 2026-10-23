@@ -35,3 +35,24 @@
   display: grid;
   gap: var(--space-3);
 }
+
+/* A panel with one action at its end: the heading and the text, then the button. */
+.withAction {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-3) var(--space-4);
+}
+
+.main {
+  flex: 1 1 14rem;
+  min-inline-size: 0;
+}
+
+.withAction .header {
+  margin-bottom: var(--space-1);
+}
+
+.action {
+  flex: none;
+}

@@ -23,3 +23,23 @@
   fill: #ffffff;
   opacity: 0.25;
 }
+
+/* On a panel: the block in the accent of the theme. */
+.surface .top,
+.surface .left,
+.surface .right {
+  fill: var(--color-accent);
+}
+
+/* As heavy as the tones above and after them, so it wins on a panel too. */
+@media (forced-colors: active) {
+  .logo .top,
+  .logo .left,
+  .logo .right {
+    fill: CanvasText;
+  }
+
+  .logo .shine {
+    fill: Canvas;
+  }
+}

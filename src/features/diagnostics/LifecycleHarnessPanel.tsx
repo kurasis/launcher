@@ -23,18 +23,20 @@ export function LifecycleHarnessPanel({ snapshot }: { snapshot: AppSnapshot }) {
   const start = useCommand((requestId: string, scenario: LifecycleScenario) =>
     ipc.startLifecycleTest(scenario, requestId),
   );
+  // A scenario keeps its button while it runs (a disabled control drops the focus).
   const busy = snapshot.activeOperation !== null || start.pending;
   return (
     <>
-      <Panel title={t.title}>
+      <Panel title={t.title} level={3}>
         <p>{t.explanation}</p>
         <div className={forms.actions}>
           {scenarios.map((scenario) => (
             <Button
               key={scenario}
-              disabled={busy}
+              size="small"
+              aria-disabled={busy || undefined}
               onClick={() => {
-                void start.run(scenario);
+                if (!busy) void start.run(scenario);
               }}
             >
               {t.scenarios[scenario]}
@@ -46,9 +48,10 @@ export function LifecycleHarnessPanel({ snapshot }: { snapshot: AppSnapshot }) {
       <RunStatus
         current={snapshot.currentRun}
         last={snapshot.lastRun}
-        onStop={(runId) => {
-          void ipc.stopLifecycleTest(runId).catch(() => undefined);
-        }}
+        level={3}
+        names={new Map(snapshot.instances.map((i) => [i.id, i.displayName]))}
+        output="shown"
+        onStop={(runId) => ipc.stopLifecycleTest(runId)}
       />
     </>
   );
