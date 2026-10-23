@@ -806,7 +806,7 @@ async fn lookup(State(app): State<Arc<App>>, Json(body): Json<LookupBody>) -> Re
     {
         return refuse(StatusCode::BAD_REQUEST, "bad_hashes");
     }
-    match app.store.lookup(&body.hashes) {
+    match app.store.lookup(&body.hashes, &app.urls) {
         Ok(found) => {
             // Installed: checked for new versions more often.
             let mut seen = std::collections::HashSet::new();

@@ -122,6 +122,11 @@ gives `[]`. A new reader version (`MANIFEST_RULES` in `import.rs`) reads them al
 - A version's files say `checked` when the catalog keeps them and its check found
   them clean (or the owner let them go); dependencies carry `title`, `slug` and
   `iconThumb` when the catalog has the project.
+- `POST /v1/lookup` and a modpack's files (`GET /v1/versions/{id}/pack`) carry, for
+  a file the catalog has, `projectId`, `versionId` and, while the project is shown,
+  its `title`, `iconThumb` and the version's `versionNumber`. The launcher asks it
+  each time it lists an installation, so a modpack's files and the player's own show
+  their names and icons.
 
 ## The owner's commands
 
@@ -200,6 +205,14 @@ mods, modpacks, resource packs, shaders and data packs it does not have yet
 Modrinth gives at once; 0 turns it off). It queues them two at a time, and only while
 fewer than 20 jobs are due, so what players ask for never waits behind them for long.
 Those it has are checked as any other; one the owner removed stays removed.
+
+The mods, resource packs and shaders of the modpacks it keeps become catalog projects
+the same way, so each has a page, a title and an icon. A file whose address is on
+Modrinth's CDN names its project; any other is looked up at Modrinth by its SHA-1, ten
+a minute. Their projects are queued two at a time while fewer than 20 jobs are due.
+A file Modrinth does not know (a mod only on CurseForge, which cannot be added without
+its page) is looked up again after 30 days. What was found is in the `pack_lookup`
+table.
 
 OptiFine's icon is made for the catalog (`services/mods/assets/optifine-icon.png`): its
 site has none.

@@ -95,6 +95,7 @@ impl Catalog for Fake {
                     hash: h.clone(),
                     project_id,
                     version_id,
+                    ..Found::default()
                 })
             })
             .collect())

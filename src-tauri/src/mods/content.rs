@@ -1888,6 +1888,9 @@ pub async fn identify<C: Catalog>(
                     path: path.clone(),
                     project_id: f.project_id.clone(),
                     version_id: f.version_id.clone(),
+                    title: f.title.clone(),
+                    icon: f.icon.clone(),
+                    version_number: f.version_number.clone(),
                 });
             }
         }
@@ -2092,13 +2095,17 @@ fn needs(known: &[KnownMod], target: usize) -> NeededBy {
     NeededBy { needed_by, unused }
 }
 
-/// A file the player put there that the catalog knows.
+/// A file the player or a modpack put there that the catalog knows, with
+/// the title, icon and version number the catalog shows for it.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct Identified {
     pub path: String,
     pub project_id: String,
     pub version_id: String,
+    pub title: Option<String>,
+    pub icon: Option<String>,
+    pub version_number: Option<String>,
 }
 
 /// A newer version for a file in the installation.

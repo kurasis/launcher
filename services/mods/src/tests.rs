@@ -2347,6 +2347,168 @@ async fn a_modpack_is_read_and_all_its_files_are_kept_when_asked() {
 }
 
 #[tokio::test]
+async fn a_packs_mods_join_the_catalog_and_are_told_by_their_hash() {
+    let t = setup();
+    let jars = modrinth_site(&t.sites);
+    let sodium = jars["v2bbbbbb"].clone();
+    let api = jars["faaaaaaa"].clone();
+    let stranger = b"a mod no site knows".to_vec();
+    let sodium_url =
+        format!("https://cdn.modrinth.com/data/{SODIUM}/versions/v2bbbbbb/sodium-0.6.jar");
+    let api_url = "https://github.com/someone/api/releases/download/1/api.jar";
+    let stranger_url = "https://github.com/someone/stranger/releases/download/1/stranger.jar";
+    t.sites.put(api_url, ok(api.clone()));
+    t.sites.put(stranger_url, ok(stranger.clone()));
+    let (sodium_sha1, _, _) = hashes(&sodium);
+    let (api_sha1, _, _) = hashes(&api);
+    let (stranger_sha1, _, _) = hashes(&stranger);
+    // Modrinth knows Fabric API's file by its hash, and not the stranger.
+    t.sites.json(
+        &modrinth::version_file_url(&api_sha1),
+        json!({ "id": "faaaaaaa", "project_id": FABRIC_API }),
+    );
+    let index = json!({
+        "formatVersion": 1, "game": "minecraft", "versionId": "1.0", "name": "Pack",
+        "dependencies": { "minecraft": "1.21.1", "fabric-loader": "0.16.5" },
+        "files": [
+            pack_entry("mods/sodium.jar", &sodium_url, &sodium, "required"),
+            pack_entry("mods/api.jar", api_url, &api, "required"),
+            pack_entry("mods/stranger.jar", stranger_url, &stranger, "required"),
+        ],
+    });
+    let archive = mrpack(&[("modrinth.index.json", index.to_string().as_bytes())]);
+    modpack_site(&t.sites, &archive);
+    let version = pack_version(&t).await;
+    t.call(
+        None,
+        "POST",
+        &format!("/v1/versions/{version}/pack"),
+        Value::Null,
+    )
+    .await;
+    t.drain().await;
+    let (_, pack) = t.get(&format!("/v1/versions/{version}/pack")).await;
+    assert_eq!(pack["state"], "ready", "{pack}");
+    assert!(pack["files"][0]["projectId"].is_null(), "{pack}");
+    assert!(pack["files"][0]["title"].is_null());
+
+    // Waits while players' requests are queued.
+    for n in 0..import::SEED_WHEN_BELOW {
+        t.app
+            .store
+            .enqueue(
+                &format!("busy:{n}"),
+                "body",
+                &json!({}),
+                None,
+                None,
+                now(),
+                None,
+            )
+            .unwrap();
+    }
+    assert_eq!(import::pack_projects(&t.app).await.unwrap(), 0);
+    assert_eq!(t.sites.asked(&modrinth::version_file_url(&api_sha1)), 0);
+    t.drain().await;
+
+    // Sodium's project is read from its address, Fabric API's asked for by
+    // its hash; both are queued.
+    assert_eq!(import::pack_projects(&t.app).await.unwrap(), 2);
+    assert_eq!(t.sites.asked(&modrinth::version_file_url(&sodium_sha1)), 0);
+    assert_eq!(t.sites.asked(&modrinth::version_file_url(&api_sha1)), 1);
+    assert_eq!(
+        t.sites.asked(&modrinth::version_file_url(&stranger_sha1)),
+        1
+    );
+    t.drain().await;
+    // Nothing more to ask: the stranger waits a month.
+    assert_eq!(import::pack_projects(&t.app).await.unwrap(), 0);
+    assert_eq!(
+        t.sites.asked(&modrinth::version_file_url(&stranger_sha1)),
+        1
+    );
+    assert!(
+        t.app
+            .store
+            .pack_files_unknown(now() + import::PACK_LOOKUP_AGAIN, 10)
+            .unwrap()
+            .iter()
+            .any(|(sha1, _)| *sha1 == stranger_sha1)
+    );
+
+    // The launcher is told each file's project, title, icon and version.
+    let (status, found) = t
+        .call(
+            None,
+            "POST",
+            "/v1/lookup",
+            json!({ "hashes": [sodium_sha1, api_sha1, stranger_sha1] }),
+        )
+        .await;
+    assert_eq!(status, StatusCode::OK, "{found}");
+    let found = found["found"].as_array().unwrap().clone();
+    assert_eq!(found.len(), 2, "{found:?}");
+    let (_, sodium_page) = t.get("/v1/projects/sodium").await;
+    assert_eq!(found[0]["hash"], sodium_sha1.as_str());
+    assert_eq!(found[0]["projectId"], sodium_page["id"]);
+    assert_eq!(found[0]["title"], "Sodium");
+    assert_eq!(found[0]["versionNumber"], "0.6");
+    assert_eq!(found[0]["iconThumb"], sodium_page["iconThumb"]);
+    assert!(found[0]["iconThumb"].is_string());
+    assert_eq!(found[1]["title"], "Fabric API");
+    assert_eq!(found[1]["versionNumber"], "0.100");
+    assert!(found[1]["iconThumb"].is_null());
+    let (_, pack) = t.get(&format!("/v1/versions/{version}/pack")).await;
+    let files = pack["files"].as_array().unwrap();
+    assert_eq!(files[0]["projectId"], sodium_page["id"]);
+    assert_eq!(files[0]["title"], "Sodium");
+    assert_eq!(files[0]["versionNumber"], "0.6");
+    assert_eq!(files[1]["title"], "Fabric API");
+    assert!(files[2]["projectId"].is_null());
+
+    // A hidden project's file is still known, its title and icon are not told.
+    t.app
+        .store
+        .set_project_status(sodium_page["id"].as_str().unwrap(), "hidden")
+        .unwrap();
+    let (_, found) = t
+        .call(
+            None,
+            "POST",
+            "/v1/lookup",
+            json!({ "hashes": [sodium_sha1] }),
+        )
+        .await;
+    assert_eq!(found["found"][0]["projectId"], sodium_page["id"]);
+    assert!(found["found"][0]["title"].is_null(), "{found}");
+    assert!(found["found"][0]["iconThumb"].is_null());
+    assert!(found["found"][0]["versionNumber"].is_null());
+}
+
+#[test]
+fn modrinths_answer_by_hash_is_read_with_care() {
+    let url = modrinth::version_file_url("../x?y");
+    assert!(
+        url.ends_with("/version_file/%2E%2E%2Fx%3Fy?algorithm=sha1"),
+        "{url}"
+    );
+    assert_eq!(
+        modrinth::version_project(&json!({ "project_id": "AANobbMI" })).as_deref(),
+        Some("AANobbMI")
+    );
+    for junk in [
+        json!({ "project_id": "../../x" }),
+        json!({ "project_id": 7 }),
+        json!({ "project_id": "" }),
+        json!({ "project_id": "x".repeat(65) }),
+        json!({ "id": "AANobbMI" }),
+        json!("AANobbMI"),
+    ] {
+        assert!(modrinth::version_project(&junk).is_none(), "{junk}");
+    }
+}
+
+#[tokio::test]
 async fn a_broken_modpack_fails_with_a_reason() {
     for (archive, code) in [
         (b"not a zip at all".to_vec(), "bad_pack"),

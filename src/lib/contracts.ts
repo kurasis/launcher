@@ -1897,11 +1897,17 @@ export type ModsPublished =
 /** What a player may report a pack for. */
 export type ModsReportReason = 'malware' | 'stolen' | 'inappropriate' | 'broken' | 'other';
 
-/** A file of the player's that the catalog recognized. */
+/**
+ * A file the player or a modpack put there that the catalog recognized, with
+ * the title, icon and version number the catalog shows for it.
+ */
 export interface ContentIdentified {
   path: string;
   projectId: string;
   versionId: string;
+  title: string | null;
+  icon: string | null;
+  versionNumber: string | null;
 }
 
 export interface ContentUpdate {
