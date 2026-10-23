@@ -7,8 +7,9 @@ import type { ChatMessage, ChatRoom, FriendsView } from '../../lib/contracts';
 import { friendsProblem, ipc, onFriendsMessage, onFriendsRemoved } from '../../lib/ipc';
 import { strings } from '../../lib/strings';
 import { around } from '../downloads/operationText';
-import { messageTime } from './chatTime';
+import { isoTime, messageTime } from './chatTime';
 import { Confirm } from './Confirm';
+import { focusLost, useRowFocus } from './focus';
 import styles from './Friends.module.css';
 import { type GameForInvites, InviteCard } from './InviteCard';
 import { inviteBody, parseInvite } from './invite';
@@ -76,6 +77,14 @@ export function ChatView({
   const [adding, setAdding] = useState('');
   const list = useRef<HTMLOListElement>(null);
   const box = useRef<HTMLTextAreaElement>(null);
+  const renameLink = useRef<HTMLButtonElement>(null);
+  const addSelect = useRef<HTMLSelectElement>(null);
+  const memberList = useRef<HTMLUListElement>(null);
+  const memberFocus = useRowFocus(memberList, room.members);
+  // The message whose report form just closed, and whether earlier messages were asked
+  // for: the focus goes on from there when what had it goes away.
+  const reportClosed = useRef<number | null>(null);
+  const askedEarlier = useRef(false);
   const readUpTo = useRef(0);
   const stick = useRef(true);
   const hintId = useId();
@@ -132,6 +141,37 @@ export function ChatView({
     }
   }, [last, lastMine]);
 
+  // What grows in the list after it was drawn (a world's facts coming in under the last
+  // message) keeps the newest message in sight while it was.
+  useEffect(() => {
+    const element = list.current;
+    if (element === null || typeof MutationObserver === 'undefined') return;
+    const observer = new MutationObserver(() => {
+      if (stick.current) element.scrollTop = element.scrollHeight;
+    });
+    observer.observe(element, { childList: true, subtree: true, characterData: true });
+    return () => {
+      observer.disconnect();
+    };
+  }, []);
+
+  // A closed form gives the focus back to what opened it, or to what stands in its place.
+  useEffect(() => {
+    if (newName === null && focusLost()) renameLink.current?.focus();
+  }, [newName]);
+  useEffect(() => {
+    const id = reportClosed.current;
+    reportClosed.current = null;
+    if (reporting !== null || id === null || !focusLost()) return;
+    list.current?.querySelector<HTMLElement>(`[data-report="${String(id)}"]`)?.focus();
+  }, [reporting]);
+  // The last page came: "Earlier messages" went, and the list keeps the focus.
+  useEffect(() => {
+    if (more || !askedEarlier.current) return;
+    askedEarlier.current = false;
+    if (focusLost()) list.current?.focus();
+  }, [more]);
+
   // What is on screen counts as read.
   useEffect(() => {
     if (last > readUpTo.current && room.unread > 0) {
@@ -164,8 +204,10 @@ export function ChatView({
   };
 
   const earlier = async () => {
+    if (loadingEarlier) return;
     const oldest = messages[0]?.id ?? null;
     stick.current = false;
+    askedEarlier.current = true;
     setLoadingEarlier(true);
     await run(async () => {
       const page = await ipc.friendsMessages(room.id, oldest);
@@ -215,6 +257,7 @@ export function ChatView({
   };
 
   const stopReporting = () => {
+    reportClosed.current = reporting;
     setReporting(null);
     setReason('');
   };
@@ -232,6 +275,7 @@ export function ChatView({
   };
 
   const ask = (what: Asking) => {
+    if (answering) return;
     const by = document.activeElement instanceof HTMLElement ? document.activeElement : null;
     setAsking({ what, by });
   };
@@ -335,6 +379,8 @@ export function ChatView({
 
       {asking !== null && (
         <Confirm
+          // Another question is a new one: it takes the focus and is read out.
+          key={asking.what}
           label={asking.what === 'leave' ? t.leave : (other?.nick ?? title)}
           text={
             asking.what === 'leave'
@@ -352,7 +398,7 @@ export function ChatView({
 
       {isGroup && showMembers && (
         <div className={styles.members}>
-          <ul className={styles.people}>
+          <ul className={styles.people} ref={memberList} {...memberFocus}>
             {room.members.map((member) => (
               <li key={member.id} className={styles.person}>
                 <PlayerHead nick={member.nick} heads={heads} size={24} />
@@ -381,6 +427,7 @@ export function ChatView({
           {owner && addable.length > 0 && (
             <div className={styles.inline}>
               <select
+                ref={addSelect}
                 className={forms.select}
                 aria-label={t.addMember}
                 value={adding}
@@ -400,17 +447,21 @@ export function ChatView({
                 disabled={adding === ''}
                 onClick={() =>
                   void run(() => ipc.friendsChangeRoom(room.id, 'add', adding)).then((ok) => {
-                    if (ok) setAdding('');
+                    if (!ok) return;
+                    // The emptied choice turns Add off: the focus goes to the choice.
+                    addSelect.current?.focus();
+                    setAdding('');
                   })
                 }
               >
-                {t.add}
+                {t.addToGroup}
               </Button>
             </div>
           )}
           {owner &&
             (newName === null ? (
               <button
+                ref={renameLink}
                 type="button"
                 className={styles.link}
                 onClick={() => {
@@ -433,6 +484,7 @@ export function ChatView({
                 onKeyDown={(event) => {
                   // Escape closes the renaming, not the whole sheet.
                   if (event.key === 'Escape') {
+                    event.preventDefault();
                     event.stopPropagation();
                     setNewName(null);
                   }
@@ -441,6 +493,8 @@ export function ChatView({
                 <input
                   className={forms.input}
                   aria-label={t.groupName}
+                  // The Rename link that opened it is gone: the field takes the focus.
+                  autoFocus
                   value={newName}
                   maxLength={NAME_MAX}
                   onChange={(event) => {
@@ -459,6 +513,8 @@ export function ChatView({
         className={styles.messages}
         ref={list}
         aria-label={title}
+        // Takes the focus when what had it in the list went away.
+        tabIndex={-1}
         onScroll={(event) => {
           const element = event.currentTarget;
           stick.current = element.scrollHeight - element.scrollTop - element.clientHeight < 40;
@@ -466,13 +522,16 @@ export function ChatView({
       >
         {more && (
           <li className={styles.earlier}>
-            {loadingEarlier ? (
-              <Spinner label={t.loadingMessages} />
-            ) : (
-              <button type="button" className={styles.link} onClick={() => void earlier()}>
-                {t.earlier}
-              </button>
-            )}
+            {/* It stays while the page comes, keeping the focus. */}
+            <button
+              type="button"
+              className={styles.link}
+              aria-disabled={loadingEarlier || undefined}
+              onClick={() => void earlier()}
+            >
+              {loadingEarlier && <span className={styles.spinner} aria-hidden="true" />}
+              {loadingEarlier ? t.loadingMessages : t.earlier}
+            </button>
           </li>
         )}
         {loading && messages.length === 0 && (
@@ -500,9 +559,7 @@ export function ChatView({
               <li className={styles.message} data-mine={mine ? 'true' : undefined}>
                 <p className={styles.meta}>
                   {before}
-                  <time dateTime={new Date(message.created * 1000).toISOString()}>
-                    {messageTime(message.created)}
-                  </time>
+                  <time dateTime={isoTime(message.created)}>{messageTime(message.created)}</time>
                   {after}
                 </p>
                 {invite !== undefined ? (
@@ -521,7 +578,14 @@ export function ChatView({
                 )}
                 {!mine &&
                   (reported.has(message.id) ? (
-                    <p className={styles.muted}>{t.reported}</p>
+                    <p
+                      className={styles.muted}
+                      role="status"
+                      tabIndex={-1}
+                      data-report={message.id}
+                    >
+                      {t.reported}
+                    </p>
                   ) : reporting === message.id ? (
                     <form
                       className={styles.reportForm}
@@ -536,6 +600,7 @@ export function ChatView({
                       onKeyDown={(event) => {
                         // Escape closes the report, not the whole panel.
                         if (event.key === 'Escape') {
+                          event.preventDefault();
                           event.stopPropagation();
                           stopReporting();
                         }
@@ -564,6 +629,7 @@ export function ChatView({
                     <button
                       type="button"
                       className={styles.report}
+                      data-report={message.id}
                       onClick={() => {
                         setReporting(message.id);
                         setReason('');

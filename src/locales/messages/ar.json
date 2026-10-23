@@ -2792,7 +2792,9 @@
       "worldOpen": "مفتوح الآن",
       "newGroupNeeds": "تحتاج المجموعة إلى صديقين على الأقل.",
       "preferences": "إعدادات المحادثات",
-      "removeFriend": "أزل من الأصدقاء"
+      "removeFriend": "أزل من الأصدقاء",
+      "requestsWaiting": "{count, plural, zero {لا طلبات صداقة} one {طلب صداقة واحد} two {طلبا صداقة} few {# طلبات صداقة} many {# طلب صداقة} other {# طلب صداقة}}",
+      "addToGroup": "إضافة"
     },
     "windowTitles": {
       "pickJava": "اختر برنامج Java (java أو javaw.exe)",

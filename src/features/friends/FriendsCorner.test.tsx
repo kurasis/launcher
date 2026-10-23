@@ -3,8 +3,15 @@ import { emit } from '@tauri-apps/api/event';
 import { mockIPC } from '@tauri-apps/api/mocks';
 import { describe, expect, it, vi } from 'vitest';
 import type { AppSnapshot, ChatMessage, ChatRoom, FriendsView } from '../../lib/contracts';
+import { addDialog, removeDialog } from '../../components/dialogStack';
 import { instanceFixture, snapshotFixture } from '../../test/fixtures';
 import { FriendsCorner } from './FriendsCorner';
+import { playChime } from './sound';
+
+vi.mock('./sound', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('./sound')>()),
+  playChime: vi.fn(),
+}));
 
 const ME = { id: '00000000-0000-4000-8000-000000000001', nick: 'Steve_2' };
 const ALEX = { id: '00000000-0000-4000-8000-000000000002', nick: 'Alex' };
@@ -93,6 +100,12 @@ function setup(
   return { calls, onOpenAccounts, onOpenWorld };
 }
 
+/** A press as a browser makes it: the button takes the focus, then the click. */
+function press(element: HTMLElement) {
+  element.focus();
+  fireEvent.click(element);
+}
+
 async function openPanel() {
   fireEvent.click(await screen.findByRole('button', { name: /Friends and chats/ }));
   return screen.getByRole('region', { name: 'Friends and chats' });
@@ -135,6 +148,7 @@ describe('friends corner', () => {
   it('shows unread messages and requests on the button', async () => {
     setup(signedIn({ incoming: [{ ...NOTCH, at: 3, online: false, playing: null }] }));
     const button = await screen.findByRole('button', { name: /1 unread message/ });
+    expect(button).toHaveAccessibleName('Friends and chats, 1 unread message, 1 friend request');
     expect(within(button).getByText('2')).toBeVisible();
   });
 
@@ -707,6 +721,10 @@ describe('friends corner', () => {
     expect(plus).toHaveAttribute('title', 'A group needs at least two friends.');
     fireEvent.click(plus);
     expect(within(panel).queryByRole('textbox', { name: 'Group name' })).toBeNull();
+    // A press says why, to everyone.
+    expect(within(panel).getByRole('status')).toHaveTextContent(
+      'A group needs at least two friends.',
+    );
   });
 
   it('shows the chosen chat beside the list and keeps the place when opened again', async () => {
@@ -824,5 +842,250 @@ describe('friends corner', () => {
     expect(calls.filter((c) => c.cmd === 'skins_heads').map((c) => c.args)).toEqual([
       { nicks: ['Kira_7', 'Max_7'] },
     ]);
+  });
+
+  it('goes away when the focus or a press goes outside it, and Escape works from anywhere', async () => {
+    setup(signedIn());
+    const outside = document.createElement('button');
+    outside.textContent = 'Play';
+    document.body.append(outside);
+    const sheet = () => screen.queryByRole('region', { name: 'Friends and chats' });
+    try {
+      const button = await screen.findByRole('button', { name: /Friends and chats/ });
+      fireEvent.click(button);
+      // Tab out of the sheet: nothing under it is reached with the sheet still over it.
+      act(() => {
+        outside.focus();
+      });
+      expect(sheet()).toBeNull();
+      expect(outside).toHaveFocus();
+      fireEvent.click(button);
+      fireEvent.pointerDown(outside);
+      expect(sheet()).toBeNull();
+      // A lost focus keeps it, and Escape still closes it.
+      fireEvent.click(button);
+      act(() => {
+        (document.activeElement as HTMLElement).blur();
+      });
+      expect(sheet()).not.toBeNull();
+      fireEvent.keyDown(document.body, { key: 'Escape' });
+      expect(sheet()).toBeNull();
+      expect(button).toHaveFocus();
+      // A dialog over it keeps it: its keys and focus are the dialog's.
+      fireEvent.click(button);
+      const box = document.createElement('div');
+      const inside = document.createElement('button');
+      box.append(inside);
+      document.body.append(box);
+      const id = Symbol('dialog');
+      addDialog({ id, holds: (node) => box.contains(node), refocus: () => undefined });
+      act(() => {
+        inside.focus();
+      });
+      fireEvent.pointerDown(inside);
+      fireEvent.keyDown(inside, { key: 'Escape' });
+      expect(sheet()).not.toBeNull();
+      removeDialog(id);
+      box.remove();
+    } finally {
+      outside.remove();
+    }
+  });
+
+  it('does not take the player back to a group left while they moved on', async () => {
+    const group = direct({
+      kind: 'group',
+      name: 'Builders',
+      owner: ALEX.id,
+      members: [ME, ALEX, NOTCH],
+    });
+    let finish = () => undefined as unknown;
+    setup(signedIn({ rooms: [group] }), {
+      friends_change_room: () =>
+        new Promise((done) => {
+          finish = () => {
+            done(null);
+          };
+        }),
+    });
+    const panel = await openPanel();
+    fireEvent.click(within(panel).getByRole('button', { name: /Builders/ }));
+    fireEvent.click(await within(panel).findByRole('button', { name: 'Chat actions' }));
+    fireEvent.click(within(panel).getByRole('menuitem', { name: 'Leave the group' }));
+    const asked = within(panel).getByRole('alertdialog');
+    fireEvent.click(within(asked).getByRole('button', { name: 'Leave the group' }));
+    // While the answer goes, the question stays.
+    const cancel = within(asked).getByRole('button', { name: 'Cancel' });
+    await waitFor(() => {
+      expect(cancel).toHaveAttribute('aria-disabled', 'true');
+    });
+    fireEvent.click(cancel);
+    fireEvent.keyDown(asked, { key: 'Escape' });
+    expect(within(panel).getByRole('alertdialog')).toBe(asked);
+    fireEvent.click(within(panel).getByRole('tab', { name: 'Friends' }));
+    await act(async () => {
+      finish();
+      await Promise.resolve();
+    });
+    expect(within(panel).getByRole('tab', { name: 'Friends' })).toHaveAttribute(
+      'aria-selected',
+      'true',
+    );
+  });
+
+  it('chimes for the chat on screen while a new group takes its place', async () => {
+    vi.mocked(playChime).mockClear();
+    const hasFocus = vi.spyOn(document, 'hasFocus').mockReturnValue(true);
+    try {
+      setup(signedIn());
+      const panel = await openPanel();
+      fireEvent.click(within(panel).getByRole('button', { name: /Alex/ }));
+      await within(panel).findByRole('list', { name: 'Alex' });
+      await act(async () => {
+        await emit('friends://message', message(9, ALEX.id, 'on screen'));
+      });
+      expect(playChime).not.toHaveBeenCalled();
+      fireEvent.click(within(panel).getByRole('button', { name: 'New group' }));
+      await act(async () => {
+        await emit('friends://message', message(10, ALEX.id, 'behind the form'));
+      });
+      expect(playChime).toHaveBeenCalledTimes(1);
+    } finally {
+      hasFocus.mockRestore();
+    }
+  });
+
+  it('keeps the focus in the sheet when what had it goes away', async () => {
+    const group = direct({
+      kind: 'group',
+      name: 'Builders',
+      owner: ME.id,
+      members: [ME, ALEX, NOTCH],
+    });
+    let view = signedIn({
+      rooms: [group, { ...direct(), id: '10000000-0000-4000-8000-000000000009' }],
+    });
+    setup(view, {
+      friends_state: () => view,
+      friends_create_group: () => ROOM,
+    });
+    const panel = await openPanel();
+    // The new group's form: Cancel gives the focus back to "+", Create to the new chat.
+    const plus = within(panel).getByRole('button', { name: 'New group' });
+    fireEvent.click(plus);
+    fireEvent.click(within(panel).getByRole('button', { name: 'Cancel' }));
+    expect(plus).toHaveFocus();
+    fireEvent.click(plus);
+    fireEvent.change(within(panel).getByRole('textbox', { name: 'Group name' }), {
+      target: { value: 'Builders' },
+    });
+    fireEvent.click(within(panel).getByRole('checkbox', { name: 'Alex' }));
+    fireEvent.click(within(panel).getByRole('checkbox', { name: 'Notch_1' }));
+    fireEvent.click(within(panel).getByRole('button', { name: 'Create' }));
+    await waitFor(() => {
+      expect(within(panel).getByRole('textbox', { name: 'Write a message' })).toHaveFocus();
+    });
+    // Renaming: Escape gives the focus back to Rename.
+    fireEvent.click(within(panel).getByRole('button', { name: /3 people/ }));
+    press(within(panel).getByRole('button', { name: 'Rename' }));
+    expect(within(panel).getByRole('textbox', { name: 'Group name' })).toHaveFocus();
+    fireEvent.keyDown(within(panel).getByRole('textbox', { name: 'Group name' }), {
+      key: 'Escape',
+    });
+    expect(within(panel).getByRole('button', { name: 'Rename' })).toHaveFocus();
+    // A member removed: the next one's button takes the focus.
+    const alex = within(panel).getAllByText('Alex').at(-1)?.closest('li') as HTMLElement;
+    within(alex).getByRole('button', { name: 'Remove from the group' }).focus();
+    view = signedIn({ rooms: [{ ...group, members: [ME, NOTCH] }] });
+    await act(async () => {
+      await emit('friends://state', view);
+    });
+    const notch = within(panel).getAllByText('Notch_1').at(-1)?.closest('li') as HTMLElement;
+    expect(within(notch).getByRole('button', { name: 'Remove from the group' })).toHaveFocus();
+    // The chat itself gone: the open tab takes the focus.
+    view = signedIn({ rooms: [], unread: 0 });
+    await act(async () => {
+      await emit('friends://state', view);
+    });
+    expect(within(panel).getByRole('tab', { name: 'Chats' })).toHaveFocus();
+    expect(within(panel).getByText('No chats yet. Start one from the Friends tab.')).toBeVisible();
+  });
+
+  it('gives the focus to the next friend when one is removed, and back from a report', async () => {
+    let view = signedIn({
+      friends: [
+        { ...ALEX, at: 1, online: true, playing: null },
+        { ...NOTCH, at: 2, online: false, playing: null },
+      ],
+    });
+    setup(view, { friends_state: () => view, friends_report: () => null });
+    const panel = await openPanel();
+    // A report sent or dropped: the focus goes back to the message.
+    fireEvent.click(within(panel).getByRole('button', { name: /Alex/ }));
+    const report = await within(panel).findByRole('button', { name: 'Report' });
+    fireEvent.click(report);
+    fireEvent.click(within(panel).getByRole('button', { name: 'Cancel' }));
+    expect(within(panel).getByRole('button', { name: 'Report' })).toHaveFocus();
+    fireEvent.click(within(panel).getByRole('button', { name: 'Report' }));
+    fireEvent.change(within(panel).getByRole('textbox', { name: 'What is wrong with it?' }), {
+      target: { value: 'spam' },
+    });
+    fireEvent.submit(within(panel).getByRole('textbox', { name: 'What is wrong with it?' }));
+    await waitFor(() => {
+      expect(within(panel).getByText('Reported. Thank you.')).toHaveFocus();
+    });
+    fireEvent.click(within(panel).getByRole('tab', { name: /Friends/ }));
+    const row = within(panel).getByText('Alex').closest('li') as HTMLElement;
+    press(within(row).getByRole('button', { name: 'Remove' }));
+    press(within(within(row).getByRole('alertdialog')).getByRole('button', { name: 'Remove' }));
+    view = signedIn({ friends: [{ ...NOTCH, at: 2, online: false, playing: null }] });
+    await act(async () => {
+      await emit('friends://state', view);
+    });
+    const next = within(panel).getByText('Notch_1').closest('li') as HTMLElement;
+    expect(within(next).getByRole('button', { name: 'Message' })).toHaveFocus();
+  });
+
+  it('keeps "Earlier messages" while they come, then gives the focus to the list', async () => {
+    const page = Array.from({ length: 50 }, (_, i) =>
+      message(100 + i, ALEX.id, `line ${String(i)}`),
+    );
+    let finish = () => undefined as unknown;
+    let pages = 0;
+    setup(signedIn(), {
+      friends_messages: () => {
+        pages++;
+        if (pages === 1) return page;
+        return new Promise((done) => {
+          finish = () => {
+            done([message(1, ALEX.id, 'the first')]);
+          };
+        });
+      },
+    });
+    const panel = await openPanel();
+    fireEvent.click(within(panel).getByRole('button', { name: /Alex/ }));
+    const earlier = await within(panel).findByRole('button', { name: 'Earlier messages' });
+    earlier.focus();
+    fireEvent.click(earlier);
+    const waiting = within(panel).getByRole('button', { name: 'Loading messages…' });
+    expect(waiting).toBe(earlier);
+    expect(waiting).toHaveAttribute('aria-disabled', 'true');
+    expect(waiting).toHaveFocus();
+    await act(async () => {
+      finish();
+      await Promise.resolve();
+    });
+    expect(await within(panel).findByText('the first')).toBeVisible();
+    expect(within(panel).getByRole('list', { name: 'Alex' })).toHaveFocus();
+  });
+
+  it('shows a chat whose time no date can hold', async () => {
+    setup(
+      signedIn({ rooms: [direct({ last: { ...message(2, ALEX.id, 'when?'), created: 1e300 } })] }),
+    );
+    const panel = await openPanel();
+    expect(within(panel).getByRole('button', { name: /when\?/ })).toBeVisible();
+    expect(panel.querySelector('time')).not.toHaveAttribute('datetime');
   });
 });

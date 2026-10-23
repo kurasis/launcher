@@ -2975,6 +2975,8 @@ export type Messages = {
     readonly newGroupNeeds: string;
     readonly preferences: string;
     readonly removeFriend: string;
+    readonly requestsWaiting: (values: { count: number }) => string;
+    readonly addToGroup: string;
   };
   readonly windowTitles: {
     readonly pickJava: string;

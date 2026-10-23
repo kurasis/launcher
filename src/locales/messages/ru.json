@@ -2791,7 +2791,9 @@
       "worldOpen": "Открыт сейчас",
       "newGroupNeeds": "Для группы нужны хотя бы два друга.",
       "preferences": "Настройки чатов",
-      "removeFriend": "Удалить из друзей"
+      "removeFriend": "Удалить из друзей",
+      "requestsWaiting": "{count, plural, one {# заявка в друзья} few {# заявки в друзья} many {# заявок в друзья} other {# заявки в друзья}}",
+      "addToGroup": "Добавить"
     },
     "windowTitles": {
       "pickJava": "Выберите программу Java (java или javaw.exe)",

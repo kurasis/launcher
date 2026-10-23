@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { listTime, messageTime } from './chatTime';
+import { isoTime, listTime, messageTime } from './chatTime';
 
 /** Unix seconds of a moment on this computer's clock. */
 function at(year: number, month: number, day: number, hour: number, minute: number): number {
@@ -30,5 +30,14 @@ describe('chat times', () => {
 
   it('takes a clock that is behind as today', () => {
     expect(plain(listTime(at(2026, 10, 24, 1, 0), NOW))).toBe('01:00 AM');
+  });
+
+  it('shows nothing for a time no date can hold, and never throws', () => {
+    for (const junk of [Number.NaN, Infinity, -Infinity, 9e15, -9e15]) {
+      expect(listTime(junk, NOW)).toBe('');
+      expect(messageTime(junk, NOW)).toBe('');
+      expect(isoTime(junk)).toBeUndefined();
+    }
+    expect(isoTime(0)).toBe('1970-01-01T00:00:00.000Z');
   });
 });

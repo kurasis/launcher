@@ -2791,7 +2791,9 @@
       "worldOpen": "Open now",
       "newGroupNeeds": "A group needs at least two friends.",
       "preferences": "Chat settings",
-      "removeFriend": "Remove from friends"
+      "removeFriend": "Remove from friends",
+      "requestsWaiting": "{count, plural, one {# friend request} other {# friend requests}}",
+      "addToGroup": "Add"
     },
     "windowTitles": {
       "pickJava": "Choose the Java program (java or javaw.exe)",

@@ -2020,7 +2020,9 @@ archive from the Package workflow, upload it to
   interface `friends://state` and `friends://message`. Since concept A
   (D-072) Friends is a row of the rail with a count of unread messages plus
   requests; it opens a side sheet at the window's inline end over a soft
-  scrim (a press on it closes the sheet). The sheet: Chats in two panes (the
+  scrim. A press on the scrim, the focus or a press going anywhere outside
+  the sheet and its row, or Escape puts it away, so nothing under it is
+  reached while it is open. The sheet: Chats in two panes (the
   list with skin heads, times and previews; the conversation beside it,
   nothing opened, and so read, by itself), Friends (add by nick, message,
   invite, remove and block after a question, the blocked list, the chat
@@ -2029,8 +2031,10 @@ archive from the Package workflow, upload it to
   and Shift+Enter for a new line, reports per message, a "⋯" menu (invite to
   the server the game is on, remove, block, leave a group) and the owner's
   member list. A world invite shows its world's name, version, mods and
-  whether it is open as soon as it is in view (read only); joining the room
-  takes a press. Message text is rendered as text only (no markup, no
+  whether it is open as soon as it is in view (read only; at most 12 cards
+  look by themselves in 10 minutes, so a chat full of codes cannot use up
+  the player's looks, the others wait for a press on Look); joining the room
+  takes a press, and only a code the service refused takes Join away. Message text is rendered as text only (no markup, no
   links), each message with its own direction.
 
 ### Stages

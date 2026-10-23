@@ -6,6 +6,7 @@ import type { FriendAction, FriendPerson, FriendsView, SettingsView } from '../.
 import { ipc } from '../../lib/ipc';
 import { strings } from '../../lib/strings';
 import { Confirm } from './Confirm';
+import { useRowFocus } from './focus';
 import styles from './Friends.module.css';
 import type { GameForInvites } from './InviteCard';
 import { inviteBody } from './invite';
@@ -15,6 +16,13 @@ import { useAction } from './useAction';
 const t = strings.friends;
 /** The longest nick the friends service takes. */
 const NICK_MAX = 32;
+
+/** Remove or Block asked of a friend, and the button that asked. */
+interface Question {
+  action: 'block' | 'remove';
+  person: FriendPerson;
+  by: HTMLElement | null;
+}
 
 /**
  * The Friends tab: add by nick, each friend with Message, Invite (while the game is on
@@ -35,23 +43,26 @@ export function FriendsTab({
 }) {
   const [nick, setNick] = useState('');
   const [notice, setNotice] = useState<string | null>(null);
-  const [confirming, setConfirming] = useState<{
-    action: 'block' | 'remove';
-    person: FriendPerson;
-  } | null>(null);
-  // The button that asked: the focus goes back to it when the question closes.
-  const asker = useRef<HTMLElement | null>(null);
+  // The question asked, and the button that asked it: the focus goes back to it.
+  const [confirming, setConfirming] = useState<Question | null>(null);
   const action = useAction();
   const preferences = useAction();
   const blockedId = useId();
+  const input = useRef<HTMLInputElement>(null);
+  const friendList = useRef<HTMLUListElement>(null);
+  const blockedList = useRef<HTMLUListElement>(null);
+  const friendFocus = useRowFocus(friendList, view.friends);
+  const blockedFocus = useRowFocus(blockedList, view.blocked);
 
   const ask = (what: 'block' | 'remove', person: FriendPerson) => {
-    asker.current = document.activeElement instanceof HTMLElement ? document.activeElement : null;
-    setConfirming({ action: what, person });
+    if (action.pending) return;
+    const by = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+    setConfirming({ action: what, person, by });
   };
-  const closeQuestion = () => {
-    setConfirming(null);
-    if (asker.current?.isConnected === true) asker.current.focus();
+  /** Closes this question, if it is still the one asked. */
+  const closeQuestion = (question: Question) => {
+    setConfirming((current) => (current === question ? null : current));
+    if (question.by?.isConnected === true) question.by.focus();
   };
   const act = async (what: FriendAction, person: FriendPerson) => {
     setNotice(null);
@@ -75,6 +86,8 @@ export function FriendsTab({
               setNotice(
                 result === 'friends' ? t.nowFriends({ nick: wanted }) : t.sent({ nick: wanted }),
               );
+              // The emptied field turns Add off: the focus goes to the field, for the next nick.
+              input.current?.focus();
               setNick('');
             });
         }}
@@ -84,6 +97,7 @@ export function FriendsTab({
             <div className={styles.inline}>
               <input
                 {...props}
+                ref={input}
                 className={forms.input}
                 value={nick}
                 maxLength={NICK_MAX}
@@ -114,7 +128,7 @@ export function FriendsTab({
       {view.friends.length === 0 ? (
         <p className={styles.muted}>{t.noFriends}</p>
       ) : (
-        <ul className={styles.people}>
+        <ul className={styles.people} ref={friendList} {...friendFocus}>
           {view.friends.map((person) => (
             <li key={person.id} className={styles.personItem}>
               <div className={styles.person}>
@@ -162,6 +176,7 @@ export function FriendsTab({
                   <Button
                     size="small"
                     variant="ghost"
+                    aria-disabled={busy}
                     onClick={() => {
                       ask('remove', person);
                     }}
@@ -171,6 +186,7 @@ export function FriendsTab({
                   <Button
                     size="small"
                     variant="ghost"
+                    aria-disabled={busy}
                     onClick={() => {
                       ask('block', person);
                     }}
@@ -181,6 +197,8 @@ export function FriendsTab({
               </div>
               {confirming !== null && confirming.person.id === person.id && (
                 <Confirm
+                  // Another question is a new one: it takes the focus and is read out.
+                  key={confirming.action}
                   label={person.nick}
                   text={
                     confirming.action === 'block'
@@ -190,9 +208,13 @@ export function FriendsTab({
                   action={confirming.action === 'block' ? t.block : t.remove}
                   pending={action.pending}
                   onYes={() => {
-                    void act(confirming.action, person).then(closeQuestion);
+                    void act(confirming.action, person).then(() => {
+                      closeQuestion(confirming);
+                    });
                   }}
-                  onNo={closeQuestion}
+                  onNo={() => {
+                    closeQuestion(confirming);
+                  }}
                 />
               )}
             </li>
@@ -205,7 +227,7 @@ export function FriendsTab({
             {t.blocked}
           </h3>
           <p className={styles.muted}>{t.blockedHint}</p>
-          <ul className={styles.people}>
+          <ul className={styles.people} ref={blockedList} {...blockedFocus}>
             {view.blocked.map((person) => (
               <li key={person.id} className={styles.person}>
                 <PlayerHead nick={person.nick} heads={heads} />

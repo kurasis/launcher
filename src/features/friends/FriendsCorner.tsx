@@ -1,5 +1,6 @@
-import { useEffect, useId, useRef, useState } from 'react';
+import { type Dispatch, type SetStateAction, useEffect, useId, useRef, useState } from 'react';
 import { Button } from '../../components/Button';
+import { coveredByDialog, inDialog } from '../../components/dialogStack';
 import { Icon } from '../../components/Icon';
 import { Notice } from '../../components/Notice';
 import type { AppSnapshot, FriendsView, SettingsView } from '../../lib/contracts';
@@ -9,6 +10,7 @@ import { usePlayerHeads } from '../skins/usePlayerHeads';
 import { ChatList } from './ChatList';
 import { ChatView } from './ChatView';
 import { ConfirmEmail } from './ConfirmEmail';
+import { focusLost } from './focus';
 import styles from './Friends.module.css';
 import { FriendsTab } from './FriendsTab';
 import type { GameForInvites } from './InviteCard';
@@ -69,13 +71,47 @@ export function FriendsCorner({
   const [open, setOpen] = useState(false);
   const [place, setPlace] = useState<Place>({ tab: 'chats', room: null, grouping: false });
   const buttonRef = useRef<HTMLButtonElement>(null);
+  const slot = useRef<HTMLDivElement>(null);
   const game = gameForInvites(snapshot, (room) => {
     setOpen(false);
     onOpenWorld(room);
   });
   const view = useFriends();
-  // The chat on screen makes no sound for its own messages.
-  useChime(view, settings, open && place.tab === 'chats' ? place.room : null);
+  // The chat on screen makes no sound for its own messages; none is while a new group
+  // is being made in its place.
+  useChime(view, settings, open && place.tab === 'chats' && !place.grouping ? place.room : null);
+
+  // Like a press on the scrim, the focus or a press going anywhere outside the sheet and
+  // its row puts the sheet away: nothing under it can be reached while it is open. A
+  // dialog over it (a question from the launcher) keeps it, and so does a lost focus.
+  // Escape closes it from anywhere, unless a control in it took the key (a menu, a
+  // question) or a dialog is open (the key is the dialog's).
+  useEffect(() => {
+    if (!open) return;
+    const elsewhere = (target: EventTarget | null) =>
+      target instanceof Node && !(slot.current?.contains(target) ?? true) && !inDialog(target);
+    const onFocus = (event: FocusEvent) => {
+      if (elsewhere(event.target)) setOpen(false);
+    };
+    const onPress = (event: PointerEvent) => {
+      if (elsewhere(event.target)) setOpen(false);
+    };
+    const onKey = (event: KeyboardEvent) => {
+      if (event.key !== 'Escape' || event.defaultPrevented || event.isComposing) return;
+      if (coveredByDialog(null)) return;
+      setOpen(false);
+      buttonRef.current?.focus();
+    };
+    document.addEventListener('focusin', onFocus, true);
+    document.addEventListener('pointerdown', onPress, true);
+    window.addEventListener('keydown', onKey);
+    return () => {
+      document.removeEventListener('focusin', onFocus, true);
+      document.removeEventListener('pointerdown', onPress, true);
+      window.removeEventListener('keydown', onKey);
+    };
+  }, [open]);
+
   if (view === null) return null;
   const waiting = view.unread + view.incoming.length;
   // Closing puts focus back on the rail's row.
@@ -83,19 +119,20 @@ export function FriendsCorner({
     setOpen(false);
     buttonRef.current?.focus();
   };
+  const name = [
+    t.open,
+    view.signedIn && view.unread > 0 && t.unread({ count: view.unread }),
+    view.signedIn && view.incoming.length > 0 && t.requestsWaiting({ count: view.incoming.length }),
+  ]
+    .filter(Boolean)
+    .join(', ');
   return (
-    <div
-      className={styles.railSlot}
-      onKeyDown={(event) => {
-        // An inner control that took the key (a menu, a question) keeps the sheet open.
-        if (event.key === 'Escape' && open && !event.defaultPrevented) close();
-      }}
-    >
+    <div ref={slot} className={styles.railSlot}>
       <button
         ref={buttonRef}
         type="button"
         className={styles.railButton}
-        aria-label={view.unread > 0 ? `${t.open}, ${t.unread({ count: view.unread })}` : t.open}
+        aria-label={name}
         aria-expanded={open}
         title={t.open}
         onClick={() => {
@@ -198,11 +235,18 @@ function FriendsSheet({
   settings: SettingsView;
   game: GameForInvites;
   place: Place;
-  onPlace: (place: Place) => void;
+  onPlace: Dispatch<SetStateAction<Place>>;
   onOpenAccounts: () => void;
   onClose: () => void;
 }) {
+  const sheet = useRef<HTMLElement>(null);
   const heading = useRef<HTMLHeadingElement>(null);
+  const plus = useRef<HTMLButtonElement>(null);
+  const pane = useRef<HTMLDivElement>(null);
+  // The control that had the focus last, and where it goes when the new group's form goes.
+  const lastFocus = useRef<HTMLElement | null>(null);
+  const afterGroup = useRef<'chat' | 'plus' | null>(null);
+  const [needsShown, setNeedsShown] = useState(false);
   const headingId = useId();
   const tabsId = useId();
   const heads = usePlayerHeads(nicksOf(view));
@@ -210,12 +254,29 @@ function FriendsSheet({
   useEffect(() => {
     heading.current?.focus();
   }, []);
+  // The new group's form went: the focus goes to the group made, or back to "+".
+  const { grouping } = place;
+  useEffect(() => {
+    const next = afterGroup.current;
+    afterGroup.current = null;
+    if (grouping || next === null || !focusLost()) return;
+    const target = next === 'chat' ? pane.current?.querySelector('textarea') : plus.current;
+    target?.focus();
+  }, [grouping]);
+  // Whatever else took the focus away with it (a chat left, the last request answered):
+  // the open tab takes it, so Tab and Escape go on working in the sheet.
+  useEffect(() => {
+    const gone = lastFocus.current;
+    if (gone === null || gone.isConnected || !focusLost()) return;
+    const tab = sheet.current?.querySelector<HTMLElement>('[role="tab"][aria-selected="true"]');
+    (tab ?? heading.current)?.focus();
+  });
   const unconfirmed = view.problem === 'email_not_confirmed';
   const ready = view.signedIn && view.problem === null && view.me !== null;
   const { tab } = place;
   const room = place.room === null ? undefined : view.rooms.find((r) => r.id === place.room);
   const show = (next: Partial<Place>) => {
-    onPlace({ ...place, ...next });
+    onPlace((current) => ({ ...current, ...next }));
   };
   const openRoom = (id: string) => {
     onPlace({ tab: 'chats', room: id, grouping: false });
@@ -288,17 +349,24 @@ function FriendsSheet({
           className={styles.tabPanel}
         >
           {tab === 'chats' && (
-            <div className={styles.chats}>
-              <div className={styles.chatList}>
-                <ChatList view={view} heads={heads} chosen={room?.id ?? null} onOpen={openRoom} />
-              </div>
-              <div className={styles.pane}>
-                {place.grouping ? (
+            <div className={styles.chats} data-empty={view.rooms.length === 0 || undefined}>
+              {view.rooms.length > 0 && (
+                <div className={styles.chatList}>
+                  <ChatList view={view} heads={heads} chosen={room?.id ?? null} onOpen={openRoom} />
+                </div>
+              )}
+              <div ref={pane} className={styles.pane}>
+                {grouping ? (
                   <NewGroup
                     view={view}
                     heads={heads}
                     onDone={(created) => {
-                      onPlace({ tab: 'chats', room: created ?? place.room, grouping: false });
+                      afterGroup.current = created === null ? 'plus' : 'chat';
+                      onPlace((current) => ({
+                        tab: 'chats',
+                        room: created ?? current.room,
+                        grouping: false,
+                      }));
                     }}
                   />
                 ) : room !== undefined ? (
@@ -309,11 +377,17 @@ function FriendsSheet({
                     game={game}
                     heads={heads}
                     onLeft={() => {
-                      show({ room: null });
+                      // Only if it is still the chat on screen: the player may have moved on.
+                      const left = room.id;
+                      onPlace((current) =>
+                        current.room === left ? { ...current, room: null } : current,
+                      );
                     }}
                   />
                 ) : (
-                  view.rooms.length > 0 && <p className={styles.paneEmpty}>{t.chooseChat}</p>
+                  <p className={styles.paneEmpty}>
+                    {view.rooms.length > 0 ? t.chooseChat : t.noChats}
+                  </p>
                 )}
               </div>
             </div>
@@ -334,20 +408,31 @@ function FriendsSheet({
   }
 
   return (
-    <section className={styles.sheet} aria-labelledby={headingId}>
+    <section
+      ref={sheet}
+      className={styles.sheet}
+      aria-labelledby={headingId}
+      onFocus={(event) => {
+        lastFocus.current = event.target instanceof HTMLElement ? event.target : null;
+      }}
+    >
       <div className={styles.head}>
         <h2 id={headingId} ref={heading} className={styles.title} tabIndex={-1}>
           {t.open}
         </h2>
         {ready && (
           <Button
+            ref={plus}
             size="small"
             className={styles.square}
             aria-label={t.newGroup}
             title={fewFriends ? t.newGroupNeeds : t.newGroup}
+            // Not yet for so few friends: a press says why.
             aria-disabled={fewFriends || undefined}
+            data-unavailable={fewFriends || undefined}
             onClick={() => {
-              if (!fewFriends) onPlace({ tab: 'chats', room: place.room, grouping: true });
+              if (fewFriends) setNeedsShown(true);
+              else show({ tab: 'chats', grouping: true });
             }}
           >
             <Icon name="plus" size={18} />
@@ -363,6 +448,11 @@ function FriendsSheet({
           <Icon name="x" size={18} />
         </button>
       </div>
+      {needsShown && fewFriends && (
+        <p className={styles.muted} role="status">
+          {t.newGroupNeeds}
+        </p>
+      )}
       {view.sanction !== null && <Notice tone="warning">{sanctionText(view.sanction)}</Notice>}
       {view.signedIn && view.problem !== null ? (
         !unconfirmed && <Notice tone="warning">{problemText(view.problem)}</Notice>

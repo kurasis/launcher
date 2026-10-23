@@ -1,9 +1,10 @@
-import { useId } from 'react';
+import { useId, useRef } from 'react';
 import { Button } from '../../components/Button';
 import type { FriendAction, FriendPerson, FriendsView } from '../../lib/contracts';
 import { ipc } from '../../lib/ipc';
 import { strings } from '../../lib/strings';
 import styles from './Friends.module.css';
+import { useRowFocus } from './focus';
 import { PlayerHead } from './People';
 import { useAction } from './useAction';
 
@@ -20,6 +21,10 @@ export function RequestsTab({
   const action = useAction();
   const incomingId = useId();
   const outgoingId = useId();
+  const incomingList = useRef<HTMLUListElement>(null);
+  const outgoingList = useRef<HTMLUListElement>(null);
+  const incomingFocus = useRowFocus(incomingList, view.incoming);
+  const outgoingFocus = useRowFocus(outgoingList, view.outgoing);
   // A press while another action runs is ignored; the button keeps the focus.
   const busy = action.pending || undefined;
   const run = (work: () => Promise<unknown>) => {
@@ -60,7 +65,7 @@ export function RequestsTab({
               </Button>
             )}
           </div>
-          <ul className={styles.people}>
+          <ul className={styles.people} ref={incomingList} {...incomingFocus}>
             {view.incoming.map((person) => (
               <li key={person.id} className={styles.person}>
                 <PlayerHead nick={person.nick} heads={heads} />
@@ -118,7 +123,7 @@ export function RequestsTab({
           <h3 id={outgoingId} className={styles.subtitle}>
             {t.outgoing}
           </h3>
-          <ul className={styles.people}>
+          <ul className={styles.people} ref={outgoingList} {...outgoingFocus}>
             {view.outgoing.map((person) => (
               <li key={person.id} className={styles.person}>
                 <PlayerHead nick={person.nick} heads={heads} />

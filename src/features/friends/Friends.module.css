@@ -116,6 +116,12 @@
   padding: 0;
 }
 
+/* "+" with fewer than two friends: it looks off, and a press says why. */
+.head .square[data-unavailable] {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
 .close {
   display: grid;
   flex: none;
@@ -191,7 +197,8 @@
   gap: var(--space-3);
   min-block-size: 0;
   overflow-y: auto;
-  padding-block: var(--space-1);
+  /* Room for the focus ring (2px + 2px) inside what scrolls, on every side. */
+  padding: var(--space-1);
   font-size: var(--font-size-sm);
 }
 
@@ -204,12 +211,23 @@
   min-block-size: 0;
 }
 
+/* No chats yet: the conversation pane alone says so. */
+.chats[data-empty] {
+  grid-template-columns: minmax(0, 1fr);
+}
+
+.chats[data-empty] .pane {
+  padding-inline-start: 0;
+  border-inline-start: 0;
+}
+
 .chatList {
   display: grid;
   align-content: start;
   gap: var(--space-1);
   min-block-size: 0;
   overflow-y: auto;
+  padding: var(--space-1);
   font-size: var(--font-size-sm);
 }
 
@@ -455,13 +473,19 @@
   gap: var(--space-2);
   min-block-size: 0;
   margin: 0;
-  padding: 0 var(--space-1) var(--space-1) 0;
+  padding: var(--space-1);
   overflow-y: auto;
   list-style: none;
 }
 
 .earlier {
   align-self: center;
+}
+
+.earlier .link {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
 }
 
 .message {
@@ -644,8 +668,9 @@
   flex-wrap: wrap;
   align-items: center;
   gap: var(--space-2) var(--space-3);
-  padding: var(--space-1) var(--space-2);
-  margin-inline: calc(-1 * var(--space-2));
+  /* The hover color bleeds into the list's padding, never past it (no sideways scroll). */
+  padding: var(--space-1);
+  margin-inline: calc(-1 * var(--space-1));
   border-radius: var(--radius-sm);
 }
 
@@ -849,6 +874,12 @@
 }
 
 @media (forced-colors: active) {
+  /* Only the open chat has a bar: the others' match the background. (The tabs' lie on
+     the tab list's line.) */
+  .roomRow {
+    border-color: Canvas;
+  }
+
   .tab[aria-selected='true'],
   .roomRow[aria-current='true'] {
     border-color: Highlight;

@@ -1,7 +1,7 @@
 import { type RefObject, useEffect, useRef, useState } from 'react';
 import { Button } from '../../components/Button';
-import type { WorldsPreview } from '../../lib/contracts';
-import { ipc } from '../../lib/ipc';
+import type { WorldsPreview, WorldsProblem } from '../../lib/contracts';
+import { ipc, worldsProblemOf } from '../../lib/ipc';
 import { strings } from '../../lib/strings';
 import { worldsErrorText } from '../worlds/useWorlds';
 import styles from './Friends.module.css';
@@ -11,30 +11,73 @@ const t = strings.friends;
 const PREVIEW_HOLDS_MS = 5 * 60_000;
 /** A code the service refused is asked again only after this long. */
 const REFUSAL_HOLDS_MS = 60_000;
+/**
+ * Cards look by themselves at most this many times in this long; after that each one
+ * waits for a press. The service counts the player's looks, and a chat full of codes
+ * from someone else must not use them all up.
+ */
+const LOOKS_BY_THEMSELVES = 12;
+const LOOKS_WINDOW_MS = 10 * 60_000;
+/** What the service says of a code itself: no Join to offer. Others pass (the network). */
+const REFUSALS: readonly WorldsProblem[] = [
+  'invalid',
+  'invite_invalid',
+  'not_found',
+  'forbidden',
+  'banned',
+];
 
-type Looked = { preview: WorldsPreview } | { error: string };
+type Looked =
+  | { preview: WorldsPreview }
+  /** The code itself was refused: expired, used up, not for this player. */
+  | { refused: string }
+  /** Asking did not work this time (the network, the service busy): ask again later. */
+  | { failed: string };
 
 /** What each code showed, kept while the launcher runs: a chat opened again asks nothing. */
 const looked = new Map<string, { at: number; result: Looked }>();
 const looking = new Map<string, Promise<Looked>>();
+/** When cards looked by themselves, within the last window. */
+const lookedByThemselves: number[] = [];
+
+/** What is still known of a code, if it is recent enough to show. */
+function known(code: string): Looked | null {
+  const kept = looked.get(code);
+  if (kept === undefined) return null;
+  const holds = 'preview' in kept.result ? PREVIEW_HOLDS_MS : REFUSAL_HOLDS_MS;
+  return Date.now() - kept.at < holds ? kept.result : null;
+}
+
+/** Whether a card may look without a press now; counts the look when it may. */
+function mayLookByItself(): boolean {
+  const now = Date.now();
+  while (lookedByThemselves.length > 0 && now - (lookedByThemselves[0] ?? now) >= LOOKS_WINDOW_MS) {
+    lookedByThemselves.shift();
+  }
+  if (lookedByThemselves.length >= LOOKS_BY_THEMSELVES) return false;
+  lookedByThemselves.push(now);
+  return true;
+}
 
 /** The facts of the world behind a code: read only, nothing is joined. */
 function look(code: string): Promise<Looked> {
-  const kept = looked.get(code);
-  if (kept !== undefined) {
-    const holds = 'preview' in kept.result ? PREVIEW_HOLDS_MS : REFUSAL_HOLDS_MS;
-    if (Date.now() - kept.at < holds) return Promise.resolve(kept.result);
-  }
+  const kept = known(code);
+  if (kept !== null) return Promise.resolve(kept);
   const under = looking.get(code);
   if (under !== undefined) return under;
   const question = ipc
     .worldsPreview(code)
     .then(
       (preview): Looked => ({ preview }),
-      (e: unknown): Looked => ({ error: worldsErrorText(e) }),
+      (e: unknown): Looked => {
+        const problem = worldsProblemOf(e);
+        return problem !== null && REFUSALS.includes(problem)
+          ? { refused: worldsErrorText(e) }
+          : { failed: worldsErrorText(e) };
+      },
     )
     .then((result) => {
-      looked.set(code, { at: Date.now(), result });
+      if (!('failed' in result)) looked.set(code, { at: Date.now(), result });
       return result;
     })
     .finally(() => {
@@ -64,7 +107,8 @@ function useSeen(element: RefObject<HTMLElement | null>): boolean {
 /**
  * An invite to a world in the chat. Once in view the card shows what the world is (its
  * name, version, mods and whether it is open now); the invited player joins the room
- * with a press and Worlds opens on it. The one who sent it can open the room.
+ * with a press and Worlds opens on it. The one who sent it can open the room. When the
+ * card may not look by itself, or looking failed, a press on Look asks.
  */
 export function WorldInviteCard({
   code,
@@ -81,22 +125,44 @@ export function WorldInviteCard({
   const card = useRef<HTMLDivElement>(null);
   const seen = useSeen(card);
   const [result, setResult] = useState<Looked | null>(null);
+  const [asked, setAsked] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
-
+  const live = useRef(true);
   useEffect(() => {
-    if (!seen) return;
-    let live = true;
+    live.current = true;
+    return () => {
+      live.current = false;
+    };
+  }, []);
+
+  // Once in view: what is known, else a look of its own while there are looks to spare.
+  useEffect(() => {
+    if (!seen || (known(code) === null && !looking.has(code) && !mayLookByItself())) return;
+    let on = true;
     void look(code).then((next) => {
-      if (live) setResult(next);
+      if (on) setResult(next);
     });
     return () => {
-      live = false;
+      on = false;
     };
   }, [seen, code]);
 
+  const ask = () => {
+    if (asked) return;
+    setAsked(true);
+    void look(code)
+      .then((next) => {
+        if (live.current) setResult(next);
+      })
+      .finally(() => {
+        if (live.current) setAsked(false);
+      });
+  };
+
   const preview = result !== null && 'preview' in result ? result.preview : null;
-  const refused = result !== null && 'error' in result ? result.error : null;
+  const refused = result !== null && 'refused' in result ? result.refused : null;
+  const failed = result !== null && 'failed' in result ? result.failed : null;
   const join = () => {
     if (busy) return;
     setBusy(true);
@@ -138,26 +204,31 @@ export function WorldInviteCard({
           )}
         </p>
       )}
-      {refused !== null && <p className={styles.muted}>{refused}</p>}
-      {mine && preview !== null && (
-        <div className={styles.inline}>
-          <Button
-            size="small"
-            variant="ghost"
-            onClick={() => {
-              onOpen(preview.room);
-            }}
-          >
-            {t.openRoom}
-          </Button>
-        </div>
-      )}
+      {(refused ?? failed) !== null && <p className={styles.muted}>{refused ?? failed}</p>}
       {/* A code the service refused (expired, used up) offers nothing to press. */}
-      {!mine && refused === null && (
+      {refused === null && (
         <div className={styles.inline}>
-          <Button size="small" variant="primary" aria-disabled={busy || undefined} onClick={join}>
-            {strings.worlds.code.accept}
-          </Button>
+          {mine && preview !== null && (
+            <Button
+              size="small"
+              variant="ghost"
+              onClick={() => {
+                onOpen(preview.room);
+              }}
+            >
+              {t.openRoom}
+            </Button>
+          )}
+          {!mine && (
+            <Button size="small" variant="primary" aria-disabled={busy || undefined} onClick={join}>
+              {strings.worlds.code.accept}
+            </Button>
+          )}
+          {preview === null && (
+            <Button size="small" variant="ghost" aria-disabled={asked || undefined} onClick={ask}>
+              {strings.worlds.code.look}
+            </Button>
+          )}
         </div>
       )}
       {error !== null && (

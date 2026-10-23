@@ -1,6 +1,6 @@
 import type { ChatRoom, FriendsView } from '../../lib/contracts';
 import { strings } from '../../lib/strings';
-import { listTime } from './chatTime';
+import { isoTime, listTime } from './chatTime';
 import styles from './Friends.module.css';
 import { RoomAvatar } from './People';
 import { previewText, roomTitle } from './useFriends';
@@ -23,7 +23,8 @@ export function ChatList({
   chosen: string | null;
   onOpen: (room: string) => void;
 }) {
-  if (view.rooms.length === 0) return <p className={styles.muted}>{t.noChats}</p>;
+  // With no chats the sheet says so in the conversation pane.
+  if (view.rooms.length === 0) return null;
   const unread = view.rooms.filter((r) => r.unread > 0);
   const read = view.rooms.filter((r) => r.unread === 0);
   const list = (rooms: ChatRoom[]) => (
@@ -48,10 +49,7 @@ export function ChatList({
                     {roomTitle(room, view.me)}
                   </span>
                   {room.last !== null && (
-                    <time
-                      className={styles.roomTime}
-                      dateTime={new Date(room.last.created * 1000).toISOString()}
-                    >
+                    <time className={styles.roomTime} dateTime={isoTime(room.last.created)}>
                       {listTime(room.last.created)}
                     </time>
                   )}

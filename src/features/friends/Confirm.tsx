@@ -6,6 +6,7 @@ import styles from './Friends.module.css';
 /**
  * "Block Notch_1? They will not be told." in place, under what it is about: the focus
  * moves to it, Escape or Cancel closes it (and only it), and the answer is pressed.
+ * While the answer goes, neither closes it: what was pressed is under way.
  */
 export function Confirm({
   label,
@@ -40,8 +41,9 @@ export function Confirm({
       onKeyDown={(event) => {
         if (event.key === 'Escape') {
           // Closes the question, not the whole sheet.
+          event.preventDefault();
           event.stopPropagation();
-          onNo();
+          if (!pending) onNo();
         }
       }}
     >
@@ -57,7 +59,13 @@ export function Confirm({
         >
           {action}
         </Button>
-        <Button size="small" onClick={onNo}>
+        <Button
+          size="small"
+          aria-disabled={pending || undefined}
+          onClick={() => {
+            if (!pending) onNo();
+          }}
+        >
           {strings.friends.cancel}
         </Button>
       </div>
