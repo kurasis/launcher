@@ -44,3 +44,9 @@ export function playerLabel(player: Player): string {
 export function sameProfile(a: ProfileRef | null, b: ProfileRef | null): boolean {
   return a?.kind === b?.kind && a?.id === b?.id;
 }
+
+/** What the chosen play mode means, or why offline cannot be chosen. */
+export function playModeHint(offline: boolean, allowed: boolean): string {
+  const a = strings.accounts;
+  return !allowed ? a.offlineNeedsOwner : offline ? a.offlineHint : a.demoHint;
+}

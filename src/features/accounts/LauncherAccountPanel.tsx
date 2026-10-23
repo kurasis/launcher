@@ -3,14 +3,15 @@ import { Button } from '../../components/Button';
 import { Field } from '../../components/Field';
 import { Notice } from '../../components/Notice';
 import { Panel } from '../../components/Panel';
+import { SkinHead } from '../../components/SkinHead';
 import { StatusBadge } from '../../components/StatusBadge';
 import forms from '../../components/forms.module.css';
 import type { LauncherAccountProblem, LauncherAccountView } from '../../lib/contracts';
 import { accountProblem, ipc } from '../../lib/ipc';
 import { strings } from '../../lib/strings';
 import { useCommand } from '../../lib/useCommand';
+import { useOwnSkin } from '../skins/useOwnSkin';
 import styles from './Accounts.module.css';
-import { SkinStudio } from '../skins/SkinStudio';
 
 const a = strings.accounts;
 
@@ -19,14 +20,27 @@ interface Props {
   isDefault: boolean;
   busy: boolean;
   onDefault: () => void;
-  /** How the account plays: the demo or offline (shown while signed in). */
+  /** How the account plays: the demo or offline switch, at the panel's head while
+   * signed in… */
   mode?: ReactNode;
+  /** …and what that mode means. */
+  modeHint?: string;
+  /** Opens the Skins tab, where this account's skin and cape are changed. */
+  onOpenSkins?: (() => void) | undefined;
 }
 
 /** The launcher account (D-064): sign in or create one in its own window, the
  * nick, email confirmation, sign out. Passwords are only typed on oauth.lapi.sh's
- * pages, never here. */
-export function LauncherAccountPanel({ view, isDefault, busy, onDefault, mode }: Props) {
+ * pages, never here. Its skin and cape live in the Skins tab (D-072). */
+export function LauncherAccountPanel({
+  view,
+  isDefault,
+  busy,
+  onDefault,
+  mode,
+  modeHint,
+  onOpenSkins,
+}: Props) {
   const open = useCommand((_: string, screen: 'login' | 'register' | 'delete') =>
     ipc.launcherAccountOpen(
       screen,
@@ -47,6 +61,7 @@ export function LauncherAccountPanel({ view, isDefault, busy, onDefault, mode }:
   const [done, setDone] = useState<string | null>(null);
   const shown = problem ?? view.problem;
   const signedIn = view.id !== null && view.nick !== null;
+  const texture = useOwnSkin(signedIn && !view.needsSignIn ? view.nick : null);
   const [checking, setChecking] = useState(false);
   const lastCheck = useRef(0);
 
@@ -106,7 +121,7 @@ export function LauncherAccountPanel({ view, isDefault, busy, onDefault, mode }:
   };
 
   const signInButtons = (
-    <div className={forms.actions}>
+    <div className={styles.actions}>
       <Button
         variant="primary"
         disabled={view.signingIn || open.pending}
@@ -123,13 +138,15 @@ export function LauncherAccountPanel({ view, isDefault, busy, onDefault, mode }:
   );
 
   return (
-    <Panel title={a.launcherTitle}>
+    <Panel title={a.launcherTitle} level={3} aside={signedIn ? mode : undefined}>
       <p className={styles.hint}>{a.launcherHint}</p>
       {signedIn && (
-        <div className={styles.row}>
-          <div className={styles.rowHead}>
-            <strong dir="ltr">{view.nick}</strong>
-            {isDefault && <span className={styles.tag}>{a.isDefault}</span>}
+        <>
+          <div className={styles.person}>
+            <SkinHead texture={texture} size={40} />
+            <strong className={styles.nick} dir="ltr">
+              {view.nick}
+            </strong>
             <StatusBadge
               tone={view.emailVerified ? 'success' : 'warning'}
               label={view.emailVerified ? a.launcherEmailConfirmed : a.launcherEmailNotConfirmed}
@@ -150,8 +167,9 @@ export function LauncherAccountPanel({ view, isDefault, busy, onDefault, mode }:
                 </svg>
               </button>
             )}
+            {isDefault && <span className={styles.tag}>{a.isDefault}</span>}
           </div>
-          {mode}
+          {modeHint !== undefined && <p className={styles.hint}>{modeHint}</p>}
           {editing ? (
             <form
               className={forms.form}
@@ -173,7 +191,7 @@ export function LauncherAccountPanel({ view, isDefault, busy, onDefault, mode }:
                 {(props) => (
                   <input
                     {...props}
-                    className={forms.input}
+                    className={[forms.input, styles.nameInput].join(' ')}
                     dir="ltr"
                     maxLength={16}
                     spellCheck={false}
@@ -186,15 +204,17 @@ export function LauncherAccountPanel({ view, isDefault, busy, onDefault, mode }:
                   />
                 )}
               </Field>
-              <div className={forms.actions}>
+              <div className={styles.actions}>
                 <Button
                   type="submit"
                   variant="primary"
+                  size="small"
                   disabled={setNick.pending || nick.trim() === ''}
                 >
                   {a.launcherSaveNick}
                 </Button>
                 <Button
+                  size="small"
                   onClick={() => {
                     setEditing(false);
                     setProblem(null);
@@ -205,13 +225,14 @@ export function LauncherAccountPanel({ view, isDefault, busy, onDefault, mode }:
               </div>
             </form>
           ) : (
-            <div className={forms.actions}>
+            <div className={styles.actions}>
               {!isDefault && (
-                <Button disabled={busy} onClick={onDefault}>
+                <Button size="small" disabled={busy} onClick={onDefault}>
                   {a.makeDefault}
                 </Button>
               )}
               <Button
+                size="small"
                 onClick={() => {
                   setNickText(view.nick ?? '');
                   setEditing(true);
@@ -222,6 +243,7 @@ export function LauncherAccountPanel({ view, isDefault, busy, onDefault, mode }:
               </Button>
               {!view.emailVerified && (
                 <Button
+                  size="small"
                   disabled={resend.pending}
                   onClick={() => {
                     setDone(null);
@@ -235,30 +257,37 @@ export function LauncherAccountPanel({ view, isDefault, busy, onDefault, mode }:
                   {a.launcherResend}
                 </Button>
               )}
-              <Button disabled={signOut.pending} onClick={() => void signOut.run()}>
-                {a.launcherSignOut}
-              </Button>
-            </div>
-          )}
-          {!view.needsSignIn && (
-            <>
-              <div className={forms.actions}>
-                <Button disabled={exporting} onClick={() => void exportData()}>
+              {!view.needsSignIn && (
+                <Button size="small" disabled={exporting} onClick={() => void exportData()}>
                   {a.launcherExport}
                 </Button>
+              )}
+              <Button size="small" disabled={signOut.pending} onClick={() => void signOut.run()}>
+                {a.launcherSignOut}
+              </Button>
+              {!view.needsSignIn && (
                 <Button
+                  variant="ghost"
+                  size="small"
                   disabled={view.signingIn || open.pending}
                   onClick={() => void open.run('delete')}
                 >
                   {a.launcherDelete}
                 </Button>
-              </div>
-              <p className={styles.hint}>{a.launcherDeleteHint}</p>
-            </>
+              )}
+            </div>
           )}
-        </div>
+          {!view.needsSignIn && <p className={styles.hint}>{a.launcherDeleteHint}</p>}
+          {!view.needsSignIn && onOpenSkins !== undefined && (
+            <p className={styles.where}>
+              <span className={styles.hint}>{a.skinsWhere}</span>
+              <button type="button" className={styles.link} onClick={onOpenSkins}>
+                {a.openSkins}
+              </button>
+            </p>
+          )}
+        </>
       )}
-      {signedIn && !view.needsSignIn && <SkinStudio nick={view.nick} />}
       {view.signingIn && <p role="status">{a.launcherWaiting}</p>}
       {done !== null && <p role="status">{done}</p>}
       {shown !== null && <Notice tone="warning">{a.launcherProblems[shown]}</Notice>}

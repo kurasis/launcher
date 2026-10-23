@@ -9,7 +9,6 @@ import type {
   WornTexture,
 } from '../../lib/contracts';
 import { snapshotFixture } from '../../test/fixtures';
-import { AccountView } from '../accounts/AccountView';
 import { type Draft, durationsToSend, newDraft, trialTexture } from './draft';
 import { SkinPreview } from './SkinPreview';
 import { SkinsView } from './SkinsView';
@@ -81,12 +80,12 @@ function backend(answers: Record<string, Answer>) {
   return calls;
 }
 
-/** Renders the Accounts screen with these answers from the core. */
+/** Renders the Skins tab with these answers from the core. */
 function setup(answers: Record<string, Answer> = {}, launcherAccount = view()) {
   const calls = backend(answers);
   const base = snapshotFixture();
   const account: AccountSummary = { ...base.account, launcherAccount };
-  render(<AccountView snapshot={{ ...base, account }} />);
+  render(<SkinsView snapshot={{ ...base, account }} onOpenAccounts={vi.fn()} />);
   return { calls };
 }
 

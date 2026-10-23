@@ -226,7 +226,8 @@
         "restricted": "الحساب مقيّد",
         "protocol_error": "فشل التحقق من الحساب",
         "sign_out_pending": "تسجيل الخروج غير مكتمل"
-      }
+      },
+      "linksLabel": "صفحات Microsoft وMinecraft"
     },
     "accounts": {
       "microsoftTitle": "حسابات Microsoft",
@@ -290,7 +291,7 @@
       "playMode": "وضع التشغيل",
       "modeDemo": "تجريبي",
       "modeOffline": "دون اتصال",
-      "offlineNeedsOwner": "يتطلب الوضع دون اتصال حساب Microsoft يملك Minecraft ومسجَّلًا في هذا المشغّل (أدناه).",
+      "offlineNeedsOwner": "يتطلب الوضع دون اتصال حساب Microsoft يملك Minecraft ومسجَّلًا في هذا المشغّل (انظر «حسابات Microsoft»).",
       "offlineHint": "اللعبة الكاملة دون التحقق من الحساب: اللعب الفردي والخوادم التي تسمح باللاعبين دون اتصال.",
       "demoHint": "النسخة التجريبية من Minecraft: خمسة أيام داخل اللعبة، دون لعب جماعي.",
       "skins": {
@@ -430,7 +431,9 @@
           "gone": "لم يعد هذا في خزانة الملابس: أُزيل على حاسوب آخر.",
           "server": "حدث خطأ في خادم المظاهر. حاول لاحقًا."
         }
-      }
+      },
+      "skinsWhere": "يُغيَّر مظهر هذا الحساب وعباءته في «المظاهر».",
+      "openSkins": "فتح «المظاهر»"
     },
     "instances": {
       "title": "التثبيتات",

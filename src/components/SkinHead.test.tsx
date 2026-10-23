@@ -1,4 +1,4 @@
-import { render, waitFor } from '@testing-library/react';
+import { fireEvent, render, waitFor } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { SkinHead } from './SkinHead';
 
@@ -65,6 +65,36 @@ describe('SkinHead', () => {
     await waitFor(() => {
       expect(container.querySelector('svg')).not.toBeNull();
     });
+    expect(drawImage).not.toHaveBeenCalled();
+  });
+
+  it('shows a head the core already cut as a picture, over any skin', () => {
+    const { container } = render(<SkinHead texture={PNG} head={`${PNG}CC`} size={40} />);
+    const img = container.querySelector('img');
+    expect(img).toHaveAttribute('src', `${PNG}CC`);
+    expect(img).toHaveAttribute('alt', '');
+    expect(img).toHaveAttribute('width', '40');
+    expect(container.querySelector('canvas')).toBeNull();
+  });
+
+  it('draws the default face for a head that is not a PNG or will not load', async () => {
+    const { container, rerender } = render(
+      <SkinHead texture={null} head="data:image/svg+xml;base64,PHN2Zz4=" />,
+    );
+    expect(container.querySelector('img')).toBeNull();
+    expect(container.querySelector('svg')).not.toBeNull();
+    rerender(<SkinHead texture={null} head={PNG} />);
+    fireEvent.error(container.querySelector('img') as HTMLImageElement);
+    await waitFor(() => {
+      expect(container.querySelector('img')).toBeNull();
+    });
+    expect(container.querySelector('svg')).not.toBeNull();
+  });
+
+  it('never draws a skin that is not a PNG data URL', () => {
+    vi.stubGlobal('Image', fakeImage(64, 64));
+    const { container } = render(<SkinHead texture="https://example.com/skin.png" />);
+    expect(container.querySelector('canvas')).toBeNull();
     expect(drawImage).not.toHaveBeenCalled();
   });
 });

@@ -548,7 +548,14 @@ export function App() {
                   }}
                 />
               )}
-              {view === 'account' && <AccountView snapshot={state.snapshot} />}
+              {view === 'account' && (
+                <AccountView
+                  snapshot={state.snapshot}
+                  onOpenSkins={() => {
+                    navigate('skins');
+                  }}
+                />
+              )}
               {view === 'backups' && <BackupsView snapshot={state.snapshot} />}
               {view === 'screenshots' && <GalleryView snapshot={state.snapshot} />}
               {view === 'settings' && (

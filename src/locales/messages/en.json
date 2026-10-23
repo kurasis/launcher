@@ -225,7 +225,8 @@
         "restricted": "Account restricted",
         "protocol_error": "Account check failed",
         "sign_out_pending": "Sign-out incomplete"
-      }
+      },
+      "linksLabel": "Microsoft and Minecraft pages"
     },
     "accounts": {
       "microsoftTitle": "Microsoft accounts",
@@ -289,7 +290,7 @@
       "playMode": "Launch mode",
       "modeDemo": "Demo",
       "modeOffline": "Offline",
-      "offlineNeedsOwner": "Offline needs a Microsoft account that owns Minecraft, signed in on this launcher (below).",
+      "offlineNeedsOwner": "Offline needs a Microsoft account that owns Minecraft, signed in on this launcher (see Microsoft accounts).",
       "offlineHint": "The full game without the account check: singleplayer, and servers that let offline players in.",
       "demoHint": "Minecraft's demo: five in-game days, no multiplayer.",
       "skins": {
@@ -429,7 +430,9 @@
           "gone": "This is no longer in the wardrobe: it was removed on another computer.",
           "server": "Something went wrong on the skins server. Try again later."
         }
-      }
+      },
+      "skinsWhere": "The skin and cape of this account are changed in Skins.",
+      "openSkins": "Open Skins"
     },
     "instances": {
       "title": "Installations",
