@@ -50,16 +50,20 @@ export function UpdateDialog({ update, onClose }: { update: UpdateView; onClose:
       )}
       {update.phase === 'ready' && <p>{t.readyBody}</p>}
       {update.phase === 'notice' && <p>{t.noticeBody}</p>}
-      {/* The notes come from the release: text only, in their own direction. */}
-      <p className={[dialog.hint, styles.notes].filter(Boolean).join(' ')}>
-        {notes === null ? (
-          t.noNotes
-        ) : (
-          <>
-            {t.notesLead} <bdi>{notes}</bdi>
-          </>
-        )}
-      </p>
+      {/* The notes come from the release: text only, in their own direction. Long ones
+          scroll, from the keyboard too. */}
+      {notes === null ? (
+        <p className={dialog.hint}>{t.noNotes}</p>
+      ) : (
+        <p
+          className={[dialog.hint, styles.notes].filter(Boolean).join(' ')}
+          tabIndex={0}
+          role="region"
+          aria-label={t.notesLabel}
+        >
+          {t.notesLead} <bdi>{notes}</bdi>
+        </p>
+      )}
       {update.phase === 'failed' && update.error !== null && (
         <Notice tone="danger">{t.errors[update.error]}</Notice>
       )}

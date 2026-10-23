@@ -79,8 +79,9 @@ export function DeleteInstance({
       closable={!remove.pending}
       onClose={cancel}
     >
-      <div id={bodyId} className={dialog.body}>
-        {data === null && checkError === null && <p role="status">{t.checking}</p>}
+      {/* What the folder holds replaces "Checking…": read out when it comes. */}
+      <div id={bodyId} className={dialog.body} aria-live="polite">
+        {data === null && checkError === null && <p>{t.checking}</p>}
         {data !== null &&
           (found ? (
             <>
@@ -95,10 +96,10 @@ export function DeleteInstance({
           ) : (
             <p>{t.nothing}</p>
           ))}
+        {busy && !remove.pending && <p>{t.busy}</p>}
       </div>
       {checkError !== null && <Notice tone="danger">{checkError}</Notice>}
       {data !== null && <p className={dialog.hint}>{t.shared}</p>}
-      {busy && !remove.pending && <p>{t.busy}</p>}
       {remove.error !== null && <Notice tone="danger">{remove.error}</Notice>}
       {remove.pending && <p role="status">{t.working}</p>}
       <div className={dialog.actions}>

@@ -2,6 +2,7 @@ import { act, fireEvent, render, screen } from '@testing-library/react';
 import { useRef, useState } from 'react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { Dialog } from './Dialog';
+import { coveredByDialog } from './dialogStack';
 
 afterEach(() => {
   document.getElementById('root')?.remove();
@@ -143,31 +144,166 @@ describe('Dialog', () => {
   });
 
   it('leaves the focus where the one who closed it put it', () => {
-    function Placed() {
-      const [open, setOpen] = useState(true);
-      const heading = useRef<HTMLHeadingElement>(null);
+    function Nested() {
+      const [inner, setInner] = useState(false);
+      const other = useRef<HTMLButtonElement>(null);
       return (
-        <>
-          <h3 ref={heading} tabIndex={-1}>
-            Name
-          </h3>
-          {open && (
+        <Dialog title="Outer" onClose={vi.fn()}>
+          <button
+            type="button"
+            onClick={() => {
+              setInner(true);
+            }}
+          >
+            More
+          </button>
+          <button ref={other} type="button">
+            Other
+          </button>
+          {inner && (
             <Dialog
-              title="Question"
+              title="Inner"
               onClose={() => {
-                setOpen(false);
-                heading.current?.focus();
+                setInner(false);
+                other.current?.focus();
               }}
             >
               <button type="button">Answer</button>
             </Dialog>
           )}
-        </>
+        </Dialog>
       );
     }
-    render(<Placed />);
-    fireEvent.keyDown(screen.getByRole('dialog'), { key: 'Escape' });
-    expect(screen.getByRole('heading', { name: 'Name' })).toHaveFocus();
+    const root = document.createElement('div');
+    root.id = 'root';
+    document.body.append(root);
+    render(<Nested />, { container: root });
+    const more = screen.getByRole('button', { name: 'More' });
+    more.focus();
+    fireEvent.click(more);
+    expect(screen.getByRole('button', { name: 'Answer' })).toHaveFocus();
+    // Escape closes only the inner one; the page stays out of reach under the outer.
+    fireEvent.keyDown(screen.getByRole('dialog', { name: 'Inner' }), { key: 'Escape' });
+    expect(screen.queryByRole('dialog', { name: 'Inner' })).toBeNull();
+    expect(screen.getByRole('dialog', { name: 'Outer' })).toBeVisible();
+    expect(root).toHaveAttribute('inert');
+    expect(screen.getByRole('button', { name: 'Other' })).toHaveFocus();
+  });
+
+  it('keeps the focus a control inside took', () => {
+    function Counter() {
+      const [count, setCount] = useState(0);
+      return (
+        <Dialog title="Count" onClose={vi.fn()}>
+          <button type="button">Close</button>
+          <button
+            type="button"
+            onClick={() => {
+              setCount((n) => n + 1);
+            }}
+          >
+            More {count}
+          </button>
+        </Dialog>
+      );
+    }
+    render(<Counter />);
+    const more = screen.getByRole('button', { name: 'More 0' });
+    more.focus();
+    fireEvent.click(more);
+    expect(screen.getByRole('button', { name: 'More 1' })).toHaveFocus();
+  });
+
+  it('puts the focus back on what it was given, when the focus fell out', () => {
+    function Retry() {
+      const [failed, setFailed] = useState(true);
+      const cancel = useRef<HTMLButtonElement>(null);
+      return (
+        <Dialog title="Delete" initialFocus={cancel} onClose={vi.fn()}>
+          <button type="button">Delete</button>
+          {failed && (
+            <button
+              type="button"
+              onClick={() => {
+                setFailed(false);
+              }}
+            >
+              Try again
+            </button>
+          )}
+          <button ref={cancel} type="button">
+            Cancel
+          </button>
+        </Dialog>
+      );
+    }
+    render(<Retry />);
+    const retry = screen.getByRole('button', { name: 'Try again' });
+    retry.focus();
+    // The button with the focus goes away: Cancel takes it, not Delete.
+    fireEvent.click(retry);
+    expect(screen.getByRole('button', { name: 'Cancel' })).toHaveFocus();
+  });
+
+  it('brings back the focus that lands outside the dialogs', () => {
+    const { dialog } = mount();
+    // A window of the page body over it (a viewer), not a dialog of the stack.
+    const viewer = document.createElement('button');
+    document.body.append(viewer);
+    viewer.focus();
+    expect(screen.getByRole('button', { name: 'First' })).toHaveFocus();
+    expect(coveredByDialog(viewer)).toBe(true);
+    expect(coveredByDialog(screen.getByRole('button', { name: 'First' }))).toBe(false);
+    expect(coveredByDialog(dialog.querySelector('input'))).toBe(false);
+    viewer.remove();
+  });
+
+  it('keeps the focus on a press on the scrim', () => {
+    const { dialog } = mount();
+    const backdrop = dialog.parentElement;
+    expect(backdrop).not.toBeNull();
+    if (backdrop === null) return;
+    expect(fireEvent.mouseDown(backdrop)).toBe(false);
+    expect(fireEvent.mouseDown(dialog)).toBe(true);
+  });
+
+  it('gives the focus to the dialog under it when what opened it is gone', () => {
+    function Stacked() {
+      const [inner, setInner] = useState(false);
+      return (
+        <Dialog title="Outer" onClose={vi.fn()}>
+          <button type="button">Stay</button>
+          {!inner && (
+            <button
+              type="button"
+              onClick={() => {
+                setInner(true);
+              }}
+            >
+              Ask
+            </button>
+          )}
+          {inner && (
+            <Dialog
+              title="Inner"
+              onClose={() => {
+                setInner(false);
+              }}
+            >
+              <button type="button">Answer</button>
+            </Dialog>
+          )}
+        </Dialog>
+      );
+    }
+    render(<Stacked />);
+    const ask = screen.getByRole('button', { name: 'Ask' });
+    ask.focus();
+    fireEvent.click(ask);
+    act(() => {
+      fireEvent.keyDown(screen.getByRole('dialog', { name: 'Inner' }), { key: 'Escape' });
+    });
+    expect(screen.getByRole('button', { name: 'Stay' })).toHaveFocus();
   });
 
   it('gives the focus to the page when what opened it is gone', () => {
@@ -207,6 +343,22 @@ describe('Dialog', () => {
       fireEvent.keyDown(screen.getByRole('dialog'), { key: 'Escape' });
     });
     expect(screen.getByRole('main')).toHaveFocus();
+  });
+
+  it('goes round past a disabled last control', () => {
+    render(
+      <Dialog title="Sending" onClose={vi.fn()}>
+        <button type="button">First</button>
+        <button type="button">Second</button>
+        <button type="button" disabled>
+          Send
+        </button>
+      </Dialog>,
+    );
+    const second = screen.getByRole('button', { name: 'Second' });
+    second.focus();
+    fireEvent.keyDown(second, { key: 'Tab' });
+    expect(screen.getByRole('button', { name: 'First' })).toHaveFocus();
   });
 
   it('skips controls a disabled fieldset holds', () => {

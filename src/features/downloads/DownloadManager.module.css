@@ -110,6 +110,10 @@
   gap: var(--space-1);
 }
 
+.item > button {
+  justify-self: start;
+}
+
 .itemHead {
   display: flex;
   justify-content: space-between;

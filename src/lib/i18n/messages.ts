@@ -2815,6 +2815,7 @@ export type Messages = {
     };
     readonly rolledBack: (values: { failed: string | number; version: string | number }) => string;
     readonly notesLead: string;
+    readonly notesLabel: string;
   };
   readonly downloads: {
     readonly title: string;

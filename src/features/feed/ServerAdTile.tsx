@@ -1,6 +1,7 @@
 import { useEffect, useId, useRef, useState } from 'react';
 import type { MenuItem } from '../../app/MoreMenu';
 import { Button } from '../../components/Button';
+import { coveredByDialog } from '../../components/dialogStack';
 import { Icon } from '../../components/Icon';
 import type { AdEvent, AppSnapshot, ServerAd } from '../../lib/contracts';
 import { describeIpcError, ipc } from '../../lib/ipc';
@@ -220,7 +221,7 @@ export function ServerAdTile({ ad, snapshot }: { ad: ServerAd; snapshot: AppSnap
     versionsRef.current?.querySelector<HTMLButtonElement>('[aria-checked="true"]')?.focus();
     const close = (event: PointerEvent | KeyboardEvent) => {
       if (event instanceof KeyboardEvent) {
-        if (event.key !== 'Escape') return;
+        if (event.key !== 'Escape' || coveredByDialog(null)) return;
         setVersions(false);
         playButton.current?.focus();
         return;

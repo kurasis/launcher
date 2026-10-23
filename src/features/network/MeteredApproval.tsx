@@ -1,3 +1,4 @@
+import { useId } from 'react';
 import { Button } from '../../components/Button';
 import { Dialog } from '../../components/Dialog';
 import dialog from '../../components/Dialog.module.css';
@@ -43,6 +44,7 @@ function Question({
   approval: ApprovalRequest;
   name: string | null;
 }) {
+  const bodyId = useId();
   const answer = useCommand((requestId: string, allow: boolean) =>
     ipc.answerDownload(operationId, allow, requestId),
   );
@@ -57,6 +59,7 @@ function Question({
     // focus, not an answer, so a stray Enter neither downloads nor cancels.
     <Dialog
       title={t.approvalTitle({ size })}
+      describedBy={bodyId}
       initialFocus="dialog"
       closable={!answer.pending}
       onClose={() => {
@@ -64,9 +67,9 @@ function Question({
       }}
     >
       {approval.reason === 'over_limit' ? (
-        <p>{t.approvalOverLimit({ size, used, limit })}</p>
+        <p id={bodyId}>{t.approvalOverLimit({ size, used, limit })}</p>
       ) : (
-        <p>
+        <p id={bodyId}>
           {name === null
             ? t.approvalLarge({ files: approval.files, size })
             : t.approvalFor({ files: approval.files, name: isolate(name) })}{' '}

@@ -48,9 +48,10 @@ describe('DeleteInstance', () => {
     );
     const dialog = screen.getByRole('dialog', { name: 'Delete "Modpack"?' });
     // Cancel holds the focus while the folder is looked at, and after.
-    expect(within(dialog).getByRole('status')).toHaveTextContent(
-      'Looking at what the folder holds…',
-    );
+    // What it says is a live region: what the folder holds is read out when it comes.
+    const said = within(dialog).getByText('Looking at what the folder holds…').parentElement;
+    expect(said).toHaveAttribute('aria-live', 'polite');
+    expect(dialog).toHaveAccessibleDescription('Looking at what the folder holds…');
     expect(within(dialog).getByRole('button', { name: 'Cancel' })).toHaveFocus();
     expect(await within(dialog).findByText('2 worlds (Home, Nether trip)')).toBeVisible();
     expect(within(dialog).getByText('12 mods')).toBeVisible();

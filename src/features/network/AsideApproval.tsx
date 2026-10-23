@@ -1,14 +1,22 @@
 import { Button } from '../../components/Button';
 import { strings } from '../../lib/strings';
-import { bringBack, useAside } from './approvalStore';
+import { bringBack } from './approvalStore';
 
-/** The metered-connection question, closed without an answer: a button to see it again. */
-export function AsideApproval({ operationId }: { operationId: string }) {
-  const aside = useAside(operationId);
-  if (!aside) return null;
+/**
+ * The metered-connection question of an operation that waits on it: a button that shows
+ * it again once closed without an answer. It stays while the question is open (under it,
+ * out of reach), so the focus comes back to it when the question is closed again.
+ */
+export function AsideApproval({
+  operationId,
+  size = 'small',
+}: {
+  operationId: string;
+  size?: 'small' | 'normal';
+}) {
   return (
     <Button
-      size="small"
+      size={size}
       onClick={() => {
         bringBack(operationId);
       }}

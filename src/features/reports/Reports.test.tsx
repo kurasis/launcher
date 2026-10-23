@@ -50,9 +50,11 @@ describe('ReportDialog', () => {
     expect(calls.some((c) => c.cmd === 'send_crash_report')).toBe(false);
 
     fireEvent.click(screen.getByRole('checkbox', { name: 'diagnosis.json' }));
-    fireEvent.change(screen.getByLabelText('What were you doing? (optional)'), {
-      target: { value: '  Opened a world  ' },
-    });
+    const note = screen.getByLabelText('What were you doing? (optional)');
+    note.focus();
+    fireEvent.change(note, { target: { value: '  Opened a world  ' } });
+    // Each letter draws the dialog again: the focus stays in the note, not on Cancel.
+    expect(note).toHaveFocus();
     fireEvent.click(screen.getByRole('button', { name: 'Send' }));
     expect(await screen.findByText('Thank you! The report was sent.')).toBeVisible();
     expect(calls.find((c) => c.cmd === 'send_crash_report')?.args).toEqual({

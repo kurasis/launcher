@@ -132,7 +132,9 @@ export function InstallPanel({
             <p role="status">{t.phase.resolving}</p>
           )}
           <div className={forms.actions}>
-            {ownProgress?.approval && <AsideApproval operationId={ownProgress.operationId} />}
+            {ownProgress?.approval && (
+              <AsideApproval operationId={ownProgress.operationId} size="normal" />
+            )}
             <Button
               disabled={cancel.pending || ownProgress?.phase === 'cancel_requested'}
               onClick={() => void cancel.run(mine.operationId)}

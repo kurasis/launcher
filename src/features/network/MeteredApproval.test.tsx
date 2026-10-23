@@ -65,6 +65,7 @@ describe('the question before a download on a metered connection', () => {
     expect(plain(dialog.textContent)).toContain(
       '3,955 files for “Survival” will be downloaded over a metered connection. Used this month: 900.0 MiB of 1.0 GiB.',
     );
+    expect(dialog).toHaveAccessibleDescription(/^3,955 files for .+ 1\.0 GiB\.$/);
     // It came by itself: the dialog holds the focus, not an answer.
     await waitFor(() => {
       expect(dialog).toHaveFocus();
@@ -154,12 +155,39 @@ describe('the question before a download on a metered connection', () => {
         <AsideApproval operationId="op-g" />
       </>,
     );
-    expect(screen.queryByRole('button', { name: 'Show the question' })).toBeNull();
     fireEvent.keyDown(screen.getByRole('dialog'), { key: 'Escape' });
     expect(screen.queryByRole('dialog')).toBeNull();
     expect(answers).toEqual([]);
-    fireEvent.click(screen.getByRole('button', { name: 'Show the question' }));
+    const again = screen.getByRole('button', { name: 'Show the question' });
+    again.focus();
+    fireEvent.click(again);
     expect(screen.getByRole('dialog', { name: 'Download 550.0 MiB?' })).toBeVisible();
+    // Closed again, the focus is back on the button that showed it.
+    fireEvent.keyDown(screen.getByRole('dialog'), { key: 'Escape' });
+    expect(again).toHaveFocus();
+  });
+
+  it('puts aside only the question it closed', () => {
+    backend();
+    const { rerender } = render(<MeteredApproval snapshot={asking('op-h', large)} />);
+    fireEvent.keyDown(screen.getByRole('dialog'), { key: 'Escape' });
+    expect(screen.queryByRole('dialog')).toBeNull();
+    rerender(<MeteredApproval snapshot={asking('op-i', large)} />);
+    expect(screen.getByRole('dialog', { name: 'Download 550.0 MiB?' })).toBeVisible();
+  });
+
+  it('takes the focus back itself, never onto an answer', async () => {
+    backend();
+    const snapshot = asking('op-j', large);
+    const { rerender } = render(<MeteredApproval snapshot={snapshot} />);
+    const dialog = screen.getByRole('dialog');
+    await waitFor(() => {
+      expect(dialog).toHaveFocus();
+    });
+    // The focus fell to the page (the window lost it, a control went away).
+    dialog.blur();
+    rerender(<MeteredApproval snapshot={{ ...snapshot }} />);
+    expect(dialog).toHaveFocus();
   });
 
   it('asks nothing when no download waits', () => {

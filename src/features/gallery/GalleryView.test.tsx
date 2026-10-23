@@ -1,6 +1,8 @@
 import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { mockIPC } from '@tauri-apps/api/mocks';
+import { useState } from 'react';
 import { describe, expect, it } from 'vitest';
+import { Dialog } from '../../components/Dialog';
 import type { Gallery, Screenshot } from '../../lib/contracts';
 import { instanceFixture, snapshotFixture } from '../../test/fixtures';
 import { GalleryView } from './GalleryView';
@@ -115,6 +117,32 @@ describe('GalleryView', () => {
     // Keys work without focus inside the viewer: the focused button is gone.
     fireEvent.keyDown(document.body, { key: 'Escape' });
     expect(screen.queryByRole('dialog')).toBeNull();
+  });
+
+  it('leaves its keys to a dialog over it', async () => {
+    setup();
+    const modGroup = await screen.findByRole('region', { name: 'Modded' });
+    fireEvent.click(within(modGroup).getByRole('button'));
+    // A question that opened by itself (a download on a metered connection).
+    function Question() {
+      const [open, setOpen] = useState(true);
+      return open ? (
+        <Dialog
+          title="Download?"
+          onClose={() => {
+            setOpen(false);
+          }}
+        >
+          <button type="button">Download</button>
+        </Dialog>
+      ) : null;
+    }
+    render(<Question />);
+    fireEvent.keyDown(document.body, { key: 'ArrowRight' });
+    expect(screen.getByText('1 of 3')).toBeVisible();
+    fireEvent.keyDown(document.body, { key: 'Escape' });
+    expect(screen.queryByRole('dialog', { name: 'Download?' })).toBeNull();
+    expect(screen.getByRole('dialog', { name: /Modded/ })).toBeVisible();
   });
 
   it('explains how to take a screenshot when there are none', async () => {

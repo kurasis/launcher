@@ -3,6 +3,7 @@ import { Icon } from '../../components/Icon';
 import type { ModsProject } from '../../lib/contracts';
 import { strings } from '../../lib/strings';
 import { Dialog } from '../../components/Dialog';
+import { coveredByDialog } from '../../components/dialogStack';
 import { ourPicture } from './helpers';
 import { RichText } from './RichText';
 import catalog from './Catalog.module.css';
@@ -49,12 +50,15 @@ function PictureDialog({
     onIndex((index + by + count) % count);
   };
   const stepRef = useRef(step);
+  const figureRef = useRef<HTMLElement>(null);
   useLayoutEffect(() => {
     stepRef.current = step;
   });
   useEffect(() => {
     const listener = (event: KeyboardEvent) => {
       if (event.key !== 'ArrowLeft' && event.key !== 'ArrowRight') return;
+      // Not under another dialog (a download question).
+      if (coveredByDialog(figureRef.current)) return;
       event.preventDefault();
       // The picture after this one is to the right, or to the left in Arabic.
       const rtl = document.documentElement.dir === 'rtl';
@@ -69,7 +73,7 @@ function PictureDialog({
   const counter = t.picture({ index: index + 1, count });
   return (
     <Dialog title={picture.title === '' ? counter : picture.title} onClose={onClose} wide>
-      <figure className={styles.figure}>
+      <figure ref={figureRef} className={styles.figure}>
         <img
           className={styles.fullPicture}
           src={picture.full}

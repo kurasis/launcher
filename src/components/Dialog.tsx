@@ -1,4 +1,5 @@
 import {
+  useCallback,
   useEffect,
   useId,
   useLayoutEffect,
@@ -10,6 +11,7 @@ import {
 } from 'react';
 import { createPortal } from 'react-dom';
 import styles from './Dialog.module.css';
+import { addDialog, inDialog, removeDialog, topDialog } from './dialogStack';
 
 interface DialogProps {
   title: string;
@@ -29,9 +31,6 @@ interface DialogProps {
   closable?: boolean;
 }
 
-/** The dialogs open now, the newest last: Escape closes only the one on top. */
-const openDialogs: symbol[] = [];
-
 /** What takes the focus in a dialog: not a control disabled itself or by its fieldset. */
 const CONTROL =
   'input:not(:disabled), select:not(:disabled), textarea:not(:disabled), button:not(:disabled)';
@@ -46,11 +45,6 @@ const TABBABLE = [
   'summary',
   '[tabindex]:not([tabindex="-1"])',
 ].join(', ');
-
-/** The page under the dialogs: out of reach (keyboard, pointer, screen readers) while one is open. */
-function syncPage() {
-  document.getElementById('root')?.toggleAttribute('inert', openDialogs.length > 0);
-}
 
 /** The controls Tab stops on, in order; not those folded away in a closed details. */
 function stops(box: HTMLElement): HTMLElement[] {
@@ -73,68 +67,76 @@ export function Dialog({
   const titleId = useId();
   const ref = useRef<HTMLDivElement>(null);
   const [me] = useState(() => Symbol('dialog'));
+  // What had the focus, taken once on opening: StrictMode runs the effects twice, the
+  // second time with the focus already inside.
+  const [opener] = useState(() => document.activeElement);
   // The dialog itself holds the focus until a control shows up in it.
   const waiting = useRef(false);
-  const opened = useRef(false);
   // A parent's new onClose on each render must not move the focus again.
   const onCloseRef = useRef(onClose);
   const closableRef = useRef(closable);
+  const initialRef = useRef(initialFocus);
   useLayoutEffect(() => {
     onCloseRef.current = onClose;
     closableRef.current = closable;
+    initialRef.current = initialFocus;
   });
+  // Where the focus goes in, on opening and each time it is outside: what was asked
+  // for while it is there, else the first control, else the dialog until one shows up.
+  const refocus = useCallback(() => {
+    const box = ref.current;
+    if (box === null) return;
+    const wanted = initialRef.current;
+    const chosen = wanted === 'dialog' ? box : wanted?.current;
+    const target =
+      chosen instanceof HTMLElement && box.contains(chosen) && !chosen.matches(':disabled')
+        ? chosen
+        : box.querySelector<HTMLElement>(CONTROL);
+    waiting.current = target === null;
+    (target ?? box).focus();
+  }, []);
   useEffect(() => {
-    const before = document.activeElement;
-    openDialogs.push(me);
-    syncPage();
-    const listener = (event: globalThis.KeyboardEvent) => {
+    addDialog({ id: me, holds: (node) => ref.current?.contains(node) ?? false, refocus });
+    const onKey = (event: globalThis.KeyboardEvent) => {
       // An inner control used it (a menu), or an IME drops what is being composed.
       if (event.key !== 'Escape' || event.defaultPrevented || event.isComposing) return;
-      if (openDialogs.at(-1) === me && closableRef.current) onCloseRef.current();
+      if (topDialog()?.id === me && closableRef.current) onCloseRef.current();
     };
-    window.addEventListener('keydown', listener);
+    // The focus that lands outside the dialogs (a viewer over the page) comes back to
+    // the one on top. Into one under it only from code: an inner one, closing, put it there.
+    const onFocus = (event: FocusEvent) => {
+      if (topDialog()?.id !== me || !(event.target instanceof Node)) return;
+      if (!inDialog(event.target)) refocus();
+    };
+    window.addEventListener('keydown', onKey);
+    document.addEventListener('focusin', onFocus, true);
     return () => {
-      window.removeEventListener('keydown', listener);
-      openDialogs.splice(openDialogs.indexOf(me), 1);
-      syncPage();
+      window.removeEventListener('keydown', onKey);
+      document.removeEventListener('focusin', onFocus, true);
+      removeDialog(me);
       // The focus goes back to what opened the dialog, unless the one who closed it
-      // has put it somewhere. When that is gone, the page takes it.
-      const now = document.activeElement;
-      if (now !== null && now !== document.body) return;
-      if (before instanceof HTMLElement && before !== document.body && before.isConnected) {
-        before.focus({ preventScroll: true });
-      } else {
-        document.querySelector<HTMLElement>('main[tabindex="-1"]')?.focus({ preventScroll: true });
+      // has put it somewhere. When that is gone, the dialog under it or the page takes it.
+      const lost = () =>
+        document.activeElement === null || document.activeElement === document.body;
+      if (!lost()) return;
+      if (opener instanceof HTMLElement && opener !== document.body && opener.isConnected) {
+        opener.focus({ preventScroll: true });
       }
+      if (!lost()) return;
+      const below = topDialog();
+      if (below !== undefined) below.refocus();
+      else
+        document.querySelector<HTMLElement>('main[tabindex="-1"]')?.focus({ preventScroll: true });
     };
-  }, [me]);
+  }, [me, opener, refocus]);
   // The focus goes in on opening, and again when it is outside: the controls came
   // after a load, or the one it was on went away. Only into the dialog on top.
   useEffect(() => {
     const box = ref.current;
-    if (box === null || openDialogs.at(-1) !== me) return;
-    if (!opened.current) {
-      opened.current = true;
-      if (initialFocus === 'dialog') {
-        box.focus();
-        return;
-      }
-      const chosen = initialFocus?.current;
-      if (chosen instanceof HTMLElement && chosen.isConnected && !chosen.matches(':disabled')) {
-        chosen.focus();
-        return;
-      }
-    }
+    if (box === null || topDialog()?.id !== me) return;
     const at = document.activeElement;
     if (box.contains(at) && !(at === box && waiting.current)) return;
-    const first = box.querySelector<HTMLElement>(CONTROL);
-    if (first !== null) {
-      waiting.current = false;
-      first.focus();
-    } else if (at !== box) {
-      waiting.current = true;
-      box.focus();
-    }
+    refocus();
   });
 
   // Tab and Shift+Tab go round the dialog's controls, never to the page under it.
@@ -159,7 +161,13 @@ export function Dialog({
   // On the page body: containers with layout containment and the rail's stacking
   // context would otherwise hold the fixed overlay.
   return createPortal(
-    <div className={styles.backdrop}>
+    <div
+      className={styles.backdrop}
+      onMouseDown={(event) => {
+        // A press on the scrim leaves the focus where it is.
+        if (event.target === event.currentTarget) event.preventDefault();
+      }}
+    >
       <div
         ref={ref}
         role="dialog"

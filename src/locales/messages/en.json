@@ -2639,7 +2639,8 @@
         "install": "The update could not be installed. Download it from the link instead."
       },
       "rolledBack": "Version {failed} did not start properly, so the launcher went back to version {version}. Your settings are as they were before the update. Version {failed} will not be installed again; a fixed version will be.",
-      "notesLead": "What’s new:"
+      "notesLead": "What’s new:",
+      "notesLabel": "What’s new in this version"
     },
     "downloads": {
       "title": "Downloads",
