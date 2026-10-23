@@ -101,6 +101,9 @@ describe('DiagnosticsView', () => {
       'Downloaded',
       'When',
     ]);
+    // A narrow window scrolls the table sideways, from the keyboard too.
+    const regions = screen.getAllByRole('region', { name: 'Recent operations' });
+    expect(regions.find((region) => region.tagName === 'DIV')).toHaveAttribute('tabindex', '0');
     const row = screen.getByRole('row', { name: /Repair Survival Failed/ });
     expect(row).toHaveTextContent('A download source could not be reached.');
     expect(row).toHaveTextContent('2.0 KiB');
@@ -171,7 +174,7 @@ describe('DiagnosticsView', () => {
     const plain = { ...snapshot, lifecycleHarnessAvailable: false };
     const { rerender } = render(<DiagnosticsView snapshot={{ ...plain, lastRun }} />);
     const last = screen.getByRole('region', { name: 'Last run' });
-    expect(last).toHaveTextContent('Minecraft, “Survival”');
+    expect(last).toHaveTextContent('Minecraft, “\u2068Survival\u2069”');
     expect(last).toHaveTextContent('Exited normally');
     expect(last).toHaveTextContent('42 min 10 s');
     const output = within(last).getByRole('region', { name: 'Last output lines' });

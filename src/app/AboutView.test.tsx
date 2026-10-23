@@ -118,12 +118,17 @@ describe('AboutView', () => {
     expect(within(panel).queryByRole('button')).toBeNull();
   });
 
-  it('downloads an available version and shows the download going', () => {
+  it('downloads an available version, shows the download going and keeps the focus', async () => {
     const calls = backend();
     const { rerender } = render(
       <AboutView snapshot={withUpdate({ phase: 'available', version: '0.2.0', notes: {} })} />,
     );
-    fireEvent.click(screen.getByRole('button', { name: 'Download' }));
+    const panel = screen.getByRole('region', { name: "What's new in version 0.2.0" });
+    const line = within(panel).getByRole('status');
+    expect(line).toHaveTextContent('Download it now; it installs when you close the launcher.');
+    const download = screen.getByRole('button', { name: 'Download' });
+    download.focus();
+    fireEvent.click(download);
     expect(calls).toContain('download_update');
     rerender(
       <AboutView
@@ -136,7 +141,48 @@ describe('AboutView', () => {
         })}
       />,
     );
-    expect(screen.getByText('Downloading… 25%')).toBeVisible();
+    // The same line says it, without the percent at each step; the bar has it.
+    expect(within(panel).getByRole('status')).toBe(line);
+    expect(line).toHaveTextContent(/^Downloading…$/);
+    expect(screen.getByText('25%')).toBeVisible();
     expect(screen.getByRole('progressbar', { name: 'Downloading…' })).toHaveAttribute('max', '200');
+    // Download went with its phase: the focus goes to the line, not to the page.
+    await waitFor(() => {
+      expect(line).toHaveFocus();
+    });
+    rerender(
+      <AboutView
+        snapshot={withUpdate({
+          phase: 'ready',
+          version: '0.2.0',
+          notes: {},
+          downloaded: 200,
+          total: 200,
+        })}
+      />,
+    );
+    expect(line).toHaveTextContent('Downloaded; installs when you close the launcher.');
+    expect(line).toHaveFocus();
+    expect(screen.getByRole('button', { name: 'Restart now' })).not.toHaveFocus();
+  });
+
+  it('says a failed update failed and offers to try again', () => {
+    backend();
+    render(
+      <AboutView
+        snapshot={withUpdate({
+          phase: 'failed',
+          version: '0.2.0',
+          notes: {},
+          error: 'network',
+          downloadUrl: null,
+        })}
+      />,
+    );
+    const panel = screen.getByRole('region', { name: "What's new in version 0.2.0" });
+    expect(within(panel).getByRole('status')).toHaveTextContent('The last update failed.');
+    expect(screen.getByText(/could not be fetched/)).toBeVisible();
+    expect(screen.getByRole('button', { name: 'Try again' })).toBeVisible();
+    expect(screen.queryByRole('button', { name: 'Download the new version' })).toBeNull();
   });
 });

@@ -10,6 +10,8 @@
   overflow: auto;
   margin: 0;
   padding: 0.625rem var(--space-3);
+  /* Transparent: the edge forced colors draw. */
+  border: 1px solid transparent;
   border-radius: var(--radius-sm);
   background: var(--color-surface-sunken);
   color: var(--color-text-2);
@@ -20,12 +22,17 @@
   overflow-wrap: anywhere;
 }
 
-details .output {
+/* The facts take the focus when Stop goes. */
+.facts:focus {
+  outline: none;
+}
+
+.folded .output {
   margin-block-start: var(--space-2);
   max-block-size: 16rem;
 }
 
-details summary {
+.folded summary {
   cursor: pointer;
   color: var(--color-text-2);
   font-size: var(--font-size-sm);

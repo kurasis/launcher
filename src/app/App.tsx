@@ -496,7 +496,10 @@ export function App() {
                     names={new Map(state.snapshot.instances.map((i) => [i.id, i.displayName]))}
                     onStop={(runId) => {
                       stopping.clear();
-                      void ipc.stopGame(runId).catch(stopping.catcher);
+                      return ipc.stopGame(runId).catch((error: unknown) => {
+                        stopping.catcher(error);
+                        throw error;
+                      });
                     }}
                   />
                   {stopping.error !== null && <Notice tone="danger">{stopping.error}</Notice>}

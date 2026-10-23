@@ -51,9 +51,7 @@ export function LifecycleHarnessPanel({ snapshot }: { snapshot: AppSnapshot }) {
         level={3}
         names={new Map(snapshot.instances.map((i) => [i.id, i.displayName]))}
         output="shown"
-        onStop={(runId) => {
-          void ipc.stopLifecycleTest(runId).catch(() => undefined);
-        }}
+        onStop={(runId) => ipc.stopLifecycleTest(runId)}
       />
     </>
   );

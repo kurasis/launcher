@@ -1,4 +1,4 @@
-import { fireEvent, render, screen } from '@testing-library/react';
+import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { describe, expect, it, vi } from 'vitest';
 import type { RunSummary } from '../../lib/contracts';
 import { RunStatus } from './RunStatus';
@@ -29,7 +29,7 @@ describe('RunStatus', () => {
   });
 
   it('offers Stop for the running process', () => {
-    const onStop = vi.fn();
+    const onStop = vi.fn(() => Promise.resolve());
     render(<RunStatus current={base} last={null} onStop={onStop} />);
     expect(screen.getByRole('region', { name: /Running: Lifecycle test child/ })).toHaveTextContent(
       'Running',
@@ -39,7 +39,7 @@ describe('RunStatus', () => {
   });
 
   it('asks before stopping a game and explains unsaved progress', () => {
-    const onStop = vi.fn();
+    const onStop = vi.fn(() => Promise.resolve());
     render(<RunStatus current={{ ...base, kind: 'game' }} last={null} onStop={onStop} />);
     fireEvent.click(screen.getByRole('button', { name: 'Stop game' }));
     expect(onStop).not.toHaveBeenCalled();
@@ -52,7 +52,7 @@ describe('RunStatus', () => {
   });
 
   it('asks in place and gives the focus back to Stop game', () => {
-    const onStop = vi.fn();
+    const onStop = vi.fn(() => Promise.resolve());
     render(
       <RunStatus
         current={{ ...base, kind: 'game', instanceId: 'i-1' }}
@@ -62,7 +62,7 @@ describe('RunStatus', () => {
       />,
     );
     const region = screen.getByRole('region', { name: /Running: Minecraft/ });
-    expect(region).toHaveTextContent('Minecraft, “Survival”');
+    expect(region).toHaveTextContent('Minecraft, “\u2068Survival\u2069”');
     const stop = screen.getByRole('button', { name: 'Stop game' });
     stop.focus();
     fireEvent.click(stop);
@@ -71,6 +71,47 @@ describe('RunStatus', () => {
     fireEvent.keyDown(question, { key: 'Escape' });
     expect(onStop).not.toHaveBeenCalled();
     expect(screen.getByRole('button', { name: 'Stop game' })).toHaveFocus();
+  });
+
+  it('does not offer Stop again while the game stops and hands the focus on', async () => {
+    const onStop = vi.fn(() => Promise.resolve());
+    const game: RunSummary = { ...base, kind: 'game' };
+    const { rerender } = render(<RunStatus current={game} last={null} onStop={onStop} />);
+    const stop = screen.getByRole('button', { name: 'Stop game' });
+    stop.focus();
+    fireEvent.click(stop);
+    const yes = screen.getByRole('button', { name: 'Stop without saving' });
+    yes.focus();
+    fireEvent.click(yes);
+    expect(onStop).toHaveBeenCalledWith('run-1');
+    // The question and Stop are gone: the focus goes to what the run is now.
+    expect(screen.queryByRole('button', { name: 'Stop game' })).toBeNull();
+    const facts = screen.getByText('State').closest('[tabindex]');
+    await waitFor(() => {
+      expect(facts).toHaveFocus();
+    });
+    rerender(<RunStatus current={{ ...game, state: 'stopping' }} last={null} onStop={onStop} />);
+    expect(facts).toHaveFocus();
+    expect(screen.queryByRole('button', { name: 'Stop game' })).toBeNull();
+    rerender(
+      <RunStatus
+        current={null}
+        last={{ ...game, state: 'stopped', durationMs: 5000 }}
+        onStop={onStop}
+      />,
+    );
+    expect(screen.getByRole('heading', { name: 'Last run' })).toBeVisible();
+    await waitFor(() => {
+      expect(screen.getByText('Stopped by you').closest('[tabindex]')).toHaveFocus();
+    });
+  });
+
+  it('offers Stop again when the stop failed', async () => {
+    const onStop = vi.fn(() => Promise.reject(new Error('refused')));
+    render(<RunStatus current={base} last={null} onStop={onStop} />);
+    fireEvent.click(screen.getByRole('button', { name: 'Stop' }));
+    expect(screen.queryByRole('button', { name: 'Stop' })).toBeNull();
+    expect(await screen.findByRole('button', { name: 'Stop' })).toBeVisible();
   });
 
   it('keeps the output folded unless asked to show it', () => {

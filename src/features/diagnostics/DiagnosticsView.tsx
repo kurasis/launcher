@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useId, useState } from 'react';
 import { useAppInfo } from '../../app/useAppInfo';
 import { Button } from '../../components/Button';
 import { Icon } from '../../components/Icon';
@@ -63,6 +63,7 @@ export function DiagnosticsView({ snapshot }: { snapshot: AppSnapshot }) {
     ipc.exportDiagnostics(runId, requestId, strings.windowTitles.saveDiagnostics),
   );
   const info = useAppInfo();
+  const recentId = useId();
   const names = new Map(snapshot.instances.map((i) => [i.id, i.displayName]));
   const nameOf = (instanceId: string | null) =>
     instanceId === null ? '—' : (names.get(instanceId) ?? '—');
@@ -115,11 +116,17 @@ export function DiagnosticsView({ snapshot }: { snapshot: AppSnapshot }) {
             <p className={styles.hint}>{strings.console.openHint}</p>
             {opening.error !== null && <Notice tone="danger">{opening.error}</Notice>}
           </Panel>
-          <Panel title={t.recentTitle} level={3}>
+          <Panel title={t.recentTitle} level={3} headingId={recentId}>
             {running === null && snapshot.recentOperations.length === 0 ? (
               <p className={styles.hint}>{t.none}</p>
             ) : (
-              <div className={styles.tableBox}>
+              // Narrow, the table scrolls sideways, from the keyboard too.
+              <div
+                className={styles.tableBox}
+                tabIndex={0}
+                role="region"
+                aria-labelledby={recentId}
+              >
                 <table className={styles.table}>
                   <thead>
                     <tr>

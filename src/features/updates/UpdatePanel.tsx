@@ -1,7 +1,9 @@
+import { useRef } from 'react';
 import { Button } from '../../components/Button';
 import { Notice } from '../../components/Notice';
 import { Panel } from '../../components/Panel';
 import { ProgressBar } from '../../components/ProgressBar';
+import { useFocusBack } from '../../components/useFocusBack';
 import type { UpdateView } from '../../lib/contracts';
 import { ipc } from '../../lib/ipc';
 import { strings } from '../../lib/strings';
@@ -37,8 +39,9 @@ function Notes({ notes }: { notes: Record<string, string> }) {
 /**
  * About → What's new (D-063): the version waiting to be installed, its notes and what can
  * be done with it now; or, once installed, the notes of the version now running until
- * they are read. Nothing when there is neither. Restart now is never focused first: it
- * closes the launcher.
+ * they are read. Nothing when there is neither. One status line says where the update
+ * stands; when the button that had the focus goes with its phase, the focus goes to that
+ * line, never to Restart now, which closes the launcher.
  */
 export function UpdatePanel({ update }: { update: UpdateView }) {
   const download = useCommand(() => ipc.downloadUpdate());
@@ -46,9 +49,10 @@ export function UpdatePanel({ update }: { update: UpdateView }) {
   const check = useCommand(() => ipc.checkForUpdate());
   const open = useCommand(() => ipc.openUpdatePage());
   const error = download.error ?? restart.error ?? check.error ?? open.error;
-  const waiting = update.phase !== 'idle' && update.version !== null ? update.version : null;
+  const line = useRef<HTMLParagraphElement>(null);
+  useFocusBack(update.phase, line);
 
-  if (waiting === null) {
+  if (update.phase === 'idle' || update.version === null) {
     if (update.whatsNew === null) return null;
     return (
       <Panel title={t.whatsNew({ version: update.whatsNew.version })} level={3}>
@@ -65,64 +69,71 @@ export function UpdatePanel({ update }: { update: UpdateView }) {
     if (!command.pending) void command.run();
   };
 
+  const phaseLine = {
+    available: t.availableBody,
+    downloading: t.downloading,
+    ready: t.readyShort,
+    notice: t.noticeBody,
+    failed: t.settings.phases.failed,
+  }[update.phase];
+
   return (
-    <Panel title={t.whatsNew({ version: waiting })} level={3}>
+    <Panel title={t.whatsNew({ version: update.version })} level={3}>
       {update.mandatory && <Notice tone="warning">{t.mandatory}</Notice>}
       <Notes notes={update.notes} />
+      {update.phase === 'failed' && update.error !== null && (
+        <Notice tone="danger">{t.errors[update.error]}</Notice>
+      )}
+      {error !== null && <Notice tone="danger">{error}</Notice>}
+      <div className={styles.status}>
+        {/* The same line in every phase, so that it is read out when it changes; the
+            percent stays with the bar, not read out at each step. */}
+        <p ref={line} role="status" className={styles.line} tabIndex={-1}>
+          {phaseLine}
+        </p>
+        {update.phase === 'available' && (
+          <Button
+            size="small"
+            aria-disabled={download.pending || undefined}
+            onClick={press(download)}
+          >
+            {t.download}
+          </Button>
+        )}
+        {update.phase === 'ready' && (
+          <Button
+            size="small"
+            aria-disabled={restart.pending || undefined}
+            onClick={press(restart)}
+          >
+            {t.restartNow}
+          </Button>
+        )}
+        {(update.phase === 'notice' ||
+          (update.phase === 'failed' && update.downloadUrl !== null)) && (
+          <Button size="small" aria-disabled={open.pending || undefined} onClick={press(open)}>
+            {t.openDownload}
+          </Button>
+        )}
+        {update.phase === 'failed' && (
+          <Button size="small" aria-disabled={check.pending || undefined} onClick={press(check)}>
+            {t.tryAgain}
+          </Button>
+        )}
+      </div>
       {update.phase === 'downloading' && (
-        <div className={styles.field}>
-          <p role="status" className={styles.muted}>
-            {percent === null ? t.downloading : t.downloadingPercent({ percent })}
-          </p>
+        <div className={styles.progress}>
           <ProgressBar
             className={styles.wide}
             value={update.total === null ? null : update.downloaded}
             max={update.total ?? undefined}
             label={t.downloading}
           />
-        </div>
-      )}
-      {update.phase === 'failed' && update.error !== null && (
-        <Notice tone="danger">{t.errors[update.error]}</Notice>
-      )}
-      {error !== null && <Notice tone="danger">{error}</Notice>}
-      {update.phase !== 'downloading' && (
-        <div className={styles.status}>
-          {update.phase === 'available' && (
-            <>
-              <p className={styles.muted}>{t.availableBody}</p>
-              <Button
-                size="small"
-                aria-disabled={download.pending || undefined}
-                onClick={press(download)}
-              >
-                {t.download}
-              </Button>
-            </>
-          )}
-          {update.phase === 'ready' && (
-            <>
-              <p className={styles.muted}>{t.readyShort}</p>
-              <Button
-                size="small"
-                aria-disabled={restart.pending || undefined}
-                onClick={press(restart)}
-              >
-                {t.restartNow}
-              </Button>
-            </>
-          )}
-          {update.phase === 'notice' && <p className={styles.muted}>{t.noticeBody}</p>}
-          {(update.phase === 'notice' ||
-            (update.phase === 'failed' && update.downloadUrl !== null)) && (
-            <Button size="small" aria-disabled={open.pending || undefined} onClick={press(open)}>
-              {t.openDownload}
-            </Button>
-          )}
-          {update.phase === 'failed' && (
-            <Button size="small" aria-disabled={check.pending || undefined} onClick={press(check)}>
-              {t.tryAgain}
-            </Button>
+          {/* The bar tells assistive technology how far it is. */}
+          {percent !== null && (
+            <span className={styles.muted} aria-hidden="true">
+              {strings.downloads.percent({ percent })}
+            </span>
           )}
         </div>
       )}

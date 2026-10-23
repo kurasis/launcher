@@ -31,14 +31,15 @@
   fill: var(--color-accent);
 }
 
+/* As heavy as the tones above and after them, so it wins on a panel too. */
 @media (forced-colors: active) {
-  .top,
-  .left,
-  .right {
+  .logo .top,
+  .logo .left,
+  .logo .right {
     fill: CanvasText;
   }
 
-  .shine {
+  .logo .shine {
     fill: Canvas;
   }
 }
