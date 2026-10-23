@@ -191,21 +191,22 @@ jobs:
           echo "free on the server: $free GB"
           [ "$free" -ge 8 ] || { echo "::error::less than 8 GB free on the server"; exit 1; }
           # One batch of about 1 GB at a time: the server copies each batch in
-          # place before the next comes.
+          # place before the next comes. Only the tar pipe gives ssh its input
+          # (-n elsewhere), so no ssh reads the list of jars the loop reads.
           batch() {
-            ssh "$TARGET" "rm -rf '$incoming' && mkdir -m 2750 -p '$incoming/files' '$incoming/meta'"
-            scp -q batch.sums "$TARGET:$incoming/SHA1SUMS"
+            ssh -n "$TARGET" "rm -rf '$incoming' && mkdir -m 2750 -p '$incoming/files' '$incoming/meta'"
+            scp -q batch.sums "$TARGET:$incoming/SHA1SUMS" < /dev/null
             if [ -s batch.files ]; then
               tar -C out -cf - -T batch.files 2>/dev/null | ssh "$TARGET" "tar -C '$incoming' -xf -"
             fi
-            ssh "$TARGET" "$lapi versions-files"
-            ssh "$TARGET" "rm -rf '$incoming'"
+            ssh -n "$TARGET" "$lapi versions-files"
+            ssh -n "$TARGET" "rm -rf '$incoming'"
           }
           mkdir -p out/files
           size=0
           : > batch.sums
           : > batch.files
-          while read -r name; do
+          while read -r name <&3; do
             sum="${name%.jar}"
             mv "jars/$name" "out/files/$name"
             echo "$sum  files/$name" >> batch.sums
@@ -218,7 +219,7 @@ jobs:
               : > batch.sums
               : > batch.files
             fi
-          done < new.txt
+          done 3< new.txt
           [ -s batch.sums ] && batch
           rm -f out/files/*.jar
           # The version files, with the jars upd.lapi.sh had: all are named.
