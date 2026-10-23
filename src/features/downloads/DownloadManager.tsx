@@ -148,7 +148,9 @@ export function DownloadManager({ snapshot }: { snapshot: AppSnapshot }) {
   // row shows it waits.
   const asking = progress?.approval ? progress.operationId : null;
   const cancelling = progress?.phase === 'cancel_requested';
-  const label = percent === null ? t.title : `${t.title} ${t.percent({ percent })}`;
+  // The percent shows beside the name; the name itself stays, so a screen reader does
+  // not read the focused row again at every percent.
+  const shown = percent === null ? t.title : `${t.title} ${t.percent({ percent })}`;
   const details = detailSentences(progress);
 
   useEffect(() => {
@@ -163,6 +165,11 @@ export function DownloadManager({ snapshot }: { snapshot: AppSnapshot }) {
     if (!cancel.pending) void cancel.run(id);
   };
 
+  // The name a screen reader says: with the version too where the row shows it.
+  const fullName = (id: string | null) => {
+    const version = shared(id);
+    return version === null ? name(id) : `${name(id)} ${version}`;
+  };
   const nameLine = (id: string | null) => {
     const version = shared(id);
     return (
@@ -230,7 +237,7 @@ export function DownloadManager({ snapshot }: { snapshot: AppSnapshot }) {
                 <Tile id={tileOf(active.instanceId)} />
                 <div className={styles.what}>
                   <p className={styles.name}>{nameLine(active.instanceId)}</p>
-                  <p className={styles.hint}>
+                  <p className={[styles.hint, styles.numbers].filter(Boolean).join(' ')}>
                     {stateLine(active.kind, progress)}
                     {percentTail(progress)}
                   </p>
@@ -277,7 +284,7 @@ export function DownloadManager({ snapshot }: { snapshot: AppSnapshot }) {
                     <Button
                       variant="secondary"
                       size="small"
-                      aria-label={t.removeNamed({ name: name(item.instanceId) })}
+                      aria-label={t.removeNamed({ name: fullName(item.instanceId) })}
                       aria-disabled={cancel.pending || undefined}
                       onClick={() => {
                         stop(item.queueId);
@@ -331,9 +338,9 @@ export function DownloadManager({ snapshot }: { snapshot: AppSnapshot }) {
         className={styles.railButton}
         data-working={active !== null && asking === null ? 'true' : undefined}
         data-asking={asking !== null ? 'true' : undefined}
-        aria-label={label}
+        aria-label={t.title}
         aria-expanded={open}
-        title={label}
+        title={t.title}
         onClick={() => {
           if (open) close();
           else setOpen(true);
@@ -341,7 +348,7 @@ export function DownloadManager({ snapshot }: { snapshot: AppSnapshot }) {
       >
         <Icon name="downloads" className={styles.icon} />
         <span className={styles.railLabel} aria-hidden="true">
-          {label}
+          {shown}
         </span>
         {queue.length > 0 && <span className={styles.badge}>{queue.length}</span>}
       </button>

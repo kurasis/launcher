@@ -75,8 +75,9 @@ describe('DownloadManager', () => {
         })}
       />,
     );
-    // The row says how far it got, and how many wait.
-    const button = screen.getByRole('button', { name: 'Downloads 25%' });
+    // The row says how far it got, and how many wait; its name stays the same.
+    const button = screen.getByRole('button', { name: 'Downloads' });
+    expect(button).toHaveTextContent('Downloads 25%');
     expect(button).toHaveAttribute('data-working', 'true');
     expect(button).toHaveTextContent('1');
     fireEvent.click(button);
@@ -128,7 +129,7 @@ describe('DownloadManager', () => {
       />
     );
     const { rerender } = render(view('downloading'));
-    fireEvent.click(screen.getByRole('button', { name: /^Downloads/ }));
+    fireEvent.click(screen.getByRole('button', { name: 'Downloads' }));
     fireEvent.click(screen.getByRole('button', { name: 'Cancel' }));
     await waitFor(() => {
       expect(calls).toEqual(['op-1']);
@@ -153,7 +154,7 @@ describe('DownloadManager', () => {
       />
     );
     const { rerender } = render(view(['a.ogg', 'b.ogg']));
-    fireEvent.click(screen.getByRole('button', { name: /^Downloads/ }));
+    fireEvent.click(screen.getByRole('button', { name: 'Downloads' }));
     expect(screen.getByText('a.ogg')).toBeVisible();
     rerender(view(['b.ogg', 'a.ogg', 'c.ogg']));
     expect(screen.getByText('a.ogg')).toBeVisible();
@@ -191,7 +192,7 @@ describe('DownloadManager', () => {
         <MeteredApproval snapshot={snapshot} />
       </>,
     );
-    const button = screen.getByRole('button', { name: /^Downloads/ });
+    const button = screen.getByRole('button', { name: 'Downloads' });
     expect(button).toHaveAttribute('data-asking', 'true');
     // The question is a dialog of its own: the panel stays closed. Put aside, it can be
     // shown again from the panel.
@@ -227,7 +228,7 @@ describe('DownloadManager', () => {
         })}
       />,
     );
-    fireEvent.click(screen.getByRole('button', { name: 'Downloads 25%' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Downloads' }));
     expect(screen.getByText('Repair: checking files, 25%')).toBeVisible();
     // Only the sentences that are known.
     expect(screen.getByText('1,000 of 4,000 files.')).toBeVisible();
@@ -282,6 +283,10 @@ describe('DownloadManager', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Downloads' }));
     expect(screen.getByText('Minecraft 1.20.1')).toBeVisible();
     expect(screen.getByText('Installation. Waits for the internet connection.')).toBeVisible();
+    // Its Remove names the version too.
+    expect(
+      screen.getByRole('button', { name: 'Remove “Survival Minecraft 1.20.1” from the queue' }),
+    ).toBeVisible();
   });
 
   it('shows the month on a metered connection', async () => {

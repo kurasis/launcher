@@ -351,7 +351,9 @@ describe('App', () => {
     render(<App />);
     // The Downloads row and the launch bar carry it; no separate chip in the rail.
     const header = await screen.findByRole('banner');
-    expect(await within(header).findByRole('button', { name: 'Downloads 45%' })).toBeVisible();
+    expect(await within(header).findByRole('button', { name: 'Downloads' })).toHaveTextContent(
+      'Downloads 45%',
+    );
     const bar = screen.getByRole('region', { name: 'Launch' });
     expect(within(bar).getByRole('status')).toHaveTextContent('Installation: downloading');
     expect(within(bar).getByRole('progressbar', { name: 'Download progress' })).toHaveAttribute(
@@ -359,7 +361,9 @@ describe('App', () => {
       '45',
     );
     fireEvent.click(screen.getByRole('button', { name: 'Settings' }));
-    expect(within(header).getByRole('button', { name: 'Downloads 45%' })).toBeVisible();
+    expect(within(header).getByRole('button', { name: 'Downloads' })).toHaveTextContent(
+      'Downloads 45%',
+    );
     expect(within(header).queryByText('Installing')).toBeNull();
   });
 

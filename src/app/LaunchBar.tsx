@@ -236,7 +236,9 @@ function OperationStrip({
       )}
       <div className={styles.operation}>
         <p className={styles.line}>
-          <span className={styles.name}>{running?.displayName ?? strings.downloads.unknown}</span>
+          <span className={styles.name} dir="auto">
+            {running?.displayName ?? strings.downloads.unknown}
+          </span>
           <span className={styles.phase}>
             {/* Read out when the phase changes, not with every percent. */}
             <span role="status">{stateLine(operation.kind, progress)}</span>
@@ -251,7 +253,11 @@ function OperationStrip({
         />
       </div>
       {problem !== null && (
-        <p className={styles.error} role="alert">
+        <p
+          className={[styles.error, styles.stripError].filter(Boolean).join(' ')}
+          role="alert"
+          title={problem}
+        >
           {problem}
         </p>
       )}
