@@ -8,7 +8,7 @@ import { describeIpcError, ipc } from '../../lib/ipc';
 import { numberLocale, strings } from '../../lib/strings';
 import { Dialog } from './Dialog';
 import { cannotAdd, installable, installKind, isolate, packArchive, validGame } from './helpers';
-import { dayOf, fits, pageOf, shortDayOf } from './projectVersions';
+import { dayOf, fits, pageOf, shortDayOf } from './versions';
 import { RichText } from './RichText';
 import catalog from './Catalog.module.css';
 import styles from './Project.module.css';

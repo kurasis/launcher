@@ -8,7 +8,7 @@ import { strings } from '../../lib/strings';
 import { categoryName, categoryOf } from './catalogCategories';
 import { ProjectIcon } from './CatalogTile';
 import { compact, isolate } from './helpers';
-import { dayOf } from './projectVersions';
+import { dayOf } from './versions';
 import { ReportForm } from './ReportForm';
 import catalog from './Catalog.module.css';
 import styles from './Project.module.css';

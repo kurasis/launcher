@@ -4,7 +4,7 @@ import type { ModsHit, ModsVersion } from '../../lib/contracts';
 import { strings } from '../../lib/strings';
 import { ProjectIcon } from './CatalogTile';
 import { isolate } from './helpers';
-import { modrinthPage } from './projectVersions';
+import { modrinthPage } from './versions';
 import catalog from './Catalog.module.css';
 import styles from './Project.module.css';
 

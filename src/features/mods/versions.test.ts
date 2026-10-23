@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { dayOf, shortDayOf } from './projectVersions';
+import { dayOf, shortDayOf } from './versions';
 
 describe('dayOf', () => {
   const now = Date.UTC(2026, 9, 23);

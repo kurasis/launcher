@@ -18,14 +18,7 @@ import { type Offer, ProjectCard } from './ProjectCard';
 import { ProjectDescription } from './ProjectDescription';
 import { ProjectDependencies, ProjectSimilar } from './ProjectRelated';
 import { ProjectVersions, type VersionsSummary } from './ProjectVersions';
-import {
-  bestPack,
-  bestVersion,
-  dependenciesOf,
-  gameRange,
-  pageOf,
-  versionsFor,
-} from './projectVersions';
+import { bestPack, bestVersion, dependenciesOf, gameRange, pageOf, versionsFor } from './versions';
 import catalog from './Catalog.module.css';
 import styles from './Project.module.css';
 

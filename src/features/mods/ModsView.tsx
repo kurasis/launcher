@@ -14,7 +14,7 @@ import { ProjectPage, type QuickTarget } from './ProjectPage';
 import { SearchSection } from './SearchSection';
 import { WorldDialog } from './WorldDialog';
 import { installKind } from './helpers';
-import { bestVersion } from './projectVersions';
+import { bestVersion } from './versions';
 import catalog from './Catalog.module.css';
 
 export type ModsSection = ModsKind | 'installed' | 'requests';

@@ -1745,7 +1745,9 @@ describe('Catalog', () => {
     expect(await screen.findByText('Project 24')).toBeVisible();
     expect(named('mods_search', calls)[1]?.args.query).toMatchObject({ text: '', offset: 20 });
     // All 25 are there: nothing more is watched for.
-    expect(watched.size).toBe(0);
+    await waitFor(() => {
+      expect(watched.size).toBe(0);
+    });
     near();
     expect(named('mods_search', calls)).toHaveLength(2);
   });
@@ -2358,11 +2360,16 @@ describe('Project page', () => {
     });
 
     fireEvent.click(within(deps).getByRole('button', { name: 'Add ⁨Indium⁩' }));
-    expect(await screen.findByRole('dialog', { name: 'Add Indium to Modded' })).toBeVisible();
+    const adding = await screen.findByRole('dialog', { name: 'Add Indium to Modded' });
     expect(named('mods_versions', calls).at(-1)?.args).toEqual({
       project: INDIUM,
       game: null,
       loader: null,
+    });
+    // Drawn after an answer, outside the test's own steps: Escape once it listens, which
+    // is when it has taken the focus.
+    await waitFor(() => {
+      expect(adding.contains(document.activeElement)).toBe(true);
     });
     fireEvent.keyDown(window, { key: 'Escape' });
     await waitFor(() => {
