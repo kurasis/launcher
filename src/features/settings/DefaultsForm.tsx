@@ -45,7 +45,8 @@ export function DefaultsForm({
       requestId,
     ),
   );
-  // Saving keeps the fields and Save as they are (a disabled control drops the focus).
+  // Saving keeps the fields and Save as they are (a disabled control drops the focus),
+  // but they do not change until it is done: Saved is said of what was sent.
   const disabled = !settings.writable;
 
   return (
@@ -72,6 +73,7 @@ export function DefaultsForm({
               name="default-memory"
               checked={!fixed}
               onChange={() => {
+                if (save.pending) return;
                 setFixed(false);
                 setSaved(false);
               }}
@@ -84,6 +86,7 @@ export function DefaultsForm({
               name="default-memory"
               checked={fixed}
               onChange={() => {
+                if (save.pending) return;
                 setFixed(true);
                 setSaved(false);
               }}
@@ -116,6 +119,7 @@ export function DefaultsForm({
                   step={256}
                   value={heap}
                   disabled={disabled}
+                  readOnly={save.pending}
                   onChange={(event) => {
                     setHeap(event.target.value);
                     setSaved(false);
@@ -137,6 +141,7 @@ export function DefaultsForm({
                 max={bounds.maxWidth}
                 value={width}
                 disabled={disabled}
+                readOnly={save.pending}
                 onChange={(event) => {
                   setWidth(event.target.value);
                   setSaved(false);
@@ -155,6 +160,7 @@ export function DefaultsForm({
                 max={bounds.maxHeight}
                 value={height}
                 disabled={disabled}
+                readOnly={save.pending}
                 onChange={(event) => {
                   setHeight(event.target.value);
                   setSaved(false);
@@ -169,6 +175,7 @@ export function DefaultsForm({
             checked={fullscreen}
             disabled={disabled}
             onChange={(event) => {
+              if (save.pending) return;
               setFullscreen(event.target.checked);
               setSaved(false);
             }}

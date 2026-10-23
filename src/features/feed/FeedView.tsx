@@ -445,7 +445,11 @@ export function FeedView({ snapshot, onOpenInstallations, onInstallVersion }: Fe
         <Notice tone="info">
           <span className={styles.noticeRow}>
             <span>{notice.text}</span>
-            {notice.undo !== null && <Button onClick={notice.undo}>{t.undo}</Button>}
+            {notice.undo !== null && (
+              <Button size="small" onClick={notice.undo}>
+                {t.undo}
+              </Button>
+            )}
           </span>
         </Notice>
       )}

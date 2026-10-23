@@ -619,9 +619,10 @@ export function SearchSection({
           </div>
           {error !== null && (
             <Notice tone="danger">
-              <span className={styles.applied}>
+              <span className={styles.noticeRow}>
                 {error}
                 <Button
+                  size="small"
                   onClick={() => {
                     search(committed);
                     // The notice and its button go while the search runs.

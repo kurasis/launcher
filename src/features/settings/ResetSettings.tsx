@@ -87,10 +87,11 @@ export function ResetSettings({ busy }: { busy: boolean }) {
   const reset = useCommand((requestId: string, chosen: ResetChoice) =>
     ipc.resetLauncher(chosen, requestId),
   );
-  // When the question closes, the focus goes back to Reset…, or to what was done.
+  // When the question closes, the focus goes back to Reset…, or to what was done. The
+  // reset itself makes the launcher busy: its own question stays until the answer is in.
   const start = useRef<HTMLButtonElement>(null);
   const done = useRef<HTMLDivElement>(null);
-  const asking = confirming && !busy;
+  const asking = confirming && (!busy || reset.pending);
   useFocusBack(asking, start, done);
 
   const reload = useCallback(() => {
@@ -119,7 +120,7 @@ export function ResetSettings({ busy }: { busy: boolean }) {
   return (
     <Panel>
       {loadError !== null && <Notice tone="danger">{loadError}</Notice>}
-      {busy && <Notice tone="info">{t.busy}</Notice>}
+      {busy && !reset.pending && <Notice tone="info">{t.busy}</Notice>}
       {preview !== null && (
         <fieldset className={forms.choices} disabled={disabled}>
           <legend>{t.choose}</legend>
@@ -168,7 +169,7 @@ export function ResetSettings({ busy }: { busy: boolean }) {
       )}
       {asking ? (
         <Confirm
-          label={t.confirm}
+          label={t.reset}
           action={t.reset}
           cancel={t.cancel}
           pending={reset.pending}

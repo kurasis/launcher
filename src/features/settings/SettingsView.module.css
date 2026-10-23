@@ -74,12 +74,17 @@
   font-size: var(--font-size-sm);
 }
 
-/* Fields side by side, wrapping when there is no room. */
+/* Fields side by side, wrapping when there is no room; a hint wraps under its field
+   instead of pushing the next one down. */
 .row {
   display: flex;
   flex-wrap: wrap;
   align-items: flex-start;
   gap: var(--space-4);
+}
+
+.row > * {
+  max-inline-size: 15rem;
 }
 
 .wide {
@@ -177,6 +182,11 @@ fieldset legend.legend {
   flex-wrap: wrap;
   align-items: flex-end;
   gap: var(--space-2);
+}
+
+.addRow > label {
+  flex: 1 1 18rem;
+  max-inline-size: 28rem;
 }
 
 /* Rows of names, each with a small Remove at the end. */

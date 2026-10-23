@@ -65,6 +65,29 @@ describe('PrivacySettings', () => {
     });
   });
 
+  it('keeps the switch and its focus while the change is saved', async () => {
+    let answer: (value: unknown) => void = () => undefined;
+    const calls = mock({
+      set_app_settings: () =>
+        new Promise((done) => {
+          answer = done;
+        }),
+    });
+    render(<PrivacySettings settings={base} />);
+    const toggle = screen.getByRole('switch', { name: /Anonymous statistics/ });
+    toggle.focus();
+    fireEvent.click(toggle);
+    expect(toggle).toHaveAttribute('aria-disabled', 'true');
+    expect(toggle).toBeEnabled();
+    expect(toggle).toHaveFocus();
+    fireEvent.click(toggle);
+    expect(patches(calls)).toEqual([{ stats: false, statsNoticeSeen: true }]);
+    answer({ ...base, stats: false });
+    await waitFor(() => {
+      expect(toggle).not.toHaveAttribute('aria-disabled');
+    });
+  });
+
   it('shows what is sent word for word, as text', async () => {
     const sent: StatsSent = {
       ping: { ...ping, launcher: '<img src=x onerror=alert(1)>' },

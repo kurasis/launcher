@@ -66,7 +66,7 @@ describe('SettingsView', () => {
     });
   });
 
-  it('moves along the sections with the arrows and opens one with Enter', () => {
+  it('moves along the sections with the arrows and opens one on a press', () => {
     backend();
     render(<Shown snapshot={snapshotFixture()} />);
     const tab = (name: string) => screen.getByRole('tab', { name });
@@ -88,6 +88,17 @@ describe('SettingsView', () => {
     fireEvent.keyDown(tab('Reset'), { key: 'Home' });
     expect(tab('General')).toHaveFocus();
     fireEvent.keyDown(tab('General'), { key: 'ArrowRight' });
+    expect(tab('Feed')).toHaveFocus();
+    fireEvent.keyDown(tab('Feed'), { key: 'ArrowLeft' });
+    expect(tab('General')).toHaveFocus();
+    // Right to left, the arrows follow the reading direction.
+    tab('General').style.direction = 'rtl';
+    fireEvent.keyDown(tab('General'), { key: 'ArrowLeft' });
+    expect(tab('Feed')).toHaveFocus();
+    tab('Feed').style.direction = 'rtl';
+    fireEvent.keyDown(tab('Feed'), { key: 'ArrowRight' });
+    expect(tab('General')).toHaveFocus();
+    expect(tab('General')).toHaveAttribute('aria-selected', 'true');
     fireEvent.click(tab('Feed'));
     expect(tab('Feed')).toHaveAttribute('aria-selected', 'true');
     expect(tab('Feed').tabIndex).toBe(0);
@@ -96,8 +107,10 @@ describe('SettingsView', () => {
 
   it('keeps the general choices in place while a change is saved', async () => {
     let answer: (value: unknown) => void = () => undefined;
-    mockIPC((cmd) => {
+    const saves: unknown[] = [];
+    mockIPC((cmd, args) => {
       if (cmd === 'set_app_settings') {
+        saves.push(args);
         return new Promise((done) => {
           answer = done;
         });
@@ -116,6 +129,14 @@ describe('SettingsView', () => {
       'aria-busy',
       'true',
     );
+    const during = screen.getByRole('group', { name: 'While a game is running' });
+    fireEvent.click(within(during).getByRole('radio', { name: /^Close the launcher once/ }));
+    fireEvent.click(
+      within(screen.getByRole('radiogroup', { name: 'Theme' })).getByRole('radio', {
+        name: 'Dark',
+      }),
+    );
+    expect(saves).toHaveLength(1);
     answer(snapshotFixture().settings);
     await waitFor(() => {
       expect(screen.getByRole('group', { name: 'While a game is running' })).not.toHaveAttribute(

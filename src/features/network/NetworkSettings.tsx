@@ -47,7 +47,8 @@ export function NetworkSettings({ snapshot }: { snapshot: AppSnapshot }) {
       patch: { metered?: boolean; meteredWarnMib?: number; monthlyLimitMib?: number },
     ) => ipc.setAppSettings(patch, requestId),
   );
-  // Saving keeps the fields and Save as they are (a disabled control drops the focus).
+  // Saving keeps the fields and Save as they are (a disabled control drops the focus),
+  // but they do not change until it is done: Saved is said of what was sent.
   const disabled = !settings.writable;
 
   return (
@@ -86,6 +87,7 @@ export function NetworkSettings({ snapshot }: { snapshot: AppSnapshot }) {
                   dir="ltr"
                   value={warn}
                   disabled={disabled}
+                  readOnly={update.pending}
                   onChange={(event) => {
                     setWarn(event.target.value);
                     setSaved(false);
@@ -104,6 +106,7 @@ export function NetworkSettings({ snapshot }: { snapshot: AppSnapshot }) {
                   dir="ltr"
                   value={limit}
                   disabled={disabled}
+                  readOnly={update.pending}
                   onChange={(event) => {
                     setLimit(event.target.value);
                     setSaved(false);

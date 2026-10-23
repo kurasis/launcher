@@ -1,8 +1,9 @@
-import { useEffect, useId, useState } from 'react';
+import { useEffect, useId, useRef, useState, type RefObject } from 'react';
 import { Button } from '../../components/Button';
 import { Notice } from '../../components/Notice';
 import { Panel } from '../../components/Panel';
 import { Switch } from '../../components/Switch';
+import { useFocusBack } from '../../components/useFocusBack';
 import forms from '../../components/forms.module.css';
 import type {
   ChannelMark,
@@ -61,6 +62,12 @@ function OwnList<T>({
   const [input, setInput] = useState('');
   const [busy, setBusy] = useState(false);
   const [problem, setProblem] = useState<FeedProblem | null>(null);
+  // A change keeps the field and the buttons as they are (a disabled control drops the
+  // focus); when the channel removed took its button along, or the list is full, the
+  // focus goes to the field, or to the count.
+  const field = useRef<HTMLInputElement>(null);
+  const count = useRef<HTMLParagraphElement>(null);
+  useFocusBack(busy, field, count);
 
   useEffect(() => {
     load()
@@ -96,6 +103,7 @@ function OwnList<T>({
           className={styles.addRow}
           onSubmit={(event) => {
             event.preventDefault();
+            if (busy || full) return;
             const value = input.trim();
             if (value === '') {
               setProblem('bad_input');
@@ -107,11 +115,13 @@ function OwnList<T>({
           <label htmlFor={inputId} className={styles.field}>
             <span className={styles.label}>{inputLabel}</span>
             <input
+              ref={field}
               id={inputId}
               className={[forms.input, styles.long].join(' ')}
               value={input}
               maxLength={200}
-              disabled={busy || full}
+              disabled={full}
+              readOnly={busy}
               spellCheck={false}
               autoComplete="off"
               dir="auto"
@@ -120,7 +130,7 @@ function OwnList<T>({
               }}
             />
           </label>
-          <Button type="submit" disabled={busy || full}>
+          <Button type="submit" disabled={full} aria-disabled={busy || undefined}>
             {busy ? t.adding : t.add}
           </Button>
         </form>
@@ -130,7 +140,7 @@ function OwnList<T>({
           <p className={styles.hint}>{t.noChannels}</p>
         ) : (
           <>
-            <p className={styles.hint}>
+            <p ref={count} className={[styles.hint, styles.status].join(' ')} tabIndex={-1}>
               {t.channelCount({ count: items.length, max: MAX_OWN_CHANNELS })}
             </p>
             <ul className={styles.items}>
@@ -139,10 +149,10 @@ function OwnList<T>({
                   <span dir="auto">{nameOf(item)}</span>
                   <Button
                     size="small"
-                    disabled={busy}
+                    aria-disabled={busy || undefined}
                     aria-label={t.removeChannel({ title: nameOf(item) })}
                     onClick={() => {
-                      change(remove(item), false);
+                      if (!busy) change(remove(item), false);
                     }}
                   >
                     {t.remove}
@@ -205,21 +215,28 @@ function MarkedList({
   hint,
   list,
   marks,
+  disabled,
   busy,
+  hintRef,
   onRemove,
 }: {
   legend: string;
   hint: string;
   list: MarkList;
   marks: FeedMarks;
+  disabled: boolean;
   busy: boolean;
-  onRemove: (channel: ChannelMark) => void;
+  /** Where the focus goes when the channel's button goes with it. */
+  hintRef: RefObject<HTMLParagraphElement | null>;
+  onRemove: (channel: ChannelMark, list: MarkList) => void;
 }) {
   const channels = list === 'hidden' ? marks.hidden : marks.favorite;
   return (
     <fieldset className={forms.choices}>
       <legend className={styles.legend}>{legend}</legend>
-      <p className={styles.hint}>{hint}</p>
+      <p ref={hintRef} className={[styles.hint, styles.status].join(' ')} tabIndex={-1}>
+        {hint}
+      </p>
       {channels.length === 0 ? (
         <p className={styles.hint}>{t.noMarks}</p>
       ) : (
@@ -232,10 +249,11 @@ function MarkedList({
               </span>
               <Button
                 size="small"
-                disabled={busy}
+                disabled={disabled}
+                aria-disabled={busy || undefined}
                 aria-label={t.removeMark({ name: channel.name })}
                 onClick={() => {
-                  onRemove(channel);
+                  if (!busy) onRemove(channel, list);
                 }}
               >
                 {t.remove}
@@ -253,13 +271,19 @@ function MarkedChannels({ disabled }: { disabled: boolean }) {
   const [marks, setMarks] = useState<FeedMarks>({ hidden: [], favorite: [] });
   const [busy, setBusy] = useState(false);
   const [problem, setProblem] = useState<FeedProblem | null>(null);
+  // The button pressed goes with its channel: the focus goes to the top of its list.
+  const [from, setFrom] = useState<MarkList>('favorite');
+  const favoriteHint = useRef<HTMLParagraphElement>(null);
+  const hiddenHint = useRef<HTMLParagraphElement>(null);
+  useFocusBack(busy, from === 'hidden' ? hiddenHint : favoriteHint);
   useEffect(() => {
     ipc
       .feedMarks()
       .then(setMarks)
       .catch(() => undefined);
   }, []);
-  const remove = (channel: ChannelMark) => {
+  const remove = (channel: ChannelMark, list: MarkList) => {
+    setFrom(list);
     setBusy(true);
     setProblem(null);
     ipc
@@ -279,7 +303,9 @@ function MarkedChannels({ disabled }: { disabled: boolean }) {
         hint={t.favoritesHint}
         list="favorite"
         marks={marks}
-        busy={busy || disabled}
+        disabled={disabled}
+        busy={busy}
+        hintRef={favoriteHint}
         onRemove={remove}
       />
       <MarkedList
@@ -287,7 +313,9 @@ function MarkedChannels({ disabled }: { disabled: boolean }) {
         hint={t.hiddenChannelsHint}
         list="hidden"
         marks={marks}
-        busy={busy || disabled}
+        disabled={disabled}
+        busy={busy}
+        hintRef={hiddenHint}
         onRemove={remove}
       />
       {problem !== null && <Notice tone="danger">{strings.feed.problems[problem]}</Notice>}

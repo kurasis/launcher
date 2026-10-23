@@ -75,13 +75,15 @@ export function InstanceLoaderForm({
           ...versions,
         ];
   const changed = picked !== loader.version;
-  // Changing keeps the list and the button as they are (a disabled control drops the
-  // focus); once the installation has the new version the button closes, and the focus
-  // goes to what was done.
+  // Changing and the install after it keep the list and the button as they are (a
+  // disabled control drops the focus). The button closes once the installation has the
+  // new version, before or after the answer: the focus goes to what was done, or to the
+  // list until it is said.
   const busy = instance.busy;
+  const held = change.pending || busy;
   const appliedLine = useRef<HTMLSpanElement>(null);
   const select = useRef<HTMLSelectElement>(null);
-  useFocusBack(changed, appliedLine, select);
+  useFocusBack(`${String(done !== null)}:${String(changed)}`, appliedLine, select);
 
   return (
     <Panel title={t.title} level={3}>
@@ -89,7 +91,7 @@ export function InstanceLoaderForm({
         className={forms.form}
         onSubmit={(event) => {
           event.preventDefault();
-          if (change.pending) return;
+          if (held || !changed) return;
           setDone(null);
           void change.run(picked).then((saved) => {
             if (saved) setDone(saved.loader?.version ?? picked);
@@ -104,9 +106,10 @@ export function InstanceLoaderForm({
               ref={select}
               className={[forms.select, styles.long].join(' ')}
               value={picked}
-              disabled={listed === null || busy}
+              disabled={listed === null}
+              aria-disabled={held || undefined}
               onChange={(event) => {
-                if (change.pending) return;
+                if (held) return;
                 setPicked(event.target.value);
                 setDone(null);
               }}
@@ -132,8 +135,8 @@ export function InstanceLoaderForm({
             type="submit"
             variant="primary"
             size="small"
-            disabled={!changed || busy}
-            aria-disabled={change.pending || undefined}
+            disabled={!changed}
+            aria-disabled={held || undefined}
           >
             {t.apply}
           </Button>

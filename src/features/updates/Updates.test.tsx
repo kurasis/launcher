@@ -168,11 +168,12 @@ describe('launcher updates', () => {
       />,
     );
     expect(screen.getByRole('heading', { level: 3, name: 'Updates' })).toBeVisible();
-    expect(
-      screen.getByText(
-        'This is version 0.1.9. Version 0.2.0 is downloaded and installs when you close the launcher.',
-      ),
-    ).toBeVisible();
+    const status = screen.getByText(
+      'This is version 0.1.9. Version 0.2.0 is downloaded and installs when you close the launcher.',
+    );
+    expect(status).toBeVisible();
+    // A version found by a check is read out.
+    expect(status).toHaveAttribute('role', 'status');
     // The choices cannot be written; looking for a version still works.
     expect(screen.getByRole('radio', { name: 'Only tell me' })).toBeDisabled();
     const check = screen.getByRole('button', { name: 'Check now' });
@@ -185,9 +186,13 @@ describe('launcher updates', () => {
       'true',
     );
     expect(screen.getByRole('button', { name: 'Checking…' })).toHaveFocus();
+    expect(screen.getByRole('button', { name: 'Checking…' })).toBeEnabled();
+    // A second press while it looks asks nothing more.
+    fireEvent.click(screen.getByRole('button', { name: 'Checking…' }));
     await waitFor(() => {
-      expect(seen.filter((c) => c.cmd === 'check_for_update')).toHaveLength(1);
+      expect(screen.getByRole('button', { name: 'Check now' })).toBeVisible();
     });
+    expect(seen.filter((c) => c.cmd === 'check_for_update')).toHaveLength(1);
   });
 
   it('says when a build does not look for updates', () => {

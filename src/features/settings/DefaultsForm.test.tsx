@@ -64,4 +64,39 @@ describe('DefaultsForm', () => {
       });
     });
   });
+
+  it('keeps the fields as sent while they are saved', async () => {
+    let answer: (value: unknown) => void = () => undefined;
+    const saves: unknown[] = [];
+    mockIPC((cmd, args) => {
+      if (cmd === 'set_app_settings') {
+        saves.push(args);
+        return new Promise((done) => {
+          answer = done;
+        });
+      }
+      if (cmd === 'get_app_snapshot') return snapshotFixture();
+      return null;
+    });
+    const snapshot = snapshotFixture();
+    render(<DefaultsForm settings={snapshot.settings} memory={snapshot.memory} />);
+    const save = screen.getByRole('button', { name: 'Save defaults' });
+    save.focus();
+    fireEvent.click(save);
+    expect(save).toHaveAttribute('aria-disabled', 'true');
+    expect(save).toHaveFocus();
+    // Nothing changes until the answer, and a second press sends nothing more.
+    expect(screen.getByLabelText('Window width')).toHaveAttribute('readonly');
+    fireEvent.click(screen.getByRole('checkbox', { name: 'Start the game in fullscreen' }));
+    expect(
+      screen.getByRole('checkbox', { name: 'Start the game in fullscreen' }),
+    ).not.toBeChecked();
+    fireEvent.click(screen.getByRole('radio', { name: 'The same for every new installation' }));
+    expect(screen.queryByLabelText('Maximum memory (MiB)')).toBeNull();
+    fireEvent.click(save);
+    expect(saves).toHaveLength(1);
+    answer(snapshotFixture().settings);
+    expect(await screen.findByText('Saved.')).toBeVisible();
+    expect(screen.getByLabelText('Window width')).not.toHaveAttribute('readonly');
+  });
 });

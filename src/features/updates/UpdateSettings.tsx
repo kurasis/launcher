@@ -66,7 +66,8 @@ function Updates({ snapshot, headingId }: { snapshot: AppSnapshot; headingId: st
         ))}
       </fieldset>
       <div className={styles.status}>
-        <p>
+        {/* Read out when it changes: a check that finds a version, the download, ready. */}
+        <p role="status">
           {t.current({ version: snapshot.appVersion })}
           {phase !== null && ` ${phase}`}
         </p>

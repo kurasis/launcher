@@ -16,11 +16,18 @@ const location: DataLocation = {
 describe('DataFolderSettings', () => {
   it('copies the data to a chosen folder after confirmation', async () => {
     const calls: { cmd: string; args: unknown }[] = [];
-    mockIPC((cmd, args) => {
+    let copied: () => void = () => undefined;
+    const copy = new Promise<void>((done) => {
+      copied = done;
+    });
+    mockIPC(async (cmd, args) => {
       calls.push({ cmd, args });
       if (cmd === 'get_data_location') return location;
       if (cmd === 'pick_data_folder') return '/mnt/games/launcher';
-      if (cmd === 'move_data_location') return { ...location, pendingPath: '/mnt/games/launcher' };
+      if (cmd === 'move_data_location') {
+        await copy;
+        return { ...location, pendingPath: '/mnt/games/launcher' };
+      }
       return null;
     });
     render(<DataFolderSettings busy={false} />);
@@ -29,8 +36,19 @@ describe('DataFolderSettings', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Move to another folder…' }));
     expect(await screen.findByText('/mnt/games/launcher')).toBeVisible();
     expect(calls.some((c) => c.cmd === 'move_data_location')).toBe(false);
-    fireEvent.click(screen.getByRole('button', { name: 'Copy data' }));
+    const yes = screen.getByRole('button', { name: 'Copy data' });
+    yes.focus();
+    fireEvent.click(yes);
+    // The question goes with the button pressed: the focus goes to what is happening.
+    expect(screen.getByRole('status')).toHaveTextContent('Copying the data…');
+    expect(screen.getByRole('status')).toHaveFocus();
+    copied();
     expect(await screen.findByText(/Quit and start the launcher again/)).toBeVisible();
+    await waitFor(() => {
+      expect(
+        screen.getByText(/Quit and start the launcher again/).closest('[tabindex]'),
+      ).toHaveFocus();
+    });
     await waitFor(() => {
       expect(calls.find((c) => c.cmd === 'move_data_location')?.args).toMatchObject({
         request: { payload: { target: 'custom', path: '/mnt/games/launcher' } },
