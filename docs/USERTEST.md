@@ -11,6 +11,19 @@ with its rules (`scripts/usertest/plan.py` mirrors `src-tauri/src/loader/meta.rs
 items go newest release first and are cut into parts of `part_size` (default 12, about
 45 minutes each); each part is a job of its own.
 
+The launcher's own versions, the ones Mojang's list does not have (docs/EXTRA-VERSIONS.md,
+the form's Special tab), are picked with `special` (all of them), `special:<group>`
+(`joke`, `unobfuscated`, `experimental`, `combat`, `first-build`, `early-release`,
+`beta`, `alpha`, `infdev`, `indev`, `classic`) or `special:<id>`. They come after the
+Mojang items, in the list's order. The plan reads the list the launcher reads
+(`upd.lapi.sh/versions/manifest.json`) for each version's name: its row starts with it and
+the form says "Selected: <name>" (an earlier build: its id). The test opens the Special
+tab, types the id into the search box, installs and plays as for a release, and stops at
+the title screen: the game files come from the launcher's server, and some of these games
+have menus of their own (the oldest none), so no world is made (World: `not checked`). A
+special version passes when the game reached its title screen and closed normally, and
+the launcher did not add Launcher Skins to it.
+
 The inputs `label` (default `TestPC`) and `machine` pick the computers: a job goes to any
 free runner with the label, so it first checks the runner's name and stops at once on
 another machine. `machine: any` lets every machine with the label take parts, which is

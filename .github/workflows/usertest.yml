@@ -4,12 +4,13 @@ name: Player test
 # machines (docs/USERTEST.md; label TestPC): the newest packaged launcher from main is
 # installed with its installer, and for each version, vanilla or with a mod loader, a
 # player's steps are taken in its window and in the game: install, play, a new
-# singleplayer world. Only by hand ("Run workflow"). A long list is cut into parts that
+# singleplayer world. The launcher's own versions (the Special tab, D-073) are played to
+# their title screen. Only by hand ("Run workflow"). A long list is cut into parts that
 # run as separate jobs, so every machine with the label takes some.
 #
 # The runner is a real computer, so this workflow runs only for the owner's dispatch,
 # never for a pull request. Inputs reach scripts only through env and are checked
-# against Mojang's and the loaders' lists. No concurrency group: a runner takes one job
+# against Mojang's and the loaders' lists and the launcher's own list. No concurrency group: a runner takes one job
 # at a time, and the Game test's queue (one pending run) is left alone.
 
 on:
@@ -19,7 +20,9 @@ on:
         description: >-
           What to play, comma-separated: "26" (every 26.x release), "all" (every release,
           vanilla and with each loader), "vanilla", "fabric", "quilt", "forge", "neoforge"
-          (every release that one supports), a release id (vanilla) or loader:id
+          (every release that one supports), a release id (vanilla) or loader:id;
+          "special" (every version of the launcher's own list, to the title screen),
+          special:<group> (joke, combat, ...) or special:<id>
         default: '26'
       label:
         description: Runner label of the test machines (several machines may share it)
@@ -75,7 +78,11 @@ jobs:
           VERSIONS: ${{ inputs.versions || '26' }}
           PART_SIZE: ${{ inputs.part_size || '12' }}
           CLEANUP: ${{ inputs.cleanup && 'yes' || 'no' }}
-        run: python3 scripts/usertest/plan.py
+          # The special versions' names, as their rows and the form show them.
+          SPECIAL_FILE: input/special.json
+        run: |
+          mkdir -p input
+          python3 scripts/usertest/plan.py
       - id: package
         name: Newest green Package run on main
         env:
@@ -102,7 +109,7 @@ jobs:
               "search": "createForm.search", "selected": "createForm.selected", "cancel": "createForm.cancel",
               "loader": "loaders.loader", "loaderFabric": "loaders.names.fabric",
               "loaderQuilt": "loaders.names.quilt", "loaderForge": "loaders.names.forge",
-              "loaderNeoForge": "loaders.names.neoforge",
+              "loaderNeoForge": "loaders.names.neoforge", "special": "createForm.versionTypes.special",
               "install": "install.install", "play": "install.play", "retry": "install.retry",
               "allow": "metered.allow",
           }
@@ -170,6 +177,7 @@ jobs:
           $setup = (Get-Item ut/input/package/*-setup.exe | Select-Object -First 1).FullName
           & powershell.exe -NoProfile -ExecutionPolicy Bypass -File ut/input/windows.ps1 `
             -Setup $setup -Strings (Resolve-Path ut/input/ui-strings.json).Path `
+            -Special (Resolve-Path ut/input/special.json).Path `
             -Items $env:ITEMS -Downloads $env:DOWNLOADS -Out (New-Item -ItemType Directory -Force ut/out).FullName
           exit $LASTEXITCODE
       - name: Summary

@@ -11,7 +11,8 @@ import os
 import sys
 from pathlib import Path
 
-NAMES = {"vanilla": "", "fabric": "Fabric", "quilt": "Quilt", "forge": "Forge", "neoforge": "NeoForge"}
+NAMES = {"vanilla": "", "fabric": "Fabric", "quilt": "Quilt", "forge": "Forge", "neoforge": "NeoForge",
+         "special": "Special"}
 
 
 def cell(value):
@@ -23,9 +24,14 @@ def timed(state, seconds):
 
 
 def passed(row):
+    """windows.ps1 Passed: a special version passes at its title screen, without
+    Launcher Skins."""
     skins = row.get("skins") or ""
-    return (row.get("world") == "ok" and row.get("exit") == "ok"
-            and not skins.startswith(("not", "failed")))
+    if row.get("exit") != "ok" or skins.startswith(("not", "failed")):
+        return False
+    if row.get("loader") == "special":
+        return row.get("launch") == "ok" and not skins
+    return row.get("world") == "ok"
 
 
 def main():
