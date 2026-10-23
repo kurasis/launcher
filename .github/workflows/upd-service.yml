@@ -173,7 +173,7 @@ jobs:
     name: Server check
     if: github.event_name == 'workflow_dispatch' && inputs.task == 'server'
     runs-on: ubuntu-24.04
-    timeout-minutes: 20
+    timeout-minutes: 30
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
       - uses: ./.github/actions/lapi-ssh
@@ -191,32 +191,38 @@ jobs:
             echo '```'
           } | tee -a "$GITHUB_STEP_SUMMARY"
       - name: Files through Cloudflare
+        timeout-minutes: 10
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          # The newest skins mod's jars, twice, each past Cloudflare's cache (a
-          # query of its own), so every one is a request to the server.
+          # The newest skins mod's jars, each past Cloudflare's cache (a query
+          # of its own) so every one is a request to the server, eight at a
+          # time. One line per request: data centre (the part of cf-ray after
+          # the dash, like IAD), status, bytes received of the file's size,
+          # seconds.
           tag=$(gh release list --limit 50 --json tagName \
             -q '[.[] | select(.tagName | startswith("skins-mod-v"))][0].tagName')
           version=${tag#skins-mod-v}
           gh release download "$tag" --pattern SHA256SUMS
-          names=$(awk '{ sub(/^\*/, "", $2) } $2 ~ /^launcherskins-[a-z0-9.-]+\.jar$/ { print $2 }' SHA256SUMS)
-          : > answers
-          for pass in 1 2; do
-            for name in $names; do
-              curl -sS -o /dev/null --max-time 60 \
-                -w '%{http_code} %{time_total} %header{cf-ray}\n' \
-                "https://upd.lapi.sh/skins-mod/$version/$name?check=$GITHUB_RUN_ID-$pass" >> answers 2>/dev/null ||
-                echo "000 60 -" >> answers
-            done
-          done
+          awk '{ sub(/^\*/, "", $2) } $2 ~ /^launcherskins-[a-z0-9.-]+\.jar$/ { print $2 }' SHA256SUMS > names
+          export version
+          fetch() {
+            out=$(curl -sS -o /dev/null --max-time 20 \
+              -w '%{http_code} %{size_download} %{time_total} %header{cf-ray} %header{content-length}' \
+              "https://upd.lapi.sh/skins-mod/$version/$1?check=$GITHUB_RUN_ID" 2>/dev/null)
+            read -r code bytes secs ray length <<< "$out"
+            echo "${ray##*-} ${code:-000} ${bytes:-0} of ${length:-?} ${secs:-20}"
+          }
+          export -f fetch
+          xargs -P 8 -I{} bash -c 'fetch {}' < names | sort > answers
           {
             echo "### Skins mod $version through Cloudflare: $(wc -l < answers) requests"
             echo '```'
-            awk '{ print "status " $1 }' answers | sort | uniq -c
-            # The data centre is the part of cf-ray after the dash, like IAD.
-            awk '{ n = split($3, r, "-"); print "data centre " (n > 1 ? r[n] : "none") }' answers | sort | uniq -c
-            awk '{ t += $2; if ($2 > m) m = $2 } END { printf "seconds: average %.2f, longest %.2f\n", t / NR, m }' answers
+            echo "data centre, status: requests"
+            awk '{ print $1 ", " $2 }' answers | sort | uniq -c
+            awk '{ t += $NF; if ($NF > m) m = $NF } END { printf "seconds: average %.2f, longest %.2f\n", t / NR, m }' answers
+            echo "not whole (data centre, status, bytes of size, seconds):"
+            awk '$3 != $5' answers | head -40
             echo '```'
           } | tee -a "$GITHUB_STEP_SUMMARY"
       - name: TLS straight to the server
