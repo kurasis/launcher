@@ -28,6 +28,9 @@ enum Look {
     PageData,
     /// A redirect: whether it goes to forgecdn.
     ToCdn,
+    /// A project's old address by its number: whether it leads to the
+    /// project's page (so a pack's mod can be added by its number).
+    ToProject,
     /// A search answer of the API: how many hits, and whether JEI is one.
     Hits,
     /// A page's description and pictures: where they sit and how many.
@@ -115,6 +118,12 @@ fn checks(file: Option<u64>) -> Vec<Check> {
             url: SEARCH_FULL.into(),
             look: Look::Hits,
             headers: crate::curseforge::SITE_FETCH,
+        },
+        Check {
+            name: "cf_project_by_id",
+            url: format!("https://www.curseforge.com/projects/{PROJECT}"),
+            look: Look::ToProject,
+            headers: &[],
         },
         Check {
             name: "cf_project_page",
@@ -444,6 +453,18 @@ pub async fn run(client: &Client, tmp: &Path) -> Vec<String> {
                         crate::curseforge::media(&String::from_utf8_lossy(&page))
                     )
                 }),
+                Look::ToProject => match &result {
+                    Ok(r) if (300..400).contains(&r.status) => Some(
+                        match r.location.as_deref() {
+                            Some(to) if to_project_page(to) => "to_project_page",
+                            Some(to) if same_site(to) => "elsewhere_on_site",
+                            _ => "elsewhere",
+                        }
+                        .to_owned(),
+                    ),
+                    Ok(r) if r.status == 200 => Some(page_data(&read())),
+                    _ => None,
+                },
                 Look::ToCdn => match &result {
                     Ok(r) if (300..400).contains(&r.status) => Some(
                         if r.location.as_deref().is_some_and(to_cdn) {
@@ -487,6 +508,17 @@ fn same_site(url: &str) -> bool {
         && reqwest::Url::parse(url).is_ok_and(|u| u.host_str() == Some("www.curseforge.com"))
 }
 
+/// JEI's page, `https://www.curseforge.com/minecraft/mc-mods/jei`, maybe as
+/// a path of the site alone.
+fn to_project_page(url: &str) -> bool {
+    let base = reqwest::Url::parse("https://www.curseforge.com/").ok();
+    base.and_then(|b| b.join(url).ok()).is_some_and(|u| {
+        u.scheme() == "https"
+            && u.host_str() == Some("www.curseforge.com")
+            && u.path().trim_end_matches('/') == format!("/minecraft/mc-mods/{SLUG}")
+    })
+}
+
 /// A redirect to one of forgecdn's file hosts.
 fn to_cdn(url: &str) -> bool {
     reqwest::Url::parse(url).is_ok_and(|u| {
@@ -523,6 +555,22 @@ mod tests {
         assert_eq!(text, "proxy2   cf_project_page  403 challenge 512B");
         let text = line("direct", "cf_files", &Err(FetchError::Network(28)), None);
         assert_eq!(text, "direct   cf_files         network_28");
+    }
+
+    #[test]
+    fn a_project_number_leads_to_its_page_only_on_the_site() {
+        assert!(to_project_page(
+            "https://www.curseforge.com/minecraft/mc-mods/jei"
+        ));
+        assert!(to_project_page("/minecraft/mc-mods/jei/"));
+        assert!(!to_project_page("https://www.curseforge.com/minecraft"));
+        assert!(!to_project_page(
+            "https://evil.example/minecraft/mc-mods/jei"
+        ));
+        assert!(!to_project_page(
+            "http://www.curseforge.com/minecraft/mc-mods/jei"
+        ));
+        assert!(!to_project_page("//evil.example/minecraft/mc-mods/jei"));
     }
 
     #[test]
