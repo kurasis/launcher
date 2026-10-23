@@ -24,7 +24,8 @@ entry has its version file (`descriptor`, pinned by `sha1`) and its jars (`files
 with where they came from). A build that does not start has a `note`:
 `crashes-at-start` for in-20100124-2310, in-20100128-2304 and in-20100129-1452, which end
 with a NullPointerException while building the starter house, with Mojang's own tweaker
-too (`NOTES` in `scripts/extra-versions.mjs`).
+too, and for 1.21.11-pre1_unobfuscated, which ends with one while it applies the
+graphics preset on its first start (`NOTES` in `scripts/extra-versions.mjs`).
 
 ## In the launcher
 

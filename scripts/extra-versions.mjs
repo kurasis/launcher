@@ -105,14 +105,16 @@ const FIRST_BUILDS = {
 };
 
 /**
- * Builds that do not start, by archive id: the picker says so (D-073). These three
- * Indev builds end with a NullPointerException while building the starter house, with
- * Mojang's own tweaker too.
+ * Builds that do not start, by archive id: the picker says so (D-073). Three Indev
+ * builds end with a NullPointerException while building the starter house, with
+ * Mojang's own tweaker too; 1.21.11-pre1_unobfuscated ends with one while it applies
+ * the graphics preset on its first start.
  */
 const NOTES = {
   'in-20100124-2310': 'crashes-at-start',
   'in-20100128-2304': 'crashes-at-start',
   'in-20100129-1452': 'crashes-at-start',
+  '1.21.11-pre1_unobfuscated': 'crashes-at-start',
 };
 
 /** Archive addresses that do not answer, by the jar's SHA-1: the file is at another name. */
