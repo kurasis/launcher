@@ -2501,6 +2501,10 @@ export type Messages = {
       readonly hostPlays: string;
       readonly reopening: string;
       readonly titleUnknown: string;
+      readonly titleStopping: (values: { room: string | number }) => string;
+      readonly titleClosed: (values: { room: string | number }) => string;
+      readonly titleUnknownStopping: string;
+      readonly titleUnknownClosed: string;
     };
     readonly guest: {
       readonly title: (values: { room: string | number }) => string;

@@ -76,6 +76,29 @@ const idle: WorldsState = {
   maintenance: false,
 };
 
+/** A guest of `room` with the connection up. */
+function guestIn(room: string): WorldsState {
+  return {
+    ...idle,
+    guest: {
+      room,
+      connected: true,
+      refused: null,
+      path: 'direct',
+      reconnecting: false,
+      gaveUp: false,
+    },
+  };
+}
+
+const asked = {
+  sha256: 'ab'.repeat(32),
+  mods: 3,
+  newMods: 2,
+  names: ['fabric-api.jar', 'sodium.jar'],
+  bytes: 2 * 1024 * 1024,
+};
+
 /** A LauncherError carrying a worlds.lapi.sh problem. */
 function problem(name: string): Error {
   return Object.assign(new Error('worlds.lapi.sh refused this.'), {
@@ -395,6 +418,32 @@ describe('WorldsView', () => {
     expect(await screen.findByText(/The room is being opened again/)).toBeInTheDocument();
     expect(screen.queryByText(/opened on another computer/)).toBeNull();
     expect(screen.queryByRole('button', { name: 'Close' })).toBeNull();
+    expect(screen.getByText('\u2068Our base\u2069 is open')).toBeInTheDocument();
+  });
+
+  it('says the hosted world closed, and why, until it is put away', async () => {
+    const { calls } = setup({
+      worlds_state: () => ({
+        ...idle,
+        hosting: {
+          room: ROOM,
+          world: WORLD,
+          phase: 'exited',
+          players: [],
+          ended: 'server_exited',
+          reopening: false,
+          clean: false,
+        },
+      }),
+    });
+    const band = within(await screen.findByRole('region', { name: 'World state' }));
+    expect(await band.findByText('\u2068Our base\u2069 is closed')).toBeInTheDocument();
+    expect(band.getByText(/the last minutes may not be saved/)).toBeInTheDocument();
+    expect(band.queryByRole('button', { name: 'Play' })).toBeNull();
+    fireEvent.click(band.getByRole('button', { name: 'Close' }));
+    await waitFor(() => {
+      expect(called(calls, 'worlds_stop_hosting')).toHaveLength(1);
+    });
   });
 
   it('turns the relay-only mode on and says what the relay sees', async () => {
@@ -833,13 +882,104 @@ describe('WorldsView', () => {
       }),
     });
     const band = within(await screen.findByRole('region', { name: 'World state' }));
-    expect(band.getByRole('button', { name: 'Play' })).toBeDisabled();
+    // Play keeps the focus it may have, and does nothing yet.
+    const play = band.getByRole('button', { name: 'Play' });
+    expect(play).toHaveAttribute('aria-disabled', 'true');
+    fireEvent.click(play);
     fireEvent.click(band.getByRole('button', { name: 'Leave the world' }));
     await waitFor(() => {
       expect(called(calls, 'worlds_disconnect')).toHaveLength(1);
     });
+    expect(called(calls, 'worlds_instance')).toHaveLength(0);
     // One way out, not one in the row too.
     expect(screen.getAllByRole('button', { name: 'Leave the world' })).toHaveLength(1);
+  });
+
+  it('lets a guest leave while Play still gets the mods ready', async () => {
+    const { calls } = setup({
+      worlds_state: () => guestIn(OTHER),
+      worlds_instance: () => new Promise(() => undefined),
+    });
+    const band = within(await screen.findByRole('region', { name: 'World state' }));
+    fireEvent.click(await band.findByRole('button', { name: 'Play' }));
+    await waitFor(() => {
+      expect(band.getByRole('button', { name: 'Play' })).toHaveAttribute('aria-disabled', 'true');
+    });
+    const leave = band.getByRole('button', { name: 'Leave the world' });
+    expect(leave).not.toHaveAttribute('aria-disabled');
+    fireEvent.click(leave);
+    await waitFor(() => {
+      expect(called(calls, 'worlds_disconnect')).toHaveLength(1);
+    });
+  });
+
+  it('hands the focus to the mods question, and forgets it when another room is played', async () => {
+    setup({
+      worlds_state: () => guestIn(OTHER),
+      worlds_instance: () => ({ instanceId: 'inst-2', ready: false, consent: asked }),
+    });
+    const band = within(await screen.findByRole('region', { name: 'World state' }));
+    const play = await band.findByRole('button', { name: 'Play' });
+    play.focus();
+    fireEvent.click(play);
+    const accept = await band.findByRole('button', { name: 'Install the mods' });
+    await waitFor(() => {
+      expect(accept).toHaveFocus();
+    });
+    expect(accept).toHaveAccessibleDescription(/^This room plays 3 mods 2 mods are new/);
+    expect(play).toHaveAttribute('aria-disabled', 'true');
+
+    await act(async () => {
+      await emit('worlds://state', idle);
+    });
+    await act(async () => {
+      await emit('worlds://state', guestIn(ROOM));
+    });
+    const next = within(screen.getByRole('region', { name: 'World state' }));
+    expect(next.queryByText('This room plays 3 mods')).toBeNull();
+    expect(next.getByRole('button', { name: 'Play' })).not.toHaveAttribute('aria-disabled');
+  });
+
+  it('keeps what Play waits for when the room page opens', async () => {
+    let answer: (value: unknown) => void = () => undefined;
+    const { calls } = setup({
+      worlds_state: () => guestIn(OTHER),
+      worlds_instance: () =>
+        new Promise((resolve) => {
+          answer = resolve;
+        }),
+    });
+    const band = within(await screen.findByRole('region', { name: 'World state' }));
+    fireEvent.click(await band.findByRole('button', { name: 'Play' }));
+    await waitFor(() => {
+      expect(called(calls, 'worlds_instance')).toHaveLength(1);
+    });
+    const row = within(screen.getByText('Friend world').closest('li') as HTMLElement);
+    fireEvent.click(row.getByRole('button', { name: 'Open' }));
+    await waitFor(() => {
+      expect(called(calls, 'worlds_room')).toHaveLength(1);
+    });
+    await act(async () => {
+      answer({ instanceId: 'inst-2', ready: false, consent: asked });
+      await Promise.resolve();
+    });
+    const still = within(screen.getByRole('region', { name: 'World state' }));
+    expect(await still.findByText('This room plays 3 mods')).toBeInTheDocument();
+  });
+
+  it('hands the focus to Open for friends once the EULA is accepted', async () => {
+    const { calls } = setup({
+      worlds_local: () => [{ ...local, eulaAccepted: false }],
+      worlds_accept_eula: () => ({ ...local, eulaAccepted: true }),
+    });
+    const row = within((await screen.findByText('Our base')).closest('li') as HTMLElement);
+    const accept = await row.findByRole('button', { name: 'Accept the EULA' });
+    accept.focus();
+    fireEvent.click(accept);
+    await waitFor(() => {
+      expect(row.getByRole('button', { name: 'Open for friends' })).toHaveFocus();
+    });
+    expect(called(calls, 'worlds_accept_eula')[0]?.args).toEqual({ world: WORLD });
   });
 
   it('restores a backup after naming its date, and exports the world', async () => {

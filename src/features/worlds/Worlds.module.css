@@ -261,6 +261,13 @@
   gap: var(--space-2);
 }
 
+/* A notice on a tinted band keeps its own edge: on the surface, in its tone's color. */
+.bandSuccess .bandWide > *,
+.bandWarning .bandWide > * {
+  border-color: var(--color-border);
+  background: var(--color-surface);
+}
+
 /* Rooms and single-player worlds: the name and its facts, the meta under them, the
    actions at the row's end once the list has room for them. */
 .roomList,
@@ -306,9 +313,11 @@
   min-inline-size: 0;
 }
 
+/* A name keeps its own direction and the side the screen's text starts from. */
 .rowName {
   font-size: var(--font-size-md);
   font-weight: 600;
+  text-align: match-parent;
   overflow-wrap: anywhere;
 }
 
@@ -356,8 +365,9 @@
 }
 
 @container rows (min-width: 30rem) {
+  /* The actions take at most half the row: the name keeps the rest. */
   .roomRow {
-    grid-template-columns: minmax(0, 1fr) minmax(0, auto);
+    grid-template-columns: minmax(0, 1fr) fit-content(50%);
   }
 
   .roomRow .rowActions {

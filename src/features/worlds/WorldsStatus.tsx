@@ -1,10 +1,11 @@
-import { useId, useRef, type RefObject } from 'react';
+import { useEffect, useId, useRef, type RefObject } from 'react';
 import { Button } from '../../components/Button';
 import { Notice } from '../../components/Notice';
 import { ProgressBar } from '../../components/ProgressBar';
 import { Dot, type DotTone } from '../../components/StateDot';
 import { useFocusBack } from '../../components/useFocusBack';
 import type { LocalWorld, WorldsRoom, WorldsState } from '../../lib/contracts';
+import { focusLost } from '../../lib/focus';
 import { formatBytes } from '../../lib/format';
 import { ipc } from '../../lib/ipc';
 import { strings } from '../../lib/strings';
@@ -33,6 +34,20 @@ function bandTone(state: WorldsState): DotTone {
   return 'neutral';
 }
 
+/** What the hosted world is now, by its name when the list has it. */
+function hostingTitle(hosting: NonNullable<WorldsState['hosting']>, name: string | null): string {
+  const h = t.hosting;
+  // A lapsed lease is opened again with the world still running.
+  if (!hosting.reopening && (hosting.ended !== null || hosting.phase === 'exited')) {
+    return name === null ? h.titleUnknownClosed : h.titleClosed({ room: name });
+  }
+  if (hosting.phase === 'stopping') {
+    return name === null ? h.titleUnknownStopping : h.titleStopping({ room: name });
+  }
+  const open = name === null ? h.titleUnknown : h.title({ room: name });
+  return hosting.phase === 'starting' ? `${open} · ${h.phases.starting}` : open;
+}
+
 const BAND: Record<DotTone, string | undefined> = {
   success: styles.bandSuccess,
   busy: undefined,
@@ -56,13 +71,54 @@ interface Props {
  * the state; the words say it.
  */
 export function WorldsStatus({ state, rooms, local, onLocal, bandRef }: Props) {
-  const { preparing, hosting, guest, failed } = state;
+  const { preparing, failed } = state;
   const roomId = activeRoom(state);
   const room = rooms.find((r) => r.id === roomId) ?? null;
-  const world = local.find((w) => w.id === room?.world) ?? null;
-  const actions = useRoomActions({ roomId: roomId ?? '', room, local: world, onLocal });
+  const failedNotice = failed !== null && preparing === null && (
+    <Notice tone="danger">{failedText(failed)}</Notice>
+  );
+  return (
+    <>
+      {/* Another room starts afresh: no question or error of the last one stays. */}
+      {roomId !== null && (
+        <Band
+          key={roomId}
+          state={state}
+          roomId={roomId}
+          room={room}
+          world={local.find((w) => w.id === room?.world) ?? null}
+          onLocal={onLocal}
+          bandRef={bandRef}
+        />
+      )}
+      {failedNotice}
+    </>
+  );
+}
+
+function Band({
+  state,
+  roomId,
+  room,
+  world,
+  onLocal,
+  bandRef,
+}: Omit<Props, 'rooms' | 'local'> & {
+  roomId: string;
+  room: WorldsRoom | null;
+  world: LocalWorld | null;
+}) {
+  const { preparing, hosting, guest } = state;
+  const actions = useRoomActions({ roomId, room, local: world, onLocal });
   const titleId = useId();
   const play = useRef<HTMLButtonElement>(null);
+  const accept = useRef<HTMLButtonElement>(null);
+  // Play asked the mods question: its first answer takes the focus Play had.
+  const asked = actions.consent;
+  useEffect(() => {
+    if (asked === null) return;
+    if (document.activeElement === play.current || focusLost()) accept.current?.focus();
+  }, [asked]);
   // A button that went with a state (Close the world, Not now) hands the focus on.
   useFocusBack(
     [
@@ -78,81 +134,128 @@ export function WorldsStatus({ state, rooms, local, onLocal, bandRef }: Props) {
     bandRef,
   );
 
-  const failedNotice = failed !== null && preparing === null && (
-    <Notice tone="danger">{failedText(failed)}</Notice>
-  );
-  if (roomId === null) return failedNotice;
-
   const name = room === null ? null : isolate(room.name);
   const tone = bandTone(state);
 
   return (
-    <>
-      <section
-        ref={bandRef}
-        className={[styles.band, BAND[tone]].filter(Boolean).join(' ')}
-        aria-label={t.state.label}
-        tabIndex={-1}
-      >
-        {preparing !== null && (
-          <div className={styles.bandRow}>
-            <Dot tone="busy" />
-            <div className={styles.bandText}>
-              {/* The stage is read out when it changes; the bytes are not, at each step. */}
-              <p role="status" className={styles.bandTitle}>
-                {t.stages[preparing.stage]}
-              </p>
-              {preparing.totalBytes > 0 && (
-                <div className={styles.bandProgress}>
-                  <ProgressBar
-                    value={preparing.downloadedBytes}
-                    max={preparing.totalBytes}
-                    label={t.stages[preparing.stage]}
-                  />
-                  <p className={styles.bandHint}>
-                    {t.progress({
-                      done: formatBytes(preparing.downloadedBytes),
-                      total: formatBytes(preparing.totalBytes),
-                    })}
-                  </p>
-                </div>
-              )}
-            </div>
-            {preparing.stage === 'server' && (
-              <div className={styles.bandActions}>
-                <Button
-                  size="small"
-                  onClick={() => {
-                    void ipc.worldsCancel().catch(() => undefined);
-                  }}
-                >
-                  {t.cancel}
-                </Button>
+    <section
+      ref={bandRef}
+      className={[styles.band, BAND[tone]].filter(Boolean).join(' ')}
+      aria-label={t.state.label}
+      tabIndex={-1}
+    >
+      {preparing !== null && (
+        <div className={styles.bandRow}>
+          <Dot tone="busy" />
+          <div className={styles.bandText}>
+            {/* The stage is read out when it changes; the bytes are not, at each step. */}
+            <p role="status" className={styles.bandTitle}>
+              {t.stages[preparing.stage]}
+            </p>
+            {preparing.totalBytes > 0 && (
+              <div className={styles.bandProgress}>
+                <ProgressBar
+                  value={preparing.downloadedBytes}
+                  max={preparing.totalBytes}
+                  label={t.stages[preparing.stage]}
+                />
+                <p className={styles.bandHint}>
+                  {t.progress({
+                    done: formatBytes(preparing.downloadedBytes),
+                    total: formatBytes(preparing.totalBytes),
+                  })}
+                </p>
               </div>
             )}
           </div>
-        )}
-        {hosting !== null && (
-          <div className={styles.bandRow}>
-            <Dot tone={tone} />
-            <div className={styles.bandText}>
-              <p id={titleId} className={styles.bandTitle}>
-                {name === null ? t.hosting.titleUnknown : t.hosting.title({ room: name })}
-                {hosting.phase !== 'ready' && ` · ${t.hosting.phases[hosting.phase]}`}
-              </p>
-              {!hosting.reopening && hosting.ended === null && (
-                <>
-                  <p className={styles.bandHint}>
-                    {t.hosting.players({
-                      count: hosting.players.length,
-                      names: hosting.players.join(', '),
-                    })}
-                  </p>
-                  <p className={styles.bandHint}>{t.hosting.hostPlays}</p>
-                </>
-              )}
-            </div>
+          {preparing.stage === 'server' && (
             <div className={styles.bandActions}>
+              <Button
+                size="small"
+                onClick={() => {
+                  void ipc.worldsCancel().catch(() => undefined);
+                }}
+              >
+                {t.cancel}
+              </Button>
+            </div>
+          )}
+        </div>
+      )}
+      {hosting !== null && (
+        <div className={styles.bandRow}>
+          <Dot tone={tone} />
+          <div className={styles.bandText}>
+            <p id={titleId} className={styles.bandTitle}>
+              {hostingTitle(hosting, name)}
+            </p>
+            {!hosting.reopening && hosting.ended === null && (
+              <>
+                <p className={styles.bandHint}>
+                  {t.hosting.players({
+                    count: hosting.players.length,
+                    names: hosting.players.join(', '),
+                  })}
+                </p>
+                <p className={styles.bandHint}>{t.hosting.hostPlays}</p>
+              </>
+            )}
+          </div>
+          <div className={styles.bandActions}>
+            <RoomPlayButtons
+              actions={actions}
+              roomId={roomId}
+              state={state}
+              playRef={play}
+              describedBy={titleId}
+              size="small"
+            />
+            {hosting.ended !== null && !hosting.reopening && (
+              <Button
+                size="small"
+                aria-disabled={actions.leaving || undefined}
+                onClick={actions.stopHosting}
+              >
+                {t.close}
+              </Button>
+            )}
+          </div>
+          {hosting.reopening ? (
+            <div className={styles.bandWide}>
+              <Notice tone="warning">{t.hosting.reopening}</Notice>
+            </div>
+          ) : (
+            hosting.ended !== null && (
+              <div className={styles.bandWide}>
+                <Notice tone={hosting.ended === 'stopped' ? 'info' : 'warning'}>
+                  {t.hosting.ended[hosting.ended]}
+                </Notice>
+                {hosting.clean === false && <Notice tone="warning">{t.hosting.unclean}</Notice>}
+              </div>
+            )
+          )}
+        </div>
+      )}
+      {guest !== null && (
+        <div className={styles.bandRow}>
+          <Dot tone={tone} />
+          <div className={styles.bandText}>
+            <p id={hosting === null ? titleId : undefined} className={styles.bandTitle}>
+              {name === null ? t.guest.titleUnknown : t.guest.title({ room: name })}
+            </p>
+            <p role="status" className={styles.bandHint}>
+              {guest.connected
+                ? t.guest.connected
+                : guest.reconnecting
+                  ? t.guest.reconnecting
+                  : t.guest.lost}
+            </p>
+            {guest.connected && guest.path !== null && (
+              <p className={styles.bandHint}>{t.guest.path[guest.path]}</p>
+            )}
+          </div>
+          <div className={styles.bandActions}>
+            {hosting === null && (
               <RoomPlayButtons
                 actions={actions}
                 roomId={roomId}
@@ -161,76 +264,20 @@ export function WorldsStatus({ state, rooms, local, onLocal, bandRef }: Props) {
                 describedBy={titleId}
                 size="small"
               />
-              {hosting.ended !== null && !hosting.reopening && (
-                <Button
-                  size="small"
-                  aria-disabled={actions.busy || undefined}
-                  onClick={actions.stopHosting}
-                >
-                  {t.close}
-                </Button>
-              )}
-            </div>
-            {hosting.reopening ? (
-              <div className={styles.bandWide}>
-                <Notice tone="warning">{t.hosting.reopening}</Notice>
-              </div>
-            ) : (
-              hosting.ended !== null && (
-                <div className={styles.bandWide}>
-                  <Notice tone={hosting.ended === 'stopped' ? 'info' : 'warning'}>
-                    {t.hosting.ended[hosting.ended]}
-                  </Notice>
-                  {hosting.clean === false && <Notice tone="warning">{t.hosting.unclean}</Notice>}
-                </div>
-              )
             )}
           </div>
-        )}
-        {guest !== null && (
-          <div className={styles.bandRow}>
-            <Dot tone={tone} />
-            <div className={styles.bandText}>
-              <p id={hosting === null ? titleId : undefined} className={styles.bandTitle}>
-                {name === null ? t.guest.titleUnknown : t.guest.title({ room: name })}
-              </p>
-              <p role="status" className={styles.bandHint}>
-                {guest.connected
-                  ? t.guest.connected
-                  : guest.reconnecting
-                    ? t.guest.reconnecting
-                    : t.guest.lost}
-              </p>
-              {guest.connected && guest.path !== null && (
-                <p className={styles.bandHint}>{t.guest.path[guest.path]}</p>
-              )}
+          {guest.refused !== null && (
+            <div className={styles.bandWide}>
+              <Notice tone="warning">{t.refusals[guest.refused]}</Notice>
             </div>
-            <div className={styles.bandActions}>
-              {hosting === null && (
-                <RoomPlayButtons
-                  actions={actions}
-                  roomId={roomId}
-                  state={state}
-                  playRef={play}
-                  describedBy={titleId}
-                  size="small"
-                />
-              )}
-            </div>
-            {guest.refused !== null && (
-              <div className={styles.bandWide}>
-                <Notice tone="warning">{t.refusals[guest.refused]}</Notice>
-              </div>
-            )}
-          </div>
-        )}
-        {(actions.consent !== null || actions.note !== null || actions.error !== null) && (
-          <div className={styles.bandWide}>
-            <RoomMessages actions={actions} />
-          </div>
-        )}
-      </section>
-      {failedNotice}
-    </>
+          )}
+        </div>
+      )}
+      {(actions.consent !== null || actions.note !== null || actions.error !== null) && (
+        <div className={styles.bandWide}>
+          <RoomMessages actions={actions} acceptRef={accept} />
+        </div>
+      )}
+    </section>
   );
 }

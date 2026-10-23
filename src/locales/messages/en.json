@@ -2340,7 +2340,11 @@
         "unclean": "The world server did not stop cleanly; the last minutes may not be saved.",
         "hostPlays": "Press Play to join your own world. Friends can join while it is open.",
         "reopening": "The connection to worlds.lapi.sh was lost for 30 seconds (the computer slept, or the service did not answer), so friends were disconnected. The room is being opened again; they reconnect by themselves.",
-        "titleUnknown": "Your world is open"
+        "titleUnknown": "Your world is open",
+        "titleStopping": "{room} is saving and closing",
+        "titleClosed": "{room} is closed",
+        "titleUnknownStopping": "Your world is saving and closing",
+        "titleUnknownClosed": "Your world is closed"
       },
       "guest": {
         "title": "In {room}",

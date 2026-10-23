@@ -1,6 +1,7 @@
-import { useId } from 'react';
+import { useId, useRef } from 'react';
 import { Button } from '../../components/Button';
 import { Tag } from '../../components/Tag';
+import { useFocusBack } from '../../components/useFocusBack';
 import type { LocalWorld, WorldsRoom, WorldsState } from '../../lib/contracts';
 import { strings } from '../../lib/strings';
 import { isolate } from '../mods/helpers';
@@ -27,6 +28,10 @@ interface Props {
 export function RoomRow({ room, local, state, active, onLocal, onOpen }: Props) {
   const actions = useRoomActions({ roomId: room.id, room, local, onLocal });
   const nameId = useId();
+  const start = useRef<HTMLButtonElement>(null);
+  const open = useRef<HTMLButtonElement>(null);
+  // Accept the EULA goes with its answer: Open for friends takes the focus, or Open.
+  useFocusBack(local?.eulaAccepted, start, open);
   const now = roomOpen(room, state);
   const mods = roomMods(room, local);
   const owner = room.role === 'owner';
@@ -57,10 +62,11 @@ export function RoomRow({ room, local, state, active, onLocal, onOpen }: Props) 
             local={local}
             state={state}
             size="small"
+            startRef={start}
           />
         )}
         {/* "Open", with the room's name read after it. */}
-        <Button size="small" aria-describedby={nameId} onClick={onOpen}>
+        <Button ref={open} size="small" aria-describedby={nameId} onClick={onOpen}>
           {t.open}
         </Button>
       </div>

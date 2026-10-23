@@ -1,6 +1,7 @@
-import type { Ref } from 'react';
+import { useId, useRef, type Ref } from 'react';
 import { Button } from '../../components/Button';
 import { Notice } from '../../components/Notice';
+import { useFocusBack } from '../../components/useFocusBack';
 import type { LocalWorld, WorldsRoom, WorldsState } from '../../lib/contracts';
 import { formatBytes } from '../../lib/format';
 import { ipc } from '../../lib/ipc';
@@ -17,12 +18,15 @@ export function RoomStartButtons({
   local,
   state,
   size,
+  startRef,
 }: {
   actions: RoomActionsApi;
   room: WorldsRoom;
   local: LocalWorld | null;
   state: WorldsState;
   size?: 'small' | 'normal';
+  /** Open for friends or Join: the focus goes there once the EULA is accepted. */
+  startRef?: Ref<HTMLButtonElement> | undefined;
 }) {
   const inRoom = state.preparing !== null || state.hosting !== null || state.guest !== null;
   const owner = room.role === 'owner';
@@ -54,6 +58,7 @@ export function RoomStartButtons({
       )}
       {owner && local?.eulaAccepted === true && !inRoom && (
         <Button
+          ref={startRef ?? null}
           variant={variant}
           size={sized}
           disabled={state.maintenance}
@@ -65,6 +70,7 @@ export function RoomStartButtons({
       )}
       {!owner && room.hosting && !inRoom && (
         <Button
+          ref={startRef ?? null}
           variant={variant}
           size={sized}
           disabled={state.maintenance}
@@ -99,54 +105,48 @@ export function RoomPlayButtons({
   /** What Play plays, for assistive technology: the room's line. */
   describedBy?: string | undefined;
 }) {
-  const pending = actions.busy || undefined;
   const hosting = state.hosting?.room === roomId && state.hosting.ended === null;
   const guest = state.guest?.room === roomId ? state.guest : null;
   const lost = guest !== null && !guest.connected && !guest.reconnecting;
+  // Play waits for the server, the connection and the mods question, and keeps the
+  // focus meanwhile; the ways out wait only for each other.
+  const canPlay = hosting
+    ? state.hosting?.phase === 'ready'
+    : guest?.connected === true && actions.consent === null;
+  const playPending = actions.busy || actions.leaving || !canPlay || undefined;
+  const leaving = actions.leaving || undefined;
+  const playButton = (
+    <Button
+      ref={playRef ?? null}
+      variant="primary"
+      size={size}
+      aria-disabled={playPending}
+      aria-describedby={describedBy}
+      onClick={() => {
+        if (canPlay) actions.play();
+      }}
+    >
+      {t.play}
+    </Button>
+  );
   return (
     <>
       {hosting && (
         <>
-          <Button
-            ref={playRef ?? null}
-            variant="primary"
-            size={size}
-            disabled={state.hosting?.phase !== 'ready'}
-            aria-disabled={pending}
-            aria-describedby={describedBy}
-            onClick={() => {
-              actions.play();
-            }}
-          >
-            {t.play}
-          </Button>
-          <Button size={size} aria-disabled={pending} onClick={actions.stopHosting}>
+          {playButton}
+          <Button size={size} aria-disabled={leaving} onClick={actions.stopHosting}>
             {t.stopHosting}
           </Button>
         </>
       )}
-      {guest !== null && !lost && (
-        <Button
-          ref={playRef ?? null}
-          variant="primary"
-          size={size}
-          disabled={!guest.connected || actions.consent !== null}
-          aria-disabled={pending}
-          aria-describedby={describedBy}
-          onClick={() => {
-            actions.play();
-          }}
-        >
-          {t.play}
-        </Button>
-      )}
+      {guest !== null && !lost && playButton}
       {lost && (
-        <Button variant="primary" size={size} aria-disabled={pending} onClick={actions.joinAgain}>
+        <Button variant="primary" size={size} aria-disabled={leaving} onClick={actions.joinAgain}>
           {t.guest.again}
         </Button>
       )}
       {guest !== null && (
-        <Button size={size} aria-disabled={pending} onClick={actions.disconnect}>
+        <Button size={size} aria-disabled={leaving} onClick={actions.disconnect}>
           {t.disconnect}
         </Button>
       )}
@@ -155,15 +155,24 @@ export function RoomPlayButtons({
 }
 
 /** The mods question before a guest plays, and what the last press is doing or did. */
-export function RoomMessages({ actions }: { actions: RoomActionsApi }) {
+export function RoomMessages({
+  actions,
+  acceptRef,
+}: {
+  actions: RoomActionsApi;
+  /** Install the mods: it takes the focus from Play when the question comes. */
+  acceptRef?: Ref<HTMLButtonElement> | undefined;
+}) {
   const { consent, note, error } = actions;
   const pending = actions.busy || undefined;
+  const titleId = useId();
+  const newId = useId();
   return (
     <>
       {consent !== null && (
         <Notice tone="warning">
-          <strong>{t.consent.title({ mods: consent.mods })}</strong>
-          <p>
+          <strong id={titleId}>{t.consent.title({ mods: consent.mods })}</strong>
+          <p id={newId}>
             {t.consent.new({ count: consent.newMods, size: formatBytes(consent.bytes) })}{' '}
             {consent.names.join(', ')}
             {consent.newMods > consent.names.length &&
@@ -172,9 +181,11 @@ export function RoomMessages({ actions }: { actions: RoomActionsApi }) {
           <p>{t.consent.warning}</p>
           <div className={styles.actions}>
             <Button
+              ref={acceptRef ?? null}
               variant="primary"
               size="small"
               aria-disabled={pending}
+              aria-describedby={`${titleId} ${newId}`}
               onClick={() => {
                 actions.play(consent.sha256);
               }}
@@ -203,10 +214,19 @@ export function RoomActions({
   room: WorldsRoom;
 }) {
   const actions = useRoomActions({ roomId: room.id, room, local, onLocal });
+  const start = useRef<HTMLButtonElement>(null);
+  // Accept the EULA goes with its answer: Open for friends takes the focus.
+  useFocusBack(local?.eulaAccepted, start);
   const owner = room.role === 'owner';
   return (
     <div className={styles.actions}>
-      <RoomStartButtons actions={actions} room={room} local={local} state={state} />
+      <RoomStartButtons
+        actions={actions}
+        room={room}
+        local={local}
+        state={state}
+        startRef={start}
+      />
       {owner && local === null && <span className={styles.muted}>{t.keptElsewhere}</span>}
       {owner && local !== null && !local.eulaAccepted && (
         <span className={styles.muted}>{t.eulaNeeded}</span>

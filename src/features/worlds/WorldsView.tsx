@@ -143,119 +143,114 @@ export function WorldsView({ snapshot, onOpenAccounts, initialRoom = null }: Pro
     );
   }
 
-  const status = (
-    <WorldsStatus
-      state={state}
-      rooms={rooms ?? []}
-      local={local}
-      onLocal={onLocal}
-      bandRef={band}
-    />
-  );
-
   return (
     <Screen title={t.title} headingRef={heading}>
+      {room === null && (
+        <div className={styles.actionRow}>
+          <Button
+            variant="primary"
+            onClick={() => {
+              setDialog({ kind: 'create' });
+            }}
+          >
+            <Icon name="plus" size={18} />
+            {t.create}
+          </Button>
+          <Button
+            onClick={() => {
+              setDialog({ kind: 'import' });
+            }}
+          >
+            {t.import.open}
+          </Button>
+          <Button
+            onClick={() => {
+              setDialog({ kind: 'code' });
+            }}
+          >
+            <Icon name="key" size={18} />
+            {t.joinByCode}
+          </Button>
+          <Button
+            onClick={() => {
+              load();
+              loadSaves();
+            }}
+          >
+            <Icon name="refresh" size={18} />
+            {t.refresh}
+          </Button>
+          <Button
+            onClick={() => {
+              setDialog({ kind: 'devices' });
+            }}
+          >
+            {t.devices.open}
+          </Button>
+        </div>
+      )}
+      {/* One band in one place over the list and a room's page: what it waits for goes
+          on when a room is opened or closed. */}
+      <WorldsStatus
+        state={state}
+        rooms={rooms ?? []}
+        local={local}
+        onLocal={onLocal}
+        bandRef={band}
+      />
       {room !== null ? (
-        <>
-          {status}
-          <RoomPage
-            key={room}
-            room={room}
-            local={local}
-            state={state}
-            onLocal={onLocal}
-            onBack={() => {
-              setRoom(null);
-              load();
-            }}
-            onLeft={() => {
-              setRoom(null);
-              load();
-            }}
-          />
-        </>
+        <RoomPage
+          key={room}
+          room={room}
+          local={local}
+          state={state}
+          onLocal={onLocal}
+          onBack={() => {
+            setRoom(null);
+            load();
+          }}
+          onLeft={() => {
+            setRoom(null);
+            load();
+          }}
+        />
       ) : (
-        <>
-          <div className={styles.actionRow}>
-            <Button
-              variant="primary"
-              onClick={() => {
-                setDialog({ kind: 'create' });
+        <div className={styles.columns}>
+          <Panel title={t.rooms} level={3} count={rooms === null ? undefined : rooms.length}>
+            {error !== null && <Notice tone="danger">{error}</Notice>}
+            {rooms === null ? (
+              <p className={styles.muted}>{t.loading}</p>
+            ) : rooms.length === 0 ? (
+              error === null && <p className={styles.muted}>{t.noRooms}</p>
+            ) : (
+              <ul className={styles.roomList}>
+                {rooms.map((item) => (
+                  <RoomRow
+                    key={item.id}
+                    room={item}
+                    local={local.find((w) => w.id === item.world) ?? null}
+                    state={state}
+                    active={item.id === active}
+                    onLocal={onLocal}
+                    onOpen={() => {
+                      setRoom(item.id);
+                    }}
+                  />
+                ))}
+              </ul>
+            )}
+          </Panel>
+          <div className={styles.column}>
+            <SinglePlayerWorlds
+              sources={saves}
+              error={savesError}
+              onImport={(instanceId, save) => {
+                setDialog({ kind: 'import', initial: { instanceId, save } });
               }}
-            >
-              <Icon name="plus" size={18} />
-              {t.create}
-            </Button>
-            <Button
-              onClick={() => {
-                setDialog({ kind: 'import' });
-              }}
-            >
-              {t.import.open}
-            </Button>
-            <Button
-              onClick={() => {
-                setDialog({ kind: 'code' });
-              }}
-            >
-              <Icon name="key" size={18} />
-              {t.joinByCode}
-            </Button>
-            <Button
-              onClick={() => {
-                load();
-                loadSaves();
-              }}
-            >
-              <Icon name="refresh" size={18} />
-              {t.refresh}
-            </Button>
-            <Button
-              onClick={() => {
-                setDialog({ kind: 'devices' });
-              }}
-            >
-              {t.devices.open}
-            </Button>
+            />
+            <RelayOnly settings={snapshot.settings} />
           </div>
-          {status}
-          <div className={styles.columns}>
-            <Panel title={t.rooms} level={3} count={rooms === null ? undefined : rooms.length}>
-              {error !== null && <Notice tone="danger">{error}</Notice>}
-              {rooms === null ? (
-                <p className={styles.muted}>{t.loading}</p>
-              ) : rooms.length === 0 ? (
-                error === null && <p className={styles.muted}>{t.noRooms}</p>
-              ) : (
-                <ul className={styles.roomList}>
-                  {rooms.map((item) => (
-                    <RoomRow
-                      key={item.id}
-                      room={item}
-                      local={local.find((w) => w.id === item.world) ?? null}
-                      state={state}
-                      active={item.id === active}
-                      onLocal={onLocal}
-                      onOpen={() => {
-                        setRoom(item.id);
-                      }}
-                    />
-                  ))}
-                </ul>
-              )}
-            </Panel>
-            <div className={styles.column}>
-              <SinglePlayerWorlds
-                sources={saves}
-                error={savesError}
-                onImport={(instanceId, save) => {
-                  setDialog({ kind: 'import', initial: { instanceId, save } });
-                }}
-              />
-              <RelayOnly settings={snapshot.settings} />
-            </div>
-          </div>
-        </>
+        </div>
       )}
       {dialog?.kind === 'create' && (
         <CreateWorld
