@@ -534,7 +534,9 @@ impl Friends {
                             })
                     };
                     if let Some(title) = title {
-                        self.notify(app, &message.room, &title, &message.body);
+                        let settings = app.state::<AppState>().settings();
+                        let body = message_words(&message.body, settings.language.as_str());
+                        self.notify(app, &message.room, &title, body);
                     }
                 }
                 let _ = app.emit(MESSAGE_EVENT, message);
@@ -919,6 +921,38 @@ fn request_words(language: &str) -> &'static str {
     }
 }
 
+/// What a notification shows of a chat message, in the launcher's language:
+/// an invite in words, never its text. A world's invite code lets anyone into
+/// the room and a server invite names the server's address, and notifications
+/// stay on the screen and in the system's list. Other messages as they are.
+fn message_words<'a>(body: &'a str, language: &str) -> &'a str {
+    /// How the interface writes invites (`worldInvite.ts`, `invite.ts`).
+    const WORLD_INVITE: &str = "🌍 world";
+    const SERVER_INVITE: &str = "🎮 invite";
+    let start = body.trim_start_matches(|c: char| {
+        c.is_whitespace()
+            || c.is_control()
+            || matches!(c, '\u{200B}'..='\u{200F}' | '\u{202A}'..='\u{202E}' | '\u{2060}'..='\u{2069}' | '\u{FEFF}')
+    });
+    let (world, server) = match language.get(..2).unwrap_or_default() {
+        "ru" => ("Приглашение в мир", "Приглашение на сервер"),
+        "ar" => ("دعوة إلى عالم", "دعوة إلى خادم"),
+        _ => ("Invitation to a world", "Invitation to a server"),
+    };
+    let starts = |word: &str| {
+        start
+            .strip_prefix(word)
+            .is_some_and(|rest| rest.is_empty() || rest.starts_with(char::is_whitespace))
+    };
+    if starts(WORLD_INVITE) {
+        world
+    } else if starts(SERVER_INVITE) {
+        server
+    } else {
+        body
+    }
+}
+
 /// Marks the presence of a game in a room's world (D-068); the interface
 /// shows it as "in the world <name>".
 pub const WORLD_PRESENCE: &str = "🌍 ";
@@ -996,6 +1030,41 @@ mod tests {
         }
         assert_eq!(request_words("ru-RU"), "хочет добавить вас в друзья");
         assert_eq!(request_words("pt-BR"), "wants to be your friend");
+    }
+
+    #[test]
+    fn a_notification_names_an_invite_without_its_code_or_address() {
+        let code = "AbCdEfGhIjKlMnOpQrStUv";
+        for body in [
+            format!("🌍 world {code}"),
+            format!("  \n\u{200B}\u{202E}🌍 world {code}"),
+            "🌍 world ../../v1/rooms".to_owned(),
+            "🌍 world".to_owned(),
+            format!("🌍 world\t{code}"),
+        ] {
+            assert_eq!(message_words(&body, "ru-RU"), "Приглашение в мир", "{body}");
+            assert_eq!(message_words(&body, "en"), "Invitation to a world");
+            assert_eq!(message_words(&body, "ar"), "دعوة إلى عالم");
+        }
+        for body in [
+            "🎮 invite play.example.org:25565 1.21.1 fabric",
+            "\t🎮 invite 203.0.113.7 1.20.1",
+        ] {
+            assert_eq!(message_words(body, "ru"), "Приглашение на сервер", "{body}");
+            assert_eq!(message_words(body, "de-DE"), "Invitation to a server");
+            assert_eq!(message_words(body, ""), "Invitation to a server");
+        }
+        // Everything else as it was written; the notification cleans it.
+        for body in [
+            "",
+            "hi",
+            "the 🌍 world is round",
+            "🌍 worlds",
+            "🌍 Дом",
+            "🎮 invited",
+        ] {
+            assert_eq!(message_words(body, "ru"), body);
+        }
     }
 
     #[test]

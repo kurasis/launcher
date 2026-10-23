@@ -594,6 +594,8 @@ describe('friends corner', () => {
         ownerNick: 'Alex',
         members: 2,
         minecraft: '1.21.1',
+        mods: 12,
+        hosting: true,
       }),
       worlds_redeem: () => ({ id: ROOM, name: 'Our base' }),
     });

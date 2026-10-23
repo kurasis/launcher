@@ -2279,6 +2279,8 @@ export interface WorldsRoom {
 export interface WorldsSessionPack {
   version: string;
   sha256: string;
+  /** How many mods a guest installs from it; older launchers do not say. */
+  mods?: number;
 }
 
 export interface WorldsMember {
@@ -2314,6 +2316,13 @@ export interface WorldsPreview {
   ownerNick: string;
   members: number;
   minecraft: string;
+  /**
+   * The mods of the world as it was last hosted: 0 without mods, null when
+   * it was never hosted or its launcher did not count them.
+   */
+  mods: number | null;
+  /** The owner hosts it now, so a member can go in at once. */
+  hosting: boolean;
 }
 
 export type WorldsDifficulty = 'peaceful' | 'easy' | 'normal' | 'hard';

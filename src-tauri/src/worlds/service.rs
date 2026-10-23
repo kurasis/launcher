@@ -171,6 +171,9 @@ pub struct Room {
 pub struct SessionPack {
     pub version: String,
     pub sha256: String,
+    /// How many mods a guest installs from it, for the invites of the room.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub mods: Option<u32>,
 }
 
 impl SessionPack {
@@ -221,6 +224,13 @@ pub struct Preview {
     pub owner_nick: String,
     pub members: i64,
     pub minecraft: String,
+    /// The mods of the world as it was last hosted: 0 without mods, none when
+    /// it was never hosted or its launcher did not count them.
+    #[serde(default)]
+    pub mods: Option<i64>,
+    /// The owner hosts it now.
+    #[serde(default)]
+    pub hosting: bool,
 }
 
 /// A computer registered with the account.
@@ -833,6 +843,39 @@ mod tests {
             .unwrap();
         let again = dpop(&key, "POST", "https://worlds.lapi.sh/v1/x", "tok", 1000);
         assert_ne!(proof, again, "a fresh jti each time");
+    }
+
+    #[test]
+    fn an_invite_says_its_mods_and_whether_it_runs_when_the_service_does() {
+        let shown = |extra: &str| -> Preview {
+            serde_json::from_str(&format!(
+                r#"{{"room":"{ROOM}","name":"Дом","ownerNick":"Steve","members":2,"minecraft":"1.21.1"{extra}}}"#
+            ))
+            .unwrap()
+        };
+        let older = shown("");
+        assert_eq!((older.mods, older.hosting), (None, false));
+        let now = shown(r#","mods":12,"hosting":true"#);
+        assert_eq!((now.mods, now.hosting), (Some(12), true));
+        let page = serde_json::to_value(&now).unwrap();
+        assert_eq!(
+            (&page["mods"], &page["hosting"]),
+            (&json!(12), &json!(true))
+        );
+        assert_eq!(shown(r#","mods":null"#).mods, None);
+
+        // A pack names its mods only when they were counted.
+        let pack = SessionPack {
+            version: "a".repeat(8),
+            sha256: "0".repeat(64),
+            mods: None,
+        };
+        assert!(serde_json::to_value(&pack).unwrap().get("mods").is_none());
+        let counted = SessionPack {
+            mods: Some(3),
+            ..pack
+        };
+        assert_eq!(serde_json::to_value(&counted).unwrap()["mods"], 3);
     }
 
     #[test]
