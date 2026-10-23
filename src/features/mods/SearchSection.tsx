@@ -175,7 +175,8 @@ export function SearchSection({
   const [counts, setCounts] = useState<{ key: string; counts: Map<string, number> } | null>(null);
   const [baseTotal, setBaseTotal] = useState<{ key: string; total: number } | null>(null);
   const [mark] = useState<(Mark & { when: string }) | null>(() => {
-    const found = place === null ? readMark() : null;
+    // Not when the place brings its list back: that list is this run's.
+    const found = place?.page == null ? readMark() : null;
     return found === null ? null : { ...found, when: daysAgo(found.at) };
   });
   const [adding, setAdding] = useState<string | null>(null);
@@ -622,6 +623,7 @@ export function SearchSection({
             <h3 id={headingId} ref={heading} tabIndex={-1} className={styles.blockTitle}>
               {title}
             </h3>
+            {pending === 'first' && <span className={styles.spinner} aria-hidden="true" />}
             <span className={styles.muted} role="status">
               {status}
             </span>
@@ -648,13 +650,7 @@ export function SearchSection({
             </ul>
           )}
           {page !== null && page.hits.length > 0 && (
-            <ul
-              ref={tiles}
-              className={[styles.tiles, pending === 'first' && styles.stale]
-                .filter(Boolean)
-                .join(' ')}
-              aria-busy={pending === 'first' || undefined}
-            >
+            <ul ref={tiles} className={styles.tiles} aria-busy={pending === 'first' || undefined}>
               {page.hits.map((hit, index) => (
                 <Fragment key={hit.id}>
                   {index === resumeAt && mark !== null && (

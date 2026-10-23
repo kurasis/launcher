@@ -39,5 +39,7 @@ export function collectionNote(collection: ModsCollection): { text: string; own:
   const names = collection.names.filter((name) => typeof name === 'string' && name !== '');
   if (names.length === 0) return text(strings.mods.results({ count: collection.count }));
   const more = collection.count - names.length;
-  return text(more > 0 ? t.andMore({ names: names.join(', '), count: more }) : names.join(', '));
+  // Only the projects' names: their own words.
+  if (more <= 0) return { text: names.join(', '), own: true };
+  return text(t.andMore({ names: names.join(', '), count: more }));
 }

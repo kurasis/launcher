@@ -1410,6 +1410,8 @@ describe('Catalog', () => {
     expect(within(strip).getByRole('button', { name: 'Четвёртая' })).toHaveAccessibleDescription(
       'Alpha, Beta',
     );
+    // Only project names: their own direction.
+    expect(within(strip).getByText('Alpha, Beta')).toHaveAttribute('dir', 'auto');
     // At the end the arrow does nothing more, and keeps the focus.
     expect(next).toHaveAttribute('aria-disabled', 'true');
     expect(next).toHaveFocus();
@@ -1760,6 +1762,30 @@ describe('Catalog', () => {
     expect(screen.getAllByRole('dialog')).toHaveLength(1);
   });
 
+  it('drops a quick add when “Add to the catalog” opens meanwhile', async () => {
+    const answers: ((list: ModsVersion[]) => void)[] = [];
+    setup({
+      mods_versions: () =>
+        new Promise<ModsVersion[]>((resolve) => {
+          answers.push(resolve);
+        }),
+    });
+    expect(await screen.findByText('Sodium')).toBeVisible();
+    fireEvent.click(screen.getByRole('button', { name: 'Add' }));
+    await waitFor(() => {
+      expect(answers).toHaveLength(1);
+    });
+    fireEvent.click(screen.getByRole('button', { name: 'Add to the catalog' }));
+    const dialog = await screen.findByRole('dialog', { name: 'Add to the catalog' });
+    fireEvent.change(within(dialog).getByRole('textbox'), { target: { value: 'my words' } });
+    // Nothing fits: without the drop, the project page would open and close the dialog.
+    answers[0]?.([]);
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    expect(screen.getAllByRole('dialog')).toHaveLength(1);
+    expect(within(dialog).getByRole('textbox')).toHaveValue('my words');
+    expect(screen.queryByText(/Not saved in the catalog yet/)).toBeNull();
+  });
+
   it('adds the version made for the installation’s game from any kind’s tile', async () => {
     const first = page.hits[0];
     if (first === undefined) throw new Error('the fixture changed');
@@ -1819,6 +1845,30 @@ describe('Catalog', () => {
     const at = items.findIndex((text) => text.startsWith('You stopped here'));
     expect(items[at]).toBe('You stopped here yesterday');
     expect(items[at + 1]).toMatch(/^Project 2/);
+  });
+
+  it('keeps the mark when the player comes back before the first search answered', async () => {
+    window.localStorage.setItem(
+      'launcher.mods.place',
+      JSON.stringify({
+        search: JSON.stringify(['mod', '', '1.21.1', 'fabric', 'downloads', [], null]),
+        count: 2,
+        at: Date.now() - 86_400_000,
+      }),
+    );
+    let hold = true;
+    setup({
+      mods_search: (args) =>
+        hold && (args.query as { kind: string }).kind === 'mod'
+          ? new Promise(() => undefined)
+          : hits(0, 4, 4),
+    });
+    await screen.findByRole('tabpanel', { name: 'Mods' });
+    fireEvent.click(screen.getByRole('tab', { name: 'Shaders' }));
+    hold = false;
+    fireEvent.click(screen.getByRole('tab', { name: 'Mods' }));
+    expect(await screen.findByText('Project 3')).toBeVisible();
+    expect(screen.getByText('You stopped here yesterday')).toBeVisible();
   });
 
   it('forgets a mark that is unsound', async () => {

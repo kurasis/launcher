@@ -462,6 +462,10 @@
   gap: var(--space-1) var(--space-3);
 }
 
+.blockHead .spinner {
+  align-self: center;
+}
+
 .blockTitle {
   margin: 0;
   font-size: var(--font-size-md);
@@ -574,11 +578,6 @@
   margin: 0;
   padding: 0;
   list-style: none;
-}
-
-/* The list of an earlier search while the new one comes. */
-.stale {
-  opacity: 0.6;
 }
 
 .tile {
@@ -1117,10 +1116,17 @@
 
   .tab[aria-selected='true'],
   .pill[aria-pressed='true'],
-  .category[aria-pressed='true'],
   .smallButton[aria-pressed='true'] {
     outline: 2px solid Highlight;
     outline-offset: -2px;
+  }
+
+  /* The focus ring stays apart from the mark of a choice. */
+  .tab[aria-selected='true']:focus-visible,
+  .pill[aria-pressed='true']:focus-visible,
+  .smallButton[aria-pressed='true']:focus-visible {
+    outline: 2px solid CanvasText;
+    outline-offset: 2px;
   }
 
   .category[aria-pressed='true']::before {

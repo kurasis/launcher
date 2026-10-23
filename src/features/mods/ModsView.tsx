@@ -107,9 +107,11 @@ export function ModsView({
     if (project !== null) window.scrollTo(0, 0);
   }, [project]);
 
-  useEffect(() => {
+  // Before any answer can come in: another screen or dialog makes a pending quick add stale.
+  const asking = catalogText !== null;
+  useLayoutEffect(() => {
     quick.current += 1;
-  }, [instance?.id, section, project]);
+  }, [instance?.id, section, project, asking]);
 
   const choose = (next: ModsSection) => {
     setProject(null);
