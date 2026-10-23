@@ -2872,9 +2872,10 @@ skins-mod <channel>` there only checks the signature against the public key and
   blobs: kept once, but its mods had no page, title or icon unless someone added them.
   The catalog now adds the project of each mod, resource pack and shader of the
   modpacks it keeps, from the file's Modrinth address or by asking Modrinth for its
-  SHA-1, a few at a time while the queue is quiet. A mod only on CurseForge stays
-  without a page: CurseForge is reached by link only, and a pack names its mods by
-  number. The catalog's lookup by hash tells the title, icon and version number, and
+  SHA-1, a few at a time while the queue is quiet. A mod only on CurseForge is added
+  by its number: CurseForge's site leads `/projects/<number>` to the project's page
+  (checked from the server on every exit), so it is still reached by link only, with
+  no API and no search. The catalog's lookup by hash tells the title, icon and version number, and
   the launcher asks it each time it lists an installation, so the Installed tab names
   a modpack's files (and the player's own) without "Check for updates".
 

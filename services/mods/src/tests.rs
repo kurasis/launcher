@@ -2486,6 +2486,45 @@ async fn a_packs_mods_join_the_catalog_and_are_told_by_their_hash() {
 }
 
 #[test]
+fn pack_lookups_made_before_curseforge_numbers_are_made_again() {
+    let dir = tempfile::tempdir().unwrap();
+    let store = crate::store::Store::open(dir.path()).unwrap();
+    store
+        .pack_looked_up(&"a".repeat(40), Some("AANobbMI"), None, 1)
+        .unwrap();
+    store
+        .pack_looked_up(&"b".repeat(40), None, None, 1)
+        .unwrap();
+    let path = store.path().to_owned();
+    drop(store);
+    // A database from before the column.
+    let db = rusqlite::Connection::open(&path).unwrap();
+    db.execute_batch("ALTER TABLE pack_lookup DROP COLUMN curseforge")
+        .unwrap();
+    drop(db);
+    let store = crate::store::Store::open(dir.path()).unwrap();
+    let db = rusqlite::Connection::open(&path).unwrap();
+    let left: Vec<String> = db
+        .prepare("SELECT sha1 FROM pack_lookup")
+        .unwrap()
+        .query_map([], |r| r.get(0))
+        .unwrap()
+        .map(Result::unwrap)
+        .collect();
+    assert_eq!(left, ["a".repeat(40)]);
+    // Once only: a later start keeps what was found.
+    store
+        .pack_looked_up(&"c".repeat(40), None, Some(900), 2)
+        .unwrap();
+    drop(store);
+    crate::store::Store::open(dir.path()).unwrap();
+    let count: i64 = db
+        .query_row("SELECT count(*) FROM pack_lookup", [], |r| r.get(0))
+        .unwrap();
+    assert_eq!(count, 2);
+}
+
+#[test]
 fn modrinths_answer_by_hash_is_read_with_care() {
     let url = modrinth::version_file_url("../x?y");
     assert!(
@@ -2873,6 +2912,62 @@ async fn a_curseforge_modpack_has_its_files_found_kept_and_placed() {
         shader
     );
     assert!(pack["archive"]["url"].as_str().is_some());
+
+    // The shader and the resource pack are only on CurseForge: their numbers
+    // lead to their pages, and they join the catalog.
+    t.sites.put(
+        &curseforge::number_url(900),
+        Page {
+            status: 308,
+            location: Some(curseforge::page_url("shaders", "shiny")),
+            ..Page::default()
+        },
+    );
+    let shiny = json!({
+        "id": 900, "slug": "shiny", "gameId": 432, "classId": 6552,
+        "name": "Shiny Shader", "summary": "Light",
+        "logo": { "url": "https://media.forgecdn.net/avatars/9/0/shiny.png" },
+    });
+    t.sites.put(
+        &curseforge::page_url("shaders", "shiny"),
+        ok(cf_page(&shiny).replace("\"jei\"", "\"shiny\"")),
+    );
+    t.sites.put(
+        "https://media.forgecdn.net/avatars/9/0/shiny.png",
+        ok(png(64, 64)),
+    );
+    t.sites.json(
+        &curseforge::files_url(900, 0),
+        json!({
+            "data": [cf_file(900, 9000, "shader.zip", shader.len(), 1, "2024-01-01T00:00:00Z")],
+            "pagination": { "index": 0, "pageSize": 50, "totalCount": 1 },
+        }),
+    );
+    // The resource pack's number leads elsewhere: it stays without a page.
+    t.sites.put(
+        &curseforge::number_url(901),
+        Page {
+            status: 308,
+            location: Some("https://www.curseforge.com/minecraft".into()),
+            ..Page::default()
+        },
+    );
+    assert_eq!(import::pack_projects(&t.app).await.unwrap(), 1);
+    let (shader_sha1, _, _) = hashes(&shader);
+    // Modrinth was asked first.
+    assert_eq!(t.sites.asked(&modrinth::version_file_url(&shader_sha1)), 1);
+    t.drain().await;
+    let (status, page) = t.get("/v1/projects/shiny").await;
+    assert_eq!(status, StatusCode::OK, "{page}");
+    assert_eq!(page["title"], "Shiny Shader");
+    assert!(page["iconThumb"].is_string(), "{page}");
+    let (_, pack) = t.get(&format!("/v1/versions/{version}/pack")).await;
+    assert_eq!(pack["files"][1]["title"], "Shiny Shader", "{pack}");
+    assert!(pack["files"][2]["projectId"].is_null());
+    // Asked once: nothing more to do.
+    assert_eq!(import::pack_projects(&t.app).await.unwrap(), 0);
+    assert_eq!(t.sites.asked(&curseforge::number_url(900)), 1);
+    assert_eq!(t.sites.asked(&curseforge::number_url(901)), 1);
 }
 
 #[test]
@@ -2947,6 +3042,27 @@ fn curseforge_manifests_are_read_with_care() {
         curseforge::download_ids(&curseforge::download_url(238_222, 5001)),
         Some((238_222, 5001))
     );
+    assert_eq!(
+        curseforge::page_ref("https://www.curseforge.com/minecraft/mc-mods/jei", JEI),
+        curseforge::Ref::parse("238222/mc-mods/jei")
+    );
+    assert!(
+        curseforge::page_ref("https://www.curseforge.com/minecraft/shaders/shiny/", 9).is_some()
+    );
+    for bad in [
+        "https://www.curseforge.com/minecraft",
+        "https://www.curseforge.com/minecraft/mc-mods",
+        "https://www.curseforge.com/minecraft/search/jei",
+        "https://www.curseforge.com/minecraft/mc-mods/JEI",
+        "https://www.curseforge.com/minecraft/mc-mods/jei/files",
+        "https://www.curseforge.com/minecraft/mc-mods/../jei",
+        "http://www.curseforge.com/minecraft/mc-mods/jei",
+        "https://evil.example/minecraft/mc-mods/jei",
+        "https://www.curseforge.com:8443/minecraft/mc-mods/jei",
+        "junk",
+    ] {
+        assert_eq!(curseforge::page_ref(bad, JEI), None, "{bad}");
+    }
     for bad in [
         "https://www.curseforge.com/api/v1/mods/1/files/x/download",
         "https://www.curseforge.com/api/v1/mods/0/files/1/download",

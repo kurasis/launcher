@@ -547,7 +547,9 @@ impl Client {
         max_bytes: u64,
         json: bool,
     ) -> Result<u64, FetchError> {
-        self.get_by(site, url, to, max_bytes, json, &[]).await
+        self.get_by(site, url, to, max_bytes, json, &[])
+            .await
+            .map(|(size, _)| size)
     }
 
     /// A picture a description shows, from any public host
@@ -555,6 +557,7 @@ impl Client {
     pub async fn picture(&self, url: &str, to: &Path, max_bytes: u64) -> Result<u64, FetchError> {
         self.get_by(picture_site, url, to, max_bytes, false, PICTURE)
             .await
+            .map(|(size, _)| size)
     }
 
     /// A file of a project the owner added, from any public host
@@ -562,6 +565,7 @@ impl Client {
     pub async fn external(&self, url: &str, to: &Path, max_bytes: u64) -> Result<u64, FetchError> {
         self.get_by(external_site, url, to, max_bytes, false, &[])
             .await
+            .map(|(size, _)| size)
     }
 
     async fn get_by(
@@ -572,7 +576,7 @@ impl Client {
         max_bytes: u64,
         json: bool,
         headers: &'static [&'static str],
-    ) -> Result<u64, FetchError> {
+    ) -> Result<(u64, String), FetchError> {
         let mut url = url.to_owned();
         for _ in 0..6 {
             let site = rule(&url).ok_or(FetchError::NotAllowed)?;
@@ -634,7 +638,7 @@ impl Client {
                     if reply.size > max_bytes {
                         return Err(FetchError::TooBig);
                     }
-                    return Ok(reply.size);
+                    return Ok((reply.size, url));
                 }
                 301 | 302 | 303 | 307 | 308 => {
                     let next = reply.location.ok_or(FetchError::Status(reply.status))?;
@@ -698,15 +702,25 @@ impl Client {
     /// A page's text (at most `max` bytes, invalid UTF-8 replaced); `None`
     /// when the source has no such page.
     pub async fn page(&self, url: &str, max: u64) -> Result<Option<String>, FetchError> {
+        Ok(self.page_at(url, max).await?.map(|(_, text)| text))
+    }
+
+    /// A page's address after redirects, and its text as [`Client::page`]
+    /// gives it.
+    pub async fn page_at(
+        &self,
+        url: &str,
+        max: u64,
+    ) -> Result<Option<(String, String)>, FetchError> {
         let part = self.tmp.join(format!("{}.html", uuid::Uuid::new_v4()));
-        let result = self.get(url, &part, max, false).await;
+        let result = self.get_by(site, url, &part, max, false, &[]).await;
         let body = match std::fs::metadata(&part) {
             Ok(m) if m.len() > max => Err(FetchError::TooBig),
             _ => std::fs::read(&part).map_err(|_| FetchError::Network(-1)),
         };
         let _ = std::fs::remove_file(&part);
         match result {
-            Ok(_) => Ok(Some(String::from_utf8_lossy(&body?).into_owned())),
+            Ok((_, at)) => Ok(Some((at, String::from_utf8_lossy(&body?).into_owned()))),
             Err(FetchError::NotFound) => Ok(None),
             Err(e) => Err(e),
         }
