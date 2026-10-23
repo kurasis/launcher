@@ -351,9 +351,11 @@ pub const PACK_LOOKUP_AGAIN: i64 = 30 * 86_400;
 /// Adds the projects of packs' mods, resource packs and shaders that the
 /// catalog lacks, so each has a page, a title and an icon (D-066). A file's
 /// project is read from its Modrinth address, else Modrinth is asked by its
-/// SHA-1; one Modrinth does not know (a CurseForge-only mod) is asked again
-/// after `PACK_LOOKUP_AGAIN`. Like the most downloaded, a few at a time and
-/// only while the queue is nearly empty. Returns how many were queued.
+/// SHA-1. A CurseForge pack's mod Modrinth does not know is found by its
+/// number: the site's old address `/projects/<number>` leads to its page.
+/// One found nowhere is asked again after `PACK_LOOKUP_AGAIN`. Like the
+/// most downloaded, a few at a time and only while the queue is nearly
+/// empty. Returns how many were queued.
 pub async fn pack_projects(app: &App) -> Result<usize, String> {
     if app.store.jobs_due(now())? >= SEED_WHEN_BELOW {
         return Ok(0);
@@ -370,7 +372,12 @@ pub async fn pack_projects(app: &App) -> Result<usize, String> {
                 Err(_) => break,
             },
         };
-        app.store.pack_looked_up(&sha1, project.as_deref(), now())?;
+        let number = match project {
+            Some(_) => None,
+            None => curseforge::download_ids(&url).map(|(number, _)| number),
+        };
+        app.store
+            .pack_looked_up(&sha1, project.as_deref(), number, now())?;
     }
     let mut queued = 0;
     for project in app.store.pack_projects_waiting(100)? {
@@ -387,6 +394,33 @@ pub async fn pack_projects(app: &App) -> Result<usize, String> {
             queued += 1;
         }
         app.store.pack_project_queued(&project, now())?;
+    }
+    for number in app.store.pack_curseforge_waiting(100)? {
+        if queued >= SEED_AT_ONCE {
+            break;
+        }
+        if app
+            .store
+            .project_by_source(curseforge::SOURCE, &number.to_string())?
+            .is_none()
+        {
+            let at = match app
+                .client
+                .page_at(&curseforge::number_url(number), curseforge::MAX_PAGE as u64)
+                .await
+            {
+                Ok(found) => found.map(|(at, _)| at),
+                // Not reached: asked again next time.
+                Err(e) if e.retryable() => break,
+                Err(_) => None,
+            };
+            if let Some(r) = at.and_then(|at| curseforge::page_ref(&at, number))
+                && queue_project(app, curseforge::SOURCE, &r.text(), 0, None, IDLE_FRESH)?
+            {
+                queued += 1;
+            }
+        }
+        app.store.pack_curseforge_queued(number, now())?;
     }
     Ok(queued)
 }

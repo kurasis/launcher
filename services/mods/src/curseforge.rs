@@ -102,6 +102,33 @@ pub fn changelog_url(project: u64, file: u64) -> String {
     format!("{API}/{project}/files/{file}/change-log")
 }
 
+/// A project's old address by its number, which the site redirects to the
+/// project's page.
+pub fn number_url(project: u64) -> String {
+    format!("{SITE}/projects/{project}")
+}
+
+/// The project a page's address names,
+/// `https://www.curseforge.com/minecraft/<class>/<slug>`, with its number.
+pub fn page_ref(url: &str, project: u64) -> Option<Ref> {
+    let url = reqwest::Url::parse(url).ok()?;
+    if url.scheme() != "https"
+        || url.host_str() != Some("www.curseforge.com")
+        || url.port().is_some()
+    {
+        return None;
+    }
+    let parts: Vec<&str> = url.path_segments()?.filter(|s| !s.is_empty()).collect();
+    let ["minecraft", class, slug] = parts.as_slice() else {
+        return None;
+    };
+    (kind_of_class(class).is_some() && is_slug(slug)).then(|| Ref {
+        id: Some(project),
+        class: (*class).to_owned(),
+        slug: (*slug).to_owned(),
+    })
+}
+
 /// The site's link to a file: a redirect to forgecdn.
 pub fn download_url(project: u64, file: u64) -> String {
     format!("{API}/{project}/files/{file}/download")

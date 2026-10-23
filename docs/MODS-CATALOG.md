@@ -210,9 +210,11 @@ The mods, resource packs and shaders of the modpacks it keeps become catalog pro
 the same way, so each has a page, a title and an icon. A file whose address is on
 Modrinth's CDN names its project; any other is looked up at Modrinth by its SHA-1, ten
 a minute. Their projects are queued two at a time while fewer than 20 jobs are due.
-A file Modrinth does not know (a mod only on CurseForge, which cannot be added without
-its page) is looked up again after 30 days. What was found is in the `pack_lookup`
-table.
+A file Modrinth does not know but whose address is CurseForge's (a mod only on
+CurseForge) is added by its project number: `https://www.curseforge.com/projects/<number>`
+leads to the project's page, and the page found there is queued as any address a player
+adds. A file found nowhere is looked up again after 30 days. What was found is in the
+`pack_lookup` table.
 
 OptiFine's icon is made for the catalog (`services/mods/assets/optifine-icon.png`): its
 site has none.

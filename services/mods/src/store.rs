@@ -465,22 +465,32 @@ const ADDED: &[(&str, &str, &str)] = &[
     ("external_project", "trusted", "INTEGER NOT NULL DEFAULT 0"),
     // The picture its site shows first (Modrinth's `featured`): the cover.
     ("gallery", "featured", "INTEGER NOT NULL DEFAULT 0"),
+    // A CurseForge pack's mod Modrinth does not know: its CurseForge number.
+    ("pack_lookup", "curseforge", "INTEGER"),
 ];
 
 fn migrate(db: &Connection) -> Result<()> {
+    let there = |table: &str, column: &str| -> Result<bool> {
+        db.query_row(
+            &format!("SELECT count(*) FROM pragma_table_info('{table}') WHERE name = ?1"),
+            [column],
+            |r| r.get::<_, i64>(0),
+        )
+        .map(|n| n > 0)
+        .map_err(sql)
+    };
+    // Packs' files looked up before CurseForge numbers were kept are looked
+    // up again.
+    let numbered = there("pack_lookup", "curseforge")?;
     for (table, column, kind) in ADDED {
-        let there: bool = db
-            .query_row(
-                &format!("SELECT count(*) FROM pragma_table_info('{table}') WHERE name = ?1"),
-                [column],
-                |r| r.get::<_, i64>(0),
-            )
-            .map_err(sql)?
-            > 0;
-        if !there {
+        if !there(table, column)? {
             db.execute_batch(&format!("ALTER TABLE {table} ADD COLUMN {column} {kind}"))
                 .map_err(sql)?;
         }
+    }
+    if !numbered {
+        db.execute("DELETE FROM pack_lookup WHERE project IS NULL", [])
+            .map_err(sql)?;
     }
     db.execute_batch(
         "CREATE INDEX IF NOT EXISTS blob_scanned ON blob(scanned);
@@ -3775,13 +3785,48 @@ impl Store {
         .map_err(sql)
     }
 
-    /// What Modrinth said of a pack's file: its project, or none known.
-    pub fn pack_looked_up(&self, sha1: &str, project: Option<&str>, now: i64) -> Result<()> {
+    /// What was found of a pack's file: its Modrinth project, else its
+    /// CurseForge number, or neither.
+    pub fn pack_looked_up(
+        &self,
+        sha1: &str,
+        project: Option<&str>,
+        curseforge: Option<u64>,
+        now: i64,
+    ) -> Result<()> {
         self.db()
             .execute(
-                "INSERT OR REPLACE INTO pack_lookup (sha1, project, looked, queued)
-                 VALUES (?1, ?2, ?3, NULL)",
-                params![sha1, project, now],
+                "INSERT OR REPLACE INTO pack_lookup (sha1, project, curseforge, looked, queued)
+                 VALUES (?1, ?2, ?3, ?4, NULL)",
+                params![sha1, project, curseforge.map(|n| n as i64), now],
+            )
+            .map(|_| ())
+            .map_err(sql)
+    }
+
+    /// CurseForge numbers of packs' files Modrinth does not know, not queued
+    /// yet, up to `limit`.
+    pub fn pack_curseforge_waiting(&self, limit: usize) -> Result<Vec<u64>> {
+        let db = self.db();
+        let mut q = db
+            .prepare(
+                "SELECT DISTINCT curseforge FROM pack_lookup
+                 WHERE project IS NULL AND curseforge > 0 AND queued IS NULL LIMIT ?1",
+            )
+            .map_err(sql)?;
+        q.query_map([limit as i64], |r| r.get::<_, i64>(0))
+            .map_err(sql)?
+            .map(|n| n.map(|n| n as u64))
+            .collect::<std::result::Result<_, _>>()
+            .map_err(sql)
+    }
+
+    pub fn pack_curseforge_queued(&self, number: u64, now: i64) -> Result<()> {
+        self.db()
+            .execute(
+                "UPDATE pack_lookup SET queued = ?2
+                 WHERE project IS NULL AND curseforge = ?1 AND queued IS NULL",
+                params![number as i64, now],
             )
             .map(|_| ())
             .map_err(sql)
