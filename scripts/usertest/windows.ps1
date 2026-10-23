@@ -193,7 +193,36 @@ function Find-Input($Texts) {
   return $null
 }
 
-# Drop-down lists (HTML select): the loader and the loader version.
+# The mod loader: a row of radio buttons (pills, D-072), each named by its loader.
+function Find-Radio($Texts) {
+  $radio = [System.Windows.Automation.ControlType]::RadioButton
+  $byType = New-Object System.Windows.Automation.PropertyCondition($AE::ControlTypeProperty, $radio)
+  foreach ($candidate in $script:main.FindAll($Scope::Descendants, $byType)) {
+    if (Matches $candidate.Current.Name $Texts) { return $candidate }
+  }
+  return $null
+}
+
+function Is-Selected($Element) {
+  $pattern = $null
+  if ($Element.TryGetCurrentPattern([System.Windows.Automation.SelectionItemPattern]::Pattern, [ref]$pattern)) { return $pattern.Current.IsSelected }
+  return $false
+}
+
+# Picks the loader's pill as a player does; if that does not take, the radio focused
+# and Space pressed.
+function Choose-Radio($Radio) {
+  Click $Radio
+  Start-Sleep -Milliseconds 700
+  if (Is-Selected $Radio) { return $true }
+  Add-Type -AssemblyName System.Windows.Forms
+  try { $Radio.SetFocus() } catch { }
+  [System.Windows.Forms.SendKeys]::SendWait(' ')
+  Start-Sleep -Seconds 1
+  return (Is-Selected $Radio)
+}
+
+# Drop-down lists (HTML select): the loader version.
 function Find-AllCombos {
   $combo = [System.Windows.Automation.ControlType]::ComboBox
   $byType = New-Object System.Windows.Automation.PropertyCondition($AE::ControlTypeProperty, $combo)
@@ -707,9 +736,9 @@ try {
       if ($open) { Click $open; Start-Sleep -Seconds 1 }
       Press $ui.create 'New installation'
       if ($modded) {
-        $box = Wait-For { Find-Combo $ui.loader } 20
-        if (-not $box) { $result.install = 'failed'; $result.note = 'no loader choice in the form'; throw 'no loader box' }
-        if (-not (Choose-Option $box $loaderNames[$loader])) {
+        $pill = Wait-For { Find-Radio $loaderNames[$loader] } 20
+        if (-not $pill) { $result.install = 'failed'; $result.note = 'no loader choice in the form'; throw 'no loader pill' }
+        if (-not (Choose-Radio $pill)) {
           $result.install = 'failed'; $result.note = "$($loaderNames[$loader]) could not be chosen"
           throw 'loader not chosen'
         }
