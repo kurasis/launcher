@@ -1,0 +1,634 @@
+/* A project's page in concept A, variant 2 "sticky card" (D-072): the card, what it
+   depends on and similar projects in a column at the inline start that stays in view;
+   the description and the versions beside it, the versions scrolling inside their
+   panel. Logical properties only, so it mirrors right to left by itself. The page is
+   a size container: the layout follows the room it has, not the window. */
+
+.page {
+  container: project / inline-size;
+  display: grid;
+  gap: var(--space-4);
+  min-inline-size: 0;
+}
+
+.head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-3);
+}
+
+.back {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
+  min-block-size: 2rem;
+  margin-inline-start: calc(-1 * var(--space-2));
+  padding: 0 var(--space-2);
+  border: 0;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--color-accent-text);
+  font: inherit;
+  font-size: var(--font-size-sm);
+  font-weight: 500;
+  cursor: pointer;
+  transition: background-color var(--motion-duration) ease-out;
+}
+
+.back:hover {
+  background: var(--color-hover);
+}
+
+.back:focus-visible {
+  outline: 2px solid var(--color-focus);
+  outline-offset: 2px;
+}
+
+/* ------------------------------------------------------------------- Layout */
+
+.grid {
+  display: grid;
+  /* 20rem beside a wide page, narrower in the 1100 px window it opens in. */
+  grid-template-columns: clamp(16rem, 34%, 20rem) minmax(0, 1fr);
+  gap: var(--space-4) var(--space-6);
+  align-items: start;
+}
+
+/* The card comes first, so it is what stays in view; on a short window the column
+   scrolls by itself to what is under it. */
+.side {
+  position: sticky;
+  inset-block-start: var(--space-4);
+  display: grid;
+  gap: var(--space-4);
+  min-inline-size: 0;
+  max-block-size: calc(100vh - var(--bar-height) - 2 * var(--space-4));
+  overflow-y: auto;
+  scrollbar-width: thin;
+}
+
+.main {
+  display: grid;
+  gap: var(--space-4);
+  min-inline-size: 0;
+}
+
+.panel {
+  display: grid;
+  align-content: start;
+  gap: var(--space-3);
+  min-inline-size: 0;
+  padding: var(--space-4);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-lg);
+  background: var(--color-surface);
+}
+
+.main > .panel {
+  container: panel / inline-size;
+  padding: var(--space-4) var(--space-6);
+}
+
+.panelHead {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: var(--space-1) var(--space-2);
+}
+
+.panelTitle {
+  margin: 0;
+  font-size: var(--font-size-lg);
+  font-weight: 600;
+  line-height: 1.3;
+}
+
+.count {
+  color: var(--color-text-muted);
+  font-size: var(--font-size-md);
+  font-variant-numeric: tabular-nums;
+}
+
+.hint {
+  margin: 0;
+  color: var(--color-text-muted);
+  font-size: var(--font-size-sm);
+}
+
+.skeletonCard {
+  min-block-size: 12rem;
+  background: var(--color-surface);
+}
+
+/* --------------------------------------------------------------------- Card */
+
+.cardHead {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  min-inline-size: 0;
+}
+
+.cardHead .bigIcon {
+  flex: none;
+  inline-size: 3.5rem;
+  block-size: 3.5rem;
+  border-radius: var(--radius-sm);
+  object-fit: cover;
+  font-size: var(--font-size-xl);
+}
+
+.cardTitle {
+  display: grid;
+  gap: var(--space-1);
+  min-inline-size: 0;
+}
+
+.name {
+  margin: 0;
+  font-size: var(--font-size-xl);
+  font-weight: 600;
+  line-height: 1.2;
+  overflow-wrap: anywhere;
+}
+
+.name:focus {
+  outline: none;
+}
+
+.name:focus-visible {
+  outline: 2px solid var(--color-focus);
+  outline-offset: 2px;
+}
+
+.chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-1) var(--space-2);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.outlineChip {
+  display: inline-flex;
+  align-items: center;
+  min-block-size: 1.375rem;
+  padding: 0 var(--space-2);
+  border: 1px solid var(--color-border-strong);
+  border-radius: var(--radius-pill);
+  color: var(--color-text-2);
+  font-size: var(--font-size-xs);
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.chipWarning {
+  background: var(--color-warning-bg);
+  color: var(--color-warning-text);
+}
+
+.chipDanger {
+  background: var(--color-danger-bg);
+  color: var(--color-danger-text);
+}
+
+.warningText {
+  color: var(--color-warning-text);
+}
+
+/* The main action, what it takes under it, and "Save to the catalog". */
+.action {
+  display: grid;
+  gap: var(--space-2);
+}
+
+.action > span {
+  display: grid;
+}
+
+.action > .hint,
+.keep {
+  text-align: center;
+}
+
+.mainAction {
+  inline-size: 100%;
+  min-block-size: 2.5rem;
+  overflow-wrap: anywhere;
+}
+
+.mainSkeleton {
+  display: block;
+  inline-size: 100%;
+  block-size: 2.5rem;
+  border-radius: var(--radius-sm);
+  background: var(--color-border-soft);
+}
+
+.installed {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-2);
+  padding: var(--space-2) var(--space-3);
+  border-radius: var(--radius-sm);
+  background: var(--color-success-bg);
+  color: var(--color-success-text);
+  font-weight: 600;
+}
+
+.action > .installed {
+  text-align: start;
+}
+
+.keep {
+  display: grid;
+  justify-items: center;
+  gap: var(--space-1);
+}
+
+/* A small button on a surface with a border: the sites, Add and Open in lists. */
+.ghostButton {
+  border-color: var(--color-border-strong);
+  background: var(--color-surface);
+}
+
+.links {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+}
+
+.link {
+  flex: 1 1 auto;
+  justify-content: center;
+}
+
+.quiet {
+  color: var(--color-text-muted);
+}
+
+.facts {
+  display: grid;
+  grid-template-columns: max-content minmax(0, 1fr);
+  gap: var(--space-2) var(--space-4);
+  margin: 0;
+  font-size: var(--font-size-sm);
+}
+
+.facts dt {
+  color: var(--color-text-muted);
+}
+
+.facts dd {
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+
+/* ---------------------------------------------------- Dependencies, similar */
+
+.related {
+  gap: var(--space-2);
+}
+
+.items {
+  display: grid;
+  gap: var(--space-1);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+/* Icon, then the name and what it is; the action under them in the narrow column. */
+.item {
+  display: grid;
+  grid-template-columns: 2rem minmax(0, 1fr);
+  align-items: start;
+  gap: var(--space-1) var(--space-3);
+  padding-block: var(--space-2);
+}
+
+.item > :first-child {
+  grid-row: span 2;
+}
+
+.item > :nth-child(3) {
+  grid-column: 2;
+  justify-self: start;
+}
+
+.item .smallIcon {
+  inline-size: 2rem;
+  block-size: 2rem;
+  border-radius: var(--radius-sm);
+  object-fit: cover;
+  font-size: var(--font-size-sm);
+}
+
+.itemText {
+  display: grid;
+  gap: 0.125rem;
+  min-inline-size: 0;
+}
+
+.itemName {
+  justify-self: start;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: var(--color-text);
+  font: inherit;
+  font-size: var(--font-size-sm);
+  font-weight: 600;
+  text-align: start;
+  overflow-wrap: anywhere;
+}
+
+button.itemName {
+  cursor: pointer;
+}
+
+button.itemName:hover {
+  color: var(--color-accent-text);
+  text-decoration: underline;
+  text-underline-offset: 0.2em;
+}
+
+button.itemName:focus-visible {
+  outline: 2px solid var(--color-focus);
+  outline-offset: 2px;
+}
+
+.clamp {
+  display: -webkit-box;
+  overflow: hidden;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+}
+
+/* -------------------------------------------------------------- Description */
+
+.text {
+  min-inline-size: 0;
+  font-size: var(--font-size-sm);
+}
+
+.short {
+  max-block-size: 15rem;
+  overflow: hidden;
+}
+
+.main .panel > button {
+  justify-self: start;
+}
+
+.gallery {
+  display: flex;
+  gap: var(--space-2);
+  margin: 0;
+  padding: 0 0 var(--space-1);
+  list-style: none;
+  overflow-x: auto;
+  scroll-snap-type: inline mandatory;
+  scrollbar-width: thin;
+}
+
+.gallery li {
+  flex: none;
+  scroll-snap-align: start;
+}
+
+.thumb {
+  display: block;
+  padding: 0;
+  border: 0;
+  border-radius: var(--radius-sm);
+  background: var(--color-surface-sunken);
+  overflow: hidden;
+  cursor: zoom-in;
+}
+
+.thumb img {
+  display: block;
+  inline-size: 12.5rem;
+  aspect-ratio: 16 / 9;
+  object-fit: cover;
+}
+
+/* Inside the strip, which would clip a ring around it. */
+.thumb:focus-visible {
+  outline: 2px solid var(--color-focus);
+  outline-offset: -2px;
+}
+
+.figure {
+  display: grid;
+  justify-items: center;
+  gap: var(--space-2);
+  margin: 0;
+}
+
+.fullPicture {
+  max-inline-size: 100%;
+  max-block-size: 65vh;
+  border-radius: var(--radius-sm);
+  object-fit: contain;
+}
+
+.dialogActions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+/* ----------------------------------------------------------------- Versions */
+
+.filters {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2) var(--space-3);
+}
+
+.gameSelect {
+  max-inline-size: 12rem;
+}
+
+.tableBox {
+  max-block-size: min(24rem, max(14rem, calc(100vh - var(--bar-height) - 16rem)));
+  overflow: auto;
+  border-block-start: 1px solid var(--color-border);
+  scrollbar-width: thin;
+  scrollbar-color: var(--color-border-strong) transparent;
+}
+
+.tableBox:focus-visible {
+  outline: 2px solid var(--color-focus);
+  outline-offset: 2px;
+}
+
+/* Separate borders: a sticky head keeps its line under it in WebView2. */
+.table {
+  inline-size: 100%;
+  border-collapse: separate;
+  border-spacing: 0;
+  font-size: var(--font-size-sm);
+  font-variant-numeric: tabular-nums;
+}
+
+.table th,
+.table td {
+  padding: var(--space-2);
+  border-block-end: 1px solid var(--color-border-soft);
+  text-align: start;
+  vertical-align: middle;
+}
+
+.table thead th {
+  position: sticky;
+  inset-block-start: 0;
+  z-index: 1;
+  border-block-end-color: var(--color-border);
+  background: var(--color-surface);
+  color: var(--color-text-muted);
+  font-weight: 500;
+  white-space: nowrap;
+}
+
+.table tbody tr:last-child > * {
+  border-block-end: 0;
+}
+
+.versionButton {
+  padding: 0;
+  border: 0;
+  border-radius: 2px;
+  background: transparent;
+  color: var(--color-text);
+  font: inherit;
+  font-weight: 600;
+  text-align: start;
+  overflow-wrap: anywhere;
+  cursor: pointer;
+}
+
+.versionButton:hover {
+  color: var(--color-accent-text);
+  text-decoration: underline;
+  text-underline-offset: 0.2em;
+}
+
+.versionButton:focus-visible {
+  outline: 2px solid var(--color-focus);
+  outline-offset: 2px;
+}
+
+.forGames,
+.forLoaders {
+  display: block;
+}
+
+.forLoaders {
+  color: var(--color-text-muted);
+}
+
+.dateCell {
+  white-space: nowrap;
+}
+
+.actionCell {
+  inline-size: 2.5rem;
+  text-align: end;
+}
+
+.rowButton {
+  border-color: var(--color-border-strong);
+}
+
+/* Not for the installation: muted, still readable. */
+.misfit > *,
+.misfit .versionButton,
+.misfit .forLoaders {
+  color: var(--color-text-muted);
+}
+
+.misfit .versionButton {
+  font-weight: 500;
+}
+
+.skeletonRow span {
+  display: block;
+  inline-size: 80%;
+  block-size: 0.875rem;
+  margin-block: var(--space-2);
+  border-radius: var(--radius-sm);
+  background: var(--color-border-soft);
+}
+
+.loadRow {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-2);
+  margin: 0;
+  padding: var(--space-3);
+  color: var(--color-text-muted);
+  font-size: var(--font-size-sm);
+}
+
+/* The version's dialog. */
+.files {
+  display: grid;
+  gap: var(--space-1);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  overflow-wrap: anywhere;
+}
+
+.changelog {
+  min-inline-size: 0;
+  font-size: var(--font-size-sm);
+}
+
+/* ---------------------------------------------------------- Narrow, contrast */
+
+@media (forced-colors: active) {
+  .installed {
+    border: 1px solid CanvasText;
+  }
+}
+
+/* An 820 px window: one column, in the order of the page; the card scrolls with it. */
+@container project (max-width: 44rem) {
+  .grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .side {
+    position: static;
+    max-block-size: none;
+    overflow: visible;
+  }
+
+  .item {
+    grid-template-columns: 2rem minmax(0, 1fr) auto;
+  }
+
+  .item > :nth-child(3) {
+    grid-row: 1 / span 2;
+    grid-column: 3;
+    align-self: center;
+  }
+}
+
+/* A narrow list of versions leaves out the date; the version's window has it. */
+@container panel (max-width: 34rem) {
+  .dateCell {
+    display: none;
+  }
+}

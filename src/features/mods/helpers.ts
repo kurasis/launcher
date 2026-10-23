@@ -165,7 +165,7 @@ export function stateTone(state: ModsImportRequest['state']): StatusTone {
 }
 
 /** A name or version kept whole inside a sentence of either direction. */
-const isolate = (text: string) => `\u2068${text}\u2069`;
+export const isolate = (text: string) => `\u2068${text}\u2069`;
 
 /** A problem the mods' jars report, in words (D-066). */
 export function describeProblem(problem: ModsSetProblem): string {

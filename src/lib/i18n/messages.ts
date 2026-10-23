@@ -1721,7 +1721,6 @@ export type Messages = {
       readonly cancel: string;
     };
     readonly project: {
-      readonly back: string;
       readonly channels: {
         readonly release: string;
         readonly beta: string;
@@ -1751,9 +1750,7 @@ export type Messages = {
         }) => string;
       };
       readonly keep: string;
-      readonly changes: string;
       readonly noChanges: string;
-      readonly license: (values: { license: string | number }) => string;
       readonly openOn: (values: { site: string | number }) => string;
       readonly openSite: string;
       readonly importingHint: string;
@@ -1766,12 +1763,8 @@ export type Messages = {
       readonly kept: string;
       readonly channel: string;
       readonly anyChannel: string;
-      readonly order: string;
-      readonly newest: string;
-      readonly oldest: string;
       readonly noneMatch: string;
       readonly showAll: string;
-      readonly matching: (values: { count: number; total: string | number }) => string;
       readonly held: string;
       readonly playerPack: string;
       readonly report: string;
@@ -1787,6 +1780,105 @@ export type Messages = {
       readonly reportSend: string;
       readonly reportCancel: string;
       readonly reportSent: string;
+      readonly backToResults: string;
+      readonly addVersion: (values: { number: string | number }) => string;
+      readonly installVersion: (values: { number: string | number }) => string;
+      readonly updateTo: (values: { number: string | number }) => string;
+      readonly addRow: (values: { number: string | number }) => string;
+      readonly installRow: (values: { number: string | number }) => string;
+      readonly chooseButton: string;
+      readonly latest: (values: {
+        game: string | number;
+        loader: string | number;
+        date: string | number;
+      }) => string;
+      readonly latestGame: (values: { game: string | number; date: string | number }) => string;
+      readonly latestPack: (values: { date: string | number }) => string;
+      readonly noneFor: (values: { game: string | number }) => string;
+      readonly installedIn: (values: { name: string | number; number: string | number }) => string;
+      readonly installedRow: string;
+      readonly authorSite: string;
+      readonly kinds: {
+        readonly mod: string;
+        readonly modpack: string;
+        readonly resourcepack: string;
+        readonly shader: string;
+        readonly datapack: string;
+        readonly world: string;
+      };
+      readonly facts: {
+        readonly downloads: string;
+        readonly license: string;
+        readonly source: string;
+        readonly versions: string;
+        readonly published: string;
+        readonly games: string;
+        readonly loaders: string;
+        readonly files: string;
+      };
+      readonly sourceChecked: (values: { sources: string | number }) => string;
+      readonly versionsRange: (values: {
+        count: string | number;
+        from: string | number;
+        to: string | number;
+      }) => string;
+      readonly versionsFor: (values: { count: string | number; game: string | number }) => string;
+      readonly deps: {
+        readonly title: string;
+        readonly forVersion: (values: { number: string | number }) => string;
+        readonly required: string;
+        readonly requiredComes: string;
+        readonly optional: string;
+        readonly incompatible: string;
+        readonly inInstallation: string;
+        readonly add: string;
+        readonly addNamed: (values: { title: string | number }) => string;
+        readonly toCatalog: string;
+        readonly toCatalogNamed: (values: { title: string | number }) => string;
+        readonly unknown: string;
+        readonly more: (values: { count: string | number }) => string;
+      };
+      readonly similar: {
+        readonly title: string;
+        readonly open: string;
+        readonly openNamed: (values: { title: string | number }) => string;
+      };
+      readonly showWhole: string;
+      readonly showLess: string;
+      readonly picture: (values: { index: string | number; count: string | number }) => string;
+      readonly pictureNamed: (values: {
+        index: string | number;
+        count: string | number;
+        title: string | number;
+      }) => string;
+      readonly previousPicture: string;
+      readonly nextPicture: string;
+      readonly close: string;
+      readonly columns: {
+        readonly version: string;
+        readonly type: string;
+        readonly for: string;
+        readonly date: string;
+        readonly file: string;
+        readonly action: string;
+      };
+      readonly fileOnRequest: string;
+      readonly fileHeld: string;
+      readonly notFor: (values: { reason: string | number }) => string;
+      readonly onlyFor: (values: { name: string | number }) => string;
+      readonly anyGame: string;
+      readonly loaderDatapack: string;
+      readonly count: (values: { count: number }) => string;
+      readonly countFit: (values: { count: number; fit: number }) => string;
+      readonly countFitMore: (values: { count: number; fit: string | number }) => string;
+      readonly listLabel: string;
+      readonly loadingMore: string;
+      readonly loadMore: string;
+      readonly capped: (values: { count: string | number }) => string;
+      readonly loadFailed: string;
+      readonly moreFailed: string;
+      readonly noneFit: (values: { name: string | number }) => string;
+      readonly whatsNewIn: (values: { number: string | number }) => string;
     };
     readonly add: {
       readonly title: (values: { title: string | number; name: string | number }) => string;

@@ -31,13 +31,13 @@ function draw(node: DocNode, key: number, onLink: Props['onLink']): ReactNode {
       return shows(node) ? <p key={key}>{inner}</p> : null;
     case 'block':
       return <div key={key}>{inner}</div>;
-    // The page's own title is above, so a description's levels start lower.
+    // The project's name and its panels' titles are above, so a description's levels
+    // start lower.
     case 'h1':
-      return shows(node) ? <h3 key={key}>{inner}</h3> : null;
-    case 'h2':
       return shows(node) ? <h4 key={key}>{inner}</h4> : null;
-    case 'h3':
+    case 'h2':
       return shows(node) ? <h5 key={key}>{inner}</h5> : null;
+    case 'h3':
     case 'h4':
     case 'h5':
     case 'h6':

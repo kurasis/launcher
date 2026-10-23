@@ -1,628 +1,442 @@
-import { useEffect, useMemo, useState } from 'react';
-import { Button } from '../../components/Button';
-import { Field } from '../../components/Field';
+import { useEffect, useId, useRef, useState } from 'react';
+import { Icon } from '../../components/Icon';
 import { Notice } from '../../components/Notice';
-import { StatusBadge } from '../../components/StatusBadge';
-import forms from '../../components/forms.module.css';
 import type {
+  ContentItem,
+  ContentView,
   InstanceSummary,
+  ModsHit,
+  ModsKind,
   ModsProject,
-  ModsReportReason,
   ModsVersion,
-  DocNode,
 } from '../../lib/contracts';
 import { describeIpcError, ipc } from '../../lib/ipc';
-import { strings } from '../../lib/strings';
-import {
-  cannotAdd,
-  compact,
-  dateOf,
-  installable,
-  installKind,
-  loaderOf,
-  ourPicture,
-  packArchive,
-} from './helpers';
-import { RichText } from './RichText';
-import styles from './Mods.module.css';
+import { numberLocale, strings } from '../../lib/strings';
+import { cannotAdd, installKind, isolate, loaderOf } from './helpers';
+import { InstallationSelect } from './InstallationSelect';
+import { type Offer, ProjectCard } from './ProjectCard';
+import { ProjectDescription } from './ProjectDescription';
+import { ProjectDependencies, ProjectSimilar } from './ProjectRelated';
+import { ProjectVersions, type VersionsSummary } from './ProjectVersions';
+import { bestPack, bestVersion, dependenciesOf, gameRange, pageOf, versionsFor } from './versions';
+import catalog from './Catalog.module.css';
+import styles from './Project.module.css';
 
-const SHOWN = 30;
-const CHANNELS = ['release', 'beta', 'alpha'] as const;
+/** Similar projects listed at most. */
+const SIMILAR = 5;
 
-/** Game versions newest first, releases before snapshots. */
-function byGame(a: string, b: string): number {
-  const release = /^\d+(\.\d+)+$/;
-  const ar = release.test(a);
-  if (ar !== release.test(b)) return ar ? -1 : 1;
-  return b.localeCompare(a, 'en', { numeric: true });
-}
-
-/** What the versions run on, to filter by. */
-function choices(versions: ModsVersion[]): { games: string[]; loaders: string[] } {
-  const games = new Set<string>();
-  const loaders = new Set<string>();
-  for (const v of versions) {
-    for (const g of v.games) games.add(g);
-    for (const l of v.loaders) loaders.add(l);
-  }
-  return { games: [...games].sort(byGame), loaders: [...loaders].sort() };
-}
-
-const REASONS: ModsReportReason[] = ['malware', 'stolen', 'inappropriate', 'broken', 'other'];
-
-/** A player's report of another player's pack, for the catalog's owner (D-066 stage 6). */
-function ReportForm({ projectId, onClose }: { projectId: string; onClose: () => void }) {
-  const t = strings.mods.project;
-  const [reason, setReason] = useState<ModsReportReason>('broken');
-  const [text, setText] = useState('');
-  const [working, setWorking] = useState(false);
-  const [sent, setSent] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  if (sent) return <Notice tone="info">{t.reportSent}</Notice>;
-  return (
-    <form
-      className={forms.form}
-      aria-label={t.report}
-      onSubmit={(event) => {
-        event.preventDefault();
-        setWorking(true);
-        setError(null);
-        ipc
-          .modsReport(projectId, reason, text)
-          .then(() => {
-            setSent(true);
-          })
-          .catch((e: unknown) => {
-            setError(describeIpcError(e));
-          })
-          .finally(() => {
-            setWorking(false);
-          });
-      }}
-    >
-      <Field label={t.reportReason}>
-        {(props) => (
-          <select
-            {...props}
-            className={forms.select}
-            value={reason}
-            disabled={working}
-            onChange={(e) => {
-              const picked = REASONS.find((r) => r === e.target.value);
-              if (picked !== undefined) setReason(picked);
-            }}
-          >
-            {REASONS.map((r) => (
-              <option key={r} value={r}>
-                {t.reportReasons[r]}
-              </option>
-            ))}
-          </select>
-        )}
-      </Field>
-      <Field label={t.reportText}>
-        {(props) => (
-          <textarea
-            {...props}
-            className={forms.input}
-            value={text}
-            maxLength={500}
-            rows={3}
-            disabled={working}
-            onChange={(e) => {
-              setText(e.target.value);
-            }}
-          />
-        )}
-      </Field>
-      {error !== null && <Notice tone="danger">{error}</Notice>}
-      <div className={forms.actions}>
-        <Button type="submit" variant="primary" disabled={working}>
-          {t.reportSend}
-        </Button>
-        <Button disabled={working} onClick={onClose}>
-          {t.reportCancel}
-        </Button>
-      </div>
-    </form>
-  );
+/** A project a quick add takes: the newest version that fits, or its page. */
+export interface QuickTarget {
+  id: string;
+  kind: ModsKind;
+  title: string;
+  slug: string;
 }
 
 interface Props {
   /** Our ID or the slug. */
   projectRef: string;
   instance: InstanceSummary | null;
+  instances: readonly InstanceSummary[];
+  onInstance: (instanceId: string | null) => void;
+  /** Opened from the data packs: a mod's data pack versions come first. */
+  datapacks?: boolean;
+  /** Changes after an install: what the installation holds is read again. */
+  revision: number;
   onBack: () => void;
   onLink: (url: string) => void;
-  onAdd: (project: ModsProject, version: ModsVersion) => void;
+  onOpen: (projectId: string) => void;
+  onAdd: (project: ModsProject, version: ModsVersion, replaces: string | null) => void;
   onInstallPack: (project: ModsProject, version: ModsVersion) => void;
-  /** Opened from the data packs: a mod's data pack versions show first. */
-  datapacks?: boolean;
+  onAddToCatalog: (text: string) => void;
+  onQuickAdd: (target: QuickTarget) => void;
 }
 
-/** One version: what it runs on, whether the catalog keeps it, and actions. */
-function VersionRow({
-  version,
-  project,
-  instance,
-  onAdd,
-  onInstallPack,
-  onLink,
-}: {
-  version: ModsVersion;
-  project: ModsProject;
-  instance: InstanceSummary | null;
-  onAdd: () => void;
-  onInstallPack: () => void;
-  onLink: (url: string) => void;
-}) {
-  const t = strings.mods.project;
-  const [asked, setAsked] = useState(version.saved === 'all');
-  const [error, setError] = useState<string | null>(null);
-  const [changelog, setChangelog] = useState<DocNode[] | null>(null);
-  const [open, setOpen] = useState(false);
-  const file = version.files.find((f) => f.primary) ?? version.files[0];
-  // The catalog's malware check holds a file back until the owner decides.
-  const held = version.files.some((f) => f.held);
-  // A Modrinth or CurseForge pack.
-  const pack = project.kind === 'modpack' && version.files.some((f) => packArchive(f.name));
-  // Why the version cannot go in, shown on hover; a disabled button gets no
-  // pointer events everywhere, so the wrapper carries it too.
-  const blocked = cannotAdd(installKind(project.kind, version), version, instance);
-  const packBlocked = held ? t.cannotAdd.held : null;
-  return (
-    <li className={styles.version}>
-      <div className={styles.versionHead}>
-        <span className={styles.versionName}>
-          <bdi>{version.name || version.number}</bdi>
-          {version.channel !== 'release' && (
-            <StatusBadge tone="warning" label={t.channels[version.channel]} />
-          )}
-          {version.saved === 'all' && !held && <StatusBadge tone="success" label={t.kept} />}
-        </span>
-        <span className={styles.muted}>
-          <bdi dir="ltr">{version.games.slice(0, 6).join(', ')}</bdi>
-          {version.games.length > 6 && ` ${t.andMore({ count: version.games.length - 6 })}`}
-          {version.loaders.length > 0 && ` · ${version.loaders.join(', ')}`}
-          {` · ${dateOf(version.published)}`}
-          {file !== undefined && ` · ${file.name}`}
-        </span>
-      </div>
-      {held ? (
-        <Notice tone="danger">{t.held}</Notice>
-      ) : (
-        version.saved !== 'all' && <p className={styles.note}>{asked ? t.fetchAsked : t.notKept}</p>
-      )}
-      {version.goneAt !== null && <p className={styles.note}>{t.versionGone}</p>}
-      {error !== null && <Notice tone="danger">{error}</Notice>}
-      <div className={forms.actions}>
-        {installable(project.kind) && (
-          <span title={blocked ?? undefined}>
-            <Button
-              variant="primary"
-              disabled={blocked !== null}
-              title={blocked ?? undefined}
-              onClick={onAdd}
-            >
-              {t.add}
-            </Button>
-          </span>
-        )}
-        {pack && (
-          <span title={packBlocked ?? undefined}>
-            <Button
-              variant="primary"
-              disabled={packBlocked !== null}
-              title={packBlocked ?? undefined}
-              onClick={onInstallPack}
-            >
-              {strings.mods.pack.install}
-            </Button>
-          </span>
-        )}
-        {!asked && (
-          <Button
-            onClick={() => {
-              setError(null);
-              void ipc
-                .modsFetchVersion(version.id)
-                .then(() => {
-                  setAsked(true);
-                })
-                .catch((e: unknown) => {
-                  setError(describeIpcError(e));
-                });
-            }}
-          >
-            {t.keep}
-          </Button>
-        )}
-        <Button
-          aria-expanded={open}
-          onClick={() => {
-            setOpen(!open);
-            if (changelog === null) {
-              void ipc
-                .modsVersion(version.id)
-                .then((full) => {
-                  setChangelog(full.changelog);
-                })
-                .catch((e: unknown) => {
-                  setError(describeIpcError(e));
-                });
-            }
-          }}
-        >
-          {t.changes}
-        </Button>
-      </div>
-      {open &&
-        (changelog === null ? (
-          <p role="status">{strings.mods.loading}</p>
-        ) : changelog.length === 0 ? (
-          <p className={styles.muted}>{t.noChanges}</p>
-        ) : (
-          <RichText nodes={changelog} onLink={onLink} />
-        ))}
-    </li>
-  );
+/** An answer kept with the question it answers, so a stale one is never shown. */
+type Answer<T> = { for: string; value: T; error?: undefined } | { for: string; error: string };
+
+interface Summary extends VersionsSummary {
+  /** The newest version of all. */
+  newest: ModsVersion | null;
 }
 
-/** A project's page: description, gallery and versions (D-066). */
+/** Asks once per key; the answer comes back tagged with it. */
+function useAnswer<T>(key: string | null, ask: () => Promise<T>): Answer<T> | null {
+  const [answer, setAnswer] = useState<Answer<T> | null>(null);
+  const askRef = useRef(ask);
+  useEffect(() => {
+    askRef.current = ask;
+  });
+  useEffect(() => {
+    if (key === null) return;
+    let live = true;
+    askRef
+      .current()
+      .then((value) => {
+        if (live) setAnswer({ for: key, value });
+      })
+      .catch((e: unknown) => {
+        if (live) setAnswer({ for: key, error: describeIpcError(e) });
+      });
+    return () => {
+      live = false;
+    };
+  }, [key]);
+  return key !== null && answer?.for === key ? answer : null;
+}
+
+/**
+ * A project's page (D-066), concept A variant 2 "sticky card" (D-072): the card with
+ * the main action, what it depends on and similar projects stay at the inline start
+ * while the description and the versions scroll; the versions scroll inside their
+ * panel.
+ */
 export function ProjectPage({
   projectRef,
   instance,
+  instances,
+  onInstance,
+  datapacks = false,
+  revision,
   onBack,
   onLink,
+  onOpen,
   onAdd,
   onInstallPack,
-  datapacks = false,
+  onAddToCatalog,
+  onQuickAdd,
 }: Props) {
   const t = strings.mods.project;
-  const [project, setProject] = useState<ModsProject | null>(null);
-  // Every version of the project, newest first.
-  const [versions, setVersions] = useState<ModsVersion[] | null>(null);
-  const [error, setError] = useState<string | null>(null);
-  // Filters; empty means any. The chosen installation's game and loader at
-  // first, once the versions show which there are.
-  const [filters, setFilters] = useState<{
-    game: string;
-    loader: string;
-    channel: '' | (typeof CHANNELS)[number];
-    oldest: boolean;
-  } | null>(null);
-  const [shown, setShown] = useState(SHOWN);
-  const [reporting, setReporting] = useState(false);
+  const selectId = useId();
+  const select = useRef<HTMLSelectElement>(null);
+  const heading = useRef<HTMLHeadingElement>(null);
+  const focused = useRef(false);
+  const [attempt, setAttempt] = useState(0);
+  const [versionsAttempt, setVersionsAttempt] = useState(0);
 
-  // The parent keys this page by project, so it starts empty.
-  useEffect(() => {
-    let live = true;
-    void ipc
-      .modsProject(projectRef)
-      .then((found) => {
-        if (live) setProject(found);
-      })
-      .catch((e: unknown) => {
-        if (live) setError(describeIpcError(e));
-      });
-    return () => {
-      live = false;
-    };
-  }, [projectRef]);
-
-  const projectId = project?.id ?? null;
-  useEffect(() => {
-    if (projectId === null) return;
-    let live = true;
-    void ipc
-      .modsVersions(projectId, null, null)
-      .then((found) => {
-        if (live) setVersions(found);
-      })
-      .catch((e: unknown) => {
-        if (live) setError(describeIpcError(e));
-      });
-    return () => {
-      live = false;
-    };
-  }, [projectId]);
-
-  const options = useMemo(() => choices(versions ?? []), [versions]);
-  // A modpack makes an installation of its own, so nothing is chosen for one.
-  const fitting = instance !== null && project !== null && project.kind !== 'modpack';
-  const initial = {
-    game: fitting && options.games.includes(instance.versionId) ? instance.versionId : '',
-    loader: (() => {
-      if (datapacks && project?.kind === 'mod' && options.loaders.includes('datapack')) {
-        return 'datapack';
+  const loaded = useAnswer(`${projectRef}:${String(attempt)}`, () =>
+    ipc.modsProject(projectRef).then((found) => {
+      const value = found as Partial<ModsProject> | null;
+      if (value === null || typeof value !== 'object' || typeof value.id !== 'string') {
+        throw new Error('project');
       }
-      const loader = fitting ? loaderOf(project.kind, instance) : '';
-      return options.loaders.includes(loader) ? loader : '';
-    })(),
-    channel: '' as const,
-    oldest: false,
-  };
-  const chosen = filters ?? initial;
-  const change = (next: Partial<typeof chosen>) => {
-    setFilters({ ...chosen, ...next });
-    setShown(SHOWN);
-  };
-  const matching = useMemo(() => {
-    const list = (versions ?? []).filter(
-      (v) =>
-        (chosen.game === '' || v.games.includes(chosen.game)) &&
-        (chosen.loader === '' || v.loaders.includes(chosen.loader)) &&
-        (chosen.channel === '' || v.channel === chosen.channel),
-    );
-    return chosen.oldest ? list.reverse() : list;
-  }, [versions, chosen.game, chosen.loader, chosen.channel, chosen.oldest]);
-  const filtered = chosen.game !== '' || chosen.loader !== '' || chosen.channel !== '';
-  const loaderNames = strings.mods.loaderNames as Record<string, string | undefined>;
+      return found;
+    }),
+  );
+  const project = loaded?.error === undefined ? (loaded?.value ?? null) : null;
+  const projectId = project?.id ?? null;
+  const kind = project?.kind ?? null;
+
+  const summary = useAnswer<Summary>(
+    projectId === null ? null : `${projectId}:${String(versionsAttempt)}`,
+    () =>
+      ipc
+        .modsVersionsPage(projectId ?? '', {
+          game: null,
+          loader: null,
+          channel: null,
+          offset: 0,
+          limit: 1,
+        })
+        .then((answer) => {
+          const found = pageOf(answer);
+          return {
+            total: found.total,
+            games: found.games,
+            loaders: found.loaders,
+            newest: found.versions[0] ?? null,
+          };
+        }),
+  );
+  // The versions made for the installation's game version, which Add picks from; for a
+  // modpack, which makes an installation of its own, its newest versions.
+  const game = kind === null ? null : kind === 'modpack' ? '' : (instance?.versionId ?? null);
+  const candidates = useAnswer(
+    projectId === null || game === null ? null : `${projectId}:${game}:${String(versionsAttempt)}`,
+    () => versionsFor(projectId ?? '', game === '' ? null : game, game === '' ? 1 : undefined),
+  );
+  const instanceId = instance?.id ?? null;
+  const content = useAnswer<ContentItem[]>(
+    instanceId === null ? null : `${instanceId}:${String(revision)}`,
+    () =>
+      ipc.modsContent(instanceId ?? '').then((view) => {
+        const items = (view as Partial<ContentView> | null)?.items;
+        return Array.isArray(items) ? items : [];
+      }),
+  );
+  const similarLoader = kind === null ? '' : loaderOf(kind, instance);
+  const similar = useAnswer<ModsHit[]>(
+    projectId === null
+      ? null
+      : JSON.stringify([projectId, instance?.versionId ?? null, similarLoader]),
+    () =>
+      ipc
+        .modsSimilar(projectId ?? '', instance?.versionId ?? null, similarLoader || null)
+        .then((hits) =>
+          Array.isArray(hits) ? hits.filter((hit) => hit.id !== projectId).slice(0, SIMILAR) : [],
+        ),
+  );
+  const rows = candidates?.error === undefined ? (candidates?.value ?? null) : null;
+  const items = content?.error === undefined ? (content?.value ?? null) : null;
+  // This project in the installation, outside the worlds.
+  const mine =
+    projectId === null
+      ? null
+      : (items?.find((item) => item.projectId === projectId && item.world === null) ?? null);
+  // The version it holds when Add's list has not got it (one made for another game
+  // version): its date decides whether Add's is newer, as the core decides updates.
+  const unlisted =
+    mine !== null &&
+    mine.versionId !== null &&
+    rows !== null &&
+    !rows.rows.some((version) => version.id === mine.versionId)
+      ? mine.versionId
+      : null;
+  const held = useAnswer<ModsVersion>(unlisted, () =>
+    ipc.modsVersion(unlisted ?? '').then((found) => {
+      const value = found as Partial<ModsVersion> | null;
+      if (
+        value === null ||
+        typeof value !== 'object' ||
+        value.id !== unlisted ||
+        typeof value.published !== 'number' ||
+        !Array.isArray(value.dependencies)
+      ) {
+        throw new Error('version');
+      }
+      return found;
+    }),
+  );
+
+  // The tile pressed is gone: the focus starts on the project's name.
+  useEffect(() => {
+    if (focused.current || heading.current === null) return;
+    focused.current = true;
+    heading.current.focus({ preventScroll: true });
+  });
 
   const back = (
-    <Button onClick={onBack} className={styles.back}>
-      {t.back}
-    </Button>
+    <header className={styles.head}>
+      <button type="button" className={styles.back} onClick={onBack}>
+        <Icon name="back" size={18} className={catalog.mirror} />
+        {t.backToResults}
+      </button>
+      <span className={catalog.spacer} />
+      <InstallationSelect
+        id={selectId}
+        instances={instances}
+        value={instance?.id ?? null}
+        onChange={onInstance}
+        selectRef={select}
+      />
+    </header>
   );
-  if (project === null) {
+
+  if (project === null || kind === null) {
     return (
-      <div className={styles.section}>
+      <div className={styles.page}>
         {back}
-        {error !== null ? (
-          <Notice tone="danger">{error}</Notice>
+        {loaded?.error !== undefined ? (
+          <div className={catalog.empty}>
+            <p className={catalog.emptyTitle}>{loaded.error}</p>
+            <button
+              type="button"
+              className={[catalog.smallButton, catalog.soft].join(' ')}
+              onClick={() => {
+                setAttempt((n) => n + 1);
+              }}
+            >
+              {strings.mods.catalog.tryAgain}
+            </button>
+          </div>
         ) : (
-          <p role="status">{strings.mods.loading}</p>
+          <div className={styles.grid} aria-busy="true">
+            <p role="status" className={catalog.visuallyHidden}>
+              {strings.mods.loading}
+            </p>
+            <div className={[catalog.skeleton, styles.skeletonCard].join(' ')} aria-hidden="true">
+              <span className={catalog.skeletonIcon} />
+              <span className={catalog.skeletonLine} />
+              <span className={[catalog.skeletonLine, catalog.skeletonShort].join(' ')} />
+            </div>
+            <div className={[catalog.skeleton, styles.skeletonCard].join(' ')} aria-hidden="true">
+              <span className={catalog.skeletonLine} />
+              <span className={catalog.skeletonLine} />
+              <span className={[catalog.skeletonLine, catalog.skeletonShort].join(' ')} />
+            </div>
+          </div>
         )}
       </div>
     );
   }
-  const icon = ourPicture(project.icon);
-  // Players' own packs are reported to the catalog's owner; the rest go to their source.
-  const own = project.sources.some((s) => s.source === 'own');
+
+  const versionsError = summary?.error ?? candidates?.error ?? null;
+  const facts = summary?.error === undefined ? (summary?.value ?? null) : null;
+  const installedIds =
+    items === null
+      ? null
+      : new Set(items.flatMap((item) => (item.projectId === null ? [] : [item.projectId])));
+
+  // The main action, and the version it is about: the one it takes, or the one installed.
+  const [offer, about] = ((): [Offer, ModsVersion | null] => {
+    if (kind === 'modpack') {
+      if (rows === null) {
+        return versionsError === null
+          ? [{ state: 'loading' }, null]
+          : [{ state: 'pack', version: undefined, reason: t.loadFailed }, null];
+      }
+      const pack = bestPack(rows.rows);
+      return [{ state: 'pack', version: pack }, pack ?? null];
+    }
+    if (instance === null) return [{ state: 'choose' }, null];
+    if (rows === null) {
+      return versionsError === null
+        ? [{ state: 'loading' }, null]
+        : [{ state: 'none', reason: t.loadFailed }, null];
+    }
+    const best = bestVersion(kind, rows.rows, instance, datapacks);
+    if (best === undefined) {
+      const near = rows.rows[0] ?? facts?.newest ?? undefined;
+      const reason = near === undefined ? null : cannotAdd(installKind(kind, near), near, instance);
+      return [
+        { state: 'none', reason: reason ?? t.noneFor({ game: isolate(instance.versionId) }) },
+        null,
+      ];
+    }
+    if (mine !== null && installKind(kind, best) !== 'datapack') {
+      if (mine.versionId === best.id) return [{ state: 'installed', number: best.number }, best];
+      const had =
+        rows.rows.find((version) => version.id === mine.versionId) ??
+        (held?.error === undefined ? held?.value : undefined);
+      if (had === undefined && unlisted !== null) {
+        // Still asking; or it could not be read, and what is there stays, as the core
+        // leaves it.
+        return held === null
+          ? [{ state: 'loading' }, null]
+          : [{ state: 'installed', number: mine.versionNumber ?? mine.name }, null];
+      }
+      if (had !== undefined && had.published >= best.published) {
+        return [{ state: 'installed', number: had.number }, had];
+      }
+      return [{ state: 'update', version: best, replaces: mine.path }, best];
+    }
+    return [{ state: 'add', version: best }, best];
+  })();
+  const offered =
+    offer.state === 'add' || offer.state === 'update' || offer.state === 'pack'
+      ? (offer.version ?? null)
+      : null;
+  const offeredFile = offered?.files.find((file) => file.primary) ?? offered?.files[0];
+
+  const range = facts === null ? null : gameRange(facts.games);
+  const count = facts?.total.toLocaleString(numberLocale()) ?? '';
+  const versionsFact =
+    facts === null || facts.total === 0
+      ? null
+      : range === null
+        ? count
+        : range.from === range.to
+          ? t.versionsFor({ count, game: isolate(range.from) })
+          : t.versionsRange({ count, from: isolate(range.from), to: isolate(range.to) });
+
+  // What the version the card is about depends on; without one, the newest made for the
+  // game.
+  const depsOf = about ?? (kind === 'modpack' ? null : (rows?.rows[0] ?? facts?.newest ?? null));
+  const dependencies = depsOf === null ? [] : dependenciesOf(depsOf);
+  const similarHits = similar?.error === undefined ? (similar?.value ?? []) : [];
+  const title = project.title || project.slug;
+
   return (
-    <article className={styles.section} aria-label={project.title}>
+    <div className={styles.page}>
       {back}
-      <header className={styles.projectHead}>
-        {icon !== null ? (
-          <img className={styles.bigIcon} src={icon} alt="" />
-        ) : (
-          <span className={styles.bigIcon} aria-hidden="true" />
-        )}
-        <div className={styles.cardBody}>
-          <h2 className={styles.projectTitle}>
-            {project.title || project.slug}
-            {own && <StatusBadge tone="neutral" label={t.playerPack} />}
-            {project.status === 'importing' && (
-              <StatusBadge tone="warning" label={strings.mods.importing} />
-            )}
-          </h2>
-          {project.authors.length > 0 && (
-            <p className={styles.muted}>
-              {strings.mods.by({ author: project.authors.map((a) => a.name).join(', ') })}
-            </p>
-          )}
-          <p>{project.summary}</p>
-          <p className={styles.meta}>
-            {strings.mods.downloads({ count: compact(project.downloads) })}
-            {project.updated > 0 &&
-              ` · ${strings.mods.updatedOn({ date: dateOf(project.updated) })}`}
-            {project.license !== '' && ` · ${t.license({ license: project.license })}`}
-          </p>
-          {project.categories.length > 0 && (
-            <p className={styles.tags}>
-              {project.categories.map((c) => (
-                <span key={c} className={styles.source}>
-                  {c}
-                </span>
-              ))}
-            </p>
-          )}
-          <div className={forms.actions}>
-            {project.sources.map(
-              (s) =>
-                s.url !== null && (
-                  <Button
-                    key={s.source}
-                    onClick={() => {
-                      if (s.url !== null) onLink(s.url);
-                    }}
-                  >
-                    {s.source === 'external'
-                      ? t.openSite
-                      : t.openOn({ site: strings.mods.sources[s.source] })}
-                  </Button>
-                ),
-            )}
-            {own && !reporting && (
-              <Button
-                onClick={() => {
-                  setReporting(true);
-                }}
-              >
-                {t.report}
-              </Button>
-            )}
-          </div>
-          {own && reporting && (
-            <ReportForm
-              projectId={project.id}
-              onClose={() => {
-                setReporting(false);
+      <article className={styles.grid} aria-label={title}>
+        <div className={styles.side}>
+          <ProjectCard
+            project={project}
+            instance={instance}
+            offer={offer}
+            versions={versionsFact}
+            checked={offeredFile?.checked === true}
+            headingRef={heading}
+            onAdd={(version, replaces) => {
+              onAdd(project, version, replaces);
+            }}
+            onInstallPack={(version) => {
+              onInstallPack(project, version);
+            }}
+            onLink={onLink}
+            onChooseInstallation={() => {
+              select.current?.focus();
+            }}
+          />
+          {depsOf !== null && dependencies.length > 0 && (
+            <ProjectDependencies
+              rows={dependencies}
+              forVersion={depsOf === offered ? null : depsOf.number}
+              installed={installedIds}
+              canAdd={instance !== null}
+              comes={depsOf === offered && (offer.state === 'add' || offer.state === 'update')}
+              onOpen={onOpen}
+              onQuickAdd={(target) => {
+                onQuickAdd({ ...target, kind: 'mod' });
               }}
+              onAddToCatalog={onAddToCatalog}
+            />
+          )}
+          {similarHits.length > 0 && <ProjectSimilar hits={similarHits} onOpen={onOpen} />}
+        </div>
+        <div className={styles.main}>
+          {project.status === 'importing' && <Notice tone="info">{t.importingHint}</Notice>}
+          {project.goneAt !== null && <Notice tone="info">{t.gone}</Notice>}
+          {kind === 'modpack' && <Notice tone="info">{strings.mods.modpacksHint}</Notice>}
+          <ProjectDescription project={project} onLink={onLink} />
+          {versionsError !== null ? (
+            <section className={styles.panel} aria-label={t.versions}>
+              <h3 className={styles.panelTitle}>{t.versions}</h3>
+              <div className={catalog.empty}>
+                <p className={catalog.emptyTitle}>{t.loadFailed}</p>
+                <p className={styles.hint}>{versionsError}</p>
+                <button
+                  type="button"
+                  className={[catalog.smallButton, catalog.soft].join(' ')}
+                  onClick={() => {
+                    setVersionsAttempt((n) => n + 1);
+                  }}
+                >
+                  {strings.mods.catalog.tryAgain}
+                </button>
+              </div>
+            </section>
+          ) : facts === null ? (
+            <section className={styles.panel} aria-label={t.versions} aria-busy="true">
+              <h3 className={styles.panelTitle}>{t.versions}</h3>
+              <p role="status" className={styles.hint}>
+                {strings.mods.loading}
+              </p>
+            </section>
+          ) : (
+            <ProjectVersions
+              key={versionsAttempt}
+              project={project}
+              instance={instance}
+              summary={facts}
+              fit={kind === 'modpack' || instance === null ? null : (rows ?? 'loading')}
+              datapacks={datapacks}
+              installedVersion={mine?.versionId ?? null}
+              onAdd={(version) => {
+                // Another version of it in the installation is replaced.
+                const replaces =
+                  mine !== null && installKind(kind, version) !== 'datapack' ? mine.path : null;
+                onAdd(project, version, replaces);
+              }}
+              onInstallPack={(version) => {
+                onInstallPack(project, version);
+              }}
+              onLink={onLink}
             />
           )}
         </div>
-      </header>
-
-      {project.status === 'importing' && <Notice tone="info">{t.importingHint}</Notice>}
-      {project.goneAt !== null && <Notice tone="info">{t.gone}</Notice>}
-      {project.kind === 'modpack' && <Notice tone="info">{strings.mods.modpacksHint}</Notice>}
-      {error !== null && <Notice tone="danger">{error}</Notice>}
-
-      {project.body.length > 0 && (
-        <section aria-label={t.description}>
-          <h3 className={styles.subTitle}>{t.description}</h3>
-          <RichText nodes={project.body} onLink={onLink} />
-        </section>
-      )}
-
-      {project.gallery.length > 0 && (
-        <section aria-label={t.gallery}>
-          <h3 className={styles.subTitle}>{t.gallery}</h3>
-          <ul className={styles.gallery}>
-            {project.gallery.map((picture) => {
-              const src = ourPicture(picture.thumb) ?? ourPicture(picture.url);
-              return (
-                src !== null && (
-                  <li key={picture.url}>
-                    <figure>
-                      <img src={src} alt={picture.title} loading="lazy" />
-                      {picture.title !== '' && <figcaption>{picture.title}</figcaption>}
-                    </figure>
-                  </li>
-                )
-              );
-            })}
-          </ul>
-        </section>
-      )}
-
-      <section aria-label={t.versions}>
-        <h3 className={styles.subTitle}>{t.versions}</h3>
-        {instance === null && installable(project.kind) && (
-          <p className={styles.muted}>{t.chooseInstallation}</p>
-        )}
-        {versions !== null && versions.length > 1 && (
-          <div className={styles.controls}>
-            {options.games.length > 1 && (
-              <Field label={strings.mods.gameVersion}>
-                {(props) => (
-                  <select
-                    {...props}
-                    className={forms.select}
-                    value={chosen.game}
-                    onChange={(event) => {
-                      change({ game: event.target.value });
-                    }}
-                  >
-                    <option value="">{strings.mods.anyVersion}</option>
-                    {options.games.map((game) => (
-                      <option key={game} value={game}>
-                        {game}
-                      </option>
-                    ))}
-                  </select>
-                )}
-              </Field>
-            )}
-            {options.loaders.length > 1 && (
-              <Field label={strings.mods.loader}>
-                {(props) => (
-                  <select
-                    {...props}
-                    className={forms.select}
-                    value={chosen.loader}
-                    onChange={(event) => {
-                      change({ loader: event.target.value });
-                    }}
-                  >
-                    <option value="">{strings.mods.anyLoader}</option>
-                    {options.loaders.map((loader) => (
-                      <option key={loader} value={loader}>
-                        {loaderNames[loader] ?? loader}
-                      </option>
-                    ))}
-                  </select>
-                )}
-              </Field>
-            )}
-            <Field label={t.channel}>
-              {(props) => (
-                <select
-                  {...props}
-                  className={forms.select}
-                  value={chosen.channel}
-                  onChange={(event) => {
-                    change({ channel: event.target.value as typeof chosen.channel });
-                  }}
-                >
-                  <option value="">{t.anyChannel}</option>
-                  {CHANNELS.map((channel) => (
-                    <option key={channel} value={channel}>
-                      {t.channels[channel]}
-                    </option>
-                  ))}
-                </select>
-              )}
-            </Field>
-            <Field label={t.order}>
-              {(props) => (
-                <select
-                  {...props}
-                  className={forms.select}
-                  value={chosen.oldest ? 'oldest' : 'newest'}
-                  onChange={(event) => {
-                    change({ oldest: event.target.value === 'oldest' });
-                  }}
-                >
-                  <option value="newest">{t.newest}</option>
-                  <option value="oldest">{t.oldest}</option>
-                </select>
-              )}
-            </Field>
-          </div>
-        )}
-        {versions === null ? (
-          <p role="status">{strings.mods.loading}</p>
-        ) : versions.length === 0 ? (
-          <p className={styles.muted}>{t.noVersions}</p>
-        ) : matching.length === 0 ? (
-          <p className={styles.muted}>
-            {t.noneMatch}{' '}
-            <Button
-              onClick={() => {
-                change({ game: '', loader: '', channel: '' });
-              }}
-            >
-              {t.showAll}
-            </Button>
-          </p>
-        ) : (
-          <>
-            {filtered && (
-              <p className={styles.muted} role="status">
-                {t.matching({ count: matching.length, total: versions.length })}
-              </p>
-            )}
-            <ul className={styles.versions}>
-              {matching.slice(0, shown).map((version) => (
-                <VersionRow
-                  key={version.id}
-                  version={version}
-                  project={project}
-                  instance={instance}
-                  onLink={onLink}
-                  onAdd={() => {
-                    onAdd(project, version);
-                  }}
-                  onInstallPack={() => {
-                    onInstallPack(project, version);
-                  }}
-                />
-              ))}
-            </ul>
-          </>
-        )}
-        {matching.length > shown && (
-          <Button
-            onClick={() => {
-              setShown(shown + SHOWN);
-            }}
-          >
-            {strings.mods.more}
-          </Button>
-        )}
-      </section>
-    </article>
+      </article>
+    </div>
   );
 }

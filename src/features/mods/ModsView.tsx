@@ -1,20 +1,20 @@
 import { type KeyboardEvent, useEffect, useId, useLayoutEffect, useRef, useState } from 'react';
 import { Icon, type IconName } from '../../components/Icon';
 import { Notice } from '../../components/Notice';
-import forms from '../../components/forms.module.css';
-import type { AppSnapshot, ModsHit, ModsKind, ModsProject, ModsVersion } from '../../lib/contracts';
+import type { AppSnapshot, ModsKind, ModsProject, ModsVersion } from '../../lib/contracts';
 import { ipc } from '../../lib/ipc';
 import { numberLocale, strings } from '../../lib/strings';
-import { gameLabel } from '../instances/loaderLabel';
 import { AddDialog, type AddTarget } from './AddDialog';
 import { AddToCatalog, RequestsSection } from './AddToCatalog';
 import { ContentSection } from './ContentSection';
+import { InstallationSelect } from './InstallationSelect';
 import { LinkConfirm } from './LinkConfirm';
 import { PackDialog } from './PackDialog';
-import { ProjectPage } from './ProjectPage';
+import { ProjectPage, type QuickTarget } from './ProjectPage';
 import { SearchSection } from './SearchSection';
 import { WorldDialog } from './WorldDialog';
-import { cannotAdd, installKind } from './helpers';
+import { installKind } from './helpers';
+import { bestVersion } from './versions';
 import catalog from './Catalog.module.css';
 
 export type ModsSection = ModsKind | 'installed' | 'requests';
@@ -120,23 +120,21 @@ export function ModsView({
 
   /**
    * Adds the newest version made for the installation's game version and loader, or
-   * opens the project when none is.
+   * opens the project when none is. A dependency on a project's page is a mod.
    */
-  const quickAdd = async (hit: ModsHit) => {
+  const quickAdd = async (hit: QuickTarget, datapacks = section === 'datapack') => {
     if (instance === null) return;
     const asked = ++quick.current;
-    const wantPack = section === 'datapack';
     let chosen: ModsVersion | undefined;
     try {
       const versions = await ipc.modsVersions(hit.id, null, null);
-      const fitting = (Array.isArray(versions) ? versions : []).filter(
-        (version) =>
-          (installKind(hit.kind, version) === 'datapack') ===
-            (wantPack || hit.kind === 'datapack') &&
-          version.games.includes(instance.versionId) &&
-          cannotAdd(installKind(hit.kind, version), version, instance) === null,
+      chosen = bestVersion(
+        hit.kind,
+        Array.isArray(versions) ? versions : [],
+        instance,
+        datapacks,
+        true,
       );
-      chosen = fitting.find((version) => version.channel === 'release') ?? fitting[0];
     } catch {
       chosen = undefined;
     }
@@ -187,162 +185,166 @@ export function ModsView({
   const tabId = (item: ModsSection) => `${tabsId}-${item}`;
 
   return (
-    <section className={catalog.screen} aria-labelledby={headingId}>
+    <section
+      className={catalog.screen}
+      aria-labelledby={project === null ? headingId : undefined}
+      aria-label={project === null ? undefined : t.title}
+    >
       <div className={catalog.frame}>
-        <header className={catalog.pageHead}>
-          <h2 id={headingId} className={catalog.pageTitle}>
-            {t.title}
-          </h2>
-          <div className={catalog.installation}>
-            <label htmlFor={selectId}>{t.installation}</label>
-            <select
-              id={selectId}
-              className={forms.select}
-              value={instance?.id ?? ''}
-              onChange={(event) => {
-                onInstance(event.target.value === '' ? null : event.target.value);
-              }}
-            >
-              <option value="">{t.noInstallation}</option>
-              {snapshot.instances.map((i) => (
-                <option key={i.id} value={i.id}>
-                  {i.displayName} ({gameLabel(i)})
-                </option>
-              ))}
-            </select>
-          </div>
-          <div className={catalog.requests} role="group" aria-label={t.catalog.requestsGroup}>
-            <button
-              type="button"
-              className={catalog.smallButton}
-              aria-pressed={section === 'requests' && project === null}
-              onClick={() => {
-                choose('requests');
-              }}
-            >
-              <Icon name="inbox" size={18} />
-              {t.sections.requests}
-              {waiting > 0 && ' '}
-              {waiting > 0 && (
-                <span className={[catalog.chip, catalog.chipSuccess].join(' ')}>
-                  <span aria-hidden="true">
-                    {waiting > 99 ? '99+' : waiting.toLocaleString(numberLocale())}
-                  </span>
-                  <span className={catalog.visuallyHidden}>
-                    {t.catalog.requestsWaiting({ count: waiting })}
-                  </span>
-                </span>
-              )}
-            </button>
-            <button
-              type="button"
-              className={[catalog.smallButton, catalog.soft].join(' ')}
-              onClick={() => {
-                setCatalogText(draftText.current.trim());
-              }}
-            >
-              <Icon name="plus" size={18} />
-              {t.addToCatalog}
-            </button>
-          </div>
-        </header>
-        {instance === null && <p className={catalog.muted}>{t.noInstallationHint}</p>}
-
-        <div className={[catalog.body, searching && catalog.withSide].filter(Boolean).join(' ')}>
-          <div
-            ref={tabs}
-            role="tablist"
-            aria-label={t.sectionsLabel}
-            className={catalog.tabs}
-            onKeyDown={onTabKey}
-          >
-            {TABS.map((item, index) => (
-              <button
-                key={item.section}
-                id={tabId(item.section)}
-                type="button"
-                role="tab"
-                aria-selected={index === current}
-                tabIndex={index === (current < 0 ? 0 : current) ? 0 : -1}
-                className={catalog.tab}
-                onClick={() => {
-                  choose(item.section);
-                }}
-              >
-                <Icon name={item.icon} size={22} />
-                {t.sections[item.section]}
-              </button>
-            ))}
-          </div>
-
-          {project !== null ? (
-            <div className={catalog.panel}>
-              <ProjectPage
-                key={project}
-                projectRef={project}
-                instance={instance}
-                onBack={() => {
-                  setProject(null);
-                }}
-                onLink={setLink}
-                datapacks={section === 'datapack'}
-                onAdd={(found, version) => {
-                  if (instance === null) return;
-                  setAdding({
-                    instance,
-                    versionId: version.id,
-                    title: found.title,
-                    kind: installKind(found.kind, version),
-                    replaces: null,
-                    world: null,
-                  });
-                }}
-                onInstallPack={(found, version) => {
-                  setPacking({ project: found, version });
-                }}
+        {project !== null ? (
+          <ProjectPage
+            key={project}
+            projectRef={project}
+            instance={instance}
+            instances={snapshot.instances}
+            onInstance={onInstance}
+            datapacks={section === 'datapack'}
+            revision={revision}
+            onBack={() => {
+              setProject(null);
+            }}
+            onLink={setLink}
+            onOpen={open}
+            onAdd={(found, version, replaces) => {
+              if (instance === null) return;
+              setAdding({
+                instance,
+                versionId: version.id,
+                title: found.title || found.slug,
+                kind: installKind(found.kind, version),
+                replaces,
+                world: null,
+              });
+            }}
+            onInstallPack={(found, version) => {
+              setPacking({ project: found, version });
+            }}
+            onAddToCatalog={setCatalogText}
+            onQuickAdd={(target) => {
+              void quickAdd(target, false);
+            }}
+          />
+        ) : (
+          <>
+            <header className={catalog.pageHead}>
+              <h2 id={headingId} className={catalog.pageTitle}>
+                {t.title}
+              </h2>
+              <InstallationSelect
+                id={selectId}
+                instances={snapshot.instances}
+                value={instance?.id ?? null}
+                onChange={onInstance}
               />
-            </div>
-          ) : section === 'installed' ? (
-            <div role="tabpanel" aria-labelledby={tabId('installed')} className={catalog.panel}>
-              {instance === null ? (
-                <Notice tone="info">{t.content.choose}</Notice>
-              ) : (
-                <ContentSection
-                  key={instance.id}
-                  instance={instance}
-                  revision={revision}
-                  onOpen={open}
-                  onUpdate={(update, title, world) => {
-                    setAdding({
-                      instance,
-                      versionId: update.toVersionId,
-                      title,
-                      // Only a data pack's kind matters here: it goes into a world.
-                      kind: world === null ? 'mod' : 'datapack',
-                      replaces: update.path,
-                      world,
-                    });
+              <div className={catalog.requests} role="group" aria-label={t.catalog.requestsGroup}>
+                <button
+                  type="button"
+                  className={catalog.smallButton}
+                  aria-pressed={section === 'requests'}
+                  onClick={() => {
+                    choose('requests');
                   }}
+                >
+                  <Icon name="inbox" size={18} />
+                  {t.sections.requests}
+                  {waiting > 0 && ' '}
+                  {waiting > 0 && (
+                    <span className={[catalog.chip, catalog.chipSuccess].join(' ')}>
+                      <span aria-hidden="true">
+                        {waiting > 99 ? '99+' : waiting.toLocaleString(numberLocale())}
+                      </span>
+                      <span className={catalog.visuallyHidden}>
+                        {t.catalog.requestsWaiting({ count: waiting })}
+                      </span>
+                    </span>
+                  )}
+                </button>
+                <button
+                  type="button"
+                  className={[catalog.smallButton, catalog.soft].join(' ')}
+                  onClick={() => {
+                    setCatalogText(draftText.current.trim());
+                  }}
+                >
+                  <Icon name="plus" size={18} />
+                  {t.addToCatalog}
+                </button>
+              </div>
+            </header>
+            {instance === null && <p className={catalog.muted}>{t.noInstallationHint}</p>}
+
+            <div
+              className={[catalog.body, searching && catalog.withSide].filter(Boolean).join(' ')}
+            >
+              <div
+                ref={tabs}
+                role="tablist"
+                aria-label={t.sectionsLabel}
+                className={catalog.tabs}
+                onKeyDown={onTabKey}
+              >
+                {TABS.map((item, index) => (
+                  <button
+                    key={item.section}
+                    id={tabId(item.section)}
+                    type="button"
+                    role="tab"
+                    aria-selected={index === current}
+                    tabIndex={index === (current < 0 ? 0 : current) ? 0 : -1}
+                    className={catalog.tab}
+                    onClick={() => {
+                      choose(item.section);
+                    }}
+                  >
+                    <Icon name={item.icon} size={22} />
+                    {t.sections[item.section]}
+                  </button>
+                ))}
+              </div>
+
+              {section === 'installed' ? (
+                <div role="tabpanel" aria-labelledby={tabId('installed')} className={catalog.panel}>
+                  {instance === null ? (
+                    <Notice tone="info">{t.content.choose}</Notice>
+                  ) : (
+                    <ContentSection
+                      key={instance.id}
+                      instance={instance}
+                      revision={revision}
+                      onOpen={open}
+                      onUpdate={(update, title, world) => {
+                        setAdding({
+                          instance,
+                          versionId: update.toVersionId,
+                          title,
+                          // Only a data pack's kind matters here: it goes into a world.
+                          kind: world === null ? 'mod' : 'datapack',
+                          replaces: update.path,
+                          world,
+                        });
+                      }}
+                    />
+                  )}
+                </div>
+              ) : section === 'requests' ? (
+                <div role="region" aria-label={t.sections.requests} className={catalog.panel}>
+                  <RequestsSection onOpen={open} />
+                </div>
+              ) : (
+                <SearchSection
+                  key={`${section}:${instance?.id ?? ''}`}
+                  kind={section}
+                  instance={instance}
+                  onOpen={open}
+                  onAddToCatalog={setCatalogText}
+                  onQuickAdd={quickAdd}
+                  draftTextRef={draftText}
+                  tabId={tabId(section)}
                 />
               )}
             </div>
-          ) : section === 'requests' ? (
-            <div role="region" aria-label={t.sections.requests} className={catalog.panel}>
-              <RequestsSection onOpen={open} />
-            </div>
-          ) : (
-            <SearchSection
-              key={`${section}:${instance?.id ?? ''}`}
-              kind={section}
-              instance={instance}
-              onOpen={open}
-              onAddToCatalog={setCatalogText}
-              onQuickAdd={quickAdd}
-              draftTextRef={draftText}
-              tabId={tabId(section)}
-            />
-          )}
-        </div>
+          </>
+        )}
       </div>
 
       {adding?.kind === 'world' && (
