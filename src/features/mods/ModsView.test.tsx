@@ -1,10 +1,12 @@
 import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { mockIPC } from '@tauri-apps/api/mocks';
 import { useState } from 'react';
-import { describe, expect, it, vi } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import type {
   ContentView,
   DocNode,
+  ModsCollection,
+  ModsHit,
   ModsImportRequest,
   ModsPack,
   ModsPlan,
@@ -338,11 +340,15 @@ describe('ModsView', () => {
   it('searches with the installation’s game version and loader', async () => {
     const calls = setup();
     expect(await screen.findByText('Sodium')).toBeVisible();
-    expect(screen.getByText('by jellysquid')).toBeVisible();
+    expect(screen.getByText('by \u2068jellysquid\u2069')).toBeVisible();
     const query = named('mods_search', calls)[0]?.args.query as Record<string, unknown>;
     expect(query).toMatchObject({ kind: 'mod', game: '1.21.1', loader: 'fabric', offset: 0 });
 
-    fireEvent.change(screen.getByLabelText('Loader'), { target: { value: '' } });
+    fireEvent.click(
+      within(screen.getByRole('group', { name: 'Loader' })).getByRole('button', {
+        name: 'Any loader',
+      }),
+    );
     await waitFor(() => {
       expect(named('mods_search', calls)).toHaveLength(2);
     });
@@ -1159,5 +1165,823 @@ describe('ModsView', () => {
       ).toBeVisible();
       expect(within(dialog).queryByRole('button', { name: 'Install' })).toBeNull();
     });
+  });
+});
+
+/** A page of `count` projects numbered from `from`. */
+function hits(from: number, count: number, total: number): ModsSearchPage {
+  const first = page.hits[0];
+  if (first === undefined) throw new Error('the fixture changed');
+  return {
+    total,
+    hits: Array.from({ length: count }, (_, i): ModsHit => ({
+      ...first,
+      id: `p-${String(from + i)}`,
+      slug: `p-${String(from + i)}`,
+      title: `Project ${String(from + i)}`,
+    })),
+  };
+}
+
+const collection = (patch: Partial<ModsCollection>): ModsCollection => ({
+  id: 'popular-week',
+  preset: true,
+  titles: {},
+  notes: {},
+  game: null,
+  loader: null,
+  query: { sort: 'trending', since: null, source: null, collection: null },
+  count: 20,
+  icons: [PICTURE, PICTURE.replace('aaa', 'aab'), PICTURE.replace('aaa', 'aac')],
+  names: ['Alpha', 'Beta'],
+  ...patch,
+});
+
+describe('Catalog', () => {
+  afterEach(() => {
+    vi.unstubAllGlobals();
+    window.localStorage.clear();
+  });
+
+  it('lists the categories with icons and counts, and narrows by several at once', async () => {
+    const calls = setup({
+      mods_categories: () => [
+        { id: 'mod.optimization', count: 41 },
+        { id: 'mod.utility', count: 63 },
+        { id: 'mod.fun', count: 0 },
+        // Junk the panel leaves out.
+        { id: 'resourcepack.fonts', count: 5 },
+        { id: '<script>', count: 1 },
+        { id: 'mod.magic', count: -1 },
+        { id: 'mod.food', count: Number.NaN },
+        { id: 'mod.storage', count: '7' },
+        null,
+      ],
+    });
+    const panel = await screen.findByRole('complementary', { name: 'Categories' });
+    // Before the results in the focus order, as it is drawn beside or above them.
+    expect(
+      panel.compareDocumentPosition(screen.getByRole('tabpanel')) &
+        Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy();
+    const rows = within(panel).getAllByRole('button');
+    // "All categories" first, then the kind's list in its order.
+    expect(rows.map((row) => row.textContent)).toEqual([
+      'Categories',
+      'All categories1',
+      'Performance41',
+      'Utility & QoL63',
+      'Maps & info',
+      'Libraries',
+      'Technology',
+      'Magic',
+      'Adventure & RPG',
+      'World generation',
+      'Mobs & creatures',
+      'Equipment & weapons',
+      'Decoration & building',
+      'Food & cooking',
+      'Storage',
+      'Transport',
+      'Game mechanics',
+      'Server & admin',
+      'Social & streaming',
+      'Mod add-ons',
+      'Minigames & fun0',
+    ]);
+    expect(within(panel).getByRole('button', { name: /^All categories/ })).toHaveAttribute(
+      'aria-pressed',
+      'true',
+    );
+    // Nothing to find there.
+    expect(within(panel).getByRole('button', { name: /^Minigames & fun/ })).toBeDisabled();
+    expect(named('mods_categories', calls)[0]?.args.query).toMatchObject({
+      kind: 'mod',
+      game: '1.21.1',
+      loader: 'fabric',
+      categories: [],
+    });
+
+    fireEvent.click(within(panel).getByRole('button', { name: /^Performance/ }));
+    await waitFor(() => {
+      expect(named('mods_search', calls)).toHaveLength(2);
+    });
+    expect(named('mods_search', calls)[1]?.args.query).toMatchObject({
+      categories: ['mod.optimization'],
+      offset: 0,
+    });
+    fireEvent.click(within(panel).getByRole('button', { name: /^Utility/ }));
+    await waitFor(() => {
+      expect(named('mods_search', calls)).toHaveLength(3);
+    });
+    expect(named('mods_search', calls)[2]?.args.query).toMatchObject({
+      categories: ['mod.optimization', 'mod.utility'],
+    });
+    // The counts are for the search without its categories: not asked again.
+    expect(named('mods_categories', calls)).toHaveLength(1);
+    expect(screen.getByRole('heading', { name: '2 categories' })).toBeVisible();
+
+    const chosen = screen.getByRole('group', { name: 'Chosen filters' });
+    fireEvent.click(within(chosen).getByRole('button', { name: 'Remove “Performance”' }));
+    await waitFor(() => {
+      expect(named('mods_search', calls)).toHaveLength(4);
+    });
+    expect(named('mods_search', calls)[3]?.args.query).toMatchObject({
+      categories: ['mod.utility'],
+    });
+    expect(screen.getByRole('heading', { name: 'Utility & QoL' })).toHaveFocus();
+    fireEvent.click(within(chosen).getByRole('button', { name: 'Reset' }));
+    await waitFor(() => {
+      expect(named('mods_search', calls)).toHaveLength(5);
+    });
+    expect(named('mods_search', calls)[4]?.args.query).not.toHaveProperty('categories');
+    expect(screen.queryByRole('group', { name: 'Chosen filters' })).toBeNull();
+  });
+
+  it('takes eight categories at most', async () => {
+    const calls = setup();
+    const panel = await screen.findByRole('complementary', { name: 'Categories' });
+    const rows = within(panel)
+      .getAllByRole('button')
+      .filter((row) => row.getAttribute('aria-pressed') !== null)
+      .slice(1);
+    for (const [index, row] of rows.slice(0, 8).entries()) {
+      fireEvent.click(row);
+      await waitFor(() => {
+        expect(named('mods_search', calls)).toHaveLength(index + 2);
+      });
+    }
+    expect(rows[8]).toBeDisabled();
+    expect(rows[7]).toBeEnabled();
+    expect(within(panel).getByRole('status')).toHaveTextContent('At most 8 categories at once.');
+    const last = named('mods_search', calls).at(-1)?.args.query as { categories: string[] };
+    expect(last.categories).toHaveLength(8);
+  });
+
+  it('draws the screen when the catalog sends no counts, collections or requests', async () => {
+    // The defaults answer null to these.
+    const calls = setup();
+    expect(await screen.findByText('Sodium')).toBeVisible();
+    await waitFor(() => {
+      expect(named('mods_collections', calls)).toHaveLength(1);
+    });
+    expect(screen.queryByRole('region', { name: 'Collections' })).toBeNull();
+    expect(screen.getByRole('button', { name: /^Performance$/ })).toBeEnabled();
+    expect(screen.getByRole('button', { name: 'My requests' })).toBeVisible();
+    expect(named('mods_search', calls)).toHaveLength(1);
+  });
+
+  it('counts the requests still on their way beside My requests', async () => {
+    const request = (state: ModsImportRequest['state']): ModsImportRequest => ({
+      id: state,
+      input: 'x',
+      state,
+      error: null,
+      projectId: null,
+      candidates: [],
+      created: 0,
+      finished: null,
+    });
+    setup({
+      mods_imports: () => [request('queued'), request('importing'), request('ready')],
+    });
+    expect(
+      await screen.findByRole('button', { name: 'My requests 2 requests are waiting' }),
+    ).toBeVisible();
+    fireEvent.click(screen.getByRole('button', { name: /^My requests/ }));
+    expect(await screen.findByRole('region', { name: 'My requests' })).toBeVisible();
+    expect(screen.getByRole('button', { name: /^My requests/ })).toHaveAttribute(
+      'aria-pressed',
+      'true',
+    );
+  });
+
+  it('shows the catalog’s collections and lists one', async () => {
+    const own = collection({
+      id: 'fps',
+      preset: false,
+      titles: { en: 'x'.repeat(64), ru: 'Больше кадров' },
+      notes: { en: 'Faster, same picture' },
+      game: '1.21.1',
+      loader: 'fabric',
+      query: { sort: null, since: null, source: null, collection: 'fps' },
+      count: 12,
+    });
+    const calls = setup({
+      mods_collections: () => [
+        collection({}),
+        collection({
+          id: 'new',
+          query: { sort: 'new', since: 30, source: null, collection: null },
+          count: 3,
+        }),
+        own,
+        collection({ id: 'fourth', preset: false, titles: { ru: 'Четвёртая' }, count: 2 }),
+      ],
+    });
+    const strip = await screen.findByRole('region', { name: 'Collections' });
+    expect(named('mods_collections', calls)[0]?.args).toEqual({
+      kind: 'mod',
+      game: '1.21.1',
+      loader: 'fabric',
+    });
+    // Three on a page.
+    expect(within(strip).getAllByRole('listitem')).toHaveLength(3);
+    const popular = within(strip).getByRole('button', { name: 'Popular this week' });
+    expect(popular).toHaveAccessibleDescription('The projects whose downloads grew most this week');
+    // Three icons and the rest counted.
+    expect(within(popular).getByText('+17')).toBeVisible();
+    expect(
+      within(strip).getByRole('button', { name: 'New in the catalog' }),
+    ).toHaveAccessibleDescription('Added to the catalog in the last 30 days');
+    // The owner's title, as text, in English when there is none in the language.
+    const mine = within(strip).getByRole('button', { name: 'x'.repeat(64) });
+    // Whether it fits is read out too.
+    expect(mine).toHaveAccessibleDescription('Faster, same picture Fits your installation');
+    expect(within(mine).getByText('Fits your installation')).toBeVisible();
+    // The owner's words take their own direction; the launcher's take the interface's.
+    expect(within(mine).getByText('Faster, same picture')).toHaveAttribute('dir', 'auto');
+    expect(within(popular).getByText(/grew most/)).not.toHaveAttribute('dir');
+
+    const next = within(strip).getByRole('button', { name: 'Next collections' });
+    next.focus();
+    fireEvent.click(next);
+    // A title in no language the launcher speaks still shows.
+    expect(within(strip).getByRole('button', { name: 'Четвёртая' })).toHaveAccessibleDescription(
+      'Alpha, Beta',
+    );
+    // Only project names: their own direction.
+    expect(within(strip).getByText('Alpha, Beta')).toHaveAttribute('dir', 'auto');
+    // At the end the arrow does nothing more, and keeps the focus.
+    expect(next).toHaveAttribute('aria-disabled', 'true');
+    expect(next).toHaveFocus();
+    fireEvent.click(next);
+    expect(within(strip).getByRole('button', { name: 'Четвёртая' })).toBeVisible();
+    fireEvent.click(within(strip).getByRole('button', { name: 'All collections' }));
+    expect(within(strip).getAllByRole('listitem')).toHaveLength(4);
+
+    fireEvent.click(within(strip).getByRole('button', { name: 'Popular this week' }));
+    await waitFor(() => {
+      expect(named('mods_search', calls)).toHaveLength(2);
+    });
+    expect(named('mods_search', calls)[1]?.args.query).toMatchObject({
+      sort: 'trending',
+      offset: 0,
+    });
+    const heading = screen.getByRole('heading', { name: 'Popular this week' });
+    expect(heading).toHaveFocus();
+    // Isolated, as an owner's title would need.
+    expect(heading.querySelector('bdi')).not.toBeNull();
+    // Chosen, the strip gives way to the list.
+    expect(screen.queryByRole('region', { name: 'Collections' })).toBeNull();
+    expect(screen.getByRole('group', { name: 'Chosen filters' })).toHaveTextContent(
+      'Popular this week',
+    );
+    expect(
+      within(screen.getByRole('group', { name: 'Sort by' })).getByRole('button', {
+        name: 'Popular this week',
+      }),
+    ).toHaveAttribute('aria-pressed', 'true');
+  });
+
+  it('lists an owner’s collection by its key, in the owner’s order', async () => {
+    const calls = setup({
+      mods_collections: () => [
+        collection({
+          id: 'fps',
+          preset: false,
+          titles: { en: 'More frames' },
+          query: { sort: null, since: null, source: null, collection: 'fps' },
+          // The strip's count is for its own filters only.
+          count: 2,
+        }),
+      ],
+      mods_search: (args) =>
+        (args.query as { collection?: string }).collection === 'fps' ? hits(0, 3, 3) : page,
+    });
+    fireEvent.click(await screen.findByRole('button', { name: 'More frames' }));
+    expect(await screen.findByText('Project 2')).toBeVisible();
+    // No order of its own: relevance, which the catalog lists in the owner's order.
+    expect(named('mods_search', calls)[1]?.args.query).toMatchObject({
+      collection: 'fps',
+      sort: null,
+    });
+    expect(
+      within(screen.getByRole('group', { name: 'Sort by' })).getByRole('button', {
+        name: 'Relevance',
+      }),
+    ).toHaveAttribute('aria-pressed', 'true');
+    expect(screen.getByText('3 projects for Minecraft 1.21.1 and Fabric')).toBeVisible();
+  });
+
+  it('stops the week’s popular at 20 under any filters, and drops it for another order', async () => {
+    const calls = setup({
+      mods_collections: () => [
+        collection({ count: 5 }),
+        collection({
+          id: 'new',
+          query: { sort: 'new', since: 30, source: null, collection: null },
+          count: 3,
+        }),
+      ],
+      mods_search: (args) => hits((args.query as { offset: number }).offset, 20, 300),
+    });
+    const strip = await screen.findByRole('region', { name: 'Collections' });
+    fireEvent.click(within(strip).getByRole('button', { name: 'Popular this week' }));
+    expect(await screen.findByText('20 projects for Minecraft 1.21.1 and Fabric')).toBeVisible();
+    fireEvent.click(
+      within(screen.getByRole('group', { name: 'Loader' })).getByRole('button', {
+        name: 'Any loader',
+      }),
+    );
+    // The strip's 5 was for Fabric; the week's list is 20 whatever the filters.
+    expect(await screen.findByText('20 projects for Minecraft 1.21.1')).toBeVisible();
+    expect(screen.queryByRole('button', { name: 'Show more' })).toBeNull();
+
+    fireEvent.click(
+      within(screen.getByRole('group', { name: 'Sort by' })).getByRole('button', { name: 'Name' }),
+    );
+    expect(await screen.findByText('300 projects for Minecraft 1.21.1')).toBeVisible();
+    expect(screen.getByRole('heading', { name: 'All mods' })).toBeVisible();
+    expect(screen.queryByRole('group', { name: 'Chosen filters' })).toBeNull();
+    expect(named('mods_search', calls).at(-1)?.args.query).toMatchObject({ sort: 'title' });
+
+    // Other collections hold what the catalog finds, not the strip's count.
+    const back = await screen.findByRole('region', { name: 'Collections' });
+    fireEvent.click(within(back).getByRole('button', { name: 'New in the catalog' }));
+    await waitFor(() => {
+      expect(named('mods_search', calls).at(-1)?.args.query).toMatchObject({
+        sort: 'new',
+        since: 30,
+      });
+    });
+    expect(await screen.findByText('300 projects for Minecraft 1.21.1')).toBeVisible();
+    // Another order keeps it: its days still make it.
+    fireEvent.click(
+      within(screen.getByRole('group', { name: 'Sort by' })).getByRole('button', {
+        name: 'Downloads',
+      }),
+    );
+    await waitFor(() => {
+      expect(named('mods_search', calls).at(-1)?.args.query).toMatchObject({
+        sort: 'downloads',
+        since: 30,
+      });
+    });
+    expect(screen.getByRole('heading', { name: 'New in the catalog' })).toBeVisible();
+  });
+
+  it('adds a project’s newest fitting version from its tile', async () => {
+    const forge: ModsVersion = { ...version, id: 'v-forge', loaders: ['forge'] };
+    const beta: ModsVersion = { ...version, id: 'v-beta', channel: 'beta' };
+    const calls = setup({ mods_versions: () => [forge, beta, version] });
+    await screen.findByText('Sodium');
+    const add = screen.getByRole('button', { name: 'Add' });
+    expect(add).toHaveAccessibleDescription('Sodium');
+    fireEvent.click(add);
+    expect(await screen.findByRole('dialog', { name: 'Add Sodium to Modded' })).toBeVisible();
+    expect(named('mods_versions', calls)[0]?.args).toEqual({
+      project: PROJECT,
+      game: null,
+      loader: null,
+    });
+    // A release before a beta, and only what the installation runs.
+    await waitFor(() => {
+      expect(named('mods_plan', calls)).toHaveLength(1);
+    });
+    expect(named('mods_plan', calls)[0]?.args.payload).toMatchObject({ version: VERSION });
+  });
+
+  it('opens the project from its tile when no version fits', async () => {
+    setup({ mods_versions: () => [{ ...version, loaders: ['forge'] }] });
+    await screen.findByText('Sodium');
+    fireEvent.click(screen.getByRole('button', { name: 'Add' }));
+    expect(await screen.findByText(/Not saved in the catalog yet/)).toBeVisible();
+    expect(screen.queryByRole('dialog')).toBeNull();
+  });
+
+  it('offers no Add without an installation or on modpacks', async () => {
+    setup({}, 'mod', null as unknown as string);
+    expect(await screen.findByText('Sodium')).toBeVisible();
+    expect(screen.queryByRole('button', { name: 'Add' })).toBeNull();
+    expect(screen.getByRole('button', { name: 'Open' })).toBeVisible();
+    expect(screen.queryByRole('switch')).toBeNull();
+  });
+
+  it('loads the next page as the list end nears, with the search as sent', async () => {
+    const watched = new Set<IntersectionObserverCallback>();
+    class Watcher {
+      callback: IntersectionObserverCallback;
+      constructor(callback: IntersectionObserverCallback) {
+        this.callback = callback;
+        watched.add(callback);
+      }
+      observe() {
+        // Nothing: the test calls back.
+      }
+      disconnect() {
+        watched.delete(this.callback);
+      }
+    }
+    const near = () => {
+      const entries = [{ isIntersecting: true }] as IntersectionObserverEntry[];
+      for (const callback of watched) callback(entries, {} as IntersectionObserver);
+    };
+    vi.stubGlobal('IntersectionObserver', Watcher);
+    const calls = setup({
+      mods_search: (args) => {
+        const { offset } = args.query as { offset: number };
+        return hits(offset, offset === 0 ? 20 : 5, 25);
+      },
+    });
+    expect(await screen.findByText('Project 0')).toBeVisible();
+    // Typed but not sent: the next page keeps the search the list shows.
+    fireEvent.change(screen.getByLabelText('Search'), { target: { value: 'typed' } });
+    near();
+    expect(await screen.findByText('Project 24')).toBeVisible();
+    expect(named('mods_search', calls)[1]?.args.query).toMatchObject({ text: '', offset: 20 });
+    // All 25 are there: nothing more is watched for.
+    expect(watched.size).toBe(0);
+    near();
+    expect(named('mods_search', calls)).toHaveLength(2);
+  });
+
+  it('offers to try again when a later page does not come', async () => {
+    let fail = true;
+    const calls = setup({
+      mods_search: (args) => {
+        const { offset } = args.query as { offset: number };
+        if (offset > 0 && fail) throw new Error('offline');
+        return hits(offset, offset === 0 ? 20 : 5, 25);
+      },
+    });
+    // Without IntersectionObserver (jsdom), the list ends with a button.
+    fireEvent.click(await screen.findByRole('button', { name: 'Show more' }));
+    expect(await screen.findByText('The next projects did not load.')).toBeVisible();
+    expect(screen.getByText('Project 19')).toBeVisible();
+    fail = false;
+    fireEvent.click(screen.getByRole('button', { name: 'Try again' }));
+    // The button goes while the page comes: the focus waits on the list's last project.
+    expect(screen.getByRole('button', { name: 'Project 19' })).toHaveFocus();
+    expect(await screen.findByText('Project 24')).toBeVisible();
+    expect(named('mods_search', calls)).toHaveLength(3);
+  });
+
+  it('ends the list when a later page brings nothing new', async () => {
+    // An observer that answers as soon as it watches, as browsers do.
+    class Watcher {
+      callback: IntersectionObserverCallback;
+      constructor(callback: IntersectionObserverCallback) {
+        this.callback = callback;
+      }
+      observe() {
+        queueMicrotask(() => {
+          this.callback(
+            [{ isIntersecting: true }] as IntersectionObserverEntry[],
+            this as unknown as IntersectionObserver,
+          );
+        });
+      }
+      disconnect() {
+        // Nothing to let go.
+      }
+    }
+    vi.stubGlobal('IntersectionObserver', Watcher);
+    // The catalog's order moved: the next page holds projects already listed.
+    const calls = setup({
+      mods_search: (args) => {
+        const { offset } = args.query as { offset: number };
+        return offset === 0 ? hits(0, 20, 25) : hits(15, 5, 25);
+      },
+    });
+    expect(await screen.findByText('Project 19')).toBeVisible();
+    await waitFor(() => {
+      expect(named('mods_search', calls)).toHaveLength(2);
+    });
+    await new Promise((resolve) => setTimeout(resolve, 50));
+    expect(named('mods_search', calls)).toHaveLength(2);
+  });
+
+  it('notes how far down the list got while it grows', async () => {
+    setup({
+      mods_search: (args) => {
+        const { offset } = args.query as { offset: number };
+        return hits(offset, offset === 0 ? 20 : 5, 25);
+      },
+    });
+    fireEvent.click(await screen.findByRole('button', { name: 'Show more' }));
+    expect(await screen.findByText('Project 24')).toBeVisible();
+    // Written now: a run can end with the catalog on screen.
+    expect(JSON.parse(window.localStorage.getItem('launcher.mods.place') ?? 'null')).toMatchObject({
+      search: JSON.stringify(['mod', '', '1.21.1', 'fabric', 'downloads', [], null]),
+      count: 25,
+    });
+  });
+
+  it('keeps its place when a project opens and the player comes back', async () => {
+    const to = vi.fn((_x: number, y: number) => {
+      Object.defineProperty(window, 'scrollY', { value: y, configurable: true });
+    });
+    vi.stubGlobal('scrollTo', to);
+    const calls = setup();
+    expect(await screen.findByText('Sodium')).toBeVisible();
+    Object.defineProperty(window, 'scrollY', { value: 1500, configurable: true });
+    fireEvent.click(screen.getByRole('button', { name: /Sodium/ }));
+    // The page has loaded: its Back is the one that stays.
+    expect(await screen.findByText(/Not saved in the catalog yet/)).toBeVisible();
+    fireEvent.click(screen.getByRole('button', { name: 'Back' }));
+    expect(await screen.findByRole('tabpanel', { name: 'Mods' })).toBeVisible();
+    expect(screen.getByText('Sodium')).toBeVisible();
+    expect(named('mods_search', calls)).toHaveLength(1);
+    // The page opened at the top, and the list came back where it was.
+    expect(to.mock.calls).toEqual([
+      [0, 0],
+      [0, 1500],
+    ]);
+    Object.defineProperty(window, 'scrollY', { value: 0, configurable: true });
+  });
+
+  it('asks again on return when the new search had not answered', async () => {
+    let hold = false;
+    const calls = setup({
+      mods_search: () => (hold ? new Promise(() => undefined) : page),
+    });
+    expect(await screen.findByText('Sodium')).toBeVisible();
+    hold = true;
+    fireEvent.click(
+      within(screen.getByRole('group', { name: 'Loader' })).getByRole('button', {
+        name: 'Any loader',
+      }),
+    );
+    // The old list waits, and the status does not give its count for the new filters.
+    const status = within(screen.getByRole('region', { name: 'All mods' })).getByRole('status');
+    expect(status).toHaveTextContent('Loading…');
+    expect(screen.getByRole('button', { name: /Sodium/ }).closest('ul')).toHaveAttribute(
+      'aria-busy',
+      'true',
+    );
+    fireEvent.click(screen.getByRole('button', { name: /Sodium/ }));
+    expect(await screen.findByText(/Not saved in the catalog yet/)).toBeVisible();
+    hold = false;
+    fireEvent.click(screen.getByRole('button', { name: 'Back' }));
+    await waitFor(() => {
+      expect(named('mods_search', calls)).toHaveLength(3);
+    });
+    expect(named('mods_search', calls)[2]?.args.query).toMatchObject({ loader: null });
+    expect(await screen.findByText('1 project for Minecraft 1.21.1')).toBeVisible();
+  });
+
+  it('opens the add dialog only for the last tile pressed', async () => {
+    const answers: ((list: ModsVersion[]) => void)[] = [];
+    const first = page.hits[0];
+    if (first === undefined) throw new Error('the fixture changed');
+    const beta: ModsHit = { ...first, id: 'p-beta', slug: 'beta', title: 'Beta' };
+    const calls = setup({
+      mods_search: () => ({ total: 2, hits: [first, beta] }),
+      mods_versions: () =>
+        new Promise<ModsVersion[]>((resolve) => {
+          answers.push(resolve);
+        }),
+    });
+    expect(await screen.findByText('Beta')).toBeVisible();
+    const [sodium, other] = screen.getAllByRole('button', { name: 'Add' });
+    if (sodium === undefined || other === undefined) throw new Error('two tiles');
+    fireEvent.click(sodium);
+    fireEvent.click(other);
+    await waitFor(() => {
+      expect(answers).toHaveLength(2);
+    });
+    // Sodium's answer comes late: it opens nothing.
+    answers[0]?.([version]);
+    answers[1]?.([{ ...version, id: 'v-beta', projectId: 'p-beta' }]);
+    expect(await screen.findByRole('dialog', { name: 'Add Beta to Modded' })).toBeVisible();
+    await waitFor(() => {
+      expect(named('mods_plan', calls)).toHaveLength(1);
+    });
+    expect(named('mods_plan', calls)[0]?.args.payload).toMatchObject({ version: 'v-beta' });
+    expect(screen.getAllByRole('dialog')).toHaveLength(1);
+  });
+
+  it('drops a quick add when “Add to the catalog” opens meanwhile', async () => {
+    const answers: ((list: ModsVersion[]) => void)[] = [];
+    setup({
+      mods_versions: () =>
+        new Promise<ModsVersion[]>((resolve) => {
+          answers.push(resolve);
+        }),
+    });
+    expect(await screen.findByText('Sodium')).toBeVisible();
+    fireEvent.click(screen.getByRole('button', { name: 'Add' }));
+    await waitFor(() => {
+      expect(answers).toHaveLength(1);
+    });
+    fireEvent.click(screen.getByRole('button', { name: 'Add to the catalog' }));
+    const dialog = await screen.findByRole('dialog', { name: 'Add to the catalog' });
+    fireEvent.change(within(dialog).getByRole('textbox'), { target: { value: 'my words' } });
+    // Nothing fits: without the drop, the project page would open and close the dialog.
+    answers[0]?.([]);
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    expect(screen.getAllByRole('dialog')).toHaveLength(1);
+    expect(within(dialog).getByRole('textbox')).toHaveValue('my words');
+    expect(screen.queryByText(/Not saved in the catalog yet/)).toBeNull();
+  });
+
+  it('adds the version made for the installation’s game from any kind’s tile', async () => {
+    const first = page.hits[0];
+    if (first === undefined) throw new Error('the fixture changed');
+    const newer: ModsVersion = { ...version, id: 'v-1214', games: ['1.21.4'], loaders: [] };
+    const fitting: ModsVersion = { ...version, id: 'v-1211', games: ['1.21.1'], loaders: [] };
+    const calls = setup(
+      {
+        mods_search: () => ({ total: 1, hits: [{ ...first, kind: 'resourcepack', loaders: [] }] }),
+        mods_versions: () => [newer, fitting],
+      },
+      'resourcepack',
+    );
+    expect(await screen.findByText('Sodium')).toBeVisible();
+    fireEvent.click(screen.getByRole('button', { name: 'Add' }));
+    await waitFor(() => {
+      expect(named('mods_plan', calls)).toHaveLength(1);
+    });
+    expect(named('mods_plan', calls)[0]?.args.payload).toMatchObject({ version: 'v-1211' });
+  });
+
+  it('starts “Add to the catalog” from the open tab’s words only', async () => {
+    setup();
+    expect(await screen.findByText('Sodium')).toBeVisible();
+    fireEvent.change(screen.getByLabelText('Search'), { target: { value: 'sodium' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Add to the catalog' }));
+    const dialog = await screen.findByRole('dialog', { name: 'Add to the catalog' });
+    expect(within(dialog).getByRole('textbox')).toHaveValue('sodium');
+    fireEvent.keyDown(window, { key: 'Escape' });
+    await waitFor(() => {
+      expect(screen.queryByRole('dialog')).toBeNull();
+    });
+    for (const tab of ['Installed', 'Shaders']) {
+      fireEvent.click(screen.getByRole('tab', { name: tab }));
+      fireEvent.click(screen.getByRole('button', { name: 'Add to the catalog' }));
+      const again = await screen.findByRole('dialog', { name: 'Add to the catalog' });
+      expect(within(again).getByRole('textbox')).toHaveValue('');
+      fireEvent.keyDown(window, { key: 'Escape' });
+      await waitFor(() => {
+        expect(screen.queryByRole('dialog')).toBeNull();
+      });
+    }
+  });
+
+  it('marks where an earlier run stopped on the same search', async () => {
+    // A mark from an earlier run: before this one started.
+    window.localStorage.setItem(
+      'launcher.mods.place',
+      JSON.stringify({
+        search: JSON.stringify(['mod', '', '1.21.1', 'fabric', 'downloads', [], null]),
+        count: 2,
+        at: Date.now() - 86_400_000,
+      }),
+    );
+    setup({ mods_search: () => hits(0, 4, 4) });
+    expect(await screen.findByText('Project 3')).toBeVisible();
+    const items = screen.getAllByRole('listitem').map((item) => item.textContent);
+    const at = items.findIndex((text) => text.startsWith('You stopped here'));
+    expect(items[at]).toBe('You stopped here yesterday');
+    expect(items[at + 1]).toMatch(/^Project 2/);
+  });
+
+  it('keeps the mark when the player comes back before the first search answered', async () => {
+    window.localStorage.setItem(
+      'launcher.mods.place',
+      JSON.stringify({
+        search: JSON.stringify(['mod', '', '1.21.1', 'fabric', 'downloads', [], null]),
+        count: 2,
+        at: Date.now() - 86_400_000,
+      }),
+    );
+    let hold = true;
+    setup({
+      mods_search: (args) =>
+        hold && (args.query as { kind: string }).kind === 'mod'
+          ? new Promise(() => undefined)
+          : hits(0, 4, 4),
+    });
+    await screen.findByRole('tabpanel', { name: 'Mods' });
+    fireEvent.click(screen.getByRole('tab', { name: 'Shaders' }));
+    hold = false;
+    fireEvent.click(screen.getByRole('tab', { name: 'Mods' }));
+    expect(await screen.findByText('Project 3')).toBeVisible();
+    expect(screen.getByText('You stopped here yesterday')).toBeVisible();
+  });
+
+  it('forgets a mark that is unsound', async () => {
+    window.localStorage.setItem('launcher.mods.place', '{"search":1,"count":"2"}');
+    setup({ mods_search: () => hits(0, 4, 4) });
+    expect(await screen.findByText('Project 3')).toBeVisible();
+    expect(screen.queryByText(/You stopped here/)).toBeNull();
+  });
+
+  it('turns off what fits the installation in one search', async () => {
+    const calls = setup();
+    const fits = await screen.findByRole('switch', { name: 'Only what fits the installation' });
+    expect(fits).toBeChecked();
+    fireEvent.click(fits);
+    await waitFor(() => {
+      expect(named('mods_search', calls)).toHaveLength(2);
+    });
+    expect(named('mods_search', calls)[1]?.args.query).toMatchObject({ game: null, loader: null });
+    expect(screen.getByRole('switch')).not.toBeChecked();
+    fireEvent.click(screen.getByRole('switch'));
+    await waitFor(() => {
+      expect(named('mods_search', calls)).toHaveLength(3);
+    });
+    expect(named('mods_search', calls)[2]?.args.query).toMatchObject({
+      game: '1.21.1',
+      loader: 'fabric',
+    });
+  });
+
+  it('says what to do when nothing is found', async () => {
+    const calls = setup({ mods_search: () => ({ total: 0, hits: [] }) });
+    expect(await screen.findByText('Nothing found.')).toBeVisible();
+    fireEvent.click(screen.getByRole('button', { name: 'Show what does not fit too' }));
+    expect(screen.getByRole('heading', { name: 'All mods' })).toHaveFocus();
+    await waitFor(() => {
+      expect(named('mods_search', calls)).toHaveLength(2);
+    });
+    fireEvent.click(screen.getByRole('button', { name: 'Ask the catalog to bring it' }));
+    expect(await screen.findByRole('dialog', { name: 'Add to the catalog' })).toBeVisible();
+  });
+
+  it('says when the catalog does not answer and tries again', async () => {
+    let fail = true;
+    const calls = setup({
+      mods_search: () => {
+        if (fail) throw new Error('offline');
+        return page;
+      },
+    });
+    const retry = await screen.findByRole('button', { name: 'Try again' });
+    fail = false;
+    fireEvent.click(retry);
+    // The notice goes while the search runs: the focus waits on the list's heading.
+    expect(screen.getByRole('heading', { name: 'All mods' })).toHaveFocus();
+    expect(await screen.findByText('Sodium')).toBeVisible();
+    expect(named('mods_search', calls)).toHaveLength(2);
+  });
+
+  it('drops the old list when a new search fails', async () => {
+    let fail = false;
+    setup({
+      mods_search: () => {
+        if (fail) throw new Error('offline');
+        return page;
+      },
+    });
+    expect(await screen.findByText('Sodium')).toBeVisible();
+    fail = true;
+    fireEvent.click(
+      within(screen.getByRole('group', { name: 'Loader' })).getByRole('button', {
+        name: 'Any loader',
+      }),
+    );
+    expect(await screen.findByRole('button', { name: 'Try again' })).toBeVisible();
+    // Its projects answered other filters: they do not stay under the new ones.
+    expect(screen.queryByText('Sodium')).toBeNull();
+  });
+
+  it('refuses a game version the catalog would not take', async () => {
+    const calls = setup();
+    await screen.findByText('Sodium');
+    fireEvent.change(screen.getByLabelText('Game version'), {
+      target: { value: '1.21<script>' },
+    });
+    fireEvent.click(screen.getByRole('button', { name: 'Find' }));
+    expect(await screen.findByRole('alert')).toHaveTextContent(/letters, digits and dots/);
+    expect(screen.getByLabelText('Game version')).toHaveAttribute('aria-invalid', 'true');
+    expect(named('mods_search', calls)).toHaveLength(1);
+  });
+
+  it('moves between the tabs with the arrow keys', async () => {
+    setup();
+    const tabs = await screen.findByRole('tablist', { name: 'Sections' });
+    const mods = within(tabs).getByRole('tab', { name: 'Mods' });
+    expect(mods).toHaveAttribute('aria-selected', 'true');
+    expect(
+      within(tabs)
+        .getAllByRole('tab')
+        .map((tab) => tab.tabIndex),
+    ).toEqual([0, -1, -1, -1, -1, -1, -1]);
+    mods.focus();
+    fireEvent.keyDown(mods, { key: 'ArrowRight' });
+    const packs = within(tabs).getByRole('tab', { name: 'Resource packs' });
+    expect(packs).toHaveFocus();
+    expect(packs).toHaveAttribute('aria-selected', 'true');
+    fireEvent.keyDown(packs, { key: 'End' });
+    expect(within(tabs).getByRole('tab', { name: 'Installed' })).toHaveFocus();
+    fireEvent.keyDown(document.activeElement ?? tabs, { key: 'ArrowRight' });
+    expect(mods).toHaveFocus();
+    fireEvent.keyDown(mods, { key: 'ArrowLeft' });
+    expect(within(tabs).getByRole('tab', { name: 'Installed' })).toHaveFocus();
+    fireEvent.keyDown(document.activeElement ?? tabs, { key: 'Home' });
+    expect(mods).toHaveFocus();
+    expect(screen.getByRole('tabpanel', { name: 'Mods' })).toBeVisible();
   });
 });

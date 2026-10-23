@@ -2082,6 +2082,148 @@ export type Messages = {
         total: string | number;
       }) => string;
     };
+    readonly catalog: {
+      readonly requestsGroup: string;
+      readonly requestsWaiting: (values: { count: number }) => string;
+      readonly fitsOnly: string;
+      readonly allOf: {
+        readonly mod: string;
+        readonly resourcepack: string;
+        readonly shader: string;
+        readonly datapack: string;
+        readonly modpack: string;
+        readonly world: string;
+      };
+      readonly foundForBoth: (values: {
+        count: number;
+        game: string | number;
+        loader: string | number;
+      }) => string;
+      readonly foundForGame: (values: { count: number; game: string | number }) => string;
+      readonly foundForLoader: (values: { count: number; loader: string | number }) => string;
+      readonly loadingMore: (values: { shown: string | number; total: string | number }) => string;
+      readonly capped: (values: { count: string | number }) => string;
+      readonly loadFailed: string;
+      readonly tryAgain: string;
+      readonly badGame: string;
+      readonly categories: string;
+      readonly categoriesFor: (values: { what: string | number }) => string;
+      readonly allCategories: string;
+      readonly categoriesNote: string;
+      readonly categoriesFull: (values: { count: string | number }) => string;
+      readonly categoriesChosen: (values: { count: number }) => string;
+      readonly applied: string;
+      readonly remove: (values: { name: string | number }) => string;
+      readonly reset: string;
+      readonly collections: string;
+      readonly collectionsHint: string;
+      readonly allCollections: string;
+      readonly fewerCollections: string;
+      readonly previousCollections: string;
+      readonly nextCollections: string;
+      readonly fitsInstallation: string;
+      readonly andMore: (values: { names: string | number; count: string | number }) => string;
+      readonly presets: {
+        readonly 'popular-week': string;
+        readonly new: string;
+        readonly 'players-packs': string;
+      };
+      readonly presetNotes: {
+        readonly 'popular-week': string;
+        readonly new: (values: { days: number }) => string;
+        readonly 'players-packs': string;
+      };
+      readonly add: string;
+      readonly open: string;
+      readonly backToTop: string;
+      readonly resume: (values: { when: string | number }) => string;
+      readonly nothingHint: string;
+      readonly showAll: string;
+      readonly askCatalog: string;
+      readonly categoryNames: {
+        readonly mod: {
+          readonly optimization: string;
+          readonly utility: string;
+          readonly 'maps-info': string;
+          readonly library: string;
+          readonly technology: string;
+          readonly magic: string;
+          readonly adventure: string;
+          readonly worldgen: string;
+          readonly mobs: string;
+          readonly equipment: string;
+          readonly decoration: string;
+          readonly food: string;
+          readonly storage: string;
+          readonly transportation: string;
+          readonly 'game-mechanics': string;
+          readonly server: string;
+          readonly social: string;
+          readonly addons: string;
+          readonly fun: string;
+        };
+        readonly datapack: {
+          readonly adventure: string;
+          readonly magic: string;
+          readonly 'game-mechanics': string;
+          readonly worldgen: string;
+          readonly mobs: string;
+          readonly equipment: string;
+          readonly technology: string;
+          readonly decoration: string;
+          readonly utility: string;
+          readonly optimization: string;
+          readonly library: string;
+          readonly fun: string;
+          readonly 'mod-support': string;
+        };
+        readonly resourcepack: {
+          readonly 'vanilla-like': string;
+          readonly tweaks: string;
+          readonly realistic: string;
+          readonly simplistic: string;
+          readonly themed: string;
+          readonly decoration: string;
+          readonly combat: string;
+          readonly utility: string;
+          readonly modded: string;
+          readonly animated: string;
+          readonly fonts: string;
+          readonly cursed: string;
+        };
+        readonly shader: {
+          readonly 'vanilla-like': string;
+          readonly 'semi-realistic': string;
+          readonly realistic: string;
+          readonly fantasy: string;
+          readonly cartoon: string;
+          readonly cursed: string;
+        };
+        readonly modpack: {
+          readonly adventure: string;
+          readonly technology: string;
+          readonly magic: string;
+          readonly quests: string;
+          readonly challenging: string;
+          readonly combat: string;
+          readonly 'kitchen-sink': string;
+          readonly lightweight: string;
+          readonly 'vanilla-plus': string;
+          readonly optimization: string;
+          readonly multiplayer: string;
+          readonly skyblock: string;
+        };
+        readonly world: {
+          readonly adventure: string;
+          readonly survival: string;
+          readonly creation: string;
+          readonly 'game-map': string;
+          readonly parkour: string;
+          readonly puzzle: string;
+          readonly modded: string;
+        };
+      };
+    };
   };
   readonly worlds: {
     readonly title: string;
