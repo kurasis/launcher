@@ -319,6 +319,129 @@
   }
 }
 
+/* ------------------------------------------------------------ New cards */
+
+/* A card a fresh look brought in at the top: it drops into place, one after another,
+   while the others slide aside (Mosaic), and its picture glows mint for a moment. */
+.arrived {
+  animation: arrive calc(var(--motion-duration) * 2.8) cubic-bezier(0.2, 0.8, 0.2, 1) both;
+  animation-delay: calc(var(--arrive-order, 0) * 70ms);
+}
+
+.arrived .media {
+  animation:
+    arrive-picture calc(var(--motion-duration) * 2.8) cubic-bezier(0.2, 0.8, 0.2, 1) both,
+    arrive-glow calc(var(--motion-duration) * 12) ease-out both;
+  animation-delay: calc(var(--arrive-order, 0) * 70ms);
+}
+
+@keyframes arrive {
+  from {
+    opacity: 0;
+    transform: translateY(-0.75rem);
+  }
+}
+
+/* The picture, not the cell, grows: the mosaic measures the card's own height. */
+@keyframes arrive-picture {
+  from {
+    transform: scale(0.94);
+  }
+}
+
+@keyframes arrive-glow {
+  from,
+  25% {
+    box-shadow: 0 0 0 3px var(--color-mint);
+  }
+
+  to {
+    box-shadow: 0 0 0 3px transparent;
+  }
+}
+
+/* New cards found further down the list: a pill at the top of the window takes the
+   player up, where they come in. */
+.newAbove {
+  position: fixed;
+  inset-block-start: var(--space-4);
+  inset-inline: var(--rail-width) 0;
+  z-index: 6;
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  inline-size: fit-content;
+  margin-inline: auto;
+  padding: var(--space-2) var(--space-4);
+  border: 0;
+  border-radius: var(--radius-pill);
+  background: var(--color-accent);
+  color: var(--color-accent-contrast);
+  font: inherit;
+  font-size: var(--font-size-sm);
+  font-weight: 600;
+  box-shadow: var(--shadow-float);
+  cursor: pointer;
+  animation: pop-in calc(var(--motion-duration) * 2) ease-out both;
+}
+
+.newAbove:hover {
+  background: var(--color-accent-hover);
+}
+
+.newAbove:focus-visible {
+  outline: 2px solid var(--color-focus);
+  outline-offset: 2px;
+}
+
+/* What Refresh found, for a moment over the launch bar. */
+.toast {
+  position: fixed;
+  inset-block-end: calc(var(--bar-height) + var(--space-4));
+  inset-inline: var(--rail-width) 0;
+  z-index: 6;
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  inline-size: fit-content;
+  max-inline-size: calc(100vw - var(--rail-width) - 2 * var(--space-4));
+  margin-block: 0;
+  margin-inline: auto;
+  padding: var(--space-2) var(--space-4);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-pill);
+  background: var(--color-surface-raised);
+  color: var(--color-text);
+  font-size: var(--font-size-sm);
+  box-shadow: var(--shadow-raised);
+  animation: pop-in calc(var(--motion-duration) * 2) ease-out both;
+}
+
+.toast svg {
+  flex: none;
+  color: var(--color-accent);
+}
+
+.toastFailed svg {
+  color: var(--color-danger-text);
+}
+
+@keyframes pop-in {
+  from {
+    opacity: 0;
+    transform: translateY(0.5rem);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .arrived,
+  .arrived .media,
+  .newAbove,
+  .toast {
+    animation: none;
+  }
+}
+
 /* -------------------------------------------------------------------- Card */
 
 /* Picture, title and source on the paper ground: no surface, border or padding. */

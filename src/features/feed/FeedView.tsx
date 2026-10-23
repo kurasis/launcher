@@ -1,4 +1,13 @@
-import { type ReactNode, useCallback, useEffect, useId, useState } from 'react';
+import {
+  type ReactNode,
+  type Ref,
+  useCallback,
+  useEffect,
+  useId,
+  useLayoutEffect,
+  useRef,
+  useState,
+} from 'react';
 import { Button } from '../../components/Button';
 import { Icon } from '../../components/Icon';
 import { Notice } from '../../components/Notice';
@@ -21,7 +30,8 @@ import type {
 import { feedProblem, ipc } from '../../lib/ipc';
 import { strings } from '../../lib/strings';
 import { AddChannel } from './AddChannel';
-import { FeedList, FeedLoading } from './FeedList';
+import { recallFeed, rememberFeed } from './feedMemory';
+import { FeedList, FeedLoading, type ListHandle } from './FeedList';
 import type { FeedFilter } from './list';
 import { NotePanel } from './NotePanel';
 import { visibleParts } from './parts';
@@ -42,6 +52,12 @@ const LIVE_EVERY_MS = 3 * 60 * 1000;
 interface FeedNotice {
   text: string;
   undo: (() => void) | null;
+}
+
+/** What Refresh found, shown for a moment over the launch bar. */
+interface Toast {
+  text: string;
+  failed: boolean;
 }
 
 interface FeedViewProps {
@@ -177,24 +193,29 @@ function Side({
  */
 export function FeedView({ snapshot, onOpenInstallations, onInstallVersion }: FeedViewProps) {
   const settings = snapshot.settings.feed;
+  // The feed as it was left earlier in this run: shown at once, then asked again
+  // quietly, so going back to it does not build it anew.
+  const [place] = useState(recallFeed);
   const [result, setResult] = useState<{
     view: FeedAnswer | null;
     problem: FeedProblem | null;
-  } | null>(null);
-  const [own, setOwn] = useState<FeedVideo[]>([]);
-  const [ownStreams, setOwnStreams] = useState<FeedStream[]>([]);
-  const [ads, setAds] = useState<ServerAd[]>([]);
-  const [marks, setMarks] = useState<FeedMarks>(NO_MARKS);
-  const [favorites, setFavorites] = useState<FavoriteFeed>(NO_FAVORITES);
+  } | null>(place?.result ?? null);
+  const [own, setOwn] = useState<FeedVideo[]>(place?.own ?? []);
+  const [ownStreams, setOwnStreams] = useState<FeedStream[]>(place?.ownStreams ?? []);
+  const [ads, setAds] = useState<ServerAd[]>(place?.ads ?? []);
+  const [marks, setMarks] = useState<FeedMarks>(place?.marks ?? NO_MARKS);
+  const [favorites, setFavorites] = useState<FavoriteFeed>(place?.favorites ?? NO_FAVORITES);
   const [notice, setNotice] = useState<FeedNotice | null>(null);
+  const [toast, setToast] = useState<Toast | null>(null);
+  const list = useRef<ListHandle>(null);
   // Each channel added from the + asks for the player's own videos and streams again.
   const [added, setAdded] = useState(0);
   // Every few minutes while the launcher is shown: live streams are asked again.
   const [liveTick, setLiveTick] = useState(0);
-  const [watched, setWatched] = useState<ReadonlySet<string>>(new Set());
+  const [watched, setWatched] = useState<ReadonlySet<string>>(place?.watched ?? new Set());
   const [refreshing, setRefreshing] = useState(false);
-  const [chosen, setFilter] = useState<FeedFilter>('all');
-  // Each Refresh starts the list again.
+  const [chosen, setFilter] = useState<FeedFilter>(place?.filter ?? 'all');
+  // Each Refresh asks for streams, favourites and ads again.
   const [refreshes, setRefreshes] = useState(0);
   const [open, setOpen] = useState<NoteCard | null>(null);
   const [actionProblem, setActionProblem] = useState<FeedProblem | null>(null);
@@ -204,15 +225,40 @@ export function FeedView({ snapshot, onOpenInstallations, onInstallVersion }: Fe
         .feedGet(refresh)
         .then((view) => {
           setResult({ view, problem: null });
+          return true;
         })
         .catch((error: unknown) => {
           setResult((previous) => ({
             view: previous?.view ?? null,
             problem: feedProblem(error),
           }));
+          return false;
         }),
     [],
   );
+
+  // Kept for the rest of the run when the player goes to another screen, and
+  // scrolled back to where they were when they return.
+  const latest = useRef({ result, own, ownStreams, ads, marks, favorites, watched, chosen });
+  useLayoutEffect(() => {
+    latest.current = { result, own, ownStreams, ads, marks, favorites, watched, chosen };
+  });
+  useLayoutEffect(
+    () => () => {
+      const now = latest.current;
+      if (now.result?.view == null) return;
+      rememberFeed({
+        ...now,
+        result: { view: now.result.view, problem: null },
+        filter: now.chosen,
+        scrollY: window.scrollY,
+      });
+    },
+    [],
+  );
+  useLayoutEffect(() => {
+    if (place !== null && place.scrollY > 0) window.scrollTo(0, place.scrollY);
+  }, [place]);
   // Asked again when its languages change or the connection returns.
   const languages = `${snapshot.settings.language} ${String(settings.machineTranslation)} ${settings.videoLanguage}`;
   const online = snapshot.network !== 'offline';
@@ -271,7 +317,7 @@ export function FeedView({ snapshot, onOpenInstallations, onInstallVersion }: Fe
       })
       .catch(() => undefined);
   }, []);
-  // A notice without Undo goes by itself.
+  // A notice without Undo goes by itself, and so does what Refresh found.
   useEffect(() => {
     if (notice === null || notice.undo !== null) return;
     const timer = window.setTimeout(() => {
@@ -281,6 +327,15 @@ export function FeedView({ snapshot, onOpenInstallations, onInstallVersion }: Fe
       window.clearTimeout(timer);
     };
   }, [notice]);
+  useEffect(() => {
+    if (toast === null) return;
+    const timer = window.setTimeout(() => {
+      setToast(null);
+    }, NOTICE_MS);
+    return () => {
+      window.clearTimeout(timer);
+    };
+  }, [toast]);
 
   // Server ads (D-069): asked again on Refresh and when the connection
   // returns; each leaves the list the moment it ends.
@@ -391,10 +446,23 @@ export function FeedView({ snapshot, onOpenInstallations, onInstallVersion }: Fe
           disabled={refreshing}
           onClick={() => {
             setRefreshing(true);
-            void fetchFeed(true).finally(() => {
-              setRefreshing(false);
-              setRefreshes((count) => count + 1);
-            });
+            setToast(null);
+            // The cards stay: what is new comes in at the top, and a note says what was found.
+            void fetchFeed(true)
+              .then(async (fetched) => {
+                // Without a list (no feed yet) only the feed itself was asked.
+                const shown = list.current;
+                const added = shown === null ? (fetched ? 0 : null) : await shown.freshen();
+                setToast(
+                  added === null
+                    ? { text: t.refreshFailed, failed: true }
+                    : { text: t.refreshed({ count: added }), failed: false },
+                );
+              })
+              .finally(() => {
+                setRefreshing(false);
+                setRefreshes((count) => count + 1);
+              });
           }}
         >
           <Icon name="refresh" size={18} />
@@ -419,7 +487,8 @@ export function FeedView({ snapshot, onOpenInstallations, onInstallVersion }: Fe
         watched={watched}
         liveTick={liveTick}
         chosen={chosen}
-        reload={`${languages} ${String(online)} ${String(settings.snapshots)} ${String(settings.shorts)} ${settings.hidden.join(',')} ${String(refreshes)}`}
+        reload={`${languages} ${String(online)} ${String(settings.snapshots)} ${String(settings.shorts)} ${settings.hidden.join(',')}`}
+        listRef={list}
         onFilter={setFilter}
         onOpen={setOpen}
         onLink={openLink}
@@ -461,6 +530,15 @@ export function FeedView({ snapshot, onOpenInstallations, onInstallVersion }: Fe
         ) : (
           <FeedLoading />
         ))}
+      {toast !== null && (
+        <p
+          className={[styles.toast, toast.failed && styles.toastFailed].filter(Boolean).join(' ')}
+          role="status"
+        >
+          <Icon name={toast.failed ? 'warn' : 'check'} size={18} />
+          {toast.text}
+        </p>
+      )}
       {open !== null && (
         <NotePanel
           key={open.id}
@@ -491,6 +569,7 @@ interface FeedPartsProps {
   chosen: FeedFilter;
   /** Changes when the list should start again. */
   reload: string;
+  listRef: Ref<ListHandle>;
   onFilter: (filter: FeedFilter) => void;
   onOpen: (card: NoteCard) => void;
   /** Opens an event's or announcement's link in the browser. */
@@ -520,6 +599,7 @@ function FeedParts({
   liveTick,
   chosen,
   reload,
+  listRef,
   onFilter,
   onOpen,
   onLink,
@@ -579,6 +659,8 @@ function FeedParts({
         liveTick={liveTick}
         filter={filter}
         key={`${filter} ${reload}`}
+        memoryKey={`${filter} ${reload}`}
+        ref={listRef}
         featured={featured}
         onOpen={onOpen}
         onOpenInstallations={onOpenInstallations}

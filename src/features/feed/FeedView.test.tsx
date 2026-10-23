@@ -832,6 +832,70 @@ describe('FeedView', () => {
     expect(await screen.findByRole('list', { name: 'All' })).toBeVisible();
   });
 
+  it('comes back as it was left, without loading again', async () => {
+    const calls = backend();
+    show();
+    await screen.findByRole('list', { name: 'All' });
+    const chips = screen.getByRole('group', { name: 'Show in the feed' });
+    fireEvent.click(within(chips).getByRole('button', { name: 'Videos' }));
+    await screen.findByRole('list', { name: 'Videos' });
+    const pages = calls.filter((c) => c.cmd === 'feed_page').length;
+    // Another screen, and back: the same chip and cards at once, no grey cards.
+    cleanup();
+    show();
+    expect(screen.getByRole('list', { name: 'Videos' })).toBeVisible();
+    expect(screen.queryByText('Loading the feed…')).toBeNull();
+    expect(titles('Videos')).toEqual(['A long video']);
+    // Back to All: kept too.
+    fireEvent.click(
+      within(screen.getByRole('group', { name: 'Show in the feed' })).getByRole('button', {
+        name: 'All',
+      }),
+    );
+    expect(titles('All')).toEqual([NEWEST, 'Building a castle', 'A long video']);
+    // Within a minute the lists are not asked for again.
+    await waitFor(() => {
+      expect(calls.filter((c) => c.cmd === 'feed_get').length).toBeGreaterThanOrEqual(2);
+    });
+    expect(calls.filter((c) => c.cmd === 'feed_page')).toHaveLength(pages);
+  });
+
+  it('keeps the cards on Refresh: new ones come in first, and a note says what came', async () => {
+    const items = serviceItems();
+    let paged = items;
+    backend({ feed_page: (args) => pager(paged)(args) });
+    show();
+    await screen.findByRole('list', { name: 'All' });
+    const refresh = screen.getByRole('button', { name: 'Refresh' });
+    fireEvent.click(refresh);
+    expect(await screen.findByRole('status')).toHaveTextContent(
+      'The feed is up to date: nothing new.',
+    );
+    expect(titles('All')).toEqual([NEWEST, 'Building a castle', 'A long video']);
+    await waitFor(() => {
+      expect(refresh).toBeEnabled();
+    });
+
+    const [video] = feedFixture().videos;
+    if (!video) throw new Error('the fixture changed');
+    const fresh = {
+      ...video,
+      id: 'fresh123456',
+      title: 'A fresh video',
+      date: '2026-10-19T13:00:00Z',
+    };
+    paged = [{ type: 'video', video: fresh }, ...items];
+    fireEvent.click(refresh);
+    await waitFor(() => {
+      expect(screen.getByRole('status')).toHaveTextContent('The feed is updated: 1 new post.');
+    });
+    expect(titles('All')).toEqual([NEWEST, 'A fresh video', 'Building a castle', 'A long video']);
+    // The new card comes in with a motion; the others stay as they were.
+    const cell = (title: string) => screen.getByRole('article', { name: title }).parentElement;
+    expect(cell('A fresh video')).toHaveClass('arrived');
+    expect(cell('A long video')).not.toHaveClass('arrived');
+  });
+
   it('says why there is no feed, and asks again on Refresh', async () => {
     let fail = true;
     const calls = backend({

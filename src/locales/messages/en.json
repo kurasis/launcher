@@ -74,6 +74,9 @@
       "end": "That’s everything for now.",
       "refresh": "Refresh",
       "refreshing": "Refreshing…",
+      "refreshed": "{count, plural, =0 {The feed is up to date: nothing new.} one {The feed is updated: # new post.} other {The feed is updated: # new posts.}}",
+      "refreshFailed": "Couldn’t refresh the feed.",
+      "newAbove": "{count, plural, one {# new post above} other {# new posts above}}",
       "problems": {
         "disabled": "The feed is switched off in Settings.",
         "offline": "The feed cannot be reached. Check the internet connection.",
