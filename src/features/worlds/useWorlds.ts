@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import type { WorldsRoom, WorldsState } from '../../lib/contracts';
+import type { LocalWorld, WorldsRoom, WorldsState } from '../../lib/contracts';
 import {
   describeIpcError,
   ipc,
@@ -40,6 +40,11 @@ export function useWorldsState(): WorldsState {
   return state;
 }
 
+/** The room this computer gets ready, hosts or is a guest in, if any. */
+export function activeRoom(state: WorldsState): string | null {
+  return state.preparing?.room ?? state.hosting?.room ?? state.guest?.room ?? null;
+}
+
 /** How often rooms are asked again, for their open state and players. */
 export const ROOMS_EVERY_MS = 15_000;
 
@@ -54,6 +59,15 @@ export function roomOpen(room: WorldsRoom, state: WorldsState): { open: boolean;
     return { open: true, online: hosting.players.length };
   }
   return { open: room.hosting, online: room.online };
+}
+
+/**
+ * How many mods a room plays, when it is known: the owner's own world counts them all;
+ * a room open with mods says how many a guest installs (older launchers do not say).
+ */
+export function roomMods(room: WorldsRoom, world: LocalWorld | null): number | null {
+  const count = world !== null && world.loader !== null ? world.mods : room.pack?.mods;
+  return count === undefined || count === 0 ? null : count;
 }
 
 /**

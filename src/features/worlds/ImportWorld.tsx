@@ -14,40 +14,59 @@ import styles from './Worlds.module.css';
 interface Props {
   onClose: () => void;
   onImported: (room: WorldsRoom) => void;
+  /** The list the screen read already: every installation's saves are not read twice. */
+  known?: WorldsImportable[] | undefined;
+  /** The world chosen on the screen, when it is in that list. */
+  initial?: { instanceId: string; save: string } | undefined;
+}
+
+/** The installation and world to start with: the one chosen, else the first. */
+function start(list: WorldsImportable[], initial: Props['initial']) {
+  const chosen =
+    initial === undefined
+      ? undefined
+      : list.find((s) => s.instanceId === initial.instanceId && s.saves.includes(initial.save));
+  if (chosen !== undefined && initial !== undefined) {
+    return { instance: chosen.instanceId, save: initial.save };
+  }
+  const first = list[0];
+  return { instance: first?.instanceId ?? '', save: first?.saves[0] ?? '' };
 }
 
 /**
  * A single-player world brought into worlds with friends (W9): it is copied,
  * the original stays in its installation. The EULA is accepted here.
  */
-export function ImportWorld({ onClose, onImported }: Props) {
+export function ImportWorld({ onClose, onImported, known, initial }: Props) {
   const t = strings.worlds.import;
   const form = strings.worlds.form;
-  const [sources, setSources] = useState<WorldsImportable[] | null>(null);
-  const [instance, setInstance] = useState('');
-  const [save, setSave] = useState('');
-  const [name, setName] = useState('');
+  const first = known === undefined ? null : start(known, initial);
+  const [sources, setSources] = useState<WorldsImportable[] | null>(known ?? null);
+  const [instance, setInstance] = useState(first?.instance ?? '');
+  const [save, setSave] = useState(first?.save ?? '');
+  const [name, setName] = useState(first?.save ?? '');
   const [description, setDescription] = useState('');
   const [eula, setEula] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
+    if (known !== undefined) return;
     ipc
       .worldsImportable()
       .then((list) => {
         setSources(list);
-        const first = list[0];
-        if (first !== undefined) {
-          setInstance(first.instanceId);
-          setSave(first.saves[0] ?? '');
-          setName(first.saves[0] ?? '');
-        }
+        const chosen = start(list, undefined);
+        setInstance(chosen.instance);
+        setSave(chosen.save);
+        setName(chosen.save);
       })
       .catch((e: unknown) => {
         setSources([]);
         setError(worldsErrorText(e));
       });
+    // The list given at the start stays the dialog's list.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const source = sources?.find((s) => s.instanceId === instance) ?? null;
@@ -62,7 +81,7 @@ export function ImportWorld({ onClose, onImported }: Props) {
   const ready = eula && source !== null && save !== '' && name.trim() !== '';
 
   const submit = () => {
-    if (!ready) return;
+    if (!ready || busy) return;
     setBusy(true);
     setError(null);
     void (async () => {
@@ -189,7 +208,13 @@ export function ImportWorld({ onClose, onImported }: Props) {
           {error !== null && <Notice tone="danger">{error}</Notice>}
           <div className={forms.actions}>
             <Button onClick={onClose}>{strings.worlds.cancel}</Button>
-            <Button type="submit" variant="primary" disabled={busy || !ready}>
+            {/* Pressed, it keeps the focus while the world is copied. */}
+            <Button
+              type="submit"
+              variant="primary"
+              disabled={!ready}
+              aria-disabled={busy || undefined}
+            >
               {busy ? t.importing : t.submit}
             </Button>
           </div>

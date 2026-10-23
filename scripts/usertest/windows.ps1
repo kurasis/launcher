@@ -772,7 +772,9 @@ try {
       # interface language ("Apr 1, 2026"; some languages put the day first), so it is
       # told by its first text, the id itself (1.21 is not 1.21.1), and a year after it.
       # A special version's row starts with its name, which an earlier build shares with
-      # the build Mojang kept.
+      # the build Mojang kept. A row with no tag can show no texts of its own to UI
+      # Automation; it is taken by its name, and the check of the choice below skips a
+      # row that turns out to be another version.
       $shown = if ($isSpecial) { $specials[$version] } else { [pscustomobject]@{ name = $version; selected = $version } }
       $rows = Wait-For {
         foreach ($candidate in $script:main.FindAll($Scope::Descendants, $Any)) {
@@ -781,7 +783,7 @@ try {
             if (-not $c.IsKeyboardFocusable -or -not $c.Name.StartsWith($shown.name, [StringComparison]::OrdinalIgnoreCase)) { continue }
             if ($c.Name.Substring($shown.name.Length) -notmatch '\d{4}') { continue }
             $first = @($candidate.FindAll($Scope::Descendants, $Any) | Where-Object { $_.Current.Name } | Select-Object -First 1)
-            if ($first -and $first[0].Current.Name -ieq $shown.name) { $candidate }
+            if (-not $first -or $first[0].Current.Name -ieq $shown.name) { $candidate }
           } catch { }
         }
       } 60

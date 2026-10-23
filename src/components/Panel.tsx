@@ -1,4 +1,5 @@
 import { useId, type ReactNode } from 'react';
+import { numberLocale } from '../lib/strings';
 import styles from './Panel.module.css';
 
 interface PanelProps {
@@ -9,6 +10,8 @@ interface PanelProps {
   level?: 2 | 3 | 4;
   /** The heading's id, for a group inside that its title names too. */
   headingId?: string;
+  /** How many things the panel lists, after its title ("Rooms 4"). */
+  count?: number | undefined;
   /** Optional element rendered next to the heading, e.g. a status badge. */
   aside?: ReactNode;
   /** The aside follows the heading instead of sitting at the far end. */
@@ -24,6 +27,7 @@ export function Panel({
   title,
   level = 2,
   headingId,
+  count,
   aside,
   asideAtTitle = false,
   action,
@@ -44,6 +48,11 @@ export function Panel({
       <header className={[styles.header, asideAtTitle && styles.atTitle].filter(Boolean).join(' ')}>
         <Heading id={id} className={styles.title}>
           {title}
+          {/* The space keeps "Rooms 4" apart for assistive technology too. */}
+          {count !== undefined && ' '}
+          {count !== undefined && (
+            <span className={styles.count}>{count.toLocaleString(numberLocale())}</span>
+          )}
         </Heading>
         {aside}
       </header>

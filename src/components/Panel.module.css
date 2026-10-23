@@ -31,6 +31,13 @@
   line-height: 1.3;
 }
 
+/* The number of things listed, quiet after the title. */
+.count {
+  color: var(--color-text-muted);
+  font-weight: 500;
+  font-variant-numeric: tabular-nums;
+}
+
 .body {
   display: grid;
   gap: var(--space-3);
