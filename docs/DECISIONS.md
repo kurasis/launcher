@@ -2528,6 +2528,12 @@ skins-mod <channel>` there only checks the signature against the public key and
   A number read from a page is used only when `/projects/<number>` leads back to that
   page; a project kept under a wrong number takes the right one at its next check.
   The probe reads RLCraft's page too and prints each candidate's number and likeness.
+  Its first run showed the other object scoring above RLCraft's own (it names the
+  modpack class, the project's object does not), so a page with several candidates
+  has their numbers asked in turn, the project's current number first, then the
+  likeliest, up to three; one candidate alone that is already the project's number
+  is not asked. The probe now also prints, for each candidate, which fields it has,
+  where its number leads and whether the site lists files for it.
 - **Name search.** A name asks both sources: Modrinth's search API and CurseForge's
   search page (its API search is refused). The page's hits are read from the App Router
   stream (objects with a numeric ID, a slug, a name and a class we keep, Minecraft

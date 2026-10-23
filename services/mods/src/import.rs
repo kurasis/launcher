@@ -1210,42 +1210,57 @@ async fn project_curseforge(
     let page_url = curseforge::page_url(&r.class, &r.slug);
     // The page gives the card, and the ID when the reference has none; a
     // dependency (which has its ID) goes on without it.
-    let mut card = match app
+    let html = match app
         .client
         .page(&page_url, curseforge::MAX_PAGE as u64)
         .await
     {
-        Ok(Some(html)) => Some(curseforge::page(&html, &r.class, &r.slug)),
+        Ok(Some(html)) => Some(html),
         Ok(None) if r.id.is_none() => return Err(JobError::new("not_found", false)),
         Err(e) if r.id.is_none() => return Err(e.into()),
         _ => None,
     };
-    // A number read from the page counts only when the number's own address
-    // leads back to the page: a page also lists other things with the slug.
-    let read = card.as_ref().and_then(|c| c.id);
-    let source_id = match (r.id, read) {
-        (Some(ours), Some(read)) if read != ours => {
-            if number_leads_to(app, read, &r).await? {
-                app.store
-                    .renumber_source(curseforge::SOURCE, &page_url, &read.to_string())?;
-                read
-            } else {
-                // What the page showed is another thing with the slug.
-                card = None;
-                ours
+    // A page also lists other things with the slug (the servers that run a
+    // modpack): a number read from it counts only when the number's own
+    // address leads back to the page. Ours is asked first when the page
+    // shows it among others, then the likeliest.
+    let numbers = html
+        .as_deref()
+        .map(|h| curseforge::numbers(h, &r.class, &r.slug))
+        .unwrap_or_default();
+    let chosen = match r.id {
+        Some(ours) if numbers.is_empty() || numbers == [ours] => Some(ours),
+        _ => {
+            let order =
+                r.id.filter(|n| numbers.contains(n))
+                    .into_iter()
+                    .chain(numbers.iter().copied().filter(|n| Some(*n) != r.id));
+            let mut found = None;
+            for number in order.take(NUMBERS_CHECKED) {
+                if number_leads_to(app, number, &r).await? {
+                    found = Some(number);
+                    break;
+                }
             }
+            found
         }
-        (Some(ours), _) => ours,
-        (None, Some(read)) => {
-            if !number_leads_to(app, read, &r).await? {
-                return Err(JobError::new("bad_answer", false));
-            }
-            app.store
-                .renumber_source(curseforge::SOURCE, &page_url, &read.to_string())?;
-            read
-        }
-        (None, None) => return Err(JobError::new("bad_answer", true)),
     };
+    let source_id = match (r.id, chosen) {
+        (_, Some(number)) => {
+            if r.id != Some(number) {
+                app.store
+                    .renumber_source(curseforge::SOURCE, &page_url, &number.to_string())?;
+            }
+            number
+        }
+        (Some(ours), None) => ours,
+        (None, None) => return Err(JobError::new("bad_answer", numbers.is_empty())),
+    };
+    // Only what the page shows of this project (or only its page's tags);
+    // nothing when it shows only other things with the slug.
+    let card = html
+        .filter(|_| chosen.is_some())
+        .map(|h| curseforge::page(&h, &r.class, &r.slug, chosen));
     let known = app
         .store
         .project_by_source(curseforge::SOURCE, &source_id.to_string())?;
@@ -1361,6 +1376,9 @@ async fn project_curseforge(
     app.store.set_project_status(&id, "ready")?;
     Ok(())
 }
+
+/// Numbers read from a page that are checked, the likeliest first.
+const NUMBERS_CHECKED: usize = 3;
 
 /// Whether CurseForge's address for a project's number
 /// (`/projects/<number>`, which the site redirects to the project's page)

@@ -420,10 +420,10 @@ pub const MAX_PAGE: usize = 8 * 1024 * 1024;
 /// Reads a project's page: the project object in the App Router stream
 /// (the one with this slug and a numeric ID), then JSON-LD and Open Graph
 /// tags for what it lacks.
-pub fn page(html: &str, class: &str, slug: &str) -> Card {
+pub fn page(html: &str, class: &str, slug: &str, number: Option<u64>) -> Card {
     let html = &html[..floor(html, MAX_PAGE)];
     let stream = stream(html);
-    let mut card = project_in(&stream, class, slug)
+    let mut card = project_in(&stream, class, slug, number)
         .map(|p| card_of(&stream, &p))
         .unwrap_or_default();
     let ld = ld_json(html);
@@ -759,18 +759,31 @@ fn stream(html: &str) -> String {
     out
 }
 
-/// The project object in the stream: of the objects with this slug and a
-/// numeric `id`, the one most like the project of a page of this class
-/// ([`likeness`]), the first of equals. A page also lists other things that
-/// share the slug, such as the servers that run a modpack.
-fn project_in(text: &str, class: &str, slug: &str) -> Option<Value> {
-    let mut best: Option<(u32, Value)> = None;
-    for (score, value) in objects_with(text, class, slug) {
-        if best.as_ref().is_none_or(|(s, _)| score > *s) {
-            best = Some((score, value));
-        }
-    }
-    best.map(|(_, value)| value)
+/// The project object in the stream: the object with this slug and this
+/// number, or without a number the one most like the project of a page of
+/// this class ([`likeness`]), the first of equals. A page also lists other
+/// things that share the slug, so a number read from it is checked
+/// elsewhere (`/projects/<number>`).
+fn project_in(text: &str, class: &str, slug: &str, number: Option<u64>) -> Option<Value> {
+    ranked(objects_with(text, class, slug))
+        .into_iter()
+        .find(|v| number.is_none() || v.get("id").and_then(Value::as_u64) == number)
+}
+
+/// Objects most like the project first, the first of equals first.
+fn ranked(mut found: Vec<(u32, Value)>) -> Vec<Value> {
+    found.sort_by_key(|(score, _)| std::cmp::Reverse(*score));
+    found.into_iter().map(|(_, v)| v).collect()
+}
+
+/// The numbers of the objects on a page that could be its project, most
+/// like it first.
+pub fn numbers(html: &str, class: &str, slug: &str) -> Vec<u64> {
+    let html = &html[..floor(html, MAX_PAGE)];
+    ranked(objects_with(&stream(html), class, slug))
+        .iter()
+        .filter_map(|v| v.get("id")?.as_u64())
+        .collect()
 }
 
 /// What [`likeness`] gives the project when all it looks at is there.
@@ -886,13 +899,65 @@ fn likeness(map: &serde_json::Map<String, Value>, class: &str) -> Option<u32> {
     Some(score + fields.iter().filter(|k| map.contains_key(**k)).count() as u32)
 }
 
-/// The numbers of the objects that could be a page's project, with their
-/// likeness, for the probe (numbers only).
-pub fn choices(html: &str, class: &str, slug: &str) -> Vec<(u64, u32)> {
+/// Fields the probe names when an object that could be the project has
+/// them.
+const PROBED_FIELDS: &[&str] = &[
+    "name",
+    "summary",
+    "logo",
+    "avatarUrl",
+    "authors",
+    "author",
+    "downloadCount",
+    "categories",
+    "mainFileId",
+    "latestFiles",
+    "dateCreated",
+    "updateDate",
+    "status",
+    "isAvailable",
+    "type",
+    "links",
+    "serverAddress",
+    "ip",
+    "port",
+    "version",
+    "modpack",
+    "project",
+    "projectId",
+];
+
+/// The objects that could be a page's project, for the probe: each one's
+/// number, likeness, its class and game numbers, and which of
+/// [`PROBED_FIELDS`] it has (our words and numbers only).
+pub fn choices(html: &str, class: &str, slug: &str) -> Vec<(u64, String)> {
     let html = &html[..floor(html, MAX_PAGE)];
     objects_with(&stream(html), class, slug)
         .into_iter()
-        .filter_map(|(score, v)| Some((v.get("id")?.as_u64()?, score)))
+        .filter_map(|(score, v)| {
+            let id = v.get("id")?.as_u64()?;
+            let mut words = vec![format!("likeness={score}")];
+            for key in ["classId", "gameId"] {
+                if let Some(n) = v.get(key).and_then(Value::as_u64) {
+                    words.push(format!("{key}={n}"));
+                }
+            }
+            match v.get("class") {
+                Some(Value::String(_)) => words.push("class=text".into()),
+                Some(Value::Object(_)) => words.push("class=object".into()),
+                Some(_) => words.push("class=other".into()),
+                None => {}
+            }
+            words.extend(
+                PROBED_FIELDS
+                    .iter()
+                    .filter(|k| v.get(**k).is_some())
+                    .map(|k| (*k).to_owned()),
+            );
+            let keys = v.as_object().map_or(0, serde_json::Map::len);
+            words.push(format!("keys={keys}"));
+            Some((id, words.join("+")))
+        })
         .collect()
 }
 
@@ -1168,7 +1233,7 @@ const UPDATED: &[&str] = &[
 pub fn shapes(html: &str, class: &str, slug: &str) -> Vec<String> {
     let html = &html[..floor(html, MAX_PAGE)];
     let stream = stream(html);
-    let Some(project) = project_in(&stream, class, slug) else {
+    let Some(project) = project_in(&stream, class, slug, None) else {
         return Vec::new();
     };
     let keys = [
