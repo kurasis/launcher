@@ -1,12 +1,14 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { Button } from '../../components/Button';
+import { Confirm } from '../../components/Confirm';
 import { Notice } from '../../components/Notice';
-import forms from '../../components/forms.module.css';
+import { Panel } from '../../components/Panel';
+import { useFocusBack } from '../../components/useFocusBack';
 import type { BackupInfo, LocalWorld, WorldsState } from '../../lib/contracts';
 import { formatBytes } from '../../lib/format';
 import { ipc } from '../../lib/ipc';
 import { numberLocale, strings } from '../../lib/strings';
-import { Dialog } from '../../components/Dialog';
+import { calendarDays, daysAgo } from '../../lib/time';
 import { worldsErrorText } from './useWorlds';
 import styles from './Worlds.module.css';
 
@@ -18,7 +20,31 @@ interface Props {
   state: WorldsState;
 }
 
+/** The full date and time, for the restore question. */
 const when = (backup: BackupInfo) => new Date(backup.createdAt).toLocaleString(numberLocale());
+
+/** "Today, 19:55", "Yesterday, 23:10", "3 October, 18:02": the time kept on older days,
+ * as one day can have several backups. */
+function shortWhen(backup: BackupInfo, now = Date.now()): string {
+  const at = Date.parse(backup.createdAt);
+  if (Number.isNaN(at)) return '';
+  const date = new Date(at);
+  const time = { hour: 'numeric', minute: '2-digit' } as const;
+  if (calendarDays(at, now) <= 1) {
+    // "today" starts the line: "Today, 19:55".
+    const day = daysAgo(at, now);
+    return strings.worlds.safety.dayTime({
+      day: day.charAt(0).toLocaleUpperCase(numberLocale()) + day.slice(1),
+      time: new Intl.DateTimeFormat(numberLocale(), time).format(date),
+    });
+  }
+  return new Intl.DateTimeFormat(numberLocale(), {
+    ...(date.getFullYear() === new Date(now).getFullYear() ? {} : { year: 'numeric' as const }),
+    month: 'long',
+    day: 'numeric',
+    ...time,
+  }).format(date);
+}
 
 /**
  * A hosted world's backups on this computer (W9): one after each session
@@ -33,6 +59,10 @@ export function WorldBackups({ world, state }: Props) {
   const [note, setNote] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [restoring, setRestoring] = useState<BackupInfo | null>(null);
+  // The Restore that asked: the focus goes back to it when the question closes.
+  const opener = useRef<HTMLButtonElement | null>(null);
+  const list = useRef<HTMLUListElement>(null);
+  useFocusBack(restoring?.id ?? null, opener, list);
 
   const hosted = state.hosting?.world === world.id && state.hosting.clean === null;
   const waiting = hosted || state.maintenance || state.preparing !== null;
@@ -53,6 +83,7 @@ export function WorldBackups({ world, state }: Props) {
   }, [load, state.maintenance]);
 
   const run = (action: () => Promise<string | null>) => {
+    if (busy) return;
     setBusy(true);
     setError(null);
     setNote(null);
@@ -70,17 +101,21 @@ export function WorldBackups({ world, state }: Props) {
   };
 
   const played = world.played || (backups?.length ?? 0) > 0;
+  const pending = busy || undefined;
 
   return (
-    <section className={styles.section} aria-label={t.title}>
-      <h4 className={styles.sectionTitle}>{t.title}</h4>
-      <p className={styles.muted}>{t.hint({ count: KEPT })}</p>
+    <Panel title={t.title} level={3}>
+      <p className={styles.panelHint}>{t.hint({ count: KEPT })}</p>
       {!played ? (
-        <p className={styles.muted}>{t.notPlayed}</p>
+        <p className={styles.panelHint}>{t.notPlayed}</p>
       ) : (
         <div className={styles.actions}>
+          {/* Waits the world's state sets stay disabled; a press under way does not take
+              the focus from the pressed button. */}
           <Button
-            disabled={busy || waiting}
+            size="small"
+            disabled={waiting}
+            aria-disabled={pending}
             onClick={() => {
               run(async () => {
                 await ipc.worldsBackUp(world.id);
@@ -91,7 +126,9 @@ export function WorldBackups({ world, state }: Props) {
             {t.backUp}
           </Button>
           <Button
-            disabled={busy || waiting}
+            size="small"
+            disabled={waiting}
+            aria-disabled={pending}
             onClick={() => {
               run(async () => {
                 const saved = await ipc.worldsExport(world.id, t.exportTitle);
@@ -103,77 +140,59 @@ export function WorldBackups({ world, state }: Props) {
           </Button>
         </div>
       )}
-      {hosted && <p className={styles.muted}>{t.whileHosted}</p>}
-      {(busy || state.maintenance) && (
-        <p className={styles.muted} role="status">
-          {b.working}
-        </p>
-      )}
-      {note !== null && (
-        <p className={styles.muted} role="status">
-          {note}
-        </p>
-      )}
+      {hosted && <p className={styles.panelHint}>{t.whileHosted}</p>}
+      <p className={styles.panelHint} role="status">
+        {busy || state.maintenance ? b.working : (note ?? '')}
+      </p>
       {error !== null && <Notice tone="danger">{error}</Notice>}
       {backups !== null && backups.length > 0 && (
-        <ul className={styles.rooms} aria-label={t.list}>
+        <ul ref={list} className={styles.backupList} aria-label={t.list} tabIndex={-1}>
           {backups.map((backup) => (
-            <li key={backup.id} className={styles.room}>
-              <span>{when(backup)}</span>
-              <span className={styles.muted}>
-                {b.reason[backup.reason]} ·{' '}
-                {b.size({
-                  files: backup.fileCount,
-                  total: formatBytes(backup.totalBytes),
-                  added: formatBytes(backup.newBytes),
-                })}
+            <li key={backup.id} className={styles.backupRow}>
+              <span className={styles.backupWhen}>{shortWhen(backup)}</span>
+              <span className={styles.rowMeta}>
+                {t.row({ reason: b.reason[backup.reason], size: formatBytes(backup.totalBytes) })}
               </span>
-              <div className={styles.actions}>
+              <div className={styles.rowActions}>
                 <Button
-                  disabled={busy || waiting}
-                  onClick={() => {
+                  size="small"
+                  disabled={waiting}
+                  aria-disabled={pending}
+                  onClick={(event) => {
+                    if (busy) return;
+                    opener.current = event.currentTarget;
                     setRestoring(backup);
                   }}
                 >
                   {b.restore}
                 </Button>
               </div>
+              {restoring?.id === backup.id && (
+                <div className={styles.rowWide}>
+                  <Confirm
+                    label={world.name}
+                    text={t.confirmRestore({ date: when(backup), world: world.name })}
+                    action={b.restore}
+                    actionVariant="primary"
+                    cancel={strings.worlds.cancel}
+                    pending={false}
+                    onYes={() => {
+                      setRestoring(null);
+                      run(async () => {
+                        await ipc.worldsRestore(world.id, backup.id);
+                        return t.restored({ date: when(backup) });
+                      });
+                    }}
+                    onNo={() => {
+                      setRestoring(null);
+                    }}
+                  />
+                </div>
+              )}
             </li>
           ))}
         </ul>
       )}
-      {restoring !== null && (
-        <Dialog
-          title={world.name}
-          onClose={() => {
-            setRestoring(null);
-          }}
-        >
-          <p>{t.confirmRestore({ date: when(restoring), world: world.name })}</p>
-          <div className={forms.actions}>
-            <Button
-              onClick={() => {
-                setRestoring(null);
-              }}
-            >
-              {strings.worlds.cancel}
-            </Button>
-            <Button
-              variant="primary"
-              onClick={() => {
-                const chosen = restoring;
-                setRestoring(null);
-                run(async () => {
-                  await ipc.worldsRestore(world.id, chosen.id);
-                  return t.restored({ date: when(chosen) });
-                });
-              }}
-            >
-              {b.restore}
-            </Button>
-          </div>
-        </Dialog>
-      )}
-    </section>
+    </Panel>
   );
 }

@@ -6,6 +6,10 @@ interface ScreenProps {
   title: string;
   /** A way back before the title, on a screen opened from another ("‹ Wardrobe"). */
   back?: ReactNode;
+  /** A way back on its own line above the title, for a long title with facts after it. */
+  top?: ReactNode;
+  /** Facts right after the title, such as tags. */
+  aside?: ReactNode;
   /** Actions at the end of the head, such as "New installation". */
   actions?: ReactNode;
   /** The title, to take the focus when what it heads changes under it. */
@@ -19,7 +23,16 @@ interface ScreenProps {
  * the content. The screen is a size container named `screen`, so its layout follows the
  * room it has, with or without the rail's labels.
  */
-export function Screen({ title, back, actions, headingRef, className, children }: ScreenProps) {
+export function Screen({
+  title,
+  back,
+  top,
+  aside,
+  actions,
+  headingRef,
+  className,
+  children,
+}: ScreenProps) {
   const headingId = useId();
   const heading = (
     <h2
@@ -36,13 +49,15 @@ export function Screen({ title, back, actions, headingRef, className, children }
       className={[styles.screen, className].filter(Boolean).join(' ')}
       aria-labelledby={headingId}
     >
+      {top !== undefined && <div className={styles.top}>{top}</div>}
       <header className={styles.head}>
-        {back === undefined ? (
+        {back === undefined && aside === undefined ? (
           heading
         ) : (
           <div className={styles.titleRow}>
             {back}
             {heading}
+            {aside !== undefined && <div className={styles.aside}>{aside}</div>}
           </div>
         )}
         {actions !== undefined && <div className={styles.actions}>{actions}</div>}

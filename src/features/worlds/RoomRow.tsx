@@ -1,4 +1,4 @@
-import { useId, useRef } from 'react';
+import { useEffect, useId, useRef } from 'react';
 import { Button } from '../../components/Button';
 import { Tag } from '../../components/Tag';
 import { useFocusBack } from '../../components/useFocusBack';
@@ -20,18 +20,23 @@ interface Props {
   /** This computer gets ready, hosts or is a guest in this room: the band has its
    * buttons, the row only Open. */
   active: boolean;
+  /** Its page was just left: Open takes the focus back. */
+  cameFrom?: boolean;
   onLocal: (world: LocalWorld) => void;
   onOpen: () => void;
 }
 
 /** A room in the list: its name and facts, what can start it here, and Open. */
-export function RoomRow({ room, local, state, active, onLocal, onOpen }: Props) {
+export function RoomRow({ room, local, state, active, cameFrom = false, onLocal, onOpen }: Props) {
   const actions = useRoomActions({ roomId: room.id, room, local, onLocal });
   const nameId = useId();
   const start = useRef<HTMLButtonElement>(null);
   const open = useRef<HTMLButtonElement>(null);
   // Accept the EULA goes with its answer: Open for friends takes the focus, or Open.
   useFocusBack(local?.eulaAccepted, start, open);
+  useEffect(() => {
+    if (cameFrom) open.current?.focus();
+  }, [cameFrom]);
   const now = roomOpen(room, state);
   const mods = roomMods(room, local);
   const owner = room.role === 'owner';

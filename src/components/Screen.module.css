@@ -13,11 +13,18 @@
   gap: var(--space-3) var(--space-4);
 }
 
+/* A way back on its own line: close to the title it leads to. */
+.top {
+  display: flex;
+  margin-block-end: calc(-1 * var(--space-2));
+}
+
 .title {
   margin: 0;
   font-size: var(--font-size-xl);
   font-weight: 700;
   line-height: 1.2;
+  overflow-wrap: anywhere;
 }
 
 .titleRow {
@@ -31,6 +38,14 @@
 /* Focused by the screen when its content changes; the title shows no ring. */
 .title:focus {
   outline: none;
+}
+
+.aside {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-1) var(--space-2);
+  min-inline-size: 0;
 }
 
 .actions {

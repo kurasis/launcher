@@ -1,4 +1,4 @@
-import { useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import type { LocalWorld, RoomConsent, WorldsRoom, WorldsState } from '../../lib/contracts';
 import { ipc } from '../../lib/ipc';
 import { strings } from '../../lib/strings';
@@ -25,7 +25,9 @@ export type RoomActionsApi = ReturnType<typeof useRoomActions>;
  * step goes does nothing: the pressed button keeps the focus (a disabled one loses it
  * in WebView2 and WebKit), so buttons show `aria-disabled` while `busy`. The ways out
  * (Leave the world, Join again, Close the world) wait only for each other: a Play that
- * installs mods does not keep the player in the room.
+ * installs mods does not keep the player in the room. Another `roomId` (the band follows
+ * the room this computer is in) starts afresh, and what was under way for the last one
+ * is left undone.
  */
 export function useRoomActions({ roomId, room, local, onLocal }: Omit<RoomTarget, 'state'>) {
   const [error, setError] = useState<string | null>(null);
@@ -33,31 +35,48 @@ export function useRoomActions({ roomId, room, local, onLocal }: Omit<RoomTarget
   const [busy, setBusy] = useState(false);
   const [leaving, setLeaving] = useState(false);
   const [consent, setConsent] = useState<RoomConsent | null>(null);
-  // Counts the ways out taken: what a step started before one finds is left undone.
+  const [target, setTarget] = useState(roomId);
+  if (target !== roomId) {
+    setTarget(roomId);
+    setError(null);
+    setNote(null);
+    setBusy(false);
+    setLeaving(false);
+    setConsent(null);
+  }
+  // Counts the rooms followed and the ways out taken: what a step started before
+  // either changed is left undone.
+  const rooms = useRef(0);
   const ways = useRef(0);
+  useEffect(() => {
+    rooms.current += 1;
+  }, [roomId]);
 
   /** `said` is false where the state already tells why a step failed. */
-  const run = (action: (started: number) => Promise<unknown>, said = true) => {
+  const run = (action: (stale: () => boolean) => Promise<unknown>, said = true) => {
     if (busy) return;
-    const started = ways.current;
+    const room0 = rooms.current;
+    const way0 = ways.current;
+    const stale = () => rooms.current !== room0 || ways.current !== way0;
     setError(null);
     setNote(null);
     setBusy(true);
-    action(started)
+    action(stale)
       .catch((e: unknown) => {
-        if (ways.current !== started) return;
+        if (stale()) return;
         setNote(null);
         // The state names a failed start, but not that the mods went back.
         if (said || worldsMarked(e, 'worldsRolledBack')) setError(worldsErrorText(e));
       })
       .finally(() => {
-        setBusy(false);
+        if (rooms.current === room0) setBusy(false);
       });
   };
 
   /** A way out: it ends the question about the mods and what Play was doing. */
   const leave = (action: () => Promise<unknown>, said = true) => {
     if (leaving) return;
+    const room0 = rooms.current;
     ways.current += 1;
     setConsent(null);
     setError(null);
@@ -65,10 +84,10 @@ export function useRoomActions({ roomId, room, local, onLocal }: Omit<RoomTarget
     setLeaving(true);
     action()
       .catch((e: unknown) => {
-        if (said) setError(worldsErrorText(e));
+        if (said && rooms.current === room0) setError(worldsErrorText(e));
       })
       .finally(() => {
-        setLeaving(false);
+        if (rooms.current === room0) setLeaving(false);
       });
   };
 
@@ -76,12 +95,12 @@ export function useRoomActions({ roomId, room, local, onLocal }: Omit<RoomTarget
   const play = (accept?: string) => {
     if (busy || leaving) return;
     setConsent(null);
-    run(async (started) => {
+    run(async (stale) => {
       if (room !== null && room.pack !== null && room.role !== 'owner') {
         setNote(t.installingMods);
       }
       const instance = await ipc.worldsInstance(roomId, accept);
-      if (ways.current !== started) return;
+      if (stale()) return;
       setNote(null);
       if (instance.consent !== null) {
         setConsent(instance.consent);
@@ -89,7 +108,7 @@ export function useRoomActions({ roomId, room, local, onLocal }: Omit<RoomTarget
       }
       if (!instance.ready) {
         await ipc.installInstance(instance.instanceId);
-        if (ways.current !== started) return;
+        if (stale()) return;
         setNote(t.installing);
         return;
       }

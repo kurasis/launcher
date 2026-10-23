@@ -3,14 +3,6 @@
   font-size: var(--font-size-sm);
 }
 
-.toolbar {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: var(--space-2);
-  margin: var(--space-3) 0;
-}
-
 .rooms {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(min(100%, 22rem), 1fr));
@@ -34,12 +26,6 @@
   font-size: var(--font-size-md);
   font-weight: 600;
   overflow-wrap: anywhere;
-}
-
-.badges {
-  display: flex;
-  flex-wrap: wrap;
-  gap: var(--space-1);
 }
 
 .actions {
@@ -72,37 +58,8 @@
   list-style: none;
 }
 
-.member {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  justify-content: space-between;
-  gap: var(--space-2);
-  padding: var(--space-2) var(--space-3);
-  border: 1px solid var(--color-border);
-  border-radius: var(--radius-sm);
-}
-
 .nick {
   font-family: var(--font-mono, monospace);
-  overflow-wrap: anywhere;
-}
-
-.section {
-  display: grid;
-  gap: var(--space-3);
-  margin-top: var(--space-4);
-}
-
-.sectionTitle {
-  font-size: var(--font-size-md);
-}
-
-.code {
-  font-family: var(--font-mono, monospace);
-  font-size: var(--font-size-lg);
-  letter-spacing: 0.05em;
-  user-select: all;
   overflow-wrap: anywhere;
 }
 
@@ -382,4 +339,272 @@
   .roomRow .rowWide {
     grid-column: 1 / -1;
   }
+}
+
+/* Concept A (A6.5): a room's page. */
+.back {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
+  min-block-size: 2rem;
+  margin-inline-start: calc(-1 * var(--space-2));
+  padding: 0 var(--space-2);
+  border: 0;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--color-accent-text);
+  font: inherit;
+  font-size: var(--font-size-sm);
+  font-weight: 500;
+  cursor: pointer;
+  transition: background-color var(--motion-duration) ease-out;
+}
+
+.back:hover {
+  background: var(--color-hover);
+}
+
+.mirror {
+  flex: none;
+}
+
+:global([dir='rtl']) .mirror {
+  transform: scaleX(-1);
+}
+
+/* The room's actions: an icon button with its name for assistive technology. */
+.moreButton {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  inline-size: var(--control-height);
+  block-size: var(--control-height);
+  padding: 0;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+  background: var(--color-surface);
+  color: var(--color-text);
+  cursor: pointer;
+  transition:
+    background-color var(--motion-duration) ease-out,
+    border-color var(--motion-duration) ease-out;
+}
+
+.moreButton:hover,
+.moreButton[aria-expanded='true'] {
+  border-color: var(--color-border-strong);
+  background: var(--color-hover);
+}
+
+.moreButton > span {
+  position: absolute;
+  inline-size: 1px;
+  block-size: 1px;
+  margin: -1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+
+.roomHint {
+  display: grid;
+  gap: var(--space-1);
+  margin-block-start: calc(-1 * var(--space-2));
+}
+
+.description {
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+
+.panelHint {
+  margin: 0;
+  color: var(--color-text-muted);
+  font-size: var(--font-size-sm);
+  overflow-wrap: anywhere;
+}
+
+.panelHint:empty {
+  display: none;
+}
+
+/* A question or a message under the head, as wide as the screen's text. */
+.headWide {
+  display: grid;
+  gap: var(--space-2);
+  max-inline-size: 45rem;
+}
+
+/* Members and mods, with the invite and backups beside them while there is room. */
+.roomColumns {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: var(--space-6);
+  align-items: start;
+}
+
+@container screen (min-width: 60rem) {
+  .roomColumnsTwo {
+    grid-template-columns: minmax(0, 1fr) 25rem;
+  }
+}
+
+.memberList,
+.backupList {
+  container: rows / inline-size;
+  display: grid;
+  gap: var(--space-1);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.backupList:focus {
+  outline: none;
+}
+
+.memberRow {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  align-items: center;
+  gap: var(--space-1) var(--space-3);
+  padding: var(--space-2) var(--space-3);
+  border-radius: var(--radius-md);
+  transition: background-color var(--motion-duration) ease-out;
+}
+
+.memberRow:hover,
+.backupRow:hover {
+  background: var(--color-hover);
+}
+
+/* A former member: listed to those who manage the room, quieter than the rest. */
+.memberGone {
+  color: var(--color-text-muted);
+}
+
+.memberHead {
+  display: flex;
+}
+
+.memberText {
+  display: grid;
+  gap: 0.125rem;
+  min-inline-size: 0;
+}
+
+.memberName {
+  font-size: var(--font-size-sm);
+  font-weight: 600;
+  text-align: match-parent;
+  overflow-wrap: anywhere;
+}
+
+.memberActions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-1) var(--space-2);
+  grid-column: 2;
+}
+
+.memberRow .rowWide {
+  grid-column: 1 / -1;
+}
+
+@container rows (min-width: 26rem) {
+  .memberRow {
+    grid-template-columns: auto minmax(0, 1fr) fit-content(50%);
+  }
+
+  .memberActions {
+    grid-column: 3;
+    justify-content: flex-end;
+  }
+}
+
+.backupRow {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 0.125rem var(--space-3);
+  padding: var(--space-2) var(--space-3);
+  border-radius: var(--radius-md);
+  transition: background-color var(--motion-duration) ease-out;
+}
+
+.backupWhen {
+  font-size: var(--font-size-sm);
+  font-weight: 600;
+}
+
+@container rows (min-width: 18rem) {
+  .backupRow {
+    grid-template-columns: minmax(0, 1fr) auto;
+  }
+
+  .backupRow .rowActions {
+    grid-column: 2;
+    grid-row: 1 / span 2;
+    align-self: center;
+    margin: 0;
+  }
+
+  .backupRow .rowWide {
+    grid-column: 1 / -1;
+  }
+}
+
+/* The invite's choices, and the friend to send the code to. */
+.inviteForm {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: var(--space-3);
+}
+
+.inviteForm > :not(button) {
+  flex: 1 1 8rem;
+  min-inline-size: 0;
+}
+
+.codeBox {
+  display: grid;
+  gap: var(--space-2);
+  padding: var(--space-3);
+  border-radius: var(--radius-md);
+  background: var(--color-surface-sunken);
+}
+
+.codeRow {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-2);
+}
+
+.code {
+  min-inline-size: 0;
+  font-family: var(--font-mono);
+  font-size: var(--font-size-lg);
+  font-weight: 600;
+  user-select: all;
+  overflow-wrap: anywhere;
+}
+
+/* The update tools, unfolded from the mods panel. */
+.tools {
+  display: grid;
+  gap: var(--space-3);
+}
+
+.toolsRow {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: var(--space-3);
+}
+
+.toolsRow > :first-child {
+  flex: 1 1 12rem;
+  min-inline-size: 0;
 }
