@@ -763,12 +763,40 @@ impl ImportRequest {
 }
 
 /// A kept file the catalog recognized by its hash.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct Found {
     pub hash: String,
     pub project_id: String,
     pub version_id: String,
+    /// The project's title, icon and the version's number; none while the
+    /// catalog does not show the project.
+    pub title: Option<String>,
+    pub icon: Option<String>,
+    pub version_number: Option<String>,
+}
+
+impl Found {
+    /// One file of the catalog's answer to a lookup of `asked`.
+    fn from(f: &Value, asked: &[&String]) -> Option<Self> {
+        Some(Self {
+            hash: f["hash"]
+                .as_str()
+                .filter(|h| asked.iter().any(|x| x == h))?
+                .to_owned(),
+            project_id: f["projectId"].as_str().filter(|i| our_id(i))?.to_owned(),
+            version_id: f["versionId"].as_str().filter(|i| our_id(i))?.to_owned(),
+            title: f["title"]
+                .as_str()
+                .map(|t| line(t, 256))
+                .filter(|t| !t.is_empty()),
+            icon: f["iconThumb"].as_str().and_then(our_picture),
+            version_number: f["versionNumber"]
+                .as_str()
+                .map(|n| line(n, 128))
+                .filter(|n| !n.is_empty()),
+        })
+    }
 }
 
 /// A search as the interface asks it.
@@ -1743,16 +1771,7 @@ impl Catalog for Client {
             .as_array()
             .into_iter()
             .flatten()
-            .filter_map(|f| {
-                Some(Found {
-                    hash: f["hash"]
-                        .as_str()
-                        .filter(|h| hashes.iter().any(|x| x == h))?
-                        .to_owned(),
-                    project_id: f["projectId"].as_str().filter(|i| our_id(i))?.to_owned(),
-                    version_id: f["versionId"].as_str().filter(|i| our_id(i))?.to_owned(),
-                })
-            })
+            .filter_map(|f| Found::from(f, &hashes))
             .collect())
     }
 

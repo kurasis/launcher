@@ -103,7 +103,11 @@ function Row({
   const neededBy = needs !== null && needs.neededBy.length > 0 ? needs.neededBy : null;
   const unused =
     asking === 'remove' && needs !== null && needs.unused.length > 0 ? needs.unused : null;
-  const icon = ourPicture(item.icon);
+  // A file the launcher did not install (a modpack's, the player's) is
+  // named as the catalog shows it.
+  const icon = ourPicture(item.icon ?? known?.icon ?? null);
+  const title = item.title ?? known?.title ?? item.name;
+  const versionNumber = item.versionNumber ?? known?.versionNumber ?? null;
   const project = item.projectId ?? known?.projectId ?? null;
   return (
     <li className={styles.contentRow}>
@@ -114,10 +118,10 @@ function Row({
       )}
       <span className={styles.cardBody}>
         <span className={styles.cardTitle}>
-          <bdi>{item.title ?? item.name}</bdi>
-          {item.versionNumber !== null && (
+          <bdi>{title}</bdi>
+          {versionNumber !== null && (
             <span className={styles.muted}>
-              <bdi>{item.versionNumber}</bdi>
+              <bdi>{versionNumber}</bdi>
             </span>
           )}
           {!item.enabled && <StatusBadge tone="neutral" label={t.off} />}
@@ -145,7 +149,7 @@ function Row({
               checked={item.enabled}
               disabled={busy || checkingNeeds || asking !== null}
               onChange={toggle}
-              aria-label={t.toggle({ name: item.title ?? item.name })}
+              aria-label={t.toggle({ name: title })}
             />
             {t.on}
           </label>
@@ -241,8 +245,12 @@ export function ContentSection({ instance, onOpen, onUpdate, revision }: Props) 
     /** A newer version of the modpack the installation was made from. */
     pack: ModsVersion | null;
   } | null>(null);
+  // What the catalog recognized at the last look at the folder, so a
+  // modpack's files show their titles and icons without a check.
+  const [named, setNamed] = useState<{ id: string; known: ContentIdentified[] } | null>(null);
   const updates = checked?.revision === revision ? checked.updates : null;
-  const known = checked?.revision === revision ? checked.known : [];
+  const known =
+    checked?.revision === revision ? checked.known : named?.id === id ? named.known : [];
   const packOffer = checked?.revision === revision ? checked.pack : null;
   const [checking, setChecking] = useState(false);
   const [batch, setBatch] = useState<Batch | null>(null);
@@ -264,6 +272,13 @@ export function ContentSection({ instance, onOpen, onUpdate, revision }: Props) 
     void ipc
       .modsHarmful(id)
       .then(setHarmful)
+      .catch(() => undefined);
+    // Offline or unanswered: the files keep their names.
+    void ipc
+      .modsIdentify(id)
+      .then((known) => {
+        setNamed({ id, known });
+      })
       .catch(() => undefined);
   }, [id]);
 

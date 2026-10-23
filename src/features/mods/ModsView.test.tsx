@@ -740,6 +740,52 @@ describe('ModsView', () => {
     expect(removed.payload).toEqual({ instanceId: fabric.id, path: 'mods/mine.jar.disabled' });
   });
 
+  it('names a modpack’s files as the catalog knows them, without a check', async () => {
+    const calls = setup(
+      {
+        mods_content: () => ({
+          ...content,
+          items: content.items.map((i, n) =>
+            n === 1 ? { ...i, path: 'mods/mine.jar', enabled: true, fromPack: true } : i,
+          ),
+        }),
+        mods_identify: () => [
+          {
+            path: 'mods/mine.jar',
+            projectId: '00000000-0000-4000-8000-000000000002',
+            versionId: '00000000-0000-4000-8000-000000000020',
+            title: 'Fabric API',
+            icon: PICTURE,
+            versionNumber: '0.100.0',
+          },
+        ],
+      },
+      'installed',
+    );
+    const mods = await screen.findByRole('region', { name: 'Mods' });
+    expect(await within(mods).findByText('Fabric API')).toBeVisible();
+    expect(within(mods).getByText('0.100.0')).toBeVisible();
+    expect(within(mods).getByText('From the modpack')).toBeVisible();
+    expect(within(mods).getByRole('checkbox', { name: 'Fabric API is on' })).toBeVisible();
+    expect(mods.querySelector(`img[src="${PICTURE}"]`)).not.toBeNull();
+    expect(within(mods).getAllByRole('button', { name: 'In the catalog' })).toHaveLength(2);
+    expect(named('mods_identify', calls)[0]?.args).toEqual({ instanceId: fabric.id });
+    // Asked without the player pressing anything.
+    expect(named('mods_updates', calls)).toHaveLength(0);
+  });
+
+  it('keeps file names when the catalog cannot be asked', async () => {
+    setup(
+      {
+        mods_identify: () => Promise.reject(new Error('offline')),
+      },
+      'installed',
+    );
+    const mods = await screen.findByRole('region', { name: 'Mods' });
+    expect(within(mods).getByText('mine.jar')).toBeVisible();
+    expect(screen.queryByRole('alert')).toBeNull();
+  });
+
   it('warns about files the catalog marks as malware and removes one', async () => {
     const calls = setup({ mods_harmful: () => ['mods/mine.jar.disabled'] }, 'installed');
     expect(await screen.findByText('Harmful files found')).toBeVisible();

@@ -57,6 +57,7 @@ function backend(initial: AppSnapshot, options: Options = {}) {
           return view;
         }
         case 'mods_harmful':
+        case 'mods_identify':
           return [];
         case 'mods_search': {
           const { query } = args as { query: ModsSearchQuery };
