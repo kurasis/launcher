@@ -33,6 +33,10 @@ use crate::storage::paths::{DataRoot, Sha256};
 
 /// The mod's version these jars are (`mod/VERSION`).
 pub const MOD_VERSION: &str = "0.6.3";
+/// The first mod version whose agent runs under OptiFine on its own: before it,
+/// LaunchWrapper's class loader could not reach the agent's classes on Java 9 and
+/// later, so an older jar is never given to OptiFine.
+pub const OPTIFINE_FROM: &str = "0.8.0";
 /// Where players get a release's jars: `<RELEASES><version>/<file>` on our
 /// update server, which CI fills from the GitHub release (D-065).
 const RELEASES: &str = "https://upd.lapi.sh/skins-mod/";
@@ -60,14 +64,14 @@ pub enum Target {
 }
 
 impl Target {
-    /// None for OptiFine on its own, which takes no mods.
+    /// OptiFine on its own takes no mods: it runs the agent, as the game with no
+    /// loader does (from mod [`OPTIFINE_FROM`] on).
     pub fn for_loader(loader: Option<LoaderKind>) -> Option<Self> {
         Some(match loader {
-            None => Self::Agent,
+            None | Some(LoaderKind::OptiFine) => Self::Agent,
             Some(LoaderKind::Fabric | LoaderKind::Quilt) => Self::Fabric,
             Some(LoaderKind::NeoForge) => Self::NeoForge,
             Some(LoaderKind::Forge) => Self::Forge,
-            Some(LoaderKind::OptiFine) => return None,
         })
     }
 
@@ -263,7 +267,19 @@ pub fn choose(
     game: &str,
     loader: Option<LoaderKind>,
 ) -> Option<Pick> {
-    let builtin = || find_in(table, game, loader).map(Pick::of);
+    let optifine = loader == Some(LoaderKind::OptiFine);
+    let reaches = |version: &str| {
+        !optifine
+            || matches!(
+                (semver::Version::parse(version), semver::Version::parse(OPTIFINE_FROM)),
+                (Ok(version), Ok(from)) if version >= from
+            )
+    };
+    let builtin = || {
+        find_in(table, game, loader)
+            .filter(|_| reaches(MOD_VERSION))
+            .map(Pick::of)
+    };
     let Some(list) = listed else {
         return builtin();
     };
@@ -278,12 +294,15 @@ pub fn choose(
         return builtin();
     }
     let target = Target::for_game(game, loader)?;
-    let from_list = list.find(game, target).map(|jar| Pick {
-        file: jar.file.clone(),
-        sha256: jar.sha256.clone(),
-        size: jar.size,
-        url: list.url(jar),
-    });
+    let from_list = list
+        .find(game, target)
+        .filter(|_| reaches(&list.version))
+        .map(|jar| Pick {
+            file: jar.file.clone(),
+            sha256: jar.sha256.clone(),
+            size: jar.size,
+            url: list.url(jar),
+        });
     if list.rollback {
         from_list
     } else {
@@ -1055,9 +1074,11 @@ async fn prepare_with(
         prepared.problem =
             Some("Launcher Skins could not be downloaded; the game starts without it");
     }
-    // `mods/` holds our jar only with a loader; otherwise ours are removed.
-    let keep = match (setup.loader, &jar, bytes.as_ref()) {
-        (Some(_), Some(jar), Some(bytes)) => Some((jar.clone(), bytes.clone())),
+    // `mods/` holds our jar only with a loader that takes mods; otherwise ours are
+    // removed and the agent is passed instead.
+    let agent = Target::for_loader(setup.loader) == Some(Target::Agent);
+    let keep = match (agent, &jar, bytes.as_ref()) {
+        (false, Some(jar), Some(bytes)) => Some((jar.clone(), bytes.clone())),
         _ => None,
     };
     let mods = setup.game_dir.join("mods");
@@ -1079,9 +1100,7 @@ async fn prepare_with(
             });
         }
     }
-    if setup.loader.is_none()
-        && let (Some(jar), Some(_)) = (jar, bytes)
-    {
+    if agent && let (Some(jar), Some(_)) = (jar, bytes) {
         match resolve_managed_path(root, &jar.managed()) {
             // `-javaagent:<jar>=<options>`: a path with `=` would be cut there.
             Ok(path) if path.to_str().is_some_and(|p| !p.contains('=')) => {

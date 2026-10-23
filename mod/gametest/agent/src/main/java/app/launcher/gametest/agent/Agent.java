@@ -4,6 +4,7 @@ import java.io.IOException;
 import java.io.InputStream;
 import java.lang.instrument.ClassFileTransformer;
 import java.lang.instrument.Instrumentation;
+import java.net.URL;
 import java.security.ProtectionDomain;
 import org.objectweb.asm.ClassReader;
 import org.objectweb.asm.ClassVisitor;
@@ -27,6 +28,28 @@ import org.objectweb.asm.tree.VarInsnNode;
  */
 public final class Agent {
     private Agent() {}
+
+    private static final String HOOKS = AgentHooks.class.getName().replace('.', '/');
+    private static final String MESSAGE = "Launcher game test: ";
+
+    /**
+     * OptiFine on its own runs the game in LaunchWrapper's class loader, which defines the
+     * game's classes itself from the class path; on Java 9 and later that path does not
+     * hold this jar, so the calls the rewritten class makes would not resolve. That loader
+     * is given this jar once, before the class is returned.
+     */
+    static void reach(ClassLoader loader) {
+        if (loader == null || !"net.minecraft.launchwrapper.LaunchClassLoader".equals(loader.getClass().getName())
+                || loader.getResource(HOOKS + ".class") != null) {
+            return;
+        }
+        try {
+            URL jar = Agent.class.getProtectionDomain().getCodeSource().getLocation();
+            loader.getClass().getMethod("addURL", URL.class).invoke(loader, jar);
+        } catch (ReflectiveOperationException | RuntimeException e) {
+            System.err.println(MESSAGE + "LaunchWrapper did not take the agent (" + e.getClass().getSimpleName() + ")");
+        }
+    }
 
     public static void premain(String args, Instrumentation instrumentation) {
         MethodInsnNode target = target();
@@ -81,7 +104,11 @@ public final class Agent {
                 return null;
             }
             try {
-                return hook(bytes, target);
+                byte[] hooked = hook(bytes, target);
+                if (hooked != null) {
+                    reach(loader);
+                }
+                return hooked;
             } catch (RuntimeException e) {
                 System.err.println("Launcher game test: Minecraft left unchanged (" + e.getClass().getSimpleName() + ")");
                 return null;

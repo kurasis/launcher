@@ -4,7 +4,8 @@ plugins {
 }
 
 // The test bot for Forge 1.8.9 (docs/GAMETEST.md), built by Unimined like the mod's
-// 1.8.9 jar, on Forge's client tick event like the 1.12.2 one.
+// 1.8.9 jar, on Forge's client tick event like the 1.12.2 one. The 1.10.2 bot
+// (gametest/mc-1.10.2/forge, its own sources) is built by this file too.
 base {
     archivesName = "launchergametest-forge-${minecraft_version}"
 }
@@ -38,7 +39,7 @@ unimined.minecraft {
     version minecraft_version
     mappings {
         searge()
-        mcp('stable', '22-1.8.9')
+        mcp('stable', mcp_version)
     }
     minecraftForge {
         loader forge_version

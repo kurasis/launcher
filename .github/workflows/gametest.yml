@@ -26,11 +26,11 @@ on:
   workflow_dispatch:
     inputs:
       versions:
-        description: Game versions (comma-separated; 26.4-snapshot-5, 26.3, 1.21.11, 1.21.10, 1.21.8, 1.21.4, 1.21.1, 1.20.6, 1.20.4, 1.20.1, 1.19.4, 1.19.2, 1.18.2, 1.17.1, 1.16.5, 1.15.2, 1.14.4, 1.12.2, 1.8.9, 1.7.10)
+        description: Game versions (comma-separated; 26.4-snapshot-5, 26.3, 1.21.11, 1.21.10, 1.21.8, 1.21.4, 1.21.1, 1.20.6, 1.20.4, 1.20.1, 1.19.4, 1.19.2, 1.18.2, 1.17.1, 1.16.5, 1.15.2, 1.14.4, 1.12.2, 1.10.2, 1.8.9, 1.7.10)
         default: 26.3,1.21.11,1.21.1,1.20.1,1.12.2
       loaders:
-        description: Loaders (comma-separated; vanilla, fabric, quilt, neoforge, forge)
-        default: vanilla,fabric,quilt,neoforge,forge
+        description: Loaders (comma-separated; vanilla, fabric, quilt, neoforge, forge, optifine)
+        default: vanilla,fabric,quilt,neoforge,forge,optifine
       mods:
         description: Mod sets (comma-separated; none, medium)
         default: none,medium
@@ -73,7 +73,7 @@ jobs:
       - id: plan
         env:
           VERSIONS: ${{ inputs.versions || '26.3,1.21.11,1.21.1,1.20.1,1.12.2' }}
-          LOADERS: ${{ inputs.loaders || 'vanilla,fabric,quilt,neoforge,forge' }}
+          LOADERS: ${{ inputs.loaders || 'vanilla,fabric,quilt,neoforge,forge,optifine' }}
           MODS: ${{ inputs.mods || 'none,medium' }}
           MINUTES: ${{ inputs.minutes || '5' }}
           SKIN: ${{ inputs.skin || 'rotate' }}
@@ -86,8 +86,8 @@ jobs:
               # The newest snapshot (mod/mc-snapshot) is the first.
               "VERSIONS": ["26.4-snapshot-5", "26.3", "1.21.11", "1.21.10", "1.21.8", "1.21.4", "1.21.1", "1.20.6", "1.20.4",
                            "1.20.1", "1.19.4", "1.19.2", "1.18.2", "1.17.1", "1.16.5",
-                           "1.15.2", "1.14.4", "1.12.2", "1.8.9", "1.7.10"],
-              "LOADERS": ["vanilla", "fabric", "quilt", "neoforge", "forge"],
+                           "1.15.2", "1.14.4", "1.12.2", "1.10.2", "1.8.9", "1.7.10"],
+              "LOADERS": ["vanilla", "fabric", "quilt", "neoforge", "forge", "optifine"],
               "MODS": ["none", "medium"],
           }
           skins = ["animcape", "hd256", "anim64", "slim128", "hd512", "anim256", "legacy256", "classic", "cape", "none"]
@@ -107,27 +107,38 @@ jobs:
               sys.exit("minutes: a number")
           if not 0.5 <= minutes <= 60:
               sys.exit("minutes: 0.5 to 60")
-          # 1.12.2 and older are Forge only, 1.14.4 to 1.20.1 have no NeoForge build; the game with
-          # no loader plays without mods.
+          # 1.12.2 and older have Forge and no loader (1.10.2 Forge only), 1.14.4 to 1.20.1 have no
+          # NeoForge build; the game with no loader or with OptiFine alone (a few releases) plays
+          # without mods.
           legacy = ["1.16.5", "1.17.1", "1.18.2", "1.19.2", "1.19.4", "1.20.1"]
+          optifine = ["1.21.1", "1.20.1", "1.16.5", "1.12.2", "1.8.9"]
           snapshot = allowed["VERSIONS"][0]
           def playable(version, loader, mods):
-              if version == snapshot:
-                  # Snapshots have Fabric only, and no mod set.
-                  return loader in ("vanilla", "fabric") and mods == "none"
-              if version in ("1.12.2", "1.8.9", "1.7.10"):
-                  return loader == "forge"
-              if version in legacy + ["1.14.4", "1.15.2"] and loader == "neoforge":
+              if loader in ("vanilla", "optifine") and mods != "none":
                   return False
-              return loader != "vanilla" or mods == "none"
+              if loader == "optifine":
+                  return version in optifine
+              if version == snapshot:
+                  # Snapshots have Fabric only.
+                  return loader in ("vanilla", "fabric")
+              if version in ("1.12.2", "1.8.9", "1.7.10"):
+                  return loader in ("vanilla", "forge")
+              if version == "1.10.2":
+                  # Forge's 1.9.4 to 1.11.2 jars differ only in the release they name.
+                  return loader == "forge"
+              return not (version in legacy + ["1.14.4", "1.15.2"] and loader == "neoforge")
           # The mod's folders (mod/settings.gradle) that build each version's jars and bot.
           bands = {"1.21.1": "mc-1.21.1", "1.21.4": "mc-1.21.2-1.21.4", "1.21.8": "mc-1.21.5-1.21.8",
                    "1.21.10": "mc-1.21.9-1.21.10", "1.21.11": "mc-1.21.11"}
           def folders(version):
               if version == snapshot:
                   return ["mc-snapshot", "gametest:mc-snapshot"]
-              if version in ("26.3", "1.12.2", "1.8.9", "1.7.10"):
-                  return [f"mc-{version}", f"gametest:mc-{version}"]
+              if version == "26.3":
+                  return ["mc-26.3", "gametest:mc-26.3"]
+              if version in ("1.12.2", "1.8.9", "1.7.10"):
+                  return [f"mc-{version}", f"agents:{version}", f"gametest:mc-{version}"]
+              if version == "1.10.2":
+                  return ["mc-1.10.2", "gametest:mc-1.10.2"]
               if version in legacy:
                   # One Fabric jar (built against 1.20.1) and two Forge jars serve 1.16 to
                   # 1.20.1; the bot and the agent are built for the release itself.
@@ -149,7 +160,7 @@ jobs:
                       f"gametest:mc-1.20.2-1.20.6:{loader}:{version}" for loader in ("fabric", "forge", "neoforge", "agent")]
               return [bands[version], f"agents:{version}", f"gametest:mc-{version}"]
           # Each night also plays three of the other versions, in turn, without the mod set:
-          # every version with a bot is played at least once in five nights.
+          # every version with a bot is played at least once in six nights.
           rotating = []
           if os.environ["ROTATE"] == "true":
               import datetime
@@ -167,7 +178,7 @@ jobs:
                       scenarios.append({"version": version, "loader": loader, "mods": mods, "skin": s,
                                         "name": f"{version} {loader} {mods} {s}"})
           if not scenarios:
-              sys.exit("no scenario: 1.12.2 and older are Forge only, 1.14.4 to 1.20.1 have no NeoForge, vanilla plays without mods")
+              sys.exit("no scenario: 1.12.2 and older have no Fabric or NeoForge, 1.14.4 to 1.20.1 no NeoForge, OptiFine only " + ", ".join(optifine) + "; vanilla and OptiFine play without mods")
           # Played again with the newest mods after the locked ones.
           newest = [s for s in scenarios if s["mods"] == "medium"] if os.environ["NEWEST"] == "true" else []
           with open(os.environ["GITHUB_OUTPUT"], "a") as out:

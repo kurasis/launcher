@@ -310,20 +310,22 @@ async fn the_game_is_played_with_mods_and_skins() {
     let mut notes: Vec<String> = Vec::new();
     println!("scenario {scenario}: {}", variant.describe());
 
-    // "vanilla" is the game with no loader: the bot and the skins mod are Java agents.
+    // "vanilla" is the game with no loader: the bot and the skins mod are Java agents,
+    // as with OptiFine on its own, which takes no mods.
     let kind: Option<LoaderKind> = (loader_name != "vanilla").then(|| {
         serde_json::from_value(serde_json::json!(loader_name))
-            .expect("GAMETEST_LOADER is vanilla, fabric, quilt, neoforge or forge")
+            .expect("GAMETEST_LOADER is vanilla, fabric, quilt, neoforge, forge or optifine")
     });
+    let as_agents = kind.is_none_or(|k| !k.takes_mods());
     assert!(
-        kind.is_some() || mod_set == "none",
-        "the game with no loader plays without mods"
+        !as_agents || mod_set == "none",
+        "the game with no loader or with OptiFine alone plays without mods"
     );
     // Quilt runs Fabric's mods: the bot's Fabric jar.
     let jar_kind = match kind {
+        _ if as_agents => "agent",
         Some(LoaderKind::Quilt) => "fabric",
-        Some(_) => loader_name.as_str(),
-        None => "agent",
+        _ => loader_name.as_str(),
     };
     let bot_jar = built_jar(&jars, "launchergametest-", jar_kind, &version)
         .expect("the test bot's jar for this version and loader in GAMETEST_JARS");
@@ -493,7 +495,7 @@ async fn the_game_is_played_with_mods_and_skins() {
         std::fs::create_dir_all(&mods_dir).unwrap();
         // With no loader the jars stay where they are and go on the command line.
         let mut agents = Vec::new();
-        if kind.is_some() {
+        if !as_agents {
             std::fs::copy(&bot_jar, mods_dir.join(bot_jar.file_name().unwrap())).unwrap();
         } else {
             agents.push(bot_jar.clone());
@@ -502,7 +504,7 @@ async fn the_game_is_played_with_mods_and_skins() {
         // alone; without one the launcher adds the released mod as for a player.
         let own_skins = skins_jar.is_some();
         if let Some(jar) = &skins_jar {
-            if kind.is_some() {
+            if !as_agents {
                 let name = format!("gametest-{}", jar.file_name().unwrap().to_string_lossy());
                 std::fs::copy(jar, mods_dir.join(name)).unwrap();
             } else {

@@ -4,12 +4,14 @@ import java.io.IOException;
 import java.io.InputStream;
 import java.lang.instrument.ClassFileTransformer;
 import java.lang.instrument.Instrumentation;
+import java.net.URL;
 import java.security.ProtectionDomain;
 import java.util.ArrayList;
 import java.util.List;
 import org.objectweb.asm.ClassReader;
 import org.objectweb.asm.ClassWriter;
 import org.objectweb.asm.Opcodes;
+import org.objectweb.asm.Type;
 import org.objectweb.asm.tree.AbstractInsnNode;
 import org.objectweb.asm.tree.ClassNode;
 import org.objectweb.asm.tree.InsnList;
@@ -30,6 +32,28 @@ import org.objectweb.asm.tree.VarInsnNode;
  */
 public final class Agent {
     private Agent() {}
+
+    private static final String HOOKS = AgentHooks.class.getName().replace('.', '/');
+    private static final String MESSAGE = "Launcher Skins: ";
+
+    /**
+     * OptiFine on its own runs the game in LaunchWrapper's class loader, which defines the
+     * game's classes itself from the class path; on Java 9 and later that path does not
+     * hold this jar, so the calls the rewritten class makes would not resolve. That loader
+     * is given this jar once, before the class is returned.
+     */
+    static void reach(ClassLoader loader) {
+        if (loader == null || !"net.minecraft.launchwrapper.LaunchClassLoader".equals(loader.getClass().getName())
+                || loader.getResource(HOOKS + ".class") != null) {
+            return;
+        }
+        try {
+            URL jar = Agent.class.getProtectionDomain().getCodeSource().getLocation();
+            loader.getClass().getMethod("addURL", URL.class).invoke(loader, jar);
+        } catch (ReflectiveOperationException | RuntimeException e) {
+            System.err.println(MESSAGE + "LaunchWrapper did not take the agent (" + e.getClass().getSimpleName() + ")");
+        }
+    }
 
     /** A getter of the game's and the hook its result passes through. */
     static final class Pair {
@@ -54,8 +78,7 @@ public final class Agent {
     /** The pairs in {@code AgentHooks.targets}, as this jar has them. */
     static List<Pair> targets() {
         List<Pair> pairs = new ArrayList<>();
-        String hooks = AgentHooks.class.getName().replace('.', '/');
-        try (InputStream in = Agent.class.getClassLoader().getResourceAsStream(hooks + ".class")) {
+        try (InputStream in = Agent.class.getClassLoader().getResourceAsStream(HOOKS + ".class")) {
             if (in == null) {
                 return pairs;
             }
@@ -73,7 +96,7 @@ public final class Agent {
                     MethodInsnNode call = (MethodInsnNode) insn;
                     if (call.getOpcode() == Opcodes.INVOKEVIRTUAL && call.desc.startsWith("()")) {
                         getter = call;
-                    } else if (call.getOpcode() == Opcodes.INVOKESTATIC && call.owner.equals(hooks)
+                    } else if (call.getOpcode() == Opcodes.INVOKESTATIC && call.owner.equals(HOOKS)
                             && getter != null && shaped(call.desc, getter)) {
                         pairs.add(new Pair(getter, call));
                         getter = null;
@@ -108,7 +131,11 @@ public final class Agent {
                 return null;
             }
             try {
-                return hook(bytes, pairs);
+                byte[] hooked = hook(bytes, pairs);
+                if (hooked != null) {
+                    reach(loader);
+                }
+                return hooked;
             } catch (RuntimeException e) {
                 // The game runs unchanged rather than not at all.
                 System.err.println("Launcher Skins: PlayerInfo left unchanged (" + e.getClass().getSimpleName() + ")");
@@ -136,8 +163,10 @@ public final class Agent {
             if (found == null) {
                 return null;
             }
+            // A getter returns an object, or a boolean (1.7.10's hasCape).
+            int returns = Type.getReturnType(found.desc).getOpcode(Opcodes.IRETURN);
             for (AbstractInsnNode insn : found.instructions.toArray()) {
-                if (insn.getOpcode() == Opcodes.ARETURN) {
+                if (insn.getOpcode() == returns) {
                     InsnList call = new InsnList();
                     call.add(new VarInsnNode(Opcodes.ALOAD, 0));
                     call.add(new MethodInsnNode(Opcodes.INVOKESTATIC, pair.hook.owner, pair.hook.name,

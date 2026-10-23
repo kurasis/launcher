@@ -52,8 +52,9 @@ add 'mc-26.3:agent'
 add 'mc-snapshot:fabric', '../../mc-26.3/fabric/build.gradle'
 add 'mc-snapshot:agent', '../../mc-26.3/agent/build.gradle'
 add 'mc-1.12.2:forge'
-// Forge 1.8.9: mc-1.12.2's sources built against 1.8.9 (Unimined).
+// Forge 1.8.9 to 1.11.2: mc-1.12.2's sources built against each release (Unimined).
 add 'mc-1.8.9:forge'
+['1.9.4', '1.10.2', '1.11.2'].each { release -> add "mc-${release}:forge", '../../mc-1.8.9/forge/build.gradle' }
 add 'mc-1.7.10:forge'
 // 1.16 to 1.20.1 share a game layer; each jar is a project of its own, a folder in
 // mc-1.16.5-1.20.1/<loader> named after the release it is built against and built by
@@ -85,9 +86,11 @@ add 'mc-1.7.10:forge'
 }
 // The Java agent for releases with obfuscated names: one project per release, each a
 // folder of mod/agents built by mod/agents/agent.gradle.
+// Releases before 1.13 (MCP names, `mcp_version`) are built by mod/agents/legacy.gradle.
 file('agents').eachDir { dir ->
-    if (new File(dir, 'gradle.properties').exists()) {
-        add "agents:${dir.name}", '../agent.gradle'
+    def props = new File(dir, 'gradle.properties')
+    if (props.exists()) {
+        add "agents:${dir.name}", props.text.contains('mcp_version=') ? '../legacy.gradle' : '../agent.gradle'
     }
 }
 // The test bot for game runs on the test machine (docs/GAMETEST.md); never shipped to players.
@@ -102,7 +105,10 @@ include 'gametest:core'
 ['fabric', 'agent'].each { loader -> add "gametest:mc-snapshot:${loader}", "../../mc-26.3/${loader}/build.gradle" }
 add 'gametest:mc-1.12.2:forge'
 add 'gametest:mc-1.8.9:forge'
+add 'gametest:mc-1.10.2:forge', '../../mc-1.8.9/forge/build.gradle'
 add 'gametest:mc-1.7.10:forge'
+// Their bots without a loader: Java agents on the Forge bots' game layers.
+['1.12.2', '1.8.9', '1.7.10'].each { release -> add "gametest:mc-${release}:agent", '../../legacy-agent.gradle' }
 // The 1.16 to 1.20.1 bots: a project per release and loader, laid out like the mod's.
 ['fabric', 'forge', 'agent'].each { loader ->
     file("gametest/mc-1.16.5-1.20.1/${loader}").eachDir { dir ->

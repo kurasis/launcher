@@ -1,0 +1,109 @@
+plugins {
+    id 'java'
+    id 'xyz.wagyourtail.unimined' version '1.4.1'
+    id 'com.gradleup.shadow' version '9.6.1'
+}
+
+// The Java agent for a release before 1.13 with no mod loader: Mojang published no names
+// for these, so the code is written in MCP names (the game layer of the release's Forge
+// jar, `game_layer`, and `AgentHooks` from agents/legacy/<agent_hooks>) and Unimined
+// remaps the jar to the release's own names, as agent.gradle does with Mojang's. One
+// project per release, a folder of mod/agents whose gradle.properties name the release,
+// its MCP mappings and those two folders.
+base {
+    archivesName = "launcherskins-agent-${minecraft_version}"
+}
+
+java {
+    toolchain { languageVersion = JavaLanguageVersion.of(8) }
+}
+
+// Names the Forge jar's mappings left in SRG form that Unimined's MCP set names
+// (`game_layer_renames`, srg=mcp pairs), changed in a copy of the game layer.
+def layer = file("${rootDir}/${game_layer}")
+def renames = (findProperty('game_layer_renames') ?: '').split(',').findAll().collectEntries {
+    def (srg, mcp) = it.split('=')
+    [(srg): mcp]
+}
+def gameLayer = renames.isEmpty() ? layer : tasks.register('gameLayer', Copy) {
+    inputs.property 'renames', renames
+    from(layer) { include 'app/launcher/skins/game/**' }
+    into layout.buildDirectory.dir('generated/gameLayer')
+    filter { String line -> renames.inject(line) { text, rename -> text.replace(rename.key, rename.value) } }
+}
+
+sourceSets.main.java {
+    srcDir "${rootDir}/core/src/main/java"
+    srcDir gameLayer
+    srcDir "${rootDir}/agents/legacy/${agent_hooks}"
+    srcDir "${rootDir}/agent/src/main/java"
+    // The Forge jar's entry point and coremod stay out.
+    include 'app/launcher/skins/core/**', 'app/launcher/skins/game/**', 'app/launcher/skins/agent/**'
+}
+
+configurations {
+    bundled
+    implementation.extendsFrom bundled
+}
+
+repositories {
+    // MCP's mappings have no POM; Maven Central answers Forge's groups with 429s.
+    exclusiveContent {
+        forRepository {
+            maven {
+                url = 'https://maven.minecraftforge.net/'
+                metadataSources { mavenPom(); artifact() }
+            }
+        }
+        filter {
+            includeGroupByRegex 'de\\.oceanlabs.*'
+            includeGroupByRegex 'net\\.minecraftforge.*'
+        }
+    }
+    // The game and 1.7.10's Twitch library come from Unimined and Mojang; Maven Central
+    // only answers them with 429s.
+    mavenCentral {
+        content {
+            excludeGroup 'net.minecraft'
+            excludeGroup 'tv.twitch'
+        }
+    }
+}
+
+unimined.minecraft {
+    version minecraft_version
+    side 'client'
+    mappings {
+        searge()
+        mcp('stable', mcp_version)
+    }
+}
+
+dependencies {
+    bundled 'org.ow2.asm:asm:9.9'
+    bundled 'org.ow2.asm:asm-tree:9.9'
+}
+
+tasks.withType(JavaCompile).configureEach {
+    options.encoding = 'UTF-8'
+}
+
+shadowJar {
+    configurations = [project.configurations.bundled]
+    relocate 'org.objectweb.asm', 'app.launcher.skins.agent.asm'
+    exclude 'module-info.class', 'META-INF/versions/**', 'META-INF/maven/**'
+    archiveClassifier = 'named'
+    manifest {
+        attributes(
+            'Premain-Class': 'app.launcher.skins.agent.Agent',
+            'Implementation-Title': 'Launcher Skins',
+            'Implementation-Version': project.version
+        )
+    }
+}
+
+// The shipped jar: the bundled one in the game's own (obfuscated) names.
+remapJar {
+    inputFile = shadowJar.archiveFile
+    prodNamespace 'official'
+}

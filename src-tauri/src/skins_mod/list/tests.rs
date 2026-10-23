@@ -2,7 +2,7 @@ use base64::Engine as _;
 
 use super::*;
 use crate::loader::LoaderKind;
-use crate::skins_mod::{JARS, MOD_VERSION, choose};
+use crate::skins_mod::{JARS, MOD_VERSION, OPTIFINE_FROM, choose};
 
 struct Keys {
     pk: minisign::PublicKey,
@@ -34,6 +34,12 @@ fn list_json(channel: &str, serial: u64, version: &str, rollback: bool) -> Strin
             "target": "fabric",
             "games": ["26.3", "99.1"],
             "file": format!("launcherskins-fabric-26.1-26.3-{version}.jar"),
+            "sha256": H,
+            "size": 100,
+        }, {
+            "target": "agent",
+            "games": ["1.20.1"],
+            "file": format!("launcherskins-agent-1.20.1-{version}.jar"),
             "sha256": H,
             "size": 100,
         }],
@@ -244,4 +250,27 @@ fn an_older_list_gives_way_unless_it_goes_back_on_purpose() {
     assert_eq!(pick.file, "launcherskins-fabric-26.1-26.3-0.0.1.jar");
     // Going back gives only its own jars.
     assert!(choose(JARS, Some(&back), "26.3", Some(LoaderKind::Forge)).is_none());
+}
+
+#[test]
+fn optifine_gets_the_agent_only_from_a_mod_that_reaches_launchwrapper() {
+    let optifine = Some(LoaderKind::OptiFine);
+    // The built-in jars are older than OPTIFINE_FROM: none for OptiFine, the agent
+    // for the game with no loader.
+    assert!(
+        semver::Version::parse(MOD_VERSION).unwrap()
+            < semver::Version::parse(OPTIFINE_FROM).unwrap()
+    );
+    assert!(choose(JARS, None, "1.20.1", optifine).is_none());
+    assert!(choose(JARS, None, "1.20.1", None).is_some());
+    let reaching = listed(OPTIFINE_FROM, false);
+    let pick = choose(JARS, Some(&reaching), "1.20.1", optifine).unwrap();
+    assert_eq!(
+        pick.file,
+        format!("launcherskins-agent-1.20.1-{OPTIFINE_FROM}.jar")
+    );
+    // A list from before it, even one going back on purpose, gives OptiFine nothing.
+    let back = listed("0.7.0", true);
+    assert!(choose(JARS, Some(&back), "1.20.1", optifine).is_none());
+    assert!(choose(JARS, Some(&back), "1.20.1", None).is_some());
 }
