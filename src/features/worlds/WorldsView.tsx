@@ -1,9 +1,11 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { Button } from '../../components/Button';
+import { Icon } from '../../components/Icon';
 import { Notice } from '../../components/Notice';
 import { Panel } from '../../components/Panel';
-import { StatusBadge } from '../../components/StatusBadge';
-import type { AppSnapshot, LocalWorld, WorldsRoom } from '../../lib/contracts';
+import { Screen } from '../../components/Screen';
+import { useFocusBack } from '../../components/useFocusBack';
+import type { AppSnapshot, LocalWorld, WorldsImportable, WorldsRoom } from '../../lib/contracts';
 import { ipc } from '../../lib/ipc';
 import { strings } from '../../lib/strings';
 import { CreateWorld } from './CreateWorld';
@@ -11,10 +13,11 @@ import { Devices } from './Devices';
 import { ImportWorld } from './ImportWorld';
 import { JoinByCode } from './JoinByCode';
 import { RelayOnly } from './RelayOnly';
-import { RoomActions } from './RoomActions';
 import { RoomPage } from './RoomPage';
+import { RoomRow } from './RoomRow';
+import { SinglePlayerWorlds } from './SinglePlayerWorlds';
 import { WorldsStatus } from './WorldsStatus';
-import { ROOMS_EVERY_MS, roomOpen, useWorldsState, worldsErrorText } from './useWorlds';
+import { ROOMS_EVERY_MS, activeRoom, useWorldsState, worldsErrorText } from './useWorlds';
 import styles from './Worlds.module.css';
 
 interface Props {
@@ -23,6 +26,10 @@ interface Props {
   /** A room to show first, such as one joined from an invite in a chat. */
   initialRoom?: string | null;
 }
+
+type Dialog =
+  | { kind: 'create' | 'code' | 'devices' }
+  | { kind: 'import'; initial?: { instanceId: string; save: string } };
 
 /**
  * Worlds with friends (D-068): the account's rooms, creating a world, joining
@@ -35,8 +42,17 @@ export function WorldsView({ snapshot, onOpenAccounts, initialRoom = null }: Pro
   const [rooms, setRooms] = useState<WorldsRoom[] | null>(null);
   const [local, setLocal] = useState<LocalWorld[]>([]);
   const [error, setError] = useState<string | null>(null);
+  const [saves, setSaves] = useState<WorldsImportable[] | null>(null);
+  const [savesError, setSavesError] = useState<string | null>(null);
   const [room, setRoom] = useState<string | null>(initialRoom);
-  const [dialog, setDialog] = useState<'create' | 'import' | 'code' | 'devices' | null>(null);
+  const [dialog, setDialog] = useState<Dialog | null>(null);
+  const heading = useRef<HTMLHeadingElement>(null);
+  const band = useRef<HTMLElement>(null);
+  const active = activeRoom(state);
+  // The list or a room page takes the place of the button pressed: the title has the
+  // focus. A room this computer starts, or stops, hands it to the band, or the title.
+  useFocusBack(room, heading);
+  useFocusBack(active, band, heading);
 
   const load = useCallback(() => {
     void ipc
@@ -55,9 +71,28 @@ export function WorldsView({ snapshot, onOpenAccounts, initialRoom = null }: Pro
       });
   }, []);
 
+  // Every installation's saves folder is read: on opening, on Refresh and after a
+  // world was imported, never on the rooms' timer.
+  const loadSaves = useCallback(() => {
+    ipc
+      .worldsImportable()
+      .then((list) => {
+        setSaves(Array.isArray(list) ? list : []);
+        setSavesError(null);
+      })
+      .catch((e: unknown) => {
+        setSavesError(worldsErrorText(e));
+        setSaves((current) => current ?? []);
+      });
+  }, []);
+
   useEffect(() => {
     if (signedIn) load();
   }, [signedIn, load]);
+
+  useEffect(() => {
+    if (signedIn && room === null) loadSaves();
+  }, [signedIn, room, loadSaves]);
 
   // Friends' rooms open, close and fill meanwhile.
   useEffect(() => {
@@ -97,20 +132,72 @@ export function WorldsView({ snapshot, onOpenAccounts, initialRoom = null }: Pro
 
   if (!signedIn) {
     return (
-      <Panel title={t.title}>
-        <Notice tone="info">{t.signIn}</Notice>
-        <div className={styles.toolbar}>
+      <Screen title={t.title}>
+        <div className={styles.signIn}>
+          <Notice tone="info">{t.signIn}</Notice>
           <Button variant="primary" onClick={onOpenAccounts}>
             {t.openAccount}
           </Button>
         </div>
-      </Panel>
+      </Screen>
     );
   }
 
   return (
-    <Panel title={t.title}>
-      <WorldsStatus state={state} rooms={rooms ?? []} />
+    <Screen title={t.title} headingRef={heading}>
+      {room === null && (
+        <div className={styles.actionRow}>
+          <Button
+            variant="primary"
+            onClick={() => {
+              setDialog({ kind: 'create' });
+            }}
+          >
+            <Icon name="plus" size={18} />
+            {t.create}
+          </Button>
+          <Button
+            onClick={() => {
+              setDialog({ kind: 'import' });
+            }}
+          >
+            {t.import.open}
+          </Button>
+          <Button
+            onClick={() => {
+              setDialog({ kind: 'code' });
+            }}
+          >
+            <Icon name="key" size={18} />
+            {t.joinByCode}
+          </Button>
+          <Button
+            onClick={() => {
+              load();
+              loadSaves();
+            }}
+          >
+            <Icon name="refresh" size={18} />
+            {t.refresh}
+          </Button>
+          <Button
+            onClick={() => {
+              setDialog({ kind: 'devices' });
+            }}
+          >
+            {t.devices.open}
+          </Button>
+        </div>
+      )}
+      {/* One band in one place over the list and a room's page: what it waits for goes
+          on when a room is opened or closed. */}
+      <WorldsStatus
+        state={state}
+        rooms={rooms ?? []}
+        local={local}
+        onLocal={onLocal}
+        bandRef={band}
+      />
       {room !== null ? (
         <RoomPage
           key={room}
@@ -128,95 +215,44 @@ export function WorldsView({ snapshot, onOpenAccounts, initialRoom = null }: Pro
           }}
         />
       ) : (
-        <>
-          <div className={styles.toolbar}>
-            <Button
-              variant="primary"
-              onClick={() => {
-                setDialog('create');
+        <div className={styles.columns}>
+          <Panel title={t.rooms} level={3} count={rooms === null ? undefined : rooms.length}>
+            {error !== null && <Notice tone="danger">{error}</Notice>}
+            {rooms === null ? (
+              <p className={styles.muted}>{t.loading}</p>
+            ) : rooms.length === 0 ? (
+              error === null && <p className={styles.muted}>{t.noRooms}</p>
+            ) : (
+              <ul className={styles.roomList}>
+                {rooms.map((item) => (
+                  <RoomRow
+                    key={item.id}
+                    room={item}
+                    local={local.find((w) => w.id === item.world) ?? null}
+                    state={state}
+                    active={item.id === active}
+                    onLocal={onLocal}
+                    onOpen={() => {
+                      setRoom(item.id);
+                    }}
+                  />
+                ))}
+              </ul>
+            )}
+          </Panel>
+          <div className={styles.column}>
+            <SinglePlayerWorlds
+              sources={saves}
+              error={savesError}
+              onImport={(instanceId, save) => {
+                setDialog({ kind: 'import', initial: { instanceId, save } });
               }}
-            >
-              {t.create}
-            </Button>
-            <Button
-              onClick={() => {
-                setDialog('import');
-              }}
-            >
-              {t.import.open}
-            </Button>
-            <Button
-              onClick={() => {
-                setDialog('code');
-              }}
-            >
-              {t.joinByCode}
-            </Button>
-            <Button onClick={load}>{t.refresh}</Button>
-            <Button
-              onClick={() => {
-                setDialog('devices');
-              }}
-            >
-              {t.devices.open}
-            </Button>
+            />
+            <RelayOnly settings={snapshot.settings} />
           </div>
-          {error !== null && <Notice tone="danger">{error}</Notice>}
-          <h3 className={styles.sectionTitle}>{t.rooms}</h3>
-          {rooms === null ? (
-            <p className={styles.muted}>{t.loading}</p>
-          ) : rooms.length === 0 ? (
-            error === null && <p className={styles.muted}>{t.noRooms}</p>
-          ) : (
-            <ul className={styles.rooms}>
-              {rooms.map((item) => {
-                const world = local.find((w) => w.id === item.world) ?? null;
-                const now = roomOpen(item, state);
-                return (
-                  <li key={item.id} className={styles.room}>
-                    <span className={styles.roomName}>{item.name}</span>
-                    <span className={styles.muted}>
-                      {t.roomMeta({
-                        owner: item.ownerNick,
-                        version: item.minecraft,
-                        members: item.members,
-                      })}
-                    </span>
-                    <span className={styles.badges}>
-                      <StatusBadge
-                        tone={now.open ? 'success' : 'neutral'}
-                        label={
-                          now.open
-                            ? t.openNow({ online: now.online, max: item.maxPlayers })
-                            : t.closedNow
-                        }
-                      />
-                      {item.role === 'owner' && (
-                        <StatusBadge
-                          tone="neutral"
-                          label={world === null ? t.keptElsewhere : t.keptHere}
-                        />
-                      )}
-                    </span>
-                    <RoomActions room={item} local={world} state={state} onLocal={onLocal} />
-                    <div className={styles.actions}>
-                      <Button
-                        onClick={() => {
-                          setRoom(item.id);
-                        }}
-                      >
-                        {t.open}
-                      </Button>
-                    </div>
-                  </li>
-                );
-              })}
-            </ul>
-          )}
-          <RelayOnly settings={snapshot.settings} />
-        </>
+        </div>
       )}
-      {dialog === 'create' && (
+      {dialog?.kind === 'create' && (
         <CreateWorld
           onClose={() => {
             setDialog(null);
@@ -227,8 +263,11 @@ export function WorldsView({ snapshot, onOpenAccounts, initialRoom = null }: Pro
           }}
         />
       )}
-      {dialog === 'import' && (
+      {dialog?.kind === 'import' && (
         <ImportWorld
+          // A world chosen in the list comes with the list read already.
+          known={dialog.initial === undefined || saves === null ? undefined : saves}
+          initial={dialog.initial}
           onClose={() => {
             setDialog(null);
           }}
@@ -239,14 +278,14 @@ export function WorldsView({ snapshot, onOpenAccounts, initialRoom = null }: Pro
           }}
         />
       )}
-      {dialog === 'devices' && (
+      {dialog?.kind === 'devices' && (
         <Devices
           onClose={() => {
             setDialog(null);
           }}
         />
       )}
-      {dialog === 'code' && (
+      {dialog?.kind === 'code' && (
         <JoinByCode
           onClose={() => {
             setDialog(null);
@@ -258,6 +297,6 @@ export function WorldsView({ snapshot, onOpenAccounts, initialRoom = null }: Pro
           }}
         />
       )}
-    </Panel>
+    </Screen>
   );
 }

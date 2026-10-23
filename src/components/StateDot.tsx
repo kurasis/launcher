@@ -14,3 +14,8 @@ export function StateDot({ tone, label }: { tone: DotTone; label: string }) {
     </span>
   );
 }
+
+/** The dot alone, beside words that say the state already. */
+export function Dot({ tone }: { tone: DotTone }) {
+  return <span className={[styles.dot, styles[tone]].join(' ')} aria-hidden="true" />;
+}
