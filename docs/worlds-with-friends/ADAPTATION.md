@@ -334,3 +334,9 @@ Other loaders follow in W12.
   from such an installation passes. Of the six CI worlds whose mods do not start, four are now
   refused before they are made, and two (a mod that crashes, a pre-1.13 version range) by the
   start.
+- 2026-10-23 — Forge before 1.13: before every start the launcher makes the world's
+  `config/forge.cfg` turn Forge's update check off (`general { B:disableVersionCheck=true }`).
+  Under Java 8 that check's thread can deadlock with the server loading Netty's epoll library,
+  and the start hangs after "Starting Minecraft server on" (seen in CI on Forge 1.12.2). Forge
+  writes its other settings into the file itself; a file from the world's mods keeps what it
+  says, with the setting added after it (`src-tauri/src/worlds/forge_cfg.rs`).

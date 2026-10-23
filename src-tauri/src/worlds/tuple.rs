@@ -24,6 +24,9 @@ pub const OLDEST: Release = Release::new(1, 7, 6);
 const NAMED_MODES: Release = Release::new(1, 14, 0);
 /// `level-type` is a world preset ID (`minecraft:flat`) from here on.
 const PRESET_IDS: Release = Release::new(1, 19, 0);
+/// Forge keeps its settings in FML's TOML files from here on, in
+/// `config/forge.cfg` before.
+const FORGE_TOML: Release = Release::new(1, 13, 0);
 /// The year-numbered releases (26.1 and later).
 const FIRST_YEAR: u16 = 26;
 
@@ -128,6 +131,11 @@ impl WorldVersion {
 
     pub fn is_snapshot(self) -> bool {
         self == Self::Snapshot
+    }
+
+    /// Forge reads `config/forge.cfg` (1.7.10 to 1.12.2).
+    pub fn forge_cfg(self) -> bool {
+        matches!(self, Self::Release(r) if r < FORGE_TOML)
     }
 }
 
