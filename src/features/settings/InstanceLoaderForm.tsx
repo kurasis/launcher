@@ -1,7 +1,9 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { Button } from '../../components/Button';
 import { Field } from '../../components/Field';
 import { Notice } from '../../components/Notice';
+import { Panel } from '../../components/Panel';
+import { useFocusBack } from '../../components/useFocusBack';
 import forms from '../../components/forms.module.css';
 import type { InstanceSummary, LoaderChoice, LoaderVersion } from '../../lib/contracts';
 import { describeIpcError, ipc } from '../../lib/ipc';
@@ -73,58 +75,78 @@ export function InstanceLoaderForm({
           ...versions,
         ];
   const changed = picked !== loader.version;
-  const busy = instance.busy || change.pending;
+  // Changing and the install after it keep the list and the button as they are (a
+  // disabled control drops the focus). The button closes once the installation has the
+  // new version, before or after the answer: the focus goes to what was done, or to the
+  // list until it is said.
+  const busy = instance.busy;
+  const held = change.pending || busy;
+  const appliedLine = useRef<HTMLSpanElement>(null);
+  const select = useRef<HTMLSelectElement>(null);
+  useFocusBack(`${String(done !== null)}:${String(changed)}`, appliedLine, select);
 
   return (
-    <form
-      className={forms.form}
-      aria-label={t.title}
-      onSubmit={(event) => {
-        event.preventDefault();
-        setDone(null);
-        void change.run(picked).then((saved) => {
-          if (saved) setDone(saved.loader?.version ?? picked);
-        });
-      }}
-    >
-      <h3 className={styles.subheading}>{t.title}</h3>
-      <p className={styles.hint}>{t.now({ loader: name, version: label(loader.version) })}</p>
-      <Field label={tl.version({ loader: name })} hint={t.hint}>
-        {(props) => (
-          <select
-            {...props}
-            className={forms.select}
-            value={picked}
-            disabled={listed === null || busy}
-            onChange={(event) => {
-              setPicked(event.target.value);
-              setDone(null);
-            }}
+    <Panel title={t.title} level={3}>
+      <form
+        className={forms.form}
+        onSubmit={(event) => {
+          event.preventDefault();
+          if (held || !changed) return;
+          setDone(null);
+          void change.run(picked).then((saved) => {
+            if (saved) setDone(saved.loader?.version ?? picked);
+          });
+        }}
+      >
+        <p className={styles.hint}>{t.now({ loader: name, version: label(loader.version) })}</p>
+        <Field label={tl.version({ loader: name })} hint={t.hint}>
+          {(props) => (
+            <select
+              {...props}
+              ref={select}
+              className={[forms.select, styles.long].join(' ')}
+              value={picked}
+              disabled={listed === null}
+              aria-disabled={held || undefined}
+              onChange={(event) => {
+                if (held) return;
+                setPicked(event.target.value);
+                setDone(null);
+              }}
+            >
+              {listed === null && <option value={loader.version}>{tl.loading}</option>}
+              {listed?.map((version) => (
+                <option key={version.id} value={version.id}>
+                  {optionLabel(version)}
+                </option>
+              ))}
+            </select>
+          )}
+        </Field>
+        {loadError !== null && <Notice tone="danger">{loadError}</Notice>}
+        {changed && (
+          <Notice tone="warning">
+            {t.warning({ loader: name, from: label(loader.version), to: label(picked) })}
+          </Notice>
+        )}
+        {change.error !== null && <Notice tone="danger">{change.error}</Notice>}
+        <div className={styles.actions}>
+          <Button
+            type="submit"
+            variant="primary"
+            size="small"
+            disabled={!changed}
+            aria-disabled={held || undefined}
           >
-            {listed === null && <option value={loader.version}>{tl.loading}</option>}
-            {listed?.map((version) => (
-              <option key={version.id} value={version.id}>
-                {optionLabel(version)}
-              </option>
-            ))}
-          </select>
-        )}
-      </Field>
-      {loadError !== null && <Notice tone="danger">{loadError}</Notice>}
-      {changed && (
-        <Notice tone="warning">
-          {t.warning({ loader: name, from: label(loader.version), to: label(picked) })}
-        </Notice>
-      )}
-      {change.error !== null && <Notice tone="danger">{change.error}</Notice>}
-      <div className={forms.actions}>
-        <Button type="submit" variant="primary" disabled={!changed || busy}>
-          {t.apply}
-        </Button>
-        {done !== null && (
-          <span role="status">{t.applied({ loader: name, version: label(done) })}</span>
-        )}
-      </div>
-    </form>
+            {t.apply}
+          </Button>
+          {done !== null && (
+            <span ref={appliedLine} role="status" className={styles.saved} tabIndex={-1}>
+              {t.applied({ loader: name, version: label(done) })}
+            </span>
+          )}
+        </div>
+      </form>
+    </Panel>
   );
 }

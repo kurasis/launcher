@@ -813,21 +813,6 @@
 }
 
 /* A question before a step that cannot be taken back, under what it is about. */
-.confirm {
-  display: grid;
-  gap: var(--space-2);
-  padding: var(--space-3);
-  border-radius: var(--radius-sm);
-  background: var(--color-warning-bg);
-  color: var(--color-warning-text);
-  font-size: var(--font-size-sm);
-}
-
-.confirm:focus {
-  outline: 2px solid var(--focus-ring);
-  outline-offset: 2px;
-}
-
 /* Something is on its way: a small turning ring and what it waits for. */
 .loading {
   display: flex;

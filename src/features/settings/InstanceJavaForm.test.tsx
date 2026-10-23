@@ -73,13 +73,27 @@ describe('InstanceJavaForm', () => {
     fireEvent.change(screen.getByLabelText('Path to the Java program'), {
       target: { value: '/opt/jdk-17/bin/java' },
     });
-    fireEvent.click(screen.getByRole('button', { name: 'Save Java settings' }));
+    const save = screen.getByRole('button', { name: 'Save Java settings' });
+    save.focus();
+    fireEvent.click(save);
+    // Save closes while the warnings ask (WebView2 drops the focus of a closed button):
+    // the focus goes to their Cancel, and back to Save when they go.
+    save.blur();
+    expect(await screen.findByText(/older than the Java 21 this game needs/)).toBeVisible();
+    await waitFor(() => {
+      expect(screen.getByRole('button', { name: 'Cancel' })).toHaveFocus();
+    });
+    fireEvent.click(screen.getByRole('button', { name: 'Cancel' }));
+    expect(save).toHaveFocus();
+    fireEvent.click(save);
     expect(await screen.findByText(/older than the Java 21 this game needs/)).toBeVisible();
     expect(
       screen.getByText('Java 17.0.9 (Eclipse Adoptium, amd64). This game was built for Java 21.'),
     ).toBeVisible();
     expect(calls.some((c) => c.cmd === 'set_instance_java')).toBe(false);
-    fireEvent.click(screen.getByRole('button', { name: 'Use anyway' }));
+    const useAnyway = screen.getByRole('button', { name: 'Use anyway' });
+    useAnyway.focus();
+    fireEvent.click(useAnyway);
     await waitFor(() => {
       expect(saved(calls)).toMatchObject({
         request: {
@@ -89,6 +103,10 @@ describe('InstanceJavaForm', () => {
           },
         },
       });
+    });
+    expect(await screen.findByText('Saved.')).toBeVisible();
+    await waitFor(() => {
+      expect(save).toHaveFocus();
     });
   });
 

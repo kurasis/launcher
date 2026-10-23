@@ -1,75 +1,116 @@
-.network {
+/* Settings → Network (concept A). */
+.form {
   display: grid;
-  gap: var(--space-4);
+  gap: var(--space-3);
 }
 
-.check {
+/* The two limits side by side, each with its hint under it. */
+.fields {
   display: flex;
+  flex-wrap: wrap;
   align-items: flex-start;
+  gap: var(--space-3) var(--space-4);
+}
+
+.fields > * {
+  flex: 1 1 14rem;
+}
+
+.number {
+  inline-size: 10rem;
+  max-inline-size: 100%;
+}
+
+.actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
   gap: var(--space-2);
-}
-
-.check input {
-  margin-top: 0.2rem;
-}
-
-.strong {
-  display: block;
-  font-weight: 600;
 }
 
 .hint {
-  display: block;
   color: var(--color-text-muted);
   font-size: var(--font-size-sm);
 }
 
-.usage {
-  display: grid;
-  gap: var(--space-2);
-  padding-top: var(--space-4);
-  border-top: 1px solid var(--color-border);
+.used {
+  font-variant-numeric: tabular-nums;
 }
 
-.title {
-  font-size: var(--font-size-md);
-  font-weight: 700;
+/* This month against the limit. */
+.total {
+  block-size: 8px;
 }
 
-.subtitle {
-  margin-top: var(--space-2);
-  font-size: var(--font-size-sm);
-  font-weight: 700;
+/* Past the limit: the bar in the danger color (the words say it too). */
+.total.over::-webkit-progress-value {
+  background: var(--color-danger-text);
 }
 
-.bar {
-  width: 100%;
-  height: 0.6rem;
-  accent-color: var(--color-accent);
+.total.over::-moz-progress-bar {
+  background: var(--color-danger-text);
 }
 
-.bar[data-over] {
-  accent-color: var(--color-danger-text);
-}
-
+/* Each source: its name, its share of the month, its size. */
 .sources {
   display: grid;
-  gap: var(--space-1);
+  gap: 6px;
   margin: 0;
+  padding: 0;
+  list-style: none;
+  font-size: var(--font-size-sm);
 }
 
-.sources > div {
-  display: flex;
-  justify-content: space-between;
-  gap: var(--space-3);
-  max-width: 28rem;
+.sources[hidden] {
+  display: none;
 }
 
-.sources dt {
+.source,
+.month {
+  display: grid;
+  grid-template-columns: minmax(0, 12.5rem) minmax(0, 1fr) 5.625rem;
+  align-items: center;
+  gap: var(--space-1) var(--space-3);
+}
+
+/* A month's size under the sources' sizes. */
+.month > .size {
+  grid-column: -2;
+}
+
+.size {
   color: var(--color-text-muted);
+  text-align: end;
+  font-variant-numeric: tabular-nums;
 }
 
-.sources dd {
+/* Narrow: the name over its bar and size. */
+@container screen (max-width: 44rem) {
+  .source,
+  .month {
+    grid-template-columns: minmax(0, 1fr) 5.625rem;
+  }
+
+  .source > :first-child {
+    grid-column: 1 / -1;
+  }
+}
+
+/* The download source: the choices, then what it means. */
+.choices {
+  display: grid;
+  gap: var(--space-2);
   margin: 0;
-  font-variant-numeric: tabular-nums;
+  padding: 0;
+  border: 0;
+}
+
+@media (forced-colors: active) {
+  .total.over::-webkit-progress-value {
+    background: Mark;
+  }
+
+  .total.over::-moz-progress-bar {
+    background: Mark;
+  }
 }

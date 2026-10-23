@@ -1,7 +1,10 @@
-import { useState } from 'react';
+import { useId, useRef, useState } from 'react';
 import { Button } from '../../components/Button';
+import { Choice } from '../../components/Choice';
 import { Field } from '../../components/Field';
 import { Notice } from '../../components/Notice';
+import { Panel } from '../../components/Panel';
+import { useFocusBack } from '../../components/useFocusBack';
 import forms from '../../components/forms.module.css';
 import type {
   InstanceSummary,
@@ -61,7 +64,16 @@ export function InstanceJavaForm({ instance }: { instance: InstanceSummary }) {
   );
   const repair = useCommand((requestId: string) => ipc.repairInstance(instance.id, requestId));
   const installed = instance.java !== null;
-  const busy = instance.busy || check.pending || save.pending;
+  // While an installation runs nothing changes. While a check or a save goes, the
+  // controls wait for it but keep the focus (a disabled control drops it).
+  const busy = instance.busy;
+  const working = check.pending || save.pending;
+  const headingId = useId();
+  // Save closes while the warnings wait for an answer: the focus goes to Cancel, and
+  // back to Save once they are answered.
+  const cancelWarnings = useRef<HTMLButtonElement>(null);
+  const saveButton = useRef<HTMLButtonElement>(null);
+  useFocusBack(pendingCheck !== null, cancelWarnings, saveButton);
 
   const edited = () => {
     setSaved(false);
@@ -75,6 +87,7 @@ export function InstanceJavaForm({ instance }: { instance: InstanceSummary }) {
   };
 
   const submit = async () => {
+    if (working) return;
     setSaved(false);
     if (mode !== 'custom') {
       await store({ kind: 'managed', provider: mode }, false);
@@ -99,174 +112,205 @@ export function InstanceJavaForm({ instance }: { instance: InstanceSummary }) {
   const required = shown?.requiredMajor ?? instance.java?.major ?? 0;
 
   return (
-    <form
-      className={forms.form}
-      aria-label={t.title}
-      onSubmit={(event) => {
-        event.preventDefault();
-        void submit();
-      }}
-    >
-      <h3 className={styles.subheading}>{t.title}</h3>
-      <p className={styles.hint}>{t.now({ value: javaLabel(instance) })}</p>
-      <fieldset className={forms.choices} disabled={busy} aria-label={t.title}>
-        {providers.map((provider) => (
-          <label key={provider} className={styles.option}>
-            <input
+    <Panel title={t.title} level={3} headingId={headingId}>
+      <form
+        className={forms.form}
+        onSubmit={(event) => {
+          event.preventDefault();
+          void submit();
+        }}
+      >
+        <p className={styles.hint}>{t.now({ value: javaLabel(instance) })}</p>
+        <fieldset
+          className={forms.choices}
+          disabled={busy}
+          aria-labelledby={headingId}
+          aria-busy={working || undefined}
+        >
+          {providers.map((provider) => (
+            <Choice
+              key={provider}
               type="radio"
               name={`java-${instance.id}`}
               value={provider}
               checked={mode === provider}
+              title={t.managed({ provider: strings.settings.javaProviders[provider] })}
+              hint={t.managedHint}
               onChange={() => {
+                if (working) return;
                 setMode(provider);
                 edited();
               }}
             />
-            <span>
-              <span className={styles.optionTitle}>
-                {t.managed({ provider: strings.settings.javaProviders[provider] })}
-              </span>
-              <span className={styles.hint}>{t.managedHint}</span>
-            </span>
-          </label>
-        ))}
-        <label className={styles.option}>
-          <input
+          ))}
+          <Choice
             type="radio"
             name={`java-${instance.id}`}
             value="custom"
             checked={mode === 'custom'}
             disabled={!installed}
+            title={t.custom}
+            hint={installed ? t.customHint : t.installFirst}
             onChange={() => {
+              if (working) return;
               setMode('custom');
               edited();
             }}
           />
-          <span>
-            <span className={styles.optionTitle}>{t.custom}</span>
-            <span className={styles.hint}>{installed ? t.customHint : t.installFirst}</span>
-          </span>
-        </label>
-      </fieldset>
-      {mode === 'custom' && (
-        <>
-          <Field label={t.path} hint={t.pathHint}>
-            {(props) => (
-              <input
-                {...props}
-                className={forms.input}
-                dir="ltr"
-                spellCheck={false}
-                value={path}
+        </fieldset>
+        {mode === 'custom' && (
+          <>
+            <Field label={t.path} hint={t.pathHint}>
+              {(props) => (
+                <input
+                  {...props}
+                  className={forms.input}
+                  dir="ltr"
+                  spellCheck={false}
+                  value={path}
+                  disabled={busy}
+                  readOnly={working}
+                  onChange={(event) => {
+                    setPath(event.target.value);
+                    edited();
+                  }}
+                />
+              )}
+            </Field>
+            <div className={styles.actions}>
+              <Button
+                size="small"
                 disabled={busy}
-                onChange={(event) => {
-                  setPath(event.target.value);
-                  edited();
+                aria-disabled={working || undefined}
+                onClick={() => {
+                  if (working) return;
+                  picking.clear();
+                  void ipc
+                    .pickJavaFile(strings.windowTitles.pickJava)
+                    .then((picked) => {
+                      if (picked !== null) {
+                        setPath(picked);
+                        edited();
+                      }
+                    })
+                    .catch(picking.catcher);
                 }}
-              />
-            )}
-          </Field>
-          <div className={forms.actions}>
-            <Button
-              disabled={busy}
-              onClick={() => {
-                picking.clear();
-                void ipc
-                  .pickJavaFile(strings.windowTitles.pickJava)
-                  .then((picked) => {
-                    if (picked !== null) {
-                      setPath(picked);
-                      edited();
-                    }
-                  })
-                  .catch(picking.catcher);
-              }}
-            >
-              {t.browse}
-            </Button>
-          </div>
-        </>
-      )}
-      {mode === 'custom' && shown !== null && shown.path === path.trim() && (
-        <p className={styles.hint} role="status">
-          {t.checked({
-            version: shown.javaVersion,
-            vendor: shown.vendor ?? t.unknownVendor,
-            arch: shown.arch,
-            required: shown.requiredMajor,
-          })}
-        </p>
-      )}
-      {check.pending && <p role="status">{t.checking}</p>}
-      {check.error !== null && <Notice tone="danger">{check.error}</Notice>}
-      {picking.error !== null && <Notice tone="danger">{picking.error}</Notice>}
-      {pendingCheck !== null && (
-        <Notice tone="warning">
-          {pendingCheck.issues.map((issue) => (
-            <p key={issue}>{issueText(issue, pendingCheck.requiredMajor, pendingCheck.arch)}</p>
-          ))}
-          <p>{t.confirm}</p>
-          <div className={forms.actions}>
-            <Button
-              variant="primary"
-              onClick={() => void store({ kind: 'custom', path: pendingCheck.path }, true)}
-            >
-              {t.useAnyway}
-            </Button>
-            <Button
-              onClick={() => {
-                setPendingCheck(null);
-              }}
-            >
-              {strings.createForm.cancel}
-            </Button>
-          </div>
-        </Notice>
-      )}
-      {pendingCheck === null && accepted.length > 0 && (
-        <Notice tone="warning">
-          <p>{t.accepted}</p>
-          {accepted.map((issue) => (
-            <p key={issue}>{issueText(issue, required, shown?.arch ?? '')}</p>
-          ))}
-        </Notice>
-      )}
-      <Field label={t.jvmArguments} hint={t.jvmHint}>
-        {(props) => (
-          <input
-            {...props}
-            className={forms.input}
-            dir="ltr"
-            spellCheck={false}
-            value={args}
-            disabled={busy}
-            onChange={(event) => {
-              setArgs(event.target.value);
-              edited();
-            }}
-          />
+              >
+                {t.browse}
+              </Button>
+            </div>
+          </>
         )}
-      </Field>
-      {save.error !== null && <Notice tone="danger">{save.error}</Notice>}
-      {instance.javaProvider !== null && installed && (
-        <Notice tone="info">
-          <p>
-            {t.pendingSwitch({ provider: strings.settings.javaProviders[instance.javaProvider] })}
+        {mode === 'custom' && shown !== null && shown.path === path.trim() && (
+          <p className={styles.hint} role="status">
+            {t.checked({
+              version: shown.javaVersion,
+              vendor: shown.vendor ?? t.unknownVendor,
+              arch: shown.arch,
+              required: shown.requiredMajor,
+            })}
           </p>
-          <div className={forms.actions}>
-            <Button disabled={instance.busy || repair.pending} onClick={() => void repair.run()}>
-              {t.repairNow}
-            </Button>
-          </div>
-          {repair.error !== null && <p>{repair.error}</p>}
-        </Notice>
-      )}
-      <div className={forms.actions}>
-        <Button variant="primary" type="submit" disabled={busy || pendingCheck !== null}>
-          {t.save}
-        </Button>
-        {saved && <span role="status">{strings.details.saved}</span>}
-      </div>
-    </form>
+        )}
+        {check.pending && (
+          <p className={styles.hint} role="status">
+            {t.checking}
+          </p>
+        )}
+        {check.error !== null && <Notice tone="danger">{check.error}</Notice>}
+        {picking.error !== null && <Notice tone="danger">{picking.error}</Notice>}
+        {pendingCheck !== null && (
+          <Notice tone="warning">
+            {pendingCheck.issues.map((issue) => (
+              <p key={issue}>{issueText(issue, pendingCheck.requiredMajor, pendingCheck.arch)}</p>
+            ))}
+            <p>{t.confirm}</p>
+            <div className={styles.actions}>
+              <Button
+                variant="primary"
+                size="small"
+                aria-disabled={working || undefined}
+                onClick={() => {
+                  if (!working) void store({ kind: 'custom', path: pendingCheck.path }, true);
+                }}
+              >
+                {t.useAnyway}
+              </Button>
+              <Button
+                ref={cancelWarnings}
+                size="small"
+                onClick={() => {
+                  setPendingCheck(null);
+                }}
+              >
+                {strings.createForm.cancel}
+              </Button>
+            </div>
+          </Notice>
+        )}
+        {pendingCheck === null && accepted.length > 0 && (
+          <Notice tone="warning">
+            <p>{t.accepted}</p>
+            {accepted.map((issue) => (
+              <p key={issue}>{issueText(issue, required, shown?.arch ?? '')}</p>
+            ))}
+          </Notice>
+        )}
+        <Field label={t.jvmArguments} hint={t.jvmHint}>
+          {(props) => (
+            <input
+              {...props}
+              className={forms.input}
+              dir="ltr"
+              spellCheck={false}
+              value={args}
+              disabled={busy}
+              readOnly={working}
+              onChange={(event) => {
+                setArgs(event.target.value);
+                edited();
+              }}
+            />
+          )}
+        </Field>
+        {save.error !== null && <Notice tone="danger">{save.error}</Notice>}
+        {instance.javaProvider !== null && installed && (
+          <Notice tone="info">
+            <p>
+              {t.pendingSwitch({ provider: strings.settings.javaProviders[instance.javaProvider] })}
+            </p>
+            <div className={styles.actions}>
+              <Button
+                size="small"
+                disabled={instance.busy}
+                aria-disabled={repair.pending || undefined}
+                onClick={() => {
+                  if (!repair.pending) void repair.run();
+                }}
+              >
+                {t.repairNow}
+              </Button>
+            </div>
+            {repair.error !== null && <p>{repair.error}</p>}
+          </Notice>
+        )}
+        <div className={styles.actions}>
+          <Button
+            ref={saveButton}
+            variant="primary"
+            size="small"
+            type="submit"
+            disabled={busy || pendingCheck !== null}
+            aria-disabled={working || undefined}
+          >
+            {t.save}
+          </Button>
+          {saved && (
+            <span role="status" className={styles.saved}>
+              {strings.details.saved}
+            </span>
+          )}
+        </div>
+      </form>
+    </Panel>
   );
 }

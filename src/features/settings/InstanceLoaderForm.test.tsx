@@ -78,11 +78,45 @@ describe('InstanceLoaderForm', () => {
     expect(calls.some((c) => c.cmd === 'install_instance')).toBe(false);
   });
 
-  it('is unavailable while the installation is busy', () => {
-    backend();
+  it('waits while the installation is busy', async () => {
+    const calls = backend();
     render(
       <InstanceLoaderForm instance={{ ...instance, busy: true }} loader={forge} queued={false} />,
     );
-    expect(screen.getByLabelText('Forge version')).toBeDisabled();
+    await screen.findByRole('option', { name: '52.1.0 (recommended)' });
+    // Kept in place (the install it starts makes it busy while it has the focus).
+    const picker = screen.getByLabelText<HTMLSelectElement>('Forge version');
+    expect(picker).toHaveAttribute('aria-disabled', 'true');
+    fireEvent.change(picker, { target: { value: '1.21.1-52.1.0' } });
+    expect(picker).toHaveValue('1.21.1-52.0.1');
+    fireEvent.submit(picker.closest('form') as HTMLFormElement);
+    expect(calls.some((c) => c.cmd === 'set_instance_loader')).toBe(false);
+  });
+
+  it('gives the focus to what was done when the button closes', async () => {
+    backend();
+    const { rerender } = render(
+      <InstanceLoaderForm instance={instance} loader={forge} queued={false} />,
+    );
+    await screen.findByRole('option', { name: '52.1.0 (recommended)' });
+    fireEvent.change(screen.getByLabelText('Forge version'), {
+      target: { value: '1.21.1-52.1.0' },
+    });
+    const apply = screen.getByRole('button', { name: 'Change and install' });
+    apply.focus();
+    fireEvent.click(apply);
+    const applied = await screen.findByText('Switched to Forge 52.1.0; installing.');
+    // The installation has the new version: the button closes and WebView2 drops its focus.
+    const installed: LoaderChoice = { kind: 'forge', version: '1.21.1-52.1.0' };
+    apply.blur();
+    rerender(
+      <InstanceLoaderForm
+        instance={{ ...instance, busy: true }}
+        loader={installed}
+        queued={false}
+      />,
+    );
+    expect(apply).toBeDisabled();
+    expect(applied).toHaveFocus();
   });
 });

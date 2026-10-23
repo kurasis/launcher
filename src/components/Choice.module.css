@@ -1,0 +1,32 @@
+/* A choice with a title and a hint under it, lined up with the title. */
+.choice {
+  display: grid;
+  gap: 2px;
+}
+
+.label {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--space-2);
+  cursor: pointer;
+}
+
+.label input {
+  flex: none;
+  inline-size: 1rem;
+  block-size: 1rem;
+  margin: 0.2rem 0 0;
+  accent-color: var(--color-accent);
+  cursor: inherit;
+}
+
+.label:has(input:disabled) {
+  cursor: not-allowed;
+  color: var(--color-text-muted);
+}
+
+.hint {
+  padding-inline-start: calc(1rem + var(--space-2));
+  color: var(--color-text-muted);
+  font-size: var(--font-size-sm);
+}

@@ -16,11 +16,18 @@ const location: DataLocation = {
 describe('DataFolderSettings', () => {
   it('copies the data to a chosen folder after confirmation', async () => {
     const calls: { cmd: string; args: unknown }[] = [];
-    mockIPC((cmd, args) => {
+    let copied: () => void = () => undefined;
+    const copy = new Promise<void>((done) => {
+      copied = done;
+    });
+    mockIPC(async (cmd, args) => {
       calls.push({ cmd, args });
       if (cmd === 'get_data_location') return location;
       if (cmd === 'pick_data_folder') return '/mnt/games/launcher';
-      if (cmd === 'move_data_location') return { ...location, pendingPath: '/mnt/games/launcher' };
+      if (cmd === 'move_data_location') {
+        await copy;
+        return { ...location, pendingPath: '/mnt/games/launcher' };
+      }
       return null;
     });
     render(<DataFolderSettings busy={false} />);
@@ -29,8 +36,19 @@ describe('DataFolderSettings', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Move to another folder…' }));
     expect(await screen.findByText('/mnt/games/launcher')).toBeVisible();
     expect(calls.some((c) => c.cmd === 'move_data_location')).toBe(false);
-    fireEvent.click(screen.getByRole('button', { name: 'Copy data' }));
+    const yes = screen.getByRole('button', { name: 'Copy data' });
+    yes.focus();
+    fireEvent.click(yes);
+    // The question goes with the button pressed: the focus goes to what is happening.
+    expect(screen.getByRole('status')).toHaveTextContent('Copying the data…');
+    expect(screen.getByRole('status')).toHaveFocus();
+    copied();
     expect(await screen.findByText(/Quit and start the launcher again/)).toBeVisible();
+    await waitFor(() => {
+      expect(
+        screen.getByText(/Quit and start the launcher again/).closest('[tabindex]'),
+      ).toHaveFocus();
+    });
     await waitFor(() => {
       expect(calls.find((c) => c.cmd === 'move_data_location')?.args).toMatchObject({
         request: { payload: { target: 'custom', path: '/mnt/games/launcher' } },
@@ -59,5 +77,35 @@ describe('DataFolderSettings', () => {
     render(<DataFolderSettings busy />);
     expect(await screen.findByRole('button', { name: 'Make portable' })).toBeDisabled();
     expect(screen.getByText(/Wait until the running operation/)).toBeVisible();
+  });
+
+  it('says it is loading, then asks in place and gives the focus back on Cancel', async () => {
+    let answer: (value: DataLocation) => void = () => undefined;
+    mockIPC((cmd) => {
+      if (cmd === 'get_data_location') {
+        return new Promise<DataLocation>((done) => {
+          answer = done;
+        });
+      }
+      return null;
+    });
+    render(<DataFolderSettings busy={false} />);
+    expect(screen.getByRole('heading', { level: 3, name: 'Launcher data location' })).toBeVisible();
+    expect(screen.getByRole('status')).toHaveTextContent('Loading…');
+    answer(location);
+    const portable = await screen.findByRole('button', { name: 'Make portable' });
+    // The mode first, then the folder.
+    const mode = screen.getByText('The per-user folder the operating system provides.');
+    expect(mode.compareDocumentPosition(screen.getByText(location.path))).toBe(
+      Node.DOCUMENT_POSITION_FOLLOWING,
+    );
+    portable.focus();
+    fireEvent.click(portable);
+    const question = screen.getByRole('alertdialog', { name: 'Copy data' });
+    expect(question).toHaveFocus();
+    expect(question).toHaveTextContent('/opt/launcher/launcher-data');
+    fireEvent.keyDown(question, { key: 'Escape' });
+    expect(screen.queryByRole('alertdialog')).toBeNull();
+    expect(screen.getByRole('button', { name: 'Make portable' })).toHaveFocus();
   });
 });

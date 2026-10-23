@@ -8,7 +8,7 @@ import { friendsProblem, ipc, onFriendsMessage, onFriendsRemoved } from '../../l
 import { strings } from '../../lib/strings';
 import { around } from '../downloads/operationText';
 import { isoTime, messageTime } from './chatTime';
-import { Confirm } from './Confirm';
+import { Confirm } from '../../components/Confirm';
 import { focusLost, useRowFocus } from './focus';
 import styles from './Friends.module.css';
 import { type GameForInvites, InviteCard } from './InviteCard';
@@ -417,6 +417,7 @@ export function ChatView({
                 : t.confirmRemove({ nick: other?.nick ?? title })
           }
           action={asking.what === 'leave' ? t.leave : asking.what === 'block' ? t.block : t.remove}
+          cancel={t.cancel}
           pending={answering}
           onYes={() => void answer()}
           onNo={closeQuestion}

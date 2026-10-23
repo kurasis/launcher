@@ -7,6 +7,7 @@ import { formatBytes } from '../../lib/format';
 import { describeIpcError, ipc } from '../../lib/ipc';
 import { numberLocale, strings } from '../../lib/strings';
 import { Dialog } from '../../components/Dialog';
+import { Switch } from '../../components/Switch';
 import { cannotAdd, installable, installKind, isolate, packArchive, validGame } from './helpers';
 import { dayOf, fits, pageOf, shortDayOf } from './versions';
 import { RichText } from './RichText';
@@ -520,19 +521,7 @@ export function ProjectVersions({
                 </button>
               ))}
             </div>
-            {fitApplies && (
-              <label className={catalog.switch}>
-                <input
-                  type="checkbox"
-                  role="switch"
-                  checked={only}
-                  onChange={(event) => {
-                    setOnly(event.target.checked);
-                  }}
-                />
-                {t.onlyFor({ name })}
-              </label>
-            )}
+            {fitApplies && <Switch label={t.onlyFor({ name })} checked={only} onChange={setOnly} />}
           </div>
           <p className={styles.hint} role="status">
             {status}

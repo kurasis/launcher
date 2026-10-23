@@ -12,6 +12,7 @@ import { Button } from '../../components/Button';
 import { Icon } from '../../components/Icon';
 import { Notice } from '../../components/Notice';
 import forms from '../../components/forms.module.css';
+import { Switch } from '../../components/Switch';
 import type {
   InstanceSummary,
   ModsCollection,
@@ -542,19 +543,7 @@ export function SearchSection({
             </div>
           </div>
         </div>
-        {instance !== null && (
-          <label className={styles.switch}>
-            <input
-              type="checkbox"
-              role="switch"
-              checked={fits}
-              onChange={(event) => {
-                fitsToggle(event.target.checked);
-              }}
-            />
-            {c.fitsOnly}
-          </label>
-        )}
+        {instance !== null && <Switch label={c.fitsOnly} checked={fits} onChange={fitsToggle} />}
         {(committed.categories.length > 0 || committed.collection !== null) && (
           <div className={styles.applied} role="group" aria-label={c.applied}>
             {committed.collection !== null && (
@@ -630,9 +619,10 @@ export function SearchSection({
           </div>
           {error !== null && (
             <Notice tone="danger">
-              <span className={styles.applied}>
+              <span className={styles.noticeRow}>
                 {error}
                 <Button
+                  size="small"
                   onClick={() => {
                     search(committed);
                     // The notice and its button go while the search runs.

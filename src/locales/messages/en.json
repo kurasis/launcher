@@ -1277,7 +1277,8 @@
         "pending": "The data was copied. Quit and start the launcher again to use",
         "busy": "Wait until the running operation or game ends to move the data.",
         "portableHint": "Portable mode keeps the data in a launcher-data folder next to the launcher; delete the portable.txt file there to stop. Sign-ins stay with this computer's credential store.",
-        "pendingReused": "The launcher will use the data already in that folder. Quit and start the launcher again to use"
+        "pendingReused": "The launcher will use the data already in that folder. Quit and start the launcher again to use",
+        "loading": "Loading…"
       },
       "reset": {
         "choose": "What to reset",
@@ -2637,6 +2638,12 @@
           "beta": "Beta: test new versions first",
           "betaHint": "Beta versions come before stable ones and may have problems. If a new version does not start, the launcher goes back to the one before.",
           "stableHint": "Going back to stable: you keep this version until a newer stable one comes out."
+        },
+        "phases": {
+          "available": "Version {version} is available.",
+          "downloading": "Downloading version {version}…",
+          "ready": "Version {version} is downloaded and installs when you close the launcher.",
+          "failed": "The last update failed."
         }
       },
       "errors": {

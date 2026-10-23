@@ -68,6 +68,7 @@
 .choices legend {
   font-size: var(--font-size-sm);
   font-weight: 600;
+  color: var(--color-text-2);
   margin-bottom: var(--space-1);
   padding: 0;
 }
@@ -75,5 +76,14 @@
 .choice {
   display: flex;
   gap: var(--space-2);
-  align-items: baseline;
+  align-items: flex-start;
+}
+
+/* The size and place of a Choice's box, on its first line. */
+.choice input {
+  flex: none;
+  inline-size: 1rem;
+  block-size: 1rem;
+  margin: 0.2rem 0 0;
+  accent-color: var(--color-accent);
 }

@@ -42,10 +42,12 @@ describe('PrivacySettings', () => {
     const calls = mock({ get_app_snapshot: () => snapshotFixture() });
     const { rerender } = render(<PrivacySettings settings={base} />);
     expect(screen.getByText('Not created yet: it appears with your first report.')).toBeVisible();
-    const toggle = screen.getByRole('checkbox', { name: /Anonymous statistics/ });
+    const toggle = screen.getByRole('switch', { name: /Anonymous statistics/ });
     // On unless the player turned it off (D-071).
     expect(toggle).toBeChecked();
-    expect(toggle).toHaveAccessibleName(/no addresses/);
+    // What is counted is read with it, as its description.
+    expect(toggle).toHaveAccessibleName('Anonymous statistics');
+    expect(toggle).toHaveAccessibleDescription(/no addresses/);
     fireEvent.click(toggle);
     await waitFor(() => {
       expect(patches(calls)).toEqual([{ stats: false, statsNoticeSeen: true }]);
@@ -55,11 +57,34 @@ describe('PrivacySettings', () => {
         settings={{ ...base, stats: false, installId: '9b2f1c3e-0000-4000-8000-000000000001' }}
       />,
     );
-    expect(screen.getByRole('checkbox', { name: /Anonymous statistics/ })).not.toBeChecked();
+    expect(screen.getByRole('switch', { name: /Anonymous statistics/ })).not.toBeChecked();
     expect(screen.getByText('9b2f1c3e-0000-4000-8000-000000000001')).toBeVisible();
     fireEvent.click(screen.getByRole('button', { name: 'Make a new ID' }));
     await waitFor(() => {
       expect(patches(calls)[1]).toEqual({ newInstallId: true });
+    });
+  });
+
+  it('keeps the switch and its focus while the change is saved', async () => {
+    let answer: (value: unknown) => void = () => undefined;
+    const calls = mock({
+      set_app_settings: () =>
+        new Promise((done) => {
+          answer = done;
+        }),
+    });
+    render(<PrivacySettings settings={base} />);
+    const toggle = screen.getByRole('switch', { name: /Anonymous statistics/ });
+    toggle.focus();
+    fireEvent.click(toggle);
+    expect(toggle).toHaveAttribute('aria-disabled', 'true');
+    expect(toggle).toBeEnabled();
+    expect(toggle).toHaveFocus();
+    fireEvent.click(toggle);
+    expect(patches(calls)).toEqual([{ stats: false, statsNoticeSeen: true }]);
+    answer({ ...base, stats: false });
+    await waitFor(() => {
+      expect(toggle).not.toHaveAttribute('aria-disabled');
     });
   });
 
@@ -105,7 +130,7 @@ describe('PrivacySettings', () => {
     fireEvent.click(screen.getByRole('button', { name: 'What is sent' }));
     expect(await screen.findByText('Goes next')).toBeVisible();
     expect(screen.queryByText('Nothing has been sent yet.')).toBeNull();
-    fireEvent.click(screen.getByRole('checkbox', { name: /Anonymous statistics/ }));
+    fireEvent.click(screen.getByRole('switch', { name: /Anonymous statistics/ }));
     await waitFor(() => {
       expect(calls.filter((c) => c.cmd === 'stats_sent')).toHaveLength(2);
     });

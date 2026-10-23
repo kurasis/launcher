@@ -1,4 +1,8 @@
+import { useId } from 'react';
+import { Choice } from '../../components/Choice';
+import { Fact, Facts } from '../../components/Facts';
 import { Notice } from '../../components/Notice';
+import { Panel } from '../../components/Panel';
 import forms from '../../components/forms.module.css';
 import type { InstanceSummary, JavaProvider, SettingsView } from '../../lib/contracts';
 import { ipc } from '../../lib/ipc';
@@ -21,46 +25,49 @@ export function JavaSettings({
   const update = useCommand((requestId: string, javaProvider: JavaProvider) =>
     ipc.setAppSettings({ javaProvider }, requestId),
   );
+  const headingId = useId();
 
   return (
-    <div className={styles.section}>
-      <fieldset className={forms.choices} disabled={update.pending || !settings.writable}>
-        <legend>{t.javaProvider}</legend>
-        {providers.map((provider) => (
-          <label key={provider} className={styles.option}>
-            <input
+    <>
+      <Panel title={t.javaProvider} level={3} headingId={headingId}>
+        <fieldset
+          className={forms.choices}
+          aria-labelledby={headingId}
+          disabled={!settings.writable}
+          aria-busy={update.pending || undefined}
+        >
+          {providers.map((provider) => (
+            <Choice
+              key={provider}
               type="radio"
               name="javaProvider"
               value={provider}
               checked={settings.javaProvider === provider}
+              title={t.javaProviders[provider]}
+              hint={t.javaProviderHints[provider]}
               onChange={() => {
-                void update.run(provider);
+                // A change being saved: the choices wait for it but keep the focus.
+                if (!update.pending) void update.run(provider);
               }}
             />
-            <span>
-              <span className={styles.optionTitle}>{t.javaProviders[provider]}</span>
-              <span className={styles.hint}>{t.javaProviderHints[provider]}</span>
-            </span>
-          </label>
-        ))}
-      </fieldset>
-      <p className={styles.hint}>{t.javaApplies}</p>
-      {update.error !== null && <Notice tone="danger">{update.error}</Notice>}
-      <div>
-        <h3 className={styles.subheading}>{t.javaInstalled}</h3>
+          ))}
+        </fieldset>
+        <p className={styles.hint}>{t.javaApplies}</p>
+        {update.error !== null && <Notice tone="danger">{update.error}</Notice>}
+      </Panel>
+      <Panel title={t.javaInstalled} level={3}>
         {instances.length === 0 ? (
           <p className={styles.hint}>{t.noInstallations}</p>
         ) : (
-          <dl className={styles.facts}>
+          <Facts>
             {instances.map((instance) => (
-              <div key={instance.id} className={styles.fact}>
-                <dt>{instance.displayName}</dt>
-                <dd>{javaLabel(instance)}</dd>
-              </div>
+              <Fact key={instance.id} term={<bdi>{instance.displayName}</bdi>}>
+                {javaLabel(instance)}
+              </Fact>
             ))}
-          </dl>
+          </Facts>
         )}
-      </div>
-    </div>
+      </Panel>
+    </>
   );
 }

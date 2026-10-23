@@ -78,17 +78,17 @@ function patches(calls: { cmd: string; args: Record<string, unknown> }[]) {
 describe('FeedSettings', () => {
   it('shows the defaults and saves each change as a feed patch', async () => {
     const calls = setup();
-    expect(screen.getByRole('checkbox', { name: /Show the feed/ })).toBeChecked();
+    expect(screen.getByRole('switch', { name: /Show the feed/ })).toBeChecked();
     expect(
-      screen.getByRole('checkbox', { name: 'Snapshots, pre-releases and release candidates' }),
+      screen.getByRole('switch', { name: 'Snapshots, pre-releases and release candidates' }),
     ).toBeChecked();
-    expect(screen.getByRole('checkbox', { name: 'YouTube Shorts' })).not.toBeChecked();
+    expect(screen.getByRole('switch', { name: 'YouTube Shorts' })).not.toBeChecked();
     expect(
-      screen.getByRole('checkbox', { name: /Machine-translated patch notes and news/ }),
+      screen.getByRole('switch', { name: /Machine-translated patch notes and news/ }),
     ).toBeChecked();
     // Off until the player asks for it.
     expect(
-      screen.getByRole('checkbox', { name: /Tell me when a favourite streamer goes live/ }),
+      screen.getByRole('switch', { name: /Tell me when a favourite streamer goes live/ }),
     ).not.toBeChecked();
     expect(screen.getByRole('radio', { name: 'In a launcher window' })).toBeChecked();
     expect(screen.getByRole('combobox', { name: 'Language of videos and streams' })).toHaveValue(
@@ -97,7 +97,7 @@ describe('FeedSettings', () => {
     const hide = screen.getByRole('group', { name: 'Hide in the feed' });
     for (const box of within(hide).getAllByRole('checkbox')) expect(box).not.toBeChecked();
 
-    fireEvent.click(screen.getByRole('checkbox', { name: 'YouTube Shorts' }));
+    fireEvent.click(screen.getByRole('switch', { name: 'YouTube Shorts' }));
     await waitFor(() => {
       expect(patches(calls)).toEqual([{ feed: { shorts: true } }]);
     });
@@ -116,12 +116,12 @@ describe('FeedSettings', () => {
       expect(patches(calls).at(-1)).toEqual({ feed: { hidden: ['streams'] } });
     });
     fireEvent.click(
-      screen.getByRole('checkbox', { name: /Tell me when a favourite streamer goes live/ }),
+      screen.getByRole('switch', { name: /Tell me when a favourite streamer goes live/ }),
     );
     await waitFor(() => {
       expect(patches(calls).at(-1)).toEqual({ feed: { liveNotifications: true } });
     });
-    fireEvent.click(screen.getByRole('checkbox', { name: /Show the feed/ }));
+    fireEvent.click(screen.getByRole('switch', { name: /Show the feed/ }));
     await waitFor(() => {
       expect(patches(calls).at(-1)).toEqual({ feed: { enabled: false } });
     });

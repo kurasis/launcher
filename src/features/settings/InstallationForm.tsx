@@ -1,7 +1,8 @@
-import { useId, useState } from 'react';
+import { useId, useRef, useState } from 'react';
 import { Button } from '../../components/Button';
 import { Field } from '../../components/Field';
 import { Notice } from '../../components/Notice';
+import { useFocusBack } from '../../components/useFocusBack';
 import forms from '../../components/forms.module.css';
 import type { InstanceSummary, MemoryLimits } from '../../lib/contracts';
 import { ipc } from '../../lib/ipc';
@@ -60,8 +61,15 @@ export function InstallationForm({ instance, memory }: InstallationFormProps) {
   const bounds = memory.resolution;
   const policy = memory.policy;
   const recommendation = useRecommendation({ instanceId: instance.id });
+  // Use goes once the field holds the recommended amount: the focus goes to the field.
+  const heapField = useRef<HTMLInputElement>(null);
+  const recommended = recommendation !== null && String(recommendation.mib) === heap;
+  useFocusBack(recommended, heapField);
 
   const submit = async () => {
+    // Saving keeps the fields and Save as they are (a disabled control drops the focus),
+    // but they do not change until it is done: Saved is said of what was sent.
+    if (save.pending) return;
     setSaved(false);
     const result = await save.run(
       toInt(heap),
@@ -100,14 +108,16 @@ export function InstallationForm({ instance, memory }: InstallationFormProps) {
         {(props) => (
           <input
             {...props}
-            className={forms.input}
+            className={[forms.input, styles.narrow].join(' ')}
             type="number"
             inputMode="numeric"
             min={policy?.minHeapMib}
             max={policy?.maxHeapMib}
+            ref={heapField}
             step={256}
             value={heap}
             disabled={instance.busy}
+            readOnly={save.pending}
             onChange={(event) => {
               setHeap(event.target.value);
               setSaved(false);
@@ -116,12 +126,15 @@ export function InstallationForm({ instance, memory }: InstallationFormProps) {
         )}
       </Field>
       {recommendation !== null && (
-        <div className={forms.actions}>
+        <div className={styles.actions}>
           <span className={styles.hint}>{recommendationText(recommendation)}</span>
-          {String(recommendation.mib) !== heap && (
+          {!recommended && (
             <Button
+              size="small"
               disabled={instance.busy}
+              aria-disabled={save.pending || undefined}
               onClick={() => {
+                if (save.pending) return;
                 setHeap(String(recommendation.mib));
                 setSaved(false);
               }}
@@ -131,18 +144,19 @@ export function InstallationForm({ instance, memory }: InstallationFormProps) {
           )}
         </div>
       )}
-      <div className={forms.row}>
+      <div className={styles.row}>
         <Field label={t.width}>
           {(props) => (
             <input
               {...props}
-              className={forms.input}
+              className={[forms.input, styles.narrow].join(' ')}
               type="number"
               inputMode="numeric"
               min={bounds.minWidth}
               max={bounds.maxWidth}
               value={width}
               disabled={instance.busy}
+              readOnly={save.pending}
               onChange={(event) => {
                 setWidth(event.target.value);
                 setSaved(false);
@@ -154,13 +168,14 @@ export function InstallationForm({ instance, memory }: InstallationFormProps) {
           {(props) => (
             <input
               {...props}
-              className={forms.input}
+              className={[forms.input, styles.narrow].join(' ')}
               type="number"
               inputMode="numeric"
               min={bounds.minHeight}
               max={bounds.maxHeight}
               value={height}
               disabled={instance.busy}
+              readOnly={save.pending}
               onChange={(event) => {
                 setHeight(event.target.value);
                 setSaved(false);
@@ -183,6 +198,7 @@ export function InstallationForm({ instance, memory }: InstallationFormProps) {
           checked={fullscreen}
           disabled={instance.busy}
           onChange={(event) => {
+            if (save.pending) return;
             setFullscreen(event.target.checked);
             setSaved(false);
           }}
@@ -196,6 +212,7 @@ export function InstallationForm({ instance, memory }: InstallationFormProps) {
           disabled={instance.busy}
           aria-describedby={skinsHintId}
           onChange={(event) => {
+            if (save.pending) return;
             setLauncherSkins(event.target.checked);
             setSaved(false);
           }}
@@ -214,6 +231,7 @@ export function InstallationForm({ instance, memory }: InstallationFormProps) {
             spellCheck={false}
             value={gameArguments}
             disabled={instance.busy}
+            readOnly={save.pending}
             onChange={(event) => {
               setGameArguments(event.target.value);
               setSaved(false);
@@ -222,11 +240,21 @@ export function InstallationForm({ instance, memory }: InstallationFormProps) {
         )}
       </Field>
       {save.error !== null && <Notice tone="danger">{save.error}</Notice>}
-      <div className={forms.actions}>
-        <Button variant="primary" type="submit" disabled={save.pending || instance.busy}>
+      <div className={styles.actions}>
+        <Button
+          variant="primary"
+          size="small"
+          type="submit"
+          disabled={instance.busy}
+          aria-disabled={save.pending || undefined}
+        >
           {t.save}
         </Button>
-        {saved && <span role="status">{t.saved}</span>}
+        {saved && (
+          <span role="status" className={styles.saved}>
+            {t.saved}
+          </span>
+        )}
       </div>
     </form>
   );

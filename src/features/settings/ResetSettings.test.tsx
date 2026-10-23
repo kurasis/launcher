@@ -24,12 +24,13 @@ const preview: ResetPreview = {
   temporaryBytes: 10 * 1024 * 1024,
 };
 
-function backend() {
+function backend(gate?: Promise<void>) {
   const calls: { cmd: string; args: unknown }[] = [];
-  mockIPC((cmd, args) => {
+  mockIPC(async (cmd, args) => {
     calls.push({ cmd, args });
     if (cmd === 'reset_preview') return preview;
     if (cmd === 'reset_launcher') {
+      await gate;
       return {
         backedUp: 1,
         deletedInstallations: 2,
@@ -64,6 +65,15 @@ describe('ResetSettings', () => {
       screen.getByText('Existing backups are deleted first; the new ones are kept.'),
     ).toBeVisible();
 
+    // Cancel gives the focus back to Reset….
+    screen.getByRole('button', { name: 'Reset…' }).focus();
+    fireEvent.click(screen.getByRole('button', { name: 'Reset…' }));
+    expect(screen.getByRole('alertdialog', { name: 'Reset' })).toHaveFocus();
+    expect(screen.getByRole('alertdialog')).toHaveAccessibleDescription(
+      'Reset these parts? Installations Backups This cannot be undone.',
+    );
+    fireEvent.click(screen.getByRole('button', { name: 'Cancel' }));
+    expect(screen.getByRole('button', { name: 'Reset…' })).toHaveFocus();
     fireEvent.click(screen.getByRole('button', { name: 'Reset…' }));
     const confirm = screen.getByText('Reset these parts?').closest('div') as HTMLElement;
     expect(
@@ -88,6 +98,42 @@ describe('ResetSettings', () => {
     expect(
       await screen.findByText(/Reset done: 2 installations deleted \(1 backed up first\)/),
     ).toBeVisible();
+    // Nothing is chosen any more, so Reset… is closed: the focus goes to what was done.
+    expect(screen.getByRole('button', { name: 'Reset…' })).toBeDisabled();
+    await waitFor(() => {
+      expect(screen.getByText(/Reset done/).closest('[tabindex]')).toHaveFocus();
+    });
+  });
+
+  it('keeps its own question while the reset makes the launcher busy', async () => {
+    let open: () => void = () => undefined;
+    const calls = backend(
+      new Promise<void>((resolve) => {
+        open = resolve;
+      }),
+    );
+    const { rerender } = render(<ResetSettings busy={false} />);
+    fireEvent.click(await screen.findByRole('checkbox', { name: /^Temporary files/ }));
+    fireEvent.click(screen.getByRole('button', { name: 'Reset…' }));
+    const yes = screen.getByRole('button', { name: 'Reset' });
+    yes.focus();
+    fireEvent.click(yes);
+    await waitFor(() => {
+      expect(calls.filter((c) => c.cmd === 'reset_launcher')).toHaveLength(1);
+    });
+    // The reset holds the launcher: the question and the focus stay, without "waits".
+    rerender(<ResetSettings busy />);
+    expect(screen.getByRole('alertdialog', { name: 'Reset' })).toBeVisible();
+    expect(yes).toHaveFocus();
+    expect(screen.getByText('Resetting…')).toBeVisible();
+    expect(screen.queryByText('Reset waits until the running operation or game ends.')).toBeNull();
+    // A second press while it goes sends nothing more.
+    fireEvent.click(yes);
+    open();
+    expect(await screen.findByText(/Reset done/)).toBeVisible();
+    rerender(<ResetSettings busy={false} />);
+    expect(calls.filter((c) => c.cmd === 'reset_launcher')).toHaveLength(1);
+    expect(screen.getByText(/Reset done/).closest('[tabindex]')).toHaveFocus();
   });
 
   it('waits while something runs', async () => {

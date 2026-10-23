@@ -1,7 +1,9 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { Button } from '../../components/Button';
+import { Confirm } from '../../components/Confirm';
 import { Notice } from '../../components/Notice';
-import forms from '../../components/forms.module.css';
+import { Panel } from '../../components/Panel';
+import { useFocusBack } from '../../components/useFocusBack';
 import type { DataLocation, LocationTarget } from '../../lib/contracts';
 import { describeIpcError, ipc } from '../../lib/ipc';
 import { useShownError } from '../../lib/useShownError';
@@ -16,12 +18,36 @@ const t = strings.settings.dataFolder;
  * to another folder, back to the default, or beside the launcher (portable).
  */
 export function DataFolderSettings({ busy }: { busy: boolean }) {
+  return (
+    <Panel title={strings.settings.dataLocation} level={3}>
+      <DataFolder busy={busy} />
+    </Panel>
+  );
+}
+
+function DataFolder({ busy }: { busy: boolean }) {
   const [location, setLocation] = useState<DataLocation | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [confirm, setConfirm] = useState<{ target: LocationTarget; path: string } | null>(null);
   const picking = useShownError();
   const move = useCommand((requestId: string, target: LocationTarget, path: string | null) =>
     ipc.moveDataLocation(target, path, requestId),
+  );
+  // The button that asked, to take the focus back when the question closes; else the
+  // line that says what happens now.
+  const [asked, setAsked] = useState<LocationTarget>('custom');
+  const choose = useRef<HTMLButtonElement>(null);
+  const toDefault = useRef<HTMLButtonElement>(null);
+  const toPortable = useRef<HTMLButtonElement>(null);
+  const copying = useRef<HTMLParagraphElement>(null);
+  const copied = useRef<HTMLDivElement>(null);
+  const opener = { custom: choose, default: toDefault, portable: toPortable }[asked];
+  const pending = location !== null && location.pendingPath !== null;
+  useFocusBack(
+    confirm !== null ? 'asking' : move.pending ? 'copying' : pending ? 'pending' : 'idle',
+    opener,
+    copying,
+    copied,
   );
 
   useEffect(() => {
@@ -34,11 +60,20 @@ export function DataFolderSettings({ busy }: { busy: boolean }) {
   }, []);
 
   if (location === null) {
-    return loadError === null ? null : <Notice tone="danger">{loadError}</Notice>;
+    return loadError === null ? (
+      <p className={styles.hint} role="status">
+        {t.loading}
+      </p>
+    ) : (
+      <Notice tone="danger">{loadError}</Notice>
+    );
   }
-  const pending = location.pendingPath !== null;
   const disabled = busy || move.pending || pending;
 
+  const ask = (target: LocationTarget, path: string) => {
+    setAsked(target);
+    setConfirm({ target, path });
+  };
   const run = async (target: LocationTarget, path: string) => {
     setConfirm(null);
     const moved = await move.run(target, target === 'custom' ? path : null);
@@ -46,21 +81,32 @@ export function DataFolderSettings({ busy }: { busy: boolean }) {
   };
 
   return (
-    <div>
-      <h3 className={styles.subheading}>{strings.settings.dataLocation}</h3>
+    <>
+      <p>{t.modes[location.mode]}</p>
       <p className={styles.path} dir="ltr">
         {location.path}
       </p>
-      <p className={styles.hint}>{t.modes[location.mode]}</p>
       {pending ? (
-        <Notice tone="info">
-          {location.pendingReused ? t.pendingReused : t.pending}{' '}
-          <span dir="ltr" className={styles.path}>
-            {location.pendingPath}
-          </span>
-        </Notice>
+        <div ref={copied} className={styles.status} tabIndex={-1}>
+          <Notice tone="info">
+            {location.pendingReused ? t.pendingReused : t.pending}{' '}
+            <span dir="ltr" className={styles.path}>
+              {location.pendingPath}
+            </span>
+          </Notice>
+        </div>
       ) : confirm !== null ? (
-        <Notice tone="warning">
+        <Confirm
+          label={t.copy}
+          action={t.copy}
+          actionVariant="primary"
+          cancel={strings.createForm.cancel}
+          pending={move.pending}
+          onYes={() => void run(confirm.target, confirm.path)}
+          onNo={() => {
+            setConfirm(null);
+          }}
+        >
           <p>
             {t.confirm}{' '}
             <span dir="ltr" className={styles.path}>
@@ -68,29 +114,19 @@ export function DataFolderSettings({ busy }: { busy: boolean }) {
             </span>
           </p>
           <p>{t.confirmHint}</p>
-          <div className={forms.actions}>
-            <Button variant="primary" onClick={() => void run(confirm.target, confirm.path)}>
-              {t.copy}
-            </Button>
-            <Button
-              onClick={() => {
-                setConfirm(null);
-              }}
-            >
-              {strings.createForm.cancel}
-            </Button>
-          </div>
-        </Notice>
+        </Confirm>
       ) : (
-        <div className={forms.actions}>
+        <div className={styles.actions}>
           <Button
+            ref={choose}
+            size="small"
             disabled={disabled || location.mode === 'portable'}
             onClick={() => {
               picking.clear();
               void ipc
                 .pickDataFolder(strings.windowTitles.pickDataFolder)
                 .then((path) => {
-                  if (path !== null) setConfirm({ target: 'custom', path });
+                  if (path !== null) ask('custom', path);
                 })
                 .catch(picking.catcher);
             }}
@@ -99,9 +135,11 @@ export function DataFolderSettings({ busy }: { busy: boolean }) {
           </Button>
           {location.mode !== 'default' && (
             <Button
+              ref={toDefault}
+              size="small"
               disabled={disabled}
               onClick={() => {
-                setConfirm({ target: 'default', path: location.defaultPath });
+                ask('default', location.defaultPath);
               }}
             >
               {t.toDefault}
@@ -109,11 +147,11 @@ export function DataFolderSettings({ busy }: { busy: boolean }) {
           )}
           {location.mode !== 'portable' && location.portablePath !== null && (
             <Button
+              ref={toPortable}
+              size="small"
               disabled={disabled}
               onClick={() => {
-                if (location.portablePath !== null) {
-                  setConfirm({ target: 'portable', path: location.portablePath });
-                }
+                if (location.portablePath !== null) ask('portable', location.portablePath);
               }}
             >
               {t.toPortable}
@@ -121,11 +159,15 @@ export function DataFolderSettings({ busy }: { busy: boolean }) {
           )}
         </div>
       )}
-      {move.pending && <p role="status">{t.copying}</p>}
+      {move.pending && (
+        <p ref={copying} className={styles.status} role="status" tabIndex={-1}>
+          {t.copying}
+        </p>
+      )}
       {busy && !pending && <p className={styles.hint}>{t.busy}</p>}
       {move.error !== null && <Notice tone="danger">{move.error}</Notice>}
       {picking.error !== null && <Notice tone="danger">{picking.error}</Notice>}
       <p className={styles.hint}>{t.portableHint}</p>
-    </div>
+    </>
   );
 }
