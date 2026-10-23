@@ -851,6 +851,88 @@ async fn an_invite_shows_the_worlds_mods_and_whether_it_runs() {
     assert_eq!(look().await, (Value::Null, json!(true)));
 }
 
+#[tokio::test]
+async fn members_show_who_is_in_the_world_and_rooms_keep_their_mods() {
+    let t = setup();
+    let room = t.room_with(&[2, 3]).await;
+    for n in 1..=3 {
+        t.register(n).await;
+    }
+    let members = format!("/v1/rooms/{room}/members");
+    let playing = || {
+        let (t, members) = (&t, members.clone());
+        async move {
+            let (status, list) = t.call("GET", &members, 3, None).await;
+            assert_eq!(status, StatusCode::OK, "{list}");
+            list.as_array()
+                .unwrap()
+                .iter()
+                .map(|m| (m["nick"].as_str().unwrap().to_owned(), m["playing"].clone()))
+                .collect::<Vec<_>>()
+        }
+    };
+    let nobody = playing().await;
+    assert_eq!(nobody.len(), 3);
+    assert!(nobody.iter().all(|(_, p)| *p == json!(false)), "{nobody:?}");
+    let mods = |n: u8| {
+        let (t, room) = (&t, room.clone());
+        async move {
+            let (status, seen) = t.call("GET", &format!("/v1/rooms/{room}"), n, None).await;
+            assert_eq!(status, StatusCode::OK, "{seen}");
+            (seen["mods"].clone(), seen["hosting"].clone())
+        }
+    };
+    assert_eq!(mods(2).await, (Value::Null, json!(false)), "never hosted");
+
+    let pack = json!({
+        "version": "22222222-2222-4222-8222-222222222222",
+        "sha256": "ab".repeat(32),
+        "mods": 5,
+    });
+    let body = json!({"endpoint": endpoint(1), "maxPlayers": 8, "pack": pack});
+    let (status, session) = t
+        .on_device("POST", &format!("/v1/rooms/{room}/sessions"), 1, Some(body))
+        .await;
+    assert_eq!(status, StatusCode::OK, "{session}");
+    let session = session["id"].as_str().unwrap().to_owned();
+    assert_eq!(mods(2).await, (json!(5), json!(true)));
+    let (_, list) = t.call("GET", "/v1/rooms", 3, None).await;
+    assert_eq!(list[0]["mods"], 5, "{list}");
+
+    // Bob goes in: only his row says so, the owner's game needs no ticket.
+    let (_, grant) = t.ticket(&room, 2).await;
+    let (status, admitted) = t
+        .admit(&session, grant["ticket"].as_str().unwrap(), &endpoint(2))
+        .await;
+    assert_eq!(status, StatusCode::OK, "{admitted}");
+    let now = playing().await;
+    for (nick, p) in &now {
+        assert_eq!(*p, json!(nick == "Bob"), "{now:?}");
+    }
+    // He leaves.
+    let release = format!(
+        "/v1/sessions/{session}/admissions/{}/release",
+        admitted["id"].as_str().unwrap()
+    );
+    assert_eq!(
+        t.on_device("POST", &release, 1, None).await.0,
+        StatusCode::OK
+    );
+    assert!(playing().await.iter().all(|(_, p)| *p == json!(false)));
+
+    // In again, then the lease runs out with nobody looking at the room.
+    let (_, grant) = t.ticket(&room, 2).await;
+    let (status, _) = t
+        .admit(&session, grant["ticket"].as_str().unwrap(), &endpoint(2))
+        .await;
+    assert_eq!(status, StatusCode::OK);
+    assert!(playing().await.iter().any(|(_, p)| *p == json!(true)));
+    t.app.clock.advance(crate::store::LEASE + 1);
+    assert!(playing().await.iter().all(|(_, p)| *p == json!(false)));
+    // Closed, the room still tells its mods.
+    assert_eq!(mods(3).await, (json!(5), json!(false)));
+}
+
 #[test]
 fn an_older_database_gets_the_count_of_mods() {
     let dir = tempfile::tempdir().unwrap();

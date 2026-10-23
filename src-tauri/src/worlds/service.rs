@@ -162,6 +162,11 @@ pub struct Room {
     /// The mods the room plays now, while it is hosted with them.
     #[serde(default)]
     pub pack: Option<SessionPack>,
+    /// The mods of the world as it was last hosted, also while it is closed:
+    /// 0 without mods, none when it was never hosted or its launcher did not
+    /// count them.
+    #[serde(default)]
+    pub mods: Option<i64>,
 }
 
 /// A world's room pack as its session names it: the catalog version guests
@@ -196,6 +201,9 @@ pub struct Member {
     pub role: String,
     pub state: String,
     pub joined: i64,
+    /// In the world now as a guest; the owner's own game is not counted.
+    #[serde(default)]
+    pub playing: bool,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]

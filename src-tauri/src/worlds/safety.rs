@@ -291,6 +291,34 @@ pub struct Importable {
     /// The mod loader, whose mods the world takes (W12).
     pub loader: Option<crate::loader::LoaderChoice>,
     pub saves: Vec<String>,
+    /// The bytes of each save, in the order of `saves`; none for one that
+    /// could not be read or holds too many files to count.
+    pub sizes: Vec<Option<u64>>,
+}
+
+/// Files and folders a save's size is counted over at most.
+const SIZE_ENTRIES: usize = 100_000;
+
+/// The bytes of the files under `dir`, its links not followed; none when it
+/// cannot be read or holds more than `most` entries.
+fn save_bytes(dir: &Path, most: usize) -> Option<u64> {
+    let (mut stack, mut seen, mut bytes) = (vec![dir.to_path_buf()], 0usize, 0u64);
+    while let Some(folder) = stack.pop() {
+        for entry in fs::read_dir(&folder).ok()? {
+            let entry = entry.ok()?;
+            seen += 1;
+            if seen > most {
+                return None;
+            }
+            let kind = entry.file_type().ok()?;
+            if kind.is_dir() {
+                stack.push(entry.path());
+            } else if kind.is_file() {
+                bytes = bytes.saturating_add(entry.metadata().ok()?.len());
+            }
+        }
+    }
+    Some(bytes)
 }
 
 /// Installations whose worlds can be imported: a Minecraft version worlds
@@ -307,12 +335,17 @@ pub fn importable(root: &DataRoot, instances: &[InstanceFile]) -> Vec<Importable
                 .is_none_or(|l| super::pack::tested(l.kind, &i.version_id))
         })
         .filter_map(|i| {
-            let saves = crate::backup::worlds(&root.game_dir(i.id));
+            let game = root.game_dir(i.id);
+            let saves = crate::backup::worlds(&game);
             (!saves.is_empty()).then(|| Importable {
                 instance_id: i.id,
                 instance_name: i.display_name.clone(),
                 minecraft: i.version_id.clone(),
                 loader: i.loader.clone(),
+                sizes: saves
+                    .iter()
+                    .map(|save| save_bytes(&game.join("saves").join(save), SIZE_ENTRIES))
+                    .collect(),
                 saves,
             })
         })

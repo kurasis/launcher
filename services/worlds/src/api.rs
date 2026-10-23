@@ -480,7 +480,7 @@ async fn members(
 ) -> Response {
     let me = me!(app, headers);
     ids!(room);
-    answer(app.store.members(&me.claims.sub, &room))
+    answer(app.store.members(&me.claims.sub, &room, app.clock.now()))
 }
 
 #[derive(Deserialize)]

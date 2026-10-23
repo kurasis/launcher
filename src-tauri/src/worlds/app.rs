@@ -75,6 +75,8 @@ pub struct HostingView {
     pub phase: host::Phase,
     /// Players on the server now, the host included.
     pub players: Vec<String>,
+    /// How each guest reaches this computer, by nick, once a path is chosen.
+    pub paths: std::collections::BTreeMap<String, joining::PathKind>,
     pub ended: Option<Ending>,
     /// The lease lapsed (sleep, the service out of reach) while the server
     /// runs; a new session is being opened and guests will reconnect.
@@ -560,6 +562,12 @@ impl Worlds {
     }
 
     /// The world's backups, newest first.
+    /// The mods of a world on this computer, by name (blocking).
+    pub fn world_mods(&self, world: WorldId) -> LauncherResult<Vec<pack::WorldMod>> {
+        let root = self.root()?;
+        Ok(pack::world_mods(root, &world::load(root, world)?))
+    }
+
     pub fn backups(&self, world: WorldId) -> LauncherResult<Vec<SnapshotInfo>> {
         let root = self.root()?;
         world::load(root, world)?;
@@ -1319,6 +1327,7 @@ fn view_of(inner: &Inner) -> WorldsView {
                 world: server.world_id,
                 phase: server.phase,
                 players: server.players,
+                paths: status.paths,
                 ended: status.ended,
                 reopening: status.reopening,
                 clean: server.clean,

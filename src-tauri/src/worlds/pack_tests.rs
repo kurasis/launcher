@@ -44,11 +44,16 @@ fn sha1_of(bytes: &[u8]) -> String {
 struct Fake {
     files: HashMap<String, (String, String)>,
     projects: HashMap<String, Project>,
+    /// Version numbers by SHA-256; the fifth mod's is not shown.
+    numbers: HashMap<String, String>,
 }
 
 impl Fake {
     fn add(&mut self, n: u8, bytes: &[u8], client: &str, server: &str) {
         self.files.insert(sha256_of(bytes), (id(n), id(n + 100)));
+        if n != 5 {
+            self.numbers.insert(sha256_of(bytes), format!("{n}.0"));
+        }
         let project = Project::of_json(&json!({
             "id": id(n), "kind": "mod", "title": format!("Mod {n}"),
             "clientSide": client, "serverSide": server,
@@ -93,6 +98,8 @@ impl Catalog for Fake {
                 let (project_id, version_id) = self.files.get(h)?.clone();
                 Some(Found {
                     hash: h.clone(),
+                    title: self.projects.get(&project_id).map(|p| p.title.clone()),
+                    version_number: self.numbers.get(h).cloned(),
                     project_id,
                     version_id,
                     ..Found::default()
@@ -591,6 +598,57 @@ async fn the_generation_is_a_mrpack_with_sides_and_catalog_downloads() {
     );
     assert_eq!(api["hashes"]["sha1"], sha1_of(&s.jars["fabric-api.jar"]));
     assert_eq!(index["files"].as_array().unwrap().len(), 5);
+}
+
+#[tokio::test]
+async fn a_worlds_mods_are_named_by_the_catalog_or_their_jars() {
+    let s = setup();
+    let (world, _) = stored(&s).await;
+    let shown = |world: &WorldFile| -> Vec<(String, Option<String>, Side)> {
+        world_mods(&s.root, world)
+            .into_iter()
+            .map(|m| (m.name, m.version, m.side))
+            .collect()
+    };
+    let v = |n: &str| Some(n.to_owned());
+    // The catalog's titles and numbers; the fifth number comes from its jar.
+    assert_eq!(
+        shown(&world),
+        [
+            ("Mod 1".to_owned(), v("1.0"), Side::Both),
+            ("Mod 2".to_owned(), v("2.0"), Side::Client),
+            ("Mod 3".to_owned(), v("3.0"), Side::Server),
+            ("Mod 4".to_owned(), v("4.0"), Side::Both),
+            ("Mod 5".to_owned(), v("1.0"), Side::Client),
+        ]
+    );
+    let first = &world_mods(&s.root, &world)[0];
+    assert_eq!(first.project_id.as_deref(), Some(id(1).as_str()));
+
+    // A generation made before the catalog's words were kept: file names,
+    // and the versions their jars give.
+    let mut older = world.clone();
+    for f in &mut older.pack.as_mut().unwrap().files {
+        f.title = None;
+        f.version_number = None;
+    }
+    let names: Vec<(String, Option<String>)> =
+        shown(&older).into_iter().map(|(n, v, _)| (n, v)).collect();
+    assert_eq!(
+        names,
+        [
+            ("fabric-api".to_owned(), v("1.0")),
+            ("ledger".to_owned(), v("1.0")),
+            ("library".to_owned(), None),
+            ("minimap".to_owned(), v("1.0")),
+            ("sodium".to_owned(), v("1.0")),
+        ]
+    );
+    // A jar missing from the world's files gives no version.
+    fs::remove_dir_all(s.root.world_pack_dir(world.id)).unwrap();
+    assert!(shown(&older).iter().all(|(_, v, _)| v.is_none()));
+    // A world without mods has none.
+    assert!(world_mods(&s.root, &made(&s)).is_empty());
 }
 
 #[tokio::test]

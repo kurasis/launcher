@@ -20,7 +20,7 @@
 //! cuts the guests off too, and while the server runs a new session is
 //! opened on a fresh endpoint ([`Room`]).
 
-use std::collections::{BTreeSet, HashMap};
+use std::collections::{BTreeMap, BTreeSet, HashMap};
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant, SystemTime};
 
@@ -31,6 +31,7 @@ use tokio::task::JoinHandle;
 
 use super::host::HostedServer;
 use super::identity::Nick;
+use super::joining::PathKind;
 use super::players;
 use super::service::{Problem, Renewal, Session, SessionPack, WorldsClient};
 use crate::error::{ErrorCode, LauncherError, LauncherResult};
@@ -128,6 +129,8 @@ pub struct HostingStatus {
     pub room: String,
     pub session: String,
     pub players: Vec<String>,
+    /// How each guest reaches this computer, by nick, once a path is chosen.
+    pub paths: BTreeMap<String, PathKind>,
     pub ended: Option<Ending>,
     /// The lease lapsed while the server runs; a new session is being opened.
     pub reopening: bool,
@@ -140,6 +143,10 @@ struct Shared {
     session: Session,
     /// Open admissions by ID, with their nick.
     admissions: Mutex<HashMap<String, Nick>>,
+    /// The guest computer of each open admission.
+    peers: Mutex<HashMap<String, EndpointId>>,
+    /// The paths last told, to tell again when one changes.
+    paths: Mutex<BTreeMap<String, PathKind>>,
     members: Mutex<BTreeSet<Nick>>,
     ended: Mutex<Option<Ending>>,
     stop: Notify,
@@ -168,6 +175,40 @@ impl Shared {
 
     fn ended(&self) -> Option<Ending> {
         *lock(&self.ended)
+    }
+
+    /// How each admitted guest reaches this computer now, by nick.
+    fn paths(&self) -> BTreeMap<String, PathKind> {
+        let guests: Vec<(String, EndpointId)> = {
+            let (admissions, peers) = (lock(&self.admissions), lock(&self.peers));
+            admissions
+                .iter()
+                .filter_map(|(id, nick)| Some((nick.as_str().to_owned(), *peers.get(id)?)))
+                .collect()
+        };
+        let tunnel = lock(&self.tunnel);
+        let Some(tunnel) = tunnel.as_ref() else {
+            return BTreeMap::new();
+        };
+        guests
+            .into_iter()
+            .filter_map(|(nick, peer)| Some((nick, tunnel.path(&peer)?)))
+            .collect()
+    }
+
+    /// Tells the panel when a guest's path changed: one through the relay
+    /// often goes direct a few seconds after it came in.
+    fn notice_paths(&self) {
+        let now = self.paths();
+        let changed = {
+            let mut told = lock(&self.paths);
+            let changed = *told != now;
+            *told = now;
+            changed
+        };
+        if changed {
+            (self.on_change)();
+        }
     }
 
     /// Applies a renewal: the whitelist, then the revoked admissions.
@@ -272,6 +313,7 @@ impl Admit for RoomAdmit {
                 release();
                 return Err(Refusal::HostBusy);
             }
+            lock(&shared.peers).insert(admission.id.clone(), peer);
             lock(&shared.admissions).insert(admission.id.clone(), nick.clone());
             (shared.on_change)();
             Ok(Admitted {
@@ -283,6 +325,7 @@ impl Admit for RoomAdmit {
 
     fn released(&self, connection_id: &str) {
         let shared = &self.0;
+        lock(&shared.peers).remove(connection_id);
         if lock(&shared.admissions).remove(connection_id).is_none() {
             return;
         }
@@ -448,6 +491,8 @@ async fn open(opening: &Opening, endpoint: Endpoint) -> Result<(Arc<Shared>, Gra
         room: opening.room.clone(),
         session,
         admissions: Mutex::new(HashMap::new()),
+        peers: Mutex::new(HashMap::new()),
+        paths: Mutex::new(BTreeMap::new()),
         members: Mutex::new(BTreeSet::new()),
         ended: Mutex::new(None),
         stop: Notify::new(),
@@ -559,6 +604,7 @@ async fn keep(room: &Room, shared: Arc<Shared>, mut granted: Granted) -> bool {
         if granted.left().is_zero() {
             return lapsed(&shared);
         }
+        shared.notice_paths();
         let asked = Granted::now();
         let renewed = tokio::time::timeout(
             granted.left(),
@@ -593,13 +639,18 @@ async fn keep(room: &Room, shared: Arc<Shared>, mut granted: Granted) -> bool {
 impl RoomHost {
     pub fn status(&self) -> HostingStatus {
         let shared = self.room.current();
+        // Each lock taken on its own: a guard in the literal would last
+        // through the whole of it.
+        let players = lock(&shared.admissions)
+            .values()
+            .map(|n| n.as_str().to_owned())
+            .collect();
+        let paths = shared.paths();
         HostingStatus {
             room: shared.room.clone(),
             session: shared.session.id.clone(),
-            players: lock(&shared.admissions)
-                .values()
-                .map(|n| n.as_str().to_owned())
-                .collect(),
+            players,
+            paths,
             ended: self.ended(),
             reopening: *lock(&self.room.reopening),
         }

@@ -4081,6 +4081,18 @@ pub async fn worlds_import<R: Runtime>(
         .await
 }
 
+/// The mods of a world on this computer, by name, for its room page.
+#[tauri::command]
+pub async fn worlds_world_mods<R: Runtime>(
+    app: AppHandle<R>,
+    world: crate::storage::paths::WorldId,
+) -> LauncherResult<Vec<crate::worlds::pack::WorldMod>> {
+    let worlds = worlds(&app);
+    tauri::async_runtime::spawn_blocking(move || worlds.world_mods(world))
+        .await
+        .map_err(|_| crate::error::LauncherError::internal("Reading the world's mods stopped."))?
+}
+
 /// A world's backups, newest first.
 #[tauri::command]
 pub async fn worlds_backups<R: Runtime>(
