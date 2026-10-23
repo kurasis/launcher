@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-worlds-world-mods"
+description = "Enables the worlds_world_mods command without any pre-configured scope."
+commands.allow = ["worlds_world_mods"]
+
+[[permission]]
+identifier = "deny-worlds-world-mods"
+description = "Denies the worlds_world_mods command without any pre-configured scope."
+commands.deny = ["worlds_world_mods"]

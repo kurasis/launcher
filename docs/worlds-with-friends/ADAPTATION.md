@@ -353,3 +353,13 @@ Other loaders follow in W12.
   code of 128 random bits gains nothing from more looks. A system notification of a chat
   message shows an invite in words («Приглашение в мир», «Приглашение на сервер»), never the
   code or the server's address.
+- 2026-10-23 — Worlds screens of concept A (redesign A6.5): read-only data for display. The list of
+  single-player worlds to import gives each save's size (`sizes`, in the order of `saves`; none
+  past 100 000 files and folders, links not followed). `worlds_world_mods` names a world's mods
+  by the catalog's title and version number, kept in the generation when it is made, or by the
+  jar's file name and the version its jar gives for older generations. The host's view names how
+  each guest reaches it (`paths`: direct or relay, by nick), looked at with every view and with
+  every renewal, so a guest that goes direct after coming in through the relay is shown so
+  within one renewal. The service marks the members in the world now (`playing`: an open
+  admission of a live session, so guests only), and every room gives the mods count of its last
+  session (`mods`), also while it is closed.

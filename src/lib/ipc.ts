@@ -81,6 +81,7 @@ import {
   type WorldsCreatePayload,
   type WorldsDevice,
   type WorldsImportable,
+  type WorldsWorldMod,
   type WorldsImportPayload,
   type WorldsInstance,
   type WorldsModSource,
@@ -721,6 +722,9 @@ export const ipc = {
   /** A new world from a copy of a single-player world, and its room. */
   worldsImport: (payload: WorldsImportPayload): Promise<WorldsRoom> =>
     invoke<WorldsRoom>('worlds_import', { payload }),
+  /** The mods of a world on this computer, by name, for its room page. */
+  worldsWorldMods: (world: string): Promise<WorldsWorldMod[]> =>
+    invoke<WorldsWorldMod[]>('worlds_world_mods', { world }),
   /** A world's backups, newest first. */
   worldsBackups: (world: string): Promise<BackupInfo[]> =>
     invoke<BackupInfo[]>('worlds_backups', { world }),

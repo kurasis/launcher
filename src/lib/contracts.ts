@@ -2282,6 +2282,11 @@ export interface WorldsRoom {
   updated: number;
   /** The mods the room plays now, while it is hosted with them. */
   pack: WorldsSessionPack | null;
+  /**
+   * The mods of the world as it was last hosted, also while it is closed: 0
+   * without mods, null when it was never hosted or its launcher did not count them.
+   */
+  mods: number | null;
 }
 
 /** A world's room pack: the catalog version guests install, and its SHA-256. */
@@ -2298,6 +2303,8 @@ export interface WorldsMember {
   role: WorldsRole;
   state: string;
   joined: number;
+  /** In the world now as a guest; the owner's own game is not counted. */
+  playing: boolean;
 }
 
 export interface WorldsRoomPage {
@@ -2423,6 +2430,22 @@ export interface WorldsImportable {
   /** Its mod loader, whose mods the world takes. */
   loader: LoaderChoice | null;
   saves: string[];
+  /**
+   * The bytes of each save, in the order of `saves`; null for one that could not
+   * be read or holds too many files to count.
+   */
+  sizes: (number | null)[];
+}
+
+/** A mod of a world on this computer, as its room page shows it. */
+export interface WorldsWorldMod {
+  /** The catalog's title, or the jar's name without `.jar`. */
+  name: string;
+  /** The catalog's version number, or the version the jar gives. */
+  version: string | null;
+  projectId: string | null;
+  /** Where it runs: guests install the client's. */
+  side: 'client' | 'server' | 'both';
 }
 
 /** A Minecraft version a world can be made for. */
@@ -2484,6 +2507,8 @@ export interface WorldsState {
     world: string;
     phase: 'starting' | 'ready' | 'stopping' | 'exited';
     players: string[];
+    /** How each guest reaches this computer, by nick, once a path is chosen. */
+    paths: Record<string, 'direct' | 'relay'>;
     ended: WorldsEnding | null;
     /** The lease lapsed (sleep, the service out of reach); a new session is being opened. */
     reopening: boolean;

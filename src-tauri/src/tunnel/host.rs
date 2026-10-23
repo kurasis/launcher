@@ -9,7 +9,9 @@
 //! connection to the world server, replay the bytes it read, and bridge.
 //! A guest never chooses a destination.
 
-use std::sync::Arc;
+use std::collections::HashMap;
+use std::sync::atomic::{AtomicU64, Ordering};
+use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
 use iroh::endpoint::{Connection, RecvStream, SendStream, VarInt};
@@ -25,7 +27,9 @@ use super::frame::{
 };
 use super::handshake::{self, Classified, MAX_PREFIX};
 use crate::install::service::BoxFuture;
+use crate::sync::lock;
 use crate::worlds::identity::Nick;
+use crate::worlds::joining::{PathKind, path_of};
 
 pub const ADMISSION_DEADLINE: Duration = Duration::from_secs(10);
 pub const LOGIN_DEADLINE: Duration = Duration::from_secs(10);
@@ -62,6 +66,17 @@ pub trait Admit: Send + Sync + 'static {
 /// A running tunnel host; dropping it stops accepting.
 pub struct TunnelHost {
     accept: JoinHandle<()>,
+    shared: Arc<Shared>,
+}
+
+impl TunnelHost {
+    /// How the guest computer `peer` reaches this one now, while connected.
+    pub fn path(&self, peer: &EndpointId) -> Option<PathKind> {
+        let connection = lock(&self.shared.connections)
+            .get(peer)
+            .map(|(_, c)| c.clone())?;
+        path_of(&connection)
+    }
 }
 
 impl Drop for TunnelHost {
@@ -75,6 +90,9 @@ struct Shared {
     server_port: u16,
     protocol: i32,
     unadmitted: Arc<Semaphore>,
+    /// The newest connection of each computer, with its number; as many as
+    /// [`CONNECTIONS_TOTAL`].
+    connections: Mutex<HashMap<EndpointId, (u64, Connection)>>,
 }
 
 /// Accepts tunnel connections on `endpoint` and forwards admitted logins to
@@ -90,15 +108,17 @@ pub fn serve(
         server_port,
         protocol,
         unadmitted: Arc::new(Semaphore::new(UNADMITTED_TOTAL)),
+        connections: Mutex::new(HashMap::new()),
     });
     let connections = Arc::new(Semaphore::new(CONNECTIONS_TOTAL));
+    let accepting = Arc::clone(&shared);
     let accept = tokio::spawn(async move {
         while let Some(incoming) = endpoint.accept().await {
             let Ok(permit) = Arc::clone(&connections).try_acquire_owned() else {
                 incoming.refuse();
                 continue;
             };
-            let shared = Arc::clone(&shared);
+            let shared = Arc::clone(&accepting);
             tokio::spawn(async move {
                 let Ok(Ok(connection)) = timeout(ADMISSION_DEADLINE, incoming).await else {
                     return;
@@ -107,7 +127,7 @@ pub fn serve(
             });
         }
     });
-    TunnelHost { accept }
+    TunnelHost { accept, shared }
 }
 
 async fn serve_connection(
@@ -115,6 +135,12 @@ async fn serve_connection(
     shared: Arc<Shared>,
     _slot: OwnedSemaphorePermit,
 ) {
+    static NUMBERS: AtomicU64 = AtomicU64::new(0);
+    let (peer, number) = (
+        connection.remote_id(),
+        NUMBERS.fetch_add(1, Ordering::Relaxed),
+    );
+    lock(&shared.connections).insert(peer, (number, connection.clone()));
     let per_connection = Arc::new(Semaphore::new(UNADMITTED_PER_CONNECTION));
     while let Ok((mut send, mut recv)) = connection.accept_bi().await {
         let permits = (
@@ -125,10 +151,15 @@ async fn serve_connection(
             refuse_stream(&mut send, &mut recv);
             continue;
         };
-        let (shared, peer) = (Arc::clone(&shared), connection.remote_id());
+        let shared = Arc::clone(&shared);
         tokio::spawn(async move {
             serve_stream(send, recv, peer, &shared, (local, global)).await;
         });
+    }
+    // A newer connection of the same computer stays.
+    let mut connections = lock(&shared.connections);
+    if connections.get(&peer).is_some_and(|(n, _)| *n == number) {
+        connections.remove(&peer);
     }
 }
 

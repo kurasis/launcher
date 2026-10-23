@@ -168,6 +168,12 @@ pub struct PackFile {
     pub project_id: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub version_id: Option<String>,
+    /// The project's title and the version's number as the catalog showed
+    /// them when the generation was made; none in older generations.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub title: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub version_number: Option<String>,
 }
 
 impl PackFile {
@@ -436,6 +442,59 @@ fn room_mods(pack: &WorldPack) -> u32 {
     u32::try_from(mods).unwrap_or(u32::MAX)
 }
 
+/// A mod of a world, as its room page shows it.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct WorldMod {
+    /// The catalog's title, or the jar's name without `.jar`.
+    pub name: String,
+    /// The catalog's version number, or the version the jar gives.
+    pub version: Option<String>,
+    pub project_id: Option<String>,
+    /// Where it runs: guests install the client's.
+    pub side: Side,
+}
+
+/// The mods of a world's current generation, by name; none for a world
+/// without mods. Reads the jars of mods the catalog gave no number for
+/// (blocking).
+pub fn world_mods(root: &DataRoot, world: &WorldFile) -> Vec<WorldMod> {
+    let Some(pack) = &world.pack else {
+        return Vec::new();
+    };
+    let dir = root.world_pack_dir(world.id);
+    let mut mods: Vec<WorldMod> = pack
+        .mods()
+        .map(|f| {
+            let jar = mod_name(&f.path).unwrap_or(&f.path);
+            WorldMod {
+                name: f.title.clone().unwrap_or_else(|| {
+                    let stem = jar.len().saturating_sub(".jar".len());
+                    jar.get(..stem).unwrap_or(jar).to_owned()
+                }),
+                version: f
+                    .version_number
+                    .clone()
+                    .or_else(|| jar_version(&dir.join(f.sha256.as_str()))),
+                project_id: f.project_id.clone(),
+                side: f.side,
+            }
+        })
+        .collect();
+    mods.sort_by_key(|m| m.name.to_lowercase());
+    mods
+}
+
+/// The version a jar gives its own mod, the first one it describes.
+fn jar_version(jar: &Path) -> Option<String> {
+    let manifests = mod_meta::read(std::io::BufReader::new(fs::File::open(jar).ok()?));
+    manifests
+        .iter()
+        .flat_map(|m| &m.mods)
+        .find(|m| !m.nested)
+        .and_then(|m| m.version.clone())
+}
+
 /// What a guest agrees to before the room's mods are installed: mods are
 /// programs that run on their computer.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
@@ -554,11 +613,11 @@ pub async fn build<C: Catalog>(
             crate::error::params([("files", named(&bad).into())]),
         ));
     }
-    let mut known: HashMap<String, (String, String)> = HashMap::new();
+    let mut known: HashMap<String, crate::mods::Found> = HashMap::new();
     let hashes: Vec<String> = jars.iter().map(|c| c.sha256.clone()).collect();
     for chunk in hashes.chunks(200) {
         for f in catalog.lookup(chunk).await? {
-            known.insert(f.hash.to_ascii_lowercase(), (f.project_id, f.version_id));
+            known.insert(f.hash.to_ascii_lowercase(), f);
         }
     }
     let missing: Vec<&str> = jars
@@ -579,10 +638,10 @@ pub async fn build<C: Catalog>(
     let mut files = Vec::with_capacity(found.len());
     let mut sources = Vec::with_capacity(found.len());
     for c in found {
-        let catalog_ids = known.get(&c.sha256).cloned();
-        let (side, side_from) = match (c.jar_side, &catalog_ids) {
+        let found = known.get(&c.sha256).cloned();
+        let (side, side_from) = match (c.jar_side, found.as_ref().map(|f| &f.project_id)) {
             (Some(side), _) => (side, SideFrom::Jar),
-            (None, Some((project, _))) => {
+            (None, Some(project)) => {
                 let side = match projects.get(project) {
                     Some(side) => *side,
                     None => {
@@ -607,8 +666,10 @@ pub async fn build<C: Catalog>(
             size: c.size,
             side,
             side_from,
-            project_id: catalog_ids.as_ref().map(|(p, _)| p.clone()),
-            version_id: catalog_ids.map(|(_, v)| v),
+            project_id: found.as_ref().map(|f| f.project_id.clone()),
+            version_id: found.as_ref().map(|f| f.version_id.clone()),
+            title: found.as_ref().and_then(|f| f.title.clone()),
+            version_number: found.and_then(|f| f.version_number),
         });
         sources.push(c.full);
     }

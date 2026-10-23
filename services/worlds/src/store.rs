@@ -220,6 +220,10 @@ pub struct Room {
     /// The mods the live session plays, for every member.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub pack: Option<Pack>,
+    /// The mods of the world as it was last hosted, also while it is closed:
+    /// 0 without mods, none when it was never hosted or its launcher did not
+    /// count them.
+    pub mods: Option<i64>,
 }
 
 /// A world's mods as the catalog keeps them: the version of its room pack
@@ -251,6 +255,9 @@ pub struct Member {
     pub role: String,
     pub state: String,
     pub joined: i64,
+    /// In the world now, through a ticket of the live session: guests only,
+    /// since the owner's own game needs none.
+    pub playing: bool,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
@@ -406,7 +413,9 @@ SELECT r.id, r.name, r.description, r.minecraft, r.revision, r.owner, o.nick, m.
        s.id, s.max_players,
        MAX((SELECT COUNT(*) FROM admissions a WHERE a.session = s.id AND a.released IS NULL),
            COALESCE(s.players, 0)),
-       s.pack_version, s.pack_sha256, s.pack_mods
+       s.pack_version, s.pack_sha256, s.pack_mods,
+       (SELECT CASE WHEN l.pack_version IS NULL THEN 0 ELSE l.pack_mods END
+        FROM sessions l WHERE l.room = r.id ORDER BY l.epoch DESC LIMIT 1)
 FROM rooms r
 JOIN members m ON m.room = r.id AND m.account = ?1 AND m.state = 'active'
 JOIN members o ON o.room = r.id AND o.account = r.owner
@@ -434,6 +443,7 @@ fn room_from(r: &rusqlite::Row<'_>) -> rusqlite::Result<Room> {
         max_players: r.get::<_, Option<i64>>(13)?.unwrap_or(0),
         online: r.get::<_, Option<i64>>(14)?.unwrap_or(0),
         pack: pack_from(r.get(15)?, r.get(16)?, r.get(17)?),
+        mods: r.get(18)?,
     })
 }
 
@@ -833,24 +843,30 @@ impl Store {
 
     /// Managers and the owner see everyone who was ever in the room; members
     /// see the active ones.
-    pub fn members(&self, account: &str, room: &str) -> Result<Vec<Member>> {
+    pub fn members(&self, account: &str, room: &str, now: i64) -> Result<Vec<Member>> {
         let db = self.db();
         let role = role_of(&db, account, room)?;
-        let sql = if role >= Role::Manager {
-            "SELECT account, nick, role, state, joined FROM members WHERE room = ?1 ORDER BY joined"
+        let everyone = if role >= Role::Manager {
+            ""
         } else {
-            "SELECT account, nick, role, state, joined FROM members
-             WHERE room = ?1 AND state = 'active' ORDER BY joined"
+            "AND m.state = 'active'"
         };
-        let mut statement = db.prepare(sql)?;
+        let mut statement = db.prepare(&format!(
+            "SELECT m.account, m.nick, m.role, m.state, m.joined,
+             EXISTS (SELECT 1 FROM admissions a JOIN sessions s ON s.id = a.session
+                     WHERE a.room = m.room AND a.account = m.account AND a.released IS NULL
+                     AND s.ended IS NULL AND s.lease_until >= ?2)
+             FROM members m WHERE m.room = ?1 {everyone} ORDER BY m.joined"
+        ))?;
         let members = statement
-            .query_map([room], |r| {
+            .query_map(params![room, now], |r| {
                 Ok(Member {
                     account: r.get(0)?,
                     nick: r.get(1)?,
                     role: r.get(2)?,
                     state: r.get(3)?,
                     joined: r.get(4)?,
+                    playing: r.get(5)?,
                 })
             })?
             .collect::<rusqlite::Result<_>>()?;

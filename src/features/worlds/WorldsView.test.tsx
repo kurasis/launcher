@@ -28,6 +28,7 @@ const mine: WorldsRoom = {
   created: 1_760_000_000,
   updated: 1_760_000_000,
   pack: null,
+  mods: null,
 };
 
 const theirs: WorldsRoom = {

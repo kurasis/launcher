@@ -345,6 +345,7 @@ fn main_window_capability_grants_only_app_commands() {
             "allow-worlds-importable",
             "allow-worlds-mod-sources",
             "allow-worlds-import",
+            "allow-worlds-world-mods",
             "allow-worlds-backups",
             "allow-worlds-back-up",
             "allow-worlds-restore",

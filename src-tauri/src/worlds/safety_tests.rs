@@ -242,6 +242,8 @@ fn an_import_copies_the_world_and_leaves_the_original() {
     let found = importable(&root, std::slice::from_ref(&survival));
     assert_eq!(found.len(), 1);
     assert_eq!(found[0].saves, ["Home"]);
+    // Its files: level.dat, the region and the lock.
+    assert_eq!(found[0].sizes, [Some(4 + 4096 + 4)]);
 
     let world = import(&root, &survival, "Home", "Home together").unwrap();
     assert_eq!(world.name, "Home together");
@@ -282,6 +284,28 @@ fn an_import_copies_the_world_and_leaves_the_original() {
     let mut untested = fabric.clone();
     untested.version_id = "1.13.2".into();
     assert!(importable(&root, &[untested]).is_empty());
+}
+
+#[test]
+fn a_saves_size_counts_its_files_within_a_bound() {
+    let dir = tempfile::tempdir().unwrap();
+    let save = dir.path().join("Home");
+    fs::create_dir_all(save.join("region/deep")).unwrap();
+    fs::write(save.join("level.dat"), [0u8; 10]).unwrap();
+    fs::write(save.join("region/r.0.0.mca"), [0u8; 100]).unwrap();
+    fs::write(save.join("region/deep/x"), [0u8; 1000]).unwrap();
+    let outside = dir.path().join("outside");
+    fs::write(&outside, vec![0u8; 50_000]).unwrap();
+    #[cfg(unix)]
+    {
+        // Links are not followed, to a file or a folder.
+        std::os::unix::fs::symlink(&outside, save.join("link")).unwrap();
+        std::os::unix::fs::symlink(dir.path(), save.join("loop")).unwrap();
+    }
+    assert_eq!(super::save_bytes(&save, 100), Some(1110));
+    // Too many entries to count, or none to read.
+    assert_eq!(super::save_bytes(&save, 3), None);
+    assert_eq!(super::save_bytes(&dir.path().join("missing"), 100), None);
 }
 
 #[test]

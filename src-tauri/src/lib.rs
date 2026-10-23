@@ -1041,6 +1041,7 @@ fn handlers<R: tauri::Runtime>() -> impl Fn(tauri::ipc::Invoke<R>) -> bool + Sen
         commands::worlds_revoke_device,
         commands::worlds_importable,
         commands::worlds_import,
+        commands::worlds_world_mods,
         commands::worlds_backups,
         commands::worlds_back_up,
         commands::worlds_restore,

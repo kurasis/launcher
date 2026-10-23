@@ -197,6 +197,7 @@
     "allow-worlds-importable",
     "allow-worlds-mod-sources",
     "allow-worlds-import",
+    "allow-worlds-world-mods",
     "allow-worlds-backups",
     "allow-worlds-back-up",
     "allow-worlds-restore",

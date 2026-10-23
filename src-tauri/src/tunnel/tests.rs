@@ -24,6 +24,7 @@ use super::host::{self, Admit, Admitted, TunnelHost};
 use crate::error::LauncherError;
 use crate::install::service::BoxFuture;
 use crate::worlds::identity::Nick;
+use crate::worlds::joining::PathKind;
 use crate::worlds::protocol::{read_packet, read_string, write_packet};
 
 /// The tests share the launcher-wide limits, so they run one at a time.
@@ -94,7 +95,9 @@ impl RoomStatus for TestStatus {
 }
 
 struct Setup {
-    _host: TunnelHost,
+    host: TunnelHost,
+    /// The guest computer's ID.
+    guest: EndpointId,
     listener: GuestListener,
     connection: Connection,
     servers: mpsc::Receiver<TcpStream>,
@@ -127,6 +130,7 @@ async fn setup(ticket: &'static str) -> Setup {
         767,
     );
     let guest_endpoint = bind(Reach::Loopback, false).await.unwrap();
+    let guest = guest_endpoint.id();
     let connection = guest_endpoint.connect(address, ALPN).await.unwrap();
     let status = Arc::new(TestStatus::default());
     let listener = guest::listen(Target {
@@ -141,7 +145,8 @@ async fn setup(ticket: &'static str) -> Setup {
     // The guest endpoint must outlive the test's connections.
     std::mem::forget(guest_endpoint);
     Setup {
-        _host: host,
+        host,
+        guest,
         listener,
         connection,
         servers,
@@ -211,6 +216,37 @@ async fn a_login_reaches_the_server_with_exactly_its_bytes() {
     assert_eq!(tail, b"late");
     tokio::time::sleep(Duration::from_millis(200)).await;
     assert_eq!(*setup.admit.released.lock().unwrap(), ["c1"]);
+}
+
+#[tokio::test]
+async fn the_host_knows_how_each_guest_computer_reaches_it() {
+    let _serial = SERIAL.lock().await;
+    let mut setup = setup(GOOD).await;
+    let mut game = client(&setup).await;
+    game.write_all(&login("Notch")).await.unwrap();
+    let _server = timeout(Duration::from_secs(10), setup.servers.recv())
+        .await
+        .unwrap()
+        .unwrap();
+    let path = || setup.host.path(&setup.guest);
+    let mut tries = 0;
+    while path().is_none() && tries < 50 {
+        tokio::time::sleep(Duration::from_millis(100)).await;
+        tries += 1;
+    }
+    // Both on loopback: straight between them, never through a relay.
+    assert_eq!(path(), Some(PathKind::Direct));
+    let stranger = iroh::SecretKey::from_bytes(&[7; 32]).public();
+    assert_eq!(setup.host.path(&stranger), None);
+
+    // Gone with its connection.
+    setup.connection.close(0u32.into(), b"done");
+    let mut tries = 0;
+    while path().is_some() && tries < 50 {
+        tokio::time::sleep(Duration::from_millis(100)).await;
+        tries += 1;
+    }
+    assert_eq!(path(), None);
 }
 
 #[tokio::test]

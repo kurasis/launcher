@@ -207,6 +207,7 @@ fn main() {
         "worlds_revoke_device",
         "worlds_importable",
         "worlds_import",
+        "worlds_world_mods",
         "worlds_backups",
         "worlds_back_up",
         "worlds_restore",

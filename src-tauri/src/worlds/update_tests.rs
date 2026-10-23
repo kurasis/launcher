@@ -68,6 +68,8 @@ fn entry(
         side_from: SideFrom::Jar,
         project_id: project.map(|n| format!("00000000-0000-4000-8000-{n:012}")),
         version_id: project.map(|n| format!("00000000-0000-4000-9000-{n:012}")),
+        title: None,
+        version_number: None,
     };
     (file, full)
 }
