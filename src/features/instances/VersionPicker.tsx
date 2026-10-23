@@ -9,8 +9,9 @@ const t = strings.createForm;
 /** Mojang's version types, then the versions of the launcher's own list (D-073). */
 type Tab = VersionType | 'special';
 const TYPES: Tab[] = ['release', 'snapshot', 'old_beta', 'old_alpha', 'special'];
-/** Version ids are short; a longer search cannot match anything. */
-const SEARCH_MAX_LENGTH = 32;
+/** Version ids are short and the special versions' names at most 64 characters
+ * (catalog/extra.rs); a longer search cannot match anything. */
+const SEARCH_MAX_LENGTH = 64;
 
 interface VersionPickerProps {
   catalog: CatalogView;

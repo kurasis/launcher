@@ -71,6 +71,10 @@ const withSpecial = catalog([
   }),
   special('2.0-blue', 'release', { name: '2.0 Blue', title: 'Minecraft 2.0', server: false }),
   special('1.14_combat-212796', 'snapshot', { name: 'Combat Test 1', group: 'combat' }),
+  special('1.19_deep_dark_experimental_snapshot-1', 'snapshot', {
+    name: '1.19 Deep Dark Experimental Snapshot 1',
+    group: 'experimental',
+  }),
   special('c0.0.12a_03', 'old_alpha', { group: 'classic', server: false }),
 ]);
 
@@ -227,11 +231,11 @@ describe('VersionPicker', () => {
       <VersionPicker catalog={everything} value="1.21.1" onChange={() => undefined} />,
     );
     const search = screen.getByRole('searchbox', { name: 'Find a version' });
-    expect(search).toHaveAttribute('maxLength', '32');
+    expect(search).toHaveAttribute('maxLength', '64');
     // Markup, pattern characters, a right-to-left override and far too much text.
     const junk = `<img src=x onerror=alert(1)>.*[(‮${'x'.repeat(10_000)}`;
     fireEvent.change(search, { target: { value: junk } });
-    expect((search as HTMLInputElement).value).toBe(junk.slice(0, 32));
+    expect((search as HTMLInputElement).value).toBe(junk.slice(0, 64));
     expect(screen.getByText('No version matches.')).toBeVisible();
     expect(container.querySelector('img')).toBeNull();
     // Characters that mean something in a pattern are plain text here.
@@ -246,7 +250,7 @@ describe('VersionPicker', () => {
 
   it('keeps the versions Mojang does not list on a tab of their own, last', () => {
     render(<VersionPicker catalog={withSpecial} value="1.21.1" onChange={() => undefined} />);
-    expect(tabNames()).toEqual(['Releases1', 'Snapshots1', 'Alpha1', 'Special5']);
+    expect(tabNames()).toEqual(['Releases1', 'Snapshots1', 'Alpha1', 'Special6']);
     fireEvent.click(screen.getByRole('tab', { name: /Snapshots/ }));
     expect(screen.getByRole('list', { name: 'Snapshots' })).not.toHaveTextContent('26w14a');
     fireEvent.click(screen.getByRole('tab', { name: /Special/ }));
@@ -258,6 +262,7 @@ describe('VersionPicker', () => {
       '24w14potato (first build)',
       '2.0 Blue',
       'Combat Test 1',
+      '1.19 Deep Dark Experimental Snapshot 1',
       'c0.0.12a_03',
     ]);
     expect(screen.getByText(/Versions Mojang's list does not have/)).toBeVisible();
@@ -295,6 +300,15 @@ describe('VersionPicker', () => {
     expect(list()).toHaveTextContent('Combat Test 1');
     fireEvent.change(search, { target: { value: '212796' } });
     expect(list()).toHaveTextContent('Combat Test 1');
+    // The longest id and name of the list fit in the search box whole.
+    for (const whole of [
+      '1.19_deep_dark_experimental_snapshot-1',
+      '1.19 Deep Dark Experimental Snapshot 1',
+    ]) {
+      fireEvent.change(search, { target: { value: whole } });
+      expect((search as HTMLInputElement).value).toBe(whole);
+      expect(list()).toHaveTextContent('1.19 Deep Dark Experimental Snapshot 1');
+    }
     fireEvent.change(search, { target: { value: '\u202E' } });
     expect(screen.getByText('No version matches.')).toBeVisible();
   });
