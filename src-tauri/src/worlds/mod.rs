@@ -10,6 +10,7 @@ pub mod app;
 pub mod failure;
 #[cfg(test)]
 pub(crate) mod fake_service;
+pub mod forge_cfg;
 pub mod host;
 pub mod hosting;
 pub mod identity;

@@ -21,10 +21,12 @@ use std::path::Path;
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 
+use super::forge_cfg;
 use super::identity::Nick;
 use super::properties::{self, RunBinding, WorldSettings};
 use super::tuple;
 use crate::error::{ErrorCode, LauncherError, LauncherResult};
+use crate::loader::LoaderKind;
 use crate::storage::atomic;
 use crate::storage::document::{self, Loaded, SCHEMA_VERSION};
 use crate::storage::paths::{DataRoot, Sha1, Sha256, WorldId};
@@ -314,8 +316,9 @@ pub fn write_whitelist(root: &DataRoot, id: WorldId, members: &[Nick]) -> Launch
 }
 
 /// Writes the files the server reads at start: `server.properties`,
-/// `whitelist.json` with the members' offline UUIDs, and `eula.txt`. Refuses
-/// before the player accepted the EULA.
+/// `whitelist.json` with the members' offline UUIDs, `eula.txt`, and for Forge
+/// before 1.13 a `config/forge.cfg` without the update check. Refuses before
+/// the player accepted the EULA.
 pub fn prepare_run(
     root: &DataRoot,
     world: &WorldFile,
@@ -346,6 +349,13 @@ pub fn prepare_run(
         b"# Accepted by the player in the launcher.\neula=true\n",
     )
     .map_err(|e| io(&e))?;
+    let forge = world
+        .pack
+        .as_ref()
+        .is_some_and(|pack| pack.loader.kind == LoaderKind::Forge);
+    if forge && version.forge_cfg() {
+        forge_cfg::turn_off_update_check(&dir).map_err(|e| io(&e))?;
+    }
     Ok(())
 }
 
@@ -450,6 +460,43 @@ mod tests {
         );
         let props = std::fs::read_to_string(dir.join("server.properties")).unwrap();
         assert!(props.lines().any(|l| l == "server-port=41000"));
+    }
+
+    #[test]
+    fn old_forge_starts_without_its_update_check() {
+        use crate::loader::LoaderChoice;
+        let (_dir, root) = root();
+        let nick = Nick::parse("Notch").unwrap();
+        for (minecraft, kind, written) in [
+            ("1.7.10", LoaderKind::Forge, true),
+            ("1.12.2", LoaderKind::Forge, true),
+            ("1.13.2", LoaderKind::Forge, false),
+            ("1.16.5", LoaderKind::Forge, false),
+            ("1.12.2", LoaderKind::Fabric, false),
+            ("1.20.1", LoaderKind::NeoForge, false),
+        ] {
+            let mut world = create(&root, "A", minecraft, WorldSettings::default()).unwrap();
+            accept_eula(&root, world.id).unwrap();
+            world = load(&root, world.id).unwrap();
+            prepare_run(&root, &world, &binding(), std::slice::from_ref(&nick)).unwrap();
+            let cfg = root.world_server_dir(world.id).join(forge_cfg::PATH);
+            assert!(!cfg.exists(), "no pack, {minecraft}");
+            world.pack = Some(super::super::pack::WorldPack {
+                generation: 1,
+                loader: LoaderChoice {
+                    kind,
+                    version: format!("{minecraft}-1"),
+                },
+                files: Vec::new(),
+                made_at: Utc::now(),
+                archive_sha256: None,
+                server_manifest: None,
+                room: None,
+                source: None,
+            });
+            prepare_run(&root, &world, &binding(), std::slice::from_ref(&nick)).unwrap();
+            assert_eq!(cfg.is_file(), written, "{kind:?} {minecraft}");
+        }
     }
 
     #[test]

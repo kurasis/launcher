@@ -929,6 +929,15 @@ async fn host_a_world_with_mods() {
         assert!(!recorded("sodium"));
         println!("{} loaded {proof_id}", kind.name());
     }
+    if kind == LoaderKind::Forge && protocol <= 340 {
+        // Forge before 1.13 read the launcher's `forge.cfg`, kept its update
+        // check off, and wrote its other settings beside it.
+        let cfg = std::fs::read_to_string(server_dir.join(launcher_lib::worlds::forge_cfg::PATH))
+            .unwrap();
+        assert!(cfg.contains("B:disableVersionCheck=true"));
+        assert!(cfg.lines().count() > 20, "Forge added its settings");
+        println!("forge update check off");
+    }
     // No chat or nicks in files: a loader that writes its own logs writes
     // nothing into them.
     for entry in std::fs::read_dir(server_dir.join("logs"))
