@@ -1,87 +1,49 @@
-import { useState } from 'react';
+import type { Ref } from 'react';
 import { Button } from '../../components/Button';
 import { Notice } from '../../components/Notice';
-import type { LocalWorld, RoomConsent, WorldsRoom, WorldsState } from '../../lib/contracts';
+import type { LocalWorld, WorldsRoom, WorldsState } from '../../lib/contracts';
 import { formatBytes } from '../../lib/format';
 import { ipc } from '../../lib/ipc';
 import { strings } from '../../lib/strings';
-import { worldsErrorText, worldsMarked } from './useWorlds';
+import { useRoomActions, type RoomActionsApi, type RoomTarget } from './useRoomActions';
 import styles from './Worlds.module.css';
 
-interface Props {
+const t = strings.worlds;
+
+/** What can be pressed for a room while this computer neither hosts nor joins it. */
+export function RoomStartButtons({
+  actions,
+  room,
+  local,
+  state,
+  size,
+}: {
+  actions: RoomActionsApi;
   room: WorldsRoom;
-  /** The room's world when it is kept on this computer. */
   local: LocalWorld | null;
   state: WorldsState;
-  /** The local world changed (the EULA was accepted). */
-  onLocal: (world: LocalWorld) => void;
-}
-
-/** Open, close, join, leave and play a room, as this computer can now. */
-export function RoomActions({ room, local, state, onLocal }: Props) {
-  const t = strings.worlds;
-  const [error, setError] = useState<string | null>(null);
-  const [note, setNote] = useState<string | null>(null);
-  const [busy, setBusy] = useState(false);
-  const [consent, setConsent] = useState<RoomConsent | null>(null);
-
-  /** `said` is false where the state already tells why a step failed. */
-  const run = (action: () => Promise<unknown>, said = true) => {
-    setError(null);
-    setNote(null);
-    setBusy(true);
-    action()
-      .catch((e: unknown) => {
-        setNote(null);
-        // The state names a failed start, but not that the mods went back.
-        if (said || worldsMarked(e, 'worldsRolledBack')) setError(worldsErrorText(e));
-      })
-      .finally(() => {
-        setBusy(false);
-      });
-  };
-
-  /** `accept` is the room pack the player agreed to install. */
-  const play = (accept?: string) => {
-    setConsent(null);
-    run(async () => {
-      if (room.pack !== null && room.role !== 'owner') setNote(t.installingMods);
-      const instance = await ipc.worldsInstance(room.id, accept);
-      setNote(null);
-      if (instance.consent !== null) {
-        setConsent(instance.consent);
-        return;
-      }
-      if (!instance.ready) {
-        await ipc.installInstance(instance.instanceId);
-        setNote(t.installing);
-        return;
-      }
-      await ipc.worldsPlay(room.id);
-    });
-  };
-
+  size?: 'small' | 'normal';
+}) {
   const inRoom = state.preparing !== null || state.hosting !== null || state.guest !== null;
-  const hostingHere = state.hosting?.room === room.id && state.hosting.ended === null;
-  const guestHere = state.guest?.room === room.id;
   const owner = room.role === 'owner';
-
+  const pending = actions.busy || undefined;
+  // In a row the buttons stay quiet: the room being played has the one accent.
+  const variant = size === 'small' ? 'secondary' : 'primary';
+  const sized = size ?? 'normal';
   return (
-    <div className={styles.actions}>
+    <>
       {owner && local !== null && !local.eulaAccepted && (
         <>
           <Button
-            variant="primary"
-            disabled={busy}
-            onClick={() => {
-              run(async () => {
-                onLocal(await ipc.worldsAcceptEula(local.id));
-              });
-            }}
+            variant={variant}
+            size={sized}
+            aria-disabled={pending}
+            onClick={actions.acceptEula}
           >
             {t.acceptEula}
           </Button>
           <Button
+            size={sized}
             onClick={() => {
               void ipc.openExternal('minecraft_eula').catch(() => undefined);
             }}
@@ -92,72 +54,112 @@ export function RoomActions({ room, local, state, onLocal }: Props) {
       )}
       {owner && local?.eulaAccepted === true && !inRoom && (
         <Button
-          variant="primary"
-          disabled={busy || state.maintenance}
-          onClick={() => {
-            run(() => ipc.worldsHost(room.id), false);
-          }}
+          variant={variant}
+          size={sized}
+          disabled={state.maintenance}
+          aria-disabled={pending}
+          onClick={actions.host}
         >
           {t.host}
         </Button>
       )}
-      {hostingHere && (
-        <>
-          <Button
-            variant="primary"
-            disabled={busy || state.hosting?.phase !== 'ready'}
-            onClick={() => {
-              play();
-            }}
-          >
-            {t.play}
-          </Button>
-          <Button
-            disabled={busy}
-            onClick={() => {
-              run(() => ipc.worldsStopHosting());
-            }}
-          >
-            {t.stopHosting}
-          </Button>
-        </>
-      )}
       {!owner && room.hosting && !inRoom && (
         <Button
-          variant="primary"
-          disabled={busy || state.maintenance}
-          onClick={() => {
-            run(() => ipc.worldsJoin(room.id), false);
-          }}
+          variant={variant}
+          size={sized}
+          disabled={state.maintenance}
+          aria-disabled={pending}
+          onClick={actions.join}
         >
           {t.join}
         </Button>
       )}
-      {guestHere && (
+    </>
+  );
+}
+
+/**
+ * Play and the way out for the room this computer hosts or is a guest in: Close the
+ * world, or Leave the world in every state of the connection, with Join again once
+ * it is lost.
+ */
+export function RoomPlayButtons({
+  actions,
+  roomId,
+  state,
+  playRef,
+  describedBy,
+  size = 'normal',
+}: {
+  actions: RoomActionsApi;
+  roomId: string;
+  state: WorldsState;
+  size?: 'small' | 'normal';
+  playRef?: Ref<HTMLButtonElement> | undefined;
+  /** What Play plays, for assistive technology: the room's line. */
+  describedBy?: string | undefined;
+}) {
+  const pending = actions.busy || undefined;
+  const hosting = state.hosting?.room === roomId && state.hosting.ended === null;
+  const guest = state.guest?.room === roomId ? state.guest : null;
+  const lost = guest !== null && !guest.connected && !guest.reconnecting;
+  return (
+    <>
+      {hosting && (
         <>
           <Button
+            ref={playRef ?? null}
             variant="primary"
-            disabled={busy || state.guest?.connected !== true || consent !== null}
+            size={size}
+            disabled={state.hosting?.phase !== 'ready'}
+            aria-disabled={pending}
+            aria-describedby={describedBy}
             onClick={() => {
-              play();
+              actions.play();
             }}
           >
             {t.play}
           </Button>
-          <Button
-            disabled={busy}
-            onClick={() => {
-              run(() => ipc.worldsDisconnect());
-            }}
-          >
-            {t.disconnect}
+          <Button size={size} aria-disabled={pending} onClick={actions.stopHosting}>
+            {t.stopHosting}
           </Button>
         </>
       )}
-      {owner && local === null && <span className={styles.muted}>{t.keptElsewhere}</span>}
-      {owner && local !== null && !local.eulaAccepted && (
-        <span className={styles.muted}>{t.eulaNeeded}</span>
+      {guest !== null && !lost && (
+        <Button
+          ref={playRef ?? null}
+          variant="primary"
+          size={size}
+          disabled={!guest.connected || actions.consent !== null}
+          aria-disabled={pending}
+          aria-describedby={describedBy}
+          onClick={() => {
+            actions.play();
+          }}
+        >
+          {t.play}
+        </Button>
       )}
+      {lost && (
+        <Button variant="primary" size={size} aria-disabled={pending} onClick={actions.joinAgain}>
+          {t.guest.again}
+        </Button>
+      )}
+      {guest !== null && (
+        <Button size={size} aria-disabled={pending} onClick={actions.disconnect}>
+          {t.disconnect}
+        </Button>
+      )}
+    </>
+  );
+}
+
+/** The mods question before a guest plays, and what the last press is doing or did. */
+export function RoomMessages({ actions }: { actions: RoomActionsApi }) {
+  const { consent, note, error } = actions;
+  const pending = actions.busy || undefined;
+  return (
+    <>
       {consent !== null && (
         <Notice tone="warning">
           <strong>{t.consent.title({ mods: consent.mods })}</strong>
@@ -171,19 +173,15 @@ export function RoomActions({ room, local, state, onLocal }: Props) {
           <div className={styles.actions}>
             <Button
               variant="primary"
-              disabled={busy}
+              size="small"
+              aria-disabled={pending}
               onClick={() => {
-                play(consent.sha256);
+                actions.play(consent.sha256);
               }}
             >
               {t.consent.accept}
             </Button>
-            <Button
-              disabled={busy}
-              onClick={() => {
-                setConsent(null);
-              }}
-            >
+            <Button size="small" aria-disabled={pending} onClick={actions.decline}>
               {t.consent.decline}
             </Button>
           </div>
@@ -191,6 +189,29 @@ export function RoomActions({ room, local, state, onLocal }: Props) {
       )}
       {note !== null && <Notice tone="info">{note}</Notice>}
       {error !== null && <Notice tone="danger">{error}</Notice>}
+    </>
+  );
+}
+
+/** A room page's actions: start it, and what the room's state says about this computer. */
+export function RoomActions({
+  room,
+  local,
+  state,
+  onLocal,
+}: Omit<RoomTarget, 'roomId'> & {
+  room: WorldsRoom;
+}) {
+  const actions = useRoomActions({ roomId: room.id, room, local, onLocal });
+  const owner = room.role === 'owner';
+  return (
+    <div className={styles.actions}>
+      <RoomStartButtons actions={actions} room={room} local={local} state={state} />
+      {owner && local === null && <span className={styles.muted}>{t.keptElsewhere}</span>}
+      {owner && local !== null && !local.eulaAccepted && (
+        <span className={styles.muted}>{t.eulaNeeded}</span>
+      )}
+      <RoomMessages actions={actions} />
     </div>
   );
 }

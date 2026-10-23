@@ -2500,6 +2500,7 @@ export type Messages = {
       readonly unclean: string;
       readonly hostPlays: string;
       readonly reopening: string;
+      readonly titleUnknown: string;
     };
     readonly guest: {
       readonly title: (values: { room: string | number }) => string;
@@ -2511,6 +2512,7 @@ export type Messages = {
       };
       readonly reconnecting: string;
       readonly again: string;
+      readonly titleUnknown: string;
     };
     readonly refusals: {
       readonly BAD_FRAME: string;
@@ -2720,6 +2722,17 @@ export type Messages = {
       readonly title: string;
       readonly relayOnly: string;
       readonly relayOnlyHint: string;
+    };
+    readonly modsCount: (values: { count: number }) => string;
+    readonly state: {
+      readonly label: string;
+    };
+    readonly local: {
+      readonly title: string;
+      readonly hint: string;
+      readonly meta: (values: { installation: string | number; game: string | number }) => string;
+      readonly none: string;
+      readonly importNamed: (values: { name: string | number }) => string;
     };
   };
   readonly metered: {

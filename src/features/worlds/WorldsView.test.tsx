@@ -1,4 +1,5 @@
-import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
+import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
+import { emit } from '@tauri-apps/api/event';
 import { mockIPC } from '@tauri-apps/api/mocks';
 import { describe, expect, it, vi } from 'vitest';
 import type { LocalWorld, WorldsRoom, WorldsState } from '../../lib/contracts';
@@ -89,36 +90,39 @@ type Answers = Record<string, (args: Record<string, unknown>) => unknown>;
 
 function setup(answers: Answers = {}, signedIn = true) {
   const calls: Call[] = [];
-  mockIPC((cmd, args) => {
-    const payload = (args ?? {}) as Record<string, unknown>;
-    calls.push({ cmd, args: payload });
-    const answer = answers[cmd];
-    if (answer !== undefined) return answer(payload);
-    switch (cmd) {
-      case 'worlds_state':
-        return idle;
-      case 'worlds_rooms':
-        return [mine, theirs];
-      case 'worlds_local':
-        return [local];
-      case 'worlds_versions':
-        return [{ id: '1.21.1', name: null }];
-      case 'worlds_mod_sources':
-        return [];
-      case 'worlds_room':
-        return {
-          room: mine,
-          members: [
-            { account: ME, nick: 'Host_Player', role: 'owner', state: 'active', joined: 1 },
-            { account: FRIEND, nick: 'Guest_One', role: 'member', state: 'active', joined: 2 },
-          ],
-        };
-      case 'plugin:event|listen':
-        return 1;
-      default:
-        return null;
-    }
-  });
+  mockIPC(
+    (cmd, args) => {
+      const payload = (args ?? {}) as Record<string, unknown>;
+      calls.push({ cmd, args: payload });
+      const answer = answers[cmd];
+      if (answer !== undefined) return answer(payload);
+      switch (cmd) {
+        case 'worlds_state':
+          return idle;
+        case 'worlds_rooms':
+          return [mine, theirs];
+        case 'worlds_local':
+          return [local];
+        case 'worlds_versions':
+          return [{ id: '1.21.1', name: null }];
+        case 'worlds_mod_sources':
+          return [];
+        case 'worlds_room':
+          return {
+            room: mine,
+            members: [
+              { account: ME, nick: 'Host_Player', role: 'owner', state: 'active', joined: 1 },
+              { account: FRIEND, nick: 'Guest_One', role: 'member', state: 'active', joined: 2 },
+            ],
+          };
+        case 'plugin:event|listen':
+          return 1;
+        default:
+          return null;
+      }
+    },
+    { shouldMockEvents: true },
+  );
   const onOpenAccounts = vi.fn();
   const account = accountFixture(
     signedIn
@@ -188,9 +192,15 @@ describe('WorldsView', () => {
       worlds_instance: () => ({ instanceId: 'inst-1', ready, consent: null }),
       install_instance: () => ({ operationId: 'op-1', instanceId: 'inst-1' }),
     });
-    expect(await screen.findByText('Our base is open · Open')).toBeInTheDocument();
+    // The band says it, with Play and Close; the room's row keeps only Open.
+    expect(await screen.findByText('\u2068Our base\u2069 is open')).toBeInTheDocument();
     expect(screen.getByText('1 player: Guest_One')).toBeInTheDocument();
-    const card = within((await screen.findByText('Our base')).closest('li') as HTMLElement);
+    const row = within((await screen.findByText('Our base')).closest('li') as HTMLElement);
+    expect(row.getAllByRole('button').map((button) => button.textContent)).toEqual(['Open']);
+    const card = within(screen.getByRole('region', { name: 'World state' }));
+    expect(card.getByRole('button', { name: 'Play' })).toHaveAccessibleDescription(
+      '\u2068Our base\u2069 is open',
+    );
     fireEvent.click(card.getByRole('button', { name: 'Play' }));
     expect(await card.findByText(/being installed/)).toBeInTheDocument();
     expect(called(calls, 'install_instance')).toHaveLength(1);
@@ -243,8 +253,9 @@ describe('WorldsView', () => {
               },
             },
     });
-    const card = within((await screen.findByText('Friend world')).closest('li') as HTMLElement);
-    fireEvent.click(card.getByRole('button', { name: 'Play' }));
+    await screen.findByText('Friend world');
+    const card = within(screen.getByRole('region', { name: 'World state' }));
+    fireEvent.click(await card.findByRole('button', { name: 'Play' }));
     expect(await card.findByText('This room plays 3 mods')).toBeInTheDocument();
     expect(
       card.getByText(/2 mods are new to this computer, 2.0 MiB to download/),
@@ -388,7 +399,7 @@ describe('WorldsView', () => {
 
   it('turns the relay-only mode on and says what the relay sees', async () => {
     const { calls } = setup();
-    const box = await screen.findByRole('checkbox', { name: 'Connect through the relay only' });
+    const box = await screen.findByRole('switch', { name: 'Connect through the relay only' });
     expect(box).not.toBeChecked();
     expect(screen.getByText(/sees the addresses of both computers/)).toBeInTheDocument();
     fireEvent.click(box);
@@ -718,6 +729,117 @@ describe('WorldsView', () => {
     await screen.findByText('Our base');
     fireEvent.click(screen.getByRole('button', { name: 'Import a world' }));
     expect(await screen.findByText(/No installation has single-player worlds/)).toBeInTheDocument();
+  });
+
+  it('counts the rooms and says the facts of each as tags', async () => {
+    setup({
+      worlds_local: () => [{ ...local, loader: { kind: 'fabric', version: '0.17.2' }, mods: 12 }],
+    });
+    const rooms = await screen.findByRole('region', { name: 'Rooms 2' });
+    const base = within((await within(rooms).findByText('Our base')).closest('li') as HTMLElement);
+    expect(await base.findByText('12 mods')).toBeInTheDocument();
+    expect(base.getByText('Closed')).toBeInTheDocument();
+    expect(base.getByText('Kept on this computer')).toBeInTheDocument();
+    expect(
+      base.getByText('\u2068Host_Player\u2069, Minecraft 1.21.1, 2 members'),
+    ).toBeInTheDocument();
+    // "Open" names its room for assistive technology.
+    expect(base.getByRole('button', { name: 'Open' })).toHaveAccessibleDescription('Our base');
+    // A friend's room: no "kept" fact, and no mods count while its pack does not say.
+    const friend = within(screen.getByText('Friend world').closest('li') as HTMLElement);
+    expect(friend.queryByText(/Kept on/)).toBeNull();
+    expect(friend.queryByText(/mods$/)).toBeNull();
+  });
+
+  it('lists the single-player worlds and imports one from its row without reading them again', async () => {
+    const INSTANCE = '33333333-3333-4333-8333-333333333333';
+    const { calls } = setup({
+      worlds_importable: () => [
+        {
+          instanceId: INSTANCE,
+          instanceName: 'Vanilla',
+          minecraft: '1.21.1',
+          loader: null,
+          saves: ['Home', 'Far'],
+        },
+      ],
+      worlds_import: () => mine,
+      worlds_accept_eula: () => local,
+    });
+    const panel = within(await screen.findByRole('region', { name: 'Your single-player worlds' }));
+    const far = within((await panel.findByText('Far')).closest('li') as HTMLElement);
+    expect(far.getByText('\u2068Vanilla\u2069, Minecraft 1.21.1')).toBeInTheDocument();
+    fireEvent.click(far.getByRole('button', { name: 'Import \u2068Far\u2069' }));
+    const dialog = within(await screen.findByRole('dialog'));
+    expect(dialog.getByLabelText('World')).toHaveValue('Far');
+    expect(dialog.getByLabelText('World name')).toHaveValue('Far');
+    expect(called(calls, 'worlds_importable')).toHaveLength(1);
+    fireEvent.click(dialog.getByLabelText('I accept the Minecraft EULA'));
+    fireEvent.click(dialog.getByRole('button', { name: 'Import' }));
+    await waitFor(() => {
+      expect(called(calls, 'worlds_import')[0]?.args).toEqual({
+        payload: { instanceId: INSTANCE, save: 'Far', name: 'Far', description: '' },
+      });
+    });
+  });
+
+  it('says when there are no single-player worlds, in its own words', async () => {
+    setup({ worlds_importable: () => [] });
+    expect(
+      await screen.findByText('There are no single-player worlds in your installations yet.'),
+    ).toBeInTheDocument();
+  });
+
+  it('hands the focus to the band when a room starts here, and to the title when it ends', async () => {
+    setup();
+    const row = within((await screen.findByText('Our base')).closest('li') as HTMLElement);
+    const host = row.getByRole('button', { name: 'Open for friends' });
+    host.focus();
+    fireEvent.click(host);
+    await act(async () => {
+      await emit('worlds://state', {
+        ...idle,
+        preparing: { room: ROOM, stage: 'server', downloadedBytes: 10, totalBytes: 40 },
+      });
+    });
+    const band = screen.getByRole('region', { name: 'World state' });
+    expect(within(band).getByRole('status')).toHaveTextContent(
+      "Getting the world's server and Java ready",
+    );
+    expect(within(band).getByRole('progressbar')).toHaveAttribute('max', '40');
+    await waitFor(() => {
+      expect(band).toHaveFocus();
+    });
+    await act(async () => {
+      await emit('worlds://state', idle);
+    });
+    await waitFor(() => {
+      expect(screen.getByRole('heading', { level: 2, name: 'Worlds with friends' })).toHaveFocus();
+    });
+  });
+
+  it('lets a guest leave while the connection comes back', async () => {
+    const { calls } = setup({
+      worlds_state: () => ({
+        ...idle,
+        guest: {
+          room: OTHER,
+          connected: false,
+          refused: null,
+          path: null,
+          reconnecting: true,
+          gaveUp: false,
+        },
+      }),
+    });
+    const band = within(await screen.findByRole('region', { name: 'World state' }));
+    expect(band.getByRole('button', { name: 'Play' })).toBeDisabled();
+    fireEvent.click(band.getByRole('button', { name: 'Leave the world' }));
+    await waitFor(() => {
+      expect(called(calls, 'worlds_disconnect')).toHaveLength(1);
+    });
+    // One way out, not one in the row too.
+    expect(screen.getAllByRole('button', { name: 'Leave the world' })).toHaveLength(1);
   });
 
   it('restores a backup after naming its date, and exports the world', async () => {

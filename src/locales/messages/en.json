@@ -2297,7 +2297,7 @@
       "joinByCode": "Join with a code",
       "refresh": "Refresh",
       "loading": "Loading…",
-      "roomMeta": "{owner} · Minecraft {version} · {members, plural, one {# member} other {# members}}",
+      "roomMeta": "{owner}, Minecraft {version}, {members, plural, one {# member} other {# members}}",
       "openNow": "Open: {online} of {max} playing",
       "closedNow": "Closed",
       "yours": "Your world",
@@ -2339,7 +2339,8 @@
         },
         "unclean": "The world server did not stop cleanly; the last minutes may not be saved.",
         "hostPlays": "Press Play to join your own world. Friends can join while it is open.",
-        "reopening": "The connection to worlds.lapi.sh was lost for 30 seconds (the computer slept, or the service did not answer), so friends were disconnected. The room is being opened again; they reconnect by themselves."
+        "reopening": "The connection to worlds.lapi.sh was lost for 30 seconds (the computer slept, or the service did not answer), so friends were disconnected. The room is being opened again; they reconnect by themselves.",
+        "titleUnknown": "Your world is open"
       },
       "guest": {
         "title": "In {room}",
@@ -2350,7 +2351,8 @@
           "relay": "Connection: through relay.lapi.sh, as no direct path between the computers was found."
         },
         "reconnecting": "The connection to the host was lost. Connecting again…",
-        "again": "Join again"
+        "again": "Join again",
+        "titleUnknown": "In a friend's world"
       },
       "refusals": {
         "BAD_FRAME": "The host's launcher did not understand this launcher. Update both.",
@@ -2552,6 +2554,17 @@
         "title": "Privacy",
         "relayOnly": "Connect through the relay only",
         "relayOnlyHint": "Other players never learn your computer's address. The relay (relay.lapi.sh, run by this launcher) sees the addresses of both computers and how much data passes, but not the game itself, which is encrypted. The game may lag more. Applies the next time you open or join a world."
+      },
+      "modsCount": "{count, plural, one {# mod} other {# mods}}",
+      "state": {
+        "label": "World state"
+      },
+      "local": {
+        "title": "Your single-player worlds",
+        "hint": "They can be moved into worlds with friends: the original stays in its installation.",
+        "meta": "{installation}, {game}",
+        "none": "There are no single-player worlds in your installations yet.",
+        "importNamed": "Import {name}"
       }
     },
     "metered": {
