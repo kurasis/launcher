@@ -130,8 +130,8 @@ describe('InstallPanel', () => {
     expect(screen.getByText(/Files verified so far were kept/)).toBeVisible();
   });
 
-  it('explains repair for damaged files and verifies ready ones', async () => {
-    const calls = backend();
+  it('explains repair for damaged files and leaves Verify files to the toolbar', () => {
+    backend();
     const { rerender } = render(
       <InstallPanel
         instance={instanceFixture({ health: 'repair_required' })}
@@ -152,10 +152,8 @@ describe('InstallPanel', () => {
     expect(
       screen.getByText(/Installation finished\. Downloaded 3,961 files \(877\.2 MiB\)/),
     ).toBeVisible();
-    fireEvent.click(screen.getByRole('button', { name: 'Verify files' }));
-    await waitFor(() => {
-      expect(calls.some((c) => c.cmd === 'repair_instance')).toBe(true);
-    });
+    // Verify files sits in the panel's toolbar (InstanceDetails) since concept A.
+    expect(screen.queryByRole('button', { name: 'Verify files' })).toBeNull();
   });
 
   it('shows the queue while another installation is busy, and removes from it', async () => {

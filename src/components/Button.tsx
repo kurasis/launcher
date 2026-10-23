@@ -2,7 +2,8 @@ import type { ButtonHTMLAttributes, Ref } from 'react';
 import styles from './Button.module.css';
 
 type ButtonProps = Omit<ButtonHTMLAttributes<HTMLButtonElement>, 'type'> & {
-  variant?: 'primary' | 'secondary';
+  /** "ghost" is a quiet action drawn as text, with no fill or border until hovered. */
+  variant?: 'primary' | 'secondary' | 'ghost';
   /** "large" is for the screen's main call to action, such as Play. */
   size?: 'normal' | 'large';
   /** Defaults to "button" so a button never submits a form by accident. */

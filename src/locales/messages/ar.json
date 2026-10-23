@@ -37,6 +37,33 @@
       "chooseInstallation": "اختر تثبيتًا",
       "openInstallations": "فتح التثبيتات"
     },
+    "palette": {
+      "find": "بحث",
+      "findHint": "بحث (⁦{keys}⁩)",
+      "title": "البحث في المشغّل",
+      "placeholder": "عمّ تبحث؟",
+      "results": "{count, plural, =0 {لم يُعثر على شيء} one {نتيجة واحدة} two {نتيجتان} few {# نتائج} many {# نتيجة} other {# نتيجة}}",
+      "listLabel": "النتائج",
+      "pages": "الصفحات والإجراءات",
+      "nothing": "لم يُعثر على شيء. جرّب كلمة أقصر أو كتابة أخرى.",
+      "offline": "يُبحث في الفهرس عند عودة الاتصال بالإنترنت.",
+      "searching": "جارٍ البحث في الفهرس…",
+      "scope": "يبحث في التثبيتات والتعديلات والصفحات والإعدادات",
+      "screen": "صفحة",
+      "newWith": "تثبيت جديد مع {loader}",
+      "inInstallation": "مثبّت في «⁨{name}⁩»",
+      "catalog": "في الفهرس",
+      "go": "انتقال",
+      "create": "إنشاء",
+      "open": "فتح",
+      "modPage": "صفحة التعديل",
+      "hints": {
+        "move": "تنقّل",
+        "open": "فتح",
+        "main": "الإجراء الرئيسي",
+        "close": "إغلاق"
+      }
+    },
     "feed": {
       "title": "الموجز",
       "loading": "جارٍ تحميل الموجز…",
@@ -418,7 +445,32 @@
         "repair_required": "يحتاج إلى إصلاح",
         "unsupported": "غير مدعوم"
       },
-      "busy": "مشغول"
+      "busy": "مشغول",
+      "count": "{count, plural, zero {لا توجد تثبيتات} one {تثبيت واحد} two {تثبيتان} few {# تثبيتات} many {# تثبيتًا} other {# تثبيت}}",
+      "find": "البحث في القائمة",
+      "sortBy": "الترتيب",
+      "sorts": {
+        "recent": "الأحدث",
+        "name": "حسب الاسم",
+        "version": "حسب الإصدار"
+      },
+      "nothingFound": "لم يُعثر على شيء.",
+      "clearSearch": "مسح البحث",
+      "choose": "اختر تثبيتًا من القائمة لعرضه هنا.",
+      "actions": "إجراءات التثبيت",
+      "lastRun": {
+        "played": "آخر تشغيل يوم {when}.",
+        "playedFor": "آخر تشغيل يوم {when}، لمدة {duration}.",
+        "outcome": {
+          "succeeded": "انتهت اللعبة دون أخطاء.",
+          "failed": "انتهت اللعبة بخطأ.",
+          "cancelled": "أُوقفت اللعبة."
+        },
+        "lessThanMinute": "أقل من دقيقة",
+        "minutes": "{count, plural, zero {# دقيقة} one {دقيقة واحدة} two {دقيقتين} few {# دقائق} many {# دقيقة} other {# دقيقة}}",
+        "hours": "{count, plural, zero {# ساعة} one {ساعة واحدة} two {ساعتين} few {# ساعات} many {# ساعة} other {# ساعة}}",
+        "hoursMinutes": "{hours} و{minutes}"
+      }
     },
     "install": {
       "install": "تثبيت",
@@ -462,8 +514,11 @@
     },
     "createForm": {
       "title": "تثبيت جديد",
+      "back": "العودة إلى التثبيتات",
       "name": "الاسم",
+      "nameHint": "يُملأ من الإصدار، ويمكنك إعادة تسميته لاحقًا.",
       "version": "إصدار Minecraft",
+      "typesLabel": "نوع الإصدار",
       "versionTypes": {
         "release": "الإصدارات",
         "snapshot": "اللقطات",
@@ -482,6 +537,7 @@
       "latest": "الأحدث",
       "selected": "المحدّد: {id}",
       "noneSelected": "اختر إصدارًا.",
+      "noSupported": "لا يدعم {loader} أيًّا من الإصدارات الموجودة في فهرس Mojang. اختر مُحمِّلًا آخر أو تحقّق من الفهرس مجددًا.",
       "isolation": "لكل تثبيت مجلد لعبة خاص به للعوالم والإعدادات ولقطات الشاشة. لا يمكن تغيير الإصدار لاحقًا؛ أنشئ تثبيتًا آخر للعب إصدار مختلف.",
       "submit": "إنشاء التثبيت",
       "cancel": "إلغاء",
@@ -493,8 +549,12 @@
       },
       "stale": "يُعرض آخر فهرس محفوظ لأن تحديثه تعذّر.",
       "refresh": "تحقّق مجددًا",
+      "retry": "إعادة المحاولة",
       "estimate": "تقدير التنزيل",
       "estimating": "جارٍ التقدير…",
+      "memory": "الذاكرة",
+      "memoryFixed": "⁨{mib, number, ::group-off} MiB⁩، وهو إعدادك للتثبيتات الجديدة.",
+      "memoryHint": "يمكن تغييرها لاحقًا من إعدادات التثبيت.",
       "planTitle": "تقدير التنزيل للإصدار {version}",
       "planJava": "Java",
       "planLibraries": "المكتبات",
@@ -507,7 +567,7 @@
     },
     "loaders": {
       "loader": "مُحمِّل التعديلات",
-      "none": "بلا (اللعبة الأصلية)",
+      "noneShort": "بدون",
       "names": {
         "fabric": "Fabric",
         "quilt": "Quilt",
@@ -538,7 +598,6 @@
       "title": "إعدادات التثبيت",
       "summaryTitle": "التفاصيل",
       "version": "الإصدار",
-      "openFolder": "فتح مجلد اللعبة",
       "openFolderHint": "تُخزَّن هناك عوالم هذا التثبيت ولقطات الشاشة والإعدادات.",
       "name": "الاسم",
       "rename": "إعادة التسمية",
@@ -552,10 +611,8 @@
         "shaderpacks": "حزم الظلال"
       },
       "lastPlayed": "آخر تشغيل",
-      "neverPlayed": "لم يُشغَّل بعد",
       "lastResult": "النتيجة الأخيرة",
       "exitCode": "رمز الخروج {code}",
-      "noResult": "لا شيء بعد",
       "memory": "الحد الأقصى للذاكرة (MiB)",
       "memoryHint": "بين {min, number, ::group-off} و{max, number, ::group-off} MiB على هذا الحاسوب.",
       "lowMemory": "ذاكرة هذا الحاسوب أقل من 8 GiB، وقد يكون أداء اللعبة ضعيفًا بالكمية المتاحة.",
@@ -568,9 +625,6 @@
       "java": "Java",
       "jvmArguments": "خيارات JVM",
       "javaNone": "يُختار عند التثبيت",
-      "window": "الذاكرة والنافذة",
-      "windowValue": "⁦{mib, number, ::group-off} MiB⁩ · ⁦{width, number, ::group-off}×{height, number, ::group-off}⁩",
-      "edit": "تغيير الإعدادات",
       "notes": "ملاحظات",
       "notesHint": "لك وحدك: الغرض من هذا التثبيت وتعديلاته وخوادمه وأي شيء تريد تذكّره.",
       "notesSave": "حفظ الملاحظات",
@@ -580,16 +634,26 @@
       "launcherSkinsHint": "يعرض في هذه اللعبة مظاهر حسابات المشغّل وعباءاتها، بدقة عالية ومتحركة. في إصدارات اللعبة المدعومة فقط.",
       "gameArguments": "وسائط Minecraft",
       "gameArgumentsHint": "تُضاف بعد وسائط اللعبة نفسها، مثل ‎--quickPlaySingleplayer \"عالمي\"‎ لفتح عالم عند البدء. تحافظ علامات الاقتباس على المسافات داخل قيمة واحدة. يحدد المشغّل اللاعب والمجلدات وحجم النافذة وملء الشاشة.",
-      "content": "التعديلات والمحتوى"
+      "content": "التعديلات والمحتوى",
+      "memoryShort": "الذاكرة",
+      "memoryValue": "⁦{mib, number, ::group-off} MiB⁩",
+      "windowShort": "النافذة",
+      "windowSize": "⁦{width, number, ::group-off}×{height, number, ::group-off}⁩",
+      "windowFullscreen": "⁦{width, number, ::group-off}×{height, number, ::group-off}⁩، ملء الشاشة",
+      "launcherSkinsOn": "مفعّلة",
+      "launcherSkinsOff": "معطّلة",
+      "notesEmpty": "لا توجد ملاحظات بعد.",
+      "notesEdit": "تعديل",
+      "notesEditLabel": "تعديل الملاحظات",
+      "cancel": "إلغاء"
     },
     "memory": {
-      "recommended": "المُوصى به: {mib, number, ::group-off} MiB لـ {reason}.",
-      "limited": "المُوصى به: {mib, number, ::group-off} MiB لـ {reason}؛ يحتاج إلى نحو {wanted, number, ::group-off} MiB، لكن هذا الحاسوب لا يتسع لذلك.",
+      "recommended": "المُوصى به: ⁨{mib, number, ::group-off} MiB⁩ لـ ⁨{reason}⁩.",
+      "limited": "المُوصى به: ⁨{mib, number, ::group-off} MiB⁩ لـ ⁨{reason}⁩؛ يحتاج إلى نحو ⁨{wanted, number, ::group-off} MiB⁩، لكن هذا الحاسوب لا يتسع لذلك.",
       "use": "استخدام المُوصى به",
       "perKind": "المُوصى به لكل نوع من التثبيتات",
       "perKindHint": "Minecraft 1.12.2 وما قبله: 2048 MiB؛ الإصدارات الأحدث: 3072 MiB؛ مع مُحمِّل تعديلات: 4096 MiB وأكثر عند كثرة التعديلات. لا يتجاوز أبدًا نصف ذاكرة الحاسوب.",
       "fixed": "القيمة نفسها لكل تثبيت جديد",
-      "fixedLine": "الذاكرة: {mib, number, ::group-off} MiB (إعدادك للتثبيتات الجديدة).",
       "workload": {
         "legacy": "Minecraft 1.12.2 وما قبله",
         "vanilla": "Minecraft دون تعديلات",

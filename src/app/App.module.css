@@ -98,6 +98,43 @@
   text-overflow: ellipsis;
 }
 
+/* Find (the command palette): a field-like button between the brand and the screens. */
+.find {
+  border: 1px solid var(--color-rail-border);
+  background: var(--color-rail-field);
+  color: var(--color-rail-muted);
+  font-weight: 400;
+}
+
+.find:hover,
+.find[aria-expanded='true'] {
+  background: var(--color-rail-hover);
+  color: var(--color-rail-text);
+}
+
+.findKeys {
+  display: inline-flex;
+  flex: none;
+  margin-inline-start: auto;
+}
+
+.findKeyRow {
+  display: inline-flex;
+  gap: 2px;
+}
+
+.findKeys kbd {
+  display: inline-grid;
+  place-items: center;
+  min-inline-size: 1.25rem;
+  padding: 0 var(--space-1);
+  border: 1px solid var(--color-rail-border);
+  border-radius: calc(var(--radius-sm) / 2);
+  font: inherit;
+  font-size: var(--font-size-xs);
+  line-height: 1.4;
+}
+
 .railEnd {
   display: grid;
   grid-template-columns: minmax(0, 1fr);
@@ -151,6 +188,12 @@
   max-width: 76rem;
   margin: 0 auto;
   padding: var(--space-6) var(--space-8);
+}
+
+/* Focus lands here only from code (after the palette moves to a page), so the reader
+   starts at the page; a ring around the whole page would point at nothing. */
+.content:focus {
+  outline: none;
 }
 
 .footer {
@@ -342,7 +385,8 @@
     padding-inline: 0;
   }
 
-  .rail .caret {
+  .rail .caret,
+  .findKeys {
     display: none;
   }
 

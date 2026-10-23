@@ -36,6 +36,8 @@ interface Props {
   section: ModsSection;
   onSection: (section: ModsSection) => void;
   onInstance: (instanceId: string | null) => void;
+  /** A project whose page opens first, e.g. from the command palette (key the view by request). */
+  initialProject?: string | null | undefined;
 }
 
 /**
@@ -43,11 +45,18 @@ interface Props {
  * page, adding to an installation, "Add to the catalog" with its requests,
  * and what an installation holds.
  */
-export function ModsView({ snapshot, instanceId, section, onSection, onInstance }: Props) {
+export function ModsView({
+  snapshot,
+  instanceId,
+  section,
+  onSection,
+  onInstance,
+  initialProject = null,
+}: Props) {
   const t = strings.mods;
   const selectId = useId();
   const instance = snapshot.instances.find((i) => i.id === instanceId) ?? null;
-  const [project, setProject] = useState<string | null>(null);
+  const [project, setProject] = useState<string | null>(initialProject);
   const [adding, setAdding] = useState<AddTarget | null>(null);
   const [packing, setPacking] = useState<{ project: ModsProject; version: ModsVersion } | null>(
     null,

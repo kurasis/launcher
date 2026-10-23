@@ -48,14 +48,13 @@ div.chosen {
   font-variant-numeric: tabular-nums;
 }
 
-/* A grass block: green top over soil. */
-.tile {
+/* No installation chosen: an empty outline where its tile would be. */
+.emptyTile {
   flex: none;
-  width: 2.25rem;
-  height: 2.25rem;
-  border-radius: 6px;
-  background: var(--color-soil);
-  box-shadow: inset 0 0.75rem 0 var(--color-hill-near);
+  inline-size: 2.5rem;
+  block-size: 2.5rem;
+  border-radius: 18%;
+  border: 1px dashed var(--color-border-strong);
 }
 
 .what {

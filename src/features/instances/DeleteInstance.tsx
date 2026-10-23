@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Button } from '../../components/Button';
 import { Notice } from '../../components/Notice';
 import forms from '../../components/forms.module.css';
@@ -21,19 +21,45 @@ export function DeleteInstance({
   instance,
   busy,
   onDeleted,
+  askNow = false,
+  onClose,
 }: {
   instance: InstanceSummary;
   /** Something runs; deleting waits until it ends. */
   busy: boolean;
   onDeleted: (message: string) => void;
+  /** Looks at the folder at once and asks, as when "Delete installation" is chosen in a menu. */
+  askNow?: boolean;
+  /** Closes the question for good: Cancel calls it instead of going back to the button. */
+  onClose?: (() => void) | undefined;
 }) {
   const [data, setData] = useState<UserData | null>(null);
-  const [checking, setChecking] = useState(false);
+  const [checking, setChecking] = useState(askNow);
   const [checkError, setCheckError] = useState<string | null>(null);
   const remove = useCommand((requestId: string, backup: boolean) =>
     ipc.deleteInstance(instance.id, backup, requestId),
   );
   const disabled = busy || instance.busy || remove.pending;
+
+  // Chosen from a menu: the question comes straight away, without a second button.
+  useEffect(() => {
+    if (!askNow) return;
+    let live = true;
+    ipc
+      .inspectInstance(instance.id)
+      .then((found) => {
+        if (live) setData(found);
+      })
+      .catch((error: unknown) => {
+        if (live) setCheckError(describeIpcError(error));
+      })
+      .finally(() => {
+        if (live) setChecking(false);
+      });
+    return () => {
+      live = false;
+    };
+  }, [askNow, instance.id]);
 
   const ask = () => {
     setChecking(true);
@@ -64,6 +90,7 @@ export function DeleteInstance({
           <Button disabled={disabled || checking} onClick={ask}>
             {t.delete}
           </Button>
+          {onClose !== undefined && <Button onClick={onClose}>{t.cancel}</Button>}
         </div>
         {checkError !== null && <Notice tone="danger">{checkError}</Notice>}
       </>
@@ -115,6 +142,7 @@ export function DeleteInstance({
           onClick={() => {
             setData(null);
             remove.reset();
+            onClose?.();
           }}
         >
           {t.cancel}

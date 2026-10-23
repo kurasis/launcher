@@ -20,6 +20,7 @@
   display: flex;
   align-items: center;
   gap: var(--space-2);
+  margin: 0;
   font-size: var(--font-size-md);
   font-weight: 600;
   line-height: 1.3;
@@ -28,72 +29,4 @@
 .body {
   display: grid;
   gap: var(--space-3);
-}
-
-.hero {
-  isolation: isolate;
-  overflow: hidden;
-  min-height: 15rem;
-  padding: var(--space-8);
-  border-color: var(--color-border-strong);
-}
-
-.hero > .header,
-.hero > .body {
-  position: relative;
-  max-width: 34rem;
-}
-
-.hero .title {
-  font-size: var(--font-size-hero);
-  font-weight: 700;
-  letter-spacing: -0.01em;
-  overflow-wrap: anywhere;
-}
-
-.art {
-  position: absolute;
-  inset: 0;
-  width: 100%;
-  height: 100%;
-}
-
-/* Keeps text readable over the scene: solid on the left, clear on the right. */
-.hero::before {
-  content: '';
-  position: absolute;
-  inset: 0;
-  z-index: 0;
-  pointer-events: none;
-  background: linear-gradient(
-    90deg,
-    var(--color-hero-scrim) 0%,
-    var(--color-hero-scrim) 40%,
-    transparent 85%
-  );
-}
-
-/* Right-to-left languages (D-038): the scene and the scrim mirror, so the sun
-   and the clear side stay away from the text. */
-:global([dir='rtl']) .art {
-  transform: scaleX(-1);
-}
-
-:global([dir='rtl']) .hero::before {
-  background: linear-gradient(
-    270deg,
-    var(--color-hero-scrim) 0%,
-    var(--color-hero-scrim) 40%,
-    transparent 85%
-  );
-}
-
-.hero > .art {
-  z-index: -1;
-}
-
-@media (max-width: 640px) {
-  .hero::before {
-    background: var(--color-hero-scrim);
-  }
 }

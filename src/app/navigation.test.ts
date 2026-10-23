@@ -1,7 +1,14 @@
 import { describe, expect, it } from 'vitest';
 import type { AppSnapshot, RunSummary } from '../lib/contracts';
 import { snapshotFixture } from '../test/fixtures';
-import { menuViews, rememberedView, rowViews, startViewOf, viewShown } from './navigation';
+import {
+  VIEW_ICONS,
+  menuViews,
+  rememberedView,
+  rowViews,
+  startViewOf,
+  viewShown,
+} from './navigation';
 
 function withSettings(settings: Partial<AppSnapshot['settings']>, more: Partial<AppSnapshot> = {}) {
   return snapshotFixture({ ...more, settings: { ...snapshotFixture().settings, ...settings } });
@@ -11,6 +18,14 @@ describe('navigation', () => {
   it('keeps every screen in one place', () => {
     expect(rowViews).toEqual(['feed', 'home', 'mods', 'worlds', 'skins', 'account', 'settings']);
     expect(menuViews).toEqual(['backups', 'screenshots', 'diagnostics', 'reviews', 'about']);
+  });
+
+  it('gives every screen and the console its own icon', () => {
+    const icons = [...rowViews, ...menuViews, 'console' as const].map((view) => VIEW_ICONS[view]);
+    expect(icons).not.toContain(undefined);
+    expect(new Set(icons).size).toBe(icons.length);
+    expect(VIEW_ICONS.backups).toBe('db');
+    expect(VIEW_ICONS.console).toBe('console');
   });
 
   it('remembers only start screens', () => {

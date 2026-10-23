@@ -1,0 +1,66 @@
+/* A block for an installation: a colored top band over a body, flat, no shading.
+   The colors come from the --tile-N-* pairs in tokens.css. */
+.tile {
+  position: relative;
+  display: inline-block;
+  flex: none;
+  overflow: hidden;
+  inline-size: 2.5rem;
+  block-size: 2.5rem;
+  border-radius: 18%;
+  background: var(--tile-body);
+}
+
+.tile::before {
+  content: '';
+  position: absolute;
+  inset-inline: 0;
+  inset-block-start: 0;
+  block-size: 36%;
+  background: var(--tile-top);
+}
+
+.small {
+  inline-size: 2rem;
+  block-size: 2rem;
+}
+
+.medium {
+  inline-size: 2.5rem;
+  block-size: 2.5rem;
+}
+
+.large {
+  inline-size: 3.5rem;
+  block-size: 3.5rem;
+}
+
+.tone1 {
+  --tile-top: var(--tile-1-top);
+  --tile-body: var(--tile-1-body);
+}
+
+.tone2 {
+  --tile-top: var(--tile-2-top);
+  --tile-body: var(--tile-2-body);
+}
+
+.tone3 {
+  --tile-top: var(--tile-3-top);
+  --tile-body: var(--tile-3-body);
+}
+
+.tone4 {
+  --tile-top: var(--tile-4-top);
+  --tile-body: var(--tile-4-body);
+}
+
+.tone5 {
+  --tile-top: var(--tile-5-top);
+  --tile-body: var(--tile-5-body);
+}
+
+.tone6 {
+  --tile-top: var(--tile-6-top);
+  --tile-body: var(--tile-6-body);
+}

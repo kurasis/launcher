@@ -1,161 +1,563 @@
+/* Installations, concept A «Верстак» (D-072): the list on the paper ground, the chosen
+   installation on one white surface. Logical properties only, so the screen mirrors
+   for right-to-left languages by itself; columns follow the space the screen has
+   (container queries), not the window. */
+
+.screen {
+  container: installations / inline-size;
+  display: grid;
+  gap: var(--space-4);
+  min-inline-size: 0;
+}
+
+/* ---------------------------------------------------------------- Page head */
+
+.pageHead {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3) var(--space-4);
+}
+
+.pageTitleRow {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  min-inline-size: 0;
+}
+
+.pageTitle {
+  font-size: var(--font-size-xl);
+  font-weight: 700;
+  line-height: 1.2;
+}
+
+.count {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-block-size: 1.5rem;
+  min-inline-size: 1.5rem;
+  padding: 0 var(--space-2);
+  border-radius: var(--radius-pill);
+  background: var(--color-neutral-bg);
+  color: var(--color-neutral-text);
+  font-size: var(--font-size-sm);
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+
+.pageActions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+}
+
+.visuallyHidden {
+  position: absolute;
+  inline-size: 1px;
+  block-size: 1px;
+  margin: -1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+
+/* Icons that point (the arrow of "Bring in") turn around in right-to-left languages. */
+:global([dir='rtl']) .mirror {
+  transform: scaleX(-1);
+}
+
+/* ---------------------------------------------------------------- Layout */
+
 .layout {
   display: grid;
-  gap: var(--space-6);
-  grid-template-columns: minmax(16rem, 1fr) minmax(0, 2fr);
+  grid-template-columns: minmax(0, 1fr);
+  gap: var(--space-4);
   align-items: start;
 }
 
-@media (max-width: 900px) {
+/* The 820 px window (rail folded): a narrow list beside the panel. */
+@container installations (min-width: 40rem) {
   .layout {
-    grid-template-columns: 1fr;
+    grid-template-columns: 17rem minmax(0, 1fr);
   }
 }
 
-.column {
-  display: grid;
-  gap: var(--space-4);
+@container installations (min-width: 60rem) {
+  .layout {
+    grid-template-columns: 21rem minmax(0, 1fr);
+    gap: var(--space-6);
+  }
 }
 
+.listColumn {
+  container: instance-list / inline-size;
+  display: grid;
+  gap: var(--space-3);
+  min-inline-size: 0;
+}
+
+@container installations (min-width: 40rem) {
+  /* The list stays in view while a long panel scrolls the page. */
+  .listColumn {
+    position: sticky;
+    inset-block-start: var(--space-4);
+  }
+}
+
+.main {
+  display: grid;
+  gap: var(--space-4);
+  min-inline-size: 0;
+}
+
+.empty,
+.choose {
+  padding: var(--space-6);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-lg);
+  background: var(--color-surface);
+  color: var(--color-text-2);
+}
+
+/* ---------------------------------------------------------------- The list */
+
+.listArea {
+  display: grid;
+  gap: var(--space-3);
+}
+
+.finder {
+  display: grid;
+  gap: var(--space-2);
+}
+
+.search {
+  position: relative;
+}
+
+.searchIcon {
+  position: absolute;
+  inset-block: 0;
+  inset-inline-start: var(--space-3);
+  margin-block: auto;
+  color: var(--color-text-muted);
+  pointer-events: none;
+}
+
+.searchInput {
+  inline-size: 100%;
+  padding-inline-start: calc(var(--space-8) + var(--space-1));
+}
+
+.searchInput::placeholder {
+  color: var(--color-text-muted);
+  opacity: 1;
+}
+
+.sorts {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-1);
+}
+
+.pill {
+  min-block-size: 1.75rem;
+  padding: 0 var(--space-3);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-pill);
+  background: var(--color-surface);
+  color: var(--color-text-2);
+  font: inherit;
+  font-size: var(--font-size-sm);
+  font-weight: 500;
+  cursor: pointer;
+  transition:
+    background-color var(--motion-duration) ease-out,
+    border-color var(--motion-duration) ease-out,
+    color var(--motion-duration) ease-out;
+}
+
+.pill:hover {
+  background: var(--color-hover);
+}
+
+.pill[aria-pressed='true'] {
+  border-color: var(--color-accent);
+  background: var(--color-selected);
+  color: var(--color-accent-text);
+  font-weight: 600;
+}
+
+.nothing {
+  display: grid;
+  justify-items: start;
+  gap: var(--space-2);
+  padding: var(--space-3);
+  color: var(--color-text-2);
+}
+
+/* A long list scrolls by itself, above the launch bar. */
 .list {
   list-style: none;
   margin: 0;
   padding: 0;
   display: grid;
-  gap: var(--space-2);
+  gap: 2px;
+  max-block-size: max(14rem, calc(100vh - var(--bar-height) - 12rem));
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  scrollbar-width: thin;
+  scrollbar-color: var(--color-border-strong) transparent;
 }
 
-.item {
-  width: 100%;
+.row {
+  inline-size: 100%;
   display: grid;
   grid-template-columns: auto minmax(0, 1fr);
   align-items: center;
   gap: var(--space-1) var(--space-3);
-  text-align: start;
-  padding: var(--space-3);
-  border: 1px solid var(--color-border);
+  padding: var(--space-2);
+  border: 1px solid transparent;
   border-radius: var(--radius-md);
-  background: var(--color-surface);
-  backdrop-filter: blur(var(--blur));
+  background: transparent;
   color: var(--color-text);
+  font: inherit;
+  text-align: start;
   cursor: pointer;
   transition:
-    border-color var(--motion-duration) ease-out,
-    transform var(--motion-duration) ease-out,
-    box-shadow var(--motion-duration) ease-out;
+    background-color var(--motion-duration) ease-out,
+    border-color var(--motion-duration) ease-out;
 }
 
-.item:hover:not(:disabled) {
-  border-color: var(--color-border-strong);
-  transform: translateX(2px);
+/* Inside the scrolling list the ring is drawn inside the row, so it is never cut off. */
+.row:focus-visible {
+  outline-offset: -2px;
 }
 
-/* Right-to-left languages (D-038): nudge and highlight toward the start. */
-:global([dir='rtl']) .item:hover:not(:disabled) {
-  transform: translateX(-2px);
+.row:hover:not(:disabled) {
+  background: var(--color-hover);
 }
 
-:global([dir='rtl']) .selected,
-:global([dir='rtl']) .selected:hover:not(:disabled) {
-  background:
-    linear-gradient(270deg, var(--color-accent-soft), transparent 70%), var(--color-surface);
-}
-
-.item:disabled {
-  cursor: not-allowed;
-}
-
-.selected,
-.selected:hover:not(:disabled) {
+.row[aria-current='true'],
+.row[aria-current='true']:hover:not(:disabled) {
   border-color: var(--color-accent);
-  background:
-    linear-gradient(90deg, var(--color-accent-soft), transparent 70%), var(--color-surface);
-  box-shadow:
-    0 0 0 1px var(--color-accent),
-    0 8px 24px -10px var(--color-glow);
+  background: var(--color-selected);
 }
 
-/* Block tile in front of each installation; the hue comes from the class. */
-.tile {
-  grid-row: span 2;
-  width: 2.75rem;
-  height: 2.75rem;
-  border-radius: var(--radius-sm);
-  background:
-    linear-gradient(var(--tile-top) 0 35%, transparent 35%),
-    repeating-linear-gradient(90deg, rgb(0 0 0 / 12%) 0 25%, transparent 25% 50%), var(--tile-body);
-  box-shadow:
-    inset 0 -4px 0 rgb(0 0 0 / 25%),
-    inset 0 2px 0 rgb(255 255 255 / 20%);
+/* With read-only settings the rows only show; they still read as rows, not as faded. */
+.row:disabled {
+  cursor: default;
 }
 
-.tile0 {
-  --tile-top: #4ade80;
-  --tile-body: #8b5e3c;
+.row > :first-child {
+  grid-row: 1 / span 2;
 }
 
-.tile1 {
-  --tile-top: #38bdf8;
-  --tile-body: #64748b;
+.rowText {
+  display: grid;
+  min-inline-size: 0;
 }
 
-.tile2 {
-  --tile-top: #fbbf24;
-  --tile-body: #b45309;
-}
-
-.tile3 {
-  --tile-top: #c084fc;
-  --tile-body: #475569;
-}
-
-.itemName {
-  font-weight: 700;
+.rowName {
+  font-weight: 600;
+  line-height: 1.35;
   overflow-wrap: anywhere;
 }
 
-.itemNote {
-  grid-column: 2;
+.rowMeta {
   color: var(--color-text-muted);
-  font-size: var(--font-size-sm);
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
+  font-size: var(--font-size-xs);
+  line-height: 1.4;
+  overflow-wrap: anywhere;
 }
 
-.itemMeta {
+/* The state as a dot and a word, without the badge's fill. */
+.row .rowState,
+.head .headState {
+  padding-inline: 0;
+  background: none;
+}
+
+.row .rowState {
+  justify-self: start;
+}
+
+/* A wide list has room for the state at the row's end. */
+@container instance-list (min-width: 20rem) {
+  .row {
+    grid-template-columns: auto minmax(0, 1fr) auto;
+  }
+
+  .row > :first-child {
+    grid-row: auto;
+  }
+
+  .row .rowState {
+    justify-self: end;
+  }
+}
+
+/* ---------------------------------------------------------------- The chosen one */
+
+.panel {
+  container: instance-panel / inline-size;
+  display: grid;
+  gap: var(--space-4);
+  min-inline-size: 0;
+  padding: var(--space-4);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-lg);
+  background: var(--color-surface);
+}
+
+@container installations (min-width: 60rem) {
+  .panel {
+    padding: var(--space-6);
+  }
+}
+
+.head {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: start;
+  gap: var(--space-4);
+}
+
+.headText {
+  display: grid;
+  gap: var(--space-1);
+  min-inline-size: 0;
+}
+
+.headTitle {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-1) var(--space-3);
+  min-inline-size: 0;
+}
+
+.name {
+  font-size: var(--font-size-xl);
+  font-weight: 700;
+  line-height: 1.2;
+  overflow-wrap: anywhere;
+}
+
+@container instance-panel (min-width: 36rem) {
+  .name {
+    font-size: var(--font-size-hero);
+  }
+}
+
+.version {
+  display: inline-flex;
+  align-items: center;
+  padding: 0.125rem var(--space-2);
+  border-radius: var(--radius-pill);
+  background: var(--color-neutral-bg);
+  color: var(--color-neutral-text);
+  font-size: var(--font-size-xs);
+  font-weight: 600;
+  overflow-wrap: anywhere;
+}
+
+.lastRun {
+  color: var(--color-text-muted);
+  font-size: var(--font-size-sm);
+}
+
+/* The "⋯" menu button: an icon with its name for screen readers and as a tooltip. */
+.moreButton {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  inline-size: var(--control-height);
+  block-size: var(--control-height);
+  padding: 0;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+  background: var(--color-surface);
+  color: var(--color-text);
+  cursor: pointer;
+  transition:
+    background-color var(--motion-duration) ease-out,
+    border-color var(--motion-duration) ease-out;
+}
+
+.moreButton:hover,
+.moreButton[aria-expanded='true'] {
+  border-color: var(--color-border-strong);
+  background: var(--color-hover);
+}
+
+.moreButton > span {
+  position: absolute;
+  inline-size: 1px;
+  block-size: 1px;
+  margin: -1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+
+/* Rename, opened from the menu under the head; Delete brings its own notice. */
+.inlineBlock {
+  display: grid;
+  gap: var(--space-3);
+  padding: var(--space-4);
+  border: 1px solid var(--color-border-soft);
+  border-radius: var(--radius-md);
+  background: var(--color-surface-sunken);
+}
+
+.toolbar {
   display: flex;
   flex-wrap: wrap;
   gap: var(--space-2);
-  align-items: center;
-  justify-content: space-between;
+}
+
+/* What InstallPanel says about the state, progress and the queue. */
+.state {
+  display: grid;
+  gap: var(--space-3);
+}
+
+.explain {
   color: var(--color-text-muted);
   font-size: var(--font-size-sm);
+}
+
+.body {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: var(--space-6);
+  padding-block-start: var(--space-4);
+  border-block-start: 1px solid var(--color-border-soft);
+}
+
+@container instance-panel (min-width: 35rem) {
+  .body {
+    grid-template-columns: minmax(0, 1.15fr) minmax(0, 1fr);
+  }
+}
+
+.side {
+  display: grid;
+  align-content: start;
+  gap: var(--space-6);
+  min-inline-size: 0;
+}
+
+.block {
+  display: grid;
+  align-content: start;
+  gap: var(--space-2);
+  min-inline-size: 0;
+}
+
+.blockHead {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-2);
+}
+
+.blockTitle {
+  margin: 0;
+  font-size: var(--font-size-md);
+  font-weight: 600;
+  line-height: 1.3;
+}
+
+.details {
+  display: grid;
+  grid-template-columns: minmax(5rem, max-content) minmax(0, 1fr);
+  gap: var(--space-2) var(--space-4);
+  margin: 0;
+  font-size: var(--font-size-sm);
+}
+
+.details dt {
+  color: var(--color-text-muted);
+}
+
+.details dd {
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+
+.code {
+  font-family: var(--font-mono);
+  font-size: var(--font-size-xs);
+}
+
+.hint {
+  color: var(--color-text-muted);
+  font-size: var(--font-size-sm);
+}
+
+.folderLinks {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-1) var(--space-4);
+}
+
+/* Folders read as links but stay buttons: they open a folder, not a page. */
+.folderLink {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
+  padding: var(--space-1) 0;
+  border: 0;
+  border-radius: var(--radius-sm);
+  background: none;
+  color: var(--color-accent-text);
+  font: inherit;
+  font-size: var(--font-size-sm);
+  font-weight: 500;
+  cursor: pointer;
+  text-underline-offset: 0.2em;
+}
+
+.folderLink:hover:not(:disabled) {
+  text-decoration: underline;
+}
+
+.folderLink:disabled {
+  cursor: not-allowed;
+  opacity: 0.55;
+}
+
+.blockHead .textButton {
+  min-block-size: 0;
+  padding: var(--space-1) var(--space-2);
+}
+
+.notesText {
+  padding: var(--space-3);
+  border-radius: var(--radius-md);
+  background: var(--color-surface-sunken);
+  color: var(--color-text-2);
+  font-size: var(--font-size-sm);
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.notesEmpty {
+  color: var(--color-text-muted);
 }
 
 .notes {
   resize: vertical;
-  min-height: 5rem;
+  min-block-size: 6rem;
   font: inherit;
 }
 
-.muted {
-  color: var(--color-text-muted);
-}
-
-.facts {
-  display: grid;
-  grid-template-columns: max-content 1fr;
-  gap: var(--space-2) var(--space-6);
-  margin: 0;
-}
-
-.facts dt {
-  color: var(--color-text-muted);
-}
-
-.facts dd {
-  margin: 0;
-}
+/* ---------------------------------------------------------------- Progress */
 
 .progress {
   display: grid;
@@ -168,8 +570,8 @@
 }
 
 .bar {
-  width: 100%;
-  height: 0.75rem;
+  inline-size: 100%;
+  block-size: 0.5rem;
   appearance: none;
   border: none;
   border-radius: var(--radius-pill);
@@ -184,25 +586,34 @@
 
 .bar::-webkit-progress-value {
   border-radius: var(--radius-pill);
-  background: linear-gradient(90deg, var(--color-accent), var(--color-accent-2));
-  box-shadow: 0 0 12px var(--color-glow);
+  background: var(--color-accent);
 }
 
 .bar::-moz-progress-bar {
   border-radius: var(--radius-pill);
-  background: linear-gradient(90deg, var(--color-accent), var(--color-accent-2));
+  background: var(--color-accent);
 }
 
-.version {
-  display: inline-flex;
-  align-items: center;
-  padding: 0.2rem 0.65rem;
-  border-radius: var(--radius-pill);
-  background: var(--color-surface-raised);
-  border: 1px solid var(--color-border);
+/* ---------------------------------------------------------------- Shared */
+
+.muted {
   color: var(--color-text-muted);
-  font-size: var(--font-size-sm);
-  font-weight: 600;
+}
+
+/* Facts as a two-column list (the new-installation form's summary). */
+.facts {
+  display: grid;
+  grid-template-columns: max-content 1fr;
+  gap: var(--space-2) var(--space-6);
+  margin: 0;
+}
+
+.facts dt {
+  color: var(--color-text-muted);
+}
+
+.facts dd {
+  margin: 0;
 }
 
 .playAs {

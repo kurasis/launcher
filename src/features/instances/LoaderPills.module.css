@@ -1,0 +1,93 @@
+/* The mod loader as a row of pills: native radios under styled faces. */
+.group {
+  display: grid;
+  gap: var(--space-2);
+  min-inline-size: 0;
+  margin: 0;
+  padding: 0;
+  border: 0;
+}
+
+.legend {
+  margin-block-end: var(--space-2);
+  padding: 0;
+  font-size: var(--font-size-sm);
+  font-weight: 600;
+  color: var(--color-text-2);
+}
+
+/* Six pills wrap onto more lines in a narrow column and in longer languages. */
+.pills {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+}
+
+.pill {
+  position: relative;
+  display: inline-flex;
+}
+
+/* Hidden from sight only: the radio keeps its focus, keys and accessible name. */
+.input {
+  position: absolute;
+  inset-block-start: 0;
+  inset-inline-start: 0;
+  width: 1px;
+  height: 1px;
+  margin: 0;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+  opacity: 0;
+}
+
+.face {
+  display: inline-flex;
+  align-items: center;
+  min-height: var(--control-height);
+  padding-inline: var(--space-4);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-pill);
+  background: var(--color-surface);
+  color: var(--color-text);
+  font-size: var(--font-size-sm);
+  font-weight: 500;
+  line-height: 1.25;
+  white-space: nowrap;
+  cursor: pointer;
+  user-select: none;
+  transition:
+    background-color var(--motion-duration) ease-out,
+    border-color var(--motion-duration) ease-out,
+    color var(--motion-duration) ease-out;
+}
+
+.face:hover {
+  background: var(--color-hover);
+  border-color: var(--color-border-strong);
+}
+
+.input:checked + .face {
+  background: var(--color-selected);
+  border-color: var(--color-accent);
+  color: var(--color-accent-text);
+}
+
+/* The ring sits on the pill the player sees, not on the hidden radio. */
+.input:focus-visible + .face {
+  outline: 2px solid var(--color-focus);
+  outline-offset: 2px;
+}
+
+.hint {
+  color: var(--color-text-muted);
+  font-size: var(--font-size-sm);
+}
+
+@media (forced-colors: active) {
+  .input:checked + .face {
+    border-width: 2px;
+    border-color: Highlight;
+  }
+}

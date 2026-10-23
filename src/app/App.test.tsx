@@ -134,7 +134,7 @@ describe('App', () => {
     expect(
       await screen.findByRole('button', { name: 'Настройки' }, { timeout: 5000 }),
     ).toBeVisible();
-    fireEvent.click(screen.getByRole('button', { name: 'Изменить настройки' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Настройки установки' }));
     fireEvent.change(await screen.findByLabelText('Максимум памяти (МиБ)'), {
       target: { value: '2048' },
     });
@@ -233,9 +233,10 @@ describe('App', () => {
     );
     render(<App />);
     // Installation settings live on the Settings screen.
-    expect(await screen.findByText('4096 MiB · 1280×720')).toBeVisible();
+    expect(await screen.findByText('4096 MiB')).toBeVisible();
+    expect(screen.getByText('1280×720')).toBeVisible();
     expect(screen.queryByLabelText('Maximum memory (MiB)')).not.toBeInTheDocument();
-    fireEvent.click(screen.getByRole('button', { name: 'Change settings' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Installation settings' }));
     expect(screen.getByRole('tab', { name: 'Installations' })).toHaveAttribute(
       'aria-selected',
       'true',
@@ -797,6 +798,85 @@ describe('App', () => {
     render(<App />);
     expect(screen.getByRole('contentinfo')).toHaveTextContent(
       'not affiliated with or endorsed by Mojang Studios or Microsoft',
+    );
+  });
+
+  it('puts Find in the rail, after the brand and outside the main tabs', async () => {
+    fakeBackend(snapshotFixture());
+    render(<App />);
+    await screen.findByText(/No installations yet/);
+    const find = screen.getByRole('button', { name: 'Find' });
+    const nav = screen.getByRole('navigation', { name: 'Main' });
+    expect(nav).not.toContainElement(find);
+    // The rail: the header that holds the main tabs (a screen's own header is no banner
+    // in a browser, but the test library counts every header as one).
+    expect(find.closest('header')).toContainElement(nav);
+    expect(find.compareDocumentPosition(nav) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(find).toHaveAttribute('aria-expanded', 'false');
+    // The key caps are for the eye; the name is only the word.
+    expect(find).toHaveTextContent('FindCtrlK');
+    expect(find).toHaveAccessibleName('Find');
+    // The closed palette leaves nothing behind that screens' names could collide with.
+    expect(screen.queryByRole('dialog')).toBeNull();
+    expect(screen.queryByRole('option')).toBeNull();
+    expect(screen.queryByRole('combobox', { name: 'Find in the launcher' })).toBeNull();
+    // Focus can land on the screen itself when what the palette was opened from is gone.
+    expect(screen.getByRole('main')).toHaveAttribute('tabindex', '-1');
+  });
+  it('closes the More menu when focus moves on, not when the window loses it', async () => {
+    fakeBackend(snapshotFixture());
+    render(<App />);
+    await screen.findByText(/No installations yet/);
+    fireEvent.click(moreButton());
+    const menu = screen.getByRole('menu');
+    const first = within(menu).getAllByRole('menuitem')[0];
+    if (first === undefined) throw new Error('The More menu is empty.');
+    // The window losing focus: no element gets it.
+    fireEvent.blur(first, { relatedTarget: null });
+    expect(screen.getByRole('menu')).toBeVisible();
+    // Ctrl+K: the palette's field takes focus and the menu closes behind it.
+    fireEvent.keyDown(window, { key: 'k', code: 'KeyK', ctrlKey: true });
+    const field = await screen.findByRole('combobox', { name: 'Find in the launcher' });
+    expect(field).toHaveFocus();
+    expect(screen.queryByRole('menu')).toBeNull();
+  });
+
+  it('keeps the More menu working with the mouse where presses move focus', async () => {
+    fakeBackend(snapshotFixture());
+    render(<App />);
+    await screen.findByText(/No installations yet/);
+    fireEvent.click(moreButton());
+    const about = within(screen.getByRole('menu')).getByRole('menuitem', { name: 'About' });
+    // A press in the menu, on an item or its padding, leaves focus where it is.
+    expect(fireEvent.mouseDown(screen.getByRole('menu'))).toBe(false);
+    expect(fireEvent.mouseDown(about)).toBe(false);
+
+    // WebKit on macOS: a press on the button takes focus off the item to the screen;
+    // the click then closes the menu instead of finding it closed and opening it.
+    fireEvent.pointerDown(moreButton(), { button: 0 });
+    fireEvent.blur(focused(), { relatedTarget: screen.getByRole('main') });
+    expect(screen.getByRole('menu')).toBeVisible();
+    fireEvent.pointerUp(moreButton(), { button: 0 });
+    fireEvent.click(moreButton());
+    expect(screen.queryByRole('menu')).toBeNull();
+
+    // The same press dragged off the button clicks nothing: the menu, with focus
+    // outside it, closes.
+    fireEvent.click(moreButton());
+    expect(screen.getByRole('menu')).toBeVisible();
+    fireEvent.pointerDown(moreButton(), { button: 0 });
+    fireEvent.blur(focused(), { relatedTarget: screen.getByRole('main') });
+    screen.getByRole('main').focus();
+    fireEvent.pointerUp(document.body, { button: 0 });
+    await waitFor(() => {
+      expect(screen.queryByRole('menu')).toBeNull();
+    });
+
+    // Items still choose.
+    chooseFromMore('About');
+    expect(screen.getByRole('button', { name: 'More: About' })).toHaveAttribute(
+      'aria-current',
+      'page',
     );
   });
 });

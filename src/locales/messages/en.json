@@ -36,6 +36,33 @@
       "chooseInstallation": "Choose an installation",
       "openInstallations": "Open Installations"
     },
+    "palette": {
+      "find": "Find",
+      "findHint": "Find ({keys})",
+      "title": "Find in the launcher",
+      "placeholder": "What to find",
+      "results": "{count, plural, =0 {Nothing found} one {# result} other {# results}}",
+      "listLabel": "Results",
+      "pages": "Pages and actions",
+      "nothing": "Nothing found. Try a shorter word or another spelling.",
+      "offline": "The catalog is searched when the internet connection returns.",
+      "searching": "Searching the catalog…",
+      "scope": "Searches installations, mods, pages and settings",
+      "screen": "Page",
+      "newWith": "New installation with {loader}",
+      "inInstallation": "Installed in “{name}”",
+      "catalog": "In the catalog",
+      "go": "Go",
+      "create": "Create",
+      "open": "Open",
+      "modPage": "Mod page",
+      "hints": {
+        "move": "move",
+        "open": "open",
+        "main": "main action",
+        "close": "close"
+      }
+    },
     "feed": {
       "title": "Feed",
       "loading": "Loading the feed…",
@@ -417,7 +444,32 @@
         "repair_required": "Repair required",
         "unsupported": "Unsupported"
       },
-      "busy": "Busy"
+      "busy": "Busy",
+      "count": "{count, plural, one {# installation} other {# installations}}",
+      "find": "Find in the list",
+      "sortBy": "Order",
+      "sorts": {
+        "recent": "Recent",
+        "name": "Name",
+        "version": "Version"
+      },
+      "nothingFound": "Nothing found.",
+      "clearSearch": "Clear search",
+      "choose": "Choose an installation in the list to see it here.",
+      "actions": "Installation actions",
+      "lastRun": {
+        "played": "Last played {when}.",
+        "playedFor": "Last played {when}, {duration}.",
+        "outcome": {
+          "succeeded": "The game ended without errors.",
+          "failed": "The game ended with an error.",
+          "cancelled": "The game was stopped."
+        },
+        "lessThanMinute": "less than a minute",
+        "minutes": "{count, plural, one {# minute} other {# minutes}}",
+        "hours": "{count, plural, one {# hour} other {# hours}}",
+        "hoursMinutes": "{hours} {minutes}"
+      }
     },
     "install": {
       "install": "Install",
@@ -461,8 +513,11 @@
     },
     "createForm": {
       "title": "New installation",
+      "back": "Back to installations",
       "name": "Name",
+      "nameHint": "Filled in from the version. You can rename it later.",
       "version": "Minecraft version",
+      "typesLabel": "Version type",
       "versionTypes": {
         "release": "Releases",
         "snapshot": "Snapshots",
@@ -481,6 +536,7 @@
       "latest": "Latest",
       "selected": "Selected: {id}",
       "noneSelected": "Choose a version.",
+      "noSupported": "{loader} supports none of the versions in the Mojang catalog. Choose another loader or check the catalog again.",
       "isolation": "Each installation gets its own game folder for worlds, options and screenshots. The version cannot be changed later; create another installation to play a different version.",
       "submit": "Create installation",
       "cancel": "Cancel",
@@ -492,8 +548,12 @@
       },
       "stale": "Showing the last saved catalog because it could not be refreshed.",
       "refresh": "Check again",
+      "retry": "Try again",
       "estimate": "Estimate download",
       "estimating": "Estimating…",
+      "memory": "Memory",
+      "memoryFixed": "{mib, number, ::group-off} MiB, your setting for new installations.",
+      "memoryHint": "You can change it later in the installation’s settings.",
       "planTitle": "Download estimate for {version}",
       "planJava": "Java",
       "planLibraries": "Libraries",
@@ -506,7 +566,7 @@
     },
     "loaders": {
       "loader": "Mod loader",
-      "none": "None (vanilla)",
+      "noneShort": "None",
       "names": {
         "fabric": "Fabric",
         "quilt": "Quilt",
@@ -537,7 +597,6 @@
       "title": "Installation settings",
       "summaryTitle": "Details",
       "version": "Version",
-      "openFolder": "Open game folder",
       "openFolderHint": "Worlds, screenshots and options of this installation are stored there.",
       "name": "Name",
       "rename": "Rename",
@@ -551,10 +610,8 @@
         "shaderpacks": "Shader packs"
       },
       "lastPlayed": "Last played",
-      "neverPlayed": "Not yet",
       "lastResult": "Last result",
       "exitCode": "exit code {code}",
-      "noResult": "None yet",
       "memory": "Maximum memory (MiB)",
       "memoryHint": "Between {min, number, ::group-off} and {max, number, ::group-off} MiB on this computer.",
       "lowMemory": "This computer has less than 8 GiB of memory. The game may run poorly with the available amount.",
@@ -567,9 +624,6 @@
       "java": "Java",
       "jvmArguments": "JVM options",
       "javaNone": "Chosen when it is installed",
-      "window": "Memory and window",
-      "windowValue": "{mib, number, ::group-off} MiB · {width, number, ::group-off}×{height, number, ::group-off}",
-      "edit": "Change settings",
       "notes": "Notes",
       "notesHint": "Only for you: what this installation is for, its mods, servers or anything to remember.",
       "notesSave": "Save notes",
@@ -579,7 +633,18 @@
       "launcherSkinsHint": "Shows the skins and capes of launcher accounts, HD and animated, in this game. Only in supported game versions.",
       "gameArguments": "Minecraft arguments",
       "gameArgumentsHint": "Added after the game's own arguments, for example --quickPlaySingleplayer \"My World\" to open a world at start. Quotes keep spaces inside one value. The player, folders, window size and fullscreen are set by the launcher.",
-      "content": "Mods and content"
+      "content": "Mods and content",
+      "memoryShort": "Memory",
+      "memoryValue": "{mib, number, ::group-off} MiB",
+      "windowShort": "Window",
+      "windowSize": "{width, number, ::group-off}×{height, number, ::group-off}",
+      "windowFullscreen": "{width, number, ::group-off}×{height, number, ::group-off}, fullscreen",
+      "launcherSkinsOn": "On",
+      "launcherSkinsOff": "Off",
+      "notesEmpty": "No notes yet.",
+      "notesEdit": "Edit",
+      "notesEditLabel": "Edit notes",
+      "cancel": "Cancel"
     },
     "memory": {
       "recommended": "Recommended: {mib, number, ::group-off} MiB for {reason}.",
@@ -588,7 +653,6 @@
       "perKind": "Recommended for each kind of installation",
       "perKindHint": "Minecraft 1.12.2 and older: 2048 MiB; newer Minecraft: 3072 MiB; with a mod loader: 4096 MiB, more once it holds many mods. Never more than half of this computer's memory.",
       "fixed": "The same for every new installation",
-      "fixedLine": "Memory: {mib, number, ::group-off} MiB (your setting for new installations).",
       "workload": {
         "legacy": "Minecraft 1.12.2 and older",
         "vanilla": "Minecraft without mods",

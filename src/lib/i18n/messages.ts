@@ -35,6 +35,33 @@ export type Messages = {
     readonly chooseInstallation: string;
     readonly openInstallations: string;
   };
+  readonly palette: {
+    readonly find: string;
+    readonly findHint: (values: { keys: string | number }) => string;
+    readonly title: string;
+    readonly placeholder: string;
+    readonly results: (values: { count: number }) => string;
+    readonly listLabel: string;
+    readonly pages: string;
+    readonly nothing: string;
+    readonly offline: string;
+    readonly searching: string;
+    readonly scope: string;
+    readonly screen: string;
+    readonly newWith: (values: { loader: string | number }) => string;
+    readonly inInstallation: (values: { name: string | number }) => string;
+    readonly catalog: string;
+    readonly go: string;
+    readonly create: string;
+    readonly open: string;
+    readonly modPage: string;
+    readonly hints: {
+      readonly move: string;
+      readonly open: string;
+      readonly main: string;
+      readonly close: string;
+    };
+  };
   readonly feed: {
     readonly title: string;
     readonly loading: string;
@@ -437,6 +464,34 @@ export type Messages = {
       readonly unsupported: string;
     };
     readonly busy: string;
+    readonly count: (values: { count: number }) => string;
+    readonly find: string;
+    readonly sortBy: string;
+    readonly sorts: {
+      readonly recent: string;
+      readonly name: string;
+      readonly version: string;
+    };
+    readonly nothingFound: string;
+    readonly clearSearch: string;
+    readonly choose: string;
+    readonly actions: string;
+    readonly lastRun: {
+      readonly played: (values: { when: string | number }) => string;
+      readonly playedFor: (values: { when: string | number; duration: string | number }) => string;
+      readonly outcome: {
+        readonly succeeded: string;
+        readonly failed: string;
+        readonly cancelled: string;
+      };
+      readonly lessThanMinute: string;
+      readonly minutes: (values: { count: number }) => string;
+      readonly hours: (values: { count: number }) => string;
+      readonly hoursMinutes: (values: {
+        hours: string | number;
+        minutes: string | number;
+      }) => string;
+    };
   };
   readonly install: {
     readonly install: string;
@@ -485,8 +540,11 @@ export type Messages = {
   };
   readonly createForm: {
     readonly title: string;
+    readonly back: string;
     readonly name: string;
+    readonly nameHint: string;
     readonly version: string;
+    readonly typesLabel: string;
     readonly versionTypes: {
       readonly release: string;
       readonly snapshot: string;
@@ -505,6 +563,7 @@ export type Messages = {
     readonly latest: string;
     readonly selected: (values: { id: string | number }) => string;
     readonly noneSelected: string;
+    readonly noSupported: (values: { loader: string | number }) => string;
     readonly isolation: string;
     readonly submit: string;
     readonly cancel: string;
@@ -516,8 +575,12 @@ export type Messages = {
     };
     readonly stale: string;
     readonly refresh: string;
+    readonly retry: string;
     readonly estimate: string;
     readonly estimating: string;
+    readonly memory: string;
+    readonly memoryFixed: (values: { mib: number }) => string;
+    readonly memoryHint: string;
     readonly planTitle: (values: { version: string | number }) => string;
     readonly planJava: string;
     readonly planLibraries: string;
@@ -530,7 +593,7 @@ export type Messages = {
   };
   readonly loaders: {
     readonly loader: string;
-    readonly none: string;
+    readonly noneShort: string;
     readonly names: {
       readonly fabric: string;
       readonly quilt: string;
@@ -565,7 +628,6 @@ export type Messages = {
     readonly title: string;
     readonly summaryTitle: string;
     readonly version: string;
-    readonly openFolder: string;
     readonly openFolderHint: string;
     readonly name: string;
     readonly rename: string;
@@ -579,10 +641,8 @@ export type Messages = {
       readonly shaderpacks: string;
     };
     readonly lastPlayed: string;
-    readonly neverPlayed: string;
     readonly lastResult: string;
     readonly exitCode: (values: { code: string | number }) => string;
-    readonly noResult: string;
     readonly memory: string;
     readonly memoryHint: (values: { min: number; max: number }) => string;
     readonly lowMemory: string;
@@ -600,9 +660,6 @@ export type Messages = {
     readonly java: string;
     readonly jvmArguments: string;
     readonly javaNone: string;
-    readonly window: string;
-    readonly windowValue: (values: { mib: number; width: number; height: number }) => string;
-    readonly edit: string;
     readonly notes: string;
     readonly notesHint: string;
     readonly notesSave: string;
@@ -613,6 +670,17 @@ export type Messages = {
     readonly gameArguments: string;
     readonly gameArgumentsHint: string;
     readonly content: string;
+    readonly memoryShort: string;
+    readonly memoryValue: (values: { mib: number }) => string;
+    readonly windowShort: string;
+    readonly windowSize: (values: { width: number; height: number }) => string;
+    readonly windowFullscreen: (values: { width: number; height: number }) => string;
+    readonly launcherSkinsOn: string;
+    readonly launcherSkinsOff: string;
+    readonly notesEmpty: string;
+    readonly notesEdit: string;
+    readonly notesEditLabel: string;
+    readonly cancel: string;
   };
   readonly memory: {
     readonly recommended: (values: { mib: number; reason: string | number }) => string;
@@ -621,7 +689,6 @@ export type Messages = {
     readonly perKind: string;
     readonly perKindHint: string;
     readonly fixed: string;
-    readonly fixedLine: (values: { mib: number }) => string;
     readonly workload: {
       readonly legacy: string;
       readonly vanilla: string;

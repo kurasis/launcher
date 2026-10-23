@@ -43,6 +43,16 @@
   border-color: var(--color-border-strong);
 }
 
+/* A quiet action: text in the accent color, a background only on hover. */
+.ghost {
+  background: transparent;
+  color: var(--color-accent-text);
+}
+
+.ghost:hover:not(:disabled) {
+  background: var(--color-hover);
+}
+
 /* The main call to action, such as Play. */
 .large {
   min-width: 10rem;
