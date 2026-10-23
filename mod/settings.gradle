@@ -51,6 +51,7 @@ add 'mc-26.3:agent'
 // The newest snapshot: mc-26.3's sources and scripts against that snapshot.
 add 'mc-snapshot:fabric', '../../mc-26.3/fabric/build.gradle'
 add 'mc-snapshot:agent', '../../mc-26.3/agent/build.gradle'
+add 'mc-1.13.2:forge'
 add 'mc-1.12.2:forge'
 // Forge 1.8.9 to 1.11.2: mc-1.12.2's sources built against each release (Unimined).
 add 'mc-1.8.9:forge'

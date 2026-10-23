@@ -55,8 +55,8 @@ jobs:
             only: mc-1.21.11,gametest:mc-1.21.11
           - name: 1.16 to 1.20.1
             only: mc-1.16.5-1.20.1,gametest:mc-1.16.5-1.20.1
-          - name: 1.14.4 and 1.15.2
-            only: mc-1.14.4-1.15.2,gametest:mc-1.14.4-1.15.2
+          - name: 1.13.2 to 1.15.2
+            only: mc-1.13.2,mc-1.14.4-1.15.2,gametest:mc-1.14.4-1.15.2
           - name: 1.20.2 to 1.20.6
             only: mc-1.20.2-1.20.6,gametest:mc-1.20.2-1.20.6
           - name: 1.7.10 to 1.11.2
@@ -98,7 +98,7 @@ jobs:
                   removed += 1
           print(f"Damaged jars removed: {removed}")
           EOF
-      # Forge 1.14.4 and 1.15.2 run their JavaScript coremods in Java 8's Nashorn (ES5):
+      # Forge 1.13.2 to 1.16.4 run their JavaScript coremods in Java 8's Nashorn (ES5):
       # a newer syntax such as a trailing comma in a call stops the coremod at the game's
       # start. Compile each one there without running it.
       - name: Check that the coremods are ES5

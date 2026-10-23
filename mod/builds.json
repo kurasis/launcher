@@ -158,6 +158,8 @@
   { "target": "agent", "label": "1.14.2", "games": ["1.14.2"] },
   { "target": "agent", "label": "1.14.1", "games": ["1.14.1"] },
   { "target": "agent", "label": "1.14", "games": ["1.14"] },
+  { "target": "forge", "label": "1.13.2", "games": ["1.13.2"] },
+  { "target": "agent", "label": "1.13.2", "games": ["1.13.2"] },
   { "target": "forge", "label": "1.12.2", "games": ["1.12.2"] },
   { "target": "agent", "label": "1.12.2", "games": ["1.12.2"] },
   { "target": "forge", "label": "1.11.2", "games": ["1.11.2"] },

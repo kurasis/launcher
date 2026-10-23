@@ -52,6 +52,11 @@ none for them: a profile without textures whose UUID is not a Mojang one (versio
   11.15.1.2318, MCP stable 22). Its `build.gradle` also builds `mc-1.9.4/forge`,
   `mc-1.10.2/forge` and `mc-1.11.2/forge`, each against its own release (before 1.12 the
   game ships an older log4j) and with a loading plugin naming that release.
+- `mc-1.13.2/forge/`: Forge 1.13.2 has no Mixin and 1.13.2 no Mojang names: a game layer
+  of its own in MCP names (mc-1.16.5-1.20.1's, renamed) and the JavaScript coremod of
+  1.14.4 on `NetworkPlayerInfo`'s package of then, built with Unimined (Forge 25.0.223,
+  MCP stable 47). The 1.13.2 agent (`agents/1.13.2`, `agents/legacy.gradle`) uses that
+  layer.
 - `mc-1.7.10/forge/`: 1.7.10 has no `NetworkPlayerInfo`, so its transformer hooks
   `AbstractClientPlayer`'s skin, cape and has-cape getters. Its player model is 64x32:
   a skin is drawn to that size and its top half kept. No slim model. RetroFuturaGradle
