@@ -3117,3 +3117,39 @@ skins-mod <channel>` there only checks the signature against the public key and
   that owns it.
 - **Verification:** screenshots in light, dark, Arabic and at the 820 px minimum width for
   each pull request; a Windows package for window changes (CLAUDE.md).
+
+## D-073 — Versions Mojang's list does not have, from upd.lapi.sh
+
+- **Status:** accepted (owner request, 2026-10-22) · **Affects:** the version picker (a
+  new tab), installation of those versions, Worlds with Friends (versions with a
+  server), `services/upd`, `data/extra-versions.json`, the Versions workflow.
+- **Goal.** Players can play every April Fools version and every other build Mojang's
+  version list leaves out: 2.0, the first builds Mojang replaced, Combat Tests, the
+  1.18 and 1.19 experimental snapshots, the unobfuscated builds of late 2025, and the
+  Classic, Indev, Infdev, Alpha, Beta and 1.0–1.5 builds kept by archives.
+- **Owner's choices:** every such version, 2.0 included; the April Fools versions first,
+  newest first, then the rest, newest first; no other domain in the launcher for these
+  versions: our own list and every game jar on upd.lapi.sh; every jar checked for
+  viruses first; versions with a server offered in Worlds with Friends behind a toggle
+  of their own; our skins mod not offered on them for now.
+- **The list.** `scripts/extra-versions.mjs` writes `data/extra-versions.json` from
+  Mojang's list and the archive list at skyrising.github.io/mc-versions (which names
+  the archives' files, from BetaCraft and Omniarchive, and builds left on Mojang's
+  servers): 233 versions, 9 April Fools versions of Mojang's list among them. Versions
+  whose client is the same file as one in Mojang's list, and servers without a client,
+  are left out. A modern build keeps its own version file (or the file of the Mojang
+  build it replaced); an archived old one takes the file of the nearest older Mojang
+  version, so it starts the way Mojang starts that era. Log configurations are
+  Mojang's current ones, fixed against Log4Shell. Every version file names its jars at
+  `https://upd.lapi.sh/versions/files/<sha1>.jar` and is pinned by its SHA-1.
+- **Publishing.** The Versions workflow downloads every jar from where it came from,
+  checks SHA-1 and size, and scans all of them with ClamAV; a finding stops it. On
+  main it signs the list with the update key (the key never goes to the server),
+  uploads the jars upd.lapi.sh does not have, each the same bytes that were scanned,
+  and `lapi-upd versions-files` and `versions` put files and list in place; the list
+  goes in place only once every file it names is there, and never an older one.
+  Launchers read `/versions/manifest.json`, check the signature with the built-in
+  public key, then each version file and jar by SHA-1. Libraries, assets and Java are
+  Mojang's, as for every version, with the mirror's fallback (D-062).
+- **Worlds with Friends** needs 1.7.6 or newer (UUID whitelist), so the toggle offers the
+  versions with a server from 15w14a on; 2.0 and older are left out there.

@@ -20,6 +20,8 @@ on:
   pull_request:
     paths:
       - services/upd/**
+      # Its tests read the list of versions (D-073).
+      - data/extra-versions.json
       - deploy/upd/**
       - deploy/*.sh
       - deploy/nginx/**

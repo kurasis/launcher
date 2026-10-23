@@ -14,7 +14,18 @@
 //! lapi-upd skins-mod <channel>
 //! lapi-upd skins-mod-list <mod version> --channel C --builds <json> --sums <file>
 //!          --jars <folder> --out <file> [--rollback]                               (CI)
+//! lapi-upd versions-list --data <extra-versions.json> --out <folder>             (CI)
+//! lapi-upd versions-have
+//! lapi-upd versions-files
+//! lapi-upd versions
 //! ```
+//!
+//! The `versions` commands publish the Minecraft versions Mojang's list does
+//! not have (D-073, `versions.rs`): `versions-list` checks
+//! `data/extra-versions.json` and writes the signed list, its version files and
+//! their SHA1SUMS; `versions-have` prints the jars in place, so CI uploads only
+//! the others; `versions-files` puts `incoming/versions/` in place;
+//! `versions` puts `incoming/versions.json` in place once all its files are.
 //!
 //! `skins-mod-jars` puts a Launcher Skins release's jars from
 //! `incoming/skins-mod-<version>/` (uploaded by CI with its SHA256SUMS) in place
@@ -33,6 +44,7 @@
 mod pack;
 mod release;
 mod skins_mod;
+mod versions;
 
 use std::path::PathBuf;
 
@@ -102,9 +114,51 @@ fn main() -> std::process::ExitCode {
             (Some(channel), Some(version)) => server.revoke(channel, version),
             _ => Err("revoke needs a channel and a version".to_owned()),
         },
-        Some("status") => server
-            .status()
-            .and_then(|s| Ok(format!("{s}\n{}", server.skins_mod_status()?))),
+        Some("status") => server.status().and_then(|s| {
+            Ok(format!(
+                "{s}\n{}\n{}",
+                server.skins_mod_status()?,
+                server.versions_status()?
+            ))
+        }),
+        Some("versions-have") => server.versions_have(),
+        Some("versions-files") => server.install_versions_files(),
+        Some("versions") => server.install_versions(),
+        Some("versions-list") => (|| {
+            let data_path = flag(&args, "--data").ok_or("versions-list needs --data")?;
+            let out = PathBuf::from(flag(&args, "--out").ok_or("versions-list needs --out")?);
+            let data =
+                std::fs::read(data_path).map_err(|e| format!("reading {data_path}: {e}"))?;
+            let serial = u64::try_from(chrono::Utc::now().timestamp())
+                .map_err(|_| "the clock is before 1970")?;
+            let (list, meta) = versions::build(&data, serial)?;
+            let key = pack::secret_key(
+                &std::env::var("TAURI_SIGNING_PRIVATE_KEY")
+                    .map_err(|_| "TAURI_SIGNING_PRIVATE_KEY is not set")?,
+                &std::env::var("TAURI_SIGNING_PRIVATE_KEY_PASSWORD").unwrap_or_default(),
+            )?;
+            let envelope = versions::sign(&list, &key)?;
+            let write = |path: PathBuf, bytes: &[u8]| -> Result<(), String> {
+                if let Some(dir) = path.parent() {
+                    std::fs::create_dir_all(dir)
+                        .map_err(|e| format!("creating {}: {e}", dir.display()))?;
+                }
+                std::fs::write(&path, bytes).map_err(|e| format!("writing {}: {e}", path.display()))
+            };
+            for (sha1, bytes) in &meta {
+                write(out.join("meta").join(format!("{sha1}.json")), bytes)?;
+            }
+            write(out.join("SHA1SUMS"), versions::sums(&meta)?.as_bytes())?;
+            write(
+                out.join("versions.json"),
+                &serde_json::to_vec(&envelope).map_err(|e| e.to_string())?,
+            )?;
+            Ok(format!(
+                "{}: {} versions, serial {serial}",
+                out.display(),
+                list.versions.len()
+            ))
+        })(),
         Some("skins-mod-jars") => match arg(1) {
             Some(version) => server.install_skins_mod_jars(version),
             None => Err("skins-mod-jars needs a mod version".to_owned()),
@@ -170,7 +224,7 @@ fn main() -> std::process::ExitCode {
         })(),
         Some("--version") => Ok(format!("lapi-upd {}", env!("CARGO_PKG_VERSION"))),
         _ => Err(
-            "usage: lapi-upd publish <version> [--channel C] [--rollout N] [--mandatory] [--partial] | rollout <channel> <percent> | pause <channel> | resume <channel> | revoke <channel> <version> | status | skins-mod-jars <mod version> | skins-mod <channel>"
+            "usage: lapi-upd publish <version> [--channel C] [--rollout N] [--mandatory] [--partial] | rollout <channel> <percent> | pause <channel> | resume <channel> | revoke <channel> <version> | status | skins-mod-jars <mod version> | skins-mod <channel> | versions-list --data <file> --out <folder> | versions-have | versions-files | versions"
                 .to_owned(),
         ),
     };
