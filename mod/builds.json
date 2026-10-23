@@ -154,7 +154,22 @@
   },
   { "target": "forge", "label": "1.14.2-1.14.4", "games": ["1.14.2", "1.14.3", "1.14.4"] },
   { "target": "agent", "label": "1.14.4", "games": ["1.14.4"] },
+  { "target": "agent", "label": "1.14.3", "games": ["1.14.3"] },
+  { "target": "agent", "label": "1.14.2", "games": ["1.14.2"] },
+  { "target": "agent", "label": "1.14.1", "games": ["1.14.1"] },
+  { "target": "agent", "label": "1.14", "games": ["1.14"] },
+  { "target": "forge", "label": "1.13.2", "games": ["1.13.2"] },
+  { "target": "agent", "label": "1.13.2", "games": ["1.13.2"] },
   { "target": "forge", "label": "1.12.2", "games": ["1.12.2"] },
+  { "target": "agent", "label": "1.12.2", "games": ["1.12.2"] },
+  { "target": "forge", "label": "1.11.2", "games": ["1.11.2"] },
+  { "target": "agent", "label": "1.11.2", "games": ["1.11.2"] },
+  { "target": "forge", "label": "1.10.2", "games": ["1.10.2"] },
+  { "target": "agent", "label": "1.10.2", "games": ["1.10.2"] },
+  { "target": "forge", "label": "1.9.4", "games": ["1.9.4"] },
+  { "target": "agent", "label": "1.9.4", "games": ["1.9.4"] },
   { "target": "forge", "label": "1.8.9", "games": ["1.8.9"] },
-  { "target": "forge", "label": "1.7.10", "games": ["1.7.10"] }
+  { "target": "agent", "label": "1.8.9", "games": ["1.8.9"] },
+  { "target": "forge", "label": "1.7.10", "games": ["1.7.10"] },
+  { "target": "agent", "label": "1.7.10", "games": ["1.7.10"] }
 ]

@@ -248,8 +248,8 @@ pub fn forge_stable(build: &str, recommended: Option<&str>) -> bool {
 
 /// Forge builds whose installer holds a version profile: Minecraft 1.13 and
 /// newer, and 1.12.2 from build 14.23.5.2851 (D-039). Of the older format
-/// (`install` + `versionInfo`), only the last builds for 1.7.10 and 1.8.9 are
-/// offered, the ones checked against it.
+/// (`install` + `versionInfo`), only the last builds for 1.7.10, 1.8.9, 1.9.4,
+/// 1.10.2 and 1.11.2 are offered, the ones checked against it.
 pub fn forge_supported(game: &str, build: &str) -> bool {
     let Some(version) = build.strip_prefix(&format!("{game}-")) else {
         return false;
@@ -257,10 +257,13 @@ pub fn forge_supported(game: &str, build: &str) -> bool {
     let legacy = match game {
         "1.7.10" => Some("10.13.4.1614"),
         "1.8.9" => Some("11.15.1.2318"),
+        "1.9.4" => Some("12.17.0.2317"),
+        "1.10.2" => Some("12.18.3.2511"),
+        "1.11.2" => Some("13.20.1.2588"),
         _ => None,
     };
     if let Some(first) = legacy {
-        // These builds end in the game version again: `10.13.4.1614-1.7.10`.
+        // Some of these builds end in the game version again: `10.13.4.1614-1.7.10`.
         let number = version.split('-').next().unwrap_or_default();
         return compare_versions(number, first) != std::cmp::Ordering::Less;
     }
@@ -355,6 +358,13 @@ mod tests {
         assert!(forge_supported("1.8.9", "1.8.9-11.15.1.2318-1.8.9"));
         assert!(!forge_supported("1.8.9", "1.8.9-11.15.1.1722"));
         assert!(!forge_supported("1.8.8", "1.8.8-11.15.0.1655"));
+        assert!(forge_supported("1.9.4", "1.9.4-12.17.0.2317-1.9.4"));
+        assert!(!forge_supported("1.9.4", "1.9.4-12.17.0.2051"));
+        assert!(forge_supported("1.10.2", "1.10.2-12.18.3.2511"));
+        assert!(!forge_supported("1.10.2", "1.10.2-12.18.3.2488"));
+        assert!(forge_supported("1.11.2", "1.11.2-13.20.1.2588"));
+        assert!(!forge_supported("1.11.2", "1.11.2-13.20.1.2579"));
+        assert!(!forge_supported("1.11", "1.11-13.19.1.2199"));
         assert!(!forge_supported("1.7.10", "1.8.9-11.15.1.2318-1.8.9"));
         assert!(!forge_supported("1.21.1", "1.20.1-47.4.10"));
     }

@@ -4,7 +4,7 @@
     "name": "Launcher Skins",
     "description": "Skins and capes of launcher accounts, HD and animated.",
     "version": "${version}",
-    "mcversion": "1.8.9",
+    "mcversion": "${minecraft}",
     "authorList": ["Launcher"]
   }
 ]

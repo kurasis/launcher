@@ -1,0 +1,59 @@
+plugins {
+    id 'java'
+    id 'xyz.wagyourtail.unimined' version '1.4.1'
+}
+
+// Forge 1.13.2 has neither Mixin nor Mojang's names: the game layer here is in MCP names
+// and a JavaScript coremod, as for 1.14.4, passes what NetworkPlayerInfo's getters return
+// through LauncherSkins. Built with Unimined, which remaps the jar to SRG names.
+base {
+    archivesName = "launcherskins-forge-${minecraft_version}"
+}
+
+java {
+    toolchain { languageVersion = JavaLanguageVersion.of(8) }
+}
+
+sourceSets.main.java.srcDir "${rootDir}/core/src/main/java"
+
+repositories {
+    // MCP's mappings have no POM; Maven Central answers Forge's groups with 429s.
+    exclusiveContent {
+        forRepository {
+            maven {
+                url = 'https://maven.minecraftforge.net/'
+                metadataSources { mavenPom(); artifact() }
+            }
+        }
+        filter {
+            includeGroupByRegex 'de\\.oceanlabs.*'
+            includeGroupByRegex 'net\\.minecraftforge.*'
+            includeGroupByRegex 'cpw\\.mods.*'
+        }
+    }
+    mavenCentral {
+        content { excludeGroup 'net.minecraft' }
+    }
+}
+
+unimined.minecraft {
+    version minecraft_version
+    mappings {
+        searge()
+        mcp('stable', mcp_version)
+    }
+    minecraftForge {
+        loader forge_version
+    }
+}
+
+tasks.withType(JavaCompile).configureEach {
+    options.encoding = 'UTF-8'
+}
+
+processResources {
+    inputs.property 'version', project.version
+    filesMatching('META-INF/mods.toml') {
+        expand version: project.version
+    }
+}

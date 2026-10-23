@@ -1,0 +1,91 @@
+plugins {
+    id 'java'
+    id 'xyz.wagyourtail.unimined' version '1.4.1'
+    id 'com.gradleup.shadow' version '9.6.1'
+}
+
+// The test bot for a release before 1.13 with no mod loader, a Java agent
+// (docs/GAMETEST.md): the release's Forge bot's game layer (MCP names) and the agent,
+// whose hook names runTick(), remapped to the release's own names by Unimined. A project
+// per release (gametest/mc-<release>/agent) whose gradle.properties name the release and
+// its MCP mappings.
+base {
+    archivesName = "launchergametest-agent-${minecraft_version}"
+}
+
+java {
+    toolchain { languageVersion = JavaLanguageVersion.of(8) }
+}
+
+def agent = file("${rootDir}/gametest/agent/src/main/java")
+sourceSets.main.java {
+    srcDir "${rootDir}/gametest/core/src/main/java"
+    srcDir "${projectDir}/../forge/src/main/java"
+    srcDir agent
+    srcDir "${rootDir}/gametest/agent/legacy"
+    include 'app/launcher/gametest/core/**', 'app/launcher/gametest/game/**', 'app/launcher/gametest/agent/**'
+    // The legacy folder's hooks name runTick() instead.
+    exclude { it.file == new File(agent, 'app/launcher/gametest/agent/AgentHooks.java') }
+}
+
+configurations {
+    bundled
+    implementation.extendsFrom bundled
+}
+
+repositories {
+    // MCP's mappings have no POM; Maven Central answers Forge's groups with 429s.
+    exclusiveContent {
+        forRepository {
+            maven {
+                url = 'https://maven.minecraftforge.net/'
+                metadataSources { mavenPom(); artifact() }
+            }
+        }
+        filter {
+            includeGroupByRegex 'de\\.oceanlabs.*'
+            includeGroupByRegex 'net\\.minecraftforge.*'
+        }
+    }
+    // The game and 1.7.10's Twitch library come from Unimined and Mojang; Maven Central
+    // only answers them with 429s.
+    mavenCentral {
+        content {
+            excludeGroup 'net.minecraft'
+            excludeGroup 'tv.twitch'
+        }
+    }
+}
+
+unimined.minecraft {
+    version minecraft_version
+    side 'client'
+    mappings {
+        searge()
+        mcp('stable', mcp_version)
+    }
+}
+
+dependencies {
+    bundled 'org.ow2.asm:asm:9.9'
+    bundled 'org.ow2.asm:asm-tree:9.9'
+}
+
+tasks.withType(JavaCompile).configureEach {
+    options.encoding = 'UTF-8'
+}
+
+shadowJar {
+    configurations = [project.configurations.bundled]
+    relocate 'org.objectweb.asm', 'app.launcher.gametest.agent.asm'
+    exclude 'module-info.class', 'META-INF/versions/**', 'META-INF/maven/**'
+    archiveClassifier = 'named'
+    manifest {
+        attributes 'Premain-Class': 'app.launcher.gametest.agent.Agent'
+    }
+}
+
+remapJar {
+    inputFile = shadowJar.archiveFile
+    prodNamespace 'official'
+}

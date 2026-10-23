@@ -31,12 +31,15 @@ version × loader × mod set, played by a test bot for a set number of minutes.
      players add it: mods that draw through Fabric's rendering API stop the game
      without one.
 
-   With no loader (`vanilla`) both are Java agents instead, passed with `-javaagent:`:
-   the bot (`launchergametest-agent-<version>.jar`, `mod/gametest/agent/`) rewrites
+   With no loader (`vanilla`) or with OptiFine on its own (`optifine`, which takes no
+   mods) both are Java agents instead, passed with `-javaagent:`: the bot
+   (`launchergametest-agent-<version>.jar`, `mod/gametest/agent/`) rewrites
    `Minecraft.tick()` to call it first, as the loaders' Mixin does, and the skins mod is
-   its own agent. Forge 1.12.2, 1.8.9 and 1.7.10 have their own bots
+   its own agent. Forge 1.12.2, 1.10.2, 1.8.9 and 1.7.10 have their own bots
    (`mod/gametest/mc-<version>/forge/`), driven by Forge's client tick event, which turn
-   the bot's commands into that release's syntax (1.7.10 has no slim model to check). The
+   the bot's commands into that release's syntax (1.7.10 has no slim model to check);
+   their agents without a loader (`mod/gametest/mc-<version>/agent/`, not for 1.10.2)
+   reuse those game layers and hook `runTick()`, remapped by Unimined. The
    bots for 1.16.5, 1.17.1, 1.18.2, 1.19.2, 1.19.4 and 1.20.1 live in
    `mod/gametest/mc-1.16.5-1.20.1/` (one game layer per release under `game/`), those for
    1.14.4 and 1.15.2 in `mod/gametest/mc-1.14.4-1.15.2/` (on Forge, which has no Mixin
@@ -133,17 +136,18 @@ hand does so with "promote". The run with the newest mods has its own results
 "Run workflow" on the Game test workflow, on `main`. Inputs pick the versions (the newest
 snapshot, 26.4-snapshot-5, with Fabric and without a loader only; 26.3,
 1.21.11, 1.21.10, 1.21.8, 1.21.4, 1.21.1, 1.20.6, 1.20.4, 1.20.1, 1.19.4, 1.19.2, 1.18.2, 1.17.1, 1.16.5,
-1.15.2, 1.14.4, 1.12.2, 1.8.9, 1.7.10: one release of each group the mod builds a jar for, and from 1.16 to 1.20.1 the
-releases where the game's own code changes most), loaders (vanilla, fabric, quilt, neoforge, forge;
+1.15.2, 1.14.4, 1.12.2, 1.10.2, 1.8.9, 1.7.10: one release of each group the mod builds a jar for, and from 1.16 to 1.20.1 the
+releases where the game's own code changes most), loaders (vanilla, fabric, quilt, neoforge, forge, optifine;
 Quilt plays the Fabric jars and Fabric mods), mod sets (none, medium), minutes per
 scenario and the skin variant (`rotate` gives each scenario the next one; `animcape`
 wears a cape that counts 1 to 9 in rainbow colours, so its animation shows in a
 screenshot) and "newest" (then play the `medium` scenarios with the newest mods and lock
-what passes). 1.12.2, 1.8.9 and 1.7.10 are played with Forge only, 1.14.4 to 1.20.1 without NeoForge, and
-the game with no loader without mods. It also runs every night at 03:00 Moscow time with
-the defaults (26.3, 1.21.11, 1.21.1, 1.20.1, 1.12.2): 36 scenarios of 5 minutes, then the
+what passes). 1.12.2, 1.8.9 and 1.7.10 are played with Forge and without a loader, 1.10.2 with Forge only,
+1.14.4 to 1.20.1 without NeoForge, OptiFine on its own in 1.21.1, 1.20.1, 1.16.5, 1.12.2 and 1.8.9, and
+the game with no loader or with OptiFine without mods. It also runs every night at 03:00 Moscow time with
+the defaults (26.3, 1.21.11, 1.21.1, 1.20.1, 1.12.2): 40 scenarios of 5 minutes, then the
 `medium` ones with the newest mods. Each night also plays three of the other versions in
-turn, without the `medium` set, so every version is played within five nights.
+turn, without the `medium` set, so every version is played within six nights.
 
 The workflow never runs for pull requests or from other branches.
 

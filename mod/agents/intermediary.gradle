@@ -1,0 +1,34 @@
+plugins {
+    id 'net.fabricmc.fabric-loom-remap' version '1.19.1'
+}
+
+// The Java agent for a 1.14 release before 1.14.4, which has no Mojang names: the game
+// code the agent touches has the same Fabric intermediary names from 1.14 to 1.14.4, so
+// the 1.14.4 agent (`from_release`) in those names is remapped to this release's own,
+// with this release's game in intermediary names as the class path. Nothing is compiled.
+base {
+    archivesName = "launcherskins-agent-${minecraft_version}"
+}
+
+evaluationDependsOn(":agents:${from_release}")
+def source = project(":agents:${from_release}").tasks.named('intermediaryJar')
+
+dependencies {
+    minecraft "com.mojang:minecraft:${minecraft_version}"
+    mappings "net.fabricmc:intermediary:${minecraft_version}:v2"
+}
+
+jar {
+    enabled = false
+}
+
+remapJar {
+    dependsOn source
+    inputFile = source.flatMap { it.archiveFile }
+    sourceNamespace = 'named'
+    targetNamespace = 'official'
+}
+
+repositories {
+    mavenCentral()
+}

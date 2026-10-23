@@ -69,6 +69,16 @@ remapJar {
     targetNamespace = 'official'
 }
 
+// The same jar in Fabric's intermediary names, which 1.14 to 1.14.3 share with 1.14.4:
+// agents/intermediary.gradle remaps it to those releases' names. Kept out of build/libs,
+// so it is never published.
+tasks.register('intermediaryJar', net.fabricmc.loom.task.RemapJarTask) {
+    inputFile = shadowJar.archiveFile
+    targetNamespace = 'intermediary'
+    archiveClassifier = 'intermediary'
+    destinationDirectory = layout.buildDirectory.dir('intermediary')
+}
+
 repositories {
     mavenCentral()
 }

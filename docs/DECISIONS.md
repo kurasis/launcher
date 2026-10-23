@@ -860,7 +860,9 @@ message` plus a stack trace), with the event's level.
   1.12.2 build 14.23.5.2851: those installers use the old format (`install` +
   `versionInfo`) and are neither listed nor installed; a chosen one fails with a clear
   message. Since 2026-10-21 (skins mod for old versions) the last Forge builds for
-  1.7.10 (10.13.4.1614) and 1.8.9 (11.15.1.2318) are the exception: the old profile's
+  1.7.10 (10.13.4.1614) and 1.8.9 (11.15.1.2318), and since 2026-10-23 those for 1.9.4
+  (12.17.0.2317), 1.10.2 (12.18.3.2511) and 1.11.2 (13.20.1.2588), whose installers have
+  the same form, are the exception: the old profile's
   libraries are rewritten to the current form (the universal jar from the installer,
   the rest from Forge's Maven or Mojang's library host, pinned by `.sha1` or the
   declared checksum, server-only ones left out) and nothing runs at install time.
@@ -927,8 +929,8 @@ message` plus a stack trace), with the event's level.
   profiles also name Mojang's library host; each download uses the category whose
   allowlist names its host.
 - **Not included:** installing or updating mods, modpacks, changing the loader of an
-  existing installation, Forge before 1.12.2 build 14.23.5.2851 (except the last 1.7.10
-  and 1.8.9 builds), LiteLoader, Rift.
+  existing installation, Forge before 1.12.2 build 14.23.5.2851 (except the last 1.7.10,
+  1.8.9, 1.9.4, 1.10.2 and 1.11.2 builds), LiteLoader, Rift.
 - **OptiFine on its own** (owner request, 2026-10-21): a fifth choice, **OptiFine**,
   without Forge (`loader::optifine`). Builds come from the mods catalog (D-066, project
   `optifine`), not from optifine.net: only versions the catalog serves (kept, not held
@@ -946,8 +948,10 @@ message` plus a stack trace), with the event's level.
   after the game's arguments. The patcher's output differs from run to run, so it has
   no hash in advance; its hash is recorded once it is built, like Forge's. Builds
   without `launchwrapper-of` (1.7.10) are refused as an older installer format.
-  OptiFine takes no mods (the Mods tab says so; shaders and resource packs go in), no
-  skins mod, and no worlds yet.
+  OptiFine takes no mods (the Mods tab says so; shaders and resource packs go in) and no
+  worlds yet. The skins mod comes as its Java agent (D-065), from mod 0.8.0 on: an older
+  pinned or listed mod gives none, since its agent cannot reach launchwrapper's class
+  loader.
 
 ## D-040 — "No token" names in code; Microsoft setup panel removed from About
 
@@ -2095,7 +2099,7 @@ archive from the Package workflow, upload it to
   every release down to 1.14.4 and Forge 1.8.9 and 1.7.10 (2026-10-21, "масштабно
   расширь"); of snapshots only the newest one (2026-10-23: an older snapshot has no
   players, so a new one replaces it in `mod/mc-snapshot`, `builds.json` and `BUILDS`).
-  What mod 0.7.0 covers, as `mod/builds.json` lists it (updated 2026-10-23):
+  What mod 0.8.0 covers, as `mod/builds.json` lists it (updated 2026-10-23):
 
   | Game version    | Fabric (also Quilt) | NeoForge               | Forge                    | Without a loader |
   | --------------- | ------------------- | ---------------------- | ------------------------ | ---------------- |
@@ -2113,24 +2117,35 @@ archive from the Package workflow, upload it to
   | 1.15.2          | yes                 | no NeoForge then       | yes (JavaScript coremod) | Java agent       |
   | 1.15–1.15.1     | yes                 | no NeoForge then       | yes (JavaScript coremod) | Java agent       |
   | 1.14.4          | yes                 | no NeoForge then       | yes (JavaScript coremod) | Java agent       |
-  | 1.14.2–1.14.3   | yes                 | no NeoForge then       | yes (JavaScript coremod) | no               |
-  | 1.14–1.14.1     | yes                 | no NeoForge then       | no Forge then            | no               |
-  | 1.12.2          | no Fabric then      | no NeoForge then       | yes (ASM coremod)        | no               |
-  | 1.8.9           | no Fabric then      | no NeoForge then       | yes (ASM coremod)        | no               |
-  | 1.7.10          | no Fabric then      | no NeoForge then       | yes (ASM coremod)        | no               |
+  | 1.14.2–1.14.3   | yes                 | no NeoForge then       | yes (JavaScript coremod) | Java agent       |
+  | 1.14–1.14.1     | yes                 | no NeoForge then       | no Forge then            | Java agent       |
+  | 1.13.2          | no Fabric then      | no NeoForge then       | yes (JavaScript coremod) | Java agent       |
+  | 1.12.2          | no Fabric then      | no NeoForge then       | yes (ASM coremod)        | Java agent       |
+  | 1.11.2          | no Fabric then      | no NeoForge then       | yes (ASM coremod)        | Java agent       |
+  | 1.10.2          | no Fabric then      | no NeoForge then       | yes (ASM coremod)        | Java agent       |
+  | 1.9.4           | no Fabric then      | no NeoForge then       | yes (ASM coremod)        | Java agent       |
+  | 1.8.9           | no Fabric then      | no NeoForge then       | yes (ASM coremod)        | Java agent       |
+  | 1.7.10          | no Fabric then      | no NeoForge then       | yes (ASM coremod)        | Java agent       |
 
   Everywhere: skins and capes by nick, HD up to 512 and animation. 1.7.10 has no slim
   arms (the game has none). A game version not in the table, an older snapshot, a
   pre-release or a release candidate gets no jar and starts without it. The agent
   rewrites the same game method the mods hook: one for 26.x and the snapshot, whose names
-  are not obfuscated, and one per release before 26.1, built in Mojang names and remapped
-  to that release's names. Forge 1.12.2 and older have no agent: their players run Forge.
+  are not obfuscated, and one per release before 26.1, built in Mojang names (MCP names
+  for 1.12.2 and older, on the Forge jar's game layer) and remapped to that release's
+  names; 1.13.2's agent and Forge jar are in MCP names too, on a game layer of their own.
+  1.14 to 1.14.3 have no Mojang names either, and their agents are the 1.14.4 one
+  remapped through Fabric's intermediary names, which those releases share. OptiFine on
+  its own (D-039) runs the agent too, from mod 0.8.0 on: OptiFine starts the game
+  through launchwrapper, whose class loader the agent joins. Its capes stay where
+  OptiFine shows one.
 
   Played in the real game by the Game test (docs/GAMETEST.md) every night: 26.3,
-  1.21.11, 1.21.1 and 1.20.1 with every loader they have and without one, and 1.12.2
-  on Forge; and in turn three more of the versions it has bots for (the snapshot,
-  1.21.10, 1.21.8, 1.21.4, 1.20.6, 1.20.4, 1.19.4, 1.19.2, 1.18.2, 1.17.1, 1.16.5, 1.15.2,
-  1.14.4, 1.8.9 and 1.7.10) without the mod set, so each is played within five nights.
+  1.21.11, 1.21.1, 1.20.1 and 1.12.2 with every loader they have and without one, and
+  OptiFine on its own in 1.21.1, 1.20.1 and 1.12.2; and in turn three more of the
+  versions it has bots for (the snapshot, 1.21.10, 1.21.8, 1.21.4, 1.20.6, 1.20.4,
+  1.19.4, 1.19.2, 1.18.2, 1.17.1, 1.16.5, 1.15.2, 1.14.4, 1.10.2, 1.8.9 and 1.7.10)
+  without the mod set, so each is played within six nights.
 
 - **Textures:** PNG only. A skin frame is 64×64 × k (k = 1, 2, 4, 8, so up to 512×512;
   64×32 × k, the layout before 1.8, only as one frame: the mod turns it into the

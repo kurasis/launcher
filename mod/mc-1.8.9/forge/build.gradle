@@ -3,9 +3,12 @@ plugins {
     id 'xyz.wagyourtail.unimined' version '1.4.1'
 }
 
-// Forge 1.8.9 runs the same game code as 1.12.2 for what the mod uses (the SRG names of
-// every method it calls are the same), so this jar is mc-1.12.2's sources built against
-// 1.8.9 by Unimined, with a loading plugin of its own that names 1.8.9.
+// Forge 1.8.9 to 1.11.2 run the same game code as 1.12.2 for what the mod uses (the SRG
+// names of every method it calls are the same), so their jars are mc-1.12.2's sources
+// built against each release by Unimined, one project per release (mc-<release>/forge)
+// whose gradle.properties name the release, its Forge and its MCP mappings. Each is
+// compiled against its own release: before 1.12 the game ships an older log4j. The
+// loading plugin names the release (FML ignores a coremod that names another one).
 base {
     archivesName = "launcherskins-forge-${minecraft_version}"
 }
@@ -15,12 +18,21 @@ java {
 }
 
 def shared = file("${rootDir}/mc-1.12.2/forge/src/main/java")
+def pluginSource = 'app/launcher/skins/coremod/LoadingPlugin.java'
+def loadingPlugin = tasks.register('loadingPlugin', Copy) {
+    inputs.property 'minecraft', minecraft_version
+    from(shared) { include pluginSource }
+    into layout.buildDirectory.dir('generated/loadingPlugin')
+    filter { String line -> line.replace('MCVersion("1.12.2")', "MCVersion(\"${minecraft_version}\")") }
+}
 sourceSets.main.java {
     srcDir "${rootDir}/core/src/main/java"
     srcDir shared
-    // This folder's own LoadingPlugin takes the place of mc-1.12.2's.
-    exclude { it.file == new File(shared, 'app/launcher/skins/coremod/LoadingPlugin.java') }
+    // mc-1.12.2's loading plugin, naming this release instead.
+    exclude { it.file == new File(shared, pluginSource) }
+    srcDir loadingPlugin
 }
+sourceSets.main.resources.srcDirs = ["${rootDir}/mc-1.8.9/forge/src/main/resources"]
 
 repositories {
     // MCP's mappings have no POM; Maven Central answers Forge's groups with 429s.
@@ -43,7 +55,7 @@ unimined.minecraft {
     version minecraft_version
     mappings {
         searge()
-        mcp('stable', '22-1.8.9')
+        mcp('stable', mcp_version)
     }
     minecraftForge {
         loader forge_version
@@ -65,7 +77,8 @@ jar {
 
 processResources {
     inputs.property 'version', project.version
+    inputs.property 'minecraft', minecraft_version
     filesMatching('mcmod.info') {
-        expand version: project.version
+        expand version: project.version, minecraft: minecraft_version
     }
 }

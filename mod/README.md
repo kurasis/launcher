@@ -48,8 +48,15 @@ none for them: a profile without textures whose UUID is not a Mojang one (versio
   game). Built with RetroFuturaGradle; the jar to ship is the reobfuscated one, not
   `-dev`.
 - `mc-1.8.9/forge/`: the same coremod and `LauncherSkins` (sources taken from
-  `mc-1.12.2/forge/`, whose game names 1.8.9 shares), built with Unimined (Forge
-  11.15.1.2318, MCP stable 22).
+  `mc-1.12.2/forge/`, whose SRG names 1.8.9 to 1.11.2 share), built with Unimined (Forge
+  11.15.1.2318, MCP stable 22). Its `build.gradle` also builds `mc-1.9.4/forge`,
+  `mc-1.10.2/forge` and `mc-1.11.2/forge`, each against its own release (before 1.12 the
+  game ships an older log4j) and with a loading plugin naming that release.
+- `mc-1.13.2/forge/`: Forge 1.13.2 has no Mixin and 1.13.2 no Mojang names: a game layer
+  of its own in MCP names (mc-1.16.5-1.20.1's, renamed) and the JavaScript coremod of
+  1.14.4 on `NetworkPlayerInfo`'s package of then, built with Unimined (Forge 25.0.223,
+  MCP stable 47). The 1.13.2 agent (`agents/1.13.2`, `agents/legacy.gradle`) uses that
+  layer.
 - `mc-1.7.10/forge/`: 1.7.10 has no `NetworkPlayerInfo`, so its transformer hooks
   `AbstractClientPlayer`'s skin, cape and has-cape getters. Its player model is 64x32:
   a skin is drawn to that size and its top half kept. No slim model. RetroFuturaGradle
@@ -63,7 +70,13 @@ none for them: a profile without textures whose UUID is not a Mojang one (versio
   class-file API. Older releases have one jar each (`agents/<version>/`, built by
   `agents/agent.gradle` from `agent/`), remapped to that release's names with its own
   ASM (relocated); it reads its targets from `AgentHooks.targets`, whose calls the
-  remapping rewrites.
+  remapping rewrites. 1.7.10 to 1.12.2 have no Mojang names: their agents
+  (`agents/legacy.gradle`, Unimined) take the Forge jar's game layer in MCP names and
+  `agents/legacy/<release>/AgentHooks.java`. 1.14 to 1.14.3 have no Mojang names but
+  share Fabric's intermediary names with 1.14.4 for everything the agent touches:
+  `agents/intermediary.gradle` remaps the 1.14.4 agent's intermediary jar to each. With OptiFine on its own the game runs in
+  launchwrapper's class loader, which on Java 9 and newer does not see the agent's jar:
+  the agent adds it there (`Agent.reach`) before the first rewritten class runs.
 
 - `gametest/`: the test bot for the Game test workflow (docs/GAMETEST.md), never shipped
   to players: a plain Java core (`gametest/core`, the scenario and its checks) and a thin
