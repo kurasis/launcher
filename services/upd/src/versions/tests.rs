@@ -70,7 +70,12 @@ fn the_repository_data_is_a_valid_list_in_order() {
         .collect();
     assert_eq!(
         noted,
-        ["in-20100129-1452", "in-20100128-2304", "in-20100124-2310"]
+        [
+            "1.21.11-pre1_unobfuscated",
+            "in-20100129-1452",
+            "in-20100128-2304",
+            "in-20100124-2310"
+        ]
     );
     let sums = sums(&meta).unwrap();
     assert!(parse_sums(&sums).unwrap().len() > meta.len());

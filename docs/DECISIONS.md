@@ -3281,3 +3281,6 @@ skins-mod <channel>` there only checks the signature against the public key and
   too. They stay in the list with a `note` (`crashes-at-start`, the only value the
   update tool and the launcher take); the picker marks them «Crashes at start», the
   form says the error is the game's own, and the Player test plays them only by id.
+  The same note went on 1.21.11-pre1_unobfuscated (2026-10-23, as decided for these):
+  on both test machines it ends with a NullPointerException while it applies the
+  graphics preset on its first start, and the builds before and after it start.
