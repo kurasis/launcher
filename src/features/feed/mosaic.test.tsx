@@ -92,6 +92,91 @@ describe('mosaic', () => {
     expect(cells.map((cell) => cell.style.gridRowEnd)).toEqual(['span 79', 'span 34', 'span 54']);
   });
 
+  it('watches only the cards and writes their rows in the next frame', () => {
+    const heights: Record<string, number> = { a: 300, b: 120, c: 200 };
+    vi.spyOn(HTMLElement.prototype, 'getBoundingClientRect').mockImplementation(function (
+      this: HTMLElement,
+    ) {
+      return { height: heights[this.dataset.card ?? ''] ?? 0 } as DOMRect;
+    });
+    const real = window.getComputedStyle.bind(window);
+    vi.spyOn(window, 'getComputedStyle').mockImplementation((element) => {
+      const style = real(element);
+      if (element.getAttribute('role') !== 'list') return style;
+      return new Proxy(style, {
+        get: (target, key) => {
+          if (key === 'gridAutoRows') return '4px';
+          if (key === 'columnGap') return '16px';
+          const value: unknown = Reflect.get(target, key, target);
+          return typeof value === 'function' ? (value as () => unknown).bind(target) : value;
+        },
+      });
+    });
+    const watched = new Set<Element>();
+    let deliver: () => void = () => undefined;
+    class FakeObserver {
+      constructor(callback: ResizeObserverCallback) {
+        deliver = () => {
+          callback([], this);
+        };
+      }
+      observe(target: Element) {
+        watched.add(target);
+      }
+      unobserve(target: Element) {
+        watched.delete(target);
+      }
+      disconnect() {
+        watched.clear();
+      }
+    }
+    vi.stubGlobal('ResizeObserver', FakeObserver);
+    const frames: FrameRequestCallback[] = [];
+    let asked = 0;
+    vi.stubGlobal('requestAnimationFrame', (callback: FrameRequestCallback) => {
+      frames.push(callback);
+      asked += 1;
+      return asked;
+    });
+    const cancelled: number[] = [];
+    vi.stubGlobal('cancelAnimationFrame', (handle: number) => {
+      cancelled.push(handle);
+    });
+    const cards = (names: string[]) =>
+      names.map((name) => (
+        <Cell key={name}>
+          <article data-card={name}>{name}</article>
+        </Cell>
+      ));
+    const { rerender, unmount } = render(<Mosaic label="All">{cards(['a', 'b', 'c'])}</Mosaic>);
+    const list = screen.getByRole('list', { name: 'All' });
+    const watchedNames = () =>
+      [...watched].map((element) => (element as HTMLElement).dataset.card ?? 'other').sort();
+    // The list itself is not watched: its rows change its height.
+    expect(watched.has(list)).toBe(false);
+    expect(watchedNames()).toEqual(['a', 'b', 'c']);
+
+    // A card grows: nothing is written while the observer delivers.
+    heights.b = 400;
+    deliver();
+    deliver();
+    const b = screen.getByText('b').parentElement;
+    expect(b?.style.gridRowEnd).toBe('span 34');
+    expect(frames).toHaveLength(1);
+    frames.shift()?.(0);
+    expect(b?.style.gridRowEnd).toBe('span 104');
+
+    // A card that leaves is no longer watched; a new one is.
+    rerender(<Mosaic label="All">{cards(['a', 'c', 'd'])}</Mosaic>);
+    expect(watchedNames()).toEqual(['a', 'c', 'd']);
+
+    // Unmounted with a frame asked for: the frame is cancelled.
+    deliver();
+    unmount();
+    expect(cancelled).toEqual([2]);
+    expect(watched.size).toBe(0);
+  });
+
   it('stays a plain grid with nothing measured', () => {
     render(
       <Mosaic label="All">

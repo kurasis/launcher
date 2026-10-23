@@ -11,6 +11,21 @@ function contents(list: HTMLElement): Element[] {
   );
 }
 
+/** Watches the cards in `now` and stops watching the ones that left. */
+function watch(observer: ResizeObserver, now: Element[], watching: Set<Element>) {
+  const current = new Set(now);
+  for (const content of watching) {
+    if (current.has(content)) continue;
+    observer.unobserve(content);
+    watching.delete(content);
+  }
+  for (const content of now) {
+    if (watching.has(content)) continue;
+    observer.observe(content);
+    watching.add(content);
+  }
+}
+
 /**
  * Gives each cell of the mosaic as many of its small rows as its card is tall. The
  * grid then puts each card at the top of the shortest column. Without sizes (no
@@ -51,27 +66,40 @@ export function Mosaic({
 }) {
   const ref = useRef<HTMLDivElement>(null);
   const watcher = useRef<ResizeObserver | null>(null);
+  const watched = useRef(new Set<Element>());
   useEffect(() => {
     const list = ref.current;
     if (list === null || typeof ResizeObserver === 'undefined') return;
+    // Only the cards are watched: a wider or narrower list resizes every card, and a
+    // card's height does not depend on its cell's rows. The rows are written in the
+    // next frame, not while the observer delivers: a change there would ask for
+    // another delivery in the same frame, which the browser reports as an error.
+    let frame = 0;
     const observer = new ResizeObserver(() => {
-      layOut(list);
+      if (frame !== 0) return;
+      frame = requestAnimationFrame(() => {
+        frame = 0;
+        layOut(list);
+      });
     });
-    observer.observe(list);
-    for (const content of contents(list)) observer.observe(content);
+    const watching = watched.current;
+    watch(observer, contents(list), watching);
     watcher.current = observer;
     return () => {
       observer.disconnect();
+      cancelAnimationFrame(frame);
+      watching.clear();
       watcher.current = null;
     };
   }, []);
-  // After every render, before it is painted: new cards get their rows at once.
+  // After every render, before it is painted: new cards get their rows at once, and
+  // cards that left the list are no longer watched (the list can run long).
   useLayoutEffect(() => {
     const list = ref.current;
     if (list === null) return;
     layOut(list);
     const observer = watcher.current;
-    if (observer !== null) for (const content of contents(list)) observer.observe(content);
+    if (observer !== null) watch(observer, contents(list), watched.current);
   });
   return (
     <div className={styles.mosaicFrame}>
