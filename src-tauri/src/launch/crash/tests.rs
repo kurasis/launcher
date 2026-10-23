@@ -677,6 +677,21 @@ fn closing_an_old_game_window_is_no_crash() {
 }
 
 #[test]
+fn closing_the_oldest_game_window_is_no_crash() {
+    // Classic to Alpha 1.0: launchwrapper's frame exits with code 1 without a word;
+    // the launcher's tweaker prints its line first.
+    let lines = output(
+        "Starting up SoundSystem...\nOpenAL initialized.\nLauncher: the game window was closed\nAL lib: (EE) alc_cleanup: 1 device not closed",
+    );
+    assert!(closed_by_its_window(failed(1), &lines));
+    assert_eq!(diagnose(&input(failed(1), &lines)), None);
+    // Without the line, code 1 is a failure, as a start that threw is.
+    let silent = output("Starting up SoundSystem...\nOpenAL initialized.");
+    assert!(!closed_by_its_window(failed(1), &silent));
+    assert!(diagnose(&input(failed(1), &silent)).is_some());
+}
+
+#[test]
 fn evidence_is_short() {
     let long = format!(
         "java.lang.OutOfMemoryError: Java heap space {}",

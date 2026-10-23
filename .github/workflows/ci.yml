@@ -50,9 +50,10 @@ jobs:
       - run: npm run build
 
   legacy-tweaker:
-    # The launcher's tweaker for games before 1.6 (java/legacy-tweaker): the
-    # committed jar is what its source builds to, and it sets the game folder
-    # before a game's thread reads it.
+    # The launcher's tweakers for games before 1.6 (java/legacy-tweaker): the
+    # committed jar is what its source builds to, it sets the game folder before a
+    # game's thread reads it, and for the oldest games it says when the player
+    # closes the window.
     name: Legacy tweaker
     runs-on: ubuntu-24.04
     timeout-minutes: 10
@@ -69,8 +70,10 @@ jobs:
           java/legacy-tweaker/build.sh
           git diff --exit-code -- java/legacy-tweaker/legacy-tweaker.jar
           test -z "$(git status --porcelain --ignored -- java/legacy-tweaker/legacy-tweaker.jar)"
-      - name: The game folder is set before the game starts
-        run: JAVA8="$JAVA_HOME_8_X64" java/legacy-tweaker/check.sh
+      - name: The game folder is set before the game starts; a closed window is said
+        run: |
+          command -v xvfb-run >/dev/null || { sudo apt-get update -q && sudo apt-get install -y -q xvfb; }
+          JAVA8="$JAVA_HOME_8_X64" java/legacy-tweaker/check.sh
 
   rust:
     name: Rust core (${{ matrix.name }})

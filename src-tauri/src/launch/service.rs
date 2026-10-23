@@ -805,9 +805,10 @@ impl LaunchService {
         } else if skins.active {
             console.info("Launcher Skins added to the game");
         }
-        // Games before 1.6: the game folder set before the game starts. Without
-        // the jar the game starts as Mojang's launcher starts it.
-        let legacy_tweaker = if super::legacy::needs_legacy_tweaker(&plan) {
+        // Games before 1.6: the game folder set before the game starts, and for the
+        // oldest the window's close said. Without the jar the game starts as
+        // Mojang's launcher starts it.
+        let legacy_tweaker = if super::legacy::legacy_tweaker(&plan).is_some() {
             let tweaker_root = root.clone();
             match tokio::task::spawn_blocking(move || {
                 super::legacy::legacy_tweaker_jar(&tweaker_root)
@@ -816,8 +817,9 @@ impl LaunchService {
             {
                 Ok(Ok(jar)) => Some(jar),
                 _ => {
-                    console
-                        .warn("The game folder fix for versions before 1.6 could not be written");
+                    console.warn(
+                        "The launcher's tweaker for versions before 1.6 could not be written",
+                    );
                     None
                 }
             }

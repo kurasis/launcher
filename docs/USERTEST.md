@@ -76,7 +76,9 @@ mirror rule wants), `mirror_first` (the mirror, the origin when it fails) or
    screenshot must appear in the world: those versions show a crash in the window and
    exit normally afterwards, after the world's files were written.
    The game must exit with 0 (before 1.6 with 1 after its "Someone is closing me!",
-   which is how those versions end when the window is closed) and leave no crash report. Where the launcher has a
+   which is how those versions end when the window is closed, or for Classic to Alpha
+   1.0 after the launcher's tweaker's "Launcher: the game window was closed") and leave
+   no crash report. Where the launcher has a
    Launcher Skins build for the version, the column Launcher Skins says whether it got
    in: `not added` when the launcher's log warns it could not put it in, `failed` when
    the game's logs show the mod's agent missing its targets or an error naming

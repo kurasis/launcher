@@ -9,6 +9,7 @@ const V1_21_1: &[u8] = include_bytes!("../../../../tests/fixtures/mojang/1.21.1.
 const V26_3: &[u8] = include_bytes!("../../../../tests/fixtures/mojang/26.3.json");
 const V1_6_4: &[u8] = include_bytes!("../../../../tests/fixtures/mojang/1.6.4.json");
 const B1_7_3: &[u8] = include_bytes!("../../../../tests/fixtures/mojang/b1.7.3.json");
+const A1_0_4: &[u8] = include_bytes!("../../../../tests/fixtures/mojang/a1.0.4.json");
 const TOKEN: &str = "eyJhbGciOi.test-token.not-real";
 
 fn plan(bytes: &[u8], version: &str, os: MetaOs, arch: &'static str) -> GamePlan {
@@ -429,26 +430,22 @@ fn launch_wrapper_versions_take_positional_name_and_session() {
 
 #[test]
 fn games_on_launchwrapper_1_5_get_the_launchers_tweaker() {
-    use crate::launch::legacy::{LEGACY_TWEAKER_CLASS, needs_legacy_tweaker};
+    use crate::launch::legacy::{LEGACY_TWEAKER_CLASS, LegacyTweaker, legacy_tweaker};
     let old = plan(B1_7_3, "b1.7.3", MetaOs::Windows, "x86_64");
-    assert!(needs_legacy_tweaker(&old));
-    assert!(!needs_legacy_tweaker(&plan(
-        V1_6_4,
-        "1.6.4",
-        MetaOs::Windows,
-        "x86_64"
-    )));
-    assert!(!needs_legacy_tweaker(&plan(
-        V1_21_1,
-        "1.21.1",
-        MetaOs::Windows,
-        "x86_64"
-    )));
+    assert_eq!(legacy_tweaker(&old), Some(LegacyTweaker::GameFolder));
+    assert_eq!(
+        legacy_tweaker(&plan(V1_6_4, "1.6.4", MetaOs::Windows, "x86_64")),
+        None
+    );
+    assert_eq!(
+        legacy_tweaker(&plan(V1_21_1, "1.21.1", MetaOs::Windows, "x86_64")),
+        None
+    );
     // A descriptor that names its own tweaker keeps it.
     let mut own = old.clone();
     own.game_arguments
         .extend(["--tweakClass".to_owned(), "x.Tweaker".to_owned()]);
-    assert!(!needs_legacy_tweaker(&own));
+    assert_eq!(legacy_tweaker(&own), None);
 
     let jar = root()
         .path()
@@ -473,6 +470,52 @@ fn games_on_launchwrapper_1_5_get_the_launchers_tweaker() {
             .game_args
             .contains(&"--tweakClass".to_owned())
     );
+}
+
+#[test]
+fn the_oldest_games_get_the_launchers_tweaker_in_place_of_mojangs() {
+    use crate::launch::legacy::{
+        ALPHA_TWEAKER_CLASS, ALPHA_VANILLA_TWEAKER, LegacyTweaker, legacy_tweaker,
+    };
+    let alpha = plan(A1_0_4, "a1.0.4", MetaOs::Windows, "x86_64");
+    assert_eq!(legacy_tweaker(&alpha), Some(LegacyTweaker::WindowClose));
+    // Another tweaker, or a second one, is the descriptor's own.
+    let mut other = alpha.clone();
+    let named = other
+        .game_arguments
+        .iter()
+        .position(|a| a == ALPHA_VANILLA_TWEAKER)
+        .unwrap();
+    other.game_arguments[named] = "x.Tweaker".to_owned();
+    assert_eq!(legacy_tweaker(&other), None);
+    let mut two = alpha.clone();
+    two.game_arguments
+        .extend(["--tweakClass".to_owned(), "x.Tweaker".to_owned()]);
+    assert_eq!(legacy_tweaker(&two), None);
+
+    let jar = root()
+        .path()
+        .join("shared")
+        .join("launcher")
+        .join("legacy-tweaker-0.jar");
+    let c = compile_with(&alpha, &identity(), Some(&jar));
+    let jar_text = jar.to_str().unwrap();
+    assert!(c.jvm_args.iter().any(|a| a.ends_with(jar_text)));
+    let tweaks: Vec<&str> = c
+        .game_args
+        .windows(2)
+        .filter(|pair| pair[0] == "--tweakClass")
+        .map(|pair| pair[1].as_str())
+        .collect();
+    assert_eq!(
+        tweaks,
+        [ALPHA_TWEAKER_CLASS],
+        "Mojang's is replaced, not joined"
+    );
+    // Without the jar the game starts as Mojang's launcher starts it.
+    let mojang = compile_for(&alpha);
+    assert!(mojang.game_args.contains(&ALPHA_VANILLA_TWEAKER.to_owned()));
+    assert!(!mojang.game_args.contains(&ALPHA_TWEAKER_CLASS.to_owned()));
 }
 
 #[test]
