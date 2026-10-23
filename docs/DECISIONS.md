@@ -714,6 +714,12 @@ replaces it), `superseded`.
   in the arguments, and code 1 after that line within the output's last ten lines is
   a normal end, as after "Someone is closing me!". CI starts a stand-in game in both
   launchwrapper versions under Xvfb, closes its window and checks code and line.
+  Classic's exit hung on Windows after that line (the Player test and the owner's own
+  click): launchwrapper's shutdown hook pauses the applet, Classic's paused loop only
+  sleeps, and its thread no longer handles the messages of the windows it owns that
+  the input and display hooks wait on. The tweaker halts the game with code 1 when it
+  still runs 3 s after the close, and says so; CI checks it with a stand-in whose
+  shutdown hook never ends.
 
 ## D-036 — Mojang Java runtimes and one Settings screen
 

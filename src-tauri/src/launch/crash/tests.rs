@@ -685,6 +685,12 @@ fn closing_the_oldest_game_window_is_no_crash() {
     );
     assert!(closed_by_its_window(failed(1), &lines));
     assert_eq!(diagnose(&input(failed(1), &lines)), None);
+    // Classic's exit hangs on Windows; the tweaker ends it with the same code.
+    let halted = output(
+        "OpenAL initialized.\nLauncher: the game window was closed\nLauncher: the game did not end after its window closed; ended",
+    );
+    assert!(closed_by_its_window(failed(1), &halted));
+    assert_eq!(diagnose(&input(failed(1), &halted)), None);
     // Without the line, code 1 is a failure, as a start that threw is.
     let silent = output("Starting up SoundSystem...\nOpenAL initialized.");
     assert!(!closed_by_its_window(failed(1), &silent));
