@@ -1092,6 +1092,21 @@ impl Store {
             .map_err(sql)
     }
 
+    /// The project with this page at a source takes the number the source
+    /// gives it now (one read wrongly before), unless another has it.
+    pub fn renumber_source(&self, source: &str, url: &str, source_id: &str) -> Result<()> {
+        self.db()
+            .execute(
+                "UPDATE project_source SET source_id = ?3
+                 WHERE rowid = (SELECT rowid FROM project_source
+                                WHERE source = ?1 AND url = ?2 AND source_id != ?3 LIMIT 1)
+                   AND NOT EXISTS (SELECT 1 FROM project_source WHERE source = ?1 AND source_id = ?3)",
+                params![source, url, source_id],
+            )
+            .map(|_| ())
+            .map_err(sql)
+    }
+
     /// A project's ID at a source.
     pub fn source_id(&self, project: &str, source: &str) -> Result<Option<String>> {
         self.db()

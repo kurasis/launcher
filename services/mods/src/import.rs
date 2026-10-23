@@ -1210,19 +1210,42 @@ async fn project_curseforge(
     let page_url = curseforge::page_url(&r.class, &r.slug);
     // The page gives the card, and the ID when the reference has none; a
     // dependency (which has its ID) goes on without it.
-    let card = match app
+    let mut card = match app
         .client
         .page(&page_url, curseforge::MAX_PAGE as u64)
         .await
     {
-        Ok(Some(html)) => Some(curseforge::page(&html, &r.slug)),
+        Ok(Some(html)) => Some(curseforge::page(&html, &r.class, &r.slug)),
         Ok(None) if r.id.is_none() => return Err(JobError::new("not_found", false)),
         Err(e) if r.id.is_none() => return Err(e.into()),
         _ => None,
     };
-    let source_id =
-        r.id.or_else(|| card.as_ref().and_then(|c| c.id))
-            .ok_or_else(|| JobError::new("bad_answer", true))?;
+    // A number read from the page counts only when the number's own address
+    // leads back to the page: a page also lists other things with the slug.
+    let read = card.as_ref().and_then(|c| c.id);
+    let source_id = match (r.id, read) {
+        (Some(ours), Some(read)) if read != ours => {
+            if number_leads_to(app, read, &r).await? {
+                app.store
+                    .renumber_source(curseforge::SOURCE, &page_url, &read.to_string())?;
+                read
+            } else {
+                // What the page showed is another thing with the slug.
+                card = None;
+                ours
+            }
+        }
+        (Some(ours), _) => ours,
+        (None, Some(read)) => {
+            if !number_leads_to(app, read, &r).await? {
+                return Err(JobError::new("bad_answer", false));
+            }
+            app.store
+                .renumber_source(curseforge::SOURCE, &page_url, &read.to_string())?;
+            read
+        }
+        (None, None) => return Err(JobError::new("bad_answer", true)),
+    };
     let known = app
         .store
         .project_by_source(curseforge::SOURCE, &source_id.to_string())?;
@@ -1337,6 +1360,23 @@ async fn project_curseforge(
     }
     app.store.set_project_status(&id, "ready")?;
     Ok(())
+}
+
+/// Whether CurseForge's address for a project's number
+/// (`/projects/<number>`, which the site redirects to the project's page)
+/// leads to this reference's page.
+async fn number_leads_to(app: &App, number: u64, r: &curseforge::Ref) -> Result<bool, JobError> {
+    match app
+        .client
+        .page_at(&curseforge::number_url(number), curseforge::MAX_PAGE as u64)
+        .await
+    {
+        Ok(found) => Ok(found
+            .and_then(|(at, _)| curseforge::page_ref(&at, number))
+            .is_some_and(|p| p.class == r.class && p.slug == r.slug)),
+        Err(e) if e.retryable() => Err(e.into()),
+        Err(_) => Ok(false),
+    }
 }
 
 /// Queues the projects a CurseForge file requires (each once).

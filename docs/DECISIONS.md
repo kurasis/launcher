@@ -2509,6 +2509,14 @@ skins-mod <channel>` there only checks the signature against the public key and
 - **Fourth probe (2026-10-20):** dates come as numbers (`dateCreated`, `updateDate`); the
   project page carries no description or screenshots at all, so CurseForge cards show
   the summary only for now.
+- **A page's number is checked (2026-10-23).** RLCraft's page also lists other things
+  with its slug (likely the servers that run it), and the reader took one of those for
+  the project: its card got another number and no versions. The reader now takes, of
+  the objects with the slug, the one most like the project (its class, Minecraft's
+  game, the fields a card has); another class's or another game's object is never it.
+  A number read from a page is used only when `/projects/<number>` leads back to that
+  page; a project kept under a wrong number takes the right one at its next check.
+  The probe reads RLCraft's page too and prints each candidate's number and likeness.
 - **Name search.** A name asks both sources: Modrinth's search API and CurseForge's
   search page (its API search is refused). The page's hits are read from the App Router
   stream (objects with a numeric ID, a slug, a name and a class we keep, Minecraft
