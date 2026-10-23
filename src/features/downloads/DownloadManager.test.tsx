@@ -3,6 +3,8 @@ import { mockIPC } from '@tauri-apps/api/mocks';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { OperationProgress } from '../../lib/contracts';
 import { instanceFixture, snapshotFixture } from '../../test/fixtures';
+import { putAside } from '../network/approvalStore';
+import { MeteredApproval } from '../network/MeteredApproval';
 import { DownloadManager } from './DownloadManager';
 
 const a = instanceFixture({ displayName: 'Survival' });
@@ -108,47 +110,46 @@ describe('DownloadManager', () => {
     expect(screen.queryByText(/Downloading .*\.ogg/)).toBeNull();
   });
 
-  it('opens by itself when a download waits for permission', async () => {
-    const calls: { cmd: string; args: unknown }[] = [];
-    mockIPC((cmd, args) => {
-      calls.push({ cmd, args });
-      if (cmd === 'get_app_snapshot') return snapshotFixture();
-      return null;
+  it('marks a download that waits for permission, and shows its question again', () => {
+    mockIPC((cmd) => (cmd === 'get_app_snapshot' ? snapshotFixture() : null));
+    const snapshot = snapshotFixture({
+      instances: [a],
+      activeOperation: { kind: 'install', instanceId: a.id, operationId: 'op-asks' },
+      operationProgress: {
+        ...progress,
+        operationId: 'op-asks',
+        phase: 'awaiting_approval',
+        downloadedBytes: 0,
+        currentFiles: [],
+        approval: {
+          bytes: 550 * 1024 * 1024,
+          files: 3955,
+          reason: 'large',
+          monthBytes: 0,
+          monthlyLimitMib: 0,
+        },
+      },
     });
     render(
-      <DownloadManager
-        snapshot={snapshotFixture({
-          instances: [a],
-          activeOperation: { kind: 'install', instanceId: a.id, operationId: 'op-1' },
-          operationProgress: {
-            ...progress,
-            phase: 'awaiting_approval',
-            downloadedBytes: 0,
-            currentFiles: [],
-            approval: {
-              bytes: 550 * 1024 * 1024,
-              files: 3955,
-              reason: 'over_limit',
-              monthBytes: 900 * 1024 * 1024,
-              monthlyLimitMib: 1024,
-            },
-          },
-        })}
-      />,
+      <>
+        <DownloadManager snapshot={snapshot} />
+        <MeteredApproval snapshot={snapshot} />
+      </>,
     );
     const button = screen.getByRole('button', { name: 'Downloads' });
     expect(button).toHaveAttribute('data-asking', 'true');
-    expect(screen.getByText('Download 550.0 MiB?')).toBeVisible();
-    expect(screen.getByText(/would pass your monthly limit: 900\.0 MiB of 1\.0 GiB/)).toBeVisible();
-    fireEvent.click(screen.getByRole('button', { name: 'Download' }));
-    await waitFor(() => {
-      expect(calls.find((c) => c.cmd === 'answer_download')?.args).toMatchObject({
-        request: { payload: { operationId: 'op-1', allow: true } },
-      });
+    // The question is a dialog of its own: the panel stays closed. Put aside, it can be
+    // shown again from the panel.
+    expect(screen.getByRole('dialog', { name: 'Download 550.0 MiB?' })).toBeVisible();
+    expect(screen.queryByRole('region', { name: 'Downloads' })).toBeNull();
+    act(() => {
+      putAside('op-asks');
     });
-    // Closing keeps it closed for this download.
+    expect(screen.queryByRole('dialog')).toBeNull();
     fireEvent.click(button);
-    expect(screen.queryByText('Download 550.0 MiB?')).toBeNull();
+    expect(screen.getByRole('region', { name: 'Downloads' })).toBeVisible();
+    fireEvent.click(screen.getByRole('button', { name: 'Show the question' }));
+    expect(screen.getByRole('dialog', { name: 'Download 550.0 MiB?' })).toBeVisible();
   });
 
   it('counts checked files before anything downloads', () => {

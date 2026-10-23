@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useId, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { Button } from '../../components/Button';
+import { coveredByDialog } from '../../components/dialogStack';
 import { Notice } from '../../components/Notice';
 import { Panel } from '../../components/Panel';
 import forms from '../../components/forms.module.css';
@@ -54,6 +55,8 @@ function Viewer({ items, index, onMove, onClose, onDeleted }: ViewerProps) {
   const count = items.length;
   useEffect(() => {
     const listener = (event: KeyboardEvent) => {
+      // A dialog over the viewer (a download question) takes them.
+      if (coveredByDialog(null)) return;
       const forward = document.documentElement.dir === 'rtl' ? -1 : 1;
       const delta = event.key === 'ArrowRight' ? forward : event.key === 'ArrowLeft' ? -forward : 0;
       if (event.key === 'Escape') onClose();

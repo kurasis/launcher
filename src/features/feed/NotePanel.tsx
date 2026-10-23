@@ -1,6 +1,7 @@
 import { useEffect, useId, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { Button } from '../../components/Button';
+import { coveredByDialog } from '../../components/dialogStack';
 import { Notice } from '../../components/Notice';
 import { StatusBadge } from '../../components/StatusBadge';
 import type { AppSnapshot, FeedProblem, NoteCard, NoteView } from '../../lib/contracts';
@@ -78,7 +79,8 @@ export function NotePanel({
 
   useEffect(() => {
     const listener = (event: KeyboardEvent) => {
-      if (event.key === 'Escape') onClose();
+      // Escape closes a dialog over the note (a download question) first.
+      if (event.key === 'Escape' && !coveredByDialog(null)) onClose();
     };
     window.addEventListener('keydown', listener);
     return () => {

@@ -3,7 +3,6 @@ import { Button } from '../../components/Button';
 import { Notice } from '../../components/Notice';
 import { Panel } from '../../components/Panel';
 import { StatusBadge } from '../../components/StatusBadge';
-import forms from '../../components/forms.module.css';
 import type {
   CrashAction,
   CrashDiagnosis,
@@ -91,17 +90,23 @@ export function CrashHelp({ instance, run, onEditSettings, onOpenBackups, busy }
 
   return (
     // Inside the installation's section, under its name (h3).
-    <Panel title={t.title} level={4} aside={<StatusBadge tone="danger" label={text.title} />}>
-      <div className={styles.section}>
-        <h5 className={styles.heading}>{t.cause}</h5>
-        <p>{text.cause}</p>
+    <Panel
+      title={t.title}
+      level={4}
+      asideAtTitle
+      aside={<StatusBadge tone="danger" label={text.title} dot={false} />}
+    >
+      {/* Run-in headings: "Cause. …", "What to do. …". */}
+      <div className={styles.runIn}>
+        <h5>{t.cause}</h5> <p>{text.cause}</p>
       </div>
-      <div className={styles.section}>
-        <h5 className={styles.heading}>{t.fix}</h5>
-        <p>{text.fix}</p>
+      <div className={styles.runIn}>
+        <h5>{t.fix}</h5> <p>{text.fix}</p>
       </div>
       {diagnosis.suspects.length > 0 && (
-        <p dir="auto">{t.suspects({ mods: diagnosis.suspects.join(', ') })}</p>
+        <p className={styles.muted} dir="auto">
+          {t.suspects({ mods: diagnosis.suspects.join(', ') })}
+        </p>
       )}
       {diagnosis.notes.map((note, index) => {
         const found = crashText(note);
@@ -126,29 +131,29 @@ export function CrashHelp({ instance, run, onEditSettings, onOpenBackups, busy }
           .filter(Boolean)
           .join(' · ')}
       </p>
-      {shown.length > 0 && (
-        <div className={forms.actions}>
-          {shown.map((action) => (
-            <Button
-              key={action}
-              onClick={() => {
-                act(action);
-              }}
-              disabled={
-                (action === 'repair' && (busy || repair.pending || repairing)) ||
-                (folders[action] !== undefined && openFolder.pending)
-              }
-            >
-              {action === 'update_mod' && fix !== null
-                ? (fix.installed === null ? t.installMod : t.updateMod)({ title: fix.title })
-                : t.actions[action]}
-            </Button>
-          ))}
-        </div>
-      )}
-      <ExplanationFeedback key={run.runId} diagnosis={diagnosis} />
-      <div className={forms.actions}>
+      {/* One row: the first fix is the main action, then the others, then telling us. */}
+      <div className={styles.actions}>
+        {shown.map((action, index) => (
+          <Button
+            key={action}
+            variant={index === 0 ? 'primary' : 'secondary'}
+            size="small"
+            onClick={() => {
+              act(action);
+            }}
+            disabled={
+              (action === 'repair' && (busy || repair.pending || repairing)) ||
+              (folders[action] !== undefined && openFolder.pending)
+            }
+          >
+            {action === 'update_mod' && fix !== null
+              ? (fix.installed === null ? t.installMod : t.updateMod)({ title: fix.title })
+              : t.actions[action]}
+          </Button>
+        ))}
         <Button
+          variant="ghost"
+          size="small"
           onClick={() => {
             setReporting(true);
           }}
@@ -156,6 +161,8 @@ export function CrashHelp({ instance, run, onEditSettings, onOpenBackups, busy }
           {strings.reports.offer}
         </Button>
         <Button
+          variant="ghost"
+          size="small"
           onClick={() => {
             openReview({
               kind: 'bug',
@@ -169,6 +176,9 @@ export function CrashHelp({ instance, run, onEditSettings, onOpenBackups, busy }
           {t.tellMore}
         </Button>
       </div>
+      {repairing && <Notice tone="info">{t.repairStarted}</Notice>}
+      {error !== null && <Notice tone="danger">{error}</Notice>}
+      <ExplanationFeedback key={run.runId} diagnosis={diagnosis} />
       {adding !== null && (
         <AddDialog
           target={{
@@ -195,8 +205,6 @@ export function CrashHelp({ instance, run, onEditSettings, onOpenBackups, busy }
           }}
         />
       )}
-      {repairing && <Notice tone="info">{t.repairStarted}</Notice>}
-      {error !== null && <Notice tone="danger">{error}</Notice>}
       {diagnosis.evidence.length > 0 && (
         <details>
           <summary>{t.evidence}</summary>

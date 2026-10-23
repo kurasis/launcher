@@ -42,9 +42,10 @@ describe('launcher updates', () => {
     render(<UpdateBadge update={view({ phase: 'ready', downloaded: 10, total: 10 })} />);
     fireEvent.click(screen.getByRole('button', { name: 'Version 0.2.0 is ready' }));
     const dialog = screen.getByRole('dialog', { name: 'Launcher 0.2.0' });
-    expect(dialog).toHaveTextContent('Faster downloads');
+    expect(dialog).toHaveTextContent('What’s new: Faster downloads');
     expect(dialog).toHaveTextContent('installs when you close the launcher');
-    expect(screen.getByRole('button', { name: 'When I close the launcher' })).toBeVisible();
+    // The safe choice takes the focus: Enter never restarts by accident.
+    expect(screen.getByRole('button', { name: 'When I close the launcher' })).toHaveFocus();
     fireEvent.click(screen.getByRole('button', { name: 'Restart now' }));
     await waitFor(() => {
       expect(seen.some((c) => c.cmd === 'restart_to_update')).toBe(true);

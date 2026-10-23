@@ -7,7 +7,7 @@ import forms from '../../components/forms.module.css';
 import type { ModsImportRequest } from '../../lib/contracts';
 import { describeIpcError, ipc, isLauncherError } from '../../lib/ipc';
 import { strings } from '../../lib/strings';
-import { Dialog } from './Dialog';
+import { Dialog } from '../../components/Dialog';
 import { compact, failureText, ourPicture, stateTone } from './helpers';
 import styles from './Mods.module.css';
 

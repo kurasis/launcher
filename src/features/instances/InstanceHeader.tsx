@@ -33,7 +33,7 @@ interface InstanceHeaderProps {
 
 /**
  * The chosen installation's head: tile, name, version, state and the last game, with
- * Rename and Delete in a menu; each opens under the head.
+ * Rename and Delete in a menu: Rename opens under the head, Delete asks in a dialog.
  */
 export function InstanceHeader({
   instance,
@@ -109,7 +109,6 @@ export function InstanceHeader({
           instance={instance}
           busy={busy}
           onDeleted={onDeleted}
-          askNow
           onClose={close}
         />
       )}

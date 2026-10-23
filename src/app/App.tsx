@@ -35,6 +35,7 @@ import { WhatsNew } from '../features/updates/WhatsNew';
 import { DownloadManager } from '../features/downloads/DownloadManager';
 import { FriendsCorner } from '../features/friends/FriendsCorner';
 import { LaunchCheck } from '../features/mods/LaunchCheck';
+import { MeteredApproval } from '../features/network/MeteredApproval';
 import { ModsView, type ModsSection } from '../features/mods/ModsView';
 import { WorldsView } from '../features/worlds/WorldsView';
 import { FeedView } from '../features/feed/FeedView';
@@ -580,6 +581,7 @@ export function App() {
           )}
         </main>
 
+        {snapshot !== null && <MeteredApproval snapshot={snapshot} />}
         <LaunchCheck
           onOpenMods={(instanceId) => {
             setModsInstance(instanceId);

@@ -45,6 +45,9 @@ describe('QuitControl', () => {
     const keep = screen.getByRole('button', { name: 'Keep running in background' });
     expect(keep).toHaveFocus();
     expect(dialog).toHaveTextContent('may lose unsaved progress');
+    expect(dialog).toHaveAccessibleDescription(/may lose unsaved progress/);
+    // On the page body, not in the rail: above the rail's popups (Friends, Downloads).
+    expect(dialog.parentElement?.parentElement).toBe(document.body);
     fireEvent.click(keep);
     await screen.findByRole('button', { name: 'Quit' });
     expect(screen.queryByRole('dialog')).not.toBeInTheDocument();

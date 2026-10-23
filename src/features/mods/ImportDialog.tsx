@@ -14,7 +14,7 @@ import { formatBytes } from '../../lib/format';
 import { describeIpcError, ipc, onModsProgress } from '../../lib/ipc';
 import { strings } from '../../lib/strings';
 import { MOD_LOADER_KINDS } from '../instances/loaderLabel';
-import { Dialog } from './Dialog';
+import { Dialog } from '../../components/Dialog';
 import styles from './Mods.module.css';
 
 type Stage =

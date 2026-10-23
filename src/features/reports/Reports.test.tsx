@@ -50,9 +50,11 @@ describe('ReportDialog', () => {
     expect(calls.some((c) => c.cmd === 'send_crash_report')).toBe(false);
 
     fireEvent.click(screen.getByRole('checkbox', { name: 'diagnosis.json' }));
-    fireEvent.change(screen.getByLabelText('What were you doing? (optional)'), {
-      target: { value: '  Opened a world  ' },
-    });
+    const note = screen.getByLabelText('What were you doing? (optional)');
+    note.focus();
+    fireEvent.change(note, { target: { value: '  Opened a world  ' } });
+    // Each letter draws the dialog again: the focus stays in the note, not on Cancel.
+    expect(note).toHaveFocus();
     fireEvent.click(screen.getByRole('button', { name: 'Send' }));
     expect(await screen.findByText('Thank you! The report was sent.')).toBeVisible();
     expect(calls.find((c) => c.cmd === 'send_crash_report')?.args).toEqual({
@@ -74,6 +76,42 @@ describe('ReportDialog', () => {
     fireEvent.click(screen.getByRole('checkbox', { name: 'output.log' }));
     fireEvent.click(screen.getByRole('button', { name: 'Send' }));
     expect(await screen.findByText(/The report is kept and sent by itself later/)).toBeVisible();
+  });
+  it('starts on Cancel, and cannot be left while it sends', async () => {
+    let finish: (value: string) => void = () => undefined;
+    const calls: Call[] = [];
+    mockIPC((cmd, args) => {
+      calls.push({ cmd, args: args as Record<string, unknown> });
+      if (cmd === 'preview_crash_report') return preview;
+      if (cmd === 'send_crash_report')
+        return new Promise((resolve) => {
+          finish = resolve;
+        });
+      return null;
+    });
+    let closed = 0;
+    render(
+      <ReportDialog
+        subject={{ type: 'game', runId: 'r-1', instanceId: 'i-1' }}
+        onClose={() => {
+          closed += 1;
+        }}
+      />,
+    );
+    const dialog = screen.getByRole('dialog', { name: 'Report to the developers' });
+    // Nothing is sent but by a press of Send: a stray Enter lands on Cancel.
+    expect(screen.getByRole('button', { name: 'Cancel' })).toHaveFocus();
+    await screen.findByRole('checkbox', { name: 'output.log' });
+    expect(screen.getByRole('button', { name: 'Cancel' })).toHaveFocus();
+    fireEvent.click(screen.getByRole('button', { name: 'Send' }));
+    expect(await screen.findByRole('button', { name: 'Sending…' })).toBeDisabled();
+    fireEvent.keyDown(dialog, { key: 'Escape' });
+    expect(closed).toBe(0);
+    finish('sent');
+    expect(await screen.findByText('Thank you! The report was sent.')).toBeVisible();
+    fireEvent.keyDown(screen.getByRole('dialog'), { key: 'Escape' });
+    expect(closed).toBe(1);
+    expect(calls.filter((c) => c.cmd === 'send_crash_report')).toHaveLength(1);
   });
 });
 

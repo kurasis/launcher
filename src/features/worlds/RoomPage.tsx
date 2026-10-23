@@ -15,7 +15,7 @@ import { numberLocale, strings } from '../../lib/strings';
 import { useFriends } from '../friends/useFriends';
 import { worldInviteBody } from '../friends/worldInvite';
 import { gameLabel } from '../instances/loaderLabel';
-import { Dialog } from '../mods/Dialog';
+import { Dialog } from '../../components/Dialog';
 import { RoomActions } from './RoomActions';
 import { WorldBackups } from './WorldBackups';
 import { WorldMods } from './WorldMods';

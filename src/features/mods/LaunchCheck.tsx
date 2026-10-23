@@ -1,9 +1,9 @@
 import { useEffect, useState } from 'react';
 import { Button } from '../../components/Button';
-import forms from '../../components/forms.module.css';
+import { Dialog } from '../../components/Dialog';
+import dialog from '../../components/Dialog.module.css';
 import { onLaunchQuestion, type LaunchQuestion } from '../../lib/launchCheck';
 import { strings } from '../../lib/strings';
-import { Dialog } from './Dialog';
 import { Problems } from './Problems';
 
 /**
@@ -19,11 +19,12 @@ export function LaunchCheck({ onOpenMods }: { onOpenMods: (instanceId: string) =
     question.answer(false);
   };
   return (
-    <Dialog title={t.title} onClose={decline} wide>
-      <Problems problems={question.problems} />
-      <div className={forms.actions}>
+    <Dialog title={t.title} onClose={decline}>
+      <Problems problems={question.problems} plain />
+      <div className={dialog.actions}>
         <Button
           variant="primary"
+          size="small"
           onClick={() => {
             question.answer(true);
           }}
@@ -31,6 +32,7 @@ export function LaunchCheck({ onOpenMods }: { onOpenMods: (instanceId: string) =
           {t.start}
         </Button>
         <Button
+          size="small"
           onClick={() => {
             question.answer(false);
             onOpenMods(question.instanceId);
@@ -38,7 +40,9 @@ export function LaunchCheck({ onOpenMods }: { onOpenMods: (instanceId: string) =
         >
           {t.openMods}
         </Button>
-        <Button onClick={decline}>{t.cancel}</Button>
+        <Button variant="ghost" size="small" onClick={decline}>
+          {t.cancel}
+        </Button>
       </div>
     </Dialog>
   );

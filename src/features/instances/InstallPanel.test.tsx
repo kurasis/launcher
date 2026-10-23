@@ -3,6 +3,7 @@ import { mockIPC } from '@tauri-apps/api/mocks';
 import { describe, expect, it } from 'vitest';
 import type { OperationProgress, OperationResult } from '../../lib/contracts';
 import { instanceFixture, snapshotFixture } from '../../test/fixtures';
+import { MeteredApproval } from '../network/MeteredApproval';
 import { InstallPanel } from './InstallPanel';
 
 function backend() {
@@ -115,6 +116,52 @@ describe('InstallPanel', () => {
         request: { payload: { operationId: 'op-1' } },
       });
     });
+  });
+
+  it('shows the question of a download that waits on a metered connection again', () => {
+    backend();
+    const instance = instanceFixture({ busy: true });
+    const activeOperation = {
+      kind: 'install' as const,
+      instanceId: instance.id,
+      operationId: 'op-q',
+    };
+    const asking: OperationProgress = {
+      ...progress,
+      operationId: 'op-q',
+      phase: 'awaiting_approval',
+      approval: {
+        bytes: 550 * 1024 * 1024,
+        files: 3955,
+        reason: 'large',
+        monthBytes: 0,
+        monthlyLimitMib: 0,
+      },
+    };
+    render(
+      <>
+        <InstallPanel
+          instance={instance}
+          activeOperation={activeOperation}
+          progress={asking}
+          recentOperations={[]}
+        />
+        <MeteredApproval
+          snapshot={snapshotFixture({
+            instances: [instance],
+            activeOperation,
+            operationProgress: asking,
+          })}
+        />
+      </>,
+    );
+    fireEvent.keyDown(screen.getByRole('dialog'), { key: 'Escape' });
+    expect(screen.queryByRole('dialog')).toBeNull();
+    // A button of the form's size, beside Cancel.
+    const again = screen.getByRole('button', { name: 'Show the question' });
+    expect(again).not.toHaveClass('small');
+    fireEvent.click(again);
+    expect(screen.getByRole('dialog', { name: 'Download 550.0 MiB?' })).toBeVisible();
   });
 
   it('explains the files kept by a cancelled install', () => {

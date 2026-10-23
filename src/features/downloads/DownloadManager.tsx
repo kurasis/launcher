@@ -5,7 +5,7 @@ import { ipc } from '../../lib/ipc';
 import { strings } from '../../lib/strings';
 import { useCommand } from '../../lib/useCommand';
 import { gameLabel } from '../instances/loaderLabel';
-import { DownloadApproval } from '../network/DownloadApproval';
+import { AsideApproval } from '../network/AsideApproval';
 import { sourceNames } from '../network/sourceNames';
 import styles from './DownloadManager.module.css';
 
@@ -103,13 +103,11 @@ export function DownloadManager({
   const queue = snapshot.queue;
   const recent = snapshot.recentOperations.slice(0, 3);
   const working = active !== null;
-  // A download that waits for permission opens the panel until closed (D-051).
-  const [closedFor, setClosedFor] = useState<string | null>(null);
+  // A download that waits for permission asks in a dialog of its own (D-051); the
+  // button shows it waits.
   const asking = progress?.approval ? progress.operationId : null;
-  const shown = open || (asking !== null && closedFor !== asking);
   const close = () => {
     setOpen(false);
-    setClosedFor(asking);
   };
 
   return (
@@ -119,7 +117,7 @@ export function DownloadManager({
         if (event.key === 'Escape') close();
       }}
     >
-      {shown && (
+      {open && (
         <section
           className={[styles.panel, rail && styles.railPanel].filter(Boolean).join(' ')}
           aria-label={t.title}
@@ -168,9 +166,7 @@ export function DownloadManager({
               />
               {details.length > 0 && <p className={styles.muted}>{details.join(' · ')}</p>}
               {progress !== null && <RotatingName names={progress.currentFiles} />}
-              {progress?.approval && (
-                <DownloadApproval operationId={progress.operationId} approval={progress.approval} />
-              )}
+              {asking !== null && <AsideApproval operationId={asking} />}
               <button
                 type="button"
                 className={styles.link}
@@ -234,7 +230,7 @@ export function DownloadManager({
         data-working={working && asking === null ? 'true' : undefined}
         data-asking={asking !== null ? 'true' : undefined}
         aria-label={t.open}
-        aria-expanded={shown}
+        aria-expanded={open}
         title={t.open}
         style={
           percent !== null
@@ -242,7 +238,7 @@ export function DownloadManager({
             : undefined
         }
         onClick={() => {
-          if (shown) close();
+          if (open) close();
           else setOpen(true);
         }}
       >

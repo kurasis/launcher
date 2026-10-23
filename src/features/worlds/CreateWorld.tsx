@@ -15,7 +15,7 @@ import type {
 import { ipc } from '../../lib/ipc';
 import { strings } from '../../lib/strings';
 import { gameLabel } from '../instances/loaderLabel';
-import { Dialog } from '../mods/Dialog';
+import { Dialog } from '../../components/Dialog';
 import { worldsErrorText } from './useWorlds';
 import styles from './Worlds.module.css';
 

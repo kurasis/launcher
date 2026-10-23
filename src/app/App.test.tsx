@@ -357,6 +357,42 @@ describe('App', () => {
     expect(within(header).getByRole('status')).toHaveTextContent('Installing45%');
   });
 
+  it('asks before a large download on a metered connection, by itself', async () => {
+    fakeBackend(
+      snapshotFixture({
+        instances: [instanceFixture({ busy: true })],
+        activeOperation: { kind: 'install', instanceId: instanceFixture().id, operationId: 'op-m' },
+        operationProgress: {
+          sessionEpoch: 'epoch-1',
+          operationId: 'op-m',
+          instanceId: instanceFixture().id,
+          kind: 'install',
+          sequence: 1,
+          revision: 0,
+          phase: 'awaiting_approval',
+          downloadedBytes: 0,
+          totalDownloadBytes: null,
+          verifiedFiles: 0,
+          totalFiles: null,
+          bytesPerSecond: null,
+          currentFiles: [],
+          approval: {
+            bytes: 550 * 1024 * 1024,
+            files: 3955,
+            reason: 'large',
+            monthBytes: 0,
+            monthlyLimitMib: 0,
+          },
+          timestamp: '',
+        },
+      }),
+    );
+    render(<App />);
+    const dialog = await screen.findByRole('dialog', { name: 'Download 550.0 MiB?' });
+    expect(within(dialog).getByRole('button', { name: 'Download' })).toBeVisible();
+    expect(dialog).toHaveFocus();
+  });
+
   it('applies the theme chosen in settings', async () => {
     fakeBackend(snapshotFixture({ settings: { ...snapshotFixture().settings, theme: 'dark' } }));
     render(<App />);

@@ -19,6 +19,18 @@
   background: currentcolor;
 }
 
+/* A kind's name: larger, no dot, and a long name wraps. */
+.chip {
+  padding: var(--space-1) var(--space-3);
+  font-size: var(--font-size-sm);
+  font-weight: 500;
+  white-space: normal;
+}
+
+.chip::before {
+  content: none;
+}
+
 .neutral {
   background: var(--color-neutral-bg);
   color: var(--color-neutral-text);

@@ -1,49 +1,47 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useId, useRef, useState } from 'react';
 import { Button } from '../../components/Button';
+import { Dialog } from '../../components/Dialog';
+import dialog from '../../components/Dialog.module.css';
 import { Notice } from '../../components/Notice';
-import forms from '../../components/forms.module.css';
 import type { InstanceSummary, UserData } from '../../lib/contracts';
 import { formatBytes } from '../../lib/format';
 import { describeIpcError, ipc } from '../../lib/ipc';
 import { strings } from '../../lib/strings';
 import { useCommand } from '../../lib/useCommand';
-import styles from './Instances.module.css';
 import { contents, hasUserData } from './userData';
 
 const t = strings.deleteInstance;
 
 /**
- * Deletes an installation (D-055). It first looks at what the game folder
- * holds; with worlds, mods, packs or screenshots it offers a backup of the
- * whole installation, which can bring it back later from Backups.
+ * Deletes an installation (D-055), as a question in a dialog. It first looks at what
+ * the game folder holds; with worlds, mods, packs or screenshots it offers a backup
+ * of the whole installation, which can bring it back later from Backups.
  */
 export function DeleteInstance({
   instance,
   busy,
   onDeleted,
-  askNow = false,
   onClose,
 }: {
   instance: InstanceSummary;
   /** Something runs; deleting waits until it ends. */
   busy: boolean;
   onDeleted: (message: string) => void;
-  /** Looks at the folder at once and asks, as when "Delete installation" is chosen in a menu. */
-  askNow?: boolean;
-  /** Closes the question for good: Cancel calls it instead of going back to the button. */
-  onClose?: (() => void) | undefined;
+  /** Cancel, Escape: the question goes away and nothing is deleted. */
+  onClose: () => void;
 }) {
   const [data, setData] = useState<UserData | null>(null);
-  const [checking, setChecking] = useState(askNow);
   const [checkError, setCheckError] = useState<string | null>(null);
+  // Each look at the folder; Try again asks once more.
+  const [look, setLook] = useState(0);
+  const cancelRef = useRef<HTMLButtonElement>(null);
+  const bodyId = useId();
   const remove = useCommand((requestId: string, backup: boolean) =>
     ipc.deleteInstance(instance.id, backup, requestId),
   );
   const disabled = busy || instance.busy || remove.pending;
 
-  // Chosen from a menu: the question comes straight away, without a second button.
   useEffect(() => {
-    if (!askNow) return;
     let live = true;
     ipc
       .inspectInstance(instance.id)
@@ -52,28 +50,11 @@ export function DeleteInstance({
       })
       .catch((error: unknown) => {
         if (live) setCheckError(describeIpcError(error));
-      })
-      .finally(() => {
-        if (live) setChecking(false);
       });
     return () => {
       live = false;
     };
-  }, [askNow, instance.id]);
-
-  const ask = () => {
-    setChecking(true);
-    setCheckError(null);
-    ipc
-      .inspectInstance(instance.id)
-      .then(setData)
-      .catch((error: unknown) => {
-        setCheckError(describeIpcError(error));
-      })
-      .finally(() => {
-        setChecking(false);
-      });
-  };
+  }, [instance.id, look]);
 
   const run = (backup: boolean) => {
     const name = instance.displayName;
@@ -83,44 +64,49 @@ export function DeleteInstance({
     });
   };
 
-  if (data === null) {
-    return (
-      <>
-        <div className={forms.actions}>
-          <Button disabled={disabled || checking} onClick={ask}>
-            {t.delete}
-          </Button>
-          {onClose !== undefined && <Button onClick={onClose}>{t.cancel}</Button>}
-        </div>
-        {checkError !== null && <Notice tone="danger">{checkError}</Notice>}
-      </>
-    );
-  }
+  const cancel = () => {
+    remove.reset();
+    onClose();
+  };
 
-  const found = hasUserData(data);
+  const found = data !== null && hasUserData(data);
   return (
-    <Notice tone="warning">
-      <p className={styles.strong}>{t.confirm({ name: instance.displayName })}</p>
-      {found ? (
-        <>
-          <p>{t.holds({ size: formatBytes(data.bytes) })}</p>
-          <ul className={styles.contents}>
-            {contents(data).map((part) => (
-              <li key={part}>{part}</li>
-            ))}
-          </ul>
-          <p>{t.offerBackup}</p>
-        </>
-      ) : (
-        <p>{t.nothing}</p>
-      )}
-      <p className={styles.muted}>{t.shared}</p>
-      {busy && !remove.pending && <p>{t.busy}</p>}
-      {remove.error !== null && <p role="alert">{remove.error}</p>}
-      <div className={forms.actions}>
+    // Cancel takes the focus: a stray Enter deletes nothing.
+    <Dialog
+      title={t.confirm({ name: instance.displayName })}
+      describedBy={bodyId}
+      initialFocus={cancelRef}
+      closable={!remove.pending}
+      onClose={cancel}
+    >
+      {/* What the folder holds replaces "Checking…": read out when it comes. */}
+      <div id={bodyId} className={dialog.body} aria-live="polite">
+        {data === null && checkError === null && <p>{t.checking}</p>}
+        {data !== null &&
+          (found ? (
+            <>
+              <p>{t.holds({ size: formatBytes(data.bytes) })}</p>
+              <ul className={dialog.list}>
+                {contents(data).map((part) => (
+                  <li key={part}>{part}</li>
+                ))}
+              </ul>
+              <p>{t.offerBackup}</p>
+            </>
+          ) : (
+            <p>{t.nothing}</p>
+          ))}
+        {busy && !remove.pending && <p>{t.busy}</p>}
+      </div>
+      {checkError !== null && <Notice tone="danger">{checkError}</Notice>}
+      {data !== null && <p className={dialog.hint}>{t.shared}</p>}
+      {remove.error !== null && <Notice tone="danger">{remove.error}</Notice>}
+      {remove.pending && <p role="status">{t.working}</p>}
+      <div className={dialog.actions}>
         {found && (
           <Button
             variant="primary"
+            size="small"
             disabled={disabled}
             onClick={() => {
               run(true);
@@ -129,26 +115,39 @@ export function DeleteInstance({
             {t.backupAndDelete}
           </Button>
         )}
+        {data !== null && (
+          <Button
+            variant="danger"
+            size="small"
+            disabled={disabled}
+            onClick={() => {
+              run(false);
+            }}
+          >
+            {found ? t.deleteWithoutBackup : t.delete}
+          </Button>
+        )}
+        {checkError !== null && (
+          <Button
+            size="small"
+            onClick={() => {
+              setCheckError(null);
+              setLook((n) => n + 1);
+            }}
+          >
+            {t.retry}
+          </Button>
+        )}
         <Button
-          disabled={disabled}
-          onClick={() => {
-            run(false);
-          }}
-        >
-          {found ? t.deleteWithoutBackup : t.delete}
-        </Button>
-        <Button
+          ref={cancelRef}
+          variant="ghost"
+          size="small"
           disabled={remove.pending}
-          onClick={() => {
-            setData(null);
-            remove.reset();
-            onClose?.();
-          }}
+          onClick={cancel}
         >
           {t.cancel}
         </Button>
       </div>
-      {remove.pending && <p role="status">{t.working}</p>}
-    </Notice>
+    </Dialog>
   );
 }

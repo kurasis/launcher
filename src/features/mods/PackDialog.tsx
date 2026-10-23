@@ -12,7 +12,7 @@ import type {
 import { formatBytes } from '../../lib/format';
 import { describeIpcError, ipc, onModsProgress } from '../../lib/ipc';
 import { strings } from '../../lib/strings';
-import { Dialog } from './Dialog';
+import { Dialog } from '../../components/Dialog';
 import styles from './Mods.module.css';
 
 const metered = strings.metered;

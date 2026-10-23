@@ -15,7 +15,7 @@ import { strings } from '../../lib/strings';
 import { useCommand } from '../../lib/useCommand';
 import styles from './Instances.module.css';
 import { localizeError } from '../../lib/strings';
-import { DownloadApproval } from '../network/DownloadApproval';
+import { AsideApproval } from '../network/AsideApproval';
 
 interface InstallPanelProps {
   instance: InstanceSummary;
@@ -131,13 +131,10 @@ export function InstallPanel({
           ) : (
             <p role="status">{t.phase.resolving}</p>
           )}
-          {ownProgress?.approval && (
-            <DownloadApproval
-              operationId={ownProgress.operationId}
-              approval={ownProgress.approval}
-            />
-          )}
           <div className={forms.actions}>
+            {ownProgress?.approval && (
+              <AsideApproval operationId={ownProgress.operationId} size="normal" />
+            )}
             <Button
               disabled={cancel.pending || ownProgress?.phase === 'cancel_requested'}
               onClick={() => void cancel.run(mine.operationId)}

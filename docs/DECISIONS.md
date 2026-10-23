@@ -1230,9 +1230,12 @@ message` plus a stack trace), with the event's level.
 - **Asking first:** on a metered connection, once an install or repair knows which
   files are missing, a download of at least _N_ MiB (default 100; 0 asks before every
   download) or one that would take this month's traffic past the monthly limit
-  waits for the user. The installation panel and the download manager (which opens by
-  itself, its corner button highlighted) show the size and file count, or the limit
-  and what was used, with **Download** and **Don't download**. Declining cancels the
+  waits for the user. A dialog opens by itself (concept A, D-072) with the size, the
+  file count and the installation, or the limit and what was used, with **Download**
+  and **Don't download**; the dialog holds the focus, so a stray Enter answers
+  nothing. Closed without an answer, the operation keeps waiting: the Downloads button
+  stays highlighted, and the installation panel and the Downloads panel offer **Show
+  the question**. Declining cancels the
   operation like **Cancel**: nothing is downloaded and verified files are kept.
   Once allowed, the rest of that operation (for example its Java) does not ask again.
   The check happens before any byte of the files is fetched, after the free disk space
@@ -1317,7 +1320,8 @@ message` plus a stack trace), with the event's level.
 
 - **Status:** accepted (owner request, 2026-10-18) · **Affects:** installation details,
   Backups, `inspect_instance`, `delete_instance`, `restore_backup`
-- **Delete installation** sits in an installation's details. It first asks the core what
+- **Delete installation** sits in an installation's actions menu and asks in a dialog
+  (concept A, D-072), with Cancel holding the focus. It first asks the core what
   the game folder holds: worlds (by name), mods, resource packs, shader packs and
   screenshots, and the folder's size. With any of them it offers **Back up and
   delete** (a backup of the whole installation, reason "Before deleting"), **Delete
