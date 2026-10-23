@@ -241,15 +241,15 @@ export function adOrder(ads: ServerAd[], seed: number): ServerAd[] {
   return order;
 }
 
-export type ListEntry =
-  { type: 'item'; item: FeedItem } | { type: 'ad'; ad: ServerAd; slot: number };
+export type ListEntry<T = FeedItem> =
+  { type: 'item'; item: T } | { type: 'ad'; ad: ServerAd; slot: number };
 
 /**
  * The list with server ads among its tiles: the second tile, then one every
  * `AD_EVERY`, taking the ads in turn. A list too short for a place shows none there.
  */
-export function withAds(items: FeedItem[], ads: ServerAd[]): ListEntry[] {
-  const entries: ListEntry[] = [];
+export function withAds<T = FeedItem>(items: T[], ads: ServerAd[]): ListEntry<T>[] {
+  const entries: ListEntry<T>[] = [];
   let slot = 0;
   items.forEach((item, index) => {
     const ad = ads[slot % Math.max(1, ads.length)];

@@ -1,5 +1,6 @@
 import { useEffect, useId, useRef, useState } from 'react';
 import { Button } from '../../components/Button';
+import { Icon } from '../../components/Icon';
 import { Notice } from '../../components/Notice';
 import forms from '../../components/forms.module.css';
 import type { FeedProblem, MarkKind } from '../../lib/contracts';
@@ -41,7 +42,7 @@ async function addTo(place: MarkKind, input: string): Promise<string | null> {
 }
 
 /**
- * The + at the end of the feed's chips: adds a YouTube or Twitch channel to
+ * "Add a channel" in the feed's header: adds a YouTube or Twitch channel to
  * the feed right there, the same as Settings → Feed does.
  */
 export function AddChannel({ onAdded }: { onAdded: (place: MarkKind, name: string) => void }) {
@@ -88,12 +89,8 @@ export function AddChannel({ onAdded }: { onAdded: (place: MarkKind, name: strin
         }
       }}
     >
-      <button
+      <Button
         ref={buttonRef}
-        type="button"
-        className={styles.addButton}
-        aria-label={t.addChannel}
-        title={t.addChannel}
         aria-expanded={open}
         aria-controls={open ? panelId : undefined}
         onClick={() => {
@@ -101,8 +98,9 @@ export function AddChannel({ onAdded }: { onAdded: (place: MarkKind, name: strin
           else setOpen(true);
         }}
       >
-        <span aria-hidden="true">+</span>
-      </button>
+        <Icon name="plus" size={18} />
+        {t.addChannel}
+      </Button>
       {open && (
         <div id={panelId} role="dialog" aria-label={t.addChannel} className={styles.addPanel}>
           <fieldset disabled={busy}>

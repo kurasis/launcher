@@ -85,15 +85,9 @@ export type Messages = {
     };
     readonly stale: (values: { date: string | number }) => string;
     readonly noteStale: string;
-    readonly continueTitle: string;
-    readonly lastPlayed: (values: { when: string | number }) => string;
-    readonly play: string;
     readonly starting: string;
     readonly gameRunning: string;
-    readonly openInstallations: string;
-    readonly newVersion: string;
     readonly versionTitle: (values: { version: string | number }) => string;
-    readonly readNote: string;
     readonly install: (values: { version: string | number }) => string;
     readonly playVersion: (values: { version: string | number }) => string;
     readonly filters: string;
@@ -118,11 +112,18 @@ export type Messages = {
       readonly pre: string;
       readonly rc: string;
       readonly news: string;
+      readonly video: string;
+      readonly stream: string;
     };
     readonly short: string;
     readonly live: string;
     readonly viewers: (values: { count: number }) => string;
     readonly watchVideo: (values: { title: string | number; channel: string | number }) => string;
+    readonly watchVideoLength: (values: {
+      title: string | number;
+      channel: string | number;
+      length: string | number;
+    }) => string;
     readonly watchStream: (values: {
       name: string | number;
       title: string | number;
@@ -171,6 +172,7 @@ export type Messages = {
       readonly players: (values: { online: number }) => string;
       readonly licensedOnly: string;
       readonly needsLicense: string;
+      readonly kind: string;
     };
     readonly itemMenu: (values: { title: string | number }) => string;
     readonly copyLink: string;

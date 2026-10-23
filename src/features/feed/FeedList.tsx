@@ -1,7 +1,7 @@
-import { type ReactNode, useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Button } from '../../components/Button';
-import { StatusBadge } from '../../components/StatusBadge';
-import { type MenuItem, MoreMenu } from '../../app/MoreMenu';
+import { Icon } from '../../components/Icon';
+import type { MenuItem } from '../../app/MoreMenu';
 import type {
   AppSnapshot,
   ChannelMark,
@@ -12,12 +12,25 @@ import type {
   FeedStream,
   FeedMarks,
   FeedVideo,
+  LatestVersion,
   MarkList,
   NoteCard,
   ServerAd,
 } from '../../lib/contracts';
 import { ipc } from '../../lib/ipc';
 import { strings } from '../../lib/strings';
+import {
+  Avatar,
+  Card,
+  CardMenu,
+  Cell,
+  KindChip,
+  type KindTone,
+  Mosaic,
+  Picture,
+  PlayCircle,
+  Skeletons,
+} from './Card';
 import {
   adOrder,
   channelOf,
@@ -34,10 +47,12 @@ import {
   withAds,
   withLiveStreams,
 } from './list';
+import { ASPECT, pictureAspect } from './mosaic';
 import { ServerAdTile } from './ServerAdTile';
 import { kindLabel } from './parts';
 import { pictureUrl } from './pictureUrl';
-import { relativeTime, shortDate } from './when';
+import { VersionAction } from './VersionAction';
+import { cardDate, count, liveNow, videoLength } from './when';
 import styles from './Feed.module.css';
 
 const t = strings.feed;
@@ -45,66 +60,67 @@ const t = strings.feed;
 /** How far below the screen the next page is asked for. */
 const AHEAD = '800px';
 
-type Tone = 'neutral' | 'success' | 'warning' | 'danger';
+/** The source of patch notes and news: brand names, the same in every language. */
+const MINECRAFT = 'Minecraft';
+const MINECRAFT_NET = 'Minecraft.net';
 
-/**
- * One tile of the grid: a picture (or, without one, a plain cover with
- * `cover` on it), badges, the title and a line under it. The title's button
- * covers the whole tile.
- */
-function Tile({
-  image,
-  cover,
-  overlay,
-  badges,
-  title,
-  label,
-  line,
-  onClick,
-  menu,
-  dimmed = false,
+/** A picture's box when there is no picture: the version or the kind, on a plain cover. */
+function Cover({ text }: { text: string }) {
+  return (
+    <span className={styles.cover} dir="auto">
+      {text}
+    </span>
+  );
+}
+
+/** The source of a card: its picture or letter, and its name. */
+function Source({
+  avatar,
+  name,
+  favorite = false,
+  square = false,
 }: {
-  image: string | null;
-  cover: string;
-  overlay: { tone: Tone; label: string } | null;
-  badges: ReactNode;
-  title: string;
-  /** The button's name when the title alone does not say what it does. */
-  label?: string;
-  line: string;
-  onClick: () => void;
-  /** The ⋯ menu in the corner. */
-  menu: ReactNode;
-  /** Seen already: shown fainter. */
-  dimmed?: boolean;
+  avatar: string | null;
+  name: string;
+  favorite?: boolean;
+  square?: boolean;
 }) {
   return (
-    <article className={dimmed ? [styles.tile, styles.watched].join(' ') : styles.tile}>
-      {menu}
-      <span className={styles.preview}>
-        {image !== null ? (
-          <img src={image} alt="" loading="lazy" />
-        ) : (
-          <span className={styles.cover} dir="auto">
-            {cover}
-          </span>
-        )}
-        {overlay !== null && (
-          <span className={styles.overlayBadge}>
-            <StatusBadge tone={overlay.tone} label={overlay.label} />
-          </span>
-        )}
-      </span>
-      <div className={styles.tileText}>
-        {badges !== null && <div className={styles.badges}>{badges}</div>}
-        <h3 className={styles.tileTitle}>
-          <button type="button" className={styles.cardButton} aria-label={label} onClick={onClick}>
-            {title}
-          </button>
-        </h3>
-        {line !== '' && <p className={styles.tileLine}>{line}</p>}
-      </div>
-    </article>
+    <span className={styles.source}>
+      <Avatar key={avatar ?? ''} src={avatar} name={name} square={square} />
+      {favorite && (
+        <>
+          <Icon name="star" size={14} className={styles.star} />
+          <span className={styles.visuallyHidden}>{t.favoriteBadge}</span>
+        </>
+      )}
+      <bdi className={styles.sourceName}>{name}</bdi>
+    </span>
+  );
+}
+
+function noteTone(card: NoteCard): KindTone {
+  return card.kind === null ? 'neutral' : card.kind === 'release' ? 'success' : 'warning';
+}
+
+/** The meta line of a patch note or a news item. */
+function NoteMeta({ card }: { card: NoteCard }) {
+  const source = card.kind === null ? MINECRAFT_NET : MINECRAFT;
+  return (
+    <>
+      <Source avatar={null} name={source} />
+      <KindChip tone={noteTone(card)} label={kindLabel(card)} />
+      <span className={styles.date}>{cardDate(card.date)}</span>
+    </>
+  );
+}
+
+/** The version on a picture, at its top start. */
+function VersionBadge({ version }: { version: string }) {
+  return (
+    <span className={[styles.chip, styles.chipVersion, styles.topStart].join(' ')} dir="ltr">
+      {version}
+    </span>
   );
 }
 
@@ -117,7 +133,7 @@ async function liveStreams(): Promise<FeedStream[]> {
   );
 }
 
-/** What a tile's ⋯ menu does. */
+/** What a card's ⋯ menu does. */
 interface ItemActions {
   marks: FeedMarks;
   onMark: (channel: ChannelMark, list: MarkList | null) => void;
@@ -125,7 +141,7 @@ interface ItemActions {
   watched: ReadonlySet<string>;
 }
 
-/** The ⋯ menu of a tile: copy its link, show its channel first or not at all. */
+/** The ⋯ menu of a card: copy its link, show its channel first or not at all. */
 function ItemMenu({
   item,
   title,
@@ -170,18 +186,7 @@ function ItemMenu({
     );
   }
   if (entries.length === 0) return null;
-  return (
-    <span className={styles.tileMenu}>
-      <MoreMenu
-        label="⋯"
-        ariaLabel={t.itemMenu({ title })}
-        buttonClassName={styles.tileMenuButton}
-        caret={false}
-        current={false}
-        entries={entries}
-      />
-    </span>
-  );
+  return <CardMenu label={t.itemMenu({ title })} entries={entries} />;
 }
 
 function NoteItem({
@@ -193,23 +198,87 @@ function NoteItem({
   onOpen: (card: NoteCard) => void;
   actions: ItemActions;
 }) {
+  const image = pictureUrl(card.image);
   return (
-    <Tile
-      image={pictureUrl(card.image)}
-      cover={card.version ?? kindLabel(card)}
-      overlay={null}
-      badges={
-        <>
-          <StatusBadge tone={card.kind === null ? 'neutral' : 'success'} label={kindLabel(card)} />
-          <span className={styles.muted}>{shortDate(card.date)}</span>
-        </>
+    <Card
+      aspect={image === null ? ASPECT.wide : pictureAspect(card.imageWidth, card.imageHeight)}
+      media={
+        image !== null ? <Picture src={image} /> : <Cover text={card.version ?? kindLabel(card)} />
       }
       title={card.title}
-      line={card.summary}
       onClick={() => {
         onOpen(card);
       }}
+      meta={<NoteMeta card={card} />}
       menu={<ItemMenu item={{ type: 'note', note: card }} title={card.title} actions={actions} />}
+    />
+  );
+}
+
+/**
+ * The newest version, first in the mosaic and taller (the old hero): its patch note
+ * opens from the card, and Play or Install for it sits under the title. Without a
+ * note it is the newest release alone.
+ */
+function VersionCard({
+  featured,
+  snapshot,
+  onOpen,
+  onOpenInstallations,
+  onInstallVersion,
+}: {
+  featured: Featured;
+  snapshot: AppSnapshot;
+  onOpen: (card: NoteCard) => void;
+  onOpenInstallations: (instanceId: string | null) => void;
+  onInstallVersion: (versionId: string) => void;
+}) {
+  const { note, release } = featured;
+  const version = note !== null ? note.version : (release?.id ?? null);
+  const image = pictureUrl(note?.image ?? null);
+  const title = note?.title ?? t.versionTitle({ version: release?.id ?? '' });
+  const kind: NoteCard = note ?? {
+    id: '',
+    title,
+    date: release?.date ?? '',
+    summary: '',
+    translated: false,
+    version,
+    kind: 'release',
+    image: null,
+    imageWidth: null,
+    imageHeight: null,
+    url: null,
+  };
+  return (
+    <Card
+      aspect={ASPECT.tall}
+      media={
+        <>
+          {image !== null ? <Picture src={image} /> : <Cover text={version ?? kindLabel(kind)} />}
+          {/* Without a picture the cover says the version already. */}
+          {version !== null && image !== null && <VersionBadge version={version} />}
+        </>
+      }
+      title={title}
+      onClick={
+        note === null
+          ? null
+          : () => {
+              onOpen(note);
+            }
+      }
+      meta={<NoteMeta card={kind} />}
+      extra={
+        version !== null && (
+          <VersionAction
+            snapshot={snapshot}
+            version={version}
+            onOpenInstallations={onOpenInstallations}
+            onInstallVersion={onInstallVersion}
+          />
+        )
+      }
     />
   );
 }
@@ -226,26 +295,52 @@ function VideoItem({
   const item: FeedItem = { type: 'video', video };
   const favorite = onList(actions.marks.favorite, channelOf(item));
   const watched = actions.watched.has(video.id);
+  // A Short stands upright: its own upright picture, else the wide one cropped.
+  const image = video.short
+    ? (pictureUrl(video.imageTall) ?? pictureUrl(video.image))
+    : pictureUrl(video.image);
+  const length = video.short ? null : videoLength(video.duration);
   return (
-    <Tile
-      image={pictureUrl(video.image)}
-      cover={video.channel}
-      overlay={video.short ? { tone: 'neutral', label: t.short } : null}
-      badges={
-        favorite || watched ? (
-          <>
-            {favorite && <StatusBadge tone="warning" label={t.favoriteBadge} />}
-            {watched && <StatusBadge tone="neutral" label={t.watched} />}
-          </>
-        ) : null
+    <Card
+      aspect={video.short ? ASPECT.short : ASPECT.wide}
+      media={
+        <>
+          {image !== null ? <Picture src={image} /> : <Cover text={video.channel} />}
+          <PlayCircle small={video.short} />
+          {video.short && (
+            <span className={[styles.chip, styles.bottomStart].join(' ')} aria-hidden="true">
+              {t.short}
+            </span>
+          )}
+          {length !== null && (
+            <span
+              className={[styles.chip, styles.bottomEnd].join(' ')}
+              dir="ltr"
+              aria-hidden="true"
+            >
+              {length}
+            </span>
+          )}
+        </>
       }
       dimmed={watched}
       title={video.title}
-      label={t.watchVideo({ title: video.title, channel: video.channel })}
-      line={`${video.channel} · ${relativeTime(video.date)}`}
+      label={
+        length === null
+          ? t.watchVideo({ title: video.title, channel: video.channel })
+          : t.watchVideoLength({ title: video.title, channel: video.channel, length })
+      }
       onClick={() => {
         onPlay(video);
       }}
+      meta={
+        <>
+          <Source avatar={pictureUrl(video.avatar)} name={video.channel} favorite={favorite} />
+          <KindChip tone="neutral" label={video.short ? t.short : t.kinds.video} />
+          <span className={styles.date}>{cardDate(video.date)}</span>
+          {watched && <span className={styles.visuallyHidden}>{t.watched}</span>}
+        </>
+      }
       menu={<ItemMenu item={item} title={video.title} actions={actions} />}
     />
   );
@@ -264,21 +359,47 @@ function StreamItem({
   const item: FeedItem = { type: 'stream', stream };
   const favorite = onList(actions.marks.favorite, channelOf(item));
   const title = stream.title !== '' ? stream.title : stream.name;
+  const image = pictureUrl(stream.image);
   return (
-    <Tile
-      image={pictureUrl(stream.image)}
-      cover={stream.name}
-      overlay={{ tone: 'danger', label: t.live }}
-      badges={favorite ? <StatusBadge tone="warning" label={t.favoriteBadge} /> : null}
+    <Card
+      aspect={ASPECT.wide}
+      media={
+        <>
+          {image !== null ? <Picture src={image} /> : <Cover text={stream.name} />}
+          <span
+            className={[styles.chip, styles.chipLive, styles.topStart].join(' ')}
+            aria-hidden="true"
+          >
+            <Icon name="live" size={14} />
+            {t.live}
+          </span>
+          <span className={[styles.chip, styles.bottomStart].join(' ')} aria-hidden="true">
+            <Icon name="eye" size={14} />
+            <bdi>{count(stream.viewers)}</bdi>
+          </span>
+        </>
+      }
       title={title}
       label={t.watchStream({ name: stream.name, title: stream.title, viewers })}
-      line={`${stream.name} · ${viewers}`}
       onClick={() => {
         onPlay(stream);
       }}
+      meta={
+        <>
+          <Source avatar={pictureUrl(stream.avatar)} name={stream.name} favorite={favorite} />
+          <KindChip tone="danger" label={t.kinds.stream} />
+          <span className={styles.date}>{liveNow()}</span>
+        </>
+      }
       menu={<ItemMenu item={item} title={title} actions={actions} />}
     />
   );
+}
+
+/** The newest version shown first in the mosaic: its note, or the newest release alone. */
+export interface Featured {
+  note: NoteCard | null;
+  release: LatestVersion | null;
 }
 
 interface FeedListProps {
@@ -299,8 +420,10 @@ interface FeedListProps {
   /** Changes every few minutes: the live streams are asked again. */
   liveTick: number;
   filter: FeedFilter;
-  /** A note shown above the list already. */
-  skip: string | null;
+  /** The newest version, first and taller; it is not repeated further down. */
+  featured?: Featured | null;
+  onOpenInstallations?: (instanceId: string | null) => void;
+  onInstallVersion?: (versionId: string) => void;
   onOpen: (card: NoteCard) => void;
   onPlayVideo: (video: FeedVideo) => void;
   onPlayStream: (stream: FeedStream) => void;
@@ -311,9 +434,27 @@ interface FeedListProps {
 
 type Loading = 'first' | 'more' | 'idle' | 'failed';
 
+/** The feed's first load: grey cards where the mosaic is coming, and the words for screen readers. */
+export function FeedLoading() {
+  return (
+    <>
+      <p role="status" className={styles.visuallyHidden}>
+        {t.loading}
+      </p>
+      <Mosaic busy>
+        <Skeletons rows={3} tall={[0, 4, 8]} />
+      </Mosaic>
+    </>
+  );
+}
+
+function ignore() {
+  // Nothing to open: the list was given no way to.
+}
+
 /**
  * The endless list (D-067): patch notes, news, videos and streams mixed,
- * newest first, as a grid of tiles, several to a row. The next page is asked for as the end
+ * newest first, as a mosaic of cards. The next page is asked for as the end
  * of the list comes near. Give it a key that changes when the list should
  * start again (the part, languages, settings, Refresh).
  */
@@ -329,7 +470,9 @@ export function FeedList({
   watched,
   liveTick,
   filter,
-  skip,
+  featured = null,
+  onOpenInstallations = ignore,
+  onInstallVersion = ignore,
   onOpen,
   onPlayVideo,
   onPlayStream,
@@ -451,7 +594,7 @@ export function FeedList({
       videosShown(own),
       streamsWanted ? ownStreams : [],
       next !== null && !kept,
-      skip,
+      featured?.note?.id ?? null,
     ),
     favoriteItems,
     marks.hidden,
@@ -460,7 +603,11 @@ export function FeedList({
   // The order ads take their places in stays while this list is shown.
   const [seed] = useState(Math.random);
   const ordered = useMemo(() => adOrder(ads, seed), [ads, seed]);
-  const entries = withAds(items, filter === 'all' && snapshot !== undefined ? ordered : []);
+  // The newest version takes the first place, so an ad is still the second card.
+  const entries = withAds<FeedItem | null>(
+    featured !== null && snapshot !== undefined ? [null, ...items] : items,
+    filter === 'all' && snapshot !== undefined ? ordered : [],
+  );
   const empty =
     filter === 'videos' || filter === 'shorts'
       ? t.noVideos
@@ -470,36 +617,53 @@ export function FeedList({
           ? t.nothing
           : t.noArticles;
 
-  if (loading === 'first') return <p role="status">{t.loading}</p>;
+  if (loading === 'first') return <FeedLoading />;
+  const cards = (entries.length > 0 || featured !== null) && (
+    <Mosaic label={t.filter[filter]} busy={loading === 'more'}>
+      {featured !== null && snapshot !== undefined && (
+        <Cell key="featured">
+          <VersionCard
+            featured={featured}
+            snapshot={snapshot}
+            onOpen={onOpen}
+            onOpenInstallations={onOpenInstallations}
+            onInstallVersion={onInstallVersion}
+          />
+        </Cell>
+      )}
+      {entries.map((entry) =>
+        entry.type === 'ad' ? (
+          snapshot !== undefined && (
+            <Cell key={`ad:${String(entry.slot)}:${entry.ad.id}`}>
+              <ServerAdTile ad={entry.ad} snapshot={snapshot} />
+            </Cell>
+          )
+        ) : entry.item === null ? null : (
+          <Cell key={itemKey(entry.item)}>
+            {entry.item.type === 'note' ? (
+              <NoteItem card={entry.item.note} onOpen={onOpen} actions={actions} />
+            ) : entry.item.type === 'video' ? (
+              <VideoItem video={entry.item.video} onPlay={onPlayVideo} actions={actions} />
+            ) : (
+              <StreamItem stream={entry.item.stream} onPlay={onPlayStream} actions={actions} />
+            )}
+          </Cell>
+        ),
+      )}
+      {loading === 'more' && <Skeletons rows={1} />}
+    </Mosaic>
+  );
   return (
     <>
-      {items.length === 0 ? (
-        <p className={styles.muted}>{empty}</p>
-      ) : (
-        <ul className={styles.list} aria-label={t.filter[filter]}>
-          {entries.map((entry) =>
-            entry.type === 'ad' ? (
-              snapshot !== undefined && (
-                <li key={`ad:${String(entry.slot)}:${entry.ad.id}`}>
-                  <ServerAdTile ad={entry.ad} snapshot={snapshot} />
-                </li>
-              )
-            ) : (
-              <li key={itemKey(entry.item)}>
-                {entry.item.type === 'note' ? (
-                  <NoteItem card={entry.item.note} onOpen={onOpen} actions={actions} />
-                ) : entry.item.type === 'video' ? (
-                  <VideoItem video={entry.item.video} onPlay={onPlayVideo} actions={actions} />
-                ) : (
-                  <StreamItem stream={entry.item.stream} onPlay={onPlayStream} actions={actions} />
-                )}
-              </li>
-            ),
-          )}
-        </ul>
-      )}
+      {cards}
+      {items.length === 0 && <p className={styles.muted}>{empty}</p>}
       <div ref={end} className={styles.listEnd}>
-        {loading === 'more' && <p role="status">{t.loadingMore}</p>}
+        {loading === 'more' && (
+          <p role="status" className={styles.loadingMore}>
+            <span className={styles.spinner} aria-hidden="true" />
+            {t.loadingMore}
+          </p>
+        )}
         {loading === 'failed' && (
           <>
             <p className={styles.muted}>{t.moreFailed}</p>

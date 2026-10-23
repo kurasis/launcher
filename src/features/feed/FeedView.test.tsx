@@ -19,6 +19,8 @@ import { FeedView } from './FeedView';
 import { pictureUrl } from './pictureUrl';
 
 const SHA = '0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef';
+/** The newest version: the first card of All. */
+const NEWEST = 'Minecraft 26.4 Snapshot 4';
 
 const newsCard: Feed['news'][number] = {
   id: 'n-a-new-mob',
@@ -282,31 +284,35 @@ describe('FeedView', () => {
     setLanguage('en');
   });
 
-  it('shows the newest version, one mixed list and the side column', async () => {
+  it('shows the newest version first, one mixed mosaic and the updates', async () => {
     const calls = backend();
     const { onInstallVersion } = show();
-    const hero = await screen.findByRole('region', { name: 'Minecraft 26.4 Snapshot 4' });
+    const hero = await screen.findByRole('article', { name: NEWEST });
     expect(within(hero).getByText('Snapshot')).toBeVisible();
+    // It is the first card of the mosaic.
+    const all = screen.getByRole('list', { name: 'All' });
+    expect(within(all).getAllByRole('listitem')[0]).toContainElement(hero);
     fireEvent.click(within(hero).getByRole('button', { name: 'Install 26.4-snapshot-4' }));
     expect(onInstallVersion).toHaveBeenCalledWith('26.4-snapshot-4');
 
     // Streams, videos and articles in one list, newest first, a page at a time.
     await screen.findByRole('list', { name: 'All' });
-    expect(titles('All')).toEqual(['Building a castle', 'A long video']);
+    expect(titles('All')).toEqual([NEWEST, 'Building a castle', 'A long video']);
     const stream = screen.getByRole('button', {
       name: 'Watch Some Streamer live: Building a castle (1,234 viewers)',
     });
     expect(stream).toBeVisible();
     expect(screen.getByText('Live')).toBeVisible();
     fireEvent.click(screen.getByRole('button', { name: 'Show more' }));
-    // The newest version is above the list, not in it again.
+    // The newest version is the first card, not in the list again.
     await waitFor(() => {
-      expect(titles('All')).toEqual(['Building a castle', 'A long video', 'A new mob']);
+      expect(titles('All')).toEqual([NEWEST, 'Building a castle', 'A long video', 'A new mob']);
     });
     expect(screen.queryByText('Machine-translated')).toBeNull();
     fireEvent.click(screen.getByRole('button', { name: 'Show more' }));
     expect(await screen.findByText('That’s everything for now.')).toBeVisible();
     expect(titles('All')).toEqual([
+      NEWEST,
       'Building a castle',
       'A long video',
       'A new mob',
@@ -349,7 +355,8 @@ describe('FeedView', () => {
     show();
     const list = await screen.findByRole('list', { name: 'All' });
     const tile = await within(list).findByRole('article', { name: 'Ad: Northern Land' });
-    expect(tile.closest('li')).toBe(list.children[1]);
+    // Second, after the newest version.
+    expect(tile.closest('[role="listitem"]')).toBe(within(list).getAllByRole('listitem')[1]);
     expect(calls.find((c) => c.cmd === 'feed_server_ads')?.args).toEqual({
       place: 'feed',
       refresh: false,
@@ -419,7 +426,8 @@ describe('FeedView', () => {
     await screen.findByRole('list', { name: 'All' });
     const sources = Array.from(document.querySelectorAll('img'), (img) => img.getAttribute('src'));
     expect(sources.length).toBeGreaterThan(0);
-    for (const src of sources) expect(src).toMatch(/^feed:\/\/localhost\/(img|yt|tw)\//);
+    // Previews, upright Shorts and channel pictures: never anything else.
+    for (const src of sources) expect(src).toMatch(/^feed:\/\/localhost\/(img|yt|ys|tw|ya|ta)\//);
     expect(pictureUrl('yt/../../settings.json')).toBeNull();
     expect(pictureUrl('https://evil.example/x.jpg')).toBeNull();
     expect(pictureUrl(`img/${SHA}.jpg`)).toBe(`feed://localhost/img/${SHA}.jpg`);
@@ -478,12 +486,12 @@ describe('FeedView', () => {
       },
     });
     show(snapshotWith({ snapshots: false, shorts: true, hidden: ['streams', 'news'] }));
-    // Without snapshots, the newest version is the release, above the list.
+    // Without snapshots, the newest version is the release, first in the list.
     expect(await screen.findByRole('button', { name: 'Install 26.3' })).toBeVisible();
     await screen.findByRole('list', { name: 'All' });
-    expect(titles('All')).toEqual(['A short one', 'A long video']);
+    expect(titles('All')).toEqual(['Minecraft 26.3', 'A short one', 'A long video']);
     const list = screen.getByRole('list', { name: 'All' });
-    expect(within(list).getByText('Shorts')).toBeVisible();
+    expect(within(list).getAllByText('Shorts').length).toBeGreaterThan(0);
     expect(screen.queryByRole('button', { name: 'Show more' })).toBeNull();
     expect(screen.queryByRole('region', { name: 'Update cycle' })).toBeNull();
     const chips = screen.getByRole('group', { name: 'Show in the feed' });
@@ -569,8 +577,8 @@ describe('FeedView', () => {
       },
     });
     show();
-    fireEvent.click(await screen.findByRole('button', { name: 'Read the patch notes' }));
-    const dialog = await screen.findByRole('dialog', { name: 'Minecraft 26.4 Snapshot 4' });
+    fireEvent.click(await screen.findByRole('button', { name: NEWEST }));
+    const dialog = await screen.findByRole('dialog', { name: NEWEST });
     expect(await within(dialog).findByRole('alert')).toHaveTextContent(
       'The feed cannot be reached. Check the internet connection.',
     );
@@ -581,7 +589,10 @@ describe('FeedView', () => {
   it('plays videos and streams through the core', async () => {
     const calls = backend();
     show();
-    fireEvent.click(await screen.findByRole('button', { name: 'Watch “A long video” by Builder' }));
+    // A video's length is in its name: the chip on its picture is only a picture.
+    fireEvent.click(
+      await screen.findByRole('button', { name: 'Watch “A long video” by Builder, length 12:34' }),
+    );
     fireEvent.click(
       screen.getByRole('button', {
         name: 'Watch Some Streamer live: Building a castle (1,234 viewers)',
@@ -642,13 +653,13 @@ describe('FeedView', () => {
       });
       show();
       await screen.findByRole('list', { name: 'All' });
-      expect(titles('All')).toEqual(['Building a castle', 'A long video']);
+      expect(titles('All')).toEqual([NEWEST, 'Building a castle', 'A long video']);
       // Ended, a stream leaves the mixed list; that list shows only the
       // most watched few, so a new one waits for Refresh there.
       live = [later];
       await vi.advanceTimersByTimeAsync(3 * 60 * 1000);
       await waitFor(() => {
-        expect(titles('All')).toEqual(['A long video']);
+        expect(titles('All')).toEqual([NEWEST, 'A long video']);
       });
       expect(
         calls.filter((c) => c.cmd === 'feed_page' && c.args.filter === 'streams'),
@@ -727,7 +738,7 @@ describe('FeedView', () => {
     show();
     await screen.findByRole('list', { name: 'All' });
     await waitFor(() => {
-      expect(titles('All')[0]).toBe('An old favourite');
+      expect(titles('All')[1]).toBe('An old favourite');
     });
     const tile = screen
       .getByRole('button', { name: /^Watch “An old favourite”/ })
@@ -738,7 +749,7 @@ describe('FeedView', () => {
     fireEvent.click(screen.getByRole('button', { name: 'More: An old favourite' }));
     fireEvent.click(screen.getByRole('menuitem', { name: 'Stop showing Loved first' }));
     await waitFor(() => {
-      expect(titles('All')[0]).toBe('Building a castle');
+      expect(titles('All')[1]).toBe('Building a castle');
     });
   });
 
@@ -753,7 +764,7 @@ describe('FeedView', () => {
     expect(await screen.findByText('Link copied.')).toBeVisible();
   });
 
-  it('adds a Twitch channel from the + by the chips', async () => {
+  it('adds a Twitch channel from the header', async () => {
     const calls = backend({
       feed_streamers: () => [],
       feed_add_streamer: () => [{ login: 'ph1lza', name: 'Ph1LzA' }],
@@ -778,7 +789,7 @@ describe('FeedView', () => {
     });
   });
 
-  it('says why a channel from the + was not added', async () => {
+  it('says why a channel from the header was not added', async () => {
     backend({
       feed_channels: () => [],
       feed_add_channel: () => {
@@ -851,8 +862,9 @@ describe('FeedView', () => {
     );
     show(snapshotWith({}, { instances: [] }));
     expect(await screen.findByText('Nothing here yet.')).toBeVisible();
-    // The newest release still has its card.
-    expect(screen.getByRole('region', { name: 'Minecraft 26.3' })).toBeVisible();
+    // The newest release still has its card, with Install.
+    const release = screen.getByRole('article', { name: 'Minecraft 26.3' });
+    expect(within(release).getByRole('button', { name: 'Install 26.3' })).toBeVisible();
     const chips = screen.getByRole('group', { name: 'Show in the feed' });
     fireEvent.click(within(chips).getByRole('button', { name: 'News' }));
     expect(await screen.findByText('No patch notes or news here yet.')).toBeVisible();
@@ -862,7 +874,7 @@ describe('FeedView', () => {
     expect(await screen.findByText('No one is streaming Minecraft right now.')).toBeVisible();
   });
 
-  it('continues the installation played last', async () => {
+  it('leaves Play for the installation played last to the launch bar', async () => {
     const calls = backend();
     const played = instanceFixture({
       id: '11111111-2222-4333-8444-555555555555',
@@ -870,18 +882,13 @@ describe('FeedView', () => {
       health: 'ready',
       lastPlayedAt: '2026-10-18T12:00:00Z',
     });
-    const older = instanceFixture({ lastPlayedAt: '2026-10-01T12:00:00Z', health: 'ready' });
-    const { onOpenInstallations } = show(snapshotWith({}, { instances: [older, played] }));
-    const card = await screen.findByRole('region', { name: 'Continue playing' });
-    expect(within(card).getByText(/Creative/)).toBeVisible();
-    fireEvent.click(within(card).getByRole('button', { name: 'Play' }));
-    await waitFor(() => {
-      expect(calls.find((c) => c.cmd === 'launch_game')?.args).toMatchObject({
-        request: { payload: { instanceId: played.id } },
-      });
-    });
-    fireEvent.click(within(card).getByRole('button', { name: 'Installations' }));
-    expect(onOpenInstallations).toHaveBeenCalledWith(played.id);
+    show(snapshotWith({}, { instances: [played] }));
+    await screen.findByRole('list', { name: 'All' });
+    expect(screen.queryByRole('region', { name: 'Continue playing' })).toBeNull();
+    expect(screen.queryByText(/Creative/)).toBeNull();
+    expect(screen.queryByText(/Last played/)).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Play' })).toBeNull();
+    expect(calls.some((c) => c.cmd === 'launch_game')).toBe(false);
   });
 
   it('shows videos of the player’s own channels', async () => {
@@ -907,7 +914,13 @@ describe('FeedView', () => {
     expect(screen.queryByRole('button', { name: 'Watch “My build” by Mine' })).toBeNull();
     fireEvent.click(screen.getByRole('button', { name: 'Show more' }));
     expect(await screen.findByRole('button', { name: 'Watch “My build” by Mine' })).toBeVisible();
-    expect(titles('All')).toEqual(['Building a castle', 'A long video', 'My build', 'A new mob']);
+    expect(titles('All')).toEqual([
+      NEWEST,
+      'Building a castle',
+      'A long video',
+      'My build',
+      'A new mob',
+    ]);
   });
 
   it('streams of the player’s own Twitch channels go in the list', async () => {
@@ -929,7 +942,7 @@ describe('FeedView', () => {
     expect(
       await screen.findByRole('button', { name: 'Watch Ph1LzA live: Hardcore day 1 (50 viewers)' }),
     ).toBeVisible();
-    expect(titles('All')[0]).toBe('Hardcore day 1');
+    expect(titles('All')[1]).toBe('Hardcore day 1');
   });
 
   it('a version’s note plays that version where it is installed, and installs it elsewhere', async () => {
@@ -940,10 +953,10 @@ describe('FeedView', () => {
       health: 'ready',
     });
     show(snapshotWith({}, { instances: [ready] }));
-    const hero = await screen.findByRole('region', { name: 'Minecraft 26.4 Snapshot 4' });
+    const hero = await screen.findByRole('article', { name: NEWEST });
     expect(within(hero).getByRole('button', { name: 'Play 26.4-snapshot-4' })).toBeVisible();
-    fireEvent.click(within(hero).getByRole('button', { name: 'Read the patch notes' }));
-    const dialog = await screen.findByRole('dialog', { name: 'Minecraft 26.4 Snapshot 4' });
+    fireEvent.click(within(hero).getByRole('button', { name: NEWEST }));
+    const dialog = await screen.findByRole('dialog', { name: NEWEST });
     fireEvent.click(within(dialog).getByRole('button', { name: 'Play 26.4-snapshot-4' }));
     await waitFor(() => {
       expect(calls.find((c) => c.cmd === 'launch_game')?.args).toMatchObject({
@@ -955,9 +968,9 @@ describe('FeedView', () => {
   it('a version’s note installs it, or opens the installation not ready yet', async () => {
     backend({ feed_note: versionNote });
     const { onInstallVersion } = show();
-    const hero = await screen.findByRole('region', { name: 'Minecraft 26.4 Snapshot 4' });
-    fireEvent.click(within(hero).getByRole('button', { name: 'Read the patch notes' }));
-    let dialog = await screen.findByRole('dialog', { name: 'Minecraft 26.4 Snapshot 4' });
+    const hero = await screen.findByRole('article', { name: NEWEST });
+    fireEvent.click(within(hero).getByRole('button', { name: NEWEST }));
+    let dialog = await screen.findByRole('dialog', { name: NEWEST });
     fireEvent.click(within(dialog).getByRole('button', { name: 'Install 26.4-snapshot-4' }));
     expect(onInstallVersion).toHaveBeenCalledWith('26.4-snapshot-4');
     cleanup();
@@ -968,12 +981,124 @@ describe('FeedView', () => {
       health: 'not_installed',
     });
     const { onOpenInstallations } = show(snapshotWith({}, { instances: [half] }));
-    fireEvent.click(
-      await screen.findByRole('button', { name: 'Read the patch notes' }, { timeout: 2000 }),
-    );
-    dialog = await screen.findByRole('dialog', { name: 'Minecraft 26.4 Snapshot 4' });
+    fireEvent.click(await screen.findByRole('button', { name: NEWEST }, { timeout: 2000 }));
+    dialog = await screen.findByRole('dialog', { name: NEWEST });
     fireEvent.click(within(dialog).getByRole('button', { name: 'Install 26.4-snapshot-4' }));
     expect(onOpenInstallations).toHaveBeenCalledWith(half.id);
+  });
+
+  it('has one pill pressed at a time, All at first', async () => {
+    backend();
+    show();
+    const pills = await screen.findByRole('group', { name: 'Show in the feed' });
+    const pressed = () =>
+      within(pills)
+        .getAllByRole('button')
+        .filter((pill) => pill.getAttribute('aria-pressed') === 'true')
+        .map((pill) => pill.textContent);
+    expect(pressed()).toEqual(['All']);
+    fireEvent.click(within(pills).getByRole('button', { name: 'Streams' }));
+    expect(pressed()).toEqual(['Streams']);
+    await screen.findByRole('list', { name: 'Streams' });
+    // The newest version leads All only.
+    expect(screen.queryByRole('article', { name: NEWEST })).toBeNull();
+    // Updates, events and tips show under All only.
+    expect(screen.queryByRole('complementary', { name: 'Updates, events and tips' })).toBeNull();
+  });
+
+  it('keeps the feed’s order in the mosaic: newest version, then each card as it came', async () => {
+    backend({ feed_page: pager(serviceItems()) });
+    show();
+    const list = await screen.findByRole('list', { name: 'All' });
+    fireEvent.click(screen.getByRole('button', { name: 'Show more' }));
+    await screen.findByRole('button', { name: 'A new mob' });
+    // Each card is a list item of the one list, in the DOM in feed order.
+    const cards = within(list).getAllByRole('listitem');
+    expect(
+      cards.map((card) => within(card).getByRole('heading', { level: 3 }).textContent),
+    ).toEqual([NEWEST, 'Building a castle', 'A long video', 'A new mob']);
+    for (const card of cards) expect(card.parentElement).toBe(list);
+  });
+
+  it('stands Shorts upright with their own picture, else the wide one', async () => {
+    const feed = feedFixture();
+    const [video, short] = feed.videos;
+    if (!video || !short) throw new Error('the fixture changed');
+    const noTall = { ...short, id: 'shortshort2', title: 'No tall one', imageTall: null };
+    backend({
+      feed_page: () => ({
+        items: [
+          { type: 'video', video: short },
+          { type: 'video', video: noTall },
+          { type: 'video', video },
+        ],
+        next: null,
+      }),
+    });
+    show(snapshotWith({ shorts: true }));
+    const card = (title: string) => {
+      const found = screen.getByRole('button', { name: new RegExp(`^Watch “${title}”`) });
+      const article = found.closest('article');
+      if (article === null) throw new Error('no card');
+      return article;
+    };
+    await screen.findByRole('button', { name: /^Watch “A short one”/ });
+    const picture = (title: string) =>
+      card(title).querySelector('[style*="aspect-ratio"] > img')?.getAttribute('src');
+    expect(picture('A short one')).toBe('feed://localhost/ys/shortshort1.jpg');
+    expect(picture('No tall one')).toBe('feed://localhost/yt/shortshort1.jpg');
+    expect(card('A short one').querySelector('[style*="aspect-ratio"]')).toHaveStyle({
+      aspectRatio: String(9 / 16),
+    });
+    expect(within(card('A short one')).getAllByText('Shorts').length).toBeGreaterThan(0);
+    // A Short has no length chip; a video with a length has one.
+    expect(within(card('A short one')).queryByText(/^\d+:\d\d$/)).toBeNull();
+    expect(within(card('A long video')).getByText('12:34')).toHaveAttribute('dir', 'ltr');
+  });
+
+  it('marks a stream live in sentence case, with its viewers', async () => {
+    backend();
+    show();
+    const stream = (
+      await screen.findByRole('button', { name: /^Watch Some Streamer live/ })
+    ).closest('article');
+    if (stream === null) throw new Error('no card');
+    const live = within(stream).getByText('Live');
+    expect(live.textContent).toBe('Live');
+    expect(live.closest('[aria-hidden="true"]')).not.toBeNull();
+    expect(within(stream).getByText('1,234')).toBeInTheDocument();
+    expect(within(stream).getByText('Stream')).toBeVisible();
+    expect(within(stream).getByText('now')).toBeVisible();
+  });
+
+  it('draws a letter for a channel without a picture, the picture otherwise', async () => {
+    const [stream] = feedFixture().streams;
+    if (!stream) throw new Error('the fixture changed');
+    backend({
+      feed_page: () => ({
+        items: [
+          { type: 'stream', stream: { ...stream, login: 'no_face', name: 'nobody', avatar: null } },
+          { type: 'stream', stream },
+        ],
+        next: null,
+      }),
+    });
+    show();
+    const card = (name: RegExp) => {
+      const article = screen.getByRole('button', { name }).closest('article');
+      if (article === null) throw new Error('no card');
+      return article;
+    };
+    await screen.findByRole('button', { name: /^Watch nobody live/ });
+    const bare = card(/^Watch nobody live/);
+    expect(within(bare).getByText('N')).toHaveAttribute('aria-hidden', 'true');
+    const faced = card(/^Watch Some Streamer live/);
+    expect(Array.from(faced.querySelectorAll('img'), (img) => img.getAttribute('src'))).toContain(
+      'feed://localhost/ta/some_streamer.jpg',
+    );
+    // Patch notes come from Minecraft, news from Minecraft.net.
+    const newest = screen.getByRole('article', { name: NEWEST });
+    expect(within(newest).getByText('Minecraft')).toBeVisible();
   });
 
   it('reads right to left in Arabic', async () => {
@@ -986,6 +1111,6 @@ describe('FeedView', () => {
     const chips = screen.getByRole('group', { name: 'ما يُعرض في الموجز' });
     expect(within(chips).getByRole('button', { name: 'الكل' })).toBeVisible();
     // Version ids stay left to right inside the Arabic text.
-    expect(screen.getAllByText('26.4-snapshot-4')[0]).toHaveAttribute('dir', 'ltr');
+    expect((await screen.findAllByText('26.4-snapshot-4'))[0]).toHaveAttribute('dir', 'ltr');
   });
 });
