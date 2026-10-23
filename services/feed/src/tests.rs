@@ -462,7 +462,7 @@ fn streams_are_picked() {
     );
     let logins: Vec<&str> = streams.iter().map(|s| s.login.as_str()).collect();
     assert_eq!(logins, vec!["big", "small"]);
-    assert!(streams[0].preview.contains("440x248"));
+    assert!(streams[0].preview.contains("960x540"));
     assert_eq!(streams[0].title, "Playing <b>Minecraft</b>");
     assert!(!streams[0].name.contains('\u{202E}'));
     // The preview address never reaches a player.
@@ -927,7 +927,7 @@ fn png(width: u32, height: u32) -> Vec<u8> {
 fn pictures_are_reencoded() {
     let jpeg = reencode(&png(2000, 1000), images::PREVIEW, None).unwrap();
     let back = image::load_from_memory(&jpeg).unwrap();
-    assert_eq!((back.width(), back.height()), (480, 240));
+    assert_eq!((back.width(), back.height()), (960, 480));
     assert_eq!(&jpeg[..3], &[0xFF, 0xD8, 0xFF]);
     let small = reencode(&png(100, 50), images::WIDE, None).unwrap();
     assert_eq!(image::load_from_memory(&small).unwrap().width(), 100);
@@ -962,13 +962,58 @@ fn pictures_are_cut_to_shape() {
     assert_eq!(images::middle(100, 300, (1, 1)), (0, 100, 100, 100));
     assert_eq!(images::middle(1, 1, (9, 16)), (0, 0, 1, 1));
     assert_eq!(images::middle(1, 8192, (9, 16)), (0, 4095, 1, 1));
-    // The middle of a Short's 16:9 preview, upright at 360×640.
+    // A Short's own upright picture, at 540×960; the middle of its 16:9
+    // preview, never scaled up.
+    let tall = reencode(&png(1080, 1920), images::TALL, Some((9, 16))).unwrap();
+    let back = image::load_from_memory(&tall).unwrap();
+    assert_eq!((back.width(), back.height()), (540, 960));
     let tall = reencode(&png(1280, 720), images::TALL, Some((9, 16))).unwrap();
     let back = image::load_from_memory(&tall).unwrap();
-    assert_eq!((back.width(), back.height()), (360, 640));
+    assert_eq!((back.width(), back.height()), (405, 720));
+    // A 4:3 preview with black bars becomes 16:9.
+    let wide = reencode(&png(640, 480), images::PREVIEW, Some((16, 9))).unwrap();
+    let back = image::load_from_memory(&wide).unwrap();
+    assert_eq!((back.width(), back.height()), (640, 360));
     let square = reencode(&png(300, 200), images::AVATAR, Some((1, 1))).unwrap();
     let back = image::load_from_memory(&square).unwrap();
     assert_eq!((back.width(), back.height()), (96, 96));
+}
+
+#[test]
+fn narrow_old_previews_are_made_again() {
+    let dir = tempfile::tempdir().unwrap();
+    let old = std::time::SystemTime::now() - std::time::Duration::from_secs(2 * 24 * 3600);
+    let save = |name: &str, width: u32, height: u32, made: std::time::SystemTime| {
+        let path = dir.path().join(name);
+        std::fs::write(&path, reencode(&png(width, height), width, None).unwrap()).unwrap();
+        let file = std::fs::File::options().write(true).open(&path).unwrap();
+        file.set_modified(made).unwrap();
+        path
+    };
+    // Made from YouTube's 320×180 picture a while ago: made again.
+    assert!(images::redo(&save("a.jpg", 320, 180, old)));
+    // An upright one from before, 360 wide: made again.
+    assert!(images::redo(&save("b.jpg", 360, 640, old)));
+    // Narrow but tried lately, or wide enough: kept.
+    assert!(!images::redo(&save(
+        "c.jpg",
+        320,
+        180,
+        std::time::SystemTime::now()
+    )));
+    assert!(!images::redo(&save("d.jpg", 405, 720, old)));
+    assert!(!images::redo(&save("e.jpg", 960, 540, old)));
+    // Not a picture, or not there: kept as it is.
+    let junk = dir.path().join("f.jpg");
+    std::fs::write(&junk, b"junk").unwrap();
+    std::fs::File::options()
+        .write(true)
+        .open(&junk)
+        .unwrap()
+        .set_modified(old)
+        .unwrap();
+    assert!(!images::redo(&junk));
+    assert!(!images::redo(&dir.path().join("none.jpg")));
 }
 
 #[test]
