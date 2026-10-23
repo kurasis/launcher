@@ -35,6 +35,8 @@ use crate::tickets::{self, Ticket, TicketKey};
 pub const INVITE_HOURS: (i64, i64, i64) = (1, 24, 168);
 pub const INVITE_USES: (i64, i64, i64) = (1, 1, 10);
 pub const MAX_PLAYERS: i64 = 20;
+/// Mods a room pack holds at most, as the launcher takes for one world.
+const MAX_PACK_MODS: i64 = 1000;
 /// An invite code: 16 random bytes in unpadded base64url.
 const CODE_LENGTH: usize = 22;
 
@@ -636,7 +638,10 @@ fn code_digest(bytes: &Bytes) -> Result<String, Box<Response>> {
 
 async fn preview_invite(State(app): State<Arc<App>>, headers: HeaderMap, bytes: Bytes) -> Response {
     let me = me!(app, headers);
-    limit!(app, me, "invite_try", 30, 600);
+    // Apart from redeeming: a chat asks for the invites it shows, and that
+    // must not use up the tries of a press on "Join". A code holds 128 random
+    // bits, so more looks do not help guessing one.
+    limit!(app, me, "invite_look", 120, 600);
     let digest = match code_digest(&bytes) {
         Ok(digest) => digest,
         Err(response) => return *response,
@@ -682,6 +687,9 @@ struct NewSession {
 struct NewPack {
     version: String,
     sha256: String,
+    /// How many mods it holds; older launchers do not say.
+    #[serde(default)]
+    mods: Option<i64>,
 }
 
 async fn start_session(
@@ -700,10 +708,17 @@ async fn start_session(
         return refuse("bad_request");
     }
     let pack = match request.pack {
-        Some(p) if text::id(&p.version) && text::sha256(&p.sha256) => Some(store::Pack {
-            version: p.version,
-            sha256: p.sha256,
-        }),
+        Some(p)
+            if text::id(&p.version)
+                && text::sha256(&p.sha256)
+                && p.mods.is_none_or(|m| (0..=MAX_PACK_MODS).contains(&m)) =>
+        {
+            Some(store::Pack {
+                version: p.version,
+                sha256: p.sha256,
+                mods: p.mods,
+            })
+        }
         Some(_) => return refuse("bad_request"),
         None => None,
     };

@@ -810,6 +810,7 @@ fn a_guest_agrees_once_per_pack_and_again_for_new_mods() {
     let pack = |version: &str, sha: char| SessionPack {
         version: version.to_owned(),
         sha256: sha.to_string().repeat(64),
+        mods: Some(2),
     };
     let first = info(vec![
         listed("mods/sodium.jar", 'a'),
@@ -938,6 +939,23 @@ async fn the_room_pack_is_published_once_per_generation() {
         let (bytes, project) = asked.last().unwrap();
         assert_eq!(pack.sha256, sha256_of(bytes));
         assert_eq!(*project, None);
+        // The mods a guest installs, not the server-only one.
+        let mut zip = zip::ZipArchive::new(std::io::Cursor::new(bytes.clone())).unwrap();
+        let mut text = String::new();
+        zip.by_name("modrinth.index.json")
+            .unwrap()
+            .read_to_string(&mut text)
+            .unwrap();
+        let index: Value = serde_json::from_str(&text).unwrap();
+        let sent = index["files"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .filter(|f| f["path"].as_str().unwrap().starts_with("mods/"))
+            .count();
+        assert_eq!(pack.mods, Some(u32::try_from(sent).unwrap()));
+        let all = world::load(&s.root, world.id).unwrap().pack.unwrap();
+        assert!(sent > 0 && sent < all.mods().count(), "{sent}");
     }
     let saved = world::load(&s.root, world.id).unwrap();
     assert_eq!(saved.room_pack.as_deref(), Some(id(7).as_str()));

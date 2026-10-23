@@ -789,6 +789,115 @@ async fn a_world_with_mods_tells_its_members_the_room_pack() {
 }
 
 #[tokio::test]
+async fn an_invite_shows_the_worlds_mods_and_whether_it_runs() {
+    let t = setup();
+    let room = t.room_with(&[]).await;
+    t.register(1).await;
+    let code = t.invite(&room, 1, json!({"uses": 10})).await;
+    let look = || {
+        let code = code.clone();
+        let t = &t;
+        async move {
+            let (status, seen) = t
+                .call(
+                    "POST",
+                    "/v1/invites/preview",
+                    2,
+                    Some(json!({"code": code})),
+                )
+                .await;
+            assert_eq!(status, StatusCode::OK, "{seen}");
+            (seen["mods"].clone(), seen["hosting"].clone())
+        }
+    };
+    // Never hosted: its mods are not known.
+    assert_eq!(look().await, (Value::Null, json!(false)));
+
+    let sessions = format!("/v1/rooms/{room}/sessions");
+    let pack = |mods: Value| {
+        json!({
+            "version": "22222222-2222-4222-8222-222222222222",
+            "sha256": "ab".repeat(32),
+            "mods": mods,
+        })
+    };
+    for bad in [json!(-1), json!(1001), json!("12"), json!(1.5)] {
+        let body = json!({"endpoint": endpoint(1), "maxPlayers": 8, "pack": pack(bad)});
+        let (status, _) = t.on_device("POST", &sessions, 1, Some(body.clone())).await;
+        assert_eq!(status, StatusCode::BAD_REQUEST, "{body}");
+    }
+    let body = json!({"endpoint": endpoint(1), "maxPlayers": 8, "pack": pack(json!(12))});
+    let (status, session) = t.on_device("POST", &sessions, 1, Some(body)).await;
+    assert_eq!(status, StatusCode::OK, "{session}");
+    assert_eq!(session["pack"], pack(json!(12)));
+    assert_eq!(look().await, (json!(12), json!(true)));
+
+    // Stopped, or its lease ran out: the mods stay, it no longer runs.
+    let stop = format!("/v1/sessions/{}/stop", session["id"].as_str().unwrap());
+    assert_eq!(t.on_device("POST", &stop, 1, None).await.0, StatusCode::OK);
+    assert_eq!(look().await, (json!(12), json!(false)));
+    t.host(&room, 8).await;
+    assert_eq!(look().await, (json!(0), json!(true)), "hosted without mods");
+    t.app.clock.advance(crate::store::LEASE + 1);
+    assert_eq!(look().await, (json!(0), json!(false)));
+
+    // An older launcher does not count them.
+    let mut uncounted = pack(Value::Null);
+    uncounted.as_object_mut().unwrap().remove("mods");
+    let body = json!({"endpoint": endpoint(1), "maxPlayers": 8, "pack": uncounted});
+    let (status, session) = t.on_device("POST", &sessions, 1, Some(body)).await;
+    assert_eq!(status, StatusCode::OK, "{session}");
+    assert!(session["pack"].get("mods").is_none(), "{session}");
+    assert_eq!(look().await, (Value::Null, json!(true)));
+}
+
+#[test]
+fn an_older_database_gets_the_count_of_mods() {
+    let dir = tempfile::tempdir().unwrap();
+    drop(crate::store::Store::open(dir.path(), "a").unwrap());
+    let path = dir.path().join("worlds.db");
+    let columns = || {
+        let db = rusqlite::Connection::open(&path).unwrap();
+        db.query_row(
+            "SELECT COUNT(*) FROM pragma_table_info('sessions') WHERE name = 'pack_mods'",
+            [],
+            |r| r.get::<_, i64>(0),
+        )
+        .unwrap()
+    };
+    assert_eq!(columns(), 1);
+    rusqlite::Connection::open(&path)
+        .unwrap()
+        .execute_batch("ALTER TABLE sessions DROP COLUMN pack_mods")
+        .unwrap();
+    assert_eq!(columns(), 0);
+    drop(crate::store::Store::open(dir.path(), "a").unwrap());
+    assert_eq!(columns(), 1);
+}
+
+#[tokio::test]
+async fn looking_at_invites_leaves_the_tries_to_join() {
+    let t = setup();
+    let room = t.room_with(&[]).await;
+    let code = t.invite(&room, 1, json!({})).await;
+    let call = |path: &'static str| {
+        let code = code.clone();
+        let t = &t;
+        async move { t.call("POST", path, 2, Some(json!({"code": code}))).await }
+    };
+    for _ in 0..120 {
+        assert_eq!(call("/v1/invites/preview").await.0, StatusCode::OK);
+    }
+    let (status, body) = call("/v1/invites/preview").await;
+    assert_eq!(
+        (status, error(&body)),
+        (StatusCode::TOO_MANY_REQUESTS, "too_many")
+    );
+    let (status, joined) = call("/v1/invites/redeem").await;
+    assert_eq!(status, StatusCode::OK, "{joined}");
+}
+
+#[tokio::test]
 async fn tickets_admit_one_member_once() {
     let t = setup();
     let room = t.room_with(&[2, 3]).await;

@@ -99,6 +99,8 @@ CREATE TABLE IF NOT EXISTS sessions (
     -- pack's SHA-256 (none for a world without mods).
     pack_version TEXT,
     pack_sha256 TEXT,
+    -- How many mods the room pack holds, as the host counts them.
+    pack_mods INTEGER,
     UNIQUE (room, epoch)
 );
 CREATE UNIQUE INDEX IF NOT EXISTS sessions_live ON sessions(room) WHERE ended IS NULL;
@@ -227,12 +229,17 @@ pub struct Room {
 pub struct Pack {
     pub version: String,
     pub sha256: String,
+    /// How many mods it holds, as the host counts them; older launchers do
+    /// not say.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub mods: Option<i64>,
 }
 
-fn pack_from(version: Option<String>, sha256: Option<String>) -> Option<Pack> {
+fn pack_from(version: Option<String>, sha256: Option<String>, mods: Option<i64>) -> Option<Pack> {
     Some(Pack {
         version: version?,
         sha256: sha256?,
+        mods,
     })
 }
 
@@ -265,6 +272,11 @@ pub struct Preview {
     pub owner_nick: String,
     pub members: i64,
     pub minecraft: String,
+    /// The mods of the world as it was last hosted: 0 without mods, none when
+    /// it was never hosted or its launcher did not count them.
+    pub mods: Option<i64>,
+    /// The owner hosts it now, so a member can go in at once.
+    pub hosting: bool,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
@@ -394,7 +406,7 @@ SELECT r.id, r.name, r.description, r.minecraft, r.revision, r.owner, o.nick, m.
        s.id, s.max_players,
        MAX((SELECT COUNT(*) FROM admissions a WHERE a.session = s.id AND a.released IS NULL),
            COALESCE(s.players, 0)),
-       s.pack_version, s.pack_sha256
+       s.pack_version, s.pack_sha256, s.pack_mods
 FROM rooms r
 JOIN members m ON m.room = r.id AND m.account = ?1 AND m.state = 'active'
 JOIN members o ON o.room = r.id AND o.account = r.owner
@@ -421,7 +433,7 @@ fn room_from(r: &rusqlite::Row<'_>) -> rusqlite::Result<Room> {
         hosting: session.is_some(),
         max_players: r.get::<_, Option<i64>>(13)?.unwrap_or(0),
         online: r.get::<_, Option<i64>>(14)?.unwrap_or(0),
-        pack: pack_from(r.get(15)?, r.get(16)?),
+        pack: pack_from(r.get(15)?, r.get(16)?, r.get(17)?),
     })
 }
 
@@ -433,7 +445,7 @@ fn session_from(r: &rusqlite::Row<'_>) -> rusqlite::Result<Session> {
         endpoint: r.get(3)?,
         max_players: r.get(4)?,
         lease_until: r.get(5)?,
-        pack: pack_from(r.get(7)?, r.get(8)?),
+        pack: pack_from(r.get(7)?, r.get(8)?, r.get(9)?),
     })
 }
 
@@ -458,12 +470,20 @@ fn migrate(db: &Connection) -> rusqlite::Result<()> {
              ALTER TABLE sessions ADD COLUMN pack_sha256 TEXT;",
         )?;
     }
+    let has_mods: bool = db.query_row(
+        "SELECT EXISTS (SELECT 1 FROM pragma_table_info('sessions') WHERE name = 'pack_mods')",
+        [],
+        |r| r.get(0),
+    )?;
+    if !has_mods {
+        db.execute_batch("ALTER TABLE sessions ADD COLUMN pack_mods INTEGER")?;
+    }
     Ok(())
 }
 
 const SESSION_SELECT: &str =
     "SELECT id, room, epoch, endpoint, max_players, lease_until, host_device,
-       pack_version, pack_sha256 FROM sessions";
+       pack_version, pack_sha256, pack_mods FROM sessions";
 
 impl Store {
     pub fn open(dir: &Path, authority: &str) -> std::result::Result<Self, String> {
@@ -1020,10 +1040,14 @@ impl Store {
         let (_, room) = Self::usable_invite(&db, digest, now)?;
         Ok(db.query_row(
             "SELECT r.id, r.name, o.nick, r.minecraft,
-             (SELECT COUNT(*) FROM members WHERE room = r.id AND state = 'active')
+             (SELECT COUNT(*) FROM members WHERE room = r.id AND state = 'active'),
+             (SELECT CASE WHEN s.pack_version IS NULL THEN 0 ELSE s.pack_mods END
+              FROM sessions s WHERE s.room = r.id ORDER BY s.epoch DESC LIMIT 1),
+             EXISTS (SELECT 1 FROM sessions s
+                     WHERE s.room = r.id AND s.ended IS NULL AND s.lease_until >= ?2)
              FROM rooms r JOIN members o ON o.room = r.id AND o.account = r.owner
              WHERE r.id = ?1",
-            [room],
+            params![room, now],
             |r| {
                 Ok(Preview {
                     room: r.get(0)?,
@@ -1031,6 +1055,8 @@ impl Store {
                     owner_nick: r.get(2)?,
                     minecraft: r.get(3)?,
                     members: r.get(4)?,
+                    mods: r.get(5)?,
+                    hosting: r.get(6)?,
                 })
             },
         )?)
@@ -1139,8 +1165,8 @@ impl Store {
         };
         tx.execute(
             "INSERT INTO sessions (id, room, host_device, epoch, authority, endpoint, max_players,
-             state, lease_until, started, pack_version, pack_sha256)
-             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, 'live', ?8, ?9, ?10, ?11)",
+             state, lease_until, started, pack_version, pack_sha256, pack_mods)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, 'live', ?8, ?9, ?10, ?11, ?12)",
             params![
                 session.id,
                 room,
@@ -1152,7 +1178,8 @@ impl Store {
                 session.lease_until,
                 now,
                 pack.map(|p| &p.version),
-                pack.map(|p| &p.sha256)
+                pack.map(|p| &p.sha256),
+                pack.and_then(|p| p.mods)
             ],
         )?;
         tx.commit()?;

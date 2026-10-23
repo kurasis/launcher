@@ -344,3 +344,12 @@ Other loaders follow in W12.
   and the start hangs after "Starting Minecraft server on" (seen in CI on Forge 1.12.2). Forge
   writes its other settings into the file itself; a file from the world's mods keeps what it
   says, with the setting added after it (`src-tauri/src/worlds/forge_cfg.rs`).
+- 2026-10-23 — Invites in chats (redesign A6.3): `POST /v1/invites/preview` also answers `mods`,
+  the mods a guest installs from the room pack of the room's last session (0 when it was hosted
+  without mods, null when it was never hosted or its launcher did not count them), and
+  `hosting`, whether a session holds its lease now. The host sends the count with the session's
+  pack (`pack.mods`, at most 1000). Looking at invites has its own limit, 120 per account in
+  10 minutes, apart from the 30 tries to redeem: a chat asks for every invite it shows, and a
+  code of 128 random bits gains nothing from more looks. A system notification of a chat
+  message shows an invite in words («Приглашение в мир», «Приглашение на сервер»), never the
+  code or the server's address.

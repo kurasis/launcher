@@ -387,6 +387,7 @@ pub async fn publish_room(
         return Ok(Some(SessionPack {
             version: room.version.clone(),
             sha256: room.sha256.to_string(),
+            mods: Some(room_mods(&generation)),
         }));
     }
     let (archive, sha256) = {
@@ -425,7 +426,14 @@ pub async fn publish_room(
     Ok(Some(SessionPack {
         version,
         sha256: sha256.to_string(),
+        mods: Some(room_mods(&generation)),
     }))
+}
+
+/// The mods of a generation its room pack holds: those a guest installs.
+fn room_mods(pack: &WorldPack) -> u32 {
+    let mods = pack.mods().filter(|f| Archive::Room.holds(f)).count();
+    u32::try_from(mods).unwrap_or(u32::MAX)
 }
 
 /// What a guest agrees to before the room's mods are installed: mods are

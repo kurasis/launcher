@@ -411,6 +411,8 @@ describe('WorldsView', () => {
               ownerNick: 'Guest_One',
               members: 3,
               minecraft: '1.21.1',
+              mods: null,
+              hosting: false,
             },
       worlds_redeem: () => theirs,
     });
