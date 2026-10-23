@@ -511,6 +511,9 @@ function Skins-State([string]$Loader, [int]$From, [string]$GameDir, [string]$Run
     foreach ($f in @(Get-ChildItem (Join-Path $GameDir 'logs') -Filter *.log -ErrorAction SilentlyContinue)) { $text += (Log-Text $f.FullName) + "`n" }
   }
   if ($RunLog) { $text += Log-Text $RunLog }
+  # Forge 1.7.10 warns that the mod's @Mod has no version and takes the one in
+  # mcmod.info ("... could not be found. Falling back to metadata version"): no failure.
+  $text = (($text -split "`n") | Where-Object { $_ -notmatch 'Falling back to metadata version' }) -join "`n"
   if ($text -match "Launcher Skins: (the agent's targets were not found|PlayerInfo left unchanged)" -or
       $text -match '(?im)^.*launcherskins.*(ERROR|FATAL|exception|failed|invalid|incompatible|could not).*$' -or
       $text -match '(?im)^.*(ERROR|FATAL|exception|failed|invalid|incompatible|could not).*launcherskins.*$') { return 'failed' }
