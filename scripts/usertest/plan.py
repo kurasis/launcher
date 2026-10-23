@@ -101,7 +101,8 @@ def special_versions():
         if not SPECIAL_ID.fullmatch(v["id"]) or not 0 < len(v["name"]) <= 64:
             sys.exit(f"the special versions list has an entry the test cannot use: {v['id']!r}")
         selected = v["id"] if v.get("variant") == "first-build" else v["name"]
-        versions.append({"id": v["id"], "group": v["group"], "name": v["name"], "selected": selected})
+        versions.append({"id": v["id"], "group": v["group"], "name": v["name"],
+                         "selected": selected, "note": v.get("note")})
     return versions
 
 
@@ -143,7 +144,9 @@ def main():
             if specials is None:
                 specials = special_versions()
             wanted = token.partition(":")[2]
-            chosen = {v["id"] for v in specials if wanted in ("", v["group"], v["id"])}
+            # A build known to crash at start (its note) is played only by its id.
+            chosen = {v["id"] for v in specials
+                      if wanted == v["id"] or (wanted in ("", v["group"]) and not v["note"])}
             if not chosen:
                 sys.exit(f"versions: {wanted!r} is no group or id of the special versions")
             special_picked |= chosen

@@ -753,6 +753,9 @@ export interface SpecialVersion {
   group: SpecialGroup;
   /** `first-build`: an earlier build of a version, replaced under its name. */
   variant: 'first-build' | null;
+  /** `crashes-at-start`: the build ends with an error before its title screen, in
+   * the game itself. */
+  note: 'crashes-at-start' | null;
   /** Has a server. */
   server: boolean;
 }

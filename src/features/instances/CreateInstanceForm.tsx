@@ -477,6 +477,9 @@ export function CreateInstanceForm({
                 </Button>
               </div>
             </div>
+            {selected?.special != null && selected.special.note !== null && (
+              <Notice tone="warning">{t.noteDetails[selected.special.note]}</Notice>
+            )}
             {catalog?.stale === true && <Notice tone="warning">{t.stale}</Notice>}
             {planError !== null && <Notice tone="danger">{planError}</Notice>}
             {plan !== null && <PlanFacts plan={plan} />}

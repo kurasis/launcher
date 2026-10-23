@@ -639,6 +639,12 @@
         "indev": "Indev",
         "classic": "Classic"
       },
+      "notes": {
+        "crashes-at-start": "تتعطل عند التشغيل"
+      },
+      "noteDetails": {
+        "crashes-at-start": "هذا البناء يتعطل عند التشغيل: الخطأ في اللعبة نفسها وليس في المشغّل."
+      },
       "search": "ابحث عن إصدار",
       "noMatch": "لا يوجد إصدار مطابق.",
       "verified": "مُتحقَّق منه",

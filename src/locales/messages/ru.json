@@ -638,6 +638,12 @@
         "indev": "Indev",
         "classic": "Classic"
       },
+      "notes": {
+        "crashes-at-start": "Падает при запуске"
+      },
+      "noteDetails": {
+        "crashes-at-start": "Эта сборка падает при запуске: ошибка в самой игре, а не в лаунчере."
+      },
       "search": "Найти версию",
       "noMatch": "Подходящих версий нет.",
       "verified": "Проверена",

@@ -638,6 +638,12 @@
         "indev": "Indev",
         "classic": "Classic"
       },
+      "notes": {
+        "crashes-at-start": "Crashes at start"
+      },
+      "noteDetails": {
+        "crashes-at-start": "This build crashes at start: the error is in the game itself, not in the launcher."
+      },
       "search": "Find a version",
       "noMatch": "No version matches.",
       "verified": "Verified",

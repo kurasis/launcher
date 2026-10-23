@@ -230,6 +230,11 @@ export function VersionPicker({
                       version.special.group !== 'first-build' && (
                         <span className={styles.tag}>{t.groups['first-build']}</span>
                       )}
+                    {version.special.note !== null && (
+                      <span className={[styles.tag, styles.warning].join(' ')}>
+                        {t.notes[version.special.note]}
+                      </span>
+                    )}
                   </>
                 )}
                 {version.releaseTime !== null && (

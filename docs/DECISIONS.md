@@ -3221,3 +3221,9 @@ skins-mod <channel>` there only checks the signature against the public key and
   properties in a snapshot's forms. The worlds service takes the same ids for rooms
   from `data/extra-world-versions.txt`, which `scripts/extra-versions.mjs` writes; a new
   list redeploys it.
+- **Builds that crash at start** (owner, 2026-10-23): three Indev builds,
+  in-20100124-2310, in-20100128-2304 and in-20100129-1452, end with a
+  NullPointerException while building the starter house, with Mojang's own tweaker
+  too. They stay in the list with a `note` (`crashes-at-start`, the only value the
+  update tool and the launcher take); the picker marks them «Crashes at start», the
+  form says the error is the game's own, and the Player test plays them only by id.

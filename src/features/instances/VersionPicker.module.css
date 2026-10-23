@@ -202,6 +202,11 @@
   color: var(--color-success-text);
 }
 
+.warning {
+  background: var(--color-warning-bg);
+  color: var(--color-warning-text);
+}
+
 /* On the chosen row the tags keep their shape against the selected ground. */
 .row[aria-pressed='true'] .tag {
   background: var(--color-surface);

@@ -48,6 +48,8 @@ const GROUPS: &[&str] = &[
     "classic",
 ];
 const VARIANTS: &[&str] = &["first-build"];
+/// What the picker may say about a build (services/upd has the same).
+const NOTES: &[&str] = &["crashes-at-start"];
 
 #[derive(Deserialize)]
 struct Envelope {
@@ -75,6 +77,8 @@ pub struct Listed {
     pub group: String,
     #[serde(default)]
     pub variant: Option<String>,
+    #[serde(default)]
+    pub note: Option<String>,
     #[serde(rename = "type")]
     pub version_type: String,
     pub release_time: String,
@@ -96,6 +100,9 @@ pub struct Special {
     pub group: String,
     /// `first-build`: an earlier build of a version, replaced under its name.
     pub variant: Option<String>,
+    /// `crashes-at-start`: the build ends with an error before its title screen,
+    /// in the game itself ([`NOTES`]).
+    pub note: Option<String>,
     /// Has a server jar.
     pub server: bool,
 }
@@ -129,6 +136,7 @@ impl Listed {
                 .variant
                 .as_deref()
                 .is_none_or(|v| VARIANTS.contains(&v))
+            && self.note.as_deref().is_none_or(|n| NOTES.contains(&n))
             && VERSION_TYPES.contains(&self.version_type.as_str())
             && self.release_time.len() <= 40
             && chrono::DateTime::parse_from_rfc3339(&self.release_time).is_ok()
@@ -155,6 +163,7 @@ impl Listed {
             title: self.title.clone(),
             group: self.group.clone(),
             variant: self.variant.clone(),
+            note: self.note.clone(),
             server: self.server,
         }
     }

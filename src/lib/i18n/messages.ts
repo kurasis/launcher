@@ -677,6 +677,12 @@ export type Messages = {
       readonly indev: string;
       readonly classic: string;
     };
+    readonly notes: {
+      readonly 'crashes-at-start': string;
+    };
+    readonly noteDetails: {
+      readonly 'crashes-at-start': string;
+    };
     readonly search: string;
     readonly noMatch: string;
     readonly verified: string;

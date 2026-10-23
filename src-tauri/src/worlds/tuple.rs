@@ -325,6 +325,7 @@ mod tests {
                 title: None,
                 group: "joke".to_owned(),
                 variant: None,
+                note: None,
                 server,
             }),
         }

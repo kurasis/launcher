@@ -54,6 +54,7 @@ const special = (
       title: null,
       group: 'joke',
       variant: null,
+      note: null,
       server: true,
       ...extra,
     },
@@ -287,6 +288,24 @@ describe('VersionPicker', () => {
     expect(
       within(screen.getByRole('button', { name: /Combat Test 1/ })).getByText('Combat Test'),
     ).toBeVisible();
+  });
+
+  it('says which builds crash at start', () => {
+    const indev = { group: 'indev', server: false } as const;
+    render(
+      <VersionPicker
+        catalog={catalog([
+          special('in-20100130', 'old_alpha', indev),
+          special('in-20100124-2310', 'old_alpha', { ...indev, note: 'crashes-at-start' }),
+        ])}
+        value="in-20100124-2310"
+        onChange={() => undefined}
+      />,
+    );
+    const broken = screen.getByRole('button', { name: /in-20100124-2310/ });
+    expect(within(broken).getByText('Crashes at start')).toBeVisible();
+    const working = screen.getByRole('button', { name: /in-20100130/ });
+    expect(within(working).queryByText('Crashes at start')).toBeNull();
   });
 
   it('finds special versions by id, name and update', () => {

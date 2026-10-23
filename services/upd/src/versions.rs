@@ -70,6 +70,8 @@ pub const GROUPS: &[&str] = &[
     "classic",
 ];
 const TYPES: &[&str] = &["release", "snapshot", "old_beta", "old_alpha"];
+/// What the launcher may say about a build (the launcher has the same).
+pub const NOTES: &[&str] = &["crashes-at-start"];
 /// Bounds; the launcher has the same.
 pub const MAX_BYTES: u64 = 1024 * 1024;
 const MAX_VERSIONS: usize = 2048;
@@ -104,6 +106,9 @@ pub struct Listed {
     /// `first-build`: an earlier build of a version, replaced under its name.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub variant: Option<String>,
+    /// `crashes-at-start`: the build ends with an error before its title screen.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub note: Option<String>,
     #[serde(rename = "type")]
     pub version_type: String,
     pub release_time: String,
@@ -140,6 +145,8 @@ struct DataVersion {
     group: String,
     #[serde(default)]
     variant: Option<String>,
+    #[serde(default)]
+    note: Option<String>,
     #[serde(rename = "type")]
     version_type: String,
     release_time: String,
@@ -224,6 +231,7 @@ impl Listed {
             && self.title.as_deref().is_none_or(text_ok)
             && GROUPS.contains(&self.group.as_str())
             && self.variant.as_deref().is_none_or(|v| v == "first-build")
+            && self.note.as_deref().is_none_or(|n| NOTES.contains(&n))
             && TYPES.contains(&self.version_type.as_str())
             && time_ok(&self.release_time)
             && sha1_ok(&self.sha1)
@@ -385,6 +393,7 @@ pub fn build(data: &[u8], serial: u64) -> Result<(List, Vec<Meta>), String> {
             title: version.title.clone(),
             group: version.group.clone(),
             variant: version.variant.clone(),
+            note: version.note.clone(),
             version_type: version.version_type.clone(),
             release_time: version.release_time.clone(),
             server: version.server,

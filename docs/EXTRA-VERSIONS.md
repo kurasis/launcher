@@ -21,7 +21,10 @@ as for every version.
 
 Joke versions that are in Mojang's list (`inMojangList`) are served from here too. Each
 entry has its version file (`descriptor`, pinned by `sha1`) and its jars (`files`,
-with where they came from).
+with where they came from). A build that does not start has a `note`:
+`crashes-at-start` for in-20100124-2310, in-20100128-2304 and in-20100129-1452, which end
+with a NullPointerException while building the starter house, with Mojang's own tweaker
+too (`NOTES` in `scripts/extra-versions.mjs`).
 
 ## In the launcher
 
@@ -33,7 +36,8 @@ with where they came from).
   of these versions; one installed before still repairs and starts from its lock.
 - The versions follow Mojang's in the catalog; an April Fools version Mojang lists too is ours
   from then on. The picker shows them on the Special tab in the list's order, by name, with
-  the update's name and the group.
+  the update's name and the group; a build with a note is marked «Crashes at start», and the
+  form says so when it is chosen.
 - Their version files and game jars come from `upd.lapi.sh/versions/` only
   (`SourcePolicy::ExtraVersions`, never the mirror); libraries, assets and Java from Mojang.
 - Worlds with Friends offers the 45 with a server from 1.7.6's day on behind «Show special
@@ -43,7 +47,8 @@ with where they came from).
 - The skins mod is not offered on them: it is chosen by exact game version.
 - The Player test (docs/USERTEST.md) plays them from the packaged launcher on the owner's
   Windows test machine as a player does, to the title screen: `versions: special:joke` (a
-  group), `special:<id>` or `special` (all 233).
+  group), `special:<id>` or `special` (all 233). A build that crashes at start is played only
+  when named by its id.
 
 ## A new version
 
