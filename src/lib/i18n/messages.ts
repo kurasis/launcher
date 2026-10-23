@@ -73,6 +73,9 @@ export type Messages = {
     readonly end: string;
     readonly refresh: string;
     readonly refreshing: string;
+    readonly refreshed: (values: { count: number }) => string;
+    readonly refreshFailed: string;
+    readonly newAbove: (values: { count: number }) => string;
     readonly problems: {
       readonly disabled: string;
       readonly offline: string;

@@ -1,4 +1,13 @@
-import { type ReactNode, useEffect, useId, useLayoutEffect, useRef, useState } from 'react';
+import {
+  type CSSProperties,
+  type ReactNode,
+  type Ref,
+  useEffect,
+  useId,
+  useLayoutEffect,
+  useRef,
+  useState,
+} from 'react';
 import { type MenuItem, MoreMenu } from '../../app/MoreMenu';
 import { Icon } from '../../components/Icon';
 import { rowSpan, avatarTone, initial } from './mosaic';
@@ -51,24 +60,82 @@ function layOut(list: HTMLElement) {
   });
 }
 
+/** Where a cell was laid out, from the list's corner. */
+interface Spot {
+  x: number;
+  y: number;
+}
+
+/** How long cards take to slide to their new places when new ones come in first. */
+const GLIDE_MS = 420;
+const GLIDE_EASING = 'cubic-bezier(0.2, 0.8, 0.2, 1)';
+
+/** Notes where every cell is now. */
+function note(list: HTMLElement, spots: WeakMap<Element, Spot>) {
+  const origin = list.getBoundingClientRect();
+  for (const cell of Array.from(list.children)) {
+    const rect = cell.getBoundingClientRect();
+    spots.set(cell, { x: rect.left - origin.left, y: rect.top - origin.top });
+  }
+}
+
+/**
+ * Slides the cells that moved from where they were to where they are, so new
+ * cards at the start push the others aside instead of making them jump. Only
+ * cells seen before or after move; none under `prefers-reduced-motion`.
+ */
+function glide(list: HTMLElement, spots: WeakMap<Element, Spot>) {
+  if (
+    typeof list.animate !== 'function' ||
+    (typeof window.matchMedia === 'function' &&
+      window.matchMedia('(prefers-reduced-motion: reduce)').matches)
+  ) {
+    return;
+  }
+  const origin = list.getBoundingClientRect();
+  const seen = (top: number, height: number) => top < window.innerHeight && top + height > 0;
+  for (const cell of Array.from(list.children)) {
+    const was = spots.get(cell);
+    if (was === undefined || typeof cell.animate !== 'function') continue;
+    const rect = cell.getBoundingClientRect();
+    const dx = was.x - (rect.left - origin.left);
+    const dy = was.y - (rect.top - origin.top);
+    if (Math.abs(dx) < 1 && Math.abs(dy) < 1) continue;
+    if (!seen(rect.top, rect.height) && !seen(origin.top + was.y, rect.height)) continue;
+    cell.animate(
+      [{ transform: `translate(${String(dx)}px, ${String(dy)}px)` }, { transform: 'none' }],
+      { duration: GLIDE_MS, easing: GLIDE_EASING },
+    );
+  }
+}
+
 /**
  * The mosaic (D-072): one list, three columns on a wide window, two or one when
  * narrow (container queries in the CSS). Cards keep the feed's order in the DOM.
+ * When `glides` changes, the cards that were there slide to their new places.
  */
 export function Mosaic({
   label,
   busy = false,
+  glides = 0,
+  ref,
   children,
 }: {
   label?: string;
   busy?: boolean;
+  /** Changes when new cards came in at the start. */
+  glides?: number;
+  /** The mosaic's frame, where the list starts. */
+  ref?: Ref<HTMLDivElement>;
   children: ReactNode;
 }) {
-  const ref = useRef<HTMLDivElement>(null);
+  const listRef = useRef<HTMLDivElement>(null);
   const watcher = useRef<ResizeObserver | null>(null);
   const watched = useRef(new Set<Element>());
+  const spots = useRef(new WeakMap<Element, Spot>());
+  const glided = useRef(glides);
   useEffect(() => {
-    const list = ref.current;
+    const list = listRef.current;
     if (list === null || typeof ResizeObserver === 'undefined') return;
     // Only the cards are watched: a wider or narrower list resizes every card, and a
     // card's height does not depend on its cell's rows. The rows are written in the
@@ -80,6 +147,7 @@ export function Mosaic({
       frame = requestAnimationFrame(() => {
         frame = 0;
         layOut(list);
+        note(list, spots.current);
       });
     });
     const watching = watched.current;
@@ -94,17 +162,23 @@ export function Mosaic({
   }, []);
   // After every render, before it is painted: new cards get their rows at once, and
   // cards that left the list are no longer watched (the list can run long).
+  // New cards came in first: the others slide from the places noted last time.
   useLayoutEffect(() => {
-    const list = ref.current;
+    const list = listRef.current;
     if (list === null) return;
     layOut(list);
     const observer = watcher.current;
     if (observer !== null) watch(observer, contents(list), watched.current);
+    if (glided.current !== glides) {
+      glided.current = glides;
+      glide(list, spots.current);
+    }
+    note(list, spots.current);
   });
   return (
-    <div className={styles.mosaicFrame}>
+    <div ref={ref} className={styles.mosaicFrame}>
       <div
-        ref={ref}
+        ref={listRef}
         className={styles.mosaic}
         role={label === undefined ? undefined : 'list'}
         aria-label={label}
@@ -117,9 +191,22 @@ export function Mosaic({
 }
 
 /** One card's place in the mosaic. */
-export function Cell({ children }: { children: ReactNode }) {
+export function Cell({
+  children,
+  arrived = null,
+}: {
+  children: ReactNode;
+  /** Came in with a fresh look: its place among those that came (0 first), for the stagger. */
+  arrived?: number | null;
+}) {
   return (
-    <div role="listitem" className={styles.cell}>
+    <div
+      role="listitem"
+      className={arrived === null ? styles.cell : [styles.cell, styles.arrived].join(' ')}
+      style={
+        arrived === null ? undefined : ({ '--arrive-order': String(arrived) } as CSSProperties)
+      }
+    >
       {children}
     </div>
   );

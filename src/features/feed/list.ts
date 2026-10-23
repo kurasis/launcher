@@ -158,6 +158,66 @@ export function withLiveStreams(
   );
 }
 
+/**
+ * The list after a fresh look at its first page: what it did not have comes in
+ * where the page has it (before the next card the list has, so the newest go
+ * first), and the cards it had are updated where they are. New live streams come
+ * in only with `newStreams` (see withLiveStreams).
+ */
+export function withFirstPage(
+  items: FeedItem[],
+  first: FeedItem[],
+  newStreams: boolean,
+): FeedItem[] {
+  const fresh = new Map(first.map((item) => [itemKey(item), item]));
+  const shown = new Set(items.map(itemKey));
+  // Newcomers wait for the next card of the page that the list has, and go before it.
+  const before = new Map<string, FeedItem[]>();
+  let waiting: FeedItem[] = [];
+  let last: string | null = null;
+  for (const item of first) {
+    const key = itemKey(item);
+    if (shown.has(key)) {
+      if (waiting.length > 0) before.set(key, waiting);
+      waiting = [];
+      last = key;
+    } else if (newStreams || item.type !== 'stream') {
+      waiting.push(item);
+    }
+  }
+  // None of the page is in the list: all of it goes first.
+  const out: FeedItem[] = last === null ? [...waiting] : [];
+  for (const item of items) {
+    const key = itemKey(item);
+    out.push(...(before.get(key) ?? []), fresh.get(key) ?? item);
+    // Newcomers after the last card the list has go right after it.
+    if (key === last) out.push(...waiting);
+  }
+  return out;
+}
+
+/**
+ * The list after a fresh look: its first page (see withFirstPage) and, when
+ * given, the streams live now (see withLiveStreams). On the Streams chip new
+ * streams come in by their time; elsewhere only with `newStreams`.
+ */
+export function freshList(
+  items: FeedItem[],
+  first: FeedItem[],
+  live: FeedStream[] | null,
+  streamsChip: boolean,
+  newStreams: boolean,
+): FeedItem[] {
+  const paged = withFirstPage(items, first, streamsChip || newStreams);
+  return live === null ? paged : withLiveStreams(paged, live, streamsChip);
+}
+
+/** The keys of the items in `after` that `before` did not have, in order. */
+export function newKeys(before: FeedItem[], after: FeedItem[]): string[] {
+  const had = new Set(before.map(itemKey));
+  return after.map(itemKey).filter((key) => !had.has(key));
+}
+
 /** The channel an item comes from: a video's YouTube channel, a stream's Twitch channel. */
 export function channelOf(item: FeedItem): ChannelMark | null {
   switch (item.type) {

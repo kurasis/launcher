@@ -1,4 +1,13 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import {
+  type Ref,
+  useCallback,
+  useEffect,
+  useImperativeHandle,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+  useState,
+} from 'react';
 import { Button } from '../../components/Button';
 import { Icon } from '../../components/Icon';
 import type { MenuItem } from '../../app/MoreMenu';
@@ -31,21 +40,23 @@ import {
   PlayCircle,
   Skeletons,
 } from './Card';
+import { recallList, rememberList } from './feedMemory';
 import {
   adOrder,
   channelOf,
   type FeedFilter,
   filterPart,
+  freshList,
   itemKey,
   itemLink,
   keptItems,
   markedItems,
+  newKeys,
   onList,
   shownItems,
   videoWanted,
   wants,
   withAds,
-  withLiveStreams,
 } from './list';
 import { ASPECT, pictureAspect } from './mosaic';
 import { ServerAdTile } from './ServerAdTile';
@@ -59,6 +70,17 @@ const t = strings.feed;
 
 /** How far below the screen the next page is asked for. */
 const AHEAD = '800px';
+/** A list shown again within this is not asked for its first page again. */
+const FRESH_MS = 60_000;
+/** How long new cards are marked as new (their animation and its glow). */
+const ARRIVED_MS = 3000;
+/** New cards come in one after another, the ninth and later with the eighth. */
+const STAGGER_MAX = 8;
+/**
+ * New cards come in at once while the top of the list is in sight (this far above
+ * the window at most); further down they wait for the player to go back up.
+ */
+const TOP_SLACK = 160;
 
 /** The source of patch notes and news: brand names, the same in every language. */
 const MINECRAFT = 'Minecraft';
@@ -122,6 +144,13 @@ function VersionBadge({ version }: { version: string }) {
       {version}
     </span>
   );
+}
+
+/** Whether the start of the list is in sight. */
+function topInSight(frame: HTMLElement | null): boolean {
+  if (frame === null) return true;
+  const top = frame.getBoundingClientRect().top;
+  return top > -TOP_SLACK && top < window.innerHeight;
 }
 
 /** The streams live now, as the service lists them (two pages at most). */
@@ -430,6 +459,26 @@ interface FeedListProps {
   /** Server ads showing now (D-069); they go among the tiles of "All". */
   ads?: ServerAd[];
   snapshot?: AppSnapshot;
+  /** Where the list is kept for this run (see feedMemory); not kept without it. */
+  memoryKey?: string;
+  ref?: Ref<ListHandle>;
+}
+
+/** What the feed asks of its list. */
+export interface ListHandle {
+  /**
+   * Looks at the first page again (Refresh): what is new comes in first, with the
+   * live streams as they are. How many cards came in; null when it could not look.
+   */
+  freshen: () => Promise<number | null>;
+}
+
+/** New cards found while the player was further down: they come in at the top later. */
+interface Held {
+  first: FeedItem[];
+  live: FeedStream[] | null;
+  newStreams: boolean;
+  count: number;
 }
 
 type Loading = 'first' | 'more' | 'idle' | 'failed';
@@ -456,7 +505,9 @@ function ignore() {
  * The endless list (D-067): patch notes, news, videos and streams mixed,
  * newest first, as a mosaic of cards. The next page is asked for as the end
  * of the list comes near. Give it a key that changes when the list should
- * start again (the part, languages, settings, Refresh).
+ * start again (the part, languages, settings). Kept for the run under
+ * `memoryKey`, it comes back as it was; a fresh look at its first page (on
+ * return, every few minutes and on Refresh) brings what is new in at the top.
  */
 export function FeedList({
   feed,
@@ -478,28 +529,150 @@ export function FeedList({
   onPlayStream,
   ads = [],
   snapshot,
+  memoryKey,
+  ref,
 }: FeedListProps) {
-  const [pages, setPages] = useState<FeedItem[]>([]);
-  const [next, setNext] = useState<string | null>(null);
-  const [loading, setLoading] = useState<Loading>('first');
+  // Kept from an earlier visit in this run: shown at once, looked at again below.
+  const [place] = useState(() => (memoryKey === undefined ? null : recallList(memoryKey)));
+  const [pages, setPages] = useState<FeedItem[]>(place?.pages ?? []);
+  const [next, setNext] = useState<string | null>(place?.next ?? null);
+  const [loading, setLoading] = useState<Loading>(place === null ? 'first' : 'idle');
   /** The pages could not be fetched: the feed the core has is shown. */
-  const [kept, setKept] = useState(false);
+  const [kept, setKept] = useState(place?.kept ?? false);
+  /** Cards that came in with the last fresh look, by key: their order among them. */
+  const [arrived, setArrived] = useState<ReadonlyMap<string, number>>(new Map());
+  // Counts the times new cards came in: the others slide aside each time.
+  const [glides, setGlides] = useState(0);
+  const [held, setHeld] = useState<Held | null>(null);
+  // When the first page was last asked for.
+  const checked = useRef(place?.checked ?? 0);
   // Answers that come after the list is gone are dropped.
   const alive = useRef(true);
   const end = useRef<HTMLDivElement>(null);
+  const frame = useRef<HTMLDivElement>(null);
   const part = filterPart(filter);
   const shortsOnly = filter === 'shorts';
+  const streamsChip = filter === 'streams';
+  const liveShown = wants(filter, 'streams') && !settings.hidden.includes('streams') && !kept;
   // What the kept list is made from when the pages fail; the list starts
-  // again only when its key changes, not when these do.
+  // again only when its key changes, not when these do. And the list as it
+  // is now, for a fresh look that answers later.
   const feedRef = useRef(feed);
   const settingsRef = useRef(settings);
-  useEffect(() => {
+  const latest = useRef({ pages, next, kept, loading, liveShown });
+  useLayoutEffect(() => {
     feedRef.current = feed;
     settingsRef.current = settings;
+    latest.current = { pages, next, kept, loading, liveShown };
   });
+  // The order ads take their places in stays while this list is shown.
+  const [seed] = useState(() => place?.seed ?? Math.random());
+
+  // Kept for the rest of the run when the list goes (another chip or screen).
+  useLayoutEffect(
+    () => () => {
+      const now = latest.current;
+      if (memoryKey === undefined || now.loading === 'first') return;
+      rememberList(memoryKey, {
+        pages: now.pages,
+        next: now.next,
+        kept: now.kept,
+        checked: checked.current,
+        seed,
+      });
+    },
+    [memoryKey, seed],
+  );
+
+  /** Shows the list with what came in, marked to come in with a motion. */
+  const arrive = useCallback((items: FeedItem[], added: string[]) => {
+    setPages(items);
+    if (added.length === 0) return;
+    setArrived(new Map(added.map((key, index) => [key, Math.min(index, STAGGER_MAX)])));
+    setGlides((count) => count + 1);
+  }, []);
+
+  /**
+   * A fresh look at the first page: cards it has are updated, new ones come in
+   * first, ended streams leave. Further down the list new cards wait (see `held`)
+   * unless the player asked (Refresh). How many came in; null when it failed.
+   */
+  const freshen = useCallback(
+    async (asked: boolean): Promise<number | null> => {
+      // Still on its first page, which is fresh.
+      if (latest.current.loading === 'first') return 0;
+      checked.current = Date.now();
+      const answers = await Promise.all([
+        ipc.feedPage(part, null, shortsOnly),
+        latest.current.liveShown ? liveStreams() : Promise.resolve(null),
+      ]).catch(() => null);
+      if (answers === null) return null;
+      const [page, live] = answers;
+      if (!alive.current) return null;
+      const now = latest.current;
+      if (now.kept) {
+        // The pages work again: they take the place of the core's feed.
+        setPages(page.items);
+        setNext(page.next);
+        setKept(false);
+        return 0;
+      }
+      const items = freshList(now.pages, page.items, live, streamsChip, asked);
+      const added = newKeys(now.pages, items);
+      if (added.length === 0 || asked || topInSight(frame.current)) {
+        setHeld(null);
+        arrive(items, added);
+        return added.length;
+      }
+      const had = new Set(now.pages.map(itemKey));
+      setPages(items.filter((item) => had.has(itemKey(item))));
+      setHeld({ first: page.items, live, newStreams: asked, count: added.length });
+      return 0;
+    },
+    [part, shortsOnly, streamsChip, arrive],
+  );
+  useImperativeHandle(ref, () => ({ freshen: () => freshen(true) }), [freshen]);
+
+  // The held cards come in once the player is back at the top.
+  const release = useCallback(() => {
+    if (held === null) return;
+    const before = latest.current.pages;
+    const items = freshList(before, held.first, held.live, streamsChip, held.newStreams);
+    setHeld(null);
+    arrive(items, newKeys(before, items));
+  }, [held, streamsChip, arrive]);
+  useEffect(() => {
+    if (held === null) return;
+    const look = () => {
+      if (topInSight(frame.current)) release();
+    };
+    window.addEventListener('scroll', look, { passive: true });
+    return () => {
+      window.removeEventListener('scroll', look);
+    };
+  }, [held, release]);
+
+  // Marked as new for a while, so a card that comes back later does not move again.
+  useEffect(() => {
+    if (arrived.size === 0) return;
+    const timer = window.setTimeout(() => {
+      setArrived(new Map());
+    }, ARRIVED_MS);
+    return () => {
+      window.clearTimeout(timer);
+    };
+  }, [arrived]);
 
   useEffect(() => {
     alive.current = true;
+    if (place !== null) {
+      // Back on a kept list: its first page is looked at again once it is a minute old.
+      if (Date.now() - place.checked > FRESH_MS) void freshen(false);
+      return () => {
+        alive.current = false;
+      };
+    }
+    checked.current = Date.now();
     ipc
       .feedPage(part, null, shortsOnly)
       .then((page) => {
@@ -517,24 +690,16 @@ export function FeedList({
     return () => {
       alive.current = false;
     };
-  }, [part, filter, shortsOnly]);
+  }, [place, part, filter, shortsOnly, freshen]);
 
-  // Live streams change while the list is shown: each tick asks for them
-  // again, so ended ones leave and, under the Streams chip, new ones come in.
-  const liveShown = wants(filter, 'streams') && !settings.hidden.includes('streams') && !kept;
+  // Every few minutes while the list is shown: a fresh look, so new cards come
+  // in, live streams are updated and ended ones leave.
   const tickSeen = useRef(liveTick);
   useEffect(() => {
     if (liveTick === tickSeen.current) return;
     tickSeen.current = liveTick;
-    if (!liveShown) return;
-    liveStreams()
-      .then((live) => {
-        if (alive.current) {
-          setPages((before) => withLiveStreams(before, live, filter === 'streams'));
-        }
-      })
-      .catch(() => undefined);
-  }, [liveTick, liveShown, filter]);
+    void freshen(false);
+  }, [liveTick, freshen]);
 
   const loadMore = useCallback(() => {
     if (next === null || (loading !== 'idle' && loading !== 'failed')) return;
@@ -600,8 +765,6 @@ export function FeedList({
     marks.hidden,
   );
   const actions: ItemActions = { marks, onMark, onCopyLink, watched };
-  // The order ads take their places in stays while this list is shown.
-  const [seed] = useState(Math.random);
   const ordered = useMemo(() => adOrder(ads, seed), [ads, seed]);
   // The newest version takes the first place, so an ad is still the second card.
   const entries = withAds<FeedItem | null>(
@@ -619,7 +782,7 @@ export function FeedList({
 
   if (loading === 'first') return <FeedLoading />;
   const cards = (entries.length > 0 || featured !== null) && (
-    <Mosaic label={t.filter[filter]} busy={loading === 'more'}>
+    <Mosaic ref={frame} label={t.filter[filter]} busy={loading === 'more'} glides={glides}>
       {featured !== null && snapshot !== undefined && (
         <Cell key="featured">
           <VersionCard
@@ -639,7 +802,7 @@ export function FeedList({
             </Cell>
           )
         ) : entry.item === null ? null : (
-          <Cell key={itemKey(entry.item)}>
+          <Cell key={itemKey(entry.item)} arrived={arrived.get(itemKey(entry.item)) ?? null}>
             {entry.item.type === 'note' ? (
               <NoteItem card={entry.item.note} onOpen={onOpen} actions={actions} />
             ) : entry.item.type === 'video' ? (
@@ -655,6 +818,23 @@ export function FeedList({
   );
   return (
     <>
+      {held !== null && (
+        <button
+          type="button"
+          className={styles.newAbove}
+          onClick={() => {
+            const still =
+              typeof window.matchMedia === 'function' &&
+              window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+            window.scrollTo({ top: 0, behavior: still ? 'auto' : 'smooth' });
+            // Coming in when the top is reached; at once if the window cannot scroll.
+            if (topInSight(frame.current)) release();
+          }}
+        >
+          <Icon name="up" size={16} />
+          {t.newAbove({ count: held.count })}
+        </button>
+      )}
       {cards}
       {items.length === 0 && <p className={styles.muted}>{empty}</p>}
       <div ref={end} className={styles.listEnd}>

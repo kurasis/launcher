@@ -2981,6 +2981,16 @@ skins-mod <channel>` there only checks the signature against the public key and
   the free 10 000 units; it stops at 8 000 a day. Cards carry `duration` in seconds when
   known (not for live streams or premieres). With the key, channel pictures come from
   the API too (1 unit) instead of the 1.4 MB channel page. Without it both work as before.
+- **Kept between screens (owner request, 2026-10-23):** the feed and each chip's list stay
+  in memory for the run (never on disk), so going back shows the same cards at once,
+  scrolled as they were. A list shown again within a minute is not asked again; after
+  that, every 3 minutes while it is shown and on Refresh, its first page is looked at
+  again: new cards come in at the top (each before the next card the list has), drop in
+  one after another with a mint glow while the others slide to their new places, and
+  cards it has are updated where they are. Further down the list new cards wait behind
+  a "N new posts above" pill until the player is back at the top. Refresh never builds
+  the list anew; a note says what it found, "nothing new" included. Motion stops under
+  `prefers-reduced-motion`.
 
 ## D-068 — Worlds with Friends
 
