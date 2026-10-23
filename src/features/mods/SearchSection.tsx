@@ -23,6 +23,7 @@ import type {
 } from '../../lib/contracts';
 import { describeIpcError, ipc } from '../../lib/ipc';
 import { numberLocale, strings } from '../../lib/strings';
+import { daysAgo } from '../../lib/time';
 import { BackToTop } from './BackToTop';
 import { CatalogTile, TileSkeletons } from './CatalogTile';
 import { CategoryPanel } from './CategoryPanel';
@@ -33,7 +34,6 @@ import {
   type Committed,
   type Filters,
   type Mark,
-  daysAgo,
   readMark,
   recall,
   remember,

@@ -95,3 +95,65 @@ div.chosen {
   fill: currentcolor;
   stroke: none;
 }
+
+/* An install or repair in progress, in place of the chosen installation. */
+.operation {
+  display: grid;
+  flex: 1 1 14rem;
+  gap: var(--space-2);
+  min-width: 8rem;
+}
+
+/* One line: the details give way first, then the phase; the name keeps up to 40%. */
+.line {
+  display: flex;
+  align-items: baseline;
+  gap: var(--space-2);
+  min-width: 0;
+  overflow: hidden;
+  white-space: nowrap;
+}
+
+.line .name {
+  flex: none;
+  max-inline-size: 40%;
+}
+
+.phase {
+  flex: 0 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  color: var(--color-text-muted);
+  font-size: var(--font-size-sm);
+  font-variant-numeric: tabular-nums;
+}
+
+.details {
+  flex: 0 100 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  color: var(--color-text-muted);
+  font-size: var(--font-size-xs);
+  font-variant-numeric: tabular-nums;
+}
+
+.progress {
+  max-inline-size: 35rem;
+}
+
+/* A failed command beside the operation: at most two lines, never the strip's room. */
+.stripError {
+  flex: 0 1 16rem;
+  display: -webkit-box;
+  overflow: hidden;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+}
+
+.queue {
+  color: var(--color-text-muted);
+  font-size: var(--font-size-sm);
+  white-space: nowrap;
+}

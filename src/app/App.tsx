@@ -56,10 +56,13 @@ import {
 } from './navigation';
 import { localizeError } from '../lib/strings';
 
-/** Compact status of the running operation in the rail, visible on every screen. */
+/**
+ * Compact status of the running operation in the rail, visible on every screen. An
+ * install or repair shows in the Downloads row and the launch bar instead.
+ */
 function ActivityIndicator({ snapshot }: { snapshot: AppSnapshot }) {
   const active = snapshot.activeOperation;
-  if (active === null) return null;
+  if (active === null || active.kind === 'install' || active.kind === 'repair') return null;
   const progress = snapshot.operationProgress;
   const percent = progressPercent(progress?.operationId === active.operationId ? progress : null);
   return (
@@ -405,7 +408,7 @@ export function App() {
                 }}
               />
             )}
-            {snapshot !== null && <DownloadManager placement="rail" snapshot={snapshot} />}
+            {snapshot !== null && <DownloadManager snapshot={snapshot} />}
             <MoreMenu
               label={
                 inMenu ? strings.nav.moreCurrent({ view: strings.nav[view] }) : strings.nav.more

@@ -2644,14 +2644,10 @@
     },
     "downloads": {
       "title": "Downloads",
-      "open": "Downloads",
       "none": "Nothing is downloading.",
       "unknown": "Removed installation",
       "progress": "Download progress",
       "percent": "{percent}%",
-      "bytes": "{done} of {total}",
-      "speed": "{rate}/s",
-      "files": "{done, number} of {total, number} files",
       "file": "Downloading {name}",
       "cancel": "Cancel",
       "queue": "Waiting in line: {count, number}",
@@ -2659,7 +2655,25 @@
       "recent": "Recently",
       "queued": "Queued: starts when the current operation ends.",
       "addToQueue": "Add to queue",
-      "waitingForNetwork": "Waiting for the internet connection"
+      "waitingForNetwork": "Waiting for the internet connection",
+      "close": "Close",
+      "state": "{kind, select, repair {Repair} other {Installation}}: {phase, select, resolving {reading version metadata} checking_files {checking files} downloading {downloading} extracting_runtime {preparing Java} preparing_loader {running the mod loader installer} finalizing {finishing} cancel_requested {cancelling} awaiting_approval {waiting for your permission} other {working}}",
+      "percentTail": ", {percent}%",
+      "transfer": "{done} of {total}, {rate}/s.",
+      "transferNoSpeed": "{done} of {total}.",
+      "filesDone": "{done, number} of {total, plural, one {# file} other {# files}}.",
+      "startsAfter": "{kind, select, repair {Repair} other {Installation}}. Starts when the current operation ends.",
+      "waitsForNetwork": "{kind, select, repair {Repair} other {Installation}}. Waits for the internet connection.",
+      "removeNamed": "Remove “{name}” from the queue",
+      "result": {
+        "succeeded": "{kind, select, repair {Repair} other {Installation}} finished {when}.",
+        "failed": "{kind, select, repair {Repair} other {Installation}} failed {when}.",
+        "cancelled": "{kind, select, repair {Repair} other {Installation}} cancelled {when}.",
+        "interrupted": "{kind, select, repair {Repair} other {Installation}} interrupted {when}."
+      },
+      "downloaded": "Downloaded {bytes}, {files, plural, one {# file} other {# files}}.",
+      "metered": "Metered connection: {used} of {limit} downloaded this month.",
+      "meteredNoLimit": "Metered connection: {used} downloaded this month."
     },
     "friends": {
       "open": "Friends and chats",
