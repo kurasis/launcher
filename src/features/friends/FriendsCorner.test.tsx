@@ -95,7 +95,7 @@ function setup(
 
 async function openPanel() {
   fireEvent.click(await screen.findByRole('button', { name: /Friends and chats/ }));
-  return screen.getByRole('region', { name: 'Friends' });
+  return screen.getByRole('region', { name: 'Friends and chats' });
 }
 
 describe('friends corner', () => {
@@ -108,27 +108,27 @@ describe('friends corner', () => {
   });
 
   it("moves focus into the rail's sheet and back to its button when it closes", async () => {
-    mockIPC((cmd) => (cmd === 'friends_state' ? signedIn() : null), { shouldMockEvents: true });
-    render(
-      <FriendsCorner
-        placement="rail"
-        snapshot={snapshotFixture()}
-        onOpenAccounts={vi.fn()}
-        onOpenWorld={vi.fn()}
-      />,
-    );
+    setup(signedIn());
     const button = await screen.findByRole('button', { name: /Friends and chats/ });
     fireEvent.click(button);
-    const sheet = screen.getByRole('region', { name: 'Friends' });
-    expect(within(sheet).getByRole('heading', { name: 'Friends' })).toHaveFocus();
+    const sheet = screen.getByRole('region', { name: 'Friends and chats' });
+    expect(within(sheet).getByRole('heading', { name: 'Friends and chats' })).toHaveFocus();
     // The sheet follows its button, so Tab goes from one into the other.
     expect(button.compareDocumentPosition(sheet) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
     fireEvent.click(within(sheet).getByRole('button', { name: 'Close' }));
-    expect(screen.queryByRole('region', { name: 'Friends' })).toBeNull();
+    expect(screen.queryByRole('region', { name: 'Friends and chats' })).toBeNull();
     expect(button).toHaveFocus();
     fireEvent.click(button);
-    fireEvent.keyDown(screen.getByRole('heading', { name: 'Friends' }), { key: 'Escape' });
-    expect(screen.queryByRole('region', { name: 'Friends' })).toBeNull();
+    fireEvent.keyDown(screen.getByRole('heading', { name: 'Friends and chats' }), {
+      key: 'Escape',
+    });
+    expect(screen.queryByRole('region', { name: 'Friends and chats' })).toBeNull();
+    expect(button).toHaveFocus();
+    // A press on the screen beside the sheet closes it too.
+    fireEvent.click(button);
+    const scrim = document.querySelector('[aria-hidden="true"][class*="scrim"]');
+    fireEvent.click(scrim as HTMLElement);
+    expect(screen.queryByRole('region', { name: 'Friends and chats' })).toBeNull();
     expect(button).toHaveFocus();
   });
 
@@ -306,11 +306,17 @@ describe('friends corner', () => {
     const panel = await openPanel();
     fireEvent.click(within(panel).getByRole('button', { name: /Builders/ }));
     fireEvent.click(await within(panel).findByRole('button', { name: /3 people/ }));
-    fireEvent.click(within(panel).getByRole('button', { name: 'Leave the group' }));
+    expect(within(panel).getByText('Notch_1')).toBeVisible();
+    const menu = within(panel).getByRole('button', { name: 'Chat actions' });
+    fireEvent.click(menu);
+    fireEvent.click(within(panel).getByRole('menuitem', { name: 'Leave the group' }));
     const asked = within(panel).getByRole('alertdialog');
+    expect(asked).toHaveFocus();
     fireEvent.click(within(asked).getByRole('button', { name: 'Cancel' }));
+    expect(menu).toHaveFocus();
     expect(calls.some((c) => c.cmd === 'friends_change_room')).toBe(false);
-    fireEvent.click(within(panel).getByRole('button', { name: 'Leave the group' }));
+    fireEvent.click(menu);
+    fireEvent.click(within(panel).getByRole('menuitem', { name: 'Leave the group' }));
     fireEvent.click(
       within(within(panel).getByRole('alertdialog')).getByRole('button', {
         name: 'Leave the group',
@@ -430,7 +436,7 @@ describe('friends corner', () => {
       key: 'Escape',
     });
     expect(within(panel).queryByRole('textbox', { name: 'What is wrong with it?' })).toBeNull();
-    expect(screen.getByRole('region', { name: 'Friends' })).toBeVisible();
+    expect(screen.getByRole('region', { name: 'Friends and chats' })).toBeVisible();
     expect(calls.some((c) => c.cmd === 'friends_report')).toBe(false);
   });
 
@@ -581,7 +587,7 @@ describe('friends corner', () => {
     expect(within(panel).queryByRole('button', { name: 'Join' })).toBeNull();
   });
 
-  it('looks at a world invite first, then joins the room and opens it', async () => {
+  it('shows what a world invite leads to, and joins the room only on a press', async () => {
     const code = 'AbCdEfGhIjKlMnOpQrStUv';
     const { calls, onOpenWorld } = setup(signedIn(), {
       friends_messages: () => [
@@ -604,14 +610,58 @@ describe('friends corner', () => {
     expect(await within(panel).findByText('Alex invites you to a world')).toBeVisible();
     // Not a code: plain text, no card.
     expect(within(panel).getByText('🌍 world ../../v1/rooms')).toBeVisible();
+    // The facts come by themselves; looking joins nothing.
+    expect(await within(panel).findByText('Our base, Minecraft 1.21.1, 12 mods')).toBeVisible();
+    expect(within(panel).getByText('Open now')).toBeVisible();
+    expect(calls.filter((c) => c.cmd === 'worlds_preview').map((c) => c.args)).toEqual([{ code }]);
     expect(calls.some((c) => c.cmd === 'worlds_redeem')).toBe(false);
-    fireEvent.click(within(panel).getByRole('button', { name: 'Look' }));
-    expect(await within(panel).findByText(/Our base, by Alex/)).toBeVisible();
     fireEvent.click(within(panel).getByRole('button', { name: 'Join the room' }));
     await waitFor(() => {
       expect(onOpenWorld).toHaveBeenCalledWith(ROOM);
     });
     expect(calls.find((c) => c.cmd === 'worlds_redeem')?.args).toEqual({ code });
+  });
+
+  it('lets the one who sent a world invite open the room, and says when a code is spent', async () => {
+    const mineCode = 'MineMineMineMineMine01';
+    const spentCode = 'SpentSpentSpentSpent01';
+    const { calls, onOpenWorld } = setup(signedIn(), {
+      friends_messages: () => [
+        message(1, ME.id, `🌍 world ${mineCode}`),
+        message(2, ALEX.id, `🌍 world ${spentCode}`),
+      ],
+      worlds_preview: (args) => {
+        if ((args as { code: string }).code === spentCode) {
+          throw Object.assign(new Error('worlds.lapi.sh refused this.'), {
+            code: 'INVALID_INPUT',
+            retryable: false,
+            diagnosticId: 'd-1',
+            safeDetails: { worldsProblem: 'invite_invalid' },
+          });
+        }
+        return {
+          room: ROOM,
+          name: 'Our base',
+          ownerNick: 'Steve_2',
+          members: 1,
+          minecraft: '1.21.1',
+          mods: null,
+          hosting: false,
+        };
+      },
+    });
+    const panel = await openPanel();
+    fireEvent.click(within(panel).getByRole('button', { name: /Alex/ }));
+    expect(await within(panel).findByText('Our base, Minecraft 1.21.1')).toBeVisible();
+    expect(within(panel).queryByText('Open now')).toBeNull();
+    // A refused code says so and offers nothing to press.
+    expect(
+      await within(panel).findByText('This invite code is wrong, used up or expired.'),
+    ).toBeVisible();
+    expect(within(panel).queryByRole('button', { name: 'Join the room' })).toBeNull();
+    fireEvent.click(within(panel).getByRole('button', { name: 'Open room' }));
+    expect(onOpenWorld).toHaveBeenCalledWith(ROOM);
+    expect(calls.some((c) => c.cmd === 'worlds_redeem')).toBe(false);
   });
 
   it('says which world a friend plays in', async () => {
@@ -623,5 +673,156 @@ describe('friends corner', () => {
     const panel = await openPanel();
     fireEvent.click(within(panel).getByRole('tab', { name: /Friends/ }));
     expect(await within(panel).findByText('In the world Our base')).toBeVisible();
+  });
+
+  it('moves between tabs with the arrow keys, Home and End, and shows counts', async () => {
+    setup(signedIn({ incoming: [{ ...NOTCH, at: 3, online: false, playing: null }] }));
+    const panel = await openPanel();
+    const chats = within(panel).getByRole('tab', { name: 'Chats (1)' });
+    expect(chats).toHaveAttribute('aria-selected', 'true');
+    expect(chats).toHaveAttribute('tabindex', '0');
+    expect(within(panel).getByRole('tab', { name: 'Friends' })).toHaveAttribute('tabindex', '-1');
+    fireEvent.keyDown(chats, { key: 'ArrowRight' });
+    expect(within(panel).getByRole('tab', { name: 'Friends' })).toHaveFocus();
+    expect(within(panel).getByRole('tabpanel')).toHaveAccessibleName('Friends');
+    fireEvent.keyDown(within(panel).getByRole('tab', { name: 'Friends' }), { key: 'End' });
+    expect(within(panel).getByRole('tab', { name: 'Requests (1)' })).toHaveFocus();
+    fireEvent.keyDown(within(panel).getByRole('tab', { name: 'Requests (1)' }), {
+      key: 'ArrowRight',
+    });
+    expect(chats).toHaveFocus();
+    // Right to left, the arrows follow the reading direction.
+    within(panel).getByRole('tablist').style.direction = 'rtl';
+    fireEvent.keyDown(chats, { key: 'ArrowRight' });
+    expect(within(panel).getByRole('tab', { name: 'Requests (1)' })).toHaveFocus();
+    fireEvent.keyDown(within(panel).getByRole('tab', { name: 'Requests (1)' }), { key: 'Home' });
+    expect(chats).toHaveFocus();
+  });
+
+  it('offers a new group only with two friends or more, and says why', async () => {
+    setup(signedIn({ friends: [{ ...ALEX, at: 1, online: true, playing: null }] }));
+    const panel = await openPanel();
+    const plus = within(panel).getByRole('button', { name: 'New group' });
+    expect(plus).toHaveAttribute('aria-disabled', 'true');
+    expect(plus).toHaveAttribute('title', 'A group needs at least two friends.');
+    fireEvent.click(plus);
+    expect(within(panel).queryByRole('textbox', { name: 'Group name' })).toBeNull();
+  });
+
+  it('shows the chosen chat beside the list and keeps the place when opened again', async () => {
+    const { calls } = setup(signedIn(), { friends_open_direct: () => ROOM });
+    const panel = await openPanel();
+    expect(within(panel).getByText('Choose a chat to read it here.')).toBeVisible();
+    // Nothing is opened, and so read, by itself.
+    expect(calls.some((c) => c.cmd === 'friends_messages')).toBe(false);
+    fireEvent.click(within(panel).getByRole('tab', { name: 'Friends' }));
+    const row = within(panel).getByText('Alex').closest('li') as HTMLElement;
+    fireEvent.click(within(row).getByRole('button', { name: 'Message' }));
+    // Message goes to the chat, in the Chats tab.
+    expect(await within(panel).findByRole('list', { name: 'Alex' })).toBeVisible();
+    expect(within(panel).getByRole('tab', { name: 'Chats (1)' })).toHaveAttribute(
+      'aria-selected',
+      'true',
+    );
+    expect(within(panel).getByRole('button', { name: /Alex/ })).toHaveAttribute(
+      'aria-current',
+      'true',
+    );
+    fireEvent.click(within(panel).getByRole('button', { name: 'Close' }));
+    const again = await openPanel();
+    expect(within(again).getByRole('list', { name: 'Alex' })).toBeVisible();
+  });
+
+  it('closes only the chat menu with Escape, and blocks after a question', async () => {
+    const { calls } = setup(signedIn());
+    const panel = await openPanel();
+    fireEvent.click(within(panel).getByRole('button', { name: /Alex/ }));
+    const menu = await within(panel).findByRole('button', { name: 'Chat actions' });
+    fireEvent.click(menu);
+    expect(within(panel).getByRole('menuitem', { name: 'Remove from friends' })).toBeVisible();
+    fireEvent.keyDown(within(panel).getByRole('menuitem', { name: 'Block' }), { key: 'Escape' });
+    expect(within(panel).queryByRole('menu')).toBeNull();
+    expect(screen.getByRole('region', { name: 'Friends and chats' })).toBeVisible();
+    expect(menu).toHaveFocus();
+    fireEvent.click(menu);
+    fireEvent.click(within(panel).getByRole('menuitem', { name: 'Block' }));
+    const asked = within(panel).getByRole('alertdialog');
+    expect(asked).toHaveTextContent('Block Alex? They will not be told.');
+    // Escape closes the question, and only the question.
+    fireEvent.keyDown(asked, { key: 'Escape' });
+    expect(within(panel).queryByRole('alertdialog')).toBeNull();
+    expect(screen.getByRole('region', { name: 'Friends and chats' })).toBeVisible();
+    expect(calls.some((c) => c.cmd === 'friends_act')).toBe(false);
+    fireEvent.click(menu);
+    fireEvent.click(within(panel).getByRole('menuitem', { name: 'Block' }));
+    fireEvent.click(
+      within(within(panel).getByRole('alertdialog')).getByRole('button', { name: 'Block' }),
+    );
+    await waitFor(() => {
+      expect(calls.find((c) => c.cmd === 'friends_act')?.args).toEqual({
+        action: 'block',
+        id: ALEX.id,
+      });
+    });
+  });
+
+  it('previews the last message as text: whose it is in a group, mine, invites in words', async () => {
+    const GROUP = '10000000-0000-4000-8000-000000000003';
+    const OTHER = '10000000-0000-4000-8000-000000000004';
+    setup(
+      signedIn({
+        rooms: [
+          direct({ unread: 0, last: message(5, ME.id, 'see you') }),
+          direct({
+            id: OTHER,
+            members: [ME, NOTCH],
+            unread: 0,
+            last: { ...message(6, NOTCH.id, '🌍 world AbCdEfGhIjKlMnOpQrStUv'), room: OTHER },
+          }),
+          direct({
+            id: GROUP,
+            kind: 'group',
+            name: 'Builders',
+            members: [ME, ALEX, NOTCH],
+            unread: 0,
+            last: { ...message(7, ALEX.id, HOSTILE), room: GROUP },
+          }),
+        ],
+        unread: 0,
+      }),
+    );
+    const panel = await openPanel();
+    expect(within(panel).getByText('You: see you')).toBeVisible();
+    expect(within(panel).getByText('Invite to a world')).toBeVisible();
+    const group = within(panel).getByText(`Alex: ${HOSTILE}`);
+    expect(group).toHaveAttribute('dir', 'auto');
+    expect(document.querySelector('script')).toBeNull();
+  });
+
+  it('asks for the faces of everyone shown once, and shows only PNG ones', async () => {
+    const HEAD = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAgAAAAI';
+    // Players of their own: faces are kept between tests as between lists.
+    const KIRA = { id: '00000000-0000-4000-8000-000000000007', nick: 'Kira_7' };
+    const MAX = { id: '00000000-0000-4000-8000-000000000008', nick: 'Max_7' };
+    const { calls } = setup(
+      signedIn({
+        friends: [
+          { ...KIRA, at: 1, online: true, playing: null },
+          { ...MAX, at: 2, online: false, playing: null },
+        ],
+        incoming: [{ ...MAX, at: 3, online: false, playing: null }],
+        rooms: [direct({ members: [ME, KIRA], last: null, unread: 0 })],
+        unread: 0,
+      }),
+      { skins_heads: () => ({ Kira_7: HEAD, Max_7: 'javascript:alert(1)' }) },
+    );
+    const panel = await openPanel();
+    await waitFor(() => {
+      expect(panel.querySelectorAll('img')).toHaveLength(1);
+    });
+    expect(panel.querySelector('img')).toHaveAttribute('src', HEAD);
+    expect(calls.filter((c) => c.cmd === 'skins_heads').map((c) => c.args)).toEqual([
+      { nicks: ['Kira_7', 'Max_7'] },
+    ]);
   });
 });

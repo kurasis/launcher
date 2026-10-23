@@ -397,7 +397,6 @@ export function App() {
           <nav aria-label={strings.nav.tools} className={styles.tools}>
             {snapshot !== null && (
               <FriendsCorner
-                placement="rail"
                 snapshot={snapshot}
                 onOpenWorld={(id) => {
                   setWorldsRoom({ id, at: Date.now() });

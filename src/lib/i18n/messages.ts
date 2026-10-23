@@ -2892,7 +2892,6 @@ export type Messages = {
     readonly groupName: string;
     readonly groupMembers: string;
     readonly createGroup: string;
-    readonly back: string;
     readonly members: (values: { count: number }) => string;
     readonly rename: string;
     readonly addMember: string;
@@ -2958,6 +2957,24 @@ export type Messages = {
     readonly youInvitedWorld: string;
     readonly invitedToWorld: (values: { nick: string | number }) => string;
     readonly inWorld: (values: { name: string | number }) => string;
+    readonly tabCount: (values: { label: string | number; count: number }) => string;
+    readonly messageMeta: (values: { nick: string | number; time: string | number }) => string;
+    readonly chatActions: string;
+    readonly chooseChat: string;
+    readonly away: string;
+    readonly previewServerInvite: string;
+    readonly previewWorldInvite: string;
+    readonly openRoom: string;
+    readonly worldFacts: (values: { name: string | number; version: string | number }) => string;
+    readonly worldFactsMods: (values: {
+      name: string | number;
+      version: string | number;
+      mods: number;
+    }) => string;
+    readonly worldOpen: string;
+    readonly newGroupNeeds: string;
+    readonly preferences: string;
+    readonly removeFriend: string;
   };
   readonly windowTitles: {
     readonly pickJava: string;

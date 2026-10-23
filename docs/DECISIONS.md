@@ -2017,14 +2017,21 @@ archive from the Package workflow, upload it to
 - **In the launcher:** the core holds the WebSocket (`/v1/live`, Bearer token
   in the header, reconnects with a fresh token and backoff, ends when the
   account signs out), refreshes the lists on each event and sends the
-  interface `friends://state` and `friends://message`. The chat icon sits
-  left of the downloads, with a badge of unread messages plus requests. Its
-  panel: Chats, Friends (add by nick, message, remove and block after a
-  confirmation, the blocked list), Requests (accept, decline, block,
-  cancel), a new group, and a chat with its history a page of 50 at a time,
-  Enter to send and Shift+Enter for a new line, reports, and the owner's
-  member list. Message text is rendered as text only (no markup, no links),
-  each message with its own direction.
+  interface `friends://state` and `friends://message`. Since concept A
+  (D-072) Friends is a row of the rail with a count of unread messages plus
+  requests; it opens a side sheet at the window's inline end over a soft
+  scrim (a press on it closes the sheet). The sheet: Chats in two panes (the
+  list with skin heads, times and previews; the conversation beside it,
+  nothing opened, and so read, by itself), Friends (add by nick, message,
+  invite, remove and block after a question, the blocked list, the chat
+  settings), Requests (accept, decline, block, spam, cancel), "+" for a new
+  group, and a chat with its history a page of 50 at a time, Enter to send
+  and Shift+Enter for a new line, reports per message, a "⋯" menu (invite to
+  the server the game is on, remove, block, leave a group) and the owner's
+  member list. A world invite shows its world's name, version, mods and
+  whether it is open as soon as it is in view (read only); joining the room
+  takes a press. Message text is rendered as text only (no markup, no
+  links), each message with its own direction.
 
 ### Stages
 

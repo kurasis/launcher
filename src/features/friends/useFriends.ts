@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import type {
   ChatRoom,
+  FriendPerson,
   FriendsProblem,
   FriendsSanction,
   FriendsView,
@@ -8,6 +9,8 @@ import type {
 } from '../../lib/contracts';
 import { ipc, onFriendsState } from '../../lib/ipc';
 import { numberLocale, strings } from '../../lib/strings';
+import { parseInvite } from './invite';
+import { parseWorldInvite, worldOfPresence } from './worldInvite';
 
 /** Friends and chats as the launcher's core keeps them; null until read. */
 export function useFriends(): FriendsView | null {
@@ -38,6 +41,35 @@ export function roomTitle(room: ChatRoom, me: RoomMember | null): string {
     return room.name.length > 0 ? room.name : room.members.map((m) => m.nick).join(', ');
   }
   return room.members.find((m) => m.id !== me?.id)?.nick ?? room.name;
+}
+
+/**
+ * The last message of a chat as its row shows it, as plain text: an invite in words,
+ * "You: …" for mine, "Max: …" from someone in a group, the text alone from the other
+ * one of two.
+ */
+export function previewText(room: ChatRoom, me: RoomMember | null): string | null {
+  const t = strings.friends;
+  const last = room.last;
+  if (last === null) return null;
+  const body =
+    parseInvite(last.body) !== null
+      ? t.previewServerInvite
+      : parseWorldInvite(last.body) !== null
+        ? t.previewWorldInvite
+        : last.body;
+  if (me !== null && last.sender === me.id) return `${t.you}: ${body}`;
+  if (room.kind === 'direct') return body;
+  return `${room.members.find((m) => m.id === last.sender)?.nick ?? '—'}: ${body}`;
+}
+
+/** "Playing Minecraft 1.21.1", "In the world Our base", "Online" or "Offline". */
+export function presenceText(person: Pick<FriendPerson, 'online' | 'playing'>): string {
+  const t = strings.friends;
+  if (!person.online) return t.away;
+  if (person.playing === null) return t.online;
+  const world = worldOfPresence(person.playing);
+  return world === null ? t.playing({ game: person.playing }) : t.inWorld({ name: world });
 }
 
 export function problemText(problem: FriendsProblem): string {

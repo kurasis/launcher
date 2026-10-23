@@ -53,9 +53,9 @@
   padding: 0 0.3rem;
   border-radius: var(--radius-pill);
   background: var(--color-mint);
-  color: #0e2a1e;
+  color: var(--color-on-mint);
   font-size: var(--font-size-xs);
-  font-weight: 700;
+  font-weight: 600;
   line-height: 1.25rem;
   text-align: center;
 }

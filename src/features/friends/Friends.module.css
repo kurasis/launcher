@@ -1,537 +1,5 @@
-/* Friends and chats sit in the bottom corner, beside the downloads (D-064). */
-.corner {
-  position: fixed;
-  inset-inline-end: calc(var(--space-6) + 3.25rem + var(--space-3));
-  inset-block-end: var(--space-6);
-  z-index: 41;
-  display: flex;
-  flex-direction: column;
-  align-items: flex-end;
-  gap: var(--space-2);
-}
-
-.button {
-  position: relative;
-  display: grid;
-  place-items: center;
-  width: 3.25rem;
-  height: 3.25rem;
-  border: none;
-  border-radius: 50%;
-  cursor: pointer;
-  color: var(--color-text-muted);
-  background: var(--color-surface-raised);
-  box-shadow: var(--shadow-raised);
-  transition: transform 150ms ease;
-}
-
-.button:hover {
-  transform: scale(1.05);
-}
-
-.icon {
-  width: 1.5rem;
-  height: 1.5rem;
-  fill: none;
-  stroke: currentcolor;
-  stroke-width: 2;
-  stroke-linecap: round;
-  stroke-linejoin: round;
-}
-
-.badge {
-  position: absolute;
-  inset-block-start: -2px;
-  inset-inline-end: -2px;
-  min-width: 1.25rem;
-  height: 1.25rem;
-  padding: 0 0.3rem;
-  border-radius: 999px;
-  background: var(--color-accent-2);
-  color: var(--color-accent-contrast);
-  font-size: var(--font-size-xs);
-  font-weight: 700;
-  line-height: 1.25rem;
-}
-
-.panel {
-  display: flex;
-  flex-direction: column;
-  gap: var(--space-2);
-  width: min(26rem, calc(100vw - 8rem));
-  max-height: min(36rem, calc(100vh - 8rem));
-  overflow: auto;
-  padding: var(--space-4);
-  border: 1px solid var(--color-border);
-  border-radius: var(--radius-md);
-  /* Solid: text of the screen behind must not show through a chat. */
-  background: var(--color-surface-solid);
-  box-shadow: var(--shadow-raised);
-  animation: rise 160ms ease-out;
-}
-
-/* A steady height, so the tabs stay put when their content changes. */
-.panel[data-signed-in] {
-  min-height: min(26rem, calc(100vh - 8rem));
-}
-
-.title {
-  font-size: var(--font-size-md);
-  font-weight: 700;
-}
-
-.head {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: var(--space-2);
-}
-
-.close {
-  display: grid;
-  place-items: center;
-  width: 2rem;
-  height: 2rem;
-  padding: 0;
-  border: 0;
-  border-radius: var(--radius-sm);
-  background: transparent;
-  color: var(--color-text-muted);
-  cursor: pointer;
-}
-
-.close:hover {
-  background: var(--color-neutral-bg);
-  color: var(--color-text);
-}
-
-.subtitle {
-  font-size: var(--font-size-sm);
-  font-weight: 700;
-  margin: var(--space-2) 0 0;
-}
-
-.stack {
-  display: grid;
-  gap: var(--space-2);
-}
-
-.inline {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: var(--space-2);
-}
-
-.inline > input,
-.inline > select {
-  flex: 1 1 8rem;
-}
-
-.tabs {
-  display: flex;
-  gap: var(--space-1);
-  border-bottom: 1px solid var(--color-border);
-}
-
-.tab {
-  display: inline-flex;
-  align-items: center;
-  gap: var(--space-1);
-  padding: var(--space-2) var(--space-3);
-  border: none;
-  border-bottom: 2px solid transparent;
-  background: none;
-  color: var(--color-text-muted);
-  font: inherit;
-  font-size: var(--font-size-sm);
-  cursor: pointer;
-}
-
-.tab[aria-selected='true'] {
-  border-bottom-color: var(--color-accent);
-  color: var(--color-text);
-  font-weight: 700;
-}
-
-[role='tabpanel'] {
-  padding-top: var(--space-2);
-}
-
-.count {
-  align-self: center;
-  min-width: 1.1rem;
-  padding: 0 0.3rem;
-  border-radius: 999px;
-  background: var(--color-accent-2);
-  color: var(--color-accent-contrast);
-  font-size: var(--font-size-xs);
-  font-weight: 700;
-  line-height: 1.1rem;
-  text-align: center;
-}
-
-.list {
-  display: grid;
-  gap: var(--space-1);
-  margin: 0;
-  padding: 0;
-  list-style: none;
-}
-
-.row {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  gap: var(--space-2);
-  font-size: var(--font-size-sm);
-}
-
-.actions {
-  display: inline-flex;
-  gap: var(--space-3);
-}
-
-.nick {
-  overflow: hidden;
-  font-weight: 600;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.roomButton {
-  display: grid;
-  grid-template-columns: 1fr auto;
-  gap: 0 var(--space-2);
-  width: 100%;
-  padding: var(--space-2);
-  border: none;
-  border-radius: var(--radius-sm);
-  background: none;
-  color: inherit;
-  font: inherit;
-  text-align: start;
-  cursor: pointer;
-}
-
-.roomButton:hover {
-  background: var(--color-neutral-bg);
-}
-
-.roomName {
-  overflow: hidden;
-  font-weight: 600;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.preview {
-  grid-column: 1 / -1;
-  overflow: hidden;
-  color: var(--color-text-muted);
-  font-size: var(--font-size-sm);
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.link,
-.quiet,
-.danger {
-  padding: 0;
-  border: none;
-  background: none;
-  font: inherit;
-  font-size: var(--font-size-sm);
-  cursor: pointer;
-}
-
-.link {
-  color: var(--color-accent-2);
-}
-
-.quiet {
-  color: var(--color-text-muted);
-}
-
-.danger {
-  justify-self: start;
-  color: var(--color-danger-text);
-}
-
-.link:disabled,
-.quiet:disabled {
-  opacity: 0.6;
-  cursor: default;
-}
-
-.muted {
-  color: var(--color-text-muted);
-  font-size: var(--font-size-sm);
-}
-
-.error {
-  color: var(--color-danger-text);
-  font-size: var(--font-size-sm);
-}
-
-.success {
-  color: var(--color-success-text);
-  font-size: var(--font-size-sm);
-}
-
-.confirm {
-  display: grid;
-  gap: var(--space-2);
-  padding: var(--space-3);
-  border-radius: var(--radius-sm);
-  background: var(--color-warning-bg);
-  color: var(--color-warning-text);
-  font-size: var(--font-size-sm);
-}
-
-.choices {
-  display: grid;
-  gap: var(--space-1);
-  max-height: 12rem;
-  overflow: auto;
-  margin: 0;
-  padding: 0;
-  border: none;
-}
-
-.choice {
-  display: flex;
-  align-items: center;
-  gap: var(--space-2);
-  font-size: var(--font-size-sm);
-}
-
-.chat {
-  display: grid;
-  gap: var(--space-2);
-}
-
-.chatHead {
-  display: flex;
-  align-items: center;
-  gap: var(--space-3);
-}
-
-.chatTitle {
-  flex: 1;
-  overflow: hidden;
-  font-size: var(--font-size-md);
-  font-weight: 700;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.members {
-  display: grid;
-  gap: var(--space-2);
-  padding: var(--space-2);
-  border-radius: var(--radius-sm);
-  background: var(--color-neutral-bg);
-}
-
-.members > .link {
-  justify-self: start;
-}
-
-.messages {
-  display: grid;
-  align-content: start;
-  gap: var(--space-2);
-  height: 18rem;
-  margin: 0;
-  padding: 0 var(--space-1);
-  overflow-y: auto;
-  list-style: none;
-}
-
-.earlier {
-  justify-self: center;
-}
-
-.message {
-  display: grid;
-  gap: 0.15rem;
-  max-width: 85%;
-  padding: var(--space-2) var(--space-3);
-  border-radius: var(--radius-md);
-  background: var(--color-neutral-bg);
-}
-
-.message > .quiet {
-  justify-self: end;
-}
-
-.message[data-mine] {
-  justify-self: end;
-  background: var(--color-accent-soft);
-}
-
-.meta {
-  color: var(--color-text-muted);
-  font-size: var(--font-size-xs);
-}
-
-/* What players wrote: plain text, kept as written, long words wrap. */
-.body {
-  white-space: pre-wrap;
-  overflow-wrap: anywhere;
-  font-size: var(--font-size-sm);
-}
-
-.composer {
-  display: flex;
-  align-items: flex-end;
-  gap: var(--space-2);
-}
-
-.draft {
-  flex: 1;
-  resize: none;
-}
-
-@keyframes rise {
-  from {
-    opacity: 0;
-    transform: translateY(6px);
-  }
-}
-
-@media (prefers-reduced-motion: reduce) {
-  .panel {
-    animation: none;
-  }
-}
-
-.who {
-  display: grid;
-  min-width: 0;
-}
-
-.status {
-  overflow: hidden;
-  color: var(--color-success-text);
-  font-size: var(--font-size-sm);
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.online,
-.away {
-  display: inline-block;
-  width: 0.5rem;
-  height: 0.5rem;
-  margin-inline-end: var(--space-2);
-  border-radius: 50%;
-  vertical-align: middle;
-}
-
-.online {
-  background: var(--color-success-text);
-}
-
-.away {
-  border: 1px solid var(--color-text-muted);
-}
-
-/* Something is on its way: a small turning ring and what it waits for. */
-.loading {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: var(--space-2);
-  margin: 0;
-  padding: var(--space-2);
-  color: var(--color-text-muted);
-  font-size: var(--font-size-sm);
-}
-
-.spinner {
-  flex: none;
-  width: 0.95rem;
-  height: 0.95rem;
-  border: 2px solid var(--color-border);
-  border-top-color: var(--color-accent-2);
-  border-radius: 50%;
-  animation: spin 0.8s linear infinite;
-}
-
-@keyframes spin {
-  to {
-    transform: rotate(360deg);
-  }
-}
-
-@media (prefers-reduced-motion: reduce) {
-  .spinner {
-    animation-duration: 2.4s;
-  }
-}
-
-/* Where the messages that were unread on opening begin. */
-.newDivider {
-  display: flex;
-  align-items: center;
-  gap: var(--space-2);
-  color: var(--color-accent-2);
-  font-size: var(--font-size-xs);
-  font-weight: 700;
-  text-transform: uppercase;
-  letter-spacing: 0.04em;
-}
-
-.newDivider::before,
-.newDivider::after {
-  content: '';
-  flex: 1;
-  height: 1px;
-  background: var(--color-accent-2);
-  opacity: 0.5;
-}
-
-.roomButton[data-unread] .roomName {
-  font-weight: 800;
-}
-
-.roomButton[data-unread] .preview {
-  color: var(--color-text);
-}
-
-/* An invite to a server: the address, the game, and Join. */
-.invite {
-  display: grid;
-  gap: var(--space-1);
-  margin-top: 0.15rem;
-  padding: var(--space-2) var(--space-3);
-  border: 1px solid var(--color-accent-2);
-  border-radius: var(--radius-md);
-  background: var(--color-surface);
-}
-
-.inviteTitle {
-  margin: 0;
-  font-weight: 700;
-}
-
-.inviteServer {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: baseline;
-  gap: var(--space-2);
-  margin: 0;
-}
-
-.inviteServer code {
-  font-size: var(--font-size-sm);
-  font-weight: 600;
-  word-break: break-all;
-}
-
-/* Concept A: a row of the rail; the chats open as a sheet at the window's inline-end edge. */
+/* Friends and chats (D-064) in concept A: a row of the rail, and a side sheet at the
+   window's inline end over a soft scrim, with the chats in two panes. */
 .railSlot {
   display: contents;
 }
@@ -562,17 +30,8 @@
   background: var(--color-rail-active);
 }
 
-.railButton .icon {
-  width: 1.25rem;
-  height: 1.25rem;
-  stroke-width: 1.75;
-}
-
-.railButton .badge {
-  position: static;
-  margin-inline-start: auto;
-  background: var(--color-mint);
-  color: #0e2a1e;
+.railIcon {
+  flex: none;
 }
 
 .railLabel {
@@ -582,21 +41,828 @@
   text-overflow: ellipsis;
 }
 
-.railSlot .panel {
+/* Unread messages plus requests. */
+.badge {
+  min-width: 1.25rem;
+  height: 1.25rem;
+  margin-inline-start: auto;
+  padding: 0 0.3rem;
+  border: 1px solid transparent;
+  border-radius: var(--radius-pill);
+  background: var(--color-mint);
+  color: var(--color-on-mint);
+  font-size: var(--font-size-xs);
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  line-height: calc(1.25rem - 2px);
+  text-align: center;
+}
+
+.sheet {
   /* Out of the rail's colors: the sheet is a plain surface. */
   --focus-ring: var(--color-focus);
   position: fixed;
-  /* Down to the launch bar, which stays usable while a chat is open. */
-  inset-block: 0 var(--bar-height);
+  inset-block: 0;
   inset-inline-end: 0;
   z-index: 41;
-  width: min(34rem, calc(100vw - var(--rail-width)));
-  max-height: none;
-  border-radius: 0;
-  border-block-start: 0;
-  border-inline-end: 0;
-  animation: none;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  inline-size: min(35rem, calc(100vw - var(--rail-width)));
+  overflow-y: auto;
+  padding: var(--space-4) calc(var(--space-4) + var(--space-1));
+  border-inline-start: 1px solid var(--color-border);
+  background: var(--color-surface-solid);
+  box-shadow: var(--shadow-raised);
   color: var(--color-text);
+  font-size: var(--font-size-md);
+  text-align: start;
+  animation: appear 120ms ease-out;
+}
+
+/* Over the screen and the launch bar, not the rail: a press on it closes the sheet. */
+.scrim {
+  position: fixed;
+  inset-block: 0;
+  inset-inline-start: var(--rail-width);
+  inset-inline-end: 0;
+  z-index: 40;
+  background: var(--color-scrim-soft);
+  animation: appear 120ms ease-out;
+}
+
+.head {
+  display: flex;
+  flex: none;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.title {
+  flex: 1;
+  min-width: 0;
+  font-size: var(--font-size-md);
+  font-weight: 600;
+}
+
+.title:focus,
+.paneTitle:focus {
+  outline: none;
+}
+
+/* "+" (a new group): a small secondary button with only its icon. */
+.square {
+  inline-size: 2rem;
+  padding: 0;
+}
+
+.close {
+  display: grid;
+  flex: none;
+  place-items: center;
+  width: 2rem;
+  height: 2rem;
+  padding: 0;
+  border: 0;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--color-text-muted);
+  cursor: pointer;
+}
+
+.close:hover {
+  background: var(--color-hover);
+  color: var(--color-text);
+}
+
+/* Signed out, an email to confirm: what to do, at the top of the sheet. */
+.state {
+  display: grid;
+  align-content: start;
+  justify-items: start;
+  gap: var(--space-3);
+  font-size: var(--font-size-sm);
+}
+
+.tabs {
+  display: flex;
+  flex: none;
+  flex-wrap: wrap;
+  border-block-end: 1px solid var(--color-border);
+}
+
+.tab {
+  min-height: 2.375rem;
+  margin-block-end: -1px;
+  padding: 0 var(--space-3);
+  border: 0;
+  border-block-end: 2px solid transparent;
+  background: none;
+  color: var(--color-text-muted);
+  font: inherit;
+  font-size: var(--font-size-sm);
+  font-weight: 500;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+.tab:hover {
+  color: var(--color-text);
+}
+
+.tab[aria-selected='true'] {
+  border-block-end-color: var(--color-accent);
+  color: var(--color-text);
+}
+
+/* The open tab fills the rest of the sheet; its lists scroll, not the sheet. */
+.tabPanel {
+  display: flex;
+  flex: 1 1 auto;
+  flex-direction: column;
+  min-block-size: 16rem;
+}
+
+.tabBody {
+  display: grid;
+  flex: 1 1 auto;
+  align-content: start;
+  gap: var(--space-3);
+  min-block-size: 0;
+  overflow-y: auto;
+  padding-block: var(--space-1);
+  font-size: var(--font-size-sm);
+}
+
+/* Chats: the list, and the conversation beside it. */
+.chats {
+  display: grid;
+  flex: 1 1 auto;
+  grid-template-columns: 12.5rem minmax(0, 1fr);
+  gap: var(--space-3);
+  min-block-size: 0;
+}
+
+.chatList {
+  display: grid;
+  align-content: start;
+  gap: var(--space-1);
+  min-block-size: 0;
+  overflow-y: auto;
+  font-size: var(--font-size-sm);
+}
+
+.pane {
+  display: flex;
+  flex-direction: column;
+  min-block-size: 0;
+  min-inline-size: 0;
+  padding-inline-start: var(--space-3);
+  border-inline-start: 1px solid var(--color-border);
+  font-size: var(--font-size-sm);
+}
+
+.paneEmpty {
+  margin: auto;
+  max-inline-size: 16rem;
+  color: var(--color-text-muted);
+  text-align: center;
+}
+
+.listLabel {
+  margin: var(--space-2) 0 0;
+  padding-inline: var(--space-2);
+  color: var(--color-text-muted);
+  font-size: var(--font-size-xs);
+  font-weight: 500;
+}
+
+.rooms {
+  display: grid;
+  gap: 2px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.roomRow {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  align-items: center;
+  gap: var(--space-2);
+  inline-size: 100%;
+  padding: var(--space-1) var(--space-2);
+  border: 0;
+  border-inline-start: 2px solid transparent;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  text-align: start;
+  cursor: pointer;
+}
+
+.roomRow:hover {
+  background: var(--color-hover);
+}
+
+.roomRow[aria-current='true'] {
+  border-inline-start-color: var(--color-accent);
+  background: var(--color-selected);
+}
+
+.roomText {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+}
+
+.roomLine {
+  display: flex;
+  align-items: baseline;
+  gap: var(--space-2);
+  min-width: 0;
+}
+
+.roomName {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  font-weight: 600;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.roomTime {
+  flex: none;
+  color: var(--color-text-muted);
+  font-size: var(--font-size-xs);
+  font-variant-numeric: tabular-nums;
+}
+
+.preview {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  color: var(--color-text-muted);
+  font-size: var(--font-size-xs);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.roomRow[data-unread] .preview {
+  color: var(--color-text);
+}
+
+/* Unread messages of a chat. */
+.count {
+  flex: none;
+  align-self: center;
+  min-width: 1.25rem;
+  padding: 0 0.3rem;
+  border: 1px solid transparent;
+  border-radius: var(--radius-pill);
+  background: var(--color-accent);
+  color: var(--color-accent-contrast);
+  font-size: var(--font-size-xs);
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  line-height: calc(1.25rem - 2px);
+  text-align: center;
+}
+
+/* A group in place of a face: the people icon on a tile. */
+.groupTile {
+  display: grid;
+  flex: none;
+  place-items: center;
+  border-radius: 20%;
+  background: var(--color-accent-2);
+  color: var(--color-accent-contrast);
+}
+
+/* One conversation: who, the messages, and writing. */
+.chat {
+  display: flex;
+  flex: 1 1 auto;
+  flex-direction: column;
+  gap: var(--space-2);
+  min-block-size: 0;
+}
+
+.chatHead {
+  display: flex;
+  flex: none;
+  align-items: center;
+  gap: var(--space-2);
+  min-width: 0;
+}
+
+.chatTitle {
+  flex: 0 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  font-size: var(--font-size-sm);
+  font-weight: 600;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.chatMenu {
+  flex: none;
+  margin-inline-start: auto;
+}
+
+/* "⋯": the chat's actions. Its name is its tooltip and accessible name; only the icon shows. */
+.iconButton {
+  display: grid;
+  place-items: center;
+  inline-size: 2rem;
+  block-size: 2rem;
+  padding: 0;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+  background: var(--color-surface);
+  color: var(--color-text-muted);
+  cursor: pointer;
+}
+
+.iconButton:hover,
+.iconButton[aria-expanded='true'] {
+  background: var(--color-hover);
+  color: var(--color-text);
+}
+
+.iconButton > span {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+
+.presence {
+  display: inline-flex;
+  flex: 0 1 auto;
+  align-items: center;
+  gap: var(--space-1);
+  min-width: 0;
+  color: var(--color-text-muted);
+  font-size: var(--font-size-xs);
+}
+
+.presence[data-online] {
+  color: var(--color-accent-text);
+}
+
+.presenceText {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.dot {
+  flex: none;
+  inline-size: 0.5rem;
+  block-size: 0.5rem;
+  border: 1px solid var(--color-text-muted);
+  border-radius: 50%;
+}
+
+.presence[data-online] .dot {
+  border-color: var(--color-accent);
+  background: var(--color-accent);
+}
+
+.members {
+  display: grid;
+  flex: none;
+  gap: var(--space-2);
+  max-block-size: 40%;
+  overflow-y: auto;
+  padding: var(--space-2) var(--space-3);
+  border-radius: var(--radius-md);
+  background: var(--color-surface-sunken);
+}
+
+.messages {
+  display: flex;
+  flex: 1 1 auto;
+  flex-direction: column;
+  gap: var(--space-2);
+  min-block-size: 0;
+  margin: 0;
+  padding: 0 var(--space-1) var(--space-1) 0;
+  overflow-y: auto;
+  list-style: none;
+}
+
+.earlier {
+  align-self: center;
+}
+
+.message {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  align-self: flex-start;
+  gap: 2px;
+  max-inline-size: 85%;
+}
+
+.message[data-mine] {
+  align-items: flex-end;
+  align-self: flex-end;
+}
+
+.meta {
+  padding-inline: var(--space-1);
+  color: var(--color-text-muted);
+  font-size: var(--font-size-xs);
+  font-variant-numeric: tabular-nums;
+}
+
+/* What players wrote: plain text, kept as written, long words wrap. */
+.bubble {
+  max-inline-size: 100%;
+  margin: 0;
+  padding: var(--space-2) var(--space-3);
+  border-radius: var(--radius-lg);
+  background: var(--color-bg);
+  font-size: var(--font-size-sm);
+  line-height: 1.35;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.message[data-mine] .bubble {
+  background: var(--color-selected);
+}
+
+.report {
+  padding: 0 var(--space-1);
+  border: 0;
+  background: none;
+  color: var(--color-text-muted);
+  font: inherit;
+  font-size: var(--font-size-xs);
+  text-decoration: underline;
+  cursor: pointer;
+}
+
+/* With a mouse, Report shows on the message under the pointer or with the focus. */
+@media (hover: hover) {
+  .message .report {
+    opacity: 0;
+  }
+
+  .message:hover .report,
+  .message:focus-within .report {
+    opacity: 1;
+  }
+}
+
+.reportForm {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.reportForm > input {
+  flex: 1 1 8rem;
+}
+
+/* Where the messages that were unread on opening begin. */
+.newDivider {
+  display: flex;
+  align-items: center;
+  align-self: stretch;
+  gap: var(--space-2);
+  color: var(--color-accent-text);
+  font-size: var(--font-size-xs);
+  font-weight: 600;
+}
+
+.newDivider::before,
+.newDivider::after {
+  content: '';
+  flex: 1;
+  block-size: 1px;
+  background: var(--color-border);
+}
+
+/* An invite in a chat, to a server or to a world, in place of a bubble. */
+.card {
+  display: grid;
+  gap: var(--space-1);
+  max-inline-size: 100%;
+  padding: var(--space-2) var(--space-3);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  background: var(--color-surface);
+}
+
+.cardTitle {
+  margin: 0;
+  font-size: var(--font-size-sm);
+  font-weight: 600;
+}
+
+.cardFacts {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: var(--space-1) var(--space-2);
+  margin: 0;
+  color: var(--color-text-muted);
+  font-size: var(--font-size-sm);
+}
+
+.server {
+  color: var(--color-text);
+  font-family: var(--font-mono);
+  font-size: var(--font-size-sm);
+  word-break: break-all;
+}
+
+.composer {
+  display: grid;
+  flex: none;
+  gap: var(--space-1);
+}
+
+.composerRow {
+  display: flex;
+  align-items: flex-end;
+  gap: var(--space-2);
+}
+
+.draft {
+  flex: 1;
+  min-block-size: 2.5rem;
+  max-block-size: 8rem;
+  resize: vertical;
+}
+
+.send {
+  flex: none;
+  inline-size: 2.5rem;
+  min-block-size: 2.5rem;
+  padding: 0;
+}
+
+:global([dir='rtl']) .mirror {
+  transform: scaleX(-1);
+}
+
+.hint {
+  color: var(--color-text-muted);
+  font-size: var(--font-size-xs);
+}
+
+/* Friends, requests and members: a face, the nick and what they do, then actions. */
+.people {
+  display: grid;
+  gap: var(--space-1);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+/* A friend's row with the question under it, when one is asked. */
+.personItem {
+  display: grid;
+  gap: var(--space-2);
+}
+
+.person {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2) var(--space-3);
+  padding: var(--space-1) var(--space-2);
+  margin-inline: calc(-1 * var(--space-2));
+  border-radius: var(--radius-sm);
+}
+
+.person:hover {
+  background: var(--color-hover);
+}
+
+.who {
+  display: grid;
+  flex: 1 1 7rem;
+  gap: 2px;
+  min-width: 0;
+}
+
+.nick {
+  overflow: hidden;
+  font-size: var(--font-size-sm);
+  font-weight: 600;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-1);
+  margin-inline-start: auto;
+}
+
+.group {
+  display: grid;
+  gap: var(--space-2);
+}
+
+.groupHead {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-2);
+}
+
+.subtitle {
+  margin: 0;
+  padding: 0;
+  font-size: var(--font-size-sm);
+  font-weight: 600;
+}
+
+.preferences {
+  display: grid;
+  gap: var(--space-2);
+  margin: 0;
+  padding: var(--space-3) 0 0;
+  border: 0;
+  border-block-start: 1px solid var(--color-border);
+}
+
+.preferences > legend {
+  float: inline-start;
+  inline-size: 100%;
+  margin-block-end: var(--space-1);
+}
+
+.newGroup {
+  display: grid;
+  flex: 1 1 auto;
+  align-content: start;
+  gap: var(--space-3);
+  min-block-size: 0;
+  overflow-y: auto;
+}
+
+.paneTitle {
+  margin: 0;
+  font-size: var(--font-size-md);
+  font-weight: 600;
+}
+
+.choices {
+  display: grid;
+  gap: var(--space-1);
+  max-block-size: 14rem;
+  overflow: auto;
+  margin: 0;
+  padding: 0;
+  border: 0;
+}
+
+.choice {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  font-size: var(--font-size-sm);
+}
+
+.inline {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.inline > input,
+.inline > select {
+  flex: 1 1 8rem;
+}
+
+/* A link-like action: always underlined. */
+.link {
+  justify-self: start;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--color-accent-text);
+  font: inherit;
+  font-size: var(--font-size-sm);
+  text-decoration: underline;
+  cursor: pointer;
+}
+
+.chatHead .link {
+  flex: none;
+  font-size: var(--font-size-xs);
+}
+
+.muted {
+  color: var(--color-text-muted);
+  font-size: var(--font-size-sm);
+}
+
+.error {
+  color: var(--color-danger-text);
+  font-size: var(--font-size-sm);
+}
+
+.success {
+  color: var(--color-success-text);
+  font-size: var(--font-size-sm);
+}
+
+/* A question before a step that cannot be taken back, under what it is about. */
+.confirm {
+  display: grid;
+  gap: var(--space-2);
+  padding: var(--space-3);
+  border-radius: var(--radius-sm);
+  background: var(--color-warning-bg);
+  color: var(--color-warning-text);
+  font-size: var(--font-size-sm);
+}
+
+.confirm:focus {
+  outline: 2px solid var(--focus-ring);
+  outline-offset: 2px;
+}
+
+/* Something is on its way: a small turning ring and what it waits for. */
+.loading {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-2);
+  margin: 0;
+  padding: var(--space-2);
+  color: var(--color-text-muted);
+  font-size: var(--font-size-sm);
+}
+
+.spinner {
+  flex: none;
+  width: 0.95rem;
+  height: 0.95rem;
+  border: 2px solid var(--color-border);
+  border-top-color: var(--color-accent);
+  border-radius: 50%;
+  animation: spin 0.8s linear infinite;
+}
+
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+@keyframes appear {
+  from {
+    opacity: 0;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .sheet,
+  .scrim {
+    animation: none;
+  }
+
+  .spinner {
+    animation-duration: 2.4s;
+  }
+}
+
+@media (forced-colors: active) {
+  .tab[aria-selected='true'],
+  .roomRow[aria-current='true'] {
+    border-color: Highlight;
+  }
+
+  .dot {
+    forced-color-adjust: none;
+    border-color: CanvasText;
+  }
+
+  .presence[data-online] .dot {
+    border-color: Highlight;
+    background: Highlight;
+  }
 }
 
 /* The icon-only rail of a narrow window (App.module.css). */
@@ -608,5 +874,11 @@
 
   .railLabel {
     display: none;
+  }
+
+  .badge {
+    position: absolute;
+    inset-block-start: 0;
+    inset-inline-end: var(--space-1);
   }
 }
