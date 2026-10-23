@@ -8,10 +8,20 @@ pub const DEVICE_NAME_MAX: usize = 64;
 
 /// A game version a room can be made for, as the launcher's world versions:
 /// a release from 1.7.6 on (`1.7.10`, `1.21`, `26.1`), a snapshot from 14w17a
-/// (`24w14a`), or a pre-release or release candidate of such a release
-/// (`1.21-pre1`, `1.21-rc1`, `26.1-snapshot-2`, `26.1-pre-1`, `26.1-rc-1`).
+/// (`24w14a`), a pre-release or release candidate of such a release
+/// (`1.21-pre1`, `1.21-rc1`, `26.1-snapshot-2`, `26.1-pre-1`, `26.1-rc-1`), or
+/// a version of the launcher's own list with a server (D-073: `24w14potato`,
+/// `combat-8c`).
 pub fn minecraft(text: &str) -> bool {
-    release(text) || snapshot(text)
+    release(text) || snapshot(text) || listed(text)
+}
+
+/// The versions of the launcher's own list a world can be made for, one per
+/// line, as scripts/extra-versions.mjs writes them.
+const LISTED: &str = include_str!("../../../data/extra-world-versions.txt");
+
+fn listed(text: &str) -> bool {
+    !text.is_empty() && LISTED.lines().any(|id| id == text)
 }
 
 fn release(text: &str) -> bool {
@@ -150,7 +160,9 @@ mod tests {
             "b1.7.3",
             "14w02a",
             "24w54a",
-            "20w14infinite",
+            "20w14infinite ",
+            "2.0-blue",
+            "b1.7_01",
             "1.21-pre0",
             "1.21-pre",
             "1.7.2-pre1",
@@ -165,6 +177,48 @@ mod tests {
             "1.21\n",
             "1.21/x",
             "<script>",
+        ] {
+            assert!(!minecraft(bad), "{bad:?}");
+        }
+    }
+
+    #[test]
+    fn versions_of_the_launchers_list_with_a_server_are_game_versions() {
+        let data: serde_json::Value = serde_json::from_slice(
+            &std::fs::read(concat!(
+                env!("CARGO_MANIFEST_DIR"),
+                "/../../data/extra-versions.json"
+            ))
+            .unwrap(),
+        )
+        .unwrap();
+        let from = chrono::DateTime::parse_from_rfc3339("2014-04-09T00:00:00+00:00").unwrap();
+        let mut worlds = Vec::new();
+        for v in data["versions"].as_array().unwrap() {
+            let id = v["id"].as_str().unwrap();
+            let time = chrono::DateTime::parse_from_rfc3339(v["releaseTime"].as_str().unwrap());
+            if v["server"] == true && time.unwrap() >= from {
+                worlds.push(id);
+                assert!(minecraft(id), "{id}");
+            } else {
+                assert!(!minecraft(id), "{id}");
+            }
+        }
+        assert_eq!(LISTED.lines().collect::<Vec<_>>(), worlds);
+        for id in [
+            "24w14potato",
+            "3D Shareware v1.34",
+            "combat-8c",
+            "1.21.11_unobfuscated",
+        ] {
+            assert!(minecraft(id), "{id}");
+        }
+        for bad in [
+            "24W14POTATO",
+            "combat-8",
+            "24w14potato\n",
+            "\n",
+            "combat-8c\ncombat-8b",
         ] {
             assert!(!minecraft(bad), "{bad:?}");
         }

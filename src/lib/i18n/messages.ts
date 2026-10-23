@@ -2212,6 +2212,9 @@ export type Messages = {
       readonly version: string;
       readonly snapshots: string;
       readonly snapshotsNote: string;
+      readonly special: string;
+      readonly specialGroup: string;
+      readonly specialNote: string;
       readonly gameMode: string;
       readonly modes: {
         readonly survival: string;

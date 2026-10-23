@@ -161,6 +161,15 @@ impl From<world::WorldFile> for LocalWorld {
     }
 }
 
+/// A Minecraft version a world can be made for.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct VersionChoice {
+    pub id: String,
+    /// The name of a version of our own list (D-073): `Combat Test 8c`.
+    pub name: Option<String>,
+}
+
 /// An installation a world with mods can be made from (W12).
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -372,26 +381,47 @@ impl Worlds {
 
     /// The Minecraft versions a world can be made for, newest first: the
     /// catalog's releases from 1.7.6 on, and its snapshots from 14w17a when
-    /// `snapshots`. Empty without a catalog. Not the versions of our own list
-    /// (D-073), which get a switch of their own.
-    pub async fn versions(&self, snapshots: bool) -> Vec<String> {
+    /// `snapshots`; then, when `special`, the versions of our own list
+    /// (D-073) with a server from 1.7.6's day on, in the list's order. Empty
+    /// without a catalog.
+    pub async fn versions(&self, snapshots: bool, special: bool) -> Vec<VersionChoice> {
         let Some(metadata) = &self.metadata else {
             return Vec::new();
         };
         let (catalog, ..) = metadata.catalog(false).await;
-        catalog
-            .map(|c| c.versions)
-            .unwrap_or_default()
+        let entries = catalog.map(|c| c.versions).unwrap_or_default();
+        let (ours, mojang): (Vec<_>, Vec<_>) = entries
             .into_iter()
-            .filter(|e| e.special.is_none())
+            .filter(|e| tuple::of_entry(e).is_some())
+            .partition(|e| e.special.is_some());
+        let mojang = mojang
+            .into_iter()
             .filter(|e| match e.version_type.as_str() {
                 "release" => true,
                 "snapshot" => snapshots,
                 _ => false,
+            });
+        let ours = ours.into_iter().filter(|_| special);
+        mojang
+            .chain(ours)
+            .map(|e| VersionChoice {
+                name: e.special.map(|s| s.name),
+                id: e.id,
             })
-            .filter(|e| tuple::version(&e.id).is_some())
-            .map(|e| e.id)
             .collect()
+    }
+
+    /// Whether `minecraft` is a version of our own list a world can be made
+    /// for (D-073), which only the catalog says.
+    async fn special(&self, minecraft: &str) -> bool {
+        let Some(metadata) = &self.metadata else {
+            return false;
+        };
+        let (catalog, ..) = metadata.catalog(false).await;
+        catalog
+            .as_ref()
+            .and_then(|c| c.find(minecraft))
+            .is_some_and(|e| e.special.is_some() && tuple::of_entry(e).is_some())
     }
 
     pub fn view(&self) -> WorldsView {
@@ -626,8 +656,10 @@ impl Worlds {
         check_description(description)?;
         let created = match from {
             None => {
+                let special = self.special(minecraft).await;
                 let (root, name, minecraft) = (root.clone(), name.to_owned(), minecraft.to_owned());
-                blocking(move || world::create(&root, &name, &minecraft, settings)).await?
+                blocking(move || world::create_as(&root, &name, &minecraft, special, settings))
+                    .await?
             }
             Some(id) => {
                 let instance = state.instance(id).ok_or_else(instance_gone)?;
@@ -1108,7 +1140,7 @@ impl Worlds {
     async fn join_inner(self: &Arc<Self>, state: &AppState, room: &str) -> LauncherResult<()> {
         let nick = nick_of(state)?;
         let room = self.client.room(room).await?;
-        if tuple::version(&room.minecraft).is_none() {
+        if tuple::version(&room.minecraft).is_none() && !self.special(&room.minecraft).await {
             return Err(LauncherError::invalid_input(
                 "Worlds are not available for this Minecraft version yet.",
             ));

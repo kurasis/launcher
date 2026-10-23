@@ -10,6 +10,7 @@ import type {
   WorldsPreset,
   WorldsRoom,
   WorldsSettings,
+  WorldsVersionChoice,
 } from '../../lib/contracts';
 import { ipc } from '../../lib/ipc';
 import { strings } from '../../lib/strings';
@@ -41,8 +42,10 @@ interface Props {
 /** A new world on this computer and its room; the EULA is accepted here. */
 export function CreateWorld({ onClose, onCreated }: Props) {
   const t = strings.worlds.form;
-  const [versions, setVersions] = useState<string[]>([]);
+  const [versions, setVersions] = useState<WorldsVersionChoice[]>([]);
   const [snapshots, setSnapshots] = useState(false);
+  /** The versions of our own list (D-073) with a server, after Mojang's. */
+  const [special, setSpecial] = useState(false);
   const [name, setName] = useState('');
   const [description, setDescription] = useState('');
   const [minecraft, setMinecraft] = useState('');
@@ -56,13 +59,15 @@ export function CreateWorld({ onClose, onCreated }: Props) {
 
   useEffect(() => {
     void ipc
-      .worldsVersions(snapshots)
+      .worldsVersions(snapshots, special)
       .then((list) => {
         setVersions(list);
-        setMinecraft((current) => (list.includes(current) ? current : (list[0] ?? '')));
+        setMinecraft((current) =>
+          list.some((v) => v.id === current) ? current : (list[0]?.id ?? ''),
+        );
       })
       .catch(() => undefined);
-  }, [snapshots]);
+  }, [snapshots, special]);
 
   useEffect(() => {
     void ipc
@@ -72,6 +77,8 @@ export function CreateWorld({ onClose, onCreated }: Props) {
   }, []);
 
   const source = sources.find((s) => s.instanceId === from) ?? null;
+  const mojang = versions.filter((v) => v.name === null);
+  const ours = versions.filter((v) => v.name !== null);
   // A world with mods plays its installation's version.
   const version = source?.minecraft ?? minecraft;
 
@@ -173,11 +180,26 @@ export function CreateWorld({ onClose, onCreated }: Props) {
                   setMinecraft(e.target.value);
                 }}
               >
-                {(source === null ? versions : [source.minecraft]).map((v) => (
-                  <option key={v} value={v}>
-                    {v}
-                  </option>
-                ))}
+                {source === null ? (
+                  <>
+                    {mojang.map((v) => (
+                      <option key={v.id} value={v.id}>
+                        {v.id}
+                      </option>
+                    ))}
+                    {ours.length > 0 && (
+                      <optgroup label={t.specialGroup}>
+                        {ours.map((v) => (
+                          <option key={v.id} value={v.id}>
+                            {v.name}
+                          </option>
+                        ))}
+                      </optgroup>
+                    )}
+                  </>
+                ) : (
+                  <option value={source.minecraft}>{source.minecraft}</option>
+                )}
               </select>
             )}
           </Field>
@@ -231,6 +253,19 @@ export function CreateWorld({ onClose, onCreated }: Props) {
           </label>
         )}
         {source === null && snapshots && <Notice tone="warning">{t.snapshotsNote}</Notice>}
+        {source === null && (
+          <label className={styles.check}>
+            <input
+              type="checkbox"
+              checked={special}
+              onChange={(e) => {
+                setSpecial(e.target.checked);
+              }}
+            />
+            {t.special}
+          </label>
+        )}
+        {source === null && special && <Notice tone="warning">{t.specialNote}</Notice>}
         <div className={forms.row}>
           <Field label={t.preset}>
             {(props) => (

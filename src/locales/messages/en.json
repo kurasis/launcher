@@ -2080,6 +2080,9 @@
         "version": "Minecraft version",
         "snapshots": "Show snapshots",
         "snapshotsNote": "Snapshots are test versions: they change from week to week and can damage a world. A world made on a snapshot does not open in an older version, and friends need exactly the same snapshot.",
+        "special": "Show special versions",
+        "specialGroup": "Special",
+        "specialNote": "Special versions are not in Mojang's list: April Fools versions, Combat Tests, experimental snapshots and earlier builds. The launcher downloads them from its own server. A world made on one opens only in that version, and friends need exactly the same one.",
         "gameMode": "Game mode",
         "modes": {
           "survival": "Survival",

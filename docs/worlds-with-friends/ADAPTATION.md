@@ -165,7 +165,11 @@ is the first server that keeps players by UUID (`whitelist.json`, `playerdata/<u
 which the whitelist of offline UUIDs needs. With "Show snapshots" on when a world is made
 (off by default, owner's decision 2026-10-20), snapshots from 14w17a (the first after 1.7.6)
 and the pre-releases and release candidates of those releases are offered too, with a note that
-a snapshot can damage a world and that friends need the same snapshot.
+a snapshot can damage a world and that friends need the same snapshot. With "Show special
+versions" on (D-073), the versions of the launcher's own list with a server from 1.7.6's day on
+are offered after them by name (April Fools versions from 15w14a, Combat Tests, experimental
+snapshots, earlier builds), with their server JARs from upd.lapi.sh only; their servers read the
+properties as a snapshot's.
 The official server JAR comes from the version's descriptor (`downloads.server`, SHA-1 and size
 checked, SHA-256 recorded), from mirror.lapi.sh when Mojang fails, as every Mojang file; the
 mirror keeps every release's server JAR ahead of time; Java is the one the descriptor names, from the existing
