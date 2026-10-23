@@ -598,12 +598,6 @@ button.itemName:focus-visible {
 /* ---------------------------------------------------------- Narrow, contrast */
 
 @media (forced-colors: active) {
-  .outlineChip,
-  .chipWarning,
-  .chipDanger {
-    border: 1px solid CanvasText;
-  }
-
   .installed {
     border: 1px solid CanvasText;
   }

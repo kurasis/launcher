@@ -1132,6 +1132,11 @@
   .category[aria-pressed='true']::before {
     background: Highlight;
   }
+
+  /* A chip is a colored box; without the colors a line keeps it one. */
+  .chip {
+    border: 1px solid CanvasText;
+  }
 }
 
 /* -------------------------------------------------------------- Narrow room */

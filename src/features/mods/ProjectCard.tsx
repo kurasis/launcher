@@ -26,7 +26,7 @@ export type Offer =
   | { state: 'add'; version: ModsVersion }
   | { state: 'update'; version: ModsVersion; replaces: string }
   | { state: 'installed'; number: string }
-  | { state: 'pack'; version: ModsVersion | undefined };
+  | { state: 'pack'; version: ModsVersion | undefined; reason?: string };
 
 interface Props {
   project: ModsProject;
@@ -61,7 +61,7 @@ function hintOf(offer: Offer, instance: InstanceSummary | null, kind: ModsProjec
       });
     case 'pack':
       return offer.version === undefined
-        ? t.noVersions
+        ? (offer.reason ?? t.noVersions)
         : t.latestPack({ date: dayOf(offer.version.published) });
     case 'add':
     case 'update': {
@@ -165,7 +165,7 @@ export function ProjectCard({
             {t.chooseButton}
           </Button>
         ) : offer.state === 'installed' ? null : offer.state === 'pack' ? (
-          <span title={offer.version === undefined ? t.noVersions : undefined}>
+          <span title={offer.version === undefined ? (offer.reason ?? t.noVersions) : undefined}>
             <Button
               variant="primary"
               className={styles.mainAction}

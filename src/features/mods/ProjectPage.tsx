@@ -183,6 +183,37 @@ export function ProjectPage({
           Array.isArray(hits) ? hits.filter((hit) => hit.id !== projectId).slice(0, SIMILAR) : [],
         ),
   );
+  const rows = candidates?.error === undefined ? (candidates?.value ?? null) : null;
+  const items = content?.error === undefined ? (content?.value ?? null) : null;
+  // This project in the installation, outside the worlds.
+  const mine =
+    projectId === null
+      ? null
+      : (items?.find((item) => item.projectId === projectId && item.world === null) ?? null);
+  // The version it holds when Add's list has not got it (one made for another game
+  // version): its date decides whether Add's is newer, as the core decides updates.
+  const unlisted =
+    mine !== null &&
+    mine.versionId !== null &&
+    rows !== null &&
+    !rows.rows.some((version) => version.id === mine.versionId)
+      ? mine.versionId
+      : null;
+  const held = useAnswer<ModsVersion>(unlisted, () =>
+    ipc.modsVersion(unlisted ?? '').then((found) => {
+      const value = found as Partial<ModsVersion> | null;
+      if (
+        value === null ||
+        typeof value !== 'object' ||
+        value.id !== unlisted ||
+        typeof value.published !== 'number' ||
+        !Array.isArray(value.dependencies)
+      ) {
+        throw new Error('version');
+      }
+      return found;
+    }),
+  );
 
   // The tile pressed is gone: the focus starts on the project's name.
   useEffect(() => {
@@ -248,47 +279,55 @@ export function ProjectPage({
 
   const versionsError = summary?.error ?? candidates?.error ?? null;
   const facts = summary?.error === undefined ? (summary?.value ?? null) : null;
-  const rows = candidates?.error === undefined ? (candidates?.value ?? null) : null;
-  const items = content?.error === undefined ? (content?.value ?? null) : null;
   const installedIds =
     items === null
       ? null
       : new Set(items.flatMap((item) => (item.projectId === null ? [] : [item.projectId])));
-  // This project in the installation, outside the worlds.
-  const mine = items?.find((item) => item.projectId === project.id && item.world === null) ?? null;
 
-  const offer = ((): Offer => {
+  // The main action, and the version it is about: the one it takes, or the one installed.
+  const [offer, about] = ((): [Offer, ModsVersion | null] => {
     if (kind === 'modpack') {
-      if (rows === null)
+      if (rows === null) {
         return versionsError === null
-          ? { state: 'loading' }
-          : { state: 'pack', version: undefined };
-      return { state: 'pack', version: bestPack(rows.rows) };
+          ? [{ state: 'loading' }, null]
+          : [{ state: 'pack', version: undefined, reason: t.loadFailed }, null];
+      }
+      const pack = bestPack(rows.rows);
+      return [{ state: 'pack', version: pack }, pack ?? null];
     }
-    if (instance === null) return { state: 'choose' };
+    if (instance === null) return [{ state: 'choose' }, null];
     if (rows === null) {
       return versionsError === null
-        ? { state: 'loading' }
-        : { state: 'none', reason: t.loadFailed };
+        ? [{ state: 'loading' }, null]
+        : [{ state: 'none', reason: t.loadFailed }, null];
     }
     const best = bestVersion(kind, rows.rows, instance, datapacks);
     if (best === undefined) {
       const near = rows.rows[0] ?? facts?.newest ?? undefined;
       const reason = near === undefined ? null : cannotAdd(installKind(kind, near), near, instance);
-      return {
-        state: 'none',
-        reason: reason ?? t.noneFor({ game: isolate(instance.versionId) }),
-      };
+      return [
+        { state: 'none', reason: reason ?? t.noneFor({ game: isolate(instance.versionId) }) },
+        null,
+      ];
     }
     if (mine !== null && installKind(kind, best) !== 'datapack') {
-      if (mine.versionId === best.id) return { state: 'installed', number: best.number };
-      const had = rows.rows.find((version) => version.id === mine.versionId);
-      if (had !== undefined && had.published >= best.published) {
-        return { state: 'installed', number: had.number };
+      if (mine.versionId === best.id) return [{ state: 'installed', number: best.number }, best];
+      const had =
+        rows.rows.find((version) => version.id === mine.versionId) ??
+        (held?.error === undefined ? held?.value : undefined);
+      if (had === undefined && unlisted !== null) {
+        // Still asking; or it could not be read, and what is there stays, as the core
+        // leaves it.
+        return held === null
+          ? [{ state: 'loading' }, null]
+          : [{ state: 'installed', number: mine.versionNumber ?? mine.name }, null];
       }
-      return { state: 'update', version: best, replaces: mine.path };
+      if (had !== undefined && had.published >= best.published) {
+        return [{ state: 'installed', number: had.number }, had];
+      }
+      return [{ state: 'update', version: best, replaces: mine.path }, best];
     }
-    return { state: 'add', version: best };
+    return [{ state: 'add', version: best }, best];
   })();
   const offered =
     offer.state === 'add' || offer.state === 'update' || offer.state === 'pack'
@@ -307,8 +346,9 @@ export function ProjectPage({
           ? t.versionsFor({ count, game: isolate(range.from) })
           : t.versionsRange({ count, from: isolate(range.from), to: isolate(range.to) });
 
-  // What the version Add takes depends on; without one, the newest made for the game.
-  const depsOf = offered ?? (kind === 'modpack' ? null : (rows?.rows[0] ?? facts?.newest ?? null));
+  // What the version the card is about depends on; without one, the newest made for the
+  // game.
+  const depsOf = about ?? (kind === 'modpack' ? null : (rows?.rows[0] ?? facts?.newest ?? null));
   const dependencies = depsOf === null ? [] : dependenciesOf(depsOf);
   const similarHits = similar?.error === undefined ? (similar?.value ?? []) : [];
   const title = project.title || project.slug;
@@ -342,6 +382,7 @@ export function ProjectPage({
               forVersion={depsOf === offered ? null : depsOf.number}
               installed={installedIds}
               canAdd={instance !== null}
+              comes={depsOf === offered && (offer.state === 'add' || offer.state === 'update')}
               onOpen={onOpen}
               onQuickAdd={(target) => {
                 onQuickAdd({ ...target, kind: 'mod' });

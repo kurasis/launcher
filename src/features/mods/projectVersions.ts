@@ -71,6 +71,8 @@ export function gameRange(games: readonly string[]): { from: string; to: string 
 function dayFormat(seconds: number, month: 'long' | 'short', now: number): string {
   if (!Number.isFinite(seconds) || seconds <= 0) return '';
   const date = new Date(seconds * 1000);
+  // Past the dates a Date can hold: no date rather than a throw.
+  if (Number.isNaN(date.getTime())) return '';
   const thisYear = date.getFullYear() === new Date(now).getFullYear();
   return new Intl.DateTimeFormat(numberLocale(), {
     day: 'numeric',

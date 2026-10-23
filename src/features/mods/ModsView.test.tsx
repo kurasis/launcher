@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
+import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { mockIPC } from '@tauri-apps/api/mocks';
 import { useState } from 'react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
@@ -210,7 +210,12 @@ function pageFrom(list: ModsVersion[], query: ModsVersionsQuery): ModsVersionPag
 
 type Answers = Record<string, (args: Record<string, unknown>) => unknown>;
 
-function setup(answers: Answers = {}, start: ModsSection = 'mod', instanceId = fabric.id) {
+function setup(
+  answers: Answers = {},
+  start: ModsSection = 'mod',
+  instanceId = fabric.id,
+  instances = [fabric],
+) {
   const calls: { cmd: string; args: Record<string, unknown> }[] = [];
   mockIPC((cmd, args) => {
     const payload = (args ?? {}) as Record<string, unknown>;
@@ -256,7 +261,7 @@ function setup(answers: Answers = {}, start: ModsSection = 'mod', instanceId = f
     const [instance, setInstance] = useState<string | null>(instanceId);
     return (
       <ModsView
-        snapshot={snapshotFixture({ instances: [fabric] })}
+        snapshot={snapshotFixture({ instances })}
         instanceId={instance}
         section={section}
         onSection={setSection}
@@ -597,6 +602,12 @@ describe('ModsView', () => {
     expect(
       within(article).getByRole('button', { name: 'Add \u20680.3\u2069 to installation' }),
     ).toBeEnabled();
+    // "Only for" leaves out the rest, and gives them back.
+    const only = within(versions).getByRole('switch', { name: 'Only for “\u2068Modded\u2069”' });
+    fireEvent.click(only);
+    expect(numbers()).toEqual(['0.3']);
+    fireEvent.click(only);
+    expect(numbers()).toEqual(['0.3', '0.1', '0.2']);
 
     const game = within(versions).getByLabelText('Game version');
     expect(
@@ -2652,5 +2663,387 @@ describe('Project page', () => {
     const article = await screen.findByRole('article', { name: 'Pack' });
     expect(await within(article).findByRole('button', { name: 'Install' })).toBeDisabled();
     expect(within(article).queryByRole('switch')).toBeNull();
+  });
+  it('keeps a newer installed version, even one made for another game version', async () => {
+    const beta: ModsVersion = {
+      ...version,
+      id: 'v-beta',
+      number: '0.7.0-beta',
+      channel: 'beta',
+      published: 1_770_000_000,
+    };
+    setup({
+      mods_versions: () => [beta, version],
+      mods_content: () => ({ ...NOTHING, items: [file(PROJECT, 'v-beta', 'mods/sodium-b.jar')] }),
+    });
+    const article = await openSodium();
+    // Add takes the newest release; the newer beta stays.
+    expect(await within(article).findByText('In “⁨Modded⁩”: version ⁨0.7.0-beta⁩.')).toBeVisible();
+    expect(within(article).queryByRole('button', { name: /^Update to/ })).toBeNull();
+  });
+
+  it('compares the dates of an installed version Add’s list has not got', async () => {
+    const elsewhere = (published: number): ModsVersion => ({
+      ...version,
+      id: 'v-other',
+      number: '2.0',
+      games: ['1.21.2'],
+      published,
+    });
+    for (const [published, fails, expected] of [
+      [1_770_000_000, false, 'In “⁨Modded⁩”: version ⁨2.0⁩.'],
+      [1_750_000_000, false, 'Update to ⁨0.6.0⁩'],
+      // Unread, what is there stays.
+      [1_750_000_000, true, 'In “⁨Modded⁩”: version ⁨2.0⁩.'],
+    ] as const) {
+      const calls = setup({
+        mods_versions: () => [version],
+        mods_content: () => ({
+          ...NOTHING,
+          items: [{ ...file(PROJECT, 'v-other', 'mods/sodium-2.jar'), versionNumber: '2.0' }],
+        }),
+        mods_version: () => {
+          if (fails) {
+            // eslint-disable-next-line @typescript-eslint/only-throw-error -- mirrors the IPC error envelope
+            throw { code: 'NETWORK_UNAVAILABLE', message: 'The catalog is not reachable.' };
+          }
+          return elsewhere(published);
+        },
+      });
+      const article = await openSodium();
+      expect(await within(article).findByText(expected)).toBeVisible();
+      expect(named('mods_version', calls)[0]?.args).toEqual({ version: 'v-other' });
+      cleanup();
+    }
+  });
+
+  it('lists what the installed version needs, not another loader’s build', async () => {
+    const none = { versionId: null, icon: null, sourcePage: null };
+    const neo: ModsVersion = {
+      ...version,
+      id: 'v-neo',
+      number: '0.6.0-neoforge',
+      loaders: ['neoforge'],
+      published: version.published + 60,
+      dependencies: [
+        { ...none, kind: 'required', projectId: 'p-kff', title: 'Kotlin for Forge', slug: 'kff' },
+      ],
+    };
+    const own: ModsVersion = {
+      ...version,
+      dependencies: [
+        { ...none, kind: 'required', projectId: 'p-api', title: 'Fabric API', slug: 'fabric-api' },
+      ],
+    };
+    // The default installation holds 0.6.0 for Fabric.
+    setup({ mods_versions: () => [neo, own] });
+    const article = await openSodium();
+    expect(await within(article).findByText('In “⁨Modded⁩”: version ⁨0.6.0⁩.')).toBeVisible();
+    const deps = await within(article).findByRole('region', { name: 'Dependencies' });
+    expect(within(deps).getByText('For version ⁨0.6.0⁩')).toBeVisible();
+    // Nothing is added now: it is only "Required".
+    expect(
+      within(deps)
+        .getAllByRole('listitem')
+        .map((row) => row.textContent),
+    ).toEqual(['FFabric APIRequired']);
+  });
+
+  it('says a modpack’s versions did not load rather than that it has none', async () => {
+    setup(
+      {
+        ...fresh,
+        mods_project: () => ({ ...project, kind: 'modpack', title: 'Pack' }),
+        mods_versions_page: (args) => {
+          if ((args.query as ModsVersionsQuery).limit === 1) {
+            return pageFrom([version], args.query as ModsVersionsQuery);
+          }
+          // eslint-disable-next-line @typescript-eslint/only-throw-error -- mirrors the IPC error envelope
+          throw { code: 'NETWORK_UNAVAILABLE', message: 'The catalog is not reachable.' };
+        },
+      },
+      'modpack',
+    );
+    fireEvent.click(await screen.findByRole('button', { name: /Sodium/ }));
+    const article = await screen.findByRole('article', { name: 'Pack' });
+    const card = within(article).getByRole('region', { name: 'Pack' });
+    expect(await within(card).findByText('The versions did not load.')).toBeVisible();
+    expect(within(card).getByRole('button', { name: 'Install' })).toBeDisabled();
+    expect(within(card).queryByText('No versions yet.')).toBeNull();
+  });
+
+  it('watches the end of the versions once the ones for the installation come', async () => {
+    const many = Array.from({ length: 60 }, (_, n) => ({
+      ...version,
+      id: `v-${String(n)}`,
+      number: `0.${String(n)}`,
+      published: 1_760_000_000 - n,
+      games: ['1.20.1'],
+    }));
+    const watched: Element[] = [];
+    class Watcher {
+      callback: IntersectionObserverCallback;
+      constructor(callback: IntersectionObserverCallback) {
+        this.callback = callback;
+      }
+      observe(target: Element) {
+        watched.push(target);
+        queueMicrotask(() => {
+          if (!target.isConnected) return;
+          this.callback(
+            [{ isIntersecting: true }] as IntersectionObserverEntry[],
+            this as unknown as IntersectionObserver,
+          );
+        });
+      }
+      disconnect() {
+        // Nothing to let go.
+      }
+    }
+    vi.stubGlobal('IntersectionObserver', Watcher);
+    const later: (() => void)[] = [];
+    setup({
+      ...fresh,
+      mods_versions: () => many,
+      mods_versions_page: (args) => {
+        const query = args.query as ModsVersionsQuery;
+        // Add's list comes after the table's first page.
+        if (query.limit === 100) {
+          return new Promise((resolve) => {
+            later.push(() => {
+              resolve(pageFrom(many, query));
+            });
+          });
+        }
+        return pageFrom(many, query);
+      },
+    });
+    const article = await openSodium();
+    await waitFor(() => {
+      expect(later).toHaveLength(1);
+    });
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    later[0]?.();
+    await waitFor(() => {
+      expect(within(article).getAllByRole('rowheader')).toHaveLength(60);
+    });
+    expect(watched.some((target) => target.isConnected)).toBe(true);
+  });
+
+  it('keeps the description’s toggle after it changed size while open', async () => {
+    const observers = new Set<() => void>();
+    class Sizes {
+      callback: () => void;
+      constructor(callback: () => void) {
+        this.callback = callback;
+      }
+      observe() {
+        observers.add(this.callback);
+      }
+      disconnect() {
+        observers.delete(this.callback);
+      }
+    }
+    vi.stubGlobal('ResizeObserver', Sizes);
+    vi.spyOn(HTMLElement.prototype, 'offsetHeight', 'get').mockReturnValue(900);
+    // The shortened box is 240 high; open, it is as high as the text.
+    vi.spyOn(Element.prototype, 'clientHeight', 'get').mockImplementation(function (this: Element) {
+      return this.className.includes('short') ? 240 : 900;
+    });
+    setup(fresh);
+    const article = await openSodium();
+    fireEvent.click(await within(article).findByRole('button', { name: 'Show in full' }));
+    // A picture in it loads.
+    for (const callback of observers) callback();
+    await new Promise((resolve) => setTimeout(resolve, 50));
+    fireEvent.click(within(article).getByRole('button', { name: 'Show less' }));
+    expect(await within(article).findByRole('button', { name: 'Show in full' })).toHaveAttribute(
+      'aria-expanded',
+      'false',
+    );
+  });
+
+  it('keeps the focus on the picture buttons while stepping through them', async () => {
+    const ours = (n: number) => `https://files-mods.lapi.sh/i/${String(n).repeat(64)}.png`;
+    setup({
+      ...fresh,
+      mods_project: () => ({
+        ...project,
+        gallery: [1, 2, 3].map((n) => ({ url: ours(n), thumb: null, title: '', description: '' })),
+      }),
+    });
+    const article = await openSodium();
+    const strip = within(article).getByRole('list', { name: 'Pictures' });
+    fireEvent.click(within(strip).getAllByRole('button')[0] as HTMLElement);
+    const dialog = await screen.findByRole('dialog', { name: 'Picture 1 of 3' });
+    const next = within(dialog).getByRole('button', { name: 'Next picture' });
+    next.focus();
+    fireEvent.click(next);
+    expect(await screen.findByRole('dialog', { name: 'Picture 2 of 3' })).toBeVisible();
+    expect(next).toHaveFocus();
+    fireEvent.click(next);
+    expect(await screen.findByRole('dialog', { name: 'Picture 3 of 3' })).toBeVisible();
+  });
+
+  it('closes only the dialog on top with Escape', async () => {
+    setup({
+      ...fresh,
+      mods_version: () => ({
+        ...version,
+        changelog: [
+          {
+            k: 'p',
+            c: [{ k: 'a', href: 'https://example.com/notes', c: [{ k: 'text', text: 'notes' }] }],
+          },
+        ],
+      }),
+    });
+    const article = await openSodium();
+    fireEvent.click(await within(article).findByRole('button', { name: 'What’s new in ⁨0.6.0⁩' }));
+    const details = await screen.findByRole('dialog', { name: 'What’s new in ⁨0.6.0⁩' });
+    fireEvent.click(await within(details).findByRole('link', { name: 'notes' }));
+    expect(await screen.findByRole('dialog', { name: 'Open this link?' })).toBeVisible();
+    fireEvent.keyDown(window, { key: 'Escape' });
+    await waitFor(() => {
+      expect(screen.queryByRole('dialog', { name: 'Open this link?' })).toBeNull();
+    });
+    expect(screen.getByRole('dialog', { name: 'What’s new in ⁨0.6.0⁩' })).toBeVisible();
+    fireEvent.keyDown(window, { key: 'Escape' });
+    await waitFor(() => {
+      expect(screen.queryByRole('dialog')).toBeNull();
+    });
+  });
+
+  it('lets go of "Only for" when no installation is chosen', async () => {
+    setup({ ...fresh, mods_versions: () => [{ ...version, games: ['1.20.1'] }] });
+    const article = await openSodium();
+    const versions = await within(article).findByRole('region', { name: 'Versions' });
+    fireEvent.click(await within(versions).findByRole('switch', { name: 'Only for “⁨Modded⁩”' }));
+    expect(await within(versions).findByText('No version here fits “⁨Modded⁩”.')).toBeVisible();
+    fireEvent.change(screen.getByLabelText('Installation'), { target: { value: '' } });
+    expect(await within(article).findByRole('rowheader', { name: /0\.6\.0/ })).toBeVisible();
+    expect(within(article).queryByText(/No version here fits/)).toBeNull();
+  });
+
+  it('adds a mod’s data pack next to the mod, and its dependencies as mods', async () => {
+    const INDIUM = 'p-indium';
+    const pack: ModsVersion = {
+      ...version,
+      id: 'v-pack',
+      number: '2.0-dp',
+      loaders: ['datapack'],
+      dependencies: [
+        {
+          kind: 'optional',
+          projectId: INDIUM,
+          versionId: null,
+          title: 'Indium',
+          slug: 'indium',
+          icon: null,
+          sourcePage: null,
+        },
+      ],
+    };
+    // The default installation holds the mod's own 0.6.0 jar.
+    setup(
+      {
+        mods_versions: (args) =>
+          args.project === INDIUM
+            ? [{ ...version, id: 'v-indium', projectId: INDIUM }]
+            : [version, pack],
+      },
+      'datapack',
+    );
+    const article = await openSodium();
+    expect(
+      await within(article).findByRole('button', { name: 'Add ⁨2.0-dp⁩ to installation' }),
+    ).toBeEnabled();
+    expect(within(article).queryByText(/^In “⁨Modded⁩”/)).toBeNull();
+    const deps = await within(article).findByRole('region', { name: 'Dependencies' });
+    fireEvent.click(within(deps).getByRole('button', { name: 'Add ⁨Indium⁩' }));
+    expect(await screen.findByRole('dialog', { name: 'Add Indium to Modded' })).toBeVisible();
+  });
+
+  it('keeps the offer for the installation chosen last', async () => {
+    const older = instanceFixture({
+      id: '0f1e2d3c-4b5a-4978-8796-a5b4c3d2e1f9',
+      displayName: 'Older',
+      versionId: '1.20.1',
+      loader: { kind: 'fabric', version: '0.16.14' },
+    });
+    const two = [version, { ...version, id: 'v-old', number: '0.5.0', games: ['1.20.1'] }];
+    const later: (() => void)[] = [];
+    setup(
+      {
+        ...fresh,
+        mods_versions: () => two,
+        mods_versions_page: (args) => {
+          const query = args.query as ModsVersionsQuery;
+          // Add's list for the first installation comes last.
+          if (query.limit === 100 && query.game === '1.21.1') {
+            return new Promise((resolve) => {
+              later.push(() => {
+                resolve(pageFrom(two, query));
+              });
+            });
+          }
+          return pageFrom(two, query);
+        },
+      },
+      'mod',
+      fabric.id,
+      [fabric, older],
+    );
+    const article = await openSodium();
+    await waitFor(() => {
+      expect(later).toHaveLength(1);
+    });
+    fireEvent.change(screen.getByLabelText('Installation'), { target: { value: older.id } });
+    expect(
+      await within(article).findByRole('button', { name: 'Add ⁨0.5.0⁩ to installation' }),
+    ).toBeEnabled();
+    later[0]?.();
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    expect(
+      within(article).getByRole('button', { name: 'Add ⁨0.5.0⁩ to installation' }),
+    ).toBeEnabled();
+  });
+
+  it('tries the list of versions again, and its next page', async () => {
+    const many = Array.from({ length: 55 }, (_, n) => ({
+      ...version,
+      id: `v-${String(n)}`,
+      number: `0.${String(n)}`,
+      games: ['1.20.1'],
+    }));
+    let failFirst = true;
+    let failNext = true;
+    setup({
+      ...fresh,
+      mods_versions: () => many,
+      mods_versions_page: (args) => {
+        const query = args.query as ModsVersionsQuery;
+        if (query.limit === 50 && (query.offset === 0 ? failFirst : failNext)) {
+          // eslint-disable-next-line @typescript-eslint/only-throw-error -- mirrors the IPC error envelope
+          throw { code: 'NETWORK_UNAVAILABLE', message: 'The catalog is not reachable.' };
+        }
+        return pageFrom(many, query);
+      },
+    });
+    const article = await openSodium();
+    const versions = await within(article).findByRole('region', { name: 'Versions' });
+    expect(await within(versions).findByText('The versions did not load.')).toBeVisible();
+    failFirst = false;
+    fireEvent.click(within(versions).getByRole('button', { name: 'Try again' }));
+    await waitFor(() => {
+      expect(within(versions).getAllByRole('rowheader')).toHaveLength(50);
+    });
+    fireEvent.click(within(versions).getByRole('button', { name: 'Load more versions' }));
+    expect(await within(versions).findByText('The next versions did not load.')).toBeVisible();
+    failNext = false;
+    fireEvent.click(within(versions).getByRole('button', { name: 'Try again' }));
+    await waitFor(() => {
+      expect(within(versions).getAllByRole('rowheader')).toHaveLength(55);
+    });
   });
 });

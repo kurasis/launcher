@@ -21,6 +21,8 @@ interface DependenciesProps {
   installed: ReadonlySet<string> | null;
   /** An installation is chosen: optional ones can be added. */
   canAdd: boolean;
+  /** They are of the version the main action adds: required ones come with it. */
+  comes: boolean;
   onOpen: (projectId: string) => void;
   onQuickAdd: (project: { id: string; title: string; slug: string }) => void;
   onAddToCatalog: (url: string) => void;
@@ -32,6 +34,7 @@ export function ProjectDependencies({
   forVersion,
   installed,
   canAdd,
+  comes,
   onOpen,
   onQuickAdd,
   onAddToCatalog,
@@ -60,7 +63,7 @@ export function ProjectDependencies({
               ? t.optional
               : dependency.kind === 'incompatible'
                 ? t.incompatible
-                : canAdd && !has
+                : comes && !has
                   ? t.requiredComes
                   : t.required;
           return (

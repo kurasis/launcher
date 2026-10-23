@@ -255,7 +255,8 @@ export function ProjectVersions({
   const [details, setDetails] = useState<ModsVersion | null>(null);
   const asked = useRef(0);
   const box = useRef<HTMLDivElement>(null);
-  const end = useRef<HTMLDivElement>(null);
+  // In state: the table and its end come and go with the loading rows.
+  const [end, setEnd] = useState<HTMLDivElement | null>(null);
 
   const fetchPage = useCallback(
     (next: Filters, offset: number) => {
@@ -327,8 +328,10 @@ export function ProjectVersions({
 
   const current = table !== null && table.for === keyOf(filters) ? table : null;
   const loading = pending === 'first' || current === null || fit === 'loading';
+  // Only while there is an installation to fit.
+  const onlyFit = only && fitApplies;
   const more =
-    !only &&
+    !onlyFit &&
     current !== null &&
     !current.ended &&
     current.rows.length < Math.min(current.total, MAX_ROWS);
@@ -340,20 +343,19 @@ export function ProjectVersions({
   }, [more, pending, error, current, fetchPage, filters]);
   const watching = typeof IntersectionObserver !== 'undefined';
   useEffect(() => {
-    const target = end.current;
     const root = box.current;
-    if (!watching || target === null || !more || pending !== null || moreFailed) return;
+    if (!watching || end === null || !more || pending !== null || moreFailed) return;
     const observer = new IntersectionObserver(
       (entries) => {
         if (entries.some((entry) => entry.isIntersecting)) loadMore();
       },
       { root, rootMargin: `0px 0px ${AHEAD} 0px` },
     );
-    observer.observe(target);
+    observer.observe(end);
     return () => {
       observer.disconnect();
     };
-  }, [watching, more, pending, moreFailed, loadMore]);
+  }, [watching, end, more, pending, moreFailed, loadMore]);
 
   const matches = (version: ModsVersion) =>
     (filters.game === '' || version.games.includes(filters.game)) &&
@@ -364,7 +366,9 @@ export function ProjectVersions({
       ? fitRows.rows.filter((version) => matches(version) && fits(kind, version, instance))
       : [];
   const fittingIds = new Set(fitting.map((version) => version.id));
-  const rest = only ? [] : (current?.rows ?? []).filter((version) => !fittingIds.has(version.id));
+  const rest = onlyFit
+    ? []
+    : (current?.rows ?? []).filter((version) => !fittingIds.has(version.id));
   const rows = [...fitting, ...rest];
   const total = current?.total ?? 0;
   const status = loading
@@ -552,7 +556,7 @@ export function ProjectVersions({
           ) : !loading && rows.length === 0 ? (
             <div className={catalog.empty}>
               <p className={catalog.emptyTitle}>
-                {only && total > 0 ? t.noneFit({ name }) : t.noneMatch}
+                {onlyFit && total > 0 ? t.noneFit({ name }) : t.noneMatch}
               </p>
               <button
                 type="button"
@@ -686,12 +690,12 @@ export function ProjectVersions({
                       </button>
                     </div>
                   )}
-                  {!only &&
+                  {!onlyFit &&
                     current.rows.length >= MAX_ROWS &&
                     current.total > current.rows.length && (
                       <p className={styles.loadRow}>{t.capped({ count: MAX_ROWS })}</p>
                     )}
-                  <div ref={end} className={catalog.sentinel} />
+                  <div ref={setEnd} className={catalog.sentinel} />
                 </>
               )}
             </div>

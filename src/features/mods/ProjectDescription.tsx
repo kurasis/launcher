@@ -145,11 +145,12 @@ export function ProjectDescription({
   const [open, setOpen] = useState<number | null>(null);
   const pictures = picturesOf(project);
 
-  // Measured after the browser lays it out, and again when pictures in it load.
+  // Measured against the shortened box after the browser lays it out, and again when
+  // pictures in it load; not while it is open, where the box is as tall as the text.
   useEffect(() => {
     const outer = box.current;
     const inner = content.current;
-    if (outer === null || inner === null) return;
+    if (whole || outer === null || inner === null) return;
     let frame = 0;
     const measure = () => {
       if (frame !== 0) return;
@@ -165,7 +166,7 @@ export function ProjectDescription({
       cancelAnimationFrame(frame);
       observer?.disconnect();
     };
-  }, [project.body]);
+  }, [project.body, whole]);
 
   return (
     <section className={styles.panel} aria-labelledby={headingId}>
