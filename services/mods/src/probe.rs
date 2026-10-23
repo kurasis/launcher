@@ -303,7 +303,7 @@ fn media_report(page: &[u8]) -> String {
 /// What the CurseForge adapter reads from the project's page: our words and
 /// numbers (whether the ID is the project's, which fields came, how many).
 fn card_report(page: &[u8]) -> String {
-    let card = crate::curseforge::page(&String::from_utf8_lossy(page), "mc-mods", SLUG);
+    let card = crate::curseforge::page(&String::from_utf8_lossy(page), "mc-mods", SLUG, None);
     let mut words = vec![match card.id {
         Some(PROJECT) => "id_ok".to_owned(),
         Some(_) => "id_other".to_owned(),
@@ -332,20 +332,67 @@ fn card_report(page: &[u8]) -> String {
     words.join(",")
 }
 
-/// The objects on the modpack's page that could be its project: each one's
-/// number and likeness, the chosen one first. Numbers only.
-fn choices_report(page: &[u8]) -> String {
+/// The objects on the modpack's page that could be its project: the one
+/// the reader likes best, then each one's number, likeness and fields, where
+/// its number's address leads and whether the site lists files for it. Our
+/// words and numbers only.
+async fn choices_report(client: &Client, exit: usize, page: &[u8], body: &Path) -> String {
     let page = String::from_utf8_lossy(page);
-    let chosen = crate::curseforge::page(&page, "modpacks", MODPACK).id;
-    let all: Vec<String> = crate::curseforge::choices(&page, "modpacks", MODPACK)
+    let chosen = crate::curseforge::page(&page, "modpacks", MODPACK, None).id;
+    let mut out = format!(
+        "chosen:{}",
+        chosen.map_or_else(|| "none".to_owned(), |id| id.to_string())
+    );
+    for (id, words) in crate::curseforge::choices(&page, "modpacks", MODPACK)
         .into_iter()
-        .map(|(id, score)| format!("{id}:{score}"))
-        .collect();
-    format!(
-        "chosen:{} ids[{}]",
-        chosen.map_or_else(|| "none".to_owned(), |id| id.to_string()),
-        all.join(",")
-    )
+        .take(4)
+    {
+        let _ = std::fs::remove_file(body);
+        let leads = match client
+            .once(
+                exit,
+                None,
+                &crate::curseforge::number_url(id),
+                &[],
+                body,
+                MAX_BYTES,
+            )
+            .await
+        {
+            Ok(r) if (300..400).contains(&r.status) => match r.location.as_deref() {
+                Some(to) if to_page(to, "modpacks", MODPACK) => "leads_to_page".to_owned(),
+                _ => "leads_elsewhere".to_owned(),
+            },
+            Ok(r) => format!("number_{}", r.status),
+            Err(e) => format!("number_{}", e.code()),
+        };
+        let _ = std::fs::remove_file(body);
+        let files = match client
+            .once(
+                exit,
+                None,
+                &format!(
+                    "https://www.curseforge.com/api/v1/mods/{id}/files?pageIndex=0&pageSize=1"
+                ),
+                &[],
+                body,
+                MAX_BYTES,
+            )
+            .await
+        {
+            Ok(r) if r.status == 200 => {
+                if first_file(&std::fs::read(body).unwrap_or_default()).is_some() {
+                    "files_found".to_owned()
+                } else {
+                    "no_files".to_owned()
+                }
+            }
+            Ok(r) => format!("files_{}", r.status),
+            Err(e) => format!("files_{}", e.code()),
+        };
+        out.push_str(&format!(" [{id} {words} {leads} {files}]"));
+    }
+    out
 }
 
 /// What the adapter finds on the search page: how many hits, whether JEI
@@ -427,9 +474,11 @@ pub async fn run(client: &Client, tmp: &Path) -> Vec<String> {
                             "cf_search_page" => {
                                 format!("{} {}", page_data(&page), search_report(&page))
                             }
-                            "cf_modpack_page" => {
-                                format!("{} {}", page_data(&page), choices_report(&page))
-                            }
+                            "cf_modpack_page" => format!(
+                                "{} {}",
+                                page_data(&page),
+                                choices_report(client, exit, &page, &body).await
+                            ),
                             _ => page_data(&page),
                         })
                     }
@@ -538,11 +587,16 @@ fn same_site(url: &str) -> bool {
 /// JEI's page, `https://www.curseforge.com/minecraft/mc-mods/jei`, maybe as
 /// a path of the site alone.
 fn to_project_page(url: &str) -> bool {
+    to_page(url, "mc-mods", SLUG)
+}
+
+/// A project's page on the site, maybe as a path of the site alone.
+fn to_page(url: &str, class: &str, slug: &str) -> bool {
     let base = reqwest::Url::parse("https://www.curseforge.com/").ok();
     base.and_then(|b| b.join(url).ok()).is_some_and(|u| {
         u.scheme() == "https"
             && u.host_str() == Some("www.curseforge.com")
-            && u.path().trim_end_matches('/') == format!("/minecraft/mc-mods/{SLUG}")
+            && u.path().trim_end_matches('/') == format!("/minecraft/{class}/{slug}")
     })
 }
 
